@@ -119,6 +119,20 @@ reports, but *not* your opinion of the work. If the slice changed public API, ru
    brief as the body, and watch its CI run. Under `/loop`, the next iteration waits
    (preflight step 2) until the maintainer has merged it. `mode=local`: commit only,
    do not push. Never merge a PR yourself; merging is the maintainer's review.
+6. `mode=pr`: **wait for the Copilot pull-request review to finish, then address
+   every comment** before reporting the PR as ready (the maintainer's standing
+   request):
+   - Fetch the review and its inline comments:
+     `gh pr view N --json reviews` and `gh api repos/{owner}/{repo}/pulls/N/comments`.
+   - Route each comment like a verifier finding: tests to the test engineer, code and
+     docs to the implementer, guard and matrix changes to yourself. Verify the fix
+     (the verifier for anything that touches a cited row), commit and push it, and
+     let CI run.
+   - Reply on each thread with the fix commit and its evidence
+     (`gh api …/pulls/N/comments/ID/replies`). Leave threads unresolved for the
+     maintainer.
+   - A comment that is wrong, or outside the slice: reply with the reason, and open a
+     matrix row if it points at a real gap.
 
 ## 9. Checkpoints — when to stop the loop for the user
 
