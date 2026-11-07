@@ -8,7 +8,7 @@ What libSACM implements, requirement by requirement. The canonical source is [`f
 
 | Milestone | Rows | verified | implemented | tests-failing | analyzed | planned | candidate | deferred | out-of-scope |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| M0 — Foundation | 8 |  | 8 |  |  |  |  |  |  |
+| M0 — Foundation | 11 | 1 | 7 |  |  | 3 |  |  |  |
 | M1 — Minimal editable vertical slice | 31 |  |  |  |  | 31 |  |  |  |
 | M2 — Base model and argumentation | 37 |  |  |  |  | 37 |  |  |  |
 | M3 — Artifact model | 12 |  |  |  |  | 12 |  |  |  |
@@ -16,7 +16,7 @@ What libSACM implements, requirement by requirement. The canonical source is [`f
 | M5 — Modularity: interfaces and bindings | 11 |  |  |  |  | 11 |  |  |  |
 | M6 — Interoperability and compliance claims | 11 |  |  |  |  | 10 |  |  | 1 |
 | M7 — 1.0 readiness | 16 |  |  |  |  | 12 | 3 |  | 1 |
-| **Total** | **135** |  | **8** |  |  | **122** | **3** |  | **2** |
+| **Total** | **138** | **1** | **7** |  |  | **125** | **3** |  | **2** |
 
 ## Areas
 
@@ -53,8 +53,11 @@ Workspace, CI gates, matrix gate, reference fetching and agent guard are in plac
 | LIB-TOOL-001 | **Functionality-matrix gate.** `cargo xtask matrix check` enforces the rules of docs/matrix/README.md, `render` regenerates the Markdown view, and `next` lists the open rows whose dependencies are all verified, in milestone then file order. | tooling | ADR 0004 | `implemented` |  | `lib_tool_001_accepts_a_consistent_matrix`<br>`lib_tool_001_rejects_malformed_and_mismatched_ids`<br>`lib_tool_001_rejects_duplicate_ids`<br>`lib_tool_001_planned_rows_must_not_cite_tests`<br>`lib_tool_001_implemented_rows_need_acceptance_code_and_tests`<br>`lib_tool_001_test_citations_must_resolve_and_trace`<br>`lib_tool_001_verified_rows_need_record_and_verified_dependencies`<br>`lib_tool_001_rejects_cycles_and_backward_milestone_dependencies`<br>`lib_tool_001_unscheduled_rows_must_give_a_reason`<br>`lib_tool_001_reports_orphaned_traced_tests`<br>`lib_tool_001_detects_stale_rendered_page`<br>`lib_tool_001_next_lists_open_rows_with_verified_dependencies_in_order`<br>`lib_tool_001_finds_function_definitions_not_mentions`<br>`lib_tool_001_only_marked_tests_count_as_traced` |
 | LIB-TOOL-002 | **Hash-pinned fetching of the normative SACM 2.3 sources.** `cargo xtask fetch-spec` downloads formal/23-05-08 and ptc/22-03-13 from omg.org into the git-ignored third_party/sacm-2.3/, verifies each against a SHA-256 pin, refuses a mismatching file, and never commits OMG documents. | tooling | ADR 0003 | `implemented` |  | `lib_tool_002_pins_are_well_formed_and_unique`<br>`lib_tool_002_hashes_known_input` |
 | LIB-TOOL-003 | **Agent write scopes are enforced by a hook.** A Claude Code PreToolUse hook refuses Write/Edit/MultiEdit/NotebookEdit calls from project subagents outside their declared scope (read-only roles cannot write; the test engineer only tests; the implementer not tests, matrix, verification records or ADRs), never restricts the main session, and fails closed for subagents when its configuration is unreadable.<br>_Note: Does not cover Bash or sessions with hooks disabled; agent prompts prohibit those routes (ADR 0006)._ | tooling | ADR 0006 | `implemented` |  | `test_lib_tool_003_main_session_is_never_restricted`<br>`test_lib_tool_003_read_only_roles_cannot_write_anywhere`<br>`test_lib_tool_003_non_write_tools_pass_through`<br>`test_lib_tool_003_test_engineer_confined_to_tests`<br>`test_lib_tool_003_implementer_cannot_touch_tests_or_matrix`<br>`test_lib_tool_003_paths_outside_repository_are_denied`<br>`test_lib_tool_003_dot_dot_cannot_escape_scope`<br>`test_lib_tool_003_unlisted_agents_use_normal_flow`<br>`test_lib_tool_003_unreadable_scopes_fail_closed_for_subagents`<br>`test_lib_tool_003_glob_semantics`<br>`test_lib_tool_003_repository_scopes_file_is_valid` |
-| LIB-API-001 | **Library and standard versions are exposed.** The crate exposes its own version and the SACM revision it implements as public constants, documented with examples. | api | Project policy (D-VERSION) | `implemented` |  | `lib_api_001_reports_library_and_sacm_versions` |
+| LIB-API-001 | **Library and standard versions are exposed.** The crate exposes its own version and the SACM revision it implements as public constants, documented with examples. | api | Project policy (D-VERSION) | `verified` |  | `lib_api_001_reports_library_and_sacm_versions`<br>`doctest:crates/sacm/src/lib.rs` |
 | LIB-CLI-001 | **CLI skeleton with `sacm version`.** The `sacm` binary parses subcommands, prints the tool version and implemented SACM revision for `sacm version`, prints usage and exits non-zero for unknown subcommands, and treats a closed stdout pipe as success. | cli | Project policy (D-API) | `implemented` | LIB-API-001 | `lib_cli_001_version_reports_tool_and_sacm_revision`<br>`lib_cli_001_unknown_subcommand_fails_with_usage` |
+| LIB-TOOL-005 | **Verification records carry a per-row verdict the gate reads.** A verified row's verification record must state a PASS verdict for that specific row in a machine-readable line, and the gate checks the verdict rather than mere mention of the id. | tooling | Verification 0001 follow-up (a record saying 'LIB-X-001: FAIL' satisfied the substring check) | `planned` | LIB-TOOL-001 |  |
+| LIB-TOOL-006 | **Cited paths stay inside the repository.** Code, test and verification-record citations must be relative paths that resolve inside the repository; absolute paths and `..` escapes are rejected by the gate. | tooling | Verification 0001 follow-up | `planned` | LIB-TOOL-001 |  |
+| LIB-DOC-006 | **Docs claim only verified capability.** The crate root documentation, crate READMEs and repository README describe unbuilt capabilities as planned scope and link the functionality matrix for current status; nothing is stated in the present tense that the matrix does not show as verified. | docs | Verification 0001 finding (present-tense claims in crates/sacm/src/lib.rs and README) | `planned` |  |  |
 
 ## M1 — Minimal editable vertical slice
 

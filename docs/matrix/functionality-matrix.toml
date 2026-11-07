@@ -303,14 +303,18 @@ title = "Library and standard versions are exposed"
 requirement = "The crate exposes its own version and the SACM revision it implements as public constants, documented with examples."
 source = "Project policy (D-VERSION)"
 kind = "api"
-status = "implemented"
+status = "verified"
 acceptance = [
   "`sacm::VERSION` equals the published crate version.",
   "`sacm::SACM_VERSION` is \"2.3\".",
   "Both are documented with a doctest.",
 ]
 code = ["crates/sacm/src/lib.rs"]
-tests = ["crates/sacm/tests/version.rs::lib_api_001_reports_library_and_sacm_versions"]
+tests = [
+  "crates/sacm/tests/version.rs::lib_api_001_reports_library_and_sacm_versions",
+  "doctest:crates/sacm/src/lib.rs",
+]
+verification = "docs/verification/0001-m0-tooling-verification.md"
 
 [[row]]
 id = "LIB-CLI-001"
@@ -331,6 +335,38 @@ tests = [
   "crates/sacm-cli/tests/cli.rs::lib_cli_001_version_reports_tool_and_sacm_revision",
   "crates/sacm-cli/tests/cli.rs::lib_cli_001_unknown_subcommand_fails_with_usage",
 ]
+
+[[row]]
+id = "LIB-TOOL-005"
+area = "TOOL"
+milestone = "M0"
+title = "Verification records carry a per-row verdict the gate reads"
+requirement = "A verified row's verification record must state a PASS verdict for that specific row in a machine-readable line, and the gate checks the verdict rather than mere mention of the id."
+source = "Verification 0001 follow-up (a record saying 'LIB-X-001: FAIL' satisfied the substring check)"
+kind = "tooling"
+status = "planned"
+depends_on = ["LIB-TOOL-001"]
+
+[[row]]
+id = "LIB-TOOL-006"
+area = "TOOL"
+milestone = "M0"
+title = "Cited paths stay inside the repository"
+requirement = "Code, test and verification-record citations must be relative paths that resolve inside the repository; absolute paths and `..` escapes are rejected by the gate."
+source = "Verification 0001 follow-up"
+kind = "tooling"
+status = "planned"
+depends_on = ["LIB-TOOL-001"]
+
+[[row]]
+id = "LIB-DOC-006"
+area = "DOC"
+milestone = "M0"
+title = "Docs claim only verified capability"
+requirement = "The crate root documentation, crate READMEs and repository README describe unbuilt capabilities as planned scope and link the functionality matrix for current status; nothing is stated in the present tense that the matrix does not show as verified."
+source = "Verification 0001 finding (present-tense claims in crates/sacm/src/lib.rs and README)"
+kind = "docs"
+status = "planned"
 
 # ===========================================================================
 # M1 — Minimal editable vertical slice
