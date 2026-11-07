@@ -49,6 +49,16 @@ then the loop stops and asks the maintainer.
 Every slice lands through a pull request: CI runs on all three platforms, and the
 maintainer merges. The loop never merges its own PRs.
 
+Before verification, the lead pushes the slice branch as a **draft** PR. Its CI then
+produces the Linux evidence the verifier needs for the commit under verification:
+- the `mutants` job (cargo-mutants on the PR's diff);
+- the `mutants.yml` full sharded run;
+- the Linux-only tests.
+
+The PR is marked ready only after the verifier passes it and the Copilot review comments
+are addressed. In `mode=local` there is no Linux report, so no row whose code
+cargo-mutants mutates can pass verification.
+
 Before the first run: `cargo xtask fetch-spec` (the agents need the normative PDF and
 model locally).
 

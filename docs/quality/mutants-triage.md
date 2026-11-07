@@ -27,10 +27,15 @@ This is where every cargo-mutants survivor in the workspace gets its disposition
 
 ## Final run
 
-- **Run:** [mutants.yml run 42370175164](https://github.com/lasrod/libSACM/actions/runs/42370175164), head `3acb370`.
-- **Totals:** 216 mutants: **212 caught, 0 missed, 0 timed out**, and the same 4 unviable. Every shard exited 0.
+- **Run:** [mutants.yml run 42370175164](https://github.com/lasrod/libSACM/actions/runs/42370175164), at `3acb370`. That is the last commit in slice 0003 to change code or the mutation configuration; later commits change only docs. The runs at the head the verification covers are cited in the verification record.
+- **Totals:** 216 mutants: **212 caught, 0 missed, 0 timed out, 4 unviable**. Every shard exited 0.
 - **The PR job** ([ci.yml run 42370175166](https://github.com/lasrod/libSACM/actions/runs/42370175166)) caught 12 of 12.
 - **Why 6 fewer mutants:** rewriting `defined_functions` over `match_indices` removed the old loop's index arithmetic, and with it six mutants, including the two that timed out.
+- **The 4 unviable mutants** are the same four as in the baseline, at shifted positions:
+  - `fetch.rs:110:5`
+  - `matrix.rs:530:5` (`load`)
+  - `matrix.rs:1014:5` (`ready`)
+  - `matrix.rs:1055:5` (`load_from`)
 - **The three sacm-cli BrokenPipe guard mutants** (`main.rs:31`) are caught on Linux, by the LIB-CLI-001 Linux tests.
 
 ## Dispositions
@@ -49,11 +54,11 @@ Only an equivalent or accepted mutant may be excluded. Every baseline survivor w
 | `xtask/src/matrix.rs:432:17: delete match arm '[' in strip_attributes` | killed | LIB-TOOL-001 | `lib_tool_001_brackets_nested_in_an_attribute_do_not_close_it`: attributes with nested brackets are read whole. | — |
 | `xtask/src/matrix.rs:432:30: replace += with -= in strip_attributes` | killed | LIB-TOOL-001 | `lib_tool_001_brackets_nested_in_an_attribute_do_not_close_it` | — |
 | `xtask/src/matrix.rs:432:30: replace += with *= in strip_attributes` | killed | LIB-TOOL-001 | `lib_tool_001_brackets_nested_in_an_attribute_do_not_close_it` | — |
-| `xtask/src/matrix.rs:460:35: replace == with != in defined_functions` | killed | LIB-TOOL-001 | `lib_tool_001_function_scan_ignores_fn_and_def_at_the_end_of_a_longer_word`. The line was rewritten in `3acb370`, and the final run catches every mutant of the new code. | — |
-| `xtask/src/matrix.rs:464:58: replace \|\| with && in defined_functions` | killed | LIB-TOOL-001 | `lib_tool_001_function_scan_ignores_fn_and_def_at_the_end_of_a_longer_word`. Rewritten in `3acb370`, as above. | — |
-| `xtask/src/matrix.rs:470:28: replace && with \|\| in defined_functions` | killed | LIB-TOOL-001 | `lib_tool_001_function_scan_ignores_fn_and_def_at_the_end_of_a_longer_word`. The new `starts_word && !name.is_empty()` mutant is caught. | — |
-| `xtask/src/matrix.rs:465:35: replace + with - in defined_functions` | killed | LIB-TOOL-001 | Was a timeout (an infinite loop). The loop now iterates `match_indices`, so this index arithmetic no longer exists (`3acb370`). The deadline tests in `xtask/tests/function_scan.rs` also turn any hang in the scanner into a failure. | — |
-| `xtask/src/matrix.rs:465:35: replace + with * in defined_functions` | killed | LIB-TOOL-001 | Was a timeout; removed with the loop, as above. | — |
+| `xtask/src/matrix.rs:460:35: replace == with != in defined_functions` | killed | LIB-TOOL-001 | Killed by `lib_tool_001_function_scan_ignores_fn_and_def_at_the_end_of_a_longer_word`. **This mutant is absent from the final set:** the line was rewritten in `3acb370`. The verifier reproduced the kill on the pre-rewrite code. | — |
+| `xtask/src/matrix.rs:464:58: replace \|\| with && in defined_functions` | killed | LIB-TOOL-001 | Killed by `lib_tool_001_function_scan_ignores_fn_and_def_at_the_end_of_a_longer_word`. **Absent from the final set** (the line was rewritten in `3acb370`); kill reproduced on the pre-rewrite code. | — |
+| `xtask/src/matrix.rs:470:28: replace && with \|\| in defined_functions` | killed | LIB-TOOL-001 | Killed by `lib_tool_001_function_scan_ignores_fn_and_def_at_the_end_of_a_longer_word`. The equivalent `&&` in the rewritten code (`starts_word && !name.is_empty()`) is caught in the final run. | — |
+| `xtask/src/matrix.rs:465:35: replace + with - in defined_functions` | killed | LIB-TOOL-001 | Was a timeout (an infinite loop). Killed by `lib_tool_001_function_scan_finds_the_test_an_attribute_marks`, `lib_tool_001_function_scan_finds_definitions_without_a_test_attribute` and `lib_tool_001_function_scan_ignores_fn_and_def_at_the_end_of_a_longer_word`. They run the scanner under a 5 s deadline, so the hang (or the underflow panic) is a failure. **Absent from the final set:** the loop now iterates `match_indices` (`3acb370`). Kill reproduced on the pre-rewrite code. | — |
+| `xtask/src/matrix.rs:465:35: replace + with * in defined_functions` | killed | LIB-TOOL-001 | Was a timeout. Killed by `lib_tool_001_function_scan_finds_the_test_an_attribute_marks` and `lib_tool_001_function_scan_finds_definitions_without_a_test_attribute` (5 s deadline). **Absent from the final set** (`3acb370`); kill reproduced on the pre-rewrite code. | — |
 | `xtask/src/matrix.rs:818:58: replace == with != in check_cycles::visit` | killed | LIB-TOOL-001 | `lib_tool_001_cycle_message_names_only_the_rows_on_the_cycle` asserts the exact cycle path. | — |
 | `xtask/src/matrix.rs:974:58: replace == with != in render_milestone` | killed | LIB-TOOL-001 | `lib_tool_001_render_lists_each_row_under_its_own_milestone_only` | — |
 | `xtask/src/matrix.rs:1150:37: replace == with != in cmd_status` | killed | LIB-TOOL-001 | `lib_tool_001_run_matrix_status_counts_each_milestones_rows_by_status` asserts every status line exactly. | — |
@@ -66,7 +71,7 @@ Only an equivalent or accepted mutant may be excluded. Every baseline survivor w
 
 ## Known items carried from earlier verification
 
-- **X-flush (slice 0001, round 6):** closed. The generated `run` mutants in `xtask/src/lib.rs` are all caught on Linux in the final run, including by `lib_tool_001_run_turns_a_flush_failure_after_a_successful_command_into_an_error`.
+- **X-flush (slice 0001, round 6):** closed. All the generated `run` mutants in `xtask/src/lib.rs` are caught on Linux in the final run. In the cargo-mutants log, `lib.rs:87:5` (`replace run -> Result<(), String> with Ok(())`) is killed by the `cli.rs` binary tests (`lib_tool_001_binary_*`). cargo stops at the first failing test binary, so the `run.rs` binary, which holds `lib_tool_001_run_turns_a_flush_failure_after_a_successful_command_into_an_error`, does not run for that mutant. That flush test still pins the behaviour, and it runs in the normal suite.
 - **M5 (flush only on success):** not a cargo-mutants operator, so it is outside the generated set. The round-6 addendum gives the reason. It needs no exclusion.
 - **R23b (`looks_traced` with an empty area):** the generated `looks_traced` mutants are all caught in both the baseline and the final run. No survivor.
 - **`repo_root -> Default::default()`:** killed under LIB-TOOL-001 (see the table above).

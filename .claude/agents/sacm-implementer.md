@@ -66,6 +66,9 @@ cargo xtask matrix check
   message.
 - No panics reachable from public functions with any input.
 - No new dependency unless the design brief approved it.
+- To check a mutation of your own code by hand, apply it only in a scratch copy under
+  `target/` (e.g. `git archive HEAD | tar -x -C target/scratch`), never in the working
+  tree. The authoritative check is the Linux cargo-mutants run on the slice's draft PR.
 - Deterministic output: no `HashMap` iteration order in anything serialized or reported.
 - Do not touch the CHANGELOG `[Unreleased]` section except to add entries for the slice.
 

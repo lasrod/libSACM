@@ -4926,7 +4926,11 @@ const VERIFIER_CHECK_TITLES: [&str; 10] = [
 /// LIB-QA-007 P6 (criterion 6): `sacm-verifier.md` requires the Linux report
 /// for the commit under verification from the draft PR, names its missed,
 /// timeout and unviable lists, keeps hand-reasoned criterion mutations,
-/// writes local runs under `target/` and bans `--in-place`.
+/// writes local runs under `target/` and bans `--in-place`. Fix round 1 adds:
+/// exclusions are re-derived and the excluded set is compared with
+/// `--no-config` (F1); no PASS without a Linux report, and a Windows run is
+/// no substitute (F2); hand-reasoned mutations only in a scratch copy under
+/// `target/`, never the working tree (F3).
 fn check_verifier_mutants(text: &str) -> Vec<String> {
     let flat = text
         .split_whitespace()
@@ -4966,6 +4970,35 @@ fn check_verifier_mutants(text: &str) -> Vec<String> {
         !flat.contains("once it is adopted"),
         "not keep the stale \"cargo mutants --file ... once it is adopted\" sentence",
     );
+    need(
+        has_paragraph_with(
+            text,
+            &[
+                "exclusion",
+                "mutants.toml",
+                "triage",
+                "re-derive",
+                "--no-config",
+            ],
+        ),
+        "say, in one paragraph, that the verifier re-derives every exclusion a slice adds or changes (the `.cargo/mutants.toml` diff and the triage rows) and compares `--list` with `--list --no-config` (fix F1)",
+    );
+    need(
+        has_paragraph_with(text, &["no linux report", "may not pass", "windows"]),
+        "say, in one paragraph, that with no Linux report for the commit under verification test adequacy is not shown, so a mutated row may not PASS, and a local Windows run is no substitute (fix F2)",
+    );
+    need(
+        has_paragraph_with(
+            text,
+            &[
+                "hand-reasoned mutation",
+                "scratch copy under",
+                "target/",
+                "never the working tree",
+            ],
+        ),
+        "say, in one paragraph, that a hand-reasoned mutation is applied only in a scratch copy under `target/`, never the working tree (fix F3)",
+    );
     for title in VERIFIER_CHECK_TITLES {
         need(
             text.contains(title),
@@ -4977,7 +5010,8 @@ fn check_verifier_mutants(text: &str) -> Vec<String> {
 
 /// LIB-QA-007 P6 (criterion 6): the `sacm-slice` skill's step 7 says, before
 /// the verifier runs, how the Linux report for the commit under verification
-/// is obtained (the draft PR's `mutants` job and `mutants.yml` shards).
+/// is obtained (the draft PR's `mutants` job and `mutants.yml` shards), and
+/// that under `mode=local` no mutated row may PASS without one (fix F2).
 fn check_skill_mutants(text: &str) -> Vec<String> {
     let code = "doc-skill";
     let lines: Vec<&str> = text.lines().collect();
@@ -5012,6 +5046,12 @@ fn check_skill_mutants(text: &str) -> Vec<String> {
         ),
         code,
         "SKILL.md's step 7 must say, before the verifier runs, that the draft PR's CI gives the Linux report for the commit under verification (`mutants.out`, `mutants.yml`)",
+    );
+    require(
+        &mut problems,
+        has_paragraph_with(&before, &["mode=local", "linux report", "may not pass"]),
+        code,
+        "SKILL.md's step 7 must say, before the verifier runs, that under `mode=local` no row cargo-mutants mutates may PASS until a Linux report for that commit exists (fix F2)",
     );
     problems
 }
@@ -7557,6 +7597,12 @@ const VERIFIER_FIXTURE: &str = "## Required checks
 
    Write any local run with `--output target/mutants`, and never with `--in-place`.
 
+   For every exclusion the slice adds or changes (the `.cargo/mutants.toml` diff, and triage rows marked equivalent or accepted), re-derive the claim against P8.2, and show that the excluded set equals the triaged set by comparing `cargo mutants --workspace --list` with `cargo mutants --workspace --list --no-config`.
+
+   If no Linux report for the commit under verification is provided, test adequacy is not shown: a row whose code cargo-mutants mutates may not PASS, and a local Windows run is no substitute.
+
+   Apply a hand-reasoned mutation only in a scratch copy under `target/`, never the working tree, or else list it for the lead.
+
 4. **Negative coverage.** Diagnostics, not panics.
 5. **Losslessness.** Nothing is lost.
 6. **XMI.** Strict output.
@@ -7565,6 +7611,70 @@ const VERIFIER_FIXTURE: &str = "## Required checks
 9. **Strict vs tolerant.** Kept apart.
 10. **Regression.** Nothing weakened.
 ";
+
+/// Mutations of the verifier fixture's fix-round-1 paragraphs (F1, F2, F3):
+/// each deletes a paragraph or drops one of its required phrases.
+fn verifier_fix_round_1_mutations(v: &str) -> Vec<(String, String)> {
+    let exclusions = "For every exclusion the slice adds or changes (the `.cargo/mutants.toml` diff, and triage rows marked equivalent or accepted), re-derive the claim against P8.2, and show that the excluded set equals the triaged set by comparing `cargo mutants --workspace --list` with `cargo mutants --workspace --list --no-config`.";
+    let no_report = "If no Linux report for the commit under verification is provided, test adequacy is not shown: a row whose code cargo-mutants mutates may not PASS, and a local Windows run is no substitute.";
+    let scratch = "Apply a hand-reasoned mutation only in a scratch copy under `target/`, never the working tree, or else list it for the lead.";
+    [
+        ("F1: the exclusion paragraph removed", delete_line(v, exclusions)),
+        (
+            "F1: --no-config dropped",
+            replace_line(v, exclusions, &exclusions.replace(" --no-config", "")),
+        ),
+        (
+            "F1: re-derive dropped",
+            replace_line(
+                v,
+                exclusions,
+                &exclusions.replace("re-derive the claim against P8.2, and show", "show"),
+            ),
+        ),
+        (
+            "F1: the exclusion paragraph split in two",
+            replace_lines(
+                v,
+                exclusions,
+                &[
+                    "For every exclusion the slice adds or changes (the `.cargo/mutants.toml` diff, and triage rows marked equivalent or accepted), re-derive the claim against P8.2.",
+                    "",
+                    "Show that the excluded set equals the triaged set by comparing `cargo mutants --workspace --list` with `cargo mutants --workspace --list --no-config`.",
+                ],
+            ),
+        ),
+        ("F2: the no-Linux-report paragraph removed", delete_line(v, no_report)),
+        (
+            "F2: may not pass dropped",
+            replace_line(
+                v,
+                no_report,
+                &no_report.replace("may not PASS", "needs more evidence"),
+            ),
+        ),
+        (
+            "F2: the Windows run no longer excluded",
+            replace_line(
+                v,
+                no_report,
+                &no_report.replace(", and a local Windows run is no substitute", ""),
+            ),
+        ),
+        ("F3: the scratch-copy paragraph removed", delete_line(v, scratch)),
+        (
+            "F3: never the working tree dropped",
+            replace_line(
+                v,
+                scratch,
+                &scratch.replace(", never the working tree,", ","),
+            ),
+        ),
+    ]
+    .into_iter()
+    .map(|(name, text)| (name.to_owned(), text))
+    .collect()
+}
 
 #[test]
 fn lib_qa_007_verifier_definition_requires_the_linux_mutants_report() {
@@ -7606,6 +7716,7 @@ fn lib_qa_007_verifier_definition_requires_the_linux_mutants_report() {
     .into_iter()
     .map(|(name, text)| (name.to_owned(), text))
     .collect();
+    mutations.extend(verifier_fix_round_1_mutations(v));
     for title in VERIFIER_CHECK_TITLES {
         let line = v
             .lines()
@@ -7635,6 +7746,8 @@ Run the implementer.
 
 **Before verifying, under `mode=pr`:** push the slice branch and open its PR as a **draft**. Its CI gives the Linux report for the commit under verification: the `mutants` job's `mutants.out` artifact and the `mutants.yml` shards.
 
+**Under `mode=local`:** a row whose code cargo-mutants mutates may not PASS until a Linux report for that commit exists; a local Windows run is not a substitute.
+
 Run **sacm-verifier** with the row IDs and the reports.
 
 ## 8. Close the slice
@@ -7645,10 +7758,27 @@ fn lib_qa_007_slice_skill_obtains_the_report_before_verification() {
     let s = SKILL_FIXTURE;
     let before = "**Before verifying, under `mode=pr`:** push the slice branch and open its PR as a **draft**. Its CI gives the Linux report for the commit under verification: the `mutants` job's `mutants.out` artifact and the `mutants.yml` shards.";
     let verifier = "Run **sacm-verifier** with the row IDs and the reports.";
+    let local = "**Under `mode=local`:** a row whose code cargo-mutants mutates may not PASS until a Linux report for that commit exists; a local Windows run is not a substitute.";
     assert_doc_check(
         "doc-skill",
         s,
         &[
+            (
+                "F2: the mode=local paragraph removed",
+                delete_line(s, local),
+            ),
+            (
+                "F2: mode=local dropped",
+                replace_line(
+                    s,
+                    local,
+                    &local.replace("**Under `mode=local`:** a row", "A row"),
+                ),
+            ),
+            (
+                "F2: the mode=local paragraph moved after the verifier runs",
+                replace_lines(&delete_line(s, local), verifier, &[verifier, "", local]),
+            ),
             ("the draft-PR paragraph removed", delete_line(s, before)),
             (
                 "the paragraph moved after the verifier runs",

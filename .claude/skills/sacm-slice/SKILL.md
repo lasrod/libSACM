@@ -95,6 +95,11 @@ the full-run shards from `mutants.yml`, and the Linux-only tests. Give the verif
 the run URLs, the head SHA and the downloaded reports. Mark the PR ready
 (`gh pr ready`) only after PASS and the Copilot fixes (step 8.6).
 
+**Under `mode=local`:** nothing is pushed, so there is no Linux report. The maintainer
+decided on 2026-11-07 that a row whose code cargo-mutants mutates may not PASS until a
+Linux report for that commit exists; a local Windows run is not a substitute. Use
+`mode=local` for docs or process slices, or push before verifying code.
+
 Run **sacm-verifier** — with the row IDs, acceptance criteria, the diff, and the
 reports, but *not* your opinion of the work. If the slice changed public API, run
 **sacm-docs-reviewer** in parallel.

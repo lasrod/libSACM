@@ -61,6 +61,21 @@ verifying. The lead applies your verdict and writes the verification record.
    If you run cargo-mutants yourself, write its output under `target/`
    (`--output target/<dir>`), never in the repository root. Never use `--in-place`.
    Remember that Linux-only tests make some mutants show as missed on Windows.
+
+   Excluded mutants never appear in any report list, so check them separately. For
+   every exclusion the slice adds or changes, re-derive the claim against the
+   prescription's rules for equivalent and accepted survivors (P8.2). That means the
+   `.cargo/mutants.toml` diff and the triage rows in `docs/quality/mutants-triage.md`
+   marked equivalent or accepted. Show that the excluded set equals the triaged set by
+   comparing `cargo mutants --workspace --list` with
+   `cargo mutants --workspace --list --no-config`. A claim you can break is a finding.
+
+   If no Linux report for the commit under verification is provided, test adequacy is
+   not shown: a row whose code cargo-mutants mutates may not PASS, and a local Windows
+   run is no substitute. Say so in your verdict, and keep those rows open.
+
+   Apply a hand-reasoned mutation only in a scratch copy under `target/`, never the
+   working tree, or else list it for the lead to run.
 4. **Negative coverage.** Multiplicity, typing, enumeration, dangling/mistyped
    references, malformed XMI — produce diagnostics with the right code and severity,
    never panics or silent repair.
