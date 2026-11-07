@@ -1,7 +1,7 @@
 ---
 slice: 0002
 name: m0-qa-and-cli-verification
-state: stopped
+state: in-progress
 step: verification
 rows: [LIB-QA-002, LIB-QA-003, LIB-CLI-001]
 mode: pr
@@ -53,3 +53,6 @@ Existing:
 - 2026-11-07 Copilot comment on PR #7 (log-level injection) fixed in 4b46db5; replies posted on PR #7 and on both PR #6 threads.
 - 2026-11-07 verification round 3: LIB-QA-002 PASS -> verified. LIB-QA-003 FAIL: F1 log-level injection (three must-kills still missing) and F2 include-dev defaults to false (dev-dependencies are not licence-checked). See docs/verification/0002-m0-qa-and-cli-verification-round3.md.
 - 2026-11-07 stopped: third FAIL for LIB-QA-003; F2 needs the maintainer's policy choice (a) or (b).
+- 2026-11-07 maintainer chose F2 option (a). Lead added include-dev = true to deny.toml [licenses]; cargo deny check passes with dev-dependencies now licence-checked.
+- 2026-11-07 PR #7 merged by the maintainer (main 9f59c85); the final LIB-QA-003 fix continues on branch slice/0002-qa-003-final.
+- 2026-11-07 F1/F2 tests: the test engineer added the remaining log-level must-kills (upper-case input name, alias, empty value) in a new test, and made licenses.include-dev required to be exactly true. Process note: sabotage copies were again run under the session scratchpad via Bash (outside the repository).

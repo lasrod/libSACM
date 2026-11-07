@@ -22,6 +22,9 @@ allow = [
   "Zlib",
 ]
 confidence-threshold = 0.9
+# Licence-check dev-dependencies too (cargo-deny's default is false). Maintainer
+# decision 2026-11-07, verification 0002 round 3 F2.
+include-dev = true
 
 [licenses.private]
 # Unpublished workspace helpers (xtask) are not distributed.
