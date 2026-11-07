@@ -315,8 +315,12 @@ tests = [
   "xtask/tests/run.rs::lib_tool_001_run_rejects_unrecognized_arguments_with_the_usage",
   "xtask/tests/run.rs::lib_tool_001_run_rejects_near_miss_arguments",
   "xtask/tests/run.rs::lib_tool_001_run_turns_write_failures_into_errors",
+  "xtask/tests/run.rs::lib_tool_001_run_turns_a_flush_failure_after_a_successful_command_into_an_error",
+  "xtask/tests/run.rs::lib_tool_001_run_keeps_the_command_error_when_flushing_also_fails",
+  "xtask/tests/run.rs::lib_tool_001_run_flushes_out_after_the_command_writes",
 ]
 verification = "docs/verification/0001-m0-tooling-verification-round6.md"
+notes = "Flush contract of `xtask::run` additionally verified in docs/verification/0001-m0-tooling-verification-round6-addendum.md (PR #5 review)."
 
 [[row]]
 id = "LIB-TOOL-002"

@@ -546,3 +546,164 @@ fn lib_tool_001_run_turns_write_failures_into_errors() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// Item 8: `out` is flushed, and a flush failure is an error
+// ---------------------------------------------------------------------------
+
+/// A writer that accepts every `write` and keeps the bytes, but whose every
+/// `flush` fails.
+#[derive(Debug, Default)]
+struct FlushFailingWriter {
+    written: Vec<u8>,
+}
+
+impl Write for FlushFailingWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.written.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Err(io::Error::other("LIB-TOOL-001: this writer never flushes"))
+    }
+}
+
+/// Run `args` on `root` into a [`FlushFailingWriter`], failing the test on a
+/// panic; returns the result and what was written.
+fn run_flush_failing(args: &[&str], root: &Path) -> (Result<(), String>, String) {
+    let mut out = FlushFailingWriter::default();
+    let outcome = catch_unwind(AssertUnwindSafe(|| run(args, root, &mut out)));
+    let Ok(result) = outcome else {
+        panic!(
+            "LIB-TOOL-001: `{}` panicked on a writer whose flush fails instead of returning",
+            args.join(" ")
+        );
+    };
+    (result, String::from_utf8_lossy(&out.written).into_owned())
+}
+
+#[test]
+fn lib_tool_001_run_turns_a_flush_failure_after_a_successful_command_into_an_error() {
+    let consistent = consistent_tree("run-flush-fail-check");
+    let rendering = consistent_tree("run-flush-fail-render");
+    let two = next_tree("run-flush-fail-next");
+    let cases: [(&[&str], &Path); 5] = [
+        (&["help"], two.root()),
+        (&["matrix", "check"], consistent.root()),
+        (&["matrix", "render"], rendering.root()),
+        (&["matrix", "next"], two.root()),
+        (&["matrix", "status"], two.root()),
+    ];
+    for (args, root) in cases {
+        let (result, written) = run_flush_failing(args, root);
+        assert!(
+            !written.is_empty(),
+            "LIB-TOOL-001: `{}` runs and writes its output before the flush fails",
+            args.join(" ")
+        );
+        let Err(message) = result else {
+            panic!(
+                "LIB-TOOL-001: `{}` returned Ok although flushing `out` failed; wrote {written:?}",
+                args.join(" ")
+            );
+        };
+        assert!(
+            message.starts_with("write output: "),
+            "LIB-TOOL-001: `{}` reports the failed flush as `write output: ...`, got {message:?}",
+            args.join(" ")
+        );
+        assert!(
+            message.contains("this writer never flushes"),
+            "LIB-TOOL-001: `{}` carries the flush's own error, got {message:?}",
+            args.join(" ")
+        );
+    }
+}
+
+#[test]
+fn lib_tool_001_run_keeps_the_command_error_when_flushing_also_fails() {
+    let orphan = consistent_tree("run-flush-fail-orphan");
+    orphan.write(
+        "crates/demo/tests/planted.rs",
+        "#[test]\nfn lib_tool_001_uncited() {}\n",
+    );
+    let two = next_tree("run-flush-fail-bad-count");
+
+    let (result, _) = run_flush_failing(&["matrix", "check"], orphan.root());
+    assert_eq!(
+        result,
+        Err("functionality matrix: 1 problem(s)".to_owned()),
+        "LIB-TOOL-001: a failing `matrix check` returns its own error, not the flush error"
+    );
+
+    let (result, _) = run_flush_failing(&["matrix", "next", "-n", "notanumber"], two.root());
+    assert_eq!(
+        result,
+        Err("invalid row count: notanumber".to_owned()),
+        "LIB-TOOL-001: a bad row count is reported as such, not as the flush error"
+    );
+
+    let (result, _) = run_flush_failing(&["frobnicate"], two.root());
+    assert!(
+        result
+            .as_ref()
+            .is_err_and(|m| m.starts_with("unrecognized arguments: frobnicate")),
+        "LIB-TOOL-001: unrecognized arguments are reported as such, not as the flush error, \
+         got {result:?}"
+    );
+}
+
+/// A writer that succeeds and records the order of writes and flushes.
+#[derive(Debug, Default)]
+struct FlushRecordingWriter {
+    flushes: usize,
+    written_since_flush: bool,
+}
+
+impl Write for FlushRecordingWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        if !buf.is_empty() {
+            self.written_since_flush = true;
+        }
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.flushes += 1;
+        self.written_since_flush = false;
+        Ok(())
+    }
+}
+
+#[test]
+fn lib_tool_001_run_flushes_out_after_the_command_writes() {
+    let consistent = consistent_tree("run-flush-count-check");
+    let two = next_tree("run-flush-count-next");
+    let cases: [(&[&str], &Path); 4] = [
+        (&["help"], two.root()),
+        (&["matrix", "check"], consistent.root()),
+        (&["matrix", "next"], two.root()),
+        (&["matrix", "status"], two.root()),
+    ];
+    for (args, root) in cases {
+        let mut out = FlushRecordingWriter::default();
+        let result = run(args, root, &mut out);
+        assert_eq!(
+            result,
+            Ok(()),
+            "LIB-TOOL-001: `{}` succeeds on a writer that flushes",
+            args.join(" ")
+        );
+        assert!(
+            out.flushes >= 1,
+            "LIB-TOOL-001: `{}` flushes `out` before returning",
+            args.join(" ")
+        );
+        assert!(
+            !out.written_since_flush,
+            "LIB-TOOL-001: `{}` flushes `out` after its last write, not before",
+            args.join(" ")
+        );
+    }
+}
