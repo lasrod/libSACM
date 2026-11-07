@@ -666,6 +666,17 @@ status = "planned"
 depends_on = ["LIB-QA-007"]
 
 [[row]]
+id = "LIB-QA-011"
+area = "QA"
+milestone = "M0"
+title = "Slice PR reuse and full-run dispatch are pinned"
+requirement = "A doc check fails if the sacm-slice skill loses any of three rules. In step 7: reuse the slice's existing PR (`gh pr list --head <branch>`) instead of creating another. In step 7: dispatch `mutants.yml` on the slice branch when it did not run on the head commit. In step 8.5: run `gh pr create` only when the branch has no PR."
+source = "PR #9 Copilot review follow-up (verifier observation O3)"
+kind = "quality"
+status = "planned"
+depends_on = ["LIB-QA-007"]
+
+[[row]]
 id = "LIB-TOOL-012"
 area = "TOOL"
 milestone = "M0"

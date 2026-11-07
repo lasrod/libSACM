@@ -87,18 +87,18 @@ Cite code paths in each row, set `status = "implemented"`, render, check.
 
 ## 7. Verification → `verified`
 
-**Before verifying, under `mode=pr`:** commit and push the slice branch, and open
-the slice's PR as a **draft** (`gh pr create --draft`). The maintainer chose this on
-2026-11-07.
-- **On re-verification,** the branch already has its PR (`gh pr list --head <branch>`).
-  Push to that PR; do not create another.
+**Before verifying, under `mode=pr`:** commit and push the slice branch. Open the
+slice's PR as a **draft** (`gh pr create --draft`) unless `gh pr list --head <branch>`
+already lists one. The maintainer chose this on 2026-11-07.
+- **If the branch already has its PR** (on re-verification, or when a slice resumes),
+  push to that PR; do not create another.
 - **Wait for the PR's CI,** so the verifier gets the Linux evidence for the commit under
   verification:
   - the `mutants` job's `mutants.out` artifact (`gh run download`);
   - the full-run shards from `mutants.yml`;
   - the Linux-only tests.
-- **If `mutants.yml` did not run on the head commit:** its path filter skips changes
-  that touch no Rust code or mutation config. Dispatch it on the slice branch
+- **If `mutants.yml` did not run on the head commit:** its path filter skips a PR
+  whose diff touches no Rust code or mutation config. Dispatch it on the slice branch
   (`gh workflow run mutants.yml --ref <branch>`) and wait for that run.
 - **Give the verifier** the run URLs, the head SHA and the downloaded reports.
 - **Mark the PR ready** (`gh pr ready`) only after PASS and the Copilot fixes (step 8.6).
