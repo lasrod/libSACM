@@ -1,0 +1,29 @@
+name: Bug report
+description: Something is wrong — including a document that loses data, is misread, or is wrongly reported (non-)conformant.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: input
+    attributes:
+      label: Minimal input
+      description: The smallest SACM XMI document (or code) that reproduces it. Remove anything confidential.
+      render: xml
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "`sacm version` output, crate version, or commit."
+    validations:
+      required: true
+  - type: textarea
+    id: spec
+    attributes:
+      label: Specification reference (if relevant)
+      description: Clause of SACM 2.3 (formal/23-05-08) you believe applies.

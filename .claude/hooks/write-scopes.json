@@ -1,0 +1,27 @@
+{
+  "$comment": "Where each project subagent may write with Write/Edit/NotebookEdit. Enforced by agent_write_guard.py. Paths are repository-relative globs ('*' = one path segment, '**' = any depth). 'deny' wins over 'allow'. An empty 'allow' means read-only. Agents not listed here (and the main session) are left to the normal permission flow. Bash is NOT covered; the agent definitions prohibit writing through it.",
+  "agents": {
+    "sacm-researcher": { "allow": [] },
+    "sacm-architect": { "allow": [] },
+    "sacm-verifier": { "allow": [] },
+    "matrix-steward": { "allow": [] },
+    "sacm-docs-reviewer": { "allow": [] },
+    "sacm-test-engineer": {
+      "allow": ["crates/*/tests/**", "crates/*/benches/**", "fuzz/**"]
+    },
+    "sacm-implementer": {
+      "allow": [
+        "crates/*/src/**",
+        "crates/*/examples/**",
+        "crates/*/Cargo.toml",
+        "crates/*/README.md",
+        "Cargo.toml",
+        "Cargo.lock",
+        "docs/**",
+        "README.md",
+        "CHANGELOG.md"
+      ],
+      "deny": ["docs/matrix/**", "docs/verification/**", "docs/adr/**"]
+    }
+  }
+}

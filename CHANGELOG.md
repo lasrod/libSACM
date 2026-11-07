@@ -1,0 +1,18 @@
+# Changelog
+
+All notable changes to this project are documented here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0, a breaking
+change bumps the minor version and is listed under **Breaking**.
+
+## [Unreleased]
+
+### Added
+
+- Cargo workspace: `sacm` library, `sacm-cli` (`sacm version`), `xtask` automation.
+- `sacm::VERSION` and `sacm::SACM_VERSION`.
+- Functionality matrix with its gate (`cargo xtask matrix check|render|next|status`).
+- Hash-pinned fetching of the OMG SACM 2.3 references (`cargo xtask fetch-spec`).
+- CI: rustfmt, clippy, tests on Linux/Windows/macOS, MSRV 1.85, rustdoc, cargo-deny,
+  matrix gate, agent-hook tests.
+- Agent roles, skills and write-scope hook for the engineering loop.

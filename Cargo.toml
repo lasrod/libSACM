@@ -1,0 +1,42 @@
+[workspace]
+resolver = "3"
+members = ["crates/sacm", "crates/sacm-cli", "xtask"]
+# `cargo build` / `cargo test` at the root cover the published crates only;
+# the xtask helper is built on demand through the `cargo xtask` alias.
+default-members = ["crates/sacm", "crates/sacm-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+# MSRV policy: see CONTRIBUTING.md. Raising it is a minor-version change.
+rust-version = "1.85"
+license = "MIT"
+repository = "https://github.com/lasrod/libSACM"
+homepage = "https://github.com/lasrod/libSACM"
+
+[workspace.dependencies]
+sacm = { path = "crates/sacm", version = "0.1.0" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# SACM type names repeat their module names by design (`argumentation::ArgumentPackage`).
+module_name_repetitions = "allow"
+dbg_macro = "warn"
+todo = "warn"
+unimplemented = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
+private_intra_doc_links = "deny"
+
+[profile.release]
+lto = "thin"

@@ -1,0 +1,1789 @@
+# libSACM functionality matrix — canonical source.
+#
+# Rules: docs/matrix/README.md. After editing run:
+#   cargo xtask matrix render && cargo xtask matrix check
+#
+# Row fields: id, area, milestone, title, requirement, source, kind, status,
+#   depends_on, acceptance, code, tests, verification, notes.
+# Statuses: planned -> analyzed -> tests-failing -> implemented -> verified;
+#   or candidate / deferred / out-of-scope (with notes).
+# Test citations: "path::function" (function named <row id in snake case>_...) or "doctest:path".
+
+schema_version = 1
+
+# ---------------------------------------------------------------------------
+# Milestones (in build order)
+# ---------------------------------------------------------------------------
+
+[[milestone]]
+id = "M0"
+title = "Foundation"
+goal = "Workspace, CI gates, matrix gate, reference fetching and agent guard are in place and verified, so every later slice runs on trusted tooling."
+
+[[milestone]]
+id = "M1"
+title = "Minimal editable vertical slice"
+goal = "Create, load, validate, edit and save a strict SACM 2.3 document containing an AssuranceCasePackage, ArgumentPackage and Claims, with semantic round trip, structured diagnostics, safe XML handling and a CLI."
+
+[[milestone]]
+id = "M2"
+title = "Base model and argumentation"
+goal = "All shared Base features (utility elements, gid, citations, abstract forms), the full Argumentation package except modularity, references, the core constraint checks, and previewable destructive editing."
+
+[[milestone]]
+id = "M3"
+title = "Artifact model"
+goal = "The Artifact package: artifact packages, assets, properties, relationships and groups, with their date-typed attributes and model-spelling variants."
+
+[[milestone]]
+id = "M4"
+title = "Terminology model"
+goal = "The Terminology package and ExpressionLangString, so claim text can be tied to controlled vocabulary."
+
+[[milestone]]
+id = "M5"
+title = "Modularity: interfaces and bindings"
+goal = "Package interfaces and bindings for all four package families, with the citation and participant rules as resolved in docs/sacm/decisions.md."
+
+[[milestone]]
+id = "M6"
+title = "Interoperability and compliance claims"
+goal = "Third-party dialects and corpus, metamodel coverage checked against ptc/22-03-13, resource limits, conversion tooling — and the four model compliance points claimed on verified evidence."
+
+[[milestone]]
+id = "M7"
+title = "1.0 readiness"
+goal = "Property tests, fuzzing, coverage, mutation testing, semver checks, release process, complete documentation and guide, and undo/redo — the bar for a stable 1.0 API."
+
+# ---------------------------------------------------------------------------
+# Areas
+# ---------------------------------------------------------------------------
+
+[[area]]
+code = "CP"
+prefix = "SACM23"
+title = "Compliance points (clause 2)"
+
+[[area]]
+code = "BASE"
+prefix = "SACM23"
+title = "Base package (clause 8)"
+
+[[area]]
+code = "AC"
+prefix = "SACM23"
+title = "AssuranceCase package (clause 9)"
+
+[[area]]
+code = "TERM"
+prefix = "SACM23"
+title = "Terminology package (clause 10)"
+
+[[area]]
+code = "ARG"
+prefix = "SACM23"
+title = "Argumentation package (clause 11)"
+
+[[area]]
+code = "ART"
+prefix = "SACM23"
+title = "Artifact package (clause 12)"
+
+[[area]]
+code = "XMI"
+prefix = "SACM23"
+title = "XMI interchange (clause 2, XMI rules)"
+
+[[area]]
+code = "VAL"
+prefix = "SACM23"
+title = "Constraint validation (clause constraints and OCL)"
+
+[[area]]
+code = "API"
+prefix = "LIB"
+title = "Public API foundations"
+
+[[area]]
+code = "DIAG"
+prefix = "LIB"
+title = "Diagnostics infrastructure"
+
+[[area]]
+code = "EDIT"
+prefix = "LIB"
+title = "Editing operations"
+
+[[area]]
+code = "RT"
+prefix = "LIB"
+title = "Round trip and semantic comparison"
+
+[[area]]
+code = "SEC"
+prefix = "LIB"
+title = "Security and robustness"
+
+[[area]]
+code = "COMPAT"
+prefix = "LIB"
+title = "Tolerant mode and interoperability"
+
+[[area]]
+code = "CLI"
+prefix = "LIB"
+title = "Command-line tool"
+
+[[area]]
+code = "DOC"
+prefix = "LIB"
+title = "Documentation"
+
+[[area]]
+code = "QA"
+prefix = "LIB"
+title = "Quality gates and release engineering"
+
+[[area]]
+code = "TOOL"
+prefix = "LIB"
+title = "Repository tooling"
+
+# ===========================================================================
+# M0 — Foundation
+# ===========================================================================
+
+[[row]]
+id = "LIB-QA-001"
+area = "QA"
+milestone = "M0"
+title = "CI runs every quality gate on three platforms"
+requirement = "Every push and pull request runs rustfmt, clippy (all targets, all features, -D warnings), the workspace and xtask tests on Linux, Windows and macOS, rustdoc with -D warnings, cargo-deny, the agent-hook tests and `cargo xtask matrix check`; any failure fails the build."
+source = "Project policy (ADR 0002, ADR 0004)"
+kind = "quality"
+status = "implemented"
+acceptance = [
+  "ci.yml defines a job for each gate and the test job runs on ubuntu, windows and macos.",
+  "A regression test fails if any gate command is removed from ci.yml.",
+  "The workflow has run green on GitHub for the main branch (verification evidence: run URL).",
+]
+code = [".github/workflows/ci.yml"]
+tests = ["xtask/src/repo_checks.rs::lib_qa_001_ci_runs_every_gate"]
+
+[[row]]
+id = "LIB-QA-002"
+area = "QA"
+milestone = "M0"
+title = "MSRV 1.85 is declared consistently and checked"
+requirement = "The minimum supported Rust version is declared once in the workspace manifest, matches clippy.toml, and CI builds and tests the library and CLI with exactly that toolchain."
+source = "ADR 0007"
+kind = "quality"
+status = "implemented"
+depends_on = ["LIB-QA-001"]
+acceptance = [
+  "Cargo.toml rust-version, clippy.toml msrv and the CI msrv toolchain are the same version (regression test).",
+  "`cargo +1.85 test -p sacm -p sacm-cli` passes locally and in CI.",
+]
+code = ["Cargo.toml", "clippy.toml", ".github/workflows/ci.yml"]
+tests = ["xtask/src/repo_checks.rs::lib_qa_002_msrv_is_consistent"]
+
+[[row]]
+id = "LIB-QA-003"
+area = "QA"
+milestone = "M0"
+title = "Dependency licences, advisories and sources are policed"
+requirement = "cargo-deny checks that every dependency has a licence compatible with distributing an MIT library, has no known security advisory, is not yanked, and comes from crates.io; CI runs it."
+source = "Project policy (public MIT library)"
+kind = "quality"
+status = "implemented"
+depends_on = ["LIB-QA-001"]
+acceptance = [
+  "deny.toml allows only permissive licences and denies unknown registries and git sources.",
+  "`cargo deny check` passes locally and in CI.",
+  "A regression test fails if the CI deny job or deny.toml is removed.",
+]
+code = ["deny.toml", ".github/workflows/ci.yml"]
+tests = ["xtask/src/repo_checks.rs::lib_qa_003_dependency_policy_is_enforced"]
+
+[[row]]
+id = "LIB-TOOL-001"
+area = "TOOL"
+milestone = "M0"
+title = "Functionality-matrix gate"
+requirement = "`cargo xtask matrix check` enforces the rules of docs/matrix/README.md, `render` regenerates the Markdown view, and `next` lists the open rows whose dependencies are all verified, in milestone then file order."
+source = "ADR 0004"
+kind = "tooling"
+status = "implemented"
+acceptance = [
+  "Rejects malformed, mismatched and duplicate ids, unknown areas and milestones.",
+  "Enforces the evidence each status requires (acceptance, tests, code, verification record, reason).",
+  "Test citations must resolve to a defined function named for the row; traced tests no row cites are reported.",
+  "Rejects dependency cycles, dependencies on later milestones or unscheduled rows, and verified rows with unverified dependencies.",
+  "Reports a stale or missing rendered page.",
+  "`next` hides rows blocked on unverified dependencies and orders by milestone.",
+]
+code = ["xtask/src/matrix.rs", "docs/matrix/README.md"]
+tests = [
+  "xtask/src/matrix.rs::lib_tool_001_accepts_a_consistent_matrix",
+  "xtask/src/matrix.rs::lib_tool_001_rejects_malformed_and_mismatched_ids",
+  "xtask/src/matrix.rs::lib_tool_001_rejects_duplicate_ids",
+  "xtask/src/matrix.rs::lib_tool_001_planned_rows_must_not_cite_tests",
+  "xtask/src/matrix.rs::lib_tool_001_implemented_rows_need_acceptance_code_and_tests",
+  "xtask/src/matrix.rs::lib_tool_001_test_citations_must_resolve_and_trace",
+  "xtask/src/matrix.rs::lib_tool_001_verified_rows_need_record_and_verified_dependencies",
+  "xtask/src/matrix.rs::lib_tool_001_rejects_cycles_and_backward_milestone_dependencies",
+  "xtask/src/matrix.rs::lib_tool_001_unscheduled_rows_must_give_a_reason",
+  "xtask/src/matrix.rs::lib_tool_001_reports_orphaned_traced_tests",
+  "xtask/src/matrix.rs::lib_tool_001_detects_stale_rendered_page",
+  "xtask/src/matrix.rs::lib_tool_001_next_lists_open_rows_with_verified_dependencies_in_order",
+  "xtask/src/matrix.rs::lib_tool_001_finds_function_definitions_not_mentions",
+  "xtask/src/matrix.rs::lib_tool_001_only_marked_tests_count_as_traced",
+]
+
+[[row]]
+id = "LIB-TOOL-002"
+area = "TOOL"
+milestone = "M0"
+title = "Hash-pinned fetching of the normative SACM 2.3 sources"
+requirement = "`cargo xtask fetch-spec` downloads formal/23-05-08 and ptc/22-03-13 from omg.org into the git-ignored third_party/sacm-2.3/, verifies each against a SHA-256 pin, refuses a mismatching file, and never commits OMG documents."
+source = "ADR 0003"
+kind = "tooling"
+status = "implemented"
+acceptance = [
+  "Both artifacts are pinned with lowercase 64-hex SHA-256 values and OMG URLs.",
+  "A fresh fetch verifies the hash before the file is moved into place; a mismatch deletes the partial file and fails.",
+  "An existing file with the right hash is not re-downloaded; one with the wrong hash is an error.",
+  "third_party/sacm-2.3/ is git-ignored.",
+]
+code = ["xtask/src/fetch.rs", ".gitignore"]
+tests = [
+  "xtask/src/fetch.rs::lib_tool_002_pins_are_well_formed_and_unique",
+  "xtask/src/fetch.rs::lib_tool_002_hashes_known_input",
+]
+
+[[row]]
+id = "LIB-TOOL-003"
+area = "TOOL"
+milestone = "M0"
+title = "Agent write scopes are enforced by a hook"
+requirement = "A Claude Code PreToolUse hook refuses Write/Edit/MultiEdit/NotebookEdit calls from project subagents outside their declared scope (read-only roles cannot write; the test engineer only tests; the implementer not tests, matrix, verification records or ADRs), never restricts the main session, and fails closed for subagents when its configuration is unreadable."
+source = "ADR 0006"
+kind = "tooling"
+status = "implemented"
+acceptance = [
+  "Main-session writes and non-write tools pass through.",
+  "Read-only roles are denied every write.",
+  "Scoped roles are allowed inside and denied outside their globs, with deny taking precedence.",
+  "Paths outside the repository and `..` escapes are denied.",
+  "Unreadable configuration denies subagent writes only.",
+  "Every agent named in write-scopes.json has a definition in .claude/agents/.",
+  "Live probe in a fresh Claude Code session: a read-only subagent's Write is denied and the test engineer's Write to crates/sacm/src is denied (confirms the hook input carries `agent_type`; verification evidence).",
+]
+code = [".claude/hooks/agent_write_guard.py", ".claude/hooks/write-scopes.json", ".claude/settings.json"]
+tests = [
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_main_session_is_never_restricted",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_read_only_roles_cannot_write_anywhere",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_non_write_tools_pass_through",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_test_engineer_confined_to_tests",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_implementer_cannot_touch_tests_or_matrix",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_paths_outside_repository_are_denied",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_dot_dot_cannot_escape_scope",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_unlisted_agents_use_normal_flow",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_unreadable_scopes_fail_closed_for_subagents",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_glob_semantics",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_repository_scopes_file_is_valid",
+]
+notes = "Does not cover Bash or sessions with hooks disabled; agent prompts prohibit those routes (ADR 0006)."
+
+[[row]]
+id = "LIB-API-001"
+area = "API"
+milestone = "M0"
+title = "Library and standard versions are exposed"
+requirement = "The crate exposes its own version and the SACM revision it implements as public constants, documented with examples."
+source = "Project policy (D-VERSION)"
+kind = "api"
+status = "implemented"
+acceptance = [
+  "`sacm::VERSION` equals the published crate version.",
+  "`sacm::SACM_VERSION` is \"2.3\".",
+  "Both are documented with a doctest.",
+]
+code = ["crates/sacm/src/lib.rs"]
+tests = ["crates/sacm/tests/version.rs::lib_api_001_reports_library_and_sacm_versions"]
+
+[[row]]
+id = "LIB-CLI-001"
+area = "CLI"
+milestone = "M0"
+title = "CLI skeleton with `sacm version`"
+requirement = "The `sacm` binary parses subcommands, prints the tool version and implemented SACM revision for `sacm version`, prints usage and exits non-zero for unknown subcommands, and treats a closed stdout pipe as success."
+source = "Project policy (D-API)"
+kind = "cli"
+status = "implemented"
+depends_on = ["LIB-API-001"]
+acceptance = [
+  "`sacm version` exits 0 and prints `sacm <version> (SACM 2.3)`.",
+  "An unknown subcommand exits non-zero and prints usage.",
+]
+code = ["crates/sacm-cli/src/main.rs"]
+tests = [
+  "crates/sacm-cli/tests/cli.rs::lib_cli_001_version_reports_tool_and_sacm_revision",
+  "crates/sacm-cli/tests/cli.rs::lib_cli_001_unknown_subcommand_fails_with_usage",
+]
+
+# ===========================================================================
+# M1 — Minimal editable vertical slice
+# ===========================================================================
+
+[[row]]
+id = "LIB-API-002"
+area = "API"
+milestone = "M1"
+title = "Document, ElementId and typed navigation"
+requirement = "A `Document` owns one root interchange package and all elements under it; elements are identified by an `ElementId` newtype; users navigate by typed views (look up by id, iterate children by kind) without access to internal storage; `Document` and its views are `Send + Sync` and `Debug`."
+source = "docs/architecture.md (Model); D-ID"
+kind = "api"
+status = "planned"
+
+[[row]]
+id = "LIB-API-003"
+area = "API"
+milestone = "M1"
+title = "Element kind metadata"
+requirement = "A public, non-exhaustive `ElementKind` enumerates every concrete SACM 2.3 class, reports its SACM class name and package, and answers is-a questions against the abstract superclasses (ModelElement, ArtifactElement, ArgumentAsset, Assertion, AssertedRelationship, ...)."
+source = "ptc/22-03-13 (all packages); docs/sacm/metamodel-inventory.md"
+kind = "api"
+status = "planned"
+
+[[row]]
+id = "LIB-API-004"
+area = "API"
+milestone = "M1"
+title = "Error types"
+requirement = "Operational failures (I/O, unreadable XML, rejected edits) are reported through documented, non-exhaustive error enums implementing `std::error::Error` with source chains; no public function panics on any input."
+source = "rust-library-craft skill (Errors vs diagnostics)"
+kind = "api"
+status = "planned"
+
+[[row]]
+id = "LIB-DIAG-001"
+area = "DIAG"
+milestone = "M1"
+title = "Structured diagnostics"
+requirement = "A `Diagnostic` carries a stable code, a severity (info, warning, error), the matrix row and clause it enforces, the affected element ids, an optional source location (line, column) and a message; diagnostics are returned in a deterministic order and implement `Display`."
+source = "D-DIAG; docs/sacm/diagnostics.md"
+kind = "api"
+status = "planned"
+
+[[row]]
+id = "SACM23-BASE-001"
+area = "BASE"
+milestone = "M1"
+title = "LangString"
+requirement = "LangString (an optional `lang` tag and optional `content`) is represented, readable, writable and editable, preserving the language tag and content exactly, including the empty and absent cases."
+source = "formal/23-05-08 clause 8; ptc/22-03-13 Base::LangString"
+kind = "model"
+status = "planned"
+depends_on = ["LIB-API-002"]
+
+[[row]]
+id = "SACM23-BASE-002"
+area = "BASE"
+milestone = "M1"
+title = "MultiLangString"
+requirement = "MultiLangString (one or more LangString values) is represented and round-tripped in order."
+source = "formal/23-05-08 §8.5; ptc/22-03-13 Base::MultiLangString; D-TEXT-MODEL"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-BASE-001"]
+
+[[row]]
+id = "SACM23-BASE-003"
+area = "BASE"
+milestone = "M1"
+title = "ModelElement name"
+requirement = "Every ModelElement has exactly one `name` LangString; it is required when creating an element, read and written as the `name` containment, and a missing name is diagnosed."
+source = "formal/23-05-08 §8.6; ptc/22-03-13 Base::ModelElement.name [1]"
+kind = "model"
+status = "planned"
+depends_on = ["LIB-API-002", "SACM23-BASE-001"]
+
+[[row]]
+id = "SACM23-AC-001"
+area = "AC"
+milestone = "M1"
+title = "AssuranceCasePackage and nesting"
+requirement = "AssuranceCasePackage is represented as the mandatory unit of interchange; it may contain nested AssuranceCasePackages and ArgumentPackages in document order (artifact and terminology sub-packages are added by SACM23-ART-001 and SACM23-TERM-001)."
+source = "formal/23-05-08 clause 9; ptc/22-03-13 AssuranceCase::AssuranceCasePackage"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-BASE-003"]
+
+[[row]]
+id = "SACM23-ARG-001"
+area = "ARG"
+milestone = "M1"
+title = "ArgumentPackage"
+requirement = "ArgumentPackage is represented, contained in an AssuranceCasePackage or as a root interchange object, and contains ArgumentationElements (role `argumentElement`) in document order."
+source = "formal/23-05-08 §11.4; ptc/22-03-13 Argumentation::ArgumentPackage"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-AC-001"]
+
+[[row]]
+id = "SACM23-ARG-003"
+area = "ARG"
+milestone = "M1"
+title = "AssertionDeclaration"
+requirement = "The AssertionDeclaration enumeration (asserted, needsSupport, assumed, axiomatic, defeated, asCited) is represented as a non-exhaustive Rust enum with `asserted` as default, parsed and written with the exact literal spellings."
+source = "formal/23-05-08 clause 11; ptc/22-03-13 Argumentation::AssertionDeclaration"
+kind = "model"
+status = "planned"
+depends_on = ["LIB-API-002"]
+
+[[row]]
+id = "SACM23-ARG-002"
+area = "ARG"
+milestone = "M1"
+title = "Claim"
+requirement = "Claim is represented with its inherited Assertion feature `assertionDeclaration`, created, read, written and round-tripped inside an ArgumentPackage."
+source = "formal/23-05-08 clause 11; ptc/22-03-13 Argumentation::Claim"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-ARG-001", "SACM23-ARG-003"]
+
+[[row]]
+id = "LIB-SEC-001"
+area = "SEC"
+milestone = "M1"
+title = "DTDs and entities are refused"
+requirement = "Any document containing a DOCTYPE declaration or entity is refused with diagnostic SACM-SEC-001 before any entity could be resolved or expanded, in every mode."
+source = "OWASP XXE prevention; docs/sacm/diagnostics.md SACM-SEC-001"
+kind = "security"
+status = "planned"
+depends_on = ["LIB-DIAG-001", "LIB-API-004"]
+
+[[row]]
+id = "LIB-SEC-002"
+area = "SEC"
+milestone = "M1"
+title = "Malformed input is diagnosed, never a panic"
+requirement = "Malformed XML, truncated input, invalid UTF-8 and wrong root elements produce an error or diagnostic (SACM-XML-001, SACM-XMI-001) with a location where available; no input causes a panic."
+source = "docs/sacm/diagnostics.md SACM-XML-001, SACM-XMI-001"
+kind = "security"
+status = "planned"
+depends_on = ["LIB-DIAG-001", "LIB-API-004"]
+
+[[row]]
+id = "SACM23-XMI-001"
+area = "XMI"
+milestone = "M1"
+title = "Interchange roots"
+requirement = "XMI import recognizes an AssuranceCasePackage or ArgumentPackage root, directly or inside an `xmi:XMI` wrapper, and refuses any other root with SACM-XMI-001 (ArtifactPackage and TerminologyPackage roots are added by SACM23-ART-001 and SACM23-TERM-001)."
+source = "formal/23-05-08 clause 2 (compliance points)"
+kind = "xmi"
+status = "planned"
+depends_on = ["SACM23-AC-001", "SACM23-ARG-001", "LIB-SEC-001"]
+
+[[row]]
+id = "SACM23-XMI-002"
+area = "XMI"
+milestone = "M1"
+title = "Namespace-prefix independence"
+requirement = "Import matches elements and attributes by namespace URI and local name, so the same document with any prefixes (including a default namespace) loads identically."
+source = "XML Namespaces 1.0; XMI 2.5.1"
+kind = "xmi"
+status = "planned"
+depends_on = ["SACM23-XMI-001"]
+
+[[row]]
+id = "SACM23-XMI-003"
+area = "XMI"
+milestone = "M1"
+title = "Pinned strict namespace"
+requirement = "Strict export declares the SACM namespace `http://www.omg.org/spec/SACM/20220301` (prefix `sacm`) and the XMI 2.5.1 namespace with `xmi:version=\"2.0\"`; the pin is a single constant in the crate."
+source = "D-NS-PIN; docs/sacm/metamodel-inventory.md (XMI serialization conventions)"
+kind = "xmi"
+status = "planned"
+depends_on = ["SACM23-XMI-001"]
+
+[[row]]
+id = "SACM23-XMI-004"
+area = "XMI"
+milestone = "M1"
+title = "xmi:id identity"
+requirement = "Every element is written with an `xmi:id`; ids read from a file are preserved exactly through load, edit and save."
+source = "XMI 2.5.1 identity; D-ID"
+kind = "xmi"
+status = "planned"
+depends_on = ["SACM23-XMI-001"]
+
+[[row]]
+id = "SACM23-XMI-006"
+area = "XMI"
+milestone = "M1"
+title = "xsi:type for abstract-typed roles"
+requirement = "When a containment role's declared type is abstract (e.g. `argumentElement`), export writes `xsi:type` naming the concrete class, and strict import requires it (SACM-XMI-005); tolerant import may infer the class from the element name."
+source = "XMI 2.5.1 type rules; docs/sacm/diagnostics.md SACM-XMI-005"
+kind = "xmi"
+status = "planned"
+depends_on = ["SACM23-XMI-001", "SACM23-ARG-002"]
+
+[[row]]
+id = "SACM23-XMI-007"
+area = "XMI"
+milestone = "M1"
+title = "Deterministic export"
+requirement = "Saving the same model always produces identical bytes: fixed attribute order, containment in model order, fixed indentation and line endings, no dependence on hash iteration order; checked against golden files."
+source = "D-RT"
+kind = "xmi"
+status = "planned"
+depends_on = ["SACM23-XMI-003", "SACM23-XMI-004", "SACM23-XMI-006"]
+
+[[row]]
+id = "LIB-COMPAT-001"
+area = "COMPAT"
+milestone = "M1"
+title = "Strict and tolerant load modes"
+requirement = "Loading takes an explicit mode: tolerant (default) accepts and reports recognised variations as warnings; strict reports them as errors. Saving is strict by default. The mode used is visible in the load result."
+source = "D-STRICT"
+kind = "api"
+status = "planned"
+depends_on = ["SACM23-XMI-001", "SACM23-XMI-003"]
+
+[[row]]
+id = "SACM23-VAL-001"
+area = "VAL"
+milestone = "M1"
+title = "Unique element ids"
+requirement = "Duplicate `xmi:id` values in a document are reported as SACM-ID-001 errors naming every element involved; the edit API refuses to create a duplicate (SACM-CMD-004)."
+source = "XMI 2.5.1 identity; docs/sacm/diagnostics.md SACM-ID-001"
+kind = "validation"
+status = "planned"
+depends_on = ["SACM23-XMI-004", "LIB-DIAG-001"]
+
+[[row]]
+id = "SACM23-VAL-006"
+area = "VAL"
+milestone = "M1"
+title = "Enumeration literals"
+requirement = "An unknown `assertionDeclaration` literal is reported as SACM-ENUM-001 with the raw value; it is never silently mapped to the default."
+source = "ptc/22-03-13 Argumentation::AssertionDeclaration; docs/sacm/diagnostics.md SACM-ENUM-001"
+kind = "validation"
+status = "planned"
+depends_on = ["SACM23-ARG-003", "SACM23-XMI-001", "LIB-DIAG-001"]
+
+[[row]]
+id = "LIB-RT-001"
+area = "RT"
+milestone = "M1"
+title = "Semantic comparison"
+requirement = "A public function compares two documents semantically (ignoring formatting, attribute order and prefixes, not ignoring any model content) and reports the differences with element ids and feature names."
+source = "D-RT"
+kind = "api"
+status = "planned"
+depends_on = ["SACM23-ARG-002"]
+
+[[row]]
+id = "LIB-RT-002"
+area = "RT"
+milestone = "M1"
+title = "Load → save → load is lossless"
+requirement = "For every valid fixture in scope, loading, saving strictly and reloading yields a semantically equal document."
+source = "D-RT"
+kind = "xmi"
+status = "planned"
+depends_on = ["LIB-RT-001", "SACM23-XMI-007"]
+
+[[row]]
+id = "LIB-EDIT-001"
+area = "EDIT"
+milestone = "M1"
+title = "Create operations"
+requirement = "Elements are created through explicit operations taking a parent, a name and optional caller-provided id; generated ids are deterministic for a given sequence of operations; an invalid parent is refused (SACM-CMD-005). Initially AssuranceCasePackage, ArgumentPackage and Claim; each later model row extends it to its class."
+source = "D-ID, D-ATOMIC"
+kind = "editing"
+status = "planned"
+depends_on = ["SACM23-ARG-002", "LIB-API-004"]
+
+[[row]]
+id = "LIB-EDIT-002"
+area = "EDIT"
+milestone = "M1"
+title = "Atomic mutations"
+requirement = "Every public mutation either succeeds and leaves the document structurally valid, or fails with an error and leaves the document unchanged (semantically equal to before)."
+source = "D-ATOMIC, D-VAL-LAYER"
+kind = "editing"
+status = "planned"
+depends_on = ["LIB-EDIT-001"]
+
+[[row]]
+id = "LIB-EDIT-003"
+area = "EDIT"
+milestone = "M1"
+title = "Mutation results"
+requirement = "Every successful mutation returns the ids it created, changed and deleted and the operation that ran, sufficient for an audit log."
+source = "D-RESULT"
+kind = "editing"
+status = "planned"
+depends_on = ["LIB-EDIT-001"]
+
+[[row]]
+id = "LIB-RT-003"
+area = "RT"
+milestone = "M1"
+title = "Created documents round-trip"
+requirement = "A document built through the edit API saves strictly, reloads, validates without errors and is semantically equal to the in-memory document."
+source = "D-RT"
+kind = "xmi"
+status = "planned"
+depends_on = ["LIB-EDIT-001", "LIB-RT-002"]
+
+[[row]]
+id = "LIB-CLI-002"
+area = "CLI"
+milestone = "M1"
+title = "`sacm validate`"
+requirement = "`sacm validate <file>` loads (tolerant by default, `--strict` available), validates, prints diagnostics in a human format or as JSON (`--format json`), and exits 0 when there are no errors, 1 when there are errors, 2 when the file cannot be read."
+source = "Project policy (D-API)"
+kind = "cli"
+status = "planned"
+depends_on = ["LIB-CLI-001", "SACM23-XMI-001", "SACM23-VAL-001"]
+
+[[row]]
+id = "LIB-CLI-003"
+area = "CLI"
+milestone = "M1"
+title = "`sacm roundtrip`"
+requirement = "`sacm roundtrip <file>` loads, saves strictly to memory, reloads and reports any semantic difference, exiting non-zero if there is one; `-o` writes the strict output."
+source = "Project policy (D-API)"
+kind = "cli"
+status = "planned"
+depends_on = ["LIB-CLI-002", "LIB-RT-002"]
+
+[[row]]
+id = "LIB-DOC-001"
+area = "DOC"
+milestone = "M1"
+title = "Crate root documentation with a complete example"
+requirement = "The crate root explains SACM in plain words, states what is supported (linking the matrix), and shows a runnable load → inspect → validate → edit → save example as a doctest; the crate README mirrors it."
+source = "Project goal (well documented, easy to use)"
+kind = "docs"
+status = "planned"
+depends_on = ["LIB-EDIT-001", "LIB-RT-002"]
+
+# ===========================================================================
+# M2 — Base model and argumentation
+# ===========================================================================
+
+[[row]]
+id = "SACM23-BASE-004"
+area = "BASE"
+milestone = "M2"
+title = "Descriptions, notes and implementation constraints"
+requirement = "ModelElement's `description`, `note` and `implementationConstraint` containments (UtilityElements with MultiLangString `content`) are represented in order, round-tripped and editable on every ModelElement; several descriptions are preserved (D-DESC-MULT)."
+source = "formal/23-05-08 §8.6, §8.7; ptc/22-03-13 Base::ModelElement, Base::UtilityElement"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-BASE-002", "SACM23-BASE-003"]
+
+[[row]]
+id = "SACM23-BASE-005"
+area = "BASE"
+milestone = "M2"
+title = "TaggedValue"
+requirement = "TaggedValue (MultiLangString `key` and `content`) is represented on every ModelElement in order, round-tripped and editable."
+source = "formal/23-05-08 clause 8; ptc/22-03-13 Base::TaggedValue"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-BASE-004"]
+
+[[row]]
+id = "SACM23-BASE-006"
+area = "BASE"
+milestone = "M2"
+title = "gid"
+requirement = "The optional SACMElement `gid` is represented, preserved exactly, writable and editable on every element, distinct from the XMI id."
+source = "formal/23-05-08 §8.2; ptc/22-03-13 Base::SACMElement.gid"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-BASE-003", "SACM23-XMI-004"]
+
+[[row]]
+id = "SACM23-XMI-005"
+area = "XMI"
+milestone = "M2"
+title = "Reference serialization"
+requirement = "Non-containment references are written as attributes named by the reference end holding space-separated xmi:ids; import also accepts child-element and `href=\"#id\"` forms; references to unknown ids are kept and diagnosed, not dropped."
+source = "XMI 2.5.1 reference rules; docs/sacm/metamodel-inventory.md"
+kind = "xmi"
+status = "planned"
+depends_on = ["SACM23-XMI-004"]
+
+[[row]]
+id = "SACM23-BASE-007"
+area = "BASE"
+milestone = "M2"
+title = "Citations"
+requirement = "SACMElement `isCitation` and `citedElement` are represented on every element, round-tripped and editable; `citedElement` is a reference to any SACMElement."
+source = "formal/23-05-08 §8.2; ptc/22-03-13 Base::SACMElement"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-BASE-003", "SACM23-XMI-005"]
+
+[[row]]
+id = "SACM23-BASE-008"
+area = "BASE"
+milestone = "M2"
+title = "Abstract elements and abstract forms"
+requirement = "SACMElement `isAbstract` and `abstractForm` are represented on every element, round-tripped and editable."
+source = "formal/23-05-08 §8.2; ptc/22-03-13 Base::SACMElement"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-BASE-003", "SACM23-XMI-005"]
+
+[[row]]
+id = "SACM23-ARG-004"
+area = "ARG"
+milestone = "M2"
+title = "metaClaim"
+requirement = "Assertion `metaClaim` (references to Claims about an assertion) is represented on Claims and asserted relationships, round-tripped and editable."
+source = "formal/23-05-08 clause 11; ptc/22-03-13 Argumentation::Assertion.metaClaim"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-ARG-002", "SACM23-XMI-005"]
+
+[[row]]
+id = "SACM23-ARG-005"
+area = "ARG"
+milestone = "M2"
+title = "ArgumentReasoning"
+requirement = "ArgumentReasoning is represented with its optional `structure` reference to an ArgumentPackage, created, round-tripped and editable."
+source = "formal/23-05-08 clause 11; ptc/22-03-13 Argumentation::ArgumentReasoning"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-ARG-001", "SACM23-XMI-005"]
+
+[[row]]
+id = "SACM23-ARG-006"
+area = "ARG"
+milestone = "M2"
+title = "ArtifactReference"
+requirement = "ArtifactReference is represented with its `referencedArtifactElement` references (0..*, to ArtifactElements), created, round-tripped and editable."
+source = "formal/23-05-08 clause 11; ptc/22-03-13 Argumentation::ArtifactReference"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-ARG-001", "SACM23-XMI-005"]
+
+[[row]]
+id = "SACM23-ARG-007"
+area = "ARG"
+milestone = "M2"
+title = "AssertedRelationship common features"
+requirement = "The shared features of all asserted relationships — `source` (1..*), `target` (1), optional `reasoning` (ArgumentReasoning) and required `isCounter` — are represented once and available on every relationship kind, round-tripped and editable."
+source = "formal/23-05-08 §11.13; ptc/22-03-13 Argumentation::AssertedRelationship"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-ARG-002", "SACM23-ARG-005", "SACM23-XMI-005"]
+
+[[row]]
+id = "SACM23-ARG-008"
+area = "ARG"
+milestone = "M2"
+title = "AssertedInference"
+requirement = "AssertedInference is represented, created, round-tripped and editable."
+source = "formal/23-05-08 clause 11; ptc/22-03-13 Argumentation::AssertedInference"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-ARG-007"]
+
+[[row]]
+id = "SACM23-ARG-009"
+area = "ARG"
+milestone = "M2"
+title = "AssertedEvidence"
+requirement = "AssertedEvidence is represented, created, round-tripped and editable."
+source = "formal/23-05-08 clause 11; ptc/22-03-13 Argumentation::AssertedEvidence"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-ARG-007", "SACM23-ARG-006"]
+
+[[row]]
+id = "SACM23-ARG-010"
+area = "ARG"
+milestone = "M2"
+title = "AssertedContext"
+requirement = "AssertedContext is represented, created, round-tripped and editable."
+source = "formal/23-05-08 clause 11; ptc/22-03-13 Argumentation::AssertedContext"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-ARG-007"]
+
+[[row]]
+id = "SACM23-ARG-011"
+area = "ARG"
+milestone = "M2"
+title = "AssertedArtifactSupport"
+requirement = "AssertedArtifactSupport is represented, created, round-tripped and editable."
+source = "formal/23-05-08 clause 11; ptc/22-03-13 Argumentation::AssertedArtifactSupport"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-ARG-007", "SACM23-ARG-006"]
+
+[[row]]
+id = "SACM23-ARG-012"
+area = "ARG"
+milestone = "M2"
+title = "AssertedArtifactContext"
+requirement = "AssertedArtifactContext is represented, created, round-tripped and editable."
+source = "formal/23-05-08 clause 11; ptc/22-03-13 Argumentation::AssertedArtifactContext"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-ARG-007", "SACM23-ARG-006"]
+
+[[row]]
+id = "SACM23-ARG-013"
+area = "ARG"
+milestone = "M2"
+title = "ArgumentGroup"
+requirement = "ArgumentGroup is represented with its `argumentElement` membership references (not containment), round-tripped and editable; deleting a member does not delete the group."
+source = "formal/23-05-08 §11.2; ptc/22-03-13 Argumentation::ArgumentGroup; D-TEXT-MODEL (argumentElement spelling)"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-ARG-001", "SACM23-XMI-005"]
+
+[[row]]
+id = "SACM23-XMI-010"
+area = "XMI"
+milestone = "M2"
+title = "Source locations on read diagnostics"
+requirement = "Every diagnostic produced while reading XMI carries the line and column of the element or attribute it concerns."
+source = "D-DIAG"
+kind = "xmi"
+status = "planned"
+depends_on = ["LIB-DIAG-001", "SACM23-XMI-001"]
+
+[[row]]
+id = "LIB-COMPAT-003"
+area = "COMPAT"
+milestone = "M2"
+title = "Unknown content is preserved, not dropped"
+requirement = "In tolerant mode, elements and attributes the model does not recognise (vendor extensions, unknown standard-looking names) are preserved at their position with a SACM-XMI-003 warning, and survive load → save in tolerant output."
+source = "D-PRESERVE; docs/sacm/diagnostics.md SACM-XMI-003"
+kind = "xmi"
+status = "planned"
+depends_on = ["LIB-COMPAT-001"]
+
+[[row]]
+id = "SACM23-XMI-008"
+area = "XMI"
+milestone = "M2"
+title = "Strict save refuses what it cannot write conformantly"
+requirement = "Strict save of a document holding preserved unknown or compatibility-only content fails with SACM-XMI-006 listing that content, and writes nothing; it never silently omits it."
+source = "D-PRESERVE, D-STRICT; docs/sacm/diagnostics.md SACM-XMI-006"
+kind = "xmi"
+status = "planned"
+depends_on = ["LIB-COMPAT-003"]
+
+[[row]]
+id = "SACM23-VAL-002"
+area = "VAL"
+milestone = "M2"
+title = "gid uniqueness"
+requirement = "Two elements with the same non-empty gid are reported as SACM-ID-003 errors; absent or empty gids are not compared."
+source = "formal/23-05-08 §8.2 (\"unique within the scope of the model instance\"); SACM-ID-003"
+kind = "validation"
+status = "planned"
+depends_on = ["SACM23-BASE-006"]
+
+[[row]]
+id = "SACM23-VAL-003"
+area = "VAL"
+milestone = "M2"
+title = "Dangling references"
+requirement = "A reference whose target id does not resolve is reported as SACM-REF-001 naming the referring element, the reference end and the missing id."
+source = "XMI 2.5.1; docs/sacm/diagnostics.md SACM-REF-001"
+kind = "validation"
+status = "planned"
+depends_on = ["SACM23-XMI-005", "LIB-DIAG-001"]
+
+[[row]]
+id = "SACM23-VAL-004"
+area = "VAL"
+milestone = "M2"
+title = "Reference target typing"
+requirement = "A reference resolving to an element of the wrong type for its end (per ptc/22-03-13) is reported as SACM-REF-002; a target that is preserved-but-untyped content is SACM-REF-003 (warning), not a dangling reference."
+source = "ptc/22-03-13 reference end types; docs/sacm/diagnostics.md SACM-REF-002, SACM-REF-003"
+kind = "validation"
+status = "planned"
+depends_on = ["SACM23-VAL-003", "LIB-API-003"]
+
+[[row]]
+id = "SACM23-VAL-005"
+area = "VAL"
+milestone = "M2"
+title = "Relationship multiplicities"
+requirement = "An asserted relationship with no source or without exactly one target is reported as SACM-MULT-001; the edit API cannot create one."
+source = "formal/23-05-08 §11.13 (source[1..*], target[1]); SACM-MULT-001"
+kind = "validation"
+status = "planned"
+depends_on = ["SACM23-ARG-007"]
+
+[[row]]
+id = "SACM23-VAL-007"
+area = "VAL"
+milestone = "M2"
+title = "Citation constraints"
+requirement = "The clause 8.2 citation rules are checked: `isCitation` true requires a `citedElement` and vice versa (SACM-CITE-001), with severity per D-SEV."
+source = "formal/23-05-08 §8.2; SACM-CITE-001; D-SEV"
+kind = "validation"
+status = "planned"
+depends_on = ["SACM23-BASE-007"]
+
+[[row]]
+id = "SACM23-VAL-008"
+area = "VAL"
+milestone = "M2"
+title = "Abstract-form constraints (clause 8.2)"
+requirement = "The clause 8.2 abstract-form rules are checked with the severities of D-SEV: an abstract element using abstractForm is an error; an abstractForm target that is not abstract, or of a different type, is a warning (SACM-ABS-001)."
+source = "formal/23-05-08 §8.2; SACM-ABS-001; D-SEV"
+kind = "validation"
+status = "planned"
+depends_on = ["SACM23-BASE-008"]
+
+[[row]]
+id = "SACM23-VAL-010"
+area = "VAL"
+milestone = "M2"
+title = "MultiLangString language uniqueness"
+requirement = "A MultiLangString with two values for the same language is diagnosed per clause 8.5."
+source = "formal/23-05-08 §8.5"
+kind = "validation"
+status = "planned"
+depends_on = ["SACM23-BASE-002"]
+
+[[row]]
+id = "SACM23-VAL-011"
+area = "VAL"
+milestone = "M2"
+title = "Description multiplicity"
+requirement = "A ModelElement with more than one description is preserved and reported as a SACM-MULT-001 warning citing clause 8.6 (D-DESC-MULT)."
+source = "formal/23-05-08 §8.6; D-DESC-MULT"
+kind = "validation"
+status = "planned"
+depends_on = ["SACM23-BASE-004"]
+
+[[row]]
+id = "SACM23-VAL-012"
+area = "VAL"
+milestone = "M2"
+title = "ArgumentPackage homogeneity"
+requirement = "An ArgumentPackage that nests a plain ArgumentPackage and also contains other argumentation elements is reported as a SACM-PKG-001 error; contained interfaces and bindings do not trigger it (D-PKG-HOMOG)."
+source = "formal/23-05-08 §11.4, §11.6; D-PKG-HOMOG"
+kind = "validation"
+status = "planned"
+depends_on = ["SACM23-ARG-001"]
+notes = "The interface/binding exception is exercised by SACM23-ARG-014 and SACM23-ARG-015."
+
+[[row]]
+id = "SACM23-VAL-016"
+area = "VAL"
+milestone = "M2"
+title = "Relationship end typing per kind"
+requirement = "The source and target typing each asserted relationship kind's clause requires (e.g. evidence sources are ArtifactReferences) is checked, with severity per D-SEV."
+source = "formal/23-05-08 clause 11 (each Asserted* subclause)"
+kind = "validation"
+status = "planned"
+depends_on = ["SACM23-ARG-008", "SACM23-ARG-009", "SACM23-ARG-010", "SACM23-ARG-011", "SACM23-ARG-012", "SACM23-VAL-004"]
+
+[[row]]
+id = "LIB-DIAG-002"
+area = "DIAG"
+milestone = "M2"
+title = "Diagnostic catalog stays in sync"
+requirement = "Every diagnostic code the crate can emit is documented in docs/sacm/diagnostics.md and every live code there exists in the crate; a test enforces both directions."
+source = "D-DIAG"
+kind = "quality"
+status = "planned"
+depends_on = ["LIB-DIAG-001"]
+
+[[row]]
+id = "LIB-EDIT-004"
+area = "EDIT"
+milestone = "M2"
+title = "Delete preview"
+requirement = "Deleting an element can be previewed: the preview lists the element, everything it contains, every relationship and reference that would dangle, and whether the delete is applicable under each policy, without changing the document."
+source = "D-PREVIEW"
+kind = "editing"
+status = "planned"
+depends_on = ["LIB-EDIT-003", "SACM23-ARG-007"]
+
+[[row]]
+id = "LIB-EDIT-005"
+area = "EDIT"
+milestone = "M2"
+title = "Element delete policies"
+requirement = "Deleting a referenced element requires an explicit policy — reject if referenced (SACM-CMD-002) or delete the referencing relationships — and never leaves a dangling reference."
+source = "D-POLICY"
+kind = "editing"
+status = "planned"
+depends_on = ["LIB-EDIT-004"]
+
+[[row]]
+id = "LIB-EDIT-006"
+area = "EDIT"
+milestone = "M2"
+title = "Package delete policies"
+requirement = "Deleting a non-empty package requires an explicit policy — reject if non-empty (SACM-CMD-006) or delete recursively — and cross-package references are reported and handled under an explicit policy (SACM-CMD-007)."
+source = "D-POLICY"
+kind = "editing"
+status = "planned"
+depends_on = ["LIB-EDIT-004"]
+
+[[row]]
+id = "LIB-EDIT-007"
+area = "EDIT"
+milestone = "M2"
+title = "Stale previews are rejected"
+requirement = "A preview records the document revision it was computed against; applying it after any other mutation fails with SACM-CMD-003 and changes nothing."
+source = "D-PREVIEW"
+kind = "editing"
+status = "planned"
+depends_on = ["LIB-EDIT-004"]
+
+[[row]]
+id = "LIB-EDIT-008"
+area = "EDIT"
+milestone = "M2"
+title = "Attribute edits"
+requirement = "Names, descriptions, notes, tagged values, gid, citation and abstract flags, assertion declarations and isCounter can be changed through operations that are atomic and report what changed."
+source = "D-ATOMIC, D-RESULT"
+kind = "editing"
+status = "planned"
+depends_on = ["LIB-EDIT-002", "SACM23-BASE-005", "SACM23-ARG-007"]
+
+[[row]]
+id = "LIB-EDIT-009"
+area = "EDIT"
+milestone = "M2"
+title = "Reference edits"
+requirement = "Relationship sources/targets/reasoning, metaClaims, citedElement, abstractForm, group membership and artifact references can be set, added and removed through atomic operations that refuse targets of the wrong type."
+source = "D-ATOMIC"
+kind = "editing"
+status = "planned"
+depends_on = ["LIB-EDIT-002", "SACM23-ARG-007", "SACM23-ARG-013", "SACM23-VAL-004"]
+
+[[row]]
+id = "LIB-EDIT-010"
+area = "EDIT"
+milestone = "M2"
+title = "Reorder contained elements"
+requirement = "The order of a package's contained elements can be changed atomically; the new order is preserved through save and load."
+source = "D-ATOMIC, D-RT"
+kind = "editing"
+status = "planned"
+depends_on = ["LIB-EDIT-002"]
+
+# ===========================================================================
+# M3 — Artifact model
+# ===========================================================================
+
+[[row]]
+id = "SACM23-ART-001"
+area = "ART"
+milestone = "M3"
+title = "ArtifactPackage"
+requirement = "ArtifactPackage is represented, contained in an AssuranceCasePackage or as a root interchange object, and contains ArtifactElements (role `artifactElement`) in document order."
+source = "formal/23-05-08 clause 12; ptc/22-03-13 Artifact::ArtifactPackage; clause 2"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-AC-001", "SACM23-XMI-005"]
+
+[[row]]
+id = "SACM23-ART-002"
+area = "ART"
+milestone = "M3"
+title = "Date-typed attributes"
+requirement = "Attributes the text types as `date` (Artifact.date, Event.date, Activity.startTime/endTime) are represented so that every conforming lexical value round-trips exactly and a non-conforming value is diagnosed, per the resolution of Q-DATE."
+source = "formal/23-05-08 §12.7–12.9; D-TEXT-MODEL; Q-DATE"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-ART-001"]
+
+[[row]]
+id = "SACM23-ART-003"
+area = "ART"
+milestone = "M3"
+title = "Property"
+requirement = "ArtifactAsset `property` containment (Property elements, themselves ArtifactAssets) is represented on every artifact asset, round-tripped and editable."
+source = "formal/23-05-08 clause 12; ptc/22-03-13 Artifact::ArtifactAsset.property, Artifact::Property"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-ART-001"]
+
+[[row]]
+id = "SACM23-ART-004"
+area = "ART"
+milestone = "M3"
+title = "Artifact"
+requirement = "Artifact is represented with `version` and `date`, created, round-tripped and editable."
+source = "formal/23-05-08 clause 12; ptc/22-03-13 Artifact::Artifact"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-ART-002", "SACM23-ART-003"]
+
+[[row]]
+id = "SACM23-ART-005"
+area = "ART"
+milestone = "M3"
+title = "Resource"
+requirement = "Resource is represented with its `location` MultiLangString (text followed over the model, D-TEXT-MODEL), created, round-tripped and editable."
+source = "formal/23-05-08 §12.10; D-TEXT-MODEL"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-ART-003"]
+
+[[row]]
+id = "SACM23-ART-006"
+area = "ART"
+milestone = "M3"
+title = "Activity"
+requirement = "Activity is represented with `startTime` and `endTime`, created, round-tripped and editable."
+source = "formal/23-05-08 clause 12; ptc/22-03-13 Artifact::Activity"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-ART-002", "SACM23-ART-003"]
+
+[[row]]
+id = "SACM23-ART-007"
+area = "ART"
+milestone = "M3"
+title = "Event"
+requirement = "Event is represented with `date`, created, round-tripped and editable."
+source = "formal/23-05-08 §12.9; D-TEXT-MODEL"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-ART-002", "SACM23-ART-003"]
+
+[[row]]
+id = "SACM23-ART-008"
+area = "ART"
+milestone = "M3"
+title = "Technique"
+requirement = "Technique is represented, created, round-tripped and editable."
+source = "formal/23-05-08 clause 12; ptc/22-03-13 Artifact::Technique"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-ART-003"]
+
+[[row]]
+id = "SACM23-ART-009"
+area = "ART"
+milestone = "M3"
+title = "Participant"
+requirement = "Participant is represented, created, round-tripped and editable."
+source = "formal/23-05-08 clause 12; ptc/22-03-13 Artifact::Participant"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-ART-003"]
+
+[[row]]
+id = "SACM23-ART-010"
+area = "ART"
+milestone = "M3"
+title = "ArtifactAssetRelationship"
+requirement = "ArtifactAssetRelationship is represented with `source` (1..*) and `target` (1..*) references to ArtifactAssets, created, round-tripped, editable, and its multiplicities validated."
+source = "formal/23-05-08 §12.14; D-TEXT-MODEL (name and generalization)"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-ART-004"]
+
+[[row]]
+id = "SACM23-ART-011"
+area = "ART"
+milestone = "M3"
+title = "ArtifactGroup"
+requirement = "ArtifactGroup is represented with its `artifactElement` membership references, round-tripped and editable."
+source = "formal/23-05-08 clause 12; ptc/22-03-13 Artifact::ArtifactGroup"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-ART-001"]
+
+[[row]]
+id = "SACM23-XMI-009"
+area = "XMI"
+milestone = "M3"
+title = "Machine-readable-model spellings accepted on import"
+requirement = "Tolerant import accepts the ptc/22-03-13 spellings `ArtifactAssertedRelationship`, `occurece` and `argumentationElement` with a warning and maps them to the resolved names; export always writes the resolved names."
+source = "D-TEXT-MODEL; docs/sacm/metamodel-inventory.md (Known defects)"
+kind = "xmi"
+status = "planned"
+depends_on = ["SACM23-ART-010", "SACM23-ART-007", "SACM23-ARG-013"]
+
+# ===========================================================================
+# M4 — Terminology model
+# ===========================================================================
+
+[[row]]
+id = "SACM23-TERM-001"
+area = "TERM"
+milestone = "M4"
+title = "TerminologyPackage"
+requirement = "TerminologyPackage is represented, contained in an AssuranceCasePackage or as a root interchange object, and contains TerminologyElements in document order."
+source = "formal/23-05-08 clause 10; ptc/22-03-13 Terminology::TerminologyPackage; clause 2"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-AC-001", "SACM23-XMI-005"]
+
+[[row]]
+id = "SACM23-TERM-002"
+area = "TERM"
+milestone = "M4"
+title = "Category"
+requirement = "Category is represented with its `category` references to other Categories, created, round-tripped and editable."
+source = "formal/23-05-08 clause 10; ptc/22-03-13 Terminology::Category"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-TERM-001"]
+
+[[row]]
+id = "SACM23-TERM-003"
+area = "TERM"
+milestone = "M4"
+title = "ExpressionElement value and categories"
+requirement = "The shared ExpressionElement features — required `value` and `category` references — are represented once for Term and Expression."
+source = "formal/23-05-08 clause 10; ptc/22-03-13 Terminology::ExpressionElement"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-TERM-002"]
+
+[[row]]
+id = "SACM23-TERM-004"
+area = "TERM"
+milestone = "M4"
+title = "Term"
+requirement = "Term is represented with `externalReference` and `origin` (reference to a ModelElement), created, round-tripped and editable."
+source = "formal/23-05-08 clause 10; ptc/22-03-13 Terminology::Term"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-TERM-003"]
+
+[[row]]
+id = "SACM23-TERM-005"
+area = "TERM"
+milestone = "M4"
+title = "Expression"
+requirement = "Expression is represented with its `element` references to ExpressionElements, created, round-tripped and editable."
+source = "formal/23-05-08 §10.10; ptc/22-03-13 Terminology::Expression"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-TERM-003"]
+
+[[row]]
+id = "SACM23-TERM-006"
+area = "TERM"
+milestone = "M4"
+title = "TerminologyGroup"
+requirement = "TerminologyGroup is represented with its `terminologyElement` membership references, round-tripped and editable."
+source = "formal/23-05-08 clause 10; ptc/22-03-13 Terminology::TerminologyGroup"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-TERM-001"]
+
+[[row]]
+id = "SACM23-BASE-009"
+area = "BASE"
+milestone = "M4"
+title = "ExpressionLangString"
+requirement = "ExpressionLangString — a LangString whose `expression` references an ExpressionElement — is represented wherever a LangString may appear, round-tripped and editable."
+source = "formal/23-05-08 §8.4; ptc/22-03-13 Base::ExpressionLangString; D-TEXT-MODEL"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-BASE-001", "SACM23-TERM-003"]
+
+[[row]]
+id = "SACM23-VAL-009"
+area = "VAL"
+milestone = "M4"
+title = "ExpressionLangString exclusivity"
+requirement = "An ExpressionLangString carrying both an `expression` and literal `content` is reported as a SACM-EXPR-001 warning (\"should\", D-SEV)."
+source = "formal/23-05-08 §8.4; SACM-EXPR-001"
+kind = "validation"
+status = "planned"
+depends_on = ["SACM23-BASE-009"]
+
+[[row]]
+id = "SACM23-VAL-017"
+area = "VAL"
+milestone = "M4"
+title = "Concrete Expressions reference concrete elements"
+requirement = "A concrete Expression referencing abstract ExpressionElements is reported as a SACM-ABS-001 error per the clause 10.10 OCL."
+source = "formal/23-05-08 §10.10 (OCL); SACM-ABS-001"
+kind = "validation"
+status = "planned"
+depends_on = ["SACM23-TERM-005", "SACM23-VAL-008"]
+
+# ===========================================================================
+# M5 — Modularity: interfaces and bindings
+# ===========================================================================
+
+[[row]]
+id = "SACM23-AC-002"
+area = "AC"
+milestone = "M5"
+title = "AssuranceCasePackageInterface"
+requirement = "AssuranceCasePackageInterface is represented with its `implements` reference (1) and a package's `interface` references, created, round-tripped and editable."
+source = "formal/23-05-08 §9.3; ptc/22-03-13 AssuranceCase::AssuranceCasePackageInterface"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-AC-001", "SACM23-BASE-007"]
+
+[[row]]
+id = "SACM23-AC-003"
+area = "AC"
+milestone = "M5"
+title = "AssuranceCasePackageBinding"
+requirement = "AssuranceCasePackageBinding is represented with its `participantPackage` references (2..*), created, round-tripped and editable."
+source = "formal/23-05-08 §9.4; ptc/22-03-13 AssuranceCase::AssuranceCasePackageBinding"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-AC-001", "SACM23-BASE-007"]
+
+[[row]]
+id = "SACM23-ARG-014"
+area = "ARG"
+milestone = "M5"
+title = "ArgumentPackageInterface"
+requirement = "ArgumentPackageInterface is represented with `implements` (1), resides inside the package it describes, and is created, round-tripped and editable; it does not trigger the homogeneity rule (D-PKG-HOMOG)."
+source = "formal/23-05-08 §11.6; ptc/22-03-13 Argumentation::ArgumentPackageInterface"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-ARG-001", "SACM23-BASE-007", "SACM23-VAL-012"]
+
+[[row]]
+id = "SACM23-ARG-015"
+area = "ARG"
+milestone = "M5"
+title = "ArgumentPackageBinding"
+requirement = "ArgumentPackageBinding is represented with `participantPackage` (2..*), created, round-tripped and editable; it does not trigger the homogeneity rule (D-PKG-HOMOG)."
+source = "formal/23-05-08 §11.5; ptc/22-03-13 Argumentation::ArgumentPackageBinding"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-ARG-001", "SACM23-BASE-007", "SACM23-VAL-012"]
+
+[[row]]
+id = "SACM23-ART-012"
+area = "ART"
+milestone = "M5"
+title = "ArtifactPackageInterface"
+requirement = "ArtifactPackageInterface is represented with `implements` (1), created, round-tripped and editable."
+source = "formal/23-05-08 §12.5; ptc/22-03-13 Artifact::ArtifactPackageInterface"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-ART-001", "SACM23-BASE-007"]
+
+[[row]]
+id = "SACM23-ART-013"
+area = "ART"
+milestone = "M5"
+title = "ArtifactPackageBinding"
+requirement = "ArtifactPackageBinding is represented with `participantPackage` (2..*), created, round-tripped and editable."
+source = "formal/23-05-08 §12.4; ptc/22-03-13 Artifact::ArtifactPackageBinding"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-ART-001", "SACM23-BASE-007"]
+
+[[row]]
+id = "SACM23-TERM-007"
+area = "TERM"
+milestone = "M5"
+title = "TerminologyPackageInterface"
+requirement = "TerminologyPackageInterface (a TerminologyPackage, D-TEXT-MODEL) is represented with `implements` (1), created, round-tripped and editable."
+source = "formal/23-05-08 §10.5; ptc/22-03-13 Terminology::TerminologyPackageInterface"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-TERM-001", "SACM23-BASE-007"]
+
+[[row]]
+id = "SACM23-TERM-008"
+area = "TERM"
+milestone = "M5"
+title = "TerminologyPackageBinding"
+requirement = "TerminologyPackageBinding is represented with `participantPackage` (2..*), created, round-tripped and editable."
+source = "formal/23-05-08 §10.6; ptc/22-03-13 Terminology::TerminologyPackageBinding"
+kind = "model"
+status = "planned"
+depends_on = ["SACM23-TERM-001", "SACM23-BASE-007"]
+
+[[row]]
+id = "SACM23-VAL-013"
+area = "VAL"
+milestone = "M5"
+title = "Interface and binding contents are citations"
+requirement = "Non-citation content in any package interface or binding is a SACM-PKG-001 error; an interface citation pointing outside the package it implements is a warning; binding citation locality is not checked (D-IFACE-CITE)."
+source = "formal/23-05-08 §9.3, §11.5, §11.6, §12.4, §12.5; D-IFACE-CITE"
+kind = "validation"
+status = "planned"
+depends_on = ["SACM23-AC-002", "SACM23-AC-003", "SACM23-ARG-014", "SACM23-ARG-015", "SACM23-ART-012", "SACM23-ART-013", "SACM23-TERM-007", "SACM23-TERM-008", "SACM23-VAL-007"]
+
+[[row]]
+id = "SACM23-VAL-014"
+area = "VAL"
+milestone = "M5"
+title = "Binding participants"
+requirement = "A binding with fewer than two participants is a SACM-MULT-001 error; a binding named as a participant of a binding is a SACM-PKG-001 warning, uniformly across the four families (D-BIND-PART)."
+source = "formal/23-05-08 §9.4, §10.5/10.6, §11.5; D-BIND-PART"
+kind = "validation"
+status = "planned"
+depends_on = ["SACM23-AC-003", "SACM23-ARG-015", "SACM23-ART-013", "SACM23-TERM-008"]
+
+[[row]]
+id = "SACM23-VAL-015"
+area = "VAL"
+milestone = "M5"
+title = "AssuranceCasePackageInterface content"
+requirement = "An AssuranceCasePackageInterface holding a sub-package that is not an interface is a SACM-PKG-001 error per the clause 9.3 OCL."
+source = "formal/23-05-08 §9.3 (OCL)"
+kind = "validation"
+status = "planned"
+depends_on = ["SACM23-AC-002"]
+
+# ===========================================================================
+# M6 — Interoperability and compliance claims
+# ===========================================================================
+
+[[row]]
+id = "LIB-COMPAT-002"
+area = "COMPAT"
+milestone = "M6"
+title = "EMF reference-implementation dialect"
+requirement = "Tolerant import reads files from the EMF SACM reference implementation (per-package `http://omg.sacm/2.2/<package>` namespaces and its reference forms) without loss, reporting the dialect; strict export normalizes them."
+source = "Interop evidence: github.com/wrwei/SACM (Apache-2.0); docs/sacm/metamodel-inventory.md"
+kind = "xmi"
+status = "planned"
+depends_on = ["LIB-COMPAT-001", "SACM23-XMI-005", "SACM23-XMI-002"]
+
+[[row]]
+id = "LIB-COMPAT-004"
+area = "COMPAT"
+milestone = "M6"
+title = "Other SACM revisions"
+requirement = "A document declaring another SACM revision loads in tolerant mode with SACM-XMI-008 and saves as 2.3; an unrecognised namespace is SACM-XMI-002 (warning tolerant, error strict)."
+source = "D-VERSION; SACM-XMI-002, SACM-XMI-008"
+kind = "xmi"
+status = "planned"
+depends_on = ["LIB-COMPAT-001"]
+
+[[row]]
+id = "LIB-COMPAT-005"
+area = "COMPAT"
+milestone = "M6"
+title = "Third-party corpus"
+requirement = "Files produced by at least two independent SACM tools import, validate and semantically round-trip; each committed file carries its licence and a NOTICE entry, or is replaced by a minimized hand-written reproduction."
+source = "Interop evidence; Q-INTEROP"
+kind = "compliance"
+status = "planned"
+depends_on = ["LIB-COMPAT-002", "SACM23-ART-010", "SACM23-TERM-005"]
+
+[[row]]
+id = "LIB-TOOL-004"
+area = "TOOL"
+milestone = "M6"
+title = "Metamodel coverage against ptc/22-03-13"
+requirement = "`cargo xtask inventory` regenerates docs/sacm/metamodel-inventory.md from the pinned ptc/22-03-13 (applying the recorded divergences), and a test asserts every concrete class, attribute, containment role and reference end in it is represented by the crate."
+source = "ADR 0003; docs/sacm/metamodel-inventory.md"
+kind = "tooling"
+status = "planned"
+depends_on = ["LIB-TOOL-002", "LIB-API-003"]
+
+[[row]]
+id = "LIB-SEC-003"
+area = "SEC"
+milestone = "M6"
+title = "Resource limits"
+requirement = "Loading enforces configurable limits on input size, nesting depth and element count with documented defaults, failing with a diagnostic instead of exhausting memory or stack."
+source = "Robustness policy (docs/architecture.md, Goals)"
+kind = "security"
+status = "planned"
+depends_on = ["LIB-SEC-002"]
+
+[[row]]
+id = "LIB-CLI-004"
+area = "CLI"
+milestone = "M6"
+title = "`sacm convert`"
+requirement = "`sacm convert <in> -o <out>` loads tolerant and writes strict SACM 2.3, refusing (and listing why) when strict output would lose content."
+source = "Project policy (D-API)"
+kind = "cli"
+status = "planned"
+depends_on = ["LIB-CLI-003", "SACM23-XMI-008", "LIB-COMPAT-004"]
+
+[[row]]
+id = "SACM23-CP-002"
+area = "CP"
+milestone = "M6"
+title = "Argumentation Model compliance point"
+requirement = "Import and export XMI documents whose unit of interchange is Argumentation::ArgumentPackage, covering every Argumentation and Base feature, with constraints validated and lossless round trip."
+source = "formal/23-05-08 clause 2"
+kind = "compliance"
+status = "planned"
+depends_on = [
+  "SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005",
+  "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009",
+  "SACM23-ARG-001", "SACM23-ARG-002", "SACM23-ARG-003", "SACM23-ARG-004", "SACM23-ARG-005",
+  "SACM23-ARG-006", "SACM23-ARG-007", "SACM23-ARG-008", "SACM23-ARG-009", "SACM23-ARG-010",
+  "SACM23-ARG-011", "SACM23-ARG-012", "SACM23-ARG-013", "SACM23-ARG-014", "SACM23-ARG-015",
+  "SACM23-XMI-001", "SACM23-XMI-002", "SACM23-XMI-003", "SACM23-XMI-004", "SACM23-XMI-005",
+  "SACM23-XMI-006", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-XMI-009",
+  "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-005",
+  "SACM23-VAL-006", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-009", "SACM23-VAL-010",
+  "SACM23-VAL-011", "SACM23-VAL-012", "SACM23-VAL-013", "SACM23-VAL-014", "SACM23-VAL-016",
+  "LIB-RT-002", "LIB-TOOL-004",
+]
+
+[[row]]
+id = "SACM23-CP-003"
+area = "CP"
+milestone = "M6"
+title = "Artifact Model compliance point"
+requirement = "Import and export XMI documents whose unit of interchange is Artifact::ArtifactPackage, covering every Artifact and Base feature, with constraints validated and lossless round trip."
+source = "formal/23-05-08 clause 2"
+kind = "compliance"
+status = "planned"
+depends_on = [
+  "SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005",
+  "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009",
+  "SACM23-ART-001", "SACM23-ART-002", "SACM23-ART-003", "SACM23-ART-004", "SACM23-ART-005",
+  "SACM23-ART-006", "SACM23-ART-007", "SACM23-ART-008", "SACM23-ART-009", "SACM23-ART-010",
+  "SACM23-ART-011", "SACM23-ART-012", "SACM23-ART-013",
+  "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-XMI-009",
+  "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-007",
+  "SACM23-VAL-008", "SACM23-VAL-013", "SACM23-VAL-014",
+  "LIB-RT-002", "LIB-TOOL-004",
+]
+
+[[row]]
+id = "SACM23-CP-004"
+area = "CP"
+milestone = "M6"
+title = "Terminology Model compliance point"
+requirement = "Import and export XMI documents whose unit of interchange is Terminology::TerminologyPackage, covering every Terminology and Base feature, with constraints validated and lossless round trip."
+source = "formal/23-05-08 clause 2"
+kind = "compliance"
+status = "planned"
+depends_on = [
+  "SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005",
+  "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009",
+  "SACM23-TERM-001", "SACM23-TERM-002", "SACM23-TERM-003", "SACM23-TERM-004", "SACM23-TERM-005",
+  "SACM23-TERM-006", "SACM23-TERM-007", "SACM23-TERM-008",
+  "SACM23-XMI-007", "SACM23-XMI-008",
+  "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-007",
+  "SACM23-VAL-008", "SACM23-VAL-009", "SACM23-VAL-013", "SACM23-VAL-014", "SACM23-VAL-017",
+  "LIB-RT-002", "LIB-TOOL-004",
+]
+
+[[row]]
+id = "SACM23-CP-001"
+area = "CP"
+milestone = "M6"
+title = "Assurance Case Model compliance point (mandatory)"
+requirement = "Import and export XMI documents whose unit of interchange is SACM::AssuranceCasePackage, including nested assurance case packages, their interfaces and bindings, and all contained argumentation, artifact and terminology packages."
+source = "formal/23-05-08 clause 2"
+kind = "compliance"
+status = "planned"
+depends_on = [
+  "SACM23-CP-002", "SACM23-CP-003", "SACM23-CP-004",
+  "SACM23-AC-001", "SACM23-AC-002", "SACM23-AC-003", "SACM23-VAL-015", "LIB-COMPAT-005",
+]
+
+[[row]]
+id = "SACM23-CP-005"
+area = "CP"
+milestone = "M6"
+title = "SACM UML Profile compliance point"
+requirement = "Import and export conformant XMI for all valid SACM UML models."
+source = "formal/23-05-08 clause 2"
+kind = "compliance"
+status = "out-of-scope"
+notes = "D-SCOPE: the UML profile is a different interchange (UML models), not the SACM metamodel this crate implements."
+
+# ===========================================================================
+# M7 — 1.0 readiness
+# ===========================================================================
+
+[[row]]
+id = "LIB-RT-004"
+area = "RT"
+milestone = "M7"
+title = "Property-based round-trip and atomicity tests"
+requirement = "Property tests generate arbitrary valid documents and edit sequences through the public API and assert that save → load is lossless, output is deterministic, and failed edits leave the document unchanged."
+source = "D-RT, D-ATOMIC"
+kind = "quality"
+status = "planned"
+depends_on = ["LIB-RT-003", "LIB-EDIT-009"]
+
+[[row]]
+id = "LIB-SEC-004"
+area = "SEC"
+milestone = "M7"
+title = "Fuzzing"
+requirement = "A cargo-fuzz target feeds arbitrary bytes to the XMI reader; a documented run finds no panic, hang or limit violation, and found crashers become regression tests."
+source = "Robustness policy"
+kind = "security"
+status = "planned"
+depends_on = ["LIB-SEC-003"]
+
+[[row]]
+id = "LIB-QA-004"
+area = "QA"
+milestone = "M7"
+title = "Coverage reporting"
+requirement = "CI measures line coverage of the sacm crate with cargo-llvm-cov, publishes it, and fails below an agreed threshold."
+source = "Project policy"
+kind = "quality"
+status = "planned"
+depends_on = ["LIB-QA-001"]
+
+[[row]]
+id = "LIB-QA-005"
+area = "QA"
+milestone = "M7"
+title = "Release process"
+requirement = "Releases are cut from a documented, repeatable process: version bump, CHANGELOG section, tag, crates.io publish of sacm and sacm-cli, GitHub release with notes."
+source = "Project policy"
+kind = "quality"
+status = "planned"
+depends_on = ["LIB-QA-001"]
+
+[[row]]
+id = "LIB-QA-006"
+area = "QA"
+milestone = "M7"
+title = "Semver checks"
+requirement = "cargo-semver-checks runs on pull requests against the last published version and fails on an undeclared breaking change."
+source = "rust-library-craft skill (MSRV and semver)"
+kind = "quality"
+status = "planned"
+depends_on = ["LIB-QA-005"]
+
+[[row]]
+id = "LIB-QA-007"
+area = "QA"
+milestone = "M7"
+title = "Mutation testing"
+requirement = "cargo-mutants runs over the sacm crate on a schedule; surviving mutants in the xmi, validate and edit modules are triaged into tests or documented equivalents."
+source = "Project policy (verifier test-adequacy check)"
+kind = "quality"
+status = "planned"
+depends_on = ["LIB-QA-001"]
+
+[[row]]
+id = "LIB-API-005"
+area = "API"
+milestone = "M7"
+title = "Public API review"
+requirement = "The full public API is reviewed against the Rust API Guidelines checklist; findings are fixed or recorded as accepted deviations in an ADR before 1.0."
+source = "Rust API Guidelines"
+kind = "api"
+status = "planned"
+depends_on = ["LIB-DOC-001", "LIB-EDIT-009"]
+
+[[row]]
+id = "LIB-DOC-002"
+area = "DOC"
+milestone = "M7"
+title = "Examples on every major type"
+requirement = "Every public type and every fallible public function has a runnable example; `# Errors` and `# Panics` sections are present where applicable."
+source = "Project goal (well documented)"
+kind = "docs"
+status = "planned"
+depends_on = ["LIB-DOC-001"]
+
+[[row]]
+id = "LIB-DOC-003"
+area = "DOC"
+milestone = "M7"
+title = "User guide"
+requirement = "A user guide walks through loading, inspecting, validating, editing and saving assurance cases, strict vs tolerant mode and diagnostics, with tested code."
+source = "Project goal (easy to use)"
+kind = "docs"
+status = "planned"
+depends_on = ["LIB-DOC-001", "LIB-EDIT-009"]
+
+[[row]]
+id = "LIB-DOC-004"
+area = "DOC"
+milestone = "M7"
+title = "Runnable examples"
+requirement = "`crates/sacm/examples/` contains runnable programs for the common tasks, built in CI."
+source = "Project goal (easy to use)"
+kind = "docs"
+status = "planned"
+depends_on = ["LIB-DOC-001"]
+
+[[row]]
+id = "LIB-DOC-005"
+area = "DOC"
+milestone = "M7"
+title = "SACM primer for users"
+requirement = "A primer explains SACM's concepts — claims, asserted relationships, evidence, citations, modularity — for readers who have not read the specification, linked from the crate root."
+source = "Project goal (well documented)"
+kind = "docs"
+status = "planned"
+depends_on = ["LIB-DOC-003"]
+
+[[row]]
+id = "LIB-EDIT-011"
+area = "EDIT"
+milestone = "M7"
+title = "Undo and redo"
+requirement = "Applied mutations can be undone and redone, restoring a semantically equal document each time, using the mechanism chosen for Q-UNDO."
+source = "D-RESULT; Q-UNDO"
+kind = "editing"
+status = "planned"
+depends_on = ["LIB-EDIT-005", "LIB-EDIT-009"]
+
+[[row]]
+id = "LIB-API-006"
+area = "API"
+milestone = "M7"
+title = "serde support"
+requirement = "An optional `serde` feature serializes the model and diagnostics to self-describing formats (e.g. JSON)."
+source = "User request (none yet)"
+kind = "api"
+status = "candidate"
+notes = "Useful for tooling and the CLI's JSON output, but it freezes a second serialization of the model; decide after the model API stabilizes."
+
+[[row]]
+id = "LIB-CLI-005"
+area = "CLI"
+milestone = "M7"
+title = "`sacm inspect`"
+requirement = "`sacm inspect <file>` prints a summary and an outline tree of the case (packages, claims, relationships, evidence) for quick human review."
+source = "User request (none yet)"
+kind = "cli"
+status = "candidate"
+notes = "Nice for newcomers; schedule if users ask for it."
+
+[[row]]
+id = "LIB-API-007"
+area = "API"
+milestone = "M7"
+title = "Bindings for other languages"
+requirement = "C, Python or WebAssembly bindings to the library."
+source = "D-API"
+kind = "api"
+status = "candidate"
+notes = "D-API: not until the Rust API is stable."
+
+[[row]]
+id = "LIB-COMPAT-006"
+area = "COMPAT"
+milestone = "M7"
+title = "GSN mapping"
+requirement = "Mapping between GSN and SACM argument structures."
+source = "D-TERM"
+kind = "model"
+status = "out-of-scope"
+notes = "D-TERM: GSN is a notation over SACM and belongs in a separate crate, not in `sacm`."

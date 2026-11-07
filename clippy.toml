@@ -1,0 +1,7 @@
+msrv = "1.85"
+# Public API items are documented with SACM terms that look like code identifiers.
+doc-valid-idents = [
+    "SACM", "XMI", "OMG", "MOF", "UML", "EMF", "GSN", "CAE", "OCL",
+    "AssuranceCasePackage", "ArgumentPackage", "ArtifactPackage", "TerminologyPackage",
+    "..",
+]

@@ -1,0 +1,70 @@
+# SACM interpretation and policy decisions
+
+Settled decisions for libSACM. Agents treat this page as policy: apply it, do not
+reopen it. Only the maintainer changes a decision; when one changes, edit its row, say
+what changed and when, and update any affected matrix rows.
+
+Most of these were settled in the assurance-forge C++ SACM library (same author) and
+carried over because they are about the standard, not about a particular
+implementation. Their original discussion is linked where it exists.
+
+## Scope and posture
+
+| ID | Decision |
+|---|---|
+| D-SCOPE | Complete SACM 2.3 compliance (all four model compliance points) is the goal, reached through small verified slices. Interim releases describe the covered subset honestly; no compliance point is claimed until every row it depends on is verified. The SACM UML Profile compliance point is out of scope. |
+| D-VERSION | SACM 2.3 only. Older revisions are read in tolerant mode with a warning and written as 2.3. The design must not make a future 2.4 impossible (see the 2.4 watch notes in assurance-forge). |
+| D-TERM | The public API and docs use SACM terminology only. GSN terms (goal, strategy, solution, context node, away goal, module) never name SACM concepts. A GSN mapping, if ever offered, lives outside the `sacm` crate. |
+| D-NOLAYOUT | Diagram layout, coordinates and visual state are not SACM and have no place in the model or in strict output. |
+| D-API | The first external interface is a Rust API plus the `sacm` CLI. Other bindings (C, Python, WASM) wait until the model API is stable. |
+
+## Data integrity
+
+| ID | Decision |
+|---|---|
+| D-PRESERVE | Conforming SACM content is never silently dropped. Content the model cannot type yet is preserved in tolerant mode with a diagnostic; strict save refuses a document containing it rather than discard it. |
+| D-STRICT | Two modes. **Strict** is SACM 2.3 conformance behaviour and the default for saving. **Tolerant** accepts and reports third-party and legacy variations and is the default for loading. Tolerant acceptance is never presented as conformance. |
+| D-RT | Semantic round trip (load → save → load yields an equal model) is guaranteed. Textual round trip is not. Output is deterministic: the same model always saves to the same bytes. |
+| D-ID | Caller-provided and library-generated ids are both supported. Ids read from a file are preserved exactly. Generated ids are stable once created and deterministic for a given sequence of operations. |
+| D-NS-PIN | The strict export namespace is pinned to `http://www.omg.org/spec/SACM/20220301`. This is a project choice: the standard defines no instance namespace, so no file is reported non-conformant solely for using another one (see `metamodel-inventory.md`). |
+
+## Editing
+
+| ID | Decision |
+|---|---|
+| D-ATOMIC | Every public mutation either succeeds and leaves the document structurally valid, or fails and leaves it unchanged. |
+| D-PREVIEW | Destructive operations (delete, replace) can be previewed: the preview lists every element and relationship affected before anything changes. A preview taken before the document changed is rejected when applied. |
+| D-POLICY | Cascading deletion never happens implicitly. The caller chooses a policy (e.g. reject if referenced / delete referencing relationships; reject if non-empty / delete recursively). |
+| D-RESULT | Mutation results report created, changed and deleted ids and enough data for undo/redo and audit logs. Undo itself is a later row. |
+| D-VAL-LAYER | Two validation layers. **Structural** invariants (ids unique, references resolve, containment legal, multiplicities of required ends) hold after every successful mutation. **Content** constraints (the clause-level rules below) are checked by `validate()`, because a loaded document may legitimately violate them and must still be loadable, inspectable and fixable. Edit operations do not refuse a change for a content-level finding. |
+
+## Diagnostics
+
+| ID | Decision |
+|---|---|
+| D-DIAG | Diagnostics are machine-readable: stable code, severity, the matrix row and clause they enforce, affected element ids, source location where available, and a message. Codes are API and never change meaning. Catalog: [diagnostics.md](diagnostics.md). |
+| D-SEV | **Severity follows the clause's own modal verb.** "must" or an OCL invariant → error; "should" without OCL → warning. (assurance-forge #335.) This is why clause 8.2's abstractForm rules split: the citing element's `isAbstract` is stated flatly (error); the referred element's `isAbstract` and type are "should" (warning). |
+
+## Resolutions of defective or contradictory clauses
+
+Background for each is in [reference/specification-defects.md](reference/specification-defects.md).
+
+| ID | Clauses | Decision |
+|---|---|---|
+| D-TEXT-MODEL | 8.4–8.7, 11.2/11.4, 10.5, 12.9–12.14 | Where formal/23-05-08 and ptc/22-03-13 disagree, follow the resolutions recorded in [metamodel-inventory.md](metamodel-inventory.md): mostly toward the model for structure; toward the text for `Resource.location`, `ArtifactAssetRelationship` naming/generalization, `Event.date`, date types and `ArgumentationElement` abstractness. Machine-readable spellings are accepted on import (tolerant). |
+| D-BIND-PART | 9.4, 10.5/10.6, 11.5 | **A package binding is not a legal participant of a binding — warning, not error.** The parallel clauses give three different participant rules; all agree participants are the packages being bound, and none gives a binding-of-bindings a meaning. Diagnosed uniformly across all four families at warning severity because one clause's OCL admits it. The narrower 11.5 reading (participants must be interfaces) is not enforced: it contradicts its own Associations block and the other clauses. (assurance-forge #333.) |
+| D-IFACE-CITE | 9.3, 11.5, 11.6, 12.4, 12.5 | **Interface and binding contents must be citations — error.** Stated as a requirement wherever it is stated, and 11.5 backs it with OCL. The locality half — the citation points into the implemented package — is enforced for interfaces only, at warning severity; for bindings it is not enforced, because a participant may be an interface residing inside the package the citation targets, so the document has two legitimate readings. (assurance-forge #333.) |
+| D-PKG-HOMOG | 11.4, 11.6 | **ArgumentPackage homogeneity is an error, but a contained interface or binding does not trigger it.** Read literally, 11.4 ("only allowed to contain ArgumentPackages") is unsatisfiable alongside 11.6 (an interface resides inside the package it describes), so 11.4 is triggered only by a nested *plain* ArgumentPackage. (assurance-forge #334.) |
+| D-DESC-MULT | 8.6 | `ModelElement.description` is stored as a list (the model says `0..*`) so files with several descriptions round-trip, and the text's `0..1` is enforced in validation as a warning. |
+
+## Open questions
+
+Recorded so they are not decided by accident in code. The lead raises them with the
+maintainer when a slice needs them.
+
+| ID | Question | Needed by |
+|---|---|---|
+| Q-UNDO | Should undo be built on inverse operations or snapshots? | LIB-EDIT-011 |
+| Q-XML-BACKEND | Which XML crate(s) for reading and writing (see ADR 0005, proposed)? | first XMI slice |
+| Q-DATE | How should `date`-typed attributes be represented: validated `xs:date`/`xs:dateTime` lexical forms preserved as text, or parsed values? | SACM23-ART-013 |
+| Q-INTEROP | Which third-party corpus files may be committed (licence review)? assurance-forge carries EPL-2.0 and MIT samples under `libs/sacm/tests/data/interop-thirdparty/`. | LIB-COMPAT-005 |

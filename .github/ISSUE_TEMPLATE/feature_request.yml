@@ -1,0 +1,21 @@
+name: Feature request
+description: A capability you need from the library or CLI.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What you are trying to do
+      description: The task, not the solution. What assurance-case workflow is this for?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed API or behaviour (optional)
+      render: rust
+  - type: input
+    id: rows
+    attributes:
+      label: Related matrix rows (optional)
+      description: e.g. LIB-EDIT-011, from docs/matrix/functionality-matrix.md

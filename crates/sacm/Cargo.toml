@@ -1,0 +1,24 @@
+[package]
+name = "sacm"
+description = "Read, edit, validate and write OMG SACM 2.3 (Structured Assurance Case Metamodel) assurance cases"
+readme = "README.md"
+keywords = ["sacm", "assurance-case", "safety-case", "xmi", "omg"]
+categories = ["parser-implementations", "encoding", "data-structures"]
+documentation = "https://docs.rs/sacm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

@@ -1,0 +1,9 @@
+* text=auto eol=lf
+
+# Fixtures are compared byte-for-byte by golden tests; never rewrite line endings.
+*.xmi   text eol=lf
+*.sacm  text eol=lf
+*.xml   text eol=lf
+
+*.pdf   binary
+*.png   binary
