@@ -1,8 +1,8 @@
 ---
 slice: 0002
 name: m0-qa-and-cli-verification
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [LIB-QA-002, LIB-QA-003, LIB-CLI-001]
 mode: pr
 ---
@@ -56,3 +56,6 @@ Existing:
 - 2026-11-07 maintainer chose F2 option (a). Lead added include-dev = true to deny.toml [licenses]; cargo deny check passes with dev-dependencies now licence-checked.
 - 2026-11-07 PR #7 merged by the maintainer (main 9f59c85); the final LIB-QA-003 fix continues on branch slice/0002-qa-003-final.
 - 2026-11-07 F1/F2 tests: the test engineer added the remaining log-level must-kills (upper-case input name, alias, empty value) in a new test, and made licenses.include-dev required to be exactly true. Process note: sabotage copies were again run under the session scratchpad via Bash (outside the repository).
+- 2026-11-07 PR #8: CI green (run 42362800537); Copilot review reported no open issues.
+- 2026-11-07 verification round 4: LIB-QA-003 PASS -> verified (docs/verification/0002-m0-qa-and-cli-verification-round4.md). New row LIB-QA-009 (pin cargo-deny-action by SHA).
+- 2026-11-07 closed. Slice 0002 verified: LIB-CLI-001, LIB-QA-002, LIB-QA-003. Landed across PRs #6, #7 and #8.
