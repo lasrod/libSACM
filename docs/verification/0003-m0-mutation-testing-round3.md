@@ -70,3 +70,29 @@ All pass:
 
 - LIB-QA-010: a mechanised check that each exclusion matches exactly one mutant.
 - LIB-TOOL-012: test `curl_download` against a local HTTP server for `--fail` and `--location`.
+
+## Addendum: the Copilot review fixes (rounds 4 and 5, PR #9)
+
+Copilot left four comments when PR #9 was marked ready.
+- **Fixed in `9429bf9` and `893a55b`:**
+  - **4502142536:** the `.gitignore` check trimmed leading whitespace.
+  - **4502142569:** the scratch copy was reused over a stale tree.
+  - **4502142601:** step 8.5 created a duplicate PR.
+  - **4502142636:** there was no full-run dispatch when `mutants.yml` was skipped.
+- **Round 4 (verifier, head `893a55b`): FAIL on 4502142536 only.**
+  - **R4-1:** `trim_end` also strips trailing tabs, which git keeps.
+  - **R4-2:** a re-include was caught only if it contained the literal `mutants.out`, so `!*` and `!/mutants.ou?` passed.
+  - The verifier recorded that this check had been weaker than round 3 stated: `trim` hid both gaps. The real `.gitignore` was correct throughout.
+- **Fixed in `474f850`:**
+  - only U+0020 trailing spaces are stripped;
+  - every line starting with `!` is reported (D12);
+  - new controls for a trailing tab, an escaped trailing space, `!*`, `!/mutants.ou?`, an escaped `\!` and CRLF.
+  - `f1a7a7c` fixes the step-7 wording (O1, O2) and adds LIB-QA-011 (O3).
+- **Round 5 (verifier, head `f1a7a7c7fe39114d87d216e700157058c254acb2`): PASS.**
+  - All four comments pass.
+  - All 21 hand mutations of the checker are killed. They were applied in a scratch copy under `target/`, never in the working tree.
+  - Every case agrees with `git check-ignore`.
+  - CI [42383300662](https://github.com/lasrod/libSACM/actions/runs/42383300662) succeeded. Its `mutants (PR diff)` job caught 12 of 12.
+  - mutants.yml [42383300659](https://github.com/lasrod/libSACM/actions/runs/42383300659): 216 mutants, 212 caught, 0 missed, 0 timeout, 4 unviable. The outcome lists are identical to the earlier runs.
+  - **LIB-QA-007 stays verified.**
+- **Non-blocking:** the checker refuses some harmless files: a UTF-8 BOM before the rule, an unrelated `!` line, and a re-include inside an excluded directory. Refusing them is the safe direction under D12.
