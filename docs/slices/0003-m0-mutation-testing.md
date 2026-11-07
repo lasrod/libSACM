@@ -1,7 +1,7 @@
 ---
 slice: 0003
 name: m0-mutation-testing
-state: in-progress
+state: stopped
 step: verification
 rows: [LIB-QA-007]
 mode: pr
@@ -52,3 +52,5 @@ To be listed after the test step.
 - 2026-11-07 verification: sacm-verifier, against the 0003 prescription.
 - 2026-11-07 verification round 1: FAIL (docs only: F1 exclusions unchecked; F2 mode=local had no report; F3 no stated mechanical path for hand-reasoned mutations; F4 triage text); P9 confirmed. docs/verification/0003-m0-mutation-testing.md. Maintainer decision on F2: in mode=local, no PASS for mutated-code rows without a Linux report.
 - 2026-11-07 fix round 1: the test engineer extended the doc checks first (red: three [doc-verifier] problems and one [doc-skill]); the lead wrote the sacm-verifier.md and SKILL.md paragraphs and corrected the triage text (F4); follow-ups: the implementer definition (scratch copies under target/) and docs/loop.md (the draft PR step). All 67 repo_checks pass.
+- 2026-11-07 verification round 2: FAIL. F1 and F3 met. Remaining: R2-1 (stale 'later commits are docs-only' line), R2-1b (the 470:28 row note), R2-2 (the mode=local paragraph says to push; loop.md not scoped to mode=pr), R2-3 (the implementer scratch-copy example copies HEAD, not the working tree). All are lead-owned docs. The verifier-definition diff is approved as-is. docs/verification/0003-m0-mutation-testing-round2.md.
+- 2026-11-07 stopped: second FAIL; awaiting maintainer approval of fix round 2.
