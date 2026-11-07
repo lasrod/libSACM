@@ -193,8 +193,15 @@ code = ["Cargo.toml", "clippy.toml", ".github/workflows/ci.yml"]
 tests = [
   "xtask/tests/repo_checks.rs::lib_qa_002_msrv_is_consistent",
   "xtask/tests/repo_checks.rs::lib_qa_002_msrv_job_check_rejects_known_bypasses",
+  "xtask/tests/repo_checks.rs::lib_qa_002_msrv_job_check_rejects_yaml_run_bypasses",
+  "xtask/tests/repo_checks.rs::lib_qa_002_msrv_job_check_rejects_yaml_guard_bypasses",
+  "xtask/tests/repo_checks.rs::lib_qa_002_msrv_job_check_compares_keys_as_strings",
+  "xtask/tests/repo_checks.rs::lib_qa_002_msrv_job_check_reports_parse_and_shape_errors",
+  "xtask/tests/repo_checks.rs::lib_qa_002_msrv_job_check_accepts_equivalent_yaml",
+  "xtask/tests/repo_checks.rs::lib_qa_002_workflow_reader_keeps_yaml_1_2_scalars",
   "xtask/tests/repo_checks.rs::lib_qa_002_published_crates_inherit_rust_version",
   "xtask/tests/repo_checks.rs::lib_qa_002_rust_version_check_rejects_member_declarations",
+  "xtask/tests/repo_checks.rs::lib_qa_002_rust_version_check_accepts_inline_inheritance",
 ]
 
 [[row]]
@@ -221,9 +228,18 @@ tests = [
   "xtask/tests/repo_checks.rs::lib_qa_003_dependency_policy_is_enforced",
   "xtask/tests/repo_checks.rs::lib_qa_003_licence_check_rejects_non_permissive_licences",
   "xtask/tests/repo_checks.rs::lib_qa_003_policy_check_rejects_known_bypasses",
+  "xtask/tests/repo_checks.rs::lib_qa_003_policy_check_rejects_graph_exclusions",
+  "xtask/tests/repo_checks.rs::lib_qa_003_policy_check_rejects_private_sources",
+  "xtask/tests/repo_checks.rs::lib_qa_003_policy_check_rejects_disabled_yank_checking",
+  "xtask/tests/repo_checks.rs::lib_qa_003_policy_check_rejects_narrowed_licence_check",
+  "xtask/tests/repo_checks.rs::lib_qa_003_policy_check_rejects_unreviewed_keys",
   "xtask/tests/repo_checks.rs::lib_qa_003_policy_check_accepts_approved_configuration",
   "xtask/tests/repo_checks.rs::lib_qa_003_ci_deny_job_runs_every_check",
   "xtask/tests/repo_checks.rs::lib_qa_003_deny_job_check_rejects_known_bypasses",
+  "xtask/tests/repo_checks.rs::lib_qa_003_deny_job_check_rejects_yaml_input_bypasses",
+  "xtask/tests/repo_checks.rs::lib_qa_003_deny_job_check_rejects_yaml_guard_bypasses",
+  "xtask/tests/repo_checks.rs::lib_qa_003_deny_job_check_reports_parse_and_shape_errors",
+  "xtask/tests/repo_checks.rs::lib_qa_003_deny_job_check_accepts_equivalent_inputs",
 ]
 
 [[row]]
