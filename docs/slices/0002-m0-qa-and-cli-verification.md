@@ -1,7 +1,7 @@
 ---
 slice: 0002
 name: m0-qa-and-cli-verification
-state: in-progress
+state: stopped
 step: verification
 rows: [LIB-QA-002, LIB-QA-003, LIB-CLI-001]
 mode: pr
@@ -45,3 +45,5 @@ Existing:
 - 2026-11-07 verification round 1: sacm-verifier.
 - 2026-11-07 verification round 1: FAIL on all three rows (tests did not kill bypasses the requirements rule out); complete prescription in docs/verification/0002-m0-qa-and-cli-verification.md. Verifier accepted Linux end-to-end tests for LIB-CLI-001.
 - 2026-11-07 fix round 1: test engineer added 10 tests (check functions over the real ci.yml/deny.toml/manifests, with every prescribed bypass applied in memory and reported; two Linux-only CLI tests). No production change. Pushed for Linux CI evidence before re-verification.
+- 2026-11-07 verification round 2: LIB-CLI-001 PASS -> verified. LIB-QA-002 and LIB-QA-003 FAIL a second time: 13 YAML and cargo-deny bypasses within scope (two also raised by the Copilot review on PR #6). Complete remainder in docs/verification/0002-m0-qa-and-cli-verification-round2.md.
+- 2026-11-07 stopped: second FAIL; the maintainer decides on fix round 2 (YAML parser). Also added: sacm-slice step 8.6 (address Copilot review comments), at the maintainer's request.

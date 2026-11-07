@@ -459,7 +459,7 @@ title = "CLI skeleton with `sacm version`"
 requirement = "The `sacm` binary parses subcommands, prints the tool version and implemented SACM revision for `sacm version`, prints usage and exits non-zero for unknown subcommands, and treats a closed stdout pipe as success."
 source = "Project policy (D-API)"
 kind = "cli"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-API-001"]
 acceptance = [
   "`sacm version` exits 0 and prints `sacm <version> (SACM 2.3)`.",
@@ -473,6 +473,7 @@ tests = [
   "crates/sacm-cli/tests/cli.rs::lib_cli_001_closed_stdout_is_success",
   "crates/sacm-cli/tests/cli.rs::lib_cli_001_stdout_write_error_fails_with_message",
 ]
+verification = "docs/verification/0002-m0-qa-and-cli-verification-round2.md"
 
 [[row]]
 id = "LIB-QA-007"
