@@ -34,3 +34,68 @@ fn lib_cli_001_unknown_subcommand_fails_with_usage() {
         "LIB-CLI-001: failure prints usage, got: {stderr}"
     );
 }
+
+/// A closed pipe on stdout is success: stdout is one end of a Unix socket
+/// pair whose other end is closed before `sacm` starts, so the write fails
+/// with EPIPE (`BrokenPipe`). Linux only: the mechanism is EPIPE; Windows
+/// reports a closed pipe differently (os error 232) and is not covered here.
+#[cfg(target_os = "linux")]
+#[test]
+fn lib_cli_001_closed_stdout_is_success() {
+    use std::os::fd::OwnedFd;
+    use std::os::unix::net::UnixStream;
+    use std::process::Stdio;
+
+    let (peer, stdout) = UnixStream::pair().expect("create a Unix socket pair");
+    drop(peer);
+    let output = sacm()
+        .arg("version")
+        .stdout(Stdio::from(OwnedFd::from(stdout)))
+        .stderr(Stdio::piped())
+        .output()
+        .expect("run sacm version");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "LIB-CLI-001: a closed stdout pipe must exit 0, got {:?}; stderr: {stderr}",
+        output.status
+    );
+    assert!(
+        stderr.is_empty(),
+        "LIB-CLI-001: a closed stdout pipe must write nothing to stderr, got: {stderr}"
+    );
+}
+
+/// Any other stdout write error is a failure with a message: stdout is
+/// `/dev/full`, so the write fails with ENOSPC.
+#[cfg(target_os = "linux")]
+#[test]
+fn lib_cli_001_stdout_write_error_fails_with_message() {
+    use std::fs::OpenOptions;
+    use std::process::Stdio;
+
+    let full = OpenOptions::new()
+        .write(true)
+        .open("/dev/full")
+        .expect("open /dev/full for writing");
+    let output = sacm()
+        .arg("version")
+        .stdout(Stdio::from(full))
+        .stderr(Stdio::piped())
+        .output()
+        .expect("run sacm version");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "LIB-CLI-001: a stdout write error must exit non-zero, got {:?}; stderr: {stderr}",
+        output.status
+    );
+    assert!(
+        stderr.starts_with("sacm: "),
+        "LIB-CLI-001: a stdout write error must print a `sacm: ` message on stderr, got: {stderr}"
+    );
+    assert!(
+        !stderr.contains("panicked"),
+        "LIB-CLI-001: a stdout write error must not panic, got: {stderr}"
+    );
+}

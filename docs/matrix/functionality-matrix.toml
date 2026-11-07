@@ -186,10 +186,15 @@ depends_on = ["LIB-QA-001"]
 acceptance = [
   "Cargo.toml rust-version, clippy.toml msrv and the CI msrv toolchain are the same version (regression test).",
   "`cargo +1.85 test -p sacm -p sacm-cli` passes locally and in CI.",
+  "The CI MSRV job contains the exact, uncommented step `- run: cargo +{msrv} test -p sacm -p sacm-cli` and is not conditional (`if:`) or allowed to fail (`continue-on-error:`).",
+  "Every published crate inherits `rust-version` from the workspace (`rust-version.workspace = true`); none declares its own.",
 ]
 code = ["Cargo.toml", "clippy.toml", ".github/workflows/ci.yml"]
 tests = [
   "xtask/tests/repo_checks.rs::lib_qa_002_msrv_is_consistent",
+  "xtask/tests/repo_checks.rs::lib_qa_002_msrv_job_check_rejects_known_bypasses",
+  "xtask/tests/repo_checks.rs::lib_qa_002_published_crates_inherit_rust_version",
+  "xtask/tests/repo_checks.rs::lib_qa_002_rust_version_check_rejects_member_declarations",
 ]
 
 [[row]]
@@ -206,10 +211,19 @@ acceptance = [
   "deny.toml allows only permissive licences and denies unknown registries and git sources.",
   "`cargo deny check` passes locally and in CI.",
   "A regression test fails if the CI deny job or deny.toml is removed.",
+  "The allowed licences are a subset of an explicit permissive set (current eight plus 0BSD, MIT-0, BSL-1.0, CC0-1.0, Unlicense, Unicode-DFS-2016); licence exceptions stay within that set; no crate is excluded from the graph.",
+  "Sources: no git sources or organisations are allowed and the only registry is crates.io.",
+  "Advisories: no advisory is ignored without a stated reason, and no alternative advisory database is configured.",
+  "The CI deny step is present, uncommented, unconditional, not allowed to fail, and runs all checks (no subset, no narrowing arguments).",
 ]
 code = ["deny.toml", ".github/workflows/ci.yml"]
 tests = [
   "xtask/tests/repo_checks.rs::lib_qa_003_dependency_policy_is_enforced",
+  "xtask/tests/repo_checks.rs::lib_qa_003_licence_check_rejects_non_permissive_licences",
+  "xtask/tests/repo_checks.rs::lib_qa_003_policy_check_rejects_known_bypasses",
+  "xtask/tests/repo_checks.rs::lib_qa_003_policy_check_accepts_approved_configuration",
+  "xtask/tests/repo_checks.rs::lib_qa_003_ci_deny_job_runs_every_check",
+  "xtask/tests/repo_checks.rs::lib_qa_003_deny_job_check_rejects_known_bypasses",
 ]
 
 [[row]]
@@ -450,11 +464,14 @@ depends_on = ["LIB-API-001"]
 acceptance = [
   "`sacm version` exits 0 and prints `sacm <version> (SACM 2.3)`.",
   "An unknown subcommand exits non-zero and prints usage.",
+  "When stdout is a closed pipe, `sacm version` exits 0 and writes nothing to stderr; any other stdout write error exits non-zero and prints a `sacm:` message on stderr.",
 ]
 code = ["crates/sacm-cli/src/main.rs"]
 tests = [
   "crates/sacm-cli/tests/cli.rs::lib_cli_001_version_reports_tool_and_sacm_revision",
   "crates/sacm-cli/tests/cli.rs::lib_cli_001_unknown_subcommand_fails_with_usage",
+  "crates/sacm-cli/tests/cli.rs::lib_cli_001_closed_stdout_is_success",
+  "crates/sacm-cli/tests/cli.rs::lib_cli_001_stdout_write_error_fails_with_message",
 ]
 
 [[row]]
@@ -544,6 +561,27 @@ source = "Verification 0001 round 2 Low and round-6 prescription (R63; different
 kind = "tooling"
 status = "planned"
 depends_on = ["LIB-TOOL-001"]
+
+[[row]]
+id = "LIB-QA-008"
+area = "QA"
+milestone = "M0"
+title = "CI gate checks match live steps, not text"
+requirement = "The CI regression tests match each gate as a whole, uncommented step line inside a job that is neither conditional (`if:`) nor allowed to fail (`continue-on-error:`), so a commented-out or neutered gate fails the test."
+source = "Verification 0002 follow-up (new class for verified LIB-QA-001)"
+kind = "quality"
+status = "planned"
+depends_on = ["LIB-QA-001"]
+
+[[row]]
+id = "LIB-DOC-007"
+area = "DOC"
+milestone = "M0"
+title = "Documented MSRV matches the manifest"
+requirement = "The MSRV stated in README.md (badge) and CONTRIBUTING.md equals `rust-version` in the workspace manifest; a test enforces it."
+source = "Verification 0002 follow-up"
+kind = "docs"
+status = "planned"
 
 [[row]]
 id = "LIB-DOC-006"
