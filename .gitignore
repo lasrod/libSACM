@@ -3,6 +3,7 @@
 *.profraw
 *.profdata
 lcov.info
+/mutants.out*
 __pycache__/
 *.pyc
 

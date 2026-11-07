@@ -500,11 +500,60 @@ id = "LIB-QA-007"
 area = "QA"
 milestone = "M0"
 title = "Mutation testing"
-requirement = "cargo-mutants runs over the workspace (the sacm crate and xtask) in CI on pull requests, scoped to the changed code, and on a schedule over everything; surviving mutants are triaged into tests or documented equivalents, and the verifier reviews the mutants report instead of hand-picking mutations."
-source = "Project policy (verifier test-adequacy check); brought forward to M0 by the maintainer 2026-11-07 after slice 0001 needed five verification rounds"
+requirement = "cargo-mutants runs over the whole workspace (sacm, sacm-cli, xtask) in CI: scoped to the diff on every pull request, and as a full sharded run weekly, on demand and on pull requests that change Rust code or the mutation configuration; surviving mutants are triaged into killing tests, documented equivalents or documented accepted survivors; the verifier reviews the Linux cargo-mutants report for the slice's code as the primary test-adequacy evidence, and reasons by hand only about criterion behaviours its operators do not generate."
+source = "Project policy (verifier test-adequacy check); brought forward to M0 by the maintainer 2026-11-07; pre-verification prescription docs/verification/0003-m0-mutation-testing-prescription.md"
 kind = "quality"
-status = "planned"
+status = "implemented"
 depends_on = ["LIB-QA-001"]
+acceptance = [
+  "A `mutants` job in .github/workflows/ci.yml runs on every pull request on ubuntu; its only condition is exactly `github.event_name == 'pull_request'`, and `on.pull_request` has no branch, path or type filter. It checks out with `fetch-depth: 0` and no other checkout input, writes the PR's diff with exactly `git diff \"origin/${BASE_REF}...HEAD\" > mutants.diff` (`BASE_REF` = `github.base_ref`), installs cargo-mutants with exactly `cargo install cargo-mutants --locked --version 27.1.0`, and runs exactly `cargo mutants --workspace --in-diff mutants.diff`. The job fails unless cargo-mutants exits 0 (so a missed or timed-out mutant in changed code, a failing baseline, or an invalid or mismatched diff fails it; unviable mutants do not); neither the job nor its steps can be skipped or allowed to fail; and `mutants.out` is uploaded whether or not the run fails.",
+  ".github/workflows/mutants.yml runs weekly (one cron with a single day of the week), on `workflow_dispatch`, and on pull requests changing .cargo/mutants.toml, .github/workflows/mutants.yml, crates/**, xtask/**, Cargo.toml or Cargo.lock. On ubuntu it runs `cargo mutants --workspace --shard ${{ matrix.shard }}/N` with no other filter over shards exactly 0..N-1 with `fail-fast: false`; each shard fails unless cargo-mutants exits 0 and uploads its `mutants.out` as an artifact named for the shard with `if: always()` and `if-no-files-found: error`.",
+  ".cargo/mutants.toml sets `cap_lints = true`, `all_features = true` and `test_workspace = false`, and uses no key outside a reviewed list. Exclusions are only `exclude_re` entries (each anchored `^...$` to one mutant name in an existing source file, with no wildcard except the `\\d+:\\d+` position) and `exclude_globs` entries (each an exact existing file path that leaves at least one source file of its package); `examine_globs` and `examine_re` are empty; no source file has a `mutants::skip` attribute and no manifest depends on `mutants`. Every exclusion is listed in docs/quality/mutants-triage.md with its reason and owning row, and a test checks the two lists agree exactly.",
+  "docs/quality/mutants-triage.md records the baseline full run on ubuntu (run URL, commit SHA, cargo-mutants version, total mutant count, per-shard caught/missed/timeout/unviable counts) and gives every missed or timed-out mutant exactly one disposition: killed (test named and cited under the row that owns the code), equivalent (argument as prescribed), or accepted (allowed class, reason, follow-up row); equivalent and accepted mutants are excluded as in criterion 3; and a full run at the slice's final commit has no missed and no timed-out mutants in any shard.",
+  "YAML-aware regression tests (reusing the LIB-QA-002/003 reader, problem codes, real-file, in-memory-mutation and control pattern) report every removal or neutering of criteria 1-3 and 7 with a stable problem code, including every mutation in docs/verification/0003-m0-mutation-testing-prescription.md (P1-P5).",
+  "The sacm-verifier definition and the sacm-slice skill require a Linux cargo-mutants report for the commit under verification, obtained from the slice's draft PR pushed before verification; the verifier reviews its missed, timeout and unviable lists for the slice's code, still reasons about criterion behaviours outside cargo-mutants' operators, and writes any local run under target/ (never `--in-place`). CONTRIBUTING.md gives the exact install command, how to run the whole workspace and `--in-diff` locally, that mutants.out is git-ignored, and that Linux-only tests make some sacm-cli mutants show as missed on Windows and macOS, so the authoritative run is Linux.",
+  ".gitignore ignores `/mutants.out*`.",
+]
+tests = [
+  "xtask/tests/repo_checks.rs::lib_qa_007_ci_mutants_job_is_pinned",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_rejects_missing_or_inexact_command",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_rejects_diff_bypasses",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_rejects_install_bypasses",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_rejects_unknown_steps",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_rejects_checkout_inputs",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_rejects_job_condition_and_key_bypasses",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_rejects_step_guards",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_rejects_artifact_bypasses",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_rejects_env_overrides",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_rejects_pr_trigger_filters",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_reports_parse_and_shape_errors",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_accepts_equivalent_yaml",
+  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_workflow_is_pinned",
+  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_reports_a_missing_workflow",
+  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_rejects_trigger_bypasses",
+  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_rejects_inexact_command",
+  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_rejects_shard_bypasses",
+  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_rejects_job_key_bypasses",
+  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_rejects_step_bypasses",
+  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_rejects_artifact_bypasses",
+  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_rejects_defaults_merge_parse_and_shape",
+  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_rejects_broad_permissions",
+  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_accepts_equivalent_yaml",
+  "xtask/tests/repo_checks.rs::lib_qa_007_install_command_is_identical_everywhere",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_config_is_reviewed",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_config_check_rejects_parse_errors_and_unreviewed_keys",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_config_check_requires_cap_lints_features_and_test_scope",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_config_check_rejects_broad_exclude_globs",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_config_check_rejects_broad_exclude_re",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_config_check_cross_checks_the_triage_document",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_config_check_rejects_source_skips",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_config_check_accepts_reviewed_configuration",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_output_is_git_ignored",
+  "xtask/tests/repo_checks.rs::lib_qa_007_contributing_documents_mutation_testing",
+  "xtask/tests/repo_checks.rs::lib_qa_007_verifier_definition_requires_the_linux_mutants_report",
+  "xtask/tests/repo_checks.rs::lib_qa_007_slice_skill_obtains_the_report_before_verification",
+]
+code = [".github/workflows/ci.yml", ".github/workflows/mutants.yml", ".cargo/mutants.toml", ".gitignore", "docs/quality/mutants-triage.md"]
 
 [[row]]
 id = "LIB-TOOL-005"

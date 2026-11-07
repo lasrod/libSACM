@@ -1,0 +1,48 @@
+---
+slice: 0003
+name: m0-mutation-testing
+state: in-progress
+step: verification
+rows: [LIB-QA-007]
+mode: pr
+---
+
+# Slice 0003: Mutation testing with cargo-mutants
+
+## Scope
+
+Adopt `cargo-mutants` so the gaps verifiers found by hand in slices 0001 and 0002 are found mechanically, the same way on every PR. The maintainer brought this row forward from M7 for that reason.
+
+| Row | Title | Status at start |
+|---|---|---|
+| LIB-QA-007 | Mutation testing | planned |
+
+## Out of scope
+
+- LIB-QA-009 (pinning third-party actions): this slice avoids adding a third-party action. cargo-mutants is installed with `cargo install --locked` at a pinned version.
+- Raising coverage of the `sacm` crate's future model code: the crate barely exists yet; this slice sets up the mechanism and triages today's survivors.
+
+## Normative basis
+
+None (a quality row). The source is project policy and the verifier's test-adequacy check.
+
+## Design (proposed; pre-verified before work starts)
+
+- **Tool:** `cargo-mutants` 27.1.0 (MIT), installed in CI with `cargo install cargo-mutants --locked --version 27.1.0`. No third-party action.
+- **Configuration:** `.cargo/mutants.toml`. Every exclusion has a stated reason, and nothing is excluded silently.
+- **On pull requests:** a `mutants` job in `ci.yml` on ubuntu runs `cargo mutants --in-diff <PR diff>` over the workspace (`sacm`, `sacm-cli`, `xtask`). The job fails on any missed mutant in changed code. Linux, because some kills come from Linux-only tests.
+- **Full run:** a separate workflow (`.github/workflows/mutants.yml`) runs on a weekly schedule and on `workflow_dispatch`. It runs the whole workspace, sharded, and uploads `mutants.out` as an artifact.
+- **Baseline:** the first full run, triggered on this branch, lists today's survivors. Each survivor is either killed by a new test, cited under the row that owns the code, or recorded as an equivalent mutant in `docs/quality/mutants-triage.md` with a reason. The known candidates are X-flush/M5 from slice 0001 and R23b.
+- **Process:** `sacm-verifier` reviews the mutants report for the slice's code instead of hand-picking mutations. Its definition and the `sacm-slice` skill say so.
+- **Ownership:** `ci.yml`, `mutants.yml` and `.cargo/mutants.toml` are repository configuration. No agent's write scope covers them, so the lead edits them, as with `deny.toml` in slice 0002. The test engineer writes the regression tests that pin them, and the verifier verifies them.
+
+## Tests
+
+To be listed after the test step.
+
+## Log
+
+- 2026-11-07 preflight: main at 2c32b39 (PR #8 merged), no open PRs, matrix gate OK. Branch `slice/0003-m0-mutation-testing`.
+- 2026-11-07 pre-verification: the verifier gave the complete prescription (docs/verification/0003-m0-mutation-testing-prescription.md). Maintainer decisions: D2 a pinned if in ci.yml; D10 a full run on all Rust PRs; D14 a draft PR before verification. Row criteria reworded.
+- 2026-11-07 tests first (P7): the test engineer wrote 37 lib_qa_007_* tests in xtask/tests/repo_checks.rs. 36 fail against the real files with their expected codes; the SKILL.md check already passes (the lead's step-7 edit). Red confirmed by the lead. Row -> tests-failing.
+- 2026-11-07 implementation (lead, configuration): mutants job in ci.yml, mutants.yml, .cargo/mutants.toml, /mutants.out* in .gitignore, a CONTRIBUTING section, the triage document skeleton, and the verifier-definition and skill text, all copied from the test engineer's reference fixtures. All 67 repo_checks tests pass; the full gate passes. Row -> implemented. Pushed as a draft PR for the Linux baseline run.
