@@ -9,6 +9,8 @@ import io
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -449,6 +451,314 @@ class SettingsTests(unittest.TestCase):
                     1,
                     "LIB-TOOL-003: the hook command runs the guard once",
                 )
+
+
+# Exception types an internal error can raise. The guard must fail closed on
+# every one of them, not only on the RuntimeError the older tests use.
+EXCEPTION_TYPES = (AttributeError, TypeError, KeyError, ValueError, OSError)
+
+# Payload `tool_input` values that make decide() raise for real (no mocks), for
+# a scoped role whose allow list is not empty.
+MALFORMED_TOOL_INPUTS = (
+    ("tool_input is a string", "crates/sacm/tests/x.rs"),
+    ("tool_input is a list", ["crates/sacm/tests/x.rs"]),
+    ("file_path is an int", {"file_path": 7}),
+    ("file_path is a list", {"file_path": ["crates/sacm/tests/x.rs"]}),
+)
+
+
+def malformed(tool_input: object, agent: str | None) -> dict:
+    payload = {"tool_name": "Write", "tool_input": tool_input}
+    if agent is not None:
+        payload["agent_type"] = agent
+    return payload
+
+
+class FailClosedTests(unittest.TestCase):
+    """Fail closed on any exception type and on malformed payloads (LIB-TOOL-003)."""
+
+    def setUp(self) -> None:
+        self.root = tempfile.mkdtemp()
+
+    def guarded(self, payload: dict, scopes: dict | None = SCOPES) -> dict | None:
+        try:
+            return guard.guarded_decide(payload, scopes, self.root)
+        except Exception as error:  # noqa: BLE001 -- an escape is the failure under test
+            self.fail(f"LIB-TOOL-003: guarded_decide() let {error!r} escape instead of denying")
+
+    def run_main(self, stdin_text: str, project_dir: str | None = None) -> str:
+        """main() on `stdin_text`; its stdout. `project_dir` None unsets CLAUDE_PROJECT_DIR."""
+        stdout = io.StringIO()
+        with mock.patch.object(sys, "stdin", io.StringIO(stdin_text)), mock.patch.object(
+            sys, "stdout", stdout
+        ), mock.patch.dict(os.environ):
+            if project_dir is None:
+                os.environ.pop("CLAUDE_PROJECT_DIR", None)
+            else:
+                os.environ["CLAUDE_PROJECT_DIR"] = project_dir
+            try:
+                code = guard.main()
+            except Exception as error:  # noqa: BLE001 -- an escape is the failure under test
+                self.fail(
+                    f"LIB-TOOL-003: main() let {error!r} escape; the real hook would exit "
+                    "non-zero, which does not block the write (fail open)"
+                )
+        self.assertEqual(code, 0, "LIB-TOOL-003: the hook exits 0")
+        return stdout.getvalue()
+
+    def assert_main_denies(self, payload: dict, why: str) -> None:
+        out = self.run_main(json.dumps(payload), self.root)
+        self.assertTrue(
+            out and denied(json.loads(out)),
+            f"LIB-TOOL-003: main() must print a deny when {why}, got {out!r}",
+        )
+
+    def assert_main_silent(self, payload: dict, why: str) -> None:
+        out = self.run_main(json.dumps(payload), self.root)
+        self.assertEqual(out, "", f"LIB-TOOL-003: main() must print nothing when {why}")
+
+    def test_lib_tool_003_guarded_decide_fails_closed_on_every_exception_type(self) -> None:
+        subagent = call("Write", "sacm-implementer", "crates/sacm/src/lib.rs", self.root)
+        main_session = call("Write", None, "crates/sacm/src/lib.rs", self.root)
+        read = call("Read", "sacm-verifier", "docs/x.md", self.root)
+        for exc in EXCEPTION_TYPES:
+            with self.subTest(exception=exc.__name__), mock.patch.object(
+                guard, "decide", side_effect=exc("boom")
+            ):
+                self.assertTrue(
+                    denied(self.guarded(subagent)),
+                    f"LIB-TOOL-003: a subagent write is denied when decide() raises {exc.__name__}",
+                )
+                self.assertIsNone(
+                    self.guarded(main_session),
+                    f"LIB-TOOL-003: a main-session write is not denied on {exc.__name__}",
+                )
+                self.assertIsNone(
+                    self.guarded(read),
+                    f"LIB-TOOL-003: a subagent Read is not denied on {exc.__name__}",
+                )
+
+    def test_lib_tool_003_main_fails_closed_when_decide_raises_any_exception_type(self) -> None:
+        subagent = call("Write", "sacm-implementer", "crates/sacm/src/lib.rs", self.root)
+        main_session = call("Write", None, "crates/sacm/src/lib.rs", self.root)
+        for exc in EXCEPTION_TYPES:
+            with self.subTest(exception=exc.__name__), mock.patch.object(
+                guard, "decide", side_effect=exc("boom")
+            ):
+                self.assert_main_denies(subagent, f"decide() raises {exc.__name__}")
+                self.assert_main_silent(
+                    main_session, f"decide() raises {exc.__name__} on a main-session write"
+                )
+
+    def test_lib_tool_003_main_fails_closed_when_load_scopes_raises_any_exception_type(
+        self,
+    ) -> None:
+        subagent = call("Write", "sacm-implementer", "crates/sacm/src/lib.rs", self.root)
+        main_session = call("Write", None, "crates/sacm/src/lib.rs", self.root)
+        for exc in EXCEPTION_TYPES:
+            with self.subTest(exception=exc.__name__), mock.patch.object(
+                guard, "load_scopes", side_effect=exc("boom")
+            ):
+                self.assert_main_denies(subagent, f"load_scopes() raises {exc.__name__}")
+                self.assert_main_silent(
+                    main_session, f"load_scopes() raises {exc.__name__} on a main-session write"
+                )
+
+    def assert_decide_raises(self, payload: dict, scopes: dict | None, what: str) -> None:
+        """Precondition: the payload reaches decide() and makes it raise, so the test
+        exercises the real fail-closed path. If decide() is changed to deny such input
+        directly, this precondition (not the requirement) is what needs updating."""
+        with self.assertRaises(
+            Exception, msg=f"LIB-TOOL-003: precondition: decide() raises when {what}"
+        ):
+            guard.decide(payload, scopes, self.root)
+
+    def test_lib_tool_003_malformed_payload_denies_subagent_writes_through_guarded_decide(
+        self,
+    ) -> None:
+        for what, tool_input in MALFORMED_TOOL_INPUTS:
+            with self.subTest(what):
+                payload = malformed(tool_input, "sacm-test-engineer")
+                self.assert_decide_raises(payload, SCOPES, what)
+                self.assertTrue(
+                    denied(self.guarded(payload)),
+                    f"LIB-TOOL-003: a subagent write is denied when {what}",
+                )
+                self.assertIsNone(
+                    self.guarded(malformed(tool_input, None)),
+                    f"LIB-TOOL-003: a main-session write is not denied when {what}",
+                )
+
+    def test_lib_tool_003_malformed_payload_denies_subagent_writes_through_main(self) -> None:
+        real_scopes = guard.load_scopes()
+        self.assertIsInstance(real_scopes, dict, "LIB-TOOL-003: the real write-scopes.json loads")
+        for what, tool_input in MALFORMED_TOOL_INPUTS:
+            with self.subTest(what):
+                payload = malformed(tool_input, "sacm-test-engineer")
+                self.assert_decide_raises(payload, real_scopes, what)
+                self.assert_main_denies(payload, what)
+                self.assert_main_silent(
+                    malformed(tool_input, None), f"{what} on a main-session write"
+                )
+
+    def test_lib_tool_003_empty_agent_type_is_the_main_session(self) -> None:
+        for agent in ("", None):
+            payload = {
+                "tool_name": "Write",
+                "agent_type": agent,
+                "tool_input": {"file_path": str(Path(self.root) / "crates/sacm/src/lib.rs")},
+            }
+            for scopes in (SCOPES, None):
+                with self.subTest(agent=agent, scopes="SCOPES" if scopes else None):
+                    self.assertIsNone(
+                        guard.decide(payload, scopes, self.root),
+                        f"LIB-TOOL-003: agent_type {agent!r} is the main session",
+                    )
+                    self.assertIsNone(
+                        self.guarded(payload, scopes),
+                        f"LIB-TOOL-003: agent_type {agent!r} is the main session (guarded)",
+                    )
+            with self.subTest(agent=agent, via="main"):
+                self.assert_main_silent(payload, f"agent_type is {agent!r}")
+
+    def test_lib_tool_003_main_ignores_stdin_that_is_not_a_json_object(self) -> None:
+        for text in ("[]", '"x"', "null", "7", "", "{"):
+            for project_dir in (self.root, None):
+                with self.subTest(stdin=text, project_dir_set=project_dir is not None):
+                    self.assertEqual(
+                        self.run_main(text, project_dir),
+                        "",
+                        f"LIB-TOOL-003: main() prints nothing for stdin {text!r}",
+                    )
+
+    @unittest.skipUnless(
+        os.name == "nt", "Windows only: paths are matched case-insensitively only when os.name is 'nt'"
+    )
+    def test_lib_tool_003_windows_paths_match_scopes_case_insensitively(self) -> None:
+        self.assertTrue(
+            guard.matches_any("CRATES/SACM/TESTS/x.rs", ["crates/*/tests/**"]),
+            "LIB-TOOL-003: on Windows a glob matches regardless of case",
+        )
+        self.assertIsNone(
+            guard.decide(
+                call("Write", "sacm-test-engineer", "CRATES/SACM/TESTS/x.rs", self.root),
+                SCOPES,
+                self.root,
+            ),
+            "LIB-TOOL-003: on Windows CRATES/SACM/TESTS/x.rs is inside the test engineer's scope",
+        )
+        self.assertTrue(
+            denied(
+                guard.decide(
+                    call("Write", "sacm-test-engineer", "CRATES/SACM/SRC/lib.rs", self.root),
+                    SCOPES,
+                    self.root,
+                )
+            ),
+            "LIB-TOOL-003: on Windows CRATES/SACM/SRC/lib.rs is still outside the scope",
+        )
+        self.assertTrue(
+            denied(
+                guard.decide(
+                    call("Write", "sacm-implementer", "DOCS/MATRIX/m.toml", self.root),
+                    SCOPES,
+                    self.root,
+                )
+            ),
+            "LIB-TOOL-003: on Windows a deny glob also matches regardless of case",
+        )
+
+
+def hook_commands() -> list[str]:
+    settings = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+    return [
+        hook.get("command", "")
+        for entry in settings.get("hooks", {}).get("PreToolUse", [])
+        for hook in entry.get("hooks", [])
+        if "agent_write_guard.py" in hook.get("command", "")
+    ]
+
+
+def find_bash() -> tuple[str | None, str]:
+    """A usable bash, or None and the reason to skip."""
+    bash = shutil.which("bash")
+    if bash is None:
+        return None, "bash is not on PATH, so the hook command from settings.json cannot be run"
+    system32 = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32"
+    if os.name == "nt" and os.path.normcase(str(Path(bash).parent)) == os.path.normcase(
+        str(system32)
+    ):
+        return None, (
+            f"bash on PATH is the WSL launcher ({bash}); it does not pass CLAUDE_PROJECT_DIR "
+            "through, so it cannot run the hook command as Claude Code does"
+        )
+    return bash, ""
+
+
+class RealHookCommandTests(unittest.TestCase):
+    """The exact command in .claude/settings.json, run with bash -c (LIB-TOOL-003)."""
+
+    def setUp(self) -> None:
+        bash, reason = find_bash()
+        if bash is None:
+            self.skipTest(reason)
+        self.bash = bash
+        commands = hook_commands()
+        self.assertEqual(
+            len(commands), 1, "LIB-TOOL-003: settings.json has one guard hook command"
+        )
+        self.command = commands[0]
+
+    def run_hook(self, payload: dict) -> subprocess.CompletedProcess[str]:
+        env = dict(os.environ, CLAUDE_PROJECT_DIR=str(REPO_ROOT))
+        return subprocess.run(
+            [self.bash, "-c", self.command],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=str(REPO_ROOT),
+            timeout=60,
+            check=False,
+        )
+
+    def payload(self, agent: str | None) -> dict:
+        payload = {
+            "session_id": "lib-tool-003-test",
+            "hook_event_name": "PreToolUse",
+            "cwd": str(REPO_ROOT),
+            "tool_name": "Write",
+            "tool_input": {"file_path": str(REPO_ROOT / "docs" / "x.md"), "content": "x"},
+        }
+        if agent is not None:
+            payload["agent_type"] = agent
+        return payload
+
+    def test_lib_tool_003_real_hook_command_denies_a_read_only_role_write(self) -> None:
+        proc = self.run_hook(self.payload("sacm-verifier"))
+        self.assertEqual(
+            proc.returncode, 0, f"LIB-TOOL-003: the hook command exits 0; stderr: {proc.stderr!r}"
+        )
+        try:
+            decision = json.loads(proc.stdout)
+        except ValueError:
+            self.fail(
+                f"LIB-TOOL-003: the hook command must print a JSON decision, got "
+                f"{proc.stdout!r}; stderr: {proc.stderr!r}"
+            )
+        self.assertTrue(
+            denied(decision),
+            f"LIB-TOOL-003: the hook command denies a read-only role's Write, got {decision!r}",
+        )
+
+    def test_lib_tool_003_real_hook_command_is_silent_for_the_main_session(self) -> None:
+        proc = self.run_hook(self.payload(None))
+        self.assertEqual(
+            proc.returncode, 0, f"LIB-TOOL-003: the hook command exits 0; stderr: {proc.stderr!r}"
+        )
+        self.assertEqual(
+            proc.stdout, "", "LIB-TOOL-003: the hook command prints nothing for the main session"
+        )
 
 
 if __name__ == "__main__":

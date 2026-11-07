@@ -9,9 +9,15 @@
 //! be picked up by the real repository's orphan scan.
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use xtask::matrix::{Matrix, RENDERED_PATH, Repo, check, load, ready, render, traced_tests};
+use xtask::matrix::{
+    FsRepo, MATRIX_PATH, Matrix, RENDERED_PATH, Repo, check, cmd_check, load, ready, render,
+    traced_tests,
+};
 
 // ---------------------------------------------------------------------------
 // Harness
@@ -265,6 +271,18 @@ fn lib_tool_001_unscheduled_rows_must_give_a_reason() {
     );
 }
 
+/// Whitespace is not a reason: `notes = "  "` counts as missing.
+#[test]
+fn lib_tool_001_whitespace_notes_count_as_missing() {
+    for status in ["out-of-scope", "candidate", "deferred"] {
+        let m = matrix(&row("SACM23-BASE-001", status, "notes = \"  \""));
+        assert_exact(
+            &problems(&m, FakeRepo::default()),
+            &format!("SACM23-BASE-001: is {status} and must say why in `notes`"),
+        );
+    }
+}
+
 #[test]
 fn lib_tool_001_reports_orphaned_traced_tests() {
     let repo = FakeRepo::default().with("t.rs", "#[test]\nfn sacm23_base_001_uncited() {}");
@@ -453,6 +471,18 @@ fn lib_tool_001_rejects_id_area_segment_that_differs_from_area_field() {
     );
 }
 
+/// Rule 2: an id is exactly three segments, the last exactly three digits.
+#[test]
+fn lib_tool_001_rejects_ids_with_an_extra_segment_or_a_non_digit_number() {
+    for id in ["SACM23-BASE-001-X", "SACM23-BASE-0A1"] {
+        let m = matrix(&row(id, "planned", ""));
+        assert_exact(
+            &problems(&m, FakeRepo::default()),
+            &format!("{id}: id must look like SACM23-<AREA>-<NNN> or LIB-<AREA>-<NNN>"),
+        );
+    }
+}
+
 #[test]
 fn lib_tool_001_rejects_empty_title_requirement_and_source() {
     let base = row("SACM23-BASE-001", "planned", "");
@@ -550,7 +580,8 @@ enum Evidence {
 }
 
 /// `(status, required evidence, forbidden evidence)`, transcribed from the
-/// status table in docs/matrix/README.md.
+/// status table in docs/matrix/README.md. Every row of that table is here,
+/// cell for cell; `candidate` forbids tests, code and a verification record.
 const STATUS_TABLE: &[(&str, &[Evidence], &[Evidence])] = {
     use Evidence::{Acceptance, Code, Notes, Tests, Verification};
     &[
@@ -559,7 +590,7 @@ const STATUS_TABLE: &[(&str, &[Evidence], &[Evidence])] = {
         ("tests-failing", &[Acceptance, Tests], &[Verification]),
         ("implemented", &[Acceptance, Tests, Code], &[Verification]),
         ("verified", &[Acceptance, Tests, Code, Verification], &[]),
-        ("candidate", &[Notes], &[Tests, Code]),
+        ("candidate", &[Notes], &[Tests, Code, Verification]),
         ("deferred", &[Notes], &[Tests, Verification]),
         ("out-of-scope", &[Notes], &[Tests, Verification]),
     ]
@@ -685,16 +716,14 @@ fn lib_tool_001_status_table_forbidden_evidence_is_rejected() {
 }
 
 /// Cells the README table neither requires nor forbids are accepted, so the
-/// gate is not stricter than the documented rules. The one exception is a
-/// verification record on a candidate row; see the next test.
+/// gate is not stricter than the documented rules.
 #[test]
 fn lib_tool_001_status_table_permitted_evidence_is_accepted() {
     use Evidence::{Acceptance, Code, Notes, Tests, Verification};
     let mut failures = Vec::new();
     for (status, required, forbidden) in STATUS_TABLE {
         for extra in [Acceptance, Tests, Code, Verification, Notes] {
-            let excepted = *status == "candidate" && extra == Verification;
-            if required.contains(&extra) || forbidden.contains(&extra) || excepted {
+            if required.contains(&extra) || forbidden.contains(&extra) {
                 continue;
             }
             let mut evidence = required.to_vec();
@@ -712,9 +741,8 @@ fn lib_tool_001_status_table_permitted_evidence_is_accepted() {
     );
 }
 
-/// Stricter than the README table's `candidate` line, which does not list
-/// `verification` as forbidden: the gate refuses a record on any row that is
-/// not verified.
+/// The README table forbids a verification record on every status except
+/// `verified`; checked here status by status with the exact message.
 #[test]
 fn lib_tool_001_verification_record_on_a_non_verified_row_is_rejected() {
     for (status, required, _) in STATUS_TABLE {
@@ -795,6 +823,44 @@ fn lib_tool_001_rejects_test_citation_without_separator() {
     assert_exact(
         &problems(&m, repo),
         "SACM23-BASE-001: test citation `t.rs:sacm23_base_001_x` must be `path::function` or `doctest:path`",
+    );
+}
+
+/// Rule 6: the row id must be followed by `_` or end the name, so
+/// `sacm23_base_0012_x` does not trace to SACM23-BASE-001; the bare row id is
+/// a valid name.
+#[test]
+fn lib_tool_001_test_name_must_separate_the_row_id_with_an_underscore() {
+    let m = citing("\"t.rs::sacm23_base_0012_x\"");
+    let repo = FakeRepo::default().with("t.rs", "#[test]\nfn sacm23_base_0012_x() {}");
+    assert_eq!(
+        problems(&m, repo),
+        [
+            "SACM23-BASE-001: test `sacm23_base_0012_x` must be named `sacm23_base_001_...` \
+             to trace to this row"
+        ],
+        "LIB-TOOL-001: `sacm23_base_0012_x` does not trace to SACM23-BASE-001"
+    );
+
+    let m = citing("\"t.rs::sacm23_base_001\"");
+    let repo = FakeRepo::default().with("t.rs", "#[test]\nfn sacm23_base_001() {}");
+    assert_eq!(
+        problems(&m, repo),
+        Vec::<String>::new(),
+        "LIB-TOOL-001: a test named exactly for the row id traces to it"
+    );
+}
+
+/// Rule 6: unittest's `test_` prefix is not part of the trace, so a Python
+/// citation `x.py::test_sacm23_base_001_y` is accepted.
+#[test]
+fn lib_tool_001_python_citation_with_unittest_prefix_is_accepted() {
+    let m = citing("\"x.py::test_sacm23_base_001_y\"");
+    let repo = FakeRepo::default().with("x.py", "def test_sacm23_base_001_y(self):\n    pass\n");
+    assert_eq!(
+        problems(&m, repo),
+        Vec::<String>::new(),
+        "LIB-TOOL-001: `x.py::test_sacm23_base_001_y` is a valid citation for SACM23-BASE-001"
     );
 }
 
@@ -1142,5 +1208,313 @@ fn lib_tool_001_next_keeps_file_order_within_a_milestone_and_lists_only_open_row
             "SACM23-BASE-007"
         ],
         "LIB-TOOL-001: open rows only, in file order within the milestone (not id order)"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// The filesystem half of the gate: `FsRepo` and `cmd_check` on a real tree
+// ---------------------------------------------------------------------------
+
+/// A fresh directory tree under the system temporary directory, unique per
+/// test and removed on drop.
+#[derive(Debug)]
+struct TempTree(PathBuf);
+
+impl TempTree {
+    fn new(test: &str) -> Self {
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos());
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "xtask-matrix-{test}-{}-{nanos}-{n}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&path)
+            .unwrap_or_else(|e| panic!("LIB-TOOL-001: create {}: {e}", path.display()));
+        Self(path)
+    }
+
+    fn root(&self) -> &Path {
+        &self.0
+    }
+
+    /// Write `text` at the `/`-separated relative path `rel`, creating its
+    /// parent directories.
+    fn write(&self, rel: &str, text: &str) -> &Self {
+        let path = self.0.join(rel);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .unwrap_or_else(|e| panic!("LIB-TOOL-001: create {}: {e}", parent.display()));
+        }
+        fs::write(&path, text)
+            .unwrap_or_else(|e| panic!("LIB-TOOL-001: write {}: {e}", path.display()));
+        self
+    }
+}
+
+impl Drop for TempTree {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+/// `FsRepo::traced_functions` of the tree, sorted (directory order is not
+/// specified).
+fn traced_on_disk(tree: &TempTree) -> Vec<(String, String)> {
+    let mut found = FsRepo::new(tree.root()).traced_functions();
+    found.sort();
+    found
+}
+
+fn owned_pairs(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = pairs
+        .iter()
+        .map(|(f, n)| ((*f).to_owned(), (*n).to_owned()))
+        .collect();
+    out.sort();
+    out
+}
+
+#[test]
+fn lib_tool_001_fs_repo_finds_traced_tests_in_every_scan_root() {
+    let tree = TempTree::new("scan-roots");
+    tree.write(
+        "crates/demo/tests/a.rs",
+        "#[test]\nfn lib_cli_001_in_crates() {}\n#[test]\nfn helper() {}\nfn lib_cli_001_unmarked() {}\n",
+    )
+    .write(
+        "crates/demo/tests/b.py",
+        "def test_lib_cli_001_python_in_crates(self):\n    pass\n",
+    )
+    .write("xtask/tests/c.rs", "#[test] fn lib_cli_001_in_xtask() {}\n")
+    .write(
+        ".claude/hooks/test_d.py",
+        "def test_lib_cli_001_in_hooks(self):\n    pass\ndef lib_cli_001_helper():\n    pass\n",
+    )
+    .write(
+        ".claude/hooks/e.rs",
+        "#[test]\nfn lib_cli_001_rust_in_hooks() {}\n",
+    );
+    assert_eq!(
+        traced_on_disk(&tree),
+        owned_pairs(&[
+            ("crates/demo/tests/a.rs", "lib_cli_001_in_crates"),
+            (
+                "crates/demo/tests/b.py",
+                "test_lib_cli_001_python_in_crates"
+            ),
+            ("xtask/tests/c.rs", "lib_cli_001_in_xtask"),
+            (".claude/hooks/test_d.py", "test_lib_cli_001_in_hooks"),
+            (".claude/hooks/e.rs", "lib_cli_001_rust_in_hooks"),
+        ]),
+        "LIB-TOOL-001: traced Rust and Python tests are found under crates/, xtask/ and \
+         .claude/hooks/, as `/`-separated repo-relative paths"
+    );
+}
+
+#[test]
+fn lib_tool_001_fs_repo_skips_target_directories_and_non_source_files() {
+    let tree = TempTree::new("skips");
+    let rust_test = "#[test]\nfn lib_cli_001_skipped() {}\n";
+    let python_test = "def test_lib_cli_001_skipped(self):\n    pass\n";
+    tree.write("crates/demo/tests/kept.rs", "#[test]\nfn lib_cli_001_kept() {}\n")
+        // Build output is never scanned, at any depth and in every root.
+        .write("crates/demo/target/debug/build.rs", rust_test)
+        .write("target/x.rs", rust_test)
+        .write("xtask/target/x.rs", rust_test)
+        .write(".claude/hooks/target/test_x.py", python_test)
+        // Files that are neither `.rs` nor `.py`.
+        .write("crates/demo/tests/notes.txt", rust_test)
+        .write("crates/demo/tests/x.rs.bak", rust_test)
+        .write(".claude/hooks/test_x.json", python_test)
+        .write(".claude/hooks/test_x.pyc", python_test)
+        // Each language is scanned with its own syntax.
+        .write("crates/demo/tests/python_syntax.rs", python_test)
+        .write(".claude/hooks/test_rust_syntax.py", rust_test)
+        // Outside the three scan roots.
+        .write("docs/x.rs", rust_test)
+        .write("x.rs", rust_test)
+        .write(".claude/agents/test_x.py", python_test);
+    assert_eq!(
+        traced_on_disk(&tree),
+        owned_pairs(&[("crates/demo/tests/kept.rs", "lib_cli_001_kept")]),
+        "LIB-TOOL-001: `target/` directories, non-source files, other roots and \
+         wrong-language syntax are not scanned"
+    );
+}
+
+#[test]
+fn lib_tool_001_fs_repo_reads_and_finds_paths_relative_to_its_root() {
+    let tree = TempTree::new("read-exists");
+    tree.write("docs/a.md", "text");
+    let repo = FsRepo::new(tree.root());
+    assert!(
+        repo.exists("docs/a.md"),
+        "LIB-TOOL-001: an existing file exists"
+    );
+    assert!(
+        repo.exists("docs"),
+        "LIB-TOOL-001: an existing directory exists"
+    );
+    assert!(
+        !repo.exists("docs/b.md"),
+        "LIB-TOOL-001: a missing file does not exist"
+    );
+    assert_eq!(
+        repo.read("docs/a.md").as_deref(),
+        Some("text"),
+        "LIB-TOOL-001: read returns the text of the file"
+    );
+    assert_eq!(
+        repo.read("docs/b.md"),
+        None,
+        "LIB-TOOL-001: read of a missing file is None"
+    );
+}
+
+/// A matrix with one row citing a Rust test under `crates/` and a Python test
+/// under `.claude/hooks/`.
+const GATE_TOML: &str = r#"
+schema_version = 1
+[[milestone]]
+id = "M0"
+title = "Foundation"
+goal = "Build."
+[[area]]
+code = "TOOL"
+prefix = "LIB"
+title = "Tooling"
+[[row]]
+id = "LIB-TOOL-001"
+area = "TOOL"
+milestone = "M0"
+title = "Gate"
+requirement = "The gate holds."
+source = "ADR 0004"
+kind = "tooling"
+status = "tests-failing"
+acceptance = ["a"]
+tests = [
+  "crates/demo/tests/gate.rs::lib_tool_001_cited",
+  ".claude/hooks/test_gate.py::test_lib_tool_001_cited",
+]
+"#;
+
+/// The smallest tree on which the gate passes: the matrix, its rendered page
+/// and the cited test files.
+fn consistent_tree(test: &str) -> TempTree {
+    let matrix = load(GATE_TOML).expect("LIB-TOOL-001: the gate fixture parses");
+    let tree = TempTree::new(test);
+    tree.write(MATRIX_PATH, GATE_TOML)
+        .write(RENDERED_PATH, &render(&matrix))
+        .write(
+            "crates/demo/tests/gate.rs",
+            "#[test]\nfn lib_tool_001_cited() {}\n",
+        )
+        .write(
+            ".claude/hooks/test_gate.py",
+            "def test_lib_tool_001_cited(self):\n    pass\n",
+        );
+    tree
+}
+
+/// The problems `check` finds on the tree through `FsRepo`.
+fn problems_on_disk(tree: &TempTree) -> Vec<String> {
+    let matrix = load(GATE_TOML).expect("LIB-TOOL-001: the gate fixture parses");
+    check(&matrix, &FsRepo::new(tree.root()))
+}
+
+#[test]
+fn lib_tool_001_cmd_check_accepts_a_minimal_consistent_tree() {
+    let tree = consistent_tree("consistent");
+    assert_eq!(
+        problems_on_disk(&tree),
+        Vec::<String>::new(),
+        "LIB-TOOL-001: the consistent tree has no problems"
+    );
+    assert_eq!(
+        cmd_check(tree.root()),
+        Ok(()),
+        "LIB-TOOL-001: `matrix check` passes a consistent tree"
+    );
+}
+
+/// Plant an uncited traced test at `rel` in an otherwise consistent tree: the
+/// gate must report exactly that orphan and `cmd_check` must fail.
+fn assert_planted_orphan_fails_the_gate(test: &str, rel: &str, source: &str, name: &str) {
+    let tree = consistent_tree(test);
+    assert_eq!(
+        cmd_check(tree.root()),
+        Ok(()),
+        "LIB-TOOL-001: precondition: the tree passes before {rel} is planted"
+    );
+    tree.write(rel, source);
+    assert_eq!(
+        problems_on_disk(&tree),
+        [format!(
+            "{rel}: traced test `{name}` is not cited by any matrix row"
+        )],
+        "LIB-TOOL-001: the planted test {rel}::{name} is reported as an orphan"
+    );
+    assert!(
+        cmd_check(tree.root()).is_err(),
+        "LIB-TOOL-001: `matrix check` must fail with the uncited test {rel}::{name}"
+    );
+}
+
+#[test]
+fn lib_tool_001_cmd_check_rejects_an_uncited_python_test_under_claude_hooks() {
+    assert_planted_orphan_fails_the_gate(
+        "orphan-hooks",
+        ".claude/hooks/test_planted.py",
+        "def test_lib_tool_001_uncited(self):\n    pass\n",
+        "test_lib_tool_001_uncited",
+    );
+}
+
+#[test]
+fn lib_tool_001_cmd_check_rejects_an_uncited_rust_test_under_crates() {
+    assert_planted_orphan_fails_the_gate(
+        "orphan-crates",
+        "crates/demo/tests/planted.rs",
+        "#[test]\nfn lib_tool_001_uncited() {}\n",
+        "lib_tool_001_uncited",
+    );
+}
+
+#[test]
+fn lib_tool_001_cmd_check_rejects_an_uncited_rust_test_under_xtask() {
+    assert_planted_orphan_fails_the_gate(
+        "orphan-xtask",
+        "xtask/tests/planted.rs",
+        "#[test]\nfn lib_tool_001_uncited() {}\n",
+        "lib_tool_001_uncited",
+    );
+}
+
+#[test]
+fn lib_tool_001_cmd_check_rejects_a_missing_matrix_and_a_stale_page() {
+    let empty = TempTree::new("no-matrix");
+    assert!(
+        cmd_check(empty.root()).is_err(),
+        "LIB-TOOL-001: `matrix check` fails when the matrix file is missing"
+    );
+
+    let tree = consistent_tree("stale-page");
+    tree.write(RENDERED_PATH, "stale");
+    assert!(
+        cmd_check(tree.root()).is_err(),
+        "LIB-TOOL-001: `matrix check` fails on a stale rendered page"
+    );
+
+    // A checkout with CRLF line endings is not stale.
+    let matrix = load(GATE_TOML).expect("LIB-TOOL-001: the gate fixture parses");
+    tree.write(RENDERED_PATH, &render(&matrix).replace('\n', "\r\n"));
+    assert_eq!(
+        cmd_check(tree.root()),
+        Ok(()),
+        "LIB-TOOL-001: a rendered page that differs only in CRLF line endings is current"
     );
 }

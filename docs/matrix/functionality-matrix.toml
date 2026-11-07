@@ -230,8 +230,10 @@ acceptance = [
   "`next` lists only open rows (not verified, candidate, deferred or out-of-scope), hides rows blocked on unverified dependencies, and orders by milestone then file position.",
   "A test citation resolves only to a function marked as a test (`#[test]`-style attribute, including on the same line, or Python `def test_`); helpers, comments and string literals do not count.",
   "Every gate rule listed in docs/matrix/README.md, and every required/forbidden cell of its status table, has a test that fails when that rule is removed.",
+  "The repository scan behind `cargo xtask matrix check` covers crates/, xtask/ and .claude/hooks/, reads both .rs and .py files, skips target/ directories and non-source files, and reports /-separated repository-relative paths; `cmd_check` fails when the scan finds an uncited traced test.",
+  "The `cargo xtask` binary exits non-zero and prints an `xtask:` message on stderr whenever a command fails, so CI fails when the gate does.",
 ]
-code = ["xtask/src/lib.rs", "xtask/src/matrix.rs", "docs/matrix/README.md"]
+code = ["xtask/src/lib.rs", "xtask/src/main.rs", "xtask/src/matrix.rs", "docs/matrix/README.md"]
 tests = [
   "xtask/tests/matrix.rs::lib_tool_001_accepts_a_consistent_matrix",
   "xtask/tests/matrix.rs::lib_tool_001_rejects_malformed_and_mismatched_ids",
@@ -242,6 +244,7 @@ tests = [
   "xtask/tests/matrix.rs::lib_tool_001_verified_rows_need_record_and_verified_dependencies",
   "xtask/tests/matrix.rs::lib_tool_001_rejects_cycles_and_backward_milestone_dependencies",
   "xtask/tests/matrix.rs::lib_tool_001_unscheduled_rows_must_give_a_reason",
+  "xtask/tests/matrix.rs::lib_tool_001_whitespace_notes_count_as_missing",
   "xtask/tests/matrix.rs::lib_tool_001_reports_orphaned_traced_tests",
   "xtask/tests/matrix.rs::lib_tool_001_detects_stale_rendered_page",
   "xtask/tests/matrix.rs::lib_tool_001_next_lists_open_rows_with_verified_dependencies_in_order",
@@ -254,6 +257,7 @@ tests = [
   "xtask/tests/matrix.rs::lib_tool_001_rejects_unknown_area",
   "xtask/tests/matrix.rs::lib_tool_001_rejects_unknown_milestone",
   "xtask/tests/matrix.rs::lib_tool_001_rejects_id_area_segment_that_differs_from_area_field",
+  "xtask/tests/matrix.rs::lib_tool_001_rejects_ids_with_an_extra_segment_or_a_non_digit_number",
   "xtask/tests/matrix.rs::lib_tool_001_rejects_empty_title_requirement_and_source",
   "xtask/tests/matrix.rs::lib_tool_001_rejects_unknown_dependency",
   "xtask/tests/matrix.rs::lib_tool_001_rejects_self_dependency",
@@ -268,6 +272,8 @@ tests = [
   "xtask/tests/matrix.rs::lib_tool_001_analyzed_rows_need_acceptance_criteria",
   "xtask/tests/matrix.rs::lib_tool_001_rejects_missing_cited_code_path",
   "xtask/tests/matrix.rs::lib_tool_001_rejects_test_citation_without_separator",
+  "xtask/tests/matrix.rs::lib_tool_001_test_name_must_separate_the_row_id_with_an_underscore",
+  "xtask/tests/matrix.rs::lib_tool_001_python_citation_with_unittest_prefix_is_accepted",
   "xtask/tests/matrix.rs::lib_tool_001_rejects_missing_test_file",
   "xtask/tests/matrix.rs::lib_tool_001_rejects_missing_doctest_file",
   "xtask/tests/matrix.rs::lib_tool_001_rejects_doctest_file_without_code_block",
@@ -278,6 +284,14 @@ tests = [
   "xtask/tests/matrix.rs::lib_tool_001_render_reports_summary_counts",
   "xtask/tests/matrix.rs::lib_tool_001_render_lists_areas_milestones_and_row_lines",
   "xtask/tests/matrix.rs::lib_tool_001_next_keeps_file_order_within_a_milestone_and_lists_only_open_rows",
+  "xtask/tests/matrix.rs::lib_tool_001_fs_repo_finds_traced_tests_in_every_scan_root",
+  "xtask/tests/matrix.rs::lib_tool_001_fs_repo_skips_target_directories_and_non_source_files",
+  "xtask/tests/matrix.rs::lib_tool_001_fs_repo_reads_and_finds_paths_relative_to_its_root",
+  "xtask/tests/matrix.rs::lib_tool_001_cmd_check_accepts_a_minimal_consistent_tree",
+  "xtask/tests/matrix.rs::lib_tool_001_cmd_check_rejects_an_uncited_python_test_under_claude_hooks",
+  "xtask/tests/matrix.rs::lib_tool_001_cmd_check_rejects_an_uncited_rust_test_under_crates",
+  "xtask/tests/matrix.rs::lib_tool_001_cmd_check_rejects_an_uncited_rust_test_under_xtask",
+  "xtask/tests/matrix.rs::lib_tool_001_cmd_check_rejects_a_missing_matrix_and_a_stale_page",
 ]
 
 [[row]]
@@ -360,6 +374,16 @@ tests = [
   ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_main_denies_subagent_writes_when_loading_scopes_raises",
   ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_settings_matcher_covers_every_write_tool",
   ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_settings_hook_runs_the_guard_exactly_once",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_guarded_decide_fails_closed_on_every_exception_type",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_main_fails_closed_when_decide_raises_any_exception_type",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_main_fails_closed_when_load_scopes_raises_any_exception_type",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_malformed_payload_denies_subagent_writes_through_guarded_decide",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_malformed_payload_denies_subagent_writes_through_main",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_empty_agent_type_is_the_main_session",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_main_ignores_stdin_that_is_not_a_json_object",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_windows_paths_match_scopes_case_insensitively",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_real_hook_command_denies_a_read_only_role_write",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_real_hook_command_is_silent_for_the_main_session",
 ]
 notes = "Does not cover Bash, sessions with hooks disabled, or machines where no Python interpreter runs (the hook then exits non-zero, which Claude Code treats as non-blocking); agent prompts prohibit those routes (ADR 0006)."
 
@@ -436,6 +460,17 @@ source = "Verification 0001 round 2 follow-up; ADR 0006 amendment 1"
 kind = "tooling"
 status = "planned"
 depends_on = ["LIB-TOOL-001"]
+
+[[row]]
+id = "LIB-TOOL-008"
+area = "TOOL"
+milestone = "M0"
+title = "The write guard's launch path is tested"
+requirement = "Tests cover how the hook is launched, not only what it decides: the settings command falls through to a working interpreter when `python3` exists but fails (e.g. the Windows Store alias), and a NotebookEdit inside a role's scope is judged by its `notebook_path`."
+source = "Verification 0001 round 3 follow-up (surviving mutations P20, P15)"
+kind = "tooling"
+status = "planned"
+depends_on = ["LIB-TOOL-003"]
 
 [[row]]
 id = "LIB-DOC-006"

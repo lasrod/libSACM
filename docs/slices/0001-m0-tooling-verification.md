@@ -1,8 +1,8 @@
 ---
 slice: 0001
 name: m0-tooling-verification
-state: in-progress
-step: tests
+state: stopped
+step: verification
 rows: [LIB-TOOL-001, LIB-TOOL-002, LIB-TOOL-003, LIB-API-001, LIB-QA-001]
 mode: local
 ---
@@ -120,3 +120,6 @@ doctests.
 - 2026-11-07 verification round 2: LIB-TOOL-002 and LIB-QA-001 PASS -> verified; LIB-TOOL-001 and LIB-TOOL-003 FAIL a second time (untested FsRepo/cmd_check; fail-closed tests only use RuntimeError; live probe predates new hook command). See docs/verification/0001-m0-tooling-verification-round2.md.
 - 2026-11-07 stopped: second FAIL (skill limit) and the guard diff awaits maintainer review; nothing committed since a74ca9c.
 - 2026-11-07 maintainer approved the guard diff and a fix round 2. Fix round 1 committed.
+- 2026-11-07 fix round 2: test engineer added 12 gate tests (filesystem scan, cmd_check, id/name/notes clauses) and 10 guard tests (every exception type, malformed payloads, real hook command). No production code changed.
+- 2026-11-07 verification round 3: round-2 survivors all killed. LIB-TOOL-001 FAIL on a new Medium (binary exit code untested, mutation R28). LIB-TOOL-003 passes everything except the fresh-session live probe. See docs/verification/0001-m0-tooling-verification-round3.md.
+- 2026-11-07 stopped. To resume in a NEW session: (1) live probe per the round-3 record's conditions, for LIB-TOOL-003; (2) with maintainer authorization, fix round 3: one lib_tool_001_ binary exit-code test (plus the Low one-liners R21/R23), then round-4 verification of LIB-TOOL-001.
