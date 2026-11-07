@@ -77,7 +77,7 @@ architect is not involved.
 
 ## Tests
 
-All 33 tests are in `xtask/tests/check_reporting.rs`, and each matrix row cites its own.
+All 33 tests are in `xtask/tests/reporting.rs`, and each matrix row cites its own.
 
 | Tests | Row | Criterion |
 |---|---|---|
@@ -104,3 +104,12 @@ implemented.
   `matrix::cmd_check_from`, `load_error`, the empty-root check in `main.rs`, and README
   rule 11 (text from the implementer, applied by the lead). The lead ran the full local
   gate and it passes. Both rows are now `implemented`.
+- 2026-11-08 CI at `802ae47`: ci.yml 42420891408 passed. mutants.yml 42420891449 had one
+  TIMEOUT, `matrix.rs:449:5 is_identifier_char -> true`, in LIB-TOOL-001 code that this
+  slice did not change.
+  - Cause: under that mutant, a scan of the real repository is quadratic.
+    `check_reporting` sorted before `function_scan`, which kills the mutant in under
+    1 s, and `cargo test` stops at the first failing target.
+  - Fix: the test file is renamed to `reporting.rs` and the reason is recorded in the
+    triage document.
+  - The durable fix is the new row LIB-QA-012.

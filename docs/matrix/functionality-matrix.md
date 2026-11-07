@@ -8,7 +8,7 @@ What libSACM implements, requirement by requirement. The canonical source is [`f
 
 | Milestone | Rows | verified | implemented | tests-failing | analyzed | planned | candidate | deferred | out-of-scope |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| M0 — Foundation | 26 | 12 | 3 |  |  | 11 |  |  |  |
+| M0 — Foundation | 27 | 12 | 3 |  |  | 12 |  |  |  |
 | M1 — Minimal editable vertical slice | 31 |  |  |  |  | 31 |  |  |  |
 | M2 — Base model and argumentation | 37 |  |  |  |  | 37 |  |  |  |
 | M3 — Artifact model | 12 |  |  |  |  | 12 |  |  |  |
@@ -16,7 +16,7 @@ What libSACM implements, requirement by requirement. The canonical source is [`f
 | M5 — Modularity: interfaces and bindings | 11 |  |  |  |  | 11 |  |  |  |
 | M6 — Interoperability and compliance claims | 11 |  |  |  |  | 10 |  |  | 1 |
 | M7 — 1.0 readiness | 15 |  |  |  |  | 11 | 3 |  | 1 |
-| **Total** | **152** | **12** | **3** |  |  | **132** | **3** |  | **2** |
+| **Total** | **153** | **12** | **3** |  |  | **133** | **3** |  | **2** |
 
 ## Areas
 
@@ -69,6 +69,7 @@ Workspace, CI gates, matrix gate, reference fetching and agent guard are in plac
 | LIB-QA-009 | **Third-party CI actions are pinned and their inputs reviewed.** Every third-party action in ci.yml whose inputs reach a command line (at least EmbarkStudios/cargo-deny-action) is pinned by full commit SHA, and a test keeps a reviewed allowlist of the inputs it may receive, so a version bump that adds or changes an input is reviewed before use. | quality | Verification 0002 rounds 3 and 4 follow-up (cargo-deny-action@v2 splices inputs into an unquoted command line; @v2 is a moving tag) | `planned` | LIB-QA-003 |  |
 | LIB-QA-010 | **Mutation exclusions are checked mechanically.** A test or CI step shows that each `exclude_re`, `exclude_globs` and `skip_calls` entry in .cargo/mutants.toml excludes exactly the triaged mutants and nothing else, by comparing `cargo mutants --workspace --list` with `--list --no-config` against docs/quality/mutants-triage.md. | quality | Verification 0003 follow-up (rounds 1-3) | `planned` | LIB-QA-007 |  |
 | LIB-QA-011 | **Slice PR reuse and full-run dispatch are pinned.** A doc check fails if the sacm-slice skill loses any of three rules. In step 7: reuse the slice's existing PR (`gh pr list --head <branch>`) instead of creating another. In step 7: dispatch `mutants.yml` on the slice branch when it did not run on the head commit. In step 8.5: run `gh pr create` only when the branch has no PR. | quality | PR #9 Copilot review follow-up (verifier observation O3) | `planned` | LIB-QA-007 |  |
+| LIB-QA-012 | **Mutation outcomes do not depend on test-target order.** Whether a mutant counts as caught or as a timeout must not depend on the alphabetical order of test targets. A mutant that one fast test kills is reported as caught, even when another target becomes slow under the same mutant. One option is a test runner that stops every running test at the first failure, for example nextest with immediate termination. A check fails if this guarantee is lost. | quality | Slice 0005: mutants.yml run 42420891449, a TIMEOUT for `is_identifier_char -> true`, worked around by renaming a test target | `planned` | LIB-QA-007 |  |
 | LIB-TOOL-012 | **Spec download follows redirects and fails on HTTP errors.** `curl_download` is tested against a local HTTP server: a redirect is followed (`--location`) and an HTTP error status fails the download (`--fail`) instead of saving the error page. | tooling | Verification 0003 follow-up (curl_download tested only with file:// URLs) | `planned` | LIB-TOOL-002 |  |
 | LIB-QA-008 | **CI gate checks match live steps, not text.** The CI regression tests match each gate as a whole, uncommented step line inside a job that is neither conditional (`if:`) nor allowed to fail (`continue-on-error:`), so a commented-out or neutered gate fails the test. | quality | Verification 0002 follow-up (new class for verified LIB-QA-001) | `planned` | LIB-QA-001 |  |
 | LIB-DOC-007 | **Documented MSRV matches the manifest.** The MSRV stated in README.md (badge) and CONTRIBUTING.md equals `rust-version` in the workspace manifest; a test enforces it. | docs | Verification 0002 follow-up | `planned` |  |  |

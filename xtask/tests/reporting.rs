@@ -23,6 +23,15 @@
 //! Fixture source text is written on one line with `\n` escapes on purpose: a
 //! line of this file that began with `#[test]` inside a string literal would
 //! be picked up by the real repository's orphan scan.
+//!
+//! **Keep this target's name sorting after `function_scan`.** Several tests
+//! here scan the real repository (`repo_root()` checks and binary runs). Under
+//! a scanner mutant such as `is_identifier_char -> true`, that scan becomes
+//! quadratic and runs for minutes. `cargo test` runs integration-test targets
+//! in alphabetical order and stops at the first failing one, so
+//! `function_scan` and `matrix` must run first and kill such a mutant in under
+//! a second. Otherwise the mutation run reports a TIMEOUT (mutants.yml run
+//! 42420891449, under the old name `check_reporting`).
 
 mod common;
 

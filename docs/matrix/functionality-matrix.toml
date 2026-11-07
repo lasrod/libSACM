@@ -748,25 +748,25 @@ acceptance = [
 ]
 depends_on = ["LIB-TOOL-010"]
 tests = [
-  "xtask/tests/check_reporting.rs::lib_tool_013_a_passing_check_from_the_build_root_writes_the_unnamed_ok_line",
-  "xtask/tests/check_reporting.rs::lib_tool_013_a_passing_check_from_xtask_root_names_the_root",
-  "xtask/tests/check_reporting.rs::lib_tool_013_a_failing_check_from_xtask_root_names_the_root_on_the_first_line_only",
-  "xtask/tests/check_reporting.rs::lib_tool_013_a_load_failure_from_xtask_root_ends_with_the_root",
-  "xtask/tests/check_reporting.rs::lib_tool_013_a_control_character_in_the_root_is_escaped_in_the_suffix",
-  "xtask/tests/check_reporting.rs::lib_tool_013_a_tree_whose_name_holds_control_characters_is_named_escaped",
-  "xtask/tests/check_reporting.rs::lib_tool_013_xtask_root_equal_to_the_build_root_is_still_named",
-  "xtask/tests/check_reporting.rs::lib_tool_013_the_named_root_is_shown_as_given",
-  "xtask/tests/check_reporting.rs::lib_tool_013_the_other_commands_are_unchanged_under_xtask_root",
-  "xtask/tests/check_reporting.rs::lib_tool_013_run_is_run_from_with_the_build_source",
-  "xtask/tests/check_reporting.rs::lib_tool_013_binary_names_xtask_root_on_a_passing_check",
-  "xtask/tests/check_reporting.rs::lib_tool_013_binary_names_xtask_root_on_a_failing_check",
-  "xtask/tests/check_reporting.rs::lib_tool_013_binary_names_xtask_root_equal_to_the_build_root",
-  "xtask/tests/check_reporting.rs::lib_tool_013_binary_without_xtask_root_does_not_name_the_root",
-  "xtask/tests/check_reporting.rs::lib_tool_013_binary_other_commands_are_unchanged_under_xtask_root",
-  "xtask/tests/check_reporting.rs::lib_tool_013_binary_refuses_an_empty_xtask_root_for_matrix_check",
-  "xtask/tests/check_reporting.rs::lib_tool_013_binary_refuses_an_empty_xtask_root_for_matrix_render_and_writes_no_page",
-  "xtask/tests/check_reporting.rs::lib_tool_013_binary_refuses_an_empty_xtask_root_for_help",
-  "xtask/tests/check_reporting.rs::lib_tool_013_binary_refuses_an_empty_xtask_root_for_every_command",
+  "xtask/tests/reporting.rs::lib_tool_013_a_passing_check_from_the_build_root_writes_the_unnamed_ok_line",
+  "xtask/tests/reporting.rs::lib_tool_013_a_passing_check_from_xtask_root_names_the_root",
+  "xtask/tests/reporting.rs::lib_tool_013_a_failing_check_from_xtask_root_names_the_root_on_the_first_line_only",
+  "xtask/tests/reporting.rs::lib_tool_013_a_load_failure_from_xtask_root_ends_with_the_root",
+  "xtask/tests/reporting.rs::lib_tool_013_a_control_character_in_the_root_is_escaped_in_the_suffix",
+  "xtask/tests/reporting.rs::lib_tool_013_a_tree_whose_name_holds_control_characters_is_named_escaped",
+  "xtask/tests/reporting.rs::lib_tool_013_xtask_root_equal_to_the_build_root_is_still_named",
+  "xtask/tests/reporting.rs::lib_tool_013_the_named_root_is_shown_as_given",
+  "xtask/tests/reporting.rs::lib_tool_013_the_other_commands_are_unchanged_under_xtask_root",
+  "xtask/tests/reporting.rs::lib_tool_013_run_is_run_from_with_the_build_source",
+  "xtask/tests/reporting.rs::lib_tool_013_binary_names_xtask_root_on_a_passing_check",
+  "xtask/tests/reporting.rs::lib_tool_013_binary_names_xtask_root_on_a_failing_check",
+  "xtask/tests/reporting.rs::lib_tool_013_binary_names_xtask_root_equal_to_the_build_root",
+  "xtask/tests/reporting.rs::lib_tool_013_binary_without_xtask_root_does_not_name_the_root",
+  "xtask/tests/reporting.rs::lib_tool_013_binary_other_commands_are_unchanged_under_xtask_root",
+  "xtask/tests/reporting.rs::lib_tool_013_binary_refuses_an_empty_xtask_root_for_matrix_check",
+  "xtask/tests/reporting.rs::lib_tool_013_binary_refuses_an_empty_xtask_root_for_matrix_render_and_writes_no_page",
+  "xtask/tests/reporting.rs::lib_tool_013_binary_refuses_an_empty_xtask_root_for_help",
+  "xtask/tests/reporting.rs::lib_tool_013_binary_refuses_an_empty_xtask_root_for_every_command",
 ]
 
 [[row]]
@@ -787,20 +787,20 @@ acceptance = [
 ]
 depends_on = ["LIB-TOOL-010"]
 tests = [
-  "xtask/tests/check_reporting.rs::lib_tool_014_the_fixtures_parse_when_unbroken",
-  "xtask/tests/check_reporting.rs::lib_tool_014_a_syntax_error_is_one_line_with_its_position",
-  "xtask/tests/check_reporting.rs::lib_tool_014_an_unknown_key_is_one_line_with_its_position",
-  "xtask/tests/check_reporting.rs::lib_tool_014_a_missing_required_field_is_one_line_with_its_position",
-  "xtask/tests/check_reporting.rs::lib_tool_014_a_value_of_the_wrong_type_is_one_line_with_its_position",
-  "xtask/tests/check_reporting.rs::lib_tool_014_the_column_counts_characters_not_bytes",
-  "xtask/tests/check_reporting.rs::lib_tool_014_non_ascii_text_on_earlier_lines_does_not_move_the_position",
-  "xtask/tests/check_reporting.rs::lib_tool_014_an_error_in_a_later_row_has_that_rows_position",
-  "xtask/tests/check_reporting.rs::lib_tool_014_control_characters_in_the_message_are_escaped",
-  "xtask/tests/check_reporting.rs::lib_tool_014_an_unreadable_matrix_is_one_read_line",
-  "xtask/tests/check_reporting.rs::lib_tool_014_control_characters_in_the_read_error_are_escaped",
-  "xtask/tests/check_reporting.rs::lib_tool_014_every_command_returns_the_same_load_error",
-  "xtask/tests/check_reporting.rs::lib_tool_014_binary_prints_the_load_error_on_one_stderr_line",
-  "xtask/tests/check_reporting.rs::lib_tool_014_binary_prints_the_read_error_on_one_stderr_line",
+  "xtask/tests/reporting.rs::lib_tool_014_the_fixtures_parse_when_unbroken",
+  "xtask/tests/reporting.rs::lib_tool_014_a_syntax_error_is_one_line_with_its_position",
+  "xtask/tests/reporting.rs::lib_tool_014_an_unknown_key_is_one_line_with_its_position",
+  "xtask/tests/reporting.rs::lib_tool_014_a_missing_required_field_is_one_line_with_its_position",
+  "xtask/tests/reporting.rs::lib_tool_014_a_value_of_the_wrong_type_is_one_line_with_its_position",
+  "xtask/tests/reporting.rs::lib_tool_014_the_column_counts_characters_not_bytes",
+  "xtask/tests/reporting.rs::lib_tool_014_non_ascii_text_on_earlier_lines_does_not_move_the_position",
+  "xtask/tests/reporting.rs::lib_tool_014_an_error_in_a_later_row_has_that_rows_position",
+  "xtask/tests/reporting.rs::lib_tool_014_control_characters_in_the_message_are_escaped",
+  "xtask/tests/reporting.rs::lib_tool_014_an_unreadable_matrix_is_one_read_line",
+  "xtask/tests/reporting.rs::lib_tool_014_control_characters_in_the_read_error_are_escaped",
+  "xtask/tests/reporting.rs::lib_tool_014_every_command_returns_the_same_load_error",
+  "xtask/tests/reporting.rs::lib_tool_014_binary_prints_the_load_error_on_one_stderr_line",
+  "xtask/tests/reporting.rs::lib_tool_014_binary_prints_the_read_error_on_one_stderr_line",
 ]
 
 [[row]]
@@ -843,6 +843,17 @@ milestone = "M0"
 title = "Slice PR reuse and full-run dispatch are pinned"
 requirement = "A doc check fails if the sacm-slice skill loses any of three rules. In step 7: reuse the slice's existing PR (`gh pr list --head <branch>`) instead of creating another. In step 7: dispatch `mutants.yml` on the slice branch when it did not run on the head commit. In step 8.5: run `gh pr create` only when the branch has no PR."
 source = "PR #9 Copilot review follow-up (verifier observation O3)"
+kind = "quality"
+status = "planned"
+depends_on = ["LIB-QA-007"]
+
+[[row]]
+id = "LIB-QA-012"
+area = "QA"
+milestone = "M0"
+title = "Mutation outcomes do not depend on test-target order"
+requirement = "Whether a mutant counts as caught or as a timeout must not depend on the alphabetical order of test targets. A mutant that one fast test kills is reported as caught, even when another target becomes slow under the same mutant. One option is a test runner that stops every running test at the first failure, for example nextest with immediate termination. A check fails if this guarantee is lost."
+source = "Slice 0005: mutants.yml run 42420891449, a TIMEOUT for `is_identifier_char -> true`, worked around by renaming a test target"
 kind = "quality"
 status = "planned"
 depends_on = ["LIB-QA-007"]
