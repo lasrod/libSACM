@@ -1,6 +1,6 @@
 ---
 name: sacm-slice
-description: Run one iteration of the libSACM engineering loop as the lead — pick the next ready rows from the functionality matrix, then drive research, API design, failing tests, implementation and independent verification through the project agents, update the matrix and commit. Use when the user runs /sacm-slice, asks to "do the next slice", "continue the loop", or runs it under /loop. Arguments: optional row IDs to force a slice, and `mode=local` (default) or `mode=pr`.
+description: Run one iteration of the libSACM engineering loop as the lead — pick the next ready rows from the functionality matrix, then drive research, API design, failing tests, implementation and independent verification through the project agents, update the matrix and commit. Use when the user runs /sacm-slice, asks to "do the next slice", "continue the loop", or runs it under /loop. Arguments: optional row IDs to force a slice, and `mode=pr` (default, chosen by the maintainer 2026-11-07) or `mode=local`.
 ---
 
 # One slice of the libSACM loop
@@ -95,6 +95,13 @@ reports, but *not* your opinion of the work. If the slice changed public API, ru
   (tests → test engineer, code/docs → implementer, requirement → research), then
   re-verify. At most **two** fix rounds; after a second FAIL, stop and report to the
   user with the findings.
+  - The verifier's "Required fix" must be **complete** for the row, not the next step
+    (see "Prescriptions must be complete" in its definition). If it reads as one
+    mutation deep, ask the verifier for the complete prescription before starting the
+    fix round.
+  - Brief the fix round against that full list. When re-verifying, give the verifier
+    its previous prescription, so it checks item by item and labels anything outside
+    it as a new class.
 - **PASS**: write `docs/verification/NNNN-<short-name>.md` from
   `references/verification-record.md`, quoting the verdict and listing every row it
   covers. Set those rows to `status = "verified"` with
@@ -108,8 +115,10 @@ reports, but *not* your opinion of the work. If the slice changed public API, ru
 3. Full local gate once more.
 4. Commit: `feat(<area>): <summary> [<ROW-IDs>]` (or `fix`/`docs`/`test`/`chore`), body
    listing rows moved to verified. Include the attribution trailer the session requires.
-5. `mode=local`: do not push. `mode=pr`: push the branch and open a PR with the slice
-   brief as the body; stop until it is merged.
+5. `mode=pr` (default): push the branch, open a PR with `gh pr create` using the slice
+   brief as the body, and watch its CI run. Under `/loop`, the next iteration waits
+   (preflight step 2) until the maintainer has merged it. `mode=local`: commit only,
+   do not push. Never merge a PR yourself; merging is the maintainer's review.
 
 ## 9. Checkpoints — when to stop the loop for the user
 

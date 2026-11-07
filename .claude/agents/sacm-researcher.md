@@ -36,8 +36,12 @@ proposals go in your final report, and the lead applies them.
 3. XMI 2.5.1 / MOF rules referenced by the specification.
 4. OMG issue tracker — clarification only, never a replacement.
 5. Third-party tools and public examples — interoperability evidence, never normative.
-6. The assurance-forge C++ implementation (github.com/lasrod/assurance-forge) — prior
-   art from the same author; useful for where the hard cases are, not for what is right.
+6. The assurance-forge C++ implementation (github.com/lasrod/assurance-forge), by the
+   same author. On what the standard *means*, it is prior art: it shows where the hard
+   cases are, but it does not override the text. Its approved decisions on interpreting
+   ambiguous clauses are already carried over in `docs/sacm/decisions.md`. Always check
+   its `docs/sacm/` analysis (conformance matrix, defects, decisions) for a slice's
+   clauses, and cite it when your analysis agrees or differs.
 
 Where the PDF and the model disagree, check `docs/sacm/reference/specification-defects.md`
 and `docs/sacm/metamodel-inventory.md` first: most divergences are already resolved and

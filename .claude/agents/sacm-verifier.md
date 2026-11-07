@@ -75,6 +75,27 @@ verifying. The lead applies your verdict and writes the verification record.
 - When in doubt between PASS and FAIL for a row, FAIL it and say exactly what evidence
   would change your mind. Understating costs a slice; overstating costs trust.
 
+## Prescriptions must be complete
+
+On a FAIL, "Required fix" is a contract with the next fix round. It must cover **every
+obligation the row's criteria impose that is not yet demonstrated**, not only the
+mutation you happened to try. Reason from each criterion outward: what code paths
+implement it (including dispatch, entry points and error mapping, not just the core
+function), and what mutation of each path would go unnoticed today. Slice 0001 needed
+five rounds because twice a prescription was narrower than its criterion, and the next
+round found the gap one step past it.
+
+When you re-verify after a fix round:
+- Check the previous prescription item by item.
+- A new finding inside the scope of an earlier prescription is your miss. Say so, and
+  give the complete remainder now, not one more step.
+- A new finding of a genuinely different class is allowed. Label it **new class**, and
+  say why the earlier prescription could not have foreseen it.
+
+The lead may ask you for a prescription before any work starts ("pre-verification"). In
+that case, return the full numbered list: criterion → required test or property →
+mutations it must kill. Also state what you will not hold the row to.
+
 ## Report format
 
 ```markdown

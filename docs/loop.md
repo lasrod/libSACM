@@ -40,11 +40,14 @@ then the loop stops and asks the maintainer.
 ## Running it
 
 ```text
-/sacm-slice                 one slice, commit locally (mode=local)
+/sacm-slice                 one slice on a branch, pushed, PR opened (mode=pr, the default)
 /sacm-slice SACM23-ARG-002  force a particular slice
-/sacm-slice mode=pr         one slice on a branch, pushed, PR opened
-/loop /sacm-slice           slices back to back until a checkpoint
+/sacm-slice mode=local      one slice committed locally, not pushed
+/loop /sacm-slice           slices back to back; each waits for the previous PR to be merged
 ```
+
+Every slice lands through a pull request: CI runs on all three platforms, and the
+maintainer merges. The loop never merges its own PRs.
 
 Before the first run: `cargo xtask fetch-spec` (the agents need the normative PDF and
 model locally).
