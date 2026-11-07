@@ -250,6 +250,10 @@ fn lib_tool_001_rejects_cycles_and_backward_milestone_dependencies() {
         );
     let p = problems(&matrix(&format!("{a}{b}")), FakeRepo::default());
     assert_problem(&p, "dependency cycle");
+    assert_exact(
+        &p,
+        "dependency cycle: SACM23-BASE-001 -> SACM23-BASE-002 -> SACM23-BASE-001",
+    );
 
     let early = PLANNED
         .replace("milestone = \"M1\"", "milestone = \"M0\"")
@@ -260,6 +264,42 @@ fn lib_tool_001_rejects_cycles_and_backward_milestone_dependencies() {
     let late = PLANNED.replace("SACM23-BASE-001", "SACM23-BASE-002");
     let p = problems(&matrix(&format!("{early}{late}")), FakeRepo::default());
     assert_problem(&p, "from a later milestone");
+}
+
+#[test]
+fn lib_tool_001_cycle_message_names_only_the_rows_on_the_cycle() {
+    // 001 leads into the cycle 002 -> 003 -> 002 but is not on it. The walk
+    // starts at 001, so the cycle is found with 001 at the bottom of the
+    // path: the message must start where the cycle starts, at 002.
+    let rows = [
+        row(
+            "SACM23-BASE-001",
+            "planned",
+            "depends_on = [\"SACM23-BASE-002\"]",
+        ),
+        row(
+            "SACM23-BASE-002",
+            "planned",
+            "depends_on = [\"SACM23-BASE-003\"]",
+        ),
+        row(
+            "SACM23-BASE-003",
+            "planned",
+            "depends_on = [\"SACM23-BASE-002\"]",
+        ),
+    ]
+    .concat();
+    let p = problems(&matrix(&rows), FakeRepo::default());
+    let cycles: Vec<&String> = p
+        .iter()
+        .filter(|m| m.starts_with("dependency cycle"))
+        .collect();
+    assert_eq!(
+        cycles,
+        ["dependency cycle: SACM23-BASE-002 -> SACM23-BASE-003 -> SACM23-BASE-002"],
+        "LIB-TOOL-001: one cycle is reported, as the path from the row where it \
+         starts back to that row; all problems: {p:#?}"
+    );
 }
 
 #[test]
@@ -388,6 +428,37 @@ fn lib_tool_001_only_test_style_attributes_mark_a_test() {
         ["sacm23_base_001_x"],
         "LIB-TOOL-001: a `#[test]`-style attribute such as `#[tokio::test]` marks a test"
     );
+}
+
+#[test]
+fn lib_tool_001_brackets_nested_in_an_attribute_do_not_close_it() {
+    // An attribute ends at the `]` that matches its `#[`, not at the first
+    // `]`: brackets inside it nest. Cut short, the attribute would leave its
+    // tail on the line, hiding the attributes and the function after it.
+    for text in [
+        "#[doc = \"[x]\"] #[test] fn lib_cli_001_x() {}",
+        "#[cfg_attr(all(), doc = \"[[x]]\")] #[test] fn lib_cli_001_x() {}",
+        "#[test] #[doc = \"[x]\"] fn lib_cli_001_x() {}",
+        "#[test]\n#[doc = \"[x]\"]\nfn lib_cli_001_x() {}",
+    ] {
+        assert_eq!(
+            traced_tests(text, false),
+            ["lib_cli_001_x"],
+            "LIB-TOOL-001: {text:?} is a test: the nested `[x]` does not close the attribute"
+        );
+    }
+    // Here only the text up to the first `]` ends in `test`; the attribute
+    // as a whole is a `doc` attribute and marks nothing.
+    for text in [
+        "#[doc = \"[test]\"] fn lib_cli_001_x() {}",
+        "#[doc = \"[test]\"]\nfn lib_cli_001_x() {}",
+    ] {
+        assert_eq!(
+            traced_tests(text, false),
+            Vec::<String>::new(),
+            "LIB-TOOL-001: {text:?} is not a test: `[test]` sits inside a doc attribute"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1224,6 +1295,43 @@ fn lib_tool_001_render_lists_areas_milestones_and_row_lines() {
         page.contains("Pipes a \\| b are escaped."),
         "LIB-TOOL-001: a `|` in row text is escaped so the table stays intact"
     );
+}
+
+#[test]
+fn lib_tool_001_render_lists_each_row_under_its_own_milestone_only() {
+    let page = render(&render_fixture());
+    let m0 = page
+        .find("## M0 — Foundation")
+        .expect("LIB-TOOL-001: the page has an M0 section");
+    let m1 = page
+        .find("## M1 — Core")
+        .expect("LIB-TOOL-001: the page has an M1 section");
+    assert!(m0 < m1, "LIB-TOOL-001: M0 is rendered before M1");
+    // M1 is the last milestone, so its section runs to the end of the page.
+    let sections = [
+        ("M0", &page[m0..m1], vec!["LIB-CLI-001"]),
+        (
+            "M1",
+            &page[m1..],
+            vec!["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003"],
+        ),
+    ];
+    let all = [
+        "LIB-CLI-001",
+        "SACM23-BASE-001",
+        "SACM23-BASE-002",
+        "SACM23-BASE-003",
+    ];
+    for (milestone, section, own) in sections {
+        let listed: Vec<&str> = all
+            .into_iter()
+            .filter(|id| section.lines().any(|l| l.starts_with(&format!("| {id} |"))))
+            .collect();
+        assert_eq!(
+            listed, own,
+            "LIB-TOOL-001: the {milestone} table lists exactly the {milestone} rows:\n{section}"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------

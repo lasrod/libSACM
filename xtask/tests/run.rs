@@ -381,6 +381,97 @@ fn lib_tool_001_run_matrix_status_rejects_a_missing_matrix() {
     assert_names_the_matrix(&args, &message);
 }
 
+/// Three milestones; M2 has no rows.
+const THREE_MILESTONES: &str = "schema_version = 1\n\
+     [[milestone]]\nid = \"M0\"\ntitle = \"Foundation\"\ngoal = \"Build.\"\n\
+     [[milestone]]\nid = \"M1\"\ntitle = \"Core\"\ngoal = \"Model.\"\n\
+     [[milestone]]\nid = \"M2\"\ntitle = \"Later\"\ngoal = \"Extend.\"\n\
+     [[area]]\ncode = \"TOOL\"\nprefix = \"LIB\"\ntitle = \"Tooling\"\n";
+
+#[test]
+fn lib_tool_001_run_matrix_status_counts_each_milestones_rows_by_status() {
+    // File order interleaves the milestones, so a count that ignored the
+    // milestone would differ. M0 has more unverified than verified rows and
+    // more scheduled than unscheduled ones, so neither count can be its
+    // complement by accident; M1 likewise.
+    let rows = [
+        row("LIB-TOOL-001", "M0", "verified", "R1", ""),
+        row("LIB-TOOL-007", "M1", "tests-failing", "R7", ""),
+        row("LIB-TOOL-002", "M0", "verified", "R2", ""),
+        row("LIB-TOOL-003", "M0", "implemented", "R3", ""),
+        row("LIB-TOOL-008", "M1", "analyzed", "R8", ""),
+        row("LIB-TOOL-004", "M0", "planned", "R4", ""),
+        row("LIB-TOOL-005", "M0", "candidate", "R5", "notes = \"why\""),
+        row("LIB-TOOL-009", "M1", "deferred", "R9", "notes = \"why\""),
+        row(
+            "LIB-TOOL-006",
+            "M0",
+            "out-of-scope",
+            "R6",
+            "notes = \"why\"",
+        ),
+    ]
+    .concat();
+    let tree = TempTree::new("run-status-counts");
+    tree.write(MATRIX_PATH, &format!("{THREE_MILESTONES}{rows}"));
+    let out = run_ok(&["matrix", "status"], tree.root());
+    // `<id:<4> <title:<44> <verified:>3>/<scheduled:<3> verified  (<counts>)`:
+    // scheduled rows are those not candidate, deferred or out-of-scope; the
+    // counts follow the summary's status order and omit statuses with none.
+    let expected = [
+        format!(
+            "M0   {:<44}   2/4   verified  (2 verified, 1 implemented, 1 planned, \
+             1 candidate, 1 out-of-scope)",
+            "Foundation"
+        ),
+        format!(
+            "M1   {:<44}   0/2   verified  (1 tests-failing, 1 analyzed, 1 deferred)",
+            "Core"
+        ),
+        format!("M2   {:<44}   0/0   verified  ()", "Later"),
+    ];
+    assert_eq!(
+        out.lines().collect::<Vec<_>>(),
+        expected,
+        "LIB-TOOL-001: `matrix status` prints, per milestone, verified/scheduled and the \
+         non-zero counts per status"
+    );
+    assert!(
+        out.ends_with('\n'),
+        "LIB-TOOL-001: every status line is terminated, wrote {out:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// The repository root the binary passes to `run`
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lib_tool_001_repo_root_is_the_workspace_root_above_the_xtask_crate() {
+    let root = xtask::repo_root();
+    assert!(
+        root.is_absolute(),
+        "LIB-TOOL-001: repo_root is absolute, independent of the working directory, got {}",
+        root.display()
+    );
+    assert_eq!(
+        Some(root.as_path()),
+        Path::new(env!("CARGO_MANIFEST_DIR")).parent(),
+        "LIB-TOOL-001: repo_root is the parent of the xtask crate directory"
+    );
+    assert!(
+        root.join("xtask/Cargo.toml").is_file(),
+        "LIB-TOOL-001: repo_root holds xtask/Cargo.toml, got {}",
+        root.display()
+    );
+    let manifest = fs::read_to_string(root.join("Cargo.toml"))
+        .unwrap_or_else(|e| panic!("LIB-TOOL-001: read the root Cargo.toml: {e}"));
+    assert!(
+        manifest.lines().any(|l| l.trim() == "[workspace]"),
+        "LIB-TOOL-001: the Cargo.toml at repo_root is the workspace manifest"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Item 5: `fetch-spec` (no network)
 // ---------------------------------------------------------------------------

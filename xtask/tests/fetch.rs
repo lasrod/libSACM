@@ -2,14 +2,17 @@
 //! (LIB-TOOL-002).
 //!
 //! `fetch_into` is driven with a fake downloader, so no test touches the
-//! network. Every test works in its own directory under the system temporary
+//! network. `curl_download` is driven with the real `curl` on `file://` URLs
+//! only. Every test works in its own directory under the system temporary
 //! directory and removes it afterwards.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use xtask::fetch::{ARTIFACTS, Artifact, Outcome, fetch_into, sha256_hex};
+use std::fmt::Write as _;
+
+use xtask::fetch::{ARTIFACTS, Artifact, Outcome, curl_download, fetch_into, sha256_hex};
 
 /// The FIPS 180-2 test input and its SHA-256, so the pins in these tests do
 /// not depend on the hashing under test.
@@ -296,5 +299,83 @@ fn lib_tool_002_outcomes_follow_artifact_order() {
         dir.entries(),
         ["other.bin", "reference.bin"],
         "LIB-TOOL-002: both artifacts in place, no .part file"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// curl_download, with the real `curl` on `file://` URLs
+// ---------------------------------------------------------------------------
+//
+// `curl` is a prerequisite of `cargo xtask fetch-spec`, and it ships with the
+// Linux CI runners and with Windows 10 and later. These tests do not skip when
+// it is missing: they fail and say so, because a skipped test would leave
+// `curl_download` untested without anyone noticing.
+
+/// A `file://` URL for the absolute path `path`. Bytes other than unreserved
+/// characters, `/` and `:` are percent-encoded; Windows separators become `/`.
+fn file_url(path: &Path) -> String {
+    let text = path
+        .to_str()
+        .unwrap_or_else(|| panic!("LIB-TOOL-002: {} is not UTF-8", path.display()))
+        .replace('\\', "/");
+    let mut url = String::from("file://");
+    if !text.starts_with('/') {
+        // `C:/...` becomes `file:///C:/...`.
+        url.push('/');
+    }
+    for byte in text.bytes() {
+        if byte.is_ascii_alphanumeric() || b"-._~/:".contains(&byte) {
+            url.push(char::from(byte));
+        } else {
+            let _ = write!(url, "%{byte:02X}");
+        }
+    }
+    url
+}
+
+#[test]
+fn lib_tool_002_curl_download_writes_the_bytes_at_the_url_to_the_output_path() {
+    let dir = TempDir::new("lib-tool-002-curl-copy");
+    // Every byte value, and line endings that a text-mode copy would change.
+    let bytes: Vec<u8> = (0..=u8::MAX).chain(*b"\r\n\n\r\x1a").collect();
+    let source = dir.file("source.bin");
+    fs::write(&source, &bytes).expect("LIB-TOOL-002: write the source file");
+    let out = dir.file("out.bin");
+    let url = file_url(&source);
+
+    let result = curl_download(&url, &out);
+
+    assert_eq!(
+        result,
+        Ok(()),
+        "LIB-TOOL-002: curl_download({url:?}) succeeds; an error saying that curl could \
+         not be run means curl is not installed, which this test does not accept"
+    );
+    assert_eq!(
+        fs::read(&out).ok(),
+        Some(bytes),
+        "LIB-TOOL-002: curl_download writes exactly the bytes at the URL to {}",
+        out.display()
+    );
+}
+
+#[test]
+fn lib_tool_002_curl_download_reports_a_failed_transfer_as_an_error() {
+    let dir = TempDir::new("lib-tool-002-curl-missing");
+    let url = file_url(&dir.file("missing.bin"));
+    let out = dir.file("out.bin");
+
+    let result = curl_download(&url, &out);
+
+    // `curl <exit status>`: `exit status: 37` on Unix, `exit code: 37` on
+    // Windows. "could not run curl" would mean curl is missing, not that it
+    // reported the failure.
+    let Err(message) = result else {
+        panic!("LIB-TOOL-002: curl_download({url:?}) of a missing file must fail, got Ok");
+    };
+    assert!(
+        message.starts_with("curl exit"),
+        "LIB-TOOL-002: a transfer that curl reports as failed is an error naming curl's \
+         exit status, got {message:?}"
     );
 }
