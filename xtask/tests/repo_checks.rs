@@ -4820,11 +4820,16 @@ fn check_mutants_config(
 }
 
 /// LIB-QA-007 P5 (D12): `.gitignore` ignores `/mutants.out*` and re-includes
-/// nothing of it. Only trailing whitespace is normalised: gitignore(5)
-/// ignores trailing spaces, but a leading space is part of the pattern, and
-/// a line negates only when its first character is `!`.
+/// nothing. Each line has its trailing space characters (U+0020) stripped,
+/// and nothing else: git strips only unescaped trailing spaces (gitignore(5),
+/// dir.c `trim_trailing_spaces`), so a trailing tab, a backslash-escaped
+/// trailing space and any leading whitespace stay part of the pattern.
+/// Every line whose first character is `!` negates a pattern and is
+/// reported, whatever it names: telling which paths a negation re-includes
+/// would mean reimplementing git's matching, and D12 allows none. An
+/// indented `!` or an escaped `\!` is a literal, not a negation.
 fn check_mutants_gitignore(gitignore: &str) -> Vec<String> {
-    let lines: Vec<&str> = gitignore.lines().map(str::trim_end).collect();
+    let lines: Vec<&str> = gitignore.lines().map(|l| l.trim_end_matches(' ')).collect();
     let mut problems = Vec::new();
     require(
         &mut problems,
@@ -4832,13 +4837,10 @@ fn check_mutants_gitignore(gitignore: &str) -> Vec<String> {
         "gitignore-mutants",
         "`.gitignore` must contain the line `/mutants.out*`",
     );
-    for line in lines
-        .iter()
-        .filter(|l| l.starts_with('!') && l.contains("mutants.out"))
-    {
+    for line in lines.iter().filter(|l| l.starts_with('!')) {
         problems.push(problem(
             "gitignore-mutants",
-            format!("`.gitignore` re-includes `{line}`"),
+            format!("`.gitignore` line `{line}` negates a pattern; D12 re-includes nothing"),
         ));
     }
     problems
@@ -7493,6 +7495,10 @@ fn lib_qa_007_mutants_output_is_git_ignored() {
             replace_line(g, MUTANTS_GITIGNORE_RULE, "/target/mutants.out*"),
         ),
         ("a re-include", format!("{g}!/mutants.out/outcomes.json\n")),
+        // A negation un-ignores `mutants.out` without naming it literally;
+        // every `!` line is reported (D12 re-includes nothing).
+        ("a re-include of everything", format!("{g}!*\n")),
+        ("a re-include by wildcard", format!("{g}!/mutants.ou?\n")),
         // gitignore(5) strips trailing spaces only: an indented line is a
         // different pattern and does not ignore the root `mutants.out*`.
         (
@@ -7503,27 +7509,48 @@ fn lib_qa_007_mutants_output_is_git_ignored() {
             "rule indented, with trailing spaces",
             replace_line(g, MUTANTS_GITIGNORE_RULE, "  /mutants.out*  "),
         ),
+        // git strips trailing spaces, not tabs (dir.c `trim_trailing_spaces`):
+        // `/mutants.out*<TAB>` does not ignore `mutants.out`.
+        (
+            "rule with a trailing tab",
+            replace_line(g, MUTANTS_GITIGNORE_RULE, "/mutants.out*\t"),
+        ),
+        // A backslash-escaped trailing space is kept by git, so the pattern
+        // ends in a literal space and does not ignore `mutants.out`.
+        (
+            "rule with an escaped trailing space",
+            replace_line(g, MUTANTS_GITIGNORE_RULE, "/mutants.out*\\ "),
+        ),
     ] {
         let problems = check_mutants_gitignore(&text);
         assert!(
             has_code(&problems, "gitignore-mutants"),
-            "LIB-QA-007: the mutation `{name}` must be reported as `[gitignore-mutants]`; it reported {problems:#?}"
+            "LIB-QA-007: the mutation `{name}` must be reported as `[gitignore-mutants]`; it reported {problems:#?}; text:\n{text:?}"
         );
     }
-    let trailing = replace_line(g, MUTANTS_GITIGNORE_RULE, "/mutants.out*  ");
-    let problems = check_mutants_gitignore(&trailing);
-    assert!(
-        problems.is_empty(),
-        "LIB-QA-007: gitignore(5) ignores trailing spaces, so `/mutants.out*  ` is the rule, but was reported: {problems:#?}"
-    );
-    // An indented `!` line is not a negation (gitignore(5): the prefix `!`
-    // negates), so it re-includes nothing.
-    let indented_bang = format!("{g}  !/mutants.out/outcomes.json\n");
-    let problems = check_mutants_gitignore(&indented_bang);
-    assert!(
-        problems.is_empty(),
-        "LIB-QA-007: an indented `!` line is not a re-include, but was reported: {problems:#?}"
-    );
+    for (name, text) in [
+        // gitignore(5) ignores unescaped trailing spaces.
+        (
+            "rule with trailing spaces",
+            replace_line(g, MUTANTS_GITIGNORE_RULE, "/mutants.out*  "),
+        ),
+        // An indented `!` line is not a negation (gitignore(5): the prefix
+        // `!` negates), so it re-includes nothing.
+        (
+            "an indented `!` line",
+            format!("{g}  !/mutants.out/outcomes.json\n"),
+        ),
+        // gitignore(5): a backslash before the first `!` makes it literal.
+        ("an escaped `\\!` line", format!("{g}\\!/mutants.out\n")),
+        // git reads CRLF line endings; `str::lines` strips the `\r`.
+        ("CRLF line endings", g.replace('\n', "\r\n")),
+    ] {
+        let problems = check_mutants_gitignore(&text);
+        assert!(
+            problems.is_empty(),
+            "LIB-QA-007: `{name}` ignores `mutants.out*` and re-includes nothing, but was reported: {problems:#?}; text:\n{text:?}"
+        );
+    }
     let problems = check_mutants_gitignore(&read(".gitignore"));
     assert!(
         problems.is_empty(),
