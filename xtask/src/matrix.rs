@@ -739,10 +739,11 @@ fn check_evidence(row: &Row, index: &Index<'_>) -> Vec<String> {
         (None, Status::Verified) => {
             out.push("is verified but cites no verification record".into());
         }
-        (Some(_), st) if st != Status::Verified => {
+        (Some(record), Status::Verified) => out.extend(check_record(&row.id, record, index.repo)),
+        (Some(record), _) => {
             out.push(format!("is {s} but cites a verification record"));
+            out.extend(check_path(record).err());
         }
-        (Some(record), _) => out.extend(check_record(&row.id, record, index.repo)),
         (None, _) => {}
     }
     if status.needs_reason() && row.notes.as_deref().is_none_or(|n| n.trim().is_empty()) {
@@ -765,21 +766,44 @@ enum VerdictLine<'a> {
     Malformed(usize),
 }
 
+/// A fence line: 0 to 3 spaces of indent (a tab is not one of them), then a
+/// run of 3 or more of one fence character, a backtick or a tilde. Returns
+/// the character, the length of the run and the rest of the line.
+fn fence(line: &str) -> Option<(char, usize, &str)> {
+    let body = line.trim_start_matches(' ');
+    if line.len() - body.len() > 3 {
+        return None;
+    }
+    let c = body.chars().next().filter(|c| matches!(c, '`' | '~'))?;
+    let rest = body.trim_start_matches(c);
+    let run = body.len() - rest.len();
+    (run >= 3).then_some((c, run, rest))
+}
+
 /// The verdict lines of a verification record, in line order.
 ///
 /// A line counts once trailing spaces and tabs are removed, and only when it
 /// starts with [`VERDICT_PREFIX`] itself: an indented or block-quoted line
-/// does not. Lines inside a ```` ``` ```` or `~~~` fence never count, and the
-/// fence lines themselves are not verdict lines.
+/// does not. Lines inside a fenced code block never count, and the fence lines
+/// themselves are not verdict lines. Fences follow `CommonMark`: a [`fence`]
+/// line opens a block when none is open; only a fence line of the same
+/// character, with a run at least as long and nothing after it but spaces and
+/// tabs, closes it; every other line inside is content; and an unclosed block
+/// runs to the end of the record.
 fn verdict_lines(text: &str) -> Vec<VerdictLine<'_>> {
-    let mut fenced = false;
+    let mut open: Option<(char, usize)> = None;
     let mut out = Vec::new();
     for (i, line) in text.lines().enumerate() {
-        if line.starts_with("```") || line.starts_with("~~~") {
-            fenced = !fenced;
+        if let Some((c, run)) = open {
+            if fence(line).is_some_and(|(close, len, rest)| {
+                close == c && len >= run && rest.trim_end_matches([' ', '\t']).is_empty()
+            }) {
+                open = None;
+            }
             continue;
         }
-        if fenced {
+        if let Some((c, run, _)) = fence(line) {
+            open = Some((c, run));
             continue;
         }
         let Some(rest) = line

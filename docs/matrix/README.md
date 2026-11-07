@@ -71,11 +71,14 @@ changes a status, and only to `verified` on a recorded PASS from the verifier.
 4. The evidence rules in the status table above hold.
 5. Every cited path (code, test file, doctest file, verification record) is a relative,
    `/`-separated path inside the repository: it has no `\` or `:`, does not start with
-   `/`, and has no empty, `.` or `..` component. A rejected path is never read. Every
-   cited code path and verification record exists. The record of a verified row has
-   exactly one verdict line for that row, saying PASS: `- Row verdict: <ROW-ID>: PASS`,
-   with no indent and outside code blocks. A line starting `- Row verdict:` that is not
-   well formed is a problem.
+   `/`, and has no empty, `.` or `..` component. This applies at every status, so it
+   includes a `verification` path on a row that is not verified. A rejected path is never
+   read. Every cited code path and verification record exists. The record of a verified
+   row has exactly one verdict line for that row, saying PASS:
+   `- Row verdict: <ROW-ID>: PASS`, with no indent and outside fenced code blocks.
+   Fences follow CommonMark: 0 to 3 spaces of indent, then 3 or more backticks or
+   tildes, closed by a run of the same character that is at least as long. A line
+   starting `- Row verdict:` that is not well formed is a problem.
 6. Every test citation is `path::function`, where the function is a **test** in that file
    (a Rust function under a `#[test]`-style attribute, on the line before or the same
    line, or a Python `def test_…`; a helper, comment or string literal does not count),

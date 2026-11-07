@@ -458,6 +458,259 @@ fn lib_tool_005_lines_in_fenced_code_blocks_are_not_verdict_lines() {
     }
 }
 
+/// The verdict line the fence tests hide or reveal.
+const PASS_LINE: &str = "- Row verdict: LIB-TOOL-001: PASS";
+
+/// `template` with every `{PASS}` placeholder replaced by [`PASS_LINE`].
+fn with_pass(template: &str) -> String {
+    template.replace("{PASS}", PASS_LINE)
+}
+
+/// Each case whose record, `template` with [`with_pass`] applied, does not
+/// give [`ROW`] exactly the problems `expected`, described by its `why`.
+fn fence_mismatches(cases: &[(&str, &str)], expected: &[String]) -> Vec<String> {
+    let mut out = Vec::new();
+    for (template, why) in cases {
+        let record = with_pass(template);
+        let p = record_problems(&record);
+        if p != expected {
+            out.push(format!("{why}: the record {record:?} gave {p:?}"));
+        }
+    }
+    out
+}
+
+// CommonMark fences (verification 0004, P-005): an opening fence has 0 to 3
+// spaces of indent and a run of 3 or more backticks or 3 or more tildes; it
+// is closed only by a line of 0 to 3 spaces, a run of the same character at
+// least as long, and then only spaces or tabs. Inside an open fence every
+// other line is content, and an unclosed fence runs to the end. Each test
+// lists every failing case, not only the first.
+
+#[test]
+fn lib_tool_005_a_pass_line_inside_a_nested_mismatched_or_indented_fence_does_not_count() {
+    let failures = fence_mismatches(
+        &[
+            (
+                "```\n~~~\n{PASS}\n~~~\n```\n",
+                "a `~~~` line inside a ``` fence is content, not a closer",
+            ),
+            (
+                "~~~\n```\n{PASS}\n```\n~~~\n",
+                "a ``` line inside a `~~~` fence is content, not a closer",
+            ),
+            (
+                "````\n```\n{PASS}\n```\n````\n",
+                "a ``` line inside a ```` fence is a shorter run, so content",
+            ),
+            (
+                "~~~~\n~~~\n{PASS}\n~~~\n~~~~\n",
+                "a `~~~` line inside a `~~~~` fence is a shorter run, so content",
+            ),
+            (
+                "```\n```text\n{PASS}\n```\n",
+                "a ``` line with an info string inside an open fence is content, not a closer",
+            ),
+            (
+                "~~~\n~~~ text\n{PASS}\n~~~\n",
+                "a `~~~` line with an info string inside an open fence is content, not a closer",
+            ),
+            (
+                " ```\n{PASS}\n ```\n",
+                "a fence indented 1 space is a fence",
+            ),
+            (
+                "  ```\n{PASS}\n  ```\n",
+                "a fence indented 2 spaces is a fence",
+            ),
+            (
+                "   ```\n{PASS}\n   ```\n",
+                "a fence indented 3 spaces is a fence",
+            ),
+            (
+                "   ~~~\n{PASS}\n   ~~~\n",
+                "a `~~~` fence indented 3 spaces is a fence",
+            ),
+            (
+                "~~~\n```\n{PASS}\n",
+                "an unclosed fence runs to the end, past a fence line of the other character",
+            ),
+        ],
+        &[no_verdict_problem()],
+    );
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-005: a PASS line inside a fence is neither a verdict line nor malformed, so \
+         the row gets exactly the no-verdict problem:\n{failures:#?}"
+    );
+}
+
+#[test]
+fn lib_tool_005_a_fence_closes_only_on_the_same_character_with_a_run_at_least_as_long() {
+    let failures = fence_mismatches(
+        &[
+            (
+                "````\n```\n````\n{PASS}\n",
+                "```` closes the ```` fence that holds a ``` line",
+            ),
+            (
+                "```\ncode\n`````\n{PASS}\n",
+                "a longer run closes the fence",
+            ),
+            (
+                "~~~~\ncode\n~~~~~\n{PASS}\n",
+                "a longer `~` run closes the fence",
+            ),
+            (
+                "```\ncode\n```  \n{PASS}\n",
+                "a closing fence with trailing spaces closes",
+            ),
+            (
+                "```\ncode\n```\t\n{PASS}\n",
+                "a closing fence with a trailing tab closes",
+            ),
+            (
+                "~~~\ncode\n~~~ \t\n{PASS}\n",
+                "a closing `~~~` with trailing spaces and a tab closes",
+            ),
+            (
+                "```\r\ncode\r\n```\r\n{PASS}\r\n",
+                "a closing fence with a CRLF ending closes",
+            ),
+            (
+                "```\ncode\n ```\n{PASS}\n",
+                "a closing fence indented 1 space closes",
+            ),
+            (
+                "```\ncode\n  ```\n{PASS}\n",
+                "a closing fence indented 2 spaces closes",
+            ),
+            (
+                "```\ncode\n   ```\n{PASS}\n",
+                "a closing fence indented 3 spaces closes",
+            ),
+            (
+                "~~~\ncode\n   ~~~~\n{PASS}\n",
+                "a longer closing `~~~~` indented 3 spaces closes",
+            ),
+            (
+                "  ```\ncode\n```\n{PASS}\n",
+                "an opening fence indented 2 spaces is closed by an unindented one",
+            ),
+        ],
+        &[],
+    );
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-005: the fence closes, so the PASS line after it passes the row:\n\
+         {failures:#?}"
+    );
+}
+
+#[test]
+fn lib_tool_005_a_fence_indented_four_spaces_is_not_a_fence() {
+    let mut failures = fence_mismatches(
+        &[
+            (
+                "    ```\n{PASS}\n",
+                "``` indented 4 spaces does not open a fence",
+            ),
+            (
+                "    ```\n{PASS}\n    ```\n",
+                "``` indented 4 spaces neither opens nor closes a fence",
+            ),
+            (
+                "    ~~~\n{PASS}\n",
+                "`~~~` indented 4 spaces does not open a fence",
+            ),
+            (
+                "\t```\n{PASS}\n",
+                "``` after a tab is not indented 0 to 3 spaces, so it does not open a fence",
+            ),
+        ],
+        &[],
+    );
+    failures.extend(fence_mismatches(
+        &[(
+            "```\n    ```\n{PASS}\n",
+            "inside an open fence, ``` indented 4 spaces is content, not a closer",
+        )],
+        &[no_verdict_problem()],
+    ));
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-005: a fence line indented 4 spaces or a tab is not a fence line:\n\
+         {failures:#?}"
+    );
+}
+
+#[test]
+fn lib_tool_005_a_run_of_two_backticks_or_tildes_is_not_a_fence() {
+    let mut failures = fence_mismatches(
+        &[
+            ("``\n{PASS}\n``\n", "two backticks do not open a fence"),
+            ("~~\n{PASS}\n~~\n", "two tildes do not open a fence"),
+            (
+                "``text\n{PASS}\n",
+                "two backticks and an info string do not open a fence",
+            ),
+            ("  ~~\n{PASS}\n", "two indented tildes do not open a fence"),
+        ],
+        &[],
+    );
+    failures.extend(fence_mismatches(
+        &[
+            (
+                "```\n``\n{PASS}\n",
+                "two backticks do not close a fence of three",
+            ),
+            (
+                "~~~\n~~\n{PASS}\n",
+                "two tildes do not close a fence of three",
+            ),
+        ],
+        &[no_verdict_problem()],
+    ));
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-005: a run of two backticks or tildes is not a fence line:\n{failures:#?}"
+    );
+}
+
+#[test]
+fn lib_tool_005_a_fail_line_beside_a_fenced_pass_example_is_reported_as_fail() {
+    let fail_line = "- Row verdict: LIB-TOOL-001: FAIL";
+    let expected = record_problems(&format!("{fail_line}\n"));
+    assert!(
+        expected.len() == 1 && expected[0].contains("FAIL"),
+        "LIB-TOOL-005: a lone FAIL line is the single FAIL problem, got {expected:#?}"
+    );
+    let cases: Vec<(String, &str)> = [
+        (
+            "{FAIL}\n````\n```\n{PASS}\n```\n````\n",
+            "a FAIL line, then a ```` fence holding a ``` pair around a PASS line",
+        ),
+        (
+            "{FAIL}\n~~~\n```\n{PASS}\n```\n~~~\n",
+            "a FAIL line, then a `~~~` fence holding a ``` pair around a PASS line",
+        ),
+        (
+            "````\n```\n{PASS}\n```\n````\n{FAIL}\n",
+            "a ```` fence holding a ``` pair around a PASS line, then a FAIL line",
+        ),
+    ]
+    .into_iter()
+    .map(|(template, why)| (template.replace("{FAIL}", fail_line), why))
+    .collect();
+    let cases: Vec<(&str, &str)> = cases.iter().map(|(t, why)| (t.as_str(), *why)).collect();
+    let failures = fence_mismatches(&cases, &expected);
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-005: the fenced PASS example is not a verdict line, so the row's verdict is \
+         its FAIL line alone:\n{failures:#?}"
+    );
+}
+
 #[test]
 fn lib_tool_005_lines_after_a_closed_fence_count() {
     for record in [
@@ -566,10 +819,13 @@ fn lib_tool_005_a_malformed_line_is_not_a_verdict_for_the_row() {
 
 #[test]
 fn lib_tool_005_line_numbers_count_every_line_of_the_record() {
-    // Line 2 and line 9 are malformed; the fenced and indented look-alikes on
-    // lines 5 and 7 are not reported. CRLF endings do not change the count.
+    // Line 2 and line 14 are malformed. The fenced and indented look-alikes on
+    // lines 5 and 7 are not reported, and neither is the look-alike on line
+    // 10, inside a ``` line pair nested in a ```` fence (lines 8 to 12). CRLF
+    // endings do not change the count.
     let record = "# V\r\n- Row verdict: LIB-TOOL-001: pass\r\n\r\n```\r\n\
                   - Row verdict: LIB-TOOL-001: pass\r\n```\r\n  - Row verdict: x\r\n\
+                  ````\r\n```\r\n- Row verdict: LIB-TOOL-001: pass\r\n```\r\n````\r\n\
                   - Row verdict: LIB-TOOL-001: PASS\r\n- Row verdict:\r\n";
     let p = record_problems(record);
     let malformed: Vec<&String> = p.iter().filter(|m| m.contains("malformed")).collect();
@@ -580,13 +836,13 @@ fn lib_tool_005_line_numbers_count_every_line_of_the_record() {
          got {p:#?}"
     );
     assert!(
-        names_line(malformed[0], 2) && names_line(malformed[1], 9),
-        "LIB-TOOL-005: the malformed lines are lines 2 and 9, in that order, got {malformed:#?}"
+        names_line(malformed[0], 2) && names_line(malformed[1], 14),
+        "LIB-TOOL-005: the malformed lines are lines 2 and 14, in that order, got {malformed:#?}"
     );
     assert_eq!(
         p.len(),
         2,
-        "LIB-TOOL-005: the PASS line on line 8 passes the row, got {p:#?}"
+        "LIB-TOOL-005: the PASS line on line 13 passes the row, got {p:#?}"
     );
 }
 
@@ -601,6 +857,37 @@ fn lib_tool_005_a_missing_record_is_reported_once() {
             "{ROW}: verification record {RECORD} does not exist"
         )],
         "LIB-TOOL-005: a missing record is one problem, not also a missing verdict"
+    );
+}
+
+/// Decision D5 of slice 0004: a record's malformed verdict line is a problem
+/// of every verified row that cites the record.
+#[test]
+fn lib_tool_005_a_malformed_line_in_a_shared_record_is_reported_once_per_citing_row() {
+    // Both rows pass on their own lines; line 3 is malformed.
+    let record =
+        "- Row verdict: LIB-TOOL-001: PASS\n- Row verdict: LIB-TOOL-002: PASS\n- Row verdict: x\n";
+    let p = shared_record_problems(record);
+    assert_eq!(
+        p.len(),
+        2,
+        "LIB-TOOL-005: the malformed line is reported once for each of the two citing rows, \
+         got {p:#?}"
+    );
+    for (problem, id) in p.iter().zip([ROW, OTHER]) {
+        assert!(
+            problem.starts_with(&format!("{id}: "))
+                && problem.contains("malformed")
+                && problem.contains(RECORD)
+                && names_line(problem, 3),
+            "LIB-TOOL-005: the report for {id} is prefixed with its id and names the record and \
+             line 3, got {problem:?}"
+        );
+    }
+    assert_eq!(
+        p[0].strip_prefix(&format!("{ROW}: ")),
+        p[1].strip_prefix(&format!("{OTHER}: ")),
+        "LIB-TOOL-005: the two reports differ only in the row id, got {p:#?}"
     );
 }
 
@@ -820,6 +1107,82 @@ fn lib_tool_006_a_rejected_path_does_not_hide_the_other_citations() {
              {asked:?}"
         );
     }
+}
+
+/// Every status except `verified`, as written in the matrix.
+const NOT_VERIFIED: [&str; 7] = [
+    "planned",
+    "analyzed",
+    "tests-failing",
+    "implemented",
+    "candidate",
+    "deferred",
+    "out-of-scope",
+];
+
+/// [`ROW`] with `status` and the evidence that status requires, plus
+/// `verification` when it is given, and a repository in which that evidence
+/// resolves.
+fn status_row(status: &str, verification: Option<&str>) -> (Matrix, FakeRepo) {
+    let mut extra = String::from("acceptance = [\"a\"]\nnotes = \"why\"\n");
+    let mut repo = FakeRepo::default();
+    if matches!(status, "tests-failing" | "implemented") {
+        let _ = writeln!(extra, "tests = [\"t.rs::{}\"]", test_name(ROW));
+        repo = repo.with("t.rs", &test_file(&[ROW]));
+    }
+    if status == "implemented" {
+        extra.push_str("code = [\"src/lib.rs\"]\n");
+        repo = repo.with("src/lib.rs", "");
+    }
+    if let Some(path) = verification {
+        let _ = writeln!(extra, "verification = {}", toml_str(path));
+    }
+    (matrix(&row(ROW, status, &extra)), repo)
+}
+
+/// Verification 0004, P-006: `verification` is a cited path at every status,
+/// so a non-verified row citing a path outside the repository gets both the
+/// rejection and the "cites a verification record" problem.
+#[test]
+fn lib_tool_006_a_bad_verification_path_on_a_non_verified_row_is_rejected_and_never_read() {
+    // Each row is otherwise consistent, so the comparison below sees only the
+    // two problems under test.
+    for status in NOT_VERIFIED {
+        let (m, repo) = status_row(status, None);
+        assert_eq!(
+            gate(&m, repo).0,
+            Vec::<String>::new(),
+            "LIB-TOOL-006: a {status} row with its required evidence and no record passes"
+        );
+    }
+    let mut failures = Vec::new();
+    for status in NOT_VERIFIED {
+        for path in ["", "/x", "a\\b", "C:/x", "a//b", "./a", "../a"] {
+            let (m, repo) = status_row(status, Some(path));
+            let (mut p, repo) = gate(&m, repo);
+            p.sort();
+            let mut expected = vec![
+                rejection(path),
+                format!("{ROW}: is {status} but cites a verification record"),
+            ];
+            expected.sort();
+            if p != expected {
+                failures.push(format!("{status} citing {path:?}: got {p:?}"));
+            }
+            let asked = repo.asked();
+            if asked.iter().any(|a| a == path) {
+                failures.push(format!(
+                    "{status} citing {path:?}: the rejected path was asked for: {asked:?}"
+                ));
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-006: a non-verified row citing a verification record outside the repository \
+         gets the rejection once and the \"cites a verification record\" problem, and the path \
+         is never read or statted:\n{failures:#?}"
+    );
 }
 
 // ---------------------------------------------------------------------------

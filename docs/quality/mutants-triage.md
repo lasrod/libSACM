@@ -38,6 +38,21 @@ This is where every cargo-mutants survivor in the workspace gets its disposition
   - `matrix.rs:1055:5` (`load_from`)
 - **The three sacm-cli BrokenPipe guard mutants** (`main.rs:31`) are caught on Linux, by the LIB-CLI-001 Linux tests.
 
+## Slice 0004
+
+Slice 0004 (LIB-TOOL-005, -006, -009, -010) added code to `xtask/src/matrix.rs`. Fix round 1 replaced the fence toggle in `verdict_lines` with CommonMark fences (a new helper, `fence`) and checks the `verification` path at every status.
+
+- **Authoritative run:** the Linux runs on PR #10 at the fix-round-1 head: mutants.yml run (run id: to be filled in by the lead) and the ci.yml `mutants (PR diff)` job. The lead records their ids and totals. The local runs below are Windows pre-checks.
+- **Local pre-check, PR diff** (cargo-mutants 27.1.0, `--in-diff` against `main`, Windows): 49 mutants, **48 caught, 0 missed, 0 timed out, 1 unviable** (the `verdict_lines` mutant below).
+- **Local pre-check, unviable set** (`--workspace --re "Default::default"`, Windows): 12 mutants, 7 caught, 5 unviable, exactly the five below. The 7 caught include the four `fence` replacements.
+- **The 5 unviable mutants** at the fix head (positions from `--list`). The new one is `verdict_lines`. The other four are the earlier ones; `ready` and `load_from` have moved. All are structural: the replacement needs a `Default` that `Outcome`, `Matrix`, `VerdictLine` or `&Row` does not implement.
+  - `fetch.rs:110:5` (`fetch_into`, unchanged)
+  - `matrix.rs:530:5` (`load`, unchanged)
+  - `matrix.rs:794:5` (`verdict_lines`, new in slice 0004; `775:5` at `e216a82`: `replace verdict_lines -> Vec<VerdictLine<'_>> with vec![Default::default()]`)
+  - `matrix.rs:1168:5` (`ready`; `1014:5` in slice 0003, `1144:5` at `e216a82`)
+  - `matrix.rs:1209:5` (`load_from`; `1055:5` in slice 0003, `1185:5` at `e216a82`)
+- **`fence` is viable throughout:** its `Some((Default::default(), …))` replacements compile, because `char` implements `Default`, and they are caught.
+
 ## Dispositions
 
 A disposition is one of:

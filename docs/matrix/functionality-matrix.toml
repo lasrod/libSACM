@@ -594,12 +594,18 @@ tests = [
   "xtask/tests/gate_hardening.rs::lib_tool_005_a_verdict_line_for_a_different_row_does_not_count",
   "xtask/tests/gate_hardening.rs::lib_tool_005_indented_and_block_quoted_lines_are_not_verdict_lines",
   "xtask/tests/gate_hardening.rs::lib_tool_005_lines_in_fenced_code_blocks_are_not_verdict_lines",
+  "xtask/tests/gate_hardening.rs::lib_tool_005_a_pass_line_inside_a_nested_mismatched_or_indented_fence_does_not_count",
+  "xtask/tests/gate_hardening.rs::lib_tool_005_a_fence_closes_only_on_the_same_character_with_a_run_at_least_as_long",
+  "xtask/tests/gate_hardening.rs::lib_tool_005_a_fence_indented_four_spaces_is_not_a_fence",
+  "xtask/tests/gate_hardening.rs::lib_tool_005_a_run_of_two_backticks_or_tildes_is_not_a_fence",
+  "xtask/tests/gate_hardening.rs::lib_tool_005_a_fail_line_beside_a_fenced_pass_example_is_reported_as_fail",
   "xtask/tests/gate_hardening.rs::lib_tool_005_lines_after_a_closed_fence_count",
   "xtask/tests/gate_hardening.rs::lib_tool_005_trailing_spaces_and_tabs_are_accepted",
   "xtask/tests/gate_hardening.rs::lib_tool_005_malformed_verdict_lines_are_reported_with_the_record_and_line_number",
   "xtask/tests/gate_hardening.rs::lib_tool_005_a_malformed_line_is_not_a_verdict_for_the_row",
   "xtask/tests/gate_hardening.rs::lib_tool_005_line_numbers_count_every_line_of_the_record",
   "xtask/tests/gate_hardening.rs::lib_tool_005_a_missing_record_is_reported_once",
+  "xtask/tests/gate_hardening.rs::lib_tool_005_a_malformed_line_in_a_shared_record_is_reported_once_per_citing_row",
   "xtask/tests/gate_hardening.rs::lib_tool_005_real_matrix_passes_the_gate",
   "xtask/tests/gate_hardening.rs::lib_tool_005_every_verified_row_in_the_real_matrix_has_one_pass_verdict_line",
 ]
@@ -632,6 +638,7 @@ tests = [
   "xtask/tests/gate_hardening.rs::lib_tool_006_a_path_breaking_several_rules_is_reported_once",
   "xtask/tests/gate_hardening.rs::lib_tool_006_accepts_dot_names_and_double_dots_inside_a_component",
   "xtask/tests/gate_hardening.rs::lib_tool_006_a_rejected_path_does_not_hide_the_other_citations",
+  "xtask/tests/gate_hardening.rs::lib_tool_006_a_bad_verification_path_on_a_non_verified_row_is_rejected_and_never_read",
   "xtask/tests/gate_hardening.rs::lib_tool_006_every_path_cited_in_the_real_matrix_is_inside_the_repository",
 ]
 
@@ -665,7 +672,7 @@ title = "Area table is validated"
 requirement = "The gate rejects an `[[area]]` whose code is empty or not all uppercase ASCII letters, in addition to the existing uniqueness check."
 source = "Verification 0001 round 5 follow-up"
 kind = "tooling"
-status = "implemented"
+status = "verified"
 code = ["xtask/src/matrix.rs"]
 acceptance = [
   "An `[[area]]` whose `code` is empty, or contains anything other than ASCII `A`-`Z`, is reported as `area code `<code>` must be one or more uppercase ASCII letters`. Lowercase, digits, `-`, `_`, spaces and non-ASCII letters are all rejected.",
@@ -679,6 +686,7 @@ tests = [
   "xtask/tests/gate_hardening.rs::lib_tool_009_a_duplicate_bad_code_reports_both_problems",
   "xtask/tests/gate_hardening.rs::lib_tool_009_every_area_in_the_real_matrix_has_an_uppercase_ascii_code",
 ]
+verification = "docs/verification/0004-m0-gate-hardening.md"
 
 [[row]]
 id = "LIB-TOOL-010"
@@ -688,7 +696,7 @@ title = "Every gate problem reaches the user"
 requirement = "When `cargo xtask matrix check` fails, every problem is reported on stderr (or in the returned error), one per line, in a deterministic order, so a CI failure says what to fix."
 source = "Verification 0001 round 5 follow-up (surviving mutations R30, R31)"
 kind = "tooling"
-status = "implemented"
+status = "verified"
 code = ["xtask/src/matrix.rs", "xtask/src/main.rs"]
 acceptance = [
   "When `matrix check` finds problems, `xtask::run([\"matrix\", \"check\"], root, out)` returns an error. The error's first line is `functionality matrix: <n> problem(s)`, and it is followed by every problem, one per line, each indented by two spaces. No problem is printed only to stderr, and `cmd_check` no longer writes to stderr itself.",
@@ -705,6 +713,7 @@ tests = [
   "xtask/tests/gate_hardening.rs::lib_tool_010_the_report_does_not_depend_on_listing_order",
   "xtask/tests/gate_hardening.rs::lib_tool_010_binary_prints_every_problem_on_stderr_and_fails",
 ]
+verification = "docs/verification/0004-m0-gate-hardening.md"
 
 [[row]]
 id = "LIB-TOOL-011"
@@ -716,6 +725,39 @@ source = "Verification 0001 round 2 Low and round-6 prescription (R63; different
 kind = "tooling"
 status = "planned"
 depends_on = ["LIB-TOOL-001"]
+
+[[row]]
+id = "LIB-TOOL-013"
+area = "TOOL"
+milestone = "M0"
+title = "Matrix check names an overridden root"
+requirement = "When `XTASK_ROOT` overrides the repository root, `cargo xtask matrix check` says which root it checked, in both the OK line and the error, so a run against another tree cannot be mistaken for a check of the repository."
+source = "Verification 0004 round 1 follow-up"
+kind = "tooling"
+status = "planned"
+depends_on = ["LIB-TOOL-010"]
+
+[[row]]
+id = "LIB-TOOL-014"
+area = "TOOL"
+milestone = "M0"
+title = "Matrix load errors are one line each"
+requirement = "Errors from reading or parsing the matrix (for example TOML errors, which span several lines) are reported like gate problems: each on its own line, with control characters escaped, so a CI log shows them intact."
+source = "Verification 0004 round 1 follow-up"
+kind = "tooling"
+status = "planned"
+depends_on = ["LIB-TOOL-010"]
+
+[[row]]
+id = "LIB-TOOL-015"
+area = "TOOL"
+milestone = "M0"
+title = "Verdict lines hidden by Markdown do not count"
+requirement = "A `- Row verdict:` line that rendered Markdown hides does not count as a verdict line. This covers a line inside an HTML comment or HTML block. It also covers a line that a backtick-fence opener only appears to close: CommonMark does not accept a backtick fence opener whose info string contains a backtick (for example ```a`b), so the next ``` line opens a fence instead."
+source = "Slice 0004 fix round 1, implementer follow-up (left outside the P-005 contract)"
+kind = "tooling"
+status = "planned"
+depends_on = ["LIB-TOOL-005"]
 
 [[row]]
 id = "LIB-QA-009"
