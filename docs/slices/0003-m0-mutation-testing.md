@@ -1,8 +1,8 @@
 ---
 slice: 0003
 name: m0-mutation-testing
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [LIB-QA-007]
 mode: pr
 ---
@@ -55,3 +55,5 @@ To be listed after the test step.
 - 2026-11-07 verification round 2: FAIL. F1 and F3 met. Remaining: R2-1 (stale 'later commits are docs-only' line), R2-1b (the 470:28 row note), R2-2 (the mode=local paragraph says to push; loop.md not scoped to mode=pr), R2-3 (the implementer scratch-copy example copies HEAD, not the working tree). All are lead-owned docs. The verifier-definition diff is approved as-is. docs/verification/0003-m0-mutation-testing-round2.md.
 - 2026-11-07 stopped: second FAIL; awaiting maintainer approval of fix round 2.
 - 2026-11-07 maintainer approved fix round 2. The lead fixed R2-1 (triage 'Final run' sentence), R2-1b (the 470:28 row), R2-2 (SKILL mode=local: stop at a checkpoint, no push; loop.md scoped to mode=pr) and R2-3 (implementer scratch copy: working tree, no target/ or .git, its own target dir; example tested). The gate passes.
+- 2026-11-07 verification round 3: LIB-QA-007 PASS at 4f1641c (ci.yml 42380451077, mutants.yml 42380450887). The verifier-definition diff is approved as-is across the slice. docs/verification/0003-m0-mutation-testing-round3.md. New follow-up rows LIB-QA-010 and LIB-TOOL-012.
+- 2026-11-07 closed. Slice 0003 verified: LIB-QA-007, with 10 new killing tests under LIB-TOOL-001 and LIB-TOOL-002.

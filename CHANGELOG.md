@@ -16,3 +16,6 @@ change bumps the minor version and is listed under **Breaking**.
 - CI: rustfmt, clippy, tests on Linux/Windows/macOS, MSRV 1.85, rustdoc, cargo-deny,
   matrix gate, agent-hook tests.
 - Agent roles, skills and write-scope hook for the engineering loop.
+- Mutation testing with cargo-mutants: a PR job mutates the diff, and a weekly sharded
+  full run also runs on every Rust PR. Configuration is in `.cargo/mutants.toml`, and
+  every survivor's disposition is in `docs/quality/mutants-triage.md`.
