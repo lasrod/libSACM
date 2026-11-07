@@ -10,10 +10,13 @@
 //! [`curl_download`].
 
 use std::fs;
+use std::io::Write;
 use std::path::Path;
 use std::process::Command;
 
 use sha2::{Digest, Sha256};
+
+use crate::output_error;
 
 /// Where `cargo xtask fetch-spec` puts the artifacts, relative to the
 /// repository root. The directory is git-ignored.
@@ -28,7 +31,7 @@ pub struct Artifact {
     pub url: &'static str,
     /// Expected SHA-256 of the file, as lowercase hex.
     pub sha256: &'static str,
-    /// Human-readable description, printed by [`cmd_fetch`].
+    /// Human-readable description, written by [`cmd_fetch`].
     pub what: &'static str,
 }
 
@@ -182,13 +185,14 @@ pub fn curl_download(url: &str, out: &Path) -> Result<(), String> {
 }
 
 /// `cargo xtask fetch-spec`: fetch [`ARTIFACTS`] into `dest` with
-/// [`curl_download`], printing one line per artifact.
+/// [`curl_download`], writing one line per artifact to `out`.
 ///
 /// # Errors
 ///
-/// Returns the first error of [`fetch_into`].
-pub fn cmd_fetch(dest: &Path) -> Result<(), String> {
-    // One artifact at a time, so each line is printed as soon as it is known.
+/// Returns the first error of [`fetch_into`], or an error when writing to
+/// `out` fails.
+pub fn cmd_fetch(dest: &Path, out: &mut dyn Write) -> Result<(), String> {
+    // One artifact at a time, so each line is written as soon as it is known.
     for artifact in ARTIFACTS {
         let outcomes = fetch_into(dest, std::slice::from_ref(artifact), &mut curl_download)?;
         let label = match outcomes.first() {
@@ -196,11 +200,13 @@ pub fn cmd_fetch(dest: &Path) -> Result<(), String> {
             Some(Outcome::Fetched) => "fetched ",
             None => continue,
         };
-        println!(
+        writeln!(
+            out,
             "{label} {} ({})",
             dest.join(artifact.file_name).display(),
             artifact.what
-        );
+        )
+        .map_err(output_error)?;
     }
     Ok(())
 }

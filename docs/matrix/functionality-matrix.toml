@@ -228,7 +228,7 @@ acceptance = [
   "Rejects dependency cycles, dependencies on later milestones or unscheduled rows, and verified rows with unverified dependencies.",
   "Reports a stale or missing rendered page.",
   "`next` lists only open rows (not verified, candidate, deferred or out-of-scope), hides rows blocked on unverified dependencies, and orders by milestone then file position.",
-  "A test citation resolves only to a function marked as a test (`#[test]`-style attribute, including on the same line, or Python `def test_`); helpers, comments and string literals do not count.",
+  "A test citation resolves only to a function marked as a test (`#[test]`-style attribute, including on the same line, or Python `def test_`); helpers, line comments and single-line string literals do not count. The scanner is line-based: multi-line raw strings, block comments and Python triple-quoted strings are not recognised as non-code (tracked in LIB-TOOL-011).",
   "Every gate rule listed in docs/matrix/README.md, and every required/forbidden cell of its status table, has a test that fails when that rule is removed.",
   "The repository scan behind `cargo xtask matrix check` covers crates/, xtask/ and .claude/hooks/, reads both .rs and .py files, skips target/ directories and non-source files, and reports /-separated repository-relative paths; `cmd_check` fails when the scan finds an uncited traced test.",
   "The `cargo xtask` binary exits non-zero and prints an `xtask:` message on stderr whenever a command fails, so CI fails when the gate does.",
@@ -238,6 +238,7 @@ tests = [
   "xtask/tests/cli.rs::lib_tool_001_binary_exits_non_zero_on_unrecognized_arguments",
   "xtask/tests/cli.rs::lib_tool_001_binary_exits_non_zero_on_an_invalid_row_count",
   "xtask/tests/cli.rs::lib_tool_001_binary_help_exits_zero_and_prints_usage_on_stdout",
+  "xtask/tests/cli.rs::lib_tool_001_binary_refuses_a_non_unicode_argument",
   "xtask/tests/matrix.rs::lib_tool_001_accepts_a_consistent_matrix",
   "xtask/tests/matrix.rs::lib_tool_001_rejects_malformed_and_mismatched_ids",
   "xtask/tests/matrix.rs::lib_tool_001_rejects_duplicate_ids",
@@ -297,6 +298,23 @@ tests = [
   "xtask/tests/matrix.rs::lib_tool_001_cmd_check_rejects_an_uncited_rust_test_under_crates",
   "xtask/tests/matrix.rs::lib_tool_001_cmd_check_rejects_an_uncited_rust_test_under_xtask",
   "xtask/tests/matrix.rs::lib_tool_001_cmd_check_rejects_a_missing_matrix_and_a_stale_page",
+  "xtask/tests/run.rs::lib_tool_001_run_matrix_check_passes_a_consistent_tree_and_reports_the_row_count",
+  "xtask/tests/run.rs::lib_tool_001_run_matrix_check_fails_on_an_uncited_test_under_the_given_root",
+  "xtask/tests/run.rs::lib_tool_001_run_matrix_render_rewrites_a_stale_page",
+  "xtask/tests/run.rs::lib_tool_001_run_matrix_render_without_a_matrix_fails_and_creates_no_page",
+  "xtask/tests/run.rs::lib_tool_001_run_matrix_render_reports_an_unwritable_page",
+  "xtask/tests/run.rs::lib_tool_001_run_matrix_next_lists_ready_rows_in_milestone_then_file_order",
+  "xtask/tests/run.rs::lib_tool_001_run_matrix_next_honours_the_row_count_options",
+  "xtask/tests/run.rs::lib_tool_001_run_matrix_next_reports_when_no_row_is_ready",
+  "xtask/tests/run.rs::lib_tool_001_run_matrix_next_rejects_a_missing_matrix_and_bad_row_counts",
+  "xtask/tests/run.rs::lib_tool_001_run_matrix_status_prints_one_line_per_milestone_and_writes_no_page",
+  "xtask/tests/run.rs::lib_tool_001_run_matrix_status_rejects_a_missing_matrix",
+  "xtask/tests/run.rs::lib_tool_001_run_fetch_spec_uses_the_default_destination_under_the_root",
+  "xtask/tests/run.rs::lib_tool_001_run_fetch_spec_dest_selects_a_directory_under_the_root",
+  "xtask/tests/run.rs::lib_tool_001_run_help_writes_the_usage",
+  "xtask/tests/run.rs::lib_tool_001_run_rejects_unrecognized_arguments_with_the_usage",
+  "xtask/tests/run.rs::lib_tool_001_run_rejects_near_miss_arguments",
+  "xtask/tests/run.rs::lib_tool_001_run_turns_write_failures_into_errors",
 ]
 
 [[row]]
@@ -435,6 +453,17 @@ tests = [
 ]
 
 [[row]]
+id = "LIB-QA-007"
+area = "QA"
+milestone = "M0"
+title = "Mutation testing"
+requirement = "cargo-mutants runs over the workspace (the sacm crate and xtask) in CI on pull requests, scoped to the changed code, and on a schedule over everything; surviving mutants are triaged into tests or documented equivalents, and the verifier reviews the mutants report instead of hand-picking mutations."
+source = "Project policy (verifier test-adequacy check); brought forward to M0 by the maintainer 2026-11-07 after slice 0001 needed five verification rounds"
+kind = "quality"
+status = "planned"
+depends_on = ["LIB-QA-001"]
+
+[[row]]
 id = "LIB-TOOL-005"
 area = "TOOL"
 milestone = "M0"
@@ -496,6 +525,17 @@ milestone = "M0"
 title = "Every gate problem reaches the user"
 requirement = "When `cargo xtask matrix check` fails, every problem is reported on stderr (or in the returned error), one per line, in a deterministic order, so a CI failure says what to fix."
 source = "Verification 0001 round 5 follow-up (surviving mutations R30, R31)"
+kind = "tooling"
+status = "planned"
+depends_on = ["LIB-TOOL-001"]
+
+[[row]]
+id = "LIB-TOOL-011"
+area = "TOOL"
+milestone = "M0"
+title = "Test scanner recognises tests and non-code precisely"
+requirement = "The traced-test scanner ignores test-like text inside multi-line raw strings, block comments and Python triple-quoted strings; does not count `#[ignore]`d or skipped tests as evidence; and recognises `#[test_case(...)]`-style attributes and Python `async def test_` methods as tests."
+source = "Verification 0001 round 2 Low and round-6 prescription (R63; different-class notes)"
 kind = "tooling"
 status = "planned"
 depends_on = ["LIB-TOOL-001"]
@@ -1844,17 +1884,6 @@ source = "rust-library-craft skill (MSRV and semver)"
 kind = "quality"
 status = "planned"
 depends_on = ["LIB-QA-005"]
-
-[[row]]
-id = "LIB-QA-007"
-area = "QA"
-milestone = "M7"
-title = "Mutation testing"
-requirement = "cargo-mutants runs over the sacm crate on a schedule; surviving mutants in the xmi, validate and edit modules are triaged into tests or documented equivalents."
-source = "Project policy (verifier test-adequacy check)"
-kind = "quality"
-status = "planned"
-depends_on = ["LIB-QA-001"]
 
 [[row]]
 id = "LIB-API-005"
