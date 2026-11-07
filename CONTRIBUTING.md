@@ -37,6 +37,25 @@ cargo xtask matrix check
 cargo deny check
 ```
 
+## Mutation testing
+
+CI runs [cargo-mutants](https://mutants.rs) on every pull request, over the PR's diff. A weekly sharded run, which also runs on PRs that touch Rust code or the mutation config, covers the whole workspace. A mutant that no test catches fails the build. Install the pinned version with:
+
+```sh
+cargo install cargo-mutants --locked --version 27.1.0
+```
+
+Run the whole workspace with `cargo mutants --workspace`. `--workspace` is required: without it, only the default members are mutated and xtask is skipped. To check just your change, mutate only the diff against `main`:
+
+```sh
+git diff origin/main...HEAD > mutants.diff
+cargo mutants --workspace --in-diff mutants.diff
+```
+
+Results go to `mutants.out/`, which is git-ignored. Configuration lives in `.cargo/mutants.toml`. Every exclusion there must be listed, with its reason and owning matrix row, in [docs/quality/mutants-triage.md](docs/quality/mutants-triage.md).
+
+The authoritative run is on Linux CI. Some tests only run on Linux (for example, the sacm-cli closed-pipe tests), so on Windows and macOS a few sacm-cli mutants show as missed even though Linux catches them.
+
 ## Conventions
 
 - **Tests first**, named after the matrix row they prove:

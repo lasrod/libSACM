@@ -46,8 +46,23 @@ then the loop stops and asks the maintainer.
 /loop /sacm-slice           slices back to back; each waits for the previous PR to be merged
 ```
 
-Every slice lands through a pull request: CI runs on all three platforms, and the
-maintainer merges. The loop never merges its own PRs.
+Under `mode=pr` (the default), every slice lands through a pull request: CI runs on all
+three platforms, and the maintainer merges. The loop never merges its own PRs.
+
+Under `mode=pr`, the lead pushes the slice branch as a **draft** PR before
+verification. Its CI then produces the Linux evidence the verifier needs for the commit
+under verification:
+- the `mutants` job (cargo-mutants on the PR's diff);
+- the `mutants.yml` full sharded run;
+- the Linux-only tests.
+
+The PR is marked ready only after the verifier passes it and the Copilot review comments
+are addressed.
+
+Under `mode=local`, nothing is pushed. A row whose code cargo-mutants mutates cannot
+pass verification until a Linux report for that commit exists. Such rows stay
+`implemented`. The lead stops at a checkpoint and asks the maintainer to authorize a
+push, or to re-run the slice under `mode=pr`.
 
 Before the first run: `cargo xtask fetch-spec` (the agents need the normative PDF and
 model locally).

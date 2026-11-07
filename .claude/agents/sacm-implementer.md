@@ -66,6 +66,24 @@ cargo xtask matrix check
   message.
 - No panics reachable from public functions with any input.
 - No new dependency unless the design brief approved it.
+- To check a mutation of your own code by hand, apply it only in a scratch copy under
+  `target/`, never in the working tree. The copy must:
+  - contain the **working tree**, including uncommitted changes and untracked files that
+    aren't ignored. A copy of `HEAD` (for example `git archive HEAD`) would miss exactly
+    the code you're checking;
+  - exclude `target/` and `.git`;
+  - be built in **its own target directory**, which is the default inside the copy. Never
+    share a `CARGO_TARGET_DIR` with another tree: a reused test binary carries the other
+    tree's `env!("CARGO_MANIFEST_DIR")` and reads that tree's files.
+  
+  Make a **fresh** copy for each check. Extracting over an earlier copy keeps files
+  you have since deleted, and they still compile and run. For example, in Bash from
+  the repository root:
+  `rm -rf target/scratch && mkdir -p target/scratch && git ls-files -z --cached --others --exclude-standard | tar --null -T - -cf - | tar -xf - -C target/scratch`.
+  (tar warns about files that are tracked but deleted from the working tree. Those
+  files are correctly absent from the copy.)
+  Then work inside `target/scratch`. The authoritative check is the Linux cargo-mutants
+  run on the slice's draft PR.
 - Deterministic output: no `HashMap` iteration order in anything serialized or reported.
 - Do not touch the CHANGELOG `[Unreleased]` section except to add entries for the slice.
 

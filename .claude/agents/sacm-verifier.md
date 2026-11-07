@@ -43,10 +43,39 @@ verifying. The lead applies your verdict and writes the verification record.
    would notice? Read the assertions. Try a mental mutation (drop an attribute on
    write, accept a wrong enum literal, skip a multiplicity check) — if no test fails,
    that is a finding. Do **not** apply mutations to the working tree: the slice is
-   usually uncommitted, and reverting a file would destroy the implementer's work. If a
-   mechanical check is warranted, list the mutation for the lead, or run
-   `cargo mutants --file <path>` once it is adopted (row LIB-QA-007), which works on a
-   copy of the tree.
+   usually uncommitted, and reverting a file would destroy the implementer's work.
+
+   **The primary mechanical evidence is the Linux cargo-mutants report for the commit
+   under verification**, from the slice's draft PR (LIB-QA-007). The lead pushes the
+   branch as a draft PR before verification and gives you the run URLs, the head SHA
+   and the downloaded `mutants.out` of the `mutants` PR job and of the `mutants.yml`
+   shards. Use it in addition to hand-reasoned criterion mutations, not instead of
+   them: cargo-mutants' operators do not generate every mutation that matters.
+
+   Review the report's missed, timeout and unviable lists for the slice's code:
+   - **Missed:** every missed or timed-out mutant is a finding, unless the triage
+     (`docs/quality/mutants-triage.md`) gives it a valid disposition.
+   - **Timeout:** the same rule as missed applies.
+   - **Unviable:** unviable mutants can hide survivors, so read them too.
+
+   If you run cargo-mutants yourself, write its output under `target/`
+   (`--output target/<dir>`), never in the repository root. Never use `--in-place`.
+   Remember that Linux-only tests make some mutants show as missed on Windows.
+
+   Excluded mutants never appear in any report list, so check them separately. For
+   every exclusion the slice adds or changes, re-derive the claim against the
+   prescription's rules for equivalent and accepted survivors (P8.2). That means the
+   `.cargo/mutants.toml` diff and the triage rows in `docs/quality/mutants-triage.md`
+   marked equivalent or accepted. Show that the excluded set equals the triaged set by
+   comparing `cargo mutants --workspace --list` with
+   `cargo mutants --workspace --list --no-config`. A claim you can break is a finding.
+
+   If no Linux report for the commit under verification is provided, test adequacy is
+   not shown: a row whose code cargo-mutants mutates may not PASS, and a local Windows
+   run is no substitute. Say so in your verdict, and keep those rows open.
+
+   Apply a hand-reasoned mutation only in a scratch copy under `target/`, never the
+   working tree, or else list it for the lead to run.
 4. **Negative coverage.** Multiplicity, typing, enumeration, dangling/mistyped
    references, malformed XMI — produce diagnostics with the right code and severity,
    never panics or silent repair.

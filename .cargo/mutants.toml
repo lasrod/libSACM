@@ -1,0 +1,11 @@
+# cargo-mutants configuration (LIB-QA-007). Every exclusion here is listed,
+# with its reason and owning row, in docs/quality/mutants-triage.md.
+
+# A lint that `-D warnings` denies must not turn a mutant unviable (D5).
+cap_lints = true
+
+# Build and test with every feature, as CI does (D6).
+all_features = true
+
+# A mutant must be killed by its own package's tests, not another package's (D8).
+test_workspace = false

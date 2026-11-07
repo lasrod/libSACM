@@ -444,33 +444,36 @@ fn strip_attributes(line: &str) -> (bool, &str) {
     (test_attr, rest)
 }
 
+/// Whether `c` can be part of an identifier: a letter, a digit or `_`.
+fn is_identifier_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
 /// The identifier at the start of `text`.
 fn identifier(text: &str) -> String {
     text.chars()
-        .take_while(|c| c.is_alphanumeric() || *c == '_')
+        .take_while(|c| is_identifier_char(*c))
         .collect()
 }
 
-/// Names following `fn ` or `def ` in source text.
+/// Names following `fn ` or `def ` in source text: all `fn` names in text
+/// order, then all `def` names.
+///
+/// A keyword counts only where it starts a word (`myfn x` defines nothing),
+/// and only when an identifier follows it. The occurrences come from
+/// [`str::match_indices`], so the scan always terminates: no index arithmetic
+/// decides where the next search starts. Neither keyword can overlap itself,
+/// so non-overlapping matches are all the matches.
 fn defined_functions(text: &str) -> Vec<String> {
     let mut names = Vec::new();
     for keyword in ["fn ", "def "] {
-        let mut rest = text;
-        while let Some(pos) = rest.find(keyword) {
-            let preceded_ok = pos == 0
-                || !rest[..pos]
-                    .chars()
-                    .next_back()
-                    .is_some_and(|c| c.is_alphanumeric() || c == '_');
-            let after = &rest[pos + keyword.len()..];
-            let name: String = after
-                .chars()
-                .take_while(|c| c.is_alphanumeric() || *c == '_')
-                .collect();
-            if preceded_ok && !name.is_empty() {
+        for (pos, _) in text.match_indices(keyword) {
+            let (before, from_keyword) = text.split_at(pos);
+            let starts_word = !before.chars().next_back().is_some_and(is_identifier_char);
+            let name = identifier(&from_keyword[keyword.len()..]);
+            if starts_word && !name.is_empty() {
                 names.push(name);
             }
-            rest = after;
         }
     }
     names
