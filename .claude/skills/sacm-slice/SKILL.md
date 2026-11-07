@@ -97,8 +97,10 @@ the run URLs, the head SHA and the downloaded reports. Mark the PR ready
 
 **Under `mode=local`:** nothing is pushed, so there is no Linux report. The maintainer
 decided on 2026-11-07 that a row whose code cargo-mutants mutates may not PASS until a
-Linux report for that commit exists; a local Windows run is not a substitute. Use
-`mode=local` for docs or process slices, or push before verifying code.
+Linux report for that commit exists; a local Windows run is not a substitute. Such rows
+stay `implemented`, and the verifier keeps them open. To verify them, stop at a
+checkpoint (step 9). Ask the maintainer either to authorize pushing the branch, or to
+re-run the slice under `mode=pr`. Do not push on your own.
 
 Run **sacm-verifier** — with the row IDs, acceptance criteria, the diff, and the
 reports, but *not* your opinion of the work. If the slice changed public API, run
