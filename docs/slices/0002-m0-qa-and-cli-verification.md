@@ -1,7 +1,7 @@
 ---
 slice: 0002
 name: m0-qa-and-cli-verification
-state: in-progress
+state: stopped
 step: verification
 rows: [LIB-QA-002, LIB-QA-003, LIB-CLI-001]
 mode: pr
@@ -50,3 +50,6 @@ Existing:
 - 2026-11-07 maintainer approved fix round 2. Lead added dev-dependency yaml-rust2 0.13 to xtask (YAML 1.2, MIT OR Apache-2.0, MSRV 1.85); cargo deny passes.
 - 2026-11-07 PR #6 merged by the maintainer during fix round 2 (main 871c26f). LIB-CLI-001 is verified on main; LIB-QA-002 and LIB-QA-003 stay implemented. Fix round 2 continues on branch slice/0002-qa-yaml-checks, to land as a follow-up PR.
 - 2026-11-07 fix round 2: test engineer replaced the line-based ci.yml reader with a yaml-rust2 parse; 16 new tests covering Y2-1..3, Y3-1..3 and R3-3..7, with coded problems and every must-kill applied as real YAML/TOML text; sabotage of 16 checks each failed tests. Process note: it ran cargo-deny/yaml probe experiments under the session scratchpad (outside the repository, via Bash), which is outside its write scope; no repository file outside its scope changed.
+- 2026-11-07 Copilot comment on PR #7 (log-level injection) fixed in 4b46db5; replies posted on PR #7 and on both PR #6 threads.
+- 2026-11-07 verification round 3: LIB-QA-002 PASS -> verified. LIB-QA-003 FAIL: F1 log-level injection (three must-kills still missing) and F2 include-dev defaults to false (dev-dependencies are not licence-checked). See docs/verification/0002-m0-qa-and-cli-verification-round3.md.
+- 2026-11-07 stopped: third FAIL for LIB-QA-003; F2 needs the maintainer's policy choice (a) or (b).

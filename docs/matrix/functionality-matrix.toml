@@ -181,7 +181,7 @@ title = "MSRV 1.85 is declared consistently and checked"
 requirement = "The minimum supported Rust version is declared once in the workspace manifest, matches clippy.toml, and CI builds and tests the library and CLI with exactly that toolchain."
 source = "ADR 0007"
 kind = "quality"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-QA-001"]
 acceptance = [
   "Cargo.toml rust-version, clippy.toml msrv and the CI msrv toolchain are the same version (regression test).",
@@ -203,6 +203,7 @@ tests = [
   "xtask/tests/repo_checks.rs::lib_qa_002_rust_version_check_rejects_member_declarations",
   "xtask/tests/repo_checks.rs::lib_qa_002_rust_version_check_accepts_inline_inheritance",
 ]
+verification = "docs/verification/0002-m0-qa-and-cli-verification-round3.md"
 
 [[row]]
 id = "LIB-QA-003"
