@@ -1,8 +1,8 @@
 ---
 slice: 0005
 name: m0-check-reporting
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [LIB-TOOL-013, LIB-TOOL-014]
 mode: pr
 ---
@@ -122,3 +122,8 @@ implemented.
   - LIB-TOOL-014 FAIL (F1: the spanless form is reachable and untested; a mutant
     survives). Its prescription is P-1 to P-4.
   - Fix round 1: the tests go to the test engineer. The code needs no change.
+- 2026-11-08 verification round 2, at `414263f`:
+  [record](../verification/0005-m0-check-reporting-round2.md).
+  - LIB-TOOL-014 PASS. P-1 to P-4 are met, and nothing new was found. It is now
+    `verified`.
+- 2026-11-08 close: both rows are verified, and the slice is done.

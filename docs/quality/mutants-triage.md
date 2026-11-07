@@ -71,6 +71,9 @@ Slice 0005 (LIB-TOOL-013, -014) changed `xtask/src/lib.rs`, `xtask/src/main.rs` 
 - **Unviable mutants at `6019823` (7):**
   - five carried over from slice 0004, with their lines moved: `fetch.rs:110:5`, `matrix.rs:546:5` (`load`), `829:5` (`verdict_lines`), `1203:5` (`ready`) and `1246:5` (`load_from`);
   - two new, `matrix.rs:1305:48`, `+` replaced with `-` and with `*` in `cmd_check_from`. They are structural: the `+` there joins a `String` and a `&str` (`e + &named`), and `String` implements neither `Sub` nor `Mul`.
+- **Fix round 1 head `414263f`:** tests only; the mutated code is unchanged.
+  - mutants.yml [42423497528](https://github.com/lasrod/libSACM/actions/runs/42423497528): 258 mutants, 251 caught, 0 missed, 0 timeout, 7 unviable. The unviable mutants are the same 7, at the same lines.
+  - ci.yml [42423497546](https://github.com/lasrod/libSACM/actions/runs/42423497546), job `mutants (PR diff)`: 20 mutants, 16 caught, 0 missed, 0 timeout, 4 unviable.
 - **The durable fix:** LIB-QA-012. A target's name must not decide whether this mutant is caught or times out.
 
 ## Dispositions

@@ -778,7 +778,7 @@ title = "Matrix load errors are one line each"
 requirement = "Errors from reading or parsing the matrix (for example TOML errors, which span several lines) are reported like gate problems: each on its own line, with control characters escaped, so a CI log shows them intact."
 source = "Verification 0004 round 1 follow-up"
 kind = "tooling"
-status = "implemented"
+status = "verified"
 code = ["xtask/src/matrix.rs"]
 acceptance = [
   "When the matrix text cannot be parsed or does not match the schema, `matrix::load` returns exactly one line: `docs/matrix/functionality-matrix.toml:<line>:<column>: <message>`. The position is the 1-based line, and the 1-based column in characters, of the start of the error's span. `<message>` is the parser's own message (`toml::de::Error::message`) without its source excerpt. Control characters in it are escaped as in LIB-TOOL-010. An error without a span gives `docs/matrix/functionality-matrix.toml: <message>`.",
@@ -805,6 +805,7 @@ tests = [
   "xtask/tests/reporting.rs::lib_tool_014_an_error_without_a_span_is_one_line_without_a_position",
   "xtask/tests/reporting.rs::lib_tool_014_binary_prints_an_error_without_a_span_on_one_stderr_line",
 ]
+verification = "docs/verification/0005-m0-check-reporting-round2.md"
 
 [[row]]
 id = "LIB-TOOL-015"
