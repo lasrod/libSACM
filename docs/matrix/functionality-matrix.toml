@@ -737,8 +737,37 @@ title = "Matrix check names an overridden root"
 requirement = "When `XTASK_ROOT` overrides the repository root, `cargo xtask matrix check` says which root it checked, in both the OK line and the error, so a run against another tree cannot be mistaken for a check of the repository."
 source = "Verification 0004 round 1 follow-up"
 kind = "tooling"
-status = "planned"
+status = "implemented"
+code = ["xtask/src/lib.rs", "xtask/src/main.rs", "xtask/src/matrix.rs"]
+acceptance = [
+  "The binary records where its root came from. With `XTASK_ROOT` set, `cargo xtask matrix check` names the root it checked. Without it, the output is unchanged: `functionality matrix OK: <n> rows`, and the LIB-TOOL-010 error. The rule depends on where the root came from, not on its value: an `XTASK_ROOT` equal to the build root is still named.",
+  "Under `XTASK_ROOT=<p>`, a passing check writes exactly `functionality matrix OK: <n> rows (root: <p>)` and a newline to stdout. `<p>` is the root as `Path::display` shows it, with control characters escaped as in LIB-TOOL-010.",
+  "Under `XTASK_ROOT=<p>`, the first line of a failing check's error is `functionality matrix: <n> problem(s) (root: <p>)`. The problem lines are unchanged. When the matrix cannot be read or parsed, the one-line load error of LIB-TOOL-014 ends with ` (root: <p>)`. The binary prints the error with the `xtask: ` prefix.",
+  "An `XTASK_ROOT` that is set but empty is an error, not a root: the binary prints `xtask: XTASK_ROOT is set but empty` on stderr, writes nothing to stdout, runs no command and exits with a failure status. This holds for every command.",
+  "The other commands (`render`, `next`, `status`, `fetch-spec`, `help`) do not change. The library function `xtask::run(args, root, out)` keeps its signature and its unnamed output. The override reaches the library through a new entry point that the binary calls. Tests drive both that entry point and the binary.",
+]
 depends_on = ["LIB-TOOL-010"]
+tests = [
+  "xtask/tests/check_reporting.rs::lib_tool_013_a_passing_check_from_the_build_root_writes_the_unnamed_ok_line",
+  "xtask/tests/check_reporting.rs::lib_tool_013_a_passing_check_from_xtask_root_names_the_root",
+  "xtask/tests/check_reporting.rs::lib_tool_013_a_failing_check_from_xtask_root_names_the_root_on_the_first_line_only",
+  "xtask/tests/check_reporting.rs::lib_tool_013_a_load_failure_from_xtask_root_ends_with_the_root",
+  "xtask/tests/check_reporting.rs::lib_tool_013_a_control_character_in_the_root_is_escaped_in_the_suffix",
+  "xtask/tests/check_reporting.rs::lib_tool_013_a_tree_whose_name_holds_control_characters_is_named_escaped",
+  "xtask/tests/check_reporting.rs::lib_tool_013_xtask_root_equal_to_the_build_root_is_still_named",
+  "xtask/tests/check_reporting.rs::lib_tool_013_the_named_root_is_shown_as_given",
+  "xtask/tests/check_reporting.rs::lib_tool_013_the_other_commands_are_unchanged_under_xtask_root",
+  "xtask/tests/check_reporting.rs::lib_tool_013_run_is_run_from_with_the_build_source",
+  "xtask/tests/check_reporting.rs::lib_tool_013_binary_names_xtask_root_on_a_passing_check",
+  "xtask/tests/check_reporting.rs::lib_tool_013_binary_names_xtask_root_on_a_failing_check",
+  "xtask/tests/check_reporting.rs::lib_tool_013_binary_names_xtask_root_equal_to_the_build_root",
+  "xtask/tests/check_reporting.rs::lib_tool_013_binary_without_xtask_root_does_not_name_the_root",
+  "xtask/tests/check_reporting.rs::lib_tool_013_binary_other_commands_are_unchanged_under_xtask_root",
+  "xtask/tests/check_reporting.rs::lib_tool_013_binary_refuses_an_empty_xtask_root_for_matrix_check",
+  "xtask/tests/check_reporting.rs::lib_tool_013_binary_refuses_an_empty_xtask_root_for_matrix_render_and_writes_no_page",
+  "xtask/tests/check_reporting.rs::lib_tool_013_binary_refuses_an_empty_xtask_root_for_help",
+  "xtask/tests/check_reporting.rs::lib_tool_013_binary_refuses_an_empty_xtask_root_for_every_command",
+]
 
 [[row]]
 id = "LIB-TOOL-014"
@@ -748,8 +777,31 @@ title = "Matrix load errors are one line each"
 requirement = "Errors from reading or parsing the matrix (for example TOML errors, which span several lines) are reported like gate problems: each on its own line, with control characters escaped, so a CI log shows them intact."
 source = "Verification 0004 round 1 follow-up"
 kind = "tooling"
-status = "planned"
+status = "implemented"
+code = ["xtask/src/matrix.rs"]
+acceptance = [
+  "When the matrix text cannot be parsed or does not match the schema, `matrix::load` returns exactly one line: `docs/matrix/functionality-matrix.toml:<line>:<column>: <message>`. The position is the 1-based line, and the 1-based column in characters, of the start of the error's span. `<message>` is the parser's own message (`toml::de::Error::message`) without its source excerpt. Control characters in it are escaped as in LIB-TOOL-010. An error without a span gives `docs/matrix/functionality-matrix.toml: <message>`.",
+  "This holds for a syntax error, an unknown key, a missing required field and a value of the wrong type. Tests check the exact line and column of each, including an error on a line after non-ASCII text, where the character column differs from the byte column.",
+  "A matrix that cannot be read gives exactly one line: `read <path>: <error>`. `<path>` is the root joined with `docs/matrix/functionality-matrix.toml`, as `Path::display` shows it. The whole line, the I/O error text included, has its control characters escaped. A test makes the matrix path a directory.",
+  "Every command that loads the matrix (`matrix check`, `render`, `next`, `status`) returns the same one-line error. The `xtask` binary prints it as `xtask: <line>` and a newline on stderr, writes nothing to stdout, and exits with a failure status.",
+]
 depends_on = ["LIB-TOOL-010"]
+tests = [
+  "xtask/tests/check_reporting.rs::lib_tool_014_the_fixtures_parse_when_unbroken",
+  "xtask/tests/check_reporting.rs::lib_tool_014_a_syntax_error_is_one_line_with_its_position",
+  "xtask/tests/check_reporting.rs::lib_tool_014_an_unknown_key_is_one_line_with_its_position",
+  "xtask/tests/check_reporting.rs::lib_tool_014_a_missing_required_field_is_one_line_with_its_position",
+  "xtask/tests/check_reporting.rs::lib_tool_014_a_value_of_the_wrong_type_is_one_line_with_its_position",
+  "xtask/tests/check_reporting.rs::lib_tool_014_the_column_counts_characters_not_bytes",
+  "xtask/tests/check_reporting.rs::lib_tool_014_non_ascii_text_on_earlier_lines_does_not_move_the_position",
+  "xtask/tests/check_reporting.rs::lib_tool_014_an_error_in_a_later_row_has_that_rows_position",
+  "xtask/tests/check_reporting.rs::lib_tool_014_control_characters_in_the_message_are_escaped",
+  "xtask/tests/check_reporting.rs::lib_tool_014_an_unreadable_matrix_is_one_read_line",
+  "xtask/tests/check_reporting.rs::lib_tool_014_control_characters_in_the_read_error_are_escaped",
+  "xtask/tests/check_reporting.rs::lib_tool_014_every_command_returns_the_same_load_error",
+  "xtask/tests/check_reporting.rs::lib_tool_014_binary_prints_the_load_error_on_one_stderr_line",
+  "xtask/tests/check_reporting.rs::lib_tool_014_binary_prints_the_read_error_on_one_stderr_line",
+]
 
 [[row]]
 id = "LIB-TOOL-015"

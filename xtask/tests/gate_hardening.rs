@@ -1587,9 +1587,15 @@ fn lib_tool_010_binary_prints_every_problem_on_stderr_and_fails() {
             "LIB-TOOL-010: {problem:?} appears on stderr, got {stderr:?}"
         );
     }
+    // Under `XTASK_ROOT`, the first line also names the root (LIB-TOOL-013).
+    let named = expected_error(&FAILING_TREE_PROBLEMS).replacen(
+        " problem(s)",
+        &format!(" problem(s) (root: {})", tree.root().display()),
+        1,
+    );
     assert_eq!(
         stderr,
-        format!("xtask: {}\n", expected_error(&FAILING_TREE_PROBLEMS)),
+        format!("xtask: {named}\n"),
         "LIB-TOOL-010: stderr is the whole error once, with the `xtask: ` prefix"
     );
     assert!(

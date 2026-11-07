@@ -94,7 +94,13 @@ changes a status, and only to `verified` on a recorded PASS from the verifier.
    `out-of-scope`, are not in a later milestone, and contain no cycles.
 9. `functionality-matrix.md` equals `cargo xtask matrix render` output.
 10. Every area code is one or more uppercase ASCII letters.
-11. A failing check reports every problem, one per line, in a deterministic order.
+11. A failing check reports every problem, one per line, in a deterministic order. An
+    error from reading or parsing the matrix is one line too: `read <path>: <error>`, or
+    `docs/matrix/functionality-matrix.toml:<line>:<column>: <message>`. The line and
+    column are 1-based, and the column is counted in characters. Control characters in
+    a problem or an error are escaped. Under `XTASK_ROOT`, the first line of the report
+    (the OK line, the problem count or the load error) ends with ` (root: <root>)`. An
+    `XTASK_ROOT` that is set but empty is an error, and no command runs.
 
 What the gate cannot check — whether the tests actually prove the requirement, whether
 rows are missing, whether a planned row quietly landed — is the matrix steward's audit.

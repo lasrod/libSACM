@@ -44,7 +44,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use crate::output_error;
+use crate::{RootSource, output_error};
 
 /// The canonical matrix, relative to the repository root.
 pub const MATRIX_PATH: &str = "docs/matrix/functionality-matrix.toml";
@@ -522,12 +522,47 @@ fn parse_id(id: &str) -> Option<(&str, &str, &str)> {
 
 /// Parse the text of `functionality-matrix.toml`.
 ///
+/// ```
+/// use xtask::matrix::load;
+///
+/// let error = load("schema_version = 1\n[[milestone]]\nid = \"M0\"\n").map(|_| ()).unwrap_err();
+/// assert_eq!(
+///     error,
+///     "docs/matrix/functionality-matrix.toml:2:1: missing field `title`"
+/// );
+/// ```
+///
 /// # Errors
 ///
-/// Returns the TOML or schema error, prefixed with [`MATRIX_PATH`]. Unknown
-/// keys are errors.
+/// Returns the TOML or schema error as exactly one line,
+/// `docs/matrix/functionality-matrix.toml:<line>:<column>: <message>`.
+/// `<line>` and `<column>` are 1-based, the column counted in characters,
+/// and locate the start of the error's span. `<message>` is the parser's
+/// message ([`toml::de::Error::message`]) without its source excerpt, with
+/// control characters escaped as by [`char::escape_default`]. An error
+/// without a usable span is `docs/matrix/functionality-matrix.toml: <message>`.
+/// Unknown keys are errors.
 pub fn load(text: &str) -> Result<Matrix, String> {
-    toml::from_str(text).map_err(|e| format!("{MATRIX_PATH}: {e}"))
+    toml::from_str(text).map_err(|e| load_error(text, &e))
+}
+
+/// The one-line form of `error`, a failure to parse `text`; see [`load`].
+fn load_error(text: &str, error: &toml::de::Error) -> String {
+    let message = escape_controls(error.message());
+    // `get` is `None` for a span start past the end or inside a character.
+    let Some(before) = error.span().and_then(|span| text.get(..span.start)) else {
+        return format!("{MATRIX_PATH}: {message}");
+    };
+    let (mut line, mut column) = (1, 1);
+    for c in before.chars() {
+        if c == '\n' {
+            line += 1;
+            column = 1;
+        } else {
+            column += 1;
+        }
+    }
+    format!("{MATRIX_PATH}:{line}:{column}: {message}")
 }
 
 /// Every rule violation in the matrix, as human-readable messages; empty when
@@ -1205,9 +1240,12 @@ pub fn ready(matrix: &Matrix) -> Vec<&Row> {
 // Commands
 // ---------------------------------------------------------------------------
 
+/// Read and [`load`] the matrix under `root`. A read error is one line,
+/// `read <path>: <error>`, with control characters escaped.
 fn load_from(root: &Path) -> Result<Matrix, String> {
     let path = root.join(MATRIX_PATH);
-    let text = fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let text = fs::read_to_string(&path)
+        .map_err(|e| escape_controls(&format!("read {}: {e}", path.display())))?;
     load(&text)
 }
 
@@ -1230,22 +1268,51 @@ fn escape_controls(text: &str) -> String {
 /// On success, writes `functionality matrix OK: <n> rows` to `out`. On
 /// failure, writes nothing: every problem is in the returned error.
 ///
+/// The root is not named in the report: this is the check of a root from
+/// [`RootSource::Build`]. [`run_from`](crate::run_from) with
+/// [`RootSource::Environment`] adds ` (root: <root>)` to the report's first
+/// line.
+///
 /// # Errors
 ///
 /// Returns an error when the matrix cannot be read or parsed, or when writing
-/// to `out` fails. When the matrix has problems, the error's first line is
-/// `functionality matrix: <n> problem(s)`, followed by each problem on a line
-/// of its own, indented by two spaces, in the order [`check`] returns them.
-/// Control characters in a problem are escaped (for example `\n` and
-/// `\u{1b}`), so that each problem takes exactly one line.
+/// to `out` fails. A matrix that cannot be read is one line,
+/// `read <path>: <error>`, with control characters escaped; one that cannot
+/// be parsed is the one line [`load`] returns. When the matrix has problems,
+/// the error's first line is `functionality matrix: <n> problem(s)`, followed
+/// by each problem on a line of its own, indented by two spaces, in the order
+/// [`check`] returns them. Control characters in a problem are escaped (for
+/// example `\n` and `\u{1b}`), so that each problem takes exactly one line.
 pub fn cmd_check(root: &Path, out: &mut dyn io::Write) -> Result<(), String> {
-    let matrix = load_from(root)?;
+    cmd_check_from(root, RootSource::Build, out)
+}
+
+/// [`cmd_check`] of a root that came from `source`. With
+/// [`RootSource::Environment`], the first line of the report (the OK line,
+/// the problem-count header or the load error) ends with ` (root: <root>)`,
+/// `<root>` shown by [`Path::display`] with control characters escaped.
+pub(crate) fn cmd_check_from(
+    root: &Path,
+    source: RootSource,
+    out: &mut dyn io::Write,
+) -> Result<(), String> {
+    let named = match source {
+        RootSource::Build => String::new(),
+        RootSource::Environment => {
+            format!(" (root: {})", escape_controls(&root.display().to_string()))
+        }
+    };
+    let matrix = load_from(root).map_err(|e| e + &named)?;
     let problems = check(&matrix, &FsRepo::new(root));
     if problems.is_empty() {
-        return writeln!(out, "functionality matrix OK: {} rows", matrix.rows.len())
-            .map_err(output_error);
+        return writeln!(
+            out,
+            "functionality matrix OK: {} rows{named}",
+            matrix.rows.len()
+        )
+        .map_err(output_error);
     }
-    let mut report = format!("functionality matrix: {} problem(s)", problems.len());
+    let mut report = format!("functionality matrix: {} problem(s){named}", problems.len());
     for problem in &problems {
         report.push_str("\n  ");
         report.push_str(&escape_controls(problem));
