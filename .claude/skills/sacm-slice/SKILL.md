@@ -87,6 +87,14 @@ Cite code paths in each row, set `status = "implemented"`, render, check.
 
 ## 7. Verification → `verified`
 
+**Before verifying, under `mode=pr`:** commit and push the slice branch, and open
+the slice's PR as a **draft** (`gh pr create --draft`). The maintainer chose this on
+2026-11-07. Wait for its CI, so the verifier gets the Linux evidence for the commit
+under verification: the `mutants` job's `mutants.out` artifact (`gh run download`),
+the full-run shards from `mutants.yml`, and the Linux-only tests. Give the verifier
+the run URLs, the head SHA and the downloaded reports. Mark the PR ready
+(`gh pr ready`) only after PASS and the Copilot fixes (step 8.6).
+
 Run **sacm-verifier** — with the row IDs, acceptance criteria, the diff, and the
 reports, but *not* your opinion of the work. If the slice changed public API, run
 **sacm-docs-reviewer** in parallel.
