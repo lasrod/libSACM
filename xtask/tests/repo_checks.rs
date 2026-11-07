@@ -327,6 +327,12 @@ const DENY_ACTION: &str = "EmbarkStudios/cargo-deny-action@";
 /// `arguments` (global cargo-deny flags) that do not narrow what is checked.
 const DENY_ARGUMENTS_ALLOWED: [&str; 2] = ["--all-features", "--workspace"];
 
+/// The values cargo-deny accepts for `--log-level`, exactly as it accepts
+/// them (it rejects `TRACE` and `Warn`). cargo-deny-action@v2 passes the
+/// `log-level` input unquoted into `cargo-deny $*`, so any other value could
+/// smuggle in further arguments such as `--exclude`.
+const DENY_LOG_LEVELS: [&str; 6] = ["off", "error", "warn", "info", "debug", "trace"];
+
 fn is_deny_step(step: &Hash) -> bool {
     get(step, "uses")
         .and_then(Yaml::as_str)
@@ -335,8 +341,11 @@ fn is_deny_step(step: &Hash) -> bool {
 
 /// Y3-3: the cargo-deny step's inputs run every check over the whole
 /// workspace. Input names are compared without regard to case, as GitHub
-/// does. A `with` that is not a mapping is a `[shape]` problem reported by
-/// [`read_workflow`].
+/// does. The action passes `command`, `command-arguments`, `arguments`,
+/// `manifest-path` and `log-level` unquoted into `cargo-deny $*`, so each is
+/// compared whole (or, for `arguments`, word by word against an allowlist):
+/// a space in any of them would add arguments. A `with` that is not a mapping
+/// is a `[shape]` problem reported by [`read_workflow`].
 fn deny_input_problems(job: &str, number: usize, step: &Hash, problems: &mut Vec<String>) {
     let Some(Yaml::Hash(with)) = get(step, "with") else {
         return;
@@ -355,6 +364,7 @@ fn deny_input_problems(job: &str, number: usize, step: &Hash, problems: &mut Vec
                     .any(|arg| !DENY_ARGUMENTS_ALLOWED.contains(&arg))
             }),
             "manifest-path" => !matches!(text, Some("Cargo.toml" | "./Cargo.toml")),
+            "log-level" => !text.is_some_and(|level| DENY_LOG_LEVELS.contains(&level)),
             _ => false,
         };
         if narrowing {
@@ -2458,14 +2468,19 @@ fn deny_fixture() -> (String, String, String) {
     (ci, step, job)
 }
 
-/// The cargo-deny `command` inputs of job `job`, as GitHub reads them.
-fn deny_commands(ci: &str, job: &str) -> Vec<String> {
+/// The cargo-deny `input` values of job `job`, as GitHub reads them.
+fn deny_input_values(ci: &str, job: &str, input: &str) -> Vec<String> {
     step_values(ci, job, "with")
         .iter()
         .filter_map(Yaml::as_hash)
-        .filter_map(|with| get(with, "command").and_then(Yaml::as_str))
+        .filter_map(|with| get(with, input).and_then(Yaml::as_str))
         .map(str::to_owned)
         .collect()
+}
+
+/// The cargo-deny `command` inputs of job `job`, as GitHub reads them.
+fn deny_commands(ci: &str, job: &str) -> Vec<String> {
+    deny_input_values(ci, job, "command")
 }
 
 #[test]
@@ -2689,6 +2704,88 @@ fn lib_qa_003_deny_job_check_rejects_yaml_input_bypasses() {
     assert_yaml_mutations_reported("LIB-QA-003", &mutations, check_deny_job);
 }
 
+/// Y3-3: cargo-deny-action@v2 passes `log-level`, `manifest-path`,
+/// `arguments`, `command` and `command-arguments` into `cargo-deny $*`
+/// unquoted, so a value with spaces becomes several arguments and can narrow
+/// the checks (Copilot, PR #7). `log-level` must be exactly one level that
+/// cargo-deny accepts; it accepts them in lower case only.
+#[test]
+fn lib_qa_003_deny_job_check_rejects_unquoted_input_injection() {
+    let (ci, step, job) = deny_fixture();
+    let after_step = |lines: &[&str]| insert_after(&ci, &step, 2, lines);
+    let block_with = |inputs: &[&str]| {
+        let mut lines = vec!["with:".to_owned()];
+        lines.extend(inputs.iter().map(|input| format!("  {input}")));
+        let lines: Vec<&str> = lines.iter().map(String::as_str).collect();
+        after_step(&lines)
+    };
+    let flow_log_level = after_step(&["with: { log-level: \"warn --exclude sacm-cli\" }"]);
+    let block_log_level = block_with(&["log-level: warn --exclude sacm-cli"]);
+    for (name, text) in [
+        ("flow, double-quoted", &flow_log_level),
+        ("block, plain", &block_log_level),
+    ] {
+        assert_eq!(
+            deny_input_values(text, &job, "log-level"),
+            ["warn --exclude sacm-cli"],
+            "LIB-QA-003: the mutation `{name}` must make GitHub pass `log-level: warn --exclude sacm-cli`"
+        );
+    }
+    let mutations = [
+        mutation(
+            "flow log-level: \"warn --exclude sacm-cli\" (Copilot, PR #7)",
+            flow_log_level,
+            DENY_INPUT,
+        ),
+        mutation(
+            "block log-level: warn --exclude sacm-cli",
+            block_log_level,
+            DENY_INPUT,
+        ),
+        mutation(
+            "log-level: \"warn --exclude-dev\"",
+            after_step(&["with: { log-level: \"warn --exclude-dev\" }"]),
+            DENY_INPUT,
+        ),
+        mutation(
+            "log-level: \"--exclude sacm-cli\"",
+            after_step(&["with: { log-level: \"--exclude sacm-cli\" }"]),
+            DENY_INPUT,
+        ),
+        mutation(
+            "log-level: verbose, not a cargo-deny level",
+            block_with(&["log-level: verbose"]),
+            DENY_INPUT,
+        ),
+        mutation(
+            "log-level: TRACE, which cargo-deny rejects",
+            block_with(&["log-level: TRACE"]),
+            DENY_INPUT,
+        ),
+        mutation(
+            "log-level given as a number",
+            block_with(&["log-level: 5"]),
+            DENY_INPUT,
+        ),
+        mutation(
+            "manifest-path: \"Cargo.toml --exclude sacm-cli\"",
+            after_step(&["with: { manifest-path: \"Cargo.toml --exclude sacm-cli\" }"]),
+            DENY_INPUT,
+        ),
+        mutation(
+            "command: \"check --exclude sacm-cli\"",
+            after_step(&["with: { command: \"check --exclude sacm-cli\" }"]),
+            DENY_INPUT,
+        ),
+        mutation(
+            "arguments: \"--workspace --exclude sacm-cli\"",
+            after_step(&["with: { arguments: \"--workspace --exclude sacm-cli\" }"]),
+            DENY_INPUT,
+        ),
+    ];
+    assert_yaml_mutations_reported("LIB-QA-003", &mutations, check_deny_job);
+}
+
 /// Y3-2 and design condition 5: nothing in YAML form can make the cargo-deny
 /// job or step conditional or allowed to fail, or merge narrowing inputs in.
 #[test]
@@ -2820,8 +2917,25 @@ fn lib_qa_003_deny_job_check_accepts_equivalent_inputs() {
         ),
         ("with: {}", after_step(&["with: {}"])),
         (
-            "a harmless input",
+            "log-level: warn, with command: check",
             after_step(&["with: { command: check, log-level: warn }"]),
+        ),
+        (
+            "block log-level: warn",
+            after_step(&["with:", "  log-level: warn"]),
+        ),
+        (
+            "log-level: \"info\"",
+            after_step(&["with: { log-level: \"info\" }"]),
+        ),
+        (
+            "log-level: trace",
+            after_step(&["with:", "  log-level: trace"]),
+        ),
+        ("log-level: off", after_step(&["with:", "  log-level: off"])),
+        (
+            "an input passed quoted (rust-version)",
+            after_step(&["with: { rust-version: \"1.85.0\" }"]),
         ),
         (
             "allowed step keys name, id",

@@ -237,6 +237,7 @@ tests = [
   "xtask/tests/repo_checks.rs::lib_qa_003_ci_deny_job_runs_every_check",
   "xtask/tests/repo_checks.rs::lib_qa_003_deny_job_check_rejects_known_bypasses",
   "xtask/tests/repo_checks.rs::lib_qa_003_deny_job_check_rejects_yaml_input_bypasses",
+  "xtask/tests/repo_checks.rs::lib_qa_003_deny_job_check_rejects_unquoted_input_injection",
   "xtask/tests/repo_checks.rs::lib_qa_003_deny_job_check_rejects_yaml_guard_bypasses",
   "xtask/tests/repo_checks.rs::lib_qa_003_deny_job_check_reports_parse_and_shape_errors",
   "xtask/tests/repo_checks.rs::lib_qa_003_deny_job_check_accepts_equivalent_inputs",
