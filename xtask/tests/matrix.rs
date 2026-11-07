@@ -483,6 +483,25 @@ fn lib_tool_001_rejects_ids_with_an_extra_segment_or_a_non_digit_number() {
     }
 }
 
+/// Rule 2: the area segment of an id is not empty. The fixture declares an
+/// area whose code is empty, so the only rule `SACM23--001` can break is the
+/// id form itself: it must not slip through, and must not be reported merely
+/// as an unknown area.
+#[test]
+fn lib_tool_001_rejects_id_with_an_empty_area_segment() {
+    let empty_area = "\n[[area]]\ncode = \"\"\nprefix = \"SACM23\"\ntitle = \"Empty\"\n";
+    let id = "SACM23--001";
+    let m = load(&format!("{HEADER}{empty_area}{}", row(id, "planned", "")))
+        .expect("LIB-TOOL-001: test matrix with an empty area code parses");
+    assert_eq!(
+        problems(&m, FakeRepo::default()),
+        [format!(
+            "{id}: id must look like SACM23-<AREA>-<NNN> or LIB-<AREA>-<NNN>"
+        )],
+        "LIB-TOOL-001: an id with an empty area segment is rejected by the id-format rule alone"
+    );
+}
+
 #[test]
 fn lib_tool_001_rejects_empty_title_requirement_and_source() {
     let base = row("SACM23-BASE-001", "planned", "");
@@ -970,6 +989,37 @@ fn lib_tool_001_same_line_test_attribute_counts_for_citation_and_orphans() {
     assert_exact(
         &problems(&matrix(PLANNED), repo),
         "t.rs: traced test `sacm23_base_001_x` is not cited by any matrix row",
+    );
+}
+
+/// The number segment of a traced name is three digits: `lib_cli_0a1_x` has
+/// the right length but is not a row-id name, so it is neither traced nor
+/// reported as an orphan.
+#[test]
+fn lib_tool_001_traced_names_need_a_three_digit_number() {
+    let digits = "#[test] fn lib_cli_001_x() {}";
+    let not_digits = "#[test] fn lib_cli_0a1_x() {}";
+    assert_eq!(
+        traced_tests(digits, false),
+        ["lib_cli_001_x"],
+        "LIB-TOOL-001: a name with a three-digit number is traced"
+    );
+    assert_eq!(
+        traced_tests(not_digits, false),
+        Vec::<String>::new(),
+        "LIB-TOOL-001: a name whose number segment is not all digits is not traced"
+    );
+    assert_eq!(
+        traced_tests("def test_lib_cli_0a1_x(self):", true),
+        Vec::<String>::new(),
+        "LIB-TOOL-001: a Python name whose number segment is not all digits is not traced"
+    );
+
+    let repo = FakeRepo::default().with("t.rs", not_digits);
+    assert_eq!(
+        problems(&matrix(PLANNED), repo),
+        Vec::<String>::new(),
+        "LIB-TOOL-001: a test whose name is not a row-id name is not an orphan"
     );
 }
 

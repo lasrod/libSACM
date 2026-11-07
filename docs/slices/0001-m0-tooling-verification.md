@@ -125,3 +125,7 @@ doctests.
 - 2026-11-07 stopped. To resume in a NEW session: (1) live probe per the round-3 record's conditions, for LIB-TOOL-003; (2) with maintainer authorization, fix round 3: one lib_tool_001_ binary exit-code test (plus the Low one-liners R21/R23), then round-4 verification of LIB-TOOL-001.
 - 2026-11-07 resumed in a fresh session: live probes run (test engineer out-of-scope write refused by the hook with its reason text; read-only background role had no Write tool). Verification round 4: LIB-TOOL-003 PASS -> verified. See docs/verification/0001-m0-tooling-verification-round4.md.
 - 2026-11-07 stopped: LIB-TOOL-001 still open (round-3 Medium R28); fix round 3 awaits maintainer authorization.
+- 2026-11-07 maintainer approved fix round 3 (LIB-TOOL-001 only): binary exit-code test plus R21/R23 one-liners.
+- 2026-11-07 fix round 3: test engineer added 3 binary tests (xtask/tests/cli.rs) and 2 matrix tests; R28/R21/R23 killed.
+- 2026-11-07 verification round 5: LIB-TOOL-001 FAIL. The matrix-check dispatch in main.rs is untested (R28e: binary exits 0 over a planted orphan). See docs/verification/0001-m0-tooling-verification-round5.md. New rows LIB-TOOL-009, LIB-TOOL-010.
+- 2026-11-07 stopped: fix-round budget used; maintainer decision needed.
