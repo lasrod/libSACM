@@ -609,6 +609,7 @@ tests = [
   "xtask/tests/gate_hardening.rs::lib_tool_005_real_matrix_passes_the_gate",
   "xtask/tests/gate_hardening.rs::lib_tool_005_every_verified_row_in_the_real_matrix_has_one_pass_verdict_line",
 ]
+notes = "Verification 0004 round 2 failed it a second time (F4: fences inside list items; F5). The work stopped for the maintainer to choose route A, B or C in docs/verification/0004-m0-gate-hardening-round2.md (P-005b). The code on main is still stricter than the old mention check."
 
 [[row]]
 id = "LIB-TOOL-006"
@@ -618,7 +619,7 @@ title = "Cited paths stay inside the repository"
 requirement = "Code, test and verification-record citations must be relative paths that resolve inside the repository; absolute paths and `..` escapes are rejected by the gate."
 source = "Verification 0001 follow-up"
 kind = "tooling"
-status = "implemented"
+status = "verified"
 code = ["xtask/src/matrix.rs"]
 acceptance = [
   "A cited path is a `code` entry, the path part of a `path::function` test citation, a `doctest:` path, or `verification`. It must be a relative, `/`-separated path. Any of the following is reported as `cited path `<p>` must be a relative path inside the repository`, with the row id: an empty path; a path starting with `/`; a path containing `\\` or `:`; a path with an empty component (`a//b`, a trailing `/`); a path with a `.` or `..` component.",
@@ -641,6 +642,7 @@ tests = [
   "xtask/tests/gate_hardening.rs::lib_tool_006_a_bad_verification_path_on_a_non_verified_row_is_rejected_and_never_read",
   "xtask/tests/gate_hardening.rs::lib_tool_006_every_path_cited_in_the_real_matrix_is_inside_the_repository",
 ]
+verification = "docs/verification/0004-m0-gate-hardening-round2.md"
 
 [[row]]
 id = "LIB-TOOL-007"
@@ -754,7 +756,7 @@ area = "TOOL"
 milestone = "M0"
 title = "Verdict lines hidden by Markdown do not count"
 requirement = "A `- Row verdict:` line that rendered Markdown hides does not count as a verdict line. This covers a line inside an HTML comment or HTML block. It also covers a line that a backtick-fence opener only appears to close: CommonMark does not accept a backtick fence opener whose info string contains a backtick (for example ```a`b), so the next ``` line opens a fence instead."
-source = "Slice 0004 fix round 1, implementer follow-up (left outside the P-005 contract)"
+source = "Slice 0004 fix round 1, implementer follow-up (left outside the P-005 contract). Verification 0004 round 2 seeds P2 (```a`b, then ```, then PASS, then ```) and P7 (<div>, then ```, then </div>, then FAIL, then a fenced PASS); both give a false PASS today."
 kind = "tooling"
 status = "planned"
 depends_on = ["LIB-TOOL-005"]

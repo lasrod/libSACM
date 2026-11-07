@@ -1,7 +1,7 @@
 ---
 slice: 0004
 name: m0-gate-hardening
-state: in-progress
+state: stopped
 step: verification
 rows: [LIB-TOOL-005, LIB-TOOL-006, LIB-TOOL-009, LIB-TOOL-010]
 mode: pr
@@ -87,3 +87,5 @@ There are 38 tests in `xtask/tests/gate_hardening.rs`: 17 for LIB-TOOL-005, 11 f
 - 2026-11-08 implementation: all 38 tests pass. A local cargo-mutants run on the diff: 34 mutants, 33 caught, 0 missed, 1 unviable (`verdict_lines` -> `vec![Default::default()]`, because `VerdictLine` has no `Default`). Rows are now `implemented`.
 - 2026-11-08 verification round 1: FAIL (partial). LIB-TOOL-009 and LIB-TOOL-010 PASS and are now verified. LIB-TOOL-005 (F1, fences) and LIB-TOOL-006 (F2, verification path on non-verified rows) FAIL. F3: the triage doc is stale. Record: docs/verification/0004-m0-gate-hardening.md. New rows LIB-TOOL-013 and LIB-TOOL-014. Fix round 1 started.
 - 2026-11-08 fix round 1: test engineer added T1-T6, D5 and P-006 tests (45 in gate_hardening.rs). Implementer: CommonMark fences in verdict_lines, check_path on verification at every status, triage doc slice-0004 section. Local cargo-mutants on the diff: 49 mutants, 48 caught, 0 missed, 1 unviable. New row LIB-TOOL-015 (Markdown-hidden verdict lines; outside P-005).
+- 2026-11-08 verification round 2: FAIL (partial). LIB-TOOL-006 PASS, now verified. LIB-TOOL-009 and LIB-TOOL-010 show no regression. LIB-TOOL-005 FAILed a second time (F4: fences inside list items; F5). Record: docs/verification/0004-m0-gate-hardening-round2.md.
+- 2026-11-08 stopped for LIB-TOOL-005: after its second FAIL, the maintainer chooses route A (a CommonMark parser dependency), B (hand-tracked list items) or C (an ambiguity rule). See P-005b in the round-2 record. LIB-TOOL-005 stays implemented. The rest of the slice (006, 009, 010) is verified and goes to main through PR #10, under the maintainer's overnight merge authorization. The code is strictly stronger than the mention check it replaces.

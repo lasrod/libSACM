@@ -42,7 +42,10 @@ This is where every cargo-mutants survivor in the workspace gets its disposition
 
 Slice 0004 (LIB-TOOL-005, -006, -009, -010) added code to `xtask/src/matrix.rs`. Fix round 1 replaced the fence toggle in `verdict_lines` with CommonMark fences (a new helper, `fence`) and checks the `verification` path at every status.
 
-- **Authoritative run:** the Linux runs on PR #10 at the fix-round-1 head: mutants.yml run (run id: to be filled in by the lead) and the ci.yml `mutants (PR diff)` job. The lead records their ids and totals. The local runs below are Windows pre-checks.
+- **Authoritative run:** the Linux runs on PR #10 at the fix-round-1 head `1655cbf`. The local runs below are Windows pre-checks.
+  - mutants.yml [42390257623](https://github.com/lasrod/libSACM/actions/runs/42390257623): 245 mutants, 240 caught, 0 missed, 0 timeout, 5 unviable.
+  - ci.yml [42390257629](https://github.com/lasrod/libSACM/actions/runs/42390257629), job `mutants (PR diff)`: 49 mutants, 48 caught, 0 missed, 0 timeout, 1 unviable.
+  - Verification 0004 round 2 confirmed that the unviable set below matches the Linux run exactly.
 - **Local pre-check, PR diff** (cargo-mutants 27.1.0, `--in-diff` against `main`, Windows): 49 mutants, **48 caught, 0 missed, 0 timed out, 1 unviable** (the `verdict_lines` mutant below).
 - **Local pre-check, unviable set** (`--workspace --re "Default::default"`, Windows): 12 mutants, 7 caught, 5 unviable, exactly the five below. The 7 caught include the four `fence` replacements.
 - **The 5 unviable mutants** at the fix head (positions from `--list`). The new one is `verdict_lines`. The other four are the earlier ones; `ready` and `load_from` have moved. All are structural: the replacement needs a `Default` that `Outcome`, `Matrix`, `VerdictLine` or `&Row` does not implement.

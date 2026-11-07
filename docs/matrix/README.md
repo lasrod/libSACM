@@ -76,8 +76,11 @@ changes a status, and only to `verified` on a recorded PASS from the verifier.
    read. Every cited code path and verification record exists. The record of a verified
    row has exactly one verdict line for that row, saying PASS:
    `- Row verdict: <ROW-ID>: PASS`, with no indent and outside fenced code blocks.
-   Fences follow CommonMark: 0 to 3 spaces of indent, then 3 or more backticks or
-   tildes, closed by a run of the same character that is at least as long. A line
+   Fences are recognised at the top level of the record, as CommonMark defines them:
+   0 to 3 spaces of indent, then 3 or more backticks or tildes, closed by a run of the
+   same character that is at least as long. Two cases are not yet handled. A fence
+   inside a list item, which CommonMark closes when the item ends, is LIB-TOOL-005,
+   still open. HTML blocks and a backtick in a fence's info string are LIB-TOOL-015. A line
    starting `- Row verdict:` that is not well formed is a problem.
 6. Every test citation is `path::function`, where the function is a **test** in that file
    (a Rust function under a `#[test]`-style attribute, on the line before or the same
