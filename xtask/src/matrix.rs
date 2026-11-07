@@ -5,6 +5,36 @@
 //! against the repository, renders it to Markdown, and answers "what is the
 //! next work?" for the slice loop. The rules it enforces are documented in
 //! `docs/matrix/README.md`; keep the two in step.
+//!
+//! The checks run against the [`Repo`] trait rather than the filesystem, so
+//! they can be driven with an in-memory repository:
+//!
+//! ```
+//! use xtask::matrix::{check, load, render, traced_tests, Repo, RENDERED_PATH};
+//!
+//! /// A repository holding only the rendered page.
+//! struct OnlyPage(String);
+//!
+//! impl Repo for OnlyPage {
+//!     fn exists(&self, rel: &str) -> bool {
+//!         rel == RENDERED_PATH
+//!     }
+//!     fn read(&self, rel: &str) -> Option<String> {
+//!         (rel == RENDERED_PATH).then(|| self.0.clone())
+//!     }
+//!     fn traced_functions(&self) -> Vec<(String, String)> {
+//!         Vec::new()
+//!     }
+//! }
+//!
+//! let matrix = load("schema_version = 1")?;
+//! assert!(check(&matrix, &OnlyPage(render(&matrix))).is_empty());
+//! assert_eq!(
+//!     traced_tests("#[test] fn lib_cli_001_runs() {}", false),
+//!     ["lib_cli_001_runs"]
+//! );
+//! # Ok::<(), String>(())
+//! ```
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write as _;
@@ -13,8 +43,10 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-pub(crate) const MATRIX_PATH: &str = "docs/matrix/functionality-matrix.toml";
-pub(crate) const RENDERED_PATH: &str = "docs/matrix/functionality-matrix.md";
+/// The canonical matrix, relative to the repository root.
+pub const MATRIX_PATH: &str = "docs/matrix/functionality-matrix.toml";
+/// The Markdown rendering of the matrix, relative to the repository root.
+pub const RENDERED_PATH: &str = "docs/matrix/functionality-matrix.md";
 
 /// Directories scanned for traced test functions (orphan detection).
 const TEST_SCAN_ROOTS: &[&str] = &["crates", "xtask", ".claude/hooks"];
@@ -23,40 +55,55 @@ const TEST_SCAN_ROOTS: &[&str] = &["crates", "xtask", ".claude/hooks"];
 // Schema
 // ---------------------------------------------------------------------------
 
+/// The parsed `functionality-matrix.toml`.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Matrix {
-    pub(crate) schema_version: u32,
+pub struct Matrix {
+    /// Format version of the file; only `1` is supported.
+    pub schema_version: u32,
+    /// Milestones in delivery order (`[[milestone]]` tables).
     #[serde(rename = "milestone", default)]
-    pub(crate) milestones: Vec<Milestone>,
+    pub milestones: Vec<Milestone>,
+    /// Requirement areas (`[[area]]` tables).
     #[serde(rename = "area", default)]
-    pub(crate) areas: Vec<Area>,
+    pub areas: Vec<Area>,
+    /// Requirement rows in file order (`[[row]]` tables).
     #[serde(rename = "row", default)]
-    pub(crate) rows: Vec<Row>,
+    pub rows: Vec<Row>,
 }
 
+/// A delivery milestone such as `M0`.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Milestone {
-    pub(crate) id: String,
-    pub(crate) title: String,
-    pub(crate) goal: String,
+pub struct Milestone {
+    /// Unique milestone id, e.g. `M0`.
+    pub id: String,
+    /// Short title.
+    pub title: String,
+    /// What the milestone delivers.
+    pub goal: String,
 }
 
+/// A requirement area: the middle segment of a row id.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Area {
-    pub(crate) code: String,
-    pub(crate) prefix: Prefix,
-    pub(crate) title: String,
+pub struct Area {
+    /// Unique uppercase area code, e.g. `ARG`.
+    pub code: String,
+    /// The id prefix that rows of this area must use.
+    pub prefix: Prefix,
+    /// Human-readable area name.
+    pub title: String,
 }
 
 /// `SACM23` rows are obligations of the standard; `LIB` rows are library
 /// capabilities and quality commitments the standard does not state.
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Prefix {
+pub enum Prefix {
+    /// An obligation of OMG SACM 2.3 (`SACM23-...`).
     #[serde(rename = "SACM23")]
     Sacm23,
+    /// A library capability or quality commitment (`LIB-...`).
     #[serde(rename = "LIB")]
     Lib,
 }
@@ -70,41 +117,65 @@ impl Prefix {
     }
 }
 
+/// One requirement of the matrix.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Row {
-    pub(crate) id: String,
-    pub(crate) area: String,
-    pub(crate) milestone: String,
-    pub(crate) title: String,
-    pub(crate) requirement: String,
-    pub(crate) source: String,
-    pub(crate) kind: Kind,
-    pub(crate) status: Status,
+pub struct Row {
+    /// `SACM23-<AREA>-<NNN>` or `LIB-<AREA>-<NNN>`.
+    pub id: String,
+    /// Area code; must equal the id's area segment.
+    pub area: String,
+    /// Milestone id.
+    pub milestone: String,
+    /// Short title.
+    pub title: String,
+    /// The requirement itself.
+    pub requirement: String,
+    /// Where the requirement comes from (a clause of the standard, an ADR, ...).
+    pub source: String,
+    /// The kind of work.
+    pub kind: Kind,
+    /// Where the row stands.
+    pub status: Status,
+    /// Rows that must be verified before this one can be.
     #[serde(default)]
-    pub(crate) depends_on: Vec<String>,
+    pub depends_on: Vec<String>,
+    /// Acceptance criteria.
     #[serde(default)]
-    pub(crate) acceptance: Vec<String>,
+    pub acceptance: Vec<String>,
+    /// Paths of the code that implements the row.
     #[serde(default)]
-    pub(crate) code: Vec<String>,
+    pub code: Vec<String>,
+    /// Test citations: `path::function` or `doctest:path`.
     #[serde(default)]
-    pub(crate) tests: Vec<String>,
+    pub tests: Vec<String>,
+    /// Path of the verification record that passed the row.
     #[serde(default)]
-    pub(crate) verification: Option<String>,
+    pub verification: Option<String>,
+    /// Free-form notes; required for unscheduled statuses.
     #[serde(default)]
-    pub(crate) notes: Option<String>,
+    pub notes: Option<String>,
 }
 
+/// The status vocabulary of `docs/matrix/README.md`.
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum Status {
+pub enum Status {
+    /// Scheduled; not analysed yet.
     Planned,
+    /// Acceptance criteria are written.
     Analyzed,
+    /// Failing tests encode the criteria.
     TestsFailing,
+    /// Tests pass; not yet independently verified.
     Implemented,
+    /// The verifier passed it; recorded.
     Verified,
+    /// Under consideration, not scheduled.
     Candidate,
+    /// Scheduled for later than its milestone suggests.
     Deferred,
+    /// Deliberately not done.
     OutOfScope,
 }
 
@@ -120,7 +191,9 @@ impl Status {
         Status::OutOfScope,
     ];
 
-    fn as_str(self) -> &'static str {
+    /// The status as written in the matrix, e.g. `tests-failing`.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
         match self {
             Status::Planned => "planned",
             Status::Analyzed => "analyzed",
@@ -150,19 +223,31 @@ impl Status {
     }
 }
 
+/// The kind of work a row describes.
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum Kind {
+pub enum Kind {
+    /// Typed model of metamodel elements.
     Model,
+    /// XMI import or export.
     Xmi,
+    /// Validation rules.
     Validation,
+    /// Editing operations.
     Editing,
+    /// Public API shape.
     Api,
+    /// Security properties.
     Security,
+    /// The command-line tool.
     Cli,
+    /// Documentation.
     Docs,
+    /// Quality gates.
     Quality,
+    /// Repository tooling.
     Tooling,
+    /// Conformance to the standard.
     Compliance,
 }
 
@@ -188,20 +273,29 @@ impl Kind {
 // Repository access (a trait so the checks are testable without a filesystem)
 // ---------------------------------------------------------------------------
 
-pub(crate) trait Repo {
+/// The repository as the checks see it. Paths are relative to the repository
+/// root and use `/` separators.
+pub trait Repo {
+    /// Whether a file or directory exists at `rel`.
     fn exists(&self, rel: &str) -> bool;
+    /// The text of the file at `rel`, or `None` if it cannot be read.
     fn read(&self, rel: &str) -> Option<String>;
-    /// Every function name in the scanned test roots that looks like a traced
-    /// test (`sacm23_<area>_<nnn>...` or `lib_<area>_<nnn>...`), with its file.
+    /// Every test function in the scanned test roots whose name traces to a
+    /// row (see [`traced_tests`]), as `(file, name)` pairs.
     fn traced_functions(&self) -> Vec<(String, String)>;
 }
 
-pub(crate) struct FsRepo {
+/// [`Repo`] over a checkout on disk. Traced tests are collected from the
+/// Rust and Python sources under `crates/`, `xtask/` and `.claude/hooks/`.
+#[derive(Debug)]
+pub struct FsRepo {
     root: PathBuf,
 }
 
 impl FsRepo {
-    pub(crate) fn new(root: &Path) -> Self {
+    /// A repository rooted at `root`.
+    #[must_use]
+    pub fn new(root: &Path) -> Self {
         Self {
             root: root.to_path_buf(),
         }
@@ -263,41 +357,95 @@ impl Repo for FsRepo {
     }
 }
 
-/// Test functions whose names trace to a matrix row: Rust functions under a
-/// `#[test]`-style attribute, and Python `def test_<row>...` functions.
-fn traced_tests(text: &str, python: bool) -> Vec<String> {
+/// Test functions in `text` whose names trace to a matrix row, in source
+/// order.
+///
+/// A Rust test is a function under a `#[test]`-style attribute (`#[test]`,
+/// `#[tokio::test]`, ...), on the line before the function or on the same
+/// line; other attributes, blank lines and comments may sit in between. With
+/// `python`, a test is a line-leading `def test_...`. A name traces when, with
+/// any `test_` prefix removed, it starts `sacm23_<area>_<nnn>` or
+/// `lib_<area>_<nnn>`.
+///
+/// ```
+/// use xtask::matrix::traced_tests;
+///
+/// let rust = "#[test]\nfn lib_cli_001_parses() {}\nfn lib_cli_001_helper() {}";
+/// assert_eq!(traced_tests(rust, false), ["lib_cli_001_parses"]);
+/// assert_eq!(traced_tests("#[test] fn sacm23_base_001_x() {}", false), ["sacm23_base_001_x"]);
+///
+/// let python = "def test_lib_tool_003_denies(self):\ndef lib_tool_003_helper():";
+/// assert_eq!(traced_tests(python, true), ["test_lib_tool_003_denies"]);
+/// ```
+#[must_use]
+pub fn traced_tests(text: &str, python: bool) -> Vec<String> {
+    test_functions(text, python)
+        .into_iter()
+        .filter(|name| looks_traced(name))
+        .collect()
+}
+
+/// Every test function in `text`, whether or not its name traces to a row.
+fn test_functions(text: &str, python: bool) -> Vec<String> {
     let mut names = Vec::new();
     let mut pending_test_attr = false;
     for line in text.lines() {
         let line = line.trim();
         if python {
             if let Some(rest) = line.strip_prefix("def ") {
-                let name: String = rest
-                    .chars()
-                    .take_while(|c| c.is_alphanumeric() || *c == '_')
-                    .collect();
-                if name.starts_with("test_") && looks_traced(&name) {
+                let name = identifier(rest);
+                if name.starts_with("test_") {
                     names.push(name);
                 }
             }
             continue;
         }
-        if line.starts_with("#[") && line.ends_with("test]") {
-            pending_test_attr = true;
-        } else if line.is_empty() || line.starts_with("#[") || line.starts_with("//") {
+        let (test_attr, rest) = strip_attributes(line);
+        if rest.is_empty() || rest.starts_with("//") {
             // Attributes and comments may sit between `#[test]` and the function.
-        } else {
-            if pending_test_attr {
-                if let Some(name) = defined_functions(line).into_iter().next() {
-                    if looks_traced(&name) {
-                        names.push(name);
-                    }
-                }
-            }
-            pending_test_attr = false;
+            pending_test_attr |= test_attr;
+            continue;
         }
+        if pending_test_attr || test_attr {
+            if let Some(name) = defined_functions(rest).into_iter().next() {
+                names.push(name);
+            }
+        }
+        pending_test_attr = false;
     }
     names
+}
+
+/// Strip the attributes that start a (trimmed) Rust line. Returns whether one
+/// of them is `#[test]`-style, and the rest of the line. An attribute that is
+/// not closed on this line takes the rest of the line.
+fn strip_attributes(line: &str) -> (bool, &str) {
+    let mut test_attr = false;
+    let mut rest = line;
+    while let Some(body) = rest.strip_prefix("#[") {
+        let mut depth = 1_usize;
+        let close = body.char_indices().find_map(|(i, c)| {
+            match c {
+                '[' => depth += 1,
+                ']' => depth -= 1,
+                _ => {}
+            }
+            (depth == 0).then_some(i)
+        });
+        let Some(close) = close else {
+            return (test_attr, "");
+        };
+        test_attr |= body[..close].trim_end().ends_with("test");
+        rest = body[close + 1..].trim_start();
+    }
+    (test_attr, rest)
+}
+
+/// The identifier at the start of `text`.
+fn identifier(text: &str) -> String {
+    text.chars()
+        .take_while(|c| c.is_alphanumeric() || *c == '_')
+        .collect()
 }
 
 /// Names following `fn ` or `def ` in source text.
@@ -366,12 +514,22 @@ fn parse_id(id: &str) -> Option<(&str, &str, &str)> {
 // Checks
 // ---------------------------------------------------------------------------
 
-pub(crate) fn load(text: &str) -> Result<Matrix, String> {
+/// Parse the text of `functionality-matrix.toml`.
+///
+/// # Errors
+///
+/// Returns the TOML or schema error, prefixed with [`MATRIX_PATH`]. Unknown
+/// keys are errors.
+pub fn load(text: &str) -> Result<Matrix, String> {
     toml::from_str(text).map_err(|e| format!("{MATRIX_PATH}: {e}"))
 }
 
-/// Every rule violation in the matrix, as human-readable messages.
-pub(crate) fn check(matrix: &Matrix, repo: &dyn Repo) -> Vec<String> {
+/// Every rule violation in the matrix, as human-readable messages; empty when
+/// the matrix passes the gate. Row-level messages start with the row id.
+///
+/// The rules are those of `docs/matrix/README.md`.
+#[must_use]
+pub fn check(matrix: &Matrix, repo: &dyn Repo) -> Vec<String> {
     let mut errors = Vec::new();
     if matrix.schema_version != 1 {
         errors.push(format!(
@@ -582,7 +740,8 @@ fn check_evidence(row: &Row, index: &Index<'_>) -> Vec<String> {
     out
 }
 
-/// Cited code paths exist; cited tests exist and are named for this row.
+/// Cited code paths exist; cited tests exist, are test functions (see
+/// [`traced_tests`]), and are named for this row.
 fn check_citations(row: &Row, index: &Index<'_>) -> Vec<String> {
     let mut out = Vec::new();
     for path in &row.code {
@@ -614,12 +773,24 @@ fn check_citations(row: &Row, index: &Index<'_>) -> Vec<String> {
                 "test `{name}` must be named `{prefix}_...` to trace to this row"
             ));
         }
-        match index.repo.read(path) {
-            None => out.push(format!("test file {path} does not exist")),
-            Some(text) if !defined_functions(&text).iter().any(|f| f == name) => {
-                out.push(format!("test function `{name}` is not defined in {path}"));
-            }
-            Some(_) => {}
+        let Some(text) = index.repo.read(path) else {
+            out.push(format!("test file {path} does not exist"));
+            continue;
+        };
+        let python = has_extension(Path::new(path), "py");
+        if test_functions(&text, python).iter().any(|f| f == name) {
+            continue;
+        }
+        if !defined_functions(&text).iter().any(|f| f == name) {
+            out.push(format!("test function `{name}` is not defined in {path}"));
+        } else if python {
+            out.push(format!(
+                "function `{name}` in {path} is not a test: unittest runs only `test_...` methods"
+            ));
+        } else {
+            out.push(format!(
+                "function `{name}` in {path} is not a test: it has no `#[test]`-style attribute"
+            ));
         }
     }
     out
@@ -700,7 +871,10 @@ fn cell(text: &str) -> String {
         .replace('|', "\\|")
 }
 
-pub(crate) fn render(matrix: &Matrix) -> String {
+/// The Markdown page for [`RENDERED_PATH`]: a summary, the areas, and one
+/// table per milestone. Deterministic for a given matrix.
+#[must_use]
+pub fn render(matrix: &Matrix) -> String {
     let mut out = String::new();
     let _ = writeln!(
         out,
@@ -827,8 +1001,10 @@ fn render_milestone(out: &mut String, matrix: &Matrix, milestone: &Milestone) {
 // Loop support
 // ---------------------------------------------------------------------------
 
-/// Open rows whose dependencies are all verified, in milestone then file order.
-pub(crate) fn ready(matrix: &Matrix) -> Vec<&Row> {
+/// Open rows (planned, analyzed, tests-failing, implemented) whose
+/// dependencies are all verified, in milestone order and then file order.
+#[must_use]
+pub fn ready(matrix: &Matrix) -> Vec<&Row> {
     let status: HashMap<&str, Status> = matrix
         .rows
         .iter()
@@ -875,7 +1051,14 @@ fn load_from(root: &Path) -> Result<Matrix, String> {
     load(&text)
 }
 
-pub(crate) fn cmd_check(root: &Path) -> Result<(), String> {
+/// `cargo xtask matrix check`: run [`check`] on the repository at `root`,
+/// printing every problem to standard error.
+///
+/// # Errors
+///
+/// Returns an error when the matrix cannot be read or parsed, or when it has
+/// problems.
+pub fn cmd_check(root: &Path) -> Result<(), String> {
     let matrix = load_from(root)?;
     let errors = check(&matrix, &FsRepo::new(root));
     if errors.is_empty() {
@@ -889,7 +1072,14 @@ pub(crate) fn cmd_check(root: &Path) -> Result<(), String> {
     }
 }
 
-pub(crate) fn cmd_render(root: &Path) -> Result<(), String> {
+/// `cargo xtask matrix render`: write [`render`] of the matrix to
+/// [`RENDERED_PATH`] under `root`.
+///
+/// # Errors
+///
+/// Returns an error when the matrix cannot be read or parsed, or the page
+/// cannot be written.
+pub fn cmd_render(root: &Path) -> Result<(), String> {
     let matrix = load_from(root)?;
     let path = root.join(RENDERED_PATH);
     fs::write(&path, render(&matrix)).map_err(|e| format!("write {}: {e}", path.display()))?;
@@ -897,7 +1087,12 @@ pub(crate) fn cmd_render(root: &Path) -> Result<(), String> {
     Ok(())
 }
 
-pub(crate) fn cmd_next(root: &Path, limit: usize) -> Result<(), String> {
+/// `cargo xtask matrix next`: print up to `limit` rows of [`ready`].
+///
+/// # Errors
+///
+/// Returns an error when the matrix cannot be read or parsed.
+pub fn cmd_next(root: &Path, limit: usize) -> Result<(), String> {
     let matrix = load_from(root)?;
     let ready = ready(&matrix);
     let open = matrix.rows.iter().filter(|r| r.status.is_open()).count();
@@ -922,7 +1117,13 @@ pub(crate) fn cmd_next(root: &Path, limit: usize) -> Result<(), String> {
     Ok(())
 }
 
-pub(crate) fn cmd_status(root: &Path) -> Result<(), String> {
+/// `cargo xtask matrix status`: print one line of status counts per
+/// milestone.
+///
+/// # Errors
+///
+/// Returns an error when the matrix cannot be read or parsed.
+pub fn cmd_status(root: &Path) -> Result<(), String> {
     let matrix = load_from(root)?;
     for milestone in &matrix.milestones {
         let rows: Vec<&Row> = matrix
@@ -947,282 +1148,4 @@ pub(crate) fn cmd_status(root: &Path) -> Result<(), String> {
         );
     }
     Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[derive(Default)]
-    struct FakeRepo {
-        files: HashMap<String, String>,
-    }
-
-    impl FakeRepo {
-        fn with(mut self, path: &str, text: &str) -> Self {
-            self.files.insert(path.into(), text.into());
-            self
-        }
-    }
-
-    impl Repo for FakeRepo {
-        fn exists(&self, rel: &str) -> bool {
-            self.files.contains_key(rel)
-        }
-        fn read(&self, rel: &str) -> Option<String> {
-            self.files.get(rel).cloned()
-        }
-        fn traced_functions(&self) -> Vec<(String, String)> {
-            let mut out = Vec::new();
-            for (path, text) in &self.files {
-                for name in traced_tests(text, has_extension(Path::new(path), "py")) {
-                    out.push((path.clone(), name));
-                }
-            }
-            out
-        }
-    }
-
-    const HEADER: &str = r#"
-schema_version = 1
-[[milestone]]
-id = "M0"
-title = "Foundation"
-goal = "Build."
-[[milestone]]
-id = "M1"
-title = "Core"
-goal = "Model."
-[[area]]
-code = "BASE"
-prefix = "SACM23"
-title = "Base"
-[[area]]
-code = "CLI"
-prefix = "LIB"
-title = "CLI"
-"#;
-
-    fn matrix(rows: &str) -> Matrix {
-        load(&format!("{HEADER}{rows}")).expect("test matrix parses")
-    }
-
-    /// Check with the rendered page in sync, so tests see only the rule under test.
-    fn problems(m: &Matrix, repo: FakeRepo) -> Vec<String> {
-        let repo = repo.with(RENDERED_PATH, &render(m));
-        check(m, &repo)
-    }
-
-    fn assert_problem(problems: &[String], needle: &str) {
-        assert!(
-            problems.iter().any(|p| p.contains(needle)),
-            "expected a problem containing {needle:?}, got {problems:#?}"
-        );
-    }
-
-    const PLANNED: &str = r#"
-[[row]]
-id = "SACM23-BASE-001"
-area = "BASE"
-milestone = "M1"
-title = "LangString"
-requirement = "Represent LangString."
-source = "§8.3"
-kind = "model"
-status = "planned"
-"#;
-
-    #[test]
-    fn lib_tool_001_accepts_a_consistent_matrix() {
-        assert_eq!(
-            problems(&matrix(PLANNED), FakeRepo::default()),
-            Vec::<String>::new()
-        );
-    }
-
-    #[test]
-    fn lib_tool_001_rejects_malformed_and_mismatched_ids() {
-        let m = matrix(&PLANNED.replace("SACM23-BASE-001", "LIB-BASE-1"));
-        let p = problems(&m, FakeRepo::default());
-        assert_problem(&p, "id must look like");
-
-        let m = matrix(&PLANNED.replace("SACM23-BASE-001", "LIB-BASE-001"));
-        assert_problem(
-            &problems(&m, FakeRepo::default()),
-            "id prefix must be SACM23",
-        );
-    }
-
-    #[test]
-    fn lib_tool_001_rejects_duplicate_ids() {
-        let m = matrix(&format!("{PLANNED}{PLANNED}"));
-        assert_problem(&problems(&m, FakeRepo::default()), "duplicate row id");
-    }
-
-    #[test]
-    fn lib_tool_001_planned_rows_must_not_cite_tests() {
-        let row = PLANNED.replace(
-            "status = \"planned\"",
-            "status = \"planned\"\ntests = [\"t.rs::sacm23_base_001_x\"]",
-        );
-        let repo = FakeRepo::default().with("t.rs", "fn sacm23_base_001_x() {}");
-        assert_problem(&problems(&matrix(&row), repo), "fallen behind reality");
-    }
-
-    #[test]
-    fn lib_tool_001_implemented_rows_need_acceptance_code_and_tests() {
-        let row = PLANNED.replace("status = \"planned\"", "status = \"implemented\"");
-        let p = problems(&matrix(&row), FakeRepo::default());
-        assert_problem(&p, "no acceptance criteria");
-        assert_problem(&p, "cites no tests");
-        assert_problem(&p, "cites no code");
-    }
-
-    #[test]
-    fn lib_tool_001_test_citations_must_resolve_and_trace() {
-        let row = PLANNED.replace(
-            "status = \"planned\"",
-            "status = \"tests-failing\"\nacceptance = [\"a\"]\n\
-             tests = [\"t.rs::sacm23_base_001_ok\", \"t.rs::sacm23_base_001_missing\", \
-             \"t.rs::lib_cli_001_wrong_row\"]",
-        );
-        let repo = FakeRepo::default().with(
-            "t.rs",
-            "fn sacm23_base_001_ok() {}\nfn lib_cli_001_wrong_row() {}",
-        );
-        let p = problems(&matrix(&row), repo);
-        assert_problem(&p, "`sacm23_base_001_missing` is not defined");
-        assert_problem(&p, "must be named `sacm23_base_001_...`");
-        assert!(
-            !p.iter().any(|e| e.contains("sacm23_base_001_ok")),
-            "{p:#?}"
-        );
-    }
-
-    #[test]
-    fn lib_tool_001_verified_rows_need_record_and_verified_dependencies() {
-        let rows = format!(
-            "{PLANNED}{}",
-            r#"
-[[row]]
-id = "SACM23-BASE-002"
-area = "BASE"
-milestone = "M1"
-title = "MultiLangString"
-requirement = "Represent MultiLangString."
-source = "§8.5"
-kind = "model"
-status = "verified"
-depends_on = ["SACM23-BASE-001"]
-acceptance = ["a"]
-code = ["src/lib.rs"]
-tests = ["t.rs::sacm23_base_002_x"]
-verification = "docs/verification/v.md"
-"#
-        );
-        let repo = FakeRepo::default()
-            .with("src/lib.rs", "")
-            .with("t.rs", "fn sacm23_base_002_x() {}")
-            .with("docs/verification/v.md", "mentions nothing");
-        let p = problems(&matrix(&rows), repo);
-        assert_problem(&p, "depends on SACM23-BASE-001, which is planned");
-        assert_problem(&p, "does not mention SACM23-BASE-002");
-    }
-
-    #[test]
-    fn lib_tool_001_rejects_cycles_and_backward_milestone_dependencies() {
-        let a = PLANNED.replace(
-            "status = \"planned\"",
-            "status = \"planned\"\ndepends_on = [\"SACM23-BASE-002\"]",
-        );
-        let b = PLANNED
-            .replace("SACM23-BASE-001", "SACM23-BASE-002")
-            .replace(
-                "status = \"planned\"",
-                "status = \"planned\"\ndepends_on = [\"SACM23-BASE-001\"]",
-            );
-        let p = problems(&matrix(&format!("{a}{b}")), FakeRepo::default());
-        assert_problem(&p, "dependency cycle");
-
-        let early = PLANNED
-            .replace("milestone = \"M1\"", "milestone = \"M0\"")
-            .replace(
-                "status = \"planned\"",
-                "status = \"planned\"\ndepends_on = [\"SACM23-BASE-002\"]",
-            );
-        let late = PLANNED.replace("SACM23-BASE-001", "SACM23-BASE-002");
-        let p = problems(&matrix(&format!("{early}{late}")), FakeRepo::default());
-        assert_problem(&p, "from a later milestone");
-    }
-
-    #[test]
-    fn lib_tool_001_unscheduled_rows_must_give_a_reason() {
-        let row = PLANNED.replace("status = \"planned\"", "status = \"out-of-scope\"");
-        assert_problem(
-            &problems(&matrix(&row), FakeRepo::default()),
-            "must say why",
-        );
-    }
-
-    #[test]
-    fn lib_tool_001_reports_orphaned_traced_tests() {
-        let repo = FakeRepo::default().with("t.rs", "#[test]\nfn sacm23_base_001_uncited() {}");
-        assert_problem(
-            &problems(&matrix(PLANNED), repo),
-            "not cited by any matrix row",
-        );
-    }
-
-    #[test]
-    fn lib_tool_001_detects_stale_rendered_page() {
-        let m = matrix(PLANNED);
-        let repo = FakeRepo::default().with(RENDERED_PATH, "stale");
-        assert_problem(&check(&m, &repo), "out of date");
-    }
-
-    #[test]
-    fn lib_tool_001_next_lists_open_rows_with_verified_dependencies_in_order() {
-        let blocked = PLANNED
-            .replace("SACM23-BASE-001", "SACM23-BASE-003")
-            .replace(
-                "status = \"planned\"",
-                "status = \"planned\"\ndepends_on = [\"SACM23-BASE-001\"]",
-            );
-        let early = PLANNED
-            .replace("SACM23-BASE-001", "LIB-CLI-001")
-            .replace("area = \"BASE\"", "area = \"CLI\"")
-            .replace("milestone = \"M1\"", "milestone = \"M0\"");
-        let m = matrix(&format!("{PLANNED}{blocked}{early}"));
-        let ids: Vec<&str> = ready(&m).iter().map(|r| r.id.as_str()).collect();
-        assert_eq!(
-            ids,
-            ["LIB-CLI-001", "SACM23-BASE-001"],
-            "LIB-TOOL-001: M0 first, blocked row hidden"
-        );
-    }
-
-    #[test]
-    fn lib_tool_001_finds_function_definitions_not_mentions() {
-        let names = defined_functions(
-            "fn lib_cli_001_a() {}\n// call lib_cli_001_b()\ndef lib_cli_001_c(x):",
-        );
-        assert_eq!(names, ["lib_cli_001_a", "lib_cli_001_c"]);
-        assert!(looks_traced("sacm23_base_001_x"));
-        assert!(looks_traced("test_lib_tool_004_x"));
-        assert!(!looks_traced("sacm23_base_1_x"));
-        assert!(!looks_traced("helper"));
-    }
-
-    #[test]
-    fn lib_tool_001_only_marked_tests_count_as_traced() {
-        let rust = "#[test]\n#[ignore]\nfn lib_cli_001_a() {}\nfn lib_cli_001_helper() {}\n\
-                    let s = \"#[test] fn lib_cli_001_in_string() {}\";";
-        assert_eq!(traced_tests(rust, false), ["lib_cli_001_a"]);
-        let python = "def test_lib_tool_004_denies(self):\ndef lib_tool_004_helper():";
-        assert_eq!(traced_tests(python, true), ["test_lib_tool_004_denies"]);
-    }
 }

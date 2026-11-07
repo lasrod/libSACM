@@ -55,7 +55,7 @@ notes = "…"
 | `tests-failing` | Failing tests encode the criteria. | acceptance, tests | verification |
 | `implemented` | Tests pass; not yet independently verified. | acceptance, tests, code | verification |
 | `verified` | The verifier passed it; recorded. | acceptance, tests, code, verification record that names the row; every dependency verified | — |
-| `candidate` | Under consideration, not scheduled. | notes (why) | tests, code |
+| `candidate` | Under consideration, not scheduled. | notes (why) | tests, code, verification |
 | `deferred` | Scheduled for later than its milestone suggests. | notes (why) | tests, verification |
 | `out-of-scope` | Deliberately not done. Recorded so it is not re-proposed. | notes (why) | tests, verification |
 
@@ -70,11 +70,13 @@ changes a status, and only to `verified` on a recorded PASS from the verifier.
 3. `title`, `requirement` and `source` are non-empty; `milestone` exists.
 4. The evidence rules in the status table above hold.
 5. Every cited code path and verification record exists; the record mentions the row id.
-6. Every test citation is `path::function` with the function defined in that file and
-   named `<row id in snake case>` or `<row id in snake case>_<anything>` (Python tests may
-   add unittest's `test_` prefix), or `doctest:path` for a file containing a code block.
-7. Every traced test in `crates/`, `xtask/` and `.claude/hooks/` — a `#[test]` function, or
-   a Python `def test_…`, whose name starts with a row id — is cited by some row. An
+6. Every test citation is `path::function`, where the function is a **test** in that file
+   (a Rust function under a `#[test]`-style attribute, on the line before or the same
+   line, or a Python `def test_…`; a helper, comment or string literal does not count),
+   named `<row id in snake case>` or `<row id in snake case>_<anything>` (Python tests
+   add unittest's `test_` prefix); or `doctest:path` for a file containing a code block.
+7. Every traced test in `crates/`, `xtask/` and `.claude/hooks/` (a test function, as
+   above, whose name starts with a row id) is cited by some row. An
    uncited traced test is a finding: either the row is missing it or the test is stale.
 8. `depends_on` targets exist, are not the row itself, are not `candidate` or
    `out-of-scope`, are not in a later milestone, and contain no cycles.

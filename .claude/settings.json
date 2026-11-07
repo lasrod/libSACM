@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/agent_write_guard.py\" 2>/dev/null || python \"$CLAUDE_PROJECT_DIR/.claude/hooks/agent_write_guard.py\"",
+            "command": "for py in python3 python; do \"$py\" -c '' >/dev/null 2>&1 && break; done; \"$py\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/agent_write_guard.py\"",
             "timeout": 30
           }
         ]

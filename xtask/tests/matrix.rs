@@ -1,0 +1,1146 @@
+//! Acceptance tests for the functionality-matrix gate (LIB-TOOL-001).
+//!
+//! The gate is driven through the public `xtask::matrix` API against an
+//! in-memory repository, so every rule of `docs/matrix/README.md` is pinned by
+//! a test that fails when that rule is removed.
+//!
+//! Fixture source text is written on one line with `\n` escapes on purpose: a
+//! line of this file that began with `#[test]` inside a string literal would
+//! be picked up by the real repository's orphan scan.
+
+use std::collections::BTreeMap;
+use std::path::Path;
+
+use xtask::matrix::{Matrix, RENDERED_PATH, Repo, check, load, ready, render, traced_tests};
+
+// ---------------------------------------------------------------------------
+// Harness
+// ---------------------------------------------------------------------------
+
+/// An in-memory repository: relative path to file text.
+#[derive(Debug, Default)]
+struct FakeRepo {
+    files: BTreeMap<String, String>,
+}
+
+impl FakeRepo {
+    fn with(mut self, path: &str, text: &str) -> Self {
+        self.files.insert(path.into(), text.into());
+        self
+    }
+}
+
+impl Repo for FakeRepo {
+    fn exists(&self, rel: &str) -> bool {
+        self.files.contains_key(rel)
+    }
+
+    fn read(&self, rel: &str) -> Option<String> {
+        self.files.get(rel).cloned()
+    }
+
+    fn traced_functions(&self) -> Vec<(String, String)> {
+        let mut out = Vec::new();
+        for (path, text) in &self.files {
+            let python = Path::new(path)
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("py"));
+            for name in traced_tests(text, python) {
+                out.push((path.clone(), name));
+            }
+        }
+        out
+    }
+}
+
+const HEADER: &str = r#"
+schema_version = 1
+[[milestone]]
+id = "M0"
+title = "Foundation"
+goal = "Build."
+[[milestone]]
+id = "M1"
+title = "Core"
+goal = "Model."
+[[area]]
+code = "BASE"
+prefix = "SACM23"
+title = "Base"
+[[area]]
+code = "CLI"
+prefix = "LIB"
+title = "CLI"
+"#;
+
+fn matrix(rows: &str) -> Matrix {
+    load(&format!("{HEADER}{rows}")).expect("LIB-TOOL-001: test matrix parses")
+}
+
+/// Check with the rendered page in sync, so tests see only the rule under test.
+fn problems(m: &Matrix, repo: FakeRepo) -> Vec<String> {
+    let repo = repo.with(RENDERED_PATH, &render(m));
+    check(m, &repo)
+}
+
+fn assert_problem(problems: &[String], needle: &str) {
+    assert!(
+        problems.iter().any(|p| p.contains(needle)),
+        "LIB-TOOL-001: expected a problem containing {needle:?}, got {problems:#?}"
+    );
+}
+
+/// The exact message `expected` is among the problems.
+fn assert_exact(problems: &[String], expected: &str) {
+    assert!(
+        problems.iter().any(|p| p == expected),
+        "LIB-TOOL-001: expected the problem {expected:?}, got {problems:#?}"
+    );
+}
+
+fn assert_no_problem_containing(problems: &[String], needle: &str) {
+    assert!(
+        !problems.iter().any(|p| p.contains(needle)),
+        "LIB-TOOL-001: no problem should contain {needle:?}, got {problems:#?}"
+    );
+}
+
+/// A row in milestone M1 whose area is the id's area segment. `extra` holds
+/// further TOML keys (one per line).
+fn row(id: &str, status: &str, extra: &str) -> String {
+    let area = id.split('-').nth(1).unwrap_or_default();
+    format!(
+        "\n[[row]]\nid = \"{id}\"\narea = \"{area}\"\nmilestone = \"M1\"\ntitle = \"Title\"\n\
+         requirement = \"Requirement.\"\nsource = \"Source\"\nkind = \"model\"\n\
+         status = \"{status}\"\n{extra}\n"
+    )
+}
+
+const PLANNED: &str = r#"
+[[row]]
+id = "SACM23-BASE-001"
+area = "BASE"
+milestone = "M1"
+title = "LangString"
+requirement = "Represent LangString."
+source = "§8.3"
+kind = "model"
+status = "planned"
+"#;
+
+/// A traced test for SACM23-BASE-001, marked as a test.
+const MARKED_TEST: &str = "#[test]\nfn sacm23_base_001_x() {}";
+
+// ---------------------------------------------------------------------------
+// Ported from the inline tests in xtask/src/matrix.rs
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lib_tool_001_accepts_a_consistent_matrix() {
+    assert_eq!(
+        problems(&matrix(PLANNED), FakeRepo::default()),
+        Vec::<String>::new(),
+        "LIB-TOOL-001: a consistent matrix has no problems"
+    );
+}
+
+#[test]
+fn lib_tool_001_rejects_malformed_and_mismatched_ids() {
+    let m = matrix(&PLANNED.replace("SACM23-BASE-001", "LIB-BASE-1"));
+    let p = problems(&m, FakeRepo::default());
+    assert_problem(&p, "id must look like");
+
+    let m = matrix(&PLANNED.replace("SACM23-BASE-001", "LIB-BASE-001"));
+    assert_problem(
+        &problems(&m, FakeRepo::default()),
+        "id prefix must be SACM23",
+    );
+}
+
+#[test]
+fn lib_tool_001_rejects_duplicate_ids() {
+    let m = matrix(&format!("{PLANNED}{PLANNED}"));
+    assert_problem(&problems(&m, FakeRepo::default()), "duplicate row id");
+}
+
+#[test]
+fn lib_tool_001_planned_rows_must_not_cite_tests() {
+    let row = PLANNED.replace(
+        "status = \"planned\"",
+        "status = \"planned\"\ntests = [\"t.rs::sacm23_base_001_x\"]",
+    );
+    let repo = FakeRepo::default().with("t.rs", MARKED_TEST);
+    assert_problem(&problems(&matrix(&row), repo), "fallen behind reality");
+}
+
+#[test]
+fn lib_tool_001_implemented_rows_need_acceptance_code_and_tests() {
+    let row = PLANNED.replace("status = \"planned\"", "status = \"implemented\"");
+    let p = problems(&matrix(&row), FakeRepo::default());
+    assert_problem(&p, "no acceptance criteria");
+    assert_problem(&p, "cites no tests");
+    assert_problem(&p, "cites no code");
+}
+
+#[test]
+fn lib_tool_001_test_citations_must_resolve_and_trace() {
+    let row = PLANNED.replace(
+        "status = \"planned\"",
+        "status = \"tests-failing\"\nacceptance = [\"a\"]\n\
+         tests = [\"t.rs::sacm23_base_001_ok\", \"t.rs::sacm23_base_001_missing\", \
+         \"t.rs::lib_cli_001_wrong_row\"]",
+    );
+    let repo = FakeRepo::default().with(
+        "t.rs",
+        "#[test]\nfn sacm23_base_001_ok() {}\n#[test]\nfn lib_cli_001_wrong_row() {}",
+    );
+    let p = problems(&matrix(&row), repo);
+    assert_problem(&p, "`sacm23_base_001_missing` is not defined");
+    assert_problem(&p, "must be named `sacm23_base_001_...`");
+    assert_no_problem_containing(&p, "sacm23_base_001_ok");
+}
+
+#[test]
+fn lib_tool_001_verified_rows_need_record_and_verified_dependencies() {
+    let rows = format!(
+        "{PLANNED}{}",
+        r#"
+[[row]]
+id = "SACM23-BASE-002"
+area = "BASE"
+milestone = "M1"
+title = "MultiLangString"
+requirement = "Represent MultiLangString."
+source = "§8.5"
+kind = "model"
+status = "verified"
+depends_on = ["SACM23-BASE-001"]
+acceptance = ["a"]
+code = ["src/lib.rs"]
+tests = ["t.rs::sacm23_base_002_x"]
+verification = "docs/verification/v.md"
+"#
+    );
+    let repo = FakeRepo::default()
+        .with("src/lib.rs", "")
+        .with("t.rs", "#[test]\nfn sacm23_base_002_x() {}")
+        .with("docs/verification/v.md", "mentions nothing");
+    let p = problems(&matrix(&rows), repo);
+    assert_problem(&p, "depends on SACM23-BASE-001, which is planned");
+    assert_problem(&p, "does not mention SACM23-BASE-002");
+}
+
+#[test]
+fn lib_tool_001_rejects_cycles_and_backward_milestone_dependencies() {
+    let a = PLANNED.replace(
+        "status = \"planned\"",
+        "status = \"planned\"\ndepends_on = [\"SACM23-BASE-002\"]",
+    );
+    let b = PLANNED
+        .replace("SACM23-BASE-001", "SACM23-BASE-002")
+        .replace(
+            "status = \"planned\"",
+            "status = \"planned\"\ndepends_on = [\"SACM23-BASE-001\"]",
+        );
+    let p = problems(&matrix(&format!("{a}{b}")), FakeRepo::default());
+    assert_problem(&p, "dependency cycle");
+
+    let early = PLANNED
+        .replace("milestone = \"M1\"", "milestone = \"M0\"")
+        .replace(
+            "status = \"planned\"",
+            "status = \"planned\"\ndepends_on = [\"SACM23-BASE-002\"]",
+        );
+    let late = PLANNED.replace("SACM23-BASE-001", "SACM23-BASE-002");
+    let p = problems(&matrix(&format!("{early}{late}")), FakeRepo::default());
+    assert_problem(&p, "from a later milestone");
+}
+
+#[test]
+fn lib_tool_001_unscheduled_rows_must_give_a_reason() {
+    let row = PLANNED.replace("status = \"planned\"", "status = \"out-of-scope\"");
+    assert_problem(
+        &problems(&matrix(&row), FakeRepo::default()),
+        "must say why",
+    );
+}
+
+#[test]
+fn lib_tool_001_reports_orphaned_traced_tests() {
+    let repo = FakeRepo::default().with("t.rs", "#[test]\nfn sacm23_base_001_uncited() {}");
+    assert_problem(
+        &problems(&matrix(PLANNED), repo),
+        "not cited by any matrix row",
+    );
+}
+
+#[test]
+fn lib_tool_001_detects_stale_rendered_page() {
+    let m = matrix(PLANNED);
+    let repo = FakeRepo::default().with(RENDERED_PATH, "stale");
+    assert_problem(&check(&m, &repo), "out of date");
+}
+
+#[test]
+fn lib_tool_001_next_lists_open_rows_with_verified_dependencies_in_order() {
+    let blocked = PLANNED
+        .replace("SACM23-BASE-001", "SACM23-BASE-003")
+        .replace(
+            "status = \"planned\"",
+            "status = \"planned\"\ndepends_on = [\"SACM23-BASE-001\"]",
+        );
+    let early = PLANNED
+        .replace("SACM23-BASE-001", "LIB-CLI-001")
+        .replace("area = \"BASE\"", "area = \"CLI\"")
+        .replace("milestone = \"M1\"", "milestone = \"M0\"");
+    let m = matrix(&format!("{PLANNED}{blocked}{early}"));
+    let ids: Vec<&str> = ready(&m).iter().map(|r| r.id.as_str()).collect();
+    assert_eq!(
+        ids,
+        ["LIB-CLI-001", "SACM23-BASE-001"],
+        "LIB-TOOL-001: M0 first, blocked row hidden"
+    );
+}
+
+/// Ported: the inline version called the private `defined_functions` and
+/// `looks_traced`; through the public API the same facts are observable via
+/// `traced_tests`.
+#[test]
+fn lib_tool_001_finds_function_definitions_not_mentions() {
+    // Joined from parts so that no line of this file starts with an attribute.
+    let rust = [
+        "#[test]",
+        "fn lib_cli_001_a() {}",
+        "// call lib_cli_001_b()",
+        "#[test]",
+        "fn helper() {}",
+        "#[test]",
+        "fn sacm23_base_1_x() {}",
+        "#[test]",
+        "fn sacm23_base_001_x() {}",
+    ]
+    .join("\n");
+    let rust = rust.as_str();
+    assert_eq!(
+        traced_tests(rust, false),
+        ["lib_cli_001_a", "sacm23_base_001_x"],
+        "LIB-TOOL-001: only defined test functions with a row-id name are traced"
+    );
+    let python = "def test_lib_tool_004_x(self):\ndef test_helper(self):\n\
+                  # def test_lib_tool_004_comment(self):\ndef lib_cli_001_c(x):";
+    assert_eq!(
+        traced_tests(python, true),
+        ["test_lib_tool_004_x"],
+        "LIB-TOOL-001: Python traced tests are `def test_<row id>...`"
+    );
+}
+
+#[test]
+fn lib_tool_001_only_marked_tests_count_as_traced() {
+    let rust = "#[test]\n#[ignore]\nfn lib_cli_001_a() {}\nfn lib_cli_001_helper() {}\n\
+                let s = \"#[test] fn lib_cli_001_in_string() {}\";";
+    assert_eq!(
+        traced_tests(rust, false),
+        ["lib_cli_001_a"],
+        "LIB-TOOL-001: unmarked helpers and string contents are not tests"
+    );
+    let python = "def test_lib_tool_004_denies(self):\ndef lib_tool_004_helper():";
+    assert_eq!(
+        traced_tests(python, true),
+        ["test_lib_tool_004_denies"],
+        "LIB-TOOL-001: Python helpers are not tests"
+    );
+}
+
+#[test]
+fn lib_tool_001_only_test_style_attributes_mark_a_test() {
+    for text in [
+        "#[allow(dead_code)]\nfn sacm23_base_001_x() {}",
+        "#[inline] fn sacm23_base_001_x() {}",
+        "#[cfg(test)]\nfn sacm23_base_001_x() {}",
+    ] {
+        assert_eq!(
+            traced_tests(text, false),
+            Vec::<String>::new(),
+            "LIB-TOOL-001: {text:?} is not a test"
+        );
+    }
+    assert_eq!(
+        traced_tests("#[tokio::test]\nasync fn sacm23_base_001_x() {}", false),
+        ["sacm23_base_001_x"],
+        "LIB-TOOL-001: a `#[test]`-style attribute such as `#[tokio::test]` marks a test"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Gate rule 1: schema version, unique milestones and areas
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lib_tool_001_rejects_unsupported_schema_version() {
+    let text = format!(
+        "{}{PLANNED}",
+        HEADER.replace("schema_version = 1", "schema_version = 2")
+    );
+    let m = load(&text).expect("LIB-TOOL-001: matrix with schema_version 2 parses");
+    assert_exact(
+        &problems(&m, FakeRepo::default()),
+        "schema_version 2 is not supported (expected 1)",
+    );
+}
+
+#[test]
+fn lib_tool_001_rejects_duplicate_milestone_ids() {
+    let header = HEADER.replace(
+        "[[area]]\ncode = \"BASE\"",
+        "[[milestone]]\nid = \"M1\"\ntitle = \"Again\"\ngoal = \"Twice.\"\n[[area]]\ncode = \"BASE\"",
+    );
+    let m = load(&format!("{header}{PLANNED}")).expect("LIB-TOOL-001: parses");
+    assert_eq!(
+        m.milestones.len(),
+        3,
+        "LIB-TOOL-001: fixture has 3 milestones"
+    );
+    assert_exact(
+        &problems(&m, FakeRepo::default()),
+        "milestone ids must be unique",
+    );
+}
+
+#[test]
+fn lib_tool_001_rejects_duplicate_area_codes() {
+    let header =
+        format!("{HEADER}[[area]]\ncode = \"BASE\"\nprefix = \"SACM23\"\ntitle = \"Again\"\n");
+    let m = load(&format!("{header}{PLANNED}")).expect("LIB-TOOL-001: parses");
+    assert_eq!(m.areas.len(), 3, "LIB-TOOL-001: fixture has 3 areas");
+    assert_exact(
+        &problems(&m, FakeRepo::default()),
+        "area codes must be unique",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Gate rules 2 and 3: identity and required text
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lib_tool_001_rejects_unknown_area() {
+    let m = matrix(&row("SACM23-XYZ-001", "planned", ""));
+    assert_exact(
+        &problems(&m, FakeRepo::default()),
+        "SACM23-XYZ-001: unknown area `XYZ`",
+    );
+}
+
+#[test]
+fn lib_tool_001_rejects_unknown_milestone() {
+    let m = matrix(
+        &row("SACM23-BASE-001", "planned", "").replace("milestone = \"M1\"", "milestone = \"M9\""),
+    );
+    assert_exact(
+        &problems(&m, FakeRepo::default()),
+        "SACM23-BASE-001: unknown milestone `M9`",
+    );
+}
+
+#[test]
+fn lib_tool_001_rejects_id_area_segment_that_differs_from_area_field() {
+    let m =
+        matrix(&row("SACM23-ARG-001", "planned", "").replace("area = \"ARG\"", "area = \"BASE\""));
+    assert_exact(
+        &problems(&m, FakeRepo::default()),
+        "SACM23-ARG-001: id area `ARG` does not match area field `BASE`",
+    );
+}
+
+#[test]
+fn lib_tool_001_rejects_empty_title_requirement_and_source() {
+    let base = row("SACM23-BASE-001", "planned", "");
+    for (field, original) in [
+        ("title", "title = \"Title\""),
+        ("requirement", "requirement = \"Requirement.\""),
+        ("source", "source = \"Source\""),
+    ] {
+        for blank in ["", "   "] {
+            let m = matrix(&base.replace(original, &format!("{field} = \"{blank}\"")));
+            assert_exact(
+                &problems(&m, FakeRepo::default()),
+                &format!("SACM23-BASE-001: `{field}` must not be empty"),
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Gate rule 8: dependencies
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lib_tool_001_rejects_unknown_dependency() {
+    let m = matrix(&row(
+        "SACM23-BASE-001",
+        "planned",
+        "depends_on = [\"SACM23-BASE-009\"]",
+    ));
+    assert_exact(
+        &problems(&m, FakeRepo::default()),
+        "SACM23-BASE-001: depends on unknown row SACM23-BASE-009",
+    );
+}
+
+#[test]
+fn lib_tool_001_rejects_self_dependency() {
+    let m = matrix(&row(
+        "SACM23-BASE-001",
+        "planned",
+        "depends_on = [\"SACM23-BASE-001\"]",
+    ));
+    assert_exact(
+        &problems(&m, FakeRepo::default()),
+        "SACM23-BASE-001: depends on itself",
+    );
+}
+
+#[test]
+fn lib_tool_001_rejects_dependency_on_candidate_and_out_of_scope_rows() {
+    for status in ["candidate", "out-of-scope"] {
+        let rows = format!(
+            "{}{}",
+            row(
+                "SACM23-BASE-001",
+                "planned",
+                "depends_on = [\"SACM23-BASE-002\"]"
+            ),
+            row("SACM23-BASE-002", status, "notes = \"why\""),
+        );
+        assert_exact(
+            &problems(&matrix(&rows), FakeRepo::default()),
+            &format!("SACM23-BASE-001: depends on SACM23-BASE-002, which is {status}"),
+        );
+    }
+    // Deferred rows are still scheduled: depending on one is allowed.
+    let rows = format!(
+        "{}{}",
+        row(
+            "SACM23-BASE-001",
+            "planned",
+            "depends_on = [\"SACM23-BASE-002\"]"
+        ),
+        row("SACM23-BASE-002", "deferred", "notes = \"why\""),
+    );
+    assert_eq!(
+        problems(&matrix(&rows), FakeRepo::default()),
+        Vec::<String>::new(),
+        "LIB-TOOL-001: a dependency on a deferred row is allowed"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Gate rules 4 and 5: the status table and verification records
+// ---------------------------------------------------------------------------
+
+/// One evidence column of the status table in docs/matrix/README.md.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Evidence {
+    Acceptance,
+    Tests,
+    Code,
+    Verification,
+    Notes,
+}
+
+/// `(status, required evidence, forbidden evidence)`, transcribed from the
+/// status table in docs/matrix/README.md.
+const STATUS_TABLE: &[(&str, &[Evidence], &[Evidence])] = {
+    use Evidence::{Acceptance, Code, Notes, Tests, Verification};
+    &[
+        ("planned", &[], &[Tests, Code, Verification]),
+        ("analyzed", &[Acceptance], &[Tests, Code, Verification]),
+        ("tests-failing", &[Acceptance, Tests], &[Verification]),
+        ("implemented", &[Acceptance, Tests, Code], &[Verification]),
+        ("verified", &[Acceptance, Tests, Code, Verification], &[]),
+        ("candidate", &[Notes], &[Tests, Code]),
+        ("deferred", &[Notes], &[Tests, Verification]),
+        ("out-of-scope", &[Notes], &[Tests, Verification]),
+    ]
+};
+
+const RECORD: &str = "docs/verification/v.md";
+
+/// SACM23-BASE-001 with `status` and exactly the given evidence, plus a
+/// repository in which every cited path exists and resolves.
+fn evidence_case(status: &str, evidence: &[Evidence]) -> (Matrix, FakeRepo) {
+    let mut extra = String::new();
+    let mut repo = FakeRepo::default();
+    for item in evidence {
+        match item {
+            Evidence::Acceptance => extra.push_str("acceptance = [\"a\"]\n"),
+            Evidence::Tests => {
+                extra.push_str("tests = [\"t.rs::sacm23_base_001_x\"]\n");
+                repo = repo.with("t.rs", MARKED_TEST);
+            }
+            Evidence::Code => {
+                extra.push_str("code = [\"src/lib.rs\"]\n");
+                repo = repo.with("src/lib.rs", "");
+            }
+            Evidence::Verification => {
+                extra.push_str("verification = \"");
+                extra.push_str(RECORD);
+                extra.push_str("\"\n");
+                repo = repo.with(RECORD, "SACM23-BASE-001: PASS");
+            }
+            Evidence::Notes => extra.push_str("notes = \"why\"\n"),
+        }
+    }
+    (matrix(&row("SACM23-BASE-001", status, &extra)), repo)
+}
+
+fn missing_message(status: &str, item: Evidence) -> String {
+    let message = match item {
+        Evidence::Acceptance => format!("is {status} but lists no acceptance criteria"),
+        Evidence::Tests => format!("is {status} but cites no tests"),
+        Evidence::Code => format!("is {status} but cites no code"),
+        Evidence::Verification => "is verified but cites no verification record".to_owned(),
+        Evidence::Notes => format!("is {status} and must say why in `notes`"),
+    };
+    format!("SACM23-BASE-001: {message}")
+}
+
+fn forbidden_message(status: &str, item: Evidence) -> String {
+    let message = match item {
+        Evidence::Tests => {
+            format!("is {status} but cites tests; its status has fallen behind reality")
+        }
+        Evidence::Code => {
+            format!("is {status} but cites code; its status has fallen behind reality")
+        }
+        Evidence::Verification => format!("is {status} but cites a verification record"),
+        Evidence::Acceptance | Evidence::Notes => {
+            unreachable!("acceptance and notes are never forbidden")
+        }
+    };
+    format!("SACM23-BASE-001: {message}")
+}
+
+#[test]
+fn lib_tool_001_status_table_rows_with_exactly_the_required_evidence_pass() {
+    let mut failures = Vec::new();
+    for (status, required, _) in STATUS_TABLE {
+        let (m, repo) = evidence_case(status, required);
+        let p = problems(&m, repo);
+        if !p.is_empty() {
+            failures.push(format!("{status} with {required:?}: {p:?}"));
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-001: rows carrying exactly their required evidence were rejected:\n{failures:#?}"
+    );
+}
+
+#[test]
+fn lib_tool_001_status_table_missing_required_evidence_is_rejected() {
+    let mut failures = Vec::new();
+    for (status, required, _) in STATUS_TABLE {
+        for &missing in *required {
+            let evidence: Vec<Evidence> =
+                required.iter().copied().filter(|e| *e != missing).collect();
+            let (m, repo) = evidence_case(status, &evidence);
+            let p = problems(&m, repo);
+            let expected = missing_message(status, missing);
+            if !p.contains(&expected) {
+                failures.push(format!(
+                    "{status} without {missing:?}: expected {expected:?}, got {p:?}"
+                ));
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-001: required evidence not enforced:\n{failures:#?}"
+    );
+}
+
+#[test]
+fn lib_tool_001_status_table_forbidden_evidence_is_rejected() {
+    let mut failures = Vec::new();
+    for (status, required, forbidden) in STATUS_TABLE {
+        for &extra in *forbidden {
+            let mut evidence = required.to_vec();
+            evidence.push(extra);
+            let (m, repo) = evidence_case(status, &evidence);
+            let p = problems(&m, repo);
+            let expected = forbidden_message(status, extra);
+            if !p.contains(&expected) {
+                failures.push(format!(
+                    "{status} with {extra:?}: expected {expected:?}, got {p:?}"
+                ));
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-001: forbidden evidence not rejected:\n{failures:#?}"
+    );
+}
+
+/// Cells the README table neither requires nor forbids are accepted, so the
+/// gate is not stricter than the documented rules. The one exception is a
+/// verification record on a candidate row; see the next test.
+#[test]
+fn lib_tool_001_status_table_permitted_evidence_is_accepted() {
+    use Evidence::{Acceptance, Code, Notes, Tests, Verification};
+    let mut failures = Vec::new();
+    for (status, required, forbidden) in STATUS_TABLE {
+        for extra in [Acceptance, Tests, Code, Verification, Notes] {
+            let excepted = *status == "candidate" && extra == Verification;
+            if required.contains(&extra) || forbidden.contains(&extra) || excepted {
+                continue;
+            }
+            let mut evidence = required.to_vec();
+            evidence.push(extra);
+            let (m, repo) = evidence_case(status, &evidence);
+            let p = problems(&m, repo);
+            if !p.is_empty() {
+                failures.push(format!("{status} with {extra:?}: {p:?}"));
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-001: evidence the status table permits was rejected:\n{failures:#?}"
+    );
+}
+
+/// Stricter than the README table's `candidate` line, which does not list
+/// `verification` as forbidden: the gate refuses a record on any row that is
+/// not verified.
+#[test]
+fn lib_tool_001_verification_record_on_a_non_verified_row_is_rejected() {
+    for (status, required, _) in STATUS_TABLE {
+        if *status == "verified" {
+            continue;
+        }
+        let mut evidence = required.to_vec();
+        evidence.push(Evidence::Verification);
+        let (m, repo) = evidence_case(status, &evidence);
+        assert_exact(
+            &problems(&m, repo),
+            &format!("SACM23-BASE-001: is {status} but cites a verification record"),
+        );
+    }
+}
+
+#[test]
+fn lib_tool_001_verified_rows_must_cite_a_verification_record() {
+    use Evidence::{Acceptance, Code, Tests};
+    let (m, repo) = evidence_case("verified", &[Acceptance, Tests, Code]);
+    assert_exact(
+        &problems(&m, repo),
+        "SACM23-BASE-001: is verified but cites no verification record",
+    );
+}
+
+#[test]
+fn lib_tool_001_verification_record_must_exist() {
+    use Evidence::{Acceptance, Code, Tests, Verification};
+    let (m, mut repo) = evidence_case("verified", &[Acceptance, Tests, Code, Verification]);
+    repo.files.remove(RECORD);
+    assert_exact(
+        &problems(&m, repo),
+        &format!("SACM23-BASE-001: verification record {RECORD} does not exist"),
+    );
+}
+
+#[test]
+fn lib_tool_001_analyzed_rows_need_acceptance_criteria() {
+    let (m, repo) = evidence_case("analyzed", &[]);
+    assert_exact(
+        &problems(&m, repo),
+        "SACM23-BASE-001: is analyzed but lists no acceptance criteria",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Gate rules 5 and 6: citations
+// ---------------------------------------------------------------------------
+
+/// A tests-failing SACM23-BASE-001 citing `tests` (TOML array items).
+fn citing(tests: &str) -> Matrix {
+    matrix(&row(
+        "SACM23-BASE-001",
+        "tests-failing",
+        &format!("acceptance = [\"a\"]\ntests = [{tests}]"),
+    ))
+}
+
+#[test]
+fn lib_tool_001_rejects_missing_cited_code_path() {
+    let m = matrix(&row(
+        "SACM23-BASE-001",
+        "implemented",
+        "acceptance = [\"a\"]\ntests = [\"t.rs::sacm23_base_001_x\"]\ncode = [\"src/missing.rs\"]",
+    ));
+    let repo = FakeRepo::default().with("t.rs", MARKED_TEST);
+    assert_exact(
+        &problems(&m, repo),
+        "SACM23-BASE-001: cited code path src/missing.rs does not exist",
+    );
+}
+
+#[test]
+fn lib_tool_001_rejects_test_citation_without_separator() {
+    let m = citing("\"t.rs:sacm23_base_001_x\"");
+    let repo = FakeRepo::default().with("t.rs", "");
+    assert_exact(
+        &problems(&m, repo),
+        "SACM23-BASE-001: test citation `t.rs:sacm23_base_001_x` must be `path::function` or `doctest:path`",
+    );
+}
+
+#[test]
+fn lib_tool_001_rejects_missing_test_file() {
+    let m = citing("\"t.rs::sacm23_base_001_x\"");
+    assert_exact(
+        &problems(&m, FakeRepo::default()),
+        "SACM23-BASE-001: test file t.rs does not exist",
+    );
+}
+
+#[test]
+fn lib_tool_001_rejects_missing_doctest_file() {
+    let m = citing("\"doctest:src/lib.rs\"");
+    assert_exact(
+        &problems(&m, FakeRepo::default()),
+        "SACM23-BASE-001: doctest file src/lib.rs does not exist",
+    );
+}
+
+#[test]
+fn lib_tool_001_rejects_doctest_file_without_code_block() {
+    let m = citing("\"doctest:src/lib.rs\"");
+    let repo = FakeRepo::default().with("src/lib.rs", "//! Docs without an example.\n");
+    assert_exact(
+        &problems(&m, repo),
+        "SACM23-BASE-001: doctest file src/lib.rs contains no code block",
+    );
+
+    let m = citing("\"doctest:src/lib.rs\"");
+    let repo = FakeRepo::default().with("src/lib.rs", "//! ```\n//! assert!(true);\n//! ```\n");
+    assert_eq!(
+        problems(&m, repo),
+        Vec::<String>::new(),
+        "LIB-TOOL-001: a doctest file with a code block is a valid citation"
+    );
+}
+
+#[test]
+fn lib_tool_001_citation_of_a_helper_without_test_attribute_is_rejected() {
+    let m = citing("\"t.rs::sacm23_base_001_helper\"");
+    let repo = FakeRepo::default().with("t.rs", "fn sacm23_base_001_helper() {}");
+    let p = problems(&m, repo);
+    assert_eq!(
+        p.len(),
+        1,
+        "LIB-TOOL-001: citing a plain helper is exactly one problem, got {p:#?}"
+    );
+    assert!(
+        p[0].starts_with("SACM23-BASE-001: ")
+            && p[0].contains("`sacm23_base_001_helper`")
+            && p[0].contains("t.rs"),
+        "LIB-TOOL-001: the problem names the row, the function and the file, got {p:#?}"
+    );
+
+    // The same for a Python helper that lacks unittest's `test_` prefix.
+    let m = citing("\"h.py::sacm23_base_001_helper\"");
+    let repo = FakeRepo::default().with("h.py", "def sacm23_base_001_helper():\n    pass\n");
+    let p = problems(&m, repo);
+    assert!(
+        p.len() == 1 && p[0].contains("`sacm23_base_001_helper`"),
+        "LIB-TOOL-001: citing a Python helper is rejected, got {p:#?}"
+    );
+}
+
+#[test]
+fn lib_tool_001_citation_of_a_name_in_a_comment_or_string_is_rejected() {
+    for text in [
+        "// fn sacm23_base_001_x() {}",
+        "/// #[test] fn sacm23_base_001_x() {}",
+        "const S: &str = \"#[test] fn sacm23_base_001_x() {}\";",
+        "let s = \"fn sacm23_base_001_x() {}\";",
+    ] {
+        let repo = FakeRepo::default().with("t.rs", text);
+        let p = problems(&citing("\"t.rs::sacm23_base_001_x\""), repo);
+        assert!(
+            p.iter()
+                .any(|e| e.starts_with("SACM23-BASE-001: ") && e.contains("`sacm23_base_001_x`")),
+            "LIB-TOOL-001: {text:?} does not define a test, so the citation must be rejected; got {p:#?}"
+        );
+    }
+}
+
+#[test]
+fn lib_tool_001_same_line_test_attribute_counts_for_citation_and_orphans() {
+    let same_line = "#[test] fn sacm23_base_001_x() {}";
+    assert_eq!(
+        traced_tests(same_line, false),
+        ["sacm23_base_001_x"],
+        "LIB-TOOL-001: `#[test] fn` on one line is a traced test"
+    );
+    assert_eq!(
+        traced_tests("#[test] fn helper() {}", false),
+        Vec::<String>::new(),
+        "LIB-TOOL-001: a same-line test without a row-id name is not traced"
+    );
+
+    let repo = FakeRepo::default().with("t.rs", same_line);
+    assert_eq!(
+        problems(&citing("\"t.rs::sacm23_base_001_x\""), repo),
+        Vec::<String>::new(),
+        "LIB-TOOL-001: a same-line test is a valid citation"
+    );
+
+    let repo = FakeRepo::default().with("t.rs", same_line);
+    assert_exact(
+        &problems(&matrix(PLANNED), repo),
+        "t.rs: traced test `sacm23_base_001_x` is not cited by any matrix row",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Gate rule 9: the rendered page
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lib_tool_001_detects_missing_rendered_page() {
+    let p = check(&matrix(PLANNED), &FakeRepo::default());
+    assert_exact(
+        &p,
+        &format!("{RENDERED_PATH} is missing; run `cargo xtask matrix render`"),
+    );
+    assert_no_problem_containing(&p, "out of date");
+}
+
+// ---------------------------------------------------------------------------
+// render
+// ---------------------------------------------------------------------------
+
+/// The cells of a Markdown table line, trimmed.
+fn cells(line: &str) -> Vec<String> {
+    line.trim()
+        .trim_start_matches('|')
+        .trim_end_matches('|')
+        .split('|')
+        .map(|c| c.trim().to_owned())
+        .collect()
+}
+
+/// The first line that starts with `start`, as cells.
+fn table_line(page: &str, start: &str) -> Vec<String> {
+    let line = page
+        .lines()
+        .find(|l| l.starts_with(start))
+        .unwrap_or_else(|| {
+            panic!("LIB-TOOL-001: rendered page has no line starting {start:?}:\n{page}")
+        });
+    cells(line)
+}
+
+/// Status column -> count from the summary line starting with `start`; zero
+/// counts may render blank.
+fn summary_counts(page: &str, start: &str) -> BTreeMap<String, usize> {
+    let header = table_line(page, "| Milestone |");
+    let line = table_line(page, start);
+    assert_eq!(
+        header.len(),
+        line.len(),
+        "LIB-TOOL-001: summary line {start:?} has one cell per column"
+    );
+    header
+        .iter()
+        .zip(&line)
+        .skip(1)
+        .map(|(column, value)| {
+            let value = value.trim_matches('*');
+            let n = if value.is_empty() {
+                0
+            } else {
+                value.parse().unwrap_or_else(|_| {
+                    panic!("LIB-TOOL-001: summary cell {value:?} under {column:?} is not a count")
+                })
+            };
+            (column.clone(), n)
+        })
+        .collect()
+}
+
+/// M0: one analyzed LIB row. M1: two planned rows (one with a `|` in its
+/// notes) and a tests-failing row with a dependency and a cited test.
+fn render_fixture() -> Matrix {
+    let early = PLANNED
+        .replace("SACM23-BASE-001", "LIB-CLI-001")
+        .replace("area = \"BASE\"", "area = \"CLI\"")
+        .replace("milestone = \"M1\"", "milestone = \"M0\"")
+        .replace(
+            "status = \"planned\"",
+            "status = \"analyzed\"\nacceptance = [\"a\"]",
+        );
+    let second = PLANNED
+        .replace("SACM23-BASE-001", "SACM23-BASE-002")
+        .replace(
+            "status = \"planned\"",
+            "status = \"planned\"\nnotes = \"Pipes a | b are escaped.\"",
+        );
+    let failing = row(
+        "SACM23-BASE-003",
+        "tests-failing",
+        "depends_on = [\"SACM23-BASE-001\"]\nacceptance = [\"a\"]\n\
+         tests = [\"t.rs::sacm23_base_003_x\"]",
+    );
+    matrix(&format!("{early}{PLANNED}{second}{failing}"))
+}
+
+#[test]
+fn lib_tool_001_render_reports_summary_counts() {
+    let m = render_fixture();
+    let page = render(&m);
+    assert_eq!(page, render(&m), "LIB-TOOL-001: render is deterministic");
+
+    let header = table_line(&page, "| Milestone |");
+    for status in [
+        "verified",
+        "implemented",
+        "tests-failing",
+        "analyzed",
+        "planned",
+        "candidate",
+        "deferred",
+        "out-of-scope",
+    ] {
+        assert!(
+            header.iter().any(|c| c == status),
+            "LIB-TOOL-001: summary has a {status} column, got {header:?}"
+        );
+    }
+
+    let count = |line: &str, column: &str| summary_counts(&page, line)[column];
+    assert_eq!(
+        count("| M0 — Foundation |", "Rows"),
+        1,
+        "LIB-TOOL-001: M0 rows"
+    );
+    assert_eq!(
+        count("| M0 — Foundation |", "analyzed"),
+        1,
+        "LIB-TOOL-001: M0 analyzed"
+    );
+    assert_eq!(
+        count("| M0 — Foundation |", "planned"),
+        0,
+        "LIB-TOOL-001: M0 planned"
+    );
+    assert_eq!(count("| M1 — Core |", "Rows"), 3, "LIB-TOOL-001: M1 rows");
+    assert_eq!(
+        count("| M1 — Core |", "planned"),
+        2,
+        "LIB-TOOL-001: M1 planned"
+    );
+    assert_eq!(
+        count("| M1 — Core |", "tests-failing"),
+        1,
+        "LIB-TOOL-001: M1 tests-failing"
+    );
+    assert_eq!(
+        count("| M1 — Core |", "verified"),
+        0,
+        "LIB-TOOL-001: M1 verified"
+    );
+    assert_eq!(
+        count("| **Total** |", "Rows"),
+        4,
+        "LIB-TOOL-001: total rows"
+    );
+    assert_eq!(
+        count("| **Total** |", "planned"),
+        2,
+        "LIB-TOOL-001: total planned"
+    );
+    assert_eq!(
+        count("| **Total** |", "analyzed"),
+        1,
+        "LIB-TOOL-001: total analyzed"
+    );
+}
+
+#[test]
+fn lib_tool_001_render_lists_areas_milestones_and_row_lines() {
+    let page = render(&render_fixture());
+
+    let area = table_line(&page, "| `BASE` |");
+    assert_eq!(
+        area,
+        ["`BASE`", "`SACM23`", "Base"],
+        "LIB-TOOL-001: area line"
+    );
+
+    let m0 = page.find("## M0 — Foundation");
+    let m1 = page.find("## M1 — Core");
+    assert!(
+        matches!((m0, m1), (Some(a), Some(b)) if a < b),
+        "LIB-TOOL-001: milestone sections in milestone order"
+    );
+
+    let line = table_line(&page, "| SACM23-BASE-003 |");
+    assert!(
+        line[1].contains("Title") && line[1].contains("Requirement."),
+        "LIB-TOOL-001: requirement cell carries title and requirement, got {line:?}"
+    );
+    assert_eq!(line[2], "model", "LIB-TOOL-001: kind cell");
+    assert_eq!(line[3], "Source", "LIB-TOOL-001: source cell");
+    assert_eq!(line[4], "`tests-failing`", "LIB-TOOL-001: status cell");
+    assert_eq!(line[5], "SACM23-BASE-001", "LIB-TOOL-001: depends-on cell");
+    assert_eq!(
+        line.last().map(String::as_str),
+        Some("`sacm23_base_003_x`"),
+        "LIB-TOOL-001: tests cell"
+    );
+    assert!(
+        page.contains("Pipes a \\| b are escaped."),
+        "LIB-TOOL-001: a `|` in row text is escaped so the table stays intact"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// ready (`matrix next`)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lib_tool_001_next_keeps_file_order_within_a_milestone_and_lists_only_open_rows() {
+    let rows = [
+        row("SACM23-BASE-005", "planned", ""),
+        row("SACM23-BASE-001", "verified", ""),
+        row(
+            "SACM23-BASE-003",
+            "analyzed",
+            "depends_on = [\"SACM23-BASE-001\"]",
+        ),
+        row("SACM23-BASE-002", "candidate", "notes = \"why\""),
+        row("SACM23-BASE-004", "deferred", "notes = \"why\""),
+        row("SACM23-BASE-006", "out-of-scope", "notes = \"why\""),
+        row("SACM23-BASE-008", "implemented", ""),
+        row("SACM23-BASE-007", "tests-failing", ""),
+    ]
+    .concat();
+    let m = matrix(&rows);
+    let ids: Vec<&str> = ready(&m).iter().map(|r| r.id.as_str()).collect();
+    assert_eq!(
+        ids,
+        [
+            "SACM23-BASE-005",
+            "SACM23-BASE-003",
+            "SACM23-BASE-008",
+            "SACM23-BASE-007"
+        ],
+        "LIB-TOOL-001: open rows only, in file order within the milestone (not id order)"
+    );
+}

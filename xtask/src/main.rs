@@ -1,22 +1,12 @@
 //! Repository automation for libSACM, run as `cargo xtask <command>`.
 //!
-//! ```text
-//! cargo xtask matrix check        Gate: validate the functionality matrix against the repo
-//! cargo xtask matrix render       Regenerate docs/matrix/functionality-matrix.md
-//! cargo xtask matrix next [-n N]  List the next ready rows for the slice loop
-//! cargo xtask matrix status       Summary of row statuses per milestone
-//! cargo xtask fetch-spec [--dest DIR]
-//!                                 Download the pinned OMG SACM 2.3 reference artifacts
-//! ```
+//! This binary only parses arguments and dispatches to the `xtask` library;
+//! see its crate documentation for the commands.
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
-mod fetch;
-mod matrix;
-#[cfg(test)]
-mod repo_checks;
-
-use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+
+use xtask::{fetch, matrix, repo_root};
 
 const USAGE: &str = "\
 usage: cargo xtask <command>
@@ -60,11 +50,4 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
-}
-
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("xtask lives one level below the repository root")
-        .to_path_buf()
 }

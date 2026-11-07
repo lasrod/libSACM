@@ -12,8 +12,9 @@ Behaviour:
 - Main session (no `agent_type` in the hook input): not touched.
 - Subagent not listed in write-scopes.json: not touched (normal permission flow).
 - Listed subagent writing outside its scope, or outside the repository: denied.
-- write-scopes.json unreadable: every subagent write is denied (fail closed);
-  the agents that must not write are the ones whose value is that they cannot.
+- write-scopes.json unreadable or structurally invalid, or any internal error while
+  deciding: every subagent write is denied (fail closed); the agents that must not
+  write are the ones whose value is that they cannot.
 
 Limits, stated so nobody reads more into it: Bash is not covered (a shell
 command that writes cannot be recognised reliably from its text), and nothing is
@@ -89,12 +90,19 @@ def deny(reason: str) -> dict:
     }
 
 
+def is_subagent_write(payload: object) -> bool:
+    """True for a write tool called by a subagent (the only calls this hook judges)."""
+    if not isinstance(payload, dict):
+        return False
+    agent = payload.get("agent_type")
+    return payload.get("tool_name") in WRITE_TOOLS and isinstance(agent, str) and bool(agent)
+
+
 def decide(payload: dict, scopes: dict | None, project_dir: str) -> dict | None:
     """The decision for one tool call, or None to leave it to the normal flow."""
-    tool = payload.get("tool_name")
-    agent = payload.get("agent_type")
-    if tool not in WRITE_TOOLS or not isinstance(agent, str) or not agent:
+    if not is_subagent_write(payload):
         return None
+    agent = payload["agent_type"]
     if scopes is None:
         return deny(
             f"{agent}: write refused because .claude/hooks/write-scopes.json could not be "
@@ -123,10 +131,41 @@ def decide(payload: dict, scopes: dict | None, project_dir: str) -> dict | None:
     return None
 
 
+def guarded_decide(payload: dict, scopes: dict | None, project_dir: str) -> dict | None:
+    """decide(), except that any internal error denies a subagent write."""
+    try:
+        return decide(payload, scopes, project_dir)
+    except Exception as error:  # noqa: BLE001 -- fail closed on anything
+        if is_subagent_write(payload):
+            return deny(f"write refused: the write guard failed internally ({error!r}).")
+        return None
+
+
+def _is_str_list(value: object) -> bool:
+    return isinstance(value, list) and all(isinstance(item, str) for item in value)
+
+
+def parse_scopes(text: str) -> dict | None:
+    """The scopes document, or None unless it has the structure decide() relies on:
+    an object whose "agents" maps each name to {"allow": [str], "deny"?: [str]}."""
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return None
+    if not isinstance(data, dict) or not isinstance(data.get("agents"), dict):
+        return None
+    for scope in data["agents"].values():
+        if not isinstance(scope, dict) or not _is_str_list(scope.get("allow")):
+            return None
+        if "deny" in scope and not _is_str_list(scope["deny"]):
+            return None
+    return data
+
+
 def load_scopes() -> dict | None:
     try:
-        return json.loads(SCOPES_FILE.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+        return parse_scopes(SCOPES_FILE.read_text(encoding="utf-8"))
+    except OSError:
         return None
 
 
@@ -135,8 +174,14 @@ def main() -> int:
         payload = json.load(sys.stdin)
     except ValueError:
         return 0
+    if not isinstance(payload, dict):
+        return 0
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR") or payload.get("cwd") or os.getcwd()
-    decision = decide(payload, load_scopes(), project_dir)
+    try:
+        scopes = load_scopes()
+    except Exception:  # noqa: BLE001 -- unreadable configuration fails closed in decide()
+        scopes = None
+    decision = guarded_decide(payload, scopes, project_dir)
     if decision is not None:
         json.dump(decision, sys.stdout)
     return 0

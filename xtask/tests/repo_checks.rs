@@ -1,11 +1,14 @@
 //! Regression tests for repository configuration: the CI gates, the MSRV
-//! declaration and the dependency policy (rows LIB-QA-001..003).
+//! declaration and the dependency policy (rows LIB-QA-001..003), and the
+//! git-ignore that keeps OMG documents out of the repository (LIB-TOOL-002).
 //!
 //! These guard against a gate being removed or drifting out of step with the
 //! manifest — the kind of change that passes review because nothing fails.
 
 use std::fs;
 use std::path::Path;
+
+use xtask::fetch::DEFAULT_DEST;
 
 fn read(rel: &str) -> String {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -107,5 +110,26 @@ fn lib_qa_003_dependency_policy_is_enforced() {
         deny["advisories"]["yanked"].as_str(),
         Some("deny"),
         "LIB-QA-003: yanked crates must be denied"
+    );
+}
+
+#[test]
+fn lib_tool_002_reference_directory_is_git_ignored() {
+    assert_eq!(
+        DEFAULT_DEST, "third_party/sacm-2.3",
+        "LIB-TOOL-002: the artifacts are fetched into third_party/sacm-2.3"
+    );
+    let gitignore = read(".gitignore");
+    let lines: Vec<&str> = gitignore.lines().map(str::trim).collect();
+    let rule = format!("/{DEFAULT_DEST}/");
+    assert!(
+        lines.contains(&rule.as_str()),
+        "LIB-TOOL-002: .gitignore must contain the line `{rule}`"
+    );
+    assert!(
+        !lines
+            .iter()
+            .any(|l| l.starts_with('!') && l.contains("third_party")),
+        "LIB-TOOL-002: .gitignore must not re-include anything under third_party/"
     );
 }

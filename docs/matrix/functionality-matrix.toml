@@ -161,14 +161,17 @@ title = "CI runs every quality gate on three platforms"
 requirement = "Every push and pull request runs rustfmt, clippy (all targets, all features, -D warnings), the workspace and xtask tests on Linux, Windows and macOS, rustdoc with -D warnings, cargo-deny, the agent-hook tests and `cargo xtask matrix check`; any failure fails the build."
 source = "Project policy (ADR 0002, ADR 0004)"
 kind = "quality"
-status = "implemented"
+status = "verified"
 acceptance = [
   "ci.yml defines a job for each gate and the test job runs on ubuntu, windows and macos.",
   "A regression test fails if any gate command is removed from ci.yml.",
   "The workflow has run green on GitHub for the main branch (verification evidence: run URL).",
 ]
 code = [".github/workflows/ci.yml"]
-tests = ["xtask/src/repo_checks.rs::lib_qa_001_ci_runs_every_gate"]
+tests = [
+  "xtask/tests/repo_checks.rs::lib_qa_001_ci_runs_every_gate",
+]
+verification = "docs/verification/0001-m0-tooling-verification-round2.md"
 
 [[row]]
 id = "LIB-QA-002"
@@ -185,7 +188,9 @@ acceptance = [
   "`cargo +1.85 test -p sacm -p sacm-cli` passes locally and in CI.",
 ]
 code = ["Cargo.toml", "clippy.toml", ".github/workflows/ci.yml"]
-tests = ["xtask/src/repo_checks.rs::lib_qa_002_msrv_is_consistent"]
+tests = [
+  "xtask/tests/repo_checks.rs::lib_qa_002_msrv_is_consistent",
+]
 
 [[row]]
 id = "LIB-QA-003"
@@ -203,7 +208,9 @@ acceptance = [
   "A regression test fails if the CI deny job or deny.toml is removed.",
 ]
 code = ["deny.toml", ".github/workflows/ci.yml"]
-tests = ["xtask/src/repo_checks.rs::lib_qa_003_dependency_policy_is_enforced"]
+tests = [
+  "xtask/tests/repo_checks.rs::lib_qa_003_dependency_policy_is_enforced",
+]
 
 [[row]]
 id = "LIB-TOOL-001"
@@ -220,24 +227,57 @@ acceptance = [
   "Test citations must resolve to a defined function named for the row; traced tests no row cites are reported.",
   "Rejects dependency cycles, dependencies on later milestones or unscheduled rows, and verified rows with unverified dependencies.",
   "Reports a stale or missing rendered page.",
-  "`next` hides rows blocked on unverified dependencies and orders by milestone.",
+  "`next` lists only open rows (not verified, candidate, deferred or out-of-scope), hides rows blocked on unverified dependencies, and orders by milestone then file position.",
+  "A test citation resolves only to a function marked as a test (`#[test]`-style attribute, including on the same line, or Python `def test_`); helpers, comments and string literals do not count.",
+  "Every gate rule listed in docs/matrix/README.md, and every required/forbidden cell of its status table, has a test that fails when that rule is removed.",
 ]
-code = ["xtask/src/matrix.rs", "docs/matrix/README.md"]
+code = ["xtask/src/lib.rs", "xtask/src/matrix.rs", "docs/matrix/README.md"]
 tests = [
-  "xtask/src/matrix.rs::lib_tool_001_accepts_a_consistent_matrix",
-  "xtask/src/matrix.rs::lib_tool_001_rejects_malformed_and_mismatched_ids",
-  "xtask/src/matrix.rs::lib_tool_001_rejects_duplicate_ids",
-  "xtask/src/matrix.rs::lib_tool_001_planned_rows_must_not_cite_tests",
-  "xtask/src/matrix.rs::lib_tool_001_implemented_rows_need_acceptance_code_and_tests",
-  "xtask/src/matrix.rs::lib_tool_001_test_citations_must_resolve_and_trace",
-  "xtask/src/matrix.rs::lib_tool_001_verified_rows_need_record_and_verified_dependencies",
-  "xtask/src/matrix.rs::lib_tool_001_rejects_cycles_and_backward_milestone_dependencies",
-  "xtask/src/matrix.rs::lib_tool_001_unscheduled_rows_must_give_a_reason",
-  "xtask/src/matrix.rs::lib_tool_001_reports_orphaned_traced_tests",
-  "xtask/src/matrix.rs::lib_tool_001_detects_stale_rendered_page",
-  "xtask/src/matrix.rs::lib_tool_001_next_lists_open_rows_with_verified_dependencies_in_order",
-  "xtask/src/matrix.rs::lib_tool_001_finds_function_definitions_not_mentions",
-  "xtask/src/matrix.rs::lib_tool_001_only_marked_tests_count_as_traced",
+  "xtask/tests/matrix.rs::lib_tool_001_accepts_a_consistent_matrix",
+  "xtask/tests/matrix.rs::lib_tool_001_rejects_malformed_and_mismatched_ids",
+  "xtask/tests/matrix.rs::lib_tool_001_rejects_duplicate_ids",
+  "xtask/tests/matrix.rs::lib_tool_001_planned_rows_must_not_cite_tests",
+  "xtask/tests/matrix.rs::lib_tool_001_implemented_rows_need_acceptance_code_and_tests",
+  "xtask/tests/matrix.rs::lib_tool_001_test_citations_must_resolve_and_trace",
+  "xtask/tests/matrix.rs::lib_tool_001_verified_rows_need_record_and_verified_dependencies",
+  "xtask/tests/matrix.rs::lib_tool_001_rejects_cycles_and_backward_milestone_dependencies",
+  "xtask/tests/matrix.rs::lib_tool_001_unscheduled_rows_must_give_a_reason",
+  "xtask/tests/matrix.rs::lib_tool_001_reports_orphaned_traced_tests",
+  "xtask/tests/matrix.rs::lib_tool_001_detects_stale_rendered_page",
+  "xtask/tests/matrix.rs::lib_tool_001_next_lists_open_rows_with_verified_dependencies_in_order",
+  "xtask/tests/matrix.rs::lib_tool_001_finds_function_definitions_not_mentions",
+  "xtask/tests/matrix.rs::lib_tool_001_only_marked_tests_count_as_traced",
+  "xtask/tests/matrix.rs::lib_tool_001_only_test_style_attributes_mark_a_test",
+  "xtask/tests/matrix.rs::lib_tool_001_rejects_unsupported_schema_version",
+  "xtask/tests/matrix.rs::lib_tool_001_rejects_duplicate_milestone_ids",
+  "xtask/tests/matrix.rs::lib_tool_001_rejects_duplicate_area_codes",
+  "xtask/tests/matrix.rs::lib_tool_001_rejects_unknown_area",
+  "xtask/tests/matrix.rs::lib_tool_001_rejects_unknown_milestone",
+  "xtask/tests/matrix.rs::lib_tool_001_rejects_id_area_segment_that_differs_from_area_field",
+  "xtask/tests/matrix.rs::lib_tool_001_rejects_empty_title_requirement_and_source",
+  "xtask/tests/matrix.rs::lib_tool_001_rejects_unknown_dependency",
+  "xtask/tests/matrix.rs::lib_tool_001_rejects_self_dependency",
+  "xtask/tests/matrix.rs::lib_tool_001_rejects_dependency_on_candidate_and_out_of_scope_rows",
+  "xtask/tests/matrix.rs::lib_tool_001_status_table_rows_with_exactly_the_required_evidence_pass",
+  "xtask/tests/matrix.rs::lib_tool_001_status_table_missing_required_evidence_is_rejected",
+  "xtask/tests/matrix.rs::lib_tool_001_status_table_forbidden_evidence_is_rejected",
+  "xtask/tests/matrix.rs::lib_tool_001_status_table_permitted_evidence_is_accepted",
+  "xtask/tests/matrix.rs::lib_tool_001_verification_record_on_a_non_verified_row_is_rejected",
+  "xtask/tests/matrix.rs::lib_tool_001_verified_rows_must_cite_a_verification_record",
+  "xtask/tests/matrix.rs::lib_tool_001_verification_record_must_exist",
+  "xtask/tests/matrix.rs::lib_tool_001_analyzed_rows_need_acceptance_criteria",
+  "xtask/tests/matrix.rs::lib_tool_001_rejects_missing_cited_code_path",
+  "xtask/tests/matrix.rs::lib_tool_001_rejects_test_citation_without_separator",
+  "xtask/tests/matrix.rs::lib_tool_001_rejects_missing_test_file",
+  "xtask/tests/matrix.rs::lib_tool_001_rejects_missing_doctest_file",
+  "xtask/tests/matrix.rs::lib_tool_001_rejects_doctest_file_without_code_block",
+  "xtask/tests/matrix.rs::lib_tool_001_citation_of_a_helper_without_test_attribute_is_rejected",
+  "xtask/tests/matrix.rs::lib_tool_001_citation_of_a_name_in_a_comment_or_string_is_rejected",
+  "xtask/tests/matrix.rs::lib_tool_001_same_line_test_attribute_counts_for_citation_and_orphans",
+  "xtask/tests/matrix.rs::lib_tool_001_detects_missing_rendered_page",
+  "xtask/tests/matrix.rs::lib_tool_001_render_reports_summary_counts",
+  "xtask/tests/matrix.rs::lib_tool_001_render_lists_areas_milestones_and_row_lines",
+  "xtask/tests/matrix.rs::lib_tool_001_next_keeps_file_order_within_a_milestone_and_lists_only_open_rows",
 ]
 
 [[row]]
@@ -248,18 +288,26 @@ title = "Hash-pinned fetching of the normative SACM 2.3 sources"
 requirement = "`cargo xtask fetch-spec` downloads formal/23-05-08 and ptc/22-03-13 from omg.org into the git-ignored third_party/sacm-2.3/, verifies each against a SHA-256 pin, refuses a mismatching file, and never commits OMG documents."
 source = "ADR 0003"
 kind = "tooling"
-status = "implemented"
+status = "verified"
 acceptance = [
   "Both artifacts are pinned with lowercase 64-hex SHA-256 values and OMG URLs.",
   "A fresh fetch verifies the hash before the file is moved into place; a mismatch deletes the partial file and fails.",
   "An existing file with the right hash is not re-downloaded; one with the wrong hash is an error.",
   "third_party/sacm-2.3/ is git-ignored.",
 ]
-code = ["xtask/src/fetch.rs", ".gitignore"]
+code = ["xtask/src/lib.rs", "xtask/src/fetch.rs", ".gitignore"]
 tests = [
-  "xtask/src/fetch.rs::lib_tool_002_pins_are_well_formed_and_unique",
-  "xtask/src/fetch.rs::lib_tool_002_hashes_known_input",
+  "xtask/tests/fetch.rs::lib_tool_002_pins_are_well_formed_and_unique",
+  "xtask/tests/fetch.rs::lib_tool_002_hashes_known_input",
+  "xtask/tests/fetch.rs::lib_tool_002_fresh_download_matching_the_pin_is_moved_into_place",
+  "xtask/tests/fetch.rs::lib_tool_002_hash_mismatch_deletes_the_partial_file_and_fails",
+  "xtask/tests/fetch.rs::lib_tool_002_downloader_error_deletes_the_partial_file_and_fails",
+  "xtask/tests/fetch.rs::lib_tool_002_existing_file_with_pinned_hash_is_not_downloaded_again",
+  "xtask/tests/fetch.rs::lib_tool_002_existing_file_with_wrong_hash_is_an_error_and_left_untouched",
+  "xtask/tests/fetch.rs::lib_tool_002_outcomes_follow_artifact_order",
+  "xtask/tests/repo_checks.rs::lib_tool_002_reference_directory_is_git_ignored",
 ]
+verification = "docs/verification/0001-m0-tooling-verification-round2.md"
 
 [[row]]
 id = "LIB-TOOL-003"
@@ -294,8 +342,26 @@ tests = [
   ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_unreadable_scopes_fail_closed_for_subagents",
   ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_glob_semantics",
   ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_repository_scopes_file_is_valid",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_real_scopes_deny_read_only_roles_everywhere",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_real_scopes_confine_test_engineer_to_tests",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_real_scopes_keep_implementer_out_of_tests_matrix_records_and_adrs",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_real_scopes_keep_writing_roles_off_the_guard",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_real_scopes_list_every_agent_definition",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_multiedit_is_treated_like_write",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_parse_scopes_rejects_structurally_invalid_documents",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_parse_scopes_accepts_a_valid_document",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_parse_scopes_accepts_the_real_file",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_invalid_structure_denies_subagent_writes_only",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_load_scopes_rejects_structurally_invalid_file",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_internal_error_denies_subagent_writes",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_internal_error_leaves_main_session_and_reads_alone",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_guarded_decide_agrees_with_decide_when_nothing_fails",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_main_denies_subagent_writes_when_decide_raises",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_main_denies_subagent_writes_when_loading_scopes_raises",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_settings_matcher_covers_every_write_tool",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_settings_hook_runs_the_guard_exactly_once",
 ]
-notes = "Does not cover Bash or sessions with hooks disabled; agent prompts prohibit those routes (ADR 0006)."
+notes = "Does not cover Bash, sessions with hooks disabled, or machines where no Python interpreter runs (the hook then exits non-zero, which Claude Code treats as non-blocking); agent prompts prohibit those routes (ADR 0006)."
 
 [[row]]
 id = "LIB-API-001"
@@ -356,6 +422,17 @@ milestone = "M0"
 title = "Cited paths stay inside the repository"
 requirement = "Code, test and verification-record citations must be relative paths that resolve inside the repository; absolute paths and `..` escapes are rejected by the gate."
 source = "Verification 0001 follow-up"
+kind = "tooling"
+status = "planned"
+depends_on = ["LIB-TOOL-001"]
+
+[[row]]
+id = "LIB-TOOL-007"
+area = "TOOL"
+milestone = "M0"
+title = "Traced tests live outside production source"
+requirement = "The gate rejects traced tests (functions named for a matrix row) under any `*/src/` directory, so acceptance tests stay in the test engineer's scope and the implementer cannot add or alter them inline."
+source = "Verification 0001 round 2 follow-up; ADR 0006 amendment 1"
 kind = "tooling"
 status = "planned"
 depends_on = ["LIB-TOOL-001"]
