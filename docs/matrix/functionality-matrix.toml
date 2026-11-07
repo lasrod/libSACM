@@ -331,7 +331,7 @@ title = "Agent write scopes are enforced by a hook"
 requirement = "A Claude Code PreToolUse hook refuses Write/Edit/MultiEdit/NotebookEdit calls from project subagents outside their declared scope (read-only roles cannot write; the test engineer only tests; the implementer not tests, matrix, verification records or ADRs), never restricts the main session, and fails closed for subagents when its configuration is unreadable."
 source = "ADR 0006"
 kind = "tooling"
-status = "implemented"
+status = "verified"
 acceptance = [
   "Main-session writes and non-write tools pass through.",
   "Read-only roles are denied every write.",
@@ -386,6 +386,7 @@ tests = [
   ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_real_hook_command_is_silent_for_the_main_session",
 ]
 notes = "Does not cover Bash, sessions with hooks disabled, or machines where no Python interpreter runs (the hook then exits non-zero, which Claude Code treats as non-blocking); agent prompts prohibit those routes (ADR 0006)."
+verification = "docs/verification/0001-m0-tooling-verification-round4.md"
 
 [[row]]
 id = "LIB-API-001"
