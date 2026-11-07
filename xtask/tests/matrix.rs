@@ -8,15 +8,15 @@
 //! line of this file that began with `#[test]` inside a string literal would
 //! be picked up by the real repository's orphan scan.
 
-use std::collections::BTreeMap;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+mod common;
 
+use std::collections::BTreeMap;
+use std::io;
+use std::path::Path;
+
+use common::{GATE_TOML, TempTree, consistent_tree};
 use xtask::matrix::{
-    FsRepo, MATRIX_PATH, Matrix, RENDERED_PATH, Repo, check, cmd_check, load, ready, render,
-    traced_tests,
+    FsRepo, Matrix, RENDERED_PATH, Repo, check, cmd_check, load, ready, render, traced_tests,
 };
 
 // ---------------------------------------------------------------------------
@@ -1265,50 +1265,8 @@ fn lib_tool_001_next_keeps_file_order_within_a_milestone_and_lists_only_open_row
 // The filesystem half of the gate: `FsRepo` and `cmd_check` on a real tree
 // ---------------------------------------------------------------------------
 
-/// A fresh directory tree under the system temporary directory, unique per
-/// test and removed on drop.
-#[derive(Debug)]
-struct TempTree(PathBuf);
-
-impl TempTree {
-    fn new(test: &str) -> Self {
-        static COUNTER: AtomicUsize = AtomicUsize::new(0);
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_or(0, |d| d.as_nanos());
-        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!(
-            "xtask-matrix-{test}-{}-{nanos}-{n}",
-            std::process::id()
-        ));
-        fs::create_dir_all(&path)
-            .unwrap_or_else(|e| panic!("LIB-TOOL-001: create {}: {e}", path.display()));
-        Self(path)
-    }
-
-    fn root(&self) -> &Path {
-        &self.0
-    }
-
-    /// Write `text` at the `/`-separated relative path `rel`, creating its
-    /// parent directories.
-    fn write(&self, rel: &str, text: &str) -> &Self {
-        let path = self.0.join(rel);
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .unwrap_or_else(|e| panic!("LIB-TOOL-001: create {}: {e}", parent.display()));
-        }
-        fs::write(&path, text)
-            .unwrap_or_else(|e| panic!("LIB-TOOL-001: write {}: {e}", path.display()));
-        self
-    }
-}
-
-impl Drop for TempTree {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
+// `TempTree`, `GATE_TOML` and `consistent_tree` live in `common/mod.rs`,
+// shared with `run.rs`.
 
 /// `FsRepo::traced_functions` of the tree, sorted (directory order is not
 /// specified).
@@ -1424,52 +1382,6 @@ fn lib_tool_001_fs_repo_reads_and_finds_paths_relative_to_its_root() {
     );
 }
 
-/// A matrix with one row citing a Rust test under `crates/` and a Python test
-/// under `.claude/hooks/`.
-const GATE_TOML: &str = r#"
-schema_version = 1
-[[milestone]]
-id = "M0"
-title = "Foundation"
-goal = "Build."
-[[area]]
-code = "TOOL"
-prefix = "LIB"
-title = "Tooling"
-[[row]]
-id = "LIB-TOOL-001"
-area = "TOOL"
-milestone = "M0"
-title = "Gate"
-requirement = "The gate holds."
-source = "ADR 0004"
-kind = "tooling"
-status = "tests-failing"
-acceptance = ["a"]
-tests = [
-  "crates/demo/tests/gate.rs::lib_tool_001_cited",
-  ".claude/hooks/test_gate.py::test_lib_tool_001_cited",
-]
-"#;
-
-/// The smallest tree on which the gate passes: the matrix, its rendered page
-/// and the cited test files.
-fn consistent_tree(test: &str) -> TempTree {
-    let matrix = load(GATE_TOML).expect("LIB-TOOL-001: the gate fixture parses");
-    let tree = TempTree::new(test);
-    tree.write(MATRIX_PATH, GATE_TOML)
-        .write(RENDERED_PATH, &render(&matrix))
-        .write(
-            "crates/demo/tests/gate.rs",
-            "#[test]\nfn lib_tool_001_cited() {}\n",
-        )
-        .write(
-            ".claude/hooks/test_gate.py",
-            "def test_lib_tool_001_cited(self):\n    pass\n",
-        );
-    tree
-}
-
 /// The problems `check` finds on the tree through `FsRepo`.
 fn problems_on_disk(tree: &TempTree) -> Vec<String> {
     let matrix = load(GATE_TOML).expect("LIB-TOOL-001: the gate fixture parses");
@@ -1485,7 +1397,7 @@ fn lib_tool_001_cmd_check_accepts_a_minimal_consistent_tree() {
         "LIB-TOOL-001: the consistent tree has no problems"
     );
     assert_eq!(
-        cmd_check(tree.root()),
+        cmd_check(tree.root(), &mut io::sink()),
         Ok(()),
         "LIB-TOOL-001: `matrix check` passes a consistent tree"
     );
@@ -1496,7 +1408,7 @@ fn lib_tool_001_cmd_check_accepts_a_minimal_consistent_tree() {
 fn assert_planted_orphan_fails_the_gate(test: &str, rel: &str, source: &str, name: &str) {
     let tree = consistent_tree(test);
     assert_eq!(
-        cmd_check(tree.root()),
+        cmd_check(tree.root(), &mut io::sink()),
         Ok(()),
         "LIB-TOOL-001: precondition: the tree passes before {rel} is planted"
     );
@@ -1509,7 +1421,7 @@ fn assert_planted_orphan_fails_the_gate(test: &str, rel: &str, source: &str, nam
         "LIB-TOOL-001: the planted test {rel}::{name} is reported as an orphan"
     );
     assert!(
-        cmd_check(tree.root()).is_err(),
+        cmd_check(tree.root(), &mut io::sink()).is_err(),
         "LIB-TOOL-001: `matrix check` must fail with the uncited test {rel}::{name}"
     );
 }
@@ -1548,14 +1460,14 @@ fn lib_tool_001_cmd_check_rejects_an_uncited_rust_test_under_xtask() {
 fn lib_tool_001_cmd_check_rejects_a_missing_matrix_and_a_stale_page() {
     let empty = TempTree::new("no-matrix");
     assert!(
-        cmd_check(empty.root()).is_err(),
+        cmd_check(empty.root(), &mut io::sink()).is_err(),
         "LIB-TOOL-001: `matrix check` fails when the matrix file is missing"
     );
 
     let tree = consistent_tree("stale-page");
     tree.write(RENDERED_PATH, "stale");
     assert!(
-        cmd_check(tree.root()).is_err(),
+        cmd_check(tree.root(), &mut io::sink()).is_err(),
         "LIB-TOOL-001: `matrix check` fails on a stale rendered page"
     );
 
@@ -1563,7 +1475,7 @@ fn lib_tool_001_cmd_check_rejects_a_missing_matrix_and_a_stale_page() {
     let matrix = load(GATE_TOML).expect("LIB-TOOL-001: the gate fixture parses");
     tree.write(RENDERED_PATH, &render(&matrix).replace('\n', "\r\n"));
     assert_eq!(
-        cmd_check(tree.root()),
+        cmd_check(tree.root(), &mut io::sink()),
         Ok(()),
         "LIB-TOOL-001: a rendered page that differs only in CRLF line endings is current"
     );

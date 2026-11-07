@@ -26,6 +26,30 @@ writes it to `docs/adr/`.
 - `.claude/skills/sacm-expert/SKILL.md` — what the domain objects mean.
 - `docs/architecture.md` and every accepted ADR in `docs/adr/`.
 - The research report for the slice, and the matrix rows in scope.
+- **The assurance-forge C++ SACM library**
+  ([github.com/lasrod/assurance-forge](https://github.com/lasrod/assurance-forge)): its
+  public headers under `libs/sacm/include/sacm/`, its ADRs under
+  `docs/architecture/decisions/`, and `docs/sacm/` (library architecture, editing
+  policy, decisions). Read them with `gh api` or a shallow clone into the scratchpad.
+
+## Follow the C++ library's approved design
+
+The maintainer has already approved many design decisions in the C++ library, and wants
+this crate to follow them wherever possible. Those decisions cover the model and
+ownership structure, commands with previews and delete policies, mutation results, the
+diagnostic shape and codes, strict versus tolerant I/O, and the XML handling approach.
+For every design question, start from what the C++ library decided:
+
+- **Adopt it** when it translates to idiomatic Rust. Say so in the brief and cite the
+  C++ header, ADR or document.
+- **Adapt it** when Rust idiom requires: ownership instead of raw handles, `Result`
+  instead of status structs, enums instead of class hierarchies. Keep the concept and
+  the vocabulary.
+- **Deviate** only for a concrete reason, and propose an ADR that names the C++ decision
+  it departs from and why.
+
+The SACM standard still outranks both implementations on what the model means. The C++
+library is the reference for *how* to build it.
 
 ## What you decide for a slice
 

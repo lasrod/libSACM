@@ -42,7 +42,9 @@ docs/adr/ docs/slices/ docs/verification/
    layout.
 5. **No `unsafe`, no panics on input, deterministic output.**
 6. **Settled decisions are policy**: [docs/sacm/decisions.md](docs/sacm/decisions.md).
-   Quote the standard; do not recall it.
+   Quote the standard; do not recall it. **Follow the assurance-forge C++ library's
+   approved design decisions** (its `libs/sacm` API, ADRs and `docs/sacm`) wherever they
+   translate to idiomatic Rust; a deviation needs an ADR naming the C++ decision.
 7. **Agent roles keep their boundaries** — the write-scope hook enforces Write/Edit;
    no role writes outside its scope through Bash either.
 

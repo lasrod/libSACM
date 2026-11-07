@@ -9,6 +9,7 @@
 //! here: the binary resolves the repository root at compile time, so running
 //! `matrix check` would test the matrix's current state, not the binary.
 
+use std::ffi::OsStr;
 use std::process::{Command, Output};
 
 /// Run the real `xtask` binary with `args`.
@@ -77,4 +78,49 @@ fn lib_tool_001_binary_help_exits_zero_and_prints_usage_on_stdout() {
         "LIB-TOOL-001: `xtask help` must print nothing on stderr, got {:?}",
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+/// Run the binary with one argument that is not valid Unicode: it must refuse
+/// it with a message, not panic and not convert it lossily.
+fn assert_refuses_non_unicode(arg: &OsStr) {
+    let output = Command::new(env!("CARGO_BIN_EXE_xtask"))
+        .arg(arg)
+        .output()
+        .expect("LIB-TOOL-001: the xtask binary can be started");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "LIB-TOOL-001: a non-Unicode argument must exit non-zero, got {:?}; stderr: {stderr}",
+        output.status
+    );
+    assert!(
+        !stderr.contains("panicked"),
+        "LIB-TOOL-001: a non-Unicode argument must not panic the binary, got {stderr:?}"
+    );
+    assert!(
+        stderr.starts_with("xtask: ") && stderr.contains("argument is not valid Unicode"),
+        "LIB-TOOL-001: a non-Unicode argument is refused with \
+         `xtask: argument is not valid Unicode: ...`, got {stderr:?}"
+    );
+    assert!(
+        stdout.is_empty(),
+        "LIB-TOOL-001: a refused argument prints nothing on stdout, got {stdout:?}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn lib_tool_001_binary_refuses_a_non_unicode_argument() {
+    use std::os::unix::ffi::OsStrExt;
+    assert_refuses_non_unicode(OsStr::from_bytes(b"\xff"));
+}
+
+#[cfg(windows)]
+#[test]
+fn lib_tool_001_binary_refuses_a_non_unicode_argument() {
+    use std::ffi::OsString;
+    use std::os::windows::ffi::OsStringExt;
+    // An unpaired surrogate: valid UTF-16 code unit, not valid Unicode.
+    assert_refuses_non_unicode(&OsString::from_wide(&[0xD800]));
 }

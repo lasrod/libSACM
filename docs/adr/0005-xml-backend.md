@@ -22,6 +22,13 @@ XML library type may appear in the public API.
 
 To be made by the architect in the first XMI slice, using: DTD/entity refusal by
 default, source positions, MSRV ≤ 1.85, licence, maintenance, and output determinism.
+
+**C++ precedent (follow where possible):** the assurance-forge C++ library parses XMI
+into a DOM with pugixml. The DOM is kept private: pugixml is banned from public
+headers. Its reader and writer live in the `io` layer (`xmi_reader.cpp`,
+`xmi_writer.cpp`). The closest Rust equivalent is a DOM read (`roxmltree`) plus a
+private, deterministic writer.
+
 Current leaning: `roxmltree` for reading plus a private hand-written writer.
 
 ## Consequences

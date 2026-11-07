@@ -39,9 +39,12 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write as _;
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
+
+use crate::output_error;
 
 /// The canonical matrix, relative to the repository root.
 pub const MATRIX_PATH: &str = "docs/matrix/functionality-matrix.toml";
@@ -1051,19 +1054,24 @@ fn load_from(root: &Path) -> Result<Matrix, String> {
     load(&text)
 }
 
-/// `cargo xtask matrix check`: run [`check`] on the repository at `root`,
-/// printing every problem to standard error.
+/// `cargo xtask matrix check`: run [`check`] on the repository at `root`.
+///
+/// On success, writes `functionality matrix OK: <n> rows` to `out`. On
+/// failure, lists every problem on standard error and writes nothing to
+/// `out`.
 ///
 /// # Errors
 ///
-/// Returns an error when the matrix cannot be read or parsed, or when it has
-/// problems.
-pub fn cmd_check(root: &Path) -> Result<(), String> {
+/// Returns an error when the matrix cannot be read or parsed, when it has
+/// problems (`functionality matrix: <n> problem(s)`), or when writing to
+/// `out` fails.
+// The per-problem lines go to stderr (LIB-TOOL-010 tracks where they belong).
+#[allow(clippy::print_stderr)]
+pub fn cmd_check(root: &Path, out: &mut dyn io::Write) -> Result<(), String> {
     let matrix = load_from(root)?;
     let errors = check(&matrix, &FsRepo::new(root));
     if errors.is_empty() {
-        println!("functionality matrix OK: {} rows", matrix.rows.len());
-        Ok(())
+        writeln!(out, "functionality matrix OK: {} rows", matrix.rows.len()).map_err(output_error)
     } else {
         for error in &errors {
             eprintln!("  {error}");
@@ -1073,57 +1081,67 @@ pub fn cmd_check(root: &Path) -> Result<(), String> {
 }
 
 /// `cargo xtask matrix render`: write [`render`] of the matrix to
-/// [`RENDERED_PATH`] under `root`.
+/// [`RENDERED_PATH`] under `root`, then report `wrote <RENDERED_PATH>` to
+/// `out`.
 ///
 /// # Errors
 ///
-/// Returns an error when the matrix cannot be read or parsed, or the page
-/// cannot be written.
-pub fn cmd_render(root: &Path) -> Result<(), String> {
+/// Returns an error when the matrix cannot be read or parsed, the page
+/// cannot be written (`write <path>: ...`), or writing to `out` fails.
+pub fn cmd_render(root: &Path, out: &mut dyn io::Write) -> Result<(), String> {
     let matrix = load_from(root)?;
     let path = root.join(RENDERED_PATH);
     fs::write(&path, render(&matrix)).map_err(|e| format!("write {}: {e}", path.display()))?;
-    println!("wrote {RENDERED_PATH}");
-    Ok(())
+    writeln!(out, "wrote {RENDERED_PATH}").map_err(output_error)
 }
 
-/// `cargo xtask matrix next`: print up to `limit` rows of [`ready`].
+/// `cargo xtask matrix next`: write up to `limit` rows of [`ready`] to `out`,
+/// after a header line counting the ready and open rows.
 ///
 /// # Errors
 ///
-/// Returns an error when the matrix cannot be read or parsed.
-pub fn cmd_next(root: &Path, limit: usize) -> Result<(), String> {
+/// Returns an error when the matrix cannot be read or parsed, or writing to
+/// `out` fails.
+pub fn cmd_next(root: &Path, limit: usize, out: &mut dyn io::Write) -> Result<(), String> {
     let matrix = load_from(root)?;
     let ready = ready(&matrix);
     let open = matrix.rows.iter().filter(|r| r.status.is_open()).count();
     if ready.is_empty() {
-        println!("no ready rows ({open} open rows, all blocked on unverified dependencies)");
-        return Ok(());
+        return writeln!(
+            out,
+            "no ready rows ({open} open rows, all blocked on unverified dependencies)"
+        )
+        .map_err(output_error);
     }
-    println!(
+    writeln!(
+        out,
         "{} ready of {open} open rows; next {}:",
         ready.len(),
         limit.min(ready.len())
-    );
+    )
+    .map_err(output_error)?;
     for row in ready.into_iter().take(limit) {
-        println!(
+        writeln!(
+            out,
             "  {:<17} {:<4} {:<14} {}",
             row.id,
             row.milestone,
             row.status.as_str(),
             row.title
-        );
+        )
+        .map_err(output_error)?;
     }
     Ok(())
 }
 
-/// `cargo xtask matrix status`: print one line of status counts per
-/// milestone.
+/// `cargo xtask matrix status`: write one line of status counts per
+/// milestone to `out`.
 ///
 /// # Errors
 ///
-/// Returns an error when the matrix cannot be read or parsed.
-pub fn cmd_status(root: &Path) -> Result<(), String> {
+/// Returns an error when the matrix cannot be read or parsed, or writing to
+/// `out` fails.
+pub fn cmd_status(root: &Path, out: &mut dyn io::Write) -> Result<(), String> {
     let matrix = load_from(root)?;
     for milestone in &matrix.milestones {
         let rows: Vec<&Row> = matrix
@@ -1140,12 +1158,14 @@ pub fn cmd_status(root: &Path) -> Result<(), String> {
                 parts.push(format!("{n} {}", status.as_str()));
             }
         }
-        println!(
+        writeln!(
+            out,
             "{:<4} {:<44} {verified:>3}/{scheduled:<3} verified  ({})",
             milestone.id,
             milestone.title,
             parts.join(", ")
-        );
+        )
+        .map_err(output_error)?;
     }
     Ok(())
 }

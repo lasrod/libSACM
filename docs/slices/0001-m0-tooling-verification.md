@@ -1,10 +1,10 @@
 ---
 slice: 0001
 name: m0-tooling-verification
-state: stopped
-step: verification
+state: done
+step: close
 rows: [LIB-TOOL-001, LIB-TOOL-002, LIB-TOOL-003, LIB-API-001, LIB-QA-001]
-mode: local
+mode: pr
 ---
 
 # Slice 0001 — Verify the locally verifiable M0 foundation rows
@@ -86,6 +86,21 @@ Behaviour changes in the gate: a test citation must resolve to a function that
 `traced_tests` recognises as a test (not merely `fn name` anywhere in the file), and
 `traced_tests` recognises a test attribute on the same line as `fn`.
 
+### Fix round 4: supersedes the binary and `cmd_*` signatures above
+
+All dispatch moved into the library. `main` only decodes the arguments (refusing
+non-Unicode ones), calls `run`, and maps `Ok`/`Err` to an exit code with an `xtask:`
+message. The full contract is in
+[the round-6 prescription](../verification/0001-m0-tooling-verification-round6-prescription.md).
+
+```rust
+pub fn xtask::run(args: &[&str], root: &Path, out: &mut dyn std::io::Write) -> Result<(), String>;
+pub fn matrix::cmd_check(root: &Path, out: &mut dyn Write) -> Result<(), String>;   // likewise cmd_render, cmd_status
+pub fn matrix::cmd_next(root: &Path, limit: usize, out: &mut dyn Write) -> Result<(), String>;
+pub fn fetch::cmd_fetch(dest: &Path, out: &mut dyn Write) -> Result<(), String>;
+// a failed write to `out` returns Err("write output: …"); nothing panics
+```
+
 **Write guard (lead-implemented, maintainer-reviewed).** New pure functions in
 `agent_write_guard.py` for the tests to target:
 
@@ -129,3 +144,8 @@ doctests.
 - 2026-11-07 fix round 3: test engineer added 3 binary tests (xtask/tests/cli.rs) and 2 matrix tests; R28/R21/R23 killed.
 - 2026-11-07 verification round 5: LIB-TOOL-001 FAIL. The matrix-check dispatch in main.rs is untested (R28e: binary exits 0 over a planted orphan). See docs/verification/0001-m0-tooling-verification-round5.md. New rows LIB-TOOL-009, LIB-TOOL-010.
 - 2026-11-07 stopped: fix-round budget used; maintainer decision needed.
+- 2026-11-07 maintainer decisions: verifier prescriptions must be complete (agent + skill updated); follow the assurance-forge C++ library's approved design (architect/researcher/CLAUDE.md); slices land via PR (mode=pr); LIB-QA-007 (cargo-mutants) brought forward to M0. Slice continues on branch slice/0001-m0-tooling-verification.
+- 2026-11-07 fix round 4 (approved): verifier pre-stated the complete prescription (docs/verification/0001-m0-tooling-verification-round6-prescription.md). Item 11 resolved by narrowing criterion 7; new row LIB-TOOL-011. Tests next.
+- 2026-11-07 fix round 4: test engineer wrote 17 run() tests and 1 non-Unicode binary test (red: missing xtask::run, binary panicked); implementer moved all dispatch into xtask::run with writer-based cmd_*, args_os decoding, write errors as Err. 96 xtask tests green.
+- 2026-11-07 verification round 6: LIB-TOOL-001 PASS (all prescribed mutations killed); condition met by CI run 42352469780 (cfg(unix) test green on Ubuntu and macOS). LIB-TOOL-001 -> verified. See docs/verification/0001-m0-tooling-verification-round6.md.
+- 2026-11-07 closed. Slice verified: LIB-API-001, LIB-TOOL-002, LIB-QA-001, LIB-TOOL-003, LIB-TOOL-001. PR #5 awaits the maintainer's merge.
