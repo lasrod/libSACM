@@ -56,6 +56,26 @@ Slice 0004 (LIB-TOOL-005, -006, -009, -010) added code to `xtask/src/matrix.rs`.
   - `matrix.rs:1209:5` (`load_from`; `1055:5` in slice 0003, `1185:5` at `e216a82`)
 - **`fence` is viable throughout:** its `Some((Default::default(), …))` replacements compile, because `char` implements `Default`, and they are caught.
 
+## Slice 0005
+
+Slice 0005 (LIB-TOOL-013, -014) changed `xtask/src/lib.rs`, `xtask/src/main.rs` and `xtask/src/matrix.rs` (`load`, `load_from`, `cmd_check`), and added the test target `xtask/tests/check_reporting.rs` (renamed to `reporting.rs`, below).
+
+- **The timeout:** [mutants.yml run 42420891449](https://github.com/lasrod/libSACM/actions/runs/42420891449), shard 1, reported one TIMEOUT: `xtask/src/matrix.rs:449:5: replace is_identifier_char -> bool with true`. The code it mutates is unchanged since slice 0003, and it is LIB-TOOL-001's.
+  - **Why it hangs:** under the mutant, every character is an identifier character, so `identifier()` takes the whole rest of the file after each `fn ` that `defined_functions` finds. A scan of the real repository becomes quadratic and runs for minutes. Measured on its own, each of `check_reporting` and `gate_hardening` ran for over 120 s under the mutant.
+  - **What kills it:** the `function_scan` and `matrix` targets kill it in under 1 s. `function_scan` runs the scanner under its 5 s deadline.
+  - **Why those targets never ran:** cargo-mutants runs `cargo test` without `--no-fail-fast`. `cargo test` runs the integration targets one after another in name order and stops at the first one that fails. `check_reporting` sorts before `function_scan`, and some of its tests scan the real repository (`repo_root()`). So the run hung in `check_reporting` until the timeout, before any failing target was reached.
+- **The ordering hazard:** any xtask test target that sorts before `function_scan` and scans the real repository turns this mutant into a timeout. The module doc of `xtask/tests/function_scan.rs` states the rule for the targets that existed then (`matrix`, `repo_checks`, `run`). Nothing enforces it for a new target.
+- **The fix in slice 0005:** the test target is renamed from `xtask/tests/check_reporting.rs` to `xtask/tests/reporting.rs`, which sorts after `function_scan`. Linux runs at the fix head:
+  - mutants.yml [42422372773](https://github.com/lasrod/libSACM/actions/runs/42422372773) at `6019823`: 258 mutants, 251 caught, 0 missed, 0 timeout, 7 unviable. `is_identifier_char -> true` is caught.
+  - ci.yml [42422372810](https://github.com/lasrod/libSACM/actions/runs/42422372810), job `mutants (PR diff)`: 20 mutants, 16 caught, 0 missed, 0 timeout, 4 unviable.
+- **Unviable mutants at `6019823` (7):**
+  - five carried over from slice 0004, with their lines moved: `fetch.rs:110:5`, `matrix.rs:546:5` (`load`), `829:5` (`verdict_lines`), `1203:5` (`ready`) and `1246:5` (`load_from`);
+  - two new, `matrix.rs:1305:48`, `+` replaced with `-` and with `*` in `cmd_check_from`. They are structural: the `+` there joins a `String` and a `&str` (`e + &named`), and `String` implements neither `Sub` nor `Mul`.
+- **Fix round 1 head `414263f`:** tests only; the mutated code is unchanged.
+  - mutants.yml [42423497528](https://github.com/lasrod/libSACM/actions/runs/42423497528): 258 mutants, 251 caught, 0 missed, 0 timeout, 7 unviable. The unviable mutants are the same 7, at the same lines.
+  - ci.yml [42423497546](https://github.com/lasrod/libSACM/actions/runs/42423497546), job `mutants (PR diff)`: 20 mutants, 16 caught, 0 missed, 0 timeout, 4 unviable.
+- **The durable fix:** LIB-QA-012. A target's name must not decide whether this mutant is caught or times out.
+
 ## Dispositions
 
 A disposition is one of:

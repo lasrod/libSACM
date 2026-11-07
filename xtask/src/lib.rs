@@ -1,13 +1,14 @@
 //! Repository automation for libSACM, run as `cargo xtask <command>`.
 //!
-//! Every command lives in this library, including the dispatcher [`run`] that
-//! maps the command-line arguments to a command. The binary in `src/main.rs`
-//! only decodes its arguments, calls [`run`] with the repository root and
-//! standard output, and turns the result into an exit status. The acceptance
-//! tests in `xtask/tests/` therefore exercise the same code through a public
-//! API.
+//! Every command lives in this library, including the dispatcher [`run_from`]
+//! that maps the command-line arguments to a command. The binary in
+//! `src/main.rs` only decodes its arguments and `XTASK_ROOT`, calls
+//! [`run_from`] with the repository root, where that root came from
+//! ([`RootSource`]) and standard output, and turns the result into an exit
+//! status. The acceptance tests in `xtask/tests/` therefore exercise the same
+//! code through a public API.
 //!
-//! - [`run`]: the dispatcher and the usage text.
+//! - [`run_from`] and [`run`]: the dispatcher and the usage text.
 //! - [`matrix`]: the functionality-matrix gate (`cargo xtask matrix check`,
 //!   `render`, `next`, `status`).
 //! - [`fetch`]: hash-pinned download of the OMG SACM 2.3 reference artifacts
@@ -29,6 +30,12 @@
 //! ```text
 //! XTASK_ROOT=/tmp/checkout cargo xtask matrix check
 //! ```
+//!
+//! Under `XTASK_ROOT`, `matrix check` names the root it checked: the first
+//! line of its report ends with ` (root: <root>)`, so a check of another tree
+//! cannot pass for a check of the repository. The other commands report as
+//! usual. An `XTASK_ROOT` that is set but empty is an error, and no command
+//! runs.
 //!
 //! This crate is repository tooling, not part of the published library: it is
 //! `publish = false` and its API serves the binary and its tests only.
@@ -53,23 +60,31 @@ commands:
                           (default DIR: third_party/sacm-2.3)
 
 environment:
-  XTASK_ROOT              repository to work on (default: the one xtask was built in)";
+  XTASK_ROOT              repository to work on (default: the one xtask was built in);
+                          `matrix check` names it, and an empty value is an error";
 
 /// How many rows `matrix next` lists when no count is given.
 const DEFAULT_NEXT_LIMIT: usize = 10;
 
+/// Where the repository root came from.
+///
+/// [`run_from`] passes it on to the command. Only `matrix check` reports
+/// differently by source: it names a root that came from
+/// [`Environment`](RootSource::Environment). The decision depends on the
+/// source alone, never on the root's value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RootSource {
+    /// The repository xtask was built in ([`repo_root`]).
+    Build,
+    /// The `XTASK_ROOT` environment variable.
+    Environment,
+}
+
 /// Run the `cargo xtask` command named by `args` on the repository at `root`,
 /// writing its output to `out`.
 ///
-/// `args` are the command-line arguments without the program name, for
-/// example `["matrix", "next", "-n", "3"]`. `help`, `--help`, `-h` and no
-/// arguments write the usage text. Paths given to `fetch-spec --dest` are
-/// resolved against `root`. What a successful command reports goes to `out`,
-/// which is flushed before returning; a failing command writes nothing to
-/// standard error, and the problems `matrix check` finds are in its error.
-///
-/// `run` neither prefixes its messages with `xtask:` nor exits the process;
-/// that is the binary's job.
+/// This is [`run_from`] with [`RootSource::Build`], so no report names the
+/// root.
 ///
 /// ```
 /// use std::path::Path;
@@ -85,6 +100,46 @@ const DEFAULT_NEXT_LIMIT: usize = 10;
 ///
 /// # Errors
 ///
+/// As [`run_from`].
+pub fn run(args: &[&str], root: &Path, out: &mut dyn Write) -> Result<(), String> {
+    run_from(args, root, RootSource::Build, out)
+}
+
+/// Run the `cargo xtask` command named by `args` on the repository at `root`,
+/// which came from `source`, writing its output to `out`.
+///
+/// `args` are the command-line arguments without the program name, for
+/// example `["matrix", "next", "-n", "3"]`. `help`, `--help`, `-h` and no
+/// arguments write the usage text. Paths given to `fetch-spec --dest` are
+/// resolved against `root`. What a successful command reports goes to `out`,
+/// which is flushed before returning; a failing command writes nothing to
+/// standard error, and the problems `matrix check` finds are in its error.
+///
+/// With [`RootSource::Environment`], `matrix check` names the root: the first
+/// line of its report, which is the OK line, the problem-count header or the
+/// one-line load error, ends with ` (root: <root>)`. `<root>` is `root` as
+/// [`Path::display`] shows it, as given (not canonicalised), with control
+/// characters escaped as in the problem lines. Every other command, and
+/// `matrix check` with [`RootSource::Build`], reports exactly what [`run`]
+/// reports.
+///
+/// `run_from` neither prefixes its messages with `xtask:` nor exits the
+/// process; that is the binary's job.
+///
+/// ```
+/// use std::path::Path;
+/// use xtask::RootSource;
+///
+/// // No matrix under this root: the read error names the root it came from.
+/// let root = Path::new("no-such-tree");
+/// let error = xtask::run_from(&["matrix", "check"], root, RootSource::Environment, &mut Vec::new())
+///     .unwrap_err();
+/// assert!(error.starts_with("read no-such-tree"));
+/// assert!(error.ends_with(" (root: no-such-tree)"));
+/// ```
+///
+/// # Errors
+///
 /// Returns a message, without the `xtask:` prefix, when:
 ///
 /// - the arguments name no command: `unrecognized arguments: <args>` followed
@@ -93,17 +148,29 @@ const DEFAULT_NEXT_LIMIT: usize = 10;
 ///   `invalid row count: <count>`;
 /// - the command fails (see [`matrix::cmd_check`], [`matrix::cmd_render`],
 ///   [`matrix::cmd_next`], [`matrix::cmd_status`] and [`fetch::cmd_fetch`]);
+///   a matrix that cannot be read or parsed is one line, as [`matrix::load`]
+///   describes;
 /// - writing to or flushing `out` fails.
-pub fn run(args: &[&str], root: &Path, out: &mut dyn Write) -> Result<(), String> {
-    let result = dispatch(args, root, out);
+pub fn run_from(
+    args: &[&str],
+    root: &Path,
+    source: RootSource,
+    out: &mut dyn Write,
+) -> Result<(), String> {
+    let result = dispatch(args, root, source, out);
     // Keep the command's own error when both it and the flush fail.
     let flushed = out.flush().map_err(output_error);
     result.and(flushed)
 }
 
-fn dispatch(args: &[&str], root: &Path, out: &mut dyn Write) -> Result<(), String> {
+fn dispatch(
+    args: &[&str],
+    root: &Path,
+    source: RootSource,
+    out: &mut dyn Write,
+) -> Result<(), String> {
     match args {
-        ["matrix", "check"] => matrix::cmd_check(root, out),
+        ["matrix", "check"] => matrix::cmd_check_from(root, source, out),
         ["matrix", "render"] => matrix::cmd_render(root, out),
         ["matrix", "next"] => matrix::cmd_next(root, DEFAULT_NEXT_LIMIT, out),
         ["matrix", "next", "-n" | "--limit", n] => match n.parse() {

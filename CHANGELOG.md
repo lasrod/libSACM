@@ -24,3 +24,8 @@ change bumps the minor version and is listed under **Breaking**.
   repository, and area codes must be uppercase ASCII letters. A failing
   `matrix check` returns every problem in its error, one per line, in a deterministic
   order. `XTASK_ROOT` points the `xtask` binary at another tree.
+- Clearer matrix reporting. Under `XTASK_ROOT`, `matrix check` names the root it
+  checked: the first line of its report ends with ` (root: <root>)`. An `XTASK_ROOT`
+  that is set but empty is an error. An error from reading or parsing the matrix is one
+  line, `docs/matrix/functionality-matrix.toml:<line>:<column>: <message>` or
+  `read <path>: <error>`, with control characters escaped.
