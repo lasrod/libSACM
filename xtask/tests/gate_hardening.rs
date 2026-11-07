@@ -1628,20 +1628,46 @@ fn lib_tool_005_real_matrix_passes_the_gate() {
     );
 }
 
+/// The fence run `line` starts with, as `(character, run length, rest of the
+/// line)`: 0 to 3 spaces (a tab is not indent), then 3 or more backticks or
+/// 3 or more tildes.
+fn fence_run(line: &str) -> Option<(char, usize, &str)> {
+    let body = line.trim_start_matches(' ');
+    if line.len() - body.len() > 3 {
+        return None;
+    }
+    let c = body.chars().next().filter(|c| matches!(c, '`' | '~'))?;
+    let rest = body.trim_start_matches(c);
+    let run = body.len() - rest.len();
+    (run >= 3).then_some((c, run, rest))
+}
+
 /// `(line number, id, verdict)` for every line of `text` that starts with
 /// `- Row verdict:` outside a fence, after trailing spaces and tabs are
 /// removed. A line that does not split into an id and a verdict has empty
-/// parts.
+/// parts. A fence opens on a fence run when none is open, closes on a run of
+/// the same character at least as long followed only by spaces or tabs, and
+/// otherwise runs to the end of `text`.
 fn verdict_lines(text: &str) -> Vec<(usize, String, String)> {
-    let mut fenced = false;
+    let mut open: Option<(char, usize)> = None;
     let mut out = Vec::new();
     for (i, line) in text.lines().enumerate() {
-        if line.starts_with("```") || line.starts_with("~~~") {
-            fenced = !fenced;
-            continue;
+        match (open, fence_run(line)) {
+            (None, Some((c, run, _))) => {
+                open = Some((c, run));
+                continue;
+            }
+            (Some((c, run)), Some((d, len, rest)))
+                if d == c && len >= run && rest.trim_matches([' ', '\t']).is_empty() =>
+            {
+                open = None;
+                continue;
+            }
+            (Some(_), _) => continue,
+            (None, None) => {}
         }
         let line = line.trim_end_matches([' ', '\t']);
-        if fenced || !line.starts_with("- Row verdict:") {
+        if !line.starts_with("- Row verdict:") {
             continue;
         }
         let (id, verdict) = line
@@ -1651,6 +1677,48 @@ fn verdict_lines(text: &str) -> Vec<(usize, String, String)> {
         out.push((i + 1, id.to_owned(), verdict.to_owned()));
     }
     out
+}
+
+#[test]
+fn lib_tool_005_real_record_helper_counts_one_verdict_past_a_nested_fence() {
+    let verdicts = |text: &str| -> Vec<(usize, String, String)> {
+        verdict_lines(text)
+            .into_iter()
+            .filter(|(_, id, _)| id == "LIB-TOOL-001")
+            .collect()
+    };
+    let nested = "# Record\n\
+                  - Row verdict: LIB-TOOL-001: PASS\n\
+                  \n\
+                  ````markdown\n\
+                  ```\n\
+                  - Row verdict: LIB-TOOL-001: PASS\n\
+                  ```\n\
+                  ````\n";
+    assert_eq!(
+        verdicts(nested),
+        [(2, "LIB-TOOL-001".to_owned(), "PASS".to_owned())],
+        "LIB-TOOL-005: a triple-backtick line inside a four-backtick fence does not close it, \
+         so only the header verdict counts"
+    );
+    let two = "# Record\n\
+               - Row verdict: LIB-TOOL-001: PASS\n\
+               \n\
+               - Row verdict: LIB-TOOL-001: PASS\n";
+    assert_eq!(
+        verdicts(two).len(),
+        2,
+        "LIB-TOOL-005: two verdict lines outside any fence both count"
+    );
+    let unclosed = "- Row verdict: LIB-TOOL-001: PASS\n\
+                    ~~~~\n\
+                    ~~~\n\
+                    - Row verdict: LIB-TOOL-001: PASS\n";
+    assert_eq!(
+        verdicts(unclosed).len(),
+        1,
+        "LIB-TOOL-005: a fence that is never closed runs to the end of the record"
+    );
 }
 
 #[test]

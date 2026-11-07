@@ -607,6 +607,7 @@ tests = [
   "xtask/tests/gate_hardening.rs::lib_tool_005_a_missing_record_is_reported_once",
   "xtask/tests/gate_hardening.rs::lib_tool_005_a_malformed_line_in_a_shared_record_is_reported_once_per_citing_row",
   "xtask/tests/gate_hardening.rs::lib_tool_005_real_matrix_passes_the_gate",
+  "xtask/tests/gate_hardening.rs::lib_tool_005_real_record_helper_counts_one_verdict_past_a_nested_fence",
   "xtask/tests/gate_hardening.rs::lib_tool_005_every_verified_row_in_the_real_matrix_has_one_pass_verdict_line",
 ]
 notes = "Verification 0004 round 2 failed it a second time (F4: fences inside list items; F5). The work stopped for the maintainer to choose route A, B or C in docs/verification/0004-m0-gate-hardening-round2.md (P-005b). The code on main is still stricter than the old mention check."
