@@ -69,7 +69,19 @@ changes a status, and only to `verified` on a recorded PASS from the verifier.
    prefix equals the area's declared prefix.
 3. `title`, `requirement` and `source` are non-empty; `milestone` exists.
 4. The evidence rules in the status table above hold.
-5. Every cited code path and verification record exists; the record mentions the row id.
+5. Every cited path (code, test file, doctest file, verification record) is a relative,
+   `/`-separated path inside the repository: it has no `\` or `:`, does not start with
+   `/`, and has no empty, `.` or `..` component. This applies at every status, so it
+   includes a `verification` path on a row that is not verified. A rejected path is never
+   read. Every cited code path and verification record exists. The record of a verified
+   row has exactly one verdict line for that row, saying PASS:
+   `- Row verdict: <ROW-ID>: PASS`, with no indent and outside fenced code blocks.
+   Fences are recognised at the top level of the record, as CommonMark defines them:
+   0 to 3 spaces of indent, then 3 or more backticks or tildes, closed by a run of the
+   same character that is at least as long. Two cases are not yet handled. A fence
+   inside a list item, which CommonMark closes when the item ends, is LIB-TOOL-005,
+   still open. HTML blocks and a backtick in a fence's info string are LIB-TOOL-015. A line
+   starting `- Row verdict:` that is not well formed is a problem.
 6. Every test citation is `path::function`, where the function is a **test** in that file
    (a Rust function under a `#[test]`-style attribute, on the line before or the same
    line, or a Python `def test_…`; a helper, comment or string literal does not count),
@@ -81,6 +93,8 @@ changes a status, and only to `verified` on a recorded PASS from the verifier.
 8. `depends_on` targets exist, are not the row itself, are not `candidate` or
    `out-of-scope`, are not in a later milestone, and contain no cycles.
 9. `functionality-matrix.md` equals `cargo xtask matrix render` output.
+10. Every area code is one or more uppercase ASCII letters.
+11. A failing check reports every problem, one per line, in a deterministic order.
 
 What the gate cannot check — whether the tests actually prove the requirement, whether
 rows are missing, whether a planned row quietly landed — is the matrix steward's audit.

@@ -2,6 +2,10 @@
 
 - Date: 2026-11-07
 - Verdict: **FAIL** (partial). Per row: LIB-API-001 **PASS**; LIB-TOOL-001 FAIL; LIB-TOOL-002 FAIL; LIB-TOOL-003 FAIL
+- Row verdict: LIB-API-001: PASS
+- Row verdict: LIB-TOOL-001: FAIL
+- Row verdict: LIB-TOOL-002: FAIL
+- Row verdict: LIB-TOOL-003: FAIL
 - Verifier: `sacm-verifier` (independent; read-only)
 - Commit / diff inspected: `4b4a8e9` (initial commit) plus the uncommitted slice brief
 - Slice brief: [docs/slices/0001-m0-tooling-verification.md](../slices/0001-m0-tooling-verification.md)

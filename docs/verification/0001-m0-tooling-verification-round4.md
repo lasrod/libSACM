@@ -2,6 +2,8 @@
 
 - Date: 2026-11-07
 - Verdict: **PASS** for LIB-TOOL-003. LIB-TOOL-001 was out of scope this round and stays `implemented`.
+- Row verdict: LIB-TOOL-003: PASS
+- Row verdict: LIB-TOOL-001: OPEN
 - Verifier: `sacm-verifier` (independent; read-only)
 - Inspected: HEAD `756dd91` (pushed, working tree clean); unchanged since round 3
 - Previous records: [round 1](0001-m0-tooling-verification.md), [round 2](0001-m0-tooling-verification-round2.md), [round 3](0001-m0-tooling-verification-round3.md)

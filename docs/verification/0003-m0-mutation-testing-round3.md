@@ -2,6 +2,7 @@
 
 - Date: 2026-11-07
 - Verdict: **PASS**. LIB-QA-007: PASS.
+- Row verdict: LIB-QA-007: PASS
 - Verifier: `sacm-verifier` (independent; read-only)
 - Head verified: `4f1641cdcaa7a8874d5725f89c177b7a2cee8f74` (draft PR #9)
 - Contract: the remainder in the [round 2 record](0003-m0-mutation-testing-round2.md) (R2-1, R2-1b, R2-2, R2-3), plus its closing-evidence list. Earlier contracts: [round 1](0003-m0-mutation-testing.md) and [the prescription](0003-m0-mutation-testing-prescription.md).

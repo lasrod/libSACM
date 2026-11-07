@@ -2,6 +2,7 @@
 
 - Date: 2026-11-07
 - Verdict: **PASS**. LIB-TOOL-001: PASS.
+- Row verdict: LIB-TOOL-001: PASS
 - Verifier: `sacm-verifier` (independent; read-only)
 - Contract: the verifier's own pre-verification prescription,
   [round6-prescription](0001-m0-tooling-verification-round6-prescription.md), items 0–11 and its PASS condition.

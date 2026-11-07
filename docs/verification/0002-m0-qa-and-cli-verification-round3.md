@@ -2,6 +2,8 @@
 
 - Date: 2026-11-07
 - Verdict: **FAIL** (partial). LIB-QA-002: **PASS**. LIB-QA-003: FAIL.
+- Row verdict: LIB-QA-002: PASS
+- Row verdict: LIB-QA-003: FAIL
 - Verifier: `sacm-verifier` (independent; read-only)
 - Inspected: `f9a8c82` (PR #7, on `main` at `871c26f`). The follow-up `4b46db5`, the `log-level` fix, was read but not verified.
 - CI: run 42359606355 on `f9a8c82` succeeded, including the MSRV and cargo-deny jobs.

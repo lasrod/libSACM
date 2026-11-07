@@ -2,12 +2,14 @@
 //!
 //! This binary decodes its arguments, hands them to [`xtask::run`] with the
 //! repository root and standard output, and maps the result to an exit
-//! status. Every command, argument form and message lives in the `xtask`
-//! library; see its crate documentation.
+//! status. The root is the `XTASK_ROOT` environment variable when it is set,
+//! and [`xtask::repo_root`] otherwise. Every command, argument form and
+//! message lives in the `xtask` library; see its crate documentation.
 // Reporting a failure on stderr is the binary's job.
 #![allow(clippy::print_stderr)]
 
 use std::io;
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
@@ -26,7 +28,8 @@ fn main() -> ExitCode {
         }
     }
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
-    match xtask::run(&args, &xtask::repo_root(), &mut io::stdout().lock()) {
+    let root = std::env::var_os("XTASK_ROOT").map_or_else(xtask::repo_root, PathBuf::from);
+    match xtask::run(&args, &root, &mut io::stdout().lock()) {
         Ok(()) => ExitCode::SUCCESS,
         Err(message) => {
             eprintln!("xtask: {message}");
