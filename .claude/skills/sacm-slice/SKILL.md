@@ -89,11 +89,19 @@ Cite code paths in each row, set `status = "implemented"`, render, check.
 
 **Before verifying, under `mode=pr`:** commit and push the slice branch, and open
 the slice's PR as a **draft** (`gh pr create --draft`). The maintainer chose this on
-2026-11-07. Wait for its CI, so the verifier gets the Linux evidence for the commit
-under verification: the `mutants` job's `mutants.out` artifact (`gh run download`),
-the full-run shards from `mutants.yml`, and the Linux-only tests. Give the verifier
-the run URLs, the head SHA and the downloaded reports. Mark the PR ready
-(`gh pr ready`) only after PASS and the Copilot fixes (step 8.6).
+2026-11-07.
+- **On re-verification,** the branch already has its PR (`gh pr list --head <branch>`).
+  Push to that PR; do not create another.
+- **Wait for the PR's CI,** so the verifier gets the Linux evidence for the commit under
+  verification:
+  - the `mutants` job's `mutants.out` artifact (`gh run download`);
+  - the full-run shards from `mutants.yml`;
+  - the Linux-only tests.
+- **If `mutants.yml` did not run on the head commit:** its path filter skips changes
+  that touch no Rust code or mutation config. Dispatch it on the slice branch
+  (`gh workflow run mutants.yml --ref <branch>`) and wait for that run.
+- **Give the verifier** the run URLs, the head SHA and the downloaded reports.
+- **Mark the PR ready** (`gh pr ready`) only after PASS and the Copilot fixes (step 8.6).
 
 **Under `mode=local`:** nothing is pushed, so there is no Linux report. The maintainer
 decided on 2026-11-07 that a row whose code cargo-mutants mutates may not PASS until a
@@ -130,8 +138,9 @@ reports, but *not* your opinion of the work. If the slice changed public API, ru
 3. Full local gate once more.
 4. Commit: `feat(<area>): <summary> [<ROW-IDs>]` (or `fix`/`docs`/`test`/`chore`), body
    listing rows moved to verified. Include the attribution trailer the session requires.
-5. `mode=pr` (default): push the branch, open a PR with `gh pr create` using the slice
-   brief as the body, and watch its CI run. Under `/loop`, the next iteration waits
+5. `mode=pr` (default): push the branch to the slice's PR. Step 7 opened that PR as a
+   draft, so reuse it. Run `gh pr create` only if the branch has no PR. Update the PR
+   body from the slice brief (`gh pr edit N --body-file …`), and watch its CI run. Under `/loop`, the next iteration waits
    (preflight step 2) until the maintainer has merged it. `mode=local`: commit only,
    do not push. Never merge a PR yourself; merging is the maintainer's review.
 6. `mode=pr`: **wait for the Copilot pull-request review to finish, then address

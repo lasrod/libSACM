@@ -76,8 +76,12 @@ cargo xtask matrix check
     share a `CARGO_TARGET_DIR` with another tree: a reused test binary carries the other
     tree's `env!("CARGO_MANIFEST_DIR")` and reads that tree's files.
   
-  For example, in Bash from the repository root:
-  `mkdir -p target/scratch && git ls-files -z --cached --others --exclude-standard | tar --null -T - -cf - | tar -xf - -C target/scratch`.
+  Make a **fresh** copy for each check. Extracting over an earlier copy keeps files
+  you have since deleted, and they still compile and run. For example, in Bash from
+  the repository root:
+  `rm -rf target/scratch && mkdir -p target/scratch && git ls-files -z --cached --others --exclude-standard | tar --null -T - -cf - | tar -xf - -C target/scratch`.
+  (tar warns about files that are tracked but deleted from the working tree. Those
+  files are correctly absent from the copy.)
   Then work inside `target/scratch`. The authoritative check is the Linux cargo-mutants
   run on the slice's draft PR.
 - Deterministic output: no `HashMap` iteration order in anything serialized or reported.
