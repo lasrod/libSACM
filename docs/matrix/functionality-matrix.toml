@@ -213,7 +213,7 @@ title = "Dependency licences, advisories and sources are policed"
 requirement = "cargo-deny checks that every dependency has a licence compatible with distributing an MIT library, has no known security advisory, is not yanked, and comes from crates.io; CI runs it."
 source = "Project policy (public MIT library)"
 kind = "quality"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-QA-001"]
 acceptance = [
   "deny.toml allows only permissive licences and denies unknown registries and git sources.",
@@ -239,10 +239,12 @@ tests = [
   "xtask/tests/repo_checks.rs::lib_qa_003_deny_job_check_rejects_known_bypasses",
   "xtask/tests/repo_checks.rs::lib_qa_003_deny_job_check_rejects_yaml_input_bypasses",
   "xtask/tests/repo_checks.rs::lib_qa_003_deny_job_check_rejects_unquoted_input_injection",
+  "xtask/tests/repo_checks.rs::lib_qa_003_deny_job_check_rejects_log_level_spellings",
   "xtask/tests/repo_checks.rs::lib_qa_003_deny_job_check_rejects_yaml_guard_bypasses",
   "xtask/tests/repo_checks.rs::lib_qa_003_deny_job_check_reports_parse_and_shape_errors",
   "xtask/tests/repo_checks.rs::lib_qa_003_deny_job_check_accepts_equivalent_inputs",
 ]
+verification = "docs/verification/0002-m0-qa-and-cli-verification-round4.md"
 
 [[row]]
 id = "LIB-TOOL-001"
@@ -580,6 +582,17 @@ source = "Verification 0001 round 2 Low and round-6 prescription (R63; different
 kind = "tooling"
 status = "planned"
 depends_on = ["LIB-TOOL-001"]
+
+[[row]]
+id = "LIB-QA-009"
+area = "QA"
+milestone = "M0"
+title = "Third-party CI actions are pinned and their inputs reviewed"
+requirement = "Every third-party action in ci.yml whose inputs reach a command line (at least EmbarkStudios/cargo-deny-action) is pinned by full commit SHA, and a test keeps a reviewed allowlist of the inputs it may receive, so a version bump that adds or changes an input is reviewed before use."
+source = "Verification 0002 rounds 3 and 4 follow-up (cargo-deny-action@v2 splices inputs into an unquoted command line; @v2 is a moving tag)"
+kind = "quality"
+status = "planned"
+depends_on = ["LIB-QA-003"]
 
 [[row]]
 id = "LIB-QA-008"

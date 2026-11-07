@@ -694,17 +694,27 @@ fn licence_problems(deny: &toml::Table) -> Vec<String> {
         "licenses",
         "licenses.private.registries must be absent or empty",
     );
-    for key in ["include-dev", "include-build"] {
-        require(
-            &mut problems,
-            !matches!(
-                lookup(deny, &["licenses", key]),
-                Some(toml::Value::Boolean(false))
-            ),
-            "licenses",
-            &format!("licenses.{key} must not be false"),
-        );
-    }
+    // Round 3 F2: cargo-deny's default for `include-dev` is false, so an
+    // absent key leaves dev-dependencies unchecked; it must be exactly `true`
+    // (maintainer decision, option (a)). `include-build` defaults to true.
+    require(
+        &mut problems,
+        matches!(
+            lookup(deny, &["licenses", "include-dev"]),
+            Some(toml::Value::Boolean(true))
+        ),
+        "licenses",
+        "licenses.include-dev must be exactly true (cargo-deny's default is false)",
+    );
+    require(
+        &mut problems,
+        !matches!(
+            lookup(deny, &["licenses", "include-build"]),
+            Some(toml::Value::Boolean(false))
+        ),
+        "licenses",
+        "licenses.include-build must not be false",
+    );
     problems.extend(non_permissive(allow, "licenses.allow"));
     problems.extend(exception_problems);
     problems
@@ -1928,6 +1938,13 @@ fn lib_qa_003_dependency_policy_is_enforced() {
         Some("deny"),
         "LIB-QA-003: yanked crates must be denied"
     );
+    assert_eq!(
+        deny["licenses"]
+            .get("include-dev")
+            .and_then(toml::Value::as_bool),
+        Some(true),
+        "LIB-QA-003: dev-dependencies must be licence-checked (`licenses.include-dev = true`)"
+    );
 }
 
 /// A TOML value written inline, e.g. `toml_value("[1, 2]")`.
@@ -2275,12 +2292,25 @@ fn lib_qa_003_policy_check_rejects_narrowed_licence_check() {
                 "false",
             ),
             (
+                "licenses.include-dev = \"true\", a string",
+                "licenses",
+                "include-dev",
+                r#""true""#,
+            ),
+            (
                 "licenses.include-build = false",
                 "licenses",
                 "include-build",
                 "false",
             ),
         ],
+    );
+    // Round 3 F2: cargo-deny 0.20.2 does not licence-check dev-dependencies
+    // unless `include-dev = true`, so removing the key narrows the check.
+    let problems = check_deny_policy(&deny_without("licenses", "include-dev"));
+    assert!(
+        has_code(&problems, "licenses"),
+        "LIB-QA-003: the mutation `licenses.include-dev removed` must be reported as `[licenses]`; it reported {problems:#?}"
     );
 }
 
@@ -2325,7 +2355,8 @@ fn lib_qa_003_policy_check_rejects_unreviewed_keys() {
 /// `(name, section, key, value)` settings of `deny.toml` within the approved
 /// policy: the controls of round 1, the absent-or-empty and absent-or-false
 /// values of R3-3 to R3-6, keys cargo-deny 0.20.2 accepts (R3-7), and the
-/// unchecked `[bans]` and `[output]` sections.
+/// unchecked `[bans]` and `[output]` sections. `licenses.include-dev` has one
+/// approved value, `true` (round 3 F2); its absence is not approved.
 const APPROVED_DENY_VALUES: &[(&str, &str, &str, &str)] = &[
     (
         "exception within the permissive set",
@@ -2377,12 +2408,14 @@ const APPROVED_DENY_VALUES: &[(&str, &str, &str, &str)] = &[
         "registries",
         "[]",
     ),
+    // Round 3 F2: the only approved value, and the value in the real file.
     (
         "licenses.include-dev = true",
         "licenses",
         "include-dev",
         "true",
     ),
+    // `include-build` may be true or absent (the real file), never false.
     (
         "licenses.include-build = true",
         "licenses",
@@ -2786,6 +2819,65 @@ fn lib_qa_003_deny_job_check_rejects_unquoted_input_injection() {
     assert_yaml_mutations_reported("LIB-QA-003", &mutations, check_deny_job);
 }
 
+/// Round 3 F1: the `log-level` rule holds however the input is spelled: under
+/// an upper-case input name (GitHub matches input names without regard to
+/// case), through `with: *anchor` (an alias of a mapping anchored in a skipped
+/// job before the cargo-deny job), and as an empty value.
+#[test]
+fn lib_qa_003_deny_job_check_rejects_log_level_spellings() {
+    let (ci, step, job) = deny_fixture();
+    let after_step = |lines: &[&str]| insert_after(&ci, &step, 2, lines);
+    let upper_case = after_step(&["with: { LOG-LEVEL: \"warn --exclude-dev\" }"]);
+    assert_eq!(
+        deny_input_values(&upper_case, &job, "LOG-LEVEL"),
+        ["warn --exclude-dev"],
+        "LIB-QA-003: the mutation `LOG-LEVEL: \"warn --exclude-dev\"` must pass `LOG-LEVEL: warn --exclude-dev`"
+    );
+    let command = msrv_command(&workspace_msrv());
+    let msrv_job = job_with_step(&ci, |s| {
+        get(s, "run").and_then(Yaml::as_str) == Some(command.as_str())
+    });
+    let anchored = insert_before(
+        &ci,
+        &format!("{msrv_job}:"),
+        &[
+            "anchor-holder:",
+            "  if: false",
+            "  runs-on: ubuntu-latest",
+            "  steps:",
+            "    - run: echo skipped",
+            "      env: &exclude_dev",
+            "        log-level: \"warn --exclude-dev\"",
+        ],
+    );
+    let aliased = insert_after(&anchored, &step, 2, &["with: *exclude_dev"]);
+    assert_eq!(
+        deny_input_values(&aliased, &job, "log-level"),
+        ["warn --exclude-dev"],
+        "LIB-QA-003: the mutation `with: *exclude_dev` must make GitHub pass `log-level: warn --exclude-dev`"
+    );
+    let empty = after_step(&["with: { log-level: \"\" }"]);
+    assert_eq!(
+        deny_input_values(&empty, &job, "log-level"),
+        [""],
+        "LIB-QA-003: the mutation `log-level: \"\"` must pass an empty `log-level`"
+    );
+    let mutations = [
+        mutation(
+            "LOG-LEVEL: \"warn --exclude-dev\" (input name in upper case)",
+            upper_case,
+            DENY_INPUT,
+        ),
+        mutation(
+            "with: *exclude_dev, an alias of a mapping carrying log-level: \"warn --exclude-dev\"",
+            aliased,
+            DENY_INPUT,
+        ),
+        mutation("log-level: \"\"", empty, DENY_INPUT),
+    ];
+    assert_yaml_mutations_reported("LIB-QA-003", &mutations, check_deny_job);
+}
+
 /// Y3-2 and design condition 5: nothing in YAML form can make the cargo-deny
 /// job or step conditional or allowed to fail, or merge narrowing inputs in.
 #[test]
@@ -2876,6 +2968,17 @@ fn lib_qa_003_deny_job_check_accepts_equivalent_inputs() {
         ["check"],
         "LIB-QA-003: `with: {{ command: check }}` must pass `command: check`"
     );
+    // Round 3 F1: `off` is a YAML 1.1 boolean but a YAML 1.2 string, and
+    // GitHub passes it as the string `off`; it must stay a string here.
+    let block_off = after_step(&["with:", "  log-level: off"]);
+    let flow_off = after_step(&["with: { log-level: off }"]);
+    for (name, text) in [("block", &block_off), ("flow", &flow_off)] {
+        assert_eq!(
+            deny_input_values(text, &job, "log-level"),
+            ["off"],
+            "LIB-QA-003: {name} `log-level: off` must be read as the string `off`"
+        );
+    }
     let controls = [
         ("the real ci.yml", ci.clone()),
         ("with: { command: check }", flow_check),
@@ -2932,7 +3035,8 @@ fn lib_qa_003_deny_job_check_accepts_equivalent_inputs() {
             "log-level: trace",
             after_step(&["with:", "  log-level: trace"]),
         ),
-        ("log-level: off", after_step(&["with:", "  log-level: off"])),
+        ("block log-level: off", block_off),
+        ("flow log-level: off", flow_off),
         (
             "an input passed quoted (rust-version)",
             after_step(&["with: { rust-version: \"1.85.0\" }"]),
