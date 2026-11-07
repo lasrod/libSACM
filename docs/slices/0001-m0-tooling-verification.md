@@ -1,8 +1,8 @@
 ---
 slice: 0001
 name: m0-tooling-verification
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [LIB-TOOL-001, LIB-TOOL-002, LIB-TOOL-003, LIB-API-001, LIB-QA-001]
 mode: pr
 ---
@@ -147,3 +147,5 @@ doctests.
 - 2026-11-07 maintainer decisions: verifier prescriptions must be complete (agent + skill updated); follow the assurance-forge C++ library's approved design (architect/researcher/CLAUDE.md); slices land via PR (mode=pr); LIB-QA-007 (cargo-mutants) brought forward to M0. Slice continues on branch slice/0001-m0-tooling-verification.
 - 2026-11-07 fix round 4 (approved): verifier pre-stated the complete prescription (docs/verification/0001-m0-tooling-verification-round6-prescription.md). Item 11 resolved by narrowing criterion 7; new row LIB-TOOL-011. Tests next.
 - 2026-11-07 fix round 4: test engineer wrote 17 run() tests and 1 non-Unicode binary test (red: missing xtask::run, binary panicked); implementer moved all dispatch into xtask::run with writer-based cmd_*, args_os decoding, write errors as Err. 96 xtask tests green.
+- 2026-11-07 verification round 6: LIB-TOOL-001 PASS (all prescribed mutations killed); condition met by CI run 42352469780 (cfg(unix) test green on Ubuntu and macOS). LIB-TOOL-001 -> verified. See docs/verification/0001-m0-tooling-verification-round6.md.
+- 2026-11-07 closed. Slice verified: LIB-API-001, LIB-TOOL-002, LIB-QA-001, LIB-TOOL-003, LIB-TOOL-001. PR #5 awaits the maintainer's merge.

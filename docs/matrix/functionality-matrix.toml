@@ -220,7 +220,7 @@ title = "Functionality-matrix gate"
 requirement = "`cargo xtask matrix check` enforces the rules of docs/matrix/README.md, `render` regenerates the Markdown view, and `next` lists the open rows whose dependencies are all verified, in milestone then file order."
 source = "ADR 0004"
 kind = "tooling"
-status = "implemented"
+status = "verified"
 acceptance = [
   "Rejects malformed, mismatched and duplicate ids, unknown areas and milestones.",
   "Enforces the evidence each status requires (acceptance, tests, code, verification record, reason).",
@@ -316,6 +316,7 @@ tests = [
   "xtask/tests/run.rs::lib_tool_001_run_rejects_near_miss_arguments",
   "xtask/tests/run.rs::lib_tool_001_run_turns_write_failures_into_errors",
 ]
+verification = "docs/verification/0001-m0-tooling-verification-round6.md"
 
 [[row]]
 id = "LIB-TOOL-002"
