@@ -97,8 +97,11 @@ implemented.
   fails to compile only on `RootSource` and `run_from`; the lead confirmed this.
   - Settled on the test engineer's questions: a read error shows the full path; the
     whole line is escaped; an empty `XTASK_ROOT` is an error (D5).
-  - Not covered: an error without a span (toml 1.2 always gives a span), and a tree
-    whose name holds control characters (`#[cfg(unix)]`, so only on Linux CI).
+  - Not covered: an error without a span, and a tree whose name holds control
+    characters (`#[cfg(unix)]`, so only on Linux CI).
+    - **Corrected in verification round 1 (F1):** the claim that "toml 1.2 always gives
+      a span" was false. toml's "recursion limit" error has no span: a dotted key of 80
+      or more segments triggers it. The spanless case is tested in fix round 1.
   - Both rows are now `tests-failing`.
 - 2026-11-08 implementation: `RootSource` and `run_from` in `lib.rs`, a private
   `matrix::cmd_check_from`, `load_error`, the empty-root check in `main.rs`, and README
@@ -113,3 +116,9 @@ implemented.
   - Fix: the test file is renamed to `reporting.rs` and the reason is recorded in the
     triage document.
   - The durable fix is the new row LIB-QA-012.
+- 2026-11-08 verification round 1, at `6019823`:
+  [record](../verification/0005-m0-check-reporting.md).
+  - LIB-TOOL-013 PASS, and it is now `verified`.
+  - LIB-TOOL-014 FAIL (F1: the spanless form is reachable and untested; a mutant
+    survives). Its prescription is P-1 to P-4.
+  - Fix round 1: the tests go to the test engineer. The code needs no change.

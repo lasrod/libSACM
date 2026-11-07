@@ -243,6 +243,45 @@ fn syntax_error_line() -> String {
     format!("{MATRIX_PATH}:19:9: {}", parser_message(&text))
 }
 
+/// How many segments the dotted key of [`spanless_error_text`] has. toml
+/// 1.2 refuses a dotted key of 80 or more segments with an error that has no
+/// span.
+const DOTTED_SEGMENTS: usize = 81;
+
+/// A valid header, then the dotted key `a.a. ... .a = 1` of
+/// [`DOTTED_SEGMENTS`] segments on line 10: a parse error without a span.
+fn spanless_error_text() -> String {
+    format!("{HEADER}{} = 1\n", vec!["a"; DOTTED_SEGMENTS].join("."))
+}
+
+/// The parser's message for [`spanless_error_text`], after checking that its
+/// error has no span.
+fn spanless_message() -> String {
+    let text = spanless_error_text();
+    let error = toml::from_str::<Matrix>(&text)
+        .expect_err("LIB-TOOL-014: precondition: the dotted-key fixture fails to parse");
+    assert_eq!(
+        error.span(),
+        None,
+        "LIB-TOOL-014: precondition: the parser gives the dotted-key error no span; if it now \
+         has one, this fixture no longer reaches the spanless form, got {:?}",
+        error.message()
+    );
+    let message = error.message().to_owned();
+    assert!(
+        !message.is_empty() && !message.chars().any(char::is_control),
+        "LIB-TOOL-014: precondition: the spanless message is non-empty and holds no control \
+         character, got {message:?}"
+    );
+    message
+}
+
+/// The one-line load error for [`spanless_error_text`]: the path and the
+/// message, without a position.
+fn spanless_error_line() -> String {
+    format!("{MATRIX_PATH}: {}", spanless_message())
+}
+
 /// The byte offset of the first `marker` in `text`.
 fn offset_of(text: &str, marker: &str) -> usize {
     text.find(marker)
@@ -732,6 +771,45 @@ fn lib_tool_014_binary_prints_the_read_error_on_one_stderr_line() {
             (false, String::new(), format!("xtask: {named}\n")),
             "LIB-TOOL-014: `xtask {}` on an unreadable matrix fails, prints nothing on stdout, \
              and prints `xtask: read <path>: <error>` and a newline on stderr",
+            args.join(" ")
+        );
+    }
+}
+
+#[test]
+fn lib_tool_014_an_error_without_a_span_is_one_line_without_a_position() {
+    let text = spanless_error_text();
+    let message = spanless_message();
+    let expected = format!("{MATRIX_PATH}: {message}");
+    assert!(
+        !expected.contains('\n'),
+        "LIB-TOOL-014: precondition: the expected error is one line, got {expected:?}"
+    );
+    assert_eq!(
+        load(&text).map(|_| ()),
+        Err(expected),
+        "LIB-TOOL-014: an error without a span is exactly `<path>: <message>`, with the parser's \
+         own message, no position and no source excerpt"
+    );
+}
+
+#[test]
+fn lib_tool_014_binary_prints_an_error_without_a_span_on_one_stderr_line() {
+    let tree = TempTree::new("report-binary-spanless");
+    tree.write(MATRIX_PATH, &spanless_error_text());
+    let line = spanless_error_line();
+    for args in LOADING_COMMANDS {
+        // Under `XTASK_ROOT`, only `matrix check` names the root (LIB-TOOL-013).
+        let named = if args == ["matrix", "check"] {
+            format!("{line}{}", suffix(tree.root()))
+        } else {
+            line.clone()
+        };
+        assert_eq!(
+            binary("LIB-TOOL-014", args, Some(tree.root())),
+            (false, String::new(), format!("xtask: {named}\n")),
+            "LIB-TOOL-014: `xtask {}` on a matrix whose parse error has no span fails, prints \
+             nothing on stdout, and prints `xtask: <path>: <message>` and a newline on stderr",
             args.join(" ")
         );
     }

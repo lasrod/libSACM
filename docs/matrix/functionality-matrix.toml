@@ -737,7 +737,7 @@ title = "Matrix check names an overridden root"
 requirement = "When `XTASK_ROOT` overrides the repository root, `cargo xtask matrix check` says which root it checked, in both the OK line and the error, so a run against another tree cannot be mistaken for a check of the repository."
 source = "Verification 0004 round 1 follow-up"
 kind = "tooling"
-status = "implemented"
+status = "verified"
 code = ["xtask/src/lib.rs", "xtask/src/main.rs", "xtask/src/matrix.rs"]
 acceptance = [
   "The binary records where its root came from. With `XTASK_ROOT` set, `cargo xtask matrix check` names the root it checked. Without it, the output is unchanged: `functionality matrix OK: <n> rows`, and the LIB-TOOL-010 error. The rule depends on where the root came from, not on its value: an `XTASK_ROOT` equal to the build root is still named.",
@@ -768,6 +768,7 @@ tests = [
   "xtask/tests/reporting.rs::lib_tool_013_binary_refuses_an_empty_xtask_root_for_help",
   "xtask/tests/reporting.rs::lib_tool_013_binary_refuses_an_empty_xtask_root_for_every_command",
 ]
+verification = "docs/verification/0005-m0-check-reporting.md"
 
 [[row]]
 id = "LIB-TOOL-014"
@@ -801,6 +802,8 @@ tests = [
   "xtask/tests/reporting.rs::lib_tool_014_every_command_returns_the_same_load_error",
   "xtask/tests/reporting.rs::lib_tool_014_binary_prints_the_load_error_on_one_stderr_line",
   "xtask/tests/reporting.rs::lib_tool_014_binary_prints_the_read_error_on_one_stderr_line",
+  "xtask/tests/reporting.rs::lib_tool_014_an_error_without_a_span_is_one_line_without_a_position",
+  "xtask/tests/reporting.rs::lib_tool_014_binary_prints_an_error_without_a_span_on_one_stderr_line",
 ]
 
 [[row]]
