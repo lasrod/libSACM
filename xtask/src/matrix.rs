@@ -533,7 +533,11 @@ pub fn load(text: &str) -> Result<Matrix, String> {
 /// Every rule violation in the matrix, as human-readable messages; empty when
 /// the matrix passes the gate. Row-level messages start with the row id.
 ///
-/// The rules are those of `docs/matrix/README.md`.
+/// The rules are those of `docs/matrix/README.md`. The order is
+/// deterministic: matrix-wide problems, then each row's in file order, then
+/// dependency cycles, then uncited traced tests sorted by file and function
+/// name, then the rendered page. Values are quoted as they are, control
+/// characters included; [`cmd_check`] escapes them.
 #[must_use]
 pub fn check(matrix: &Matrix, repo: &dyn Repo) -> Vec<String> {
     let mut errors = Vec::new();
@@ -556,6 +560,16 @@ pub fn check(matrix: &Matrix, repo: &dyn Repo) -> Vec<String> {
     let areas: HashMap<&str, &Area> = matrix.areas.iter().map(|a| (a.code.as_str(), a)).collect();
     if areas.len() != matrix.areas.len() {
         errors.push("area codes must be unique".into());
+    }
+    // One problem per `[[area]]` entry, so a duplicated bad code is reported
+    // twice, once for each entry.
+    for area in &matrix.areas {
+        if area.code.is_empty() || !area.code.chars().all(|c| c.is_ascii_uppercase()) {
+            errors.push(format!(
+                "area code `{}` must be one or more uppercase ASCII letters",
+                area.code
+            ));
+        }
     }
 
     let mut rows: HashMap<&str, &Row> = HashMap::new();
@@ -728,16 +742,7 @@ fn check_evidence(row: &Row, index: &Index<'_>) -> Vec<String> {
         (Some(_), st) if st != Status::Verified => {
             out.push(format!("is {s} but cites a verification record"));
         }
-        (Some(record), _) => match index.repo.read(record) {
-            None => out.push(format!("verification record {record} does not exist")),
-            Some(text) if !text.contains(row.id.as_str()) => {
-                out.push(format!(
-                    "verification record {record} does not mention {}",
-                    row.id
-                ));
-            }
-            Some(_) => {}
-        },
+        (Some(record), _) => out.extend(check_record(&row.id, record, index.repo)),
         (None, _) => {}
     }
     if status.needs_reason() && row.notes.as_deref().is_none_or(|n| n.trim().is_empty()) {
@@ -746,18 +751,133 @@ fn check_evidence(row: &Row, index: &Index<'_>) -> Vec<String> {
     out
 }
 
-/// Cited code paths exist; cited tests exist, are test functions (see
-/// [`traced_tests`]), and are named for this row.
+/// The start of every verdict line: `- Row verdict: <ROW-ID>: <VERDICT>`.
+const VERDICT_PREFIX: &str = "- Row verdict:";
+
+/// A line of a verification record that starts with [`VERDICT_PREFIX`].
+#[derive(Debug)]
+enum VerdictLine<'a> {
+    /// `- Row verdict: <id>: <verdict>`, where the verdict is PASS, FAIL or
+    /// OPEN.
+    WellFormed { id: &'a str, verdict: &'a str },
+    /// Any other line starting with [`VERDICT_PREFIX`], by its 1-based line
+    /// number.
+    Malformed(usize),
+}
+
+/// The verdict lines of a verification record, in line order.
+///
+/// A line counts once trailing spaces and tabs are removed, and only when it
+/// starts with [`VERDICT_PREFIX`] itself: an indented or block-quoted line
+/// does not. Lines inside a ```` ``` ```` or `~~~` fence never count, and the
+/// fence lines themselves are not verdict lines.
+fn verdict_lines(text: &str) -> Vec<VerdictLine<'_>> {
+    let mut fenced = false;
+    let mut out = Vec::new();
+    for (i, line) in text.lines().enumerate() {
+        if line.starts_with("```") || line.starts_with("~~~") {
+            fenced = !fenced;
+            continue;
+        }
+        if fenced {
+            continue;
+        }
+        let Some(rest) = line
+            .trim_end_matches([' ', '\t'])
+            .strip_prefix(VERDICT_PREFIX)
+        else {
+            continue;
+        };
+        let parsed = rest
+            .strip_prefix(' ')
+            .and_then(|rest| rest.split_once(": "))
+            .filter(|(id, verdict)| !id.is_empty() && matches!(*verdict, "PASS" | "FAIL" | "OPEN"));
+        out.push(match parsed {
+            Some((id, verdict)) => VerdictLine::WellFormed { id, verdict },
+            None => VerdictLine::Malformed(i + 1),
+        });
+    }
+    out
+}
+
+/// The verification record of the verified row `id`: its path is inside the
+/// repository, it exists, every verdict line in it is well formed, and it has
+/// exactly one verdict line for `id`, saying PASS.
+fn check_record(id: &str, record: &str, repo: &dyn Repo) -> Vec<String> {
+    if let Err(problem) = check_path(record) {
+        return vec![problem];
+    }
+    let Some(text) = repo.read(record) else {
+        return vec![format!("verification record {record} does not exist")];
+    };
+    let mut out = Vec::new();
+    let mut verdicts = Vec::new();
+    for line in verdict_lines(&text) {
+        match line {
+            VerdictLine::Malformed(n) => out.push(format!(
+                "verification record {record}:{n}: malformed verdict line; expected \
+                 `{VERDICT_PREFIX} <ROW-ID>: <PASS|FAIL|OPEN>`"
+            )),
+            VerdictLine::WellFormed {
+                id: line_id,
+                verdict,
+            } if line_id == id => {
+                verdicts.push(verdict);
+            }
+            VerdictLine::WellFormed { .. } => {}
+        }
+    }
+    match verdicts.as_slice() {
+        ["PASS"] => {}
+        [] => out.push(format!(
+            "verification record {record} has no `{VERDICT_PREFIX} {id}: PASS` line"
+        )),
+        [verdict] => out.push(format!(
+            "verification record {record} gives the verdict {verdict}, not PASS"
+        )),
+        many => out.push(format!(
+            "verification record {record} has {} verdict lines for this row; expected exactly one",
+            many.len()
+        )),
+    }
+    out
+}
+
+/// `Err` with the problem to report when `path` is not a relative,
+/// `/`-separated path inside the repository: it contains `\` or `:`, or has
+/// an empty, `.` or `..` component. An empty path and a path starting with
+/// `/` both have an empty component. A rejected path must not be asked of the
+/// [`Repo`].
+fn check_path(path: &str) -> Result<(), String> {
+    if path.contains(['\\', ':']) || path.split('/').any(|c| matches!(c, "" | "." | "..")) {
+        Err(format!(
+            "cited path `{path}` must be a relative path inside the repository"
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+/// Cited paths are inside the repository (see [`check_path`]); cited code
+/// paths exist; cited tests are named for this row, exist, and are test
+/// functions (see [`traced_tests`]). A rejected path is reported and its
+/// citation's other checks are skipped, except the test name check.
 fn check_citations(row: &Row, index: &Index<'_>) -> Vec<String> {
     let mut out = Vec::new();
     for path in &row.code {
-        if !index.repo.exists(path) {
+        if let Err(problem) = check_path(path) {
+            out.push(problem);
+        } else if !index.repo.exists(path) {
             out.push(format!("cited code path {path} does not exist"));
         }
     }
     let prefix = test_prefix(&row.id);
     for test in &row.tests {
         if let Some(path) = test.strip_prefix("doctest:") {
+            if let Err(problem) = check_path(path) {
+                out.push(problem);
+                continue;
+            }
             match index.repo.read(path) {
                 None => out.push(format!("doctest file {path} does not exist")),
                 Some(text) if !text.contains("```") => {
@@ -778,6 +898,10 @@ fn check_citations(row: &Row, index: &Index<'_>) -> Vec<String> {
             out.push(format!(
                 "test `{name}` must be named `{prefix}_...` to trace to this row"
             ));
+        }
+        if let Err(problem) = check_path(path) {
+            out.push(problem);
+            continue;
         }
         let Some(text) = index.repo.read(path) else {
             out.push(format!("test file {path} does not exist"));
@@ -846,6 +970,8 @@ fn check_cycles(matrix: &Matrix, rows: &HashMap<&str, &Row>, errors: &mut Vec<St
 }
 
 /// A traced test that no row cites is invisible to everyone downstream.
+/// Reported by file and then by function name, whatever order the repository
+/// lists them in.
 fn check_orphans(matrix: &Matrix, repo: &dyn Repo, errors: &mut Vec<String>) {
     let cited: HashSet<(&str, &str)> = matrix
         .rows
@@ -853,12 +979,16 @@ fn check_orphans(matrix: &Matrix, repo: &dyn Repo, errors: &mut Vec<String>) {
         .flat_map(|r| r.tests.iter())
         .filter_map(|t| t.split_once("::"))
         .collect();
-    for (file, name) in repo.traced_functions() {
-        if !cited.contains(&(file.as_str(), name.as_str())) {
-            errors.push(format!(
-                "{file}: traced test `{name}` is not cited by any matrix row"
-            ));
-        }
+    let mut orphans: Vec<(String, String)> = repo
+        .traced_functions()
+        .into_iter()
+        .filter(|(file, name)| !cited.contains(&(file.as_str(), name.as_str())))
+        .collect();
+    orphans.sort();
+    for (file, name) in orphans {
+        errors.push(format!(
+            "{file}: traced test `{name}` is not cited by any matrix row"
+        ));
     }
 }
 
@@ -1057,30 +1187,46 @@ fn load_from(root: &Path) -> Result<Matrix, String> {
     load(&text)
 }
 
+/// `text` with every control character ([`char::is_control`]) escaped as by
+/// [`char::escape_default`], so that it fits on one line.
+fn escape_controls(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        if c.is_control() {
+            out.extend(c.escape_default());
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
 /// `cargo xtask matrix check`: run [`check`] on the repository at `root`.
 ///
 /// On success, writes `functionality matrix OK: <n> rows` to `out`. On
-/// failure, lists every problem on standard error and writes nothing to
-/// `out`.
+/// failure, writes nothing: every problem is in the returned error.
 ///
 /// # Errors
 ///
-/// Returns an error when the matrix cannot be read or parsed, when it has
-/// problems (`functionality matrix: <n> problem(s)`), or when writing to
-/// `out` fails.
-// The per-problem lines go to stderr (LIB-TOOL-010 tracks where they belong).
-#[allow(clippy::print_stderr)]
+/// Returns an error when the matrix cannot be read or parsed, or when writing
+/// to `out` fails. When the matrix has problems, the error's first line is
+/// `functionality matrix: <n> problem(s)`, followed by each problem on a line
+/// of its own, indented by two spaces, in the order [`check`] returns them.
+/// Control characters in a problem are escaped (for example `\n` and
+/// `\u{1b}`), so that each problem takes exactly one line.
 pub fn cmd_check(root: &Path, out: &mut dyn io::Write) -> Result<(), String> {
     let matrix = load_from(root)?;
-    let errors = check(&matrix, &FsRepo::new(root));
-    if errors.is_empty() {
-        writeln!(out, "functionality matrix OK: {} rows", matrix.rows.len()).map_err(output_error)
-    } else {
-        for error in &errors {
-            eprintln!("  {error}");
-        }
-        Err(format!("functionality matrix: {} problem(s)", errors.len()))
+    let problems = check(&matrix, &FsRepo::new(root));
+    if problems.is_empty() {
+        return writeln!(out, "functionality matrix OK: {} rows", matrix.rows.len())
+            .map_err(output_error);
     }
+    let mut report = format!("functionality matrix: {} problem(s)", problems.len());
+    for problem in &problems {
+        report.push_str("\n  ");
+        report.push_str(&escape_controls(problem));
+    }
+    Err(report)
 }
 
 /// `cargo xtask matrix render`: write [`render`] of the matrix to

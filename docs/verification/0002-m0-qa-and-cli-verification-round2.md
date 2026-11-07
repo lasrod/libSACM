@@ -5,6 +5,9 @@
   - LIB-CLI-001: **PASS**
   - LIB-QA-002: FAIL
   - LIB-QA-003: FAIL
+- Row verdict: LIB-CLI-001: PASS
+- Row verdict: LIB-QA-002: FAIL
+- Row verdict: LIB-QA-003: FAIL
 - Verifier: `sacm-verifier` (independent; read-only)
 - Inspected: `b944c24` (PR #6), the fix round 1 diff since `b86187b`
 - CI: [run 42356192597](https://github.com/lasrod/libSACM/actions/runs/42356192597), 10 of 10 jobs passed. Both Linux CLI tests show `ok` in the ubuntu test job and in the MSRV job (rustc 1.85.1). The cargo-deny action runs cargo-deny 0.20.2.

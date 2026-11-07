@@ -22,6 +22,14 @@
 //!                                 Download the pinned OMG SACM 2.3 reference artifacts
 //! ```
 //!
+//! The binary works on the repository it was built in. Set the `XTASK_ROOT`
+//! environment variable to run it on another tree, for example a temporary
+//! copy:
+//!
+//! ```text
+//! XTASK_ROOT=/tmp/checkout cargo xtask matrix check
+//! ```
+//!
 //! This crate is repository tooling, not part of the published library: it is
 //! `publish = false` and its API serves the binary and its tests only.
 
@@ -42,7 +50,10 @@ commands:
   matrix next [-n N]      list the next N ready rows (default 10)
   matrix status           summarize row statuses per milestone
   fetch-spec [--dest DIR] download the pinned OMG SACM 2.3 reference artifacts
-                          (default DIR: third_party/sacm-2.3)";
+                          (default DIR: third_party/sacm-2.3)
+
+environment:
+  XTASK_ROOT              repository to work on (default: the one xtask was built in)";
 
 /// How many rows `matrix next` lists when no count is given.
 const DEFAULT_NEXT_LIMIT: usize = 10;
@@ -53,9 +64,9 @@ const DEFAULT_NEXT_LIMIT: usize = 10;
 /// `args` are the command-line arguments without the program name, for
 /// example `["matrix", "next", "-n", "3"]`. `help`, `--help`, `-h` and no
 /// arguments write the usage text. Paths given to `fetch-spec --dest` are
-/// resolved against `root`. Problems found by `matrix check` are listed on
-/// standard error; everything else a successful command reports goes to
-/// `out`, which is flushed before returning.
+/// resolved against `root`. What a successful command reports goes to `out`,
+/// which is flushed before returning; a failing command writes nothing to
+/// standard error, and the problems `matrix check` finds are in its error.
 ///
 /// `run` neither prefixes its messages with `xtask:` nor exits the process;
 /// that is the binary's job.

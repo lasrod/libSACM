@@ -2,6 +2,7 @@
 
 - Date: 2026-11-07
 - Verdict: **PASS**. LIB-QA-003: PASS.
+- Row verdict: LIB-QA-003: PASS
 - Verifier: `sacm-verifier` (independent; read-only)
 - Inspected: `9404177` on `slice/0002-qa-003-final` (PR #8), diffed against `main` at `9f59c85`. It changes `xtask/tests/repo_checks.rs` (test engineer) and `deny.toml` (lead). The rest is the matrix and the slice brief. Nothing outside those scopes changed.
 - CI: [run 42362800537](https://github.com/lasrod/libSACM/actions/runs/42362800537), 10 of 10 jobs passed. The cargo-deny job shows `advisories ok, bans ok, licenses ok, sources ok`.

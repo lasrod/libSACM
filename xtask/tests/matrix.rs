@@ -233,7 +233,14 @@ verification = "docs/verification/v.md"
         .with("docs/verification/v.md", "mentions nothing");
     let p = problems(&matrix(&rows), repo);
     assert_problem(&p, "depends on SACM23-BASE-001, which is planned");
-    assert_problem(&p, "does not mention SACM23-BASE-002");
+    // The record gives no verdict for the row. The wording of that problem is
+    // LIB-TOOL-005's; here it is enough that the row and the record are named.
+    assert!(
+        p.iter()
+            .any(|m| m.starts_with("SACM23-BASE-002: ") && m.contains("docs/verification/v.md")),
+        "LIB-TOOL-001: a record without a verdict for the row is a problem of that row naming \
+         the record, got {p:#?}"
+    );
 }
 
 #[test]
@@ -564,12 +571,21 @@ fn lib_tool_001_rejects_id_with_an_empty_area_segment() {
     let id = "SACM23--001";
     let m = load(&format!("{HEADER}{empty_area}{}", row(id, "planned", "")))
         .expect("LIB-TOOL-001: test matrix with an empty area code parses");
+    let p = problems(&m, FakeRepo::default());
+    // The empty area code is itself a problem under LIB-TOOL-009; only the
+    // row's problems are this test's concern.
+    let (row_problems, others): (Vec<&String>, Vec<&String>) =
+        p.iter().partition(|m| m.starts_with(&format!("{id}: ")));
     assert_eq!(
-        problems(&m, FakeRepo::default()),
-        [format!(
+        row_problems,
+        [&format!(
             "{id}: id must look like SACM23-<AREA>-<NNN> or LIB-<AREA>-<NNN>"
         )],
         "LIB-TOOL-001: an id with an empty area segment is rejected by the id-format rule alone"
+    );
+    assert!(
+        others.iter().all(|m| m.starts_with("area code ``")),
+        "LIB-TOOL-001: the only other problem may be the empty area code, got {p:#?}"
     );
 }
 
@@ -708,7 +724,8 @@ fn evidence_case(status: &str, evidence: &[Evidence]) -> (Matrix, FakeRepo) {
                 extra.push_str("verification = \"");
                 extra.push_str(RECORD);
                 extra.push_str("\"\n");
-                repo = repo.with(RECORD, "SACM23-BASE-001: PASS");
+                // A per-row verdict line (LIB-TOOL-005), which also mentions the id.
+                repo = repo.with(RECORD, "- Row verdict: SACM23-BASE-001: PASS\n");
             }
             Evidence::Notes => extra.push_str("notes = \"why\"\n"),
         }

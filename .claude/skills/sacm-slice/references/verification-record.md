@@ -2,9 +2,14 @@
 
 - Date: YYYY-MM-DD
 - Verdict: **PASS**
+- Row verdict: ROW-ID: PASS
 - Verifier: `sacm-verifier` (independent; read-only)
 - Commit / diff inspected: <sha or "working tree at slice close">
 - Slice brief: [docs/slices/NNNN-short-name.md](../slices/NNNN-short-name.md)
+
+<!-- One `- Row verdict: <ROW-ID>: PASS|FAIL|OPEN` line per row the verifier judged,
+     with no indent, outside code blocks. The matrix gate requires exactly one PASS
+     line for each verified row that cites this record (LIB-TOOL-005). -->
 
 ## Rows verified
 

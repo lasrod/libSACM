@@ -126,10 +126,12 @@ fn lib_tool_001_run_matrix_check_fails_on_an_uncited_test_under_the_given_root()
     let page_before = bytes(tree.root(), RENDERED_PATH);
 
     let (result, out) = run_captured(&["matrix", "check"], tree.root());
+    // The lines after the first list the problems (LIB-TOOL-010).
     assert_eq!(
-        result,
-        Err("functionality matrix: 1 problem(s)".to_owned()),
-        "LIB-TOOL-001: `matrix check` on the given root finds exactly the planted orphan"
+        result.as_ref().map_err(|e| e.lines().next()),
+        Err(Some("functionality matrix: 1 problem(s)")),
+        "LIB-TOOL-001: `matrix check` on the given root finds exactly the planted orphan, \
+         got {result:?}"
     );
     assert!(
         out.is_empty(),
@@ -722,10 +724,12 @@ fn lib_tool_001_run_keeps_the_command_error_when_flushing_also_fails() {
     let two = next_tree("run-flush-fail-bad-count");
 
     let (result, _) = run_flush_failing(&["matrix", "check"], orphan.root());
+    // The lines after the first list the problems (LIB-TOOL-010).
     assert_eq!(
-        result,
-        Err("functionality matrix: 1 problem(s)".to_owned()),
-        "LIB-TOOL-001: a failing `matrix check` returns its own error, not the flush error"
+        result.as_ref().map_err(|e| e.lines().next()),
+        Err(Some("functionality matrix: 1 problem(s)")),
+        "LIB-TOOL-001: a failing `matrix check` returns its own error, not the flush error, \
+         got {result:?}"
     );
 
     let (result, _) = run_flush_failing(&["matrix", "next", "-n", "notanumber"], two.root());

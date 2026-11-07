@@ -6,6 +6,10 @@
   - LIB-QA-001: **PASS**
   - LIB-TOOL-001: FAIL
   - LIB-TOOL-003: FAIL
+- Row verdict: LIB-TOOL-002: PASS
+- Row verdict: LIB-QA-001: PASS
+- Row verdict: LIB-TOOL-001: FAIL
+- Row verdict: LIB-TOOL-003: FAIL
 - Verifier: `sacm-verifier` (independent; read-only)
 - Inspected: baseline `9d24b60`, plus `a74ca9c` (ADR 0006 amendment 1), plus the uncommitted fix-round-1 diff
 - Previous record: [0001-m0-tooling-verification.md](0001-m0-tooling-verification.md)

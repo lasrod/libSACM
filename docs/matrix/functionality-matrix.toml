@@ -574,8 +574,35 @@ title = "Verification records carry a per-row verdict the gate reads"
 requirement = "A verified row's verification record must state a PASS verdict for that specific row in a machine-readable line, and the gate checks the verdict rather than mere mention of the id."
 source = "Verification 0001 follow-up (a record saying 'LIB-X-001: FAIL' satisfied the substring check)"
 kind = "tooling"
-status = "planned"
+status = "implemented"
+code = ["xtask/src/matrix.rs"]
+acceptance = [
+  "A verdict line is a line, outside fenced code blocks, that after removing trailing spaces and tabs is exactly `- Row verdict: <ROW-ID>: <VERDICT>`. <VERDICT> is one of PASS, FAIL or OPEN. Indented, block-quoted and fenced lines are not verdict lines.",
+  "A verified row passes only if its cited record contains exactly one verdict line for that row, and that line says PASS. The old check, which accepted any mention of the id, is removed.",
+  "Each failure is reported with the row id and the record path: no verdict line for the row; more than one verdict line for the row (with the count); a verdict other than PASS (naming it); and a verdict line for a similar id, such as `LIB-TOOL-0011` or `LIB-TOOL-001x`, which does not count.",
+  "A line that starts with `- Row verdict:` but is not a well-formed verdict line is reported as malformed, with the record path and its 1-based line number.",
+  "Every verified row in the real matrix passes. The lead adds the verdict lines to the existing records, the record template (`.claude/skills/sacm-slice/references/verification-record.md`) and `docs/matrix/README.md` rule 5.",
+]
 depends_on = ["LIB-TOOL-001"]
+tests = [
+  "xtask/tests/gate_hardening.rs::lib_tool_005_a_single_pass_line_for_the_row_passes",
+  "xtask/tests/gate_hardening.rs::lib_tool_005_a_record_without_a_verdict_line_fails_the_row",
+  "xtask/tests/gate_hardening.rs::lib_tool_005_a_record_that_only_mentions_the_row_fails",
+  "xtask/tests/gate_hardening.rs::lib_tool_005_more_than_one_verdict_line_is_reported_with_the_count",
+  "xtask/tests/gate_hardening.rs::lib_tool_005_a_verdict_other_than_pass_is_reported_by_name",
+  "xtask/tests/gate_hardening.rs::lib_tool_005_a_verdict_line_for_a_similar_id_does_not_count",
+  "xtask/tests/gate_hardening.rs::lib_tool_005_a_verdict_line_for_a_different_row_does_not_count",
+  "xtask/tests/gate_hardening.rs::lib_tool_005_indented_and_block_quoted_lines_are_not_verdict_lines",
+  "xtask/tests/gate_hardening.rs::lib_tool_005_lines_in_fenced_code_blocks_are_not_verdict_lines",
+  "xtask/tests/gate_hardening.rs::lib_tool_005_lines_after_a_closed_fence_count",
+  "xtask/tests/gate_hardening.rs::lib_tool_005_trailing_spaces_and_tabs_are_accepted",
+  "xtask/tests/gate_hardening.rs::lib_tool_005_malformed_verdict_lines_are_reported_with_the_record_and_line_number",
+  "xtask/tests/gate_hardening.rs::lib_tool_005_a_malformed_line_is_not_a_verdict_for_the_row",
+  "xtask/tests/gate_hardening.rs::lib_tool_005_line_numbers_count_every_line_of_the_record",
+  "xtask/tests/gate_hardening.rs::lib_tool_005_a_missing_record_is_reported_once",
+  "xtask/tests/gate_hardening.rs::lib_tool_005_real_matrix_passes_the_gate",
+  "xtask/tests/gate_hardening.rs::lib_tool_005_every_verified_row_in_the_real_matrix_has_one_pass_verdict_line",
+]
 
 [[row]]
 id = "LIB-TOOL-006"
@@ -585,8 +612,28 @@ title = "Cited paths stay inside the repository"
 requirement = "Code, test and verification-record citations must be relative paths that resolve inside the repository; absolute paths and `..` escapes are rejected by the gate."
 source = "Verification 0001 follow-up"
 kind = "tooling"
-status = "planned"
+status = "implemented"
+code = ["xtask/src/matrix.rs"]
+acceptance = [
+  "A cited path is a `code` entry, the path part of a `path::function` test citation, a `doctest:` path, or `verification`. It must be a relative, `/`-separated path. Any of the following is reported as `cited path `<p>` must be a relative path inside the repository`, with the row id: an empty path; a path starting with `/`; a path containing `\\` or `:`; a path with an empty component (`a//b`, a trailing `/`); a path with a `.` or `..` component.",
+  "The gate never reads or stats a rejected path: it reports it and skips the existence, content and test checks for that citation. A test uses a `Repo` that records every path asked for.",
+  "Real names that only look unusual stay accepted: dot-files and dot-directories (`.github/workflows/ci.yml`, `.cargo/mutants.toml`), and names containing `..` inside a component (`a..b.md`).",
+  "Every path cited in the real matrix passes.",
+]
 depends_on = ["LIB-TOOL-001"]
+tests = [
+  "xtask/tests/gate_hardening.rs::lib_tool_006_rejects_an_empty_path",
+  "xtask/tests/gate_hardening.rs::lib_tool_006_rejects_an_absolute_path",
+  "xtask/tests/gate_hardening.rs::lib_tool_006_rejects_a_path_containing_a_backslash",
+  "xtask/tests/gate_hardening.rs::lib_tool_006_rejects_a_path_containing_a_colon",
+  "xtask/tests/gate_hardening.rs::lib_tool_006_rejects_a_path_with_an_empty_component",
+  "xtask/tests/gate_hardening.rs::lib_tool_006_rejects_a_path_with_a_dot_component",
+  "xtask/tests/gate_hardening.rs::lib_tool_006_rejects_a_path_with_a_dot_dot_component",
+  "xtask/tests/gate_hardening.rs::lib_tool_006_a_path_breaking_several_rules_is_reported_once",
+  "xtask/tests/gate_hardening.rs::lib_tool_006_accepts_dot_names_and_double_dots_inside_a_component",
+  "xtask/tests/gate_hardening.rs::lib_tool_006_a_rejected_path_does_not_hide_the_other_citations",
+  "xtask/tests/gate_hardening.rs::lib_tool_006_every_path_cited_in_the_real_matrix_is_inside_the_repository",
+]
 
 [[row]]
 id = "LIB-TOOL-007"
@@ -618,8 +665,20 @@ title = "Area table is validated"
 requirement = "The gate rejects an `[[area]]` whose code is empty or not all uppercase ASCII letters, in addition to the existing uniqueness check."
 source = "Verification 0001 round 5 follow-up"
 kind = "tooling"
-status = "planned"
+status = "implemented"
+code = ["xtask/src/matrix.rs"]
+acceptance = [
+  "An `[[area]]` whose `code` is empty, or contains anything other than ASCII `A`-`Z`, is reported as `area code `<code>` must be one or more uppercase ASCII letters`. Lowercase, digits, `-`, `_`, spaces and non-ASCII letters are all rejected.",
+  "The uniqueness check stays, and a bad code reports both problems when both apply.",
+  "Every area in the real matrix passes.",
+]
 depends_on = ["LIB-TOOL-001"]
+tests = [
+  "xtask/tests/gate_hardening.rs::lib_tool_009_rejects_area_codes_that_are_not_uppercase_ascii_letters",
+  "xtask/tests/gate_hardening.rs::lib_tool_009_accepts_uppercase_ascii_area_codes",
+  "xtask/tests/gate_hardening.rs::lib_tool_009_a_duplicate_bad_code_reports_both_problems",
+  "xtask/tests/gate_hardening.rs::lib_tool_009_every_area_in_the_real_matrix_has_an_uppercase_ascii_code",
+]
 
 [[row]]
 id = "LIB-TOOL-010"
@@ -629,8 +688,23 @@ title = "Every gate problem reaches the user"
 requirement = "When `cargo xtask matrix check` fails, every problem is reported on stderr (or in the returned error), one per line, in a deterministic order, so a CI failure says what to fix."
 source = "Verification 0001 round 5 follow-up (surviving mutations R30, R31)"
 kind = "tooling"
-status = "planned"
+status = "implemented"
+code = ["xtask/src/matrix.rs", "xtask/src/main.rs"]
+acceptance = [
+  "When `matrix check` finds problems, `xtask::run([\"matrix\", \"check\"], root, out)` returns an error. The error's first line is `functionality matrix: <n> problem(s)`, and it is followed by every problem, one per line, each indented by two spaces. No problem is printed only to stderr, and `cmd_check` no longer writes to stderr itself.",
+  "Each problem takes exactly one line. A cited value containing a line break or other control character is shown escaped, so it cannot split or forge a line.",
+  "The order is deterministic: the problems come in the order `check` returns them, and that order does not depend on `HashMap` iteration or directory-listing order. Orphan-test problems are sorted by file and then by function name. A test feeds a `Repo` whose traced functions come out of order.",
+  "The `xtask` binary prints the whole error on stderr with the `xtask: ` prefix and exits with a failure status. A test runs the binary against a repository whose matrix has at least two problems, and checks that every problem appears on stderr.",
+]
 depends_on = ["LIB-TOOL-001"]
+tests = [
+  "xtask/tests/gate_hardening.rs::lib_tool_010_run_matrix_check_returns_every_problem_in_its_error",
+  "xtask/tests/gate_hardening.rs::lib_tool_010_each_problem_is_on_its_own_line_exactly_once",
+  "xtask/tests/gate_hardening.rs::lib_tool_010_a_control_character_in_a_value_cannot_split_or_forge_a_line",
+  "xtask/tests/gate_hardening.rs::lib_tool_010_orphan_problems_are_sorted_by_file_then_function",
+  "xtask/tests/gate_hardening.rs::lib_tool_010_the_report_does_not_depend_on_listing_order",
+  "xtask/tests/gate_hardening.rs::lib_tool_010_binary_prints_every_problem_on_stderr_and_fails",
+]
 
 [[row]]
 id = "LIB-TOOL-011"
