@@ -42,3 +42,29 @@ agent prompts prohibit those routes, and the verifier checks for weakened tests.
 - **A lead subagent orchestrating others**: subagents cannot spawn subagents, so the
   lead must be the main session.
 - **Prompt-only role boundaries**: shown insufficient in the predecessor project.
+
+## Amendment 1 (2026-11-07): who owns the repository tooling
+
+Accepted by the maintainer after verification 0001. That verification failed the
+tooling rows, and the fix round had no owner: `xtask/` and `.claude/hooks/` were outside
+every role's write scope.
+
+- **`xtask` is owned like library code.** It is split into a library (`xtask/src/lib.rs`)
+  and a thin binary, so its acceptance tests live in `xtask/tests/`. The implementer
+  writes `xtask/src/**` and `xtask/Cargo.toml`. The test engineer writes
+  `xtask/tests/**`. Reason: every `verified` claim rests on the matrix gate, and a gate
+  regression is silent, which is exactly what tests written separately from the code
+  are for.
+- **The guard stays outside what it guards.** No agent may write
+  `.claude/hooks/agent_write_guard.py`, `.claude/hooks/write-scopes.json` or
+  `.claude/settings.json`. The hook script runs on every tool call, so an agent able to
+  edit it could loosen its own confinement mid-slice. The test engineer may write the
+  hook's tests (`.claude/hooks/test_*.py`), because tests cannot change what the guard
+  enforces. The lead implements guard changes against those tests, the verifier
+  re-verifies them, and **the maintainer reviews the guard diff before it is
+  committed**. This is the one exception to "the lead does not build".
+- **Read-only roles have two controls.** Their `tools:` list omits the write tools, and
+  in practice that has been honoured, even for background subagents (live probe,
+  verification 0001). The hook's read-only branch is the second control, for the case
+  where the platform hands a subagent write tools anyway. It is verified by tests,
+  because it cannot be triggered live while the first control holds.

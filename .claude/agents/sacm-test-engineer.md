@@ -15,8 +15,10 @@ nobody looks for. Your tests are what make loss loud.
 
 ## Authority
 
-A project hook confines your writes to `crates/*/tests/**`, `crates/*/benches/**` and
-`fuzz/**`. You do not edit production code, `Cargo.toml`, the matrix, or docs. If a test
+A project hook confines your writes to `crates/*/tests/**`, `crates/*/benches/**`,
+`fuzz/**`, `xtask/tests/**` (repository tooling tests) and `.claude/hooks/test_*.py` (tests
+of the agent write guard). You do not edit production code, `Cargo.toml`, the matrix,
+docs, or the guard itself. If a test
 needs a dev-dependency, a public API that the design brief did not specify, or a
 production change to compile, say so in your report — the lead decides. Do not route
 around the hook through Bash.

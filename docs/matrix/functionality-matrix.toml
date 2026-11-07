@@ -277,7 +277,9 @@ acceptance = [
   "Paths outside the repository and `..` escapes are denied.",
   "Unreadable configuration denies subagent writes only.",
   "Every agent named in write-scopes.json has a definition in .claude/agents/.",
-  "Live probe in a fresh Claude Code session: a read-only subagent's Write is denied and the test engineer's Write to crates/sacm/src is denied (confirms the hook input carries `agent_type`; verification evidence).",
+  "Live probe (verification evidence): the hook denies a scoped role's out-of-scope Write, which also confirms the hook input carries `agent_type`; a read-only role, run as a background subagent, has no write tool (first control, ADR 0006 amendment 1).",
+  "The repository's real write-scopes.json gives every role the scope ADR 0006 states: the five read-only roles are denied everywhere; neither writing role can write the guard, its scopes or settings; the test engineer cannot write production code; the implementer cannot write tests, the matrix, verification records or ADRs; every agent definition is listed.",
+  "Any internal error, or a structurally invalid configuration, denies subagent writes (fail closed); the settings matcher covers every write tool.",
 ]
 code = [".claude/hooks/agent_write_guard.py", ".claude/hooks/write-scopes.json", ".claude/settings.json"]
 tests = [

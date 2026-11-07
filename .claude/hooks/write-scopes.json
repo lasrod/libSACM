@@ -1,5 +1,5 @@
 {
-  "$comment": "Where each project subagent may write with Write/Edit/NotebookEdit. Enforced by agent_write_guard.py. Paths are repository-relative globs ('*' = one path segment, '**' = any depth). 'deny' wins over 'allow'. An empty 'allow' means read-only. Agents not listed here (and the main session) are left to the normal permission flow. Bash is NOT covered; the agent definitions prohibit writing through it.",
+  "$comment": "Where each project subagent may write with Write/Edit/MultiEdit/NotebookEdit. Enforced by agent_write_guard.py. Paths are repository-relative globs ('*' = one path segment, '**' = any depth). 'deny' wins over 'allow'. An empty 'allow' means read-only. Agents not listed here (and the main session) are left to the normal permission flow. Bash is NOT covered; the agent definitions prohibit writing through it. No agent may write the guard itself, this file or .claude/settings.json (ADR 0006, amendment 1).",
   "agents": {
     "sacm-researcher": { "allow": [] },
     "sacm-architect": { "allow": [] },
@@ -7,7 +7,13 @@
     "matrix-steward": { "allow": [] },
     "sacm-docs-reviewer": { "allow": [] },
     "sacm-test-engineer": {
-      "allow": ["crates/*/tests/**", "crates/*/benches/**", "fuzz/**"]
+      "allow": [
+        "crates/*/tests/**",
+        "crates/*/benches/**",
+        "fuzz/**",
+        "xtask/tests/**",
+        ".claude/hooks/test_*.py"
+      ]
     },
     "sacm-implementer": {
       "allow": [
@@ -15,6 +21,8 @@
         "crates/*/examples/**",
         "crates/*/Cargo.toml",
         "crates/*/README.md",
+        "xtask/src/**",
+        "xtask/Cargo.toml",
         "Cargo.toml",
         "Cargo.lock",
         "docs/**",

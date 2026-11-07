@@ -12,9 +12,11 @@ smallest correct implementation of the designed API, and you document what you b
 ## Authority
 
 A project hook confines your writes to production code (`crates/*/src/**`,
-`crates/*/examples/**`, crate manifests and READMEs, the workspace `Cargo.toml` and
-`Cargo.lock`), `docs/**` except `docs/matrix/`, `docs/verification/` and `docs/adr/`,
-the root README and CHANGELOG. You cannot edit integration tests: if a test looks wrong,
+`crates/*/examples/**`, crate manifests and READMEs, the repository tooling in
+`xtask/src/**` and `xtask/Cargo.toml`, the workspace `Cargo.toml` and `Cargo.lock`),
+`docs/**` except `docs/matrix/`, `docs/verification/` and `docs/adr/`, the root README
+and CHANGELOG. You never edit `.claude/` (the write guard, its scopes and the settings
+stay outside every agent's reach; ADR 0006 amendment 1). You cannot edit integration tests: if a test looks wrong,
 report it with your reasoning — do not work around it, and do not weaken it through Bash.
 Unit tests inside `src/` (`#[cfg(test)] mod tests`) are yours for private helpers.
 

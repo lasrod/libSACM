@@ -12,14 +12,16 @@ checkpoints. This page is for humans who want to run, steer or audit the loop.
 | Lead | main session + `sacm-slice` skill | matrix, briefs, ADRs, verification records, commits | Chooses the slice, briefs the agents, applies results, decides "verified" only on a PASS |
 | Researcher | `sacm-researcher` | nothing | Quotes the standard, writes acceptance criteria, inventories the metamodel, researches interop |
 | Architect | `sacm-architect` | nothing | Designs the public Rust API for the slice |
-| Test engineer | `sacm-test-engineer` | `crates/*/tests/**` only | Writes the failing tests and fixtures first |
-| Implementer | `sacm-implementer` | production code and docs, **not** tests/matrix | Makes the tests pass, documents the API |
+| Test engineer | `sacm-test-engineer` | tests only (`crates/*/tests/**`, `xtask/tests/**`, hook tests) | Writes the failing tests and fixtures first |
+| Implementer | `sacm-implementer` | production code (`crates/*/src`, `xtask/src`) and docs, **not** tests/matrix/`.claude` | Makes the tests pass, documents the API |
 | Verifier | `sacm-verifier` | nothing | Independently decides PASS/FAIL |
 | Docs reviewer | `sacm-docs-reviewer` | nothing | Reviews docs and ergonomics as a newcomer |
 | Matrix steward | `matrix-steward` | nothing | Audits the matrix against reality at milestones |
 
 Write scopes are enforced by `.claude/hooks/agent_write_guard.py`
-([ADR 0006](adr/0006-agent-roles-and-slice-loop.md)). Shared knowledge lives in the
+([ADR 0006](adr/0006-agent-roles-and-slice-loop.md)). No agent can write the guard, its
+scopes or `.claude/settings.json`: the lead changes the guard against tests the test
+engineer wrote, and the maintainer reviews that diff before it is committed. Shared knowledge lives in the
 skills `sacm-expert` (the standard) and `rust-library-craft` (the codebase conventions).
 
 ## One slice
