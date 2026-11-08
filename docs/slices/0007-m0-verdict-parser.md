@@ -1,8 +1,8 @@
 ---
 slice: 0007
 name: m0-verdict-parser
-state: done
-step: close
+state: in-progress
+step: verification
 rows: [LIB-TOOL-005, LIB-TOOL-015]
 mode: pr
 ---
@@ -108,6 +108,14 @@ CommonMark 0.31.2 is the reference for what is hidden.
   - **(f)** A counted candidate whose id is not a well-formed row id is malformed. This
     closes an existing gap: `- Row verdict:  LIB-TOOL-001: PASS` was read as the id
     ` LIB-TOOL-001` and silently ignored.
+
+- **D14 (closed inline comments), from the Copilot review of PR #14.** A line whose
+  whole content, excluding its line ending, lies inside the byte range of a closed
+  inline comment is hidden. LIB-TOOL-015 criterion 1 already says such a line does not
+  count. A boundary line that also holds visible text, such as `Text <!-- note` or
+  `--> more`, is not hidden. A column-0 candidate cannot lie inside an inline comment
+  (it starts a list item, which ends the paragraph), so in practice this affects only
+  D9 look-alikes.
 
 ## Tests
 
@@ -245,3 +253,24 @@ The test engineer found one equivalent mutant: a region ending at the start rath
   - Both rows are now `verified`.
 - 2026-11-08 close: the slice is done. The CI `cargo-deny` job (GitHub release 504) is
   re-run before the PR is marked ready.
+- 2026-11-08 the second Copilot review of PR #14 left one valid comment: a closed
+  inline comment hid nothing, so a look-alike inside it rejected a valid record.
+  - The lead added D14. Both rows go back for a narrow fix: tests, then code, then
+    re-verification.
+- 2026-11-08 D14 tests: 6 tests (2 red, 4 controls).
+  - Correction from the test engineer: `  > Row verdict:` and `* Row verdict:` at an indent
+    of 0 to 3 end the paragraph (§5.1, §5.2), so they are never inside the comment. The
+    hidden forms are block-quote continuations and paragraph continuation text.
+  - `--> Row verdict:` is the honest boundary look-alike.
+- 2026-11-08 D14 implementation: `Markup::comments` (closed inline comment ranges);
+  `is_hidden` checks a line's content range; `is_allowed_tag` replaces
+  `inline_html_allowed`.
+  - A local cargo-mutants run gave 23 mutants: 22 caught, 1 unviable.
+  - The implementer reported one test expectation as wrong: a nested `> >` quote ends
+    the paragraph. The lead agreed and sent it to the test engineer.
+  - Differential coverage of D14 (multi-line inline comments, look-alike visibility) is
+    added to LIB-TOOL-018.
+  - The README "Hidden lines" bullet is updated.
+- 2026-11-08 D14 test fix: the nested `> >` quote case moved to the "ends the
+  paragraph" control. All 71 `verdict_markdown` tests pass, and both rows are
+  `implemented`.

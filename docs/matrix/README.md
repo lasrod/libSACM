@@ -84,11 +84,14 @@ changes a status, and only to `verified` on a recorded PASS from the verifier.
      (U+FEFF) is a problem: `starts with a byte-order mark`. The mark is part of line 1,
      so line 1 is then not a candidate.
    - **Hidden lines.** The gate parses the record as core CommonMark 0.31.2 with
-     `pulldown-cmark` and no extensions (ADR 0008). First, each tab in the run of
-     spaces and tabs that ends a line becomes a space, because pulldown-cmark 0.13 does
-     not accept a tab after a closing fence. This keeps every offset and line. A line
-     is hidden when it is inside a code block (fenced or indented) or inside an HTML
-     block that is one closed comment. Nothing else hides a line.
+     `pulldown-cmark` and no extensions (ADR 0008). First, each tab in the run of spaces
+     and tabs that ends a line becomes a space, because pulldown-cmark 0.13 does not
+     accept a tab after a closing fence. This keeps every offset and line. A line is
+     hidden when it is inside a code block (fenced or indented), inside an HTML block
+     that is one closed comment, or when its whole content, without its LF or CRLF, lies
+     inside the byte range of one closed inline comment. A line that also holds text
+     before the comment's `<!--` or after its `-->` is not hidden, nor is a line whose
+     two ends lie in two different comments. Nothing else hides a line.
    - **Raw HTML.** A closed comment starts with `<!--`, ends with `-->`, and holds no
      `-->` or `--!>` before that end, so `<!-->`, `<!--->` and `<!---->` are closed.
      Only three kinds of raw HTML are allowed: an HTML block that is one closed comment

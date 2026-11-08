@@ -57,8 +57,10 @@ change bumps the minor version and is listed under **Breaking**.
   with a CommonMark parser, `pulldown-cmark` 0.13 (ADR 0008).
   - It parses the record as core CommonMark 0.31.2, with no extensions.
   - A line inside a code block (fenced or indented) or inside an HTML block that is one
-    closed comment does not count, and it is not malformed. Nothing else hides a line.
-    The parser decides fences inside list items and block quotes, and a backtick fence
+    closed comment does not count, and it is not malformed. Neither does a line whose
+    whole content, without its line ending, lies inside one closed inline comment; a
+    line that also holds text before `<!--` or after `-->` is not hidden. Nothing else
+    hides a line. The parser decides fences inside list items and block quotes, and a backtick fence
     "opener" whose info string holds a backtick.
   - The hand-written fence model is removed. The verdict format is unchanged.
 - Verification records are strict (ADR 0008 amendment 1). The gate reports anything a
