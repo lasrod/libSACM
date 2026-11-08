@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "for py in python3 python; do \"$py\" -c '' >/dev/null 2>&1 && break; done; \"$py\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/agent_write_guard.py\"",
+            "command": "for py in python3 python; do \"$py\" -c '' >/dev/null 2>&1 && exec \"$py\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/agent_write_guard.py\"; done; echo \"agent write guard: no working Python interpreter\" >&2; exit 2",
             "timeout": 30
           }
         ]

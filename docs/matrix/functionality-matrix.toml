@@ -457,7 +457,7 @@ tests = [
   ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_real_hook_command_denies_a_read_only_role_write",
   ".claude/hooks/test_agent_write_guard.py::test_lib_tool_003_real_hook_command_is_silent_for_the_main_session",
 ]
-notes = "Does not cover Bash, sessions with hooks disabled, or machines where no Python interpreter runs (the hook then exits non-zero, which Claude Code treats as non-blocking); agent prompts prohibit those routes (ADR 0006)."
+notes = "Does not cover Bash or sessions with hooks disabled; agent prompts prohibit those routes (ADR 0006). When no Python interpreter works, the hook command exits 2 and Claude Code blocks the write (LIB-TOOL-008); a hook timeout or an interpreter too old to run the guard is still non-blocking (LIB-TOOL-019)."
 verification = "docs/verification/0001-m0-tooling-verification-round4.md"
 
 [[row]]
@@ -727,8 +727,27 @@ title = "The write guard's launch path is tested"
 requirement = "Tests cover how the hook is launched, not only what it decides: the settings command falls through to a working interpreter when `python3` exists but fails (e.g. the Windows Store alias), and a NotebookEdit inside a role's scope is judged by its `notebook_path`."
 source = "Verification 0001 round 3 follow-up (surviving mutations P20, P15)"
 kind = "tooling"
-status = "planned"
+status = "verified"
+code = [".claude/settings.json"]
+acceptance = [
+  "A hook test runs the exact command from `.claude/settings.json` with `bash -c`, on a PATH where `python3` exists but exits non-zero (a stub, as the Windows Store alias does) and a working `python` exists. The guard still runs and judges the call: an out-of-scope subagent write is denied with the guard's own output, and an in-scope one is allowed.",
+  "The same holds when `python3` is missing from PATH and `python` works, and when `python3` works (it is used, and `python` is never tried).",
+  "If no interpreter works, the command fails closed: it exits with code 2 and prints `agent write guard: no working Python interpreter` on stderr, so Claude Code blocks the write. A test runs the command with a PATH where both interpreters fail and checks the exit code and the message.",
+  "A NotebookEdit call is judged by its `notebook_path`. With no `file_path` key, a path inside the role's scope is allowed and a path outside it is denied, for at least one writer role and one read-only role.",
+  "No test is skipped. The tests run on the hook CI job (ubuntu) and on Windows with Git Bash.",
+]
 depends_on = ["LIB-TOOL-003"]
+tests = [
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_008_failing_python3_falls_through_to_python",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_008_missing_python3_falls_through_to_python",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_008_working_python3_is_used_and_python_never_tried",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_008_no_working_interpreter_fails_closed_with_exit_2",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_008_hook_command_judges_notebook_edit_by_notebook_path",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_008_notebook_path_inside_a_writer_scope_is_allowed",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_008_notebook_path_outside_a_writer_scope_is_denied",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_008_notebook_path_is_denied_everywhere_for_read_only_roles",
+]
+verification = "docs/verification/0008-m0-agent-tooling-checks.md"
 
 [[row]]
 id = "LIB-TOOL-009"
@@ -1028,8 +1047,30 @@ title = "Slice PR reuse and full-run dispatch are pinned"
 requirement = "A doc check fails if the sacm-slice skill loses any of three rules. In step 7: reuse the slice's existing PR (`gh pr list --head <branch>`) instead of creating another. In step 7: dispatch `mutants.yml` on the slice branch when it did not run on the head commit. In step 8.5: run `gh pr create` only when the branch has no PR."
 source = "PR #9 Copilot review follow-up (verifier observation O3)"
 kind = "quality"
-status = "planned"
+status = "verified"
+code = [".claude/skills/sacm-slice/SKILL.md"]
+acceptance = [
+  "A test in `xtask/tests/repo_checks.rs` reads `.claude/skills/sacm-slice/SKILL.md` and passes only when all three rules are present: step 7 reuses the slice's existing PR (`gh pr list --head`) instead of creating another; step 7 dispatches `mutants.yml` on the slice branch (`gh workflow run mutants.yml --ref`) when it did not run on the head commit; step 8.5 runs `gh pr create` only when the branch has no PR.",
+  "Each rule is matched within its own step, so a rule moved to another step, or deleted, fails the test. The check is a function over the skill text, tested with a control text for each rule removed and for each rule moved, each giving exactly the problem that names the missing rule.",
+  "The real skill passes.",
+]
 depends_on = ["LIB-QA-007"]
+tests = [
+  "xtask/tests/repo_checks.rs::lib_qa_011_the_real_slice_skill_keeps_the_pr_and_full_run_rules",
+  "xtask/tests/repo_checks.rs::lib_qa_011_a_rule_removed_from_the_real_skill_is_named_exactly",
+  "xtask/tests/repo_checks.rs::lib_qa_011_a_removed_rule_is_named_exactly",
+  "xtask/tests/repo_checks.rs::lib_qa_011_the_pr_query_must_govern_the_draft_creation",
+  "xtask/tests/repo_checks.rs::lib_qa_011_the_commands_must_name_the_slice_branch",
+  "xtask/tests/repo_checks.rs::lib_qa_011_pr_create_must_be_conditioned_on_no_pr",
+  "xtask/tests/repo_checks.rs::lib_qa_011_the_condition_must_follow_the_draft_creation_in_its_sentence",
+  "xtask/tests/repo_checks.rs::lib_qa_011_weakened_rule_wording_is_named_exactly",
+  "xtask/tests/repo_checks.rs::lib_qa_011_a_blank_line_separates_the_dispatch_from_its_condition",
+  "xtask/tests/repo_checks.rs::lib_qa_011_each_problem_names_its_own_rule_and_command",
+  "xtask/tests/repo_checks.rs::lib_qa_011_a_missing_step_names_each_of_its_rules",
+  "xtask/tests/repo_checks.rs::lib_qa_011_a_rule_moved_to_another_step_is_named_exactly",
+  "xtask/tests/repo_checks.rs::lib_qa_011_the_check_accepts_equivalent_wording_and_wrapping",
+]
+verification = "docs/verification/0008-m0-agent-tooling-checks-round2.md"
 
 [[row]]
 id = "LIB-QA-012"
@@ -1074,6 +1115,17 @@ source = "Verification 0007 round 2 (Low: rest of F4; Info: D12 adjudicated reco
 kind = "tooling"
 status = "planned"
 depends_on = ["LIB-TOOL-005"]
+
+[[row]]
+id = "LIB-TOOL-019"
+area = "TOOL"
+milestone = "M0"
+title = "The write guard blocks on every launch failure"
+requirement = "Every way the write-guard hook can fail to judge a call blocks the write: a hook timeout, an uncaught crash before the guard decides, and an interpreter that starts but cannot run the guard (for example Python 2). Options: `onFailure: \"block\"` in the hook settings (Claude Code 2.1.295 or later), and a probe that requires Python 3.9 or later. The hook CI job fails on any runtime skip, and the launch-path tests also run the command under `sh -c`, the shell Claude Code uses on Linux and macOS."
+source = "Verification 0008 round 1 (follow-ups)"
+kind = "tooling"
+status = "planned"
+depends_on = ["LIB-TOOL-008"]
 
 [[row]]
 id = "LIB-TOOL-012"
