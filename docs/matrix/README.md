@@ -75,13 +75,17 @@ changes a status, and only to `verified` on a recorded PASS from the verifier.
    includes a `verification` path on a row that is not verified. A rejected path is never
    read. Every cited code path and verification record exists. The record of a verified
    row has exactly one verdict line for that row, saying PASS:
-   `- Row verdict: <ROW-ID>: PASS`, with no indent and outside fenced code blocks.
-   Fences are recognised at the top level of the record, as CommonMark defines them:
-   0 to 3 spaces of indent, then 3 or more backticks or tildes, closed by a run of the
-   same character that is at least as long. Two cases are not yet handled. A fence
-   inside a list item, which CommonMark closes when the item ends, is LIB-TOOL-005,
-   still open. HTML blocks and a backtick in a fence's info string are LIB-TOOL-015. A line
-   starting `- Row verdict:` that is not well formed is a problem.
+   `- Row verdict: <ROW-ID>: PASS`. A line is a candidate when it starts at column 0 with
+   `- Row verdict:`. A candidate counts only when Markdown does not hide it. The gate
+   parses the record as core CommonMark 0.31.2, with `pulldown-cmark` and no extensions
+   (ADR 0008). A candidate whose first byte is inside a code block (fenced or indented),
+   an HTML block or inline HTML, comments included, is hidden. So the parser decides
+   fences in list items and block quotes, info strings and HTML blocks, as a CommonMark
+   renderer does. GFM extensions cannot hide such a line. One fail-safe is added (slice
+   0007 D6): a `<!--` inside HTML that the HTML does not close hides everything up to the
+   end of the next `-->`, or to the end of the record, because a browser keeps the
+   comment open. `<!-->` and `<!--->` are complete comments. A counted candidate that is
+   not well formed is a problem; a hidden one is not.
 6. Every test citation is `path::function`, where the function is a **test** in that file,
    or `doctest:path` for a file containing a code block. A test is named
    `<row id in snake case>` or `<row id in snake case>_<anything>` (Python tests add

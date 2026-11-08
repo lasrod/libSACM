@@ -53,3 +53,13 @@ change bumps the minor version and is listed under **Breaking**.
     `doctest:` citations may still name any file.
   - API: `xtask::matrix::ignored_traced_tests`, and the required trait method
     `Repo::ignored_functions`.
+- The matrix gate decides which `- Row verdict:` lines of a verification record count
+  with a CommonMark parser, `pulldown-cmark` 0.13 (ADR 0008).
+  - It parses the record as core CommonMark 0.31.2, with no extensions.
+  - A line hidden in a code block, an HTML block or inline HTML does not count, and it is
+    not malformed. This covers HTML comments, fences inside list items and block quotes,
+    and a backtick fence "opener" whose info string holds a backtick.
+  - A `<!--` that the HTML around it leaves unclosed hides everything up to the end of
+    the next `-->`, or to the end of the record, as a browser would.
+  - The hand-written fence model is removed. The verdict format and the problems the
+    gate reports are unchanged.

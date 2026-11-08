@@ -44,8 +44,10 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write as _;
 use std::fs;
 use std::io;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 
+use pulldown_cmark::{Event, Options, Parser, Tag};
 use serde::Deserialize;
 
 use crate::{RootSource, output_error};
@@ -1407,52 +1409,131 @@ enum VerdictLine<'a> {
     Malformed(usize),
 }
 
-/// A fence line: 0 to 3 spaces of indent (a tab is not one of them), then a
-/// run of 3 or more of one fence character, a backtick or a tilde. Returns
-/// the character, the length of the run and the rest of the line.
-fn fence(line: &str) -> Option<(char, usize, &str)> {
-    let body = line.trim_start_matches(' ');
-    if line.len() - body.len() > 3 {
-        return None;
+/// The byte ranges of a verification record that rendered Markdown hides.
+///
+/// The record is parsed as core `CommonMark` 0.31.2 by `pulldown-cmark`, with
+/// `Options::empty()`: no extension is enabled (ADR 0008). GitHub renders
+/// records as GFM, but none of its extensions (tables, strikethrough,
+/// autolinks, task lists) can hide a line that starts with
+/// [`VERDICT_PREFIX`], so core `CommonMark` decides the same lines. The ranges
+/// come from the parser's source offsets and are, in no particular order:
+/// - every code block, fenced or indented, from its `Start` to its `End`
+///   event (the parser gives both the same range);
+/// - every HTML block, from its `Start` to its `End` event;
+/// - every `Html` and `InlineHtml` event, HTML comments included;
+/// - the fail-safe of slice 0007 D6: each `<!--` inside an `Html` or
+///   `InlineHtml` event hides everything from the `<!--` to the end of the
+///   next `-->` in the source, or to the end of the record when there is
+///   none. A browser keeps such a comment open where `CommonMark` may already
+///   have ended the HTML (for example at the end of the line of a type 2 HTML
+///   block that holds an earlier `-->`). When that `-->` is inside the event,
+///   the region adds nothing to the event's own range, and a `<!--` inside a
+///   comment gives a region inside that comment's region.
+///
+/// D6 searches for the `-->` from the opener's third byte. Here the region
+/// ends at the first `-->` that ends after the `<` of `<!--`, which is the
+/// same `-->`. A `-->` that ends after the `<` starts at most two bytes before
+/// it, and none can start at those two bytes, at the `<` or at the `!`: each
+/// would put the `<` or the `!` of the `<!--` inside the `-->`. So it starts
+/// at the opener's third byte or later. So `<!-->` and `<!--->` are complete
+/// comments (`CommonMark` §6.6), and `<!-- -` is not. A `<!--` in a code
+/// span, a code block or paragraph text is not in an HTML event, and opens no
+/// region.
+///
+/// The parser reads the record through [`trailing_tabs_as_spaces`], which
+/// keeps every byte offset, so the ranges are byte ranges of `text`. The work
+/// is `n log n` in the length of `text`.
+fn hidden_ranges(text: &str) -> Vec<Range<usize>> {
+    let text = trailing_tabs_as_spaces(text);
+    let text = text.as_str();
+    // The end of every `-->`, in order. Two `-->` cannot overlap, so
+    // `match_indices` finds them all.
+    let closer_ends: Vec<usize> = text
+        .match_indices("-->")
+        .map(|(at, closer)| at + closer.len())
+        .collect();
+    let mut out = Vec::new();
+    for (event, range) in Parser::new_ext(text, Options::empty()).into_offset_iter() {
+        match event {
+            Event::Start(Tag::CodeBlock(_) | Tag::HtmlBlock) => out.push(range),
+            Event::Html(_) | Event::InlineHtml(_) => {
+                // The parser's ranges are on char boundaries; `get` keeps
+                // this free of panics regardless.
+                let html = text.get(range.clone()).unwrap_or_default();
+                for (i, _) in html.match_indices("<!--") {
+                    let opener = range.start + i;
+                    let next = closer_ends.partition_point(|&end| end <= opener);
+                    out.push(opener..closer_ends.get(next).copied().unwrap_or(text.len()));
+                }
+                out.push(range);
+            }
+            _ => {}
+        }
     }
-    let c = body.chars().next().filter(|c| matches!(c, '`' | '~'))?;
-    let rest = body.trim_start_matches(c);
-    let run = body.len() - rest.len();
-    (run >= 3).then_some((c, run, rest))
+    out
+}
+
+/// `text` with each tab in the run of spaces and tabs that ends a line made a
+/// space. Lines end at `\n` or `\r`, as in `CommonMark` (§2.1).
+///
+/// `CommonMark` 0.31.2 §4.5 lets a closing code fence be followed by spaces or
+/// tabs. `pulldown-cmark` 0.13 accepts only spaces there, so without this a
+/// closer followed by a tab would leave the fence open: a FAIL line after it
+/// would be hidden and a PASS example in the next fence would count. A space
+/// and a tab are both one byte, so every byte offset and line is unchanged.
+/// Nothing else that decides what is hidden tells a trailing tab from a
+/// trailing space: they differ only in the inline rule for hard line breaks
+/// (§6.7), and a line of only spaces and tabs is blank either way.
+fn trailing_tabs_as_spaces(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for piece in text.split_inclusive(['\n', '\r']) {
+        let line = piece.trim_end_matches(['\n', '\r']);
+        let content = line.trim_end_matches([' ', '\t']);
+        // Both are prefixes of what they split, so these are char boundaries.
+        let (_, run) = line.split_at(content.len());
+        let (_, ending) = piece.split_at(line.len());
+        out.push_str(content);
+        out.push_str(&run.replace('\t', " "));
+        out.push_str(ending);
+    }
+    out
 }
 
 /// The verdict lines of a verification record, in line order.
 ///
-/// A line counts once trailing spaces and tabs are removed, and only when it
-/// starts with [`VERDICT_PREFIX`] itself: an indented or block-quoted line
-/// does not. Lines inside a fenced code block never count, and the fence lines
-/// themselves are not verdict lines. Fences follow `CommonMark`: a [`fence`]
-/// line opens a block when none is open; only a fence line of the same
-/// character, with a run at least as long and nothing after it but spaces and
-/// tabs, closes it; every other line inside is content; and an unclosed block
-/// runs to the end of the record.
+/// The rule is that of ADR 0008. A candidate is a line that starts at column
+/// 0 with [`VERDICT_PREFIX`]: an indented or block-quoted line is never one.
+/// A candidate counts only when its first byte is outside every range that
+/// [`hidden_ranges`] gives, so a line inside a code block, an HTML block,
+/// inline HTML or an unclosed HTML comment (slice 0007 D6) does not count,
+/// and is not malformed either. A counted candidate is a verdict line when,
+/// once trailing spaces and tabs are removed, it is exactly
+/// `- Row verdict: <ROW-ID>: <PASS|FAIL|OPEN>`; otherwise it is malformed.
+///
+/// Lines are those of [`str::lines`], so a CRLF record reads as its LF form,
+/// and line numbers are 1-based source lines.
 fn verdict_lines(text: &str) -> Vec<VerdictLine<'_>> {
-    let mut open: Option<(char, usize)> = None;
+    let mut hidden = hidden_ranges(text);
+    hidden.sort_unstable_by_key(|range| range.start);
+    let mut hidden = hidden.into_iter().peekable();
+    // The end of the hidden ranges that start at or before the current line.
+    let mut hidden_to = 0;
     let mut out = Vec::new();
     for (i, line) in text.lines().enumerate() {
-        if let Some((c, run)) = open {
-            if fence(line).is_some_and(|(close, len, rest)| {
-                close == c && len >= run && rest.trim_end_matches([' ', '\t']).is_empty()
-            }) {
-                open = None;
-            }
-            continue;
-        }
-        if let Some((c, run, _)) = fence(line) {
-            open = Some((c, run));
-            continue;
-        }
         let Some(rest) = line
             .trim_end_matches([' ', '\t'])
             .strip_prefix(VERDICT_PREFIX)
         else {
             continue;
         };
+        // `line` is a subslice of `text`, so this is its byte offset.
+        let start = line.as_ptr().addr() - text.as_ptr().addr();
+        while let Some(range) = hidden.next_if(|range| range.start <= start) {
+            hidden_to = hidden_to.max(range.end);
+        }
+        if start < hidden_to {
+            continue;
+        }
         let parsed = rest
             .strip_prefix(' ')
             .and_then(|rest| rest.split_once(": "))

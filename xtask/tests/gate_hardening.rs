@@ -1699,6 +1699,15 @@ fn fence_run(line: &str) -> Option<(char, usize, &str)> {
 /// parts. A fence opens on a fence run when none is open, closes on a run of
 /// the same character at least as long followed only by spaces or tabs, and
 /// otherwise runs to the end of `text`.
+///
+/// This is an independent hand model of top-level fences only. It does not
+/// know that a fence ends with its list item or block quote (`CommonMark` §5.1
+/// to §5.3), or HTML blocks and comments (§4.6), so it differs from the gate
+/// on the P-005b probes (`verdict_markdown.rs`). On the real records it agrees
+/// with `CommonMark`: their verdict lines come before any fence, their only
+/// list-item fences (in `0001-m0-tooling-verification-round4.md`) are closed,
+/// and their only HTML is inline. The real-record test checks the gate beside
+/// it, so a disagreement fails that test; it cannot pass a record.
 fn verdict_lines(text: &str) -> Vec<(usize, String, String)> {
     let mut open: Option<(char, usize)> = None;
     let mut out = Vec::new();
