@@ -57,7 +57,10 @@ CommonMark 0.31.2 is the reference for what is hidden.
 - **D6 (fail-safe for comments).** CommonMark can end an HTML range before a `<!--`
   inside it is closed, while a browser keeps the comment open. A `<!--` inside an
   `Html` or `InlineHtml` range and not closed within it hides everything up to the end
-  of the next `-->`, or to the end of the record. Content inside `<details>` still
+  of the next `-->` that itself lies inside an `Html` or `InlineHtml` range, or to the end
+  of the record. A `-->` in text, a code span or a code block is rendered escaped
+  (`--&gt;`), so it does not close the comment. This was amended after the Copilot review
+  of PR #14. Content inside `<details>` still
   counts, because a reader can expand it. The test engineer found this case.
   - `<!-->` and `<!--->` are complete comments (CommonMark §6.6, and browsers): the
     search for the closing `-->` starts at the opener's third byte.
@@ -113,3 +116,26 @@ The test engineer found one equivalent mutant: a region ending at the start rath
   non-trailing tabs keep their meaning). They kill three mutants: CR dropped from the
   split, the normalisation removed, and every tab rewritten. Both rows are now
   `implemented`.
+- 2026-11-08 CI at `88894ef`: green. Full mutants: 445 mutants, 427 caught, 0 missed,
+  0 timeout, 18 unviable (seven new `Range` constructors in `hidden_ranges`, which are
+  structural).
+  - The Copilot review of PR #14 left one valid comment: D6 closed a region at a `-->`
+    in a code span or code block, which a browser renders escaped. D6 is amended so
+    that only a `-->` in raw HTML closes.
+  - Tests go to the test engineer and code to the implementer.
+- 2026-11-08 Copilot fix, tests: 7 new D6 tests (a `-->` in a code span, a fenced or
+  indented code block, or text does not close; a `-->` in a later HTML block or in
+  inline HTML does close). 5 are red today. There are now 47 tests in
+  `verdict_markdown.rs`.
+  - Two existing D6 tests pinned the bug: they closed comments with a `-->` in text.
+    Their records now use a raw-HTML `<!-- end -->` or a type-6 line, and their
+    expected results are unchanged.
+  - LIB-TOOL-015 goes back to `tests-failing`.
+- 2026-11-08 Copilot fix, implementation: `hidden_ranges` now collects `-->` closers
+  only from `Html` and `InlineHtml` event ranges. All 47 `verdict_markdown` tests pass.
+  - A local cargo-mutants run of the fix gave 17 mutants: 10 caught, 7 unviable,
+    0 missed.
+  - Hand mutants restricting the closers to `Html` only or to `InlineHtml` only are
+    each killed by a control test.
+  - The README text came from the implementer, and the lead applied it.
+  - LIB-TOOL-015 is `implemented` again.

@@ -1423,22 +1423,25 @@ enum VerdictLine<'a> {
 /// - every `Html` and `InlineHtml` event, HTML comments included;
 /// - the fail-safe of slice 0007 D6: each `<!--` inside an `Html` or
 ///   `InlineHtml` event hides everything from the `<!--` to the end of the
-///   next `-->` in the source, or to the end of the record when there is
-///   none. A browser keeps such a comment open where `CommonMark` may already
-///   have ended the HTML (for example at the end of the line of a type 2 HTML
-///   block that holds an earlier `-->`). When that `-->` is inside the event,
-///   the region adds nothing to the event's own range, and a `<!--` inside a
-///   comment gives a region inside that comment's region.
+///   next `-->` that itself lies inside an `Html` or `InlineHtml` event, or to
+///   the end of the record when there is none. A browser keeps such a comment
+///   open where `CommonMark` may already have ended the HTML (for example at
+///   the end of the line of a type 2 HTML block that holds an earlier `-->`).
+///   A `-->` in paragraph text, a code span or a code block is rendered
+///   escaped (`--&gt;`), so it does not close the comment. When the closing
+///   `-->` is inside the opener's own event, the region adds nothing to the
+///   event's range, and a `<!--` inside a comment gives a region inside that
+///   comment's region.
 ///
 /// D6 searches for the `-->` from the opener's third byte. Here the region
-/// ends at the first `-->` that ends after the `<` of `<!--`, which is the
-/// same `-->`. A `-->` that ends after the `<` starts at most two bytes before
-/// it, and none can start at those two bytes, at the `<` or at the `!`: each
-/// would put the `<` or the `!` of the `<!--` inside the `-->`. So it starts
-/// at the opener's third byte or later. So `<!-->` and `<!--->` are complete
-/// comments (`CommonMark` §6.6), and `<!-- -` is not. A `<!--` in a code
-/// span, a code block or paragraph text is not in an HTML event, and opens no
-/// region.
+/// ends at the first such `-->` that ends after the `<` of `<!--`, which is
+/// the same `-->`. A `-->` that ends after the `<` starts at most two bytes
+/// before it, and none can start at those two bytes, at the `<` or at the
+/// `!`: each would put the `<` or the `!` of the `<!--` inside the `-->`. So
+/// it starts at the opener's third byte or later. So `<!-->` and `<!--->` are
+/// complete comments (`CommonMark` §6.6), and `<!-- -` is not. A `<!--` in a
+/// code span, a code block or paragraph text is not in an HTML event, and
+/// opens no region.
 ///
 /// The parser reads the record through [`trailing_tabs_as_spaces`], which
 /// keeps every byte offset, so the ranges are byte ranges of `text`. The work
@@ -1446,29 +1449,37 @@ enum VerdictLine<'a> {
 fn hidden_ranges(text: &str) -> Vec<Range<usize>> {
     let text = trailing_tabs_as_spaces(text);
     let text = text.as_str();
-    // The end of every `-->`, in order. Two `-->` cannot overlap, so
-    // `match_indices` finds them all.
-    let closer_ends: Vec<usize> = text
-        .match_indices("-->")
-        .map(|(at, closer)| at + closer.len())
-        .collect();
     let mut out = Vec::new();
+    // The `Html` and `InlineHtml` event ranges, in source order: the parser
+    // emits events in document order, and no two of these overlap.
+    let mut html = Vec::new();
     for (event, range) in Parser::new_ext(text, Options::empty()).into_offset_iter() {
         match event {
             Event::Start(Tag::CodeBlock(_) | Tag::HtmlBlock) => out.push(range),
-            Event::Html(_) | Event::InlineHtml(_) => {
-                // The parser's ranges are on char boundaries; `get` keeps
-                // this free of panics regardless.
-                let html = text.get(range.clone()).unwrap_or_default();
-                for (i, _) in html.match_indices("<!--") {
-                    let opener = range.start + i;
-                    let next = closer_ends.partition_point(|&end| end <= opener);
-                    out.push(opener..closer_ends.get(next).copied().unwrap_or(text.len()));
-                }
-                out.push(range);
-            }
+            Event::Html(_) | Event::InlineHtml(_) => html.push(range),
             _ => {}
         }
+    }
+    // The parser's ranges are on char boundaries; `get` keeps this free of
+    // panics regardless.
+    let source = |range: &Range<usize>| text.get(range.clone()).unwrap_or_default();
+    // The end of every `-->` inside an HTML event, in order. Two `-->` cannot
+    // overlap, so `match_indices` finds them all in each event.
+    let closer_ends: Vec<usize> = html
+        .iter()
+        .flat_map(|range| {
+            source(range)
+                .match_indices("-->")
+                .map(|(at, closer)| range.start + at + closer.len())
+        })
+        .collect();
+    for range in html {
+        for (at, _) in source(&range).match_indices("<!--") {
+            let opener = range.start + at;
+            let next = closer_ends.partition_point(|&end| end <= opener);
+            out.push(opener..closer_ends.get(next).copied().unwrap_or(text.len()));
+        }
+        out.push(range);
     }
     out
 }

@@ -10,7 +10,10 @@
 //!   and a backtick fence "opener" whose info string holds a backtick is not
 //!   an opener (seeds P2 and P7). Under slice 0007 D6, a `<!--` inside an
 //!   HTML event that no `-->` in that event closes also hides everything up
-//!   to the end of the next `-->`, or to the end of the record.
+//!   to the end of the next `-->` that lies in an HTML event, or to the end
+//!   of the record. A `-->` in text, a code span or a code block is rendered
+//!   escaped and ends nothing (D6 as amended after the Copilot review of
+//!   PR #14).
 //!
 //! The gate is driven through `xtask::matrix::check` against an in-memory
 //! [`Repo`], as in `gate_hardening.rs`. Every expectation is an exact list of
@@ -1419,8 +1422,11 @@ fn lib_tool_015_a_pass_line_after_a_closed_fence_with_the_other_fence_character_
 // everything up to the next `-->`. D6: a `<!--` inside an `Html` or
 // `InlineHtml` event range that no `-->` closes within that range opens a
 // hidden region. The region runs from the `<!--` to the end of the next `-->`
-// in the source, or to the end of the record. A `<!--` outside every HTML
-// event (in a code span, a code block or plain text) opens nothing.
+// that itself lies inside an `Html` or `InlineHtml` range, or to the end of
+// the record. A `-->` in text, a code span or a code block is rendered
+// escaped (`--&gt;`), so it closes nothing in the browser and ends no region.
+// A `<!--` outside every HTML event (in a code span, a code block or plain
+// text) opens nothing.
 //
 // In each probe below, CommonMark alone puts the PASS line outside every HTML
 // range:
@@ -1430,7 +1436,11 @@ fn lib_tool_015_a_pass_line_after_a_closed_fence_with_the_other_fence_character_
 // - a `<!--` block in a list item or block quote: it ends with its container,
 //   and the PASS line is not lazy (§5.1, §5.2).
 // A `-->` line right after a list item is lazy paragraph text (§5.2); after a
-// blank line it is a paragraph of its own.
+// blank line it is a paragraph of its own. Either way it is text, so the
+// trailing `-->` in these probes ends no region. The tests below that need a
+// region to end close it with raw HTML: a one-line comment block
+// `<!-- end -->` (type 2, which may interrupt a paragraph, §4.6) or a type 6
+// line holding `-->`.
 
 /// The four probes: the PASS line is inside an unclosed comment's region.
 const UNCLOSED_COMMENT_PROBES: &[(&str, &str)] = &[
@@ -1467,19 +1477,19 @@ fn lib_tool_015_an_unclosed_comment_hides_the_pass_line_but_not_a_fail_after_its
     let failures = mismatches_lf_and_crlf(
         &[
             (
-                "<!-- a --> <!--\n{PASS}\n-->\n{FAIL}\n",
+                "<!-- a --> <!--\n{PASS}\n<!-- end -->\n{FAIL}\n",
                 "after a type 2 line with a second, unclosed comment",
             ),
             (
-                "<div><!--\n\n{PASS}\n\n-->\n{FAIL}\n",
+                "<div><!--\n\n{PASS}\n\n</div> -->\n\n{FAIL}\n",
                 "after a <div> block holding an unclosed comment",
             ),
             (
-                "- a\n\n  <!--\n{PASS}\n-->\n{FAIL}\n",
+                "- a\n\n  <!--\n{PASS}\n<!-- end -->\n{FAIL}\n",
                 "after an unclosed comment block in a list item",
             ),
             (
-                "> <!--\n{PASS}\n-->\n{FAIL}\n",
+                "> <!--\n{PASS}\n<!-- end -->\n{FAIL}\n",
                 "after an unclosed comment block in a block quote",
             ),
         ],
@@ -1487,8 +1497,8 @@ fn lib_tool_015_an_unclosed_comment_hides_the_pass_line_but_not_a_fail_after_its
     );
     assert!(
         failures.is_empty(),
-        "LIB-TOOL-015: the region hides the PASS line and ends at the `-->`, so the visible \
-         FAIL line after it is the row's only verdict (D6):\n{failures:#?}"
+        "LIB-TOOL-015: the region hides the PASS line and ends at the `-->` in raw HTML, so \
+         the visible FAIL line after it is the row's only verdict (D6):\n{failures:#?}"
     );
 }
 
@@ -1502,23 +1512,23 @@ fn lib_tool_015_an_unclosed_comment_region_ends_at_the_end_of_the_next_closer() 
     let failures = mismatches_lf_and_crlf(
         &[
             (
-                "<!-- a --> <!--\n{FAIL}\n-->\n{PASS}\n",
+                "<!-- a --> <!--\n{FAIL}\n<!-- end -->\n{PASS}\n",
                 "a PASS line right after the `-->` line",
             ),
             (
-                "- a\n\n  <!--\n{FAIL}\n-->\n{PASS}\n",
+                "- a\n\n  <!--\n{FAIL}\n<!-- end -->\n{PASS}\n",
                 "a PASS line after the `-->` that follows a list item's comment",
             ),
             (
-                "> <!--\n{FAIL}\n-->\n\n{PASS}\n",
+                "> <!--\n{FAIL}\n<!-- end -->\n\n{PASS}\n",
                 "a PASS line after the `-->` and a blank line",
             ),
             (
-                "<div><!--\n\n{FAIL}\nx --> y\n{PASS}\n",
-                "a `-->` in the middle of a line; the next line counts",
+                "<div><!--\n\n{FAIL}\n<p>x --> y\n\n{PASS}\n",
+                "a `-->` in the middle of a type 6 line; the PASS after the block counts",
             ),
             (
-                "<!-- a --> <!--\n{FAIL}\n-->\n{PASS}\n<div><!--\n\n{FAIL}\n-->\n",
+                "<!-- a --> <!--\n{FAIL}\n<!-- end -->\n{PASS}\n<div><!--\n\n{FAIL}\n<!-- end -->\n",
                 "two regions, each ending at its own `-->`",
             ),
         ],
@@ -1585,8 +1595,9 @@ fn lib_tool_015_an_unclosed_comment_in_inline_html_opens_a_hidden_region() {
 
 #[test]
 fn lib_tool_015_a_closed_comment_in_an_html_block_hides_nothing_past_its_closer() {
-    // Each record also holds a stray `-->` after the PASS line: a region that
-    // reached it would hide the PASS.
+    // Each record also holds a stray `-->` after the PASS line. It is text,
+    // so it ends no region (D6): a region opened by mistake would hide the
+    // PASS whether or not it stopped there.
     let failures = mismatches_lf_and_crlf(
         &[
             (
@@ -1756,5 +1767,250 @@ fn lib_tool_015_a_comment_opener_followed_by_a_lone_dash_hides_to_the_end_of_the
         failures.is_empty(),
         "LIB-TOOL-015: `<!-- -` is not closed, so it hides the rest of the record and the row \
          has no verdict line (D6):\n{failures:#?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// LIB-TOOL-015, slice 0007 D6 as amended: only a `-->` in raw HTML ends a region
+// ---------------------------------------------------------------------------
+//
+// The Copilot review of PR #14 (`matrix.rs:1453`): CommonMark escapes a `-->`
+// in text, in a code span (§6.1) and in a code block (§4.4, §4.5) as
+// `--&gt;`, so the browser's comment stays open past it. Only a `-->` that
+// lies inside an `Html` or `InlineHtml` range reaches the page as `-->`. In
+// every record below, the unclosed `<!--` is one of the D6 probes: the second
+// comment on a type 2 line, a `<div>` block that a blank line ends, or a
+// comment block in a block quote or list item. A `-->` at column 0 after a
+// list item is lazy paragraph text (§5.2), and a type 2 block in a container
+// ends with the container, so a `-->` line after it is not in that block.
+
+#[test]
+fn lib_tool_015_a_closer_in_a_code_span_does_not_end_an_unclosed_comment_region() {
+    let failures = mismatches_lf_and_crlf(
+        &[
+            (
+                "<div><!--\n\n`-->`\n\n{PASS}\n",
+                "the Copilot record: a code span `-->` in its own paragraph",
+            ),
+            (
+                "<div><!--\n\nThe closer `-->` is text.\n\n{PASS}\n",
+                "a code span `-->` in the middle of a paragraph",
+            ),
+            (
+                "<!-- a --> <!--\n`` --> ``\n{PASS}\n",
+                "a double-backtick code span on the line after a type 2 line",
+            ),
+            (
+                "> <!--\n{FAIL}\n`-->`\n{PASS}\n",
+                "a code span `-->` in a lazy line after a block quote's comment",
+            ),
+            (
+                "- a\n\n  <!--\n{FAIL}\n`-->`\n{PASS}\n",
+                "a code span `-->` in a lazy line after a list item's comment",
+            ),
+        ],
+        &[no_verdict()],
+    );
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-015: a `-->` in a code span is rendered `--&gt;` and ends no region, so the \
+         PASS line after it is hidden and the row has no verdict line (D6):\n{failures:#?}"
+    );
+}
+
+#[test]
+fn lib_tool_015_a_fail_line_after_a_raw_html_closer_that_follows_a_code_span_closer_counts() {
+    // The region runs past the code span `-->` and the PASS line to the `-->`
+    // in raw HTML. The FAIL line after that is the row's only verdict line.
+    let failures = mismatches_lf_and_crlf(
+        &[
+            (
+                "<div><!--\n\n`-->`\n\n{PASS}\n\n<!-- end -->\n{FAIL}\n",
+                "the Copilot record, then a comment block and a FAIL line",
+            ),
+            (
+                "> <!--\n`-->`\n{PASS}\n<pre>--></pre>\n{FAIL}\n",
+                "a code span `-->`, a PASS line, a type 1 line holding `-->`, a FAIL line",
+            ),
+        ],
+        &[fail()],
+    );
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-015: the region ends only at the `-->` in raw HTML, so the PASS line before \
+         it is hidden and the FAIL line after it is the row's only verdict (D6):\n{failures:#?}"
+    );
+}
+
+#[test]
+fn lib_tool_015_a_closer_in_a_fenced_code_block_does_not_end_an_unclosed_comment_region() {
+    let failures = mismatches_lf_and_crlf(
+        &[
+            (
+                "<div><!--\n\n```\n-->\n```\n{PASS}\n",
+                "a `-->` line in a backtick fence",
+            ),
+            (
+                "<div><!--\n\n~~~\n-->\n~~~\n{PASS}\n",
+                "a `-->` line in a tilde fence",
+            ),
+            (
+                "<!-- a --> <!--\n```text\nx --> y\n```\n{PASS}\n",
+                "a `-->` in the middle of a line in a backtick fence with an info string",
+            ),
+            (
+                "> <!--\n~~~\n-->\n~~~\n{PASS}\n",
+                "a tilde fence after a block quote's comment",
+            ),
+        ],
+        &[no_verdict()],
+    );
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-015: a `-->` in a fenced code block is rendered `--&gt;` and ends no region, \
+         so the PASS line after the fence is hidden (D6):\n{failures:#?}"
+    );
+}
+
+#[test]
+fn lib_tool_015_a_closer_in_an_indented_code_block_does_not_end_an_unclosed_comment_region() {
+    // §4.4: a column-0 line ends the indented code block, so the PASS line is
+    // outside it; only the region can hide it.
+    let failures = mismatches_lf_and_crlf(
+        &[
+            (
+                "<div><!--\n\n    -->\n\n{PASS}\n",
+                "a `-->` indented 4 spaces after a blank line",
+            ),
+            (
+                "<!-- a --> <!--\n    -->\n{PASS}\n",
+                "a `-->` indented 4 spaces right after a type 2 line",
+            ),
+            (
+                "<div><!--\n\n\t-->\n\n{PASS}\n",
+                "a `-->` indented by a tab",
+            ),
+        ],
+        &[no_verdict()],
+    );
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-015: a `-->` in an indented code block is rendered `--&gt;` and ends no \
+         region, so the PASS line after the block is hidden (D6):\n{failures:#?}"
+    );
+}
+
+#[test]
+fn lib_tool_015_a_closer_in_paragraph_text_does_not_end_an_unclosed_comment_region() {
+    let failures = mismatches_lf_and_crlf(
+        &[
+            (
+                "<div><!--\n\n-->\n\n{PASS}\n",
+                "a `-->` line that is a paragraph of its own",
+            ),
+            (
+                "<div><!--\n\nText --> here.\n\n{PASS}\n",
+                "a `-->` in the middle of a paragraph",
+            ),
+            (
+                "<!-- a --> <!--\n{FAIL}\n-->\n{PASS}\n",
+                "a `-->` line that is lazy text of a list item",
+            ),
+            (
+                "> <!--\n{FAIL}\n-->\n\n{PASS}\n",
+                "a lazy `-->` line, then a blank line",
+            ),
+            ("<div><!--\n\n*-->*\n\n{PASS}\n", "a `-->` in emphasis"),
+            (
+                "<div><!--\n\nSee <http://x/-->.\n\n{PASS}\n",
+                "an autolink (§6.5) ending `--`, rendered with no `-->`",
+            ),
+        ],
+        &[no_verdict()],
+    );
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-015: a `-->` in paragraph text is rendered `--&gt;` and ends no region, so \
+         the PASS line after it is hidden (D6):\n{failures:#?}"
+    );
+}
+
+#[test]
+fn lib_tool_015_a_closer_in_a_later_html_block_ends_an_unclosed_comment_region() {
+    // None of these records holds inline HTML. Each closing `-->` lies in an
+    // HTML block that holds no `<!--` of its own. Types 1 to 5 may interrupt
+    // the FAIL line's paragraph and end on their own line (§4.6), so the PASS
+    // line right after counts. Types 6 and 7 end only at a blank line. In a
+    // type 6 block, backticks are raw HTML, not a code span.
+    let failures = mismatches_lf_and_crlf(
+        &[
+            (
+                "<div><!--\n\n{FAIL}\n<pre>--></pre>\n{PASS}\n",
+                "type 1: a `-->` inside <pre> on one line",
+            ),
+            (
+                "<!-- a --> <!--\n{FAIL}\n<?x -->?>\n{PASS}\n",
+                "type 3: a `-->` inside a processing instruction",
+            ),
+            (
+                "> <!--\n{FAIL}\n<!X -->\n{PASS}\n",
+                "type 4: a `-->` inside a declaration",
+            ),
+            (
+                "<div><!--\n\n{FAIL}\n<![CDATA[-->]]>\n{PASS}\n",
+                "type 5: a `-->` inside a CDATA section",
+            ),
+            (
+                "<div><!--\n\n{FAIL}\n<p>`-->`\n\n{PASS}\n",
+                "type 6: a backticked `-->` in a <p> line, then a blank line",
+            ),
+            (
+                "- a\n\n  <!--\n{FAIL}\n\n<x a=-->\n\n{PASS}\n",
+                "type 7: an open tag whose unquoted attribute value ends `--`",
+            ),
+        ],
+        &[],
+    );
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-015: a `-->` inside a later HTML block ends the region, so the PASS line \
+         after it passes the row (D6):\n{failures:#?}"
+    );
+}
+
+#[test]
+fn lib_tool_015_a_closer_in_later_inline_html_ends_an_unclosed_comment_region() {
+    // None of these records holds an HTML block after the unclosed `<!--`.
+    // Each closing `-->` lies in an inline HTML event (§6.6), and the PASS
+    // line on the next line interrupts that paragraph (§5.2), so it counts.
+    let failures = mismatches_lf_and_crlf(
+        &[
+            (
+                "<div><!--\n\n{FAIL}\n\nText <span title=\"-->\"> x\n{PASS}\n",
+                "a `-->` in a quoted attribute value",
+            ),
+            (
+                "<!-- a --> <!--\n{FAIL}\n\nText <x a=--> y\n{PASS}\n",
+                "a `-->` where an unquoted attribute value meets the tag's `>`",
+            ),
+            (
+                "> <!--\n{FAIL}\n\nText <!-- end --> y\n{PASS}\n",
+                "a closed inline comment",
+            ),
+            (
+                "<div><!--\n\n{FAIL}\n\nText <?x --> ?> y\n{PASS}\n",
+                "a `-->` inside an inline processing instruction",
+            ),
+            (
+                "- a\n\n  <!--\n{FAIL}\nand <span title=\"-->\"> x\n{PASS}\n",
+                "inline HTML in a lazy line of a list item",
+            ),
+        ],
+        &[],
+    );
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-015: a `-->` inside later inline HTML ends the region, so the PASS line \
+         after it passes the row (D6):\n{failures:#?}"
     );
 }

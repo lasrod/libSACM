@@ -934,7 +934,7 @@ acceptance = [
   "A `- Row verdict:` line inside an HTML comment (`<!-- ... -->`, on one line or spanning lines) or inside an HTML block (for example between `<div>` and `</div>`, or after `<details>`) does not count, and is not malformed. Through the parser of ADR 0008.",
   "A backtick-fence opener whose info string contains a backtick is not an opener. In the seed P2 (```a`b, then ```, then a PASS line, then ```), the PASS is inside the fence that the second line opens, so the record has no verdict line. In the seed P7 (<div>, then ```, then </div>, then a blank line, then a FAIL line, then a fenced PASS), the fence line inside the HTML block opens no fence, the FAIL counts and the fenced PASS does not, so the row gets exactly the FAIL problem. Without the blank line after </div>, CommonMark keeps the rest of the record in one type-6 HTML block (§4.6), so the row gets exactly the no-verdict problem.",
   "Controls: a PASS line after a closed HTML comment, after an HTML block that a blank line ends, and after a closed tilde fence whose info string holds a backtick, and after a closed backtick fence whose info string holds a tilde, counts. README rule 5 states the rule and drops its list of unhandled cases.",
-  "Fail-safe for comments that a browser would keep open: a `<!--` inside an HTML range (an `Html` or `InlineHtml` event) that is not closed by `-->` within that range hides everything from the `<!--` to the end of the next `-->` in the source, or to the end of the record if there is none. `<!-->` and `<!--->` are complete comments: the search for `-->` starts at the third byte of `<!--`. A `<!--` in a code span or a code block hides nothing. Content inside `<details>` still counts.",
+  "Fail-safe for comments that a browser would keep open: a `<!--` inside an HTML range (an `Html` or `InlineHtml` event) that is not closed by `-->` within that range hides everything from the `<!--` to the end of the next `-->` that itself lies inside an HTML range, or to the end of the record if there is none. A `-->` in text, a code span or a code block is rendered escaped (`--&gt;`), so it does not close the comment. `<!-->` and `<!--->` are complete comments: the search for `-->` starts at the third byte of `<!--`. A `<!--` in a code span or a code block hides nothing. Content inside `<details>` still counts.",
 ]
 depends_on = ["LIB-TOOL-005"]
 tests = [
@@ -957,6 +957,13 @@ tests = [
   "xtask/tests/verdict_markdown.rs::lib_tool_015_a_short_comment_is_closed_by_a_closer_that_overlaps_its_opener",
   "xtask/tests/verdict_markdown.rs::lib_tool_015_an_empty_comment_of_four_dashes_is_closed",
   "xtask/tests/verdict_markdown.rs::lib_tool_015_a_comment_opener_followed_by_a_lone_dash_hides_to_the_end_of_the_record",
+  "xtask/tests/verdict_markdown.rs::lib_tool_015_a_closer_in_a_code_span_does_not_end_an_unclosed_comment_region",
+  "xtask/tests/verdict_markdown.rs::lib_tool_015_a_fail_line_after_a_raw_html_closer_that_follows_a_code_span_closer_counts",
+  "xtask/tests/verdict_markdown.rs::lib_tool_015_a_closer_in_a_fenced_code_block_does_not_end_an_unclosed_comment_region",
+  "xtask/tests/verdict_markdown.rs::lib_tool_015_a_closer_in_an_indented_code_block_does_not_end_an_unclosed_comment_region",
+  "xtask/tests/verdict_markdown.rs::lib_tool_015_a_closer_in_paragraph_text_does_not_end_an_unclosed_comment_region",
+  "xtask/tests/verdict_markdown.rs::lib_tool_015_a_closer_in_a_later_html_block_ends_an_unclosed_comment_region",
+  "xtask/tests/verdict_markdown.rs::lib_tool_015_a_closer_in_later_inline_html_ends_an_unclosed_comment_region",
 ]
 
 [[row]]

@@ -60,6 +60,8 @@ change bumps the minor version and is listed under **Breaking**.
     not malformed. This covers HTML comments, fences inside list items and block quotes,
     and a backtick fence "opener" whose info string holds a backtick.
   - A `<!--` that the HTML around it leaves unclosed hides everything up to the end of
-    the next `-->`, or to the end of the record, as a browser would.
+    the next `-->` that lies in raw HTML, or to the end of the record, as a browser
+    would. A `-->` in text, a code span or a code block is rendered escaped and closes
+    nothing.
   - The hand-written fence model is removed. The verdict format and the problems the
     gate reports are unchanged.
