@@ -109,6 +109,9 @@ Slice 0007 (LIB-TOOL-005, -015) replaced the hand-written fence model in `xtask/
 - **Copilot-fix head `04d0090` (D14, closed inline comments hide a line):**
   - mutants.yml [42475224874](https://github.com/lasrod/libSACM/actions/runs/42475224874): 471 mutants, 460 caught, 0 missed, 0 timeout, 11 unviable. These are the same 11 as at `0dbc33b`, at new lines: `fetch.rs:110:5`, and in `matrix.rs` `584:5`, `791:5`, `932:5`, `1109:5`, `1262:9`, `1669:5` (`scan_record`), `2112:5`, `2155:5`, and `2214:48` twice.
   - ci.yml [42475224860](https://github.com/lasrod/libSACM/actions/runs/42475224860), job `mutants (PR diff)`: 61 mutants, 60 caught, 0 missed, 0 timeout, 1 unviable (`scan_record`). Every job succeeded, `cargo-deny` included.
+- **Route-W head `f4d63d5` (D14 withdrawn; the code is back to the round-2 behaviour):**
+  - mutants.yml [42481198111](https://github.com/lasrod/libSACM/actions/runs/42481198111): 464 mutants, 453 caught, 0 missed, 0 timeout, 11 unviable. These are the same 11 as at `0dbc33b`: `fetch.rs:110:5`, and in `matrix.rs` `584:5`, `791:5`, `932:5`, `1109:5`, `1262:9`, `1661:5` (`scan_record`), `2096:5`, `2139:5`, and `2198:48` twice.
+  - ci.yml [42481198200](https://github.com/lasrod/libSACM/actions/runs/42481198200): every job succeeded. The `mutants (PR diff)` job gave 54 mutants, 53 caught, 1 unviable (`scan_record`).
 - **Equivalent mutant found while the tests were being written:** a D6 region that ends at the start rather than the end of `-->` hides the same candidates, because no byte of `-->` can be the first byte of a candidate (`- R`). The implementation computes the end as `at + closer.len()`, so cargo-mutants does not generate that form; it is noted here for any future refactor.
 - **Target order:** `xtask/tests/verdict_markdown.rs` sorts after `function_scan`, and none of its tests scan the real repository.
 

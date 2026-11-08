@@ -1,8 +1,8 @@
 ---
 slice: 0007
 name: m0-verdict-parser
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [LIB-TOOL-005, LIB-TOOL-015]
 mode: pr
 ---
@@ -292,3 +292,11 @@ The test engineer found one equivalent mutant: a region ending at the start rath
   - All 75 `verdict_markdown` tests pass. A local cargo-mutants run gave 54 mutants:
     53 caught, 1 unviable, 0 missed.
   - Both rows are `implemented`.
+- 2026-11-08 verification round 4, at `f4d63d5`:
+  [record](../verification/0007-m0-verdict-parser-round4.md). Both rows PASS under
+  route W.
+  - The output is identical to round 2 on 100,000 records.
+  - The GitHub sample shows 0 hidden lines that GitHub displays.
+  - LIB-TOOL-015 criterion 1's inline clause is reworded.
+  - Both rows are now `verified`.
+- 2026-11-08 close: the slice is done.

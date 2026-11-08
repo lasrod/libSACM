@@ -574,7 +574,7 @@ title = "Verification records carry a per-row verdict the gate reads"
 requirement = "A verified row's verification record must state a PASS verdict for that specific row in a machine-readable line, and the gate checks the verdict rather than mere mention of the id."
 source = "Verification 0001 follow-up (a record saying 'LIB-X-001: FAIL' satisfied the substring check)"
 kind = "tooling"
-status = "implemented"
+status = "verified"
 code = ["xtask/src/matrix.rs"]
 acceptance = [
   "A verdict-line candidate is a source line that starts at column 0 with `- Row verdict:`. A candidate counts only when it lies outside every hidden range. The hidden ranges are the code blocks (fenced or indented) and the closed comments that the CommonMark parser of ADR 0008 finds (`pulldown-cmark`, `Options::empty()`, with the D7 tab normalisation). A counted candidate that, after removing trailing spaces and tabs, is exactly `- Row verdict: <ROW-ID>: <VERDICT>` is a verdict line, where <VERDICT> is PASS, FAIL or OPEN. Any other counted candidate is malformed. A hidden line is never a verdict line and never malformed.",
@@ -656,6 +656,7 @@ tests = [
   "xtask/tests/verdict_markdown.rs::lib_tool_005_a_look_alike_outside_a_closed_inline_comment_is_reported",
   "xtask/tests/verdict_markdown.rs::lib_tool_005_a_line_that_ends_the_paragraph_is_never_inside_an_inline_comment",
 ]
+verification = "docs/verification/0007-m0-verdict-parser-round4.md"
 
 [[row]]
 id = "LIB-TOOL-006"
@@ -950,10 +951,10 @@ title = "Verdict lines hidden by Markdown do not count"
 requirement = "A `- Row verdict:` line that Markdown hides never counts, and a record whose rendering is ambiguous cannot pass. Code blocks, including a backtick fence whose info string contains a backtick (the next ``` line then opens a fence), and closed comments hide lines. Any other raw HTML is a problem rather than something the gate tries to render."
 source = "Slice 0004 fix round 1, implementer follow-up (left outside the P-005 contract). Verification 0004 round 2 seeds P2 (```a`b, then ```, then PASS, then ```) and P7 (<div>, then ```, then </div>, then FAIL, then a fenced PASS); both give a false PASS today."
 kind = "tooling"
-status = "implemented"
+status = "verified"
 code = ["xtask/src/matrix.rs", "xtask/Cargo.toml"]
 acceptance = [
-  "A `- Row verdict:` line inside a closed HTML comment (one HTML block that is a single comment, or an inline comment) does not count and is not malformed. A PASS line after a closed comment counts.",
+  "A `- Row verdict:` line inside a closed HTML comment block (one HTML block that is a single comment) does not count and is not malformed. A candidate can never lie inside an inline comment (a column-0 list item ends the paragraph, CommonMark §5.2). A closed inline comment hides nothing, so a verdict-like line inside one is reported (slice 0007 round 3, D14 withdrawn). A PASS line after a closed comment counts.",
   "Raw HTML other than a closed comment and the inline tags <br>, <ul>, </ul>, <li>, </li> (case-insensitive; also <br/> and <br />) is a problem: `verification record <p>:<line>: raw HTML other than a closed comment or <br>, <ul>, <li> is not allowed`, once per line that holds it, per citing row. This covers HTML blocks of types 1 and 3 to 7, an unclosed comment, a comment with text after its closer in the same block, `--!>`, and inline tags outside the list. The verifier's probes of verification 0007 round 1 (F1, F3, F4 b) each give that problem and never pass.",
   "A backtick fence opener whose info string contains a backtick is not an opener. In seed P2 (```a`b, then ```, then a PASS line, then ```), the PASS is inside the fence that the second line opens, so the record has no verdict line. Seed P7 (<div>, then ```, then </div>, ...) now gives the raw-HTML problem. Controls: a PASS after a closed tilde fence whose info string holds a backtick, and after a closed backtick fence whose info string holds a tilde, counts.",
   "README rule 5 states the strict rules. It makes no claim to match what a browser renders.",
@@ -995,6 +996,7 @@ tests = [
   "xtask/tests/verdict_markdown.rs::lib_tool_015_a_look_alike_that_ends_with_the_inline_comment_closer_is_reported",
   "xtask/tests/verdict_markdown.rs::lib_tool_015_inline_html_other_than_a_closed_comment_hides_nothing",
 ]
+verification = "docs/verification/0007-m0-verdict-parser-round4.md"
 
 [[row]]
 id = "LIB-QA-009"
