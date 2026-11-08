@@ -7870,19 +7870,30 @@ fn lib_qa_007_slice_skill_obtains_the_report_before_verification() {
 //
 // Three rules, each looked for only inside its own step:
 //
-// - step 7 (`## 7.`): reuse the slice's existing PR, found with
-//   `gh pr list --head`, and do not create another;
+// - step 7 (`## 7.`): reuse the slice's existing PR. The existing-PR query
+//   must govern the draft creation: one sentence has `gh pr create --draft`
+//   and, after it, one of `PR_QUERY_CONDITIONS` (`unless` followed directly
+//   by the code span `gh pr list --head <branch>` and "already lists one" or
+//   "lists one"). Step 7 must also say "do not create another";
 // - step 7: when `mutants.yml` did not run on the head commit, dispatch it on
-//   the slice branch with `gh workflow run mutants.yml --ref`. The condition
-//   and the command must be in one block (a paragraph or a list item), so the
-//   dispatch stays tied to its condition;
-// - step 8.5 (item `5.` of `## 8.`): run `gh pr create` only if (or only
-//   when) the branch has no PR.
+//   the slice branch: the code span `gh workflow run mutants.yml --ref
+//   <branch>`. The condition and the command must be in one block (a
+//   paragraph or a list item), so the dispatch stays tied to its condition;
+// - step 8.5 (item `5.` of `## 8.`): one sentence has one of
+//   `CREATE_ONLY_WITHOUT_PR`: the code span `gh pr create` followed directly
+//   by "only if" (or "only when") "the branch has no PR".
+//
+// Commands are matched as whole code spans, so a command whose `<branch>`
+// argument is dropped or replaced (by `main` or any other word), or that
+// gains another argument, no longer matches. `<branch>` is the placeholder
+// the real skill uses. A phrase that ends in a letter must end at a word
+// boundary, so "has no PR" does not match "has no previous review".
 //
 // Text is compared in lower case with whitespace collapsed, so a re-wrapped
-// line still matches. A step that cannot be found counts as missing all of
-// its rules. The check reports one fixed problem per missing rule, so a test
-// can assert exactly which rule was lost.
+// line still matches. Sentences are split at ". " inside a block. A step that
+// cannot be found counts as missing all of its rules. The check reports one
+// fixed problem per missing rule, so a test can assert exactly which rule was
+// lost.
 
 const SLICE_SKILL: &str = ".claude/skills/sacm-slice/SKILL.md";
 
@@ -7958,26 +7969,69 @@ fn markdown_blocks(lines: &[&str]) -> Vec<String> {
         .collect()
 }
 
+/// The sentences of `lines`: each block (flattened), split at every ". ".
+fn markdown_sentences(lines: &[&str]) -> Vec<String> {
+    markdown_blocks(lines)
+        .iter()
+        .flat_map(|block| block.split(". ").map(str::to_owned).collect::<Vec<_>>())
+        .collect()
+}
+
+/// Whether `text` contains `phrase` ending at a word boundary: the next
+/// character, if any, is not a letter, digit, `-` or `_`.
+fn has_phrase(text: &str, phrase: &str) -> bool {
+    text.match_indices(phrase).any(|(at, _)| {
+        text[at + phrase.len()..]
+            .chars()
+            .next()
+            .is_none_or(|c| !(c.is_alphanumeric() || c == '-' || c == '_'))
+    })
+}
+
+/// Step 7's draft creation, as a code span (lower case).
+const DRAFT_CREATE: &str = "`gh pr create --draft`";
+
+/// The conditions, one of which must follow `DRAFT_CREATE` in its sentence,
+/// so that the existing-PR query governs the draft creation.
+const PR_QUERY_CONDITIONS: [&str; 2] = [
+    "unless `gh pr list --head <branch>` already lists one",
+    "unless `gh pr list --head <branch>` lists one",
+];
+
+/// Step 7's full-run dispatch on the slice branch, as a code span.
+const DISPATCH_COMMAND: &str = "`gh workflow run mutants.yml --ref <branch>`";
+
+/// Step 8.5's rule, one of which must be in one sentence (lower case).
+const CREATE_ONLY_WITHOUT_PR: [&str; 2] = [
+    "`gh pr create` only if the branch has no pr",
+    "`gh pr create` only when the branch has no pr",
+];
+
 /// LIB-QA-011: the problems with the `sacm-slice` skill's PR-reuse and
 /// full-run-dispatch rules; empty when all three hold.
 fn check_slice_pr_rules(text: &str) -> Vec<String> {
     let step_7 = markdown_section(text, "## 7.");
     let step_8_5 = markdown_section(text, "## 8.").and_then(|s| numbered_item(&s, 5));
     let reuses_pr = step_7.as_ref().is_some_and(|step| {
-        let step = flat_lines(step);
-        step.contains("gh pr list --head") && step.contains("do not create another")
+        let query_governs_draft = markdown_sentences(step).iter().any(|sentence| {
+            sentence.find(DRAFT_CREATE).is_some_and(|at| {
+                let rest = &sentence[at + DRAFT_CREATE.len()..];
+                PR_QUERY_CONDITIONS.iter().any(|c| has_phrase(rest, c))
+            })
+        });
+        query_governs_draft && has_phrase(&flat_lines(step), "do not create another")
     });
     let dispatches_full_run = step_7.as_ref().is_some_and(|step| {
         markdown_blocks(step).iter().any(|block| {
-            block.contains("gh workflow run mutants.yml --ref")
-                && block.contains("did not run on the head commit")
+            block.contains(DISPATCH_COMMAND) && block.contains("did not run on the head commit")
         })
     });
     let creates_only_without_pr = step_8_5.as_ref().is_some_and(|item| {
-        let item = flat_lines(item);
-        item.contains("gh pr create")
-            && (item.contains("only if the branch has no pr")
-                || item.contains("only when the branch has no pr"))
+        markdown_sentences(item).iter().any(|sentence| {
+            CREATE_ONLY_WITHOUT_PR
+                .iter()
+                .any(|rule| has_phrase(sentence, rule))
+        })
     });
     [
         (reuses_pr, PR_REUSE_PROBLEM),
@@ -8185,6 +8239,172 @@ fn lib_qa_011_a_removed_rule_is_named_exactly() {
     ]);
 }
 
+/// The fixture with its draft-PR paragraph's second sentence replaced by
+/// `sentence` (and the controls' extra lines, if any, after it).
+fn with_draft_sentence(lines: &[&str]) -> String {
+    let first = format!(
+        "**Before verifying, under `mode=pr`:** push the slice branch. {}",
+        lines[0]
+    );
+    let mut new = vec![first.as_str()];
+    new.extend_from_slice(&lines[1..]);
+    replace_lines(PR_RULES_FIXTURE, FIXTURE_OPEN_DRAFT, &new)
+}
+
+#[test]
+fn lib_qa_011_the_pr_query_must_govern_the_draft_creation() {
+    let reuse: &[&str] = &[PR_REUSE_PROBLEM];
+    assert_pr_rule_controls(&[
+        (
+            "the draft creation made unconditional, the PR query kept as information",
+            with_draft_sentence(&[
+                "Open the PR as a draft (`gh pr create --draft`). Run `gh pr list --head <branch>` to see it.",
+            ]),
+            reuse,
+        ),
+        (
+            "the PR query run before an unconditional draft creation",
+            with_draft_sentence(&[
+                "Run `gh pr list --head <branch>`, then open the PR as a draft (`gh pr create --draft`).",
+            ]),
+            reuse,
+        ),
+        (
+            "the PR query's condition moved to its own list item",
+            with_draft_sentence(&[
+                "Open the PR as a draft (`gh pr create --draft`).",
+                "- Unless `gh pr list --head <branch>` already lists one, say so.",
+            ]),
+            reuse,
+        ),
+        (
+            "\"unless\" governing something else",
+            with_draft_sentence(&[
+                "Open the PR as a draft (`gh pr create --draft`) unless CI is red, and run `gh pr list --head <branch>`.",
+            ]),
+            reuse,
+        ),
+        (
+            "the condition inverted to \"lists none\"",
+            with_draft_sentence(&[
+                "Open the PR as a draft (`gh pr create --draft`) unless `gh pr list --head <branch>` lists none.",
+            ]),
+            reuse,
+        ),
+        (
+            "the condition's result clause dropped",
+            with_draft_sentence(&[
+                "Open the PR as a draft (`gh pr create --draft`) unless `gh pr list --head <branch>`.",
+            ]),
+            reuse,
+        ),
+        (
+            "the draft creation no longer a draft",
+            with_draft_sentence(&[
+                "Open the PR (`gh pr create`) unless `gh pr list --head <branch>` already lists one.",
+            ]),
+            reuse,
+        ),
+    ]);
+}
+
+#[test]
+fn lib_qa_011_the_commands_must_name_the_slice_branch() {
+    let s = PR_RULES_FIXTURE;
+    let reuse: &[&str] = &[PR_REUSE_PROBLEM];
+    let dispatch: &[&str] = &[FULL_RUN_DISPATCH_PROBLEM];
+    let query = |arg: &str| {
+        with_draft_sentence(&[&format!(
+            "Open its PR as a draft (`gh pr create --draft`) unless `gh pr list --head{arg}` already lists one."
+        )])
+    };
+    let dispatch_on = |arg: &str| {
+        replace_line(
+            s,
+            FIXTURE_DISPATCH,
+            &format!(
+                "- **If `mutants.yml` did not run on the head commit:** dispatch it on the slice branch (`gh workflow run mutants.yml --ref{arg}`) and wait for that run."
+            ),
+        )
+    };
+    assert!(
+        check_slice_pr_rules(&query(" <branch>")).is_empty()
+            && check_slice_pr_rules(&dispatch_on(" <branch>")).is_empty(),
+        "LIB-QA-011: precondition: the control builders give a passing text with `<branch>`"
+    );
+    assert_pr_rule_controls(&[
+        ("`gh pr list --head` without its branch", query(""), reuse),
+        ("`gh pr list --head main`", query(" main"), reuse),
+        ("`gh pr list --head <base>`", query(" <base>"), reuse),
+        ("`gh pr list --head HEAD`", query(" HEAD"), reuse),
+        (
+            "`gh pr list --head <branch>` with an extra filter",
+            query(" <branch> --state closed"),
+            reuse,
+        ),
+        (
+            "`gh workflow run mutants.yml --ref` without its branch",
+            dispatch_on(""),
+            dispatch,
+        ),
+        (
+            "`gh workflow run mutants.yml --ref main`",
+            dispatch_on(" main"),
+            dispatch,
+        ),
+        (
+            "`gh workflow run mutants.yml --ref <base>`",
+            dispatch_on(" <base>"),
+            dispatch,
+        ),
+        (
+            "`gh workflow run mutants.yml --ref <branch>` with an extra input",
+            dispatch_on(" <branch> -f shard=0"),
+            dispatch,
+        ),
+    ]);
+}
+
+#[test]
+fn lib_qa_011_pr_create_must_be_conditioned_on_no_pr() {
+    let s = PR_RULES_FIXTURE;
+    let create: &[&str] = &[PR_CREATE_PROBLEM];
+    assert_pr_rule_controls(&[
+        (
+            "the condition weakened to a longer word",
+            replace_line(
+                s,
+                FIXTURE_CREATE,
+                "Run `gh pr create` only if the branch has no previous review.",
+            ),
+            create,
+        ),
+        (
+            "the condition governing the reuse, not the creation",
+            replace_line(
+                s,
+                FIXTURE_CREATE,
+                "Run `gh pr create`; reuse the PR only if the branch has no PR.",
+            ),
+            create,
+        ),
+        (
+            "the condition in another sentence than the creation",
+            replace_line(
+                s,
+                FIXTURE_CREATE,
+                "Run `gh pr create`. That is safe only if the branch has no PR.",
+            ),
+            create,
+        ),
+        (
+            "the condition dropped to \"if needed\"",
+            replace_line(s, FIXTURE_CREATE, "Run `gh pr create` if needed."),
+            create,
+        ),
+    ]);
+}
+
 #[test]
 fn lib_qa_011_a_missing_step_names_each_of_its_rules() {
     let s = PR_RULES_FIXTURE;
@@ -8277,6 +8497,14 @@ fn lib_qa_011_a_rule_moved_to_another_step_is_named_exactly() {
 fn lib_qa_011_the_check_accepts_equivalent_wording_and_wrapping() {
     let s = PR_RULES_FIXTURE;
     let controls = [
+        (
+            "\"lists one\" without \"already\"",
+            replace_line(
+                s,
+                FIXTURE_OPEN_DRAFT,
+                &FIXTURE_OPEN_DRAFT.replace("already lists one", "lists one"),
+            ),
+        ),
         (
             "\"only when\" instead of \"only if\"",
             replace_line(

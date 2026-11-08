@@ -71,3 +71,11 @@ None. These are tooling and quality rows, so the acceptance criteria are the lea
 - 2026-11-08 the LIB-TOOL-003 real-command tests now use `hook_bash()` and fail
   instead of skipping. `find_bash()` is removed. Under a Git Bash PATH and under a
   PowerShell-style PATH, all 47 hook tests run and pass, with 0 skipped.
+- 2026-11-08 Copilot review of PR #15: 2 valid comments on the LIB-QA-011 check.
+  1. The PR query must govern the draft creation: `gh pr create --draft` and "unless
+     `gh pr list --head <branch>` ... lists one" must be in one sentence.
+  2. The commands must name the slice branch: `--head <branch>` and `--ref <branch>`
+     must appear as whole code spans.
+
+  Step 8.5 is tightened the same way. 3 new tests, each with negative controls that
+  the old check passed.
