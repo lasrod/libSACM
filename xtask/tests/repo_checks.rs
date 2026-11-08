@@ -1,8 +1,10 @@
 //! Regression tests for repository configuration: the CI gates, the MSRV
 //! declaration and the dependency policy (rows LIB-QA-001..003), mutation
 //! testing with cargo-mutants (LIB-QA-007), the `sacm-slice` skill's
-//! PR-reuse and full-run-dispatch rules (LIB-QA-011), and the git-ignore that
-//! keeps OMG documents out of the repository (LIB-TOOL-002).
+//! PR-reuse and full-run-dispatch rules (LIB-QA-011), the CI gates as live
+//! steps (LIB-QA-008), the pinning and reviewed inputs of third-party CI
+//! actions (LIB-QA-009), and the git-ignore that keeps OMG documents out of
+//! the repository (LIB-TOOL-002).
 //!
 //! These guard against a gate being removed or drifting out of step with the
 //! manifest — the kind of change that passes review because nothing fails.
@@ -1567,9 +1569,66 @@ fn lib_qa_002_msrv_job_check_rejects_yaml_run_bypasses() {
 #[test]
 fn lib_qa_002_msrv_job_check_rejects_yaml_guard_bypasses() {
     let (ci, msrv, _, step, job) = msrv_fixture();
+    let mutations = msrv_guard_bypasses(&ci, &step, &job);
+    assert_yaml_mutations_reported("LIB-QA-002", &mutations, |text| check_msrv_job(text, &msrv));
+}
+
+/// `text` with `extra` inserted after the one line of job `job` whose
+/// trimmed form starts with `prefix`, indented `deeper` spaces more than it.
+/// The job is its key line at two spaces and every line up to the next
+/// non-blank, non-comment line at two spaces or less. Panics if the job has
+/// not exactly one such line, so a mutation can never silently be a no-op.
+fn insert_after_in_job(
+    text: &str,
+    job: &str,
+    prefix: &str,
+    deeper: usize,
+    extra: &[&str],
+) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    let start = lines
+        .iter()
+        .position(|line| indent(line) == 2 && line.trim() == format!("{job}:"))
+        .unwrap_or_else(|| panic!("job `{job}` exists"));
+    let end = lines[start + 1..]
+        .iter()
+        .position(|line| {
+            let trimmed = line.trim();
+            !trimmed.is_empty() && !trimmed.starts_with('#') && indent(line) <= 2
+        })
+        .map_or(lines.len(), |offset| start + 1 + offset);
+    let hits: Vec<usize> = (start..end)
+        .filter(|&i| lines[i].trim().starts_with(prefix))
+        .collect();
+    assert_eq!(
+        hits.len(),
+        1,
+        "mutation target `{prefix}` must occur exactly once in job `{job}`"
+    );
+    let mut out = String::new();
+    for (i, line) in lines.iter().enumerate() {
+        out.push_str(line);
+        out.push('\n');
+        if i == hits[0] {
+            for new in padded(line, deeper, extra) {
+                out.push_str(&new);
+                out.push('\n');
+            }
+        }
+    }
+    out
+}
+
+/// The Y2-2 and Y2-3 guard bypasses of the MSRV job `job` of `ci`, whose MSRV
+/// step line (trimmed) is `step`. Every edit is found by structure, not by
+/// the text of a `uses`, so the same mutations apply to the unpinned and the
+/// pinned `ci.yml` (slice 0009).
+fn msrv_guard_bypasses(ci: &str, step: &str, job: &str) -> Vec<Mutation> {
     let job_line = format!("{job}:");
-    let gated = with_gate_job(&ci, &job);
-    let mutations = [
+    let gated = with_gate_job(ci, job);
+    let toolchain_step = format!("- uses: {TOOLCHAIN_ACTION}");
+    let ci = ci.to_owned();
+    vec![
         mutation(
             "needs: a skipped job",
             insert_after(&gated, &job_line, 2, &["needs: gate"]),
@@ -1587,22 +1646,17 @@ fn lib_qa_002_msrv_job_check_rejects_yaml_guard_bypasses() {
         ),
         mutation(
             "step-level <<: *anchor of a skipped step",
-            insert_after(&gated, &step, 2, &["<<: *skip_step"]),
+            insert_after(&gated, step, 2, &["<<: *skip_step"]),
             &["step-key", "merge-key"],
         ),
         mutation(
             "step-level shell: \"true {0}\"",
-            insert_after(&ci, &step, 2, &["shell: \"true {0}\""]),
+            insert_after(&ci, step, 2, &["shell: \"true {0}\""]),
             STEP_KEY_AND_GUARD,
         ),
         mutation(
             "continue-on-error on another step of the job",
-            insert_after(
-                &ci,
-                "- uses: dtolnay/rust-toolchain@master",
-                2,
-                &["continue-on-error: true"],
-            ),
+            insert_after_in_job(&ci, job, &toolchain_step, 2, &["continue-on-error: true"]),
             &["step-guard"],
         ),
         mutation(
@@ -1641,11 +1695,10 @@ fn lib_qa_002_msrv_job_check_rejects_yaml_guard_bypasses() {
         ),
         mutation(
             "working-directory on the step",
-            insert_after(&ci, &step, 2, &["working-directory: crates/sacm"]),
+            insert_after(&ci, step, 2, &["working-directory: crates/sacm"]),
             &["step-key"],
         ),
-    ];
-    assert_yaml_mutations_reported("LIB-QA-002", &mutations, |text| check_msrv_job(text, &msrv));
+    ]
 }
 
 /// Y2-2, Y2-3: keys are compared as strings after parsing, so quoting, an
@@ -8719,4 +8772,2358 @@ fn lib_qa_011_the_check_accepts_equivalent_wording_and_wrapping() {
             check_slice_pr_rules(&text)
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// Exact controls (LIB-QA-008 and LIB-QA-009)
+// ---------------------------------------------------------------------------
+
+const GATE_MISSING: &[&str] = &["gate-missing"];
+const GATE_MISSING_TWICE: &[&str] = &["gate-missing", "gate-missing"];
+const GATE_MISSING_AND_STEP: &[&str] = &["gate-missing", "gate-step"];
+const GATE_STEP: &[&str] = &["gate-step"];
+const STEP_KEY: &[&str] = &["step-key"];
+const STEP_GUARD: &[&str] = &["step-guard"];
+const GATE_ENV: &[&str] = &["gate-env"];
+const GATE_OS: &[&str] = &["gate-os"];
+const GATE_OS_TWICE: &[&str] = &["gate-os", "gate-os"];
+const GATE_TRIGGER: &[&str] = &["gate-trigger"];
+const MERGE_KEY: &[&str] = &["merge-key"];
+const YAML_PARSE: &[&str] = &["yaml-parse"];
+const YAML_DOCUMENTS: &[&str] = &["yaml-documents"];
+const ACTION_UNPINNED: &[&str] = &["action-unpinned"];
+const ACTION_UNREVIEWED: &[&str] = &["action-unreviewed"];
+const ACTION_INPUT: &[&str] = &["action-input"];
+const ACTION_INPUT_TWICE: &[&str] = &["action-input", "action-input"];
+
+/// The codes of `problems`, sorted, with repeats. A problem without a
+/// `[code] ` prefix shows as `<uncoded>`, so it can never match a code.
+fn problem_codes(problems: &[String]) -> Vec<String> {
+    let mut codes: Vec<String> = problems
+        .iter()
+        .map(|p| {
+            p.strip_prefix('[')
+                .and_then(|rest| rest.split_once("] "))
+                .map_or_else(|| "<uncoded>".to_owned(), |(code, _)| code.to_owned())
+        })
+        .collect();
+    codes.sort();
+    codes
+}
+
+/// Assert that `reference` passes, and that each control, which must differ
+/// from it, gives exactly the problem codes it names: no fewer, no others,
+/// and each as many times as named. A control is one YAML document unless it
+/// names `yaml-parse` or `yaml-documents`, so that the check and not the
+/// parser is what rejects it.
+fn assert_exact_controls(
+    row: &str,
+    reference: &str,
+    controls: &[(&str, String, &[&str])],
+    check: impl Fn(&str) -> Vec<String>,
+) {
+    let problems = check(reference);
+    assert!(
+        problems.is_empty(),
+        "{row}: the reference fixture must pass before its controls mean anything: {problems:#?}"
+    );
+    for (name, text, expected) in controls {
+        assert_ne!(
+            text, reference,
+            "{row}: precondition: the control `{name}` changes the fixture"
+        );
+        let unparsable = expected
+            .iter()
+            .any(|code| matches!(*code, "yaml-parse" | "yaml-documents"));
+        assert_eq!(
+            parses_as_one_document(text),
+            !unparsable,
+            "{row}: precondition: the control `{name}` is one YAML document exactly when it is not about a parse failure; text:\n{text}"
+        );
+        let mut want = expected.to_vec();
+        want.sort_unstable();
+        let problems = check(text);
+        assert_eq!(
+            problem_codes(&problems),
+            want,
+            "{row}: the control `{name}` must give exactly {want:?}; it gave {problems:#?}; text:\n{text}"
+        );
+    }
+}
+
+/// `text` wrapped in a one-item sequence, so the workflow is not a mapping.
+fn wrapped_in_sequence(text: &str) -> String {
+    text.lines()
+        .enumerate()
+        .map(|(i, line)| match (i, line.is_empty()) {
+            (0, _) => format!("- {line}\n"),
+            (_, true) => "\n".to_owned(),
+            (_, false) => format!("  {line}\n"),
+        })
+        .collect()
+}
+
+/// `text` with a job appended (`jobs:` is its last top-level key) whose `env`
+/// merges an anchored mapping with `<<`. The job runs no gate and no
+/// third-party action, so only `[merge-key]` concerns it.
+fn with_merge_key_job(text: &str) -> String {
+    append_job(
+        text,
+        &[
+            "merged:",
+            "  runs-on: ubuntu-latest",
+            "  env:",
+            "    base: &base",
+            "      A: \"1\"",
+            "    more:",
+            "      <<: *base",
+            "  steps:",
+            "    - run: echo merged",
+        ],
+    )
+}
+
+// ---------------------------------------------------------------------------
+// LIB-QA-009: third-party CI actions are pinned and their inputs reviewed
+// ---------------------------------------------------------------------------
+//
+// Every `uses` of a step or of a job, in every workflow in
+// `.github/workflows/`, whose owner is not GitHub's `actions` (compared
+// without regard to case) must name a commit:
+// `<owner>/<repo>@<40 lowercase hex digits>`, or it is `[action-unpinned]`.
+// The pair must be in the reviewed table (`[action-unreviewed]`), and every
+// `with` key of a step that uses it must be among that entry's inputs,
+// compared without regard to case (`[action-input]`). A version bump changes
+// the SHA, so it fails this check until someone reviews the action's
+// `action.yml` at the new SHA and adds an entry.
+//
+// This check judges which inputs are passed. The values of cargo-deny's
+// inputs are LIB-QA-003's to judge.
+
+/// A third-party action at a reviewed commit, and the `with` inputs the
+/// repository may pass it there.
+struct ReviewedAction {
+    /// `<owner>/<repo>`. Compared without regard to case, as GitHub resolves
+    /// repository names.
+    action: &'static str,
+    /// The full commit SHA: 40 lowercase hex digits.
+    sha: &'static str,
+    /// The tag or branch the SHA was resolved from. The workflow names it in
+    /// a `# <ref>` comment after the pin.
+    resolved_from: &'static str,
+    /// The inputs the repository may pass, in lower case, each with a
+    /// comment on how it reaches the action's command line at this SHA.
+    inputs: &'static [&'static str],
+}
+
+/// The reviewed table (slice 0009 D1 and D2), resolved on 2026-11-09.
+static REVIEWED_ACTIONS: [ReviewedAction; 3] = [
+    // A docker action. Its `args` are `rust-version credentials ssh-key
+    // ssh-known-hosts --log-level <log-level> --manifest-path <manifest-path>
+    // <arguments> <command> <command-arguments>`, which its entrypoint splices
+    // unquoted into `cargo-deny $*`. So `rust-version`, `credentials`,
+    // `ssh-key`, `ssh-known-hosts` and `use-git-cli` are not reviewed inputs.
+    ReviewedAction {
+        action: "EmbarkStudios/cargo-deny-action",
+        sha: "3c6349835b2b7b196a839186cb8b78e02f7b5f25",
+        resolved_from: "v2.1.1",
+        inputs: &[
+            // `<command>`, unquoted. LIB-QA-003 requires exactly `check`.
+            "command",
+            // `<arguments>`, unquoted, before the command. LIB-QA-003 allows
+            // only `--all-features` and `--workspace`.
+            "arguments",
+            // `<command-arguments>`, unquoted, after the command. LIB-QA-003
+            // refuses any value.
+            "command-arguments",
+            // `--manifest-path <manifest-path>`, unquoted. LIB-QA-003 allows
+            // only the root `Cargo.toml`.
+            "manifest-path",
+            // `--log-level <log-level>`, unquoted. LIB-QA-003 allows only
+            // cargo-deny's six level names.
+            "log-level",
+        ],
+    },
+    ReviewedAction {
+        action: "Swatinem/rust-cache",
+        sha: "d1527c8f67ef9af357290475d4af4b0fab8f12e0",
+        resolved_from: "v2.9.3",
+        // None: the repository passes it no input, so none is reviewed.
+        inputs: &[],
+    },
+    // At `master` the action cannot take the toolchain from the ref name, so
+    // `toolchain` is required. `targets` is not a reviewed input.
+    ReviewedAction {
+        action: "dtolnay/rust-toolchain",
+        sha: "683b588c487a69d01f6c6ddf40f036ff682cc2c8",
+        resolved_from: "master",
+        inputs: &[
+            // Passed through `env`, not spliced into the script, and quoted
+            // where it is used: `rustup toolchain install "$toolchain"`.
+            "toolchain",
+            // Passed through `env`, as `toolchain` is.
+            "components",
+        ],
+    },
+];
+
+/// The directory GitHub reads workflows from.
+const WORKFLOWS_DIR: &str = ".github/workflows";
+
+/// Whether `uses` names an action of GitHub's own `actions` owner, compared
+/// without regard to case. Those stay on major tags, which Dependabot
+/// updates, and are not judged (slice 0009, out of scope). `actions-rs` and
+/// `actionsx` are other owners.
+fn is_github_owned(uses: &str) -> bool {
+    uses.split_once('/')
+        .is_some_and(|(owner, _)| owner.eq_ignore_ascii_case("actions"))
+}
+
+/// An owner as GitHub allows it: letters, digits and `-`.
+fn is_owner_name(part: &str) -> bool {
+    !part.is_empty() && part.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
+/// A repository name as GitHub allows it: letters, digits, `-`, `_` and `.`,
+/// but not `.` or `..`.
+fn is_repo_name(part: &str) -> bool {
+    !matches!(part, "" | "." | "..")
+        && part
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+}
+
+/// `(action, sha)` if `uses` is exactly `<owner>/<repo>@<40 lowercase hex
+/// digits>` (acceptance item 1). A tag, a branch, a short or uppercase SHA, a
+/// sub-path, a `docker://` image and a `./` local action are not.
+fn pinned_action(uses: &str) -> Option<(&str, &str)> {
+    let (action, sha) = uses.split_once('@')?;
+    let (owner, repo) = action.split_once('/')?;
+    let full_sha = sha.len() == 40 && sha.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
+    (is_owner_name(owner) && is_repo_name(repo) && full_sha).then_some((action, sha))
+}
+
+/// The reviewed entry for `action` at `sha` (acceptance item 2).
+fn reviewed_action(action: &str, sha: &str) -> Option<&'static ReviewedAction> {
+    REVIEWED_ACTIONS
+        .iter()
+        .find(|entry| entry.action.eq_ignore_ascii_case(action) && entry.sha == sha)
+}
+
+/// Acceptance items 1 to 3 for one `uses` value of `file` at `at` (a job, or
+/// a job's step), with that job's or step's `with`. A `with` that is not a
+/// mapping is a `[shape]` problem reported elsewhere.
+fn action_use_problems(
+    file: &str,
+    at: &str,
+    uses: &str,
+    with: Option<&Yaml>,
+    problems: &mut Vec<String>,
+) {
+    if is_github_owned(uses) {
+        return;
+    }
+    // Item 1: the pinned form.
+    let Some((action, sha)) = pinned_action(uses) else {
+        problems.push(problem(
+            "action-unpinned",
+            format!(
+                "{file}: {at} uses `{uses}`; a third-party action must be pinned as `<owner>/<repo>@<40 lowercase hex digits>`"
+            ),
+        ));
+        return;
+    };
+    // Item 2: the pair is reviewed.
+    let Some(reviewed) = reviewed_action(action, sha) else {
+        problems.push(problem(
+            "action-unreviewed",
+            format!(
+                "{file}: {at} uses `{action}` at `{sha}`, which the reviewed table does not list; review `{action}`'s `action.yml` at `{sha}`, then add the pair with the inputs the repository may pass"
+            ),
+        ));
+        return;
+    };
+    // Item 3: only reviewed inputs, compared without regard to case.
+    let Some(Yaml::Hash(with)) = with else {
+        return;
+    };
+    for key in with.keys() {
+        let reviewed_input = key.as_str().is_some_and(|key| {
+            reviewed
+                .inputs
+                .iter()
+                .any(|input| input.eq_ignore_ascii_case(key))
+        });
+        if !reviewed_input {
+            problems.push(problem(
+                "action-input",
+                format!(
+                    "{file}: {at} passes `{}` to `{action}` at `{sha}` (resolved from `{}`), which is not a reviewed input; reviewed: {:?}",
+                    show(key),
+                    reviewed.resolved_from,
+                    reviewed.inputs
+                ),
+            ));
+        }
+    }
+}
+
+/// A job-level `uses` (a reusable workflow), judged as a step's is. A job's
+/// `uses` that is not a string, or its `with` that is not a mapping, is
+/// `[shape]`, as [`read_workflow`] reports for a step.
+fn job_uses_problems(file: &str, job: &Job<'_>, problems: &mut Vec<String>) {
+    let at = format!("job `{}`", job.id);
+    match get(job.map, "uses") {
+        None => {}
+        Some(Yaml::String(uses)) => {
+            action_use_problems(file, &at, uses, get(job.map, "with"), problems);
+        }
+        Some(other) => problems.push(problem(
+            "shape",
+            format!("{file}: {at}: `uses` is not a string: {other:?}"),
+        )),
+    }
+    if let Some(with) = get(job.map, "with").filter(|with| with.as_hash().is_none()) {
+        problems.push(problem(
+            "shape",
+            format!("{file}: {at}: `with` is not a mapping: {with:?}"),
+        ));
+    }
+}
+
+/// LIB-QA-009 over `workflows`, each `(file, text)`. Every problem names its
+/// file. A workflow that does not parse is `[yaml-parse]` (or
+/// `[yaml-documents]`) and the others are still judged. A `<<` anywhere is
+/// `[merge-key]`; every shape error is `[shape]`.
+fn check_action_pins(workflows: &[(&str, &str)]) -> Vec<String> {
+    let mut problems = Vec::new();
+    for &(file, text) in workflows {
+        let doc = match load_workflow(text) {
+            Ok(doc) => doc,
+            Err(parse) => {
+                problems.push(format!("{parse} (in {file})"));
+                continue;
+            }
+        };
+        merge_key_problems(&doc, file, &mut problems);
+        let mut shape = Vec::new();
+        let workflow = read_workflow(&doc, &mut shape);
+        problems.extend(shape.into_iter().map(|p| format!("{p} (in {file})")));
+        let Some(workflow) = workflow else {
+            continue;
+        };
+        for job in &workflow.jobs {
+            job_uses_problems(file, job, &mut problems);
+            for (number, step) in &job.steps {
+                if let Some(uses) = get(step, "uses").and_then(Yaml::as_str) {
+                    let at = format!("job `{}`, step {number}", job.id);
+                    action_use_problems(file, &at, uses, get(step, "with"), &mut problems);
+                }
+            }
+        }
+    }
+    problems
+}
+
+/// Every workflow in `.github/workflows/`, as `(path, text)`, sorted by path:
+/// each `*.yml`, and each `*.yaml`, which GitHub reads too.
+fn real_workflows() -> Vec<(String, String)> {
+    let dir = repository_root().join(WORKFLOWS_DIR);
+    let mut workflows: Vec<(String, String)> = fs::read_dir(&dir)
+        .unwrap_or_else(|e| panic!("read {WORKFLOWS_DIR}: {e}"))
+        .map(|entry| {
+            entry
+                .unwrap_or_else(|e| panic!("read {WORKFLOWS_DIR}: {e}"))
+                .path()
+        })
+        .filter(|path| {
+            path.is_file()
+                && matches!(
+                    path.extension().and_then(std::ffi::OsStr::to_str),
+                    Some("yml" | "yaml")
+                )
+        })
+        .map(|path| {
+            let name = path
+                .file_name()
+                .and_then(std::ffi::OsStr::to_str)
+                .expect("a workflow file name is UTF-8");
+            let rel = format!("{WORKFLOWS_DIR}/{name}");
+            let text = read(&rel);
+            (rel, text)
+        })
+        .collect();
+    workflows.sort();
+    workflows
+}
+
+/// A pinned mini-workflow: each reviewed action at its reviewed SHA with
+/// reviewed inputs, and GitHub's own actions on major tags. It must pass.
+const PINS_FIXTURE: &str = r#"name: pins
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+          components: clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - uses: actions/upload-artifact@v7
+        with:
+          name: out
+          path: out
+
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: "1.85"
+      - run: cargo +1.85 test -p sacm -p sacm-cli
+
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check
+          arguments: --all-features
+          manifest-path: Cargo.toml
+          log-level: warn
+"#;
+
+// Lines (trimmed) of `PINS_FIXTURE` that the controls edit.
+const PIN_TOOLCHAIN: &str =
+    "- uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master";
+const PIN_CACHE: &str =
+    "- uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3";
+const PIN_DENY: &str =
+    "- uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1";
+const PIN_UPLOAD: &str = "- uses: actions/upload-artifact@v7";
+const PIN_TOOLCHAIN_INPUT: &str = "toolchain: stable";
+const PIN_COMPONENTS: &str = "components: clippy";
+const PIN_LOG_LEVEL: &str = "log-level: warn";
+
+// The reviewed SHAs, for building controls.
+const TOOLCHAIN_SHA: &str = "683b588c487a69d01f6c6ddf40f036ff682cc2c8";
+const CACHE_SHA: &str = "d1527c8f67ef9af357290475d4af4b0fab8f12e0";
+const DENY_SHA: &str = "3c6349835b2b7b196a839186cb8b78e02f7b5f25";
+
+const QA9: &str = "LIB-QA-009";
+
+/// LIB-QA-009 over one workflow, `pins.yml`.
+fn pins_check(text: &str) -> Vec<String> {
+    check_action_pins(&[("pins.yml", text)])
+}
+
+fn assert_pin_controls(controls: &[(&str, String, &[&str])]) {
+    assert_exact_controls(QA9, PINS_FIXTURE, controls, pins_check);
+}
+
+/// `PINS_FIXTURE` with the toolchain step's `uses` at `reference` instead of
+/// the reviewed SHA. Its `with` stays.
+fn with_toolchain_ref(reference: &str) -> String {
+    replace_line(
+        PINS_FIXTURE,
+        PIN_TOOLCHAIN,
+        &format!("- uses: dtolnay/rust-toolchain@{reference}"),
+    )
+}
+
+/// `PINS_FIXTURE` with the rust-cache step's `uses` replaced by `uses`.
+fn with_cache_uses(uses: &str) -> String {
+    replace_line(PINS_FIXTURE, PIN_CACHE, &format!("- uses: {uses}"))
+}
+
+/// `PINS_FIXTURE` with a job appended whose keys are `lines` (indented as
+/// keys of the job).
+fn with_called_workflow(lines: &[&str]) -> String {
+    let mut job = vec!["call:"];
+    job.extend_from_slice(lines);
+    append_job(PINS_FIXTURE, &job)
+}
+
+/// `PINS_FIXTURE` with `lines` added to the cargo-deny step's `with`.
+fn with_deny_inputs(lines: &[&str]) -> String {
+    insert_after(PINS_FIXTURE, PIN_LOG_LEVEL, 0, lines)
+}
+
+/// `PINS_FIXTURE` with `line` added to the toolchain step's `with`.
+fn with_toolchain_input(line: &str) -> String {
+    insert_after(PINS_FIXTURE, PIN_COMPONENTS, 0, &[line])
+}
+
+/// `PINS_FIXTURE` with a `with` of `lines` given to the rust-cache step.
+fn with_cache_inputs(lines: &[&str]) -> String {
+    let mut with = vec!["with:".to_owned()];
+    with.extend(lines.iter().map(|line| format!("  {line}")));
+    let with: Vec<&str> = with.iter().map(String::as_str).collect();
+    insert_after(PINS_FIXTURE, PIN_CACHE, 2, &with)
+}
+
+/// Acceptance item 4: every real workflow passes. It fails until the lead
+/// pins the third-party actions (slice 0009 D4).
+#[test]
+fn lib_qa_009_every_workflow_pins_and_reviews_its_third_party_actions() {
+    let workflows = real_workflows();
+    let files: Vec<&str> = workflows.iter().map(|(file, _)| file.as_str()).collect();
+    for required in [CI_WORKFLOW, FULL_RUN_WORKFLOW] {
+        assert!(
+            files.contains(&required),
+            "LIB-QA-009: the check must read {required}; it read {files:?}"
+        );
+    }
+    let pairs: Vec<(&str, &str)> = workflows
+        .iter()
+        .map(|(file, text)| (file.as_str(), text.as_str()))
+        .collect();
+    let problems = check_action_pins(&pairs);
+    assert!(
+        problems.is_empty(),
+        "LIB-QA-009: every third-party action must be pinned by a reviewed full commit SHA and passed only reviewed inputs: {problems:#?}"
+    );
+}
+
+/// Acceptance items 2 and 3: the table records each pin, the ref it was
+/// resolved from and exactly the reviewed inputs, and refuses the inputs
+/// cargo-deny-action splices into its arguments.
+#[test]
+fn lib_qa_009_the_reviewed_table_records_each_pin_and_its_inputs() {
+    let table: Vec<(&str, &str, &str, &[&str])> = REVIEWED_ACTIONS
+        .iter()
+        .map(|entry| (entry.action, entry.sha, entry.resolved_from, entry.inputs))
+        .collect();
+    let expected: [(&str, &str, &str, &[&str]); 3] = [
+        (
+            "EmbarkStudios/cargo-deny-action",
+            DENY_SHA,
+            "v2.1.1",
+            &[
+                "command",
+                "arguments",
+                "command-arguments",
+                "manifest-path",
+                "log-level",
+            ],
+        ),
+        ("Swatinem/rust-cache", CACHE_SHA, "v2.9.3", &[]),
+        (
+            "dtolnay/rust-toolchain",
+            TOOLCHAIN_SHA,
+            "master",
+            &["toolchain", "components"],
+        ),
+    ];
+    assert_eq!(
+        table, expected,
+        "LIB-QA-009: the reviewed table must hold exactly the reviewed pins and inputs"
+    );
+    for entry in &REVIEWED_ACTIONS {
+        let uses = format!("{}@{}", entry.action, entry.sha);
+        assert_eq!(
+            pinned_action(&uses),
+            Some((entry.action, entry.sha)),
+            "LIB-QA-009: the reviewed pin `{uses}` must have the pinned form"
+        );
+        for input in entry.inputs {
+            assert_eq!(
+                *input,
+                input.to_ascii_lowercase(),
+                "LIB-QA-009: the reviewed input `{input}` of `{}` must be in lower case",
+                entry.action
+            );
+        }
+    }
+    let deny = &REVIEWED_ACTIONS[0];
+    for refused in [
+        "rust-version",
+        "credentials",
+        "ssh-key",
+        "ssh-known-hosts",
+        "use-git-cli",
+    ] {
+        assert!(
+            !deny.inputs.contains(&refused),
+            "LIB-QA-009: cargo-deny-action passes `{refused}` into its arguments; it must not be a reviewed input"
+        );
+    }
+}
+
+/// Acceptance item 1: a tag, a branch, a short or uppercase SHA, 39 or 41 hex
+/// digits, or no ref is `[action-unpinned]`, even for a reviewed action.
+#[test]
+fn lib_qa_009_a_ref_other_than_a_full_lowercase_sha_is_unpinned() {
+    let sha = TOOLCHAIN_SHA;
+    let upper = sha.to_ascii_uppercase();
+    let one_upper = format!("{}B{}", &sha[..3], &sha[4..]);
+    assert_eq!(&sha[3..4], "b", "precondition: the fourth digit is `b`");
+    assert_pin_controls(&[
+        ("a tag", with_toolchain_ref("v1"), ACTION_UNPINNED),
+        (
+            "a major tag of a reviewed action",
+            with_cache_uses("Swatinem/rust-cache@v2"),
+            ACTION_UNPINNED,
+        ),
+        (
+            "the ref the SHA was resolved from",
+            with_cache_uses("Swatinem/rust-cache@v2.9.3"),
+            ACTION_UNPINNED,
+        ),
+        ("a branch", with_toolchain_ref("master"), ACTION_UNPINNED),
+        (
+            "the `stable` ref",
+            with_toolchain_ref("stable"),
+            ACTION_UNPINNED,
+        ),
+        (
+            "a short SHA",
+            with_toolchain_ref(&sha[..7]),
+            ACTION_UNPINNED,
+        ),
+        (
+            "an uppercase SHA",
+            with_toolchain_ref(&upper),
+            ACTION_UNPINNED,
+        ),
+        (
+            "a SHA with one uppercase digit",
+            with_toolchain_ref(&one_upper),
+            ACTION_UNPINNED,
+        ),
+        (
+            "39 hex digits",
+            with_toolchain_ref(&sha[..39]),
+            ACTION_UNPINNED,
+        ),
+        (
+            "41 hex digits",
+            with_toolchain_ref(&format!("{sha}0")),
+            ACTION_UNPINNED,
+        ),
+        (
+            "40 characters that are not hex",
+            with_toolchain_ref(&"g".repeat(40)),
+            ACTION_UNPINNED,
+        ),
+        (
+            "a SHA followed by a second ref",
+            with_toolchain_ref(&format!("{sha}@v1")),
+            ACTION_UNPINNED,
+        ),
+        (
+            "no ref",
+            with_cache_uses("Swatinem/rust-cache"),
+            ACTION_UNPINNED,
+        ),
+        (
+            "an empty ref",
+            with_cache_uses("Swatinem/rust-cache@"),
+            ACTION_UNPINNED,
+        ),
+        (
+            "a quoted pin with a trailing space",
+            with_cache_uses(&format!("\"Swatinem/rust-cache@{CACHE_SHA} \"")),
+            ACTION_UNPINNED,
+        ),
+    ]);
+}
+
+/// Acceptance item 1: a sub-path, a `docker://` image and a `./` local
+/// action are `[action-unpinned]`, even at a reviewed SHA.
+#[test]
+fn lib_qa_009_sub_path_docker_and_local_actions_are_unpinned() {
+    let digest = "a".repeat(64);
+    assert_pin_controls(&[
+        (
+            "a sub-path at a reviewed SHA",
+            with_cache_uses(&format!("Swatinem/rust-cache/sub@{CACHE_SHA}")),
+            ACTION_UNPINNED,
+        ),
+        (
+            "a workflow path at a reviewed SHA",
+            with_cache_uses(&format!(
+                "Swatinem/rust-cache/.github/workflows/ci.yml@{CACHE_SHA}"
+            )),
+            ACTION_UNPINNED,
+        ),
+        (
+            "a docker image by tag",
+            with_cache_uses("docker://alpine:3.20"),
+            ACTION_UNPINNED,
+        ),
+        (
+            "a docker image by digest",
+            with_cache_uses(&format!("docker://alpine@sha256:{digest}")),
+            ACTION_UNPINNED,
+        ),
+        (
+            "a docker image named like a reviewed pin",
+            with_cache_uses(&format!("docker://Swatinem/rust-cache@{CACHE_SHA}")),
+            ACTION_UNPINNED,
+        ),
+        (
+            "a local action",
+            with_cache_uses("./.github/actions/cache"),
+            ACTION_UNPINNED,
+        ),
+        (
+            "a local action at a SHA",
+            with_cache_uses(&format!("./cache@{CACHE_SHA}")),
+            ACTION_UNPINNED,
+        ),
+        (
+            "a parent-relative action at a SHA",
+            with_cache_uses(&format!("../cache@{CACHE_SHA}")),
+            ACTION_UNPINNED,
+        ),
+        (
+            "an empty owner at a SHA",
+            with_cache_uses(&format!("/rust-cache@{CACHE_SHA}")),
+            ACTION_UNPINNED,
+        ),
+    ]);
+}
+
+/// Acceptance item 1: a job-level `uses` (a reusable workflow) is judged as a
+/// step's is; GitHub's own are not.
+#[test]
+fn lib_qa_009_a_job_level_uses_is_judged() {
+    assert_pin_controls(&[
+        (
+            "a reusable workflow at a tag",
+            with_called_workflow(&["  uses: octo-org/workflows/.github/workflows/ci.yml@v1"]),
+            ACTION_UNPINNED,
+        ),
+        (
+            "a reusable workflow at a full SHA",
+            with_called_workflow(&[&format!(
+                "  uses: octo-org/workflows/.github/workflows/ci.yml@{CACHE_SHA}"
+            )]),
+            ACTION_UNPINNED,
+        ),
+        (
+            "a local reusable workflow",
+            with_called_workflow(&["  uses: ./.github/workflows/ci.yml"]),
+            ACTION_UNPINNED,
+        ),
+        (
+            "a job-level `uses` of a reviewed action at a tag",
+            with_called_workflow(&["  uses: Swatinem/rust-cache@v2"]),
+            ACTION_UNPINNED,
+        ),
+        (
+            "a job-level `uses` that is not a string",
+            with_called_workflow(&["  uses: [octo-org/workflows]"]),
+            SHAPE,
+        ),
+        (
+            "a job-level `with` that is not a mapping",
+            with_called_workflow(&[
+                "  uses: actions/reusable/.github/workflows/ci.yml@v1",
+                "  with: shared",
+            ]),
+            SHAPE,
+        ),
+    ]);
+    assert_yaml_accepted(
+        QA9,
+        &[(
+            "a reusable workflow of GitHub's `actions`",
+            with_called_workflow(&["  uses: actions/reusable/.github/workflows/ci.yml@v1"]),
+        )],
+        pins_check,
+    );
+}
+
+/// Acceptance items 1 and 4: only the owner `actions`, in any case, is not
+/// judged; `actions-rs` and other look-alikes are third-party.
+#[test]
+fn lib_qa_009_only_github_s_actions_owner_is_not_judged() {
+    assert_pin_controls(&[
+        (
+            "an `actions-rs` action at a tag",
+            with_cache_uses("actions-rs/toolchain@v1"),
+            ACTION_UNPINNED,
+        ),
+        (
+            "an `actions-rs` action at a SHA",
+            with_cache_uses(&format!("actions-rs/toolchain@{CACHE_SHA}")),
+            ACTION_UNREVIEWED,
+        ),
+        (
+            "an owner that starts with `actions`",
+            with_cache_uses("actionsx/checkout@v7"),
+            ACTION_UNPINNED,
+        ),
+        (
+            "the owner `action`",
+            with_cache_uses("action/checkout@v7"),
+            ACTION_UNPINNED,
+        ),
+        (
+            "`actions` with no repository",
+            with_cache_uses("actions@v7"),
+            ACTION_UNPINNED,
+        ),
+    ]);
+    let upload = |uses: &str| replace_line(PINS_FIXTURE, PIN_UPLOAD, &format!("- uses: {uses}"));
+    assert_yaml_accepted(
+        QA9,
+        &[
+            ("`actions/checkout` at a tag", upload("actions/checkout@v7")),
+            ("`Actions/` at a tag", upload("Actions/upload-artifact@v7")),
+            (
+                "`ACTIONS/` at a branch",
+                upload("ACTIONS/upload-artifact@main"),
+            ),
+            (
+                "a sub-path of GitHub's `actions`",
+                upload("actions/upload-artifact/merge@v7"),
+            ),
+            (
+                "an input of GitHub's `actions` that no reviewed action has",
+                insert_after(PINS_FIXTURE, "path: out", 0, &["credentials: anything"]),
+            ),
+        ],
+        pins_check,
+    );
+}
+
+/// Acceptance item 2: a pinned pair that the table does not list is
+/// `[action-unreviewed]`, and its inputs are not judged.
+#[test]
+fn lib_qa_009_a_pin_missing_from_the_reviewed_table_is_unreviewed() {
+    let zeros = "0".repeat(40);
+    assert_pin_controls(&[
+        (
+            "a reviewed action at an unreviewed SHA",
+            with_cache_uses(&format!("Swatinem/rust-cache@{zeros}")),
+            ACTION_UNREVIEWED,
+        ),
+        (
+            "a reviewed action at another reviewed action's SHA",
+            with_cache_uses(&format!("Swatinem/rust-cache@{DENY_SHA}")),
+            ACTION_UNREVIEWED,
+        ),
+        (
+            "a reviewed action at an unreviewed SHA, with inputs",
+            with_toolchain_ref(&zeros),
+            ACTION_UNREVIEWED,
+        ),
+        (
+            "an unknown action at a reviewed SHA",
+            with_cache_uses(&format!("octo-org/octo-action@{CACHE_SHA}")),
+            ACTION_UNREVIEWED,
+        ),
+        (
+            "an unknown action",
+            with_cache_uses("octo-org/octo-action@0123456789abcdef0123456789abcdef01234567"),
+            ACTION_UNREVIEWED,
+        ),
+        (
+            "a fork of a reviewed action at its SHA",
+            with_cache_uses(&format!("Swatinem-fork/rust-cache@{CACHE_SHA}")),
+            ACTION_UNREVIEWED,
+        ),
+    ]);
+}
+
+/// Acceptance item 2: the `[action-unreviewed]` problem names the action and
+/// the SHA, says to review the action's `action.yml` at that SHA, and names
+/// the file and step.
+#[test]
+fn lib_qa_009_an_unreviewed_pin_names_the_action_the_sha_and_action_yml() {
+    let other = "0123456789abcdef0123456789abcdef01234567";
+    let text = with_cache_uses(&format!("Swatinem/rust-cache@{other}"));
+    let problems = pins_check(&text);
+    assert_eq!(
+        problem_codes(&problems),
+        ["action-unreviewed"],
+        "LIB-QA-009: one unreviewed pin gives one problem: {problems:#?}"
+    );
+    for part in [
+        "Swatinem/rust-cache",
+        other,
+        "review",
+        "action.yml",
+        "pins.yml",
+        "job `build`, step 3",
+    ] {
+        assert!(
+            problems[0].contains(part),
+            "LIB-QA-009: the problem must contain `{part}`: {}",
+            problems[0]
+        );
+    }
+}
+
+/// Acceptance item 3: a `with` key outside the entry's inputs, in any case,
+/// is `[action-input]`, once per key.
+#[test]
+fn lib_qa_009_an_input_outside_the_reviewed_inputs_is_reported() {
+    let mut controls: Vec<(&str, String, &[&str])> = [
+        "rust-version: \"1.85\"",
+        "credentials: token",
+        "ssh-key: key",
+        "ssh-known-hosts: hosts",
+        "use-git-cli: true",
+        "Credentials: token",
+        "RUST-VERSION: \"1.85\"",
+        "exclude: sacm-cli",
+        "1: one",
+    ]
+    .into_iter()
+    .map(|line| {
+        (
+            "a cargo-deny input",
+            with_deny_inputs(&[line]),
+            ACTION_INPUT,
+        )
+    })
+    .collect();
+    controls.extend([
+        (
+            "two unreviewed cargo-deny inputs",
+            with_deny_inputs(&["credentials: token", "ssh-key: key"]),
+            ACTION_INPUT_TWICE,
+        ),
+        (
+            "`targets` for rust-toolchain",
+            with_toolchain_input("targets: wasm32-unknown-unknown"),
+            ACTION_INPUT,
+        ),
+        (
+            "`Targets` for rust-toolchain",
+            with_toolchain_input("Targets: wasm32-unknown-unknown"),
+            ACTION_INPUT,
+        ),
+        (
+            "`override` for rust-toolchain",
+            with_toolchain_input("override: true"),
+            ACTION_INPUT,
+        ),
+        (
+            "an input for rust-cache",
+            with_cache_inputs(&["shared-key: ci"]),
+            ACTION_INPUT,
+        ),
+        (
+            "`cache-on-failure` for rust-cache",
+            with_cache_inputs(&["cache-on-failure: true"]),
+            ACTION_INPUT,
+        ),
+    ]);
+    assert_pin_controls(&controls);
+}
+
+/// Acceptance item 3 (positive control): the reviewed inputs are accepted in
+/// any case, as are equivalent spellings of a reviewed pin and the pinned
+/// form of the CI gate jobs.
+#[test]
+fn lib_qa_009_reviewed_inputs_in_any_case_and_equivalent_pins_are_accepted() {
+    let deny_in_other_cases = [
+        ("command: check", "Command: check"),
+        ("arguments: --all-features", "ARGUMENTS: --all-features"),
+        ("manifest-path: Cargo.toml", "Manifest-Path: Cargo.toml"),
+        (PIN_LOG_LEVEL, "Log-Level: warn"),
+    ]
+    .into_iter()
+    .fold(PINS_FIXTURE.to_owned(), |text, (from, to)| {
+        replace_line(&text, from, to)
+    });
+    let deny_in_other_cases = insert_after(
+        &deny_in_other_cases,
+        "Log-Level: warn",
+        0,
+        &["COMMAND-ARGUMENTS: --hide-inclusion-graph"],
+    );
+    assert_yaml_accepted(
+        QA9,
+        &[
+            (
+                "the rust-toolchain inputs in other cases",
+                replace_line(
+                    &replace_line(PINS_FIXTURE, PIN_TOOLCHAIN_INPUT, "Toolchain: stable"),
+                    PIN_COMPONENTS,
+                    "COMPONENTS: clippy",
+                ),
+            ),
+            ("the cargo-deny inputs in other cases", deny_in_other_cases),
+            (
+                "every reviewed cargo-deny input",
+                with_deny_inputs(&["command-arguments: --hide-inclusion-graph"]),
+            ),
+            (
+                "the action name in another case",
+                with_cache_uses(&format!("swatinem/Rust-Cache@{CACHE_SHA}")),
+            ),
+            (
+                "a quoted pin with no comment",
+                with_cache_uses(&format!("\"Swatinem/rust-cache@{CACHE_SHA}\"")),
+            ),
+            (
+                "a step as a flow mapping",
+                replace_line(
+                    PINS_FIXTURE,
+                    PIN_CACHE,
+                    &format!("- {{ uses: Swatinem/rust-cache@{CACHE_SHA} }}"),
+                ),
+            ),
+            (
+                "an empty `with`",
+                insert_after(PINS_FIXTURE, PIN_CACHE, 2, &["with: {}"]),
+            ),
+            ("the CI gate jobs, pinned", CI_GATES_FIXTURE.to_owned()),
+        ],
+        pins_check,
+    );
+}
+
+/// The shared `[shape]` problems: a `with` or `uses` of the wrong type, or a
+/// workflow that is not a mapping.
+#[test]
+fn lib_qa_009_a_with_or_uses_of_the_wrong_type_is_a_shape_problem() {
+    assert_pin_controls(&[
+        (
+            "`with` a string on a reviewed action",
+            insert_after(PINS_FIXTURE, PIN_CACHE, 2, &["with: shared-key"]),
+            SHAPE,
+        ),
+        (
+            "`with` a sequence on a reviewed action",
+            insert_after(PINS_FIXTURE, PIN_CACHE, 2, &["with: [shared-key]"]),
+            SHAPE,
+        ),
+        (
+            "`uses` a sequence",
+            replace_line(
+                PINS_FIXTURE,
+                PIN_CACHE,
+                &format!("- uses: [Swatinem/rust-cache@{CACHE_SHA}]"),
+            ),
+            SHAPE,
+        ),
+        (
+            "the workflow wrapped in a sequence",
+            wrapped_in_sequence(PINS_FIXTURE),
+            SHAPE,
+        ),
+    ]);
+}
+
+/// The shared `[yaml-parse]`, `[yaml-documents]` and `[merge-key]` problems.
+#[test]
+fn lib_qa_009_parse_and_merge_key_problems_are_reported() {
+    assert_pin_controls(&[
+        (
+            "an unterminated flow sequence",
+            replace_line(PINS_FIXTURE, "contents: read", "contents: [read"),
+            YAML_PARSE,
+        ),
+        (
+            "a duplicate key",
+            insert_after(PINS_FIXTURE, "build:", 2, &["runs-on: windows-latest"]),
+            YAML_PARSE,
+        ),
+        (
+            "a second document",
+            format!("{PINS_FIXTURE}---\nname: second\n"),
+            YAML_DOCUMENTS,
+        ),
+        ("a merge key", with_merge_key_job(PINS_FIXTURE), MERGE_KEY),
+    ]);
+}
+
+/// Acceptance item 1: every workflow given is judged, and each problem names
+/// its file.
+#[test]
+fn lib_qa_009_each_workflow_is_judged_and_named() {
+    let bad = with_cache_uses("Swatinem/rust-cache@v2");
+    let problems = check_action_pins(&[("good.yml", PINS_FIXTURE), ("bad.yml", &bad)]);
+    assert_eq!(
+        problem_codes(&problems),
+        ["action-unpinned"],
+        "LIB-QA-009: only the second workflow has a problem: {problems:#?}"
+    );
+    assert!(
+        problems[0].contains("bad.yml") && problems[0].contains("Swatinem/rust-cache@v2"),
+        "LIB-QA-009: the problem must name the file and the `uses`: {}",
+        problems[0]
+    );
+    let unparsable = check_action_pins(&[("broken.yml", "a: [\n"), ("bad.yml", &bad)]);
+    assert_eq!(
+        problem_codes(&unparsable),
+        ["action-unpinned", "yaml-parse"],
+        "LIB-QA-009: a workflow that does not parse does not stop the others being judged: {unparsable:#?}"
+    );
+    assert!(
+        unparsable.iter().any(|p| p.contains("broken.yml")),
+        "LIB-QA-009: the parse problem must name its file: {unparsable:#?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// LIB-QA-008: CI gate checks match live steps, not text
+// ---------------------------------------------------------------------------
+//
+// Each gate of LIB-QA-001 must be some step's whole `run` value in the
+// parsed `ci.yml` (`[gate-missing]`). A step whose `run` equals a gate is
+// that gate's step wherever it is, so its job is judged: it is neither
+// conditional nor allowed to fail (`[job-key]`), no step of it is guarded
+// (`[step-guard]`), every `run` step of it is a gate (`[gate-step]`), and
+// the gate step has nothing beside its `run` (`[step-key]`). The environment (`[gate-env]`), the OS matrix of the
+// `cargo test` gates (`[gate-os]`), the triggers (`[gate-trigger]`) and a
+// top-level `defaults` (`[workflow-defaults]`) cannot weaken a gate. The
+// cargo-deny gate is LIB-QA-003's deny-job check, whose problems are merged.
+
+const GATE_FMT: &str = "cargo fmt --all -- --check";
+const GATE_CLIPPY: &str = "cargo clippy --workspace --all-targets --all-features -- -D warnings";
+const GATE_TEST: &str = "cargo test --workspace --all-features";
+const GATE_TEST_XTASK: &str = "cargo test -p xtask";
+const GATE_DOC: &str = "cargo doc --workspace --no-deps --all-features";
+const GATE_MATRIX: &str = "cargo xtask matrix check";
+const GATE_HOOKS: &str = r#"python -m unittest discover -s .claude/hooks -p "test_*.py" -v"#;
+
+/// Acceptance item 1: the gates, each an exact `run` value.
+const GATES: [&str; 7] = [
+    GATE_FMT,
+    GATE_CLIPPY,
+    GATE_TEST,
+    GATE_TEST_XTASK,
+    GATE_DOC,
+    GATE_MATRIX,
+    GATE_HOOKS,
+];
+
+/// Acceptance item 4: the gates that run on every OS.
+const TEST_GATES: [&str; 2] = [GATE_TEST, GATE_TEST_XTASK];
+
+/// Acceptance item 2: the keys of the job that runs a `cargo test` gate:
+/// [`JOB_KEYS`] and `strategy`.
+const TEST_JOB_KEYS: [&str; 6] = ["name", "runs-on", "steps", "env", "permissions", "strategy"];
+
+/// Acceptance item 2: the keys a gate step may have.
+const GATE_STEP_KEYS: [&str; 3] = ["run", "name", "id"];
+
+/// Acceptance item 2: keys no step of a gate job may have.
+const GATE_STEP_GUARDS: [&str; 4] = ["if", "continue-on-error", "shell", "working-directory"];
+
+/// Acceptance item 3: the variables the workflow and a gate job may set.
+const GATE_ENV_KEYS: [&str; 3] = ["CARGO_TERM_COLOR", "CARGO_INCREMENTAL", "RUSTDOCFLAGS"];
+
+/// Acceptance item 3: the one value of `RUSTDOCFLAGS`.
+const RUSTDOCFLAGS_VALUE: &str = "-D warnings";
+
+/// Acceptance item 4: the runner of the `cargo test` gates, the keys of its
+/// `strategy`, and the OSes of its matrix, in order.
+const MATRIX_OS: &str = "${{ matrix.os }}";
+const GATE_STRATEGY_KEYS: [&str; 2] = ["fail-fast", "matrix"];
+const GATE_OSES: [&str; 3] = ["ubuntu-latest", "windows-latest", "macos-latest"];
+
+/// The gate whose command is `step`'s `run` value, if any.
+fn gate_of(step: &Hash) -> Option<&'static str> {
+    let run = get(step, "run")?.as_str()?;
+    GATES.into_iter().find(|gate| *gate == run)
+}
+
+/// Acceptance item 3: an `env` (of the workflow or of a gate job) sets only
+/// [`GATE_ENV_KEYS`], and `RUSTDOCFLAGS`, wherever it is set, is exactly
+/// [`RUSTDOCFLAGS_VALUE`]. A null `env` sets nothing.
+fn gate_env_problems(env: Option<&Yaml>, what: &str, problems: &mut Vec<String>) {
+    let env = match env {
+        None | Some(Yaml::Null) => return,
+        Some(Yaml::Hash(env)) => env,
+        Some(other) => {
+            problems.push(problem(
+                "gate-env",
+                format!("the `env` of {what} is not a mapping: {other:?}"),
+            ));
+            return;
+        }
+    };
+    key_allowlist(
+        env,
+        &GATE_ENV_KEYS,
+        "gate-env",
+        &format!("the `env` of {what}"),
+        problems,
+    );
+    if let Some(value) = get(env, "RUSTDOCFLAGS").filter(|v| v.as_str() != Some(RUSTDOCFLAGS_VALUE))
+    {
+        problems.push(problem(
+            "gate-env",
+            format!(
+                "the `env` of {what} sets `RUSTDOCFLAGS` to `{}`; it must be exactly `{RUSTDOCFLAGS_VALUE}`",
+                show(value)
+            ),
+        ));
+    }
+}
+
+/// The `RUSTDOCFLAGS` a step of `job` runs with: the job's `env` takes
+/// precedence over the workflow's. (A gate step has no `env` of its own.)
+fn effective_rustdocflags<'a>(top: &'a Hash, job: &Job<'a>) -> Option<&'a Yaml> {
+    let from = |map: &'a Hash| {
+        get(map, "env")
+            .and_then(Yaml::as_hash)
+            .and_then(|env| get(env, "RUSTDOCFLAGS"))
+    };
+    from(job.map).or_else(|| from(top))
+}
+
+/// Acceptance item 5: `on.push` is exactly `branches: [main]`, and
+/// `on.pull_request` has no filter (null or an empty mapping). Other triggers
+/// are allowed.
+fn gate_trigger_problems(top: &Hash, problems: &mut Vec<String>) {
+    let on = triggers(top);
+    let main_only = Yaml::Array(vec![Yaml::String("main".to_owned())]);
+    match get(&on, "push") {
+        Some(Yaml::Hash(push)) if push.len() == 1 && get(push, "branches") == Some(&main_only) => {}
+        None => problems.push(problem(
+            "gate-trigger",
+            "the workflow does not run on `push`",
+        )),
+        Some(other) => problems.push(problem(
+            "gate-trigger",
+            format!("`on.push` must be exactly `branches: [main]`, found {other:?}"),
+        )),
+    }
+    match get(&on, "pull_request") {
+        Some(Yaml::Null) => {}
+        Some(Yaml::Hash(filters)) if filters.is_empty() => {}
+        None => problems.push(problem(
+            "gate-trigger",
+            "the workflow does not run on `pull_request`",
+        )),
+        Some(other) => problems.push(problem(
+            "gate-trigger",
+            format!(
+                "`on.pull_request` must have no filter, so the gates run on every pull request; found {other:?}"
+            ),
+        )),
+    }
+}
+
+/// Acceptance item 4: the job running a `cargo test` gate runs on
+/// `${{ matrix.os }}`, and its `strategy` has only a boolean `fail-fast` and
+/// a `matrix` of only `os`, exactly [`GATE_OSES`].
+fn gate_os_problems(job: &Job<'_>, problems: &mut Vec<String>) {
+    let what = format!("the `cargo test` job `{}`", job.id);
+    let runs_on = get(job.map, "runs-on");
+    if runs_on.and_then(Yaml::as_str) != Some(MATRIX_OS) {
+        problems.push(problem(
+            "gate-os",
+            format!("{what} must have `runs-on: {MATRIX_OS}`, found {runs_on:?}"),
+        ));
+    }
+    let Some(Yaml::Hash(strategy)) = get(job.map, "strategy") else {
+        problems.push(problem(
+            "gate-os",
+            format!("{what} must have a `strategy` mapping with the OS matrix"),
+        ));
+        return;
+    };
+    let in_strategy = format!("the `strategy` of {what}");
+    key_allowlist(
+        strategy,
+        &GATE_STRATEGY_KEYS,
+        "gate-os",
+        &in_strategy,
+        problems,
+    );
+    if let Some(fail_fast) = get(strategy, "fail-fast").filter(|v| !matches!(v, Yaml::Boolean(_))) {
+        problems.push(problem(
+            "gate-os",
+            format!("{in_strategy}: `fail-fast` must be a boolean, found {fail_fast:?}"),
+        ));
+    }
+    let Some(Yaml::Hash(matrix)) = get(strategy, "matrix") else {
+        problems.push(problem(
+            "gate-os",
+            format!("{in_strategy} must have a `matrix` mapping"),
+        ));
+        return;
+    };
+    key_allowlist(
+        matrix,
+        &["os"],
+        "gate-os",
+        &format!("the matrix of {what}"),
+        problems,
+    );
+    let oses = Yaml::Array(
+        GATE_OSES
+            .iter()
+            .map(|os| Yaml::String((*os).to_owned()))
+            .collect(),
+    );
+    let os = get(matrix, "os");
+    if os != Some(&oses) {
+        problems.push(problem(
+            "gate-os",
+            format!("the matrix of {what} must have `os: {GATE_OSES:?}`, found {os:?}"),
+        ));
+    }
+}
+
+/// Acceptance item 2: every `run` step of a gate job (the cargo-deny job
+/// included) is a gate, so no other step can write `$GITHUB_ENV` or
+/// `$GITHUB_PATH` for the gates (`[gate-step]`). Steps with `uses` are
+/// allowed; LIB-QA-009's reviewed pins cover them. A `run` that is not a
+/// string is a `[shape]` problem reported by [`read_workflow`].
+fn gate_step_problems(job: &Job<'_>, problems: &mut Vec<String>) {
+    for (number, step) in &job.steps {
+        let Some(run) = get(step, "run").and_then(Yaml::as_str) else {
+            continue;
+        };
+        if gate_of(step).is_none() {
+            problems.push(problem(
+                "gate-step",
+                format!(
+                    "job `{}`, step {number} runs `{run}`, which is not a gate; every `run` step of a gate job must be a gate, so that no other step can write `$GITHUB_ENV` or `$GITHUB_PATH`",
+                    job.id
+                ),
+            ));
+        }
+    }
+}
+
+/// Acceptance items 2 to 4 for one job, if it runs a gate. The cargo-deny job
+/// is judged by [`check_deny_job`], and here only by items 2 (`[gate-step]`)
+/// and 3 (its `env`).
+fn gate_job_problems(top: &Hash, job: &Job<'_>, problems: &mut Vec<String>) {
+    let gates: Vec<(usize, &Hash, &str)> = job
+        .steps
+        .iter()
+        .filter_map(|(number, step)| gate_of(step).map(|gate| (*number, *step, gate)))
+        .collect();
+    if gates.is_empty() {
+        if job.steps.iter().any(|(_, step)| is_deny_step(step)) {
+            gate_step_problems(job, problems);
+            let what = format!("the cargo-deny job `{}`", job.id);
+            gate_env_problems(get(job.map, "env"), &what, problems);
+        }
+        return;
+    }
+    gate_step_problems(job, problems);
+    let runs_tests = gates.iter().any(|(_, _, gate)| TEST_GATES.contains(gate));
+    let keys: &[&str] = if runs_tests {
+        &TEST_JOB_KEYS
+    } else {
+        &JOB_KEYS
+    };
+    let what = format!("the gate job `{}`", job.id);
+    // Item 2: the job, its steps and its gate steps.
+    key_allowlist(job.map, keys, "job-key", &what, problems);
+    guarded_step_problems(job, &GATE_STEP_GUARDS, |_, _| false, problems);
+    for (number, step, gate) in &gates {
+        key_allowlist(
+            step,
+            &GATE_STEP_KEYS,
+            "step-key",
+            &format!("job `{}`, step {number} (the gate `{gate}`)", job.id),
+            problems,
+        );
+    }
+    // Item 3: the job's `env`, and the `RUSTDOCFLAGS` `cargo doc` runs with.
+    gate_env_problems(get(job.map, "env"), &what, problems);
+    if gates.iter().any(|(_, _, gate)| *gate == GATE_DOC)
+        && effective_rustdocflags(top, job).is_none()
+    {
+        problems.push(problem(
+            "gate-env",
+            format!(
+                "`{GATE_DOC}` in job `{}` runs without `RUSTDOCFLAGS: {RUSTDOCFLAGS_VALUE}` in its job's or the workflow's `env`",
+                job.id
+            ),
+        ));
+    }
+    // Item 4: the OS matrix.
+    if runs_tests {
+        gate_os_problems(job, problems);
+    }
+}
+
+/// LIB-QA-008: every gate is a live step of `ci`, and nothing in the
+/// workflow weakens it. The cargo-deny gate is [`check_deny_job`], whose
+/// problems are merged; a problem both checks find (`[merge-key]`,
+/// `[shape]`) is reported once.
+fn check_ci_gates(ci: &str) -> Vec<String> {
+    let doc = match load_workflow(ci) {
+        Ok(doc) => doc,
+        Err(parse) => return vec![parse],
+    };
+    let mut problems = Vec::new();
+    merge_key_problems(&doc, "ci.yml", &mut problems);
+    if let Some(workflow) = read_workflow(&doc, &mut problems) {
+        let top = workflow.top;
+        // Item 2: a top-level `defaults` can change every step's shell.
+        workflow_defaults_problems(top, &mut problems);
+        // Items 3 and 5: the workflow's `env` and triggers.
+        gate_env_problems(get(top, "env"), "the workflow", &mut problems);
+        gate_trigger_problems(top, &mut problems);
+        // Item 1: each gate is some step's whole `run` value.
+        for gate in GATES {
+            let live = workflow.jobs.iter().any(|job| {
+                job.steps
+                    .iter()
+                    .any(|(_, step)| gate_of(step) == Some(gate))
+            });
+            if !live {
+                problems.push(problem(
+                    "gate-missing",
+                    format!("no step of ci.yml has a `run` value exactly `{gate}`"),
+                ));
+            }
+        }
+        // Items 2 to 4: every job that runs a gate.
+        for job in &workflow.jobs {
+            gate_job_problems(top, job, &mut problems);
+        }
+    }
+    // Item 6: the cargo-deny gate.
+    for deny in check_deny_job(ci) {
+        if !problems.contains(&deny) {
+            problems.push(deny);
+        }
+    }
+    problems
+}
+
+/// A copy of the gate jobs of `ci.yml`, in the pinned form slice 0009 gives
+/// the third-party actions. It must pass.
+const CI_GATES_FIXTURE: &str = r#"name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+          components: clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo test --workspace --all-features
+      - run: cargo test -p xtask
+
+  docs:
+    name: rustdoc
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: -D warnings
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo doc --workspace --no-deps --all-features
+
+  functionality:
+    name: functionality matrix
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo xtask matrix check
+
+  deny:
+    name: cargo-deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+
+  hooks:
+    name: agent hook tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.x"
+      - run: python -m unittest discover -s .claude/hooks -p "test_*.py" -v
+"#;
+
+// Lines (trimmed) of `CI_GATES_FIXTURE` that the controls edit.
+const RUSTDOCFLAGS_LINE: &str = "RUSTDOCFLAGS: -D warnings";
+const OS_LINE: &str = "os: [ubuntu-latest, windows-latest, macos-latest]";
+const FAIL_FAST_LINE: &str = "fail-fast: false";
+const MATRIX_RUNS_ON: &str = "runs-on: ${{ matrix.os }}";
+const PUSH_BRANCHES: &str = "branches: [main]";
+const WORKFLOW_ENV_LAST: &str = "CARGO_INCREMENTAL: 0";
+const SETUP_PYTHON_STEP: &str = "- uses: actions/setup-python@v7";
+
+const QA8: &str = "LIB-QA-008";
+
+/// The fixture line of `gate`'s step.
+fn gate_step(gate: &str) -> String {
+    format!("- run: {gate}")
+}
+
+fn assert_gate_controls(controls: &[(&str, String, &[&str])]) {
+    assert_exact_controls(QA8, CI_GATES_FIXTURE, controls, check_ci_gates);
+}
+
+/// `CI_GATES_FIXTURE` with `lines` inserted as keys of the job `id`.
+fn with_job_keys(id: &str, lines: &[&str]) -> String {
+    insert_after(CI_GATES_FIXTURE, &format!("{id}:"), 2, lines)
+}
+
+/// `CI_GATES_FIXTURE` with the step of `gate` moved to just after the step
+/// of `after`.
+fn with_gate_moved(gate: &str, after: &str) -> String {
+    let step = gate_step(gate);
+    insert_after(
+        &delete_line(CI_GATES_FIXTURE, &step),
+        &gate_step(after),
+        0,
+        &[&step],
+    )
+}
+
+/// Acceptance item 6: the real `ci.yml` passes. This pins behaviour that
+/// exists, and does not depend on the text of any `uses`.
+#[test]
+fn lib_qa_008_the_real_ci_runs_every_gate_as_a_live_step() {
+    let problems = check_ci_gates(&read(CI_WORKFLOW));
+    assert!(
+        problems.is_empty(),
+        "LIB-QA-008: every CI gate must be a live, unconditional step that nothing weakens: {problems:#?}"
+    );
+}
+
+/// Acceptance items 1 and 6: a gate commented out, wrapped in `echo`, given
+/// `|| true`, folded into a multi-line `run`, or spelled differently is
+/// `[gate-missing]`, and the problem names the gate.
+#[test]
+fn lib_qa_008_each_gate_must_be_a_whole_run_value() {
+    let f = CI_GATES_FIXTURE;
+    for gate in GATES {
+        let text = comment_line(f, &gate_step(gate));
+        let problems = check_ci_gates(&text);
+        assert_eq!(
+            problem_codes(&problems),
+            ["gate-missing"],
+            "LIB-QA-008: the gate `{gate}` commented out must give exactly `[gate-missing]`: {problems:#?}"
+        );
+        assert!(
+            problems[0].contains(gate),
+            "LIB-QA-008: the problem must name the gate `{gate}`: {}",
+            problems[0]
+        );
+    }
+    let fmt = gate_step(GATE_FMT);
+    let clippy = gate_step(GATE_CLIPPY);
+    assert_gate_controls(&[
+        ("the gate deleted", delete_line(f, &fmt), GATE_MISSING),
+        (
+            "the gate wrapped in `echo`",
+            replace_line(f, &fmt, &format!("- run: echo {GATE_FMT}")),
+            GATE_MISSING,
+        ),
+        (
+            "the gate given `|| true`",
+            replace_line(f, &fmt, &format!("- run: {GATE_FMT} || true")),
+            GATE_MISSING,
+        ),
+        (
+            "the gate given `; true`",
+            replace_line(f, &fmt, &format!("- run: {GATE_FMT}; true")),
+            GATE_MISSING,
+        ),
+        (
+            "the gate folded into a multi-line `run`",
+            replace_lines(
+                f,
+                &fmt,
+                &["- run: |", &format!("    {GATE_FMT}"), "    true"],
+            ),
+            GATE_MISSING,
+        ),
+        (
+            "two gates folded into one multi-line `run`",
+            replace_lines(
+                &delete_line(f, &clippy),
+                &fmt,
+                &[
+                    "- run: |",
+                    &format!("    {GATE_FMT}"),
+                    &format!("    {GATE_CLIPPY}"),
+                ],
+            ),
+            GATE_MISSING_TWICE,
+        ),
+        (
+            // The test job still runs `cargo test -p xtask`, so it is a gate
+            // job, and its other `run` step is not a gate.
+            "a flag dropped",
+            replace_line(f, &gate_step(GATE_TEST), "- run: cargo test --workspace"),
+            GATE_MISSING_AND_STEP,
+        ),
+        (
+            "the hooks gate without `-v`",
+            replace_line(
+                f,
+                &gate_step(GATE_HOOKS),
+                r#"- run: python -m unittest discover -s .claude/hooks -p "test_*.py""#,
+            ),
+            GATE_MISSING,
+        ),
+        (
+            "a trailing space inside quotes",
+            replace_line(f, &fmt, &format!("- run: \"{GATE_FMT} \"")),
+            GATE_MISSING,
+        ),
+        (
+            "the gate as a step's `name`",
+            replace_line(f, &fmt, &format!("- name: {GATE_FMT}")),
+            GATE_MISSING,
+        ),
+    ]);
+}
+
+/// Acceptance items 2 and 6: a job-level `if`, `continue-on-error`, `needs`
+/// or any other key outside the allowed ones is `[job-key]`; a gate present
+/// only in such a job is reported by that, not as `[gate-missing]`.
+#[test]
+fn lib_qa_008_a_gate_job_is_unconditional_and_not_allowed_to_fail() {
+    assert_gate_controls(&[
+        (
+            "a job-level `if`",
+            with_job_keys("clippy", &["if: false"]),
+            JOB_KEY,
+        ),
+        (
+            "a job-level `if` on the test job",
+            with_job_keys("test", &["if: github.event_name == 'push'"]),
+            JOB_KEY,
+        ),
+        (
+            "a job-level `continue-on-error`",
+            with_job_keys("docs", &["continue-on-error: true"]),
+            JOB_KEY,
+        ),
+        ("`needs`", with_job_keys("clippy", &["needs: fmt"]), JOB_KEY),
+        (
+            "`strategy` on a job with no `cargo test` gate",
+            with_job_keys(
+                "fmt",
+                &["strategy:", "  matrix:", "    rust: [stable, beta]"],
+            ),
+            JOB_KEY,
+        ),
+        (
+            "`timeout-minutes`",
+            with_job_keys("functionality", &["timeout-minutes: 1"]),
+            JOB_KEY,
+        ),
+        (
+            "`container`",
+            with_job_keys("hooks", &["container: python:2"]),
+            JOB_KEY,
+        ),
+        (
+            "a job-level `defaults`",
+            with_job_keys("fmt", &["defaults:", "  run:", "    shell: bash"]),
+            JOB_KEY,
+        ),
+        (
+            "the hooks gate only in a conditional job",
+            with_job_keys("hooks", &["if: github.event_name == 'push'"]),
+            JOB_KEY,
+        ),
+        (
+            "a copy of a gate in a conditional job",
+            append_job(
+                CI_GATES_FIXTURE,
+                &[
+                    "extra:",
+                    "  if: false",
+                    "  runs-on: ubuntu-latest",
+                    "  steps:",
+                    &format!("    {}", gate_step(GATE_FMT)),
+                ],
+            ),
+            JOB_KEY,
+        ),
+    ]);
+}
+
+/// Acceptance items 2 and 6: a step-level `if` or `continue-on-error`, a
+/// `shell` or a `working-directory` on any step of a gate job is
+/// `[step-guard]`; anything but `run`, `name` and `id` on the gate step is
+/// `[step-key]`.
+#[test]
+fn lib_qa_008_no_step_of_a_gate_job_is_guarded() {
+    let fmt = gate_step(GATE_FMT);
+    let on_gate = |lines: &[&str]| insert_after(CI_GATES_FIXTURE, &fmt, 2, lines);
+    let on_other = |lines: &[&str]| insert_after(CI_GATES_FIXTURE, SETUP_PYTHON_STEP, 2, lines);
+    let before_gate = |lines: &[&str]| insert_before(CI_GATES_FIXTURE, &fmt, lines);
+    assert_gate_controls(&[
+        (
+            "a step-level `if` on the gate step",
+            on_gate(&["if: false"]),
+            STEP_KEY_AND_GUARD,
+        ),
+        (
+            "a step-level `continue-on-error` on the gate step",
+            on_gate(&["continue-on-error: true"]),
+            STEP_KEY_AND_GUARD,
+        ),
+        (
+            "`shell` on the gate step",
+            on_gate(&["shell: bash"]),
+            STEP_KEY_AND_GUARD,
+        ),
+        (
+            "`working-directory` on the gate step",
+            on_gate(&["working-directory: crates/sacm"]),
+            STEP_KEY_AND_GUARD,
+        ),
+        (
+            "`env` on the gate step",
+            on_gate(&["env:", "  RUSTFLAGS: --cap-lints warn"]),
+            STEP_KEY,
+        ),
+        (
+            "`timeout-minutes` on the gate step",
+            on_gate(&["timeout-minutes: 1"]),
+            STEP_KEY,
+        ),
+        (
+            "a step-level `if` on another step of a gate job",
+            on_other(&["if: false"]),
+            STEP_GUARD,
+        ),
+        (
+            "a step-level `continue-on-error` on another step",
+            on_other(&["continue-on-error: true"]),
+            STEP_GUARD,
+        ),
+        (
+            "`working-directory` on another step",
+            before_gate(&["- uses: actions/cache@v4", "  working-directory: crates"]),
+            STEP_GUARD,
+        ),
+        (
+            "`shell` on another step",
+            before_gate(&["- uses: actions/cache@v4", "  shell: bash"]),
+            STEP_GUARD,
+        ),
+    ]);
+}
+
+/// Acceptance item 2 (verification of slice 0009's `$GITHUB_ENV` finding):
+/// every `run` step of a gate job, the cargo-deny job included, is a gate, so
+/// no other step can change the gates' environment or `PATH`.
+#[test]
+fn lib_qa_008_every_run_step_of_a_gate_job_is_a_gate() {
+    let f = CI_GATES_FIXTURE;
+    assert_gate_controls(&[
+        (
+            "a step writing `$GITHUB_ENV` in the clippy job",
+            insert_before(
+                f,
+                &gate_step(GATE_CLIPPY),
+                &[r#"- run: echo "RUSTFLAGS=--cap-lints=allow" >> "$GITHUB_ENV""#],
+            ),
+            GATE_STEP,
+        ),
+        (
+            "a step writing `$GITHUB_PATH` in the test job",
+            insert_before(
+                f,
+                &gate_step(GATE_TEST),
+                &[r#"- run: echo "$HOME/shim" >> "$GITHUB_PATH""#],
+            ),
+            GATE_STEP,
+        ),
+        (
+            "an extra `run` in the hooks job",
+            insert_before(f, &gate_step(GATE_HOOKS), &["- run: pip install pytest"]),
+            GATE_STEP,
+        ),
+        (
+            "an extra named `run` in the docs job",
+            insert_before(
+                f,
+                &gate_step(GATE_DOC),
+                &["- name: prepare", "  run: echo prepare"],
+            ),
+            GATE_STEP,
+        ),
+        (
+            "an extra `run` in the cargo-deny job",
+            insert_after(f, PIN_DENY, 0, &["- run: echo extra"]),
+            GATE_STEP,
+        ),
+    ]);
+}
+
+/// Acceptance items 4 and 6: the `cargo test` gates run on exactly the three
+/// OSes, with nothing in the matrix that removes or adds a combination.
+#[test]
+fn lib_qa_008_the_test_gates_run_on_exactly_the_three_oses() {
+    let f = CI_GATES_FIXTURE;
+    let os = |line: &str| replace_line(f, OS_LINE, line);
+    let no_strategy = ["strategy:", FAIL_FAST_LINE, "matrix:", OS_LINE]
+        .into_iter()
+        .fold(f.to_owned(), |text, line| delete_line(&text, line));
+    assert_gate_controls(&[
+        (
+            "an OS removed",
+            os("os: [ubuntu-latest, windows-latest]"),
+            GATE_OS,
+        ),
+        (
+            "an OS replaced",
+            os("os: [ubuntu-latest, windows-latest, macos-13]"),
+            GATE_OS,
+        ),
+        (
+            "an OS added",
+            os("os: [ubuntu-latest, windows-latest, macos-latest, ubuntu-22.04]"),
+            GATE_OS,
+        ),
+        (
+            "the OSes reordered",
+            os("os: [windows-latest, ubuntu-latest, macos-latest]"),
+            GATE_OS,
+        ),
+        (
+            "the OSes from an expression",
+            os("os: ${{ fromJSON(vars.OSES) }}"),
+            GATE_OS,
+        ),
+        (
+            "a matrix `exclude`",
+            insert_after(f, OS_LINE, 0, &["exclude:", "  - os: macos-latest"]),
+            GATE_OS,
+        ),
+        (
+            "a matrix `include`",
+            insert_after(
+                f,
+                OS_LINE,
+                0,
+                &[
+                    "include:",
+                    "  - os: ubuntu-latest",
+                    "    experimental: true",
+                ],
+            ),
+            GATE_OS,
+        ),
+        (
+            "another matrix variable",
+            insert_after(f, OS_LINE, 0, &["rust: [stable]"]),
+            GATE_OS,
+        ),
+        (
+            "`runs-on` a fixed runner",
+            replace_line(f, MATRIX_RUNS_ON, "runs-on: ubuntu-latest"),
+            GATE_OS,
+        ),
+        (
+            "`runs-on` another matrix variable",
+            replace_line(f, MATRIX_RUNS_ON, "runs-on: ${{ matrix.runner }}"),
+            GATE_OS,
+        ),
+        (
+            "`fail-fast` a string",
+            replace_line(f, FAIL_FAST_LINE, "fail-fast: \"false\""),
+            GATE_OS,
+        ),
+        (
+            "`fail-fast` an expression",
+            replace_line(
+                f,
+                FAIL_FAST_LINE,
+                "fail-fast: ${{ github.event_name == 'push' }}",
+            ),
+            GATE_OS,
+        ),
+        (
+            "`max-parallel`",
+            insert_after(f, FAIL_FAST_LINE, 0, &["max-parallel: 1"]),
+            GATE_OS,
+        ),
+        ("no `strategy`", no_strategy, GATE_OS),
+        (
+            "a `cargo test` gate moved out of the OS matrix",
+            with_gate_moved(GATE_TEST_XTASK, GATE_FMT),
+            GATE_OS_TWICE,
+        ),
+    ]);
+}
+
+/// Acceptance items 3 and 6: `RUSTDOCFLAGS` is exactly `-D warnings`
+/// wherever it is set, and `cargo doc` runs with it.
+#[test]
+fn lib_qa_008_rustdocflags_is_exact_and_reaches_cargo_doc() {
+    let f = CI_GATES_FIXTURE;
+    let removed = delete_line(f, RUSTDOCFLAGS_LINE);
+    assert_gate_controls(&[
+        (
+            "`RUSTDOCFLAGS` changed",
+            replace_line(
+                f,
+                RUSTDOCFLAGS_LINE,
+                "RUSTDOCFLAGS: -D warnings --cap-lints allow",
+            ),
+            GATE_ENV,
+        ),
+        (
+            "`RUSTDOCFLAGS` respelled",
+            replace_line(f, RUSTDOCFLAGS_LINE, "RUSTDOCFLAGS: -Dwarnings"),
+            GATE_ENV,
+        ),
+        (
+            "`RUSTDOCFLAGS` not a string",
+            replace_line(f, RUSTDOCFLAGS_LINE, "RUSTDOCFLAGS: [-D, warnings]"),
+            GATE_ENV,
+        ),
+        (
+            "`RUSTDOCFLAGS` removed from the docs job",
+            removed.clone(),
+            GATE_ENV,
+        ),
+        (
+            "`RUSTDOCFLAGS` moved to another job",
+            insert_after(
+                &removed,
+                "clippy:",
+                2,
+                &["env:", &format!("  {RUSTDOCFLAGS_LINE}")],
+            ),
+            GATE_ENV,
+        ),
+        (
+            "`RUSTDOCFLAGS` overridden in the docs job while set correctly in the workflow",
+            insert_after(
+                &replace_line(f, RUSTDOCFLAGS_LINE, "RUSTDOCFLAGS: \"\""),
+                WORKFLOW_ENV_LAST,
+                0,
+                &[RUSTDOCFLAGS_LINE],
+            ),
+            GATE_ENV,
+        ),
+        (
+            "a wrong `RUSTDOCFLAGS` in the workflow, which the docs job overrides",
+            insert_after(
+                f,
+                WORKFLOW_ENV_LAST,
+                0,
+                &["RUSTDOCFLAGS: --cap-lints allow"],
+            ),
+            GATE_ENV,
+        ),
+    ]);
+}
+
+/// Acceptance items 3 and 6: no other variable, such as an added
+/// `RUSTFLAGS`, is set by the workflow or a gate job.
+#[test]
+fn lib_qa_008_no_other_variable_is_set_for_the_gates() {
+    let f = CI_GATES_FIXTURE;
+    let in_workflow = |line: &str| insert_after(f, WORKFLOW_ENV_LAST, 0, &[line]);
+    let in_docs_job = |line: &str| insert_before(f, RUSTDOCFLAGS_LINE, &[line]);
+    assert_gate_controls(&[
+        (
+            "`RUSTFLAGS` in the workflow",
+            in_workflow("RUSTFLAGS: --cap-lints warn"),
+            GATE_ENV,
+        ),
+        (
+            "`RUSTFLAGS` in a gate job",
+            with_job_keys("clippy", &["env:", "  RUSTFLAGS: --cap-lints warn"]),
+            GATE_ENV,
+        ),
+        (
+            "`RUSTFLAGS` beside `RUSTDOCFLAGS` in the docs job",
+            in_docs_job("RUSTFLAGS: --cap-lints warn"),
+            GATE_ENV,
+        ),
+        (
+            "`CARGO_ENCODED_RUSTFLAGS` in the workflow",
+            in_workflow("CARGO_ENCODED_RUSTFLAGS: --cap-lints"),
+            GATE_ENV,
+        ),
+        (
+            "`CARGO_BUILD_RUSTDOCFLAGS` in the docs job",
+            in_docs_job("CARGO_BUILD_RUSTDOCFLAGS: --cap-lints allow"),
+            GATE_ENV,
+        ),
+        (
+            "`RUSTC_WRAPPER` in the test job",
+            with_job_keys("test", &["env:", "  RUSTC_WRAPPER: sccache"]),
+            GATE_ENV,
+        ),
+        (
+            "a lower-case `rustdocflags` in the docs job",
+            in_docs_job("rustdocflags: --cap-lints allow"),
+            GATE_ENV,
+        ),
+        (
+            "a gate job's `env` from an expression",
+            with_job_keys("clippy", &["env: ${{ fromJSON(vars.CI_ENV) }}"]),
+            GATE_ENV,
+        ),
+        (
+            "`RUSTFLAGS` in the cargo-deny job",
+            with_job_keys("deny", &["env:", "  RUSTFLAGS: --cap-lints warn"]),
+            GATE_ENV,
+        ),
+        (
+            "a wrong `RUSTDOCFLAGS` in the cargo-deny job",
+            with_job_keys("deny", &["env:", "  RUSTDOCFLAGS: --cap-lints allow"]),
+            GATE_ENV,
+        ),
+    ]);
+}
+
+/// Acceptance items 5 and 6: `push` has only `branches: [main]`, and
+/// `pull_request` has no filter.
+#[test]
+fn lib_qa_008_push_and_pull_request_triggers_are_not_narrowed() {
+    let f = CI_GATES_FIXTURE;
+    let on_push = |line: &str| insert_after(f, PUSH_BRANCHES, 0, &[line]);
+    let on_pr = |line: &str| insert_after(f, "pull_request:", 2, &[line]);
+    let on_list = ["push:", PUSH_BRANCHES, "pull_request:"]
+        .into_iter()
+        .fold(f.to_owned(), |text, line| delete_line(&text, line));
+    assert_gate_controls(&[
+        (
+            "`push` filtered by `paths`",
+            on_push(r#"paths: ["crates/**"]"#),
+            GATE_TRIGGER,
+        ),
+        (
+            "`push` filtered by `paths-ignore`",
+            on_push(r#"paths-ignore: ["docs/**"]"#),
+            GATE_TRIGGER,
+        ),
+        (
+            "`push` with `tags`",
+            on_push(r#"tags: ["v*"]"#),
+            GATE_TRIGGER,
+        ),
+        (
+            "`push` on extra branches",
+            replace_line(f, PUSH_BRANCHES, "branches: [main, release]"),
+            GATE_TRIGGER,
+        ),
+        (
+            "`push` with `branches-ignore`",
+            replace_line(f, PUSH_BRANCHES, "branches-ignore: [dev]"),
+            GATE_TRIGGER,
+        ),
+        (
+            "`push` with no branch filter",
+            delete_line(f, PUSH_BRANCHES),
+            GATE_TRIGGER,
+        ),
+        (
+            "no `push` trigger",
+            delete_line(&delete_line(f, PUSH_BRANCHES), "push:"),
+            GATE_TRIGGER,
+        ),
+        (
+            "`pull_request` filtered by `paths`",
+            on_pr(r#"paths: ["crates/**"]"#),
+            GATE_TRIGGER,
+        ),
+        (
+            "`pull_request` with `branches-ignore`",
+            on_pr("branches-ignore: [release]"),
+            GATE_TRIGGER,
+        ),
+        (
+            "`pull_request` with `branches`",
+            on_pr("branches: [main]"),
+            GATE_TRIGGER,
+        ),
+        (
+            "`pull_request` with `types`",
+            on_pr("types: [opened]"),
+            GATE_TRIGGER,
+        ),
+        (
+            "no `pull_request` trigger",
+            delete_line(f, "pull_request:"),
+            GATE_TRIGGER,
+        ),
+        (
+            "`on` a list of events",
+            replace_line(&on_list, "on:", "on: [push, pull_request]"),
+            GATE_TRIGGER,
+        ),
+    ]);
+}
+
+/// Acceptance item 2: a top-level `defaults` is `[workflow-defaults]`.
+#[test]
+fn lib_qa_008_a_top_level_defaults_is_refused() {
+    let f = CI_GATES_FIXTURE;
+    assert_gate_controls(&[
+        (
+            "a top-level `defaults` shell",
+            insert_before(f, "jobs:", &["defaults:", "  run:", "    shell: bash"]),
+            WORKFLOW_DEFAULTS,
+        ),
+        (
+            "a top-level `defaults` working directory",
+            insert_before(
+                f,
+                "jobs:",
+                &["defaults:", "  run:", "    working-directory: crates"],
+            ),
+            WORKFLOW_DEFAULTS,
+        ),
+    ]);
+}
+
+/// Acceptance item 6: the cargo-deny gate is LIB-QA-003's deny-job check,
+/// whose problems this check reports.
+#[test]
+fn lib_qa_008_the_cargo_deny_gate_is_the_deny_job_check() {
+    let f = CI_GATES_FIXTURE;
+    let problems = check_deny_job(f);
+    assert!(
+        problems.is_empty(),
+        "LIB-QA-008: the fixture's cargo-deny job must pass LIB-QA-003: {problems:#?}"
+    );
+    assert_gate_controls(&[
+        (
+            "the cargo-deny job deleted",
+            delete_job(f, "deny"),
+            DENY_MISSING,
+        ),
+        (
+            "the cargo-deny step commented out",
+            comment_line(f, PIN_DENY),
+            DENY_MISSING,
+        ),
+        (
+            "a conditional cargo-deny job",
+            with_job_keys("deny", &["if: false"]),
+            JOB_KEY,
+        ),
+        (
+            "a narrowed cargo-deny command",
+            insert_after(f, PIN_DENY, 2, &["with:", "  command: check bans"]),
+            DENY_INPUT,
+        ),
+        (
+            "a cargo-deny step allowed to fail",
+            insert_after(f, PIN_DENY, 2, &["continue-on-error: true"]),
+            STEP_KEY_AND_GUARD,
+        ),
+    ]);
+}
+
+/// The shared `[yaml-parse]`, `[yaml-documents]`, `[shape]` and
+/// `[merge-key]` problems, each reported once though the deny-job check finds
+/// it too.
+#[test]
+fn lib_qa_008_parse_shape_and_merge_key_problems_are_reported_once() {
+    let f = CI_GATES_FIXTURE;
+    assert_gate_controls(&[
+        (
+            "a tab",
+            replace_line(f, WORKFLOW_ENV_LAST, "\tCARGO_INCREMENTAL: 0"),
+            YAML_PARSE,
+        ),
+        (
+            "a duplicate key",
+            with_job_keys("fmt", &["runs-on: windows-latest"]),
+            YAML_PARSE,
+        ),
+        (
+            "a second document",
+            format!("{f}---\nname: second\n"),
+            YAML_DOCUMENTS,
+        ),
+        (
+            "`steps` a mapping in another job",
+            append_job(
+                f,
+                &[
+                    "extra:",
+                    "  runs-on: ubuntu-latest",
+                    "  steps:",
+                    "    run: echo",
+                ],
+            ),
+            SHAPE,
+        ),
+        (
+            "the workflow wrapped in a sequence",
+            wrapped_in_sequence(f),
+            SHAPE,
+        ),
+        (
+            "a merge key in another job",
+            with_merge_key_job(f),
+            MERGE_KEY,
+        ),
+    ]);
+}
+
+/// Acceptance items 1 to 5 (positive control): extra triggers, step names
+/// and ids, equivalent YAML, a gate in another clean job, and changes outside
+/// the gate jobs are accepted.
+#[test]
+fn lib_qa_008_equivalent_and_unrelated_changes_are_accepted() {
+    let f = CI_GATES_FIXTURE;
+    let fmt = gate_step(GATE_FMT);
+    let named_run = format!("  run: {GATE_FMT}");
+    let rustdocflags_in_workflow = insert_after(
+        &delete_line(f, RUSTDOCFLAGS_LINE),
+        WORKFLOW_ENV_LAST,
+        0,
+        &[RUSTDOCFLAGS_LINE],
+    );
+    assert_yaml_accepted(
+        QA8,
+        &[
+            (
+                "a `workflow_dispatch` trigger",
+                insert_after(f, "pull_request:", 0, &["workflow_dispatch:"]),
+            ),
+            (
+                "a `schedule` trigger",
+                insert_after(
+                    f,
+                    "pull_request:",
+                    0,
+                    &["schedule:", "  - cron: \"0 3 * * 1\""],
+                ),
+            ),
+            (
+                "`pull_request` an empty mapping",
+                replace_line(f, "pull_request:", "pull_request: {}"),
+            ),
+            (
+                "a name and an id on a gate step",
+                replace_lines(f, &fmt, &["- name: rustfmt", "  id: fmt", &named_run]),
+            ),
+            (
+                "a quoted gate",
+                replace_line(f, &fmt, &format!("- run: \"{GATE_FMT}\"")),
+            ),
+            (
+                "a gate step as a flow mapping",
+                replace_line(f, &fmt, &format!("- {{ run: {GATE_FMT}, name: rustfmt }}")),
+            ),
+            (
+                "a gate moved to another clean job",
+                with_gate_moved(GATE_HOOKS, GATE_FMT),
+            ),
+            (
+                "`fail-fast: true`",
+                replace_line(f, FAIL_FAST_LINE, "fail-fast: true"),
+            ),
+            ("no `fail-fast`", delete_line(f, FAIL_FAST_LINE)),
+            (
+                "`RUSTDOCFLAGS` moved to the workflow",
+                rustdocflags_in_workflow,
+            ),
+            (
+                "`RUSTDOCFLAGS` also in another gate job",
+                with_job_keys("clippy", &["env:", &format!("  {RUSTDOCFLAGS_LINE}")]),
+            ),
+            (
+                "`permissions` on a gate job",
+                with_job_keys("fmt", &["permissions:", "  contents: read"]),
+            ),
+            (
+                "a `uses` step with `env` in a gate job",
+                insert_before(
+                    f,
+                    &fmt,
+                    &["- uses: actions/cache@v4", "  env:", "    PREPARE: \"1\""],
+                ),
+            ),
+            (
+                "an allowed variable in the cargo-deny job",
+                with_job_keys("deny", &["env:", "  CARGO_TERM_COLOR: never"]),
+            ),
+            (
+                "a conditional job that runs no gate",
+                append_job(
+                    f,
+                    &[
+                        "extra:",
+                        "  if: github.event_name == 'pull_request'",
+                        "  runs-on: ubuntu-latest",
+                        "  env:",
+                        "    RUSTFLAGS: --cfg extra",
+                        "  steps:",
+                        "    - run: echo extra",
+                        "      continue-on-error: true",
+                    ],
+                ),
+            ),
+        ],
+        check_ci_gates,
+    );
 }
