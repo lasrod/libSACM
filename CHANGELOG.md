@@ -29,3 +29,15 @@ change bumps the minor version and is listed under **Breaking**.
   that is set but empty is an error. An error from reading or parsing the matrix is one
   line, `docs/matrix/functionality-matrix.toml:<line>:<column>: <message>` or
   `read <path>: <error>`, with control characters escaped.
+- A precise traced-test scanner for the matrix gate.
+  - It skips Rust and Python comments and literals: block comments that nest, raw
+    strings, char literals, and triple-quoted and prefixed Python strings. Test-like
+    text inside them is not a test.
+  - It recognises `#[test_case]`, `#[rstest]` and other attributes whose path ends in
+    `test`, and Python `async def test_`.
+  - An ignored or skipped traced test (`#[ignore]`, `#[cfg_attr(<pred>, ignore)]`, or
+    a Python skip decorator on the test or on its class) is not evidence. The gate
+    reports it.
+  - The gate also reports a traced test under a `src` directory.
+  - API: `xtask::matrix::ignored_traced_tests`, and the required trait method
+    `Repo::ignored_functions`.

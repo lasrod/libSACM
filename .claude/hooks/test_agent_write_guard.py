@@ -58,6 +58,21 @@ def call(tool: str, agent: str | None, path: str, root: str) -> dict:
     return payload
 
 
+class _OsNamed:
+    """The `os` module as the guard sees it, except that `name` is fixed."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    def __getattr__(self, attribute: str) -> object:
+        return getattr(os, attribute)
+
+
+def as_os(name: str):
+    """Make only the guard module's own `os` reference report `os.name == name`."""
+    return mock.patch.object(guard, "os", _OsNamed(name))
+
+
 def denied(decision: dict | None) -> bool:
     return (
         decision is not None
@@ -631,42 +646,89 @@ class FailClosedTests(unittest.TestCase):
                         f"LIB-TOOL-003: main() prints nothing for stdin {text!r}",
                     )
 
-    @unittest.skipUnless(
-        os.name == "nt", "Windows only: paths are matched case-insensitively only when os.name is 'nt'"
-    )
     def test_lib_tool_003_windows_paths_match_scopes_case_insensitively(self) -> None:
-        self.assertTrue(
-            guard.matches_any("CRATES/SACM/TESTS/x.rs", ["crates/*/tests/**"]),
-            "LIB-TOOL-003: on Windows a glob matches regardless of case",
-        )
-        self.assertIsNone(
-            guard.decide(
-                call("Write", "sacm-test-engineer", "CRATES/SACM/TESTS/x.rs", self.root),
-                SCOPES,
-                self.root,
-            ),
-            "LIB-TOOL-003: on Windows CRATES/SACM/TESTS/x.rs is inside the test engineer's scope",
-        )
-        self.assertTrue(
-            denied(
+        # Runs on every OS, never skipped: the guard reads `os.name` through its
+        # own module's `os` when it compiles a glob, so `as_os` replaces that one
+        # reference. The real `os` module, and the `os` that pathlib uses inside
+        # decide(), are untouched, so decide() runs normally under it.
+        real_name = os.name
+        with as_os("nt"):
+            self.assertEqual(
+                os.name, real_name, "LIB-TOOL-003: precondition: the real os.name is untouched"
+            )
+            self.assertTrue(
+                guard.glob_to_regex("crates/**").flags & re.IGNORECASE,
+                "LIB-TOOL-003: with os.name 'nt' a glob compiles case-insensitively",
+            )
+            self.assertTrue(
+                guard.matches_any("CRATES/SACM/TESTS/x.rs", ["crates/*/tests/**"]),
+                "LIB-TOOL-003: on Windows a glob matches regardless of case",
+            )
+            self.assertIsNone(
                 guard.decide(
-                    call("Write", "sacm-test-engineer", "CRATES/SACM/SRC/lib.rs", self.root),
+                    call("Write", "sacm-test-engineer", "CRATES/SACM/TESTS/x.rs", self.root),
                     SCOPES,
                     self.root,
+                ),
+                "LIB-TOOL-003: on Windows CRATES/SACM/TESTS/x.rs is inside the test engineer's "
+                "scope",
+            )
+            self.assertTrue(
+                denied(
+                    guard.decide(
+                        call("Write", "sacm-test-engineer", "CRATES/SACM/SRC/lib.rs", self.root),
+                        SCOPES,
+                        self.root,
+                    )
+                ),
+                "LIB-TOOL-003: on Windows CRATES/SACM/SRC/lib.rs is still outside the scope",
+            )
+            for path in ("DOCS/MATRIX/m.toml", "docs/MATRIX/m.toml"):
+                self.assertTrue(
+                    denied(
+                        guard.decide(
+                            call("Write", "sacm-implementer", path, self.root),
+                            SCOPES,
+                            self.root,
+                        )
+                    ),
+                    f"LIB-TOOL-003: on Windows a deny glob also matches {path} regardless of case",
                 )
-            ),
-            "LIB-TOOL-003: on Windows CRATES/SACM/SRC/lib.rs is still outside the scope",
-        )
-        self.assertTrue(
-            denied(
+
+        # Anywhere else matching is case-sensitive.
+        with as_os("posix"):
+            self.assertFalse(
+                guard.glob_to_regex("crates/**").flags & re.IGNORECASE,
+                "LIB-TOOL-003: with os.name 'posix' a glob compiles case-sensitively",
+            )
+            self.assertFalse(
+                guard.matches_any("CRATES/SACM/TESTS/x.rs", ["crates/*/tests/**"]),
+                "LIB-TOOL-003: off Windows a glob matches only in its own case",
+            )
+            self.assertTrue(
+                guard.matches_any("crates/sacm/tests/x.rs", ["crates/*/tests/**"]),
+                "LIB-TOOL-003: off Windows a glob still matches in its own case",
+            )
+            self.assertTrue(
+                denied(
+                    guard.decide(
+                        call("Write", "sacm-test-engineer", "CRATES/SACM/TESTS/x.rs", self.root),
+                        SCOPES,
+                        self.root,
+                    )
+                ),
+                "LIB-TOOL-003: off Windows CRATES/SACM/TESTS/x.rs is outside the test engineer's "
+                "scope",
+            )
+            self.assertIsNone(
                 guard.decide(
-                    call("Write", "sacm-implementer", "DOCS/MATRIX/m.toml", self.root),
+                    call("Write", "sacm-implementer", "docs/MATRIX/m.toml", self.root),
                     SCOPES,
                     self.root,
-                )
-            ),
-            "LIB-TOOL-003: on Windows a deny glob also matches regardless of case",
-        )
+                ),
+                "LIB-TOOL-003: off Windows the deny glob docs/matrix/** does not match "
+                "docs/MATRIX/m.toml, which docs/** allows",
+            )
 
 
 def hook_commands() -> list[str]:

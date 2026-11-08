@@ -16,7 +16,8 @@ use std::path::Path;
 
 use common::{GATE_TOML, TempTree, consistent_tree};
 use xtask::matrix::{
-    FsRepo, Matrix, RENDERED_PATH, Repo, check, cmd_check, load, ready, render, traced_tests,
+    FsRepo, Matrix, RENDERED_PATH, Repo, check, cmd_check, ignored_traced_tests, load, ready,
+    render, traced_tests,
 };
 
 // ---------------------------------------------------------------------------
@@ -46,12 +47,24 @@ impl Repo for FakeRepo {
     }
 
     fn traced_functions(&self) -> Vec<(String, String)> {
+        self.scan(traced_tests)
+    }
+
+    fn ignored_functions(&self) -> Vec<(String, String)> {
+        self.scan(ignored_traced_tests)
+    }
+}
+
+impl FakeRepo {
+    /// `(file, name)` for every name `find` returns for a file, read as
+    /// Python when its extension is `.py`.
+    fn scan(&self, find: fn(&str, bool) -> Vec<String>) -> Vec<(String, String)> {
         let mut out = Vec::new();
         for (path, text) in &self.files {
             let python = Path::new(path)
                 .extension()
                 .is_some_and(|e| e.eq_ignore_ascii_case("py"));
-            for name in traced_tests(text, python) {
+            for name in find(text, python) {
                 out.push((path.clone(), name));
             }
         }
@@ -402,7 +415,11 @@ fn lib_tool_001_finds_function_definitions_not_mentions() {
 
 #[test]
 fn lib_tool_001_only_marked_tests_count_as_traced() {
-    let rust = "#[test]\n#[ignore]\nfn lib_cli_001_a() {}\nfn lib_cli_001_helper() {}\n\
+    // `#[should_panic]` is an attribute between `#[test]` and the function
+    // that does not stop it running. Until slice 0006 this fixture used
+    // `#[ignore]`, which now makes the test ignored (LIB-TOOL-011); that
+    // fixture is pinned in `scanner.rs`.
+    let rust = "#[test]\n#[should_panic]\nfn lib_cli_001_a() {}\nfn lib_cli_001_helper() {}\n\
                 let s = \"#[test] fn lib_cli_001_in_string() {}\";";
     assert_eq!(
         traced_tests(rust, false),

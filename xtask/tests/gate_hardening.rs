@@ -31,7 +31,8 @@ use std::process::Command;
 
 use common::{GATE_TOML, TempTree, consistent_tree};
 use xtask::matrix::{
-    FsRepo, MATRIX_PATH, Matrix, RENDERED_PATH, Repo, Status, check, load, render, traced_tests,
+    FsRepo, MATRIX_PATH, Matrix, RENDERED_PATH, Repo, Status, check, ignored_traced_tests, load,
+    render, traced_tests,
 };
 
 // ---------------------------------------------------------------------------
@@ -70,12 +71,24 @@ impl Repo for FakeRepo {
     }
 
     fn traced_functions(&self) -> Vec<(String, String)> {
+        self.scan(traced_tests)
+    }
+
+    fn ignored_functions(&self) -> Vec<(String, String)> {
+        self.scan(ignored_traced_tests)
+    }
+}
+
+impl FakeRepo {
+    /// `(file, name)` for every name `find` returns for a file, read as
+    /// Python when its extension is `.py`. Not recorded as asked.
+    fn scan(&self, find: fn(&str, bool) -> Vec<String>) -> Vec<(String, String)> {
         let mut out = Vec::new();
         for (path, text) in &self.files {
             let python = Path::new(path)
                 .extension()
                 .is_some_and(|e| e.eq_ignore_ascii_case("py"));
-            for name in traced_tests(text, python) {
+            for name in find(text, python) {
                 out.push((path.clone(), name));
             }
         }
@@ -1490,6 +1503,10 @@ impl Repo for ShuffledRepo {
             out.reverse();
         }
         out
+    }
+
+    fn ignored_functions(&self) -> Vec<(String, String)> {
+        self.inner.ignored_functions()
     }
 }
 
