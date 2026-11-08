@@ -577,13 +577,14 @@ kind = "tooling"
 status = "implemented"
 code = ["xtask/src/matrix.rs"]
 acceptance = [
-  "A verdict-line candidate is a source line that starts at column 0 with `- Row verdict:`. A candidate counts only when CommonMark 0.31.2 places it outside every code block (fenced or indented), HTML block and inline HTML, comments included, as a CommonMark parser (ADR 0008, `pulldown-cmark`) decides it. A counted candidate that, after removing trailing spaces and tabs, is exactly `- Row verdict: <ROW-ID>: <VERDICT>` is a verdict line. <VERDICT> is one of PASS, FAIL or OPEN. An indented, block-quoted or hidden line is never a verdict line and never malformed.",
+  "A verdict-line candidate is a source line that starts at column 0 with `- Row verdict:`. A candidate counts only when it lies outside every hidden range. The hidden ranges are the code blocks (fenced or indented) and the closed comments that the CommonMark parser of ADR 0008 finds (`pulldown-cmark`, `Options::empty()`, with the D7 tab normalisation). A counted candidate that, after removing trailing spaces and tabs, is exactly `- Row verdict: <ROW-ID>: <VERDICT>` is a verdict line, where <VERDICT> is PASS, FAIL or OPEN. Any other counted candidate is malformed. A hidden line is never a verdict line and never malformed.",
   "A verified row passes only if its cited record contains exactly one verdict line for that row, and that line says PASS. The old check, which accepted any mention of the id, is removed.",
-  "Each failure is reported with the row id and the record path: no verdict line for the row; more than one verdict line for the row (with the count); a verdict other than PASS (naming it); and a verdict line for a similar id, such as `LIB-TOOL-0011` or `LIB-TOOL-001x`, which does not count.",
+  "Each failure is reported with the row id and the record path: no verdict line for the row; more than one verdict line for the row (with the count); a verdict other than PASS (naming it); A candidate whose id is not a well-formed row id (README rule 2, `parse_id`), such as `LIB-TOOL-0011`, `LIB-TOOL-001x`, a lowercase id or an id after two spaces, is malformed (slice 0007 D13 f).",
   "A line that starts with `- Row verdict:` but is not a well-formed verdict line is reported as malformed, with the record path and its 1-based line number.",
   "A fence inside a list item closes where CommonMark closes it, nested items included, and closers are judged relative to the item. The P-005b probes P1, P1b, P6 and P8 (docs/verification/0004-m0-gate-hardening-round2.md) each give exactly the FAIL problem, and P9 gives exactly the no-verdict problem. These controls pass the row: a closed list-item fence followed by PASS, the same with a blank line inside the fence, and every real record.",
   "Fence opener and closer lines are themselves never verdict lines and never malformed, and the line after a closer counts. A closer followed by a character other than a space or tab, for example U+00A0, does not close the fence, so a PASS after it stays hidden (F5).",
   "The hand-written fence model is removed: `xtask` decides hidden lines only through the parser. The parser is used with `Options::empty()`.",
+  "Records are strict (ADR 0008 amendment 1; slice 0007 D8 to D11). Each of these is a problem: raw HTML other than a closed comment or the inline tags <br>, <ul>, </ul>, <li>, </li>; a visible verdict-like line that is not at column 0 (indented, nested or block-quoted); a lone CR; a leading byte-order mark. Each is reported with the record path and its line, once per citing row, before the verdict problem. A differential test against an independent CommonMark implementation (markdown-rs) over at least 20,000 generated records shows no unadjudicated disagreement in which candidates count.",
   "Every verified row in the real matrix passes. The lead adds the verdict lines to the existing records, the record template (`.claude/skills/sacm-slice/references/verification-record.md`) and `docs/matrix/README.md` rule 5.",
 ]
 depends_on = ["LIB-TOOL-001"]
@@ -612,6 +613,7 @@ tests = [
   "xtask/tests/gate_hardening.rs::lib_tool_005_real_matrix_passes_the_gate",
   "xtask/tests/gate_hardening.rs::lib_tool_005_real_record_helper_counts_one_verdict_past_a_nested_fence",
   "xtask/tests/gate_hardening.rs::lib_tool_005_every_verified_row_in_the_real_matrix_has_one_pass_verdict_line",
+  "xtask/tests/verdict_differential.rs::lib_tool_005_the_gate_agrees_with_markdown_rs_on_every_strict_generated_record",
   "xtask/tests/verdict_markdown.rs::lib_tool_005_the_problem_texts_stay_as_they_are",
   "xtask/tests/verdict_markdown.rs::lib_tool_005_probes_p1_p1b_p6_and_p8_give_exactly_the_fail_problem",
   "xtask/tests/verdict_markdown.rs::lib_tool_005_probe_p9_gives_exactly_the_no_verdict_problem",
@@ -633,6 +635,19 @@ tests = [
   "xtask/tests/verdict_markdown.rs::lib_tool_005_a_malformed_line_outside_every_hidden_range_is_reported_with_its_line_number",
   "xtask/tests/verdict_markdown.rs::lib_tool_005_a_malformed_line_inside_a_code_block_is_not_reported",
   "xtask/tests/verdict_markdown.rs::lib_tool_005_a_shared_record_reports_each_visible_malformed_line_once_per_citing_row",
+  "xtask/tests/verdict_markdown.rs::lib_tool_005_the_strict_record_problem_texts_are_exact",
+  "xtask/tests/verdict_markdown.rs::lib_tool_005_a_visible_verdict_like_line_not_at_column_0_is_a_problem",
+  "xtask/tests/verdict_markdown.rs::lib_tool_005_a_verdict_like_line_in_a_code_block_or_closed_comment_is_not_a_problem",
+  "xtask/tests/verdict_markdown.rs::lib_tool_005_a_column_0_candidate_is_never_a_verdict_like_problem",
+  "xtask/tests/verdict_markdown.rs::lib_tool_005_a_lone_cr_is_a_problem_at_the_line_that_holds_it",
+  "xtask/tests/verdict_markdown.rs::lib_tool_005_the_verifiers_f2_probes_never_pass",
+  "xtask/tests/verdict_markdown.rs::lib_tool_005_crlf_line_endings_are_not_a_problem",
+  "xtask/tests/verdict_markdown.rs::lib_tool_005_a_leading_byte_order_mark_is_a_problem",
+  "xtask/tests/verdict_markdown.rs::lib_tool_005_strict_problems_come_in_line_order_before_the_verdict_problem_bom_first",
+  "xtask/tests/verdict_markdown.rs::lib_tool_005_a_shared_record_reports_each_strict_problem_once_per_citing_row",
+  "xtask/tests/verdict_markdown.rs::lib_tool_005_problems_on_one_line_come_as_raw_html_then_lone_cr_then_malformed",
+  "xtask/tests/verdict_markdown.rs::lib_tool_005_a_verdict_line_whose_id_is_not_a_well_formed_row_id_is_malformed",
+  "xtask/tests/verdict_markdown.rs::lib_tool_005_a_look_alike_is_reported_last_on_its_line",
 ]
 
 [[row]]
@@ -925,45 +940,50 @@ id = "LIB-TOOL-015"
 area = "TOOL"
 milestone = "M0"
 title = "Verdict lines hidden by Markdown do not count"
-requirement = "A `- Row verdict:` line that rendered Markdown hides does not count as a verdict line. This covers a line inside an HTML comment or HTML block. It also covers a line that a backtick-fence opener only appears to close: CommonMark does not accept a backtick fence opener whose info string contains a backtick (for example ```a`b), so the next ``` line opens a fence instead."
+requirement = "A `- Row verdict:` line that Markdown hides never counts, and a record whose rendering is ambiguous cannot pass. Code blocks, including a backtick fence whose info string contains a backtick (the next ``` line then opens a fence), and closed comments hide lines. Any other raw HTML is a problem rather than something the gate tries to render."
 source = "Slice 0004 fix round 1, implementer follow-up (left outside the P-005 contract). Verification 0004 round 2 seeds P2 (```a`b, then ```, then PASS, then ```) and P7 (<div>, then ```, then </div>, then FAIL, then a fenced PASS); both give a false PASS today."
 kind = "tooling"
 status = "implemented"
 code = ["xtask/src/matrix.rs", "xtask/Cargo.toml"]
 acceptance = [
-  "A `- Row verdict:` line inside an HTML comment (`<!-- ... -->`, on one line or spanning lines) or inside an HTML block (for example between `<div>` and `</div>`, or after `<details>`) does not count, and is not malformed. Through the parser of ADR 0008.",
-  "A backtick-fence opener whose info string contains a backtick is not an opener. In the seed P2 (```a`b, then ```, then a PASS line, then ```), the PASS is inside the fence that the second line opens, so the record has no verdict line. In the seed P7 (<div>, then ```, then </div>, then a blank line, then a FAIL line, then a fenced PASS), the fence line inside the HTML block opens no fence, the FAIL counts and the fenced PASS does not, so the row gets exactly the FAIL problem. Without the blank line after </div>, CommonMark keeps the rest of the record in one type-6 HTML block (§4.6), so the row gets exactly the no-verdict problem.",
-  "Controls: a PASS line after a closed HTML comment, after an HTML block that a blank line ends, and after a closed tilde fence whose info string holds a backtick, and after a closed backtick fence whose info string holds a tilde, counts. README rule 5 states the rule and drops its list of unhandled cases.",
-  "Fail-safe for comments that a browser would keep open: a `<!--` inside an HTML range (an `Html` or `InlineHtml` event) that is not closed by `-->` within that range hides everything from the `<!--` to the end of the next `-->` that itself lies inside an HTML range, or to the end of the record if there is none. A `-->` in text, a code span or a code block is rendered escaped (`--&gt;`), so it does not close the comment. `<!-->` and `<!--->` are complete comments: the search for `-->` starts at the third byte of `<!--`. A `<!--` in a code span or a code block hides nothing. Content inside `<details>` still counts.",
+  "A `- Row verdict:` line inside a closed HTML comment (one HTML block that is a single comment, or an inline comment) does not count and is not malformed. A PASS line after a closed comment counts.",
+  "Raw HTML other than a closed comment and the inline tags <br>, <ul>, </ul>, <li>, </li> (case-insensitive; also <br/> and <br />) is a problem: `verification record <p>:<line>: raw HTML other than a closed comment or <br>, <ul>, <li> is not allowed`, once per line that holds it, per citing row. This covers HTML blocks of types 1 and 3 to 7, an unclosed comment, a comment with text after its closer in the same block, `--!>`, and inline tags outside the list. The verifier's probes of verification 0007 round 1 (F1, F3, F4 b) each give that problem and never pass.",
+  "A backtick fence opener whose info string contains a backtick is not an opener. In seed P2 (```a`b, then ```, then a PASS line, then ```), the PASS is inside the fence that the second line opens, so the record has no verdict line. Seed P7 (<div>, then ```, then </div>, ...) now gives the raw-HTML problem. Controls: a PASS after a closed tilde fence whose info string holds a backtick, and after a closed backtick fence whose info string holds a tilde, counts.",
+  "README rule 5 states the strict rules. It makes no claim to match what a browser renders.",
 ]
 depends_on = ["LIB-TOOL-005"]
 tests = [
   "xtask/tests/verdict_markdown.rs::lib_tool_015_a_verdict_line_inside_an_html_comment_does_not_count",
-  "xtask/tests/verdict_markdown.rs::lib_tool_015_a_verdict_line_inside_an_html_block_does_not_count",
-  "xtask/tests/verdict_markdown.rs::lib_tool_015_a_malformed_candidate_inside_html_is_not_malformed",
+  "xtask/tests/verdict_markdown.rs::lib_tool_015_an_html_block_of_any_type_is_raw_html_on_each_of_its_lines_and_hides_nothing",
+  "xtask/tests/verdict_markdown.rs::lib_tool_015_a_malformed_candidate_is_hidden_by_a_closed_comment_but_not_by_other_html",
   "xtask/tests/verdict_markdown.rs::lib_tool_015_seed_p2_a_backtick_in_the_info_string_makes_the_next_fence_line_the_opener",
   "xtask/tests/verdict_markdown.rs::lib_tool_015_seed_p7_a_fence_line_inside_an_html_block_opens_no_fence",
   "xtask/tests/verdict_markdown.rs::lib_tool_015_a_pass_line_after_a_closed_html_comment_counts",
   "xtask/tests/verdict_markdown.rs::lib_tool_015_a_pass_line_after_an_html_block_that_has_ended_counts",
   "xtask/tests/verdict_markdown.rs::lib_tool_015_a_pass_line_after_a_closed_fence_with_the_other_fence_character_in_its_info_string_counts",
-  "xtask/tests/verdict_markdown.rs::lib_tool_015_an_unclosed_comment_in_an_html_event_hides_the_pass_line_after_it",
-  "xtask/tests/verdict_markdown.rs::lib_tool_015_an_unclosed_comment_hides_the_pass_line_but_not_a_fail_after_its_closer",
-  "xtask/tests/verdict_markdown.rs::lib_tool_015_an_unclosed_comment_region_ends_at_the_end_of_the_next_closer",
-  "xtask/tests/verdict_markdown.rs::lib_tool_015_an_unclosed_comment_with_no_closer_anywhere_hides_to_the_end_of_the_record",
-  "xtask/tests/verdict_markdown.rs::lib_tool_015_an_unclosed_comment_in_inline_html_opens_a_hidden_region",
+  "xtask/tests/verdict_markdown.rs::lib_tool_015_an_unclosed_comment_in_an_html_event_is_raw_html_and_hides_nothing",
+  "xtask/tests/verdict_markdown.rs::lib_tool_015_an_unclosed_comment_hides_neither_the_pass_line_nor_a_fail_after_its_closer",
+  "xtask/tests/verdict_markdown.rs::lib_tool_015_an_unclosed_comment_opens_no_region_up_to_the_next_closer",
+  "xtask/tests/verdict_markdown.rs::lib_tool_015_an_unclosed_comment_with_no_closer_anywhere_hides_nothing_after_it",
+  "xtask/tests/verdict_markdown.rs::lib_tool_015_an_unclosed_comment_in_inline_html_is_raw_html_and_opens_no_region",
   "xtask/tests/verdict_markdown.rs::lib_tool_015_a_closed_comment_in_an_html_block_hides_nothing_past_its_closer",
   "xtask/tests/verdict_markdown.rs::lib_tool_015_a_comment_opener_outside_every_html_event_opens_no_region",
   "xtask/tests/verdict_markdown.rs::lib_tool_015_a_pass_line_inside_details_after_a_blank_line_counts",
   "xtask/tests/verdict_markdown.rs::lib_tool_015_a_short_comment_is_closed_by_a_closer_that_overlaps_its_opener",
   "xtask/tests/verdict_markdown.rs::lib_tool_015_an_empty_comment_of_four_dashes_is_closed",
-  "xtask/tests/verdict_markdown.rs::lib_tool_015_a_comment_opener_followed_by_a_lone_dash_hides_to_the_end_of_the_record",
-  "xtask/tests/verdict_markdown.rs::lib_tool_015_a_closer_in_a_code_span_does_not_end_an_unclosed_comment_region",
+  "xtask/tests/verdict_markdown.rs::lib_tool_015_a_comment_opener_followed_by_a_lone_dash_is_not_a_closed_comment",
+  "xtask/tests/verdict_markdown.rs::lib_tool_015_a_closer_in_a_code_span_does_not_close_an_unclosed_comment",
   "xtask/tests/verdict_markdown.rs::lib_tool_015_a_fail_line_after_a_raw_html_closer_that_follows_a_code_span_closer_counts",
-  "xtask/tests/verdict_markdown.rs::lib_tool_015_a_closer_in_a_fenced_code_block_does_not_end_an_unclosed_comment_region",
-  "xtask/tests/verdict_markdown.rs::lib_tool_015_a_closer_in_an_indented_code_block_does_not_end_an_unclosed_comment_region",
-  "xtask/tests/verdict_markdown.rs::lib_tool_015_a_closer_in_paragraph_text_does_not_end_an_unclosed_comment_region",
-  "xtask/tests/verdict_markdown.rs::lib_tool_015_a_closer_in_a_later_html_block_ends_an_unclosed_comment_region",
-  "xtask/tests/verdict_markdown.rs::lib_tool_015_a_closer_in_later_inline_html_ends_an_unclosed_comment_region",
+  "xtask/tests/verdict_markdown.rs::lib_tool_015_a_closer_in_a_fenced_code_block_does_not_close_an_unclosed_comment",
+  "xtask/tests/verdict_markdown.rs::lib_tool_015_a_closer_in_an_indented_code_block_does_not_close_an_unclosed_comment",
+  "xtask/tests/verdict_markdown.rs::lib_tool_015_a_closer_in_paragraph_text_does_not_close_an_unclosed_comment",
+  "xtask/tests/verdict_markdown.rs::lib_tool_015_a_closer_in_a_later_html_block_is_raw_html_and_hides_nothing",
+  "xtask/tests/verdict_markdown.rs::lib_tool_015_a_closer_in_later_inline_html_is_raw_html_unless_a_closed_comment",
+  "xtask/tests/verdict_markdown.rs::lib_tool_015_disallowed_html_gives_exactly_the_raw_html_problem_once_per_line",
+  "xtask/tests/verdict_markdown.rs::lib_tool_015_closed_comments_and_the_allowed_inline_tags_are_not_problems",
+  "xtask/tests/verdict_markdown.rs::lib_tool_015_the_verifiers_f3_and_f4b_probes_give_the_raw_html_problem_and_never_pass",
+  "xtask/tests/verdict_markdown.rs::lib_tool_015_the_verifiers_f1_probes_give_the_raw_html_problem_and_never_pass",
+  "xtask/tests/verdict_markdown.rs::lib_tool_015_an_allowed_tag_at_the_start_of_a_line_is_raw_html",
 ]
 
 [[row]]

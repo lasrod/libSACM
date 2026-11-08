@@ -23,7 +23,7 @@ Each fix modelled one more CommonMark rule, and the verifier then found the next
   - It is a CommonMark 0.31.2 parser, used by rustdoc and mdBook.
   - With no default features it adds `bitflags`, `memchr` and `unicase` (all MIT-licensed, alone or as a dual-licence option).
   - The dependency is only in `xtask`, which is `publish = false`. The `sacm` library does not gain it.
-- **Hidden ranges:** the gate parses each verification record with `Options::empty()`, which is core CommonMark with no extensions. It uses the parser's source offsets (`into_offset_iter`) to collect the byte ranges of every code block (fenced or indented), every HTML block and every inline HTML. This includes HTML comments.
+- **Hidden ranges:** the gate parses each verification record with `Options::empty()`, which is core CommonMark with no extensions, and uses the parser's source offsets (`into_offset_iter`). As amended by amendment 1, the hidden lines are only those inside code blocks (fenced or indented) and inside HTML blocks that are one closed comment. All other raw HTML is a problem, not a hidden range.
 - **Which lines count:** a source line is a candidate when it starts at column 0 with `- Row verdict:`. A candidate counts, either as a verdict line or as a malformed one, only when its first byte lies outside every hidden range.
   - The verdict format and the problems the gate reports are unchanged (`docs/matrix/README.md` rule 5).
   - Line numbers in problems stay 1-based source lines.
@@ -44,14 +44,14 @@ Each fix modelled one more CommonMark rule, and the verifier then found the next
   - The lead accepted this in slice 0007. If a later release fixes pulldown-cmark, the
     step becomes a no-op, and it can go.
 - **Easier:**
-  - Whether a line is hidden is decided by the same rules a CommonMark renderer uses, including list items, block quotes, nesting, info strings and HTML blocks. There is no list of special cases left to extend.
+  - Code blocks are decided by a CommonMark parser, including list items, block quotes, nesting and info strings. With strict records (amendment 1), the gate refuses anything else that a renderer could show differently, so it never has to model what a browser hides.
   - Less hand-written code to mutation-test.
 - **Harder:**
   - One more dependency to keep current. `cargo deny` checks it, and Dependabot proposes updates.
   - A behaviour change in a future pulldown-cmark release would change the gate. The tests pin the cases that matter, so a change shows up as a red test, not as a silent difference.
 - **Committed to:**
   - Core CommonMark. GitHub renders records with GFM extensions (tables, strikethrough, autolinks, task lists). None of them can hide a line that starts with `- Row verdict:`, so the difference does not matter here.
-  - The limits that stay are those of CommonMark itself. A line is hidden exactly when a CommonMark renderer would hide it.
+  - Records are kept strict (amendment 1, below), so the gate never has to model what a browser hides.
 
 ## Alternatives considered
 
@@ -60,3 +60,30 @@ Each fix modelled one more CommonMark rule, and the verifier then found the next
 - **Other parsers:**
   - `markdown` (markdown-rs) 1.0: MIT, one dependency, and CommonMark-exact with line positions. It is the fallback if pulldown-cmark ever falls short; it is less widely used in Rust.
   - `comrak` 0.55: BSD-2-Clause, about twelve dependencies, and focused on GFM. Heavier than needed.
+
+## Amendment 1: strict records (2026-11-08)
+
+- Status: accepted. After the third FAIL of LIB-TOOL-005 (verification 0007, round 1), the maintainer chose "strict records" and an in-slice differential check.
+- **Context.**
+  - Verification 0007 compared the gate against three CommonMark references on about 50,000 generated records. It found a second pulldown-cmark deviation (the end of a type-1 HTML block).
+  - Its other findings were not deviations:
+    - a browser hides comment text that CommonMark does not, and the reverse;
+    - lone CR line endings;
+    - verdict text that a reader sees but the gate ignores: indented items, and text inside HTML blocks.
+  - Modelling every renderer is open-ended.
+- **Decision: anything ambiguous is reported as a problem, not modelled.**
+  - The parser still decides code blocks (fenced and indented) and closed comments. Those are the only hidden ranges.
+  - Raw HTML in a record is a problem, except two things:
+    - a closed comment that is complete within its own HTML block or inline event;
+    - the inline tags `<br>`, `<ul>`, `</ul>`, `<li>`, `</li>`, which the real records use in tables. They match case-insensitively; `<br>` may be written `<br/>` or `<br />`.
+  - These are also problems:
+    - a visible verdict-like line that is not at column 0 (indented, nested or block-quoted);
+    - a lone CR;
+    - a leading byte-order mark.
+
+  The slice 0007 brief lists the exact problem texts (D8 to D11).
+- **Consequence.**
+  - A record passes only when it is plain Markdown.
+  - pulldown-cmark deviations inside raw HTML can no longer give a false PASS.
+  - The D6 comment fail-safe is superseded: an unclosed comment is disallowed HTML.
+  - A repeatable differential test against markdown-rs (`markdown` 1.0, a dev-dependency of `xtask` only) checks the parser's code-block and comment decisions on generated records.

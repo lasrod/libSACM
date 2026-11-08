@@ -299,19 +299,54 @@ fn lib_tool_005_a_record_without_a_verdict_line_fails_the_row() {
     );
 }
 
+/// Slice 0007 D9: line `n` of [`RECORD`] is a verdict-like line that is not
+/// at column 0, reported for [`ROW`]. The text is fixed by the slice brief.
+fn look_alike_problem(n: usize) -> String {
+    format!("{ROW}: verification record {RECORD}:{n}: a verdict-like line is not at column 0")
+}
+
+/// Line `n` of [`RECORD`] is a malformed verdict line, reported for [`ROW`].
+/// The text is pinned by `verdict_markdown.rs`.
+fn malformed_problem(n: usize) -> String {
+    format!(
+        "{ROW}: verification record {RECORD}:{n}: malformed verdict line; expected \
+         `- Row verdict: <ROW-ID>: <PASS|FAIL|OPEN>`"
+    )
+}
+
+/// The record `record` gives [`ROW`] exactly the D9 problem for line 1, and
+/// then the baseline "no verdict line" problem.
+fn assert_look_alike_and_no_verdict(record: &str, why: &str) {
+    assert_eq!(
+        record_problems(record),
+        [look_alike_problem(1), no_verdict_problem()],
+        "LIB-TOOL-005: {why}; the record is {record:?}"
+    );
+}
+
 #[test]
 fn lib_tool_005_a_record_that_only_mentions_the_row_fails() {
     for record in [
         "LIB-TOOL-001: PASS\n",
-        "Row verdict: LIB-TOOL-001: PASS\n",
-        "* Row verdict: LIB-TOOL-001: PASS\n",
-        "+ Row verdict: LIB-TOOL-001: PASS\n",
         "- row verdict: LIB-TOOL-001: PASS\n",
         "- Verdict: LIB-TOOL-001: PASS\n",
         "| LIB-TOOL-001 | PASS |\n",
         "LIB-TOOL-001 passes. Verdict: PASS.\n",
     ] {
         assert_no_verdict(record, "mentioning the row id is not a verdict line");
+    }
+    // Slice 0007 D9: strict records. These lines start with `Row verdict:`
+    // once the list marker is removed, and are not at column 0 as
+    // `- Row verdict:`, so each is also a verdict-like problem at line 1.
+    for record in [
+        "Row verdict: LIB-TOOL-001: PASS\n",
+        "* Row verdict: LIB-TOOL-001: PASS\n",
+        "+ Row verdict: LIB-TOOL-001: PASS\n",
+    ] {
+        assert_look_alike_and_no_verdict(
+            record,
+            "a verdict-like line without the `- ` marker is no verdict line, and is reported",
+        );
     }
 }
 
@@ -387,22 +422,25 @@ fn lib_tool_005_a_verdict_line_for_a_similar_id_does_not_count() {
         "lib-tool-001",
         "LIB-TOOL-001-2",
     ] {
+        // Slice 0007, decision 6 of fix round 1: none of these is a
+        // well-formed row id (`<SACM23|LIB>-<AREA>-<NNN>`, README rule 2), so
+        // the line is now also malformed, at its line 3.
         let alone = format!("# Verification\n\n- Row verdict: {similar}: PASS\n");
-        let p = record_problems(&alone);
-        assert!(
-            p.len() == 1 && p[0].starts_with(&format!("{ROW}: ")) && p[0].contains(RECORD),
-            "LIB-TOOL-005: a PASS line for {similar} does not pass {ROW}: the row fails with \
-             one problem naming it and the record, got {p:#?}"
+        assert_eq!(
+            record_problems(&alone),
+            [malformed_problem(3), no_verdict_problem()],
+            "LIB-TOOL-005: a PASS line for {similar} does not pass {ROW}: it is malformed, and \
+             the row has no verdict line; the record is {alone:?}"
         );
 
         // Beside the row's own PASS line, the similar line is not a second
-        // verdict line for the row.
+        // verdict line for the row; it is reported as malformed.
         let beside = format!(
             "# Verification\n\n- Row verdict: {ROW}: PASS\n- Row verdict: {similar}: PASS\n"
         );
         assert_eq!(
             record_problems(&beside),
-            Vec::<String>::new(),
+            [malformed_problem(4)],
             "LIB-TOOL-005: a line for {similar} is not a verdict line for {ROW}; the record \
              is {beside:?}"
         );
@@ -439,18 +477,31 @@ fn lib_tool_005_a_verdict_line_for_a_different_row_does_not_count() {
 
 #[test]
 fn lib_tool_005_indented_and_block_quoted_lines_are_not_verdict_lines() {
+    // Indented 4 columns, the line is an indented code block (CommonMark
+    // §4.4), which hides it.
+    for record in [
+        "    - Row verdict: LIB-TOOL-001: PASS\n",
+        "\t- Row verdict: LIB-TOOL-001: PASS\n",
+    ] {
+        assert_no_verdict(
+            record,
+            "an indented code line is neither a verdict line nor malformed",
+        );
+    }
+    // Slice 0007 D9: strict records. Indented 1 to 3 spaces or block-quoted,
+    // the line is visible, so it is still no verdict line, and it is now a
+    // verdict-like problem at line 1.
     for record in [
         " - Row verdict: LIB-TOOL-001: PASS\n",
         "  - Row verdict: LIB-TOOL-001: PASS\n",
-        "    - Row verdict: LIB-TOOL-001: PASS\n",
-        "\t- Row verdict: LIB-TOOL-001: PASS\n",
         "> - Row verdict: LIB-TOOL-001: PASS\n",
         ">- Row verdict: LIB-TOOL-001: PASS\n",
         "> > - Row verdict: LIB-TOOL-001: PASS\n",
     ] {
-        assert_no_verdict(
+        assert_look_alike_and_no_verdict(
             record,
-            "an indented or block-quoted line is neither a verdict line nor malformed",
+            "an indented or block-quoted line is neither a verdict line nor malformed, and is \
+             reported as verdict-like",
         );
     }
 }
@@ -832,10 +883,14 @@ fn lib_tool_005_a_malformed_line_is_not_a_verdict_for_the_row() {
 
 #[test]
 fn lib_tool_005_line_numbers_count_every_line_of_the_record() {
-    // Line 2 and line 14 are malformed. The fenced and indented look-alikes on
-    // lines 5 and 7 are not reported, and neither is the look-alike on line
-    // 10, inside a ``` line pair nested in a ```` fence (lines 8 to 12). CRLF
-    // endings do not change the count.
+    // Line 2 and line 14 are malformed. The fenced look-alike on line 5 is
+    // not reported, and neither is the look-alike on line 10, inside a ```
+    // line pair nested in a ```` fence (lines 8 to 12). CRLF endings do not
+    // change the count.
+    //
+    // Slice 0007 D9: strict records. The indented look-alike on line 7 is a
+    // visible list item indented 2 spaces, so it is now reported as a
+    // verdict-like line at line 7, between the two malformed lines.
     let record = "# V\r\n- Row verdict: LIB-TOOL-001: pass\r\n\r\n```\r\n\
                   - Row verdict: LIB-TOOL-001: pass\r\n```\r\n  - Row verdict: x\r\n\
                   ````\r\n```\r\n- Row verdict: LIB-TOOL-001: pass\r\n```\r\n````\r\n\
@@ -854,8 +909,15 @@ fn lib_tool_005_line_numbers_count_every_line_of_the_record() {
     );
     assert_eq!(
         p.len(),
-        2,
-        "LIB-TOOL-005: the PASS line on line 13 passes the row, got {p:#?}"
+        3,
+        "LIB-TOOL-005: the PASS line on line 13 passes the row; the only other problem is the \
+         verdict-like line 7, got {p:#?}"
+    );
+    assert_eq!(
+        [&p[0], &p[1], &p[2]],
+        [malformed[0], &look_alike_problem(7), malformed[1]],
+        "LIB-TOOL-005: the problems come in line order: line 2, line 7, line 14 (slice 0007 \
+         D11), got {p:#?}"
     );
 }
 

@@ -6,20 +6,56 @@
 //!   parser of ADR 0008 (`pulldown-cmark` with `Options::empty()`) decides.
 //!   This closes P-005b of `docs/verification/0004-m0-gate-hardening-round2.md`:
 //!   the probes P1, P1b, P6, P8 and P9 (T7), the controls (T8), item 3 and F5.
-//! - LIB-TOOL-015: lines inside HTML comments and HTML blocks do not count,
-//!   and a backtick fence "opener" whose info string holds a backtick is not
-//!   an opener (seeds P2 and P7). Under slice 0007 D6, a `<!--` inside an
-//!   HTML event that no `-->` in that event closes also hides everything up
-//!   to the end of the next `-->` that lies in an HTML event, or to the end
-//!   of the record. A `-->` in text, a code span or a code block is rendered
-//!   escaped and ends nothing (D6 as amended after the Copilot review of
-//!   PR #14).
+//! - LIB-TOOL-015: lines inside closed HTML comments do not count, and a
+//!   backtick fence "opener" whose info string holds a backtick is not an
+//!   opener (seeds P2 and P7).
+//!
+//! # Strict records (slice 0007 fix round 1, D8 to D11)
+//!
+//! The maintainer chose strict records (ADR 0008 amendment 1): anything a
+//! renderer could show differently is a problem, not something the gate
+//! models. D6, the comment fail-safe, is superseded.
+//! - **D8, strict HTML.** Each `Html` or `InlineHtml` event is a problem,
+//!   once per line that holds one, unless it belongs to an HTML block that is
+//!   one closed comment, is an inline closed comment, or is one of the inline
+//!   tags `<br>`, `<br/>`, `<br />`, `<ul>`, `</ul>`, `<li>`, `</li>` in any
+//!   case with non-whitespace text before it on its line. A closed comment
+//!   starts with `<!--`, ends with `-->`, and holds no `-->` or `--!>` before
+//!   that end. An allowed tag at the start of a line (after an indent of 0 to
+//!   3) is a problem: cmark-family renderers, GitHub's among them, may start
+//!   an HTML block there that hides the lines after it. A blank line inside
+//!   an HTML block holds no HTML and is not reported. The hidden ranges are
+//!   only code blocks and allowed comments, so a candidate inside other raw
+//!   HTML counts.
+//! - **D9, look-alikes.** A line outside every hidden range that, with its
+//!   leading spaces, tabs, `>` and list markers removed, starts with
+//!   `Row verdict:`, and that is not a column-0 candidate, is a problem.
+//! - **D10, line endings.** A lone CR is a problem at the LF/CRLF line that
+//!   holds it, once per line however many CRs it holds, and a leading
+//!   byte-order mark is a problem. A candidate right after the BOM is not at
+//!   column 0, so it does not count.
+//! - **D11, reporting.** A record's problems are reported once per citing
+//!   row, in line order, before the verdict problem, with the BOM problem
+//!   first. On one line the order is raw HTML, lone CR, malformed; a
+//!   look-alike never shares a line with a malformed line.
+//! - **Well-formed ids (decision 6 of the fix round).** A counted candidate
+//!   whose id part is not a well-formed row id (`<SACM23|LIB>-<AREA>-<NNN>`,
+//!   as `docs/matrix/README.md` rule 2 and the matrix gate define it) is
+//!   malformed.
+//!
+//! Where an existing test's expectation changes under D8 to D10, its comment
+//! says "slice 0007 D8: strict records" (or D9, D10).
 //!
 //! The gate is driven through `xtask::matrix::check` against an in-memory
-//! [`Repo`], as in `gate_hardening.rs`. Every expectation is an exact list of
-//! problems. The problem texts are the ones the gate produces today (slice
-//! 0007 keeps them), built by the helpers below and pinned once by
-//! `lib_tool_005_the_problem_texts_stay_as_they_are`.
+//! [`Repo`], as in `gate_hardening.rs`. Every expectation is an exact,
+//! ordered list of problems. The problem texts are built by the helpers below
+//! and pinned once by `lib_tool_005_the_problem_texts_stay_as_they_are` and
+//! `lib_tool_005_the_strict_record_problem_texts_are_exact`.
+//!
+//! On a raw-HTML problem's line: `pulldown-cmark` 0.13 emits one `Html` event
+//! for each line of an HTML block, and with CRLF two (the text and the LF).
+//! It also emits one for a blank line inside a type 1 to 5 block; that line
+//! holds no HTML and gets no problem.
 //!
 //! # The `CommonMark` 0.31.2 rules these tests rely on
 //!
@@ -227,6 +263,66 @@ fn malformed(id: &str, n: usize) -> String {
     )
 }
 
+// The strict-record problems of slice 0007 D8 to D10, whose texts the brief
+// fixes.
+
+/// The D8 problem, after `<record>:<line>: `.
+const RAW_HTML: &str = "raw HTML other than a closed comment or <br>, <ul>, <li> is not allowed";
+/// The D9 problem, after `<record>:<line>: `.
+const LOOK_ALIKE: &str = "a verdict-like line is not at column 0";
+/// The D10 lone-CR problem, after `<record>:<line>: `.
+const LONE_CR: &str = "lone carriage return; use LF or CRLF line endings";
+
+/// `what` at line `n` of [`RECORD`], reported for the citing row `id`.
+fn at_line(id: &str, n: usize, what: &str) -> String {
+    format!("{id}: verification record {RECORD}:{n}: {what}")
+}
+
+/// D8: line `n` holds raw HTML that is not allowed, reported for [`ROW`].
+fn html(n: usize) -> String {
+    at_line(ROW, n, RAW_HTML)
+}
+
+/// [`html`] for each of `lines`, in order.
+fn html_at(lines: &[usize]) -> Vec<String> {
+    lines.iter().map(|&n| html(n)).collect()
+}
+
+/// D9: line `n` is a verdict-like line not at column 0, reported for [`ROW`].
+fn look_alike(n: usize) -> String {
+    at_line(ROW, n, LOOK_ALIKE)
+}
+
+/// D10: line `n` holds a lone CR, reported for [`ROW`].
+fn lone_cr(n: usize) -> String {
+    at_line(ROW, n, LONE_CR)
+}
+
+/// D10: [`RECORD`] starts with a byte-order mark, reported for the row `id`.
+fn bom(id: &str) -> String {
+    format!("{id}: verification record {RECORD}: starts with a byte-order mark")
+}
+
+/// The row a problem is reported for, and where in the record it is: 0 for
+/// the BOM, the line for a problem at a line, and `usize::MAX` for the
+/// verdict problem. Used to read the lines of raw-HTML problems.
+fn problem_key(problem: &str) -> (&str, usize) {
+    let (row, rest) = problem.split_once(": ").unwrap_or((problem, ""));
+    let rest = rest
+        .strip_prefix("verification record ")
+        .and_then(|r| r.strip_prefix(RECORD))
+        .unwrap_or(rest);
+    let line = rest.strip_prefix(':').and_then(|r| {
+        let digits = r.len() - r.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+        r[..digits].parse().ok()
+    });
+    match line {
+        Some(n) => (row, n),
+        None if rest == ": starts with a byte-order mark" => (row, 0),
+        None => (row, usize::MAX),
+    }
+}
+
 /// [`ROW`]'s verdict line saying PASS.
 const PASS: &str = "- Row verdict: LIB-TOOL-001: PASS";
 /// [`ROW`]'s verdict line saying FAIL.
@@ -251,10 +347,31 @@ fn mismatches(cases: &[(&str, &str)], expected: &[String]) -> Vec<String> {
         let record = fill(template);
         let p = record_problems(&record);
         if p != expected {
-            out.push(format!("{why}: the record {record:?} gave {p:#?}"));
+            out.push(format!(
+                "{why}: the record {record:?} gave {p:#?}, expected {expected:#?}"
+            ));
         }
     }
     out
+}
+
+/// A record template, the exact problems [`ROW`] gets from it, and why.
+type Case<'a> = (&'a str, Vec<String>, &'a str);
+
+/// Each of `cases` whose record, its template [`fill`]ed, with LF and with
+/// CRLF line endings, does not give [`ROW`] exactly its expected problems.
+fn case_mismatches(cases: &[Case<'_>]) -> Vec<String> {
+    let mut out = Vec::new();
+    for (template, expected, why) in cases {
+        out.extend(mismatches_lf_and_crlf(&[(*template, *why)], expected));
+    }
+    out
+}
+
+/// `head` followed by `tail`.
+fn then(mut head: Vec<String>, tail: &[String]) -> Vec<String> {
+    head.extend_from_slice(tail);
+    head
 }
 
 /// [`mismatches`] for `cases` and for each case with CRLF line endings.
@@ -633,6 +750,13 @@ fn lib_tool_005_a_tab_after_a_closer_closes_the_fence_so_the_fail_after_it_count
                 "```\nx\n```\t \n{FAIL}\n\n```\n{PASS}\n```\n",
                 "``` then a tab then a space closes",
             ),
+            // Verification 0007 P-7 (hand mutant M15): only the first of two
+            // trailing tabs made a space leaves "``` \t", which
+            // pulldown-cmark 0.13 does not take as a closer.
+            (
+                "```\nx\n```\t\t\n{FAIL}\n\n```\n{PASS}\n```\n",
+                "``` then two tabs closes (M15)",
+            ),
         ],
         &[fail()],
     );
@@ -661,6 +785,10 @@ fn lib_tool_005_a_lone_cr_ends_the_closer_line_before_text() {
     // parser makes of the CR. Which candidate counts depends only on the
     // hidden ranges, and those depend on the tab before the lone CR being
     // read as trailing, which it is only if `\r` ends the line.
+    //
+    // Slice 0007 D10: strict records. The lone CR on line 3 is now also a
+    // problem, reported at line 3 (the LF/CRLF line that holds it) before
+    // the verdict problem. The FAIL verdict is still judged as before.
     let failures = mismatches_lf_and_crlf(
         &[
             (
@@ -672,12 +800,13 @@ fn lib_tool_005_a_lone_cr_ends_the_closer_line_before_text() {
                 "~~~ and a tab, then a lone CR and text",
             ),
         ],
-        &[fail()],
+        &[lone_cr(3), fail()],
     );
     assert!(
         failures.is_empty(),
         "LIB-TOOL-005: a lone CR ends the closer line, so the tab before it is trailing, the \
-         fence closes and the FAIL line counts:\n{failures:#?}"
+         fence closes and the FAIL line counts; the lone CR is reported at line 3 (D10):\n\
+         {failures:#?}"
     );
 }
 
@@ -962,18 +1091,32 @@ fn lib_tool_005_hidden_lines_are_decided_only_by_pulldown_cmark_with_no_extensio
 // ---------------------------------------------------------------------------
 
 /// Line 13 is a visible malformed line; the malformed look-alikes on lines 4
-/// (an HTML comment), 7 (a fence) and 10 (an HTML block that the blank line
-/// 12 ends) are hidden; line 14 is the PASS.
+/// (a closed HTML comment) and 7 (a fence) are hidden; line 14 is the PASS.
+/// Lines 9 to 11 are a `<div>` block that the blank line 12 ends. Under
+/// slice 0007 D8 (strict records) it is raw HTML on each of its lines and
+/// hides nothing, so the malformed candidate on its line 10 counts.
 const MIXED: &str = "# Verification\n\n<!-- note\n- Row verdict: a\n-->\n```\n- Row verdict: b\n```\n<div>\n- Row verdict: c\n</div>\n\n- Row verdict: LIB-TOOL-001: pass\n- Row verdict: LIB-TOOL-001: PASS\n";
 
 #[test]
 fn lib_tool_005_a_malformed_line_outside_every_hidden_range_is_reported_with_its_line_number() {
+    // Slice 0007 D8: strict records. The `<div>` block was hidden; now its
+    // lines 9 to 11 are raw-HTML problems, and its line 10 is also a visible
+    // malformed line.
+    let expected = [
+        html(9),
+        html(10),
+        malformed(ROW, 10),
+        html(11),
+        malformed(ROW, 13),
+    ];
+    // On line 10 the raw-HTML problem comes before the malformed one (D11).
     for record in [MIXED.to_owned(), crlf(MIXED)] {
         assert_eq!(
             record_problems(&record),
-            [malformed(ROW, 13)],
-            "LIB-TOOL-005: only the visible malformed line 13 is reported, by its 1-based line \
-             number, and the PASS on line 14 stands; the record is {record:?}"
+            expected,
+            "LIB-TOOL-005: the visible malformed lines 10 and 13 are reported, by their 1-based \
+             line numbers, beside the raw HTML of lines 9 to 11, and the PASS on line 14 stands; \
+             the record is {record:?}"
         );
     }
     // The column-0 line ends the item and its fence (§5.2), so the malformed
@@ -1048,14 +1191,14 @@ fn lib_tool_005_a_shared_record_reports_each_visible_malformed_line_once_per_cit
 fn lib_tool_015_a_verdict_line_inside_an_html_comment_does_not_count() {
     // §4.6 type 2: a block starting `<!--` ends at the line holding `-->`,
     // blank lines included (Example 179), or at the end of the document. It
-    // may interrupt a paragraph and be indented up to 3 spaces.
+    // may interrupt a paragraph and be indented up to 3 spaces. Each block
+    // below is one closed comment, so D8 allows it and it hides its lines.
     let mut failures = mismatches_lf_and_crlf(
         &[
             (
                 "<!--\n{PASS}\n-->\n",
                 "a PASS line in a comment spanning lines",
             ),
-            ("<!--\n{PASS}\n", "a PASS line in an unclosed comment"),
             (
                 "<!-- note\n\n{PASS}\n\n-->\n",
                 "a comment with blank lines inside",
@@ -1089,118 +1232,194 @@ fn lib_tool_015_a_verdict_line_inside_an_html_comment_does_not_count() {
         ],
         &[],
     ));
-    assert!(
-        failures.is_empty(),
-        "LIB-TOOL-015: a line inside an HTML comment is neither a verdict line nor malformed:\n\
-         {failures:#?}"
-    );
-}
-
-/// Records whose only PASS line is inside an HTML block (`CommonMark` §4.6),
-/// so the row has no verdict line.
-const HIDDEN_BY_HTML_BLOCK: &[(&str, &str)] = &[
-    (
-        "<div>\n{PASS}\n</div>\n",
-        "type 6: between <div> and </div>",
-    ),
-    (
-        "<div class=\"note\">\n{PASS}\n",
-        "type 6: after an unclosed <div> with attributes",
-    ),
-    (
-        "<DIV>\n{PASS}\n",
-        "type 6: tag names are case-insensitive (Example 152)",
-    ),
-    ("<details>\n{PASS}\n</details>\n", "type 6: after <details>"),
-    (
-        "<details>\n<summary>Example</summary>\n{PASS}\n</details>\n",
-        "type 6: after <details> and <summary>",
-    ),
-    (
-        "</div>\n{PASS}\n",
-        "type 6: a closing tag starts a block (Example 151)",
-    ),
-    (
-        "<div>\n{PASS}\n</div>\n{PASS}\n",
-        "type 6: </div> does not end the block; only a blank line does (Example 186)",
-    ),
-    ("   <div>\n{PASS}\n", "type 6: indented 3 spaces"),
-    (
-        "Text.\n<div>\n{PASS}\n",
-        "type 6: interrupting a paragraph (Example 185)",
-    ),
-    (
-        "<custom-tag>\n{PASS}\n</custom-tag>\n",
-        "type 7: <custom-tag>",
-    ),
-    (
-        "<custom-tag data-x=\"1\">\n{PASS}\n",
-        "type 7: an open tag with an attribute",
-    ),
-    ("</custom-tag>\n{PASS}\n", "type 7: a closing tag"),
-    (
-        "<pre>\n\n{PASS}\n</pre>\n",
-        "type 1: <pre> runs past a blank line to </pre>",
-    ),
-    ("<script>\n{PASS}\n</script>\n", "type 1: <script>"),
-    (
-        "<style>\n\n{PASS}\n</style>\n",
-        "type 1: <style> runs past a blank line",
-    ),
-    ("<textarea>\n{PASS}\n</textarea>\n", "type 1: <textarea>"),
-    (
-        "<?note\n\n{PASS}\n?>\n",
-        "type 3: a processing instruction (Example 180)",
-    ),
-    ("<!DOCTYPE note\n{PASS}\n>\n", "type 4: a declaration"),
-    ("<![CDATA[\n\n{PASS}\n]]>\n", "type 5: a CDATA section"),
-];
-
-#[test]
-fn lib_tool_015_a_verdict_line_inside_an_html_block_does_not_count() {
-    let mut failures = mismatches_lf_and_crlf(HIDDEN_BY_HTML_BLOCK, &[no_verdict()]);
+    // Slice 0007 D8: strict records. A comment with no `-->` is not closed,
+    // so it is raw HTML on each of its lines and hides nothing: the PASS on
+    // line 2 counts.
     failures.extend(mismatches_lf_and_crlf(
-        &[(
-            "<div>\n{FAIL}\n</div>\n\n{PASS}\n",
-            "a FAIL line in a <div> block, then a PASS line after the blank line",
-        )],
-        &[],
+        &[("<!--\n{PASS}\n", "a PASS line in an unclosed comment")],
+        &html_at(&[1, 2]),
     ));
     assert!(
         failures.is_empty(),
-        "LIB-TOOL-015: a line inside an HTML block is neither a verdict line nor malformed:\n\
-         {failures:#?}"
+        "LIB-TOOL-015: a line inside a closed HTML comment is neither a verdict line nor \
+         malformed; an unclosed comment is raw HTML (D8):\n{failures:#?}"
     );
 }
 
 #[test]
-fn lib_tool_015_a_malformed_candidate_inside_html_is_not_malformed() {
-    let failures = mismatches_lf_and_crlf(
-        &[
-            ("<!--\n- Row verdict: x\n-->\n{PASS}\n", "inside a comment"),
-            (
-                "<!--\n- Row verdict:\n{PASS} -->\n{PASS}\n",
-                "on a comment's lines and closing line",
-            ),
-            (
-                "<div>\n- Row verdict: LIB-TOOL-001: pass\n</div>\n\n{PASS}\n",
-                "inside a <div> block",
-            ),
-            (
-                "<custom-tag>\n- Row verdict: x\n\n{PASS}\n",
-                "inside a type 7 block",
-            ),
-            (
-                "<pre>\n- Row verdict: x\n</pre>\n{PASS}\n",
-                "inside a <pre> block",
-            ),
-        ],
-        &[],
-    );
+fn lib_tool_015_an_html_block_of_any_type_is_raw_html_on_each_of_its_lines_and_hides_nothing() {
+    // Formerly `lib_tool_015_a_verdict_line_inside_an_html_block_does_not_count`.
+    // Slice 0007 D8: strict records. An HTML block (§4.6) is raw HTML on each
+    // of its lines that holds HTML, and it hides nothing: the PASS line inside
+    // it counts. A blank line inside a type 1 to 5 block holds no HTML and is
+    // not reported (decision (b) of the fix round).
+    let failures = case_mismatches(&html_block_cases());
     assert!(
         failures.is_empty(),
-        "LIB-TOOL-015: a candidate that is not well formed, inside HTML, is not reported as \
-         malformed, and the PASS line outside passes the row:\n{failures:#?}"
+        "LIB-TOOL-015: an HTML block is raw HTML on each of its lines, and a verdict line inside \
+         it counts (D8):\n{failures:#?}"
+    );
+}
+
+/// HTML blocks of types 1 and 3 to 7 (§4.6), each with a verdict line
+/// inside, and the problems each gives under slice 0007 D8.
+fn html_block_cases() -> Vec<Case<'static>> {
+    vec![
+        (
+            "<div>\n{PASS}\n</div>\n",
+            html_at(&[1, 2, 3]),
+            "type 6: between <div> and </div>",
+        ),
+        (
+            "<div class=\"note\">\n{PASS}\n",
+            html_at(&[1, 2]),
+            "type 6: after an unclosed <div> with attributes",
+        ),
+        (
+            "<DIV>\n{PASS}\n",
+            html_at(&[1, 2]),
+            "type 6: tag names are case-insensitive (Example 152)",
+        ),
+        (
+            "<details>\n{PASS}\n</details>\n",
+            html_at(&[1, 2, 3]),
+            "type 6: after <details>",
+        ),
+        (
+            "<details>\n<summary>Example</summary>\n{PASS}\n</details>\n",
+            html_at(&[1, 2, 3, 4]),
+            "type 6: after <details> and <summary>",
+        ),
+        (
+            "</div>\n{PASS}\n",
+            html_at(&[1, 2]),
+            "type 6: a closing tag starts a block (Example 151)",
+        ),
+        (
+            "<div>\n{PASS}\n</div>\n{PASS}\n",
+            then(html_at(&[1, 2, 3, 4]), &[count(2)]),
+            "type 6: </div> does not end the block; only a blank line does (Example 186)",
+        ),
+        (
+            "   <div>\n{PASS}\n",
+            html_at(&[1, 2]),
+            "type 6: indented 3 spaces",
+        ),
+        (
+            "Text.\n<div>\n{PASS}\n",
+            html_at(&[2, 3]),
+            "type 6: interrupting a paragraph (Example 185)",
+        ),
+        (
+            "<custom-tag>\n{PASS}\n</custom-tag>\n",
+            html_at(&[1, 2, 3]),
+            "type 7: <custom-tag>",
+        ),
+        (
+            "<custom-tag data-x=\"1\">\n{PASS}\n",
+            html_at(&[1, 2]),
+            "type 7: an open tag with an attribute",
+        ),
+        (
+            "</custom-tag>\n{PASS}\n",
+            html_at(&[1, 2]),
+            "type 7: a closing tag",
+        ),
+    ]
+    .into_iter()
+    .chain(html_block_cases_of_types_1_to_5())
+    .collect()
+}
+
+/// [`html_block_cases`] for types 1 to 5, which end at their end marker.
+fn html_block_cases_of_types_1_to_5() -> Vec<Case<'static>> {
+    vec![
+        (
+            "<pre>\n\n{PASS}\n</pre>\n",
+            html_at(&[1, 3, 4]),
+            "type 1: <pre> runs past a blank line to </pre>; the blank line holds no HTML",
+        ),
+        (
+            "<pre>\n  \t\n{PASS}\n</pre>\n",
+            html_at(&[1, 3, 4]),
+            "type 1: a line of only spaces and a tab inside <pre> holds no HTML",
+        ),
+        (
+            "<script>\n{PASS}\n</script>\n",
+            html_at(&[1, 2, 3]),
+            "type 1: <script>",
+        ),
+        (
+            "<style>\n\n{PASS}\n</style>\n",
+            html_at(&[1, 3, 4]),
+            "type 1: <style> runs past a blank line",
+        ),
+        (
+            "<textarea>\n{PASS}\n</textarea>\n",
+            html_at(&[1, 2, 3]),
+            "type 1: <textarea>",
+        ),
+        (
+            "<?note\n\n{PASS}\n?>\n",
+            html_at(&[1, 3, 4]),
+            "type 3: a processing instruction (Example 180)",
+        ),
+        (
+            "<!DOCTYPE note\n{PASS}\n>\n",
+            html_at(&[1, 2, 3]),
+            "type 4: a declaration",
+        ),
+        (
+            "<![CDATA[\n\n{PASS}\n]]>\n",
+            html_at(&[1, 3, 4]),
+            "type 5: a CDATA section",
+        ),
+        (
+            "<div>\n{FAIL}\n</div>\n\n{PASS}\n",
+            then(html_at(&[1, 2, 3]), &[count(2)]),
+            "a FAIL line in a <div> block, then a PASS line after the blank line",
+        ),
+    ]
+}
+
+#[test]
+fn lib_tool_015_a_malformed_candidate_is_hidden_by_a_closed_comment_but_not_by_other_html() {
+    // Formerly `lib_tool_015_a_malformed_candidate_inside_html_is_not_malformed`.
+    // Slice 0007 D8: strict records. Only a closed comment hides a candidate;
+    // inside other raw HTML the malformed line is visible and reported, on
+    // the same line as the raw-HTML problem.
+    let cases: Vec<Case<'_>> = vec![
+        (
+            "<!--\n- Row verdict: x\n-->\n{PASS}\n",
+            vec![],
+            "inside a comment",
+        ),
+        (
+            "<!--\n- Row verdict:\n{PASS} -->\n{PASS}\n",
+            vec![],
+            "on a comment's lines and closing line",
+        ),
+        (
+            "<div>\n- Row verdict: LIB-TOOL-001: pass\n</div>\n\n{PASS}\n",
+            vec![html(1), html(2), malformed(ROW, 2), html(3)],
+            "inside a <div> block",
+        ),
+        (
+            "<custom-tag>\n- Row verdict: x\n\n{PASS}\n",
+            vec![html(1), html(2), malformed(ROW, 2)],
+            "inside a type 7 block",
+        ),
+        (
+            "<pre>\n- Row verdict: x\n</pre>\n{PASS}\n",
+            vec![html(1), html(2), malformed(ROW, 2), html(3)],
+            "inside a <pre> block",
+        ),
+    ];
+    let failures = case_mismatches(&cases);
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-015: a malformed candidate inside a closed comment is not reported; inside \
+         other raw HTML it is (D8):\n{failures:#?}"
     );
 }
 
@@ -1270,6 +1489,9 @@ fn lib_tool_015_seed_p7_a_fence_line_inside_an_html_block_opens_no_fence() {
     // §4.6: the ``` line is inside the <div> block (type 6), which only a
     // blank line ends. With the blank line, the FAIL line counts, and the ```
     // after it opens a top-level fence around the PASS line.
+    //
+    // Slice 0007 D8: strict records. The <div> block is now raw HTML on its
+    // lines 1 to 3, beside the FAIL problem.
     let mut failures = mismatches_lf_and_crlf(
         &[
             (P7, "P7: the FAIL counts and the fenced PASS does not"),
@@ -1278,22 +1500,23 @@ fn lib_tool_015_seed_p7_a_fence_line_inside_an_html_block_opens_no_fence() {
                 "P7 with a blank line before the fence",
             ),
         ],
-        &[fail()],
+        &then(html_at(&[1, 2, 3]), &[fail()]),
     );
     // Without the blank line, `</div>` does not end the block (Example 186):
-    // the FAIL line and everything after it are HTML, so there is no verdict
-    // line at all. The row still cannot pass.
+    // the whole record is one HTML block. Slice 0007 D8: it is raw HTML on
+    // each of its 7 lines and hides nothing, so the FAIL on line 4 and the
+    // PASS on line 6 both count.
     failures.extend(mismatches_lf_and_crlf(
         &[(
             P7_NO_BLANK,
             "P7 without a blank line: the whole record after <div> is one HTML block",
         )],
-        &[no_verdict()],
+        &then(html_at(&[1, 2, 3, 4, 5, 6, 7]), &[count(2)]),
     ));
     assert!(
         failures.is_empty(),
-        "LIB-TOOL-015: a fence line inside an HTML block is HTML and opens no fence:\n\
-         {failures:#?}"
+        "LIB-TOOL-015: a fence line inside an HTML block is HTML and opens no fence, and the \
+         block is raw HTML (D8):\n{failures:#?}"
     );
 }
 
@@ -1303,7 +1526,7 @@ fn lib_tool_015_seed_p7_a_fence_line_inside_an_html_block_opens_no_fence() {
 
 #[test]
 fn lib_tool_015_a_pass_line_after_a_closed_html_comment_counts() {
-    let failures = mismatches_lf_and_crlf(
+    let mut failures = mismatches_lf_and_crlf(
         &[
             ("<!-- note -->\n{PASS}\n", "after a one-line comment"),
             (
@@ -1315,10 +1538,6 @@ fn lib_tool_015_a_pass_line_after_a_closed_html_comment_counts() {
                 "after a comment with a blank line inside",
             ),
             (
-                "<!-- note --> text\n{PASS}\n",
-                "after a closing line with text after `-->`",
-            ),
-            (
                 "Text <!-- note\n{PASS}\n-->\n",
                 "a `<!--` in a paragraph: the PASS line interrupts the paragraph, so no \
                  comment spans it (§3.2, §6.6)",
@@ -1326,6 +1545,16 @@ fn lib_tool_015_a_pass_line_after_a_closed_html_comment_counts() {
         ],
         &[],
     );
+    // Slice 0007 D8: strict records. Text after `-->` in the same block makes
+    // the block more than one closed comment, so it is raw HTML; the PASS
+    // after it still counts.
+    failures.extend(mismatches_lf_and_crlf(
+        &[(
+            "<!-- note --> text\n{PASS}\n",
+            "after a closing line with text after `-->`",
+        )],
+        &[html(1)],
+    ));
     assert!(
         failures.is_empty(),
         "LIB-TOOL-015: the comment is closed, so the PASS line after it passes the row:\n\
@@ -1335,51 +1564,61 @@ fn lib_tool_015_a_pass_line_after_a_closed_html_comment_counts() {
 
 #[test]
 fn lib_tool_015_a_pass_line_after_an_html_block_that_has_ended_counts() {
-    let failures = mismatches_lf_and_crlf(
-        &[
-            (
-                "<div>\nx\n</div>\n\n{PASS}\n",
-                "after a <div> block that a blank line ends",
-            ),
-            (
-                "<div>\n\n{PASS}\n\n</div>\n",
-                "after an open <div> line that a blank line ends",
-            ),
-            (
-                "<p>x</p>\n\n{PASS}\n",
-                "after a one-line <p> block and a blank line",
-            ),
-            (
-                "<custom-tag>\n\n{PASS}\n",
-                "after a type 7 block that a blank line ends",
-            ),
-            (
-                "<pre>\nx\n</pre>\n{PASS}\n",
-                "after a <pre> block that </pre> ends",
-            ),
-            (
-                "<?note ?>\n{PASS}\n",
-                "after a processing instruction that `?>` ends",
-            ),
-            (
-                "Text\n<custom-tag>\n{PASS}\n",
-                "a type 7 tag cannot interrupt a paragraph, so it is inline (Example 187)",
-            ),
-            (
-                "- a\n\n  <div>\n{PASS}\n",
-                "a <div> block in a list item ends with the item",
-            ),
-            (
-                "> <div>\n{PASS}\n",
-                "a <div> block in a block quote ends with the quote",
-            ),
-        ],
-        &[],
-    );
+    // Slice 0007 D8: strict records. Each record holds raw HTML, now a
+    // problem on each of its lines; the PASS line after it still counts, so
+    // there is no verdict problem.
+    let cases: Vec<Case<'_>> = vec![
+        (
+            "<div>\nx\n</div>\n\n{PASS}\n",
+            html_at(&[1, 2, 3]),
+            "after a <div> block that a blank line ends",
+        ),
+        (
+            "<div>\n\n{PASS}\n\n</div>\n",
+            html_at(&[1, 5]),
+            "after an open <div> line that a blank line ends",
+        ),
+        (
+            "<p>x</p>\n\n{PASS}\n",
+            html_at(&[1]),
+            "after a one-line <p> block and a blank line",
+        ),
+        (
+            "<custom-tag>\n\n{PASS}\n",
+            html_at(&[1]),
+            "after a type 7 block that a blank line ends",
+        ),
+        (
+            "<pre>\nx\n</pre>\n{PASS}\n",
+            html_at(&[1, 2, 3]),
+            "after a <pre> block that </pre> ends",
+        ),
+        (
+            "<?note ?>\n{PASS}\n",
+            html_at(&[1]),
+            "after a processing instruction that `?>` ends",
+        ),
+        (
+            "Text\n<custom-tag>\n{PASS}\n",
+            html_at(&[2]),
+            "a type 7 tag cannot interrupt a paragraph, so it is inline (Example 187)",
+        ),
+        (
+            "- a\n\n  <div>\n{PASS}\n",
+            html_at(&[3]),
+            "a <div> block in a list item ends with the item",
+        ),
+        (
+            "> <div>\n{PASS}\n",
+            html_at(&[1]),
+            "a <div> block in a block quote ends with the quote",
+        ),
+    ];
+    let failures = case_mismatches(&cases);
     assert!(
         failures.is_empty(),
-        "LIB-TOOL-015: the HTML block has ended, so the PASS line after it passes the row:\n\
-         {failures:#?}"
+        "LIB-TOOL-015: the HTML block has ended, so the PASS line after it counts; the block is \
+         raw HTML (D8):\n{failures:#?}"
     );
 }
 
@@ -1414,220 +1653,222 @@ fn lib_tool_015_a_pass_line_after_a_closed_fence_with_the_other_fence_character_
 }
 
 // ---------------------------------------------------------------------------
-// LIB-TOOL-015, slice 0007 D6: an unclosed comment in HTML hides what follows
+// LIB-TOOL-015, the former D6 records under slice 0007 D8
 // ---------------------------------------------------------------------------
 //
-// CommonMark passes raw HTML through. A `<!--` that it does not close inside
-// its own HTML range opens a comment in the rendered page, which hides
-// everything up to the next `-->`. D6: a `<!--` inside an `Html` or
-// `InlineHtml` event range that no `-->` closes within that range opens a
-// hidden region. The region runs from the `<!--` to the end of the next `-->`
-// that itself lies inside an `Html` or `InlineHtml` range, or to the end of
-// the record. A `-->` in text, a code span or a code block is rendered
-// escaped (`--&gt;`), so it closes nothing in the browser and ends no region.
-// A `<!--` outside every HTML event (in a code span, a code block or plain
-// text) opens nothing.
+// D6 (superseded) hid everything from an unclosed `<!--` in an HTML event to
+// the next `-->` in raw HTML. Under D8 (strict records) an unclosed comment,
+// and any HTML block or inline tag that holds one, is raw HTML, a problem at
+// its line, and hides nothing. Each record of the D6 tests is kept, with its
+// expectation updated: the raw-HTML problems, then the verdict the visible
+// candidates give. "Slice 0007 D8: strict records" applies to every test of
+// this section.
 //
-// In each probe below, CommonMark alone puts the PASS line outside every HTML
-// range:
-// - `<!-- a --> <!--`: the type 2 block is line 1 only, because line 1 holds
-//   `-->` (§4.6). The second `<!--` on it is unclosed.
+// The shapes, by CommonMark 0.31.2:
+// - `<!-- a --> <!--`: a type 2 block of one line, since the line holds
+//   `-->` (§4.6). It is not one closed comment.
 // - `<div><!--`: a type 6 block, which the blank line ends.
-// - a `<!--` block in a list item or block quote: it ends with its container,
-//   and the PASS line is not lazy (§5.1, §5.2).
-// A `-->` line right after a list item is lazy paragraph text (§5.2); after a
-// blank line it is a paragraph of its own. Either way it is text, so the
-// trailing `-->` in these probes ends no region. The tests below that need a
-// region to end close it with raw HTML: a one-line comment block
-// `<!-- end -->` (type 2, which may interrupt a paragraph, §4.6) or a type 6
-// line holding `-->`.
-
-/// The four probes: the PASS line is inside an unclosed comment's region.
-const UNCLOSED_COMMENT_PROBES: &[(&str, &str)] = &[
-    (
-        "<!-- a --> <!--\n{PASS}\n-->\n",
-        "a second, unclosed comment after a closed one on a type 2 line",
-    ),
-    (
-        "<div><!--\n\n{PASS}\n\n-->\n",
-        "an unclosed comment in a <div> block that a blank line ends",
-    ),
-    (
-        "- a\n\n  <!--\n{PASS}\n-->\n",
-        "an unclosed comment block in a list item",
-    ),
-    (
-        "> <!--\n{PASS}\n-->\n",
-        "an unclosed comment block in a block quote",
-    ),
-];
+// - a `<!--` block in a list item or block quote: it ends with its
+//   container, and the next column-0 line is not lazy (§5.1, §5.2).
+// A `-->` line right after a list item is lazy paragraph text (§5.2); after
+// a blank line it is a paragraph of its own. `<!-- end -->` at column 0 is a
+// closed comment block, which D8 allows.
 
 #[test]
-fn lib_tool_015_an_unclosed_comment_in_an_html_event_hides_the_pass_line_after_it() {
-    let failures = mismatches_lf_and_crlf(UNCLOSED_COMMENT_PROBES, &[no_verdict()]);
+fn lib_tool_015_an_unclosed_comment_in_an_html_event_is_raw_html_and_hides_nothing() {
+    // Formerly `lib_tool_015_an_unclosed_comment_in_an_html_event_hides_the_pass_line_after_it`.
+    let cases: Vec<Case<'_>> = vec![
+        (
+            "<!-- a --> <!--\n{PASS}\n-->\n",
+            html_at(&[1]),
+            "a second, unclosed comment after a closed one on a type 2 line",
+        ),
+        (
+            "<div><!--\n\n{PASS}\n\n-->\n",
+            html_at(&[1]),
+            "an unclosed comment in a <div> block that a blank line ends",
+        ),
+        (
+            "- a\n\n  <!--\n{PASS}\n-->\n",
+            html_at(&[3]),
+            "an unclosed comment block in a list item",
+        ),
+        (
+            "> <!--\n{PASS}\n-->\n",
+            html_at(&[1]),
+            "an unclosed comment block in a block quote",
+        ),
+    ];
+    let failures = case_mismatches(&cases);
     assert!(
         failures.is_empty(),
-        "LIB-TOOL-015: the PASS line is inside the region of an unclosed `<!--` (D6), so the \
-         row has no verdict line:\n{failures:#?}"
+        "LIB-TOOL-015: the unclosed comment is raw HTML at its line and hides nothing, so the \
+         PASS line after it counts (D8):\n{failures:#?}"
     );
 }
 
 #[test]
-fn lib_tool_015_an_unclosed_comment_hides_the_pass_line_but_not_a_fail_after_its_closer() {
-    let failures = mismatches_lf_and_crlf(
-        &[
-            (
-                "<!-- a --> <!--\n{PASS}\n<!-- end -->\n{FAIL}\n",
-                "after a type 2 line with a second, unclosed comment",
-            ),
-            (
-                "<div><!--\n\n{PASS}\n\n</div> -->\n\n{FAIL}\n",
-                "after a <div> block holding an unclosed comment",
-            ),
-            (
-                "- a\n\n  <!--\n{PASS}\n<!-- end -->\n{FAIL}\n",
-                "after an unclosed comment block in a list item",
-            ),
-            (
-                "> <!--\n{PASS}\n<!-- end -->\n{FAIL}\n",
-                "after an unclosed comment block in a block quote",
-            ),
-        ],
-        &[fail()],
-    );
+fn lib_tool_015_an_unclosed_comment_hides_neither_the_pass_line_nor_a_fail_after_its_closer() {
+    // Formerly `lib_tool_015_an_unclosed_comment_hides_the_pass_line_but_not_a_fail_after_its_closer`.
+    let cases: Vec<Case<'_>> = vec![
+        (
+            "<!-- a --> <!--\n{PASS}\n<!-- end -->\n{FAIL}\n",
+            then(html_at(&[1]), &[count(2)]),
+            "after a type 2 line with a second, unclosed comment",
+        ),
+        (
+            "<div><!--\n\n{PASS}\n\n</div> -->\n\n{FAIL}\n",
+            then(html_at(&[1, 5]), &[count(2)]),
+            "after a <div> block holding an unclosed comment",
+        ),
+        (
+            "- a\n\n  <!--\n{PASS}\n<!-- end -->\n{FAIL}\n",
+            then(html_at(&[3]), &[count(2)]),
+            "after an unclosed comment block in a list item",
+        ),
+        (
+            "> <!--\n{PASS}\n<!-- end -->\n{FAIL}\n",
+            then(html_at(&[1]), &[count(2)]),
+            "after an unclosed comment block in a block quote",
+        ),
+    ];
+    let failures = case_mismatches(&cases);
     assert!(
         failures.is_empty(),
-        "LIB-TOOL-015: the region hides the PASS line and ends at the `-->` in raw HTML, so \
-         the visible FAIL line after it is the row's only verdict (D6):\n{failures:#?}"
+        "LIB-TOOL-015: the unclosed comment hides nothing, so both the PASS and the FAIL count \
+         (D8):\n{failures:#?}"
     );
 }
 
 #[test]
-fn lib_tool_015_an_unclosed_comment_region_ends_at_the_end_of_the_next_closer() {
-    // The FAIL line is in the region; the PASS line after the `-->` is not.
-    // A region that ended with its HTML event would leave the FAIL visible,
-    // and the row would have two verdict lines.
-    // A region ending at the start of `-->` is equivalent: no byte of `-->`
-    // can be the first byte of a candidate, which starts `- R` (triaged).
-    let failures = mismatches_lf_and_crlf(
-        &[
-            (
-                "<!-- a --> <!--\n{FAIL}\n<!-- end -->\n{PASS}\n",
-                "a PASS line right after the `-->` line",
-            ),
-            (
-                "- a\n\n  <!--\n{FAIL}\n<!-- end -->\n{PASS}\n",
-                "a PASS line after the `-->` that follows a list item's comment",
-            ),
-            (
-                "> <!--\n{FAIL}\n<!-- end -->\n\n{PASS}\n",
-                "a PASS line after the `-->` and a blank line",
-            ),
-            (
-                "<div><!--\n\n{FAIL}\n<p>x --> y\n\n{PASS}\n",
-                "a `-->` in the middle of a type 6 line; the PASS after the block counts",
-            ),
-            (
-                "<!-- a --> <!--\n{FAIL}\n<!-- end -->\n{PASS}\n<div><!--\n\n{FAIL}\n<!-- end -->\n",
-                "two regions, each ending at its own `-->`",
-            ),
-        ],
-        &[],
-    );
+fn lib_tool_015_an_unclosed_comment_opens_no_region_up_to_the_next_closer() {
+    // Formerly `lib_tool_015_an_unclosed_comment_region_ends_at_the_end_of_the_next_closer`.
+    let cases: Vec<Case<'_>> = vec![
+        (
+            "<!-- a --> <!--\n{FAIL}\n<!-- end -->\n{PASS}\n",
+            then(html_at(&[1]), &[count(2)]),
+            "a PASS line right after the `-->` line",
+        ),
+        (
+            "- a\n\n  <!--\n{FAIL}\n<!-- end -->\n{PASS}\n",
+            then(html_at(&[3]), &[count(2)]),
+            "a PASS line after the `-->` that follows a list item's comment",
+        ),
+        (
+            "> <!--\n{FAIL}\n<!-- end -->\n\n{PASS}\n",
+            then(html_at(&[1]), &[count(2)]),
+            "a PASS line after the `-->` and a blank line",
+        ),
+        (
+            "<div><!--\n\n{FAIL}\n<p>x --> y\n\n{PASS}\n",
+            then(html_at(&[1, 4]), &[count(2)]),
+            "a `-->` in the middle of a type 6 line",
+        ),
+        (
+            "<!-- a --> <!--\n{FAIL}\n<!-- end -->\n{PASS}\n<div><!--\n\n{FAIL}\n<!-- end -->\n",
+            then(html_at(&[1, 5]), &[count(3)]),
+            "two unclosed comments, each before a closed comment block",
+        ),
+    ];
+    let failures = case_mismatches(&cases);
     assert!(
         failures.is_empty(),
-        "LIB-TOOL-015: an unclosed comment's region ends at the end of the next `-->`, so the \
-         PASS line after it passes the row (D6):\n{failures:#?}"
+        "LIB-TOOL-015: an unclosed comment hides nothing before the next `-->`, so every \
+         verdict line counts (D8):\n{failures:#?}"
     );
 }
 
 #[test]
-fn lib_tool_015_an_unclosed_comment_with_no_closer_anywhere_hides_to_the_end_of_the_record() {
-    let failures = mismatches_lf_and_crlf(
-        &[
-            (
-                "<!-- a --> <!--\n{PASS}\n\n{PASS}\n",
-                "after a type 2 line with an unclosed comment",
-            ),
-            (
-                "> <!--\n{PASS}\n",
-                "after an unclosed comment in a block quote",
-            ),
-            (
-                "<div><!--\n\n{PASS}\n\nText.\n\n{FAIL}\n",
-                "after a <div> block holding an unclosed comment, past paragraphs",
-            ),
-            (
-                "- a\n\n  <!--\n{PASS}\n",
-                "after an unclosed comment in a list item",
-            ),
-        ],
-        &[no_verdict()],
-    );
+fn lib_tool_015_an_unclosed_comment_with_no_closer_anywhere_hides_nothing_after_it() {
+    // Formerly `lib_tool_015_an_unclosed_comment_with_no_closer_anywhere_hides_to_the_end_of_the_record`.
+    let cases: Vec<Case<'_>> = vec![
+        (
+            "<!-- a --> <!--\n{PASS}\n\n{PASS}\n",
+            then(html_at(&[1]), &[count(2)]),
+            "after a type 2 line with an unclosed comment",
+        ),
+        (
+            "> <!--\n{PASS}\n",
+            html_at(&[1]),
+            "after an unclosed comment in a block quote",
+        ),
+        (
+            "<div><!--\n\n{PASS}\n\nText.\n\n{FAIL}\n",
+            then(html_at(&[1]), &[count(2)]),
+            "after a <div> block holding an unclosed comment, past paragraphs",
+        ),
+        (
+            "- a\n\n  <!--\n{PASS}\n",
+            html_at(&[3]),
+            "after an unclosed comment in a list item",
+        ),
+    ];
+    let failures = case_mismatches(&cases);
     assert!(
         failures.is_empty(),
-        "LIB-TOOL-015: with no `-->` after it, an unclosed comment's region runs to the end of \
-         the record (D6):\n{failures:#?}"
-    );
-}
-
-#[test]
-fn lib_tool_015_an_unclosed_comment_in_inline_html_opens_a_hidden_region() {
-    // §6.6: `<span title="<!--">` is one open tag, so it is an `InlineHtml`
-    // event, and the `<!--` in it has no `-->` in that event. D6 covers
-    // `InlineHtml` too, so the region runs to the end of the record. A browser
-    // would not start a comment inside an attribute value: this is the
-    // fail-safe side of D6, and it is pinned because it is the only way an
-    // unclosed `<!--` reaches an `InlineHtml` event.
-    let failures = mismatches_lf_and_crlf(
-        &[(
-            "Text <span title=\"<!--\"> x\n{PASS}\n",
-            "a `<!--` inside an inline tag's attribute value",
-        )],
-        &[no_verdict()],
-    );
-    assert!(
-        failures.is_empty(),
-        "LIB-TOOL-015: an unclosed `<!--` in an inline HTML event opens a hidden region (D6):\n\
+        "LIB-TOOL-015: with no `-->` after it, an unclosed comment still hides nothing (D8):\n\
          {failures:#?}"
     );
 }
 
 #[test]
-fn lib_tool_015_a_closed_comment_in_an_html_block_hides_nothing_past_its_closer() {
-    // Each record also holds a stray `-->` after the PASS line. It is text,
-    // so it ends no region (D6): a region opened by mistake would hide the
-    // PASS whether or not it stopped there.
+fn lib_tool_015_an_unclosed_comment_in_inline_html_is_raw_html_and_opens_no_region() {
+    // Formerly `lib_tool_015_an_unclosed_comment_in_inline_html_opens_a_hidden_region`.
+    // §6.6: `<span title="<!--">` is one open tag, an `InlineHtml` event that
+    // is not on the allow-list.
     let failures = mismatches_lf_and_crlf(
-        &[
-            (
-                "<div><!-- a -->\n\n{PASS}\n\n-->\n",
-                "a closed comment in a <div> block",
-            ),
-            (
-                "<div><!-- a --> <!-- b -->\n\n{PASS}\n\n-->\n",
-                "two closed comments in a <div> block",
-            ),
-            ("<!-- a -->\n{PASS}\n-->\n", "a one-line comment block"),
-            (
-                "<!--\nnote\n-->\n{PASS}\n-->\n",
-                "a comment block spanning lines ends at its own `-->`",
-            ),
-        ],
-        &[],
+        &[(
+            "Text <span title=\"<!--\"> x\n{PASS}\n",
+            "a `<!--` inside an inline tag's attribute value",
+        )],
+        &[html(1)],
     );
     assert!(
         failures.is_empty(),
-        "LIB-TOOL-015: a comment closed inside its HTML range opens no region past its `-->` \
-         (D6):\n{failures:#?}"
+        "LIB-TOOL-015: the inline tag is raw HTML and hides nothing (D8):\n{failures:#?}"
+    );
+}
+
+#[test]
+fn lib_tool_015_a_closed_comment_in_an_html_block_hides_nothing_past_its_closer() {
+    // Each record also holds a stray `-->` after the PASS line. It is text.
+    // A comment inside a `<div>` block is part of a block that is more than
+    // one closed comment, so that block is raw HTML (D8); a block that is one
+    // closed comment is allowed.
+    let cases: Vec<Case<'_>> = vec![
+        (
+            "<div><!-- a -->\n\n{PASS}\n\n-->\n",
+            html_at(&[1]),
+            "a closed comment in a <div> block",
+        ),
+        (
+            "<div><!-- a --> <!-- b -->\n\n{PASS}\n\n-->\n",
+            html_at(&[1]),
+            "two closed comments in a <div> block",
+        ),
+        (
+            "<!-- a -->\n{PASS}\n-->\n",
+            vec![],
+            "a one-line comment block",
+        ),
+        (
+            "<!--\nnote\n-->\n{PASS}\n-->\n",
+            vec![],
+            "a comment block spanning lines ends at its own `-->`",
+        ),
+    ];
+    let failures = case_mismatches(&cases);
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-015: a closed comment hides nothing past its `-->`:\n{failures:#?}"
     );
 }
 
 #[test]
 fn lib_tool_015_a_comment_opener_outside_every_html_event_opens_no_region() {
-    // D6 looks for `<!--` only inside HTML events. A code span (§6.1), a code
-    // block (§4.4, §4.5), a backslash escape (§2.4) and paragraph text that is
-    // not a complete comment (§6.6) are not HTML events.
+    // A code span (§6.1), a code block (§4.4, §4.5), a backslash escape (§2.4)
+    // and paragraph text that is not a complete comment (§6.6) are not HTML
+    // events, so they are neither raw HTML (D8) nor hidden.
     let failures = mismatches_lf_and_crlf(
         &[
             ("Text `<!--` here\n{PASS}\n-->\n", "a `<!--` in a code span"),
@@ -1664,353 +1905,1471 @@ fn lib_tool_015_a_comment_opener_outside_every_html_event_opens_no_region() {
     );
     assert!(
         failures.is_empty(),
-        "LIB-TOOL-015: a `<!--` outside every HTML event hides nothing (D6):\n{failures:#?}"
+        "LIB-TOOL-015: a `<!--` outside every HTML event is no problem and hides nothing:\n\
+         {failures:#?}"
     );
 }
 
 #[test]
 fn lib_tool_015_a_pass_line_inside_details_after_a_blank_line_counts() {
     // §4.6: a blank line ends the <details> block, so the PASS line is a list
-    // item inside the rendered <details> element. A reader can expand it, so
-    // it counts (D6 hides only comments).
-    let failures = mismatches_lf_and_crlf(
-        &[
-            (
-                "<details>\n<summary>Example</summary>\n\n{PASS}\n\n</details>\n",
-                "a PASS line inside <details> with a <summary>",
-            ),
-            (
-                "<details>\n\n{PASS}\n\n</details>\n",
-                "a PASS line inside <details>",
-            ),
-        ],
-        &[],
-    );
+    // item inside the rendered <details> element and counts. Slice 0007 D8:
+    // strict records. The <details>, <summary> and </details> lines are raw
+    // HTML.
+    let cases: Vec<Case<'_>> = vec![
+        (
+            "<details>\n<summary>Example</summary>\n\n{PASS}\n\n</details>\n",
+            html_at(&[1, 2, 6]),
+            "a PASS line inside <details> with a <summary>",
+        ),
+        (
+            "<details>\n\n{PASS}\n\n</details>\n",
+            html_at(&[1, 5]),
+            "a PASS line inside <details>",
+        ),
+    ];
+    let failures = case_mismatches(&cases);
     assert!(
         failures.is_empty(),
-        "LIB-TOOL-015: a PASS line inside <details> after a blank line passes the row:\n\
-         {failures:#?}"
+        "LIB-TOOL-015: a PASS line inside <details> after a blank line counts, and the tags \
+         are raw HTML (D8):\n{failures:#?}"
     );
 }
 
-// D6's closing rule: the search for the `-->` that closes a `<!--` starts at
-// the opener's third byte, so `<!-->` and `<!--->` close themselves, as
-// CommonMark 0.31.2 §6.6 (Example 626) and browsers treat them. A line that
-// starts with `<!--` is a type 2 HTML block, and since the line holds `-->`
-// the block is that line only (§4.6). None of these records holds another
-// `-->`, so a comment D6 left open would hide everything after it.
+// `<!-->` and `<!--->` are complete comments (CommonMark 0.31.2 §6.6,
+// Example 626), and so is `<!---->`. A line that starts with `<!--` is a type
+// 2 HTML block, and since the line holds `-->` the block is that line only
+// (§4.6). D8: such a block starts with `<!--`, ends with `-->` (here
+// overlapping the opener) and holds no earlier `-->`, so it is one closed
+// comment and allowed. In a `<div>` block it is raw HTML like the rest of the
+// block.
 
 #[test]
 fn lib_tool_015_a_short_comment_is_closed_by_a_closer_that_overlaps_its_opener() {
-    let failures = mismatches_lf_and_crlf(
-        &[
-            ("<!-->\n{PASS}\n", "`<!-->` as a one-line type 2 block"),
-            ("<!--->\n{PASS}\n", "`<!--->` as a one-line type 2 block"),
-            (
-                "Text <!--> x\n{PASS}\n",
-                "`<!-->` as inline HTML (Example 626)",
-            ),
-            (
-                "Text <!---> x\n{PASS}\n",
-                "`<!--->` as inline HTML (Example 626)",
-            ),
-            ("<div><!-->\n\n{PASS}\n", "`<!-->` in a <div> block"),
-            ("<div><!--->\n\n{PASS}\n", "`<!--->` in a <div> block"),
-        ],
-        &[],
-    );
+    let cases: Vec<Case<'_>> = vec![
+        (
+            "<!-->\n{PASS}\n",
+            vec![],
+            "`<!-->` as a one-line type 2 block",
+        ),
+        (
+            "<!--->\n{PASS}\n",
+            vec![],
+            "`<!--->` as a one-line type 2 block",
+        ),
+        (
+            "Text <!--> x\n{PASS}\n",
+            vec![],
+            "`<!-->` as inline HTML (Example 626)",
+        ),
+        (
+            "Text <!---> x\n{PASS}\n",
+            vec![],
+            "`<!--->` as inline HTML (Example 626)",
+        ),
+        (
+            "<div><!-->\n\n{PASS}\n",
+            html_at(&[1]),
+            "`<!-->` in a <div> block",
+        ),
+        (
+            "<div><!--->\n\n{PASS}\n",
+            html_at(&[1]),
+            "`<!--->` in a <div> block",
+        ),
+    ];
+    let failures = case_mismatches(&cases);
     assert!(
         failures.is_empty(),
-        "LIB-TOOL-015: `<!-->` and `<!--->` are complete comments, so they open no region and \
-         the PASS line after them passes the row (D6):\n{failures:#?}"
+        "LIB-TOOL-015: `<!-->` and `<!--->` are closed comments, so the PASS line after them \
+         passes the row:\n{failures:#?}"
     );
 }
 
 #[test]
 fn lib_tool_015_an_empty_comment_of_four_dashes_is_closed() {
-    let failures = mismatches_lf_and_crlf(
-        &[
-            ("<!---->\n{PASS}\n", "`<!---->` as a one-line type 2 block"),
-            ("Text <!----> x\n{PASS}\n", "`<!---->` as inline HTML"),
-            ("<div><!---->\n\n{PASS}\n", "`<!---->` in a <div> block"),
-        ],
-        &[],
-    );
+    let cases: Vec<Case<'_>> = vec![
+        (
+            "<!---->\n{PASS}\n",
+            vec![],
+            "`<!---->` as a one-line type 2 block",
+        ),
+        (
+            "Text <!----> x\n{PASS}\n",
+            vec![],
+            "`<!---->` as inline HTML",
+        ),
+        (
+            "<div><!---->\n\n{PASS}\n",
+            html_at(&[1]),
+            "`<!---->` in a <div> block",
+        ),
+    ];
+    let failures = case_mismatches(&cases);
     assert!(
         failures.is_empty(),
-        "LIB-TOOL-015: `<!---->` is a closed comment, so the PASS line after it passes the row \
-         (D6):\n{failures:#?}"
+        "LIB-TOOL-015: `<!---->` is a closed comment, so the PASS line after it passes the row:\n\
+         {failures:#?}"
     );
 }
 
 #[test]
-fn lib_tool_015_a_comment_opener_followed_by_a_lone_dash_hides_to_the_end_of_the_record() {
-    // `<!-- -` holds no `-->`: the opener's own `--` does not close it.
-    let failures = mismatches_lf_and_crlf(
-        &[
-            (
-                "<!-- -\n{PASS}\n",
-                "a type 2 block with no `-->` runs to the end (§4.6)",
-            ),
-            (
-                "<div><!-- -\n\n{PASS}\n",
-                "in a <div> block that a blank line ends: the D6 region runs on",
-            ),
-            (
-                "> <!-- -\n{PASS}\n",
-                "in a block quote that the PASS line ends: the D6 region runs on",
-            ),
-        ],
-        &[no_verdict()],
-    );
+fn lib_tool_015_a_comment_opener_followed_by_a_lone_dash_is_not_a_closed_comment() {
+    // Formerly `lib_tool_015_a_comment_opener_followed_by_a_lone_dash_hides_to_the_end_of_the_record`.
+    // `<!-- -` holds no `-->`: the opener's own `--` does not close it. A type
+    // 2 block with no `-->` runs to the end of the document (§4.6).
+    let cases: Vec<Case<'_>> = vec![
+        (
+            "<!-- -\n{PASS}\n",
+            html_at(&[1, 2]),
+            "a type 2 block with no `-->` runs to the end and is raw HTML on each line",
+        ),
+        (
+            "<div><!-- -\n\n{PASS}\n",
+            html_at(&[1]),
+            "in a <div> block that a blank line ends",
+        ),
+        (
+            "> <!-- -\n{PASS}\n",
+            html_at(&[1]),
+            "in a block quote that the PASS line ends",
+        ),
+    ];
+    let failures = case_mismatches(&cases);
     assert!(
         failures.is_empty(),
-        "LIB-TOOL-015: `<!-- -` is not closed, so it hides the rest of the record and the row \
-         has no verdict line (D6):\n{failures:#?}"
+        "LIB-TOOL-015: `<!-- -` is not closed, so it is raw HTML and the PASS line counts \
+         (D8):\n{failures:#?}"
     );
 }
 
-// ---------------------------------------------------------------------------
-// LIB-TOOL-015, slice 0007 D6 as amended: only a `-->` in raw HTML ends a region
-// ---------------------------------------------------------------------------
-//
-// The Copilot review of PR #14 (`matrix.rs:1453`): CommonMark escapes a `-->`
-// in text, in a code span (§6.1) and in a code block (§4.4, §4.5) as
-// `--&gt;`, so the browser's comment stays open past it. Only a `-->` that
-// lies inside an `Html` or `InlineHtml` range reaches the page as `-->`. In
-// every record below, the unclosed `<!--` is one of the D6 probes: the second
-// comment on a type 2 line, a `<div>` block that a blank line ends, or a
-// comment block in a block quote or list item. A `-->` at column 0 after a
-// list item is lazy paragraph text (§5.2), and a type 2 block in a container
-// ends with the container, so a `-->` line after it is not in that block.
-
 #[test]
-fn lib_tool_015_a_closer_in_a_code_span_does_not_end_an_unclosed_comment_region() {
-    let failures = mismatches_lf_and_crlf(
-        &[
-            (
-                "<div><!--\n\n`-->`\n\n{PASS}\n",
-                "the Copilot record: a code span `-->` in its own paragraph",
-            ),
-            (
-                "<div><!--\n\nThe closer `-->` is text.\n\n{PASS}\n",
-                "a code span `-->` in the middle of a paragraph",
-            ),
-            (
-                "<!-- a --> <!--\n`` --> ``\n{PASS}\n",
-                "a double-backtick code span on the line after a type 2 line",
-            ),
-            (
-                "> <!--\n{FAIL}\n`-->`\n{PASS}\n",
-                "a code span `-->` in a lazy line after a block quote's comment",
-            ),
-            (
-                "- a\n\n  <!--\n{FAIL}\n`-->`\n{PASS}\n",
-                "a code span `-->` in a lazy line after a list item's comment",
-            ),
-        ],
-        &[no_verdict()],
-    );
+fn lib_tool_015_a_closer_in_a_code_span_does_not_close_an_unclosed_comment() {
+    // Formerly `lib_tool_015_a_closer_in_a_code_span_does_not_end_an_unclosed_comment_region`.
+    let cases: Vec<Case<'_>> = vec![
+        (
+            "<div><!--\n\n`-->`\n\n{PASS}\n",
+            html_at(&[1]),
+            "the Copilot record: a code span `-->` in its own paragraph",
+        ),
+        (
+            "<div><!--\n\nThe closer `-->` is text.\n\n{PASS}\n",
+            html_at(&[1]),
+            "a code span `-->` in the middle of a paragraph",
+        ),
+        (
+            "<!-- a --> <!--\n`` --> ``\n{PASS}\n",
+            html_at(&[1]),
+            "a double-backtick code span on the line after a type 2 line",
+        ),
+        (
+            "> <!--\n{FAIL}\n`-->`\n{PASS}\n",
+            then(html_at(&[1]), &[count(2)]),
+            "a code span `-->` in a lazy line after a block quote's comment",
+        ),
+        (
+            "- a\n\n  <!--\n{FAIL}\n`-->`\n{PASS}\n",
+            then(html_at(&[3]), &[count(2)]),
+            "a code span `-->` in a lazy line after a list item's comment",
+        ),
+    ];
+    let failures = case_mismatches(&cases);
     assert!(
         failures.is_empty(),
-        "LIB-TOOL-015: a `-->` in a code span is rendered `--&gt;` and ends no region, so the \
-         PASS line after it is hidden and the row has no verdict line (D6):\n{failures:#?}"
+        "LIB-TOOL-015: the unclosed comment is raw HTML and a code span `-->` changes nothing, \
+         so every verdict line counts (D8):\n{failures:#?}"
     );
 }
 
 #[test]
 fn lib_tool_015_a_fail_line_after_a_raw_html_closer_that_follows_a_code_span_closer_counts() {
-    // The region runs past the code span `-->` and the PASS line to the `-->`
-    // in raw HTML. The FAIL line after that is the row's only verdict line.
-    let failures = mismatches_lf_and_crlf(
-        &[
-            (
-                "<div><!--\n\n`-->`\n\n{PASS}\n\n<!-- end -->\n{FAIL}\n",
-                "the Copilot record, then a comment block and a FAIL line",
-            ),
-            (
-                "> <!--\n`-->`\n{PASS}\n<pre>--></pre>\n{FAIL}\n",
-                "a code span `-->`, a PASS line, a type 1 line holding `-->`, a FAIL line",
-            ),
-        ],
-        &[fail()],
-    );
+    let cases: Vec<Case<'_>> = vec![
+        (
+            "<div><!--\n\n`-->`\n\n{PASS}\n\n<!-- end -->\n{FAIL}\n",
+            then(html_at(&[1]), &[count(2)]),
+            "the Copilot record, then a comment block and a FAIL line",
+        ),
+        (
+            "> <!--\n`-->`\n{PASS}\n<pre>--></pre>\n{FAIL}\n",
+            then(html_at(&[1, 4]), &[count(2)]),
+            "a code span `-->`, a PASS line, a type 1 line holding `-->`, a FAIL line",
+        ),
+    ];
+    let failures = case_mismatches(&cases);
     assert!(
         failures.is_empty(),
-        "LIB-TOOL-015: the region ends only at the `-->` in raw HTML, so the PASS line before \
-         it is hidden and the FAIL line after it is the row's only verdict (D6):\n{failures:#?}"
+        "LIB-TOOL-015: nothing is hidden, so the FAIL line and the PASS line both count \
+         (D8):\n{failures:#?}"
     );
 }
 
 #[test]
-fn lib_tool_015_a_closer_in_a_fenced_code_block_does_not_end_an_unclosed_comment_region() {
-    let failures = mismatches_lf_and_crlf(
-        &[
-            (
-                "<div><!--\n\n```\n-->\n```\n{PASS}\n",
-                "a `-->` line in a backtick fence",
-            ),
-            (
-                "<div><!--\n\n~~~\n-->\n~~~\n{PASS}\n",
-                "a `-->` line in a tilde fence",
-            ),
-            (
-                "<!-- a --> <!--\n```text\nx --> y\n```\n{PASS}\n",
-                "a `-->` in the middle of a line in a backtick fence with an info string",
-            ),
-            (
-                "> <!--\n~~~\n-->\n~~~\n{PASS}\n",
-                "a tilde fence after a block quote's comment",
-            ),
-        ],
-        &[no_verdict()],
-    );
+fn lib_tool_015_a_closer_in_a_fenced_code_block_does_not_close_an_unclosed_comment() {
+    // Formerly `lib_tool_015_a_closer_in_a_fenced_code_block_does_not_end_an_unclosed_comment_region`.
+    let cases: Vec<Case<'_>> = vec![
+        (
+            "<div><!--\n\n```\n-->\n```\n{PASS}\n",
+            html_at(&[1]),
+            "a `-->` line in a backtick fence",
+        ),
+        (
+            "<div><!--\n\n~~~\n-->\n~~~\n{PASS}\n",
+            html_at(&[1]),
+            "a `-->` line in a tilde fence",
+        ),
+        (
+            "<!-- a --> <!--\n```text\nx --> y\n```\n{PASS}\n",
+            html_at(&[1]),
+            "a `-->` in the middle of a line in a backtick fence with an info string",
+        ),
+        (
+            "> <!--\n~~~\n-->\n~~~\n{PASS}\n",
+            html_at(&[1]),
+            "a tilde fence after a block quote's comment",
+        ),
+    ];
+    let failures = case_mismatches(&cases);
     assert!(
         failures.is_empty(),
-        "LIB-TOOL-015: a `-->` in a fenced code block is rendered `--&gt;` and ends no region, \
-         so the PASS line after the fence is hidden (D6):\n{failures:#?}"
+        "LIB-TOOL-015: the unclosed comment is raw HTML and hides nothing, so the PASS line after \
+         the fence counts (D8):\n{failures:#?}"
     );
 }
 
 #[test]
-fn lib_tool_015_a_closer_in_an_indented_code_block_does_not_end_an_unclosed_comment_region() {
-    // §4.4: a column-0 line ends the indented code block, so the PASS line is
-    // outside it; only the region can hide it.
-    let failures = mismatches_lf_and_crlf(
-        &[
-            (
-                "<div><!--\n\n    -->\n\n{PASS}\n",
-                "a `-->` indented 4 spaces after a blank line",
-            ),
-            (
-                "<!-- a --> <!--\n    -->\n{PASS}\n",
-                "a `-->` indented 4 spaces right after a type 2 line",
-            ),
-            (
-                "<div><!--\n\n\t-->\n\n{PASS}\n",
-                "a `-->` indented by a tab",
-            ),
-        ],
-        &[no_verdict()],
-    );
+fn lib_tool_015_a_closer_in_an_indented_code_block_does_not_close_an_unclosed_comment() {
+    // Formerly `lib_tool_015_a_closer_in_an_indented_code_block_does_not_end_an_unclosed_comment_region`.
+    // §4.4: a column-0 line ends the indented code block.
+    let cases: Vec<Case<'_>> = vec![
+        (
+            "<div><!--\n\n    -->\n\n{PASS}\n",
+            html_at(&[1]),
+            "a `-->` indented 4 spaces after a blank line",
+        ),
+        (
+            "<!-- a --> <!--\n    -->\n{PASS}\n",
+            html_at(&[1]),
+            "a `-->` indented 4 spaces right after a type 2 line",
+        ),
+        (
+            "<div><!--\n\n\t-->\n\n{PASS}\n",
+            html_at(&[1]),
+            "a `-->` indented by a tab",
+        ),
+    ];
+    let failures = case_mismatches(&cases);
     assert!(
         failures.is_empty(),
-        "LIB-TOOL-015: a `-->` in an indented code block is rendered `--&gt;` and ends no \
-         region, so the PASS line after the block is hidden (D6):\n{failures:#?}"
+        "LIB-TOOL-015: the unclosed comment is raw HTML and hides nothing, so the PASS line after \
+         the code block counts (D8):\n{failures:#?}"
     );
 }
 
 #[test]
-fn lib_tool_015_a_closer_in_paragraph_text_does_not_end_an_unclosed_comment_region() {
-    let failures = mismatches_lf_and_crlf(
-        &[
-            (
-                "<div><!--\n\n-->\n\n{PASS}\n",
-                "a `-->` line that is a paragraph of its own",
-            ),
-            (
-                "<div><!--\n\nText --> here.\n\n{PASS}\n",
-                "a `-->` in the middle of a paragraph",
-            ),
-            (
-                "<!-- a --> <!--\n{FAIL}\n-->\n{PASS}\n",
-                "a `-->` line that is lazy text of a list item",
-            ),
-            (
-                "> <!--\n{FAIL}\n-->\n\n{PASS}\n",
-                "a lazy `-->` line, then a blank line",
-            ),
-            ("<div><!--\n\n*-->*\n\n{PASS}\n", "a `-->` in emphasis"),
-            (
-                "<div><!--\n\nSee <http://x/-->.\n\n{PASS}\n",
-                "an autolink (§6.5) ending `--`, rendered with no `-->`",
-            ),
-        ],
-        &[no_verdict()],
-    );
+fn lib_tool_015_a_closer_in_paragraph_text_does_not_close_an_unclosed_comment() {
+    // Formerly `lib_tool_015_a_closer_in_paragraph_text_does_not_end_an_unclosed_comment_region`.
+    let cases: Vec<Case<'_>> = vec![
+        (
+            "<div><!--\n\n-->\n\n{PASS}\n",
+            html_at(&[1]),
+            "a `-->` line that is a paragraph of its own",
+        ),
+        (
+            "<div><!--\n\nText --> here.\n\n{PASS}\n",
+            html_at(&[1]),
+            "a `-->` in the middle of a paragraph",
+        ),
+        (
+            "<!-- a --> <!--\n{FAIL}\n-->\n{PASS}\n",
+            then(html_at(&[1]), &[count(2)]),
+            "a `-->` line that is lazy text of a list item",
+        ),
+        (
+            "> <!--\n{FAIL}\n-->\n\n{PASS}\n",
+            then(html_at(&[1]), &[count(2)]),
+            "a lazy `-->` line, then a blank line",
+        ),
+        (
+            "<div><!--\n\n*-->*\n\n{PASS}\n",
+            html_at(&[1]),
+            "a `-->` in emphasis",
+        ),
+        (
+            "<div><!--\n\nSee <http://x/-->.\n\n{PASS}\n",
+            html_at(&[1]),
+            "an autolink (§6.5) ending `--`, which is a link, not raw HTML",
+        ),
+    ];
+    let failures = case_mismatches(&cases);
     assert!(
         failures.is_empty(),
-        "LIB-TOOL-015: a `-->` in paragraph text is rendered `--&gt;` and ends no region, so \
-         the PASS line after it is hidden (D6):\n{failures:#?}"
+        "LIB-TOOL-015: the unclosed comment is raw HTML and hides nothing (D8):\n{failures:#?}"
     );
 }
 
 #[test]
-fn lib_tool_015_a_closer_in_a_later_html_block_ends_an_unclosed_comment_region() {
-    // None of these records holds inline HTML. Each closing `-->` lies in an
-    // HTML block that holds no `<!--` of its own. Types 1 to 5 may interrupt
-    // the FAIL line's paragraph and end on their own line (§4.6), so the PASS
-    // line right after counts. Types 6 and 7 end only at a blank line. In a
-    // type 6 block, backticks are raw HTML, not a code span.
-    let failures = mismatches_lf_and_crlf(
+fn lib_tool_015_a_closer_in_a_later_html_block_is_raw_html_and_hides_nothing() {
+    // Formerly `lib_tool_015_a_closer_in_a_later_html_block_ends_an_unclosed_comment_region`.
+    // Types 1 to 5 may interrupt the FAIL line's paragraph and end on their
+    // own line (§4.6); types 6 and 7 end only at a blank line. Each later
+    // block is raw HTML too.
+    let cases: Vec<Case<'_>> = vec![
+        (
+            "<div><!--\n\n{FAIL}\n<pre>--></pre>\n{PASS}\n",
+            then(html_at(&[1, 4]), &[count(2)]),
+            "type 1: a `-->` inside <pre> on one line",
+        ),
+        (
+            "<!-- a --> <!--\n{FAIL}\n<?x -->?>\n{PASS}\n",
+            then(html_at(&[1, 3]), &[count(2)]),
+            "type 3: a `-->` inside a processing instruction",
+        ),
+        (
+            "> <!--\n{FAIL}\n<!X -->\n{PASS}\n",
+            then(html_at(&[1, 3]), &[count(2)]),
+            "type 4: a `-->` inside a declaration",
+        ),
+        (
+            "<div><!--\n\n{FAIL}\n<![CDATA[-->]]>\n{PASS}\n",
+            then(html_at(&[1, 4]), &[count(2)]),
+            "type 5: a `-->` inside a CDATA section",
+        ),
+        (
+            "<div><!--\n\n{FAIL}\n<p>`-->`\n\n{PASS}\n",
+            then(html_at(&[1, 4]), &[count(2)]),
+            "type 6: a backticked `-->` in a <p> line, then a blank line",
+        ),
+        (
+            "- a\n\n  <!--\n{FAIL}\n\n<x a=-->\n\n{PASS}\n",
+            then(html_at(&[3, 6]), &[count(2)]),
+            "type 7: an open tag whose unquoted attribute value ends `--`",
+        ),
+    ];
+    let failures = case_mismatches(&cases);
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-015: both HTML blocks are raw HTML and nothing is hidden, so the FAIL and the \
+         PASS both count (D8):\n{failures:#?}"
+    );
+}
+
+#[test]
+fn lib_tool_015_a_closer_in_later_inline_html_is_raw_html_unless_a_closed_comment() {
+    // Formerly `lib_tool_015_a_closer_in_later_inline_html_ends_an_unclosed_comment_region`.
+    // Each `-->` lies in an inline HTML event (§6.6), and the PASS line on the
+    // next line interrupts that paragraph (§5.2). A closed inline comment is
+    // allowed; any other inline HTML is raw HTML.
+    let cases: Vec<Case<'_>> = vec![
+        (
+            "<div><!--\n\n{FAIL}\n\nText <span title=\"-->\"> x\n{PASS}\n",
+            then(html_at(&[1, 5]), &[count(2)]),
+            "a `-->` in a quoted attribute value",
+        ),
+        (
+            "<!-- a --> <!--\n{FAIL}\n\nText <x a=--> y\n{PASS}\n",
+            then(html_at(&[1, 4]), &[count(2)]),
+            "a `-->` where an unquoted attribute value meets the tag's `>`",
+        ),
+        (
+            "> <!--\n{FAIL}\n\nText <!-- end --> y\n{PASS}\n",
+            then(html_at(&[1]), &[count(2)]),
+            "a closed inline comment, which is allowed",
+        ),
+        (
+            "<div><!--\n\n{FAIL}\n\nText <?x --> ?> y\n{PASS}\n",
+            then(html_at(&[1, 5]), &[count(2)]),
+            "a `-->` inside an inline processing instruction",
+        ),
+        (
+            "- a\n\n  <!--\n{FAIL}\nand <span title=\"-->\"> x\n{PASS}\n",
+            then(html_at(&[3, 5]), &[count(2)]),
+            "inline HTML in a lazy line of a list item",
+        ),
+    ];
+    let failures = case_mismatches(&cases);
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-015: nothing is hidden, so the FAIL and the PASS both count; inline HTML other \
+         than a closed comment is raw HTML (D8):\n{failures:#?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// LIB-TOOL-015, slice 0007 D8: strict HTML
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lib_tool_015_disallowed_html_gives_exactly_the_raw_html_problem_once_per_line() {
+    // D8: each `Html` or `InlineHtml` event that is not allowed is a problem,
+    // reported once per line that holds one, at the event's first line. HTML
+    // blocks of types 1 and 3 to 7 are pinned by
+    // `lib_tool_015_an_html_block_of_any_type_is_raw_html_on_each_of_its_lines_and_hides_nothing`.
+    let cases: Vec<Case<'_>> = vec![
+        // An unclosed comment.
+        (
+            "{PASS}\n\n<!-- note\n",
+            html_at(&[3]),
+            "an unclosed comment at the end of the record",
+        ),
+        (
+            "<!--\n{FAIL}\n",
+            then(html_at(&[1, 2]), &[fail()]),
+            "an unclosed comment hides nothing: the FAIL in it counts",
+        ),
+        // Text after `-->` in the same block.
+        (
+            "<!-- note --> text\n{PASS}\n",
+            html_at(&[1]),
+            "text after the closer, on the closer's line",
+        ),
+        (
+            "<!--\nnote\n--> text\n{PASS}\n",
+            html_at(&[1, 2, 3]),
+            "text after the closer of a comment spanning lines",
+        ),
+        (
+            "<!-- a --> <!-- b -->\n{PASS}\n",
+            html_at(&[1]),
+            "two comments in one block: a `-->` before the end",
+        ),
+        (
+            "<!-- a --> b -->\n{PASS}\n",
+            html_at(&[1]),
+            "a `-->` before the block's last `-->`",
+        ),
+        // `--!>`.
+        (
+            "<!-- a --!> b -->\n{PASS}\n",
+            html_at(&[1]),
+            "`--!>` before the closer of a one-line comment",
+        ),
+        (
+            "<!--\n--!>\n{PASS}\n-->\n",
+            html_at(&[1, 2, 3, 4]),
+            "`--!>` in a comment spanning lines: not closed, so the PASS in it counts",
+        ),
+        (
+            "Text <!-- a --!> b --> c\n{PASS}\n",
+            html_at(&[1]),
+            "`--!>` in an inline comment",
+        ),
+        // Inline tags outside the allow-list.
+        (
+            "Text <span>x</span> y\n{PASS}\n",
+            html_at(&[1]),
+            "two inline tags on one line: once per line",
+        ),
+        (
+            "Text <b>x</b> and <i>y</i>\n{PASS}\n",
+            html_at(&[1]),
+            "four inline tags on one line: once per line",
+        ),
+        (
+            "Text\nmore <img src=\"x\"> y\n{PASS}\n",
+            html_at(&[2]),
+            "an inline tag on the paragraph's second line",
+        ),
+        (
+            "Text <span\ntitle=\"x\"> y\n{PASS}\n",
+            html_at(&[1]),
+            "an inline tag across two lines: the event's first line",
+        ),
+        (
+            "| a | <ol><li>x</li></ol> |\n{PASS}\n",
+            html_at(&[1]),
+            "<ol> beside allowed <li> tags",
+        ),
+        (
+            "| a <br clear=\"all\"> b |\n{PASS}\n",
+            html_at(&[1]),
+            "<br> with an attribute is not one of the allowed forms",
+        ),
+        (
+            "Text </br> x\n{PASS}\n",
+            html_at(&[1]),
+            "</br> is not on the allow-list",
+        ),
+        (
+            "Text <ul class=\"x\"> y\n{PASS}\n",
+            html_at(&[1]),
+            "<ul> with an attribute is not one of the allowed forms",
+        ),
+        ("Text <hr> y\n{PASS}\n", html_at(&[1]), "inline <hr>"),
+    ];
+    let failures = case_mismatches(&cases);
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-015: disallowed raw HTML gives exactly the raw-HTML problem, once per line \
+         that holds it (D8):\n{failures:#?}"
+    );
+}
+
+#[test]
+fn lib_tool_015_closed_comments_and_the_allowed_inline_tags_are_not_problems() {
+    // D8 allows a block that is one closed comment, an inline closed comment,
+    // and the inline tags <br>, <br/>, <br />, <ul>, </ul>, <li>, </li> in any
+    // case. The table rows have the form the real records use (for example
+    // `0001-m0-tooling-verification-round6.md`). Candidates inside allowed
+    // comments are hidden, look-alikes included.
+    let cases: Vec<Case<'_>> = vec![
+        (
+            "<!-- note -->\n{PASS}\n",
+            vec![],
+            "a one-line comment block",
+        ),
+        (
+            "<!--\nnote\n\nmore\n-->\n{PASS}\n",
+            vec![],
+            "a comment block spanning lines, with a blank line inside",
+        ),
+        (
+            "   <!-- note -->  \n{PASS}\n",
+            vec![],
+            "an indented comment block with trailing blanks",
+        ),
+        (
+            "- a\n\n  <!--\n  note\n  -->\n{PASS}\n",
+            vec![],
+            "a comment block in a list item",
+        ),
+        (
+            "Text <!-- note --> more\n{PASS}\n",
+            vec![],
+            "an inline comment",
+        ),
+        (
+            "Text <!-- a\nb --> c\n{PASS}\n",
+            vec![],
+            "an inline comment spanning lines",
+        ),
+        (
+            "| LIB-TOOL-001 | All tests:<br>\u{2022} a<br>\u{2022} b |\n{PASS}\n",
+            vec![],
+            "<br> in a table row, as the real records use it",
+        ),
+        (
+            "| a | b<br/>c<br />d |\n{PASS}\n",
+            vec![],
+            "<br/> and <br />",
+        ),
+        (
+            "| a | <ul><li>x</li><li>y</li></ul> |\n{PASS}\n",
+            vec![],
+            "<ul>, <li>, </li> and </ul> in a table row",
+        ),
+        (
+            "| A | x<BR>y<Br/>z<bR />w |\n{PASS}\n",
+            vec![],
+            "<br> forms in any case",
+        ),
+        (
+            "| A | <UL><Li>x</lI></Ul> |\n{PASS}\n",
+            vec![],
+            "<ul> and <li> in any case",
+        ),
+        (
+            "Text with a <br> break\n{PASS}\n",
+            vec![],
+            "<br> in a paragraph",
+        ),
+        (
+            "<!--\n{FAIL}\n-->\n{PASS}\n",
+            vec![],
+            "a FAIL inside a closed comment is hidden",
+        ),
+        (
+            "<!--\n{PASS}\n-->\n",
+            vec![no_verdict()],
+            "a PASS inside a closed comment is hidden",
+        ),
+        (
+            "<!--\n{FAIL}\n\n  {FAIL}\n> {FAIL}\n-->\n{PASS}\n",
+            vec![],
+            "a candidate and look-alikes inside a closed comment are hidden",
+        ),
+        (
+            "- a\n\n  <!--\n  {FAIL}\n  -->\n{PASS}\n",
+            vec![],
+            "a look-alike inside a comment in a list item is hidden",
+        ),
+    ];
+    let failures = case_mismatches(&cases);
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-015: closed comments and the allowed inline tags are no problem, and a closed \
+         comment hides what is inside it (D8):\n{failures:#?}"
+    );
+}
+
+#[test]
+fn lib_tool_015_the_verifiers_f3_and_f4b_probes_give_the_raw_html_problem_and_never_pass() {
+    // Verification 0007 round 1. F3: D6 over-hid, giving a false PASS. F4(b):
+    // text in an HTML block that a reader sees. Each probe now gives the
+    // raw-HTML problem, and every verdict line in it counts.
+    let cases: Vec<Case<'_>> = vec![
+        (
+            "{PASS}\n\n<!-- a --> <!--\n\n<x a=--!>\n\n{FAIL}\n",
+            then(html_at(&[3, 5]), &[count(2)]),
+            "F3 b1: `--!>` in a type 7 block after an unclosed comment",
+        ),
+        (
+            "{PASS}\n\n<div><!--\n\n<p>--!>\n\n{FAIL}\n",
+            then(html_at(&[3, 5]), &[count(2)]),
+            "F3 b2: `--!>` in a <p> block",
+        ),
+        (
+            "{PASS}\n\n<div><!--\n\nText <x a=--!> y\n\n{FAIL}\n",
+            then(html_at(&[3, 5]), &[count(2)]),
+            "F3 b3: `--!>` in an inline tag",
+        ),
+        (
+            "{PASS}\n\nText <span title=\"<!--\"> x\n\n{FAIL}\n",
+            then(html_at(&[3]), &[count(2)]),
+            "F3 c1: `<!--` in an inline attribute value",
+        ),
+        (
+            "{PASS}\n\n<div title=\"<!--\">\n\n{FAIL}\n",
+            then(html_at(&[3]), &[count(2)]),
+            "F3 c2: `<!--` in a block tag's attribute value",
+        ),
+        (
+            "{PASS}\n\n<script>\n<!--\n</script>\n\n{FAIL}\n",
+            then(html_at(&[3, 4, 5]), &[count(2)]),
+            "F3 f1: `<!--` in <script>",
+        ),
+        (
+            "{PASS}\n\n<style>\n<!--\n</style>\n\n{FAIL}\n",
+            then(html_at(&[3, 4, 5]), &[count(2)]),
+            "F3 f2: `<!--` in <style>",
+        ),
+        (
+            "{PASS}\n\n<textarea>\n<!--\n</textarea>\n\n{FAIL}\n",
+            then(html_at(&[3, 4, 5]), &[count(2)]),
+            "F3 f3: `<!--` in <textarea>",
+        ),
+        ("<title>\n\n{PASS}\n", html_at(&[1]), "F4(b) d1: <title>"),
+        (
+            "<iframe>\n\n{PASS}\n\n</iframe>\n",
+            html_at(&[1, 5]),
+            "F4(b) d2: <iframe>",
+        ),
+        (
+            "<div title=\"\n\n{PASS}\n",
+            html_at(&[1]),
+            "F4(b) d3: an unclosed attribute value",
+        ),
+        (
+            "<div hidden>\n\n{PASS}\n\n</div>\n",
+            html_at(&[1, 5]),
+            "F4(b) d4: <div hidden>",
+        ),
+        (
+            "<noframes>\n\n{PASS}\n",
+            html_at(&[1]),
+            "F4(b) d5: <noframes>",
+        ),
+        (
+            "<div>\n{FAIL}\n</div>\n",
+            then(html_at(&[1, 2, 3]), &[fail()]),
+            "F4(b): a FAIL in a <div> block, which a reader sees",
+        ),
+    ];
+    let failures = case_mismatches(&cases);
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-015: each F3 and F4(b) probe gives the raw-HTML problem and does not pass \
+         (D8):\n{failures:#?}"
+    );
+}
+
+#[test]
+fn lib_tool_015_the_verifiers_f1_probes_give_the_raw_html_problem_and_never_pass() {
+    // Verification 0007 round 1, F1: pulldown-cmark 0.13.6 ends a type 1 HTML
+    // block only at the matching lowercase end tag, where CommonMark 0.31.2
+    // §4.6 ends it at a line holding any of `</pre>`, `</script>`,
+    // `</style>`, `</textarea>`, in any case. Under D8 the block hides
+    // nothing, so the deviation can only add raw-HTML problems on lines that
+    // pulldown-cmark keeps in the block. Each probe must give the raw-HTML
+    // problem on every line CommonMark puts in the block, more raw-HTML
+    // problems only after it, and then exactly the verdict problems the
+    // visible verdict lines give.
+    let probes: [(&str, &[usize], Vec<String>, &str); 7] = [
+        (
+            "{PASS}\n\n<pre>\n</textarea>\n{FAIL}\n",
+            &[3, 4],
+            vec![count(2)],
+            "g1: <pre> ended by </textarea>",
+        ),
+        (
+            "<style>\n</script>\n{PASS}\n",
+            &[1, 2],
+            vec![],
+            "g2: <style> ended by </script>",
+        ),
+        (
+            "{PASS}\n\n<script>\nx\n</style>\n\n{FAIL}\n",
+            &[3, 4, 5],
+            vec![count(2)],
+            "g3: <script> ended by </style>",
+        ),
+        (
+            "{PASS}\n\n<pre>x</script>\n{FAIL}\n",
+            &[3],
+            vec![count(2)],
+            "g4: <pre> ended on its own line by </script>",
+        ),
+        (
+            "{PASS}\n\n<textarea>\n\n</pre>\n{FAIL}\n",
+            &[3, 5],
+            vec![count(2)],
+            "g5: <textarea> ended by </pre> past a blank line",
+        ),
+        (
+            "{PASS}\n\n<pre>\n</PRE>\n{FAIL}\n",
+            &[3, 4],
+            vec![count(2)],
+            "g6 (the F1 example): <pre> ended by </PRE>",
+        ),
+        (
+            "<pre>\n</PRE>\n{PASS}\n",
+            &[1, 2],
+            vec![],
+            "the F1 reverse case: <pre> ended by </PRE>, then a PASS",
+        ),
+    ];
+    let mut failures = Vec::new();
+    for (template, block, verdict, why) in &probes {
+        for record in [fill(template), crlf(&fill(template))] {
+            let got = record_problems(&record);
+            let html_lines: Vec<usize> = got
+                .iter()
+                .map_while(|p| {
+                    p.strip_suffix(&format!(": {RAW_HTML}"))
+                        .map(|p| problem_key(&format!("{p}: x")).1)
+                })
+                .collect();
+            let rest = &got[html_lines.len()..];
+            let ordered = html_lines.windows(2).all(|w| w[0] < w[1]);
+            let covers = block.iter().all(|n| html_lines.contains(n));
+            let after = html_lines.iter().all(|n| *n >= block[0]);
+            if got.is_empty() || !ordered || !covers || !after || rest != verdict.as_slice() {
+                failures.push(format!(
+                    "{why}: the record {record:?} gave {got:#?}; expected raw HTML on lines \
+                     {block:?} (and perhaps later lines), then {verdict:#?}"
+                ));
+            }
+        }
+    }
+    // §4.6: `</pre>` alone is not a type 1 start. After a paragraph line it
+    // is a type 7 tag, which cannot interrupt a paragraph, so it is inline
+    // HTML in a lazy or continuation line; at the start it is a type 7 block,
+    // which the PASS line continues.
+    failures.extend(case_mismatches(&[
+        (
+            "- a\n</pre>\n{PASS}\n",
+            html_at(&[2]),
+            "h1: a lazy </pre> line after a list item",
+        ),
+        (
+            "x\n</pre>\n{PASS}\n",
+            html_at(&[2]),
+            "h2: </pre> continuing a paragraph",
+        ),
+        (
+            "</pre>\n{PASS}\n",
+            html_at(&[1, 2]),
+            "h3: </pre> starting a type 7 block",
+        ),
+    ]));
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-015: each F1 probe gives the raw-HTML problem and does not pass (D8):\n\
+         {failures:#?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// LIB-TOOL-005, slice 0007 D8 to D11: strict records
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lib_tool_005_the_strict_record_problem_texts_are_exact() {
+    // The texts of D8, D9 and D10, written out in full once.
+    for (record, expected, what) in [
+        (
+            fill("<div>\n\n{PASS}\n"),
+            "LIB-TOOL-001: verification record docs/verification/v.md:1: raw HTML other than a \
+             closed comment or <br>, <ul>, <li> is not allowed",
+            "D8, raw HTML on line 1",
+        ),
+        (
+            fill(" {PASS}\n\n{PASS}\n"),
+            "LIB-TOOL-001: verification record docs/verification/v.md:1: a verdict-like line is \
+             not at column 0",
+            "D9, a look-alike on line 1",
+        ),
+        (
+            fill("{PASS}\n\nx\ry\n"),
+            "LIB-TOOL-001: verification record docs/verification/v.md:3: lone carriage return; \
+             use LF or CRLF line endings",
+            "D10, a lone CR on line 3",
+        ),
+        (
+            fill("\u{feff}# V\n\n{PASS}\n"),
+            "LIB-TOOL-001: verification record docs/verification/v.md: starts with a byte-order \
+             mark",
+            "D10, a leading BOM",
+        ),
+    ] {
+        assert_eq!(
+            record_problems(&record),
+            [expected],
+            "LIB-TOOL-005: {what} gives exactly the problem text of the slice 0007 brief; the \
+             record is {record:?}"
+        );
+    }
+}
+
+#[test]
+fn lib_tool_005_a_visible_verdict_like_line_not_at_column_0_is_a_problem() {
+    // D9: a line outside every hidden range that, with its leading spaces,
+    // tabs, `>` and list markers removed, starts with `Row verdict:`, and that
+    // is not a column-0 candidate. The column-0 PASS still counts.
+    let failures = case_mismatches(&look_alike_cases());
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-005: a visible verdict-like line that is not at column 0 is a problem at its \
+         line (D9):\n{failures:#?}"
+    );
+}
+
+/// Visible verdict-like lines that are not at column 0, and the problems
+/// each record gives under slice 0007 D9.
+fn look_alike_cases() -> Vec<Case<'static>> {
+    vec![
+        (
+            " {FAIL}\n\n{PASS}\n",
+            vec![look_alike(1)],
+            "indented 1 space",
+        ),
+        (
+            "  {FAIL}\n\n{PASS}\n",
+            vec![look_alike(1)],
+            "indented 2 spaces",
+        ),
+        (
+            "   {FAIL}\n\n{PASS}\n",
+            vec![look_alike(1)],
+            "indented 3 spaces",
+        ),
+        (
+            "- a\n  {FAIL}\n{PASS}\n",
+            vec![look_alike(2)],
+            "a nested bullet item",
+        ),
+        (
+            "1. a\n   {FAIL}\n{PASS}\n",
+            vec![look_alike(2)],
+            "a bullet item nested in an ordered item",
+        ),
+        (
+            "* Row verdict: LIB-TOOL-001: FAIL\n\n{PASS}\n",
+            vec![look_alike(1)],
+            "a `*` marker",
+        ),
+        (
+            "+ Row verdict: LIB-TOOL-001: FAIL\n\n{PASS}\n",
+            vec![look_alike(1)],
+            "a `+` marker",
+        ),
+        (
+            "1. Row verdict: LIB-TOOL-001: FAIL\n\n{PASS}\n",
+            vec![look_alike(1)],
+            "a `1.` marker",
+        ),
+        (
+            "1) Row verdict: LIB-TOOL-001: FAIL\n\n{PASS}\n",
+            vec![look_alike(1)],
+            "a `1)` marker",
+        ),
+        (
+            "Row verdict: LIB-TOOL-001: FAIL\n\n{PASS}\n",
+            vec![look_alike(1)],
+            "no marker at all",
+        ),
+        ("> {FAIL}\n\n{PASS}\n", vec![look_alike(1)], "block-quoted"),
+        (
+            ">{FAIL}\n\n{PASS}\n",
+            vec![look_alike(1)],
+            "block-quoted with no space",
+        ),
+        (
+            "> > {FAIL}\n\n{PASS}\n",
+            vec![look_alike(1)],
+            "in a nested block quote",
+        ),
+        (
+            "> * Row verdict: x\n\n{PASS}\n",
+            vec![look_alike(1)],
+            "a malformed look-alike in a block quote's list",
+        ),
+        (
+            "Text\n\t{FAIL}\n\n{PASS}\n",
+            vec![look_alike(2)],
+            "tab-indented paragraph continuation text (an indented code block cannot \
+             interrupt a paragraph, §4.4)",
+        ),
+        (
+            "- a\n\t{FAIL}\n{PASS}\n",
+            vec![look_alike(2)],
+            "a tab-indented nested item",
+        ),
+        (
+            "  {PASS}\n",
+            vec![look_alike(1), no_verdict()],
+            "an indented PASS is no verdict line",
+        ),
+    ]
+    .into_iter()
+    .chain(f4a_and_multi_digit_marker_cases())
+    .collect()
+}
+
+/// More of [`look_alike_cases`]: the verifier's F4(a) probes, and ordered
+/// markers of several digits. An ordered marker has 1 to 9 digits (§5.2);
+/// those cases kill the mutant that strips only one digit (H1).
+fn f4a_and_multi_digit_marker_cases() -> Vec<Case<'static>> {
+    vec![
+        // Verification 0007 round 1, F4(a): indented or nested verdict items
+        // that a reader sees.
+        (
+            "{PASS}\n\n  {FAIL}\n",
+            vec![look_alike(3)],
+            "F4(a): a FAIL nested in the PASS item",
+        ),
+        (
+            "- Probe:\n  {FAIL}\n\n{PASS}\n",
+            vec![look_alike(2)],
+            "F4(a): a FAIL nested in a bullet item",
+        ),
+        (
+            "1. Probe:\n\n   {FAIL}\n\n{PASS}\n",
+            vec![look_alike(3)],
+            "F4(a): a FAIL nested in an ordered item",
+        ),
+        (
+            "10. Row verdict: LIB-TOOL-001: FAIL\n\n{PASS}\n",
+            vec![look_alike(1)],
+            "a two-digit `10.` marker",
+        ),
+        (
+            "123) Row verdict: LIB-TOOL-001: FAIL\n\n{PASS}\n",
+            vec![look_alike(1)],
+            "a three-digit `123)` marker",
+        ),
+        (
+            "- a\n  10. Row verdict: x\n{PASS}\n",
+            vec![look_alike(2)],
+            "a nested two-digit marker",
+        ),
+    ]
+}
+
+#[test]
+fn lib_tool_005_a_verdict_like_line_in_a_code_block_or_closed_comment_is_not_a_problem() {
+    // D9 looks only at lines outside every hidden range. An indented code
+    // block may start after its indent in the parser's offsets; the line is
+    // in the block all the same.
+    let cases: Vec<Case<'_>> = vec![
+        (
+            "```\n  {FAIL}\n> {FAIL}\n* Row verdict: x\nRow verdict: x\n```\n{PASS}\n",
+            vec![],
+            "look-alikes in a fenced code block",
+        ),
+        (
+            "~~~\n1. Row verdict: LIB-TOOL-001: FAIL\n~~~\n{PASS}\n",
+            vec![],
+            "a look-alike in a tilde fence",
+        ),
+        (
+            "    {FAIL}\n\n{PASS}\n",
+            vec![],
+            "the first line of an indented code block",
+        ),
+        (
+            "Text.\n\n     {FAIL}\n\n{PASS}\n",
+            vec![],
+            "a line indented 5 spaces after a blank line",
+        ),
+        ("\t{FAIL}\n\n{PASS}\n", vec![], "a tab-indented code line"),
+        (
+            "- a\n\n      {FAIL}\n{PASS}\n",
+            vec![],
+            "an indented code block in a list item",
+        ),
+        (
+            "> ```\n> {FAIL}\n> ```\n{PASS}\n",
+            vec![],
+            "a fence in a block quote",
+        ),
+        (
+            "<!--\n  {FAIL}\n> {FAIL}\n-->\n{PASS}\n",
+            vec![],
+            "look-alikes in a closed comment",
+        ),
+    ];
+    let failures = case_mismatches(&cases);
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-005: a look-alike inside a code block or a closed comment is not a problem \
+         (D9):\n{failures:#?}"
+    );
+}
+
+#[test]
+fn lib_tool_005_a_column_0_candidate_is_never_a_verdict_like_problem() {
+    let cases: Vec<Case<'_>> = vec![
+        ("{PASS}\n", vec![], "a PASS line"),
+        ("{PASS} \t\n", vec![], "a PASS line with trailing blanks"),
+        ("{FAIL}\n", vec![fail()], "a FAIL line"),
+        (
+            "- Row verdict: x\n{PASS}\n",
+            vec![malformed(ROW, 1)],
+            "a malformed candidate",
+        ),
+        (
+            "- Row verdict: LIB-TOOL-001 PASS\n",
+            vec![malformed(ROW, 1), no_verdict()],
+            "no colon before the verdict: malformed, not a look-alike",
+        ),
+        (
+            "- Row verdict:LIB-TOOL-001: PASS\n",
+            vec![malformed(ROW, 1), no_verdict()],
+            "no space after the prefix: malformed, not a look-alike",
+        ),
+        (
+            "- Row verdict: LIB-TOOL-002: PASS\n{PASS}\n",
+            vec![],
+            "a verdict line for another row",
+        ),
+        (
+            "Text\n{PASS}\n",
+            vec![],
+            "a PASS line interrupting a paragraph",
+        ),
+        (
+            "<div>\n{PASS}\n",
+            html_at(&[1, 2]),
+            "a candidate inside raw HTML is raw HTML, not a look-alike",
+        ),
+    ];
+    let failures = case_mismatches(&cases);
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-005: a column-0 candidate is a verdict line or malformed, never a \
+         verdict-like problem (D9):\n{failures:#?}"
+    );
+}
+
+#[test]
+fn lib_tool_005_a_lone_cr_is_a_problem_at_the_line_that_holds_it() {
+    // D10: `<line>` is the line, by LF/CRLF splitting, that holds the CR.
+    // Every case also runs with each LF made CRLF; the lone CR stays lone.
+    let cases: Vec<Case<'_>> = vec![
+        (
+            "{PASS}\n\ntext\rmore\n",
+            vec![lone_cr(3)],
+            "a lone CR inside line 3",
+        ),
+        (
+            "# V\rText\n\n{PASS}\n",
+            vec![lone_cr(1)],
+            "a lone CR inside line 1",
+        ),
+        (
+            "{PASS}\n\nend\r",
+            vec![lone_cr(3)],
+            "a lone CR at the end of the record",
+        ),
+        (
+            "a\rb\n{PASS}\nc\rd\n",
+            vec![lone_cr(1), lone_cr(3)],
+            "lone CRs on lines 1 and 3, in line order",
+        ),
+        (
+            "a\r\rb\rc\n{PASS}\n",
+            vec![lone_cr(1)],
+            "three lone CRs on one line give one problem (decision 4)",
+        ),
+        (
+            "\r{PASS}\n",
+            vec![lone_cr(1), no_verdict()],
+            "a PASS after a lone CR is not at the start of its LF/CRLF line",
+        ),
+    ];
+    let failures = case_mismatches(&cases);
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-005: a lone CR is a problem at the LF/CRLF line that holds it (D10):\n\
+         {failures:#?}"
+    );
+}
+
+#[test]
+fn lib_tool_005_the_verifiers_f2_probes_never_pass() {
+    // Verification 0007 round 1, F2: a lone CR, or a leading BOM, hid a FAIL.
+    let cases: Vec<Case<'_>> = vec![
+        (
+            "{PASS}\n\ntext\r{FAIL}\n",
+            vec![lone_cr(3)],
+            "a1: a FAIL after text and a lone CR",
+        ),
+        (
+            "{PASS}\n\n\r{FAIL}\n",
+            vec![lone_cr(3)],
+            "a2: a FAIL after a lone CR on a blank line",
+        ),
+        (
+            "text\r{PASS}\n",
+            vec![lone_cr(1), no_verdict()],
+            "a3: the only PASS after a lone CR",
+        ),
+    ];
+    let mut failures = case_mismatches(&cases);
+    // a4 holds three lone CRs on its one LF/CRLF line: one problem for the
+    // line (decision 4 of the fix round).
+    failures.extend(mismatches(
+        &[("# V\r\r{PASS}\r", "a4: every line ends in a lone CR")],
+        &[lone_cr(1), no_verdict()],
+    ));
+    // e1 and e2: a candidate right after the leading BOM is not at column 0,
+    // so it does not count (decision 5 of the fix round). In e1 the FAIL is
+    // hidden from the verdict that way, but the BOM problem refuses the record.
+    failures.extend(case_mismatches(&[
+        (
+            "\u{feff}{FAIL}\n\n{PASS}\n",
+            vec![bom(ROW)],
+            "e1: a BOM before a FAIL line",
+        ),
+        (
+            "\u{feff}{PASS}\n",
+            vec![bom(ROW), no_verdict()],
+            "e2: a BOM before the only PASS line",
+        ),
+    ]));
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-005: no F2 probe passes the row (D10):\n{failures:#?}"
+    );
+}
+
+#[test]
+fn lib_tool_005_crlf_line_endings_are_not_a_problem() {
+    let failures = mismatches(
         &[
+            ("{PASS}\r\n", "one CRLF line"),
             (
-                "<div><!--\n\n{FAIL}\n<pre>--></pre>\n{PASS}\n",
-                "type 1: a `-->` inside <pre> on one line",
+                "# V\r\n\r\n{PASS}\r\n",
+                "a heading, a blank line and a PASS",
             ),
-            (
-                "<!-- a --> <!--\n{FAIL}\n<?x -->?>\n{PASS}\n",
-                "type 3: a `-->` inside a processing instruction",
-            ),
-            (
-                "> <!--\n{FAIL}\n<!X -->\n{PASS}\n",
-                "type 4: a `-->` inside a declaration",
-            ),
-            (
-                "<div><!--\n\n{FAIL}\n<![CDATA[-->]]>\n{PASS}\n",
-                "type 5: a `-->` inside a CDATA section",
-            ),
-            (
-                "<div><!--\n\n{FAIL}\n<p>`-->`\n\n{PASS}\n",
-                "type 6: a backticked `-->` in a <p> line, then a blank line",
-            ),
-            (
-                "- a\n\n  <!--\n{FAIL}\n\n<x a=-->\n\n{PASS}\n",
-                "type 7: an open tag whose unquoted attribute value ends `--`",
-            ),
+            ("```\r\n{FAIL}\r\n```\r\n{PASS}\r\n", "a fenced FAIL"),
+            ("<!--\r\n{FAIL}\r\n-->\r\n{PASS}\r\n", "a commented FAIL"),
+            ("| a<br>b |\r\n{PASS}\r\n", "an allowed inline tag"),
+            ("{PASS}", "no line ending at all"),
         ],
         &[],
     );
     assert!(
         failures.is_empty(),
-        "LIB-TOOL-015: a `-->` inside a later HTML block ends the region, so the PASS line \
-         after it passes the row (D6):\n{failures:#?}"
+        "LIB-TOOL-005: CRLF line endings are no problem (D10):\n{failures:#?}"
     );
 }
 
 #[test]
-fn lib_tool_015_a_closer_in_later_inline_html_ends_an_unclosed_comment_region() {
-    // None of these records holds an HTML block after the unclosed `<!--`.
-    // Each closing `-->` lies in an inline HTML event (§6.6), and the PASS
-    // line on the next line interrupts that paragraph (§5.2), so it counts.
-    let failures = mismatches_lf_and_crlf(
+fn lib_tool_005_a_leading_byte_order_mark_is_a_problem() {
+    let mut failures = mismatches_lf_and_crlf(
+        &[
+            ("\u{feff}# V\n\n{PASS}\n", "a BOM before a heading"),
+            ("\u{feff}\n{PASS}\n", "a BOM alone on line 1"),
+        ],
+        &[bom(ROW)],
+    );
+    failures.extend(mismatches_lf_and_crlf(
+        &[(
+            "# V \u{feff}\n\n{PASS}\n",
+            "a U+FEFF that does not lead the record",
+        )],
+        &[],
+    ));
+    // Decision 5 of the fix round: a candidate right after the leading BOM is
+    // not at column 0, so it does not count, and it is not a look-alike.
+    failures.extend(mismatches_lf_and_crlf(
+        &[("\u{feff}{PASS}\n", "the only PASS line right after the BOM")],
+        &[bom(ROW), no_verdict()],
+    ));
+    failures.extend(mismatches_lf_and_crlf(
+        &[(
+            "\u{feff}{PASS}\n{PASS}\n",
+            "a PASS right after the BOM, then a PASS on line 2",
+        )],
+        &[bom(ROW)],
+    ));
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-005: a leading byte-order mark is a problem, and only a leading one (D10):\n\
+         {failures:#?}"
+    );
+}
+
+/// A record with one problem of each kind on its own line: a BOM, a
+/// look-alike on line 3, raw HTML on line 4, a lone CR on line 6, a malformed
+/// line 7, and a FAIL line 8 for [`ROW`].
+const ONE_OF_EACH: &str = "\u{feff}# V\n\n  {PASS}\n<div>\n\nx\ry\n- Row verdict: x\n{FAIL}\n";
+
+#[test]
+fn lib_tool_005_strict_problems_come_in_line_order_before_the_verdict_problem_bom_first() {
+    // D11. Line 3 is an indented item (D9); `<div>` closes the list as a type
+    // 6 block (§4.6), which the blank line 5 ends (D8); line 6 holds a lone CR
+    // (D10); line 7 is malformed; line 8 is the FAIL.
+    let expected = [
+        bom(ROW),
+        look_alike(3),
+        html(4),
+        lone_cr(6),
+        malformed(ROW, 7),
+        fail(),
+    ];
+    for record in [fill(ONE_OF_EACH), crlf(&fill(ONE_OF_EACH))] {
+        assert_eq!(
+            record_problems(&record),
+            expected,
+            "LIB-TOOL-005: the BOM problem first, then the problems at lines in line order, then \
+             the verdict problem (D11); the record is {record:?}"
+        );
+    }
+}
+
+#[test]
+fn lib_tool_005_a_shared_record_reports_each_strict_problem_once_per_citing_row() {
+    // D11 with D5 of slice 0004: two rows cite the record. Each gets every
+    // problem once, in the same order, and its own verdict problem; [`OTHER`]
+    // has no verdict line.
+    let mut expected = Vec::new();
+    for id in [ROW, OTHER] {
+        expected.extend([
+            bom(id),
+            at_line(id, 3, LOOK_ALIKE),
+            at_line(id, 4, RAW_HTML),
+            at_line(id, 6, LONE_CR),
+            malformed(id, 7),
+        ]);
+        expected.push(if id == ROW {
+            fail()
+        } else {
+            format!(
+                "{OTHER}: verification record {RECORD} has no `- Row verdict: {OTHER}: PASS` line"
+            )
+        });
+    }
+    for record in [fill(ONE_OF_EACH), crlf(&fill(ONE_OF_EACH))] {
+        assert_eq!(
+            shared_record_problems(&record),
+            expected,
+            "LIB-TOOL-005: each strict problem is reported once per citing row, in row order \
+             (D11); the record is {record:?}"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Slice 0007 fix round 1, the lead's decisions (a) and (c), 4 to 6
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lib_tool_015_an_allowed_tag_at_the_start_of_a_line_is_raw_html() {
+    // Decision (a): an allowed inline tag counts as allowed only when
+    // non-whitespace text comes before it on its line. At the start of a
+    // line, after an indent of 0 to 3, it is raw HTML: there CommonMark reads
+    // a lazy or continuation line as inline HTML, but cmark-family renderers
+    // may start a type 7 HTML block that hides the lines after it.
+    let cases: Vec<Case<'_>> = vec![
+        (
+            "- note\n<br>\n{PASS}\n",
+            html_at(&[2]),
+            "a lazy <br> line after a list item",
+        ),
+        (
+            "> note\n<br>\n{PASS}\n",
+            html_at(&[2]),
+            "a lazy <br> line after a block quote",
+        ),
+        (
+            "Text\n<br>\n{PASS}\n",
+            html_at(&[2]),
+            "a <br> line continuing a paragraph",
+        ),
+        (
+            "Text\n   <BR/> more\n{PASS}\n",
+            html_at(&[2]),
+            "<BR/> after an indent of 3, then text",
+        ),
+        (
+            "<br>\n{PASS}\n",
+            html_at(&[1, 2]),
+            "a line that is only <br> starts a type 7 block, which the PASS line continues",
+        ),
+        (
+            "Text\n<ul><li>x</li></ul> y\n{PASS}\n",
+            html_at(&[2, 3]),
+            "<ul> at the start of a line starts a type 6 block",
+        ),
+        (
+            "Text\n</li> x\n{PASS}\n",
+            html_at(&[2, 3]),
+            "</li> at the start of a line starts a type 6 block",
+        ),
+        // Controls: text before the tag on its line.
+        ("| a<br>b |\n{PASS}\n", vec![], "<br> inside a table row"),
+        (
+            "| <ul><li>x</li></ul> |\n{PASS}\n",
+            vec![],
+            "<ul> after the row's `|`",
+        ),
+        ("Text <br>\n{PASS}\n", vec![], "<br> at the end of a line"),
+        ("a<br>\n{PASS}\n", vec![], "<br> right after text"),
+        (
+            "Text\nx <BR/> y\n{PASS}\n",
+            vec![],
+            "<BR/> after text on a continuation line",
+        ),
+    ];
+    let failures = case_mismatches(&cases);
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-015: an allowed tag at the start of a line is raw HTML; after text on its line \
+         it is allowed (decision (a)):\n{failures:#?}"
+    );
+}
+
+#[test]
+fn lib_tool_005_problems_on_one_line_come_as_raw_html_then_lone_cr_then_malformed() {
+    // Decision (c) of the fix round, refining D11.
+    let cases: Vec<Case<'_>> = vec![
+        (
+            "<div>\n- Row verdict: x\ry\n\n{PASS}\n",
+            vec![html(1), html(2), lone_cr(2), malformed(ROW, 2)],
+            "raw HTML, a lone CR and a malformed candidate on line 2",
+        ),
+        (
+            "<div>\n- Row verdict: x\n\n{PASS}\n",
+            vec![html(1), html(2), malformed(ROW, 2)],
+            "raw HTML and a malformed candidate on line 2",
+        ),
+        (
+            "- Row verdict: x\ry\n{PASS}\n",
+            vec![lone_cr(1), malformed(ROW, 1)],
+            "a lone CR and a malformed candidate on line 1",
+        ),
+        (
+            "Text <span>\r{PASS}\n",
+            vec![html(1), lone_cr(1), no_verdict()],
+            "raw HTML and a lone CR on line 1; the PASS after the CR is no candidate",
+        ),
+    ];
+    let failures = case_mismatches(&cases);
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-005: on one line, raw HTML comes first, then the lone CR, then the malformed \
+         line (decision (c)):\n{failures:#?}"
+    );
+}
+
+#[test]
+fn lib_tool_005_a_verdict_line_whose_id_is_not_a_well_formed_row_id_is_malformed() {
+    // Decision 6 of the fix round. A well-formed row id is
+    // `<SACM23|LIB>-<AREA>-<NNN>`: one of the matrix's prefixes, an area of
+    // uppercase ASCII letters and three digits (`docs/matrix/README.md` rule
+    // 2, as the matrix gate checks row ids). Before this, a line such as
+    // `- Row verdict:  LIB-TOOL-001: PASS` was read as a verdict for the id
+    // ` LIB-TOOL-001` and ignored.
+    let ids = [
+        (" LIB-TOOL-001", "two spaces after `Row verdict:`"),
+        ("lib-tool-001", "a lowercase id"),
+        ("LIB-tool-001", "a lowercase area"),
+        ("LIB-TOOL-0011", "four digits"),
+        ("LIB-TOOL-00", "two digits"),
+        ("LIB-TOOL-001x", "a letter after the digits"),
+        ("LIB-TOOL-001-2", "a fourth segment"),
+        ("LIB-TOOL-001 ", "a space before the colon"),
+        ("LIBTOOL001", "no dashes"),
+        ("XLIB-TOOL-001", "a prefix the matrix does not define"),
+    ];
+    let mut failures = Vec::new();
+    for (id, why) in ids {
+        let line = format!("- Row verdict: {id}: PASS");
+        let beside = format!("{{PASS}}\n{line}\n");
+        failures.extend(mismatches_lf_and_crlf(
+            &[(beside.as_str(), why)],
+            &[malformed(ROW, 2)],
+        ));
+        let alone = format!("{line}\n");
+        failures.extend(mismatches_lf_and_crlf(
+            &[(alone.as_str(), why)],
+            &[malformed(ROW, 1), no_verdict()],
+        ));
+    }
+    // Controls: well-formed ids of other rows are verdict lines that do not
+    // count for [`ROW`].
+    failures.extend(mismatches_lf_and_crlf(
         &[
             (
-                "<div><!--\n\n{FAIL}\n\nText <span title=\"-->\"> x\n{PASS}\n",
-                "a `-->` in a quoted attribute value",
+                "{PASS}\n- Row verdict: LIB-TOOL-002: PASS\n",
+                "a well-formed id of another LIB row",
             ),
             (
-                "<!-- a --> <!--\n{FAIL}\n\nText <x a=--> y\n{PASS}\n",
-                "a `-->` where an unquoted attribute value meets the tag's `>`",
-            ),
-            (
-                "> <!--\n{FAIL}\n\nText <!-- end --> y\n{PASS}\n",
-                "a closed inline comment",
-            ),
-            (
-                "<div><!--\n\n{FAIL}\n\nText <?x --> ?> y\n{PASS}\n",
-                "a `-->` inside an inline processing instruction",
-            ),
-            (
-                "- a\n\n  <!--\n{FAIL}\nand <span title=\"-->\"> x\n{PASS}\n",
-                "inline HTML in a lazy line of a list item",
+                "{PASS}\n- Row verdict: SACM23-BASE-001: OPEN\n",
+                "a well-formed SACM23 id",
             ),
         ],
         &[],
-    );
+    ));
     assert!(
         failures.is_empty(),
-        "LIB-TOOL-015: a `-->` inside later inline HTML ends the region, so the PASS line \
-         after it passes the row (D6):\n{failures:#?}"
+        "LIB-TOOL-005: a candidate whose id part is not a well-formed row id is malformed \
+         (decision 6):\n{failures:#?}"
+    );
+}
+
+#[test]
+fn lib_tool_005_a_look_alike_is_reported_last_on_its_line() {
+    // D13(c): on a line that also holds raw HTML or a lone CR, the look-alike
+    // problem comes after them. A look-alike never shares a line with a
+    // malformed line, since a malformed line is a column-0 candidate.
+    let cases: Vec<Case<'_>> = vec![
+        (
+            " - Row verdict: x\ry\n\n{PASS}\n",
+            vec![lone_cr(1), look_alike(1)],
+            "a lone CR, then the look-alike, on line 1",
+        ),
+        (
+            " - Row verdict: x <span>y</span>\n\n{PASS}\n",
+            vec![html(1), look_alike(1)],
+            "inline raw HTML, then the look-alike, on line 1",
+        ),
+        (
+            " - Row verdict: x <span>\ry\n\n{PASS}\n",
+            vec![html(1), lone_cr(1), look_alike(1)],
+            "raw HTML, a lone CR, then the look-alike, on line 1",
+        ),
+        (
+            "<div>\n  - Row verdict: x\n\n{PASS}\n",
+            vec![html(1), html(2), look_alike(2)],
+            "a look-alike inside an HTML block: the block's raw HTML first",
+        ),
+    ];
+    let failures = case_mismatches(&cases);
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-005: the look-alike problem comes last on its line (D13(c)):\n{failures:#?}"
     );
 }

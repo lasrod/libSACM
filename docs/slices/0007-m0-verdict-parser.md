@@ -1,7 +1,7 @@
 ---
 slice: 0007
 name: m0-verdict-parser
-state: stopped
+state: in-progress
 step: verification
 rows: [LIB-TOOL-005, LIB-TOOL-015]
 mode: pr
@@ -54,7 +54,7 @@ CommonMark 0.31.2 is the reference for what is hidden.
 - **D4, the old code goes.** `fence` and the hand-written fence state are removed. The
   `VerdictLine` and `check_record` interfaces stay, unless the implementer shows that a
   simpler shape kills the same mutants.
-- **D6 (fail-safe for comments).** CommonMark can end an HTML range before a `<!--`
+- **D6 (fail-safe for comments): superseded by D8 in fix round 1 (strict records).** CommonMark can end an HTML range before a `<!--`
   inside it is closed, while a browser keeps the comment open. A `<!--` inside an
   `Html` or `InlineHtml` range and not closed within it hides everything up to the end
   of the next `-->` that itself lies inside an `Html` or `InlineHtml` range, or to the end
@@ -71,6 +71,43 @@ CommonMark 0.31.2 is the reference for what is hidden.
   closing fence; CommonMark §4.5 does. Before parsing, the gate turns trailing tabs into
   spaces, keeping every length (`trailing_tabs_as_spaces`). The lead accepted this, and
   it is recorded in ADR 0008.
+
+- **D8 (strict HTML), fix round 1.** Each `Html` or `InlineHtml` event is a problem unless it is one of these:
+  - part of an `HtmlBlock` whose whole source, with trailing whitespace trimmed, is one closed comment: it starts with `<!--`, it ends with `-->`, and neither `-->` nor `--!>` occurs before that end;
+  - an `InlineHtml` event that is such a comment;
+  - an `InlineHtml` event that is one of `<br>`, `<br/>`, `<br />`, `<ul>`, `</ul>`, `<li>` or `</li>`, matched case-insensitively.
+
+  The problem is `verification record <p>:<line>: raw HTML other than a closed comment or <br>, <ul>, <li> is not allowed`, reported once per line that holds such HTML. `<line>` is the first line of the event. Hidden ranges are now only code blocks and allowed comments.
+- **D9 (look-alikes), fix round 1.** Take a line outside every hidden range. Strip any run of spaces, tabs, `>` and list markers (`-`, `*`, `+`, `1.`, `1)`) from its start. If the rest starts with `Row verdict:` and the line is not a column-0 candidate, the line is a problem: `verification record <p>:<line>: a verdict-like line is not at column 0`.
+- **D10 (line endings), fix round 1.**
+  - A lone CR anywhere is a problem: `verification record <p>:<line>: lone carriage return; use LF or CRLF line endings`. `<line>` is the line, by LF/CRLF splitting, that holds the CR.
+  - A leading U+FEFF is a problem: `verification record <p>: starts with a byte-order mark`.
+- **D11 (reporting), fix round 1.**
+  - A record's problems are reported once per citing row (as D5), in line order, before the verdict problem. The BOM problem comes first.
+  - The verdict is still judged on the counted candidates, as before.
+- **D12 (differential test), fix round 1.**
+  - A dev-dependency `markdown` 1.0 (markdown-rs) serves as an independent CommonMark reference.
+  - A seeded generator of at least 20,000 records covers:
+    - fences;
+    - containers;
+    - HTML of types 1 to 7 and comments;
+    - blank, paragraph, setext and thematic lines, and link reference definitions;
+    - column-0 and look-alike candidates;
+    - LF, CRLF and CR endings.
+  - For every record the gate accepts as strict, the gate's verdict problems must equal those computed from the reference's view of which column-0 candidates are visible.
+  - Every disagreement is fixed or adjudicated in writing.
+
+- **D13, fix round 1.** These decisions refine D8 to D11:
+  - **(a)** An allowed inline tag is allowed only when non-whitespace text comes before
+    it on its line. A tag at the start of a line can start an HTML block in cmark-family
+    renderers, such as GitHub's.
+  - **(b)** A blank line inside an HTML block is not reported.
+  - **(c)** On one line, problems come in this order: raw HTML, lone CR, malformed.
+  - **(d)** A lone CR gives one problem per line.
+  - **(e)** After a leading BOM, line 1 is not a column-0 candidate.
+  - **(f)** A counted candidate whose id is not a well-formed row id is malformed. This
+    closes an existing gap: `- Row verdict:  LIB-TOOL-001: PASS` was read as the id
+    ` LIB-TOOL-001` and silently ignored.
 
 ## Tests
 
@@ -148,3 +185,54 @@ The test engineer found one equivalent mutant: a region ending at the start rath
   - F5: two surviving hand mutants. F6: the documents overclaim.
   - This is LIB-TOOL-005's third FAIL. The slice stops for the maintainer's decisions
     on P-5 and P-6.
+- 2026-11-08 the maintainer chose strict records (ADR 0008 amendment 1), with the
+  differential check (P-2) in this fix.
+  - The lead added D8 to D12; D6 is superseded.
+  - Fix round 1 starts with the tests.
+- 2026-11-08 fix round 1, tests (first pass):
+  - New tests for D8 to D11 and P-7. Existing HTML tests are updated to the D8
+    outcome, and 14 of them are renamed.
+  - Three D9 changes in `gate_hardening.rs`.
+  - The differential test `verdict_differential.rs` runs 24,000 records against
+    markdown-rs, in about 5 s. It finds 917 disagreements today.
+  - Adjudications are recorded in the test: CRLF normalisation, the laziness class
+    (§4.4 Ex. 113, §4.6 Ex. 187), and setext laziness.
+  - The lead decided D13.
+  - Process: the test engineer wrote scratch files outside its scope through Bash.
+    They were removed, and the instruction was repeated.
+- 2026-11-08 fix round 1, tests (second pass, D13):
+  - 3 new tests, and exact ordering throughout.
+  - Malformed ids follow `parse_id` and README rule 2.
+  - The differential laziness adjudication is narrowed to its indented-code shape. It
+    excludes 250 of 24,000 records, and setext excludes 59.
+  - `verdict_markdown` has 64 tests, 39 of them red. The differential test is red, and
+    5 tests in `gate_hardening` are red.
+  - LIB-TOOL-005 criterion 3 is reworded for D13 f.
+  - Both rows are now `tests-failing`.
+- 2026-11-08 fix round 1, implementation:
+  - `scan_record` and `RecordScan` replace `verdict_lines`. The hidden lines are only
+    code blocks and closed-comment HTML blocks.
+  - D6 is removed, and D7 is kept. D8 to D11 and D13 are implemented.
+  - All red tests pass, and the differential test gives 0 disagreements on the default
+    seed (17,901 compared, 5,855 refused).
+  - A local cargo-mutants run gave 52 mutants: 51 caught, 1 unviable. One hand mutant
+    survived (H1, a multi-digit ordered marker).
+  - The lead applied the README rule 5 text and corrected ADR 0008 for amendment 1.
+  - Follow-ups for the test engineer:
+    - make the differential test robust against reference panics (seeds 1 and
+      123456789) and the code-span `<br>` laziness (seeds 7 and 42);
+    - add a test for H1;
+    - pin the look-alike order (D13 c: last on its line).
+  - Process: the implementer also wrote through Bash outside its scope (a probe
+    project in the scratchpad, files directly under `target/`). They were removed, and
+    the instruction was repeated.
+- 2026-11-08 fix round 1, test follow-ups:
+  - The differential test catches markdown-rs panics (`to_html.rs:197`) and counts them
+    as exclusions, bounded at 0.5%.
+  - Two adjudications are widened (laziness after a container: indented code, an empty
+    list item, or a tag in a code span; and setext laziness).
+  - Seeds 1, 7, 42, 123456789, 2024 and 31337, at 100,000 records each, give 0
+    disagreements. The default run is 20,000 records, about 7 s in debug.
+  - Added: the H1 test (multi-digit ordered markers), and the order of a look-alike on
+    its line (last).
+  - Both rows are `implemented`.

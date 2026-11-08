@@ -56,12 +56,19 @@ change bumps the minor version and is listed under **Breaking**.
 - The matrix gate decides which `- Row verdict:` lines of a verification record count
   with a CommonMark parser, `pulldown-cmark` 0.13 (ADR 0008).
   - It parses the record as core CommonMark 0.31.2, with no extensions.
-  - A line hidden in a code block, an HTML block or inline HTML does not count, and it is
-    not malformed. This covers HTML comments, fences inside list items and block quotes,
-    and a backtick fence "opener" whose info string holds a backtick.
-  - A `<!--` that the HTML around it leaves unclosed hides everything up to the end of
-    the next `-->` that lies in raw HTML, or to the end of the record, as a browser
-    would. A `-->` in text, a code span or a code block is rendered escaped and closes
-    nothing.
-  - The hand-written fence model is removed. The verdict format and the problems the
-    gate reports are unchanged.
+  - A line inside a code block (fenced or indented) or inside an HTML block that is one
+    closed comment does not count, and it is not malformed. Nothing else hides a line.
+    The parser decides fences inside list items and block quotes, and a backtick fence
+    "opener" whose info string holds a backtick.
+  - The hand-written fence model is removed. The verdict format is unchanged.
+- Verification records are strict (ADR 0008 amendment 1). The gate reports anything a
+  renderer could show differently, rather than modelling it:
+  - raw HTML other than a closed comment and the inline tags `<br>`, `<br/>`, `<br />`,
+    `<ul>`, `</ul>`, `<li>`, `</li>` (in any case, and only after other text on their
+    line), once per line;
+  - a visible verdict-like line that is not at column 0, such as an indented, nested or
+    block-quoted `- Row verdict:` item, or a `*`, `+` or `1.` item;
+  - a lone carriage return, once per line, and a leading byte-order mark.
+  - A `- Row verdict:` line whose id is not a well-formed row id is now malformed.
+  - Problems come in a fixed order: the byte-order mark, then by line (raw HTML, lone
+    CR, malformed or verdict-like), then the verdict problem, once per citing row.
