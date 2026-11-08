@@ -35,6 +35,11 @@ change bumps the minor version and is listed under **Breaking**.
     text inside them is not a test.
   - It recognises `#[test_case]`, `#[rstest]` and other attributes whose path ends in
     `test`, and Python `async def test_`.
+  - It reads names as tokens, as Rust and Python do, and judges a whole attribute path
+    or decorator name. So `# [test]`, `#[tokio :: test]` (also with comments around
+    the `::` or split across lines), `@ unittest . skip`, and a tab or several spaces
+    after `fn`, `def`, `async def` or `class` are the plain forms. `#[test :: helper]`
+    and `@unittest.skip .helper` are not, and neither are `self.fn` and `r#fn`.
   - An ignored or skipped traced test (`#[ignore]`, `#[cfg_attr(<pred>, ignore)]`, or
     a Python skip decorator on the test or on its class) is not evidence. The gate
     reports it.

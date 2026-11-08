@@ -801,6 +801,13 @@ fn lib_tool_011_python_an_unterminated_string_hides_the_rest_without_a_panic() {
 // LIB-TOOL-011: what marks a test (D4) and Python `async def`
 // ---------------------------------------------------------------------------
 
+/// Where a test-style attribute `ATTR` may stand above `lib_tool_011_x`.
+const TEST_STYLE_TEMPLATES: [&str; 3] = [
+    "ATTR\nfn lib_tool_011_x() {}\n",
+    "ATTR fn lib_tool_011_x() {}\n",
+    "ATTR\n#[should_panic]\npub async fn lib_tool_011_x() {}\n",
+];
+
 #[test]
 fn lib_tool_011_test_style_attributes_are_named_by_their_last_path_segment() {
     for attribute in [
@@ -815,11 +822,7 @@ fn lib_tool_011_test_style_attributes_are_named_by_their_last_path_segment() {
         "#[rstest]",
         "#[rstest::rstest]",
     ] {
-        for template in [
-            "ATTR\nfn lib_tool_011_x() {}\n",
-            "ATTR fn lib_tool_011_x() {}\n",
-            "ATTR\n#[should_panic]\npub async fn lib_tool_011_x() {}\n",
-        ] {
+        for template in TEST_STYLE_TEMPLATES {
             assert_rust(
                 &template.replace("ATTR", attribute),
                 &["lib_tool_011_x"],
@@ -894,6 +897,16 @@ fn lib_tool_011_other_attributes_do_not_mark_a_test() {
         "#[should_panic(expected = \"test\")]",
         "#[cfg_attr(test, allow(dead_code))]",
         "#[allow(dead_code, reason = \"#[test]\")]",
+        // Controls for the whitespace forms (Copilot review of PR #13,
+        // `matrix.rs:857`): reading the path past whitespace must still
+        // compare whole segments.
+        "#[tokio :: testing]",
+        "#[tokio :: tests]",
+        "#[tokio/* c */::testing]",
+        "#[tokio ::\n testing]",
+        "#[tokio :: test :: helper]",
+        "#[my :: test_helper]",
+        "#[my :: attest]",
     ] {
         for template in [
             "ATTR\nfn lib_tool_011_x() {}\n",
@@ -979,6 +992,17 @@ fn lib_tool_011_python_async_def_test_is_a_test() {
 // LIB-TOOL-011: ignored Rust tests (D4)
 // ---------------------------------------------------------------------------
 
+/// Where an ignore-style attribute `ATTR` may stand beside the test-style
+/// attribute of `lib_tool_011_x`.
+const IGNORE_TEMPLATES: [&str; 6] = [
+    "#[test]\nATTR\nfn lib_tool_011_x() {}\n",
+    "ATTR\n#[test]\nfn lib_tool_011_x() {}\n",
+    "#[test] ATTR fn lib_tool_011_x() {}\n",
+    "#[test]\n// why\n\nATTR\nfn lib_tool_011_x() {}\n",
+    "#[tokio::test]\nATTR\nasync fn lib_tool_011_x() {}\n",
+    "#[test_case(1; \"a]b\")]\nATTR\nfn lib_tool_011_x(n: u8) {}\n",
+];
+
 #[test]
 fn lib_tool_011_an_ignore_attribute_makes_a_test_ignored() {
     for attribute in [
@@ -990,14 +1014,7 @@ fn lib_tool_011_an_ignore_attribute_makes_a_test_ignored() {
         "#[cfg_attr(all(unix, miri), ignore)]",
         "#[cfg_attr(miri, allow(dead_code), ignore)]",
     ] {
-        for template in [
-            "#[test]\nATTR\nfn lib_tool_011_x() {}\n",
-            "ATTR\n#[test]\nfn lib_tool_011_x() {}\n",
-            "#[test] ATTR fn lib_tool_011_x() {}\n",
-            "#[test]\n// why\n\nATTR\nfn lib_tool_011_x() {}\n",
-            "#[tokio::test]\nATTR\nasync fn lib_tool_011_x() {}\n",
-            "#[test_case(1; \"a]b\")]\nATTR\nfn lib_tool_011_x(n: u8) {}\n",
-        ] {
+        for template in IGNORE_TEMPLATES {
             assert_rust(
                 &template.replace("ATTR", attribute),
                 &[],
@@ -1023,6 +1040,18 @@ fn lib_tool_011_only_ignore_style_attributes_ignore_a_test() {
         "#[cfg_attr(miri, ignored)]",
         "#[cfg_attr(miri, doc = \"ignore\")]",
         "#[cfg_attr(miri, should_panic(expected = \"ignore\"))]",
+        // Controls for the whitespace forms (Copilot review of PR #13,
+        // `matrix.rs:857`): `ignore` must be the whole path, read past
+        // whitespace.
+        "#[my_ignore]",
+        "#[ignore_x]",
+        "#[ ignore_x ]",
+        "#[ignore::x]",
+        "#[my :: ignore]",
+        "#[my/* c */::ignore]",
+        "#[cfg_attr(miri, my_ignore)]",
+        "#[cfg_attr( miri , ignore_x )]",
+        "#[cfg_attr(miri, my :: ignore)]",
         // Not code at all.
         "// #[ignore]",
         "/* #[ignore] */",
@@ -1095,17 +1124,20 @@ const SKIPS: [&str; 10] = [
     "@expectedFailure",
 ];
 
+/// Where a skip decorator `SKIP` may stand above `test_lib_tool_011_x`.
+const SKIP_DEF_TEMPLATES: [&str; 6] = [
+    "SKIP\ndef test_lib_tool_011_x(self):\n    pass\n",
+    "class T(unittest.TestCase):\n    SKIP\n    def test_lib_tool_011_x(self):\n        pass\n",
+    "SKIP\n\n# why\n\ndef test_lib_tool_011_x(self):\n    pass\n",
+    "SKIP\n@mock.patch(\"a.b\")\ndef test_lib_tool_011_x(self, b):\n    pass\n",
+    "@mock.patch(\"a.b\")\nSKIP\ndef test_lib_tool_011_x(self, b):\n    pass\n",
+    "SKIP\nasync def test_lib_tool_011_x(self):\n    pass\n",
+];
+
 #[test]
 fn lib_tool_011_a_skip_decorator_skips_the_function_below_it() {
     for skip in SKIPS {
-        for template in [
-            "SKIP\ndef test_lib_tool_011_x(self):\n    pass\n",
-            "class T(unittest.TestCase):\n    SKIP\n    def test_lib_tool_011_x(self):\n        pass\n",
-            "SKIP\n\n# why\n\ndef test_lib_tool_011_x(self):\n    pass\n",
-            "SKIP\n@mock.patch(\"a.b\")\ndef test_lib_tool_011_x(self, b):\n    pass\n",
-            "@mock.patch(\"a.b\")\nSKIP\ndef test_lib_tool_011_x(self, b):\n    pass\n",
-            "SKIP\nasync def test_lib_tool_011_x(self):\n    pass\n",
-        ] {
+        for template in SKIP_DEF_TEMPLATES {
             assert_python(
                 &template.replace("SKIP", skip),
                 &[],
@@ -1128,6 +1160,16 @@ fn lib_tool_011_other_decorators_and_text_do_not_skip() {
         "@mock.patch(\"a.skip\")",
         "@pytest.mark.parametrize(\"skip\", [1])",
         "@pytest.mark.parametrize(\"x\", [pytest.param(1, marks=pytest.mark.skip)])",
+        // Controls for the whitespace forms (Copilot review of PR #13,
+        // `matrix.rs:914`): reading the dotted name past whitespace must
+        // still compare the whole last segment.
+        "@unittest.skipper",
+        "@unittest. skipper",
+        "@unittest .skipper(\"x\")",
+        "@unittest . skip_helper",
+        "@pytest.mark . skipped",
+        "@ my_skip",
+        "@ skip_if_slow",
     ] {
         assert_python(
             &format!("{decorator}\ndef test_lib_tool_011_x(self):\n    pass\n"),
@@ -1322,6 +1364,524 @@ fn lib_tool_011_a_skip_or_ignore_spanning_lines_never_counts_as_running() {
             "LIB-TOOL-011: an ignore attribute spanning lines must not leave its test running; \
              in {text:?} found {found:?}"
         );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// LIB-TOOL-011: whitespace inside attribute paths, decorator names and class
+// lines (Copilot review of PR #13)
+// ---------------------------------------------------------------------------
+
+/// Test-style attributes whose path has whitespace or a comment between its
+/// segments, or is split across lines. Rust reads a path as tokens, so each
+/// is the same attribute as its unspaced form (`matrix.rs:857`).
+const SPACED_TEST_ATTRIBUTES: [&str; 16] = [
+    "#[tokio :: test]",
+    "#[tokio ::test]",
+    "#[tokio:: test]",
+    "#[tokio\t::\ttest]",
+    "#[tokio  ::  test]",
+    "#[tokio/* comment */::test]",
+    "#[tokio::/* comment */test]",
+    "#[tokio /* a */ :: /* b */ test]",
+    "#[tokio::\n test]",
+    "#[tokio\n    ::test]",
+    "#[tokio ::\n    test(flavor = \"multi_thread\")]",
+    "#[tokio :: test(flavor = \"multi_thread\")]",
+    "#[test_log :: test]",
+    "#[:: core :: prelude :: v1 :: test]",
+    "#[rstest :: rstest]",
+    "#[test_case :: test_case(1; \"a]b\")]",
+];
+
+#[test]
+fn lib_tool_011_whitespace_and_comments_inside_an_attribute_path_do_not_split_it() {
+    for attribute in SPACED_TEST_ATTRIBUTES {
+        for template in TEST_STYLE_TEMPLATES {
+            assert_rust(
+                &template.replace("ATTR", attribute),
+                &["lib_tool_011_x"],
+                &[],
+                "whitespace or a comment between the segments of an attribute path does not \
+                 end the path, so its last segment `test`, `test_case` or `rstest` marks a test",
+            );
+        }
+        for template in [
+            "ATTR\n#[ignore]\nfn lib_tool_011_x() {}\n",
+            "#[cfg_attr(miri, ignore)]\nATTR\nasync fn lib_tool_011_x() {}\n",
+            "ATTR #[ignore = \"slow\"] fn lib_tool_011_x() {}\n",
+        ] {
+            assert_rust(
+                &template.replace("ATTR", attribute),
+                &[],
+                &["lib_tool_011_x"],
+                "a test marked by a spaced attribute path is seen, so its ignore attribute \
+                 makes it ignored",
+            );
+        }
+    }
+}
+
+/// The over-accepting side of `matrix.rs:857`: a path whose first segment is
+/// `test`, `rstest` or `ignore` but which goes on past whitespace is a
+/// longer path, and is judged by its whole self.
+#[test]
+fn lib_tool_011_an_attribute_path_is_read_past_whitespace_before_it_is_judged() {
+    for attribute in [
+        "#[test :: helper]",
+        "#[test/* c */::helper]",
+        "#[test ::\n helper]",
+        "#[rstest :: fixture]",
+        "#[test_case :: helper]",
+    ] {
+        for template in TEST_STYLE_TEMPLATES {
+            assert_rust(
+                &template.replace("ATTR", attribute),
+                &[],
+                &[],
+                "a path that goes on past `test`, `test_case` or `rstest` is not test-style",
+            );
+        }
+    }
+    for attribute in [
+        "#[ignore :: x]",
+        "#[ignore/* c */::x]",
+        "#[ignore ::\n x]",
+        "#[cfg_attr(miri, ignore :: x)]",
+        "#[cfg_attr( miri , ignore /* c */ :: x )]",
+    ] {
+        for template in IGNORE_TEMPLATES {
+            assert_rust(
+                &template.replace("ATTR", attribute),
+                &["lib_tool_011_x"],
+                &[],
+                "a path that goes on past `ignore` is not ignore-style, in an attribute or \
+                 listed in a `cfg_attr`",
+            );
+        }
+    }
+}
+
+/// Ignore-style attributes with whitespace or comments wherever Rust allows
+/// them. They hold today; they guard the `matrix.rs:857` fix.
+#[test]
+fn lib_tool_011_whitespace_inside_an_ignore_attribute_still_ignores() {
+    for attribute in [
+        "#[ ignore ]",
+        "#[ignore ]",
+        "#[\tignore\t]",
+        "#[ ignore = \"slow\" ]",
+        "#[ignore=\"slow\"]",
+        "#[ignore/* c */]",
+        "#[/* c */ignore]",
+        "#[\nignore\n]",
+        "#[cfg_attr( miri , ignore )]",
+        "#[cfg_attr (miri, ignore)]",
+        "#[cfg_attr(miri,ignore)]",
+        "#[cfg_attr(\tmiri,\tignore\t)]",
+        "#[cfg_attr(miri, /* c */ ignore)]",
+        "#[cfg_attr( miri , ignore = \"slow\" )]",
+        "#[cfg_attr( all( unix , miri ) , ignore )]",
+        "#[ cfg_attr(miri, ignore) ]",
+        "#[cfg_attr(\n    miri ,\n    ignore ,\n)]",
+    ] {
+        for template in IGNORE_TEMPLATES {
+            assert_rust(
+                &template.replace("ATTR", attribute),
+                &[],
+                &["lib_tool_011_x"],
+                "whitespace and comments inside an `ignore` or `cfg_attr(.., ignore)` attribute \
+                 do not hide the ignore",
+            );
+        }
+    }
+}
+
+/// Rust also allows whitespace between the `#` and the `[` of an attribute
+/// (beyond the letter of the review comment; see the report).
+#[test]
+fn lib_tool_011_whitespace_between_the_hash_and_the_bracket_still_opens_an_attribute() {
+    for attribute in [
+        "# [test]",
+        "#\t[test]",
+        "#  [tokio::test]",
+        "#/* c */[rstest]",
+    ] {
+        for template in TEST_STYLE_TEMPLATES {
+            assert_rust(
+                &template.replace("ATTR", attribute),
+                &["lib_tool_011_x"],
+                &[],
+                "`# [` opens an attribute, so the test-style attribute marks a test",
+            );
+        }
+    }
+    for attribute in [
+        "# [ignore]",
+        "#\t[ignore = \"slow\"]",
+        "# [cfg_attr(miri, ignore)]",
+    ] {
+        for template in IGNORE_TEMPLATES {
+            assert_rust(
+                &template.replace("ATTR", attribute),
+                &[],
+                &["lib_tool_011_x"],
+                "`# [` opens an attribute, so the ignore attribute ignores the test",
+            );
+        }
+    }
+}
+
+/// Skip decorators whose dotted name has whitespace around a `.`, or after
+/// the `@`. Python reads the name as tokens, so each is the same decorator
+/// as its unspaced form (`matrix.rs:914`).
+const SPACED_SKIPS: [&str; 13] = [
+    "@unittest. skip(\"x\")",
+    "@unittest .skip(\"x\")",
+    "@unittest . skip(\"x\")",
+    "@unittest\t.\tskip(\"x\")",
+    "@unittest .skipIf(True, \"x\")",
+    "@unittest. skipUnless(False, \"x\")",
+    "@pytest.mark . skip(reason=\"x\")",
+    "@pytest . mark . skipif(True, reason=\"x\")",
+    "@unittest .expectedFailure",
+    "@ unittest.skip(\"x\")",
+    "@\tskip",
+    "@ skip(\"x\")",
+    "@unittest.skip (\"x\")",
+];
+
+#[test]
+fn lib_tool_011_whitespace_inside_a_dotted_decorator_name_does_not_split_it() {
+    for skip in SPACED_SKIPS {
+        for template in SKIP_DEF_TEMPLATES {
+            assert_python(
+                &template.replace("SKIP", skip),
+                &[],
+                &["test_lib_tool_011_x"],
+                "whitespace in a skip decorator's dotted name does not end the name, so the \
+                 function below is skipped",
+            );
+        }
+        assert_python(
+            &format!(
+                "{skip}\nclass T(unittest.TestCase):\n    def test_lib_tool_011_a(self):\n        pass\n\n    async def test_lib_tool_011_b(self):\n        pass\ndef test_lib_tool_011_c():\n    pass\n"
+            ),
+            &["test_lib_tool_011_c"],
+            &["test_lib_tool_011_a", "test_lib_tool_011_b"],
+            "whitespace in a skip decorator's dotted name does not end the name, so the class \
+             below is skipped",
+        );
+        assert_python(
+            &format!(
+                "class Outer:\n    {skip}\n    class Inner(unittest.TestCase):\n        def test_lib_tool_011_a(self):\n            pass\n    def test_lib_tool_011_b(self):\n        pass\n"
+            ),
+            &["test_lib_tool_011_b"],
+            &["test_lib_tool_011_a"],
+            "a spaced skip decorator on a nested class skips that class only",
+        );
+    }
+}
+
+/// The over-accepting side of `matrix.rs:914`: a dotted name that goes on
+/// past `skip` after whitespace has a different last segment.
+#[test]
+fn lib_tool_011_a_decorator_name_is_read_past_whitespace_before_it_is_judged() {
+    for decorator in [
+        "@skip .helper",
+        "@skip\t.helper",
+        "@skip. helper",
+        "@unittest.skip .helper",
+        "@unittest . skip . helper",
+        "@expectedFailure . wrapped",
+        "@pytest.mark.skipif .helper(True)",
+    ] {
+        assert_python(
+            &format!("{decorator}\ndef test_lib_tool_011_x(self):\n    pass\n"),
+            &["test_lib_tool_011_x"],
+            &[],
+            "a dotted name that goes on past a skip segment is not a skip",
+        );
+        assert_python(
+            &format!(
+                "{decorator}\nclass T(unittest.TestCase):\n    def test_lib_tool_011_x(self):\n        pass\n"
+            ),
+            &["test_lib_tool_011_x"],
+            &[],
+            "a dotted name that goes on past a skip segment does not skip a class",
+        );
+    }
+}
+
+/// Class lines with a tab or several spaces after `class`. Python accepts
+/// any run of spaces and tabs there (`matrix.rs:928`).
+#[test]
+fn lib_tool_011_any_whitespace_after_class_starts_a_skipped_class() {
+    for class in [
+        "class\tT(unittest.TestCase):",
+        "class\t\tT(unittest.TestCase):",
+        "class \tT(unittest.TestCase):",
+        "class\t T:",
+        "class  T(unittest.TestCase):",
+        "class    T:",
+    ] {
+        assert_python(
+            &format!(
+                "@unittest.skip(\"x\")\n{class}\n    def test_lib_tool_011_a(self):\n        pass\n\n    def test_lib_tool_011_b(self):\n        pass\ndef test_lib_tool_011_c():\n    pass\n"
+            ),
+            &["test_lib_tool_011_c"],
+            &["test_lib_tool_011_a", "test_lib_tool_011_b"],
+            "a skip decorator above a class line with tabs or several spaces after `class` \
+             skips every traced method of the class",
+        );
+        assert_python(
+            &format!(
+                "if True:\n    @pytest.mark.skipif(True, reason=\"x\")\n    {class}\n        def test_lib_tool_011_a(self):\n            pass\n    def test_lib_tool_011_b(self):\n        pass\n"
+            ),
+            &["test_lib_tool_011_b"],
+            &["test_lib_tool_011_a"],
+            "an indented class line with tabs or several spaces after `class` is a class too",
+        );
+    }
+}
+
+/// A line that starts with the letters `class` but not the keyword is not a
+/// class line, so a skip above it opens no skipped class. The lines after it
+/// are lexical fixtures: Python itself would reject a decorator there. They
+/// hold today; they guard the `matrix.rs:928` fix.
+#[test]
+fn lib_tool_011_a_word_that_starts_with_class_is_not_a_class_line() {
+    for line in [
+        "classy = 1",
+        "class_ = 1",
+        "classify(x)",
+        "classify = staticmethod(f)",
+        "classes: list = []",
+        "classmethod(f)",
+        "class_\t= 1",
+    ] {
+        assert_python(
+            &format!(
+                "@unittest.skip(\"x\")\n{line}\n    def test_lib_tool_011_x(self):\n        pass\n"
+            ),
+            &["test_lib_tool_011_x"],
+            &[],
+            "an identifier that starts with `class` is not the keyword, so no class is skipped",
+        );
+    }
+    for def in ["def classify(self):", "async def classify(self):"] {
+        assert_python(
+            &format!(
+                "@unittest.skip(\"x\")\n{def}\n    def test_lib_tool_011_x(self):\n        pass\n"
+            ),
+            &["test_lib_tool_011_x"],
+            &[],
+            "a skip on a function named `classify` skips that function, not a class",
+        );
+    }
+}
+
+/// The three review comments through `check`: the spaced and tabbed forms
+/// give the same problems as their plain forms.
+#[test]
+fn lib_tool_011_spaced_attribute_decorator_and_class_forms_give_the_plain_forms_problems() {
+    let spaced_rs = (
+        "crates/demo/tests/spaced.rs",
+        "#[tokio :: test]\nasync fn lib_tool_011_spaced() {}\n",
+    );
+    assert_eq!(
+        problems(
+            ROW_011,
+            &citing(
+                ROW_011,
+                &["crates/demo/tests/spaced.rs::lib_tool_011_spaced"]
+            ),
+            &[spaced_rs]
+        ),
+        Vec::<String>::new(),
+        "LIB-TOOL-011: a cited `#[tokio :: test]` test resolves"
+    );
+    assert_eq!(
+        problems(ROW_011, &uncited(ROW_011), &[spaced_rs]),
+        [orphan(spaced_rs.0, "lib_tool_011_spaced")],
+        "LIB-TOOL-011: an uncited `#[tokio :: test]` test is an orphan"
+    );
+    let spaced_py = (
+        ".claude/hooks/test_spaced.py",
+        "@unittest. skip(\"x\")\ndef test_lib_tool_011_spaced(self):\n    pass\n",
+    );
+    let tabbed_py = (
+        ".claude/hooks/test_tabbed.py",
+        "@unittest.skip(\"x\")\nclass\tT(unittest.TestCase):\n    def test_lib_tool_011_tabbed(self):\n        pass\n",
+    );
+    assert_eq!(
+        problems(ROW_011, &uncited(ROW_011), &[spaced_py, tabbed_py]),
+        [
+            ignored(spaced_py.0, "test_lib_tool_011_spaced"),
+            ignored(tabbed_py.0, "test_lib_tool_011_tabbed"),
+        ],
+        "LIB-TOOL-011: a test under `@unittest. skip` or in a skipped `class\\t` is one \
+         ignored-or-skipped problem, not an orphan"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// LIB-TOOL-011: whitespace after `def` and `fn` (D12)
+// ---------------------------------------------------------------------------
+
+/// Python `def` lines with tabs or several spaces after `def`, or between
+/// `async` and `def` and after `def`. Python reads keywords as tokens, so each
+/// defines `test_lib_tool_011_x`.
+const SPACED_DEFS: [&str; 6] = [
+    "def\ttest_lib_tool_011_x(self):",
+    "def  test_lib_tool_011_x(self):",
+    "def \ttest_lib_tool_011_x(self):",
+    "async def\ttest_lib_tool_011_x(self):",
+    "async  def  test_lib_tool_011_x(self):",
+    "async\tdef\t\ttest_lib_tool_011_x(self):",
+];
+
+#[test]
+fn lib_tool_011_python_any_whitespace_after_def_defines_a_test() {
+    for def in SPACED_DEFS {
+        assert_python(
+            &format!("{def}\n    pass\n"),
+            &["test_lib_tool_011_x"],
+            &[],
+            "a run of spaces or tabs after `def` still defines the test",
+        );
+        assert_python(
+            &format!("class T(unittest.TestCase):\n    {def}\n        pass\n"),
+            &["test_lib_tool_011_x"],
+            &[],
+            "a method with spaces or tabs after `def` is a test too",
+        );
+        for skip in [
+            "@unittest.skip(\"x\")",
+            "@pytest.mark.skipif(True, reason=\"x\")",
+        ] {
+            assert_python(
+                &format!("{skip}\n{def}\n    pass\n"),
+                &[],
+                &["test_lib_tool_011_x"],
+                "a skip above a `def` with spaces or tabs after the keyword is honoured",
+            );
+            assert_python(
+                &format!(
+                    "{skip}\nclass T(unittest.TestCase):\n    {def}\n        pass\ndef test_lib_tool_011_after():\n    pass\n"
+                ),
+                &["test_lib_tool_011_after"],
+                &["test_lib_tool_011_x"],
+                "a skipped class skips a method with spaces or tabs after `def`",
+            );
+        }
+        let file = ".claude/hooks/test_spaced_def.py";
+        let text = format!("{def}\n    pass\n");
+        assert_eq!(
+            problems(
+                ROW_011,
+                &citing(
+                    ROW_011,
+                    &[".claude/hooks/test_spaced_def.py::test_lib_tool_011_x"]
+                ),
+                &[(file, &text)]
+            ),
+            Vec::<String>::new(),
+            "LIB-TOOL-011: a cited test defined by {def:?} resolves with no problem"
+        );
+    }
+}
+
+/// Rust `fn` lines under `#[test]` with tabs or several spaces around `fn`.
+/// Rust reads keywords as tokens, so each defines `lib_tool_011_x`.
+const SPACED_FNS: [&str; 6] = [
+    "fn\tlib_tool_011_x() {}",
+    "fn  lib_tool_011_x() {}",
+    "fn \tlib_tool_011_x() {}",
+    "pub  fn\tlib_tool_011_x() {}",
+    "pub(crate)  fn  lib_tool_011_x() {}",
+    "async\tfn\tlib_tool_011_x() {}",
+];
+
+#[test]
+fn lib_tool_011_rust_any_whitespace_after_fn_defines_a_test() {
+    for function in SPACED_FNS {
+        for text in [
+            format!("#[test]\n{function}\n"),
+            format!("#[test] {function}\n"),
+            format!("#[tokio::test]\n#[should_panic]\n{function}\n"),
+        ] {
+            assert_rust(
+                &text,
+                &["lib_tool_011_x"],
+                &[],
+                "a run of spaces or tabs after `fn` still defines the test",
+            );
+        }
+        assert_rust(
+            &format!("#[test]\n#[ignore]\n{function}\n"),
+            &[],
+            &["lib_tool_011_x"],
+            "an ignore above an `fn` with spaces or tabs after the keyword is honoured",
+        );
+        let file = "crates/demo/tests/spaced_fn.rs";
+        let text = format!("#[test]\n{function}\n");
+        assert_eq!(
+            problems(
+                ROW_011,
+                &citing(ROW_011, &["crates/demo/tests/spaced_fn.rs::lib_tool_011_x"]),
+                &[(file, &text)]
+            ),
+            Vec::<String>::new(),
+            "LIB-TOOL-011: a cited test defined by {function:?} resolves with no problem"
+        );
+    }
+}
+
+/// Words that contain `def` or `fn` but are not the keyword define nothing.
+/// These are lexical fixtures: neither language accepts an identifier right
+/// after `define` or `fnord`, nor `fn` as a field name, so no valid source has
+/// these lines; they show what reading past whitespace must not accept.
+#[test]
+fn lib_tool_011_a_word_that_contains_def_or_fn_is_not_the_keyword() {
+    for line in [
+        "define test_lib_tool_011_x(self):",
+        "defx test_lib_tool_011_x(self):",
+        "define\ttest_lib_tool_011_x(self):",
+        "async define test_lib_tool_011_x(self):",
+        "self.def test_lib_tool_011_x(self):",
+    ] {
+        assert_python(
+            &format!("{line}\n    pass\n"),
+            &[],
+            &[],
+            "a word that only starts with `def`, or a `def` after a `.`, defines nothing",
+        );
+        assert_python(
+            &format!("@unittest.skip(\"x\")\n{line}\n    pass\n"),
+            &[],
+            &[],
+            "a skip above a word that only starts with `def` lists nothing",
+        );
+    }
+    for line in [
+        "fnord lib_tool_011_x() {}",
+        "fnord\tlib_tool_011_x() {}",
+        "myfn  lib_tool_011_x() {}",
+        "fn_ lib_tool_011_x() {}",
+        "self.fn lib_tool_011_x() {}",
+        "self.fn\tlib_tool_011_x() {}",
+        "r#fn lib_tool_011_x() {}",
+    ] {
+        for text in [format!("#[test]\n{line}\n"), format!("#[test] {line}\n")] {
+            assert_rust(
+                &text,
+                &[],
+                &[],
+                "a word that only contains `fn`, a field `.fn` or the raw identifier `r#fn` \
+                 defines nothing",
+            );
+        }
     }
 }
 

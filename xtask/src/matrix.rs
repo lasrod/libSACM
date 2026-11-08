@@ -460,18 +460,35 @@ impl Repo for FsRepo {
 /// arguments (`#[test]`, `#[tokio::test(flavor = "multi_thread")]`,
 /// `#[test_case(1)]`, `#[rstest]`). The attribute is on a line before the
 /// function or on the same line. Other attributes, blank lines and comments
-/// may sit in between, and an attribute may span lines. The `fn` must be on
-/// the first line after the attributes. The test is ignored when one of its
-/// attributes is `ignore` (`#[ignore]`, `#[ignore = "..."]`), or is
-/// `cfg_attr` and lists `ignore` after its predicate
-/// (`#[cfg_attr(miri, ignore)]`).
+/// may sit in between, and an attribute may span lines. The `fn` and the
+/// function's name must be on the first line after the attributes. The test
+/// is ignored when one of its attributes is `ignore` (`#[ignore]`,
+/// `#[ignore = "..."]`), or is `cfg_attr` and lists `ignore` after its
+/// predicate (`#[cfg_attr(miri, ignore)]`).
+///
+/// Names are read as tokens, as Rust reads them, and the whole path is
+/// judged, never just its first segment:
+///
+/// - on one line, whitespace or a comment may separate the `#` from the `[`
+///   (`# [test]`);
+/// - whitespace or comments may sit around each `::` of a path, which may
+///   span lines: `#[tokio :: test]` is `#[tokio::test]`, while
+///   `#[test :: helper]` and `#[ignore :: x]` are neither test-style nor
+///   ignore-style;
+/// - any run of spaces or tabs may follow `fn`. A `fn` counts only as a
+///   keyword: not inside a longer word (`myfn`, `fnord`), and not after a
+///   `.` (`self.fn`) or a `#` (the raw identifier `r#fn`).
 ///
 /// # Python tests
 ///
 /// A Python test is a line-leading `def test_...` or `async def test_...`, at
-/// any indent. Any run of spaces or tabs may separate `async` and `def`. The
-/// test is skipped under a decorator whose dotted name ends in `skip`,
-/// `skipIf`, `skipUnless`, `skipif` or `expectedFailure`, in two cases:
+/// any indent. Any run of spaces or tabs may follow `async` and `def`, and
+/// `class`. A word that only starts with one of them (`define`, `classy`) is
+/// not the keyword. The test is skipped under a decorator whose dotted name
+/// ends in `skip`, `skipIf`, `skipUnless`, `skipif` or `expectedFailure`.
+/// The name is read as tokens: whitespace may follow the `@` and sit around
+/// each `.` (`@ unittest . skip`), and the whole name is judged, so
+/// `@unittest.skip .helper` does not skip. It skips in two cases:
 ///
 /// - the decorator is on the lines directly above the test, where blank
 ///   lines, comment lines and other decorators may sit between;
@@ -493,6 +510,8 @@ impl Repo for FsRepo {
 ///   is read as two lines. A tab in a Python indent counts as one column.
 /// - A Rust attribute after other code on its line is not read, and a
 ///   `cfg_attr` nested in a `cfg_attr` does not ignore.
+/// - A Rust `#` at the end of a line opens no attribute, even when the next
+///   line starts with its `[`.
 /// - A prelude-qualified `ignore` (`#[::core::prelude::v1::ignore]`,
 ///   `#[std::prelude::v1::ignore]`) does not ignore, so its test counts as
 ///   running (LIB-TOOL-016).
@@ -507,9 +526,15 @@ impl Repo for FsRepo {
 /// // Brackets in an attribute nest, so its first `]` need not close it.
 /// let case = "#[test_case([1, 2])]\nfn lib_cli_001_pair(pair: [u8; 2]) {}";
 /// assert_eq!(traced_tests(case, false), ["lib_cli_001_pair"]);
+/// // A path is read as tokens, and judged whole.
+/// let spaced = "# [tokio :: test]\nasync fn\tlib_cli_001_spaced() {}";
+/// assert_eq!(traced_tests(spaced, false), ["lib_cli_001_spaced"]);
+/// assert!(traced_tests("#[test :: helper]\nfn lib_cli_001_x() {}", false).is_empty());
 ///
 /// let python = "def test_lib_tool_003_denies(self):\ndef lib_tool_003_helper():";
 /// assert_eq!(traced_tests(python, true), ["test_lib_tool_003_denies"]);
+/// let skipped = "@unittest . skip(\"x\")\ndef\ttest_lib_tool_003_x(self):";
+/// assert!(traced_tests(skipped, true).is_empty());
 /// ```
 #[must_use]
 pub fn traced_tests(text: &str, python: bool) -> Vec<String> {
@@ -780,7 +805,7 @@ fn rust_tests(masked: &str) -> Vec<Test> {
                 body.push_str(&rest[..close]);
                 marks.add(&body);
                 rest = rest[close + 1..].trim_start();
-            } else if let Some(after) = rest.strip_prefix("#[") {
+            } else if let Some(after) = attribute_open(rest) {
                 open = Some((String::new(), 1));
                 rest = after;
             } else {
@@ -833,6 +858,12 @@ impl Marks {
     }
 }
 
+/// The text after the `#` and `[` that open an attribute at the start of
+/// `text`, when they do. Whitespace may separate them (`# [test]`).
+fn attribute_open(text: &str) -> Option<&str> {
+    text.strip_prefix('#')?.trim_start().strip_prefix('[')
+}
+
 /// Where the attribute open at `depth` brackets closes in `text`: the index
 /// of its `]`. Brackets inside it nest.
 fn attribute_close(text: &str, depth: &mut usize) -> Option<usize> {
@@ -846,14 +877,25 @@ fn attribute_close(text: &str, depth: &mut usize) -> Option<usize> {
     })
 }
 
-/// The path that starts an attribute body (`tokio::test`), and the rest of
-/// the body.
-fn attribute_path(body: &str) -> (&str, &str) {
-    let body = body.trim_start();
-    let end = body
-        .find(|c: char| !is_identifier_char(c) && c != ':')
-        .unwrap_or(body.len());
-    body.split_at(end)
+/// The path that starts an attribute body, and the rest of the body. The
+/// path is read as tokens: whitespace may sit around each `::`, so
+/// `tokio :: test` is the path `tokio::test`. (A comment there is already
+/// blanked to whitespace.)
+fn attribute_path(body: &str) -> (String, &str) {
+    let mut path = String::new();
+    let mut rest = body.trim_start();
+    loop {
+        if let Some(after) = rest.strip_prefix("::") {
+            path.push_str("::");
+            rest = after.trim_start();
+        }
+        let (segment, after) = split_identifier(rest);
+        path.push_str(segment);
+        rest = after.trim_start();
+        if !rest.starts_with("::") {
+            return (path, after);
+        }
+    }
 }
 
 /// The comma-separated items at the top level of `list`, up to the bracket
@@ -908,14 +950,7 @@ fn python_tests(masked: &str) -> Vec<Test> {
             skipped_class = None;
         }
         if let Some(decorator) = code.strip_prefix('@') {
-            let name: String = decorator
-                .chars()
-                .take_while(|&c| is_identifier_char(c) || c == '.')
-                .collect();
-            skip_next |= name
-                .rsplit('.')
-                .next()
-                .is_some_and(|last| SKIP_DECORATORS.contains(&last));
+            skip_next |= SKIP_DECORATORS.contains(&last_dotted_segment(decorator));
             continue;
         }
         if let Some(name) = python_def(code) {
@@ -925,7 +960,7 @@ fn python_tests(masked: &str) -> Vec<Test> {
                     ignored: skip_next || skipped_class.is_some(),
                 });
             }
-        } else if skip_next && code.starts_with("class ") {
+        } else if skip_next && after_keyword(code, "class").is_some() {
             skipped_class.get_or_insert(indent);
         }
         skip_next = false;
@@ -933,13 +968,34 @@ fn python_tests(masked: &str) -> Vec<Test> {
     tests
 }
 
+/// The last segment of the dotted name that starts a decorator, after its
+/// `@`. The name is read as tokens: whitespace may sit after the `@` and
+/// around each `.`, so `unittest . skip` ends in `skip`.
+fn last_dotted_segment(decorator: &str) -> &str {
+    let mut rest = decorator;
+    loop {
+        let (segment, after) = split_identifier(rest.trim_start());
+        match after.trim_start().strip_prefix('.') {
+            Some(next) => rest = next,
+            None => return segment,
+        }
+    }
+}
+
 /// The name that a Python `def` or `async def` line defines.
 fn python_def(code: &str) -> Option<String> {
-    let code = match code.strip_prefix("async") {
-        Some(rest) if rest.starts_with([' ', '\t']) => rest.trim_start_matches([' ', '\t']),
-        _ => code,
-    };
-    code.strip_prefix("def ").map(identifier)
+    let code = after_keyword(code, "async").unwrap_or(code);
+    after_keyword(code, "def").map(|rest| split_identifier(rest).0.to_owned())
+}
+
+/// The text after the keyword `keyword` that starts `text`, and after the
+/// run of spaces or tabs that follows the keyword. `None` when no such run
+/// follows it, as in a word that only starts with the keyword (`classy`,
+/// `define`).
+fn after_keyword<'a>(text: &'a str, keyword: &str) -> Option<&'a str> {
+    let rest = text.strip_prefix(keyword)?;
+    rest.starts_with([' ', '\t'])
+        .then(|| rest.trim_start_matches([' ', '\t']))
 }
 
 /// Whether `c` can be part of an identifier: a letter, a digit or `_`.
@@ -947,30 +1003,37 @@ fn is_identifier_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
 
-/// The identifier at the start of `text`.
-fn identifier(text: &str) -> String {
-    text.chars()
-        .take_while(|c| is_identifier_char(*c))
-        .collect()
+/// The identifier at the start of `text`, and the text after it.
+fn split_identifier(text: &str) -> (&str, &str) {
+    let end = text
+        .find(|c: char| !is_identifier_char(c))
+        .unwrap_or(text.len());
+    text.split_at(end)
 }
 
-/// Names following `fn ` or `def ` in source text: all `fn` names in text
+/// Names that `fn` or `def` defines in source text: all `fn` names in text
 /// order, then all `def` names.
 ///
-/// A keyword counts only where it starts a word (`myfn x` defines nothing),
-/// and only when an identifier follows it. The occurrences come from
-/// [`str::match_indices`], so the scan always terminates: no index arithmetic
-/// decides where the next search starts. Neither keyword can overlap itself,
-/// so non-overlapping matches are all the matches.
+/// A keyword counts only where a run of spaces or tabs and then an
+/// identifier follow it, and only where it starts a token: the character
+/// before it is not an identifier character (`myfn x`), a `.` (the field
+/// `self.fn`) or a `#` (the raw identifier `r#fn`). The occurrences come
+/// from [`str::match_indices`], so the scan always terminates: no index
+/// arithmetic decides where the next search starts. Neither keyword can
+/// overlap itself, so non-overlapping matches are all the matches.
 fn defined_functions(text: &str) -> Vec<String> {
     let mut names = Vec::new();
-    for keyword in ["fn ", "def "] {
+    for keyword in ["fn", "def"] {
         for (pos, _) in text.match_indices(keyword) {
             let (before, from_keyword) = text.split_at(pos);
-            let starts_word = !before.chars().next_back().is_some_and(is_identifier_char);
-            let name = identifier(&from_keyword[keyword.len()..]);
-            if starts_word && !name.is_empty() {
-                names.push(name);
+            let starts_token = !before
+                .chars()
+                .next_back()
+                .is_some_and(|c| is_identifier_char(c) || matches!(c, '.' | '#'));
+            let name =
+                after_keyword(from_keyword, keyword).map_or("", |rest| split_identifier(rest).0);
+            if starts_token && !name.is_empty() {
+                names.push(name.to_owned());
             }
         }
     }

@@ -96,7 +96,14 @@ changes a status, and only to `verified` on a recorded PASS from the verifier.
      `#[test_case(..)]`, `#[rstest]`). The attribute is on a line before the function or
      on the same line. Other attributes, blank lines and comments may sit between, and an
      attribute may span lines. `#[cfg(test)]`, `#[mytest]` and `#[testing]` mark nothing.
-   - **Python:** a line-leading `def test_…` or `async def test_…`, at any indent.
+     Paths are read as tokens and judged whole. On one line, whitespace or a comment may
+     sit between `#` and `[`, and whitespace or comments may sit around each `::`, also
+     across lines. So `# [tokio :: test]` marks a test and `#[test :: helper]` does not.
+     Any run of spaces or tabs may follow `fn`. `myfn`, `self.fn` and `r#fn` are not the
+     keyword.
+   - **Python:** a line-leading `def test_…` or `async def test_…`, at any indent. Any run
+     of spaces or tabs may follow `async`, `def` and `class`. A word that only starts with
+     one of them (`define`, `classy`) is not the keyword.
    - Text inside a comment or a literal never counts. In Rust, that is line, doc and
      block comments (block comments nest), strings, raw strings with any number of `#`,
      and char and byte literals. In Python, it is `#` comments and strings in single,
@@ -116,14 +123,19 @@ changes a status, and only to `verified` on a recorded PASS from the verifier.
       allowed.
    2. **It is ignored or skipped, so it is not evidence.** In Rust that is `#[ignore]`,
       `#[ignore = "…"]`, or a `#[cfg_attr(<predicate>, …)]` that lists `ignore` after the
-      predicate. In Python it is a decorator whose dotted name ends in `skip`, `skipIf`,
-      `skipUnless`, `skipif` or `expectedFailure`, either on the test or on a class it is
-      indented under.
+      predicate. `ignore` must be the whole path, so `#[ignore :: x]` does not ignore. In
+      Python it is a decorator whose dotted name ends in `skip`, `skipIf`, `skipUnless`,
+      `skipif` or `expectedFailure`, either on the test or on a class it is indented
+      under. The name is read as tokens, so whitespace may follow the `@` and sit around
+      each `.` (`@ unittest . skip`). The whole name is judged, so
+      `@unittest.skip .helper` does not skip.
    3. **No row cites it.** Either the row is missing it or the test is stale.
 
    These problems are sorted by file and then by function name. The scan cannot see tests
    that a macro generates, or Python tests skipped at run time (`self.skipTest(...)`,
-   `pytest.skip()`). It does not read a Rust attribute after other code on its line. A
+   `pytest.skip()`). It does not read a Rust attribute after other code on its line. A `#` at the end of a
+   line does not open an attribute whose `[` is on the next line, and a `fn` whose name is
+   on the next line is not read. A
    `cfg_attr` nested in a `cfg_attr` (`#[cfg_attr(a, cfg_attr(b, ignore))]`) and a
    prelude-qualified `ignore` (`#[::core::prelude::v1::ignore]`,
    `#[std::prelude::v1::ignore]`) do not ignore, so their tests count as running. The

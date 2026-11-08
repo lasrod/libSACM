@@ -1,8 +1,8 @@
 ---
 slice: 0006
 name: m0-test-scanner
-state: done
-step: close
+state: in-progress
+step: implementation
 rows: [LIB-TOOL-007, LIB-TOOL-011]
 mode: pr
 ---
@@ -99,6 +99,18 @@ follow-up), and the round-6 prescription (R63, and the notes on other classes).
 - **D11:** a prelude-qualified `ignore` (`#[::core::prelude::v1::ignore]`) is a known
   limit, carried in LIB-TOOL-016.
 
+- **D12 (whitespace), from the Copilot review of PR #13:** names are read as tokens,
+  past whitespace and masked comments. So:
+  - an attribute path's `::` may have whitespace or comments around it:
+    `#[tokio :: test]`, `#[tokio/* c */::test]`, and a path split across lines;
+  - `#` and `[` may be separated by whitespace (`# [test]`);
+  - a decorator's dots may have whitespace around them (`@unittest. skip`,
+    `@ unittest.skip`);
+  - the keywords `class`, `def`, `async def` and `fn` may be followed by any run of
+    spaces or tabs.
+
+  The whole path or dotted name is judged, never just its first segment.
+
 ## Tests
 
 Most of the 46 tests are in `xtask/tests/scanner.rs`. One is in `function_scan.rs`.
@@ -165,3 +177,23 @@ Existing tests changed, and none weakened:
     follow-up row LIB-TOOL-017 is added.
   - Both rows are now `verified`.
 - 2026-11-08 close: the slice is done.
+- 2026-11-08 Copilot review of PR #13: 3 comments, all valid. They are whitespace in
+  attribute paths, in decorator names, and after `class`.
+  - The lead added D12 and widened it to `# [` and to whitespace after `def` and `fn`.
+    `# [` and `@ name` move out of LIB-TOOL-016.
+  - Regression tests went to the test engineer.
+  - 12 regression tests (D12): attribute paths, `# [`, decorator dots, `class`,
+    `def`, `async def` and `fn` with any whitespace, and the negatives (`r#fn`, `.fn`,
+    `classy`, `define`). 10 fail today.
+  - LIB-TOOL-011 goes back to `tests-failing`, and its round-2 verification no longer
+    holds. It needs re-verification after the fix. LIB-TOOL-007 is untouched and stays
+    verified.
+  - D12 implementation: `attribute_open`, token-reading `attribute_path` and
+    `last_dotted_segment`, `after_keyword`, and a shared `defined_functions` keyword
+    rule. The README text came from the implementer and the lead applied it. All 66
+    `scanner` tests pass, and the real repository yields the same 361 running traced
+    tests. A local cargo-mutants run of the fix gave 36 mutants: 34 caught,
+    2 unviable, 0 missed.
+    - The two remaining forms go to LIB-TOOL-016: `#` at a line end with `[` on the
+      next line, and `fn` with its name on the next line.
+    - LIB-TOOL-011 is `implemented` again.
