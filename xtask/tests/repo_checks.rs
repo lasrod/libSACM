@@ -8405,6 +8405,181 @@ fn lib_qa_011_pr_create_must_be_conditioned_on_no_pr() {
     ]);
 }
 
+// Verification 0008 round 1, F1: the negative controls that kill the
+// surviving loosening mutations Q2, Q10, Q29, Q30, Q32, Q33, Q34 and Q31.
+
+#[test]
+fn lib_qa_011_the_condition_must_follow_the_draft_creation_in_its_sentence() {
+    let reuse: &[&str] = &[PR_REUSE_PROBLEM];
+    assert_pr_rule_controls(&[
+        (
+            // F1 item 1 (Q10): one paragraph, two sentences.
+            "the draft creation and its condition in two sentences of one paragraph",
+            with_draft_sentence(&[
+                "Open its PR as a **draft** (`gh pr create --draft`). Do so unless `gh pr list --head <branch>` already lists one.",
+            ]),
+            reuse,
+        ),
+        (
+            // F1 item 2 (Q2): the condition first, governing something else.
+            "the condition before the draft creation in one sentence, not governing it",
+            with_draft_sentence(&[
+                "Wait unless `gh pr list --head <branch>` already lists one, then open its PR as a **draft** (`gh pr create --draft`).",
+            ]),
+            reuse,
+        ),
+    ]);
+}
+
+#[test]
+fn lib_qa_011_weakened_rule_wording_is_named_exactly() {
+    let s = PR_RULES_FIXTURE;
+    let reuse: &[&str] = &[PR_REUSE_PROBLEM];
+    let dispatch: &[&str] = &[FULL_RUN_DISPATCH_PROBLEM];
+    let create: &[&str] = &[PR_CREATE_PROBLEM];
+    assert_pr_rule_controls(&[
+        (
+            // F1 item 3 (Q32).
+            "\"already lists one\" weakened to \"already lists none\"",
+            replace_line(
+                s,
+                FIXTURE_OPEN_DRAFT,
+                &FIXTURE_OPEN_DRAFT.replace("already lists one", "already lists none"),
+            ),
+            reuse,
+        ),
+        (
+            // F1 item 3 (Q32).
+            "the condition cut off after \"already\"",
+            replace_line(
+                s,
+                FIXTURE_OPEN_DRAFT,
+                &FIXTURE_OPEN_DRAFT.replace("already lists one", "already"),
+            ),
+            reuse,
+        ),
+        (
+            // F1 item 4 (Q34).
+            "\"do not create another\" weakened to \"do not create a new branch\"",
+            replace_line(
+                s,
+                FIXTURE_REUSE,
+                &FIXTURE_REUSE.replace("do not create another", "do not create a new branch"),
+            ),
+            reuse,
+        ),
+        (
+            // F1 item 5 (Q30).
+            "\"only when\" with the condition weakened to \"needed\"",
+            replace_line(s, FIXTURE_CREATE, "Run `gh pr create` only when needed."),
+            create,
+        ),
+        (
+            // F1 item 5 (Q30).
+            "\"only when\" with the condition weakened to a longer word",
+            replace_line(
+                s,
+                FIXTURE_CREATE,
+                "Run `gh pr create` only when the branch has no previous review.",
+            ),
+            create,
+        ),
+        (
+            // F1 item 6 (Q33).
+            "\"did not run on the head commit\" weakened to \"did not run on the base branch\"",
+            replace_line(
+                s,
+                FIXTURE_DISPATCH,
+                &FIXTURE_DISPATCH.replace(
+                    "did not run on the head commit",
+                    "did not run on the base branch",
+                ),
+            ),
+            dispatch,
+        ),
+    ]);
+}
+
+#[test]
+fn lib_qa_011_a_blank_line_separates_the_dispatch_from_its_condition() {
+    // F1 item 7 (Q29): the condition and the command in two paragraphs.
+    assert_pr_rule_controls(&[(
+        "the dispatch condition and the command in two paragraphs",
+        replace_lines(
+            PR_RULES_FIXTURE,
+            FIXTURE_DISPATCH,
+            &[
+                "- **If `mutants.yml` did not run on the head commit:** see below.",
+                "",
+                "Dispatch it on the slice branch (`gh workflow run mutants.yml --ref <branch>`) and wait for that run.",
+            ],
+        ),
+        &[FULL_RUN_DISPATCH_PROBLEM],
+    )]);
+}
+
+#[test]
+fn lib_qa_011_each_problem_names_its_own_rule_and_command() {
+    // F1 item 8 (Q31): the tags, steps and commands as literals, independent
+    // of the constants, both in the constants and in what the check reports.
+    let rules = [
+        (
+            PR_REUSE_PROBLEM,
+            "[skill-pr-reuse] ",
+            "step 7",
+            "`gh pr list --head <branch>`",
+        ),
+        (
+            FULL_RUN_DISPATCH_PROBLEM,
+            "[skill-full-run-dispatch] ",
+            "step 7",
+            "`gh workflow run mutants.yml --ref <branch>`",
+        ),
+        (
+            PR_CREATE_PROBLEM,
+            "[skill-pr-create] ",
+            "step 8.5",
+            "`gh pr create`",
+        ),
+    ];
+    for (constant, tag, step, command) in rules {
+        assert!(
+            constant.starts_with(tag) && constant.contains(step) && constant.contains(command),
+            "LIB-QA-011: the problem `{constant}` must start with `{tag}` and name {step} and {command}"
+        );
+    }
+    let s = PR_RULES_FIXTURE;
+    for (removed, tag, step, command) in [
+        (
+            delete_line(s, FIXTURE_REUSE),
+            "[skill-pr-reuse] ",
+            "step 7",
+            "`gh pr list --head <branch>`",
+        ),
+        (
+            delete_line(s, FIXTURE_DISPATCH),
+            "[skill-full-run-dispatch] ",
+            "step 7",
+            "`gh workflow run mutants.yml --ref <branch>`",
+        ),
+        (
+            delete_line(s, FIXTURE_CREATE),
+            "[skill-pr-create] ",
+            "step 8.5",
+            "`gh pr create`",
+        ),
+    ] {
+        let problems = check_slice_pr_rules(&removed);
+        assert!(
+            problems.len() == 1
+                && problems[0].starts_with(tag)
+                && problems[0].contains(step)
+                && problems[0].contains(command),
+            "LIB-QA-011: removing the {tag}rule must report one problem that starts with `{tag}` and names {step} and {command}; it reported {problems:#?}"
+        );
+    }
+}
+
 #[test]
 fn lib_qa_011_a_missing_step_names_each_of_its_rules() {
     let s = PR_RULES_FIXTURE;

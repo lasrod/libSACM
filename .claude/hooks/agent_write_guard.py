@@ -18,8 +18,11 @@ Behaviour:
 
 Limits, stated so nobody reads more into it: Bash is not covered (a shell
 command that writes cannot be recognised reliably from its text), and nothing is
-enforced when project hooks are disabled or Python is unavailable. The agent
-definitions prohibit both routes in prose.
+enforced when project hooks are disabled. The agent definitions prohibit both
+routes in prose. When no Python interpreter works, the hook command in
+`.claude/settings.json` exits 2, which Claude Code treats as blocking, so every
+write is refused until Python works (LIB-TOOL-008, fail closed). A hook timeout
+or an interpreter too old to run this file is still non-blocking (LIB-TOOL-019).
 
 Stdlib only. Input: hook JSON on stdin. Output: a deny decision on stdout, or
 nothing to defer to the normal flow.

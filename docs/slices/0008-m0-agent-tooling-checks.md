@@ -55,7 +55,7 @@ None. These are tooling and quality rows, so the acceptance criteria are the lea
 | Tests | Row | Criterion |
 |---|---|---|
 | 8 `test_lib_tool_008_*` tests in `.claude/hooks/test_agent_write_guard.py` | LIB-TOOL-008 | They run the real `settings.json` command through `bash -c` with stub interpreters on a PATH that holds nothing else: <ul><li>a failing or missing `python3` falls through to `python`;</li><li>a working `python3` is used, and `python` is never probed;</li><li>no working interpreter exits 2 with the exact message;</li><li>NotebookEdit is judged by `notebook_path`, through the real command and through `decide`, for writer and read-only roles.</li></ul> Allows are proven by the stub log. No test skips: `hook_bash()` finds Git Bash on Windows and fails if bash is missing. |
-| 6 `lib_qa_011_*` tests in `xtask/tests/repo_checks.rs` | LIB-QA-011 | `check_slice_pr_rules` checks <ul><li>the real skill;</li><li>each rule removed, partly removed, or moved to another step;</li><li>a missing step;</li><li>equivalent wording and wrapping.</li></ul> |
+| 13 `lib_qa_011_*` tests in `xtask/tests/repo_checks.rs` (after the Copilot fix and fix round 1) | LIB-QA-011 | `check_slice_pr_rules` checks <ul><li>the real skill;</li><li>each rule removed, partly removed, or moved to another step;</li><li>a missing step;</li><li>equivalent wording and wrapping.</li></ul> |
 
 ## Log
 
@@ -79,3 +79,13 @@ None. These are tooling and quality rows, so the acceptance criteria are the lea
 
   Step 8.5 is tightened the same way. 3 new tests, each with negative controls that
   the old check passed.
+- 2026-11-08 verification round 1, at `eddec72`:
+  [record](../verification/0008-m0-agent-tooling-checks.md).
+  - LIB-TOOL-008 PASS (the Claude Code docs confirm that exit 2 blocks PreToolUse),
+    and it is now `verified`.
+  - LIB-QA-011 FAIL: 9 loosening mutations of the check survive. The fix (8 controls)
+    goes to the test engineer.
+  - The lead updated the guard docstring and the LIB-TOOL-003 notes for fail-closed.
+  - New row: LIB-TOOL-019 (block on every launch failure).
+- 2026-11-08 fix round 1: 8 controls (F1 items 1 to 8) in 4 new tests. The check is
+  unchanged, and every control passes against it.
