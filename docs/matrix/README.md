@@ -72,16 +72,48 @@ changes a status, and only to `verified` on a recorded PASS from the verifier.
 5. Every cited path (code, test file, doctest file, verification record) is a relative,
    `/`-separated path inside the repository: it has no `\` or `:`, does not start with
    `/`, and has no empty, `.` or `..` component. This applies at every status, so it
-   includes a `verification` path on a row that is not verified. A rejected path is never
-   read. Every cited code path and verification record exists. The record of a verified
-   row has exactly one verdict line for that row, saying PASS:
-   `- Row verdict: <ROW-ID>: PASS`, with no indent and outside fenced code blocks.
-   Fences are recognised at the top level of the record, as CommonMark defines them:
-   0 to 3 spaces of indent, then 3 or more backticks or tildes, closed by a run of the
-   same character that is at least as long. Two cases are not yet handled. A fence
-   inside a list item, which CommonMark closes when the item ends, is LIB-TOOL-005,
-   still open. HTML blocks and a backtick in a fence's info string are LIB-TOOL-015. A line
-   starting `- Row verdict:` that is not well formed is a problem.
+   includes a `verification` path on a row that is not verified. A rejected path is
+   never read. Every cited code path and verification record exists. The record of a
+   verified row must be strict, and must have exactly one verdict line for that row,
+   saying PASS: `- Row verdict: <ROW-ID>: PASS`. Records are strict (ADR 0008 amendment
+   1): anything a renderer could show differently is a problem, not something the gate
+   models. The gate makes no claim to match what a browser or any renderer shows.
+   - **Lines.** Lines end at LF or CRLF and are numbered from 1. A carriage return
+     that is not part of a CRLF is a problem at its line, once per line: `lone carriage
+     return; use LF or CRLF line endings`. A record that starts with a byte-order mark
+     (U+FEFF) is a problem: `starts with a byte-order mark`. The mark is part of line 1,
+     so line 1 is then not a candidate.
+   - **Hidden lines.** The gate parses the record as core CommonMark 0.31.2 with
+     `pulldown-cmark` and no extensions (ADR 0008). First, each tab in the run of spaces
+     and tabs that ends a line becomes a space, because pulldown-cmark 0.13 does not
+     accept a tab after a closing fence. This keeps every offset and line. A line is
+     hidden when it is inside a code block (fenced or indented) or inside an HTML block
+     that is one closed comment. Nothing else hides a line: a closed inline comment is
+     allowed but hides nothing, so a verdict-like line inside one is reported, because
+     renderers disagree on what such a comment hides.
+   - **Raw HTML.** A closed comment starts with `<!--`, ends with `-->`, and holds no
+     `-->` or `--!>` before that end, so `<!-->`, `<!--->` and `<!---->` are closed.
+     Only three kinds of raw HTML are allowed: an HTML block that is one closed comment
+     (trailing whitespace ignored), an inline closed comment, and the inline tags
+     `<br>`, `<br/>`, `<br />`, `<ul>`, `</ul>`, `<li>`, `</li>`, in any case, when
+     other text comes before them on their line (as in a table cell). Any other raw
+     HTML is a problem at each line that holds some: `raw HTML other than a closed
+     comment or <br>, <ul>, <li> is not allowed`. A blank line inside an HTML block is
+     not. Disallowed HTML hides nothing, so a candidate inside it counts.
+   - **Candidates.** A line is a candidate when it starts at column 0 with `- Row
+     verdict:`. A hidden candidate does not count and is not malformed. A counted
+     candidate is a verdict line when, without its trailing spaces and tabs, it is
+     exactly `- Row verdict: <ROW-ID>: <VERDICT>`. Here `<ROW-ID>` has the form of rule
+     2 (`SACM23` or `LIB`, an area of uppercase letters, three digits) and `<VERDICT>`
+     is PASS, FAIL or OPEN. Any other counted candidate is malformed, a problem at its
+     line.
+   - **Look-alikes.** A line that is neither hidden nor a candidate is a problem at its
+     line, `a verdict-like line is not at column 0`, when it starts with `Row verdict:`
+     once its leading spaces, tabs, `>` and list markers are removed. The markers are
+     `-`, `*`, `+`, and digits followed by `.` or `)`.
+   - **Order.** A record's problems are reported once for each row that cites it: the
+     byte-order mark first, then by line (on one line: raw HTML, then lone CR, then
+     malformed or verdict-like), then the verdict problem.
 6. Every test citation is `path::function`, where the function is a **test** in that file,
    or `doctest:path` for a file containing a code block. A test is named
    `<row id in snake case>` or `<row id in snake case>_<anything>` (Python tests add

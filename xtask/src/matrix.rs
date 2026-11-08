@@ -44,8 +44,10 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write as _;
 use std::fs;
 use std::io;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 
+use pulldown_cmark::{Event, Options, Parser, Tag};
 use serde::Deserialize;
 
 use crate::{RootSource, output_error};
@@ -1152,6 +1154,22 @@ fn load_error(text: &str, error: &toml::de::Error) -> String {
 /// scan problem above reports it. A `doctest:path` citation may name any
 /// file, since doctests also live in READMEs and other docs.
 ///
+/// The verification record of a verified row must be strict and hold
+/// exactly one `- Row verdict: <ROW-ID>: PASS` line for the row (README rule
+/// 5, ADR 0008 and its amendment 1). Its problems are reported for each row
+/// that cites it, in this order: a leading byte-order mark
+/// (`verification record <path>: starts with a byte-order mark`); then the
+/// problems at lines, by line, each `verification record <path>:<line>: `
+/// and one of these, in this order on one line:
+///
+/// - `raw HTML other than a closed comment or <br>, <ul>, <li> is not allowed`
+/// - `lone carriage return; use LF or CRLF line endings`
+/// - ``malformed verdict line; expected `- Row verdict: <ROW-ID>: <PASS|FAIL|OPEN>` ``
+/// - `a verdict-like line is not at column 0`
+///
+/// and then the verdict problem, if the row's verdict lines are not exactly
+/// one PASS.
+///
 /// Values are quoted as they are, control characters included;
 /// [`cmd_check`] escapes them.
 #[must_use]
@@ -1396,78 +1414,303 @@ fn check_evidence(row: &Row, index: &Index<'_>) -> Vec<String> {
 /// The start of every verdict line: `- Row verdict: <ROW-ID>: <VERDICT>`.
 const VERDICT_PREFIX: &str = "- Row verdict:";
 
-/// A line of a verification record that starts with [`VERDICT_PREFIX`].
-#[derive(Debug)]
-enum VerdictLine<'a> {
-    /// `- Row verdict: <id>: <verdict>`, where the verdict is PASS, FAIL or
-    /// OPEN.
-    WellFormed { id: &'a str, verdict: &'a str },
-    /// Any other line starting with [`VERDICT_PREFIX`], by its 1-based line
-    /// number.
-    Malformed(usize),
-}
+/// What a verdict-like line starts with once [`after_markers`] has removed
+/// its leading spaces, tabs, `>` and list markers (slice 0007 D9).
+const VERDICT_LIKE: &str = "Row verdict:";
 
-/// A fence line: 0 to 3 spaces of indent (a tab is not one of them), then a
-/// run of 3 or more of one fence character, a backtick or a tilde. Returns
-/// the character, the length of the run and the rest of the line.
-fn fence(line: &str) -> Option<(char, usize, &str)> {
-    let body = line.trim_start_matches(' ');
-    if line.len() - body.len() > 3 {
-        return None;
-    }
-    let c = body.chars().next().filter(|c| matches!(c, '`' | '~'))?;
-    let rest = body.trim_start_matches(c);
-    let run = body.len() - rest.len();
-    (run >= 3).then_some((c, run, rest))
-}
+/// The inline HTML tags a record may hold, in lowercase. They match
+/// case-insensitively (slice 0007 D8).
+const ALLOWED_TAGS: &[&str] = &["<br>", "<br/>", "<br />", "<ul>", "</ul>", "<li>", "</li>"];
 
-/// The verdict lines of a verification record, in line order.
+/// A problem at a line of a verification record.
 ///
-/// A line counts once trailing spaces and tabs are removed, and only when it
-/// starts with [`VERDICT_PREFIX`] itself: an indented or block-quoted line
-/// does not. Lines inside a fenced code block never count, and the fence lines
-/// themselves are not verdict lines. Fences follow `CommonMark`: a [`fence`]
-/// line opens a block when none is open; only a fence line of the same
-/// character, with a run at least as long and nothing after it but spaces and
-/// tabs, closes it; every other line inside is content; and an unclosed block
-/// runs to the end of the record.
-fn verdict_lines(text: &str) -> Vec<VerdictLine<'_>> {
-    let mut open: Option<(char, usize)> = None;
-    let mut out = Vec::new();
-    for (i, line) in text.lines().enumerate() {
-        if let Some((c, run)) = open {
-            if fence(line).is_some_and(|(close, len, rest)| {
-                close == c && len >= run && rest.trim_end_matches([' ', '\t']).is_empty()
-            }) {
-                open = None;
+/// The order of the variants is the order in which problems on one line are
+/// reported (slice 0007 D13 c). A look-alike is never on the line of a
+/// candidate, so it never shares a line with a malformed line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum LineProblem {
+    /// Raw HTML other than a closed comment or an allowed tag (D8).
+    RawHtml,
+    /// A carriage return that is not part of a CRLF (D10).
+    LoneCr,
+    /// A counted candidate that is not a well-formed verdict line.
+    Malformed,
+    /// A visible verdict-like line that is not a column-0 candidate (D9).
+    LookAlike,
+}
+
+impl LineProblem {
+    /// The problem text, after `verification record <path>:<line>: `.
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::RawHtml => {
+                "raw HTML other than a closed comment or <br>, <ul>, <li> is not allowed"
             }
-            continue;
+            Self::LoneCr => "lone carriage return; use LF or CRLF line endings",
+            Self::Malformed => {
+                "malformed verdict line; expected `- Row verdict: <ROW-ID>: <PASS|FAIL|OPEN>`"
+            }
+            Self::LookAlike => "a verdict-like line is not at column 0",
         }
-        if let Some((c, run, _)) = fence(line) {
-            open = Some((c, run));
-            continue;
+    }
+}
+
+/// What the gate reads from a verification record: see [`scan_record`].
+#[derive(Debug)]
+struct RecordScan<'a> {
+    /// Whether the record starts with a byte-order mark, U+FEFF (D10).
+    bom: bool,
+    /// The problems at lines, as `(1-based line, problem)`, each once, in
+    /// line order and, on one line, in the order of [`LineProblem`].
+    problems: Vec<(usize, LineProblem)>,
+    /// The verdict lines that count, as `(id, verdict)`, in line order.
+    verdicts: Vec<(&'a str, &'a str)>,
+}
+
+/// What the parser decides about a verification record: see [`markup`].
+#[derive(Debug, Default)]
+struct Markup {
+    /// The hidden blocks as `(first line, last line)`, 1-based and
+    /// inclusive, in line order. No two overlap.
+    hidden: Vec<(usize, usize)>,
+    /// The line of each piece of raw HTML that is not allowed, in line order.
+    /// A line may repeat.
+    raw_html: Vec<usize>,
+}
+
+/// The 1-based line that holds byte `at`, where `line_starts` is the byte
+/// offset of the start of every line, in order, starting with 0.
+fn line_of(line_starts: &[usize], at: usize) -> usize {
+    line_starts.partition_point(|&start| start <= at)
+}
+
+/// Whether `html` is one closed HTML comment: it starts with `<!--`, it ends
+/// with `-->`, and neither `-->` nor `--!>` occurs before that end (slice
+/// 0007 D8). The closing `-->` may overlap the opener, so `<!-->`, `<!--->`
+/// and `<!---->` are closed comments (`CommonMark` 0.31.2 §6.6); `<!-- -` is
+/// not.
+fn is_closed_comment(html: &str) -> bool {
+    html.starts_with("<!--")
+        && html.find("-->").map(|at| at + "-->".len()) == Some(html.len())
+        && !html.contains("--!>")
+}
+
+/// Whether the inline HTML `html` is allowed in a record (slice 0007 D8 and
+/// D13 a): a closed comment (see [`is_closed_comment`]), or one of
+/// [`ALLOWED_TAGS`] in any case with non-whitespace text in `before`, the
+/// text before it on its line. An allowed tag at the start of a line is not
+/// allowed: there cmark-family renderers, GitHub's among them, may start an
+/// HTML block that hides the lines after it.
+fn inline_html_allowed(html: &str, before: &str) -> bool {
+    is_closed_comment(html)
+        || (ALLOWED_TAGS
+            .iter()
+            .any(|tag| html.eq_ignore_ascii_case(tag))
+            && !before.trim().is_empty())
+}
+
+/// The hidden blocks and the disallowed raw HTML of the record `text`, whose
+/// lines start at the byte offsets `line_starts`.
+///
+/// The record is parsed as core `CommonMark` 0.31.2 by `pulldown-cmark`, with
+/// `Options::empty()`: no extension is enabled (ADR 0008). The parser reads
+/// it through [`trailing_tabs_as_spaces`], which keeps every byte offset, so
+/// the parser's source offsets (`into_offset_iter`) are offsets of `text`.
+///
+/// - **Hidden blocks** are the code blocks, fenced or indented, and the HTML
+///   blocks that are one closed comment (see [`is_closed_comment`]; trailing
+///   whitespace is ignored). Each is hidden from its first line to its last.
+///   Nothing else hides a line. A closed inline comment is allowed but hides
+///   nothing: renderers disagree on what it hides, so a verdict-like line
+///   inside one is reported rather than modelled (slice 0007, D14
+///   withdrawn).
+/// - **Raw HTML** is reported at the first line of each `Html` or
+///   `InlineHtml` event that is not allowed (slice 0007 D8). An `Html` event
+///   is a line of an HTML block, and it is allowed when its block is one
+///   closed comment, or when it holds only whitespace: a blank line inside an
+///   HTML block is not reported (D13 b). An `InlineHtml` event is allowed as
+///   [`inline_html_allowed`] says.
+///
+/// Every `Html` event lies inside an HTML block, after the block's `Start`
+/// event, so the flag that block sets applies to it.
+fn markup(text: &str, line_starts: &[usize]) -> Markup {
+    let normalized = trailing_tabs_as_spaces(text);
+    // The parser's ranges are on char boundaries; `get` keeps this free of
+    // panics regardless.
+    let source = |range: Range<usize>| normalized.get(range).unwrap_or_default();
+    let lines = |range: &Range<usize>| {
+        (
+            line_of(line_starts, range.start),
+            line_of(line_starts, range.end.saturating_sub(1)),
+        )
+    };
+    let mut out = Markup::default();
+    // Whether the HTML block that holds the current `Html` event is one
+    // closed comment.
+    let mut comment_block = false;
+    for (event, range) in Parser::new_ext(&normalized, Options::empty()).into_offset_iter() {
+        match event {
+            Event::Start(Tag::CodeBlock(_)) => out.hidden.push(lines(&range)),
+            Event::Start(Tag::HtmlBlock) => {
+                comment_block = is_closed_comment(source(range.clone()).trim_end());
+                if comment_block {
+                    out.hidden.push(lines(&range));
+                }
+            }
+            Event::Html(html) if !comment_block && !html.trim().is_empty() => {
+                out.raw_html.push(line_of(line_starts, range.start));
+            }
+            Event::InlineHtml(html) => {
+                let line = line_of(line_starts, range.start);
+                // The line starts at or before `range.start` are the first
+                // `line`, so the last of them starts its line.
+                let line_start = line_starts
+                    .get(..line)
+                    .and_then(<[usize]>::last)
+                    .copied()
+                    .unwrap_or_default();
+                if !inline_html_allowed(&html, source(line_start..range.start)) {
+                    out.raw_html.push(line);
+                }
+            }
+            _ => {}
         }
-        let Some(rest) = line
-            .trim_end_matches([' ', '\t'])
-            .strip_prefix(VERDICT_PREFIX)
-        else {
-            continue;
-        };
-        let parsed = rest
-            .strip_prefix(' ')
-            .and_then(|rest| rest.split_once(": "))
-            .filter(|(id, verdict)| !id.is_empty() && matches!(*verdict, "PASS" | "FAIL" | "OPEN"));
-        out.push(match parsed {
-            Some((id, verdict)) => VerdictLine::WellFormed { id, verdict },
-            None => VerdictLine::Malformed(i + 1),
-        });
     }
     out
 }
 
+/// `text` with each tab in the run of spaces and tabs that ends a line made a
+/// space. Lines end at `\n` or `\r`, as in `CommonMark` (§2.1).
+///
+/// `CommonMark` 0.31.2 §4.5 lets a closing code fence be followed by spaces or
+/// tabs. `pulldown-cmark` 0.13 accepts only spaces there, so without this a
+/// closer followed by a tab would leave the fence open: a FAIL line after it
+/// would be hidden and a PASS example in the next fence would count. A space
+/// and a tab are both one byte, so every byte offset and line is unchanged.
+/// Nothing else that decides what is hidden tells a trailing tab from a
+/// trailing space: they differ only in the inline rule for hard line breaks
+/// (§6.7), and a line of only spaces and tabs is blank either way.
+fn trailing_tabs_as_spaces(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for piece in text.split_inclusive(['\n', '\r']) {
+        let line = piece.trim_end_matches(['\n', '\r']);
+        let content = line.trim_end_matches([' ', '\t']);
+        // Both are prefixes of what they split, so these are char boundaries.
+        let (_, run) = line.split_at(content.len());
+        let (_, ending) = piece.split_at(line.len());
+        out.push_str(content);
+        out.push_str(&run.replace('\t', " "));
+        out.push_str(ending);
+    }
+    out
+}
+
+/// `line` without its leading run of spaces, tabs, `>` and list markers
+/// (`-`, `*`, `+`, and one or more digits followed by `.` or `)`), as slice
+/// 0007 D9 strips them.
+fn after_markers(line: &str) -> &str {
+    let mut rest = line;
+    loop {
+        let trimmed = rest.trim_start_matches([' ', '\t', '>', '-', '*', '+']);
+        let ordered = trimmed
+            .strip_prefix(|c: char| c.is_ascii_digit())
+            .map(|digits| digits.trim_start_matches(|c: char| c.is_ascii_digit()))
+            .and_then(|after| after.strip_prefix(['.', ')']));
+        match ordered {
+            Some(after) => rest = after,
+            None => return trimmed,
+        }
+    }
+}
+
+/// The `(id, verdict)` of a candidate whose text after [`VERDICT_PREFIX`] is
+/// `rest`, when it is a well-formed verdict line: once trailing spaces and
+/// tabs are removed, `rest` is ` <ROW-ID>: <VERDICT>`, where `<ROW-ID>` is a
+/// well-formed row id (`docs/matrix/README.md` rule 2, slice 0007 D13 f) and
+/// `<VERDICT>` is PASS, FAIL or OPEN.
+fn verdict_of(rest: &str) -> Option<(&str, &str)> {
+    rest.trim_end_matches([' ', '\t'])
+        .strip_prefix(' ')?
+        .split_once(": ")
+        .filter(|(id, verdict)| {
+            parse_id(id).is_some() && matches!(*verdict, "PASS" | "FAIL" | "OPEN")
+        })
+}
+
+/// What the gate reads from the verification record `text`. Records are
+/// strict (ADR 0008 amendment 1, slice 0007 D8 to D13): what a renderer could
+/// show differently is a problem, not something the gate models.
+///
+/// - **Lines** end at LF or CRLF, and are numbered from 1. A CR that is not
+///   part of a CRLF is a problem at its line, once per line (D10, D13 d).
+/// - **A leading byte-order mark** is a problem (D10). It is part of line 1,
+///   so line 1 is then not a column-0 candidate (D13 e).
+/// - **Hidden lines** are the lines of the hidden blocks [`markup`] gives:
+///   code blocks and HTML blocks that are one closed comment. A line inside
+///   a closed inline comment is not hidden, so a candidate there counts.
+/// - **Raw HTML** that is not allowed is a problem at its line (D8): see
+///   [`markup`].
+/// - **A candidate** is a line that starts at column 0 with
+///   [`VERDICT_PREFIX`]. A hidden candidate does not count, and is not
+///   malformed. A counted candidate is a verdict line when [`verdict_of`]
+///   reads one from it; otherwise it is malformed, a problem at its line.
+/// - **A look-alike** is a line that is not a candidate, that starts with
+///   [`VERDICT_LIKE`] once [`after_markers`] has stripped it, and that is not
+///   hidden. It is a problem at its line (D9).
+fn scan_record(text: &str) -> RecordScan<'_> {
+    let line_starts: Vec<usize> = std::iter::once(0)
+        .chain(text.match_indices('\n').map(|(at, _)| at + 1))
+        .collect();
+    let markup = markup(text, &line_starts);
+    let mut problems: Vec<(usize, LineProblem)> = markup
+        .raw_html
+        .into_iter()
+        .map(|line| (line, LineProblem::RawHtml))
+        .collect();
+    // The hidden blocks that end at or after the line asked about. Lines are
+    // asked about in increasing order.
+    let mut hidden = markup.hidden.into_iter().peekable();
+    let mut is_hidden = |n: usize| {
+        while hidden.next_if(|&(_, last)| last < n).is_some() {}
+        hidden.peek().is_some_and(|&(first, _)| first <= n)
+    };
+    let mut verdicts = Vec::new();
+    for (i, piece) in text.split_inclusive('\n').enumerate() {
+        let n = i + 1;
+        let line = match piece.strip_suffix('\n') {
+            Some(line) => line.strip_suffix('\r').unwrap_or(line),
+            None => piece,
+        };
+        if line.contains('\r') {
+            problems.push((n, LineProblem::LoneCr));
+        }
+        if let Some(rest) = line.strip_prefix(VERDICT_PREFIX) {
+            if !is_hidden(n) {
+                match verdict_of(rest) {
+                    Some(verdict) => verdicts.push(verdict),
+                    None => problems.push((n, LineProblem::Malformed)),
+                }
+            }
+        } else if after_markers(line).starts_with(VERDICT_LIKE) && !is_hidden(n) {
+            problems.push((n, LineProblem::LookAlike));
+        }
+    }
+    problems.sort_unstable();
+    problems.dedup();
+    RecordScan {
+        bom: text.starts_with('\u{feff}'),
+        problems,
+        verdicts,
+    }
+}
+
 /// The verification record of the verified row `id`: its path is inside the
-/// repository, it exists, every verdict line in it is well formed, and it has
-/// exactly one verdict line for `id`, saying PASS.
+/// repository, it exists, it is strict, every counted verdict line in it is
+/// well formed, and it has exactly one verdict line for `id`, saying PASS.
+///
+/// The problems come in the order of slice 0007 D11: the byte-order mark
+/// first, then the problems at lines (see [`scan_record`]), then the verdict
+/// problem. The verdict is judged on the counted verdict lines only.
 fn check_record(id: &str, record: &str, repo: &dyn Repo) -> Vec<String> {
     if let Err(problem) = check_path(record) {
         return vec![problem];
@@ -1475,23 +1718,25 @@ fn check_record(id: &str, record: &str, repo: &dyn Repo) -> Vec<String> {
     let Some(text) = repo.read(record) else {
         return vec![format!("verification record {record} does not exist")];
     };
+    let scan = scan_record(&text);
     let mut out = Vec::new();
-    let mut verdicts = Vec::new();
-    for line in verdict_lines(&text) {
-        match line {
-            VerdictLine::Malformed(n) => out.push(format!(
-                "verification record {record}:{n}: malformed verdict line; expected \
-                 `{VERDICT_PREFIX} <ROW-ID>: <PASS|FAIL|OPEN>`"
-            )),
-            VerdictLine::WellFormed {
-                id: line_id,
-                verdict,
-            } if line_id == id => {
-                verdicts.push(verdict);
-            }
-            VerdictLine::WellFormed { .. } => {}
-        }
+    if scan.bom {
+        out.push(format!(
+            "verification record {record}: starts with a byte-order mark"
+        ));
     }
+    for (n, problem) in scan.problems {
+        out.push(format!(
+            "verification record {record}:{n}: {}",
+            problem.as_str()
+        ));
+    }
+    let verdicts: Vec<&str> = scan
+        .verdicts
+        .iter()
+        .filter(|(line_id, _)| *line_id == id)
+        .map(|&(_, verdict)| verdict)
+        .collect();
     match verdicts.as_slice() {
         ["PASS"] => {}
         [] => out.push(format!(

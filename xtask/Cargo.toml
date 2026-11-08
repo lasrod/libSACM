@@ -8,11 +8,19 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+# Decides which `- Row verdict:` lines of a verification record are hidden by
+# Markdown (code blocks, HTML blocks, inline HTML), as a CommonMark 0.31.2
+# renderer does (ADR 0008, LIB-TOOL-005/015). Without default features it
+# adds only bitflags, memchr and unicase.
+pulldown-cmark = { version = "0.13", default-features = false }
 serde = { version = "1", features = ["derive"] }
 sha2 = "0.11"
 toml = "1.2"
 
 [dev-dependencies]
+# Independent CommonMark reference for the differential test of the verdict-line
+# parser (slice 0007 D12, ADR 0008 amendment 1). Test-only.
+markdown = "1"
 # Parses .github/workflows/ci.yml in the CI regression tests (LIB-QA-002/003) so
 # block scalars, flow mappings and continuation lines are read as YAML data, not
 # text. Chosen for: YAML 1.2 (no `on`/`yes` -> bool), MIT OR Apache-2.0, maintained,
