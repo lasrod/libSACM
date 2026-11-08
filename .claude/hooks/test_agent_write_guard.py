@@ -1,4 +1,4 @@
-"""Tests for agent_write_guard.py (LIB-TOOL-003).
+"""Tests for agent_write_guard.py (LIB-TOOL-003) and its launch path (LIB-TOOL-008).
 
 Run: python -m unittest discover -s .claude/hooks -p "test_*.py"
 """
@@ -9,6 +9,7 @@ import io
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -741,29 +742,56 @@ def hook_commands() -> list[str]:
     ]
 
 
-def find_bash() -> tuple[str | None, str]:
-    """A usable bash, or None and the reason to skip."""
-    bash = shutil.which("bash")
-    if bash is None:
-        return None, "bash is not on PATH, so the hook command from settings.json cannot be run"
-    system32 = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32"
-    if os.name == "nt" and os.path.normcase(str(Path(bash).parent)) == os.path.normcase(
-        str(system32)
-    ):
-        return None, (
-            f"bash on PATH is the WSL launcher ({bash}); it does not pass CLAUDE_PROJECT_DIR "
-            "through, so it cannot run the hook command as Claude Code does"
-        )
-    return bash, ""
+def hook_bash() -> tuple[str | None, str]:
+    """The bash to run the hook command with, or None and why none is usable.
+
+    `bash` on PATH is used unless, on Windows, it is a WSL launcher (in System32
+    or WindowsApps). A WSL launcher does not pass CLAUDE_PROJECT_DIR through, so
+    it cannot run the command as Claude Code's Git Bash does. Then Git for
+    Windows' own bash is looked for: next to `git` on PATH, and in the standard
+    install locations. Callers fail, never skip, when this returns None: a
+    skipped test is not evidence (LIB-TOOL-011)."""
+    candidates: list[Path] = []
+    on_path = shutil.which("bash")
+    if os.name != "nt":
+        return (on_path, "") if on_path else (None, "bash is not on PATH")
+    launchers = [
+        Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32",
+        Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "WindowsApps",
+    ]
+    if on_path and os.path.normcase(str(Path(on_path).parent)) not in {
+        os.path.normcase(str(d)) for d in launchers
+    }:
+        candidates.append(Path(on_path))
+    git = shutil.which("git")
+    if git:
+        for parent in Path(git).resolve().parents:
+            candidates += [parent / "usr" / "bin" / "bash.exe", parent / "bin" / "bash.exe"]
+    for variable in ("ProgramW6432", "ProgramFiles", "ProgramFiles(x86)"):
+        if os.environ.get(variable):
+            git_dir = Path(os.environ[variable]) / "Git"
+            candidates += [git_dir / "usr" / "bin" / "bash.exe", git_dir / "bin" / "bash.exe"]
+    if os.environ.get("LOCALAPPDATA"):
+        git_dir = Path(os.environ["LOCALAPPDATA"]) / "Programs" / "Git"
+        candidates += [git_dir / "usr" / "bin" / "bash.exe", git_dir / "bin" / "bash.exe"]
+    for candidate in candidates:
+        if candidate.is_file():
+            return str(candidate), ""
+    return None, (
+        f"no Git Bash found (bash on PATH: {on_path!r}; git on PATH: {git!r}); install Git "
+        "for Windows or put its usr/bin on PATH"
+    )
 
 
 class RealHookCommandTests(unittest.TestCase):
     """The exact command in .claude/settings.json, run with bash -c (LIB-TOOL-003)."""
 
     def setUp(self) -> None:
-        bash, reason = find_bash()
+        bash, reason = hook_bash()
         if bash is None:
-            self.skipTest(reason)
+            self.fail(
+                f"LIB-TOOL-003: the real hook command tests need bash and must not skip: {reason}"
+            )
         self.bash = bash
         commands = hook_commands()
         self.assertEqual(
@@ -821,6 +849,374 @@ class RealHookCommandTests(unittest.TestCase):
         self.assertEqual(
             proc.stdout, "", "LIB-TOOL-003: the hook command prints nothing for the main session"
         )
+
+
+# ---------------------------------------------------------------------------
+# LIB-TOOL-008: the guard's launch path.
+#
+# The exact command from .claude/settings.json is run with `bash -c`, on a PATH
+# that holds nothing but a directory of stub `python3` / `python` scripts. A
+# stub either fails (`exit 1`, as the Windows Store alias does) or records its
+# arguments and execs the interpreter running these tests. A name with no stub
+# is missing from PATH. Bash needs no PATH entry of its own for this: it is run
+# by absolute path, the command uses only builtins, and each stub names its
+# shell (`#!/bin/sh`) and its interpreter by absolute path. Keeping every real
+# system directory off PATH is what makes "missing" mean missing: on Ubuntu
+# /usr/bin holds a real python3.
+#
+# None of these tests is ever skipped. Where no usable bash can be found the
+# test fails (the criterion is that the tests run on Ubuntu and on Windows with
+# Git Bash).
+# ---------------------------------------------------------------------------
+
+NO_PYTHON_MESSAGE = "agent write guard: no working Python interpreter"
+GUARD_SCRIPT_NAME = "agent_write_guard.py"
+
+
+def shell_path(path: Path | str) -> str:
+    """`path` as a stub script can name it: Git Bash accepts `C:/...`."""
+    return str(path).replace("\\", "/") if os.name == "nt" else str(path)
+
+
+class LaunchPathTests(unittest.TestCase):
+    """The settings.json hook command finds a working interpreter, or fails closed."""
+
+    def setUp(self) -> None:
+        bash, reason = hook_bash()
+        if bash is None:
+            self.fail(f"LIB-TOOL-008: the launch-path tests need bash and must not skip: {reason}")
+        self.bash = bash
+        commands = hook_commands()
+        self.assertEqual(
+            len(commands), 1, "LIB-TOOL-008: settings.json has exactly one guard hook command"
+        )
+        self.command = commands[0]
+        self.scopes = guard.load_scopes()
+        self.assertIsInstance(
+            self.scopes, dict, "LIB-TOOL-008: the real write-scopes.json must load"
+        )
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.tmp = Path(tmp.name)
+
+    # -- harness ------------------------------------------------------------
+
+    def make_path(self, stubs: dict[str, str | None]) -> tuple[Path, Path]:
+        """A fresh stub directory (the whole PATH) and log directory.
+
+        `stubs` maps `python3` / `python` to "works", "fails" or None (missing).
+        Every stub appends its arguments, one call per line, to `<log>/<name>.log`."""
+        case = Path(tempfile.mkdtemp(dir=self.tmp))
+        bin_dir = case / "bin"
+        log_dir = case / "log"
+        bin_dir.mkdir()
+        log_dir.mkdir()
+        for name, kind in stubs.items():
+            if kind is None:
+                continue
+            log_file = shlex.quote(shell_path(log_dir / f"{name}.log"))
+            record = f"printf '%s\\n' \"$*\" >> {log_file}"
+            if kind == "works":
+                tail = f'exec {shlex.quote(shell_path(sys.executable))} "$@"'
+            elif kind == "fails":
+                tail = f"echo {shlex.quote(name + ' stub: this interpreter is broken')} >&2; exit 1"
+            else:
+                raise ValueError(kind)
+            stub = bin_dir / name
+            stub.write_bytes(f"#!/bin/sh\n{record}\n{tail}\n".encode("utf-8"))
+            stub.chmod(0o755)
+        return bin_dir, log_dir
+
+    def env(self, bin_dir: Path) -> dict[str, str]:
+        env = dict(os.environ)
+        for variable in ("BASH_ENV", "ENV"):
+            env.pop(variable, None)
+        env["PATH"] = str(bin_dir)
+        env["CLAUDE_PROJECT_DIR"] = str(REPO_ROOT)
+        return env
+
+    def assert_path_is(self, bin_dir: Path, stubs: dict[str, str | None]) -> None:
+        """Precondition: bash resolves exactly the stubs given, and a missing name
+        resolves to nothing (so no real interpreter is reachable)."""
+        for name, kind in stubs.items():
+            proc = subprocess.run(
+                [self.bash, "-c", f"command -v {name}"],
+                capture_output=True,
+                text=True,
+                env=self.env(bin_dir),
+                timeout=60,
+                check=False,
+            )
+            if kind is None:
+                self.assertNotEqual(
+                    proc.returncode,
+                    0,
+                    f"LIB-TOOL-008: precondition: {name} must be missing from the test PATH, "
+                    f"but bash found {proc.stdout.strip()!r}",
+                )
+            else:
+                self.assertEqual(
+                    (proc.returncode, Path(proc.stdout.strip()).name),
+                    (0, name),
+                    f"LIB-TOOL-008: precondition: bash must find the {name} stub; "
+                    f"stdout {proc.stdout!r}, stderr {proc.stderr!r}",
+                )
+
+    def launch(
+        self, stubs: dict[str, str | None], payload: dict
+    ) -> tuple[subprocess.CompletedProcess[str], Path]:
+        """Run the real hook command once on the stub PATH; the result and log dir."""
+        bin_dir, log_dir = self.make_path(stubs)
+        self.assert_path_is(bin_dir, stubs)
+        proc = subprocess.run(
+            [self.bash, "-c", self.command],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            env=self.env(bin_dir),
+            cwd=str(REPO_ROOT),
+            timeout=60,
+            check=False,
+        )
+        return proc, log_dir
+
+    @staticmethod
+    def log(log_dir: Path, name: str) -> list[str]:
+        path = log_dir / f"{name}.log"
+        return path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+
+    def ran_guard(self, log_dir: Path, name: str) -> bool:
+        return any(GUARD_SCRIPT_NAME in line for line in self.log(log_dir, name))
+
+    @staticmethod
+    def payload(tool: str, agent: str | None, rel: str, key: str = "file_path") -> dict:
+        tool_input = {key: str(REPO_ROOT / rel)}
+        if tool == "NotebookEdit":
+            tool_input["new_source"] = "x"
+        else:
+            tool_input["content"] = "x"
+        payload = {
+            "session_id": "lib-tool-008-test",
+            "hook_event_name": "PreToolUse",
+            "cwd": str(REPO_ROOT),
+            "tool_name": tool,
+            "tool_input": tool_input,
+        }
+        if agent is not None:
+            payload["agent_type"] = agent
+        return payload
+
+    def assert_guard_denied(
+        self, proc: subprocess.CompletedProcess[str], payload: dict, why: str
+    ) -> None:
+        self.assertEqual(
+            proc.returncode,
+            0,
+            f"LIB-TOOL-008: {why}: the hook command exits 0; stderr {proc.stderr!r}",
+        )
+        try:
+            decision = json.loads(proc.stdout)
+        except ValueError:
+            self.fail(
+                f"LIB-TOOL-008: {why}: the guard must print its JSON deny, got stdout "
+                f"{proc.stdout!r}; stderr {proc.stderr!r}"
+            )
+        self.assertTrue(denied(decision), f"LIB-TOOL-008: {why}: a deny, got {decision!r}")
+        self.assertEqual(
+            decision,
+            guard.decide(payload, self.scopes, str(REPO_ROOT)),
+            f"LIB-TOOL-008: {why}: the output is the guard's own decision for this call",
+        )
+
+    def assert_guard_allowed(self, proc: subprocess.CompletedProcess[str], why: str) -> None:
+        self.assertEqual(
+            (proc.returncode, proc.stdout),
+            (0, ""),
+            f"LIB-TOOL-008: {why}: the guard allows (exit 0, no output); stderr {proc.stderr!r}",
+        )
+
+    def assert_judged_by(
+        self, stubs: dict[str, str | None], used: str, why: str
+    ) -> None:
+        """An out-of-scope write is denied and an in-scope one allowed, each by the
+        guard run with the `used` interpreter."""
+        role = "sacm-test-engineer"
+        outside = self.payload("Write", role, "xtask/src/lib.rs")
+        proc, logs = self.launch(stubs, outside)
+        self.assert_guard_denied(proc, outside, f"{why}, out-of-scope write")
+        self.assertTrue(
+            self.ran_guard(logs, used),
+            f"LIB-TOOL-008: {why}: the guard ran with {used}; {used} calls: "
+            f"{self.log(logs, used)!r}",
+        )
+        inside = self.payload("Write", role, "xtask/tests/lib_tool_008_x.rs")
+        proc, logs = self.launch(stubs, inside)
+        self.assert_guard_allowed(proc, f"{why}, in-scope write")
+        self.assertTrue(
+            self.ran_guard(logs, used),
+            f"LIB-TOOL-008: {why}: the allow came from the guard run with {used}, not from "
+            f"nothing running; {used} calls: {self.log(logs, used)!r}",
+        )
+
+    # -- criterion 1: python3 exists but fails ------------------------------
+
+    def test_lib_tool_008_failing_python3_falls_through_to_python(self) -> None:
+        self.assert_judged_by(
+            {"python3": "fails", "python": "works"}, "python", "python3 fails, python works"
+        )
+
+    # -- criterion 2: python3 missing; python3 works ------------------------
+
+    def test_lib_tool_008_missing_python3_falls_through_to_python(self) -> None:
+        self.assert_judged_by(
+            {"python3": None, "python": "works"}, "python", "python3 missing, python works"
+        )
+
+    def test_lib_tool_008_working_python3_is_used_and_python_never_tried(self) -> None:
+        stubs = {"python3": "works", "python": "fails"}
+        self.assert_judged_by(stubs, "python3", "python3 works")
+        for payload in (
+            self.payload("Write", "sacm-test-engineer", "xtask/src/lib.rs"),
+            self.payload("Write", "sacm-test-engineer", "xtask/tests/lib_tool_008_x.rs"),
+        ):
+            proc, logs = self.launch(stubs, payload)
+            self.assertEqual(
+                self.log(logs, "python"),
+                [],
+                "LIB-TOOL-008: with a working python3, python is never run, not even "
+                f"probed; stderr {proc.stderr!r}",
+            )
+
+    # -- criterion 3: fail closed -------------------------------------------
+
+    def test_lib_tool_008_no_working_interpreter_fails_closed_with_exit_2(self) -> None:
+        payload = self.payload("Write", "sacm-test-engineer", "xtask/tests/lib_tool_008_x.rs")
+        cases = {
+            "both fail": {"python3": "fails", "python": "fails"},
+            "both missing": {"python3": None, "python": None},
+            "python3 fails, python missing": {"python3": "fails", "python": None},
+            "python3 missing, python fails": {"python3": None, "python": "fails"},
+        }
+        for what, stubs in cases.items():
+            with self.subTest(what):
+                proc, _ = self.launch(stubs, payload)
+                self.assertEqual(
+                    proc.returncode,
+                    2,
+                    f"LIB-TOOL-008: {what}: the hook command must exit 2 so Claude Code "
+                    f"blocks the write; got {proc.returncode}, stderr {proc.stderr!r}",
+                )
+                self.assertEqual(
+                    proc.stderr,
+                    NO_PYTHON_MESSAGE + "\n",
+                    f"LIB-TOOL-008: {what}: stderr is exactly {NO_PYTHON_MESSAGE!r}",
+                )
+                self.assertEqual(
+                    proc.stdout, "", f"LIB-TOOL-008: {what}: nothing is printed on stdout"
+                )
+
+    # -- criterion 4: NotebookEdit through the real command -----------------
+
+    def test_lib_tool_008_hook_command_judges_notebook_edit_by_notebook_path(self) -> None:
+        stubs = {"python3": "works", "python": "fails"}
+        cases = (
+            ("sacm-test-engineer", "xtask/tests/lib_tool_008_x.ipynb", False),
+            ("sacm-test-engineer", "crates/sacm/src/lib_tool_008_x.ipynb", True),
+            ("sacm-verifier", "xtask/tests/lib_tool_008_x.ipynb", True),
+            ("sacm-verifier", "docs/lib_tool_008_x.ipynb", True),
+        )
+        for role, rel, deny in cases:
+            with self.subTest(role=role, path=rel):
+                payload = self.payload("NotebookEdit", role, rel, key="notebook_path")
+                self.assertNotIn(
+                    "file_path",
+                    payload["tool_input"],
+                    "LIB-TOOL-008: precondition: the NotebookEdit call has no file_path",
+                )
+                proc, logs = self.launch(stubs, payload)
+                why = f"NotebookEdit of {rel} by {role}"
+                if deny:
+                    self.assert_guard_denied(proc, payload, why)
+                else:
+                    self.assert_guard_allowed(proc, why)
+                self.assertTrue(
+                    self.ran_guard(logs, "python3"),
+                    f"LIB-TOOL-008: {why}: the guard ran; python3 calls "
+                    f"{self.log(logs, 'python3')!r}",
+                )
+
+
+class NotebookPathTests(unittest.TestCase):
+    """NotebookEdit is judged by `notebook_path` under the real scopes (LIB-TOOL-008)."""
+
+    def setUp(self) -> None:
+        self.scopes = guard.load_scopes()
+        self.assertIsInstance(
+            self.scopes, dict, "LIB-TOOL-008: the real write-scopes.json must load"
+        )
+        self.root = str(REPO_ROOT)
+
+    def decide(self, agent: str, rel: str) -> dict | None:
+        payload = {
+            "tool_name": "NotebookEdit",
+            "agent_type": agent,
+            "tool_input": {"notebook_path": str(REPO_ROOT / rel), "new_source": "x"},
+        }
+        self.assertNotIn(
+            "file_path",
+            payload["tool_input"],
+            "LIB-TOOL-008: precondition: the NotebookEdit call has no file_path",
+        )
+        return guard.decide(payload, self.scopes, self.root)
+
+    def assert_allowed(self, agent: str, rel: str) -> None:
+        self.assertIsNone(
+            self.decide(agent, rel),
+            f"LIB-TOOL-008: NotebookEdit of {rel} by {agent} is inside its scope and allowed",
+        )
+
+    def assert_denied_for_path(self, agent: str, rel: str) -> None:
+        decision = self.decide(agent, rel)
+        self.assertTrue(
+            denied(decision),
+            f"LIB-TOOL-008: NotebookEdit of {rel} by {agent} is outside its scope and denied",
+        )
+        reason = decision["hookSpecificOutput"]["permissionDecisionReason"]
+        self.assertIn(
+            rel,
+            reason,
+            f"LIB-TOOL-008: the deny for {rel} by {agent} is about that notebook_path, "
+            f"not about a missing path: {reason!r}",
+        )
+
+    def test_lib_tool_008_notebook_path_inside_a_writer_scope_is_allowed(self) -> None:
+        for agent, rel in (
+            ("sacm-test-engineer", "xtask/tests/x.ipynb"),
+            ("sacm-test-engineer", "crates/sacm/tests/data/x.ipynb"),
+            ("sacm-implementer", "crates/sacm/src/x.ipynb"),
+            ("sacm-implementer", "docs/x.ipynb"),
+        ):
+            with self.subTest(agent=agent, path=rel):
+                self.assert_allowed(agent, rel)
+
+    def test_lib_tool_008_notebook_path_outside_a_writer_scope_is_denied(self) -> None:
+        for agent, rel in (
+            ("sacm-test-engineer", "crates/sacm/src/x.ipynb"),
+            ("sacm-test-engineer", "docs/x.ipynb"),
+            ("sacm-implementer", "crates/sacm/tests/x.ipynb"),
+            ("sacm-implementer", "docs/matrix/x.ipynb"),
+        ):
+            with self.subTest(agent=agent, path=rel):
+                self.assert_denied_for_path(agent, rel)
+
+    def test_lib_tool_008_notebook_path_is_denied_everywhere_for_read_only_roles(self) -> None:
+        for agent in READ_ONLY_ROLES:
+            for rel in ("xtask/tests/x.ipynb", "crates/sacm/src/x.ipynb", "docs/x.ipynb"):
+                with self.subTest(agent=agent, path=rel):
+                    self.assertTrue(
+                        denied(self.decide(agent, rel)),
+                        f"LIB-TOOL-008: NotebookEdit of {rel} by read-only {agent} is denied",
+                    )
 
 
 if __name__ == "__main__":

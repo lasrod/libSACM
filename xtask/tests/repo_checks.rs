@@ -1,7 +1,8 @@
 //! Regression tests for repository configuration: the CI gates, the MSRV
 //! declaration and the dependency policy (rows LIB-QA-001..003), mutation
-//! testing with cargo-mutants (LIB-QA-007), and the git-ignore that keeps OMG
-//! documents out of the repository (LIB-TOOL-002).
+//! testing with cargo-mutants (LIB-QA-007), the `sacm-slice` skill's
+//! PR-reuse and full-run-dispatch rules (LIB-QA-011), and the git-ignore that
+//! keeps OMG documents out of the repository (LIB-TOOL-002).
 //!
 //! These guard against a gate being removed or drifting out of step with the
 //! manifest — the kind of change that passes review because nothing fails.
@@ -7860,4 +7861,459 @@ fn lib_qa_007_slice_skill_obtains_the_report_before_verification() {
         check_skill_mutants,
         ".claude/skills/sacm-slice/SKILL.md",
     );
+}
+
+// ---------------------------------------------------------------------------
+// LIB-QA-011: the sacm-slice skill reuses the slice's PR and dispatches the
+// full mutation run.
+// ---------------------------------------------------------------------------
+//
+// Three rules, each looked for only inside its own step:
+//
+// - step 7 (`## 7.`): reuse the slice's existing PR, found with
+//   `gh pr list --head`, and do not create another;
+// - step 7: when `mutants.yml` did not run on the head commit, dispatch it on
+//   the slice branch with `gh workflow run mutants.yml --ref`. The condition
+//   and the command must be in one block (a paragraph or a list item), so the
+//   dispatch stays tied to its condition;
+// - step 8.5 (item `5.` of `## 8.`): run `gh pr create` only if (or only
+//   when) the branch has no PR.
+//
+// Text is compared in lower case with whitespace collapsed, so a re-wrapped
+// line still matches. A step that cannot be found counts as missing all of
+// its rules. The check reports one fixed problem per missing rule, so a test
+// can assert exactly which rule was lost.
+
+const SLICE_SKILL: &str = ".claude/skills/sacm-slice/SKILL.md";
+
+/// The problem for each rule, in the order `check_slice_pr_rules` reports them.
+const PR_REUSE_PROBLEM: &str = "[skill-pr-reuse] SKILL.md's step 7 must reuse the slice's existing PR, found with `gh pr list --head <branch>`, and not create another";
+const FULL_RUN_DISPATCH_PROBLEM: &str = "[skill-full-run-dispatch] SKILL.md's step 7 must dispatch `mutants.yml` on the slice branch (`gh workflow run mutants.yml --ref <branch>`) when it did not run on the head commit";
+const PR_CREATE_PROBLEM: &str =
+    "[skill-pr-create] SKILL.md's step 8.5 must run `gh pr create` only when the branch has no PR";
+
+/// The lines of the section of `text` whose heading line starts with
+/// `heading` (such as `## 7.`), up to the next `## ` heading.
+fn markdown_section<'a>(text: &'a str, heading: &str) -> Option<Vec<&'a str>> {
+    let lines: Vec<&str> = text.lines().collect();
+    let start = lines.iter().position(|l| l.starts_with(heading))?;
+    let end = lines[start + 1..]
+        .iter()
+        .position(|l| l.starts_with("## "))
+        .map_or(lines.len(), |offset| start + 1 + offset);
+    Some(lines[start..end].to_vec())
+}
+
+/// Whether `line` starts a Markdown list item (`- `, `* `, `+ ` or `N. `).
+fn is_list_item(line: &str) -> bool {
+    let item = line.trim_start();
+    let digits = item.chars().take_while(char::is_ascii_digit).count();
+    ["- ", "* ", "+ "].iter().any(|m| item.starts_with(m))
+        || (digits > 0 && item[digits..].starts_with(". "))
+}
+
+/// Item `number` of the numbered list in `section`: its `N. ` line and every
+/// following line indented deeper (blank lines included).
+fn numbered_item<'a>(section: &[&'a str], number: usize) -> Option<Vec<&'a str>> {
+    let marker = format!("{number}. ");
+    let start = section
+        .iter()
+        .position(|l| l.trim_start().starts_with(&marker))?;
+    let depth = indent(section[start]);
+    let end = section[start + 1..]
+        .iter()
+        .position(|l| !l.trim().is_empty() && indent(l) <= depth)
+        .map_or(section.len(), |offset| start + 1 + offset);
+    Some(section[start..end].to_vec())
+}
+
+/// `lines` as one lower-case string with whitespace collapsed.
+fn flat_lines(lines: &[&str]) -> String {
+    lines
+        .iter()
+        .flat_map(|l| l.split_whitespace())
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
+}
+
+/// The blocks of `lines`, each flattened: a new block starts at every blank
+/// line and at every list item.
+fn markdown_blocks(lines: &[&str]) -> Vec<String> {
+    let mut blocks: Vec<Vec<&str>> = vec![Vec::new()];
+    for &line in lines {
+        if line.trim().is_empty() || is_list_item(line) {
+            blocks.push(Vec::new());
+        }
+        if !line.trim().is_empty() {
+            if let Some(block) = blocks.last_mut() {
+                block.push(line);
+            }
+        }
+    }
+    blocks
+        .iter()
+        .filter(|b| !b.is_empty())
+        .map(|b| flat_lines(b))
+        .collect()
+}
+
+/// LIB-QA-011: the problems with the `sacm-slice` skill's PR-reuse and
+/// full-run-dispatch rules; empty when all three hold.
+fn check_slice_pr_rules(text: &str) -> Vec<String> {
+    let step_7 = markdown_section(text, "## 7.");
+    let step_8_5 = markdown_section(text, "## 8.").and_then(|s| numbered_item(&s, 5));
+    let reuses_pr = step_7.as_ref().is_some_and(|step| {
+        let step = flat_lines(step);
+        step.contains("gh pr list --head") && step.contains("do not create another")
+    });
+    let dispatches_full_run = step_7.as_ref().is_some_and(|step| {
+        markdown_blocks(step).iter().any(|block| {
+            block.contains("gh workflow run mutants.yml --ref")
+                && block.contains("did not run on the head commit")
+        })
+    });
+    let creates_only_without_pr = step_8_5.as_ref().is_some_and(|item| {
+        let item = flat_lines(item);
+        item.contains("gh pr create")
+            && (item.contains("only if the branch has no pr")
+                || item.contains("only when the branch has no pr"))
+    });
+    [
+        (reuses_pr, PR_REUSE_PROBLEM),
+        (dispatches_full_run, FULL_RUN_DISPATCH_PROBLEM),
+        (creates_only_without_pr, PR_CREATE_PROBLEM),
+    ]
+    .into_iter()
+    .filter(|(holds, _)| !holds)
+    .map(|(_, problem)| problem.to_owned())
+    .collect()
+}
+
+/// A reference skill text with the three rules, shaped like the real
+/// `SKILL.md`: steps 6 to 9, the rules in steps 7 and 8.5, and item 8.5
+/// continued on an indented line.
+const PR_RULES_FIXTURE: &str = "## 6. Implementation
+
+Run **sacm-implementer**.
+
+## 7. Verification → `verified`
+
+**Before verifying, under `mode=pr`:** push the slice branch and open its PR as a **draft** (`gh pr create --draft`) unless `gh pr list --head <branch>` already lists one.
+- **If the branch already has its PR** (on re-verification), push to that PR; do not create another.
+- **Wait for the PR's CI.**
+- **If `mutants.yml` did not run on the head commit:** dispatch it on the slice branch (`gh workflow run mutants.yml --ref <branch>`) and wait for that run.
+
+Run **sacm-verifier** with the row IDs and the reports.
+
+## 8. Close the slice
+
+4. Commit.
+5. `mode=pr`: push the branch to the slice's PR, which step 7 opened.
+   Run `gh pr create` only if the branch has no PR.
+6. `mode=pr`: wait for the Copilot review.
+
+## 9. Checkpoints
+
+Stop and report.
+";
+
+// Lines (trimmed) of `PR_RULES_FIXTURE` that the controls edit.
+const FIXTURE_OPEN_DRAFT: &str = "**Before verifying, under `mode=pr`:** push the slice branch and open its PR as a **draft** (`gh pr create --draft`) unless `gh pr list --head <branch>` already lists one.";
+const FIXTURE_REUSE: &str = "- **If the branch already has its PR** (on re-verification), push to that PR; do not create another.";
+const FIXTURE_DISPATCH: &str = "- **If `mutants.yml` did not run on the head commit:** dispatch it on the slice branch (`gh workflow run mutants.yml --ref <branch>`) and wait for that run.";
+const FIXTURE_CREATE: &str = "Run `gh pr create` only if the branch has no PR.";
+const FIXTURE_STEP_6_BODY: &str = "Run **sacm-implementer**.";
+const FIXTURE_STEP_7: &str = "## 7. Verification → `verified`";
+const FIXTURE_VERIFIER: &str = "Run **sacm-verifier** with the row IDs and the reports.";
+const FIXTURE_STEP_8: &str = "## 8. Close the slice";
+const FIXTURE_ITEM_4: &str = "4. Commit.";
+const FIXTURE_ITEM_5: &str =
+    "5. `mode=pr`: push the branch to the slice's PR, which step 7 opened.";
+const FIXTURE_ITEM_6: &str = "6. `mode=pr`: wait for the Copilot review.";
+const FIXTURE_STEP_9_BODY: &str = "Stop and report.";
+
+/// `text` with the lines `moved` deleted (each found by its trimmed form) and
+/// inserted, in order and with the indentation given in `moved`, after the
+/// line `after`.
+fn move_lines_after(text: &str, moved: &[&str], after: &str) -> String {
+    let without = moved
+        .iter()
+        .fold(text.to_owned(), |t, m| delete_line(&t, m.trim()));
+    let mut lines = vec![after];
+    lines.extend_from_slice(moved);
+    replace_lines(&without, after, &lines)
+}
+
+/// Assert that every control gives exactly `expected` (in the check's order).
+fn assert_pr_rule_controls(controls: &[(&str, String, &[&str])]) {
+    assert!(
+        check_slice_pr_rules(PR_RULES_FIXTURE).is_empty(),
+        "LIB-QA-011: the reference text must pass before its controls mean anything: {:#?}",
+        check_slice_pr_rules(PR_RULES_FIXTURE)
+    );
+    for (name, text, expected) in controls {
+        assert_ne!(
+            text, PR_RULES_FIXTURE,
+            "LIB-QA-011: precondition: the control `{name}` changes the reference text"
+        );
+        assert_eq!(
+            check_slice_pr_rules(text),
+            *expected,
+            "LIB-QA-011: the control `{name}` must report exactly the problems for the rules it breaks; text:\n{text}"
+        );
+    }
+}
+
+#[test]
+fn lib_qa_011_the_real_slice_skill_keeps_the_pr_and_full_run_rules() {
+    let problems = check_slice_pr_rules(&read(SLICE_SKILL));
+    assert!(
+        problems.is_empty(),
+        "LIB-QA-011: {SLICE_SKILL} must keep its PR-reuse and full-run-dispatch rules: {problems:#?}"
+    );
+}
+
+/// `text` without every line that contains `phrase`; panics unless one does.
+fn without_lines_containing(text: &str, phrase: &str) -> String {
+    assert!(
+        text.lines().any(|l| l.contains(phrase)),
+        "LIB-QA-011: precondition: some line contains `{phrase}`"
+    );
+    joined(text.lines().filter(|l| !l.contains(phrase)))
+}
+
+#[test]
+fn lib_qa_011_a_rule_removed_from_the_real_skill_is_named_exactly() {
+    let real = read(SLICE_SKILL);
+    for (phrase, expected) in [
+        ("gh pr list --head", PR_REUSE_PROBLEM),
+        ("do not create another", PR_REUSE_PROBLEM),
+        ("gh workflow run mutants.yml", FULL_RUN_DISPATCH_PROBLEM),
+        ("the branch has no PR", PR_CREATE_PROBLEM),
+    ] {
+        let text = without_lines_containing(&real, phrase);
+        assert_eq!(
+            check_slice_pr_rules(&text),
+            [expected],
+            "LIB-QA-011: {SLICE_SKILL} without its lines containing `{phrase}` must report exactly that rule"
+        );
+    }
+}
+
+#[test]
+fn lib_qa_011_a_removed_rule_is_named_exactly() {
+    let s = PR_RULES_FIXTURE;
+    assert_pr_rule_controls(&[
+        // Step 7: reuse the slice's PR.
+        (
+            "the PR-reuse rule removed",
+            delete_line(&delete_line(s, FIXTURE_OPEN_DRAFT), FIXTURE_REUSE),
+            &[PR_REUSE_PROBLEM],
+        ),
+        (
+            "`gh pr list --head` removed",
+            replace_line(
+                s,
+                FIXTURE_OPEN_DRAFT,
+                "**Before verifying, under `mode=pr`:** push the slice branch and open its PR as a **draft** (`gh pr create --draft`).",
+            ),
+            &[PR_REUSE_PROBLEM],
+        ),
+        (
+            "the paragraph naming `gh pr list --head` removed",
+            delete_line(s, FIXTURE_OPEN_DRAFT),
+            &[PR_REUSE_PROBLEM],
+        ),
+        (
+            "\"do not create another\" removed",
+            delete_line(s, FIXTURE_REUSE),
+            &[PR_REUSE_PROBLEM],
+        ),
+        // Step 7: dispatch the full run.
+        (
+            "the full-run dispatch rule removed",
+            delete_line(s, FIXTURE_DISPATCH),
+            &[FULL_RUN_DISPATCH_PROBLEM],
+        ),
+        (
+            "the dispatch without `--ref`, so it runs on the default branch",
+            replace_line(
+                s,
+                FIXTURE_DISPATCH,
+                "- **If `mutants.yml` did not run on the head commit:** dispatch it (`gh workflow run mutants.yml`) and wait for that run.",
+            ),
+            &[FULL_RUN_DISPATCH_PROBLEM],
+        ),
+        (
+            "the dispatch without its condition",
+            replace_line(
+                s,
+                FIXTURE_DISPATCH,
+                "- Dispatch `mutants.yml` on the slice branch (`gh workflow run mutants.yml --ref <branch>`) and wait for that run.",
+            ),
+            &[FULL_RUN_DISPATCH_PROBLEM],
+        ),
+        (
+            "the condition and the dispatch split into separate items",
+            replace_lines(
+                s,
+                FIXTURE_DISPATCH,
+                &[
+                    "- **If `mutants.yml` did not run on the head commit:** say so in the report.",
+                    "- Dispatch it on the slice branch (`gh workflow run mutants.yml --ref <branch>`).",
+                ],
+            ),
+            &[FULL_RUN_DISPATCH_PROBLEM],
+        ),
+        // Step 8.5: create a PR only when there is none.
+        (
+            "the create-only-without-a-PR rule removed",
+            delete_line(s, FIXTURE_CREATE),
+            &[PR_CREATE_PROBLEM],
+        ),
+        (
+            "`gh pr create` made unconditional",
+            replace_line(s, FIXTURE_CREATE, "Run `gh pr create`."),
+            &[PR_CREATE_PROBLEM],
+        ),
+        (
+            "item 8.5 removed",
+            delete_line(&delete_line(s, FIXTURE_ITEM_5), FIXTURE_CREATE),
+            &[PR_CREATE_PROBLEM],
+        ),
+    ]);
+}
+
+#[test]
+fn lib_qa_011_a_missing_step_names_each_of_its_rules() {
+    let s = PR_RULES_FIXTURE;
+    assert_pr_rule_controls(&[
+        (
+            "step 7's heading renamed, so step 7 is gone",
+            replace_line(s, FIXTURE_STEP_7, "## Verification"),
+            &[PR_REUSE_PROBLEM, FULL_RUN_DISPATCH_PROBLEM],
+        ),
+        (
+            "step 8's heading renamed, so step 8.5 is gone",
+            replace_line(s, FIXTURE_STEP_8, "## Close the slice"),
+            &[PR_CREATE_PROBLEM],
+        ),
+        (
+            "every rule removed",
+            [
+                FIXTURE_OPEN_DRAFT,
+                FIXTURE_REUSE,
+                FIXTURE_DISPATCH,
+                FIXTURE_CREATE,
+            ]
+            .iter()
+            .fold(s.to_owned(), |t, line| delete_line(&t, line)),
+            &[
+                PR_REUSE_PROBLEM,
+                FULL_RUN_DISPATCH_PROBLEM,
+                PR_CREATE_PROBLEM,
+            ],
+        ),
+    ]);
+}
+
+#[test]
+fn lib_qa_011_a_rule_moved_to_another_step_is_named_exactly() {
+    let s = PR_RULES_FIXTURE;
+    let reuse = [FIXTURE_OPEN_DRAFT, FIXTURE_REUSE];
+    // Indented as a continuation line of the item it is moved into.
+    let create_in_item = format!("   {FIXTURE_CREATE}");
+    assert_pr_rule_controls(&[
+        (
+            "the PR-reuse rule moved to step 6",
+            move_lines_after(s, &reuse, FIXTURE_STEP_6_BODY),
+            &[PR_REUSE_PROBLEM],
+        ),
+        (
+            "the PR-reuse rule moved to step 8",
+            move_lines_after(s, &reuse, FIXTURE_STEP_8),
+            &[PR_REUSE_PROBLEM],
+        ),
+        (
+            "\"do not create another\" moved to step 8",
+            move_lines_after(s, &[FIXTURE_REUSE], FIXTURE_ITEM_6),
+            &[PR_REUSE_PROBLEM],
+        ),
+        (
+            "the full-run dispatch rule moved to step 6",
+            move_lines_after(s, &[FIXTURE_DISPATCH], FIXTURE_STEP_6_BODY),
+            &[FULL_RUN_DISPATCH_PROBLEM],
+        ),
+        (
+            "the full-run dispatch rule moved to step 8",
+            move_lines_after(s, &[FIXTURE_DISPATCH], FIXTURE_ITEM_6),
+            &[FULL_RUN_DISPATCH_PROBLEM],
+        ),
+        (
+            "the full-run dispatch rule moved to step 9",
+            move_lines_after(s, &[FIXTURE_DISPATCH], FIXTURE_STEP_9_BODY),
+            &[FULL_RUN_DISPATCH_PROBLEM],
+        ),
+        (
+            "the create-only-without-a-PR rule moved to step 7",
+            move_lines_after(s, &[FIXTURE_CREATE], FIXTURE_VERIFIER),
+            &[PR_CREATE_PROBLEM],
+        ),
+        (
+            "the create-only-without-a-PR rule moved to step 8.4",
+            move_lines_after(s, &[&create_in_item], FIXTURE_ITEM_4),
+            &[PR_CREATE_PROBLEM],
+        ),
+        (
+            "the create-only-without-a-PR rule moved to step 8.6",
+            move_lines_after(s, &[&create_in_item], FIXTURE_ITEM_6),
+            &[PR_CREATE_PROBLEM],
+        ),
+    ]);
+}
+
+#[test]
+fn lib_qa_011_the_check_accepts_equivalent_wording_and_wrapping() {
+    let s = PR_RULES_FIXTURE;
+    let controls = [
+        (
+            "\"only when\" instead of \"only if\"",
+            replace_line(
+                s,
+                FIXTURE_CREATE,
+                "Run `gh pr create` only when the branch has no PR.",
+            ),
+        ),
+        (
+            "the dispatch item wrapped over three lines",
+            replace_lines(
+                s,
+                FIXTURE_DISPATCH,
+                &[
+                    "- **If `mutants.yml` did not run on the head",
+                    "  commit:** dispatch it on the slice branch (`gh workflow run",
+                    "  mutants.yml --ref <branch>`) and wait for that run.",
+                ],
+            ),
+        ),
+        (
+            "item 8.5 on one line",
+            delete_line(
+                &replace_line(
+                    s,
+                    FIXTURE_ITEM_5,
+                    "5. `mode=pr`: push the branch to the slice's PR. Run `gh pr create` only if the branch has no PR.",
+                ),
+                FIXTURE_CREATE,
+            ),
+        ),
+    ];
+    for (name, text) in controls {
+        assert!(
+            check_slice_pr_rules(&text).is_empty(),
+            "LIB-QA-011: the equivalent text `{name}` must pass: {:#?}; text:\n{text}",
+            check_slice_pr_rules(&text)
+        );
+    }
 }

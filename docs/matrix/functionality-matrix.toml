@@ -727,8 +727,26 @@ title = "The write guard's launch path is tested"
 requirement = "Tests cover how the hook is launched, not only what it decides: the settings command falls through to a working interpreter when `python3` exists but fails (e.g. the Windows Store alias), and a NotebookEdit inside a role's scope is judged by its `notebook_path`."
 source = "Verification 0001 round 3 follow-up (surviving mutations P20, P15)"
 kind = "tooling"
-status = "planned"
+status = "implemented"
+code = [".claude/settings.json"]
+acceptance = [
+  "A hook test runs the exact command from `.claude/settings.json` with `bash -c`, on a PATH where `python3` exists but exits non-zero (a stub, as the Windows Store alias does) and a working `python` exists. The guard still runs and judges the call: an out-of-scope subagent write is denied with the guard's own output, and an in-scope one is allowed.",
+  "The same holds when `python3` is missing from PATH and `python` works, and when `python3` works (it is used, and `python` is never tried).",
+  "If no interpreter works, the command fails closed: it exits with code 2 and prints `agent write guard: no working Python interpreter` on stderr, so Claude Code blocks the write. A test runs the command with a PATH where both interpreters fail and checks the exit code and the message.",
+  "A NotebookEdit call is judged by its `notebook_path`. With no `file_path` key, a path inside the role's scope is allowed and a path outside it is denied, for at least one writer role and one read-only role.",
+  "No test is skipped. The tests run on the hook CI job (ubuntu) and on Windows with Git Bash.",
+]
 depends_on = ["LIB-TOOL-003"]
+tests = [
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_008_failing_python3_falls_through_to_python",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_008_missing_python3_falls_through_to_python",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_008_working_python3_is_used_and_python_never_tried",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_008_no_working_interpreter_fails_closed_with_exit_2",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_008_hook_command_judges_notebook_edit_by_notebook_path",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_008_notebook_path_inside_a_writer_scope_is_allowed",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_008_notebook_path_outside_a_writer_scope_is_denied",
+  ".claude/hooks/test_agent_write_guard.py::test_lib_tool_008_notebook_path_is_denied_everywhere_for_read_only_roles",
+]
 
 [[row]]
 id = "LIB-TOOL-009"
@@ -1028,8 +1046,22 @@ title = "Slice PR reuse and full-run dispatch are pinned"
 requirement = "A doc check fails if the sacm-slice skill loses any of three rules. In step 7: reuse the slice's existing PR (`gh pr list --head <branch>`) instead of creating another. In step 7: dispatch `mutants.yml` on the slice branch when it did not run on the head commit. In step 8.5: run `gh pr create` only when the branch has no PR."
 source = "PR #9 Copilot review follow-up (verifier observation O3)"
 kind = "quality"
-status = "planned"
+status = "implemented"
+code = [".claude/skills/sacm-slice/SKILL.md"]
+acceptance = [
+  "A test in `xtask/tests/repo_checks.rs` reads `.claude/skills/sacm-slice/SKILL.md` and passes only when all three rules are present: step 7 reuses the slice's existing PR (`gh pr list --head`) instead of creating another; step 7 dispatches `mutants.yml` on the slice branch (`gh workflow run mutants.yml --ref`) when it did not run on the head commit; step 8.5 runs `gh pr create` only when the branch has no PR.",
+  "Each rule is matched within its own step, so a rule moved to another step, or deleted, fails the test. The check is a function over the skill text, tested with a control text for each rule removed and for each rule moved, each giving exactly the problem that names the missing rule.",
+  "The real skill passes.",
+]
 depends_on = ["LIB-QA-007"]
+tests = [
+  "xtask/tests/repo_checks.rs::lib_qa_011_the_real_slice_skill_keeps_the_pr_and_full_run_rules",
+  "xtask/tests/repo_checks.rs::lib_qa_011_a_rule_removed_from_the_real_skill_is_named_exactly",
+  "xtask/tests/repo_checks.rs::lib_qa_011_a_removed_rule_is_named_exactly",
+  "xtask/tests/repo_checks.rs::lib_qa_011_a_missing_step_names_each_of_its_rules",
+  "xtask/tests/repo_checks.rs::lib_qa_011_a_rule_moved_to_another_step_is_named_exactly",
+  "xtask/tests/repo_checks.rs::lib_qa_011_the_check_accepts_equivalent_wording_and_wrapping",
+]
 
 [[row]]
 id = "LIB-QA-012"
