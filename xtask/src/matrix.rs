@@ -55,7 +55,8 @@ pub const MATRIX_PATH: &str = "docs/matrix/functionality-matrix.toml";
 /// The Markdown rendering of the matrix, relative to the repository root.
 pub const RENDERED_PATH: &str = "docs/matrix/functionality-matrix.md";
 
-/// Directories scanned for traced test functions (orphan detection).
+/// Directories whose Rust and Python files are scanned for traced test
+/// functions (see [`is_scanned_test_file`]).
 const TEST_SCAN_ROOTS: &[&str] = &["crates", "xtask", ".claude/hooks"];
 
 // ---------------------------------------------------------------------------
@@ -282,15 +283,25 @@ impl Kind {
 
 /// The repository as the checks see it. Paths are relative to the repository
 /// root and use `/` separators.
+///
+/// The scanned test files are the files under `crates/`, `xtask/` or
+/// `.claude/hooks/` whose extension is `.rs` or `.py`, in any case, and that
+/// are not under build output. Build output is a directory named `target`
+/// with a `Cargo.toml` directly beside it; [`check`] asks [`Repo::exists`]
+/// for that `Cargo.toml`. Any other `target` directory, such as a module
+/// directory `src/target/`, is not build output. [`check`] holds a test
+/// citation of any other file to be a row problem, so every cited test is
+/// one that [`Repo::traced_functions`] or [`Repo::ignored_functions`] can
+/// list.
 pub trait Repo {
     /// Whether a file or directory exists at `rel`.
     fn exists(&self, rel: &str) -> bool;
     /// The text of the file at `rel`, or `None` if it cannot be read.
     fn read(&self, rel: &str) -> Option<String>;
-    /// Every test function in the scanned test roots whose name traces to a
+    /// Every test function in the scanned test files whose name traces to a
     /// row and that runs (see [`traced_tests`]), as `(file, name)` pairs.
     fn traced_functions(&self) -> Vec<(String, String)>;
-    /// Every test function in the scanned test roots whose name traces to a
+    /// Every test function in the scanned test files whose name traces to a
     /// row and that is ignored or skipped (see [`ignored_traced_tests`]), as
     /// `(file, name)` pairs. Such a test is never evidence: [`check`] reports
     /// each one.
@@ -298,8 +309,14 @@ pub trait Repo {
 }
 
 /// [`Repo`] over a checkout on disk. Traced tests, running or ignored, are
-/// collected from the Rust and Python sources under `crates/`, `xtask/` and
-/// `.claude/hooks/`.
+/// collected from the scanned test files (see [`Repo`]): the Rust and Python
+/// sources under `crates/`, `xtask/` and `.claude/hooks/`.
+///
+/// Build output is skipped: a directory named `target` is not entered when a
+/// `Cargo.toml` sits directly beside it, as with the workspace's `target/`
+/// or a package's. Any other `target` directory is scanned, so a test in a
+/// module directory such as `crates/x/src/target/` or
+/// `crates/x/tests/target/` is found.
 #[derive(Debug)]
 pub struct FsRepo {
     root: PathBuf,
@@ -314,47 +331,71 @@ impl FsRepo {
         }
     }
 
-    /// `(file, name)` for every name `find` returns for a source file under
-    /// the scan roots, read as Python when its extension is `.py`.
+    /// `(file, name)` for every name `find` returns for a scanned test file
+    /// (see [`is_scanned_test_file`]), read as Python when its extension is
+    /// `.py`.
     fn scan(&self, find: fn(&str, bool) -> Vec<String>) -> Vec<(String, String)> {
         let mut files = Vec::new();
         for scan_root in TEST_SCAN_ROOTS {
-            walk_sources(&self.root.join(scan_root), &mut files);
+            self.walk(scan_root, &mut files);
         }
         let mut found = Vec::new();
-        for file in files {
+        for (file, rel) in files {
             let Ok(text) = fs::read_to_string(&file) else {
                 continue;
             };
-            let rel = file
-                .strip_prefix(&self.root)
-                .unwrap_or(&file)
-                .to_string_lossy()
-                .replace('\\', "/");
             for name in find(&text, has_extension(&file, "py")) {
                 found.push((rel.clone(), name));
             }
         }
         found
     }
-}
 
-/// Rust and Python source files under `dir`, skipping build output.
-fn walk_sources(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            if path.file_name().is_some_and(|n| n == "target") {
-                continue;
+    /// The scanned test files under the repository-relative directory `dir`,
+    /// each as its path on disk and its path relative to the root. Build
+    /// output (see [`is_build_output`]) is not entered.
+    fn walk(&self, dir: &str, out: &mut Vec<(PathBuf, String)>) {
+        let Ok(entries) = fs::read_dir(self.root.join(dir)) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let rel = format!("{dir}/{}", entry.file_name().to_string_lossy());
+            let path = entry.path();
+            if path.is_dir() {
+                if !is_build_output(&rel, self) {
+                    self.walk(&rel, out);
+                }
+            } else if is_scanned_test_file(&rel, self) {
+                out.push((path, rel));
             }
-            walk_sources(&path, out);
-        } else if has_extension(&path, "rs") || has_extension(&path, "py") {
-            out.push(path);
         }
     }
+}
+
+/// Whether the repository-relative file `rel` is a scanned test file: it is
+/// under one of [`TEST_SCAN_ROOTS`], its extension is `.rs` or `.py` in any
+/// case, and no directory above it is build output (see
+/// [`is_build_output`]). The walk of [`FsRepo`] lists exactly these files,
+/// and a `path::function` citation of any other file is a row problem.
+fn is_scanned_test_file(rel: &str, repo: &dyn Repo) -> bool {
+    let path = Path::new(rel);
+    TEST_SCAN_ROOTS
+        .iter()
+        .any(|root| rel.strip_prefix(root).is_some_and(|r| r.starts_with('/')))
+        && (has_extension(path, "rs") || has_extension(path, "py"))
+        && !rel
+            .match_indices('/')
+            .any(|(slash, _)| is_build_output(&rel[..slash], repo))
+}
+
+/// Whether the repository-relative directory `dir` is build output: it is
+/// named `target` and a `Cargo.toml` sits directly beside it, as with the
+/// workspace's own `target/` or a package's. Any other `target` directory,
+/// such as a `src/target/` module directory, is not.
+fn is_build_output(dir: &str, repo: &dyn Repo) -> bool {
+    let name_start = dir.rfind('/').map_or(0, |slash| slash + 1);
+    let (parent, name) = dir.split_at(name_start);
+    name == "target" && repo.exists(&format!("{parent}Cargo.toml"))
 }
 
 fn has_extension(path: &Path, ext: &str) -> bool {
@@ -452,6 +493,9 @@ impl Repo for FsRepo {
 ///   is read as two lines. A tab in a Python indent counts as one column.
 /// - A Rust attribute after other code on its line is not read, and a
 ///   `cfg_attr` nested in a `cfg_attr` does not ignore.
+/// - A prelude-qualified `ignore` (`#[::core::prelude::v1::ignore]`,
+///   `#[std::prelude::v1::ignore]`) does not ignore, so its test counts as
+///   running (LIB-TOOL-016).
 ///
 /// ```
 /// use xtask::matrix::traced_tests;
@@ -1036,8 +1080,17 @@ fn load_error(text: &str, error: &toml::de::Error) -> String {
 /// - ``<file>: traced test `<name>` is ignored or skipped, so it is not evidence``
 /// - ``<file>: traced test `<name>` is not cited by any matrix row``
 ///
-/// A row that cites an ignored or skipped test has no problem for it. Values are quoted as they are, control
-/// characters included; [`cmd_check`] escapes them.
+/// A `path::function` test citation must name a scanned test file (see
+/// [`Repo`]); otherwise the row has the problem
+/// `test file <path> is outside the scanned test files`, after the check of
+/// the test's name and instead of the citation's other checks, so the file
+/// is not looked up. Every cited test is therefore in a scanned file, and a
+/// row that cites an ignored or skipped test has no problem for it: the
+/// scan problem above reports it. A `doctest:path` citation may name any
+/// file, since doctests also live in READMEs and other docs.
+///
+/// Values are quoted as they are, control characters included;
+/// [`cmd_check`] escapes them.
 #[must_use]
 pub fn check(matrix: &Matrix, repo: &dyn Repo) -> Vec<String> {
     let mut errors = Vec::new();
@@ -1408,9 +1461,11 @@ fn check_path(path: &str) -> Result<(), String> {
 }
 
 /// Cited paths are inside the repository (see [`check_path`]); cited code
-/// paths exist; cited tests are named for this row, exist, and are test
-/// functions (see [`traced_tests`]). A rejected path is reported and its
-/// citation's other checks are skipped, except the test name check.
+/// paths exist; cited tests are named for this row, are in a scanned test
+/// file (see [`is_scanned_test_file`]), exist, and are test functions (see
+/// [`traced_tests`]). A rejected path, or a test file outside the scan, is
+/// reported and its citation's other checks are skipped, except the test
+/// name check.
 fn check_citations(row: &Row, index: &Index<'_>) -> Vec<String> {
     let mut out = Vec::new();
     for path in &row.code {
@@ -1450,6 +1505,14 @@ fn check_citations(row: &Row, index: &Index<'_>) -> Vec<String> {
         }
         if let Err(problem) = check_path(path) {
             out.push(problem);
+            continue;
+        }
+        // Only a scanned test file gets the scan problems of
+        // `check_scanned_tests`, so a cited test must be in one.
+        if !is_scanned_test_file(path, index.repo) {
+            out.push(format!(
+                "test file {path} is outside the scanned test files"
+            ));
             continue;
         }
         let python = has_extension(Path::new(path), "py");

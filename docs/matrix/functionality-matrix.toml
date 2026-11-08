@@ -668,6 +668,7 @@ tests = [
   "xtask/tests/scanner.rs::lib_tool_007_scan_problems_come_together_sorted_by_file_then_name",
   "xtask/tests/scanner.rs::lib_tool_007_fs_repo_reports_traced_tests_under_src_directories",
   "xtask/tests/scanner.rs::lib_tool_007_fs_repo_near_miss_directories_are_not_src",
+  "xtask/tests/scanner.rs::lib_tool_007_a_traced_test_in_a_target_module_under_src_is_one_problem",
   "xtask/tests/scanner.rs::lib_tool_007_the_real_repository_has_no_traced_test_under_src",
 ]
 
@@ -782,6 +783,8 @@ tests = [
   "xtask/tests/scanner.rs::lib_tool_011_a_skip_decorator_on_a_class_skips_its_test_methods",
   "xtask/tests/scanner.rs::lib_tool_011_a_skipped_class_ends_at_the_next_line_at_its_indent_or_less",
   "xtask/tests/scanner.rs::lib_tool_011_comment_and_string_lines_do_not_end_a_skipped_class",
+  "xtask/tests/scanner.rs::lib_tool_011_a_class_nested_in_a_skipped_class_keeps_the_outer_skip",
+  "xtask/tests/scanner.rs::lib_tool_011_a_class_nested_in_a_class_that_is_not_skipped_starts_no_skip",
   "xtask/tests/scanner.rs::lib_tool_011_a_skip_or_ignore_spanning_lines_never_counts_as_running",
   "xtask/tests/scanner.rs::lib_tool_011_running_and_ignored_traced_tests_are_listed_apart_in_source_order",
   "xtask/tests/scanner.rs::lib_tool_011_an_ignored_or_skipped_traced_test_is_one_problem_cited_or_not",
@@ -789,6 +792,12 @@ tests = [
   "xtask/tests/scanner.rs::lib_tool_011_comment_and_literal_text_defines_no_cited_test",
   "xtask/tests/scanner.rs::lib_tool_011_fs_repo_lists_ignored_and_skipped_tests_in_every_scan_root",
   "xtask/tests/scanner.rs::lib_tool_011_cmd_check_rejects_ignored_and_skipped_traced_tests_on_disk",
+  "xtask/tests/scanner.rs::lib_tool_011_an_ignored_test_in_a_target_directory_without_a_cargo_toml_is_one_problem",
+  "xtask/tests/scanner.rs::lib_tool_011_build_output_beside_a_cargo_toml_is_not_scanned",
+  "xtask/tests/scanner.rs::lib_tool_011_a_target_directory_without_a_cargo_toml_beside_it_is_scanned",
+  "xtask/tests/scanner.rs::lib_tool_011_a_citation_of_a_file_outside_the_scanned_test_files_is_a_row_problem",
+  "xtask/tests/scanner.rs::lib_tool_011_a_citation_of_a_scanned_test_file_is_no_problem",
+  "xtask/tests/scanner.rs::lib_tool_011_a_missing_file_outside_the_scanned_test_files_is_only_the_scan_scope_problem",
   "xtask/tests/scanner.rs::lib_tool_011_the_real_repository_has_no_ignored_or_skipped_traced_test",
   "xtask/tests/scanner.rs::lib_tool_011_the_scanner_finds_exactly_the_tests_of_its_own_test_files",
 ]
@@ -925,6 +934,17 @@ source = "Slice 0005: mutants.yml run 42420891449, a TIMEOUT for `is_identifier_
 kind = "quality"
 status = "planned"
 depends_on = ["LIB-QA-007"]
+
+[[row]]
+id = "LIB-TOOL-016"
+area = "TOOL"
+milestone = "M0"
+title = "Test scanner recognises more skip and compile-out forms"
+requirement = "The traced-test scanner treats these as not running: Rust tests compiled out by `#[cfg(any())]` or `#[cfg(FALSE)]`-style predicates; a prelude-qualified `#[::core::prelude::v1::ignore]` or `#[std::prelude::v1::ignore]`; Python tests under a module-level `pytestmark = pytest.mark.skip...` or `__unittest_skip__`; and `@pytest.mark.xfail`. It also recognises decorators written with whitespace after `@` (`@ unittest.skip`), and attributes written with whitespace after `#` (`# [test]`)."
+source = "Verification 0006 round 1 (Low and Info findings)"
+kind = "tooling"
+status = "planned"
+depends_on = ["LIB-TOOL-011"]
 
 [[row]]
 id = "LIB-TOOL-012"

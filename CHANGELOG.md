@@ -39,5 +39,12 @@ change bumps the minor version and is listed under **Breaking**.
     a Python skip decorator on the test or on its class) is not evidence. The gate
     reports it.
   - The gate also reports a traced test under a `src` directory.
+  - Only build output is skipped: a `target` directory with a `Cargo.toml` directly
+    beside it. Any other `target` directory, such as a `src/target/` module, is
+    scanned.
+  - A `path::function` test citation must name a scanned test file: a `.rs` or `.py`
+    file under `crates/`, `xtask/` or `.claude/hooks/`, outside build output. Any other
+    file is the row problem `test file <path> is outside the scanned test files`.
+    `doctest:` citations may still name any file.
   - API: `xtask::matrix::ignored_traced_tests`, and the required trait method
     `Repo::ignored_functions`.

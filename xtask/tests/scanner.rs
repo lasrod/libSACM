@@ -10,6 +10,11 @@
 //!   reported once: `<file>: traced test `<name>` is under a `src` directory;
 //!   traced tests belong in test files`.
 //!
+//! - Fix round 1 (D9, D10): a `target` directory is build output only when a
+//!   `Cargo.toml` sits directly beside it, and a test citation of a file the
+//!   scan does not cover is the row problem `test file <path> is outside the
+//!   scanned test files`, so every cited test gets the problems above.
+//!
 //! The scanner is driven through `traced_tests` and `ignored_traced_tests`,
 //! through `check` with in-memory repositories, through `FsRepo` and
 //! `cmd_check` on temporary trees, and over the real repository.
@@ -46,7 +51,8 @@ use std::time::Duration;
 
 use common::{GATE_TOML, TempTree, consistent_tree};
 use xtask::matrix::{
-    FsRepo, RENDERED_PATH, Repo, check, cmd_check, ignored_traced_tests, load, render, traced_tests,
+    FsRepo, MATRIX_PATH, RENDERED_PATH, Repo, check, cmd_check, ignored_traced_tests, load, render,
+    traced_tests,
 };
 use xtask::repo_root;
 
@@ -286,6 +292,12 @@ fn ignored(file: &str, name: &str) -> String {
 
 fn orphan(file: &str, name: &str) -> String {
     format!("{file}: traced test `{name}` is not cited by any matrix row")
+}
+
+/// The row problem for a test citation of a file the scan does not cover
+/// (D10).
+fn outside_scan(row: &str, file: &str) -> String {
+    format!("{row}: test file {file} is outside the scanned test files")
 }
 
 // ---------------------------------------------------------------------------
@@ -1235,6 +1247,53 @@ fn lib_tool_011_comment_and_string_lines_do_not_end_a_skipped_class() {
     );
 }
 
+/// A class nested in a skipped class, skipped or not, does not move the end
+/// of the outer skip to its own indent: the outer class's later tests stay
+/// skipped (verification 0006, F2 and R6).
+#[test]
+fn lib_tool_011_a_class_nested_in_a_skipped_class_keeps_the_outer_skip() {
+    for (text, why) in [
+        (
+            "@unittest.skip(\"x\")\nclass Outer(unittest.TestCase):\n    @unittest.skip(\"y\")\n    class Inner(unittest.TestCase):\n        def test_lib_tool_011_a(self):\n            pass\n    def test_lib_tool_011_b(self):\n        pass\ndef test_lib_tool_011_c():\n    pass\n",
+            "a skipped class nested in a skipped class keeps the outer class's indent as the end \
+             of the skip",
+        ),
+        (
+            "@unittest.skip(\"x\")\nclass Outer(unittest.TestCase):\n    class Inner(unittest.TestCase):\n        def test_lib_tool_011_a(self):\n            pass\n    def test_lib_tool_011_b(self):\n        pass\ndef test_lib_tool_011_c():\n    pass\n",
+            "an undecorated class nested in a skipped class neither ends nor moves the skip",
+        ),
+    ] {
+        assert_python(
+            text,
+            &["test_lib_tool_011_c"],
+            &["test_lib_tool_011_a", "test_lib_tool_011_b"],
+            why,
+        );
+    }
+}
+
+/// The control for `lib_tool_011_a_class_nested_in_a_skipped_class_keeps_the_outer_skip`:
+/// a nested class line, at a deeper indent, starts no skip of its own.
+#[test]
+fn lib_tool_011_a_class_nested_in_a_class_that_is_not_skipped_starts_no_skip() {
+    assert_python(
+        "class Outer(unittest.TestCase):\n    class Inner(unittest.TestCase):\n        def test_lib_tool_011_a(self):\n            pass\n    def test_lib_tool_011_b(self):\n        pass\ndef test_lib_tool_011_c():\n    pass\n",
+        &[
+            "test_lib_tool_011_a",
+            "test_lib_tool_011_b",
+            "test_lib_tool_011_c",
+        ],
+        &[],
+        "a nested class without a skip decorator, in a class without one, skips nothing",
+    );
+    assert_python(
+        "class Outer(unittest.TestCase):\n    @unittest.skip(\"x\")\n    def test_lib_tool_011_a(self):\n        pass\n    class Inner(unittest.TestCase):\n        def test_lib_tool_011_b(self):\n            pass\n    def test_lib_tool_011_c(self):\n        pass\n",
+        &["test_lib_tool_011_b", "test_lib_tool_011_c"],
+        &["test_lib_tool_011_a"],
+        "a skip decorator on a method does not carry to a nested class after it",
+    );
+}
+
 /// A skip decorator or an ignore attribute that spans lines, as formatters
 /// write long ones, never leaves its test counted as running. Whether it is
 /// reported as ignored is left open (see the slice report). The first case
@@ -1367,15 +1426,30 @@ fn lib_tool_011_a_citation_of_an_ignored_test_gives_no_row_problem() {
 #[test]
 fn lib_tool_011_comment_and_literal_text_defines_no_cited_test() {
     for (file, text) in [
-        ("t.rs", "/*\nfn lib_tool_011_x() {}\n*/\n"),
-        ("t.rs", "// fn lib_tool_011_x() {}\n"),
-        ("t.rs", "/// fn lib_tool_011_x() {}\n"),
-        ("t.rs", "let s = \"\nfn lib_tool_011_x() {}\n\";\n"),
-        ("t.rs", "let s = r#\"\nfn lib_tool_011_x() {}\n\"#;\n"),
-        ("t.rs", "const S: &str = \"fn lib_tool_011_x() {}\";\n"),
-        ("h.py", "\"\"\"\ndef test_lib_tool_011_x(self):\n\"\"\"\n"),
-        ("h.py", "# def test_lib_tool_011_x(self):\n"),
-        ("h.py", "x = 'def test_lib_tool_011_x(self):'\n"),
+        ("crates/demo/tests/t.rs", "/*\nfn lib_tool_011_x() {}\n*/\n"),
+        ("crates/demo/tests/t.rs", "// fn lib_tool_011_x() {}\n"),
+        ("crates/demo/tests/t.rs", "/// fn lib_tool_011_x() {}\n"),
+        (
+            "crates/demo/tests/t.rs",
+            "let s = \"\nfn lib_tool_011_x() {}\n\";\n",
+        ),
+        (
+            "crates/demo/tests/t.rs",
+            "let s = r#\"\nfn lib_tool_011_x() {}\n\"#;\n",
+        ),
+        (
+            "crates/demo/tests/t.rs",
+            "const S: &str = \"fn lib_tool_011_x() {}\";\n",
+        ),
+        (
+            ".claude/hooks/h.py",
+            "\"\"\"\ndef test_lib_tool_011_x(self):\n\"\"\"\n",
+        ),
+        (".claude/hooks/h.py", "# def test_lib_tool_011_x(self):\n"),
+        (
+            ".claude/hooks/h.py",
+            "x = 'def test_lib_tool_011_x(self):'\n",
+        ),
     ] {
         let name = if is_python(file) {
             "test_lib_tool_011_x"
@@ -1403,11 +1477,11 @@ fn lib_tool_011_comment_and_literal_text_defines_no_cited_test() {
         assert_eq!(
             problems(
                 ROW_011,
-                &citing(ROW_011, &["t.rs::lib_tool_011_x"]),
-                &[("t.rs", text)]
+                &citing(ROW_011, &["crates/demo/tests/t.rs::lib_tool_011_x"]),
+                &[("crates/demo/tests/t.rs", text)]
             ),
             [format!(
-                "{ROW_011}: function `lib_tool_011_x` in t.rs is not a test: it has no \
+                "{ROW_011}: function `lib_tool_011_x` in crates/demo/tests/t.rs is not a test: it has no \
                  `#[test]`-style attribute"
             )],
             "LIB-TOOL-011: an attribute in a comment or a literal marks nothing; in {text:?}"
@@ -1440,7 +1514,6 @@ fn lib_tool_007_a_traced_test_under_src_is_one_problem_cited_ignored_or_not() {
         "crates/sacm/src/lib.rs",
         "crates/x/src/a/b.rs",
         "xtask/src/matrix.rs",
-        "src/lib.rs",
         "crates/x/src/tests/t.rs",
         "crates/x/src/test_inline.py",
         ".claude/hooks/src/test_inline.py",
@@ -1457,6 +1530,30 @@ fn lib_tool_007_a_traced_test_under_src_is_one_problem_cited_ignored_or_not() {
                 );
             }
         }
+    }
+    // A leading `src` component counts too. `src/lib.rs` is outside the
+    // scanned test files (D10), so citing it is also a row problem; the
+    // in-memory repository lists its test all the same.
+    let file = "src/lib.rs";
+    for text in [INLINE_RS, INLINE_IGNORED_RS] {
+        assert_eq!(
+            problems(ROW_007, &uncited(ROW_007), &[(file, text)]),
+            [under_src(file, "lib_tool_007_inline")],
+            "LIB-TOOL-007: a leading `src` component counts; in {text:?}"
+        );
+        assert_eq!(
+            problems(
+                ROW_007,
+                &citing(ROW_007, &["src/lib.rs::lib_tool_007_inline"]),
+                &[(file, text)]
+            ),
+            [
+                outside_scan(ROW_007, file),
+                under_src(file, "lib_tool_007_inline")
+            ],
+            "LIB-TOOL-007: a cited test under a leading `src` gives the scan-scope row problem \
+             and the one `src` problem; in {text:?}"
+        );
     }
 }
 
@@ -1692,16 +1789,20 @@ fn lib_tool_011_fs_repo_lists_ignored_and_skipped_tests_in_every_scan_root() {
         "xtask/tests/flaky.rs",
         "#[test]\n#[cfg_attr(miri, ignore)]\nfn lib_tool_011_flaky() {}\n",
     )
-    // Build output, non-source files and other roots are not scanned.
+    // Build output (a `target` directory beside a `Cargo.toml`, D9),
+    // non-source files and other roots are not scanned.
+    .write("crates/demo/Cargo.toml", "[package]\n")
     .write("crates/demo/target/debug/x.rs", ignored_rust)
     .write("crates/demo/tests/x.txt", ignored_rust)
     .write("docs/x.rs", ignored_rust)
-    .write(".claude/hooks/target/test_x.py", skipped_python)
-    .write(".claude/agents/test_x.py", skipped_python);
+    .write(".claude/agents/test_x.py", skipped_python)
+    // No `Cargo.toml` sits beside this `target`, so it is scanned (D9).
+    .write(".claude/hooks/target/test_x.py", skipped_python);
     let repo = FsRepo::new(tree.root());
     assert_eq!(
         sorted(repo.ignored_functions()),
         pairs(&[
+            (".claude/hooks/target/test_x.py", "test_lib_tool_011_hidden"),
             (".claude/hooks/test_skipped.py", "test_lib_tool_011_a"),
             (".claude/hooks/test_skipped.py", "test_lib_tool_011_b"),
             ("crates/demo/tests/slow.rs", "lib_tool_011_slow"),
@@ -1742,6 +1843,393 @@ fn lib_tool_011_cmd_check_rejects_ignored_and_skipped_traced_tests_on_disk() {
     assert!(
         cmd_check(tree.root(), &mut io::sink()).is_err(),
         "LIB-TOOL-011: `matrix check` fails on an ignored or skipped traced test"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Fix round 1: build output (D9) and the scanned test files (D10), on disk
+// ---------------------------------------------------------------------------
+
+/// The `Cargo.toml` of the workspace root.
+const ROOT_CARGO_TOML: &str = "Cargo.toml";
+/// The `Cargo.toml` of the package `crates/demo`.
+const DEMO_CARGO_TOML: &str = "crates/demo/Cargo.toml";
+
+/// A tree whose matrix is `toml`, with its rendered page in sync, and an
+/// empty `Cargo.toml` at each path in `cargo_tomls`.
+fn matrix_tree(test: &str, toml: &str, cargo_tomls: &[&str]) -> TempTree {
+    let matrix = load(toml).expect("LIB-TOOL-011: the fixture matrix parses");
+    let tree = TempTree::new(test);
+    tree.write(MATRIX_PATH, toml)
+        .write(RENDERED_PATH, &render(&matrix));
+    for cargo_toml in cargo_tomls {
+        tree.write(cargo_toml, "[package]\n");
+    }
+    tree
+}
+
+/// `check` through `FsRepo` on `tree`, whose matrix is `toml`, gives exactly
+/// `expected`, and `cmd_check` fails exactly when that list is not empty.
+#[track_caller]
+fn assert_on_disk(row: &str, tree: &TempTree, toml: &str, expected: &[String], why: &str) {
+    let matrix = load(toml).unwrap_or_else(|e| panic!("{row}: the fixture matrix parses: {e}"));
+    assert_eq!(
+        check(&matrix, &FsRepo::new(tree.root())),
+        expected,
+        "{row}: {why}; matrix {toml:?}"
+    );
+    let result = cmd_check(tree.root(), &mut io::sink());
+    assert_eq!(
+        result.is_ok(),
+        expected.is_empty(),
+        "{row}: `matrix check` passes exactly when there is no problem; {why}; got {result:?}"
+    );
+}
+
+/// The uncited and the citing matrix for the test `file::name` of `row`.
+fn uncited_and_citing(row: &str, file: &str, name: &str) -> [String; 2] {
+    let citation = format!("{file}::{name}");
+    [uncited(row), citing(row, &[citation.as_str()])]
+}
+
+/// R3, cases 1 and 2: a `target` module directory under `src` is compiled,
+/// not build output, so its traced test is scanned and gets the `src`
+/// problem, running or ignored, cited or not, and no row problem.
+#[test]
+fn lib_tool_007_a_traced_test_in_a_target_module_under_src_is_one_problem() {
+    let file = "crates/demo/src/target/mod.rs";
+    let name = "lib_tool_007_in_target";
+    for text in [
+        "#[test]\nfn lib_tool_007_in_target() {}\n",
+        "#[test]\n#[ignore]\nfn lib_tool_007_in_target() {}\n",
+    ] {
+        for toml in uncited_and_citing(ROW_007, file, name) {
+            // `crates/demo/target` would be build output; `crates/demo/src/target` is not.
+            let tree = matrix_tree(
+                "scanner-src-target",
+                &toml,
+                &[ROOT_CARGO_TOML, DEMO_CARGO_TOML],
+            );
+            tree.write(file, text);
+            assert_on_disk(
+                ROW_007,
+                &tree,
+                &toml,
+                &[under_src(file, name)],
+                &format!(
+                    "a traced test in {file} is scanned (no `Cargo.toml` sits beside that \
+                     `target`) and is exactly the `src` problem; in {text:?}"
+                ),
+            );
+        }
+    }
+}
+
+/// R3, cases 3 and 4: an ignored or skipped traced test in a `target`
+/// directory that no `Cargo.toml` sits beside is scanned and reported once,
+/// cited or not.
+#[test]
+fn lib_tool_011_an_ignored_test_in_a_target_directory_without_a_cargo_toml_is_one_problem() {
+    for (file, name, text) in [
+        (
+            "crates/demo/tests/target/mod.rs",
+            "lib_tool_011_in_target",
+            "#[test]\n#[ignore]\nfn lib_tool_011_in_target() {}\n",
+        ),
+        (
+            "crates/demo/tests/a/target/mod.rs",
+            "lib_tool_011_in_target",
+            "#[test]\n#[ignore]\nfn lib_tool_011_in_target() {}\n",
+        ),
+        (
+            ".claude/hooks/target/test_x.py",
+            "test_lib_tool_011_in_target",
+            "@unittest.skip(\"x\")\ndef test_lib_tool_011_in_target(self):\n    pass\n",
+        ),
+    ] {
+        for toml in uncited_and_citing(ROW_011, file, name) {
+            let tree = matrix_tree(
+                "scanner-ignored-target",
+                &toml,
+                &[ROOT_CARGO_TOML, DEMO_CARGO_TOML],
+            );
+            tree.write(file, text);
+            assert_on_disk(
+                ROW_011,
+                &tree,
+                &toml,
+                &[ignored(file, name)],
+                &format!(
+                    "{file} is scanned (no `Cargo.toml` sits beside that `target`) and its \
+                     ignored or skipped test is exactly one problem"
+                ),
+            );
+        }
+    }
+}
+
+/// Build output in every place it occurs, holding running, ignored and
+/// skipped traced tests.
+const BUILD_OUTPUT: [(&str, &str); 6] = [
+    (
+        "target/debug/x.rs",
+        "#[test]\n#[ignore]\nfn lib_tool_011_built() {}\n",
+    ),
+    (
+        "crates/demo/target/x.rs",
+        "#[test]\n#[ignore]\nfn lib_tool_011_built() {}\n",
+    ),
+    (
+        "crates/demo/target/debug/deps/x.rs",
+        "#[test]\nfn lib_tool_011_built() {}\n",
+    ),
+    (
+        "crates/demo/target/test_x.py",
+        "@unittest.skip(\"x\")\ndef test_lib_tool_011_built(self):\n    pass\n",
+    ),
+    (
+        "xtask/target/x.rs",
+        "#[test]\n#[ignore]\nfn lib_tool_011_built() {}\n",
+    ),
+    (
+        ".claude/hooks/target/test_x.py",
+        "@unittest.skip(\"x\")\ndef test_lib_tool_011_built(self):\n    pass\n",
+    ),
+];
+
+/// R3, case 5: a `target` directory beside a `Cargo.toml` is build output
+/// and is not scanned, at the root and in every scan root.
+#[test]
+fn lib_tool_011_build_output_beside_a_cargo_toml_is_not_scanned() {
+    let tree = consistent_tree("scanner-build-output");
+    for cargo_toml in [
+        ROOT_CARGO_TOML,
+        DEMO_CARGO_TOML,
+        "xtask/Cargo.toml",
+        ".claude/hooks/Cargo.toml",
+    ] {
+        tree.write(cargo_toml, "[package]\n");
+    }
+    for (file, text) in BUILD_OUTPUT {
+        tree.write(file, text);
+    }
+    let repo = FsRepo::new(tree.root());
+    assert_eq!(
+        repo.ignored_functions(),
+        Vec::<(String, String)>::new(),
+        "LIB-TOOL-011: build output lists no ignored or skipped test"
+    );
+    assert_eq!(
+        sorted(repo.traced_functions()),
+        sorted(pairs(&[
+            ("crates/demo/tests/gate.rs", "lib_tool_001_cited"),
+            (".claude/hooks/test_gate.py", "test_lib_tool_001_cited"),
+        ])),
+        "LIB-TOOL-011: build output lists no running traced test"
+    );
+    assert_on_disk(
+        ROW_011,
+        &tree,
+        GATE_TOML,
+        &[],
+        "a `target` directory beside a `Cargo.toml` is build output: nothing in it is scanned",
+    );
+}
+
+/// The control for `lib_tool_011_build_output_beside_a_cargo_toml_is_not_scanned`:
+/// the same `target` directories, with a `Cargo.toml` only above them, in
+/// them or beside their parent, are scanned.
+#[test]
+fn lib_tool_011_a_target_directory_without_a_cargo_toml_beside_it_is_scanned() {
+    let tree = consistent_tree("scanner-not-build-output");
+    for cargo_toml in [
+        ROOT_CARGO_TOML,
+        "crates/Cargo.toml",
+        "crates/demo/target/Cargo.toml",
+        "xtask/target/Cargo.toml",
+    ] {
+        tree.write(cargo_toml, "[package]\n");
+    }
+    let rust = "#[test]\n#[ignore]\nfn lib_tool_011_built() {}\n";
+    tree.write("crates/demo/target/x.rs", rust)
+        .write("xtask/target/debug/x.rs", rust);
+    assert_on_disk(
+        ROW_011,
+        &tree,
+        GATE_TOML,
+        &[
+            ignored("crates/demo/target/x.rs", "lib_tool_011_built"),
+            ignored("xtask/target/debug/x.rs", "lib_tool_011_built"),
+        ],
+        "a `target` directory with no `Cargo.toml` directly beside it is scanned",
+    );
+}
+
+/// Whether `file` is read as Python: its extension is `.py` in any case.
+fn reads_as_python(file: &str) -> bool {
+    Path::new(file)
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("py"))
+}
+
+/// A running traced test of LIB-TOOL-011 for `file`: its name and its text,
+/// in the language `file` is read as.
+fn running_fixture(file: &str) -> (&'static str, &'static str) {
+    if reads_as_python(file) {
+        (
+            "test_lib_tool_011_x",
+            "def test_lib_tool_011_x(self):\n    pass\n",
+        )
+    } else {
+        ("lib_tool_011_x", "#[test]\nfn lib_tool_011_x() {}\n")
+    }
+}
+
+/// `(cited file, Cargo.toml files)`: test files the scan does not cover
+/// (D10), each beside its `Cargo.toml` where that makes it build output.
+const OUTSIDE_THE_SCAN: [(&str, &[&str]); 16] = [
+    // Not under `crates/`, `xtask/` or `.claude/hooks/`.
+    ("tests/x.rs", &[ROOT_CARGO_TOML]),
+    ("x.rs", &[ROOT_CARGO_TOML]),
+    ("docs/x.rs", &[]),
+    ("cratesx/tests/x.rs", &[]),
+    ("xtask2/tests/x.rs", &[]),
+    (".claude/hooks_old/test_x.py", &[]),
+    (".claude/agents/test_x.py", &[]),
+    // Not `.rs` or `.py`.
+    ("crates/demo/tests/x.txt", &[]),
+    ("crates/demo/tests/x.rs.txt", &[]),
+    ("crates/demo/tests/x", &[]),
+    (".claude/hooks/test_x.pyc", &[]),
+    // Under build output (D9).
+    ("crates/demo/target/x.rs", &[DEMO_CARGO_TOML]),
+    ("crates/demo/target/debug/deps/x.rs", &[DEMO_CARGO_TOML]),
+    ("crates/demo/target/test_x.py", &[DEMO_CARGO_TOML]),
+    ("xtask/target/x.rs", &["xtask/Cargo.toml"]),
+    (
+        ".claude/hooks/target/test_x.py",
+        &[".claude/hooks/Cargo.toml"],
+    ),
+];
+
+/// R4: a test citation of an existing file that holds the cited test, but
+/// that the scan does not cover, is exactly the scan-scope row problem.
+#[test]
+fn lib_tool_011_a_citation_of_a_file_outside_the_scanned_test_files_is_a_row_problem() {
+    for (file, cargo_tomls) in OUTSIDE_THE_SCAN {
+        let (name, text) = running_fixture(file);
+        let citation = format!("{file}::{name}");
+        let toml = citing(ROW_011, &[citation.as_str()]);
+        let tree = matrix_tree("scanner-outside", &toml, cargo_tomls);
+        tree.write(file, text);
+        assert_on_disk(
+            ROW_011,
+            &tree,
+            &toml,
+            &[outside_scan(ROW_011, file)],
+            &format!(
+                "{file} holds the cited test, but the scan does not cover it, so the citation \
+                 is the one scan-scope problem"
+            ),
+        );
+    }
+}
+
+/// `(cited file, Cargo.toml files)`: test files the scan covers.
+const INSIDE_THE_SCAN: [(&str, &[&str]); 9] = [
+    (
+        "crates/demo/tests/x.rs",
+        &[ROOT_CARGO_TOML, DEMO_CARGO_TOML],
+    ),
+    ("crates/x.rs", &[]),
+    ("xtask/tests/x.rs", &["xtask/Cargo.toml"]),
+    (".claude/hooks/test_x.py", &[]),
+    // The extension is compared in any case.
+    ("crates/demo/tests/x.RS", &[DEMO_CARGO_TOML]),
+    (".claude/hooks/test_x.PY", &[]),
+    // A `target` directory with no `Cargo.toml` directly beside it (D9).
+    (
+        "crates/demo/tests/target/x.rs",
+        &[ROOT_CARGO_TOML, DEMO_CARGO_TOML],
+    ),
+    ("crates/demo/target/x.rs", &[ROOT_CARGO_TOML]),
+    (".claude/hooks/target/test_x.py", &[ROOT_CARGO_TOML]),
+];
+
+/// R4, the other way: a citation of a file the scan covers gives no
+/// scan-scope problem, and its running test passes the check.
+#[test]
+fn lib_tool_011_a_citation_of_a_scanned_test_file_is_no_problem() {
+    for (file, cargo_tomls) in INSIDE_THE_SCAN {
+        let (name, text) = running_fixture(file);
+        let citation = format!("{file}::{name}");
+        let toml = citing(ROW_011, &[citation.as_str()]);
+        let tree = matrix_tree("scanner-inside", &toml, cargo_tomls);
+        tree.write(file, text);
+        assert_on_disk(
+            ROW_011,
+            &tree,
+            &toml,
+            &[],
+            &format!("{file} is a scanned test file, so citing its running test is no problem"),
+        );
+    }
+}
+
+/// R4: a citation of a missing file outside the scanned test files is the
+/// scan-scope problem alone. Like a path that `check_path` rejects, it skips
+/// the citation's other checks (the file is not looked up), except the test
+/// name check, which comes first. A missing file inside the scanned test
+/// files is still "does not exist".
+#[test]
+fn lib_tool_011_a_missing_file_outside_the_scanned_test_files_is_only_the_scan_scope_problem() {
+    for (file, cargo_tomls) in [
+        ("tests/missing.rs", &[ROOT_CARGO_TOML][..]),
+        ("crates/demo/tests/missing.txt", &[][..]),
+        ("crates/demo/target/missing.rs", &[DEMO_CARGO_TOML][..]),
+    ] {
+        let citation = format!("{file}::lib_tool_011_x");
+        let toml = citing(ROW_011, &[citation.as_str()]);
+        let tree = matrix_tree("scanner-outside-missing", &toml, cargo_tomls);
+        assert_on_disk(
+            ROW_011,
+            &tree,
+            &toml,
+            &[outside_scan(ROW_011, file)],
+            &format!(
+                "the missing {file} is outside the scanned test files: that is the one problem, \
+                 not also \"does not exist\""
+            ),
+        );
+    }
+
+    let toml = citing(ROW_011, &["crates/demo/tests/missing.rs::lib_tool_011_x"]);
+    let tree = matrix_tree("scanner-inside-missing", &toml, &[DEMO_CARGO_TOML]);
+    assert_on_disk(
+        ROW_011,
+        &tree,
+        &toml,
+        &[format!(
+            "{ROW_011}: test file crates/demo/tests/missing.rs does not exist"
+        )],
+        "a missing file inside the scanned test files is still reported as missing",
+    );
+
+    let toml = citing(ROW_011, &["tests/x.rs::lib_tool_001_x"]);
+    let tree = matrix_tree("scanner-outside-misnamed", &toml, &[]);
+    tree.write("tests/x.rs", "#[test]\nfn lib_tool_001_x() {}\n");
+    assert_on_disk(
+        ROW_011,
+        &tree,
+        &toml,
+        &[
+            format!(
+                "{ROW_011}: test `lib_tool_001_x` must be named `lib_tool_011_...` to trace to \
+                 this row"
+            ),
+            outside_scan(ROW_011, "tests/x.rs"),
+        ],
+        "the test name check still runs for a citation outside the scanned test files",
     );
 }
 

@@ -80,6 +80,25 @@ follow-up), and the round-6 prescription (R63, and the notes on other classes).
   string content, does not end a skipped class.
 - **D8 (`async def`):** any run of spaces or tabs may separate `async` and `def`.
 
+- **D9 (build output), fix round 1, R1:** a directory named `target` is skipped only
+  when it sits directly beside a `Cargo.toml`. Any other `target` directory is scanned.
+- **D10 (scanned files), fix round 1, R2(b):** one predicate decides whether a file is
+  scanned. The file must:
+  - be under `crates/`, `xtask/` or `.claude/hooks/`;
+  - have the extension `.rs` or `.py`;
+  - not be under D9 build output.
+
+  The walk uses this predicate. A test citation of a file outside it gets the row
+  problem `test file <path> is outside the scanned test files`. Every cited test
+  therefore lies in a scanned file, so the D3 problems cover it.
+  - A missing file outside the scan gives only the scope problem; the file is not
+    looked up.
+  - `doctest:` citations are not subject to D10, because doctests can live in READMEs
+    and docs.
+  - The `Cargo.toml` lookup uses `Repo::exists`, so the trait gains no new method.
+- **D11:** a prelude-qualified `ignore` (`#[::core::prelude::v1::ignore]`) is a known
+  limit, carried in LIB-TOOL-016.
+
 ## Tests
 
 Most of the 46 tests are in `xtask/tests/scanner.rs`. One is in `function_scan.rs`.
@@ -121,3 +140,21 @@ Existing tests changed, and none weakened:
   gate and it passes. Both rows are now `implemented`.
   - Follow-up for the test engineer: integration fixtures for attribute bracket nesting
     outside literals.
+- 2026-11-08 verification round 1, at `bf2ae2d`:
+  [record](../verification/0006-m0-test-scanner.md). Both rows FAIL.
+  - F1: an ignored or `src` test passes in a file the walk skips (a `target` module
+    directory) or never visits (citations resolve against any file).
+  - F2: a class-skip mutation survives.
+  - Lead decisions: R1 becomes D9, R2(b) becomes D10, and D11 records the known limit.
+  - New row: LIB-TOOL-016.
+  - Fix round 1: the tests (R3, R4, R6) go to the test engineer, then the code and docs
+    (R1, R2, R5) go to the implementer.
+- 2026-11-08 fix round 1, tests: 9 new tests for R3, R4 and R6. Existing fixtures that
+  cited files outside D10 (`t.rs`, `x.py`) were moved under the scan roots, and none was
+  weakened. 7 `scanner` tests fail today, on D9 and D10.
+- 2026-11-08 fix round 1, implementation: `is_scanned_test_file` and `is_build_output`
+  form a single predicate for D9 and D10. Both the walk (`FsRepo::walk`) and
+  `check_citations` use it. The README rules 6 and 7 text came from the implementer,
+  and the lead applied it. All 54 `scanner` tests pass, and the lead ran the full
+  local gate. A local cargo-mutants run of the PR diff gave 217 mutants: 213 caught,
+  4 unviable, 0 missed.

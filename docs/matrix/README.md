@@ -85,7 +85,12 @@ changes a status, and only to `verified` on a recorded PASS from the verifier.
 6. Every test citation is `path::function`, where the function is a **test** in that file,
    or `doctest:path` for a file containing a code block. A test is named
    `<row id in snake case>` or `<row id in snake case>_<anything>` (Python tests add
-   unittest's `test_` prefix). What counts as a test:
+   unittest's `test_` prefix). The file of a `path::function` citation must be a scanned
+   test file (rule 7). A citation of any other file, whether or not the file exists, is
+   the problem `test file <path> is outside the scanned test files`. That problem
+   replaces the citation's other checks, except the check of the test's name, so the
+   file is not looked up. A `doctest:` citation may name any file, because doctests also
+   live in READMEs and other docs. What counts as a test:
    - **Rust:** a function under a test-style attribute, one whose path ends in the
      segment `test`, `test_case` or `rstest` (`#[test]`, `#[tokio::test]`,
      `#[test_case(..)]`, `#[rstest]`). The attribute is on a line before the function or
@@ -97,10 +102,15 @@ changes a status, and only to `verified` on a recorded PASS from the verifier.
      and char and byte literals. In Python, it is `#` comments and strings in single,
      double or triple quotes, with any prefix. A helper does not count either.
    - An ignored or skipped test is still a test, so citing it raises no problem for the
-     row. Rule 7 reports it instead.
-7. The scan covers `crates/`, `xtask/` and `.claude/hooks/`. A traced test is a test, as
-   above, whose name starts with a row id. Each traced test it finds has at most one
-   problem, the first of these that applies:
+     row. Every cited test is in a scanned test file, so rule 7 reports it instead.
+7. The scan covers the scanned test files: the files under `crates/`, `xtask/` and
+   `.claude/hooks/` whose extension is `.rs` or `.py`, in any case, except build output.
+   Build output is a directory named `target` with a `Cargo.toml` directly beside it, as
+   with the workspace's `target/` or a package's `crates/<name>/target/`. Any other
+   `target` directory is scanned, such as a module directory `src/target/` or
+   `tests/target/`. A traced test is a test, as above, whose name starts with a row id.
+   Each traced test the scan finds has at most one problem, the first of these that
+   applies:
    1. **It is in a file with a path component `src`.** Traced tests belong in test files,
       outside the implementer's scope. Untraced unit tests and doctests under `src` are
       allowed.
@@ -113,7 +123,11 @@ changes a status, and only to `verified` on a recorded PASS from the verifier.
 
    These problems are sorted by file and then by function name. The scan cannot see tests
    that a macro generates, or Python tests skipped at run time (`self.skipTest(...)`,
-   `pytest.skip()`).
+   `pytest.skip()`). It does not read a Rust attribute after other code on its line. A
+   `cfg_attr` nested in a `cfg_attr` (`#[cfg_attr(a, cfg_attr(b, ignore))]`) and a
+   prelude-qualified `ignore` (`#[::core::prelude::v1::ignore]`,
+   `#[std::prelude::v1::ignore]`) do not ignore, so their tests count as running. The
+   prelude-qualified `ignore` is LIB-TOOL-016.
 8. `depends_on` targets exist, are not the row itself, are not `candidate` or
    `out-of-scope`, are not in a later milestone, and contain no cycles.
 9. `functionality-matrix.md` equals `cargo xtask matrix render` output.
