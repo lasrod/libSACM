@@ -95,6 +95,17 @@ Slice 0006 (LIB-TOOL-007, -011) rewrote the traced-test scanner in `xtask/src/ma
   - ci.yml [42442240234](https://github.com/lasrod/libSACM/actions/runs/42442240234), job `mutants (PR diff)`: 231 mutants, 227 caught, 0 missed, 0 timeout, 4 unviable.
 - **Target order:** the new test target `xtask/tests/scanner.rs` sorts after `function_scan`. Its lexer-hang case is in `function_scan.rs` (`lib_tool_011_function_scan_finishes_on_every_comment_and_literal_form`), so a lexer mutant that stops advancing fails under that target's 5 s deadline before any real-repository scan runs. See slice 0005 and LIB-QA-012.
 
+## Slice 0007
+
+Slice 0007 (LIB-TOOL-005, -015) replaced the hand-written fence model in `xtask/src/matrix.rs` with `pulldown-cmark` (ADR 0008): `hidden_ranges` (D2, D6), `trailing_tabs_as_spaces` (D7) and `verdict_lines`. Linux runs at `123c71e`, after the Copilot fix to D6:
+- mutants.yml [42453353258](https://github.com/lasrod/libSACM/actions/runs/42453353258): 447 mutants, 429 caught, 0 missed, 0 timeout, 18 unviable.
+- ci.yml [42453353263](https://github.com/lasrod/libSACM/actions/runs/42453353263), job `mutants (PR diff)`: 27 mutants, 19 caught, 0 missed, 0 timeout, 8 unviable.
+- **Unviable mutants at `123c71e` (18):**
+  - eleven carried over, at their new lines: `fetch.rs:110:5`, and in `matrix.rs` `584:5` (`test_functions`), `791:5` (`rust_tests`), `932:5` (`python_tests`), `1109:5` (`load`), `1246:9` (`TestFile::scan`), `1527:5` (`verdict_lines`, previously at `1435:5`), `1943:5` (`ready`), `1986:5` (`load_from`), and `2045:48` twice (`cmd_check_from`);
+  - seven new, all structural: `matrix.rs:1450:5` (`hidden_ranges -> Vec<Range<usize>>`), replaced with `vec![Range::new()]`, `Range::new(0)`, `Range::new(1)`, `Range::from(0)`, `Range::from(1)`, `Range::from_iter([0])` or `Range::from_iter([1])`. `std::ops::Range` has none of these constructors.
+- **Equivalent mutant found while the tests were being written:** a D6 region that ends at the start rather than the end of `-->` hides the same candidates, because no byte of `-->` can be the first byte of a candidate (`- R`). The implementation computes the end as `at + closer.len()`, so cargo-mutants does not generate that form; it is noted here for any future refactor.
+- **Target order:** `xtask/tests/verdict_markdown.rs` sorts after `function_scan`, and none of its tests scan the real repository.
+
 ## Dispositions
 
 A disposition is one of:

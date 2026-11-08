@@ -1,7 +1,7 @@
 ---
 slice: 0007
 name: m0-verdict-parser
-state: in-progress
+state: stopped
 step: verification
 rows: [LIB-TOOL-005, LIB-TOOL-015]
 mode: pr
@@ -139,3 +139,12 @@ The test engineer found one equivalent mutant: a region ending at the start rath
     each killed by a control test.
   - The README text came from the implementer, and the lead applied it.
   - LIB-TOOL-015 is `implemented` again.
+- 2026-11-08 verification round 1, at `123c71e`:
+  [record](../verification/0007-m0-verdict-parser.md). Both rows FAIL.
+  - F1: a second pulldown-cmark deviation, the type-1 HTML block end.
+  - F2: lone CR and leading BOM.
+  - F3: D6 over-hides.
+  - F4: visible look-alikes that the gate ignores.
+  - F5: two surviving hand mutants. F6: the documents overclaim.
+  - This is LIB-TOOL-005's third FAIL. The slice stops for the maintainer's decisions
+    on P-5 and P-6.
