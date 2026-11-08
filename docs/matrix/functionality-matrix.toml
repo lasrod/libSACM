@@ -653,8 +653,25 @@ title = "Traced tests live outside production source"
 requirement = "The gate rejects traced tests (functions named for a matrix row) under any `*/src/` directory, so acceptance tests stay in the test engineer's scope and the implementer cannot add or alter them inline."
 source = "Verification 0001 round 2 follow-up; ADR 0006 amendment 1"
 kind = "tooling"
-status = "planned"
+status = "verified"
+code = ["xtask/src/matrix.rs"]
+acceptance = [
+  "A traced test in a scanned file whose repository-relative path has a component equal to `src` gives exactly one problem: `<file>: traced test `<name>` is under a `src` directory; traced tests belong in test files`. Examples are `crates/sacm/src/lib.rs`, `crates/x/src/a/b.rs`, `xtask/src/matrix.rs`, and a Python file under a `src` directory. The problem is the same whether or not a row cites the test, and whether or not it is ignored, and no orphan problem is reported for it.",
+  "Only the exact component `src` counts. `source/`, `srcs/`, `my_src/` and a file named `src.rs` outside a `src` directory do not. Untraced unit tests under `src` (`#[cfg(test)] mod tests { #[test] fn parses() {} }`) are allowed. `doctest:` citations of files under `src` are unaffected.",
+  "The scan problems (under `src`, ignored, orphan) come together, sorted by file and then by function name. The real repository has no traced test under `src`, and the doc comments in `xtask/src/matrix.rs` that show `#[test] fn lib_cli_001_...` give no problem.",
+]
 depends_on = ["LIB-TOOL-001"]
+tests = [
+  "xtask/tests/scanner.rs::lib_tool_007_a_traced_test_under_src_is_one_problem_cited_ignored_or_not",
+  "xtask/tests/scanner.rs::lib_tool_007_only_a_path_component_equal_to_src_counts",
+  "xtask/tests/scanner.rs::lib_tool_007_untraced_unit_tests_and_doctests_under_src_are_allowed",
+  "xtask/tests/scanner.rs::lib_tool_007_scan_problems_come_together_sorted_by_file_then_name",
+  "xtask/tests/scanner.rs::lib_tool_007_fs_repo_reports_traced_tests_under_src_directories",
+  "xtask/tests/scanner.rs::lib_tool_007_fs_repo_near_miss_directories_are_not_src",
+  "xtask/tests/scanner.rs::lib_tool_007_a_traced_test_in_a_target_module_under_src_is_one_problem",
+  "xtask/tests/scanner.rs::lib_tool_007_the_real_repository_has_no_traced_test_under_src",
+]
+verification = "docs/verification/0006-m0-test-scanner-round2.md"
 
 [[row]]
 id = "LIB-TOOL-008"
@@ -726,8 +743,81 @@ title = "Test scanner recognises tests and non-code precisely"
 requirement = "The traced-test scanner ignores test-like text inside multi-line raw strings, block comments and Python triple-quoted strings; does not count `#[ignore]`d or skipped tests as evidence; and recognises `#[test_case(...)]`-style attributes and Python `async def test_` methods as tests."
 source = "Verification 0001 round 2 Low and round-6 prescription (R63; different-class notes)"
 kind = "tooling"
-status = "planned"
+status = "verified"
+code = ["xtask/src/matrix.rs"]
+acceptance = [
+  "Rust text that is inside a comment or a literal is never scanned. That covers line comments (doc comments included), block comments (`/* */` nests), string literals that span lines, raw strings `r\"..\"` and `r#\"..\"#` with any number of `#`, the `b`, `br`, `c` and `cr` forms, and char and byte literals (`'\"'`, `'\\''`, `b'\"'`). A `#[test]` or `fn` there neither marks nor defines a test. A lifetime or label (`'a`, `'static`) does not open a literal. An unterminated literal or comment runs to the end of the file, without a panic. Line numbers are not affected.",
+  "Python text that is inside a `#` comment or a string is never scanned. That covers single-quoted and triple-quoted strings (`\"\"\"`, `'''`, spanning lines), with any prefix (`r`, `b`, `f`, `u`, `rb`, `br`, `fr`, `rf`, in any case), and a backslash-escaped quote, which does not end the string, raw strings included. A `def test_...` inside a docstring is not a test.",
+  "A Rust attribute is test-style when the last segment of its path is `test`, `test_case` or `rstest`, with or without arguments: `#[test]`, `#[tokio::test(flavor = \"multi_thread\")]`, `#[test_log::test]`, `#[test_case(1; \"a]b\")]`, `#[rstest]`. Arguments do not decide it, and `#[cfg(test)]`, `#[mytest]` and `#[testing]` are not test-style. Python `async def test_...` is a test, like `def test_...`.",
+  "A test is ignored or skipped in these cases, and is then never evidence. In Rust: an `#[ignore]` or `#[ignore = \"..\"]` attribute on it, or `#[cfg_attr(<predicate>, ignore)]` (or `ignore = \"..\"`) listing `ignore`. In Python: a decorator on the lines directly above it (blank and comment lines may sit between) whose dotted name ends in `skip`, `skipIf`, `skipUnless`, `skipif` or `expectedFailure`, for example `@unittest.skip(\"x\")` or `@pytest.mark.skipif(..)`; or such a decorator on the enclosing `class`, which skips every `def test_...` indented under it. An ignored or skipped traced test that is not under `src` gives exactly one problem: `<file>: traced test `<name>` is ignored or skipped, so it is not evidence`. The problem is the same whether or not a row cites the test, and no orphan problem and no row-level citation problem is reported for it.",
+  "`traced_tests(text, python)` keeps its signature and returns the traced tests that run, in source order. The new `ignored_traced_tests(text, python)` returns the ignored or skipped ones. `Repo` gains `ignored_functions()`, parallel to `traced_functions()`. Existing tests that pinned the old behaviour (an `#[ignore]`d test counted as a test) are updated, not deleted. The real repository passes the gate.",
+]
 depends_on = ["LIB-TOOL-001"]
+tests = [
+  "xtask/tests/function_scan.rs::lib_tool_011_function_scan_finishes_on_every_comment_and_literal_form",
+  "xtask/tests/scanner.rs::lib_tool_011_rust_line_and_doc_comments_hide_test_like_text",
+  "xtask/tests/scanner.rs::lib_tool_011_rust_block_comments_nest_and_hide_test_like_text",
+  "xtask/tests/scanner.rs::lib_tool_011_rust_a_block_comment_left_open_hides_the_rest_of_the_file",
+  "xtask/tests/scanner.rs::lib_tool_011_rust_strings_that_span_lines_hide_test_like_text",
+  "xtask/tests/scanner.rs::lib_tool_011_rust_raw_strings_end_only_at_a_quote_with_as_many_hashes",
+  "xtask/tests/scanner.rs::lib_tool_011_rust_byte_and_c_raw_strings_are_raw",
+  "xtask/tests/scanner.rs::lib_tool_011_rust_char_and_byte_literals_hold_quotes",
+  "xtask/tests/scanner.rs::lib_tool_011_rust_lifetimes_labels_and_raw_identifiers_open_no_literal",
+  "xtask/tests/scanner.rs::lib_tool_011_rust_an_unterminated_literal_hides_the_rest_without_a_panic",
+  "xtask/tests/scanner.rs::lib_tool_011_rust_comments_between_an_attribute_and_its_function_are_whitespace",
+  "xtask/tests/scanner.rs::lib_tool_011_masking_keeps_every_line",
+  "xtask/tests/scanner.rs::lib_tool_011_python_comments_hide_test_like_text",
+  "xtask/tests/scanner.rs::lib_tool_011_python_triple_quoted_strings_hide_test_like_text",
+  "xtask/tests/scanner.rs::lib_tool_011_python_single_quoted_strings_hide_quotes_and_comments",
+  "xtask/tests/scanner.rs::lib_tool_011_python_string_prefixes_in_any_case_open_a_string",
+  "xtask/tests/scanner.rs::lib_tool_011_python_a_backslash_escaped_quote_does_not_end_a_string",
+  "xtask/tests/scanner.rs::lib_tool_011_python_an_unterminated_string_hides_the_rest_without_a_panic",
+  "xtask/tests/scanner.rs::lib_tool_011_test_style_attributes_are_named_by_their_last_path_segment",
+  "xtask/tests/scanner.rs::lib_tool_011_other_attributes_do_not_mark_a_test",
+  "xtask/tests/scanner.rs::lib_tool_011_python_async_def_test_is_a_test",
+  "xtask/tests/scanner.rs::lib_tool_011_an_ignore_attribute_makes_a_test_ignored",
+  "xtask/tests/scanner.rs::lib_tool_011_only_ignore_style_attributes_ignore_a_test",
+  "xtask/tests/scanner.rs::lib_tool_011_an_ignore_attribute_applies_to_one_function_only",
+  "xtask/tests/scanner.rs::lib_tool_011_the_ignored_test_lib_tool_001_used_to_count_is_ignored",
+  "xtask/tests/scanner.rs::lib_tool_011_a_skip_decorator_skips_the_function_below_it",
+  "xtask/tests/scanner.rs::lib_tool_011_other_decorators_and_text_do_not_skip",
+  "xtask/tests/scanner.rs::lib_tool_011_a_skip_decorator_on_a_class_skips_its_test_methods",
+  "xtask/tests/scanner.rs::lib_tool_011_a_skipped_class_ends_at_the_next_line_at_its_indent_or_less",
+  "xtask/tests/scanner.rs::lib_tool_011_comment_and_string_lines_do_not_end_a_skipped_class",
+  "xtask/tests/scanner.rs::lib_tool_011_a_class_nested_in_a_skipped_class_keeps_the_outer_skip",
+  "xtask/tests/scanner.rs::lib_tool_011_a_class_nested_in_a_class_that_is_not_skipped_starts_no_skip",
+  "xtask/tests/scanner.rs::lib_tool_011_a_skip_or_ignore_spanning_lines_never_counts_as_running",
+  "xtask/tests/scanner.rs::lib_tool_011_whitespace_and_comments_inside_an_attribute_path_do_not_split_it",
+  "xtask/tests/scanner.rs::lib_tool_011_an_attribute_path_is_read_past_whitespace_before_it_is_judged",
+  "xtask/tests/scanner.rs::lib_tool_011_whitespace_inside_an_ignore_attribute_still_ignores",
+  "xtask/tests/scanner.rs::lib_tool_011_whitespace_between_the_hash_and_the_bracket_still_opens_an_attribute",
+  "xtask/tests/scanner.rs::lib_tool_011_whitespace_inside_a_dotted_decorator_name_does_not_split_it",
+  "xtask/tests/scanner.rs::lib_tool_011_a_decorator_name_is_read_past_whitespace_before_it_is_judged",
+  "xtask/tests/scanner.rs::lib_tool_011_any_whitespace_after_class_starts_a_skipped_class",
+  "xtask/tests/scanner.rs::lib_tool_011_a_word_that_starts_with_class_is_not_a_class_line",
+  "xtask/tests/scanner.rs::lib_tool_011_spaced_attribute_decorator_and_class_forms_give_the_plain_forms_problems",
+  "xtask/tests/scanner.rs::lib_tool_011_python_any_whitespace_after_def_defines_a_test",
+  "xtask/tests/scanner.rs::lib_tool_011_rust_any_whitespace_after_fn_defines_a_test",
+  "xtask/tests/scanner.rs::lib_tool_011_a_word_that_contains_def_or_fn_is_not_the_keyword",
+  "xtask/tests/scanner.rs::lib_tool_011_python_def_glued_to_a_test_name_defines_no_test",
+  "xtask/tests/scanner.rs::lib_tool_011_rust_fn_glued_to_a_test_name_defines_no_test",
+  "xtask/tests/scanner.rs::lib_tool_011_a_citation_of_a_name_glued_to_def_or_fn_is_not_defined",
+  "xtask/tests/scanner.rs::lib_tool_011_running_and_ignored_traced_tests_are_listed_apart_in_source_order",
+  "xtask/tests/scanner.rs::lib_tool_011_an_ignored_or_skipped_traced_test_is_one_problem_cited_or_not",
+  "xtask/tests/scanner.rs::lib_tool_011_a_citation_of_an_ignored_test_gives_no_row_problem",
+  "xtask/tests/scanner.rs::lib_tool_011_comment_and_literal_text_defines_no_cited_test",
+  "xtask/tests/scanner.rs::lib_tool_011_fs_repo_lists_ignored_and_skipped_tests_in_every_scan_root",
+  "xtask/tests/scanner.rs::lib_tool_011_cmd_check_rejects_ignored_and_skipped_traced_tests_on_disk",
+  "xtask/tests/scanner.rs::lib_tool_011_an_ignored_test_in_a_target_directory_without_a_cargo_toml_is_one_problem",
+  "xtask/tests/scanner.rs::lib_tool_011_build_output_beside_a_cargo_toml_is_not_scanned",
+  "xtask/tests/scanner.rs::lib_tool_011_a_target_directory_without_a_cargo_toml_beside_it_is_scanned",
+  "xtask/tests/scanner.rs::lib_tool_011_a_citation_of_a_file_outside_the_scanned_test_files_is_a_row_problem",
+  "xtask/tests/scanner.rs::lib_tool_011_a_citation_of_a_scanned_test_file_is_no_problem",
+  "xtask/tests/scanner.rs::lib_tool_011_a_missing_file_outside_the_scanned_test_files_is_only_the_scan_scope_problem",
+  "xtask/tests/scanner.rs::lib_tool_011_the_real_repository_has_no_ignored_or_skipped_traced_test",
+  "xtask/tests/scanner.rs::lib_tool_011_the_scanner_finds_exactly_the_tests_of_its_own_test_files",
+]
+verification = "docs/verification/0006-m0-test-scanner-round4.md"
 
 [[row]]
 id = "LIB-TOOL-013"
@@ -861,6 +951,28 @@ source = "Slice 0005: mutants.yml run 42420891449, a TIMEOUT for `is_identifier_
 kind = "quality"
 status = "planned"
 depends_on = ["LIB-QA-007"]
+
+[[row]]
+id = "LIB-TOOL-016"
+area = "TOOL"
+milestone = "M0"
+title = "Test scanner recognises more skip and compile-out forms"
+requirement = "The traced-test scanner treats these as not running: Rust tests compiled out by `#[cfg(any())]` or `#[cfg(FALSE)]`-style predicates; a prelude-qualified `#[::core::prelude::v1::ignore]` or `#[std::prelude::v1::ignore]`; Python tests under a module-level `pytestmark = pytest.mark.skip...` or `__unittest_skip__`; and `@pytest.mark.xfail`. It also reads a `#` at the end of a line whose `[` is on the next line (a `#` line followed by a `[test]` line), and a `fn` whose name is on the next line."
+source = "Verification 0006 round 1 (Low and Info findings)"
+kind = "tooling"
+status = "planned"
+depends_on = ["LIB-TOOL-011"]
+
+[[row]]
+id = "LIB-TOOL-017"
+area = "TOOL"
+milestone = "M0"
+title = "Cited tests are in files that run"
+requirement = "A test citation is evidence only if its file is actually built and run. These citations give a problem: a Rust test file that no target or module tree includes, such as a stray `crates/x.rs` or a module file no `mod` reaches, and a Python test file outside the unittest discovery root that CI runs (`.claude/hooks`)."
+source = "Verification 0006 round 2 (Info, new class)"
+kind = "tooling"
+status = "planned"
+depends_on = ["LIB-TOOL-011"]
 
 [[row]]
 id = "LIB-TOOL-012"

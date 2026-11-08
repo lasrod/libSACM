@@ -76,6 +76,25 @@ Slice 0005 (LIB-TOOL-013, -014) changed `xtask/src/lib.rs`, `xtask/src/main.rs` 
   - ci.yml [42423497546](https://github.com/lasrod/libSACM/actions/runs/42423497546), job `mutants (PR diff)`: 20 mutants, 16 caught, 0 missed, 0 timeout, 4 unviable.
 - **The durable fix:** LIB-QA-012. A target's name must not decide whether this mutant is caught or times out.
 
+## Slice 0006
+
+Slice 0006 (LIB-TOOL-007, -011) rewrote the traced-test scanner in `xtask/src/matrix.rs`: the Rust and Python lexers, test and attribute recognition, and `check_scanned_tests`. Linux runs at `bf2ae2d`:
+- mutants.yml [42431457415](https://github.com/lasrod/libSACM/actions/runs/42431457415): 421 mutants, 410 caught, 0 missed, 0 timeout, 11 unviable.
+- ci.yml [42431457421](https://github.com/lasrod/libSACM/actions/runs/42431457421), job `mutants (PR diff)`: 202 mutants, 198 caught, 0 missed, 0 timeout, 4 unviable.
+- **Unviable mutants at `bf2ae2d` (11):**
+  - seven carried over from slice 0005, at their new lines: `fetch.rs:110:5`, `matrix.rs:1000:5` (`load`), `1319:5` (`verdict_lines`), `1725:5` (`ready`), `1768:5` (`load_from`), and `1827:48` twice (`cmd_check_from`);
+  - four new, all structural: `matrix.rs:513:5` (`test_functions`), `720:5` (`rust_tests`) and `844:5` (`python_tests`), each `vec![Default::default()]`, and `1128:9` (`TestFile::scan`), `Default::default()`. The scanner's `Test` and `TestFile` types do not implement `Default`.
+- **Fix round 1 head `48cad81` (D9, D10):**
+  - mutants.yml [42436264675](https://github.com/lasrod/libSACM/actions/runs/42436264675): 433 mutants, 422 caught, 0 missed, 0 timeout, 11 unviable. These are the same 11 unviable mutants, at their new lines: `fetch.rs:110:5`, and in `matrix.rs` `557:5`, `764:5`, `888:5`, `1044:5`, `1181:9`, `1372:5`, `1788:5`, `1831:5`, and `1890:48` twice.
+  - ci.yml [42436264672](https://github.com/lasrod/libSACM/actions/runs/42436264672), job `mutants (PR diff)`: 217 mutants, 213 caught, 0 missed, 0 timeout, 4 unviable (`557:5`, `764:5`, `888:5`, `1181:9`).
+- **Copilot-fix head `2ff54e8` (D12):**
+  - mutants.yml [42439740608](https://github.com/lasrod/libSACM/actions/runs/42439740608): 439 mutants, 428 caught, 0 missed, 0 timeout, 11 unviable. These are the same 11 unviable mutants, at their new lines: `fetch.rs:110:5`, and in `matrix.rs` `582:5`, `789:5`, `930:5`, `1107:5`, `1244:9`, `1435:5`, `1851:5`, `1894:5`, and `1953:48` twice.
+  - ci.yml [42439740610](https://github.com/lasrod/libSACM/actions/runs/42439740610), job `mutants (PR diff)`: 231 mutants, 227 caught, 0 missed, 0 timeout, 4 unviable (`582:5`, `789:5`, `930:5`, `1244:9`).
+- **F6 test-only head `80de984`:** the code is unchanged since `2ff54e8`.
+  - mutants.yml [42442240269](https://github.com/lasrod/libSACM/actions/runs/42442240269): 439 mutants, 428 caught, 0 missed, 0 timeout, 11 unviable. The unviable set is identical to the one at `2ff54e8`.
+  - ci.yml [42442240234](https://github.com/lasrod/libSACM/actions/runs/42442240234), job `mutants (PR diff)`: 231 mutants, 227 caught, 0 missed, 0 timeout, 4 unviable.
+- **Target order:** the new test target `xtask/tests/scanner.rs` sorts after `function_scan`. Its lexer-hang case is in `function_scan.rs` (`lib_tool_011_function_scan_finishes_on_every_comment_and_literal_form`), so a lexer mutant that stops advancing fails under that target's 5 s deadline before any real-repository scan runs. See slice 0005 and LIB-QA-012.
+
 ## Dispositions
 
 A disposition is one of:

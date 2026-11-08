@@ -16,7 +16,8 @@ use std::path::Path;
 
 use common::{GATE_TOML, TempTree, consistent_tree};
 use xtask::matrix::{
-    FsRepo, Matrix, RENDERED_PATH, Repo, check, cmd_check, load, ready, render, traced_tests,
+    FsRepo, Matrix, RENDERED_PATH, Repo, check, cmd_check, ignored_traced_tests, load, ready,
+    render, traced_tests,
 };
 
 // ---------------------------------------------------------------------------
@@ -46,12 +47,24 @@ impl Repo for FakeRepo {
     }
 
     fn traced_functions(&self) -> Vec<(String, String)> {
+        self.scan(traced_tests)
+    }
+
+    fn ignored_functions(&self) -> Vec<(String, String)> {
+        self.scan(ignored_traced_tests)
+    }
+}
+
+impl FakeRepo {
+    /// `(file, name)` for every name `find` returns for a file, read as
+    /// Python when its extension is `.py`.
+    fn scan(&self, find: fn(&str, bool) -> Vec<String>) -> Vec<(String, String)> {
         let mut out = Vec::new();
         for (path, text) in &self.files {
             let python = Path::new(path)
                 .extension()
                 .is_some_and(|e| e.eq_ignore_ascii_case("py"));
-            for name in traced_tests(text, python) {
+            for name in find(text, python) {
                 out.push((path.clone(), name));
             }
         }
@@ -173,9 +186,9 @@ fn lib_tool_001_rejects_duplicate_ids() {
 fn lib_tool_001_planned_rows_must_not_cite_tests() {
     let row = PLANNED.replace(
         "status = \"planned\"",
-        "status = \"planned\"\ntests = [\"t.rs::sacm23_base_001_x\"]",
+        "status = \"planned\"\ntests = [\"crates/x/tests/t.rs::sacm23_base_001_x\"]",
     );
-    let repo = FakeRepo::default().with("t.rs", MARKED_TEST);
+    let repo = FakeRepo::default().with("crates/x/tests/t.rs", MARKED_TEST);
     assert_problem(&problems(&matrix(&row), repo), "fallen behind reality");
 }
 
@@ -193,11 +206,11 @@ fn lib_tool_001_test_citations_must_resolve_and_trace() {
     let row = PLANNED.replace(
         "status = \"planned\"",
         "status = \"tests-failing\"\nacceptance = [\"a\"]\n\
-         tests = [\"t.rs::sacm23_base_001_ok\", \"t.rs::sacm23_base_001_missing\", \
-         \"t.rs::lib_cli_001_wrong_row\"]",
+         tests = [\"crates/x/tests/t.rs::sacm23_base_001_ok\", \"crates/x/tests/t.rs::sacm23_base_001_missing\", \
+         \"crates/x/tests/t.rs::lib_cli_001_wrong_row\"]",
     );
     let repo = FakeRepo::default().with(
-        "t.rs",
+        "crates/x/tests/t.rs",
         "#[test]\nfn sacm23_base_001_ok() {}\n#[test]\nfn lib_cli_001_wrong_row() {}",
     );
     let p = problems(&matrix(&row), repo);
@@ -223,13 +236,13 @@ status = "verified"
 depends_on = ["SACM23-BASE-001"]
 acceptance = ["a"]
 code = ["src/lib.rs"]
-tests = ["t.rs::sacm23_base_002_x"]
+tests = ["crates/x/tests/t.rs::sacm23_base_002_x"]
 verification = "docs/verification/v.md"
 "#
     );
     let repo = FakeRepo::default()
         .with("src/lib.rs", "")
-        .with("t.rs", "#[test]\nfn sacm23_base_002_x() {}")
+        .with("crates/x/tests/t.rs", "#[test]\nfn sacm23_base_002_x() {}")
         .with("docs/verification/v.md", "mentions nothing");
     let p = problems(&matrix(&rows), repo);
     assert_problem(&p, "depends on SACM23-BASE-001, which is planned");
@@ -402,7 +415,11 @@ fn lib_tool_001_finds_function_definitions_not_mentions() {
 
 #[test]
 fn lib_tool_001_only_marked_tests_count_as_traced() {
-    let rust = "#[test]\n#[ignore]\nfn lib_cli_001_a() {}\nfn lib_cli_001_helper() {}\n\
+    // `#[should_panic]` is an attribute between `#[test]` and the function
+    // that does not stop it running. Until slice 0006 this fixture used
+    // `#[ignore]`, which now makes the test ignored (LIB-TOOL-011); that
+    // fixture is pinned in `scanner.rs`.
+    let rust = "#[test]\n#[should_panic]\nfn lib_cli_001_a() {}\nfn lib_cli_001_helper() {}\n\
                 let s = \"#[test] fn lib_cli_001_in_string() {}\";";
     assert_eq!(
         traced_tests(rust, false),
@@ -713,8 +730,8 @@ fn evidence_case(status: &str, evidence: &[Evidence]) -> (Matrix, FakeRepo) {
         match item {
             Evidence::Acceptance => extra.push_str("acceptance = [\"a\"]\n"),
             Evidence::Tests => {
-                extra.push_str("tests = [\"t.rs::sacm23_base_001_x\"]\n");
-                repo = repo.with("t.rs", MARKED_TEST);
+                extra.push_str("tests = [\"crates/x/tests/t.rs::sacm23_base_001_x\"]\n");
+                repo = repo.with("crates/x/tests/t.rs", MARKED_TEST);
             }
             Evidence::Code => {
                 extra.push_str("code = [\"src/lib.rs\"]\n");
@@ -914,9 +931,9 @@ fn lib_tool_001_rejects_missing_cited_code_path() {
     let m = matrix(&row(
         "SACM23-BASE-001",
         "implemented",
-        "acceptance = [\"a\"]\ntests = [\"t.rs::sacm23_base_001_x\"]\ncode = [\"src/missing.rs\"]",
+        "acceptance = [\"a\"]\ntests = [\"crates/x/tests/t.rs::sacm23_base_001_x\"]\ncode = [\"src/missing.rs\"]",
     ));
-    let repo = FakeRepo::default().with("t.rs", MARKED_TEST);
+    let repo = FakeRepo::default().with("crates/x/tests/t.rs", MARKED_TEST);
     assert_exact(
         &problems(&m, repo),
         "SACM23-BASE-001: cited code path src/missing.rs does not exist",
@@ -938,8 +955,9 @@ fn lib_tool_001_rejects_test_citation_without_separator() {
 /// a valid name.
 #[test]
 fn lib_tool_001_test_name_must_separate_the_row_id_with_an_underscore() {
-    let m = citing("\"t.rs::sacm23_base_0012_x\"");
-    let repo = FakeRepo::default().with("t.rs", "#[test]\nfn sacm23_base_0012_x() {}");
+    let m = citing("\"crates/x/tests/t.rs::sacm23_base_0012_x\"");
+    let repo =
+        FakeRepo::default().with("crates/x/tests/t.rs", "#[test]\nfn sacm23_base_0012_x() {}");
     assert_eq!(
         problems(&m, repo),
         [
@@ -949,8 +967,8 @@ fn lib_tool_001_test_name_must_separate_the_row_id_with_an_underscore() {
         "LIB-TOOL-001: `sacm23_base_0012_x` does not trace to SACM23-BASE-001"
     );
 
-    let m = citing("\"t.rs::sacm23_base_001\"");
-    let repo = FakeRepo::default().with("t.rs", "#[test]\nfn sacm23_base_001() {}");
+    let m = citing("\"crates/x/tests/t.rs::sacm23_base_001\"");
+    let repo = FakeRepo::default().with("crates/x/tests/t.rs", "#[test]\nfn sacm23_base_001() {}");
     assert_eq!(
         problems(&m, repo),
         Vec::<String>::new(),
@@ -959,24 +977,27 @@ fn lib_tool_001_test_name_must_separate_the_row_id_with_an_underscore() {
 }
 
 /// Rule 6: unittest's `test_` prefix is not part of the trace, so a Python
-/// citation `x.py::test_sacm23_base_001_y` is accepted.
+/// citation `.claude/hooks/x.py::test_sacm23_base_001_y` is accepted.
 #[test]
 fn lib_tool_001_python_citation_with_unittest_prefix_is_accepted() {
-    let m = citing("\"x.py::test_sacm23_base_001_y\"");
-    let repo = FakeRepo::default().with("x.py", "def test_sacm23_base_001_y(self):\n    pass\n");
+    let m = citing("\".claude/hooks/x.py::test_sacm23_base_001_y\"");
+    let repo = FakeRepo::default().with(
+        ".claude/hooks/x.py",
+        "def test_sacm23_base_001_y(self):\n    pass\n",
+    );
     assert_eq!(
         problems(&m, repo),
         Vec::<String>::new(),
-        "LIB-TOOL-001: `x.py::test_sacm23_base_001_y` is a valid citation for SACM23-BASE-001"
+        "LIB-TOOL-001: `.claude/hooks/x.py::test_sacm23_base_001_y` is a valid citation for SACM23-BASE-001"
     );
 }
 
 #[test]
 fn lib_tool_001_rejects_missing_test_file() {
-    let m = citing("\"t.rs::sacm23_base_001_x\"");
+    let m = citing("\"crates/x/tests/t.rs::sacm23_base_001_x\"");
     assert_exact(
         &problems(&m, FakeRepo::default()),
-        "SACM23-BASE-001: test file t.rs does not exist",
+        "SACM23-BASE-001: test file crates/x/tests/t.rs does not exist",
     );
 }
 
@@ -1009,8 +1030,8 @@ fn lib_tool_001_rejects_doctest_file_without_code_block() {
 
 #[test]
 fn lib_tool_001_citation_of_a_helper_without_test_attribute_is_rejected() {
-    let m = citing("\"t.rs::sacm23_base_001_helper\"");
-    let repo = FakeRepo::default().with("t.rs", "fn sacm23_base_001_helper() {}");
+    let m = citing("\"crates/x/tests/t.rs::sacm23_base_001_helper\"");
+    let repo = FakeRepo::default().with("crates/x/tests/t.rs", "fn sacm23_base_001_helper() {}");
     let p = problems(&m, repo);
     assert_eq!(
         p.len(),
@@ -1025,8 +1046,11 @@ fn lib_tool_001_citation_of_a_helper_without_test_attribute_is_rejected() {
     );
 
     // The same for a Python helper that lacks unittest's `test_` prefix.
-    let m = citing("\"h.py::sacm23_base_001_helper\"");
-    let repo = FakeRepo::default().with("h.py", "def sacm23_base_001_helper():\n    pass\n");
+    let m = citing("\".claude/hooks/h.py::sacm23_base_001_helper\"");
+    let repo = FakeRepo::default().with(
+        ".claude/hooks/h.py",
+        "def sacm23_base_001_helper():\n    pass\n",
+    );
     let p = problems(&m, repo);
     assert!(
         p.len() == 1 && p[0].contains("`sacm23_base_001_helper`"),
@@ -1042,8 +1066,8 @@ fn lib_tool_001_citation_of_a_name_in_a_comment_or_string_is_rejected() {
         "const S: &str = \"#[test] fn sacm23_base_001_x() {}\";",
         "let s = \"fn sacm23_base_001_x() {}\";",
     ] {
-        let repo = FakeRepo::default().with("t.rs", text);
-        let p = problems(&citing("\"t.rs::sacm23_base_001_x\""), repo);
+        let repo = FakeRepo::default().with("crates/x/tests/t.rs", text);
+        let p = problems(&citing("\"crates/x/tests/t.rs::sacm23_base_001_x\""), repo);
         assert!(
             p.iter()
                 .any(|e| e.starts_with("SACM23-BASE-001: ") && e.contains("`sacm23_base_001_x`")),
@@ -1066,17 +1090,17 @@ fn lib_tool_001_same_line_test_attribute_counts_for_citation_and_orphans() {
         "LIB-TOOL-001: a same-line test without a row-id name is not traced"
     );
 
-    let repo = FakeRepo::default().with("t.rs", same_line);
+    let repo = FakeRepo::default().with("crates/x/tests/t.rs", same_line);
     assert_eq!(
-        problems(&citing("\"t.rs::sacm23_base_001_x\""), repo),
+        problems(&citing("\"crates/x/tests/t.rs::sacm23_base_001_x\""), repo),
         Vec::<String>::new(),
         "LIB-TOOL-001: a same-line test is a valid citation"
     );
 
-    let repo = FakeRepo::default().with("t.rs", same_line);
+    let repo = FakeRepo::default().with("crates/x/tests/t.rs", same_line);
     assert_exact(
         &problems(&matrix(PLANNED), repo),
-        "t.rs: traced test `sacm23_base_001_x` is not cited by any matrix row",
+        "crates/x/tests/t.rs: traced test `sacm23_base_001_x` is not cited by any matrix row",
     );
 }
 
@@ -1199,7 +1223,7 @@ fn render_fixture() -> Matrix {
         "SACM23-BASE-003",
         "tests-failing",
         "depends_on = [\"SACM23-BASE-001\"]\nacceptance = [\"a\"]\n\
-         tests = [\"t.rs::sacm23_base_003_x\"]",
+         tests = [\"crates/x/tests/t.rs::sacm23_base_003_x\"]",
     );
     matrix(&format!("{early}{PLANNED}{second}{failing}"))
 }
@@ -1453,7 +1477,13 @@ fn lib_tool_001_fs_repo_skips_target_directories_and_non_source_files() {
     let rust_test = "#[test]\nfn lib_cli_001_skipped() {}\n";
     let python_test = "def test_lib_cli_001_skipped(self):\n    pass\n";
     tree.write("crates/demo/tests/kept.rs", "#[test]\nfn lib_cli_001_kept() {}\n")
-        // Build output is never scanned, at any depth and in every root.
+        // Build output is never scanned, at any depth and in every root. A
+        // `target` directory is build output when a `Cargo.toml` sits
+        // directly beside it (slice 0006, D9).
+        .write("Cargo.toml", "[workspace]\n")
+        .write("crates/demo/Cargo.toml", "[package]\n")
+        .write("xtask/Cargo.toml", "[package]\n")
+        .write(".claude/hooks/Cargo.toml", "[package]\n")
         .write("crates/demo/target/debug/build.rs", rust_test)
         .write("target/x.rs", rust_test)
         .write("xtask/target/x.rs", rust_test)
@@ -1473,8 +1503,8 @@ fn lib_tool_001_fs_repo_skips_target_directories_and_non_source_files() {
     assert_eq!(
         traced_on_disk(&tree),
         owned_pairs(&[("crates/demo/tests/kept.rs", "lib_cli_001_kept")]),
-        "LIB-TOOL-001: `target/` directories, non-source files, other roots and \
-         wrong-language syntax are not scanned"
+        "LIB-TOOL-001: `target/` directories beside a `Cargo.toml`, non-source files, other \
+         roots and wrong-language syntax are not scanned"
     );
 }
 

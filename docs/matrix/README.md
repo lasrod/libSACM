@@ -82,14 +82,64 @@ changes a status, and only to `verified` on a recorded PASS from the verifier.
    inside a list item, which CommonMark closes when the item ends, is LIB-TOOL-005,
    still open. HTML blocks and a backtick in a fence's info string are LIB-TOOL-015. A line
    starting `- Row verdict:` that is not well formed is a problem.
-6. Every test citation is `path::function`, where the function is a **test** in that file
-   (a Rust function under a `#[test]`-style attribute, on the line before or the same
-   line, or a Python `def test_…`; a helper, comment or string literal does not count),
-   named `<row id in snake case>` or `<row id in snake case>_<anything>` (Python tests
-   add unittest's `test_` prefix); or `doctest:path` for a file containing a code block.
-7. Every traced test in `crates/`, `xtask/` and `.claude/hooks/` (a test function, as
-   above, whose name starts with a row id) is cited by some row. An
-   uncited traced test is a finding: either the row is missing it or the test is stale.
+6. Every test citation is `path::function`, where the function is a **test** in that file,
+   or `doctest:path` for a file containing a code block. A test is named
+   `<row id in snake case>` or `<row id in snake case>_<anything>` (Python tests add
+   unittest's `test_` prefix). The file of a `path::function` citation must be a scanned
+   test file (rule 7). A citation of any other file, whether or not the file exists, is
+   the problem `test file <path> is outside the scanned test files`. That problem
+   replaces the citation's other checks, except the check of the test's name, so the
+   file is not looked up. A `doctest:` citation may name any file, because doctests also
+   live in READMEs and other docs. What counts as a test:
+   - **Rust:** a function under a test-style attribute, one whose path ends in the
+     segment `test`, `test_case` or `rstest` (`#[test]`, `#[tokio::test]`,
+     `#[test_case(..)]`, `#[rstest]`). The attribute is on a line before the function or
+     on the same line. Other attributes, blank lines and comments may sit between, and an
+     attribute may span lines. `#[cfg(test)]`, `#[mytest]` and `#[testing]` mark nothing.
+     Paths are read as tokens and judged whole. On one line, whitespace or a comment may
+     sit between `#` and `[`, and whitespace or comments may sit around each `::`, also
+     across lines. So `# [tokio :: test]` marks a test and `#[test :: helper]` does not.
+     Any run of spaces or tabs may follow `fn`. `myfn`, `self.fn` and `r#fn` are not the
+     keyword.
+   - **Python:** a line-leading `def test_…` or `async def test_…`, at any indent. Any run
+     of spaces or tabs may follow `async`, `def` and `class`. A word that only starts with
+     one of them (`define`, `classy`) is not the keyword.
+   - Text inside a comment or a literal never counts. In Rust, that is line, doc and
+     block comments (block comments nest), strings, raw strings with any number of `#`,
+     and char and byte literals. In Python, it is `#` comments and strings in single,
+     double or triple quotes, with any prefix. A helper does not count either.
+   - An ignored or skipped test is still a test, so citing it raises no problem for the
+     row. Every cited test is in a scanned test file, so rule 7 reports it instead.
+7. The scan covers the scanned test files: the files under `crates/`, `xtask/` and
+   `.claude/hooks/` whose extension is `.rs` or `.py`, in any case, except build output.
+   Build output is a directory named `target` with a `Cargo.toml` directly beside it, as
+   with the workspace's `target/` or a package's `crates/<name>/target/`. Any other
+   `target` directory is scanned, such as a module directory `src/target/` or
+   `tests/target/`. A traced test is a test, as above, whose name starts with a row id.
+   Each traced test the scan finds has at most one problem, the first of these that
+   applies:
+   1. **It is in a file with a path component `src`.** Traced tests belong in test files,
+      outside the implementer's scope. Untraced unit tests and doctests under `src` are
+      allowed.
+   2. **It is ignored or skipped, so it is not evidence.** In Rust that is `#[ignore]`,
+      `#[ignore = "…"]`, or a `#[cfg_attr(<predicate>, …)]` that lists `ignore` after the
+      predicate. `ignore` must be the whole path, so `#[ignore :: x]` does not ignore. In
+      Python it is a decorator whose dotted name ends in `skip`, `skipIf`, `skipUnless`,
+      `skipif` or `expectedFailure`, either on the test or on a class it is indented
+      under. The name is read as tokens, so whitespace may follow the `@` and sit around
+      each `.` (`@ unittest . skip`). The whole name is judged, so
+      `@unittest.skip .helper` does not skip.
+   3. **No row cites it.** Either the row is missing it or the test is stale.
+
+   These problems are sorted by file and then by function name. The scan cannot see tests
+   that a macro generates, or Python tests skipped at run time (`self.skipTest(...)`,
+   `pytest.skip()`). It does not read a Rust attribute after other code on its line. A
+   `#` at the end of a line does not open an attribute whose `[` is on the next line, and
+   a `fn` whose name is on the next line is not read. A
+   `cfg_attr` nested in a `cfg_attr` (`#[cfg_attr(a, cfg_attr(b, ignore))]`) and a
+   prelude-qualified `ignore` (`#[::core::prelude::v1::ignore]`,
+   `#[std::prelude::v1::ignore]`) do not ignore, so their tests count as running. The
+   prelude-qualified `ignore` is LIB-TOOL-016.
 8. `depends_on` targets exist, are not the row itself, are not `candidate` or
    `out-of-scope`, are not in a later milestone, and contain no cycles.
 9. `functionality-matrix.md` equals `cargo xtask matrix render` output.

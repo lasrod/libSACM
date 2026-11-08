@@ -25,6 +25,9 @@
 //!     fn traced_functions(&self) -> Vec<(String, String)> {
 //!         Vec::new()
 //!     }
+//!     fn ignored_functions(&self) -> Vec<(String, String)> {
+//!         Vec::new()
+//!     }
 //! }
 //!
 //! let matrix = load("schema_version = 1")?;
@@ -36,6 +39,7 @@
 //! # Ok::<(), String>(())
 //! ```
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write as _;
 use std::fs;
@@ -51,7 +55,8 @@ pub const MATRIX_PATH: &str = "docs/matrix/functionality-matrix.toml";
 /// The Markdown rendering of the matrix, relative to the repository root.
 pub const RENDERED_PATH: &str = "docs/matrix/functionality-matrix.md";
 
-/// Directories scanned for traced test functions (orphan detection).
+/// Directories whose Rust and Python files are scanned for traced test
+/// functions (see [`is_scanned_test_file`]).
 const TEST_SCAN_ROOTS: &[&str] = &["crates", "xtask", ".claude/hooks"];
 
 // ---------------------------------------------------------------------------
@@ -278,18 +283,40 @@ impl Kind {
 
 /// The repository as the checks see it. Paths are relative to the repository
 /// root and use `/` separators.
+///
+/// The scanned test files are the files under `crates/`, `xtask/` or
+/// `.claude/hooks/` whose extension is `.rs` or `.py`, in any case, and that
+/// are not under build output. Build output is a directory named `target`
+/// with a `Cargo.toml` directly beside it; [`check`] asks [`Repo::exists`]
+/// for that `Cargo.toml`. Any other `target` directory, such as a module
+/// directory `src/target/`, is not build output. [`check`] holds a test
+/// citation of any other file to be a row problem, so every cited test is
+/// one that [`Repo::traced_functions`] or [`Repo::ignored_functions`] can
+/// list.
 pub trait Repo {
     /// Whether a file or directory exists at `rel`.
     fn exists(&self, rel: &str) -> bool;
     /// The text of the file at `rel`, or `None` if it cannot be read.
     fn read(&self, rel: &str) -> Option<String>;
-    /// Every test function in the scanned test roots whose name traces to a
-    /// row (see [`traced_tests`]), as `(file, name)` pairs.
+    /// Every test function in the scanned test files whose name traces to a
+    /// row and that runs (see [`traced_tests`]), as `(file, name)` pairs.
     fn traced_functions(&self) -> Vec<(String, String)>;
+    /// Every test function in the scanned test files whose name traces to a
+    /// row and that is ignored or skipped (see [`ignored_traced_tests`]), as
+    /// `(file, name)` pairs. Such a test is never evidence: [`check`] reports
+    /// each one.
+    fn ignored_functions(&self) -> Vec<(String, String)>;
 }
 
-/// [`Repo`] over a checkout on disk. Traced tests are collected from the
-/// Rust and Python sources under `crates/`, `xtask/` and `.claude/hooks/`.
+/// [`Repo`] over a checkout on disk. Traced tests, running or ignored, are
+/// collected from the scanned test files (see [`Repo`]): the Rust and Python
+/// sources under `crates/`, `xtask/` and `.claude/hooks/`.
+///
+/// Build output is skipped: a directory named `target` is not entered when a
+/// `Cargo.toml` sits directly beside it, as with the workspace's `target/`
+/// or a package's. Any other `target` directory is scanned, so a test in a
+/// module directory such as `crates/x/src/target/` or
+/// `crates/x/tests/target/` is found.
 #[derive(Debug)]
 pub struct FsRepo {
     root: PathBuf,
@@ -303,24 +330,72 @@ impl FsRepo {
             root: root.to_path_buf(),
         }
     }
-}
 
-/// Rust and Python source files under `dir`, skipping build output.
-fn walk_sources(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            if path.file_name().is_some_and(|n| n == "target") {
+    /// `(file, name)` for every name `find` returns for a scanned test file
+    /// (see [`is_scanned_test_file`]), read as Python when its extension is
+    /// `.py`.
+    fn scan(&self, find: fn(&str, bool) -> Vec<String>) -> Vec<(String, String)> {
+        let mut files = Vec::new();
+        for scan_root in TEST_SCAN_ROOTS {
+            self.walk(scan_root, &mut files);
+        }
+        let mut found = Vec::new();
+        for (file, rel) in files {
+            let Ok(text) = fs::read_to_string(&file) else {
                 continue;
+            };
+            for name in find(&text, has_extension(&file, "py")) {
+                found.push((rel.clone(), name));
             }
-            walk_sources(&path, out);
-        } else if has_extension(&path, "rs") || has_extension(&path, "py") {
-            out.push(path);
+        }
+        found
+    }
+
+    /// The scanned test files under the repository-relative directory `dir`,
+    /// each as its path on disk and its path relative to the root. Build
+    /// output (see [`is_build_output`]) is not entered.
+    fn walk(&self, dir: &str, out: &mut Vec<(PathBuf, String)>) {
+        let Ok(entries) = fs::read_dir(self.root.join(dir)) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let rel = format!("{dir}/{}", entry.file_name().to_string_lossy());
+            let path = entry.path();
+            if path.is_dir() {
+                if !is_build_output(&rel, self) {
+                    self.walk(&rel, out);
+                }
+            } else if is_scanned_test_file(&rel, self) {
+                out.push((path, rel));
+            }
         }
     }
+}
+
+/// Whether the repository-relative file `rel` is a scanned test file: it is
+/// under one of [`TEST_SCAN_ROOTS`], its extension is `.rs` or `.py` in any
+/// case, and no directory above it is build output (see
+/// [`is_build_output`]). The walk of [`FsRepo`] lists exactly these files,
+/// and a `path::function` citation of any other file is a row problem.
+fn is_scanned_test_file(rel: &str, repo: &dyn Repo) -> bool {
+    let path = Path::new(rel);
+    TEST_SCAN_ROOTS
+        .iter()
+        .any(|root| rel.strip_prefix(root).is_some_and(|r| r.starts_with('/')))
+        && (has_extension(path, "rs") || has_extension(path, "py"))
+        && !rel
+            .match_indices('/')
+            .any(|(slash, _)| is_build_output(&rel[..slash], repo))
+}
+
+/// Whether the repository-relative directory `dir` is build output: it is
+/// named `target` and a `Cargo.toml` sits directly beside it, as with the
+/// workspace's own `target/` or a package's. Any other `target` directory,
+/// such as a `src/target/` module directory, is not.
+fn is_build_output(dir: &str, repo: &dyn Repo) -> bool {
+    let name_start = dir.rfind('/').map_or(0, |slash| slash + 1);
+    let (parent, name) = dir.split_at(name_start);
+    name == "target" && repo.exists(&format!("{parent}Cargo.toml"))
 }
 
 fn has_extension(path: &Path, ext: &str) -> bool {
@@ -338,37 +413,108 @@ impl Repo for FsRepo {
     }
 
     fn traced_functions(&self) -> Vec<(String, String)> {
-        let mut files = Vec::new();
-        for scan_root in TEST_SCAN_ROOTS {
-            walk_sources(&self.root.join(scan_root), &mut files);
-        }
-        let mut found = Vec::new();
-        for file in files {
-            let Ok(text) = fs::read_to_string(&file) else {
-                continue;
-            };
-            let rel = file
-                .strip_prefix(&self.root)
-                .unwrap_or(&file)
-                .to_string_lossy()
-                .replace('\\', "/");
-            for name in traced_tests(&text, has_extension(&file, "py")) {
-                found.push((rel.clone(), name));
-            }
-        }
-        found
+        self.scan(traced_tests)
+    }
+
+    fn ignored_functions(&self) -> Vec<(String, String)> {
+        self.scan(ignored_traced_tests)
     }
 }
 
-/// Test functions in `text` whose names trace to a matrix row, in source
-/// order.
+// ---------------------------------------------------------------------------
+// The traced-test scanner
+// ---------------------------------------------------------------------------
+
+/// Test functions in `text` whose names trace to a matrix row and that run,
+/// in source order. `python` selects the Python rules; otherwise `text` is
+/// read as Rust.
 ///
-/// A Rust test is a function under a `#[test]`-style attribute (`#[test]`,
-/// `#[tokio::test]`, ...), on the line before the function or on the same
-/// line; other attributes, blank lines and comments may sit in between. With
-/// `python`, a test is a line-leading `def test_...`. A name traces when, with
-/// any `test_` prefix removed, it starts `sacm23_<area>_<nnn>` or
-/// `lib_<area>_<nnn>`.
+/// A name traces when, with any `test_` prefix removed, it starts
+/// `sacm23_<area>_<nnn>` or `lib_<area>_<nnn>`. A traced test that is
+/// ignored or skipped is not listed here but by [`ignored_traced_tests`].
+///
+/// # Comments and literals
+///
+/// Text inside a comment or a literal is never read: a `#[test]`, `fn` or
+/// `def` there neither marks nor defines anything. The line breaks inside
+/// them still count, so a literal that spans lines does not join the lines
+/// around it. A literal or comment that is never closed runs to the end of
+/// the text.
+///
+/// - **Rust:** line and doc comments (`//`, `///`, `//!`); block comments
+///   (`/* */`, `/** */`, `/*! */`), which nest; strings (`"..."`, `b"..."`,
+///   `c"..."`), in which a backslash escapes the next character; raw strings
+///   (`r"..."`, and `r#"..."#` with any number of `#`, also with `br` and
+///   `cr`), which end only at a quote followed by as many `#`; and char and
+///   byte literals (`'"'`, `'\''`, `b'"'`). A lifetime or label (`'a`,
+///   `'static`) and a raw identifier (`r#match`) open nothing.
+/// - **Python:** `#` comments, and strings in single or double quotes, single
+///   or triple (`"""`, `'''`), with an optional prefix (`r`, `b`, `f`, `u`,
+///   `rb`, `br`, `fr`, `rf`, in any case). A backslash escapes the next
+///   character, in raw strings too, so `\"` never ends a string.
+///
+/// # Rust tests
+///
+/// A Rust test is a function under a test-style attribute: one whose path
+/// ends in the segment `test`, `test_case` or `rstest`, with or without
+/// arguments (`#[test]`, `#[tokio::test(flavor = "multi_thread")]`,
+/// `#[test_case(1)]`, `#[rstest]`). The attribute is on a line before the
+/// function or on the same line. Other attributes, blank lines and comments
+/// may sit in between, and an attribute may span lines. The `fn` and the
+/// function's name must be on the first line after the attributes. The test
+/// is ignored when one of its attributes is `ignore` (`#[ignore]`,
+/// `#[ignore = "..."]`), or is `cfg_attr` and lists `ignore` after its
+/// predicate (`#[cfg_attr(miri, ignore)]`).
+///
+/// Names are read as tokens, as Rust reads them, and the whole path is
+/// judged, never just its first segment:
+///
+/// - on one line, whitespace or a comment may separate the `#` from the `[`
+///   (`# [test]`);
+/// - whitespace or comments may sit around each `::` of a path, which may
+///   span lines: `#[tokio :: test]` is `#[tokio::test]`, while
+///   `#[test :: helper]` and `#[ignore :: x]` are neither test-style nor
+///   ignore-style;
+/// - any run of spaces or tabs may follow `fn`. A `fn` counts only as a
+///   keyword: not inside a longer word (`myfn`, `fnord`), and not after a
+///   `.` (`self.fn`) or a `#` (the raw identifier `r#fn`).
+///
+/// # Python tests
+///
+/// A Python test is a line-leading `def test_...` or `async def test_...`, at
+/// any indent. Any run of spaces or tabs may follow `async` and `def`, and
+/// `class`. A word that only starts with one of them (`define`, `classy`) is
+/// not the keyword. The test is skipped under a decorator whose dotted name
+/// ends in `skip`, `skipIf`, `skipUnless`, `skipif` or `expectedFailure`.
+/// The name is read as tokens: whitespace may follow the `@` and sit around
+/// each `.` (`@ unittest . skip`), and the whole name is judged, so
+/// `@unittest.skip .helper` does not skip. It skips in two cases:
+///
+/// - the decorator is on the lines directly above the test, where blank
+///   lines, comment lines and other decorators may sit between;
+/// - the decorator is on a `class` that the test is indented under. A
+///   skipped class ends at the next line of code at the class's indent or
+///   less. Comment lines, and lines that hold only string content, do not
+///   end it.
+///
+/// A decorator's arguments may span lines.
+///
+/// # Known limits
+///
+/// - A macro that generates tests (`macro_rules!`, or a procedural macro
+///   other than the attributes above) does not put them in the text, so they
+///   are not found.
+/// - A Python test that is skipped at run time (`self.skipTest(...)`,
+///   `pytest.skip()`) cannot be seen, so it counts as running.
+/// - A Python line continued with a backslash, rather than inside brackets,
+///   is read as two lines. A tab in a Python indent counts as one column.
+/// - A Rust attribute after other code on its line is not read, and a
+///   `cfg_attr` nested in a `cfg_attr` does not ignore.
+/// - A Rust `#` at the end of a line opens no attribute, even when the next
+///   line starts with its `[`.
+/// - A prelude-qualified `ignore` (`#[::core::prelude::v1::ignore]`,
+///   `#[std::prelude::v1::ignore]`) does not ignore, so its test counts as
+///   running (LIB-TOOL-016).
 ///
 /// ```
 /// use xtask::matrix::traced_tests;
@@ -376,72 +522,480 @@ impl Repo for FsRepo {
 /// let rust = "#[test]\nfn lib_cli_001_parses() {}\nfn lib_cli_001_helper() {}";
 /// assert_eq!(traced_tests(rust, false), ["lib_cli_001_parses"]);
 /// assert_eq!(traced_tests("#[test] fn sacm23_base_001_x() {}", false), ["sacm23_base_001_x"]);
+/// assert!(traced_tests("/* #[test] fn lib_cli_001_x() {} */", false).is_empty());
+/// // Brackets in an attribute nest, so its first `]` need not close it.
+/// let case = "#[test_case([1, 2])]\nfn lib_cli_001_pair(pair: [u8; 2]) {}";
+/// assert_eq!(traced_tests(case, false), ["lib_cli_001_pair"]);
+/// // A path is read as tokens, and judged whole.
+/// let spaced = "# [tokio :: test]\nasync fn\tlib_cli_001_spaced() {}";
+/// assert_eq!(traced_tests(spaced, false), ["lib_cli_001_spaced"]);
+/// assert!(traced_tests("#[test :: helper]\nfn lib_cli_001_x() {}", false).is_empty());
 ///
 /// let python = "def test_lib_tool_003_denies(self):\ndef lib_tool_003_helper():";
 /// assert_eq!(traced_tests(python, true), ["test_lib_tool_003_denies"]);
+/// let skipped = "@unittest . skip(\"x\")\ndef\ttest_lib_tool_003_x(self):";
+/// assert!(traced_tests(skipped, true).is_empty());
 /// ```
 #[must_use]
 pub fn traced_tests(text: &str, python: bool) -> Vec<String> {
-    test_functions(text, python)
+    traced(text, python, false)
+}
+
+/// Test functions in `text` whose names trace to a matrix row and that are
+/// ignored (Rust) or skipped (Python), in source order. The forms
+/// recognised, and their limits, are those of [`traced_tests`].
+///
+/// ```
+/// use xtask::matrix::{ignored_traced_tests, traced_tests};
+///
+/// let rust = "#[test]\n#[ignore = \"slow\"]\nfn lib_cli_001_slow() {}";
+/// assert_eq!(ignored_traced_tests(rust, false), ["lib_cli_001_slow"]);
+/// assert!(traced_tests(rust, false).is_empty());
+///
+/// let python = "@unittest.skip(\"x\")\ndef test_lib_tool_003_x(self):";
+/// assert_eq!(ignored_traced_tests(python, true), ["test_lib_tool_003_x"]);
+/// ```
+#[must_use]
+pub fn ignored_traced_tests(text: &str, python: bool) -> Vec<String> {
+    traced(text, python, true)
+}
+
+/// The traced tests in `text` that are ignored, or the ones that run.
+fn traced(text: &str, python: bool, ignored: bool) -> Vec<String> {
+    test_functions(&mask(text, python), python)
         .into_iter()
-        .filter(|name| looks_traced(name))
+        .filter(|test| test.ignored == ignored && looks_traced(&test.name))
+        .map(|test| test.name)
         .collect()
 }
 
-/// Every test function in `text`, whether or not its name traces to a row.
-fn test_functions(text: &str, python: bool) -> Vec<String> {
-    let mut names = Vec::new();
-    let mut pending_test_attr = false;
-    for line in text.lines() {
-        let line = line.trim();
-        if python {
-            if let Some(rest) = line.strip_prefix("def ") {
-                let name = identifier(rest);
-                if name.starts_with("test_") {
-                    names.push(name);
-                }
-            }
-            continue;
-        }
-        let (test_attr, rest) = strip_attributes(line);
-        if rest.is_empty() || rest.starts_with("//") {
-            // Attributes and comments may sit between `#[test]` and the function.
-            pending_test_attr |= test_attr;
-            continue;
-        }
-        if pending_test_attr || test_attr {
-            if let Some(name) = defined_functions(rest).into_iter().next() {
-                names.push(name);
-            }
-        }
-        pending_test_attr = false;
-    }
-    names
+/// A test function the scanner found.
+struct Test {
+    name: String,
+    /// Ignored (Rust) or skipped (Python).
+    ignored: bool,
 }
 
-/// Strip the attributes that start a (trimmed) Rust line. Returns whether one
-/// of them is `#[test]`-style, and the rest of the line. An attribute that is
-/// not closed on this line takes the rest of the line.
-fn strip_attributes(line: &str) -> (bool, &str) {
-    let mut test_attr = false;
-    let mut rest = line;
-    while let Some(body) = rest.strip_prefix("#[") {
-        let mut depth = 1_usize;
-        let close = body.char_indices().find_map(|(i, c)| {
-            match c {
-                '[' => depth += 1,
-                ']' => depth -= 1,
-                _ => {}
-            }
-            (depth == 0).then_some(i)
-        });
-        let Some(close) = close else {
-            return (test_attr, "");
-        };
-        test_attr |= body[..close].trim_end().ends_with("test");
-        rest = body[close + 1..].trim_start();
+/// Every test function in `masked`, a text that [`mask`] masked, whether or
+/// not its name traces to a row, in source order.
+fn test_functions(masked: &str, python: bool) -> Vec<Test> {
+    if python {
+        python_tests(masked)
+    } else {
+        rust_tests(masked)
     }
-    (test_attr, rest)
+}
+
+/// `text` with every comment and literal, delimiters included, blanked: each
+/// character in them that is not whitespace becomes a space. The masked text
+/// has the same lines as `text`. See [`traced_tests`] for the forms. A
+/// string prefix other than a
+/// Rust raw string's (`b"`, `c"`, `b'`, Python's `rb"`) is left in place:
+/// the quote after it opens the literal.
+fn mask(text: &str, python: bool) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    if python {
+        mask_python(&chars)
+    } else {
+        mask_rust(&chars)
+    }
+}
+
+/// Push `chars[from..to]` to `out`, with every character that is not
+/// whitespace replaced by a space, so that each newline stays. `to` may lie
+/// past the end of `chars`.
+fn blank(chars: &[char], from: usize, to: usize, out: &mut String) {
+    for &c in chars.iter().take(to).skip(from) {
+        out.push(if c.is_whitespace() { c } else { ' ' });
+    }
+}
+
+/// Where the identifier ends that starts at `chars[from]`.
+fn word_end(chars: &[char], from: usize) -> usize {
+    from + chars
+        .iter()
+        .skip(from)
+        .take_while(|c| is_identifier_char(**c))
+        .count()
+}
+
+/// The index of the newline that ends the line holding `chars[from]`, or the
+/// length of `chars`.
+fn line_end(chars: &[char], from: usize) -> usize {
+    chars
+        .iter()
+        .skip(from)
+        .position(|&c| c == '\n')
+        .map_or(chars.len(), |n| from + n)
+}
+
+/// Whether `width` copies of `quote` start at `chars[at]`.
+fn quote_run(chars: &[char], at: usize, quote: char, width: usize) -> bool {
+    chars
+        .iter()
+        .skip(at)
+        .take(width)
+        .take_while(|&&c| c == quote)
+        .count()
+        == width
+}
+
+/// The Rust masking of [`mask`]. Each step consumes at least one character,
+/// and each literal or comment is read once, so the work is linear.
+fn mask_rust(chars: &[char]) -> String {
+    let mut out = String::with_capacity(chars.len());
+    let mut i = 0;
+    while let Some(&c) = chars.get(i) {
+        let end = match (c, chars.get(i + 1)) {
+            ('/', Some('/')) => line_end(chars, i),
+            ('/', Some('*')) => block_comment_end(chars, i + 2),
+            ('"', _) => escaped_end(chars, i + 1, '"'),
+            ('\'', _) if opens_char_literal(chars, i) => escaped_end(chars, i + 1, '\''),
+            _ if is_identifier_char(c) => {
+                let after = word_end(chars, i);
+                let word = &chars[i..after];
+                if let Some(end) = raw_string_end(word, chars, after) {
+                    end
+                } else {
+                    out.extend(word);
+                    i = after;
+                    continue;
+                }
+            }
+            _ => {
+                out.push(c);
+                i += 1;
+                continue;
+            }
+        };
+        blank(chars, i, end, &mut out);
+        i = end;
+    }
+    out
+}
+
+/// Where a Rust block comment ends whose body starts at `chars[from]`.
+/// Comments nest, so it ends after the `*/` that closes the first `/*`.
+fn block_comment_end(chars: &[char], from: usize) -> usize {
+    let mut depth = 1_usize;
+    let mut j = from;
+    while let Some(&c) = chars.get(j) {
+        match (c, chars.get(j + 1)) {
+            ('/', Some('*')) => {
+                depth += 1;
+                j += 2;
+            }
+            ('*', Some('/')) => {
+                depth -= 1;
+                j += 2;
+                if depth == 0 {
+                    return j;
+                }
+            }
+            _ => j += 1,
+        }
+    }
+    j
+}
+
+/// Where a literal ends whose body starts at `chars[from]`: after the next
+/// `quote` that no backslash escapes. Past the end of `chars` when the text
+/// ends first.
+fn escaped_end(chars: &[char], from: usize, quote: char) -> usize {
+    let mut j = from;
+    while let Some(&c) = chars.get(j) {
+        j += if c == '\\' { 2 } else { 1 };
+        if c == quote {
+            return j;
+        }
+    }
+    j
+}
+
+/// Where a raw string ends whose body starts at `chars[from]`: after the
+/// first quote that `hashes` `#` follow.
+fn raw_end(chars: &[char], from: usize, hashes: usize) -> usize {
+    let mut j = from;
+    while let Some(&c) = chars.get(j) {
+        j += 1;
+        if c == '"' && quote_run(chars, j, '#', hashes) {
+            return j + hashes;
+        }
+    }
+    j
+}
+
+/// Whether the `'` at `chars[at]` opens a char literal rather than a
+/// lifetime or a label: an escape follows it, or a quote closes it after one
+/// character.
+fn opens_char_literal(chars: &[char], at: usize) -> bool {
+    matches!(chars.get(at + 1..at + 3), Some(['\\', _] | [_, '\'']))
+}
+
+/// Where the raw string ends that starts at `chars[after]`, when the Rust
+/// identifier `word` before it is a raw string's prefix (`r`, `br`, `cr`)
+/// and `#`s and a quote follow it; `None` otherwise. (The prefixes `b` and
+/// `c` of other literals need no reading of their own: the quote after them
+/// opens the literal.)
+fn raw_string_end(word: &[char], chars: &[char], after: usize) -> Option<usize> {
+    if !matches!(word, ['r'] | ['b' | 'c', 'r']) {
+        return None;
+    }
+    let hashes = chars.iter().skip(after).take_while(|&&c| c == '#').count();
+    let quote = after + hashes;
+    (chars.get(quote) == Some(&'"')).then(|| raw_end(chars, quote + 1, hashes))
+}
+
+/// The Python masking of [`mask`]. Each step consumes at least one
+/// character, and each string or comment is read once, so the work is
+/// linear. Every quote outside a comment or a string opens a string, so a
+/// prefix needs no reading of its own.
+fn mask_python(chars: &[char]) -> String {
+    let mut out = String::with_capacity(chars.len());
+    let mut i = 0;
+    while let Some(&c) = chars.get(i) {
+        let end = match c {
+            '#' => line_end(chars, i),
+            '"' | '\'' => python_string_end(chars, i, c),
+            _ => {
+                out.push(c);
+                i += 1;
+                continue;
+            }
+        };
+        blank(chars, i, end, &mut out);
+        i = end;
+    }
+    out
+}
+
+/// Where the Python string ends that the `quote` at `chars[at]` opens. Three
+/// quotes open a triple-quoted string, which only three close. A backslash
+/// escapes the next character.
+fn python_string_end(chars: &[char], at: usize, quote: char) -> usize {
+    let width = if quote_run(chars, at, quote, 3) { 3 } else { 1 };
+    let mut j = at + width;
+    while let Some(&c) = chars.get(j) {
+        if quote_run(chars, j, quote, width) {
+            return j + width;
+        }
+        j += if c == '\\' { 2 } else { 1 };
+    }
+    j
+}
+
+/// The Rust tests in masked text, by the rules of [`traced_tests`].
+fn rust_tests(masked: &str) -> Vec<Test> {
+    let mut tests = Vec::new();
+    let mut marks = Marks::default();
+    // The body of an attribute still open at the end of a line, and its
+    // bracket depth.
+    let mut open: Option<(String, usize)> = None;
+    for line in masked.lines() {
+        let mut rest = line.trim();
+        loop {
+            if let Some((mut body, mut depth)) = open.take() {
+                let Some(close) = attribute_close(rest, &mut depth) else {
+                    body.push_str(rest);
+                    body.push(' ');
+                    open = Some((body, depth));
+                    rest = "";
+                    break;
+                };
+                body.push_str(&rest[..close]);
+                marks.add(&body);
+                rest = rest[close + 1..].trim_start();
+            } else if let Some(after) = attribute_open(rest) {
+                open = Some((String::new(), 1));
+                rest = after;
+            } else {
+                break;
+            }
+        }
+        if rest.is_empty() {
+            // Attributes, blank lines and comments may sit between `#[test]`
+            // and the function.
+            continue;
+        }
+        if marks.test {
+            if let Some(name) = defined_functions(rest).into_iter().next() {
+                tests.push(Test {
+                    name,
+                    ignored: marks.ignore,
+                });
+            }
+        }
+        marks = Marks::default();
+    }
+    tests
+}
+
+/// What the attributes above a Rust item say about it.
+#[derive(Default)]
+struct Marks {
+    /// One of them is test-style.
+    test: bool,
+    /// One of them is ignore-style.
+    ignore: bool,
+}
+
+impl Marks {
+    /// Take in the attribute whose text between `#[` and `]` is `body`.
+    fn add(&mut self, body: &str) {
+        let (path, args) = attribute_path(body);
+        self.test |= matches!(
+            path.rsplit(':').next(),
+            Some("test" | "test_case" | "rstest")
+        );
+        self.ignore |= path == "ignore"
+            || (path == "cfg_attr"
+                && args.trim_start().strip_prefix('(').is_some_and(|list| {
+                    top_level_items(list)
+                        .into_iter()
+                        .skip(1)
+                        .any(|item| attribute_path(item).0 == "ignore")
+                }));
+    }
+}
+
+/// The text after the `#` and `[` that open an attribute at the start of
+/// `text`, when they do. Whitespace may separate them (`# [test]`).
+fn attribute_open(text: &str) -> Option<&str> {
+    text.strip_prefix('#')?.trim_start().strip_prefix('[')
+}
+
+/// Where the attribute open at `depth` brackets closes in `text`: the index
+/// of its `]`. Brackets inside it nest.
+fn attribute_close(text: &str, depth: &mut usize) -> Option<usize> {
+    text.char_indices().find_map(|(i, c)| {
+        match c {
+            '[' => *depth += 1,
+            ']' => *depth -= 1,
+            _ => {}
+        }
+        (*depth == 0).then_some(i)
+    })
+}
+
+/// The path that starts an attribute body, and the rest of the body. The
+/// path is read as tokens: whitespace may sit around each `::`, so
+/// `tokio :: test` is the path `tokio::test`. (A comment there is already
+/// blanked to whitespace.)
+fn attribute_path(body: &str) -> (String, &str) {
+    let mut path = String::new();
+    let mut rest = body.trim_start();
+    loop {
+        if let Some(after) = rest.strip_prefix("::") {
+            path.push_str("::");
+            rest = after.trim_start();
+        }
+        let (segment, after) = split_identifier(rest);
+        path.push_str(segment);
+        rest = after.trim_start();
+        if !rest.starts_with("::") {
+            return (path, after);
+        }
+    }
+}
+
+/// The comma-separated items at the top level of `list`, up to the bracket
+/// that closes the list. An item that no comma or closing bracket ends is
+/// left out.
+fn top_level_items(list: &str) -> Vec<&str> {
+    let mut items = Vec::new();
+    let (mut depth, mut start) = (0_usize, 0);
+    for (i, c) in list.char_indices() {
+        match c {
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' if depth == 0 => {
+                items.push(&list[start..i]);
+                return items;
+            }
+            ')' | ']' | '}' => depth -= 1,
+            ',' if depth == 0 => {
+                items.push(&list[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    items
+}
+
+/// The last segments of the decorator names that skip a Python test.
+const SKIP_DECORATORS: [&str; 5] = ["skip", "skipIf", "skipUnless", "skipif", "expectedFailure"];
+
+/// The Python tests in masked text, by the rules of [`traced_tests`].
+fn python_tests(masked: &str) -> Vec<Test> {
+    let mut tests = Vec::new();
+    // Brackets that earlier lines left open: the line continues theirs.
+    let mut depth = 0_usize;
+    // A skip decorator sits above the next `def` or `class`.
+    let mut skip_next = false;
+    // The indent of the skipped class the line is in.
+    let mut skipped_class: Option<usize> = None;
+    for line in masked.lines() {
+        let continues = depth > 0;
+        depth = line.chars().fold(depth, |depth, c| match c {
+            '(' | '[' | '{' => depth + 1,
+            ')' | ']' | '}' => depth.saturating_sub(1),
+            _ => depth,
+        });
+        let code = line.trim_start();
+        if continues || code.is_empty() {
+            continue;
+        }
+        let indent = line.len() - code.len();
+        if skipped_class.is_some_and(|class| indent <= class) {
+            skipped_class = None;
+        }
+        if let Some(decorator) = code.strip_prefix('@') {
+            skip_next |= SKIP_DECORATORS.contains(&last_dotted_segment(decorator));
+            continue;
+        }
+        if let Some(name) = python_def(code) {
+            if name.starts_with("test_") {
+                tests.push(Test {
+                    name,
+                    ignored: skip_next || skipped_class.is_some(),
+                });
+            }
+        } else if skip_next && after_keyword(code, "class").is_some() {
+            skipped_class.get_or_insert(indent);
+        }
+        skip_next = false;
+    }
+    tests
+}
+
+/// The last segment of the dotted name that starts a decorator, after its
+/// `@`. The name is read as tokens: whitespace may sit after the `@` and
+/// around each `.`, so `unittest . skip` ends in `skip`.
+fn last_dotted_segment(decorator: &str) -> &str {
+    let mut rest = decorator;
+    loop {
+        let (segment, after) = split_identifier(rest.trim_start());
+        match after.trim_start().strip_prefix('.') {
+            Some(next) => rest = next,
+            None => return segment,
+        }
+    }
+}
+
+/// The name that a Python `def` or `async def` line defines.
+fn python_def(code: &str) -> Option<String> {
+    let code = after_keyword(code, "async").unwrap_or(code);
+    after_keyword(code, "def").map(|rest| split_identifier(rest).0.to_owned())
+}
+
+/// The text after the keyword `keyword` that starts `text`, and after the
+/// run of spaces or tabs that follows the keyword. `None` when no such run
+/// follows it, as in a word that only starts with the keyword (`classy`,
+/// `define`).
+fn after_keyword<'a>(text: &'a str, keyword: &str) -> Option<&'a str> {
+    let rest = text.strip_prefix(keyword)?;
+    rest.starts_with([' ', '\t'])
+        .then(|| rest.trim_start_matches([' ', '\t']))
 }
 
 /// Whether `c` can be part of an identifier: a letter, a digit or `_`.
@@ -449,30 +1003,37 @@ fn is_identifier_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
 
-/// The identifier at the start of `text`.
-fn identifier(text: &str) -> String {
-    text.chars()
-        .take_while(|c| is_identifier_char(*c))
-        .collect()
+/// The identifier at the start of `text`, and the text after it.
+fn split_identifier(text: &str) -> (&str, &str) {
+    let end = text
+        .find(|c: char| !is_identifier_char(c))
+        .unwrap_or(text.len());
+    text.split_at(end)
 }
 
-/// Names following `fn ` or `def ` in source text: all `fn` names in text
+/// Names that `fn` or `def` defines in source text: all `fn` names in text
 /// order, then all `def` names.
 ///
-/// A keyword counts only where it starts a word (`myfn x` defines nothing),
-/// and only when an identifier follows it. The occurrences come from
-/// [`str::match_indices`], so the scan always terminates: no index arithmetic
-/// decides where the next search starts. Neither keyword can overlap itself,
-/// so non-overlapping matches are all the matches.
+/// A keyword counts only where a run of spaces or tabs and then an
+/// identifier follow it, and only where it starts a token: the character
+/// before it is not an identifier character (`myfn x`), a `.` (the field
+/// `self.fn`) or a `#` (the raw identifier `r#fn`). The occurrences come
+/// from [`str::match_indices`], so the scan always terminates: no index
+/// arithmetic decides where the next search starts. Neither keyword can
+/// overlap itself, so non-overlapping matches are all the matches.
 fn defined_functions(text: &str) -> Vec<String> {
     let mut names = Vec::new();
-    for keyword in ["fn ", "def "] {
+    for keyword in ["fn", "def"] {
         for (pos, _) in text.match_indices(keyword) {
             let (before, from_keyword) = text.split_at(pos);
-            let starts_word = !before.chars().next_back().is_some_and(is_identifier_char);
-            let name = identifier(&from_keyword[keyword.len()..]);
-            if starts_word && !name.is_empty() {
-                names.push(name);
+            let starts_token = !before
+                .chars()
+                .next_back()
+                .is_some_and(|c| is_identifier_char(c) || matches!(c, '.' | '#'));
+            let name =
+                after_keyword(from_keyword, keyword).map_or("", |rest| split_identifier(rest).0);
+            if starts_token && !name.is_empty() {
+                names.push(name.to_owned());
             }
         }
     }
@@ -570,9 +1131,29 @@ fn load_error(text: &str, error: &toml::de::Error) -> String {
 ///
 /// The rules are those of `docs/matrix/README.md`. The order is
 /// deterministic: matrix-wide problems, then each row's in file order, then
-/// dependency cycles, then uncited traced tests sorted by file and function
-/// name, then the rendered page. Values are quoted as they are, control
-/// characters included; [`cmd_check`] escapes them.
+/// dependency cycles, then the problems of the traced tests that
+/// [`Repo::traced_functions`] and [`Repo::ignored_functions`] list, sorted
+/// by file and function name, then the rendered page.
+///
+/// A traced test has at most one problem. It is under a `src` directory, if
+/// a component of its path is `src`; otherwise it is ignored or skipped, if
+/// it is; otherwise it is cited by no row, if no row cites it:
+///
+/// - ``<file>: traced test `<name>` is under a `src` directory; traced tests belong in test files``
+/// - ``<file>: traced test `<name>` is ignored or skipped, so it is not evidence``
+/// - ``<file>: traced test `<name>` is not cited by any matrix row``
+///
+/// A `path::function` test citation must name a scanned test file (see
+/// [`Repo`]); otherwise the row has the problem
+/// `test file <path> is outside the scanned test files`, after the check of
+/// the test's name and instead of the citation's other checks, so the file
+/// is not looked up. Every cited test is therefore in a scanned file, and a
+/// row that cites an ignored or skipped test has no problem for it: the
+/// scan problem above reports it. A `doctest:path` citation may name any
+/// file, since doctests also live in READMEs and other docs.
+///
+/// Values are quoted as they are, control characters included;
+/// [`cmd_check`] escapes them.
 #[must_use]
 pub fn check(matrix: &Matrix, repo: &dyn Repo) -> Vec<String> {
     let mut errors = Vec::new();
@@ -619,12 +1200,13 @@ pub fn check(matrix: &Matrix, repo: &dyn Repo) -> Vec<String> {
         milestone_order: &milestone_order,
         rows: &rows,
         repo,
+        test_files: RefCell::new(BTreeMap::new()),
     };
     for row in &matrix.rows {
         check_row(row, &index, &mut errors);
     }
     check_cycles(matrix, &rows, &mut errors);
-    check_orphans(matrix, repo, &mut errors);
+    check_scanned_tests(matrix, repo, &mut errors);
 
     match repo.read(RENDERED_PATH) {
         Some(on_disk) if normalize(&on_disk) == normalize(&render(matrix)) => {}
@@ -644,6 +1226,30 @@ struct Index<'a> {
     milestone_order: &'a HashMap<&'a str, usize>,
     rows: &'a HashMap<&'a str, &'a Row>,
     repo: &'a dyn Repo,
+    /// Each cited test file, read and scanned once per check (`None` when it
+    /// cannot be read): many rows cite the same file.
+    test_files: RefCell<BTreeMap<String, Option<TestFile>>>,
+}
+
+/// A cited test file as the citation checks see it.
+struct TestFile {
+    /// Its test functions, running or ignored (see [`traced_tests`]).
+    tests: Vec<String>,
+    /// Every function it defines outside comments and literals.
+    defined: Vec<String>,
+}
+
+impl TestFile {
+    fn scan(text: &str, python: bool) -> Self {
+        let masked = mask(text, python);
+        Self {
+            tests: test_functions(&masked, python)
+                .into_iter()
+                .map(|test| test.name)
+                .collect(),
+            defined: defined_functions(&masked),
+        }
+    }
 }
 
 /// Every rule that concerns a single row; messages are prefixed with its id.
@@ -918,9 +1524,11 @@ fn check_path(path: &str) -> Result<(), String> {
 }
 
 /// Cited paths are inside the repository (see [`check_path`]); cited code
-/// paths exist; cited tests are named for this row, exist, and are test
-/// functions (see [`traced_tests`]). A rejected path is reported and its
-/// citation's other checks are skipped, except the test name check.
+/// paths exist; cited tests are named for this row, are in a scanned test
+/// file (see [`is_scanned_test_file`]), exist, and are test functions (see
+/// [`traced_tests`]). A rejected path, or a test file outside the scan, is
+/// reported and its citation's other checks are skipped, except the test
+/// name check.
 fn check_citations(row: &Row, index: &Index<'_>) -> Vec<String> {
     let mut out = Vec::new();
     for path in &row.code {
@@ -962,15 +1570,32 @@ fn check_citations(row: &Row, index: &Index<'_>) -> Vec<String> {
             out.push(problem);
             continue;
         }
-        let Some(text) = index.repo.read(path) else {
+        // Only a scanned test file gets the scan problems of
+        // `check_scanned_tests`, so a cited test must be in one.
+        if !is_scanned_test_file(path, index.repo) {
+            out.push(format!(
+                "test file {path} is outside the scanned test files"
+            ));
+            continue;
+        }
+        let python = has_extension(Path::new(path), "py");
+        let mut test_files = index.test_files.borrow_mut();
+        let file = test_files.entry(path.to_owned()).or_insert_with(|| {
+            index
+                .repo
+                .read(path)
+                .map(|text| TestFile::scan(&text, python))
+        });
+        let Some(file) = file else {
             out.push(format!("test file {path} does not exist"));
             continue;
         };
-        let python = has_extension(Path::new(path), "py");
-        if test_functions(&text, python).iter().any(|f| f == name) {
+        // An ignored or skipped test is still a test here: the scan problems
+        // of `check_scanned_tests` report it once, whether or not it is cited.
+        if file.tests.iter().any(|test| test == name) {
             continue;
         }
-        if !defined_functions(&text).iter().any(|f| f == name) {
+        if !file.defined.iter().any(|f| f == name) {
             out.push(format!("test function `{name}` is not defined in {path}"));
         } else if python {
             out.push(format!(
@@ -1028,26 +1653,49 @@ fn check_cycles(matrix: &Matrix, rows: &HashMap<&str, &Row>, errors: &mut Vec<St
     }
 }
 
-/// A traced test that no row cites is invisible to everyone downstream.
+/// The problems of the traced tests that the repository scan finds, at most
+/// one per test, in this order of precedence:
+///
+/// 1. A traced test in a file with a path component `src` is in production
+///    source, where the implementer can add or change it, whether or not it
+///    runs or is cited.
+/// 2. An ignored or skipped traced test is not evidence, whether or not it is
+///    cited.
+/// 3. A traced test that no row cites is invisible to everyone downstream.
+///
 /// Reported by file and then by function name, whatever order the repository
 /// lists them in.
-fn check_orphans(matrix: &Matrix, repo: &dyn Repo, errors: &mut Vec<String>) {
+fn check_scanned_tests(matrix: &Matrix, repo: &dyn Repo, errors: &mut Vec<String>) {
     let cited: HashSet<(&str, &str)> = matrix
         .rows
         .iter()
         .flat_map(|r| r.tests.iter())
         .filter_map(|t| t.split_once("::"))
         .collect();
-    let mut orphans: Vec<(String, String)> = repo
+    let running = repo
         .traced_functions()
         .into_iter()
-        .filter(|(file, name)| !cited.contains(&(file.as_str(), name.as_str())))
-        .collect();
-    orphans.sort();
-    for (file, name) in orphans {
-        errors.push(format!(
-            "{file}: traced test `{name}` is not cited by any matrix row"
-        ));
+        .map(|test| (test, false));
+    let ignored = repo
+        .ignored_functions()
+        .into_iter()
+        .map(|test| (test, true));
+    let mut problems = Vec::new();
+    for ((file, name), ignored) in running.chain(ignored) {
+        let problem = if file.split('/').any(|component| component == "src") {
+            "is under a `src` directory; traced tests belong in test files"
+        } else if ignored {
+            "is ignored or skipped, so it is not evidence"
+        } else if cited.contains(&(file.as_str(), name.as_str())) {
+            continue;
+        } else {
+            "is not cited by any matrix row"
+        };
+        problems.push((file, name, problem));
+    }
+    problems.sort_unstable();
+    for (file, name, problem) in problems {
+        errors.push(format!("{file}: traced test `{name}` {problem}"));
     }
 }
 

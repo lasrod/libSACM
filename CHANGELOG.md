@@ -29,3 +29,27 @@ change bumps the minor version and is listed under **Breaking**.
   that is set but empty is an error. An error from reading or parsing the matrix is one
   line, `docs/matrix/functionality-matrix.toml:<line>:<column>: <message>` or
   `read <path>: <error>`, with control characters escaped.
+- A precise traced-test scanner for the matrix gate.
+  - It skips Rust and Python comments and literals: block comments that nest, raw
+    strings, char literals, and triple-quoted and prefixed Python strings. Test-like
+    text inside them is not a test.
+  - It recognises `#[test_case]`, `#[rstest]` and other attributes whose path ends in
+    `test`, and Python `async def test_`.
+  - It reads names as tokens, as Rust and Python do, and judges a whole attribute path
+    or decorator name. So `# [test]`, `#[tokio :: test]` (also with comments around
+    the `::` or split across lines), `@ unittest . skip`, and a tab or several spaces
+    after `fn`, `def`, `async def` or `class` are the plain forms. `#[test :: helper]`
+    and `@unittest.skip .helper` are not, and neither are `self.fn` and `r#fn`.
+  - An ignored or skipped traced test (`#[ignore]`, `#[cfg_attr(<pred>, ignore)]`, or
+    a Python skip decorator on the test or on its class) is not evidence. The gate
+    reports it.
+  - The gate also reports a traced test under a `src` directory.
+  - Only build output is skipped: a `target` directory with a `Cargo.toml` directly
+    beside it. Any other `target` directory, such as a `src/target/` module, is
+    scanned.
+  - A `path::function` test citation must name a scanned test file: a `.rs` or `.py`
+    file under `crates/`, `xtask/` or `.claude/hooks/`, outside build output. Any other
+    file is the row problem `test file <path> is outside the scanned test files`.
+    `doctest:` citations may still name any file.
+  - API: `xtask::matrix::ignored_traced_tests`, and the required trait method
+    `Repo::ignored_functions`.

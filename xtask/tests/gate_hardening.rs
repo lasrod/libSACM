@@ -31,7 +31,8 @@ use std::process::Command;
 
 use common::{GATE_TOML, TempTree, consistent_tree};
 use xtask::matrix::{
-    FsRepo, MATRIX_PATH, Matrix, RENDERED_PATH, Repo, Status, check, load, render, traced_tests,
+    FsRepo, MATRIX_PATH, Matrix, RENDERED_PATH, Repo, Status, check, ignored_traced_tests, load,
+    render, traced_tests,
 };
 
 // ---------------------------------------------------------------------------
@@ -70,12 +71,24 @@ impl Repo for FakeRepo {
     }
 
     fn traced_functions(&self) -> Vec<(String, String)> {
+        self.scan(traced_tests)
+    }
+
+    fn ignored_functions(&self) -> Vec<(String, String)> {
+        self.scan(ignored_traced_tests)
+    }
+}
+
+impl FakeRepo {
+    /// `(file, name)` for every name `find` returns for a file, read as
+    /// Python when its extension is `.py`. Not recorded as asked.
+    fn scan(&self, find: fn(&str, bool) -> Vec<String>) -> Vec<(String, String)> {
         let mut out = Vec::new();
         for (path, text) in &self.files {
             let python = Path::new(path)
                 .extension()
                 .is_some_and(|e| e.eq_ignore_ascii_case("py"));
-            for name in traced_tests(text, python) {
+            for name in find(text, python) {
                 out.push((path.clone(), name));
             }
         }
@@ -177,7 +190,7 @@ fn verified_row(id: &str) -> String {
         id,
         "verified",
         &format!(
-            "acceptance = [\"a\"]\ncode = [\"src/lib.rs\"]\ntests = [\"t.rs::{}\"]\n\
+            "acceptance = [\"a\"]\ncode = [\"src/lib.rs\"]\ntests = [\"crates/x/tests/t.rs::{}\"]\n\
              verification = \"{RECORD}\"",
             test_name(id)
         ),
@@ -188,7 +201,7 @@ fn verified_row(id: &str) -> String {
 fn verified_repo(ids: &[&str], record: &str) -> FakeRepo {
     FakeRepo::default()
         .with("src/lib.rs", "")
-        .with("t.rs", &test_file(ids))
+        .with("crates/x/tests/t.rs", &test_file(ids))
         .with(RECORD, record)
 }
 
@@ -924,7 +937,7 @@ fn cite(field: Field, path: &str) -> (Matrix, FakeRepo) {
     let (status, extra, file) = match field {
         Field::Code => (
             "implemented",
-            format!("code = [{p}]\ntests = [\"t.rs::{name}\"]"),
+            format!("code = [{p}]\ntests = [\"crates/x/tests/t.rs::{name}\"]"),
             String::new(),
         ),
         Field::TestPath => (
@@ -939,14 +952,16 @@ fn cite(field: Field, path: &str) -> (Matrix, FakeRepo) {
         ),
         Field::Verification => (
             "verified",
-            format!("code = [\"src/lib.rs\"]\ntests = [\"t.rs::{name}\"]\nverification = {p}"),
+            format!(
+                "code = [\"src/lib.rs\"]\ntests = [\"crates/x/tests/t.rs::{name}\"]\nverification = {p}"
+            ),
             "- Row verdict: LIB-TOOL-001: PASS\n".to_owned(),
         ),
     };
     let m = matrix(&row(ROW, status, &format!("acceptance = [\"a\"]\n{extra}")));
     let mut repo = FakeRepo::default().with(path, &file);
     if !matches!(field, Field::TestPath | Field::Doctest) {
-        repo = repo.with("t.rs", &test_file(&[ROW]));
+        repo = repo.with("crates/x/tests/t.rs", &test_file(&[ROW]));
     }
     if matches!(field, Field::Verification) {
         repo = repo.with("src/lib.rs", "");
@@ -1054,19 +1069,39 @@ fn lib_tool_006_accepts_dot_names_and_double_dots_inside_a_component() {
         "docs/.a",
     ] {
         for field in FIELDS {
-            let (m, repo) = cite(field, path);
-            let (p, repo) = gate(&m, repo);
-            assert_eq!(
-                p,
-                Vec::<String>::new(),
-                "LIB-TOOL-006: {path:?} cited as {field:?} is a real relative path and passes"
-            );
-            assert!(
-                repo.asked().iter().any(|a| a == path),
-                "LIB-TOOL-006: the accepted {path:?} cited as {field:?} is still checked against \
-                 the repository"
-            );
+            for path in scanned_forms(field, path) {
+                let (m, repo) = cite(field, &path);
+                let (p, repo) = gate(&m, repo);
+                assert_eq!(
+                    p,
+                    Vec::<String>::new(),
+                    "LIB-TOOL-006: {path:?} cited as {field:?} is a real relative path and passes"
+                );
+                assert!(
+                    repo.asked().contains(&path),
+                    "LIB-TOOL-006: the accepted {path:?} cited as {field:?} is still checked \
+                     against the repository"
+                );
+            }
         }
+    }
+}
+
+/// The forms in which `path` is cited in `field` by
+/// `lib_tool_006_accepts_dot_names_and_double_dots_inside_a_component`.
+///
+/// A test file must also be one the scan covers: under `crates/`, `xtask/` or
+/// `.claude/hooks/`, with the extension `.rs` or `.py` (slice 0006, D10). So
+/// a test path keeps every component of `path` verbatim, first as directories
+/// under a scanned test directory and then with `.rs` appended to its last
+/// component. The other fields cite `path` itself.
+fn scanned_forms(field: Field, path: &str) -> Vec<String> {
+    match field {
+        Field::TestPath => vec![
+            format!("crates/x/tests/{path}/t.rs"),
+            format!("crates/x/tests/{path}.rs"),
+        ],
+        Field::Code | Field::Doctest | Field::Verification => vec![path.to_owned()],
     }
 }
 
@@ -1078,11 +1113,11 @@ fn lib_tool_006_a_rejected_path_does_not_hide_the_other_citations() {
         "implemented",
         &format!(
             "acceptance = [\"a\"]\ncode = [\"../x.rs\", \"src/missing.rs\"]\n\
-             tests = [\"../t.rs::{name}\", \"t.rs::{name}\", \"t.rs::lib_tool_001_missing\", \
+             tests = [\"../t.rs::{name}\", \"crates/x/tests/t.rs::{name}\", \"crates/x/tests/t.rs::lib_tool_001_missing\", \
              \"doctest:/abs.md\", \"doctest:src/missing.md\"]"
         ),
     ));
-    let repo = FakeRepo::default().with("t.rs", &test_file(&[ROW]));
+    let repo = FakeRepo::default().with("crates/x/tests/t.rs", &test_file(&[ROW]));
     let (mut p, repo) = gate(&m, repo);
     p.sort();
     let mut expected = vec![
@@ -1090,7 +1125,9 @@ fn lib_tool_006_a_rejected_path_does_not_hide_the_other_citations() {
         rejection("../t.rs"),
         rejection("/abs.md"),
         format!("{ROW}: cited code path src/missing.rs does not exist"),
-        format!("{ROW}: test function `lib_tool_001_missing` is not defined in t.rs"),
+        format!(
+            "{ROW}: test function `lib_tool_001_missing` is not defined in crates/x/tests/t.rs"
+        ),
         format!("{ROW}: doctest file src/missing.md does not exist"),
     ];
     expected.sort();
@@ -1127,8 +1164,12 @@ fn status_row(status: &str, verification: Option<&str>) -> (Matrix, FakeRepo) {
     let mut extra = String::from("acceptance = [\"a\"]\nnotes = \"why\"\n");
     let mut repo = FakeRepo::default();
     if matches!(status, "tests-failing" | "implemented") {
-        let _ = writeln!(extra, "tests = [\"t.rs::{}\"]", test_name(ROW));
-        repo = repo.with("t.rs", &test_file(&[ROW]));
+        let _ = writeln!(
+            extra,
+            "tests = [\"crates/x/tests/t.rs::{}\"]",
+            test_name(ROW)
+        );
+        repo = repo.with("crates/x/tests/t.rs", &test_file(&[ROW]));
     }
     if status == "implemented" {
         extra.push_str("code = [\"src/lib.rs\"]\n");
@@ -1490,6 +1531,10 @@ impl Repo for ShuffledRepo {
             out.reverse();
         }
         out
+    }
+
+    fn ignored_functions(&self) -> Vec<(String, String)> {
+        self.inner.ignored_functions()
     }
 }
 
