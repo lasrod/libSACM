@@ -1,7 +1,7 @@
 ---
 slice: 0006
 name: m0-test-scanner
-state: stopped
+state: in-progress
 step: verification
 rows: [LIB-TOOL-007, LIB-TOOL-011]
 mode: pr
@@ -204,3 +204,7 @@ Existing tests changed, and none weakened:
   - The fix is test-only (P1 to P4).
   - This is the row's second FAIL, so the slice stops for the maintainer.
   - LIB-TOOL-007 shows no regression.
+- 2026-11-08 the maintainer chose a test-only fix round for F6 (P1 to P4).
+- 2026-11-08 F6 fix round, tests only: 3 tests pin the `def`/`fn` keyword boundary
+  (P1 to P3). Each fails under the matching surviving mutation: M1 in `python_def`,
+  M2 in `defined_functions`.

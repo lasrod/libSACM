@@ -1885,6 +1885,117 @@ fn lib_tool_011_a_word_that_contains_def_or_fn_is_not_the_keyword() {
     }
 }
 
+/// Python lines where `def` is glued to a traced test name (F6, P1). With no
+/// space or tab after it, `def` is not the keyword: `deftest_lib_tool_011_x`
+/// is one identifier, so the first line is a call statement. Unlike `define`,
+/// the text after `def` is itself a test name, so only the whitespace
+/// boundary keeps these from defining `test_lib_tool_011_x`.
+const GLUED_DEFS: [&str; 3] = [
+    "deftest_lib_tool_011_x()",
+    "deftest_lib_tool_011_x(self):",
+    "async deftest_lib_tool_011_x(self):",
+];
+
+#[test]
+fn lib_tool_011_python_def_glued_to_a_test_name_defines_no_test() {
+    for line in GLUED_DEFS {
+        assert_python(
+            &format!("{line}\n    pass\n"),
+            &[],
+            &[],
+            "`def` glued to a test name is not the keyword, so it defines no test",
+        );
+        assert_python(
+            &format!("class T(unittest.TestCase):\n    {line}\n        pass\n"),
+            &[],
+            &[],
+            "in a class body, `def` glued to a test name defines no test method",
+        );
+        assert_python(
+            &format!("@unittest.skip(\"x\")\n{line}\n    pass\n"),
+            &[],
+            &[],
+            "a skip above `def` glued to a test name lists no skipped test",
+        );
+        assert_python(
+            &format!(
+                "class T(unittest.TestCase):\n    @unittest.skip(\"x\")\n    {line}\n        pass\n"
+            ),
+            &[],
+            &[],
+            "a skip above a class-body `def` glued to a test name lists no skipped test",
+        );
+        assert_python(
+            &format!(
+                "@unittest.skip(\"x\")\nclass T(unittest.TestCase):\n    {line}\n        pass\n"
+            ),
+            &[],
+            &[],
+            "a skipped class whose body has `def` glued to a test name lists no skipped test",
+        );
+    }
+}
+
+/// Rust items where `fn` is glued to a traced test name (F6, P2). With no
+/// space or tab after it, `fn` is not the keyword: `fnlib_tool_011_x` is one
+/// identifier. Unlike `fnord`, the text after `fn` is itself a test name, so
+/// only the whitespace boundary keeps these from defining `lib_tool_011_x`.
+const GLUED_FNS: [(&str, &str); 4] = [
+    ("#[test]\nfnlib_tool_011_x() {}\n", "below `#[test]`"),
+    ("#[test] fnlib_tool_011_x() {}\n", "on the `#[test]` line"),
+    ("#[test]\npub fnlib_tool_011_x() {}\n", "after `pub`"),
+    (
+        "#[test]\n#[ignore]\nfnlib_tool_011_x() {}\n",
+        "below `#[ignore]`",
+    ),
+];
+
+#[test]
+fn lib_tool_011_rust_fn_glued_to_a_test_name_defines_no_test() {
+    for (text, place) in GLUED_FNS {
+        assert_rust(
+            text,
+            &[],
+            &[],
+            &format!(
+                "`fn` glued to a test name {place} is not the keyword, so it defines no running \
+                 and no ignored test"
+            ),
+        );
+    }
+}
+
+/// F6, P3: a citation of a name that appears only glued to `fn` or `def` is
+/// the "is not defined" problem, not a resolved test and not "is not a test".
+#[test]
+fn lib_tool_011_a_citation_of_a_name_glued_to_def_or_fn_is_not_defined() {
+    for (file, name, text) in [
+        (
+            "crates/demo/tests/x.rs",
+            "lib_tool_011_x",
+            "#[test]\nfnlib_tool_011_x() {}\n",
+        ),
+        (
+            ".claude/hooks/test_x.py",
+            "test_lib_tool_011_x",
+            "deftest_lib_tool_011_x()\n",
+        ),
+    ] {
+        let citation = format!("{file}::{name}");
+        assert_eq!(
+            problems(
+                ROW_011,
+                &citing(ROW_011, &[citation.as_str()]),
+                &[(file, text)]
+            ),
+            [format!(
+                "{ROW_011}: test function `{name}` is not defined in {file}"
+            )],
+            "LIB-TOOL-011: a name glued to `fn` or `def` is not defined by it; in {text:?}"
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // LIB-TOOL-011: the API
 // ---------------------------------------------------------------------------
