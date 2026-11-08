@@ -133,9 +133,9 @@ changes a status, and only to `verified` on a recorded PASS from the verifier.
 
    These problems are sorted by file and then by function name. The scan cannot see tests
    that a macro generates, or Python tests skipped at run time (`self.skipTest(...)`,
-   `pytest.skip()`). It does not read a Rust attribute after other code on its line. A `#` at the end of a
-   line does not open an attribute whose `[` is on the next line, and a `fn` whose name is
-   on the next line is not read. A
+   `pytest.skip()`). It does not read a Rust attribute after other code on its line. A
+   `#` at the end of a line does not open an attribute whose `[` is on the next line, and
+   a `fn` whose name is on the next line is not read. A
    `cfg_attr` nested in a `cfg_attr` (`#[cfg_attr(a, cfg_attr(b, ignore))]`) and a
    prelude-qualified `ignore` (`#[::core::prelude::v1::ignore]`,
    `#[std::prelude::v1::ignore]`) do not ignore, so their tests count as running. The

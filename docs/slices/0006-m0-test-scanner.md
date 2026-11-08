@@ -1,8 +1,8 @@
 ---
 slice: 0006
 name: m0-test-scanner
-state: in-progress
-step: implementation
+state: stopped
+step: verification
 rows: [LIB-TOOL-007, LIB-TOOL-011]
 mode: pr
 ---
@@ -197,3 +197,10 @@ Existing tests changed, and none weakened:
     - The two remaining forms go to LIB-TOOL-016: `#` at a line end with `[` on the
       next line, and `fn` with its name on the next line.
     - LIB-TOOL-011 is `implemented` again.
+- 2026-11-08 verification round 3, at `2ff54e8`:
+  [record](../verification/0006-m0-test-scanner-round3.md). LIB-TOOL-011 FAIL (F6).
+  - The implementation is correct, but the `def`/`fn` keyword boundary is not pinned:
+    two hand mutations survive.
+  - The fix is test-only (P1 to P4).
+  - This is the row's second FAIL, so the slice stops for the maintainer.
+  - LIB-TOOL-007 shows no regression.
