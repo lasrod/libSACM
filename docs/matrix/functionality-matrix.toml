@@ -653,7 +653,7 @@ title = "Traced tests live outside production source"
 requirement = "The gate rejects traced tests (functions named for a matrix row) under any `*/src/` directory, so acceptance tests stay in the test engineer's scope and the implementer cannot add or alter them inline."
 source = "Verification 0001 round 2 follow-up; ADR 0006 amendment 1"
 kind = "tooling"
-status = "implemented"
+status = "verified"
 code = ["xtask/src/matrix.rs"]
 acceptance = [
   "A traced test in a scanned file whose repository-relative path has a component equal to `src` gives exactly one problem: `<file>: traced test `<name>` is under a `src` directory; traced tests belong in test files`. Examples are `crates/sacm/src/lib.rs`, `crates/x/src/a/b.rs`, `xtask/src/matrix.rs`, and a Python file under a `src` directory. The problem is the same whether or not a row cites the test, and whether or not it is ignored, and no orphan problem is reported for it.",
@@ -671,6 +671,7 @@ tests = [
   "xtask/tests/scanner.rs::lib_tool_007_a_traced_test_in_a_target_module_under_src_is_one_problem",
   "xtask/tests/scanner.rs::lib_tool_007_the_real_repository_has_no_traced_test_under_src",
 ]
+verification = "docs/verification/0006-m0-test-scanner-round2.md"
 
 [[row]]
 id = "LIB-TOOL-008"
@@ -742,7 +743,7 @@ title = "Test scanner recognises tests and non-code precisely"
 requirement = "The traced-test scanner ignores test-like text inside multi-line raw strings, block comments and Python triple-quoted strings; does not count `#[ignore]`d or skipped tests as evidence; and recognises `#[test_case(...)]`-style attributes and Python `async def test_` methods as tests."
 source = "Verification 0001 round 2 Low and round-6 prescription (R63; different-class notes)"
 kind = "tooling"
-status = "implemented"
+status = "verified"
 code = ["xtask/src/matrix.rs"]
 acceptance = [
   "Rust text that is inside a comment or a literal is never scanned. That covers line comments (doc comments included), block comments (`/* */` nests), string literals that span lines, raw strings `r\"..\"` and `r#\"..\"#` with any number of `#`, the `b`, `br`, `c` and `cr` forms, and char and byte literals (`'\"'`, `'\\''`, `b'\"'`). A `#[test]` or `fn` there neither marks nor defines a test. A lifetime or label (`'a`, `'static`) does not open a literal. An unterminated literal or comment runs to the end of the file, without a panic. Line numbers are not affected.",
@@ -801,6 +802,7 @@ tests = [
   "xtask/tests/scanner.rs::lib_tool_011_the_real_repository_has_no_ignored_or_skipped_traced_test",
   "xtask/tests/scanner.rs::lib_tool_011_the_scanner_finds_exactly_the_tests_of_its_own_test_files",
 ]
+verification = "docs/verification/0006-m0-test-scanner-round2.md"
 
 [[row]]
 id = "LIB-TOOL-013"
@@ -942,6 +944,17 @@ milestone = "M0"
 title = "Test scanner recognises more skip and compile-out forms"
 requirement = "The traced-test scanner treats these as not running: Rust tests compiled out by `#[cfg(any())]` or `#[cfg(FALSE)]`-style predicates; a prelude-qualified `#[::core::prelude::v1::ignore]` or `#[std::prelude::v1::ignore]`; Python tests under a module-level `pytestmark = pytest.mark.skip...` or `__unittest_skip__`; and `@pytest.mark.xfail`. It also recognises decorators written with whitespace after `@` (`@ unittest.skip`), and attributes written with whitespace after `#` (`# [test]`)."
 source = "Verification 0006 round 1 (Low and Info findings)"
+kind = "tooling"
+status = "planned"
+depends_on = ["LIB-TOOL-011"]
+
+[[row]]
+id = "LIB-TOOL-017"
+area = "TOOL"
+milestone = "M0"
+title = "Cited tests are in files that run"
+requirement = "A test citation is evidence only if its file is actually built and run. These citations give a problem: a Rust test file that no target or module tree includes, such as a stray `crates/x.rs` or a module file no `mod` reaches, and a Python test file outside the unittest discovery root that CI runs (`.claude/hooks`)."
+source = "Verification 0006 round 2 (Info, new class)"
 kind = "tooling"
 status = "planned"
 depends_on = ["LIB-TOOL-011"]

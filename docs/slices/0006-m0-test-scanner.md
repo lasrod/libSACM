@@ -1,8 +1,8 @@
 ---
 slice: 0006
 name: m0-test-scanner
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [LIB-TOOL-007, LIB-TOOL-011]
 mode: pr
 ---
@@ -158,3 +158,10 @@ Existing tests changed, and none weakened:
   and the lead applied it. All 54 `scanner` tests pass, and the lead ran the full
   local gate. A local cargo-mutants run of the PR diff gave 217 mutants: 213 caught,
   4 unviable, 0 missed.
+- 2026-11-08 verification round 2, at `48cad81`:
+  [record](../verification/0006-m0-test-scanner-round2.md). Both rows PASS: R1 to R6
+  are met, and the F1 reproductions now give the prescribed problems.
+  - Info: the round-1 record overstated R2(b). The sentence is corrected, and
+    follow-up row LIB-TOOL-017 is added.
+  - Both rows are now `verified`.
+- 2026-11-08 close: the slice is done.

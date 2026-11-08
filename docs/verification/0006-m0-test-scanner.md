@@ -43,7 +43,7 @@ D3 removed the row-level problem for a cited ignored test because "problem 2 alr
   - or it is not `.rs` or `.py`;
   - or it is under R1 build output.
 
-  The walk and this check share one rule. This also closes the older LIB-TOOL-001 hole: a citation of a file that never compiles is no longer accepted. D3 is restated in the brief and the README.
+  The walk and this check share one rule. This narrows the older LIB-TOOL-001 hole, but does not close it: round 2 notes that a scanned test file can still be one that never runs (LIB-TOOL-017). D3 is restated in the brief and the README.
 - **R3. Tests through `FsRepo` on disk, and with `cmd_check(..).is_err()`:**
   1. `crates/demo/src/target/mod.rs` holds a running traced test. Uncited and cited, it gives exactly one `src` problem and no row problem.
   2. The same file holds a cited `#[ignore]`d traced test: exactly one `src` problem.
