@@ -87,11 +87,10 @@ changes a status, and only to `verified` on a recorded PASS from the verifier.
      `pulldown-cmark` and no extensions (ADR 0008). First, each tab in the run of spaces
      and tabs that ends a line becomes a space, because pulldown-cmark 0.13 does not
      accept a tab after a closing fence. This keeps every offset and line. A line is
-     hidden when it is inside a code block (fenced or indented), inside an HTML block
-     that is one closed comment, or when its whole content, without its LF or CRLF, lies
-     inside the byte range of one closed inline comment. A line that also holds text
-     before the comment's `<!--` or after its `-->` is not hidden, nor is a line whose
-     two ends lie in two different comments. Nothing else hides a line.
+     hidden when it is inside a code block (fenced or indented) or inside an HTML block
+     that is one closed comment. Nothing else hides a line: a closed inline comment is
+     allowed but hides nothing, so a verdict-like line inside one is reported, because
+     renderers disagree on what such a comment hides.
    - **Raw HTML.** A closed comment starts with `<!--`, ends with `-->`, and holds no
      `-->` or `--!>` before that end, so `<!-->`, `<!--->` and `<!---->` are closed.
      Only three kinds of raw HTML are allowed: an HTML block that is one closed comment

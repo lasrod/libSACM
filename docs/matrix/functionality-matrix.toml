@@ -648,6 +648,10 @@ tests = [
   "xtask/tests/verdict_markdown.rs::lib_tool_005_problems_on_one_line_come_as_raw_html_then_lone_cr_then_malformed",
   "xtask/tests/verdict_markdown.rs::lib_tool_005_a_verdict_line_whose_id_is_not_a_well_formed_row_id_is_malformed",
   "xtask/tests/verdict_markdown.rs::lib_tool_005_a_look_alike_is_reported_last_on_its_line",
+  "xtask/tests/verdict_markdown.rs::lib_tool_005_a_look_alike_in_a_comment_whose_text_ends_in_a_hyphen_is_reported",
+  "xtask/tests/verdict_markdown.rs::lib_tool_005_a_look_alike_in_a_table_cell_inside_a_closed_inline_comment_is_reported",
+  "xtask/tests/verdict_markdown.rs::lib_tool_005_a_look_alike_continuing_a_footnote_inside_a_closed_inline_comment_is_reported",
+  "xtask/tests/verdict_markdown.rs::lib_tool_005_a_look_alike_in_an_image_description_is_reported",
   "xtask/tests/verdict_markdown.rs::lib_tool_005_a_look_alike_on_a_boundary_line_of_an_inline_comment_is_reported",
   "xtask/tests/verdict_markdown.rs::lib_tool_005_a_look_alike_outside_a_closed_inline_comment_is_reported",
   "xtask/tests/verdict_markdown.rs::lib_tool_005_a_line_that_ends_the_paragraph_is_never_inside_an_inline_comment",
@@ -987,8 +991,8 @@ tests = [
   "xtask/tests/verdict_markdown.rs::lib_tool_015_the_verifiers_f3_and_f4b_probes_give_the_raw_html_problem_and_never_pass",
   "xtask/tests/verdict_markdown.rs::lib_tool_015_the_verifiers_f1_probes_give_the_raw_html_problem_and_never_pass",
   "xtask/tests/verdict_markdown.rs::lib_tool_015_an_allowed_tag_at_the_start_of_a_line_is_raw_html",
-  "xtask/tests/verdict_markdown.rs::lib_tool_015_a_line_wholly_inside_a_closed_inline_comment_is_hidden",
-  "xtask/tests/verdict_markdown.rs::lib_tool_015_a_line_that_ends_with_the_inline_comment_closer_is_hidden",
+  "xtask/tests/verdict_markdown.rs::lib_tool_015_a_look_alike_inside_a_closed_inline_comment_is_reported",
+  "xtask/tests/verdict_markdown.rs::lib_tool_015_a_look_alike_that_ends_with_the_inline_comment_closer_is_reported",
   "xtask/tests/verdict_markdown.rs::lib_tool_015_inline_html_other_than_a_closed_comment_hides_nothing",
 ]
 
@@ -1063,7 +1067,7 @@ id = "LIB-TOOL-018"
 area = "TOOL"
 milestone = "M0"
 title = "Verdict-like text in any written form is reported"
-requirement = "A line outside every hidden block, other than a counted candidate, whose rendered text starts with `row verdict` is a problem, matched case-insensitively with an optional colon and whitespace runs collapsed. Removed before matching: list markers, `#` heading markers, `\\` escapes, task boxes and `_`/`*` emphasis, or the parser's text events are used instead. C0 control characters other than tab, LF and CRLF, and U+2028, U+2029 and U+0085, are refused like a lone CR. The D12 differential test also compares the records it now adjudicates against a second reference (comrak) instead of skipping them, and generates multi-line inline comments with look-alikes inside and on their boundaries, judged against a reference view of look-alike visibility (slice 0007 D14)."
+requirement = "A line outside every hidden block, other than a counted candidate, whose rendered text starts with `row verdict` is a problem, matched case-insensitively with an optional colon and whitespace runs collapsed. Removed before matching: footnote labels (`[^1]:`), a leading table pipe (`|`), list markers, `#` heading markers, `\\` escapes, task boxes and `_`/`*` emphasis, or the parser's text events are used instead. C0 control characters other than tab, LF and CRLF, and U+2028, U+2029 and U+0085, are refused like a lone CR. The D12 differential test also compares the records it now adjudicates against a second reference (comrak) instead of skipping them, and checks look-alike visibility against a recorded corpus of GitHub renderings, so CI makes no network calls (verification 0007 round 3)."
 source = "Verification 0007 round 2 (Low: rest of F4; Info: D12 adjudicated records)"
 kind = "tooling"
 status = "planned"

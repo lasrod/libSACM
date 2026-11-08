@@ -1473,9 +1473,6 @@ struct Markup {
     /// The hidden blocks as `(first line, last line)`, 1-based and
     /// inclusive, in line order. No two overlap.
     hidden: Vec<(usize, usize)>,
-    /// The byte ranges of the closed inline comments, in source order. No
-    /// two overlap.
-    comments: Vec<Range<usize>>,
     /// The line of each piece of raw HTML that is not allowed, in line order.
     /// A line may repeat.
     raw_html: Vec<usize>,
@@ -1498,22 +1495,22 @@ fn is_closed_comment(html: &str) -> bool {
         && !html.contains("--!>")
 }
 
-/// Whether the inline HTML `html`, which is not a closed comment, is an
-/// allowed tag in a record (slice 0007 D8 and D13 a): one of
+/// Whether the inline HTML `html` is allowed in a record (slice 0007 D8 and
+/// D13 a): a closed comment (see [`is_closed_comment`]), or one of
 /// [`ALLOWED_TAGS`] in any case with non-whitespace text in `before`, the
 /// text before it on its line. An allowed tag at the start of a line is not
 /// allowed: there cmark-family renderers, GitHub's among them, may start an
 /// HTML block that hides the lines after it.
-fn is_allowed_tag(html: &str, before: &str) -> bool {
-    ALLOWED_TAGS
-        .iter()
-        .any(|tag| html.eq_ignore_ascii_case(tag))
-        && !before.trim().is_empty()
+fn inline_html_allowed(html: &str, before: &str) -> bool {
+    is_closed_comment(html)
+        || (ALLOWED_TAGS
+            .iter()
+            .any(|tag| html.eq_ignore_ascii_case(tag))
+            && !before.trim().is_empty())
 }
 
-/// The hidden blocks, the closed inline comments and the disallowed raw
-/// HTML of the record `text`, whose lines start at the byte offsets
-/// `line_starts`.
+/// The hidden blocks and the disallowed raw HTML of the record `text`, whose
+/// lines start at the byte offsets `line_starts`.
 ///
 /// The record is parsed as core `CommonMark` 0.31.2 by `pulldown-cmark`, with
 /// `Options::empty()`: no extension is enabled (ADR 0008). The parser reads
@@ -1523,17 +1520,16 @@ fn is_allowed_tag(html: &str, before: &str) -> bool {
 /// - **Hidden blocks** are the code blocks, fenced or indented, and the HTML
 ///   blocks that are one closed comment (see [`is_closed_comment`]; trailing
 ///   whitespace is ignored). Each is hidden from its first line to its last.
-/// - **Closed inline comments** are the `InlineHtml` events that are one
-///   closed comment. Each is allowed, and its byte range in the source is
-///   kept: [`scan_record`] hides the lines that lie wholly inside it (D14).
-///   The range is contiguous, so in a block quote or a list item it also
-///   covers the `>` markers and the indent of the lines it spans.
+///   Nothing else hides a line. A closed inline comment is allowed but hides
+///   nothing: renderers disagree on what it hides, so a verdict-like line
+///   inside one is reported rather than modelled (slice 0007, D14
+///   withdrawn).
 /// - **Raw HTML** is reported at the first line of each `Html` or
 ///   `InlineHtml` event that is not allowed (slice 0007 D8). An `Html` event
 ///   is a line of an HTML block, and it is allowed when its block is one
 ///   closed comment, or when it holds only whitespace: a blank line inside an
-///   HTML block is not reported (D13 b). An `InlineHtml` event other than a
-///   closed comment is allowed as [`is_allowed_tag`] says.
+///   HTML block is not reported (D13 b). An `InlineHtml` event is allowed as
+///   [`inline_html_allowed`] says.
 ///
 /// Every `Html` event lies inside an HTML block, after the block's `Start`
 /// event, so the flag that block sets applies to it.
@@ -1564,7 +1560,6 @@ fn markup(text: &str, line_starts: &[usize]) -> Markup {
             Event::Html(html) if !comment_block && !html.trim().is_empty() => {
                 out.raw_html.push(line_of(line_starts, range.start));
             }
-            Event::InlineHtml(html) if is_closed_comment(&html) => out.comments.push(range),
             Event::InlineHtml(html) => {
                 let line = line_of(line_starts, range.start);
                 // The line starts at or before `range.start` are the first
@@ -1574,7 +1569,7 @@ fn markup(text: &str, line_starts: &[usize]) -> Markup {
                     .and_then(<[usize]>::last)
                     .copied()
                     .unwrap_or_default();
-                if !is_allowed_tag(&html, source(line_start..range.start)) {
+                if !inline_html_allowed(&html, source(line_start..range.start)) {
                     out.raw_html.push(line);
                 }
             }
@@ -1650,12 +1645,9 @@ fn verdict_of(rest: &str) -> Option<(&str, &str)> {
 ///   part of a CRLF is a problem at its line, once per line (D10, D13 d).
 /// - **A leading byte-order mark** is a problem (D10). It is part of line 1,
 ///   so line 1 is then not a column-0 candidate (D13 e).
-/// - **Hidden lines** are the lines of the hidden blocks [`markup`] gives
-///   (code blocks and HTML blocks that are one closed comment), and the
-///   lines whose whole content, without the LF or CRLF that ends them, lies
-///   inside the byte range of one closed inline comment (D14). A line that
-///   also holds text before the comment's `<!--` or after its `-->` is not
-///   hidden, nor is a line whose two ends lie in two different comments.
+/// - **Hidden lines** are the lines of the hidden blocks [`markup`] gives:
+///   code blocks and HTML blocks that are one closed comment. A line inside
+///   a closed inline comment is not hidden, so a candidate there counts.
 /// - **Raw HTML** that is not allowed is a problem at its line (D8): see
 ///   [`markup`].
 /// - **A candidate** is a line that starts at column 0 with
@@ -1675,39 +1667,31 @@ fn scan_record(text: &str) -> RecordScan<'_> {
         .into_iter()
         .map(|line| (line, LineProblem::RawHtml))
         .collect();
-    // The hidden blocks that end at or after the line asked about, and the
-    // closed inline comments that end at or after the end of its content.
-    // Lines are asked about in increasing order. A line is asked about only
-    // when it starts with text, so its content is not empty; the comments do
-    // not overlap, so only the first comment left can then hold it.
-    let mut blocks = markup.hidden.into_iter().peekable();
-    let mut comments = markup.comments.into_iter().peekable();
-    let mut is_hidden = |n: usize, content: &Range<usize>| {
-        while blocks.next_if(|&(_, last)| last < n).is_some() {}
-        while comments.next_if(|c| c.end < content.end).is_some() {}
-        blocks.peek().is_some_and(|&(first, _)| first <= n)
-            || comments.peek().is_some_and(|c| c.contains(&content.start))
+    // The hidden blocks that end at or after the line asked about. Lines are
+    // asked about in increasing order.
+    let mut hidden = markup.hidden.into_iter().peekable();
+    let mut is_hidden = |n: usize| {
+        while hidden.next_if(|&(_, last)| last < n).is_some() {}
+        hidden.peek().is_some_and(|&(first, _)| first <= n)
     };
     let mut verdicts = Vec::new();
-    for (i, (piece, &start)) in text.split_inclusive('\n').zip(&line_starts).enumerate() {
+    for (i, piece) in text.split_inclusive('\n').enumerate() {
         let n = i + 1;
         let line = match piece.strip_suffix('\n') {
             Some(line) => line.strip_suffix('\r').unwrap_or(line),
             None => piece,
         };
-        // The bytes of the line, without its LF or CRLF.
-        let content = start..start + line.len();
         if line.contains('\r') {
             problems.push((n, LineProblem::LoneCr));
         }
         if let Some(rest) = line.strip_prefix(VERDICT_PREFIX) {
-            if !is_hidden(n, &content) {
+            if !is_hidden(n) {
                 match verdict_of(rest) {
                     Some(verdict) => verdicts.push(verdict),
                     None => problems.push((n, LineProblem::Malformed)),
                 }
             }
-        } else if after_markers(line).starts_with(VERDICT_LIKE) && !is_hidden(n, &content) {
+        } else if after_markers(line).starts_with(VERDICT_LIKE) && !is_hidden(n) {
             problems.push((n, LineProblem::LookAlike));
         }
     }

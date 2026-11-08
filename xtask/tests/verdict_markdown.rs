@@ -38,12 +38,15 @@
 //!   row, in line order, before the verdict problem, with the BOM problem
 //!   first. On one line the order is raw HTML, lone CR, malformed; a
 //!   look-alike never shares a line with a malformed line.
-//! - **D14, closed inline comments (second Copilot review of PR #14).** A
-//!   line whose whole content, without its line ending, lies inside the byte
-//!   range of one closed inline comment is hidden. A boundary line that also
-//!   holds text outside the comment is not hidden. Only look-alikes can be
-//!   affected: a column-0 candidate starts a list item and so ends the
-//!   paragraph that holds the comment.
+//! - **D14, closed inline comments (second Copilot review of PR #14):
+//!   withdrawn after verification round 3.** D14 hid a line whose whole
+//!   content lay inside one closed inline comment. Round 3 showed that this
+//!   hides look-alikes that GitHub shows: a comment whose text ends in `-`,
+//!   a GFM table cell, a GFM footnote and an image description. The
+//!   maintainer chose route W: a closed inline comment is allowed (D8) but
+//!   hides nothing, so a look-alike inside it is a D9 problem, as at
+//!   `ee4ef31`. A column-0 candidate is unaffected either way: it starts a
+//!   list item and so ends the paragraph that holds the comment.
 //! - **Well-formed ids (decision 6 of the fix round).** A counted candidate
 //!   whose id part is not a well-formed row id (`<SACM23|LIB>-<AREA>-<NNN>`,
 //!   as `docs/matrix/README.md` rule 2 and the matrix gate define it) is
@@ -3381,127 +3384,322 @@ fn lib_tool_005_a_look_alike_is_reported_last_on_its_line() {
 }
 
 // ---------------------------------------------------------------------------
-// Slice 0007 D14: closed inline comments (second Copilot review of PR #14)
+// Slice 0007 D14, withdrawn: closed inline comments hide nothing
 // ---------------------------------------------------------------------------
 //
-// A closed comment inside a paragraph is one `InlineHtml` event, and its
-// source range runs from the `<` of `<!--` to the `>` of `-->`. That range is
-// contiguous in the source, so in a block quote or a list item it also covers
-// the `>` markers and the indent of the lines between. A line is hidden when
-// all of its bytes, without the LF or CRLF that ends it, lie inside one such
-// range.
+// Slice 0007 round 3, D14 withdrawn. D14 (from the second Copilot review of
+// PR #14) hid a line whose whole content lay inside one closed inline
+// comment. Verification round 3 found records where such a line is visible
+// on GitHub: the comment's text ends in `-`, the line is a GFM table cell or
+// footnote, or the comment is an image description. The maintainer chose
+// route W: a closed inline comment is allowed (D8) but hides nothing, so a
+// look-alike inside it is a D9 problem, as at `ee4ef31` (round 2). That is
+// fail-safe and matches strict records (ADR 0008 amendment 1).
 //
-// Block structure comes first (§3.2), so a line inside the comment must be
-// paragraph continuation text. A line that starts a block quote or a list
-// item at an indent of 0 to 3 ends the paragraph, and then no comment spans
-// it (see `lib_tool_005_a_line_that_ends_the_paragraph_is_never_inside_an_inline_comment`).
+// A closed comment inside a paragraph is one `InlineHtml` event, from the
+// `<` of `<!--` to the `>` of `-->`. Block structure comes first (§3.2), so a
+// line inside it is paragraph continuation text. A line that starts a block
+// quote or a list item at an indent of 0 to 3 ends the paragraph, and then
+// no comment spans it (see
+// `lib_tool_005_a_line_that_ends_the_paragraph_is_never_inside_an_inline_comment`).
 // A `>` or a list marker after an indent of 4 or more is continuation text,
-// since an indented code block cannot interrupt a paragraph (§4.4). In a
-// block quote, the `>` that continues the quote lies inside the range, so a
-// continuation line is hidden when what follows its `>` opens no new block.
-// A second `>` (`> > Row verdict:`) opens a nested block quote, which ends
-// the paragraph one level down, so that line is not hidden.
+// since an indented code block cannot interrupt a paragraph (§4.4). So a
+// column-0 candidate never lies inside an inline comment, and withdrawing
+// D14 changes only which look-alikes are reported.
 
 #[test]
-fn lib_tool_015_a_line_wholly_inside_a_closed_inline_comment_is_hidden() {
-    // Each record is valid: the only look-alikes lie wholly inside a closed
-    // inline comment, and the PASS line counts. The gate today hides nothing
-    // for an inline comment, so each hidden look-alike is a D9 problem.
+fn lib_tool_015_a_look_alike_inside_a_closed_inline_comment_is_reported() {
+    // Formerly `lib_tool_015_a_line_wholly_inside_a_closed_inline_comment_is_hidden`.
+    // Slice 0007 round 3, D14 withdrawn: each record is the one that test
+    // used, and every look-alike in it, inside the comment or not, is now a
+    // D9 problem. The comment itself is allowed (D8), so there is no other
+    // problem, and the PASS line counts.
     let cases: Vec<Case<'_>> = vec![
         (
             "Text <!-- note\nRow verdict: LIB-TOOL-001: FAIL\n--> more\n{PASS}\n",
-            vec![],
+            vec![look_alike(2)],
             "the Copilot record: line 2 lies wholly inside the comment",
         ),
         (
             "Text <!-- note\nRow verdict: LIB-TOOL-001: FAIL\nplain\n Row verdict: x\n   \
              Row verdict: LIB-TOOL-002: PASS\n--> more\n{PASS}\n",
-            vec![],
-            "a comment over five lines with three hidden look-alikes",
+            vec![look_alike(2), look_alike(4), look_alike(5)],
+            "a comment over five lines with three look-alikes",
         ),
         (
             "  > Text <!-- note\n  > Row verdict: LIB-TOOL-001: FAIL\n  > -->\n{PASS}\n",
-            vec![],
-            "a hidden line written `  > Row verdict:` in an indented block quote: the range \
-             covers its `  > `",
+            vec![look_alike(2)],
+            "a line written `  > Row verdict:` in an indented block quote",
         ),
         (
             "> Text <!-- note\nRow verdict: LIB-TOOL-001: FAIL\n> -->\n\n{PASS}\n",
-            vec![],
-            "a hidden lazy continuation line of a block quote",
+            vec![look_alike(2)],
+            "a lazy continuation line of a block quote",
         ),
         (
             "Text <!-- note\n    * Row verdict: LIB-TOOL-001: FAIL\n\t> Row verdict: x\n-->\n{PASS}\n",
-            vec![],
-            "hidden lines `    * Row verdict:` and `\\t> Row verdict:`: indented 4 columns, \
-             they are continuation text, not a list item or block quote",
+            vec![look_alike(2), look_alike(3)],
+            "lines `    * Row verdict:` and `\\t> Row verdict:`: indented 4 columns, they are \
+             continuation text, not a list item or block quote",
         ),
         (
             "- Text <!-- note\n  Row verdict: LIB-TOOL-001: FAIL\n  -->\n{PASS}\n",
-            vec![],
-            "a hidden line in a list item: the range covers its indent",
+            vec![look_alike(2)],
+            "a line in a list item",
         ),
         (
             "Text <!-- note\n Row verdict: x\n   Row verdict: LIB-TOOL-001 PASS\n    {FAIL}\n-->\n{PASS}\n",
-            vec![],
-            "hidden malformed-looking lines indented 1, 3 and 4 spaces, the last a whole \
-             candidate",
+            vec![look_alike(2), look_alike(3), look_alike(4)],
+            "malformed-looking lines indented 1, 3 and 4 spaces, the last a whole candidate",
         ),
         (
             "Text <!-- a\nRow verdict: LIB-TOOL-001: FAIL\n--> and <!-- b\n Row verdict: x\n-->\n{PASS}\n",
-            vec![],
-            "two comments in one paragraph, each hiding one line",
+            vec![look_alike(2), look_alike(4)],
+            "two comments in one paragraph, each with one look-alike",
         ),
         (
             "Text <!-- note\nRow verdict: x\n-->\nRow verdict: LIB-TOOL-001: FAIL\n{PASS}\n",
-            vec![look_alike(4)],
-            "a hidden look-alike, then a visible one after the closer: only line 2 is hidden",
+            vec![look_alike(2), look_alike(4)],
+            "a look-alike inside the comment, then one after the closer",
         ),
     ];
     let failures = case_mismatches(&cases);
     assert!(
         failures.is_empty(),
-        "LIB-TOOL-015: a line whose whole content lies inside a closed inline comment is hidden \
-         (D14), so a look-alike there is no problem:\n{failures:#?}"
+        "LIB-TOOL-015: a closed inline comment hides nothing (D14 withdrawn, slice 0007 round 3), \
+         so a look-alike inside it is a problem (D9):\n{failures:#?}"
     );
 }
 
 #[test]
-fn lib_tool_015_a_line_that_ends_with_the_inline_comment_closer_is_hidden() {
-    // The comment's range ends after `-->`, and the line's content ends there
-    // too. With CRLF the CR comes after the range: it is part of the line
-    // ending, not content outside the comment. The line is also the last
-    // line of the comment, so this kills a scanner that hides only the lines
-    // strictly between the opener's and the closer's lines.
+fn lib_tool_015_a_look_alike_that_ends_with_the_inline_comment_closer_is_reported() {
+    // Formerly `lib_tool_015_a_line_that_ends_with_the_inline_comment_closer_is_hidden`.
+    // Slice 0007 round 3, D14 withdrawn: the line's content ends with the
+    // comment's `-->` (with CRLF, the CR follows it), and it is still a
+    // look-alike. The comment is allowed (D8), so there is no other problem.
     let cases: Vec<Case<'_>> = vec![
         (
             "Text <!-- note\nRow verdict: LIB-TOOL-001: FAIL -->\n{PASS}\n",
-            vec![],
+            vec![look_alike(2)],
             "a look-alike that ends with the closer",
         ),
         (
             "Text <!-- note\nmore\n  Row verdict: x-->\n{PASS}\n",
-            vec![],
+            vec![look_alike(3)],
             "an indented malformed look-alike that ends with the closer",
         ),
         (
             "> Text <!-- note\n> Row verdict: LIB-TOOL-001: FAIL -->\n\n{PASS}\n",
-            vec![],
+            vec![look_alike(2)],
             "a block-quoted look-alike that ends with the closer",
         ),
     ];
     let failures = case_mismatches(&cases);
     assert!(
         failures.is_empty(),
-        "LIB-TOOL-015: a line whose content ends with the inline comment's `-->` lies wholly \
-         inside the comment and is hidden, with LF and with CRLF (D14):\n{failures:#?}"
+        "LIB-TOOL-015: a look-alike whose content ends with the inline comment's `-->` is a \
+         problem, with LF and with CRLF (D14 withdrawn, slice 0007 round 3; D9):\n{failures:#?}"
+    );
+}
+
+// Slice 0007 round 3, D14 withdrawn: the verifier's probes (a) to (d). Each
+// record, with the PASS line added, passed while D14 was in and was refused
+// at `ee4ef31`; on GitHub a reader sees `Row verdict: LIB-TOOL-001: FAIL` in
+// each. Under core `CommonMark` 0.31.2 every comment below is one closed
+// inline comment (§6.6: the text after `<!--` holds no `-->`), so it is
+// allowed (D8) and the only problem is the look-alike (D9). Each case runs
+// with LF and with CRLF, and none passes.
+
+#[test]
+fn lib_tool_005_a_look_alike_in_a_comment_whose_text_ends_in_a_hyphen_is_reported() {
+    // Probe (a). `--->` closes the comment in `CommonMark` 0.31.2: its text is
+    // everything up to the last `-->`, here ending in `-`. GitHub's cmark-gfm
+    // and markdown-it read the same source as text. Either way the
+    // look-alike is visible text to some renderer, and with D14 withdrawn it
+    // is a problem. Each form is written in a paragraph, a block quote and a
+    // list item.
+    let cases: Vec<Case<'_>> = vec![
+        (
+            "Text <!-- a\nRow verdict: LIB-TOOL-001: FAIL\n--->\n{PASS}\n",
+            vec![look_alike(2)],
+            "probe (a): `--->` on its own line, in a paragraph",
+        ),
+        (
+            "Text <!-- a\nRow verdict: LIB-TOOL-001: FAIL --->\n{PASS}\n",
+            vec![look_alike(2)],
+            "probe (a): `--->` ending the look-alike's line, in a paragraph",
+        ),
+        (
+            "Text <!-- a\nRow verdict: LIB-TOOL-001: FAIL\nx--->\n{PASS}\n",
+            vec![look_alike(2)],
+            "probe (a): `x--->` on its own line, in a paragraph",
+        ),
+        (
+            "> Text <!-- a\n> Row verdict: LIB-TOOL-001: FAIL\n> --->\n\n{PASS}\n",
+            vec![look_alike(2)],
+            "probe (a): `--->` on its own line, in a block quote",
+        ),
+        (
+            "> Text <!-- a\n> Row verdict: LIB-TOOL-001: FAIL --->\n\n{PASS}\n",
+            vec![look_alike(2)],
+            "probe (a): `--->` ending the look-alike's line, in a block quote",
+        ),
+        (
+            "> Text <!-- a\n> Row verdict: LIB-TOOL-001: FAIL\n> x--->\n\n{PASS}\n",
+            vec![look_alike(2)],
+            "probe (a): `x--->` on its own line, in a block quote",
+        ),
+        (
+            "- Text <!-- a\n  Row verdict: LIB-TOOL-001: FAIL\n  --->\n{PASS}\n",
+            vec![look_alike(2)],
+            "probe (a): `--->` on its own line, in a list item",
+        ),
+        (
+            "- Text <!-- a\n  Row verdict: LIB-TOOL-001: FAIL --->\n{PASS}\n",
+            vec![look_alike(2)],
+            "probe (a): `--->` ending the look-alike's line, in a list item",
+        ),
+        (
+            "- Text <!-- a\n  Row verdict: LIB-TOOL-001: FAIL\n  x--->\n{PASS}\n",
+            vec![look_alike(2)],
+            "probe (a): `x--->` on its own line, in a list item",
+        ),
+    ];
+    let failures = case_mismatches(&cases);
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-005: a look-alike inside a comment whose text ends in `-` is a problem and the \
+         record never passes (verification 0007 round 3, probe (a); D14 withdrawn):\n\
+         {failures:#?}"
+    );
+}
+
+#[test]
+fn lib_tool_005_a_look_alike_in_a_table_cell_inside_a_closed_inline_comment_is_reported() {
+    // Probe (b). Under core `CommonMark` a delimiter row such as `--- | ---`
+    // is paragraph continuation text: the `|` makes it neither a setext
+    // underline (§4.3) nor a thematic break (§4.1). So the comment spans it
+    // and is closed. Under GFM the lines become a table, and the look-alike
+    // a cell GitHub shows. Every form here leaves `Row verdict:` at the start
+    // of its line once D9's markers are stripped. A header row with a
+    // leading `|` does not: see the test report.
+    let cases: Vec<Case<'_>> = vec![
+        (
+            "Text <!-- a\nRow verdict: LIB-TOOL-001: FAIL | x\n--- | ---\n-->\n{PASS}\n",
+            vec![look_alike(2)],
+            "probe (b): the verifier's table, without outer pipes",
+        ),
+        (
+            "Text <!-- a\nRow verdict: LIB-TOOL-001: FAIL | x |\n| --- | --- |\n-->\n{PASS}\n",
+            vec![look_alike(2)],
+            "probe (b): a header row with a trailing pipe and a delimiter row with outer pipes",
+        ),
+        (
+            "Text <!-- a\nRow verdict: LIB-TOOL-001: FAIL |\n--- |\n-->\n{PASS}\n",
+            vec![look_alike(2)],
+            "probe (b): a single-column table",
+        ),
+        (
+            "Text <!-- a\nh | x\n--- | ---\nRow verdict: LIB-TOOL-001: FAIL | x\n-->\n{PASS}\n",
+            vec![look_alike(4)],
+            "probe (b): the look-alike in the body row",
+        ),
+        (
+            "Text <!-- a\n| h | x |\n| --- | --- |\nRow verdict: LIB-TOOL-001: FAIL | x |\n-->\n{PASS}\n",
+            vec![look_alike(4)],
+            "probe (b): the look-alike in the body row of a table with outer pipes",
+        ),
+        (
+            "> Text <!-- a\n> Row verdict: LIB-TOOL-001: FAIL | x\n> --- | ---\n> -->\n\n{PASS}\n",
+            vec![look_alike(2)],
+            "probe (b): the table inside a block quote",
+        ),
+        (
+            "- Text <!-- a\n  Row verdict: LIB-TOOL-001: FAIL | x\n  --- | ---\n  -->\n{PASS}\n",
+            vec![look_alike(2)],
+            "probe (b): the table inside a list item",
+        ),
+    ];
+    let failures = case_mismatches(&cases);
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-005: a look-alike that GFM renders as a table cell inside a closed inline \
+         comment is a problem and the record never passes (verification 0007 round 3, probe \
+         (b); D14 withdrawn):\n{failures:#?}"
+    );
+}
+
+#[test]
+fn lib_tool_005_a_look_alike_continuing_a_footnote_inside_a_closed_inline_comment_is_reported() {
+    // Probe (c), the part D9 can see. GitHub shows a GFM footnote
+    // definition's text in the footnotes section, and an indented line after
+    // the definition continues it. Under core `CommonMark` a link reference
+    // definition cannot interrupt a paragraph (§4.7), so `[^1]: note` and
+    // the indented line after it are continuation text inside the comment.
+    // The indented line starts with `Row verdict:` once D9 strips its
+    // spaces.
+    //
+    // The verifier's own probe, `[^1]: Row verdict: …`, does not start with
+    // `Row verdict:` after D9's markers, so D9 does not report it, with or
+    // without D14. It is not asserted here: that class is LIB-TOOL-018's.
+    let cases: Vec<Case<'_>> = vec![
+        (
+            "Text <!-- a\n[^1]: note\n    Row verdict: LIB-TOOL-001: FAIL\n-->\n\n[^1]\n{PASS}\n",
+            vec![look_alike(3)],
+            "probe (c): a look-alike continuing a footnote definition",
+        ),
+        (
+            "> Text <!-- a\n> [^1]: note\n>     Row verdict: LIB-TOOL-001: FAIL\n> -->\n\n{PASS}\n",
+            vec![look_alike(3)],
+            "probe (c): the same in a block quote",
+        ),
+    ];
+    let failures = case_mismatches(&cases);
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-005: a look-alike that GFM shows in a footnote, inside a closed inline \
+         comment, is a problem and the record never passes (verification 0007 round 3, probe \
+         (c); D14 withdrawn):\n{failures:#?}"
+    );
+}
+
+#[test]
+fn lib_tool_005_a_look_alike_in_an_image_description_is_reported() {
+    // Probe (d). Raw HTML binds more tightly than link brackets (§6.3), so
+    // the comment is a closed inline comment inside the image description.
+    // A renderer turns the description into alt text, which is shown when
+    // the image fails to load and is read by screen readers.
+    let cases: Vec<Case<'_>> = vec![
+        (
+            "Text ![a <!-- a\nRow verdict: LIB-TOOL-001: FAIL\n-->](x.png)\n{PASS}\n",
+            vec![look_alike(2)],
+            "probe (d): an inline image",
+        ),
+        (
+            "Text ![a <!-- a\nRow verdict: LIB-TOOL-001: FAIL\n-->][img]\n\n[img]: x.png\n{PASS}\n",
+            vec![look_alike(2)],
+            "probe (d): a full reference image",
+        ),
+        (
+            "> Text ![a <!-- a\n> Row verdict: LIB-TOOL-001: FAIL\n> -->](x.png)\n\n{PASS}\n",
+            vec![look_alike(2)],
+            "probe (d): an inline image in a block quote",
+        ),
+    ];
+    let failures = case_mismatches(&cases);
+    assert!(
+        failures.is_empty(),
+        "LIB-TOOL-005: a look-alike in an image description is a problem and the record never \
+         passes (verification 0007 round 3, probe (d); D14 withdrawn):\n{failures:#?}"
     );
 }
 
 #[test]
 fn lib_tool_005_a_look_alike_on_a_boundary_line_of_an_inline_comment_is_reported() {
-    // A boundary line holds both comment and text a reader sees, so it is not
-    // hidden (D14). These are the boundary lines whose visible part is a
+    // A closed inline comment hides nothing (slice 0007 round 3, D14
+    // withdrawn), and a boundary line also holds text a reader sees in every
+    // renderer. These controls were written when D14 hid the lines wholly
+    // inside a comment; they pin the boundary lines whose visible part is a
     // look-alike under D9:
     // - text after the closer: D9 strips `-` and `>`, so `--> Row verdict:`
     //   is `Row verdict:` once stripped, and the reader sees that text;
@@ -3556,15 +3754,17 @@ fn lib_tool_005_a_look_alike_on_a_boundary_line_of_an_inline_comment_is_reported
     let failures = case_mismatches(&cases);
     assert!(
         failures.is_empty(),
-        "LIB-TOOL-005: a boundary line of an inline comment is not hidden (D14), so a \
+        "LIB-TOOL-005: a boundary line of an inline comment is not hidden, so a \
          look-alike in its visible text is a problem (D9):\n{failures:#?}"
     );
 }
 
 #[test]
 fn lib_tool_005_a_look_alike_outside_a_closed_inline_comment_is_reported() {
-    // Controls: the comment hides only its own lines, not the paragraph that
-    // holds it nor what comes before or after it.
+    // Controls: a look-alike in the paragraph that holds a closed inline
+    // comment, or before or after it, is a problem. They were written when
+    // D14 hid the comment's own lines; with D14 withdrawn (slice 0007 round
+    // 3) the comment hides nothing at all, and these expectations stand.
     let cases: Vec<Case<'_>> = vec![
         (
             "Text <!-- note\nhidden\n-->\nRow verdict: LIB-TOOL-001: FAIL\n{PASS}\n",
@@ -3595,8 +3795,8 @@ fn lib_tool_005_a_look_alike_outside_a_closed_inline_comment_is_reported() {
     let failures = case_mismatches(&cases);
     assert!(
         failures.is_empty(),
-        "LIB-TOOL-005: a look-alike outside every closed inline comment is still a problem \
-         (D9, D14):\n{failures:#?}"
+        "LIB-TOOL-005: a look-alike outside every closed inline comment is a problem (D9):\n\
+         {failures:#?}"
     );
 }
 
@@ -3633,15 +3833,17 @@ fn lib_tool_005_a_line_that_ends_the_paragraph_is_never_inside_an_inline_comment
     assert!(
         failures.is_empty(),
         "LIB-TOOL-005: a look-alike that starts a block quote or list item ends the paragraph, \
-         so no inline comment hides it (D9, D14):\n{failures:#?}"
+         so it lies inside no inline comment and is a problem (D9):\n{failures:#?}"
     );
 }
 
 #[test]
 fn lib_tool_015_inline_html_other_than_a_closed_comment_hides_nothing() {
-    // Controls: D14 hides lines only for closed comments. Other inline HTML
-    // over several lines is raw HTML at its first line (D8), as before, and
-    // the look-alike inside it is still a problem.
+    // Controls: no inline HTML hides a line. A closed comment is allowed but
+    // hides nothing (slice 0007 round 3, D14 withdrawn; see
+    // `lib_tool_015_a_look_alike_inside_a_closed_inline_comment_is_reported`).
+    // Other inline HTML over several lines is raw HTML at its first line
+    // (D8), as before, and the look-alike inside it is still a problem.
     let cases: Vec<Case<'_>> = vec![
         (
             "Text <span title=\"a\nRow verdict: LIB-TOOL-001: FAIL\n\">\n{PASS}\n",
@@ -3678,7 +3880,7 @@ fn lib_tool_015_inline_html_other_than_a_closed_comment_hides_nothing() {
     let failures = case_mismatches(&cases);
     assert!(
         failures.is_empty(),
-        "LIB-TOOL-015: inline HTML other than a closed comment hides no line (D8, D14):\n\
+        "LIB-TOOL-015: inline HTML other than a closed comment hides no line (D8):\n\
          {failures:#?}"
     );
 }

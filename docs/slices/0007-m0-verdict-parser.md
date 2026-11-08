@@ -109,7 +109,7 @@ CommonMark 0.31.2 is the reference for what is hidden.
     closes an existing gap: `- Row verdict:  LIB-TOOL-001: PASS` was read as the id
     ` LIB-TOOL-001` and silently ignored.
 
-- **D14 (closed inline comments), from the Copilot review of PR #14.** A line whose
+- **D14 (closed inline comments), from the Copilot review of PR #14: WITHDRAWN after verification round 3.** The maintainer chose route W: a closed inline comment hides nothing, and look-alikes inside it are reported. The original text follows, for history. A line whose
   whole content, excluding its line ending, lies inside the byte range of a closed
   inline comment is hidden. LIB-TOOL-015 criterion 1 already says such a line does not
   count. A boundary line that also holds visible text, such as `Text <!-- note` or
@@ -274,3 +274,21 @@ The test engineer found one equivalent mutant: a region ending at the start rath
 - 2026-11-08 D14 test fix: the nested `> >` quote case moved to the "ends the
   paragraph" control. All 71 `verdict_markdown` tests pass, and both rows are
   `implemented`.
+- 2026-11-08 verification round 3, at `04d0090`:
+  [record](../verification/0007-m0-verdict-parser-round3.md). Both rows FAIL.
+  - D14 hides look-alikes that GitHub shows: a comment ending in `-`, GFM tables,
+    footnotes, and image alt text.
+  - This is LIB-TOOL-015's second FAIL. The maintainer chose route W, so D14 is
+    withdrawn.
+  - Tests go to the test engineer, then the revert goes to the implementer.
+- 2026-11-08 route W tests: the 2 D14 hiding tests are rewritten as "look-alike
+  reported", and the verifier's probes (a), (b), (d) and the reachable part of (c)
+  become 4 `lib_tool_005_*` tests. All 6 are red, because the D14 code is still in.
+  - The `[^1]: Row verdict:` line and a table row starting `|` are invisible to D9 with
+    or without D14. They are added to LIB-TOOL-018.
+  - Both rows are now `tests-failing`.
+- 2026-11-08 route W implementation: the D14 code is reverted to the `ee4ef31`
+  behaviour, with rustdoc saying that a closed inline comment hides nothing.
+  - All 75 `verdict_markdown` tests pass. A local cargo-mutants run gave 54 mutants:
+    53 caught, 1 unviable, 0 missed.
+  - Both rows are `implemented`.
