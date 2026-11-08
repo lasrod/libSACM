@@ -1,8 +1,8 @@
 ---
 slice: 0006
 name: m0-test-scanner
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [LIB-TOOL-007, LIB-TOOL-011]
 mode: pr
 ---
@@ -208,3 +208,7 @@ Existing tests changed, and none weakened:
 - 2026-11-08 F6 fix round, tests only: 3 tests pin the `def`/`fn` keyword boundary
   (P1 to P3). Each fails under the matching surviving mutation: M1 in `python_def`,
   M2 in `defined_functions`.
+- 2026-11-08 verification round 4, at `80de984`:
+  [record](../verification/0006-m0-test-scanner-round4.md). LIB-TOOL-011 PASS
+  (P1 to P4 met), and it is `verified` again. LIB-TOOL-007 stays verified.
+- 2026-11-08 close: the slice is done.
