@@ -1,8 +1,8 @@
 ---
 slice: 0008
 name: m0-agent-tooling-checks
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [LIB-TOOL-008, LIB-QA-011]
 mode: pr
 ---
@@ -89,3 +89,9 @@ None. These are tooling and quality rows, so the acceptance criteria are the lea
   - New row: LIB-TOOL-019 (block on every launch failure).
 - 2026-11-08 fix round 1: 8 controls (F1 items 1 to 8) in 4 new tests. The check is
   unchanged, and every control passes against it.
+- 2026-11-08 verification round 2, at `262c41b`:
+  [record](../verification/0008-m0-agent-tooling-checks-round2.md).
+  - LIB-QA-011 PASS: all 8 round-1 survivors are killed, and only Q36 (Low,
+    non-blocking) survives. It is now `verified`.
+  - LIB-TOOL-008 shows no regression.
+- 2026-11-08 close: the slice is done.

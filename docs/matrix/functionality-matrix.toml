@@ -1047,7 +1047,7 @@ title = "Slice PR reuse and full-run dispatch are pinned"
 requirement = "A doc check fails if the sacm-slice skill loses any of three rules. In step 7: reuse the slice's existing PR (`gh pr list --head <branch>`) instead of creating another. In step 7: dispatch `mutants.yml` on the slice branch when it did not run on the head commit. In step 8.5: run `gh pr create` only when the branch has no PR."
 source = "PR #9 Copilot review follow-up (verifier observation O3)"
 kind = "quality"
-status = "implemented"
+status = "verified"
 code = [".claude/skills/sacm-slice/SKILL.md"]
 acceptance = [
   "A test in `xtask/tests/repo_checks.rs` reads `.claude/skills/sacm-slice/SKILL.md` and passes only when all three rules are present: step 7 reuses the slice's existing PR (`gh pr list --head`) instead of creating another; step 7 dispatches `mutants.yml` on the slice branch (`gh workflow run mutants.yml --ref`) when it did not run on the head commit; step 8.5 runs `gh pr create` only when the branch has no PR.",
@@ -1070,6 +1070,7 @@ tests = [
   "xtask/tests/repo_checks.rs::lib_qa_011_a_rule_moved_to_another_step_is_named_exactly",
   "xtask/tests/repo_checks.rs::lib_qa_011_the_check_accepts_equivalent_wording_and_wrapping",
 ]
+verification = "docs/verification/0008-m0-agent-tooling-checks-round2.md"
 
 [[row]]
 id = "LIB-QA-012"
