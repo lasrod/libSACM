@@ -574,7 +574,7 @@ title = "Verification records carry a per-row verdict the gate reads"
 requirement = "A verified row's verification record must state a PASS verdict for that specific row in a machine-readable line, and the gate checks the verdict rather than mere mention of the id."
 source = "Verification 0001 follow-up (a record saying 'LIB-X-001: FAIL' satisfied the substring check)"
 kind = "tooling"
-status = "implemented"
+status = "verified"
 code = ["xtask/src/matrix.rs"]
 acceptance = [
   "A verdict-line candidate is a source line that starts at column 0 with `- Row verdict:`. A candidate counts only when it lies outside every hidden range. The hidden ranges are the code blocks (fenced or indented) and the closed comments that the CommonMark parser of ADR 0008 finds (`pulldown-cmark`, `Options::empty()`, with the D7 tab normalisation). A counted candidate that, after removing trailing spaces and tabs, is exactly `- Row verdict: <ROW-ID>: <VERDICT>` is a verdict line, where <VERDICT> is PASS, FAIL or OPEN. Any other counted candidate is malformed. A hidden line is never a verdict line and never malformed.",
@@ -649,6 +649,7 @@ tests = [
   "xtask/tests/verdict_markdown.rs::lib_tool_005_a_verdict_line_whose_id_is_not_a_well_formed_row_id_is_malformed",
   "xtask/tests/verdict_markdown.rs::lib_tool_005_a_look_alike_is_reported_last_on_its_line",
 ]
+verification = "docs/verification/0007-m0-verdict-parser-round2.md"
 
 [[row]]
 id = "LIB-TOOL-006"
@@ -943,7 +944,7 @@ title = "Verdict lines hidden by Markdown do not count"
 requirement = "A `- Row verdict:` line that Markdown hides never counts, and a record whose rendering is ambiguous cannot pass. Code blocks, including a backtick fence whose info string contains a backtick (the next ``` line then opens a fence), and closed comments hide lines. Any other raw HTML is a problem rather than something the gate tries to render."
 source = "Slice 0004 fix round 1, implementer follow-up (left outside the P-005 contract). Verification 0004 round 2 seeds P2 (```a`b, then ```, then PASS, then ```) and P7 (<div>, then ```, then </div>, then FAIL, then a fenced PASS); both give a false PASS today."
 kind = "tooling"
-status = "implemented"
+status = "verified"
 code = ["xtask/src/matrix.rs", "xtask/Cargo.toml"]
 acceptance = [
   "A `- Row verdict:` line inside a closed HTML comment (one HTML block that is a single comment, or an inline comment) does not count and is not malformed. A PASS line after a closed comment counts.",
@@ -985,6 +986,7 @@ tests = [
   "xtask/tests/verdict_markdown.rs::lib_tool_015_the_verifiers_f1_probes_give_the_raw_html_problem_and_never_pass",
   "xtask/tests/verdict_markdown.rs::lib_tool_015_an_allowed_tag_at_the_start_of_a_line_is_raw_html",
 ]
+verification = "docs/verification/0007-m0-verdict-parser-round2.md"
 
 [[row]]
 id = "LIB-QA-009"
@@ -1051,6 +1053,17 @@ source = "Verification 0006 round 2 (Info, new class)"
 kind = "tooling"
 status = "planned"
 depends_on = ["LIB-TOOL-011"]
+
+[[row]]
+id = "LIB-TOOL-018"
+area = "TOOL"
+milestone = "M0"
+title = "Verdict-like text in any written form is reported"
+requirement = "A line outside every hidden block, other than a counted candidate, whose rendered text starts with `row verdict` is a problem, matched case-insensitively with an optional colon and whitespace runs collapsed. Removed before matching: list markers, `#` heading markers, `\\` escapes, task boxes and `_`/`*` emphasis, or the parser's text events are used instead. C0 control characters other than tab, LF and CRLF, and U+2028, U+2029 and U+0085, are refused like a lone CR. The D12 differential test also compares the records it now adjudicates against a second reference (comrak) instead of skipping them."
+source = "Verification 0007 round 2 (Low: rest of F4; Info: D12 adjudicated records)"
+kind = "tooling"
+status = "planned"
+depends_on = ["LIB-TOOL-005"]
 
 [[row]]
 id = "LIB-TOOL-012"

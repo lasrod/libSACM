@@ -1,8 +1,8 @@
 ---
 slice: 0007
 name: m0-verdict-parser
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [LIB-TOOL-005, LIB-TOOL-015]
 mode: pr
 ---
@@ -236,3 +236,12 @@ The test engineer found one equivalent mutant: a region ending at the start rath
   - Added: the H1 test (multi-digit ordered markers), and the order of a look-alike on
     its line (last).
   - Both rows are `implemented`.
+- 2026-11-08 verification round 2, at `0dbc33b`:
+  [record](../verification/0007-m0-verdict-parser-round2.md). Both rows PASS: P-0007 is
+  met item by item.
+  - The verifier compared about 600,000 records with three references, with no
+    disagreement.
+  - The Low rest of F4 goes to LIB-TOOL-018.
+  - Both rows are now `verified`.
+- 2026-11-08 close: the slice is done. The CI `cargo-deny` job (GitHub release 504) is
+  re-run before the PR is marked ready.
