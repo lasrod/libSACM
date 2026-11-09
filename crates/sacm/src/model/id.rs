@@ -7,7 +7,7 @@ use std::fmt;
 ///
 /// An `ElementId` keeps its value exactly as given. It is not trimmed, case
 /// folded or otherwise normalised, so an id read from a file is written back
-/// byte for byte (D-ID). Equality, ordering and hashing are those of the
+/// byte for byte. Equality, ordering and hashing are those of the
 /// string, and an `ElementId` borrows as a [`str`], so maps and sets keyed by
 /// `ElementId` can be searched with a `&str`.
 ///

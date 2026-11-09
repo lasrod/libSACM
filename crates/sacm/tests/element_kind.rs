@@ -193,6 +193,133 @@ fn lib_api_003_artifact_asset_relationship_has_the_text_spelling() {
     );
 }
 
+/// Every kind with its SACM name, written out so that a swap of two names
+/// (which the set comparisons above cannot see) fails.
+const KIND_NAMES: [(ElementKind, &str); 38] = [
+    (ElementKind::Description, "Description"),
+    (
+        ElementKind::ImplementationConstraint,
+        "ImplementationConstraint",
+    ),
+    (ElementKind::Note, "Note"),
+    (ElementKind::TaggedValue, "TaggedValue"),
+    (ElementKind::AssuranceCasePackage, "AssuranceCasePackage"),
+    (
+        ElementKind::AssuranceCasePackageInterface,
+        "AssuranceCasePackageInterface",
+    ),
+    (
+        ElementKind::AssuranceCasePackageBinding,
+        "AssuranceCasePackageBinding",
+    ),
+    (ElementKind::TerminologyPackage, "TerminologyPackage"),
+    (
+        ElementKind::TerminologyPackageInterface,
+        "TerminologyPackageInterface",
+    ),
+    (
+        ElementKind::TerminologyPackageBinding,
+        "TerminologyPackageBinding",
+    ),
+    (ElementKind::TerminologyGroup, "TerminologyGroup"),
+    (ElementKind::Category, "Category"),
+    (ElementKind::Expression, "Expression"),
+    (ElementKind::Term, "Term"),
+    (ElementKind::ArgumentPackage, "ArgumentPackage"),
+    (
+        ElementKind::ArgumentPackageInterface,
+        "ArgumentPackageInterface",
+    ),
+    (
+        ElementKind::ArgumentPackageBinding,
+        "ArgumentPackageBinding",
+    ),
+    (ElementKind::ArgumentGroup, "ArgumentGroup"),
+    (ElementKind::Claim, "Claim"),
+    (ElementKind::ArgumentReasoning, "ArgumentReasoning"),
+    (ElementKind::ArtifactReference, "ArtifactReference"),
+    (ElementKind::AssertedInference, "AssertedInference"),
+    (ElementKind::AssertedEvidence, "AssertedEvidence"),
+    (ElementKind::AssertedContext, "AssertedContext"),
+    (
+        ElementKind::AssertedArtifactSupport,
+        "AssertedArtifactSupport",
+    ),
+    (
+        ElementKind::AssertedArtifactContext,
+        "AssertedArtifactContext",
+    ),
+    (ElementKind::ArtifactPackage, "ArtifactPackage"),
+    (
+        ElementKind::ArtifactPackageInterface,
+        "ArtifactPackageInterface",
+    ),
+    (
+        ElementKind::ArtifactPackageBinding,
+        "ArtifactPackageBinding",
+    ),
+    (ElementKind::ArtifactGroup, "ArtifactGroup"),
+    (ElementKind::Artifact, "Artifact"),
+    (
+        ElementKind::ArtifactAssetRelationship,
+        "ArtifactAssetRelationship",
+    ),
+    (ElementKind::Activity, "Activity"),
+    (ElementKind::Event, "Event"),
+    (ElementKind::Participant, "Participant"),
+    (ElementKind::Technique, "Technique"),
+    (ElementKind::Resource, "Resource"),
+    (ElementKind::Property, "Property"),
+];
+
+/// Every abstract class with its SACM name.
+const CLASS_NAMES: [(AbstractClass, &str); 13] = [
+    (AbstractClass::Element, "Element"),
+    (AbstractClass::SACMElement, "SACMElement"),
+    (AbstractClass::ModelElement, "ModelElement"),
+    (AbstractClass::UtilityElement, "UtilityElement"),
+    (AbstractClass::ArtifactElement, "ArtifactElement"),
+    (AbstractClass::TerminologyElement, "TerminologyElement"),
+    (AbstractClass::TerminologyAsset, "TerminologyAsset"),
+    (AbstractClass::ExpressionElement, "ExpressionElement"),
+    (AbstractClass::ArgumentationElement, "ArgumentationElement"),
+    (AbstractClass::ArgumentAsset, "ArgumentAsset"),
+    (AbstractClass::Assertion, "Assertion"),
+    (AbstractClass::AssertedRelationship, "AssertedRelationship"),
+    (AbstractClass::ArtifactAsset, "ArtifactAsset"),
+];
+
+#[test]
+fn lib_api_003_each_kind_and_class_name_is_its_own() {
+    for (kind, name) in KIND_NAMES {
+        assert_eq!(
+            kind.name(),
+            name,
+            "LIB-API-003: name of ElementKind::{name}"
+        );
+    }
+    for (class, name) in CLASS_NAMES {
+        assert_eq!(
+            class.name(),
+            name,
+            "LIB-API-003: name of AbstractClass::{name}"
+        );
+    }
+    // The tables cover every kind and class, so none escapes the check.
+    let tabled: BTreeSet<ElementKind> = KIND_NAMES.iter().map(|&(kind, _)| kind).collect();
+    assert_eq!(
+        tabled,
+        kinds().collect(),
+        "LIB-API-003: KIND_NAMES misses a kind"
+    );
+    let tabled: BTreeSet<AbstractClass> = CLASS_NAMES.iter().map(|&(class, _)| class).collect();
+    assert_eq!(
+        tabled,
+        abstract_classes().collect(),
+        "LIB-API-003: CLASS_NAMES misses a class"
+    );
+}
+
 // --- 3. package() ---------------------------------------------------------
 
 #[test]

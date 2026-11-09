@@ -12,12 +12,24 @@
 //! # Examples
 //!
 //! ```
-//! use sacm::model::{AbstractClass, Document, ElementKind};
+//! use sacm::model::{Document, ElementId, ElementKind};
 //!
-//! let doc = Document::new();
-//! assert_eq!(doc.element_count(), 0);
+//! // Built with the unstable test-support feature until the XMI reader exists.
+//! let mut doc = Document::new();
+//! let arguments = ElementId::from("arguments");
+//! doc.insert(None, ElementKind::ArgumentPackage, arguments.clone()).unwrap();
+//! doc.insert(Some(&arguments), ElementKind::Claim, ElementId::from("claim_top")).unwrap();
+//! doc.insert(Some(&arguments), ElementKind::Claim, ElementId::from("claim_sub")).unwrap();
 //!
-//! assert!(ElementKind::Claim.is_a(AbstractClass::Assertion));
+//! let package = doc.get("arguments").expect("the document has it");
+//! println!("{} is an {}", package.id(), package.kind());
+//! for child in package.children() {
+//!     println!("  {} {}", child.kind(), child.id());
+//! }
+//!
+//! let claim = doc.get("claim_sub").expect("the document has it");
+//! let parent = claim.parent().expect("a claim here has a parent");
+//! assert_eq!(parent.id().as_str(), "arguments");
 //! ```
 
 mod document;

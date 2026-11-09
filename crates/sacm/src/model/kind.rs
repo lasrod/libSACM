@@ -95,7 +95,7 @@ pub enum AbstractClass {
     ModelElement,
     /// `UtilityElement`: descriptions, notes, tagged values and implementation constraints.
     UtilityElement,
-    /// `ArtifactElement`: the common superclass of the package contents.
+    /// `ArtifactElement`: anything a package can contain, packages included.
     ArtifactElement,
     // Terminology (clause 10)
     /// `TerminologyElement`: anything in a terminology package.
@@ -270,7 +270,7 @@ pub enum ElementKind {
     /// `AssuranceCasePackageBinding`: a binding between assurance case packages.
     AssuranceCasePackageBinding,
     // Terminology (clause 10)
-    /// `TerminologyPackage`: a package of terminology.
+    /// `TerminologyPackage`: a container of terms, expressions and categories.
     TerminologyPackage,
     /// `TerminologyPackageInterface`: the declared interface of a terminology package.
     TerminologyPackageInterface,
@@ -278,14 +278,14 @@ pub enum ElementKind {
     TerminologyPackageBinding,
     /// `TerminologyGroup`: a grouping of terminology elements.
     TerminologyGroup,
-    /// `Category`: a category of terminology.
+    /// `Category`: a label that classifies terms and expressions.
     Category,
     /// `Expression`: an expression built from terms.
     Expression,
-    /// `Term`: a term of the terminology.
+    /// `Term`: a defined word or phrase, from which expressions are built.
     Term,
     // Argumentation (clause 11)
-    /// `ArgumentPackage`: a package of argumentation.
+    /// `ArgumentPackage`: a container of claims, reasoning and asserted relationships.
     ArgumentPackage,
     /// `ArgumentPackageInterface`: the declared interface of an argument package.
     ArgumentPackageInterface,
@@ -310,7 +310,8 @@ pub enum ElementKind {
     /// `AssertedArtifactContext`: an assertion that an artifact is context for another.
     AssertedArtifactContext,
     // Artifact (clause 12)
-    /// `ArtifactPackage`: a package of artifacts.
+    /// `ArtifactPackage`: a container of artifacts and the activities, events and
+    /// relationships around them.
     ArtifactPackage,
     /// `ArtifactPackageInterface`: the declared interface of an artifact package.
     ArtifactPackageInterface,
@@ -321,7 +322,8 @@ pub enum ElementKind {
     /// `Artifact`: a work product, such as a document, a test report or a model.
     Artifact,
     /// `ArtifactAssetRelationship`: a relationship between artifact assets
-    /// (clause 12.14; D-TEXT-MODEL).
+    /// (clause 12.14; the machine-readable model misnames it
+    /// `ArtifactAssertedRelationship`).
     ArtifactAssetRelationship,
     /// `Activity`: an activity that produces or uses artifacts.
     Activity,

@@ -5,18 +5,22 @@ use std::fmt;
 
 use super::{ElementId, ElementKind};
 
-/// A SACM 2.3 document: one interchange unit, owning its root packages and
-/// every element under them.
+/// A SACM 2.3 document: one interchange unit (what one SACM XMI file holds),
+/// owning its root packages and every element under them.
 ///
 /// A document is read through borrowing views. [`roots`](Self::roots) yields
 /// the top-level packages, [`get`](Self::get) looks an element up by its
-/// [`ElementId`], and [`elements`](Self::elements) visits every element in
-/// document order. Each view is a [`SacmElement`], which navigates to its
+/// [`ElementId`], and [`elements`](Self::elements) visits every element. Each
+/// view is a [`SacmElement`], which navigates to its
 /// [`parent`](SacmElement::parent) and [`children`](SacmElement::children).
 ///
-/// The document's storage is private. Documents are filled by the library
-/// itself; this release has no public way to build one beyond
-/// [`Document::new`], which is empty.
+/// **Document order** is the order of the elements in the file: the roots in
+/// the order they appear, and each element's children in the order it
+/// contains them, across every kind of child.
+///
+/// This release has no stable way to fill a document: the XMI reader and the
+/// edit operations will. Until then, tests use the `test-support` feature's
+/// `Document::insert`. [`Document::new`] is empty.
 ///
 /// Cloning a document copies all of it; the copy is independent of the
 /// original. Cloning, dropping and traversal do not recurse, so arbitrarily
@@ -74,12 +78,13 @@ impl Document {
     /// interchange unit. They may be of any package kind.
     ///
     /// ```
-    /// use sacm::model::Document;
+    /// use sacm::model::{Document, ElementId, ElementKind};
     ///
-    /// # use sacm::model::{ElementId, ElementKind};
+    /// // Built with the unstable test-support feature until the XMI reader exists.
     /// let mut doc = Document::new();
-    /// # doc.insert(None, ElementKind::AssuranceCasePackage, ElementId::from("safety_case")).unwrap();
-    /// # doc.insert(None, ElementKind::ArtifactPackage, ElementId::from("evidence")).unwrap();
+    /// doc.insert(None, ElementKind::AssuranceCasePackage, ElementId::from("safety_case")).unwrap();
+    /// doc.insert(None, ElementKind::ArtifactPackage, ElementId::from("evidence")).unwrap();
+    ///
     /// let roots: Vec<&str> = doc.roots().map(|root| root.id().as_str()).collect();
     /// assert_eq!(roots, ["safety_case", "evidence"]);
     /// ```
@@ -93,11 +98,12 @@ impl Document {
     /// `&str`, a `&String` or an `&ElementId`.
     ///
     /// ```
-    /// use sacm::model::{Document, ElementKind};
+    /// use sacm::model::{Document, ElementId, ElementKind};
     ///
-    /// # use sacm::model::ElementId;
+    /// // Built with the unstable test-support feature until the XMI reader exists.
     /// let mut doc = Document::new();
-    /// # doc.insert(None, ElementKind::ArgumentPackage, ElementId::from("arguments")).unwrap();
+    /// doc.insert(None, ElementKind::ArgumentPackage, ElementId::from("arguments")).unwrap();
+    ///
     /// let arguments = doc.get("arguments").expect("the document has it");
     /// assert_eq!(arguments.kind(), ElementKind::ArgumentPackage);
     /// assert!(doc.get("Arguments").is_none());
@@ -133,23 +139,22 @@ impl Document {
         self.nodes.len()
     }
 
-    /// Every element, in pre-order document order.
+    /// Every element in document order, pre-order (parents before children).
     ///
-    /// Each root comes before its descendants, and each element before its
-    /// children, which come in containment order. Every element is visited
-    /// exactly once. The traversal does not recurse, so it is safe on
-    /// arbitrarily deep documents.
+    /// Every element is visited exactly once. The traversal does not recurse,
+    /// so it is safe on arbitrarily deep documents.
     ///
     /// ```
-    /// use sacm::model::Document;
+    /// use sacm::model::{Document, ElementId, ElementKind};
     ///
-    /// # use sacm::model::{ElementId, ElementKind};
+    /// // Built with the unstable test-support feature until the XMI reader exists.
     /// let mut doc = Document::new();
-    /// # let id = ElementId::from;
-    /// # doc.insert(None, ElementKind::AssuranceCasePackage, id("case")).unwrap();
-    /// # doc.insert(Some(&id("case")), ElementKind::ArgumentPackage, id("arguments")).unwrap();
-    /// # doc.insert(Some(&id("case")), ElementKind::ArtifactPackage, id("artifacts")).unwrap();
-    /// # doc.insert(Some(&id("arguments")), ElementKind::Claim, id("claim")).unwrap();
+    /// let id = ElementId::from;
+    /// doc.insert(None, ElementKind::AssuranceCasePackage, id("case")).unwrap();
+    /// doc.insert(Some(&id("case")), ElementKind::ArgumentPackage, id("arguments")).unwrap();
+    /// doc.insert(Some(&id("case")), ElementKind::ArtifactPackage, id("artifacts")).unwrap();
+    /// doc.insert(Some(&id("arguments")), ElementKind::Claim, id("claim")).unwrap();
+    ///
     /// let order: Vec<&str> = doc.elements().map(|element| element.id().as_str()).collect();
     /// assert_eq!(order, ["case", "arguments", "claim", "artifacts"]);
     /// ```
@@ -298,6 +303,10 @@ impl<'a> Iterator for PreOrder<'a> {
 
 /// A read-only view of one element of a [`Document`].
 ///
+/// Named after SACM's abstract class `SACMElement`
+/// ([`AbstractClass::SACMElement`](super::AbstractClass::SACMElement)), which
+/// every [`ElementKind`] specializes.
+///
 /// A view is a cheap, copyable handle that borrows the document. Everything
 /// it returns, including the views it navigates to, borrows the document,
 /// not the view, so it can outlive the view it came from.
@@ -305,20 +314,21 @@ impl<'a> Iterator for PreOrder<'a> {
 /// # Examples
 ///
 /// ```
-/// use sacm::model::{Document, ElementKind, SacmElement};
+/// use sacm::model::{Document, ElementId, ElementKind, SacmElement};
 ///
-/// /// The claims directly under `package`, in containment order.
+/// /// The claims directly under `package`, in document order.
 /// fn claims<'d>(package: SacmElement<'d>) -> impl Iterator<Item = SacmElement<'d>> {
 ///     package.children().filter(|child| child.kind() == ElementKind::Claim)
 /// }
 ///
-/// # use sacm::model::ElementId;
+/// // Built with the unstable test-support feature until the XMI reader exists.
 /// let mut doc = Document::new();
-/// # let id = ElementId::from;
-/// # doc.insert(None, ElementKind::ArgumentPackage, id("arguments")).unwrap();
-/// # doc.insert(Some(&id("arguments")), ElementKind::Claim, id("claim_top")).unwrap();
-/// # doc.insert(Some(&id("arguments")), ElementKind::ArgumentReasoning, id("reasoning")).unwrap();
-/// # doc.insert(Some(&id("arguments")), ElementKind::Claim, id("claim_sub")).unwrap();
+/// let id = ElementId::from;
+/// doc.insert(None, ElementKind::ArgumentPackage, id("arguments")).unwrap();
+/// doc.insert(Some(&id("arguments")), ElementKind::Claim, id("claim_top")).unwrap();
+/// doc.insert(Some(&id("arguments")), ElementKind::ArgumentReasoning, id("reasoning")).unwrap();
+/// doc.insert(Some(&id("arguments")), ElementKind::Claim, id("claim_sub")).unwrap();
+///
 /// let arguments = doc.get("arguments").expect("the document has it");
 /// let ids: Vec<&str> = claims(arguments).map(|claim| claim.id().as_str()).collect();
 /// assert_eq!(ids, ["claim_top", "claim_sub"]);
@@ -352,9 +362,7 @@ impl<'a> SacmElement<'a> {
         self.node().parent.map(|parent| self.document.view(parent))
     }
 
-    /// The elements this one contains directly, in containment order.
-    ///
-    /// The order is the document order, across every kind of child.
+    /// The elements this one contains directly, in document order.
     pub fn children(self) -> impl Iterator<Item = SacmElement<'a>> {
         let document = self.document;
         self.node()

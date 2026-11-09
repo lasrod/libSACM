@@ -255,6 +255,79 @@ fn lib_api_002_lookup_accepts_str_string_and_element_id() {
     );
 }
 
+/// Ids that a trimming, case-folding or ASCII-only document would change.
+const EXACT_IDS: [&str; 5] = [
+    "UPPER",
+    "MixedCase",
+    "Ünïcödé-ид-標識",
+    "_acp.1",
+    "  padded  ",
+];
+
+/// The forms a normalising document might store `id` as, other than `id`.
+fn normalised_forms(id: &str) -> Vec<String> {
+    let forms = [
+        id.to_lowercase(),
+        id.to_uppercase(),
+        id.trim().to_owned(),
+        id.chars().filter(char::is_ascii).collect(),
+    ];
+    forms.into_iter().filter(|form| form != id).collect()
+}
+
+#[test]
+fn lib_api_002_document_keeps_inserted_ids_exactly() {
+    let mut as_roots = Document::new();
+    let mut as_children = Document::new();
+    add(
+        &mut as_children,
+        None,
+        ElementKind::ArgumentPackage,
+        "arguments",
+    );
+    for id in EXACT_IDS {
+        add(&mut as_roots, None, ElementKind::ArgumentPackage, id);
+        add(&mut as_children, Some("arguments"), ElementKind::Claim, id);
+    }
+    // String == &str compares bytes.
+    assert_eq!(
+        ids(as_roots.roots()),
+        EXACT_IDS,
+        "LIB-API-002: roots() changed an id"
+    );
+    assert_eq!(
+        ids(as_roots.elements()),
+        EXACT_IDS,
+        "LIB-API-002: elements() changed a root id"
+    );
+    assert_eq!(
+        ids(view(&as_children, "arguments").children()),
+        EXACT_IDS,
+        "LIB-API-002: children() changed an id"
+    );
+    assert_eq!(
+        ids(as_children.elements().skip(1)),
+        EXACT_IDS,
+        "LIB-API-002: elements() changed a child id"
+    );
+
+    for (place, doc) in [("root", &as_roots), ("child", &as_children)] {
+        for id in EXACT_IDS {
+            assert_eq!(
+                view(doc, id).id().as_str().as_bytes(),
+                id.as_bytes(),
+                "LIB-API-002: get({id:?}) as a {place} returned other bytes"
+            );
+            for form in normalised_forms(id) {
+                assert!(
+                    doc.get(&form).is_none(),
+                    "LIB-API-002: {id:?} as a {place} is also found as {form:?}"
+                );
+            }
+        }
+    }
+}
+
 // --- 3. Roots -------------------------------------------------------------
 
 #[test]
@@ -593,6 +666,40 @@ fn lib_api_002_insert_refuses_a_duplicate_id() {
         ElementKind::Claim,
         "LIB-API-002: a refused duplicate replaced the original"
     );
+}
+
+#[test]
+fn lib_api_002_insert_treats_ids_differing_in_case_or_space_as_distinct() {
+    let mut doc = sample();
+    add(
+        &mut doc,
+        Some("arguments"),
+        ElementKind::ArgumentReasoning,
+        "Claim_top",
+    );
+    add(
+        &mut doc,
+        Some("arguments"),
+        ElementKind::ArtifactReference,
+        "claim_top ",
+    );
+    assert_eq!(
+        doc.element_count(),
+        SAMPLE.len() + 2,
+        "LIB-API-002: ids differing in case or space were not both inserted"
+    );
+    let expected = [
+        ("claim_top", ElementKind::Claim),
+        ("Claim_top", ElementKind::ArgumentReasoning),
+        ("claim_top ", ElementKind::ArtifactReference),
+    ];
+    for (id, kind) in expected {
+        assert_eq!(
+            view(&doc, id).kind(),
+            kind,
+            "LIB-API-002: {id:?} is found as another element"
+        );
+    }
 }
 
 #[test]

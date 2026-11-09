@@ -10,9 +10,10 @@ assurance cases as standard XMI.
 
 ## Status
 
-**Nothing in the SACM model is implemented yet.** Milestone M0, the foundation, is
-done: the workspace, CI, the functionality matrix and its gate, and mutation testing.
-The library itself starts at M1, a minimal editable slice of the model. The
+M1 has started: `sacm::model` provides a read-only `Document`, `ElementId` and the
+metamodel's element kinds. XMI, validation and editing are not built yet. Milestone
+M0, the foundation, is done: the workspace, CI, the functionality matrix and its gate,
+and mutation testing. The
 [functionality matrix](docs/matrix/functionality-matrix.md) shows what is verified;
 nothing else is claimed.
 
