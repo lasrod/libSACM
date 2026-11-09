@@ -1,8 +1,8 @@
 ---
 slice: 0010
 name: m0-mutation-exclusions
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [LIB-QA-010]
 mode: pr
 ---
@@ -102,7 +102,7 @@ Facts checked by the lead with cargo-mutants 27.1.0:
 
 | Tests | Row | Criterion |
 |---|---|---|
-| 16 `lib_qa_010_*` tests in `xtask/tests/mutants_exclusions.rs` | LIB-QA-010 | `check_exclusions` with a fake lister. They cover each problem code, overlapping entries, a `skip_calls` entry, non-array keys, tool errors, sorted output, and the copies without one entry. |
+| 20 `lib_qa_010_*` tests in `xtask/tests/mutants_exclusions.rs` | LIB-QA-010 | `check_exclusions` with a fake lister. They cover each problem code, overlapping entries, a `skip_calls` entry, non-array keys, tool errors, sorted output, and the copies without one entry. |
 | 10 `lib_qa_010_*` tests in `xtask/tests/repo_checks.rs` | LIB-QA-010 | The `mutants-exclusions` CI job: the real `ci.yml` and exact-code controls (missing, job keys, runner, steps, commands, guards). |
 
 ## Log
@@ -177,3 +177,8 @@ Facts checked by the lead with cargo-mutants 27.1.0:
   `a_listing_whose_output_holds_a_colour_code_is_an_error`, which runs `run_listing` on
   `cargo --color always --list`. The lead applied F1e in a scratch copy, and the test
   fails under it. The full gate passes.
+- 2026-11-09 verification round 3, at `e03ba86`:
+  [record](../verification/0010-m0-mutation-exclusions-round3.md). PASS, and
+  LIB-QA-010 is now `verified`. CI attempt 1 lost its `cargo-deny` job to the GitHub
+  release-download flake; the re-run passed.
+- 2026-11-09 close: the slice is done.
