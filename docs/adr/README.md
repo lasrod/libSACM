@@ -15,6 +15,7 @@ decision about how to *interpret the SACM standard* belongs in
 | [0007](0007-msrv-and-edition.md) | Rust edition 2024, MSRV 1.85 | accepted |
 | [0008](0008-markdown-parser-for-verdict-lines.md) | A CommonMark parser decides which verdict lines count | accepted |
 | [0009](0009-nextest-for-mutation-testing.md) | cargo-mutants runs tests under nextest, stopping at the first failure | accepted |
+| [0010](0010-document-model.md) | Document model: arena storage, ElementId, borrowing views | accepted |
 
 Statuses: `proposed` → `accepted` (maintainer approval) → optionally `superseded by NNNN`.
 Copy [template.md](template.md) for a new record.

@@ -21,6 +21,12 @@ change bumps the minor version and is listed under **Breaking**.
   and a weekly sharded run covers the workspace. Survivors are triaged in
   `docs/quality/mutants-triage.md`.
 - Agent roles, skills and a write-scope hook for the engineering loop.
+- `sacm::model`: the read-only document model (`Document`, `ElementId` and the
+  `SacmElement` view, with roots, look-up by id, parent, children and pre-order
+  traversal) and the metamodel's element kinds (`ElementKind`, `AbstractClass`,
+  `MetamodelPackage`) [LIB-API-002, LIB-API-003].
+- The `test-support` feature, which makes `Document::insert` public for tests. It is
+  not part of the stable API.
 
 ### Changed
 

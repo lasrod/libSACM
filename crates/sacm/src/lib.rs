@@ -18,16 +18,26 @@
 //!
 //! This crate is under active development and its API is not yet stable.
 //! What is implemented, and how it is tested, is tracked requirement by
-//! requirement in the [functionality matrix][matrix].
+//! requirement in the [functionality matrix][matrix]. So far the crate
+//! provides the document model and the metamodel's element kinds, in
+//! [`model`]; XMI import and export, validation and editing are not built yet.
 //!
 //! ```
 //! assert_eq!(sacm::SACM_VERSION, "2.3");
 //! println!("sacm {} implements SACM {}", sacm::VERSION, sacm::SACM_VERSION);
 //! ```
 //!
+//! # Features
+//!
+//! - `test-support` (off by default): makes `Document::insert` and
+//!   `InsertError` public in [`model`], so tests can build documents. It is
+//!   **not part of the stable API** and may change or disappear in any release.
+//!
 //! [sacm]: https://www.omg.org/spec/SACM/2.3
 //! [matrix]: https://github.com/lasrod/libSACM/blob/main/docs/matrix/functionality-matrix.md
 #![cfg_attr(docsrs, feature(doc_cfg))]
+
+pub mod model;
 
 /// The version of this crate, as published.
 ///
