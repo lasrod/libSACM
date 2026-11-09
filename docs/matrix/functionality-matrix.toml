@@ -1242,7 +1242,7 @@ title = "Element kind metadata"
 requirement = "A public, non-exhaustive `ElementKind` lists every concrete SACMElement class of SACM 2.3 (LangString, MultiLangString and ExpressionLangString are values and have no kind). It reports each class's SACM name and package, and answers is-a questions against the abstract classes, which are a separate `AbstractClass` enum (ADR 0010)."
 source = "ptc/22-03-13 (all packages); docs/sacm/metamodel-inventory.md; ADR 0010; assurance-forge libs/sacm metadata/element_kind.h"
 kind = "api"
-status = "implemented"
+status = "verified"
 acceptance = [
   "`ElementKind::ALL` holds exactly the inventory's concrete classes, minus the three value types: 38 kinds, each once.",
   "`name()` and `Display` give the exact SACM spelling, including `ArtifactAssetRelationship` (D-TEXT-MODEL).",
@@ -1271,6 +1271,7 @@ tests = [
   "crates/sacm/tests/element_kind.rs::lib_api_003_package_names_are_the_five_sacm_packages",
   "crates/sacm/tests/element_kind.rs::lib_api_003_value_types_have_no_kind",
 ]
+verification = "docs/verification/0013-m1-document-model-round2.md"
 
 [[row]]
 id = "LIB-API-004"
