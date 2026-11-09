@@ -122,3 +122,20 @@ Facts checked by the lead with cargo-mutants 27.1.0:
 - 2026-11-09 implementation (lead): the `mutants-exclusions` job is added to `ci.yml`
   (D3). The real-`ci.yml` test now passes. The implementer is writing
   `xtask/src/mutants.rs`.
+- 2026-11-09 implementation (implementer): `xtask/src/mutants.rs` (`check_exclusions`,
+  `Lister`, `ExclusionSummary`, `cmd_exclusions`), the dispatch in `lib.rs`, and
+  `escape_controls` made `pub(crate)`. Unit tests in `src`. The triage doc and CHANGELOG
+  are updated.
+  - Local `cargo mutants -f xtask/src/mutants.rs`: 88 mutants, 85 caught, 0 missed,
+    3 unviable.
+  - The `CONTRIBUTING.md` edit was refused by the write guard: D4 had wrongly assigned
+    that file to the implementer. The maintainer chose to have the lead write it, and
+    the lead did.
+  - The test engineer made the verified LIB-QA-007 case "every source of xtask, one by
+    one" build its list from the real workspace, because the new source file broke its
+    hard-coded list. Its intent and codes are unchanged.
+  - The real command prints `mutant exclusions OK: 0 entries, 0 excluded mutants, 553
+    mutants listed`.
+  - A scratch copy with an untriaged `exclude_re` gives 2 `[exclusion-mismatch]` and
+    2 `[exclusion-untriaged]`.
+  - The full local gate passes. The row is `implemented`.
