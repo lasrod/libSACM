@@ -1022,11 +1022,36 @@ id = "LIB-QA-009"
 area = "QA"
 milestone = "M0"
 title = "Third-party CI actions are pinned and their inputs reviewed"
-requirement = "Every third-party action in ci.yml whose inputs reach a command line (at least EmbarkStudios/cargo-deny-action) is pinned by full commit SHA, and a test keeps a reviewed allowlist of the inputs it may receive, so a version bump that adds or changes an input is reviewed before use."
+requirement = "Every third-party action used by a workflow in `.github/workflows/` (every `uses` whose owner is not GitHub's `actions`) is pinned by a full commit SHA. A test keeps a reviewed table of each pinned action and SHA, with the inputs the repository may pass it. A version bump, which changes the SHA, therefore fails the test until someone reviews the action's inputs at the new SHA."
 source = "Verification 0002 rounds 3 and 4 follow-up (cargo-deny-action@v2 splices inputs into an unquoted command line; @v2 is a moving tag)"
 kind = "quality"
-status = "planned"
+status = "verified"
+acceptance = [
+  "A check in `xtask/tests/repo_checks.rs` reads every `*.yml` workflow in `.github/workflows/` as YAML. Every `uses` value, of a step or of a job, whose owner is not `actions` (compared without regard to case) must have the form `<owner>/<repo>@<40 lowercase hex digits>`. Anything else is `[action-unpinned]`: a tag, a branch, a short or uppercase SHA, a sub-path, `docker://` and `./` local actions. An owner such as `actions-rs` is third-party.",
+  "Each pinned action and SHA must be listed in the test's reviewed table, which records the tag or branch the SHA was resolved from and the inputs the repository may pass. A pair that is not listed is `[action-unreviewed]`, naming the action and the SHA and saying to review the action's `action.yml` at that SHA.",
+  "Every `with` key on a step that uses a reviewed action must be among that entry's inputs, compared without regard to case, or it is `[action-input]`. The reviewed inputs are: cargo-deny-action at the v2.1.1 commit: `command`, `arguments`, `command-arguments`, `manifest-path` and `log-level`, whose values LIB-QA-003 judges, and not `rust-version`, `credentials`, `ssh-key`, `ssh-known-hosts` or `use-git-cli`. dtolnay/rust-toolchain at a master commit: `toolchain` and `components`. Swatinem/rust-cache at the v2.9.3 commit: none.",
+  "The real `ci.yml` and `mutants.yml` pass. Fixtures with controls show that each form above gives exactly its named problem, and that `actions/*` steps are not judged.",
+  "`docs/quality/ci-actions.md` explains how to review a bump, for example a Dependabot PR, which fails this check until its action and SHA are reviewed.",
+]
 depends_on = ["LIB-QA-003"]
+verification = "docs/verification/0009-m0-ci-workflow-checks-round3.md"
+code = [".github/workflows/ci.yml", ".github/workflows/mutants.yml"]
+tests = [
+  "xtask/tests/repo_checks.rs::lib_qa_009_a_job_level_uses_is_judged",
+  "xtask/tests/repo_checks.rs::lib_qa_009_a_pin_missing_from_the_reviewed_table_is_unreviewed",
+  "xtask/tests/repo_checks.rs::lib_qa_009_a_ref_other_than_a_full_lowercase_sha_is_unpinned",
+  "xtask/tests/repo_checks.rs::lib_qa_009_a_with_or_uses_of_the_wrong_type_is_a_shape_problem",
+  "xtask/tests/repo_checks.rs::lib_qa_009_an_input_outside_the_reviewed_inputs_is_reported",
+  "xtask/tests/repo_checks.rs::lib_qa_009_an_unreviewed_pin_names_the_action_the_sha_and_action_yml",
+  "xtask/tests/repo_checks.rs::lib_qa_009_each_workflow_is_judged_and_named",
+  "xtask/tests/repo_checks.rs::lib_qa_009_every_workflow_pins_and_reviews_its_third_party_actions",
+  "xtask/tests/repo_checks.rs::lib_qa_009_only_github_s_actions_owner_is_not_judged",
+  "xtask/tests/repo_checks.rs::lib_qa_009_parse_and_merge_key_problems_are_reported",
+  "xtask/tests/repo_checks.rs::lib_qa_009_reviewed_inputs_in_any_case_and_equivalent_pins_are_accepted",
+  "xtask/tests/repo_checks.rs::lib_qa_009_sub_path_docker_and_local_actions_are_unpinned",
+  "xtask/tests/repo_checks.rs::lib_qa_009_the_reviewed_table_records_each_pin_and_its_inputs",
+  "xtask/tests/repo_checks.rs::lib_qa_009_yaml_and_yml_workflows_are_read",
+]
 
 [[row]]
 id = "LIB-QA-010"
@@ -1082,6 +1107,50 @@ source = "Slice 0005: mutants.yml run 42420891449, a TIMEOUT for `is_identifier_
 kind = "quality"
 status = "planned"
 depends_on = ["LIB-QA-007"]
+
+[[row]]
+id = "LIB-QA-013"
+area = "QA"
+milestone = "M0"
+title = "GitHub's own actions are used only at reviewed refs"
+requirement = "A gate job, or any workflow step, uses `actions/*` only at a major tag `v<N>` or at a reviewed commit SHA. GitHub resolves a commit SHA across a repository's fork network, so `actions/checkout@<sha from a fork>` (an imposter commit) can run code that GitHub never published."
+source = "Verification 0009 round 1, new class"
+kind = "quality"
+status = "planned"
+depends_on = ["LIB-QA-009"]
+
+[[row]]
+id = "LIB-QA-014"
+area = "QA"
+milestone = "M0"
+title = "Gate jobs run on GitHub-hosted runners"
+requirement = "The `runs-on` value of every gate job is a reviewed GitHub-hosted label. A self-hosted runner or a custom label could pre-set an environment that weakens a gate."
+source = "Verification 0009 round 1, new class"
+kind = "quality"
+status = "planned"
+depends_on = ["LIB-QA-008"]
+
+[[row]]
+id = "LIB-QA-015"
+area = "QA"
+milestone = "M0"
+title = "The cargo-deny action's image is reviewed or replaced"
+requirement = "The cargo-deny gate's tools are fixed as well as its action. cargo-deny-action is a docker action whose image is built at run time: its Dockerfile downloads the cargo-deny release asset by tag without a checksum, and installs unpinned `apk` packages. Its entrypoint also runs `rustup toolchain install` inside the container at run time. Either review and pin those downloads, or replace the action with a checksum-verified install of cargo-deny."
+source = "Verification 0009 round 1, new class"
+kind = "quality"
+status = "planned"
+depends_on = ["LIB-QA-009", "LIB-QA-003"]
+
+[[row]]
+id = "LIB-QA-016"
+area = "QA"
+milestone = "M0"
+title = "Repository configuration cannot weaken the gates"
+requirement = "A check fails when repository configuration outside `ci.yml` weakens a gate: `.cargo/config.toml` (`build.rustflags`, `build.rustdocflags`, `--cap-lints`, aliases that shadow `test`, `clippy` or `doc`), `rust-toolchain.toml`, `clippy.toml` or `rustfmt.toml`."
+source = "Verification 0009 round 1, new class"
+kind = "quality"
+status = "planned"
+depends_on = ["LIB-QA-008"]
 
 [[row]]
 id = "LIB-TOOL-016"
@@ -1143,11 +1212,38 @@ id = "LIB-QA-008"
 area = "QA"
 milestone = "M0"
 title = "CI gate checks match live steps, not text"
-requirement = "The CI regression tests match each gate as a whole, uncommented step line inside a job that is neither conditional (`if:`) nor allowed to fail (`continue-on-error:`), so a commented-out or neutered gate fails the test."
+requirement = "The CI regression tests match each gate as a whole step `run` value in the parsed `ci.yml`, inside a job that is neither conditional (`if:`) nor allowed to fail (`continue-on-error:`). A commented-out or neutered gate therefore fails the test, and so does an environment, OS matrix or trigger that weakens it."
 source = "Verification 0002 follow-up (new class for verified LIB-QA-001)"
 kind = "quality"
-status = "planned"
+status = "verified"
+acceptance = [
+  "A check in `xtask/tests/repo_checks.rs` reads `ci.yml` as YAML. For each gate, some step's `run` value must equal it exactly, or it is `[gate-missing]`: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, `cargo test --workspace --all-features`, `cargo test -p xtask`, `cargo doc --workspace --no-deps --all-features`, `cargo xtask matrix check`, and `python -m unittest discover -s .claude/hooks -p \"test_*.py\" -v`. A comment, `echo` or any other text around the command, or a multi-line `run`, does not count.",
+  "The job of each gate step has only the keys `name`, `runs-on`, `steps`, `env` and `permissions`, plus `strategy` for the test job, or it is `[job-key]`. So `if`, `continue-on-error` and `needs` are refused. No step of that job has `if`, `continue-on-error`, `shell` or `working-directory` (`[step-guard]`), and the gate step itself has only `run`, `name` and `id` (`[step-key]`). Every `run` step of a gate job, the cargo-deny job's included, is a gate, so no other step can write `$GITHUB_ENV` or `$GITHUB_PATH` (`[gate-step]`). Every `uses` step of a gate job names a reviewed gate action, or it is `[gate-action]`: `actions/checkout` with no inputs, `actions/setup-python` with only `python-version`, and the three LIB-QA-009 actions with their reviewed inputs. No step of a gate job has `env`, or it is `[gate-env]`, so `BASH_ENV` cannot run a script inside an action. A top-level `defaults` is `[workflow-defaults]`.",
+  "The workflow `env` and every gate job's `env`, the cargo-deny job's included, have only the keys `CARGO_TERM_COLOR`, `CARGO_INCREMENTAL` and `RUSTDOCFLAGS`. Wherever it appears, `RUSTDOCFLAGS` is exactly `-D warnings`, and the `cargo doc` step runs with that value, its job's `env` taking precedence over the workflow's. Anything else is `[gate-env]`.",
+  "Both `cargo test` gates run in a job with `runs-on: ${{ matrix.os }}`. That job's `strategy` has only `fail-fast` (a boolean) and `matrix`, and `matrix` has only `os`, exactly `[ubuntu-latest, windows-latest, macos-latest]`. Anything else is `[gate-os]`.",
+  "`on` has `push` with only `branches: [main]`, and `pull_request` with no filter (null or an empty mapping). Anything else is `[gate-trigger]`. Other triggers are allowed.",
+  "The cargo-deny gate is the LIB-QA-003 deny-job check, and it passes. The real `ci.yml` passes. Controls over a fixture give exactly the named problem for each of these: a gate commented out, wrapped in `echo`, given `|| true` or folded into a multi-line `run`; a job-level or step-level `if` or `continue-on-error`; `needs`; an OS removed or a matrix `exclude` or `include`; `RUSTDOCFLAGS` changed or moved; an added `RUSTFLAGS`; a `paths` or `branches-ignore` filter.",
+]
 depends_on = ["LIB-QA-001"]
+verification = "docs/verification/0009-m0-ci-workflow-checks-round2.md"
+code = [".github/workflows/ci.yml"]
+tests = [
+  "xtask/tests/repo_checks.rs::lib_qa_008_a_gate_job_is_unconditional_and_not_allowed_to_fail",
+  "xtask/tests/repo_checks.rs::lib_qa_008_a_gate_job_uses_only_gate_actions",
+  "xtask/tests/repo_checks.rs::lib_qa_008_a_top_level_defaults_is_refused",
+  "xtask/tests/repo_checks.rs::lib_qa_008_each_gate_must_be_a_whole_run_value",
+  "xtask/tests/repo_checks.rs::lib_qa_008_equivalent_and_unrelated_changes_are_accepted",
+  "xtask/tests/repo_checks.rs::lib_qa_008_every_run_step_of_a_gate_job_is_a_gate",
+  "xtask/tests/repo_checks.rs::lib_qa_008_no_other_variable_is_set_for_the_gates",
+  "xtask/tests/repo_checks.rs::lib_qa_008_no_step_of_a_gate_job_has_env",
+  "xtask/tests/repo_checks.rs::lib_qa_008_no_step_of_a_gate_job_is_guarded",
+  "xtask/tests/repo_checks.rs::lib_qa_008_parse_shape_and_merge_key_problems_are_reported_once",
+  "xtask/tests/repo_checks.rs::lib_qa_008_push_and_pull_request_triggers_are_not_narrowed",
+  "xtask/tests/repo_checks.rs::lib_qa_008_rustdocflags_is_exact_and_reaches_cargo_doc",
+  "xtask/tests/repo_checks.rs::lib_qa_008_the_cargo_deny_gate_is_the_deny_job_check",
+  "xtask/tests/repo_checks.rs::lib_qa_008_the_real_ci_runs_every_gate_as_a_live_step",
+  "xtask/tests/repo_checks.rs::lib_qa_008_the_test_gates_run_on_exactly_the_three_oses",
+]
 
 [[row]]
 id = "LIB-DOC-007"
