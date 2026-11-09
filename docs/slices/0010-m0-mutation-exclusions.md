@@ -1,7 +1,7 @@
 ---
 slice: 0010
 name: m0-mutation-exclusions
-state: stopped
+state: in-progress
 step: verification
 rows: [LIB-QA-010]
 mode: pr
@@ -171,3 +171,9 @@ Facts checked by the lead with cargo-mutants 27.1.0:
     `listing_lines`. The fix is one unit test.
   - F1 to F8 are met, and F1 (d) was reproduced independently.
   - The slice stops for the maintainer's decision.
+- 2026-11-09 the maintainer approved a third, single-test fix round for F9. It goes to
+  the implementer, as a unit test in `src`.
+- 2026-11-09 fix round 2 (F9): the implementer added the unit test
+  `a_listing_whose_output_holds_a_colour_code_is_an_error`, which runs `run_listing` on
+  `cargo --color always --list`. The lead applied F1e in a scratch copy, and the test
+  fails under it. The full gate passes.

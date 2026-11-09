@@ -706,8 +706,9 @@ mod tests {
     use std::process::Command;
 
     use super::{
-        COPIES_DIR, cargo_mutants_list, cmd_exclusions, code_span_text, exclusions_with,
-        listing_command, listing_lines, parse_error, run_listing, table_cells, triage_assignments,
+        COPIES_DIR, cargo_mutants_list, cmd_exclusions, code_span_text, command_text,
+        exclusions_with, listing_command, listing_lines, parse_error, run_listing, table_cells,
+        triage_assignments,
     };
 
     /// A program that does not exist.
@@ -818,6 +819,22 @@ mod tests {
         let lines = run_listing(cargo_with(&root.0, "--version")).expect("cargo runs");
         assert_eq!(lines.len(), 1, "{lines:?}");
         assert!(lines[0].starts_with("cargo "), "{lines:?}");
+    }
+
+    #[test]
+    fn a_listing_whose_output_holds_a_colour_code_is_an_error() {
+        let root = TempRoot::new("colour");
+        let mut command = Command::new(cargo());
+        command
+            .args(["--color", "always", "--list"])
+            .current_dir(&root.0);
+        let text = command_text(&command);
+        let error = run_listing(command).expect_err("cargo prints colour codes");
+        assert!(
+            error.starts_with(&format!("{text} printed line "))
+                && error.contains("with a control character, which is no mutant name"),
+            "{error}"
+        );
     }
 
     #[test]
