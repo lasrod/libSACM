@@ -23,6 +23,10 @@ change bumps the minor version and is listed under **Breaking**.
 - Mutation testing with cargo-mutants: a PR job mutates the diff, and a weekly sharded
   full run also runs on every Rust PR. Configuration is in `.cargo/mutants.toml`, and
   every survivor's disposition is in `docs/quality/mutants-triage.md`.
+- Mutation exclusions checked against cargo-mutants' own listings
+  (`cargo xtask mutants exclusions`, and the CI job `mutants-exclusions`). Each
+  `exclude_re`, `exclude_globs` and `skip_calls` entry must exclude exactly the mutants
+  the triage document assigns to it.
 - A stricter matrix gate. A verified row needs exactly one `- Row verdict: <ROW-ID>: PASS`
   line in its verification record. Cited paths must be relative paths inside the
   repository, and area codes must be uppercase ASCII letters. A failing

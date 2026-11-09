@@ -13,12 +13,15 @@
 //!   `render`, `next`, `status`).
 //! - [`fetch`]: hash-pinned download of the OMG SACM 2.3 reference artifacts
 //!   (`cargo xtask fetch-spec`).
+//! - [`mutants`]: the check that each mutation exclusion excludes exactly its
+//!   triaged mutants (`cargo xtask mutants exclusions`).
 //!
 //! ```text
 //! cargo xtask matrix check        Gate: validate the functionality matrix against the repo
 //! cargo xtask matrix render       Regenerate docs/matrix/functionality-matrix.md
 //! cargo xtask matrix next [-n N]  List the next ready rows for the slice loop
 //! cargo xtask matrix status       Summary of row statuses per milestone
+//! cargo xtask mutants exclusions  Check each mutation exclusion against its triage rows
 //! cargo xtask fetch-spec [--dest DIR]
 //!                                 Download the pinned OMG SACM 2.3 reference artifacts
 //! ```
@@ -42,6 +45,7 @@
 
 pub mod fetch;
 pub mod matrix;
+pub mod mutants;
 
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -56,6 +60,9 @@ commands:
   matrix render           regenerate docs/matrix/functionality-matrix.md
   matrix next [-n N]      list the next N ready rows (default 10)
   matrix status           summarize row statuses per milestone
+  mutants exclusions      check that each exclusion in .cargo/mutants.toml excludes
+                          exactly the mutants docs/quality/mutants-triage.md assigns
+                          to it (runs cargo-mutants)
   fetch-spec [--dest DIR] download the pinned OMG SACM 2.3 reference artifacts
                           (default DIR: third_party/sacm-2.3)
 
@@ -147,7 +154,8 @@ pub fn run(args: &[&str], root: &Path, out: &mut dyn Write) -> Result<(), String
 /// - the count given to `matrix next -n`/`--limit` is not a number:
 ///   `invalid row count: <count>`;
 /// - the command fails (see [`matrix::cmd_check`], [`matrix::cmd_render`],
-///   [`matrix::cmd_next`], [`matrix::cmd_status`] and [`fetch::cmd_fetch`]);
+///   [`matrix::cmd_next`], [`matrix::cmd_status`],
+///   [`mutants::cmd_exclusions`] and [`fetch::cmd_fetch`]);
 ///   a matrix that cannot be read or parsed is one line, as [`matrix::load`]
 ///   describes;
 /// - writing to or flushing `out` fails.
@@ -178,6 +186,7 @@ fn dispatch(
             Err(_) => Err(format!("invalid row count: {n}")),
         },
         ["matrix", "status"] => matrix::cmd_status(root, out),
+        ["mutants", "exclusions"] => mutants::cmd_exclusions(root, out),
         ["fetch-spec"] => fetch::cmd_fetch(&root.join(fetch::DEFAULT_DEST), out),
         ["fetch-spec", "--dest", dest] => fetch::cmd_fetch(&root.join(dest), out),
         ["help" | "--help" | "-h"] | [] => writeln!(out, "{USAGE}").map_err(output_error),
@@ -210,4 +219,20 @@ pub fn repo_root() -> PathBuf {
         .parent()
         .expect("xtask lives one level below the repository root")
         .to_path_buf()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    #[test]
+    fn mutants_exclusions_is_a_command() {
+        let error = super::run(
+            &["mutants", "exclusions"],
+            Path::new("no-such-xtask-root"),
+            &mut Vec::new(),
+        )
+        .expect_err("there is no configuration under the root");
+        assert!(error.starts_with("read no-such-xtask-root"), "{error}");
+    }
 }
