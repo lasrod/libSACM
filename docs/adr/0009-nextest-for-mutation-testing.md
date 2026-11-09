@@ -51,4 +51,11 @@ This deviates from slice 0003's D7. It does not concern the assurance-forge C++ 
 - **Keep `cargo test` and enforce the target order with a check.** Rejected: it guards only the one known hazard, not the guarantee LIB-QA-012 asks for.
 - **`--no-fail-fast` for `cargo test`.** Rejected: the slow target still runs until the timeout.
 - **nextest with its default fail-fast.** Rejected: it waits for running tests, and the demonstration still timed out.
-- **The prebuilt nextest binary (`get.nexte.st`).** Rejected for now: an unpinned download without a checksum, the class that LIB-QA-015 tracks.
+- **The prebuilt nextest binary (`get.nexte.st`).** Rejected for now: an unpinned download without a checksum, the class that LIB-QA-015 described (retired in slice 0012).
+
+## Amendment 2 (2026-11-09): checks trimmed
+
+In slice 0012 (ADR 0006 amendment 2):
+- `cargo xtask mutants exclusions` was removed.
+- LIB-QA-012's check now reads only `.cargo/mutants.toml` and `.config/nextest.toml`. The install steps in the workflows are reviewed, not pinned by tests.
+- The decision itself is unchanged.

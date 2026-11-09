@@ -87,3 +87,7 @@ Each fix modelled one more CommonMark rule, and the verifier then found the next
   - pulldown-cmark deviations inside raw HTML can no longer give a false PASS.
   - The D6 comment fail-safe is superseded: an unclosed comment is disallowed HTML.
   - A repeatable differential test against markdown-rs (`markdown` 1.0, a dev-dependency of `xtask` only) checks the parser's code-block and comment decisions on generated records.
+
+## Amendment 2 (2026-11-09): the differential test is removed
+
+The markdown-rs differential test and the `markdown` dev-dependency were removed in slice 0012 (ADR 0006 amendment 2). The pulldown-cmark reader and its tests in `xtask/tests/verdict_markdown.rs` remain.

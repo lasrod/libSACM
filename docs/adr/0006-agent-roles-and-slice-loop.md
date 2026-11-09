@@ -68,3 +68,13 @@ every role's write scope.
   verification 0001). The hook's read-only branch is the second control, for the case
   where the platform hands a subagent write tools anyway. It is verified by tests,
   because it cannot be triggered live while the first control holds.
+
+## Amendment 2 (2026-11-09): proportionate verification
+
+- Status: accepted (the maintainer approved it on 2026-11-09).
+- **Context:** M0 grew 7,000 lines of checks for 47 lines of library. Each verifier round on a tooling row found another way a contributor could weaken CI, and each one became a new test or row.
+- **Decision:**
+  - **Library rows** (SACM model, XMI, validation, editing, the public API) keep the full adversarial verification: complete prescriptions, up to two fix rounds.
+  - **Tooling, QA and docs rows** get one verification round against their stated acceptance. A new bypass class is logged in one line; it becomes a row only if it could let a real library defect pass unnoticed.
+  - **CI configuration is protected** by branch protection on `main` (required checks) and by review, not by tests that pin workflow YAML.
+- **Consequence:** the harness stays small. The verifier's depth goes where users of the library are affected.

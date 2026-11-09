@@ -1,8 +1,8 @@
 name: mutants
 
-# Full mutation-testing run over the whole workspace (LIB-QA-007). The PR job in
-# ci.yml tests only the diff; this run catches what a diff cannot see (test-only
-# changes, configuration changes) and serves as the verifier's baseline.
+# Full mutation-testing run over the whole workspace (LIB-QA-007): weekly, on
+# demand, and on PRs that change library code or the mutation config. The PR job
+# in ci.yml mutates each PR's diff, including xtask changes.
 on:
   schedule:
     - cron: "0 3 * * 1"
@@ -13,7 +13,6 @@ on:
       - .config/nextest.toml
       - .github/workflows/mutants.yml
       - "crates/**"
-      - "xtask/**"
       - Cargo.toml
       - Cargo.lock
 
