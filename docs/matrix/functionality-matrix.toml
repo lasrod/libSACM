@@ -1282,7 +1282,8 @@ title = "Error types"
 requirement = "Every operational failure the crate reports is a documented, `#[non_exhaustive]` error enum for that operation, implementing `std::error::Error + Send + Sync + 'static` with source chains. No public function panics on any input (ADR 0011)."
 source = "rust-library-craft skill (Errors vs diagnostics); ADR 0011; assurance-forge libs/sacm io/options.h, commands/mutation.h"
 kind = "api"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0014-m1-errors-diagnostics.md"
 acceptance = [
   "Every public error type (today `model::InsertError`, under `test-support`) is `#[non_exhaustive]` and implements `Debug`, `Display` and `std::error::Error`.",
   "Every public error type is `Send + Sync + 'static`, checked statically.",
@@ -1345,6 +1346,7 @@ tests = [
   "crates/sacm/tests/diagnostic.rs::lib_diag_001_cmp_is_equal_exactly_when_the_diagnostics_are_equal",
   "crates/sacm/tests/diagnostic.rs::lib_diag_001_code_as_str_and_display_return_the_text_unchanged",
   "crates/sacm/tests/diagnostic.rs::lib_diag_001_codes_are_equal_exactly_when_their_text_is",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_codes_order_by_their_text_not_its_length",
   "crates/sacm/tests/diagnostic.rs::lib_diag_001_diagnostic_types_have_the_value_traits",
   "crates/sacm/tests/diagnostic.rs::lib_diag_001_display_does_not_show_the_affected_ids",
   "crates/sacm/tests/diagnostic.rs::lib_diag_001_display_shows_every_severity_by_its_text",
@@ -1364,6 +1366,7 @@ tests = [
   "crates/sacm/tests/diagnostic.rs::lib_diag_001_source_location_line_and_column_round_trip",
   "crates/sacm/tests/diagnostic.rs::lib_diag_001_source_location_orders_by_line_then_column",
   "crates/sacm/tests/diagnostic.rs::lib_diag_001_source_location_refuses_a_zero_line_or_column",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_text_keys_compare_as_str_and_affected_ids_id_by_id",
 ]
 
 [[row]]

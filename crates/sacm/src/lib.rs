@@ -37,8 +37,9 @@
 //! - `test-support` (off by default): makes `Document::insert` and
 //!   `InsertError` public in [`model`], so tests can build documents, and
 //!   makes the constructors of `Code`, `SourceLocation` and `Diagnostic`
-//!   public in [`diagnostic`], so tests can build diagnostics. It is **not
-//!   part of the stable API** and may change or disappear in any release.
+//!   and the `with_*` builders of `Diagnostic` public in [`diagnostic`], so
+//!   tests can build diagnostics. It is **not part of the stable API** and
+//!   may change or disappear in any release.
 //!   Enable it only under `[dev-dependencies]`.
 //!
 //! [sacm]: https://www.omg.org/spec/SACM/2.3

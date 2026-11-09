@@ -201,12 +201,13 @@ fn lib_diag_001_each_builder_sets_only_its_own_field() {
 #[test]
 fn lib_diag_001_affected_keeps_the_given_order_and_duplicates() {
     // Neither sorted nor deduplicated: the emitter's order is the contract.
-    let given = ids(&["zeta", "alpha", "zeta", "mu", "alpha"]);
+    // Adjacent duplicates catch `dedup`; separated ones catch a set.
+    let given = ids(&["zeta", "zeta", "alpha", "zeta", "mu", "mu", "alpha"]);
     let diagnostic =
         Diagnostic::new(Code::new("C"), Severity::Error, "ROW-1", "m").with_affected(given.clone());
     assert_eq!(
         diagnostic.affected(),
-        given.as_slice(),
+        ids(&["zeta", "zeta", "alpha", "zeta", "mu", "mu", "alpha"]).as_slice(),
         "LIB-DIAG-001: affected() reordered or deduplicated the ids"
     );
 }
@@ -329,6 +330,32 @@ fn lib_diag_001_codes_are_equal_exactly_when_their_text_is() {
             );
         }
     }
+}
+
+#[test]
+fn lib_diag_001_codes_order_by_their_text_not_its_length() {
+    // "AA" is longer than "B" but earlier as text.
+    assert_eq!(
+        Code::new("AA").cmp(&Code::new("B")),
+        Ordering::Less,
+        "LIB-DIAG-001: Code AA does not order before Code B"
+    );
+    assert!(
+        Code::new("AA") < Code::new("B"),
+        "LIB-DIAG-001: Code AA is not below Code B"
+    );
+    assert_eq!(
+        Code::new("B").cmp(&Code::new("AA")),
+        Ordering::Greater,
+        "LIB-DIAG-001: Code B does not order after Code AA"
+    );
+    let mut codes = vec![Code::new("B"), Code::new("AA")];
+    codes.sort();
+    assert_eq!(
+        codes,
+        [Code::new("AA"), Code::new("B")],
+        "LIB-DIAG-001: codes do not sort by their text"
+    );
 }
 
 // --- 5. SourceLocation ----------------------------------------------------
@@ -548,7 +575,10 @@ const BASE: Fields = Fields {
 /// 1. location (located first, by line, then column);
 /// 2. code; 3. affected (as a slice); 4. requirement id;
 /// 5. clause (None first); 6. severity; 7. message.
-const SORTED: [(&str, Fields); 17] = [
+///
+/// Text keys compare as `str`, and affected ids id by id, so a longer value
+/// can sort first: `AA` < `B`, `10` < `2`, `[a, z]` < `[b]`.
+const SORTED: [(&str, Fields); 24] = [
     // An earlier line with a later column.
     (
         "location (4, 9)",
@@ -558,6 +588,8 @@ const SORTED: [(&str, Fields); 17] = [
         },
     ),
     ("code A", Fields { code: "A", ..BASE }),
+    // A longer code that is earlier as text.
+    ("code AA", Fields { code: "AA", ..BASE }),
     (
         "affected []",
         Fields {
@@ -572,6 +604,14 @@ const SORTED: [(&str, Fields); 17] = [
             ..BASE
         },
     ),
+    // A longer slice whose first id is earlier.
+    (
+        "affected [a, z]",
+        Fields {
+            affected: &["a", "z"],
+            ..BASE
+        },
+    ),
     (
         "requirement R-A",
         Fields {
@@ -579,10 +619,33 @@ const SORTED: [(&str, Fields); 17] = [
             ..BASE
         },
     ),
+    // A longer requirement id that is earlier as text.
+    (
+        "requirement R-AA",
+        Fields {
+            requirement_id: "R-AA",
+            ..BASE
+        },
+    ),
     (
         "clause None",
         Fields {
             clause: None,
+            ..BASE
+        },
+    ),
+    // Clauses are text, not numbers: "10" and "11.13" come before "2".
+    (
+        "clause 10",
+        Fields {
+            clause: Some("10"),
+            ..BASE
+        },
+    ),
+    (
+        "clause 11.13",
+        Fields {
+            clause: Some("11.13"),
             ..BASE
         },
     ),
@@ -597,6 +660,14 @@ const SORTED: [(&str, Fields); 17] = [
         "message m-a",
         Fields {
             message: "m-a",
+            ..BASE
+        },
+    ),
+    // A longer message that is earlier as text.
+    (
+        "message m-aa",
+        Fields {
+            message: "m-aa",
             ..BASE
         },
     ),
@@ -619,6 +690,14 @@ const SORTED: [(&str, Fields); 17] = [
         "clause 3",
         Fields {
             clause: Some("3"),
+            ..BASE
+        },
+    ),
+    // A shorter clause that is later as text than "11.13".
+    (
+        "clause 8.2",
+        Fields {
+            clause: Some("8.2"),
             ..BASE
         },
     ),
@@ -941,6 +1020,107 @@ fn lib_diag_001_an_earlier_key_field_outranks_every_later_one() {
             base.cmp(&diagnostic),
             ordering.reverse(),
             "LIB-DIAG-001: {case}: the order is not antisymmetric"
+        );
+    }
+}
+
+/// Pairs that differ in one key field only, earlier first, where the earlier
+/// value is the longer one. Comparing by length first would reverse every pair.
+/// The affected pairs cover both the slice's length and each id's length.
+const LONGER_BUT_EARLIER: [(&str, Fields, Fields); 7] = [
+    (
+        "code AA, code B",
+        Fields { code: "AA", ..BASE },
+        Fields { code: "B", ..BASE },
+    ),
+    (
+        "affected [a, z], affected [b]",
+        Fields {
+            affected: &["a", "z"],
+            ..BASE
+        },
+        Fields {
+            affected: &["b"],
+            ..BASE
+        },
+    ),
+    (
+        "affected [aa], affected [b]",
+        Fields {
+            affected: &["aa"],
+            ..BASE
+        },
+        Fields {
+            affected: &["b"],
+            ..BASE
+        },
+    ),
+    (
+        "requirement R-AA, requirement R-B",
+        Fields {
+            requirement_id: "R-AA",
+            ..BASE
+        },
+        Fields {
+            requirement_id: "R-B",
+            ..BASE
+        },
+    ),
+    (
+        "clause 10, clause 2",
+        Fields {
+            clause: Some("10"),
+            ..BASE
+        },
+        Fields {
+            clause: Some("2"),
+            ..BASE
+        },
+    ),
+    (
+        "clause 11.13, clause 8.2",
+        Fields {
+            clause: Some("11.13"),
+            ..BASE
+        },
+        Fields {
+            clause: Some("8.2"),
+            ..BASE
+        },
+    ),
+    (
+        "message m-aa, message m-b",
+        Fields {
+            message: "m-aa",
+            ..BASE
+        },
+        Fields {
+            message: "m-b",
+            ..BASE
+        },
+    ),
+];
+
+#[test]
+fn lib_diag_001_text_keys_compare_as_str_and_affected_ids_id_by_id() {
+    for (case, earlier, later) in LONGER_BUT_EARLIER {
+        let (earlier, later) = (earlier.build(), later.build());
+        assert_eq!(
+            earlier.cmp(&later),
+            Ordering::Less,
+            "LIB-DIAG-001: {case}: the first does not compare before the second"
+        );
+        assert_eq!(
+            later.cmp(&earlier),
+            Ordering::Greater,
+            "LIB-DIAG-001: {case}: the second does not compare after the first"
+        );
+        let mut diagnostics = vec![later.clone(), earlier.clone()];
+        diagnostics.sort();
+        assert_eq!(
+            diagnostics,
+            [earlier, later],
+            "LIB-DIAG-001: {case}: sorting does not put the first before the second"
         );
     }
 }

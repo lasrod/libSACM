@@ -11,11 +11,14 @@
 //! it enforces, the ids of the affected elements, an optional
 //! [`SourceLocation`] and a message.
 //!
-//! Every function that returns diagnostics returns them sorted by
-//! [`Diagnostic`]'s order: located diagnostics first, by line and column,
-//! then by code, affected ids, requirement id, clause, severity and message.
+//! No function returns diagnostics yet. The XMI reader, validation and
+//! editing will, as their rows are built. Every function that returns
+//! diagnostics returns them sorted by [`Diagnostic`]'s order.
 //!
-//! Diagnostics are read, not built: only this crate creates them.
+//! Diagnostics are read, not built: only this crate creates them. The
+//! `test-support` feature makes the constructors and `with_*` builders
+//! public so that tests can build diagnostics. They are not stable API, even
+//! though docs.rs shows them.
 //!
 //! # Examples
 //!
@@ -81,10 +84,14 @@ impl fmt::Display for Severity {
     }
 }
 
-/// A diagnostic code from the diagnostics catalog, such as `SACM-REF-001`.
+/// A diagnostic code from the [diagnostics catalog][catalog], such as
+/// `SACM-REF-001`.
 ///
 /// Codes are stable API: a code's meaning never changes. Codes compare and
-/// order by their text.
+/// order by their text. The crate defines no codes yet; each arrives with the
+/// matrix row that emits it.
+///
+/// [catalog]: https://github.com/lasrod/libSACM/blob/main/docs/sacm/diagnostics.md
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Code(&'static str);
 
@@ -180,22 +187,37 @@ impl fmt::Display for SourceLocation {
 
 /// A finding about the content of a document.
 ///
-/// `Display` writes one line:
-/// `{severity} {code} [{requirement_id}[, clause {clause}]][ at {location}]: {message}`,
-/// for example
-/// `error SACM-REF-001 [SACM23-REF-001, clause 11.13] at line 12, column 34: the target "claim_9" does not resolve`.
-/// The affected ids are not shown.
+/// # Display
+///
+/// `Display` writes one line: the severity, the code, and the requirement id
+/// in square brackets. Inside the brackets, `, clause ` and the clause follow
+/// the requirement id if there is a clause. Then come ` at ` and the location
+/// if there is one, and last `: ` and the message. For example:
+///
+/// ```text
+/// error SACM-REF-001 [SACM23-VAL-003] at line 12, column 34: the target "claim_9" does not resolve
+/// error SACM-CITE-001 [SACM23-VAL-007, clause 8.2]: "claim_1" has isCitation true but no citedElement
+/// ```
+///
+/// The affected ids are not shown. Messages never contain line breaks, and
+/// ids in them are quoted with `{:?}`, as in `InsertError`'s messages, so the
+/// output stays on one line.
 ///
 /// # Order
 ///
 /// Diagnostics compare by these keys, in turn:
-/// 1. location: located diagnostics first, by line and then column;
+/// 1. location: located before unlocated, then by line and column;
 /// 2. code;
-/// 3. affected ids;
+/// 3. affected ids, id by id; a shorter list that is a prefix of a longer one
+///    sorts first;
 /// 4. requirement id;
 /// 5. clause, with no clause first;
-/// 6. severity;
+/// 6. severity, `Info < Warning < Error`;
 /// 7. message.
+///
+/// Text keys (code, requirement id, clause, message, and each affected id)
+/// compare as `str`: byte-wise lexicographic, so clause `"10"` sorts before
+/// `"2"`.
 ///
 /// Two diagnostics compare `Equal` exactly when they are equal.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -326,14 +348,18 @@ impl Diagnostic {
         self.severity
     }
 
-    /// The id of the functionality-matrix row the diagnostic enforces, such
-    /// as `SACM23-REF-001`.
+    /// The id of the [functionality matrix][matrix] row the diagnostic
+    /// enforces, such as `SACM23-VAL-003`.
+    ///
+    /// [matrix]: https://github.com/lasrod/libSACM/blob/main/docs/matrix/functionality-matrix.md
     #[must_use]
     pub fn requirement_id(&self) -> &str {
         self.requirement_id
     }
 
-    /// The clause of the specification the diagnostic enforces, if any.
+    /// The clause the diagnostic enforces: a bare clause number, such as
+    /// `"8.2"`, in the specification named by the matrix row's source. `None`
+    /// if the row cites no clause.
     #[must_use]
     pub fn clause(&self) -> Option<&str> {
         self.clause
@@ -351,7 +377,7 @@ impl Diagnostic {
         self.location
     }
 
-    /// The human-readable message.
+    /// The human-readable message, on one line.
     #[must_use]
     pub fn message(&self) -> &str {
         &self.message
