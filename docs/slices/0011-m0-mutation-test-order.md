@@ -114,3 +114,17 @@ None. This is a quality row. The research facts (cargo-mutants v27.1.0 and cargo
     `e03ba86`): the caught set (544) and the unviable set (15) are identical. So no mutant
     relied on a doctest alone.
   - The lead filled in the triage placeholders. Copilot left no comments.
+- 2026-11-09 verification round 1, at `bfb0d99`:
+  [record](../verification/0011-m0-mutation-test-order.md).
+  - LIB-QA-012 FAIL, on test adequacy only (P1 to P4: Q21, Q24, Q27/Q29, and the
+    unlinked version constant). Item 7 was reproduced, and LIB-QA-007 does not regress.
+  - The Copilot review had errored; it is re-requested.
+  - LIB-QA-016 now covers cargo aliases that shadow `nextest` and `mutants`.
+  - Fix round 1 goes to the test engineer.
+- 2026-11-09 fix round 1 (test engineer):
+  - P1 to P3 controls, in both workflows.
+  - P4: the version is derived from `NEXTEST_INSTALL`, and the constant is removed.
+  - The optional drift check: `check_contributing_nextest`, with code
+    `[nextest-contributing]`.
+  - Each named mutation (M1 to M6) was applied in `target/scratch` and is killed.
+  - 2 new tests; LIB-QA-012 cites 14. The full local gate passes.

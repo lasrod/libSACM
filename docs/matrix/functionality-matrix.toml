@@ -1165,6 +1165,7 @@ depends_on = ["LIB-QA-007"]
 code = [".cargo/mutants.toml", ".config/nextest.toml", ".github/workflows/ci.yml", ".github/workflows/mutants.yml"]
 tests = [
   "xtask/tests/repo_checks.rs::lib_qa_012_a_missing_or_unreadable_file_is_named",
+  "xtask/tests/repo_checks.rs::lib_qa_012_contributing_gives_the_reviewed_nextest_install",
   "xtask/tests/repo_checks.rs::lib_qa_012_each_mutants_job_installs_the_pinned_nextest_first",
   "xtask/tests/repo_checks.rs::lib_qa_012_each_mutants_toml_key_lost_is_named",
   "xtask/tests/repo_checks.rs::lib_qa_012_each_part_of_the_mutants_profile_lost_is_named",
@@ -1173,6 +1174,7 @@ tests = [
   "xtask/tests/repo_checks.rs::lib_qa_012_the_full_run_watches_the_nextest_config",
   "xtask/tests/repo_checks.rs::lib_qa_012_the_lib_qa_007_checks_accept_exactly_the_nextest_setup",
   "xtask/tests/repo_checks.rs::lib_qa_012_the_real_files_run_mutants_under_nextest",
+  "xtask/tests/repo_checks.rs::lib_qa_012_the_reviewed_install_pins_a_version_that_meets_the_minimum",
   "xtask/tests/repo_checks.rs::lib_qa_012_the_version_requirement_is_compared_as_numbers",
   "xtask/tests/repo_checks.rs::lib_qa_012_unreviewed_profile_keys_are_named",
   "xtask/tests/repo_checks.rs::lib_qa_012_unreviewed_top_level_nextest_keys_are_named",
@@ -1216,7 +1218,7 @@ id = "LIB-QA-016"
 area = "QA"
 milestone = "M0"
 title = "Repository configuration cannot weaken the gates"
-requirement = "A check fails when repository configuration outside `ci.yml` weakens a gate: `.cargo/config.toml` (`build.rustflags`, `build.rustdocflags`, `--cap-lints`, aliases that shadow `test`, `clippy` or `doc`), `rust-toolchain.toml`, `clippy.toml` or `rustfmt.toml`."
+requirement = "A check fails when repository configuration outside `ci.yml` weakens a gate: `.cargo/config.toml` (`build.rustflags`, `build.rustdocflags`, `--cap-lints`, aliases that shadow `test`, `clippy` or `doc`), `rust-toolchain.toml`, `clippy.toml` or `rustfmt.toml`, or a cargo `[alias]` that shadows an external subcommand CI relies on (`nextest`, `mutants`), which cargo only warns about (verification 0011 round 1)."
 source = "Verification 0009 round 1, new class"
 kind = "quality"
 status = "planned"

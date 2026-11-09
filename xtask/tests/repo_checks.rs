@@ -12952,8 +12952,13 @@ type Version = (u64, u64, u64);
 /// ADR 0009: the first nextest with `terminate = "immediate"`.
 const NEXTEST_MINIMUM: Version = (0, 9, 111);
 
-/// ADR 0009: the version [`NEXTEST_INSTALL`] pins.
-const NEXTEST_INSTALL_VERSION: Version = (0, 9, 151);
+/// ADR 0009: the version [`NEXTEST_INSTALL`] pins, read from the command
+/// itself, so that the two cannot drift apart. `None` if the command pins no
+/// plain version, which `lib_qa_012_the_reviewed_install_pins_a_version_that_meets_the_minimum`
+/// refuses.
+fn nextest_install_version() -> Option<Version> {
+    pinned_version(NEXTEST_INSTALL).and_then(plain_version)
+}
 
 /// The keys `.config/nextest.toml` may have at its top level.
 const NEXTEST_TOP_KEYS: [&str; 2] = ["nextest-version", "profile"];
@@ -13375,12 +13380,13 @@ fn check_nextest_setup(setup: &NextestSetup) -> Vec<String> {
     let mut problems = Vec::new();
     nextest_mutants_key_problems(setup.mutants.as_deref(), &mut problems);
     let required = nextest_config_problems(setup.nextest.as_deref(), &mut problems);
-    if let Some(required) = required.filter(|required| *required > NEXTEST_INSTALL_VERSION) {
+    let installed = nextest_install_version();
+    if let Some(required) = required.filter(|required| installed.is_none_or(|v| *required > v)) {
         problems.push(problem(
             "nextest-install-version",
             format!(
                 "`{NEXTEST_INSTALL}` installs nextest {}, below the {} that {NEXTEST_CONFIG} requires",
-                show_version(NEXTEST_INSTALL_VERSION),
+                installed.map_or_else(|| "of no plain version".to_owned(), show_version),
                 show_version(required)
             ),
         ));
@@ -14078,8 +14084,98 @@ fn nextest_job_controls(
         ),
     ];
     controls.extend(nextest_command_controls(label, text, with));
+    controls.extend(nextest_vers_controls(label, text, with));
+    controls.extend(nextest_mutants_step_form_controls(label, text, step, with));
     controls.extend(nextest_accepted_job_controls(label, text, with));
     controls
+}
+
+/// Items 3 and 5 on one workflow (verification 0011, P3): cargo's `--vers`
+/// spelling of `--version`, with a space or an `=`, pins a version too.
+fn nextest_vers_controls(
+    label: &str,
+    text: &str,
+    with: fn(Option<String>) -> NextestSetup,
+) -> Vec<NextestControl> {
+    [
+        ("--vers 0.9.151", QA12_INSTALL_INEXACT),
+        ("--vers 0.9.100", QA12_INSTALL_VERSION),
+        ("--vers=0.9.100", QA12_INSTALL_VERSION),
+    ]
+    .into_iter()
+    .map(|(pin, codes)| {
+        control(
+            format!("{label}: {pin}"),
+            with(Some(replace_line(
+                text,
+                NEXTEST_STEP,
+                &format!("- run: cargo install cargo-nextest --locked {pin}"),
+            ))),
+            codes,
+        )
+    })
+    .collect()
+}
+
+/// Items 3 and 5 on one workflow (verification 0011, P1 and P2): a job runs
+/// `cargo mutants` wherever the command stands in its step, on a later line
+/// of a `run: |` block or after a prefix such as `time` or `env X=1`; and an
+/// action whose name says nextest, with no inputs, still names nextest.
+fn nextest_mutants_step_form_controls(
+    label: &str,
+    text: &str,
+    step: &str,
+    with: fn(Option<String>) -> NextestSetup,
+) -> Vec<NextestControl> {
+    let command = step
+        .strip_prefix("- run: ")
+        .expect("the mutants step is a one-line `- run:`");
+    let block = replace_lines(
+        text,
+        step,
+        &[
+            "- run: |",
+            "    echo mutation testing",
+            &format!("    {command}"),
+        ],
+    );
+    let prefixed = |prefix: &str| {
+        with(Some(delete_step(
+            &replace_line(text, step, &format!("- run: {prefix} {command}")),
+            NEXTEST_STEP,
+        )))
+    };
+    vec![
+        control(
+            format!("{label}: cargo mutants on a later line of a run: | block, no install"),
+            with(Some(delete_step(&block, NEXTEST_STEP))),
+            QA12_INSTALL_MISSING,
+        ),
+        control(
+            format!("{label}: `time cargo mutants`, no install"),
+            prefixed("time"),
+            QA12_INSTALL_MISSING,
+        ),
+        control(
+            format!("{label}: `env X=1 cargo mutants`, no install"),
+            prefixed("env X=1"),
+            QA12_INSTALL_MISSING,
+        ),
+        control(
+            format!("{label}: the exact install after a multi-line cargo mutants step"),
+            with(Some(move_step_after(&block, NEXTEST_STEP, "- run: |"))),
+            QA12_INSTALL_ORDER,
+        ),
+        control(
+            format!("{label}: an action named for nextest, with no inputs"),
+            with(Some(replace_line(
+                text,
+                NEXTEST_STEP,
+                "- uses: someone/setup-nextest@v1",
+            ))),
+            QA12_INSTALL_INEXACT,
+        ),
+    ]
 }
 
 /// Items 3 and 5 on one workflow: the install's command spelled otherwise,
@@ -14585,4 +14681,143 @@ fn lib_qa_012_the_lib_qa_007_checks_accept_exactly_the_nextest_setup() {
             );
         }
     }
+}
+
+/// Item 3 (verification 0011, P4): the version the check compares with the
+/// requirement is the one [`NEXTEST_INSTALL`] pins, read from it; it meets
+/// [`NEXTEST_MINIMUM`]; and the fixtures' install step is that command.
+#[test]
+fn lib_qa_012_the_reviewed_install_pins_a_version_that_meets_the_minimum() {
+    let version = nextest_install_version();
+    assert!(
+        version.is_some_and(|v| v >= NEXTEST_MINIMUM),
+        "{QA12}: `{NEXTEST_INSTALL}` must pin one plain version, at least {}; it pins {version:?}",
+        show_version(NEXTEST_MINIMUM)
+    );
+    assert_eq!(
+        NEXTEST_STEP,
+        format!("- run: {NEXTEST_INSTALL}"),
+        "{QA12}: the fixtures' install step must be exactly `{NEXTEST_INSTALL}`"
+    );
+    for (name, fixture) in [
+        ("ci.yml", CI_MUTANTS_FIXTURE),
+        ("mutants.yml", FULL_RUN_FIXTURE),
+    ] {
+        assert_eq!(
+            fixture.lines().filter(|l| l.trim() == NEXTEST_STEP).count(),
+            1,
+            "{QA12}: the reference {name} must install nextest exactly once, with `{NEXTEST_INSTALL}`"
+        );
+    }
+}
+
+/// The number of exact [`NEXTEST_INSTALL`] commands in `line`: not followed
+/// by more of a version or flag (`0.9.151.1`, `0.9.151-beta`).
+fn exact_nextest_installs(line: &str) -> usize {
+    line.match_indices(NEXTEST_INSTALL)
+        .filter(|(at, _)| {
+            !line[at + NEXTEST_INSTALL.len()..]
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_alphanumeric() || ".-+_".contains(c))
+        })
+        .count()
+}
+
+/// `[nextest-contributing]`: `CONTRIBUTING.md` gives exactly
+/// [`NEXTEST_INSTALL`], and no line of it installs nextest any other way.
+fn check_contributing_nextest(text: &str) -> Vec<String> {
+    let code = "nextest-contributing";
+    let mut problems = Vec::new();
+    if !text.lines().any(|line| exact_nextest_installs(line) > 0) {
+        problems.push(problem(
+            code,
+            format!("CONTRIBUTING.md does not give `{NEXTEST_INSTALL}`"),
+        ));
+    }
+    for (index, line) in text.lines().enumerate() {
+        let installs = line.matches("cargo install").count() + line.matches("binstall").count();
+        if line.contains("nextest") && installs > exact_nextest_installs(line) {
+            problems.push(problem(
+                code,
+                format!(
+                    "CONTRIBUTING.md:{} installs nextest other than with exactly `{NEXTEST_INSTALL}`: `{}`",
+                    index + 1,
+                    line.trim()
+                ),
+            ));
+        }
+    }
+    problems
+}
+
+/// The reference nextest part of `CONTRIBUTING.md`'s mutation-testing section.
+const CONTRIBUTING_NEXTEST_FIXTURE: &str =
+    "cargo-mutants runs the tests under [cargo-nextest](https://nexte.st), so install it too:
+
+```sh
+cargo install cargo-nextest --locked --version 0.9.151
+```
+
+Its `mutants` profile in `.config/nextest.toml` stops at the first failing test.
+";
+
+/// Item 8: `CONTRIBUTING.md`'s nextest install command is [`NEXTEST_INSTALL`],
+/// the one CI runs, and does not drift from it.
+#[test]
+fn lib_qa_012_contributing_gives_the_reviewed_nextest_install() {
+    let c = CONTRIBUTING_NEXTEST_FIXTURE;
+    let problems = check_contributing_nextest(c);
+    assert!(
+        problems.is_empty(),
+        "{QA12}: the reference CONTRIBUTING.md text must pass before its controls mean anything: {problems:#?}"
+    );
+    let once: &[&str] = &["nextest-contributing"];
+    let twice: &[&str] = &["nextest-contributing", "nextest-contributing"];
+    let command = |replacement: &str| replace_line(c, NEXTEST_INSTALL, replacement);
+    for (name, text, expected) in [
+        ("the command removed", delete_line(c, NEXTEST_INSTALL), once),
+        (
+            "another version",
+            command("cargo install cargo-nextest --locked --version 0.9.150"),
+            twice,
+        ),
+        (
+            "--locked dropped",
+            command("cargo install cargo-nextest --version 0.9.151"),
+            twice,
+        ),
+        (
+            "a longer version",
+            command(&format!("{NEXTEST_INSTALL}.1")),
+            twice,
+        ),
+        (
+            "a second, unpinned install",
+            format!("{c}\nOr: `cargo install cargo-nextest --locked`.\n"),
+            once,
+        ),
+        (
+            "cargo binstall",
+            format!("{c}\nOr: `cargo binstall cargo-nextest`.\n"),
+            once,
+        ),
+    ] {
+        assert_eq!(
+            problem_codes(&check_contributing_nextest(&text)),
+            expected,
+            "{QA12}: the CONTRIBUTING.md control `{name}` must give exactly {expected:?}; text:\n{text}"
+        );
+    }
+    let prose = format!("{c}\nTo install cargo-nextest, use the command above.\n");
+    let problems = check_contributing_nextest(&prose);
+    assert!(
+        problems.is_empty(),
+        "{QA12}: prose that mentions installing cargo-nextest is not a second command, but was reported: {problems:#?}"
+    );
+    let problems = check_contributing_nextest(&read("CONTRIBUTING.md"));
+    assert!(
+        problems.is_empty(),
+        "{QA12}: CONTRIBUTING.md must give exactly `{NEXTEST_INSTALL}`, the command CI runs: {problems:#?}"
+    );
 }
