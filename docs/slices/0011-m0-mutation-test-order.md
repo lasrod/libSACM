@@ -106,3 +106,11 @@ None. This is a quality row. The research facts (cargo-mutants v27.1.0 and cargo
   - All 134 `repo_checks` tests pass, and `cargo xtask mutants exclusions` still passes.
     The implementer is updating the triage document.
 - 2026-11-09 the implementer updated `mutants-triage.md` (configuration in force, slice 0005 note, a slice 0011 section with placeholders for the Linux runs) and the CHANGELOG. The full local gate passes, and LIB-QA-012 is `implemented`.
+- 2026-11-09 PR #18 (draft). At `7e657bd`, CI run 42582691844 succeeded; `mutants (PR diff)`
+  found no mutants to filter. mutants.yml run 42582691741 was the first full run under
+  nextest: 544 caught, 0 missed, 0 timeouts, 15 unviable. The log shows `cargo nextest run
+  ... --profile=mutants --no-tests=warn`.
+  - The lead compared outcome sets with the last `cargo test` full run (42571009239 at
+    `e03ba86`): the caught set (544) and the unviable set (15) are identical. So no mutant
+    relied on a doctest alone.
+  - The lead filled in the triage placeholders. Copilot left no comments.

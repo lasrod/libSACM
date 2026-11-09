@@ -141,11 +141,11 @@ Slice 0011 (LIB-QA-012) changed how the tests run under mutation, not the code u
   - Under nextest with its default fail-fast (`max-fail = 1`, `terminate = "wait"`): TIMEOUT at 60 s. nextest started no new test after the failure, but waited for the slow one still running.
   - Under nextest with the `mutants` profile (`terminate = "immediate"`): caught, in 0.76 s.
 - **Target order is history:** the target-order notes in the slice 0005, 0006 and 0007 sections, the X-flush note below, and the ordering rule in the module doc of `xtask/tests/function_scan.rs` (now marked superseded) describe `cargo test` runs before this slice. They no longer constrain the names of new test targets.
-- **Linux runs at the slice head** (*to be filled by the lead*):
-  - mutants.yml *[run ID to be filled by the lead]* at *[head to be filled by the lead]*: *N* mutants, *N* caught, *N* missed, *N* timeout, *N* unviable (*to be filled by the lead*).
-  - ci.yml *[run ID to be filled by the lead]*, job `mutants (PR diff)`: *N* mutants, *N* caught, *N* missed, *N* timeout, *N* unviable (*to be filled by the lead*).
-  - **Unviable mutants at the slice head:** *to be filled by the lead*. Slice 0011 changes no `src` code, so the set should match that of the last full run on `main`.
-  - **Mutants that only a doctest killed:** *to be filled by the lead*. Any such mutant shows as missed, and is triaged by adding a test that kills it. LIB-QA-012 requires no missed and no timed-out mutant at the slice head.
+- **Linux runs at the slice head `7e657bd`,** the first runs under nextest:
+  - mutants.yml [42582691741](https://github.com/lasrod/libSACM/actions/runs/42582691741): 559 mutants, 544 caught, 0 missed, 0 timeout, 15 unviable. Per shard (caught/unviable): 138/2, 138/2, 137/3, 131/8. The log shows the test phase running `cargo nextest run --verbose --package=… --all-features --profile=mutants --no-tests=warn`.
+  - ci.yml [42582691844](https://github.com/lasrod/libSACM/actions/runs/42582691844), job `mutants (PR diff)`: "No mutants to filter". The slice changes no mutated source. The job installed cargo-nextest 0.9.151.
+  - **Unviable mutants at the slice head:** the same 15 as the last full run under `cargo test` (slice 0010's head `e03ba86`, run 42571009239, with the same per-shard counts). They are the `Default::default()` and `String` `+` replacements listed in the earlier sections, plus slice 0010's four in `xtask/src/mutants.rs` (`check_exclusions`, `listing_command`, `exclusion_entries` and `triage_assignments`).
+  - **Mutants that only a doctest killed:** none. The caught count under nextest (544) equals the count under `cargo test` at `e03ba86`, with 0 missed. So no mutant relied on a doctest alone.
 
 ## Dispositions
 
