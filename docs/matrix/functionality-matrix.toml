@@ -1058,11 +1058,48 @@ id = "LIB-QA-010"
 area = "QA"
 milestone = "M0"
 title = "Mutation exclusions are checked mechanically"
-requirement = "A test or CI step shows that each `exclude_re`, `exclude_globs` and `skip_calls` entry in .cargo/mutants.toml excludes exactly the triaged mutants and nothing else, by comparing `cargo mutants --workspace --list` with `--list --no-config` against docs/quality/mutants-triage.md."
+requirement = "A command and a CI job show that each `exclude_re`, `exclude_globs` and `skip_calls` entry in .cargo/mutants.toml excludes exactly the mutants that docs/quality/mutants-triage.md assigns to it, and nothing else. It compares `cargo mutants --workspace --list` with the configuration, with `--no-config`, and with each entry removed in turn."
 source = "Verification 0003 follow-up (rounds 1-3)"
 kind = "quality"
-status = "planned"
+status = "implemented"
+acceptance = [
+  "`cargo xtask mutants exclusions` runs `cargo mutants --workspace --list`: (a) with `.cargo/mutants.toml`; (b) with `--no-config`; and (c) for each entry `e` (each string of `exclude_re`, `exclude_globs` and `skip_calls`), with `--config` naming a copy of the configuration without `e`, written under `target/`. A mutant is a line of a listing.",
+  "These are reported, each as `[code] text` naming the mutant or the entry: a mutant in (a) but not in (b) is `[exclusion-adds]`. A mutant in (b) but not in (a), with no triage row whose Excluded cell names an entry, is `[exclusion-untriaged]`. For an entry `e`, the mutants in (c) but not in (a) must be exactly the mutants of the triage rows whose Excluded cell names `e`; each extra or missing one is `[exclusion-mismatch]`. An entry that excludes nothing of its own, for example because another entry already excludes it, is `[exclusion-empty]`.",
+  "Every problem is reported, in a deterministic order, and the command then exits non-zero. If cargo-mutants is missing, or a listing exits non-zero, that is an error naming the command and its stderr, never a pass. On success the command prints `mutant exclusions OK: <entries> entries, <excluded> excluded mutants, <listed> mutants listed`.",
+  "The comparison is testable without cargo-mutants: a function over the configuration text, the triage text and a lister that maps a configuration to its listing. Tests with fixtures give exactly the named problem for each code, for an overlapping pair of entries and for a `skip_calls` entry, and show that a configuration with no exclusions passes. The triage table is read by the LIB-QA-007 rules: the header `Mutant | Disposition | Row | Reason | Excluded`, `—` meaning not excluded, and an Excluded cell naming `<key>: <entry>` in the form LIB-QA-007 checks.",
+  "`ci.yml` has a job `mutants-exclusions` on `ubuntu-latest`, with only the keys `name`, `runs-on` and `steps`. Its steps are exactly checkout; the pinned `dtolnay/rust-toolchain` with `toolchain: stable`; the pinned `Swatinem/rust-cache`; the LIB-QA-007 install command `cargo install cargo-mutants --locked --version 27.1.0`; and `cargo xtask mutants exclusions`. No step has `if`, `continue-on-error`, `shell`, `working-directory` or `env`. A YAML regression test reports each of these removed or neutered, and the job passes on the real repository.",
+  "The triage document and CONTRIBUTING.md name the command and the CI job.",
+]
 depends_on = ["LIB-QA-007"]
+code = ["xtask/src/mutants.rs", "xtask/src/lib.rs", ".github/workflows/ci.yml"]
+tests = [
+  "xtask/tests/mutants_exclusions.rs::lib_qa_010_a_configuration_without_exclusions_passes",
+  "xtask/tests/mutants_exclusions.rs::lib_qa_010_a_correct_configuration_passes_with_its_counts",
+  "xtask/tests/mutants_exclusions.rs::lib_qa_010_a_failed_listing_is_mutants_tool_with_its_error",
+  "xtask/tests/mutants_exclusions.rs::lib_qa_010_a_malformed_triage_table_is_triage_format",
+  "xtask/tests/mutants_exclusions.rs::lib_qa_010_a_mutant_only_the_configuration_lists_is_exclusion_adds",
+  "xtask/tests/mutants_exclusions.rs::lib_qa_010_a_triaged_mutant_its_entry_does_not_exclude_is_exclusion_mismatch",
+  "xtask/tests/mutants_exclusions.rs::lib_qa_010_an_entry_excluding_a_mutant_it_is_not_assigned_is_exclusion_mismatch",
+  "xtask/tests/mutants_exclusions.rs::lib_qa_010_an_entry_that_excludes_nothing_is_exclusion_empty",
+  "xtask/tests/mutants_exclusions.rs::lib_qa_010_an_excluded_mutant_without_a_triage_row_is_exclusion_untriaged",
+  "xtask/tests/mutants_exclusions.rs::lib_qa_010_an_exclusion_key_that_is_not_a_string_array_is_config_exclusion",
+  "xtask/tests/mutants_exclusions.rs::lib_qa_010_an_overlapping_pair_is_exclusion_empty_for_the_entry_with_nothing_of_its_own",
+  "xtask/tests/mutants_exclusions.rs::lib_qa_010_an_unparsable_configuration_is_config_parse",
+  "xtask/tests/mutants_exclusions.rs::lib_qa_010_each_entry_is_listed_without_only_itself",
+  "xtask/tests/mutants_exclusions.rs::lib_qa_010_every_problem_is_reported_sorted_and_deterministically",
+  "xtask/tests/mutants_exclusions.rs::lib_qa_010_the_fake_lister_models_cargo_mutants",
+  "xtask/tests/mutants_exclusions.rs::lib_qa_010_triage_cells_are_read_by_the_lib_qa_007_rules",
+  "xtask/tests/repo_checks.rs::lib_qa_010_a_missing_exclusions_job_is_reported",
+  "xtask/tests/repo_checks.rs::lib_qa_010_a_neutered_command_is_exclusions_step",
+  "xtask/tests/repo_checks.rs::lib_qa_010_each_step_removed_or_moved_is_exclusions_step",
+  "xtask/tests/repo_checks.rs::lib_qa_010_each_step_replaced_or_added_is_exclusions_step",
+  "xtask/tests/repo_checks.rs::lib_qa_010_names_ids_and_equivalent_yaml_are_accepted",
+  "xtask/tests/repo_checks.rs::lib_qa_010_no_step_of_the_exclusions_job_is_guarded",
+  "xtask/tests/repo_checks.rs::lib_qa_010_parse_shape_merge_key_and_defaults_problems_are_reported",
+  "xtask/tests/repo_checks.rs::lib_qa_010_the_exclusions_job_has_only_name_runs_on_and_steps",
+  "xtask/tests/repo_checks.rs::lib_qa_010_the_exclusions_job_runs_on_ubuntu_latest",
+  "xtask/tests/repo_checks.rs::lib_qa_010_the_real_ci_runs_the_mutants_exclusions_job",
+]
 
 [[row]]
 id = "LIB-QA-011"

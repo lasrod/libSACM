@@ -2,6 +2,13 @@
 
 This is where every cargo-mutants survivor in the workspace gets its disposition (LIB-QA-007). Every exclusion in `.cargo/mutants.toml` must appear here with its reason and owning matrix row; the test `lib_qa_007_mutants_config_is_reviewed` checks that the two lists agree exactly.
 
+What each exclusion actually excludes is checked by `cargo xtask mutants exclusions` (LIB-QA-010), and the CI job `mutants-exclusions` runs it on every push to `main` and every pull request. The command compares `cargo mutants --workspace --list` with the configuration, with `--no-config`, and with each entry removed in turn. Each `exclude_re`, `exclude_globs` and `skip_calls` entry must exclude exactly the mutants of the rows below whose Excluded cell names it, and nothing else:
+
+- **Every excluded mutant needs its own row.** The Mutant cell is the mutant's name as `--list` prints it, and the Excluded cell names the entry that excludes it. A mutant that the configuration excludes without such a row is `[exclusion-untriaged]`, and an entry that excludes more or fewer mutants than its rows name is `[exclusion-mismatch]`.
+- **A name includes the mutant's position** (`<path>:<line>:<column>: …`). A change that moves an excluded mutant, even by one line, therefore needs a re-triage: the row's name must be updated to the new position, and the reason re-checked.
+- **Entries must not overlap.** An entry whose removal restores no mutant, because another entry already excludes everything it does, is `[exclusion-empty]`.
+- **cargo-mutants must be installed.** If it is missing, or a listing fails, the command fails: it never passes without listing.
+
 - **Author:** the lead (slice 0003). The verifier independently re-derives every *equivalent* and *accepted* claim.
 - **Configuration in force:** `.cargo/mutants.toml` sets `cap_lints = true`, `all_features = true` and `test_workspace = false`. There are **no exclusions**. `skip_calls_defaults = true` is the cargo-mutants default: calls to `with_capacity` are not mutated.
 

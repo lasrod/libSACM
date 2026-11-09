@@ -3,8 +3,9 @@
 //! testing with cargo-mutants (LIB-QA-007), the `sacm-slice` skill's
 //! PR-reuse and full-run-dispatch rules (LIB-QA-011), the CI gates as live
 //! steps (LIB-QA-008), the pinning and reviewed inputs of third-party CI
-//! actions (LIB-QA-009), and the git-ignore that keeps OMG documents out of
-//! the repository (LIB-TOOL-002).
+//! actions (LIB-QA-009), the CI job that checks the mutation exclusions
+//! (LIB-QA-010), and the git-ignore that keeps OMG documents out of the
+//! repository (LIB-TOOL-002).
 //!
 //! These guard against a gate being removed or drifting out of step with the
 //! manifest — the kind of change that passes review because nothing fails.
@@ -7145,9 +7146,24 @@ fn lib_qa_007_mutants_config_check_rejects_broad_exclude_globs() {
         )
     })
     .collect();
+    // Every source of xtask, read from the real workspace, so that a new file
+    // under xtask/src/ cannot leave one out.
+    let xtask_sources: Vec<String> = real_workspace()
+        .members
+        .iter()
+        .find(|member| member.dir == "xtask")
+        .expect("xtask is a workspace member")
+        .sources
+        .iter()
+        .map(|(path, _)| format!("{path:?}"))
+        .collect();
+    assert!(
+        xtask_sources.len() > 1,
+        "LIB-QA-007: precondition: xtask has several sources to exclude one by one: {xtask_sources:?}"
+    );
     cases.push(config_plus(
         "every source of xtask, one by one",
-        r#"exclude_globs = ["xtask/src/fetch.rs", "xtask/src/lib.rs", "xtask/src/main.rs", "xtask/src/matrix.rs"]"#,
+        &format!("exclude_globs = [{}]", xtask_sources.join(", ")),
         &["config-exclusion"],
     ));
     cases.push(config_plus(
@@ -11522,5 +11538,1043 @@ fn lib_qa_008_equivalent_and_unrelated_changes_are_accepted() {
             ),
         ],
         check_ci_gates,
+    );
+}
+
+// ---------------------------------------------------------------------------
+// LIB-QA-010: the CI job that checks the mutation exclusions
+// ---------------------------------------------------------------------------
+//
+// Acceptance item 5. `ci.yml` has a job `mutants-exclusions`
+// (`[exclusions-job-missing]`) with only the keys `name`, `runs-on` and
+// `steps` (`[job-key]`), on `ubuntu-latest` (`[exclusions-runner]`). Its
+// steps are exactly, in order (`[exclusions-step]`, one problem for the whole
+// sequence):
+//
+// 1. `actions/checkout` at a major tag `v<N>`, with no `with`;
+// 2. `dtolnay/rust-toolchain` with exactly `toolchain: stable`;
+// 3. `Swatinem/rust-cache` with no `with`;
+// 4. `run:` exactly the LIB-QA-007 install command;
+// 5. `run:` exactly `cargo xtask mutants exclusions`.
+//
+// A step may also have `name` and `id`, and nothing else. No step has `if`,
+// `continue-on-error`, `shell`, `working-directory` or `env`
+// (`[step-guard]`, one for each such key; such a step is still read as its
+// kind). Actions are matched by `owner/repo`, without regard to case: whether
+// their refs are pinned is LIB-QA-009's to judge. A top-level `defaults` is
+// `[workflow-defaults]`, and the shared `[yaml-parse]`, `[yaml-documents]`,
+// `[shape]` and `[merge-key]` are reported as elsewhere. The job is not a
+// LIB-QA-008 gate job (slice 0010, D3), so this check pins it.
+
+const QA10: &str = "LIB-QA-010";
+
+/// The job's id.
+const EXCLUSIONS_JOB: &str = "mutants-exclusions";
+
+/// The command the job runs (D2).
+const EXCLUSIONS_COMMAND: &str = "cargo xtask mutants exclusions";
+
+/// The only runner the job may use.
+const EXCLUSIONS_RUNNER: &str = "ubuntu-latest";
+
+/// The only keys the job may have.
+const EXCLUSIONS_JOB_KEYS: [&str; 3] = ["name", "runs-on", "steps"];
+
+/// Keys no step of the job may have.
+const EXCLUSIONS_STEP_GUARDS: [&str; 5] = [
+    "if",
+    "continue-on-error",
+    "shell",
+    "working-directory",
+    "env",
+];
+
+/// The job's steps, in order, by kind.
+const EXCLUSIONS_STEPS: [&str; 5] = ["checkout", "toolchain", "cache", "install", "exclusions"];
+
+/// Whether `reference` is a major-version tag `v<N>`.
+fn is_major_tag(reference: &str) -> bool {
+    reference
+        .strip_prefix('v')
+        .is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
+}
+
+/// Which of [`EXCLUSIONS_STEPS`] `step` is, if any. `name`, `id` and the
+/// guard keys (judged on their own) are ignored; any other key, a `uses` and
+/// a `run` together, or a value other than the pinned one is no kind.
+fn exclusions_step_kind(step: &Hash) -> Option<&'static str> {
+    let mut keys = Vec::new();
+    for key in step.keys() {
+        let key = key.as_str()?;
+        if !["name", "id"].contains(&key) && !EXCLUSIONS_STEP_GUARDS.contains(&key) {
+            keys.push(key);
+        }
+    }
+    keys.sort_unstable();
+    let text = |key: &str| get(step, key).and_then(Yaml::as_str);
+    match keys.as_slice() {
+        ["run"] => match text("run")? {
+            MUTANTS_INSTALL => Some("install"),
+            EXCLUSIONS_COMMAND => Some("exclusions"),
+            _ => None,
+        },
+        ["uses"] | ["uses", "with"] => {
+            let (action, reference) = text("uses")?.split_once('@')?;
+            let with = get(step, "with");
+            let stable = with.and_then(Yaml::as_hash).is_some_and(|inputs| {
+                inputs.len() == 1
+                    && get(inputs, "toolchain").and_then(Yaml::as_str) == Some("stable")
+            });
+            if action.eq_ignore_ascii_case("actions/checkout")
+                && is_major_tag(reference)
+                && with.is_none()
+            {
+                Some("checkout")
+            } else if action.eq_ignore_ascii_case("dtolnay/rust-toolchain")
+                && !reference.is_empty()
+                && stable
+            {
+                Some("toolchain")
+            } else if action.eq_ignore_ascii_case("Swatinem/rust-cache")
+                && !reference.is_empty()
+                && with.is_none()
+            {
+                Some("cache")
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+/// LIB-QA-010 acceptance item 5: `ci.yml`'s `mutants-exclusions` job.
+fn check_mutants_exclusions_job(ci: &str) -> Vec<String> {
+    let doc = match load_workflow(ci) {
+        Ok(doc) => doc,
+        Err(problem) => return vec![problem],
+    };
+    let mut problems = Vec::new();
+    merge_key_problems(&doc, "ci.yml", &mut problems);
+    let Some(workflow) = read_workflow(&doc, &mut problems) else {
+        return problems;
+    };
+    workflow_defaults_problems(workflow.top, &mut problems);
+    // `jobs` that is not a mapping is `[shape]` already.
+    let Some(jobs) = get(workflow.top, "jobs").and_then(Yaml::as_hash) else {
+        return problems;
+    };
+    if get(jobs, EXCLUSIONS_JOB).is_none() {
+        problems.push(problem(
+            "exclusions-job-missing",
+            format!("ci.yml has no job `{EXCLUSIONS_JOB}` to run `{EXCLUSIONS_COMMAND}`"),
+        ));
+        return problems;
+    }
+    // A job that is not a mapping is `[shape]` already.
+    let Some(job) = workflow.jobs.iter().find(|job| job.id == EXCLUSIONS_JOB) else {
+        return problems;
+    };
+    let label = format!("the job `{EXCLUSIONS_JOB}`");
+    key_allowlist(
+        job.map,
+        &EXCLUSIONS_JOB_KEYS,
+        "job-key",
+        &label,
+        &mut problems,
+    );
+    let runner = get(job.map, "runs-on");
+    if runner.and_then(Yaml::as_str) != Some(EXCLUSIONS_RUNNER) {
+        problems.push(problem(
+            "exclusions-runner",
+            format!(
+                "{label} must have `runs-on: {EXCLUSIONS_RUNNER}`, found {}",
+                runner.map_or_else(|| "no `runs-on`".to_owned(), show)
+            ),
+        ));
+    }
+    for (number, step) in &job.steps {
+        for key in step.keys().filter_map(Yaml::as_str) {
+            if EXCLUSIONS_STEP_GUARDS.contains(&key) {
+                problems.push(problem(
+                    "step-guard",
+                    format!(
+                        "{label}, step {number} has `{key}`; every step must be unconditional, not allowed to fail, and run with the default shell, directory and environment"
+                    ),
+                ));
+            }
+        }
+    }
+    let kinds: Vec<Option<&str>> = job
+        .steps
+        .iter()
+        .map(|(_, step)| exclusions_step_kind(step))
+        .collect();
+    if !kinds
+        .iter()
+        .copied()
+        .eq(EXCLUSIONS_STEPS.iter().copied().map(Some))
+    {
+        let found: Vec<String> = job
+            .steps
+            .iter()
+            .zip(&kinds)
+            .map(|((_, step), kind)| {
+                kind.map_or_else(
+                    || {
+                        get(step, "run")
+                            .or_else(|| get(step, "uses"))
+                            .map_or_else(|| format!("{step:?}"), show)
+                    },
+                    str::to_owned,
+                )
+            })
+            .collect();
+        problems.push(problem(
+            "exclusions-step",
+            format!(
+                "{label}'s steps must be exactly {EXCLUSIONS_STEPS:?}: `actions/checkout@v<N>`, `dtolnay/rust-toolchain` with `toolchain: stable`, `Swatinem/rust-cache`, `{MUTANTS_INSTALL}` and `{EXCLUSIONS_COMMAND}`; found {found:?}"
+            ),
+        ));
+    }
+    problems
+}
+
+/// The reference `ci.yml` for acceptance item 5: the job in its pinned form,
+/// in a minimal workflow with the real file's triggers, permissions and
+/// environment, and one other job.
+const EXCLUSIONS_FIXTURE: &str = r"name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: cargo test -p xtask
+
+  mutants-exclusions:
+    name: mutants exclusions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo install cargo-mutants --locked --version 27.1.0
+      - run: cargo xtask mutants exclusions
+";
+
+// Lines (trimmed) of `EXCLUSIONS_FIXTURE` that the controls edit, with
+// `CHECKOUT_STEP`, `PIN_TOOLCHAIN`, `PIN_TOOLCHAIN_INPUT`, `PIN_CACHE` and
+// `INSTALL_STEP`.
+const EXCLUSIONS_JOB_LINE: &str = "mutants-exclusions:";
+const EXCLUSIONS_NAME: &str = "name: mutants exclusions";
+const EXCLUSIONS_RUNS_ON: &str = "runs-on: ubuntu-latest";
+const EXCLUSIONS_STEP: &str = "- run: cargo xtask mutants exclusions";
+
+/// The first line of each of the job's steps, in order.
+const EXCLUSIONS_STEP_LINES: [&str; 5] = [
+    CHECKOUT_STEP,
+    PIN_TOOLCHAIN,
+    PIN_CACHE,
+    INSTALL_STEP,
+    EXCLUSIONS_STEP,
+];
+
+const EXCLUSIONS_MISSING: &[&str] = &["exclusions-job-missing"];
+const EXCLUSIONS_RUNNER_CODE: &[&str] = &["exclusions-runner"];
+const EXCLUSIONS_STEP_CODE: &[&str] = &["exclusions-step"];
+const SHAPE_AND_EXCLUSIONS_STEP: &[&str] = &["shape", "exclusions-step"];
+const MERGE_KEY_AND_EXCLUSIONS_STEP: &[&str] = &["merge-key", "exclusions-step"];
+
+fn assert_exclusions_controls(controls: &[(&str, String, &[&str])]) {
+    assert_exact_controls(
+        QA10,
+        EXCLUSIONS_FIXTURE,
+        controls,
+        check_mutants_exclusions_job,
+    );
+}
+
+/// The lines of `text`, and the range of the step whose first line (trimmed)
+/// is `first`: that line and every following line indented deeper.
+fn ci_step_range(text: &str, first: &str) -> (Vec<String>, std::ops::Range<usize>) {
+    let lines: Vec<String> = text.lines().map(str::to_owned).collect();
+    let starts: Vec<usize> = (0..lines.len())
+        .filter(|&i| lines[i].trim() == first)
+        .collect();
+    assert_eq!(
+        starts.len(),
+        1,
+        "the step `{first}` must occur exactly once"
+    );
+    let start = starts[0];
+    let depth = indent(&lines[start]);
+    let end = (start + 1..lines.len())
+        .find(|&i| lines[i].trim().is_empty() || indent(&lines[i]) <= depth)
+        .unwrap_or(lines.len());
+    (lines, start..end)
+}
+
+fn ci_text(lines: &[String]) -> String {
+    let mut text = String::new();
+    for line in lines {
+        text.push_str(line);
+        text.push('\n');
+    }
+    text
+}
+
+/// `text` without the step whose first line is `first`.
+fn without_ci_step(text: &str, first: &str) -> String {
+    let (mut lines, range) = ci_step_range(text, first);
+    lines.drain(range);
+    ci_text(&lines)
+}
+
+/// `text` with the step `first` moved to just before (`after` false) or just
+/// after (`after` true) the step `other`.
+fn ci_step_moved(text: &str, first: &str, other: &str, after: bool) -> String {
+    let (mut lines, range) = ci_step_range(text, first);
+    let step: Vec<String> = lines.drain(range).collect();
+    let (_, target) = ci_step_range(&ci_text(&lines), other);
+    let at = if after { target.end } else { target.start };
+    lines.splice(at..at, step);
+    ci_text(&lines)
+}
+
+/// `EXCLUSIONS_FIXTURE` with `lines` inserted as keys of the job.
+fn with_exclusions_job_keys(lines: &[&str]) -> String {
+    insert_after(EXCLUSIONS_FIXTURE, EXCLUSIONS_JOB_LINE, 2, lines)
+}
+
+/// `text` with the step `first` replaced by `lines`, each indented like
+/// `first` plus its own leading spaces.
+fn with_ci_step(text: &str, first: &str, lines: &[&str]) -> String {
+    let (mut all, range) = ci_step_range(text, first);
+    let pad = leading(&all[range.start]).to_owned();
+    all.splice(range, lines.iter().map(|line| format!("{pad}{line}")));
+    ci_text(&all)
+}
+
+/// `EXCLUSIONS_FIXTURE` with the step `first` replaced by `lines`.
+fn with_exclusions_step(first: &str, lines: &[&str]) -> String {
+    with_ci_step(EXCLUSIONS_FIXTURE, first, lines)
+}
+
+/// `EXCLUSIONS_FIXTURE` with every line of the job, which is the last,
+/// commented out.
+fn exclusions_job_commented_out() -> String {
+    let start = EXCLUSIONS_FIXTURE
+        .find("\n  mutants-exclusions:")
+        .expect("the fixture has the job")
+        + 1;
+    let (before, job) = EXCLUSIONS_FIXTURE.split_at(start);
+    let mut text = before.to_owned();
+    for line in job.lines() {
+        text.push_str(leading(line));
+        text.push_str("# ");
+        text.push_str(line.trim());
+        text.push('\n');
+    }
+    text
+}
+
+/// Acceptance item 5: the real `ci.yml` runs the job in its pinned form.
+#[test]
+fn lib_qa_010_the_real_ci_runs_the_mutants_exclusions_job() {
+    let problems = check_mutants_exclusions_job(&read(CI_WORKFLOW));
+    assert!(
+        problems.is_empty(),
+        "{QA10}: {CI_WORKFLOW} must run `{EXCLUSIONS_COMMAND}` in the job `{EXCLUSIONS_JOB}`, unconditionally, on {EXCLUSIONS_RUNNER}: {problems:#?}"
+    );
+}
+
+/// Acceptance item 5: a job removed or renamed is
+/// `[exclusions-job-missing]`; a job, or `jobs`, that is not a mapping is
+/// `[shape]`.
+#[test]
+fn lib_qa_010_a_missing_exclusions_job_is_reported() {
+    let f = EXCLUSIONS_FIXTURE;
+    let deleted = delete_job(f, EXCLUSIONS_JOB);
+    assert_exclusions_controls(&[
+        ("the job deleted", deleted.clone(), EXCLUSIONS_MISSING),
+        (
+            "the job renamed",
+            replace_line(f, EXCLUSIONS_JOB_LINE, "mutants-exclusion:"),
+            EXCLUSIONS_MISSING,
+        ),
+        (
+            "the job renamed in another case",
+            replace_line(f, EXCLUSIONS_JOB_LINE, "Mutants-Exclusions:"),
+            EXCLUSIONS_MISSING,
+        ),
+        (
+            "the job commented out",
+            exclusions_job_commented_out(),
+            EXCLUSIONS_MISSING,
+        ),
+        (
+            "the job a string",
+            append_job(
+                &deleted,
+                &[&format!("{EXCLUSIONS_JOB}: {EXCLUSIONS_COMMAND}")],
+            ),
+            SHAPE,
+        ),
+        (
+            "`jobs` a sequence",
+            replace_line(f, "jobs:", "old-jobs:") + "jobs: [mutants-exclusions]\n",
+            SHAPE,
+        ),
+    ]);
+}
+
+/// Acceptance item 5: a job-level `if`, `continue-on-error` or `needs`, or
+/// any key but `name`, `runs-on` and `steps`, is `[job-key]`, once per key.
+#[test]
+fn lib_qa_010_the_exclusions_job_has_only_name_runs_on_and_steps() {
+    assert_exclusions_controls(&[
+        (
+            "`if: false`",
+            with_exclusions_job_keys(&["if: false"]),
+            JOB_KEY,
+        ),
+        (
+            "an `if` on the event",
+            with_exclusions_job_keys(&["if: github.event_name == 'pull_request'"]),
+            JOB_KEY,
+        ),
+        (
+            "`continue-on-error`",
+            with_exclusions_job_keys(&["continue-on-error: true"]),
+            JOB_KEY,
+        ),
+        (
+            "`needs`",
+            with_exclusions_job_keys(&["needs: test"]),
+            JOB_KEY,
+        ),
+        (
+            "`env`",
+            with_exclusions_job_keys(&["env:", "  CARGO: /bin/true"]),
+            JOB_KEY,
+        ),
+        (
+            "`timeout-minutes`",
+            with_exclusions_job_keys(&["timeout-minutes: 1"]),
+            JOB_KEY,
+        ),
+        (
+            "`strategy`",
+            with_exclusions_job_keys(&["strategy:", "  matrix:", "    rust: [stable]"]),
+            JOB_KEY,
+        ),
+        (
+            "`defaults`",
+            with_exclusions_job_keys(&["defaults:", "  run:", "    shell: bash"]),
+            JOB_KEY,
+        ),
+        (
+            "`container`",
+            with_exclusions_job_keys(&["container: rust:1"]),
+            JOB_KEY,
+        ),
+        (
+            "`permissions`",
+            with_exclusions_job_keys(&["permissions:", "  contents: write"]),
+            JOB_KEY,
+        ),
+        (
+            "`if` and `continue-on-error`",
+            with_exclusions_job_keys(&["if: false", "continue-on-error: true"]),
+            &["job-key", "job-key"],
+        ),
+        (
+            "a `<<` merge of a skipped job",
+            insert_after(
+                &with_gate_job(EXCLUSIONS_FIXTURE, EXCLUSIONS_JOB),
+                EXCLUSIONS_JOB_LINE,
+                2,
+                &["<<: *skip_job"],
+            ),
+            JOB_KEY_MERGE,
+        ),
+    ]);
+}
+
+/// Acceptance item 5: `runs-on` other than exactly `ubuntu-latest`, or none,
+/// is `[exclusions-runner]`.
+#[test]
+fn lib_qa_010_the_exclusions_job_runs_on_ubuntu_latest() {
+    let f = EXCLUSIONS_FIXTURE;
+    let runs_on = |value: &str| replace_line(f, EXCLUSIONS_RUNS_ON, &format!("runs-on: {value}"));
+    assert_exclusions_controls(&[
+        (
+            "windows-latest",
+            runs_on("windows-latest"),
+            EXCLUSIONS_RUNNER_CODE,
+        ),
+        (
+            "macos-latest",
+            runs_on("macos-latest"),
+            EXCLUSIONS_RUNNER_CODE,
+        ),
+        (
+            "ubuntu-24.04",
+            runs_on("ubuntu-24.04"),
+            EXCLUSIONS_RUNNER_CODE,
+        ),
+        (
+            "self-hosted",
+            runs_on("self-hosted"),
+            EXCLUSIONS_RUNNER_CODE,
+        ),
+        (
+            "a matrix expression",
+            runs_on("${{ matrix.os }}"),
+            EXCLUSIONS_RUNNER_CODE,
+        ),
+        (
+            "a sequence",
+            runs_on("[ubuntu-latest]"),
+            EXCLUSIONS_RUNNER_CODE,
+        ),
+        (
+            "`runs-on` removed",
+            delete_line(f, EXCLUSIONS_RUNS_ON),
+            EXCLUSIONS_RUNNER_CODE,
+        ),
+    ]);
+}
+
+/// Acceptance item 5: each step removed, or moved out of its place, is one
+/// `[exclusions-step]`.
+#[test]
+fn lib_qa_010_each_step_removed_or_moved_is_exclusions_step() {
+    let f = EXCLUSIONS_FIXTURE;
+    let mut controls: Vec<(String, String, &[&str])> = EXCLUSIONS_STEP_LINES
+        .iter()
+        .map(|step| {
+            (
+                format!("`{step}` removed"),
+                without_ci_step(f, step),
+                EXCLUSIONS_STEP_CODE,
+            )
+        })
+        .collect();
+    let moves: [(&str, &str, &str, bool); 6] = [
+        (
+            "toolchain before checkout",
+            PIN_TOOLCHAIN,
+            CHECKOUT_STEP,
+            false,
+        ),
+        ("cache before toolchain", PIN_CACHE, PIN_TOOLCHAIN, false),
+        ("checkout last", CHECKOUT_STEP, EXCLUSIONS_STEP, true),
+        (
+            "install after the command",
+            INSTALL_STEP,
+            EXCLUSIONS_STEP,
+            true,
+        ),
+        ("the command first", EXCLUSIONS_STEP, CHECKOUT_STEP, false),
+        ("install before cache", INSTALL_STEP, PIN_CACHE, false),
+    ];
+    for (name, step, other, after) in moves {
+        controls.push((
+            name.to_owned(),
+            ci_step_moved(f, step, other, after),
+            EXCLUSIONS_STEP_CODE,
+        ));
+    }
+    let controls: Vec<(&str, String, &[&str])> = controls
+        .iter()
+        .map(|(name, text, codes)| (name.as_str(), text.clone(), *codes))
+        .collect();
+    assert_exclusions_controls(&controls);
+}
+
+/// Each of the job's actions replaced, or given other inputs.
+fn exclusions_action_replacements() -> Vec<(&'static str, String)> {
+    let f = EXCLUSIONS_FIXTURE;
+    let toolchain_with = |input: &[&str]| {
+        let mut lines = vec![
+            "- uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8",
+            "  with:",
+        ];
+        lines.extend(input);
+        with_exclusions_step(PIN_TOOLCHAIN, &lines)
+    };
+    vec![
+        (
+            "checkout at a branch",
+            replace_line(f, CHECKOUT_STEP, "- uses: actions/checkout@main"),
+        ),
+        (
+            "checkout at a SHA",
+            replace_line(
+                f,
+                CHECKOUT_STEP,
+                "- uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683",
+            ),
+        ),
+        (
+            "checkout by another owner",
+            replace_line(f, CHECKOUT_STEP, "- uses: someone/checkout@v7"),
+        ),
+        (
+            "checkout with `fetch-depth`",
+            insert_after(f, CHECKOUT_STEP, 2, &["with:", "  fetch-depth: 0"]),
+        ),
+        (
+            "checkout of another ref",
+            insert_after(f, CHECKOUT_STEP, 2, &["with:", "  ref: other-branch"]),
+        ),
+        (
+            "checkout with an empty `with`",
+            insert_after(f, CHECKOUT_STEP, 2, &["with: {}"]),
+        ),
+        (
+            "toolchain nightly",
+            toolchain_with(&["    toolchain: nightly"]),
+        ),
+        (
+            "toolchain 1.85",
+            toolchain_with(&["    toolchain: \"1.85\""]),
+        ),
+        (
+            "toolchain with `components`",
+            toolchain_with(&["    toolchain: stable", "    components: clippy"]),
+        ),
+        (
+            "toolchain with `targets`",
+            toolchain_with(&[
+                "    toolchain: stable",
+                "    targets: wasm32-unknown-unknown",
+            ]),
+        ),
+        (
+            "toolchain without `with`",
+            with_exclusions_step(PIN_TOOLCHAIN, &[PIN_TOOLCHAIN]),
+        ),
+        (
+            "toolchain by another action",
+            with_exclusions_step(
+                PIN_TOOLCHAIN,
+                &[
+                    "- uses: actions-rs/toolchain@v1",
+                    "  with:",
+                    "    toolchain: stable",
+                ],
+            ),
+        ),
+        (
+            "toolchain from a sub-path",
+            with_exclusions_step(
+                PIN_TOOLCHAIN,
+                &[
+                    "- uses: dtolnay/rust-toolchain/sub@683b588c487a69d01f6c6ddf40f036ff682cc2c8",
+                    "  with:",
+                    "    toolchain: stable",
+                ],
+            ),
+        ),
+        (
+            "cache with an input",
+            insert_after(f, PIN_CACHE, 2, &["with:", "  cache-targets: false"]),
+        ),
+        (
+            "cache by another action",
+            replace_line(f, PIN_CACHE, "- uses: actions/cache@v4"),
+        ),
+    ]
+}
+
+/// The run steps replaced, extra steps, and keys beside `name` and `id`.
+fn exclusions_extra_step_replacements() -> Vec<(&'static str, String)> {
+    let f = EXCLUSIONS_FIXTURE;
+    vec![
+        (
+            "install by binstall",
+            replace_line(f, INSTALL_STEP, "- run: cargo binstall cargo-mutants"),
+        ),
+        (
+            "the command replaced by another xtask command",
+            replace_line(f, EXCLUSIONS_STEP, "- run: cargo xtask matrix check"),
+        ),
+        (
+            "an extra step first",
+            insert_before(f, CHECKOUT_STEP, &["- run: echo first"]),
+        ),
+        (
+            "an extra step between install and the command",
+            insert_before(f, EXCLUSIONS_STEP, &["- run: echo between"]),
+        ),
+        ("an extra step last", format!("{f}      - run: echo last\n")),
+        ("the command twice", format!("{f}      {EXCLUSIONS_STEP}\n")),
+        (
+            "an extra action step",
+            insert_before(f, EXCLUSIONS_STEP, &["- uses: actions/setup-python@v7"]),
+        ),
+        (
+            "`uses` and `run` in one step",
+            insert_after(f, PIN_CACHE, 2, &["run: echo cache"]),
+        ),
+        (
+            "`timeout-minutes` on the command",
+            insert_after(f, EXCLUSIONS_STEP, 2, &["timeout-minutes: 0"]),
+        ),
+        (
+            "`with` on the command",
+            insert_after(f, EXCLUSIONS_STEP, 2, &["with:", "  args: --help"]),
+        ),
+        (
+            "`with` on install",
+            insert_after(f, INSTALL_STEP, 2, &["with:", "  version: 27.0.0"]),
+        ),
+    ]
+}
+
+/// Acceptance item 5: an action replaced or given other inputs, a run step
+/// replaced, an extra step anywhere, or a key beside `name` and `id`, is one
+/// `[exclusions-step]`; a step that is not a mapping is also `[shape]`.
+#[test]
+fn lib_qa_010_each_step_replaced_or_added_is_exclusions_step() {
+    let mut controls: Vec<(&str, String, &[&str])> = exclusions_action_replacements()
+        .into_iter()
+        .chain(exclusions_extra_step_replacements())
+        .map(|(name, text)| (name, text, EXCLUSIONS_STEP_CODE))
+        .collect();
+    controls.push((
+        "a step that is a string",
+        replace_line(
+            EXCLUSIONS_FIXTURE,
+            EXCLUSIONS_STEP,
+            &format!("- {EXCLUSIONS_COMMAND}"),
+        ),
+        SHAPE_AND_EXCLUSIONS_STEP,
+    ));
+    assert_exclusions_controls(&controls);
+}
+
+/// Acceptance item 5: the install or the command changed, failure masked,
+/// folded into a longer script, or only in a step's `name`, is
+/// `[exclusions-step]`.
+#[test]
+fn lib_qa_010_a_neutered_command_is_exclusions_step() {
+    let f = EXCLUSIONS_FIXTURE;
+    let mut controls: Vec<(String, String)> = Vec::new();
+    for mask in FAILURE_MASKS {
+        controls.push((
+            format!("the command with `{mask}`"),
+            replace_line(
+                f,
+                EXCLUSIONS_STEP,
+                &format!("- run: {EXCLUSIONS_COMMAND}{mask}"),
+            ),
+        ));
+        controls.push((
+            format!("install with `{mask}`"),
+            replace_line(f, INSTALL_STEP, &format!("- run: {MUTANTS_INSTALL}{mask}")),
+        ));
+    }
+    for (name, install) in [
+        (
+            "install of another version",
+            "cargo install cargo-mutants --locked --version 27.0.0",
+        ),
+        (
+            "install of a later version",
+            "cargo install cargo-mutants --locked --version 27.1.1",
+        ),
+        (
+            "install without --locked",
+            "cargo install cargo-mutants --version 27.1.0",
+        ),
+        (
+            "install without a version",
+            "cargo install cargo-mutants --locked",
+        ),
+        (
+            "install of something else",
+            "cargo install cargo-nextest --locked --version 27.1.0",
+        ),
+    ] {
+        controls.push((
+            name.to_owned(),
+            replace_line(f, INSTALL_STEP, &format!("- run: {install}")),
+        ));
+    }
+    for (name, lines) in [
+        (
+            "the command echoed",
+            vec!["- run: echo cargo xtask mutants exclusions"],
+        ),
+        (
+            "the command with `--help`",
+            vec!["- run: cargo xtask mutants exclusions --help"],
+        ),
+        (
+            "another mutants subcommand",
+            vec!["- run: cargo xtask mutants"],
+        ),
+        (
+            "cargo mutants itself",
+            vec!["- run: cargo mutants --workspace --list"],
+        ),
+        (
+            "a block scalar masking the failure",
+            vec!["- run: |", "    cargo xtask mutants exclusions || true"],
+        ),
+        (
+            "a block scalar with a second command",
+            vec![
+                "- run: |",
+                "    cargo xtask mutants exclusions",
+                "    exit 0",
+            ],
+        ),
+        (
+            "a continuation line `|| true`",
+            vec!["- run: cargo xtask mutants exclusions", "    || true"],
+        ),
+        (
+            "the command only in the step's name",
+            vec![
+                "- name: cargo xtask mutants exclusions",
+                "  run: echo skipped",
+            ],
+        ),
+    ] {
+        controls.push((
+            name.to_owned(),
+            with_exclusions_step(EXCLUSIONS_STEP, &lines),
+        ));
+    }
+    let controls: Vec<(&str, String, &[&str])> = controls
+        .iter()
+        .map(|(name, text)| (name.as_str(), text.clone(), EXCLUSIONS_STEP_CODE))
+        .collect();
+    assert_exclusions_controls(&controls);
+}
+
+/// Acceptance item 5: `if`, `continue-on-error`, `shell`,
+/// `working-directory` or `env` on any of the five steps is one
+/// `[step-guard]` for each such key, and nothing else.
+#[test]
+fn lib_qa_010_no_step_of_the_exclusions_job_is_guarded() {
+    let guards: [(&str, &[&str]); 6] = [
+        ("`if: false`", &["if: false"]),
+        (
+            "an `if` expression",
+            &["if: ${{ github.event_name == 'push' }}"],
+        ),
+        ("`continue-on-error`", &["continue-on-error: true"]),
+        ("`shell`", &["shell: bash"]),
+        ("`working-directory`", &["working-directory: crates/sacm"]),
+        ("`env`", &["env:", "  RUSTC_WRAPPER: /bin/true"]),
+    ];
+    let mut controls: Vec<(String, String, &[&str])> = Vec::new();
+    for step in EXCLUSIONS_STEP_LINES {
+        for (name, lines) in guards {
+            controls.push((
+                format!("{name} on `{step}`"),
+                insert_after(EXCLUSIONS_FIXTURE, step, 2, lines),
+                STEP_GUARD,
+            ));
+        }
+    }
+    controls.push((
+        "`if` and `continue-on-error` on the command".to_owned(),
+        insert_after(
+            EXCLUSIONS_FIXTURE,
+            EXCLUSIONS_STEP,
+            2,
+            &["if: false", "continue-on-error: true"],
+        ),
+        &["step-guard", "step-guard"],
+    ));
+    let controls: Vec<(&str, String, &[&str])> = controls
+        .iter()
+        .map(|(name, text, codes)| (name.as_str(), text.clone(), *codes))
+        .collect();
+    assert_exclusions_controls(&controls);
+}
+
+/// Acceptance item 5: the shared `[yaml-parse]`, `[yaml-documents]`,
+/// `[shape]` and `[merge-key]` problems, and a top-level `defaults`
+/// (`[workflow-defaults]`), which could change the shell of every step.
+#[test]
+fn lib_qa_010_parse_shape_merge_key_and_defaults_problems_are_reported() {
+    let f = EXCLUSIONS_FIXTURE;
+    assert_exclusions_controls(&[
+        (
+            "a tab",
+            replace_line(f, "CARGO_INCREMENTAL: 0", "\tCARGO_INCREMENTAL: 0"),
+            YAML_PARSE,
+        ),
+        (
+            "a duplicate key in the job",
+            with_exclusions_job_keys(&["runs-on: windows-latest"]),
+            YAML_PARSE,
+        ),
+        (
+            "a second document",
+            format!("{f}---\nname: second\n"),
+            YAML_DOCUMENTS,
+        ),
+        ("empty text", String::new(), YAML_DOCUMENTS),
+        (
+            "the workflow wrapped in a sequence",
+            wrapped_in_sequence(f),
+            SHAPE,
+        ),
+        (
+            "`steps` a mapping in another job",
+            append_job(
+                f,
+                &[
+                    "extra:",
+                    "  runs-on: ubuntu-latest",
+                    "  steps:",
+                    "    run: echo",
+                ],
+            ),
+            SHAPE,
+        ),
+        (
+            "a merge key in another job",
+            with_merge_key_job(f),
+            MERGE_KEY,
+        ),
+        (
+            "a `<<` merge of a skipped step into the command",
+            with_ci_step(
+                &with_gate_job(f, EXCLUSIONS_JOB),
+                EXCLUSIONS_STEP,
+                &["- <<: *skip_step", &format!("  run: {EXCLUSIONS_COMMAND}")],
+            ),
+            MERGE_KEY_AND_EXCLUSIONS_STEP,
+        ),
+        (
+            "a top-level `defaults`",
+            insert_before(f, "jobs:", &["defaults:", "  run:", "    shell: bash"]),
+            WORKFLOW_DEFAULTS,
+        ),
+    ]);
+}
+
+/// Acceptance item 5 (positive control): names and ids on the steps,
+/// equivalent YAML, other refs and the actions' names in another case, the
+/// job without a `name` or in another place, are accepted.
+#[test]
+fn lib_qa_010_names_ids_and_equivalent_yaml_are_accepted() {
+    let f = EXCLUSIONS_FIXTURE;
+    let named = EXCLUSIONS_STEP_LINES
+        .iter()
+        .enumerate()
+        .fold(f.to_owned(), |text, (i, step)| {
+            insert_after(
+                &text,
+                step,
+                2,
+                &[&format!("name: step {i}"), &format!("id: step-{i}")],
+            )
+        });
+    let test_job = [
+        "test:",
+        "  runs-on: ubuntu-24.04",
+        "  steps:",
+        "    - run: cargo test -p xtask",
+    ];
+    assert_yaml_accepted(
+        QA10,
+        &[
+            ("a name and an id on every step", named),
+            (
+                "a name before `uses`",
+                replace_lines(
+                    f,
+                    CHECKOUT_STEP,
+                    &["- name: Check out", "  uses: actions/checkout@v7"],
+                ),
+            ),
+            (
+                "a quoted command",
+                replace_line(
+                    f,
+                    EXCLUSIONS_STEP,
+                    &format!("- run: \"{EXCLUSIONS_COMMAND}\""),
+                ),
+            ),
+            (
+                "the command as a flow mapping",
+                replace_line(
+                    f,
+                    EXCLUSIONS_STEP,
+                    &format!("- {{ run: {EXCLUSIONS_COMMAND}, name: exclusions }}"),
+                ),
+            ),
+            (
+                "a quoted runner",
+                replace_line(f, EXCLUSIONS_RUNS_ON, "runs-on: \"ubuntu-latest\""),
+            ),
+            (
+                "a quoted toolchain",
+                replace_line(f, PIN_TOOLCHAIN_INPUT, "toolchain: 'stable'"),
+            ),
+            ("no job name", delete_line(f, EXCLUSIONS_NAME)),
+            (
+                "another job name",
+                replace_line(f, EXCLUSIONS_NAME, "name: check mutation exclusions"),
+            ),
+            (
+                "checkout at another major tag",
+                replace_line(f, CHECKOUT_STEP, "- uses: actions/checkout@v8"),
+            ),
+            (
+                "toolchain and cache at tags",
+                replace_line(
+                    &replace_line(f, PIN_TOOLCHAIN, "- uses: dtolnay/rust-toolchain@master"),
+                    PIN_CACHE,
+                    "- uses: Swatinem/rust-cache@v2",
+                ),
+            ),
+            (
+                "the actions named in another case",
+                replace_line(
+                    f,
+                    PIN_CACHE,
+                    "- uses: swatinem/Rust-Cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0",
+                ),
+            ),
+            (
+                "the job before the other job",
+                append_job(&delete_job(f, "test"), &test_job),
+            ),
+            (
+                "comments in the job",
+                insert_before(
+                    f,
+                    EXCLUSIONS_STEP,
+                    &["# LIB-QA-010: the exclusions match the triage."],
+                ),
+            ),
+        ],
+        check_mutants_exclusions_job,
     );
 }

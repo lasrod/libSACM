@@ -54,6 +54,14 @@ cargo mutants --workspace --in-diff mutants.diff
 
 Results go to `mutants.out/`, which is git-ignored. Configuration lives in `.cargo/mutants.toml`. Every exclusion there must be listed, with its reason and owning matrix row, in [docs/quality/mutants-triage.md](docs/quality/mutants-triage.md).
 
+Each excluded mutant needs its own triage row, naming the entry that excludes it. To check that every `exclude_re`, `exclude_globs` and `skip_calls` entry excludes exactly the mutants its triage rows name, run:
+
+```sh
+cargo xtask mutants exclusions
+```
+
+The command compares `cargo mutants --workspace --list` with the configuration, with `--no-config`, and with each entry removed in turn. Its copies of the configuration go to `target/xtask-mutants/`. The CI job `mutants-exclusions` runs it on every pull request. It needs cargo-mutants installed, and a missing cargo-mutants is an error, not a pass. Mutant names include their line and column, so a change that moves an excluded mutant needs its triage row updated.
+
 The authoritative run is on Linux CI. Some tests only run on Linux (for example, the sacm-cli closed-pipe tests), so on Windows and macOS a few sacm-cli mutants show as missed even though Linux catches them.
 
 ## Conventions

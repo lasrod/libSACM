@@ -1,0 +1,124 @@
+---
+slice: 0010
+name: m0-mutation-exclusions
+state: in-progress
+step: verification
+rows: [LIB-QA-010]
+mode: pr
+---
+
+# Slice 0010: mutation exclusions checked mechanically
+
+## Scope
+
+LIB-QA-007 checks that every exclusion in `.cargo/mutants.toml` has a triage row, but
+not what each exclusion actually excludes. This slice adds a command, `cargo xtask mutants
+exclusions`, and a CI job that runs it. The command asks cargo-mutants for its mutant
+listing with the configuration, without it, and with each entry removed. It shows that
+each entry excludes exactly the mutants the triage table assigns to it.
+
+| Row | Title | Status at start |
+|---|---|---|
+| LIB-QA-010 | Mutation exclusions are checked mechanically | planned |
+
+## Out of scope
+
+- **LIB-QA-012** (mutation outcomes independent of test-target order). Its likely fix, nextest
+  as cargo-mutants' test tool, changes the LIB-QA-007 config policy (`test_tool` is a
+  refused key) and both mutants workflows. It needs its own research.
+- Exclusions themselves: there are none today. The command must pass on an empty set and
+  catch every mismatch once entries exist.
+
+## Normative basis
+
+None. This is a quality row, so the acceptance criteria are the lead's. They are recorded
+in the matrix row.
+
+Facts checked by the lead with cargo-mutants 27.1.0:
+- `cargo mutants --workspace --list` takes about 0.5 s and prints one mutant name per line.
+  The name is the same string the triage table's Mutant cell holds.
+- `--no-config` and `--config <FILE>` exist. A `--config` file replaces `.cargo/mutants.toml`.
+  An `exclude_re` entry in such a file removes the matching names from the listing.
+- Today the listings with and without the configuration are identical: 464 mutants.
+
+## Design (fixed by the lead)
+
+- **D1: the module.** A new public module `xtask::mutants`, in `xtask/src/mutants.rs`:
+
+  ```rust
+  /// Counts printed on success.
+  #[derive(Debug, Clone, PartialEq, Eq)]
+  pub struct ExclusionSummary {
+      /// Exclusion entries checked (strings of exclude_re, exclude_globs, skip_calls).
+      pub entries: usize,
+      /// Mutants in the --no-config listing but not in the configured one.
+      pub excluded: usize,
+      /// Mutants in the configured listing.
+      pub listed: usize,
+  }
+
+  /// `list(Some(text))` lists with a configuration file holding `text`;
+  /// `list(None)` lists with `--no-config`. Each returns the mutant names, or
+  /// the tool's error.
+  pub fn check_exclusions(
+      config: &str,
+      triage: &str,
+      list: &mut dyn FnMut(Option<&str>) -> Result<Vec<String>, String>,
+  ) -> Result<ExclusionSummary, Vec<String>>;
+  ```
+
+  - **The problems** are `[code] text` strings, sorted, with every problem reported.
+  - **Codes:**
+    - `exclusion-adds`, `exclusion-untriaged`, `exclusion-mismatch` and `exclusion-empty`;
+    - `mutants-tool`, when a listing fails;
+    - `config-parse` and `triage-format`, for unreadable input.
+  - **(a)** is `list(Some(config))`, **(b)** is `list(None)`, and **(c_e)** is
+    `list(Some(config without e))`.
+  - **The configuration without `e`:** the TOML table with that one string removed from
+    its array, serialised with `toml`.
+- **D2: the command.** `cargo xtask mutants exclusions`, dispatched in `xtask/src/lib.rs`.
+  - It reads `.cargo/mutants.toml` and `docs/quality/mutants-triage.md`, and runs
+    `cargo mutants --workspace --list`. It uses `$CARGO` or `cargo`, from the repository
+    root. Configurations are written under `target/xtask-mutants/`.
+  - On success it prints the summary line from the acceptance.
+  - If cargo-mutants is missing, that is an error, never a skip.
+- **D3: the CI job.** The lead adds the `mutants-exclusions` job in `ci.yml`, because
+  `.github/` is outside every agent's scope. It is unconditional and runs on ubuntu, and
+  its steps are listed in the acceptance. It is not a LIB-QA-008 gate job: its install
+  step is a `run` that is not a gate. So its own regression test pins it.
+- **D4: who writes what.**
+  - **The test engineer:** `xtask/tests/mutants_exclusions.rs`, the `check_exclusions`
+    tests with a fake lister, plus the CI job's regression test in
+    `xtask/tests/repo_checks.rs`.
+  - **The implementer:** `xtask/src/mutants.rs`, the dispatch, and the docs (the triage
+    document and CONTRIBUTING.md).
+  - **The lead:** `ci.yml`.
+- **D5: the triage reader.** The command reads the triage table by the same rules as the
+  LIB-QA-007 test reader in `xtask/tests/repo_checks.rs` (`TRIAGE_HEADER`, `table_cells`,
+  the Excluded cell `—` or `<key>: <entry>`). It is a separate implementation in
+  `xtask/src`, because tests do not export code.
+
+## Tests
+
+| Tests | Row | Criterion |
+|---|---|---|
+| 16 `lib_qa_010_*` tests in `xtask/tests/mutants_exclusions.rs` | LIB-QA-010 | `check_exclusions` with a fake lister. They cover each problem code, overlapping entries, a `skip_calls` entry, non-array keys, tool errors, sorted output, and the copies without one entry. |
+| 10 `lib_qa_010_*` tests in `xtask/tests/repo_checks.rs` | LIB-QA-010 | The `mutants-exclusions` CI job: the real `ci.yml` and exact-code controls (missing, job keys, runner, steps, commands, guards). |
+
+## Log
+
+- 2026-11-09 research: skipped, because this is a quality row. The lead wrote the
+  acceptance criteria, and the row is now `analyzed`. The lead decided D1 to D5.
+- 2026-11-09 tests: 25 tests.
+  - In `xtask/tests/mutants_exclusions.rs`: 15 `check_exclusions` tests with a fake
+    lister. They are compile-red, because `xtask::mutants` does not exist yet.
+  - In `repo_checks.rs`: 10 CI-job tests. The real-`ci.yml` one is red.
+  - Lead decisions:
+    - an unknown disposition is `[triage-format]`;
+    - a non-array exclusion key is `[config-exclusion]`, which gets one more test;
+    - triage rows name exact mutants, with their positions, so a moved line needs a
+      re-triage;
+    - the overlap semantics are as asserted.
+- 2026-11-09 implementation (lead): the `mutants-exclusions` job is added to `ci.yml`
+  (D3). The real-`ci.yml` test now passes. The implementer is writing
+  `xtask/src/mutants.rs`.
