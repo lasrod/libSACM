@@ -11,6 +11,12 @@ What each exclusion actually excludes is checked by `cargo xtask mutants exclusi
 
 - **Author:** the lead (slice 0003). The verifier independently re-derives every *equivalent* and *accepted* claim.
 - **Configuration in force:** `.cargo/mutants.toml` sets `cap_lints = true`, `all_features = true` and `test_workspace = false`. There are **no exclusions**. `skip_calls_defaults = true` is the cargo-mutants default: calls to `with_capacity` are not mutated.
+- **Test tool** (since slice 0011; LIB-QA-012, [ADR 0009](../adr/0009-nextest-for-mutation-testing.md)): `.cargo/mutants.toml` also sets `test_tool = "nextest"` and `additional_cargo_test_args = ["--profile=mutants", "--no-tests=warn"]`. cargo-mutants therefore runs each mutant's tests with `cargo nextest run`, under the `mutants` profile of `.config/nextest.toml`.
+  - **The `mutants` profile** sets `fail-fast = { max-fail = 1, terminate = "immediate" }`. At the first failing test, nextest kills every test still running. A mutant that one fast test kills is therefore caught, even when another test target becomes slow under it. The `default` profile, for a normal `cargo nextest run`, is unchanged.
+  - **`--no-tests=warn`:** a package with no tests exits 0, so its mutants are missed instead of being counted as caught.
+  - **The version:** `.config/nextest.toml` sets `nextest-version = { required = "0.9.111" }`, the first release with `terminate = "immediate"`. A local run needs cargo-nextest 0.9.111 or later; `CONTRIBUTING.md` gives the install command.
+  - **CI:** each job that runs cargo-mutants (the `mutants` job in `ci.yml` and the shards in `mutants.yml`) installs nextest right after cargo-mutants, with exactly `cargo install cargo-nextest --locked --version 0.9.151`. Listing mutants (`cargo xtask mutants exclusions`) does not need nextest.
+  - **Doctests do not run under mutation**, because nextest does not run them. They still run in the normal gate (`cargo test --workspace --all-features`). A mutant that only a doctest kills shows as missed, and is triaged by adding a unit or integration test that kills it.
 
 ## Baseline run
 
@@ -81,7 +87,7 @@ Slice 0005 (LIB-TOOL-013, -014) changed `xtask/src/lib.rs`, `xtask/src/main.rs` 
 - **Fix round 1 head `414263f`:** tests only; the mutated code is unchanged.
   - mutants.yml [42423497528](https://github.com/lasrod/libSACM/actions/runs/42423497528): 258 mutants, 251 caught, 0 missed, 0 timeout, 7 unviable. The unviable mutants are the same 7, at the same lines.
   - ci.yml [42423497546](https://github.com/lasrod/libSACM/actions/runs/42423497546), job `mutants (PR diff)`: 20 mutants, 16 caught, 0 missed, 0 timeout, 4 unviable.
-- **The durable fix:** LIB-QA-012. A target's name must not decide whether this mutant is caught or times out.
+- **The durable fix:** LIB-QA-012. A target's name must not decide whether this mutant is caught or times out. The fix landed in slice 0011 ([ADR 0009](../adr/0009-nextest-for-mutation-testing.md)): the tests now run under nextest's `mutants` profile, which kills every running test at the first failure. With it, the target-name ordering no longer decides whether this mutant is caught. See the slice 0011 section below.
 
 ## Slice 0006
 
@@ -121,6 +127,25 @@ Slice 0007 (LIB-TOOL-005, -015) replaced the hand-written fence model in `xtask/
   - ci.yml [42481198200](https://github.com/lasrod/libSACM/actions/runs/42481198200): every job succeeded. The `mutants (PR diff)` job gave 54 mutants, 53 caught, 1 unviable (`scan_record`).
 - **Equivalent mutant found while the tests were being written:** a D6 region that ends at the start rather than the end of `-->` hides the same candidates, because no byte of `-->` can be the first byte of a candidate (`- R`). The implementation computes the end as `at + closer.len()`, so cargo-mutants does not generate that form; it is noted here for any future refactor.
 - **Target order:** `xtask/tests/verdict_markdown.rs` sorts after `function_scan`, and none of its tests scan the real repository.
+
+## Slice 0011
+
+Slice 0011 (LIB-QA-012) changed how the tests run under mutation, not the code under test ([ADR 0009](../adr/0009-nextest-for-mutation-testing.md)). It reverses slice 0003's D7, which kept `cargo test` as the test tool because nextest skips doctests.
+
+- **What changed:**
+  - **the test tool:** `.cargo/mutants.toml` sets `test_tool = "nextest"` and `additional_cargo_test_args = ["--profile=mutants", "--no-tests=warn"]`;
+  - **the profile:** the new `.config/nextest.toml` sets `nextest-version = { required = "0.9.111" }` and a profile `[profile.mutants]` with `fail-fast = { max-fail = 1, terminate = "immediate" }`;
+  - **the CI install:** `cargo install cargo-nextest --locked --version 0.9.151`, right after the cargo-mutants install, in the `mutants` job of `ci.yml` and in `mutants.yml`. `mutants.yml` also runs the full run on a pull request that changes `.config/nextest.toml`.
+- **The research demonstration** (a scratch copy, cargo-mutants 27.1.0 and cargo-nextest 0.9.151): a slow test target that sorts first was added, and the slice 0005 mutant `is_identifier_char -> bool with true` was tested three ways.
+  - Under `cargo test`: TIMEOUT at 60 s. The slow target ran first, and the target that kills the mutant was never reached.
+  - Under nextest with its default fail-fast (`max-fail = 1`, `terminate = "wait"`): TIMEOUT at 60 s. nextest started no new test after the failure, but waited for the slow one still running.
+  - Under nextest with the `mutants` profile (`terminate = "immediate"`): caught, in 0.76 s.
+- **Target order is history:** the target-order notes in the slice 0005, 0006 and 0007 sections, the X-flush note below, and the ordering rule in the module doc of `xtask/tests/function_scan.rs` (now marked superseded) describe `cargo test` runs before this slice. They no longer constrain the names of new test targets.
+- **Linux runs at the slice head** (*to be filled by the lead*):
+  - mutants.yml *[run ID to be filled by the lead]* at *[head to be filled by the lead]*: *N* mutants, *N* caught, *N* missed, *N* timeout, *N* unviable (*to be filled by the lead*).
+  - ci.yml *[run ID to be filled by the lead]*, job `mutants (PR diff)`: *N* mutants, *N* caught, *N* missed, *N* timeout, *N* unviable (*to be filled by the lead*).
+  - **Unviable mutants at the slice head:** *to be filled by the lead*. Slice 0011 changes no `src` code, so the set should match that of the last full run on `main`.
+  - **Mutants that only a doctest killed:** *to be filled by the lead*. Any such mutant shows as missed, and is triaged by adding a test that kills it. LIB-QA-012 requires no missed and no timed-out mutant at the slice head.
 
 ## Dispositions
 

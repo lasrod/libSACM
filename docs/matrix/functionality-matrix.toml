@@ -524,47 +524,50 @@ acceptance = [
   "The sacm-verifier definition and the sacm-slice skill require a Linux cargo-mutants report for the commit under verification, obtained from the slice's draft PR pushed before verification; the verifier reviews its missed, timeout and unviable lists for the slice's code, still reasons about criterion behaviours outside cargo-mutants' operators, and writes any local run under target/ (never `--in-place`). CONTRIBUTING.md gives the exact install command, how to run the whole workspace and `--in-diff` locally, that mutants.out is git-ignored, and that Linux-only tests make some sacm-cli mutants show as missed on Windows and macOS, so the authoritative run is Linux.",
   ".gitignore ignores `/mutants.out*`.",
 ]
-tests = [
-  "xtask/tests/repo_checks.rs::lib_qa_007_ci_mutants_job_is_pinned",
-  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_rejects_missing_or_inexact_command",
-  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_rejects_diff_bypasses",
-  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_rejects_install_bypasses",
-  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_rejects_unknown_steps",
-  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_rejects_checkout_inputs",
-  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_rejects_job_condition_and_key_bypasses",
-  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_rejects_step_guards",
-  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_rejects_artifact_bypasses",
-  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_rejects_env_overrides",
-  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_rejects_pr_trigger_filters",
-  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_reports_parse_and_shape_errors",
-  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_accepts_equivalent_yaml",
-  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_workflow_is_pinned",
-  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_reports_a_missing_workflow",
-  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_rejects_trigger_bypasses",
-  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_rejects_inexact_command",
-  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_rejects_shard_bypasses",
-  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_rejects_job_key_bypasses",
-  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_rejects_step_bypasses",
-  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_rejects_artifact_bypasses",
-  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_rejects_defaults_merge_parse_and_shape",
-  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_rejects_broad_permissions",
-  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_accepts_equivalent_yaml",
-  "xtask/tests/repo_checks.rs::lib_qa_007_install_command_is_identical_everywhere",
-  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_config_is_reviewed",
-  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_config_check_rejects_parse_errors_and_unreviewed_keys",
-  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_config_check_requires_cap_lints_features_and_test_scope",
-  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_config_check_rejects_broad_exclude_globs",
-  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_config_check_rejects_broad_exclude_re",
-  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_config_check_cross_checks_the_triage_document",
-  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_config_check_rejects_source_skips",
-  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_config_check_accepts_reviewed_configuration",
-  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_output_is_git_ignored",
-  "xtask/tests/repo_checks.rs::lib_qa_007_contributing_documents_mutation_testing",
-  "xtask/tests/repo_checks.rs::lib_qa_007_verifier_definition_requires_the_linux_mutants_report",
-  "xtask/tests/repo_checks.rs::lib_qa_007_slice_skill_obtains_the_report_before_verification",
-]
 code = [".github/workflows/ci.yml", ".github/workflows/mutants.yml", ".cargo/mutants.toml", ".gitignore", "docs/quality/mutants-triage.md"]
 verification = "docs/verification/0003-m0-mutation-testing-round3.md"
+tests = [
+  "xtask/tests/repo_checks.rs::lib_qa_007_ci_mutants_job_is_pinned",
+  "xtask/tests/repo_checks.rs::lib_qa_007_contributing_documents_mutation_testing",
+  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_accepts_equivalent_yaml",
+  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_rejects_artifact_bypasses",
+  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_rejects_broad_permissions",
+  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_rejects_defaults_merge_parse_and_shape",
+  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_rejects_inexact_command",
+  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_rejects_job_key_bypasses",
+  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_rejects_shard_bypasses",
+  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_rejects_step_bypasses",
+  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_rejects_trigger_bypasses",
+  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_reports_a_missing_workflow",
+  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_check_reviews_the_nextest_install",
+  "xtask/tests/repo_checks.rs::lib_qa_007_full_run_workflow_is_pinned",
+  "xtask/tests/repo_checks.rs::lib_qa_007_install_command_is_identical_everywhere",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_config_check_accepts_only_the_reviewed_nextest_values",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_config_check_accepts_reviewed_configuration",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_config_check_cross_checks_the_triage_document",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_config_check_rejects_broad_exclude_globs",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_config_check_rejects_broad_exclude_re",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_config_check_rejects_parse_errors_and_unreviewed_keys",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_config_check_rejects_source_skips",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_config_check_requires_cap_lints_features_and_test_scope",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_config_is_reviewed",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_accepts_equivalent_yaml",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_rejects_artifact_bypasses",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_rejects_checkout_inputs",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_rejects_diff_bypasses",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_rejects_env_overrides",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_rejects_install_bypasses",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_rejects_job_condition_and_key_bypasses",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_rejects_missing_or_inexact_command",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_rejects_pr_trigger_filters",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_rejects_step_guards",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_rejects_unknown_steps",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_reports_parse_and_shape_errors",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_job_check_reviews_the_nextest_install",
+  "xtask/tests/repo_checks.rs::lib_qa_007_mutants_output_is_git_ignored",
+  "xtask/tests/repo_checks.rs::lib_qa_007_slice_skill_obtains_the_report_before_verification",
+  "xtask/tests/repo_checks.rs::lib_qa_007_verifier_definition_requires_the_linux_mutants_report",
+]
 
 [[row]]
 id = "LIB-TOOL-005"
@@ -1144,11 +1147,36 @@ id = "LIB-QA-012"
 area = "QA"
 milestone = "M0"
 title = "Mutation outcomes do not depend on test-target order"
-requirement = "Whether a mutant counts as caught or as a timeout must not depend on the alphabetical order of test targets. A mutant that one fast test kills is reported as caught, even when another target becomes slow under the same mutant. One option is a test runner that stops every running test at the first failure, for example nextest with immediate termination. A check fails if this guarantee is lost."
+requirement = "Whether a mutant counts as caught or as a timeout must not depend on the alphabetical order of test targets: a mutant that one fast test kills is reported as caught, even when another target becomes slow under the same mutant. cargo-mutants runs the tests under nextest with a profile that terminates every running test at the first failure (ADR 0009), and a check fails if any part of that is lost."
 source = "Slice 0005: mutants.yml run 42420891449, a TIMEOUT for `is_identifier_char -> true`, worked around by renaming a test target"
 kind = "quality"
-status = "planned"
+status = "implemented"
+acceptance = [
+  "`.cargo/mutants.toml` sets `test_tool = \"nextest\"` and `additional_cargo_test_args = [\"--profile=mutants\", \"--no-tests=warn\"]`, exactly.",
+  "`.config/nextest.toml` sets `nextest-version = { required = \"0.9.111\" }`, or a later version, and a profile `[profile.mutants]` with `fail-fast = { max-fail = 1, terminate = \"immediate\" }`. The `default` profile does not change fail-fast.",
+  "Every CI job that runs `cargo mutants` (the `mutants` job in `ci.yml` and the job in `mutants.yml`) has a step that is exactly `cargo install cargo-nextest --locked --version 0.9.151`, before its `cargo mutants` step. The version satisfies the requirement in item 2.",
+  "The LIB-QA-007 checks accept exactly these values. Any other value of `test_tool` or `additional_cargo_test_args` is still `[unreviewed-key]`, or a new code naming the key. The nextest install step is a reviewed step of each mutants job, and any other spelling of it is refused.",
+  "A check in `xtask/tests/repo_checks.rs` reads the real `.cargo/mutants.toml`, `.config/nextest.toml` and both workflows. It reports each of these, with exactly its own problem code: a key removed or changed; the profile, its `max-fail` or its `terminate` removed or changed; the version requirement missing or below 0.9.111; and the install step missing, misspelled, unpinned, or after the `cargo mutants` step.",
+  "The full Linux mutants run at the slice head has no missed and no timed-out mutant. A mutant that only a doctest killed would show as missed; any such mutant is triaged by adding a test that kills it.",
+  "The verifier reproduces the guarantee in a scratch copy: with a slow test target that sorts first, the `is_identifier_char -> bool with true` mutant is caught, while plain `cargo test` gives TIMEOUT.",
+  "ADR 0009, `docs/quality/mutants-triage.md` and `CONTRIBUTING.md` state the test tool, the profile and the nextest install command. The ordering rule in the module doc of `xtask/tests/function_scan.rs` is marked as superseded.",
+]
 depends_on = ["LIB-QA-007"]
+code = [".cargo/mutants.toml", ".config/nextest.toml", ".github/workflows/ci.yml", ".github/workflows/mutants.yml"]
+tests = [
+  "xtask/tests/repo_checks.rs::lib_qa_012_a_missing_or_unreadable_file_is_named",
+  "xtask/tests/repo_checks.rs::lib_qa_012_each_mutants_job_installs_the_pinned_nextest_first",
+  "xtask/tests/repo_checks.rs::lib_qa_012_each_mutants_toml_key_lost_is_named",
+  "xtask/tests/repo_checks.rs::lib_qa_012_each_part_of_the_mutants_profile_lost_is_named",
+  "xtask/tests/repo_checks.rs::lib_qa_012_equivalent_forms_are_accepted",
+  "xtask/tests/repo_checks.rs::lib_qa_012_the_default_profile_changing_fail_fast_is_named",
+  "xtask/tests/repo_checks.rs::lib_qa_012_the_full_run_watches_the_nextest_config",
+  "xtask/tests/repo_checks.rs::lib_qa_012_the_lib_qa_007_checks_accept_exactly_the_nextest_setup",
+  "xtask/tests/repo_checks.rs::lib_qa_012_the_real_files_run_mutants_under_nextest",
+  "xtask/tests/repo_checks.rs::lib_qa_012_the_version_requirement_is_compared_as_numbers",
+  "xtask/tests/repo_checks.rs::lib_qa_012_unreviewed_profile_keys_are_named",
+  "xtask/tests/repo_checks.rs::lib_qa_012_unreviewed_top_level_nextest_keys_are_named",
+]
 
 [[row]]
 id = "LIB-QA-013"

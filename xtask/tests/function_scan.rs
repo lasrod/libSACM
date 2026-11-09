@@ -8,6 +8,15 @@
 //!
 //! # Why every test here runs under a deadline, in its own test binary
 //!
+//! **The ordering rule below is superseded by ADR 0009 (LIB-QA-012).**
+//! cargo-mutants now runs the tests under nextest with the `mutants` profile
+//! (`.config/nextest.toml`), which kills every running test at the first
+//! failure. So whether a mutant is caught no longer depends on the order of
+//! the test binaries, and this binary's name is no longer a constraint: a
+//! check in `repo_checks.rs` pins the nextest setup instead. The deadline
+//! still matters, so that a hang fails its test rather than stalling a run.
+//! The rest of this section is kept as the history of the rule.
+//!
 //! A scanner that stops advancing through the text loops forever. Each test
 //! therefore runs the check on a worker thread and fails when it has not
 //! finished within [`DEADLINE`], so that a hang is reported as a failure and

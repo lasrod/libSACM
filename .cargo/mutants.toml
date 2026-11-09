@@ -9,3 +9,12 @@ all_features = true
 
 # A mutant must be killed by its own package's tests, not another package's (D8).
 test_workspace = false
+
+# Run the tests under nextest, whose `mutants` profile (.config/nextest.toml)
+# kills every running test at the first failure, so a mutant that one fast
+# test kills is caught even when another test target becomes slow under it
+# (LIB-QA-012, ADR 0009). Doctests do not run under nextest; they still run in
+# the normal gate. `--no-tests=warn`: a package with no tests gives missed
+# mutants, not caught ones.
+test_tool = "nextest"
+additional_cargo_test_args = ["--profile=mutants", "--no-tests=warn"]

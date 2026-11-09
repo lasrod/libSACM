@@ -45,6 +45,14 @@ CI runs [cargo-mutants](https://mutants.rs) on every pull request, over the PR's
 cargo install cargo-mutants --locked --version 27.1.0
 ```
 
+cargo-mutants runs the tests under [cargo-nextest](https://nexte.st), so install it too:
+
+```sh
+cargo install cargo-nextest --locked --version 0.9.151
+```
+
+Its `mutants` profile in `.config/nextest.toml` stops at the first failing test and kills every test still running ([ADR 0009](docs/adr/0009-nextest-for-mutation-testing.md)). So a mutant that any fast test kills is caught, even when another test becomes slow under it. nextest does not run doctests, so a mutant that only a doctest kills shows as missed. Kill it with a unit or integration test.
+
 Run the whole workspace with `cargo mutants --workspace`. `--workspace` is required: without it, only the default members are mutated and xtask is skipped. To check just your change, mutate only the diff against `main`:
 
 ```sh

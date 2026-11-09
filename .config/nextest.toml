@@ -1,0 +1,11 @@
+# nextest configuration (LIB-QA-012, ADR 0009). The `mutants` profile is the one
+# cargo-mutants uses (`--profile=mutants` in .cargo/mutants.toml); the default
+# profile, for normal `cargo nextest run`, is nextest's own.
+
+# 0.9.111 is the first release with `terminate = "immediate"`.
+nextest-version = { required = "0.9.111" }
+
+[profile.mutants]
+# Stop at the first failing test and kill every test still running, so a slow
+# test cannot turn a killed mutant into a timeout.
+fail-fast = { max-fail = 1, terminate = "immediate" }
