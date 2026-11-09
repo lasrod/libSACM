@@ -1,7 +1,7 @@
 ---
 slice: 0009
 name: m0-ci-workflow-checks
-state: stopped
+state: in-progress
 step: verification
 rows: [LIB-QA-009, LIB-QA-008]
 mode: pr
@@ -160,3 +160,14 @@ recorded in the matrix rows.
     toolchain-selecting effect of `manifest-path` is undocumented. Its behaviour
     and tests are adequate. It stays `implemented`.
   - After a second FAIL, the slice stops for the maintainer's decision.
+- 2026-11-09 the maintainer approved a third fix round for LIB-QA-009, limited to
+  comments and docs (R1 and R2). R1 and the code comment for R2 go to the test
+  engineer, the doc clause for R2 to the implementer.
+- 2026-11-09 fix round 2 (comments only):
+  - R1: the `REVIEWED_ACTIONS` comment now credits `credentials` (`$2`) with the
+    credential helper and the `insteadOf` rewrites, and puts `$3`/`$4` in
+    `/root/.ssh`.
+  - R2: the `manifest-path` comment and `ci-actions.md` say that the manifest's
+    directory chooses the installed toolchain, confined by LIB-QA-003.
+  - The only non-comment change is one assertion message string. The full gate
+    passes.

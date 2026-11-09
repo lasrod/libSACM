@@ -8922,15 +8922,24 @@ struct ReviewedAction {
 static REVIEWED_ACTIONS: [ReviewedAction; 3] = [
     // A docker action. Its `args` are `rust-version credentials ssh-key
     // ssh-known-hosts --log-level <log-level> --manifest-path <manifest-path>
-    // <arguments> <command> <command-arguments>`. The entrypoint uses the
-    // first four quoted: `rustup default "$1"` switches the toolchain, `"$2"`
-    // is written to `~/.git-credentials`, and `"$3"` and `"$4"` are written to
-    // `~/.ssh`, which adds `insteadOf` URL rewrites. Then `shift 4` drops
-    // them, and only the remaining five reach `cargo-deny $*`, unquoted. So
-    // `rust-version`, `credentials`, `ssh-key` and `ssh-known-hosts` are not
-    // reviewed inputs: they switch the toolchain, store git credentials and
-    // rewrite URLs. `use-git-cli` is deprecated and not in `args`; it is not
-    // reviewed either.
+    // <arguments> <command> <command-arguments>`. Its `entrypoint.sh` uses the
+    // first four quoted:
+    // - `"$1"` (`rust-version`): `rustup set profile minimal; rustup default
+    //   "$1"`, which switches the toolchain;
+    // - `"$2"` (`credentials`): `git config --global credential.helper
+    //   store`, then the URL rewrites `--replace-all
+    //   url.https://github.com/.insteadOf ssh://git@github.com/` and `--add
+    //   url.https://github.com/.insteadOf git@github.com:`, then `"$2"` is
+    //   written to `$HOME/.git-credentials`;
+    // - `"$3"` (`ssh-key`) is written to `/root/.ssh/id_rsa`, and `"$4"`
+    //   (`ssh-known-hosts`) to `/root/.ssh/known_hosts`.
+    // Then `shift 4` drops them, and the remaining seven args (the five
+    // inputs, and the flags `--log-level` and `--manifest-path`) reach
+    // `cargo-deny $*` unquoted. So `rust-version`, `credentials`, `ssh-key`
+    // and `ssh-known-hosts` are not reviewed inputs: they switch the
+    // toolchain, store git credentials and rewrite URLs, and install an SSH
+    // key and known hosts. `use-git-cli` is deprecated and not in `args`; it
+    // is not reviewed either.
     ReviewedAction {
         action: "EmbarkStudios/cargo-deny-action",
         sha: "3c6349835b2b7b196a839186cb8b78e02f7b5f25",
@@ -8946,8 +8955,13 @@ static REVIEWED_ACTIONS: [ReviewedAction; 3] = [
             // `<command-arguments>`, unquoted, after the command. LIB-QA-003
             // refuses any value.
             "command-arguments",
-            // `--manifest-path <manifest-path>`, unquoted. LIB-QA-003 allows
-            // only the root `Cargo.toml`.
+            // `--manifest-path <manifest-path>`, unquoted. After `shift 4` the
+            // entrypoint also runs `(cd "$(dirname "$4")"; rustup show ||
+            // rustup toolchain install)`, where `$4` is this value, quoted:
+            // the manifest's directory chooses which `rust-toolchain.toml`
+            // rustup installs. LIB-QA-003 allows only the root `Cargo.toml`
+            // (`Cargo.toml` or `./Cargo.toml`), which confines that to the
+            // repository's own file.
             "manifest-path",
             // `--log-level <log-level>`, unquoted. LIB-QA-003 allows only
             // cargo-deny's six level names.
@@ -9359,7 +9373,8 @@ fn lib_qa_009_every_workflow_pins_and_reviews_its_third_party_actions() {
 /// Acceptance items 2 and 3: the table records each pin, the ref it was
 /// resolved from and exactly the reviewed inputs, and refuses the
 /// cargo-deny-action inputs that switch the toolchain, store git credentials
-/// or rewrite URLs, and the deprecated `use-git-cli`.
+/// and rewrite URLs, or install an SSH key and known hosts, and the
+/// deprecated `use-git-cli`.
 #[test]
 fn lib_qa_009_the_reviewed_table_records_each_pin_and_its_inputs() {
     let table: Vec<(&str, &str, &str, &[&str])> = REVIEWED_ACTIONS
@@ -9417,7 +9432,7 @@ fn lib_qa_009_the_reviewed_table_records_each_pin_and_its_inputs() {
     ] {
         assert!(
             !deny.inputs.contains(&refused),
-            "LIB-QA-009: cargo-deny-action's `{refused}` switches the toolchain, stores git credentials, rewrites URLs or is deprecated; it must not be a reviewed input"
+            "LIB-QA-009: cargo-deny-action's `{refused}` switches the toolchain, stores git credentials and rewrites URLs, installs an SSH key or known hosts, or is deprecated; it must not be a reviewed input"
         );
     }
 }
