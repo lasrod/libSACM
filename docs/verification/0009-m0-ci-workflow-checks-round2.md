@@ -8,7 +8,7 @@
 - Commit inspected: `7b6a3dd786945e08e69bcb56f03e6048ca463e47` (PR #16), with `git diff a51f7df..7b6a3dd` in full.
 - Contract: the prescription table of the [round 1 record](0009-m0-ci-workflow-checks.md), item by item.
 - Linux evidence:
-  - ci.yml run 42541851389 succeeded on all 12 jobs.
+  - ci.yml run 42541851389 succeeded on all 11 jobs (corrected in round 3).
   - mutants.yml run 42541851411 succeeded: 453 caught, 0 missed, 0 timeouts, 11 unviable. The unviable mutants are `Default` and `+` replacements in `xtask/src/{fetch,matrix}.rs`, none of them slice code.
   - Both checks live in `xtask/tests/`, so the primary evidence is the verifier's hand mutations in a `target/scratch` copy.
 - Slice brief: [docs/slices/0009-m0-ci-workflow-checks.md](../slices/0009-m0-ci-workflow-checks.md)

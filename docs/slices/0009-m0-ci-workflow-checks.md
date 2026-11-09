@@ -1,8 +1,8 @@
 ---
 slice: 0009
 name: m0-ci-workflow-checks
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [LIB-QA-009, LIB-QA-008]
 mode: pr
 ---
@@ -84,8 +84,8 @@ recorded in the matrix rows.
 
 | Tests | Row | Criterion |
 |---|---|---|
-| 13 `lib_qa_009_*` tests in `xtask/tests/repo_checks.rs` | LIB-QA-009 | `check_action_pins` over the real workflows and over fixtures with controls: <ul><li>every unpinned form;</li><li>unreviewed pins;</li><li>inputs outside the reviewed table;</li><li>the `actions` owner exemption;</li><li>shape and parse problems.</li></ul> |
-| 13 `lib_qa_008_*` tests in `xtask/tests/repo_checks.rs` | LIB-QA-008 | `check_ci_gates` over the real `ci.yml` and over fixtures with controls: <ul><li>gates as whole `run` values;</li><li>unconditional jobs and steps;</li><li>`[gate-step]`;</li><li>the env allowlist and `RUSTDOCFLAGS`;</li><li>the OS matrix;</li><li>triggers;</li><li>the deny job.</li></ul> |
+| 14 `lib_qa_009_*` tests in `xtask/tests/repo_checks.rs` | LIB-QA-009 | `check_action_pins` over the real workflows and over fixtures with controls: <ul><li>every unpinned form;</li><li>unreviewed pins;</li><li>inputs outside the reviewed table;</li><li>the `actions` owner exemption;</li><li>shape and parse problems.</li></ul> |
+| 15 `lib_qa_008_*` tests in `xtask/tests/repo_checks.rs` | LIB-QA-008 | `check_ci_gates` over the real `ci.yml` and over fixtures with controls: <ul><li>gates as whole `run` values;</li><li>unconditional jobs and steps;</li><li>`[gate-step]`;</li><li>the env allowlist and `RUSTDOCFLAGS`;</li><li>the OS matrix;</li><li>triggers;</li><li>the deny job.</li></ul> |
 
 ## Log
 
@@ -171,3 +171,7 @@ recorded in the matrix rows.
     directory chooses the installed toolchain, confined by LIB-QA-003.
   - The only non-comment change is one assertion message string. The full gate
     passes.
+- 2026-11-09 verification round 3, at `2cffcbd`:
+  [record](../verification/0009-m0-ci-workflow-checks-round3.md). LIB-QA-009 PASS,
+  and it is now `verified`. LIB-QA-008 shows no regression.
+- 2026-11-09 close: the slice is done.

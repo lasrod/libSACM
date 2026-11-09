@@ -1025,7 +1025,7 @@ title = "Third-party CI actions are pinned and their inputs reviewed"
 requirement = "Every third-party action used by a workflow in `.github/workflows/` (every `uses` whose owner is not GitHub's `actions`) is pinned by a full commit SHA. A test keeps a reviewed table of each pinned action and SHA, with the inputs the repository may pass it. A version bump, which changes the SHA, therefore fails the test until someone reviews the action's inputs at the new SHA."
 source = "Verification 0002 rounds 3 and 4 follow-up (cargo-deny-action@v2 splices inputs into an unquoted command line; @v2 is a moving tag)"
 kind = "quality"
-status = "implemented"
+status = "verified"
 acceptance = [
   "A check in `xtask/tests/repo_checks.rs` reads every `*.yml` workflow in `.github/workflows/` as YAML. Every `uses` value, of a step or of a job, whose owner is not `actions` (compared without regard to case) must have the form `<owner>/<repo>@<40 lowercase hex digits>`. Anything else is `[action-unpinned]`: a tag, a branch, a short or uppercase SHA, a sub-path, `docker://` and `./` local actions. An owner such as `actions-rs` is third-party.",
   "Each pinned action and SHA must be listed in the test's reviewed table, which records the tag or branch the SHA was resolved from and the inputs the repository may pass. A pair that is not listed is `[action-unreviewed]`, naming the action and the SHA and saying to review the action's `action.yml` at that SHA.",
@@ -1034,6 +1034,7 @@ acceptance = [
   "`docs/quality/ci-actions.md` explains how to review a bump, for example a Dependabot PR, which fails this check until its action and SHA are reviewed.",
 ]
 depends_on = ["LIB-QA-003"]
+verification = "docs/verification/0009-m0-ci-workflow-checks-round3.md"
 code = [".github/workflows/ci.yml", ".github/workflows/mutants.yml"]
 tests = [
   "xtask/tests/repo_checks.rs::lib_qa_009_a_job_level_uses_is_judged",

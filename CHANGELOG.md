@@ -16,6 +16,10 @@ change bumps the minor version and is listed under **Breaking**.
 - CI: rustfmt, clippy, tests on Linux/Windows/macOS, MSRV 1.85, rustdoc, cargo-deny,
   matrix gate, agent-hook tests.
 - Agent roles, skills and write-scope hook for the engineering loop.
+- CI hardening: third-party actions are pinned by commit SHA, with a reviewed table of
+  the inputs each may receive (`docs/quality/ci-actions.md`). The CI gate tests read
+  the parsed workflow, so a gate that is commented out, conditional, allowed to fail,
+  or weakened by its environment, OS list, triggers or other steps fails them.
 - Mutation testing with cargo-mutants: a PR job mutates the diff, and a weekly sharded
   full run also runs on every Rust PR. Configuration is in `.cargo/mutants.toml`, and
   every survivor's disposition is in `docs/quality/mutants-triage.md`.
