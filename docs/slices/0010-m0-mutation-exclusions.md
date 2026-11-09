@@ -1,7 +1,7 @@
 ---
 slice: 0010
 name: m0-mutation-exclusions
-state: in-progress
+state: stopped
 step: verification
 rows: [LIB-QA-010]
 mode: pr
@@ -164,3 +164,10 @@ Facts checked by the lead with cargo-mutants 27.1.0:
     mutants, 557 mutants listed`, both normally and under
     `CARGO_TERM_COLOR=always CLICOLOR_FORCE=1`.
   - The full local gate passes.
+- 2026-11-09 verification round 2, at `335251e`:
+  [record](../verification/0010-m0-mutation-exclusions-round2.md). FAIL (the row's
+  second), on one Low finding.
+  - F9 (the verifier's own round 1 miss): no test shows that `run_listing` applies
+    `listing_lines`. The fix is one unit test.
+  - F1 to F8 are met, and F1 (d) was reproduced independently.
+  - The slice stops for the maintainer's decision.
