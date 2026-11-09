@@ -291,9 +291,12 @@ fn entry_problems(
 /// repository at `root`, listing with cargo-mutants.
 ///
 /// Reads `.cargo/mutants.toml` and `docs/quality/mutants-triage.md` under
-/// `root`, and lists with `cargo mutants --workspace --list`, run from `root`
-/// with the cargo of the `CARGO` environment variable (else `cargo` from
-/// `PATH`). A listing with a configuration adds `--config <file>`, naming a
+/// `root`, and lists with `cargo mutants --workspace --list --colors never`,
+/// run from `root` with the cargo of the `CARGO` environment variable (else
+/// `cargo` from `PATH`), with `NO_COLOR=1` and without `CLICOLOR_FORCE`, so
+/// that no colour code reaches a listing. A listing line that still holds a
+/// control character is a `[mutants-tool]` problem, never a mutant name.
+/// A listing with a configuration adds `--config <file>`, naming a
 /// copy of that configuration written under `target/xtask-mutants/`; the
 /// `--no-config` listing adds `--no-config`. The directory is emptied first,
 /// so it holds this run's copies only, `config-1.toml` being (a).
@@ -368,49 +371,92 @@ fn cargo_mutants_list(
     config: Option<&str>,
     copy: usize,
 ) -> Result<Vec<String>, String> {
-    let mut args: Vec<String> = ["mutants", "--workspace", "--list"]
-        .map(str::to_owned)
-        .to_vec();
-    match config {
-        None => args.push("--no-config".to_owned()),
+    let copy = match config {
+        None => None,
         Some(text) => {
             let dir = root.join(COPIES_DIR);
             fs::create_dir_all(&dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
             let name = format!("config-{copy}.toml");
             let file = dir.join(&name);
             fs::write(&file, text).map_err(|e| format!("write {}: {e}", file.display()))?;
-            args.push("--config".to_owned());
-            args.push(format!("{COPIES_DIR}/{name}"));
+            Some(format!("{COPIES_DIR}/{name}"))
         }
-    }
-    run_listing(root, program, &args)
+    };
+    run_listing(listing_command(root, program, copy.as_deref()))
 }
 
-/// The non-empty lines `program` prints on standard output when run with
-/// `args` from `root`; an error naming the command if it cannot be run,
-/// exits non-zero (with its stderr), or prints something that is not UTF-8.
-fn run_listing(root: &Path, program: &OsStr, args: &[String]) -> Result<Vec<String>, String> {
-    let command = format!("`{} {}`", Path::new(program).display(), args.join(" "));
-    let output = Command::new(program)
-        .args(args)
+/// The cargo-mutants command that lists the workspace's mutants: `program`
+/// run from `root` as `mutants --workspace --list --colors never`, followed
+/// by `--no-config` for `None` or `--config <copy>` for `Some(copy)`.
+///
+/// Colour is off whatever the environment says: `--colors never`, and
+/// `NO_COLOR=1` with `CLICOLOR_FORCE` removed, because `CLICOLOR_FORCE`
+/// overrides `--colors never` and CI sets `CARGO_TERM_COLOR=always`.
+fn listing_command(root: &Path, program: &OsStr, copy: Option<&str>) -> Command {
+    let mut command = Command::new(program);
+    command
+        .args(["mutants", "--workspace", "--list", "--colors", "never"])
         .current_dir(root)
+        .env("NO_COLOR", "1")
+        .env_remove("CLICOLOR_FORCE");
+    match copy {
+        None => command.arg("--no-config"),
+        Some(copy) => command.args(["--config", copy]),
+    };
+    command
+}
+
+/// `command` as problems name it: the program and its arguments, in
+/// backticks.
+fn command_text(command: &Command) -> String {
+    let mut text = Path::new(command.get_program()).display().to_string();
+    for arg in command.get_args() {
+        text.push(' ');
+        text.push_str(&arg.to_string_lossy());
+    }
+    escape_controls(&format!("`{text}`"))
+}
+
+/// The listing `command` prints on standard output ([`listing_lines`]); an
+/// error naming the command if it cannot be run, exits non-zero (with its
+/// stderr), or prints something that is not UTF-8.
+fn run_listing(mut command: Command) -> Result<Vec<String>, String> {
+    let text = command_text(&command);
+    let output = command
         .output()
-        .map_err(|e| format!("could not run {command}: {e}"))?;
+        .map_err(|e| format!("could not run {text}: {e}"))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!(
-            "{command} failed ({}); stderr: {}",
+            "{text} failed ({}); stderr: {}",
             output.status,
             stderr.trim()
         ));
     }
     let stdout = String::from_utf8(output.stdout)
-        .map_err(|e| format!("{command} printed a listing that is not UTF-8: {e}"))?;
-    Ok(stdout
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .map(str::to_owned)
-        .collect())
+        .map_err(|e| format!("{text} printed a listing that is not UTF-8: {e}"))?;
+    listing_lines(&text, &stdout)
+}
+
+/// The mutant names in the standard output `stdout` of `command`: its
+/// non-empty lines. A line holding a control character, such as the ESC of
+/// a colour code or a lone CR, is an error naming the command: such a line
+/// is never compared as a name, nor silently cleaned.
+fn listing_lines(command: &str, stdout: &str) -> Result<Vec<String>, String> {
+    let mut names = Vec::new();
+    for (index, line) in stdout.lines().enumerate() {
+        if line.chars().any(char::is_control) {
+            return Err(format!(
+                "{command} printed line {} with a control character, which is no mutant name: `{}`",
+                index + 1,
+                escape_controls(line)
+            ));
+        }
+        if !line.trim().is_empty() {
+            names.push(line.to_owned());
+        }
+    }
+    Ok(names)
 }
 
 /// One exclusion entry of the configuration: string `index` of the array
@@ -657,10 +703,11 @@ mod tests {
     use std::ffi::{OsStr, OsString};
     use std::fs;
     use std::path::{Path, PathBuf};
+    use std::process::Command;
 
     use super::{
         COPIES_DIR, cargo_mutants_list, cmd_exclusions, code_span_text, exclusions_with,
-        parse_error, run_listing, table_cells, triage_assignments,
+        listing_command, listing_lines, parse_error, run_listing, table_cells, triage_assignments,
     };
 
     /// A program that does not exist.
@@ -697,14 +744,78 @@ mod tests {
         std::env::var_os("CARGO").unwrap_or_else(|| OsString::from("cargo"))
     }
 
-    fn args(args: &[&str]) -> Vec<String> {
-        args.iter().map(|a| (*a).to_owned()).collect()
+    /// `cargo <arg>`, run from `root`.
+    fn cargo_with(root: &Path, arg: &str) -> Command {
+        let mut command = Command::new(cargo());
+        command.arg(arg).current_dir(root);
+        command
+    }
+
+    /// The listing flags every listing has.
+    const LIST: [&str; 5] = ["mutants", "--workspace", "--list", "--colors", "never"];
+
+    #[test]
+    fn a_listing_command_is_colourless_and_runs_from_the_root() {
+        let root = Path::new("some/root");
+        for (copy, tail) in [
+            (None, vec!["--no-config"]),
+            (
+                Some("target/xtask-mutants/config-2.toml"),
+                vec!["--config", "target/xtask-mutants/config-2.toml"],
+            ),
+        ] {
+            let command = listing_command(root, OsStr::new("my-cargo"), copy);
+            assert_eq!(command.get_program(), OsStr::new("my-cargo"));
+            let args: Vec<&OsStr> = command.get_args().collect();
+            let want: Vec<&OsStr> = LIST.iter().chain(&tail).map(OsStr::new).collect();
+            assert_eq!(args, want, "{copy:?}");
+            let mut envs: Vec<(&OsStr, Option<&OsStr>)> = command.get_envs().collect();
+            envs.sort();
+            assert_eq!(
+                envs,
+                vec![
+                    (OsStr::new("CLICOLOR_FORCE"), None),
+                    (OsStr::new("NO_COLOR"), Some(OsStr::new("1"))),
+                ],
+                "{copy:?}"
+            );
+            assert_eq!(command.get_current_dir(), Some(root), "{copy:?}");
+        }
+    }
+
+    #[test]
+    fn a_listing_line_with_a_control_character_is_an_error() {
+        let command = "`cargo mutants --workspace --list`";
+        assert_eq!(
+            listing_lines(command, "a.rs:1:1: replace x\n\nb.rs:2:2: delete !\r\n"),
+            Ok(vec![
+                "a.rs:1:1: replace x".to_owned(),
+                "b.rs:2:2: delete !".to_owned()
+            ])
+        );
+        for (stdout, line, shown) in [
+            (
+                "a.rs:1:1: x\n\u{1b}[32mb.rs:2:2: y\u{1b}[0m\n",
+                2,
+                r"\u{1b}[32mb.rs:2:2: y\u{1b}[0m",
+            ),
+            ("a.rs:1:1: x\rb.rs:2:2: y\n", 1, r"a.rs:1:1: x\rb.rs:2:2: y"),
+            ("a.rs:1:1: x\r", 1, r"a.rs:1:1: x\r"),
+        ] {
+            assert_eq!(
+                listing_lines(command, stdout),
+                Err(format!(
+                    "{command} printed line {line} with a control character, which is no mutant name: `{shown}`"
+                )),
+                "{stdout:?}"
+            );
+        }
     }
 
     #[test]
     fn a_listing_is_the_lines_the_program_prints() {
         let root = TempRoot::new("listing");
-        let lines = run_listing(&root.0, &cargo(), &args(&["--version"])).expect("cargo runs");
+        let lines = run_listing(cargo_with(&root.0, "--version")).expect("cargo runs");
         assert_eq!(lines.len(), 1, "{lines:?}");
         assert!(lines[0].starts_with("cargo "), "{lines:?}");
     }
@@ -712,12 +823,8 @@ mod tests {
     #[test]
     fn a_listing_that_exits_non_zero_is_an_error_with_its_stderr() {
         let root = TempRoot::new("non-zero");
-        let error = run_listing(
-            &root.0,
-            &cargo(),
-            &args(&["no-such-subcommand-for-xtask-tests"]),
-        )
-        .expect_err("an unknown cargo command fails");
+        let error = run_listing(cargo_with(&root.0, "no-such-subcommand-for-xtask-tests"))
+            .expect_err("an unknown cargo command fails");
         assert!(
             error.contains(" no-such-subcommand-for-xtask-tests` failed (")
                 && error.contains("; stderr: ")
@@ -731,14 +838,15 @@ mod tests {
         let root = TempRoot::new("no-program");
         let error = cargo_mutants_list(&root.0, OsStr::new(NO_PROGRAM), None, 1)
             .expect_err("the program does not exist");
-        let command =
-            format!("could not run `{NO_PROGRAM} mutants --workspace --list --no-config`: ");
+        let command = format!(
+            "could not run `{NO_PROGRAM} mutants --workspace --list --colors never --no-config`: "
+        );
         assert!(error.starts_with(&command), "{error}");
 
         let error = cargo_mutants_list(&root.0, OsStr::new(NO_PROGRAM), Some("a = 1\n"), 3)
             .expect_err("the program does not exist");
         let command = format!(
-            "could not run `{NO_PROGRAM} mutants --workspace --list --config {COPIES_DIR}/config-3.toml`: "
+            "could not run `{NO_PROGRAM} mutants --workspace --list --colors never --config {COPIES_DIR}/config-3.toml`: "
         );
         assert!(error.starts_with(&command), "{error}");
         let copy = root.0.join(COPIES_DIR).join("config-3.toml");
@@ -768,10 +876,10 @@ mod tests {
             assert_eq!(lines.len(), 3, "{error}");
             assert_eq!(lines[0], "mutant exclusions: 2 problem(s)");
             let a = format!(
-                "  [mutants-tool] listing (a), with the configuration, failed: could not run `{NO_PROGRAM} mutants --workspace --list --config {COPIES_DIR}/config-1.toml`: "
+                "  [mutants-tool] listing (a), with the configuration, failed: could not run `{NO_PROGRAM} mutants --workspace --list --colors never --config {COPIES_DIR}/config-1.toml`: "
             );
             let b = format!(
-                "  [mutants-tool] listing (b), with --no-config, failed: could not run `{NO_PROGRAM} mutants --workspace --list --no-config`: "
+                "  [mutants-tool] listing (b), with --no-config, failed: could not run `{NO_PROGRAM} mutants --workspace --list --colors never --no-config`: "
             );
             assert!(lines[1].starts_with(&a), "{error}");
             assert!(lines[2].starts_with(&b), "{error}");

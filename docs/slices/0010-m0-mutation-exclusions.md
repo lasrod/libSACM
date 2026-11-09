@@ -139,3 +139,28 @@ Facts checked by the lead with cargo-mutants 27.1.0:
   - A scratch copy with an untriaged `exclude_re` gives 2 `[exclusion-mismatch]` and
     2 `[exclusion-untriaged]`.
   - The full local gate passes. The row is `implemented`.
+- 2026-11-09 PR #17 is a draft. CI run 42557790292 and mutants run 42557790303
+  succeeded at `d7bd5cf`. Copilot left no comments.
+- 2026-11-09 verification round 1:
+  [record](../verification/0010-m0-mutation-exclusions.md). FAIL, and the row stays
+  `implemented`.
+  - F1 (High): the workflow-level `CARGO_TERM_COLOR: always` colours cargo-mutants'
+    `--list` output, so in CI any correct exclusion would fail.
+  - F2 to F8: untested branches (H5, H12, H24, H26, H7/H30, H1, H29).
+  - Fix round 1: F1 and F7 go to the implementer (a colour-proof command builder and
+    line validation, with unit tests); F2 to F6 and F8 go to the test engineer. The
+    lead runs the F1 (d) end-to-end check.
+- 2026-11-09 fix round 1:
+  - **Implementer:** `listing_command` passes `--colors never`, sets `NO_COLOR=1`,
+    removes `CLICOLOR_FORCE` and runs from the root. `listing_lines` makes any
+    control character in a listing a `[mutants-tool]` error. Both have unit tests
+    (F1, F7). Local `cargo mutants -f xtask/src/mutants.rs`: 94 mutants, 90 caught,
+    0 missed, 4 unviable.
+  - **Test engineer:** 4 new tests and 2 changed controls cover F2 to F6 and F8. Each
+    named hand mutation was applied in `target/scratch` and is killed. The row now cites
+    30 tests.
+  - **Lead's F1 (d) check:** in a scratch copy, a correct, triaged `exclude_re` (the
+    two `fetch_into` mutants) gives `mutant exclusions OK: 1 entries, 2 excluded
+    mutants, 557 mutants listed`, both normally and under
+    `CARGO_TERM_COLOR=always CLICOLOR_FORCE=1`.
+  - The full local gate passes.

@@ -586,6 +586,19 @@ fn fails_with(what: &str, config: &str, triage: &str, codes: &[&str]) -> Vec<Str
     assert_fails(what, check(config, triage, &mut Fake::new()), codes)
 }
 
+/// As [`fails_with`], for unreadable input: the function must report it
+/// without listing anything, so the fake must record no call at all.
+fn fails_unlisted(what: &str, config: &str, triage: &str, codes: &[&str]) -> Vec<String> {
+    let mut fake = Fake::new();
+    let problems = assert_fails(what, check(config, triage, &mut fake), codes);
+    assert!(
+        fake.calls.is_empty(),
+        "{QA10}: {what}: unreadable input is reported without listing anything; it listed {:#?}",
+        fake.calls
+    );
+    problems
+}
+
 // ---------------------------------------------------------------------------
 // Passing configurations
 // ---------------------------------------------------------------------------
@@ -1004,8 +1017,7 @@ fn lib_qa_010_a_failed_listing_is_mutants_tool_with_its_error() {
 }
 
 /// D1: a configuration that is not TOML is `[config-parse]`, and nothing
-/// else. The fake lists an unparsable configuration as the empty one, so
-/// the listings agree whether or not they are taken.
+/// else, and nothing is listed (verification 0010 F8).
 #[test]
 fn lib_qa_010_an_unparsable_configuration_is_config_parse() {
     for (what, config) in [
@@ -1020,44 +1032,37 @@ fn lib_qa_010_an_unparsable_configuration_is_config_parse() {
         ),
         ("JSON", "{ \"cap_lints\": true }".to_owned()),
     ] {
-        fails_with(what, &config, &triage(&[]), &["config-parse"]);
+        fails_unlisted(what, &config, &triage(&[]), &["config-parse"]);
     }
 }
 
 /// D1 (lead's decision): an exclusion key whose value is not an array of
 /// strings is `[config-exclusion]`, the LIB-QA-007 code, naming the key, and
-/// nothing else. It has no entries to remove, so no (c) configuration is
-/// listed: every listing asked for is (a) or (b).
+/// nothing else. Nothing is listed, neither (c) nor (a) and (b)
+/// (verification 0010 F8). An array holding a string and a non-string is not
+/// an array of strings either (F4: kills `any(is_str)` for `all(is_str)`).
 #[test]
 fn lib_qa_010_an_exclusion_key_that_is_not_a_string_array_is_config_exclusion() {
+    let mixed = format!("['{RE_EXAMPLE}', 1]");
     for (what, key, value) in [
         ("exclude_re a string", "exclude_re", "\"x\""),
         ("exclude_globs an array of integers", "exclude_globs", "[1]"),
         ("skip_calls a table", "skip_calls", "{}"),
+        (
+            "exclude_re a valid regex and an integer",
+            "exclude_re",
+            mixed.as_str(),
+        ),
     ] {
         let config = format!("{CONFIG_BASE}{key} = {value}\n");
-        let mut fake = Fake::new();
-        let problems = assert_fails(
-            what,
-            check(&config, &triage(&[]), &mut fake),
-            &["config-exclusion"],
-        );
+        let problems = fails_unlisted(what, &config, &triage(&[]), &["config-exclusion"]);
         assert_named(what, &problems, "config-exclusion", &[key]);
-        let others: Vec<&Option<String>> = fake
-            .calls
-            .iter()
-            .filter(|c| c.as_deref().is_some_and(|text| text != config))
-            .collect();
-        assert!(
-            others.is_empty(),
-            "{QA10}: {what}: no (c) configuration is listed when the key has no entries; it listed {others:#?}"
-        );
     }
 }
 
 /// D1 and D5: a triage table the LIB-QA-007 rules cannot read is
-/// `[triage-format]`. The configuration has no exclusions, so this is the
-/// only problem whether or not the comparison goes on.
+/// `[triage-format]`, the only problem, and nothing is listed
+/// (verification 0010 F8).
 #[test]
 fn lib_qa_010_a_malformed_triage_table_is_triage_format() {
     let reference = triage(&[]);
@@ -1127,8 +1132,42 @@ fn lib_qa_010_a_malformed_triage_table_is_triage_format() {
             triage, reference,
             "{QA10}: precondition: `{what}` changes the triage fixture"
         );
-        fails_with(what, CONFIG_BASE, &triage, &["triage-format"]);
+        fails_unlisted(what, CONFIG_BASE, &triage, &["triage-format"]);
     }
+}
+
+/// D5 (verification 0010 F5): the table ends at the first line that does not
+/// start with `|`. Row-shaped lines after a blank line that follows it are
+/// not read: an excluded row there assigns nothing (else the `skip_calls`
+/// entry would miss a mutant), and a 4-cell row there is no
+/// `[triage-format]`.
+#[test]
+fn lib_qa_010_rows_after_the_end_of_the_triage_table_are_not_read() {
+    let after_table = format!(
+        "\n{}| `{EXAMPLE_FALSE}` | killed | LIB-TOOL-001 | — |\n",
+        call_row(READY_TRUE, EXAMPLE_CALL)
+    );
+    let reference = triage(&correct_rows());
+    let mark = "\n## Known items";
+    assert_eq!(
+        reference.matches(mark).count(),
+        1,
+        "{QA10}: precondition: the triage fixture has one `{mark}` after its table"
+    );
+    let triage = reference.replacen(mark, &format!("{after_table}{mark}"), 1);
+    assert!(
+        triage.contains(&format!("|\n\n| `{READY_TRUE}`")),
+        "{QA10}: precondition: a blank line separates the table from the later rows:\n{triage}"
+    );
+    assert_passes(
+        "rows after the table",
+        check(&correct_config(), &triage, &mut Fake::new()),
+        &ExclusionSummary {
+            entries: 3,
+            excluded: 5,
+            listed: NO_CONFIG_LISTED - 5,
+        },
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1255,4 +1294,105 @@ skip_calls = [\"{EXAMPLE_CALL}\"]
             "{QA10}: exactly one (c) configuration is the original without the `{key}` entry `{entry}`, keeping cap_lints, all_features, test_workspace and every other key and entry; the (c) configurations: {copies:#?}"
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// Verification 0010, round 1: F2, F3 and F6
+// ---------------------------------------------------------------------------
+
+/// Acceptance items 1 and 2 (F2): the same string twice under one key is two
+/// entries. Each copy without one of them still holds the other, so each is
+/// `[exclusion-empty]`; the triage row names both, and neither restores its
+/// mutant, so each is also `[exclusion-mismatch]`. Kills removing the entry
+/// by value (both copies) instead of by its index.
+#[test]
+fn lib_qa_010_a_string_twice_under_one_key_is_two_empty_entries() {
+    let what = "the same exclude_re twice";
+    let config = config(&[RE_EXAMPLE, RE_EXAMPLE], &[], &[]);
+    let mut fake = Fake::new();
+    let problems = assert_fails(
+        what,
+        check(
+            &config,
+            &triage(&[re_row(EXAMPLE_TRUE, RE_EXAMPLE)]),
+            &mut fake,
+        ),
+        &[
+            "exclusion-empty",
+            "exclusion-empty",
+            "exclusion-mismatch",
+            "exclusion-mismatch",
+        ],
+    );
+    assert_named(what, &problems, "exclusion-empty", &[RE_EXAMPLE]);
+    assert_named(
+        what,
+        &problems,
+        "exclusion-mismatch",
+        &[EXAMPLE_TRUE, RE_EXAMPLE],
+    );
+    let copies: Vec<toml::Table> = fake
+        .calls
+        .iter()
+        .flatten()
+        .filter(|c| c.as_str() != config.as_str())
+        .map(|c| c.parse().expect("each (c) configuration is TOML"))
+        .collect();
+    let mut kept = config.parse::<toml::Table>().expect("the fixture parses");
+    if let Some(toml::Value::Array(items)) = kept.get_mut("exclude_re") {
+        items.truncate(1);
+    }
+    assert_eq!(
+        copies,
+        vec![kept.clone(), kept],
+        "{QA10}: {what}: each (c) configuration drops one of the two strings and keeps the other"
+    );
+}
+
+/// Acceptance item 3 (F3): a failed (c) listing does not stop the others.
+/// The first entry's (c) fails, and a later `skip_calls` entry that excludes
+/// nothing is still reported; every (c) is listed. Kills `break` for
+/// `continue` after a failed (c).
+#[test]
+fn lib_qa_010_a_failed_entry_listing_does_not_stop_the_later_entries() {
+    let what = "the first entry's (c) fails, a later entry is empty";
+    let config = config(&[RE_EXAMPLE], &[GLOB_MAIN], &[EXAMPLE_CALL, NEVER_CALLED]);
+    let error = "error: listing without the regex failed: exit status 1";
+    let mut fake = Fake::failing(|c| c.is_some_and(|t| !has_entry(t, RE_EXAMPLE)), error);
+    let problems = assert_fails(
+        what,
+        check(&config, &triage(&correct_rows()), &mut fake),
+        &["exclusion-empty", "mutants-tool"],
+    );
+    assert_named(what, &problems, "mutants-tool", &[error]);
+    assert_named(what, &problems, "exclusion-empty", &[NEVER_CALLED]);
+    assert_eq!(
+        fake.calls.len(),
+        2 + 4,
+        "{QA10}: {what}: (a), (b) and all four (c) are listed; calls: {:#?}",
+        fake.calls
+    );
+}
+
+/// Acceptance item 2 (F6): a triage row counts only if the entry it names is
+/// in the configuration. A mutant the glob excludes whose only row names an
+/// `exclude_re` the configuration lacks is `[exclusion-untriaged]`, and an
+/// extra `[exclusion-mismatch]` for the glob.
+#[test]
+fn lib_qa_010_a_row_naming_an_entry_the_configuration_lacks_does_not_triage() {
+    let what = "a glob-excluded mutant whose row names a missing exclude_re";
+    let rows = correct_rows_with(MAIN_NOT, &[re_row(MAIN_NOT, RE_MAIN_NOT)]);
+    let problems = fails_with(
+        what,
+        &correct_config(),
+        &triage(&rows),
+        &["exclusion-mismatch", "exclusion-untriaged"],
+    );
+    assert_named(what, &problems, "exclusion-untriaged", &[MAIN_NOT]);
+    assert_named(
+        what,
+        &problems,
+        "exclusion-mismatch",
+        &[MAIN_NOT, GLOB_MAIN],
+    );
 }
