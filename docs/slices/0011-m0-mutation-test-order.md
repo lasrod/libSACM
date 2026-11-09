@@ -128,3 +128,5 @@ None. This is a quality row. The research facts (cargo-mutants v27.1.0 and cargo
     `[nextest-contributing]`.
   - Each named mutation (M1 to M6) was applied in `target/scratch` and is killed.
   - 2 new tests; LIB-QA-012 cites 14. The full local gate passes.
+- 2026-11-09 CI run 42589365222 and mutants run 42589365337 at `eec4748` succeeded.
+- 2026-11-09 Copilot comment 4510944803: a saturated worker pool can still keep the killing test from starting. The maintainer chose to accept this residual (it gives a TIMEOUT, which fails CI, never a false pass) and to stop hardening tooling further (memory: simplicity and proportion). No change.
