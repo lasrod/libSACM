@@ -418,12 +418,18 @@ impl fmt::Display for InsertError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::EmptyId => f.write_str("the element id is empty"),
-            Self::DuplicateId(id) => {
-                write!(f, "the document already has an element with id \"{id}\"")
-            }
-            Self::UnknownParent(id) => {
-                write!(f, "the document has no element \"{id}\" to be the parent")
-            }
+            // `{:?}` quotes the id and escapes line breaks, so the message
+            // stays on one line.
+            Self::DuplicateId(id) => write!(
+                f,
+                "the document already has an element with id {:?}",
+                id.as_str()
+            ),
+            Self::UnknownParent(id) => write!(
+                f,
+                "the document has no element {:?} to be the parent",
+                id.as_str()
+            ),
         }
     }
 }

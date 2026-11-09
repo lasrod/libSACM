@@ -1,0 +1,410 @@
+//! Diagnostics: findings about the content of a SACM document.
+//!
+//! A [`Diagnostic`] reports something about the content, such as a reference
+//! that does not resolve or an element kept from a non-SACM dialect. It is not
+//! an error: an error means an operation could not proceed and comes back as
+//! the `Err` of a `Result`, while diagnostics come back alongside a result
+//! that succeeded.
+//!
+//! Each diagnostic carries a stable [`Code`] from the
+//! [diagnostics catalog][catalog], a [`Severity`], the matrix row and clause
+//! it enforces, the ids of the affected elements, an optional
+//! [`SourceLocation`] and a message.
+//!
+//! Every function that returns diagnostics returns them sorted by
+//! [`Diagnostic`]'s order: located diagnostics first, by line and column,
+//! then by code, affected ids, requirement id, clause, severity and message.
+//!
+//! Diagnostics are read, not built: only this crate creates them.
+//!
+//! # Examples
+//!
+//! ```
+//! use sacm::diagnostic::{Diagnostic, Severity};
+//!
+//! /// Prints each diagnostic on its own line and says whether any is an error.
+//! fn report(diagnostics: &[Diagnostic]) -> bool {
+//!     for diagnostic in diagnostics {
+//!         eprintln!("{diagnostic}");
+//!     }
+//!     diagnostics
+//!         .iter()
+//!         .any(|diagnostic| diagnostic.severity() == Severity::Error)
+//! }
+//!
+//! assert!(!report(&[]));
+//! ```
+//!
+//! [catalog]: https://github.com/lasrod/libSACM/blob/main/docs/sacm/diagnostics.md
+
+use std::cmp::Ordering;
+use std::fmt;
+use std::num::NonZeroU32;
+
+use crate::model::ElementId;
+
+/// How serious a diagnostic is: `Info < Warning < Error`.
+///
+/// ```
+/// use sacm::diagnostic::Severity;
+///
+/// assert!(Severity::Warning < Severity::Error);
+/// assert_eq!(Severity::Info.to_string(), "info");
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
+pub enum Severity {
+    /// Information: nothing is wrong.
+    Info,
+    /// Something is questionable but the content is usable.
+    Warning,
+    /// The content does not conform.
+    Error,
+}
+
+impl Severity {
+    /// The severity as lowercase text: `info`, `warning` or `error`.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Info => "info",
+            Self::Warning => "warning",
+            Self::Error => "error",
+        }
+    }
+}
+
+impl fmt::Display for Severity {
+    /// Writes [`as_str`](Self::as_str).
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.pad(self.as_str())
+    }
+}
+
+/// A diagnostic code from the diagnostics catalog, such as `SACM-REF-001`.
+///
+/// Codes are stable API: a code's meaning never changes. Codes compare and
+/// order by their text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Code(&'static str);
+
+impl Code {
+    /// The code with the given text.
+    ///
+    /// **Not part of the stable API**: public only under the `test-support`
+    /// feature.
+    #[cfg(feature = "test-support")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "test-support")))]
+    #[must_use]
+    pub const fn new(code: &'static str) -> Self {
+        Self::from_static(code)
+    }
+
+    /// The code with the given text. The crate-internal form of `new`.
+    #[cfg_attr(
+        not(feature = "test-support"),
+        expect(dead_code, reason = "the rows that emit codes will define them")
+    )]
+    pub(crate) const fn from_static(code: &'static str) -> Self {
+        Self(code)
+    }
+
+    /// The code's text, such as `SACM-REF-001`.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        self.0
+    }
+}
+
+impl fmt::Display for Code {
+    /// Writes [`as_str`](Self::as_str).
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.pad(self.0)
+    }
+}
+
+/// A position in a source file: a 1-based line and column.
+///
+/// The column counts Unicode scalar values (`char`s), not bytes. Locations
+/// order by line, then column.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SourceLocation {
+    line: NonZeroU32,
+    column: NonZeroU32,
+}
+
+impl SourceLocation {
+    /// The location at `line` and `column`, or `None` if either is 0.
+    ///
+    /// **Not part of the stable API**: public only under the `test-support`
+    /// feature.
+    #[cfg(feature = "test-support")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "test-support")))]
+    #[must_use]
+    pub fn new(line: u32, column: u32) -> Option<Self> {
+        Self::at(line, column)
+    }
+
+    /// The location at `line` and `column`, or `None` if either is 0. The
+    /// crate-internal form of `new`.
+    #[cfg_attr(
+        not(feature = "test-support"),
+        expect(dead_code, reason = "the XMI reader will locate what it reports")
+    )]
+    pub(crate) fn at(line: u32, column: u32) -> Option<Self> {
+        Some(Self {
+            line: NonZeroU32::new(line)?,
+            column: NonZeroU32::new(column)?,
+        })
+    }
+
+    /// The 1-based line.
+    #[must_use]
+    pub const fn line(self) -> u32 {
+        self.line.get()
+    }
+
+    /// The 1-based column, in Unicode scalar values.
+    #[must_use]
+    pub const fn column(self) -> u32 {
+        self.column.get()
+    }
+}
+
+impl fmt::Display for SourceLocation {
+    /// Writes `line L, column C`.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "line {}, column {}", self.line, self.column)
+    }
+}
+
+/// A finding about the content of a document.
+///
+/// `Display` writes one line:
+/// `{severity} {code} [{requirement_id}[, clause {clause}]][ at {location}]: {message}`,
+/// for example
+/// `error SACM-REF-001 [SACM23-REF-001, clause 11.13] at line 12, column 34: the target "claim_9" does not resolve`.
+/// The affected ids are not shown.
+///
+/// # Order
+///
+/// Diagnostics compare by these keys, in turn:
+/// 1. location: located diagnostics first, by line and then column;
+/// 2. code;
+/// 3. affected ids;
+/// 4. requirement id;
+/// 5. clause, with no clause first;
+/// 6. severity;
+/// 7. message.
+///
+/// Two diagnostics compare `Equal` exactly when they are equal.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Diagnostic {
+    code: Code,
+    severity: Severity,
+    requirement_id: &'static str,
+    clause: Option<&'static str>,
+    affected: Vec<ElementId>,
+    location: Option<SourceLocation>,
+    message: String,
+}
+
+impl Diagnostic {
+    /// A diagnostic with no clause, no affected ids and no location.
+    ///
+    /// **Not part of the stable API**: public only under the `test-support`
+    /// feature.
+    #[cfg(feature = "test-support")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "test-support")))]
+    #[must_use]
+    pub fn new(
+        code: Code,
+        severity: Severity,
+        requirement_id: &'static str,
+        message: impl Into<String>,
+    ) -> Self {
+        Self::create(code, severity, requirement_id, message)
+    }
+
+    /// Sets the clause of the specification the diagnostic enforces.
+    ///
+    /// **Not part of the stable API**: public only under the `test-support`
+    /// feature.
+    #[cfg(feature = "test-support")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "test-support")))]
+    #[must_use]
+    pub fn with_clause(self, clause: &'static str) -> Self {
+        self.set_clause(clause)
+    }
+
+    /// Sets the affected element ids, in the given order.
+    ///
+    /// **Not part of the stable API**: public only under the `test-support`
+    /// feature.
+    #[cfg(feature = "test-support")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "test-support")))]
+    #[must_use]
+    pub fn with_affected(self, affected: impl IntoIterator<Item = ElementId>) -> Self {
+        self.set_affected(affected)
+    }
+
+    /// Sets the source location.
+    ///
+    /// **Not part of the stable API**: public only under the `test-support`
+    /// feature.
+    #[cfg(feature = "test-support")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "test-support")))]
+    #[must_use]
+    pub fn with_location(self, location: SourceLocation) -> Self {
+        self.set_location(location)
+    }
+
+    /// The crate-internal form of `new`.
+    #[cfg_attr(
+        not(feature = "test-support"),
+        expect(dead_code, reason = "the rows that emit diagnostics will build them")
+    )]
+    pub(crate) fn create(
+        code: Code,
+        severity: Severity,
+        requirement_id: &'static str,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            code,
+            severity,
+            requirement_id,
+            clause: None,
+            affected: Vec::new(),
+            location: None,
+            message: message.into(),
+        }
+    }
+
+    /// The crate-internal form of `with_clause`.
+    #[cfg_attr(
+        not(feature = "test-support"),
+        expect(dead_code, reason = "the rows that emit diagnostics will build them")
+    )]
+    #[must_use]
+    pub(crate) fn set_clause(mut self, clause: &'static str) -> Self {
+        self.clause = Some(clause);
+        self
+    }
+
+    /// The crate-internal form of `with_affected`.
+    #[cfg_attr(
+        not(feature = "test-support"),
+        expect(dead_code, reason = "the rows that emit diagnostics will build them")
+    )]
+    #[must_use]
+    pub(crate) fn set_affected(mut self, affected: impl IntoIterator<Item = ElementId>) -> Self {
+        self.affected = affected.into_iter().collect();
+        self
+    }
+
+    /// The crate-internal form of `with_location`.
+    #[cfg_attr(
+        not(feature = "test-support"),
+        expect(dead_code, reason = "the rows that emit diagnostics will build them")
+    )]
+    #[must_use]
+    pub(crate) fn set_location(mut self, location: SourceLocation) -> Self {
+        self.location = Some(location);
+        self
+    }
+
+    /// The diagnostic's code.
+    #[must_use]
+    pub fn code(&self) -> Code {
+        self.code
+    }
+
+    /// The diagnostic's severity.
+    #[must_use]
+    pub fn severity(&self) -> Severity {
+        self.severity
+    }
+
+    /// The id of the functionality-matrix row the diagnostic enforces, such
+    /// as `SACM23-REF-001`.
+    #[must_use]
+    pub fn requirement_id(&self) -> &str {
+        self.requirement_id
+    }
+
+    /// The clause of the specification the diagnostic enforces, if any.
+    #[must_use]
+    pub fn clause(&self) -> Option<&str> {
+        self.clause
+    }
+
+    /// The ids of the affected elements, in the order the crate gave them.
+    #[must_use]
+    pub fn affected(&self) -> &[ElementId] {
+        &self.affected
+    }
+
+    /// Where in the source the finding is, if known.
+    #[must_use]
+    pub fn location(&self) -> Option<SourceLocation> {
+        self.location
+    }
+
+    /// The human-readable message.
+    #[must_use]
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+}
+
+impl fmt::Display for Diagnostic {
+    /// Writes the diagnostic on one line, as described on [`Diagnostic`].
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} {} [{}",
+            self.severity, self.code, self.requirement_id
+        )?;
+        if let Some(clause) = self.clause {
+            write!(f, ", clause {clause}")?;
+        }
+        f.write_str("]")?;
+        if let Some(location) = self.location {
+            write!(f, " at {location}")?;
+        }
+        write!(f, ": {}", self.message)
+    }
+}
+
+impl Ord for Diagnostic {
+    /// Compares by the keys listed on [`Diagnostic`].
+    fn cmp(&self, other: &Self) -> Ordering {
+        // Destructured so that a new field cannot be left out of the key.
+        let Self {
+            code,
+            severity,
+            requirement_id,
+            clause,
+            affected,
+            location,
+            message,
+        } = self;
+        location
+            .is_none()
+            .cmp(&other.location.is_none())
+            .then_with(|| location.cmp(&other.location))
+            .then_with(|| code.cmp(&other.code))
+            .then_with(|| affected.cmp(&other.affected))
+            .then_with(|| requirement_id.cmp(&other.requirement_id))
+            .then_with(|| clause.cmp(&other.clause))
+            .then_with(|| severity.cmp(&other.severity))
+            .then_with(|| message.cmp(&other.message))
+    }
+}
+
+impl PartialOrd for Diagnostic {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}

@@ -12,6 +12,7 @@ and clause it enforces, affected element ids, an optional source location
 > finding with the same code. A code becomes live when the matrix row that emits it is
 > verified; until then the crate does not emit it. Tool-specific wording from that
 > project ("Assurance Forge", ODE containers) has been kept where it explains the code.
+> The `sacm::diagnostic::Diagnostic` type exists (LIB-DIAG-001), but no code is emitted yet.
 
 Adding a code: append the row here in the same change that adds its constant to the
 crate, and name the matrix row that owns it.

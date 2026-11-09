@@ -13,7 +13,8 @@
 //! - XMI import and deterministic export, with a strict SACM 2.3 mode and an
 //!   explicit tolerant mode for third-party and legacy files (planned),
 //! - validation against the specification's constraints, reported as
-//!   machine-readable diagnostics with stable codes (planned),
+//!   machine-readable diagnostics with stable codes; built so far: the
+//!   diagnostic type,
 //! - SACM-native editing with previews for destructive operations (planned).
 //!
 //! # Status
@@ -22,8 +23,9 @@
 //! What is implemented, and how it is tested, is tracked requirement by
 //! requirement in the [functionality matrix][matrix]. So far the crate
 //! provides the read-only document model and the metamodel's element kinds,
-//! in [`model`]; XMI import and export, validation and editing are not built
-//! yet.
+//! in [`model`], and the [`Diagnostic`](diagnostic::Diagnostic) type that
+//! findings are reported in, in [`diagnostic`]. XMI import and export,
+//! validation and editing are not built yet, so no diagnostic is emitted yet.
 //!
 //! Look up an element with [`model::Document::get`], walk every element with
 //! [`model::Document::elements`], or move one level at a time with
@@ -33,14 +35,17 @@
 //! # Features
 //!
 //! - `test-support` (off by default): makes `Document::insert` and
-//!   `InsertError` public in [`model`], so tests can build documents. It is
-//!   **not part of the stable API** and may change or disappear in any release.
+//!   `InsertError` public in [`model`], so tests can build documents, and
+//!   makes the constructors of `Code`, `SourceLocation` and `Diagnostic`
+//!   public in [`diagnostic`], so tests can build diagnostics. It is **not
+//!   part of the stable API** and may change or disappear in any release.
 //!   Enable it only under `[dev-dependencies]`.
 //!
 //! [sacm]: https://www.omg.org/spec/SACM/2.3
 //! [matrix]: https://github.com/lasrod/libSACM/blob/main/docs/matrix/functionality-matrix.md
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+pub mod diagnostic;
 pub mod model;
 
 /// The version of this crate, as published.
