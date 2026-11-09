@@ -1150,7 +1150,7 @@ title = "Mutation outcomes do not depend on test-target order"
 requirement = "Whether a mutant counts as caught or as a timeout must not depend on the alphabetical order of test targets: a mutant that one fast test kills is reported as caught, even when another target becomes slow under the same mutant. cargo-mutants runs the tests under nextest with a profile that terminates every running test at the first failure (ADR 0009), and a check fails if any part of that is lost."
 source = "Slice 0005: mutants.yml run 42420891449, a TIMEOUT for `is_identifier_char -> true`, worked around by renaming a test target"
 kind = "quality"
-status = "implemented"
+status = "verified"
 acceptance = [
   "`.cargo/mutants.toml` sets `test_tool = \"nextest\"` and `additional_cargo_test_args = [\"--profile=mutants\", \"--no-tests=warn\"]`, exactly.",
   "`.config/nextest.toml` sets `nextest-version = { required = \"0.9.111\" }`, or a later version, and a profile `[profile.mutants]` with `fail-fast = { max-fail = 1, terminate = \"immediate\" }`. The `default` profile does not change fail-fast.",
@@ -1162,6 +1162,7 @@ acceptance = [
   "ADR 0009, `docs/quality/mutants-triage.md` and `CONTRIBUTING.md` state the test tool, the profile and the nextest install command. The ordering rule in the module doc of `xtask/tests/function_scan.rs` is marked as superseded.",
 ]
 depends_on = ["LIB-QA-007"]
+verification = "docs/verification/0011-m0-mutation-test-order-round2.md"
 code = [".cargo/mutants.toml", ".config/nextest.toml", ".github/workflows/ci.yml", ".github/workflows/mutants.yml"]
 tests = [
   "xtask/tests/repo_checks.rs::lib_qa_012_a_missing_or_unreadable_file_is_named",

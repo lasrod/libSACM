@@ -1,8 +1,8 @@
 ---
 slice: 0011
 name: m0-mutation-test-order
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [LIB-QA-012]
 mode: pr
 ---
@@ -130,3 +130,4 @@ None. This is a quality row. The research facts (cargo-mutants v27.1.0 and cargo
   - 2 new tests; LIB-QA-012 cites 14. The full local gate passes.
 - 2026-11-09 CI run 42589365222 and mutants run 42589365337 at `eec4748` succeeded.
 - 2026-11-09 Copilot comment 4510944803: a saturated worker pool can still keep the killing test from starting. The maintainer chose to accept this residual (it gives a TIMEOUT, which fails CI, never a false pass) and to stop hardening tooling further (memory: simplicity and proportion). No change.
+- 2026-11-09 verification round 2 (proportionate): PASS, and LIB-QA-012 is `verified`. The slice is done.
