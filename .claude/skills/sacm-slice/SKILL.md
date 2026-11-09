@@ -73,7 +73,9 @@ Copy `references/slice-brief.md` to `docs/slices/NNNN-<name>.md`, with
    shards if that workflow ran.
    - For a library row: if `mutants.yml` did not run on the head, dispatch it
      (`gh workflow run mutants.yml --ref <branch>`).
-   - For a tooling row: the PR-diff job is enough.
+   - For a tooling row: the PR-diff job is enough, unless the slice removes or weakens
+     tests. Then dispatch `mutants.yml`, because a test-only diff gives the PR-diff job
+     nothing to mutate.
 3. **Run sacm-verifier** with the rows, the acceptance, the diff and the run evidence,
    but not your opinion. If public API changed, run **sacm-docs-reviewer** in parallel.
    - **Library rows:** full depth. At most two fix rounds; after a second FAIL, stop and
