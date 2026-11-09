@@ -181,7 +181,7 @@ title = "MSRV 1.85 is declared consistently and checked"
 requirement = "The MSRV is declared once, as `rust-version` in the workspace manifest. Member crates inherit it, clippy.toml and ADR 0007 match it, and ci.yml runs `cargo +<msrv> test -p sacm -p sacm-cli`."
 source = "ADR 0007"
 kind = "quality"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-QA-001"]
 code = ["Cargo.toml", "clippy.toml", ".github/workflows/ci.yml"]
 tests = [
@@ -195,6 +195,7 @@ acceptance = [
   "A test checks that every published member manifest inherits `rust-version` from the workspace and declares none of its own.",
 ]
 notes = "Trimmed 2026-11-09 (slice 0012, ADR 0006 amendment 2): only the checks of repository policy files remain; workflow YAML is protected by branch protection and review."
+verification = "docs/verification/0012-m0-simplify.md"
 
 [[row]]
 id = "LIB-QA-003"
@@ -204,7 +205,7 @@ title = "Dependency licences, advisories and sources are policed"
 requirement = "deny.toml allows only licences compatible with an MIT library, denies known advisories and yanked crates, and allows crates.io as the only source. A test refuses any configuration that weakens this, and CI runs cargo-deny."
 source = "Project policy (public MIT library)"
 kind = "quality"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-QA-001"]
 code = ["deny.toml", ".github/workflows/ci.yml"]
 tests = [
@@ -224,6 +225,7 @@ acceptance = [
   "CI runs `cargo deny check`.",
 ]
 notes = "Trimmed 2026-11-09 (slice 0012, ADR 0006 amendment 2): only the checks of repository policy files remain; workflow YAML is protected by branch protection and review."
+verification = "docs/verification/0012-m0-simplify.md"
 
 [[row]]
 id = "LIB-TOOL-001"
@@ -492,7 +494,7 @@ title = "Mutation testing"
 requirement = "cargo-mutants runs in CI on each pull request's diff, and as a full sharded run weekly, on demand, and on pull requests that change library code or the mutation configuration. `.cargo/mutants.toml` uses only reviewed keys, and every exclusion is triaged in docs/quality/mutants-triage.md. The verifier reviews the Linux report for the slice's code."
 source = "Project policy (verifier test-adequacy check); brought forward to M0 by the maintainer 2026-11-07; pre-verification prescription docs/verification/0003-m0-mutation-testing-prescription.md"
 kind = "quality"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-QA-001"]
 code = [".github/workflows/ci.yml", ".github/workflows/mutants.yml", ".cargo/mutants.toml", ".gitignore", "docs/quality/mutants-triage.md"]
 tests = [
@@ -514,6 +516,7 @@ acceptance = [
   "ci.yml runs `cargo mutants --workspace --in-diff mutants.diff` on pull requests, and mutants.yml runs the full sharded run. Both install cargo-mutants 27.1.0 and cargo-nextest 0.9.151, pinned. These are reviewed, not pinned by tests (ADR 0006 amendment 2).",
 ]
 notes = "Trimmed 2026-11-09 (slice 0012, ADR 0006 amendment 2): only the checks of repository policy files remain; workflow YAML is protected by branch protection and review."
+verification = "docs/verification/0012-m0-simplify.md"
 
 [[row]]
 id = "LIB-TOOL-005"
@@ -533,7 +536,7 @@ acceptance = [
   "A fence inside a list item closes where CommonMark closes it, nested items included, and closers are judged relative to the item. The P-005b probes P1, P1b, P6 and P8 (docs/verification/0004-m0-gate-hardening-round2.md) each give exactly the FAIL problem, and P9 gives exactly the no-verdict problem. These controls pass the row: a closed list-item fence followed by PASS, the same with a blank line inside the fence, and every real record.",
   "Fence opener and closer lines are themselves never verdict lines and never malformed, and the line after a closer counts. A closer followed by a character other than a space or tab, for example U+00A0, does not close the fence, so a PASS after it stays hidden (F5).",
   "The hand-written fence model is removed: `xtask` decides hidden lines only through the parser. The parser is used with `Options::empty()`.",
-  "Records are strict (ADR 0008 amendment 1; slice 0007 D8 to D11). Each of these is a problem: raw HTML other than a closed comment or the inline tags <br>, <ul>, </ul>, <li>, </li>; a visible verdict-like line that is not at column 0 (indented, nested or block-quoted); a lone CR; a leading byte-order mark. Each is reported with the record path and its line, once per citing row, before the verdict problem. A differential test against an independent CommonMark implementation (markdown-rs) over at least 20,000 generated records shows no unadjudicated disagreement in which candidates count.",
+  "Records are strict (ADR 0008 amendment 1; slice 0007 D8 to D11). Each of these is a problem: raw HTML other than a closed comment or the inline tags <br>, <ul>, </ul>, <li>, </li>; a visible verdict-like line that is not at column 0 (indented, nested or block-quoted); a lone CR; a leading byte-order mark. Each is reported with the record path and its line, once per citing row, before the verdict problem.",
   "Every verified row in the real matrix passes. The lead adds the verdict lines to the existing records, the record template (`.claude/skills/sacm-slice/references/verification-record.md`) and `docs/matrix/README.md` rule 5.",
 ]
 depends_on = ["LIB-TOOL-001"]
@@ -604,7 +607,8 @@ tests = [
   "xtask/tests/verdict_markdown.rs::lib_tool_005_a_look_alike_outside_a_closed_inline_comment_is_reported",
   "xtask/tests/verdict_markdown.rs::lib_tool_005_a_line_that_ends_the_paragraph_is_never_inside_an_inline_comment",
 ]
-verification = "docs/verification/0007-m0-verdict-parser-round4.md"
+notes = "Trimmed 2026-11-09 (slice 0012, ADR 0006 amendment 2): the markdown-rs differential test and its dev-dependency were removed; the pulldown-cmark reader and its tests remain."
+verification = "docs/verification/0012-m0-simplify.md"
 
 [[row]]
 id = "LIB-TOOL-006"
@@ -1006,7 +1010,7 @@ title = "Mutation outcomes do not depend on test-target order"
 requirement = "cargo-mutants runs the tests under nextest, with a profile that terminates every running test at the first failure (ADR 0009). So a mutant that one fast test kills is caught, even when another test target becomes slow under it."
 source = "Slice 0005: mutants.yml run 42420891449, a TIMEOUT for `is_identifier_char -> true`, worked around by renaming a test target"
 kind = "quality"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-QA-007"]
 acceptance = [
   "`.cargo/mutants.toml` sets `test_tool = \"nextest\"` and `additional_cargo_test_args = [\"--profile=mutants\", \"--no-tests=warn\"]`.",
@@ -1028,6 +1032,7 @@ tests = [
   "xtask/tests/repo_checks.rs::lib_qa_012_unreviewed_profile_keys_are_named",
   "xtask/tests/repo_checks.rs::lib_qa_012_unreviewed_top_level_nextest_keys_are_named",
 ]
+verification = "docs/verification/0012-m0-simplify.md"
 
 [[row]]
 id = "LIB-QA-013"
@@ -1148,7 +1153,7 @@ title = "Documented MSRV matches the manifest"
 requirement = "The MSRV stated in README.md (badge) and CONTRIBUTING.md equals `rust-version` in the workspace manifest; a test enforces it."
 source = "Verification 0002 follow-up"
 kind = "docs"
-status = "implemented"
+status = "verified"
 acceptance = [
   "A test checks that README.md's MSRV badge, and the version in CONTRIBUTING.md's \"Minimum supported Rust version\" section, equal `rust-version` in Cargo.toml.",
 ]
@@ -1156,6 +1161,7 @@ code = ["README.md", "CONTRIBUTING.md"]
 tests = [
   "xtask/tests/repo_checks.rs::lib_doc_007_documented_msrv_matches_the_manifest",
 ]
+verification = "docs/verification/0012-m0-simplify.md"
 
 [[row]]
 id = "LIB-DOC-006"

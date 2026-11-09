@@ -1,8 +1,8 @@
 ---
 slice: 0012
 name: m0-simplify
-state: in-progress
-step: implementation
+state: done
+step: close
 rows: [LIB-QA-002, LIB-QA-003, LIB-QA-007, LIB-QA-008, LIB-QA-009, LIB-QA-010, LIB-QA-011, LIB-QA-012, LIB-TOOL-005, LIB-DOC-007]
 mode: pr
 ---
@@ -61,3 +61,4 @@ Branch protection on `main` is already on. This slice does the rest.
       `implemented`;
     - `ci-actions.md` and the `yaml-rust2` dev-dependency deleted.
   - The full gate passes.
+- 2026-11-09 verification (proportionate): all six rows PASS ([record](../verification/0012-m0-simplify.md)), after LIB-TOOL-005 was trimmed and re-checked. The slice is done.

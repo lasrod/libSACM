@@ -102,4 +102,5 @@ What the gate cannot check, such as whether tests really prove a requirement, is
 - **IDs:** never renumber or reuse an ID. A new obligation gets the next free number in
   its area.
 - **Changed requirements:** a verified row whose requirement changes goes back to
-  `analyzed`, with a note.
+  `analyzed`, with a note. If the change only removes obligations, the row goes back
+  to `implemented` and is re-verified.
