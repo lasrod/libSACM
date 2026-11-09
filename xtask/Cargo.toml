@@ -17,15 +17,5 @@ serde = { version = "1", features = ["derive"] }
 sha2 = "0.11"
 toml = "1.2"
 
-[dev-dependencies]
-# Independent CommonMark reference for the differential test of the verdict-line
-# parser (slice 0007 D12, ADR 0008 amendment 1). Test-only.
-markdown = "1"
-# Parses .github/workflows/ci.yml in the CI regression tests (LIB-QA-002/003) so
-# block scalars, flow mappings and continuation lines are read as YAML data, not
-# text. Chosen for: YAML 1.2 (no `on`/`yes` -> bool), MIT OR Apache-2.0, maintained,
-# MSRV 1.85 (verification 0002 round-2 addendum).
-yaml-rust2 = "0.13"
-
 [lints]
 workspace = true

@@ -2144,7 +2144,7 @@ fn load_from(root: &Path) -> Result<Matrix, String> {
 
 /// `text` with every control character ([`char::is_control`]) escaped as by
 /// [`char::escape_default`], so that it fits on one line.
-pub(crate) fn escape_controls(text: &str) -> String {
+fn escape_controls(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for c in text.chars() {
         if c.is_control() {
