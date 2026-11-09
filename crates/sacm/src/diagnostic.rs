@@ -199,9 +199,12 @@ impl fmt::Display for SourceLocation {
 /// error SACM-CITE-001 [SACM23-VAL-007, clause 8.2]: "claim_1" has isCitation true but no citedElement
 /// ```
 ///
-/// The affected ids are not shown. Messages never contain line breaks, and
-/// ids in them are quoted with `{:?}`, as in `InsertError`'s messages, so the
-/// output stays on one line.
+/// The affected ids are not shown. Ids in messages are quoted with `{:?}`, as
+/// in `InsertError`'s messages. A message may contain line breaks; `Display`
+/// escapes them so the output stays on one line: line feed and carriage
+/// return as `\n` and `\r`, and U+0085, U+2028 and U+2029 as `\u{85}`,
+/// `\u{2028}` and `\u{2029}`. Every other character is written unchanged.
+/// [`message`](Self::message) returns the text unchanged.
 ///
 /// # Order
 ///
@@ -377,7 +380,8 @@ impl Diagnostic {
         self.location
     }
 
-    /// The human-readable message, on one line.
+    /// The human-readable message, exactly as given. See [`Diagnostic`] for
+    /// how `Display` writes it.
     #[must_use]
     pub fn message(&self) -> &str {
         &self.message
@@ -399,8 +403,30 @@ impl fmt::Display for Diagnostic {
         if let Some(location) = self.location {
             write!(f, " at {location}")?;
         }
-        write!(f, ": {}", self.message)
+        f.write_str(": ")?;
+        write_escaping_line_breaks(f, &self.message)
     }
+}
+
+/// Writes `text` with its line breaks escaped, as described on [`Diagnostic`].
+fn write_escaping_line_breaks(f: &mut fmt::Formatter<'_>, text: &str) -> fmt::Result {
+    let mut rest = text;
+    while let Some((index, c)) = rest
+        .char_indices()
+        .find(|&(_, c)| matches!(c, '\n' | '\r' | '\u{85}' | '\u{2028}' | '\u{2029}'))
+    {
+        // `index` is a char boundary and `c` starts there, so both splits are
+        // in bounds.
+        let (before, from_break) = rest.split_at(index);
+        f.write_str(before)?;
+        if matches!(c, '\n' | '\r') {
+            write!(f, "{}", c.escape_default())?;
+        } else {
+            write!(f, "{}", c.escape_unicode())?;
+        }
+        rest = from_break.get(c.len_utf8()..).unwrap_or_default();
+    }
+    f.write_str(rest)
 }
 
 impl Ord for Diagnostic {

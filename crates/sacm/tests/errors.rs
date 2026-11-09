@@ -589,8 +589,9 @@ fn lib_api_004_diagnostic_accessors_and_display_keep_odd_strings() {
 
 #[test]
 fn lib_api_004_diagnostic_display_handles_a_message_with_line_breaks() {
-    // ADR 0011 does not say how a multi-line message displays. Only the
-    // fields and the prefix are pinned here.
+    // The exact escaped Display is pinned by LIB-DIAG-001's
+    // `lib_diag_001_display_escapes_line_breaks_in_the_message`. Here, only
+    // the message and the prefix.
     let message = "first line\nsecond line\r\nthird";
     let diagnostic = Diagnostic::new(Code::new("C"), Severity::Warning, "ROW-1", message);
     assert_eq!(

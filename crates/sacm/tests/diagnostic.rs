@@ -526,6 +526,51 @@ fn lib_diag_001_display_shows_every_severity_by_its_text() {
     }
 }
 
+/// The characters that break a line: `\n` and `\r`, NEL, LINE SEPARATOR and
+/// PARAGRAPH SEPARATOR.
+const LINE_BREAKS: [char; 5] = ['\n', '\r', '\u{85}', '\u{2028}', '\u{2029}'];
+
+#[test]
+fn lib_diag_001_display_escapes_line_breaks_in_the_message() {
+    // `\n` and `\r` are written as `char::escape_default` writes them; NEL,
+    // U+2028 and U+2029 as `char::escape_unicode` writes them.
+    for (message, shown) in [
+        (
+            "first line\nsecond line\r\nthird\u{2028}fourth",
+            "first line\\nsecond line\\r\\nthird\\u{2028}fourth",
+        ),
+        ("a\u{85}b\u{2029}c\rd\n", "a\\u{85}b\\u{2029}c\\rd\\n"),
+    ] {
+        let diagnostic = Diagnostic::new(Code::new("C"), Severity::Warning, "ROW-1", message);
+        assert_eq!(
+            diagnostic.message(),
+            message,
+            "LIB-DIAG-001: message() of {message:?} is not the original text"
+        );
+        let text = diagnostic.to_string();
+        assert_eq!(
+            text,
+            format!("warning C [ROW-1]: {shown}"),
+            "LIB-DIAG-001: Display does not escape the line breaks in {message:?}"
+        );
+        assert!(
+            !text.contains(LINE_BREAKS),
+            "LIB-DIAG-001: Display of {message:?} contains a line break: {text:?}"
+        );
+    }
+}
+
+#[test]
+fn lib_diag_001_display_writes_tabs_quotes_and_backslashes_unchanged() {
+    let message = "tab\there \"quoted\" back\\slash";
+    let diagnostic = Diagnostic::new(Code::new("C"), Severity::Warning, "ROW-1", message);
+    assert_eq!(
+        diagnostic.to_string(),
+        "warning C [ROW-1]: tab\there \"quoted\" back\\slash",
+        "LIB-DIAG-001: Display changed a tab, a quote or a backslash in the message"
+    );
+}
+
 // --- 7. Order -------------------------------------------------------------
 
 /// The fields of a diagnostic, in ADR 0011 key order.

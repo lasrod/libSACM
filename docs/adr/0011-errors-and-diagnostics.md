@@ -85,3 +85,10 @@ findings are `Diagnostic` values. The assurance-forge C++ library is the design 
   fix codes before the rows that emit them exist.
 - **Emission order, as in C++.** Rejected: it is a separate contract for each producer and
   cannot be tested until a producer exists. Merged lists would also have no common order.
+
+## Amendment 1 (2026-11-10): one line, enforced
+
+A message may contain line breaks. `Display` escapes them so that the output stays one
+line: `\n` and `\r` become their escaped forms, and U+0085, U+2028 and U+2029 become
+`\u{85}`, `\u{2028}` and `\u{2029}`. `message()` returns the text unchanged. This was
+raised by review on PR #21, and it makes the one-line rule above hold for every message.
