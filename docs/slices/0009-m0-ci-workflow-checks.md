@@ -60,8 +60,11 @@ recorded in the matrix rows.
   holds the action, the SHA, the ref it was resolved from, and the inputs the
   repository may pass. Each input carries a comment on how it reaches the
   action's command line. The inputs are listed in LIB-QA-009's acceptance.
-  `credentials`, `ssh-key` and `rust-version` are refused for cargo-deny,
-  because the action splices them into its arguments.
+  cargo-deny-action refuses `rust-version`, `credentials`, `ssh-key` and
+  `ssh-known-hosts`. Its entrypoint uses them quoted and drops them before
+  `cargo-deny $*`, but they switch the toolchain, store git credentials and add
+  URL rewrites. `use-git-cli` has no effect. (Corrected after verification
+  round 1, F9-1.)
 - **D3: gates as live steps.** The LIB-QA-008 check reuses the existing workflow
   readers (`load_workflow`, `read_workflow`, `key_allowlist`,
   `guarded_step_problems` and `check_deny_job`). The problem codes are
@@ -107,10 +110,11 @@ recorded in the matrix rows.
   - The implementer wrote `docs/quality/ci-actions.md`.
   - All 106 `repo_checks` tests pass, and the full local gate passes. Both rows are
     `implemented`.
-  - For the verifier: at v2.1.1, cargo-deny-action passes `rust-version`,
-    `credentials`, `ssh-key` and `ssh-known-hosts` in its unquoted `args`.
-    Verification 0002 round 3 recorded them as quoted at the older `@v2` commit
-    `b66acf5`. Confirm the v2.1.1 reading at `3c63498`.
+  - For the verifier, a claim that turned out wrong (F9-1): at v2.1.1,
+    cargo-deny-action passes `rust-version`, `credentials`, `ssh-key` and
+    `ssh-known-hosts` unquoted. The verifier showed that `b66acf5` is the `v2` tag
+    object for the same commit, and that Verification 0002 round 3 was right: the
+    four are used quoted, then dropped by `shift 4`.
 - 2026-11-09 PR #16 is a draft. CI run 42536937710 and mutants.yml run 42536937727
   succeeded on `7a325c8`. The full run caught every mutant, with 0 missed and 0
   timeouts.
@@ -125,3 +129,26 @@ recorded in the matrix rows.
   - no step of a gate job has `env` (`[gate-env]`).
 
   2 new tests and 2 changed controls; LIB-QA-008 now has 15 tests.
+- 2026-11-09 verification round 1, at `a51f7df`:
+  [record](../verification/0009-m0-ci-workflow-checks.md). FAIL for both rows,
+  which stay `implemented`.
+  - LIB-QA-009: F9-1 (the review record misstates cargo-deny-action) and F9-2
+    (input names are not proved to be compared exactly).
+  - LIB-QA-008: F8-1 to F8-4 (untested branches for a non-mapping
+    `strategy`/`matrix`, prefix inputs, a non-mapping `pull_request`, a non-string
+    `with` key).
+  - New rows from new classes: LIB-QA-013 to -016.
+  - Fix round 1: tests and the code comment go to the test engineer, the doc to the
+    implementer, D2 and the log to the lead.
+- 2026-11-09 fix round 1:
+  - **Test engineer:**
+    - the `REVIEWED_ACTIONS` comment is corrected (F9-1);
+    - 11 controls (F9-2, F8-1 to F8-4), plus a new test reading `*.yaml` workflows (Q9-41);
+    - each target mutant was applied in a scratch copy and is killed.
+  - **Implementer:** `ci-actions.md` is corrected. `credentials` is named as adding
+    the `insteadOf` rewrites, the pin's limit for docker images is stated (LIB-QA-015),
+    and the review reads the Dockerfile.
+  - **Incident:** the test engineer's mutant script ran an old scratchpad helper,
+    which wrote an untracked mutated copy, `xtask/tests/zz_mutant.rs`. The lead
+    confirmed it differed by one mutated line and deleted it.
+  - LIB-QA-009 now has 14 tests and LIB-QA-008 has 15. The full local gate passes.

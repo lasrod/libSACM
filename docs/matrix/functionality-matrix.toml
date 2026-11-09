@@ -1049,6 +1049,7 @@ tests = [
   "xtask/tests/repo_checks.rs::lib_qa_009_reviewed_inputs_in_any_case_and_equivalent_pins_are_accepted",
   "xtask/tests/repo_checks.rs::lib_qa_009_sub_path_docker_and_local_actions_are_unpinned",
   "xtask/tests/repo_checks.rs::lib_qa_009_the_reviewed_table_records_each_pin_and_its_inputs",
+  "xtask/tests/repo_checks.rs::lib_qa_009_yaml_and_yml_workflows_are_read",
 ]
 
 [[row]]
@@ -1105,6 +1106,50 @@ source = "Slice 0005: mutants.yml run 42420891449, a TIMEOUT for `is_identifier_
 kind = "quality"
 status = "planned"
 depends_on = ["LIB-QA-007"]
+
+[[row]]
+id = "LIB-QA-013"
+area = "QA"
+milestone = "M0"
+title = "GitHub's own actions are used only at reviewed refs"
+requirement = "A gate job, or any workflow step, uses `actions/*` only at a major tag `v<N>` or at a reviewed commit SHA. GitHub resolves a commit SHA across a repository's fork network, so `actions/checkout@<sha from a fork>` (an imposter commit) can run code that GitHub never published."
+source = "Verification 0009 round 1, new class"
+kind = "quality"
+status = "planned"
+depends_on = ["LIB-QA-009"]
+
+[[row]]
+id = "LIB-QA-014"
+area = "QA"
+milestone = "M0"
+title = "Gate jobs run on GitHub-hosted runners"
+requirement = "The `runs-on` value of every gate job is a reviewed GitHub-hosted label. A self-hosted runner or a custom label could pre-set an environment that weakens a gate."
+source = "Verification 0009 round 1, new class"
+kind = "quality"
+status = "planned"
+depends_on = ["LIB-QA-008"]
+
+[[row]]
+id = "LIB-QA-015"
+area = "QA"
+milestone = "M0"
+title = "The cargo-deny action's image is reviewed or replaced"
+requirement = "The cargo-deny gate's tools are fixed as well as its action. cargo-deny-action is a docker action whose image is built at run time: its Dockerfile downloads the cargo-deny release asset by tag without a checksum, and installs unpinned `apk` packages. Either review and pin those downloads, or replace the action with a checksum-verified install of cargo-deny."
+source = "Verification 0009 round 1, new class"
+kind = "quality"
+status = "planned"
+depends_on = ["LIB-QA-009", "LIB-QA-003"]
+
+[[row]]
+id = "LIB-QA-016"
+area = "QA"
+milestone = "M0"
+title = "Repository configuration cannot weaken the gates"
+requirement = "A check fails when repository configuration outside `ci.yml` weakens a gate: `.cargo/config.toml` (`build.rustflags`, `build.rustdocflags`, `--cap-lints`, aliases that shadow `test`, `clippy` or `doc`), `rust-toolchain.toml`, `clippy.toml` or `rustfmt.toml`."
+source = "Verification 0009 round 1, new class"
+kind = "quality"
+status = "planned"
+depends_on = ["LIB-QA-008"]
 
 [[row]]
 id = "LIB-TOOL-016"

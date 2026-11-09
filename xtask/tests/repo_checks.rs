@@ -8922,13 +8922,21 @@ struct ReviewedAction {
 static REVIEWED_ACTIONS: [ReviewedAction; 3] = [
     // A docker action. Its `args` are `rust-version credentials ssh-key
     // ssh-known-hosts --log-level <log-level> --manifest-path <manifest-path>
-    // <arguments> <command> <command-arguments>`, which its entrypoint splices
-    // unquoted into `cargo-deny $*`. So `rust-version`, `credentials`,
-    // `ssh-key`, `ssh-known-hosts` and `use-git-cli` are not reviewed inputs.
+    // <arguments> <command> <command-arguments>`. The entrypoint uses the
+    // first four quoted: `rustup default "$1"` switches the toolchain, `"$2"`
+    // is written to `~/.git-credentials`, and `"$3"` and `"$4"` are written to
+    // `~/.ssh`, which adds `insteadOf` URL rewrites. Then `shift 4` drops
+    // them, and only the remaining five reach `cargo-deny $*`, unquoted. So
+    // `rust-version`, `credentials`, `ssh-key` and `ssh-known-hosts` are not
+    // reviewed inputs: they switch the toolchain, store git credentials and
+    // rewrite URLs. `use-git-cli` is deprecated and not in `args`; it is not
+    // reviewed either.
     ReviewedAction {
         action: "EmbarkStudios/cargo-deny-action",
         sha: "3c6349835b2b7b196a839186cb8b78e02f7b5f25",
         resolved_from: "v2.1.1",
+        // Each of the five is spliced unquoted into `cargo-deny $*`, which is
+        // why LIB-QA-003 judges its value.
         inputs: &[
             // `<command>`, unquoted. LIB-QA-003 requires exactly `check`.
             "command",
@@ -9130,14 +9138,19 @@ fn check_action_pins(workflows: &[(&str, &str)]) -> Vec<String> {
 /// Every workflow in `.github/workflows/`, as `(path, text)`, sorted by path:
 /// each `*.yml`, and each `*.yaml`, which GitHub reads too.
 fn real_workflows() -> Vec<(String, String)> {
-    let dir = repository_root().join(WORKFLOWS_DIR);
-    let mut workflows: Vec<(String, String)> = fs::read_dir(&dir)
-        .unwrap_or_else(|e| panic!("read {WORKFLOWS_DIR}: {e}"))
-        .map(|entry| {
-            entry
-                .unwrap_or_else(|e| panic!("read {WORKFLOWS_DIR}: {e}"))
-                .path()
-        })
+    workflow_files(&repository_root().join(WORKFLOWS_DIR))
+        .into_iter()
+        .map(|(name, text)| (format!("{WORKFLOWS_DIR}/{name}"), text))
+        .collect()
+}
+
+/// Every workflow file in `dir`, as `(file name, text)`, sorted by name: each
+/// `*.yml` and each `*.yaml`.
+fn workflow_files(dir: &Path) -> Vec<(String, String)> {
+    let shown = dir.display();
+    let mut workflows: Vec<(String, String)> = fs::read_dir(dir)
+        .unwrap_or_else(|e| panic!("read {shown}: {e}"))
+        .map(|entry| entry.unwrap_or_else(|e| panic!("read {shown}: {e}")).path())
         .filter(|path| {
             path.is_file()
                 && matches!(
@@ -9149,14 +9162,57 @@ fn real_workflows() -> Vec<(String, String)> {
             let name = path
                 .file_name()
                 .and_then(std::ffi::OsStr::to_str)
-                .expect("a workflow file name is UTF-8");
-            let rel = format!("{WORKFLOWS_DIR}/{name}");
-            let text = read(&rel);
-            (rel, text)
+                .expect("a workflow file name is UTF-8")
+                .to_owned();
+            let text = fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+            (name, text)
         })
         .collect();
     workflows.sort();
     workflows
+}
+
+/// Acceptance item 1 (verification 0009 Q9-41): the check reads `*.yaml`
+/// workflows as well as `*.yml`, and nothing else in the directory.
+#[test]
+fn lib_qa_009_yaml_and_yml_workflows_are_read() {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("lib_qa_009_workflow_files");
+    if dir.exists() {
+        fs::remove_dir_all(&dir).expect("LIB-QA-009: clear the scratch directory");
+    }
+    fs::create_dir_all(dir.join("nested.yml")).expect("LIB-QA-009: create the scratch directory");
+    let unpinned = with_cache_uses("Swatinem/rust-cache@v2");
+    for (name, text) in [
+        ("a.yml", PINS_FIXTURE),
+        ("b.yaml", unpinned.as_str()),
+        ("c.txt", unpinned.as_str()),
+        ("d.yml.bak", unpinned.as_str()),
+    ] {
+        fs::write(dir.join(name), text).expect("LIB-QA-009: write a scratch workflow");
+    }
+    let files = workflow_files(&dir);
+    let names: Vec<&str> = files.iter().map(|(name, _)| name.as_str()).collect();
+    assert_eq!(
+        names,
+        ["a.yml", "b.yaml"],
+        "LIB-QA-009: `*.yml` and `*.yaml` files are workflows, and nothing else is"
+    );
+    let pairs: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(name, text)| (name.as_str(), text.as_str()))
+        .collect();
+    let problems = check_action_pins(&pairs);
+    assert_eq!(
+        problem_codes(&problems),
+        ["action-unpinned"],
+        "LIB-QA-009: the `.yaml` workflow is judged: {problems:#?}"
+    );
+    assert!(
+        problems[0].contains("b.yaml"),
+        "LIB-QA-009: the problem names the `.yaml` file: {}",
+        problems[0]
+    );
 }
 
 /// A pinned mini-workflow: each reviewed action at its reviewed SHA with
@@ -9301,8 +9357,9 @@ fn lib_qa_009_every_workflow_pins_and_reviews_its_third_party_actions() {
 }
 
 /// Acceptance items 2 and 3: the table records each pin, the ref it was
-/// resolved from and exactly the reviewed inputs, and refuses the inputs
-/// cargo-deny-action splices into its arguments.
+/// resolved from and exactly the reviewed inputs, and refuses the
+/// cargo-deny-action inputs that switch the toolchain, store git credentials
+/// or rewrite URLs, and the deprecated `use-git-cli`.
 #[test]
 fn lib_qa_009_the_reviewed_table_records_each_pin_and_its_inputs() {
     let table: Vec<(&str, &str, &str, &[&str])> = REVIEWED_ACTIONS
@@ -9360,7 +9417,7 @@ fn lib_qa_009_the_reviewed_table_records_each_pin_and_its_inputs() {
     ] {
         assert!(
             !deny.inputs.contains(&refused),
-            "LIB-QA-009: cargo-deny-action passes `{refused}` into its arguments; it must not be a reviewed input"
+            "LIB-QA-009: cargo-deny-action's `{refused}` switches the toolchain, stores git credentials, rewrites URLs or is deprecated; it must not be a reviewed input"
         );
     }
 }
@@ -9716,6 +9773,23 @@ fn lib_qa_009_an_input_outside_the_reviewed_inputs_is_reported() {
         (
             "`override` for rust-toolchain",
             with_toolchain_input("override: true"),
+            ACTION_INPUT,
+        ),
+        (
+            // Verification 0009 F9-2: inputs are compared whole, not as
+            // prefixes in either direction.
+            "`toolchain-file` for rust-toolchain, a reviewed input as a prefix",
+            with_toolchain_input("toolchain-file: rust-toolchain.toml"),
+            ACTION_INPUT,
+        ),
+        (
+            "`components-extra` for rust-toolchain, a reviewed input as a prefix",
+            with_toolchain_input("components-extra: x"),
+            ACTION_INPUT,
+        ),
+        (
+            "`tool` for rust-toolchain, a prefix of a reviewed input",
+            with_toolchain_input("tool: x"),
             ACTION_INPUT,
         ),
         (
@@ -10708,36 +10782,8 @@ fn lib_qa_008_a_gate_job_uses_only_gate_actions() {
             before_fmt(&["- uses: ./.github/actions/setup"]),
             GATE_ACTION,
         ),
-        (
-            "`actions/checkout` with `fetch-depth`",
-            before_fmt(&[
-                "- uses: actions/checkout@v7",
-                "  with:",
-                "    fetch-depth: 0",
-            ]),
-            GATE_ACTION,
-        ),
-        (
-            "`actions/setup-python` with `cache`",
-            insert_after(f, "python-version: \"3.x\"", 0, &["cache: pip"]),
-            GATE_ACTION,
-        ),
-        (
-            "`targets` for rust-toolchain",
-            insert_after(
-                f,
-                "components: rustfmt",
-                0,
-                &["targets: wasm32-unknown-unknown"],
-            ),
-            GATE_ACTION,
-        ),
-        (
-            "`credentials` for cargo-deny-action",
-            insert_after(f, PIN_DENY, 2, &["with:", "  credentials: token"]),
-            GATE_ACTION,
-        ),
     ]);
+    assert_gate_controls(&gate_input_controls());
     assert_yaml_accepted(
         QA8,
         &[
@@ -10761,6 +10807,67 @@ fn lib_qa_008_a_gate_job_uses_only_gate_actions() {
         ],
         check_ci_gates,
     );
+}
+
+/// A `with` key outside a gate action's gate inputs, each giving exactly
+/// `[gate-action]`.
+fn gate_input_controls() -> Vec<(&'static str, String, &'static [&'static str])> {
+    let f = CI_GATES_FIXTURE;
+    let before_fmt = |lines: &[&str]| insert_before(f, &gate_step(GATE_FMT), lines);
+    vec![
+        (
+            "`actions/checkout` with `fetch-depth`",
+            before_fmt(&[
+                "- uses: actions/checkout@v7",
+                "  with:",
+                "    fetch-depth: 0",
+            ]),
+            GATE_ACTION,
+        ),
+        (
+            "`actions/setup-python` with `cache`",
+            insert_after(f, "python-version: \"3.x\"", 0, &["cache: pip"]),
+            GATE_ACTION,
+        ),
+        (
+            // Verification 0009 F8-2: gate inputs are compared whole, not as
+            // prefixes in either direction.
+            "`actions/setup-python` with `python-version-file`",
+            insert_after(
+                f,
+                "python-version: \"3.x\"",
+                0,
+                &["python-version-file: .python-version"],
+            ),
+            GATE_ACTION,
+        ),
+        (
+            "`actions/setup-python` with `python`",
+            insert_after(f, "python-version: \"3.x\"", 0, &["python: \"3.x\""]),
+            GATE_ACTION,
+        ),
+        (
+            // Verification 0009 F8-4.
+            "`actions/checkout` with a key that is not a string",
+            before_fmt(&["- uses: actions/checkout@v7", "  with: {1: x}"]),
+            GATE_ACTION,
+        ),
+        (
+            "`targets` for rust-toolchain",
+            insert_after(
+                f,
+                "components: rustfmt",
+                0,
+                &["targets: wasm32-unknown-unknown"],
+            ),
+            GATE_ACTION,
+        ),
+        (
+            "`credentials` for cargo-deny-action",
+            insert_after(f, PIN_DENY, 2, &["with:", "  credentials: token"]),
+            GATE_ACTION,
+        ),
+    ]
 }
 
 /// Acceptance item 2 (PR #16 review): no step of a gate job, the gate step
@@ -10950,6 +11057,41 @@ fn lib_qa_008_the_test_gates_run_on_exactly_the_three_oses() {
             GATE_OS_TWICE,
         ),
     ]);
+    assert_gate_controls(&strategy_shape_controls());
+}
+
+/// Verification 0009 F8-1: a `strategy` or `matrix` that is missing or not a
+/// mapping, each giving exactly `[gate-os]`.
+fn strategy_shape_controls() -> Vec<(&'static str, String, &'static [&'static str])> {
+    let f = CI_GATES_FIXTURE;
+    let matrix_from_expression = replace_line(
+        &delete_line(f, OS_LINE),
+        "matrix:",
+        "matrix: ${{ fromJSON(vars.MATRIX) }}",
+    );
+    let no_matrix = delete_line(&delete_line(f, OS_LINE), "matrix:");
+    let strategy_from_expression = replace_line(
+        &delete_line(&no_matrix, FAIL_FAST_LINE),
+        "strategy:",
+        "strategy: ${{ fromJSON(vars.STRATEGY) }}",
+    );
+    vec![
+        (
+            "the matrix from an expression",
+            matrix_from_expression,
+            GATE_OS,
+        ),
+        (
+            "`strategy` with `fail-fast` and no `matrix`",
+            no_matrix,
+            GATE_OS,
+        ),
+        (
+            "the strategy from an expression",
+            strategy_from_expression,
+            GATE_OS,
+        ),
+    ]
 }
 
 /// Acceptance items 3 and 6: `RUSTDOCFLAGS` is exactly `-D warnings`
@@ -11146,6 +11288,17 @@ fn lib_qa_008_push_and_pull_request_triggers_are_not_narrowed() {
         (
             "no `pull_request` trigger",
             delete_line(f, "pull_request:"),
+            GATE_TRIGGER,
+        ),
+        (
+            // Verification 0009 F8-3.
+            "`pull_request` a sequence",
+            replace_line(f, "pull_request:", "pull_request: [opened]"),
+            GATE_TRIGGER,
+        ),
+        (
+            "`pull_request` a string",
+            replace_line(f, "pull_request:", "pull_request: main"),
             GATE_TRIGGER,
         ),
         (
