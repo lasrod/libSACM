@@ -1186,7 +1186,7 @@ title = "Document, ElementId and typed navigation"
 requirement = "A `Document` owns its root interchange packages, in document order, and every element under them. Elements are identified by an `ElementId` newtype that keeps the `xmi:id` exactly. Users navigate through read-only borrowing views (look up by id, roots, children in containment order, parent, all elements in pre-order) without access to internal storage. `Document`, its views and `ElementId` are `Send + Sync + Debug` (ADR 0010)."
 source = "docs/architecture.md (Model); docs/sacm/decisions.md D-ID; ADR 0010; assurance-forge libs/sacm model/document.h, model/element_id.h"
 kind = "api"
-status = "implemented"
+status = "verified"
 acceptance = [
   "`Document::new()` and `Document::default()` have no roots, `element_count() == 0` and no `elements()`.",
   "`get(id)` returns a view whose `id()` and `kind()` are the inserted ones. An unknown id gives `None`. `contains` agrees with `get`. Both accept `&str`, `&String` and `&ElementId`.",
@@ -1233,6 +1233,7 @@ tests = [
   "crates/sacm/tests/document.rs::lib_api_002_view_debug_shows_kind_and_id_not_the_document",
   "crates/sacm/tests/document.rs::lib_api_002_views_borrow_the_document_not_each_other",
 ]
+verification = "docs/verification/0013-m1-document-model-round3.md"
 
 [[row]]
 id = "LIB-API-003"

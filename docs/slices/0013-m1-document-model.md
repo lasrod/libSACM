@@ -1,8 +1,8 @@
 ---
 slice: 0013
 name: m1-document-model
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [LIB-API-002, LIB-API-003]
 mode: pr
 ---
@@ -48,3 +48,4 @@ These are LIB rows. They follow:
 - 2026-11-09 verification round 2 at `d2dd904` ([record](../verification/0013-m1-document-model-round2.md)): LIB-API-003 PASS, and it is now `verified`. LIB-API-002 FAIL (its second) on exact `contains` and parent lookup, which the verifier names as its own round 1 miss. The slice stops for the maintainer's decision.
 - 2026-11-10 the maintainer approved a third, test-only fix round for LIB-API-002: exact `contains` and an exact parent lookup. Two small doc fixes run in parallel.
 - 2026-11-10 fix round 2: near-miss queries for `contains`, and ` arguments` and `argumentsé` as unknown parents (in existing tests). Two doc fixes. The full gate passes.
+- 2026-11-10 verification round 3 ([record](../verification/0013-m1-document-model-round3.md)): LIB-API-002 PASS, and it is now `verified`. The slice is done.
