@@ -111,3 +111,17 @@ recorded in the matrix rows.
     `credentials`, `ssh-key` and `ssh-known-hosts` in its unquoted `args`.
     Verification 0002 round 3 recorded them as quoted at the older `@v2` commit
     `b66acf5`. Confirm the v2.1.1 reading at `3c63498`.
+- 2026-11-09 PR #16 is a draft. CI run 42536937710 and mutants.yml run 42536937727
+  succeeded on `7a325c8`. The full run caught every mutant, with 0 missed and 0
+  timeouts.
+- 2026-11-09 Copilot review of PR #16: 2 valid comments on LIB-QA-008.
+  1. A gate job could run an `actions/*` step such as `github-script` that writes
+     `$GITHUB_ENV`.
+  2. A step-level `env: BASH_ENV` on a reviewed action could do the same.
+
+  Fixed before verification. LIB-QA-008 item 2 now requires two things:
+  - every `uses` step of a gate job is a reviewed gate action with its reviewed
+    inputs (`[gate-action]`);
+  - no step of a gate job has `env` (`[gate-env]`).
+
+  2 new tests and 2 changed controls; LIB-QA-008 now has 15 tests.

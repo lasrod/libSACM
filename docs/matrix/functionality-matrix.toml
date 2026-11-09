@@ -1034,7 +1034,6 @@ acceptance = [
   "`docs/quality/ci-actions.md` explains how to review a bump, for example a Dependabot PR, which fails this check until its action and SHA are reviewed.",
 ]
 depends_on = ["LIB-QA-003"]
-
 code = [".github/workflows/ci.yml", ".github/workflows/mutants.yml"]
 tests = [
   "xtask/tests/repo_checks.rs::lib_qa_009_a_job_level_uses_is_judged",
@@ -1173,22 +1172,23 @@ kind = "quality"
 status = "implemented"
 acceptance = [
   "A check in `xtask/tests/repo_checks.rs` reads `ci.yml` as YAML. For each gate, some step's `run` value must equal it exactly, or it is `[gate-missing]`: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, `cargo test --workspace --all-features`, `cargo test -p xtask`, `cargo doc --workspace --no-deps --all-features`, `cargo xtask matrix check`, and `python -m unittest discover -s .claude/hooks -p \"test_*.py\" -v`. A comment, `echo` or any other text around the command, or a multi-line `run`, does not count.",
-  "The job of each gate step has only the keys `name`, `runs-on`, `steps`, `env` and `permissions`, plus `strategy` for the test job, or it is `[job-key]`. So `if`, `continue-on-error` and `needs` are refused. No step of that job has `if`, `continue-on-error`, `shell` or `working-directory` (`[step-guard]`), and the gate step itself has only `run`, `name` and `id` (`[step-key]`). Every `run` step of a gate job, the cargo-deny job's included, is a gate, so no other step can write `$GITHUB_ENV` or `$GITHUB_PATH` (`[gate-step]`). A top-level `defaults` is `[workflow-defaults]`.",
+  "The job of each gate step has only the keys `name`, `runs-on`, `steps`, `env` and `permissions`, plus `strategy` for the test job, or it is `[job-key]`. So `if`, `continue-on-error` and `needs` are refused. No step of that job has `if`, `continue-on-error`, `shell` or `working-directory` (`[step-guard]`), and the gate step itself has only `run`, `name` and `id` (`[step-key]`). Every `run` step of a gate job, the cargo-deny job's included, is a gate, so no other step can write `$GITHUB_ENV` or `$GITHUB_PATH` (`[gate-step]`). Every `uses` step of a gate job names a reviewed gate action, or it is `[gate-action]`: `actions/checkout` with no inputs, `actions/setup-python` with only `python-version`, and the three LIB-QA-009 actions with their reviewed inputs. No step of a gate job has `env`, or it is `[gate-env]`, so `BASH_ENV` cannot run a script inside an action. A top-level `defaults` is `[workflow-defaults]`.",
   "The workflow `env` and every gate job's `env`, the cargo-deny job's included, have only the keys `CARGO_TERM_COLOR`, `CARGO_INCREMENTAL` and `RUSTDOCFLAGS`. Wherever it appears, `RUSTDOCFLAGS` is exactly `-D warnings`, and the `cargo doc` step runs with that value, its job's `env` taking precedence over the workflow's. Anything else is `[gate-env]`.",
   "Both `cargo test` gates run in a job with `runs-on: ${{ matrix.os }}`. That job's `strategy` has only `fail-fast` (a boolean) and `matrix`, and `matrix` has only `os`, exactly `[ubuntu-latest, windows-latest, macos-latest]`. Anything else is `[gate-os]`.",
   "`on` has `push` with only `branches: [main]`, and `pull_request` with no filter (null or an empty mapping). Anything else is `[gate-trigger]`. Other triggers are allowed.",
   "The cargo-deny gate is the LIB-QA-003 deny-job check, and it passes. The real `ci.yml` passes. Controls over a fixture give exactly the named problem for each of these: a gate commented out, wrapped in `echo`, given `|| true` or folded into a multi-line `run`; a job-level or step-level `if` or `continue-on-error`; `needs`; an OS removed or a matrix `exclude` or `include`; `RUSTDOCFLAGS` changed or moved; an added `RUSTFLAGS`; a `paths` or `branches-ignore` filter.",
 ]
 depends_on = ["LIB-QA-001"]
-
 code = [".github/workflows/ci.yml"]
 tests = [
   "xtask/tests/repo_checks.rs::lib_qa_008_a_gate_job_is_unconditional_and_not_allowed_to_fail",
+  "xtask/tests/repo_checks.rs::lib_qa_008_a_gate_job_uses_only_gate_actions",
   "xtask/tests/repo_checks.rs::lib_qa_008_a_top_level_defaults_is_refused",
   "xtask/tests/repo_checks.rs::lib_qa_008_each_gate_must_be_a_whole_run_value",
   "xtask/tests/repo_checks.rs::lib_qa_008_equivalent_and_unrelated_changes_are_accepted",
   "xtask/tests/repo_checks.rs::lib_qa_008_every_run_step_of_a_gate_job_is_a_gate",
   "xtask/tests/repo_checks.rs::lib_qa_008_no_other_variable_is_set_for_the_gates",
+  "xtask/tests/repo_checks.rs::lib_qa_008_no_step_of_a_gate_job_has_env",
   "xtask/tests/repo_checks.rs::lib_qa_008_no_step_of_a_gate_job_is_guarded",
   "xtask/tests/repo_checks.rs::lib_qa_008_parse_shape_and_merge_key_problems_are_reported_once",
   "xtask/tests/repo_checks.rs::lib_qa_008_push_and_pull_request_triggers_are_not_narrowed",

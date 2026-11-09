@@ -8782,6 +8782,8 @@ const GATE_MISSING: &[&str] = &["gate-missing"];
 const GATE_MISSING_TWICE: &[&str] = &["gate-missing", "gate-missing"];
 const GATE_MISSING_AND_STEP: &[&str] = &["gate-missing", "gate-step"];
 const GATE_STEP: &[&str] = &["gate-step"];
+const GATE_ACTION: &[&str] = &["gate-action"];
+const GATE_ENV_AND_STEP_KEY: &[&str] = &["gate-env", "step-key"];
 const STEP_KEY: &[&str] = &["step-key"];
 const STEP_GUARD: &[&str] = &["step-guard"];
 const GATE_ENV: &[&str] = &["gate-env"];
@@ -10082,8 +10084,8 @@ fn gate_os_problems(job: &Job<'_>, problems: &mut Vec<String>) {
 
 /// Acceptance item 2: every `run` step of a gate job (the cargo-deny job
 /// included) is a gate, so no other step can write `$GITHUB_ENV` or
-/// `$GITHUB_PATH` for the gates (`[gate-step]`). Steps with `uses` are
-/// allowed; LIB-QA-009's reviewed pins cover them. A `run` that is not a
+/// `$GITHUB_PATH` for the gates (`[gate-step]`). Steps with `uses` are judged
+/// by [`gate_uses_problems`]. A `run` that is not a
 /// string is a `[shape]` problem reported by [`read_workflow`].
 fn gate_step_problems(job: &Job<'_>, problems: &mut Vec<String>) {
     for (number, step) in &job.steps {
@@ -10102,9 +10104,88 @@ fn gate_step_problems(job: &Job<'_>, problems: &mut Vec<String>) {
     }
 }
 
+/// Acceptance item 2: GitHub's own actions a gate job may use, at any ref
+/// (Dependabot moves their major tags), with the inputs it may pass them.
+static GATE_GITHUB_ACTIONS: [(&str, &[&str]); 2] = [
+    ("actions/checkout", &[]),
+    ("actions/setup-python", &["python-version"]),
+];
+
+/// The inputs a gate job may pass to the action `uses` names, or `None` if
+/// it is not a gate action. The action is its `owner/repo`, compared without
+/// regard to case, at any ref: GitHub's own from [`GATE_GITHUB_ACTIONS`], the
+/// third-party ones from LIB-QA-009's [`REVIEWED_ACTIONS`] (the entry at that
+/// SHA if there is one). Pinning is LIB-QA-009's to judge, not this check's.
+/// A sub-path, a `docker://` image or a `./` action is never a gate action.
+fn gate_action_inputs(uses: &str) -> Option<&'static [&'static str]> {
+    let (action, reference) = uses.split_once('@').unwrap_or((uses, ""));
+    if let Some(entry) = reviewed_action(action, reference) {
+        return Some(entry.inputs);
+    }
+    GATE_GITHUB_ACTIONS
+        .iter()
+        .copied()
+        .chain(
+            REVIEWED_ACTIONS
+                .iter()
+                .map(|entry| (entry.action, entry.inputs)),
+        )
+        .find(|(name, _)| name.eq_ignore_ascii_case(action))
+        .map(|(_, inputs)| inputs)
+}
+
+/// Acceptance item 2: every `uses` step of a gate job (the cargo-deny job
+/// included) names a gate action and passes it only its gate inputs,
+/// compared without regard to case (`[gate-action]`). No step of a gate job,
+/// the gate step included, has `env` (`[gate-env]`), so `BASH_ENV` cannot run
+/// a script inside an action. A `uses` that is not a string, or a `with` that
+/// is not a mapping, is a `[shape]` problem reported by [`read_workflow`].
+fn gate_uses_problems(job: &Job<'_>, problems: &mut Vec<String>) {
+    for (number, step) in &job.steps {
+        let at = format!("job `{}`, step {number}", job.id);
+        if get(step, "env").is_some() {
+            problems.push(problem(
+                "gate-env",
+                format!(
+                    "{at} has a step-level `env`; no step of a gate job may set variables, so that `BASH_ENV` cannot run a script inside an action"
+                ),
+            ));
+        }
+        let Some(uses) = get(step, "uses").and_then(Yaml::as_str) else {
+            continue;
+        };
+        let Some(inputs) = gate_action_inputs(uses) else {
+            problems.push(problem(
+                "gate-action",
+                format!(
+                    "{at} uses `{uses}`, which is not a gate action; a gate job may use only `actions/checkout`, `actions/setup-python` and the reviewed actions of LIB-QA-009"
+                ),
+            ));
+            continue;
+        };
+        let Some(Yaml::Hash(with)) = get(step, "with") else {
+            continue;
+        };
+        for key in with.keys() {
+            let allowed = key
+                .as_str()
+                .is_some_and(|key| inputs.iter().any(|input| input.eq_ignore_ascii_case(key)));
+            if !allowed {
+                problems.push(problem(
+                    "gate-action",
+                    format!(
+                        "{at} passes `{}` to `{uses}`, which is not one of its gate inputs {inputs:?}",
+                        show(key)
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 /// Acceptance items 2 to 4 for one job, if it runs a gate. The cargo-deny job
-/// is judged by [`check_deny_job`], and here only by items 2 (`[gate-step]`)
-/// and 3 (its `env`).
+/// is judged by [`check_deny_job`], and here only by items 2 (`[gate-step]`,
+/// `[gate-action]` and step `env`) and 3 (its `env`).
 fn gate_job_problems(top: &Hash, job: &Job<'_>, problems: &mut Vec<String>) {
     let gates: Vec<(usize, &Hash, &str)> = job
         .steps
@@ -10114,12 +10195,14 @@ fn gate_job_problems(top: &Hash, job: &Job<'_>, problems: &mut Vec<String>) {
     if gates.is_empty() {
         if job.steps.iter().any(|(_, step)| is_deny_step(step)) {
             gate_step_problems(job, problems);
+            gate_uses_problems(job, problems);
             let what = format!("the cargo-deny job `{}`", job.id);
             gate_env_problems(get(job.map, "env"), &what, problems);
         }
         return;
     }
     gate_step_problems(job, problems);
+    gate_uses_problems(job, problems);
     let runs_tests = gates.iter().any(|(_, _, gate)| TEST_GATES.contains(gate));
     let keys: &[&str] = if runs_tests {
         &TEST_JOB_KEYS
@@ -10539,9 +10622,11 @@ fn lib_qa_008_no_step_of_a_gate_job_is_guarded() {
             STEP_KEY_AND_GUARD,
         ),
         (
+            // `env` is outside the gate step's keys, and no step of a gate
+            // job may have `env`.
             "`env` on the gate step",
             on_gate(&["env:", "  RUSTFLAGS: --cap-lints warn"]),
-            STEP_KEY,
+            GATE_ENV_AND_STEP_KEY,
         ),
         (
             "`timeout-minutes` on the gate step",
@@ -10560,13 +10645,165 @@ fn lib_qa_008_no_step_of_a_gate_job_is_guarded() {
         ),
         (
             "`working-directory` on another step",
-            before_gate(&["- uses: actions/cache@v4", "  working-directory: crates"]),
+            before_gate(&["- uses: actions/checkout@v7", "  working-directory: crates"]),
             STEP_GUARD,
         ),
         (
             "`shell` on another step",
-            before_gate(&["- uses: actions/cache@v4", "  shell: bash"]),
+            before_gate(&["- uses: actions/checkout@v7", "  shell: bash"]),
             STEP_GUARD,
+        ),
+    ]);
+}
+
+/// Acceptance item 2 (PR #16 review): every `uses` step of a gate job, the
+/// cargo-deny job included, names a gate action and passes it only its gate
+/// inputs (`[gate-action]`), so no script input can write `$GITHUB_ENV` for
+/// the gates. The action is compared without regard to case, at any ref.
+#[test]
+fn lib_qa_008_a_gate_job_uses_only_gate_actions() {
+    let f = CI_GATES_FIXTURE;
+    let before_fmt = |lines: &[&str]| insert_before(f, &gate_step(GATE_FMT), lines);
+    assert_gate_controls(&[
+        (
+            "`actions/github-script` with a `script` in the clippy job",
+            insert_before(
+                f,
+                &gate_step(GATE_CLIPPY),
+                &[
+                    "- uses: actions/github-script@v7",
+                    "  with:",
+                    "    script: core.exportVariable('RUSTFLAGS', '--cap-lints=allow')",
+                ],
+            ),
+            GATE_ACTION,
+        ),
+        (
+            "an unknown third-party action at a full SHA",
+            before_fmt(&["- uses: octo-org/octo-action@0123456789abcdef0123456789abcdef01234567"]),
+            GATE_ACTION,
+        ),
+        (
+            "an unknown third-party action at a tag",
+            before_fmt(&["- uses: octo-org/octo-action@v1"]),
+            GATE_ACTION,
+        ),
+        (
+            "another of GitHub's own actions",
+            before_fmt(&["- uses: actions/cache@v4"]),
+            GATE_ACTION,
+        ),
+        (
+            "a sub-path of a gate action",
+            before_fmt(&["- uses: actions/checkout/sub@v7"]),
+            GATE_ACTION,
+        ),
+        (
+            "a docker image",
+            before_fmt(&["- uses: docker://alpine:3.20"]),
+            GATE_ACTION,
+        ),
+        (
+            "a local action",
+            before_fmt(&["- uses: ./.github/actions/setup"]),
+            GATE_ACTION,
+        ),
+        (
+            "`actions/checkout` with `fetch-depth`",
+            before_fmt(&[
+                "- uses: actions/checkout@v7",
+                "  with:",
+                "    fetch-depth: 0",
+            ]),
+            GATE_ACTION,
+        ),
+        (
+            "`actions/setup-python` with `cache`",
+            insert_after(f, "python-version: \"3.x\"", 0, &["cache: pip"]),
+            GATE_ACTION,
+        ),
+        (
+            "`targets` for rust-toolchain",
+            insert_after(
+                f,
+                "components: rustfmt",
+                0,
+                &["targets: wasm32-unknown-unknown"],
+            ),
+            GATE_ACTION,
+        ),
+        (
+            "`credentials` for cargo-deny-action",
+            insert_after(f, PIN_DENY, 2, &["with:", "  credentials: token"]),
+            GATE_ACTION,
+        ),
+    ]);
+    assert_yaml_accepted(
+        QA8,
+        &[
+            (
+                "`Actions/Checkout@v8`",
+                before_fmt(&["- uses: Actions/Checkout@v8"]),
+            ),
+            (
+                "`setup-python` with `Python-Version`",
+                replace_line(f, "python-version: \"3.x\"", "Python-Version: \"3.x\""),
+            ),
+            (
+                "a rust-toolchain input in another case",
+                replace_line(f, "components: rustfmt", "Components: rustfmt"),
+            ),
+            (
+                // Pinning is LIB-QA-009's to judge, not this check's.
+                "a reviewed action at a tag",
+                before_fmt(&["- uses: Swatinem/rust-cache@v2"]),
+            ),
+        ],
+        check_ci_gates,
+    );
+}
+
+/// Acceptance item 2 (PR #16 review): no step of a gate job, the gate step
+/// and the cargo-deny step included, has `env` (`[gate-env]`), so `BASH_ENV`
+/// cannot run a script inside an action.
+#[test]
+fn lib_qa_008_no_step_of_a_gate_job_has_env() {
+    let f = CI_GATES_FIXTURE;
+    let before_fmt = |lines: &[&str]| insert_before(f, &gate_step(GATE_FMT), lines);
+    let toolchain = format!("- uses: {TOOLCHAIN_ACTION}");
+    assert_gate_controls(&[
+        (
+            "`env: BASH_ENV` on the toolchain step",
+            insert_after_in_job(f, "fmt", &toolchain, 2, &["env:", "  BASH_ENV: ./x.sh"]),
+            GATE_ENV,
+        ),
+        (
+            // Formerly a positive control (with `actions/cache`), before the
+            // PR #16 review.
+            "a `uses` step with `env` in a gate job",
+            before_fmt(&[
+                "- uses: actions/checkout@v7",
+                "  env:",
+                "    PREPARE: \"1\"",
+            ]),
+            GATE_ENV,
+        ),
+        (
+            "`env` on the checkout step",
+            insert_after_in_job(
+                f,
+                "clippy",
+                "- uses: actions/checkout@",
+                2,
+                &["env:", "  PREPARE: \"1\""],
+            ),
+            GATE_ENV,
+        ),
+        (
+            // LIB-QA-003's deny-job check also refuses `env` on this step.
+            "`env: BASH_ENV` on the cargo-deny step",
+            insert_after(f, PIN_DENY, 2, &["env:", "  BASH_ENV: ./x.sh"]),
+            GATE_ENV_AND_STEP_KEY,
         ),
     ]);
 }
@@ -11094,14 +11331,6 @@ fn lib_qa_008_equivalent_and_unrelated_changes_are_accepted() {
             (
                 "`permissions` on a gate job",
                 with_job_keys("fmt", &["permissions:", "  contents: read"]),
-            ),
-            (
-                "a `uses` step with `env` in a gate job",
-                insert_before(
-                    f,
-                    &fmt,
-                    &["- uses: actions/cache@v4", "  env:", "    PREPARE: \"1\""],
-                ),
             ),
             (
                 "an allowed variable in the cargo-deny job",
