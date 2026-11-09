@@ -12,9 +12,16 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 
+[features]
+# Makes `Document::insert` and `InsertError` public, so tests can build documents.
+# Not part of the stable API: it may change or disappear in any release.
+test-support = []
+
 [dependencies]
 
 [dev-dependencies]
+# The crate's own tests always build with the test seam.
+sacm = { path = ".", features = ["test-support"] }
 
 [lints]
 workspace = true

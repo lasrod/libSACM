@@ -7,7 +7,9 @@ Read, edit, validate and write assurance cases in the
 > implemented and how it is tested is tracked requirement by requirement in the
 > [functionality matrix](https://github.com/lasrod/libSACM/blob/main/docs/matrix/functionality-matrix.md).
 
-## What it does
+## Planned
+
+Implemented now: the read-only document model (`sacm::model`).
 
 - A typed model of the full SACM 2.3 metamodel: assurance case, argumentation,
   artifact and terminology packages, with their interfaces and bindings.
@@ -28,8 +30,22 @@ sacm = "0.1"
 ```
 
 ```rust
-println!("sacm {} implements SACM {}", sacm::VERSION, sacm::SACM_VERSION);
+use sacm::model::{AbstractClass, Document, ElementKind};
+
+/// Prints every element, parents before children.
+fn print_elements(doc: &Document) {
+    for element in doc.elements() {
+        println!("{} {}", element.kind(), element.id());
+    }
+}
+
+fn main() {
+    assert!(ElementKind::Claim.is_a(AbstractClass::Assertion));
+    print_elements(&Document::new());
+}
 ```
+
+There is no stable way to fill a `Document` yet: the XMI reader comes next.
 
 See the [crate documentation](https://docs.rs/sacm) for the full API.
 

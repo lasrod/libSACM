@@ -1183,20 +1183,96 @@ id = "LIB-API-002"
 area = "API"
 milestone = "M1"
 title = "Document, ElementId and typed navigation"
-requirement = "A `Document` owns one root interchange package and all elements under it; elements are identified by an `ElementId` newtype; users navigate by typed views (look up by id, iterate children by kind) without access to internal storage; `Document` and its views are `Send + Sync` and `Debug`."
-source = "docs/architecture.md (Model); D-ID"
+requirement = "A `Document` owns its root interchange packages, in document order, and every element under them. Elements are identified by an `ElementId` newtype that keeps the `xmi:id` exactly. Users navigate through read-only borrowing views (look up by id, roots, children in containment order, parent, all elements in pre-order) without access to internal storage. `Document`, its views and `ElementId` are `Send + Sync + Debug` (ADR 0010)."
+source = "docs/architecture.md (Model); docs/sacm/decisions.md D-ID; ADR 0010; assurance-forge libs/sacm model/document.h, model/element_id.h"
 kind = "api"
-status = "planned"
+status = "verified"
+acceptance = [
+  "`Document::new()` and `Document::default()` have no roots, `element_count() == 0` and no `elements()`.",
+  "`get(id)` returns a view whose `id()` and `kind()` are the inserted ones. An unknown id gives `None`. `contains` agrees with `get`. Both accept `&str`, `&String` and `&ElementId`.",
+  "`roots()` yields the roots in insertion order, and each root's `parent()` is `None`.",
+  "`children()` yields the direct children in insertion order, including mixed kinds. Each child's `parent()` is the element. Filtering `children()` by `kind()` keeps the order.",
+  "`elements()` visits every element exactly once, in pre-order document order, and its count equals `element_count()`.",
+  "`ElementId::new`, `From<&str>`, `From<String>`, `as_str()` and `Display` keep the value byte for byte. Eq, Ord and Hash follow the string.",
+  "`insert` (under the `test-support` feature) refuses a duplicate id, an empty id and an unknown parent, and leaves the document unchanged.",
+  "A cloned document navigates the same way as the original.",
+  "`Document`, `SacmElement<'_>` and `ElementId` are `Send + Sync + Debug`. A view's `Debug` shows its kind and id, not the document.",
+  "Without `test-support`, no public item exposes storage or mutation: no public fields, no indices, no mutating method.",
+]
+code = ["crates/sacm/src/model/document.rs", "crates/sacm/src/model/id.rs", "crates/sacm/Cargo.toml"]
+tests = [
+  "crates/sacm/tests/document.rs::lib_api_002_children_are_in_insertion_order_across_kinds",
+  "crates/sacm/tests/document.rs::lib_api_002_children_filtered_by_kind_keep_their_order",
+  "crates/sacm/tests/document.rs::lib_api_002_cloned_document_is_independent_of_the_original",
+  "crates/sacm/tests/document.rs::lib_api_002_cloned_document_navigates_like_the_original",
+  "crates/sacm/tests/document.rs::lib_api_002_contains_agrees_with_get",
+  "crates/sacm/tests/document.rs::lib_api_002_document_debug_lists_the_count_and_ids_in_pre_order",
+  "crates/sacm/tests/document.rs::lib_api_002_document_keeps_inserted_ids_exactly",
+  "crates/sacm/tests/document.rs::lib_api_002_document_views_and_ids_are_send_sync_and_debug",
+  "crates/sacm/tests/document.rs::lib_api_002_each_child_has_the_element_as_parent",
+  "crates/sacm/tests/document.rs::lib_api_002_element_id_collections_are_searchable_by_str",
+  "crates/sacm/tests/document.rs::lib_api_002_element_id_debug_shows_the_value",
+  "crates/sacm/tests/document.rs::lib_api_002_element_id_eq_ord_and_hash_follow_the_string",
+  "crates/sacm/tests/document.rs::lib_api_002_element_id_keeps_its_value_byte_for_byte",
+  "crates/sacm/tests/document.rs::lib_api_002_elements_are_in_pre_order_document_order",
+  "crates/sacm/tests/document.rs::lib_api_002_elements_handle_deeply_nested_packages",
+  "crates/sacm/tests/document.rs::lib_api_002_elements_visit_each_element_once_and_match_element_count",
+  "crates/sacm/tests/document.rs::lib_api_002_get_of_an_unknown_id_is_none",
+  "crates/sacm/tests/document.rs::lib_api_002_get_returns_the_inserted_id_and_kind",
+  "crates/sacm/tests/document.rs::lib_api_002_insert_error_display_names_the_offending_id",
+  "crates/sacm/tests/document.rs::lib_api_002_insert_refuses_a_duplicate_id",
+  "crates/sacm/tests/document.rs::lib_api_002_insert_refuses_an_empty_id",
+  "crates/sacm/tests/document.rs::lib_api_002_insert_refuses_an_unknown_parent",
+  "crates/sacm/tests/document.rs::lib_api_002_insert_treats_ids_differing_in_case_or_space_as_distinct",
+  "crates/sacm/tests/document.rs::lib_api_002_leaf_has_no_children",
+  "crates/sacm/tests/document.rs::lib_api_002_lookup_accepts_str_string_and_element_id",
+  "crates/sacm/tests/document.rs::lib_api_002_new_and_default_documents_are_empty",
+  "crates/sacm/tests/document.rs::lib_api_002_refused_inserts_do_not_reserve_their_id",
+  "crates/sacm/tests/document.rs::lib_api_002_roots_are_in_insertion_order",
+  "crates/sacm/tests/document.rs::lib_api_002_roots_have_no_parent",
+  "crates/sacm/tests/document.rs::lib_api_002_view_debug_shows_kind_and_id_not_the_document",
+  "crates/sacm/tests/document.rs::lib_api_002_views_borrow_the_document_not_each_other",
+]
+verification = "docs/verification/0013-m1-document-model-round3.md"
 
 [[row]]
 id = "LIB-API-003"
 area = "API"
 milestone = "M1"
 title = "Element kind metadata"
-requirement = "A public, non-exhaustive `ElementKind` enumerates every concrete SACM 2.3 class, reports its SACM class name and package, and answers is-a questions against the abstract superclasses (ModelElement, ArtifactElement, ArgumentAsset, Assertion, AssertedRelationship, ...)."
-source = "ptc/22-03-13 (all packages); docs/sacm/metamodel-inventory.md"
+requirement = "A public, non-exhaustive `ElementKind` lists every concrete SACMElement class of SACM 2.3 (LangString, MultiLangString and ExpressionLangString are values and have no kind). It reports each class's SACM name and package, and answers is-a questions against the abstract classes, which are a separate `AbstractClass` enum (ADR 0010)."
+source = "ptc/22-03-13 (all packages); docs/sacm/metamodel-inventory.md; ADR 0010; assurance-forge libs/sacm metadata/element_kind.h"
 kind = "api"
-status = "planned"
+status = "verified"
+acceptance = [
+  "`ElementKind::ALL` holds exactly the inventory's concrete classes, minus the three value types: 38 kinds, each once.",
+  "`name()` and `Display` give the exact SACM spelling, including `ArtifactAssetRelationship` (D-TEXT-MODEL).",
+  "`package()` matches the inventory section. `MetamodelPackage::name()` is one of `Base`, `AssuranceCase`, `Terminology`, `Argumentation` and `Artifact`.",
+  "`AbstractClass::ALL` holds the 13 abstract classes of the inventory, each with `name()` and `package()`.",
+  "For every one of the 38 × 13 pairs, `kind.is_a(class)` is true exactly when `class` is in the kind's generalization chain in the inventory.",
+  "For every one of the 38 × 38 pairs, `is_kind_of` is true exactly when the kinds are equal or the other kind is in the chain (the Interface and Binding of each package).",
+  "`is_package()` is true exactly for the 12 package, interface and binding kinds.",
+  "`ElementKind`, `AbstractClass` and `MetamodelPackage` are `#[non_exhaustive]`, `Copy + Eq + Ord + Hash + Debug + Display + Send + Sync`.",
+]
+code = ["crates/sacm/src/model/kind.rs"]
+tests = [
+  "crates/sacm/tests/element_kind.rs::lib_api_003_abstract_class_all_holds_each_abstract_inventory_class_once",
+  "crates/sacm/tests/element_kind.rs::lib_api_003_abstract_class_package_and_display_match_the_inventory",
+  "crates/sacm/tests/element_kind.rs::lib_api_003_all_holds_each_concrete_inventory_class_once",
+  "crates/sacm/tests/element_kind.rs::lib_api_003_artifact_asset_relationship_has_the_text_spelling",
+  "crates/sacm/tests/element_kind.rs::lib_api_003_each_kind_and_class_name_is_its_own",
+  "crates/sacm/tests/element_kind.rs::lib_api_003_inventory_parses_into_the_five_packages",
+  "crates/sacm/tests/element_kind.rs::lib_api_003_is_a_follows_the_inventory_chains",
+  "crates/sacm/tests/element_kind.rs::lib_api_003_is_kind_of_follows_the_inventory_chains",
+  "crates/sacm/tests/element_kind.rs::lib_api_003_is_package_holds_for_packages_interfaces_and_bindings",
+  "crates/sacm/tests/element_kind.rs::lib_api_003_kind_display_is_its_sacm_name",
+  "crates/sacm/tests/element_kind.rs::lib_api_003_kind_package_matches_the_inventory_section",
+  "crates/sacm/tests/element_kind.rs::lib_api_003_kind_types_are_plain_values",
+  "crates/sacm/tests/element_kind.rs::lib_api_003_only_interfaces_and_bindings_are_kinds_of_another_kind",
+  "crates/sacm/tests/element_kind.rs::lib_api_003_package_names_are_the_five_sacm_packages",
+  "crates/sacm/tests/element_kind.rs::lib_api_003_value_types_have_no_kind",
+]
+verification = "docs/verification/0013-m1-document-model-round2.md"
 
 [[row]]
 id = "LIB-API-004"

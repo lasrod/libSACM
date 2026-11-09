@@ -247,6 +247,9 @@ dependencies = [
 [[package]]
 name = "sacm"
 version = "0.1.0"
+dependencies = [
+ "sacm",
+]
 
 [[package]]
 name = "sacm-cli"
