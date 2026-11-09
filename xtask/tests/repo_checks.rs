@@ -4,7 +4,8 @@
 //! PR-reuse and full-run-dispatch rules (LIB-QA-011), the CI gates as live
 //! steps (LIB-QA-008), the pinning and reviewed inputs of third-party CI
 //! actions (LIB-QA-009), the CI job that checks the mutation exclusions
-//! (LIB-QA-010), and the git-ignore that keeps OMG documents out of the
+//! (LIB-QA-010), cargo-mutants' test tool and nextest profile (LIB-QA-012,
+//! ADR 0009), and the git-ignore that keeps OMG documents out of the
 //! repository (LIB-TOOL-002).
 //!
 //! These guard against a gate being removed or drifting out of step with the
@@ -3168,6 +3169,10 @@ fn lib_tool_002_reference_directory_is_git_ignored() {
 /// `mutants.yml` and `CONTRIBUTING.md`.
 const MUTANTS_INSTALL: &str = "cargo install cargo-mutants --locked --version 27.1.0";
 
+/// ADR 0009 (LIB-QA-012): the one command that installs cargo-nextest in a
+/// mutants job, after the cargo-mutants install and before `cargo mutants`.
+const NEXTEST_INSTALL: &str = "cargo install cargo-nextest --locked --version 0.9.151";
+
 /// D1 and D4: the PR job's command.
 const MUTANTS_PR_COMMAND: &str = "cargo mutants --workspace --in-diff mutants.diff";
 
@@ -3207,10 +3212,11 @@ const MATRIX_TOML: &str = "docs/matrix/functionality-matrix.toml";
 const MUTANTS_GITIGNORE_RULE: &str = "/mutants.out*";
 
 /// The reference shape of the `mutants` job in `ci.yml` (P1; D1 to D9 and
-/// D11). It sits in a minimal workflow that has the real file's triggers,
-/// permissions and environment, plus one other job for mutations to use. The
-/// `mutants` job is what `ci.yml` is to contain. `timeout-minutes` is a
-/// placeholder, to be sized from the measured run (D16).
+/// D11), with the nextest install of ADR 0009 (LIB-QA-012). It sits in a
+/// minimal workflow that has the real file's triggers, permissions and
+/// environment, plus one other job for mutations to use. The `mutants` job is
+/// what `ci.yml` is to contain. `timeout-minutes` is a placeholder, to be
+/// sized from the measured run (D16).
 const CI_MUTANTS_FIXTURE: &str = r#"name: CI
 
 on:
@@ -3244,6 +3250,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo install cargo-mutants --locked --version 27.1.0
+      - run: cargo install cargo-nextest --locked --version 0.9.151
       - name: Write the pull request's diff
         env:
           BASE_REF: ${{ github.base_ref }}
@@ -3263,6 +3270,8 @@ const CI_ON: &str = "on:\n  push:\n    branches: [main]\n  pull_request:\n  work
 // Lines (trimmed) of `CI_MUTANTS_FIXTURE` that mutations edit.
 const PR_STEP: &str = "- run: cargo mutants --workspace --in-diff mutants.diff";
 const INSTALL_STEP: &str = "- run: cargo install cargo-mutants --locked --version 27.1.0";
+const NEXTEST_STEP: &str = "- run: cargo install cargo-nextest --locked --version 0.9.151";
+const CACHE_STEP: &str = "- uses: Swatinem/rust-cache@v2";
 const DIFF_STEP: &str = "- name: Write the pull request's diff";
 const DIFF_RUN: &str = r#"run: git diff "origin/${BASE_REF}...HEAD" > mutants.diff"#;
 const BASE_REF_LINE: &str = "BASE_REF: ${{ github.base_ref }}";
@@ -3273,9 +3282,10 @@ const PR_JOB_IF: &str = "if: github.event_name == 'pull_request'";
 const OTHER_STEP: &str = "- run: cargo test -p xtask";
 
 /// The reference shape of `.github/workflows/mutants.yml` (P2; D1, D5, D10,
-/// D11): weekly, on demand, and on pull requests that change the D10 paths,
-/// over 4 shards. `timeout-minutes` is a placeholder, to be sized from the
-/// measured run (D16).
+/// D11, and the nextest install and profile path of ADR 0009): weekly, on
+/// demand, and on pull requests that change the D10 paths or
+/// `.config/nextest.toml`, over 4 shards. `timeout-minutes` is a placeholder,
+/// to be sized from the measured run (D16).
 const FULL_RUN_FIXTURE: &str = r#"name: mutants
 
 on:
@@ -3285,6 +3295,7 @@ on:
   pull_request:
     paths:
       - .cargo/mutants.toml
+      - .config/nextest.toml
       - .github/workflows/mutants.yml
       - "crates/**"
       - "xtask/**"
@@ -3312,6 +3323,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo install cargo-mutants --locked --version 27.1.0
+      - run: cargo install cargo-nextest --locked --version 0.9.151
       - run: cargo mutants --workspace --shard ${{ matrix.shard }}/4
       - uses: actions/upload-artifact@v4
         if: always()
@@ -3326,7 +3338,7 @@ const FULL_STEP: &str = "- run: cargo mutants --workspace --shard ${{ matrix.sha
 const FULL_SHARDS: &str = "shard: [0, 1, 2, 3]";
 const FULL_CRON: &str = r#"- cron: "0 3 * * 1""#;
 const FULL_ARTIFACT_NAME: &str = "name: mutants-shard-${{ matrix.shard }}";
-const FULL_PR_BLOCK: &str = "  pull_request:\n    paths:\n      - .cargo/mutants.toml\n      - .github/workflows/mutants.yml\n      - \"crates/**\"\n      - \"xtask/**\"\n      - Cargo.toml\n      - Cargo.lock\n";
+const FULL_PR_BLOCK: &str = "  pull_request:\n    paths:\n      - .cargo/mutants.toml\n      - .config/nextest.toml\n      - .github/workflows/mutants.yml\n      - \"crates/**\"\n      - \"xtask/**\"\n      - Cargo.toml\n      - Cargo.lock\n";
 const FULL_PATH_LINES: [&str; 6] = [
     "- .cargo/mutants.toml",
     "- .github/workflows/mutants.yml",
@@ -3349,12 +3361,14 @@ enum MutantsRun {
 
 /// The reviewed steps of a mutants job (P1.5): each is recognised by its
 /// `uses` prefix or its exact `run`. Anything else is `Unknown`.
+/// `NextestInstall` is [`NEXTEST_INSTALL`] (ADR 0009).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum MutantsStep {
     Checkout,
     Toolchain,
     Cache,
     Install,
+    NextestInstall,
     Diff,
     Mutants,
     Upload,
@@ -3450,6 +3464,7 @@ fn mutants_step_kind(step: &Hash, run: MutantsRun) -> MutantsStep {
         }
         (None, Some(command)) if !has_uses => match (command, run) {
             (MUTANTS_INSTALL, _) => MutantsStep::Install,
+            (NEXTEST_INSTALL, _) => MutantsStep::NextestInstall,
             (MUTANTS_DIFF_COMMAND, MutantsRun::PullRequest) => MutantsStep::Diff,
             (MUTANTS_PR_COMMAND, MutantsRun::PullRequest) => MutantsStep::Mutants,
             (command, MutantsRun::Full) if full_run_shard_count(command).is_some() => {
@@ -3758,7 +3773,10 @@ fn runner_and_timeout_problems(job: &Job<'_>, label: &str, problems: &mut Vec<St
 fn step_keys(kind: MutantsStep) -> &'static [&'static str] {
     match kind {
         MutantsStep::Checkout | MutantsStep::Toolchain | MutantsStep::Cache => &USES_STEP_KEYS,
-        MutantsStep::Install | MutantsStep::Diff | MutantsStep::Mutants => &RUN_STEP_KEYS,
+        MutantsStep::Install
+        | MutantsStep::NextestInstall
+        | MutantsStep::Diff
+        | MutantsStep::Mutants => &RUN_STEP_KEYS,
         MutantsStep::Upload => &UPLOAD_STEP_KEYS,
         MutantsStep::Unknown => &[],
     }
@@ -3775,7 +3793,7 @@ fn step_problems(steps: &MutantsSteps<'_>, label: &str, problems: &mut Vec<Strin
                 .map_or_else(|| format!("{step:?}"), show);
             problems.push(problem(
                 "mutants-step-unknown",
-                format!("{what} (`{shown}`) is none of checkout, toolchain, cache, install, diff, mutants and upload"),
+                format!("{what} (`{shown}`) is none of checkout, toolchain, cache, install, nextest install, diff, mutants and upload"),
             ));
         } else {
             key_allowlist(step, step_keys(kind), "step-key", &what, problems);
@@ -3790,7 +3808,9 @@ fn step_problems(steps: &MutantsSteps<'_>, label: &str, problems: &mut Vec<Strin
 }
 
 /// `[mutants-install]` (P1.4): the exact install, before the mutants step,
-/// and no other install of anything.
+/// and no other install of anything. ADR 0009: the exact nextest install is
+/// also reviewed, if present, after the cargo-mutants install and before the
+/// mutants step. Its absence is LIB-QA-012's `[nextest-install-missing]`.
 fn install_problems(
     steps: &MutantsSteps<'_>,
     first: usize,
@@ -3798,7 +3818,8 @@ fn install_problems(
     problems: &mut Vec<String>,
 ) {
     let code = "mutants-install";
-    match steps.iter().position(|s| s.2 == MutantsStep::Install) {
+    let install = steps.iter().position(|s| s.2 == MutantsStep::Install);
+    match install {
         None => problems.push(problem(
             code,
             format!("{label} has no step whose `run` is exactly `{MUTANTS_INSTALL}`"),
@@ -3809,14 +3830,24 @@ fn install_problems(
         )),
         Some(_) => {}
     }
+    for (at, &(number, _, kind)) in steps.iter().enumerate() {
+        if kind == MutantsStep::NextestInstall
+            && (at > first || install.is_some_and(|install| at < install))
+        {
+            problems.push(problem(
+                code,
+                format!("{label}, step {number} must install cargo-nextest after cargo-mutants and before the step that runs it (ADR 0009)"),
+            ));
+        }
+    }
     for &(number, step, kind) in steps {
         let text = |key: &str| get(step, key).and_then(Yaml::as_str).unwrap_or_default();
-        if kind != MutantsStep::Install
+        if !matches!(kind, MutantsStep::Install | MutantsStep::NextestInstall)
             && (text("run").contains("install") || text("uses").contains("install"))
         {
             problems.push(problem(
                 code,
-                format!("{label}, step {number} installs something other than exactly `{MUTANTS_INSTALL}`"),
+                format!("{label}, step {number} installs something other than exactly `{MUTANTS_INSTALL}` or `{NEXTEST_INSTALL}`"),
             ));
         }
     }
@@ -4425,8 +4456,11 @@ fn source_skip_problems(workspace: &WorkspaceSources) -> Vec<String> {
 }
 
 /// The keys `.cargo/mutants.toml` may have (P4.2). Any other key, including
-/// `examine_globs` and `examine_re`, is `[unreviewed-key]`.
-const REVIEWED_MUTANTS_KEYS: [&str; 12] = [
+/// `examine_globs` and `examine_re`, is `[unreviewed-key]`; so is a key of
+/// [`NEXTEST_MUTANTS_KEYS`] with any value but its reviewed one (ADR 0009).
+const REVIEWED_MUTANTS_KEYS: [&str; 14] = [
+    "test_tool",
+    "additional_cargo_test_args",
     "cap_lints",
     "all_features",
     "test_workspace",
@@ -4439,6 +4473,19 @@ const REVIEWED_MUTANTS_KEYS: [&str; 12] = [
     "build_timeout_multiplier",
     "sharding",
     "error_values",
+];
+
+/// ADR 0009: the `.cargo/mutants.toml` keys that are reviewed with one value
+/// only, as (key, the value written inline, LIB-QA-012's code for it lost).
+/// LIB-QA-007 accepts each key absent or with exactly this value; LIB-QA-012
+/// requires it.
+const NEXTEST_MUTANTS_KEYS: [(&str, &str, &str); 2] = [
+    ("test_tool", r#""nextest""#, "nextest-test-tool"),
+    (
+        "additional_cargo_test_args",
+        r#"["--profile=mutants", "--no-tests=warn"]"#,
+        "nextest-test-args",
+    ),
 ];
 
 /// The config keys whose entries exclude mutants, each of which the triage
@@ -4828,12 +4875,22 @@ fn check_mutants_config(
             return problems;
         }
     };
-    for key in table.keys() {
+    for (key, value) in &table {
         if !REVIEWED_MUTANTS_KEYS.contains(&key.as_str()) {
             problems.push(problem(
                 "unreviewed-key",
                 format!("{MUTANTS_CONFIG} has the key `{key}`, which has not been reviewed"),
             ));
+        } else if let Some((_, reviewed, _)) = NEXTEST_MUTANTS_KEYS
+            .iter()
+            .find(|(fixed, _, _)| fixed == key)
+        {
+            if *value != toml_value(reviewed) {
+                problems.push(problem(
+                    "unreviewed-key",
+                    format!("{MUTANTS_CONFIG} has `{key} = {value}`; only `{key} = {reviewed}` has been reviewed (ADR 0009)"),
+                ));
+            }
         }
     }
     let is_true = |key: &str| matches!(table.get(key), Some(toml::Value::Boolean(true)));
@@ -5210,8 +5267,9 @@ const JOB_KEY_MERGE: &[&str] = &["job-key", "merge-key"];
 const STEP_KEY_GUARD_MERGE: &[&str] = &["step-key", "step-guard", "merge-key"];
 
 /// P1.2: flags that change what cargo-mutants tests or how it reports, each
-/// of which makes the command inexact.
-const ADDED_MUTANTS_FLAGS: [&str; 19] = [
+/// of which makes the command inexact. ADR 0009: the test tool and its
+/// arguments come only from `.cargo/mutants.toml`, never from the command.
+const ADDED_MUTANTS_FLAGS: [&str; 22] = [
     "--check",
     "--list",
     "--list-files",
@@ -5230,6 +5288,9 @@ const ADDED_MUTANTS_FLAGS: [&str; 19] = [
     "--baseline=skip",
     "--iterate",
     "--test-tool nextest",
+    "--test-tool cargo",
+    "--test-tool=cargo",
+    "--cargo-test-arg=--profile=default",
     "--cap-lints false",
 ];
 
@@ -5644,6 +5705,143 @@ fn lib_qa_007_mutants_job_check_rejects_install_bypasses() {
 #[test]
 fn lib_qa_007_mutants_job_check_rejects_unknown_steps() {
     assert_pr_job_mutations(&unknown_step_mutations(CI_MUTANTS_FIXTURE, PR_STEP));
+}
+
+/// ADR 0009 on `text`, a workflow whose mutants step's first line is `step`:
+/// any spelling of the nextest install but [`NEXTEST_INSTALL`] is an unknown
+/// step that installs something; the exact one anywhere but between the
+/// cargo-mutants install and the mutants step is `[mutants-install]`.
+fn nextest_install_mutations(text: &str, step: &str) -> Vec<Mutation> {
+    let install = |command: &str| replace_line(text, NEXTEST_STEP, &format!("- run: {command}"));
+    let unknown_install: &'static [&'static str] = &["mutants-step-unknown", "mutants-install"];
+    let mut mutations: Vec<Mutation> = [
+        (
+            "a different version",
+            "cargo install cargo-nextest --locked --version 0.9.150".to_owned(),
+        ),
+        (
+            "a version below 0.9.111",
+            "cargo install cargo-nextest --locked --version 0.9.100".to_owned(),
+        ),
+        (
+            "--locked dropped",
+            "cargo install cargo-nextest --version 0.9.151".to_owned(),
+        ),
+        (
+            "--version dropped",
+            "cargo install cargo-nextest --locked".to_owned(),
+        ),
+        (
+            "^0.9.151",
+            "cargo install cargo-nextest --locked --version ^0.9.151".to_owned(),
+        ),
+        ("`|| true` appended", format!("{NEXTEST_INSTALL} || true")),
+        ("--force appended", format!("{NEXTEST_INSTALL} --force")),
+        (
+            "--git",
+            format!("{NEXTEST_INSTALL} --git https://github.com/nextest-rs/nextest"),
+        ),
+        (
+            "cargo binstall",
+            "cargo binstall --no-confirm cargo-nextest@0.9.151".to_owned(),
+        ),
+    ]
+    .into_iter()
+    .map(|(name, command)| mutation(name, install(&command), unknown_install))
+    .collect();
+    mutations.extend([
+        mutation(
+            "the install action for nextest",
+            replace_lines(
+                text,
+                NEXTEST_STEP,
+                &[
+                    "- uses: taiki-e/install-action@v2",
+                    "  with:",
+                    "    tool: cargo-nextest@0.9.151",
+                ],
+            ),
+            unknown_install,
+        ),
+        mutation(
+            "after the cargo mutants step",
+            move_step_after(text, NEXTEST_STEP, step),
+            MUTANTS_INSTALL_CODE,
+        ),
+        mutation(
+            "before the cargo-mutants install",
+            move_step_after(text, NEXTEST_STEP, CACHE_STEP),
+            MUTANTS_INSTALL_CODE,
+        ),
+        mutation(
+            "a second, exact install after the cargo mutants step",
+            insert_after(text, step, 0, &[NEXTEST_STEP]),
+            MUTANTS_INSTALL_CODE,
+        ),
+        mutation(
+            "if: false on the nextest install",
+            insert_after(text, NEXTEST_STEP, 2, &["if: false"]),
+            STEP_KEY_AND_GUARD,
+        ),
+        mutation(
+            "RUSTFLAGS on the nextest install",
+            insert_after(
+                text,
+                NEXTEST_STEP,
+                2,
+                &["env:", "  RUSTFLAGS: --cfg mutants"],
+            ),
+            MUTANTS_ENV_CODE,
+        ),
+    ]);
+    mutations
+}
+
+/// ADR 0009 controls on `text`: the nextest install named, quoted, or absent.
+/// Its absence is LIB-QA-012's to report, not LIB-QA-007's.
+fn nextest_install_controls(text: &str) -> Vec<(&'static str, String)> {
+    vec![
+        (
+            "a name on the nextest install",
+            insert_after(text, NEXTEST_STEP, 2, &["name: Install cargo-nextest"]),
+        ),
+        (
+            "a double-quoted nextest install",
+            replace_line(
+                text,
+                NEXTEST_STEP,
+                &format!("- \"run\": \"{NEXTEST_INSTALL}\""),
+            ),
+        ),
+        (
+            "no nextest install (LIB-QA-012 reports it)",
+            delete_step(text, NEXTEST_STEP),
+        ),
+    ]
+}
+
+/// ADR 0009, LIB-QA-012 item 4: the nextest install is a reviewed step of
+/// `ci.yml`'s mutants job, in exactly one spelling and place.
+#[test]
+fn lib_qa_007_mutants_job_check_reviews_the_nextest_install() {
+    let ci = CI_MUTANTS_FIXTURE;
+    let mut mutations = nextest_install_mutations(ci, PR_STEP);
+    mutations.push(mutation(
+        "last, after the upload step",
+        move_step_after(ci, NEXTEST_STEP, UPLOAD_STEP),
+        MUTANTS_INSTALL_CODE,
+    ));
+    assert_pr_job_mutations(&mutations);
+    assert_yaml_accepted(QA7, &nextest_install_controls(ci), check_mutants_pr_job);
+}
+
+/// ADR 0009, LIB-QA-012 item 4: the nextest install is a reviewed step of the
+/// full run's job, in exactly one spelling and place.
+#[test]
+fn lib_qa_007_full_run_check_reviews_the_nextest_install() {
+    let w = FULL_RUN_FIXTURE;
+    assert_full_run_mutations(&nextest_install_mutations(w, FULL_STEP));
+    assert_yaml_accepted(QA7, &nextest_install_controls(w), check_full_run_text);
 }
 
 #[test]
@@ -6870,6 +7068,15 @@ all_features = true
 test_workspace = false
 ";
 
+/// ADR 0009 (LIB-QA-012 item 1): the test tool and its arguments, appended to
+/// [`CONFIG_FIXTURE`]. The lead's D1 text.
+const NEXTEST_MUTANTS_LINES: &str = "
+# Run the tests under nextest, with the profile that stops every running test
+# at the first failure (ADR 0009, LIB-QA-012).
+test_tool = \"nextest\"
+additional_cargo_test_args = [\"--profile=mutants\", \"--no-tests=warn\"]
+";
+
 /// An example of each kind of exclusion, in the form P4.6 and P4.7 accept.
 /// (Not real triage: the mutant is made up.)
 const CONFIG_EXCLUSIONS: &str = r#"
@@ -7019,14 +7226,15 @@ fn lib_qa_007_mutants_config_is_reviewed() {
     assert_config_cases(&[]);
 }
 
-/// P4.2: keys outside [`REVIEWED_MUTANTS_KEYS`], each with a value that
-/// would narrow or redirect the run.
+/// P4.2: keys outside [`REVIEWED_MUTANTS_KEYS`], or (ADR 0009) a key of
+/// [`NEXTEST_MUTANTS_KEYS`] with another value, each with a value that would
+/// narrow or redirect the run.
 const UNREVIEWED_MUTANTS_KEYS: [(&str, &str); 13] = [
     ("additional_cargo_args", r#"["--release"]"#),
     ("additional_cargo_test_args", r#"["--", "--skip", "lib_"]"#),
     ("output", r#""elsewhere""#),
     ("profile", r#""mutants""#),
-    ("test_tool", r#""nextest""#),
+    ("test_tool", r#""cargo""#),
     ("test_package", r#"["sacm"]"#),
     ("copy_target", "true"),
     ("copy_vcs", "true"),
@@ -7066,6 +7274,115 @@ fn lib_qa_007_mutants_config_check_rejects_parse_errors_and_unreviewed_keys() {
             &format!("{key} = {value}"),
             &["unreviewed-key"],
         ));
+    }
+    assert_config_cases(&cases);
+}
+
+/// ADR 0009: values of `test_tool` and `additional_cargo_test_args` other
+/// than the reviewed ones, each of which is `[unreviewed-key]`.
+const OTHER_NEXTEST_VALUES: [(&str, &str); 16] = [
+    ("test_tool", r#""cargo""#),
+    ("test_tool", r#""Nextest""#),
+    ("test_tool", r#""nextest ""#),
+    ("test_tool", r#"["nextest"]"#),
+    ("test_tool", "true"),
+    ("additional_cargo_test_args", "[]"),
+    ("additional_cargo_test_args", r#"["--profile=mutants"]"#),
+    ("additional_cargo_test_args", r#"["--no-tests=warn"]"#),
+    (
+        "additional_cargo_test_args",
+        r#"["--profile=default", "--no-tests=warn"]"#,
+    ),
+    (
+        "additional_cargo_test_args",
+        r#"["--profile=mutants", "--no-tests=pass"]"#,
+    ),
+    (
+        "additional_cargo_test_args",
+        r#"["--no-tests=warn", "--profile=mutants"]"#,
+    ),
+    (
+        "additional_cargo_test_args",
+        r#"["--profile", "mutants", "--no-tests=warn"]"#,
+    ),
+    (
+        "additional_cargo_test_args",
+        r#"["--profile=mutants", "--no-tests=warn", "-E", "not test(lib_)"]"#,
+    ),
+    (
+        "additional_cargo_test_args",
+        r#"["--profile=mutants", "--no-tests=warn", "--no-fail-fast"]"#,
+    ),
+    (
+        "additional_cargo_test_args",
+        r#""--profile=mutants --no-tests=warn""#,
+    ),
+    ("additional_cargo_test_args", r#"["--", "--skip", "lib_"]"#),
+];
+
+/// ADR 0009, LIB-QA-012 item 4: the LIB-QA-007 config check accepts
+/// `test_tool` and `additional_cargo_test_args` absent or with exactly their
+/// reviewed values, and refuses every other value as `[unreviewed-key]`.
+#[test]
+fn lib_qa_007_mutants_config_check_accepts_only_the_reviewed_nextest_values() {
+    let nextest = format!("{CONFIG_FIXTURE}{NEXTEST_MUTANTS_LINES}");
+    let cases: Vec<ConfigCase> = OTHER_NEXTEST_VALUES
+        .iter()
+        .map(|(key, value)| {
+            let reviewed = NEXTEST_MUTANTS_KEYS
+                .iter()
+                .find(|(fixed, _, _)| fixed == key)
+                .map(|(_, reviewed, _)| format!("{key} = {reviewed}"))
+                .expect("the key has a reviewed value");
+            config_case(
+                format!("{key} = {value}"),
+                replace_once(&nextest, &reviewed, &format!("{key} = {value}")),
+                TRIAGE_FIXTURE.to_owned(),
+                &["unreviewed-key"],
+            )
+        })
+        .collect();
+    let ids = matrix_ids();
+    let workspace = real_workspace();
+    for case in &cases {
+        let problems = check_mutants_config(&case.config, &workspace, &case.triage, &ids);
+        assert_eq!(
+            problem_codes(&problems),
+            ["unreviewed-key"],
+            "LIB-QA-007: `{}` must give exactly one `[unreviewed-key]`; it gave {problems:#?}",
+            case.name
+        );
+        let key = case.name.split(" = ").next().unwrap_or_default();
+        assert!(
+            problems[0].contains(&format!("`{key} = ")),
+            "LIB-QA-007: the `[unreviewed-key]` for `{}` must name the key and its value: {problems:#?}",
+            case.name
+        );
+    }
+    for (name, config) in [
+        ("both keys with their reviewed values", nextest.clone()),
+        (
+            "the reviewed values as literal strings",
+            nextest.replace(r#""nextest""#, "'nextest'").replace(
+                r#"["--profile=mutants", "--no-tests=warn"]"#,
+                "[\n  '--profile=mutants',\n  '--no-tests=warn',\n]",
+            ),
+        ),
+        (
+            "test_tool alone",
+            replace_once(
+                &nextest,
+                "additional_cargo_test_args = [\"--profile=mutants\", \"--no-tests=warn\"]\n",
+                "",
+            ),
+        ),
+        ("neither key", CONFIG_FIXTURE.to_owned()),
+    ] {
+        let problems = check_mutants_config(&config, &workspace, TRIAGE_FIXTURE, &ids);
+        assert!(
+            problems.is_empty(),
+            "LIB-QA-007: `{name}` is reviewed, but was reported: {problems:#?}; config:\n{config}"
+        );
     }
     assert_config_cases(&cases);
 }
@@ -7527,6 +7844,11 @@ fn lib_qa_007_mutants_config_check_accepts_reviewed_configuration() {
             triage_with_exclusions()
                 .replace("`skip_calls: example_call`", "skip_calls: example_call")
                 .replace("| — |", "| - |"),
+        ),
+        (
+            "the test tool and its arguments of ADR 0009",
+            format!("{CONFIG_FIXTURE}{NEXTEST_MUTANTS_LINES}"),
+            TRIAGE_FIXTURE.to_owned(),
         ),
     ];
     for (name, config, triage) in &controls {
@@ -12576,5 +12898,1926 @@ fn lib_qa_010_names_ids_and_equivalent_yaml_are_accepted() {
             ),
         ],
         check_mutants_exclusions_job,
+    );
+}
+
+// ---------------------------------------------------------------------------
+// LIB-QA-012: mutation outcomes do not depend on test-target order.
+//
+// ADR 0009: cargo-mutants runs the tests under nextest, with a profile that
+// kills every running test at the first failure. The check reads the four
+// files that make that so, and reports each part lost with its own code:
+//
+// - `.cargo/mutants.toml` (item 1): `test_tool` (`[nextest-test-tool]`) and
+//   `additional_cargo_test_args` (`[nextest-test-args]`), each exactly its
+//   reviewed value in [`NEXTEST_MUTANTS_KEYS`].
+// - `.config/nextest.toml` (item 2): the version requirement
+//   (`[nextest-version]`); the `mutants` profile (`[nextest-profile]`), its
+//   `fail-fast` table (`[nextest-fail-fast]`), `max-fail = 1`
+//   (`[nextest-max-fail]`) and `terminate = "immediate"`
+//   (`[nextest-terminate]`); and no `fail-fast` in the `default` profile
+//   (`[nextest-default-fail-fast]`). Every other key is
+//   `[nextest-unreviewed-key]`: every profile inherits the `default` one, so
+//   a key such as `default-filter`, `retries`, `slow-timeout` or `overrides`
+//   there, or in the `mutants` profile, changes which tests run or what
+//   counts as a failure. Other profiles are not read: `mutants` does not
+//   inherit them.
+// - Each job of `ci.yml` and `mutants.yml` that runs `cargo mutants` (item
+//   3): a step that is exactly [`NEXTEST_INSTALL`], with no key but `run`,
+//   `name`, `id` and `env` (`[nextest-install-missing]`), before the first
+//   step that runs `cargo mutants` (`[nextest-install-order]`). Any other
+//   step that names nextest is reported by what is wrong with it: no exact
+//   version (`[nextest-install-unpinned]`), a version below the requirement
+//   (`[nextest-install-version]`), or another spelling
+//   (`[nextest-install-inexact]`). [`NEXTEST_INSTALL`]'s own version must
+//   satisfy the requirement (`[nextest-install-version]`).
+// - `mutants.yml`'s `on.pull_request.paths` lists `.config/nextest.toml`, so
+//   that a pull request changing the profile runs the full run
+//   (`[nextest-full-run-path]`).
+//
+// A TOML file missing is `[nextest-config-missing]`, and one that does not
+// parse `[nextest-config-parse]`; a workflow missing, unreadable, or with no
+// job that runs `cargo mutants` is `[nextest-workflow]`. Versions are
+// compared as numbers, so 0.9.111 is above 0.9.99. The guards, environment
+// and other steps of the mutants jobs are LIB-QA-007's to judge.
+// ---------------------------------------------------------------------------
+
+const QA12: &str = "LIB-QA-012";
+
+const NEXTEST_CONFIG: &str = ".config/nextest.toml";
+
+/// A release version `MAJOR.MINOR.PATCH`, compared as numbers.
+type Version = (u64, u64, u64);
+
+/// ADR 0009: the first nextest with `terminate = "immediate"`.
+const NEXTEST_MINIMUM: Version = (0, 9, 111);
+
+/// ADR 0009: the version [`NEXTEST_INSTALL`] pins, read from the command
+/// itself, so that the two cannot drift apart. `None` if the command pins no
+/// plain version, which `lib_qa_012_the_reviewed_install_pins_a_version_that_meets_the_minimum`
+/// refuses.
+fn nextest_install_version() -> Option<Version> {
+    pinned_version(NEXTEST_INSTALL).and_then(plain_version)
+}
+
+/// The keys `.config/nextest.toml` may have at its top level.
+const NEXTEST_TOP_KEYS: [&str; 2] = ["nextest-version", "profile"];
+
+fn show_version((major, minor, patch): Version) -> String {
+    format!("{major}.{minor}.{patch}")
+}
+
+/// `text` as a plain release version: three decimal numbers, none with a
+/// sign or a leading zero, and no pre-release or build suffix.
+fn plain_version(text: &str) -> Option<Version> {
+    let number = |part: &str| {
+        let digits = !part.is_empty() && part.chars().all(|c| c.is_ascii_digit());
+        let canonical = part == "0" || !part.starts_with('0');
+        if digits && canonical {
+            part.parse::<u64>().ok()
+        } else {
+            None
+        }
+    };
+    let mut parts = text.split('.');
+    let version = (
+        number(parts.next()?)?,
+        number(parts.next()?)?,
+        number(parts.next()?)?,
+    );
+    parts.next().is_none().then_some(version)
+}
+
+/// Item 1: `test_tool` and `additional_cargo_test_args` of
+/// `.cargo/mutants.toml` (`None`: it does not exist).
+fn nextest_mutants_key_problems(config: Option<&str>, problems: &mut Vec<String>) {
+    let Some(config) = config else {
+        problems.push(problem(
+            "nextest-config-missing",
+            format!("{MUTANTS_CONFIG} does not exist, so cargo-mutants does not run the tests under nextest"),
+        ));
+        return;
+    };
+    let table: toml::Table = match config.parse() {
+        Ok(table) => table,
+        Err(e) => {
+            problems.push(problem(
+                "nextest-config-parse",
+                format!("{MUTANTS_CONFIG} does not parse: {e}"),
+            ));
+            return;
+        }
+    };
+    for (key, reviewed, code) in NEXTEST_MUTANTS_KEYS {
+        match table.get(key) {
+            None => problems.push(problem(
+                code,
+                format!("{MUTANTS_CONFIG} must set `{key} = {reviewed}`; it does not set `{key}`"),
+            )),
+            Some(value) if *value != toml_value(reviewed) => problems.push(problem(
+                code,
+                format!("{MUTANTS_CONFIG} must set `{key} = {reviewed}` exactly, found `{key} = {value}`"),
+            )),
+            Some(_) => {}
+        }
+    }
+}
+
+/// Item 2: `nextest-version`, written `"X.Y.Z"` or `{ required = "X.Y.Z" }`
+/// (with an optional `recommended`), at least [`NEXTEST_MINIMUM`]. Returns
+/// the required version, if it is one.
+fn nextest_version_problems(
+    value: Option<&toml::Value>,
+    problems: &mut Vec<String>,
+) -> Option<Version> {
+    let code = "nextest-version";
+    let minimum = show_version(NEXTEST_MINIMUM);
+    let Some(value) = value else {
+        problems.push(problem(
+            code,
+            format!("{NEXTEST_CONFIG} must set `nextest-version = {{ required = \"{minimum}\" }}` or later; it does not set `nextest-version`"),
+        ));
+        return None;
+    };
+    let required = match value {
+        toml::Value::String(text) => Some(text.as_str()),
+        toml::Value::Table(table) => {
+            for key in table
+                .keys()
+                .filter(|key| !["required", "recommended"].contains(&key.as_str()))
+            {
+                problems.push(problem(
+                    "nextest-unreviewed-key",
+                    format!("{NEXTEST_CONFIG}'s `nextest-version` has the key `{key}`, which has not been reviewed"),
+                ));
+            }
+            table.get("required").and_then(toml::Value::as_str)
+        }
+        _ => None,
+    };
+    let Some(version) = required.and_then(plain_version) else {
+        problems.push(problem(
+            code,
+            format!("{NEXTEST_CONFIG}'s `nextest-version` must require one version `X.Y.Z`, at least {minimum}; found `nextest-version = {value}`"),
+        ));
+        return None;
+    };
+    if version < NEXTEST_MINIMUM {
+        problems.push(problem(
+            code,
+            format!("{NEXTEST_CONFIG} requires nextest {}, below {minimum}, the first version with `terminate = \"immediate\"`", show_version(version)),
+        ));
+    }
+    Some(version)
+}
+
+/// Item 2: the `mutants` profile sets exactly `fail-fast = { max-fail = 1,
+/// terminate = "immediate" }`.
+fn mutants_profile_problems(profile: &toml::Table, problems: &mut Vec<String>) {
+    for key in profile.keys().filter(|key| key.as_str() != "fail-fast") {
+        problems.push(problem(
+            "nextest-unreviewed-key",
+            format!("{NEXTEST_CONFIG}'s `[profile.mutants]` has the key `{key}`, which has not been reviewed"),
+        ));
+    }
+    let fail_fast = match profile.get("fail-fast") {
+        Some(toml::Value::Table(fail_fast)) => fail_fast,
+        other => {
+            problems.push(problem(
+                "nextest-fail-fast",
+                format!(
+                    "{NEXTEST_CONFIG}'s `[profile.mutants]` must set `fail-fast = {{ max-fail = 1, terminate = \"immediate\" }}`, found {}",
+                    other.map_or_else(|| "no `fail-fast`".to_owned(), |v| format!("`fail-fast = {v}`"))
+                ),
+            ));
+            return;
+        }
+    };
+    for key in fail_fast
+        .keys()
+        .filter(|key| !["max-fail", "terminate"].contains(&key.as_str()))
+    {
+        problems.push(problem(
+            "nextest-unreviewed-key",
+            format!("{NEXTEST_CONFIG}'s `[profile.mutants]` fail-fast has the key `{key}`, which has not been reviewed"),
+        ));
+    }
+    let shown = |key: &str| {
+        fail_fast
+            .get(key)
+            .map_or_else(|| "none".to_owned(), |v| format!("`{key} = {v}`"))
+    };
+    if fail_fast.get("max-fail") != Some(&toml::Value::Integer(1)) {
+        problems.push(problem(
+            "nextest-max-fail",
+            format!("{NEXTEST_CONFIG}'s `[profile.mutants]` fail-fast must have `max-fail = 1`, found {}", shown("max-fail")),
+        ));
+    }
+    if fail_fast.get("terminate").and_then(toml::Value::as_str) != Some("immediate") {
+        problems.push(problem(
+            "nextest-terminate",
+            format!("{NEXTEST_CONFIG}'s `[profile.mutants]` fail-fast must have `terminate = \"immediate\"`, found {}", shown("terminate")),
+        ));
+    }
+}
+
+/// Item 2: `.config/nextest.toml` (`None`: it does not exist). Returns the
+/// required version, if it is one.
+fn nextest_config_problems(text: Option<&str>, problems: &mut Vec<String>) -> Option<Version> {
+    let Some(text) = text else {
+        problems.push(problem(
+            "nextest-config-missing",
+            format!("{NEXTEST_CONFIG} does not exist, so there is no `mutants` profile"),
+        ));
+        return None;
+    };
+    let table: toml::Table = match text.parse() {
+        Ok(table) => table,
+        Err(e) => {
+            problems.push(problem(
+                "nextest-config-parse",
+                format!("{NEXTEST_CONFIG} does not parse: {e}"),
+            ));
+            return None;
+        }
+    };
+    for key in table
+        .keys()
+        .filter(|key| !NEXTEST_TOP_KEYS.contains(&key.as_str()))
+    {
+        problems.push(problem(
+            "nextest-unreviewed-key",
+            format!("{NEXTEST_CONFIG} has the key `{key}`, which has not been reviewed"),
+        ));
+    }
+    let required = nextest_version_problems(table.get("nextest-version"), problems);
+    let profiles = table.get("profile").and_then(toml::Value::as_table);
+    match profiles
+        .and_then(|profiles| profiles.get("mutants"))
+        .and_then(toml::Value::as_table)
+    {
+        Some(profile) => mutants_profile_problems(profile, problems),
+        None => problems.push(problem(
+            "nextest-profile",
+            format!("{NEXTEST_CONFIG} has no `[profile.mutants]` table"),
+        )),
+    }
+    match profiles.and_then(|profiles| profiles.get("default")) {
+        None => {}
+        Some(toml::Value::Table(default)) => {
+            for key in default.keys() {
+                if key == "fail-fast" {
+                    problems.push(problem(
+                        "nextest-default-fail-fast",
+                        format!("{NEXTEST_CONFIG}'s `[profile.default]` sets `fail-fast`; developers' `cargo nextest run` keeps nextest's own"),
+                    ));
+                } else {
+                    problems.push(problem(
+                        "nextest-unreviewed-key",
+                        format!("{NEXTEST_CONFIG}'s `[profile.default]` has the key `{key}`, which every profile, `mutants` too, inherits; it has not been reviewed"),
+                    ));
+                }
+            }
+        }
+        Some(other) => problems.push(problem(
+            "nextest-unreviewed-key",
+            format!("{NEXTEST_CONFIG}'s `profile.default` is not a table: `{other}`"),
+        )),
+    }
+    required
+}
+
+/// A step whose `run` runs `cargo mutants`, on any of its lines.
+fn runs_cargo_mutants(step: &Hash) -> bool {
+    get(step, "run")
+        .and_then(Yaml::as_str)
+        .is_some_and(|run| run.contains("cargo mutants"))
+}
+
+/// A step that names nextest in its `run`, its `uses` or one of its `with`
+/// inputs: one that installs it, or means to.
+fn names_nextest(step: &Hash) -> bool {
+    let mentions = |node: &Yaml| node.as_str().is_some_and(|text| text.contains("nextest"));
+    get(step, "run").is_some_and(mentions)
+        || get(step, "uses").is_some_and(mentions)
+        || get(step, "with")
+            .and_then(Yaml::as_hash)
+            .is_some_and(|with| with.values().any(mentions))
+}
+
+/// Exactly [`NEXTEST_INSTALL`], with no key that could skip it or change how
+/// it runs: only `run`, `name`, `id` and `env`.
+fn is_nextest_install(step: &Hash) -> bool {
+    get(step, "run").and_then(Yaml::as_str) == Some(NEXTEST_INSTALL)
+        && step
+            .keys()
+            .all(|key| key.as_str().is_some_and(|key| RUN_STEP_KEYS.contains(&key)))
+}
+
+/// The version an install command pins with `--version V`, `--version=V`,
+/// `--vers V` or `cargo-nextest@V`, if it pins one.
+fn pinned_version(run: &str) -> Option<&str> {
+    let words: Vec<&str> = run.split_whitespace().collect();
+    words.iter().enumerate().find_map(|(at, word)| match *word {
+        "--version" | "--vers" => words.get(at + 1).copied(),
+        _ => word
+            .strip_prefix("--version=")
+            .or_else(|| word.strip_prefix("--vers="))
+            .or_else(|| word.strip_prefix("cargo-nextest@")),
+    })
+}
+
+/// The code and the reason for a step that names nextest but is not exactly
+/// [`NEXTEST_INSTALL`]; `floor` is the version it must reach.
+fn inexact_install_problem(step: &Hash, floor: Version) -> (&'static str, String) {
+    let run = get(step, "run").and_then(Yaml::as_str);
+    let Some(run) = run.filter(|_| get(step, "uses").is_none()) else {
+        let shown = get(step, "uses").map_or_else(|| format!("{step:?}"), show);
+        return (
+            "nextest-install-inexact",
+            format!("`{shown}` is not a `run` of exactly `{NEXTEST_INSTALL}`"),
+        );
+    };
+    let pinned = pinned_version(run).map(|v| plain_version(v.strip_prefix('=').unwrap_or(v)));
+    match pinned {
+        None | Some(None) => (
+            "nextest-install-unpinned",
+            format!(
+                "`{run}` does not pin one exact version; it must be exactly `{NEXTEST_INSTALL}`"
+            ),
+        ),
+        Some(Some(version)) if version < floor => (
+            "nextest-install-version",
+            format!(
+                "`{run}` installs nextest {}, below the required {}",
+                show_version(version),
+                show_version(floor)
+            ),
+        ),
+        Some(Some(_)) => (
+            "nextest-install-inexact",
+            format!(
+                "`{run}` is not exactly `{NEXTEST_INSTALL}`, with no other key than `run`, `name`, `id` and `env`"
+            ),
+        ),
+    }
+}
+
+/// Item 3: every job of the workflow `name` (`None`: it does not exist) that
+/// runs `cargo mutants` installs nextest exactly, before it.
+fn nextest_workflow_problems(
+    name: &str,
+    text: Option<&str>,
+    floor: Version,
+    problems: &mut Vec<String>,
+) {
+    let code = "nextest-workflow";
+    let Some(text) = text else {
+        problems.push(problem(code, format!("{name} does not exist")));
+        return;
+    };
+    let doc = match load_workflow(text) {
+        Ok(doc) => doc,
+        Err(e) => {
+            problems.push(problem(code, format!("{name} cannot be read: {e}")));
+            return;
+        }
+    };
+    // Shape problems are LIB-QA-007's to report; a job or step that cannot be
+    // read here runs no `cargo mutants`.
+    let Some(workflow) = read_workflow(&doc, &mut Vec::new()) else {
+        problems.push(problem(code, format!("{name} is not a mapping")));
+        return;
+    };
+    let mut found = false;
+    for job in &workflow.jobs {
+        let Some(first) = job
+            .steps
+            .iter()
+            .position(|(_, step)| runs_cargo_mutants(step))
+        else {
+            continue;
+        };
+        found = true;
+        let label = format!("{name}, job `{}`", job.id);
+        let mut named = false;
+        for (at, &(number, step)) in job.steps.iter().enumerate() {
+            if runs_cargo_mutants(step) || !names_nextest(step) {
+                continue;
+            }
+            named = true;
+            if !is_nextest_install(step) {
+                let (code, why) = inexact_install_problem(step, floor);
+                problems.push(problem(code, format!("{label}, step {number}: {why}")));
+            } else if at > first {
+                problems.push(problem(
+                    "nextest-install-order",
+                    format!("{label}, step {number} installs cargo-nextest after the step that runs `cargo mutants`"),
+                ));
+            }
+        }
+        if !named {
+            problems.push(problem(
+                "nextest-install-missing",
+                format!(
+                    "{label} runs `cargo mutants`, but no step of it is exactly `{NEXTEST_INSTALL}`"
+                ),
+            ));
+        }
+    }
+    if !found {
+        problems.push(problem(
+            code,
+            format!("{name} has no job that runs `cargo mutants`"),
+        ));
+    }
+}
+
+/// The path whose change must run the full run on a pull request, so that a
+/// change to the `mutants` profile is tested by the full run (ADR 0009).
+const NEXTEST_CONFIG_PATH_ENTRY: &str = ".config/nextest.toml";
+
+/// `[nextest-full-run-path]`: `mutants.yml`'s `on.pull_request.paths` lists
+/// exactly `.config/nextest.toml`. A workflow that is missing or cannot be
+/// read is `[nextest-workflow]` already; every other trigger rule is
+/// LIB-QA-007's.
+fn nextest_full_run_path_problems(text: Option<&str>, problems: &mut Vec<String>) {
+    let Some(doc) = text.and_then(|text| load_workflow(text).ok()) else {
+        return;
+    };
+    let Some(top) = doc.as_hash() else {
+        return;
+    };
+    let on = triggers(top);
+    let listed = get(&on, "pull_request")
+        .and_then(Yaml::as_hash)
+        .and_then(|filters| get(filters, "paths"))
+        .and_then(Yaml::as_vec)
+        .is_some_and(|paths| {
+            paths
+                .iter()
+                .any(|path| path.as_str() == Some(NEXTEST_CONFIG_PATH_ENTRY))
+        });
+    if !listed {
+        problems.push(problem(
+            "nextest-full-run-path",
+            format!("mutants.yml's `on.pull_request.paths` must list `{NEXTEST_CONFIG_PATH_ENTRY}`, so that a change to the `mutants` profile runs the full run"),
+        ));
+    }
+}
+
+/// The four files LIB-QA-012 reads (`None`: the file does not exist).
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct NextestSetup {
+    mutants: Option<String>,
+    nextest: Option<String>,
+    ci: Option<String>,
+    full_run: Option<String>,
+}
+
+/// LIB-QA-012 items 1 to 3 (and 5): every part of ADR 0009's setup.
+fn check_nextest_setup(setup: &NextestSetup) -> Vec<String> {
+    let mut problems = Vec::new();
+    nextest_mutants_key_problems(setup.mutants.as_deref(), &mut problems);
+    let required = nextest_config_problems(setup.nextest.as_deref(), &mut problems);
+    let installed = nextest_install_version();
+    if let Some(required) = required.filter(|required| installed.is_none_or(|v| *required > v)) {
+        problems.push(problem(
+            "nextest-install-version",
+            format!(
+                "`{NEXTEST_INSTALL}` installs nextest {}, below the {} that {NEXTEST_CONFIG} requires",
+                installed.map_or_else(|| "of no plain version".to_owned(), show_version),
+                show_version(required)
+            ),
+        ));
+    }
+    let floor = required.map_or(NEXTEST_MINIMUM, |required| required.max(NEXTEST_MINIMUM));
+    nextest_workflow_problems("ci.yml", setup.ci.as_deref(), floor, &mut problems);
+    nextest_workflow_problems(
+        "mutants.yml",
+        setup.full_run.as_deref(),
+        floor,
+        &mut problems,
+    );
+    nextest_full_run_path_problems(setup.full_run.as_deref(), &mut problems);
+    problems
+}
+
+/// The reference `.config/nextest.toml`: the lead's D1 text.
+const NEXTEST_CONFIG_FIXTURE: &str = "# nextest configuration (ADR 0009, LIB-QA-012).
+nextest-version = { required = \"0.9.111\" }
+
+# cargo-mutants runs the tests with this profile: at the first failure, every
+# running test is killed.
+[profile.mutants]
+fail-fast = { max-fail = 1, terminate = \"immediate\" }
+";
+
+// Lines of `NEXTEST_CONFIG_FIXTURE` that controls edit.
+const NEXTEST_VERSION_LINE: &str = "nextest-version = { required = \"0.9.111\" }";
+const NEXTEST_PROFILE_LINE: &str = "[profile.mutants]";
+const NEXTEST_FAIL_FAST_LINE: &str = "fail-fast = { max-fail = 1, terminate = \"immediate\" }";
+const NEXTEST_PROFILE_BLOCK: &str =
+    "[profile.mutants]\nfail-fast = { max-fail = 1, terminate = \"immediate\" }\n";
+
+// Lines of the reference `.cargo/mutants.toml` that controls edit.
+const TEST_TOOL_LINE: &str = "test_tool = \"nextest\"";
+const TEST_ARGS_LINE: &str =
+    "additional_cargo_test_args = [\"--profile=mutants\", \"--no-tests=warn\"]";
+
+/// Problem codes LIB-QA-012 controls are expected to produce.
+const QA12_ACCEPTED: &[&str] = &[];
+const QA12_TEST_TOOL: &[&str] = &["nextest-test-tool"];
+const QA12_TEST_ARGS: &[&str] = &["nextest-test-args"];
+const QA12_PROFILE: &[&str] = &["nextest-profile"];
+const QA12_FAIL_FAST: &[&str] = &["nextest-fail-fast"];
+const QA12_MAX_FAIL: &[&str] = &["nextest-max-fail"];
+const QA12_TERMINATE: &[&str] = &["nextest-terminate"];
+const QA12_DEFAULT_FAIL_FAST: &[&str] = &["nextest-default-fail-fast"];
+const QA12_UNREVIEWED: &[&str] = &["nextest-unreviewed-key"];
+const QA12_VERSION: &[&str] = &["nextest-version"];
+const QA12_INSTALL_MISSING: &[&str] = &["nextest-install-missing"];
+const QA12_INSTALL_ORDER: &[&str] = &["nextest-install-order"];
+const QA12_INSTALL_UNPINNED: &[&str] = &["nextest-install-unpinned"];
+const QA12_INSTALL_VERSION: &[&str] = &["nextest-install-version"];
+const QA12_INSTALL_INEXACT: &[&str] = &["nextest-install-inexact"];
+const QA12_CONFIG_MISSING: &[&str] = &["nextest-config-missing"];
+const QA12_CONFIG_PARSE: &[&str] = &["nextest-config-parse"];
+const QA12_WORKFLOW: &[&str] = &["nextest-workflow"];
+
+/// The reference setup: [`CONFIG_FIXTURE`] with the D1 keys, the D1
+/// `.config/nextest.toml`, and the two reference workflows, each with the D2
+/// install.
+fn nextest_fixture() -> NextestSetup {
+    NextestSetup {
+        mutants: Some(format!("{CONFIG_FIXTURE}{NEXTEST_MUTANTS_LINES}")),
+        nextest: Some(NEXTEST_CONFIG_FIXTURE.to_owned()),
+        ci: Some(CI_MUTANTS_FIXTURE.to_owned()),
+        full_run: Some(FULL_RUN_FIXTURE.to_owned()),
+    }
+}
+
+fn real_nextest_setup() -> NextestSetup {
+    NextestSetup {
+        mutants: read_optional(MUTANTS_CONFIG),
+        nextest: read_optional(NEXTEST_CONFIG),
+        ci: read_optional(CI_WORKFLOW),
+        full_run: read_optional(FULL_RUN_WORKFLOW),
+    }
+}
+
+/// The reference setup with `.cargo/mutants.toml` replaced.
+fn with_mutants_toml(text: Option<String>) -> NextestSetup {
+    NextestSetup {
+        mutants: text,
+        ..nextest_fixture()
+    }
+}
+
+/// The reference setup with `.config/nextest.toml` replaced.
+fn with_nextest_toml(text: Option<String>) -> NextestSetup {
+    NextestSetup {
+        nextest: text,
+        ..nextest_fixture()
+    }
+}
+
+/// The reference setup with `ci.yml` replaced.
+fn with_ci_yml(text: Option<String>) -> NextestSetup {
+    NextestSetup {
+        ci: text,
+        ..nextest_fixture()
+    }
+}
+
+/// The reference setup with `mutants.yml` replaced.
+fn with_full_run_yml(text: Option<String>) -> NextestSetup {
+    NextestSetup {
+        full_run: text,
+        ..nextest_fixture()
+    }
+}
+
+/// The reference `.cargo/mutants.toml` with the line `target` replaced.
+fn mutants_toml_line(target: &str, replacement: &str) -> NextestSetup {
+    let reference = nextest_fixture()
+        .mutants
+        .expect("the reference has a mutants.toml");
+    with_mutants_toml(Some(replace_line(&reference, target, replacement)))
+}
+
+/// The reference `.config/nextest.toml` with the line `target` replaced.
+fn nextest_toml_line(target: &str, replacement: &str) -> NextestSetup {
+    with_nextest_toml(Some(replace_line(
+        NEXTEST_CONFIG_FIXTURE,
+        target,
+        replacement,
+    )))
+}
+
+/// The reference `.config/nextest.toml` with `lines` appended.
+fn nextest_toml_plus(lines: &str) -> NextestSetup {
+    with_nextest_toml(Some(format!("{NEXTEST_CONFIG_FIXTURE}\n{lines}\n")))
+}
+
+/// A LIB-QA-012 control: a setup and the exact codes it must give (none: it
+/// is accepted).
+struct NextestControl {
+    name: String,
+    setup: NextestSetup,
+    codes: &'static [&'static str],
+}
+
+fn control(
+    name: impl Into<String>,
+    setup: NextestSetup,
+    codes: &'static [&'static str],
+) -> NextestControl {
+    NextestControl {
+        name: name.into(),
+        setup,
+        codes,
+    }
+}
+
+/// Assert that the reference setup passes, and that each control, which
+/// must differ from it, gives exactly its codes: no fewer, no others, each as
+/// many times as named. A control's TOML files parse and its workflows are
+/// one YAML document each, unless it is about a file that cannot be read, so
+/// that the check and not the parser rejects it.
+fn assert_nextest_controls(controls: &[NextestControl]) {
+    let reference = nextest_fixture();
+    let problems = check_nextest_setup(&reference);
+    assert!(
+        problems.is_empty(),
+        "{QA12}: the reference setup must pass before its controls mean anything: {problems:#?}"
+    );
+    for NextestControl { name, setup, codes } in controls {
+        assert_ne!(
+            setup, &reference,
+            "{QA12}: precondition: the control `{name}` changes the reference"
+        );
+        let unreadable = codes.iter().any(|code| {
+            matches!(
+                *code,
+                "nextest-config-missing" | "nextest-config-parse" | "nextest-workflow"
+            )
+        });
+        if !unreadable {
+            for text in [&setup.mutants, &setup.nextest].into_iter().flatten() {
+                assert!(
+                    text.parse::<toml::Table>().is_ok(),
+                    "{QA12}: precondition: the control `{name}` keeps its TOML parsable:\n{text}"
+                );
+            }
+            for text in [&setup.ci, &setup.full_run].into_iter().flatten() {
+                assert!(
+                    parses_as_one_document(text),
+                    "{QA12}: precondition: the control `{name}` keeps each workflow one YAML document:\n{text}"
+                );
+            }
+        }
+        let mut want = codes.to_vec();
+        want.sort_unstable();
+        let problems = check_nextest_setup(setup);
+        assert_eq!(
+            problem_codes(&problems),
+            want,
+            "{QA12}: the control `{name}` must give exactly {want:?}; it gave {problems:#?}; setup:\n{setup:#?}"
+        );
+    }
+}
+
+/// Item 5: the real `.cargo/mutants.toml`, `.config/nextest.toml`, `ci.yml`
+/// and `mutants.yml` keep every part of ADR 0009's setup. Until the lead
+/// applies D1 and D2, this fails with the code of each part missing.
+#[test]
+fn lib_qa_012_the_real_files_run_mutants_under_nextest() {
+    let problems = check_nextest_setup(&real_nextest_setup());
+    assert!(
+        problems.is_empty(),
+        "{QA12}: {MUTANTS_CONFIG}, {NEXTEST_CONFIG}, {CI_WORKFLOW} and {FULL_RUN_WORKFLOW} must run cargo-mutants under nextest with the `mutants` profile (ADR 0009): {problems:#?}"
+    );
+}
+
+/// Items 1 and 5: `test_tool` and `additional_cargo_test_args` removed or
+/// changed, each with its own code.
+#[test]
+fn lib_qa_012_each_mutants_toml_key_lost_is_named() {
+    let reference = nextest_fixture()
+        .mutants
+        .expect("the reference has a mutants.toml");
+    let mut controls = vec![
+        control(
+            "test_tool removed",
+            with_mutants_toml(Some(delete_line(&reference, TEST_TOOL_LINE))),
+            QA12_TEST_TOOL,
+        ),
+        control(
+            "additional_cargo_test_args removed",
+            with_mutants_toml(Some(delete_line(&reference, TEST_ARGS_LINE))),
+            QA12_TEST_ARGS,
+        ),
+        control(
+            "both removed",
+            with_mutants_toml(Some(CONFIG_FIXTURE.to_owned())),
+            &["nextest-test-tool", "nextest-test-args"],
+        ),
+        control(
+            "test_tool commented out",
+            with_mutants_toml(Some(comment_line(&reference, TEST_TOOL_LINE))),
+            QA12_TEST_TOOL,
+        ),
+    ];
+    for (key, value) in OTHER_NEXTEST_VALUES {
+        let (line, code) = if key == "test_tool" {
+            (TEST_TOOL_LINE, QA12_TEST_TOOL)
+        } else {
+            (TEST_ARGS_LINE, QA12_TEST_ARGS)
+        };
+        controls.push(control(
+            format!("{key} = {value}"),
+            mutants_toml_line(line, &format!("{key} = {value}")),
+            code,
+        ));
+    }
+    assert_nextest_controls(&controls);
+}
+
+/// Items 2 and 5: the `mutants` profile, its fail-fast, `max-fail` and
+/// `terminate` removed or changed, each with its own code.
+#[test]
+fn lib_qa_012_each_part_of_the_mutants_profile_lost_is_named() {
+    let fail_fast =
+        |value: &str| nextest_toml_line(NEXTEST_FAIL_FAST_LINE, &format!("fail-fast = {value}"));
+    let mut controls = vec![
+        control(
+            "[profile.mutants] removed",
+            with_nextest_toml(Some(replace_once(
+                NEXTEST_CONFIG_FIXTURE,
+                NEXTEST_PROFILE_BLOCK,
+                "",
+            ))),
+            QA12_PROFILE,
+        ),
+        control(
+            "the profile renamed `mutant`",
+            nextest_toml_line(NEXTEST_PROFILE_LINE, "[profile.mutant]"),
+            QA12_PROFILE,
+        ),
+        control(
+            "the profile renamed `Mutants`",
+            nextest_toml_line(NEXTEST_PROFILE_LINE, "[profile.Mutants]"),
+            QA12_PROFILE,
+        ),
+        control(
+            "the profile as a string",
+            with_nextest_toml(Some(
+                replace_once(NEXTEST_CONFIG_FIXTURE, NEXTEST_PROFILE_BLOCK, "").replace(
+                    NEXTEST_VERSION_LINE,
+                    &format!("{NEXTEST_VERSION_LINE}\nprofile = \"mutants\""),
+                ),
+            )),
+            QA12_PROFILE,
+        ),
+        control(
+            "fail-fast removed",
+            with_nextest_toml(Some(delete_line(
+                NEXTEST_CONFIG_FIXTURE,
+                NEXTEST_FAIL_FAST_LINE,
+            ))),
+            QA12_FAIL_FAST,
+        ),
+    ];
+    for (value, codes) in [
+        ("true", QA12_FAIL_FAST),
+        ("false", QA12_FAIL_FAST),
+        ("\"immediate\"", QA12_FAIL_FAST),
+        ("1", QA12_FAIL_FAST),
+        ("[1, \"immediate\"]", QA12_FAIL_FAST),
+        ("{ terminate = \"immediate\" }", QA12_MAX_FAIL),
+        ("{ max-fail = 2, terminate = \"immediate\" }", QA12_MAX_FAIL),
+        ("{ max-fail = 0, terminate = \"immediate\" }", QA12_MAX_FAIL),
+        (
+            "{ max-fail = -1, terminate = \"immediate\" }",
+            QA12_MAX_FAIL,
+        ),
+        (
+            "{ max-fail = \"all\", terminate = \"immediate\" }",
+            QA12_MAX_FAIL,
+        ),
+        (
+            "{ max-fail = \"1\", terminate = \"immediate\" }",
+            QA12_MAX_FAIL,
+        ),
+        (
+            "{ max-fail = 1.0, terminate = \"immediate\" }",
+            QA12_MAX_FAIL,
+        ),
+        ("{ max-fail = 1 }", QA12_TERMINATE),
+        ("{ max-fail = 1, terminate = \"wait\" }", QA12_TERMINATE),
+        (
+            "{ max-fail = 1, terminate = \"Immediate\" }",
+            QA12_TERMINATE,
+        ),
+        (
+            "{ max-fail = 1, terminate = \"immediate \" }",
+            QA12_TERMINATE,
+        ),
+        ("{ max-fail = 1, terminate = true }", QA12_TERMINATE),
+        (
+            "{ max-fail = 2, terminate = \"wait\" }",
+            &["nextest-max-fail", "nextest-terminate"],
+        ),
+        ("{}", &["nextest-max-fail", "nextest-terminate"]),
+        (
+            "{ max-fail = 1, terminate = \"immediate\", retries = 1 }",
+            QA12_UNREVIEWED,
+        ),
+    ] {
+        controls.push(control(
+            format!("fail-fast = {value}"),
+            fail_fast(value),
+            codes,
+        ));
+    }
+    assert_nextest_controls(&controls);
+}
+
+/// Items 2 and 5: the `default` profile changing fail-fast is
+/// `[nextest-default-fail-fast]`, whatever the value: developers' runs keep
+/// nextest's own.
+#[test]
+fn lib_qa_012_the_default_profile_changing_fail_fast_is_named() {
+    let mut controls = Vec::new();
+    for value in [
+        "false",
+        "true",
+        "{ max-fail = 1, terminate = \"immediate\" }",
+        "{ max-fail = \"all\" }",
+    ] {
+        controls.push(control(
+            format!("[profile.default] fail-fast = {value}"),
+            nextest_toml_plus(&format!("[profile.default]\nfail-fast = {value}")),
+            QA12_DEFAULT_FAIL_FAST,
+        ));
+    }
+    controls.extend([
+        control(
+            "[profile.default.fail-fast] as a table",
+            nextest_toml_plus("[profile.default.fail-fast]\nmax-fail = 2"),
+            QA12_DEFAULT_FAIL_FAST,
+        ),
+        control(
+            "[profile.default] fail-fast and retries",
+            nextest_toml_plus("[profile.default]\nfail-fast = false\nretries = 2"),
+            &["nextest-default-fail-fast", "nextest-unreviewed-key"],
+        ),
+    ]);
+    assert_nextest_controls(&controls);
+}
+
+/// Item 2: any other key that the `mutants` profile sees (its own, or the
+/// `default` profile's, which it inherits) is `[nextest-unreviewed-key]`.
+#[test]
+fn lib_qa_012_unreviewed_profile_keys_are_named() {
+    let in_mutants = |line: &str| {
+        with_nextest_toml(Some(insert_after(
+            NEXTEST_CONFIG_FIXTURE,
+            NEXTEST_FAIL_FAST_LINE,
+            0,
+            &[line],
+        )))
+    };
+    assert_nextest_controls(&[
+        control(
+            "[profile.default] default-filter",
+            nextest_toml_plus("[profile.default]\ndefault-filter = \"not test(lib_)\""),
+            QA12_UNREVIEWED,
+        ),
+        control(
+            "[profile.default] slow-timeout that kills tests",
+            nextest_toml_plus(
+                "[profile.default]\nslow-timeout = { period = \"1s\", terminate-after = 1 }",
+            ),
+            QA12_UNREVIEWED,
+        ),
+        control(
+            "[profile.default] retries",
+            nextest_toml_plus("[profile.default]\nretries = 3"),
+            QA12_UNREVIEWED,
+        ),
+        control(
+            "[[profile.default.overrides]]",
+            nextest_toml_plus("[[profile.default.overrides]]\nfilter = \"all()\"\nretries = 3"),
+            QA12_UNREVIEWED,
+        ),
+        control(
+            "profile.default not a table",
+            with_nextest_toml(Some(NEXTEST_CONFIG_FIXTURE.replace(
+                NEXTEST_PROFILE_LINE,
+                "[profile]\ndefault = 1\n\n[profile.mutants]",
+            ))),
+            QA12_UNREVIEWED,
+        ),
+        control(
+            "[profile.mutants] retries",
+            in_mutants("retries = 2"),
+            QA12_UNREVIEWED,
+        ),
+        control(
+            "[profile.mutants] default-filter",
+            in_mutants("default-filter = \"not test(lib_)\""),
+            QA12_UNREVIEWED,
+        ),
+        control(
+            "[profile.mutants] slow-timeout",
+            in_mutants("slow-timeout = { period = \"1s\", terminate-after = 1 }"),
+            QA12_UNREVIEWED,
+        ),
+        control(
+            "[profile.mutants] test-threads",
+            in_mutants("test-threads = 1"),
+            QA12_UNREVIEWED,
+        ),
+        control(
+            "a second nextest-version, inside [profile.mutants]",
+            nextest_toml_plus(NEXTEST_VERSION_LINE),
+            QA12_UNREVIEWED,
+        ),
+        control(
+            "[profile.mutants] inherits",
+            in_mutants("inherits = \"ci\""),
+            QA12_UNREVIEWED,
+        ),
+        control(
+            "[[profile.mutants.overrides]]",
+            nextest_toml_plus("[[profile.mutants.overrides]]\nfilter = \"all()\"\nretries = 3"),
+            QA12_UNREVIEWED,
+        ),
+    ]);
+}
+
+/// Item 2: any top-level key of `.config/nextest.toml` but `nextest-version`
+/// and `profile`, or a key of `nextest-version` but `required` and
+/// `recommended`, is `[nextest-unreviewed-key]`.
+#[test]
+fn lib_qa_012_unreviewed_top_level_nextest_keys_are_named() {
+    let top_level = |line: &str| {
+        with_nextest_toml(Some(insert_after(
+            NEXTEST_CONFIG_FIXTURE,
+            NEXTEST_VERSION_LINE,
+            0,
+            &[line],
+        )))
+    };
+    assert_nextest_controls(&[
+        control(
+            "a top-level experimental",
+            top_level("experimental = [\"setup-scripts\"]"),
+            QA12_UNREVIEWED,
+        ),
+        control(
+            "[scripts.setup]",
+            nextest_toml_plus("[scripts.setup.prepare]\ncommand = \"true\""),
+            QA12_UNREVIEWED,
+        ),
+        control(
+            "[test-groups]",
+            nextest_toml_plus("[test-groups.serial]\nmax-threads = 1"),
+            QA12_UNREVIEWED,
+        ),
+        control(
+            "[store]",
+            nextest_toml_plus("[store]\ndir = \"elsewhere\""),
+            QA12_UNREVIEWED,
+        ),
+        control(
+            "an unknown key in nextest-version",
+            nextest_toml_line(
+                NEXTEST_VERSION_LINE,
+                "nextest-version = { required = \"0.9.111\", minimum = \"0.9.111\" }",
+            ),
+            QA12_UNREVIEWED,
+        ),
+    ]);
+}
+
+/// Items 2, 3 and 5: the version requirement missing, below 0.9.111 or not
+/// a version is `[nextest-version]`; one above the installed 0.9.151 is
+/// `[nextest-install-version]`. Versions compare as numbers: `0.9.99` is
+/// below `0.9.111`, and `0.9.1000` above `0.9.151`.
+#[test]
+fn lib_qa_012_the_version_requirement_is_compared_as_numbers() {
+    let required = |value: &str| {
+        nextest_toml_line(
+            NEXTEST_VERSION_LINE,
+            &format!("nextest-version = {{ required = {value} }}"),
+        )
+    };
+    let mut controls = vec![
+        control(
+            "nextest-version removed",
+            with_nextest_toml(Some(delete_line(
+                NEXTEST_CONFIG_FIXTURE,
+                NEXTEST_VERSION_LINE,
+            ))),
+            QA12_VERSION,
+        ),
+        control(
+            "nextest-version = 111",
+            nextest_toml_line(NEXTEST_VERSION_LINE, "nextest-version = 111"),
+            QA12_VERSION,
+        ),
+        control(
+            "only a recommended version",
+            nextest_toml_line(
+                NEXTEST_VERSION_LINE,
+                "nextest-version = { recommended = \"0.9.151\" }",
+            ),
+            QA12_VERSION,
+        ),
+        control(
+            "a string form below 0.9.111",
+            nextest_toml_line(NEXTEST_VERSION_LINE, "nextest-version = \"0.9.110\""),
+            QA12_VERSION,
+        ),
+        control(
+            "a requirement above what an inexact install pins",
+            NextestSetup {
+                ci: Some(replace_line(
+                    CI_MUTANTS_FIXTURE,
+                    NEXTEST_STEP,
+                    "- run: cargo install cargo-nextest --locked --version 0.9.125",
+                )),
+                ..required("\"0.9.130\"")
+            },
+            QA12_INSTALL_VERSION,
+        ),
+    ];
+    for (value, codes) in [
+        ("\"0.9.110\"", QA12_VERSION),
+        ("\"0.9.99\"", QA12_VERSION),
+        ("\"0.9.0\"", QA12_VERSION),
+        ("\"0.8.999\"", QA12_VERSION),
+        ("\"0.0.0\"", QA12_VERSION),
+        ("\"0.9\"", QA12_VERSION),
+        ("\"0.9.111.0\"", QA12_VERSION),
+        ("\"v0.9.111\"", QA12_VERSION),
+        ("\"0.9.111-rc.1\"", QA12_VERSION),
+        ("\"0.9.111+build\"", QA12_VERSION),
+        ("\"0.9.0111\"", QA12_VERSION),
+        ("\" 0.9.111\"", QA12_VERSION),
+        ("\"\"", QA12_VERSION),
+        ("\"latest\"", QA12_VERSION),
+        ("\"0.9.x\"", QA12_VERSION),
+        ("\">=0.9.111\"", QA12_VERSION),
+        ("111", QA12_VERSION),
+        ("\"0.9.152\"", QA12_INSTALL_VERSION),
+        ("\"0.9.1000\"", QA12_INSTALL_VERSION),
+        ("\"0.10.0\"", QA12_INSTALL_VERSION),
+        ("\"1.0.0\"", QA12_INSTALL_VERSION),
+        ("\"0.9.120\"", QA12_ACCEPTED),
+        ("\"0.9.151\"", QA12_ACCEPTED),
+    ] {
+        controls.push(control(
+            format!("required = {value}"),
+            required(value),
+            codes,
+        ));
+    }
+    assert_nextest_controls(&controls);
+}
+
+/// Items 3 and 5 on one workflow, `text`, whose `cargo mutants` step's first
+/// line is `step`; `with` puts the edited workflow into the reference setup.
+fn nextest_job_controls(
+    label: &str,
+    text: &str,
+    step: &str,
+    with: fn(Option<String>) -> NextestSetup,
+) -> Vec<NextestControl> {
+    let install = |command: &str| {
+        with(Some(replace_line(
+            text,
+            NEXTEST_STEP,
+            &format!("- run: {command}"),
+        )))
+    };
+    let edited = |edited: String| with(Some(edited));
+    let mut controls = vec![
+        control(
+            format!("{label}: the install removed"),
+            edited(delete_step(text, NEXTEST_STEP)),
+            QA12_INSTALL_MISSING,
+        ),
+        control(
+            format!("{label}: the install commented out"),
+            edited(comment_line(text, NEXTEST_STEP)),
+            QA12_INSTALL_MISSING,
+        ),
+        control(
+            format!("{label}: a misspelled crate name, so nothing installs nextest"),
+            install("cargo install cargo-nexttest --locked --version 0.9.151"),
+            QA12_INSTALL_MISSING,
+        ),
+        control(
+            format!("{label}: the install after the cargo mutants step"),
+            edited(move_step_after(text, NEXTEST_STEP, step)),
+            QA12_INSTALL_ORDER,
+        ),
+        control(
+            format!("{label}: a second, exact install after the cargo mutants step"),
+            edited(insert_after(text, step, 0, &[NEXTEST_STEP])),
+            QA12_INSTALL_ORDER,
+        ),
+        control(
+            format!("{label}: the install action"),
+            edited(replace_lines(
+                text,
+                NEXTEST_STEP,
+                &[
+                    "- uses: taiki-e/install-action@v2",
+                    "  with:",
+                    "    tool: cargo-nextest@0.9.151",
+                ],
+            )),
+            QA12_INSTALL_INEXACT,
+        ),
+        control(
+            format!("{label}: if: false on the install"),
+            edited(insert_after(text, NEXTEST_STEP, 2, &["if: false"])),
+            QA12_INSTALL_INEXACT,
+        ),
+        control(
+            format!("{label}: continue-on-error on the install"),
+            edited(insert_after(
+                text,
+                NEXTEST_STEP,
+                2,
+                &["continue-on-error: true"],
+            )),
+            QA12_INSTALL_INEXACT,
+        ),
+        control(
+            format!("{label}: the install in a run: | with a second install"),
+            edited(replace_lines(
+                text,
+                NEXTEST_STEP,
+                &[
+                    "- run: |",
+                    &format!("    {NEXTEST_INSTALL}"),
+                    "    cargo install cargo-nextest --locked --force",
+                ],
+            )),
+            QA12_INSTALL_INEXACT,
+        ),
+        control(
+            format!("{label}: the exact install and an unpinned one"),
+            edited(insert_after(
+                text,
+                NEXTEST_STEP,
+                0,
+                &["- run: cargo install cargo-nextest --locked --force"],
+            )),
+            QA12_INSTALL_UNPINNED,
+        ),
+    ];
+    controls.extend(nextest_command_controls(label, text, with));
+    controls.extend(nextest_vers_controls(label, text, with));
+    controls.extend(nextest_mutants_step_form_controls(label, text, step, with));
+    controls.extend(nextest_accepted_job_controls(label, text, with));
+    controls
+}
+
+/// Items 3 and 5 on one workflow (verification 0011, P3): cargo's `--vers`
+/// spelling of `--version`, with a space or an `=`, pins a version too.
+fn nextest_vers_controls(
+    label: &str,
+    text: &str,
+    with: fn(Option<String>) -> NextestSetup,
+) -> Vec<NextestControl> {
+    [
+        ("--vers 0.9.151", QA12_INSTALL_INEXACT),
+        ("--vers 0.9.100", QA12_INSTALL_VERSION),
+        ("--vers=0.9.100", QA12_INSTALL_VERSION),
+    ]
+    .into_iter()
+    .map(|(pin, codes)| {
+        control(
+            format!("{label}: {pin}"),
+            with(Some(replace_line(
+                text,
+                NEXTEST_STEP,
+                &format!("- run: cargo install cargo-nextest --locked {pin}"),
+            ))),
+            codes,
+        )
+    })
+    .collect()
+}
+
+/// Items 3 and 5 on one workflow (verification 0011, P1 and P2): a job runs
+/// `cargo mutants` wherever the command stands in its step, on a later line
+/// of a `run: |` block or after a prefix such as `time` or `env X=1`; and an
+/// action whose name says nextest, with no inputs, still names nextest.
+fn nextest_mutants_step_form_controls(
+    label: &str,
+    text: &str,
+    step: &str,
+    with: fn(Option<String>) -> NextestSetup,
+) -> Vec<NextestControl> {
+    let command = step
+        .strip_prefix("- run: ")
+        .expect("the mutants step is a one-line `- run:`");
+    let block = replace_lines(
+        text,
+        step,
+        &[
+            "- run: |",
+            "    echo mutation testing",
+            &format!("    {command}"),
+        ],
+    );
+    let prefixed = |prefix: &str| {
+        with(Some(delete_step(
+            &replace_line(text, step, &format!("- run: {prefix} {command}")),
+            NEXTEST_STEP,
+        )))
+    };
+    vec![
+        control(
+            format!("{label}: cargo mutants on a later line of a run: | block, no install"),
+            with(Some(delete_step(&block, NEXTEST_STEP))),
+            QA12_INSTALL_MISSING,
+        ),
+        control(
+            format!("{label}: `time cargo mutants`, no install"),
+            prefixed("time"),
+            QA12_INSTALL_MISSING,
+        ),
+        control(
+            format!("{label}: `env X=1 cargo mutants`, no install"),
+            prefixed("env X=1"),
+            QA12_INSTALL_MISSING,
+        ),
+        control(
+            format!("{label}: the exact install after a multi-line cargo mutants step"),
+            with(Some(move_step_after(&block, NEXTEST_STEP, "- run: |"))),
+            QA12_INSTALL_ORDER,
+        ),
+        control(
+            format!("{label}: an action named for nextest, with no inputs"),
+            with(Some(replace_line(
+                text,
+                NEXTEST_STEP,
+                "- uses: someone/setup-nextest@v1",
+            ))),
+            QA12_INSTALL_INEXACT,
+        ),
+    ]
+}
+
+/// Items 3 and 5 on one workflow: the install's command spelled otherwise,
+/// each with the code of what is wrong with it.
+fn nextest_command_controls(
+    label: &str,
+    text: &str,
+    with: fn(Option<String>) -> NextestSetup,
+) -> Vec<NextestControl> {
+    [
+        (
+            "--locked dropped",
+            "cargo install cargo-nextest --version 0.9.151".to_owned(),
+            QA12_INSTALL_INEXACT,
+        ),
+        (
+            "--force added",
+            format!("{NEXTEST_INSTALL} --force"),
+            QA12_INSTALL_INEXACT,
+        ),
+        (
+            "`|| true` appended",
+            format!("{NEXTEST_INSTALL} || true"),
+            QA12_INSTALL_INEXACT,
+        ),
+        (
+            "--version=0.9.151",
+            "cargo install cargo-nextest --locked --version=0.9.151".to_owned(),
+            QA12_INSTALL_INEXACT,
+        ),
+        (
+            "cargo-nextest@0.9.151",
+            "cargo install cargo-nextest@0.9.151 --locked".to_owned(),
+            QA12_INSTALL_INEXACT,
+        ),
+        (
+            "--version =0.9.151",
+            "cargo install cargo-nextest --locked --version =0.9.151".to_owned(),
+            QA12_INSTALL_INEXACT,
+        ),
+        (
+            "another version above the requirement",
+            "cargo install cargo-nextest --locked --version 0.9.150".to_owned(),
+            QA12_INSTALL_INEXACT,
+        ),
+        (
+            "cargo binstall",
+            "cargo binstall --no-confirm cargo-nextest@0.9.151".to_owned(),
+            QA12_INSTALL_INEXACT,
+        ),
+        (
+            "--version dropped",
+            "cargo install cargo-nextest --locked".to_owned(),
+            QA12_INSTALL_UNPINNED,
+        ),
+        (
+            "--version ^0.9.151",
+            "cargo install cargo-nextest --locked --version ^0.9.151".to_owned(),
+            QA12_INSTALL_UNPINNED,
+        ),
+        (
+            "--version 0.9",
+            "cargo install cargo-nextest --locked --version 0.9".to_owned(),
+            QA12_INSTALL_UNPINNED,
+        ),
+        (
+            "--version with no value",
+            "cargo install cargo-nextest --locked --version".to_owned(),
+            QA12_INSTALL_UNPINNED,
+        ),
+        (
+            "0.9.110",
+            "cargo install cargo-nextest --locked --version 0.9.110".to_owned(),
+            QA12_INSTALL_VERSION,
+        ),
+        (
+            "0.9.99",
+            "cargo install cargo-nextest --locked --version 0.9.99".to_owned(),
+            QA12_INSTALL_VERSION,
+        ),
+        (
+            "0.8.200",
+            "cargo install cargo-nextest --locked --version 0.8.200".to_owned(),
+            QA12_INSTALL_VERSION,
+        ),
+    ]
+    .into_iter()
+    .map(|(what, command, codes)| {
+        control(
+            format!("{label}: {what}"),
+            with(Some(replace_line(
+                text,
+                NEXTEST_STEP,
+                &format!("- run: {command}"),
+            ))),
+            codes,
+        )
+    })
+    .collect()
+}
+
+/// Items 3 and 5 on one workflow: the install named, quoted, commented or
+/// placed before the cargo-mutants install is accepted.
+fn nextest_accepted_job_controls(
+    label: &str,
+    text: &str,
+    with: fn(Option<String>) -> NextestSetup,
+) -> Vec<NextestControl> {
+    let edited = |edited: String| with(Some(edited));
+    vec![
+        control(
+            format!("{label}: a name and an id on the install"),
+            edited(insert_after(
+                text,
+                NEXTEST_STEP,
+                2,
+                &["name: Install cargo-nextest", "id: nextest"],
+            )),
+            QA12_ACCEPTED,
+        ),
+        control(
+            format!("{label}: a double-quoted install"),
+            edited(replace_line(
+                text,
+                NEXTEST_STEP,
+                &format!("- run: \"{NEXTEST_INSTALL}\""),
+            )),
+            QA12_ACCEPTED,
+        ),
+        control(
+            format!("{label}: a trailing comment on the install"),
+            edited(replace_line(
+                text,
+                NEXTEST_STEP,
+                &format!("{NEXTEST_STEP} # ADR 0009"),
+            )),
+            QA12_ACCEPTED,
+        ),
+        control(
+            format!(
+                "{label}: the install before the cargo-mutants install (LIB-QA-007 judges that)"
+            ),
+            edited(move_step_after(text, NEXTEST_STEP, CACHE_STEP)),
+            QA12_ACCEPTED,
+        ),
+    ]
+}
+
+/// Items 3 and 5: in each job that runs `cargo mutants`, the install step
+/// missing, misspelled, unpinned, below the requirement or after the
+/// `cargo mutants` step, each with its own code.
+#[test]
+fn lib_qa_012_each_mutants_job_installs_the_pinned_nextest_first() {
+    let mut controls = nextest_job_controls("ci.yml", CI_MUTANTS_FIXTURE, PR_STEP, with_ci_yml);
+    controls.extend(nextest_job_controls(
+        "mutants.yml",
+        FULL_RUN_FIXTURE,
+        FULL_STEP,
+        with_full_run_yml,
+    ));
+    let ci = CI_MUTANTS_FIXTURE;
+    controls.extend([
+        control(
+            "ci.yml: the install moved to a job that does not run cargo mutants",
+            with_ci_yml(Some(move_step_after(ci, NEXTEST_STEP, OTHER_STEP))),
+            QA12_INSTALL_MISSING,
+        ),
+        control(
+            "the install removed from both workflows",
+            NextestSetup {
+                ci: Some(delete_step(ci, NEXTEST_STEP)),
+                ..with_full_run_yml(Some(delete_step(FULL_RUN_FIXTURE, NEXTEST_STEP)))
+            },
+            &["nextest-install-missing", "nextest-install-missing"],
+        ),
+        control(
+            "ci.yml: a job that only lists mutants needs no nextest",
+            with_ci_yml(Some(append_job(
+                ci,
+                &[
+                    "mutants-exclusions:",
+                    "  runs-on: ubuntu-latest",
+                    "  steps:",
+                    &format!("    {INSTALL_STEP}"),
+                    "    - run: cargo xtask mutants exclusions",
+                ],
+            ))),
+            QA12_ACCEPTED,
+        ),
+        control(
+            "ci.yml: a second job that runs cargo mutants without nextest",
+            with_ci_yml(Some(append_job(
+                ci,
+                &[
+                    "mutants-again:",
+                    "  runs-on: ubuntu-latest",
+                    "  steps:",
+                    &format!("    {INSTALL_STEP}"),
+                    &format!("    {PR_STEP}"),
+                ],
+            ))),
+            QA12_INSTALL_MISSING,
+        ),
+    ]);
+    assert_nextest_controls(&controls);
+}
+
+/// `.config/nextest.toml` among `mutants.yml`'s pull-request paths: its
+/// absence is `[nextest-full-run-path]`, and the LIB-QA-007 full-run check
+/// accepts it as an extra path.
+#[test]
+fn lib_qa_012_the_full_run_watches_the_nextest_config() {
+    let w = FULL_RUN_FIXTURE;
+    let path_line = format!("- {NEXTEST_CONFIG_PATH_ENTRY}");
+    let without = delete_line(w, &path_line);
+    let last = insert_after(&without, "- Cargo.lock", 0, &[&path_line]);
+    let quoted = replace_line(w, &path_line, &format!("- '{NEXTEST_CONFIG_PATH_ENTRY}'"));
+    assert_nextest_controls(&[
+        control(
+            "the path removed",
+            with_full_run_yml(Some(without.clone())),
+            &["nextest-full-run-path"],
+        ),
+        control(
+            "another file in its place",
+            with_full_run_yml(Some(replace_line(w, &path_line, "- .config/nextest.yml"))),
+            &["nextest-full-run-path"],
+        ),
+        control(
+            "the pull_request trigger removed",
+            with_full_run_yml(Some(replace_once(w, FULL_PR_BLOCK, ""))),
+            &["nextest-full-run-path"],
+        ),
+        control(
+            "the path last among the others",
+            with_full_run_yml(Some(last.clone())),
+            QA12_ACCEPTED,
+        ),
+        control(
+            "the path single-quoted",
+            with_full_run_yml(Some(quoted.clone())),
+            QA12_ACCEPTED,
+        ),
+    ]);
+    for (name, text) in [
+        ("the path among the D10 paths", w.to_owned()),
+        ("the path last", last),
+        ("the path single-quoted", quoted),
+        ("the path absent (LIB-QA-012's to report)", without),
+    ] {
+        let problems = check_full_run_text(&text);
+        assert!(
+            problems.is_empty(),
+            "{QA12}: LIB-QA-007's full-run check must accept `{name}`, but reported {problems:#?}"
+        );
+    }
+}
+
+/// Item 5: a file missing or unreadable is named, never a skip.
+#[test]
+fn lib_qa_012_a_missing_or_unreadable_file_is_named() {
+    let reference = nextest_fixture();
+    assert_nextest_controls(&[
+        control(
+            ".cargo/mutants.toml missing",
+            with_mutants_toml(None),
+            QA12_CONFIG_MISSING,
+        ),
+        control(
+            ".cargo/mutants.toml not TOML",
+            with_mutants_toml(Some("{ \"test_tool\": \"nextest\" }".to_owned())),
+            QA12_CONFIG_PARSE,
+        ),
+        control(
+            ".cargo/mutants.toml with test_tool twice",
+            with_mutants_toml(Some(format!(
+                "{}{TEST_TOOL_LINE}\n",
+                reference.mutants.clone().unwrap_or_default()
+            ))),
+            QA12_CONFIG_PARSE,
+        ),
+        control(
+            ".config/nextest.toml missing",
+            with_nextest_toml(None),
+            QA12_CONFIG_MISSING,
+        ),
+        control(
+            ".config/nextest.toml with an unterminated table header",
+            nextest_toml_line(NEXTEST_PROFILE_LINE, "[profile.mutants"),
+            QA12_CONFIG_PARSE,
+        ),
+        control(
+            ".config/nextest.toml with nextest-version twice",
+            with_nextest_toml(Some(insert_after(
+                NEXTEST_CONFIG_FIXTURE,
+                NEXTEST_VERSION_LINE,
+                0,
+                &[NEXTEST_VERSION_LINE],
+            ))),
+            QA12_CONFIG_PARSE,
+        ),
+        control(
+            "both TOML files missing",
+            NextestSetup {
+                mutants: None,
+                ..with_nextest_toml(None)
+            },
+            &["nextest-config-missing", "nextest-config-missing"],
+        ),
+        control(
+            "mutants.yml missing",
+            with_full_run_yml(None),
+            QA12_WORKFLOW,
+        ),
+        control(
+            "ci.yml not YAML",
+            with_ci_yml(Some(format!("{CI_MUTANTS_FIXTURE}  bad: [\n"))),
+            QA12_WORKFLOW,
+        ),
+        control(
+            "ci.yml two documents",
+            with_ci_yml(Some(format!("{CI_MUTANTS_FIXTURE}---\nname: other\n"))),
+            QA12_WORKFLOW,
+        ),
+        control(
+            "ci.yml not a mapping",
+            with_ci_yml(Some("- name: CI\n".to_owned())),
+            QA12_WORKFLOW,
+        ),
+        control(
+            "ci.yml with no mutants job",
+            with_ci_yml(Some(delete_job(CI_MUTANTS_FIXTURE, "mutants"))),
+            QA12_WORKFLOW,
+        ),
+        control(
+            "mutants.yml with no cargo mutants step",
+            with_full_run_yml(Some(delete_step(FULL_RUN_FIXTURE, FULL_STEP))),
+            QA12_WORKFLOW,
+        ),
+    ]);
+}
+
+/// Items 1 to 3: the same setup written in other TOML forms, and other
+/// profiles, which `mutants` does not inherit, are accepted.
+#[test]
+fn lib_qa_012_equivalent_forms_are_accepted() {
+    let mutants = nextest_fixture()
+        .mutants
+        .expect("the reference has a mutants.toml");
+    assert_nextest_controls(&[
+        control(
+            "mutants.toml values as literal strings, the array over lines",
+            with_mutants_toml(Some(
+                mutants
+                    .replace(TEST_TOOL_LINE, "test_tool = 'nextest'")
+                    .replace(
+                        TEST_ARGS_LINE,
+                        "additional_cargo_test_args = [\n  '--profile=mutants',\n  '--no-tests=warn',\n]",
+                    ),
+            )),
+            QA12_ACCEPTED,
+        ),
+        control(
+            "mutants.toml keys in another order",
+            with_mutants_toml(Some(format!(
+                "{TEST_ARGS_LINE}\n{}",
+                delete_line(&mutants, TEST_ARGS_LINE)
+            ))),
+            QA12_ACCEPTED,
+        ),
+        control(
+            "nextest-version as a string",
+            nextest_toml_line(NEXTEST_VERSION_LINE, "nextest-version = \"0.9.111\""),
+            QA12_ACCEPTED,
+        ),
+        control(
+            "nextest-version with a recommended version",
+            nextest_toml_line(
+                NEXTEST_VERSION_LINE,
+                "nextest-version = { required = \"0.9.111\", recommended = \"0.9.151\" }",
+            ),
+            QA12_ACCEPTED,
+        ),
+        control(
+            "[profile.mutants.fail-fast] as a table",
+            with_nextest_toml(Some(replace_once(
+                NEXTEST_CONFIG_FIXTURE,
+                NEXTEST_PROFILE_BLOCK,
+                "[profile.mutants.fail-fast]\nmax-fail = 1\nterminate = \"immediate\"\n",
+            ))),
+            QA12_ACCEPTED,
+        ),
+        control(
+            "dotted fail-fast keys",
+            nextest_toml_line(
+                NEXTEST_FAIL_FAST_LINE,
+                "fail-fast.max-fail = 1\nfail-fast.terminate = \"immediate\"",
+            ),
+            QA12_ACCEPTED,
+        ),
+        control(
+            "the whole file in dotted keys",
+            with_nextest_toml(Some(
+                "nextest-version.required = \"0.9.111\"\nprofile.mutants.fail-fast = { terminate = \"immediate\", max-fail = 1 }\n".to_owned(),
+            )),
+            QA12_ACCEPTED,
+        ),
+        control(
+            "another profile, which `mutants` does not inherit",
+            nextest_toml_plus("[profile.ci]\nretries = 2\nfail-fast = false"),
+            QA12_ACCEPTED,
+        ),
+        control(
+            "an empty [profile.default]",
+            nextest_toml_plus("[profile.default]"),
+            QA12_ACCEPTED,
+        ),
+        control(
+            "comments",
+            nextest_toml_plus("# Developers' runs keep nextest's defaults."),
+            QA12_ACCEPTED,
+        ),
+    ]);
+}
+
+/// Item 4: the LIB-QA-007 checks accept exactly ADR 0009's setup. The
+/// reference setup passes them; every other value of the two keys is
+/// LIB-QA-007's `[unreviewed-key]` and LIB-QA-012's code for that key; and
+/// every other spelling of the install is a LIB-QA-007 problem as well as a
+/// LIB-QA-012 one.
+#[test]
+fn lib_qa_012_the_lib_qa_007_checks_accept_exactly_the_nextest_setup() {
+    let reference = nextest_fixture();
+    let ids = matrix_ids();
+    let workspace = real_workspace();
+    let config = |setup: &NextestSetup| {
+        check_mutants_config(
+            setup.mutants.as_deref().unwrap_or_default(),
+            &workspace,
+            TRIAGE_FIXTURE,
+            &ids,
+        )
+    };
+    let ci = |setup: &NextestSetup| check_mutants_pr_job(setup.ci.as_deref().unwrap_or_default());
+    let full = |setup: &NextestSetup| check_mutants_full_run(setup.full_run.as_deref());
+    for (check, problems) in [
+        ("the config check", config(&reference)),
+        ("the PR job check", ci(&reference)),
+        ("the full-run check", full(&reference)),
+    ] {
+        assert!(
+            problems.is_empty(),
+            "{QA12}: LIB-QA-007's {check} must accept ADR 0009's setup: {problems:#?}"
+        );
+    }
+    for (key, value) in OTHER_NEXTEST_VALUES {
+        let (line, code) = if key == "test_tool" {
+            (TEST_TOOL_LINE, "nextest-test-tool")
+        } else {
+            (TEST_ARGS_LINE, "nextest-test-args")
+        };
+        let setup = mutants_toml_line(line, &format!("{key} = {value}"));
+        let lib_qa_007 = config(&setup);
+        let lib_qa_012 = check_nextest_setup(&setup);
+        assert!(
+            has_code(&lib_qa_007, "unreviewed-key") && problem_codes(&lib_qa_012) == [code],
+            "{QA12}: `{key} = {value}` must be LIB-QA-007's `[unreviewed-key]` and LIB-QA-012's `[{code}]`; LIB-QA-007 gave {lib_qa_007:#?}, LIB-QA-012 gave {lib_qa_012:#?}"
+        );
+    }
+    for command in [
+        "cargo install cargo-nextest --version 0.9.151".to_owned(),
+        "cargo install cargo-nextest --locked".to_owned(),
+        "cargo install cargo-nextest --locked --version 0.9.100".to_owned(),
+        "cargo install cargo-nextest --locked --version 0.9.150".to_owned(),
+        format!("{NEXTEST_INSTALL} || true"),
+    ] {
+        for (workflow, text, setup) in [
+            (
+                "ci.yml",
+                replace_line(
+                    CI_MUTANTS_FIXTURE,
+                    NEXTEST_STEP,
+                    &format!("- run: {command}"),
+                ),
+                with_ci_yml as fn(Option<String>) -> NextestSetup,
+            ),
+            (
+                "mutants.yml",
+                replace_line(FULL_RUN_FIXTURE, NEXTEST_STEP, &format!("- run: {command}")),
+                with_full_run_yml,
+            ),
+        ] {
+            let setup = setup(Some(text));
+            let lib_qa_007 = if workflow == "ci.yml" {
+                ci(&setup)
+            } else {
+                full(&setup)
+            };
+            let lib_qa_012 = check_nextest_setup(&setup);
+            assert!(
+                has_code(&lib_qa_007, "mutants-step-unknown") && !lib_qa_012.is_empty(),
+                "{QA12}: `{command}` in {workflow} must be refused by LIB-QA-007 and by LIB-QA-012; LIB-QA-007 gave {lib_qa_007:#?}, LIB-QA-012 gave {lib_qa_012:#?}"
+            );
+        }
+    }
+}
+
+/// Item 3 (verification 0011, P4): the version the check compares with the
+/// requirement is the one [`NEXTEST_INSTALL`] pins, read from it; it meets
+/// [`NEXTEST_MINIMUM`]; and the fixtures' install step is that command.
+#[test]
+fn lib_qa_012_the_reviewed_install_pins_a_version_that_meets_the_minimum() {
+    let version = nextest_install_version();
+    assert!(
+        version.is_some_and(|v| v >= NEXTEST_MINIMUM),
+        "{QA12}: `{NEXTEST_INSTALL}` must pin one plain version, at least {}; it pins {version:?}",
+        show_version(NEXTEST_MINIMUM)
+    );
+    assert_eq!(
+        NEXTEST_STEP,
+        format!("- run: {NEXTEST_INSTALL}"),
+        "{QA12}: the fixtures' install step must be exactly `{NEXTEST_INSTALL}`"
+    );
+    for (name, fixture) in [
+        ("ci.yml", CI_MUTANTS_FIXTURE),
+        ("mutants.yml", FULL_RUN_FIXTURE),
+    ] {
+        assert_eq!(
+            fixture.lines().filter(|l| l.trim() == NEXTEST_STEP).count(),
+            1,
+            "{QA12}: the reference {name} must install nextest exactly once, with `{NEXTEST_INSTALL}`"
+        );
+    }
+}
+
+/// The number of exact [`NEXTEST_INSTALL`] commands in `line`: not followed
+/// by more of a version or flag (`0.9.151.1`, `0.9.151-beta`).
+fn exact_nextest_installs(line: &str) -> usize {
+    line.match_indices(NEXTEST_INSTALL)
+        .filter(|(at, _)| {
+            !line[at + NEXTEST_INSTALL.len()..]
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_alphanumeric() || ".-+_".contains(c))
+        })
+        .count()
+}
+
+/// `[nextest-contributing]`: `CONTRIBUTING.md` gives exactly
+/// [`NEXTEST_INSTALL`], and no line of it installs nextest any other way.
+fn check_contributing_nextest(text: &str) -> Vec<String> {
+    let code = "nextest-contributing";
+    let mut problems = Vec::new();
+    if !text.lines().any(|line| exact_nextest_installs(line) > 0) {
+        problems.push(problem(
+            code,
+            format!("CONTRIBUTING.md does not give `{NEXTEST_INSTALL}`"),
+        ));
+    }
+    for (index, line) in text.lines().enumerate() {
+        let installs = line.matches("cargo install").count() + line.matches("binstall").count();
+        if line.contains("nextest") && installs > exact_nextest_installs(line) {
+            problems.push(problem(
+                code,
+                format!(
+                    "CONTRIBUTING.md:{} installs nextest other than with exactly `{NEXTEST_INSTALL}`: `{}`",
+                    index + 1,
+                    line.trim()
+                ),
+            ));
+        }
+    }
+    problems
+}
+
+/// The reference nextest part of `CONTRIBUTING.md`'s mutation-testing section.
+const CONTRIBUTING_NEXTEST_FIXTURE: &str =
+    "cargo-mutants runs the tests under [cargo-nextest](https://nexte.st), so install it too:
+
+```sh
+cargo install cargo-nextest --locked --version 0.9.151
+```
+
+Its `mutants` profile in `.config/nextest.toml` stops at the first failing test.
+";
+
+/// Item 8: `CONTRIBUTING.md`'s nextest install command is [`NEXTEST_INSTALL`],
+/// the one CI runs, and does not drift from it.
+#[test]
+fn lib_qa_012_contributing_gives_the_reviewed_nextest_install() {
+    let c = CONTRIBUTING_NEXTEST_FIXTURE;
+    let problems = check_contributing_nextest(c);
+    assert!(
+        problems.is_empty(),
+        "{QA12}: the reference CONTRIBUTING.md text must pass before its controls mean anything: {problems:#?}"
+    );
+    let once: &[&str] = &["nextest-contributing"];
+    let twice: &[&str] = &["nextest-contributing", "nextest-contributing"];
+    let command = |replacement: &str| replace_line(c, NEXTEST_INSTALL, replacement);
+    for (name, text, expected) in [
+        ("the command removed", delete_line(c, NEXTEST_INSTALL), once),
+        (
+            "another version",
+            command("cargo install cargo-nextest --locked --version 0.9.150"),
+            twice,
+        ),
+        (
+            "--locked dropped",
+            command("cargo install cargo-nextest --version 0.9.151"),
+            twice,
+        ),
+        (
+            "a longer version",
+            command(&format!("{NEXTEST_INSTALL}.1")),
+            twice,
+        ),
+        (
+            "a second, unpinned install",
+            format!("{c}\nOr: `cargo install cargo-nextest --locked`.\n"),
+            once,
+        ),
+        (
+            "cargo binstall",
+            format!("{c}\nOr: `cargo binstall cargo-nextest`.\n"),
+            once,
+        ),
+    ] {
+        assert_eq!(
+            problem_codes(&check_contributing_nextest(&text)),
+            expected,
+            "{QA12}: the CONTRIBUTING.md control `{name}` must give exactly {expected:?}; text:\n{text}"
+        );
+    }
+    let prose = format!("{c}\nTo install cargo-nextest, use the command above.\n");
+    let problems = check_contributing_nextest(&prose);
+    assert!(
+        problems.is_empty(),
+        "{QA12}: prose that mentions installing cargo-nextest is not a second command, but was reported: {problems:#?}"
+    );
+    let problems = check_contributing_nextest(&read("CONTRIBUTING.md"));
+    assert!(
+        problems.is_empty(),
+        "{QA12}: CONTRIBUTING.md must give exactly `{NEXTEST_INSTALL}`, the command CI runs: {problems:#?}"
     );
 }

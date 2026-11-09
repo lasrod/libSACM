@@ -27,6 +27,11 @@ change bumps the minor version and is listed under **Breaking**.
   (`cargo xtask mutants exclusions`, and the CI job `mutants-exclusions`). Each
   `exclude_re`, `exclude_globs` and `skip_calls` entry must exclude exactly the mutants
   the triage document assigns to it.
+- Mutation testing runs the tests under cargo-nextest, with a `mutants` profile
+  (`.config/nextest.toml`) that kills every running test at the first failure (ADR
+  0009). Whether a mutant is caught no longer depends on the order of test-target
+  names. A local mutants run needs cargo-nextest 0.9.111 or later. Doctests do not run
+  under mutation; they still run in the normal gate.
 - A stricter matrix gate. A verified row needs exactly one `- Row verdict: <ROW-ID>: PASS`
   line in its verification record. Cited paths must be relative paths inside the
   repository, and area codes must be uppercase ASCII letters. A failing

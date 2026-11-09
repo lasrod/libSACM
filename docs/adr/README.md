@@ -13,6 +13,8 @@ decision about how to *interpret the SACM standard* belongs in
 | [0005](0005-xml-backend.md) | XML backend for XMI read and write | proposed (open) |
 | [0006](0006-agent-roles-and-slice-loop.md) | Agent roles with enforced write scopes, and the slice loop | accepted |
 | [0007](0007-msrv-and-edition.md) | Rust edition 2024, MSRV 1.85 | accepted |
+| [0008](0008-markdown-parser-for-verdict-lines.md) | A CommonMark parser decides which verdict lines count | accepted |
+| [0009](0009-nextest-for-mutation-testing.md) | cargo-mutants runs tests under nextest, stopping at the first failure | accepted |
 
 Statuses: `proposed` → `accepted` (maintainer approval) → optionally `superseded by NNNN`.
 Copy [template.md](template.md) for a new record.
