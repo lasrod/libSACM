@@ -1,7 +1,7 @@
 ---
 slice: 0009
 name: m0-ci-workflow-checks
-state: in-progress
+state: stopped
 step: verification
 rows: [LIB-QA-009, LIB-QA-008]
 mode: pr
@@ -152,3 +152,11 @@ recorded in the matrix rows.
     which wrote an untracked mutated copy, `xtask/tests/zz_mutant.rs`. The lead
     confirmed it differed by one mutated line and deleted it.
   - LIB-QA-009 now has 14 tests and LIB-QA-008 has 15. The full local gate passes.
+- 2026-11-09 verification round 2, at `7b6a3dd`:
+  [record](../verification/0009-m0-ci-workflow-checks-round2.md).
+  - LIB-QA-008 PASS, and it is now `verified`.
+  - LIB-QA-009 FAIL (its second), on comments only: R1, the `REVIEWED_ACTIONS`
+    comment credits the URL rewrites to the wrong inputs; R2, the
+    toolchain-selecting effect of `manifest-path` is undocumented. Its behaviour
+    and tests are adequate. It stays `implemented`.
+  - After a second FAIL, the slice stops for the maintainer's decision.

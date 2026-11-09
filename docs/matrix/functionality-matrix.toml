@@ -1134,7 +1134,7 @@ id = "LIB-QA-015"
 area = "QA"
 milestone = "M0"
 title = "The cargo-deny action's image is reviewed or replaced"
-requirement = "The cargo-deny gate's tools are fixed as well as its action. cargo-deny-action is a docker action whose image is built at run time: its Dockerfile downloads the cargo-deny release asset by tag without a checksum, and installs unpinned `apk` packages. Either review and pin those downloads, or replace the action with a checksum-verified install of cargo-deny."
+requirement = "The cargo-deny gate's tools are fixed as well as its action. cargo-deny-action is a docker action whose image is built at run time: its Dockerfile downloads the cargo-deny release asset by tag without a checksum, and installs unpinned `apk` packages. Its entrypoint also runs `rustup toolchain install` inside the container at run time. Either review and pin those downloads, or replace the action with a checksum-verified install of cargo-deny."
 source = "Verification 0009 round 1, new class"
 kind = "quality"
 status = "planned"
@@ -1214,7 +1214,7 @@ title = "CI gate checks match live steps, not text"
 requirement = "The CI regression tests match each gate as a whole step `run` value in the parsed `ci.yml`, inside a job that is neither conditional (`if:`) nor allowed to fail (`continue-on-error:`). A commented-out or neutered gate therefore fails the test, and so does an environment, OS matrix or trigger that weakens it."
 source = "Verification 0002 follow-up (new class for verified LIB-QA-001)"
 kind = "quality"
-status = "implemented"
+status = "verified"
 acceptance = [
   "A check in `xtask/tests/repo_checks.rs` reads `ci.yml` as YAML. For each gate, some step's `run` value must equal it exactly, or it is `[gate-missing]`: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, `cargo test --workspace --all-features`, `cargo test -p xtask`, `cargo doc --workspace --no-deps --all-features`, `cargo xtask matrix check`, and `python -m unittest discover -s .claude/hooks -p \"test_*.py\" -v`. A comment, `echo` or any other text around the command, or a multi-line `run`, does not count.",
   "The job of each gate step has only the keys `name`, `runs-on`, `steps`, `env` and `permissions`, plus `strategy` for the test job, or it is `[job-key]`. So `if`, `continue-on-error` and `needs` are refused. No step of that job has `if`, `continue-on-error`, `shell` or `working-directory` (`[step-guard]`), and the gate step itself has only `run`, `name` and `id` (`[step-key]`). Every `run` step of a gate job, the cargo-deny job's included, is a gate, so no other step can write `$GITHUB_ENV` or `$GITHUB_PATH` (`[gate-step]`). Every `uses` step of a gate job names a reviewed gate action, or it is `[gate-action]`: `actions/checkout` with no inputs, `actions/setup-python` with only `python-version`, and the three LIB-QA-009 actions with their reviewed inputs. No step of a gate job has `env`, or it is `[gate-env]`, so `BASH_ENV` cannot run a script inside an action. A top-level `defaults` is `[workflow-defaults]`.",
@@ -1224,6 +1224,7 @@ acceptance = [
   "The cargo-deny gate is the LIB-QA-003 deny-job check, and it passes. The real `ci.yml` passes. Controls over a fixture give exactly the named problem for each of these: a gate commented out, wrapped in `echo`, given `|| true` or folded into a multi-line `run`; a job-level or step-level `if` or `continue-on-error`; `needs`; an OS removed or a matrix `exclude` or `include`; `RUSTDOCFLAGS` changed or moved; an added `RUSTFLAGS`; a `paths` or `branches-ignore` filter.",
 ]
 depends_on = ["LIB-QA-001"]
+verification = "docs/verification/0009-m0-ci-workflow-checks-round2.md"
 code = [".github/workflows/ci.yml"]
 tests = [
   "xtask/tests/repo_checks.rs::lib_qa_008_a_gate_job_is_unconditional_and_not_allowed_to_fail",
