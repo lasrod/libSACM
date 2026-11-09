@@ -14,9 +14,9 @@ use super::{ElementId, ElementKind};
 /// view is a [`SacmElement`], which navigates to its
 /// [`parent`](SacmElement::parent) and [`children`](SacmElement::children).
 ///
-/// **Document order** is the order of the elements in the file: the roots in
-/// the order they appear, and each element's children in the order it
-/// contains them, across every kind of child.
+/// **Document order** is the order in which elements were added: for a loaded
+/// file, the order they appear in it. It applies to the roots, and to each
+/// element's children across every kind of child.
 ///
 /// This release has no stable way to fill a document: the XMI reader and the
 /// edit operations will. Until then, tests use the `test-support` feature's

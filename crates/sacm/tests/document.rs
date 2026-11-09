@@ -188,19 +188,24 @@ fn lib_api_002_get_returns_the_inserted_id_and_kind() {
     }
 }
 
+/// Ids that are not in the sample but are near one that is. Ids are compared
+/// exactly: no case folding, trimming, prefix or extension match, and no
+/// dropping of non-ASCII characters.
+const NEAR_MISSES: [&str; 8] = [
+    "",
+    "missing",
+    "Claim_top",
+    "claim_top ",
+    " claim_top",
+    "claim",
+    "claim_top_",
+    "claim_topé",
+];
+
 #[test]
 fn lib_api_002_get_of_an_unknown_id_is_none() {
     let doc = sample();
-    // Ids are compared exactly: no case folding, trimming or prefix match.
-    for id in [
-        "",
-        "missing",
-        "Claim_top",
-        "claim_top ",
-        " claim_top",
-        "claim",
-        "claim_top_",
-    ] {
+    for id in NEAR_MISSES {
         assert!(
             doc.get(id).is_none(),
             "LIB-API-002: get({id:?}) found an element that was never inserted"
@@ -222,6 +227,12 @@ fn lib_api_002_contains_agrees_with_get() {
         PRE_ORDER.into_iter().all(|id| doc.contains(id)),
         "LIB-API-002: contains misses an inserted element"
     );
+    for id in NEAR_MISSES {
+        assert!(
+            !doc.contains(id),
+            "LIB-API-002: contains({id:?}) is true for an id that was never inserted"
+        );
+    }
 }
 
 #[test]
@@ -318,10 +329,18 @@ fn lib_api_002_document_keeps_inserted_ids_exactly() {
                 id.as_bytes(),
                 "LIB-API-002: get({id:?}) as a {place} returned other bytes"
             );
+            assert!(
+                doc.contains(id),
+                "LIB-API-002: contains({id:?}) as a {place} is false"
+            );
             for form in normalised_forms(id) {
                 assert!(
                     doc.get(&form).is_none(),
                     "LIB-API-002: {id:?} as a {place} is also found as {form:?}"
+                );
+                assert!(
+                    !doc.contains(&form),
+                    "LIB-API-002: {id:?} as a {place} is also contained as {form:?}"
                 );
             }
         }
@@ -744,7 +763,15 @@ fn lib_api_002_insert_refuses_an_unknown_parent() {
     let mut doc = sample();
     let before = snapshot(&doc);
     // "orphan" as its own parent is unknown too: it does not exist yet.
-    for parent in ["missing", "Arguments", "arguments ", "", "orphan"] {
+    for parent in [
+        "missing",
+        "Arguments",
+        "arguments ",
+        " arguments",
+        "argumentsé",
+        "",
+        "orphan",
+    ] {
         assert!(
             refused(&mut doc, Some(parent), ElementKind::Claim, "orphan"),
             "LIB-API-002: insert accepted the unknown parent {parent:?}"

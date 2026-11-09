@@ -8,7 +8,8 @@
 //! It aims to provide:
 //!
 //! - a typed model of the whole metamodel (packages, claims, asserted
-//!   relationships, artifacts, terminology, interfaces and bindings),
+//!   relationships, artifacts, terminology, interfaces and bindings); built so
+//!   far: the element kinds and the read-only document,
 //! - XMI import and deterministic export, with a strict SACM 2.3 mode and an
 //!   explicit tolerant mode for third-party and legacy files (planned),
 //! - validation against the specification's constraints, reported as
