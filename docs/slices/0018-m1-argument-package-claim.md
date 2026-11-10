@@ -1,8 +1,8 @@
 ---
 slice: 0018
 name: m1-argument-package-claim
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [SACM23-ARG-001, SACM23-ARG-002]
 mode: pr
 ---
@@ -51,3 +51,4 @@ No ADR (ADR 0013: later attributes get seam setters). ARG-001 needs no code.
 - 2026-11-10 design: the architect follows C++ `argumentation.h` Assertion and `check_set_assertion_declaration`. The error type is proven by ARG-002's own tests (acceptance item 7), as ARG-003 proved its parse error, so LIB-API-004 stays verified. The test engineer is next.
 - 2026-11-10 tests: 9 `sacm23_arg_001_*` in `crates/sacm/tests/argument_package.rs`, which already pass, as expected: they characterise behaviour LIB-API-008 and LIB-API-002 already provide. 22 `sacm23_arg_002_*` in `crates/sacm/tests/claim.rs`. The red was confirmed by the lead: E0432 and E0599 for the three missing items. Both rows are `tests-failing`. The implementer is next.
 - 2026-11-10 implementation: `SacmElement::assertion_declaration`, the `test-support` `Document::set_assertion_declaration` and `SetAssertionDeclarationError` in `model/document.rs`; docs in `argumentation.rs`, `model.rs`, `lib.rs`, both READMEs and `architecture.md`; a CHANGELOG entry. The full gate passes (656 tests). Both rows are `implemented`. Verification is next.
+- 2026-11-10 verification round 1 at `61671a7` ([record](../verification/0018-m1-argument-package-claim.md)): both rows PASS, and both are now `verified`. Mutants: the PR diff caught 5 of 5, the full run caught 568 of 568; 23 of 24 hand mutations were killed, and the survivor is equivalent. Copilot left no comments. The docs review found nothing blocking; its wording fixes are applied (rustdoc, `Cargo.toml` comment, READMEs, CHANGELOG, two matrix typos). The slice is done.

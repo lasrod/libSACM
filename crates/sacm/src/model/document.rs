@@ -29,7 +29,8 @@ use super::{AbstractClass, AssertionDeclaration, ElementId, ElementKind, LangStr
 /// an `ArtifactAsset` holds properties (§12.6). Interfaces and bindings hold
 /// what their package holds, a `UtilityElement` contains nothing, and a group
 /// holds only utility elements, because its members are references. How many
-/// children a role holds is left to validation.
+/// children a role holds is left to validation. So is the §11.4 rule that an
+/// `ArgumentPackage` holding nested packages holds only packages.
 ///
 /// [ADR 0014]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0014-artifact-package-admits-every-artifact-element.md
 ///
@@ -346,10 +347,9 @@ impl Document {
     /// Sets the `assertionDeclaration` (SACM 2.3 §11.10) of the Assertion
     /// `id`, replacing its previous value.
     ///
-    /// **Not part of the stable API.** A seam of the `test-support` feature:
-    /// the counterpart of the C++ library's `SetAssertionDeclaration` until
-    /// the edit operations exist (LIB-EDIT-008). It may change or disappear
-    /// in any release.
+    /// **Not part of the stable API.** A seam of the `test-support` feature,
+    /// until the edit operations exist. It may change or disappear in any
+    /// release.
     ///
     /// # Errors
     ///
@@ -369,16 +369,20 @@ impl Document {
     /// let mut doc = Document::new();
     /// let id = ElementId::from;
     /// doc.insert(None, ElementKind::ArgumentPackage, id("arguments"), None).unwrap();
+    /// doc.insert(Some(&id("arguments")), ElementKind::Claim, id("c1"), None).unwrap();
     /// doc.insert(Some(&id("arguments")), ElementKind::ArgumentReasoning, id("r1"), None).unwrap();
     ///
-    /// // An ArgumentReasoning is not an Assertion, so it has no declaration.
+    /// doc.set_assertion_declaration(&id("c1"), AssertionDeclaration::Assumed)?;
+    /// let c1 = doc.get("c1").expect("the document has it");
+    /// assert_eq!(c1.assertion_declaration(), Some(AssertionDeclaration::Assumed));
+    ///
+    /// // An ArgumentReasoning is not an Assertion, so it has no declaration to set.
     /// let refused = doc.set_assertion_declaration(&id("r1"), AssertionDeclaration::Assumed);
     /// assert_eq!(
     ///     refused,
     ///     Err(SetAssertionDeclarationError::NotAnAssertion(id("r1"), ElementKind::ArgumentReasoning))
     /// );
-    /// let r1 = doc.get("r1").expect("the document has it");
-    /// assert_eq!(r1.assertion_declaration(), None);
+    /// # Ok::<(), SetAssertionDeclarationError>(())
     /// ```
     #[cfg(feature = "test-support")]
     #[cfg_attr(docsrs, doc(cfg(feature = "test-support")))]
@@ -549,14 +553,15 @@ impl<'a> SacmElement<'a> {
         self.node().name.as_ref()
     }
 
-    /// The element's `assertionDeclaration` (SACM 2.3 §11.10), or `None` when
-    /// its kind is not an Assertion.
+    /// The element's `assertionDeclaration` (SACM 2.3 §11.10): whether it is
+    /// asserted, assumed, needs support and so on, or `None` when its kind is
+    /// not an Assertion.
     ///
     /// Every Assertion (a `Claim` or one of the five asserted relationships;
-    /// `kind().is_a(AbstractClass::Assertion)`) has exactly one declaration.
-    /// It is [`AssertionDeclaration::Asserted`] until another is set, and
-    /// there is no absent state (§11.10 `[1] = asserted`). Every other kind
-    /// has none, so `None` here never means "missing".
+    /// see [`AbstractClass::Assertion`]) has exactly one declaration:
+    /// [`AssertionDeclaration::Asserted`] unless the document holds another.
+    /// There is no absent state (§11.10 `[1] = asserted`), so `None` never
+    /// means "missing".
     ///
     /// ```
     /// use sacm::model::{AssertionDeclaration, Document, ElementId, ElementKind};
@@ -706,12 +711,10 @@ impl fmt::Display for InsertError {
 
 impl std::error::Error for InsertError {}
 
-// `Document::set_assertion_declaration` is not an intra-doc link here: without
-// the feature, that method does not exist.
-/// Why `Document::set_assertion_declaration` refused to set a declaration.
+/// Why [`Document::set_assertion_declaration`] refused to set a declaration.
 ///
 /// **Not part of the stable API**: public only under the `test-support`
-/// feature, with `Document::set_assertion_declaration`.
+/// feature, with [`Document::set_assertion_declaration`].
 #[cfg(feature = "test-support")]
 #[cfg_attr(docsrs, doc(cfg(feature = "test-support")))]
 #[derive(Clone, Debug, PartialEq, Eq)]
