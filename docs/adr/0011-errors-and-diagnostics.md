@@ -92,3 +92,17 @@ A message may contain line breaks. `Display` escapes them so that the output sta
 line: `\n` and `\r` become their escaped forms, and U+0085, U+2028 and U+2029 become
 `\u{85}`, `\u{2028}` and `\u{2029}`. `message()` returns the text unchanged. This was
 raised by review on PR #21, and it makes the one-line rule above hold for every message.
+
+## Amendment 2 (2026-11-10, accepted by the maintainer): conversion errors
+
+- **The type:** when a model value fails to convert from text (`FromStr` or `TryFrom`),
+  the error is a small struct named `Parse<Type>Error` that lives beside its type. This
+  follows std's `ParseIntError`.
+- **Its shape:** it is `#[non_exhaustive]` with private fields, and `input()` returns the
+  rejected text unchanged.
+- **The other rules:** it follows every other rule of this ADR. It is
+  `Error + Send + Sync + 'static`, its message is one lowercase line with the input
+  quoted and escaped, and `source()` is `None`.
+- **Operations:** "one error enum per operation" still applies to operations (read,
+  write, edit).
+- **First instance:** `model::ParseAssertionDeclarationError` (SACM23-ARG-003).

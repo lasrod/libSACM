@@ -1377,11 +1377,50 @@ id = "SACM23-BASE-001"
 area = "BASE"
 milestone = "M1"
 title = "LangString"
-requirement = "LangString (an optional `lang` tag and optional `content`) is represented, readable, writable and editable, preserving the language tag and content exactly, including the empty and absent cases."
-source = "formal/23-05-08 clause 8; ptc/22-03-13 Base::LangString"
+requirement = "LangString (§8.3) is a value type with an optional `lang` and an optional `content`, each a String [0..1]. For each field, absent, empty and non-empty are distinct (ADR 0012), and values are kept byte for byte: no trimming, case folding, Unicode normalisation or format check on `lang`. It is not a SACMElement: it has no id and no ElementKind."
+source = "formal/23-05-08 §8.3; ptc/22-03-13 Base::LangString; ADR 0012; assurance-forge libs/sacm model/lang_string.h"
 kind = "model"
-status = "planned"
-depends_on = ["LIB-API-002"]
+status = "verified"
+verification = "docs/verification/0015-m1-value-types-round2.md"
+acceptance = [
+  "`LangString::default()` has both fields absent. `LangString::new(c)` has `lang` absent and `content` `Some(c)`. `with_lang(l)` sets `lang` to `Some(l)`.",
+  "All nine combinations of absent, `\"\"` and `\"x\"` across `lang` and `content` can be built, `lang()` and `content()` return exactly what was set as `Option<&str>`, and the nine are pairwise unequal (§8.3 `lang:String[0..1]`, `content:String[0..1]`; ADR 0012).",
+  "Content with leading or trailing spaces, LF, CR, TAB, non-ASCII text, NFC and NFD forms and an embedded U+0000 comes back byte for byte; NFC and NFD forms compare unequal.",
+  "`lang` takes any string without a format check (`\"\"`, `\"en\"`, `\"en-GB\"`, `\"not a tag\"`), and `\"en-GB\"` and `\"en-gb\"` stay distinct.",
+  "`set_lang` and `set_content`, with `Some` or `None`, change only their own field.",
+  "`Ord` compares `lang`, then `content`, with absent before present. Equal values hash equally. `LangString` is `Clone + Debug + Default + Eq + Ord + Hash + Send + Sync`, and building, cloning, comparing, hashing and `Debug` never panic.",
+  "`LangString` has no id and no kind: no `id()` or `kind()` method, and no `ElementKind` names it (ptc: it generalizes Element, not SACMElement). Review item.",
+]
+code = ["crates/sacm/src/model/lang_string.rs"]
+tests = [
+  "crates/sacm/tests/lang_string.rs::sacm23_base_001_absent_and_empty_are_distinct_in_each_field",
+  "crates/sacm/tests/lang_string.rs::sacm23_base_001_all_nine_combinations_read_back_exactly",
+  "crates/sacm/tests/lang_string.rs::sacm23_base_001_clone_and_debug_work_on_every_value",
+  "crates/sacm/tests/lang_string.rs::sacm23_base_001_cmp_is_equal_exactly_when_values_are_equal",
+  "crates/sacm/tests/lang_string.rs::sacm23_base_001_constructors_and_setters_build_the_same_nine_values",
+  "crates/sacm/tests/lang_string.rs::sacm23_base_001_content_differing_only_in_whitespace_or_case_compares_unequal",
+  "crates/sacm/tests/lang_string.rs::sacm23_base_001_content_is_kept_byte_for_byte",
+  "crates/sacm/tests/lang_string.rs::sacm23_base_001_default_has_both_fields_absent",
+  "crates/sacm/tests/lang_string.rs::sacm23_base_001_equal_values_hash_equally",
+  "crates/sacm/tests/lang_string.rs::sacm23_base_001_hostile_contents_are_pairwise_unequal",
+  "crates/sacm/tests/lang_string.rs::sacm23_base_001_lang_is_case_sensitive",
+  "crates/sacm/tests/lang_string.rs::sacm23_base_001_lang_outranks_content_in_the_order",
+  "crates/sacm/tests/lang_string.rs::sacm23_base_001_lang_string_has_the_value_traits",
+  "crates/sacm/tests/lang_string.rs::sacm23_base_001_lang_takes_any_string_without_a_format_check",
+  "crates/sacm/tests/lang_string.rs::sacm23_base_001_large_content_is_kept",
+  "crates/sacm/tests/lang_string.rs::sacm23_base_001_new_sets_content_and_leaves_lang_absent",
+  "crates/sacm/tests/lang_string.rs::sacm23_base_001_new_with_empty_content_is_not_the_default",
+  "crates/sacm/tests/lang_string.rs::sacm23_base_001_nfc_and_nfd_compare_unequal",
+  "crates/sacm/tests/lang_string.rs::sacm23_base_001_no_element_kind_or_abstract_class_is_lang_string",
+  "crates/sacm/tests/lang_string.rs::sacm23_base_001_ord_compares_lang_then_content_absent_first",
+  "crates/sacm/tests/lang_string.rs::sacm23_base_001_set_content_changes_only_content",
+  "crates/sacm/tests/lang_string.rs::sacm23_base_001_set_lang_changes_only_lang",
+  "crates/sacm/tests/lang_string.rs::sacm23_base_001_setting_none_makes_a_field_absent_not_empty",
+  "crates/sacm/tests/lang_string.rs::sacm23_base_001_text_compares_as_str_not_by_length",
+  "crates/sacm/tests/lang_string.rs::sacm23_base_001_the_nine_combinations_are_pairwise_unequal",
+  "crates/sacm/tests/lang_string.rs::sacm23_base_001_with_lang_sets_lang_and_keeps_content",
+  "crates/sacm/tests/lang_string.rs::sacm23_base_001_with_lang_twice_keeps_the_last_lang",
+]
 
 [[row]]
 id = "SACM23-BASE-002"
@@ -1432,19 +1471,52 @@ id = "SACM23-ARG-003"
 area = "ARG"
 milestone = "M1"
 title = "AssertionDeclaration"
-requirement = "The AssertionDeclaration enumeration (asserted, needsSupport, assumed, axiomatic, defeated, asCited) is represented as a non-exhaustive Rust enum with `asserted` as default, parsed and written with the exact literal spellings."
-source = "formal/23-05-08 clause 11; ptc/22-03-13 Argumentation::AssertionDeclaration"
+requirement = "The AssertionDeclaration enumeration (§11.8) is a `#[non_exhaustive]` enum with exactly the six literals in model order, `asserted` as default (§11.10), and exact, case-sensitive conversion to and from the literal spellings. A failed conversion is an error that follows ADR 0011."
+source = "formal/23-05-08 §11.8, §11.10; ptc/22-03-13 Argumentation::AssertionDeclaration, Assertion.assertionDeclaration; ADR 0011; assurance-forge libs/sacm model/argumentation.h"
 kind = "model"
-status = "planned"
-depends_on = ["LIB-API-002"]
+status = "verified"
+verification = "docs/verification/0015-m1-value-types-round2.md"
+depends_on = ["LIB-API-004"]
+acceptance = [
+  "`AssertionDeclaration::ALL` holds exactly six literals in the order `asserted`, `needsSupport`, `assumed`, `axiomatic`, `defeated`, `asCited` (ptc `ownedLiteral` order; §11.8), and `Ord` follows that order.",
+  "`as_str` and `Display` give exactly those six spellings.",
+  "Parsing each literal's `as_str()` gives back that literal.",
+  "`Default` is `Asserted` (§11.8 \"the default enumeration literal\"; §11.10 `= asserted`; ptc `defaultValue`).",
+  "Parsing `\"Asserted\"`, `\"needssupport\"`, `\" asserted\"`, `\"asserted \"`, `\"\"`, `\"justification\"`, `\"byRule\"` and `\"needs\\nSupport\"` fails, and `ParseAssertionDeclarationError::input()` returns the input exactly. It never panics and never falls back to `Asserted`.",
+  "`ParseAssertionDeclarationError` follows ADR 0011 amendment 2: a `#[non_exhaustive]` struct with private fields, `Clone + Eq + Debug + std::error::Error + Send + Sync + 'static`, a one-line lowercase message with the input quoted and escaped (`invalid AssertionDeclaration literal \"Asserted\"`), and `source()` `None`.",
+  "`AssertionDeclaration` is `#[non_exhaustive]` and `Copy + Eq + Ord + Hash + Debug + Default + Send + Sync` (D-VERSION: SACM 2.4 changes this enumeration).",
+]
+code = ["crates/sacm/src/model/argumentation.rs"]
+tests = [
+  "crates/sacm/tests/assertion_declaration.rs::sacm23_arg_003_all_holds_the_six_literals_in_model_order",
+  "crates/sacm/tests/assertion_declaration.rs::sacm23_arg_003_as_str_and_display_give_the_exact_spellings",
+  "crates/sacm/tests/assertion_declaration.rs::sacm23_arg_003_assertion_declaration_has_the_value_traits",
+  "crates/sacm/tests/assertion_declaration.rs::sacm23_arg_003_default_is_asserted",
+  "crates/sacm/tests/assertion_declaration.rs::sacm23_arg_003_display_honours_width_and_alignment",
+  "crates/sacm/tests/assertion_declaration.rs::sacm23_arg_003_needs_support_with_a_line_break_keeps_the_line_break",
+  "crates/sacm/tests/assertion_declaration.rs::sacm23_arg_003_ord_follows_model_order",
+  "crates/sacm/tests/assertion_declaration.rs::sacm23_arg_003_parse_error_has_no_source",
+  "crates/sacm/tests/assertion_declaration.rs::sacm23_arg_003_parse_error_has_the_error_traits",
+  "crates/sacm/tests/assertion_declaration.rs::sacm23_arg_003_parse_error_message_is_exact",
+  "crates/sacm/tests/assertion_declaration.rs::sacm23_arg_003_parse_error_message_is_one_line",
+  "crates/sacm/tests/assertion_declaration.rs::sacm23_arg_003_parse_error_message_quotes_the_input_as_debug_does",
+  "crates/sacm/tests/assertion_declaration.rs::sacm23_arg_003_parse_error_message_starts_lowercase",
+  "crates/sacm/tests/assertion_declaration.rs::sacm23_arg_003_parse_errors_are_equal_exactly_when_their_inputs_are",
+  "crates/sacm/tests/assertion_declaration.rs::sacm23_arg_003_parsing_each_spelling_gives_back_the_literal",
+  "crates/sacm/tests/assertion_declaration.rs::sacm23_arg_003_rejects_a_large_input_without_panicking",
+  "crates/sacm/tests/assertion_declaration.rs::sacm23_arg_003_rejects_case_and_whitespace_variants_of_every_literal",
+  "crates/sacm/tests/assertion_declaration.rs::sacm23_arg_003_rejects_the_listed_inputs_and_keeps_them_exactly",
+  "crates/sacm/tests/assertion_declaration.rs::sacm23_arg_003_rejects_the_rust_variant_names",
+  "crates/sacm/tests/assertion_declaration.rs::sacm23_arg_003_the_six_literals_hash_apart",
+]
 
 [[row]]
 id = "SACM23-ARG-002"
 area = "ARG"
 milestone = "M1"
 title = "Claim"
-requirement = "Claim is represented with its inherited Assertion feature `assertionDeclaration`, created, read, written and round-tripped inside an ArgumentPackage."
-source = "formal/23-05-08 clause 11; ptc/22-03-13 Argumentation::Claim"
+requirement = "Claim is represented with its inherited Assertion feature `assertionDeclaration` [1], created, read, written and round-tripped inside an ArgumentPackage. All six literals round-trip; an absent attribute reads as `asserted` (§11.10); the writer omits the attribute when it is `asserted`, as the C++ library does."
+source = "formal/23-05-08 clause 11; ptc/22-03-13 Argumentation::Claim; formal/23-05-08 §11.10; assurance-forge libs/sacm io/xmi_writer.cpp (assertionDeclaration)"
 kind = "model"
 status = "planned"
 depends_on = ["SACM23-ARG-001", "SACM23-ARG-003"]
@@ -1509,8 +1581,8 @@ id = "SACM23-XMI-004"
 area = "XMI"
 milestone = "M1"
 title = "xmi:id identity"
-requirement = "Every element is written with an `xmi:id`; ids read from a file are preserved exactly through load, edit and save."
-source = "XMI 2.5.1 identity; D-ID"
+requirement = "Every SACMElement is written with an `xmi:id`; ids read from a file are preserved exactly through load, edit and save. An `xmi:id` on a LangString (not a SACMElement) is not kept: it is reported with an Info diagnostic that names the id, as the C++ library does, and is never dropped silently."
+source = "XMI 2.5.1 identity; D-ID; D-PRESERVE; assurance-forge libs/sacm io/xmi_reader.cpp (LangString xmi:id)"
 kind = "xmi"
 status = "planned"
 depends_on = ["SACM23-XMI-001"]
@@ -1536,6 +1608,17 @@ source = "D-RT"
 kind = "xmi"
 status = "planned"
 depends_on = ["SACM23-XMI-003", "SACM23-XMI-004", "SACM23-XMI-006"]
+
+[[row]]
+id = "SACM23-XMI-011"
+area = "XMI"
+milestone = "M1"
+title = "String values survive XML exactly"
+requirement = "Saving and reloading keeps every string value exactly, including LangString `lang` and `content`: markup characters are escaped, TAB, LF and CR in attribute values are written as character references so attribute normalisation cannot change them, and a string holding a character XML 1.0 cannot represent makes saving fail with an error. It is never dropped or altered. For every LangString role, an absent `lang` or `content` is written as no attribute and reads back absent, and an empty one is written as `=\"\"` and reads back empty (ADR 0012); all nine absent/empty/non-empty combinations round-trip."
+source = "D-RT; D-PRESERVE; XML 1.0 §2.2, §3.3.3; formal/23-05-08 §8.3; ADR 0012"
+kind = "xmi"
+status = "planned"
+depends_on = ["SACM23-BASE-001", "SACM23-XMI-007"]
 
 [[row]]
 id = "LIB-COMPAT-001"
@@ -1590,7 +1673,7 @@ requirement = "For every valid fixture in scope, loading, saving strictly and re
 source = "D-RT"
 kind = "xmi"
 status = "planned"
-depends_on = ["LIB-RT-001", "SACM23-XMI-007"]
+depends_on = ["LIB-RT-001", "SACM23-XMI-007", "SACM23-XMI-011"]
 
 [[row]]
 id = "LIB-EDIT-001"
@@ -1777,8 +1860,8 @@ id = "SACM23-ARG-007"
 area = "ARG"
 milestone = "M2"
 title = "AssertedRelationship common features"
-requirement = "The shared features of all asserted relationships — `source` (1..*), `target` (1), optional `reasoning` (ArgumentReasoning) and required `isCounter` — are represented once and available on every relationship kind, round-tripped and editable."
-source = "formal/23-05-08 §11.13; ptc/22-03-13 Argumentation::AssertedRelationship"
+requirement = "The shared features of all asserted relationships — `source` (1..*), `target` (1), optional `reasoning` (ArgumentReasoning), required `isCounter` and the inherited Assertion feature `assertionDeclaration` [1] (default `asserted`) — are represented once and available on every relationship kind, round-tripped and editable. `assertionDeclaration` follows the SACM23-ARG-002 rules: an absent attribute reads as `asserted`, and the writer omits `asserted`."
+source = "formal/23-05-08 §11.13; ptc/22-03-13 Argumentation::AssertedRelationship; formal/23-05-08 §11.10"
 kind = "model"
 status = "planned"
 depends_on = ["SACM23-ARG-002", "SACM23-ARG-005", "SACM23-XMI-005"]

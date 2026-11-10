@@ -32,6 +32,11 @@ change bumps the minor version and is listed under **Breaking**.
   `Display` and one total order. No code is emitted yet [LIB-DIAG-001].
 - Error convention (ADR 0011): one `#[non_exhaustive]` error enum per operation.
   `InsertError` messages quote and escape ids [LIB-API-004].
+- `sacm::model::LangString`: an optional language tag and optional content, with
+  absent, empty and non-empty kept distinct (ADR 0012) [SACM23-BASE-001].
+- `sacm::model::AssertionDeclaration`: the six SACM 2.3 literals, with `asserted` as the
+  default and exact `as_str`/`FromStr`; a failed parse is a
+  `ParseAssertionDeclarationError` [SACM23-ARG-003].
 
 ### Changed
 
