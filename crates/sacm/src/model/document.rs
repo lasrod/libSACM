@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 use super::containment::admits;
-use super::{AbstractClass, ElementId, ElementKind, LangString};
+use super::{AbstractClass, AssertionDeclaration, ElementId, ElementKind, LangString};
 
 /// A SACM 2.3 document: one interchange unit (what one SACM XMI file holds),
 /// owning its root packages and every element under them.
@@ -29,7 +29,8 @@ use super::{AbstractClass, ElementId, ElementKind, LangString};
 /// an `ArtifactAsset` holds properties (§12.6). Interfaces and bindings hold
 /// what their package holds, a `UtilityElement` contains nothing, and a group
 /// holds only utility elements, because its members are references. How many
-/// children a role holds is left to validation.
+/// children a role holds is left to validation. So is the §11.4 rule that an
+/// `ArgumentPackage` holding nested packages holds only packages.
 ///
 /// [ADR 0014]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0014-artifact-package-admits-every-artifact-element.md
 ///
@@ -70,6 +71,9 @@ struct Node {
     /// The element's name; `None` for a missing name, and always `None` for a
     /// `UtilityElement` kind.
     name: Option<LangString>,
+    /// The element's `assertionDeclaration`: `Some` exactly when the kind is
+    /// an Assertion.
+    assertion_declaration: Option<AssertionDeclaration>,
     /// The handle of the containing element; `None` for a root.
     parent: Option<usize>,
     /// The handles of the contained elements, in containment order.
@@ -331,10 +335,76 @@ impl Document {
             id,
             kind,
             name,
+            assertion_declaration: kind
+                .is_a(AbstractClass::Assertion)
+                .then(AssertionDeclaration::default),
             parent,
             children: Vec::new(),
         });
         Ok(())
+    }
+
+    /// Sets the `assertionDeclaration` (SACM 2.3 §11.10) of the Assertion
+    /// `id`, replacing its previous value.
+    ///
+    /// **Not part of the stable API.** A seam of the `test-support` feature,
+    /// until the edit operations exist. It may change or disappear in any
+    /// release.
+    ///
+    /// # Errors
+    ///
+    /// Refuses, and leaves the document unchanged, when, checked in this order:
+    /// - the document has no element `id`
+    ///   ([`SetAssertionDeclarationError::UnknownElement`]);
+    /// - the element's kind is not an Assertion
+    ///   ([`SetAssertionDeclarationError::NotAnAssertion`]).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::model::{
+    ///     AssertionDeclaration, Document, ElementId, ElementKind, SetAssertionDeclarationError,
+    /// };
+    ///
+    /// let mut doc = Document::new();
+    /// let id = ElementId::from;
+    /// doc.insert(None, ElementKind::ArgumentPackage, id("arguments"), None).unwrap();
+    /// doc.insert(Some(&id("arguments")), ElementKind::Claim, id("c1"), None).unwrap();
+    /// doc.insert(Some(&id("arguments")), ElementKind::ArgumentReasoning, id("r1"), None).unwrap();
+    ///
+    /// doc.set_assertion_declaration(&id("c1"), AssertionDeclaration::Assumed)?;
+    /// let c1 = doc.get("c1").expect("the document has it");
+    /// assert_eq!(c1.assertion_declaration(), Some(AssertionDeclaration::Assumed));
+    ///
+    /// // An ArgumentReasoning is not an Assertion, so it has no declaration to set.
+    /// let refused = doc.set_assertion_declaration(&id("r1"), AssertionDeclaration::Assumed);
+    /// assert_eq!(
+    ///     refused,
+    ///     Err(SetAssertionDeclarationError::NotAnAssertion(id("r1"), ElementKind::ArgumentReasoning))
+    /// );
+    /// # Ok::<(), SetAssertionDeclarationError>(())
+    /// ```
+    #[cfg(feature = "test-support")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "test-support")))]
+    pub fn set_assertion_declaration(
+        &mut self,
+        id: &ElementId,
+        declaration: AssertionDeclaration,
+    ) -> Result<(), SetAssertionDeclarationError> {
+        let Some(&node) = self.index.get(id) else {
+            return Err(SetAssertionDeclarationError::UnknownElement(id.clone()));
+        };
+        let node = &mut self.nodes[node];
+        match node.assertion_declaration.as_mut() {
+            Some(current) => {
+                *current = declaration;
+                Ok(())
+            }
+            None => Err(SetAssertionDeclarationError::NotAnAssertion(
+                id.clone(),
+                node.kind,
+            )),
+        }
     }
 
     /// The view of the node with handle `node`.
@@ -483,6 +553,42 @@ impl<'a> SacmElement<'a> {
         self.node().name.as_ref()
     }
 
+    /// The element's `assertionDeclaration` (SACM 2.3 §11.10): whether it is
+    /// asserted, assumed, needs support and so on, or `None` when its kind is
+    /// not an Assertion.
+    ///
+    /// Every Assertion (a `Claim` or one of the five asserted relationships;
+    /// see [`AbstractClass::Assertion`]) has exactly one declaration:
+    /// [`AssertionDeclaration::Asserted`] unless the document holds another.
+    /// There is no absent state (§11.10 `[1] = asserted`), so `None` never
+    /// means "missing".
+    ///
+    /// ```
+    /// use sacm::model::{AssertionDeclaration, Document, ElementId, ElementKind};
+    ///
+    /// // Built with the unstable test-support feature until the XMI reader exists.
+    /// let mut doc = Document::new();
+    /// let id = ElementId::from;
+    /// doc.insert(None, ElementKind::ArgumentPackage, id("arguments"), None).unwrap();
+    /// doc.insert(Some(&id("arguments")), ElementKind::Claim, id("c1"), None).unwrap();
+    /// doc.insert(Some(&id("arguments")), ElementKind::ArgumentReasoning, id("r1"), None).unwrap();
+    ///
+    /// let c1 = doc.get("c1").expect("the document has it");
+    /// assert_eq!(c1.assertion_declaration(), Some(AssertionDeclaration::Asserted));
+    ///
+    /// doc.set_assertion_declaration(&id("c1"), AssertionDeclaration::NeedsSupport).unwrap();
+    /// let c1 = doc.get("c1").expect("the document has it");
+    /// assert_eq!(c1.assertion_declaration(), Some(AssertionDeclaration::NeedsSupport));
+    ///
+    /// // An ArgumentReasoning is not an Assertion, so it has no declaration.
+    /// let r1 = doc.get("r1").expect("the document has it");
+    /// assert_eq!(r1.assertion_declaration(), None);
+    /// ```
+    #[must_use]
+    pub fn assertion_declaration(self) -> Option<AssertionDeclaration> {
+        self.node().assertion_declaration
+    }
+
     /// The element that contains this one, or `None` for a root.
     #[must_use]
     pub fn parent(self) -> Option<SacmElement<'a>> {
@@ -604,3 +710,40 @@ impl fmt::Display for InsertError {
 }
 
 impl std::error::Error for InsertError {}
+
+/// Why [`Document::set_assertion_declaration`] refused to set a declaration.
+///
+/// **Not part of the stable API**: public only under the `test-support`
+/// feature, with [`Document::set_assertion_declaration`].
+#[cfg(feature = "test-support")]
+#[cfg_attr(docsrs, doc(cfg(feature = "test-support")))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum SetAssertionDeclarationError {
+    /// The document has no element with this id.
+    UnknownElement(ElementId),
+    /// The element's kind is not an Assertion, so it has no
+    /// `assertionDeclaration`. Holds the element's id and kind.
+    NotAnAssertion(ElementId, ElementKind),
+}
+
+#[cfg(feature = "test-support")]
+impl fmt::Display for SetAssertionDeclarationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            // `{:?}` quotes the id and escapes line breaks, so the message
+            // stays on one line.
+            Self::UnknownElement(id) => {
+                write!(f, "the document has no element {:?}", id.as_str())
+            }
+            Self::NotAnAssertion(id, kind) => write!(
+                f,
+                "element {:?} of kind {kind} is not an Assertion",
+                id.as_str()
+            ),
+        }
+    }
+}
+
+#[cfg(feature = "test-support")]
+impl std::error::Error for SetAssertionDeclarationError {}

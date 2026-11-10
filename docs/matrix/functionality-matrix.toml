@@ -1539,11 +1539,33 @@ id = "SACM23-ARG-001"
 area = "ARG"
 milestone = "M1"
 title = "ArgumentPackage"
-requirement = "ArgumentPackage is represented, contained in an AssuranceCasePackage or as a root interchange object, and contains ArgumentationElements (role `argumentElement`) in document order."
-source = "formal/23-05-08 §11.4; ptc/22-03-13 Argumentation::ArgumentPackage"
+requirement = "ArgumentPackage (§11.4, superclass ArgumentationElement, so an ArtifactElement by §11.3) is represented as a root, the Argumentation unit of interchange (§2.2), or nested: in an AssuranceCasePackage (SACM23-AC-001), in another ArgumentPackage (§11.4 \"can also be nested\"), or in an ArtifactPackage (ADR 0014). Its `argumentElement` composition (ArgumentationElement [0..*]) holds any mix of the 12 ArgumentationElement kinds as children, in document order and interleaved with its ModelElement utility children (ADR 0010 D2). Which kinds are admitted is LIB-API-008. The §11.4 homogeneity constraint is a content rule reported by SACM23-VAL-012 and is never refused on insertion (D-PKG-HOMOG, D-VAL-LAYER). The `interface` reference is SACM23-ARG-014; the role element and the `argumentationElement` spelling are SACM23-XMI-016 and SACM23-XMI-009; interchange roots and the compliance point are SACM23-XMI-001 and SACM23-CP-002."
+source = "formal/23-05-08 §11.4 (p. 36): \"Superclass ArgumentationElement\"; \"argumentationElement:ArgumentationElement[0..*] (composition) - a collection of ArgumentationElements forming a structured argument\"; \"ArgumentPackages elements can also be nested.\"; \"If an ArgumentPackage has nested ArgumentPackages, then it is only allowed to contain ArgumentPackages.\"; §11.3 \"ArgumentationElement extends Base::ArtifactElement.\"; §2.2 \"The top object of the Argumentation package as a unit of interchange shall be the Argumentation::ArgumentPackage element of the SACM.\"; ptc/22-03-13 Argumentation::ArgumentPackage (`argumentElement` aggregation=\"composite\", 0..*, not isOrdered); ADR 0010 D2; D-PKG-HOMOG; D-VAL-LAYER; assurance-forge libs/sacm model/argumentation.h ArgumentPackage"
 kind = "model"
-status = "planned"
-depends_on = ["SACM23-AC-001"]
+status = "verified"
+verification = "docs/verification/0018-m1-argument-package-claim.md"
+depends_on = ["SACM23-AC-001", "LIB-API-008"]
+acceptance = [
+  "Standalone root: an ArgumentPackage inserted with no parent, in a document with no AssuranceCasePackage, is the only entry in `roots()` and has `parent() == None` (§2.2).",
+  "The 12 kinds mixed under one role: one of each ArgumentationElement kind inserted under one root ArgumentPackage in a non-model order (AssertedEvidence, Claim, ArgumentPackageBinding, ArgumentGroup, ArtifactReference, ArgumentPackage, AssertedContext, ArgumentReasoning, ArgumentPackageInterface, AssertedInference, AssertedArtifactContext, AssertedArtifactSupport) come back from `children()` in exactly that order, each with the package as `parent()`.",
+  "Order across roles: Description d1, Claim c1, Note n1, ArgumentReasoning r1, TaggedValue t1 and Claim c2, inserted in that order, come back from `children()` in that order; filtering by `is_a(ArgumentationElement)` gives c1, r1, c2 and by `is_a(UtilityElement)` gives d1, n1, t1.",
+  "Nesting: in the chain AssuranceCasePackage -> ArgumentPackage p1 -> p2 -> p3, with a Claim under p3, each inner package's `parent()` is the next one out and it is in that parent's `children()`; only the AssuranceCasePackage is in `roots()`; `elements()` visits case, p1, p2, p3 and the claim in pre-order.",
+  "Homogeneity is not structural: under one ArgumentPackage, inserting a plain ArgumentPackage and then a Claim succeeds, and so does the reverse order; both children are held (the report is SACM23-VAL-012's).",
+  "Negative containment: an Artifact, Term, AssuranceCasePackage, ArtifactPackage or TerminologyPackage under an ArgumentPackage is refused with `InsertError::ContainmentNotAllowed` naming both ids and kinds, and `element_count()` does not change.",
+  "0..* is unbounded: an empty ArgumentPackage has an empty `children()`, and one holding 1,000 Claims keeps them all in insertion order.",
+]
+code = ["crates/sacm/src/model/containment.rs", "crates/sacm/src/model/document.rs"]
+tests = [
+  "crates/sacm/tests/argument_package.rs::sacm23_arg_001_all_twelve_argumentation_kinds_keep_insertion_order",
+  "crates/sacm/tests/argument_package.rs::sacm23_arg_001_an_empty_argument_package_has_no_children",
+  "crates/sacm/tests/argument_package.rs::sacm23_arg_001_argument_package_is_a_standalone_root",
+  "crates/sacm/tests/argument_package.rs::sacm23_arg_001_argument_packages_nest_in_a_case_and_in_each_other",
+  "crates/sacm/tests/argument_package.rs::sacm23_arg_001_children_interleave_argumentation_and_utility_elements_in_order",
+  "crates/sacm/tests/argument_package.rs::sacm23_arg_001_mixing_a_nested_package_and_a_claim_is_not_refused",
+  "crates/sacm/tests/argument_package.rs::sacm23_arg_001_non_argumentation_kinds_are_refused_under_an_argument_package",
+  "crates/sacm/tests/argument_package.rs::sacm23_arg_001_one_thousand_claims_keep_insertion_order",
+  "crates/sacm/tests/argument_package.rs::sacm23_arg_001_the_mixed_order_holds_each_argumentation_element_kind_once",
+]
 
 [[row]]
 id = "SACM23-ARG-003"
@@ -1594,11 +1616,46 @@ id = "SACM23-ARG-002"
 area = "ARG"
 milestone = "M1"
 title = "Claim"
-requirement = "Claim is represented with its inherited Assertion feature `assertionDeclaration` [1], created, read, written and round-tripped inside an ArgumentPackage. All six literals round-trip; an absent attribute reads as `asserted` (§11.10); the writer omits the attribute when it is `asserted`, as the C++ library does."
-source = "formal/23-05-08 clause 11; ptc/22-03-13 Argumentation::Claim; formal/23-05-08 §11.10; assurance-forge libs/sacm io/xmi_writer.cpp (assertionDeclaration)"
+requirement = "Claim (§11.11, superclass Assertion; no features of its own) is represented with the Assertion attribute `assertionDeclaration: AssertionDeclaration [1] = asserted` (§11.10). Every element of an Assertion kind (Claim and the five asserted-relationship kinds) holds exactly one AssertionDeclaration: `asserted` until another is set, and any of the six literals once set. There is no absent state: the property is `[1]` with a metamodel default, and XMI 2.5.1 §9.4.1 leaves default values unserialized, so an omitted value means `asserted`, as in C++. Elements of any other kind have no assertionDeclaration. Homes: containment is LIB-API-008; `metaClaim` is SACM23-ARG-004; the ModelElement and SACMElement features are SACM23-BASE-003 to SACM23-BASE-008; XMI reading and writing is SACM23-XMI-017; the element form is SACM23-XMI-014; `xsi:type` is SACM23-XMI-006; unknown literals are SACM23-VAL-006; the asCited derivation is SACM23-VAL-019; creation is LIB-EDIT-001; editing is LIB-EDIT-008; comparison is LIB-RT-001."
+source = "formal/23-05-08 §11.11 (p. 39): \"Superclass Assertion\"; §11.10 (p. 39): \"assertionDeclaration:AssertionDeclaration[1] = asserted - the declaration indicating the state of the Assertion.\"; §11.8 (p. 38): \"asserted - the default enumeration literal, indicating that an Assertion is asserted.\"; ptc/22-03-13 Argumentation::Claim, Argumentation::Assertion.assertionDeclaration (defaultValue InstanceValue -> `asserted`); XMI 2.5.1 §9.4.1 (p. 57): \"Properties whose values are the default values are not serialized except there the value is being used to specify the default itself\"; assurance-forge libs/sacm model/argumentation.h Assertion (`assertion_declaration_ = AssertionDeclaration::Asserted`), commands/commands.cpp SetAssertionDeclaration"
 kind = "model"
-status = "planned"
+status = "verified"
+verification = "docs/verification/0018-m1-argument-package-claim.md"
 depends_on = ["SACM23-ARG-001", "SACM23-ARG-003"]
+acceptance = [
+  "A Claim inserted through the seam has declaration `asserted` (§11.10 `= asserted`; the ptc `defaultValue`).",
+  "Setting each of the six literals on a Claim reads back that literal, and a later set replaces an earlier one (`NeedsSupport` then `Asserted` reads `Asserted`).",
+  "Over `ElementKind::ALL`, an element reports a declaration (`asserted` by default) exactly when its kind `is_a(AbstractClass::Assertion)`: Claim and the five Asserted* kinds. Every other kind reports none, ArgumentPackage, ArgumentReasoning, ArtifactReference and Note included.",
+  "The setter refuses an unknown id, and an element of a kind that is not an Assertion (ArgumentReasoning, ArtifactReference, ArgumentPackage, Note); the error names the id, and the kind where there is one, and every element's declaration is as it was before.",
+  "Elements are independent: setting `defeated` on Claim c1 leaves its sibling c2 `asserted`; a `clone()` keeps c1 `defeated`; setting `axiomatic` on the clone leaves the original c1 `defeated`.",
+  "The declaration follows the kind, not the container: a Claim inside an ArtifactPackage (ADR 0014) also defaults to `asserted` and accepts all six literals.",
+  "`SetAssertionDeclarationError` (test-support) follows ADR 0011: `#[non_exhaustive]`; `Clone + Eq + Debug + Error + Send + Sync + 'static`, checked statically; it boxes and downcasts as `dyn Error + Send + Sync`; each variant's `Display` is one lowercase line without trailing punctuation, with the id quoted and escaped (an id containing a line break stays one line), e.g. `the document has no element \"c9\"` and `element \"r1\" of kind ArgumentReasoning is not an Assertion`; `source()` is `None`; the setter refuses an empty, NUL-bearing, non-ASCII or 1 MiB unknown id without panicking.",
+]
+code = ["crates/sacm/src/model/document.rs", "crates/sacm/src/model/argumentation.rs"]
+tests = [
+  "crates/sacm/tests/claim.rs::sacm23_arg_002_a_claim_in_an_artifact_package_holds_a_declaration",
+  "crates/sacm/tests/claim.rs::sacm23_arg_002_a_claim_is_asserted_by_default",
+  "crates/sacm/tests/claim.rs::sacm23_arg_002_a_later_set_replaces_an_earlier_one",
+  "crates/sacm/tests/claim.rs::sacm23_arg_002_argument_package_reasoning_reference_and_note_report_none",
+  "crates/sacm/tests/claim.rs::sacm23_arg_002_declarations_are_held_per_element_and_per_document",
+  "crates/sacm/tests/claim.rs::sacm23_arg_002_each_literal_set_on_a_claim_reads_back",
+  "crates/sacm/tests/claim.rs::sacm23_arg_002_every_assertion_kind_accepts_all_six_literals",
+  "crates/sacm/tests/claim.rs::sacm23_arg_002_exactly_the_assertion_kinds_report_a_declaration",
+  "crates/sacm/tests/claim.rs::sacm23_arg_002_set_error_boxes_and_downcasts_as_a_send_sync_error",
+  "crates/sacm/tests/claim.rs::sacm23_arg_002_set_error_debug_names_the_variant",
+  "crates/sacm/tests/claim.rs::sacm23_arg_002_set_error_display_is_exact",
+  "crates/sacm/tests/claim.rs::sacm23_arg_002_set_error_has_no_source",
+  "crates/sacm/tests/claim.rs::sacm23_arg_002_set_error_is_a_clone_eq_send_sync_static_error",
+  "crates/sacm/tests/claim.rs::sacm23_arg_002_set_error_messages_follow_the_message_rules",
+  "crates/sacm/tests/claim.rs::sacm23_arg_002_set_error_messages_quote_awkward_ids_on_one_line",
+  "crates/sacm/tests/claim.rs::sacm23_arg_002_the_assertion_kinds_are_exactly_the_six",
+  "crates/sacm/tests/claim.rs::sacm23_arg_002_the_setter_accepts_a_one_mebibyte_claim_id",
+  "crates/sacm/tests/claim.rs::sacm23_arg_002_the_setter_refuses_a_kind_that_is_not_an_assertion",
+  "crates/sacm/tests/claim.rs::sacm23_arg_002_the_setter_refuses_a_one_mebibyte_unknown_id",
+  "crates/sacm/tests/claim.rs::sacm23_arg_002_the_setter_refuses_an_unknown_id",
+  "crates/sacm/tests/claim.rs::sacm23_arg_002_the_setter_refuses_every_kind_that_is_not_an_assertion",
+  "crates/sacm/tests/claim.rs::sacm23_arg_002_the_setter_refuses_hostile_unknown_ids_without_panicking",
+]
 
 [[row]]
 id = "LIB-SEC-001"
@@ -1961,11 +2018,11 @@ id = "SACM23-ARG-007"
 area = "ARG"
 milestone = "M2"
 title = "AssertedRelationship common features"
-requirement = "The shared features of all asserted relationships — `source` (1..*), `target` (1), optional `reasoning` (ArgumentReasoning), required `isCounter` and the inherited Assertion feature `assertionDeclaration` [1] (default `asserted`) — are represented once and available on every relationship kind, round-tripped and editable. `assertionDeclaration` follows the SACM23-ARG-002 rules: an absent attribute reads as `asserted`, and the writer omits `asserted`."
+requirement = "The shared features of all asserted relationships — `source` (1..*), `target` (1), optional `reasoning` (ArgumentReasoning), required `isCounter` and the inherited Assertion feature `assertionDeclaration` [1] (default `asserted`) — are represented once and available on every relationship kind, round-tripped and editable. `assertionDeclaration` is SACM23-ARG-002 (model) and SACM23-XMI-017 (XMI)."
 source = "formal/23-05-08 §11.13; ptc/22-03-13 Argumentation::AssertedRelationship; formal/23-05-08 §11.10"
 kind = "model"
 status = "planned"
-depends_on = ["SACM23-ARG-002", "SACM23-ARG-005", "SACM23-XMI-005"]
+depends_on = ["SACM23-ARG-002", "SACM23-ARG-005", "SACM23-XMI-005", "SACM23-XMI-017"]
 
 [[row]]
 id = "SACM23-ARG-008"
@@ -2601,7 +2658,7 @@ id = "SACM23-ARG-014"
 area = "ARG"
 milestone = "M5"
 title = "ArgumentPackageInterface"
-requirement = "ArgumentPackageInterface is represented with `implements` (1), resides inside the package it describes, and is created, round-tripped and editable; it does not trigger the homogeneity rule (D-PKG-HOMOG)."
+requirement = "ArgumentPackageInterface is represented with `implements` (1), resides inside the package it describes, and is created, round-tripped and editable; it does not trigger the homogeneity rule (D-PKG-HOMOG). An ArgumentPackage's `interface` references (0..*) are owned here: the model declares them, the text of the package's clause omits them (metamodel inventory, model followed)."
 source = "formal/23-05-08 §11.6; ptc/22-03-13 Argumentation::ArgumentPackageInterface"
 kind = "model"
 status = "planned"
@@ -2623,7 +2680,7 @@ id = "SACM23-ART-012"
 area = "ART"
 milestone = "M5"
 title = "ArtifactPackageInterface"
-requirement = "ArtifactPackageInterface is represented with `implements` (1), created, round-tripped and editable."
+requirement = "ArtifactPackageInterface is represented with `implements` (1), created, round-tripped and editable. An ArtifactPackage's `interface` references (0..*) are owned here: the model declares them, the text of the package's clause omits them (metamodel inventory, model followed)."
 source = "formal/23-05-08 §12.5; ptc/22-03-13 Artifact::ArtifactPackageInterface"
 kind = "model"
 status = "planned"
@@ -2645,7 +2702,7 @@ id = "SACM23-TERM-007"
 area = "TERM"
 milestone = "M5"
 title = "TerminologyPackageInterface"
-requirement = "TerminologyPackageInterface (a TerminologyPackage, D-TEXT-MODEL) is represented with `implements` (1), created, round-tripped and editable."
+requirement = "TerminologyPackageInterface (a TerminologyPackage, D-TEXT-MODEL) is represented with `implements` (1), created, round-tripped and editable. A TerminologyPackage's `interface` references (0..*) are owned here: the model declares them, the text of the package's clause omits them (metamodel inventory, model followed)."
 source = "formal/23-05-08 §10.5; ptc/22-03-13 Terminology::TerminologyPackageInterface"
 kind = "model"
 status = "planned"
@@ -2774,7 +2831,7 @@ requirement = "Import and export XMI documents whose unit of interchange is Argu
 source = "formal/23-05-08 clause 2"
 kind = "compliance"
 status = "planned"
-depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-ARG-001", "SACM23-ARG-002", "SACM23-ARG-003", "SACM23-ARG-004", "SACM23-ARG-005", "SACM23-ARG-006", "SACM23-ARG-007", "SACM23-ARG-008", "SACM23-ARG-009", "SACM23-ARG-010", "SACM23-ARG-011", "SACM23-ARG-012", "SACM23-ARG-013", "SACM23-ARG-014", "SACM23-ARG-015", "SACM23-XMI-001", "SACM23-XMI-002", "SACM23-XMI-003", "SACM23-XMI-004", "SACM23-XMI-005", "SACM23-XMI-006", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-XMI-009", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-005", "SACM23-VAL-006", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-009", "SACM23-VAL-010", "SACM23-VAL-011", "SACM23-VAL-012", "SACM23-VAL-013", "SACM23-VAL-014", "SACM23-VAL-016", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008"]
+depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-ARG-001", "SACM23-ARG-002", "SACM23-ARG-003", "SACM23-ARG-004", "SACM23-ARG-005", "SACM23-ARG-006", "SACM23-ARG-007", "SACM23-ARG-008", "SACM23-ARG-009", "SACM23-ARG-010", "SACM23-ARG-011", "SACM23-ARG-012", "SACM23-ARG-013", "SACM23-ARG-014", "SACM23-ARG-015", "SACM23-XMI-001", "SACM23-XMI-002", "SACM23-XMI-003", "SACM23-XMI-004", "SACM23-XMI-005", "SACM23-XMI-006", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-XMI-009", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-005", "SACM23-VAL-006", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-009", "SACM23-VAL-010", "SACM23-VAL-011", "SACM23-VAL-012", "SACM23-VAL-013", "SACM23-VAL-014", "SACM23-VAL-016", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008", "SACM23-XMI-017", "SACM23-VAL-019"]
 
 [[row]]
 id = "SACM23-CP-003"
@@ -2939,6 +2996,28 @@ source = "formal/23-05-08 §9.2, §10.4, §11.4, §12.2, §12.6; ptc/22-03-13 co
 kind = "xmi"
 status = "planned"
 depends_on = ["LIB-API-008", "SACM23-XMI-006", "SACM23-XMI-010", "LIB-TOOL-020"]
+
+[[row]]
+id = "SACM23-XMI-017"
+area = "XMI"
+milestone = "M2"
+title = "assertionDeclaration in XMI"
+requirement = "On every Assertion kind, import reads the attribute form of each of the six AssertionDeclaration literals. An absent `assertionDeclaration` reads as `asserted`; an explicit `assertionDeclaration=\"asserted\"` is accepted in both modes without a diagnostic and loads equal to the omitted form. Export omits the attribute when the value is `asserted` and otherwise writes the exact literal spelling. All six literals round-trip on a Claim."
+source = "formal/23-05-08 §11.10 \"assertionDeclaration:AssertionDeclaration[1] = asserted\"; XMI 2.5.1 §9.4.1 \"Properties whose values are the default values are not serialized\" and §7.8.4 \"the XML Schema will never contain default values for Properties\" (quoted when analysed, LIB-TOOL-020); assurance-forge libs/sacm io/xmi_writer.cpp:95-98, io/xmi_reader.cpp:1759-1795"
+kind = "xmi"
+status = "planned"
+depends_on = ["SACM23-XMI-001", "SACM23-ARG-002", "SACM23-XMI-016", "LIB-TOOL-020"]
+
+[[row]]
+id = "SACM23-VAL-019"
+area = "VAL"
+milestone = "M2"
+title = "asCited declarations are citations"
+requirement = "An Assertion declared `asCited` that is not a citation (`isCitation` not true), or whose `citedElement` is not an Assertion, is reported as a warning naming the element (§11.8 \"should\", D-SEV). The element is kept."
+source = "formal/23-05-08 §11.8: \"asCited - a flag indicating that because the Assertion is cited, the AssertionDeclaration should be transitively derived from the value of the AssertionDeclaration of the cited Assertion.\"; D-SEV; slice 0018 research (assurance-forge has no such check)"
+kind = "validation"
+status = "planned"
+depends_on = ["SACM23-ARG-002", "SACM23-BASE-007"]
 
 [[row]]
 id = "LIB-API-005"

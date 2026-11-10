@@ -8,8 +8,8 @@ use std::str::FromStr;
 ///
 /// Every Assertion (a Claim or an asserted relationship; see
 /// [`AbstractClass::Assertion`](crate::model::AbstractClass::Assertion)) has
-/// one, in its `assertionDeclaration` attribute (SACM 2.3 §11.10). The model
-/// does not attach it to elements yet.
+/// one, in its `assertionDeclaration` attribute (SACM 2.3 §11.10). Read it
+/// with [`SacmElement::assertion_declaration`](crate::model::SacmElement::assertion_declaration).
 ///
 /// The variants are in the metamodel's literal order, and [`Ord`] follows it.
 /// The default is [`Asserted`](Self::Asserted) (§11.8, §11.10). Conversion

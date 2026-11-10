@@ -33,7 +33,8 @@ an API gap.
 sacm
 ├── model        typed SACM elements, Document, ElementId, LangString/MultiLangString
 │                (built: Document, ElementId, SacmElement, element kinds, element
-│                names, LangString, MultiLangString, AssertionDeclaration)
+│                names, assertion declarations, LangString, MultiLangString,
+│                AssertionDeclaration)
 ├── xmi          read (tolerant | strict) and write (strict | tolerant); XML details stay private
 ├── validate     structural invariants and clause-level constraints
 ├── diagnostic   Diagnostic, Severity, Code, Location

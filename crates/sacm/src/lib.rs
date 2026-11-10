@@ -8,9 +8,8 @@
 //! It aims to provide:
 //!
 //! - a typed model of the whole metamodel (packages, claims, asserted
-//!   relationships, artifacts, terminology, interfaces and bindings); built so
-//!   far: the element kinds, the read-only document, element names, and the
-//!   `LangString`, `MultiLangString` and `AssertionDeclaration` value types,
+//!   relationships, artifacts, terminology, interfaces and bindings), partly
+//!   built (see [Status](#status)),
 //! - XMI import and deterministic export, with a strict SACM 2.3 mode and an
 //!   explicit tolerant mode for third-party and legacy files (planned),
 //! - validation against the specification's constraints, reported as
@@ -24,8 +23,10 @@
 //! What is implemented, and how it is tested, is tracked requirement by
 //! requirement in the [functionality matrix][matrix]. So far the crate
 //! provides the read-only document model, the metamodel's element kinds,
-//! element names ([`SacmElement::name`](model::SacmElement::name)) and the
-//! first value types ([`LangString`](model::LangString),
+//! element names ([`SacmElement::name`](model::SacmElement::name)), each
+//! Assertion's `assertionDeclaration`
+//! ([`SacmElement::assertion_declaration`](model::SacmElement::assertion_declaration))
+//! and the first value types ([`LangString`](model::LangString),
 //! [`MultiLangString`](model::MultiLangString) and
 //! [`AssertionDeclaration`](model::AssertionDeclaration)), in [`model`],
 //! and the [`Diagnostic`](diagnostic::Diagnostic) type that findings are
@@ -36,12 +37,15 @@
 //! [`model::Document::elements`], or move one level at a time with
 //! [`children`](model::SacmElement::children) and
 //! [`parent`](model::SacmElement::parent). Read an element's name with
-//! [`name`](model::SacmElement::name).
+//! [`name`](model::SacmElement::name), and an Assertion's declaration with
+//! [`assertion_declaration`](model::SacmElement::assertion_declaration).
 //!
 //! # Features
 //!
-//! - `test-support` (off by default): makes `Document::insert` and
-//!   `InsertError` public in [`model`], so tests can build documents, and
+//! - `test-support` (off by default): makes `Document::insert`,
+//!   `InsertError`, `Document::set_assertion_declaration` and
+//!   `SetAssertionDeclarationError` public in [`model`], so tests can build
+//!   documents, and
 //!   makes the constructors of `Code`, `SourceLocation` and `Diagnostic`
 //!   and the `with_*` builders of `Diagnostic` public in [`diagnostic`], so
 //!   tests can build diagnostics. It is **not part of the stable API** and
