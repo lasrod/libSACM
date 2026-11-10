@@ -80,7 +80,7 @@ const PRE_ORDER: [&str; 9] = [
 fn add(doc: &mut Document, parent: Option<&str>, kind: ElementKind, id: &str) {
     let parent = parent.map(ElementId::from);
     assert!(
-        doc.insert(parent.as_ref(), kind, ElementId::from(id))
+        doc.insert(parent.as_ref(), kind, ElementId::from(id), None)
             .is_ok(),
         "LIB-API-002: setup could not insert {id:?}"
     );
@@ -89,7 +89,7 @@ fn add(doc: &mut Document, parent: Option<&str>, kind: ElementKind, id: &str) {
 /// Attempts an insert and reports whether it was refused.
 fn refused(doc: &mut Document, parent: Option<&str>, kind: ElementKind, id: &str) -> bool {
     let parent = parent.map(ElementId::from);
-    doc.insert(parent.as_ref(), kind, ElementId::from(id))
+    doc.insert(parent.as_ref(), kind, ElementId::from(id), None)
         .is_err()
 }
 
@@ -827,7 +827,7 @@ fn insert_error(
     id: &str,
 ) -> InsertError {
     let parent = parent.map(ElementId::from);
-    let Err(error) = doc.insert(parent.as_ref(), kind, ElementId::from(id)) else {
+    let Err(error) = doc.insert(parent.as_ref(), kind, ElementId::from(id), None) else {
         panic!("LIB-API-002: insert accepted {id:?} under {parent:?}");
     };
     error

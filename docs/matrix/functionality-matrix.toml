@@ -1427,22 +1427,81 @@ id = "SACM23-BASE-002"
 area = "BASE"
 milestone = "M1"
 title = "MultiLangString"
-requirement = "MultiLangString (one or more LangString values) is represented and round-tripped in order."
-source = "formal/23-05-08 §8.5; ptc/22-03-13 Base::MultiLangString; D-TEXT-MODEL"
+requirement = "MultiLangString (§8.5) is a value type holding a list of LangString values. The list keeps insertion order, duplicate values and duplicate languages, and may be empty in memory, so a document can be held as read; the lower bound of one and the language-uniqueness constraint are checked by validation (SACM23-VAL-010). Equality depends on order. It is not a SACMElement: it has no id and no kind."
+source = "formal/23-05-08 §8.5: \"Superclass Element\"; \"value:LangString[1..*] (composition) - contains the descriptions which bear the same meaning but in different languages\"; \"For each of the LangString in the value feature, their +lang must be unique.\" ptc/22-03-13 Base::MultiLangString (value: composite LangString, no bounds, no isOrdered; the order is kept by D-RT, not by the standard); D-TEXT-MODEL; assurance-forge libs/sacm model/lang_string.h"
 kind = "model"
-status = "planned"
+status = "implemented"
 depends_on = ["SACM23-BASE-001"]
+acceptance = [
+  "`MultiLangString::default()` has no values: `values()` is empty, `len() == 0` and `is_empty()` is true. The §8.5 lower bound is checked by validation (SACM23-VAL-010), not refused here.",
+  "Values from `collect()` (on an array, a `Vec` or an iterator of `LangString`), or added one at a time with `push`, come back from `values()` in the order given, each equal to its input, for all nine absent/empty/non-empty combinations. `len()` is the number given. Collecting and pushing the same sequence build equal values.",
+  "Two values with the same `lang` (both `\"en\"`, both `\"\"`, both absent) and two identical values are both kept, in order, and `len()` counts each one. `push` never overwrites or deduplicates.",
+  "Equality and hashing depend on order (the maintainer's decision; C++ `operator==`): `[en, fr] != [fr, en]`; values that differ only in `lang` absent versus `\"\"` are unequal; an empty MultiLangString differs from one holding `LangString::default()`; equal values hash equally.",
+  "`MultiLangString` is `Clone + Debug + Default + Eq + Hash + Send + Sync` and implements `FromIterator<LangString>`. Building, cloning, comparing, hashing and `Debug` never panic, including with 10,000 values.",
+  "It has no id and no kind: no `id()` or `kind()` method, and no `ElementKind` names it (ptc: it generalizes Element). Review item.",
+]
+code = ["crates/sacm/src/model/lang_string.rs"]
+tests = [
+  "crates/sacm/tests/multi_lang_string.rs::sacm23_base_002_absent_and_empty_lang_make_unequal_values",
+  "crates/sacm/tests/multi_lang_string.rs::sacm23_base_002_collected_values_come_back_in_order_from_array_vec_and_iterator",
+  "crates/sacm/tests/multi_lang_string.rs::sacm23_base_002_collecting_and_pushing_build_equal_values",
+  "crates/sacm/tests/multi_lang_string.rs::sacm23_base_002_collecting_nothing_is_the_default_and_is_not_refused",
+  "crates/sacm/tests/multi_lang_string.rs::sacm23_base_002_default_has_no_values",
+  "crates/sacm/tests/multi_lang_string.rs::sacm23_base_002_duplicate_languages_and_duplicate_values_are_all_kept",
+  "crates/sacm/tests/multi_lang_string.rs::sacm23_base_002_empty_differs_from_one_default_value",
+  "crates/sacm/tests/multi_lang_string.rs::sacm23_base_002_equal_values_hash_equally_and_unequal_ones_stay_apart",
+  "crates/sacm/tests/multi_lang_string.rs::sacm23_base_002_equality_depends_on_order",
+  "crates/sacm/tests/multi_lang_string.rs::sacm23_base_002_hostile_values_are_kept_and_debug_does_not_panic",
+  "crates/sacm/tests/multi_lang_string.rs::sacm23_base_002_multi_lang_string_has_the_value_traits",
+  "crates/sacm/tests/multi_lang_string.rs::sacm23_base_002_no_element_kind_or_abstract_class_is_multi_lang_string",
+  "crates/sacm/tests/multi_lang_string.rs::sacm23_base_002_push_never_overwrites_or_deduplicates",
+  "crates/sacm/tests/multi_lang_string.rs::sacm23_base_002_pushed_values_come_back_in_order",
+  "crates/sacm/tests/multi_lang_string.rs::sacm23_base_002_ten_thousand_values_build_clone_compare_hash_and_debug",
+]
 
 [[row]]
 id = "SACM23-BASE-003"
 area = "BASE"
 milestone = "M1"
 title = "ModelElement name"
-requirement = "Every ModelElement has exactly one `name` LangString; it is required when creating an element, read and written as the `name` containment, and a missing name is diagnosed."
-source = "formal/23-05-08 §8.6; ptc/22-03-13 Base::ModelElement.name [1]"
+requirement = "Every element of a ModelElement kind (the 34 ElementKinds other than Description, ImplementationConstraint, Note and TaggedValue) has one `name` LangString (§8.6 `name:LangString[1]`), stored in the Document and returned by its view exactly as given (ADR 0012). A document can hold a ModelElement whose name is missing, as a file can leave it out; the view reports that as no name, distinct from a name whose fields are absent or empty, and nothing invents a name (ADR 0013). A name whose `lang` or `content` is absent or empty is not a missing name. Elements of the four UtilityElement kinds have no name."
+source = "formal/23-05-08 §8.6: \"name:LangString[1] (composition) - the name of the ModelElement.\"; §8.7 UtilityElement \"Superclass SACMElement\"; §12.14 ArtifactAssetRelationship \"Superclass ArtifactAsset\" (D-TEXT-MODEL); §8.3 `content:String[0..1]`; ptc/22-03-13 Base::ModelElement name (composite LangString, no bounds); ADR 0012; ADR 0013; assurance-forge libs/sacm model/element.h"
 kind = "model"
-status = "planned"
-depends_on = ["LIB-API-002", "SACM23-BASE-001"]
+status = "implemented"
+depends_on = ["LIB-API-002", "LIB-API-003", "SACM23-BASE-001"]
+acceptance = [
+  "For each of the 34 ModelElement kinds, `insert(.., Some(name))` and then `get(id).unwrap().name()` returns `Some` equal to `name`, for all nine absent/empty/non-empty `lang` × `content` combinations, including `LangString::default()`.",
+  "A ModelElement kind inserted with `None` has `name() == None`, which differs from `Some(&LangString::default())` and from `Some(&LangString::new(\"\"))` (ADR 0013).",
+  "For each of the four UtilityElement kinds: `insert(.., None)` succeeds and `name()` is `None`; `insert(.., Some(n))` with any `n`, including `LangString::default()`, returns `Err(InsertError::NameNotAllowed(id, kind))` and leaves the document unchanged (`element_count`, `contains`, `elements()`); the empty-id, duplicate-id and unknown-parent refusals take precedence.",
+  "`insert` accepts a name exactly for the kinds where `is_a(AbstractClass::ModelElement)` holds: a table test lists the 34, including ArtifactAssetRelationship, and the 4 without.",
+  "Names are not identifiers: two elements with the same name are both kept, and `get` and `contains` look up by id only.",
+  "Inserting siblings or children leaves every existing name unchanged, and a cloned `Document` returns the same name for every element.",
+  "`name()` returns `Option<&'a LangString>` borrowing the document, so the name outlives the view it came from. A view's `Debug` shows kind and id only, not the name.",
+  "Hostile names (1 MiB content, U+0000, CR/LF/TAB, NFC and NFD forms) are kept byte for byte, and `insert`, `name()` and `Debug` never panic.",
+  "`InsertError::NameNotAllowed` follows ADR 0011 and the LIB-API-004 acceptance, like every other variant: e.g. `element \"note_1\" of kind Note cannot have a name`.",
+]
+code = ["crates/sacm/src/model/document.rs"]
+tests = [
+  "crates/sacm/tests/element_name.rs::sacm23_base_003_a_cloned_document_returns_the_same_name_for_every_element",
+  "crates/sacm/tests/element_name.rs::sacm23_base_003_a_default_name_is_a_name_not_a_missing_one",
+  "crates/sacm/tests/element_name.rs::sacm23_base_003_artifact_asset_relationship_carries_a_name",
+  "crates/sacm/tests/element_name.rs::sacm23_base_003_earlier_refusals_take_precedence_over_name_not_allowed",
+  "crates/sacm/tests/element_name.rs::sacm23_base_003_every_model_element_kind_keeps_each_of_the_nine_names",
+  "crates/sacm/tests/element_name.rs::sacm23_base_003_get_and_contains_look_up_by_id_not_by_name",
+  "crates/sacm/tests/element_name.rs::sacm23_base_003_hostile_names_are_kept_byte_for_byte",
+  "crates/sacm/tests/element_name.rs::sacm23_base_003_insert_accepts_a_name_exactly_for_model_element_kinds",
+  "crates/sacm/tests/element_name.rs::sacm23_base_003_inserting_siblings_and_children_leaves_every_name_unchanged",
+  "crates/sacm/tests/element_name.rs::sacm23_base_003_missing_default_and_empty_names_are_three_different_answers",
+  "crates/sacm/tests/element_name.rs::sacm23_base_003_model_element_inserted_without_a_name_has_none",
+  "crates/sacm/tests/element_name.rs::sacm23_base_003_name_borrows_the_document_not_the_view",
+  "crates/sacm/tests/element_name.rs::sacm23_base_003_name_not_allowed_display_is_exact",
+  "crates/sacm/tests/element_name.rs::sacm23_base_003_name_not_allowed_names_the_id_and_kind_on_one_line",
+  "crates/sacm/tests/element_name.rs::sacm23_base_003_the_kinds_with_a_name_are_exactly_the_34_model_elements",
+  "crates/sacm/tests/element_name.rs::sacm23_base_003_two_elements_with_the_same_name_are_both_kept",
+  "crates/sacm/tests/element_name.rs::sacm23_base_003_utility_element_refuses_any_name_and_leaves_the_document_unchanged",
+  "crates/sacm/tests/element_name.rs::sacm23_base_003_utility_element_without_a_name_is_accepted_and_has_none",
+  "crates/sacm/tests/element_name.rs::sacm23_base_003_view_debug_shows_kind_and_id_not_the_name",
+]
 
 [[row]]
 id = "SACM23-AC-001"
@@ -1581,7 +1640,7 @@ id = "SACM23-XMI-004"
 area = "XMI"
 milestone = "M1"
 title = "xmi:id identity"
-requirement = "Every SACMElement is written with an `xmi:id`; ids read from a file are preserved exactly through load, edit and save. An `xmi:id` on a LangString (not a SACMElement) is not kept: it is reported with an Info diagnostic that names the id, as the C++ library does, and is never dropped silently."
+requirement = "Every SACMElement is written with an `xmi:id`; ids read from a file are preserved exactly through load, edit and save. An `xmi:id` on a LangString or MultiLangString (neither is a SACMElement) is not kept: it is reported with an Info diagnostic that names the id, as the C++ library does, and is never dropped silently."
 source = "XMI 2.5.1 identity; D-ID; D-PRESERVE; assurance-forge libs/sacm io/xmi_reader.cpp (LangString xmi:id)"
 kind = "xmi"
 status = "planned"
@@ -1621,6 +1680,28 @@ status = "planned"
 depends_on = ["SACM23-BASE-001", "SACM23-XMI-007"]
 
 [[row]]
+id = "SACM23-XMI-012"
+area = "XMI"
+milestone = "M1"
+title = "The name containment in XMI"
+requirement = "Every ModelElement that has a name is written with exactly one `name` child holding its LangString as `lang` and `content` attributes (SACM23-XMI-011 rules), and import reads the `name` child into the element's name. A ModelElement read with no `name` child keeps no name: none is invented on load or save, and strict and tolerant save alike write it with no `name` child (ADR 0013), and the absence is reported (SACM23-VAL-018). A second `name` child is never dropped silently: it is preserved with a diagnostic or refused in strict mode."
+source = "formal/23-05-08 §8.6 `name:LangString[1] (composition)`; ptc/22-03-13 Base::ModelElement name; D-PRESERVE; D-STRICT; ADR 0013; assurance-forge libs/sacm io/xmi_reader.cpp, io/xmi_writer.cpp (name)"
+kind = "xmi"
+status = "planned"
+depends_on = ["SACM23-XMI-001", "SACM23-BASE-003", "SACM23-XMI-011"]
+
+[[row]]
+id = "SACM23-VAL-018"
+area = "VAL"
+milestone = "M1"
+title = "A missing name is diagnosed"
+requirement = "A ModelElement without a name is reported as a SACM-MULT-001 error that names the element and cites §8.6 `name:LangString[1]`, and the element is kept. A name whose `lang` or `content` is absent or empty is not a missing name and is not reported. The catalog entry for SACM-MULT-001 is widened to cover a required containment."
+source = "formal/23-05-08 §8.6 `name:LangString[1]`; §8.3 `content:String[0..1]`; D-SEV; D-VAL-LAYER; docs/sacm/diagnostics.md SACM-MULT-001"
+kind = "validation"
+status = "planned"
+depends_on = ["SACM23-BASE-003", "SACM23-XMI-012", "LIB-DIAG-001"]
+
+[[row]]
 id = "LIB-COMPAT-001"
 area = "COMPAT"
 milestone = "M1"
@@ -1658,7 +1739,7 @@ id = "LIB-RT-001"
 area = "RT"
 milestone = "M1"
 title = "Semantic comparison"
-requirement = "A public function compares two documents semantically (ignoring formatting, attribute order and prefixes, not ignoring any model content) and reports the differences with element ids and feature names."
+requirement = "A public function compares two documents semantically (ignoring formatting, attribute order and prefixes, not ignoring any model content) and reports the differences with element ids and feature names. A missing name differs from an empty one, and MultiLangString values are compared in order."
 source = "D-RT"
 kind = "api"
 status = "planned"
@@ -1680,7 +1761,7 @@ id = "LIB-EDIT-001"
 area = "EDIT"
 milestone = "M1"
 title = "Create operations"
-requirement = "Elements are created through explicit operations taking a parent, a name and optional caller-provided id; generated ids are deterministic for a given sequence of operations; an invalid parent is refused (SACM-CMD-005). Initially AssuranceCasePackage, ArgumentPackage and Claim; each later model row extends it to its class."
+requirement = "Elements are created through explicit operations taking a parent, a `name` LangString and an optional caller-provided id; generated ids are deterministic for a given sequence of operations; an invalid parent is refused (SACM-CMD-005). Initially AssuranceCasePackage, ArgumentPackage and Claim; each later model row extends it to its class."
 source = "D-ID, D-ATOMIC"
 kind = "editing"
 status = "planned"
@@ -1761,7 +1842,7 @@ id = "SACM23-BASE-004"
 area = "BASE"
 milestone = "M2"
 title = "Descriptions, notes and implementation constraints"
-requirement = "ModelElement's `description`, `note` and `implementationConstraint` containments (UtilityElements with MultiLangString `content`) are represented in order, round-tripped and editable on every ModelElement; several descriptions are preserved (D-DESC-MULT)."
+requirement = "ModelElement's `description`, `note` and `implementationConstraint` containments (UtilityElements with MultiLangString `content`) are represented in order, round-tripped and editable on every ModelElement; several descriptions are preserved (D-DESC-MULT). Each MultiLangString is written as its role element with one `value` child per LangString, in order and with duplicates, and reads back in the same order."
 source = "formal/23-05-08 §8.6, §8.7; ptc/22-03-13 Base::ModelElement, Base::UtilityElement"
 kind = "model"
 status = "planned"
@@ -2036,7 +2117,7 @@ id = "SACM23-VAL-010"
 area = "VAL"
 milestone = "M2"
 title = "MultiLangString language uniqueness"
-requirement = "A MultiLangString with two values for the same language is diagnosed per clause 8.5."
+requirement = "A MultiLangString with two values for the same language is reported as a SACM-MULT-001 error (§8.5 \"must\", D-SEV) naming the owning element and the language; both values are kept. This row decides whether absent and `\"\"` languages are the same language, and whether a MultiLangString with no values is diagnosed."
 source = "formal/23-05-08 §8.5"
 kind = "validation"
 status = "planned"
@@ -2136,7 +2217,7 @@ id = "LIB-EDIT-008"
 area = "EDIT"
 milestone = "M2"
 title = "Attribute edits"
-requirement = "Names, descriptions, notes, tagged values, gid, citation and abstract flags, assertion declarations and isCounter can be changed through operations that are atomic and report what changed."
+requirement = "Names, descriptions, notes, tagged values, gid, citation and abstract flags, assertion declarations and isCounter can be changed through operations that are atomic and report what changed. A name can be replaced, with any of the nine absent/empty/non-empty `lang` × `content` combinations, but no operation leaves a ModelElement without a name (D-VAL-LAYER)."
 source = "D-ATOMIC, D-RESULT"
 kind = "editing"
 status = "planned"

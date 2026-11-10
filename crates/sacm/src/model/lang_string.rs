@@ -1,10 +1,12 @@
-//! The `LangString` value type (formal/23-05-08 §8.3).
+//! The `LangString` and `MultiLangString` value types (formal/23-05-08 §8.3,
+//! §8.5).
 
 /// Text with an optional language tag, where the text may also be absent:
 /// SACM's `LangString` (SACM 2.3 §8.3).
 ///
-/// SACM uses it for the `name` of every `ModelElement` (SACM 2.3 §8.6) and for
-/// each entry of a `MultiLangString` (§8.5). SACM defines no format for `lang`,
+/// SACM uses it for the `name` of every `ModelElement` (SACM 2.3 §8.6), read
+/// with [`SacmElement::name`](crate::model::SacmElement::name), and for each
+/// entry of a [`MultiLangString`] (§8.5). SACM defines no format for `lang`,
 /// so any string is accepted.
 ///
 /// §8.3 gives it two attributes, `lang : String [0..1]` ("the language used
@@ -115,5 +117,84 @@ impl LangString {
     /// ```
     pub fn set_content(&mut self, content: Option<String>) {
         self.content = content;
+    }
+}
+
+/// A list of [`LangString`] values that say the same thing in different
+/// languages: SACM's `MultiLangString` (SACM 2.3 §8.5).
+///
+/// §8.5 gives it `value : LangString [1..*]` and requires each value's `lang`
+/// to be unique. This type holds the list as given: it keeps the order,
+/// duplicate values and duplicate languages, and it may be empty, so a
+/// document can be held as read. Validation (SACM23-VAL-010) will check the
+/// lower bound and the unique `lang`.
+///
+/// Equality and [`Hash`] depend on order: `[en, fr]` and `[fr, en]` are
+/// different values.
+///
+/// `MultiLangString` is a value, not an element: it has no id and no
+/// [`ElementKind`](crate::model::ElementKind). No element holds one yet.
+///
+/// # Examples
+///
+/// ```
+/// use sacm::model::{LangString, MultiLangString};
+///
+/// let mut text: MultiLangString = [LangString::new("Top claim").with_lang("en")]
+///     .into_iter()
+///     .collect();
+/// text.push(LangString::new("Huvudpåstående").with_lang("sv"));
+/// assert_eq!(text.len(), 2);
+/// assert_eq!(text.values()[1].lang(), Some("sv"));
+///
+/// // An empty list is allowed in memory.
+/// assert!(MultiLangString::default().is_empty());
+/// ```
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct MultiLangString {
+    values: Vec<LangString>,
+}
+
+impl MultiLangString {
+    /// The values, in the order they were given.
+    #[must_use]
+    pub fn values(&self) -> &[LangString] {
+        &self.values
+    }
+
+    /// The number of values.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.values.len()
+    }
+
+    /// Whether there are no values.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.values.is_empty()
+    }
+
+    /// Adds `value` at the end. It never replaces or merges a value, even one
+    /// with the same `lang`.
+    ///
+    /// ```
+    /// use sacm::model::{LangString, MultiLangString};
+    ///
+    /// let mut text = MultiLangString::default();
+    /// text.push(LangString::new("a").with_lang("en"));
+    /// text.push(LangString::new("b").with_lang("en"));
+    /// assert_eq!(text.len(), 2);
+    /// ```
+    pub fn push(&mut self, value: LangString) {
+        self.values.push(value);
+    }
+}
+
+impl FromIterator<LangString> for MultiLangString {
+    /// Collects the values in iteration order.
+    fn from_iter<I: IntoIterator<Item = LangString>>(iter: I) -> Self {
+        Self {
+            values: iter.into_iter().collect(),
+        }
     }
 }

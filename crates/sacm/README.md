@@ -9,8 +9,9 @@ Read, edit, validate and write assurance cases in the
 
 ## Planned
 
-Implemented now: the read-only document model and the first value types,
-`LangString` and `AssertionDeclaration` (`sacm::model`), and the diagnostic
+Implemented now: the read-only document model with element names, and the
+first value types, `LangString`, `MultiLangString` and `AssertionDeclaration`
+(`sacm::model`), and the diagnostic
 type that findings are reported in (`sacm::diagnostic`). Nothing
 emits diagnostics yet.
 

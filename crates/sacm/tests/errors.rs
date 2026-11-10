@@ -19,7 +19,7 @@ use std::error::Error;
 use std::fmt::{Debug, Display};
 
 use sacm::diagnostic::{Code, Diagnostic, Severity, SourceLocation};
-use sacm::model::{Document, ElementId, ElementKind, InsertError, SacmElement};
+use sacm::model::{Document, ElementId, ElementKind, InsertError, LangString, SacmElement};
 
 /// One mebibyte.
 const MIB: usize = 1 << 20;
@@ -33,6 +33,7 @@ fn refusal(doc: &mut Document, parent: Option<&str>, id: &str) -> InsertError {
         parent.as_ref(),
         ElementKind::AssuranceCasePackage,
         ElementId::from(id),
+        None,
     ) else {
         panic!("LIB-API-004: insert accepted {id:?} under {parent:?}");
     };
@@ -42,7 +43,7 @@ fn refusal(doc: &mut Document, parent: Option<&str>, id: &str) -> InsertError {
 /// Inserts an element, failing the test if the seam refuses it.
 fn add(doc: &mut Document, parent: Option<&str>, kind: ElementKind, id: &str) {
     let parent = parent.map(ElementId::from);
-    let result = doc.insert(parent.as_ref(), kind, ElementId::from(id));
+    let result = doc.insert(parent.as_ref(), kind, ElementId::from(id), None);
     assert_eq!(
         result,
         Ok(()),
@@ -62,7 +63,22 @@ fn every_insert_error() -> Vec<(&'static str, InsertError)> {
             "UnknownParent",
             refusal(&mut doc, Some("nowhere"), "orphan"),
         ),
+        ("NameNotAllowed", named_note_refusal(&mut doc)),
     ]
+}
+
+/// Inserts a Note with a name, which the seam refuses: a `UtilityElement` has
+/// no name.
+fn named_note_refusal(doc: &mut Document) -> InsertError {
+    let Err(error) = doc.insert(
+        None,
+        ElementKind::Note,
+        ElementId::from("note_1"),
+        Some(LangString::default()),
+    ) else {
+        panic!("LIB-API-004: insert accepted a Note with a name");
+    };
+    error
 }
 
 /// Checks the ADR 0011 message rules: non-empty, one line, starting lowercase
@@ -123,6 +139,7 @@ fn lib_api_004_insert_produces_each_variant_with_its_offending_id() {
             InsertError::EmptyId,
             InsertError::DuplicateId(ElementId::from("case")),
             InsertError::UnknownParent(ElementId::from("nowhere")),
+            InsertError::NameNotAllowed(ElementId::from("note_1"), ElementKind::Note),
         ],
         "LIB-API-004: insert did not report the expected variants"
     );

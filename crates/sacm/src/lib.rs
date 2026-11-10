@@ -9,8 +9,8 @@
 //!
 //! - a typed model of the whole metamodel (packages, claims, asserted
 //!   relationships, artifacts, terminology, interfaces and bindings); built so
-//!   far: the element kinds, the read-only document, and the `LangString`
-//!   and `AssertionDeclaration` value types,
+//!   far: the element kinds, the read-only document, element names, and the
+//!   `LangString`, `MultiLangString` and `AssertionDeclaration` value types,
 //! - XMI import and deterministic export, with a strict SACM 2.3 mode and an
 //!   explicit tolerant mode for third-party and legacy files (planned),
 //! - validation against the specification's constraints, reported as
@@ -23,8 +23,10 @@
 //! This crate is under active development and its API is not yet stable.
 //! What is implemented, and how it is tested, is tracked requirement by
 //! requirement in the [functionality matrix][matrix]. So far the crate
-//! provides the read-only document model, the metamodel's element kinds and
-//! the first value types ([`LangString`](model::LangString) and
+//! provides the read-only document model, the metamodel's element kinds,
+//! element names ([`SacmElement::name`](model::SacmElement::name)) and the
+//! first value types ([`LangString`](model::LangString),
+//! [`MultiLangString`](model::MultiLangString) and
 //! [`AssertionDeclaration`](model::AssertionDeclaration)), in [`model`],
 //! and the [`Diagnostic`](diagnostic::Diagnostic) type that findings are
 //! reported in, in [`diagnostic`]. XMI import and export, validation and

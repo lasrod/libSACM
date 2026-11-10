@@ -169,6 +169,26 @@ the interoperability failure clause 2 exists to prevent.
 **Suggested resolution.** Determine a namespace in 2.4, and say whether it is
 per-document or per-package.
 
+## D8 — The Base properties have no names
+
+In `ptc/22-03-13`, 11 of the 60 class-owned properties carry no `name`
+attribute, all of them in Base: five on ModelElement, `MultiLangString.value`,
+`UtilityElement.content`, `TaggedValue.key`, `ExpressionLangString.expression` and
+two on SACMElement. The role name exists only as the name of the Association:
+
+```xml
+<ownedAttribute xmi:type="uml:Property" xmi:id="_19_0_4_68a022b_1650976745149_959605_5171"
+   visibility="public" aggregation="composite" type="…5022" association="…89586_5170"/>
+```
+
+**Consequence.** XMI production rules take an element's tag from the property
+name, so strictly the model gives no tag for `name`, `value`, `content`, `key` and
+the others. The text supplies them (§8.5 `value:…`, §8.6 `name:…`), and this
+project takes the role names from the Associations, so nothing is ambiguous in
+practice.
+
+**Suggested resolution.** Name the properties in 2.4.
+
 ## Related
 
 - [GSN / SACM metamodel gaps](sacm-gsn-metamodel-gaps.md) — the GSN v3 side, for the SCSC ACWG.
