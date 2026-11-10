@@ -187,7 +187,10 @@ the others. The text supplies them (§8.5 `value:…`, §8.6 `name:…`), and th
 project takes the role names from the Associations, so nothing is ambiguous in
 practice.
 
-**Suggested resolution.** Name the properties in 2.4.
+Separately, `MultiLangString.value` is `visibility="private"`, while every other Base
+containment is public. No consequence for XMI is known.
+
+**Suggested resolution.** Name the properties in 2.4, and make `value` public.
 
 ## Related
 

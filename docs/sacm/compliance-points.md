@@ -19,7 +19,9 @@ for the classes in its unit of interchange. It may be marked `verified` only whe
 of them are verified, and then it means:
 
 - every conforming document of that unit can be read without loss, in strict mode;
-- every document the library writes in strict mode is conforming;
+- every document the library writes in strict mode conforms to the SACM XML Schema
+  (clause 2) and is a valid SACM 2.3 model: strict save refuses a document that
+  `validate()` reports errors for (LIB-COMPAT-007);
 - load → save → load is semantically lossless for everything in the unit;
 - the constraints of the governing clauses are checked and reported as diagnostics.
 

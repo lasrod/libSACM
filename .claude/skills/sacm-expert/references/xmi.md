@@ -14,7 +14,7 @@ single-constant change plus golden-file refresh.
 | SACM namespace | `http://www.omg.org/spec/SACM/20220301` (OMG version URI for 2.3), prefix `sacm` |
 | XMI namespace | `http://www.omg.org/spec/XMI/20131001`, prefix `xmi`, `xmi:version="2.0"` |
 | XSI namespace | `http://www.w3.org/2001/XMLSchema-instance`, prefix `xsi`, declared only when `xsi:type` is emitted |
-| Root | One interchange package element — `sacm:AssuranceCasePackage`, `sacm:ArgumentPackage`, `sacm:ArtifactPackage` or `sacm:TerminologyPackage` |
+| Root | One interchange package element — `sacm:AssuranceCasePackage`, `sacm:ArgumentPackage`, `sacm:ArtifactPackage` or `sacm:TerminologyPackage`; more than one root inside a single `xmi:XMI` element (SACM23-XMI-013) |
 | Identity | Every element carries `xmi:id`; ids are preserved exactly; generated ids are deterministic |
 | Containment | Child elements named by their containment role (`argumentPackage`, `argumentElement`, `artifactElement`, `terminologyElement`, `description`, `name`, ...) |
 | Concrete type | `xsi:type="sacm:<Class>"` whenever a role's declared type is abstract (e.g. `argumentElement` holding a `Claim`) |
@@ -30,8 +30,12 @@ single-constant change plus golden-file refresh.
   implementation's per-package `http://omg.sacm/2.2/<package>` URIs, and the fixture
   URI `http://example.org/sacm/2.3`. Other URIs: warning (tolerant) / error (strict).
 - An `xmi:XMI` wrapper around the root package is accepted.
-- References may also appear as child elements or `href="#id"` forms; external
-  (cross-document) hrefs are preserved as opaque text with a warning.
+- `href="#id"` reference forms are accepted; external (cross-document) hrefs are
+  preserved as opaque text with a warning.
+
+Not tolerant-only: the default XMI schema also allows references as child elements
+(rule 2c) and single-valued values as child elements (§7.8.4), so strict import
+accepts both (SACM23-XMI-014, SACM23-XMI-015). Export writes attributes.
 - Machine-readable-model spellings are accepted on import: `ArtifactAssertedRelationship`
   for `ArtifactAssetRelationship`, `occurece` for `Event.date`, `argumentationElement`
   for `argumentElement`. Output always uses the resolved spelling.
