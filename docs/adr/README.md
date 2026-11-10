@@ -17,6 +17,7 @@ decision about how to *interpret the SACM standard* belongs in
 | [0009](0009-nextest-for-mutation-testing.md) | cargo-mutants runs tests under nextest, stopping at the first failure | accepted |
 | [0010](0010-document-model.md) | Document model: arena storage, ElementId, borrowing views | accepted |
 | [0011](0011-errors-and-diagnostics.md) | Errors and diagnostics | accepted |
+| [0012](0012-lang-string-absent-and-empty.md) | LangString keeps absent and empty apart | accepted |
 
 Statuses: `proposed` → `accepted` (maintainer approval) → optionally `superseded by NNNN`.
 Copy [template.md](template.md) for a new record.
