@@ -10,8 +10,10 @@ assurance cases as standard XMI.
 
 ## Status
 
-M1 has started: `sacm::model` provides a read-only `Document`, `ElementId` and the
-metamodel's element kinds. XMI, validation and editing are not built yet. Milestone
+M1 has started: `sacm::model` provides a read-only `Document`, `ElementId`, the
+metamodel's element kinds and the first value types (`LangString`,
+`AssertionDeclaration`), and `sacm::diagnostic` provides the `Diagnostic` type. XMI,
+validation and editing are not built yet. Milestone
 M0, the foundation, is done: the workspace, CI, the functionality matrix and its gate,
 and mutation testing. The
 [functionality matrix](docs/matrix/functionality-matrix.md) shows what is verified;

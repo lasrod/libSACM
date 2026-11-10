@@ -4,7 +4,12 @@ use std::fmt;
 use std::str::FromStr;
 
 /// The declared state of an Assertion: SACM's `AssertionDeclaration`
-/// enumeration (§11.8).
+/// enumeration (SACM 2.3 §11.8).
+///
+/// Every Assertion (a Claim or an asserted relationship; see
+/// [`AbstractClass::Assertion`](crate::model::AbstractClass::Assertion)) has
+/// one, in its `assertionDeclaration` attribute (SACM 2.3 §11.10). The model
+/// does not attach it to elements yet.
 ///
 /// The variants are in the metamodel's literal order, and [`Ord`] follows it.
 /// The default is [`Asserted`](Self::Asserted) (§11.8, §11.10). Conversion
@@ -12,8 +17,8 @@ use std::str::FromStr;
 /// [`as_str`](Self::as_str) and [`Display`](fmt::Display) give the spelling,
 /// and [`FromStr`] accepts only that spelling.
 ///
-/// New variants may be added in a minor release: a later SACM revision
-/// changes this enumeration.
+/// It is `#[non_exhaustive]` so that a later SACM revision can add literals
+/// without a breaking change.
 ///
 /// # Examples
 ///
@@ -43,7 +48,8 @@ pub enum AssertionDeclaration {
     Axiomatic,
     /// `defeated`: the Assertion is defeated by counter-evidence and/or argumentation.
     Defeated,
-    /// `asCited`: the Assertion is cited, so its declaration is derived from the cited Assertion's.
+    /// `asCited`: the Assertion is cited, so its declaration should be derived, transitively,
+    /// from the declaration of the cited Assertion. This crate does not derive it.
     AsCited,
 }
 
@@ -88,7 +94,7 @@ impl AssertionDeclaration {
 impl fmt::Display for AssertionDeclaration {
     /// Writes [`AssertionDeclaration::as_str`].
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.pad(self.as_str())
+        f.write_str(self.as_str())
     }
 }
 
@@ -117,7 +123,8 @@ impl FromStr for AssertionDeclaration {
 /// literal.
 ///
 /// [`input`](Self::input) returns the rejected text unchanged. The message
-/// quotes it with line breaks escaped, so it stays on one line.
+/// quotes it as Rust's `{:?}` does, so line breaks and other control
+/// characters are escaped and the message stays on one line.
 ///
 /// ```
 /// use sacm::model::AssertionDeclaration;

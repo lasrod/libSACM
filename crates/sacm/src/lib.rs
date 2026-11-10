@@ -25,9 +25,10 @@
 //! requirement in the [functionality matrix][matrix]. So far the crate
 //! provides the read-only document model, the metamodel's element kinds and
 //! the first value types ([`LangString`](model::LangString) and
-//! [`AssertionDeclaration`](model::AssertionDeclaration)), in [`model`], and the [`Diagnostic`](diagnostic::Diagnostic) type that
-//! findings are reported in, in [`diagnostic`]. XMI import and export,
-//! validation and editing are not built yet, so no diagnostic is emitted yet.
+//! [`AssertionDeclaration`](model::AssertionDeclaration)), in [`model`],
+//! and the [`Diagnostic`](diagnostic::Diagnostic) type that findings are
+//! reported in, in [`diagnostic`]. XMI import and export, validation and
+//! editing are not built yet, so no diagnostic is emitted yet.
 //!
 //! Look up an element with [`model::Document::get`], walk every element with
 //! [`model::Document::elements`], or move one level at a time with

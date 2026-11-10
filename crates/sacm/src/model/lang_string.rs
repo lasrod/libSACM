@@ -1,6 +1,11 @@
 //! The `LangString` value type (formal/23-05-08 §8.3).
 
-/// A string with an optional language tag: SACM's `LangString` (§8.3).
+/// Text with an optional language tag, where the text may also be absent:
+/// SACM's `LangString` (SACM 2.3 §8.3).
+///
+/// SACM uses it for the `name` of every `ModelElement` (SACM 2.3 §8.6) and for
+/// each entry of a `MultiLangString` (§8.5). SACM defines no format for `lang`,
+/// so any string is accepted.
 ///
 /// §8.3 gives it two attributes, `lang : String [0..1]` ("the language used
 /// in the string") and `content : String [0..1]` ("the content of the
@@ -12,7 +17,8 @@
 /// folding or Unicode normalisation, and `lang` has no format check.
 ///
 /// `LangString` is a value, not an element: it has no id and no
-/// [`ElementKind`](crate::model::ElementKind). You can build one freely.
+/// [`ElementKind`](crate::model::ElementKind), and you construct it directly,
+/// unlike elements, which only a [`Document`](crate::model::Document) holds.
 ///
 /// [`Ord`] compares `lang` first, then `content`, with absent before present.
 ///
@@ -21,14 +27,18 @@
 /// ```
 /// use sacm::model::LangString;
 ///
-/// let name = LangString::new("The system is acceptably safe").with_lang("en");
+/// let name = LangString::new("C1").with_lang("en");
 /// assert_eq!(name.lang(), Some("en"));
-/// assert_eq!(name.content(), Some("The system is acceptably safe"));
+/// assert_eq!(name.content(), Some("C1"));
 ///
 /// // Absent and empty are different values.
 /// assert_eq!(LangString::default().content(), None);
 /// assert_eq!(LangString::new("").content(), Some(""));
 /// assert_ne!(LangString::new(""), LangString::default());
+///
+/// // A lang-only value has no content.
+/// let lang_only = LangString::default().with_lang("en");
+/// assert_eq!(lang_only.content(), None);
 /// ```
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct LangString {

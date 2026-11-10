@@ -1,5 +1,5 @@
-//! The SACM document model: [`Document`], element identity, element kinds and
-//! the value types elements hold.
+//! The SACM document model: [`Document`], element identity, element kinds, and
+//! the first value types (not yet attached to elements).
 //!
 //! A [`Document`] owns one interchange unit: its root packages and every
 //! element under them. Each element has an [`ElementId`] (its `xmi:id`) and an
@@ -11,7 +11,8 @@
 //! and which abstract classes it specializes.
 //!
 //! [`LangString`] and [`AssertionDeclaration`] are values, not elements: they
-//! have no id and no kind, and you can build them freely.
+//! have no id and no kind, and you construct them directly, unlike elements,
+//! which only a [`Document`] holds.
 //!
 //! # Examples
 //!
@@ -41,7 +42,7 @@
 //! ```
 //! use sacm::model::{AssertionDeclaration, LangString};
 //!
-//! let mut name = LangString::new("The system is acceptably safe").with_lang("en");
+//! let mut name = LangString::new("C1").with_lang("en");
 //! assert_eq!(name.lang(), Some("en"));
 //!
 //! // Absent and empty are different values.
