@@ -3,7 +3,11 @@
 //! Every `Document::insert` under a parent refuses a child kind that no SACM
 //! 2.3 composite role of the parent's class admits, with
 //! `InsertError::ContainmentNotAllowed`, and leaves the document unchanged.
-//! Roots are not restricted, and multiplicity is not enforced.
+//! A root must be one of the 12 package kinds; any other root is refused with
+//! `InsertError::RootNotAllowed`. Multiplicity is not enforced.
+//!
+//! A parent that cannot be a root is placed under an ArtifactPackage root,
+//! the scaffold: an ArtifactPackage contains every kind (items 1 and 6).
 //!
 //! The role table is crate-private, so everything here goes through `insert`.
 //! Item 1 spells the table out by hand; item 9 derives it from
@@ -148,6 +152,23 @@ const PROPERTY_HOLDERS: [ElementKind; 8] = [
     Property,
 ];
 
+/// The 12 package kinds, the only kinds a root may be (ADR 0010 D1;
+/// `ElementKind::is_package`).
+const PACKAGE_KINDS: [ElementKind; 12] = [
+    AssuranceCasePackage,
+    AssuranceCasePackageInterface,
+    AssuranceCasePackageBinding,
+    TerminologyPackage,
+    TerminologyPackageInterface,
+    TerminologyPackageBinding,
+    ArgumentPackage,
+    ArgumentPackageInterface,
+    ArgumentPackageBinding,
+    ArtifactPackage,
+    ArtifactPackageInterface,
+    ArtifactPackageBinding,
+];
+
 /// The number of legal (parent kind, child kind) pairs.
 const LEGAL_PAIRS: usize = 339;
 
@@ -216,11 +237,28 @@ fn add(doc: &mut Document, parent: Option<&str>, kind: ElementKind, id: &str) {
     );
 }
 
-/// Inserts `child` (id "child") under a fresh root of `parent` (id "parent")
-/// and returns what `insert` answered for the child.
-fn insert_under(parent: ElementKind, child: ElementKind) -> Result<(), InsertError> {
+/// The id of the scaffold: the ArtifactPackage root that test parents of any
+/// kind are placed under.
+const SCAFFOLD: &str = "scaffold";
+
+/// A document holding only the scaffold.
+fn scaffolded() -> Document {
     let mut doc = Document::new();
-    add(&mut doc, None, parent, "parent");
+    add(&mut doc, None, ArtifactPackage, SCAFFOLD);
+    doc
+}
+
+/// Inserts an element of any kind where it can be a parent: under the
+/// scaffold, which `doc` must have.
+fn add_parent(doc: &mut Document, kind: ElementKind, id: &str) {
+    add(doc, Some(SCAFFOLD), kind, id);
+}
+
+/// Inserts `child` (id "child") under a fresh `parent` (id "parent") and
+/// returns what `insert` answered for the child.
+fn insert_under(parent: ElementKind, child: ElementKind) -> Result<(), InsertError> {
+    let mut doc = scaffolded();
+    add_parent(&mut doc, parent, "parent");
     doc.insert(
         Some(&ElementId::from("parent")),
         child,
@@ -315,9 +353,9 @@ fn snapshot(doc: &Document) -> Snapshot {
     }
 }
 
-/// The root id used for a parent of `kind` in multi-parent documents.
-fn root_id(kind: ElementKind) -> String {
-    format!("root_{kind}")
+/// The id of the parent of `kind` in multi-parent documents.
+fn parent_of_kind(kind: ElementKind) -> String {
+    format!("parent_{kind}")
 }
 
 // --- 1. The exhaustive table ---------------------------------------------
@@ -388,17 +426,22 @@ fn lib_api_008_insert_admits_exactly_the_339_legal_pairs_of_the_table() {
 #[test]
 fn lib_api_008_containment_refusal_leaves_the_document_unchanged() {
     let table = containment_table();
-    // One root of every kind, and a few legal children, so the parents'
+    // One parent of every kind, and a few legal children, so the parents'
     // children() lists are not all empty.
-    let mut doc = Document::new();
+    let mut doc = scaffolded();
     for kind in kinds() {
-        add(&mut doc, None, kind, &root_id(kind));
+        add_parent(&mut doc, kind, &parent_of_kind(kind));
     }
-    add(&mut doc, Some(&root_id(ArgumentPackage)), Claim, "claim");
-    add(&mut doc, Some(&root_id(Claim)), Note, "note");
     add(
         &mut doc,
-        Some(&root_id(AssuranceCasePackage)),
+        Some(&parent_of_kind(ArgumentPackage)),
+        Claim,
+        "claim",
+    );
+    add(&mut doc, Some(&parent_of_kind(Claim)), Note, "note");
+    add(
+        &mut doc,
+        Some(&parent_of_kind(AssuranceCasePackage)),
         TerminologyPackage,
         "terms",
     );
@@ -406,7 +449,7 @@ fn lib_api_008_containment_refusal_leaves_the_document_unchanged() {
 
     let mut refusals = 0_usize;
     for parent in kinds() {
-        let parent_id = root_id(parent);
+        let parent_id = parent_of_kind(parent);
         for child in kinds().filter(|&child| !table.contains(&(parent, child))) {
             let answer = doc.insert(
                 Some(&ElementId::from(parent_id.as_str())),
@@ -437,7 +480,12 @@ fn lib_api_008_containment_refusal_leaves_the_document_unchanged() {
     );
 
     // A refused id is not reserved.
-    add(&mut doc, Some(&root_id(ArgumentPackage)), Claim, "intruder");
+    add(
+        &mut doc,
+        Some(&parent_of_kind(ArgumentPackage)),
+        Claim,
+        "intruder",
+    );
     assert_eq!(
         doc.element_count(),
         before.element_count + 1,
@@ -481,8 +529,8 @@ fn lib_api_008_containment_not_allowed_display_quotes_both_ids_on_one_line() {
     // Each id is the child once and the parent once, never with itself: the
     // parents are the ids rotated by one.
     for (child_id, parent_id) in ids.iter().zip(ids.iter().cycle().skip(1)) {
-        let mut doc = Document::new();
-        add(&mut doc, None, Note, parent_id);
+        let mut doc = scaffolded();
+        add_parent(&mut doc, Note, parent_id);
         let Err(error) = doc.insert(
             Some(&ElementId::from(*parent_id)),
             Term,
@@ -520,7 +568,8 @@ fn lib_api_008_earlier_refusals_take_precedence_over_containment() {
     let mut doc = Document::new();
     add(&mut doc, None, AssuranceCasePackage, "case");
     add(&mut doc, Some("case"), ArgumentPackage, "arguments");
-    add(&mut doc, None, Note, "note");
+    add(&mut doc, None, ArtifactPackage, SCAFFOLD);
+    add_parent(&mut doc, Note, "note");
     let before = snapshot(&doc);
     let case = ElementId::from("case");
     let note = ElementId::from("note");
@@ -616,28 +665,228 @@ type Attempt<'a> = (
     InsertError,
 );
 
-// --- 4. Roots are unrestricted ------------------------------------------------
-
 #[test]
-fn lib_api_008_every_kind_is_accepted_as_a_root() {
-    for kind in kinds() {
-        let mut doc = Document::new();
+fn lib_api_008_earlier_refusals_take_precedence_over_root_not_allowed() {
+    let mut doc = Document::new();
+    add(&mut doc, None, ArgumentPackage, "arguments");
+    add(&mut doc, Some("arguments"), Claim, "claim");
+    let before = snapshot(&doc);
+    let named = || Some(LangString::new("n"));
+
+    // Each is an illegal root: a Claim or a Description. UnknownParent cannot
+    // apply: without a parent there is no parent to be unknown.
+    let cases: [Attempt<'_>; 5] = [
+        ("EmptyId", None, Claim, "", None, InsertError::EmptyId),
+        (
+            "EmptyId",
+            None,
+            Description,
+            "",
+            named(),
+            InsertError::EmptyId,
+        ),
+        (
+            "DuplicateId",
+            None,
+            Claim,
+            "claim",
+            None,
+            InsertError::DuplicateId(ElementId::from("claim")),
+        ),
+        (
+            "DuplicateId",
+            None,
+            Description,
+            "arguments",
+            named(),
+            InsertError::DuplicateId(ElementId::from("arguments")),
+        ),
+        (
+            "NameNotAllowed",
+            None,
+            Description,
+            "described",
+            named(),
+            InsertError::NameNotAllowed(ElementId::from("described"), Description),
+        ),
+    ];
+    for (variant, parent, kind, id, name, expected) in cases {
         assert_eq!(
-            doc.insert(None, kind, ElementId::from("root"), None),
-            Ok(()),
-            "LIB-API-008: a {kind} was refused as a root"
+            doc.insert(parent, kind, ElementId::from(id), name),
+            Err(expected),
+            "LIB-API-008: a {kind} root {id:?} is not {variant}"
         );
     }
-    let mut doc = Document::new();
+    assert_eq!(
+        snapshot(&doc),
+        before,
+        "LIB-API-008: the refused roots changed the document"
+    );
+
+    // When the earlier checks pass, the root refusal is reported.
+    for (kind, id) in [(Claim, "c1"), (Description, "d1")] {
+        assert_eq!(
+            doc.insert(None, kind, ElementId::from(id), None),
+            Err(InsertError::RootNotAllowed(ElementId::from(id), kind)),
+            "LIB-API-008: a {kind} root {id:?} is not RootNotAllowed"
+        );
+    }
+}
+
+// --- 4. Roots must be packages ---------------------------------------------------
+
+/// The kinds that may not be roots: the 26 that are not packages.
+fn non_package_kinds() -> Vec<ElementKind> {
+    kinds()
+        .filter(|kind| !PACKAGE_KINDS.contains(kind))
+        .collect()
+}
+
+#[test]
+fn lib_api_008_exactly_the_12_package_kinds_are_accepted_as_roots() {
+    let mut mismatches = Vec::new();
+    let (mut accepted, mut refused) = (0_usize, 0_usize);
     for kind in kinds() {
-        add(&mut doc, None, kind, &root_id(kind));
+        let mut doc = Document::new();
+        let answer = doc.insert(None, kind, ElementId::from("root"), None);
+        let expected = if PACKAGE_KINDS.contains(&kind) {
+            Ok(())
+        } else {
+            Err(InsertError::RootNotAllowed(ElementId::from("root"), kind))
+        };
+        if answer.is_ok() {
+            accepted += 1;
+        } else {
+            refused += 1;
+        }
+        if answer != expected {
+            mismatches.push(format!("{kind}: {answer:?}, expected {expected:?}"));
+        }
+    }
+    assert!(
+        mismatches.is_empty(),
+        "LIB-API-008: roots are answered wrongly for {} kinds: {mismatches:#?}",
+        mismatches.len()
+    );
+    assert_eq!(
+        (accepted, refused),
+        (12, 26),
+        "LIB-API-008: insert did not accept 12 and refuse 26 root kinds"
+    );
+
+    // All 12 package kinds, interfaces and bindings included, side by side.
+    let mut doc = Document::new();
+    for kind in PACKAGE_KINDS {
+        add(&mut doc, None, kind, &parent_of_kind(kind));
     }
     let roots: Vec<ElementKind> = doc.roots().map(SacmElement::kind).collect();
     assert_eq!(
-        roots,
-        ElementKind::ALL,
-        "LIB-API-008: 38 roots of every kind, Note and Claim included, are not all held in order"
+        roots, PACKAGE_KINDS,
+        "LIB-API-008: the 12 package kinds are not all held as roots, in order"
     );
+}
+
+#[test]
+fn lib_api_008_root_refusal_leaves_the_document_unchanged() {
+    let mut doc = Document::new();
+    for kind in PACKAGE_KINDS {
+        add(&mut doc, None, kind, &parent_of_kind(kind));
+    }
+    add(
+        &mut doc,
+        Some(&parent_of_kind(ArgumentPackage)),
+        Claim,
+        "claim",
+    );
+    add(&mut doc, Some("claim"), Note, "note");
+    let before = snapshot(&doc);
+
+    let refused = non_package_kinds();
+    assert_eq!(
+        refused.len(),
+        26,
+        "LIB-API-008: there are not 26 non-package kinds"
+    );
+    for kind in refused {
+        assert_eq!(
+            doc.insert(None, kind, ElementId::from("intruder"), None),
+            Err(InsertError::RootNotAllowed(
+                ElementId::from("intruder"),
+                kind
+            )),
+            "LIB-API-008: a {kind} root was not refused with RootNotAllowed"
+        );
+        assert!(
+            !doc.contains("intruder") && doc.get("intruder").is_none(),
+            "LIB-API-008: a refused {kind} root is in the document"
+        );
+        assert_eq!(
+            snapshot(&doc),
+            before,
+            "LIB-API-008: a refused {kind} root changed the document"
+        );
+    }
+
+    // A refused id is not reserved.
+    add(&mut doc, None, TerminologyPackageBinding, "intruder");
+    assert_eq!(
+        doc.roots().last().map(|root| root.id().to_string()),
+        Some("intruder".to_owned()),
+        "LIB-API-008: a package root after the refusals is not the last root"
+    );
+}
+
+#[test]
+fn lib_api_008_root_not_allowed_display_is_exact() {
+    let answer = Document::new().insert(None, Claim, ElementId::from("c1"), None);
+    assert_eq!(
+        answer,
+        Err(InsertError::RootNotAllowed(ElementId::from("c1"), Claim)),
+        "LIB-API-008: a Claim root was not refused"
+    );
+    assert_eq!(
+        InsertError::RootNotAllowed(ElementId::from("c1"), Claim).to_string(),
+        "element \"c1\" of kind Claim cannot be a root",
+        "LIB-API-008: the RootNotAllowed message is wrong"
+    );
+}
+
+#[test]
+fn lib_api_008_root_not_allowed_display_quotes_the_id_on_one_line() {
+    let ids = [
+        "c1",
+        "Claim.",
+        "a\nb",
+        "\r\nleading",
+        "trailing\n",
+        "a\u{0}b",
+        "ünï",
+        "UPPER",
+    ];
+    for kind in [Claim, Note, Term, ArtifactAssetRelationship] {
+        for id in ids {
+            let Err(error) = Document::new().insert(None, kind, ElementId::from(id), None) else {
+                panic!("LIB-API-008: a {kind} root {id:?} was accepted");
+            };
+            assert_eq!(
+                error,
+                InsertError::RootNotAllowed(ElementId::from(id), kind),
+                "LIB-API-008: a {kind} root {id:?} is not RootNotAllowed"
+            );
+            let message = error.to_string();
+            assert_eq!(
+                message,
+                format!("element {id:?} of kind {kind} cannot be a root"),
+                "LIB-API-008: the RootNotAllowed message for the {kind} {id:?} is wrong"
+            );
+            assert!(
+                !message.contains(['\n', '\r'])
+                    && message.starts_with(char::is_lowercase)
+                    && !message.ends_with(['.', '!', ':']),
+                "LIB-API-008: the RootNotAllowed message breaks the ADR 0011 rules: {message:?}"
+            );
+        }
+    }
 }
 
 // --- 5. UtilityElements ---------------------------------------------------------
@@ -747,7 +996,8 @@ fn lib_api_008_terminology_package_accepts_terminology_group() {
 #[test]
 fn lib_api_008_a_second_and_third_description_under_one_claim_are_accepted() {
     let mut doc = Document::new();
-    add(&mut doc, None, Claim, "claim");
+    add(&mut doc, None, ArgumentPackage, "arguments");
+    add(&mut doc, Some("arguments"), Claim, "claim");
     for id in ["description_1", "description_2", "description_3"] {
         add(&mut doc, Some("claim"), Description, id);
     }
@@ -776,8 +1026,8 @@ fn lib_api_008_any_number_of_children_of_any_role_is_accepted() {
         let legal: Vec<ElementKind> = kinds()
             .filter(|&child| table.contains(&(parent, child)))
             .collect();
-        let mut doc = Document::new();
-        add(&mut doc, None, parent, "parent");
+        let mut doc = scaffolded();
+        add_parent(&mut doc, parent, "parent");
         let mut expected = Vec::new();
         // Interleaved: one of every legal kind, COPIES times over.
         for copy in 0..COPIES {

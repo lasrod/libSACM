@@ -68,7 +68,17 @@ fn every_insert_error() -> Vec<(&'static str, InsertError)> {
             "ContainmentNotAllowed",
             containment_refusal(&mut doc, "case", "c1"),
         ),
+        ("RootNotAllowed", root_refusal(&mut doc, "c_root")),
     ]
+}
+
+/// Inserts a Claim as a root, which the seam refuses: a root must be a
+/// package (LIB-API-008).
+fn root_refusal(doc: &mut Document, id: &str) -> InsertError {
+    let Err(error) = doc.insert(None, ElementKind::Claim, ElementId::from(id), None) else {
+        panic!("LIB-API-004: insert accepted a Claim {id:?} as a root");
+    };
+    error
 }
 
 /// Inserts a Claim directly under the AssuranceCasePackage `parent`, which the
@@ -167,6 +177,7 @@ fn lib_api_004_insert_produces_each_variant_with_its_offending_id() {
                 parent: ElementId::from("case"),
                 parent_kind: ElementKind::AssuranceCasePackage,
             },
+            InsertError::RootNotAllowed(ElementId::from("c_root"), ElementKind::Claim),
         ],
         "LIB-API-004: insert did not report the expected variants"
     );
@@ -245,6 +256,14 @@ fn lib_api_004_insert_error_messages_follow_the_rules_for_awkward_ids() {
                 &refused.to_string(),
             );
         }
+
+        let root = root_refusal(&mut Document::new(), id);
+        assert_eq!(
+            root,
+            InsertError::RootNotAllowed(ElementId::from(id), ElementKind::Claim),
+            "LIB-API-004: a Claim root {id:?} is not RootNotAllowed"
+        );
+        assert_message_rules(&format!("RootNotAllowed({id:?})"), &root.to_string());
     }
 }
 
@@ -267,6 +286,10 @@ fn lib_api_004_insert_error_messages_stay_one_line_for_ids_with_line_breaks() {
         assert_message_rules(
             &format!("ContainmentNotAllowed({child:?} under {id:?})"),
             &containment_refusal(&mut doc, id, &child).to_string(),
+        );
+        assert_message_rules(
+            &format!("RootNotAllowed({id:?})"),
+            &root_refusal(&mut Document::new(), id).to_string(),
         );
     }
 }

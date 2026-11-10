@@ -92,10 +92,9 @@ impl Document {
 
     /// The root elements, in document order.
     ///
-    /// A root is an element with no parent. Roots are usually the interchange
-    /// packages (an `AssuranceCasePackage`, `ArgumentPackage`,
-    /// `ArtifactPackage` or `TerminologyPackage`), but the document accepts a
-    /// root of any kind.
+    /// A root is an element with no parent. Every root is a package: an
+    /// assurance case, argument, artifact or terminology package, or the
+    /// interface or binding of one.
     ///
     /// ```
     /// use sacm::model::{Document, ElementId, ElementKind};
@@ -194,7 +193,7 @@ impl Document {
     /// any release. It checks identity, that `parent` exists, whether `kind`
     /// can have a name, and whether a containment role of the parent's class
     /// admits `kind` (see [`Document`]). It does not check how many children a
-    /// role holds; validation will. A root may be of any kind.
+    /// role holds; validation will. A root must be a package kind.
     ///
     /// `name` is the element's `name` (SACM 2.3 §8.6). `None` is a missing
     /// name, held as missing ([ADR 0013]). Only `ModelElement` kinds have a
@@ -213,7 +212,9 @@ impl Document {
     /// - `name` is `Some` and `kind` is not a `ModelElement` kind
     ///   ([`InsertError::NameNotAllowed`]);
     /// - `parent`'s class has no SACM containment role that admits `kind`
-    ///   ([`InsertError::ContainmentNotAllowed`]).
+    ///   ([`InsertError::ContainmentNotAllowed`]);
+    /// - `parent` is `None` and `kind` is not a package kind
+    ///   ([`InsertError::RootNotAllowed`]).
     ///
     /// # Examples
     ///
@@ -231,8 +232,9 @@ impl Document {
     /// assert_eq!(again, Err(InsertError::DuplicateId(case.clone())));
     ///
     /// // A Note is a UtilityElement, so it has no name.
+    /// let arguments = ElementId::from("arguments");
     /// let note = ElementId::from("note_1");
-    /// let named = doc.insert(None, ElementKind::Note, note.clone(), Some(LangString::new("n")));
+    /// let named = doc.insert(Some(&arguments), ElementKind::Note, note.clone(), Some(LangString::new("n")));
     /// assert_eq!(named, Err(InsertError::NameNotAllowed(note, ElementKind::Note)));
     ///
     /// // An AssuranceCasePackage holds only packages (and utility elements),
@@ -299,16 +301,23 @@ impl Document {
         if name.is_some() && !kind.is_a(AbstractClass::ModelElement) {
             return Err(InsertError::NameNotAllowed(id, kind));
         }
-        // A root may be of any kind; a child needs a role of its parent's class.
-        if let Some(parent) = parent {
-            let parent = &self.nodes[parent];
-            if !admits(parent.kind, kind) {
-                return Err(InsertError::ContainmentNotAllowed {
-                    id,
-                    kind,
-                    parent: parent.id.clone(),
-                    parent_kind: parent.kind,
-                });
+        // A child needs a role of its parent's class; a root must be a package.
+        match parent {
+            Some(parent) => {
+                let parent = &self.nodes[parent];
+                if !admits(parent.kind, kind) {
+                    return Err(InsertError::ContainmentNotAllowed {
+                        id,
+                        kind,
+                        parent: parent.id.clone(),
+                        parent_kind: parent.kind,
+                    });
+                }
+            }
+            None => {
+                if !kind.is_package() {
+                    return Err(InsertError::RootNotAllowed(id, kind));
+                }
             }
         }
 
@@ -451,8 +460,9 @@ impl<'a> SacmElement<'a> {
     /// let mut doc = Document::new();
     /// let id = ElementId::from;
     /// let name = LangString::new("Top claim").with_lang("en");
-    /// doc.insert(None, ElementKind::Claim, id("claim_top"), Some(name.clone())).unwrap();
-    /// doc.insert(None, ElementKind::Claim, id("claim_unnamed"), None).unwrap();
+    /// doc.insert(None, ElementKind::ArgumentPackage, id("arguments"), None).unwrap();
+    /// doc.insert(Some(&id("arguments")), ElementKind::Claim, id("claim_top"), Some(name.clone())).unwrap();
+    /// doc.insert(Some(&id("arguments")), ElementKind::Claim, id("claim_unnamed"), None).unwrap();
     /// doc.insert(Some(&id("claim_top")), ElementKind::Note, id("note"), None).unwrap();
     ///
     /// let claim = doc.get("claim_top").expect("the document has it");
@@ -546,6 +556,10 @@ pub enum InsertError {
         /// The parent's kind.
         parent_kind: ElementKind,
     },
+    /// The element has no parent and its kind is not a package kind: a root
+    /// must be a package, a package interface or a package binding (ADR 0010
+    /// D1). Holds the element's id and kind.
+    RootNotAllowed(ElementId, ElementKind),
 }
 
 impl fmt::Display for InsertError {
@@ -579,6 +593,11 @@ impl fmt::Display for InsertError {
                 "element {:?} of kind {kind} cannot be contained in element {:?} of kind {parent_kind}",
                 id.as_str(),
                 parent.as_str()
+            ),
+            Self::RootNotAllowed(id, kind) => write!(
+                f,
+                "element {:?} of kind {kind} cannot be a root",
+                id.as_str()
             ),
         }
     }

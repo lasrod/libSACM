@@ -46,8 +46,8 @@ change bumps the minor version and is listed under **Breaking**.
 - The unstable `test-support` `Document::insert` refuses a child that no SACM 2.3
   containment role of its parent admits, with `InsertError::ContainmentNotAllowed`. An
   AssuranceCasePackage holds sub-packages through its four roles, an ArtifactPackage
-  admits every ArtifactElement (ADR 0014), and roots are unrestricted
-  [SACM23-AC-001, LIB-API-008].
+  admits every ArtifactElement (ADR 0014). A root that is not a package kind is
+  refused with `InsertError::RootNotAllowed` [SACM23-AC-001, LIB-API-008].
 
 ### Changed
 
