@@ -64,7 +64,38 @@ fn every_insert_error() -> Vec<(&'static str, InsertError)> {
             refusal(&mut doc, Some("nowhere"), "orphan"),
         ),
         ("NameNotAllowed", named_note_refusal(&mut doc)),
+        (
+            "ContainmentNotAllowed",
+            containment_refusal(&mut doc, "case", "c1"),
+        ),
+        ("RootNotAllowed", root_refusal(&mut doc, "c_root")),
     ]
+}
+
+/// Inserts a Claim as a root, which the seam refuses: a root must be a
+/// package (LIB-API-008).
+fn root_refusal(doc: &mut Document, id: &str) -> InsertError {
+    let Err(error) = doc.insert(None, ElementKind::Claim, ElementId::from(id), None) else {
+        panic!("LIB-API-004: insert accepted a Claim {id:?} as a root");
+    };
+    error
+}
+
+/// Inserts a Claim directly under the AssuranceCasePackage `parent`, which the
+/// seam refuses: no role of an AssuranceCasePackage admits a Claim
+/// (LIB-API-008).
+fn containment_refusal(doc: &mut Document, parent: &str, id: &str) -> InsertError {
+    let Err(error) = doc.insert(
+        Some(&ElementId::from(parent)),
+        ElementKind::Claim,
+        ElementId::from(id),
+        None,
+    ) else {
+        panic!(
+            "LIB-API-004: insert accepted a Claim {id:?} under the AssuranceCasePackage {parent:?}"
+        );
+    };
+    error
 }
 
 /// Inserts a Note with a name, which the seam refuses: a `UtilityElement` has
@@ -140,6 +171,13 @@ fn lib_api_004_insert_produces_each_variant_with_its_offending_id() {
             InsertError::DuplicateId(ElementId::from("case")),
             InsertError::UnknownParent(ElementId::from("nowhere")),
             InsertError::NameNotAllowed(ElementId::from("note_1"), ElementKind::Note),
+            InsertError::ContainmentNotAllowed {
+                id: ElementId::from("c1"),
+                kind: ElementKind::Claim,
+                parent: ElementId::from("case"),
+                parent_kind: ElementKind::AssuranceCasePackage,
+            },
+            InsertError::RootNotAllowed(ElementId::from("c_root"), ElementKind::Claim),
         ],
         "LIB-API-004: insert did not report the expected variants"
     );
@@ -197,6 +235,35 @@ fn lib_api_004_insert_error_messages_follow_the_rules_for_awkward_ids() {
             "LIB-API-004: inserting under a missing {id:?} is not UnknownParent"
         );
         assert_message_rules(&format!("UnknownParent({id:?})"), &unknown.to_string());
+
+        // The id as the parent that refuses a child, and as the refused child.
+        for (parent, child) in [(id, "c1"), ("case", id)] {
+            let mut doc = Document::new();
+            add(&mut doc, None, ElementKind::AssuranceCasePackage, parent);
+            let refused = containment_refusal(&mut doc, parent, child);
+            assert_eq!(
+                refused,
+                InsertError::ContainmentNotAllowed {
+                    id: ElementId::from(child),
+                    kind: ElementKind::Claim,
+                    parent: ElementId::from(parent),
+                    parent_kind: ElementKind::AssuranceCasePackage,
+                },
+                "LIB-API-004: a Claim {child:?} under {parent:?} is not ContainmentNotAllowed"
+            );
+            assert_message_rules(
+                &format!("ContainmentNotAllowed({child:?} under {parent:?})"),
+                &refused.to_string(),
+            );
+        }
+
+        let root = root_refusal(&mut Document::new(), id);
+        assert_eq!(
+            root,
+            InsertError::RootNotAllowed(ElementId::from(id), ElementKind::Claim),
+            "LIB-API-004: a Claim root {id:?} is not RootNotAllowed"
+        );
+        assert_message_rules(&format!("RootNotAllowed({id:?})"), &root.to_string());
     }
 }
 
@@ -214,6 +281,15 @@ fn lib_api_004_insert_error_messages_stay_one_line_for_ids_with_line_breaks() {
         assert_message_rules(
             &format!("UnknownParent({id:?})"),
             &refusal(&mut Document::new(), Some(id), "child").to_string(),
+        );
+        let child = format!("{id}_child");
+        assert_message_rules(
+            &format!("ContainmentNotAllowed({child:?} under {id:?})"),
+            &containment_refusal(&mut doc, id, &child).to_string(),
+        );
+        assert_message_rules(
+            &format!("RootNotAllowed({id:?})"),
+            &root_refusal(&mut Document::new(), id).to_string(),
         );
     }
 }
@@ -273,7 +349,8 @@ const ODD_IDS: [&str; 9] = [
 #[test]
 fn lib_api_004_insert_and_lookup_keep_nul_and_non_ascii_ids() {
     let mut doc = Document::new();
-    add(&mut doc, None, ElementKind::AssuranceCasePackage, "case");
+    // An ArgumentPackage, as a Claim can be contained in one (LIB-API-008).
+    add(&mut doc, None, ElementKind::ArgumentPackage, "case");
     for id in ODD_IDS {
         add(&mut doc, Some("case"), ElementKind::Claim, id);
     }

@@ -1510,11 +1510,29 @@ id = "SACM23-AC-001"
 area = "AC"
 milestone = "M1"
 title = "AssuranceCasePackage and nesting"
-requirement = "AssuranceCasePackage is represented as the mandatory unit of interchange; it may contain nested AssuranceCasePackages and ArgumentPackages in document order (artifact and terminology sub-packages are added by SACM23-ART-001 and SACM23-TERM-001)."
-source = "formal/23-05-08 clause 9; ptc/22-03-13 AssuranceCase::AssuranceCasePackage"
+requirement = "AssuranceCasePackage (§9.2, a Base::ArtifactElement) is represented as a root or nested, and contains sub-packages through its four composition roles, each 0..*: `assuranceCasePackage` (AssuranceCasePackage, its interface and binding), `argumentPackage` (ArgumentPackage, its interface and binding), `artifactPackage` (ArtifactPackage, its interface and binding) and `terminologyPackage` (TerminologyPackage, its interface and binding). Each sub-package kind fits exactly one of the four roles; which role a child fills becomes observable with SACM23-XMI-016. Children keep document order across roles (ADR 0010 D2); the metamodel declares no order. Which kinds may be contained is LIB-API-008. The `interface` reference is SACM23-AC-002. Sub-package contents are SACM23-ARG-001, SACM23-ART-001 and SACM23-TERM-001. Interchange roots and the compliance point are SACM23-XMI-001, SACM23-XMI-013 and SACM23-CP-001."
+source = "formal/23-05-08 §9.2 (pp. 23-24): \"AssuranceCasePackage is a sub-class of Base::ArtifactElement.\"; \"assuranceCasePackage: AssuranceCasePackage [0..*] (composition) - a collection of optional sub-packages\"; \"argumentPackage:Argument::ArgumentPackage[0..*] (composition) - a number of optional argument packages.\"; \"artifactPackage: ArtifactPackage [0..*] (composition) - a number of optional artifact sub-packages\"; \"terminologyPackage: TerminologyPackage [0..*] (composition) - a number of optional terminology sub-packages\"; \"It is a recursive container, and may contain one or more sub-packages.\"; §9.3/§9.4 \"Superclass AssuranceCasePackage\"; §2.4 \"The top object of the Assurance Case package as a unit of interchange shall be the SACM::AssuranceCasePackage element.\" (CP-001); ptc/22-03-13 AssuranceCase::AssuranceCasePackage (four aggregation=\"composite\" ends, 0..*, none isOrdered); ADR 0010 D2; assurance-forge libs/sacm model/assurance_case.h, io/xmi_reader.cpp attach_child"
 kind = "model"
-status = "planned"
-depends_on = ["SACM23-BASE-003"]
+status = "verified"
+verification = "docs/verification/0017-m1-assurance-case-package.md"
+depends_on = ["SACM23-BASE-003", "LIB-API-008"]
+acceptance = [
+  "`ElementKind::AssuranceCasePackage` has `name() == \"AssuranceCasePackage\"` and package AssuranceCase; `is_a` holds for ArtifactElement, ModelElement and SACMElement, and not for ArgumentationElement, TerminologyElement or UtilityElement (§9.2 \"Superclass Base::ArtifactElement\").",
+  "An AssuranceCasePackage inserted with no parent is in `roots()` and has `parent() == None`. In a chain of three nested AssuranceCasePackages, each inner one is absent from `roots()`, its `parent()` is the next outer one, and it is in that parent's `children()`.",
+  "Order across roles: under one AssuranceCasePackage, children inserted interleaved from all four roles (ArgumentPackage a1, AssuranceCasePackage n1, ArtifactPackage f1, ArgumentPackageInterface a2, TerminologyPackage t1, AssuranceCasePackageBinding n2, TerminologyPackageInterface t2) come back from `children()` in exactly that order, each with that package as `parent()`; filtering by `is_kind_of` against the four role types gives a1, a2 / n1, n2 / f1 / t1, t2; `elements()` visits n1's subtree before f1.",
+  "Multiplicity 0..* is unbounded: an AssuranceCasePackage with no children is held with an empty `children()`, and one with 1,000 ArgumentPackage children keeps all of them in insertion order.",
+]
+code = ["crates/sacm/src/model/containment.rs", "crates/sacm/src/model/document.rs", "crates/sacm/src/model/kind.rs"]
+tests = [
+  "crates/sacm/tests/assurance_case_package.rs::sacm23_ac_001_a_thousand_argument_packages_are_kept_in_insertion_order",
+  "crates/sacm/tests/assurance_case_package.rs::sacm23_ac_001_assurance_case_package_kind_is_an_artifact_element_of_assurance_case",
+  "crates/sacm/tests/assurance_case_package.rs::sacm23_ac_001_assurance_case_package_without_children_is_held",
+  "crates/sacm/tests/assurance_case_package.rs::sacm23_ac_001_children_from_all_four_roles_keep_insertion_order",
+  "crates/sacm/tests/assurance_case_package.rs::sacm23_ac_001_elements_visit_a_sub_package_subtree_before_the_next_sibling",
+  "crates/sacm/tests/assurance_case_package.rs::sacm23_ac_001_filtering_children_by_role_type_gives_each_role_in_order",
+  "crates/sacm/tests/assurance_case_package.rs::sacm23_ac_001_root_assurance_case_package_is_in_roots_without_a_parent",
+  "crates/sacm/tests/assurance_case_package.rs::sacm23_ac_001_three_nested_assurance_case_packages_chain_through_parent_and_children",
+]
 
 [[row]]
 id = "SACM23-ARG-001"
@@ -2322,11 +2340,11 @@ id = "SACM23-ART-001"
 area = "ART"
 milestone = "M3"
 title = "ArtifactPackage"
-requirement = "ArtifactPackage is represented, contained in an AssuranceCasePackage or as a root interchange object, and contains ArtifactElements (role `artifactElement`) in document order."
+requirement = "ArtifactPackage (§12.2) is represented as a root or contained in an AssuranceCasePackage (SACM23-AC-001) or another ArtifactPackage, and contains ArtifactElements (role `artifactElement`, which admits every ArtifactElement kind: LIB-API-008, ADR 0014) in document order."
 source = "formal/23-05-08 clause 12; ptc/22-03-13 Artifact::ArtifactPackage; clause 2"
 kind = "model"
 status = "planned"
-depends_on = ["SACM23-AC-001", "SACM23-XMI-005"]
+depends_on = ["SACM23-AC-001", "SACM23-XMI-005", "LIB-API-008"]
 
 [[row]]
 id = "SACM23-ART-002"
@@ -2443,7 +2461,7 @@ id = "SACM23-XMI-009"
 area = "XMI"
 milestone = "M3"
 title = "Machine-readable-model spellings accepted on import"
-requirement = "Tolerant import accepts the ptc/22-03-13 spellings `ArtifactAssertedRelationship`, `occurece` and `argumentationElement` with a warning and maps them to the resolved names; export always writes the resolved names."
+requirement = "Tolerant import accepts the ptc/22-03-13 spellings `ArtifactAssertedRelationship`, `occurece` and `argumentationElement`, and the §10.4 role spelling `TerminologyElement` (spec defect D9), with a warning and maps them to the resolved names; export always writes the resolved names."
 source = "D-TEXT-MODEL; docs/sacm/metamodel-inventory.md (Known defects)"
 kind = "xmi"
 status = "planned"
@@ -2458,11 +2476,11 @@ id = "SACM23-TERM-001"
 area = "TERM"
 milestone = "M4"
 title = "TerminologyPackage"
-requirement = "TerminologyPackage is represented, contained in an AssuranceCasePackage or as a root interchange object, and contains TerminologyElements in document order."
+requirement = "TerminologyPackage (§10.4) is represented as a root or contained in an AssuranceCasePackage (SACM23-AC-001), a TerminologyPackage or an ArtifactPackage, and contains TerminologyElements (role `terminologyElement`, TerminologyGroup included: LIB-API-008, spec defect D9) in document order."
 source = "formal/23-05-08 clause 10; ptc/22-03-13 Terminology::TerminologyPackage; clause 2"
 kind = "model"
 status = "planned"
-depends_on = ["SACM23-AC-001", "SACM23-XMI-005"]
+depends_on = ["SACM23-AC-001", "SACM23-XMI-005", "LIB-API-008"]
 
 [[row]]
 id = "SACM23-TERM-002"
@@ -2756,7 +2774,7 @@ requirement = "Import and export XMI documents whose unit of interchange is Argu
 source = "formal/23-05-08 clause 2"
 kind = "compliance"
 status = "planned"
-depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-ARG-001", "SACM23-ARG-002", "SACM23-ARG-003", "SACM23-ARG-004", "SACM23-ARG-005", "SACM23-ARG-006", "SACM23-ARG-007", "SACM23-ARG-008", "SACM23-ARG-009", "SACM23-ARG-010", "SACM23-ARG-011", "SACM23-ARG-012", "SACM23-ARG-013", "SACM23-ARG-014", "SACM23-ARG-015", "SACM23-XMI-001", "SACM23-XMI-002", "SACM23-XMI-003", "SACM23-XMI-004", "SACM23-XMI-005", "SACM23-XMI-006", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-XMI-009", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-005", "SACM23-VAL-006", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-009", "SACM23-VAL-010", "SACM23-VAL-011", "SACM23-VAL-012", "SACM23-VAL-013", "SACM23-VAL-014", "SACM23-VAL-016", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007"]
+depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-ARG-001", "SACM23-ARG-002", "SACM23-ARG-003", "SACM23-ARG-004", "SACM23-ARG-005", "SACM23-ARG-006", "SACM23-ARG-007", "SACM23-ARG-008", "SACM23-ARG-009", "SACM23-ARG-010", "SACM23-ARG-011", "SACM23-ARG-012", "SACM23-ARG-013", "SACM23-ARG-014", "SACM23-ARG-015", "SACM23-XMI-001", "SACM23-XMI-002", "SACM23-XMI-003", "SACM23-XMI-004", "SACM23-XMI-005", "SACM23-XMI-006", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-XMI-009", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-005", "SACM23-VAL-006", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-009", "SACM23-VAL-010", "SACM23-VAL-011", "SACM23-VAL-012", "SACM23-VAL-013", "SACM23-VAL-014", "SACM23-VAL-016", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008"]
 
 [[row]]
 id = "SACM23-CP-003"
@@ -2767,7 +2785,7 @@ requirement = "Import and export XMI documents whose unit of interchange is Arti
 source = "formal/23-05-08 clause 2"
 kind = "compliance"
 status = "planned"
-depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-ART-001", "SACM23-ART-002", "SACM23-ART-003", "SACM23-ART-004", "SACM23-ART-005", "SACM23-ART-006", "SACM23-ART-007", "SACM23-ART-008", "SACM23-ART-009", "SACM23-ART-010", "SACM23-ART-011", "SACM23-ART-012", "SACM23-ART-013", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-XMI-009", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-013", "SACM23-VAL-014", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007"]
+depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-ART-001", "SACM23-ART-002", "SACM23-ART-003", "SACM23-ART-004", "SACM23-ART-005", "SACM23-ART-006", "SACM23-ART-007", "SACM23-ART-008", "SACM23-ART-009", "SACM23-ART-010", "SACM23-ART-011", "SACM23-ART-012", "SACM23-ART-013", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-XMI-009", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-013", "SACM23-VAL-014", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008"]
 
 [[row]]
 id = "SACM23-CP-004"
@@ -2778,7 +2796,7 @@ requirement = "Import and export XMI documents whose unit of interchange is Term
 source = "formal/23-05-08 clause 2"
 kind = "compliance"
 status = "planned"
-depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-TERM-001", "SACM23-TERM-002", "SACM23-TERM-003", "SACM23-TERM-004", "SACM23-TERM-005", "SACM23-TERM-006", "SACM23-TERM-007", "SACM23-TERM-008", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-009", "SACM23-VAL-013", "SACM23-VAL-014", "SACM23-VAL-017", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007"]
+depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-TERM-001", "SACM23-TERM-002", "SACM23-TERM-003", "SACM23-TERM-004", "SACM23-TERM-005", "SACM23-TERM-006", "SACM23-TERM-007", "SACM23-TERM-008", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-009", "SACM23-VAL-013", "SACM23-VAL-014", "SACM23-VAL-017", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008"]
 
 [[row]]
 id = "SACM23-CP-001"
@@ -2863,6 +2881,64 @@ source = "rust-library-craft skill (MSRV and semver)"
 kind = "quality"
 status = "planned"
 depends_on = ["LIB-QA-005"]
+
+[[row]]
+id = "LIB-API-008"
+area = "API"
+milestone = "M1"
+title = "Containment legality"
+requirement = "The model knows, for every (parent kind, child kind) pair, whether a SACM 2.3 composite role of the parent's class admits the child, per ptc/22-03-13 with the inventory's recorded divergences. The roles are ModelElement `description`, `implementationConstraint`, `note` and `taggedValue`; AssuranceCasePackage `assuranceCasePackage`, `argumentPackage`, `artifactPackage` and `terminologyPackage`; ArgumentPackage `argumentElement`; TerminologyPackage `terminologyElement`; ArtifactPackage `artifactElement`; and ArtifactAsset `property`. Subclasses inherit roles, package interfaces and bindings included. Every insertion refuses a child whose kind no role of the parent's class admits, and leaves the document unchanged; this binds the crate-internal insertion that the XMI reader and edit operations will use, and the test-support `insert`. ArtifactPackage `artifactElement` admits every ArtifactElement kind, as the metamodel types it (ADR 0014). A root must be a package kind (`ElementKind::is_package`: the four packages, their interfaces and bindings; ADR 0010 D1 \"of any package kind\"); any other root is refused with `InsertError::RootNotAllowed`, as C++ refuses it (`io/xmi_reader.cpp` read_root, `is_package_kind`, `kXmiInvalidRoot`). Multiplicity is not enforced on insertion (D-VAL-LAYER, D-DESC-MULT). Which role a child fills, role names and multiplicities become observable with SACM23-XMI-016."
+source = "docs/sacm/decisions.md D-VAL-LAYER: \"**Structural** invariants (ids unique, references resolve, containment legal, multiplicities of required ends) hold after every successful mutation.\"; ptc/22-03-13 ownedAttribute aggregation=\"composite\" (12 element-typed ends, all 0..*); formal/23-05-08 §8.6 \"implementationConstraint: ImplementationConstraint [0..*] (composition)\", \"note:Note[0..*] (composition)\", \"taggedValue: TaggedValue [0..*] (composition)\", \"description: Description[0..1] (composition)\" (D-DESC-MULT); §9.2 (four sub-package compositions); §10.4 \"TerminologyElement:TerminologyElement[0..*] (composition)\" (spec defect D9); §11.4 \"argumentationElement:ArgumentationElement[0..*] (composition)\"; §12.2 \"artifactElement:Base::ArtifactElement[0..*] (composition)\"; §12.6 \"property:Property[0..*] (composition)\"; §12.14 ArtifactAssetRelationship \"Superclass ArtifactAsset\" (D-TEXT-MODEL); ADR 0010 D1/D2; ADR 0014; assurance-forge libs/sacm io/xmi_reader.cpp attach_child, io/name_tables.cpp"
+kind = "api"
+status = "verified"
+verification = "docs/verification/0017-m1-assurance-case-package.md"
+depends_on = ["LIB-API-002", "LIB-API-003", "LIB-API-004"]
+acceptance = [
+  "Exhaustive table test: for every (parent kind, child kind) pair of the 38 kinds, `insert(Some(parent), child, ..)` succeeds for exactly the 339 legal pairs of the containment table and is refused for the other 1,105. The test spells out the table itself rather than calling `is_a`.",
+  "Every containment refusal leaves the document unchanged (`element_count`, `contains`, `elements()`, `roots()`, the parent's `children()`) and returns `InsertError::ContainmentNotAllowed { id, kind, parent, parent_kind }`, whose `Display` follows the LIB-API-004 rules, e.g. `element \"c1\" of kind Claim cannot be contained in element \"case\" of kind AssuranceCasePackage`.",
+  "Precedence: EmptyId, DuplicateId, UnknownParent and NameNotAllowed are each still returned when they apply to an illegal pair or an illegal root; the containment or root refusal is reported only when all four pass.",
+  "Roots: `insert(None, k, ..)` succeeds for exactly the 12 package kinds (the four packages, their interfaces and bindings) and returns `InsertError::RootNotAllowed(id, kind)` for the other 26, Note and Claim included, leaving the document unchanged; its `Display` follows the LIB-API-004 rules, e.g. `element \"c1\" of kind Claim cannot be a root`.",
+  "The four UtilityElement kinds are accepted under each of the 34 ModelElement kinds; every kind is refused under a UtilityElement parent, UtilityElements included.",
+  "ArtifactPackage, ArtifactPackageInterface and ArtifactPackageBinding accept all 34 ModelElement kinds, an AssuranceCasePackage, an ArgumentPackage, a Claim and a Term included (§12.2; ADR 0014).",
+  "Inheritance: interfaces and bindings hold their package's roles (an AssuranceCasePackageBinding accepts a TerminologyPackage; an ArgumentPackageInterface accepts a Claim); ArtifactAssetRelationship and Property accept Property (§12.14 via D-TEXT-MODEL; §12.6); ArgumentGroup, ArtifactGroup and TerminologyGroup accept only UtilityElements, because their member ends are references; TerminologyPackage accepts TerminologyGroup (§10.4 declared type; spec defect D9).",
+  "Multiplicity is not enforced on insert: a second and a third Description under one Claim are accepted (D-DESC-MULT; SACM23-VAL-011 warns), and any number of children of any role is accepted.",
+  "Drift test: under every concrete class, `insert` admits exactly the kinds that the element-typed roles of the inventory's \"Concrete class -> containment roles\" table admit (a concrete type by `is_kind_of`, an abstract one by `is_a`); the value-typed roles (`name`, `value`, `key`, `content`, `location`) are excluded and listed as such. Role names become observable with SACM23-XMI-016 and are checked there.",
+]
+code = ["crates/sacm/src/model/containment.rs", "crates/sacm/src/model/document.rs"]
+tests = [
+  "crates/sacm/tests/containment.rs::lib_api_008_a_second_and_third_description_under_one_claim_are_accepted",
+  "crates/sacm/tests/containment.rs::lib_api_008_any_number_of_children_of_any_role_is_accepted",
+  "crates/sacm/tests/containment.rs::lib_api_008_artifact_asset_relationship_and_property_accept_property",
+  "crates/sacm/tests/containment.rs::lib_api_008_artifact_packages_accept_every_model_element_kind",
+  "crates/sacm/tests/containment.rs::lib_api_008_containment_not_allowed_display_is_exact",
+  "crates/sacm/tests/containment.rs::lib_api_008_containment_not_allowed_display_quotes_both_ids_on_one_line",
+  "crates/sacm/tests/containment.rs::lib_api_008_containment_refusal_leaves_the_document_unchanged",
+  "crates/sacm/tests/containment.rs::lib_api_008_earlier_refusals_take_precedence_over_containment",
+  "crates/sacm/tests/containment.rs::lib_api_008_earlier_refusals_take_precedence_over_root_not_allowed",
+  "crates/sacm/tests/containment.rs::lib_api_008_exactly_the_12_package_kinds_are_accepted_as_roots",
+  "crates/sacm/tests/containment.rs::lib_api_008_groups_accept_only_utility_elements",
+  "crates/sacm/tests/containment.rs::lib_api_008_insert_admits_exactly_the_339_legal_pairs_of_the_table",
+  "crates/sacm/tests/containment.rs::lib_api_008_insert_admits_exactly_what_the_inventory_roles_admit",
+  "crates/sacm/tests/containment.rs::lib_api_008_inventory_containment_table_parses_into_every_kind",
+  "crates/sacm/tests/containment.rs::lib_api_008_package_interfaces_and_bindings_hold_their_package_roles",
+  "crates/sacm/tests/containment.rs::lib_api_008_root_not_allowed_display_is_exact",
+  "crates/sacm/tests/containment.rs::lib_api_008_root_not_allowed_display_quotes_the_id_on_one_line",
+  "crates/sacm/tests/containment.rs::lib_api_008_root_refusal_leaves_the_document_unchanged",
+  "crates/sacm/tests/containment.rs::lib_api_008_terminology_package_accepts_terminology_group",
+  "crates/sacm/tests/containment.rs::lib_api_008_the_spelled_out_table_has_339_of_1444_pairs",
+  "crates/sacm/tests/containment.rs::lib_api_008_utility_elements_go_under_every_model_element_and_contain_nothing",
+]
+
+[[row]]
+id = "SACM23-XMI-016"
+area = "XMI"
+milestone = "M2"
+title = "Containment children conform to their role"
+requirement = "Every containment child is written under the role element of the one role that admits it (LIB-API-008), checked for all 339 legal (parent, child) pairs and each role's name against the inventory, with `xsi:type` as SACM23-XMI-006 requires, and is read back into the same kind, parent and order. On import, a child whose class does not conform to its role element's declared type (e.g. `<assuranceCasePackage xsi:type=\"sacm:ArgumentPackage\">`), or that no role of its parent admits, is an error in strict mode and is kept as preserved content with a warning in tolerant mode (D-PRESERVE); it is never re-roled or dropped."
+source = "formal/23-05-08 §9.2, §10.4, §11.4, §12.2, §12.6; ptc/22-03-13 composite ends; XMI 2.5.1 type rules (quoted when analysed, LIB-TOOL-020); D-PRESERVE; D-STRICT; slice 0017 research (assurance-forge io/xmi_reader.cpp attach_child places a child by kind, not by role element, and drops one no role admits)"
+kind = "xmi"
+status = "planned"
+depends_on = ["LIB-API-008", "SACM23-XMI-006", "SACM23-XMI-010", "LIB-TOOL-020"]
 
 [[row]]
 id = "LIB-API-005"

@@ -70,6 +70,18 @@ fn add(
     );
 }
 
+/// The id of the ArtifactPackage root that elements of any kind are placed
+/// under: a root must be a package, and an ArtifactPackage contains every kind
+/// (LIB-API-008).
+const SCAFFOLD: &str = "scaffold";
+
+/// A document holding only the scaffold.
+fn scaffolded() -> Document {
+    let mut doc = Document::new();
+    add(&mut doc, None, ElementKind::ArtifactPackage, SCAFFOLD, None);
+    doc
+}
+
 /// The name of the element `id`, failing the test if the document lacks it.
 fn name_of<'d>(doc: &'d Document, id: &str) -> Option<&'d LangString> {
     let Some(element) = doc.get(id) else {
@@ -94,10 +106,10 @@ fn title(content: &str) -> LangString {
 #[test]
 fn sacm23_base_003_every_model_element_kind_keeps_each_of_the_nine_names() {
     for kind in model_element_kinds() {
-        let mut doc = Document::new();
+        let mut doc = scaffolded();
         for (index, name) in nine_names().into_iter().enumerate() {
             let id = format!("{kind}_{index}");
-            add(&mut doc, None, kind, &id, Some(name.clone()));
+            add(&mut doc, Some(SCAFFOLD), kind, &id, Some(name.clone()));
             assert_eq!(
                 name_of(&doc, &id),
                 Some(&name),
@@ -110,8 +122,14 @@ fn sacm23_base_003_every_model_element_kind_keeps_each_of_the_nine_names() {
 #[test]
 fn sacm23_base_003_a_default_name_is_a_name_not_a_missing_one() {
     for kind in model_element_kinds() {
-        let mut doc = Document::new();
-        add(&mut doc, None, kind, "named", Some(LangString::default()));
+        let mut doc = scaffolded();
+        add(
+            &mut doc,
+            Some(SCAFFOLD),
+            kind,
+            "named",
+            Some(LangString::default()),
+        );
         assert_eq!(
             name_of(&doc, "named"),
             Some(&LangString::default()),
@@ -125,8 +143,8 @@ fn sacm23_base_003_a_default_name_is_a_name_not_a_missing_one() {
 #[test]
 fn sacm23_base_003_model_element_inserted_without_a_name_has_none() {
     for kind in model_element_kinds() {
-        let mut doc = Document::new();
-        add(&mut doc, None, kind, "unnamed", None);
+        let mut doc = scaffolded();
+        add(&mut doc, Some(SCAFFOLD), kind, "unnamed", None);
         let name = name_of(&doc, "unnamed");
         assert_eq!(
             name, None,
@@ -197,7 +215,20 @@ fn sacm23_base_003_missing_default_and_empty_names_are_three_different_answers()
 #[test]
 fn sacm23_base_003_utility_element_without_a_name_is_accepted_and_has_none() {
     let mut doc = Document::new();
-    add(&mut doc, None, ElementKind::Claim, "claim", None);
+    add(
+        &mut doc,
+        None,
+        ElementKind::ArgumentPackage,
+        "arguments",
+        None,
+    );
+    add(
+        &mut doc,
+        Some("arguments"),
+        ElementKind::Claim,
+        "claim",
+        None,
+    );
     for kind in UTILITY_KINDS {
         let id = format!("{kind}_1");
         add(&mut doc, Some("claim"), kind, &id, None);
@@ -215,6 +246,13 @@ fn sacm23_base_003_utility_element_refuses_any_name_and_leaves_the_document_unch
     add(
         &mut doc,
         None,
+        ElementKind::ArgumentPackage,
+        "arguments",
+        None,
+    );
+    add(
+        &mut doc,
+        Some("arguments"),
         ElementKind::Claim,
         "claim",
         Some(title("C1")),
@@ -237,9 +275,10 @@ fn sacm23_base_003_utility_element_refuses_any_name_and_leaves_the_document_unch
                     Err(InsertError::NameNotAllowed(id.clone(), kind)),
                     "SACM23-BASE-003: a {kind} named {name:?} under {parent:?} was not refused with NameNotAllowed"
                 );
+                // The package, the claim and its note.
                 assert_eq!(
                     doc.element_count(),
-                    2,
+                    3,
                     "SACM23-BASE-003: a refused named {kind} changed element_count"
                 );
                 assert!(
@@ -259,7 +298,20 @@ fn sacm23_base_003_utility_element_refuses_any_name_and_leaves_the_document_unch
 #[test]
 fn sacm23_base_003_earlier_refusals_take_precedence_over_name_not_allowed() {
     let mut doc = Document::new();
-    add(&mut doc, None, ElementKind::Claim, "claim", None);
+    add(
+        &mut doc,
+        None,
+        ElementKind::ArgumentPackage,
+        "arguments",
+        None,
+    );
+    add(
+        &mut doc,
+        Some("arguments"),
+        ElementKind::Claim,
+        "claim",
+        None,
+    );
     add(&mut doc, Some("claim"), ElementKind::Note, "note_1", None);
     let before = snapshot(&doc);
 
@@ -326,9 +378,14 @@ fn sacm23_base_003_the_kinds_with_a_name_are_exactly_the_34_model_elements() {
 fn sacm23_base_003_insert_accepts_a_name_exactly_for_model_element_kinds() {
     for &kind in ElementKind::ALL {
         let has_name = kind.is_a(AbstractClass::ModelElement);
-        let mut doc = Document::new();
+        let mut doc = scaffolded();
         let id = ElementId::from("element");
-        let result = doc.insert(None, kind, id.clone(), Some(title("Name")));
+        let result = doc.insert(
+            Some(&ElementId::from(SCAFFOLD)),
+            kind,
+            id.clone(),
+            Some(title("Name")),
+        );
         let expected = if has_name {
             Ok(())
         } else {
@@ -338,9 +395,10 @@ fn sacm23_base_003_insert_accepts_a_name_exactly_for_model_element_kinds() {
             result, expected,
             "SACM23-BASE-003: insert of a named {kind} is wrong (ModelElement: {has_name})"
         );
+        // The scaffold, and the element if it was accepted.
         assert_eq!(
             doc.element_count(),
-            usize::from(has_name),
+            1 + usize::from(has_name),
             "SACM23-BASE-003: the document after inserting a named {kind} has the wrong count"
         );
     }
@@ -564,6 +622,13 @@ fn sacm23_base_003_name_borrows_the_document_not_the_view() {
     add(
         &mut doc,
         None,
+        ElementKind::ArgumentPackage,
+        "arguments",
+        None,
+    );
+    add(
+        &mut doc,
+        Some("arguments"),
         ElementKind::Claim,
         "claim",
         Some(title("C1")),
@@ -580,7 +645,20 @@ fn sacm23_base_003_name_borrows_the_document_not_the_view() {
 fn sacm23_base_003_view_debug_shows_kind_and_id_not_the_name() {
     let mut doc = Document::new();
     let name = LangString::new("NAME-CONTENT-MARKER").with_lang("lang-marker");
-    add(&mut doc, None, ElementKind::Claim, "claim_top", Some(name));
+    add(
+        &mut doc,
+        None,
+        ElementKind::ArgumentPackage,
+        "arguments",
+        None,
+    );
+    add(
+        &mut doc,
+        Some("arguments"),
+        ElementKind::Claim,
+        "claim_top",
+        Some(name),
+    );
     let Some(view) = doc.get("claim_top") else {
         panic!("SACM23-BASE-003: the document has no claim_top");
     };

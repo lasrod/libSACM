@@ -192,6 +192,27 @@ containment is public. No consequence for XMI is known.
 
 **Suggested resolution.** Name the properties in 2.4, and make `value` public.
 
+## D9 — Clause 10.4's TerminologyPackage role
+
+*Found by libSACM (slice 0017); not part of the assurance-forge import.*
+
+§10.4 reads:
+
+> "TerminologyElement:TerminologyElement[0..*] (composition) - TerminologyElements
+> contained in the TerminologyPackage, it can be either TerminologyPackage (and its
+> sub-types) or TerminologyAssets (or its sub-types)."
+
+- **Spelling.** ptc/22-03-13 names the end `terminologyElement`. The text capitalises it.
+- **Type.** The prose leaves out TerminologyGroup, although §10.3 gives TerminologyGroup
+  "Superclass TerminologyElement", so the declared type admits it.
+
+**This crate** follows the model. It admits TerminologyGroup (LIB-API-008), as the C++
+library does. Its XMI writer will write `terminologyElement`, and tolerant import will
+also accept the capitalised spelling (SACM23-XMI-009, planned), which C++ does not.
+
+**Suggested resolution.** Use the model's spelling, and either list TerminologyGroup in
+the prose or drop the list.
+
 ## Related
 
 - [GSN / SACM metamodel gaps](sacm-gsn-metamodel-gaps.md) — the GSN v3 side, for the SCSC ACWG.
