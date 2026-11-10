@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use super::{ElementId, ElementKind};
+use super::{AbstractClass, ElementId, ElementKind, LangString};
 
 /// A SACM 2.3 document: one interchange unit (what one SACM XMI file holds),
 /// owning its root packages and every element under them.
@@ -52,6 +52,9 @@ pub struct Document {
 struct Node {
     id: ElementId,
     kind: ElementKind,
+    /// The element's name; `None` for a missing name, and always `None` for a
+    /// `UtilityElement` kind.
+    name: Option<LangString>,
     /// The handle of the containing element; `None` for a root.
     parent: Option<usize>,
     /// The handles of the contained elements, in containment order.
@@ -82,8 +85,8 @@ impl Document {
     ///
     /// // Built with the unstable test-support feature until the XMI reader exists.
     /// let mut doc = Document::new();
-    /// doc.insert(None, ElementKind::AssuranceCasePackage, ElementId::from("safety_case")).unwrap();
-    /// doc.insert(None, ElementKind::ArtifactPackage, ElementId::from("evidence")).unwrap();
+    /// doc.insert(None, ElementKind::AssuranceCasePackage, ElementId::from("safety_case"), None).unwrap();
+    /// doc.insert(None, ElementKind::ArtifactPackage, ElementId::from("evidence"), None).unwrap();
     ///
     /// let roots: Vec<&str> = doc.roots().map(|root| root.id().as_str()).collect();
     /// assert_eq!(roots, ["safety_case", "evidence"]);
@@ -102,7 +105,7 @@ impl Document {
     ///
     /// // Built with the unstable test-support feature until the XMI reader exists.
     /// let mut doc = Document::new();
-    /// doc.insert(None, ElementKind::ArgumentPackage, ElementId::from("arguments")).unwrap();
+    /// doc.insert(None, ElementKind::ArgumentPackage, ElementId::from("arguments"), None).unwrap();
     ///
     /// let arguments = doc.get("arguments").expect("the document has it");
     /// assert_eq!(arguments.kind(), ElementKind::ArgumentPackage);
@@ -150,10 +153,10 @@ impl Document {
     /// // Built with the unstable test-support feature until the XMI reader exists.
     /// let mut doc = Document::new();
     /// let id = ElementId::from;
-    /// doc.insert(None, ElementKind::AssuranceCasePackage, id("case")).unwrap();
-    /// doc.insert(Some(&id("case")), ElementKind::ArgumentPackage, id("arguments")).unwrap();
-    /// doc.insert(Some(&id("case")), ElementKind::ArtifactPackage, id("artifacts")).unwrap();
-    /// doc.insert(Some(&id("arguments")), ElementKind::Claim, id("claim")).unwrap();
+    /// doc.insert(None, ElementKind::AssuranceCasePackage, id("case"), None).unwrap();
+    /// doc.insert(Some(&id("case")), ElementKind::ArgumentPackage, id("arguments"), None).unwrap();
+    /// doc.insert(Some(&id("case")), ElementKind::ArtifactPackage, id("artifacts"), None).unwrap();
+    /// doc.insert(Some(&id("arguments")), ElementKind::Claim, id("claim"), None).unwrap();
     ///
     /// let order: Vec<&str> = doc.elements().map(|element| element.id().as_str()).collect();
     /// assert_eq!(order, ["case", "arguments", "claim", "artifacts"]);
@@ -171,30 +174,45 @@ impl Document {
     /// **Not part of the stable API.** This is the test seam of the
     /// `test-support` feature: it builds documents for tests until the XMI
     /// reader and the edit operations exist. It may change or disappear in
-    /// any release. It checks only identity and containment, not whether
-    /// SACM allows `kind` under `parent`.
+    /// any release. It checks identity, containment and whether `kind` can
+    /// have a name, not whether SACM allows `kind` under `parent`.
+    ///
+    /// `name` is the element's `name` (SACM 2.3 §8.6). `None` is a missing
+    /// name, held as missing ([ADR 0013]). Only `ModelElement` kinds have a
+    /// name, so the four `UtilityElement` kinds take `None`.
+    ///
+    /// [ADR 0013]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0013-missing-name-stays-missing.md
     ///
     /// # Errors
     ///
-    /// Refuses, and leaves the document unchanged, when:
+    /// Refuses, and leaves the document unchanged, when, checked in this order:
     /// - `id` is empty ([`InsertError::EmptyId`]);
     /// - the document already has an element with `id`
     ///   ([`InsertError::DuplicateId`]);
     /// - `parent` is not an element of the document
-    ///   ([`InsertError::UnknownParent`]).
+    ///   ([`InsertError::UnknownParent`]);
+    /// - `name` is `Some` and `kind` is not a `ModelElement` kind
+    ///   ([`InsertError::NameNotAllowed`]).
     ///
     /// # Examples
     ///
     /// ```
-    /// use sacm::model::{Document, ElementId, ElementKind, InsertError};
+    /// use sacm::model::{Document, ElementId, ElementKind, InsertError, LangString};
     ///
     /// let mut doc = Document::new();
     /// let case = ElementId::from("case");
-    /// doc.insert(None, ElementKind::AssuranceCasePackage, case.clone())?;
-    /// doc.insert(Some(&case), ElementKind::ArgumentPackage, ElementId::from("arguments"))?;
+    /// let name = LangString::new("Safety case").with_lang("en");
+    /// doc.insert(None, ElementKind::AssuranceCasePackage, case.clone(), Some(name))?;
+    /// // An argument package whose name is missing.
+    /// doc.insert(Some(&case), ElementKind::ArgumentPackage, ElementId::from("arguments"), None)?;
     ///
-    /// let again = doc.insert(None, ElementKind::ArtifactPackage, case.clone());
+    /// let again = doc.insert(None, ElementKind::ArtifactPackage, case.clone(), None);
     /// assert_eq!(again, Err(InsertError::DuplicateId(case)));
+    ///
+    /// // A Note is a UtilityElement, so it has no name.
+    /// let note = ElementId::from("note_1");
+    /// let named = doc.insert(None, ElementKind::Note, note.clone(), Some(LangString::new("n")));
+    /// assert_eq!(named, Err(InsertError::NameNotAllowed(note, ElementKind::Note)));
     /// assert_eq!(doc.element_count(), 2);
     /// # Ok::<(), InsertError>(())
     /// ```
@@ -205,8 +223,9 @@ impl Document {
         parent: Option<&ElementId>,
         kind: ElementKind,
         id: ElementId,
+        name: Option<LangString>,
     ) -> Result<(), InsertError> {
-        self.insert_node(parent, kind, id)
+        self.insert_node(parent, kind, id, name)
     }
 
     /// Adds an element as the last child of `parent`, or as the last root
@@ -227,6 +246,7 @@ impl Document {
         parent: Option<&ElementId>,
         kind: ElementKind,
         id: ElementId,
+        name: Option<LangString>,
     ) -> Result<(), InsertError> {
         if id.as_str().is_empty() {
             return Err(InsertError::EmptyId);
@@ -241,6 +261,9 @@ impl Document {
                 None => return Err(InsertError::UnknownParent(parent_id.clone())),
             },
         };
+        if name.is_some() && !kind.is_a(AbstractClass::ModelElement) {
+            return Err(InsertError::NameNotAllowed(id, kind));
+        }
 
         let node = self.nodes.len();
         match parent {
@@ -251,6 +274,7 @@ impl Document {
         self.nodes.push(Node {
             id,
             kind,
+            name,
             parent,
             children: Vec::new(),
         });
@@ -324,10 +348,10 @@ impl<'a> Iterator for PreOrder<'a> {
 /// // Built with the unstable test-support feature until the XMI reader exists.
 /// let mut doc = Document::new();
 /// let id = ElementId::from;
-/// doc.insert(None, ElementKind::ArgumentPackage, id("arguments")).unwrap();
-/// doc.insert(Some(&id("arguments")), ElementKind::Claim, id("claim_top")).unwrap();
-/// doc.insert(Some(&id("arguments")), ElementKind::ArgumentReasoning, id("reasoning")).unwrap();
-/// doc.insert(Some(&id("arguments")), ElementKind::Claim, id("claim_sub")).unwrap();
+/// doc.insert(None, ElementKind::ArgumentPackage, id("arguments"), None).unwrap();
+/// doc.insert(Some(&id("arguments")), ElementKind::Claim, id("claim_top"), None).unwrap();
+/// doc.insert(Some(&id("arguments")), ElementKind::ArgumentReasoning, id("reasoning"), None).unwrap();
+/// doc.insert(Some(&id("arguments")), ElementKind::Claim, id("claim_sub"), None).unwrap();
 ///
 /// let arguments = doc.get("arguments").expect("the document has it");
 /// let ids: Vec<&str> = claims(arguments).map(|claim| claim.id().as_str()).collect();
@@ -354,6 +378,52 @@ impl<'a> SacmElement<'a> {
     #[must_use]
     pub fn kind(self) -> ElementKind {
         self.node().kind
+    }
+
+    /// The element's `name` (SACM 2.3 §8.6), or `None` when the name is
+    /// missing or the element's kind has no name.
+    ///
+    /// Every `ModelElement` has a name in SACM, but a document can hold one
+    /// whose name is missing, as a file can leave it out. That is `None`:
+    /// nothing invents a name ([ADR 0013]). A name whose `lang` or `content`
+    /// is absent or empty is still a name.
+    ///
+    /// [ADR 0013]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0013-missing-name-stays-missing.md
+    ///
+    /// The four `UtilityElement` kinds (`Description`,
+    /// `ImplementationConstraint`, `Note` and `TaggedValue`) have no name, so
+    /// this is always `None` for them.
+    /// `kind().is_a(AbstractClass::ModelElement)` tells the two cases apart.
+    ///
+    /// The name borrows the document, not the view.
+    ///
+    /// ```
+    /// use sacm::model::{AbstractClass, Document, ElementId, ElementKind, LangString};
+    ///
+    /// // Built with the unstable test-support feature until the XMI reader exists.
+    /// let mut doc = Document::new();
+    /// let id = ElementId::from;
+    /// let name = LangString::new("Top claim").with_lang("en");
+    /// doc.insert(None, ElementKind::Claim, id("claim_top"), Some(name.clone())).unwrap();
+    /// doc.insert(None, ElementKind::Claim, id("claim_unnamed"), None).unwrap();
+    /// doc.insert(Some(&id("claim_top")), ElementKind::Note, id("note"), None).unwrap();
+    ///
+    /// let claim = doc.get("claim_top").expect("the document has it");
+    /// assert_eq!(claim.name(), Some(&name));
+    ///
+    /// // A missing name, on a kind that has one in SACM.
+    /// let unnamed = doc.get("claim_unnamed").expect("the document has it");
+    /// assert_eq!(unnamed.name(), None);
+    /// assert!(unnamed.kind().is_a(AbstractClass::ModelElement));
+    ///
+    /// // A Note has no name at all.
+    /// let note = doc.get("note").expect("the document has it");
+    /// assert_eq!(note.name(), None);
+    /// assert!(!note.kind().is_a(AbstractClass::ModelElement));
+    /// ```
+    #[must_use]
+    pub fn name(self) -> Option<&'a LangString> {
+        self.node().name.as_ref()
     }
 
     /// The element that contains this one, or `None` for a root.
@@ -412,6 +482,10 @@ pub enum InsertError {
     DuplicateId(ElementId),
     /// The parent is not an element of the document.
     UnknownParent(ElementId),
+    /// The element was given a name, but its kind is one of the four
+    /// `UtilityElement` kinds, which have no name. Holds the element's id and
+    /// kind.
+    NameNotAllowed(ElementId, ElementKind),
 }
 
 impl fmt::Display for InsertError {
@@ -428,6 +502,11 @@ impl fmt::Display for InsertError {
             Self::UnknownParent(id) => write!(
                 f,
                 "the document has no element {:?} to be the parent",
+                id.as_str()
+            ),
+            Self::NameNotAllowed(id, kind) => write!(
+                f,
+                "element {:?} of kind {kind} cannot have a name",
                 id.as_str()
             ),
         }

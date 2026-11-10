@@ -1,10 +1,12 @@
-//! The `LangString` value type (formal/23-05-08 §8.3).
+//! The `LangString` and `MultiLangString` value types (formal/23-05-08 §8.3,
+//! §8.5).
 
 /// Text with an optional language tag, where the text may also be absent:
 /// SACM's `LangString` (SACM 2.3 §8.3).
 ///
-/// SACM uses it for the `name` of every `ModelElement` (SACM 2.3 §8.6) and for
-/// each entry of a `MultiLangString` (§8.5). SACM defines no format for `lang`,
+/// SACM uses it for the `name` of every `ModelElement` (SACM 2.3 §8.6), read
+/// with [`SacmElement::name`](crate::model::SacmElement::name), and for each
+/// entry of a [`MultiLangString`] (§8.5). SACM defines no format for `lang`,
 /// so any string is accepted.
 ///
 /// §8.3 gives it two attributes, `lang : String [0..1]` ("the language used
@@ -12,9 +14,11 @@
 /// string").
 ///
 /// For each field, absent (`None`), empty (`Some("")`) and non-empty are
-/// three distinct values (ADR 0012), and [`Eq`], [`Ord`] and [`Hash`] tell
+/// three distinct values ([ADR 0012]), and [`Eq`], [`Ord`] and [`Hash`] tell
 /// them apart. Values are kept byte for byte: there is no trimming, case
 /// folding or Unicode normalisation, and `lang` has no format check.
+///
+/// [ADR 0012]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0012-lang-string-absent-and-empty.md
 ///
 /// `LangString` is a value, not an element: it has no id and no
 /// [`ElementKind`](crate::model::ElementKind), and you construct it directly,
@@ -115,5 +119,86 @@ impl LangString {
     /// ```
     pub fn set_content(&mut self, content: Option<String>) {
         self.content = content;
+    }
+}
+
+/// A list of [`LangString`] values that say the same thing in different
+/// languages: SACM's `MultiLangString` (SACM 2.3 §8.5).
+///
+/// §8.5 gives it `value : LangString [1..*]` and requires each value's `lang`
+/// to be unique. This type enforces neither: it keeps the values in the order
+/// given, including duplicates and repeated languages, and it may be empty,
+/// so a document can be held as it was written. Planned validation will
+/// report an empty list and a repeated `lang`; nothing checks them yet.
+///
+/// Equality and [`Hash`] depend on order: `[en, fr]` and `[fr, en]` are
+/// different values.
+///
+/// SACM uses it for the `content` of the `UtilityElement` kinds (§8.7), such
+/// as a `Note`, and for other text roles. It is a value, not an element: it
+/// has no id and no [`ElementKind`](crate::model::ElementKind). No element
+/// holds one in this release.
+///
+/// # Examples
+///
+/// ```
+/// use sacm::model::{LangString, MultiLangString};
+///
+/// let mut text: MultiLangString = [LangString::new("Top claim").with_lang("en")]
+///     .into_iter()
+///     .collect();
+/// text.push(LangString::new("Huvudpåstående").with_lang("sv"));
+/// assert_eq!(text.len(), 2);
+/// assert_eq!(text.values()[1].lang(), Some("sv"));
+///
+/// // An empty list is allowed in memory.
+/// assert!(MultiLangString::default().is_empty());
+/// ```
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct MultiLangString {
+    values: Vec<LangString>,
+}
+
+impl MultiLangString {
+    /// The values, in the order they were given.
+    #[must_use]
+    pub fn values(&self) -> &[LangString] {
+        &self.values
+    }
+
+    /// The number of values.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.values.len()
+    }
+
+    /// Whether there are no values.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.values.is_empty()
+    }
+
+    /// Adds `value` at the end. It never replaces or merges a value, even one
+    /// with the same `lang`.
+    ///
+    /// ```
+    /// use sacm::model::{LangString, MultiLangString};
+    ///
+    /// let mut text = MultiLangString::default();
+    /// text.push(LangString::new("a").with_lang("en"));
+    /// text.push(LangString::new("b").with_lang("en"));
+    /// assert_eq!(text.len(), 2);
+    /// ```
+    pub fn push(&mut self, value: LangString) {
+        self.values.push(value);
+    }
+}
+
+impl FromIterator<LangString> for MultiLangString {
+    /// Collects the values in iteration order.
+    fn from_iter<I: IntoIterator<Item = LangString>>(iter: I) -> Self {
+        Self {
+            values: iter.into_iter().collect(),
+        }
     }
 }
