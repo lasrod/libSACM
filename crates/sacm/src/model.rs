@@ -74,6 +74,7 @@
 //! ```
 
 mod argumentation;
+mod containment;
 mod document;
 mod id;
 mod kind;
