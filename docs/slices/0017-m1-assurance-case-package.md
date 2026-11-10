@@ -1,8 +1,8 @@
 ---
 slice: 0017
 name: m1-assurance-case-package
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [SACM23-AC-001, LIB-API-008]
 mode: pr
 ---
@@ -40,8 +40,8 @@ No new stable API. One ADR, 0014, for the C++ deviation; the rule itself is D-VA
   `kXmiInvalidRoot`).
 - **Order in `insert_node`:** EmptyId, DuplicateId, UnknownParent, NameNotAllowed, then
   ContainmentNotAllowed (with a parent) or RootNotAllowed (without one).
-- **Docs:** `insert` (what it checks, `# Errors`, a refusal example) and `roots()`
-  (roots may be of any kind).
+- **Docs:** `Document` (a containment paragraph), `insert` (what it checks, `# Errors`,
+  a refusal example) and `roots()` (every root is a package).
 
 ## Log
 
@@ -56,3 +56,4 @@ No new stable API. One ADR, 0014, for the C++ deviation; the rule itself is D-VA
 - 2026-11-10 verification round 2 at `d59f6e4`: **FAIL** on LIB-API-008 only. Round 1 is fixed, and every hand mutation is killed. The blocker: the requirement cited C++ `other_roots` for unrestricted roots, but C++ refuses a non-package root (`xmi_reader.cpp:2226`, `kXmiInvalidRoot`). AC-001 passes on its own evidence, and waits on LIB-API-008. Mutants: the PR diff caught 9 of 9, the full run caught 563 of 563. After the second FAIL, the lead asked the maintainer.
 - 2026-11-10 the maintainer decided: roots are package kinds only, following C++ and ADR 0010 D1, so no new ADR. LIB-API-008 is reworded: `InsertError::RootNotAllowed` (design by the lead, after `NameNotAllowed`), with acceptance items 3 and 4. Fix round 3 is next: the tests first.
 - 2026-11-10 fix round 3: the tests first. Item 4 tests all 38 kinds as roots (exactly 12 accepted), plus precedence and the exact message; RootNotAllowed is added to the LIB-API-004 error tests; nine BASE-003 and several LIB-API-008 setups move their non-package roots under a package, with no assertion weakened. The red was confirmed by the lead (E0599). Then `InsertError::RootNotAllowed` in `document.rs`, with the `roots()`/`insert` docs and two doctests fixed. The full gate passes (623 tests). LIB-API-008 is `implemented`. Verification round 3 is next.
+- 2026-11-10 verification round 3 at `cb08073` ([record](../verification/0017-m1-assurance-case-package.md)): both rows PASS, and both are now `verified`. LIB-API-004, LIB-API-002 and BASE-003 still hold. Mutants: the PR diff caught 10 of 10, the full run caught 564 of 564; every hand mutation was killed. The slice is done.
