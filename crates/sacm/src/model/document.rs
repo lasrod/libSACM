@@ -174,12 +174,14 @@ impl Document {
     /// **Not part of the stable API.** This is the test seam of the
     /// `test-support` feature: it builds documents for tests until the XMI
     /// reader and the edit operations exist. It may change or disappear in
-    /// any release. It checks identity, containment and whether `kind` has a
-    /// name, not whether SACM allows `kind` under `parent`.
+    /// any release. It checks identity, containment and whether `kind` can
+    /// have a name, not whether SACM allows `kind` under `parent`.
     ///
     /// `name` is the element's `name` (SACM 2.3 §8.6). `None` is a missing
-    /// name, held as missing (ADR 0013). Only `ModelElement` kinds have a name,
-    /// so the four `UtilityElement` kinds take `None`.
+    /// name, held as missing ([ADR 0013]). Only `ModelElement` kinds have a
+    /// name, so the four `UtilityElement` kinds take `None`.
+    ///
+    /// [ADR 0013]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0013-missing-name-stays-missing.md
     ///
     /// # Errors
     ///
@@ -378,12 +380,15 @@ impl<'a> SacmElement<'a> {
         self.node().kind
     }
 
-    /// The element's `name` (SACM 2.3 §8.6), or `None` if it has none.
+    /// The element's `name` (SACM 2.3 §8.6), or `None` when the name is
+    /// missing or the element's kind has no name.
     ///
     /// Every `ModelElement` has a name in SACM, but a document can hold one
     /// whose name is missing, as a file can leave it out. That is `None`:
-    /// nothing invents a name (ADR 0013). A name whose `lang` or `content` is
-    /// absent or empty is still a name.
+    /// nothing invents a name ([ADR 0013]). A name whose `lang` or `content`
+    /// is absent or empty is still a name.
+    ///
+    /// [ADR 0013]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0013-missing-name-stays-missing.md
     ///
     /// The four `UtilityElement` kinds (`Description`,
     /// `ImplementationConstraint`, `Note` and `TaggedValue`) have no name, so

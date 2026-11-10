@@ -1,8 +1,8 @@
 ---
 slice: 0016
 name: m1-names
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [SACM23-BASE-002, SACM23-BASE-003]
 mode: pr
 ---
@@ -41,3 +41,5 @@ ADR 0013 (accepted). In `sacm::model`:
 - 2026-11-10 the maintainer asked that every departure from C++ stay fully compliant with SACM 2.3. An independent compliance audit of ADRs 0010–0013 and this slice's choices is running before verification.
 - 2026-11-10 compliance audit (researcher): no departure from C++ breaks clause 2. Clause 2 requires output that conforms to the SACM XML Schema, which under the default XMI 2.5.1 rules enforces no multiplicities. Strict output was therefore schema-conforming, but it could be an invalid model. The maintainer chose that strict save writes only valid models (ADR 0013 amendment 1, new row LIB-COMPAT-007). Fixes: XMI-012 never refuses a second `name` on load; VAL-010 settles zero values and compares languages per ADR 0012; BASE-004 and BASE-006 keep absent and empty apart; LIB-RT-001 notes that ordered comparison is stricter than the metamodel. New rows: XMI-013 (one or more roots), XMI-014 (element form of values) and XMI-015 (element form of references), which strict import must accept because the schema allows them. CP-002/003/004 depend on the new rows. Updated: compliance-points.md, D-STRICT, xmi.md and D8.
 - Logged: XMI `includeNils` (§7.11.2) is read as nil only, so `lang=""` stays an attribute (low risk, XMI-011). CP-003 and CP-004 do not list XMI-001 to XMI-006; the matrix steward checks this at the M1 boundary.
+- 2026-11-10 docs review: nothing blocking. The lead fixed D-STRICT, ADR 0013 wording, xmi.md and metamodel-inventory.md. The implementer fixed the README editing promise, the `model.rs` example (it merged a missing name with an empty one), rustdoc summaries and ADR links. Deferred to the editing rows: `IntoIterator for &MultiLangString` and `From<Vec<LangString>>`.
+- 2026-11-10 verification round 1 at `e9a9504` ([record](../verification/0016-m1-names.md)): both rows PASS, and both are now `verified`. LIB-API-004 and LIB-API-002 still hold. The Medium findings were on later rows: new rows LIB-COMPAT-008 (the C++ name and text shapes) and LIB-TOOL-020 (fetch XMI 2.5.1); XMI-014 settles both forms present; wording in XMI-004, LIB-RT-001, BASE-004, BASE-005 and ART-005. The slice is done.

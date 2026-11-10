@@ -37,6 +37,12 @@ change bumps the minor version and is listed under **Breaking**.
 - `sacm::model::AssertionDeclaration`: the six SACM 2.3 literals, with `asserted` as the
   default and exact `as_str`/`FromStr`; a failed parse is a
   `ParseAssertionDeclarationError` [SACM23-ARG-003].
+- `sacm::model::MultiLangString`: an ordered list of `LangString` values; duplicates are
+  kept and equality depends on order [SACM23-BASE-002].
+- `SacmElement::name`: an element's `name`, or `None` when it is missing; nothing invents
+  a name (ADR 0013) [SACM23-BASE-003].
+- The unstable `test-support` `Document::insert` takes a name, and refuses one for the
+  four UtilityElement kinds with `InsertError::NameNotAllowed` [SACM23-BASE-003].
 
 ### Changed
 

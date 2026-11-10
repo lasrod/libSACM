@@ -29,19 +29,19 @@ single-constant change plus golden-file refresh.
 - Accepted namespace families: any URI containing `/spec/SACM/`, the EMF reference
   implementation's per-package `http://omg.sacm/2.2/<package>` URIs, and the fixture
   URI `http://example.org/sacm/2.3`. Other URIs: warning (tolerant) / error (strict).
-- An `xmi:XMI` wrapper around the root package is accepted.
 - `href="#id"` reference forms are accepted; external (cross-document) hrefs are
   preserved as opaque text with a warning.
-
-Not tolerant-only: the default XMI schema also allows references as child elements
-(rule 2c) and single-valued values as child elements (§7.8.4), so strict import
-accepts both (SACM23-XMI-014, SACM23-XMI-015). Export writes attributes.
 - Machine-readable-model spellings are accepted on import: `ArtifactAssertedRelationship`
   for `ArtifactAssetRelationship`, `occurece` for `Event.date`, `argumentationElement`
   for `argumentElement`. Output always uses the resolved spelling.
 - Missing `xmi:id`: generated, with a warning. Unknown elements: preserved with a
   warning; strict save then refuses the document rather than drop them.
 - Other SACM revisions: loaded with a warning; saved as 2.3.
+
+Not tolerant-only: an `xmi:XMI` wrapper is accepted in both modes (see Root above), and
+the default XMI schema also allows references as child elements (rule 2c) and
+single-valued values as child elements (§7.8.4), so strict import accepts both
+(SACM23-XMI-014, SACM23-XMI-015). Export writes attributes.
 
 ## Safety
 

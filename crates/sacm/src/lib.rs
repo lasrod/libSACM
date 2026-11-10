@@ -35,7 +35,8 @@
 //! Look up an element with [`model::Document::get`], walk every element with
 //! [`model::Document::elements`], or move one level at a time with
 //! [`children`](model::SacmElement::children) and
-//! [`parent`](model::SacmElement::parent).
+//! [`parent`](model::SacmElement::parent). Read an element's name with
+//! [`name`](model::SacmElement::name).
 //!
 //! # Features
 //!

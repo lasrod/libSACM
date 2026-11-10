@@ -34,7 +34,7 @@ sacm
 ├── model        typed SACM elements, Document, ElementId, LangString/MultiLangString
 │                (built: Document, ElementId, SacmElement, element kinds, element
 │                names, LangString, MultiLangString, AssertionDeclaration)
-├── xmi          read (tolerant | strict) and write (strict); XML details stay private
+├── xmi          read (tolerant | strict) and write (strict | tolerant); XML details stay private
 ├── validate     structural invariants and clause-level constraints
 ├── diagnostic   Diagnostic, Severity, Code, Location
 ├── edit         operations, previews, delete policies, mutation results
@@ -45,7 +45,7 @@ sacm
 bytes    ──► xmi::read            ──► Document + Vec<Diagnostic>
 Document ──► validate::validate   ──► Vec<Diagnostic>
 Document ──► edit::apply(op)      ──► Result<MutationResult, EditError>   (atomic)
-Document ──► xmi::write(strict)   ──► Result<bytes, WriteError>           (deterministic)
+Document ──► xmi::write(strict)   ──► Result<bytes, WriteError>           (deterministic; refuses invalid models)
 ```
 
 - **Model** ([ADR 0010](adr/0010-document-model.md)): a `Document` owns its root

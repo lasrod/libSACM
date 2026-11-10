@@ -44,7 +44,8 @@ default cannot also mean "no name".
   - VAL-018: a missing name on a ModelElement is a SACM-MULT-001 error that names the
     element. The element is kept.
   - D-VAL-LAYER: a missing name read from a file is a content-level finding, reported by
-    `validate()`. Only edits are bound by the structural rule: no edit creates one.
+    validation. The structural rule binds only edits: no edit may leave a ModelElement
+    without a name.
   - LIB-EDIT-001 and LIB-EDIT-008: create operations take a name, as C++
     `commands/operations.h` does, and no operation leaves a ModelElement without one.
   - LIB-RT-001: a missing name differs from `<name/>`.
@@ -77,7 +78,7 @@ default cannot also mean "no name".
 
 - **Why:** a compliance audit against SACM 2.3 clause 2 found that the schema produced by
   the default XMI 2.5.1 rules enforces no multiplicities ("By default, XMI 2 produces
-  schemas that ignore multiplicities also", §7.8.2). So an element with no `name` still
+  schemas that ignore multiplicities also", XMI 2.5.1 §7.8.2). So an element with no `name` still
   conforms to the schema, but it is not a valid SACM model (§8.6 `name:LangString[1]`).
   `compliance-points.md` promises that strict output is conforming.
 - **The rule:** strict save refuses any document for which `validate()` reports an Error.

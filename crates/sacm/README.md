@@ -7,24 +7,25 @@ Read, edit, validate and write assurance cases in the
 > implemented and how it is tested is tracked requirement by requirement in the
 > [functionality matrix](https://github.com/lasrod/libSACM/blob/main/docs/matrix/functionality-matrix.md).
 
-## Planned
+## Status and plans
 
-Implemented now: the read-only document model with element names, and the
-first value types, `LangString`, `MultiLangString` and `AssertionDeclaration`
-(`sacm::model`), and the diagnostic
-type that findings are reported in (`sacm::diagnostic`). Nothing
-emits diagnostics yet.
+Implemented now: the read-only document model with element names, the first
+value types (`LangString`, `MultiLangString` and `AssertionDeclaration`) in
+`sacm::model`, and the diagnostic type that findings are reported in
+(`sacm::diagnostic`). Nothing emits diagnostics yet.
+
+Planned:
 
 - A typed model of the full SACM 2.3 metamodel: assurance case, argumentation,
   artifact and terminology packages, with their interfaces and bindings.
-- XMI import and deterministic export. Strict mode writes conformant SACM 2.3;
-  tolerant mode reads third-party dialects and legacy revisions and tells you
-  exactly what it accepted.
+- XMI import and deterministic export. Strict mode writes only
+  schema-conforming, valid SACM 2.3 models; tolerant mode reads third-party
+  dialects and legacy revisions and tells you exactly what it accepted.
 - Validation against the specification's constraints, reported as structured
   diagnostics with stable codes, severities, clause references and locations.
-- SACM-native editing. Every public mutation either succeeds and leaves the
-  document valid, or fails and leaves it unchanged. Destructive edits can be
-  previewed first.
+- SACM-native editing. Every public mutation either succeeds, keeping the
+  document's structural invariants, or fails and leaves it unchanged.
+  Destructive edits can be previewed first.
 
 ## Usage
 

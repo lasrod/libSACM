@@ -14,9 +14,11 @@
 /// string").
 ///
 /// For each field, absent (`None`), empty (`Some("")`) and non-empty are
-/// three distinct values (ADR 0012), and [`Eq`], [`Ord`] and [`Hash`] tell
+/// three distinct values ([ADR 0012]), and [`Eq`], [`Ord`] and [`Hash`] tell
 /// them apart. Values are kept byte for byte: there is no trimming, case
 /// folding or Unicode normalisation, and `lang` has no format check.
+///
+/// [ADR 0012]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0012-lang-string-absent-and-empty.md
 ///
 /// `LangString` is a value, not an element: it has no id and no
 /// [`ElementKind`](crate::model::ElementKind), and you construct it directly,
@@ -124,16 +126,18 @@ impl LangString {
 /// languages: SACM's `MultiLangString` (SACM 2.3 §8.5).
 ///
 /// §8.5 gives it `value : LangString [1..*]` and requires each value's `lang`
-/// to be unique. This type holds the list as given: it keeps the order,
-/// duplicate values and duplicate languages, and it may be empty, so a
-/// document can be held as read. Validation (SACM23-VAL-010) will check the
-/// lower bound and the unique `lang`.
+/// to be unique. This type enforces neither: it keeps the values in the order
+/// given, including duplicates and repeated languages, and it may be empty,
+/// so a document can be held as it was written. Planned validation will
+/// report an empty list and a repeated `lang`; nothing checks them yet.
 ///
 /// Equality and [`Hash`] depend on order: `[en, fr]` and `[fr, en]` are
 /// different values.
 ///
-/// `MultiLangString` is a value, not an element: it has no id and no
-/// [`ElementKind`](crate::model::ElementKind). No element holds one yet.
+/// SACM uses it for the `content` of the `UtilityElement` kinds (§8.7), such
+/// as a `Note`, and for other text roles. It is a value, not an element: it
+/// has no id and no [`ElementKind`](crate::model::ElementKind). No element
+/// holds one in this release.
 ///
 /// # Examples
 ///

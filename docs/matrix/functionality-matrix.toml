@@ -1430,7 +1430,8 @@ title = "MultiLangString"
 requirement = "MultiLangString (§8.5) is a value type holding a list of LangString values. The list keeps insertion order, duplicate values and duplicate languages, and may be empty in memory, so a document can be held as read; the lower bound of one and the language-uniqueness constraint are checked by validation (SACM23-VAL-010). Equality depends on order. It is not a SACMElement: it has no id and no kind."
 source = "formal/23-05-08 §8.5: \"Superclass Element\"; \"value:LangString[1..*] (composition) - contains the descriptions which bear the same meaning but in different languages\"; \"For each of the LangString in the value feature, their +lang must be unique.\" ptc/22-03-13 Base::MultiLangString (value: composite LangString, no bounds, no isOrdered; the order is kept by D-RT, not by the standard); D-TEXT-MODEL; assurance-forge libs/sacm model/lang_string.h"
 kind = "model"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0016-m1-names.md"
 depends_on = ["SACM23-BASE-001"]
 acceptance = [
   "`MultiLangString::default()` has no values: `values()` is empty, `len() == 0` and `is_empty()` is true. The §8.5 lower bound is checked by validation (SACM23-VAL-010), not refused here.",
@@ -1467,7 +1468,8 @@ title = "ModelElement name"
 requirement = "Every element of a ModelElement kind (the 34 ElementKinds other than Description, ImplementationConstraint, Note and TaggedValue) has one `name` LangString (§8.6 `name:LangString[1]`), stored in the Document and returned by its view exactly as given (ADR 0012). A document can hold a ModelElement whose name is missing, as a file can leave it out; the view reports that as no name, distinct from a name whose fields are absent or empty, and nothing invents a name (ADR 0013). A name whose `lang` or `content` is absent or empty is not a missing name. Elements of the four UtilityElement kinds have no name."
 source = "formal/23-05-08 §8.6: \"name:LangString[1] (composition) - the name of the ModelElement.\"; §8.7 UtilityElement \"Superclass SACMElement\"; §12.14 ArtifactAssetRelationship \"Superclass ArtifactAsset\" (D-TEXT-MODEL); §8.3 `content:String[0..1]`; ptc/22-03-13 Base::ModelElement name (composite LangString, no bounds); ADR 0012; ADR 0013; assurance-forge libs/sacm model/element.h"
 kind = "model"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0016-m1-names.md"
 depends_on = ["LIB-API-002", "LIB-API-003", "SACM23-BASE-001"]
 acceptance = [
   "For each of the 34 ModelElement kinds, `insert(.., Some(name))` and then `get(id).unwrap().name()` returns `Some` equal to `name`, for all nine absent/empty/non-empty `lang` × `content` combinations, including `LangString::default()`.",
@@ -1640,7 +1642,7 @@ id = "SACM23-XMI-004"
 area = "XMI"
 milestone = "M1"
 title = "xmi:id identity"
-requirement = "Every SACMElement is written with an `xmi:id`; ids read from a file are preserved exactly through load, edit and save. An `xmi:id` on a LangString or MultiLangString (neither is a SACMElement) is not kept: it is reported with an Info diagnostic that names the id, as the C++ library does, and is never dropped silently."
+requirement = "Every SACMElement is written with an `xmi:id`; ids read from a file are preserved exactly through load, edit and save. An `xmi:id` on a LangString or MultiLangString (neither is a SACMElement) is not kept: it is reported with an Info diagnostic that names the id, and is never dropped silently. C++ reports it on a LangString; it ignores one on a MultiLangString wrapper, and this crate reports that too."
 source = "XMI 2.5.1 identity; D-ID; D-PRESERVE; assurance-forge libs/sacm io/xmi_reader.cpp (LangString xmi:id)"
 kind = "xmi"
 status = "planned"
@@ -1688,7 +1690,7 @@ requirement = "Every ModelElement that has a name is written with exactly one `n
 source = "formal/23-05-08 §2.4, §8.6 `name:LangString[1] (composition)`; XMI 2.5.1 §7.8.2, rule 4f; ptc/22-03-13 Base::ModelElement name; D-PRESERVE; D-STRICT; ADR 0013; assurance-forge libs/sacm io/xmi_reader.cpp, io/xmi_writer.cpp (name)"
 kind = "xmi"
 status = "planned"
-depends_on = ["SACM23-XMI-001", "SACM23-BASE-003", "SACM23-XMI-011"]
+depends_on = ["SACM23-XMI-001", "SACM23-BASE-003", "SACM23-XMI-011", "LIB-TOOL-020"]
 
 [[row]]
 id = "SACM23-VAL-018"
@@ -1739,7 +1741,7 @@ id = "LIB-RT-001"
 area = "RT"
 milestone = "M1"
 title = "Semantic comparison"
-requirement = "A public function compares two documents semantically (ignoring formatting, attribute order and prefixes, not ignoring any model content) and reports the differences with element ids and feature names. A missing name differs from an empty one, and MultiLangString values are compared in order: a difference only in value order is reported, though the metamodel does not order `value`."
+requirement = "A public function compares two documents semantically (ignoring formatting, attribute order and prefixes, not ignoring any model content) and reports the differences with element ids and feature names. A missing name differs from every present name, including `<name/>` (`LangString::default()`) and `content=\"\"`, and MultiLangString values are compared in order: a difference only in value order is reported, though the metamodel does not order `value`."
 source = "D-RT"
 kind = "api"
 status = "planned"
@@ -1842,7 +1844,7 @@ id = "SACM23-BASE-004"
 area = "BASE"
 milestone = "M2"
 title = "Descriptions, notes and implementation constraints"
-requirement = "ModelElement's `description`, `note` and `implementationConstraint` containments (UtilityElements with MultiLangString `content`) are represented in order, round-tripped and editable on every ModelElement; several descriptions are preserved (D-DESC-MULT). Each MultiLangString is written as its role element with one `value` child per LangString, in order and with duplicates, and reads back in the same order. An absent role and a role element with no `value` children are different states and are kept apart (ADR 0012, ADR 0013)."
+requirement = "ModelElement's `description`, `note` and `implementationConstraint` containments (UtilityElements with MultiLangString `content`) are represented in order, round-tripped and editable on every ModelElement; several descriptions are preserved (D-DESC-MULT). Each MultiLangString is written as its role element with one `value` child per LangString, in order and with duplicates, and reads back in the same order. An absent role and a role element with no `value` children are different states and are kept apart (ADR 0012, ADR 0013). A role element with `lang` or `content` attributes and no `value` children is the C++ single-language shorthand, read by LIB-COMPAT-008, not an empty MultiLangString."
 source = "formal/23-05-08 §8.6, §8.7; ptc/22-03-13 Base::ModelElement, Base::UtilityElement"
 kind = "model"
 status = "planned"
@@ -1853,7 +1855,7 @@ id = "SACM23-BASE-005"
 area = "BASE"
 milestone = "M2"
 title = "TaggedValue"
-requirement = "TaggedValue (MultiLangString `key` and `content`) is represented on every ModelElement in order, round-tripped and editable."
+requirement = "TaggedValue (MultiLangString `key` and `content`) is represented on every ModelElement in order, round-tripped and editable. Its MultiLangString roles follow the SACM23-BASE-004 XMI rule: order, duplicates, and an absent role kept apart from an empty one."
 source = "formal/23-05-08 clause 8; ptc/22-03-13 Base::TaggedValue"
 kind = "model"
 status = "planned"
@@ -2033,7 +2035,7 @@ requirement = "Strict save runs `validate()` first. If it reports any Error, the
 source = "formal/23-05-08 §2.1–2.5; XMI 2.5.1 §7.8.2; D-STRICT; ADR 0013 amendment 1"
 kind = "xmi"
 status = "planned"
-depends_on = ["LIB-COMPAT-001", "SACM23-XMI-007", "SACM23-VAL-018"]
+depends_on = ["LIB-COMPAT-001", "SACM23-XMI-007", "SACM23-VAL-018", "LIB-TOOL-020"]
 
 [[row]]
 id = "SACM23-XMI-013"
@@ -2051,11 +2053,11 @@ id = "SACM23-XMI-014"
 area = "XMI"
 milestone = "M1"
 title = "Element form of single-valued values"
-requirement = "Import in both modes accepts the XML element form of single-valued DataType-typed properties (`lang`, `content`, `gid`, `isCitation`, `isAbstract`, `assertionDeclaration`, ...) as well as the attribute form, and the same document in either form loads to an equal model. Export writes the attribute form."
+requirement = "Import in both modes accepts the XML element form of single-valued DataType-typed properties (`lang`, `content`, `gid`, `isCitation`, `isAbstract`, `assertionDeclaration`, ...) as well as the attribute form, and the same document in either form loads to an equal model. Export writes the attribute form. When both forms are present, or a single-valued element form is repeated, every value is kept with an Error diagnostic and none is silently chosen (D-PRESERVE); strict save then refuses the document. An element form that carries attributes, such as the legacy `<name><content lang=\"en\">`, is not the schema form: LIB-COMPAT-008 reads it."
 source = "formal/23-05-08 §2.4; XMI 2.5.1 §7.8.4 (an XML attribute and an XML element are both declared)"
 kind = "xmi"
 status = "planned"
-depends_on = ["SACM23-XMI-001", "SACM23-XMI-011"]
+depends_on = ["SACM23-XMI-001", "SACM23-XMI-011", "LIB-TOOL-020"]
 
 [[row]]
 id = "SACM23-XMI-015"
@@ -2066,7 +2068,29 @@ requirement = "Import in both modes accepts references written as XML elements (
 source = "formal/23-05-08 §2.4; XMI 2.5.1 rules 4e, 4i and 2c"
 kind = "xmi"
 status = "planned"
-depends_on = ["SACM23-XMI-001", "SACM23-XMI-005"]
+depends_on = ["SACM23-XMI-001", "SACM23-XMI-005", "LIB-TOOL-020"]
+
+[[row]]
+id = "LIB-COMPAT-008"
+area = "COMPAT"
+milestone = "M2"
+title = "The C++ library's name and text shapes"
+requirement = "Documents written by the assurance-forge C++ library load without loss in both modes: the legacy multi-language `<name>` with `<content lang>` children (the first entry is the name; the rest are kept, never dropped), a `name=\"…\"` attribute on the element, and the single-language shorthand of a MultiLangString role (`lang`/`content` attributes on the role element with no `value` children, read as one value). Tolerant mode reports each with a warning, strict mode with an error, and strict save writes only the standard form."
+source = "D-PRESERVE; D-STRICT; assurance-forge libs/sacm io/xmi_reader.cpp (name, read_multi_lang_values); slice 0016 verification"
+kind = "xmi"
+status = "planned"
+depends_on = ["LIB-COMPAT-001", "SACM23-XMI-012", "SACM23-BASE-004"]
+
+[[row]]
+id = "LIB-TOOL-020"
+area = "TOOL"
+milestone = "M1"
+title = "XMI 2.5.1 is fetched with the SACM sources"
+requirement = "`cargo xtask fetch-spec` also downloads XMI 2.5.1 (formal/15-06-07) into the git-ignored third_party/, hash-pinned like the SACM sources, so the XMI rows can quote it."
+source = "Verification 0016: the XMI citations in SACM23-XMI-012, -XMI-014, -XMI-015 and LIB-COMPAT-007 cannot be checked without the text"
+kind = "tooling"
+status = "planned"
+depends_on = ["LIB-TOOL-002"]
 
 [[row]]
 id = "LIB-COMPAT-003"
@@ -2342,11 +2366,11 @@ id = "SACM23-ART-005"
 area = "ART"
 milestone = "M3"
 title = "Resource"
-requirement = "Resource is represented with its `location` MultiLangString (text followed over the model, D-TEXT-MODEL), created, round-tripped and editable."
+requirement = "Resource is represented with its `location` MultiLangString (text followed over the model, D-TEXT-MODEL), created, round-tripped and editable. Its MultiLangString roles follow the SACM23-BASE-004 XMI rule: order, duplicates, and an absent role kept apart from an empty one."
 source = "formal/23-05-08 §12.10; D-TEXT-MODEL"
 kind = "model"
 status = "planned"
-depends_on = ["SACM23-ART-003"]
+depends_on = ["SACM23-ART-003", "SACM23-BASE-004"]
 
 [[row]]
 id = "SACM23-ART-006"

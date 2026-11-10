@@ -15,8 +15,8 @@ metamodel's element kinds, element names and the first value types (`LangString`
 `MultiLangString`, `AssertionDeclaration`), and `sacm::diagnostic` provides the
 `Diagnostic` type. XMI, validation and editing are not built yet. Milestone M0, the
 foundation, is done: the workspace, CI, the functionality matrix and its gate, and
-mutation testing. The [functionality matrix](docs/matrix/functionality-matrix.md) shows what is verified;
-nothing else is claimed.
+mutation testing. The [functionality matrix](docs/matrix/functionality-matrix.md)
+shows what is verified; nothing else is claimed.
 
 ## What SACM is
 

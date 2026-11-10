@@ -4,8 +4,10 @@
 //! A [`Document`] owns one interchange unit: its root packages and every
 //! element under them. Each element has an [`ElementId`] (its `xmi:id`) and an
 //! [`ElementKind`] (its concrete SACM class), and is read through a
-//! [`SacmElement`] view that borrows the document. Every `ModelElement` also has
-//! a `name`, read with [`SacmElement::name`].
+//! [`SacmElement`] view that borrows the document. In SACM every
+//! [`ModelElement`](AbstractClass::ModelElement) has a `name`;
+//! [`SacmElement::name`] returns it, or `None` when the document holds the
+//! element without one.
 //!
 //! [`ElementKind`], [`AbstractClass`] and [`MetamodelPackage`] describe the
 //! SACM 2.3 metamodel itself: which class a kind is, which package defines it,
@@ -32,8 +34,10 @@
 //! let package = doc.get("arguments").expect("the document has it");
 //! println!("{} is an {}", package.id(), package.kind());
 //! for child in package.children() {
-//!     let content = child.name().and_then(LangString::content);
-//!     println!("  {} {} {:?}", child.kind(), child.id(), content);
+//!     match child.name() {
+//!         Some(name) => println!("  {} {} {:?}", child.kind(), child.id(), name.content()),
+//!         None => println!("  {} {} (name missing)", child.kind(), child.id()),
+//!     }
 //! }
 //!
 //! let claim = doc.get("claim_sub").expect("the document has it");
