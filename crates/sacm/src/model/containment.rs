@@ -1,114 +1,49 @@
-//! Containment legality: which SACM 2.3 composite role, if any, admits an
-//! element of one kind directly inside an element of another (LIB-API-008).
+//! Containment legality: whether SACM 2.3 lets an element of one kind be
+//! contained directly in an element of another (LIB-API-008).
 //!
-//! Crate-private, as the C++ library's role tables are. The roles are the 12
-//! composite roles of SACM 2.3 whose type is an element kind; the value-typed
-//! ones (`name`, `content`, `key`, `value`) hold values, not elements. Every
-//! role is `0..*` and unordered, and the document does not count children:
-//! multiplicity is for validation (D-VAL-LAYER).
+//! Crate-private, as the C++ library's role tables are.
 
 use super::{AbstractClass, ElementKind};
 
-/// A SACM 2.3 composite role whose type is an element kind: a way one
-/// element can contain another.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ContainmentRole {
-    /// `ModelElement::description`: a [`ElementKind::Description`] (§8.6).
-    Description,
-    /// `ModelElement::implementationConstraint`: an
-    /// [`ElementKind::ImplementationConstraint`] (§8.6).
-    ImplementationConstraint,
-    /// `ModelElement::note`: a [`ElementKind::Note`] (§8.6).
-    Note,
-    /// `ModelElement::taggedValue`: a [`ElementKind::TaggedValue`] (§8.6).
-    TaggedValue,
-    /// `AssuranceCasePackage::assuranceCasePackage`: an assurance case
-    /// package, interface or binding (§9.2).
-    AssuranceCasePackage,
-    /// `AssuranceCasePackage::argumentPackage`: an argument package,
-    /// interface or binding (§9.2).
-    ArgumentPackage,
-    /// `AssuranceCasePackage::artifactPackage`: an artifact package,
-    /// interface or binding (§9.2).
-    ArtifactPackage,
-    /// `AssuranceCasePackage::terminologyPackage`: a terminology package,
-    /// interface or binding (§9.2).
-    TerminologyPackage,
-    /// `ArgumentPackage::argumentElement`: any `ArgumentationElement`
-    /// (§11.4).
-    ArgumentElement,
-    /// `TerminologyPackage::terminologyElement`: any `TerminologyElement`,
-    /// `TerminologyGroup` included by the declared type (§10.4, spec defect
-    /// D9).
-    TerminologyElement,
-    /// `ArtifactPackage::artifactElement`: any `ArtifactElement` (§12.2,
-    /// ADR 0014).
-    ArtifactElement,
-    /// `ArtifactAsset::property`: a [`ElementKind::Property`] (§12.6), held by
-    /// every `ArtifactAsset`, `ArtifactAssetRelationship` included (§12.14).
-    Property,
-}
-
-/// The role of `parent`'s class that admits a `child` element, or `None` if
-/// no role does.
+/// Whether a composite role of `parent`'s class admits a `child` element.
 ///
-/// Package interfaces and bindings specialize their package, so they hold its
-/// roles. A `UtilityElement` contains nothing. A group (`ArgumentGroup`,
-/// `ArtifactGroup`, `TerminologyGroup`) has only the `ModelElement` roles: its
-/// members are references, not children. Each legal pair has exactly one
-/// role.
-pub(crate) const fn role_of(parent: ElementKind, child: ElementKind) -> Option<ContainmentRole> {
-    // Only a ModelElement has composite roles; a UtilityElement has none.
+/// The roles are the 12 SACM 2.3 composite roles typed by an element kind:
+/// `description`, `implementationConstraint`, `note` and `taggedValue` on
+/// every `ModelElement` (§8.6); `assuranceCasePackage`, `argumentPackage`,
+/// `artifactPackage` and `terminologyPackage` on `AssuranceCasePackage`
+/// (§9.2); `argumentElement` on `ArgumentPackage` (§11.4);
+/// `terminologyElement` on `TerminologyPackage` (§10.4, `TerminologyGroup`
+/// included by the declared type, spec defect D9); `artifactElement` on
+/// `ArtifactPackage`, admitting every `ArtifactElement` (§12.2, ADR 0014);
+/// and `property` on every `ArtifactAsset` (§12.6, §12.14). Package
+/// interfaces and bindings hold their package's roles. The value-typed
+/// composites (`name`, `content`, `key`, `value`, `location`) hold values,
+/// not elements. Every role is `0..*`; multiplicity is for validation. Role
+/// identity and names come with SACM23-XMI-016.
+pub(crate) const fn admits(parent: ElementKind, child: ElementKind) -> bool {
+    // A UtilityElement has no composite roles.
     if !parent.is_a(AbstractClass::ModelElement) {
-        return None;
+        return false;
     }
     // The ModelElement roles (§8.6), on every ModelElement.
-    match child {
-        ElementKind::Description => return Some(ContainmentRole::Description),
-        ElementKind::ImplementationConstraint => {
-            return Some(ContainmentRole::ImplementationConstraint);
-        }
-        ElementKind::Note => return Some(ContainmentRole::Note),
-        ElementKind::TaggedValue => return Some(ContainmentRole::TaggedValue),
-        _ => {}
+    if child.is_a(AbstractClass::UtilityElement) {
+        return true;
     }
     if parent.is_kind_of(ElementKind::AssuranceCasePackage) {
-        if child.is_kind_of(ElementKind::AssuranceCasePackage) {
-            Some(ContainmentRole::AssuranceCasePackage)
-        } else if child.is_kind_of(ElementKind::ArgumentPackage) {
-            Some(ContainmentRole::ArgumentPackage)
-        } else if child.is_kind_of(ElementKind::ArtifactPackage) {
-            Some(ContainmentRole::ArtifactPackage)
-        } else if child.is_kind_of(ElementKind::TerminologyPackage) {
-            Some(ContainmentRole::TerminologyPackage)
-        } else {
-            None
-        }
+        child.is_kind_of(ElementKind::AssuranceCasePackage)
+            || child.is_kind_of(ElementKind::ArgumentPackage)
+            || child.is_kind_of(ElementKind::ArtifactPackage)
+            || child.is_kind_of(ElementKind::TerminologyPackage)
     } else if parent.is_kind_of(ElementKind::ArgumentPackage) {
-        if child.is_a(AbstractClass::ArgumentationElement) {
-            Some(ContainmentRole::ArgumentElement)
-        } else {
-            None
-        }
+        child.is_a(AbstractClass::ArgumentationElement)
     } else if parent.is_kind_of(ElementKind::TerminologyPackage) {
-        if child.is_a(AbstractClass::TerminologyElement) {
-            Some(ContainmentRole::TerminologyElement)
-        } else {
-            None
-        }
+        child.is_a(AbstractClass::TerminologyElement)
     } else if parent.is_kind_of(ElementKind::ArtifactPackage) {
-        if child.is_a(AbstractClass::ArtifactElement) {
-            Some(ContainmentRole::ArtifactElement)
-        } else {
-            None
-        }
+        child.is_a(AbstractClass::ArtifactElement)
     } else if parent.is_a(AbstractClass::ArtifactAsset) {
-        if child.is_kind_of(ElementKind::Property) {
-            Some(ContainmentRole::Property)
-        } else {
-            None
-        }
+        child.is_kind_of(ElementKind::Property)
     } else {
-        None
+        // Groups and every other ModelElement: the ModelElement roles only.
+        false
     }
 }

@@ -95,7 +95,8 @@ pub enum AbstractClass {
     ModelElement,
     /// `UtilityElement`: descriptions, notes, tagged values and implementation constraints.
     UtilityElement,
-    /// `ArtifactElement`: anything a package can contain, packages included.
+    /// `ArtifactElement`: every element kind except the four utility elements;
+    /// an `ArtifactPackage` can contain any of them.
     ArtifactElement,
     // Terminology (clause 10)
     /// `TerminologyElement`: anything in a terminology package.
@@ -263,7 +264,9 @@ pub enum ElementKind {
     /// `TaggedValue`: a key and value attached to an element.
     TaggedValue,
     // AssuranceCase (clause 9)
-    /// `AssuranceCasePackage`: an assurance case, the unit of interchange.
+    /// `AssuranceCasePackage`: an assurance case: the package that holds
+    /// argument, artifact and terminology packages, and nested assurance case
+    /// packages.
     AssuranceCasePackage,
     /// `AssuranceCasePackageInterface`: the declared interface of an assurance case package.
     AssuranceCasePackageInterface,

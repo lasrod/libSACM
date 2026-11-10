@@ -43,6 +43,11 @@ change bumps the minor version and is listed under **Breaking**.
   a name (ADR 0013) [SACM23-BASE-003].
 - The unstable `test-support` `Document::insert` takes a name, and refuses one for the
   four UtilityElement kinds with `InsertError::NameNotAllowed` [SACM23-BASE-003].
+- The unstable `test-support` `Document::insert` refuses a child that no SACM 2.3
+  containment role of its parent admits, with `InsertError::ContainmentNotAllowed`. An
+  AssuranceCasePackage holds sub-packages through its four roles, an ArtifactPackage
+  admits every ArtifactElement (ADR 0014), and roots are unrestricted
+  [SACM23-AC-001, LIB-API-008].
 
 ### Changed
 

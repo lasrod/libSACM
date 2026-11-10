@@ -206,9 +206,9 @@ containment is public. No consequence for XMI is known.
 - **Type.** The prose leaves out TerminologyGroup, although §10.3 gives TerminologyGroup
   "Superclass TerminologyElement", so the declared type admits it.
 
-**This crate** follows the model: it writes `terminologyElement`, accepts the
-capitalised spelling on tolerant import (SACM23-XMI-009), and admits TerminologyGroup
-(LIB-API-008), as the C++ library does.
+**This crate** follows the model. It admits TerminologyGroup (LIB-API-008), as the C++
+library does. Its XMI writer will write `terminologyElement`, and tolerant import will
+also accept the capitalised spelling (SACM23-XMI-009, planned), which C++ does not.
 
 **Suggested resolution.** Use the model's spelling, and either list TerminologyGroup in
 the prose or drop the list.

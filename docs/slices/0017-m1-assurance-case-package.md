@@ -28,8 +28,7 @@ assurance-forge C++ `libs/sacm` model.
 
 ## Design
 
-No new stable API, and no new ADR (the rule is D-VAL-LAYER; ADR 0014 covers the C++
-deviation).
+No new stable API. One ADR, 0014, for the C++ deviation; the rule itself is D-VAL-LAYER.
 - **Private `model/containment.rs`:** `pub(crate) enum ContainmentRole` (12 roles) and
   `pub(crate) const fn role_of(parent: ElementKind, child: ElementKind) -> Option<ContainmentRole>`,
   built from `is_a`/`is_kind_of`. Not public, as in C++ (`name_tables.h`, "not installed").
@@ -50,3 +49,4 @@ deviation).
 - 2026-11-10 design: the role table stays private, as in C++; the one new item is `InsertError::ContainmentNotAllowed` under `test-support`. LIB-API-008's drift test now works through `insert` against the inventory, and the role-uniqueness item moved to SACM23-XMI-016, where role names become observable. LIB-API-004 is re-verified with this slice. The test engineer is next.
 - 2026-11-10 tests: 17 `lib_api_008_*` in `crates/sacm/tests/containment.rs` (the spelled-out 339-pair table, and the inventory drift oracle), 8 `sacm23_ac_001_*` in `crates/sacm/tests/assurance_case_package.rs`, and the new variant in the `lib_api_004_*` error tests; one `errors.rs` setup moved its Claims under an ArgumentPackage. The red was confirmed by the lead: E0599, no `ContainmentNotAllowed`. The 8 AC-001 tests already pass, as expected: AC-001's facts are positive, and LIB-API-008 makes them exclusive, so they guard against over-restriction. Six LIB-API-008 tests, the acceptance and oracle checks, are the same kind. Both rows are `tests-failing`. The implementer is next.
 - 2026-11-10 implementation: private `model/containment.rs` (`ContainmentRole`, `role_of`), and the check plus `ContainmentNotAllowed` in `model/document.rs`, with the `insert` and `roots()` docs. The implementer found one wrong test (it paired an id with itself, so DuplicateId rightly came first); the test engineer fixed the pairing. The full gate passes (619 tests). Both rows are `implemented`. Verification is next.
+- 2026-11-10 verification round 1 at `12aea96`: **FAIL** on both rows. The containment rules are right: the verifier re-derived the 339 pairs from ptc, and they match. But the computed role was never observed, so two hand mutations that assign the wrong role survive. LIB-API-004 PASS; LIB-API-002 and BASE-003 still hold. Mutants: the PR diff caught 8 of 8, the full run caught 562 of 562. Copilot left no comments. The lead's fix: `role_of` becomes `admits -> bool`, with no unobserved role. Both rows now claim legality only, and role identity moves to SACM23-XMI-016 (all 339 pairs). LIB-API-008 cites XMI-013 and C++ `other_roots` for unrestricted roots. The docs review (nothing blocking) is applied in the same round: rustdoc to the implementer; ADR 0014, D9 and the inventory by the lead.

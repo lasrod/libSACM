@@ -51,8 +51,10 @@ Document ──► xmi::write(strict)   ──► Result<bytes, WriteError>     
 - **Model** ([ADR 0010](adr/0010-document-model.md)): a `Document` owns its root
   packages, in document order, and every element under them. Elements live in a
   private arena with an `ElementId` index; containment is an ordered list of children,
-  and references are ids. Users work through read-only views that borrow the document
-  (`SacmElement<'a>`, later typed views such as `Claim<'a>`), never raw storage.
+  each admitted by a SACM composite role of its parent (LIB-API-008; the role table is
+  crate-private), and references are ids. Users work through read-only views that
+  borrow the document (`SacmElement<'a>`, later typed views such as `Claim<'a>`),
+  never raw storage.
   Content tolerant mode cannot type is kept beside its parent, so strict save can find
   and refuse it.
 - **Validation:** structural invariants hold after every edit; content constraints are

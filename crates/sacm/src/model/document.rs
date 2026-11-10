@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use super::containment::role_of;
+use super::containment::admits;
 use super::{AbstractClass, ElementId, ElementKind, LangString};
 
 /// A SACM 2.3 document: one interchange unit (what one SACM XMI file holds),
@@ -18,6 +18,20 @@ use super::{AbstractClass, ElementId, ElementKind, LangString};
 /// **Document order** is the order in which elements were added: for a loaded
 /// file, the order they appear in it. It applies to the roots, and to each
 /// element's children across every kind of child.
+///
+/// **Containment**: each child is held in a composite role of its parent's
+/// class (SACM 2.3). Every `ModelElement` can hold descriptions,
+/// implementation constraints, notes and tagged values (§8.6); an
+/// `AssuranceCasePackage` holds sub-packages (§9.2); an `ArgumentPackage`
+/// holds argumentation elements (§11.4); a `TerminologyPackage` holds
+/// terminology elements (§10.4); an `ArtifactPackage` holds any
+/// `ArtifactElement`, a `Claim` or a package included (§12.2, [ADR 0014]); and
+/// an `ArtifactAsset` holds properties (§12.6). Interfaces and bindings hold
+/// what their package holds, a `UtilityElement` contains nothing, and a group
+/// holds only utility elements, because its members are references. How many
+/// children a role holds is left to validation.
+///
+/// [ADR 0014]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0014-artifact-package-admits-every-artifact-element.md
 ///
 /// This release has no stable way to fill a document: the XMI reader and the
 /// edit operations will. Until then, tests use the `test-support` feature's
@@ -78,10 +92,10 @@ impl Document {
 
     /// The root elements, in document order.
     ///
-    /// A root is an element with no parent: the top-level packages of the
-    /// interchange unit. They are usually packages, but the document does not
-    /// restrict their kind (SACM23-XMI-013 decides what a file may hold at the
-    /// top).
+    /// A root is an element with no parent. Roots are usually the interchange
+    /// packages (an `AssuranceCasePackage`, `ArgumentPackage`,
+    /// `ArtifactPackage` or `TerminologyPackage`), but the document accepts a
+    /// root of any kind.
     ///
     /// ```
     /// use sacm::model::{Document, ElementId, ElementKind};
@@ -178,9 +192,9 @@ impl Document {
     /// `test-support` feature: it builds documents for tests until the XMI
     /// reader and the edit operations exist. It may change or disappear in
     /// any release. It checks identity, that `parent` exists, whether `kind`
-    /// can have a name, and whether a SACM containment role of the parent's
-    /// class admits `kind`. It does not check how many children a role holds,
-    /// and a root may be of any kind.
+    /// can have a name, and whether a containment role of the parent's class
+    /// admits `kind` (see [`Document`]). It does not check how many children a
+    /// role holds; validation will. A root may be of any kind.
     ///
     /// `name` is the element's `name` (SACM 2.3 §8.6). `None` is a missing
     /// name, held as missing ([ADR 0013]). Only `ModelElement` kinds have a
@@ -221,7 +235,8 @@ impl Document {
     /// let named = doc.insert(None, ElementKind::Note, note.clone(), Some(LangString::new("n")));
     /// assert_eq!(named, Err(InsertError::NameNotAllowed(note, ElementKind::Note)));
     ///
-    /// // A Claim belongs in an argument package, not directly in the case.
+    /// // An AssuranceCasePackage holds only packages (and utility elements),
+    /// // so a Claim cannot sit directly in it.
     /// let claim = ElementId::from("c1");
     /// let misplaced = doc.insert(Some(&case), ElementKind::Claim, claim.clone(), None);
     /// assert_eq!(
@@ -287,7 +302,7 @@ impl Document {
         // A root may be of any kind; a child needs a role of its parent's class.
         if let Some(parent) = parent {
             let parent = &self.nodes[parent];
-            if role_of(parent.kind, kind).is_none() {
+            if !admits(parent.kind, kind) {
                 return Err(InsertError::ContainmentNotAllowed {
                     id,
                     kind,
