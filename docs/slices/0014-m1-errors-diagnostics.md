@@ -1,8 +1,8 @@
 ---
 slice: 0014
 name: m1-errors-diagnostics
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [LIB-API-004, LIB-DIAG-001]
 mode: pr
 ---
@@ -42,5 +42,5 @@ LIB rows: the rust-library-craft skill (errors vs diagnostics), D-DIAG and D-SEV
 - 2026-11-10 verification round 1 at `34f8a0e` ([record](../verification/0014-m1-errors-diagnostics.md)): LIB-API-004 PASS, and it is now `verified`. LIB-DIAG-001 FAIL: comparison within a key is not pinned, and there are no adjacent duplicates. Fix round 1 (of 2): the controls go to the test engineer, and the `# Order` doc goes to the implementer.
 - 2026-11-10 docs fixes: the real rows (`SACM23-VAL-003`, `SACM23-VAL-007` with clause 8.2), "no function returns diagnostics yet", how each key compares in `# Order`, the Display rules in prose, and links to the matrix and the catalog. Logged for the validation rows: the catalog gives SACM-MULT-001 to clause 11.13 (AssertedRelationship), while SACM23-VAL-011 uses it for §8.6.
 - 2026-11-10 fix round 1: within-key controls (code `AA` < `B`, row `R-AA` < `R-B`, clause `10` < `2`, message `m-aa` < `m-b`, affected `[a, z]` < `[b]` and `[aa]` < `[b]`) and adjacent duplicates. Each control fails under its mutation. The full gate passes.
-- 2026-11-10 Copilot: `Display` wrote a message's line breaks as they were. Lead decision (ADR 0011 amendment 1): `Display` escapes `
-`, ``, U+0085, U+2028 and U+2029, and `message()` stays exact. Two tests were added (red first), then the fix. The full gate passes.
+- 2026-11-10 Copilot: `Display` wrote a message's line breaks as they were. Lead decision (ADR 0011 amendment 1): `Display` escapes `\n`, `\r`, U+0085, U+2028 and U+2029, and `message()` stays exact. Two tests were added (red first), then the fix. The full gate passes.
+- 2026-11-10 verification round 2 at `9d7bdc8` ([record](../verification/0014-m1-errors-diagnostics-round2.md)): LIB-DIAG-001 PASS, and it is now `verified`. The slice is done.

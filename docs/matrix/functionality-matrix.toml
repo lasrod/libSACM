@@ -1323,7 +1323,8 @@ title = "Structured diagnostics"
 requirement = "A `Diagnostic` carries a stable code, a severity (info, warning, error), the matrix row and clause it enforces, the affected element ids, an optional source location (line, column) and a message. Diagnostics have one total, documented order, every function returning them returns them sorted, and they implement `Display` (ADR 0011)."
 source = "D-DIAG; D-SEV; docs/sacm/diagnostics.md; ADR 0011; assurance-forge libs/sacm validation/diagnostic.h, validation/codes.h"
 kind = "api"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0014-m1-errors-diagnostics-round2.md"
 acceptance = [
   "Each accessor returns exactly what the diagnostic was built with: `code`, `severity`, `requirement_id`, `clause` (Some and None), `affected`, `location` (Some and None), `message`.",
   "`affected()` keeps the given order and duplicates.",
