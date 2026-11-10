@@ -7,7 +7,8 @@
 //! [`SacmElement`] view that borrows the document. In SACM every
 //! [`ModelElement`](AbstractClass::ModelElement) has a `name`;
 //! [`SacmElement::name`] returns it, or `None` when the document holds the
-//! element without one.
+//! element without one. Every Assertion has an `assertionDeclaration`, which
+//! [`SacmElement::assertion_declaration`] returns.
 //!
 //! [`ElementKind`], [`AbstractClass`] and [`MetamodelPackage`] describe the
 //! SACM 2.3 metamodel itself: which class a kind is, which package defines it,
@@ -81,9 +82,9 @@ mod kind;
 mod lang_string;
 
 pub use argumentation::{AssertionDeclaration, ParseAssertionDeclarationError};
-#[cfg(feature = "test-support")]
-pub use document::InsertError;
 pub use document::{Document, SacmElement};
+#[cfg(feature = "test-support")]
+pub use document::{InsertError, SetAssertionDeclarationError};
 pub use id::ElementId;
 pub use kind::{AbstractClass, ElementKind, MetamodelPackage};
 pub use lang_string::{LangString, MultiLangString};

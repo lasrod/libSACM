@@ -48,6 +48,10 @@ change bumps the minor version and is listed under **Breaking**.
   AssuranceCasePackage holds sub-packages through its four roles, an ArtifactPackage
   admits every ArtifactElement (ADR 0014). A root that is not a package kind is
   refused with `InsertError::RootNotAllowed` [SACM23-AC-001, LIB-API-008].
+- `SacmElement::assertion_declaration`: an Assertion's `assertionDeclaration`, `asserted`
+  until another is set, and `None` for every kind that is not an Assertion. The
+  unstable `test-support` `Document::set_assertion_declaration` sets it, and refuses an
+  unknown id or a non-Assertion with `SetAssertionDeclarationError` [SACM23-ARG-002].
 
 ### Changed
 
