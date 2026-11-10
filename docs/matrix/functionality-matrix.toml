@@ -1279,20 +1279,98 @@ id = "LIB-API-004"
 area = "API"
 milestone = "M1"
 title = "Error types"
-requirement = "Operational failures (I/O, unreadable XML, rejected edits) are reported through documented, non-exhaustive error enums implementing `std::error::Error` with source chains; no public function panics on any input."
-source = "rust-library-craft skill (Errors vs diagnostics)"
+requirement = "Every operational failure the crate reports is a documented, `#[non_exhaustive]` error enum for that operation, implementing `std::error::Error + Send + Sync + 'static` with source chains. No public function panics on any input (ADR 0011)."
+source = "rust-library-craft skill (Errors vs diagnostics); ADR 0011; assurance-forge libs/sacm io/options.h, commands/mutation.h"
 kind = "api"
-status = "planned"
+status = "verified"
+verification = "docs/verification/0014-m1-errors-diagnostics.md"
+acceptance = [
+  "Every public error type (today `model::InsertError`, under `test-support`) is `#[non_exhaustive]` and implements `Debug`, `Display` and `std::error::Error`.",
+  "Every public error type is `Send + Sync + 'static`, checked statically.",
+  "Every variant's `Display` is non-empty, one line, starts lowercase and does not end in `.`, `!` or `:`.",
+  "`source()` is `None` for every variant that wraps no cause (all `InsertError` variants).",
+  "`Document::insert` documents `# Errors` with each variant it returns. No public item has a `# Panics` section.",
+  "No public function or trait impl panics on hostile inputs: empty ids, NUL, non-ASCII, a 1 MiB id, duplicate ids and unknown parents in `insert`, 10,000-level nesting walked by `elements()`, `parent()` and `Debug`, every `diagnostic` accessor and `Display`, and `SourceLocation::new(0, 0)`.",
+  "ADR 0011 is accepted and names per-operation error enums. No crate-wide `Error` type exists.",
+]
+code = ["crates/sacm/src/model/document.rs", "crates/sacm/src/diagnostic.rs"]
+tests = [
+  "crates/sacm/tests/errors.rs::lib_api_004_diagnostic_accessors_and_display_keep_odd_strings",
+  "crates/sacm/tests/errors.rs::lib_api_004_diagnostic_display_handles_a_message_with_line_breaks",
+  "crates/sacm/tests/errors.rs::lib_api_004_diagnostic_handles_a_one_mebibyte_message_and_many_ids",
+  "crates/sacm/tests/errors.rs::lib_api_004_insert_and_lookup_handle_a_one_mebibyte_id",
+  "crates/sacm/tests/errors.rs::lib_api_004_insert_and_lookup_keep_nul_and_non_ascii_ids",
+  "crates/sacm/tests/errors.rs::lib_api_004_insert_error_boxes_and_downcasts_as_a_send_sync_error",
+  "crates/sacm/tests/errors.rs::lib_api_004_insert_error_debug_names_the_variant",
+  "crates/sacm/tests/errors.rs::lib_api_004_insert_error_has_no_source",
+  "crates/sacm/tests/errors.rs::lib_api_004_insert_error_is_a_send_sync_static_error",
+  "crates/sacm/tests/errors.rs::lib_api_004_insert_error_messages_follow_the_message_rules",
+  "crates/sacm/tests/errors.rs::lib_api_004_insert_error_messages_follow_the_rules_for_awkward_ids",
+  "crates/sacm/tests/errors.rs::lib_api_004_insert_error_messages_stay_one_line_for_ids_with_line_breaks",
+  "crates/sacm/tests/errors.rs::lib_api_004_insert_produces_each_variant_with_its_offending_id",
+  "crates/sacm/tests/errors.rs::lib_api_004_insert_refuses_an_empty_id_as_root_or_child",
+  "crates/sacm/tests/errors.rs::lib_api_004_insert_refuses_every_kind_of_duplicate_and_keeps_the_first",
+  "crates/sacm/tests/errors.rs::lib_api_004_insert_refuses_every_kind_of_unknown_parent",
+  "crates/sacm/tests/errors.rs::lib_api_004_source_location_new_refuses_zero_and_accepts_the_maximum",
+  "crates/sacm/tests/errors.rs::lib_api_004_ten_thousand_levels_of_nesting_are_walked_without_panicking",
+]
 
 [[row]]
 id = "LIB-DIAG-001"
 area = "DIAG"
 milestone = "M1"
 title = "Structured diagnostics"
-requirement = "A `Diagnostic` carries a stable code, a severity (info, warning, error), the matrix row and clause it enforces, the affected element ids, an optional source location (line, column) and a message; diagnostics are returned in a deterministic order and implement `Display`."
-source = "D-DIAG; docs/sacm/diagnostics.md"
+requirement = "A `Diagnostic` carries a stable code, a severity (info, warning, error), the matrix row and clause it enforces, the affected element ids, an optional source location (line, column) and a message. Diagnostics have one total, documented order, every function returning them returns them sorted, and they implement `Display` (ADR 0011)."
+source = "D-DIAG; D-SEV; docs/sacm/diagnostics.md; ADR 0011; assurance-forge libs/sacm validation/diagnostic.h, validation/codes.h"
 kind = "api"
-status = "planned"
+status = "verified"
+verification = "docs/verification/0014-m1-errors-diagnostics-round2.md"
+acceptance = [
+  "Each accessor returns exactly what the diagnostic was built with: `code`, `severity`, `requirement_id`, `clause` (Some and None), `affected`, `location` (Some and None), `message`.",
+  "`affected()` keeps the given order and duplicates.",
+  "`Severity` is exactly Info < Warning < Error. `as_str` and `Display` give `info`, `warning` and `error`.",
+  "`Code::as_str` and `Display` return the text unchanged. `Code` has no associated constants in this slice.",
+  "`SourceLocation::new` returns None when the line or the column is 0. `line()` and `column()` round-trip, `Display` is `line L, column C`, and the order is by line, then column.",
+  "`Diagnostic`'s `Display` matches the ADR 0011 format exactly, with or without a clause and with or without a location.",
+  "Sorting any permutation of diagnostics that each differ in one key field gives the ADR 0011 key order. Located diagnostics come first. `a.cmp(&b) == Equal` exactly when `a == b`.",
+  "`Diagnostic` is `Clone + Debug + Eq + Hash + Ord + Send + Sync + 'static`. `Severity`, `Code` and `SourceLocation` are also `Copy`.",
+  "Without `test-support`, users cannot build a `Diagnostic`, `Code` or `SourceLocation`. The module example compiles without the feature.",
+]
+code = ["crates/sacm/src/diagnostic.rs"]
+tests = [
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_accessors_of_a_minimal_diagnostic_have_no_clause_ids_or_location",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_accessors_return_what_a_full_diagnostic_was_built_with",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_affected_accepts_any_iterator_of_ids",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_affected_keeps_the_given_order_and_duplicates",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_an_earlier_key_field_outranks_every_later_one",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_clone_is_equal_and_debug_shows_the_message",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_cmp_is_equal_exactly_when_the_diagnostics_are_equal",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_code_as_str_and_display_return_the_text_unchanged",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_codes_are_equal_exactly_when_their_text_is",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_codes_order_by_their_text_not_its_length",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_diagnostic_types_have_the_value_traits",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_display_does_not_show_the_affected_ids",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_display_escapes_line_breaks_in_the_message",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_display_shows_every_severity_by_its_text",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_display_with_clause_and_location",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_display_with_clause_without_location",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_display_with_location_without_clause",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_display_without_clause_or_location",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_display_writes_tabs_quotes_and_backslashes_unchanged",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_each_adjacent_pair_of_the_sorted_set_is_strictly_ordered",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_each_builder_sets_only_its_own_field",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_equal_diagnostics_hash_equally",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_every_key_field_takes_part_in_equality",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_located_diagnostics_come_before_unlocated_ones",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_severity_orders_info_before_warning_before_error",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_severity_text_is_info_warning_error",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_sorting_any_permutation_gives_the_key_order",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_source_location_displays_line_then_column",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_source_location_line_and_column_round_trip",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_source_location_orders_by_line_then_column",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_source_location_refuses_a_zero_line_or_column",
+  "crates/sacm/tests/diagnostic.rs::lib_diag_001_text_keys_compare_as_str_and_affected_ids_id_by_id",
+]
 
 [[row]]
 id = "SACM23-BASE-001"

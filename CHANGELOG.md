@@ -25,8 +25,13 @@ change bumps the minor version and is listed under **Breaking**.
   `SacmElement` view, with roots, look-up by id, parent, children and pre-order
   traversal) and the metamodel's element kinds (`ElementKind`, `AbstractClass`,
   `MetamodelPackage`) [LIB-API-002, LIB-API-003].
-- The `test-support` feature, which makes `Document::insert` public for tests. It is
-  not part of the stable API.
+- The `test-support` feature, which makes `Document::insert` and the diagnostic
+  constructors public for tests. It is not part of the stable API.
+- `sacm::diagnostic`: `Diagnostic` (code, severity, matrix row, clause, affected ids,
+  source location, message), `Severity`, `Code` and `SourceLocation`, with a one-line
+  `Display` and one total order. No code is emitted yet [LIB-DIAG-001].
+- Error convention (ADR 0011): one `#[non_exhaustive]` error enum per operation.
+  `InsertError` messages quote and escape ids [LIB-API-004].
 
 ### Changed
 

@@ -9,7 +9,9 @@ Read, edit, validate and write assurance cases in the
 
 ## Planned
 
-Implemented now: the read-only document model (`sacm::model`).
+Implemented now: the read-only document model (`sacm::model`) and the
+diagnostic type that findings are reported in (`sacm::diagnostic`). Nothing
+emits diagnostics yet.
 
 - A typed model of the full SACM 2.3 metamodel: assurance case, argumentation,
   artifact and terminology packages, with their interfaces and bindings.

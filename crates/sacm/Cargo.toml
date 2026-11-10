@@ -13,7 +13,9 @@ repository.workspace = true
 homepage.workspace = true
 
 [features]
-# Makes `Document::insert` and `InsertError` public, so tests can build documents.
+# Makes `Document::insert` and `InsertError` public, so tests can build documents, and
+# the constructors of `Code`, `SourceLocation` and `Diagnostic` and the `with_*`
+# builders of `Diagnostic` public, so tests can build diagnostics.
 # Not part of the stable API: it may change or disappear in any release.
 test-support = []
 
