@@ -1380,7 +1380,8 @@ title = "LangString"
 requirement = "LangString (§8.3) is a value type with an optional `lang` and an optional `content`, each a String [0..1]. For each field, absent, empty and non-empty are distinct (ADR 0012), and values are kept byte for byte: no trimming, case folding, Unicode normalisation or format check on `lang`. It is not a SACMElement: it has no id and no ElementKind."
 source = "formal/23-05-08 §8.3; ptc/22-03-13 Base::LangString; ADR 0012; assurance-forge libs/sacm model/lang_string.h"
 kind = "model"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0015-m1-value-types-round2.md"
 acceptance = [
   "`LangString::default()` has both fields absent. `LangString::new(c)` has `lang` absent and `content` `Some(c)`. `with_lang(l)` sets `lang` to `Some(l)`.",
   "All nine combinations of absent, `\"\"` and `\"x\"` across `lang` and `content` can be built, `lang()` and `content()` return exactly what was set as `Option<&str>`, and the nine are pairwise unequal (§8.3 `lang:String[0..1]`, `content:String[0..1]`; ADR 0012).",
@@ -1473,7 +1474,8 @@ title = "AssertionDeclaration"
 requirement = "The AssertionDeclaration enumeration (§11.8) is a `#[non_exhaustive]` enum with exactly the six literals in model order, `asserted` as default (§11.10), and exact, case-sensitive conversion to and from the literal spellings. A failed conversion is an error that follows ADR 0011."
 source = "formal/23-05-08 §11.8, §11.10; ptc/22-03-13 Argumentation::AssertionDeclaration, Assertion.assertionDeclaration; ADR 0011; assurance-forge libs/sacm model/argumentation.h"
 kind = "model"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0015-m1-value-types-round2.md"
 depends_on = ["LIB-API-004"]
 acceptance = [
   "`AssertionDeclaration::ALL` holds exactly six literals in the order `asserted`, `needsSupport`, `assumed`, `axiomatic`, `defeated`, `asCited` (ptc `ownedLiteral` order; §11.8), and `Ord` follows that order.",
@@ -1490,6 +1492,7 @@ tests = [
   "crates/sacm/tests/assertion_declaration.rs::sacm23_arg_003_as_str_and_display_give_the_exact_spellings",
   "crates/sacm/tests/assertion_declaration.rs::sacm23_arg_003_assertion_declaration_has_the_value_traits",
   "crates/sacm/tests/assertion_declaration.rs::sacm23_arg_003_default_is_asserted",
+  "crates/sacm/tests/assertion_declaration.rs::sacm23_arg_003_display_honours_width_and_alignment",
   "crates/sacm/tests/assertion_declaration.rs::sacm23_arg_003_needs_support_with_a_line_break_keeps_the_line_break",
   "crates/sacm/tests/assertion_declaration.rs::sacm23_arg_003_ord_follows_model_order",
   "crates/sacm/tests/assertion_declaration.rs::sacm23_arg_003_parse_error_has_no_source",

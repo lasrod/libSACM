@@ -1,8 +1,8 @@
 ---
 slice: 0015
 name: m1-value-types
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [SACM23-BASE-001, SACM23-ARG-003]
 mode: pr
 ---
@@ -43,3 +43,4 @@ ADR 0012 (accepted) and ADR 0011 amendment 2 (accepted). In `sacm::model`, re-ex
 - 2026-11-10 verification round 1 at `1b73f09` ([record](../verification/0015-m1-value-types.md)): both rows FAIL. The narrowing left three obligations without a row (F1–F3), and F4 is the `asCited` doc. Fix round 1 (of 2): the lead adds F1 to XMI-011, F2 to XMI-004 and F3 to ARG-002/ARG-007. The implementer makes the doc fixes.
 - 2026-11-10 fix round 1: F1–F3 are in XMI-011, XMI-004, ARG-002 and ARG-007. The implementer made the `asCited` doc, the docs-review items and the root README Status, and `Display` now uses `write_str`. The full gate passes.
 - 2026-11-10 Copilot: nothing depended on XMI-011, so the compliance points could be verified without it. LIB-RT-002, which all four CP rows depend on, now depends on XMI-011.
+- 2026-11-10 verification round 2 at `702d40a` ([record](../verification/0015-m1-value-types-round2.md)): both rows PASS, and both are now `verified`. One Low finding: `Display` ignored width. It is fixed with a width test (red first) and a return to `f.pad`. The slice is done.

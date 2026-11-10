@@ -146,6 +146,46 @@ fn sacm23_arg_003_as_str_and_display_give_the_exact_spellings() {
     );
 }
 
+#[test]
+fn sacm23_arg_003_display_honours_width_and_alignment() {
+    for (literal, spelling) in LITERALS {
+        assert_eq!(
+            format!("{literal}"),
+            spelling,
+            "SACM23-ARG-003: plain {{}} of {literal:?} is not the exact spelling"
+        );
+    }
+    // "asserted" is 8 characters: width 14 adds 6 spaces on the right.
+    assert_eq!(
+        format!("{:<14}|", AssertionDeclaration::Asserted),
+        "asserted      |",
+        "SACM23-ARG-003: Display ignores width with left alignment"
+    );
+    // "needsSupport" is 12 characters: width 14 adds 2 spaces on the left.
+    assert_eq!(
+        format!("{:>14}", AssertionDeclaration::NeedsSupport),
+        "  needsSupport",
+        "SACM23-ARG-003: Display ignores width with right alignment"
+    );
+    // "assumed" is 7 characters: width 10 adds 3, one before and two after.
+    assert_eq!(
+        format!("{:^10}", AssertionDeclaration::Assumed),
+        " assumed  ",
+        "SACM23-ARG-003: Display ignores width with centre alignment"
+    );
+    // "asCited" is 7 characters: width 9 adds 2 fill characters.
+    assert_eq!(
+        format!("{:*>9}", AssertionDeclaration::AsCited),
+        "**asCited",
+        "SACM23-ARG-003: Display ignores the fill character"
+    );
+    assert_eq!(
+        format!("{:.3}", AssertionDeclaration::Defeated),
+        "def",
+        "SACM23-ARG-003: Display ignores precision"
+    );
+}
+
 // --- 3. Round trip ---------------------------------------------------------
 
 #[test]
