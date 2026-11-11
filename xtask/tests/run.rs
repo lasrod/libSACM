@@ -19,7 +19,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 
 use common::{GATE_TOML, TempTree, consistent_tree};
-use xtask::fetch::{ARTIFACTS, DEFAULT_DEST, sha256_hex};
+use xtask::fetch::{ARTIFACTS, DEFAULT_DEST, XMLCONF, sha256_hex};
 use xtask::matrix::{MATRIX_PATH, RENDERED_PATH, load, render};
 use xtask::run;
 
@@ -828,4 +828,125 @@ fn lib_tool_020_run_help_says_fetch_spec_fetches_xmi_2_5_1() {
         "LIB-TOOL-020: the `fetch-spec` help names XMI 2.5.1 among the fetched sources, got \
          {entry:?}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// LIB-SEC-006 item 1: `fetch-spec --only xmlconf` (no network)
+// ---------------------------------------------------------------------------
+
+const G3: &str = "junk G3: not the pinned suite archive";
+
+/// Where `fetch-spec` puts the W3C suite archive, relative to the root.
+const SUITE_ARCHIVE: &str = "third_party/xmlconf/xmlts20130923.tar.gz";
+
+/// A tree with junk at the first OMG artifact's path in the default
+/// destination (G1) and at the suite archive's path (G3). Every `fetch-spec`
+/// form fails offline on the first one it checks, since a file with the
+/// wrong hash is refused before anything is downloaded.
+fn suite_tree(test: &str) -> TempTree {
+    let tree = TempTree::new(test);
+    tree.write(&format!("{DEFAULT_DEST}/{}", ARTIFACTS[0].file_name), G1)
+        .write(SUITE_ARCHIVE, G3);
+    tree
+}
+
+/// Names of the entries of `rel` under `root`, sorted.
+fn entries(root: &Path, rel: &str) -> Vec<String> {
+    let mut names: Vec<String> = fs::read_dir(root.join(rel))
+        .map(|rd| {
+            rd.flatten()
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .collect()
+        })
+        .unwrap_or_default();
+    names.sort();
+    names
+}
+
+fn assert_suite_tree_untouched(tree: &TempTree) {
+    let omg = format!("{DEFAULT_DEST}/{}", ARTIFACTS[0].file_name);
+    for (rel, junk) in [(omg.as_str(), G1), (SUITE_ARCHIVE, G3)] {
+        assert_eq!(
+            bytes(tree.root(), rel),
+            Some(junk.as_bytes().to_vec()),
+            "LIB-SEC-006: `fetch-spec` leaves the planted {rel} byte-identical"
+        );
+    }
+    assert_eq!(
+        entries(tree.root(), DEFAULT_DEST),
+        [ARTIFACTS[0].file_name],
+        "LIB-SEC-006: nothing is added to {DEFAULT_DEST}"
+    );
+    assert_eq!(
+        entries(tree.root(), "third_party/xmlconf"),
+        [XMLCONF.file_name],
+        "LIB-SEC-006: nothing is added to third_party/xmlconf"
+    );
+}
+
+#[test]
+fn lib_sec_006_run_fetch_spec_only_xmlconf_checks_only_the_suite_under_the_root() {
+    let tree = suite_tree("run-fetch-only-xmlconf");
+    let message = run_err(&["fetch-spec", "--only", "xmlconf"], tree.root());
+    assert!(
+        message.contains("xmlts20130923.tar.gz") && message.contains(&sha256_hex(G3.as_bytes())),
+        "LIB-SEC-006: `fetch-spec --only xmlconf` checks <root>/{SUITE_ARCHIVE} and reports \
+         the hash of the file there, got {message:?}"
+    );
+    assert!(
+        !message.contains(&sha256_hex(G1.as_bytes()))
+            && ARTIFACTS.iter().all(|a| !message.contains(a.file_name)),
+        "LIB-SEC-006: `fetch-spec --only xmlconf` does not look at the OMG sources, got \
+         {message:?}"
+    );
+    assert_suite_tree_untouched(&tree);
+}
+
+#[test]
+fn lib_sec_006_run_fetch_spec_checks_the_omg_sources_before_the_suite() {
+    let tree = suite_tree("run-fetch-omg-first");
+    for args in [&["fetch-spec"][..], &["fetch-spec", "--dest", DEFAULT_DEST]] {
+        let message = run_err(args, tree.root());
+        assert!(
+            message.contains(&sha256_hex(G1.as_bytes()))
+                && !message.contains(&sha256_hex(G3.as_bytes())),
+            "LIB-SEC-006: `{}` fails on the OMG sources before it reaches the suite, got \
+             {message:?}",
+            args.join(" ")
+        );
+    }
+    assert_suite_tree_untouched(&tree);
+}
+
+#[test]
+fn lib_sec_006_run_help_lists_fetch_spec_only_xmlconf() {
+    let tree = TempTree::new("run-help-only-xmlconf");
+    let out = run_ok(&["help"], tree.root());
+    assert!(
+        out.lines()
+            .any(|l| l.trim_start().starts_with("fetch-spec --only xmlconf")),
+        "LIB-SEC-006: `help` lists `fetch-spec --only xmlconf` as a command form, wrote {out:?}"
+    );
+}
+
+#[test]
+fn lib_sec_006_run_rejects_other_only_forms() {
+    let tree = suite_tree("run-only-near-miss");
+    for args in [
+        &["fetch-spec", "--only"][..],
+        &["fetch-spec", "--only", "foo"],
+        &["fetch-spec", "--only", "XMLCONF"],
+        &["fetch-spec", "--only", "xmlconf", "--extra"],
+        &["fetch-spec", "--only", "xmlconf", "--dest", "custom"],
+        &["fetch-spec", "--dest", "custom", "--only", "xmlconf"],
+    ] {
+        let message = run_err(args, tree.root());
+        let expected = format!("unrecognized arguments: {}", args.join(" "));
+        assert!(
+            message.starts_with(&expected),
+            "LIB-SEC-006: `{}` must be `{expected}`, got {message:?}",
+            args.join(" ")
+        );
+    }
+    assert_suite_tree_untouched(&tree);
 }

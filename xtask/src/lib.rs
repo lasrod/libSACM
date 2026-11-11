@@ -12,7 +12,8 @@
 //! - [`matrix`]: the functionality-matrix gate (`cargo xtask matrix check`,
 //!   `render`, `next`, `status`).
 //! - [`fetch`]: hash-pinned download of the OMG SACM 2.3 and XMI 2.5.1
-//!   reference artifacts (`cargo xtask fetch-spec`).
+//!   reference artifacts and of the W3C XML Conformance Test Suite
+//!   (`cargo xtask fetch-spec`).
 //!
 //! ```text
 //! cargo xtask matrix check        Gate: validate the functionality matrix against the repo
@@ -20,7 +21,10 @@
 //! cargo xtask matrix next [-n N]  List the next ready rows for the slice loop
 //! cargo xtask matrix status       Summary of row statuses per milestone
 //! cargo xtask fetch-spec [--dest DIR]
-//!                                 Download the pinned OMG SACM 2.3 and XMI 2.5.1 references
+//!                                 Download the pinned OMG SACM 2.3 and XMI 2.5.1 references,
+//!                                 then the W3C XML Conformance Test Suite
+//! cargo xtask fetch-spec --only xmlconf
+//!                                 Download and extract only the W3C suite
 //! ```
 //!
 //! The binary works on the repository it was built in. Set the `XTASK_ROOT`
@@ -57,7 +61,10 @@ commands:
   matrix next [-n N]      list the next N ready rows (default 10)
   matrix status           summarize row statuses per milestone
   fetch-spec [--dest DIR] download the pinned OMG SACM 2.3 and XMI 2.5.1 references
-                          (default DIR: third_party/sacm-2.3)
+                          (default DIR: third_party/sacm-2.3), then the W3C XML
+                          Conformance Test Suite into third_party/xmlconf
+  fetch-spec --only xmlconf
+                          download and extract only the W3C XML Conformance Test Suite
 
 environment:
   XTASK_ROOT              repository to work on (default: the one xtask was built in);
@@ -114,6 +121,9 @@ pub fn run(args: &[&str], root: &Path, out: &mut dyn Write) -> Result<(), String
 /// resolved against `root`. What a successful command reports goes to `out`,
 /// which is flushed before returning; a failing command writes nothing to
 /// standard error, and the problems `matrix check` finds are in its error.
+/// `fetch-spec` puts the W3C suite in `<root>/third_party/xmlconf` with or
+/// without `--dest`; `fetch-spec --only xmlconf` fetches only the suite, and
+/// `--only` takes no other value.
 ///
 /// With [`RootSource::Environment`], `matrix check` names the root: the first
 /// line of its report, which is the OK line, the problem-count header or the
@@ -178,8 +188,17 @@ fn dispatch(
             Err(_) => Err(format!("invalid row count: {n}")),
         },
         ["matrix", "status"] => matrix::cmd_status(root, out),
-        ["fetch-spec"] => fetch::cmd_fetch(&root.join(fetch::DEFAULT_DEST), out),
-        ["fetch-spec", "--dest", dest] => fetch::cmd_fetch(&root.join(dest), out),
+        ["fetch-spec"] => fetch::cmd_fetch(
+            &root.join(fetch::DEFAULT_DEST),
+            &root.join(fetch::XMLCONF_DEST),
+            out,
+        ),
+        ["fetch-spec", "--dest", dest] => {
+            fetch::cmd_fetch(&root.join(dest), &root.join(fetch::XMLCONF_DEST), out)
+        }
+        ["fetch-spec", "--only", "xmlconf"] => {
+            fetch::cmd_fetch_suite(&root.join(fetch::XMLCONF_DEST), out)
+        }
         ["help" | "--help" | "-h"] | [] => writeln!(out, "{USAGE}").map_err(output_error),
         _ => Err(format!(
             "unrecognized arguments: {}\n\n{USAGE}",
