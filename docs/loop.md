@@ -46,6 +46,16 @@ Every slice lands through a pull request. The branch is pushed as a draft before
 verification, so that CI on Linux, Windows and macOS and the mutation-testing jobs
 produce the evidence the verifier needs. The maintainer merges; the loop never does.
 
+**Stacked PRs.** The loop does not wait for a merge. Each new slice branches from the
+newest open slice PR, and its PR targets that branch.
+- **Merge order:** merge from the bottom of the stack, and only PRs that are ready (not
+  draft). A draft PR has not passed verification.
+- **After a merge:** the next iteration moves the following PR's target to `main`.
+- **Review comments:** the loop fixes them first, on their own branch, and merges the fix
+  forward into the later branches.
+- **A full stack:** at three ready PRs, the loop pauses and checks for merges about every
+  30 minutes.
+
 Run `cargo xtask fetch-spec` once first: the agents need the normative sources.
 
 ## When the loop stops

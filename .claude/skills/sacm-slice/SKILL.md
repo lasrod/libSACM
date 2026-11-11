@@ -17,8 +17,24 @@ builds and judges.
 
 1. **Run `git status`.** If the tree is dirty, resume the slice whose brief says
    `state: in-progress`. Otherwise ask the user.
-2. **`mode=pr`:** if the previous slice's PR is still open, report it and stop. Otherwise
-   start from an up-to-date `main`.
+2. **`mode=pr`: find the base (stacked PRs).** Slices stack, so the loop never waits for a
+   merge just to start the next one. The maintainer merges the stack from the bottom.
+   1. **List the open slice PRs:**
+      `gh pr list --json number,headRefName,baseRefName,isDraft,reviewDecision`.
+   2. **Retarget:** an open PR whose base branch is already merged into `main` moves to
+      `main` (`gh pr edit N --base main`). Slice PRs are merged with merge commits, so no
+      rebase is needed.
+   3. **Maintainer review comments come first:**
+      - Fix each one on its own branch, by the Copilot procedure in step 8.
+      - Then merge that branch forward into each later branch of the stack
+        (`git merge`, never rebase or force-push).
+      - Push, and re-run CI for every branch that changed.
+   4. **A draft slice PR** is an unfinished slice. Resume it, as in item 1.
+   5. **Three or more ready slice PRs:** the stack is full. Report it.
+      - Under `/loop`, schedule a wakeup in about 1800 s and end this iteration.
+      - Otherwise, stop.
+   6. **Otherwise:** the base is the newest open slice PR's branch, or `main` if there is
+      none. Check it out, up to date with `origin`.
 3. **`cargo xtask matrix check` must pass.** If it fails, fixing it is the slice.
 4. **Run `cargo xtask fetch-spec`.**
 
@@ -32,7 +48,8 @@ If nothing is ready, report the blockers and stop the loop.
 ## 2. Brief
 
 Copy `references/slice-brief.md` to `docs/slices/NNNN-<name>.md`, with
-`state: in-progress`. Under `mode=pr`, first create the branch `slice/NNNN-<name>`.
+`state: in-progress`. Under `mode=pr`, first create the branch `slice/NNNN-<name>` from
+the base found in step 0. Record the base in the brief.
 
 ## 3. Research → `analyzed`
 
@@ -66,8 +83,10 @@ Copy `references/slice-brief.md` to `docs/slices/NNNN-<name>.md`, with
 ## 7. Verification → `verified`
 
 1. **`mode=pr`:** commit and push.
-   - Open a draft PR (`gh pr create --draft`), unless `gh pr list --head <branch>` already
-     lists one.
+   - Open a draft PR (`gh pr create --draft --base <base>`), unless
+     `gh pr list --head <branch>` already lists one.
+   - **Stacked:** when the base is not `main`, start the PR body with
+     "Stacked on #N: merge #N first."
    - Request Copilot's review: `gh pr edit N --add-reviewer "@copilot"`.
 2. **Wait for CI.** Download the PR-diff shards' reports (`mutants-diff-shard-N` in the
    CI run), and the `mutants.yml` shards if that workflow ran.
@@ -104,6 +123,7 @@ cannot PASS. Stop and ask the user.
      commit, and leave the thread unresolved;
    - when PASS and Copilot are done, run `gh pr ready`;
    - never merge: the user merges.
+   - Under `/loop`, go straight on to the next slice. It stacks on this PR.
 
 ## 9. Stop and report when
 
