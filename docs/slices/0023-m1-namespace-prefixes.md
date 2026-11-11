@@ -1,8 +1,8 @@
 ---
 slice: 0023
 name: m1-namespace-prefixes
-state: in-progress
-step: verification
+state: done
+step: verified
 rows: [SACM23-XMI-002]
 mode: pr
 base: main
@@ -38,3 +38,4 @@ Namespaces in XML 1.0; XMI 2.5.1. The research fills in the exact clauses.
   only the white-space and `xmlns=""` tests fail, for the stated reasons.
 - 2026-11-12 implementation: the type value is trimmed of XML white space before it is resolved; `Some("")` counts as no namespace. The local gate passes.
 - 2026-11-12 verification round 1: FAIL, with one finding: `str::trim()` (which strips Unicode white space) survived every test. The fix adds U+00A0 and U+0085 controls and one sentence in acceptance item 7.
+- 2026-11-12 verification round 2: PASS at 6fe4541; SACM23-XMI-002 verified. Logged, not required: the misleading "names another class" reason; "XML white space" in the `read` docs; C++ case-insensitive class match (now in XMI-006 notes).

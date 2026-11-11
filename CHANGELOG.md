@@ -81,6 +81,10 @@ change bumps the minor version and is listed under **Breaking**.
   20130923 (hash-pinned, fetch-only, never committed) into `third_party/xmlconf/`;
   `--only xmlconf` fetches only the suite. Every not-well-formed XML 1.0 and Namespaces
   1.0 case in the suite is refused [LIB-SEC-006].
+- `xmi::read` does not depend on prefixes. Names are matched by namespace URI, and an
+  `xmi:type` or `xsi:type` value is resolved against the namespaces in scope, after XML
+  white space is trimmed from its ends. A root under `xmlns=""` is reported as in no
+  namespace [SACM23-XMI-002].
 
 ### Changed
 
