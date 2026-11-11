@@ -571,7 +571,9 @@ fn lib_sec_006_every_selected_not_well_formed_case_is_refused() {
     let cases = read_cases(&suite);
     let selected = in_group(&cases, &[Group::SelectedXml10, Group::SelectedNs10]);
     let results = run(&suite, &selected);
-    println!("{ROW}: ran {} cases", results.len());
+    // Straight to the process's stderr, as in `suite()`: the harness captures
+    // `println!` and hides it for a passing test.
+    let _ = writeln!(std::io::stderr(), "{ROW}: ran {} cases", results.len());
 
     let accepted: Vec<String> = results
         .iter()

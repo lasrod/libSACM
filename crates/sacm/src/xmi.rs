@@ -111,8 +111,8 @@ mod roots;
 ///    contains a colon, or is followed by neither white space nor `?>`.
 ///    Within the W3C XML Conformance Test Suite (20130923), this list is
 ///    closed: every not-well-formed XML 1.0 and Namespaces 1.0 case in it is
-///    refused. Leniencies of the parser outside the
-///    suite stay guarded by a sweep that compares these checks with the
+///    refused. Outside the suite, other leniencies of the parser may remain:
+///    a sweep (LIB-SEC-005) checks only that these checks agree with the
 ///    parser's tree;
 /// 8. the roots, in two passes. First the names: an `XMI` element outside the
 ///    XMI 2.5.1 namespace, or any other XMI-namespace element, as the document

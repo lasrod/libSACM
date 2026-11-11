@@ -27,8 +27,9 @@
 //!    is followed by neither white space nor `?>`. Within the W3C XML
 //!    Conformance Test Suite (20130923), this list is closed: every
 //!    not-well-formed XML 1.0 and Namespaces 1.0 case in it is refused
-//!    (LIB-SEC-006). Leniencies outside the suite stay guarded by
-//!    LIB-SEC-005's sweep, which compares this scan with roxmltree's tree.
+//!    (LIB-SEC-006). Outside the suite, other roxmltree leniencies may
+//!    remain: LIB-SEC-005's sweep checks only that this scan agrees with
+//!    roxmltree's tree.
 //!
 //! roxmltree stays private to the `xmi` module: its errors become our own
 //! reasons and a [`SourceLocation`].
@@ -425,8 +426,9 @@ impl<'a> Cursor<'a> {
 /// `xml` in any letter case, contains a colon (Namespaces 1.0 §7), or is
 /// followed by neither white space nor `?>` ([16]). The target checks run in
 /// that order, and none applies to the checked declaration. Within the W3C
-/// XML Conformance Test Suite, this list is closed (LIB-SEC-006); leniencies
-/// outside it stay guarded by LIB-SEC-005's tree-oracle sweep.
+/// XML Conformance Test Suite, this list is closed (LIB-SEC-006). Outside
+/// it, other roxmltree leniencies may remain: LIB-SEC-005's sweep checks only
+/// that this scan agrees with roxmltree's tree.
 ///
 /// It scans the text once, in document order, so the earliest construct is
 /// refused. It scans the raw text rather than the tree, because roxmltree
@@ -1194,9 +1196,12 @@ mod tests {
                 "{input:?}"
             );
         }
-        // Only the exact name; and not inside a comment, CDATA section, PI or
+        // Only the exact name: other letter cases are reserved but not fatal
+        // (Namespaces 1.0 §3); and not inside a comment, CDATA section, PI or
         // attribute value.
         for input in [
+            "<r xmlns:XMLNS=\"urn:x\"/>",
+            "<r xmlns:Xmlns=\"urn:x\"/>",
             "<r xmlns:xmlnsx='urn:x'/>",
             "<r xmlns:xmlfoo='urn:x'/>",
             "<r xmlns:xml='http://www.w3.org/XML/1998/namespace'/>",

@@ -1797,7 +1797,7 @@ tests = [
   "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_text_after_white_space_is_refused_at_its_first_character",
 ]
 verification = "docs/verification/0021-m1-interchange-roots.md"
-notes = "Parser leniencies beyond LIB-SEC-005's list are open until LIB-SEC-006 (W3C conformance suite), by the maintainer's decision of 2026-11-11 (slice 0021, verification round 3)."
+notes = "Parser leniencies beyond LIB-SEC-005's list were left to LIB-SEC-006 (W3C conformance suite), by the maintainer's decision of 2026-11-11 (slice 0021, verification round 3); LIB-SEC-006 closes the list within the suite (slice 0022)."
 
 [[row]]
 id = "SACM23-XMI-002"
@@ -3409,10 +3409,10 @@ id = "LIB-SEC-006"
 area = "SEC"
 milestone = "M1"
 title = "W3C XML conformance: not-well-formed input is refused"
-requirement = "`cargo xtask fetch-spec` also fetches the W3C XML Conformance Test Suite 20130923 (`xmlts20130923.tar.gz`, SHA-256-pinned) into the git-ignored `third_party/xmlconf/` and extracts it; it is never committed, and no case file is copied into the repository (fetch-only use, the maintainer's decision of 2026-11-11, because the suite's parts carry different terms). `cargo xtask fetch-spec --only xmlconf` fetches only the suite, for CI. A test reads the suite's 21 catalogs and runs through `xmi::read` every TEST with TYPE `not-wf`, RECOMMENDATION XML1.0 (the default), XML1.0-errata2e/3e/4e, NS1.0 or NS1.0-errata1e, VERSION absent or listing 1.0, and EDITION absent or listing 5. Each is refused: `Malformed` or `Doctype`, or `Unsupported` only from the encoding steps; a root-stage result (`Ok`, `InvalidRoot`, `NoPackage`, root-stage `Unsupported`) counts as accepted, because the suite's documents are not SACM. The one case roxmltree 0.21.2 accepts, rmt-ns10-032 (`xmlns:xmlns` declared), is refused by a new check (Namespaces 1.0 §3), so the list of accepted cases is empty and the parser's leniencies within the suite form a closed, reviewed list. Valid and invalid XML 1.0 and NS 1.0 cases that reach the root stage are never refused as `Malformed` (a guard against an over-strict scan). Leniencies outside the suite stay guarded by LIB-SEC-005's tree-oracle sweep."
+requirement = "`cargo xtask fetch-spec` also fetches the W3C XML Conformance Test Suite 20130923 (`xmlts20130923.tar.gz`, SHA-256-pinned) into the git-ignored `third_party/xmlconf/` and extracts it; it is never committed, and no case file is copied into the repository (fetch-only use, the maintainer's decision of 2026-11-11, because the suite's parts carry different terms). `cargo xtask fetch-spec --only xmlconf` fetches only the suite, for CI. A test reads the suite's 21 catalogs and runs through `xmi::read` every TEST with TYPE `not-wf`, RECOMMENDATION XML1.0 (the default), XML1.0-errata2e/3e/4e, NS1.0 or NS1.0-errata1e, VERSION absent or listing 1.0, and EDITION absent or listing 5. Each is refused: `Malformed` or `Doctype`, or `Unsupported` only from the encoding steps; a root-stage result (`Ok`, `InvalidRoot`, `NoPackage`, root-stage `Unsupported`) counts as accepted, because the suite's documents are not SACM. The one case roxmltree 0.21.2 accepts, rmt-ns10-032 (`xmlns:xmlns` declared), is refused by a new check (Namespaces 1.0 §3), so the list of accepted cases is empty and the parser's leniencies within the suite form a closed, reviewed list. Valid and invalid XML 1.0 and NS 1.0 cases that reach the root stage are never refused as `Malformed` (a guard against an over-strict scan). Outside the suite, other parser leniencies may remain; LIB-SEC-005's tree-oracle sweep checks only that libSACM's checks agree with the parser's tree."
 source = "XML 1.0 5th ed. §1.2 \"fatal error: An error which a conforming XML processor MUST detect and report to the application.\", \"Violations of well-formedness constraints are fatal errors.\"; Namespaces in XML 1.0 3rd ed. §3 \"The prefix xmlns is used only to declare namespace bindings and is by definition bound to the namespace name http://www.w3.org/2000/xmlns/. It MUST NOT be declared.\", §7, §8 \"a processor MUST report violations of namespace well-formedness\"; W3C XML Conformance Test Suite 20130923 (https://www.w3.org/XML/Test/xmlts20130923.tar.gz, SHA-256 9b61db9f5dbffa545f4b8d78422167083a8568c59bd1129f94138f936cf6fc1f) and its testcases.dtd (TYPE, RECOMMENDATION, VERSION, EDITION, ENTITIES); rmt-ns10-032; slice 0021 verification rounds 2-4; ADR 0005 B1; roxmltree 0.21.2 src/parse.rs:779-813 (prefix `xmlns` with local name `xmlns` is not checked); slice 0022 research probe (1,017 applicable cases, 1 accepted)"
 kind = "security"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-SEC-005", "LIB-TOOL-020"]
 acceptance = [
   "Fetch: `cargo xtask fetch-spec` downloads the pinned archive to `third_party/xmlconf/`, refuses a hash mismatch (deleting the partial file), extracts it with the system `tar` only after the hash matches, re-extracts when `xmlconf/xmlconf.xml` is missing, and changes nothing when both are present. `--only xmlconf` fetches only the suite, and the OMG sources are untouched. A missing or failing `tar` is an error naming it, never a panic. Tests use a fake downloader; the existing `ARTIFACTS` list is unchanged. `/third_party/xmlconf/` is git-ignored, and the fetch module docs state the fetch-only terms.",
@@ -3426,7 +3426,7 @@ acceptance = [
   "Not refused: `xmlns:xmlnsx=\"urn:x\"`, `xmlns:xmlfoo=\"urn:x\"` (§3: processors \"MUST NOT treat them as fatal errors\"), `xmlns:xml=\"http://www.w3.org/XML/1998/namespace\"` (§3 \"MAY … be declared\"), and `xmlns:xmlns='x'` inside a comment, a CDATA section, a PI or an attribute value.",
   "LIB-SEC-005's tree-oracle sweep also generates `xmlns:xmlns` declarations; such an input is `Malformed` exactly when the roxmltree tree binds the prefix `xmlns`.",
   "With the suite absent, the test fails when the `CI` environment variable is set and prints a SKIPPED notice to stderr otherwise; every run with the suite prints `ran 1017 cases`. CI fetches the suite with `--only xmlconf` and caches it by its hash in every job that runs the crate's tests, including the mutation jobs.",
-  "The `read` docs (`# Errors` step 7), the input.rs module docs and ADR 0005 B1 state the closed list against the suite, and that leniencies outside it stay guarded by LIB-SEC-005's sweep.",
+  "The `read` docs (`# Errors` step 7), the input.rs module docs and ADR 0005 B1 state the closed list against the suite, and that outside it other parser leniencies may remain, with LIB-SEC-005's sweep checking only that libSACM's checks agree with the parser's tree.",
 ]
 code = ["crates/sacm/src/xmi/input.rs", "crates/sacm/src/xmi.rs", "xtask/src/fetch.rs", "xtask/src/lib.rs", ".gitignore", ".github/workflows/ci.yml", ".github/workflows/mutants.yml", "docs/adr/0005-xml-backend.md"]
 tests = [
@@ -3455,9 +3455,12 @@ tests = [
   "xtask/tests/fetch.rs::lib_sec_006_fetch_suite_retries_after_a_partly_failed_extraction",
   "xtask/tests/fetch.rs::lib_sec_006_tar_extract_of_a_missing_archive_is_an_error_naming_tar",
   "xtask/tests/fetch.rs::lib_sec_006_tar_extract_unpacks_an_archive_into_the_directory",
+  "xtask/tests/fetch.rs::lib_sec_006_extract_with_a_program_that_cannot_run_is_an_error_naming_it",
+  "xtask/tests/fetch.rs::lib_sec_006_fetch_suite_extracts_a_fresh_download_even_when_the_marker_is_present",
   "xtask/tests/run.rs::lib_sec_006_run_fetch_spec_only_xmlconf_checks_only_the_suite_under_the_root",
   "xtask/tests/run.rs::lib_sec_006_run_fetch_spec_checks_the_omg_sources_before_the_suite",
   "xtask/tests/run.rs::lib_sec_006_run_help_lists_fetch_spec_only_xmlconf",
   "xtask/tests/run.rs::lib_sec_006_run_rejects_other_only_forms",
 ]
+verification = "docs/verification/0022-m1-w3c-xml-conformance.md"
 
