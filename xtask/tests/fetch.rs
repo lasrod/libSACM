@@ -379,3 +379,62 @@ fn lib_tool_002_curl_download_reports_a_failed_transfer_as_an_error() {
          exit status, got {message:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// LIB-TOOL-020 item 1: XMI 2.5.1 is pinned after the two SACM sources
+// ---------------------------------------------------------------------------
+
+/// The two SACM 2.3 sources as LIB-TOOL-002 pinned them. LIB-TOOL-020 must
+/// leave both unchanged, in this order, at the head of the list.
+const SACM_ARTIFACTS: [Artifact; 2] = [
+    Artifact {
+        file_name: "SACM-2.3-formal-23-05-08.pdf",
+        url: "https://www.omg.org/spec/SACM/2.3/PDF",
+        sha256: "8004a2ee2e3469552ae199deea22e44ec86a1d4769948bdce4782c7220de3012",
+        what: "SACM 2.3 formal specification (formal/23-05-08)",
+    },
+    Artifact {
+        file_name: "SACM-2.3-ptc-22-03-13.xml",
+        url: "https://www.omg.org/spec/SACM/20220301/SACM.xml",
+        sha256: "4bc12020fe38018fe24d39e56ec04f2fc9190fe7cf1161d85452fda5f3fbeb1e",
+        what: "SACM 2.3 normative machine-readable metamodel (ptc/22-03-13)",
+    },
+];
+
+#[test]
+fn lib_tool_020_artifacts_end_with_the_xmi_2_5_1_pin() {
+    assert_eq!(
+        ARTIFACTS.len(),
+        3,
+        "LIB-TOOL-020: ARTIFACTS lists the two SACM sources and XMI 2.5.1, got {:?}",
+        ARTIFACTS.iter().map(|a| a.file_name).collect::<Vec<_>>()
+    );
+    let Some(xmi) = ARTIFACTS.last() else {
+        panic!("LIB-TOOL-020: ARTIFACTS is empty");
+    };
+    assert_eq!(
+        (xmi.file_name, xmi.url, xmi.sha256),
+        (
+            "XMI-2.5.1-formal-15-06-07.pdf",
+            "https://www.omg.org/spec/XMI/2.5.1/PDF",
+            "2bf97c670f128affc9ed5dc202ef748101afd0eee8ee662e8763da6092c80c1b",
+        ),
+        "LIB-TOOL-020: the last artifact is XMI 2.5.1 (formal/15-06-07) with its file name, URL \
+         and SHA-256 pin"
+    );
+}
+
+#[test]
+fn lib_tool_020_sacm_artifacts_are_unchanged_and_come_first() {
+    assert!(
+        ARTIFACTS.len() >= 2,
+        "LIB-TOOL-020: ARTIFACTS still lists both SACM sources, got {} entries",
+        ARTIFACTS.len()
+    );
+    assert_eq!(
+        ARTIFACTS[..2],
+        SACM_ARTIFACTS,
+        "LIB-TOOL-020: the two SACM sources keep their file names, URLs, pins and descriptions, \
+         ahead of XMI 2.5.1 (ADR 0003 source priority)"
+    );
+}

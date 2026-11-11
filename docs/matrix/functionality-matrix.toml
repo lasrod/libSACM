@@ -2219,8 +2219,20 @@ title = "XMI 2.5.1 is fetched with the SACM sources"
 requirement = "`cargo xtask fetch-spec` also downloads XMI 2.5.1 (formal/15-06-07) into the git-ignored third_party/, hash-pinned like the SACM sources, so the XMI rows can quote it."
 source = "Verification 0016: the XMI citations in SACM23-XMI-012, -XMI-014, -XMI-015 and LIB-COMPAT-007 cannot be checked without the text"
 kind = "tooling"
-status = "planned"
+status = "implemented"
 depends_on = ["LIB-TOOL-002"]
+acceptance = [
+  "`xtask::fetch::ARTIFACTS` lists XMI 2.5.1 (formal/15-06-07) after the two SACM sources (ADR 0003 source priority 3): file `XMI-2.5.1-formal-15-06-07.pdf`, URL `https://www.omg.org/spec/XMI/2.5.1/PDF`, SHA-256 `2bf97c670f128affc9ed5dc202ef748101afd0eee8ee662e8763da6092c80c1b`. The SACM entries are unchanged.",
+  "It is fetched into the same git-ignored `third_party/sacm-2.3/` under the LIB-TOOL-002 policy, with no special case: an existing file with the pinned hash is not downloaded again, and a wrong hash is an error.",
+  "ADR 0003, CONTRIBUTING.md, the `fetch` module docs and the `fetch-spec` help text name XMI 2.5.1 among the fetched sources, and none of them says the command fetches only SACM documents.",
+  "A live `cargo xtask fetch-spec` into an empty directory fetches all three files with their pinned hashes (evidence in the verification record).",
+]
+code = ["xtask/src/fetch.rs", "xtask/src/lib.rs", "docs/adr/0003-sacm-2-3-sources-and-priority.md", "CONTRIBUTING.md"]
+tests = [
+  "xtask/tests/fetch.rs::lib_tool_020_artifacts_end_with_the_xmi_2_5_1_pin",
+  "xtask/tests/fetch.rs::lib_tool_020_sacm_artifacts_are_unchanged_and_come_first",
+  "xtask/tests/run.rs::lib_tool_020_run_help_says_fetch_spec_fetches_xmi_2_5_1",
+]
 
 [[row]]
 id = "LIB-COMPAT-003"

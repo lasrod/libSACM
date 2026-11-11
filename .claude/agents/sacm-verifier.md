@@ -37,7 +37,7 @@ report, test or agent; check for yourself.
    - `cargo xtask matrix check`
    - `cargo deny check`
 2. **Traceability.** Each criterion maps to the standard text it claims; check the
-   quotations against the PDF in `third_party/sacm-2.3/`. Each criterion has a test
+   quotations against the PDFs in `third_party/sacm-2.3/` (SACM and XMI 2.5.1). Each criterion has a test
    named for its row, and that test asserts it.
 3. **Test adequacy.**
    - The primary evidence is the Linux cargo-mutants report for the commit under

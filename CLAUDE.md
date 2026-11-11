@@ -13,8 +13,8 @@ safety tooling on this.
 - How work is done: [docs/loop.md](docs/loop.md). Run a slice with `/sacm-slice`;
   run the loop with `/loop /sacm-slice`.
 - Design: [docs/architecture.md](docs/architecture.md), [docs/adr/](docs/adr/).
-- The standard: load the `sacm-expert` skill. Normative sources: `cargo xtask fetch-spec`
-  → `third_party/sacm-2.3/` (never commit them).
+- The standard: load the `sacm-expert` skill. Normative sources and XMI 2.5.1:
+  `cargo xtask fetch-spec` → `third_party/sacm-2.3/` (never commit them).
 - Rust conventions: load the `rust-library-craft` skill.
 
 ## Layout
