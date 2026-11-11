@@ -933,15 +933,10 @@ fn lib_sec_006_fetch_suite_retries_after_a_partly_failed_extraction() {
 
 #[test]
 fn lib_sec_006_tar_extract_of_a_missing_archive_is_an_error_naming_tar() {
-    // Neither the directory nor the archive name contains "tar", so only the
-    // command can put it at the start of the message.
+    // The message must start with the command, so a "tar" elsewhere in the
+    // path (the system temporary directory may hold one) cannot satisfy it.
     let dir = TempDir::new("lib-sec-006-extract-absent");
     let archive = dir.file("absent.tgz");
-    assert!(
-        !archive.to_string_lossy().contains("tar"),
-        "LIB-SEC-006: the test path must not contain \"tar\", got {}",
-        archive.display()
-    );
 
     let outcome = catch_unwind(AssertUnwindSafe(|| tar_extract(&archive, dir.path())));
 
