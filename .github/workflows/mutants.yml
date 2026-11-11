@@ -23,7 +23,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: mutants-${{ github.ref }}
+  # The head repository and branch, the same for PR and dispatch events, so a
+  # newer run on a branch cancels an older one however each was started.
+  group: mutants-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 env:
