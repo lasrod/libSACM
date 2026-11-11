@@ -19,7 +19,7 @@ to the SACM XML Schema. ADR 0015 lets a release refuse content it cannot represe
 We adopt the C++ classification:
 
 - An interchange root is the document element, or each element child of the XMI element
-  (`xmi_reader.cpp:2433-2441`).
+  (`xmi_reader.cpp:2433-2441`), except as D1 says.
 - A root whose local name is not a package kind is SACM-XMI-001 (`:2227`, `:2265-2271`;
   `metadata/element_kind.cpp:87-105`).
 - A wrapper with no package is SACM-XMI-001 (`:2448-2461`).
@@ -36,8 +36,12 @@ We deviate from C++ in seven ways:
   local name is `XMI` (`:2433`). We require `http://www.omg.org/spec/XMI/20131001`, because
   XMI §7.5.3 defines the XMI element in that namespace, and Namespaces 1.0 names an element
   by URI and local part. An `XMI` element in another namespace, or in none, is
-  `Unsupported`. LIB-COMPAT-002 may read it later. A schema-conforming document uses the
-  XMI namespace, so this stays compliant.
+  `Unsupported` before its children are classified, because whether they are roots is
+  not decided. LIB-COMPAT-002 may read it later. A child of the XMI element that is in the
+  XMI namespace, such as `xmi:Documentation`, is XMI data, not a root: it is
+  `Unsupported` (SACM23-XMI-019). C++ passes it to its root reader, which reports
+  SACM-XMI-001. A schema-conforming document uses the XMI namespace, so this stays
+  compliant.
 - **D2. A type attribute does not override the element name.** In C++, a resolved
   `xsi:type` or `xmi:type` decides the root's kind (`:2194-2197`). An unresolved one falls
   back to the element name, with a diagnostic (`:2198-2224`). Here the element name decides
@@ -46,8 +50,10 @@ We deviate from C++ in seven ways:
   which waits for D5.
 - **D3. No partial document.** C++ reports an invalid root, reads the roots beside it and
   returns a document along with the errors. Here the first refusal is the whole result
-  (ADR 0015; ADR 0011 X1). SACM-XMI-001 takes precedence over every `Unsupported`, so the
-  inputs that get the code do not depend on what a release can read.
+  (ADR 0015; ADR 0011 X1). Among the refusals found while reading the roots, SACM-XMI-001
+  takes precedence over every `Unsupported`, so the roots that get the code do not depend
+  on what a release can read. The input checks before them (encoding, DOCTYPE, `Malformed`)
+  come first, and so does D1's `Unsupported` for an `XMI` element in another namespace.
 - **D4. Unread attributes are refused.** C++ silently skips any XMI, XSI or SACM attribute
   it does not read (`:1543-1546`). Here every attribute that no verified row reads is
   `Unsupported`. Only these are accepted:

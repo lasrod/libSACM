@@ -36,8 +36,8 @@ sacm
 │                names, assertion declarations, LangString, MultiLangString,
 │                AssertionDeclaration)
 ├── xmi          read (tolerant | strict) and write (strict | tolerant); XML details stay private
-│                (built: `read` of the input layer and of the interchange roots,
-│                AssuranceCasePackage and ArgumentPackage; it refuses unsafe, malformed,
+│                (built: `read`, for the input layer and the AssuranceCasePackage and
+│                ArgumentPackage interchange roots; it refuses unsafe, malformed,
 │                non-package and not-yet-readable input; roxmltree is private,
 │                ADR 0005, ADR 0015 and ADR 0016)
 ├── validate     structural invariants and clause-level constraints

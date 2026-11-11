@@ -5,11 +5,14 @@
 //! element, each of its element children outside the XMI namespace. The
 //! roots are read in two passes over a tree roxmltree has accepted:
 //!
-//! 1. Every root is classified by its local name alone. The first that is
-//!    not one of the twelve package kinds is `InvalidRoot`, and an XMI
-//!    element with no root is `NoPackage` (both SACM-XMI-001). This pass
-//!    comes first, so which inputs get SACM-XMI-001 does not depend on what
-//!    this release can read (ADR 0016 D3).
+//! 1. Every root is classified by its local name alone. An `XMI` element
+//!    outside the XMI namespace, or any other XMI-namespace element, as the
+//!    document element is `Unsupported`. An XMI element with no root is
+//!    `NoPackage`; otherwise the first root that is not one of the twelve
+//!    package kinds is `InvalidRoot` (both SACM-XMI-001). This pass comes
+//!    first, so SACM-XMI-001 takes precedence among the refusals found while
+//!    reading the roots, and which inputs get it does not depend on what this
+//!    release can read (ADR 0016 D3).
 //! 2. In document order, the XMI element's attributes, then each root and
 //!    whatever is beside it, are checked, and each root is added to the
 //!    document. A root's namespace and kind, its `xmi:id` and its type are

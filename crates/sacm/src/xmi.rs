@@ -69,7 +69,8 @@ mod roots;
 ///
 /// In this release `read` reads `AssuranceCasePackage` and `ArgumentPackage`
 /// roots (formal/23-05-08 §2.2, §2.4): the document element, or each element
-/// child of an `xmi:XMI` element in the XMI 2.5.1 namespace. Each root becomes
+/// child outside the XMI namespace of an `xmi:XMI` element in the XMI 2.5.1
+/// namespace `http://www.omg.org/spec/XMI/20131001`. Each root becomes
 /// a parentless element of its kind, in document order, whose id is its
 /// `xmi:id` and whose name is missing. Elements and attributes are matched by
 /// namespace and local name, never by prefix. The SACM namespace is
@@ -104,8 +105,12 @@ mod roots;
 ///    (`Malformed`): a character reference to a surrogate or above U+10FFFF, a
 ///    namespace prefix undeclared with `xmlns:p=""`, and a processing
 ///    instruction whose target is `xml` in any letter case;
-/// 8. the roots: first every root's name (`InvalidRoot` or `NoPackage`), then
-///    each root in document order (`Unsupported`).
+/// 8. the roots, in two passes. First the names: an `XMI` element outside the
+///    XMI 2.5.1 namespace, or any other XMI-namespace element, as the document
+///    element is `Unsupported`; an `xmi:XMI` element with no root is
+///    `NoPackage`; otherwise the first root not named as a package kind is
+///    `InvalidRoot`. Then, in document order, the `xmi:XMI` element's
+///    attributes, each root, and the content beside it (`Unsupported`).
 ///
 /// The refusals:
 ///
@@ -117,14 +122,18 @@ mod roots;
 /// - [`ReadError::InvalidRoot`] (SACM-XMI-001): a root's local name is not
 ///   one of the twelve SACM package kinds.
 /// - [`ReadError::NoPackage`] (SACM-XMI-001): the `xmi:XMI` element holds no
-///   element named as a package kind.
+///   root: no element child outside the XMI namespace.
 /// - [`ReadError::Unsupported`] (no code): the input is well-formed but this
 ///   version cannot represent it. Examples are UTF-16, UTF-32 or UCS-4 input,
 ///   a declared encoding other than UTF-8 or ASCII, more nodes, attributes or
 ///   namespaces than the parser can hold, the other ten package kinds as
 ///   roots, a package name outside the SACM namespace, a root without an
-///   `xmi:id` or with the id of an earlier root, and any other attribute or
-///   content of a root.
+///   `xmi:id` or with the id of an earlier root, an `XMI` element outside the
+///   XMI 2.5.1 namespace (such as an older XMI revision's), an XMI-namespace
+///   element such as `xmi:Documentation` as the document element or beside
+///   the roots, an attribute of `xmi:XMI` other than `xmi:version`, and any
+///   other attribute or content of a root. So in this release a package with
+///   a name, a description or any element in it is refused.
 ///
 /// # Examples
 ///
@@ -140,6 +149,15 @@ mod roots;
 /// let root = output.document().get("arguments").expect("the root was read");
 /// assert_eq!(root.kind(), ElementKind::ArgumentPackage);
 /// assert!(output.diagnostics().is_empty());
+///
+/// // Content inside a package is not read yet: refused, never dropped.
+/// let named = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+///   <name content="Arguments"/>
+/// </sacm:ArgumentPackage>"#;
+/// let error = xmi::read(named, &options).unwrap_err();
+/// assert!(matches!(error, ReadError::Unsupported { .. }));
+/// assert_eq!(error.code(), None);
 ///
 /// // A root that is not a SACM package.
 /// let error = xmi::read(b"<r/>", &options).unwrap_err();
@@ -180,9 +198,9 @@ pub struct ReadOptions {}
 /// What [`read`] returns for a document it reads: the document, and the
 /// diagnostics found while reading it.
 ///
-/// The document holds all of the input's content, because what `read` cannot
-/// represent it refuses (ADR 0015). The diagnostics are sorted as ADR 0011
-/// orders them. This release reports none.
+/// The document holds all of the input's content: `read` refuses what it
+/// cannot represent rather than drop it. The diagnostics are sorted by
+/// [`Diagnostic`]'s order, located ones first. This release reports none.
 ///
 /// # Examples
 ///
@@ -202,7 +220,7 @@ pub struct ReadOptions {}
 pub struct ReadOutput {
     /// The document read.
     document: Document,
-    /// The diagnostics, sorted per ADR 0011.
+    /// The diagnostics, sorted by [`Diagnostic`]'s order.
     diagnostics: Vec<Diagnostic>,
 }
 
@@ -213,7 +231,7 @@ impl ReadOutput {
         &self.document
     }
 
-    /// The diagnostics found while reading, sorted as ADR 0011 orders them.
+    /// The diagnostics found while reading, sorted by [`Diagnostic`]'s order.
     /// Empty in this release.
     #[must_use]
     pub fn diagnostics(&self) -> &[Diagnostic] {
@@ -275,9 +293,11 @@ pub enum ReadError {
         /// What is wrong, without a position.
         reason: String,
     },
-    /// An interchange root (the document element, or an element child of the
-    /// `xmi:XMI` element) is not named as one of the twelve SACM package
-    /// kinds (SACM-XMI-001). The location is the `<` of its start tag.
+    /// An interchange root (the document element, or each element child
+    /// outside the XMI namespace of an `xmi:XMI` element in the XMI 2.5.1
+    /// namespace `http://www.omg.org/spec/XMI/20131001`) is not named as one
+    /// of the twelve SACM package kinds (SACM-XMI-001). The location is the
+    /// `<` of its start tag.
     #[non_exhaustive]
     InvalidRoot {
         /// Where the root's start tag starts.
@@ -286,8 +306,8 @@ pub enum ReadError {
         /// prefix.
         element_name: String,
     },
-    /// The `xmi:XMI` element holds no element named as a SACM package kind
-    /// (SACM-XMI-001). The location is the `<` of its start tag.
+    /// The `xmi:XMI` element holds no root: no element child outside the XMI
+    /// namespace (SACM-XMI-001). The location is the `<` of its start tag.
     #[non_exhaustive]
     NoPackage {
         /// Where the `xmi:XMI` start tag starts.

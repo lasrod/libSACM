@@ -12,7 +12,8 @@
 //!   built (see [Status](#status)),
 //! - XMI import and deterministic export, with a strict SACM 2.3 mode and an
 //!   explicit tolerant mode for third-party and legacy files; built so far:
-//!   [`xmi::read`], which reads empty package roots and refuses the rest,
+//!   [`xmi::read`], which reads empty `AssuranceCasePackage` and
+//!   `ArgumentPackage` roots and refuses everything else,
 //! - validation against the specification's constraints, reported as
 //!   machine-readable diagnostics with stable codes; built so far: the
 //!   diagnostic type,
@@ -37,6 +38,24 @@
 //! malformed input and roots that are not SACM packages with a diagnostic
 //! code, and content it cannot represent yet as `Unsupported`. Reading the
 //! content of packages, XMI export, validation and editing are not built yet.
+//!
+//! # Example
+//!
+//! ```
+//! use sacm::xmi::{self, ReadOptions};
+//!
+//! let input = br#"<?xml version="1.0" encoding="UTF-8"?>
+//! <xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
+//!          xmlns:sacm="http://www.omg.org/spec/SACM/20220301">
+//!   <sacm:AssuranceCasePackage xmi:id="case"/>
+//!   <sacm:ArgumentPackage xmi:id="arguments"/>
+//! </xmi:XMI>"#;
+//! let document = xmi::read(input, &ReadOptions::default())?.into_document();
+//! for element in document.elements() {
+//!     println!("{} {}", element.kind(), element.id());
+//! }
+//! # Ok::<(), xmi::ReadError>(())
+//! ```
 //!
 //! Look up an element with [`model::Document::get`], walk every element with
 //! [`model::Document::elements`], or move one level at a time with
@@ -64,6 +83,11 @@
 pub mod diagnostic;
 pub mod model;
 pub mod xmi;
+
+/// The crate README's examples, compiled and run as doctests.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;
 
 /// The version of this crate, as published.
 ///

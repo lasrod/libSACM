@@ -195,7 +195,8 @@ impl Document {
     ///
     /// **Not part of the stable API.** This is the test seam of the
     /// `test-support` feature: it builds documents for tests until the XMI
-    /// reader and the edit operations exist. It may change or disappear in
+    /// reader reads package content and the edit operations exist. It may
+    /// change or disappear in
     /// any release. It checks identity, that `parent` exists, whether `kind`
     /// can have a name, and whether a containment role of the parent's class
     /// admits `kind` (see [`Document`]). It does not check how many children a

@@ -12,8 +12,8 @@ Read, edit, validate and write assurance cases in the
 Implemented now: the read-only document model with element names and each
 Assertion's `assertionDeclaration`, the first value types (`LangString`,
 `MultiLangString` and `AssertionDeclaration`) in `sacm::model`, and the
-diagnostic type that findings are reported in (`sacm::diagnostic`). Nothing emits diagnostics yet.
-`sacm::xmi::read` reads `AssuranceCasePackage` and `ArgumentPackage` roots, but nothing inside
+diagnostic type that findings are reported in (`sacm::diagnostic`). No `Diagnostic` is
+reported yet; `xmi::read`'s refusals carry catalog codes. `sacm::xmi::read` reads `AssuranceCasePackage` and `ArgumentPackage` roots, but nothing inside
 them yet; it refuses what it cannot represent rather than drop it.
 
 Planned:
@@ -37,23 +37,25 @@ sacm = "0.1"
 ```
 
 ```rust
-use sacm::model::{AbstractClass, Document, ElementKind};
+use sacm::xmi::{self, ReadOptions};
 
-/// Prints every element, parents before children.
-fn print_elements(doc: &Document) {
-    for element in doc.elements() {
+fn main() -> Result<(), xmi::ReadError> {
+    let input = br#"<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
+         xmlns:sacm="http://www.omg.org/spec/SACM/20220301">
+  <sacm:AssuranceCasePackage xmi:id="case"/>
+  <sacm:ArgumentPackage xmi:id="arguments"/>
+</xmi:XMI>"#;
+    let document = xmi::read(input, &ReadOptions::default())?.into_document();
+    for element in document.elements() {
         println!("{} {}", element.kind(), element.id());
     }
-}
-
-fn main() {
-    assert!(ElementKind::Claim.is_a(AbstractClass::Assertion));
-    print_elements(&Document::new());
+    Ok(())
 }
 ```
 
-`sacm::xmi::read` fills a `Document` with empty package roots so far; it does not read the
-content of packages yet.
+`sacm::xmi::read` reads empty `AssuranceCasePackage` and `ArgumentPackage` roots so far; it
+refuses the content of packages rather than drop it.
 
 See the [crate documentation](https://docs.rs/sacm) for the full API.
 

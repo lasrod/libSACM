@@ -31,7 +31,7 @@ crate, and name the matrix row that owns it.
 
 | Code | Severity | Meaning |
 | --- | --- | --- |
-| SACM-XMI-001 | Error | An interchange root (the document element, or an element child of the XMI element) is not named as one of the twelve SACM package kinds, or the XMI element holds none. `Code::XMI_INVALID_ROOT`, the code of `ReadError::InvalidRoot` and `ReadError::NoPackage` (SACM23-XMI-001). |
+| SACM-XMI-001 | Error | An interchange root (the document element, or an element child of the XMI element outside the XMI namespace) is not named as one of the twelve SACM package kinds, or the XMI element holds no root. Fix: make the document element, or each child of `xmi:XMI`, a SACM 2.3 package such as `sacm:AssuranceCasePackage` or `sacm:ArgumentPackage`; a single package needs no `xmi:XMI` element. `Code::XMI_INVALID_ROOT`, the code of `ReadError::InvalidRoot` and `ReadError::NoPackage` (SACM23-XMI-001). |
 | SACM-XMI-002 | Error (strict) / Warning (tolerant) | Namespace URI is not a pinned SACM 2.3 namespace. |
 | SACM-XMI-003 | Error (strict) / Warning (tolerant) | Unknown element; preserved in tolerant mode, rejected in strict mode. |
 | SACM-XMI-004 | Error (strict) / Warning (tolerant) | Element lacks an `xmi:id`/`id`; generated in tolerant mode. |
