@@ -114,6 +114,8 @@ jobs:
   # sharded run is in mutants.yml. The job only makes sense on pull requests:
   # push and dispatch events have no base ref to diff against. Rebuilding each
   # mutant is most of the time, so the mutant builds carry no debug info.
+  # Round-robin sharding spreads slow mutants evenly; the default gives each shard
+  # a contiguous block, which left one shard about twice as slow as another.
   mutants-shard:
     name: mutants (PR diff, shard ${{ matrix.shard }})
     if: github.event_name == 'pull_request'
@@ -140,7 +142,7 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: git diff "origin/${BASE_REF}...HEAD" > mutants.diff
-      - run: cargo mutants --workspace --in-diff mutants.diff --shard ${{ matrix.shard }}/4
+      - run: cargo mutants --workspace --in-diff mutants.diff --shard ${{ matrix.shard }}/4 --sharding round-robin
       - uses: actions/upload-artifact@v7
         if: always()
         with:

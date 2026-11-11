@@ -53,7 +53,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo install cargo-mutants --locked --version 27.1.0
       - run: cargo install cargo-nextest --locked --version 0.9.151
-      - run: cargo mutants --workspace --shard ${{ matrix.shard }}/4
+      - run: cargo mutants --workspace --shard ${{ matrix.shard }}/4 --sharding round-robin
       - uses: actions/upload-artifact@v7
         if: always()
         with:
