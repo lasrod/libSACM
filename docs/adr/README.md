@@ -10,7 +10,7 @@ decision about how to *interpret the SACM standard* belongs in
 | [0002](0002-cargo-workspace-layout.md) | Cargo workspace: library, CLI, xtask | accepted |
 | [0003](0003-sacm-2-3-sources-and-priority.md) | SACM 2.3 target, normative sources and their priority | accepted |
 | [0004](0004-functionality-matrix-gate.md) | The functionality matrix is a gated TOML artifact | accepted |
-| [0005](0005-xml-backend.md) | XML backend for XMI read and write | proposed (open) |
+| [0005](0005-xml-backend.md) | XML backend for XMI read and write | accepted |
 | [0006](0006-agent-roles-and-slice-loop.md) | Agent roles with enforced write scopes, and the slice loop | accepted |
 | [0007](0007-msrv-and-edition.md) | Rust edition 2024, MSRV 1.85 | accepted |
 | [0008](0008-markdown-parser-for-verdict-lines.md) | A CommonMark parser decides which verdict lines count | accepted |
@@ -20,6 +20,7 @@ decision about how to *interpret the SACM standard* belongs in
 | [0012](0012-lang-string-absent-and-empty.md) | LangString keeps absent and empty apart | accepted |
 | [0013](0013-missing-name-stays-missing.md) | A missing name stays missing | accepted |
 | [0014](0014-artifact-package-admits-every-artifact-element.md) | An ArtifactPackage admits every ArtifactElement | accepted |
+| [0015](0015-xmi-read-entry-point.md) | The XMI read entry point | accepted |
 
 Statuses: `proposed` → `accepted` (maintainer approval) → optionally `superseded by NNNN`.
 Copy [template.md](template.md) for a new record.
