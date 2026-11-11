@@ -1,8 +1,8 @@
 ---
 slice: 0022
 name: m1-w3c-xml-conformance
-state: in-progress
-step: verification
+state: done
+step: verified
 rows: [LIB-SEC-006]
 mode: pr
 ---
@@ -66,3 +66,5 @@ the undeclaring check.
   - the docs overstated what LIB-SEC-005's sweep guards.
 
   Fixes go on branch `slice/0022-verification-fixes`.
+- 2026-11-11 PR #31: the fixes (f79bc9f) and the Copilot fix (8aba433), which drops a temp-path check.
+- 2026-11-11 verification round 2: PASS; LIB-SEC-006 verified.
