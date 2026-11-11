@@ -9,6 +9,8 @@ __pycache__/
 
 # OMG reference artifacts are fetched locally (`cargo xtask fetch-spec`), never committed.
 /third_party/sacm-2.3/
+# The W3C XML Conformance Test Suite is fetched the same way (LIB-SEC-006), never committed.
+/third_party/xmlconf/
 
 # Local Claude Code state (project settings in .claude/settings.json are committed).
 /.claude/settings.local.json

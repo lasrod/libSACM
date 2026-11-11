@@ -1,7 +1,9 @@
 //! Tests for the XML 1.0 and Namespaces 1.0 well-formedness errors that
 //! roxmltree accepts, and that `sacm::xmi::read` must refuse as
 //! `ReadError::Malformed` (SACM-XML-001) instead of repairing (LIB-SEC-005;
-//! ADR 0005 B1, ADR 0016).
+//! ADR 0005 B1, ADR 0016), and the declaration of the namespace prefix
+//! `xmlns` that the W3C XML Conformance Test Suite case rmt-ns10-032 found
+//! (LIB-SEC-006 items 8-10).
 //!
 //! Every input is an inline byte string. Most put a readable root after the
 //! construct under test, so an input that is not refused reads `Ok`, and one
@@ -1335,7 +1337,157 @@ fn lib_sec_005_a_pi_target_ends_at_each_edge_of_the_name_character_ranges() {
     }
 }
 
+// --- LIB-SEC-006 8. Declaring the prefix `xmlns` --------------------------------
+//
+// Namespaces 1.0 §3: "The prefix xmlns is used only to declare namespace
+// bindings and is by definition bound to the namespace name
+// http://www.w3.org/2000/xmlns/. It MUST NOT be declared." roxmltree refuses
+// only its binding to that name (W3C XML Conformance Test Suite case
+// rmt-ns10-032).
+
+/// The start tag of an ArtifactPackage root (recognised, not read yet),
+/// without its `xmi:id` and without its closing `>` or `/>`.
+const ARTIFACT_START: &str = concat!(
+    "<sacm:ArtifactPackage",
+    " xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
+    " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"",
+);
+
+/// The reason of the refusal of `xmlns:xmlns`.
+const XMLNS_DECLARED: &str =
+    "the namespace prefix \"xmlns\" is declared, and it cannot be declared";
+
+#[test]
+fn lib_sec_006_declaring_the_xmlns_prefix_is_malformed_at_the_attribute_name() {
+    let row = "LIB-SEC-006";
+    let cases = [
+        // On the root: line 2, after two spaces.
+        format!("{ROOT_START} xmi:id=\"p\"\n  xmlns:xmlns=\"urn:x\"/>"),
+        // With single quotes.
+        format!("{ROOT_START} xmi:id=\"p\"\n  xmlns:xmlns='urn:x'/>"),
+        // With white space around `=`.
+        format!("{ROOT_START} xmi:id=\"p\"\n  xmlns:xmlns = \"urn:x\"/>"),
+        format!("{ROOT_START} xmi:id=\"p\"\n  xmlns:xmlns\n=\n'urn:x'/>"),
+        // Before the root's own attributes.
+        format!("{ROOT_START}\n  xmlns:xmlns=\"urn:x\" xmi:id=\"p\"/>"),
+        // On an ArtifactPackage root, which is not read yet: Malformed
+        // comes first, not Unsupported.
+        format!("{ARTIFACT_START} xmi:id=\"f\"\n  xmlns:xmlns=\"urn:x\"/>"),
+        // On an xmi:XMI wrapper that holds an ArtifactPackage root.
+        format!(
+            "<xmi:XMI xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"\n  \
+             xmlns:xmlns=\"urn:x\">{ARTIFACT_ROOT}</xmi:XMI>"
+        ),
+        // With an empty value: this reason, not the undeclaring one.
+        format!("{ROOT_START} xmi:id=\"p\"\n  xmlns:xmlns=\"\"/>"),
+        format!("{ROOT_START} xmi:id=\"p\"\n  xmlns:xmlns=''/>"),
+    ];
+    for input in &cases {
+        assert_malformed_exactly(row, input.as_bytes(), 2, 3, XMLNS_DECLARED);
+        let error = assert_malformed_at(row, input.as_bytes(), 2, 3);
+        assert_malformed_form(row, &error, &["xmlns"]);
+    }
+    // On a child: `  <c ` is 5 characters; and on a grandchild.
+    let on_child = format!("{ROOT_START} xmi:id=\"p\">\n  <c xmlns:xmlns=\"urn:x\"/>\n{ROOT_END}");
+    assert_malformed_exactly(row, on_child.as_bytes(), 2, 6, XMLNS_DECLARED);
+    let on_grandchild =
+        format!("{ROOT_START} xmi:id=\"p\"><c>\n<d a='1' xmlns:xmlns='urn:x'/></c>{ROOT_END}");
+    assert_malformed_exactly(row, on_grandchild.as_bytes(), 2, 10, XMLNS_DECLARED);
+    // A child of an ArtifactPackage root.
+    let in_artifact = format!(
+        "{ARTIFACT_START} xmi:id=\"f\">\n<c xmlns:xmlns=\"urn:x\"/></sacm:ArtifactPackage>"
+    );
+    assert_malformed_exactly(row, in_artifact.as_bytes(), 2, 4, XMLNS_DECLARED);
+}
+
+#[test]
+fn lib_sec_006_binding_xmlns_to_its_own_namespace_name_keeps_the_parsers_refusal() {
+    let row = "LIB-SEC-006";
+    // roxmltree refuses this binding itself: its reason, not the new one.
+    let input =
+        format!("{ROOT_START} xmi:id=\"p\"\n  xmlns:xmlns=\"http://www.w3.org/2000/xmlns/\"/>");
+    assert_malformed_exactly(
+        row,
+        input.as_bytes(),
+        2,
+        3,
+        "the \"xmlns\" namespace is declared, which is not allowed",
+    );
+}
+
+#[test]
+fn lib_sec_006_the_earliest_construct_wins_beside_an_xmlns_declaration() {
+    let row = "LIB-SEC-006";
+    let undeclared = "the namespace prefix \"p\" is declared with an empty value, and a prefix cannot be undeclared";
+    // `xmlns:xmlns` first, then an undeclaring: the `xmlns` reason.
+    let xmlns_first = format!("{ROOT_START} xmi:id=\"p\"\n  xmlns:xmlns=\"u\" xmlns:p=\"\"/>");
+    assert_malformed_exactly(row, xmlns_first.as_bytes(), 2, 3, XMLNS_DECLARED);
+    // The undeclaring first: its own reason, at its own position.
+    let undeclared_first = format!("{ROOT_START} xmi:id=\"p\"\n  xmlns:p=\"\" xmlns:xmlns=\"u\"/>");
+    assert_malformed_exactly(row, undeclared_first.as_bytes(), 2, 3, undeclared);
+    // On an earlier element: that element's construct.
+    let earlier_child =
+        format!("{ROOT_START} xmi:id=\"p\">\n<c xmlns:p=''/><d xmlns:xmlns='u'/>{ROOT_END}");
+    assert_malformed_exactly(row, earlier_child.as_bytes(), 2, 4, undeclared);
+    let later_child =
+        format!("{ROOT_START} xmi:id=\"p\">\n<c xmlns:xmlns='u'/><d xmlns:p=''/>{ROOT_END}");
+    assert_malformed_exactly(row, later_child.as_bytes(), 2, 4, XMLNS_DECLARED);
+}
+
+// --- LIB-SEC-006 9. Not refused -----------------------------------------------------
+
+#[test]
+fn lib_sec_006_prefixes_that_only_start_with_xml_are_not_refused() {
+    let row = "LIB-SEC-006";
+    // §3: such prefixes are reserved, but processors "MUST NOT treat them as
+    // fatal errors".
+    for declaration in ["xmlns:xmlnsx=\"urn:x\"", "xmlns:xmlfoo=\"urn:x\""] {
+        let input = format!("{ROOT_START} xmi:id=\"p\" {declaration}/>");
+        assert_ok_with_id(row, input.as_bytes(), "p");
+    }
+    // §3: the prefix xml "MAY, but need not, be declared".
+    let xml =
+        format!("{ROOT_START} xmi:id=\"p\" xmlns:xml=\"http://www.w3.org/XML/1998/namespace\"/>");
+    assert_ok_with_id(row, xml.as_bytes(), "p");
+    // An attribute whose local name is `xmlns` but whose prefix is not.
+    let local = format!("{ROOT_START} xmlns:q=\"urn:q\" xmi:id=\"p\"><c q:xmlns=\"1\"/>{ROOT_END}");
+    assert_not_malformed(row, local.as_bytes());
+}
+
+#[test]
+fn lib_sec_006_xmlns_xmlns_text_in_a_comment_cdata_pi_or_value_is_not_refused() {
+    let row = "LIB-SEC-006";
+    // In comments and PIs, in the prolog and in the root: read.
+    for markup in [
+        "<!-- xmlns:xmlns='x' -->",
+        "<!--<c xmlns:xmlns='x'/>-->",
+        "<?pi xmlns:xmlns='x'?>",
+        "<?pi <c xmlns:xmlns='x'/>?>",
+    ] {
+        assert_ok_with_id(row, &root_holding(markup), "p");
+        assert_ok_with_id(row, format!("{markup}\n{ROOT}").as_bytes(), "p");
+    }
+    // In a CDATA section: text the root cannot hold, but well-formed.
+    assert_not_malformed(row, &root_holding("<![CDATA[<c xmlns:xmlns='x'/>]]>"));
+    // In attribute values, quoted either way.
+    let in_id = format!("{ROOT_START} xmi:id=\"p xmlns:xmlns='x'\"/>");
+    assert_ok_with_id(row, in_id.as_bytes(), "p xmlns:xmlns='x'");
+    assert_not_malformed(row, &root_holding("<c a=\" xmlns:xmlns='x'\"/>"));
+    assert_not_malformed(row, &root_holding("<c a=' xmlns:xmlns=\"x\"'/>"));
+}
+
 // --- LIB-SEC-005. Agreement with the parser's tree -----------------------------
+
+/// What a sweep generates. [`Sweep::Sec005`] is LIB-SEC-005's sweep, whose
+/// inputs stay as they were; [`Sweep::WithXmlnsXmlns`] also declares the
+/// prefix `xmlns` on elements (LIB-SEC-006 item 10), and writes
+/// `xmlns:xmlns` as text in comments, PIs, CDATA sections, text and
+/// attribute values.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Sweep {
+    Sec005,
+    WithXmlnsXmlns,
+}
 
 /// A xorshift64 generator with a fixed seed, so the sweep is the same on
 /// every run.
@@ -1361,10 +1513,28 @@ impl Generator {
         choices[self.below(choices.len())]
     }
 
-    /// Up to `max` tokens from `choices`, concatenated.
-    fn tokens(&mut self, choices: &[&str], max: usize) -> String {
+    /// One of `choices`, or under [`Sweep::WithXmlnsXmlns`] one of `choices`
+    /// and `extra`. Under [`Sweep::Sec005`] it draws exactly as
+    /// [`pick`](Self::pick) does, so LIB-SEC-005's inputs are unchanged.
+    fn pick_in<'a>(&mut self, sweep: Sweep, choices: &[&'a str], extra: &[&'a str]) -> &'a str {
+        if sweep == Sweep::Sec005 {
+            return self.pick(choices);
+        }
+        let index = self.below(choices.len() + extra.len());
+        choices
+            .get(index)
+            .copied()
+            .unwrap_or_else(|| extra[index - choices.len()])
+    }
+
+    /// Up to `max` tokens from `choices` (and `extra`, as in
+    /// [`pick_in`](Self::pick_in)), concatenated. Under [`Sweep::Sec005`] it
+    /// draws as LIB-SEC-005's sweep always has.
+    fn tokens_in(&mut self, sweep: Sweep, choices: &[&str], extra: &[&str], max: usize) -> String {
         let count = self.below(max + 1);
-        (0..count).map(|_| self.pick(choices)).collect()
+        (0..count)
+            .map(|_| self.pick_in(sweep, choices, extra))
+            .collect()
     }
 }
 
@@ -1421,6 +1591,10 @@ const CDATA_TOKENS: &[&str] = &[
     "]",
     ">",
 ];
+/// What [`Sweep::WithXmlnsXmlns`] adds to comments, PIs, CDATA sections,
+/// text and attribute values: `xmlns:xmlns` that declares nothing.
+const XMLNS_TEXT_TOKENS: &[&str] = &["xmlns:xmlns='x'", " xmlns:xmlns=\"\"", "xmlns:xmlnsx"];
+
 /// Character data, with references.
 const TEXT_TOKENS: &[&str] = &[
     "a",
@@ -1435,23 +1609,32 @@ const TEXT_TOKENS: &[&str] = &[
     "&lt;?xml?&gt;",
 ];
 
-fn generated_comment(g: &mut Generator) -> String {
-    format!("<!--{}-->", g.tokens(COMMENT_TOKENS, 5))
+fn generated_comment(g: &mut Generator, sweep: Sweep) -> String {
+    format!(
+        "<!--{}-->",
+        g.tokens_in(sweep, COMMENT_TOKENS, XMLNS_TEXT_TOKENS, 5)
+    )
 }
 
-fn generated_pi(g: &mut Generator) -> String {
+fn generated_pi(g: &mut Generator, sweep: Sweep) -> String {
     let target = g.pick(PI_TARGETS);
     let separator = g.pick(PI_SEPARATORS);
-    format!("<?{target}{separator}{}?>", g.tokens(PI_TOKENS, 4))
+    format!(
+        "<?{target}{separator}{}?>",
+        g.tokens_in(sweep, PI_TOKENS, XMLNS_TEXT_TOKENS, 4)
+    )
 }
 
-fn generated_cdata(g: &mut Generator) -> String {
-    format!("<![CDATA[{}]]>", g.tokens(CDATA_TOKENS, 5))
+fn generated_cdata(g: &mut Generator, sweep: Sweep) -> String {
+    format!(
+        "<![CDATA[{}]]>",
+        g.tokens_in(sweep, CDATA_TOKENS, XMLNS_TEXT_TOKENS, 5)
+    )
 }
 
 /// The text of an attribute value quoted with `quote`; it may hold the other
 /// quote.
-fn generated_value(g: &mut Generator, quote: char) -> String {
+fn generated_value(g: &mut Generator, sweep: Sweep, quote: char) -> String {
     let other = if quote == '"' { "'" } else { "\"" };
     let choices = [
         ">",
@@ -1469,16 +1652,20 @@ fn generated_value(g: &mut Generator, quote: char) -> String {
         "&amp;#xD800;",
         "&#x110000;",
     ];
-    g.tokens(&choices, 4)
+    g.tokens_in(sweep, &choices, XMLNS_TEXT_TOKENS, 4)
 }
 
 /// A child element with attributes and, at depth 0, content.
-fn generated_element(g: &mut Generator, depth: usize) -> String {
+fn generated_element(g: &mut Generator, sweep: Sweep, depth: usize) -> String {
     let name = g.pick(&["c", "d", ":c"]);
     let mut element = format!("<{name}");
     let mut used: Vec<&str> = Vec::new();
     for _ in 0..g.below(4) {
-        let attribute = g.pick(&["a", "b", ":a", "xmlns:p", "xmlns:q", "xmlns"]);
+        let attribute = g.pick_in(
+            sweep,
+            &["a", "b", ":a", "xmlns:p", "xmlns:q", "xmlns"],
+            &["xmlns:xmlns", "xmlns:xmlns", "xmlns:xmlnsx"],
+        );
         if used.contains(&attribute) {
             continue;
         }
@@ -1487,7 +1674,7 @@ fn generated_element(g: &mut Generator, depth: usize) -> String {
         let value = if attribute.starts_with("xmlns") {
             g.pick(&["", "u"]).to_owned()
         } else {
-            generated_value(g, quote)
+            generated_value(g, sweep, quote)
         };
         element.push_str(g.pick(&[" ", "\n", "\t"]));
         element.push_str(attribute);
@@ -1501,7 +1688,7 @@ fn generated_element(g: &mut Generator, depth: usize) -> String {
         return element;
     }
     element.push('>');
-    element.push_str(&generated_content(g, depth + 1));
+    element.push_str(&generated_content(g, sweep, depth + 1));
     // The end tag names the element, or `:c` for `c` and `c` for `:c`.
     element.push_str("</");
     element.push_str(match (name, g.below(4)) {
@@ -1514,30 +1701,30 @@ fn generated_element(g: &mut Generator, depth: usize) -> String {
 }
 
 /// Element content: a sequence of comments, CDATA, PIs, elements and text.
-fn generated_content(g: &mut Generator, depth: usize) -> String {
+fn generated_content(g: &mut Generator, sweep: Sweep, depth: usize) -> String {
     (0..g.below(5))
         .map(|_| match g.below(5) {
-            0 => generated_comment(g),
-            1 => generated_cdata(g),
-            2 => generated_pi(g),
-            3 => generated_element(g, depth),
-            _ => g.tokens(TEXT_TOKENS, 3),
+            0 => generated_comment(g, sweep),
+            1 => generated_cdata(g, sweep),
+            2 => generated_pi(g, sweep),
+            3 => generated_element(g, sweep, depth),
+            _ => g.tokens_in(sweep, TEXT_TOKENS, XMLNS_TEXT_TOKENS, 3),
         })
         .collect()
 }
 
 /// Comments, PIs and white space outside the root. It never starts with
 /// `<?`, so no generated PI is read as an XML declaration.
-fn generated_misc(g: &mut Generator) -> String {
+fn generated_misc(g: &mut Generator, sweep: Sweep) -> String {
     let mut misc = String::new();
     for _ in 0..g.below(3) {
         match g.below(3) {
-            0 => misc.push_str(&generated_comment(g)),
+            0 => misc.push_str(&generated_comment(g, sweep)),
             1 => {
                 if misc.is_empty() {
                     misc.push(' ');
                 }
-                misc.push_str(&generated_pi(g));
+                misc.push_str(&generated_pi(g, sweep));
             }
             _ => misc.push_str(g.pick(&[" ", "\n", "\r\n"])),
         }
@@ -1555,8 +1742,10 @@ fn is_xml_white_space(c: char) -> bool {
 /// namespace URI; a PI targeted `xml` in any case; a prefix bound to an
 /// empty URI; a PI whose target contains a colon or is followed by neither
 /// white space nor `?>`; or an element (in its start or end tag) or attribute
-/// whose name as written starts with `:`. The generated inputs hold no
-/// literal U+FFFD and no XML declaration.
+/// whose name as written starts with `:`; and (LIB-SEC-006) an element in
+/// whose scope the prefix `xmlns` is bound, which is what roxmltree makes of
+/// `xmlns:xmlns="..."` with any value but the xmlns namespace name. The
+/// generated inputs hold no literal U+FFFD and no XML declaration.
 fn tree_shows_a_refused_construct(document: &roxmltree::Document<'_>, text: &str) -> bool {
     document.descendants().any(|node| {
         if node.is_text() {
@@ -1584,6 +1773,7 @@ fn tree_shows_a_refused_construct(document: &roxmltree::Document<'_>, text: &str
                 || node.namespaces().any(|namespace| {
                     namespace.uri().contains('\u{FFFD}')
                         || (namespace.name().is_some() && namespace.uri().is_empty())
+                        || namespace.name() == Some("xmlns")
                 });
         }
         if let Some(pi) = node.pi() {
@@ -1598,38 +1788,70 @@ fn tree_shows_a_refused_construct(document: &roxmltree::Document<'_>, text: &str
     })
 }
 
-#[test]
-fn lib_sec_005_every_input_the_parser_accepts_agrees_with_the_tree_oracle() {
-    const INPUTS: usize = 12_000;
-    let row = "LIB-SEC-005";
-    let mut g = Generator(0x9E37_79B9_7F4A_7C15);
-    let (mut accepted, mut refused, mut not_refused) = (0_usize, 0_usize, 0_usize);
+/// What one sweep saw.
+#[derive(Debug, Default)]
+struct SweepCounts {
+    /// Inputs roxmltree parsed.
+    accepted: usize,
+    /// Of those, the ones `read` refused as `Malformed`.
+    refused: usize,
+    /// Of those, the ones `read` did not refuse as `Malformed`.
+    not_refused: usize,
+    /// Accepted inputs whose tree binds the prefix `xmlns`.
+    binding_xmlns: usize,
+    /// Accepted inputs that hold the text `xmlns:xmlns` but whose tree does
+    /// not bind the prefix `xmlns`.
+    xmlns_text_only: usize,
+}
+
+/// Generates `inputs` documents of `kind` from `seed` and reads each one
+/// roxmltree parses. Fails the test, citing `row`, when `read` refuses one
+/// as `Malformed` and the tree oracle does not, or the other way round.
+fn sweep(row: &str, kind: Sweep, seed: u64, inputs: usize) -> SweepCounts {
+    let mut g = Generator(seed);
+    let mut counts = SweepCounts::default();
     let (mut mismatches, mut disagreements) = (0_usize, Vec::new());
-    for index in 0..INPUTS {
+    for index in 0..inputs {
         let prolog = if index % 2 == 0 {
-            generated_misc(&mut g)
+            generated_misc(&mut g, kind)
         } else {
             String::new()
         };
-        let content = generated_content(&mut g, 0);
+        let content = generated_content(&mut g, kind, 0);
         let epilog = if g.below(4) == 0 {
-            generated_misc(&mut g)
+            generated_misc(&mut g, kind)
         } else {
             String::new()
         };
-        let text =
-            format!("{prolog}{ROOT_START} xmi:id=\"p\" xmlns:p=\"u\">{content}{ROOT_END}{epilog}");
+        // LIB-SEC-006 also declares `xmlns` on the root, now and then.
+        let on_root = if kind == Sweep::WithXmlnsXmlns && g.below(8) == 0 {
+            g.pick(&[" xmlns:xmlns=\"u\"", " xmlns:xmlns=''", " xmlns:xmlnsx='u'"])
+        } else {
+            ""
+        };
+        let text = format!(
+            "{prolog}{ROOT_START} xmi:id=\"p\" xmlns:p=\"u\"{on_root}>{content}{ROOT_END}{epilog}"
+        );
         let Ok(document) = roxmltree::Document::parse(&text) else {
             continue;
         };
-        accepted += 1;
+        counts.accepted += 1;
         let refuse = tree_shows_a_refused_construct(&document, &text);
+        let binds = document.descendants().any(|node| {
+            node.namespaces()
+                .any(|namespace| namespace.name() == Some("xmlns"))
+        });
+        if binds {
+            counts.binding_xmlns += 1;
+        } else if text.contains("xmlns:xmlns") {
+            counts.xmlns_text_only += 1;
+        }
         let result = read(row, text.as_bytes());
         let malformed = matches!(result, Err(ReadError::Malformed { .. }));
         if malformed {
-            refused += 1;
+            counts.refused += 1;
         } else {
-            not_refused += 1;
+            counts.not_refused += 1;
         }
         if malformed != refuse {
             mismatches += 1;
@@ -1643,15 +1865,46 @@ fn lib_sec_005_every_input_the_parser_accepts_agrees_with_the_tree_oracle() {
     }
     assert!(
         mismatches == 0,
-        "{row}: read disagrees with the roxmltree tree on {mismatches} of {accepted} accepted \
+        "{row}: read disagrees with the roxmltree tree on {mismatches} of {} accepted \
          inputs; the first {}:\n{}",
+        counts.accepted,
         disagreements.len(),
         disagreements.join("\n")
     );
+    counts
+}
+
+#[test]
+fn lib_sec_005_every_input_the_parser_accepts_agrees_with_the_tree_oracle() {
+    const INPUTS: usize = 12_000;
+    let row = "LIB-SEC-005";
+    let SweepCounts {
+        accepted,
+        refused,
+        not_refused,
+        ..
+    } = sweep(row, Sweep::Sec005, 0x9E37_79B9_7F4A_7C15, INPUTS);
     // The sweep is not vacuous: both outcomes occur often.
     assert!(
         accepted >= INPUTS / 4 && refused >= accepted / 10 && not_refused >= accepted / 10,
         "{row}: the sweep is too narrow: {accepted} accepted, {refused} refused, \
          {not_refused} not refused"
+    );
+}
+
+#[test]
+fn lib_sec_006_the_tree_oracle_sweep_with_xmlns_xmlns_declarations_agrees() {
+    const INPUTS: usize = 12_000;
+    let row = "LIB-SEC-006";
+    let counts = sweep(row, Sweep::WithXmlnsXmlns, 0xD1B5_4A32_D192_ED03, INPUTS);
+    // Not vacuous: the prefix `xmlns` is often bound, `xmlns:xmlns` often
+    // appears where it declares nothing, and both outcomes occur often.
+    assert!(
+        counts.accepted >= INPUTS / 4
+            && counts.binding_xmlns >= counts.accepted / 20
+            && counts.xmlns_text_only >= counts.accepted / 20
+            && counts.refused >= counts.accepted / 10
+            && counts.not_refused >= counts.accepted / 10,
+        "{row}: the sweep is too narrow: {counts:?}"
     );
 }

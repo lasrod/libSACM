@@ -16,7 +16,8 @@ comes first, then clarity.
 
 ```sh
 rustup show                     # installs the toolchain from rust-toolchain.toml
-cargo xtask fetch-spec          # downloads the OMG SACM 2.3 and XMI 2.5.1 references (hash-pinned)
+cargo xtask fetch-spec          # downloads the OMG SACM 2.3 and XMI 2.5.1 references and the
+                                # W3C XML Conformance Test Suite (hash-pinned, never committed)
 cargo test --workspace
 ```
 

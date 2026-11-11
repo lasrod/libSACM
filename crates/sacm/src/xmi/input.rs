@@ -1,6 +1,6 @@
 //! The input layer of the XMI reader: bytes to a well-formed XML tree, or a
-//! refusal (LIB-SEC-001, LIB-SEC-002, LIB-SEC-005, LIB-API-009; ADR 0005,
-//! ADR 0015, ADR 0016).
+//! refusal (LIB-SEC-001, LIB-SEC-002, LIB-SEC-005, LIB-SEC-006, LIB-API-009;
+//! ADR 0005, ADR 0015, ADR 0016).
 //!
 //! The steps run in this order:
 //! 1. UTF-16 or UCS-4 (UTF-32) input is `Unsupported`, recognised by its
@@ -20,13 +20,15 @@
 //! 7. What roxmltree accepts but XML 1.0 or Namespaces 1.0 make a fatal error
 //!    is `Malformed`, at the earliest offending construct: a character
 //!    reference to a surrogate or above U+10FFFF (which roxmltree would turn
-//!    into U+FFFD), a prefix undeclared with `xmlns:p=""`, an element or
-//!    attribute name with an empty prefix (`:c`), and a processing instruction
-//!    whose target (the XML Name after `<?`) is `xml` in any letter case,
-//!    contains a colon, or is followed by neither white space nor `?>`.
-//!    These are the constructs this release refuses; other input roxmltree
-//!    accepts against XML 1.0 or Namespaces 1.0 may still be read until
-//!    LIB-SEC-006 checks against the W3C XML Conformance Test Suite.
+//!    into U+FFFD), a declaration of the prefix `xmlns` (`xmlns:xmlns`), a
+//!    prefix undeclared with `xmlns:p=""`, an element or attribute name with
+//!    an empty prefix (`:c`), and a processing instruction whose target (the
+//!    XML Name after `<?`) is `xml` in any letter case, contains a colon, or
+//!    is followed by neither white space nor `?>`. Within the W3C XML
+//!    Conformance Test Suite (20130923), this list is closed: every
+//!    not-well-formed XML 1.0 and Namespaces 1.0 case in it is refused
+//!    (LIB-SEC-006). Leniencies outside the suite stay guarded by
+//!    LIB-SEC-005's sweep, which compares this scan with roxmltree's tree.
 //!
 //! roxmltree stays private to the `xmi` module: its errors become our own
 //! reasons and a [`SourceLocation`].
@@ -414,17 +416,17 @@ impl<'a> Cursor<'a> {
 }
 
 /// Refuses the first construct in `text` that XML 1.0 or Namespaces 1.0
-/// make a fatal error but roxmltree lets through (LIB-SEC-005): a character
-/// reference to a surrogate or above U+10FFFF, a prefix undeclared with
-/// `xmlns:p=""`, an element or attribute name with an empty prefix (`<:c>`,
-/// `</:c>`, ` :a="1"`), which roxmltree reads as unprefixed, and a processing
-/// instruction whose target (the XML Name after `<?`, [4]/[4a]) is `xml` in
-/// any letter case, contains a colon (Namespaces 1.0 §7), or is followed by
-/// neither white space nor `?>` ([16]). The target checks run in that order,
-/// and none applies to the checked declaration. These are the constructs
-/// this release refuses; other input roxmltree accepts against XML 1.0 or
-/// Namespaces 1.0 may still be read until LIB-SEC-006 checks against the W3C
-/// XML Conformance Test Suite.
+/// make a fatal error but roxmltree lets through (LIB-SEC-005, LIB-SEC-006):
+/// a character reference to a surrogate or above U+10FFFF, a declaration of
+/// the prefix `xmlns` (`xmlns:xmlns`, Namespaces 1.0 §3), a prefix undeclared
+/// with `xmlns:p=""`, an element or attribute name with an empty prefix
+/// (`<:c>`, `</:c>`, ` :a="1"`), which roxmltree reads as unprefixed, and a
+/// processing instruction whose target (the XML Name after `<?`, [4]/[4a]) is
+/// `xml` in any letter case, contains a colon (Namespaces 1.0 §7), or is
+/// followed by neither white space nor `?>` ([16]). The target checks run in
+/// that order, and none applies to the checked declaration. Within the W3C
+/// XML Conformance Test Suite, this list is closed (LIB-SEC-006); leniencies
+/// outside it stay guarded by LIB-SEC-005's tree-oracle sweep.
 ///
 /// It scans the text once, in document order, so the earliest construct is
 /// refused. It scans the raw text rather than the tree, because roxmltree
@@ -585,6 +587,17 @@ fn start_tag(text: &str, offset: usize) -> Result<Option<usize>, ReadError> {
         };
         let name = trimmed.get(..name_length).unwrap_or_default();
         check_name(text, offset + index, name)?;
+        // Namespaces 1.0 §3: the prefix `xmlns` "MUST NOT be declared".
+        // roxmltree refuses only its binding to the xmlns namespace name, so
+        // this comes before the undeclaring check: `xmlns:xmlns=""` is
+        // refused for declaring `xmlns`.
+        if name == "xmlns:xmlns" {
+            return Err(malformed(
+                text,
+                offset + index,
+                "the namespace prefix \"xmlns\" is declared, and it cannot be declared".to_owned(),
+            ));
+        }
         let Some(open) = trimmed.find(['"', '\'']) else {
             return Ok(None);
         };
@@ -1133,6 +1146,51 @@ mod tests {
             );
         }
         assert_eq!(at("<r a:b='1' xmlns:a='urn:a'></r >"), Ok(()));
+    }
+
+    #[test]
+    fn check_unrepaired_refuses_a_declared_xmlns_prefix() {
+        let reason = "the namespace prefix \"xmlns\" is declared, and it cannot be declared";
+        // At the attribute name, whatever the value, the quotes or the white
+        // space around `=`; an empty value is not reported as undeclaring.
+        for (input, column) in [
+            ("<r xmlns:xmlns=\"urn:x\"/>", 4),
+            ("<r xmlns:xmlns='urn:x'/>", 4),
+            ("<r xmlns:xmlns = 'urn:x'/>", 4),
+            ("<r a='1'\txmlns:xmlns=''/>", 10),
+            ("<r><c xmlns:xmlns='urn:x'/></r>", 7),
+            ("<r xmlns:xmlns=\"\"/>", 4),
+        ] {
+            let result = check_unrepaired(input);
+            assert_eq!(
+                result.as_ref().map_err(ReadError::location),
+                Err(SourceLocation::at(1, column)),
+                "{input:?}"
+            );
+            assert!(
+                result.is_err_and(|error| error.to_string().ends_with(reason)),
+                "{input:?}"
+            );
+        }
+        // Only the exact name; and not inside a comment, CDATA section, PI or
+        // attribute value.
+        for input in [
+            "<r xmlns:xmlnsx='urn:x'/>",
+            "<r xmlns:xmlfoo='urn:x'/>",
+            "<r xmlns:xml='http://www.w3.org/XML/1998/namespace'/>",
+            "<r xmlns='urn:x' p:xmlns='1' xmlns:p='urn:p'/>",
+            "<!-- <r xmlns:xmlns='x'/> --><r/>",
+            "<r><![CDATA[<c xmlns:xmlns='x'/>]]></r>",
+            "<r><?pi xmlns:xmlns='x'?></r>",
+            "<r a=\" xmlns:xmlns='x'\"/>",
+        ] {
+            assert_eq!(at(input), Ok(()), "{input:?}");
+        }
+        // The empty prefix comes first, as `check_name` runs before.
+        assert_eq!(
+            at("<r :xmlns='x' xmlns:xmlns='y'/>"),
+            Err(SourceLocation::at(1, 4))
+        );
     }
 
     #[test]
