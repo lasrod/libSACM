@@ -69,10 +69,10 @@ Copy `references/slice-brief.md` to `docs/slices/NNNN-<name>.md`, with
    - Open a draft PR (`gh pr create --draft`), unless `gh pr list --head <branch>` already
      lists one.
    - Request Copilot's review: `gh pr edit N --add-reviewer "@copilot"`.
-2. **Wait for CI.** Download the `mutants` job's `mutants.out`, and the `mutants.yml`
-   shards if that workflow ran.
-   - For a library row: if `mutants.yml` did not run on the head, dispatch it
-     (`gh workflow run mutants.yml --ref <branch>`).
+2. **Wait for CI.** Download the PR-diff shards' reports (`mutants-diff-shard-N` in the
+   CI run), and the `mutants.yml` shards if that workflow ran.
+   - For a library row: `mutants.yml` runs by itself only on ready PRs, so while the PR
+     is a draft, dispatch it on the head (`gh workflow run mutants.yml --ref <branch>`).
    - For a tooling row: the PR-diff job is enough, unless the slice removes or weakens
      tests. Then dispatch `mutants.yml`, because a test-only diff gives the PR-diff job
      nothing to mutate.

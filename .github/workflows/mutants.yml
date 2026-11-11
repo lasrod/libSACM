@@ -1,13 +1,16 @@
 name: mutants
 
 # Full mutation-testing run over the whole workspace (LIB-QA-007): weekly, on
-# demand, and on PRs that change library code or the mutation config. The PR job
-# in ci.yml mutates each PR's diff, including xtask changes.
+# demand, and on ready (not draft) PRs that change library code or the mutation
+# config. While a PR is a draft, dispatch it for the commit under verification
+# (`gh workflow run mutants.yml --ref <branch>`). The PR job in ci.yml mutates
+# each PR's diff, including xtask changes.
 on:
   schedule:
     - cron: "0 3 * * 1"
   workflow_dispatch:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - .cargo/mutants.toml
       - .config/nextest.toml
@@ -22,11 +25,21 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
+  # Rebuilding each mutant is most of the time; debug info only slows it.
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
 
 jobs:
   mutants:
     name: mutants (shard ${{ matrix.shard }})
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
+    # One group per shard, keyed by head repository and branch (the same for PR and
+    # dispatch events), so a newer run's shard cancels the older run's. It is set on
+    # the job, not the workflow, so a draft PR's skipped run cancels nothing.
+    concurrency:
+      group: mutants-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}-${{ matrix.shard }}
+      cancel-in-progress: true
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -40,7 +53,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo install cargo-mutants --locked --version 27.1.0
       - run: cargo install cargo-nextest --locked --version 0.9.151
-      - run: cargo mutants --workspace --shard ${{ matrix.shard }}/4
+      - run: cargo mutants --workspace --shard ${{ matrix.shard }}/4 --sharding round-robin
       - uses: actions/upload-artifact@v7
         if: always()
         with:
