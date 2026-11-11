@@ -101,13 +101,16 @@ mod roots;
 /// 5. UTF-8 (`Malformed` at the first invalid byte);
 /// 6. the parse: a DOCTYPE (`Doctype`) or a well-formedness error
 ///    (`Malformed`), whichever comes first;
-/// 7. the well-formedness errors the parser lets through, the earliest first
-///    (`Malformed`): a character reference to a surrogate or above U+10FFFF, a
-///    namespace prefix undeclared with `xmlns:p=""`, an element or attribute
-///    name with an empty prefix (`<:c>`, `</:c>`, ` :a="1"`), and a
-///    processing instruction whose target (the XML Name after `<?`) is `xml`
-///    in any letter case, contains a colon, or is followed by neither white
-///    space nor `?>`;
+/// 7. the well-formedness errors this release refuses after the XML parser
+///    has accepted the input, the earliest first (`Malformed`): a character
+///    reference to a surrogate or above U+10FFFF, a namespace prefix
+///    undeclared with `xmlns:p=""`, an element or attribute name with an
+///    empty prefix (`<:c>`, `</:c>`, ` :a="1"`), and a processing instruction
+///    whose target (the XML Name after `<?`) is `xml` in any letter case,
+///    contains a colon, or is followed by neither white space nor `?>`. Other
+///    input the parser accepts against XML 1.0 or Namespaces 1.0 may still be
+///    read until LIB-SEC-006 checks against the W3C XML Conformance Test
+///    Suite;
 /// 8. the roots, in two passes. First the names: an `XMI` element outside the
 ///    XMI 2.5.1 namespace, or any other XMI-namespace element, as the document
 ///    element is `Unsupported`; an `xmi:XMI` element with no root is

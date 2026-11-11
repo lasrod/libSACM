@@ -374,6 +374,15 @@ fn lib_sec_005_undeclaring_a_prefix_is_malformed_at_the_declaration() {
     let declared_above =
         format!("{ROOT_START} xmlns:p=\"urn:p\" xmi:id=\"p\">\n  <c xmlns:p=\"\"/>\n{ROOT_END}");
     assert_malformed_at(row, declared_above.as_bytes(), 2, 6);
+    // White space before the `=`: the declared prefix is still `p`.
+    let spaced = format!("{ROOT_START} xmi:id=\"p\"\n  xmlns:p =\"\"/>");
+    assert_malformed_exactly(
+        row,
+        spaced.as_bytes(),
+        2,
+        3,
+        "the namespace prefix \"p\" is declared with an empty value, and a prefix cannot be undeclared",
+    );
 }
 
 #[test]
@@ -1098,6 +1107,10 @@ fn lib_sec_005_a_pi_target_with_a_colon_is_malformed_at_its_start() {
         ("<?xml:x?>", "xml:x"),
         ("<?:?>", ":"),
         ("<?p:?>", "p:"),
+        // Also followed by neither white space nor `?>`: the colon check
+        // comes before [16].
+        ("<?a:b>?>", "a:b"),
+        ("<?p:/?>", "p:"),
     ] {
         let reason = format!("the processing instruction target \"{target}\" contains a colon");
         let in_prolog = format!("{pi}\n{ROOT}");
@@ -1205,6 +1218,33 @@ fn lib_sec_005_a_name_with_an_empty_prefix_is_malformed_at_the_name() {
         let reason = format!("the name \"{name}\" has an empty namespace prefix");
         assert_malformed_exactly(row, input.as_bytes(), 1, column, &reason);
     }
+    // A name ends at white space too, not only at `>` or `=`: the quoted name
+    // holds no trailing white space. R's start tag is 133 characters, so the
+    // child `<c>` starts at column 134 and `</:c` at 137, with the name at
+    // 139.
+    let c_reason = "the name \":c\" has an empty namespace prefix";
+    for end_tag in ["</:c >", "</:c\n>", "</:c\t>"] {
+        let input = root_holding(&format!("<c>{end_tag}"));
+        assert_malformed_exactly(row, &input, 1, 139, c_reason);
+    }
+    // An attribute with white space before its `=`.
+    let attribute = format!("{ROOT_START} xmi:id=\"p\" :x =\"1\"/>");
+    let column = column_of(row, &attribute, " :x =") + 1;
+    assert_malformed_exactly(
+        row,
+        attribute.as_bytes(),
+        1,
+        column,
+        "the name \":x\" has an empty namespace prefix",
+    );
+    let attribute = format!("{ROOT_START} xmi:id=\"p\" :x\n=\"1\"/>");
+    assert_malformed_exactly(
+        row,
+        attribute.as_bytes(),
+        1,
+        column,
+        "the name \":x\" has an empty namespace prefix",
+    );
 }
 
 // --- LIB-SEC-005 8. Name-character edges ---------------------------------------

@@ -24,6 +24,9 @@
 //!    attribute name with an empty prefix (`:c`), and a processing instruction
 //!    whose target (the XML Name after `<?`) is `xml` in any letter case,
 //!    contains a colon, or is followed by neither white space nor `?>`.
+//!    These are the constructs this release refuses; other input roxmltree
+//!    accepts against XML 1.0 or Namespaces 1.0 may still be read until
+//!    LIB-SEC-006 checks against the W3C XML Conformance Test Suite.
 //!
 //! roxmltree stays private to the `xmi` module: its errors become our own
 //! reasons and a [`SourceLocation`].
@@ -418,7 +421,10 @@ impl<'a> Cursor<'a> {
 /// instruction whose target (the XML Name after `<?`, [4]/[4a]) is `xml` in
 /// any letter case, contains a colon (Namespaces 1.0 §7), or is followed by
 /// neither white space nor `?>` ([16]). The target checks run in that order,
-/// and none applies to the checked declaration.
+/// and none applies to the checked declaration. These are the constructs
+/// this release refuses; other input roxmltree accepts against XML 1.0 or
+/// Namespaces 1.0 may still be read until LIB-SEC-006 checks against the W3C
+/// XML Conformance Test Suite.
 ///
 /// It scans the text once, in document order, so the earliest construct is
 /// refused. It scans the raw text rather than the tree, because roxmltree

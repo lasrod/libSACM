@@ -83,3 +83,12 @@ the declaration grammar in `decode`, and the rest after the parse.
   XML Conformance Test Suite) as the next slice; colon PI targets are refused
   (Namespaces 1.0 §7). ADR 0005 B1 records that other leniencies may remain until then.
 - 2026-11-11 fix round 4: empty-prefix names and colon PI targets refused; tests T8-T10; T7 extended (12,000 inputs, 0 disagreements); the input.rs unit test split for clippy.
+- 2026-11-11 verification round 4: FAIL on gaps in docs and tests only; the reader has no
+  defect (every round-1 to round-3 defect re-inserted is killed; sweeps of 16M accepted
+  inputs found no disagreement). MEDIUM: the public docs read as if the refused list
+  were complete. LOW: no row-named test of the colon-before-[16] order (H13); names
+  quoted wrongly when white space comes before `>` or `=` (H11, X1); triage line 242;
+  the roxmltree citation for empty prefixes; ADR 0005 B1 calls round 1 a parser
+  leniency. Logged for LIB-SEC-006: roxmltree accepts `xmlns:xmlns="urn:x"`
+  (Namespaces 1.0 §3).
+- 2026-11-11 fix round 5 (the maintainer authorised it): the public docs say the refused list is not complete until LIB-SEC-006; cases that kill H13, H11 and X1; citations, ADR 0005 B1 wording and the LIB-SEC-006 refusal definition fixed; triage line 245.

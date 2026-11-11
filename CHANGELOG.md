@@ -74,8 +74,10 @@ change bumps the minor version and is listed under **Breaking**.
 - `xmi::read` refuses XML the parser let through as `Malformed`: a bad XML declaration,
   a character reference to a surrogate or above U+10FFFF, `xmlns:p=""`, an element or
   attribute name with an empty prefix (`<:c>`), and a processing-instruction target that
-  is `xml`, contains a colon, or is followed by neither white space nor `?>`
-  [LIB-SEC-005].
+  is `xml`, contains a colon, or is followed by neither white space nor `?>`. These are
+  the constructs this release refuses; other input the parser accepts against XML 1.0 or
+  Namespaces 1.0 may still be read until LIB-SEC-006 checks against the W3C XML
+  Conformance Test Suite [LIB-SEC-005].
 
 ### Changed
 
