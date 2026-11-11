@@ -71,3 +71,4 @@ the declaration grammar in `decode`, and the rest after the parse.
   PASS. SACM23-XMI-001: blocked only by its LIB-SEC-005 dependency.
 - 2026-11-11 the maintainer authorised fix round 3: the PI target ends at the XML Name, `<?pi>x?>` is refused (XML [16]), and a tree-oracle sweep becomes a permanent test.
 - 2026-11-11 fix round 3: the PI target ends at the XML Name; [16] is refused; tests T4-T6; the T7 tree-oracle sweep (12,000 generated inputs, 0 disagreements, about 2 s).
+- 2026-11-11 round 3 CI: one missed mutant (`+` to `*` in the [16] location, equal for 2-character targets); killed by 1-, 3- and multi-byte-character targets.

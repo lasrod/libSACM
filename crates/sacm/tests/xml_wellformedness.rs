@@ -1063,6 +1063,24 @@ fn lib_sec_005_a_pi_target_not_followed_by_white_space_or_its_end_is_malformed()
         assert_malformed_exactly(row, in_prolog.as_bytes(), 1, 5, reason);
         assert_malformed_exactly(row, &root_holding(pi), 1, 138, reason);
     }
+    // Targets of 1 and 3 characters, and one with a two-byte character: the
+    // column is just past the target, counted in characters (`<?p` is 3
+    // characters, `<?pix` 5 and `<?pé` 4). The root's start tag is 133
+    // characters.
+    for (pi, target, column) in [
+        ("<?p>x?>", "p", 4),
+        ("<?p/?>", "p", 4),
+        ("<?pix/?>", "pix", 6),
+        ("<?pix>x?>", "pix", 6),
+        ("<?p\u{E9}>x?>", "p\u{E9}", 5),
+    ] {
+        let reason = format!(
+            "the processing instruction target \"{target}\" is not followed by white space or \"?>\""
+        );
+        let in_prolog = format!("{pi}\n{ROOT}");
+        assert_malformed_exactly(row, in_prolog.as_bytes(), 1, column, &reason);
+        assert_malformed_exactly(row, &root_holding(pi), 1, 133 + column, &reason);
+    }
     for pi in ["<?pi?>", "<?pi x?>", "<?pi\tx?>", "<?pi\n?>", "<?pi ?>"] {
         let in_prolog = format!("{pi}\n{ROOT}");
         assert_ok_with_id(row, in_prolog.as_bytes(), "p");
