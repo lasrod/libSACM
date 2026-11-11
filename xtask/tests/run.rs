@@ -802,3 +802,30 @@ fn lib_tool_001_run_flushes_out_after_the_command_writes() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// LIB-TOOL-020 item 3: the `fetch-spec` help names XMI 2.5.1
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lib_tool_020_run_help_says_fetch_spec_fetches_xmi_2_5_1() {
+    let tree = TempTree::new("run-help-xmi");
+    let out = run_ok(&["help"], tree.root());
+    // The `fetch-spec` entry: its line and the indented continuation lines
+    // under it, up to the next command, blank line or section.
+    let mut lines = out
+        .lines()
+        .skip_while(|l| !l.trim_start().starts_with("fetch-spec"));
+    let Some(first) = lines.next() else {
+        panic!("LIB-TOOL-020: `help` lists `fetch-spec`, wrote {out:?}");
+    };
+    let entry: Vec<&str> = std::iter::once(first)
+        .chain(lines.take_while(|l| l.starts_with("                          ")))
+        .collect();
+    let entry = entry.join("\n");
+    assert!(
+        entry.contains("XMI 2.5.1"),
+        "LIB-TOOL-020: the `fetch-spec` help names XMI 2.5.1 among the fetched sources, got \
+         {entry:?}"
+    );
+}

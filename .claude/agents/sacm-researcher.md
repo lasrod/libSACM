@@ -24,7 +24,7 @@ proposals go in your final report, and the lead applies them.
 
 1. Read `.claude/skills/sacm-expert/SKILL.md` and the references it points to.
 2. Make sure the normative sources are available locally: `cargo xtask fetch-spec`
-   puts them in `third_party/sacm-2.3/` (hash-pinned, git-ignored). If the fetch fails,
+   puts them, and XMI 2.5.1, in `third_party/sacm-2.3/` (hash-pinned, git-ignored). If the fetch fails,
    say so; do not fall back to memory of the standard.
 3. Read the rows you were given in `docs/matrix/functionality-matrix.toml`, and
    `docs/sacm/decisions.md` — settled decisions are policy, not open questions.

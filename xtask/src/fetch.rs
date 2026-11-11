@@ -1,4 +1,5 @@
-//! Download the OMG SACM 2.3 reference artifacts, pinned by SHA-256.
+//! Download the OMG reference artifacts, pinned by SHA-256: the SACM 2.3
+//! sources and the XMI 2.5.1 specification they reference.
 //!
 //! The artifacts are OMG documents and are not redistributed in this
 //! repository; each contributor fetches them into a git-ignored directory.
@@ -35,7 +36,8 @@ pub struct Artifact {
     pub what: &'static str,
 }
 
-/// The normative SACM 2.3 sources, in source-priority order.
+/// The reference artifacts: the SACM 2.3 sources in source-priority order,
+/// then XMI 2.5.1, which they reference.
 pub const ARTIFACTS: &[Artifact] = &[
     Artifact {
         file_name: "SACM-2.3-formal-23-05-08.pdf",
@@ -48,6 +50,12 @@ pub const ARTIFACTS: &[Artifact] = &[
         url: "https://www.omg.org/spec/SACM/20220301/SACM.xml",
         sha256: "4bc12020fe38018fe24d39e56ec04f2fc9190fe7cf1161d85452fda5f3fbeb1e",
         what: "SACM 2.3 normative machine-readable metamodel (ptc/22-03-13)",
+    },
+    Artifact {
+        file_name: "XMI-2.5.1-formal-15-06-07.pdf",
+        url: "https://www.omg.org/spec/XMI/2.5.1/PDF",
+        sha256: "2bf97c670f128affc9ed5dc202ef748101afd0eee8ee662e8763da6092c80c1b",
+        what: "XMI 2.5.1 formal specification (formal/15-06-07)",
     },
 ];
 

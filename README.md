@@ -48,7 +48,7 @@ Minimum supported Rust version: **1.85** (`rust-version` in `Cargo.toml`).
 cargo build --workspace
 cargo test --workspace --all-features
 cargo xtask matrix check     # the matrix gate
-cargo xtask fetch-spec       # download the OMG SACM 2.3 references (not redistributed)
+cargo xtask fetch-spec       # download the OMG SACM 2.3 and XMI 2.5.1 references (not redistributed)
 ```
 
 ## Workspace

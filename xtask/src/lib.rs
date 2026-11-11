@@ -11,8 +11,8 @@
 //! - [`run_from`] and [`run`]: the dispatcher and the usage text.
 //! - [`matrix`]: the functionality-matrix gate (`cargo xtask matrix check`,
 //!   `render`, `next`, `status`).
-//! - [`fetch`]: hash-pinned download of the OMG SACM 2.3 reference artifacts
-//!   (`cargo xtask fetch-spec`).
+//! - [`fetch`]: hash-pinned download of the OMG SACM 2.3 and XMI 2.5.1
+//!   reference artifacts (`cargo xtask fetch-spec`).
 //!
 //! ```text
 //! cargo xtask matrix check        Gate: validate the functionality matrix against the repo
@@ -20,7 +20,7 @@
 //! cargo xtask matrix next [-n N]  List the next ready rows for the slice loop
 //! cargo xtask matrix status       Summary of row statuses per milestone
 //! cargo xtask fetch-spec [--dest DIR]
-//!                                 Download the pinned OMG SACM 2.3 reference artifacts
+//!                                 Download the pinned OMG SACM 2.3 and XMI 2.5.1 references
 //! ```
 //!
 //! The binary works on the repository it was built in. Set the `XTASK_ROOT`
@@ -56,7 +56,7 @@ commands:
   matrix render           regenerate docs/matrix/functionality-matrix.md
   matrix next [-n N]      list the next N ready rows (default 10)
   matrix status           summarize row statuses per milestone
-  fetch-spec [--dest DIR] download the pinned OMG SACM 2.3 reference artifacts
+  fetch-spec [--dest DIR] download the pinned OMG SACM 2.3 and XMI 2.5.1 references
                           (default DIR: third_party/sacm-2.3)
 
 environment:

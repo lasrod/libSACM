@@ -14,6 +14,8 @@ change bumps the minor version and is listed under **Breaking**.
 - The functionality matrix and its gate (`cargo xtask matrix check|render|next|status`):
   every row's status must match its tests and verification record.
 - Hash-pinned download of the OMG SACM 2.3 references (`cargo xtask fetch-spec`).
+- `cargo xtask fetch-spec` also fetches XMI 2.5.1 (formal/15-06-07), hash-pinned
+  [LIB-TOOL-020].
 - CI gates: rustfmt, clippy, tests on Linux, Windows and macOS, MSRV 1.85, rustdoc,
   cargo-deny, the matrix gate and the agent-hook tests. Third-party actions are pinned
   by commit SHA.

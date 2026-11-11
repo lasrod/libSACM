@@ -15,5 +15,5 @@ every change follows.
 | [slices/](slices/) | One brief per slice: scope, design decisions, log. |
 | [verification/](verification/) | One record per verified slice: the verifier's findings and verdicts. Together with the slice briefs, this is the audit trail. |
 
-The normative SACM 2.3 sources are not in the repository. `cargo xtask fetch-spec`
-downloads them into `third_party/sacm-2.3/`.
+The normative SACM 2.3 sources and XMI 2.5.1 are not in the repository.
+`cargo xtask fetch-spec` downloads them into `third_party/sacm-2.3/`.
