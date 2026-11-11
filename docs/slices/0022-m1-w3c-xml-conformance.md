@@ -57,3 +57,12 @@ the undeclaring check.
 - 2026-11-11 tests and implementation: 28 tests; the `xmlns:xmlns` check; `fetch-spec --only xmlconf`; `fetch_suite_from` keeps the xtask tests offline; the local gate passes with the suite present. The CI fetch and cache wait for PR #29 (the same workflow files).
 - 2026-11-11 CI: every job that runs the crate's tests fetches the suite (`--only xmlconf`), caches it by its hash, and sets `SACM_XMLCONF_DIR`.
 - 2026-11-11 Copilot round: the SKIPPED notice is written to stderr directly; the over-strictness guard rejects panics; a failed extraction removes the marker (with a retry test); the input.rs unit tests run under a 5 s deadline (a timeout on `start_tag -> Ok(Some(0))`, the LIB-QA-012 residual).
+- 2026-11-11 PR #30 merged before verification. Full mutants run 43031814423: 846 caught, 0 missed.
+- 2026-11-11 verification round 1: FAIL, with 5 findings:
+  - a case-insensitive check survives every test (`xmlns:XMLNS` is conforming);
+  - `ran 1017 cases` was captured, so it never showed in CI logs;
+  - the tar-naming assertion matched the temp directory's name, and the spawn-failure path was not tested;
+  - re-extracting after a fresh download was not tested;
+  - the docs overstated what LIB-SEC-005's sweep guards.
+
+  Fixes go on branch `slice/0022-verification-fixes`.

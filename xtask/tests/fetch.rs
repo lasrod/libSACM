@@ -16,8 +16,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::fmt::Write as _;
 
 use xtask::fetch::{
-    ARTIFACTS, Artifact, Outcome, XMLCONF, XMLCONF_DEST, curl_download, fetch_into, fetch_suite,
-    fetch_suite_from, sha256_hex, tar_extract,
+    ARTIFACTS, Artifact, Outcome, XMLCONF, XMLCONF_DEST, curl_download, extract_with, fetch_into,
+    fetch_suite, fetch_suite_from, sha256_hex, tar_extract,
 };
 
 /// The FIPS 180-2 test input and its SHA-256, so the pins in these tests do
@@ -764,6 +764,42 @@ fn lib_sec_006_fetch_suite_re_extracts_when_the_master_catalog_is_missing() {
 }
 
 #[test]
+fn lib_sec_006_fetch_suite_extracts_a_fresh_download_even_when_the_marker_is_present() {
+    // A left-over xmlconf/xmlconf.xml without the archive: the archive just
+    // downloaded is extracted over it, so the suite matches the pin.
+    let dir = TempDir::new("lib-sec-006-stale-marker");
+    let dest = suite_dest(&dir);
+    plant_master(&dest).expect("LIB-SEC-006: plant xmlconf/xmlconf.xml");
+    let mut downloads = 0_usize;
+    let mut extracts: Vec<(PathBuf, PathBuf)> = Vec::new();
+
+    let result = fetch_suite_from(
+        &dest,
+        &SUITE,
+        &mut |_url: &str, out: &Path| {
+            downloads += 1;
+            fs::write(out, ABC).map_err(|e| e.to_string())
+        },
+        &mut |archive: &Path, into: &Path| {
+            extracts.push((archive.to_path_buf(), into.to_path_buf()));
+            plant_master(into)
+        },
+    );
+
+    assert_eq!(
+        (result, downloads),
+        (Ok(Outcome::Fetched), 1),
+        "LIB-SEC-006: a missing archive is downloaded once and the outcome is Fetched, even \
+         with the marker present"
+    );
+    assert_eq!(
+        extracts,
+        [(dest.join(SUITE.file_name), dest.clone())],
+        "LIB-SEC-006: a freshly downloaded archive is extracted once, marker or not"
+    );
+}
+
+#[test]
 fn lib_sec_006_fetch_suite_refuses_an_existing_archive_with_the_wrong_hash() {
     // `fetch_suite` itself, with the real pin: a planted file with another
     // hash fails before anything is downloaded, so this runs offline. With
@@ -897,9 +933,15 @@ fn lib_sec_006_fetch_suite_retries_after_a_partly_failed_extraction() {
 
 #[test]
 fn lib_sec_006_tar_extract_of_a_missing_archive_is_an_error_naming_tar() {
-    let dir = TempDir::new("lib-sec-006-tar-missing");
-    // The name does not contain "tar", so the message names the tool.
+    // Neither the directory nor the archive name contains "tar", so only the
+    // command can put it at the start of the message.
+    let dir = TempDir::new("lib-sec-006-extract-absent");
     let archive = dir.file("absent.tgz");
+    assert!(
+        !archive.to_string_lossy().contains("tar"),
+        "LIB-SEC-006: the test path must not contain \"tar\", got {}",
+        archive.display()
+    );
 
     let outcome = catch_unwind(AssertUnwindSafe(|| tar_extract(&archive, dir.path())));
 
@@ -910,8 +952,30 @@ fn lib_sec_006_tar_extract_of_a_missing_archive_is_an_error_naming_tar() {
         panic!("LIB-SEC-006: tar_extract of a missing archive must fail, got Ok");
     };
     assert!(
-        message.contains("tar"),
-        "LIB-SEC-006: the error names tar, got {message:?}"
+        message.starts_with("tar -xzf "),
+        "LIB-SEC-006: the error starts with the command tar ran, got {message:?}"
+    );
+}
+
+#[test]
+fn lib_sec_006_extract_with_a_program_that_cannot_run_is_an_error_naming_it() {
+    let dir = TempDir::new("lib-sec-006-extract-with-missing-program");
+    let program = "libsacm-no-such-extractor";
+    let archive = dir.file("absent.tgz");
+
+    let outcome = catch_unwind(AssertUnwindSafe(|| {
+        extract_with(program, &archive, dir.path())
+    }));
+
+    let Ok(result) = outcome else {
+        panic!("LIB-SEC-006: extract_with panicked on a missing program instead of returning Err");
+    };
+    let Err(message) = result else {
+        panic!("LIB-SEC-006: extract_with({program:?}, ..) must fail, got Ok");
+    };
+    assert!(
+        message.starts_with(&format!("could not run {program}")),
+        "LIB-SEC-006: a program that cannot be run is an error naming it, got {message:?}"
     );
 }
 

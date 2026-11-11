@@ -1441,7 +1441,14 @@ fn lib_sec_006_prefixes_that_only_start_with_xml_are_not_refused() {
     let row = "LIB-SEC-006";
     // §3: such prefixes are reserved, but processors "MUST NOT treat them as
     // fatal errors".
-    for declaration in ["xmlns:xmlnsx=\"urn:x\"", "xmlns:xmlfoo=\"urn:x\""] {
+    // The reservation covers "xml" "in any case combination": `XMLNS` and
+    // `Xmlns` are reserved but are not the prefix `xmlns`, so they are read.
+    for declaration in [
+        "xmlns:xmlnsx=\"urn:x\"",
+        "xmlns:xmlfoo=\"urn:x\"",
+        "xmlns:XMLNS=\"urn:x\"",
+        "xmlns:Xmlns=\"urn:x\"",
+    ] {
         let input = format!("{ROOT_START} xmi:id=\"p\" {declaration}/>");
         assert_ok_with_id(row, input.as_bytes(), "p");
     }

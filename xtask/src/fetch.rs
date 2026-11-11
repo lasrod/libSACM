@@ -261,18 +261,33 @@ pub fn fetch_suite_from(
 /// Returns a message when `tar` cannot be run (naming it) or exits
 /// unsuccessfully (naming the archive, `dir` and the exit status).
 pub fn tar_extract(archive: &Path, dir: &Path) -> Result<(), String> {
+    extract_with("tar", archive, dir)
+}
+
+/// Extract the gzip-compressed tar `archive` into `dir` with `program`, as
+/// `<program> -xzf <archive>` run in `dir`.
+///
+/// [`tar_extract`] is this with `"tar"`. The archive is named as
+/// [`tar_extract`] names it.
+///
+/// # Errors
+///
+/// Returns a message starting `could not run <program>` when `program` cannot
+/// be run, or `<program> -xzf <archive> in <dir> failed: <status>` when it
+/// exits unsuccessfully.
+pub fn extract_with(program: &str, archive: &Path, dir: &Path) -> Result<(), String> {
     let name = archive.strip_prefix(dir).unwrap_or(archive);
-    let status = Command::new("tar")
+    let status = Command::new(program)
         .arg("-xzf")
         .arg(name)
         .current_dir(dir)
         .status()
-        .map_err(|e| format!("could not run tar (is it installed?): {e}"))?;
+        .map_err(|e| format!("could not run {program} (is it installed?): {e}"))?;
     if status.success() {
         Ok(())
     } else {
         Err(format!(
-            "tar -xzf {} in {} failed: {status}",
+            "{program} -xzf {} in {} failed: {status}",
             name.display(),
             dir.display()
         ))
