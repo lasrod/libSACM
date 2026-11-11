@@ -37,3 +37,4 @@ Namespaces in XML 1.0; XMI 2.5.1. The research fills in the exact clauses.
 - 2026-11-12 tests: 18 tests in `xmi_namespace_prefixes.rs`. The lead confirmed the red:
   only the white-space and `xmlns=""` tests fail, for the stated reasons.
 - 2026-11-12 implementation: the type value is trimmed of XML white space before it is resolved; `Some("")` counts as no namespace. The local gate passes.
+- 2026-11-12 verification round 1: FAIL, with one finding: `str::trim()` (which strips Unicode white space) survived every test. The fix adds U+00A0 and U+0085 controls and one sentence in acceptance item 7.

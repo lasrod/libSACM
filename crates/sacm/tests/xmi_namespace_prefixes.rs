@@ -718,6 +718,21 @@ fn sacm23_xmi_002_a_type_value_that_is_not_a_sacm_qname_of_the_root_class_is_uns
             typed_root("xsi:type", " ArgumentPackage "),
         ),
         ("white space only", typed_root("xsi:type", " &#9; ")),
+        // XSD collapse removes #x20, #x9, #xA and #xD only (Part 2 §4.3.6), so
+        // other Unicode white space stays and the value names no class. One
+        // side at a time, so trimming only the start or only the end is caught.
+        (
+            "U+00A0 before the value",
+            typed_root("xsi:type", "&#xA0;sacm:ArgumentPackage"),
+        ),
+        (
+            "U+00A0 after the value",
+            typed_root("xsi:type", "sacm:ArgumentPackage&#xA0;"),
+        ),
+        (
+            "U+0085 on both sides",
+            typed_root("xsi:type", "&#x85;sacm:ArgumentPackage&#x85;"),
+        ),
         (
             "an undeclared prefix in xmi:type",
             typed_root("xmi:type", "zz:ArgumentPackage"),
