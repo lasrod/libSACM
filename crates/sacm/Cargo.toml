@@ -21,6 +21,9 @@ homepage.workspace = true
 test-support = []
 
 [dependencies]
+# The private XML parser of `sacm::xmi` (ADR 0005). 0.21.2 is the first release that
+# parses deep nesting without recursion. DTDs stay disabled, its default.
+roxmltree = { version = "0.21.2", default-features = false, features = ["std", "positions"] }
 
 [dev-dependencies]
 # The crate's own tests always build with the test seam.

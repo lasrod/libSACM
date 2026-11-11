@@ -65,6 +65,5 @@ maintainer when a slice needs them.
 | ID | Question | Needed by |
 |---|---|---|
 | Q-UNDO | Should undo be built on inverse operations or snapshots? | LIB-EDIT-011 |
-| Q-XML-BACKEND | Which XML crate(s) for reading and writing (see ADR 0005, proposed)? | first XMI slice |
 | Q-DATE | How should `date`-typed attributes be represented: validated `xs:date`/`xs:dateTime` lexical forms preserved as text, or parsed values? | SACM23-ART-013 |
 | Q-INTEROP | Which third-party corpus files may be committed (licence review)? assurance-forge carries EPL-2.0 and MIT samples under `libs/sacm/tests/data/interop-thirdparty/`. | LIB-COMPAT-005 |

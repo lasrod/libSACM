@@ -1662,22 +1662,68 @@ id = "LIB-SEC-001"
 area = "SEC"
 milestone = "M1"
 title = "DTDs and entities are refused"
-requirement = "Any document containing a DOCTYPE declaration or entity is refused with diagnostic SACM-SEC-001 before any entity could be resolved or expanded, in every mode."
-source = "OWASP XXE prevention; docs/sacm/diagnostics.md SACM-SEC-001"
+requirement = "`xmi::read` refuses any document with a DOCTYPE declaration (with or without an internal subset, entity declarations or an external DTD) with `ReadError::Doctype`, carrying code SACM-SEC-001 and the declaration's location, before anything in it could be declared, resolved, fetched or expanded, in every mode (ADR 0005, ADR 0015). The parser detects a real declaration, so `<!DOCTYPE` or `<!ENTITY` text in a comment, CDATA section or attribute value is not refused as one (ADR 0005 B3). A stray `<!ENTITY` outside a DOCTYPE, and an undeclared entity reference, are malformed XML (LIB-SEC-002) and are never expanded."
+source = "OWASP XML External Entity Prevention; docs/sacm/diagnostics.md SACM-SEC-001 \"Document contains a DOCTYPE/external entity declaration; rejected for safety.\"; ADR 0005 (roxmltree, DTDs disabled; B3); ADR 0015; assurance-forge libs/sacm io/xmi_reader.cpp:2354-2366 (raw scan, deviated from)"
 kind = "security"
-status = "planned"
-depends_on = ["LIB-DIAG-001", "LIB-API-004"]
+status = "implemented"
+depends_on = ["LIB-DIAG-001", "LIB-API-004", "LIB-API-009"]
+acceptance = [
+  "A DOCTYPE with no internal subset, one with an internal subset declaring entities (an XXE `SYSTEM \"file:...\"` entity, a billion-laughs chain, a parameter entity) and an external DTD (`PUBLIC` or `SYSTEM`) each return `ReadError::Doctype` whose `code()` is SACM-SEC-001 and whose `location()` is the line and column of `<!DOCTYPE`, including after a prolog of comments or processing instructions and on a line other than 1.",
+  "Nothing is resolved or expanded: an XXE entity naming a file that exists (the crate's own `Cargo.toml`) gives `Doctype`, and neither its `Display` nor its `Debug` contains any text of that file; the billion-laughs input returns `Doctype` without growing.",
+  "`<!DOCTYPE` and `<!ENTITY` written inside a comment, a CDATA section, a processing instruction or an attribute value (escaped, as `&lt;!DOCTYPE`) of a well-formed document are not refused as `Doctype` or `Malformed`.",
+  "A stray `<!ENTITY x \"y\">` outside any DOCTYPE, and an undeclared reference `&xxe;`, return `ReadError::Malformed` (SACM-XML-001), not `Doctype`; the reference is never expanded.",
+  "`Code::XML_DOCTYPE_REJECTED` is SACM-SEC-001 and appears in a table row of `docs/sacm/diagnostics.md`.",
+  "The `Doctype` `Display` is one lowercase line without trailing punctuation that names the location, e.g. `refused a DOCTYPE or ENTITY declaration at line 2, column 1`; `source()` is `None`.",
+]
+code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/input.rs"]
+tests = [
+  "crates/sacm/tests/xmi_read.rs::lib_sec_001_billion_laughs_is_refused_without_expansion",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_001_declaration_text_in_comment_cdata_or_attribute_is_not_refused",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_001_doctype_after_a_prolog_is_located_by_line_and_column",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_001_doctype_display_is_one_located_line_without_source",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_001_doctype_rejected_code_is_sacm_sec_001_in_the_catalog",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_001_doctype_with_entity_declarations_is_refused_at_its_location",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_001_doctype_without_internal_subset_is_refused_at_its_location",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_001_external_dtd_is_refused_at_its_location",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_001_stray_entity_declaration_is_malformed_not_doctype",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_001_undeclared_entity_reference_is_malformed_and_not_expanded",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_001_xxe_naming_an_existing_file_is_not_resolved",
+]
 
 [[row]]
 id = "LIB-SEC-002"
 area = "SEC"
 milestone = "M1"
 title = "Malformed input is diagnosed, never a panic"
-requirement = "Malformed XML, truncated input, invalid UTF-8 and wrong root elements produce an error or diagnostic (SACM-XML-001, SACM-XMI-001) with a location where available; no input causes a panic."
-source = "docs/sacm/diagnostics.md SACM-XML-001, SACM-XMI-001"
+requirement = "Malformed XML (mismatched or unclosed tags, more than one root, no root, an undeclared namespace prefix, an undeclared entity reference, a duplicate attribute), truncated input and input that is not valid UTF-8 are refused by `xmi::read` with `ReadError::Malformed`, carrying code SACM-XML-001, a reason and a location where one is known (ADR 0005, ADR 0015). No input causes a panic, an abort or unbounded recursion. Wrong root elements are SACM23-XMI-001; resource limits are LIB-SEC-003; fuzzing is LIB-SEC-004."
+source = "docs/sacm/diagnostics.md SACM-XML-001 \"Malformed XML; parse failed.\"; ADR 0005 (roxmltree >= 0.21.2: iterative parsing of nested elements; B1); ADR 0011 (SourceLocation, message rules); ADR 0015; assurance-forge libs/sacm io/xmi_reader.cpp (parse failure)"
 kind = "security"
-status = "planned"
-depends_on = ["LIB-DIAG-001", "LIB-API-004"]
+status = "implemented"
+depends_on = ["LIB-DIAG-001", "LIB-API-004", "LIB-API-009"]
+acceptance = [
+  "Every proper prefix of a small well-formed SACM document, the empty input included, returns `ReadError::Malformed` whose `code()` is SACM-XML-001; a prefix cut inside the document reports a location at or before the end of the input.",
+  "Input that is not valid UTF-8 returns `Malformed` located at the first invalid byte (line and column), for an invalid byte on line 1 and on a later line.",
+  "Each of: a mismatched end tag, an unclosed element, two root elements, text only, an undeclared namespace prefix, an undeclared entity reference and a duplicate attribute returns `Malformed` with a location.",
+  "No panic: every prefix of the sample document, every single-byte replacement of it with 0x00, `<`, `&` and 0xFF, 100,000 levels of nesting (well-formed and unclosed), and empty, whitespace-only and BOM-only input each return a value without panicking.",
+  "The `Malformed` `Display` is one lowercase line without trailing punctuation, naming the location when known (`... at line L, column C: <reason>`); names from the input are quoted, so a line break in the input never breaks the line; the reason contains no position of its own.",
+  "`ReadError`, `ReadOptions` and `ReadOutput` are `Send + Sync + 'static` (checked statically); `ReadError` is `Clone + Eq + Hash + Debug + std::error::Error` with `source()` `None`, and is `#[non_exhaustive]`.",
+  "`Code::XML_MALFORMED` is SACM-XML-001 and appears in a table row of `docs/sacm/diagnostics.md`.",
+]
+code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/input.rs"]
+tests = [
+  "crates/sacm/tests/xmi_read.rs::lib_sec_002_deep_nesting_returns_without_recursion",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_002_each_kind_of_malformed_xml_is_refused_with_a_location",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_002_each_refusal_is_clone_eq_and_deterministic_without_source",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_002_empty_whitespace_and_bom_only_input_return_a_value",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_002_every_proper_prefix_of_a_document_is_malformed",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_002_every_refusal_in_the_sweep_has_its_display_code_and_no_source",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_002_invalid_utf8_is_malformed_at_the_first_invalid_byte",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_002_malformed_display_is_one_located_line",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_002_malformed_display_quotes_names_and_never_breaks_the_line",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_002_prefixes_and_byte_replacements_never_panic",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_002_read_types_are_send_sync_static_with_the_error_traits",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_002_xml_malformed_code_is_sacm_xml_001_in_the_catalog",
+]
 
 [[row]]
 id = "SACM23-XMI-001"
@@ -1688,7 +1734,7 @@ requirement = "XMI import recognizes an AssuranceCasePackage or ArgumentPackage 
 source = "formal/23-05-08 clause 2 (compliance points)"
 kind = "xmi"
 status = "planned"
-depends_on = ["SACM23-AC-001", "SACM23-ARG-001", "LIB-SEC-001"]
+depends_on = ["SACM23-AC-001", "SACM23-ARG-001", "LIB-SEC-001", "LIB-SEC-002", "LIB-API-009"]
 
 [[row]]
 id = "SACM23-XMI-002"
@@ -1783,7 +1829,7 @@ id = "LIB-COMPAT-001"
 area = "COMPAT"
 milestone = "M1"
 title = "Strict and tolerant load modes"
-requirement = "Loading takes an explicit mode: tolerant (default) accepts and reports recognised variations as warnings; strict reports them as errors. Saving is strict by default. The mode used is visible in the load result."
+requirement = "Loading takes an explicit mode: tolerant (default) accepts and reports recognised variations as warnings; strict reports them as errors. Saving is strict by default. The mode used is visible in the load result. The SACM-SEC-001 and SACM-XML-001 refusals (LIB-SEC-001, LIB-SEC-002) are the same in both modes."
 source = "D-STRICT"
 kind = "api"
 status = "planned"
@@ -2831,7 +2877,7 @@ requirement = "Import and export XMI documents whose unit of interchange is Argu
 source = "formal/23-05-08 clause 2"
 kind = "compliance"
 status = "planned"
-depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-ARG-001", "SACM23-ARG-002", "SACM23-ARG-003", "SACM23-ARG-004", "SACM23-ARG-005", "SACM23-ARG-006", "SACM23-ARG-007", "SACM23-ARG-008", "SACM23-ARG-009", "SACM23-ARG-010", "SACM23-ARG-011", "SACM23-ARG-012", "SACM23-ARG-013", "SACM23-ARG-014", "SACM23-ARG-015", "SACM23-XMI-001", "SACM23-XMI-002", "SACM23-XMI-003", "SACM23-XMI-004", "SACM23-XMI-005", "SACM23-XMI-006", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-XMI-009", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-005", "SACM23-VAL-006", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-009", "SACM23-VAL-010", "SACM23-VAL-011", "SACM23-VAL-012", "SACM23-VAL-013", "SACM23-VAL-014", "SACM23-VAL-016", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008", "SACM23-XMI-017", "SACM23-VAL-019"]
+depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-ARG-001", "SACM23-ARG-002", "SACM23-ARG-003", "SACM23-ARG-004", "SACM23-ARG-005", "SACM23-ARG-006", "SACM23-ARG-007", "SACM23-ARG-008", "SACM23-ARG-009", "SACM23-ARG-010", "SACM23-ARG-011", "SACM23-ARG-012", "SACM23-ARG-013", "SACM23-ARG-014", "SACM23-ARG-015", "SACM23-XMI-001", "SACM23-XMI-002", "SACM23-XMI-003", "SACM23-XMI-004", "SACM23-XMI-005", "SACM23-XMI-006", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-XMI-009", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-005", "SACM23-VAL-006", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-009", "SACM23-VAL-010", "SACM23-VAL-011", "SACM23-VAL-012", "SACM23-VAL-013", "SACM23-VAL-014", "SACM23-VAL-016", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008", "SACM23-XMI-017", "SACM23-VAL-019", "SACM23-XMI-018"]
 
 [[row]]
 id = "SACM23-CP-003"
@@ -2842,7 +2888,7 @@ requirement = "Import and export XMI documents whose unit of interchange is Arti
 source = "formal/23-05-08 clause 2"
 kind = "compliance"
 status = "planned"
-depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-ART-001", "SACM23-ART-002", "SACM23-ART-003", "SACM23-ART-004", "SACM23-ART-005", "SACM23-ART-006", "SACM23-ART-007", "SACM23-ART-008", "SACM23-ART-009", "SACM23-ART-010", "SACM23-ART-011", "SACM23-ART-012", "SACM23-ART-013", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-XMI-009", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-013", "SACM23-VAL-014", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008"]
+depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-ART-001", "SACM23-ART-002", "SACM23-ART-003", "SACM23-ART-004", "SACM23-ART-005", "SACM23-ART-006", "SACM23-ART-007", "SACM23-ART-008", "SACM23-ART-009", "SACM23-ART-010", "SACM23-ART-011", "SACM23-ART-012", "SACM23-ART-013", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-XMI-009", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-013", "SACM23-VAL-014", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008", "SACM23-XMI-018"]
 
 [[row]]
 id = "SACM23-CP-004"
@@ -2853,7 +2899,7 @@ requirement = "Import and export XMI documents whose unit of interchange is Term
 source = "formal/23-05-08 clause 2"
 kind = "compliance"
 status = "planned"
-depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-TERM-001", "SACM23-TERM-002", "SACM23-TERM-003", "SACM23-TERM-004", "SACM23-TERM-005", "SACM23-TERM-006", "SACM23-TERM-007", "SACM23-TERM-008", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-009", "SACM23-VAL-013", "SACM23-VAL-014", "SACM23-VAL-017", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008"]
+depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-TERM-001", "SACM23-TERM-002", "SACM23-TERM-003", "SACM23-TERM-004", "SACM23-TERM-005", "SACM23-TERM-006", "SACM23-TERM-007", "SACM23-TERM-008", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-009", "SACM23-VAL-013", "SACM23-VAL-014", "SACM23-VAL-017", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008", "SACM23-XMI-018"]
 
 [[row]]
 id = "SACM23-CP-001"
@@ -3018,6 +3064,47 @@ source = "formal/23-05-08 §11.8: \"asCited - a flag indicating that because the
 kind = "validation"
 status = "planned"
 depends_on = ["SACM23-ARG-002", "SACM23-BASE-007"]
+
+[[row]]
+id = "LIB-API-009"
+area = "API"
+milestone = "M1"
+title = "The reader refuses what it cannot represent"
+requirement = "`xmi::read` never returns a document that is missing content from its input (D-PRESERVE). Well-formed input that it cannot fully represent is refused with `ReadError::Unsupported`, which has no catalog code and carries a reason and a location: content that no verified row reads yet (in the first release, every well-formed document), UTF-16 or UTF-32 input (until SACM23-XMI-018), and a declared encoding other than UTF-8 or ASCII. A declared UTF-8 or ASCII encoding is accepted in any letter case; a byte of 0x80 or above under an ASCII declaration is malformed (SACM-XML-001). Parser capacity limits are refused the same way."
+source = "D-PRESERVE \"Never drop conforming SACM data. Preserve with a diagnostic, or refuse\"; ADR 0015 (interim rule); ADR 0005 B2; XML 1.0 (Fifth Edition) §4.3.3 (encodings; quoted when SACM23-XMI-018 is analysed)"
+kind = "api"
+status = "implemented"
+depends_on = ["LIB-API-004", "LIB-DIAG-001"]
+acceptance = [
+  "A well-formed UTF-8 SACM document (an `AssuranceCasePackage` root) and a well-formed non-SACM document are refused with `ReadError::Unsupported`, `code()` `None`, located at the root element; `read` returns no `Ok` in this release.",
+  "UTF-16 LE and BE input with a BOM, and UTF-32 BOMs, are refused with `Unsupported`, never `Malformed` and never misread.",
+  "A declared `encoding=\"ISO-8859-1\"` (and another non-UTF-8 name) is refused with `Unsupported`, whether or not its bytes are valid UTF-8: a real ISO-8859-1 file with a 0xE9 byte is `Unsupported`, not `Malformed`, because the declaration is read before the UTF-8 check (ADR 0005 B2); `UTF-8`, `utf-8`, `US-ASCII` and `ASCII` declarations are not refused as `Doctype` or `Malformed`; a byte of 0x80 or above under an ASCII declaration is `Malformed`.",
+  "The `Unsupported` `Display` is one lowercase line without trailing punctuation, naming the location when known; names from the input are quoted.",
+]
+code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/input.rs"]
+tests = [
+  "crates/sacm/tests/xmi_read.rs::lib_api_009_declared_non_utf8_encoding_is_unsupported",
+  "crates/sacm/tests/xmi_read.rs::lib_api_009_declared_non_utf8_encoding_with_invalid_utf8_bytes_is_unsupported",
+  "crates/sacm/tests/xmi_read.rs::lib_api_009_invalid_utf8_without_or_under_a_utf8_or_ascii_declaration_stays_malformed",
+  "crates/sacm/tests/xmi_read.rs::lib_api_009_non_ascii_byte_under_ascii_declaration_is_malformed",
+  "crates/sacm/tests/xmi_read.rs::lib_api_009_refusal_of_an_encoding_name_with_line_breaks_stays_one_line",
+  "crates/sacm/tests/xmi_read.rs::lib_api_009_unsupported_display_is_one_located_line_quoting_names",
+  "crates/sacm/tests/xmi_read.rs::lib_api_009_utf16_and_utf32_input_is_unsupported",
+  "crates/sacm/tests/xmi_read.rs::lib_api_009_utf8_and_ascii_declarations_in_any_case_are_not_refused",
+  "crates/sacm/tests/xmi_read.rs::lib_api_009_well_formed_non_sacm_document_is_unsupported_at_its_root",
+  "crates/sacm/tests/xmi_read.rs::lib_api_009_well_formed_sacm_document_is_unsupported_at_its_root",
+]
+
+[[row]]
+id = "SACM23-XMI-018"
+area = "XMI"
+milestone = "M1"
+title = "UTF-16 input"
+requirement = "`xmi::read` reads a UTF-16 document (little- and big-endian, with a byte order mark or as declared) exactly as it reads the same document in UTF-8, decoding with std only, because XML 1.0 requires every processor to accept UTF-8 and UTF-16 (ADR 0005 B2). Locations count characters as for UTF-8. Other encodings stay refused (LIB-API-009)."
+source = "XML 1.0 (Fifth Edition) §4.3.3 (quoted when analysed); formal/23-05-08 clause 2 (import every schema-conforming document); ADR 0005 B2; the maintainer's decision of 2026-11-11"
+kind = "xmi"
+status = "planned"
+depends_on = ["LIB-API-009", "SACM23-XMI-001"]
 
 [[row]]
 id = "LIB-API-005"

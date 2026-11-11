@@ -1,0 +1,81 @@
+---
+slice: 0019
+name: m1-xml-input-safety
+state: in-progress
+step: verification
+rows: [LIB-SEC-001, LIB-SEC-002, LIB-API-009]
+mode: pr
+---
+
+# Slice 0019 — XML input safety
+
+## Scope
+
+- **LIB-SEC-001:** a document with a DOCTYPE or an entity declaration is refused
+  (SACM-SEC-001) before anything could be resolved, in every mode.
+- **LIB-SEC-002:** malformed XML, truncated input and invalid UTF-8 are refused with a
+  diagnostic and a location, and no input causes a panic.
+- **LIB-API-009:** the reader refuses what it cannot represent (`Unsupported`), and
+  never returns a partial document.
+
+This is the crate's first XML input, so the slice decides the XML backend (ADR 0005)
+and the shape of the load entry point. Out of scope: reading SACM content into a
+`Document` (the XMI rows, starting with SACM23-XMI-001), load modes (LIB-COMPAT-001) and
+saving.
+
+## Basis
+
+Quality rows: acceptance by the lead. OWASP XXE prevention; docs/sacm/diagnostics.md
+(SACM-SEC-001, SACM-XML-001, SACM-XMI-001); ADR 0005, ADR 0011; the assurance-forge
+C++ `io/xmi_reader.cpp`.
+
+## Design
+
+ADR 0005 (accepted: roxmltree 0.21.2, private) and ADR 0015 (accepted: the read entry
+point).
+- **`sacm::xmi`:** `read(input: &[u8], options: &ReadOptions) -> Result<ReadOutput, ReadError>`.
+  `ReadOptions {}` and `ReadOutput {}` are both `#[non_exhaustive]` and empty for now.
+- **`ReadError`** (`#[non_exhaustive]`):
+  - `Doctype { location }`: SACM-SEC-001.
+  - `Malformed { location, reason }`: SACM-XML-001.
+  - `Unsupported { location, reason }`: no code.
+  - `code()` and `location()` accessors.
+- **`Code::XML_MALFORMED`** (SACM-XML-001) and **`Code::XML_DOCTYPE_REJECTED`** (SACM-SEC-001).
+- **Pipeline:**
+  1. A UTF-16 or UTF-32 BOM gives Unsupported.
+  2. A declared encoding other than UTF-8 or ASCII gives Unsupported. It is read from the
+     valid UTF-8 prefix, before the UTF-8 check.
+  3. Invalid UTF-8 gives Malformed.
+  4. roxmltree parses, with DTDs refused: `DtdDetected` gives Doctype, and other errors
+     give Malformed.
+  5. Well-formed input gives Unsupported until SACM23-XMI-001.
+- **Private module:** the input layer is in `xmi/input.rs`.
+
+## Log
+
+- 2026-11-10 brief written. These are library security rows, so there is no SACM
+  research; the architect is next.
+- 2026-11-11 design:
+  - The architect proposed roxmltree 0.21.2. quick-xml 0.42 needs Rust 1.86.
+  - The maintainer decided:
+    - roxmltree, accepting ADR 0005;
+    - DOCTYPE detection in the parser, not the C++ raw scan, because the scan refuses
+      valid files that mention it in comments or CDATA (ADR 0005 B3);
+    - UTF-16 refused for now, with new row SACM23-XMI-018 to read it, because XML 1.0
+      requires it;
+    - the read entry point, ADR 0015: bytes in, no file function, Err when no faithful
+      Document exists.
+  - The lead reworded LIB-SEC-001 and LIB-SEC-002 and wrote their acceptance. "Wrong
+    root" moves to SACM23-XMI-001. New row LIB-API-009 (refuse what cannot be
+    represented) joins the slice. LIB-COMPAT-001 gains the both-modes rule.
+  - Q-XML-BACKEND is closed. All three rows are `analyzed`. The test engineer is next.
+- 2026-11-11 tests: 31 in `crates/sacm/tests/xmi_read.rs` (`lib_sec_001_*`, `lib_sec_002_*`, `lib_api_009_*`).
+  - The test engineer ran them against a throwaway implementation: all passed. Two deliberate bugs (a raw DOCTYPE scan, byte columns) failed 5.
+  - The red was confirmed by the lead: E0432 and E0599, because `sacm::xmi` and the codes are missing.
+  - SEC-001 item 3 is reworded: an attribute value can only hold `&lt;!DOCTYPE`.
+  - All three rows are `tests-failing`. The implementer is next.
+- 2026-11-11 implementation:
+  - `sacm::xmi` (`read`, `ReadOptions`, `ReadOutput`, `ReadError`) and the private `xmi/input.rs`, with roxmltree 0.21.2. `Code::XML_MALFORMED` and `Code::XML_DOCTYPE_REJECTED`.
+  - Docs: `lib.rs`, both READMEs, `architecture.md` and `diagnostics.md`.
+  - The implementer read the declared encoding before the UTF-8 check, so a real Latin-1 file is `Unsupported`, not `Malformed` (ADR 0005 B2). The lead accepted this and added it to LIB-API-009 item 3; the test engineer added 2 integration tests, never seen red. The verifier is asked to mutate the order.
+  - The full gate passes (698 tests; MSRV 1.85 checked). All three rows are `implemented`. Verification is next.

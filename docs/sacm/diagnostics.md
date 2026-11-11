@@ -12,7 +12,9 @@ and clause it enforces, affected element ids, an optional source location
 > finding with the same code. A code becomes live when the matrix row that emits it is
 > verified; until then the crate does not emit it. Tool-specific wording from that
 > project ("Assurance Forge", ODE containers) has been kept where it explains the code.
-> The `sacm::diagnostic::Diagnostic` type exists (LIB-DIAG-001), but no code is emitted yet.
+> The `sacm::diagnostic::Diagnostic` type exists (LIB-DIAG-001), but no diagnostic is emitted yet.
+> SACM-XML-001 and SACM-SEC-001 are produced, as the `ReadError::code()` of a refusal by
+> `sacm::xmi::read` (rows LIB-SEC-002 and LIB-SEC-001).
 
 Adding a code: append the row here in the same change that adds its constant to the
 crate, and name the matrix row that owns it.
@@ -21,8 +23,8 @@ crate, and name the matrix row that owns it.
 
 | Code | Severity | Meaning |
 | --- | --- | --- |
-| SACM-XML-001 | Error | Malformed XML; parse failed. |
-| SACM-SEC-001 | Error | Document contains a DOCTYPE/external entity declaration; rejected for safety. |
+| SACM-XML-001 | Error | Malformed XML; parse failed. `Code::XML_MALFORMED`, the code of `ReadError::Malformed` (LIB-SEC-002). |
+| SACM-SEC-001 | Error | Document contains a DOCTYPE/external entity declaration; rejected for safety. `Code::XML_DOCTYPE_REJECTED`, the code of `ReadError::Doctype` (LIB-SEC-001). |
 
 ## XMI structure
 

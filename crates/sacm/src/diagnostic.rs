@@ -88,14 +88,29 @@ impl fmt::Display for Severity {
 /// `SACM-REF-001`.
 ///
 /// Codes are stable API: a code's meaning never changes. Codes compare and
-/// order by their text. The crate defines no codes yet; each arrives with the
-/// matrix row that emits it.
+/// order by their text. Each code arrives with the matrix row that emits it;
+/// the codes defined so far are the associated constants below.
+///
+/// ```
+/// use sacm::diagnostic::Code;
+///
+/// assert_eq!(Code::XML_MALFORMED.to_string(), "SACM-XML-001");
+/// ```
 ///
 /// [catalog]: https://github.com/lasrod/libSACM/blob/main/docs/sacm/diagnostics.md
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Code(&'static str);
 
 impl Code {
+    /// SACM-XML-001: malformed XML. The code of
+    /// [`ReadError::Malformed`](crate::xmi::ReadError::Malformed)
+    /// (LIB-SEC-002).
+    pub const XML_MALFORMED: Code = Code::from_static("SACM-XML-001");
+
+    /// SACM-SEC-001: a DOCTYPE or ENTITY declaration was refused. The code of
+    /// [`ReadError::Doctype`](crate::xmi::ReadError::Doctype) (LIB-SEC-001).
+    pub const XML_DOCTYPE_REJECTED: Code = Code::from_static("SACM-SEC-001");
+
     /// The code with the given text.
     ///
     /// **Not part of the stable API**: public only under the `test-support`
@@ -108,10 +123,6 @@ impl Code {
     }
 
     /// The code with the given text. The crate-internal form of `new`.
-    #[cfg_attr(
-        not(feature = "test-support"),
-        expect(dead_code, reason = "the rows that emit codes will define them")
-    )]
     pub(crate) const fn from_static(code: &'static str) -> Self {
         Self(code)
     }
@@ -154,10 +165,6 @@ impl SourceLocation {
 
     /// The location at `line` and `column`, or `None` if either is 0. The
     /// crate-internal form of `new`.
-    #[cfg_attr(
-        not(feature = "test-support"),
-        expect(dead_code, reason = "the XMI reader will locate what it reports")
-    )]
     pub(crate) fn at(line: u32, column: u32) -> Option<Self> {
         Some(Self {
             line: NonZeroU32::new(line)?,
