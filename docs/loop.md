@@ -50,9 +50,12 @@ produce the evidence the verifier needs. The maintainer merges; the loop never d
 newest open slice PR, and its PR targets that branch.
 - **Merge order:** merge from the bottom of the stack, and only PRs that are ready (not
   draft). A draft PR has not passed verification.
-- **After a merge:** the next iteration moves the following PR's target to `main`.
+- **After a merge:** the next iteration moves the following PR's target to `main`, then
+  merges `main` into it, so its CI runs against the new base.
 - **Review comments:** the loop fixes them first, on their own branch, and merges the fix
-  forward into the later branches.
+  forward into the later branches. While a ready PR is being changed, it goes back to
+  draft. It is ready again only when CI is green and, if its own slice changed, the
+  verifier has passed the change.
 - **A full stack:** at three ready PRs, the loop pauses and checks for merges about every
   30 minutes.
 

@@ -19,17 +19,29 @@ builds and judges.
    `state: in-progress`. Otherwise ask the user.
 2. **`mode=pr`: find the base (stacked PRs).** Slices stack, so the loop never waits for a
    merge just to start the next one. The maintainer merges the stack from the bottom.
-   1. **List the open slice PRs:**
-      `gh pr list --json number,headRefName,baseRefName,isDraft,reviewDecision`.
+   1. **List the open slice PRs, and only those:**
+      `gh pr list --json number,headRefName,baseRefName,isDraft,reviewDecision --jq '[.[] | select(.headRefName | startswith("slice/"))]'`.
+      Other PRs never count as the base, a resume or the limit.
    2. **Retarget:** an open PR whose base branch is already merged into `main` moves to
-      `main` (`gh pr edit N --base main`). Slice PRs are merged with merge commits, so no
-      rebase is needed.
-   3. **Maintainer review comments come first:**
-      - Fix each one on its own branch, by the Copilot procedure in step 8.
-      - Then merge that branch forward into each later branch of the stack
+      `main` (`gh pr edit N --base main`).
+      - Retargeting alone triggers no CI. So merge `origin/main` into the head and push
+        (`git merge`, never rebase), and the PR's CI runs against its new base.
+      - Slice PRs are merged with merge commits, so this merge is clean unless other
+        work has landed on `main`.
+   3. **Changing a ready PR.** This covers the maintainer's review comments, which come
+      first, and any forward merge or retarget merge.
+      - **Before the change:** mark the PR draft (`gh pr ready N --undo`).
+      - **Review comments:** fix each one on its own branch, by the Copilot procedure in
+        step 8. Then merge that branch forward into each later branch of the stack
         (`git merge`, never rebase or force-push).
-      - Push, and re-run CI for every branch that changed.
-   4. **A draft slice PR** is an unfinished slice. Resume it, as in item 1.
+      - **Its own slice's content changed** (a review fix, or a merge conflict resolved in
+        its files): repeat step 7 for that change, as a fix round against the
+        reviewer's prescription.
+      - **Only merged in** (cleanly, from below or from `main`): fresh green CI on the
+        new head is enough.
+      - **Afterwards:** mark it ready again through step 8.
+   4. **A draft slice PR** is an unfinished slice, or a ready PR that is being changed.
+      Resume it, as in item 1.
    5. **Three or more ready slice PRs:** the stack is full. Report it.
       - Under `/loop`, schedule a wakeup in about 1800 s and end this iteration.
       - Otherwise, stop.
