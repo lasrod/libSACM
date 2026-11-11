@@ -22,12 +22,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  # The head repository and branch, the same for PR and dispatch events, so a
-  # newer run on a branch cancels an older one however each was started.
-  group: mutants-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: true
-
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
@@ -40,6 +34,12 @@ jobs:
     name: mutants (shard ${{ matrix.shard }})
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
+    # One group per shard, keyed by head repository and branch (the same for PR and
+    # dispatch events), so a newer run's shard cancels the older run's. It is set on
+    # the job, not the workflow, so a draft PR's skipped run cancels nothing.
+    concurrency:
+      group: mutants-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}-${{ matrix.shard }}
+      cancel-in-progress: true
     timeout-minutes: 60
     strategy:
       fail-fast: false
