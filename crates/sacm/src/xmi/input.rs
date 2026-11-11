@@ -442,8 +442,10 @@ fn check_unrepaired(text: &str) -> Result<(), ReadError> {
                 ));
             }
             rest.find("?>").map(|end| end + "?>".len())
-        } else if rest.starts_with("</") || rest.starts_with("<!") {
-            rest.find('>').map(|end| end + 1)
+        } else if rest.starts_with("</") {
+            // An end tag holds only its name and white space, so the rest of
+            // it is scanned as character data, harmlessly.
+            Some("</".len())
         } else if rest.starts_with('<') {
             start_tag(text, offset)?
         } else {
@@ -451,17 +453,20 @@ fn check_unrepaired(text: &str) -> Result<(), ReadError> {
             check_references(text, offset, length)?;
             Some(length)
         };
-        match length {
-            Some(length) if length > 0 => offset += length,
-            _ => break,
-        }
+        // Every length is at least 1: each construct is at least its opening
+        // characters long, and character data at least one character.
+        let Some(length) = length else {
+            break;
+        };
+        offset += length;
     }
     Ok(())
 }
 
 /// Checks the start tag at byte `offset` of `text`: its namespace
 /// declarations, and the character references in its attribute values.
-/// Returns its length, or `None` if it does not end.
+/// Returns its length up to its closing `>` or `/>`, which the scan then
+/// reads as character data, or `None` if it does not end.
 fn start_tag(text: &str, offset: usize) -> Result<Option<usize>, ReadError> {
     let tag = text.get(offset..).unwrap_or_default();
     // Past the `<` and the element name.
@@ -474,11 +479,9 @@ fn start_tag(text: &str, offset: usize) -> Result<Option<usize>, ReadError> {
         };
         let trimmed = rest.trim_start_matches(is_xml_space);
         index += rest.len() - trimmed.len();
-        if trimmed.starts_with('>') {
-            return Ok(Some(index + 1));
-        }
-        if trimmed.starts_with("/>") {
-            return Ok(Some(index + 2));
+        // Outside a value, a `/` in a start tag starts its closing `/>`.
+        if trimmed.starts_with(['>', '/']) {
+            return Ok(Some(index));
         }
         // An attribute: its name, `Eq` and a quoted value.
         let Some(name_length) = trimmed.find(|c: char| is_xml_space(c) || c == '=') else {
@@ -493,9 +496,8 @@ fn start_tag(text: &str, offset: usize) -> Result<Option<usize>, ReadError> {
         let Some(value_length) = quote.and_then(|q| tag.get(value_start..)?.find(q)) else {
             return Ok(None);
         };
-        if let Some(prefix) = name.strip_prefix("xmlns:")
-            && value_length == 0
-        {
+        let undeclared = name.strip_prefix("xmlns:").filter(|_| value_length == 0);
+        if let Some(prefix) = undeclared {
             return Err(malformed(
                 text,
                 offset + index,

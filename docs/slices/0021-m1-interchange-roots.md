@@ -53,3 +53,4 @@ the declaration grammar in `decode`, and the rest after the parse.
 - 2026-11-11 design: architect brief; ADR 0016 proposed; awaiting approval.
 - 2026-11-11 design: maintainer approved ADR 0016 and the empty-wrapper refusal.
 - 2026-11-11 tests and implementation: 30 XMI-001 and 21 SEC-005 tests; 7 verified tests updated, none weakened; the gate passes.
+- 2026-11-11 fix round 1 (before verification): MSRV let-chain (Copilot); 23 missed mutants: equivalents simplified away, one excluded with a triage row (diagnostics() is always empty), 8 tests kill the rest; every read in the reader tests runs under a 5 s deadline.

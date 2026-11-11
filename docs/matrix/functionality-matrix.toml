@@ -1793,6 +1793,8 @@ tests = [
   "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_read_output_gives_its_document_and_diagnostics",
   "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_refusals_are_one_located_line_quoting_names_without_source",
   "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_xmi_invalid_root_code_is_sacm_xmi_001_in_the_catalog",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_an_empty_id_is_refused_before_an_unread_attribute",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_text_after_white_space_is_refused_at_its_first_character",
 ]
 
 [[row]]
@@ -3343,6 +3345,12 @@ tests = [
   "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_a_bad_declaration_comes_before_a_doctype",
   "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_each_refusal_display_has_the_malformed_form_and_quotes_names",
   "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_the_checks_never_panic_and_every_malformed_refusal_has_its_form",
+  "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_a_declaration_cut_after_an_unknown_name_is_refused_for_that_name",
+  "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_a_bad_declaration_comes_before_invalid_utf8",
+  "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_unknown_and_out_of_order_pseudo_attributes_have_their_own_reasons",
+  "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_an_xml_pi_after_pi_text_in_a_comment_or_cdata_is_found",
+  "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_checks_after_sibling_elements_find_the_construct",
+  "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_character_reference_refusals_quote_the_reference_and_name_its_kind",
 ]
 
 [[row]]

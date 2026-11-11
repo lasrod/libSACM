@@ -25,6 +25,9 @@
 //!   tests check those refusals in full.
 
 use std::error::Error;
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::thread;
+use std::time::Duration;
 
 use sacm::diagnostic::{Code, SourceLocation};
 use sacm::model::{Document, ElementKind, LangString, SacmElement};
@@ -84,8 +87,32 @@ const CLAIM_ROOT: &str = concat!(
 
 // --- Helpers --------------------------------------------------------------
 
-fn read(input: &[u8]) -> Result<ReadOutput, ReadError> {
-    xmi::read(input, &ReadOptions::default())
+/// How long one `read` may take. Reading any input here takes milliseconds
+/// at most; a scan that stops advancing never finishes. The deadline stays
+/// well below cargo-mutants' minimum test timeout of 20 seconds, so a hang
+/// fails its test instead of stalling the run (as in xtask's scanner tests).
+const DEADLINE: Duration = Duration::from_secs(5);
+
+/// `xmi::read` with the default options, on a worker thread. Fails the test,
+/// with a message that starts with `row`, when the read panics or does not
+/// return within [`DEADLINE`].
+fn read(row: &str, input: &[u8]) -> Result<ReadOutput, ReadError> {
+    let owned = input.to_vec();
+    let (sender, receiver) = mpsc::channel();
+    thread::spawn(move || {
+        // The receiver is gone only after the deadline has already failed the test.
+        let _ = sender.send(xmi::read(&owned, &ReadOptions::default()));
+    });
+    match receiver.recv_timeout(DEADLINE) {
+        Ok(result) => result,
+        Err(RecvTimeoutError::Timeout) => panic!(
+            "{row}: read did not return within {DEADLINE:?} for {}: a scan does not advance",
+            preview(input)
+        ),
+        Err(RecvTimeoutError::Disconnected) => {
+            panic!("{row}: read panicked on {}", preview(input))
+        }
+    }
 }
 
 /// The first bytes of `input`, for assertion messages.
@@ -101,7 +128,7 @@ fn preview(input: &[u8]) -> String {
 
 /// Reads `input`, which the test expects to be read.
 fn read_ok(row: &str, input: &[u8]) -> ReadOutput {
-    match read(input) {
+    match read(row, input) {
         Ok(output) => output,
         Err(error) => panic!(
             "{row}: read refused {}: {error:?} ({error})",
@@ -112,7 +139,7 @@ fn read_ok(row: &str, input: &[u8]) -> ReadOutput {
 
 /// Reads `input`, which the test expects to be refused, and returns why.
 fn refusal(row: &str, input: &[u8]) -> ReadError {
-    match read(input) {
+    match read(row, input) {
         Ok(output) => panic!(
             "{row}: read returned a document for {}: {:?}",
             preview(input),
@@ -1150,9 +1177,9 @@ fn sacm23_xmi_001_the_same_input_always_gives_the_same_result() {
         wrapped("<sacm:ArtifactPackage xmi:id=\"f\"/><sacm:Claim xmi:id=\"c\"/>"),
     ];
     for input in &inputs {
-        let first = read(input.as_bytes());
+        let first = read(row, input.as_bytes());
         for _ in 0..3 {
-            let again = read(input.as_bytes());
+            let again = read(row, input.as_bytes());
             match (&first, &again) {
                 (Ok(a), Ok(b)) => assert_eq!(
                     shape(a.document()),
@@ -1327,4 +1354,57 @@ fn lib_sec_002_leading_utf8_bom_takes_no_column_in_invalid_root_and_no_package()
     );
     let empty_wrapper = format!("\u{FEFF}<xmi:XMI xmlns:xmi=\"{XMI_NS}\"/>");
     assert_no_package_at(row, empty_wrapper.as_bytes(), loc(row, 1, 1));
+}
+
+// --- SACM23-XMI-001. Exact results ---------------------------------------------
+
+/// Asserts that `input` is refused as `Unsupported` at `location` with
+/// exactly `reason` and the exact `Display`.
+fn assert_unsupported_exactly(row: &str, input: &[u8], location: SourceLocation, reason: &str) {
+    let error = assert_unsupported_at(row, input, location);
+    let ReadError::Unsupported { reason: found, .. } = &error else {
+        panic!(
+            "{row}: expected Unsupported for {}, got {error:?}",
+            preview(input)
+        );
+    };
+    assert_eq!(
+        found,
+        reason,
+        "{row}: the refusal of {} has the wrong reason",
+        preview(input)
+    );
+    assert_eq!(
+        error.to_string(),
+        format!("the reader cannot represent the input at {location}: {reason}"),
+        "{row}: unexpected Display for {}",
+        preview(input)
+    );
+}
+
+#[test]
+fn sacm23_xmi_001_an_empty_id_is_refused_before_an_unread_attribute() {
+    let row = "SACM23-XMI-001";
+    // The empty id decides, at the root, even with `foo` after it.
+    let input = format!("<sacm:ArgumentPackage{NS} xmi:id=\"\" foo=\"1\"/>");
+    assert_unsupported_exactly(
+        row,
+        input.as_bytes(),
+        loc(row, 1, 1),
+        "the root element \"sacm:ArgumentPackage\" has an empty \"xmi:id\"",
+    );
+}
+
+#[test]
+fn sacm23_xmi_001_text_after_white_space_is_refused_at_its_first_character() {
+    let row = "SACM23-XMI-001";
+    // The text node starts on line 1; its first non-white-space character is
+    // at line 2, column 3.
+    let input = format!("<sacm:ArgumentPackage{NS} xmi:id=\"p\">\n  x</sacm:ArgumentPackage>");
+    assert_unsupported_exactly(
+        row,
+        input.as_bytes(),
+        loc(row, 2, 3),
+        "the element \"sacm:ArgumentPackage\" holds text, which is not read in this release",
+    );
 }

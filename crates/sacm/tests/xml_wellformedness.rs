@@ -19,6 +19,9 @@
 //!   file sweeps a sample that holds the constructs these checks look at.
 
 use std::error::Error;
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::thread;
+use std::time::Duration;
 
 use sacm::diagnostic::{Code, SourceLocation};
 use sacm::xmi::{self, ReadError, ReadOptions, ReadOutput};
@@ -55,8 +58,32 @@ const BAD_REFERENCES: [&str; 5] = [
 
 // --- Helpers --------------------------------------------------------------
 
-fn read(input: &[u8]) -> Result<ReadOutput, ReadError> {
-    xmi::read(input, &ReadOptions::default())
+/// How long one `read` may take. Reading any input here takes milliseconds
+/// at most; a scan that stops advancing never finishes. The deadline stays
+/// well below cargo-mutants' minimum test timeout of 20 seconds, so a hang
+/// fails its test instead of stalling the run (as in xtask's scanner tests).
+const DEADLINE: Duration = Duration::from_secs(5);
+
+/// `xmi::read` with the default options, on a worker thread. Fails the test,
+/// with a message that starts with `row`, when the read panics or does not
+/// return within [`DEADLINE`].
+fn read(row: &str, input: &[u8]) -> Result<ReadOutput, ReadError> {
+    let owned = input.to_vec();
+    let (sender, receiver) = mpsc::channel();
+    thread::spawn(move || {
+        // The receiver is gone only after the deadline has already failed the test.
+        let _ = sender.send(xmi::read(&owned, &ReadOptions::default()));
+    });
+    match receiver.recv_timeout(DEADLINE) {
+        Ok(result) => result,
+        Err(RecvTimeoutError::Timeout) => panic!(
+            "{row}: read did not return within {DEADLINE:?} for {}: a scan does not advance",
+            preview(input)
+        ),
+        Err(RecvTimeoutError::Disconnected) => {
+            panic!("{row}: read panicked on {}", preview(input))
+        }
+    }
 }
 
 /// The first bytes of `input`, for assertion messages.
@@ -81,7 +108,7 @@ fn loc(row: &str, line: u32, column: u32) -> SourceLocation {
 /// Asserts that `input` is refused as `Malformed` (SACM-XML-001) at `line`
 /// and `column`, and returns the error.
 fn assert_malformed_at(row: &str, input: &[u8], line: u32, column: u32) -> ReadError {
-    let Err(error) = read(input) else {
+    let Err(error) = read(row, input) else {
         panic!(
             "{row}: read returned a document for {}; expected Malformed",
             preview(input)
@@ -110,7 +137,7 @@ fn assert_malformed_at(row: &str, input: &[u8], line: u32, column: u32) -> ReadE
 /// Asserts that `input` is refused as `Unsupported` (no code) at `line` and
 /// `column`.
 fn assert_unsupported_at(row: &str, input: &[u8], line: u32, column: u32) {
-    let result = read(input);
+    let result = read(row, input);
     let Err(error) = result else {
         panic!(
             "{row}: read returned a document for {}; expected Unsupported",
@@ -139,7 +166,7 @@ fn assert_unsupported_at(row: &str, input: &[u8], line: u32, column: u32) {
 /// Reads `input`, which the test expects to be read, and returns the ids of
 /// its roots.
 fn assert_ok_root_ids(row: &str, input: &[u8]) -> Vec<String> {
-    match read(input) {
+    match read(row, input) {
         Ok(output) => output
             .document()
             .roots()
@@ -161,7 +188,7 @@ fn assert_ok_with_id(row: &str, input: &[u8], id: &str) {
 
 /// Asserts that `input` is not refused as `Malformed` or `Doctype`.
 fn assert_not_malformed(row: &str, input: &[u8]) {
-    let result = read(input);
+    let result = read(row, input);
     assert!(
         !matches!(
             result,
@@ -485,7 +512,7 @@ fn lib_sec_005_a_doctype_comes_before_the_reference_prefix_and_pi_checks() {
         format!("<!DOCTYPE r>\n{ROOT_START} xmi:id=\"&#xD800;\"/>"),
         format!("<!DOCTYPE r>\n{ROOT_START} xmlns:p=\"\" xmi:id=\"p\"/>"),
     ] {
-        let result = read(input.as_bytes());
+        let result = read(row, input.as_bytes());
         assert!(
             matches!(result, Err(ReadError::Doctype { .. })),
             "{row}: {} is not refused for its DOCTYPE first: {result:?}",
@@ -646,7 +673,7 @@ fn lib_sec_005_each_refusal_display_has_the_malformed_form_and_quotes_names() {
         (format!("<?XmL zqx?>\n{ROOT}").into_bytes(), &["XmL"]),
     ];
     for (input, names) in &cases {
-        let result = read(input);
+        let result = read(row, input);
         let Err(error) = result else {
             panic!("{row}: {} was read; expected Malformed", preview(input));
         };
@@ -720,7 +747,7 @@ fn lib_sec_005_the_checks_never_panic_and_every_malformed_refusal_has_its_form()
     let mut count = 0_usize;
     for input in prefixes.chain(replacements).chain(edges) {
         // Returning is the first assertion: a panic fails the test.
-        if let Err(error @ ReadError::Malformed { .. }) = read(&input) {
+        if let Err(error @ ReadError::Malformed { .. }) = read(row, &input) {
             assert_eq!(
                 error.code(),
                 Some(Code::XML_MALFORMED),
@@ -738,4 +765,139 @@ fn lib_sec_005_the_checks_never_panic_and_every_malformed_refusal_has_its_form()
     // The sample itself is well-formed: it is refused, if at all, for its
     // content, never as Malformed.
     assert_not_malformed(row, sample);
+}
+
+// --- LIB-SEC-005. Exact results ------------------------------------------------
+//
+// Each input below has one exact result: the variant, the location and the
+// reason. They tell apart scans that would stop early, skip a construct or
+// word a refusal for another case.
+
+/// The readable root with `content` inside: `<sacm:ArgumentPackage …
+/// xmi:id="p">content</sacm:ArgumentPackage>`. Its start tag is 133
+/// characters, so `content` starts at line 1, column 134.
+fn root_holding(content: &str) -> Vec<u8> {
+    format!("{ROOT_START} xmi:id=\"p\">{content}{ROOT_END}").into_bytes()
+}
+
+/// Asserts that `input` is refused as `Malformed` at `line` and `column`
+/// with exactly `reason`, and that the `Display` is exactly the
+/// LIB-SEC-002 form around it.
+fn assert_malformed_exactly(row: &str, input: &[u8], line: u32, column: u32, reason: &str) {
+    let error = assert_malformed_at(row, input, line, column);
+    let ReadError::Malformed { reason: found, .. } = &error else {
+        panic!(
+            "{row}: expected Malformed for {}, got {error:?}",
+            preview(input)
+        );
+    };
+    assert_eq!(
+        found,
+        reason,
+        "{row}: the refusal of {} has the wrong reason",
+        preview(input)
+    );
+    assert_eq!(
+        error.to_string(),
+        format!("{MALFORMED_LEAD} at line {line}, column {column}: {reason}"),
+        "{row}: unexpected Display for {}",
+        preview(input)
+    );
+}
+
+#[test]
+fn lib_sec_005_a_declaration_cut_after_an_unknown_name_is_refused_for_that_name() {
+    let row = "LIB-SEC-005";
+    // The name is refused where it starts, not as the end of the input.
+    assert_malformed_exactly(
+        row,
+        b"<?xml version=\"1.0\" foo",
+        1,
+        21,
+        "the XML declaration has the unknown pseudo-attribute \"foo\"",
+    );
+}
+
+#[test]
+fn lib_sec_005_a_bad_declaration_comes_before_invalid_utf8() {
+    let row = "LIB-SEC-005";
+    // The invalid byte is at line 2, column 4; the declaration is checked
+    // first.
+    assert_malformed_exactly(
+        row,
+        b"<?xml version=\"1.0\" foo=\"1\"?>\n<r>\xFF</r>",
+        1,
+        21,
+        "the XML declaration has the unknown pseudo-attribute \"foo\"",
+    );
+}
+
+#[test]
+fn lib_sec_005_unknown_and_out_of_order_pseudo_attributes_have_their_own_reasons() {
+    let row = "LIB-SEC-005";
+    assert_malformed_exactly(
+        row,
+        b"<?xml version=\"1.0\" foo=\"1\"?>\n<r/>",
+        1,
+        21,
+        "the XML declaration has the unknown pseudo-attribute \"foo\"",
+    );
+    assert_malformed_exactly(
+        row,
+        b"<?xml encoding=\"UTF-8\" version=\"1.0\"?>\n<r/>",
+        1,
+        7,
+        "the pseudo-attribute \"encoding\" is out of order in the XML declaration",
+    );
+    assert_malformed_exactly(
+        row,
+        b"<?xml version=\"1.0\" standalone=\"yes\" encoding=\"UTF-8\"?>\n<r/>",
+        1,
+        38,
+        "the pseudo-attribute \"encoding\" is out of order in the XML declaration",
+    );
+}
+
+#[test]
+fn lib_sec_005_an_xml_pi_after_pi_text_in_a_comment_or_cdata_is_found() {
+    let row = "LIB-SEC-005";
+    let reason = "a processing instruction has the reserved target \"Xml\"";
+    // `<!--x<?-->` is 10 characters and `<![CDATA[x<?]]>` 15.
+    assert_malformed_exactly(row, &root_holding("<!--x<?--><?Xml?>"), 1, 144, reason);
+    assert_malformed_exactly(row, &root_holding("<![CDATA[x<?]]><?Xml?>"), 1, 149, reason);
+}
+
+#[test]
+fn lib_sec_005_checks_after_sibling_elements_find_the_construct() {
+    let row = "LIB-SEC-005";
+    // `<c></c> <d ` is 11 characters.
+    assert_malformed_exactly(
+        row,
+        &root_holding("<c></c> <d xmlns:p=\"\"/>"),
+        1,
+        145,
+        "the namespace prefix \"p\" is declared with an empty value, and a prefix cannot be undeclared",
+    );
+    let reason = "a processing instruction has the reserved target \"Xml\"";
+    // `<cc/>` is 5 characters and `<c/>` 4.
+    assert_malformed_exactly(row, &root_holding("<cc/><?Xml?>"), 1, 139, reason);
+    assert_malformed_exactly(row, &root_holding("<c/><?Xml?>"), 1, 138, reason);
+}
+
+#[test]
+fn lib_sec_005_character_reference_refusals_quote_the_reference_and_name_its_kind() {
+    let row = "LIB-SEC-005";
+    let surrogate = "refers to a surrogate, which is not a character";
+    let above = "refers to a code point above U+10FFFF, which is not a character";
+    for (reference, kind) in [
+        ("&#xD800;", surrogate),
+        ("&#xDFFF;", surrogate),
+        ("&#55296;", surrogate),
+        ("&#x110000;", above),
+        ("&#xFFFFFFFF;", above),
+    ] {
+        // The whole reference, `;` included, is quoted.
+        let reason = format!("the character reference \"{reference}\" {kind}");
+        assert_malformed_exactly(row, &root_holding(reference), 1, 134, &reason);
+    }
 }

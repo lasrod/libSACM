@@ -30,6 +30,9 @@ use std::error::Error;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 use std::path::Path;
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::thread;
+use std::time::Duration;
 
 use sacm::diagnostic::{Code, SourceLocation};
 use sacm::xmi::{self, ReadError, ReadOptions, ReadOutput};
@@ -88,8 +91,32 @@ const ARTIFACT_ROOT: &str = concat!(
 
 // --- Helpers --------------------------------------------------------------
 
-fn read(input: &[u8]) -> Result<ReadOutput, ReadError> {
-    xmi::read(input, &ReadOptions::default())
+/// How long one `read` may take. Reading any input here takes milliseconds
+/// at most; a scan that stops advancing never finishes. The deadline stays
+/// well below cargo-mutants' minimum test timeout of 20 seconds, so a hang
+/// fails its test instead of stalling the run (as in xtask's scanner tests).
+const DEADLINE: Duration = Duration::from_secs(5);
+
+/// `xmi::read` with the default options, on a worker thread. Fails the test,
+/// with a message that starts with `row`, when the read panics or does not
+/// return within [`DEADLINE`].
+fn read(row: &str, input: &[u8]) -> Result<ReadOutput, ReadError> {
+    let owned = input.to_vec();
+    let (sender, receiver) = mpsc::channel();
+    thread::spawn(move || {
+        // The receiver is gone only after the deadline has already failed the test.
+        let _ = sender.send(xmi::read(&owned, &ReadOptions::default()));
+    });
+    match receiver.recv_timeout(DEADLINE) {
+        Ok(result) => result,
+        Err(RecvTimeoutError::Timeout) => panic!(
+            "{row}: read did not return within {DEADLINE:?} for {}: a scan does not advance",
+            preview(input)
+        ),
+        Err(RecvTimeoutError::Disconnected) => {
+            panic!("{row}: read panicked on {}", preview(input))
+        }
+    }
 }
 
 /// The first bytes of `input`, for assertion messages.
@@ -105,7 +132,7 @@ fn preview(input: &[u8]) -> String {
 
 /// Reads `input`, which the test expects to be refused, and returns why.
 fn refusal(row: &str, input: &[u8]) -> ReadError {
-    match read(input) {
+    match read(row, input) {
         Ok(output) => panic!("{row}: read returned Ok({output:?}) for {}", preview(input)),
         Err(error) => error,
     }
@@ -615,7 +642,7 @@ fn lib_sec_001_declaration_text_in_comment_cdata_or_attribute_is_not_refused() {
         ),
     ];
     for input in inputs {
-        let result = read(&input);
+        let result = read(row, &input);
         assert_not_doctype_or_malformed(row, &input, &result);
     }
 }
@@ -991,10 +1018,11 @@ fn lib_sec_002_leading_utf8_bom_takes_no_column() {
 
 #[test]
 fn lib_sec_002_prefixes_and_byte_replacements_never_panic() {
+    let row = "LIB-SEC-002";
     let mut count = 0_usize;
     for input in hostile_sweep() {
         // Reaching the next iteration is the assertion: the call returned.
-        let _ = read(&input);
+        let _ = read(row, &input);
         count += 1;
     }
     assert_eq!(
@@ -1012,13 +1040,32 @@ fn lib_sec_002_deep_nesting_returns_without_recursion() {
     const DEPTH: usize = 100_000;
     let well_formed = format!("{}{}", "<a>".repeat(DEPTH), "</a>".repeat(DEPTH)).into_bytes();
     let unclosed = "<a>".repeat(DEPTH).into_bytes();
-    let reader = std::thread::Builder::new()
+    // The reader runs on that thread directly; the result comes back on a
+    // channel, so a read that never returns fails at the deadline.
+    let (sender, receiver) = mpsc::channel();
+    std::thread::Builder::new()
         .name("lib_sec_002_deep_nesting".to_owned())
         .stack_size(2 * MIB)
-        .spawn(move || (read(&well_formed).is_ok(), read(&unclosed)))
+        .spawn(move || {
+            let options = ReadOptions::default();
+            let results = (
+                xmi::read(&well_formed, &options).is_ok(),
+                xmi::read(&unclosed, &options),
+            );
+            // The receiver is gone only after the deadline has already failed the test.
+            let _ = sender.send(results);
+        })
         .unwrap_or_else(|error| panic!("LIB-SEC-002: cannot spawn the reader thread: {error}"));
-    let Ok((_well_formed_read, unclosed_result)) = reader.join() else {
-        panic!("LIB-SEC-002: read panicked on 100,000 levels of nesting");
+    let (_well_formed_read, unclosed_result) = match receiver.recv_timeout(DEADLINE) {
+        Ok(results) => results,
+        Err(RecvTimeoutError::Timeout) => {
+            panic!(
+                "LIB-SEC-002: read did not return within {DEADLINE:?} on 100,000 levels of nesting"
+            )
+        }
+        Err(RecvTimeoutError::Disconnected) => {
+            panic!("LIB-SEC-002: read panicked on 100,000 levels of nesting")
+        }
     };
     assert!(
         unclosed_result.is_err(),
@@ -1041,7 +1088,7 @@ fn lib_sec_002_empty_whitespace_and_bom_only_input_return_a_value() {
         b"\x00\x00\xFE\xFF",
     ] {
         assert!(
-            read(input).is_err(),
+            read(row, input).is_err(),
             "LIB-SEC-002: the byte order mark {input:?} alone was read as a document"
         );
     }
@@ -1111,7 +1158,7 @@ fn lib_sec_002_malformed_display_quotes_names_and_never_breaks_the_line() {
 fn lib_sec_002_every_refusal_in_the_sweep_has_its_display_code_and_no_source() {
     let row = "LIB-SEC-002";
     for input in hostile_sweep() {
-        if let Err(error) = read(&input) {
+        if let Err(error) = read(row, &input) {
             assert_refusal_invariants(row, &input, &error);
         }
     }
@@ -1345,7 +1392,7 @@ fn lib_api_009_utf16_and_ucs4_without_bom_are_unsupported_by_their_first_bytes()
             Some(&first_bytes[..]),
             "{row}: the {what} test input does not start with its Appendix F bytes"
         );
-        let result = read(&input);
+        let result = read(row, &input);
         assert!(
             matches!(result, Err(ReadError::Unsupported { .. })),
             "{row}: BOM-less {what} input was not refused as Unsupported: {result:?}"
@@ -1392,7 +1439,7 @@ fn lib_api_009_utf8_and_ascii_declarations_in_any_case_are_not_refused() {
             &format!("<?xml version=\"1.0\" encoding=\"{name}\"?>\n<!-- café -->\n"),
             "",
         );
-        let result = read(&input);
+        let result = read(row, &input);
         assert!(
             result.is_ok(),
             "{row}: a readable root under encoding {name:?} was refused: {result:?}"
@@ -1400,7 +1447,7 @@ fn lib_api_009_utf8_and_ascii_declarations_in_any_case_are_not_refused() {
     }
     for name in ascii {
         let input = sacm_document(&format!("<?xml version='1.0' encoding='{name}'?>\n"), "");
-        let result = read(&input);
+        let result = read(row, &input);
         assert!(
             result.is_ok(),
             "{row}: a readable root under encoding {name:?} was refused: {result:?}"
@@ -1555,7 +1602,7 @@ fn lib_api_009_declared_non_utf8_encoding_with_invalid_utf8_bytes_is_unsupported
         ),
     ];
     for (what, input) in inputs {
-        let result = read(input);
+        let result = read(row, input);
         assert!(
             matches!(result, Err(ReadError::Unsupported { .. })),
             "{row}: {what}: expected Unsupported, got {result:?}"

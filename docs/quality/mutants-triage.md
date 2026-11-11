@@ -4,7 +4,7 @@ Every cargo-mutants survivor gets a disposition here (LIB-QA-007). Every exclusi
 
 ## Configuration in force
 
-- `.cargo/mutants.toml` sets `cap_lints = true`, `all_features = true` and `test_workspace = false`. There are **no exclusions**.
+- `.cargo/mutants.toml` sets `cap_lints = true`, `all_features = true` and `test_workspace = false`. There is one exclusion, listed in the table below.
 - `skip_calls_defaults = true` is the cargo-mutants default: calls to `with_capacity` are not mutated.
 - Tests run under cargo-nextest ([ADR 0009](../adr/0009-nextest-for-mutation-testing.md)): `test_tool = "nextest"`, with the `mutants` profile of `.config/nextest.toml`. That profile stops every running test at the first failure, so a mutant is caught whatever the order of the test targets.
 - Doctests do not run under mutation, because nextest does not run them. A mutant that only a doctest kills shows as missed; add a unit or integration test that kills it.
@@ -39,6 +39,7 @@ Only an equivalent or accepted mutant may be excluded. An excluded mutant's Excl
 | `xtask/src/matrix.rs:1157:18: replace > with == in cmd_status` | killed | LIB-TOOL-001 | `lib_tool_001_run_matrix_status_counts_each_milestones_rows_by_status` | — |
 | `xtask/src/matrix.rs:1157:18: replace > with < in cmd_status` | killed | LIB-TOOL-001 | `lib_tool_001_run_matrix_status_counts_each_milestones_rows_by_status` | — |
 | `xtask/src/matrix.rs:1157:18: replace > with >= in cmd_status` | killed | LIB-TOOL-001 | `lib_tool_001_run_matrix_status_counts_each_milestones_rows_by_status` | — |
+| `crates/sacm/src/xmi.rs:237:9: replace ReadOutput::diagnostics -> &[Diagnostic] with Vec::leak(Vec::new())` | equivalent | SACM23-XMI-001 | `read` reports no diagnostic in this release: every `ReadOutput` is built with an empty list (`xmi.rs`, `read`), so the mutant returns what the original does. Remove the exclusion with the first row that reports a diagnostic. | `exclude_re: ^crates/sacm/src/xmi\.rs:\d+:\d+: replace ReadOutput::diagnostics -> &\[Diagnostic\] with Vec::leak\(Vec::new\(\)\)$` |
 
 ## History
 
