@@ -13,10 +13,11 @@ assurance cases as standard XMI.
 M1 has started: `sacm::model` provides a read-only `Document`, `ElementId`, the
 metamodel's element kinds, element names, each Assertion's `assertionDeclaration` and
 the first value types (`LangString`, `MultiLangString`, `AssertionDeclaration`), and
-`sacm::diagnostic` provides the `Diagnostic` type. `sacm::xmi::read` exists but refuses
-every input in this release: unsafe and malformed input with a diagnostic code, and
-well-formed input as `Unsupported`, because it reads no SACM content yet. Reading SACM
-content, XMI export, validation and editing are not built yet. Milestone M0, the foundation, is done: the workspace, CI, the functionality matrix and its gate, and
+`sacm::diagnostic` provides the `Diagnostic` type. `sacm::xmi::read` reads
+`AssuranceCasePackage` and `ArgumentPackage` roots, but nothing inside them yet. It
+refuses unsafe and malformed input and roots that are not SACM packages with a diagnostic
+code, and content it cannot represent yet as `Unsupported`. Reading the content of
+packages, XMI export, validation and editing are not built yet. Milestone M0, the foundation, is done: the workspace, CI, the functionality matrix and its gate, and
 mutation testing. The [functionality matrix](docs/matrix/functionality-matrix.md)
 shows what is verified; nothing else is claimed.
 

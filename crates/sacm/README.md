@@ -13,7 +13,8 @@ Implemented now: the read-only document model with element names and each
 Assertion's `assertionDeclaration`, the first value types (`LangString`,
 `MultiLangString` and `AssertionDeclaration`) in `sacm::model`, and the
 diagnostic type that findings are reported in (`sacm::diagnostic`). Nothing emits diagnostics yet.
-`sacm::xmi::read` exists but refuses every input in this release; it reads no SACM content yet.
+`sacm::xmi::read` reads `AssuranceCasePackage` and `ArgumentPackage` roots, but nothing inside
+them yet; it refuses what it cannot represent rather than drop it.
 
 Planned:
 
@@ -51,8 +52,8 @@ fn main() {
 }
 ```
 
-There is no stable way to fill a `Document` yet: `sacm::xmi::read` refuses every input
-until it reads SACM content.
+`sacm::xmi::read` fills a `Document` with empty package roots so far; it does not read the
+content of packages yet.
 
 See the [crate documentation](https://docs.rs/sacm) for the full API.
 

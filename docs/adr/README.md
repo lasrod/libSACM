@@ -21,6 +21,7 @@ decision about how to *interpret the SACM standard* belongs in
 | [0013](0013-missing-name-stays-missing.md) | A missing name stays missing | accepted |
 | [0014](0014-artifact-package-admits-every-artifact-element.md) | An ArtifactPackage admits every ArtifactElement | accepted |
 | [0015](0015-xmi-read-entry-point.md) | The XMI read entry point | accepted |
+| [0016](0016-interchange-roots.md) | Interchange roots: deviations from the C++ reader | accepted |
 
 Statuses: `proposed` → `accepted` (maintainer approval) → optionally `superseded by NNNN`.
 Copy [template.md](template.md) for a new record.

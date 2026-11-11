@@ -1,0 +1,2 @@
+<!-- SACM23-XMI-001: a Claim is not an interchange root; refused as SACM-XMI-001 at line 2, column 1 (after the assurance-forge fixture invalid/root-invalid.sacm.xmi). -->
+<sacm:Claim xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="c1"/>

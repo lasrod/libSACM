@@ -12,7 +12,7 @@
 //!   built (see [Status](#status)),
 //! - XMI import and deterministic export, with a strict SACM 2.3 mode and an
 //!   explicit tolerant mode for third-party and legacy files; built so far:
-//!   [`xmi::read`], which refuses every input until it can read SACM content,
+//!   [`xmi::read`], which reads empty package roots and refuses the rest,
 //! - validation against the specification's constraints, reported as
 //!   machine-readable diagnostics with stable codes; built so far: the
 //!   diagnostic type,
@@ -31,11 +31,12 @@
 //! [`MultiLangString`](model::MultiLangString) and
 //! [`AssertionDeclaration`](model::AssertionDeclaration)), in [`model`],
 //! and the [`Diagnostic`](diagnostic::Diagnostic) type that findings are
-//! reported in, in [`diagnostic`]. [`sacm::xmi::read`](xmi::read) exists but
-//! refuses every input in this release: unsafe and malformed input with a
-//! diagnostic code, and well-formed input as `Unsupported`, because it reads
-//! no SACM content yet. Reading SACM content, XMI export, validation and
-//! editing are not built yet.
+//! reported in, in [`diagnostic`]. [`sacm::xmi::read`](xmi::read) reads
+//! `AssuranceCasePackage` and `ArgumentPackage` roots, bare or in an
+//! `xmi:XMI` element, but nothing inside them yet. It refuses unsafe and
+//! malformed input and roots that are not SACM packages with a diagnostic
+//! code, and content it cannot represent yet as `Unsupported`. Reading the
+//! content of packages, XMI export, validation and editing are not built yet.
 //!
 //! Look up an element with [`model::Document::get`], walk every element with
 //! [`model::Document::elements`], or move one level at a time with

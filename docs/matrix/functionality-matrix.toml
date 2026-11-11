@@ -1715,35 +1715,85 @@ acceptance = [
 ]
 code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/input.rs"]
 tests = [
-  "crates/sacm/tests/xmi_read.rs::lib_sec_002_deep_nesting_returns_without_recursion",
-  "crates/sacm/tests/xmi_read.rs::lib_sec_002_doctype_location_counts_lf_crlf_and_lone_cr_as_one_line_each",
-  "crates/sacm/tests/xmi_read.rs::lib_sec_002_each_kind_of_malformed_xml_is_refused_with_a_location",
-  "crates/sacm/tests/xmi_read.rs::lib_sec_002_each_refusal_is_clone_eq_and_deterministic_without_source",
-  "crates/sacm/tests/xmi_read.rs::lib_sec_002_empty_whitespace_and_bom_only_input_return_a_value",
   "crates/sacm/tests/xmi_read.rs::lib_sec_002_every_proper_prefix_of_a_document_is_malformed",
-  "crates/sacm/tests/xmi_read.rs::lib_sec_002_every_refusal_in_the_sweep_has_its_display_code_and_no_source",
   "crates/sacm/tests/xmi_read.rs::lib_sec_002_invalid_utf8_is_malformed_at_the_first_invalid_byte",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_002_each_kind_of_malformed_xml_is_refused_with_a_location",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_002_doctype_location_counts_lf_crlf_and_lone_cr_as_one_line_each",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_002_parser_error_location_counts_lf_crlf_and_lone_cr_as_one_line_each",
   "crates/sacm/tests/xmi_read.rs::lib_sec_002_invalid_utf8_location_counts_lf_crlf_and_lone_cr_as_one_line_each",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_002_unsupported_root_location_counts_lf_crlf_and_lone_cr_as_one_line_each",
   "crates/sacm/tests/xmi_read.rs::lib_sec_002_leading_utf8_bom_takes_no_column",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_002_prefixes_and_byte_replacements_never_panic",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_002_deep_nesting_returns_without_recursion",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_002_empty_whitespace_and_bom_only_input_return_a_value",
   "crates/sacm/tests/xmi_read.rs::lib_sec_002_malformed_display_is_one_located_line",
   "crates/sacm/tests/xmi_read.rs::lib_sec_002_malformed_display_quotes_names_and_never_breaks_the_line",
-  "crates/sacm/tests/xmi_read.rs::lib_sec_002_parser_error_location_counts_lf_crlf_and_lone_cr_as_one_line_each",
-  "crates/sacm/tests/xmi_read.rs::lib_sec_002_prefixes_and_byte_replacements_never_panic",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_002_every_refusal_in_the_sweep_has_its_display_code_and_no_source",
   "crates/sacm/tests/xmi_read.rs::lib_sec_002_read_types_are_send_sync_static_with_the_error_traits",
-  "crates/sacm/tests/xmi_read.rs::lib_sec_002_unsupported_root_location_counts_lf_crlf_and_lone_cr_as_one_line_each",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_002_each_refusal_is_clone_eq_and_deterministic_without_source",
   "crates/sacm/tests/xmi_read.rs::lib_sec_002_xml_malformed_code_is_sacm_xml_001_in_the_catalog",
+  "crates/sacm/tests/xmi_roots.rs::lib_sec_002_invalid_root_and_no_package_locations_count_lines_as_xml_does",
+  "crates/sacm/tests/xmi_roots.rs::lib_sec_002_leading_utf8_bom_takes_no_column_in_invalid_root_and_no_package",
 ]
+notes = "Slice 0021: the location tests use roots that are still refused once SACM23-XMI-001 reads package roots; re-checked there."
 
 [[row]]
 id = "SACM23-XMI-001"
 area = "XMI"
 milestone = "M1"
 title = "Interchange roots"
-requirement = "XMI import recognizes an AssuranceCasePackage or ArgumentPackage root, directly or inside an `xmi:XMI` wrapper, and refuses any other root with SACM-XMI-001 (ArtifactPackage and TerminologyPackage roots are added by SACM23-ART-001 and SACM23-TERM-001). Before any content is returned, these inputs that roxmltree accepts are refused or reported, never silently repaired: a character reference to a surrogate (`&#xD800;`, which roxmltree turns into U+FFFD), an undeclared prefix binding `xmlns:p=\"\"` (forbidden by Namespaces 1.0), and an unknown XML-declaration pseudo-attribute such as `encodingX` (ADR 0005 B1, slice 0019 verification)."
-source = "formal/23-05-08 clause 2 (compliance points)"
+requirement = "`xmi::read` returns `Ok(ReadOutput)` with a `Document` (and its diagnostics, sorted per ADR 0011; none yet) when every interchange root is an `AssuranceCasePackage` or `ArgumentPackage` element in the pinned SACM namespace `http://www.omg.org/spec/SACM/20220301` (D-NS-PIN). A root is the document element, or each element child of an `XMI` element in the XMI 2.5.1 namespace `http://www.omg.org/spec/XMI/20131001`. Elements and attributes are matched by namespace URI and local name, never by prefix (any-prefix equivalence is SACM23-XMI-002). Each root becomes a parentless element of its kind, in document order, whose id is its `xmi:id` exactly and whose name is missing (ADR 0013). A read root may carry only namespace declarations, `xmi:id`, `xmi:version` (ignored: XMI 2.5.1 identifies its version by namespace) and an `xmi:type` or `xsi:type` naming its own class; its content may be only white space, comments and processing instructions. The wrapper may carry only namespace declarations and `xmi:version`. Anything else is refused as `ReadError::Unsupported` at its location, never dropped (LIB-API-009): a child element or any other attribute of a root, non-white-space text, a root whose `xmi:id` is absent, empty or repeats an earlier root's, the other ten package kinds as roots (SACM23-ART-001, SACM23-TERM-001, AC-002/003, ARG-014/015), a package-kind name in another namespace or none (LIB-COMPAT-004), an `XMI` element in another namespace (LIB-COMPAT-002), and an XMI-namespace element as a root or wrapper child (SACM23-XMI-019). A root or wrapper child whose local name is none of the twelve package-kind names, and a wrapper with no child of a package-kind name, are refused with a `ReadError` whose `code()` is SACM-XMI-001, at that element; this takes precedence over `Unsupported`, so which inputs get SACM-XMI-001 does not depend on what a release can read. No document is returned beside a refusal (ADR 0015). The XML checks of LIB-SEC-005 run before any root is classified."
+source = "formal/23-05-08 §2.2 (p. 4) \"The top object of the Argumentation package as a unit of interchange shall be the Argumentation::ArgumentPackage element of the SACM.\"; §2.4 (p. 4) \"The top object of the Assurance Case package as a unit of interchange shall be the SACM::AssuranceCasePackage element.\"; §2.2/§2.4 \"import and export XMI documents that conform with the SACM XML Schema produced by applying XMI rules to the normative MOF metamodel\"; §9.2 (p. 23) \"When users exchange content, it is expected they use this as the top-level container.\"; XMI 2.5.1 formal/15-06-07 §7.5.3 (p. 10) \"it must be the XMI element if there are multiple elements\", \"the XMI element may not be present when there is only a single top-level object\", \"Each version of XMI is unambiguously identified by its unique namespace URI\"; §7.8.1 (p. 16) \"The XML element name for each model Class, and Association in a document is its short name.\"; §9.5.2 rule 2a (p. 63); §7.6.1 (p. 13) `<xsd:attribute name=\"id\" type=\"xsd:ID\" use=\"optional\"/>`; XMI.xsd targetNamespace `http://www.omg.org/spec/XMI/20131001` (no `version` attribute; specification defect D10); D-NS-PIN; D-PRESERVE; ADR 0013; ADR 0015; ADR 0016; docs/sacm/diagnostics.md SACM-XMI-001; assurance-forge libs/sacm src/io/xmi_reader.cpp:2097-2142, 2191-2285, 2433-2459 (empty wrapper is SACM-XMI-001 as in C++; deviations in ADR 0016)"
 kind = "xmi"
-status = "planned"
-depends_on = ["SACM23-AC-001", "SACM23-ARG-001", "LIB-SEC-001", "LIB-SEC-002", "LIB-API-009"]
+status = "implemented"
+depends_on = ["SACM23-AC-001", "SACM23-ARG-001", "LIB-SEC-001", "LIB-SEC-002", "LIB-API-009", "LIB-SEC-005", "LIB-TOOL-020", "LIB-DIAG-001"]
+acceptance = [
+  "AssuranceCasePackage root (§2.4): `<sacm:AssuranceCasePackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\" xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"acp_1\"/>` gives `Ok`; `roots()` is `[acp_1]`, its kind is AssuranceCasePackage, `parent()` is `None`, `children()` is empty, `name()` is `None`, the document has 1 element and `diagnostics()` is empty.",
+  "ArgumentPackage root (§2.2): the same holds for `<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\" xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"arg_1\"/>`, with kind ArgumentPackage.",
+  "Wrapper (XMI §7.5.3): `<xmi:XMI xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"><sacm:ArgumentPackage xmi:id=\"a\"/></xmi:XMI>` gives the same document as the bare form (same roots, ids and kinds; 1 element): the wrapper is not an element.",
+  "Several roots: a wrapper holding AssuranceCasePackage `n1`, ArgumentPackage `a1` and AssuranceCasePackage `n2` gives `roots()` in that order, each with its kind and no parent.",
+  "Ignorable content gives the same document as the bare form: an XML declaration; comments and processing instructions before, inside and after the root and between wrapper children; white space; `xmi:version=\"2.0\"` or `\"2.1\"` on the root or the wrapper; an unused `xmlns:foo=\"urn:x\"`; an `xmlns:xsi` declaration.",
+  "Redundant type: `xmi:type=\"sacm:ArgumentPackage\"` or `xsi:type=\"sacm:ArgumentPackage\"` on an ArgumentPackage root gives the same document; `xsi:type=\"sacm:ArgumentPackageInterface\"`, `xsi:type=\"sacm:Claim\"`, a type whose prefix is bound to another namespace, and an unprefixed type with no default namespace are `Unsupported` at the root.",
+  "Ids are kept exactly: `xmi:id=\"Ünï.c-1\"` and `xmi:id=\"a&#x42;\"` give ids `Ünï.c-1` and `aB`.",
+  "SACM-XMI-001: each of these gives `ReadError::InvalidRoot` with `code() == Some(Code::XMI_INVALID_ROOT)` (SACM-XMI-001), located at the `<` of the element's start tag, and `element_name` the name as written (`<sacm:Claim …>` displays exactly `the root element \"sacm:Claim\" is not a SACM package at line 1, column 1`): `<sacm:Claim xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\" xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"c1\"/>` (the C++ fixture `invalid/root-invalid.sacm.xmi`), `<sacm:ArgumentGroup …>`, `<sacm:assuranceCasePackage …>`, `<sacm:Foo/>`, `<r/>`, `<html xmlns=\"http://www.w3.org/1999/xhtml\">`, `<uml:Model xmlns:uml=\"http://www.omg.org/spec/UML/20131001\">`; a wrapper holding a valid ArgumentPackage then a `sacm:Claim` (at the Claim; no document is returned); an empty `<xmi:XMI xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"/>` and a wrapper holding only `<xmi:documentation/>` give `ReadError::NoPackage`, with the same code, located at the wrapper and displaying `the XMI element holds no SACM package at line L, column C`.",
+  "SACM-XMI-001 takes precedence: a wrapper holding `<sacm:ArtifactPackage xmi:id=\"f\"/>` then `<sacm:Claim xmi:id=\"c\"/>` gives SACM-XMI-001 at the Claim, not `Unsupported`.",
+  "Not readable yet, so `Unsupported` (`code()` `None`) at the stated element: each of the other 10 package-kind roots in the pinned namespace; `<foo:ArgumentPackage xmlns:foo=\"urn:x\" …>`; `<ArgumentPackage xmlns:xmi=\"…20131001\" xmi:id=\"p\"/>` in no namespace; `<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/2.2/argumentation\" …>`; `<xmi:XMI xmlns:xmi=\"http://www.omg.org/XMI\">` and `<XMI>` wrappers holding a valid root; a root `<xmi:Extension>`; a wrapper child `<xmi:documentation>` or `<xmi:extension>` next to a valid root (at that child).",
+  "Unread content, so `Unsupported` at that content: on a valid root, any one of `gid=\"g\"`, `gid=\"\"`, `isCitation=\"false\"`, `isAbstract=\"true\"`, `citedElement=\"x\"`, `abstractForm=\"x\"`, `interface=\"x\"`, `xmi:uuid`, `xmi:label`, `href`, `xmi:idref`, `xsi:schemaLocation`, `xml:lang`, `foo=\"1\"`, `ext:a=\"1\"`; a `<name/>` child, an `<argumentPackage/>` child, `<argumentElement xsi:type=\"sacm:Claim\"/>`, `<xmi:Extension/>`, `<gid>g</gid>`; non-white-space text.",
+  "Ids, so `Unsupported` at the root: no `xmi:id`, `xmi:id=\"\"`, only an unprefixed `id=\"p\"`, or an `id` attribute in another namespace; two wrapped roots with the same `xmi:id` give `Unsupported` at the second.",
+  "Order and determinism: the encoding refusals (LIB-API-009), DOCTYPE (LIB-SEC-001) and `Malformed` (LIB-SEC-002, LIB-SEC-005) come before any root classification; the same input always gives the same result.",
+  "`ReadOutput` has `document()`, `diagnostics()` (empty in this release) and `into_document()`, and is `Send + Sync` (checked statically). The SACM-XMI-001 refusals follow ADR 0011: `InvalidRoot` and `NoPackage` are `#[non_exhaustive]` `ReadError` variants with a location (also returned by `location()`), its `Display` is one lowercase line without trailing punctuation that quotes names from the input, `source()` is `None`; `Code::XMI_INVALID_ROOT` is SACM-XMI-001 and appears in a table row of docs/sacm/diagnostics.md.",
+]
+code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/roots.rs", "crates/sacm/src/diagnostic.rs", "docs/sacm/diagnostics.md"]
+tests = [
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_assurance_case_package_root_reads_as_one_parentless_element",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_argument_package_root_reads_as_one_parentless_element",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_wrapper_gives_the_same_document_as_the_bare_form",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_several_wrapped_roots_keep_their_kinds_in_document_order",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_ignorable_content_around_a_bare_root_gives_the_same_document",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_ignorable_content_in_and_around_a_wrapper_gives_the_same_document",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_a_type_naming_the_root_class_gives_the_same_document",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_a_type_naming_another_class_is_unsupported_at_the_root",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_ids_are_kept_exactly",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_claim_root_is_invalid_root_with_the_exact_display",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_a_root_that_is_not_a_package_kind_is_invalid_root_at_its_start_tag",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_a_wrapped_claim_is_invalid_root_and_no_document_is_returned",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_a_wrapper_with_no_package_is_no_package_at_the_wrapper",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_invalid_root_takes_precedence_over_unsupported",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_the_other_ten_package_kinds_are_unsupported_at_the_root",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_a_package_name_outside_the_pinned_namespace_is_unsupported_at_the_root",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_an_xmi_element_outside_the_xmi_namespace_is_unsupported_at_the_wrapper",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_an_xmi_namespace_element_as_root_or_wrapper_child_is_unsupported_there",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_an_unread_attribute_of_a_root_is_unsupported_at_the_attribute",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_an_unread_attribute_of_the_wrapper_is_unsupported_at_the_attribute",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_unread_content_of_a_root_is_unsupported_at_that_content",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_a_missing_empty_or_foreign_root_id_is_unsupported_at_the_root",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_a_repeated_root_id_is_unsupported_at_the_second_root",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_input_checks_come_before_root_classification",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_the_same_input_always_gives_the_same_result",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_read_output_gives_its_document_and_diagnostics",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_refusals_are_one_located_line_quoting_names_without_source",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_xmi_invalid_root_code_is_sacm_xmi_001_in_the_catalog",
+]
 
 [[row]]
 id = "SACM23-XMI-002"
@@ -1766,6 +1816,7 @@ source = "D-NS-PIN; docs/sacm/metamodel-inventory.md (XMI serialization conventi
 kind = "xmi"
 status = "planned"
 depends_on = ["SACM23-XMI-001"]
+notes = "Slice 0021 research: XMI 2.5.1 declares no `xmi:version` attribute (XMI.xsd; §7.8.3 p. 17 has no anyAttribute), so a strict export that writes `xmi:version=\"2.0\"` may not validate against the 2.5.1 schema. C++ writes it (namespaces.h:32 `kXmiVersion`, xmi_writer.cpp:461, 542). Decide keep or drop with an ADR naming that C++ decision, and check it against clause 2."
 
 [[row]]
 id = "SACM23-XMI-004"
@@ -1777,6 +1828,7 @@ source = "XMI 2.5.1 identity; D-ID; D-PRESERVE; assurance-forge libs/sacm io/xmi
 kind = "xmi"
 status = "planned"
 depends_on = ["SACM23-XMI-001"]
+notes = "Slice 0021 research: no row yet owns a missing `xmi:id` (SACM-XMI-004, generated in tolerant mode). The catalog lists it as Error (strict), but the id is `use=\"optional\"` (XMI 2.5.1 §7.6.1, p. 13) and D-STRICT says strict import accepts every schema-conforming document; settle this here or in a new row. SACM23-XMI-001 refuses a missing root id as `Unsupported`."
 
 [[row]]
 id = "SACM23-XMI-006"
@@ -2470,6 +2522,7 @@ source = "formal/23-05-08 clause 12; ptc/22-03-13 Artifact::ArtifactPackage; cla
 kind = "model"
 status = "planned"
 depends_on = ["SACM23-AC-001", "SACM23-XMI-005", "LIB-API-008"]
+notes = "Also reads `ArtifactPackage` as an interchange root: SACM23-XMI-001 refuses it as `Unsupported` until then."
 
 [[row]]
 id = "SACM23-ART-002"
@@ -2606,6 +2659,7 @@ source = "formal/23-05-08 clause 10; ptc/22-03-13 Terminology::TerminologyPackag
 kind = "model"
 status = "planned"
 depends_on = ["SACM23-AC-001", "SACM23-XMI-005", "LIB-API-008"]
+notes = "Also reads `TerminologyPackage` as an interchange root: SACM23-XMI-001 refuses it as `Unsupported` until then."
 
 [[row]]
 id = "SACM23-TERM-002"
@@ -2709,6 +2763,7 @@ source = "formal/23-05-08 §9.3; ptc/22-03-13 AssuranceCase::AssuranceCasePackag
 kind = "model"
 status = "planned"
 depends_on = ["SACM23-AC-001", "SACM23-BASE-007"]
+notes = "Also reads this kind as an interchange root: SACM23-XMI-001 refuses it as `Unsupported` until then (C++ accepts it, element_kind.cpp:87-105)."
 
 [[row]]
 id = "SACM23-AC-003"
@@ -2720,6 +2775,7 @@ source = "formal/23-05-08 §9.4; ptc/22-03-13 AssuranceCase::AssuranceCasePackag
 kind = "model"
 status = "planned"
 depends_on = ["SACM23-AC-001", "SACM23-BASE-007"]
+notes = "Also reads this kind as an interchange root: SACM23-XMI-001 refuses it as `Unsupported` until then (C++ accepts it, element_kind.cpp:87-105)."
 
 [[row]]
 id = "SACM23-ARG-014"
@@ -2731,6 +2787,7 @@ source = "formal/23-05-08 §11.6; ptc/22-03-13 Argumentation::ArgumentPackageInt
 kind = "model"
 status = "planned"
 depends_on = ["SACM23-ARG-001", "SACM23-BASE-007", "SACM23-VAL-012"]
+notes = "Also reads this kind as an interchange root: SACM23-XMI-001 refuses it as `Unsupported` until then (C++ accepts it, element_kind.cpp:87-105)."
 
 [[row]]
 id = "SACM23-ARG-015"
@@ -2742,6 +2799,7 @@ source = "formal/23-05-08 §11.5; ptc/22-03-13 Argumentation::ArgumentPackageBin
 kind = "model"
 status = "planned"
 depends_on = ["SACM23-ARG-001", "SACM23-BASE-007", "SACM23-VAL-012"]
+notes = "Also reads this kind as an interchange root: SACM23-XMI-001 refuses it as `Unsupported` until then (C++ accepts it, element_kind.cpp:87-105)."
 
 [[row]]
 id = "SACM23-ART-012"
@@ -3099,28 +3157,29 @@ status = "verified"
 verification = "docs/verification/0019-m1-xml-input-safety.md"
 depends_on = ["LIB-API-004", "LIB-DIAG-001"]
 acceptance = [
-  "A well-formed UTF-8 SACM document (an `AssuranceCasePackage` root) and a well-formed non-SACM document are refused with `ReadError::Unsupported`, `code()` `None`, located at the root element; `read` returns no `Ok` in this release.",
+  "Well-formed SACM input the reader cannot represent yet (e.g. an `AssuranceCasePackage` root with a `name` child, or an `ArtifactPackage` root) is refused with `ReadError::Unsupported`, `code()` `None`, located at the construct it cannot read; no partial document is returned. Which roots are recognised at all is SACM23-XMI-001.",
   "UTF-16 LE and BE input with a BOM, UTF-32 BOMs, and BOM-less UTF-16 or UCS-4 input recognised by its first bytes (XML 1.0 Appendix F: `3C 00 3F 00`, `00 3C 00 3F` and the four-byte forms), such as a document declaring `UTF-16LE`, are refused with `Unsupported`, never `Malformed` and never misread; the reason does not claim a BOM that is not there. Every BOM and first-bytes refusal is located at line 1, column 1.",
-  "A declared `encoding=\"ISO-8859-1\"` (and another non-UTF-8 name) is refused with `Unsupported` located at the encoding name (`<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>` at line 1, column 31; with a CR before `encoding`, at line 2), whether or not its bytes are valid UTF-8: a real ISO-8859-1 file with a 0xE9 byte is `Unsupported`, not `Malformed`, because the declaration is read before the UTF-8 check (ADR 0005 B2). Declarations of `UTF-8`, `utf-8`, `Utf-8`, `US-ASCII`, `us-ascii`, `ASCII` and `ascii` are not refused for their encoding: the refusal is the root element's `Unsupported`, located at the root start tag. A non-ASCII character under an ASCII declaration is `Malformed` at that character (`<?xml version=\"1.0\" encoding=\"US-ASCII\"?>\\n<r>café</r>` at line 2, column 7).",
+  "A declared `encoding=\"ISO-8859-1\"` (and another non-UTF-8 name) is refused with `Unsupported` located at the encoding name (`<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>` at line 1, column 31; with a CR before `encoding`, at line 2), whether or not its bytes are valid UTF-8: a real ISO-8859-1 file with a 0xE9 byte is `Unsupported`, not `Malformed`, because the declaration is read before the UTF-8 check (ADR 0005 B2). Declarations of `UTF-8`, `utf-8`, `Utf-8`, `US-ASCII`, `us-ascii`, `ASCII` and `ascii` are not refused for their encoding: a readable root under each reads `Ok`, and an unreadable one is refused at the root start tag. A non-ASCII character under an ASCII declaration is `Malformed` at that character (`<?xml version=\"1.0\" encoding=\"US-ASCII\"?>\\n<r>café</r>` at line 2, column 7).",
   "The `Unsupported` `Display` is one lowercase line without trailing punctuation, naming the location when known; names from the input are quoted.",
 ]
 code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/input.rs"]
 tests = [
-  "crates/sacm/tests/xmi_read.rs::lib_api_009_bom_and_first_bytes_refusals_are_located_at_line_1_column_1",
-  "crates/sacm/tests/xmi_read.rs::lib_api_009_declared_non_utf8_encoding_is_located_at_the_encoding_name",
+  "crates/sacm/tests/xmi_read.rs::lib_api_009_well_formed_sacm_document_is_unsupported_at_the_construct_it_cannot_read",
+  "crates/sacm/tests/xmi_read.rs::lib_api_009_well_formed_non_sacm_document_is_unsupported_at_its_root",
+  "crates/sacm/tests/xmi_read.rs::lib_api_009_utf16_and_utf32_input_is_unsupported",
+  "crates/sacm/tests/xmi_read.rs::lib_api_009_utf16_and_ucs4_without_bom_are_unsupported_by_their_first_bytes",
   "crates/sacm/tests/xmi_read.rs::lib_api_009_declared_non_utf8_encoding_is_unsupported",
+  "crates/sacm/tests/xmi_read.rs::lib_api_009_utf8_and_ascii_declarations_in_any_case_are_not_refused",
+  "crates/sacm/tests/xmi_read.rs::lib_api_009_non_ascii_byte_under_ascii_declaration_is_malformed",
+  "crates/sacm/tests/xmi_read.rs::lib_api_009_utf8_and_ascii_declarations_in_any_case_are_refused_at_the_root_not_the_encoding",
+  "crates/sacm/tests/xmi_read.rs::lib_api_009_declared_non_utf8_encoding_is_located_at_the_encoding_name",
+  "crates/sacm/tests/xmi_read.rs::lib_api_009_bom_and_first_bytes_refusals_are_located_at_line_1_column_1",
   "crates/sacm/tests/xmi_read.rs::lib_api_009_declared_non_utf8_encoding_with_invalid_utf8_bytes_is_unsupported",
   "crates/sacm/tests/xmi_read.rs::lib_api_009_invalid_utf8_without_or_under_a_utf8_or_ascii_declaration_stays_malformed",
-  "crates/sacm/tests/xmi_read.rs::lib_api_009_non_ascii_byte_under_ascii_declaration_is_malformed",
-  "crates/sacm/tests/xmi_read.rs::lib_api_009_refusal_of_an_encoding_name_with_line_breaks_stays_one_line",
   "crates/sacm/tests/xmi_read.rs::lib_api_009_unsupported_display_is_one_located_line_quoting_names",
-  "crates/sacm/tests/xmi_read.rs::lib_api_009_utf16_and_ucs4_without_bom_are_unsupported_by_their_first_bytes",
-  "crates/sacm/tests/xmi_read.rs::lib_api_009_utf16_and_utf32_input_is_unsupported",
-  "crates/sacm/tests/xmi_read.rs::lib_api_009_utf8_and_ascii_declarations_in_any_case_are_not_refused",
-  "crates/sacm/tests/xmi_read.rs::lib_api_009_utf8_and_ascii_declarations_in_any_case_are_refused_at_the_root_not_the_encoding",
-  "crates/sacm/tests/xmi_read.rs::lib_api_009_well_formed_non_sacm_document_is_unsupported_at_its_root",
-  "crates/sacm/tests/xmi_read.rs::lib_api_009_well_formed_sacm_document_is_unsupported_at_its_root",
+  "crates/sacm/tests/xmi_read.rs::lib_api_009_refusal_of_an_encoding_name_with_line_breaks_stays_one_line",
 ]
+notes = "Item 1 and item 3 reworded in slice 0021, when SACM23-XMI-001 made the first inputs readable; re-checked there."
 
 [[row]]
 id = "SACM23-XMI-018"
@@ -3242,3 +3301,79 @@ source = "D-TERM"
 kind = "model"
 status = "out-of-scope"
 notes = "D-TERM: GSN is a notation over SACM and belongs in a separate crate, not in `sacm`."
+
+[[row]]
+id = "LIB-SEC-005"
+area = "SEC"
+milestone = "M1"
+title = "XML well-formedness the parser does not check"
+requirement = "Input that roxmltree accepts but that XML 1.0 or Namespaces 1.0 make a fatal error is refused as `ReadError::Malformed` (SACM-XML-001) at the offending construct, before any root is classified and never repaired: a character reference to a surrogate or above U+10FFFF (roxmltree turns both into U+FFFD), a prefix undeclaring `xmlns:p=\"\"`, an XML declaration that does not match XML 1.0 [23]-[26], [32], [80] and [81], and a processing instruction whose target is `xml` in any letter case other than the declaration."
+source = "XML 1.0 5th ed. §1.2 \"Once a fatal error is detected, however, the processor MUST NOT continue normal processing\"; §4.1 WFC Legal Character \"Characters referred to using character references MUST match the production for Char.\" and [2] Char; §2.8 [23]-[26], §2.9 [32], §4.3.3 [80]/[81]; §2.6 [17] PITarget; Namespaces in XML 1.0 3rd ed. §5 \"No Prefix Undeclaring\", §6.2 \"The attribute value in a default namespace declaration MAY be empty.\", §8 \"a processor MUST report violations of namespace well-formedness\"; ADR 0005 B1; slice 0019 verification; roxmltree 0.21.2 src/tokenizer.rs:303, 325-337, 371, 1002"
+kind = "security"
+status = "implemented"
+depends_on = ["LIB-SEC-002"]
+acceptance = [
+  "Character references: `&#xD800;`, `&#xDFFF;`, `&#55296;`, `&#x110000;` and `&#xFFFFFFFF;` give `Malformed` with `code()` SACM-XML-001, located at the `&`, in an `xmi:id`, in another attribute and in text inside an element; never `Unsupported` and never `Ok` with U+FFFD. `&#xD7FF;`, `&#xE000;` and `&#x10FFFF;` in an `xmi:id` are not refused, nor is the literal text `&#xD800;` in a comment, a CDATA section or a PI, or written `&amp;#xD800;` (`xmi:id=\"p&amp;#xD800;\"` reads as id `p&#xD800;`).",
+  "Prefix undeclaring: `xmlns:p=\"\"` on the root or on a child gives `Malformed` at the declaration; `xmlns=\"\"` is not refused.",
+  "XML declaration: each gives `Malformed` at the offending name or value: pseudo-attributes `versionX`, `encodingX=\"UTF-8\"`, `standaloneX` and `foo`; pseudo-attributes out of order; `version` values `\"2.0\"`, `\"1.\"` and `\"abc\"`; `standalone=\"maybe\"`; `encoding` values `\"\"`, `\"8bit\"` and `\"UTF 8\"` (these fail [81] before the supported-encoding check). A declaration with TAB, CR or LF after `<?xml` is checked by the same rules, and a valid one is accepted; `version=\"1.1\"` is not refused.",
+  "`xml` PI targets: `<?XML x?>` in the prolog, and `<?xml\tfoo?>` or `<?Xml?>` inside the root, give `Malformed` at the `<?`; `<?xml-stylesheet href=\"a\"?>` is not refused.",
+  "Order: the XML declaration is checked before parsing, so a bad declaration comes before a DOCTYPE. Within it, `<?xml`, VersionInfo and EncodingDecl are checked first ([81] before the supported-encoding check); the rest (SDDecl, `?>`) is checked only for a supported encoding, so `<?xml version=\"1.0\" encoding=\"ISO-8859-1\" \\xE9?>` stays `Unsupported` (LIB-API-009 item 3). The character-reference, prefix and PI checks run after roxmltree accepts the input, so a DOCTYPE or a roxmltree `Malformed` comes before them, and among them the earliest offset wins. The `read` docs state this order.",
+  "Each refusal's `Display` follows the LIB-SEC-002 form (one lowercase line, location, our own reason, names quoted), and the checks never panic (the LIB-SEC-002 no-panic inputs still return a value).",
+]
+code = ["crates/sacm/src/xmi/input.rs"]
+tests = [
+  "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_reference_to_a_non_character_in_an_id_is_malformed_at_the_ampersand",
+  "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_reference_to_a_non_character_in_another_attribute_is_malformed_at_the_ampersand",
+  "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_reference_to_a_non_character_in_text_is_malformed_at_the_ampersand",
+  "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_references_to_characters_at_the_edges_of_the_ranges_are_read",
+  "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_reference_text_that_is_not_a_reference_is_not_refused",
+  "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_undeclaring_a_prefix_is_malformed_at_the_declaration",
+  "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_an_empty_default_namespace_declaration_is_not_refused",
+  "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_a_declaration_with_an_unknown_or_misplaced_pseudo_attribute_is_malformed_at_its_name",
+  "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_a_declaration_with_a_bad_value_is_malformed_at_the_value",
+  "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_a_declaration_with_tab_cr_or_lf_after_xml_is_checked_by_the_same_rules",
+  "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_valid_declarations_and_version_1_1_are_not_refused",
+  "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_a_pi_targeted_xml_in_any_case_is_malformed_at_its_start",
+  "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_a_pi_whose_target_only_starts_with_xml_is_not_refused",
+  "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_a_doctype_comes_before_the_reference_prefix_and_pi_checks",
+  "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_a_parser_error_comes_before_these_checks",
+  "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_the_earliest_offending_construct_wins",
+  "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_the_declaration_grammar_comes_before_the_declared_encoding",
+  "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_the_rest_of_the_declaration_is_checked_only_for_a_supported_encoding",
+  "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_a_bad_declaration_comes_before_a_doctype",
+  "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_each_refusal_display_has_the_malformed_form_and_quotes_names",
+  "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_the_checks_never_panic_and_every_malformed_refusal_has_its_form",
+]
+
+[[row]]
+id = "SACM23-XMI-019"
+area = "XMI"
+milestone = "M6"
+title = "XMI document metadata"
+requirement = "XMI document metadata is preserved or refused, never dropped silently: `xmi:documentation`, `xmi:extension` and `xmi:Extension` (on the wrapper and inside any object), `xmi:difference`, `xmi:uuid`, `xmi:label`, `href` and `xmi:idref` on objects, and `xsi:schemaLocation`. SACM23-XMI-001 refuses them as `Unsupported` until then."
+source = "XMI 2.5.1 formal/15-06-07 §7.3.3 (p. 7) \"Tools that rely on XMI are expected to store the extension information and export it again to enable round trip engineering\"; §7.6.1 (p. 14) \"The value of the label attribute is ignored on import.\"; XMI.xsd; assurance-forge xmi_reader.cpp:1543-1546 (ignores unknown XMI and XSI attributes)"
+kind = "xmi"
+status = "planned"
+depends_on = ["SACM23-XMI-001"]
+
+[[row]]
+id = "LIB-COMPAT-009"
+area = "COMPAT"
+milestone = "M6"
+title = "Foreign container roots"
+requirement = "A tolerant load reads SACM packages out of a non-SACM root (an ODE `DDIPackage`, say) and reports SACM-XMI-009; a strict load refuses it with SACM-XMI-001, as SACM23-XMI-001 does today."
+source = "docs/sacm/diagnostics.md SACM-XMI-009; assurance-forge xmi_reader.cpp:2227-2263"
+kind = "compliance"
+status = "planned"
+depends_on = ["SACM23-XMI-001", "LIB-COMPAT-001"]
+
+[[row]]
+id = "LIB-TOOL-021"
+area = "TOOL"
+milestone = "M2"
+title = "XMI.xsd is fetched with the XMI specification"
+requirement = "`cargo xtask fetch-spec` also downloads the normative XMI.xsd (`http://www.omg.org/spec/XMI/20131001/XMI.xsd`, listed on the XMI 2.5.1 cover as a normative machine-consumable file), hash-pinned like the other sources."
+source = "Slice 0021 research: SACM23-XMI-001 and specification defect D10 rest on XMI.xsd, read unpinned"
+kind = "tooling"
+status = "planned"
+depends_on = ["LIB-TOOL-020"]

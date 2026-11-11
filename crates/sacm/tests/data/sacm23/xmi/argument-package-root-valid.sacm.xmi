@@ -1,0 +1,2 @@
+<!-- SACM23-XMI-001: an ArgumentPackage as the interchange root (formal/23-05-08 §2.2). -->
+<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arg_1"/>
