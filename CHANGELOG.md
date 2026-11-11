@@ -72,8 +72,9 @@ change bumps the minor version and is listed under **Breaking**.
   `Code::XMI_INVALID_ROOT` (SACM-XMI-001). Content it cannot read yet stays
   `Unsupported` (ADR 0016) [SACM23-XMI-001].
 - `xmi::read` refuses XML the parser let through as `Malformed`: a bad XML declaration,
-  a character reference to a surrogate or above U+10FFFF, `xmlns:p=""`, an `xml`
-  processing-instruction target, and a target followed by neither white space nor `?>`
+  a character reference to a surrogate or above U+10FFFF, `xmlns:p=""`, an element or
+  attribute name with an empty prefix (`<:c>`), and a processing-instruction target that
+  is `xml`, contains a colon, or is followed by neither white space nor `?>`
   [LIB-SEC-005].
 
 ### Changed

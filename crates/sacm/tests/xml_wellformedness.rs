@@ -1038,7 +1038,6 @@ fn lib_sec_005_a_pi_target_that_continues_past_xml_is_not_refused() {
         "<?xml-x?>",
         "<?xml.x?>",
         "<?xml_x?>",
-        "<?xml:x?>",
         "<?xml\u{B7}x?>",
         "<?xml\u{E9}?>",
         "<?xml\u{300}?>",
@@ -1085,6 +1084,214 @@ fn lib_sec_005_a_pi_target_not_followed_by_white_space_or_its_end_is_malformed()
         let in_prolog = format!("{pi}\n{ROOT}");
         assert_ok_with_id(row, in_prolog.as_bytes(), "p");
         assert_ok_with_id(row, &root_holding(pi), "p");
+    }
+}
+
+// --- LIB-SEC-005 6. PI targets with a colon -----------------------------------
+
+#[test]
+fn lib_sec_005_a_pi_target_with_a_colon_is_malformed_at_its_start() {
+    let row = "LIB-SEC-005";
+    // The colon may be anywhere in the target, not only first.
+    for (pi, target) in [
+        ("<?a:b x?>", "a:b"),
+        ("<?xml:x?>", "xml:x"),
+        ("<?:?>", ":"),
+        ("<?p:?>", "p:"),
+    ] {
+        let reason = format!("the processing instruction target \"{target}\" contains a colon");
+        let in_prolog = format!("{pi}\n{ROOT}");
+        assert_malformed_exactly(row, in_prolog.as_bytes(), 1, 1, &reason);
+        assert_malformed_exactly(row, &root_holding(pi), 1, 134, &reason);
+    }
+    // The reserved-`xml` check comes first.
+    assert_malformed_exactly(
+        row,
+        &root_holding("<?xml?>"),
+        1,
+        134,
+        "a processing instruction has the reserved target \"xml\"",
+    );
+}
+
+// --- LIB-SEC-005 7. Names with an empty prefix --------------------------------
+
+/// The column of the first character of `needle` in `text`, which is one
+/// line.
+fn column_of(row: &str, text: &str, needle: &str) -> u32 {
+    assert!(
+        !text.contains(['\n', '\r']),
+        "{row}: column_of takes one line"
+    );
+    let Some(offset) = text.find(needle) else {
+        panic!("{row}: the test input {text:?} does not contain {needle:?}");
+    };
+    u32::try_from(text[..offset].chars().count() + 1)
+        .unwrap_or_else(|_| panic!("{row}: the test input is too long"))
+}
+
+#[test]
+fn lib_sec_005_a_name_with_an_empty_prefix_is_malformed_at_the_name() {
+    let row = "LIB-SEC-005";
+    let sacm = "http://www.omg.org/spec/SACM/20220301";
+    let xmi = "http://www.omg.org/spec/XMI/20131001";
+    let ns = format!("xmlns=\"{sacm}\" xmlns:xmi=\"{xmi}\"");
+    // Each input, the text just before the name (`<`, `</` or a space), and
+    // the name as written.
+    let cases: Vec<(String, &str, &str)> = vec![
+        // A start tag that ends the element.
+        (
+            format!("<:ArgumentPackage {ns} xmi:id=\"p\"/>"),
+            "<:ArgumentPackage",
+            ":ArgumentPackage",
+        ),
+        // A start tag, with an end tag without the empty prefix.
+        (
+            format!("<:ArgumentPackage {ns} xmi:id=\"p\"></ArgumentPackage>"),
+            "<:ArgumentPackage",
+            ":ArgumentPackage",
+        ),
+        // Only the end tag.
+        (
+            format!("<ArgumentPackage {ns} xmi:id=\"p\"></:ArgumentPackage>"),
+            "</:ArgumentPackage",
+            ":ArgumentPackage",
+        ),
+        // A wrapped root.
+        (
+            format!(
+                "<xmi:XMI xmlns:xmi=\"{xmi}\" xmlns=\"{sacm}\"><:ArgumentPackage xmi:id=\"p\"/></xmi:XMI>"
+            ),
+            "<:ArgumentPackage",
+            ":ArgumentPackage",
+        ),
+        // The wrapper.
+        (
+            format!(
+                "<:XMI xmlns=\"{xmi}\" xmlns:xmi=\"{xmi}\" xmlns:sacm=\"{sacm}\">\
+                 <sacm:ArgumentPackage xmi:id=\"p\"/></:XMI>"
+            ),
+            "<:XMI",
+            ":XMI",
+        ),
+        // A child of a readable root.
+        (
+            format!("{ROOT_START} xmi:id=\"p\"><:c/>{ROOT_END}"),
+            "<:c",
+            ":c",
+        ),
+        // An attribute of a readable root.
+        (format!("{ROOT_START} xmi:id=\"p\" :x=\"1\"/>"), " :x", ":x"),
+        // A root not read yet, so Malformed and not Unsupported: on the
+        // element and on an attribute.
+        (
+            format!("<:ArtifactPackage {ns} xmi:id=\"f\"/>"),
+            "<:ArtifactPackage",
+            ":ArtifactPackage",
+        ),
+        (
+            format!(
+                "<sacm:ArtifactPackage xmlns:sacm=\"{sacm}\" xmlns:xmi=\"{xmi}\" xmi:id=\"f\" :x=\"1\"/>"
+            ),
+            " :x",
+            ":x",
+        ),
+    ];
+    for (input, before_name, name) in &cases {
+        // The name starts after the `<`, `</` or space.
+        let lead = u32::try_from(before_name.len() - name.len())
+            .unwrap_or_else(|_| panic!("{row}: the lead is too long"));
+        let column = column_of(row, input, before_name) + lead;
+        let reason = format!("the name \"{name}\" has an empty namespace prefix");
+        assert_malformed_exactly(row, input.as_bytes(), 1, column, &reason);
+    }
+}
+
+// --- LIB-SEC-005 8. Name-character edges ---------------------------------------
+
+/// The ranges of XML 1.0 [4] `NameStartChar` and [4a] `NameChar`, without
+/// `:` (a target with a colon is refused for the colon: item 6).
+const NAME_CHAR_RANGES: [(char, char); 21] = [
+    ('A', 'Z'),
+    ('_', '_'),
+    ('a', 'z'),
+    ('\u{C0}', '\u{D6}'),
+    ('\u{D8}', '\u{F6}'),
+    ('\u{F8}', '\u{2FF}'),
+    ('\u{370}', '\u{37D}'),
+    ('\u{37F}', '\u{1FFF}'),
+    ('\u{200C}', '\u{200D}'),
+    ('\u{2070}', '\u{218F}'),
+    ('\u{2C00}', '\u{2FEF}'),
+    ('\u{3001}', '\u{D7FF}'),
+    ('\u{F900}', '\u{FDCF}'),
+    ('\u{FDF0}', '\u{FFFD}'),
+    ('\u{10000}', '\u{EFFFF}'),
+    ('-', '-'),
+    ('.', '.'),
+    ('0', '9'),
+    ('\u{B7}', '\u{B7}'),
+    ('\u{300}', '\u{36F}'),
+    ('\u{203F}', '\u{2040}'),
+];
+
+/// Chars next to those ranges that are not `NameChar`s.
+const NAME_CHAR_NEIGHBOURS: [char; 28] = [
+    '\u{BF}',
+    '\u{D7}',
+    '\u{F7}',
+    '\u{37E}',
+    '\u{2000}',
+    '\u{200B}',
+    '\u{200E}',
+    '\u{206F}',
+    '\u{2190}',
+    '\u{2BFF}',
+    '\u{2FF0}',
+    '\u{3000}',
+    '\u{F8FF}',
+    '\u{FDD0}',
+    '\u{FDEF}',
+    '\u{F0000}',
+    '\u{B6}',
+    '\u{B8}',
+    '\u{203E}',
+    '\u{2041}',
+    ',',
+    '/',
+    ';',
+    '@',
+    '[',
+    '^',
+    '`',
+    '{',
+];
+
+#[test]
+fn lib_sec_005_a_pi_target_ends_at_each_edge_of_the_name_character_ranges() {
+    let row = "LIB-SEC-005";
+    // A NameChar continues the target, so `xml` is not the whole target.
+    for (low, high) in NAME_CHAR_RANGES {
+        for c in [low, high] {
+            let pi = format!("<?xml{c}?>");
+            assert_ok_with_id(row, &root_holding(&pi), "p");
+            assert_ok_with_id(row, format!("{pi}\n{ROOT}").as_bytes(), "p");
+        }
+    }
+    // A Char that is not a NameChar ends the target: `xml` is reserved, and
+    // `p` is followed by neither white space nor `?>`.
+    let reserved = "a processing instruction has the reserved target \"xml\"";
+    let not_followed =
+        "the processing instruction target \"p\" is not followed by white space or \"?>\"";
+    for c in NAME_CHAR_NEIGHBOURS {
+        let reserved_pi = format!("<?xml{c}?>");
+        assert_malformed_exactly(row, &root_holding(&reserved_pi), 1, 134, reserved);
+        let in_prolog = format!("{reserved_pi}\n{ROOT}");
+        assert_malformed_exactly(row, in_prolog.as_bytes(), 1, 1, reserved);
+        let p_pi = format!("<?p{c}x?>");
+        assert_malformed_exactly(row, &root_holding(&p_pi), 1, 137, not_followed);
+        let in_prolog = format!("{p_pi}\n{ROOT}");
+        assert_malformed_exactly(row, in_prolog.as_bytes(), 1, 4, not_followed);
     }
 }
 
@@ -1141,7 +1348,9 @@ const COMMENT_TOKENS: &[&str] = &[
     "<x>",
 ];
 /// PI targets, the character after the target, and PI content.
-const PI_TARGETS: &[&str] = &["xml", "Xml", "XML", "xml-x", "pi", "pi-x"];
+const PI_TARGETS: &[&str] = &[
+    "xml", "Xml", "XML", "xml-x", "pi", "pi-x", "a:b", "xml:x", ":", "p:",
+];
 const PI_SEPARATORS: &[&str] = &[" ", "", "\t", "\n", ">", "?", "/", "!", "\u{A0}"];
 const PI_TOKENS: &[&str] = &[
     ">",
@@ -1225,11 +1434,11 @@ fn generated_value(g: &mut Generator, quote: char) -> String {
 
 /// A child element with attributes and, at depth 0, content.
 fn generated_element(g: &mut Generator, depth: usize) -> String {
-    let name = g.pick(&["c", "d"]);
+    let name = g.pick(&["c", "d", ":c"]);
     let mut element = format!("<{name}");
     let mut used: Vec<&str> = Vec::new();
     for _ in 0..g.below(4) {
-        let attribute = g.pick(&["a", "b", "xmlns:p", "xmlns:q", "xmlns"]);
+        let attribute = g.pick(&["a", "b", ":a", "xmlns:p", "xmlns:q", "xmlns"]);
         if used.contains(&attribute) {
             continue;
         }
@@ -1253,8 +1462,13 @@ fn generated_element(g: &mut Generator, depth: usize) -> String {
     }
     element.push('>');
     element.push_str(&generated_content(g, depth + 1));
+    // The end tag names the element, or `:c` for `c` and `c` for `:c`.
     element.push_str("</");
-    element.push_str(name);
+    element.push_str(match (name, g.below(4)) {
+        ("c", 0) => ":c",
+        (":c", 0) => "c",
+        _ => name,
+    });
     element.push('>');
     element
 }
@@ -1299,24 +1513,41 @@ fn is_xml_white_space(c: char) -> bool {
 /// Whether the roxmltree tree of `text` shows a construct LIB-SEC-005
 /// refuses: U+FFFD from a reference in text, an attribute value or a
 /// namespace URI; a PI targeted `xml` in any case; a prefix bound to an
-/// empty URI; or a PI whose target is followed by neither white space nor
-/// `?>`. The generated inputs hold no literal U+FFFD and no XML declaration.
+/// empty URI; a PI whose target contains a colon or is followed by neither
+/// white space nor `?>`; or an element (in its start or end tag) or attribute
+/// whose name as written starts with `:`. The generated inputs hold no
+/// literal U+FFFD and no XML declaration.
 fn tree_shows_a_refused_construct(document: &roxmltree::Document<'_>, text: &str) -> bool {
     document.descendants().any(|node| {
         if node.is_text() {
             return node.text().is_some_and(|t| t.contains('\u{FFFD}'));
         }
         if node.is_element() {
-            return node
-                .attributes()
-                .any(|attribute| attribute.value().contains('\u{FFFD}'))
+            let written = text.get(node.range()).unwrap_or("");
+            let start_tag_name = written.get(1..).unwrap_or("");
+            let end_tag_name = if written.ends_with("/>") {
+                ""
+            } else {
+                written
+                    .rfind("</")
+                    .and_then(|index| written.get(index + 2..))
+                    .unwrap_or("")
+            };
+            return start_tag_name.starts_with(':')
+                || end_tag_name.starts_with(':')
+                || node.attributes().any(|attribute| {
+                    attribute.value().contains('\u{FFFD}')
+                        || text
+                            .get(attribute.range_qname())
+                            .is_some_and(|name| name.starts_with(':'))
+                })
                 || node.namespaces().any(|namespace| {
                     namespace.uri().contains('\u{FFFD}')
                         || (namespace.name().is_some() && namespace.uri().is_empty())
                 });
         }
         if let Some(pi) = node.pi() {
-            if pi.target.eq_ignore_ascii_case("xml") {
+            if pi.target.eq_ignore_ascii_case("xml") || pi.target.contains(':') {
                 return true;
             }
             let after_target = node.range().start + "<?".len() + pi.target.len();

@@ -20,10 +20,10 @@
 //! 7. What roxmltree accepts but XML 1.0 or Namespaces 1.0 make a fatal error
 //!    is `Malformed`, at the earliest offending construct: a character
 //!    reference to a surrogate or above U+10FFFF (which roxmltree would turn
-//!    into U+FFFD), a prefix undeclared with `xmlns:p=""`, a processing
-//!    instruction whose target (the XML Name after `<?`) is `xml` in any
-//!    letter case, and one whose target is followed by neither white space nor
-//!    `?>`.
+//!    into U+FFFD), a prefix undeclared with `xmlns:p=""`, an element or
+//!    attribute name with an empty prefix (`:c`), and a processing instruction
+//!    whose target (the XML Name after `<?`) is `xml` in any letter case,
+//!    contains a colon, or is followed by neither white space nor `?>`.
 //!
 //! roxmltree stays private to the `xmi` module: its errors become our own
 //! reasons and a [`SourceLocation`].
@@ -413,10 +413,12 @@ impl<'a> Cursor<'a> {
 /// Refuses the first construct in `text` that XML 1.0 or Namespaces 1.0
 /// make a fatal error but roxmltree lets through (LIB-SEC-005): a character
 /// reference to a surrogate or above U+10FFFF, a prefix undeclared with
-/// `xmlns:p=""`, a processing instruction whose target (the XML Name after
-/// `<?`, [4]/[4a]) is `xml` in any letter case, or one whose target is
-/// followed by neither white space nor `?>` ([16]). The reserved target is
-/// checked first, and neither check applies to the checked declaration.
+/// `xmlns:p=""`, an element or attribute name with an empty prefix (`<:c>`,
+/// `</:c>`, ` :a="1"`), which roxmltree reads as unprefixed, and a processing
+/// instruction whose target (the XML Name after `<?`, [4]/[4a]) is `xml` in
+/// any letter case, contains a colon (Namespaces 1.0 §7), or is followed by
+/// neither white space nor `?>` ([16]). The target checks run in that order,
+/// and none applies to the checked declaration.
 ///
 /// It scans the text once, in document order, so the earliest construct is
 /// refused. It scans the raw text rather than the tree, because roxmltree
@@ -444,9 +446,17 @@ fn check_unrepaired(text: &str) -> Result<(), ReadError> {
                 check_pi_target(text, offset, body)?;
             }
             closed(rest, "<?", "?>")
-        } else if rest.starts_with("</") {
-            // An end tag holds only its name and white space, so the rest of
-            // it is scanned as character data, harmlessly.
+        } else if let Some(name) = rest.strip_prefix("</") {
+            let end = name
+                .find(|c: char| is_xml_space(c) || c == '>')
+                .unwrap_or(name.len());
+            check_name(
+                text,
+                offset + "</".len(),
+                name.get(..end).unwrap_or_default(),
+            )?;
+            // After its name, an end tag holds only white space and `>`, so
+            // the rest of it is scanned as character data, harmlessly.
             Some("</".len())
         } else if rest.starts_with('<') {
             start_tag(text, offset)?
@@ -467,8 +477,9 @@ fn check_unrepaired(text: &str) -> Result<(), ReadError> {
 
 /// Checks the target of the processing instruction at byte `offset` of
 /// `text`, whose text after the `<?` is `body`: the XML Name there ([4]/[4a],
-/// as roxmltree reads it) must not be `xml` in any letter case ([17]), and
-/// must be followed by white space or `?>` ([16]).
+/// as roxmltree reads it) must not be `xml` in any letter case ([17]), must
+/// not contain a colon (Namespaces 1.0 §7), and must be followed by white
+/// space or `?>` ([16]), checked in that order.
 fn check_pi_target(text: &str, offset: usize, body: &str) -> Result<(), ReadError> {
     let length = body.find(|c| !is_name_char(c)).unwrap_or(body.len());
     let target = body.get(..length).unwrap_or_default();
@@ -477,6 +488,13 @@ fn check_pi_target(text: &str, offset: usize, body: &str) -> Result<(), ReadErro
             text,
             offset,
             format!("a processing instruction has the reserved target {target:?}"),
+        ));
+    }
+    if target.contains(':') {
+        return Err(malformed(
+            text,
+            offset,
+            format!("the processing instruction target {target:?} contains a colon"),
         ));
     }
     let after = body.get(length..).unwrap_or_default();
@@ -519,8 +537,23 @@ fn closed(rest: &str, open: &str, close: &str) -> Option<usize> {
     body.find(close).map(|end| open.len() + end + close.len())
 }
 
-/// Checks the start tag at byte `offset` of `text`: its namespace
-/// declarations, and the character references in its attribute values.
+/// Refuses the element or attribute `name`, as written at byte `offset` of
+/// `text`, if it has an empty prefix (`:c`), which roxmltree reads as no
+/// prefix (Namespaces 1.0 §7, `QName`).
+fn check_name(text: &str, offset: usize, name: &str) -> Result<(), ReadError> {
+    if name.starts_with(':') {
+        return Err(malformed(
+            text,
+            offset,
+            format!("the name {name:?} has an empty namespace prefix"),
+        ));
+    }
+    Ok(())
+}
+
+/// Checks the start tag at byte `offset` of `text`: its element and
+/// attribute names, its namespace declarations, and the character references
+/// in its attribute values.
 /// Returns its length up to its closing `>` or `/>`, which the scan then
 /// reads as character data, or `None` if it does not end.
 fn start_tag(text: &str, offset: usize) -> Result<Option<usize>, ReadError> {
@@ -529,6 +562,7 @@ fn start_tag(text: &str, offset: usize) -> Result<Option<usize>, ReadError> {
     let mut index = tag
         .find(|c: char| is_xml_space(c) || matches!(c, '/' | '>'))
         .unwrap_or(tag.len());
+    check_name(text, offset + 1, tag.get(1..index).unwrap_or_default())?;
     loop {
         let Some(rest) = tag.get(index..) else {
             return Ok(None);
@@ -544,6 +578,7 @@ fn start_tag(text: &str, offset: usize) -> Result<Option<usize>, ReadError> {
             return Ok(None);
         };
         let name = trimmed.get(..name_length).unwrap_or_default();
+        check_name(text, offset + index, name)?;
         let Some(open) = trimmed.find(['"', '\'']) else {
             return Ok(None);
         };
@@ -947,9 +982,13 @@ mod tests {
         }
     }
 
+    /// Where [`check_unrepaired`] refuses `text`, if it does.
+    fn at(text: &str) -> Result<(), Option<SourceLocation>> {
+        check_unrepaired(text).map_err(|error| error.location())
+    }
+
     #[test]
     fn check_unrepaired_finds_the_first_construct_and_skips_the_rest() {
-        let at = |text| check_unrepaired(text).map_err(|error| error.location());
         assert_eq!(
             at("<r a='&#x41;'>&#65;<![CDATA[&#xD800;]]><!--&#xD800;--></r>"),
             Ok(())
@@ -980,6 +1019,23 @@ mod tests {
         assert_eq!(at("<r><!---><?Xml?>--></r>"), Ok(()));
         // A processing instruction's `?>` is looked for after its `<?`.
         assert_eq!(at("<?p?><?Xml?><r/>"), Err(SourceLocation::at(1, 6)));
+        // Unclosed constructs stop the scan; they never panic.
+        for text in [
+            "<r a='",
+            "<!--",
+            "<?p x",
+            "<![CDATA[",
+            "<r a",
+            "&#",
+            "&#x;",
+            "<",
+        ] {
+            assert_eq!(at(text), Ok(()), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn check_unrepaired_checks_processing_instruction_targets() {
         // The target ends where the XML Name ends; `xml` there is reserved,
         // and checked before the white space that must follow a target.
         for pi in [
@@ -1002,7 +1058,6 @@ mod tests {
             "<?xml-x?>",
             "<?xml.x?>",
             "<?xml_x?>",
-            "<?xml:x?>",
             "<?xml\u{B7}x?>",
             "<?xml\u{E9}?>",
             "<?xml\u{300}?>",
@@ -1023,19 +1078,55 @@ mod tests {
                  a processing instruction has the reserved target \"Xml\""
                 .to_owned())
         );
-        // Unclosed constructs stop the scan; they never panic.
-        for text in [
-            "<r a='",
-            "<!--",
-            "<?p x",
-            "<![CDATA[",
-            "<r a",
-            "&#",
-            "&#x;",
-            "<",
+        // A target with a colon, at the `<?`: after the reserved-`xml` check
+        // and before [16].
+        let reason = |text: &str| {
+            check_unrepaired(text).map_err(|error| (error.location(), error.to_string()))
+        };
+        for (pi, target) in [
+            ("<?xml:x?>", "xml:x"),
+            ("<?a:b x?>", "a:b"),
+            ("<?:?>", ":"),
+            ("<?p:?>", "p:"),
+            ("<?a:b>?>", "a:b"),
         ] {
-            assert_eq!(at(text), Ok(()), "{text:?}");
+            assert_eq!(
+                reason(&format!("<r>{pi}</r>")),
+                Err((
+                    SourceLocation::at(1, 4),
+                    format!(
+                        "the input is not well-formed XML at line 1, column 4: \
+                         the processing instruction target {target:?} contains a colon"
+                    )
+                )),
+                "{pi:?}"
+            );
         }
+    }
+
+    #[test]
+    fn check_unrepaired_refuses_names_with_an_empty_prefix() {
+        // Names with an empty prefix, at the name.
+        for (input, column, name) in [
+            ("<:r/>", 2, ":r"),
+            ("<:r></r>", 2, ":r"),
+            ("<r></:r>", 6, ":r"),
+            ("<r><:c/></r>", 5, ":c"),
+            ("<r :x=\"1\"/>", 4, ":x"),
+            ("<r a='&#xD800;' :x='1'/>", 7, "&#xD800;"),
+        ] {
+            let result = check_unrepaired(input);
+            assert_eq!(
+                result.as_ref().map_err(ReadError::location),
+                Err(SourceLocation::at(1, column)),
+                "{input:?}"
+            );
+            assert!(
+                result.is_err_and(|error| error.to_string().contains(&format!("{name:?}"))),
+                "{input:?}"
+            );
+        }
+        assert_eq!(at("<r a:b='1' xmlns:a='urn:a'></r >"), Ok(()));
     }
 
     #[test]

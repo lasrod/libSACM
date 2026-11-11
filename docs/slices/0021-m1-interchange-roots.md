@@ -72,3 +72,14 @@ the declaration grammar in `decode`, and the rest after the parse.
 - 2026-11-11 the maintainer authorised fix round 3: the PI target ends at the XML Name, `<?pi>x?>` is refused (XML [16]), and a tree-oracle sweep becomes a permanent test.
 - 2026-11-11 fix round 3: the PI target ends at the XML Name; [16] is refused; tests T4-T6; the T7 tree-oracle sweep (12,000 generated inputs, 0 disagreements, about 2 s).
 - 2026-11-11 round 3 CI: one missed mutant (`+` to `*` in the [16] location, equal for 2-character targets); killed by 1-, 3- and multi-byte-character targets.
+- 2026-11-11 verification round 3: FAIL on LIB-SEC-005, so the slice stopped for the
+  maintainer. The round-2 fixes hold (sweeps of about 9M accepted inputs found no
+  disagreement). A new class: roxmltree reads an empty prefix as none, so
+  `<:ArgumentPackage …></ArgumentPackage>` reads Ok (HIGH). A PI target containing `:`
+  is accepted, against Namespaces 1.0 §7 (MEDIUM; item 4 now contradicts it). The
+  [4]/[4a] range edges are unpinned (MEDIUM). The triage line is now 240:9.
+- 2026-11-11 the maintainer chose: fix the three round-3 findings now, narrow LIB-SEC-005
+  to a closed list, and find the rest systematically in the new M1 row LIB-SEC-006 (W3C
+  XML Conformance Test Suite) as the next slice; colon PI targets are refused
+  (Namespaces 1.0 §7). ADR 0005 B1 records that other leniencies may remain until then.
+- 2026-11-11 fix round 4: empty-prefix names and colon PI targets refused; tests T8-T10; T7 extended (12,000 inputs, 0 disagreements); the input.rs unit test split for clippy.
