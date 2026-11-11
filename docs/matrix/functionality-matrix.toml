@@ -1329,7 +1329,7 @@ acceptance = [
   "Each accessor returns exactly what the diagnostic was built with: `code`, `severity`, `requirement_id`, `clause` (Some and None), `affected`, `location` (Some and None), `message`.",
   "`affected()` keeps the given order and duplicates.",
   "`Severity` is exactly Info < Warning < Error. `as_str` and `Display` give `info`, `warning` and `error`.",
-  "`Code::as_str` and `Display` return the text unchanged. `Code` has no associated constants in this slice.",
+  "`Code::as_str` and `Display` return the text unchanged. `Code`'s associated constants are exactly the catalog codes whose rows emit them (none in slice 0014; `XML_MALFORMED` and `XML_DOCTYPE_REJECTED` since slice 0019, proven by LIB-SEC-002 and LIB-SEC-001).",
   "`SourceLocation::new` returns None when the line or the column is 0. `line()` and `column()` round-trip, `Display` is `line L, column C`, and the order is by line, then column.",
   "`Diagnostic`'s `Display` matches the ADR 0011 format exactly, with or without a clause and with or without a location.",
   "Sorting any permutation of diagnostics that each differ in one key field gives the ADR 0011 key order. Located diagnostics come first. `a.cmp(&b) == Equal` exactly when `a == b`.",
@@ -1668,18 +1668,19 @@ kind = "security"
 status = "implemented"
 depends_on = ["LIB-DIAG-001", "LIB-API-004", "LIB-API-009"]
 acceptance = [
-  "A DOCTYPE with no internal subset, one with an internal subset declaring entities (an XXE `SYSTEM \"file:...\"` entity, a billion-laughs chain, a parameter entity) and an external DTD (`PUBLIC` or `SYSTEM`) each return `ReadError::Doctype` whose `code()` is SACM-SEC-001 and whose `location()` is the line and column of `<!DOCTYPE`, including after a prolog of comments or processing instructions and on a line other than 1.",
+  "A DOCTYPE with no internal subset, one with an internal subset declaring entities (an XXE `SYSTEM \"file:...\"` entity, a billion-laughs chain, a parameter entity) and an external DTD (`PUBLIC` or `SYSTEM`) each return `ReadError::Doctype` whose `code()` is SACM-SEC-001 and whose `location()` is the line and column of `<!DOCTYPE`, including after a prolog of comments or processing instructions and on a line other than 1; after a UTF-8 BOM the DOCTYPE is at line 1, column 1, because the BOM is an encoding signature and takes no column (XML 1.0 §4.3.3).",
   "Nothing is resolved or expanded: an XXE entity naming a file that exists (the crate's own `Cargo.toml`) gives `Doctype`, and neither its `Display` nor its `Debug` contains any text of that file; the billion-laughs input returns `Doctype` without growing.",
   "`<!DOCTYPE` and `<!ENTITY` written inside a comment, a CDATA section, a processing instruction or an attribute value (escaped, as `&lt;!DOCTYPE`) of a well-formed document are not refused as `Doctype` or `Malformed`.",
   "A stray `<!ENTITY x \"y\">` outside any DOCTYPE, and an undeclared reference `&xxe;`, return `ReadError::Malformed` (SACM-XML-001), not `Doctype`; the reference is never expanded.",
   "`Code::XML_DOCTYPE_REJECTED` is SACM-SEC-001 and appears in a table row of `docs/sacm/diagnostics.md`.",
-  "The `Doctype` `Display` is one lowercase line without trailing punctuation that names the location, e.g. `refused a DOCTYPE or ENTITY declaration at line 2, column 1`; `source()` is `None`.",
+  "The `Doctype` `Display` is one line that starts in lower case, without trailing punctuation, and names the location: exactly `the input has a DOCTYPE, which is refused at line 2, column 1`; `source()` is `None`.",
 ]
 code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/input.rs"]
 tests = [
   "crates/sacm/tests/xmi_read.rs::lib_sec_001_billion_laughs_is_refused_without_expansion",
   "crates/sacm/tests/xmi_read.rs::lib_sec_001_declaration_text_in_comment_cdata_or_attribute_is_not_refused",
   "crates/sacm/tests/xmi_read.rs::lib_sec_001_doctype_after_a_prolog_is_located_by_line_and_column",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_001_doctype_after_a_utf8_bom_is_at_line_1_column_1",
   "crates/sacm/tests/xmi_read.rs::lib_sec_001_doctype_display_is_one_located_line_without_source",
   "crates/sacm/tests/xmi_read.rs::lib_sec_001_doctype_rejected_code_is_sacm_sec_001_in_the_catalog",
   "crates/sacm/tests/xmi_read.rs::lib_sec_001_doctype_with_entity_declarations_is_refused_at_its_location",
@@ -1705,10 +1706,10 @@ acceptance = [
   "Input that is not valid UTF-8 returns `Malformed` located at the first invalid byte (line and column), for an invalid byte on line 1 and on a later line.",
   "Each of: a mismatched end tag, an unclosed element, two root elements, text only, an undeclared namespace prefix, an undeclared entity reference and a duplicate attribute returns `Malformed` with a location.",
   "No panic: every prefix of the sample document, every single-byte replacement of it with 0x00, `<`, `&` and 0xFF, 100,000 levels of nesting (well-formed and unclosed), and empty, whitespace-only and BOM-only input each return a value without panicking.",
-  "The `Malformed` `Display` is one lowercase line without trailing punctuation, naming the location when known (`... at line L, column C: <reason>`); names from the input are quoted, so a line break in the input never breaks the line; the reason contains no position of its own.",
+  "The `Malformed` `Display` is one lowercase line without trailing punctuation, naming the location when known (`... at line L, column C: <reason>`); names from the input are quoted, so a line break in the input never breaks the line; the reason contains no position of its own; e.g. `<?xml version=\"1.0\"?>\\n<r></s>` displays exactly `the input is not well-formed XML at line 2, column 4: the end tag \"s\" does not match the start tag \"r\"`.",
   "`ReadError`, `ReadOptions` and `ReadOutput` are `Send + Sync + 'static` (checked statically); `ReadError` is `Clone + Eq + Hash + Debug + std::error::Error` with `source()` `None`, and is `#[non_exhaustive]`.",
   "`Code::XML_MALFORMED` is SACM-XML-001 and appears in a table row of `docs/sacm/diagnostics.md`.",
-  "Locations count lines as XML does (XML 1.0 §2.11): LF, CRLF and a lone CR each end exactly one line, for every refusal (`Doctype`, `Malformed` from the parser and from invalid UTF-8, `Unsupported`); e.g. the root of `<!--p-->\r<r/>` is at line 2, column 1.",
+  "Locations count lines as XML does (XML 1.0 §2.11): LF, CRLF and a lone CR each end exactly one line, for every refusal (`Doctype`, `Malformed` from the parser and from invalid UTF-8, `Unsupported`); e.g. the root of `<!--p-->\\r<r/>` is at line 2, column 1. A leading UTF-8 BOM takes no column: the root of `\\xEF\\xBB\\xBF<r/>` is at line 1, column 1.",
 ]
 code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/input.rs"]
 tests = [
@@ -1721,6 +1722,7 @@ tests = [
   "crates/sacm/tests/xmi_read.rs::lib_sec_002_every_refusal_in_the_sweep_has_its_display_code_and_no_source",
   "crates/sacm/tests/xmi_read.rs::lib_sec_002_invalid_utf8_is_malformed_at_the_first_invalid_byte",
   "crates/sacm/tests/xmi_read.rs::lib_sec_002_invalid_utf8_location_counts_lf_crlf_and_lone_cr_as_one_line_each",
+  "crates/sacm/tests/xmi_read.rs::lib_sec_002_leading_utf8_bom_takes_no_column",
   "crates/sacm/tests/xmi_read.rs::lib_sec_002_malformed_display_is_one_located_line",
   "crates/sacm/tests/xmi_read.rs::lib_sec_002_malformed_display_quotes_names_and_never_breaks_the_line",
   "crates/sacm/tests/xmi_read.rs::lib_sec_002_parser_error_location_counts_lf_crlf_and_lone_cr_as_one_line_each",
@@ -1735,7 +1737,7 @@ id = "SACM23-XMI-001"
 area = "XMI"
 milestone = "M1"
 title = "Interchange roots"
-requirement = "XMI import recognizes an AssuranceCasePackage or ArgumentPackage root, directly or inside an `xmi:XMI` wrapper, and refuses any other root with SACM-XMI-001 (ArtifactPackage and TerminologyPackage roots are added by SACM23-ART-001 and SACM23-TERM-001)."
+requirement = "XMI import recognizes an AssuranceCasePackage or ArgumentPackage root, directly or inside an `xmi:XMI` wrapper, and refuses any other root with SACM-XMI-001 (ArtifactPackage and TerminologyPackage roots are added by SACM23-ART-001 and SACM23-TERM-001). Before any content is returned, these inputs that roxmltree accepts are refused or reported, never silently repaired: a character reference to a surrogate (`&#xD800;`, which roxmltree turns into U+FFFD), an undeclared prefix binding `xmlns:p=\"\"` (forbidden by Namespaces 1.0), and an unknown XML-declaration pseudo-attribute such as `encodingX` (ADR 0005 B1, slice 0019 verification)."
 source = "formal/23-05-08 clause 2 (compliance points)"
 kind = "xmi"
 status = "planned"
@@ -2856,7 +2858,7 @@ id = "LIB-SEC-003"
 area = "SEC"
 milestone = "M6"
 title = "Resource limits"
-requirement = "Loading enforces configurable limits on input size, nesting depth and element count with documented defaults, failing with a diagnostic instead of exhausting memory or stack."
+requirement = "Loading enforces configurable limits on input size, nesting depth and element count with documented defaults, failing with a diagnostic instead of exhausting memory or stack. The parser's own capacity limits (nodes, attributes, namespaces) are refused as `ReadError::Unsupported` with no location, never as malformed input (slice 0019: today `input.rs` maps them; a test with 65,536 or more namespace prefixes belongs here)."
 source = "Robustness policy (docs/architecture.md, Goals)"
 kind = "security"
 status = "planned"
@@ -3075,19 +3077,21 @@ id = "LIB-API-009"
 area = "API"
 milestone = "M1"
 title = "The reader refuses what it cannot represent"
-requirement = "`xmi::read` never returns a document that is missing content from its input (D-PRESERVE). Well-formed input that it cannot fully represent is refused with `ReadError::Unsupported`, which has no catalog code and carries a reason and a location: content that no verified row reads yet (in the first release, every well-formed document), UTF-16 or UTF-32 input (until SACM23-XMI-018), and a declared encoding other than UTF-8 or ASCII. A declared UTF-8 or ASCII encoding is accepted in any letter case; a byte of 0x80 or above under an ASCII declaration is malformed (SACM-XML-001). Parser capacity limits are refused the same way."
+requirement = "`xmi::read` never returns a document that is missing content from its input (D-PRESERVE). Well-formed input that it cannot fully represent is refused with `ReadError::Unsupported`, which has no catalog code and carries a reason and a location: content that no verified row reads yet (in the first release, every well-formed document), UTF-16 or UTF-32 input (until SACM23-XMI-018), and a declared encoding other than UTF-8 or ASCII. A declared UTF-8 or ASCII encoding is accepted in any letter case; a byte of 0x80 or above under an ASCII declaration is malformed (SACM-XML-001). Parser capacity limits belong to LIB-SEC-003."
 source = "D-PRESERVE \"Never drop conforming SACM data. Preserve with a diagnostic, or refuse\"; ADR 0015 (interim rule); ADR 0005 B2; XML 1.0 (Fifth Edition) §4.3.3 (encodings; quoted when SACM23-XMI-018 is analysed)"
 kind = "api"
 status = "implemented"
 depends_on = ["LIB-API-004", "LIB-DIAG-001"]
 acceptance = [
   "A well-formed UTF-8 SACM document (an `AssuranceCasePackage` root) and a well-formed non-SACM document are refused with `ReadError::Unsupported`, `code()` `None`, located at the root element; `read` returns no `Ok` in this release.",
-  "UTF-16 LE and BE input with a BOM, UTF-32 BOMs, and BOM-less UTF-16 or UCS-4 input recognised by its first bytes (XML 1.0 Appendix F: `3C 00 3F 00`, `00 3C 00 3F` and the four-byte forms), such as a document declaring `UTF-16LE`, are refused with `Unsupported`, never `Malformed` and never misread; the reason does not claim a BOM that is not there.",
-  "A declared `encoding=\"ISO-8859-1\"` (and another non-UTF-8 name) is refused with `Unsupported`, whether or not its bytes are valid UTF-8: a real ISO-8859-1 file with a 0xE9 byte is `Unsupported`, not `Malformed`, because the declaration is read before the UTF-8 check (ADR 0005 B2); `UTF-8`, `utf-8`, `US-ASCII` and `ASCII` declarations are not refused as `Doctype` or `Malformed`; a byte of 0x80 or above under an ASCII declaration is `Malformed`.",
+  "UTF-16 LE and BE input with a BOM, UTF-32 BOMs, and BOM-less UTF-16 or UCS-4 input recognised by its first bytes (XML 1.0 Appendix F: `3C 00 3F 00`, `00 3C 00 3F` and the four-byte forms), such as a document declaring `UTF-16LE`, are refused with `Unsupported`, never `Malformed` and never misread; the reason does not claim a BOM that is not there Every BOM and first-bytes refusal is located at line 1, column 1.",
+  "A declared `encoding=\"ISO-8859-1\"` (and another non-UTF-8 name) is refused with `Unsupported` located at the encoding name (`<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>` at line 1, column 31; with a CR before `encoding`, at line 2), whether or not its bytes are valid UTF-8: a real ISO-8859-1 file with a 0xE9 byte is `Unsupported`, not `Malformed`, because the declaration is read before the UTF-8 check (ADR 0005 B2). Declarations of `UTF-8`, `utf-8`, `Utf-8`, `US-ASCII`, `us-ascii`, `ASCII` and `ascii` are not refused for their encoding: the refusal is the root element's `Unsupported`, located at the root start tag. A non-ASCII character under an ASCII declaration is `Malformed` at that character (`<?xml version=\"1.0\" encoding=\"US-ASCII\"?>\\n<r>café</r>` at line 2, column 7).",
   "The `Unsupported` `Display` is one lowercase line without trailing punctuation, naming the location when known; names from the input are quoted.",
 ]
 code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/input.rs"]
 tests = [
+  "crates/sacm/tests/xmi_read.rs::lib_api_009_bom_and_first_bytes_refusals_are_located_at_line_1_column_1",
+  "crates/sacm/tests/xmi_read.rs::lib_api_009_declared_non_utf8_encoding_is_located_at_the_encoding_name",
   "crates/sacm/tests/xmi_read.rs::lib_api_009_declared_non_utf8_encoding_is_unsupported",
   "crates/sacm/tests/xmi_read.rs::lib_api_009_declared_non_utf8_encoding_with_invalid_utf8_bytes_is_unsupported",
   "crates/sacm/tests/xmi_read.rs::lib_api_009_invalid_utf8_without_or_under_a_utf8_or_ascii_declaration_stays_malformed",
@@ -3097,6 +3101,7 @@ tests = [
   "crates/sacm/tests/xmi_read.rs::lib_api_009_utf16_and_ucs4_without_bom_are_unsupported_by_their_first_bytes",
   "crates/sacm/tests/xmi_read.rs::lib_api_009_utf16_and_utf32_input_is_unsupported",
   "crates/sacm/tests/xmi_read.rs::lib_api_009_utf8_and_ascii_declarations_in_any_case_are_not_refused",
+  "crates/sacm/tests/xmi_read.rs::lib_api_009_utf8_and_ascii_declarations_in_any_case_are_refused_at_the_root_not_the_encoding",
   "crates/sacm/tests/xmi_read.rs::lib_api_009_well_formed_non_sacm_document_is_unsupported_at_its_root",
   "crates/sacm/tests/xmi_read.rs::lib_api_009_well_formed_sacm_document_is_unsupported_at_its_root",
 ]

@@ -107,8 +107,10 @@ impl Code {
     /// (LIB-SEC-002).
     pub const XML_MALFORMED: Code = Code::from_static("SACM-XML-001");
 
-    /// SACM-SEC-001: a DOCTYPE or ENTITY declaration was refused. The code of
+    /// SACM-SEC-001: the input has a DOCTYPE, which may declare entities, so
+    /// it is refused. The code of
     /// [`ReadError::Doctype`](crate::xmi::ReadError::Doctype) (LIB-SEC-001).
+    /// Named after the C++ library's `kXmlDoctypeRejected`.
     pub const XML_DOCTYPE_REJECTED: Code = Code::from_static("SACM-SEC-001");
 
     /// The code with the given text.

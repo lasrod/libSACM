@@ -31,7 +31,7 @@ use sacm::xmi::{self, ReadError, ReadOptions, ReadOutput};
 const MIB: usize = 1 << 20;
 
 /// The lead of the `Doctype` `Display`, before the location.
-const DOCTYPE_LEAD: &str = "refused a DOCTYPE or ENTITY declaration";
+const DOCTYPE_LEAD: &str = "the input has a DOCTYPE, which is refused";
 /// The lead of the `Malformed` `Display`, before the location and reason.
 const MALFORMED_LEAD: &str = "the input is not well-formed XML";
 /// The lead of the `Unsupported` `Display`, before the location and reason.
@@ -451,6 +451,20 @@ fn lib_sec_001_doctype_after_a_prolog_is_located_by_line_and_column() {
     assert_doctype_at(row, same_line.as_bytes(), 1, 30);
 }
 
+#[test]
+fn lib_sec_001_doctype_after_a_utf8_bom_is_at_line_1_column_1() {
+    let row = "LIB-SEC-001";
+    // The BOM is an encoding signature and takes no column.
+    assert_doctype_at(row, b"\xEF\xBB\xBF<!DOCTYPE r><r/>", 1, 1);
+    assert_doctype_at(row, b"\xEF\xBB\xBF<!--p--><!DOCTYPE r><r/>", 1, 9);
+    assert_doctype_at(
+        row,
+        b"\xEF\xBB\xBF<?xml version=\"1.0\"?>\n<!DOCTYPE r><r/>",
+        2,
+        1,
+    );
+}
+
 // --- LIB-SEC-001 2. Nothing is resolved or expanded -------------------------
 
 /// A `file:` URL naming the crate's own `Cargo.toml`, a file that exists.
@@ -657,7 +671,7 @@ fn lib_sec_001_doctype_display_is_one_located_line_without_source() {
     let error = assert_doctype_at(row, b"<?xml version=\"1.0\"?>\n<!DOCTYPE r>\n<r/>", 2, 1);
     assert_eq!(
         error.to_string(),
-        "refused a DOCTYPE or ENTITY declaration at line 2, column 1",
+        "the input has a DOCTYPE, which is refused at line 2, column 1",
         "{row}: unexpected Doctype Display"
     );
     assert_one_lowercase_line(row, &error.to_string());
@@ -666,7 +680,7 @@ fn lib_sec_001_doctype_display_is_one_located_line_without_source() {
     let indented = assert_doctype_at(row, b"\n\n   <!DOCTYPE r SYSTEM \"r.dtd\">\n<r/>", 3, 4);
     assert_eq!(
         indented.to_string(),
-        "refused a DOCTYPE or ENTITY declaration at line 3, column 4",
+        "the input has a DOCTYPE, which is refused at line 3, column 4",
         "{row}: unexpected Doctype Display"
     );
 }
@@ -889,6 +903,48 @@ fn lib_sec_002_unsupported_root_location_counts_lf_crlf_and_lone_cr_as_one_line_
     }
 }
 
+#[test]
+fn lib_sec_002_leading_utf8_bom_takes_no_column() {
+    let row = "LIB-SEC-002";
+    // The root, on line 1 and after a declaration.
+    for (input, line, column) in [
+        (&b"\xEF\xBB\xBF<r/>"[..], 1, 1),
+        (b"\xEF\xBB\xBF<!--p--><r/>", 1, 9),
+        (b"\xEF\xBB\xBF<?xml version=\"1.0\"?>\n<r/>", 2, 1),
+    ] {
+        let error = assert_unsupported(row, input);
+        assert_eq!(
+            error.location(),
+            Some(loc(row, line, column)),
+            "{row}: the root of {} is not located at line {line}, column {column}",
+            preview(input)
+        );
+    }
+    // A declared encoding, a parser error and invalid UTF-8 on line 1 after
+    // the BOM.
+    let encoding = assert_unsupported(
+        row,
+        b"\xEF\xBB\xBF<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><r/>",
+    );
+    assert_eq!(
+        encoding.location(),
+        Some(loc(row, 1, 31)),
+        "{row}: the encoding name after a BOM is not at line 1, column 31"
+    );
+    let parser = assert_malformed(row, b"\xEF\xBB\xBF<r></s>");
+    assert_eq!(
+        parser.location(),
+        Some(loc(row, 1, 4)),
+        "{row}: the mismatched end tag after a BOM is not at line 1, column 4"
+    );
+    let invalid = assert_malformed(row, b"\xEF\xBB\xBF<r>\xFF</r>");
+    assert_eq!(
+        invalid.location(),
+        Some(loc(row, 1, 4)),
+        "{row}: the invalid byte after a BOM is not at line 1, column 4"
+    );
+}
+
 // --- LIB-SEC-002 4. No panic -------------------------------------------------
 
 #[test]
@@ -973,6 +1029,12 @@ fn lib_sec_002_malformed_display_is_one_located_line() {
     assert!(
         !states_a_position(&reason),
         "{row}: the reason {reason:?} states a position of its own"
+    );
+    assert_eq!(
+        text,
+        "the input is not well-formed XML at line 2, column 4: \
+         the end tag \"s\" does not match the start tag \"r\"",
+        "{row}: unexpected Malformed Display for a mismatched end tag"
     );
 }
 
@@ -1276,7 +1338,118 @@ fn lib_api_009_non_ascii_byte_under_ascii_declaration_is_malformed() {
     for name in ["US-ASCII", "ascii"] {
         // `é` is valid UTF-8 but not ASCII.
         let input = format!("<?xml version=\"1.0\" encoding=\"{name}\"?>\n<r>café</r>");
-        assert_malformed(row, input.as_bytes());
+        let error = assert_malformed(row, input.as_bytes());
+        assert_eq!(
+            error.location(),
+            Some(loc(row, 2, 7)),
+            "{row}: `é` under {name:?} is not located at that character"
+        );
+    }
+}
+
+#[test]
+fn lib_api_009_utf8_and_ascii_declarations_in_any_case_are_refused_at_the_root_not_the_encoding() {
+    let row = "LIB-API-009";
+    let names = [
+        "UTF-8", "utf-8", "Utf-8", "US-ASCII", "us-ascii", "ASCII", "ascii",
+    ];
+    for name in names {
+        // The root start tag is at line 2, column 1; the encoding name at
+        // line 1, column 31.
+        let input = sacm_document(
+            &format!("<?xml version=\"1.0\" encoding=\"{name}\"?>\n"),
+            "",
+        );
+        let error = assert_unsupported(row, &input);
+        assert_eq!(
+            error.location(),
+            Some(loc(row, 2, 1)),
+            "{row}: a declaration of {name:?} is refused away from the root start tag: {error:?}"
+        );
+    }
+}
+
+#[test]
+fn lib_api_009_declared_non_utf8_encoding_is_located_at_the_encoding_name() {
+    let row = "LIB-API-009";
+    // `<?xml version="1.0" ` is 20 characters and `encoding="` 10, so the
+    // name starts at column 31.
+    let cases: [(&str, &[u8], u32, u32); 6] = [
+        (
+            "ISO-8859-1",
+            b"<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><r/>",
+            1,
+            31,
+        ),
+        (
+            "ISO-8859-1 with a 0xE9 byte",
+            b"<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><r>caf\xE9</r>",
+            1,
+            31,
+        ),
+        (
+            "single-quoted windows-1252",
+            b"<?xml version=\"1.0\" encoding='windows-1252'?><r/>",
+            1,
+            31,
+        ),
+        (
+            "Shift_JIS with spaces around `=`",
+            b"<?xml version=\"1.0\" encoding = \"Shift_JIS\"?><r/>",
+            1,
+            33,
+        ),
+        (
+            "a lone CR before `encoding`",
+            b"<?xml version=\"1.0\"\rencoding=\"ISO-8859-1\"?><r/>",
+            2,
+            11,
+        ),
+        (
+            "a CRLF and two spaces before `encoding`",
+            b"<?xml version=\"1.0\"\r\n  encoding=\"ISO-8859-1\"?><r/>",
+            2,
+            13,
+        ),
+    ];
+    for (what, input, line, column) in cases {
+        let error = assert_unsupported(row, input);
+        assert_eq!(
+            error.location(),
+            Some(loc(row, line, column)),
+            "{row}: {what}: the refusal is not located at the encoding name"
+        );
+    }
+}
+
+#[test]
+fn lib_api_009_bom_and_first_bytes_refusals_are_located_at_line_1_column_1() {
+    let row = "LIB-API-009";
+    let text =
+        format!("<?xml version=\"1.0\" encoding=\"UTF-16\"?>\n{SACM_ROOT_OPEN}{SACM_ROOT_CLOSE}");
+    let inputs = [
+        ("UTF-16 LE with a BOM", utf16_with_bom(&text, false)),
+        ("UTF-16 BE with a BOM", utf16_with_bom(&text, true)),
+        ("UTF-32 LE with a BOM", utf32_with_bom(&text, false)),
+        ("UTF-32 BE with a BOM", utf32_with_bom(&text, true)),
+        ("UTF-16 LE BOM only", vec![0xFF, 0xFE]),
+        ("UTF-16 BE BOM only", vec![0xFE, 0xFF]),
+        ("UTF-32 LE BOM only", vec![0xFF, 0xFE, 0x00, 0x00]),
+        ("UTF-32 BE BOM only", vec![0x00, 0x00, 0xFE, 0xFF]),
+        ("BOM-less UTF-16LE", utf16_without_bom(&text, false)),
+        ("BOM-less UTF-16BE", utf16_without_bom(&text, true)),
+        ("BOM-less UCS-4 4321", ucs4_without_bom(&text, [3, 2, 1, 0])),
+        ("BOM-less UCS-4 1234", ucs4_without_bom(&text, [0, 1, 2, 3])),
+        ("BOM-less UCS-4 2143", ucs4_without_bom(&text, [1, 0, 3, 2])),
+        ("BOM-less UCS-4 3412", ucs4_without_bom(&text, [2, 3, 0, 1])),
+    ];
+    for (what, input) in inputs {
+        let error = assert_unsupported(row, &input);
+        assert_eq!(
+            error.location(),
+            Some(loc(row, 1, 1)),
+            "{row}: the {what} refusal is not located at line 1, column 1"
+        );
     }
 }
 

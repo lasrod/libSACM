@@ -55,13 +55,15 @@ change bumps the minor version and is listed under **Breaking**.
 - ArgumentPackage as a root, or nested in an AssuranceCasePackage, an ArtifactPackage or
   another ArgumentPackage, holding argumentation elements in document order; the §11.4
   homogeneity rule is left to validation [SACM23-ARG-001].
-- `sacm::xmi::read(&[u8], &ReadOptions)`, the XMI read entry point (ADR 0015). It
-  refuses a DOCTYPE (`ReadError::Doctype`, SACM-SEC-001), malformed or truncated input
-  and invalid UTF-8 (`ReadError::Malformed`, SACM-XML-001), and anything it cannot
-  represent yet (`ReadError::Unsupported`): it never returns a partial document. It
-  reads no SACM content yet. XML is parsed with `roxmltree`, privately (ADR 0005)
+- `sacm::xmi`: `read(&[u8], &ReadOptions)`, `ReadOptions`, `ReadOutput` and `ReadError`
+  (ADR 0015). `read` refuses a DOCTYPE (`ReadError::Doctype`, SACM-SEC-001), malformed
+  or truncated input and invalid UTF-8 (`ReadError::Malformed`, SACM-XML-001), and
+  anything it cannot represent yet (`ReadError::Unsupported`); it never returns a
+  partial document. It reads no SACM content yet, so **in this release it refuses every
+  input**. XML is parsed with `roxmltree`, privately (ADR 0005)
   [LIB-SEC-001, LIB-SEC-002, LIB-API-009].
-- `Code::XML_MALFORMED` and `Code::XML_DOCTYPE_REJECTED`, the first catalog codes.
+- `Code::XML_MALFORMED` and `Code::XML_DOCTYPE_REJECTED`, the first catalog codes
+  [LIB-SEC-001, LIB-SEC-002].
 
 ### Changed
 

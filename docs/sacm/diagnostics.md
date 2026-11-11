@@ -23,8 +23,8 @@ crate, and name the matrix row that owns it.
 
 | Code | Severity | Meaning |
 | --- | --- | --- |
-| SACM-XML-001 | Error | Malformed XML; parse failed. `Code::XML_MALFORMED`, the code of `ReadError::Malformed` (LIB-SEC-002). |
-| SACM-SEC-001 | Error | Document contains a DOCTYPE/external entity declaration; rejected for safety. `Code::XML_DOCTYPE_REJECTED`, the code of `ReadError::Doctype` (LIB-SEC-001). |
+| SACM-XML-001 | Error | The input is not well-formed XML 1.0 with namespaces, is truncated, is not valid UTF-8, or declares ASCII but holds non-ASCII. Fix: correct the XML at the reported location. `Code::XML_MALFORMED`, the code of `ReadError::Malformed` (LIB-SEC-002). |
+| SACM-SEC-001 | Error | The input has a DOCTYPE, which may declare entities; it is refused before it is read. Fix: remove the DOCTYPE, because SACM XMI does not need one. `Code::XML_DOCTYPE_REJECTED`, the code of `ReadError::Doctype` (LIB-SEC-001). |
 
 ## XMI structure
 

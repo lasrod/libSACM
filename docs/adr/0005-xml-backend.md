@@ -10,7 +10,7 @@ XMI import needs namespace-aware parsing, source positions for diagnostics, and
 refusal of DTDs/entities. Export needs exact control over output for determinism. No
 XML library type may appear in the public API.
 
-## Options to evaluate
+## Options evaluated
 
 | Option | Read | Write | Notes |
 |---|---|---|---|
@@ -31,7 +31,8 @@ XML library type may appear in the public API.
   writing in its `io` layer.
 - **DOCTYPE detection:** the parser does it. roxmltree stops at a real `<!DOCTYPE`
   before it reads the internal subset, so nothing can be declared, resolved or
-  expanded. That gives SACM-SEC-001, with the location of the declaration. A
+  expanded. That gives SACM-SEC-001. roxmltree reports no position for it, so the
+  reader finds the `<!DOCTYPE` in the prolog itself and reports its location. A
   `<!DOCTYPE` or `<!ENTITY` string inside a comment, CDATA section or attribute value is
   not a declaration and is not refused.
 - **Rejected:**
@@ -40,17 +41,21 @@ XML library type may appear in the public API.
     releases.
   - `xml-rs`: slower and less active.
 - **Deviations from C++:**
-  - **B1.** roxmltree enforces XML 1.0 and Namespaces well-formedness, where pugixml is
-    lenient. A file with an undeclared prefix, an undeclared entity reference or a
+  - **B1.** roxmltree checks more of XML 1.0 and Namespaces well-formedness than pugixml
+    does. A file with an undeclared prefix, an undeclared entity reference or a
     namespace-duplicate attribute is refused with SACM-XML-001, where C++ loads it. Such
-    a file does not conform to the SACM XML Schema, so clause 2 holds.
-  - **B2.** UTF-8 and ASCII are read now. UTF-16 is refused as `Unsupported`, never
-    misread, until SACM23-XMI-018 decodes it with std, because XML 1.0 requires every
-    processor to accept UTF-16. Other declared encodings stay refused, which XML
-    allows. pugixml decodes UTF-16, UTF-32 and Latin-1.
+    a file does not conform to the SACM XML Schema, so SACM 2.3 clause 2 (Conformance)
+    holds. roxmltree is not a complete checker, though. It accepts a character reference
+    to a surrogate (and turns it into U+FFFD), an undeclaring `xmlns:p=""`, and unknown
+    XML-declaration pseudo-attributes. SACM23-XMI-001 must refuse or report these before
+    any content is returned.
+  - **B2.** UTF-8 and ASCII are read now. UTF-16, UTF-32 and UCS-4, with or without a
+    BOM, are refused as `Unsupported`, never misread. SACM23-XMI-018 will decode UTF-16
+    with std, because XML 1.0 requires every processor to accept it. Other declared
+    encodings stay refused, which XML allows. pugixml decodes UTF-16, UTF-32 and Latin-1.
   - **B3.** C++ scans the raw bytes for `<!DOCTYPE` and `<!ENTITY` before parsing
     (`xmi_reader.cpp:2354-2366`). That also refuses a schema-conforming file that only
-    mentions those strings in a comment or CDATA, which goes against clause 2. Here the
+    mentions those strings in a comment or CDATA, which goes against SACM 2.3 clause 2. Here the
     parser detects a real declaration. A stray `<!ENTITY` outside a DOCTYPE is not
     well-formed XML, so it gets SACM-XML-001, and nothing can expand it.
 

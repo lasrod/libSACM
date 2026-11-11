@@ -23,13 +23,16 @@ which return a `LoadResult` with an `ok` flag and an optional document
   - `Err(ReadError)` when no faithful `Document` exists.
   - `Ok(ReadOutput)` always holds a complete `Document` plus its diagnostics
     (SACM23-XMI-001 adds the accessors).
-  - This adapts the C++ `LoadResult` to ADR 0011 X1.
+  - This adapts the C++ `LoadResult` to ADR 0011 X1: a failure is `Err(…)`, not
+    `ok = false` plus diagnostics.
 - **Refusals:**
   - `ReadError::Doctype`: SACM-SEC-001.
   - `ReadError::Malformed`: SACM-XML-001, for input that is not well-formed, truncated or
     not valid UTF-8.
   - `ReadError::Unsupported`: well-formed input this version cannot represent. It has
-    no catalog code.
+    no catalog code. It reports a limit of this version, not a defect in the input,
+    and the set of such inputs shrinks from release to release, while codes are
+    stable.
   - Each refusal carries a `SourceLocation` where one is known, and `ReadError::code()`
     gives the code.
 - **Interim rule (LIB-API-009).** `read` never returns a document that is missing

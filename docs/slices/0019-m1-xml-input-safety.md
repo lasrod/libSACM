@@ -86,3 +86,14 @@ point).
     - a lone CR was not a line end; locations now follow XML 1.0 §2.11, for every refusal.
   - The acceptance is updated: LIB-API-009 item 2, and a new LIB-SEC-002 item. The test engineer added 5 red tests; the implementer fixed `input.rs`.
   - The gate passes. The rows are `implemented` again.
+- 2026-11-11 verification round 1 at `39105a4`: **FAIL** on LIB-SEC-001 and LIB-API-009; LIB-SEC-002 PASS. LIB-DIAG-001 and LIB-API-004 still hold.
+  - Mutants: the PR diff caught 107 of 107, the full run caught 675 of 675.
+  - The gaps were obligations that only untraced unit tests proved, or none: case-insensitive `utf-8` (M15), the parser limits (M25), the encoding refusal locations (M11, M17, M18, M22), and a DOCTYPE after a BOM (M02).
+  - The lead's fix:
+    - tighter acceptance on LIB-SEC-001 items 1 and 6, LIB-SEC-002, and LIB-API-009 items 2 and 3;
+    - a leading BOM now takes no column;
+    - the parser limits moved to LIB-SEC-003;
+    - the stale LIB-DIAG-001 item 4 reworded;
+    - ADR 0005 B1 corrected: roxmltree's leniencies become SACM23-XMI-001 obligations.
+  - The docs review is applied in the same round: the status lines say plainly that `read` refuses every input, `Doctype` displays `the input has a DOCTYPE, which is refused`, the `# Errors` order is stated, doctested examples are added, the catalog rows reworded, and ADR 0005, ADR 0015 and the CHANGELOG updated.
+  - The test engineer added 5 tests and changed 3, all traced. The implementer changed `input.rs`, `xmi.rs`, `diagnostic.rs` and the docs. Verification round 2 is next.

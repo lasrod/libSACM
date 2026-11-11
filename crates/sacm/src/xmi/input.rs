@@ -18,8 +18,9 @@
 //!
 //! Every location comes from `locate`, which ends lines as XML 1.0 §2.11
 //! does: a line feed, a carriage return and line feed, or a lone carriage
-//! return each end one line. roxmltree counts only line feeds, so its
-//! positions are converted to byte offsets first.
+//! return each end one line. A leading UTF-8 byte order mark takes no
+//! column. roxmltree counts only line feeds, and counts the mark as a
+//! character, so its positions are converted to byte offsets first.
 
 use crate::diagnostic::SourceLocation;
 
@@ -260,10 +261,13 @@ fn declaration_end(text: &str) -> Option<usize> {
 
 /// The location of byte `offset` of `text`. Lines end as XML 1.0 §2.11 ends
 /// them: at a line feed, a carriage return and line feed (once), or a lone
-/// carriage return. Columns count characters. `None` if `offset` is not a
-/// character boundary of `text` or the position does not fit in `u32`.
+/// carriage return. Columns count characters; a leading UTF-8 byte order
+/// mark is an encoding signature, not text, and takes no column. `None` if
+/// `offset` is not a character boundary of `text` or the position does not
+/// fit in `u32`.
 fn locate(text: &str, offset: usize) -> Option<SourceLocation> {
     let before = text.get(..offset)?;
+    let before = before.strip_prefix('\u{FEFF}').unwrap_or(before);
     let mut lines = 0_usize;
     let mut line_start = 0;
     let mut after_cr = false;
@@ -428,6 +432,11 @@ mod tests {
         assert_eq!(locate("a\r\nb", 3), SourceLocation::at(2, 1));
         assert_eq!(locate("a\r\nb", 2), SourceLocation::at(2, 1), "at the LF");
         assert_eq!(locate("\r\r\n\n\rxy", 6), SourceLocation::at(5, 2));
+        // A leading UTF-8 BOM takes no column; a later U+FEFF does.
+        assert_eq!(locate("\u{FEFF}", 0), SourceLocation::at(1, 1));
+        assert_eq!(locate("\u{FEFF}<r", 3), SourceLocation::at(1, 1));
+        assert_eq!(locate("\u{FEFF}<r", 5), SourceLocation::at(1, 3));
+        assert_eq!(locate("a\u{FEFF}b", 4), SourceLocation::at(1, 3));
     }
 
     #[test]
@@ -568,10 +577,33 @@ mod tests {
                 reason: "the namespace prefix \"p\\nq\" is not declared".to_owned(),
             }
         );
+        // Parser capacity limits are Unsupported, not Malformed (LIB-SEC-003).
+        for limit in [
+            E::NodesLimitReached,
+            E::AttributesLimitReached,
+            E::NamespacesLimitReached,
+        ] {
+            assert_eq!(
+                refusal(text, &limit),
+                ReadError::Unsupported {
+                    location: None,
+                    reason: reason(&limit),
+                },
+                "{limit:?}"
+            );
+            assert!(
+                reason(&limit).ends_with("than the parser can hold"),
+                "{limit:?}"
+            );
+        }
+        // A leading UTF-8 BOM takes no column, in converted positions too.
         assert_eq!(
-            refusal(text, &E::NodesLimitReached).code(),
-            None,
-            "a limit is Unsupported"
+            refusal(
+                "\u{FEFF}<r></s>",
+                &E::UnexpectedCloseTag("r".to_owned(), "s".to_owned(), TextPos::new(1, 5))
+            )
+            .location(),
+            SourceLocation::at(1, 4)
         );
         assert_eq!(
             reason(&E::InvalidChar2("'[' or '>'", b'x', TextPos::new(1, 1))),

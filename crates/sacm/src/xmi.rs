@@ -1,4 +1,4 @@
-//! Reading SACM 2.3 XMI documents.
+//! Reading SACM 2.3 XMI documents (in this release, every input is refused).
 //!
 //! [`read`] takes the bytes of an XMI document and returns a [`ReadOutput`] or
 //! a [`ReadError`]. It does no I/O: the caller reads the file (ADR 0015).
@@ -13,9 +13,23 @@
 //! # Examples
 //!
 //! ```
+//! use sacm::xmi::{self, ReadError, ReadOptions};
+//!
+//! // A real SACM document is refused in this release: nothing in it is read yet.
+//! let input = br#"<?xml version="1.0" encoding="UTF-8"?>
+//! <sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"/>"#;
+//! let error = xmi::read(input, &ReadOptions::default()).unwrap_err();
+//! assert!(matches!(error, ReadError::Unsupported { .. }));
+//! assert_eq!(error.code(), None);
+//! ```
+//!
+//! Reading a file is the caller's I/O. This function shows the shape; the
+//! example defines it but does not call it:
+//!
+//! ```
 //! use std::path::Path;
 //!
-//! use sacm::xmi::{self, ReadError, ReadOptions};
+//! use sacm::xmi::{self, ReadOptions};
 //!
 //! /// Reads the file at `path` and prints why it was refused, if it was.
 //! fn report(path: &Path) -> std::io::Result<()> {
@@ -25,9 +39,6 @@
 //!     }
 //!     Ok(())
 //! }
-//!
-//! let error = xmi::read(b"<r></s>", &ReadOptions::default()).unwrap_err();
-//! assert!(matches!(error, ReadError::Malformed { .. }));
 //! # let _ = report;
 //! ```
 
@@ -37,25 +48,34 @@ use crate::diagnostic::{Code, SourceLocation};
 
 mod input;
 
-/// Reads an XMI document from its bytes.
+/// Reads an XMI document from its bytes; in this release it refuses every
+/// input.
 ///
 /// `read` refuses rather than drops: it never returns a document that is
 /// missing content from its input (ADR 0015). In this release every
 /// well-formed document is refused as [`ReadError::Unsupported`], at its root
-/// element; SACM23-XMI-001 will read the first root packages.
+/// element. A later release (row SACM23-XMI-001) will read the first root
+/// packages.
 ///
 /// The input is UTF-8 or ASCII. A DOCTYPE is refused before anything in it is
 /// read, so no entity is declared, resolved or expanded.
 ///
 /// # Errors
 ///
+/// The checks run in this order, and the first failure is returned: the
+/// encoding, then UTF-8, then the XML (a DOCTYPE or a well-formedness error,
+/// whichever comes first), then the content.
+///
 /// - [`ReadError::Doctype`] (SACM-SEC-001): the input has a DOCTYPE, with or
 ///   without entity declarations.
 /// - [`ReadError::Malformed`] (SACM-XML-001): the input is not well-formed
-///   XML, is truncated, or is not valid UTF-8.
+///   XML, is truncated, is not valid UTF-8, or declares ASCII but holds a
+///   non-ASCII character.
 /// - [`ReadError::Unsupported`] (no code): the input is well-formed but this
-///   version cannot represent it, such as UTF-16 input, a declared encoding
-///   other than UTF-8 or ASCII, or, in this release, any document.
+///   version cannot represent it, such as UTF-16, UTF-32 or UCS-4 input, a
+///   declared encoding other than UTF-8 or ASCII, more nodes, attributes or
+///   namespaces than the parser can hold, or, in this release, any
+///   well-formed document.
 ///
 /// # Examples
 ///
@@ -72,7 +92,7 @@ mod input;
 /// assert_eq!(error.code(), Some(Code::XML_DOCTYPE_REJECTED));
 /// assert_eq!(
 ///     error.to_string(),
-///     "refused a DOCTYPE or ENTITY declaration at line 2, column 1"
+///     "the input has a DOCTYPE, which is refused at line 2, column 1"
 /// );
 ///
 /// // Truncated input.
@@ -105,18 +125,25 @@ pub struct ReadOutput {}
 /// Why [`read`] refused its input.
 ///
 /// Each refusal has a [`SourceLocation`] where one is known, and
-/// [`code`](Self::code) gives its catalog code.
+/// [`code`](Self::code) gives its catalog code. Lines end as XML 1.0 §2.11
+/// ends them (a line feed, a carriage return and line feed, or a lone
+/// carriage return), and a leading UTF-8 byte order mark takes no column.
 ///
 /// # Display
 ///
-/// `Display` writes one lowercase line without trailing punctuation. The
-/// location follows as ` at line L, column C` when it is known, and the reason
-/// after `: `. Names from the input are quoted with `{:?}`, so line breaks in
-/// them never break the line. For example:
+/// `Display` writes one line that starts in lower case, without trailing
+/// punctuation. The location follows as ` at line L, column C` when it is
+/// known, and the reason after `: `. Names from the input are quoted with
+/// `{:?}`, so line breaks in them never break the line. For example:
 ///
-/// ```text
-/// refused a DOCTYPE or ENTITY declaration at line 2, column 1
-/// the input is not well-formed XML at line 2, column 4: the end tag "s" does not match the start tag "r"
+/// ```
+/// use sacm::xmi::{self, ReadOptions};
+///
+/// let error = xmi::read(b"<r></s>", &ReadOptions::default()).unwrap_err();
+/// assert_eq!(
+///     error.to_string(),
+///     "the input is not well-formed XML at line 1, column 4: the end tag \"s\" does not match the start tag \"r\""
+/// );
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -128,8 +155,8 @@ pub enum ReadError {
         /// Where the DOCTYPE starts.
         location: Option<SourceLocation>,
     },
-    /// The input is not well-formed XML, is truncated, or is not valid UTF-8
-    /// (SACM-XML-001).
+    /// The input is not well-formed XML, is truncated, is not valid UTF-8, or
+    /// declares ASCII but holds a non-ASCII character (SACM-XML-001).
     #[non_exhaustive]
     Malformed {
         /// Where the input stops being well-formed.
@@ -162,7 +189,9 @@ impl ReadError {
         }
     }
 
-    /// Where in the input the refusal is, if known.
+    /// Where in the input the refusal is, if known. Lines end at a line
+    /// feed, a carriage return and line feed, or a lone carriage return; a
+    /// leading UTF-8 byte order mark takes no column.
     #[must_use]
     pub fn location(&self) -> Option<SourceLocation> {
         match self {
@@ -177,7 +206,7 @@ impl fmt::Display for ReadError {
     /// Writes the refusal on one line, as described on [`ReadError`].
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let (lead, reason) = match self {
-            Self::Doctype { .. } => ("refused a DOCTYPE or ENTITY declaration", None),
+            Self::Doctype { .. } => ("the input has a DOCTYPE, which is refused", None),
             Self::Malformed { reason, .. } => ("the input is not well-formed XML", Some(reason)),
             Self::Unsupported { reason, .. } => {
                 ("the reader cannot represent the input", Some(reason))
