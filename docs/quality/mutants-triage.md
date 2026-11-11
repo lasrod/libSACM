@@ -39,7 +39,7 @@ Only an equivalent or accepted mutant may be excluded. An excluded mutant's Excl
 | `xtask/src/matrix.rs:1157:18: replace > with == in cmd_status` | killed | LIB-TOOL-001 | `lib_tool_001_run_matrix_status_counts_each_milestones_rows_by_status` | — |
 | `xtask/src/matrix.rs:1157:18: replace > with < in cmd_status` | killed | LIB-TOOL-001 | `lib_tool_001_run_matrix_status_counts_each_milestones_rows_by_status` | — |
 | `xtask/src/matrix.rs:1157:18: replace > with >= in cmd_status` | killed | LIB-TOOL-001 | `lib_tool_001_run_matrix_status_counts_each_milestones_rows_by_status` | — |
-| `crates/sacm/src/xmi.rs:238:9: replace ReadOutput::diagnostics -> &[Diagnostic] with Vec::leak(Vec::new())` | equivalent | SACM23-XMI-001 | `read` reports no diagnostic in this release: every `ReadOutput` is built with an empty list (`xmi.rs`, `read`), so the mutant returns what the original does. Remove the exclusion with the first row that reports a diagnostic. | `exclude_re: ^crates/sacm/src/xmi\.rs:\d+:\d+: replace ReadOutput::diagnostics -> &\[Diagnostic\] with Vec::leak\(Vec::new\(\)\)$` |
+| `crates/sacm/src/xmi.rs:239:9: replace ReadOutput::diagnostics -> &[Diagnostic] with Vec::leak(Vec::new())` | equivalent | SACM23-XMI-001 | `read` reports no diagnostic in this release: every `ReadOutput` is built with an empty list (`xmi.rs`, `read`), so the mutant returns what the original does. Remove the exclusion with the first row that reports a diagnostic. | `exclude_re: ^crates/sacm/src/xmi\.rs:\d+:\d+: replace ReadOutput::diagnostics -> &\[Diagnostic\] with Vec::leak\(Vec::new\(\)\)$` |
 
 ## History
 

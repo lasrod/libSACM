@@ -103,8 +103,9 @@ mod roots;
 ///    (`Malformed`), whichever comes first;
 /// 7. the well-formedness errors the parser lets through, the earliest first
 ///    (`Malformed`): a character reference to a surrogate or above U+10FFFF, a
-///    namespace prefix undeclared with `xmlns:p=""`, and a processing
-///    instruction whose target is `xml` in any letter case;
+///    namespace prefix undeclared with `xmlns:p=""`, a processing instruction
+///    whose target (the XML Name after `<?`) is `xml` in any letter case, and
+///    one whose target is followed by neither white space nor `?>`;
 /// 8. the roots, in two passes. First the names: an `XMI` element outside the
 ///    XMI 2.5.1 namespace, or any other XMI-namespace element, as the document
 ///    element is `Unsupported`; an `xmi:XMI` element with no root is

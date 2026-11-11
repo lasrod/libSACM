@@ -995,3 +995,374 @@ fn lib_sec_005_cdata_with_spaces_and_quotes_is_skipped_whole() {
         preview(&input)
     );
 }
+
+// --- LIB-SEC-005 4. Where a PI target ends -------------------------------------
+//
+// A PI target is an XML Name (XML 1.0 [17], [5]): it ends at the first
+// character that is not a NameChar. It must be followed by white space or by
+// `?>` ([16]).
+
+/// PIs whose target is `xml` in some case, ended by a character that is not
+/// a `NameChar`, with the target as written.
+const XML_TARGET_PIS: [(&str, &str); 8] = [
+    ("<?xml>?>", "xml"),
+    ("<?Xml/?>", "Xml"),
+    ("<?XML!x?>", "XML"),
+    ("<?xml\u{A0}x?>", "xml"),
+    ("<?xml=1?>", "xml"),
+    ("<?xml\"a\"?>", "xml"),
+    ("<?xml'a'?>", "xml"),
+    ("<?xml&#xD800;?>", "xml"),
+];
+
+#[test]
+fn lib_sec_005_a_pi_targeted_xml_and_followed_by_a_delimiter_is_malformed_at_its_start() {
+    let row = "LIB-SEC-005";
+    for (pi, target) in XML_TARGET_PIS {
+        let reason = format!("a processing instruction has the reserved target \"{target}\"");
+        // In the prolog, at line 1, column 1.
+        let in_prolog = format!("{pi}\n{ROOT}");
+        assert_malformed_exactly(row, in_prolog.as_bytes(), 1, 1, &reason);
+        // Inside the root, at line 1, column 134.
+        assert_malformed_exactly(row, &root_holding(pi), 1, 134, &reason);
+        // Before a root not read yet: Malformed, not Unsupported.
+        let before_artifact = format!("{pi}\n{ARTIFACT_ROOT}");
+        assert_malformed_exactly(row, before_artifact.as_bytes(), 1, 1, &reason);
+    }
+}
+
+#[test]
+fn lib_sec_005_a_pi_target_that_continues_past_xml_is_not_refused() {
+    let row = "LIB-SEC-005";
+    for pi in [
+        "<?xml-x?>",
+        "<?xml.x?>",
+        "<?xml_x?>",
+        "<?xml:x?>",
+        "<?xml\u{B7}x?>",
+        "<?xml\u{E9}?>",
+        "<?xml\u{300}?>",
+        "<?xml\u{203F}?>",
+        "<?xml7?>",
+    ] {
+        let in_prolog = format!("{pi}\n{ROOT}");
+        assert_ok_with_id(row, in_prolog.as_bytes(), "p");
+        assert_ok_with_id(row, &root_holding(pi), "p");
+    }
+}
+
+#[test]
+fn lib_sec_005_a_pi_target_not_followed_by_white_space_or_its_end_is_malformed() {
+    let row = "LIB-SEC-005";
+    // `<?pi` is 4 characters: the offending character is at column 5 in the
+    // prolog, and at column 138 inside the root.
+    let reason =
+        "the processing instruction target \"pi\" is not followed by white space or \"?>\"";
+    for pi in ["<?pi>x?>", "<?pi/?>", "<?pi??>", "<?pi\u{A0}x?>"] {
+        let in_prolog = format!("{pi}\n{ROOT}");
+        assert_malformed_exactly(row, in_prolog.as_bytes(), 1, 5, reason);
+        assert_malformed_exactly(row, &root_holding(pi), 1, 138, reason);
+    }
+    for pi in ["<?pi?>", "<?pi x?>", "<?pi\tx?>", "<?pi\n?>", "<?pi ?>"] {
+        let in_prolog = format!("{pi}\n{ROOT}");
+        assert_ok_with_id(row, in_prolog.as_bytes(), "p");
+        assert_ok_with_id(row, &root_holding(pi), "p");
+    }
+}
+
+// --- LIB-SEC-005. Agreement with the parser's tree -----------------------------
+
+/// A xorshift64 generator with a fixed seed, so the sweep is the same on
+/// every run.
+struct Generator(u64);
+
+impl Generator {
+    fn next(&mut self) -> u64 {
+        let mut x = self.0;
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        self.0 = x;
+        x
+    }
+
+    fn below(&mut self, n: usize) -> usize {
+        // `n` is small, so the conversions cannot fail.
+        let n = u64::try_from(n).unwrap_or(u64::MAX);
+        usize::try_from(self.next() % n).unwrap_or(0)
+    }
+
+    fn pick<'a>(&mut self, choices: &[&'a str]) -> &'a str {
+        choices[self.below(choices.len())]
+    }
+
+    /// Up to `max` tokens from `choices`, concatenated.
+    fn tokens(&mut self, choices: &[&str], max: usize) -> String {
+        let count = self.below(max + 1);
+        (0..count).map(|_| self.pick(choices)).collect()
+    }
+}
+
+/// Comment text, so comments that start with `>` and `->` occur.
+const COMMENT_TOKENS: &[&str] = &[
+    ">",
+    "->",
+    "-",
+    " ",
+    "a",
+    "'",
+    "\"",
+    "<?xml x?>",
+    "<?",
+    "?>",
+    "]]>",
+    "<![CDATA[",
+    "&#xD800;",
+    "xmlns:p=''",
+    "<r a='",
+    "<x>",
+];
+/// PI targets, the character after the target, and PI content.
+const PI_TARGETS: &[&str] = &["xml", "Xml", "XML", "xml-x", "pi", "pi-x"];
+const PI_SEPARATORS: &[&str] = &[" ", "", "\t", "\n", ">", "?", "/", "!", "\u{A0}"];
+const PI_TOKENS: &[&str] = &[
+    ">",
+    "?",
+    " ",
+    "a",
+    "'",
+    "\"",
+    "&#xD800;",
+    "-->",
+    "<!--",
+    "]]>",
+    "xmlns:p=''",
+    "<?xml?>",
+];
+/// CDATA content.
+const CDATA_TOKENS: &[&str] = &[
+    " ",
+    "a",
+    "'",
+    "\"",
+    "<?",
+    "<?xml?>",
+    "-->",
+    "<!--",
+    "&#xD800;",
+    "xmlns:p=''",
+    "]",
+    ">",
+];
+/// Character data, with references.
+const TEXT_TOKENS: &[&str] = &[
+    "a",
+    " ",
+    ">",
+    "&#xD800;",
+    "&#x10FFFF;",
+    "&#x41;",
+    "&amp;#xD800;",
+    "&#x110000;",
+    "&#55296;",
+    "&lt;?xml?&gt;",
+];
+
+fn generated_comment(g: &mut Generator) -> String {
+    format!("<!--{}-->", g.tokens(COMMENT_TOKENS, 5))
+}
+
+fn generated_pi(g: &mut Generator) -> String {
+    let target = g.pick(PI_TARGETS);
+    let separator = g.pick(PI_SEPARATORS);
+    format!("<?{target}{separator}{}?>", g.tokens(PI_TOKENS, 4))
+}
+
+fn generated_cdata(g: &mut Generator) -> String {
+    format!("<![CDATA[{}]]>", g.tokens(CDATA_TOKENS, 5))
+}
+
+/// The text of an attribute value quoted with `quote`; it may hold the other
+/// quote.
+fn generated_value(g: &mut Generator, quote: char) -> String {
+    let other = if quote == '"' { "'" } else { "\"" };
+    let choices = [
+        ">",
+        other,
+        "?>",
+        "-->",
+        "&lt;!--",
+        "<!--",
+        "/",
+        "a",
+        " ",
+        "&#xD800;",
+        "&#x10FFFF;",
+        "&#x41;",
+        "&amp;#xD800;",
+        "&#x110000;",
+    ];
+    g.tokens(&choices, 4)
+}
+
+/// A child element with attributes and, at depth 0, content.
+fn generated_element(g: &mut Generator, depth: usize) -> String {
+    let name = g.pick(&["c", "d"]);
+    let mut element = format!("<{name}");
+    let mut used: Vec<&str> = Vec::new();
+    for _ in 0..g.below(4) {
+        let attribute = g.pick(&["a", "b", "xmlns:p", "xmlns:q", "xmlns"]);
+        if used.contains(&attribute) {
+            continue;
+        }
+        used.push(attribute);
+        let quote = if g.below(2) == 0 { '"' } else { '\'' };
+        let value = if attribute.starts_with("xmlns") {
+            g.pick(&["", "u"]).to_owned()
+        } else {
+            generated_value(g, quote)
+        };
+        element.push_str(g.pick(&[" ", "\n", "\t"]));
+        element.push_str(attribute);
+        element.push('=');
+        element.push(quote);
+        element.push_str(&value);
+        element.push(quote);
+    }
+    if depth > 0 || g.below(3) == 0 {
+        element.push_str("/>");
+        return element;
+    }
+    element.push('>');
+    element.push_str(&generated_content(g, depth + 1));
+    element.push_str("</");
+    element.push_str(name);
+    element.push('>');
+    element
+}
+
+/// Element content: a sequence of comments, CDATA, PIs, elements and text.
+fn generated_content(g: &mut Generator, depth: usize) -> String {
+    (0..g.below(5))
+        .map(|_| match g.below(5) {
+            0 => generated_comment(g),
+            1 => generated_cdata(g),
+            2 => generated_pi(g),
+            3 => generated_element(g, depth),
+            _ => g.tokens(TEXT_TOKENS, 3),
+        })
+        .collect()
+}
+
+/// Comments, PIs and white space outside the root. It never starts with
+/// `<?`, so no generated PI is read as an XML declaration.
+fn generated_misc(g: &mut Generator) -> String {
+    let mut misc = String::new();
+    for _ in 0..g.below(3) {
+        match g.below(3) {
+            0 => misc.push_str(&generated_comment(g)),
+            1 => {
+                if misc.is_empty() {
+                    misc.push(' ');
+                }
+                misc.push_str(&generated_pi(g));
+            }
+            _ => misc.push_str(g.pick(&[" ", "\n", "\r\n"])),
+        }
+    }
+    misc
+}
+
+/// Whether `c` is XML white space (XML 1.0 [3]).
+fn is_xml_white_space(c: char) -> bool {
+    matches!(c, ' ' | '\t' | '\r' | '\n')
+}
+
+/// Whether the roxmltree tree of `text` shows a construct LIB-SEC-005
+/// refuses: U+FFFD from a reference in text, an attribute value or a
+/// namespace URI; a PI targeted `xml` in any case; a prefix bound to an
+/// empty URI; or a PI whose target is followed by neither white space nor
+/// `?>`. The generated inputs hold no literal U+FFFD and no XML declaration.
+fn tree_shows_a_refused_construct(document: &roxmltree::Document<'_>, text: &str) -> bool {
+    document.descendants().any(|node| {
+        if node.is_text() {
+            return node.text().is_some_and(|t| t.contains('\u{FFFD}'));
+        }
+        if node.is_element() {
+            return node
+                .attributes()
+                .any(|attribute| attribute.value().contains('\u{FFFD}'))
+                || node.namespaces().any(|namespace| {
+                    namespace.uri().contains('\u{FFFD}')
+                        || (namespace.name().is_some() && namespace.uri().is_empty())
+                });
+        }
+        if let Some(pi) = node.pi() {
+            if pi.target.eq_ignore_ascii_case("xml") {
+                return true;
+            }
+            let after_target = node.range().start + "<?".len() + pi.target.len();
+            let rest = text.get(after_target..).unwrap_or("");
+            return !(rest.starts_with(is_xml_white_space) || rest.starts_with("?>"));
+        }
+        false
+    })
+}
+
+#[test]
+fn lib_sec_005_every_input_the_parser_accepts_agrees_with_the_tree_oracle() {
+    const INPUTS: usize = 12_000;
+    let row = "LIB-SEC-005";
+    let mut g = Generator(0x9E37_79B9_7F4A_7C15);
+    let (mut accepted, mut refused, mut not_refused) = (0_usize, 0_usize, 0_usize);
+    let (mut mismatches, mut disagreements) = (0_usize, Vec::new());
+    for index in 0..INPUTS {
+        let prolog = if index % 2 == 0 {
+            generated_misc(&mut g)
+        } else {
+            String::new()
+        };
+        let content = generated_content(&mut g, 0);
+        let epilog = if g.below(4) == 0 {
+            generated_misc(&mut g)
+        } else {
+            String::new()
+        };
+        let text =
+            format!("{prolog}{ROOT_START} xmi:id=\"p\" xmlns:p=\"u\">{content}{ROOT_END}{epilog}");
+        let Ok(document) = roxmltree::Document::parse(&text) else {
+            continue;
+        };
+        accepted += 1;
+        let refuse = tree_shows_a_refused_construct(&document, &text);
+        let result = read(row, text.as_bytes());
+        let malformed = matches!(result, Err(ReadError::Malformed { .. }));
+        if malformed {
+            refused += 1;
+        } else {
+            not_refused += 1;
+        }
+        if malformed != refuse {
+            mismatches += 1;
+        }
+        if malformed != refuse && disagreements.len() < 10 {
+            disagreements.push(format!(
+                "the tree says {}, read gives {result:?}, for {text:?}",
+                if refuse { "refuse" } else { "accept" }
+            ));
+        }
+    }
+    assert!(
+        mismatches == 0,
+        "{row}: read disagrees with the roxmltree tree on {mismatches} of {accepted} accepted \
+         inputs; the first {}:\n{}",
+        disagreements.len(),
+        disagreements.join("\n")
+    );
+    // The sweep is not vacuous: both outcomes occur often.
+    assert!(
+        accepted >= INPUTS / 4 && refused >= accepted / 10 && not_refused >= accepted / 10,
+        "{row}: the sweep is too narrow: {accepted} accepted, {refused} refused, \
+         {not_refused} not refused"
+    );
+}

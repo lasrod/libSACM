@@ -63,3 +63,11 @@ the declaration grammar in `decode`, and the rest after the parse.
   citation, LIB-API-009 wording, triage line. The maintainer confirmed the amended
   ADR 0016 D1/D3 (an XMI-namespace child of `xmi:XMI` is `Unsupported`, not
   SACM-XMI-001; a foreign `XMI` element is `Unsupported` before its children).
+- 2026-11-11 verification round 2: FAIL on LIB-SEC-005, so the slice stopped for the
+  maintainer. The comment fix holds (a 385k-input sweep found no desync). But the PI
+  check ends the target at white space or `?`, not where the XML Name ends, so
+  `<?xml>?>` and `<?Xml/?>` read Ok (HIGH). A PI with no white space after its target
+  (`<?pi>x?>`, XML [16]) is accepted (MEDIUM). LIB-API-009 and LIB-SEC-002 re-checks:
+  PASS. SACM23-XMI-001: blocked only by its LIB-SEC-005 dependency.
+- 2026-11-11 the maintainer authorised fix round 3: the PI target ends at the XML Name, `<?pi>x?>` is refused (XML [16]), and a tree-oracle sweep becomes a permanent test.
+- 2026-11-11 fix round 3: the PI target ends at the XML Name; [16] is refused; tests T4-T6; the T7 tree-oracle sweep (12,000 generated inputs, 0 disagreements, about 2 s).

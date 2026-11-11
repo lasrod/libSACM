@@ -20,8 +20,10 @@
 //! 7. What roxmltree accepts but XML 1.0 or Namespaces 1.0 make a fatal error
 //!    is `Malformed`, at the earliest offending construct: a character
 //!    reference to a surrogate or above U+10FFFF (which roxmltree would turn
-//!    into U+FFFD), a prefix undeclared with `xmlns:p=""`, and a processing
-//!    instruction whose target is `xml` in any letter case.
+//!    into U+FFFD), a prefix undeclared with `xmlns:p=""`, a processing
+//!    instruction whose target (the XML Name after `<?`) is `xml` in any
+//!    letter case, and one whose target is followed by neither white space nor
+//!    `?>`.
 //!
 //! roxmltree stays private to the `xmi` module: its errors become our own
 //! reasons and a [`SourceLocation`].
@@ -411,8 +413,10 @@ impl<'a> Cursor<'a> {
 /// Refuses the first construct in `text` that XML 1.0 or Namespaces 1.0
 /// make a fatal error but roxmltree lets through (LIB-SEC-005): a character
 /// reference to a surrogate or above U+10FFFF, a prefix undeclared with
-/// `xmlns:p=""`, or a processing instruction targeted `xml` in any letter
-/// case.
+/// `xmlns:p=""`, a processing instruction whose target (the XML Name after
+/// `<?`, [4]/[4a]) is `xml` in any letter case, or one whose target is
+/// followed by neither white space nor `?>` ([16]). The reserved target is
+/// checked first, and neither check applies to the checked declaration.
 ///
 /// It scans the text once, in document order, so the earliest construct is
 /// refused. It scans the raw text rather than the tree, because roxmltree
@@ -436,16 +440,8 @@ fn check_unrepaired(text: &str) -> Result<(), ReadError> {
         } else if rest.starts_with("<![CDATA[") {
             closed(rest, "<![CDATA[", "]]>")
         } else if let Some(body) = rest.strip_prefix("<?") {
-            let target_length = body
-                .find(|c: char| is_xml_space(c) || c == '?')
-                .unwrap_or(body.len());
-            let target = body.get(..target_length).unwrap_or_default();
-            if target.eq_ignore_ascii_case("xml") && Some(offset) != declaration {
-                return Err(malformed(
-                    text,
-                    offset,
-                    format!("a processing instruction has the reserved target {target:?}"),
-                ));
+            if Some(offset) != declaration {
+                check_pi_target(text, offset, body)?;
             }
             closed(rest, "<?", "?>")
         } else if rest.starts_with("</") {
@@ -467,6 +463,52 @@ fn check_unrepaired(text: &str) -> Result<(), ReadError> {
         offset += length;
     }
     Ok(())
+}
+
+/// Checks the target of the processing instruction at byte `offset` of
+/// `text`, whose text after the `<?` is `body`: the XML Name there ([4]/[4a],
+/// as roxmltree reads it) must not be `xml` in any letter case ([17]), and
+/// must be followed by white space or `?>` ([16]).
+fn check_pi_target(text: &str, offset: usize, body: &str) -> Result<(), ReadError> {
+    let length = body.find(|c| !is_name_char(c)).unwrap_or(body.len());
+    let target = body.get(..length).unwrap_or_default();
+    if target.eq_ignore_ascii_case("xml") {
+        return Err(malformed(
+            text,
+            offset,
+            format!("a processing instruction has the reserved target {target:?}"),
+        ));
+    }
+    let after = body.get(length..).unwrap_or_default();
+    if !(after.starts_with(is_xml_space) || after.starts_with("?>")) {
+        return Err(malformed(
+            text,
+            offset + "<?".len() + length,
+            format!(
+                "the processing instruction target {target:?} is not followed by white space or \"?>\""
+            ),
+        ));
+    }
+    Ok(())
+}
+
+/// Whether `c` is a `NameStartChar` (XML 1.0 [4]).
+fn is_name_start_char(c: char) -> bool {
+    matches!(c,
+        ':' | 'A'..='Z' | '_' | 'a'..='z'
+        | '\u{C0}'..='\u{D6}' | '\u{D8}'..='\u{F6}' | '\u{F8}'..='\u{2FF}'
+        | '\u{370}'..='\u{37D}' | '\u{37F}'..='\u{1FFF}' | '\u{200C}'..='\u{200D}'
+        | '\u{2070}'..='\u{218F}' | '\u{2C00}'..='\u{2FEF}' | '\u{3001}'..='\u{D7FF}'
+        | '\u{F900}'..='\u{FDCF}' | '\u{FDF0}'..='\u{FFFD}' | '\u{10000}'..='\u{EFFFF}'
+    )
+}
+
+/// Whether `c` is a `NameChar` (XML 1.0 [4a]).
+fn is_name_char(c: char) -> bool {
+    is_name_start_char(c)
+        || matches!(c,
+            '-' | '.' | '0'..='9' | '\u{B7}' | '\u{300}'..='\u{36F}' | '\u{203F}'..='\u{2040}'
+        )
 }
 
 /// The length of the construct at the start of `rest`, which opens with
@@ -938,11 +980,54 @@ mod tests {
         assert_eq!(at("<r><!---><?Xml?>--></r>"), Ok(()));
         // A processing instruction's `?>` is looked for after its `<?`.
         assert_eq!(at("<?p?><?Xml?><r/>"), Err(SourceLocation::at(1, 6)));
+        // The target ends where the XML Name ends; `xml` there is reserved,
+        // and checked before the white space that must follow a target.
+        for pi in [
+            "<?xml>?>",
+            "<?Xml/?>",
+            "<?XML!x?>",
+            "<?xml\u{A0}x?>",
+            "<?xml=1?>",
+            "<?xml\"a\"?>",
+            "<?xml'a'?>",
+            "<?xml&#xD800;?>",
+        ] {
+            assert_eq!(
+                check_unrepaired(&format!("<r>{pi}</r>")).map_err(|error| error.location()),
+                Err(SourceLocation::at(1, 4)),
+                "{pi:?}"
+            );
+        }
+        for pi in [
+            "<?xml-x?>",
+            "<?xml.x?>",
+            "<?xml_x?>",
+            "<?xml:x?>",
+            "<?xml\u{B7}x?>",
+            "<?xml\u{E9}?>",
+            "<?xml\u{300}?>",
+            "<?xml\u{203F}?>",
+            "<?xml7?>",
+            "<?pi?>",
+            "<?pi x?>",
+            "<?pi >x?>",
+        ] {
+            assert_eq!(check_unrepaired(&format!("<r>{pi}</r>")), Ok(()), "{pi:?}");
+        }
+        // A target followed by neither white space nor `?>` ([16]).
+        assert_eq!(at("<r><?pi>x?></r>"), Err(SourceLocation::at(1, 8)));
+        assert_eq!(at("<r><?pi/?></r>"), Err(SourceLocation::at(1, 8)));
+        assert_eq!(
+            check_unrepaired("<r><?Xml>?></r>").map_err(|error| error.to_string()),
+            Err("the input is not well-formed XML at line 1, column 4: \
+                 a processing instruction has the reserved target \"Xml\""
+                .to_owned())
+        );
         // Unclosed constructs stop the scan; they never panic.
         for text in [
             "<r a='",
             "<!--",
-            "<?p",
+            "<?p x",
             "<![CDATA[",
             "<r a",
             "&#",
