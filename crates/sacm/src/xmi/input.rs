@@ -2,7 +2,9 @@
 //! refusal (LIB-SEC-001, LIB-SEC-002, LIB-API-009; ADR 0005, ADR 0015).
 //!
 //! The steps run in this order:
-//! 1. A UTF-16 or UTF-32 byte order mark is `Unsupported`.
+//! 1. UTF-16 or UCS-4 (UTF-32) input is `Unsupported`, recognised by its
+//!    byte order mark or, without one, by the first bytes of `<?xml` (XML 1.0
+//!    Appendix F).
 //! 2. A declared encoding other than UTF-8 or ASCII is `Unsupported`. It is
 //!    read from the longest valid UTF-8 prefix, so a Latin-1 file is refused
 //!    for its encoding, not as malformed.
@@ -13,6 +15,11 @@
 //!
 //! roxmltree stays private to this module: its errors become our own reasons
 //! and a [`SourceLocation`].
+//!
+//! Every location comes from `locate`, which ends lines as XML 1.0 §2.11
+//! does: a line feed, a carriage return and line feed, or a lone carriage
+//! return each end one line. roxmltree counts only line feeds, so its
+//! positions are converted to byte offsets first.
 
 use crate::diagnostic::SourceLocation;
 
@@ -21,11 +28,19 @@ use super::ReadError;
 /// The text of `input`, if it is UTF-8 (or ASCII, if declared so) and
 /// declares no encoding the reader does not support.
 pub(super) fn decode(input: &[u8]) -> Result<&str, ReadError> {
-    if let Some(encoding) = wide_encoding(input) {
+    if let Some(encoding) = encoding_by_bom(input) {
         return Err(ReadError::Unsupported {
             location: SourceLocation::at(1, 1),
             reason: format!(
                 "the input starts with a {encoding} byte order mark, and only UTF-8 and ASCII are read"
+            ),
+        });
+    }
+    if let Some(encoding) = encoding_by_first_bytes(input) {
+        return Err(ReadError::Unsupported {
+            location: SourceLocation::at(1, 1),
+            reason: format!(
+                "the input is encoded in {encoding}, and only UTF-8 and ASCII are read"
             ),
         });
     }
@@ -55,11 +70,9 @@ pub(super) fn decode(input: &[u8]) -> Result<&str, ReadError> {
 
 /// Parses `text` as XML 1.0 with namespaces, with DTDs refused.
 pub(super) fn parse(text: &str) -> Result<roxmltree::Document<'_>, ReadError> {
-    let options = roxmltree::ParsingOptions {
-        // A DOCTYPE is refused before its internal subset is read (ADR 0005).
-        allow_dtd: false,
-        ..roxmltree::ParsingOptions::default()
-    };
+    // DTDs are disabled by default, so a DOCTYPE is refused before its
+    // internal subset is read (ADR 0005); the LIB-SEC-001 tests prove it.
+    let options = roxmltree::ParsingOptions::default();
     roxmltree::Document::parse_with_options(text, options).map_err(|error| refusal(text, &error))
 }
 
@@ -82,20 +95,34 @@ pub(super) fn unsupported_root(text: &str, document: &roxmltree::Document<'_>) -
     }
 }
 
-/// The encoding named by a UTF-16 or UTF-32 byte order mark at the start of
-/// `input`.
-fn wide_encoding(input: &[u8]) -> Option<&'static str> {
-    // The UTF-32 marks first: the little-endian one starts with UTF-16's.
-    if input.starts_with(&[0xFF, 0xFE, 0x00, 0x00]) {
-        Some("UTF-32 little-endian")
-    } else if input.starts_with(&[0x00, 0x00, 0xFE, 0xFF]) {
-        Some("UTF-32 big-endian")
-    } else if input.starts_with(&[0xFF, 0xFE]) {
-        Some("UTF-16 little-endian")
-    } else if input.starts_with(&[0xFE, 0xFF]) {
-        Some("UTF-16 big-endian")
-    } else {
-        None
+/// The encoding named by a UTF-16 or UCS-4 byte order mark at the start of
+/// `input` (XML 1.0 Appendix F).
+fn encoding_by_bom(input: &[u8]) -> Option<&'static str> {
+    // The four-byte marks first: two of them start with a UTF-16 mark.
+    match input {
+        [0x00, 0x00, 0xFE, 0xFF, ..] => Some("UTF-32 (big-endian)"),
+        [0xFF, 0xFE, 0x00, 0x00, ..] => Some("UTF-32 (little-endian)"),
+        [0x00, 0x00, 0xFF, 0xFE, ..] => Some("UCS-4 (byte order 2143)"),
+        [0xFE, 0xFF, 0x00, 0x00, ..] => Some("UCS-4 (byte order 3412)"),
+        [0xFE, 0xFF, ..] => Some("UTF-16 (big-endian)"),
+        [0xFF, 0xFE, ..] => Some("UTF-16 (little-endian)"),
+        _ => None,
+    }
+}
+
+/// The encoding of input without a byte order mark that starts with `<` or
+/// `<?` in UTF-16 or UCS-4 (XML 1.0 Appendix F). Such input can be valid
+/// UTF-8, since every byte may be ASCII, but a `<` followed by NUL is never
+/// well-formed XML in UTF-8.
+fn encoding_by_first_bytes(input: &[u8]) -> Option<&'static str> {
+    match input {
+        [0x00, 0x00, 0x00, 0x3C, ..] => Some("UTF-32 (big-endian)"),
+        [0x3C, 0x00, 0x00, 0x00, ..] => Some("UTF-32 (little-endian)"),
+        [0x00, 0x00, 0x3C, 0x00, ..] => Some("UCS-4 (byte order 2143)"),
+        [0x00, 0x3C, 0x00, 0x00, ..] => Some("UCS-4 (byte order 3412)"),
+        [0x00, 0x3C, 0x00, 0x3F, ..] => Some("UTF-16 (big-endian)"),
+        [0x3C, 0x00, 0x3F, 0x00, ..] => Some("UTF-16 (little-endian)"),
+        _ => None,
     }
 }
 
@@ -231,26 +258,55 @@ fn declaration_end(text: &str) -> Option<usize> {
     None
 }
 
-/// The location of byte `offset` of `text`: lines counted by line feeds,
-/// columns by characters. `None` if `offset` is not a character boundary of
-/// `text` or the position does not fit in `u32`.
+/// The location of byte `offset` of `text`. Lines end as XML 1.0 §2.11 ends
+/// them: at a line feed, a carriage return and line feed (once), or a lone
+/// carriage return. Columns count characters. `None` if `offset` is not a
+/// character boundary of `text` or the position does not fit in `u32`.
 fn locate(text: &str, offset: usize) -> Option<SourceLocation> {
     let before = text.get(..offset)?;
-    let (line_start, lines) = before
-        .bytes()
-        .enumerate()
-        .filter(|&(_, byte)| byte == b'\n')
-        .fold((0, 0_usize), |(_, lines), (index, _)| {
-            (index + 1, lines + 1)
-        });
+    let mut lines = 0_usize;
+    let mut line_start = 0;
+    let mut after_cr = false;
+    for (index, byte) in before.bytes().enumerate() {
+        match byte {
+            // The line feed of a CRLF: the CR already ended the line.
+            b'\n' if after_cr => line_start = index + 1,
+            b'\n' | b'\r' => {
+                lines = lines.checked_add(1)?;
+                line_start = index + 1;
+            }
+            _ => {}
+        }
+        after_cr = byte == b'\r';
+    }
     let line = u32::try_from(lines.checked_add(1)?).ok()?;
     let column = before.get(line_start..)?.chars().count().checked_add(1)?;
     SourceLocation::at(line, u32::try_from(column).ok()?)
 }
 
-/// The refusal for a roxmltree error. The location is roxmltree's, except
-/// for a DOCTYPE, which roxmltree does not locate, and for the errors it
-/// places at a stand-in 1:1, which are located at the end of the input.
+/// The byte offset in `text` of a roxmltree position. roxmltree counts rows
+/// by line feeds only, and columns by characters after the last line feed.
+/// `None` if the position is not in `text`.
+fn offset_of(text: &str, position: roxmltree::TextPos) -> Option<usize> {
+    let row = usize::try_from(position.row).ok()?.checked_sub(1)?;
+    let column = usize::try_from(position.col).ok()?.checked_sub(1)?;
+    let line_start = match row.checked_sub(1) {
+        None => 0,
+        Some(line_feeds_before) => text.match_indices('\n').nth(line_feeds_before)?.0 + 1,
+    };
+    let line = text.get(line_start..)?;
+    let within = line
+        .char_indices()
+        .map(|(index, _)| index)
+        .chain(std::iter::once(line.len()))
+        .nth(column)?;
+    Some(line_start + within)
+}
+
+/// The refusal for a roxmltree error. The location is roxmltree's, converted
+/// to §2.11 lines, except for a DOCTYPE, which roxmltree does not locate,
+/// and for the errors it places at a stand-in 1:1, which are located at the
+/// end of the input.
 fn refusal(text: &str, error: &roxmltree::Error) -> ReadError {
     use roxmltree::Error as E;
 
@@ -269,7 +325,7 @@ fn refusal(text: &str, error: &roxmltree::Error) -> ReadError {
             reason: reason(error),
         },
         _ => ReadError::Malformed {
-            location: SourceLocation::at(error.pos().row, error.pos().col),
+            location: offset_of(text, error.pos()).and_then(|offset| locate(text, offset)),
             reason: reason(error),
         },
     }
@@ -367,6 +423,70 @@ mod tests {
         assert_eq!(locate("a\né\nbc", 7), SourceLocation::at(3, 3));
         assert_eq!(locate("é", 1), None, "not a character boundary");
         assert_eq!(locate("ab", 3), None, "past the end");
+        // XML 1.0 §2.11: LF, CRLF and a lone CR each end one line.
+        assert_eq!(locate("a\rb", 2), SourceLocation::at(2, 1));
+        assert_eq!(locate("a\r\nb", 3), SourceLocation::at(2, 1));
+        assert_eq!(locate("a\r\nb", 2), SourceLocation::at(2, 1), "at the LF");
+        assert_eq!(locate("\r\r\n\n\rxy", 6), SourceLocation::at(5, 2));
+    }
+
+    #[test]
+    fn offset_of_inverts_roxmltree_positions() {
+        use roxmltree::TextPos;
+
+        let text = "ab\r\ncé\nd";
+        assert_eq!(offset_of(text, TextPos::new(1, 1)), Some(0));
+        assert_eq!(
+            offset_of(text, TextPos::new(1, 4)),
+            Some(3),
+            "the CR is a char"
+        );
+        assert_eq!(offset_of(text, TextPos::new(2, 3)), Some(7), "after the é");
+        assert_eq!(offset_of(text, TextPos::new(3, 2)), Some(9), "the end");
+        assert_eq!(offset_of(text, TextPos::new(3, 3)), None, "past the end");
+        assert_eq!(offset_of(text, TextPos::new(4, 1)), None, "no such row");
+        assert_eq!(offset_of(text, TextPos::new(0, 1)), None);
+        assert_eq!(offset_of(text, TextPos::new(1, 0)), None);
+    }
+
+    #[test]
+    fn utf16_and_ucs4_are_recognised_with_and_without_a_bom() {
+        let with_bom: [(&[u8], &str); 6] = [
+            (b"\x00\x00\xFE\xFF", "UTF-32 (big-endian)"),
+            (b"\xFF\xFE\x00\x00", "UTF-32 (little-endian)"),
+            (b"\x00\x00\xFF\xFE", "UCS-4 (byte order 2143)"),
+            (b"\xFE\xFF\x00\x00", "UCS-4 (byte order 3412)"),
+            (b"\xFE\xFF\x00<", "UTF-16 (big-endian)"),
+            (b"\xFF\xFE<\x00", "UTF-16 (little-endian)"),
+        ];
+        for (input, encoding) in with_bom {
+            assert_eq!(encoding_by_bom(input), Some(encoding), "{input:?}");
+        }
+        let without_bom: [(&[u8], &str); 6] = [
+            (b"\x00\x00\x00<", "UTF-32 (big-endian)"),
+            (b"<\x00\x00\x00", "UTF-32 (little-endian)"),
+            (b"\x00\x00<\x00", "UCS-4 (byte order 2143)"),
+            (b"\x00<\x00\x00", "UCS-4 (byte order 3412)"),
+            (b"\x00<\x00?", "UTF-16 (big-endian)"),
+            (b"<\x00?\x00", "UTF-16 (little-endian)"),
+        ];
+        for (input, encoding) in without_bom {
+            assert_eq!(encoding_by_bom(input), None, "{input:?}");
+            assert_eq!(encoding_by_first_bytes(input), Some(encoding), "{input:?}");
+            assert_eq!(
+                decode(input),
+                Err(ReadError::Unsupported {
+                    location: SourceLocation::at(1, 1),
+                    reason: format!(
+                        "the input is encoded in {encoding}, and only UTF-8 and ASCII are read"
+                    ),
+                }),
+            );
+        }
+        for input in [&b"<?xml"[..], b"\xEF\xBB\xBF<", b"<\x00", b""] {
+            assert_eq!(encoding_by_bom(input), None, "{input:?}");
+            assert_eq!(encoding_by_first_bytes(input), None, "{input:?}");
+        }
     }
 
     #[test]

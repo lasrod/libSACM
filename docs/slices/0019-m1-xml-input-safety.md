@@ -79,3 +79,10 @@ point).
   - Docs: `lib.rs`, both READMEs, `architecture.md` and `diagnostics.md`.
   - The implementer read the declared encoding before the UTF-8 check, so a real Latin-1 file is `Unsupported`, not `Malformed` (ADR 0005 B2). The lead accepted this and added it to LIB-API-009 item 3; the test engineer added 2 integration tests, never seen red. The verifier is asked to mutate the order.
   - The full gate passes (698 tests; MSRV 1.85 checked). All three rows are `implemented`. Verification is next.
+- 2026-11-11 CI on `e45b5f2`:
+  - One missed mutant, `allow_dtd: false` deleted. It is equivalent, because false is roxmltree's default, so the code now uses `ParsingOptions::default()`.
+  - Copilot raised two valid points:
+    - BOM-less UTF-16 or UCS-4 was `Malformed`; it is now `Unsupported`, recognised by the XML 1.0 Appendix F first bytes;
+    - a lone CR was not a line end; locations now follow XML 1.0 §2.11, for every refusal.
+  - The acceptance is updated: LIB-API-009 item 2, and a new LIB-SEC-002 item. The test engineer added 5 red tests; the implementer fixed `input.rs`.
+  - The gate passes. The rows are `implemented` again.

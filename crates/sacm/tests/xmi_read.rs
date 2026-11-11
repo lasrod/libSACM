@@ -789,6 +789,106 @@ fn lib_sec_002_each_kind_of_malformed_xml_is_refused_with_a_location() {
     }
 }
 
+// --- LIB-SEC-002. Lines end as XML 1.0 §2.11 ends them ------------------------
+//
+// LF, CRLF and a lone CR each end exactly one line, for every refusal.
+
+#[test]
+fn lib_sec_002_doctype_location_counts_lf_crlf_and_lone_cr_as_one_line_each() {
+    let row = "LIB-SEC-002";
+    let cases: [(&[u8], u32, u32); 5] = [
+        (b"<!--p-->\r<!DOCTYPE r><r/>", 2, 1),
+        (b"<!--p-->\r\n<!DOCTYPE r><r/>", 2, 1),
+        (b"<!--p-->\r  <!DOCTYPE r><r/>", 2, 3),
+        (b"<!--a-->\r\n<!--b-->\r<!DOCTYPE r><r/>", 3, 1),
+        (b"<!--a-->\r\r\n\n<!DOCTYPE r><r/>", 4, 1),
+    ];
+    for (input, line, column) in cases {
+        assert_doctype_at(row, input, line, column);
+    }
+}
+
+#[test]
+fn lib_sec_002_parser_error_location_counts_lf_crlf_and_lone_cr_as_one_line_each() {
+    let row = "LIB-SEC-002";
+    // A second root element: the parser stops at its `<`.
+    let exact: [(&[u8], u32, u32); 4] = [
+        (b"<r/>\r<s/>", 2, 1),
+        (b"<r/>\r\n<s/>", 2, 1),
+        (b"<r/>\r\r\n  <s/>", 3, 3),
+        (b"<!--a-->\r\n<!--b-->\r<!--c-->\n<r/><s/>", 4, 5),
+    ];
+    for (input, line, column) in exact {
+        let error = assert_malformed(row, input);
+        assert_eq!(
+            error.location(),
+            Some(loc(row, line, column)),
+            "{row}: the second root in {} is not located at line {line}, column {column}",
+            preview(input)
+        );
+    }
+    // Other parser errors on the line after a lone CR or a CRLF.
+    let on_line: [(&[u8], u32); 4] = [
+        (b"<r>\r</s>", 2),
+        (b"<r>\r\n</s>", 2),
+        (b"<r>\r&zqxentity;</r>", 2),
+        (b"<r\ra=\"1\"\r\na=\"2\"/>", 3),
+    ];
+    for (input, line) in on_line {
+        let error = assert_malformed(row, input);
+        let Some(location) = error.location() else {
+            panic!("{row}: {} is refused without a location", preview(input));
+        };
+        assert_eq!(
+            location.line(),
+            line,
+            "{row}: the error in {} is located on the wrong line",
+            preview(input)
+        );
+    }
+}
+
+#[test]
+fn lib_sec_002_invalid_utf8_location_counts_lf_crlf_and_lone_cr_as_one_line_each() {
+    let row = "LIB-SEC-002";
+    let cases: [(&[u8], u32, u32); 4] = [
+        (b"<r>\r\xFF</r>", 2, 1),
+        (b"<r>\r\n\xFF</r>", 2, 1),
+        (b"<r>\r ca\xFF</r>", 2, 4),
+        (b"<r>\r\r\n\n\xFF</r>", 4, 1),
+    ];
+    for (input, line, column) in cases {
+        let error = assert_malformed(row, input);
+        assert_eq!(
+            error.location(),
+            Some(loc(row, line, column)),
+            "{row}: invalid UTF-8 in {} is not located at line {line}, column {column}",
+            preview(input)
+        );
+    }
+}
+
+#[test]
+fn lib_sec_002_unsupported_root_location_counts_lf_crlf_and_lone_cr_as_one_line_each() {
+    let row = "LIB-SEC-002";
+    let cases: [(&[u8], u32, u32); 5] = [
+        (b"<!--p-->\r<r/>", 2, 1),
+        (b"<!--p-->\r\n<r/>", 2, 1),
+        (b"<!--p-->\r\r<r/>", 3, 1),
+        (b"<!--p-->\n\r<r/>", 3, 1),
+        (b"<!--p-->\r\n\r  <r/>", 3, 3),
+    ];
+    for (input, line, column) in cases {
+        let error = assert_unsupported(row, input);
+        assert_eq!(
+            error.location(),
+            Some(loc(row, line, column)),
+            "{row}: the root of {} is not located at line {line}, column {column}",
+            preview(input)
+        );
+    }
+}
+
 // --- LIB-SEC-002 4. No panic -------------------------------------------------
 
 #[test]
@@ -1040,6 +1140,96 @@ fn lib_api_009_utf16_and_utf32_input_is_unsupported() {
             error.code().is_none(),
             "{row}: the {what} refusal carries a code"
         );
+    }
+}
+
+/// `text` encoded as UTF-16 without a byte order mark.
+fn utf16_without_bom(text: &str, big_endian: bool) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    for unit in text.encode_utf16() {
+        let pair = if big_endian {
+            unit.to_be_bytes()
+        } else {
+            unit.to_le_bytes()
+        };
+        bytes.extend_from_slice(&pair);
+    }
+    bytes
+}
+
+/// `text` encoded as UCS-4 without a byte order mark, its four bytes in
+/// `order`: each entry is the index of a big-endian byte, so `[0, 1, 2, 3]`
+/// is big-endian (1234) and `[3, 2, 1, 0]` little-endian (4321).
+fn ucs4_without_bom(text: &str, order: [usize; 4]) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    for c in text.chars() {
+        let big = u32::from(c).to_be_bytes();
+        bytes.extend(order.iter().map(|&index| big[index]));
+    }
+    bytes
+}
+
+#[test]
+fn lib_api_009_utf16_and_ucs4_without_bom_are_unsupported_by_their_first_bytes() {
+    let row = "LIB-API-009";
+    let document = |encoding: &str| {
+        format!(
+            "<?xml version=\"1.0\" encoding=\"{encoding}\"?>\n{SACM_ROOT_OPEN}{SACM_ROOT_CLOSE}"
+        )
+    };
+    // XML 1.0 Appendix F: the first four bytes of `<?xml` in each encoding.
+    let inputs: [(&str, [u8; 4], Vec<u8>); 6] = [
+        (
+            "UTF-16LE",
+            [0x3C, 0x00, 0x3F, 0x00],
+            utf16_without_bom(&document("UTF-16LE"), false),
+        ),
+        (
+            "UTF-16BE",
+            [0x00, 0x3C, 0x00, 0x3F],
+            utf16_without_bom(&document("UTF-16BE"), true),
+        ),
+        (
+            "UCS-4 4321",
+            [0x3C, 0x00, 0x00, 0x00],
+            ucs4_without_bom(&document("ISO-10646-UCS-4"), [3, 2, 1, 0]),
+        ),
+        (
+            "UCS-4 1234",
+            [0x00, 0x00, 0x00, 0x3C],
+            ucs4_without_bom(&document("ISO-10646-UCS-4"), [0, 1, 2, 3]),
+        ),
+        (
+            "UCS-4 2143",
+            [0x00, 0x00, 0x3C, 0x00],
+            ucs4_without_bom(&document("ISO-10646-UCS-4"), [1, 0, 3, 2]),
+        ),
+        (
+            "UCS-4 3412",
+            [0x00, 0x3C, 0x00, 0x00],
+            ucs4_without_bom(&document("ISO-10646-UCS-4"), [2, 3, 0, 1]),
+        ),
+    ];
+    for (what, first_bytes, input) in inputs {
+        assert_eq!(
+            input.get(..4),
+            Some(&first_bytes[..]),
+            "{row}: the {what} test input does not start with its Appendix F bytes"
+        );
+        let result = read(&input);
+        assert!(
+            matches!(result, Err(ReadError::Unsupported { .. })),
+            "{row}: BOM-less {what} input was not refused as Unsupported: {result:?}"
+        );
+        let error = assert_unsupported(row, &input);
+        assert_refusal_invariants(row, &input, &error);
+        let text = error.to_string().to_lowercase();
+        for claim in ["bom", "byte order mark", "byte-order mark"] {
+            assert!(
+                !text.contains(claim),
+                "{row}: the refusal of BOM-less {what} input claims a byte order mark: {text:?}"
+            );
+        }
     }
 }
 
