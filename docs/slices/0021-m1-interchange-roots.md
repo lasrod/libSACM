@@ -1,8 +1,8 @@
 ---
 slice: 0021
 name: m1-interchange-roots
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [SACM23-XMI-001, LIB-SEC-005, LIB-API-009, LIB-SEC-002]
 mode: pr
 ---
@@ -92,3 +92,4 @@ the declaration grammar in `decode`, and the rest after the parse.
   leniency. Logged for LIB-SEC-006: roxmltree accepts `xmlns:xmlns="urn:x"`
   (Namespaces 1.0 §3).
 - 2026-11-11 fix round 5 (the maintainer authorised it): the public docs say the refused list is not complete until LIB-SEC-006; cases that kill H13, H11 and X1; citations, ADR 0005 B1 wording and the LIB-SEC-006 refusal definition fixed; triage line 245.
+- 2026-11-11 verification round 5: PASS on all four rows (record 0021). Closed.
