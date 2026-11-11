@@ -21,6 +21,11 @@
 //!    release cannot read is `Unsupported`, at its location; nothing is
 //!    dropped (ADR 0015, D-PRESERVE).
 //!
+//! Names are matched by namespace URI and local name, and a type value is
+//! resolved as a `QName` against the namespaces in scope, so the choice of
+//! prefix does not matter (SACM23-XMI-002). An element under `xmlns=""` is
+//! in no namespace.
+//!
 //! The XMI element itself may carry only namespace declarations and
 //! `xmi:version`, and hold, besides its roots, only white space, comments and
 //! processing instructions.
@@ -156,8 +161,10 @@ fn read_root(text: &str, root: Node<'_, '_>, document: &mut Document) -> Result<
     let name = written_name(text, root);
     let not_read = |reason: String| unsupported(text, at_root, reason);
 
-    // The namespace, then the kind (ADR 0016 D5, D6).
-    let namespace = root.tag_name().namespace();
+    // The namespace, then the kind (ADR 0016 D5, D6). Under `xmlns=""` the
+    // parser reports the empty string, which is no namespace name
+    // (Namespaces 1.0 §2.2, §6.2).
+    let namespace = root.tag_name().namespace().filter(|uri| !uri.is_empty());
     let kind = match (namespace, package_kind(&root)) {
         (
             Some(SACM_NS),
@@ -281,8 +288,11 @@ fn is_type(attribute: &Attribute<'_, '_>) -> bool {
 }
 
 /// Whether the type `value`, a `QName` resolved in the scope of `root`, names
-/// the SACM class of `kind`.
+/// the SACM class of `kind`. The value's leading and trailing white space is
+/// removed first, as a `QName`'s is collapsed (XML Schema 1.0 Part 2 §4.3.6);
+/// white space inside it stays, so it names no class.
 fn names_class(root: Node<'_, '_>, value: &str, kind: ElementKind) -> bool {
+    let value = value.trim_matches(is_xml_space);
     let (prefix, local) = match value.split_once(':') {
         Some((prefix, local)) => (Some(prefix), local),
         None => (None, value),

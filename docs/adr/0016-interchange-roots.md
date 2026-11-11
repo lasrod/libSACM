@@ -47,7 +47,10 @@ We deviate from C++ in seven ways:
   back to the element name, with a diagnostic (`:2198-2224`). Here the element name decides
   (XMI §7.8.1). A type is accepted only if it names the same class. Any other type is
   `Unsupported`, including a subtype such as `xsi:type="sacm:ArgumentPackageInterface"`,
-  which waits for D5.
+  which waits for D5. A type value is resolved as an XSD QName, against the namespaces in
+  scope (SACM23-XMI-002). An undeclared prefix, or an unprefixed value with no default
+  namespace, is `Unsupported`, which C++ (`xmi_reader.cpp:597-658`) resolves to the bare local
+  name. This clarifies D2; it does not change it.
 - **D3. No partial document.** C++ reports an invalid root, reads the roots beside it and
   returns a document along with the errors. Here the first refusal is the whole result
   (ADR 0015; ADR 0011 X1). Among the refusals found while reading the roots, SACM-XMI-001

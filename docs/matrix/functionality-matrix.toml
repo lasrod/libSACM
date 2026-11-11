@@ -1804,11 +1804,46 @@ id = "SACM23-XMI-002"
 area = "XMI"
 milestone = "M1"
 title = "Namespace-prefix independence"
-requirement = "Import matches elements and attributes by namespace URI and local name, so the same document with any prefixes (including a default namespace) loads identically."
-source = "XML Namespaces 1.0; XMI 2.5.1"
+requirement = "`xmi::read` matches element and attribute names by expanded name (namespace URI and local name), and resolves the QName value of `xmi:type`/`xsi:type` against the namespaces in scope on the element that carries it, so the choice of prefix never changes the result. A document that SACM23-XMI-001 reads gives the same `ReadOutput`, or the same refusal kind, code and location, whatever prefixes it uses for the SACM, XMI and XSI namespaces. This holds for a default namespace, for declarations on the wrapper or on the root, and for a prefix rebound on an inner element. A prefix confers nothing by its spelling: `xmi`, `xsi` or `sacm` bound to another URI is that other namespace. Namespace URIs compare as exact strings. `xmlns=\"\"` means no namespace, and a refusal says so. Before it is resolved, a type value is collapsed by the XSD white-space rules. An undeclared prefix in a type value, or an unprefixed value with no default namespace, is `Unsupported`, as in SACM23-XMI-001; this departs from C++ `xmi_reader.cpp:597-658` (ADR 0016 D2). A name as written (`InvalidRoot.element_name`) keeps the document's prefix."
+source = "Namespaces in XML 1.0 (Third Edition): §4 \"Note that the prefix functions only as a placeholder for a namespace name.\"; §6.1 \"The expanded name corresponding to a prefixed element or attribute name has the URI to which the prefix is bound as its namespace name, and the local part as its local name.\", and the scope sentence.; §6.2 \"The namespace name for an unprefixed attribute name always has no value.\" and \"The attribute value in a default namespace declaration MAY be empty. This has the same effect, within the scope of the declaration, of there being no default namespace.\"; §2.3 \"they are identical if and only if the strings are identical\"; §6.3; XMI 2.5.1 formal/15-06-07: §7.2 (p. 5) \"The namespace URIs, not the namespace prefixes, are used to identify which schemas to use\"; rule 1h (p. 61) \"Document producers can choose their own namespace prefixes\"; Table 7.1 nsPrefix (p. 27) \"(Any legal XML prefix may be used in documents.)\"; §7.6.3 (p. 15) `type=\"xsd:QName\"`; rule 2g (p. 63); XML Schema 1.0: Part 1 §2.6 \"in practice, any prefix can be used\"; Part 1 §3.15.3 QName Interpretation, clauses 1.1, 2.2.1 and 2.2.2; Part 2 §3.2.18; Part 2 §4.3.6 \"the value of whiteSpace is collapse\"; Project decisions: D-NS-PIN; D-STRICT; ADR 0016 D2, D6.; assurance-forge: `tests/test_xmi_io.cpp:63-80`; `xmi_reader.cpp:267-350, 573-660`."
 kind = "xmi"
-status = "planned"
-depends_on = ["SACM23-XMI-001"]
+status = "implemented"
+depends_on = ["SACM23-XMI-001", "LIB-SEC-005"]
+acceptance = [
+  "\"The same document\" means: the same `roots()` ids and kinds, parent `None`, name `None`, the same `element_count()`, and empty `diagnostics()`, compared with SACM23-XMI-001's `sacm:`/`xmi:` inputs.",
+  "SACM prefix: `s:`, `ns0:`, `SACM:` and a non-ASCII prefix (`ü:`), each bound to the SACM URI, give the same document as `sacm:`, for both AssuranceCasePackage and ArgumentPackage.",
+  "Default namespace: `<ArgumentPackage xmlns=\"<SACM>\" xmlns:xmi=\"<XMI>\" xmi:id=\"a\"/>`, and a wrapper `<XMI xmlns=\"<XMI>\" xmlns:s=\"<SACM>\"><s:ArgumentPackage xmlns:x=\"<XMI>\" x:id=\"a\"/></XMI>`, give the same document.",
+  "XMI and XSI prefixes: each of these, with `x` bound to XMI and `i` bound to XSI, gives the same document: `x:id`, `x:version=\"2.0\"`, `x:type=\"sacm:ArgumentPackage\"`, an `x:XMI` wrapper, and `i:type=\"sacm:ArgumentPackage\"`.",
+  "Declaration placement: the same document results when the SACM declaration is on the root but not on the wrapper, when the XSI or type-value prefix is declared only on the wrapper, and when two prefixes are bound to the SACM URI, one used for the element and one in `xsi:type`.",
+  "Rebinding: `<p:XMI xmlns:p=\"<XMI>\"><p:ArgumentPackage xmlns:p=\"<SACM>\" xmlns:x=\"<XMI>\" x:id=\"a\"/></p:XMI>` reads one ArgumentPackage `a`. A wrapper `xmlns:t=\"urn:other\"` with a root that has `xmlns:t=\"<SACM>\" xsi:type=\"t:ArgumentPackage\"` reads, and the reverse binding is `Unsupported` at the root. A wrapper `xmlns:s=\"<SACM>\"` with a root `<s:ArgumentPackage xmlns:s=\"urn:other\" …>` is `Unsupported` at the root.",
+  "Type values: `xsi:type=\"ArgumentPackage\"` under the default namespace SACM reads. `xsi:type=\" sacm:ArgumentPackage \"` reads, as does a value with a tab or newline around it. Each of these is `Unsupported` at the root: `zz:ArgumentPackage` with `zz` undeclared, an unprefixed value under `xmlns=\"\"`, `:ArgumentPackage`, `sacm:`, `a:sacm:ArgumentPackage` and `sacm:Argument Package`.",
+  "Spelling confers nothing: `xmlns:xmi=\"urn:not-xmi\" xmi:id=\"a\"`, with no other id, is `Unsupported` at the root (no XMI id). `xmlns:xsi=\"urn:not-xsi\" xsi:type=\"sacm:ArgumentPackage\"` is `Unsupported` at that attribute (not read). A root in the default namespace XMI with an unprefixed `id=\"a\"` is `Unsupported` at the root (Namespaces §6.2).",
+  "Exact URIs: `xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301/\"` (trailing slash) and `\"HTTP://www.omg.org/spec/SACM/20220301\"` are `Unsupported` at the root.",
+  "No namespace: `<ArgumentPackage xmlns=\"\" xmlns:xmi=\"<XMI>\" xmi:id=\"a\"/>` is `Unsupported` at the root, with a reason that says the element is in no namespace (not `namespace \"\"`).",
+  "Duplicate expanded name: `xmlns:a=\"<XMI>\" xmlns:b=\"<XMI>\" a:id=\"p\" b:id=\"p\"` is `Malformed` (SACM-XML-001) at the second attribute (Namespaces §6.3).",
+  "Refusals do not depend on the prefix: `<s:Claim xmlns:s=\"<SACM>\" …>` and `<Claim xmlns=\"<SACM>\" …>` give `InvalidRoot` (SACM-XMI-001) at line 1, column 1, with `element_name` `\"s:Claim\"` and `\"Claim\"` as written. A wrapper with `xmlns:x` bound to XMI that holds only `<x:documentation/>` gives `NoPackage`.",
+]
+code = ["crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi.rs", "docs/adr/0016-interchange-roots.md"]
+tests = [
+  "crates/sacm/tests/xmi_namespace_prefixes.rs::sacm23_xmi_002_the_references_are_parentless_unnamed_roots_without_diagnostics",
+  "crates/sacm/tests/xmi_namespace_prefixes.rs::sacm23_xmi_002_any_sacm_prefix_gives_the_same_document",
+  "crates/sacm/tests/xmi_namespace_prefixes.rs::sacm23_xmi_002_a_default_sacm_or_xmi_namespace_gives_the_same_document",
+  "crates/sacm/tests/xmi_namespace_prefixes.rs::sacm23_xmi_002_any_xmi_and_xsi_prefixes_give_the_same_document",
+  "crates/sacm/tests/xmi_namespace_prefixes.rs::sacm23_xmi_002_declarations_on_the_wrapper_or_the_root_give_the_same_document",
+  "crates/sacm/tests/xmi_namespace_prefixes.rs::sacm23_xmi_002_a_prefix_rebound_to_sacm_on_the_root_takes_the_inner_binding",
+  "crates/sacm/tests/xmi_namespace_prefixes.rs::sacm23_xmi_002_a_prefix_rebound_away_from_sacm_on_the_root_is_unsupported_at_the_root",
+  "crates/sacm/tests/xmi_namespace_prefixes.rs::sacm23_xmi_002_an_unprefixed_type_under_a_default_sacm_namespace_reads",
+  "crates/sacm/tests/xmi_namespace_prefixes.rs::sacm23_xmi_002_white_space_around_a_type_value_is_collapsed_before_it_is_resolved",
+  "crates/sacm/tests/xmi_namespace_prefixes.rs::sacm23_xmi_002_a_type_value_that_is_not_a_sacm_qname_of_the_root_class_is_unsupported_at_the_root",
+  "crates/sacm/tests/xmi_namespace_prefixes.rs::sacm23_xmi_002_a_prefix_spelled_xmi_or_xsi_but_bound_elsewhere_confers_nothing",
+  "crates/sacm/tests/xmi_namespace_prefixes.rs::sacm23_xmi_002_prefixes_spelled_after_another_namespace_are_that_namespace",
+  "crates/sacm/tests/xmi_namespace_prefixes.rs::sacm23_xmi_002_namespace_uris_compare_as_exact_strings",
+  "crates/sacm/tests/xmi_namespace_prefixes.rs::sacm23_xmi_002_a_root_under_an_empty_default_namespace_is_refused_as_in_no_namespace",
+  "crates/sacm/tests/xmi_namespace_prefixes.rs::sacm23_xmi_002_one_attribute_under_two_prefixes_is_malformed_at_the_second",
+  "crates/sacm/tests/xmi_namespace_prefixes.rs::sacm23_xmi_002_invalid_root_names_the_element_with_the_prefix_as_written",
+  "crates/sacm/tests/xmi_namespace_prefixes.rs::sacm23_xmi_002_a_wrapper_with_only_xmi_content_under_any_prefix_is_no_package",
+  "crates/sacm/tests/xmi_namespace_prefixes.rs::sacm23_xmi_002_unsupported_refusals_have_the_same_kind_code_and_location_under_any_prefix",
+]
 
 [[row]]
 id = "SACM23-XMI-003"
@@ -1844,6 +1879,7 @@ source = "XMI 2.5.1 type rules; docs/sacm/diagnostics.md SACM-XMI-005"
 kind = "xmi"
 status = "planned"
 depends_on = ["SACM23-XMI-001", "SACM23-ARG-002"]
+notes = "Slice 0023 research: XMI 2.5.1 rule 2g (p. 63) \"You may only use the XML schema instance type attribute if org.omg.xmi.useSchemaExtensions is true\", and §7.8.8 (p. 21) \"uses xmi:type instead of xsi:type\". The default is `false` (Table 7.1, p. 28), and ptc/22-03-13 has no `org.omg.xmi` tags. Decide here whether the pinned export form `xsi:type=\"sacm:<Class>\"` (metamodel-inventory.md) stands, and whether strict import accepts `xsi:type` as a tolerance; it may also be a specification defect."
 
 [[row]]
 id = "SACM23-XMI-007"
