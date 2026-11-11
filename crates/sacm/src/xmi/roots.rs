@@ -244,7 +244,10 @@ fn read_root(text: &str, root: Node<'_, '_>, document: &mut Document) -> Result<
 }
 
 /// Refuses `node` if it is text that is not all white space, at its first
-/// character that is not.
+/// character in the input that is not literal white space. A CDATA section
+/// or character reference counts as such a character even when it stands for
+/// white space, so `<![CDATA[ ]]>x` is refused at the `<![CDATA[`, and
+/// `&#x20;x` at the `&`.
 fn check_text(text: &str, node: Node<'_, '_>, parent: &str) -> Result<(), ReadError> {
     let Some(content) = node.text().filter(|_| node.is_text()) else {
         return Ok(());
@@ -253,7 +256,8 @@ fn check_text(text: &str, node: Node<'_, '_>, parent: &str) -> Result<(), ReadEr
         return Ok(());
     }
     // roxmltree gives the range of the text's first piece only, so the
-    // first character that is not white space is looked for in the input.
+    // first character that is not literal white space is looked for in the
+    // input.
     let start = node.range().start;
     let first = text
         .get(start..)

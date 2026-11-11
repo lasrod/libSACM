@@ -3152,7 +3152,7 @@ id = "LIB-API-009"
 area = "API"
 milestone = "M1"
 title = "The reader refuses what it cannot represent"
-requirement = "`xmi::read` never returns a document that is missing content from its input (D-PRESERVE). Well-formed input that it cannot fully represent is refused with `ReadError::Unsupported`, which has no catalog code and carries a reason and a location: content that no verified row reads yet (in the first release, every well-formed document), UTF-16 or UTF-32 input (until SACM23-XMI-018), and a declared encoding other than UTF-8 or ASCII. A declared UTF-8 or ASCII encoding is accepted in any letter case; a byte of 0x80 or above under an ASCII declaration is malformed (SACM-XML-001). Parser capacity limits belong to LIB-SEC-003."
+requirement = "`xmi::read` never returns a document that is missing content from its input (D-PRESERVE). Well-formed input that it cannot fully represent is refused with `ReadError::Unsupported`, which has no catalog code and carries a reason and a location: content that no verified row reads yet (SACM23-XMI-001 reads the first package roots), UTF-16 or UTF-32 input (until SACM23-XMI-018), and a declared encoding other than UTF-8 or ASCII. A declared UTF-8 or ASCII encoding is accepted in any letter case; a byte of 0x80 or above under an ASCII declaration is malformed (SACM-XML-001). Parser capacity limits belong to LIB-SEC-003."
 source = "D-PRESERVE \"Never drop conforming SACM data. Preserve with a diagnostic, or refuse\"; ADR 0015 (interim rule); ADR 0005 B2; XML 1.0 (Fifth Edition) §4.3.3 (encodings; quoted when SACM23-XMI-018 is analysed)"
 kind = "api"
 status = "verified"
@@ -3315,10 +3315,10 @@ kind = "security"
 status = "implemented"
 depends_on = ["LIB-SEC-002"]
 acceptance = [
-  "Character references: `&#xD800;`, `&#xDFFF;`, `&#55296;`, `&#x110000;` and `&#xFFFFFFFF;` give `Malformed` with `code()` SACM-XML-001, located at the `&`, in an `xmi:id`, in another attribute and in text inside an element; never `Unsupported` and never `Ok` with U+FFFD. `&#xD7FF;`, `&#xE000;` and `&#x10FFFF;` in an `xmi:id` are not refused, nor is the literal text `&#xD800;` in a comment, a CDATA section or a PI, or written `&amp;#xD800;` (`xmi:id=\"p&amp;#xD800;\"` reads as id `p&#xD800;`).",
-  "Prefix undeclaring: `xmlns:p=\"\"` on the root or on a child gives `Malformed` at the declaration; `xmlns=\"\"` is not refused.",
+  "Character references: `&#xD800;`, `&#xDFFF;`, `&#55296;`, `&#x110000;` and `&#xFFFFFFFF;` give `Malformed` with `code()` SACM-XML-001, located at the `&`, in an `xmi:id`, in another attribute and in text inside an element; never `Unsupported` and never `Ok` with U+FFFD. `&#xD7FF;`, `&#xE000;` and `&#x10FFFF;` in an `xmi:id` are not refused, nor is the literal text `&#xD800;` in a comment, a CDATA section or a PI (including a comment whose text starts with `>` or `->`, `<!-->&#xD800;-->`, and a PI whose content starts with `>`), or written `&amp;#xD800;` (`xmi:id=\"p&amp;#xD800;\"` reads as id `p&#xD800;`).",
+  "Prefix undeclaring: `xmlns:p=\"\"` on the root or on a child gives `Malformed` at the declaration; `xmlns=\"\"` is not refused, nor is `xmlns:p=''` inside a comment such as `<!--> <r xmlns:p=''>-->`; after the prolog `<!--> <x a='-->`, a later `xmlns:p=\"\"`, `<?XML x?>` or surrogate reference is still found.",
   "XML declaration: each gives `Malformed` at the offending name or value: pseudo-attributes `versionX`, `encodingX=\"UTF-8\"`, `standaloneX` and `foo`; pseudo-attributes out of order; `version` values `\"2.0\"`, `\"1.\"` and `\"abc\"`; `standalone=\"maybe\"`; `encoding` values `\"\"`, `\"8bit\"` and `\"UTF 8\"` (these fail [81] before the supported-encoding check). A declaration with TAB, CR or LF after `<?xml` is checked by the same rules, and a valid one is accepted; `version=\"1.1\"` is not refused.",
-  "`xml` PI targets: `<?XML x?>` in the prolog, and `<?xml\tfoo?>` or `<?Xml?>` inside the root, give `Malformed` at the `<?`; `<?xml-stylesheet href=\"a\"?>` is not refused.",
+  "`xml` PI targets: `<?XML x?>` in the prolog, and `<?xml\tfoo?>` or `<?Xml?>` inside the root, give `Malformed` at the `<?`; `<?xml-stylesheet href=\"a\"?>` is not refused, nor is `<?xml x?>` inside a comment (`<!--><?xml x?>-->`) or `<?xml?>` inside a CDATA section.",
   "Order: the XML declaration is checked before parsing, so a bad declaration comes before a DOCTYPE. Within it, `<?xml`, VersionInfo and EncodingDecl are checked first ([81] before the supported-encoding check); the rest (SDDecl, `?>`) is checked only for a supported encoding, so `<?xml version=\"1.0\" encoding=\"ISO-8859-1\" \\xE9?>` stays `Unsupported` (LIB-API-009 item 3). The character-reference, prefix and PI checks run after roxmltree accepts the input, so a DOCTYPE or a roxmltree `Malformed` comes before them, and among them the earliest offset wins. The `read` docs state this order.",
   "Each refusal's `Display` follows the LIB-SEC-002 form (one lowercase line, location, our own reason, names quoted), and the checks never panic (the LIB-SEC-002 no-panic inputs still return a value).",
 ]
@@ -3351,6 +3351,9 @@ tests = [
   "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_an_xml_pi_after_pi_text_in_a_comment_or_cdata_is_found",
   "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_checks_after_sibling_elements_find_the_construct",
   "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_character_reference_refusals_quote_the_reference_and_name_its_kind",
+  "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_a_comment_starting_with_gt_or_dash_gt_is_skipped_whole",
+  "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_a_comment_starting_with_gt_does_not_hide_a_later_construct",
+  "crates/sacm/tests/xml_wellformedness.rs::lib_sec_005_cdata_with_spaces_and_quotes_is_skipped_whole",
 ]
 
 [[row]]

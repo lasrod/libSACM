@@ -38,7 +38,7 @@ We deviate from C++ in seven ways:
   by URI and local part. An `XMI` element in another namespace, or in none, is
   `Unsupported` before its children are classified, because whether they are roots is
   not decided. LIB-COMPAT-002 may read it later. A child of the XMI element that is in the
-  XMI namespace, such as `xmi:Documentation`, is XMI data, not a root: it is
+  XMI namespace, such as `xmi:documentation`, is XMI data, not a root: it is
   `Unsupported` (SACM23-XMI-019). C++ passes it to its root reader, which reports
   SACM-XMI-001. A schema-conforming document uses the XMI namespace, so this stays
   compliant.

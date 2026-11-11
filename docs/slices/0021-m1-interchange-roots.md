@@ -54,3 +54,12 @@ the declaration grammar in `decode`, and the rest after the parse.
 - 2026-11-11 design: maintainer approved ADR 0016 and the empty-wrapper refusal.
 - 2026-11-11 tests and implementation: 30 XMI-001 and 21 SEC-005 tests; 7 verified tests updated, none weakened; the gate passes.
 - 2026-11-11 fix round 1 (before verification): MSRV let-chain (Copilot); 23 missed mutants: equivalents simplified away, one excluded with a triage row (diagnostics() is always empty), 8 tests kill the rest; every read in the reader tests runs under a 5 s deadline.
+- 2026-11-11 verification round 1: FAIL on LIB-SEC-005. The post-parse scan ended a
+  comment inside `<!--` (`<!-->…-->`), so a later surrogate was repaired silently.
+  SACM23-XMI-001 is blocked by that dependency. LIB-API-009 and LIB-SEC-002 re-checks:
+  PASS, provided the fix lands.
+- 2026-11-11 fix round 2: constructs end after their opening delimiter; tests T1-T3;
+  `check_text` doc reworded; `xmi:documentation` as the wrapper-child example; D10
+  citation, LIB-API-009 wording, triage line. The maintainer confirmed the amended
+  ADR 0016 D1/D3 (an XMI-namespace child of `xmi:XMI` is `Unsupported`, not
+  SACM-XMI-001; a foreign `XMI` element is `Unsupported` before its children).

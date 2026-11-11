@@ -415,20 +415,26 @@ impl<'a> Cursor<'a> {
 /// case.
 ///
 /// It scans the text once, in document order, so the earliest construct is
-/// refused. It runs only on text roxmltree has accepted, where comments,
-/// processing instructions, CDATA sections and tags are closed and attribute
-/// values are quoted; should one not be, the scan stops without a refusal.
-/// It scans the raw text rather than the tree, because roxmltree merges
-/// adjacent text and CDATA into one node whose range covers only the first.
-/// The XML declaration has been checked by [`decode`].
+/// refused. It scans the raw text rather than the tree, because roxmltree
+/// merges adjacent text and CDATA into one node whose range covers only the
+/// first. The XML declaration has been checked by [`decode`].
+///
+/// The scan stays in step with the markup because each construct ends at
+/// the first closing delimiter after its opening one: a comment's text may
+/// start with `>` or `->`, so `-->` is looked for after the `<!--`, not from
+/// its `<`. roxmltree has accepted the text, so every comment, processing
+/// instruction, CDATA section and tag is closed and every attribute value is
+/// quoted, and the scan reaches the end of the text. It stops early, without
+/// a refusal, only on text roxmltree refuses; that path exists so that no
+/// input can make it panic.
 fn check_unrepaired(text: &str) -> Result<(), ReadError> {
     let declaration = declaration_start(text);
     let mut offset = 0;
     while let Some(rest) = text.get(offset..).filter(|rest| !rest.is_empty()) {
         let length = if rest.starts_with("<!--") {
-            rest.find("-->").map(|end| end + "-->".len())
+            closed(rest, "<!--", "-->")
         } else if rest.starts_with("<![CDATA[") {
-            rest.find("]]>").map(|end| end + "]]>".len())
+            closed(rest, "<![CDATA[", "]]>")
         } else if let Some(body) = rest.strip_prefix("<?") {
             let target_length = body
                 .find(|c: char| is_xml_space(c) || c == '?')
@@ -441,7 +447,7 @@ fn check_unrepaired(text: &str) -> Result<(), ReadError> {
                     format!("a processing instruction has the reserved target {target:?}"),
                 ));
             }
-            rest.find("?>").map(|end| end + "?>".len())
+            closed(rest, "<?", "?>")
         } else if rest.starts_with("</") {
             // An end tag holds only its name and white space, so the rest of
             // it is scanned as character data, harmlessly.
@@ -461,6 +467,14 @@ fn check_unrepaired(text: &str) -> Result<(), ReadError> {
         offset += length;
     }
     Ok(())
+}
+
+/// The length of the construct at the start of `rest`, which opens with
+/// `open`, through the first `close` after `open`; `None` if it is not
+/// closed.
+fn closed(rest: &str, open: &str, close: &str) -> Option<usize> {
+    let body = rest.get(open.len()..)?;
+    body.find(close).map(|end| open.len() + end + close.len())
 }
 
 /// Checks the start tag at byte `offset` of `text`: its namespace
@@ -913,6 +927,17 @@ mod tests {
         assert_eq!(at("<?xml\tversion='1.0'?><r/>"), Ok(()));
         assert_eq!(at("<!--c--><?xMl?><r/>"), Err(SourceLocation::at(1, 9)));
         assert_eq!(at("<?xml-stylesheet a?><r/>"), Ok(()));
+        // A comment whose text starts with `>` or `->` ends at the `-->`
+        // after its `<!--`, not inside it.
+        assert_eq!(
+            at("<!--> <x a='--><r a='&#xD800;'/>"),
+            Err(SourceLocation::at(1, 22))
+        );
+        assert_eq!(at("<!-->&#xD800;--><r/>"), Ok(()));
+        assert_eq!(at("<!--->&#xD800;--><r/>"), Ok(()));
+        assert_eq!(at("<r><!---><?Xml?>--></r>"), Ok(()));
+        // A processing instruction's `?>` is looked for after its `<?`.
+        assert_eq!(at("<?p?><?Xml?><r/>"), Err(SourceLocation::at(1, 6)));
         // Unclosed constructs stop the scan; they never panic.
         for text in [
             "<r a='",

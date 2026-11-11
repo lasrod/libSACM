@@ -135,8 +135,8 @@ fn assert_malformed_at(row: &str, input: &[u8], line: u32, column: u32) -> ReadE
 }
 
 /// Asserts that `input` is refused as `Unsupported` (no code) at `line` and
-/// `column`.
-fn assert_unsupported_at(row: &str, input: &[u8], line: u32, column: u32) {
+/// `column`, and returns the error.
+fn assert_unsupported_at(row: &str, input: &[u8], line: u32, column: u32) -> ReadError {
     let result = read(row, input);
     let Err(error) = result else {
         panic!(
@@ -161,6 +161,7 @@ fn assert_unsupported_at(row: &str, input: &[u8], line: u32, column: u32) {
         "{row}: the refusal of {} is not at line {line}, column {column}: {error}",
         preview(input)
     );
+    error
 }
 
 /// Reads `input`, which the test expects to be read, and returns the ids of
@@ -900,4 +901,97 @@ fn lib_sec_005_character_reference_refusals_quote_the_reference_and_name_its_kin
         let reason = format!("the character reference \"{reference}\" {kind}");
         assert_malformed_exactly(row, &root_holding(reference), 1, 134, &reason);
     }
+}
+
+// --- LIB-SEC-005. Comments, PIs and CDATA are skipped whole --------------------
+//
+// The checks that run after the parse skip comments, processing
+// instructions and CDATA sections. Each must end where XML ends it: a
+// comment at the first `-->` after `<!--`, so `<!-->` and `<!--->` do not end
+// there; a PI at the first `?>` after `<?`; a CDATA section at the first
+// `]]>`. A scan that ends one early reads its text as markup, refusing what
+// is not there or missing what is.
+
+/// An ArtifactPackage root: recognised but not read yet, so `Unsupported` at
+/// its start tag (ADR 0016 D5).
+const ARTIFACT_ROOT: &str = concat!(
+    "<sacm:ArtifactPackage",
+    " xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
+    " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"",
+    " xmi:id=\"f\"/>",
+);
+
+#[test]
+fn lib_sec_005_a_comment_starting_with_gt_or_dash_gt_is_skipped_whole() {
+    let row = "LIB-SEC-005";
+    let skipped = [
+        // Comments whose text starts with `>` or `->`.
+        "<!-->&#xD800;-->",
+        "<!--->&#xD800;-->",
+        "<!--><?xml x?>-->",
+        "<!--> <r xmlns:p=''>-->",
+        // A PI whose content starts with `>`.
+        "<?pi >&#xD800;?>",
+    ];
+    for prolog in skipped {
+        // Before a readable root: read.
+        let before_root = format!("{prolog}\n{ROOT}");
+        assert_ok_with_id(row, before_root.as_bytes(), "p");
+        // Inside a readable root: read.
+        assert_ok_with_id(row, &root_holding(prolog), "p");
+        // Before a root not read yet: refused at that root (line 2,
+        // column 1), never for the comment's or PI's text.
+        let before_artifact = format!("{prolog}\n{ARTIFACT_ROOT}");
+        assert_unsupported_at(row, before_artifact.as_bytes(), 2, 1);
+    }
+}
+
+#[test]
+fn lib_sec_005_a_comment_starting_with_gt_does_not_hide_a_later_construct() {
+    let row = "LIB-SEC-005";
+    // Ended at the `-->` inside `<!-->`, this comment would leave `<x a='`
+    // open, and the quote would hide what follows up to the next `'`.
+    let prolog = "<!--> <x a='-->";
+    // `xmi:id="a` is 9 characters: the `&` is at line 3, column 10.
+    let reference = format!("{prolog}\n{ROOT_START}\nxmi:id=\"a&#xD800;\"/>");
+    assert_malformed_exactly(
+        row,
+        reference.as_bytes(),
+        3,
+        10,
+        "the character reference \"&#xD800;\" refers to a surrogate, which is not a character",
+    );
+    let undeclaring = format!("{prolog}\n{ROOT_START} xmi:id=\"p\"\n  xmlns:p=\"\"/>");
+    assert_malformed_exactly(
+        row,
+        undeclaring.as_bytes(),
+        3,
+        3,
+        "the namespace prefix \"p\" is declared with an empty value, and a prefix cannot be undeclared",
+    );
+    let pi = format!("{prolog}\n{ROOT_START} xmi:id=\"p\">\n  <?XML x?>\n{ROOT_END}");
+    assert_malformed_exactly(
+        row,
+        pi.as_bytes(),
+        3,
+        3,
+        "a processing instruction has the reserved target \"XML\"",
+    );
+}
+
+#[test]
+fn lib_sec_005_cdata_with_spaces_and_quotes_is_skipped_whole() {
+    let row = "LIB-SEC-005";
+    // The CDATA section is text: the root cannot hold it yet, so it is
+    // Unsupported at the section, never Malformed for what the section
+    // holds.
+    let input = root_holding("<![CDATA[ a='&#xD800;' xmlns:p='' <?xml?>]]>");
+    let error = assert_unsupported_at(row, &input, 1, 134);
+    assert_eq!(
+        error.to_string(),
+        "the reader cannot represent the input at line 1, column 134: \
+         the element \"sacm:ArgumentPackage\" holds text, which is not read in this release",
+        "{row}: unexpected Display for {}",
+        preview(&input)
+    );
 }

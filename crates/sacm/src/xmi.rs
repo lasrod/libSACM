@@ -130,8 +130,9 @@ mod roots;
 ///   roots, a package name outside the SACM namespace, a root without an
 ///   `xmi:id` or with the id of an earlier root, an `XMI` element outside the
 ///   XMI 2.5.1 namespace (such as an older XMI revision's), an XMI-namespace
-///   element such as `xmi:Documentation` as the document element or beside
-///   the roots, an attribute of `xmi:XMI` other than `xmi:version`, and any
+///   element as the document element (such as `xmi:Documentation`) or beside
+///   the roots (such as `xmi:documentation`), an attribute of `xmi:XMI` other
+///   than `xmi:version`, and any
 ///   other attribute or content of a root. So in this release a package with
 ///   a name, a description or any element in it is refused.
 ///

@@ -222,8 +222,8 @@ the prose or drop the list.
   namespace is "http://www.omg.org/spec/XMI/20110701,"".
 - **Rule 1f (p. 60)** writes `"xmlns:xmi='http://www.omg.org/spec/XMI/20100901'"`.
 
-XMI.xsd also declares no `version` attribute, although §7.5.3 and older XMI versions
-use `xmi:version`.
+XMI.xsd also declares no `version` attribute, although §7.6.3 mentions "the version and
+type attributes" and the §7.10.2 example writes `version="2.1"`.
 
 **This crate** uses `http://www.omg.org/spec/XMI/20131001`, the target namespace of the
 normative schema (SACM23-XMI-001). It reads `xmi:version` and ignores it. Whether
