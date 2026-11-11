@@ -16,6 +16,10 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
+  # The W3C XML Conformance Test Suite, fetched into the git-ignored third_party/
+  # (LIB-SEC-006). An absolute path, because cargo-mutants does not copy
+  # git-ignored files into its build directory.
+  SACM_XMLCONF_DIR: ${{ github.workspace }}/third_party/xmlconf/xmlconf
 
 jobs:
   fmt:
@@ -54,6 +58,12 @@ jobs:
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Cache the W3C XML Conformance Test Suite (LIB-SEC-006)
+        uses: actions/cache@v6
+        with:
+          path: third_party/xmlconf
+          key: xmlconf-9b61db9f5dbffa545f4b8d78422167083a8568c59bd1129f94138f936cf6fc1f
+      - run: cargo xtask fetch-spec --only xmlconf
       - run: cargo test --workspace --all-features
       - run: cargo test -p xtask
 
@@ -67,6 +77,12 @@ jobs:
           toolchain: "1.85"
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       # rust-toolchain.toml selects stable for development; `+1.85` overrides it.
+      - name: Cache the W3C XML Conformance Test Suite (LIB-SEC-006)
+        uses: actions/cache@v6
+        with:
+          path: third_party/xmlconf
+          key: xmlconf-9b61db9f5dbffa545f4b8d78422167083a8568c59bd1129f94138f936cf6fc1f
+      - run: cargo xtask fetch-spec --only xmlconf
       - run: cargo +1.85 test -p sacm -p sacm-cli
 
   docs:
@@ -136,6 +152,12 @@ jobs:
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Cache the W3C XML Conformance Test Suite (LIB-SEC-006)
+        uses: actions/cache@v6
+        with:
+          path: third_party/xmlconf
+          key: xmlconf-9b61db9f5dbffa545f4b8d78422167083a8568c59bd1129f94138f936cf6fc1f
+      - run: cargo xtask fetch-spec --only xmlconf
       - run: cargo install cargo-mutants --locked --version 27.1.0
       - run: cargo install cargo-nextest --locked --version 0.9.151
       - name: Write the pull request's diff

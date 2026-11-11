@@ -3428,7 +3428,7 @@ acceptance = [
   "With the suite absent, the test fails when the `CI` environment variable is set and prints a SKIPPED notice to stderr otherwise; every run with the suite prints `ran 1017 cases`. CI fetches the suite with `--only xmlconf` and caches it by its hash in every job that runs the crate's tests, including the mutation jobs.",
   "The `read` docs (`# Errors` step 7), the input.rs module docs and ADR 0005 B1 state the closed list against the suite, and that leniencies outside it stay guarded by LIB-SEC-005's sweep.",
 ]
-code = ["crates/sacm/src/xmi/input.rs", "crates/sacm/src/xmi.rs", "xtask/src/fetch.rs", "xtask/src/lib.rs", ".gitignore", "docs/adr/0005-xml-backend.md"]
+code = ["crates/sacm/src/xmi/input.rs", "crates/sacm/src/xmi.rs", "xtask/src/fetch.rs", "xtask/src/lib.rs", ".gitignore", ".github/workflows/ci.yml", ".github/workflows/mutants.yml", "docs/adr/0005-xml-backend.md"]
 tests = [
   "crates/sacm/tests/w3c_xml_conformance.rs::lib_sec_006_the_catalog_list_is_the_masters_external_entities",
   "crates/sacm/tests/w3c_xml_conformance.rs::lib_sec_006_every_test_uri_resolves_to_a_file_beside_its_catalog",

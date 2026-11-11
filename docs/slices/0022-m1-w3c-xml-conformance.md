@@ -2,7 +2,7 @@
 slice: 0022
 name: m1-w3c-xml-conformance
 state: in-progress
-step: tests
+step: verification
 rows: [LIB-SEC-006]
 mode: pr
 ---
@@ -55,3 +55,4 @@ the undeclaring check.
   decisions: fail under CI and skip loudly locally; `--only xmlconf`; exact counts;
   an over-strictness guard; "within the suite".
 - 2026-11-11 tests and implementation: 28 tests; the `xmlns:xmlns` check; `fetch-spec --only xmlconf`; `fetch_suite_from` keeps the xtask tests offline; the local gate passes with the suite present. The CI fetch and cache wait for PR #29 (the same workflow files).
+- 2026-11-11 CI: every job that runs the crate's tests fetches the suite (`--only xmlconf`), caches it by its hash, and sets `SACM_XMLCONF_DIR`.
