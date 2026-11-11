@@ -29,4 +29,4 @@ revisions.
 ## Consequences
 
 Every agent analyses the same bytes. Research reports quote clauses, and the verifier
-checks the quotations against the pinned PDF.
+checks the quotations against the pinned PDFs.

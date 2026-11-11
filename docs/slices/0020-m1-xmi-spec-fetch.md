@@ -1,8 +1,8 @@
 ---
 slice: 0020
 name: m1-xmi-spec-fetch
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [LIB-TOOL-020]
 mode: pr
 ---
@@ -36,3 +36,4 @@ No public library API. `xtask::fetch::ARTIFACTS` gains a third entry:
 
 - 2026-11-11 choose: LIB-TOOL-020 alone, before SACM23-XMI-001, which will quote XMI.
 - 2026-11-11 tests: 3 tests (2 red, 1 guard); implemented; gate passes.
+- 2026-11-11 verification: round 1 PASS; three stale doc lines fixed at close.
