@@ -61,11 +61,23 @@ change bumps the minor version and is listed under **Breaking**.
   (ADR 0015). `read` refuses a DOCTYPE (`ReadError::Doctype`, SACM-SEC-001), malformed
   or truncated input and invalid UTF-8 (`ReadError::Malformed`, SACM-XML-001), and
   anything it cannot represent yet (`ReadError::Unsupported`); it never returns a
-  partial document. It reads no SACM content yet, so **in this release it refuses every
-  input**. XML is parsed with `roxmltree`, privately (ADR 0005)
+  partial document. XML is parsed with `roxmltree`, privately (ADR 0005)
   [LIB-SEC-001, LIB-SEC-002, LIB-API-009].
 - `Code::XML_MALFORMED` and `Code::XML_DOCTYPE_REJECTED`, the first catalog codes
   [LIB-SEC-001, LIB-SEC-002].
+- `xmi::read` reads AssuranceCasePackage and ArgumentPackage roots, bare or in an
+  `xmi:XMI` element, into a `Document` (`ReadOutput::document`, `diagnostics` and
+  `into_document`). A root that is not a package kind is `ReadError::InvalidRoot`, and an
+  `xmi:XMI` element with no package is `ReadError::NoPackage`, both
+  `Code::XMI_INVALID_ROOT` (SACM-XMI-001). Content it cannot read yet stays
+  `Unsupported` (ADR 0016) [SACM23-XMI-001].
+- `xmi::read` refuses XML the parser let through as `Malformed`: a bad XML declaration,
+  a character reference to a surrogate or above U+10FFFF, `xmlns:p=""`, an element or
+  attribute name with an empty prefix (`<:c>`), and a processing-instruction target that
+  is `xml`, contains a colon, or is followed by neither white space nor `?>`. These are
+  the constructs this release refuses; other input the parser accepts against XML 1.0 or
+  Namespaces 1.0 may still be read until LIB-SEC-006 checks against the W3C XML
+  Conformance Test Suite [LIB-SEC-005].
 
 ### Changed
 

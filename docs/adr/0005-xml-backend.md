@@ -49,6 +49,14 @@ XML library type may appear in the public API.
     to a surrogate (and turns it into U+FFFD), an undeclaring `xmlns:p=""`, and unknown
     XML-declaration pseudo-attributes. SACM23-XMI-001 must refuse or report these before
     any content is returned.
+    Slice 0021 found more such cases in verification: `xml` PI targets that end at a
+    delimiter, PI targets not followed by white space ([16]), PI targets with a colon,
+    names with an empty prefix, and `xmlns:xmlns` declared (left to LIB-SEC-006). Its
+    round-1 finding was a defect in libSACM's own scan, not in roxmltree; the
+    tree-oracle sweep of LIB-SEC-005 guards it. LIB-SEC-005 refuses a closed list of the
+    others. LIB-SEC-006 runs the W3C XML
+    Conformance Test Suite to find the rest systematically; until then, other
+    leniencies may remain (maintainer, 2026-11-11).
   - **B2.** UTF-8 and ASCII are read now. UTF-16, UTF-32 and UCS-4, with or without a
     BOM, are refused as `Unsupported`, never misread. SACM23-XMI-018 will decode UTF-16
     with std, because XML 1.0 requires every processor to accept it. Other declared

@@ -18,3 +18,8 @@ test_workspace = false
 # mutants, not caught ones.
 test_tool = "nextest"
 additional_cargo_test_args = ["--profile=mutants", "--no-tests=warn"]
+
+# Equivalent mutants, each with a row in docs/quality/mutants-triage.md.
+exclude_re = [
+  '^crates/sacm/src/xmi\.rs:\d+:\d+: replace ReadOutput::diagnostics -> &\[Diagnostic\] with Vec::leak\(Vec::new\(\)\)$',
+]

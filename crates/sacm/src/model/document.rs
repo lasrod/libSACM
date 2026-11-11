@@ -34,8 +34,10 @@ use super::{AbstractClass, AssertionDeclaration, ElementId, ElementKind, LangStr
 ///
 /// [ADR 0014]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0014-artifact-package-admits-every-artifact-element.md
 ///
-/// This release has no stable way to fill a document: the XMI reader and the
-/// edit operations will. Until then, tests use the `test-support` feature's
+/// In this release [`xmi::read`](crate::xmi::read) fills a document with
+/// `AssuranceCasePackage` and `ArgumentPackage` roots, but nothing inside
+/// them yet. Reading their content and the edit operations come later; until
+/// then, tests build fuller documents with the `test-support` feature's
 /// `Document::insert`. [`Document::new`] is empty.
 ///
 /// Cloning a document copies all of it; the copy is independent of the
@@ -103,7 +105,7 @@ impl Document {
     /// ```
     /// use sacm::model::{Document, ElementId, ElementKind};
     ///
-    /// // Built with the unstable test-support feature until the XMI reader exists.
+    /// // Built with the unstable test-support feature: `xmi::read` reads only empty packages so far.
     /// let mut doc = Document::new();
     /// doc.insert(None, ElementKind::AssuranceCasePackage, ElementId::from("safety_case"), None).unwrap();
     /// doc.insert(None, ElementKind::ArtifactPackage, ElementId::from("evidence"), None).unwrap();
@@ -123,7 +125,7 @@ impl Document {
     /// ```
     /// use sacm::model::{Document, ElementId, ElementKind};
     ///
-    /// // Built with the unstable test-support feature until the XMI reader exists.
+    /// // Built with the unstable test-support feature: `xmi::read` reads only empty packages so far.
     /// let mut doc = Document::new();
     /// doc.insert(None, ElementKind::ArgumentPackage, ElementId::from("arguments"), None).unwrap();
     ///
@@ -170,7 +172,7 @@ impl Document {
     /// ```
     /// use sacm::model::{Document, ElementId, ElementKind};
     ///
-    /// // Built with the unstable test-support feature until the XMI reader exists.
+    /// // Built with the unstable test-support feature: `xmi::read` reads only empty packages so far.
     /// let mut doc = Document::new();
     /// let id = ElementId::from;
     /// doc.insert(None, ElementKind::AssuranceCasePackage, id("case"), None).unwrap();
@@ -193,7 +195,8 @@ impl Document {
     ///
     /// **Not part of the stable API.** This is the test seam of the
     /// `test-support` feature: it builds documents for tests until the XMI
-    /// reader and the edit operations exist. It may change or disappear in
+    /// reader reads package content and the edit operations exist. It may
+    /// change or disappear in
     /// any release. It checks identity, that `parent` exists, whether `kind`
     /// can have a name, and whether a containment role of the parent's class
     /// admits `kind` (see [`Document`]). It does not check how many children a
@@ -275,13 +278,6 @@ impl Document {
     ///
     /// The crate-internal form of the `test-support` seam `insert`, present
     /// with or without the feature.
-    #[cfg_attr(
-        not(feature = "test-support"),
-        expect(
-            dead_code,
-            reason = "the XMI reader and edit operations will build documents through it"
-        )
-    )]
     pub(crate) fn insert_node(
         &mut self,
         parent: Option<&ElementId>,
@@ -471,7 +467,7 @@ impl<'a> Iterator for PreOrder<'a> {
 ///     package.children().filter(|child| child.kind() == ElementKind::Claim)
 /// }
 ///
-/// // Built with the unstable test-support feature until the XMI reader exists.
+/// // Built with the unstable test-support feature: `xmi::read` reads only empty packages so far.
 /// let mut doc = Document::new();
 /// let id = ElementId::from;
 /// doc.insert(None, ElementKind::ArgumentPackage, id("arguments"), None).unwrap();
@@ -526,7 +522,7 @@ impl<'a> SacmElement<'a> {
     /// ```
     /// use sacm::model::{AbstractClass, Document, ElementId, ElementKind, LangString};
     ///
-    /// // Built with the unstable test-support feature until the XMI reader exists.
+    /// // Built with the unstable test-support feature: `xmi::read` reads only empty packages so far.
     /// let mut doc = Document::new();
     /// let id = ElementId::from;
     /// let name = LangString::new("Top claim").with_lang("en");
@@ -566,7 +562,7 @@ impl<'a> SacmElement<'a> {
     /// ```
     /// use sacm::model::{AssertionDeclaration, Document, ElementId, ElementKind};
     ///
-    /// // Built with the unstable test-support feature until the XMI reader exists.
+    /// // Built with the unstable test-support feature: `xmi::read` reads only empty packages so far.
     /// let mut doc = Document::new();
     /// let id = ElementId::from;
     /// doc.insert(None, ElementKind::ArgumentPackage, id("arguments"), None).unwrap();

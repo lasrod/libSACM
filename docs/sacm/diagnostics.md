@@ -13,8 +13,9 @@ and clause it enforces, affected element ids, an optional source location
 > verified; until then the crate does not emit it. Tool-specific wording from that
 > project ("Assurance Forge", ODE containers) has been kept where it explains the code.
 > The `sacm::diagnostic::Diagnostic` type exists (LIB-DIAG-001), but no diagnostic is emitted yet.
-> SACM-XML-001 and SACM-SEC-001 are produced, as the `ReadError::code()` of a refusal by
-> `sacm::xmi::read` (rows LIB-SEC-002 and LIB-SEC-001).
+> SACM-XML-001 (rows LIB-SEC-002 and LIB-SEC-005), SACM-SEC-001 (LIB-SEC-001) and
+> SACM-XMI-001 (SACM23-XMI-001) are produced, as the `ReadError::code()` of a refusal by
+> `sacm::xmi::read`.
 
 Adding a code: append the row here in the same change that adds its constant to the
 crate, and name the matrix row that owns it.
@@ -23,14 +24,14 @@ crate, and name the matrix row that owns it.
 
 | Code | Severity | Meaning |
 | --- | --- | --- |
-| SACM-XML-001 | Error | The input is not well-formed XML 1.0 with namespaces, is truncated, is not valid UTF-8, or declares ASCII but holds non-ASCII. Fix: correct the XML at the reported location. `Code::XML_MALFORMED`, the code of `ReadError::Malformed` (LIB-SEC-002). |
+| SACM-XML-001 | Error | The input is not well-formed XML 1.0 with namespaces, is truncated, is not valid UTF-8, or declares ASCII but holds non-ASCII. Fix: correct the XML at the reported location. `Code::XML_MALFORMED`, the code of `ReadError::Malformed` (LIB-SEC-002, LIB-SEC-005). |
 | SACM-SEC-001 | Error | The input has a DOCTYPE, which may declare entities; it is refused before it is read. Fix: remove the DOCTYPE, because SACM XMI does not need one. `Code::XML_DOCTYPE_REJECTED`, the code of `ReadError::Doctype` (LIB-SEC-001). |
 
 ## XMI structure
 
 | Code | Severity | Meaning |
 | --- | --- | --- |
-| SACM-XMI-001 | Error | Root element is not a recognized SACM interchange object (`AssuranceCasePackage`, `ArgumentPackage`, `ArtifactPackage`, `TerminologyPackage`, or an `xmi:XMI` wrapper of these). |
+| SACM-XMI-001 | Error | An interchange root (the document element, or an element child of the XMI element outside the XMI namespace) is not named as one of the twelve SACM package kinds, or the XMI element holds no root. Fix: make the document element, or each child of `xmi:XMI`, a SACM 2.3 package such as `sacm:AssuranceCasePackage` or `sacm:ArgumentPackage`; a single package needs no `xmi:XMI` element. `Code::XMI_INVALID_ROOT`, the code of `ReadError::InvalidRoot` and `ReadError::NoPackage` (SACM23-XMI-001). |
 | SACM-XMI-002 | Error (strict) / Warning (tolerant) | Namespace URI is not a pinned SACM 2.3 namespace. |
 | SACM-XMI-003 | Error (strict) / Warning (tolerant) | Unknown element; preserved in tolerant mode, rejected in strict mode. |
 | SACM-XMI-004 | Error (strict) / Warning (tolerant) | Element lacks an `xmi:id`/`id`; generated in tolerant mode. |

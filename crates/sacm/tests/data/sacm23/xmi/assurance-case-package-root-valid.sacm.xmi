@@ -1,0 +1,2 @@
+<!-- SACM23-XMI-001: an AssuranceCasePackage as the interchange root (formal/23-05-08 §2.4). -->
+<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="acp_1"/>

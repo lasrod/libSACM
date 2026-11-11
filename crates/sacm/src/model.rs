@@ -24,7 +24,7 @@
 //! ```
 //! use sacm::model::{Document, ElementId, ElementKind, LangString};
 //!
-//! // Built with the unstable test-support feature until the XMI reader exists.
+//! // Built with the unstable test-support feature: `xmi::read` reads only empty packages so far.
 //! let mut doc = Document::new();
 //! let arguments = ElementId::from("arguments");
 //! let name = |content: &str| Some(LangString::new(content).with_lang("en"));
@@ -83,6 +83,8 @@ mod kind;
 mod lang_string;
 
 pub use argumentation::{AssertionDeclaration, ParseAssertionDeclarationError};
+#[cfg(not(feature = "test-support"))]
+pub(crate) use document::InsertError;
 pub use document::{Document, SacmElement};
 #[cfg(feature = "test-support")]
 pub use document::{InsertError, SetAssertionDeclarationError};

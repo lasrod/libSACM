@@ -213,6 +213,25 @@ also accept the capitalised spelling (SACM23-XMI-009, planned), which C++ does n
 **Suggested resolution.** Use the model's spelling, and either list TerminologyGroup in
 the prose or drop the list.
 
+## D10 — XMI 2.5.1 states three namespace URIs for itself
+
+*Found by libSACM (slice 0021); a defect of XMI 2.5.1 (formal/15-06-07), not of SACM.*
+
+- **The cover and the normative XMI.xsd** use `http://www.omg.org/spec/XMI/20131001`.
+- **§7.5.1 (p. 8)** reads: "The version of this XMI specification is 2.4.1, and its XMI
+  namespace is "http://www.omg.org/spec/XMI/20110701,"".
+- **Rule 1f (p. 60)** writes `"xmlns:xmi='http://www.omg.org/spec/XMI/20100901'"`.
+
+XMI.xsd also declares no `version` attribute, although §7.6.3 mentions "the version and
+type attributes" and the §7.10.2 example writes `version="2.1"`.
+
+**This crate** uses `http://www.omg.org/spec/XMI/20131001`, the target namespace of the
+normative schema (SACM23-XMI-001). It reads `xmi:version` and ignores it. Whether
+strict export writes it is decided under SACM23-XMI-003.
+
+**Suggested resolution.** Use the XMI.xsd namespace throughout the text, and either
+declare `version` in XMI.xsd or drop it from the text.
+
 ## Related
 
 - [GSN / SACM metamodel gaps](sacm-gsn-metamodel-gaps.md) — the GSN v3 side, for the SCSC ACWG.

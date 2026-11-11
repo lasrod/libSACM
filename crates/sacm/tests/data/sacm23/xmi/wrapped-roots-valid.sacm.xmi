@@ -1,0 +1,6 @@
+<!-- SACM23-XMI-001: an xmi:XMI wrapper holding AssuranceCasePackage n1, ArgumentPackage a1 and AssuranceCasePackage n2, in that order (XMI 2.5.1 §7.5.3). -->
+<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:sacm="http://www.omg.org/spec/SACM/20220301">
+  <sacm:AssuranceCasePackage xmi:id="n1"/>
+  <sacm:ArgumentPackage xmi:id="a1"/>
+  <sacm:AssuranceCasePackage xmi:id="n2"/>
+</xmi:XMI>

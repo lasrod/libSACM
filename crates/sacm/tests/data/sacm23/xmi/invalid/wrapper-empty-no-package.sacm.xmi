@@ -1,0 +1,2 @@
+<!-- SACM23-XMI-001: an xmi:XMI wrapper with no SACM package; refused as SACM-XMI-001 at the wrapper, line 2, column 1. -->
+<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001"/>

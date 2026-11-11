@@ -18,11 +18,21 @@
 //!   `<!DOCTYPE` there escaped, as `&lt;!DOCTYPE`. The test uses that form.
 //! - "In every mode" (LIB-SEC-001): `ReadOptions` has no mode yet
 //!   (LIB-COMPAT-001), so only the default options are exercised.
+//!
+//! Since SACM23-XMI-001 (slice 0021), AssuranceCasePackage and ArgumentPackage
+//! roots are read, and other roots are refused as SACM-XMI-001. The tests here
+//! that need a refusal at a known place therefore use input that is still
+//! `Unsupported` there: an ArtifactPackage root, a package name outside the
+//! SACM namespace, or a readable root with a child it cannot read. The roots
+//! themselves, and the SACM-XMI-001 locations, are tested in `xmi_roots.rs`.
 
 use std::error::Error;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 use std::path::Path;
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::thread;
+use std::time::Duration;
 
 use sacm::diagnostic::{Code, SourceLocation};
 use sacm::xmi::{self, ReadError, ReadOptions, ReadOutput};
@@ -70,10 +80,43 @@ const SACM_ROOT_OPEN: &str = concat!(
 /// The SACM root end tag that closes [`SACM_ROOT_OPEN`].
 const SACM_ROOT_CLOSE: &str = "</sacm:AssuranceCasePackage>";
 
+/// A root the reader recognises but cannot read yet (ADR 0016 D5): it is
+/// refused as `Unsupported` at its start tag.
+const ARTIFACT_ROOT: &str = concat!(
+    "<sacm:ArtifactPackage",
+    " xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
+    " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"",
+    " xmi:id=\"artifacts_1\"/>",
+);
+
 // --- Helpers --------------------------------------------------------------
 
-fn read(input: &[u8]) -> Result<ReadOutput, ReadError> {
-    xmi::read(input, &ReadOptions::default())
+/// How long one `read` may take. Reading any input here takes milliseconds
+/// at most; a scan that stops advancing never finishes. The deadline stays
+/// well below cargo-mutants' minimum test timeout of 20 seconds, so a hang
+/// fails its test instead of stalling the run (as in xtask's scanner tests).
+const DEADLINE: Duration = Duration::from_secs(5);
+
+/// `xmi::read` with the default options, on a worker thread. Fails the test,
+/// with a message that starts with `row`, when the read panics or does not
+/// return within [`DEADLINE`].
+fn read(row: &str, input: &[u8]) -> Result<ReadOutput, ReadError> {
+    let owned = input.to_vec();
+    let (sender, receiver) = mpsc::channel();
+    thread::spawn(move || {
+        // The receiver is gone only after the deadline has already failed the test.
+        let _ = sender.send(xmi::read(&owned, &ReadOptions::default()));
+    });
+    match receiver.recv_timeout(DEADLINE) {
+        Ok(result) => result,
+        Err(RecvTimeoutError::Timeout) => panic!(
+            "{row}: read did not return within {DEADLINE:?} for {}: a scan does not advance",
+            preview(input)
+        ),
+        Err(RecvTimeoutError::Disconnected) => {
+            panic!("{row}: read panicked on {}", preview(input))
+        }
+    }
 }
 
 /// The first bytes of `input`, for assertion messages.
@@ -89,7 +132,7 @@ fn preview(input: &[u8]) -> String {
 
 /// Reads `input`, which the test expects to be refused, and returns why.
 fn refusal(row: &str, input: &[u8]) -> ReadError {
-    match read(input) {
+    match read(row, input) {
         Ok(output) => panic!("{row}: read returned Ok({output:?}) for {}", preview(input)),
         Err(error) => error,
     }
@@ -599,7 +642,7 @@ fn lib_sec_001_declaration_text_in_comment_cdata_or_attribute_is_not_refused() {
         ),
     ];
     for input in inputs {
-        let result = read(&input);
+        let result = read(row, &input);
         assert_not_doctype_or_malformed(row, &input, &result);
     }
 }
@@ -885,20 +928,40 @@ fn lib_sec_002_invalid_utf8_location_counts_lf_crlf_and_lone_cr_as_one_line_each
 #[test]
 fn lib_sec_002_unsupported_root_location_counts_lf_crlf_and_lone_cr_as_one_line_each() {
     let row = "LIB-SEC-002";
-    let cases: [(&[u8], u32, u32); 5] = [
-        (b"<!--p-->\r<r/>", 2, 1),
-        (b"<!--p-->\r\n<r/>", 2, 1),
-        (b"<!--p-->\r\r<r/>", 3, 1),
-        (b"<!--p-->\n\r<r/>", 3, 1),
-        (b"<!--p-->\r\n\r  <r/>", 3, 3),
+    // A root that is recognised but not read yet, after each line ending.
+    let roots: [(&str, u32, u32); 5] = [
+        ("<!--p-->\r", 2, 1),
+        ("<!--p-->\r\n", 2, 1),
+        ("<!--p-->\r\r", 3, 1),
+        ("<!--p-->\n\r", 3, 1),
+        ("<!--p-->\r\n\r  ", 3, 3),
     ];
-    for (input, line, column) in cases {
-        let error = assert_unsupported(row, input);
+    for (prolog, line, column) in roots {
+        let input = format!("{prolog}{ARTIFACT_ROOT}");
+        let error = assert_unsupported(row, input.as_bytes());
         assert_eq!(
             error.location(),
             Some(loc(row, line, column)),
             "{row}: the root of {} is not located at line {line}, column {column}",
-            preview(input)
+            preview(input.as_bytes())
+        );
+    }
+    // A child the reader cannot read, inside a readable root, after each
+    // line ending: the refusal is at the child's start tag.
+    let children: [(&str, u32, u32); 4] = [
+        ("\r", 2, 1),
+        ("\r\n", 2, 1),
+        ("\r\r\n  ", 3, 3),
+        ("\n\r", 3, 1),
+    ];
+    for (before, line, column) in children {
+        let input = sacm_document("", &format!("{before}<name/>"));
+        let error = assert_unsupported(row, &input);
+        assert_eq!(
+            error.location(),
+            Some(loc(row, line, column)),
+            "{row}: the child of {} is not located at line {line}, column {column}",
+            preview(&input)
         );
     }
 }
@@ -906,18 +969,24 @@ fn lib_sec_002_unsupported_root_location_counts_lf_crlf_and_lone_cr_as_one_line_
 #[test]
 fn lib_sec_002_leading_utf8_bom_takes_no_column() {
     let row = "LIB-SEC-002";
-    // The root, on line 1 and after a declaration.
-    for (input, line, column) in [
-        (&b"\xEF\xBB\xBF<r/>"[..], 1, 1),
-        (b"\xEF\xBB\xBF<!--p--><r/>", 1, 9),
-        (b"\xEF\xBB\xBF<?xml version=\"1.0\"?>\n<r/>", 2, 1),
+    // A root that is recognised but not read yet, on line 1 and after a
+    // declaration. (`<r/>` after a BOM is SACM-XMI-001: `xmi_roots.rs`.)
+    for (prolog, line, column) in [
+        ("\u{FEFF}", 1, 1),
+        ("\u{FEFF}<!--p-->", 1, 9),
+        ("\u{FEFF}<?xml version=\"1.0\"?>\n", 2, 1),
     ] {
-        let error = assert_unsupported(row, input);
+        let input = format!("{prolog}{ARTIFACT_ROOT}");
+        assert!(
+            input.as_bytes().starts_with(b"\xEF\xBB\xBF"),
+            "{row}: the test input does not start with a UTF-8 BOM"
+        );
+        let error = assert_unsupported(row, input.as_bytes());
         assert_eq!(
             error.location(),
             Some(loc(row, line, column)),
             "{row}: the root of {} is not located at line {line}, column {column}",
-            preview(input)
+            preview(input.as_bytes())
         );
     }
     // A declared encoding, a parser error and invalid UTF-8 on line 1 after
@@ -949,10 +1018,11 @@ fn lib_sec_002_leading_utf8_bom_takes_no_column() {
 
 #[test]
 fn lib_sec_002_prefixes_and_byte_replacements_never_panic() {
+    let row = "LIB-SEC-002";
     let mut count = 0_usize;
     for input in hostile_sweep() {
         // Reaching the next iteration is the assertion: the call returned.
-        let _ = read(&input);
+        let _ = read(row, &input);
         count += 1;
     }
     assert_eq!(
@@ -970,13 +1040,32 @@ fn lib_sec_002_deep_nesting_returns_without_recursion() {
     const DEPTH: usize = 100_000;
     let well_formed = format!("{}{}", "<a>".repeat(DEPTH), "</a>".repeat(DEPTH)).into_bytes();
     let unclosed = "<a>".repeat(DEPTH).into_bytes();
-    let reader = std::thread::Builder::new()
+    // The reader runs on that thread directly; the result comes back on a
+    // channel, so a read that never returns fails at the deadline.
+    let (sender, receiver) = mpsc::channel();
+    std::thread::Builder::new()
         .name("lib_sec_002_deep_nesting".to_owned())
         .stack_size(2 * MIB)
-        .spawn(move || (read(&well_formed).is_ok(), read(&unclosed)))
+        .spawn(move || {
+            let options = ReadOptions::default();
+            let results = (
+                xmi::read(&well_formed, &options).is_ok(),
+                xmi::read(&unclosed, &options),
+            );
+            // The receiver is gone only after the deadline has already failed the test.
+            let _ = sender.send(results);
+        })
         .unwrap_or_else(|error| panic!("LIB-SEC-002: cannot spawn the reader thread: {error}"));
-    let Ok((_well_formed_read, unclosed_result)) = reader.join() else {
-        panic!("LIB-SEC-002: read panicked on 100,000 levels of nesting");
+    let (_well_formed_read, unclosed_result) = match receiver.recv_timeout(DEADLINE) {
+        Ok(results) => results,
+        Err(RecvTimeoutError::Timeout) => {
+            panic!(
+                "LIB-SEC-002: read did not return within {DEADLINE:?} on 100,000 levels of nesting"
+            )
+        }
+        Err(RecvTimeoutError::Disconnected) => {
+            panic!("LIB-SEC-002: read panicked on 100,000 levels of nesting")
+        }
     };
     assert!(
         unclosed_result.is_err(),
@@ -999,7 +1088,7 @@ fn lib_sec_002_empty_whitespace_and_bom_only_input_return_a_value() {
         b"\x00\x00\xFE\xFF",
     ] {
         assert!(
-            read(input).is_err(),
+            read(row, input).is_err(),
             "LIB-SEC-002: the byte order mark {input:?} alone was read as a document"
         );
     }
@@ -1069,7 +1158,7 @@ fn lib_sec_002_malformed_display_quotes_names_and_never_breaks_the_line() {
 fn lib_sec_002_every_refusal_in_the_sweep_has_its_display_code_and_no_source() {
     let row = "LIB-SEC-002";
     for input in hostile_sweep() {
-        if let Err(error) = read(&input) {
+        if let Err(error) = read(row, &input) {
             assert_refusal_invariants(row, &input, &error);
         }
     }
@@ -1137,13 +1226,26 @@ fn lib_sec_002_xml_malformed_code_is_sacm_xml_001_in_the_catalog() {
 // --- LIB-API-009 1. Well-formed input is refused at its root -----------------
 
 #[test]
-fn lib_api_009_well_formed_sacm_document_is_unsupported_at_its_root() {
+fn lib_api_009_well_formed_sacm_document_is_unsupported_at_the_construct_it_cannot_read() {
     let row = "LIB-API-009";
-    let on_line_3 = sacm_document(
+    // A readable root with a `name` child, which no verified row reads yet:
+    // refused at the child, on line 4.
+    let name_child = sacm_document(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- LIB-API-009 -->\n",
-        "<argumentPackage xmi:id=\"arg_1\"/>",
+        "\n  <name><content><value>case</value></content></name>\n",
     );
-    let error = assert_unsupported(row, &on_line_3);
+    let error = assert_unsupported(row, &name_child);
+    assert_eq!(
+        error.location(),
+        Some(loc(row, 4, 3)),
+        "{row}: the refusal is not located at the start tag of the `name` child"
+    );
+    // A root that is recognised but not read yet: refused at its start tag,
+    // on line 3.
+    let artifact_root = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- LIB-API-009 -->\n{ARTIFACT_ROOT}"
+    );
+    let error = assert_unsupported(row, artifact_root.as_bytes());
     assert_eq!(
         error.location(),
         Some(loc(row, 3, 1)),
@@ -1151,29 +1253,41 @@ fn lib_api_009_well_formed_sacm_document_is_unsupported_at_its_root() {
     );
     // `<?xml version="1.0"?>` is 21 characters and `<!-- é -->` 10: the
     // column counts characters, not bytes.
-    let after_comment = sacm_document("<?xml version=\"1.0\"?><!-- é -->", "");
-    let error = assert_unsupported(row, &after_comment);
+    let after_comment = format!("<?xml version=\"1.0\"?><!-- é -->{ARTIFACT_ROOT}");
+    let error = assert_unsupported(row, after_comment.as_bytes());
     assert_eq!(
         error.location(),
         Some(loc(row, 1, 32)),
         "{row}: the refusal is not located at the root element's start tag"
     );
-    // The full sample, too.
-    assert_unsupported(row, SAMPLE.as_bytes());
+    // The full sample, too: refused at its `argumentPackage` child, the
+    // first content it cannot read (line 4, column 3).
+    let error = assert_unsupported(row, SAMPLE.as_bytes());
+    assert_eq!(
+        error.location(),
+        Some(loc(row, 4, 3)),
+        "{row}: the sample is not refused at its `argumentPackage` child"
+    );
 }
 
 #[test]
 fn lib_api_009_well_formed_non_sacm_document_is_unsupported_at_its_root() {
     let row = "LIB-API-009";
-    let input =
-        b"<?xml version=\"1.0\"?>\n\n  <html xmlns=\"http://www.w3.org/1999/xhtml\"><body/></html>";
+    // A package-kind name outside the SACM namespace (ADR 0016 D6). Roots
+    // that are not package kinds at all (`<html>`, `<r/>`) are SACM-XMI-001,
+    // at the same locations: `xmi_roots.rs`.
+    let input = b"<?xml version=\"1.0\"?>\n\n  <foo:ArgumentPackage xmlns:foo=\"urn:x\" \
+        xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"p\"/>";
     let error = assert_unsupported(row, input);
     assert_eq!(
         error.location(),
         Some(loc(row, 3, 3)),
         "{row}: the refusal is not located at the root element's start tag"
     );
-    let bare = assert_unsupported(row, b"<r/>");
+    let bare = assert_unsupported(
+        row,
+        b"<ArgumentPackage xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"p\"/>",
+    );
     assert_eq!(
         bare.location(),
         Some(loc(row, 1, 1)),
@@ -1278,7 +1392,7 @@ fn lib_api_009_utf16_and_ucs4_without_bom_are_unsupported_by_their_first_bytes()
             Some(&first_bytes[..]),
             "{row}: the {what} test input does not start with its Appendix F bytes"
         );
-        let result = read(&input);
+        let result = read(row, &input);
         assert!(
             matches!(result, Err(ReadError::Unsupported { .. })),
             "{row}: BOM-less {what} input was not refused as Unsupported: {result:?}"
@@ -1318,17 +1432,26 @@ fn lib_api_009_utf8_and_ascii_declarations_in_any_case_are_not_refused() {
     let row = "LIB-API-009";
     let utf8 = ["UTF-8", "utf-8", "Utf-8"];
     let ascii = ["US-ASCII", "us-ascii", "ASCII", "ascii"];
+    // A readable root under each declaration reads `Ok`.
     for name in utf8 {
         // UTF-8 content beyond ASCII is fine under a UTF-8 declaration.
         let input = sacm_document(
             &format!("<?xml version=\"1.0\" encoding=\"{name}\"?>\n<!-- café -->\n"),
             "",
         );
-        assert_not_doctype_or_malformed(row, &input, &read(&input));
+        let result = read(row, &input);
+        assert!(
+            result.is_ok(),
+            "{row}: a readable root under encoding {name:?} was refused: {result:?}"
+        );
     }
     for name in ascii {
         let input = sacm_document(&format!("<?xml version='1.0' encoding='{name}'?>\n"), "");
-        assert_not_doctype_or_malformed(row, &input, &read(&input));
+        let result = read(row, &input);
+        assert!(
+            result.is_ok(),
+            "{row}: a readable root under encoding {name:?} was refused: {result:?}"
+        );
     }
 }
 
@@ -1354,13 +1477,10 @@ fn lib_api_009_utf8_and_ascii_declarations_in_any_case_are_refused_at_the_root_n
         "UTF-8", "utf-8", "Utf-8", "US-ASCII", "us-ascii", "ASCII", "ascii",
     ];
     for name in names {
-        // The root start tag is at line 2, column 1; the encoding name at
-        // line 1, column 31.
-        let input = sacm_document(
-            &format!("<?xml version=\"1.0\" encoding=\"{name}\"?>\n"),
-            "",
-        );
-        let error = assert_unsupported(row, &input);
+        // The root start tag of a root that is not read yet is at line 2,
+        // column 1; the encoding name at line 1, column 31.
+        let input = format!("<?xml version=\"1.0\" encoding=\"{name}\"?>\n{ARTIFACT_ROOT}");
+        let error = assert_unsupported(row, input.as_bytes());
         assert_eq!(
             error.location(),
             Some(loc(row, 2, 1)),
@@ -1482,7 +1602,7 @@ fn lib_api_009_declared_non_utf8_encoding_with_invalid_utf8_bytes_is_unsupported
         ),
     ];
     for (what, input) in inputs {
-        let result = read(input);
+        let result = read(row, input);
         assert!(
             matches!(result, Err(ReadError::Unsupported { .. })),
             "{row}: {what}: expected Unsupported, got {result:?}"
@@ -1530,7 +1650,9 @@ fn lib_api_009_invalid_utf8_without_or_under_a_utf8_or_ascii_declaration_stays_m
 #[test]
 fn lib_api_009_unsupported_display_is_one_located_line_quoting_names() {
     let row = "LIB-API-009";
-    let input = b"<?xml version=\"1.0\"?>\n<zqxroot/>";
+    // A package-kind name outside the SACM namespace, refused at its root.
+    let input = b"<?xml version=\"1.0\"?>\n<zqxroot:ArgumentPackage xmlns:zqxroot=\"urn:zqx\" \
+        xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"p\"/>";
     let error = assert_unsupported(row, input);
     let text = error.to_string();
     assert!(
@@ -1540,10 +1662,23 @@ fn lib_api_009_unsupported_display_is_one_located_line_quoting_names() {
     display_reason(row, &error, UNSUPPORTED_LEAD);
     assert_quoted_wherever_named(row, &text, "zqxroot");
 
-    let sacm = sacm_document("<?xml version=\"1.0\"?>\n", "");
-    let error = assert_unsupported(row, &sacm);
+    // A root that is recognised but not read yet.
+    let artifact = format!("<?xml version=\"1.0\"?>\n{ARTIFACT_ROOT}");
+    let error = assert_unsupported(row, artifact.as_bytes());
     display_reason(row, &error, UNSUPPORTED_LEAD);
-    assert_quoted_wherever_named(row, &error.to_string(), "AssuranceCasePackage");
+    assert_quoted_wherever_named(row, &error.to_string(), "ArtifactPackage");
+
+    // A child and an attribute that a readable root cannot carry.
+    let child = sacm_document("<?xml version=\"1.0\"?>\n", "<zqxchild/>");
+    let error = assert_unsupported(row, &child);
+    display_reason(row, &error, UNSUPPORTED_LEAD);
+    assert_quoted_wherever_named(row, &error.to_string(), "zqxchild");
+    let attribute = b"<?xml version=\"1.0\"?>\n<sacm:ArgumentPackage \
+        xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\" \
+        xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"p\" zqxattr=\"1\"/>";
+    let error = assert_unsupported(row, attribute);
+    display_reason(row, &error, UNSUPPORTED_LEAD);
+    assert_quoted_wherever_named(row, &error.to_string(), "zqxattr");
 
     let encoding = sacm_document("<?xml version=\"1.0\" encoding=\"x-zqx-enc\"?>\n", "");
     let error = assert_unsupported(row, &encoding);

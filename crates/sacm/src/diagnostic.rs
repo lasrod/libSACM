@@ -113,6 +113,16 @@ impl Code {
     /// Named after the C++ library's `kXmlDoctypeRejected`.
     pub const XML_DOCTYPE_REJECTED: Code = Code::from_static("SACM-SEC-001");
 
+    /// SACM-XMI-001: an interchange root (the document element, or each
+    /// element child outside the XMI namespace of an `xmi:XMI` element in the
+    /// XMI 2.5.1 namespace `http://www.omg.org/spec/XMI/20131001`) is not
+    /// named as a SACM package kind, or the XMI element holds no root. The
+    /// code of
+    /// [`ReadError::InvalidRoot`](crate::xmi::ReadError::InvalidRoot) and
+    /// [`ReadError::NoPackage`](crate::xmi::ReadError::NoPackage)
+    /// (SACM23-XMI-001). Named after the C++ library's `kXmiInvalidRoot`.
+    pub const XMI_INVALID_ROOT: Code = Code::from_static("SACM-XMI-001");
+
     /// The code with the given text.
     ///
     /// **Not part of the stable API**: public only under the `test-support`
