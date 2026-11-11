@@ -1665,7 +1665,8 @@ title = "DTDs and entities are refused"
 requirement = "`xmi::read` refuses any document with a DOCTYPE declaration (with or without an internal subset, entity declarations or an external DTD) with `ReadError::Doctype`, carrying code SACM-SEC-001 and the declaration's location, before anything in it could be declared, resolved, fetched or expanded, in every mode (ADR 0005, ADR 0015). The parser detects a real declaration, so `<!DOCTYPE` or `<!ENTITY` text in a comment, CDATA section or attribute value is not refused as one (ADR 0005 B3). A stray `<!ENTITY` outside a DOCTYPE, and an undeclared entity reference, are malformed XML (LIB-SEC-002) and are never expanded."
 source = "OWASP XML External Entity Prevention; docs/sacm/diagnostics.md SACM-SEC-001 \"Document contains a DOCTYPE/external entity declaration; rejected for safety.\"; ADR 0005 (roxmltree, DTDs disabled; B3); ADR 0015; assurance-forge libs/sacm io/xmi_reader.cpp:2354-2366 (raw scan, deviated from)"
 kind = "security"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0019-m1-xml-input-safety.md"
 depends_on = ["LIB-DIAG-001", "LIB-API-004", "LIB-API-009"]
 acceptance = [
   "A DOCTYPE with no internal subset, one with an internal subset declaring entities (an XXE `SYSTEM \"file:...\"` entity, a billion-laughs chain, a parameter entity) and an external DTD (`PUBLIC` or `SYSTEM`) each return `ReadError::Doctype` whose `code()` is SACM-SEC-001 and whose `location()` is the line and column of `<!DOCTYPE`, including after a prolog of comments or processing instructions and on a line other than 1; after a UTF-8 BOM the DOCTYPE is at line 1, column 1, because the BOM is an encoding signature and takes no column (XML 1.0 §4.3.3).",
@@ -1699,7 +1700,8 @@ title = "Malformed input is diagnosed, never a panic"
 requirement = "Malformed XML (mismatched or unclosed tags, more than one root, no root, an undeclared namespace prefix, an undeclared entity reference, a duplicate attribute), truncated input and input that is not valid UTF-8 are refused by `xmi::read` with `ReadError::Malformed`, carrying code SACM-XML-001, a reason and a location where one is known (ADR 0005, ADR 0015). No input causes a panic, an abort or unbounded recursion. Wrong root elements are SACM23-XMI-001; resource limits are LIB-SEC-003; fuzzing is LIB-SEC-004."
 source = "docs/sacm/diagnostics.md SACM-XML-001 \"Malformed XML; parse failed.\"; ADR 0005 (roxmltree >= 0.21.2: iterative parsing of nested elements; B1); ADR 0011 (SourceLocation, message rules); ADR 0015; assurance-forge libs/sacm io/xmi_reader.cpp (parse failure)"
 kind = "security"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0019-m1-xml-input-safety.md"
 depends_on = ["LIB-DIAG-001", "LIB-API-004", "LIB-API-009"]
 acceptance = [
   "Every proper prefix of a small well-formed SACM document, the empty input included, returns `ReadError::Malformed` whose `code()` is SACM-XML-001; a prefix cut inside the document reports a location at or before the end of the input.",
@@ -3080,11 +3082,12 @@ title = "The reader refuses what it cannot represent"
 requirement = "`xmi::read` never returns a document that is missing content from its input (D-PRESERVE). Well-formed input that it cannot fully represent is refused with `ReadError::Unsupported`, which has no catalog code and carries a reason and a location: content that no verified row reads yet (in the first release, every well-formed document), UTF-16 or UTF-32 input (until SACM23-XMI-018), and a declared encoding other than UTF-8 or ASCII. A declared UTF-8 or ASCII encoding is accepted in any letter case; a byte of 0x80 or above under an ASCII declaration is malformed (SACM-XML-001). Parser capacity limits belong to LIB-SEC-003."
 source = "D-PRESERVE \"Never drop conforming SACM data. Preserve with a diagnostic, or refuse\"; ADR 0015 (interim rule); ADR 0005 B2; XML 1.0 (Fifth Edition) §4.3.3 (encodings; quoted when SACM23-XMI-018 is analysed)"
 kind = "api"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0019-m1-xml-input-safety.md"
 depends_on = ["LIB-API-004", "LIB-DIAG-001"]
 acceptance = [
   "A well-formed UTF-8 SACM document (an `AssuranceCasePackage` root) and a well-formed non-SACM document are refused with `ReadError::Unsupported`, `code()` `None`, located at the root element; `read` returns no `Ok` in this release.",
-  "UTF-16 LE and BE input with a BOM, UTF-32 BOMs, and BOM-less UTF-16 or UCS-4 input recognised by its first bytes (XML 1.0 Appendix F: `3C 00 3F 00`, `00 3C 00 3F` and the four-byte forms), such as a document declaring `UTF-16LE`, are refused with `Unsupported`, never `Malformed` and never misread; the reason does not claim a BOM that is not there Every BOM and first-bytes refusal is located at line 1, column 1.",
+  "UTF-16 LE and BE input with a BOM, UTF-32 BOMs, and BOM-less UTF-16 or UCS-4 input recognised by its first bytes (XML 1.0 Appendix F: `3C 00 3F 00`, `00 3C 00 3F` and the four-byte forms), such as a document declaring `UTF-16LE`, are refused with `Unsupported`, never `Malformed` and never misread; the reason does not claim a BOM that is not there. Every BOM and first-bytes refusal is located at line 1, column 1.",
   "A declared `encoding=\"ISO-8859-1\"` (and another non-UTF-8 name) is refused with `Unsupported` located at the encoding name (`<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>` at line 1, column 31; with a CR before `encoding`, at line 2), whether or not its bytes are valid UTF-8: a real ISO-8859-1 file with a 0xE9 byte is `Unsupported`, not `Malformed`, because the declaration is read before the UTF-8 check (ADR 0005 B2). Declarations of `UTF-8`, `utf-8`, `Utf-8`, `US-ASCII`, `us-ascii`, `ASCII` and `ascii` are not refused for their encoding: the refusal is the root element's `Unsupported`, located at the root start tag. A non-ASCII character under an ASCII declaration is `Malformed` at that character (`<?xml version=\"1.0\" encoding=\"US-ASCII\"?>\\n<r>café</r>` at line 2, column 7).",
   "The `Unsupported` `Display` is one lowercase line without trailing punctuation, naming the location when known; names from the input are quoted.",
 ]

@@ -1,8 +1,8 @@
 ---
 slice: 0019
 name: m1-xml-input-safety
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [LIB-SEC-001, LIB-SEC-002, LIB-API-009]
 mode: pr
 ---
@@ -42,7 +42,8 @@ point).
   - `code()` and `location()` accessors.
 - **`Code::XML_MALFORMED`** (SACM-XML-001) and **`Code::XML_DOCTYPE_REJECTED`** (SACM-SEC-001).
 - **Pipeline:**
-  1. A UTF-16 or UTF-32 BOM gives Unsupported.
+  1. A UTF-16, UTF-32 or UCS-4 BOM, or the BOM-less XML 1.0 Appendix F first bytes,
+     gives Unsupported.
   2. A declared encoding other than UTF-8 or ASCII gives Unsupported. It is read from the
      valid UTF-8 prefix, before the UTF-8 check.
   3. Invalid UTF-8 gives Malformed.
@@ -97,3 +98,4 @@ point).
     - ADR 0005 B1 corrected: roxmltree's leniencies become SACM23-XMI-001 obligations.
   - The docs review is applied in the same round: the status lines say plainly that `read` refuses every input, `Doctype` displays `the input has a DOCTYPE, which is refused`, the `# Errors` order is stated, doctested examples are added, the catalog rows reworded, and ADR 0005, ADR 0015 and the CHANGELOG updated.
   - The test engineer added 5 tests and changed 3, all traced. The implementer changed `input.rs`, `xmi.rs`, `diagnostic.rs` and the docs. Verification round 2 is next.
+- 2026-11-11 verification round 2 at `b8f2f95` ([record](../verification/0019-m1-xml-input-safety.md)): all three rows PASS, and all are now `verified`. LIB-DIAG-001 and LIB-API-004 still hold. Mutants: the PR diff caught 107 of 107, the full run caught 675 of 675. Every hand mutation that an acceptance item depends on is killed. The slice is done.
