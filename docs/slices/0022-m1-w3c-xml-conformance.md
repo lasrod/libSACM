@@ -56,3 +56,4 @@ the undeclaring check.
   an over-strictness guard; "within the suite".
 - 2026-11-11 tests and implementation: 28 tests; the `xmlns:xmlns` check; `fetch-spec --only xmlconf`; `fetch_suite_from` keeps the xtask tests offline; the local gate passes with the suite present. The CI fetch and cache wait for PR #29 (the same workflow files).
 - 2026-11-11 CI: every job that runs the crate's tests fetches the suite (`--only xmlconf`), caches it by its hash, and sets `SACM_XMLCONF_DIR`.
+- 2026-11-11 Copilot round: the SKIPPED notice is written to stderr directly; the over-strictness guard rejects panics; a failed extraction removes the marker (with a retry test); the input.rs unit tests run under a 5 s deadline (a timeout on `start_tag -> Ok(Some(0))`, the LIB-QA-012 residual).

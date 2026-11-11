@@ -205,8 +205,9 @@ fn download_verified(
 /// # Errors
 ///
 /// Returns the error of [`fetch_into`], in which case `extract` is not called,
-/// or the error of `extract`. The verified archive stays in place after a
-/// failed extraction, so the next call extracts again.
+/// or the error of `extract`. After a failed extraction the verified archive
+/// stays in place and `dest/xmlconf/xmlconf.xml` is removed (best effort),
+/// even if the extraction wrote it, so the next call extracts again.
 pub fn fetch_suite(
     dest: &Path,
     download: &mut dyn FnMut(&str, &Path) -> Result<(), String>,
@@ -238,7 +239,13 @@ pub fn fetch_suite_from(
     if outcomes == [Outcome::AlreadyPresent] && extracted {
         return Ok(Outcome::AlreadyPresent);
     }
-    extract(&dest.join(artifact.file_name), dest)?;
+    if let Err(error) = extract(&dest.join(artifact.file_name), dest) {
+        // An extraction that wrote the marker and then failed must not pass
+        // for a complete one next time. Best effort: the error reported is
+        // the extraction's.
+        let _ = fs::remove_file(dest.join(XMLCONF_MARKER));
+        return Err(error);
+    }
     Ok(Outcome::Fetched)
 }
 

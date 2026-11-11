@@ -3452,6 +3452,7 @@ tests = [
   "xtask/tests/fetch.rs::lib_sec_006_fetch_suite_re_extracts_when_the_master_catalog_is_missing",
   "xtask/tests/fetch.rs::lib_sec_006_fetch_suite_refuses_an_existing_archive_with_the_wrong_hash",
   "xtask/tests/fetch.rs::lib_sec_006_fetch_suite_propagates_an_extractor_error",
+  "xtask/tests/fetch.rs::lib_sec_006_fetch_suite_retries_after_a_partly_failed_extraction",
   "xtask/tests/fetch.rs::lib_sec_006_tar_extract_of_a_missing_archive_is_an_error_naming_tar",
   "xtask/tests/fetch.rs::lib_sec_006_tar_extract_unpacks_an_archive_into_the_directory",
   "xtask/tests/run.rs::lib_sec_006_run_fetch_spec_only_xmlconf_checks_only_the_suite_under_the_root",

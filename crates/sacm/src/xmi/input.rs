@@ -1001,9 +1001,32 @@ mod tests {
         }
     }
 
-    /// Where [`check_unrepaired`] refuses `text`, if it does.
+    /// [`check_unrepaired`] on `text`, run on a worker thread with a 5 s
+    /// deadline: a scan that stops advancing fails the test quickly instead
+    /// of hanging it (LIB-QA-012).
+    fn check(text: &str) -> Result<(), ReadError> {
+        use std::sync::mpsc::{RecvTimeoutError, channel};
+
+        let (sender, receiver) = channel();
+        let owned = text.to_owned();
+        std::thread::spawn(move || {
+            // The receiver is gone only after a timeout, which already panics.
+            let _ = sender.send(check_unrepaired(&owned));
+        });
+        match receiver.recv_timeout(std::time::Duration::from_secs(5)) {
+            Ok(result) => result,
+            Err(RecvTimeoutError::Timeout) => {
+                panic!("check_unrepaired did not return within 5 s on {text:?}")
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                panic!("check_unrepaired panicked on {text:?}")
+            }
+        }
+    }
+
+    /// Where [`check_unrepaired`] refuses `text`, if it does, as [`check`].
     fn at(text: &str) -> Result<(), Option<SourceLocation>> {
-        check_unrepaired(text).map_err(|error| error.location())
+        check(text).map_err(|error| error.location())
     }
 
     #[test]
@@ -1068,7 +1091,7 @@ mod tests {
             "<?xml&#xD800;?>",
         ] {
             assert_eq!(
-                check_unrepaired(&format!("<r>{pi}</r>")).map_err(|error| error.location()),
+                check(&format!("<r>{pi}</r>")).map_err(|error| error.location()),
                 Err(SourceLocation::at(1, 4)),
                 "{pi:?}"
             );
@@ -1086,22 +1109,21 @@ mod tests {
             "<?pi x?>",
             "<?pi >x?>",
         ] {
-            assert_eq!(check_unrepaired(&format!("<r>{pi}</r>")), Ok(()), "{pi:?}");
+            assert_eq!(check(&format!("<r>{pi}</r>")), Ok(()), "{pi:?}");
         }
         // A target followed by neither white space nor `?>` ([16]).
         assert_eq!(at("<r><?pi>x?></r>"), Err(SourceLocation::at(1, 8)));
         assert_eq!(at("<r><?pi/?></r>"), Err(SourceLocation::at(1, 8)));
         assert_eq!(
-            check_unrepaired("<r><?Xml>?></r>").map_err(|error| error.to_string()),
+            check("<r><?Xml>?></r>").map_err(|error| error.to_string()),
             Err("the input is not well-formed XML at line 1, column 4: \
                  a processing instruction has the reserved target \"Xml\""
                 .to_owned())
         );
         // A target with a colon, at the `<?`: after the reserved-`xml` check
         // and before [16].
-        let reason = |text: &str| {
-            check_unrepaired(text).map_err(|error| (error.location(), error.to_string()))
-        };
+        let reason =
+            |text: &str| check(text).map_err(|error| (error.location(), error.to_string()));
         for (pi, target) in [
             ("<?xml:x?>", "xml:x"),
             ("<?a:b x?>", "a:b"),
@@ -1134,7 +1156,7 @@ mod tests {
             ("<r :x=\"1\"/>", 4, ":x"),
             ("<r a='&#xD800;' :x='1'/>", 7, "&#xD800;"),
         ] {
-            let result = check_unrepaired(input);
+            let result = check(input);
             assert_eq!(
                 result.as_ref().map_err(ReadError::location),
                 Err(SourceLocation::at(1, column)),
@@ -1161,7 +1183,7 @@ mod tests {
             ("<r><c xmlns:xmlns='urn:x'/></r>", 7),
             ("<r xmlns:xmlns=\"\"/>", 4),
         ] {
-            let result = check_unrepaired(input);
+            let result = check(input);
             assert_eq!(
                 result.as_ref().map_err(ReadError::location),
                 Err(SourceLocation::at(1, column)),

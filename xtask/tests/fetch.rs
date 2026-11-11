@@ -845,6 +845,57 @@ fn lib_sec_006_fetch_suite_propagates_an_extractor_error() {
 }
 
 #[test]
+fn lib_sec_006_fetch_suite_retries_after_a_partly_failed_extraction() {
+    // An extraction that writes xmlconf/xmlconf.xml and then fails must not
+    // leave the marker behind: the next call would take the half-extracted
+    // suite for a complete one and return AlreadyPresent.
+    let dir = TempDir::new("lib-sec-006-partial-extract");
+    let dest = suite_dest(&dir);
+    let mut download = |_url: &str, out: &Path| -> Result<(), String> {
+        fs::write(out, ABC).map_err(|e| e.to_string())
+    };
+
+    let first = fetch_suite_from(
+        &dest,
+        &SUITE,
+        &mut download,
+        &mut |_archive: &Path, into: &Path| {
+            plant_master(into)?;
+            Err("tar exit status: 2".to_owned())
+        },
+    );
+    assert!(
+        first
+            .as_ref()
+            .is_err_and(|e| e.contains("tar exit status: 2")),
+        "LIB-SEC-006: an extraction that fails after writing the marker is an error, got \
+         {first:?}"
+    );
+
+    let mut extracts = 0_usize;
+    let second = fetch_suite_from(
+        &dest,
+        &SUITE,
+        &mut download,
+        &mut |_archive: &Path, into: &Path| {
+            extracts += 1;
+            plant_master(into)
+        },
+    );
+    assert_eq!(
+        (second, extracts),
+        (Ok(Outcome::Fetched), 1),
+        "LIB-SEC-006: after a failed extraction the next call extracts again and is Fetched, \
+         not AlreadyPresent"
+    );
+    assert_eq!(
+        fs::read(dest.join("xmlconf/xmlconf.xml")).ok().as_deref(),
+        Some(&b"<TESTSUITE/>"[..]),
+        "LIB-SEC-006: the re-extracted suite is in place"
+    );
+}
+
+#[test]
 fn lib_sec_006_tar_extract_of_a_missing_archive_is_an_error_naming_tar() {
     let dir = TempDir::new("lib-sec-006-tar-missing");
     // The name does not contain "tar", so the message names the tool.

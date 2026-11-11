@@ -23,12 +23,13 @@
 //! - Item 11's CI wiring and item 12's documentation: checked by the
 //!   verifier.
 
-// The run reports its case count on stdout and a skip on stderr (item 11).
-#![allow(clippy::print_stdout, clippy::print_stderr)]
+// The run reports its case count on stdout (item 11).
+#![allow(clippy::print_stdout)]
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
 use std::fs;
+use std::io::Write as _;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, RecvTimeoutError};
@@ -123,6 +124,10 @@ fn locate(configured: Option<OsString>, ci: bool, default: PathBuf) -> Result<Lo
 
 /// The suite directory for this run, or `None` after printing a SKIPPED
 /// notice. Panics when the suite is absent under CI.
+///
+/// The notice goes straight to the process's stderr: the test harness
+/// captures `eprintln!` and hides it for a passing test, so a skip would
+/// look like a pass.
 fn suite() -> Option<PathBuf> {
     // CARGO_MANIFEST_DIR is <workspace>/crates/sacm.
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -135,7 +140,14 @@ fn suite() -> Option<PathBuf> {
     match locate(std::env::var_os("SACM_XMLCONF_DIR"), ci, default) {
         Ok(Located::Found(dir)) => Some(dir),
         Ok(Located::Skip(notice)) => {
-            eprintln!("{notice}");
+            // Nothing to do if stderr itself is gone.
+            let _ = std::io::stderr().write_all(
+                format!(
+                    "{notice}
+"
+                )
+                .as_bytes(),
+            );
             None
         }
         Err(message) => panic!("{message}"),
@@ -414,18 +426,19 @@ fn classify(bytes: &[u8], outcome: &Outcome) -> Class {
 }
 
 /// Runs every case of `cases` through `read`, in order, and returns each
-/// case with its class. Fails the test when a case file is missing or when
+/// case with its bytes and the outcome. Fails the test when a case file is
+/// missing, when one read overruns [`DEADLINE`] (naming the case) or when
 /// the reads together overrun [`RUN_DEADLINE`].
-fn run<'a>(suite: &Path, cases: &[&'a Case]) -> Vec<(&'a Case, Class)> {
+fn read_all<'a>(suite: &Path, cases: &[&'a Case]) -> Vec<(&'a Case, Vec<u8>, Outcome)> {
     let started = Instant::now();
-    let results: Vec<(&Case, Class)> = cases
+    let results: Vec<(&Case, Vec<u8>, Outcome)> = cases
         .iter()
         .map(|case| {
             let path = case.path(suite);
             let bytes = fs::read(&path)
                 .unwrap_or_else(|e| panic!("{ROW}: read the case {}: {e}", case.describe()));
             let outcome = read_case(case, bytes.clone());
-            (*case, classify(&bytes, &outcome))
+            (*case, bytes, outcome)
         })
         .collect();
     let elapsed = started.elapsed();
@@ -435,6 +448,14 @@ fn run<'a>(suite: &Path, cases: &[&'a Case]) -> Vec<(&'a Case, Class)> {
         cases.len()
     );
     results
+}
+
+/// [`read_all`], with each outcome classified.
+fn run<'a>(suite: &Path, cases: &[&'a Case]) -> Vec<(&'a Case, Class)> {
+    read_all(suite, cases)
+        .into_iter()
+        .map(|(case, bytes, outcome)| (case, classify(&bytes, &outcome)))
+        .collect()
 }
 
 fn in_group<'a>(cases: &'a [Case], groups: &[Group]) -> Vec<&'a Case> {
@@ -609,7 +630,29 @@ fn lib_sec_006_valid_and_invalid_cases_that_reach_the_root_stage_are_never_malfo
     let Some(suite) = suite() else { return };
     let cases = read_cases(&suite);
     let candidates = in_group(&cases, &[Group::ValidOrInvalid10]);
-    let results = run(&suite, &candidates);
+    // A read that times out has already failed the test in `read_case`,
+    // naming the case. A panic is rejected here, before classification:
+    // classified, it would count as reaching the root stage.
+    let outcomes = read_all(&suite, &candidates);
+    let panicked: Vec<String> = outcomes
+        .iter()
+        .filter(|(_, _, outcome)| matches!(outcome, Outcome::Panicked))
+        .map(|(case, _, _)| case.describe())
+        .collect();
+    assert!(
+        panicked.is_empty(),
+        "{ROW}: read panicked on {} well-formed cases instead of returning:
+{}",
+        panicked.len(),
+        panicked.join(
+            "
+"
+        )
+    );
+    let results: Vec<(&Case, Class)> = outcomes
+        .iter()
+        .map(|(case, bytes, outcome)| (*case, classify(bytes, outcome)))
+        .collect();
     // A case reaches the root stage unless the DOCTYPE or the encoding
     // steps refuse it first; a Malformed result stays in the count.
     let reaching: Vec<&(&Case, Class)> = results
