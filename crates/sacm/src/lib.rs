@@ -32,8 +32,9 @@
 //! requirement in the [functionality matrix][matrix]. So far the crate
 //! provides the document model, the metamodel's element kinds,
 //! element names ([`SacmElement::name`](model::SacmElement::name)), each
-//! Assertion's `assertionDeclaration`
-//! ([`SacmElement::assertion_declaration`](model::SacmElement::assertion_declaration))
+//! Assertion's `assertionDeclaration` (whether the Assertion is asserted,
+//! assumed, axiomatic, defeated, still needs support, or as cited; SACM 2.3
+//! §11.8), read with [`SacmElement::assertion_declaration`][declaration],
 //! and the first value types ([`LangString`](model::LangString),
 //! [`MultiLangString`](model::MultiLangString) and
 //! [`AssertionDeclaration`](model::AssertionDeclaration)), in [`model`],
@@ -41,23 +42,24 @@
 //! reported in, in [`diagnostic`]. [`validation::validate`] checks a
 //! document and reports each `ModelElement` with no name as
 //! [`Code::MULTIPLICITY_VIOLATION`](diagnostic::Code::MULTIPLICITY_VIOLATION).
-//! [`sacm::xmi::read`](xmi::read) reads
-//! `AssuranceCasePackage` and `ArgumentPackage` roots, bare or in an
-//! `xmi:XMI` element, and the packages and Claims in them, with their names
-//! and each Claim's `assertionDeclaration`. It refuses unsafe and malformed input and roots that are not SACM packages
-//! with a diagnostic code, and content it cannot represent yet as
-//! `Unsupported`. [`sacm::xmi::write`](xmi::write) writes a document's roots
-//! and every element under them, with their names and declarations,
-//! deterministically. [`edit::apply`] creates AssuranceCasePackage,
-//! ArgumentPackage and Claim elements, with a name and a given or generated
-//! id, or refuses with an [`EditError`](edit::EditError) and changes nothing.
-//! Reading the other element kinds and attributes (such as a `description` or
-//! a `gid`), validation rules other than the
-//! missing name, and the other edit operations are not built yet.
+//! [`sacm::xmi::read`](xmi::read) reads `AssuranceCasePackage` and
+//! `ArgumentPackage` roots, bare or in an `xmi:XMI` element, and the packages
+//! and Claims in them, with their names and each Claim's
+//! `assertionDeclaration`. It refuses unsafe and malformed input and roots
+//! that are not SACM packages with a diagnostic code, and content it cannot
+//! represent yet as `Unsupported`. [`sacm::xmi::write`](xmi::write) writes a
+//! document's roots and every element under them, with their names and
+//! declarations, deterministically. [`edit::apply`] creates
+//! AssuranceCasePackage, ArgumentPackage and Claim elements, with a name and
+//! a given or generated id, or refuses with an [`EditError`](edit::EditError)
+//! and changes nothing. Reading the other element kinds and attributes (such
+//! as a `description` or a `gid`), validation rules other than the missing
+//! name, and the other edit operations are not built yet.
 //!
 //! # Example
 //!
 //! ```
+//! use sacm::model::AssertionDeclaration;
 //! use sacm::xmi::{self, ReadOptions, WriteOptions};
 //! use sacm::{diagnostic, validation};
 //!
@@ -67,7 +69,7 @@
 //!   <sacm:AssuranceCasePackage xmi:id="case"/>
 //!   <sacm:ArgumentPackage xmi:id="arguments">
 //!     <name lang="en" content="Arguments"/>
-//!     <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+//!     <argumentElement xmi:type="sacm:Claim" xmi:id="c1" assertionDeclaration="needsSupport">
 //!       <name lang="en" content="The system is safe"/>
 //!     </argumentElement>
 //!   </sacm:ArgumentPackage>
@@ -78,6 +80,8 @@
 //!     let name = element.name().and_then(|n| n.content());
 //!     println!("{} {} {name:?}", element.kind(), element.id());
 //! }
+//! let c1 = document.get("c1").and_then(|c1| c1.assertion_declaration());
+//! assert_eq!(c1, Some(AssertionDeclaration::NeedsSupport));
 //!
 //! // Check it against SACM's rules: the case package has no name.
 //! let mut findings = output.diagnostics().to_vec();
@@ -124,6 +128,7 @@
 //!   Enable it only under `[dev-dependencies]`.
 //!
 //! [sacm]: https://www.omg.org/spec/SACM/2.3
+//! [declaration]: model::SacmElement::assertion_declaration
 //! [matrix]: https://github.com/lasrod/libSACM/blob/main/docs/matrix/functionality-matrix.md
 #![cfg_attr(docsrs, feature(doc_cfg))]
 

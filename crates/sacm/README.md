@@ -83,7 +83,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 `sacm::xmi::read` reads `AssuranceCasePackage` and `ArgumentPackage` roots, the
 AssuranceCasePackages, ArgumentPackages and Claims in them, their names and each Claim's
 `assertionDeclaration`. It refuses everything else (other kinds, a `description`, a
-`gid`) as `ReadError::Unsupported` rather than drop it. `sacm::xmi::write` writes the
+`gid`, an `assertionDeclaration` value that is not a SACM literal) as
+`ReadError::Unsupported` rather than drop it. `sacm::xmi::write` writes the
 document back deterministically.
 
 Build a document with `sacm::edit::apply`, then validate, write and read it back:

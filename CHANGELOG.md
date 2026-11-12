@@ -130,10 +130,11 @@ change bumps the minor version and is listed under **Breaking**.
   [SACM23-XMI-016]. Every read refusal now carries the line and column of what it refuses
   (an element's `<`, an attribute's name, text's first character that is not literal
   white space); only the parser's capacity limits have none [SACM23-XMI-010].
-- `xmi::read` and `xmi::write` read and write a Claim's `assertionDeclaration`: `read`
-  takes the six literals exactly and refuses any other value as `Unsupported`; `write`
-  writes every non-default declaration after `xmi:id` and omits `asserted`
-  [SACM23-XMI-017, LIB-API-010].
+- `xmi::read` and `xmi::write` read and write a Claim's `assertionDeclaration`. `read`
+  takes the six literals exactly and refuses any other value as `Unsupported`, with no
+  code yet (SACM-ENUM-001 later), never as `asserted`. `write` writes every non-default
+  declaration after `xmi:id` and omits `asserted`, so `WriteError::Unsupported` is
+  removed [SACM23-XMI-017, LIB-API-010].
 
 ### Changed
 

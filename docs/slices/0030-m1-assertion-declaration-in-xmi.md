@@ -1,8 +1,8 @@
 ---
 slice: 0030
 name: m1-assertion-declaration-in-xmi
-state: in-progress
-step: verification
+state: done
+step: verified
 rows: [SACM23-XMI-017, LIB-API-010, SACM23-XMI-016]
 mode: pr
 base: slice/0029-m1-read-package-content (PR #40)
@@ -43,3 +43,4 @@ build non-default Claims with the `test-support` seam `Document::set_assertion_d
   drops content"); XMI-016's attribute refusal narrowed to non-Assertion children. Both
   verified rows are re-checked in this slice. ADR 0017 amendment 2 accepted by the
   maintainer.
+- 2026-11-13 verification: PASS in one round (record 0030); docs review applied. M1 34/46.

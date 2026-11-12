@@ -112,11 +112,16 @@ mod roots;
 ///
 /// A Claim's `assertionDeclaration` attribute (§11.10), in no namespace, is
 /// read as its declaration. Its value must be one of the six
-/// [`AssertionDeclaration`](crate::model::AssertionDeclaration) literals
-/// exactly, as XML 1.0 gives it, with no trimming or case folding. Without the
-/// attribute, or with `"asserted"`, the Claim is `asserted`. Any other value
-/// is [`ReadError::Unsupported`] at the attribute, and never read as
-/// `asserted`.
+/// [`AssertionDeclaration`](crate::model::AssertionDeclaration) literals:
+/// `asserted`, `needsSupport`, `assumed`, `axiomatic`, `defeated` or
+/// `asCited`. Matching is exact: case-sensitive, with no white space trimmed.
+/// A literal tab or line break in the value is already a space (XML 1.0
+/// §3.3.3), so it does not match either. Without the attribute, or with
+/// `"asserted"`, the Claim is `asserted`. Any other value is
+/// [`ReadError::Unsupported`] at the attribute's name, and the reason quotes
+/// the value. It is never read as `asserted`, because that would silently
+/// change what the case declares. Fix: correct the spelling. This release
+/// gives no catalog code; a later release reports it as SACM-ENUM-001.
 ///
 /// Elements and
 /// attributes are matched by namespace URI and local name, and an `xmi:type`
@@ -194,7 +199,10 @@ mod roots;
 /// - [`ReadError::NoPackage`] (SACM-XMI-001): the `xmi:XMI` element holds no
 ///   root: no element child outside the XMI namespace.
 /// - [`ReadError::Unsupported`] (no code): the input is well-formed but this
-///   version cannot represent it. Examples are UTF-16 without a byte order
+///   version cannot represent it. It is also the refusal of an
+///   `assertionDeclaration` value that is not a SACM literal, until a later
+///   release reports it as SACM-ENUM-001; that is an error in the input, not
+///   a gap in this version. Examples are UTF-16 without a byte order
 ///   mark, UTF-32 or UCS-4 input, a declared encoding other than UTF-8 or
 ///   ASCII in input without a UTF-16 mark, more nodes, attributes or
 ///   namespaces than the parser can hold, the other ten package kinds as
@@ -211,9 +219,9 @@ mod roots;
 ///   SACM class or that the role does not admit, two types that disagree,
 ///   no type under a role of an abstract type, any other kind (such as a
 ///   `description`, a `note` or an `ArgumentReasoning`), text, attributes
-///   such as `gid`, an `assertionDeclaration` value that is not a literal,
-///   and `assertionDeclaration` on a package, even `"asserted"`, or in a
-///   namespace, or as an element.
+///   such as `gid`; an `assertionDeclaration` whose value is not one of the
+///   six literals; and an `assertionDeclaration` that is on a package (even
+///   `"asserted"`), in a namespace, or written as a child element.
 ///
 /// # Examples
 ///
@@ -258,8 +266,8 @@ mod roots;
 /// let c1 = document.get("c1").expect("the Claim was read");
 /// assert_eq!(c1.assertion_declaration(), Some(AssertionDeclaration::Assumed));
 ///
-/// // A value that is not a literal is refused at the attribute, never read
-/// // as `asserted`.
+/// // A value that is not a literal (here the wrong letter case) is refused at
+/// // the attribute's name, line 3, column 54, and never read as `asserted`.
 /// let misspelt = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
 ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
 ///   <argumentElement xmi:type="sacm:Claim" xmi:id="c1" assertionDeclaration="Assumed"/>
@@ -268,6 +276,9 @@ mod roots;
 /// assert!(matches!(error, ReadError::Unsupported { .. }));
 /// assert_eq!(error.code(), None);
 /// assert_eq!(error.location().map(|at| (at.line(), at.column())), Some((3, 54)));
+/// assert!(error
+///     .to_string()
+///     .contains("has the value \"Assumed\", which is not an AssertionDeclaration literal"));
 ///
 /// // A root that is not a SACM package.
 /// let error = xmi::read(b"<r/>", &options).unwrap_err();
@@ -433,6 +444,10 @@ pub enum ReadError {
     },
     /// The input is well-formed, but this version cannot represent it. It
     /// has no catalog code.
+    ///
+    /// It is also the refusal of an `assertionDeclaration` value that is not
+    /// a SACM literal, until a later release reports it as SACM-ENUM-001.
+    /// That is an error in the input, not a gap in this version.
     #[non_exhaustive]
     Unsupported {
         /// Where the content that cannot be represented starts.
@@ -545,13 +560,14 @@ impl std::error::Error for ReadError {}
 /// `useSchemaExtensions`). `xsi:type` is never written, but `read` accepts
 /// both.
 ///
-/// Every element then carries its id as `xmi:id`. An Assertion whose
-/// `assertionDeclaration` is not `asserted` then carries
-/// `assertionDeclaration="<literal>"`; `asserted`, the default, is not written
-/// (XMI 2.5.1 §9.4.1). A named element's first
-/// child is its name, `<name lang="…" content="…" />`, with each field written
-/// only if present, so an empty field is `=""` and an absent one is no
-/// attribute; an element with no name has no `name` child. An id is written
+/// Every element then carries its id as `xmi:id`. After `xmi:id`, an
+/// Assertion whose `assertionDeclaration` is not `asserted` carries
+/// `assertionDeclaration="<literal>"`, spelled as
+/// [`AssertionDeclaration::as_str`](crate::model::AssertionDeclaration::as_str)
+/// gives it. `asserted`, the default, is not written (XMI 2.5.1 §9.4.1). A
+/// named element's first child is its name, `<name lang="…" content="…" />`,
+/// with each field written only if present, so an empty field is `=""` and an
+/// absent one is no attribute; an element with no name has no `name` child. An id is written
 /// as it is, escaped, and so are a name's fields. An id that is not an XML
 /// `NCName`, such as `1 2`, is written too, but the output then does not
 /// validate against an XMI schema. In attribute values `&`, `<`, `>`, `"`,

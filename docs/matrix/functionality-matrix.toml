@@ -3455,7 +3455,7 @@ tests = [
   "crates/sacm/tests/xmi_read_children.rs::sacm23_xmi_016_white_space_written_literally_as_cdata_or_as_references_is_accepted",
   "crates/sacm/tests/xmi_read_children.rs::sacm23_xmi_016_a_no_break_space_reference_or_cdata_holding_text_is_unsupported_where_it_starts",
 ]
-verification = "docs/verification/0029-m1-read-package-content.md"
+verification = "docs/verification/0030-m1-assertion-declaration-in-xmi.md"
 
 [[row]]
 id = "SACM23-XMI-017"
@@ -3465,7 +3465,7 @@ title = "assertionDeclaration in XMI"
 requirement = "`xmi::read` reads the `assertionDeclaration` XML attribute, in no namespace, on every readable Assertion kind: in this release a Claim (SACM23-XMI-016), and each later Assertion kind's read row inherits this rule. After XML 1.0 attribute-value normalisation, with no trimming or case folding, the value must be exactly one of `asserted`, `needsSupport`, `assumed`, `axiomatic`, `defeated` or `asCited`, and it reads as that literal. An absent attribute reads as `asserted`; an explicit `assertionDeclaration=\"asserted\"` is accepted without a diagnostic and reads equal to the absent form. Any other value (another letter case, white space anywhere, the empty string, another word) is `ReadError::Unsupported` at the attribute's name, with the value as read in the reason, and is never mapped to `asserted` (SACM23-VAL-006 later reports it as SACM-ENUM-001). The attribute stays `Unsupported` on a non-Assertion element and when namespace-qualified; the element form stays `Unsupported` until SACM23-XMI-014. `xmi::write` writes no attribute for `asserted` and otherwise `assertionDeclaration` with the exact literal, after `xmi:id`, on every element of an Assertion kind (all six) and on no other. Every literal round-trips on a Claim."
 source = "formal/23-05-08 §11.10 (p. 39) \"assertionDeclaration:AssertionDeclaration[1] = asserted\"; §11.8 (p. 38) \"asserted - the default enumeration literal\"; ptc/22-03-13 `Assertion::assertionDeclaration` (defaultValue: literal `asserted`) and the `AssertionDeclaration` ownedLiterals; XMI 2.5.1 §9.4.1 (p. 57) \"Properties whose values are the default values are not serialized\", §7.8.4 (p. 18) \"the XML Schema will never contain default values for Properties\" and `<xsd:attribute name=\"a\" type=\"enumName\" use=\"optional\"/>`, §8.2.1 rule 8 (p. 53) \"a simple type derived from string whose legal values are the enumeration literals\", rule 4k (p. 51); XSD 1.0 Part 2 §4.3.6 \"for string the value of whiteSpace is preserve\", §4.3.5.4; XML 1.0 §3.3.3; D-STRICT; D-PRESERVE; ADR 0015; ADR 0017 amendment 2; assurance-forge `io/xmi_reader.cpp:1759-1815`, `io/xmi_writer.cpp:95-98`"
 kind = "xmi"
-status = "implemented"
+status = "verified"
 depends_on = ["SACM23-XMI-001", "SACM23-ARG-002", "SACM23-ARG-003", "SACM23-XMI-016", "SACM23-XMI-010", "LIB-API-009", "LIB-TOOL-020"]
 notes = "Slice 0030: moved from M2 to M1, because the reader refused most real files at their first Claim (the maintainer, 2026-11-13). C++ differences: C++ maps an unknown literal to `asserted` with SACM-ENUM-001, losing the raw value, and `justification` to `axiomatic` with a TaggedValue (`xmi_reader.cpp:1766-1794`); this crate refuses both until SACM23-VAL-006 and LIB-COMPAT. C++ matches the attribute in any namespace; this crate refuses `sacm:assertionDeclaration`. Editorial defect: §11.11 writes `assertionDeclared` for `assertionDeclaration`."
 acceptance = [
@@ -3495,6 +3495,7 @@ tests = [
   "crates/sacm/tests/xmi_assertion_declaration.rs::sacm23_xmi_017_claims_with_each_literal_round_trip_at_depth_three_and_write_again_to_the_same_bytes",
   "crates/sacm/tests/xmi_assertion_declaration.rs::sacm23_xmi_017_a_file_with_an_explicit_asserted_is_written_with_no_attribute",
 ]
+verification = "docs/verification/0030-m1-assertion-declaration-in-xmi.md"
 
 [[row]]
 id = "SACM23-VAL-019"
@@ -3566,7 +3567,7 @@ tests = [
   "crates/sacm/tests/xmi_write.rs::lib_api_010_write_error_has_exactly_the_variants_no_root_and_unrepresentable_character",
   "crates/sacm/tests/xmi_write.rs::lib_api_010_write_error_is_a_send_sync_error_whose_variants_have_no_catalog_code",
 ]
-verification = "docs/verification/0026-m1-names-in-xmi.md"
+verification = "docs/verification/0030-m1-assertion-declaration-in-xmi.md"
 notes = "Reworded and re-checked in slice 0026: names are no longer refused. Reworded in slice 0030: declarations are written (SACM23-XMI-017), so nothing a `Document` holds is refused and `WriteError::Unsupported` is removed until a row needs it; re-checked there."
 
 [[row]]

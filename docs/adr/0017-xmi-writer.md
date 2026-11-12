@@ -134,7 +134,8 @@ T5 said names stay refused until SACM23-XMI-012. That row now writes them, so:
 - **Check order.** For each element: its id; then a character outside `Char` in its name's
   `lang`, then in its `content`, which gives `UnrepresentableCharacter`; then a non-default
   `assertionDeclaration`, which gives `Unsupported`. T5 now refuses only the
-  `assertionDeclaration` (until SACM23-XMI-017).
+  `assertionDeclaration` (until SACM23-XMI-017). *Superseded by amendment 2: the
+  declaration is written, and the check order ends with the name.*
 - **`UnrepresentableCharacter` gains a field, `attribute: WriteAttribute`.** It is a new
   `#[non_exhaustive]` `Copy` enum with the values `Id`, `NameLang` and `NameContent`, and
   later rows add more as they write more attributes. A plain string was rejected: once a
