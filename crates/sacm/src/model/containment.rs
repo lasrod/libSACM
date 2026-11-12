@@ -148,14 +148,16 @@ pub(crate) const fn admits(parent: ElementKind, child: ElementKind) -> bool {
 }
 
 /// The first of `roles` whose declared type admits `child`.
+///
+/// Each step takes one role off the front of the slice, with no counter and
+/// no recursion, so the loop ends after at most `roles.len()` steps.
 const fn find(roles: &[Role], child: ElementKind) -> Option<Role> {
-    let mut index = 0;
-    while index < roles.len() {
-        let role = roles[index];
-        if role.declared.admits(child) {
-            return Some(role);
+    let mut rest = roles;
+    while let [first, tail @ ..] = rest {
+        if first.declared.admits(child) {
+            return Some(*first);
         }
-        index += 1;
+        rest = tail;
     }
     None
 }

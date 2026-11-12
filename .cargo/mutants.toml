@@ -22,4 +22,5 @@ additional_cargo_test_args = ["--profile=mutants", "--no-tests=warn"]
 # Equivalent mutants, each with a row in docs/quality/mutants-triage.md.
 exclude_re = [
   '^crates/sacm/src/xmi\.rs:\d+:\d+: replace ReadOutput::diagnostics -> &\[Diagnostic\] with Vec::leak\(Vec::new\(\)\)$',
+  '^crates/sacm/src/xmi\.rs:\d+:\d+: replace WriteError::code -> Option<Code> with None$',
 ]
