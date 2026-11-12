@@ -3195,7 +3195,7 @@ requirement = "`xmi::read` never returns a document that is missing content from
 source = "D-PRESERVE \"Never drop conforming SACM data. Preserve with a diagnostic, or refuse\"; ADR 0015 (interim rule); ADR 0005 B2; XML 1.0 (Fifth Edition) §4.3.3 (encodings; quoted when SACM23-XMI-018 is analysed)"
 kind = "api"
 status = "verified"
-verification = "docs/verification/0019-m1-xml-input-safety.md"
+verification = "docs/verification/0024-m1-utf16-input.md"
 depends_on = ["LIB-API-004", "LIB-DIAG-001"]
 acceptance = [
   "Well-formed SACM input the reader cannot represent yet (e.g. an `AssuranceCasePackage` root with a `name` child, or an `ArtifactPackage` root) is refused with `ReadError::Unsupported`, `code()` `None`, located at the construct it cannot read; no partial document is returned. Which roots are recognised at all is SACM23-XMI-001.",
@@ -3220,7 +3220,7 @@ tests = [
   "crates/sacm/tests/xmi_read.rs::lib_api_009_unsupported_display_is_one_located_line_quoting_names",
   "crates/sacm/tests/xmi_read.rs::lib_api_009_refusal_of_an_encoding_name_with_line_breaks_stays_one_line",
 ]
-notes = "Item 1 and item 3 reworded in slice 0021, when SACM23-XMI-001 made the first inputs readable; re-checked there. Reworded in slice 0024, to be re-checked there: UTF-16 moves to SACM23-XMI-018, so item 2 and the requirement no longer list UTF-16 with a byte order mark."
+notes = "Item 1 and item 3 reworded in slice 0021, when SACM23-XMI-001 made the first inputs readable; re-checked there. Reworded and re-checked in slice 0024: UTF-16 moves to SACM23-XMI-018, so item 2 and the requirement no longer list UTF-16 with a byte order mark."
 
 [[row]]
 id = "SACM23-XMI-018"
@@ -3230,7 +3230,7 @@ title = "UTF-16 input"
 requirement = "`xmi::read` reads UTF-16 input that begins with a byte order mark (`FF FE` little-endian, `FE FF` big-endian, not followed by `00 00`). It decodes the input with std only (`u16::from_le_bytes`/`from_be_bytes`, `char::decode_utf16`) and then reads it exactly as the same characters in UTF-8, so the `ReadOutput` or `ReadError` is the same. Locations count characters as for UTF-8, and the byte order mark takes no column. The encoding declaration may be absent or name `UTF-16`, `UTF-16LE` or `UTF-16BE`, in any letter case. Any other declared name contradicts the mark and is `Malformed` (SACM-XML-001, XML 1.0 §4.3.3). So are an odd byte count and an unpaired surrogate. Everything else stays `Unsupported`, as in LIB-API-009: UTF-16 without a byte order mark (nothing is guessed), UTF-32 and UCS-4, and a UTF-16 name declared in UTF-8 input. This is the minimal UTF-16 support the maintainer chose on 2026-11-12 (ADR 0005 B2 amendment 1)."
 source = "XML 1.0 (Fifth Edition): §2.2 \"All XML processors MUST accept the UTF-8 and UTF-16 encodings of Unicode\" and [2] Char; §4.3.3 \"All XML processors MUST be able to read entities in both the UTF-8 and UTF-16 encodings. The terms \"UTF-8\" and \"UTF-16\" in this specification do not apply to related character encodings, including but not limited to UTF-16BE, UTF-16LE\", \"Entities encoded in UTF-16 MUST ... begin with the Byte Order Mark\", \"it is a fatal error for an entity including an encoding declaration to be presented to the XML processor in an encoding other than that named in the declaration, or for an entity which begins with neither a Byte Order Mark nor an encoding declaration to use an encoding other than UTF-8\", \"it is a fatal error if an XML entity is determined ... to be in a certain encoding but contains byte sequences that are not legal in that encoding\", \"XML processors SHOULD match character encoding names in a case-insensitive way\"; §1.2 fatal error; §2.11; Appendix F (non-normative) \"the encoding name be checked to match the actual encoding of the entity\"; formal/23-05-08 §2.2, §2.4 (p. 4); ADR 0005 B2 and amendment 1 (the maintainer, 2026-11-12); assurance-forge pugixml.cpp:2055-2101 `guess_buffer_encoding`"
 kind = "xmi"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-API-009", "SACM23-XMI-001", "LIB-SEC-006", "LIB-SEC-001"]
 acceptance = [
   "With a byte order mark: a SACM document as UTF-16LE and as UTF-16BE, each with no declaration and with `encoding=` `\"UTF-16\"`, `\"utf-16\"`, `\"UTF-16LE\"` and `\"UTF-16BE\"`, reads `Ok` with the same roots (id, kind, order) and diagnostics as the UTF-8 document.",
@@ -3261,6 +3261,7 @@ tests = [
   "crates/sacm/tests/xmi_utf16.rs::sacm23_xmi_018_a_utf16_name_declared_in_utf8_stays_unsupported_at_the_name",
   "crates/sacm/tests/w3c_xml_conformance.rs::sacm23_xmi_018_the_utf16_cases_of_the_suite_have_their_pinned_results",
 ]
+verification = "docs/verification/0024-m1-utf16-input.md"
 
 [[row]]
 id = "LIB-API-005"
@@ -3479,7 +3480,7 @@ requirement = "`cargo xtask fetch-spec` also fetches the W3C XML Conformance Tes
 source = "XML 1.0 5th ed. §1.2 \"fatal error: An error which a conforming XML processor MUST detect and report to the application.\", \"Violations of well-formedness constraints are fatal errors.\"; Namespaces in XML 1.0 3rd ed. §3 \"The prefix xmlns is used only to declare namespace bindings and is by definition bound to the namespace name http://www.w3.org/2000/xmlns/. It MUST NOT be declared.\", §7, §8 \"a processor MUST report violations of namespace well-formedness\"; W3C XML Conformance Test Suite 20130923 (https://www.w3.org/XML/Test/xmlts20130923.tar.gz, SHA-256 9b61db9f5dbffa545f4b8d78422167083a8568c59bd1129f94138f936cf6fc1f) and its testcases.dtd (TYPE, RECOMMENDATION, VERSION, EDITION, ENTITIES); rmt-ns10-032; slice 0021 verification rounds 2-4; ADR 0005 B1; roxmltree 0.21.2 src/parse.rs:779-813 (prefix `xmlns` with local name `xmlns` is not checked); slice 0022 research probe (1,017 applicable cases, 1 accepted)"
 kind = "security"
 status = "verified"
-verification = "docs/verification/0022-m1-w3c-xml-conformance.md"
+verification = "docs/verification/0024-m1-utf16-input.md"
 depends_on = ["LIB-SEC-005", "LIB-TOOL-020"]
 acceptance = [
   "Fetch: `cargo xtask fetch-spec` downloads the pinned archive to `third_party/xmlconf/`, refuses a hash mismatch (deleting the partial file), extracts it with the system `tar` only after the hash matches, re-extracts when `xmlconf/xmlconf.xml` is missing, and changes nothing when both are present. `--only xmlconf` fetches only the suite, and the OMG sources are untouched. A missing or failing `tar` is an error naming it, never a panic. Tests use a fake downloader; the existing `ARTIFACTS` list is unchanged. `/third_party/xmlconf/` is git-ignored, and the fetch module docs state the fetch-only terms.",
@@ -3529,5 +3530,5 @@ tests = [
   "xtask/tests/run.rs::lib_sec_006_run_help_lists_fetch_spec_only_xmlconf",
   "xtask/tests/run.rs::lib_sec_006_run_rejects_other_only_forms",
 ]
-notes = "Reworded in slice 0024, to be re-checked there: SACM23-XMI-018 decodes UTF-16, so the pinned breakdown, the guard count and the classifier change."
+notes = "Reworded and re-checked in slice 0024: SACM23-XMI-018 decodes UTF-16, so the pinned breakdown, the guard count and the classifier change."
 

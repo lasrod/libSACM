@@ -1,8 +1,8 @@
 ---
 slice: 0024
 name: m1-utf16-input
-state: in-progress
-step: verification
+state: done
+step: verified
 rows: [SACM23-XMI-018, LIB-API-009, LIB-SEC-006]
 mode: pr
 base: slice/0023-m1-namespace-prefixes (PR #33)
@@ -59,3 +59,4 @@ decision of 2026-11-11. The research fills in the quotations.
   pass.
 - 2026-11-12 implementation: UTF-16 with a byte order mark is decoded with std (`Cow<str>`), and the declared name is checked against the mark. Acceptance item 5 was corrected by the lead: a no-root refusal sits where UTF-8 puts it, at the end of the input. The local gate passes.
 - 2026-11-12 verification round 1: LIB-SEC-006 PASS; XMI-018 and LIB-API-009 FAIL on test gaps (3 hand mutations survive): the order of the declaration and decode checks (H1), and the exact Display of two reasons (H15-H17). The fix adds asserts only.
+- 2026-11-12 verification round 2: PASS at 7827bca. SACM23-XMI-018 is verified, and LIB-API-009 and LIB-SEC-006 are re-verified. Logged, not required: a public-boundary test for a lone surrogate after a readable root (H13 is killed only by a unit test).
