@@ -1,6 +1,6 @@
 # 0017. The XMI writer
 
-- Status: T1–T5 accepted (the maintainer, 2026-11-12); W1–W5 proposed
+- Status: T1–T5 accepted (the maintainer, 2026-11-12); W1–W6 proposed
 - Date: 2026-11-12
 - Matrix rows: SACM23-XMI-003, SACM23-XMI-004, SACM23-XMI-006, SACM23-XMI-007,
   SACM23-XMI-013, LIB-API-010
@@ -36,9 +36,13 @@ needed, that will be a new variant; the other two variants are `#[non_exhaustive
 **Checks, in order.** The first failure is the result.
 1. A document with no root fails with `NoRoot`.
 2. Then each element is checked in document order, which is `Document::elements()`
-   pre-order. Its id comes first: a character that is not an XML 1.0 `Char` fails with
-   `UnrepresentableCharacter`. Then a name or a non-default `assertionDeclaration` fails
-   with `Unsupported`.
+   pre-order. All of an element's checks run before the next element's:
+   - its id first, where the first character that is not an XML 1.0 `Char` fails with
+     `UnrepresentableCharacter`;
+   - then its name;
+   - then a non-default `assertionDeclaration`.
+
+   The name and the `assertionDeclaration` each fail with `Unsupported`.
 
 **Departures from C++, decided:**
 - **T1.** `xmi:type`, as XMI 2.5.1 specifies (§7.8.8, rule 2g; SACM sets no
@@ -58,6 +62,12 @@ needed, that will be a new variant; the other two variants are `#[non_exhaustive
     so they need a namespace mapping for our files whichever type attribute is used.
   - **It can be changed later.** If a reader that needs `xsi:type` appears, a
     `WriteOptions` switch can be added without breaking the API.
+
+  *Where* the attribute is written follows C++: only where the class is not known from the
+  role (XMI 2.5.1 §7.6.3). Rule 2g and production 2d, read literally, require it on every
+  element. XMI 2.5.1 contradicts itself here (specification defect D11), and this crate
+  takes the §7.6.3 reading, as C++ and EMF do. T1 departs from C++ only in using `xmi:`
+  rather than `xsi:`.
 - **T2.** A document with no root is an error. C++ writes an empty `xmi:XMI`, which its own
   reader refuses (`:529-549`).
 - **T3.** Roots are written in document order (ADR 0010 D1). C++ writes AssuranceCasePackage
@@ -79,6 +89,11 @@ needed, that will be a new variant; the other two variants are `#[non_exhaustive
   id, and writes U+FFFE and U+FFFF raw (`pugixml.cpp:4021, 4048-4054`).
 - **W4.** A refusal names the first element in document order. C++ lists every affected
   element (`xmi_writer.cpp:485-500`). This is the same rule as ADR 0016 D3.
+- **W6.** There is no option to export under another SACM namespace. C++ has
+  `SaveOptions::namespace_uri` (`options.h:26-43`; `xmi_writer.cpp:524-527`), which can
+  also re-export under `LoadResult::source_namespace` (C++ decision #18). This release
+  always writes the pinned URI. The option is deferred to LIB-COMPAT-001, where it belongs
+  with the tolerant load modes and their accepted namespaces.
 - **W5.** The namespace constants stay crate-private. C++ makes them public
   (`metadata/namespaces.h:17-34`). They can be made public later without a break.
 
@@ -92,8 +107,9 @@ needed, that will be a new variant; the other two variants are `#[non_exhaustive
 
 ## Consequences
 
-- Written output is XMI-rule-conformant except for `xmi:version`. It is not byte-identical
-  to C++ output.
+- Written output follows the XMI rules except for `xmi:version`, and except that the type
+  attribute is written under the §7.6.3 reading (D11). It is not byte-identical to C++
+  output.
 - Until SACM23-XMI-012 and SACM23-XMI-017 land, only nameless documents with default
   assertion declarations can be written.
 - Adding diagnostics to a successful write later would change the return type. That is

@@ -17,10 +17,10 @@ the first value types (`LangString`, `MultiLangString`, `AssertionDeclaration`),
 `AssuranceCasePackage` and `ArgumentPackage` roots, but nothing inside them yet. It
 refuses unsafe and malformed input and roots that are not SACM packages with a diagnostic
 code, and content it cannot represent yet as `Unsupported`. `sacm::xmi::write` writes a
-document deterministically, but refuses names and non-default assertion declarations as
-`Unsupported` for now. Reading the content of packages, validation and editing are not
-built yet. Milestone M0, the foundation, is done: the workspace, CI, the functionality matrix and its gate, and
-mutation testing. The [functionality matrix](docs/matrix/functionality-matrix.md)
+document deterministically, but refuses a name or a non-default `assertionDeclaration`
+as `Unsupported` for now. Reading the content of packages, validation and editing are
+not built yet. Milestone M0, the foundation, is done: the workspace, CI, the
+functionality matrix and its gate, and mutation testing. The [functionality matrix](docs/matrix/functionality-matrix.md)
 shows what is verified; nothing else is claimed.
 
 ## What SACM is

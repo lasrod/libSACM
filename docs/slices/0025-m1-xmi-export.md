@@ -76,3 +76,8 @@ The code is private:
   compile failure (no `xmi::write`), which the lead confirmed. ADR 0017 now pins ` />`,
   pre-order and checking the id first.
 - 2026-11-12 implementation: `xmi::write` (`xmi/output.rs`), which plans and checks the document and then builds the output, with no panics. The namespaces are shared (`xmi/namespaces.rs`), and `model::containment::role` is the one role table, from which `admits` is derived. The local gate passes.
+- 2026-11-12 verification round 1: FAIL on 4 rows; XMI-007 and XMI-013 wait on their dependencies.
+  - F1, traceability: XMI 2.5.1 both requires and limits the type attribute. Recorded as specification defect D11, with the reading taken stated in ADR 0017 and the row.
+  - F2: the C++ `namespace_uri` option is not named. Now ADR 0017 W6, deferred to LIB-COMPAT-001.
+  - F3 and F4: two orders are not pinned (the first bad character, and the name before the declaration).
+  - The docs review found nothing blocking; its should-fix items go to the implementer.

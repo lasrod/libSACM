@@ -2,8 +2,7 @@
 //!
 //! [`read`] takes the bytes of an XMI document and returns a [`ReadOutput`] or
 //! a [`ReadError`]. [`write`](fn@write) takes a [`Document`] and returns its XMI text or
-//! a [`WriteError`]. Neither does I/O: the caller reads and writes the file
-//! (ADR 0015).
+//! a [`WriteError`]. Neither does I/O: the caller reads and writes the file.
 //!
 //! In this release `read` reads the interchange roots: `AssuranceCasePackage`
 //! and `ArgumentPackage` elements, bare or inside an `xmi:XMI` element, with
@@ -15,9 +14,14 @@
 //! never dropped.
 //!
 //! `write` writes every element of a document, in document order, in one
-//! deterministic form. In this release it refuses a document with a name or a
-//! non-default `assertionDeclaration` in it ([`WriteError::Unsupported`]),
-//! because those are not written yet.
+//! deterministic form. It refuses a document with no root
+//! ([`WriteError::NoRoot`]) and an id that XML 1.0 cannot represent
+//! ([`WriteError::UnrepresentableCharacter`]). In this release it also
+//! refuses a name or a non-default `assertionDeclaration`
+//! ([`WriteError::Unsupported`]), because those are not written yet. A
+//! document returned by this release's `read` always writes. Output with
+//! elements inside a package cannot be read back by this release's `read`
+//! yet.
 //!
 //! # Examples
 //!
@@ -47,27 +51,22 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
-//! Reading a file is the caller's I/O. This function shows the shape; the
-//! example defines it but does not call it:
+//! Reading and writing files is the caller's I/O. This function shows the
+//! shape; the example defines it but does not call it:
 //!
 //! ```
 //! use std::path::Path;
 //!
-//! use sacm::xmi::{self, ReadOptions};
+//! use sacm::xmi::{self, ReadOptions, WriteOptions};
 //!
-//! /// Reads the file at `path` and prints how many roots it has, or why it
-//! /// was refused.
-//! fn report(path: &Path) -> std::io::Result<()> {
-//!     match xmi::read(&std::fs::read(path)?, &ReadOptions::default()) {
-//!         Ok(output) => {
-//!             let roots = output.document().roots().count();
-//!             eprintln!("{}: {roots} roots", path.display());
-//!         }
-//!         Err(error) => eprintln!("{}: {error}", path.display()),
-//!     }
+//! /// Reads the XMI file at `from` and writes it again to `to`.
+//! fn rewrite(from: &Path, to: &Path) -> Result<(), Box<dyn std::error::Error>> {
+//!     let document = xmi::read(&std::fs::read(from)?, &ReadOptions::default())?.into_document();
+//!     let text = xmi::write(&document, &WriteOptions::default())?;
+//!     std::fs::write(to, text)?;
 //!     Ok(())
 //! }
-//! # let _ = report;
+//! # let _ = rewrite;
 //! ```
 
 use std::fmt;
@@ -94,7 +93,7 @@ mod roots;
 /// The SACM namespace is `http://www.omg.org/spec/SACM/20220301`.
 ///
 /// `read` refuses rather than drops: it never returns a document that is
-/// missing content from its input (ADR 0015). A root may carry only namespace
+/// missing content from its input. A root may carry only namespace
 /// declarations, `xmi:id`, `xmi:version` and an `xmi:type` or `xsi:type`
 /// naming its own class, and hold only white space, comments and processing
 /// instructions. Anything else is refused as [`ReadError::Unsupported`] until
@@ -226,7 +225,7 @@ pub fn read(input: &[u8], options: &ReadOptions) -> Result<ReadOutput, ReadError
     })
 }
 
-/// Options for [`read`].
+/// How [`read`] reads a document.
 ///
 /// Empty for now: the load mode (LIB-COMPAT-001) and the resource limits
 /// (LIB-SEC-003) come later. Use [`ReadOptions::default`].
@@ -439,18 +438,32 @@ impl std::error::Error for ReadError {}
 /// is UTF-8 without a byte order mark, starts with
 /// `<?xml version="1.0" encoding="UTF-8"?>`, ends lines with LF, indents two
 /// spaces per depth, writes one tag per line and an element with no children
-/// as `<x … />`, and ends with a LF. One root is the document element; several
-/// are the children of one `xmi:XMI` element, in document order. The document
-/// element alone declares the SACM 2.3 namespace
-/// `http://www.omg.org/spec/SACM/20220301` as `sacm`, the XMI 2.5.1 namespace
-/// `http://www.omg.org/spec/XMI/20131001` as `xmi`, and `xmi:version="2.0"`.
+/// as `<x … />`, and ends with an LF. One root is the document element;
+/// several are the children of one `xmi:XMI` element, in document order
+/// (XMI 2.5.1 §7.5.3). The document element alone declares the SACM 2.3
+/// namespace `http://www.omg.org/spec/SACM/20220301` as `sacm`, the XMI 2.5.1
+/// namespace `http://www.omg.org/spec/XMI/20131001` as `xmi`, and
+/// `xmi:version="2.0"` (the value assurance-forge and EMF-based tools write;
+/// XMI.xsd 2.5.1 does not declare the attribute, see [ADR 0017]).
+///
+/// [ADR 0017]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0017-xmi-writer.md
 ///
 /// A root is written as `sacm:<Kind>`, and every other element under the name
 /// of the role that holds it in its parent's class, with no prefix, and with
-/// its children in document order. A child carries `xmi:type="sacm:<Kind>"`
-/// exactly when the role's declared type is not its kind: an abstract class,
-/// as for `argumentElement`, or the package that an interface or binding
-/// specializes. Every element then carries its id as `xmi:id`. In attribute
+/// its children in document order. Role names are spelled as in the
+/// machine-readable model ptc/22-03-13 (`argumentElement`), which differs
+/// from §11.4's text (`argumentationElement`). A child carries
+/// `xmi:type="sacm:<Kind>"` exactly when the role's declared type is not its
+/// kind: an abstract class, as for `argumentElement`, or a package role
+/// holding an Interface or Binding, such as an `ArgumentPackageInterface` in
+/// an AssuranceCasePackage's `argumentPackage` role. This is XMI's own type
+/// attribute (XMI 2.5.1 §7.6.3, §7.8.8 and rule 2g; SACM sets no
+/// `useSchemaExtensions`). `xsi:type` is never written, but `read` accepts
+/// both.
+///
+/// Every element then carries its id as `xmi:id`. An id is written as it is,
+/// escaped. An id that is not an XML `NCName`, such as `1 2`, is written too,
+/// but the output then does not validate against an XMI schema. In attribute
 /// values `&`, `<`, `>`, `"`, TAB, LF and CR are escaped; everything else is
 /// written as it is.
 ///
@@ -460,11 +473,12 @@ impl std::error::Error for ReadError {}
 /// is returned:
 ///
 /// 1. a document with no root is [`WriteError::NoRoot`];
-/// 2. then each element, in [`Document::elements`] order: an id holding a
+/// 2. then each element, in [`Document::elements`] order, with all of an
+///    element's checks run before the next element's: first its id, where a
 ///    character outside XML 1.0's `Char` is
 ///    [`WriteError::UnrepresentableCharacter`], naming the first such
-///    character; then a name, and then a non-default `assertionDeclaration`,
-///    is [`WriteError::Unsupported`], because this release does not write
+///    character; then a name, then a non-default `assertionDeclaration`,
+///    each [`WriteError::Unsupported`], because this release does not write
 ///    them yet.
 ///
 /// # Examples
@@ -485,7 +499,8 @@ impl std::error::Error for ReadError {}
 ///      xmi:id=\"arguments\" />\n"
 /// );
 ///
-/// // A document with no root cannot be read back, so it is refused.
+/// // A document with no root would be an empty `xmi:XMI`, which a SACM
+/// // reader refuses, so it is refused.
 /// let error = xmi::write(&Document::new(), &WriteOptions::default()).unwrap_err();
 /// assert_eq!(error, WriteError::NoRoot);
 /// assert_eq!(error.to_string(), "the document has no root to write");
@@ -496,7 +511,7 @@ pub fn write(document: &Document, options: &WriteOptions) -> Result<String, Writ
     output::write(document)
 }
 
-/// Options for [`write`](fn@write).
+/// How [`write`](fn@write) writes a document.
 ///
 /// Empty for now: the save mode (LIB-COMPAT-001) comes later. Use
 /// [`WriteOptions::default`].
@@ -526,7 +541,8 @@ pub struct WriteOptions {}
 #[non_exhaustive]
 pub enum WriteError {
     /// The document has no root, so there is no document element to write.
-    /// A unit variant, which callers match as `WriteError::NoRoot`.
+    /// Add a package as a root. This variant has no fields and will not gain
+    /// any.
     NoRoot,
     /// An element's id holds a character that XML 1.0 cannot represent: one
     /// outside its `Char` production, such as U+0000, another C0 control
@@ -540,6 +556,8 @@ pub enum WriteError {
     },
     /// The document holds content this version cannot write yet, such as a
     /// name or a non-default `assertionDeclaration`. It has no catalog code.
+    /// A document returned by this release's [`read`] never holds such
+    /// content.
     #[non_exhaustive]
     Unsupported {
         /// The element that holds the content.

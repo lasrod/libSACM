@@ -1230,6 +1230,18 @@ fn sacm23_xmi_004_every_character_outside_xml_char_in_an_id_is_refused() {
 }
 
 #[test]
+fn sacm23_xmi_004_an_id_with_two_unrepresentable_characters_names_the_first() {
+    let row = "SACM23-XMI-004";
+    for (id, first) in [
+        ("a\u{1}b\u{FFFE}", '\u{1}'),
+        ("a\u{FFFE}b\u{1}", '\u{FFFE}'),
+    ] {
+        let doc = build(row, &[(None, ElementKind::ArgumentPackage, id)]);
+        assert_unrepresentable(row, &write_err(row, &doc), id, first);
+    }
+}
+
+#[test]
 fn sacm23_xmi_004_the_xml_char_boundary_characters_in_an_id_are_written_and_read_back() {
     let row = "SACM23-XMI-004";
     let allowed = [
@@ -2213,10 +2225,11 @@ fn lib_api_010_a_named_assertion_with_a_non_default_declaration_is_refused_namin
     declare(row, &mut doc, "c1", AssertionDeclaration::Axiomatic);
     let error = write_err(row, &doc);
     assert_unsupported(row, &error, "c1");
-    let message = error.to_string();
-    assert!(
-        message.starts_with("the writer cannot write the element \"c1\": its "),
-        "{row}: the refusal's message: {message:?}"
+    // ADR 0017: the name is checked before the `assertionDeclaration`.
+    assert_eq!(
+        error.to_string(),
+        "the writer cannot write the element \"c1\": its name is not written yet",
+        "{row}: the name is refused before the declaration"
     );
 }
 

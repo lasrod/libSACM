@@ -14,7 +14,7 @@ single-constant change plus golden-file refresh.
 | SACM namespace | `http://www.omg.org/spec/SACM/20220301` (OMG version URI for 2.3), prefix `sacm` |
 | XMI namespace | `http://www.omg.org/spec/XMI/20131001`, prefix `xmi`, `xmi:version="2.0"` |
 | XSI namespace | Not declared on export. Import accepts `xsi:type` as well as `xmi:type` |
-| Root | One interchange package element — `sacm:AssuranceCasePackage`, `sacm:ArgumentPackage`, `sacm:ArtifactPackage` or `sacm:TerminologyPackage`; more than one root inside a single `xmi:XMI` element (SACM23-XMI-013) |
+| Root | One package element, `sacm:<Kind>`, for any of the twelve package kinds (the four packages and their Interfaces and Bindings; ADR 0016); more than one root inside a single `xmi:XMI` element (SACM23-XMI-013) |
 | Identity | Every element carries `xmi:id`; ids are preserved exactly; generated ids are deterministic |
 | Containment | Child elements named by their containment role (`argumentPackage`, `argumentElement`, `artifactElement`, `terminologyElement`, `description`, `name`, ...) |
 | Concrete type | `xmi:type="sacm:<Class>"` where the class is not known from the role: an abstract role (e.g. `argumentElement` holding a `Claim`), or an Interface or Binding in a package role (XMI 2.5.1 §7.8.8; ADR 0017) |

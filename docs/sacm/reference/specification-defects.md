@@ -232,6 +232,26 @@ strict export writes it is decided under SACM23-XMI-003.
 **Suggested resolution.** Use the XMI.xsd namespace throughout the text, and either
 declare `version` in XMI.xsd or drop it from the text.
 
+## D11 — XMI 2.5.1 both requires and limits the type attribute
+
+*Found by libSACM (slice 0025); a defect of XMI 2.5.1 (formal/15-06-07), not of SACM.*
+
+- **§7.6.3 (p. 15)** limits it: "The type attribute is used to specify the type of object
+  being serialized, when the type is not known from the model."
+- **Rule 2g (p. 63)** opens "You must specify the class name using the "type" attribute."
+- **Production 2d (p. 62)** makes `2g:TypeAttrib` mandatory: it has no `?`, while
+  `IdentityAttribs` beside it is optional.
+
+Read literally, rule 2g and production 2d put a type attribute on every element; §7.6.3
+puts it only where the class cannot be known from the role.
+
+**This crate** takes the §7.6.3 reading, as C++ (`xmi_writer.cpp:435-439`) and EMF do. It
+writes `xmi:type` only where the class is not known from the role (SACM23-XMI-006, ADR
+0017), and it reads either form.
+
+**Suggested resolution.** Make 2g conditional in production 2d and rule 2g, matching
+§7.6.3.
+
 ## Related
 
 - [GSN / SACM metamodel gaps](sacm-gsn-metamodel-gaps.md) — the GSN v3 side, for the SCSC ACWG.

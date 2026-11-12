@@ -14,7 +14,8 @@
 //!   explicit tolerant mode for third-party and legacy files; built so far:
 //!   [`xmi::read`], which reads empty `AssuranceCasePackage` and
 //!   `ArgumentPackage` roots and refuses everything else, and [`xmi::write`],
-//!   which writes nameless documents with default assertion declarations,
+//!   which writes documents without a name or a non-default
+//!   `assertionDeclaration`,
 //! - validation against the specification's constraints, reported as
 //!   machine-readable diagnostics with stable codes; built so far: the
 //!   diagnostic type,
@@ -39,8 +40,9 @@
 //! malformed input and roots that are not SACM packages with a diagnostic
 //! code, and content it cannot represent yet as `Unsupported`.
 //! [`sacm::xmi::write`](xmi::write) writes a document's roots and every
-//! element under them, deterministically, but refuses names and non-default
-//! assertion declarations as `Unsupported` until a later release writes them.
+//! element under them, deterministically, but refuses a name or a
+//! non-default `assertionDeclaration` as `Unsupported` until a later release
+//! writes them.
 //! Reading the content of packages, validation and editing are not built yet.
 //!
 //! # Example
@@ -62,6 +64,7 @@
 //! // Write it back as XMI, in the one deterministic form.
 //! let text = xmi::write(&document, &WriteOptions::default())?;
 //! assert!(text.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<xmi:XMI "));
+//! // Saving is ordinary I/O: std::fs::write("case.sacm.xmi", &text)?;
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
@@ -71,6 +74,8 @@
 //! [`parent`](model::SacmElement::parent). Read an element's name with
 //! [`name`](model::SacmElement::name), and an Assertion's declaration with
 //! [`assertion_declaration`](model::SacmElement::assertion_declaration).
+//! Write a document back with [`xmi::write`], which returns the
+//! XMI text for you to save.
 //!
 //! # Features
 //!

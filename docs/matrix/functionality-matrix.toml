@@ -1897,6 +1897,7 @@ tests = [
   "crates/sacm/tests/xmi_write.rs::sacm23_xmi_004_id_characters_are_escaped_with_the_pinned_references_and_nothing_else",
   "crates/sacm/tests/xmi_write.rs::sacm23_xmi_004_an_id_holding_u0001_is_refused_naming_the_element_and_the_character",
   "crates/sacm/tests/xmi_write.rs::sacm23_xmi_004_an_id_holding_ufffe_is_refused_naming_the_element_and_the_character",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_004_an_id_with_two_unrepresentable_characters_names_the_first",
   "crates/sacm/tests/xmi_write.rs::sacm23_xmi_004_every_character_outside_xml_char_in_an_id_is_refused",
   "crates/sacm/tests/xmi_write.rs::sacm23_xmi_004_the_xml_char_boundary_characters_in_an_id_are_written_and_read_back",
   "crates/sacm/tests/xmi_write.rs::sacm23_xmi_004_writing_takes_a_shared_reference_and_leaves_the_document_unchanged",
@@ -1908,7 +1909,7 @@ area = "XMI"
 milestone = "M1"
 title = "Type attribute where the class differs from the role's type"
 requirement = "`xmi::write` writes `xmi:type=\"sacm:<Kind>\"` on a child whose class is not known from its role: under the abstract roles `argumentElement`, `artifactElement` and `terminologyElement`, and for an Interface or Binding under one of AssuranceCasePackage's four package roles. Any other child, and every root, has no type attribute. The value is `sacm:` followed by the exact `ElementKind` name. XMI's own form is used (XMI 2.5.1 §7.8.8 and rule 2g; SACM sets no `useSchemaExtensions`), not the `xsi:type` that C++ writes; this is the maintainer's decisions of 2026-11-12 (ADR 0017). Import keeps accepting both `xmi:type` and `xsi:type`, as C++ and EMF do."
-source = "XMI 2.5.1 §7.6.3 (p. 15) \"The type attribute is used to specify the type of object being serialized, when the type is not known from the model\", §7.8.8 (p. 21) \"XMI specifies that inheritance will be copy-down inheritance and therefore uses xmi:type instead of xsi:type\", Table 7.1 (p. 28) useSchemaExtensions default false, production 2g (p. 62), rule 2g (p. 63) \"You may only use the XML schema instance type attribute if org.omg.xmi.useSchemaExtensions is true\"; ptc/22-03-13 (no `org.omg.xmi` tags); ADR 0017; assurance-forge `io/xmi_writer.cpp:435-439` (departed from)"
+source = "XMI 2.5.1 §7.6.3 (p. 15) \"The type attribute is used to specify the type of object being serialized, when the type is not known from the model\", §7.8.8 (p. 21) \"XMI specifies that inheritance will be copy-down inheritance and therefore uses xmi:type instead of xsi:type\", Table 7.1 (p. 28) useSchemaExtensions default false, production 2g (p. 62), rule 2g (p. 63) \"You must specify the class name using the \"type\" attribute.\" and \"You may only use the XML schema instance type attribute if org.omg.xmi.useSchemaExtensions is true\" (rule 2g and production 2d, read literally, require the attribute on every element; this row takes §7.6.3, specification defect D11); ptc/22-03-13 (no `org.omg.xmi` tags); ADR 0017; assurance-forge `io/xmi_writer.cpp:435-439` (followed for where the type is written; departed from only in `xmi:` versus `xsi:`)"
 kind = "xmi"
 status = "implemented"
 depends_on = ["SACM23-XMI-001", "SACM23-ARG-002"]
@@ -2006,6 +2007,7 @@ source = "D-STRICT"
 kind = "api"
 status = "planned"
 depends_on = ["SACM23-XMI-001", "SACM23-XMI-003"]
+notes = "Slice 0025 (ADR 0017 W6): owns the C++ `SaveOptions::namespace_uri` option (`options.h:26-43`; C++ decision #18), that is, export under a namespace other than the pinned SACM URI, including re-export under the namespace a document was read with."
 
 [[row]]
 id = "SACM23-VAL-001"
