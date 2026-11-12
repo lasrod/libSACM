@@ -42,3 +42,8 @@ formal/23-05-08 §8.6; D-SEV; ADR 0011; ADR 0013.
 
   VAL-018 is `analyzed`, with 12 acceptance items. The message quotes the id as write errors do. The SACM-MULT-001 catalog text is widened now.
 - 2026-11-12 implementation: `validation::validate` with the private `RULES` table and `names::missing_name`; `has_errors`; `Code::MULTIPLICITY_VIOLATION`. The architecture doc, the craft skill and the READMEs now say `validation`. The local gate passes.
+- 2026-11-12 verification round 1: FAIL.
+  - The id quoting `{:?}` was unstated and untested (H10 survives); a new acceptance item pins it.
+  - The crate README claims no diagnostic is reported.
+  - The docs review (2 blocking: the crate README, and a front-page example without validate) and its should-fix items go to the implementer.
+  - Logged, not required: a `ReadOutput::into_parts`, and a single cross-constant catalog test.

@@ -14,8 +14,8 @@
 //! [`validation::validate`](crate::validation::validate) returns
 //! diagnostics, and the XMI reader and editing will as their rows are built.
 //! Every function that returns diagnostics returns them sorted by
-//! [`Diagnostic`]'s order. [`has_errors`] says whether a list holds an
-//! error.
+//! [`Diagnostic`]'s order. [`has_errors`] says whether a list holds a
+//! diagnostic of severity [`Severity::Error`].
 //!
 //! Diagnostics are read, not built: only this crate creates them. The
 //! `test-support` feature makes the constructors and `with_*` builders
@@ -123,10 +123,11 @@ impl Code {
     /// (SACM23-XMI-001). Named after the C++ library's `kXmiInvalidRoot`.
     pub const XMI_INVALID_ROOT: Code = Code::from_static("SACM-XMI-001");
 
-    /// SACM-MULT-001: a property is held more or fewer times than its
+    /// SACM-MULT-001: a property has more or fewer values than its
     /// multiplicity allows. [`validation::validate`](crate::validation::validate)
     /// reports it, as an Error, for a `ModelElement` with no name (§8.6
-    /// `name:LangString[1]`, SACM23-VAL-018).
+    /// `name:LangString[1]`, SACM23-VAL-018); fix it by giving the element a
+    /// name.
     ///
     /// ```
     /// use sacm::diagnostic::Code;
@@ -167,16 +168,23 @@ impl fmt::Display for Code {
 
 /// Whether any of `diagnostics` has [`Severity::Error`].
 ///
-/// A document with an error does not conform to SACM. Warnings and
-/// information do not count.
+/// A document with an Error diagnostic does not conform to SACM; Warning and
+/// Info diagnostics do not count.
 ///
 /// ```
 /// use sacm::diagnostic;
-/// use sacm::model::Document;
 /// use sacm::validation;
+/// use sacm::xmi::{self, ReadOptions};
 ///
-/// let found = validation::validate(&Document::new());
-/// assert!(!diagnostic::has_errors(&found));
+/// // An ArgumentPackage with no name.
+/// let input = br#"<sacm:ArgumentPackage
+///     xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
+///     xmi:id="arguments"/>"#;
+/// let document = xmi::read(input, &ReadOptions::default())?.into_document();
+/// assert!(diagnostic::has_errors(&validation::validate(&document)));
+/// assert!(!diagnostic::has_errors(&[]));
+/// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[must_use]
 pub fn has_errors(diagnostics: &[Diagnostic]) -> bool {
@@ -248,6 +256,7 @@ impl fmt::Display for SourceLocation {
 /// ```text
 /// error SACM-REF-001 [SACM23-VAL-003] at line 12, column 34: the target "claim_9" does not resolve
 /// error SACM-CITE-001 [SACM23-VAL-007, clause 8.2]: "claim_1" has isCitation true but no citedElement
+/// error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: Claim "c1" has no name (name:LangString[1])
 /// ```
 ///
 /// The affected ids are not shown. Ids in messages are quoted with `{:?}`, as

@@ -428,6 +428,39 @@ fn sacm23_val_018_the_diagnostic_fields_message_and_display_are_pinned() {
     );
 }
 
+#[test]
+fn sacm23_val_018_an_id_with_a_quote_line_break_backslash_and_combining_mark_is_debug_quoted() {
+    // The id is `a"b`, a line feed, `c\d` and U+0301 COMBINING ACUTE ACCENT.
+    let input = format!("<sacm:ArgumentPackage{NS} xmi:id=\"a&quot;b&#10;c&#92;d&#x301;\"/>");
+    let output = read_ok(&input);
+    let ids: Vec<&str> = output
+        .document()
+        .elements()
+        .map(|element| element.id().as_str())
+        .collect();
+    assert_eq!(
+        ids,
+        ["a\"b\nc\\d\u{301}"],
+        "{ROW}: {input:?} did not read to the expected id, so it tests nothing"
+    );
+    let found = validation::validate(output.document());
+    let [finding] = found.as_slice() else {
+        panic!("{ROW}: one nameless ArgumentPackage gave {found:?}, not one finding");
+    };
+    // Written out, not built with `format!`: the id as `{:?}` writes it, with
+    // the quote, line feed, backslash and combining mark escaped.
+    assert_eq!(
+        finding.message(),
+        r#"ArgumentPackage "a\"b\nc\\d\u{301}" has no name (name:LangString[1])"#,
+        "{ROW}: the id in the message is not quoted with {{:?}}"
+    );
+    let text = finding.to_string();
+    assert!(
+        !text.contains(['\n', '\r', '\u{85}', '\u{2028}', '\u{2029}']),
+        "{ROW}: Display {text:?} is not one line"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // 7. The element is kept
 // ---------------------------------------------------------------------------

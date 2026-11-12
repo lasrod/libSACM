@@ -42,7 +42,7 @@ sacm
 │                ADR 0005, ADR 0015 and ADR 0016)
 ├── validation   clause-level constraints, reported as diagnostics
 │                (built: `validate`, with the missing-name rule, ADR 0018)
-├── diagnostic   Diagnostic, Severity, Code, Location
+├── diagnostic   Diagnostic, Severity, Code, SourceLocation, has_errors
 ├── edit         operations, previews, delete policies, mutation results
 └── compare      semantic equality and differences
 ```

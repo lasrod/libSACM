@@ -53,6 +53,7 @@
 //!
 //! ```
 //! use sacm::xmi::{self, ReadOptions, WriteOptions};
+//! use sacm::{diagnostic, validation};
 //!
 //! let input = br#"<?xml version="1.0" encoding="UTF-8"?>
 //! <xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
@@ -62,14 +63,24 @@
 //!     <name lang="en" content="Arguments"/>
 //!   </sacm:ArgumentPackage>
 //! </xmi:XMI>"#;
-//! let document = xmi::read(input, &ReadOptions::default())?.into_document();
+//! let output = xmi::read(input, &ReadOptions::default())?;
+//! let document = output.document();
 //! for element in document.elements() {
 //!     let name = element.name().and_then(|n| n.content());
 //!     println!("{} {} {name:?}", element.kind(), element.id());
 //! }
 //!
+//! // Check it against SACM's rules: the case package has no name.
+//! let mut findings = output.diagnostics().to_vec();
+//! findings.extend(validation::validate(document));
+//! findings.sort();
+//! for finding in &findings {
+//!     println!("{finding}");
+//! }
+//! assert!(diagnostic::has_errors(&findings));
+//!
 //! // Write it back as XMI, in the one deterministic form.
-//! let text = xmi::write(&document, &WriteOptions::default())?;
+//! let text = xmi::write(document, &WriteOptions::default())?;
 //! assert!(text.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<xmi:XMI "));
 //! // Saving is ordinary I/O: std::fs::write("case.sacm.xmi", &text)?;
 //! # Ok::<(), Box<dyn std::error::Error>>(())
@@ -81,6 +92,9 @@
 //! [`parent`](model::SacmElement::parent). Read an element's name with
 //! [`name`](model::SacmElement::name), and an Assertion's declaration with
 //! [`assertion_declaration`](model::SacmElement::assertion_declaration).
+//! Check a document against SACM's rules with [`validation::validate`]; merge
+//! its findings with the reader's and test them with
+//! [`diagnostic::has_errors`].
 //! Write a document back with [`xmi::write`], which returns the
 //! XMI text for you to save.
 //!

@@ -1,6 +1,6 @@
 //! Validation: checking a document against SACM's rules.
 //!
-//! A document read from a file can break SACM's rules and still loads, so
+//! A document read from a file can break SACM's rules and still load, so
 //! that it can be inspected and fixed. [`validate`] reports what is wrong as
 //! [`Diagnostic`]s. It never changes a document and never refuses one.
 //!
@@ -10,6 +10,14 @@
 //! |---|---|---|---|---|
 //! | SACM-MULT-001 | SACM23-VAL-018 | §8.6 | Error | a `ModelElement` has no name (`name:LangString[1]`) |
 //!
+//! A `ModelElement`
+//! ([`AbstractClass::ModelElement`](crate::model::AbstractClass::ModelElement))
+//! is any named, identifiable element: every package, claim, asserted
+//! relationship, artifact and term. The four `UtilityElement` kinds
+//! (`Description`, `ImplementationConstraint`, `Note`, `TaggedValue`) have no
+//! name and are not checked. An empty name (`<name/>`) is a name. To fix a
+//! finding, give the element a `<name lang="…" content="…"/>` child.
+//!
 //! The result is sorted by [`Diagnostic`]'s order. Its diagnostics have no
 //! [`location`](Diagnostic::location), because a [`Document`] records no
 //! source positions.
@@ -17,9 +25,10 @@
 //! Later releases add rules, so a document with no findings today may have
 //! findings later. A code's meaning never changes.
 //!
-//! To report reading and validation together, extend the
-//! [`ReadOutput::diagnostics`](crate::xmi::ReadOutput::diagnostics) with the
-//! result and sort it again.
+//! To report reading and validation together, copy
+//! [`ReadOutput::diagnostics`](crate::xmi::ReadOutput::diagnostics) into a
+//! `Vec`, extend it with the result and sort it again, as below. (The reader
+//! reports no diagnostics yet; it refuses what it cannot represent.)
 //!
 //! # Examples
 //!
@@ -44,6 +53,8 @@
 //! let mut all = output.diagnostics().to_vec();
 //! all.extend(found);
 //! all.sort();
+//! assert_eq!(all.len(), 1);
+//! assert!(diagnostic::has_errors(&all));
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
@@ -58,8 +69,9 @@ type Rule = fn(&Document, &mut Vec<Diagnostic>);
 /// Every rule, run in turn by [`validate`].
 const RULES: &[Rule] = &[names::missing_name];
 
-/// Checks `document` against every rule and returns the findings, sorted by
-/// [`Diagnostic`]'s order.
+/// Checks `document` against the SACM rules this release knows and returns
+/// the findings, sorted by [`Diagnostic`]'s order. An empty result means no
+/// rule found anything, not that the document conforms in full.
 ///
 /// The document is not changed. See the [module docs](self) for what is
 /// checked.
