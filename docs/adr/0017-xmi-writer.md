@@ -89,13 +89,13 @@ needed, that will be a new variant; the other two variants are `#[non_exhaustive
   id, and writes U+FFFE and U+FFFF raw (`pugixml.cpp:4021, 4048-4054`).
 - **W4.** A refusal names the first element in document order. C++ lists every affected
   element (`xmi_writer.cpp:485-500`). This is the same rule as ADR 0016 D3.
+- **W5.** The namespace constants stay crate-private. C++ makes them public
+  (`metadata/namespaces.h:17-34`). They can be made public later without a break.
 - **W6.** There is no option to export under another SACM namespace. C++ has
   `SaveOptions::namespace_uri` (`options.h:26-43`; `xmi_writer.cpp:524-527`), which can
   also re-export under `LoadResult::source_namespace` (C++ decision #18). This release
   always writes the pinned URI. The option is deferred to LIB-COMPAT-001, where it belongs
   with the tolerant load modes and their accepted namespaces.
-- **W5.** The namespace constants stay crate-private. C++ makes them public
-  (`metadata/namespaces.h:17-34`). They can be made public later without a break.
 
 **Kept from C++:**
 - `xmi:version="2.0"` (`namespaces.h:32`; the maintainer, 2026-11-12). XMI.xsd 2.5.1 does

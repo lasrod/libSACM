@@ -1,8 +1,8 @@
 ---
 slice: 0025
 name: m1-xmi-export
-state: in-progress
-step: verification
+state: done
+step: verified
 rows: [SACM23-XMI-003, SACM23-XMI-004, SACM23-XMI-006, SACM23-XMI-007, SACM23-XMI-013, LIB-API-010]
 mode: pr
 base: slice/0024-m1-utf16-input (PR #34)
@@ -81,3 +81,4 @@ The code is private:
   - F2: the C++ `namespace_uri` option is not named. Now ADR 0017 W6, deferred to LIB-COMPAT-001.
   - F3 and F4: two orders are not pinned (the first bad character, and the name before the declaration).
   - The docs review found nothing blocking; its should-fix items go to the implementer.
+- 2026-11-12 verification round 2: PASS at a2be90c. All six rows are verified. `gh pr ready` waits for the maintainer to approve ADR 0017 W1–W6.
