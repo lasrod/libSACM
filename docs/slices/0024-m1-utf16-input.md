@@ -3,7 +3,7 @@ slice: 0024
 name: m1-utf16-input
 state: in-progress
 step: verification
-rows: [SACM23-XMI-018]
+rows: [SACM23-XMI-018, LIB-API-009, LIB-SEC-006]
 mode: pr
 base: slice/0023-m1-namespace-prefixes (PR #33)
 ---
@@ -12,10 +12,12 @@ base: slice/0023-m1-namespace-prefixes (PR #33)
 
 ## Scope
 
-`xmi::read` decodes UTF-16 input, little- and big-endian, with a byte order mark or as
-declared, using std only. It then reads the document exactly as the same document in
-UTF-8, with locations counted in characters. UTF-32, UCS-4 and the other declared
-encodings stay refused (LIB-API-009). This slice does not touch export.
+`xmi::read` decodes UTF-16 input that begins with a byte order mark, little- or
+big-endian, using std only. It then reads the document exactly as the same document in
+UTF-8, with locations counted in characters. UTF-16 without a byte order mark, UTF-32,
+UCS-4 and other declared encodings stay refused (LIB-API-009), even when the declaration
+names `UTF-16LE` or `UTF-16BE`. LIB-API-009 and LIB-SEC-006 are reworded to match. This
+slice does not touch export.
 
 ## Basis
 
