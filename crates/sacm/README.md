@@ -15,8 +15,9 @@ Assertion's `assertionDeclaration`, the first value types (`LangString`,
 diagnostic type that findings are reported in (`sacm::diagnostic`), and
 `sacm::validation::validate`, which reports each `ModelElement` with no name as a
 `SACM-MULT-001` error. `xmi::read`'s refusals carry catalog codes. `sacm::xmi::read` reads
-`AssuranceCasePackage` and `ArgumentPackage` roots and their names, but nothing else
-inside them yet; it refuses what it cannot represent rather than drop it.
+`AssuranceCasePackage` and `ArgumentPackage` roots, the AssuranceCasePackages,
+ArgumentPackages and Claims in them, and their names; it refuses what it cannot represent
+rather than drop it.
 `sacm::xmi::write` writes a document and its names deterministically, and refuses a
 non-default `assertionDeclaration`, which it does not write yet. `sacm::edit::apply`
 creates AssuranceCasePackages, ArgumentPackages and Claims, each with a name and a given
@@ -110,8 +111,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-`sacm::xmi::read` cannot read such a file back yet: it reads only package roots and their
-names, and refuses, as `ReadError::Unsupported`, packages that hold elements.
+`sacm::xmi::read` reads such a file back to the same document.
 
 See the [crate documentation](https://docs.rs/sacm) for the full API.
 

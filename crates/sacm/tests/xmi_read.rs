@@ -1261,13 +1261,15 @@ fn lib_api_009_well_formed_sacm_document_is_unsupported_at_the_construct_it_cann
         Some(loc(row, 1, 32)),
         "{row}: the refusal is not located at the root element's start tag"
     );
-    // The full sample, too: refused at its `argumentPackage` child, the
-    // first content it cannot read (line 4, column 3).
+    // The full sample, too. Its `argumentPackage` child and the Claim `c_1`
+    // in it are read (SACM23-XMI-016), so the first content it cannot read
+    // is `c_1`'s `assertionDeclaration` attribute (SACM23-XMI-017), refused
+    // at the first character of its name: line 5, column 57.
     let error = assert_unsupported(row, SAMPLE.as_bytes());
     assert_eq!(
         error.location(),
-        Some(loc(row, 4, 3)),
-        "{row}: the sample is not refused at its `argumentPackage` child"
+        Some(loc(row, 5, 57)),
+        "{row}: the sample is not refused at the `assertionDeclaration` of `c_1`"
     );
 }
 

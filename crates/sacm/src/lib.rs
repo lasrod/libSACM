@@ -42,7 +42,8 @@
 //! [`Code::MULTIPLICITY_VIOLATION`](diagnostic::Code::MULTIPLICITY_VIOLATION).
 //! [`sacm::xmi::read`](xmi::read) reads
 //! `AssuranceCasePackage` and `ArgumentPackage` roots, bare or in an
-//! `xmi:XMI` element, with their names but nothing else inside them yet. It
+//! `xmi:XMI` element, and the packages and Claims in them, with their names.
+//! It
 //! refuses unsafe and malformed input and roots that are not SACM packages
 //! with a diagnostic code, and content it cannot represent yet as
 //! `Unsupported`. [`sacm::xmi::write`](xmi::write) writes a document's roots
@@ -105,8 +106,7 @@
 //! Build a document from scratch, or extend one you read, with
 //! [`edit::apply`] and the create operations such as [`edit::CreateClaim`];
 //! the [`edit`] module example builds, validates and writes a complete
-//! document. [`xmi::read`] cannot read such a document back yet: it reads only
-//! package roots and their names, and refuses packages that hold elements.
+//! document, which [`xmi::read`] reads back.
 //!
 //! # Features
 //!

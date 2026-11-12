@@ -15,15 +15,15 @@ changed with `sacm::edit::apply`, `ElementId`, the metamodel's element kinds, el
 names, each Assertion's `assertionDeclaration` and the first value types (`LangString`,
 `MultiLangString`, `AssertionDeclaration`), and `sacm::diagnostic` provides the
 `Diagnostic` type. `sacm::xmi::read` reads `AssuranceCasePackage` and `ArgumentPackage`
-roots and their names, but nothing else inside them yet. It refuses unsafe and malformed
-input and roots that are not SACM packages with a diagnostic code, and content it cannot
-represent yet as `Unsupported`. `sacm::xmi::write` writes a document and its names
+roots, the AssuranceCasePackages, ArgumentPackages and Claims in them, and their names.
+It refuses unsafe and malformed input and roots that are not SACM packages with a
+diagnostic code, and content it cannot represent yet as `Unsupported`. `sacm::xmi::write` writes a document and its names
 deterministically, but refuses a non-default `assertionDeclaration` as `Unsupported` for
 now. `sacm::validation::validate` reports each `ModelElement` with no name.
 `sacm::edit::apply` creates AssuranceCasePackage, ArgumentPackage and Claim elements,
-each with a name and a given or generated id, or refuses and changes nothing. Reading the
-content of packages, the other validation rules and the other edit operations are not
-built yet. Milestone M0, the foundation, is done: the workspace, CI, the functionality matrix and its gate, and mutation testing.
+each with a name and a given or generated id, or refuses and changes nothing; what it
+builds writes and reads back. The other element kinds in XMI, the other validation rules
+and the other edit operations are not built yet. Milestone M0, the foundation, is done: the workspace, CI, the functionality matrix and its gate, and mutation testing.
 The [functionality matrix](docs/matrix/functionality-matrix.md) shows what is verified;
 nothing else is claimed.
 

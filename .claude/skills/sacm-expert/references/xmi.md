@@ -31,9 +31,10 @@ single-constant change plus golden-file refresh.
   URI `http://example.org/sacm/2.3`. Other URIs: warning (tolerant) / error (strict).
 - `href="#id"` reference forms are accepted; external (cross-document) hrefs are
   preserved as opaque text with a warning.
-- Machine-readable-model spellings are accepted on import: `ArtifactAssertedRelationship`
-  for `ArtifactAssetRelationship`, `occurece` for `Event.date`, `argumentationElement`
-  for `argumentElement`. Output always uses the resolved spelling.
+- Variant spellings are accepted on import: the machine-readable model's
+  `ArtifactAssertedRelationship` for `ArtifactAssetRelationship` and `occurece` for
+  `Event.date`, and the §11.4 text's `argumentationElement` for the model's
+  `argumentElement`. Output always uses the resolved spelling.
 - Missing `xmi:id`: generated, with a warning. Unknown elements: preserved with a
   warning; strict save then refuses the document rather than drop them.
 - Other SACM revisions: loaded with a warning; saved as 2.3.

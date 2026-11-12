@@ -1,5 +1,6 @@
-//! The interchange roots of an XMI document and their names (SACM23-XMI-001,
-//! SACM23-XMI-012; formal/23-05-08 §2.2, §2.4; XMI 2.5.1 §7.5.3; ADR 0015,
+//! The interchange roots of an XMI document, their names and the package
+//! content under them (SACM23-XMI-001, SACM23-XMI-012, SACM23-XMI-016;
+//! formal/23-05-08 §2.2, §2.4; XMI 2.5.1 §7.5.3, §7.6.3, §7.8.6; ADR 0015,
 //! ADR 0016, ADR 0017 amendment 1).
 //!
 //! An interchange root is the document element or, when that is the XMI
@@ -16,11 +17,14 @@
 //!    release can read (ADR 0016 D3).
 //! 2. In document order, the XMI element's attributes, then each root and
 //!    whatever is beside it, are checked, and each root is added to the
-//!    document. A root's namespace and kind, its `xmi:id` and its type are
-//!    checked first, all located at the root, then its other attributes, its
-//!    content (one `name` is read into the root's name, SACM23-XMI-012), and
-//!    whether an earlier root has its id. The first thing this
-//!    release cannot read is `Unsupported`, at its location; nothing is
+//!    document with its tree. A root's namespace and kind, its `xmi:id` (and
+//!    whether an earlier element has it) and its type are checked first, all
+//!    located at the root, then its other attributes, then its content in
+//!    document order. A `name` is read into its element's name
+//!    (SACM23-XMI-012). A child element is checked the same way, at its start
+//!    tag first: its role, its type and kind, and its `xmi:id`
+//!    (SACM23-XMI-016); then its attributes and its content. The first thing
+//!    this release cannot read is `Unsupported`, at its location; nothing is
 //!    dropped (ADR 0015, D-PRESERVE).
 //!
 //! Names are matched by namespace URI and local name, and a type value is
@@ -32,12 +36,14 @@
 //! `xmi:version`, and hold, besides its roots, only white space, comments and
 //! processing instructions.
 
+use std::collections::BTreeSet;
+
 use roxmltree::{Attribute, Node};
 
 use super::ReadError;
 use super::input::{is_xml_space, locate};
 use super::namespaces::{SACM_NS, XMI_NS};
-use crate::model::{Document, ElementId, ElementKind, InsertError, LangString};
+use crate::model::{DeclaredType, Document, ElementId, ElementKind, LangString, role_named};
 
 /// The XML Schema instance namespace, of `xsi:type`, which is read but never
 /// written (ADR 0017 T1).
@@ -154,9 +160,105 @@ fn read_wrapper(
     Ok(())
 }
 
-/// Pass 2 for one root: checks it, then adds it to `document` as a
-/// parentless element.
+/// One element of a root's tree, held until the whole tree is read and then
+/// inserted, so that a name written after the children is known when its
+/// element is inserted.
+struct Pending<'a> {
+    /// The element's place in document order within the tree.
+    order: usize,
+    /// The id of the element's parent; `None` for the root.
+    parent: Option<&'a str>,
+    kind: ElementKind,
+    id: &'a str,
+    name: Option<LangString>,
+    /// The element's name as written in its start tag.
+    written: String,
+    /// The byte offset of its start tag.
+    at: usize,
+}
+
+impl Pending<'_> {
+    /// How refusals name the element.
+    fn what(&self) -> String {
+        let element = if self.parent.is_none() {
+            "root element"
+        } else {
+            "element"
+        };
+        format!("the {element} {:?}", self.written)
+    }
+}
+
+/// Pass 2 for one root: checks it and its tree in document order, then adds
+/// it to `document` as a parentless element, with its tree under it in
+/// document order (ADR 0010 D2). The tree is walked with a stack, not by
+/// recursion, so a deep document cannot exhaust the call stack.
 fn read_root(text: &str, root: Node<'_, '_>, document: &mut Document) -> Result<(), ReadError> {
+    // The ids read so far in this root's tree; earlier roots' trees are in
+    // `document`.
+    let mut ids = BTreeSet::new();
+    let first = root_start(text, root, document)?;
+    ids.insert(first.id);
+    // The elements whose content is being read, innermost last, each with
+    // the rest of its content, and the elements read whole. Content is one
+    // `name` (SACM23-XMI-012), readable children (SACM23-XMI-016), white
+    // space, comments and processing instructions.
+    let mut open = vec![(first, root.children())];
+    let mut read = Vec::new();
+    while let Some((element, content)) = open.last_mut() {
+        let Some(node) = content.next() else {
+            read.extend(open.pop().map(|(element, _)| element));
+            continue;
+        };
+        if !node.is_element() {
+            check_text(text, node, &element.written)?;
+        } else if node.tag_name().name() == "name" {
+            if element.name.is_some() {
+                return Err(unsupported(
+                    text,
+                    node.range().start,
+                    format!("{} has a second \"name\"", element.what()),
+                ));
+            }
+            element.name = Some(read_name(text, node)?);
+        } else {
+            let child = child_start(text, node, element, document, &ids)?;
+            ids.insert(child.id);
+            open.push((child, node.children()));
+        }
+    }
+
+    // Everything is checked, so the inserts succeed; a failure would still
+    // be a refusal, never a panic. In document order, a parent comes before
+    // its children.
+    read.sort_by_key(|element| element.order);
+    for element in read {
+        let what = element.what();
+        document
+            .insert_node(
+                element.parent.map(ElementId::new).as_ref(),
+                element.kind,
+                ElementId::new(element.id),
+                element.name,
+            )
+            .map_err(|error| {
+                unsupported(
+                    text,
+                    element.at,
+                    format!("{what} cannot be held in the document: {error}"),
+                )
+            })?;
+    }
+    Ok(())
+}
+
+/// Checks the start tag of `root`: its namespace, kind, id, type and other
+/// attributes, in that order.
+fn root_start<'a>(
+    text: &str,
+    root: Node<'a, '_>,
+    document: &Document,
+) -> Result<Pending<'a>, ReadError> {
     let at_root = root.range().start;
     let name = written_name(text, root);
     let not_read = |reason: String| unsupported(text, at_root, reason);
@@ -187,20 +289,8 @@ fn read_root(text: &str, root: Node<'_, '_>, document: &mut Document) -> Result<
         }
     };
 
-    // The id (XMI 2.5.1 §7.6.1).
-    let id = match root.attributes().find(|attribute| is_xmi(attribute, "id")) {
-        Some(id) if !id.value().is_empty() => id.value(),
-        Some(_) => {
-            return Err(not_read(format!(
-                "the root element {name:?} has an empty \"xmi:id\""
-            )));
-        }
-        None => {
-            return Err(not_read(format!(
-                "the root element {name:?} has no \"xmi:id\""
-            )));
-        }
-    };
+    let what = format!("the root element {name:?}");
+    let id = read_id(text, root, &what, document, &BTreeSet::new())?;
 
     // A type must name the root's own class (ADR 0016 D2). Like the kind and
     // the id, it is refused at the root.
@@ -209,7 +299,7 @@ fn read_root(text: &str, root: Node<'_, '_>, document: &mut Document) -> Result<
         .find(|attribute| is_type(attribute) && !names_class(root, attribute.value(), kind.name()))
     {
         return Err(not_read(format!(
-            "the root element {name:?} has the type {:?}, which names another class",
+            "{what} has the type {:?}, which names another class",
             attribute.value()
         )));
     }
@@ -222,44 +312,148 @@ fn read_root(text: &str, root: Node<'_, '_>, document: &mut Document) -> Result<
         return Err(unread_attribute(text, &attribute, &name));
     }
 
-    // The content: one `name` (SACM23-XMI-012), white space, comments and
-    // processing instructions only.
-    let mut root_name = None;
-    for child in root.children() {
-        if child.is_element() && child.tag_name().name() == "name" {
-            if root_name.is_some() {
-                return Err(unsupported(
-                    text,
-                    child.range().start,
-                    format!("the root element {name:?} has a second \"name\""),
-                ));
+    Ok(Pending {
+        order: 0,
+        parent: None,
+        kind,
+        id,
+        name: None,
+        written: name,
+        at: at_root,
+    })
+}
+
+/// Checks the start tag of `node`, a child element of `parent`: its role,
+/// type and kind, its id, and its other attributes, in that order.
+/// `ids` holds the ids read so far in the root's tree.
+fn child_start<'a>(
+    text: &str,
+    node: Node<'a, '_>,
+    parent: &Pending<'a>,
+    document: &Document,
+    ids: &BTreeSet<&str>,
+) -> Result<Pending<'a>, ReadError> {
+    let kind = child_kind(text, node, parent.kind, &parent.what())?;
+    let written = written_name(text, node);
+    let what = format!("the element {written:?}");
+    let id = read_id(text, node, &what, document, ids)?;
+    // Only `xmi:id` and the type (ADR 0016 D4).
+    if let Some(attribute) = node
+        .attributes()
+        .find(|attribute| !(is_xmi(attribute, "id") || is_type(attribute)))
+    {
+        return Err(unread_attribute(text, &attribute, &written));
+    }
+    Ok(Pending {
+        // Each element read before it has added one id.
+        order: ids.len(),
+        parent: Some(parent.id),
+        kind,
+        id,
+        name: None,
+        written,
+        at: node.range().start,
+    })
+}
+
+/// The `xmi:id` of `node` (XMI 2.5.1 §7.6.1). It must be non-empty and
+/// unlike every id read before it, in `document` or in `ids`. Refusals are
+/// at `node`, which `what` names.
+fn read_id<'a>(
+    text: &str,
+    node: Node<'a, '_>,
+    what: &str,
+    document: &Document,
+    ids: &BTreeSet<&str>,
+) -> Result<&'a str, ReadError> {
+    let not_read = |reason: String| unsupported(text, node.range().start, reason);
+    match node.attributes().find(|attribute| is_xmi(attribute, "id")) {
+        None => Err(not_read(format!("{what} has no \"xmi:id\""))),
+        Some(id) if id.value().is_empty() => {
+            Err(not_read(format!("{what} has an empty \"xmi:id\"")))
+        }
+        Some(id) if document.contains(id.value()) || ids.contains(id.value()) => {
+            Err(not_read(format!(
+                "{what} has the \"xmi:id\" {:?} of an earlier element",
+                id.value()
+            )))
+        }
+        Some(id) => Ok(id.value()),
+    }
+}
+
+/// The kind of the child element `node` of a `parent` element, which
+/// `parent_what` names (SACM23-XMI-016; XMI 2.5.1 §7.6.3, §7.8.6).
+///
+/// The child is a role element: in no namespace, and named as a composite
+/// role of the parent's class. Its kind is the class its type attributes
+/// name, which must agree; without one, it is the role's declared type, if
+/// that is concrete. The kind must conform to the role and be one this
+/// release reads (ADR 0016 D5, D6). Every refusal is at the child's start
+/// tag.
+fn child_kind(
+    text: &str,
+    node: Node<'_, '_>,
+    parent: ElementKind,
+    parent_what: &str,
+) -> Result<ElementKind, ReadError> {
+    use ElementKind::{ArgumentPackage, AssuranceCasePackage, Claim};
+
+    let written = written_name(text, node);
+    let not_read = |reason: String| unsupported(text, node.range().start, reason);
+    if let Some(namespace) = node.tag_name().namespace().filter(|uri| !uri.is_empty()) {
+        return Err(not_read(format!(
+            "the element {written:?} in {parent_what} is in the namespace {namespace:?}, so it is not read as a role"
+        )));
+    }
+    let Some(role) = role_named(parent, node.tag_name().name()) else {
+        return Err(not_read(format!(
+            "the element {written:?} in {parent_what} is not a role of {parent}"
+        )));
+    };
+    let mut typed = None;
+    for attribute in node.attributes().filter(is_type) {
+        let Some(kind) = type_kind(node, attribute.value()) else {
+            return Err(not_read(format!(
+                "the element {written:?} has the type {:?}, which names no concrete SACM class",
+                attribute.value()
+            )));
+        };
+        match typed {
+            Some(earlier) if earlier != kind => {
+                return Err(not_read(format!(
+                    "the element {written:?} has two types, which name {earlier} and {kind}"
+                )));
             }
-            root_name = Some(read_name(text, child)?);
-        } else if child.is_element() {
-            return Err(unsupported(
-                text,
-                child.range().start,
-                format!(
-                    "the element {:?} in the root element {name:?} is not read in this release",
-                    written_name(text, child)
-                ),
-            ));
-        } else {
-            check_text(text, child, &name)?;
+            _ => typed = Some(kind),
         }
     }
-
-    document
-        .insert_node(None, kind, ElementId::new(id), root_name)
-        .map_err(|error| match error {
-            InsertError::DuplicateId(id) => not_read(format!(
-                "the root element {name:?} has the \"xmi:id\" {:?} of an earlier root",
-                id.as_str()
-            )),
-            other => not_read(format!(
-                "the root element {name:?} cannot be held in the document: {other}"
-            )),
-        })
+    let kind = match (typed, role.declared) {
+        (Some(kind), _) | (None, DeclaredType::Kind(kind)) => kind,
+        (None, DeclaredType::Abstract(class)) => {
+            return Err(not_read(format!(
+                "the element {written:?} has no type, and its role has the abstract type {class}"
+            )));
+        }
+    };
+    if !role.declared.admits(kind) {
+        return Err(not_read(format!(
+            "the element {written:?} has the type {kind}, which its role {:?} does not admit",
+            role.name
+        )));
+    }
+    // The readable children. At most one role of a class admits a kind, so
+    // the parent and the kind decide the role.
+    if !matches!(
+        (parent, kind),
+        (AssuranceCasePackage, AssuranceCasePackage | ArgumentPackage)
+            | (ArgumentPackage, ArgumentPackage | Claim)
+    ) {
+        return Err(not_read(format!(
+            "the {kind} {written:?} in {parent_what} is not read in this release"
+        )));
+    }
+    Ok(kind)
 }
 
 /// The `LangString` that the `name` element `node` holds (SACM23-XMI-011,
@@ -318,26 +512,30 @@ fn read_name(text: &str, node: Node<'_, '_>) -> Result<LangString, ReadError> {
     Ok(name)
 }
 
-/// Refuses `node` if it is text that is not all white space, at its first
-/// character in the input that is not literal white space. A CDATA section
-/// or character reference counts as such a character even when it stands for
-/// white space, so `<![CDATA[ ]]>x` is refused at the `<![CDATA[`, and
-/// `&#x20;x` at the `&`.
+/// Refuses `node` if it is text that is not all literal white space, at its
+/// first character in the input that is not literal white space. A CDATA
+/// section or character reference counts as such a character even when it
+/// stands for white space, so `<![CDATA[ ]]>` is refused at the `<![CDATA[`,
+/// and `&#x20;` at the `&`.
 fn check_text(text: &str, node: Node<'_, '_>, parent: &str) -> Result<(), ReadError> {
     let Some(content) = node.text().filter(|_| node.is_text()) else {
         return Ok(());
     };
-    if content.chars().all(is_xml_space) {
-        return Ok(());
-    }
     // roxmltree gives the range of the text's first piece only, so the
     // first character that is not literal white space is looked for in the
-    // input.
+    // input. After literal white space, the text ends at any markup but a
+    // CDATA section or a reference.
     let start = node.range().start;
     let first = text
         .get(start..)
         .and_then(|rest| rest.find(|c: char| !is_xml_space(c)))
         .map_or(start, |skipped| start + skipped);
+    let marked = text
+        .get(first..)
+        .is_some_and(|rest| rest.starts_with("<![CDATA[") || rest.starts_with('&'));
+    if content.chars().all(is_xml_space) && !marked {
+        return Ok(());
+    }
     Err(unsupported(
         text,
         first,
@@ -360,12 +558,29 @@ fn is_type(attribute: &Attribute<'_, '_>) -> bool {
 /// removed first, as a `QName`'s is collapsed (XML Schema 1.0 Part 2 §4.3.6);
 /// white space inside it stays, so it names no class.
 fn names_class(node: Node<'_, '_>, value: &str, class: &str) -> bool {
+    sacm_class(node, value) == Some(class)
+}
+
+/// The concrete SACM class that the type `value` names, resolved as by
+/// [`names_class`].
+fn type_kind(node: Node<'_, '_>, value: &str) -> Option<ElementKind> {
+    let class = sacm_class(node, value)?;
+    ElementKind::ALL
+        .iter()
+        .copied()
+        .find(|kind| kind.name() == class)
+}
+
+/// The local part of the type `value`, a `QName` resolved in the scope of
+/// `node` without its leading and trailing white space, if it is in the
+/// SACM namespace.
+fn sacm_class<'v>(node: Node<'_, '_>, value: &'v str) -> Option<&'v str> {
     let value = value.trim_matches(is_xml_space);
     let (prefix, local) = match value.split_once(':') {
         Some((prefix, local)) => (Some(prefix), local),
         None => (None, value),
     };
-    local == class && node.lookup_namespace_uri(prefix) == Some(SACM_NS)
+    (node.lookup_namespace_uri(prefix) == Some(SACM_NS)).then_some(local)
 }
 
 /// The `Unsupported` refusal of an attribute that is not read, at its name.
@@ -397,4 +612,102 @@ fn written_name(text: &str, element: Node<'_, '_>) -> String {
         })
         .unwrap_or(element.tag_name().name())
         .to_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::diagnostic::SourceLocation;
+    use crate::xmi::{ReadError, ReadOptions, read};
+
+    const OPEN: &str = concat!(
+        "<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
+        " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"p\">\n"
+    );
+
+    /// The refusal of `content` in the root `p`, on line 2.
+    fn refusal(content: &str) -> Option<(Option<SourceLocation>, String)> {
+        let input = format!("{OPEN}{content}</sacm:ArgumentPackage>");
+        match read(input.as_bytes(), &ReadOptions::default()) {
+            Err(ReadError::Unsupported { location, reason }) => Some((location, reason)),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn a_reference_or_cdata_section_that_stands_for_white_space_is_refused() {
+        for (content, column) in [
+            ("  &#x20;", 3),
+            ("  <![CDATA[ ]]>", 3),
+            (" <!-- c --> &#9;", 13),
+        ] {
+            assert_eq!(
+                refusal(content).map(|(location, _)| location),
+                Some(SourceLocation::at(2, column)),
+                "{content:?}"
+            );
+        }
+        assert_eq!(
+            refusal(
+                " 	<!-- c -->
+ "
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn refusals_name_the_root_or_the_child_element() {
+        let claim = "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\">";
+        let cases = [
+            (
+                "<name/><name/>".to_owned(),
+                "the root element \"sacm:ArgumentPackage\" has a second \"name\"",
+            ),
+            (
+                format!("{claim}<name/><name/></argumentElement>"),
+                "the element \"argumentElement\" has a second \"name\"",
+            ),
+            (
+                format!("{claim}<foo/></argumentElement>"),
+                "the element \"foo\" in the element \"argumentElement\" is not a role of Claim",
+            ),
+            (
+                "<argumentElement xmi:id=\"c\"/>".to_owned(),
+                "the element \"argumentElement\" has no type, and its role has the abstract type ArgumentationElement",
+            ),
+            (
+                "<argumentElement xmi:type=\"sacm:Note\" xmi:id=\"c\"/>".to_owned(),
+                "the element \"argumentElement\" has the type Note, which its role \"argumentElement\" does not admit",
+            ),
+            (
+                "<argumentElement xmi:type=\"sacm:Term\" xsi:type=\"sacm:Claim\" xmi:id=\"c\" \
+                 xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"/>"
+                    .to_owned(),
+                "the element \"argumentElement\" has two types, which name Term and Claim",
+            ),
+            (
+                "<sacm:argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\"/>".to_owned(),
+                "the element \"sacm:argumentElement\" in the root element \"sacm:ArgumentPackage\" is in the namespace \"http://www.omg.org/spec/SACM/20220301\", so it is not read as a role",
+            ),
+            (
+                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"p\"/>".to_owned(),
+                "the element \"argumentElement\" has the \"xmi:id\" \"p\" of an earlier element",
+            ),
+            (
+                "<argumentElement xmi:type=\"sacm:Assertion\" xmi:id=\"c\"/>".to_owned(),
+                "the element \"argumentElement\" has the type \"sacm:Assertion\", which names no concrete SACM class",
+            ),
+            (
+                "<argumentElement xmi:type=\"sacm:AssertedInference\" xmi:id=\"c\"/>".to_owned(),
+                "the AssertedInference \"argumentElement\" in the root element \"sacm:ArgumentPackage\" is not read in this release",
+            ),
+        ];
+        for (content, reason) in cases {
+            assert_eq!(
+                refusal(&content).map(|(_, reason)| reason).as_deref(),
+                Some(reason),
+                "{content:?}"
+            );
+        }
+    }
 }

@@ -122,6 +122,13 @@ change bumps the minor version and is listed under **Breaking**.
   (`Code::CMD_INVALID_PARENT`, SACM-CMD-005), `InvalidId` (`Code::ID_INVALID`,
   SACM-ID-002) and `DuplicateId` (`Code::CMD_DUPLICATE_ID`, SACM-CMD-004).
   `impl From<&ElementId> for ElementId` [LIB-EDIT-001].
+- `xmi::read` reads package content: an AssuranceCasePackage in `assuranceCasePackage`, an
+  ArgumentPackage in `argumentPackage` or `argumentElement`, and a Claim in
+  `argumentElement`, each with its `xmi:id` and name, in document order. A child's class
+  is the one its `xmi:type` or `xsi:type` names, or its role's concrete declared type. So
+  what `xmi::write` writes for a document built with `edit::apply` reads back. Every other
+  child, attribute or text in a package stays `Unsupported`, at its location
+  [SACM23-XMI-016, SACM23-XMI-010].
 
 ### Changed
 

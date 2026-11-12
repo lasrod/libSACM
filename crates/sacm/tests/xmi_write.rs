@@ -15,11 +15,10 @@
 //!   one, double-quoted attributes, and values that hold no raw `<`, `>` or
 //!   TAB and no reference but the seven pinned escapes. Every test that uses it
 //!   checks the form as well;
-//! - read back through `xmi::read`, which reads `AssuranceCasePackage` and
-//!   `ArgumentPackage` roots with nothing in them but a name. Output that has
-//!   other content in a
-//!   package must still be well-formed: the reader may refuse it only as
-//!   `Unsupported`, never as `Malformed`.
+//! - read back through `xmi::read`, which reads `AssuranceCasePackage`,
+//!   `ArgumentPackage` and `Claim` content (SACM23-XMI-016); output with
+//!   other content may be refused only as `Unsupported`, never as
+//!   `Malformed`.
 //!
 //! The role and type expected for each child come from `expected_tag`, which is
 //! written from the containment roles in `docs/sacm/metamodel-inventory.md`,

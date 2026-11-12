@@ -61,12 +61,9 @@
 //!
 //! A document built with [`apply`] validates with
 //! [`validation::validate`](crate::validation::validate) and writes with
-//! [`xmi::write`](crate::xmi::write). In this release
-//! [`xmi::read`](crate::xmi::read) reads only package roots and their names.
-//! It refuses, as
-//! [`ReadError::Unsupported`](crate::xmi::ReadError::Unsupported), a file
-//! whose packages hold elements, so a file with a Claim that this crate wrote
-//! cannot be read back yet.
+//! [`xmi::write`](crate::xmi::write), and what is written reads back with
+//! [`xmi::read`](crate::xmi::read) to the same ids, kinds, names, parents and
+//! order.
 //!
 //! # Examples
 //!
@@ -96,6 +93,11 @@
 //! assert!(validation::validate(&doc).is_empty());
 //! let text = xmi::write(&doc, &WriteOptions::default())?;
 //! assert!(text.contains(r#"xmi:id="c_top""#));
+//!
+//! // And it reads back.
+//! let back = xmi::read(text.as_bytes(), &xmi::ReadOptions::default())?.into_document();
+//! let parent = back.get("c_top").and_then(|claim| claim.parent());
+//! assert_eq!(parent.map(|parent| parent.id().as_str()), Some("argument_package_1"));
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
