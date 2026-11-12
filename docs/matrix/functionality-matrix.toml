@@ -2154,7 +2154,7 @@ title = "Create operations"
 requirement = "Elements are created through operation values applied by `sacm::edit::apply(&mut Document, impl Into<Operation>) -> Result<Mutation, EditError>` (ADR 0019): `CreateAssuranceCasePackage` and `CreateArgumentPackage` (`root(name)` or `new(parent, name)`) and `CreateClaim` (`new(parent, name)`), each with an optional `with_id(id)` and the read accessors `parent()`, `id()` and `name()`; `impl From<&ElementId> for ElementId` lets a returned id be the next parent. The name is a required `LangString`, stored exactly (ADR 0013). A parent is legal exactly when the crate's containment table admits the child kind. A caller id must be an XML NCName (XMI 2.5.1 §7.6.1 `xsd:ID`); a generated id is `<snake_case kind>_<n>`, the smallest unused `n` above a per-kind counter that advances only on success, so it is deterministic for a given sequence of operations. Refusals, checked in this order, leave the document unchanged: `ParentNotFound` (SACM-CMD-001), `InvalidParent` (SACM-CMD-005), `InvalidId` (SACM-ID-002), `DuplicateId` (SACM-CMD-004). `Mutation::created_ids()` lists the new element first. Each later model row extends the operations to its class."
 source = "ADR 0019 (the maintainer, 2026-11-12); XMI 2.5.1 §7.6.1 (pp. 13-14) `<xsd:attribute name=\"id\" type=\"xsd:ID\" use=\"optional\"/>` and \"the value for xmi:id is unique across all elements within the file\"; Namespaces in XML 1.0 (Third Edition) §3 [4] `NCName ::= Name - (Char* ':' Char*)` `/* An XML Name, minus the \":\" */`; XML 1.0 (Fifth Edition) §2.3 [4] NameStartChar (`\":\" | [A-Z] | \"_\" | [a-z] | …` through `[#x10000-#xEFFFF]`), [4a] `NameChar ::= NameStartChar | \"-\" | \".\" | [0-9] | #xB7 | [#x0300-#x036F] | [#x203F-#x2040]`, [5] `Name ::= NameStartChar (NameChar)*`; D-ID; ADR 0010; ADR 0011; ADR 0013; ADR 0014; assurance-forge `commands/operations.h`, `commands.cpp:43-90, 178-200`"
 kind = "editing"
-status = "implemented"
+status = "verified"
 depends_on = ["SACM23-ARG-002", "LIB-API-004", "LIB-API-008", "SACM23-XMI-012", "SACM23-VAL-018"]
 acceptance = [
   "Each of the three operations creates its element with the given parent (or as a root, in document order), the given name exactly, and the given id; `created_ids()` is `[id]`. `LangString::default()` and names with empty fields are stored exactly.",
@@ -2204,6 +2204,7 @@ tests = [
   "crates/sacm/tests/edit_create.rs::lib_edit_001_ncname_first_characters_are_checked_at_every_range_edge",
   "crates/sacm/tests/edit_create.rs::lib_edit_001_ncname_later_characters_are_checked_at_every_range_edge",
 ]
+verification = "docs/verification/0028-m1-create-operations.md"
 
 [[row]]
 id = "LIB-EDIT-002"

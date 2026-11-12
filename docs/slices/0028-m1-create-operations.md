@@ -1,8 +1,8 @@
 ---
 slice: 0028
 name: m1-create-operations
-state: in-progress
-step: verification
+state: done
+step: verified
 rows: [LIB-EDIT-001]
 mode: pr
 base: slice/0027-m1-validate-missing-name (PR #38)
@@ -42,3 +42,4 @@ ADR 0011 (errors), D-ID (ids), and the assurance-forge C++ command API.
   - The catalog rows and status note, and the citations, are fixed by the lead.
   - The docs review (2 blocking: a written file cannot be read back yet, and the refusals give no fix) goes to the implementer.
   - Logged: `created_id()`, `From<&str>` for LangString and a public `can_contain` are for the architect later; reading package content should come soon.
+- 2026-11-12 verification round 2: PASS at f9d824a; LIB-EDIT-001 is verified.
