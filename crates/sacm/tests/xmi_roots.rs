@@ -1074,6 +1074,46 @@ fn sacm23_xmi_001_a_repeated_root_id_is_unsupported_at_the_second_root() {
     assert_unsupported_at(row, other_kind.as_bytes(), loc(row, 4, 3));
 }
 
+#[test]
+fn sacm23_xmi_001_a_repeated_root_id_is_refused_at_the_root_before_its_attributes_and_content() {
+    let row = "SACM23-XMI-001";
+    // The second root also has an unread attribute, or unread content,
+    // either of which would be refused first if the id were checked later.
+    let inputs = [
+        "\n  <sacm:ArgumentPackage xmi:id=\"a\"/>\n  <sacm:ArgumentPackage xmi:id=\"a\" gid=\"g\"/>\n",
+        "\n  <sacm:ArgumentPackage xmi:id=\"a\"/>\n  <sacm:ArgumentPackage gid=\"g\" xmi:id=\"a\"/>\n",
+        "\n  <sacm:ArgumentPackage xmi:id=\"a\"/>\n  <sacm:ArgumentPackage xmi:id=\"a\"><foo/></sacm:ArgumentPackage>\n",
+        "\n  <sacm:ArgumentPackage xmi:id=\"a\"/>\n  <sacm:AssuranceCasePackage xmi:id=\"a\">\
+         <argumentPackage xmi:id=\"x\" gid=\"g\"/></sacm:AssuranceCasePackage>\n",
+    ];
+    for content in inputs {
+        assert_unsupported_at(row, wrapped(content).as_bytes(), loc(row, 3, 3));
+    }
+}
+
+#[test]
+fn sacm23_xmi_001_a_root_that_repeats_an_earlier_roots_child_id_is_refused_at_the_root() {
+    let row = "SACM23-XMI-001";
+    let first = "\n  <sacm:ArgumentPackage xmi:id=\"a\">\
+                 <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\"/></sacm:ArgumentPackage>\n";
+    let seconds = [
+        "  <sacm:ArgumentPackage xmi:id=\"c\"/>\n",
+        "  <sacm:ArgumentPackage xmi:id=\"c\"><foo/></sacm:ArgumentPackage>\n",
+        "  <sacm:AssuranceCasePackage xmi:id=\"c\" gid=\"g\"/>\n",
+    ];
+    for second in seconds {
+        let input = wrapped(&format!("{first}{second}"));
+        assert_unsupported_at(row, input.as_bytes(), loc(row, 3, 3));
+    }
+    // A grandchild's id, at depth 3.
+    let deep = wrapped(
+        "\n  <sacm:AssuranceCasePackage xmi:id=\"a\"><argumentPackage xmi:id=\"b\">\
+         <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\"/></argumentPackage></sacm:AssuranceCasePackage>\n  \
+         <sacm:ArgumentPackage xmi:id=\"c\"><foo/></sacm:ArgumentPackage>\n",
+    );
+    assert_unsupported_at(row, deep.as_bytes(), loc(row, 3, 3));
+}
+
 // --- SACM23-XMI-001 13. Order and determinism --------------------------------
 
 /// `text` encoded as UTF-16 LE without a byte order mark, which stays

@@ -512,30 +512,28 @@ fn read_name(text: &str, node: Node<'_, '_>) -> Result<LangString, ReadError> {
     Ok(name)
 }
 
-/// Refuses `node` if it is text that is not all literal white space, at its
-/// first character in the input that is not literal white space. A CDATA
-/// section or character reference counts as such a character even when it
-/// stands for white space, so `<![CDATA[ ]]>` is refused at the `<![CDATA[`,
-/// and `&#x20;` at the `&`.
+/// Refuses `node` if it is text whose value is not all XML white space
+/// (space, TAB, LF, CR), however it is written: a CDATA section or character
+/// reference that stands for white space is white space (the XML Infoset).
+/// The refusal is at the text's first character in the input that is not
+/// literal white space; a CDATA section or reference there is located at its
+/// start, so `<![CDATA[x]]>` is refused at the `<![CDATA[`, and `&#xA0;` at
+/// the `&`.
 fn check_text(text: &str, node: Node<'_, '_>, parent: &str) -> Result<(), ReadError> {
     let Some(content) = node.text().filter(|_| node.is_text()) else {
         return Ok(());
     };
+    if content.chars().all(is_xml_space) {
+        return Ok(());
+    }
     // roxmltree gives the range of the text's first piece only, so the
     // first character that is not literal white space is looked for in the
-    // input. After literal white space, the text ends at any markup but a
-    // CDATA section or a reference.
+    // input.
     let start = node.range().start;
     let first = text
         .get(start..)
         .and_then(|rest| rest.find(|c: char| !is_xml_space(c)))
         .map_or(start, |skipped| start + skipped);
-    let marked = text
-        .get(first..)
-        .is_some_and(|rest| rest.starts_with("<![CDATA[") || rest.starts_with('&'));
-    if content.chars().all(is_xml_space) && !marked {
-        return Ok(());
-    }
     Err(unsupported(
         text,
         first,
@@ -634,11 +632,31 @@ mod tests {
     }
 
     #[test]
-    fn a_reference_or_cdata_section_that_stands_for_white_space_is_refused() {
+    fn a_reference_or_cdata_section_that_stands_for_white_space_is_white_space() {
+        for content in [
+            "  &#x20;",
+            "&#9;&#10;&#13;&#x20;",
+            "  <![CDATA[ ]]>",
+            "<![CDATA[	
+]]>&#xD; ",
+            " <!-- c --> &#9;",
+            " 	<!-- c -->
+ ",
+        ] {
+            let input = format!("{OPEN}{content}</sacm:ArgumentPackage>");
+            let read = read(input.as_bytes(), &ReadOptions::default());
+            assert!(read.is_ok(), "{content:?}: {read:?}");
+        }
+    }
+
+    #[test]
+    fn other_text_is_refused_at_its_first_character_that_is_not_literal_white_space() {
         for (content, column) in [
-            ("  &#x20;", 3),
-            ("  <![CDATA[ ]]>", 3),
-            (" <!-- c --> &#9;", 13),
+            ("  x", 3),
+            ("  &#xA0;", 3),
+            ("  <![CDATA[x]]>", 3),
+            (" <![CDATA[ ]]>&#x20;x", 2),
+            (" <!-- c --> &#9;x", 13),
         ] {
             assert_eq!(
                 refusal(content).map(|(location, _)| location),
@@ -646,13 +664,6 @@ mod tests {
                 "{content:?}"
             );
         }
-        assert_eq!(
-            refusal(
-                " 	<!-- c -->
- "
-            ),
-            None
-        );
     }
 
     #[test]

@@ -35,9 +35,9 @@ use super::{AbstractClass, AssertionDeclaration, ElementId, ElementKind, LangStr
 /// [ADR 0014]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0014-artifact-package-admits-every-artifact-element.md
 ///
 /// In this release [`xmi::read`](crate::xmi::read) fills a document with
-/// `AssuranceCasePackage` and `ArgumentPackage` roots, but nothing inside
-/// them yet, and [`edit::apply`](crate::edit::apply) creates
-/// AssuranceCasePackage, ArgumentPackage and Claim elements. Tests build
+/// `AssuranceCasePackage` and `ArgumentPackage` roots and the
+/// `AssuranceCasePackage`, `ArgumentPackage` and `Claim` elements in them,
+/// and [`edit::apply`](crate::edit::apply) creates the same three kinds. Tests build
 /// documents with other kinds through the `test-support` feature's
 /// `Document::insert`. [`Document::new`] is empty.
 ///

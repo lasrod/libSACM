@@ -1066,7 +1066,7 @@ fn sacm23_xmi_016_text_or_a_second_or_unreadable_name_in_a_child_is_unsupported_
             "text after a name",
             claim(&format!("<name content=\"X\"/>{MARK}x")),
         ),
-        refused("CDATA in a Claim", claim(&format!("{MARK}<![CDATA[ ]]>"))),
+        refused("CDATA in a Claim", claim(&format!("{MARK}<![CDATA[x]]>"))),
         refused(
             "text in an ACP child",
             in_acp(&format!(
@@ -1097,6 +1097,168 @@ fn sacm23_xmi_016_text_or_a_second_or_unreadable_name_in_a_child_is_unsupported_
         ),
     ];
     assert_all_unsupported_at_mark("content", &cases);
+}
+
+#[test]
+fn sacm23_xmi_016_a_duplicate_child_id_is_refused_at_the_child_before_later_content() {
+    // Each duplicate is followed by content that is refused too, so the
+    // duplicate must be found when its start tag is read, not later.
+    let wrapper = "<xmi:XMI xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" \
+                   xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\">\n";
+    let claim = |id: &str| format!("<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"{id}\"/>");
+    let cases = [
+        refused(
+            "an earlier root's id, then <foo/>",
+            format!(
+                "{wrapper}<sacm:ArgumentPackage xmi:id=\"a\"/>\n<sacm:ArgumentPackage xmi:id=\"b\">\
+                 {MARK}{}<foo/></sacm:ArgumentPackage>\n</xmi:XMI>",
+                claim("a")
+            ),
+        ),
+        refused(
+            "an earlier root's child's id, then <foo/>",
+            format!(
+                "{wrapper}<sacm:ArgumentPackage xmi:id=\"a\">{}</sacm:ArgumentPackage>\n\
+                 <sacm:ArgumentPackage xmi:id=\"b\">{MARK}{}<foo/></sacm:ArgumentPackage>\n</xmi:XMI>",
+                claim("c"),
+                claim("c")
+            ),
+        ),
+        refused(
+            "a sibling's id, then <foo/>",
+            in_ap(&format!("{}{MARK}{}<foo/>", claim("x"), claim("x"))),
+        ),
+        refused(
+            "the root's own id, then <foo/>",
+            in_ap(&format!("{MARK}{}<foo/>", claim("arguments"))),
+        ),
+        refused(
+            "a sibling's id, with <foo/> inside",
+            in_ap(&format!(
+                "{}{MARK}<argumentElement xmi:type=\"sacm:ArgumentPackage\" xmi:id=\"x\"><foo/></argumentElement>",
+                claim("x")
+            )),
+        ),
+        refused(
+            "a cousin's id, then <foo/>",
+            in_acp(&format!(
+                "<argumentPackage xmi:id=\"a\">{}</argumentPackage>\
+                 <argumentPackage xmi:id=\"b\">{MARK}{}<foo/></argumentPackage>",
+                claim("x"),
+                claim("x")
+            )),
+        ),
+    ];
+    assert_all_unsupported_at_mark("duplicate id before later content", &cases);
+}
+
+// --- Item 5 (new numbering): white space written as CDATA or references ----
+
+/// The ways of writing text whose value is all XML white space.
+const WHITE_SPACE: [&str; 11] = [
+    " \t\n\r ",
+    "<![CDATA[ ]]>",
+    "<![CDATA[]]>",
+    "&#x20;",
+    "&#32;",
+    "&#9;",
+    "&#xA;",
+    "&#xD;",
+    "\n  &#x20;<![CDATA[\t]]>&#xD;&#xA;\n",
+    "<!--c-->&#9;<?pi x?><![CDATA[\n]]>",
+    "&#x9;&#x0A;&#13;&#10;",
+];
+
+/// A document with eight slots for text, each replaced by `slots[i]`: in
+/// the `xmi:XMI` wrapper (0 and 7), in a root (1), in an AP child (2), in a
+/// Claim (3 and 5), and in a `name` (4 and 6).
+fn with_slots(slots: &[&str; 8]) -> String {
+    let [w0, w1, w2, w3, w4, w5, w6, w7] = slots;
+    format!(
+        "<xmi:XMI xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" \
+         xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\">{w0}\
+         <sacm:AssuranceCasePackage xmi:id=\"case\">{w1}\
+         <argumentPackage xmi:id=\"ap\">{w2}\
+         <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\">{w3}\
+         <name lang=\"en\" content=\"C\">{w4}</name>{w5}\
+         </argumentElement></argumentPackage>\
+         <name content=\"Case\">{w6}</name></sacm:AssuranceCasePackage>{w7}\
+         <sacm:ArgumentPackage xmi:id=\"second\"/></xmi:XMI>"
+    )
+}
+
+/// What each slot of [`with_slots`] is in.
+const SLOTS: [&str; 8] = [
+    "the wrapper, before the roots",
+    "a root",
+    "an ArgumentPackage child",
+    "a Claim, before its name",
+    "a Claim's name",
+    "a Claim, after its name",
+    "a root's name",
+    "the wrapper, between the roots",
+];
+
+#[test]
+fn sacm23_xmi_016_white_space_written_literally_as_cdata_or_as_references_is_accepted() {
+    let expected = shape(&read_ok(&with_slots(&[""; 8])));
+    assert_eq!(expected.count, 4, "{ROW}: setup: the bare document");
+    let mut failures = Vec::new();
+    for space in WHITE_SPACE {
+        // In each slot alone, then in all of them.
+        let mut inputs: Vec<(String, String)> = (0..8)
+            .map(|slot| {
+                let mut slots = [""; 8];
+                slots[slot] = space;
+                (SLOTS[slot].to_owned(), with_slots(&slots))
+            })
+            .collect();
+        inputs.push(("every slot".to_owned(), with_slots(&[space; 8])));
+        for (place, input) in inputs {
+            match read(input.as_bytes()) {
+                Ok(output) if shape(output.document()) == expected => {}
+                Ok(output) => failures.push(format!(
+                    "{space:?} in {place}: read as {:?}",
+                    shape(output.document())
+                )),
+                Err(error) => failures.push(format!("{space:?} in {place}: refused: {error}")),
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{ROW}: {} white-space inputs are not read as the document without them:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+}
+
+#[test]
+fn sacm23_xmi_016_a_no_break_space_reference_or_cdata_holding_text_is_unsupported_where_it_starts()
+{
+    let mut cases = Vec::new();
+    for text in [
+        "&#xA0;",
+        "<![CDATA[x]]>",
+        "<![CDATA[ x]]>",
+        "&#x20;x",
+        "&#160;",
+    ] {
+        for (slot, place) in SLOTS.iter().enumerate() {
+            let marked = format!("{MARK}{text}");
+            let mut slots = [""; 8];
+            slots[slot] = &marked;
+            cases.push(refused(format!("{text:?} in {place}"), with_slots(&slots)));
+            // After literal white space, still at the construct.
+            let spaced = format!(" \n {MARK}{text}");
+            slots[slot] = &spaced;
+            cases.push(refused(
+                format!("{text:?} after white space in {place}"),
+                with_slots(&slots),
+            ));
+        }
+    }
+    assert_all_unsupported_at_mark("non-white-space text", &cases);
 }
 
 // --- Item 5: a readable child under any other role ------------------------

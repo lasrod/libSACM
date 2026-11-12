@@ -5,10 +5,11 @@
 //! a [`WriteError`]. Neither does I/O: the caller reads and writes the file.
 //!
 //! In this release `read` reads `AssuranceCasePackage` and `ArgumentPackage`
-//! roots, bare or inside an `xmi:XMI` element, and the package content under
-//! them: the same two package kinds in packages, and `Claim` elements in
-//! argument packages, each with its name (SACM23-XMI-001, SACM23-XMI-012,
-//! SACM23-XMI-016). It refuses input that is unsafe ([`ReadError::Doctype`], SACM-SEC-001),
+//! roots, bare or inside an `xmi:XMI` element, and what they hold of three
+//! kinds: `AssuranceCasePackage` and `ArgumentPackage` elements in an
+//! `AssuranceCasePackage`, and `ArgumentPackage` and `Claim` elements in an
+//! `ArgumentPackage`, each with its id and name (SACM 2.3 §2.2, §2.4, §9.2,
+//! §11.4). It refuses input that is unsafe ([`ReadError::Doctype`], SACM-SEC-001),
 //! not well-formed ([`ReadError::Malformed`], SACM-XML-001) or not rooted in
 //! a SACM package ([`ReadError::InvalidRoot`] and [`ReadError::NoPackage`],
 //! SACM-XMI-001). Content it cannot represent yet is refused as
@@ -21,7 +22,8 @@
 //! refuses a non-default `assertionDeclaration` ([`WriteError::Unsupported`]),
 //! because it is not written yet. A document returned by this release's
 //! `read` always writes, and what `write` writes for a document built with
-//! [`edit::apply`](crate::edit::apply) reads back to the same document.
+//! [`edit::apply`](crate::edit::apply) reads back with the same ids, kinds,
+//! names, parents and order.
 //!
 //! # Examples
 //!
@@ -34,20 +36,21 @@
 //! let input = br#"<?xml version="1.0" encoding="UTF-8"?>
 //! <xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
 //!          xmlns:sacm="http://www.omg.org/spec/SACM/20220301">
-//!   <sacm:AssuranceCasePackage xmi:id="case"/>
-//!   <sacm:ArgumentPackage xmi:id="arguments"/>
+//!   <sacm:AssuranceCasePackage xmi:id="case">
+//!     <argumentPackage xmi:id="arguments">
+//!       <argumentElement xmi:type="sacm:Claim" xmi:id="c1"/>
+//!     </argumentPackage>
+//!   </sacm:AssuranceCasePackage>
 //! </xmi:XMI>"#;
 //! let document = xmi::read(input, &ReadOptions::default())?.into_document();
-//! let roots: Vec<_> = document.roots().map(|root| (root.id().as_str(), root.kind())).collect();
-//! assert_eq!(
-//!     roots,
-//!     [("case", ElementKind::AssuranceCasePackage), ("arguments", ElementKind::ArgumentPackage)]
-//! );
+//! let c1 = document.get("c1").expect("the Claim was read");
+//! assert_eq!(c1.kind(), ElementKind::Claim);
+//! assert_eq!(c1.parent().map(|parent| parent.id().as_str()), Some("arguments"));
 //!
 //! let text = xmi::write(&document, &WriteOptions::default())?;
 //! let back = xmi::read(text.as_bytes(), &ReadOptions::default())?.into_document();
-//! let ids: Vec<_> = back.roots().map(|root| root.id().as_str()).collect();
-//! assert_eq!(ids, ["case", "arguments"]);
+//! let ids: Vec<_> = back.elements().map(|element| element.id().as_str()).collect();
+//! assert_eq!(ids, ["case", "arguments", "c1"]);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
@@ -92,14 +95,20 @@ mod roots;
 /// `&#9;`, `&#10;` or `&#13;` to keep one). A field whose attribute is not
 /// written is absent. A root without a `name` has no name.
 ///
-/// Under each root, `read` reads the package content in document order
-/// (SACM23-XMI-016): an `AssuranceCasePackage` in `assuranceCasePackage`, an
-/// `ArgumentPackage` in `argumentPackage` or `argumentElement`, and a `Claim`
-/// in `argumentElement`, each a child of the element it is in, with its
-/// `xmi:id` and its name. A child's element name is its role, in no
-/// namespace. Its class is the one its `xmi:type` or `xsi:type` names (both,
-/// if present, must name the same class); without one, the role's declared
-/// type, if that is concrete.
+/// Under each root, `read` reads these children, in document order, each
+/// with its `xmi:id` and its name. A child's element name is its role, in no
+/// namespace:
+///
+/// | Parent | Role element | Reads | Needs `xmi:type` |
+/// |---|---|---|---|
+/// | AssuranceCasePackage (§9.2) | `assuranceCasePackage` | an AssuranceCasePackage | no |
+/// | AssuranceCasePackage (§9.2) | `argumentPackage` | an ArgumentPackage | no |
+/// | ArgumentPackage (§11.4) | `argumentElement` | an ArgumentPackage or a Claim | yes: the role's type, `ArgumentationElement`, is abstract (§11.3) |
+///
+/// The class is the one the child's `xmi:type` or `xsi:type` names (both, if
+/// present, must name the same class); without one, it is the role's declared
+/// type. §11.4's text spells the ArgumentPackage role `argumentationElement`;
+/// this release refuses that spelling as [`ReadError::Unsupported`].
 ///
 /// Elements and
 /// attributes are matched by namespace URI and local name, and an `xmi:type`
@@ -194,8 +203,8 @@ mod roots;
 ///   SACM class or that the role does not admit, two types that disagree,
 ///   no type under a role of an abstract type, any other kind (such as a
 ///   `description`, a `note` or an `ArgumentReasoning`), text, and attributes
-///   such as `gid` or `assertionDeclaration`. Text is refused even when it is
-///   a CDATA section or character reference that stands for white space.
+///   such as `gid` or `assertionDeclaration`, even
+///   `assertionDeclaration="asserted"`, its default.
 ///
 /// # Examples
 ///
@@ -342,8 +351,8 @@ const _: () = {
 
 /// Why [`read`] refused its input.
 ///
-/// Each refusal has a [`SourceLocation`] where one is known, and
-/// [`code`](Self::code) gives its catalog code. Lines end as XML 1.0 §2.11
+/// Every refusal has a [`SourceLocation`] except the parser's capacity-limit
+/// refusals, and [`code`](Self::code) gives its catalog code. Lines end as XML 1.0 §2.11
 /// ends them (a line feed, a carriage return and line feed, or a lone
 /// carriage return), and a leading byte order mark, UTF-8 or UTF-16, takes
 /// no column. Columns count characters, in UTF-16 input too.
@@ -431,9 +440,15 @@ impl ReadError {
         }
     }
 
-    /// Where in the input the refusal is, if known. Lines end at a line
-    /// feed, a carriage return and line feed, or a lone carriage return; a
-    /// leading byte order mark, UTF-8 or UTF-16, takes no column.
+    /// Where in the input the refusal is: an element at the `<` of its start
+    /// tag, an attribute at the first character of its name, text at its
+    /// first character that is not literal white space (a CDATA section or
+    /// reference at its start). `None` only when the input exceeds the
+    /// parser's capacity.
+    ///
+    /// Lines end at a line feed, a carriage return and line feed, or a lone
+    /// carriage return; a leading byte order mark, UTF-8 or UTF-16, takes no
+    /// column.
     #[must_use]
     pub fn location(&self) -> Option<SourceLocation> {
         match self {

@@ -745,6 +745,52 @@ fn assert_located(group: &str, rows: &[Row]) {
     );
 }
 
+/// Text after white space written as a reference or a CDATA section: at the
+/// start of that construct.
+fn marked_text_rows() -> Vec<Row> {
+    use Variant::Unsupported as U;
+    vec![
+        row("\"&#x20;x\" in a root", U, in_ap(&format!("{MARK}&#x20;x"))),
+        row(
+            "\"&#x20;x\" after literal white space in a Claim",
+            U,
+            in_claim(&format!(" 	 {MARK}&#x20;x")),
+        ),
+        row(
+            "\"&#x20;x\" in a name",
+            U,
+            in_ap(&format!("<name>{MARK}&#x20;x</name>")),
+        ),
+        row(
+            "\"&#x20;x\" in the wrapper",
+            U,
+            wrapped(&format!(
+                "{MARK}&#x20;x<sacm:ArgumentPackage xmi:id=\"a\"/>"
+            )),
+        ),
+        row(
+            "\"<![CDATA[ x]]>\" in a root",
+            U,
+            in_ap(&format!("{MARK}<![CDATA[ x]]>")),
+        ),
+        row(
+            "\"<![CDATA[ x]]>\" after literal white space in a Claim",
+            U,
+            in_claim(&format!("  {MARK}<![CDATA[ x]]>")),
+        ),
+        row(
+            "\"<![CDATA[ x]]>\" in a name",
+            U,
+            in_ap(&format!("<name>{MARK}<![CDATA[ x]]></name>")),
+        ),
+        row(
+            "\"<![CDATA[ ]]>x\" in a Claim",
+            U,
+            in_claim(&format!("{MARK}<![CDATA[ ]]>x")),
+        ),
+    ]
+}
+
 /// Every row of the table.
 fn all_rows() -> Vec<Row> {
     [
@@ -755,6 +801,7 @@ fn all_rows() -> Vec<Row> {
         name_rows(),
         child_role_rows(),
         child_content_rows(),
+        marked_text_rows(),
     ]
     .into_iter()
     .flatten()
@@ -796,6 +843,12 @@ fn sacm23_xmi_010_child_role_and_type_refusals_are_located() {
 #[test]
 fn sacm23_xmi_010_child_kind_id_attribute_and_content_refusals_are_located() {
     assert_located("child content", &child_content_rows());
+}
+
+#[test]
+fn sacm23_xmi_010_text_after_white_space_written_as_a_reference_or_cdata_is_located_at_that_construct()
+ {
+    assert_located("marked text", &marked_text_rows());
 }
 
 #[test]

@@ -128,7 +128,9 @@ change bumps the minor version and is listed under **Breaking**.
   is the one its `xmi:type` or `xsi:type` names, or its role's concrete declared type. So
   what `xmi::write` writes for a document built with `edit::apply` reads back. Every other
   child, attribute or text in a package stays `Unsupported`, at its location
-  [SACM23-XMI-016, SACM23-XMI-010].
+  [SACM23-XMI-016]. Every read refusal now carries the line and column of what it refuses
+  (an element's `<`, an attribute's name, text's first character that is not literal
+  white space); only the parser's capacity limits have none [SACM23-XMI-010].
 
 ### Changed
 

@@ -13,7 +13,8 @@
 //! - XMI import and deterministic export, with a strict SACM 2.3 mode and an
 //!   explicit tolerant mode for third-party and legacy files; built so far:
 //!   [`xmi::read`], which reads `AssuranceCasePackage` and `ArgumentPackage`
-//!   roots and their names and refuses everything else, and [`xmi::write`],
+//!   roots, the packages and Claims in them, and their names, and refuses
+//!   everything else, and [`xmi::write`],
 //!   which writes documents without a non-default `assertionDeclaration`,
 //! - validation against the specification's constraints, reported as
 //!   machine-readable diagnostics with stable codes; built so far: the
@@ -43,8 +44,7 @@
 //! [`sacm::xmi::read`](xmi::read) reads
 //! `AssuranceCasePackage` and `ArgumentPackage` roots, bare or in an
 //! `xmi:XMI` element, and the packages and Claims in them, with their names.
-//! It
-//! refuses unsafe and malformed input and roots that are not SACM packages
+//! It refuses unsafe and malformed input and roots that are not SACM packages
 //! with a diagnostic code, and content it cannot represent yet as
 //! `Unsupported`. [`sacm::xmi::write`](xmi::write) writes a document's roots
 //! and every element under them, with their names, deterministically, but
@@ -52,8 +52,9 @@
 //! later release writes it. [`edit::apply`] creates AssuranceCasePackage,
 //! ArgumentPackage and Claim elements, with a name and a given or generated
 //! id, or refuses with an [`EditError`](edit::EditError) and changes nothing.
-//! Reading the content of packages, validation rules other than the missing
-//! name, and the other edit operations are not built yet.
+//! Reading the other element kinds and attributes (such as a `description`, a
+//! `gid` or an `assertionDeclaration`), validation rules other than the
+//! missing name, and the other edit operations are not built yet.
 //!
 //! # Example
 //!
@@ -67,6 +68,9 @@
 //!   <sacm:AssuranceCasePackage xmi:id="case"/>
 //!   <sacm:ArgumentPackage xmi:id="arguments">
 //!     <name lang="en" content="Arguments"/>
+//!     <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+//!       <name lang="en" content="The system is safe"/>
+//!     </argumentElement>
 //!   </sacm:ArgumentPackage>
 //! </xmi:XMI>"#;
 //! let output = xmi::read(input, &ReadOptions::default())?;
