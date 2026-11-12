@@ -73,8 +73,10 @@ mod roots;
 /// namespace `http://www.omg.org/spec/XMI/20131001`. Each root becomes
 /// a parentless element of its kind, in document order, whose id is its
 /// `xmi:id` and whose name is missing. Elements and attributes are matched by
-/// namespace and local name, never by prefix. The SACM namespace is
-/// `http://www.omg.org/spec/SACM/20220301`.
+/// namespace URI and local name, and an `xmi:type` or `xsi:type` value is
+/// resolved as a `QName`, without its leading and trailing white space,
+/// against the namespaces in scope, so the choice of prefix does not matter.
+/// The SACM namespace is `http://www.omg.org/spec/SACM/20220301`.
 ///
 /// `read` refuses rather than drops: it never returns a document that is
 /// missing content from its input (ADR 0015). A root may carry only namespace
