@@ -1742,7 +1742,7 @@ id = "SACM23-XMI-001"
 area = "XMI"
 milestone = "M1"
 title = "Interchange roots"
-requirement = "`xmi::read` returns `Ok(ReadOutput)` with a `Document` (and its diagnostics, sorted per ADR 0011; none yet) when every interchange root is an `AssuranceCasePackage` or `ArgumentPackage` element in the pinned SACM namespace `http://www.omg.org/spec/SACM/20220301` (D-NS-PIN). A root is the document element, or each element child outside the XMI namespace of an `XMI` element in the XMI 2.5.1 namespace `http://www.omg.org/spec/XMI/20131001`. Elements and attributes are matched by namespace URI and local name, never by prefix (any-prefix equivalence is SACM23-XMI-002). Each root becomes a parentless element of its kind, in document order, whose id is its `xmi:id` exactly and whose name is missing (ADR 0013). A read root may carry only namespace declarations, `xmi:id`, `xmi:version` (ignored: XMI 2.5.1 identifies its version by namespace) and an `xmi:type` or `xsi:type` naming its own class; its content may be only white space, comments and processing instructions. The wrapper may carry only namespace declarations and `xmi:version`. Anything else is refused as `ReadError::Unsupported` at its location, never dropped (LIB-API-009): a child element or any other attribute of a root, non-white-space text, a root whose `xmi:id` is absent, empty or repeats an earlier root's, the other ten package kinds as roots (SACM23-ART-001, SACM23-TERM-001, AC-002/003, ARG-014/015), a package-kind name in another namespace or none (LIB-COMPAT-004), an `XMI` element in another namespace (LIB-COMPAT-002), and an XMI-namespace element as a root or wrapper child (SACM23-XMI-019). A root or wrapper child whose local name is none of the twelve package-kind names, and a wrapper with no root, are refused with a `ReadError` whose `code()` is SACM-XMI-001, at that element; among the refusals found while reading the roots this takes precedence over `Unsupported`, so which roots get SACM-XMI-001 does not depend on what a release can read (an `XMI` element outside the XMI namespace is `Unsupported` before its children are classified, ADR 0016 D1). No document is returned beside a refusal (ADR 0015). The XML checks of LIB-SEC-005 run before any root is classified."
+requirement = "`xmi::read` returns `Ok(ReadOutput)` with a `Document` (and its diagnostics, sorted per ADR 0011; none yet) when every interchange root is an `AssuranceCasePackage` or `ArgumentPackage` element in the pinned SACM namespace `http://www.omg.org/spec/SACM/20220301` (D-NS-PIN). A root is the document element, or each element child outside the XMI namespace of an `XMI` element in the XMI 2.5.1 namespace `http://www.omg.org/spec/XMI/20131001`. Elements and attributes are matched by namespace URI and local name, never by prefix (any-prefix equivalence is SACM23-XMI-002). Each root becomes a parentless element of its kind, in document order, whose id is its `xmi:id` exactly. Its name is missing (ADR 0013) unless it has a `name` child, which SACM23-XMI-012 reads. A read root may carry only namespace declarations, `xmi:id`, `xmi:version` (ignored: XMI 2.5.1 identifies its version by namespace) and an `xmi:type` or `xsi:type` naming its own class; its content may be only white space, comments, processing instructions and one `name` child under SACM23-XMI-012's rules. The wrapper may carry only namespace declarations and `xmi:version`. Anything else is refused as `ReadError::Unsupported` at its location, never dropped (LIB-API-009): any other child element or attribute of a root, non-white-space text, a root whose `xmi:id` is absent, empty or repeats an earlier root's, the other ten package kinds as roots (SACM23-ART-001, SACM23-TERM-001, AC-002/003, ARG-014/015), a package-kind name in another namespace or none (LIB-COMPAT-004), an `XMI` element in another namespace (LIB-COMPAT-002), and an XMI-namespace element as a root or wrapper child (SACM23-XMI-019). A root or wrapper child whose local name is none of the twelve package-kind names, and a wrapper with no root, are refused with a `ReadError` whose `code()` is SACM-XMI-001, at that element; among the refusals found while reading the roots this takes precedence over `Unsupported`, so which roots get SACM-XMI-001 does not depend on what a release can read (an `XMI` element outside the XMI namespace is `Unsupported` before its children are classified, ADR 0016 D1). No document is returned beside a refusal (ADR 0015). The XML checks of LIB-SEC-005 run before any root is classified."
 source = "formal/23-05-08 §2.2 (p. 4) \"The top object of the Argumentation package as a unit of interchange shall be the Argumentation::ArgumentPackage element of the SACM.\"; §2.4 (p. 4) \"The top object of the Assurance Case package as a unit of interchange shall be the SACM::AssuranceCasePackage element.\"; §2.2/§2.4 \"import and export XMI documents that conform with the SACM XML Schema produced by applying XMI rules to the normative MOF metamodel\"; §9.2 (p. 23) \"When users exchange content, it is expected they use this as the top-level container.\"; XMI 2.5.1 formal/15-06-07 §7.5.3 (p. 10) \"it must be the XMI element if there are multiple elements\", \"the XMI element may not be present when there is only a single top-level object\", \"Each version of XMI is unambiguously identified by its unique namespace URI\"; §7.8.1 (p. 16) \"The XML element name for each model Class, and Association in a document is its short name.\"; §9.5.2 rule 2a (p. 63); §7.6.1 (p. 13) `<xsd:attribute name=\"id\" type=\"xsd:ID\" use=\"optional\"/>`; XMI.xsd targetNamespace `http://www.omg.org/spec/XMI/20131001` (no `version` attribute; specification defect D10); D-NS-PIN; D-PRESERVE; ADR 0013; ADR 0015; ADR 0016; docs/sacm/diagnostics.md SACM-XMI-001; assurance-forge libs/sacm src/io/xmi_reader.cpp:2097-2142, 2191-2285, 2433-2459 (empty wrapper is SACM-XMI-001 as in C++; deviations in ADR 0016)"
 kind = "xmi"
 status = "verified"
@@ -1758,7 +1758,7 @@ acceptance = [
   "SACM-XMI-001: each of these gives `ReadError::InvalidRoot` with `code() == Some(Code::XMI_INVALID_ROOT)` (SACM-XMI-001), located at the `<` of the element's start tag, and `element_name` the name as written (`<sacm:Claim …>` displays exactly `the root element \"sacm:Claim\" is not a SACM package at line 1, column 1`): `<sacm:Claim xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\" xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"c1\"/>` (the C++ fixture `invalid/root-invalid.sacm.xmi`), `<sacm:ArgumentGroup …>`, `<sacm:assuranceCasePackage …>`, `<sacm:Foo/>`, `<r/>`, `<html xmlns=\"http://www.w3.org/1999/xhtml\">`, `<uml:Model xmlns:uml=\"http://www.omg.org/spec/UML/20131001\">`; a wrapper holding a valid ArgumentPackage then a `sacm:Claim` (at the Claim; no document is returned); an empty `<xmi:XMI xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"/>` and a wrapper holding only `<xmi:documentation/>` give `ReadError::NoPackage`, with the same code, located at the wrapper and displaying `the XMI element holds no SACM package at line L, column C`.",
   "SACM-XMI-001 takes precedence: a wrapper holding `<sacm:ArtifactPackage xmi:id=\"f\"/>` then `<sacm:Claim xmi:id=\"c\"/>` gives SACM-XMI-001 at the Claim, not `Unsupported`.",
   "Not readable yet, so `Unsupported` (`code()` `None`) at the stated element: each of the other 10 package-kind roots in the pinned namespace; `<foo:ArgumentPackage xmlns:foo=\"urn:x\" …>`; `<ArgumentPackage xmlns:xmi=\"…20131001\" xmi:id=\"p\"/>` in no namespace; `<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/2.2/argumentation\" …>`; `<xmi:XMI xmlns:xmi=\"http://www.omg.org/XMI\">` and `<XMI>` wrappers holding a valid root; a root `<xmi:Extension>`; a wrapper child `<xmi:documentation>` or `<xmi:extension>` next to a valid root (at that child).",
-  "Unread content, so `Unsupported` at that content: on a valid root, any one of `gid=\"g\"`, `gid=\"\"`, `isCitation=\"false\"`, `isAbstract=\"true\"`, `citedElement=\"x\"`, `abstractForm=\"x\"`, `interface=\"x\"`, `xmi:uuid`, `xmi:label`, `href`, `xmi:idref`, `xsi:schemaLocation`, `xml:lang`, `foo=\"1\"`, `ext:a=\"1\"`; a `<name/>` child, an `<argumentPackage/>` child, `<argumentElement xsi:type=\"sacm:Claim\"/>`, `<xmi:Extension/>`, `<gid>g</gid>`; non-white-space text.",
+  "Unread content, so `Unsupported` at that content: on a valid root, any one of `gid=\"g\"`, `gid=\"\"`, `isCitation=\"false\"`, `isAbstract=\"true\"`, `citedElement=\"x\"`, `abstractForm=\"x\"`, `interface=\"x\"`, `xmi:uuid`, `xmi:label`, `href`, `xmi:idref`, `xsi:schemaLocation`, `xml:lang`, `foo=\"1\"`, `ext:a=\"1\"`; a `<note/>` child, an `<argumentPackage/>` child, `<argumentElement xsi:type=\"sacm:Claim\"/>`, `<xmi:Extension/>`, `<gid>g</gid>`; non-white-space text.",
   "Ids, so `Unsupported` at the root: no `xmi:id`, `xmi:id=\"\"`, only an unprefixed `id=\"p\"`, or an `id` attribute in another namespace; two wrapped roots with the same `xmi:id` give `Unsupported` at the second.",
   "Order and determinism: the encoding refusals (LIB-API-009), DOCTYPE (LIB-SEC-001) and `Malformed` (LIB-SEC-002, LIB-SEC-005) come before any root classification; the same input always gives the same result.",
   "`ReadOutput` has `document()`, `diagnostics()` (empty in this release) and `into_document()`, and is `Send + Sync` (checked statically). The SACM-XMI-001 refusals follow ADR 0011: `InvalidRoot` and `NoPackage` are `#[non_exhaustive]` `ReadError` variants with a location (also returned by `location()`), its `Display` is one lowercase line without trailing punctuation that quotes names from the input, `source()` is `None`; `Code::XMI_INVALID_ROOT` is SACM-XMI-001 and appears in a table row of docs/sacm/diagnostics.md.",
@@ -1796,8 +1796,8 @@ tests = [
   "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_an_empty_id_is_refused_before_an_unread_attribute",
   "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_text_after_white_space_is_refused_at_its_first_character",
 ]
-verification = "docs/verification/0021-m1-interchange-roots.md"
-notes = "Parser leniencies beyond LIB-SEC-005's list were left to LIB-SEC-006 (W3C conformance suite), by the maintainer's decision of 2026-11-11 (slice 0021, verification round 3); LIB-SEC-006 closes the list within the suite (slice 0022)."
+verification = "docs/verification/0026-m1-names-in-xmi.md"
+notes = "Parser leniencies beyond LIB-SEC-005's list were left to LIB-SEC-006 (W3C conformance suite), by the maintainer's decision of 2026-11-11 (slice 0021, verification round 3); LIB-SEC-006 closes the list within the suite (slice 0022). Slice 0026: the unread-content example `<name/>` became `<note/>`, because SACM23-XMI-012 reads names; re-checked there."
 
 [[row]]
 id = "SACM23-XMI-002"
@@ -1844,7 +1844,8 @@ tests = [
   "crates/sacm/tests/xmi_namespace_prefixes.rs::sacm23_xmi_002_a_wrapper_with_only_xmi_content_under_any_prefix_is_no_package",
   "crates/sacm/tests/xmi_namespace_prefixes.rs::sacm23_xmi_002_unsupported_refusals_have_the_same_kind_code_and_location_under_any_prefix",
 ]
-verification = "docs/verification/0023-m1-namespace-prefixes.md"
+verification = "docs/verification/0026-m1-names-in-xmi.md"
+notes = "Slice 0026: a test's unread-content example `<name/>` became another child, because SACM23-XMI-012 reads names; re-checked there."
 
 [[row]]
 id = "SACM23-XMI-003"
@@ -1972,23 +1973,75 @@ id = "SACM23-XMI-011"
 area = "XMI"
 milestone = "M1"
 title = "String values survive XML exactly"
-requirement = "Saving and reloading keeps every string value exactly, including LangString `lang` and `content`: markup characters are escaped, TAB, LF and CR in attribute values are written as character references so attribute normalisation cannot change them, and a string holding a character XML 1.0 cannot represent makes saving fail with an error. It is never dropped or altered. For every LangString role, an absent `lang` or `content` is written as no attribute and reads back absent, and an empty one is written as `=\"\"` and reads back empty (ADR 0012); all nine absent/empty/non-empty combinations round-trip."
-source = "D-RT; D-PRESERVE; XML 1.0 §2.2, §3.3.3; formal/23-05-08 §8.3; ADR 0012"
+requirement = "Every string value written as an XML attribute (today an element id and a name's `lang` and `content`) reads back exactly. `xmi::write` escapes `&`, `<`, `>` and `\"`, and writes TAB, LF and CR as `&#9;`, `&#10;` and `&#13;`, so XML 1.0 §3.3.3 attribute normalisation cannot change them. A string holding a character outside XML 1.0 `Char` makes `xmi::write` fail with `UnrepresentableCharacter` naming the element and the character, and nothing is returned. For a LangString, an absent `lang` or `content` is written as no attribute and reads back absent; an empty one is written as `=\"\"` and reads back empty (ADR 0012). The reader keeps every value exactly, with no trimming or normalisation beyond what XML 1.0 itself does. Every later LangString role inherits these rules. C++ writes absent and empty alike (`xmi_writer.cpp:260-265`)."
+source = "formal/23-05-08 §8.3 (p. 18) \"lang:String[0..1] - a field to indicate the language used in the string.\", \"content:String[0..1] - the content of the string\"; XML 1.0 (Fifth Edition) §2.2 [2] Char, §3.3.3 \"For a character reference, append the referenced character to the normalized value.\" and \"For a white space character (#x20, #xD, #xA, #x9), append a space character (#x20) to the normalized value.\"; XMI 2.5.1 §9.5 (p. 60) \"XML attributes are normalized by XML processors\"; D-RT; D-PRESERVE; ADR 0012; ADR 0017 W3"
 kind = "xmi"
-status = "planned"
-depends_on = ["SACM23-BASE-001", "SACM23-XMI-007"]
+status = "verified"
+depends_on = ["SACM23-BASE-001", "SACM23-XMI-007", "SACM23-XMI-001"]
+acceptance = [
+  "All nine absent/empty/non-empty combinations of a name's `lang` and `content` round-trip through `xmi::write` and `xmi::read` on a named AssuranceCasePackage or ArgumentPackage root to an equal `LangString`. Absent fields write `<name />`; `lang=\"\"` and `content=\"\"` appear literally.",
+  "Reading `<name lang=\"\" />` gives `lang` `Some(\"\")` and `content` `None`; reading `<name />` gives `LangString::default()`.",
+  "A `lang` or `content` holding `& < > \" '`, TAB, LF, CR, CRLF, U+0085, U+2028, a character outside the BMP and a leading or trailing space round-trips exactly. The output contains `&amp;`, `&lt;`, `&gt;`, `&quot;`, `&#9;`, `&#10;` and `&#13;`, and no literal TAB, LF or CR inside an attribute value.",
+  "Reading `lang` or `content` set to `\"a&#9;b&#10;c&#13;d\"` gives `\"a\\tb\\nc\\rd\"`; the same value with a literal TAB, LF or CR reads as spaces (XML 1.0 §3.3.3); `lang=\" en \"` reads with its spaces kept.",
+  "A name whose `lang` or `content` holds U+0000, U+0008, U+000B, U+000C, U+001F, U+FFFE or U+FFFF makes `xmi::write` fail with `UnrepresentableCharacter` naming the owning element and the character, and no output is returned, on a root and on a nested Claim.",
+  "Within one element the id is checked before the name, and `lang` before `content`; the first failure is the result (ADR 0017).",
+  "The same named document writes identical bytes twice and matches a golden file.",
+]
+code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/output.rs", "crates/sacm/src/xmi/roots.rs", "docs/adr/0017-xmi-writer.md"]
+tests = [
+  "crates/sacm/tests/xmi_names.rs::sacm23_xmi_011_all_nine_absent_empty_and_non_empty_lang_and_content_combinations_round_trip",
+  "crates/sacm/tests/xmi_names.rs::sacm23_xmi_011_an_empty_lang_and_an_empty_name_element_read_to_exactly_those_fields",
+  "crates/sacm/tests/xmi_names.rs::sacm23_xmi_011_content_with_markup_line_breaks_non_bmp_and_edge_spaces_round_trips_exactly",
+  "crates/sacm/tests/xmi_names.rs::sacm23_xmi_011_lang_with_markup_line_breaks_non_bmp_and_edge_spaces_round_trips_exactly",
+  "crates/sacm/tests/xmi_names.rs::sacm23_xmi_011_character_references_read_as_the_characters_and_literal_white_space_as_spaces",
+  "crates/sacm/tests/xmi_names.rs::sacm23_xmi_011_a_character_outside_xml_char_in_lang_or_content_is_refused_naming_the_element",
+  "crates/sacm/tests/xmi_names.rs::sacm23_xmi_011_within_one_element_the_id_is_checked_before_the_name_and_lang_before_content",
+  "crates/sacm/tests/xmi_names.rs::sacm23_xmi_011_a_named_document_writes_identical_bytes_twice_and_matches_the_golden_file",
+]
+verification = "docs/verification/0026-m1-names-in-xmi.md"
 
 [[row]]
 id = "SACM23-XMI-012"
 area = "XMI"
 milestone = "M1"
 title = "The name containment in XMI"
-requirement = "Every ModelElement that has a name is written with exactly one `name` child holding its LangString as `lang` and `content` attributes (SACM23-XMI-011 rules), and import reads the `name` child into the element's name. A ModelElement read with no `name` child keeps no name: none is invented on load or save. Tolerant save writes it with no `name` child; strict save refuses the document (LIB-COMPAT-007; ADR 0013 amendment 1), and the absence is reported (SACM23-VAL-018). A second `name` child is preserved with an Error diagnostic in both load modes, never dropped silently, and strict save refuses the document (SACM-XMI-006, D-PRESERVE). A document is never refused on load for it, because the schema allows it (XMI 2.5.1 rule 4f: `maxOccurs` 'unbounded' regardless)."
-source = "formal/23-05-08 §2.4, §8.6 `name:LangString[1] (composition)`; XMI 2.5.1 §7.8.2, rule 4f; ptc/22-03-13 Base::ModelElement name; D-PRESERVE; D-STRICT; ADR 0013; assurance-forge libs/sacm io/xmi_reader.cpp, io/xmi_writer.cpp (name)"
+requirement = "`xmi::write` writes the name of every ModelElement that has one as exactly one `name` child: in no namespace, with no `xmi:id` or type attribute, as the element's first child (before any containment child), carrying `lang` and then `content` (SACM23-XMI-011 rules). An element whose name is missing is written with no `name` child, and nothing is invented (ADR 0013). `xmi::read` reads one `name` child of a package root into the root's name: no `name` child gives no name, and `<name/>` gives a name whose fields are absent. The `name` child may carry only `lang` and `content` in no namespace, plus an `xmi:type` or `xsi:type` naming `LangString`, and may contain only white space, comments and processing instructions. Anything else on or in it is refused as `ReadError::Unsupported` at its location, never dropped and never reinterpreted (ADR 0015): a second `name` child (SACM23-XMI-021), any other attribute, including `xmi:id` (SACM23-XMI-022) and `xml:lang` (which is not SACM `lang`), a type naming another class, an element child (SACM23-XMI-014, LIB-COMPAT-008), non-white-space text, and a `name` element in a namespace. Strict save refusing a nameless element belongs to LIB-COMPAT-007."
+source = "formal/23-05-08 §8.6 (p. 19) \"name:LangString[1] (composition) - the name of the ModelElement.\"; ptc/22-03-13 Base::ModelElement name (Association \"name\", D8); XMI 2.5.1 §7.8.6 (p. 19) \"Each property that is a composite is represented by an XML element, but not by an XML attribute.\", §7.8.4 (pp. 17-18), rule 2a (p. 63); XML 1.0 §2.12 (`xml:lang`); D-PRESERVE; ADR 0013; ADR 0015; ADR 0017 amendment 1. C++ always writes `<name>`, matches it by local name and keeps the last of two names (`xmi_writer.cpp:255-256`, `xmi_reader.cpp:1182-1218`)"
 kind = "xmi"
-status = "planned"
-depends_on = ["SACM23-XMI-001", "SACM23-BASE-003", "SACM23-XMI-011", "LIB-TOOL-020"]
-notes = "Slice 0025: owns the LangString `xmi:id` rule moved from SACM23-XMI-004 (an `xmi:id` on a LangString is not kept; it is reported with an Info diagnostic naming the id)."
+status = "verified"
+depends_on = ["SACM23-XMI-001", "SACM23-BASE-003", "SACM23-XMI-011", "LIB-TOOL-020", "SACM23-XMI-002"]
+notes = "Slice 0026: the LangString `xmi:id` rule moved to SACM23-XMI-022 and the second-name rule to SACM23-XMI-021; both are `Unsupported` until then. C++ behaviours not matched: the last of two names wins (`xmi_reader.cpp:1182-1218`, a silent drop), text read as content (`:805-808`, LIB-COMPAT-008), and matching `name` by local name only. Only a no-namespace `name` is read (XMI 2.5.1 rule 2a is ambiguous; reversible, with SACM23-XMI-016)."
+acceptance = [
+  "Write: a `name` child is written on a named root and on named elements at every depth, one per ModelElement kind the document can hold, as the first child, with attributes `lang` then `content`.",
+  "Write: an element whose only content is its name is written as a start tag, one `<name … />` line and an end tag; an element with neither a name nor children stays `<x … />`.",
+  "Write: an element with no name is written with no `name` child, and a UtilityElement never gets one.",
+  "Write: no `xmi:id` and no type attribute are ever written on `name`.",
+  "Read: AssuranceCasePackage and ArgumentPackage roots, bare and wrapped, with `<name lang=\"en\" content=\"Case\"/>` read to that name; a root without `name` reads to no name; `<name/>` reads to `LangString::default()`.",
+  "Read: a `name` holding white space, comments or processing instructions is accepted.",
+  "Read: each of these is `Unsupported` at the offending construct, and no document is returned: a second `name`; `xml:lang=\"en\"`, `xmi:id`, `xmi:uuid`, `foo` or a prefixed `sacm:lang` on `name`; `xmi:type=\"sacm:ExpressionLangString\"`; `<name><content>x</content></name>`; `<name><value content=\"x\"/></name>`; `<name>text</name>`; `<sacm:name/>`.",
+  "Read: `xmi:type` or `xsi:type` naming `sacm:LangString` on `name` is accepted, resolved in the scope of the `name` element as for roots (SACM23-XMI-002): a prefix declared on `name` itself is accepted, and `sacm` rebound to another URI on `name` makes the type `Unsupported` at the `name` start tag.",
+  "Read: a `name` with `xmlns=\"\"` under a root in a default SACM namespace, and the same `name` under a `sacm:`-prefixed root, read to that name, equal to the plain form (Namespaces 1.0 §6.2).",
+  "A minimized fixture in the third-party form `<name lang=\"English\" content=\"…\"/>` on a pinned-namespace root reads and round-trips.",
+]
+code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/output.rs", "crates/sacm/src/xmi/roots.rs", "docs/adr/0017-xmi-writer.md"]
+tests = [
+  "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_every_model_element_kind_at_every_depth_is_written_with_its_name_first",
+  "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_an_element_holding_only_its_name_has_a_start_tag_a_name_line_and_an_end_tag",
+  "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_an_element_without_a_name_and_every_utility_element_have_no_name_child",
+  "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_no_xmi_id_or_type_attribute_is_ever_written_on_name",
+  "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_a_bare_or_wrapped_package_root_reads_its_name_child",
+  "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_white_space_comments_and_processing_instructions_in_name_are_accepted",
+  "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_a_second_name_is_unsupported_at_the_second_name",
+  "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_an_attribute_other_than_lang_and_content_on_name_is_unsupported_at_it",
+  "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_a_type_naming_another_class_on_name_is_unsupported_at_the_name",
+  "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_an_element_child_or_text_in_name_is_unsupported_at_that_content",
+  "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_a_name_element_in_a_namespace_is_unsupported_at_the_element",
+  "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_a_type_naming_lang_string_on_name_is_accepted",
+  "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_the_type_on_name_is_resolved_in_the_scope_of_the_name_element",
+  "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_a_name_undeclaring_the_default_namespace_reads_as_the_plain_form",
+  "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_a_minimized_third_party_name_reads_and_round_trips",
+]
+verification = "docs/verification/0026-m1-names-in-xmi.md"
 
 [[row]]
 id = "SACM23-VAL-018"
@@ -2398,6 +2451,7 @@ source = "D-PRESERVE; D-STRICT; assurance-forge libs/sacm io/xmi_reader.cpp (nam
 kind = "xmi"
 status = "planned"
 depends_on = ["LIB-COMPAT-001", "SACM23-XMI-012", "SACM23-BASE-004"]
+notes = "Slice 0026: owns `<name>text</name>` (text as content) and `<name><value …/></name>`, which SACM23-XMI-012 refuses as `Unsupported`."
 
 [[row]]
 id = "LIB-TOOL-020"
@@ -3291,10 +3345,10 @@ requirement = "`xmi::read` never returns a document that is missing content from
 source = "D-PRESERVE \"Never drop conforming SACM data. Preserve with a diagnostic, or refuse\"; ADR 0015 (interim rule); ADR 0005 B2; XML 1.0 (Fifth Edition) §4.3.3 (encodings; quoted when SACM23-XMI-018 is analysed)"
 kind = "api"
 status = "verified"
-verification = "docs/verification/0024-m1-utf16-input.md"
+verification = "docs/verification/0026-m1-names-in-xmi.md"
 depends_on = ["LIB-API-004", "LIB-DIAG-001"]
 acceptance = [
-  "Well-formed SACM input the reader cannot represent yet (e.g. an `AssuranceCasePackage` root with a `name` child, or an `ArtifactPackage` root) is refused with `ReadError::Unsupported`, `code()` `None`, located at the construct it cannot read; no partial document is returned. Which roots are recognised at all is SACM23-XMI-001.",
+  "Well-formed SACM input the reader cannot represent yet (e.g. an `AssuranceCasePackage` root with a `note` child, or an `ArtifactPackage` root) is refused with `ReadError::Unsupported`, `code()` `None`, located at the construct it cannot read; no partial document is returned. Which roots are recognised at all is SACM23-XMI-001.",
   "UTF-32 BOMs, and BOM-less UTF-16 or UCS-4 input recognised by its first bytes (XML 1.0 Appendix F: `3C 00 3F 00`, `00 3C 00 3F` and the four-byte forms), such as a document declaring `UTF-16LE`, are refused with `Unsupported`, never `Malformed` and never misread; the reason does not claim a BOM that is not there. Every BOM and first-bytes refusal is located at line 1, column 1. UTF-16 with a byte order mark is read by SACM23-XMI-018.",
   "A declared `encoding=\"ISO-8859-1\"` (and another non-UTF-8 name) is refused with `Unsupported` located at the encoding name (`<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>` at line 1, column 31; with a CR before `encoding`, at line 2), whether or not its bytes are valid UTF-8: a real ISO-8859-1 file with a 0xE9 byte is `Unsupported`, not `Malformed`, because the declaration is read before the UTF-8 check (ADR 0005 B2). Declarations of `UTF-8`, `utf-8`, `Utf-8`, `US-ASCII`, `us-ascii`, `ASCII` and `ascii` are not refused for their encoding: a readable root under each reads `Ok`, and an unreadable one is refused at the root start tag. A non-ASCII character under an ASCII declaration is `Malformed` at that character (`<?xml version=\"1.0\" encoding=\"US-ASCII\"?>\\n<r>café</r>` at line 2, column 7).",
   "The `Unsupported` `Display` is one lowercase line without trailing punctuation, naming the location when known; names from the input are quoted.",
@@ -3316,37 +3370,37 @@ tests = [
   "crates/sacm/tests/xmi_read.rs::lib_api_009_unsupported_display_is_one_located_line_quoting_names",
   "crates/sacm/tests/xmi_read.rs::lib_api_009_refusal_of_an_encoding_name_with_line_breaks_stays_one_line",
 ]
-notes = "Item 1 and item 3 reworded in slice 0021, when SACM23-XMI-001 made the first inputs readable; re-checked there. Reworded and re-checked in slice 0024: UTF-16 moves to SACM23-XMI-018, so item 2 and the requirement no longer list UTF-16 with a byte order mark."
+notes = "Item 1 and item 3 reworded in slice 0021, when SACM23-XMI-001 made the first inputs readable; re-checked there. Reworded and re-checked in slice 0024: UTF-16 moves to SACM23-XMI-018, so item 2 and the requirement no longer list UTF-16 with a byte order mark. Slice 0026: the example became a `note` child, because SACM23-XMI-012 reads names; re-checked there."
 
 [[row]]
 id = "LIB-API-010"
 area = "API"
 milestone = "M1"
 title = "The writer refuses what it cannot write"
-requirement = "`xmi::write` never writes a document that is missing content the `Document` holds (D-PRESERVE). Content that no verified row writes yet makes the write fail with an error naming the element, and nothing is returned: a name (until SACM23-XMI-012) and an `assertionDeclaration` other than the default (until SACM23-XMI-017). This is the write-side twin of ADR 0015's interim rule."
-source = "D-PRESERVE \"Never drop conforming SACM data. Preserve with a diagnostic, or refuse\"; ADR 0015; ADR 0017"
+requirement = "`xmi::write` never writes a document that is missing content the `Document` holds (D-PRESERVE). Content that no verified row writes yet makes the write fail with an error naming the element, and nothing is returned. Today that is an `assertionDeclaration` other than the default (until SACM23-XMI-017); names are written (SACM23-XMI-012). This is the write-side twin of ADR 0015's interim rule."
+source = "D-PRESERVE \"Never drop conforming SACM data. Preserve with a diagnostic, or refuse\"; ADR 0015; ADR 0017 and its amendment 1"
 kind = "api"
 status = "verified"
 depends_on = ["LIB-API-004", "LIB-DIAG-001"]
 acceptance = [
-  "Writing a document in which any element has a name fails with an error naming that element's id, and no output is returned.",
   "Writing a document in which an Assertion's `assertionDeclaration` is not `asserted` fails with an error naming that element's id, and no output is returned.",
-  "A document without either writes `Ok`.",
+  "A named element is written, not refused (SACM23-XMI-012).",
+  "A document without a non-default `assertionDeclaration` writes `Ok`.",
+  "An element that is named and has a non-default `assertionDeclaration` is refused for the declaration, naming the element.",
 ]
 code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/output.rs", "docs/adr/0017-xmi-writer.md"]
 tests = [
-  "crates/sacm/tests/xmi_write.rs::lib_api_010_a_named_element_is_refused_naming_it",
-  "crates/sacm/tests/xmi_write.rs::lib_api_010_a_named_claim_display_is_pinned",
-  "crates/sacm/tests/xmi_write.rs::lib_api_010_an_empty_name_is_still_a_name_and_is_refused",
   "crates/sacm/tests/xmi_write.rs::lib_api_010_every_non_default_assertion_declaration_on_every_assertion_kind_is_refused",
   "crates/sacm/tests/xmi_write.rs::lib_api_010_a_needs_support_claim_display_is_pinned",
-  "crates/sacm/tests/xmi_write.rs::lib_api_010_a_document_without_names_or_non_default_declarations_writes_ok",
+  "crates/sacm/tests/xmi_write.rs::lib_api_010_a_named_element_is_written_not_refused",
+  "crates/sacm/tests/xmi_write.rs::lib_api_010_a_document_without_non_default_declarations_writes_ok",
   "crates/sacm/tests/xmi_write.rs::lib_api_010_the_refusal_names_the_first_element_in_document_order",
-  "crates/sacm/tests/xmi_write.rs::lib_api_010_an_unrepresentable_id_is_found_before_a_name_on_the_same_element",
+  "crates/sacm/tests/xmi_write.rs::lib_api_010_an_unrepresentable_id_is_found_before_a_non_default_declaration_on_the_same_element",
   "crates/sacm/tests/xmi_write.rs::lib_api_010_a_named_assertion_with_a_non_default_declaration_is_refused_naming_it",
   "crates/sacm/tests/xmi_write.rs::lib_api_010_write_error_is_a_send_sync_error_whose_variants_have_no_catalog_code",
 ]
-verification = "docs/verification/0025-m1-xmi-export.md"
+verification = "docs/verification/0026-m1-names-in-xmi.md"
+notes = "Reworded and re-checked in slice 0026: names are no longer refused."
 
 [[row]]
 id = "SACM23-XMI-018"
@@ -3585,6 +3639,30 @@ source = "XMI 2.5.1 §7.6.1 (p. 13) `use=\"optional\"`; D-STRICT; D-ID; the main
 kind = "xmi"
 status = "planned"
 depends_on = ["SACM23-XMI-001", "SACM23-XMI-004"]
+
+[[row]]
+id = "SACM23-XMI-021"
+area = "XMI"
+milestone = "M2"
+title = "A repeated single-valued containment is kept"
+requirement = "A repeated single-valued containment (a second `name` now; later `UtilityElement.content` and `TaggedValue.key`) is kept in both load modes and reported as SACM-MULT-001 (Error) naming the element. It is never dropped, and the document is not refused on load. Strict save then refuses the document (SACM-XMI-006). Until this row, it is `Unsupported` (SACM23-XMI-012)."
+source = "formal/23-05-08 §8.6 `name:LangString[1]`; XMI 2.5.1 rule 4f (p. 51) `maxOccurs` \"unbounded\" regardless, §7.8.2; D-PRESERVE; D-SEV"
+kind = "xmi"
+status = "planned"
+depends_on = ["SACM23-XMI-012", "LIB-COMPAT-001", "LIB-COMPAT-003"]
+notes = "Maintainer decision 2026-11-12: the code is SACM-MULT-001, because `name:LangString[1]` held twice is a multiplicity violation. When this row is built, widen SACM-MULT-001's catalog text to \"a property held more or fewer times than its multiplicity allows\", keeping the AssertedRelationship and binding cases as examples. SACM-XMI-003 (\"Unknown element\") is not used, as C++ uses it."
+
+[[row]]
+id = "SACM23-XMI-022"
+area = "XMI"
+milestone = "M2"
+title = "An xmi:id on a LangString"
+requirement = "An `xmi:id` on a LangString (XMI 2.5.1 §7.8.3 makes it conforming) is accepted in both load modes and preserved exactly: it is kept with the owning element, not on the `LangString` value, and written back on save, with no diagnostic (D-ID, D-PRESERVE). It takes part in the file-wide uniqueness of `xmi:id` values (XMI 2.5.1 §7.6.1; SACM-ID-001). Until this row, it is `Unsupported` (SACM23-XMI-012). This departs from C++, which drops the id with an Info diagnostic (`xmi_reader.cpp:793-803`)."
+source = "XMI 2.5.1 §7.8.3 (p. 17) `<xsd:attribute ref=\"xmi:id\"/>`; D-ID; D-PRESERVE; C++ `xmi_reader.cpp:793-803` (SACM-XMI-003 at Info, the id dropped)"
+kind = "xmi"
+status = "planned"
+depends_on = ["SACM23-XMI-012", "LIB-DIAG-001", "LIB-DIAG-002"]
+notes = "Maintainer decision 2026-11-12: preserve the id; no catalog code is needed. Moved from SACM23-XMI-012 in slice 0026. Not urgent: no corpus file and no C++ output carries such an id. When built, reword verified SACM23-XMI-004 (\"No `xmi:id` is written on a LangString or MultiLangString\"), because a preserved LangString id is written back."
 
 [[row]]
 id = "LIB-COMPAT-009"

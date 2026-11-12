@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-XMI-012 item 9: a minimized ArgumentPackage root in the third-party (EMF) form, on the pinned namespaces. Its name is one unprefixed `name` child carrying `lang` and `content` attributes, as every third-party file seen uses. Hand-written; no third-party content. -->
+<sacm:ArgumentPackage xmi:version="2.0" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmi:id="_hX3kQK1sEe6xAbCdEfGhIj">
+  <name lang="English" content="Argument for the braking function"/>
+</sacm:ArgumentPackage>

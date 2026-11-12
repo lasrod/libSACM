@@ -16,13 +16,17 @@
 //!   TAB and no reference but the seven pinned escapes. Every test that uses it
 //!   checks the form as well;
 //! - read back through `xmi::read`, which reads `AssuranceCasePackage` and
-//!   `ArgumentPackage` roots with nothing in them. Output that has content in a
+//!   `ArgumentPackage` roots with nothing in them but a name. Output that has
+//!   other content in a
 //!   package must still be well-formed: the reader may refuse it only as
 //!   `Unsupported`, never as `Malformed`.
 //!
 //! The role and type expected for each child come from `expected_tag`, which is
 //! written from the containment roles in `docs/sacm/metamodel-inventory.md`,
-//! not taken from the crate.
+//! not taken from the crate. A name is not a child element of the model: it
+//! is checked apart, as a `name` child written first with `lang` then
+//! `content` (SACM23-XMI-012; ADR 0017 amendment 1). Its own tests are in
+//! `xmi_names.rs`.
 //!
 //! "Document order" for the refusals is `Document::elements`' order: pre-order,
 //! roots and siblings in the order they were added (ADR 0017 W4).
@@ -32,9 +36,9 @@
 //!   namespace URI": the constants are crate-private (ADR 0017 W5), so this is
 //!   a source review item.
 //! - SACM23-XMI-004's "no `xmi:id` is written on a `LangString` or
-//!   `MultiLangString`": nothing that holds one can be written yet, because
-//!   names are refused (LIB-API-010). It comes with SACM23-XMI-012 and
-//!   SACM23-BASE-004.
+//!   `MultiLangString`": for a name, `assert_matches_document` checks it on
+//!   every written document, and `xmi_names.rs` (SACM23-XMI-012) states it.
+//!   No `MultiLangString` can be written yet (SACM23-BASE-004).
 //! - The `#[non_exhaustive]` attributes of `WriteError`, its variants and
 //!   `WriteOptions`: a test cannot show that an exhaustive pattern fails to
 //!   compile. The patterns here use `..`, as a user must.
@@ -48,7 +52,7 @@ use sacm::model::{
     AbstractClass, AssertionDeclaration, Document, ElementId, ElementKind, InsertError, LangString,
     SacmElement,
 };
-use sacm::xmi::{self, ReadError, ReadOptions, WriteError, WriteOptions};
+use sacm::xmi::{self, ReadError, ReadOptions, WriteAttribute, WriteError, WriteOptions};
 
 /// The pinned SACM 2.3 namespace (D-NS-PIN).
 const SACM_NS: &str = "http://www.omg.org/spec/SACM/20220301";
@@ -70,6 +74,10 @@ const ATTRIBUTE_ORDER: [&str; 5] = [
     "xmi:type",
     "xmi:id",
 ];
+/// The element a name is written as (SACM23-XMI-012; ADR 0017 amendment 1).
+const NAME_ELEMENT: &str = "name";
+/// The attributes a `name` child may carry, in the order it must carry them.
+const NAME_ATTRIBUTE_ORDER: [&str; 2] = ["lang", "content"];
 /// The golden files of SACM23-XMI-007.
 const GOLDEN_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/xmi/golden/");
 /// The reader's valid fixtures (SACM23-XMI-001).
@@ -186,14 +194,35 @@ fn kinds_of(class: AbstractClass) -> Vec<ElementKind> {
 /// under each `ModelElement` child, a Description; and under each
 /// `ArtifactAsset` child, a Property that holds a Note.
 fn every_kind_document(row: &str) -> Document {
+    every_kind_document_named(row, false)
+}
+
+/// [`every_kind_document`], with every `ModelElement` named when `named` is
+/// set: `lang` `"en"` and `content` `"Name of <id>"`. A `UtilityElement` has
+/// no name.
+fn every_kind_document_named(row: &str, named: bool) -> Document {
+    let name_of =
+        |id: &str| named.then(|| LangString::new(format!("Name of {id}")).with_lang("en"));
     let mut doc = Document::new();
     for root in package_kinds() {
         let root_id = format!("{root}.root");
-        insert(row, &mut doc, (None, root, &root_id));
+        if let Err(error) = doc.insert(
+            None,
+            root,
+            ElementId::from(root_id.as_str()),
+            name_of(&root_id),
+        ) {
+            panic!("{row}: setup could not insert the root {root_id:?}: {error}");
+        }
         for &kind in ElementKind::ALL {
             let child = format!("{root_id}/{kind}");
             let parent = ElementId::from(root_id.as_str());
-            match doc.insert(Some(&parent), kind, ElementId::from(child.as_str()), None) {
+            let name = if kind.is_a(AbstractClass::ModelElement) {
+                name_of(&child)
+            } else {
+                None
+            };
+            match doc.insert(Some(&parent), kind, ElementId::from(child.as_str()), name) {
                 Ok(()) => {}
                 Err(InsertError::ContainmentNotAllowed { .. }) => continue,
                 Err(error) => panic!("{row}: setup could not insert {child:?}: {error}"),
@@ -209,11 +238,14 @@ fn every_kind_document(row: &str) -> Document {
             if kind.is_a(AbstractClass::ArtifactAsset) {
                 let property = format!("{child}/Property");
                 let note = format!("{property}/Note");
-                insert(
-                    row,
-                    &mut doc,
-                    (Some(child.as_str()), ElementKind::Property, &property),
-                );
+                if let Err(error) = doc.insert(
+                    Some(&ElementId::from(child.as_str())),
+                    ElementKind::Property,
+                    ElementId::from(property.as_str()),
+                    name_of(&property),
+                ) {
+                    panic!("{row}: setup could not insert {property:?}: {error}");
+                }
                 insert(
                     row,
                     &mut doc,
@@ -676,10 +708,70 @@ fn expected_tag(
     panic!("{row}: test oracle: no role of {parent} holds {kind}");
 }
 
+/// The attributes a `name` child is written with for `name`: `lang`, then
+/// `content`, each only when present (ADR 0012, ADR 0017 amendment 1).
+fn name_attributes(name: &LangString) -> Vec<(String, String)> {
+    [("lang", name.lang()), ("content", name.content())]
+        .into_iter()
+        .filter_map(|(attribute, value)| {
+            value.map(|value| (attribute.to_owned(), value.to_owned()))
+        })
+        .collect()
+}
+
+/// Asserts that `written`, the output of `element`, holds its name as ADR
+/// 0017 amendment 1 says: one `name` child, written first, with `lang` then
+/// `content` and nothing else; no `name` child for no name. Returns whether
+/// it has one, and its other children in written order.
+fn assert_written_name(
+    row: &str,
+    what: &str,
+    element: SacmElement<'_>,
+    written: &Written,
+    elements: &[Written],
+) -> (bool, Vec<usize>) {
+    let (name_children, model_children): (Vec<usize>, Vec<usize>) = written
+        .children
+        .iter()
+        .partition(|&&child| elements[child].name == NAME_ELEMENT);
+    let Some(name) = element.name() else {
+        assert!(
+            name_children.is_empty(),
+            "{row}: {what} has no name but is written with a `name` child"
+        );
+        return (false, model_children);
+    };
+    assert_eq!(
+        name_children.len(),
+        1,
+        "{row}: {what} is named but has {} `name` children",
+        name_children.len()
+    );
+    assert_eq!(
+        written.children.first(),
+        name_children.first(),
+        "{row}: {what}: the `name` child is not the first child"
+    );
+    let name_element = &elements[name_children[0]];
+    assert_eq!(
+        name_element.attributes,
+        name_attributes(name),
+        "{row}: {what}: the `name` child (line {}) has the wrong attributes",
+        name_element.line
+    );
+    assert!(
+        name_element.children.is_empty(),
+        "{row}: {what}: the `name` child (line {}) has children",
+        name_element.line
+    );
+    (true, model_children)
+}
+
 /// Asserts that `elements`, the parsed output of writing `doc`, is `doc`: one
 /// root bare or several as the children of one `xmi:XMI`, every element under
-/// its expected name, type and id, its children in document order, and no
-/// element that the document does not have.
+/// its expected name, type and id, its name as its first child exactly when
+/// it has one, its other children in document order, and no element that the
+/// document does not have.
 fn assert_matches_document(row: &str, doc: &Document, elements: &[Written]) {
     let roots: Vec<SacmElement<'_>> = doc.roots().collect();
     let written_roots: Vec<usize> = if roots.len() == 1 {
@@ -708,6 +800,7 @@ fn assert_matches_document(row: &str, doc: &Document, elements: &[Written]) {
         .rev()
         .collect();
     let mut seen = 0;
+    let mut names = 0;
     while let Some((index, element)) = pending.pop() {
         seen += 1;
         let written = &elements[index];
@@ -733,9 +826,11 @@ fn assert_matches_document(row: &str, doc: &Document, elements: &[Written]) {
             Some(element.id().as_str()),
             "{row}: {what} has the wrong xmi:id"
         );
+        let (has_name, model_children) =
+            assert_written_name(row, &what, element, written, elements);
+        names += usize::from(has_name);
         let children: Vec<SacmElement<'_>> = element.children().collect();
-        let written_children: Vec<Option<&str>> = written
-            .children
+        let written_children: Vec<Option<&str>> = model_children
             .iter()
             .map(|&child| elements[child].attribute("xmi:id"))
             .collect();
@@ -747,11 +842,11 @@ fn assert_matches_document(row: &str, doc: &Document, elements: &[Written]) {
             written_children, child_ids,
             "{row}: {what} has the wrong children, or in the wrong order"
         );
-        pending.extend(written.children.iter().copied().zip(children).rev());
+        pending.extend(model_children.iter().copied().zip(children).rev());
     }
     let wrapper = usize::from(roots.len() > 1);
     assert_eq!(
-        seen + wrapper,
+        seen + names + wrapper,
         elements.len(),
         "{row}: the output has elements that the document does not have"
     );
@@ -792,18 +887,24 @@ fn assert_document_element_attributes(row: &str, doc: &Document, elements: &[Wri
 }
 
 /// Asserts that every element's attributes are a subsequence of
-/// [`ATTRIBUTE_ORDER`]: no other attribute, and none out of order.
+/// [`ATTRIBUTE_ORDER`], or of [`NAME_ATTRIBUTE_ORDER`] for a `name` child:
+/// no other attribute, and none out of order.
 fn assert_attribute_order(row: &str, elements: &[Written]) {
     for element in elements {
+        let order: &[&str] = if element.name == NAME_ELEMENT {
+            &NAME_ATTRIBUTE_ORDER
+        } else {
+            &ATTRIBUTE_ORDER
+        };
         let positions: Vec<Option<usize>> = element
             .attributes
             .iter()
-            .map(|(name, _)| ATTRIBUTE_ORDER.iter().position(|pinned| pinned == name))
+            .map(|(name, _)| order.iter().position(|pinned| pinned == name))
             .collect();
         assert!(
             positions.iter().all(Option::is_some)
                 && positions.windows(2).all(|pair| pair[0] < pair[1]),
-            "{row}: <{}> on line {} has attributes {:?}; the pinned order is {ATTRIBUTE_ORDER:?}",
+            "{row}: <{}> on line {} has attributes {:?}; the pinned order is {order:?}",
             element.name,
             element.line,
             element
@@ -834,18 +935,25 @@ fn bare_root(kind: ElementKind, escaped_id: &str) -> String {
 }
 
 /// Asserts that `error` refuses the element `id` because its id holds
-/// `character`, and that it says so.
+/// `character`, names `WriteAttribute::Id` as the attribute that holds it (ADR 0017
+/// amendment 1), and says so.
 fn assert_unrepresentable(row: &str, error: &WriteError, id: &str, character: char) {
     match error {
         WriteError::UnrepresentableCharacter {
             element,
             character: found,
+            attribute,
             ..
         } => {
             assert_eq!(
                 element.as_str(),
                 id,
                 "{row}: the refusal names the wrong element"
+            );
+            assert_eq!(
+                *attribute,
+                WriteAttribute::Id,
+                "{row}: the refusal names the wrong attribute"
             );
             assert_eq!(
                 *found, character,
@@ -1999,78 +2107,6 @@ fn sacm23_xmi_007_writing_what_was_read_from_written_output_gives_the_same_bytes
 // ---------------------------------------------------------------------------
 
 #[test]
-fn lib_api_010_a_named_element_is_refused_naming_it() {
-    let row = "LIB-API-010";
-    let name = || LangString::new("Named").with_lang("en");
-    let cases: [(&[Step<'_>], Step<'_>); 5] = [
-        (&[], (None, ElementKind::AssuranceCasePackage, "case")),
-        (
-            &[(None, ElementKind::AssuranceCasePackage, "case")],
-            (Some("case"), ElementKind::ArgumentPackage, "arguments"),
-        ),
-        (
-            &[(None, ElementKind::ArgumentPackage, "arguments")],
-            (Some("arguments"), ElementKind::Claim, "c1"),
-        ),
-        (
-            &[(None, ElementKind::ArgumentPackage, "arguments")],
-            (Some("arguments"), ElementKind::AssertedInference, "i1"),
-        ),
-        (
-            &[
-                (None, ElementKind::ArtifactPackage, "artifacts"),
-                (Some("artifacts"), ElementKind::Artifact, "a1"),
-            ],
-            (Some("a1"), ElementKind::Property, "p1"),
-        ),
-    ];
-    for (setup, named) in cases {
-        let mut doc = build(row, setup);
-        insert_named(row, &mut doc, named, name());
-        let id = named.2;
-        let error = write_err(row, &doc);
-        assert_unsupported(row, &error, id);
-        assert_eq!(
-            error.to_string(),
-            format!("the writer cannot write the element {id:?}: its name is not written yet"),
-            "{row}: the refusal's message"
-        );
-    }
-}
-
-#[test]
-fn lib_api_010_a_named_claim_display_is_pinned() {
-    let row = "LIB-API-010";
-    let mut doc = build(row, &[(None, ElementKind::ArgumentPackage, "arguments")]);
-    insert_named(
-        row,
-        &mut doc,
-        (Some("arguments"), ElementKind::Claim, "c1"),
-        LangString::new("Top claim"),
-    );
-    let error = write_err(row, &doc);
-    assert_unsupported(row, &error, "c1");
-    assert_eq!(
-        error.to_string(),
-        "the writer cannot write the element \"c1\": its name is not written yet",
-        "{row}: the pinned message"
-    );
-}
-
-#[test]
-fn lib_api_010_an_empty_name_is_still_a_name_and_is_refused() {
-    let row = "LIB-API-010";
-    let mut doc = build(row, &[(None, ElementKind::ArgumentPackage, "arguments")]);
-    insert_named(
-        row,
-        &mut doc,
-        (Some("arguments"), ElementKind::Claim, "c1"),
-        LangString::new(""),
-    );
-    assert_unsupported(row, &write_err(row, &doc), "c1");
-}
-
-#[test]
 fn lib_api_010_every_non_default_assertion_declaration_on_every_assertion_kind_is_refused() {
     let row = "LIB-API-010";
     let assertions = kinds_of(AbstractClass::Assertion);
@@ -2127,10 +2163,46 @@ fn lib_api_010_a_needs_support_claim_display_is_pinned() {
 }
 
 #[test]
-fn lib_api_010_a_document_without_names_or_non_default_declarations_writes_ok() {
+fn lib_api_010_a_named_element_is_written_not_refused() {
+    let row = "LIB-API-010";
+    let name = || LangString::new("Named").with_lang("en");
+    let cases: [(&[Step<'_>], Step<'_>); 5] = [
+        (&[], (None, ElementKind::AssuranceCasePackage, "case")),
+        (
+            &[(None, ElementKind::AssuranceCasePackage, "case")],
+            (Some("case"), ElementKind::ArgumentPackage, "arguments"),
+        ),
+        (
+            &[(None, ElementKind::ArgumentPackage, "arguments")],
+            (Some("arguments"), ElementKind::Claim, "c1"),
+        ),
+        (
+            &[(None, ElementKind::ArgumentPackage, "arguments")],
+            (Some("arguments"), ElementKind::AssertedInference, "i1"),
+        ),
+        (
+            &[
+                (None, ElementKind::ArtifactPackage, "artifacts"),
+                (Some("artifacts"), ElementKind::Artifact, "a1"),
+            ],
+            (Some("a1"), ElementKind::Property, "p1"),
+        ),
+    ];
+    for (setup, named) in cases {
+        let mut doc = build(row, setup);
+        insert_named(row, &mut doc, named, name());
+        // `write_checked` fails the test on a refusal, and checks the name.
+        write_checked(row, &doc);
+    }
+}
+
+#[test]
+fn lib_api_010_a_document_without_non_default_declarations_writes_ok() {
     let row = "LIB-API-010";
     let doc = every_kind_document(row);
     write_checked(row, &doc);
+    // Named everywhere a name is allowed: still written.
+    write_checked(row, &every_kind_document_named(row, true));
     // Declared `asserted` again, explicitly: still the default.
     let mut redeclared = every_kind_document(row);
     let assertions: Vec<String> = redeclared
@@ -2153,60 +2225,56 @@ fn lib_api_010_a_document_without_names_or_non_default_declarations_writes_ok() 
 #[test]
 fn lib_api_010_the_refusal_names_the_first_element_in_document_order() {
     let row = "LIB-API-010";
-    // Inserted: first, second (named), then "late" (declared) under first.
-    // In document order "late" comes before "second".
-    let mut doc = build(row, &[(None, ElementKind::ArgumentPackage, "first")]);
-    insert_named(
+    // Inserted: first, second, "early" (declared) under second, then "late"
+    // (declared) under first. In document order "late" comes before "early".
+    let mut doc = build(
         row,
-        &mut doc,
-        (None, ElementKind::ArgumentPackage, "second"),
-        LangString::new("Second"),
+        &[
+            (None, ElementKind::ArgumentPackage, "first"),
+            (None, ElementKind::ArgumentPackage, "second"),
+            (Some("second"), ElementKind::Claim, "early"),
+            (Some("first"), ElementKind::Claim, "late"),
+        ],
     );
-    insert(row, &mut doc, (Some("first"), ElementKind::Claim, "late"));
+    declare(row, &mut doc, "early", AssertionDeclaration::Axiomatic);
     declare(row, &mut doc, "late", AssertionDeclaration::Assumed);
     assert_unsupported(row, &write_err(row, &doc), "late");
 
-    // An unrepresentable id after a name: the name is first.
-    let mut doc = build(row, &[(None, ElementKind::ArgumentPackage, "arguments")]);
-    insert_named(
+    // An unrepresentable id after a declaration: the declaration is first.
+    let mut doc = build(
         row,
-        &mut doc,
-        (Some("arguments"), ElementKind::Claim, "named"),
-        LangString::new("n"),
+        &[
+            (None, ElementKind::ArgumentPackage, "arguments"),
+            (Some("arguments"), ElementKind::Claim, "declared"),
+            (Some("arguments"), ElementKind::Claim, "bad\u{1}"),
+        ],
     );
-    insert(
-        row,
-        &mut doc,
-        (Some("arguments"), ElementKind::Claim, "bad\u{1}"),
-    );
-    assert_unsupported(row, &write_err(row, &doc), "named");
+    declare(row, &mut doc, "declared", AssertionDeclaration::Defeated);
+    assert_unsupported(row, &write_err(row, &doc), "declared");
 
-    // A name after an unrepresentable id: the id is first.
+    // A declaration after an unrepresentable id: the id is first.
     let mut doc = build(
         row,
         &[
             (None, ElementKind::ArgumentPackage, "arguments"),
             (Some("arguments"), ElementKind::Claim, "bad\u{1}"),
+            (Some("arguments"), ElementKind::Claim, "declared"),
         ],
     );
-    insert_named(
-        row,
-        &mut doc,
-        (Some("arguments"), ElementKind::Claim, "named"),
-        LangString::new("n"),
-    );
+    declare(row, &mut doc, "declared", AssertionDeclaration::Defeated);
     assert_unrepresentable(row, &write_err(row, &doc), "bad\u{1}", '\u{1}');
 }
 
 #[test]
-fn lib_api_010_an_unrepresentable_id_is_found_before_a_name_on_the_same_element() {
+fn lib_api_010_an_unrepresentable_id_is_found_before_a_non_default_declaration_on_the_same_element()
+{
     let row = "LIB-API-010";
-    let mut doc = build(row, &[(None, ElementKind::ArgumentPackage, "arguments")]);
-    insert_named(
+    let mut doc = build(
         row,
-        &mut doc,
-        (Some("arguments"), ElementKind::Claim, "c\u{1}"),
-        LangString::new("n"),
+        &[
+            (None, ElementKind::ArgumentPackage, "arguments"),
+            (Some("arguments"), ElementKind::Claim, "c\u{1}"),
+        ],
     );
     declare(row, &mut doc, "c\u{1}", AssertionDeclaration::Defeated);
     assert_unrepresentable(row, &write_err(row, &doc), "c\u{1}", '\u{1}');
@@ -2220,16 +2288,17 @@ fn lib_api_010_a_named_assertion_with_a_non_default_declaration_is_refused_namin
         row,
         &mut doc,
         (Some("arguments"), ElementKind::Claim, "c1"),
-        LangString::new("n"),
+        LangString::new("n").with_lang("en"),
     );
     declare(row, &mut doc, "c1", AssertionDeclaration::Axiomatic);
     let error = write_err(row, &doc);
     assert_unsupported(row, &error, "c1");
-    // ADR 0017: the name is checked before the `assertionDeclaration`.
+    // ADR 0017 amendment 1: the name is written, so the declaration is what
+    // is refused.
     assert_eq!(
         error.to_string(),
-        "the writer cannot write the element \"c1\": its name is not written yet",
-        "{row}: the name is refused before the declaration"
+        "the writer cannot write the element \"c1\": its assertionDeclaration \"axiomatic\" is not written yet",
+        "{row}: a named element is refused for its declaration, not its name"
     );
 }
 
@@ -2243,15 +2312,25 @@ fn lib_api_010_write_error_is_a_send_sync_error_whose_variants_have_no_catalog_c
         row,
         &build(row, &[(None, ElementKind::ArgumentPackage, "\u{FFFF}")]),
     );
+    // An unrepresentable character in a name (SACM23-XMI-011).
     let mut named = Document::new();
     insert_named(
         row,
         &mut named,
         (None, ElementKind::ArgumentPackage, "a"),
-        LangString::new("n"),
+        LangString::new("n\u{1}"),
     );
-    let unsupported = write_err(row, &named);
-    for error in [no_root, unrepresentable, unsupported] {
+    let unrepresentable_name = write_err(row, &named);
+    let mut declared = build(
+        row,
+        &[
+            (None, ElementKind::ArgumentPackage, "a"),
+            (Some("a"), ElementKind::Claim, "c"),
+        ],
+    );
+    declare(row, &mut declared, "c", AssertionDeclaration::NeedsSupport);
+    let unsupported = write_err(row, &declared);
+    for error in [no_root, unrepresentable, unrepresentable_name, unsupported] {
         let code: Option<Code> = error.code();
         assert_eq!(code, None, "{row}: {error:?} has a catalog code");
         let message = error.to_string();

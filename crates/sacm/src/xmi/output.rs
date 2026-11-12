@@ -1,5 +1,5 @@
-//! The XMI writer (SACM23-XMI-003, -004, -006, -007, -013, LIB-API-010;
-//! ADR 0017).
+//! The XMI writer (SACM23-XMI-003, -004, -006, -007, -011, -012, -013,
+//! LIB-API-010; ADR 0017 and its amendment 1).
 //!
 //! Two passes. [`plan`] checks every element and resolves what it is written
 //! as; only if that succeeds does [`write`] build the `String` from the plan,
@@ -9,9 +9,11 @@
 //! one tag per line and `<x … />` for an element with no children. Neither
 //! pass recurses, so deep nesting is safe.
 
-use super::WriteError;
 use super::namespaces::{SACM_NS, SACM_PREFIX, XMI_NS, XMI_PREFIX, XMI_VERSION};
-use crate::model::{AssertionDeclaration, DeclaredType, Document, ElementKind, SacmElement, role};
+use super::{WriteAttribute, WriteError};
+use crate::model::{
+    AssertionDeclaration, DeclaredType, Document, ElementKind, LangString, SacmElement, role,
+};
 
 /// Line 1 of every output.
 const DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>";
@@ -63,8 +65,12 @@ pub(super) fn write(document: &Document) -> Result<String, WriteError> {
         push_attribute_name(&mut out, "id");
         escape_into(&mut out, planned.element.id().as_str());
         out.push('"');
-        if planned.element.children().next().is_some() {
+        let name = planned.element.name();
+        if name.is_some() || planned.element.children().next().is_some() {
             out.push_str(">\n");
+            if let Some(name) = name {
+                push_name(&mut out, depth + 1, name);
+            }
             open.push(planned);
         } else {
             out.push_str(" />\n");
@@ -101,7 +107,8 @@ enum Tag {
 }
 
 /// Checks `document` in ADR 0017's order, a root first, then each element in
-/// document order (its id, its name, its `assertionDeclaration`, its role),
+/// document order (its id, its name's `lang` and `content`, its
+/// `assertionDeclaration`, its role),
 /// and returns every element in that order with what it is written as.
 fn plan(document: &Document) -> Result<Vec<Planned<'_>>, WriteError> {
     if document.roots().next().is_none() {
@@ -114,15 +121,24 @@ fn plan(document: &Document) -> Result<Vec<Planned<'_>>, WriteError> {
             element: id.clone(),
             reason,
         };
-        if let Some(character) = id.as_str().chars().find(|&c| !is_xml_char(c)) {
-            return Err(WriteError::UnrepresentableCharacter {
-                element: id.clone(),
-                character,
-            });
-        }
-        // Names are written by SACM23-XMI-012.
-        if element.name().is_some() {
-            return Err(unsupported("its name is not written yet".to_owned()));
+        let name = element.name();
+        for (attribute, value) in [
+            (WriteAttribute::Id, Some(id.as_str())),
+            (WriteAttribute::NameLang, name.and_then(LangString::lang)),
+            (
+                WriteAttribute::NameContent,
+                name.and_then(LangString::content),
+            ),
+        ] {
+            if let Some(character) =
+                value.and_then(|value| value.chars().find(|&c| !is_xml_char(c)))
+            {
+                return Err(WriteError::UnrepresentableCharacter {
+                    element: id.clone(),
+                    character,
+                    attribute,
+                });
+            }
         }
         // Declarations are written by SACM23-XMI-017.
         if let Some(declaration) = element
@@ -170,6 +186,23 @@ fn is_xml_char(c: char) -> bool {
         c,
         '\t' | '\n' | '\r' | ' '..='\u{D7FF}' | '\u{E000}'..='\u{FFFD}' | '\u{10000}'..='\u{10FFFF}'
     )
+}
+
+/// Writes `name` as a `name` element on its own line at `depth`: `lang`, then
+/// `content`, each only if present (ADR 0017 amendment 1).
+fn push_name(out: &mut String, depth: usize, name: &LangString) {
+    indent(out, depth);
+    out.push_str("<name");
+    for (attribute, value) in [("lang", name.lang()), ("content", name.content())] {
+        if let Some(value) = value {
+            out.push(' ');
+            out.push_str(attribute);
+            out.push_str("=\"");
+            escape_into(out, value);
+            out.push('"');
+        }
+    }
+    out.push_str(" />\n");
 }
 
 /// Writes the element name `tag`.

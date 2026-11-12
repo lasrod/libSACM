@@ -105,7 +105,7 @@ impl Document {
     /// ```
     /// use sacm::model::{Document, ElementId, ElementKind};
     ///
-    /// // Built with the unstable test-support feature: `xmi::read` reads only empty packages so far.
+    /// // Built with the unstable test-support feature: `xmi::read` reads only package roots and their names so far.
     /// let mut doc = Document::new();
     /// doc.insert(None, ElementKind::AssuranceCasePackage, ElementId::from("safety_case"), None).unwrap();
     /// doc.insert(None, ElementKind::ArtifactPackage, ElementId::from("evidence"), None).unwrap();
@@ -125,7 +125,7 @@ impl Document {
     /// ```
     /// use sacm::model::{Document, ElementId, ElementKind};
     ///
-    /// // Built with the unstable test-support feature: `xmi::read` reads only empty packages so far.
+    /// // Built with the unstable test-support feature: `xmi::read` reads only package roots and their names so far.
     /// let mut doc = Document::new();
     /// doc.insert(None, ElementKind::ArgumentPackage, ElementId::from("arguments"), None).unwrap();
     ///
@@ -172,7 +172,7 @@ impl Document {
     /// ```
     /// use sacm::model::{Document, ElementId, ElementKind};
     ///
-    /// // Built with the unstable test-support feature: `xmi::read` reads only empty packages so far.
+    /// // Built with the unstable test-support feature: `xmi::read` reads only package roots and their names so far.
     /// let mut doc = Document::new();
     /// let id = ElementId::from;
     /// doc.insert(None, ElementKind::AssuranceCasePackage, id("case"), None).unwrap();
@@ -467,7 +467,7 @@ impl<'a> Iterator for PreOrder<'a> {
 ///     package.children().filter(|child| child.kind() == ElementKind::Claim)
 /// }
 ///
-/// // Built with the unstable test-support feature: `xmi::read` reads only empty packages so far.
+/// // Built with the unstable test-support feature: `xmi::read` reads only package roots and their names so far.
 /// let mut doc = Document::new();
 /// let id = ElementId::from;
 /// doc.insert(None, ElementKind::ArgumentPackage, id("arguments"), None).unwrap();
@@ -522,7 +522,7 @@ impl<'a> SacmElement<'a> {
     /// ```
     /// use sacm::model::{AbstractClass, Document, ElementId, ElementKind, LangString};
     ///
-    /// // Built with the unstable test-support feature: `xmi::read` reads only empty packages so far.
+    /// // Built with the unstable test-support feature: `xmi::read` reads only package roots and their names so far.
     /// let mut doc = Document::new();
     /// let id = ElementId::from;
     /// let name = LangString::new("Top claim").with_lang("en");
@@ -562,7 +562,7 @@ impl<'a> SacmElement<'a> {
     /// ```
     /// use sacm::model::{AssertionDeclaration, Document, ElementId, ElementKind};
     ///
-    /// // Built with the unstable test-support feature: `xmi::read` reads only empty packages so far.
+    /// // Built with the unstable test-support feature: `xmi::read` reads only package roots and their names so far.
     /// let mut doc = Document::new();
     /// let id = ElementId::from;
     /// doc.insert(None, ElementKind::ArgumentPackage, id("arguments"), None).unwrap();

@@ -12,10 +12,9 @@
 //!   built (see [Status](#status)),
 //! - XMI import and deterministic export, with a strict SACM 2.3 mode and an
 //!   explicit tolerant mode for third-party and legacy files; built so far:
-//!   [`xmi::read`], which reads empty `AssuranceCasePackage` and
-//!   `ArgumentPackage` roots and refuses everything else, and [`xmi::write`],
-//!   which writes documents without a name or a non-default
-//!   `assertionDeclaration`,
+//!   [`xmi::read`], which reads `AssuranceCasePackage` and `ArgumentPackage`
+//!   roots and their names and refuses everything else, and [`xmi::write`],
+//!   which writes documents without a non-default `assertionDeclaration`,
 //! - validation against the specification's constraints, reported as
 //!   machine-readable diagnostics with stable codes; built so far: the
 //!   diagnostic type,
@@ -36,13 +35,13 @@
 //! and the [`Diagnostic`](diagnostic::Diagnostic) type that findings are
 //! reported in, in [`diagnostic`]. [`sacm::xmi::read`](xmi::read) reads
 //! `AssuranceCasePackage` and `ArgumentPackage` roots, bare or in an
-//! `xmi:XMI` element, but nothing inside them yet. It refuses unsafe and
-//! malformed input and roots that are not SACM packages with a diagnostic
-//! code, and content it cannot represent yet as `Unsupported`.
-//! [`sacm::xmi::write`](xmi::write) writes a document's roots and every
-//! element under them, deterministically, but refuses a name or a
-//! non-default `assertionDeclaration` as `Unsupported` until a later release
-//! writes them.
+//! `xmi:XMI` element, with their names but nothing else inside them yet. It
+//! refuses unsafe and malformed input and roots that are not SACM packages
+//! with a diagnostic code, and content it cannot represent yet as
+//! `Unsupported`. [`sacm::xmi::write`](xmi::write) writes a document's roots
+//! and every element under them, with their names, deterministically, but
+//! refuses a non-default `assertionDeclaration` as `Unsupported` until a
+//! later release writes it.
 //! Reading the content of packages, validation and editing are not built yet.
 //!
 //! # Example
@@ -54,11 +53,14 @@
 //! <xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
 //!          xmlns:sacm="http://www.omg.org/spec/SACM/20220301">
 //!   <sacm:AssuranceCasePackage xmi:id="case"/>
-//!   <sacm:ArgumentPackage xmi:id="arguments"/>
+//!   <sacm:ArgumentPackage xmi:id="arguments">
+//!     <name lang="en" content="Arguments"/>
+//!   </sacm:ArgumentPackage>
 //! </xmi:XMI>"#;
 //! let document = xmi::read(input, &ReadOptions::default())?.into_document();
 //! for element in document.elements() {
-//!     println!("{} {}", element.kind(), element.id());
+//!     let name = element.name().and_then(|n| n.content());
+//!     println!("{} {} {name:?}", element.kind(), element.id());
 //! }
 //!
 //! // Write it back as XMI, in the one deterministic form.

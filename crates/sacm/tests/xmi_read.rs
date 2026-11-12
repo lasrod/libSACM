@@ -941,7 +941,7 @@ fn lib_sec_002_unsupported_root_location_counts_lf_crlf_and_lone_cr_as_one_line_
         ("\n\r", 3, 1),
     ];
     for (before, line, column) in children {
-        let input = sacm_document("", &format!("{before}<name/>"));
+        let input = sacm_document("", &format!("{before}<note/>"));
         let error = assert_unsupported(row, &input);
         assert_eq!(
             error.location(),
@@ -1215,8 +1215,9 @@ fn lib_sec_002_xml_malformed_code_is_sacm_xml_001_in_the_catalog() {
 #[test]
 fn lib_api_009_well_formed_sacm_document_is_unsupported_at_the_construct_it_cannot_read() {
     let row = "LIB-API-009";
-    // A readable root with a `name` child, which no verified row reads yet:
-    // refused at the child, on line 4.
+    // A readable root whose `name` child holds an element child, which no
+    // verified row reads (SACM23-XMI-012 reads only the attribute form):
+    // refused at the `content` child, on line 4. `  <name>` is 8 characters.
     let name_child = sacm_document(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- LIB-API-009 -->\n",
         "\n  <name><content><value>case</value></content></name>\n",
@@ -1224,8 +1225,21 @@ fn lib_api_009_well_formed_sacm_document_is_unsupported_at_the_construct_it_cann
     let error = assert_unsupported(row, &name_child);
     assert_eq!(
         error.location(),
+        Some(loc(row, 4, 9)),
+        "{row}: the refusal is not located at the start tag of the `content` child of `name`"
+    );
+    // An AssuranceCasePackage root with a `note` child, which no verified row
+    // reads: `Unsupported`, with no code and no document, at `<note` (line
+    // 4, column 3).
+    let note_child = sacm_document(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- LIB-API-009 -->\n",
+        "\n  <note/>\n",
+    );
+    let error = assert_unsupported(row, &note_child);
+    assert_eq!(
+        error.location(),
         Some(loc(row, 4, 3)),
-        "{row}: the refusal is not located at the start tag of the `name` child"
+        "{row}: the refusal is not located at the start tag of the `note` child"
     );
     // A root that is recognised but not read yet: refused at its start tag,
     // on line 3.
