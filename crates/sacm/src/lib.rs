@@ -36,13 +36,13 @@
 //! and the [`Diagnostic`](diagnostic::Diagnostic) type that findings are
 //! reported in, in [`diagnostic`]. [`sacm::xmi::read`](xmi::read) reads
 //! `AssuranceCasePackage` and `ArgumentPackage` roots, bare or in an
-//! `xmi:XMI` element, but nothing inside them yet. It refuses unsafe and
-//! malformed input and roots that are not SACM packages with a diagnostic
-//! code, and content it cannot represent yet as `Unsupported`.
-//! [`sacm::xmi::write`](xmi::write) writes a document's roots and every
-//! element under them, deterministically, but refuses a name or a
-//! non-default `assertionDeclaration` as `Unsupported` until a later release
-//! writes them.
+//! `xmi:XMI` element, with their names but nothing else inside them yet. It
+//! refuses unsafe and malformed input and roots that are not SACM packages
+//! with a diagnostic code, and content it cannot represent yet as
+//! `Unsupported`. [`sacm::xmi::write`](xmi::write) writes a document's roots
+//! and every element under them, with their names, deterministically, but
+//! refuses a non-default `assertionDeclaration` as `Unsupported` until a
+//! later release writes it.
 //! Reading the content of packages, validation and editing are not built yet.
 //!
 //! # Example

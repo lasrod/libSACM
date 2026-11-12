@@ -1024,7 +1024,7 @@ const REFUSALS: [(&str, Template, (u32, u32)); 7] = [
         |s, x| {
             format!(
                 "<{s}:ArgumentPackage xmlns:{s}=\"{SACM_NS}\" xmlns:{x}=\"{XMI_NS}\" \
-                     {x}:id=\"a\">\n  <name/></{s}:ArgumentPackage>"
+                     {x}:id=\"a\">\n  <note/></{s}:ArgumentPackage>"
             )
         },
         (2, 3),

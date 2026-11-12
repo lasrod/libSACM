@@ -32,10 +32,12 @@ writes it to `docs/adr/`.
   `docs/architecture/decisions/`, and `docs/sacm/` (library architecture, editing
   policy, decisions). Read them with `gh api` or a shallow clone into the scratchpad.
 
-## Follow the C++ library's approved design
+## The standard first, then the C++ library's approved design
 
-The maintainer has already approved many design decisions in the C++ library, and wants
-this crate to follow them wherever possible. Those decisions cover the model and
+**Compliance with SACM 2.3 and XMI 2.5.1 comes first** (the maintainer, 2026-11-12). Where
+the standard decides, follow it even when C++ differs, and record the difference in one line.
+Where the standard is silent or ambiguous, the maintainer's approved C++ decisions are the
+default. Those decisions cover the model and
 ownership structure, commands with previews and delete policies, mutation results, the
 diagnostic shape and codes, strict versus tolerant I/O, and the XML handling approach.
 For every design question, start from what the C++ library decided:
@@ -48,8 +50,9 @@ For every design question, start from what the C++ library decided:
 - **Deviate** only for a concrete reason, and propose an ADR that names the C++ decision
   it departs from and why.
 
-The SACM standard still outranks both implementations on what the model means. The C++
-library is the reference for *how* to build it.
+The SACM standard outranks both implementations, on what the model means and on what
+conforming output is. The C++ library is the reference for *how* to build it, where the
+standard leaves that open. Prefer the simplest compliant design.
 
 ## What you decide for a slice
 

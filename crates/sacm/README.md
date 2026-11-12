@@ -13,10 +13,10 @@ Implemented now: the read-only document model with element names and each
 Assertion's `assertionDeclaration`, the first value types (`LangString`,
 `MultiLangString` and `AssertionDeclaration`) in `sacm::model`, and the
 diagnostic type that findings are reported in (`sacm::diagnostic`). No `Diagnostic` is
-reported yet; `xmi::read`'s refusals carry catalog codes. `sacm::xmi::read` reads `AssuranceCasePackage` and `ArgumentPackage` roots, but nothing inside
-them yet; it refuses what it cannot represent rather than drop it. `sacm::xmi::write`
-writes a document deterministically, and refuses a name or a non-default
-`assertionDeclaration`, which it does not write yet.
+reported yet; `xmi::read`'s refusals carry catalog codes. `sacm::xmi::read` reads `AssuranceCasePackage` and `ArgumentPackage` roots and their
+names, but nothing else inside them yet; it refuses what it cannot represent rather than
+drop it. `sacm::xmi::write` writes a document and its names deterministically, and
+refuses a non-default `assertionDeclaration`, which it does not write yet.
 
 Planned:
 
@@ -58,10 +58,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-`sacm::xmi::read` reads empty `AssuranceCasePackage` and `ArgumentPackage` roots so far; it
-refuses the content of packages rather than drop it. `sacm::xmi::write` writes it back
-deterministically, and refuses a name or a non-default `assertionDeclaration` until a
-later release writes them.
+`sacm::xmi::read` reads `AssuranceCasePackage` and `ArgumentPackage` roots and their names
+so far; it refuses the other content of packages rather than drop it. `sacm::xmi::write`
+writes it back deterministically, and refuses a non-default `assertionDeclaration` until a
+later release writes it.
 
 See the [crate documentation](https://docs.rs/sacm) for the full API.
 

@@ -6,22 +6,21 @@
 //!
 //! In this release `read` reads the interchange roots: `AssuranceCasePackage`
 //! and `ArgumentPackage` elements, bare or inside an `xmi:XMI` element, with
-//! nothing in them yet (SACM23-XMI-001). It refuses input that is unsafe
-//! ([`ReadError::Doctype`], SACM-SEC-001), not well-formed
-//! ([`ReadError::Malformed`], SACM-XML-001) or not rooted in a SACM package
-//! ([`ReadError::InvalidRoot`] and [`ReadError::NoPackage`], SACM-XMI-001).
-//! Content it cannot represent yet is refused as [`ReadError::Unsupported`],
-//! never dropped.
+//! their names and nothing else in them yet (SACM23-XMI-001, SACM23-XMI-012).
+//! It refuses input that is unsafe ([`ReadError::Doctype`], SACM-SEC-001),
+//! not well-formed ([`ReadError::Malformed`], SACM-XML-001) or not rooted in
+//! a SACM package ([`ReadError::InvalidRoot`] and [`ReadError::NoPackage`],
+//! SACM-XMI-001). Content it cannot represent yet is refused as
+//! [`ReadError::Unsupported`], never dropped.
 //!
-//! `write` writes every element of a document, in document order, in one
-//! deterministic form. It refuses a document with no root
-//! ([`WriteError::NoRoot`]) and an id that XML 1.0 cannot represent
+//! `write` writes every element of a document, with its name, in document
+//! order, in one deterministic form. It refuses a document with no root
+//! ([`WriteError::NoRoot`]) and an id or name that XML 1.0 cannot represent
 //! ([`WriteError::UnrepresentableCharacter`]). In this release it also
-//! refuses a name or a non-default `assertionDeclaration`
-//! ([`WriteError::Unsupported`]), because those are not written yet. A
-//! document returned by this release's `read` always writes. Output with
-//! elements inside a package cannot be read back by this release's `read`
-//! yet.
+//! refuses a non-default `assertionDeclaration` ([`WriteError::Unsupported`]),
+//! because it is not written yet. A document returned by this release's
+//! `read` always writes. Output with elements inside a package cannot be read
+//! back by this release's `read` yet.
 //!
 //! # Examples
 //!
@@ -86,18 +85,22 @@ mod roots;
 /// child outside the XMI namespace of an `xmi:XMI` element in the XMI 2.5.1
 /// namespace `http://www.omg.org/spec/XMI/20131001`. Each root becomes
 /// a parentless element of its kind, in document order, whose id is its
-/// `xmi:id` and whose name is missing. Elements and attributes are matched by
-/// namespace URI and local name, and an `xmi:type` or `xsi:type` value is
-/// resolved as a `QName`, without its leading and trailing white space,
-/// against the namespaces in scope, so the choice of prefix does not matter.
-/// The SACM namespace is `http://www.omg.org/spec/SACM/20220301`.
+/// `xmi:id`, and whose name is its `name` child: `lang` and `content` are the
+/// attribute values, untrimmed, and a field whose attribute is not written is
+/// absent. A root without a `name` has no name. Elements and attributes are
+/// matched by namespace URI and local name, and an `xmi:type` or `xsi:type`
+/// value is resolved as a `QName`, without its leading and trailing white
+/// space, against the namespaces in scope, so the choice of prefix does not
+/// matter. The SACM namespace is `http://www.omg.org/spec/SACM/20220301`.
 ///
 /// `read` refuses rather than drops: it never returns a document that is
 /// missing content from its input. A root may carry only namespace
 /// declarations, `xmi:id`, `xmi:version` and an `xmi:type` or `xsi:type`
-/// naming its own class, and hold only white space, comments and processing
-/// instructions. Anything else is refused as [`ReadError::Unsupported`] until
-/// a later release reads it.
+/// naming its own class, and hold one `name` and otherwise only white space,
+/// comments and processing instructions. The `name` must be in no namespace,
+/// carry only `lang`, `content` and a type naming `LangString`, and hold only
+/// white space, comments and processing instructions. Anything else is
+/// refused as [`ReadError::Unsupported`] until a later release reads it.
 ///
 /// The input is UTF-8, ASCII, or UTF-16 with a byte order mark, which reads
 /// exactly as the same characters in UTF-8. A DOCTYPE is refused before
@@ -163,9 +166,10 @@ mod roots;
 ///   XMI 2.5.1 namespace (such as an older XMI revision's), an XMI-namespace
 ///   element as the document element (such as `xmi:Documentation`) or beside
 ///   the roots (such as `xmi:documentation`), an attribute of `xmi:XMI` other
-///   than `xmi:version`, and any
-///   other attribute or content of a root. So in this release a package with
-///   a name, a description or any element in it is refused.
+///   than `xmi:version`, a second `name`, any other attribute or content of a
+///   `name` (such as `xml:lang` or a `content` element), and any other
+///   attribute or content of a root. So in this release a package with a
+///   description or any element in it is refused.
 ///
 /// # Examples
 ///
@@ -182,12 +186,21 @@ mod roots;
 /// assert_eq!(root.kind(), ElementKind::ArgumentPackage);
 /// assert!(output.diagnostics().is_empty());
 ///
-/// // Content inside a package is not read yet: refused, never dropped.
+/// // A root's name is read.
 /// let named = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
 ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
-///   <name content="Arguments"/>
+///   <name lang="en" content="Arguments"/>
 /// </sacm:ArgumentPackage>"#;
-/// let error = xmi::read(named, &options).unwrap_err();
+/// let document = xmi::read(named, &options)?.into_document();
+/// let name = document.get("arguments").and_then(|root| root.name());
+/// assert_eq!(name.and_then(|name| name.content()), Some("Arguments"));
+///
+/// // Elements inside a package are not read yet: refused, never dropped.
+/// let claim = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+///   <argumentElement/>
+/// </sacm:ArgumentPackage>"#;
+/// let error = xmi::read(claim, &options).unwrap_err();
 /// assert!(matches!(error, ReadError::Unsupported { .. }));
 /// assert_eq!(error.code(), None);
 ///
@@ -461,8 +474,11 @@ impl std::error::Error for ReadError {}
 /// `useSchemaExtensions`). `xsi:type` is never written, but `read` accepts
 /// both.
 ///
-/// Every element then carries its id as `xmi:id`. An id is written as it is,
-/// escaped. An id that is not an XML `NCName`, such as `1 2`, is written too,
+/// Every element then carries its id as `xmi:id`. A named element's first
+/// child is its name, `<name lang="…" content="…" />`, with each field written
+/// only if present, so an empty field is `=""` and an absent one is no
+/// attribute; an element with no name has no `name` child. An id is written
+/// as it is, escaped, and so are a name's fields. An id that is not an XML `NCName`, such as `1 2`, is written too,
 /// but the output then does not validate against an XMI schema. In attribute
 /// values `&`, `<`, `>`, `"`, TAB, LF and CR are escaped; everything else is
 /// written as it is.
@@ -477,9 +493,10 @@ impl std::error::Error for ReadError {}
 ///    element's checks run before the next element's: first its id, where a
 ///    character outside XML 1.0's `Char` is
 ///    [`WriteError::UnrepresentableCharacter`], naming the first such
-///    character; then a name, then a non-default `assertionDeclaration`,
-///    each [`WriteError::Unsupported`], because this release does not write
-///    them yet.
+///    character; then its name's `lang`, then its `content`, the same way;
+///    then a non-default `assertionDeclaration`, which is
+///    [`WriteError::Unsupported`], because this release does not write it
+///    yet.
 ///
 /// # Examples
 ///
@@ -544,18 +561,22 @@ pub enum WriteError {
     /// Add a package as a root. This variant has no fields and will not gain
     /// any.
     NoRoot,
-    /// An element's id holds a character that XML 1.0 cannot represent: one
-    /// outside its `Char` production, such as U+0000, another C0 control
-    /// other than TAB, LF and CR, U+FFFE or U+FFFF.
+    /// An element's id, or its name's `lang` or `content`, holds a character
+    /// that XML 1.0 cannot represent: one outside its `Char` production, such
+    /// as U+0000, another C0 control other than TAB, LF and CR, U+FFFE or
+    /// U+FFFF.
     #[non_exhaustive]
     UnrepresentableCharacter {
-        /// The element whose id holds the character.
+        /// The element whose id or name holds the character.
         element: ElementId,
-        /// The first such character in the id.
+        /// The first such character in the attribute.
         character: char,
+        /// The XMI attribute that holds it: `"xmi:id"`, or the name's
+        /// `"lang"` or `"content"`.
+        attribute: &'static str,
     },
     /// The document holds content this version cannot write yet, such as a
-    /// name or a non-default `assertionDeclaration`. It has no catalog code.
+    /// non-default `assertionDeclaration`. It has no catalog code.
     /// A document returned by this release's [`read`] never holds such
     /// content.
     #[non_exhaustive]
@@ -595,12 +616,23 @@ impl fmt::Display for WriteError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NoRoot => f.write_str("the document has no root to write"),
-            Self::UnrepresentableCharacter { element, character } => write!(
-                f,
-                "the element {:?} cannot be written: its xmi:id holds U+{:04X}, which XML 1.0 cannot represent",
-                element.as_str(),
-                u32::from(*character)
-            ),
+            Self::UnrepresentableCharacter {
+                element,
+                character,
+                attribute,
+            } => {
+                let holder = if *attribute == "xmi:id" {
+                    ""
+                } else {
+                    "name's "
+                };
+                write!(
+                    f,
+                    "the element {:?} cannot be written: its {holder}{attribute} holds U+{:04X}, which XML 1.0 cannot represent",
+                    element.as_str(),
+                    u32::from(*character)
+                )
+            }
             Self::Unsupported { element, reason } => write!(
                 f,
                 "the writer cannot write the element {:?}: {reason}",

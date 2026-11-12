@@ -14,11 +14,11 @@ M1 has started: `sacm::model` provides a read-only `Document`, `ElementId`, the
 metamodel's element kinds, element names, each Assertion's `assertionDeclaration` and
 the first value types (`LangString`, `MultiLangString`, `AssertionDeclaration`), and
 `sacm::diagnostic` provides the `Diagnostic` type. `sacm::xmi::read` reads
-`AssuranceCasePackage` and `ArgumentPackage` roots, but nothing inside them yet. It
-refuses unsafe and malformed input and roots that are not SACM packages with a diagnostic
-code, and content it cannot represent yet as `Unsupported`. `sacm::xmi::write` writes a
-document deterministically, but refuses a name or a non-default `assertionDeclaration`
-as `Unsupported` for now. Reading the content of packages, validation and editing are
+`AssuranceCasePackage` and `ArgumentPackage` roots and their names, but nothing else
+inside them yet. It refuses unsafe and malformed input and roots that are not SACM
+packages with a diagnostic code, and content it cannot represent yet as `Unsupported`.
+`sacm::xmi::write` writes a document and its names deterministically, but refuses a
+non-default `assertionDeclaration` as `Unsupported` for now. Reading the content of packages, validation and editing are
 not built yet. Milestone M0, the foundation, is done: the workspace, CI, the
 functionality matrix and its gate, and mutation testing. The [functionality matrix](docs/matrix/functionality-matrix.md)
 shows what is verified; nothing else is claimed.

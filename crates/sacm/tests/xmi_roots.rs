@@ -845,7 +845,7 @@ fn sacm23_xmi_001_invalid_root_takes_precedence_over_unsupported() {
         // An XMI-namespace child.
         "<xmi:documentation/>",
         // A readable root with content it cannot read.
-        "<sacm:ArgumentPackage xmi:id=\"a\"><name/></sacm:ArgumentPackage>",
+        "<sacm:ArgumentPackage xmi:id=\"a\"><note/></sacm:ArgumentPackage>",
         // A readable root with an attribute it cannot read.
         "<sacm:ArgumentPackage xmi:id=\"a\" gid=\"g\"/>",
         // A root without an id.
@@ -1015,7 +1015,7 @@ fn sacm23_xmi_001_an_unread_attribute_of_the_wrapper_is_unsupported_at_the_attri
 fn sacm23_xmi_001_unread_content_of_a_root_is_unsupported_at_that_content() {
     let row = "SACM23-XMI-001";
     let children = [
-        "<name/>",
+        "<note/>",
         "<argumentPackage/>",
         "<argumentElement xsi:type=\"sacm:Claim\"/>",
         "<xmi:Extension/>",

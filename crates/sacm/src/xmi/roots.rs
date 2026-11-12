@@ -1,5 +1,6 @@
-//! The interchange roots of an XMI document (SACM23-XMI-001; formal/23-05-08
-//! §2.2, §2.4; XMI 2.5.1 §7.5.3; ADR 0015, ADR 0016).
+//! The interchange roots of an XMI document and their names (SACM23-XMI-001,
+//! SACM23-XMI-012; formal/23-05-08 §2.2, §2.4; XMI 2.5.1 §7.5.3; ADR 0015,
+//! ADR 0016, ADR 0017 amendment 1).
 //!
 //! An interchange root is the document element or, when that is the XMI
 //! element, each of its element children outside the XMI namespace. The
@@ -17,7 +18,8 @@
 //!    whatever is beside it, are checked, and each root is added to the
 //!    document. A root's namespace and kind, its `xmi:id` and its type are
 //!    checked first, all located at the root, then its other attributes, its
-//!    content, and whether an earlier root has its id. The first thing this
+//!    content (one `name` is read into the root's name, SACM23-XMI-012), and
+//!    whether an earlier root has its id. The first thing this
 //!    release cannot read is `Unsupported`, at its location; nothing is
 //!    dropped (ADR 0015, D-PRESERVE).
 //!
@@ -35,7 +37,7 @@ use roxmltree::{Attribute, Node};
 use super::ReadError;
 use super::input::{is_xml_space, locate};
 use super::namespaces::{SACM_NS, XMI_NS};
-use crate::model::{Document, ElementId, ElementKind, InsertError};
+use crate::model::{Document, ElementId, ElementKind, InsertError, LangString};
 
 /// The XML Schema instance namespace, of `xsi:type`, which is read but never
 /// written (ADR 0017 T1).
@@ -204,7 +206,7 @@ fn read_root(text: &str, root: Node<'_, '_>, document: &mut Document) -> Result<
     // the id, it is refused at the root.
     if let Some(attribute) = root
         .attributes()
-        .find(|attribute| is_type(attribute) && !names_class(root, attribute.value(), kind))
+        .find(|attribute| is_type(attribute) && !names_class(root, attribute.value(), kind.name()))
     {
         return Err(not_read(format!(
             "the root element {name:?} has the type {:?}, which names another class",
@@ -220,9 +222,20 @@ fn read_root(text: &str, root: Node<'_, '_>, document: &mut Document) -> Result<
         return Err(unread_attribute(text, &attribute, &name));
     }
 
-    // The content: white space, comments and processing instructions only.
+    // The content: one `name` (SACM23-XMI-012), white space, comments and
+    // processing instructions only.
+    let mut root_name = None;
     for child in root.children() {
-        if child.is_element() {
+        if child.is_element() && child.tag_name().name() == "name" {
+            if root_name.is_some() {
+                return Err(unsupported(
+                    text,
+                    child.range().start,
+                    format!("the root element {name:?} has a second \"name\""),
+                ));
+            }
+            root_name = Some(read_name(text, child)?);
+        } else if child.is_element() {
             return Err(unsupported(
                 text,
                 child.range().start,
@@ -231,12 +244,13 @@ fn read_root(text: &str, root: Node<'_, '_>, document: &mut Document) -> Result<
                     written_name(text, child)
                 ),
             ));
+        } else {
+            check_text(text, child, &name)?;
         }
-        check_text(text, child, &name)?;
     }
 
     document
-        .insert_node(None, kind, ElementId::new(id), None)
+        .insert_node(None, kind, ElementId::new(id), root_name)
         .map_err(|error| match error {
             InsertError::DuplicateId(id) => not_read(format!(
                 "the root element {name:?} has the \"xmi:id\" {:?} of an earlier root",
@@ -246,6 +260,62 @@ fn read_root(text: &str, root: Node<'_, '_>, document: &mut Document) -> Result<
                 "the root element {name:?} cannot be held in the document: {other}"
             )),
         })
+}
+
+/// The `LangString` that the `name` element `node` holds (SACM23-XMI-011,
+/// SACM23-XMI-012; ADR 0017 amendment 1). It must be in no namespace, carry
+/// only `lang`, `content` and a type naming `LangString`, and hold only white
+/// space, comments and processing instructions. The values are kept as the
+/// parser gives them, untrimmed.
+fn read_name(text: &str, node: Node<'_, '_>) -> Result<LangString, ReadError> {
+    let at_name = node.range().start;
+    let element = written_name(text, node);
+    if let Some(namespace) = node.tag_name().namespace().filter(|uri| !uri.is_empty()) {
+        return Err(unsupported(
+            text,
+            at_name,
+            format!(
+                "the element {element:?} is in the namespace {namespace:?}, so it is not read as a name"
+            ),
+        ));
+    }
+    // Like a root's, a type naming another class is refused at the start tag.
+    if let Some(attribute) = node
+        .attributes()
+        .find(|attribute| is_type(attribute) && !names_class(node, attribute.value(), "LangString"))
+    {
+        return Err(unsupported(
+            text,
+            at_name,
+            format!(
+                "the element {element:?} has the type {:?}, which names another class than LangString",
+                attribute.value()
+            ),
+        ));
+    }
+    let mut name = LangString::default();
+    for attribute in node.attributes() {
+        match (attribute.namespace(), attribute.name()) {
+            (None, "lang") => name.set_lang(Some(attribute.value().to_owned())),
+            (None, "content") => name.set_content(Some(attribute.value().to_owned())),
+            _ if is_type(&attribute) => {}
+            _ => return Err(unread_attribute(text, &attribute, &element)),
+        }
+    }
+    for child in node.children() {
+        if child.is_element() {
+            return Err(unsupported(
+                text,
+                child.range().start,
+                format!(
+                    "the element {:?} in {element:?} is not read in this release",
+                    written_name(text, child)
+                ),
+            ));
+        }
+        check_text(text, child, &element)?;
+    }
+    Ok(name)
 }
 
 /// Refuses `node` if it is text that is not all white space, at its first
@@ -285,17 +355,17 @@ fn is_type(attribute: &Attribute<'_, '_>) -> bool {
     is_xmi(attribute, "type") || attribute.namespace() == Some(XSI_NS) && attribute.name() == "type"
 }
 
-/// Whether the type `value`, a `QName` resolved in the scope of `root`, names
-/// the SACM class of `kind`. The value's leading and trailing white space is
+/// Whether the type `value`, a `QName` resolved in the scope of `node`, names
+/// the SACM class `class`. The value's leading and trailing white space is
 /// removed first, as a `QName`'s is collapsed (XML Schema 1.0 Part 2 §4.3.6);
 /// white space inside it stays, so it names no class.
-fn names_class(root: Node<'_, '_>, value: &str, kind: ElementKind) -> bool {
+fn names_class(node: Node<'_, '_>, value: &str, class: &str) -> bool {
     let value = value.trim_matches(is_xml_space);
     let (prefix, local) = match value.split_once(':') {
         Some((prefix, local)) => (Some(prefix), local),
         None => (None, value),
     };
-    local == kind.name() && root.lookup_namespace_uri(prefix) == Some(SACM_NS)
+    local == class && node.lookup_namespace_uri(prefix) == Some(SACM_NS)
 }
 
 /// The `Unsupported` refusal of an attribute that is not read, at its name.
