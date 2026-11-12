@@ -1,6 +1,6 @@
 //! The document and its read-only element views.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 
 use super::containment::admits;
@@ -36,13 +36,15 @@ use super::{AbstractClass, AssertionDeclaration, ElementId, ElementKind, LangStr
 ///
 /// In this release [`xmi::read`](crate::xmi::read) fills a document with
 /// `AssuranceCasePackage` and `ArgumentPackage` roots, but nothing inside
-/// them yet. Reading their content and the edit operations come later; until
-/// then, tests build fuller documents with the `test-support` feature's
+/// them yet, and [`edit::apply`](crate::edit::apply) creates
+/// AssuranceCasePackage, ArgumentPackage and Claim elements. Tests build
+/// documents with other kinds through the `test-support` feature's
 /// `Document::insert`. [`Document::new`] is empty.
 ///
-/// Cloning a document copies all of it; the copy is independent of the
-/// original. Cloning, dropping and traversal do not recurse, so arbitrarily
-/// deep nesting is safe.
+/// Cloning a document copies all of it, including the counters that generated
+/// ids continue from; the copy is independent of the original. Cloning,
+/// dropping and traversal do not recurse, so arbitrarily deep nesting is
+/// safe.
 ///
 /// # Examples
 ///
@@ -63,6 +65,10 @@ pub struct Document {
     /// The handle of each element by id. Only looked up, never iterated, so
     /// nothing observable depends on its order.
     index: HashMap<ElementId, usize>,
+    /// The `n` of the last id generated for each kind (`claim_<n>`, ADR
+    /// 0019); a kind with none generated yet is absent. Advanced only when a
+    /// generated id is used, and copied by `Clone`.
+    id_counters: BTreeMap<ElementKind, u64>,
 }
 
 /// One element of a [`Document`].
@@ -103,15 +109,18 @@ impl Document {
     /// interface or binding of one.
     ///
     /// ```
-    /// use sacm::model::{Document, ElementId, ElementKind};
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateAssuranceCasePackage};
+    /// use sacm::model::{Document, LangString};
     ///
-    /// // Built with the unstable test-support feature: `xmi::read` reads only package roots and their names so far.
     /// let mut doc = Document::new();
-    /// doc.insert(None, ElementKind::AssuranceCasePackage, ElementId::from("safety_case"), None).unwrap();
-    /// doc.insert(None, ElementKind::ArtifactPackage, ElementId::from("evidence"), None).unwrap();
+    /// let case = CreateAssuranceCasePackage::root(LangString::new("Safety case")).with_id("safety_case");
+    /// edit::apply(&mut doc, case)?;
+    /// let arguments = CreateArgumentPackage::root(LangString::new("Arguments")).with_id("arguments");
+    /// edit::apply(&mut doc, arguments)?;
     ///
     /// let roots: Vec<&str> = doc.roots().map(|root| root.id().as_str()).collect();
-    /// assert_eq!(roots, ["safety_case", "evidence"]);
+    /// assert_eq!(roots, ["safety_case", "arguments"]);
+    /// # Ok::<(), sacm::edit::EditError>(())
     /// ```
     pub fn roots(&self) -> impl Iterator<Item = SacmElement<'_>> {
         self.roots.iter().map(|&node| self.view(node))
@@ -123,15 +132,17 @@ impl Document {
     /// `&str`, a `&String` or an `&ElementId`.
     ///
     /// ```
-    /// use sacm::model::{Document, ElementId, ElementKind};
+    /// use sacm::edit::{self, CreateArgumentPackage};
+    /// use sacm::model::{Document, ElementKind, LangString};
     ///
-    /// // Built with the unstable test-support feature: `xmi::read` reads only package roots and their names so far.
     /// let mut doc = Document::new();
-    /// doc.insert(None, ElementKind::ArgumentPackage, ElementId::from("arguments"), None).unwrap();
+    /// let arguments = CreateArgumentPackage::root(LangString::new("Arguments")).with_id("arguments");
+    /// edit::apply(&mut doc, arguments)?;
     ///
     /// let arguments = doc.get("arguments").expect("the document has it");
     /// assert_eq!(arguments.kind(), ElementKind::ArgumentPackage);
     /// assert!(doc.get("Arguments").is_none());
+    /// # Ok::<(), sacm::edit::EditError>(())
     /// ```
     #[must_use]
     pub fn get<Q: AsRef<str> + ?Sized>(&self, id: &Q) -> Option<SacmElement<'_>> {
@@ -170,18 +181,19 @@ impl Document {
     /// so it is safe on arbitrarily deep documents.
     ///
     /// ```
-    /// use sacm::model::{Document, ElementId, ElementKind};
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateAssuranceCasePackage, CreateClaim};
+    /// use sacm::model::{Document, LangString};
     ///
-    /// // Built with the unstable test-support feature: `xmi::read` reads only package roots and their names so far.
     /// let mut doc = Document::new();
-    /// let id = ElementId::from;
-    /// doc.insert(None, ElementKind::AssuranceCasePackage, id("case"), None).unwrap();
-    /// doc.insert(Some(&id("case")), ElementKind::ArgumentPackage, id("arguments"), None).unwrap();
-    /// doc.insert(Some(&id("case")), ElementKind::ArtifactPackage, id("artifacts"), None).unwrap();
-    /// doc.insert(Some(&id("arguments")), ElementKind::Claim, id("claim"), None).unwrap();
+    /// let name = || LangString::new("N");
+    /// edit::apply(&mut doc, CreateAssuranceCasePackage::root(name()).with_id("case"))?;
+    /// edit::apply(&mut doc, CreateArgumentPackage::new("case", name()).with_id("arguments"))?;
+    /// edit::apply(&mut doc, CreateClaim::new("arguments", name()).with_id("claim"))?;
+    /// edit::apply(&mut doc, CreateArgumentPackage::new("case", name()).with_id("more"))?;
     ///
     /// let order: Vec<&str> = doc.elements().map(|element| element.id().as_str()).collect();
-    /// assert_eq!(order, ["case", "arguments", "claim", "artifacts"]);
+    /// assert_eq!(order, ["case", "arguments", "claim", "more"]);
+    /// # Ok::<(), sacm::edit::EditError>(())
     /// ```
     pub fn elements(&self) -> impl Iterator<Item = SacmElement<'_>> {
         PreOrder {
@@ -194,9 +206,9 @@ impl Document {
     /// when `parent` is `None`.
     ///
     /// **Not part of the stable API.** This is the test seam of the
-    /// `test-support` feature: it builds documents for tests until the XMI
-    /// reader reads package content and the edit operations exist. It may
-    /// change or disappear in
+    /// `test-support` feature: it builds documents for tests with the kinds
+    /// and states that the XMI reader and [`edit::apply`](crate::edit::apply)
+    /// do not produce yet. It may change or disappear in
     /// any release. It checks identity, that `parent` exists, whether `kind`
     /// can have a name, and whether a containment role of the parent's class
     /// admits `kind` (see [`Document`]). It does not check how many children a
@@ -403,6 +415,39 @@ impl Document {
         }
     }
 
+    /// The id the next generated element of `kind` gets, with its `n`:
+    /// `<snake_case kind>_<n>` for the smallest `n` above the kind's counter
+    /// whose id is not in use (ADR 0019). The counter is not advanced; see
+    /// [`commit_generated_id`](Self::commit_generated_id).
+    pub(crate) fn next_generated_id(&self, kind: ElementKind) -> (ElementId, u64) {
+        let prefix = snake_case(kind.name());
+        let mut n = self
+            .id_counters
+            .get(&kind)
+            .copied()
+            .unwrap_or(0)
+            .wrapping_add(1);
+        let mut id = generated_id(&prefix, n);
+        // At most `element_count` ids are in use and the candidates are
+        // distinct, so one of the first `element_count + 1` is free: the last
+        // candidate needs no check, and the loop is bounded.
+        for _ in 0..self.nodes.len() {
+            if !self.index.contains_key(&id) {
+                break;
+            }
+            n = n.wrapping_add(1);
+            id = generated_id(&prefix, n);
+        }
+        (id, n)
+    }
+
+    /// Records that the id generated with `n` for `kind` is now in use, so
+    /// that generation for `kind` continues above it. Called only after the
+    /// element is added.
+    pub(crate) fn commit_generated_id(&mut self, kind: ElementKind, n: u64) {
+        self.id_counters.insert(kind, n);
+    }
+
     /// The view of the node with handle `node`.
     fn view(&self, node: usize) -> SacmElement<'_> {
         SacmElement {
@@ -410,6 +455,28 @@ impl Document {
             node,
         }
     }
+}
+
+/// `<prefix>_<n>`.
+fn generated_id(prefix: &str, n: u64) -> ElementId {
+    ElementId::new(format!("{prefix}_{n}"))
+}
+
+/// A SACM class name in snake case: `AssuranceCasePackage` becomes
+/// `assurance_case_package`.
+fn snake_case(class: &str) -> String {
+    let mut out = String::with_capacity(class.len() + 4);
+    for (position, c) in class.char_indices() {
+        if c.is_ascii_uppercase() {
+            if position > 0 {
+                out.push('_');
+            }
+            out.push(c.to_ascii_lowercase());
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 impl fmt::Debug for Document {
@@ -467,7 +534,7 @@ impl<'a> Iterator for PreOrder<'a> {
 ///     package.children().filter(|child| child.kind() == ElementKind::Claim)
 /// }
 ///
-/// // Built with the unstable test-support feature: `xmi::read` reads only package roots and their names so far.
+/// // Built with the unstable test-support feature: edit::apply does not create an ArgumentReasoning yet.
 /// let mut doc = Document::new();
 /// let id = ElementId::from;
 /// doc.insert(None, ElementKind::ArgumentPackage, id("arguments"), None).unwrap();
@@ -522,7 +589,7 @@ impl<'a> SacmElement<'a> {
     /// ```
     /// use sacm::model::{AbstractClass, Document, ElementId, ElementKind, LangString};
     ///
-    /// // Built with the unstable test-support feature: `xmi::read` reads only package roots and their names so far.
+    /// // Built with the unstable test-support feature: edit::apply does not create a Note or a missing name.
     /// let mut doc = Document::new();
     /// let id = ElementId::from;
     /// let name = LangString::new("Top claim").with_lang("en");
@@ -562,7 +629,7 @@ impl<'a> SacmElement<'a> {
     /// ```
     /// use sacm::model::{AssertionDeclaration, Document, ElementId, ElementKind};
     ///
-    /// // Built with the unstable test-support feature: `xmi::read` reads only package roots and their names so far.
+    /// // Built with the unstable test-support feature: edit::apply does not create an ArgumentReasoning yet.
     /// let mut doc = Document::new();
     /// let id = ElementId::from;
     /// doc.insert(None, ElementKind::ArgumentPackage, id("arguments"), None).unwrap();
@@ -743,3 +810,19 @@ impl fmt::Display for SetAssertionDeclarationError {
 
 #[cfg(feature = "test-support")]
 impl std::error::Error for SetAssertionDeclarationError {}
+
+#[cfg(test)]
+mod tests {
+    use super::snake_case;
+    use crate::model::ElementKind;
+
+    #[test]
+    fn snake_case_splits_a_class_name_at_each_capital() {
+        assert_eq!(
+            snake_case(ElementKind::AssuranceCasePackage.name()),
+            "assurance_case_package"
+        );
+        assert_eq!(snake_case(ElementKind::Claim.name()), "claim");
+        assert_eq!(snake_case("lower"), "lower");
+    }
+}

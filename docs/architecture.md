@@ -44,13 +44,15 @@ sacm
 │                (built: `validate`, with the missing-name rule, ADR 0018)
 ├── diagnostic   Diagnostic, Severity, Code, SourceLocation, has_errors
 ├── edit         operations, previews, delete policies, mutation results
+│                (built: `apply`, `Mutation` and the AssuranceCasePackage,
+│                ArgumentPackage and Claim create operations, ADR 0019)
 └── compare      semantic equality and differences
 ```
 
 ```text
 bytes    ──► xmi::read            ──► Document + Vec<Diagnostic>
 Document ──► validation::validate ──► Vec<Diagnostic>
-Document ──► edit::apply(op)      ──► Result<MutationResult, EditError>   (atomic)
+Document ──► edit::apply(op)      ──► Result<Mutation, EditError>         (atomic)
 Document ──► xmi::write(strict)   ──► Result<bytes, WriteError>           (deterministic; refuses invalid models)
 ```
 
@@ -66,8 +68,9 @@ Document ──► xmi::write(strict)   ──► Result<bytes, WriteError>     
 - **Validation:** structural invariants hold after every edit; content constraints are
   reported by `validation::validate` (D-VAL-LAYER). Severity follows the clause's modal verb
   (D-SEV).
-- **Editing:** operations are values (`CreateClaim { .. }`) applied to a document. Each
-  is checked fully before anything changes (D-ATOMIC). Destructive operations have a
+- **Editing** ([ADR 0019](adr/0019-edit-operations.md)): operations are values
+  (`CreateClaim::new(parent, name)`) applied with `edit::apply`. Each is checked fully
+  before anything changes (D-ATOMIC). Destructive operations have a
   `preview` (D-PREVIEW).
 
 ## Quality gates

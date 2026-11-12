@@ -9,7 +9,7 @@ Read, edit, validate and write assurance cases in the
 
 ## Status and plans
 
-Implemented now: the read-only document model with element names and each
+Implemented now: the document model with element names and each
 Assertion's `assertionDeclaration`, the first value types (`LangString`,
 `MultiLangString` and `AssertionDeclaration`) in `sacm::model`, and the
 diagnostic type that findings are reported in (`sacm::diagnostic`), and
@@ -18,7 +18,9 @@ diagnostic type that findings are reported in (`sacm::diagnostic`), and
 `AssuranceCasePackage` and `ArgumentPackage` roots and their names, but nothing else
 inside them yet; it refuses what it cannot represent rather than drop it.
 `sacm::xmi::write` writes a document and its names deterministically, and refuses a
-non-default `assertionDeclaration`, which it does not write yet.
+non-default `assertionDeclaration`, which it does not write yet. `sacm::edit::apply`
+creates AssuranceCasePackages, ArgumentPackages and Claims, each with a name and a given
+or generated id; a refused operation changes nothing.
 
 Planned:
 
@@ -29,8 +31,8 @@ Planned:
   dialects and legacy revisions and tells you exactly what it accepted.
 - More validation rules against the specification's constraints, reported as structured
   diagnostics with stable codes, severities, clause references and locations.
-- SACM-native editing. Every public mutation either succeeds, keeping the
-  document's structural invariants, or fails and leaves it unchanged.
+- SACM-native editing for every element kind. Every public mutation either succeeds,
+  keeping the document's structural invariants, or fails and leaves it unchanged.
   Destructive edits can be previewed first.
 
 ## Usage
@@ -79,6 +81,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 so far; it refuses the other content of packages rather than drop it. `sacm::xmi::write`
 writes the document back deterministically, and refuses a non-default
 `assertionDeclaration` until a later release writes it.
+
+Build a document with `sacm::edit::apply`, then validate and write it:
+
+```rust
+use sacm::edit::{self, CreateArgumentPackage, CreateAssuranceCasePackage, CreateClaim};
+use sacm::model::{Document, LangString};
+use sacm::validation;
+use sacm::xmi::{self, WriteOptions};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let name = |text: &str| LangString::new(text).with_lang("en");
+    let mut doc = Document::new();
+
+    edit::apply(&mut doc, CreateAssuranceCasePackage::root(name("Safety case")).with_id("case"))?;
+    // No with_id: the id is generated. Use it as the next parent.
+    let created = edit::apply(&mut doc, CreateArgumentPackage::new("case", name("Arguments")))?;
+    let arguments = created.created_ids()[0].clone();
+    assert_eq!(arguments.as_str(), "argument_package_1");
+    edit::apply(&mut doc, CreateClaim::new(&arguments, name("The system is safe")).with_id("c_top"))?;
+
+    // Every element has a name, so validation finds nothing.
+    assert!(validation::validate(&doc).is_empty());
+    let text = xmi::write(&doc, &WriteOptions::default())?;
+    assert!(text.contains(r#"xmi:id="c_top""#));
+    print!("{text}");
+    Ok(())
+}
+```
+
+`sacm::xmi::read` cannot read such a file back yet: it reads only package roots and their
+names, and refuses, as `ReadError::Unsupported`, packages that hold elements.
 
 See the [crate documentation](https://docs.rs/sacm) for the full API.
 

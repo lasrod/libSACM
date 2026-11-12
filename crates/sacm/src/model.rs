@@ -24,7 +24,7 @@
 //! ```
 //! use sacm::model::{Document, ElementId, ElementKind, LangString};
 //!
-//! // Built with the unstable test-support feature: `xmi::read` reads only package roots and their names so far.
+//! // Built with the unstable test-support feature: edit::apply does not create a missing name.
 //! let mut doc = Document::new();
 //! let arguments = ElementId::from("arguments");
 //! let name = |content: &str| Some(LangString::new(content).with_lang("en"));
@@ -83,12 +83,13 @@ mod kind;
 mod lang_string;
 
 pub use argumentation::{AssertionDeclaration, ParseAssertionDeclarationError};
-pub(crate) use containment::{DeclaredType, role};
+pub(crate) use containment::{DeclaredType, admits, role};
 #[cfg(not(feature = "test-support"))]
 pub(crate) use document::InsertError;
 pub use document::{Document, SacmElement};
 #[cfg(feature = "test-support")]
 pub use document::{InsertError, SetAssertionDeclarationError};
 pub use id::ElementId;
+pub(crate) use id::is_ncname;
 pub use kind::{AbstractClass, ElementKind, MetamodelPackage};
 pub use lang_string::{LangString, MultiLangString};

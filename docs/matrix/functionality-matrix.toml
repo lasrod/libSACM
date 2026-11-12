@@ -2151,11 +2151,60 @@ id = "LIB-EDIT-001"
 area = "EDIT"
 milestone = "M1"
 title = "Create operations"
-requirement = "Elements are created through explicit operations taking a parent, a `name` LangString and an optional caller-provided id; generated ids are deterministic for a given sequence of operations; an invalid parent is refused (SACM-CMD-005). Initially AssuranceCasePackage, ArgumentPackage and Claim; each later model row extends it to its class."
-source = "D-ID, D-ATOMIC"
+requirement = "Elements are created through operation values applied by `sacm::edit::apply(&mut Document, impl Into<Operation>) -> Result<Mutation, EditError>` (ADR 0019): `CreateAssuranceCasePackage` and `CreateArgumentPackage` (`root(name)` or `new(parent, name)`) and `CreateClaim` (`new(parent, name)`), each with an optional `with_id(id)` and the read accessors `parent()`, `id()` and `name()`; `impl From<&ElementId> for ElementId` lets a returned id be the next parent. The name is a required `LangString`, stored exactly (ADR 0013). A parent is legal exactly when the crate's containment table admits the child kind. A caller id must be an XML NCName (XMI 2.5.1 §7.6.1 `xsd:ID`); a generated id is `<snake_case kind>_<n>`, the smallest unused `n` above a per-kind counter that advances only on success, so it is deterministic for a given sequence of operations. Refusals, checked in this order, leave the document unchanged: `ParentNotFound` (SACM-CMD-001), `InvalidParent` (SACM-CMD-005), `InvalidId` (SACM-ID-002), `DuplicateId` (SACM-CMD-004). `Mutation::created_ids()` lists the new element first. Each later model row extends the operations to its class."
+source = "ADR 0019 (the maintainer, 2026-11-12); XMI 2.5.1 §7.6.1 (pp. 13-14) `<xsd:attribute name=\"id\" type=\"xsd:ID\" use=\"optional\"/>` and \"the value for xmi:id is unique across all elements within the file\"; Namespaces in XML 1.0 (Third Edition) §3 [4] `NCName ::= Name - (Char* ':' Char*)` `/* An XML Name, minus the \":\" */`; XML 1.0 (Fifth Edition) §2.3 [4] NameStartChar (`\":\" | [A-Z] | \"_\" | [a-z] | …` through `[#x10000-#xEFFFF]`), [4a] `NameChar ::= NameStartChar | \"-\" | \".\" | [0-9] | #xB7 | [#x0300-#x036F] | [#x203F-#x2040]`, [5] `Name ::= NameStartChar (NameChar)*`; D-ID; ADR 0010; ADR 0011; ADR 0013; ADR 0014; assurance-forge `commands/operations.h`, `commands.cpp:43-90, 178-200`"
 kind = "editing"
-status = "planned"
-depends_on = ["SACM23-ARG-002", "LIB-API-004"]
+status = "verified"
+depends_on = ["SACM23-ARG-002", "LIB-API-004", "LIB-API-008", "SACM23-XMI-012", "SACM23-VAL-018"]
+acceptance = [
+  "Each of the three operations creates its element with the given parent (or as a root, in document order), the given name exactly, and the given id; `created_ids()` is `[id]`. `LangString::default()` and names with empty fields are stored exactly.",
+  "The read accessors report what an operation holds: `parent()` (`None` for a root), `id()` (`None` without `with_id`) and `name()`; a parent given as `&ElementId` (`From<&ElementId>`) is accepted.",
+  "Generated ids are `assurance_case_package_1`, `argument_package_1`, `claim_1`, then `_2` and so on, per kind. Generation skips an id already in use, whether given by a caller or read from a file; a caller id does not advance the counter.",
+  "Determinism: the same operations on equal starting documents give the same ids; a clone generates the same ids as its original.",
+  "Parent legality equals the containment table: for each of the three child kinds, every parent kind the model admits (including an ArtifactPackage and package interfaces and bindings, built with the test seam) is accepted, and every other kind is `InvalidParent`.",
+  "Refusals: an unknown parent is `ParentNotFound`; an illegal parent is `InvalidParent` with the parent's id and kind and the child kind; an id that is not an NCName (`\"\"`, `\"1\"`, `\"a b\"`, `\"a:b\"`, `\"-x\"`) is `InvalidId`; an id already in the document, including one read from a file, is `DuplicateId`. The checks run in this order; the first failure is the result.",
+  "A refused operation leaves the document unchanged: the element count, the written XMI and the next generated id are the same as before.",
+  "The error contract: `code()` is SACM-CMD-001, -005, ID-002 or CMD-004; `Display` is one lowercase line with ids quoted by `{:?}`; `EditError` is `Error + Send + Sync + 'static` with `source()` `None`. Each code has a catalog row in `docs/sacm/diagnostics.md`.",
+  "A document built only through `edit::apply`, with names, validates with no diagnostics and writes; its roots and their names read back through `xmi::read` with the same ids, kinds and names.",
+]
+code = ["crates/sacm/src/edit.rs", "crates/sacm/src/edit/create.rs", "crates/sacm/src/model/document.rs", "crates/sacm/src/model/id.rs", "crates/sacm/src/diagnostic.rs", "docs/adr/0019-edit-operations.md"]
+tests = [
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_create_assurance_case_package_creates_a_root_with_the_given_name_and_id",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_create_argument_package_creates_a_root_with_the_given_name_and_id",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_package_operations_create_under_the_given_parent",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_create_claim_creates_under_the_given_parent",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_roots_are_created_in_document_order",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_names_are_stored_exactly",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_operations_report_their_parent_id_and_name",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_generated_ids_count_up_per_kind",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_generation_skips_an_id_given_by_a_caller",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_a_caller_id_does_not_advance_the_counter",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_generation_skips_an_id_read_from_a_file",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_equal_documents_given_the_same_operations_generate_the_same_ids",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_a_clone_generates_the_same_ids_as_its_original",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_an_assurance_case_package_is_created_exactly_under_its_legal_parents",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_an_argument_package_is_created_exactly_under_its_legal_parents",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_a_claim_is_created_exactly_under_its_legal_parents",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_an_unknown_parent_is_parent_not_found",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_an_illegal_parent_is_invalid_parent_with_its_id_and_kind_and_the_child_kind",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_an_id_that_is_not_an_ncname_is_invalid_id",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_an_ncname_id_is_accepted_exactly",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_an_id_already_in_the_document_is_duplicate_id",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_an_id_read_from_a_file_is_duplicate_id",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_refusals_are_checked_in_order",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_a_refused_operation_leaves_the_document_unchanged",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_edit_error_codes_are_the_catalog_codes",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_edit_error_display_is_one_lowercase_line",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_edit_error_is_a_send_sync_static_error_without_a_source",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_each_edit_error_code_has_an_error_row_in_the_catalog",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_a_document_built_by_edit_validates_and_writes",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_roots_built_by_edit_read_back_with_the_same_ids_kinds_and_names",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_generation_skips_several_used_ids_in_a_row",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_generation_finds_the_free_id_when_every_element_is_a_candidate",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_ncname_first_characters_are_checked_at_every_range_edge",
+  "crates/sacm/tests/edit_create.rs::lib_edit_001_ncname_later_characters_are_checked_at_every_range_edge",
+]
+verification = "docs/verification/0028-m1-create-operations.md"
 
 [[row]]
 id = "LIB-EDIT-002"
