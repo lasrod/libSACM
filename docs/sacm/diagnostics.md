@@ -24,7 +24,7 @@ crate, and name the matrix row that owns it.
 
 | Code | Severity | Meaning |
 | --- | --- | --- |
-| SACM-XML-001 | Error | The input is not well-formed XML 1.0 with namespaces, is truncated, is not valid UTF-8, or declares ASCII but holds non-ASCII. Fix: correct the XML at the reported location. `Code::XML_MALFORMED`, the code of `ReadError::Malformed` (LIB-SEC-002, LIB-SEC-005). |
+| SACM-XML-001 | Error | The input is not well-formed XML 1.0 with namespaces, is truncated, is not valid UTF-8 or UTF-16, declares ASCII but holds non-ASCII, or has a UTF-16 byte order mark but declares an encoding other than UTF-16, UTF-16LE or UTF-16BE. UTF-16 with a byte order mark is read. Fix: correct the XML at the reported location. `Code::XML_MALFORMED`, the code of `ReadError::Malformed` (LIB-SEC-002, LIB-SEC-005, SACM23-XMI-018). |
 | SACM-SEC-001 | Error | The input has a DOCTYPE, which may declare entities; it is refused before it is read. Fix: remove the DOCTYPE, because SACM XMI does not need one. `Code::XML_DOCTYPE_REJECTED`, the code of `ReadError::Doctype` (LIB-SEC-001). |
 
 ## XMI structure

@@ -375,20 +375,33 @@ enum Class {
     Accepted(String),
 }
 
-/// The encoding this test sees in `bytes` other than UTF-8 or ASCII, if any:
-/// a UTF-16 or UCS-4 byte order mark, first bytes that are `<` in UTF-16 or
-/// UCS-4, or an XML declaration naming another encoding.
+/// Whether `bytes` start with a UTF-16 byte order mark: `FF FE` or `FE FF`,
+/// not followed by `00 00` (which makes a UCS-4 mark).
+fn utf16_bom(bytes: &[u8]) -> bool {
+    (bytes.starts_with(&[0xFF, 0xFE]) || bytes.starts_with(&[0xFE, 0xFF]))
+        && bytes.get(2..4) != Some(&[0x00, 0x00])
+}
+
+/// The encoding this test sees in `bytes` that the reader still refuses as
+/// `Unsupported`, if any (item 4, after SACM23-XMI-018): a UCS-4 byte order
+/// mark, first bytes that are `<` in UTF-16 or UCS-4 without a byte order
+/// mark, or an XML declaration naming an encoding other than UTF-8 or ASCII
+/// in input without a UTF-16 byte order mark. UTF-16 with a byte order mark
+/// is read, so its `Unsupported` is never one from the encoding steps.
 fn other_encoding(bytes: &[u8]) -> Option<String> {
-    if bytes.starts_with(&[0xFE, 0xFF])
-        || bytes.starts_with(&[0xFF, 0xFE])
-        || bytes.starts_with(&[0x00, 0x00, 0xFE, 0xFF])
+    if utf16_bom(bytes) {
+        return None;
+    }
+    if bytes.starts_with(&[0x00, 0x00, 0xFE, 0xFF])
+        || bytes.starts_with(&[0xFF, 0xFE, 0x00, 0x00])
         || bytes.starts_with(&[0x00, 0x00, 0xFF, 0xFE])
+        || bytes.starts_with(&[0xFE, 0xFF, 0x00, 0x00])
     {
-        return Some("a UTF-16 or UCS-4 byte order mark".to_owned());
+        return Some("a UCS-4 byte order mark".to_owned());
     }
     let first = bytes.get(..4).unwrap_or(bytes);
     if first.contains(&0x00) && first.contains(&b'<') {
-        return Some("`<` in UTF-16 or UCS-4".to_owned());
+        return Some("`<` in UTF-16 or UCS-4 without a byte order mark".to_owned());
     }
     let text = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(bytes);
     let declaration = text.strip_prefix(b"<?xml")?;
@@ -603,8 +616,9 @@ fn lib_sec_006_every_selected_not_well_formed_case_is_refused() {
             tally(&Class::Encoding),
             tally(&Class::Malformed)
         ),
-        (719, 35, 263),
-        "{ROW}: the refusals by kind: Doctype, Unsupported from the encoding steps, Malformed"
+        (719, 2, 296),
+        "{ROW}: the refusals by kind: Doctype, Unsupported from the encoding steps, Malformed \
+         (after SACM23-XMI-018)"
     );
     assert_eq!(results.len(), 1_017, "{ROW}: every selected case ran");
 }
@@ -674,9 +688,64 @@ fn lib_sec_006_valid_and_invalid_cases_that_reach_the_root_stage_are_never_malfo
     );
     assert_eq!(
         reaching.len(),
-        71,
+        73,
         "{ROW}: valid and invalid XML 1.0 and NS 1.0 cases with NAMESPACE yes that reach \
-         the root stage"
+         the root stage (after SACM23-XMI-018)"
+    );
+}
+
+// --- SACM23-XMI-018 item 10. The UTF-16 cases of the suite --------------------
+
+/// The selected cases whose result SACM23-XMI-018 settles, with the class
+/// each gets: the 31 `o-p02fail*` cases (an illegal character in UTF-16LE
+/// with a byte order mark), `hst-lhs-008` (a UTF-16 byte order mark and
+/// `utf-8` declared in UTF-16) and `hst-lhs-009` (the same mark before UTF-8
+/// bytes, an odd count) are `Malformed`; `rmt-e2e-61` (UTF-8 declaring
+/// `UTF-16`) and `hst-lhs-007` (a UTF-8 mark and `iso-8859-1`) stay
+/// `Unsupported` from the encoding steps.
+fn utf16_case_class(id: &str) -> Option<Class> {
+    match id {
+        "hst-lhs-008" | "hst-lhs-009" => Some(Class::Malformed),
+        "rmt-e2e-61" | "hst-lhs-007" => Some(Class::Encoding),
+        _ if id.starts_with("o-p02fail") => Some(Class::Malformed),
+        _ => None,
+    }
+}
+
+#[test]
+fn sacm23_xmi_018_the_utf16_cases_of_the_suite_have_their_pinned_results() {
+    const XMI_018: &str = "SACM23-XMI-018";
+    let Some(suite) = suite() else { return };
+    let cases = read_cases(&suite);
+    let named: Vec<&Case> = cases
+        .iter()
+        .filter(|c| utf16_case_class(&c.id).is_some())
+        .collect();
+    assert_eq!(
+        named.len(),
+        35,
+        "{XMI_018}: the 31 o-p02fail cases, hst-lhs-007, -008, -009 and rmt-e2e-61 are in the \
+         catalogs"
+    );
+    assert!(
+        named
+            .iter()
+            .all(|c| matches!(c.group(), Group::SelectedXml10 | Group::SelectedNs10)),
+        "{XMI_018}: every named case is selected"
+    );
+    let wrong: Vec<String> = run(&suite, &named)
+        .into_iter()
+        .filter_map(|(case, class)| {
+            let expected = utf16_case_class(&case.id)?;
+            (class != expected)
+                .then(|| format!("{}: expected {expected:?}, got {class:?}", case.describe()))
+        })
+        .collect();
+    assert!(
+        wrong.is_empty(),
+        "{XMI_018}: {} named UTF-16 cases have another result:\n{}",
+        wrong.len(),
+        wrong.join("\n")
     );
 }
 

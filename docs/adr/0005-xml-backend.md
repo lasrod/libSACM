@@ -59,10 +59,36 @@ XML library type may appear in the public API.
     `xmlns:xmlns` declared (rmt-ns10-032), which is now refused. Within the suite, the
     list is closed. Outside the suite, other parser leniencies may remain; LIB-SEC-005's
     sweep checks only that libSACM's checks agree with the parser's tree.
-  - **B2.** UTF-8 and ASCII are read now. UTF-16, UTF-32 and UCS-4, with or without a
+  - **B2.** *(For UTF-16, amendment 1 below supersedes this paragraph.)* UTF-8 and
+    ASCII are read now. UTF-16, UTF-32 and UCS-4, with or without a
     BOM, are refused as `Unsupported`, never misread. SACM23-XMI-018 will decode UTF-16
     with std, because XML 1.0 requires every processor to accept it. Other declared
     encodings stay refused, which XML allows. pugixml decodes UTF-16, UTF-32 and Latin-1.
+
+    *Amendment 1 (accepted, the maintainer, 2026-11-12; SACM23-XMI-018).* This is the
+    minimal UTF-16 support, chosen to keep the input layer small.
+    - **Read:** UTF-16 with a byte order mark, decoded with std. The declaration may be
+      absent or name `UTF-16`, `UTF-16LE` or `UTF-16BE`, in any letter case.
+    - **`Malformed`:**
+      - any other declared name after a UTF-16 mark, because it contradicts the mark
+        (XML 1.0 §4.3.3);
+      - an odd byte count;
+      - an unpaired surrogate.
+    - **`Unsupported`, as before:**
+      - UTF-16 without a byte order mark. Nothing is guessed from a `<` next to a NUL
+        byte.
+      - UTF-32 and UCS-4.
+      - A declared UTF-16 name in UTF-8 input.
+
+    pugixml (`guess_buffer_encoding`, `pugixml.cpp:2055-2101`) also guesses UTF-16 without
+    a byte order mark, and it never compares the declaration with the mark. That
+    leniency is not taken here. Accepting `UTF-16LE` or `UTF-16BE` after a byte order mark
+    is lenient by the letter of §4.3.3, and it is kept for simplicity.
+
+    Two C++ behaviours are not inherited:
+    - the raw-byte DOCTYPE scan (`xmi_reader.cpp:2354-2366`), which misses a DOCTYPE in
+      UTF-16;
+    - byte-counted locations (`xmi_reader.cpp:282-297`).
   - **B3.** C++ scans the raw bytes for `<!DOCTYPE` and `<!ENTITY` before parsing
     (`xmi_reader.cpp:2354-2366`). That also refuses a schema-conforming file that only
     mentions those strings in a comment or CDATA, which goes against SACM 2.3 clause 2. Here the

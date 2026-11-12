@@ -1,20 +1,24 @@
 //! The input layer of the XMI reader: bytes to a well-formed XML tree, or a
-//! refusal (LIB-SEC-001, LIB-SEC-002, LIB-SEC-005, LIB-SEC-006, LIB-API-009;
-//! ADR 0005, ADR 0015, ADR 0016).
+//! refusal (LIB-SEC-001, LIB-SEC-002, LIB-SEC-005, LIB-SEC-006, LIB-API-009,
+//! SACM23-XMI-018; ADR 0005, ADR 0015, ADR 0016).
 //!
 //! The steps run in this order:
-//! 1. UTF-16 or UCS-4 (UTF-32) input is `Unsupported`, recognised by its
-//!    byte order mark or, without one, by the first bytes of `<?xml` (XML 1.0
-//!    Appendix F).
+//! 1. UTF-16 with a byte order mark is decoded with std, keeping the mark as
+//!    a leading U+FEFF; the steps below then run on the decoded text. UCS-4
+//!    (UTF-32), and UTF-16 without a mark, are `Unsupported`, recognised by
+//!    the mark or by the first bytes of `<?xml` (XML 1.0 Appendix F).
 //! 2. The XML declaration's `<?xml`, `VersionInfo` and `EncodingDecl` must match
 //!    XML 1.0 [23]-[26], [80] and [81], or the input is `Malformed`. The
-//!    declaration is read from the longest valid UTF-8 prefix, so a Latin-1
-//!    file is refused for its encoding, not as malformed.
-//! 3. A declared encoding other than UTF-8 or ASCII is `Unsupported`. For a
-//!    supported one, the rest of the declaration (`SDDecl` [32] and `?>`) must
-//!    match too.
+//!    declaration is read from the longest valid prefix, so a Latin-1 file is
+//!    refused for its encoding, not as malformed.
+//! 3. Without a UTF-16 mark, a declared encoding other than UTF-8 or ASCII is
+//!    `Unsupported`. After one, a name other than UTF-16, UTF-16LE or
+//!    UTF-16BE is `Malformed`. For an accepted name, the rest of the
+//!    declaration (`SDDecl` [32] and `?>`) must match too.
 //! 4. Under an ASCII declaration, a non-ASCII character is `Malformed`.
-//! 5. Invalid UTF-8 is `Malformed`, at the first invalid byte.
+//! 5. Invalid UTF-8 is `Malformed`, at the first invalid byte. In UTF-16, an
+//!    unpaired surrogate is `Malformed` at the surrogate, and an odd byte
+//!    count after the last whole character.
 //! 6. roxmltree parses with DTDs refused: a DOCTYPE is `Doctype`, and any
 //!    other error is `Malformed`.
 //! 7. What roxmltree accepts but XML 1.0 or Namespaces 1.0 make a fatal error
@@ -36,53 +40,120 @@
 //!
 //! Every location comes from `locate`, which ends lines as XML 1.0 §2.11
 //! does: a line feed, a carriage return and line feed, or a lone carriage
-//! return each end one line. A leading UTF-8 byte order mark takes no
+//! return each end one line. A leading byte order mark (U+FEFF) takes no
 //! column. roxmltree counts only line feeds, and counts the mark as a
 //! character, so its positions are converted to byte offsets first.
+
+use std::borrow::Cow;
 
 use crate::diagnostic::SourceLocation;
 
 use super::ReadError;
 
-/// The text of `input`, if it is UTF-8 (or ASCII, if declared so), its XML
-/// declaration is well-formed, and it declares no encoding the reader does
-/// not support.
-pub(super) fn decode(input: &[u8]) -> Result<&str, ReadError> {
-    if let Some(encoding) = encoding_by_bom(input) {
-        return Err(ReadError::Unsupported {
-            location: SourceLocation::at(1, 1),
-            reason: format!(
-                "the input starts with a {encoding} byte order mark, and only UTF-8 and ASCII are read"
-            ),
-        });
+/// The text of `input`, if it is UTF-8 (or ASCII, if declared so) or UTF-16
+/// with a byte order mark, its XML declaration is well-formed, and it
+/// declares no encoding the reader does not support. UTF-16 text is decoded
+/// into a new string that keeps the mark as a leading U+FEFF.
+pub(super) fn decode(input: &[u8]) -> Result<Cow<'_, str>, ReadError> {
+    let (text, encoding, decode_error) = match encoding_by_bom(input) {
+        Some(Bom::Utf16(big_endian)) => {
+            let (text, error) = decode_utf16(input, big_endian);
+            (Cow::Owned(text), Encoding::Utf16, error)
+        }
+        Some(Bom::Other(encoding)) => {
+            return Err(ReadError::Unsupported {
+                location: SourceLocation::at(1, 1),
+                reason: format!(
+                    "the input starts with a {encoding} byte order mark, and only UTF-8, ASCII and UTF-16 are read"
+                ),
+            });
+        }
+        None => {
+            if let Some(encoding) = encoding_by_first_bytes(input) {
+                return Err(ReadError::Unsupported {
+                    location: SourceLocation::at(1, 1),
+                    reason: format!(
+                        "the input is encoded in {encoding}, and only UTF-8, ASCII and UTF-16 starting with U+FEFF are read"
+                    ),
+                });
+            }
+            let (text, error) = decode_utf8(input);
+            (Cow::Borrowed(text), Encoding::Utf8, error)
+        }
+    };
+    if let Some(declared) = check_declaration(&text, encoding, decode_error.as_ref())? {
+        check_ascii(&text, &declared)?;
     }
-    if let Some(encoding) = encoding_by_first_bytes(input) {
-        return Err(ReadError::Unsupported {
-            location: SourceLocation::at(1, 1),
-            reason: format!(
-                "the input is encoded in {encoding}, and only UTF-8 and ASCII are read"
-            ),
-        });
+    match decode_error {
+        Some(error) => Err(error),
+        None => Ok(text),
     }
-    let (text, utf8_error) = match std::str::from_utf8(input) {
-        Ok(text) => (text, false),
-        // The bytes up to `valid_up_to` are valid UTF-8, so the fallback is
-        // never taken.
-        Err(error) => (
-            input
+}
+
+/// The encoding `decode` reads the input in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Encoding {
+    /// UTF-8, or ASCII if declared so.
+    Utf8,
+    /// UTF-16 with a byte order mark, in either byte order.
+    Utf16,
+}
+
+/// The longest valid UTF-8 prefix of `input`, and the refusal of the
+/// invalid byte after it, if there is one.
+fn decode_utf8(input: &[u8]) -> (&str, Option<ReadError>) {
+    match std::str::from_utf8(input) {
+        Ok(text) => (text, None),
+        Err(error) => {
+            // The bytes up to `valid_up_to` are valid UTF-8, so the fallback
+            // is never taken.
+            let text = input
                 .get(..error.valid_up_to())
                 .and_then(|valid| std::str::from_utf8(valid).ok())
-                .unwrap_or_default(),
-            true,
-        ),
-    };
-    if let Some(declared) = check_declaration(text, utf8_error)? {
-        check_ascii(text, &declared)?;
+                .unwrap_or_default();
+            (text, Some(invalid_utf8(text)))
+        }
     }
-    if utf8_error {
-        return Err(invalid_utf8(text));
+}
+
+/// The longest valid prefix of `input`, UTF-16 in the byte order given, with
+/// its byte order mark as a leading U+FEFF, and the refusal of what follows
+/// it, if anything: an unpaired surrogate, or a last byte that is not a
+/// whole code unit.
+fn decode_utf16(input: &[u8], big_endian: bool) -> (String, Option<ReadError>) {
+    let pairs = input.chunks_exact(2);
+    let odd = !pairs.remainder().is_empty();
+    let units = pairs.map(|pair| {
+        // `chunks_exact(2)` yields only slices of two bytes.
+        let bytes = [pair[0], pair[1]];
+        if big_endian {
+            u16::from_be_bytes(bytes)
+        } else {
+            u16::from_le_bytes(bytes)
+        }
+    });
+    let mut text = String::with_capacity(input.len());
+    for c in char::decode_utf16(units) {
+        match c {
+            Ok(c) => text.push(c),
+            Err(error) => {
+                let reason = format!(
+                    "the UTF-16 code unit {:04X} is an unpaired surrogate",
+                    error.unpaired_surrogate()
+                );
+                let error = malformed(&text, text.len(), reason);
+                return (text, Some(error));
+            }
+        }
     }
-    Ok(text)
+    let error = odd.then(|| {
+        malformed(
+            &text,
+            text.len(),
+            "the UTF-16 input ends with a byte that is not a whole code unit".to_owned(),
+        )
+    });
+    (text, error)
 }
 
 /// Parses `text` as XML 1.0 with namespaces, with DTDs refused, and refuses
@@ -113,17 +184,26 @@ fn malformed(text: &str, offset: usize, reason: String) -> ReadError {
     }
 }
 
-/// The encoding named by a UTF-16 or UCS-4 byte order mark at the start of
-/// `input` (XML 1.0 Appendix F).
-fn encoding_by_bom(input: &[u8]) -> Option<&'static str> {
+/// A UTF-16 or UCS-4 byte order mark.
+#[derive(Debug, PartialEq, Eq)]
+enum Bom {
+    /// UTF-16, big-endian if `true`.
+    Utf16(bool),
+    /// A UCS-4 (UTF-32) mark, with the name of its encoding.
+    Other(&'static str),
+}
+
+/// The UTF-16 or UCS-4 byte order mark at the start of `input`, if any
+/// (XML 1.0 Appendix F).
+fn encoding_by_bom(input: &[u8]) -> Option<Bom> {
     // The four-byte marks first: two of them start with a UTF-16 mark.
     match input {
-        [0x00, 0x00, 0xFE, 0xFF, ..] => Some("UTF-32 (big-endian)"),
-        [0xFF, 0xFE, 0x00, 0x00, ..] => Some("UTF-32 (little-endian)"),
-        [0x00, 0x00, 0xFF, 0xFE, ..] => Some("UCS-4 (byte order 2143)"),
-        [0xFE, 0xFF, 0x00, 0x00, ..] => Some("UCS-4 (byte order 3412)"),
-        [0xFE, 0xFF, ..] => Some("UTF-16 (big-endian)"),
-        [0xFF, 0xFE, ..] => Some("UTF-16 (little-endian)"),
+        [0x00, 0x00, 0xFE, 0xFF, ..] => Some(Bom::Other("UTF-32 (big-endian)")),
+        [0xFF, 0xFE, 0x00, 0x00, ..] => Some(Bom::Other("UTF-32 (little-endian)")),
+        [0x00, 0x00, 0xFF, 0xFE, ..] => Some(Bom::Other("UCS-4 (byte order 2143)")),
+        [0xFE, 0xFF, 0x00, 0x00, ..] => Some(Bom::Other("UCS-4 (byte order 3412)")),
+        [0xFE, 0xFF, ..] => Some(Bom::Utf16(true)),
+        [0xFF, 0xFE, ..] => Some(Bom::Utf16(false)),
         _ => None,
     }
 }
@@ -153,28 +233,48 @@ struct Declared<'a> {
     offset: usize,
 }
 
-/// Refuses `declared` if it is not UTF-8 or ASCII, in any letter case.
-fn check_supported(text: &str, declared: &Declared<'_>) -> Result<(), ReadError> {
+/// Refuses `declared`, in any letter case, if it is not UTF-8 or ASCII in
+/// UTF-8 input (`Unsupported`), or not UTF-16, UTF-16LE or UTF-16BE in
+/// UTF-16 input (`Malformed`: it contradicts the byte order mark).
+fn check_supported(
+    text: &str,
+    encoding: Encoding,
+    declared: &Declared<'_>,
+) -> Result<(), ReadError> {
     let name = declared.name;
-    if ["UTF-8", "US-ASCII", "ASCII"]
+    let names: &[&str] = match encoding {
+        Encoding::Utf8 => &["UTF-8", "US-ASCII", "ASCII"],
+        Encoding::Utf16 => &["UTF-16", "UTF-16LE", "UTF-16BE"],
+    };
+    if names
         .iter()
         .any(|supported| name.eq_ignore_ascii_case(supported))
     {
         return Ok(());
     }
-    Err(ReadError::Unsupported {
-        location: locate(text, declared.offset),
-        reason: format!(
-            "the declared encoding {name:?} is not supported, only UTF-8 and ASCII are read"
-        ),
-    })
+    match encoding {
+        Encoding::Utf8 => Err(ReadError::Unsupported {
+            location: locate(text, declared.offset),
+            reason: format!(
+                "the declared encoding {name:?} is not supported: without a UTF-16 byte order mark, only UTF-8 and ASCII are read"
+            ),
+        }),
+        Encoding::Utf16 => Err(malformed(
+            text,
+            declared.offset,
+            format!("the declared encoding {name:?} contradicts the UTF-16 byte order mark"),
+        )),
+    }
 }
 
 /// Refuses `text` if `declared`, a supported encoding, is ASCII and `text`
 /// holds a non-ASCII character.
 fn check_ascii(text: &str, declared: &Declared<'_>) -> Result<(), ReadError> {
     let name = declared.name;
-    if name.eq_ignore_ascii_case("UTF-8") {
+    if !["US-ASCII", "ASCII"]
+        .iter()
+        .any(|ascii| name.eq_ignore_ascii_case(ascii))
+    {
         return Ok(());
     }
     match text.char_indices().find(|&(_, c)| !c.is_ascii()) {
@@ -195,7 +295,8 @@ pub(super) fn is_xml_space(c: char) -> bool {
     matches!(c, ' ' | '\t' | '\n' | '\r')
 }
 
-/// The text after an optional UTF-8 byte order mark, and its byte offset.
+/// The text after an optional leading byte order mark (U+FEFF), and its byte
+/// offset.
 fn after_bom(text: &str) -> (usize, &str) {
     match text.strip_prefix('\u{FEFF}') {
         Some(rest) => ('\u{FEFF}'.len_utf8(), rest),
@@ -220,10 +321,15 @@ const PSEUDO_ATTRIBUTES: [&str; 3] = ["version", "encoding", "standalone"];
 /// returns the encoding it declares (XML 1.0 [23]-[26], [32], [80], [81]).
 ///
 /// `<?xml`, `VersionInfo` and `EncodingDecl` are checked first, then whether the
-/// encoding is supported, and only then `SDDecl` and `?>`. `truncated` says
-/// that `text` is the valid UTF-8 prefix of a longer input: a declaration
-/// that `text` ends inside is then refused for the invalid UTF-8.
-fn check_declaration(text: &str, truncated: bool) -> Result<Option<Declared<'_>>, ReadError> {
+/// encoding is supported in `encoding`, and only then `SDDecl` and `?>`.
+/// `truncated` is the decoding error after `text`, if `text` is the valid
+/// prefix of a longer input: a declaration that `text` ends inside is then
+/// refused with it.
+fn check_declaration<'a>(
+    text: &'a str,
+    encoding: Encoding,
+    truncated: Option<&ReadError>,
+) -> Result<Option<Declared<'a>>, ReadError> {
     let Some(start) = declaration_start(text) else {
         return Ok(None);
     };
@@ -248,7 +354,7 @@ fn check_declaration(text: &str, truncated: bool) -> Result<Option<Declared<'_>>
     }
     // EncodingDecl [80], then the supported-encoding check.
     let mut spaced = cursor.skip_space();
-    let mut encoding = None;
+    let mut declared_encoding = None;
     if spaced && cursor.peek_name() == "encoding" {
         cursor.name();
         let (offset, name) = cursor.value()?;
@@ -260,8 +366,8 @@ fn check_declaration(text: &str, truncated: bool) -> Result<Option<Declared<'_>>
             ));
         }
         let declared = Declared { name, offset };
-        check_supported(text, &declared)?;
-        encoding = Some(declared);
+        check_supported(text, encoding, &declared)?;
+        declared_encoding = Some(declared);
         spaced = cursor.skip_space();
     }
     // SDDecl [32].
@@ -278,7 +384,7 @@ fn check_declaration(text: &str, truncated: bool) -> Result<Option<Declared<'_>>
         spaced = cursor.skip_space();
     }
     if cursor.rest().starts_with("?>") {
-        return Ok(encoding);
+        return Ok(declared_encoding);
     }
     let (offset, name) = cursor.name();
     Err(cursor.misplaced(offset, name, spaced, "\"?>\""))
@@ -300,16 +406,17 @@ fn is_encoding_name(value: &str) -> bool {
 }
 
 /// A position in the XML declaration being checked.
-struct Cursor<'a> {
+struct Cursor<'a, 'e> {
     /// The whole text.
     text: &'a str,
     /// The byte offset of the next character.
     offset: usize,
-    /// Whether `text` is the valid UTF-8 prefix of a longer input.
-    truncated: bool,
+    /// The decoding error after `text`, if `text` is the valid prefix of a
+    /// longer input.
+    truncated: Option<&'e ReadError>,
 }
 
-impl<'a> Cursor<'a> {
+impl<'a> Cursor<'a, '_> {
     /// The text from the cursor on.
     fn rest(&self) -> &'a str {
         self.text.get(self.offset..).unwrap_or_default()
@@ -370,12 +477,12 @@ impl<'a> Cursor<'a> {
 
     /// The refusal of the pseudo-attribute `name` at `offset`, where
     /// `expected` was expected. `spaced` says whether white space came
-    /// before it. A name that invalid UTF-8 cuts short is refused for the
-    /// invalid UTF-8.
+    /// before it. A name that a decoding error cuts short is refused with
+    /// that error.
     fn misplaced(&self, offset: usize, name: &str, spaced: bool, expected: &str) -> ReadError {
         let reason = if name.is_empty() {
             return self.unexpected(expected);
-        } else if self.truncated && offset + name.len() == self.text.len() {
+        } else if self.truncated.is_some() && offset + name.len() == self.text.len() {
             return self.ended();
         } else if !PSEUDO_ATTRIBUTES.contains(&name) {
             format!("the XML declaration has the unknown pseudo-attribute {name:?}")
@@ -404,14 +511,13 @@ impl<'a> Cursor<'a> {
 
     /// The refusal of a declaration that the text ends inside.
     fn ended(&self) -> ReadError {
-        if self.truncated {
-            invalid_utf8(self.text)
-        } else {
-            malformed(
+        match self.truncated {
+            Some(error) => error.clone(),
+            None => malformed(
                 self.text,
                 self.text.len(),
                 "the input ends inside the XML declaration".to_owned(),
-            )
+            ),
         }
     }
 }
@@ -716,8 +822,9 @@ fn declaration_end(text: &str) -> Option<usize> {
 
 /// The location of byte `offset` of `text`. Lines end as XML 1.0 §2.11 ends
 /// them: at a line feed, a carriage return and line feed (once), or a lone
-/// carriage return. Columns count characters; a leading UTF-8 byte order
-/// mark is an encoding signature, not text, and takes no column. `None` if
+/// carriage return. Columns count characters; a leading byte order mark
+/// (U+FEFF, from UTF-8 or UTF-16) is an encoding signature, not text, and
+/// takes no column. `None` if
 /// `offset` is not a character boundary of `text` or the position does not
 /// fit in `u32`.
 pub(super) fn locate(text: &str, offset: usize) -> Option<SourceLocation> {
@@ -875,6 +982,7 @@ fn reason(error: &roxmltree::Error) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::diagnostic::Code;
 
     #[test]
     fn locate_counts_lines_and_characters() {
@@ -915,16 +1023,16 @@ mod tests {
 
     #[test]
     fn utf16_and_ucs4_are_recognised_with_and_without_a_bom() {
-        let with_bom: [(&[u8], &str); 6] = [
-            (b"\x00\x00\xFE\xFF", "UTF-32 (big-endian)"),
-            (b"\xFF\xFE\x00\x00", "UTF-32 (little-endian)"),
-            (b"\x00\x00\xFF\xFE", "UCS-4 (byte order 2143)"),
-            (b"\xFE\xFF\x00\x00", "UCS-4 (byte order 3412)"),
-            (b"\xFE\xFF\x00<", "UTF-16 (big-endian)"),
-            (b"\xFF\xFE<\x00", "UTF-16 (little-endian)"),
+        let with_bom: [(&[u8], Bom); 6] = [
+            (b"\x00\x00\xFE\xFF", Bom::Other("UTF-32 (big-endian)")),
+            (b"\xFF\xFE\x00\x00", Bom::Other("UTF-32 (little-endian)")),
+            (b"\x00\x00\xFF\xFE", Bom::Other("UCS-4 (byte order 2143)")),
+            (b"\xFE\xFF\x00\x00", Bom::Other("UCS-4 (byte order 3412)")),
+            (b"\xFE\xFF\x00<", Bom::Utf16(true)),
+            (b"\xFF\xFE<\x00", Bom::Utf16(false)),
         ];
-        for (input, encoding) in with_bom {
-            assert_eq!(encoding_by_bom(input), Some(encoding), "{input:?}");
+        for (input, bom) in with_bom {
+            assert_eq!(encoding_by_bom(input), Some(bom), "{input:?}");
         }
         let without_bom: [(&[u8], &str); 6] = [
             (b"\x00\x00\x00<", "UTF-32 (big-endian)"),
@@ -942,7 +1050,7 @@ mod tests {
                 Err(ReadError::Unsupported {
                     location: SourceLocation::at(1, 1),
                     reason: format!(
-                        "the input is encoded in {encoding}, and only UTF-8 and ASCII are read"
+                        "the input is encoded in {encoding}, and only UTF-8, ASCII and UTF-16 starting with U+FEFF are read"
                     ),
                 }),
             );
@@ -956,7 +1064,7 @@ mod tests {
     #[test]
     fn check_declaration_reads_the_encoding_and_refuses_bad_grammar() {
         let declared = |text| {
-            check_declaration(text, false)
+            check_declaration(text, Encoding::Utf8, None)
                 .map(|declared| declared.map(|d| (d.name, d.offset)))
                 .map_err(|error| (error.code().is_some(), error.location()))
         };
@@ -996,7 +1104,8 @@ mod tests {
         // A declaration that the valid UTF-8 ends inside: the UTF-8 error.
         for cut in ["<?xml version=\"1", "<?xml version=\"1.0\" st"] {
             assert_eq!(
-                check_declaration(cut, true).map(|declared| declared.is_some()),
+                check_declaration(cut, Encoding::Utf8, Some(&invalid_utf8(cut)))
+                    .map(|declared| declared.is_some()),
                 Err(invalid_utf8(cut)),
                 "{cut:?}"
             );
@@ -1244,7 +1353,7 @@ mod tests {
             decode(latin1),
             Err(ReadError::Unsupported {
                 location: SourceLocation::at(1, 31),
-                reason: "the declared encoding \"ISO-8859-1\" is not supported, only UTF-8 and ASCII are read"
+                reason: "the declared encoding \"ISO-8859-1\" is not supported: without a UTF-16 byte order mark, only UTF-8 and ASCII are read"
                     .to_owned(),
             })
         );
@@ -1254,9 +1363,57 @@ mod tests {
             Err(SourceLocation::at(2, 4))
         );
         assert_eq!(
-            decode(b"\xFE\xFF\x00<").map_err(|error| error.location()),
+            decode(b"\x00\x00\xFE\xFF").map_err(|error| error.location()),
             Err(SourceLocation::at(1, 1))
         );
+    }
+
+    #[test]
+    fn decode_reads_utf16_with_a_bom_and_keeps_the_mark() {
+        assert_eq!(decode(b"\xFE\xFF\x00<"), Ok(Cow::Borrowed("\u{FEFF}<")));
+        assert_eq!(decode(b"\xFF\xFE<\x00"), Ok(Cow::Borrowed("\u{FEFF}<")));
+        assert_eq!(
+            decode(b"\xFF\xFE\x3D\xD8\x00\xDE"),
+            Ok(Cow::Borrowed("\u{FEFF}\u{1F600}"))
+        );
+        // The UTF-8 path borrows the input.
+        assert!(matches!(decode(b"<r/>"), Ok(Cow::Borrowed("<r/>"))));
+        // An unpaired surrogate is refused at the surrogate, and an odd byte
+        // count after the last whole character.
+        let reason = |input: &[u8]| {
+            decode(input)
+                .map(|_| ())
+                .map_err(|error| (error.location(), error.to_string()))
+        };
+        assert_eq!(
+            reason(b"\xFF\xFE<\x00\x00\xD8"),
+            Err((
+                SourceLocation::at(1, 2),
+                "the input is not well-formed XML at line 1, column 2: \
+                 the UTF-16 code unit D800 is an unpaired surrogate"
+                    .to_owned()
+            ))
+        );
+        assert_eq!(
+            reason(b"\xFE\xFF\x00<\x00"),
+            Err((
+                SourceLocation::at(1, 2),
+                "the input is not well-formed XML at line 1, column 2: \
+                 the UTF-16 input ends with a byte that is not a whole code unit"
+                    .to_owned()
+            ))
+        );
+        let declared = |name: &str| {
+            let text = format!("\u{FEFF}<?xml version='1.0' encoding='{name}'?>");
+            let input: Vec<u8> = text.encode_utf16().flat_map(u16::to_le_bytes).collect();
+            decode(&input).map(|_| ()).map_err(|error| error.code())
+        };
+        for name in ["UTF-16", "utf-16le", "Utf-16BE"] {
+            assert_eq!(declared(name), Ok(()), "{name:?}");
+        }
+        for name in ["UTF-8", "ascii", "UTF-32"] {
+            assert_eq!(declared(name), Err(Some(Code::XML_MALFORMED)), "{name:?}");
+        }
     }
 
     #[test]

@@ -85,22 +85,26 @@ mod roots;
 /// instructions. Anything else is refused as [`ReadError::Unsupported`] until
 /// a later release reads it.
 ///
-/// The input is UTF-8 or ASCII. A DOCTYPE is refused before anything in it is
-/// read, so no entity is declared, resolved or expanded.
+/// The input is UTF-8, ASCII, or UTF-16 with a byte order mark, which reads
+/// exactly as the same characters in UTF-8. A DOCTYPE is refused before
+/// anything in it is read, so no entity is declared, resolved or expanded.
 ///
 /// # Errors
 ///
 /// The checks run in this order, and the first failure is returned:
 ///
-/// 1. the byte order mark and the first bytes: UTF-16, UTF-32 and UCS-4 are
-///    `Unsupported`;
+/// 1. the byte order mark and the first bytes: UTF-16 with a mark is
+///    decoded; UTF-16 without one, UTF-32 and UCS-4 are `Unsupported`;
 /// 2. the grammar of the XML declaration's `<?xml`, `version` and `encoding`
 ///    (`Malformed`);
-/// 3. the declared encoding (`Unsupported` unless UTF-8 or ASCII), then, for
-///    a supported one, the rest of the declaration: `standalone` and `?>`
-///    (`Malformed`);
+/// 3. the declared encoding: without a UTF-16 mark, `Unsupported` unless
+///    UTF-8 or ASCII; after one, `Malformed` unless UTF-16, UTF-16LE or
+///    UTF-16BE. Then, for an accepted one, the rest of the declaration:
+///    `standalone` and `?>` (`Malformed`);
 /// 4. under an ASCII declaration, a non-ASCII character (`Malformed`);
-/// 5. UTF-8 (`Malformed` at the first invalid byte);
+/// 5. the encoding (`Malformed`): invalid UTF-8 at the first invalid byte;
+///    in UTF-16, an unpaired surrogate at the surrogate, or an odd byte count
+///    after the last whole character;
 /// 6. the parse: a DOCTYPE (`Doctype`) or a well-formedness error
 ///    (`Malformed`), whichever comes first;
 /// 7. the well-formedness errors this release refuses after the XML parser
@@ -128,15 +132,17 @@ mod roots;
 /// - [`ReadError::Doctype`] (SACM-SEC-001): the input has a DOCTYPE, with or
 ///   without entity declarations.
 /// - [`ReadError::Malformed`] (SACM-XML-001): the input is not well-formed
-///   XML, is truncated, is not valid UTF-8, or declares ASCII but holds a
-///   non-ASCII character.
+///   XML, is truncated, is not valid UTF-8 or UTF-16, declares ASCII but
+///   holds a non-ASCII character, or has a UTF-16 byte order mark but
+///   declares another encoding.
 /// - [`ReadError::InvalidRoot`] (SACM-XMI-001): a root's local name is not
 ///   one of the twelve SACM package kinds.
 /// - [`ReadError::NoPackage`] (SACM-XMI-001): the `xmi:XMI` element holds no
 ///   root: no element child outside the XMI namespace.
 /// - [`ReadError::Unsupported`] (no code): the input is well-formed but this
-///   version cannot represent it. Examples are UTF-16, UTF-32 or UCS-4 input,
-///   a declared encoding other than UTF-8 or ASCII, more nodes, attributes or
+///   version cannot represent it. Examples are UTF-16 without a byte order
+///   mark, UTF-32 or UCS-4 input, a declared encoding other than UTF-8 or
+///   ASCII in input without a UTF-16 mark, more nodes, attributes or
 ///   namespaces than the parser can hold, the other ten package kinds as
 ///   roots, a package name outside the SACM namespace, a root without an
 ///   `xmi:id` or with the id of an earlier root, an `XMI` element outside the
@@ -186,13 +192,19 @@ mod roots;
 ///     <r>&xxe;</r>";
 /// let error = xmi::read(xxe, &options).unwrap_err();
 /// assert_eq!(error.code(), Some(Code::XML_DOCTYPE_REJECTED));
+///
+/// // UTF-16 with a byte order mark (U+FEFF) reads as the same text in UTF-8.
+/// let text = "\u{FEFF}<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"
+///     xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"arguments\"/>";
+/// let utf16: Vec<u8> = text.encode_utf16().flat_map(u16::to_le_bytes).collect();
+/// assert!(xmi::read(&utf16, &options)?.document().get("arguments").is_some());
 /// # Ok::<(), ReadError>(())
 /// ```
 pub fn read(input: &[u8], options: &ReadOptions) -> Result<ReadOutput, ReadError> {
     let ReadOptions {} = options;
     let text = input::decode(input)?;
-    let tree = input::parse(text)?;
-    let document = roots::read(text, &tree)?;
+    let tree = input::parse(&text)?;
+    let document = roots::read(&text, &tree)?;
     Ok(ReadOutput {
         document,
         diagnostics: Vec::new(),
@@ -268,7 +280,8 @@ const _: () = {
 /// Each refusal has a [`SourceLocation`] where one is known, and
 /// [`code`](Self::code) gives its catalog code. Lines end as XML 1.0 §2.11
 /// ends them (a line feed, a carriage return and line feed, or a lone
-/// carriage return), and a leading UTF-8 byte order mark takes no column.
+/// carriage return), and a leading byte order mark, UTF-8 or UTF-16, takes
+/// no column. Columns count characters, in UTF-16 input too.
 ///
 /// # Display
 ///
@@ -296,8 +309,9 @@ pub enum ReadError {
         /// Where the DOCTYPE starts.
         location: Option<SourceLocation>,
     },
-    /// The input is not well-formed XML, is truncated, is not valid UTF-8, or
-    /// declares ASCII but holds a non-ASCII character (SACM-XML-001).
+    /// The input is not well-formed XML, is truncated, is not valid UTF-8 or
+    /// UTF-16, declares ASCII but holds a non-ASCII character, or has a
+    /// UTF-16 byte order mark but declares another encoding (SACM-XML-001).
     #[non_exhaustive]
     Malformed {
         /// Where the input stops being well-formed.
@@ -354,7 +368,7 @@ impl ReadError {
 
     /// Where in the input the refusal is, if known. Lines end at a line
     /// feed, a carriage return and line feed, or a lone carriage return; a
-    /// leading UTF-8 byte order mark takes no column.
+    /// leading byte order mark, UTF-8 or UTF-16, takes no column.
     #[must_use]
     pub fn location(&self) -> Option<SourceLocation> {
         match self {

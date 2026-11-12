@@ -85,6 +85,10 @@ change bumps the minor version and is listed under **Breaking**.
   `xmi:type` or `xsi:type` value is resolved against the namespaces in scope, after XML
   white space is trimmed from its ends. A root under `xmlns=""` is reported as in no
   namespace [SACM23-XMI-002].
+- `xmi::read` reads UTF-16 input that starts with a byte order mark. A declared encoding
+  that contradicts the mark, an odd byte count and an unpaired surrogate are `Malformed`.
+  UTF-16 without a byte order mark, UTF-32 and UCS-4 stay `Unsupported`
+  [SACM23-XMI-018].
 
 ### Changed
 
