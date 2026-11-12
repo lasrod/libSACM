@@ -86,20 +86,24 @@ mod roots;
 /// namespace `http://www.omg.org/spec/XMI/20131001`. Each root becomes
 /// a parentless element of its kind, in document order, whose id is its
 /// `xmi:id`, and whose name is its `name` child: `lang` and `content` are the
-/// attribute values, untrimmed, and a field whose attribute is not written is
-/// absent. A root without a `name` has no name. Elements and attributes are
-/// matched by namespace URI and local name, and an `xmi:type` or `xsi:type`
-/// value is resolved as a `QName`, without its leading and trailing white
-/// space, against the namespaces in scope, so the choice of prefix does not
-/// matter. The SACM namespace is `http://www.omg.org/spec/SACM/20220301`.
+/// attribute values exactly as XML 1.0 gives them, never trimmed (a literal
+/// TAB, LF or CR in a value is already a space by XML 1.0 §3.3.3; write
+/// `&#9;`, `&#10;` or `&#13;` to keep one). A field whose attribute is not
+/// written is absent. A root without a `name` has no name. Elements and
+/// attributes are matched by namespace URI and local name, and an `xmi:type`
+/// or `xsi:type` value is resolved as a `QName`, without its leading and
+/// trailing white space, against the namespaces in scope, so the choice of
+/// prefix does not matter. The SACM namespace is
+/// `http://www.omg.org/spec/SACM/20220301`.
 ///
 /// `read` refuses rather than drops: it never returns a document that is
 /// missing content from its input. A root may carry only namespace
 /// declarations, `xmi:id`, `xmi:version` and an `xmi:type` or `xsi:type`
-/// naming its own class, and hold one `name` and otherwise only white space,
-/// comments and processing instructions. The `name` must be in no namespace,
-/// carry only `lang`, `content` and a type naming `LangString`, and hold only
-/// white space, comments and processing instructions. Anything else is
+/// naming its own class, and hold at most one `name` and otherwise only white
+/// space, comments and processing instructions. The `name` must be in no
+/// namespace, carry only `lang`, `content` and an `xmi:type` or `xsi:type`
+/// naming `sacm:LangString`, and hold only white space, comments and
+/// processing instructions. Anything else is
 /// refused as [`ReadError::Unsupported`] until a later release reads it.
 ///
 /// The input is UTF-8, ASCII, or UTF-16 with a byte order mark, which reads
@@ -167,9 +171,10 @@ mod roots;
 ///   element as the document element (such as `xmi:Documentation`) or beside
 ///   the roots (such as `xmi:documentation`), an attribute of `xmi:XMI` other
 ///   than `xmi:version`, a second `name`, any other attribute or content of a
-///   `name` (such as `xml:lang` or a `content` element), and any other
-///   attribute or content of a root. So in this release a package with a
-///   description or any element in it is refused.
+///   `name` (such as `xmi:id`, `xml:lang` or a `content` element), a `name` in
+///   a namespace (such as `sacm:name`), and any other attribute or content of
+///   a root. So in this release a package with a description or any element
+///   in it other than its name is refused.
 ///
 /// # Examples
 ///
@@ -195,10 +200,10 @@ mod roots;
 /// let name = document.get("arguments").and_then(|root| root.name());
 /// assert_eq!(name.and_then(|name| name.content()), Some("Arguments"));
 ///
-/// // Elements inside a package are not read yet: refused, never dropped.
+/// // A Claim inside a package is not read yet: refused, never dropped.
 /// let claim = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
 ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
-///   <argumentElement/>
+///   <argumentElement xmi:type="sacm:Claim" xmi:id="c1"/>
 /// </sacm:ArgumentPackage>"#;
 /// let error = xmi::read(claim, &options).unwrap_err();
 /// assert!(matches!(error, ReadError::Unsupported { .. }));
@@ -478,10 +483,10 @@ impl std::error::Error for ReadError {}
 /// child is its name, `<name lang="…" content="…" />`, with each field written
 /// only if present, so an empty field is `=""` and an absent one is no
 /// attribute; an element with no name has no `name` child. An id is written
-/// as it is, escaped, and so are a name's fields. An id that is not an XML `NCName`, such as `1 2`, is written too,
-/// but the output then does not validate against an XMI schema. In attribute
-/// values `&`, `<`, `>`, `"`, TAB, LF and CR are escaped; everything else is
-/// written as it is.
+/// as it is, escaped, and so are a name's fields. An id that is not an XML
+/// `NCName`, such as `1 2`, is written too, but the output then does not
+/// validate against an XMI schema. In attribute values `&`, `<`, `>`, `"`,
+/// TAB, LF and CR are escaped; everything else is written as it is.
 ///
 /// # Errors
 ///
@@ -492,8 +497,9 @@ impl std::error::Error for ReadError {}
 /// 2. then each element, in [`Document::elements`] order, with all of an
 ///    element's checks run before the next element's: first its id, where a
 ///    character outside XML 1.0's `Char` is
-///    [`WriteError::UnrepresentableCharacter`], naming the first such
-///    character; then its name's `lang`, then its `content`, the same way;
+///    [`WriteError::UnrepresentableCharacter`], naming the attribute and its
+///    first such character; then its name's `lang`, then its name's
+///    `content`, the same way;
 ///    then a non-default `assertionDeclaration`, which is
 ///    [`WriteError::Unsupported`], because this release does not write it
 ///    yet.
@@ -515,6 +521,17 @@ impl std::error::Error for ReadError {}
 ///      xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:version=\"2.0\" \
 ///      xmi:id=\"arguments\" />\n"
 /// );
+///
+/// // A name is written as the element's first child.
+/// let named = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+///   <name lang="en" content="Arguments"/>
+/// </sacm:ArgumentPackage>"#;
+/// let document = xmi::read(named, &ReadOptions::default())?.into_document();
+/// let text = xmi::write(&document, &WriteOptions::default())?;
+/// assert!(text.ends_with(
+///     "xmi:id=\"arguments\">\n  <name lang=\"en\" content=\"Arguments\" />\n</sacm:ArgumentPackage>\n"
+/// ));
 ///
 /// // A document with no root would be an empty `xmi:XMI`, which a SACM
 /// // reader refuses, so it is refused.
@@ -565,15 +582,39 @@ pub enum WriteError {
     /// that XML 1.0 cannot represent: one outside its `Char` production, such
     /// as U+0000, another C0 control other than TAB, LF and CR, U+FFFE or
     /// U+FFFF.
+    ///
+    /// ```
+    /// use sacm::model::{Document, ElementId, ElementKind, LangString};
+    /// use sacm::xmi::{self, WriteAttribute, WriteError, WriteOptions};
+    ///
+    /// // Built with the unstable test-support feature.
+    /// let mut doc = Document::new();
+    /// let name = LangString::new("bad\u{1}");
+    /// doc.insert(None, ElementKind::ArgumentPackage, ElementId::from("arguments"), Some(name))
+    ///     .unwrap();
+    /// let error = xmi::write(&doc, &WriteOptions::default()).unwrap_err();
+    /// assert!(matches!(
+    ///     error,
+    ///     WriteError::UnrepresentableCharacter {
+    ///         attribute: WriteAttribute::NameContent,
+    ///         character: '\u{1}',
+    ///         ..
+    ///     }
+    /// ));
+    /// assert_eq!(
+    ///     error.to_string(),
+    ///     "the element \"arguments\" cannot be written: its name's content holds U+0001, \
+    ///      which XML 1.0 cannot represent"
+    /// );
+    /// ```
     #[non_exhaustive]
     UnrepresentableCharacter {
         /// The element whose id or name holds the character.
         element: ElementId,
         /// The first such character in the attribute.
         character: char,
-        /// The XMI attribute that holds it: `"xmi:id"`, or the name's
-        /// `"lang"` or `"content"`.
-        attribute: &'static str,
+        /// The attribute that holds it.
+        attribute: WriteAttribute,
     },
     /// The document holds content this version cannot write yet, such as a
     /// non-default `assertionDeclaration`. It has no catalog code.
@@ -620,19 +661,12 @@ impl fmt::Display for WriteError {
                 element,
                 character,
                 attribute,
-            } => {
-                let holder = if *attribute == "xmi:id" {
-                    ""
-                } else {
-                    "name's "
-                };
-                write!(
-                    f,
-                    "the element {:?} cannot be written: its {holder}{attribute} holds U+{:04X}, which XML 1.0 cannot represent",
-                    element.as_str(),
-                    u32::from(*character)
-                )
-            }
+            } => write!(
+                f,
+                "the element {:?} cannot be written: its {attribute} holds U+{:04X}, which XML 1.0 cannot represent",
+                element.as_str(),
+                u32::from(*character)
+            ),
             Self::Unsupported { element, reason } => write!(
                 f,
                 "the writer cannot write the element {:?}: {reason}",
@@ -643,6 +677,32 @@ impl fmt::Display for WriteError {
 }
 
 impl std::error::Error for WriteError {}
+
+/// The attribute of an element that a [`WriteError`] names.
+///
+/// Later releases add variants as they write more attributes, so match it
+/// with a fallback arm.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum WriteAttribute {
+    /// The element's `xmi:id`.
+    Id,
+    /// The element's name's `lang`.
+    NameLang,
+    /// The element's name's `content`.
+    NameContent,
+}
+
+impl fmt::Display for WriteAttribute {
+    /// Writes `xmi:id`, `name's lang` or `name's content`.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Id => "xmi:id",
+            Self::NameLang => "name's lang",
+            Self::NameContent => "name's content",
+        })
+    }
+}
 
 // A refusal on one thread can be reported on another.
 const _: () = {

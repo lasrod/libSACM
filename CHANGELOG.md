@@ -95,16 +95,16 @@ change bumps the minor version and is listed under **Breaking**.
   document element only, one root bare or several in `xmi:XMI`, children under their
   role names in document order, `xmi:type` where the role does not give the class, and
   an `xmi:id` on every element. A document with no root is `WriteError::NoRoot`, an id
-  that XML 1.0 cannot represent is `WriteError::UnrepresentableCharacter`, and a
+  or name that XML 1.0 cannot represent is `WriteError::UnrepresentableCharacter`, and a
   non-default `assertionDeclaration` is `WriteError::Unsupported` for now
   [SACM23-XMI-003, SACM23-XMI-004, SACM23-XMI-006, SACM23-XMI-007, SACM23-XMI-013,
   LIB-API-010].
 - Names in XMI (ADR 0017 amendment 1). `xmi::write` writes an element's name as its first
-  child, `<name lang="…" content="…" />`, keeping absent and empty fields distinct, and
-  no longer refuses names. `xmi::read` reads one `name` child of a package root, with
-  its values exactly as the parser gives them; anything else on or in `name` stays
-  `Unsupported`. `WriteError::UnrepresentableCharacter` gains `attribute`: `"xmi:id"`,
-  `"lang"` or `"content"` [SACM23-XMI-011, SACM23-XMI-012, LIB-API-010].
+  child, `<name lang="…" content="…" />`, keeping absent and empty fields distinct.
+  `xmi::read` reads one `name` child of a package root, with its values exactly as
+  XML 1.0 gives them (never trimmed); anything else on or in `name` stays `Unsupported`.
+  `WriteError::UnrepresentableCharacter` names the attribute that holds the character
+  (`WriteAttribute`) [SACM23-XMI-011, SACM23-XMI-012, LIB-API-010].
 
 ### Changed
 

@@ -45,8 +45,14 @@ ADR 0013, ADR 0017.
   - **Re-checked:** XMI-001, XMI-002 and LIB-API-009 used `<name/>` as unread content.
     They switch to `<note/>` and are re-checked in this slice.
   - **ADR 0017 amendment 1** covers names.
-- 2026-11-12 design: no new public API, so no architect step.
+- 2026-11-12 design: no architect step at first. This was wrong: the `attribute` field is new public API (see the round-1 entry).
 - 2026-11-12 maintainer decisions, for later rows:
   - XMI-022 preserves a LangString `xmi:id` (no code), unlike C++.
   - XMI-021 reports a second `name` as SACM-MULT-001, whose catalog text widens when XMI-021 is built.
 - 2026-11-12 implementation: names are written as the first child and read on package roots; everything else on a name stays `Unsupported`. `UnrepresentableCharacter` gains `attribute`. The local gate passes.
+- 2026-11-12 verification round 1: LIB-API-010, XMI-001 and XMI-002 PASS; XMI-011, XMI-012 and LIB-API-009 FAIL on test gaps.
+  - `lang` exactness is not pinned (N1-N3).
+  - The type scope on `name` is not pinned (M14), and neither is `xmlns=""` on `name` (M4).
+  - The reader differences from C++ have no ADR lines.
+  - LIB-API-009 example and test disagree.
+- 2026-11-12 docs review: the crate root feature list is stale (blocking). The `attribute: &str` field will become ambiguous, so it is replaced by `WriteAttribute`. ADR 0017 amendment 1 is now proposed, for the maintainer.

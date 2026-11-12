@@ -1981,8 +1981,8 @@ depends_on = ["SACM23-BASE-001", "SACM23-XMI-007", "SACM23-XMI-001"]
 acceptance = [
   "All nine absent/empty/non-empty combinations of a name's `lang` and `content` round-trip through `xmi::write` and `xmi::read` on a named AssuranceCasePackage or ArgumentPackage root to an equal `LangString`. Absent fields write `<name />`; `lang=\"\"` and `content=\"\"` appear literally.",
   "Reading `<name lang=\"\" />` gives `lang` `Some(\"\")` and `content` `None`; reading `<name />` gives `LangString::default()`.",
-  "A `content` holding `& < > \" '`, TAB, LF, CR, CRLF, U+0085, U+2028, a character outside the BMP and a leading or trailing space round-trips exactly. The output contains `&amp;`, `&lt;`, `&gt;`, `&quot;`, `&#9;`, `&#10;` and `&#13;`, and no literal TAB, LF or CR inside an attribute value.",
-  "Reading `content=\"a&#9;b&#10;c&#13;d\"` gives `\"a\\tb\\nc\\rd\"`; the same value with a literal TAB, LF or CR reads as spaces (XML 1.0 §3.3.3).",
+  "A `lang` or `content` holding `& < > \" '`, TAB, LF, CR, CRLF, U+0085, U+2028, a character outside the BMP and a leading or trailing space round-trips exactly. The output contains `&amp;`, `&lt;`, `&gt;`, `&quot;`, `&#9;`, `&#10;` and `&#13;`, and no literal TAB, LF or CR inside an attribute value.",
+  "Reading `lang` or `content` set to `\"a&#9;b&#10;c&#13;d\"` gives `\"a\\tb\\nc\\rd\"`; the same value with a literal TAB, LF or CR reads as spaces (XML 1.0 §3.3.3); `lang=\" en \"` reads with its spaces kept.",
   "A name whose `lang` or `content` holds U+0000, U+0008, U+000B, U+000C, U+001F, U+FFFE or U+FFFF makes `xmi::write` fail with `UnrepresentableCharacter` naming the owning element and the character, and no output is returned, on a root and on a nested Claim.",
   "Within one element the id is checked before the name, and `lang` before `content`; the first failure is the result (ADR 0017).",
   "The same named document writes identical bytes twice and matches a golden file.",
@@ -1992,6 +1992,7 @@ tests = [
   "crates/sacm/tests/xmi_names.rs::sacm23_xmi_011_all_nine_absent_empty_and_non_empty_lang_and_content_combinations_round_trip",
   "crates/sacm/tests/xmi_names.rs::sacm23_xmi_011_an_empty_lang_and_an_empty_name_element_read_to_exactly_those_fields",
   "crates/sacm/tests/xmi_names.rs::sacm23_xmi_011_content_with_markup_line_breaks_non_bmp_and_edge_spaces_round_trips_exactly",
+  "crates/sacm/tests/xmi_names.rs::sacm23_xmi_011_lang_with_markup_line_breaks_non_bmp_and_edge_spaces_round_trips_exactly",
   "crates/sacm/tests/xmi_names.rs::sacm23_xmi_011_character_references_read_as_the_characters_and_literal_white_space_as_spaces",
   "crates/sacm/tests/xmi_names.rs::sacm23_xmi_011_a_character_outside_xml_char_in_lang_or_content_is_refused_naming_the_element",
   "crates/sacm/tests/xmi_names.rs::sacm23_xmi_011_within_one_element_the_id_is_checked_before_the_name_and_lang_before_content",
@@ -2017,7 +2018,8 @@ acceptance = [
   "Read: AssuranceCasePackage and ArgumentPackage roots, bare and wrapped, with `<name lang=\"en\" content=\"Case\"/>` read to that name; a root without `name` reads to no name; `<name/>` reads to `LangString::default()`.",
   "Read: a `name` holding white space, comments or processing instructions is accepted.",
   "Read: each of these is `Unsupported` at the offending construct, and no document is returned: a second `name`; `xml:lang=\"en\"`, `xmi:id`, `xmi:uuid`, `foo` or a prefixed `sacm:lang` on `name`; `xmi:type=\"sacm:ExpressionLangString\"`; `<name><content>x</content></name>`; `<name><value content=\"x\"/></name>`; `<name>text</name>`; `<sacm:name/>`.",
-  "Read: `xmi:type` or `xsi:type` naming `sacm:LangString` on `name` is accepted, resolved as for roots (SACM23-XMI-002).",
+  "Read: `xmi:type` or `xsi:type` naming `sacm:LangString` on `name` is accepted, resolved in the scope of the `name` element as for roots (SACM23-XMI-002): a prefix declared on `name` itself is accepted, and `sacm` rebound to another URI on `name` makes the type `Unsupported` at the `name` start tag.",
+  "Read: a `name` with `xmlns=\"\"` under a root in a default SACM namespace, and the same `name` under a `sacm:`-prefixed root, read to that name, equal to the plain form (Namespaces 1.0 §6.2).",
   "A minimized fixture in the third-party form `<name lang=\"English\" content=\"…\"/>` on a pinned-namespace root reads and round-trips.",
 ]
 code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/output.rs", "crates/sacm/src/xmi/roots.rs", "docs/adr/0017-xmi-writer.md"]
@@ -2034,6 +2036,8 @@ tests = [
   "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_an_element_child_or_text_in_name_is_unsupported_at_that_content",
   "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_a_name_element_in_a_namespace_is_unsupported_at_the_element",
   "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_a_type_naming_lang_string_on_name_is_accepted",
+  "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_the_type_on_name_is_resolved_in_the_scope_of_the_name_element",
+  "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_a_name_undeclaring_the_default_namespace_reads_as_the_plain_form",
   "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_a_minimized_third_party_name_reads_and_round_trips",
 ]
 
@@ -3656,7 +3660,7 @@ source = "XMI 2.5.1 §7.8.3 (p. 17) `<xsd:attribute ref=\"xmi:id\"/>`; D-ID; D-P
 kind = "xmi"
 status = "planned"
 depends_on = ["SACM23-XMI-012", "LIB-DIAG-001", "LIB-DIAG-002"]
-notes = "Maintainer decision 2026-11-12: preserve the id; no catalog code is needed. Moved from SACM23-XMI-012 in slice 0026. Not urgent: no corpus file and no C++ output carries such an id."
+notes = "Maintainer decision 2026-11-12: preserve the id; no catalog code is needed. Moved from SACM23-XMI-012 in slice 0026. Not urgent: no corpus file and no C++ output carries such an id. When built, reword verified SACM23-XMI-004 (\"No `xmi:id` is written on a LangString or MultiLangString\"), because a preserved LangString id is written back."
 
 [[row]]
 id = "LIB-COMPAT-009"

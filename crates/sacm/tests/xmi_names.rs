@@ -19,8 +19,8 @@
 //! start tag, as a root's is at the root (ADR 0016 D2).
 //!
 //! An `UnrepresentableCharacter` refusal names the attribute that holds the
-//! character, `"xmi:id"`, `"lang"` or `"content"`, and its message says where
-//! (ADR 0017 amendment 1). Both are pinned.
+//! character as a `WriteAttribute` (`Id`, `NameLang` or `NameContent`), and its
+//! message says where (ADR 0017 amendment 1). Both are pinned.
 
 use std::collections::HashSet;
 use std::sync::mpsc::{self, RecvTimeoutError};
@@ -32,7 +32,9 @@ use sacm::model::{
     AbstractClass, AssertionDeclaration, Document, ElementId, ElementKind, InsertError, LangString,
     SacmElement,
 };
-use sacm::xmi::{self, ReadError, ReadOptions, ReadOutput, WriteError, WriteOptions};
+use sacm::xmi::{
+    self, ReadError, ReadOptions, ReadOutput, WriteAttribute, WriteError, WriteOptions,
+};
 
 /// Line 1 of every output.
 const DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>";
@@ -343,13 +345,13 @@ fn assert_unsupported_at(row: &str, what: &str, input: &str, line: u32, column: 
 }
 
 /// Asserts that `error` refuses the element `id` because its `attribute`
-/// (`"xmi:id"`, or its name's `"lang"` or `"content"`) holds `character`,
-/// which XML 1.0 cannot represent, with the pinned message.
+/// (its id, or its name's `lang` or `content`) holds `character`, which XML
+/// 1.0 cannot represent, with the pinned message.
 fn assert_unrepresentable(
     row: &str,
     what: &str,
     error: &WriteError,
-    (id, attribute): (&str, &str),
+    (id, attribute): (&str, WriteAttribute),
     character: char,
 ) {
     match error {
@@ -384,10 +386,12 @@ fn assert_unrepresentable(
         error.code().is_none(),
         "{row}: {what}: an unrepresentable character has no catalog code"
     );
-    let place = if attribute == "xmi:id" {
-        "xmi:id".to_owned()
-    } else {
-        format!("name's {attribute}")
+    // Written out here, not taken from `WriteAttribute`'s `Display`.
+    let place = match attribute {
+        WriteAttribute::Id => "xmi:id",
+        WriteAttribute::NameLang => "name's lang",
+        WriteAttribute::NameContent => "name's content",
+        other => panic!("{row}: test oracle: no pinned message for {other:?}"),
     };
     assert_eq!(
         error.to_string(),
@@ -542,6 +546,34 @@ fn sacm23_xmi_011_content_with_markup_line_breaks_non_bmp_and_edge_spaces_round_
 }
 
 #[test]
+fn sacm23_xmi_011_lang_with_markup_line_breaks_non_bmp_and_edge_spaces_round_trips_exactly() {
+    let row = "SACM23-XMI-011";
+    let lang = " & < > \" ' \t \n \r \r\n \u{85} \u{2028} \u{1F600} ";
+    let line = concat!(
+        "<name lang=\" &amp; &lt; &gt; &quot; ' &#9; &#10; &#13; &#13;&#10;",
+        " \u{85} \u{2028} \u{1F600} \" />",
+    );
+    let name = lang_string(Some(lang), None);
+    for kind in [
+        ElementKind::AssuranceCasePackage,
+        ElementKind::ArgumentPackage,
+    ] {
+        let text = write_ok(row, &named_root(row, kind, name.clone()));
+        assert_eq!(
+            text,
+            named_root_output(kind, line),
+            "{row}: the {kind}'s lang is not written with the pinned escapes"
+        );
+        let back = read_ok(row, text.as_bytes());
+        assert_eq!(
+            name_of(row, &back, "r"),
+            Some(name.clone()),
+            "{row}: the {kind}'s lang does not read back exactly\n{text:?}"
+        );
+    }
+}
+
+#[test]
 fn sacm23_xmi_011_character_references_read_as_the_characters_and_literal_white_space_as_spaces() {
     let row = "SACM23-XMI-011";
     let cases = [
@@ -562,6 +594,21 @@ fn sacm23_xmi_011_character_references_read_as_the_characters_and_literal_white_
             "{row}: content=\"{written:?}\" does not read as {expected:?}"
         );
     }
+    // `lang` is read the same way, and never trimmed.
+    let lang_cases = [
+        ("a&#9;b", "a\tb"),
+        ("a&#9;b&#10;c&#13;d", "a\tb\nc\rd"),
+        ("a\tb", "a b"),
+        (" en ", " en "),
+    ];
+    for (written, expected) in lang_cases {
+        let input = root_holding(&format!("  <name lang=\"{written}\"/>"));
+        assert_eq!(
+            read_root_name(row, &input, "a"),
+            Some(lang_string(Some(expected), None)),
+            "{row}: lang=\"{written:?}\" does not read as {expected:?}"
+        );
+    }
 }
 
 #[test]
@@ -570,17 +617,26 @@ fn sacm23_xmi_011_a_character_outside_xml_char_in_lang_or_content_is_refused_nam
     for character in UNREPRESENTABLE {
         let value = format!("x{character}y");
         for (field, name) in [
-            ("lang", LangString::new("ok").with_lang(value.as_str())),
-            ("content", LangString::new(value.as_str()).with_lang("en")),
+            (
+                WriteAttribute::NameLang,
+                LangString::new("ok").with_lang(value.as_str()),
+            ),
+            (
+                WriteAttribute::NameContent,
+                LangString::new(value.as_str()).with_lang("en"),
+            ),
         ] {
-            let what = format!("U+{:04X} in a root's {field}", u32::from(character));
+            let what = format!("U+{:04X} in a root's {field:?}", u32::from(character));
             let error = write_err(
                 row,
                 &named_root(row, ElementKind::ArgumentPackage, name.clone()),
             );
             assert_unrepresentable(row, &what, &error, ("r", field), character);
 
-            let what = format!("U+{:04X} in a nested Claim's {field}", u32::from(character));
+            let what = format!(
+                "U+{:04X} in a nested Claim's {field:?}",
+                u32::from(character)
+            );
             let error = write_err(row, &named_claim(row, name, AssertionDeclaration::Asserted));
             assert_unrepresentable(row, &what, &error, ("c1", field), character);
         }
@@ -598,7 +654,7 @@ fn sacm23_xmi_011_a_character_outside_xml_char_in_lang_or_content_is_refused_nam
         row,
         "two characters in a content",
         &error,
-        ("r", "content"),
+        ("r", WriteAttribute::NameContent),
         '\u{1}',
     );
 }
@@ -629,14 +685,20 @@ fn sacm23_xmi_011_within_one_element_the_id_is_checked_before_the_name_and_lang_
         row,
         "an id and a name",
         &error,
-        ("c\u{1}", "xmi:id"),
+        ("c\u{1}", WriteAttribute::Id),
         '\u{1}',
     );
 
     // `lang`, then `content`.
     let both = LangString::new("\u{3}").with_lang("\u{2}");
     let error = write_err(row, &named_claim(row, both, AssertionDeclaration::Asserted));
-    assert_unrepresentable(row, "a lang and a content", &error, ("c1", "lang"), '\u{2}');
+    assert_unrepresentable(
+        row,
+        "a lang and a content",
+        &error,
+        ("c1", WriteAttribute::NameLang),
+        '\u{2}',
+    );
 
     // The name, then the `assertionDeclaration` (ADR 0017 amendment 1).
     let content = LangString::new("\u{3}").with_lang("en");
@@ -648,7 +710,7 @@ fn sacm23_xmi_011_within_one_element_the_id_is_checked_before_the_name_and_lang_
         row,
         "a content and a declaration",
         &error,
-        ("c1", "content"),
+        ("c1", WriteAttribute::NameContent),
         '\u{3}',
     );
 
@@ -676,7 +738,7 @@ fn sacm23_xmi_011_within_one_element_the_id_is_checked_before_the_name_and_lang_
         row,
         "a root's name and a Claim's id",
         &error,
-        ("arguments", "content"),
+        ("arguments", WriteAttribute::NameContent),
         '\u{4}',
     );
 }
@@ -1110,6 +1172,58 @@ fn sacm23_xmi_012_a_type_naming_lang_string_on_name_is_accepted() {
             "{row}: a name with {attribute} is not read"
         );
     }
+}
+
+#[test]
+fn sacm23_xmi_012_the_type_on_name_is_resolved_in_the_scope_of_the_name_element() {
+    let row = "SACM23-XMI-012";
+    // A prefix declared on `name` itself, unknown on the root: accepted.
+    let declared_on_name = root_holding(
+        "  <name xmlns:t=\"http://www.omg.org/spec/SACM/20220301\" xmi:type=\"t:LangString\" \
+         lang=\"en\" content=\"A\"/>",
+    );
+    assert_eq!(
+        read_root_name(row, &declared_on_name, "a"),
+        Some(LangString::new("A").with_lang("en")),
+        "{row}: a type whose prefix is declared on `name` is not resolved there"
+    );
+    // `sacm` rebound on `name`: the type names no SACM class there, though it
+    // would on the root.
+    let rebound_on_name = root_holding(
+        "  <name xmlns:sacm=\"urn:other\" xmi:type=\"sacm:LangString\" content=\"A\"/>",
+    );
+    assert_unsupported_at(row, "sacm rebound on name", &rebound_on_name, 2, 3);
+}
+
+#[test]
+fn sacm23_xmi_012_a_name_undeclaring_the_default_namespace_reads_as_the_plain_form() {
+    let row = "SACM23-XMI-012";
+    let plain = read_root_name(
+        row,
+        &root_holding("  <name lang=\"en\" content=\"A\"/>"),
+        "a",
+    );
+    assert_eq!(
+        plain,
+        Some(LangString::new("A").with_lang("en")),
+        "{row}: setup: the plain form"
+    );
+    let under_default = concat!(
+        "<ArgumentPackage xmlns=\"http://www.omg.org/spec/SACM/20220301\"",
+        " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"a\">",
+        "<name xmlns=\"\" lang=\"en\" content=\"A\"/></ArgumentPackage>",
+    );
+    assert_eq!(
+        read_root_name(row, under_default, "a"),
+        plain,
+        "{row}: `name xmlns=\"\"` under a default SACM namespace is not the plain form"
+    );
+    let under_prefixed = root_holding("  <name xmlns=\"\" lang=\"en\" content=\"A\"/>");
+    assert_eq!(
+        read_root_name(row, &under_prefixed, "a"),
+        plain,
+        "{row}: `name xmlns=\"\"` under a sacm:-prefixed root is not the plain form"
+    );
 }
 
 #[test]

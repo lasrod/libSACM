@@ -47,8 +47,9 @@ For every design question, start from what the C++ library decided:
 - **Adapt it** when Rust idiom requires: ownership instead of raw handles, `Result`
   instead of status structs, enums instead of class hierarchies. Keep the concept and
   the vocabulary.
-- **Deviate** only for a concrete reason, and propose an ADR that names the C++ decision
-  it departs from and why.
+- **Deviate** when the standard requires it, or for another concrete reason. Record the
+  difference in one ADR line naming the C++ decision; where the standard decides, the
+  clause is the reason.
 
 The SACM standard outranks both implementations, on what the model means and on what
 conforming output is. The C++ library is the reference for *how* to build it, where the

@@ -135,11 +135,12 @@ T5 said names stay refused until SACM23-XMI-012. That row now writes them, so:
   `lang`, then in its `content`, which gives `UnrepresentableCharacter`; then a non-default
   `assertionDeclaration`, which gives `Unsupported`. T5 now refuses only the
   `assertionDeclaration` (until SACM23-XMI-017).
-- **`UnrepresentableCharacter` gains a field, `attribute: &'static str`.** It names the XMI
-  attribute that holds the character: `"xmi:id"`, or the name's `"lang"` or `"content"`.
-  The message says where: "its xmi:id holds U+0001" (unchanged), "its name's lang holds
-  U+0001", or "its name's content holds U+0001". The variant is `#[non_exhaustive]`, so
-  this is additive.
+- **`UnrepresentableCharacter` gains a field, `attribute: WriteAttribute`.** It is a new
+  `#[non_exhaustive]` `Copy` enum with the values `Id`, `NameLang` and `NameContent`, and
+  later rows add more as they write more attributes. A plain string was rejected: once a
+  description's `content` is written, `"content"` would be ambiguous. The message says
+  where: "its xmi:id holds U+0001" (unchanged), "its name's lang holds U+0001" or "its
+  name's content holds U+0001". The variant is `#[non_exhaustive]`, so this is additive.
 - **The reader** reads one `name` child of a package root. A type attribute on `name`
   naming a class other than `LangString` is refused at the `name` start tag, as for roots
   (ADR 0016 D2).
@@ -150,3 +151,17 @@ T5 said names stay refused until SACM23-XMI-012. That row now writes them, so:
     writes none (ADR 0013).
   - pugixml writes `>` raw and TAB as `&#09;`; this crate writes `&gt;` and `&#9;`. That is
     a difference in bytes only.
+- **Reader differences from C++, one line each.** Each is an interim refusal under ADR 0015
+  unless noted.
+  - Of two names, C++ keeps the last (`xmi_reader.cpp:1182-1218`), a silent drop. This
+    crate refuses the second name until SACM23-XMI-021.
+  - C++ reads a name's text as its content (`:805-808`). This crate refuses it
+    (LIB-COMPAT-008).
+  - C++ matches `name` by local name in any namespace. This crate reads only a `name` in no
+    namespace.
+  - C++ drops a LangString `xmi:id` with an Info diagnostic (`:793-803`). This crate refuses
+    it until SACM23-XMI-022, which will preserve it.
+  - C++ reads an ExpressionLangString type on `name`. This crate refuses it (SACM23-BASE-009).
+
+*Amendment 1 status: proposed. It adds public API (`WriteAttribute`), which waits for the
+maintainer.*

@@ -1228,6 +1228,19 @@ fn lib_api_009_well_formed_sacm_document_is_unsupported_at_the_construct_it_cann
         Some(loc(row, 4, 9)),
         "{row}: the refusal is not located at the start tag of the `content` child of `name`"
     );
+    // An AssuranceCasePackage root with a `note` child, which no verified row
+    // reads: `Unsupported`, with no code and no document, at `<note` (line
+    // 4, column 3).
+    let note_child = sacm_document(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- LIB-API-009 -->\n",
+        "\n  <note/>\n",
+    );
+    let error = assert_unsupported(row, &note_child);
+    assert_eq!(
+        error.location(),
+        Some(loc(row, 4, 3)),
+        "{row}: the refusal is not located at the start tag of the `note` child"
+    );
     // A root that is recognised but not read yet: refused at its start tag,
     // on line 3.
     let artifact_root = format!(

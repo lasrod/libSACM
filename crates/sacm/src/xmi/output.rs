@@ -9,8 +9,8 @@
 //! one tag per line and `<x … />` for an element with no children. Neither
 //! pass recurses, so deep nesting is safe.
 
-use super::WriteError;
 use super::namespaces::{SACM_NS, SACM_PREFIX, XMI_NS, XMI_PREFIX, XMI_VERSION};
+use super::{WriteAttribute, WriteError};
 use crate::model::{
     AssertionDeclaration, DeclaredType, Document, ElementKind, LangString, SacmElement, role,
 };
@@ -123,9 +123,12 @@ fn plan(document: &Document) -> Result<Vec<Planned<'_>>, WriteError> {
         };
         let name = element.name();
         for (attribute, value) in [
-            ("xmi:id", Some(id.as_str())),
-            ("lang", name.and_then(LangString::lang)),
-            ("content", name.and_then(LangString::content)),
+            (WriteAttribute::Id, Some(id.as_str())),
+            (WriteAttribute::NameLang, name.and_then(LangString::lang)),
+            (
+                WriteAttribute::NameContent,
+                name.and_then(LangString::content),
+            ),
         ] {
             if let Some(character) =
                 value.and_then(|value| value.chars().find(|&c| !is_xml_char(c)))

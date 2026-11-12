@@ -52,7 +52,7 @@ use sacm::model::{
     AbstractClass, AssertionDeclaration, Document, ElementId, ElementKind, InsertError, LangString,
     SacmElement,
 };
-use sacm::xmi::{self, ReadError, ReadOptions, WriteError, WriteOptions};
+use sacm::xmi::{self, ReadError, ReadOptions, WriteAttribute, WriteError, WriteOptions};
 
 /// The pinned SACM 2.3 namespace (D-NS-PIN).
 const SACM_NS: &str = "http://www.omg.org/spec/SACM/20220301";
@@ -935,7 +935,7 @@ fn bare_root(kind: ElementKind, escaped_id: &str) -> String {
 }
 
 /// Asserts that `error` refuses the element `id` because its id holds
-/// `character`, names `xmi:id` as the attribute that holds it (ADR 0017
+/// `character`, names `WriteAttribute::Id` as the attribute that holds it (ADR 0017
 /// amendment 1), and says so.
 fn assert_unrepresentable(row: &str, error: &WriteError, id: &str, character: char) {
     match error {
@@ -951,7 +951,8 @@ fn assert_unrepresentable(row: &str, error: &WriteError, id: &str, character: ch
                 "{row}: the refusal names the wrong element"
             );
             assert_eq!(
-                *attribute, "xmi:id",
+                *attribute,
+                WriteAttribute::Id,
                 "{row}: the refusal names the wrong attribute"
             );
             assert_eq!(
