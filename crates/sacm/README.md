@@ -15,8 +15,9 @@ Assertion's `assertionDeclaration`, the first value types (`LangString`,
 diagnostic type that findings are reported in (`sacm::diagnostic`), and
 `sacm::validation::validate`, which reports each `ModelElement` with no name as a
 `SACM-MULT-001` error. `xmi::read`'s refusals carry catalog codes. `sacm::xmi::read` reads
-`AssuranceCasePackage` and `ArgumentPackage` roots and their names, but nothing else
-inside them yet; it refuses what it cannot represent rather than drop it.
+`AssuranceCasePackage` and `ArgumentPackage` roots, the AssuranceCasePackages,
+ArgumentPackages and Claims in them, and their names; it refuses what it cannot represent
+rather than drop it.
 `sacm::xmi::write` writes a document and its names deterministically, and refuses a
 non-default `assertionDeclaration`, which it does not write yet. `sacm::edit::apply`
 creates AssuranceCasePackages, ArgumentPackages and Claims, each with a name and a given
@@ -53,6 +54,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   <sacm:AssuranceCasePackage xmi:id="case"/>
   <sacm:ArgumentPackage xmi:id="arguments">
     <name lang="en" content="Arguments"/>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+      <name lang="en" content="The system is safe"/>
+    </argumentElement>
   </sacm:ArgumentPackage>
 </xmi:XMI>"#;
     let output = xmi::read(input, &ReadOptions::default())?;
@@ -77,18 +81,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-`sacm::xmi::read` reads `AssuranceCasePackage` and `ArgumentPackage` roots and their names
-so far; it refuses the other content of packages rather than drop it. `sacm::xmi::write`
-writes the document back deterministically, and refuses a non-default
-`assertionDeclaration` until a later release writes it.
+`sacm::xmi::read` reads `AssuranceCasePackage` and `ArgumentPackage` roots, the
+AssuranceCasePackages, ArgumentPackages and Claims in them, and their names. It refuses
+everything else (other kinds, a `description`, a `gid`, an `assertionDeclaration`) as
+`ReadError::Unsupported` rather than drop it. `sacm::xmi::write` writes the document back
+deterministically, and refuses a non-default `assertionDeclaration` until a later release
+writes it.
 
-Build a document with `sacm::edit::apply`, then validate and write it:
+Build a document with `sacm::edit::apply`, then validate, write and read it back:
 
 ```rust
 use sacm::edit::{self, CreateArgumentPackage, CreateAssuranceCasePackage, CreateClaim};
 use sacm::model::{Document, LangString};
 use sacm::validation;
-use sacm::xmi::{self, WriteOptions};
+use sacm::xmi::{self, ReadOptions, WriteOptions};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let name = |text: &str| LangString::new(text).with_lang("en");
@@ -106,12 +112,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let text = xmi::write(&doc, &WriteOptions::default())?;
     assert!(text.contains(r#"xmi:id="c_top""#));
     print!("{text}");
+
+    // And it reads back.
+    let back = xmi::read(text.as_bytes(), &ReadOptions::default())?.into_document();
+    let parent = back.get("c_top").and_then(|claim| claim.parent());
+    assert_eq!(parent.map(|parent| parent.id().as_str()), Some("argument_package_1"));
     Ok(())
 }
 ```
 
-`sacm::xmi::read` cannot read such a file back yet: it reads only package roots and their
-names, and refuses, as `ReadError::Unsupported`, packages that hold elements.
+`sacm::xmi::read` reads such a file back with the same ids, kinds, names, parents and
+order.
 
 See the [crate documentation](https://docs.rs/sacm) for the full API.
 

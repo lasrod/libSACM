@@ -2,8 +2,9 @@
 //! child of a given kind (LIB-API-008, SACM23-XMI-006).
 //!
 //! One table, [`role`], gives both the role's name and its declared type, and
-//! [`admits`] is derived from it, so containment legality and the role names
-//! written to XMI cannot drift apart. Crate-private, as the C++ library's role
+//! [`admits`] and [`role_named`] are derived from it, so containment legality,
+//! the role names written to XMI and the role names read from it cannot drift
+//! apart. Crate-private, as the C++ library's role
 //! tables are.
 
 use super::{AbstractClass, ElementKind};
@@ -29,7 +30,7 @@ pub(crate) enum DeclaredType {
 
 impl DeclaredType {
     /// Whether an element of `kind` conforms to this type.
-    const fn admits(self, kind: ElementKind) -> bool {
+    pub(crate) const fn admits(self, kind: ElementKind) -> bool {
         match self {
             Self::Kind(declared) => kind.is_kind_of(declared),
             Self::Abstract(class) => kind.is_a(class),
@@ -124,7 +125,26 @@ pub(crate) const fn role(parent: ElementKind, child: ElementKind) -> Option<Role
     if let Some(role) = find(MODEL_ELEMENT_ROLES, child) {
         return Some(role);
     }
-    let own: &[Role] = if parent.is_kind_of(ElementKind::AssuranceCasePackage) {
+    find(own_roles(parent), child)
+}
+
+/// The composite role of `parent`'s class named `name`, or `None` if the
+/// class has no role of that name: the reverse of [`role`], over the same
+/// tables.
+pub(crate) fn role_named(parent: ElementKind, name: &str) -> Option<Role> {
+    if !parent.is_a(AbstractClass::ModelElement) {
+        return None;
+    }
+    MODEL_ELEMENT_ROLES
+        .iter()
+        .chain(own_roles(parent))
+        .find(|role| role.name == name)
+        .copied()
+}
+
+/// The roles of `parent`'s own class, besides the `ModelElement` roles.
+const fn own_roles(parent: ElementKind) -> &'static [Role] {
+    if parent.is_kind_of(ElementKind::AssuranceCasePackage) {
         ASSURANCE_CASE_PACKAGE_ROLES
     } else if parent.is_kind_of(ElementKind::ArgumentPackage) {
         ARGUMENT_PACKAGE_ROLES
@@ -137,8 +157,7 @@ pub(crate) const fn role(parent: ElementKind, child: ElementKind) -> Option<Role
     } else {
         // Groups and every other ModelElement: the ModelElement roles only.
         &[]
-    };
-    find(own, child)
+    }
 }
 
 /// Whether a composite role of `parent`'s class admits a `child` element:
@@ -164,7 +183,7 @@ const fn find(roles: &[Role], child: ElementKind) -> Option<Role> {
 
 #[cfg(test)]
 mod tests {
-    use super::{DeclaredType, role};
+    use super::{DeclaredType, role, role_named};
     use crate::model::ElementKind;
 
     /// At most one role of each class admits each kind, so the role a child
@@ -200,5 +219,29 @@ mod tests {
         ));
         assert_eq!(role(ElementKind::Claim, ElementKind::Claim), None);
         assert_eq!(role(ElementKind::Note, ElementKind::Note), None);
+    }
+
+    /// `role_named` finds, by its name, every role `role` finds, and no
+    /// role of another class or of a `UtilityElement`.
+    #[test]
+    fn role_named_is_the_reverse_of_role() {
+        for &parent in ElementKind::ALL {
+            for &child in ElementKind::ALL {
+                if let Some(found) = role(parent, child) {
+                    assert_eq!(role_named(parent, found.name), Some(found));
+                }
+            }
+        }
+        assert_eq!(
+            role_named(ElementKind::ArgumentPackage, "argumentElement").map(|r| r.declared),
+            role(ElementKind::ArgumentPackage, ElementKind::Claim).map(|r| r.declared)
+        );
+        assert_eq!(
+            role_named(ElementKind::ArgumentPackage, "argumentPackage"),
+            None
+        );
+        assert_eq!(role_named(ElementKind::Claim, "argumentElement"), None);
+        assert_eq!(role_named(ElementKind::Note, "note"), None);
+        assert_eq!(role_named(ElementKind::Claim, "argumentationElement"), None);
     }
 }
