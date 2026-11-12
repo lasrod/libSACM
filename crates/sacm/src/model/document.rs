@@ -37,13 +37,14 @@ use super::{AbstractClass, AssertionDeclaration, ElementId, ElementKind, LangStr
 /// In this release [`xmi::read`](crate::xmi::read) fills a document with
 /// `AssuranceCasePackage` and `ArgumentPackage` roots, but nothing inside
 /// them yet, and [`edit::apply`](crate::edit::apply) creates
-/// AssuranceCasePackage, ArgumentPackage and Claim elements. Tests build documents
-/// with other kinds through the `test-support` feature's `Document::insert`.
-/// [`Document::new`] is empty.
+/// AssuranceCasePackage, ArgumentPackage and Claim elements. Tests build
+/// documents with other kinds through the `test-support` feature's
+/// `Document::insert`. [`Document::new`] is empty.
 ///
-/// Cloning a document copies all of it, including where its generated ids
-/// have got to; the copy is independent of the original. Cloning, dropping and traversal do not recurse, so arbitrarily
-/// deep nesting is safe.
+/// Cloning a document copies all of it, including the counters that generated
+/// ids continue from; the copy is independent of the original. Cloning,
+/// dropping and traversal do not recurse, so arbitrarily deep nesting is
+/// safe.
 ///
 /// # Examples
 ///
@@ -108,15 +109,18 @@ impl Document {
     /// interface or binding of one.
     ///
     /// ```
-    /// use sacm::model::{Document, ElementId, ElementKind};
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateAssuranceCasePackage};
+    /// use sacm::model::{Document, LangString};
     ///
-    /// // Built with the unstable test-support feature: `xmi::read` reads only package roots and their names so far.
     /// let mut doc = Document::new();
-    /// doc.insert(None, ElementKind::AssuranceCasePackage, ElementId::from("safety_case"), None).unwrap();
-    /// doc.insert(None, ElementKind::ArtifactPackage, ElementId::from("evidence"), None).unwrap();
+    /// let case = CreateAssuranceCasePackage::root(LangString::new("Safety case")).with_id("safety_case");
+    /// edit::apply(&mut doc, case)?;
+    /// let arguments = CreateArgumentPackage::root(LangString::new("Arguments")).with_id("arguments");
+    /// edit::apply(&mut doc, arguments)?;
     ///
     /// let roots: Vec<&str> = doc.roots().map(|root| root.id().as_str()).collect();
-    /// assert_eq!(roots, ["safety_case", "evidence"]);
+    /// assert_eq!(roots, ["safety_case", "arguments"]);
+    /// # Ok::<(), sacm::edit::EditError>(())
     /// ```
     pub fn roots(&self) -> impl Iterator<Item = SacmElement<'_>> {
         self.roots.iter().map(|&node| self.view(node))
@@ -128,15 +132,17 @@ impl Document {
     /// `&str`, a `&String` or an `&ElementId`.
     ///
     /// ```
-    /// use sacm::model::{Document, ElementId, ElementKind};
+    /// use sacm::edit::{self, CreateArgumentPackage};
+    /// use sacm::model::{Document, ElementKind, LangString};
     ///
-    /// // Built with the unstable test-support feature: `xmi::read` reads only package roots and their names so far.
     /// let mut doc = Document::new();
-    /// doc.insert(None, ElementKind::ArgumentPackage, ElementId::from("arguments"), None).unwrap();
+    /// let arguments = CreateArgumentPackage::root(LangString::new("Arguments")).with_id("arguments");
+    /// edit::apply(&mut doc, arguments)?;
     ///
     /// let arguments = doc.get("arguments").expect("the document has it");
     /// assert_eq!(arguments.kind(), ElementKind::ArgumentPackage);
     /// assert!(doc.get("Arguments").is_none());
+    /// # Ok::<(), sacm::edit::EditError>(())
     /// ```
     #[must_use]
     pub fn get<Q: AsRef<str> + ?Sized>(&self, id: &Q) -> Option<SacmElement<'_>> {
@@ -175,18 +181,19 @@ impl Document {
     /// so it is safe on arbitrarily deep documents.
     ///
     /// ```
-    /// use sacm::model::{Document, ElementId, ElementKind};
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateAssuranceCasePackage, CreateClaim};
+    /// use sacm::model::{Document, LangString};
     ///
-    /// // Built with the unstable test-support feature: `xmi::read` reads only package roots and their names so far.
     /// let mut doc = Document::new();
-    /// let id = ElementId::from;
-    /// doc.insert(None, ElementKind::AssuranceCasePackage, id("case"), None).unwrap();
-    /// doc.insert(Some(&id("case")), ElementKind::ArgumentPackage, id("arguments"), None).unwrap();
-    /// doc.insert(Some(&id("case")), ElementKind::ArtifactPackage, id("artifacts"), None).unwrap();
-    /// doc.insert(Some(&id("arguments")), ElementKind::Claim, id("claim"), None).unwrap();
+    /// let name = || LangString::new("N");
+    /// edit::apply(&mut doc, CreateAssuranceCasePackage::root(name()).with_id("case"))?;
+    /// edit::apply(&mut doc, CreateArgumentPackage::new("case", name()).with_id("arguments"))?;
+    /// edit::apply(&mut doc, CreateClaim::new("arguments", name()).with_id("claim"))?;
+    /// edit::apply(&mut doc, CreateArgumentPackage::new("case", name()).with_id("more"))?;
     ///
     /// let order: Vec<&str> = doc.elements().map(|element| element.id().as_str()).collect();
-    /// assert_eq!(order, ["case", "arguments", "claim", "artifacts"]);
+    /// assert_eq!(order, ["case", "arguments", "claim", "more"]);
+    /// # Ok::<(), sacm::edit::EditError>(())
     /// ```
     pub fn elements(&self) -> impl Iterator<Item = SacmElement<'_>> {
         PreOrder {
@@ -527,7 +534,7 @@ impl<'a> Iterator for PreOrder<'a> {
 ///     package.children().filter(|child| child.kind() == ElementKind::Claim)
 /// }
 ///
-/// // Built with the unstable test-support feature: `xmi::read` reads only package roots and their names so far.
+/// // Built with the unstable test-support feature: edit::apply does not create an ArgumentReasoning yet.
 /// let mut doc = Document::new();
 /// let id = ElementId::from;
 /// doc.insert(None, ElementKind::ArgumentPackage, id("arguments"), None).unwrap();
@@ -582,7 +589,7 @@ impl<'a> SacmElement<'a> {
     /// ```
     /// use sacm::model::{AbstractClass, Document, ElementId, ElementKind, LangString};
     ///
-    /// // Built with the unstable test-support feature: `xmi::read` reads only package roots and their names so far.
+    /// // Built with the unstable test-support feature: edit::apply does not create a Note or a missing name.
     /// let mut doc = Document::new();
     /// let id = ElementId::from;
     /// let name = LangString::new("Top claim").with_lang("en");
@@ -622,7 +629,7 @@ impl<'a> SacmElement<'a> {
     /// ```
     /// use sacm::model::{AssertionDeclaration, Document, ElementId, ElementKind};
     ///
-    /// // Built with the unstable test-support feature: `xmi::read` reads only package roots and their names so far.
+    /// // Built with the unstable test-support feature: edit::apply does not create an ArgumentReasoning yet.
     /// let mut doc = Document::new();
     /// let id = ElementId::from;
     /// doc.insert(None, ElementKind::ArgumentPackage, id("arguments"), None).unwrap();

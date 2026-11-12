@@ -12,7 +12,9 @@ and clause it enforces, affected element ids, an optional source location
 > finding with the same code. A code becomes live when the matrix row that emits it is
 > verified; until then the crate does not emit it. Tool-specific wording from that
 > project ("Assurance Forge", ODE containers) has been kept where it explains the code.
-> The `sacm::diagnostic::Diagnostic` type exists (LIB-DIAG-001), but no diagnostic is emitted yet.
+> The `sacm::diagnostic::Diagnostic` type exists (LIB-DIAG-001). SACM-MULT-001 is emitted by
+> `sacm::validation::validate` (SACM23-VAL-018). SACM-CMD-001, SACM-CMD-004, SACM-CMD-005 and SACM-ID-002 are
+> produced as the `EditError::code()` of a refused edit (LIB-EDIT-001).
 > SACM-XML-001 (rows LIB-SEC-002 and LIB-SEC-005), SACM-SEC-001 (LIB-SEC-001) and
 > SACM-XMI-001 (SACM23-XMI-001) are produced, as the `ReadError::code()` of a refusal by
 > `sacm::xmi::read`.
@@ -46,7 +48,7 @@ crate, and name the matrix row that owns it.
 | Code | Severity | Meaning |
 | --- | --- | --- |
 | SACM-ID-001 | Error | Duplicate element ID. |
-| SACM-ID-002 | Error | Invalid element ID syntax. |
+| SACM-ID-002 | Error | Invalid element ID syntax: a new element's id is not an XML NCName (XMI 2.5.1 §7.6.1 `xsd:ID`). `Code::ID_INVALID`, `EditError::InvalidId` (LIB-EDIT-001). Fix: use a name that starts with a letter or `_` and has no spaces or `:`, or leave the id out to have one generated. |
 | SACM-ID-003 | Error | Duplicate `gid` (clause 8.2: "unique within the scope of the model instance"). Distinct from SACM-ID-001: `gid` is SACM's own model-global identifier rather than the XMI serialization id, and it is the handle third-party tools key on, so a document can be clean on one and broken on the other. An absent or empty `gid` is not an identity and is not compared. |
 | SACM-REF-001 | Error | Dangling reference: target ID does not resolve. |
 | SACM-REF-002 | Error | Reference resolves to an element of the wrong type. |
@@ -67,11 +69,11 @@ crate, and name the matrix row that owns it.
 
 | Code | Severity | Meaning |
 | --- | --- | --- |
-| SACM-CMD-001 | Error | Operation target not found. |
+| SACM-CMD-001 | Error | Operation target not found. `Code::CMD_TARGET_NOT_FOUND`, `EditError::ParentNotFound` (LIB-EDIT-001): a create operation names a parent id that is not in the document. Fix: create the parent first, or correct its id (ids are compared exactly). |
 | SACM-CMD-002 | Error | Delete rejected: element is referenced and policy is `RejectIfReferenced`. |
 | SACM-CMD-003 | Error | Preview expired: the document changed after the preview was taken. |
-| SACM-CMD-004 | Error | Create rejected: caller-provided ID already exists. |
-| SACM-CMD-005 | Error | Invalid parent: the target cannot contain the requested child kind. |
+| SACM-CMD-004 | Error | Create rejected: caller-provided ID already exists. `Code::CMD_DUPLICATE_ID`, `EditError::DuplicateId` (LIB-EDIT-001). Ids are unique across the whole document. Fix: choose another id, or leave it out to have one generated. |
+| SACM-CMD-005 | Error | Invalid parent: the target cannot contain the requested child kind. `Code::CMD_INVALID_PARENT`, `EditError::InvalidParent` (LIB-EDIT-001): the parent's class has no composite role for the new kind, such as a Claim directly in an AssuranceCasePackage. Fix: choose a parent that can hold the kind (a Claim goes in an ArgumentPackage). |
 | SACM-CMD-006 | Error | Delete rejected: package is not empty and policy is `RejectIfNonEmpty`. |
 | SACM-CMD-007 | Error | Delete rejected: external (cross-package) references exist and policy is `RejectIfExternalReferencesExist`. |
 

@@ -725,6 +725,55 @@ fn lib_edit_001_generation_skips_an_id_read_from_a_file() {
     );
 }
 
+#[test]
+fn lib_edit_001_generation_skips_several_used_ids_in_a_row() {
+    let mut doc = Document::new();
+    create(
+        &mut doc,
+        CreateArgumentPackage::root(named("A")).with_id("arguments"),
+    );
+    for value in ["claim_1", "claim_2", "claim_3"] {
+        create(
+            &mut doc,
+            CreateClaim::new("arguments", named("Caller")).with_id(value),
+        );
+    }
+    let generated = create(&mut doc, CreateClaim::new("arguments", named("G")));
+    assert_eq!(
+        generated,
+        id("claim_4"),
+        "{ROW}: generation did not skip three used ids in a row"
+    );
+}
+
+#[test]
+fn lib_edit_001_generation_finds_the_free_id_when_every_element_is_a_candidate() {
+    for k in [1, 3] {
+        let roots: String = (1..=k)
+            .map(|n| {
+                [
+                    "<sacm:ArgumentPackage xmi:id=\"argument_package_",
+                    &n.to_string(),
+                    "\"/>\n",
+                ]
+                .concat()
+            })
+            .collect();
+        let mut doc = read_file(&roots);
+        assert_eq!(
+            doc.element_count(),
+            k,
+            "{ROW}: setup: the file is not exactly the {k} candidates"
+        );
+        let generated = create(&mut doc, CreateArgumentPackage::root(named("G")));
+        assert_eq!(
+            generated,
+            id(&format!("argument_package_{}", k + 1)),
+            "{ROW}: with argument_package_1..={k} in use, generation did not find the next id"
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // 3. Determinism
 // ---------------------------------------------------------------------------
@@ -953,6 +1002,147 @@ fn lib_edit_001_an_ncname_id_is_accepted_exactly() {
         assert!(
             doc.contains(value),
             "{ROW}: the NCName {value:?} is not stored exactly"
+        );
+    }
+}
+
+/// What `edit::apply` answers for a Claim with the caller id `value` under
+/// "arguments" in `doc`.
+fn caller_id_answer(doc: &mut Document, value: &str) -> Result<(), Refusal> {
+    edit::apply(
+        doc,
+        CreateClaim::new("arguments", named("X")).with_id(value),
+    )
+    .map(|_| ())
+    .map_err(|error| refusal_of(&error))
+}
+
+/// The edges of every range of XML 1.0 (5th edition) production [4]
+/// `NameStartChar`, without `:`, which `NCName` excludes.
+const NAME_START_EDGES: [char; 29] = [
+    'A',
+    'Z',
+    '_',
+    'a',
+    'z',
+    '\u{C0}',
+    '\u{D6}',
+    '\u{D8}',
+    '\u{F6}',
+    '\u{F8}',
+    '\u{2FF}',
+    '\u{370}',
+    '\u{37D}',
+    '\u{37F}',
+    '\u{1FFF}',
+    '\u{200C}',
+    '\u{200D}',
+    '\u{2070}',
+    '\u{218F}',
+    '\u{2C00}',
+    '\u{2FEF}',
+    '\u{3001}',
+    '\u{D7FF}',
+    '\u{F900}',
+    '\u{FDCF}',
+    '\u{FDF0}',
+    '\u{FFFD}',
+    '\u{10000}',
+    '\u{EFFFF}',
+];
+
+/// The characters just outside each `NameStartChar` edge that no neighbouring
+/// range covers, and the `NameChar`s of [4a] that cannot start a name.
+/// U+D800-U+DFFF, after U+D7FF, are surrogates and not `char`s, so U+E000 is
+/// the next character there.
+const NOT_NAME_START: [char; 33] = [
+    ':',
+    '@',
+    '[',
+    '^',
+    '`',
+    '{',
+    '\u{BF}',
+    '\u{D7}',
+    '\u{F7}',
+    '\u{36F}',
+    '\u{37E}',
+    '\u{2000}',
+    '\u{200B}',
+    '\u{200E}',
+    '\u{206F}',
+    '\u{2190}',
+    '\u{2BFF}',
+    '\u{2FF0}',
+    '\u{3000}',
+    '\u{E000}',
+    '\u{F8FF}',
+    '\u{FDD0}',
+    '\u{FDEF}',
+    '\u{FFFE}',
+    '\u{FFFF}',
+    '\u{F0000}', // NameChars that are not NameStartChars:
+    '-',
+    '.',
+    '0',
+    '9',
+    '\u{B7}',
+    '\u{300}',
+    '\u{203F}',
+];
+
+#[test]
+fn lib_edit_001_ncname_first_characters_are_checked_at_every_range_edge() {
+    let mut doc = small_case();
+    for first in NAME_START_EDGES {
+        let value = first.to_string();
+        assert_eq!(
+            caller_id_answer(&mut doc, &value),
+            Ok(()),
+            "{ROW}: U+{:04X} is a NameStartChar, but the id {value:?} was refused",
+            u32::from(first)
+        );
+        assert!(
+            doc.contains(&value),
+            "{ROW}: the id {value:?} is not stored"
+        );
+    }
+    for first in NOT_NAME_START {
+        let value = format!("{first}x");
+        assert_eq!(
+            caller_id_answer(&mut doc, &value),
+            Err(invalid_id(&value)),
+            "{ROW}: U+{:04X} cannot start an NCName, but the id {value:?} was not InvalidId",
+            u32::from(first)
+        );
+    }
+}
+
+#[test]
+fn lib_edit_001_ncname_later_characters_are_checked_at_every_range_edge() {
+    let mut doc = small_case();
+    // The edges of the ranges [4a] adds to [4], and a NameStartChar.
+    for later in [
+        '-', '.', '0', '9', '\u{B7}', '\u{300}', '\u{36F}', '\u{203F}', '\u{2040}', '\u{C0}',
+    ] {
+        let value = format!("a{later}");
+        assert_eq!(
+            caller_id_answer(&mut doc, &value),
+            Ok(()),
+            "{ROW}: U+{:04X} is a NameChar, but the id {value:?} was refused",
+            u32::from(later)
+        );
+    }
+    // Just outside each of those edges, where no range covers it.
+    for later in [
+        ',', '/', ':', '\u{B6}', '\u{B8}', '\u{37E}', '\u{203E}', '\u{2041}', ' ',
+    ] {
+        let value = format!("a{later}");
+        assert_eq!(
+            caller_id_answer(&mut doc, &value),
+            Err(invalid_id(&value)),
+            "{ROW}: U+{:04X} is not a NameChar, but the id {value:?} was not InvalidId",
+            u32::from(later)
         );
     }
 }

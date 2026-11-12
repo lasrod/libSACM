@@ -35,3 +35,10 @@ ADR 0011 (errors), D-ID (ids), and the assurance-forge C++ command API.
 - 2026-11-12 tests: 30 tests in `edit_create.rs`, with an independent parent-legality table; 8 seeded faults are all caught. The red is a compile failure.
 - 2026-11-12 implementation: `sacm::edit` (`apply`, `Operation`, three create structs, `Mutation`, `EditError`), `is_ncname`, and a per-kind id counter on `Document`. The local gate passes.
   - Note for the verifier: unreachable `insert_node` error arms map to `InvalidId`.
+- 2026-11-12 verification round 1: FAIL.
+  - Generation skipping is under-tested: mutants A and B cause a real DuplicateId on a generated id.
+  - Six NCName range edges are unpinned.
+  - The accessors and `From<&ElementId>` were unapproved; the maintainer kept them (ADR 0019 line, new acceptance item).
+  - The catalog rows and status note, and the citations, are fixed by the lead.
+  - The docs review (2 blocking: a written file cannot be read back yet, and the refusals give no fix) goes to the implementer.
+  - Logged: `created_id()`, `From<&str>` for LangString and a public `can_contain` are for the architect later; reading package content should come soon.

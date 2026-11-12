@@ -15,18 +15,18 @@
 //! | [`CreateClaim`] | a `Claim` (§11.11) | no | [`new`](CreateClaim::new) |
 //!
 //! A root is added after the document's last root; a child after its parent's
-//! last child. A parent is legal exactly when a SACM composite role of its
-//! class holds the new kind: the same containment rules the reader and writer
-//! use (see [`Document`]). So a Claim goes in an ArgumentPackage, not directly
-//! in an AssuranceCasePackage, and an ArtifactPackage, a package interface or
-//! a package binding can be a parent too.
+//! last child. A parent is legal exactly when SACM lets its class contain the
+//! new element (it has a composite role for that kind), the same rules
+//! [`xmi::read`](crate::xmi::read) uses. So a Claim goes in an
+//! ArgumentPackage, not directly in an AssuranceCasePackage. An
+//! ArtifactPackage, a package interface or a package binding is also a legal
+//! parent, though this release cannot create or read those yet.
 //!
-//! **The name is required.** Every operation takes the element's `name` as a
-//! [`LangString`](crate::model::LangString), stored exactly as given, so an
-//! edit never makes a `ModelElement` without a name ([ADR 0013]). Any value is
-//! accepted, `LangString::default()` included.
-//!
-//! [ADR 0013]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0013-missing-name-stays-missing.md
+//! **The name is required**, because SACM gives every `ModelElement` exactly
+//! one name (§8.6 `name:LangString[1]`). Every operation takes it as a
+//! [`LangString`](crate::model::LangString), stored exactly as given. Any
+//! value is accepted, `LangString::default()` included; an empty name is still
+//! a name.
 //!
 //! # Ids
 //!
@@ -36,10 +36,12 @@
 //! - **Generated** otherwise: `<snake_case kind>_<n>`, such as
 //!   `assurance_case_package_1`, `argument_package_1` or `claim_1`. `n` is the
 //!   smallest number above the document's counter for the kind whose id is not
-//!   already in use, whoever gave it. The counter advances only when an
-//!   operation succeeds with a generated id; a caller id does not move it.
-//! - **Deterministic:** the same operations on equal documents give the same
-//!   ids, and a clone of a document generates the same ids as the original.
+//!   already in use, whether a caller gave it or it was read from a file. The
+//!   counter advances only when an operation succeeds with a generated id; a
+//!   caller id does not move it.
+//! - **Deterministic:** the same operations, applied to documents built or read
+//!   the same way, give the same ids; a clone generates the same ids as its
+//!   original.
 //!
 //! Ids read from a file are kept exactly as read; only new ids are checked.
 //!
@@ -48,19 +50,30 @@
 //! The checks run in this order, and the first that fails is the result. A
 //! root operation has no parent, so it skips the first two.
 //!
-//! | Check | Refusal | Code |
-//! |---|---|---|
-//! | 1. the parent is in the document | [`EditError::ParentNotFound`] | SACM-CMD-001 |
-//! | 2. the parent can contain the new kind | [`EditError::InvalidParent`] | SACM-CMD-005 |
-//! | 3. a caller id is an `NCName` | [`EditError::InvalidId`] | SACM-ID-002 |
-//! | 4. a caller id is not in use | [`EditError::DuplicateId`] | SACM-CMD-004 |
+//! | Check | Refusal | Code | Fix |
+//! |---|---|---|---|
+//! | 1. the parent is in the document | [`EditError::ParentNotFound`] | SACM-CMD-001 | Create the parent first, or correct its id. Ids are compared exactly, case included. |
+//! | 2. the parent can contain the new kind | [`EditError::InvalidParent`] | SACM-CMD-005 | Choose a parent whose class can hold the new kind. For example, a Claim goes in an ArgumentPackage, and an ArgumentPackage in an AssuranceCasePackage or another ArgumentPackage. |
+//! | 3. a caller id is an `NCName` | [`EditError::InvalidId`] | SACM-ID-002 | An `NCName` starts with a letter or `_` and continues with letters, digits, `-`, `.` or `_`; it has no spaces and no `:`. Or leave out `with_id` to have an id generated. |
+//! | 4. a caller id is not in use | [`EditError::DuplicateId`] | SACM-CMD-004 | Ids are unique across the whole document, not per parent. Choose another id, or leave out `with_id` to have one generated. |
+//!
+//! # Writing and reading back
+//!
+//! A document built with [`apply`] validates with
+//! [`validation::validate`](crate::validation::validate) and writes with
+//! [`xmi::write`](crate::xmi::write). In this release
+//! [`xmi::read`](crate::xmi::read) reads only package roots and their names.
+//! It refuses, as
+//! [`ReadError::Unsupported`](crate::xmi::ReadError::Unsupported), a file
+//! whose packages hold elements, so a file with a Claim that this crate wrote
+//! cannot be read back yet.
 //!
 //! # Examples
 //!
 //! ```
 //! use sacm::diagnostic::Code;
 //! use sacm::edit::{self, CreateArgumentPackage, CreateAssuranceCasePackage, CreateClaim};
-//! use sacm::model::{Document, ElementId, LangString};
+//! use sacm::model::{Document, LangString};
 //! use sacm::validation;
 //! use sacm::xmi::{self, WriteOptions};
 //!
@@ -68,10 +81,11 @@
 //! let mut doc = Document::new();
 //!
 //! edit::apply(&mut doc, CreateAssuranceCasePackage::root(name("Safety case")).with_id("case"))?;
-//! edit::apply(&mut doc, CreateArgumentPackage::new("case", name("Arguments")).with_id("arguments"))?;
-//! // No `with_id`: the id is generated.
-//! let created = edit::apply(&mut doc, CreateClaim::new("arguments", name("The system is safe")))?;
-//! assert_eq!(created.created_ids(), [ElementId::from("claim_1")]);
+//! // No with_id: the id is generated. Use it as the next parent.
+//! let created = edit::apply(&mut doc, CreateArgumentPackage::new("case", name("Arguments")))?;
+//! let arguments = created.created_ids()[0].clone();
+//! assert_eq!(arguments.as_str(), "argument_package_1");
+//! edit::apply(&mut doc, CreateClaim::new(&arguments, name("The system is safe")).with_id("c_top"))?;
 //!
 //! // A Claim cannot sit directly in an AssuranceCasePackage.
 //! let refused = edit::apply(&mut doc, CreateClaim::new("case", name("Misplaced"))).unwrap_err();
@@ -81,7 +95,7 @@
 //! // Every element has a name, so validation finds nothing.
 //! assert!(validation::validate(&doc).is_empty());
 //! let text = xmi::write(&doc, &WriteOptions::default())?;
-//! assert!(text.contains(r#"xmi:id="claim_1""#));
+//! assert!(text.contains(r#"xmi:id="c_top""#));
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
@@ -145,6 +159,8 @@ pub fn apply(
 /// into one with `From`. Later releases add operations, so a `match` on
 /// `Operation` needs a wildcard arm.
 ///
+/// # Examples
+///
 /// ```
 /// use sacm::edit::{CreateClaim, Operation};
 /// use sacm::model::LangString;
@@ -183,6 +199,8 @@ impl From<CreateClaim> for Operation {
 
 /// What an applied operation changed.
 ///
+/// # Examples
+///
 /// ```
 /// use sacm::edit::{self, CreateAssuranceCasePackage};
 /// use sacm::model::{Document, ElementId, LangString};
@@ -216,7 +234,9 @@ impl Mutation {
 ///
 /// Each refusal has a catalog [`Code`], from [`code`](Self::code). `Display`
 /// writes one line that starts in lower case, with ids quoted by `{:?}` so
-/// that line breaks in them never break the line:
+/// that line breaks in them never break the line.
+///
+/// # Examples
 ///
 /// ```
 /// use sacm::edit::{self, CreateClaim};
@@ -230,7 +250,8 @@ impl Mutation {
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum EditError {
-    /// The parent is not in the document (SACM-CMD-001).
+    /// The parent is not in the document (SACM-CMD-001). Create the parent
+    /// first, or correct its id. Ids are compared exactly, case included.
     #[non_exhaustive]
     ParentNotFound {
         /// The parent's id, as given.
@@ -238,7 +259,9 @@ pub enum EditError {
     },
     /// No SACM composite role of the parent's class holds an element of the
     /// new kind (SACM-CMD-005): a Claim directly in an AssuranceCasePackage,
-    /// say.
+    /// say. Choose a parent whose class can hold the new kind. For example, a
+    /// Claim goes in an ArgumentPackage, and an ArgumentPackage in an
+    /// AssuranceCasePackage or another ArgumentPackage.
     #[non_exhaustive]
     InvalidParent {
         /// The parent's id.
@@ -248,14 +271,19 @@ pub enum EditError {
         /// The kind of the element that was to be created.
         kind: ElementKind,
     },
-    /// The id given with `with_id` is not an XML `NCName` (SACM-ID-002).
+    /// The id given with `with_id` is not an XML `NCName` (SACM-ID-002). An
+    /// `NCName` starts with a letter or `_` and continues with letters,
+    /// digits, `-`, `.` or `_`; it has no spaces and no `:`. Or leave out
+    /// `with_id` to have an id generated.
     #[non_exhaustive]
     InvalidId {
         /// The id, as given.
         id: ElementId,
     },
     /// The id given with `with_id` is already in the document
-    /// (SACM-CMD-004).
+    /// (SACM-CMD-004). Ids are unique across the whole document, not per
+    /// parent. Choose another id, or leave out `with_id` to have one
+    /// generated.
     #[non_exhaustive]
     DuplicateId {
         /// The id, as given.

@@ -584,14 +584,14 @@ pub enum WriteError {
     /// U+FFFF.
     ///
     /// ```
-    /// use sacm::model::{Document, ElementId, ElementKind, LangString};
+    /// use sacm::edit::{self, CreateArgumentPackage};
+    /// use sacm::model::{Document, LangString};
     /// use sacm::xmi::{self, WriteAttribute, WriteError, WriteOptions};
     ///
-    /// // Built with the unstable test-support feature.
+    /// // An edit stores a name exactly, so it can hold a character XML cannot.
     /// let mut doc = Document::new();
     /// let name = LangString::new("bad\u{1}");
-    /// doc.insert(None, ElementKind::ArgumentPackage, ElementId::from("arguments"), Some(name))
-    ///     .unwrap();
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(name).with_id("arguments")).unwrap();
     /// let error = xmi::write(&doc, &WriteOptions::default()).unwrap_err();
     /// assert!(matches!(
     ///     error,

@@ -138,24 +138,31 @@ impl Code {
 
     /// SACM-CMD-001: an operation's target is not in the document. The code
     /// of [`EditError::ParentNotFound`](crate::edit::EditError::ParentNotFound)
-    /// (LIB-EDIT-001).
+    /// (LIB-EDIT-001). Create the parent first, or correct its id. Ids are
+    /// compared exactly, case included.
     pub const CMD_TARGET_NOT_FOUND: Code = Code::from_static("SACM-CMD-001");
 
     /// SACM-CMD-004: a create operation's caller-given id is already in the
     /// document. The code of
     /// [`EditError::DuplicateId`](crate::edit::EditError::DuplicateId)
-    /// (LIB-EDIT-001).
+    /// (LIB-EDIT-001). Ids are unique across the whole document, not per
+    /// parent. Choose another id, or leave out `with_id` to have one
+    /// generated.
     pub const CMD_DUPLICATE_ID: Code = Code::from_static("SACM-CMD-004");
 
     /// SACM-CMD-005: the parent cannot contain an element of the requested
     /// kind. The code of
     /// [`EditError::InvalidParent`](crate::edit::EditError::InvalidParent)
-    /// (LIB-EDIT-001).
+    /// (LIB-EDIT-001). Choose a parent whose class can hold the new kind. For
+    /// example, a Claim goes in an ArgumentPackage, and an ArgumentPackage in
+    /// an AssuranceCasePackage or another ArgumentPackage.
     pub const CMD_INVALID_PARENT: Code = Code::from_static("SACM-CMD-005");
 
     /// SACM-ID-002: an element id is not valid syntax: not an XML `NCName`. The
     /// code of [`EditError::InvalidId`](crate::edit::EditError::InvalidId)
-    /// (LIB-EDIT-001).
+    /// (LIB-EDIT-001). An `NCName` starts with a letter or `_` and continues
+    /// with letters, digits, `-`, `.` or `_`; it has no spaces and no `:`. Or
+    /// leave out `with_id` to have an id generated.
     pub const ID_INVALID: Code = Code::from_static("SACM-ID-002");
 
     /// The code with the given text.

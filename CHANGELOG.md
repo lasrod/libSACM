@@ -113,9 +113,10 @@ change bumps the minor version and is listed under **Breaking**.
 - `sacm::edit`, the first editing API (ADR 0019): `apply(&mut Document, impl
   Into<Operation>) -> Result<Mutation, EditError>` with `CreateAssuranceCasePackage`,
   `CreateArgumentPackage` (each a root or under a parent) and `CreateClaim`, each with a
-  required `LangString` name and an optional `with_id`. A parent is legal when the
-  containment table admits the kind. A caller id must be an XML NCName; otherwise the id
-  is generated as `<snake_case kind>_<n>`, deterministically. `Mutation::created_ids`
+  required `LangString` name and an optional `with_id`. A parent is legal when SACM lets
+  its class contain the new kind (the same rules `xmi::read` uses). A caller id must be
+  an XML NCName; otherwise the id is generated as `<snake_case kind>_<n>`,
+  deterministically. `Mutation::created_ids`
   lists what was created. Refusals, in check order, leave the document unchanged:
   `ParentNotFound` (`Code::CMD_TARGET_NOT_FOUND`, SACM-CMD-001), `InvalidParent`
   (`Code::CMD_INVALID_PARENT`, SACM-CMD-005), `InvalidId` (`Code::ID_INVALID`,

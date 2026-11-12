@@ -26,6 +26,7 @@ library has one aggregate per operation (`commands/operations.h`), applied by
   without a name. Any value is accepted, `LangString::default()` included.
 - **Parent legality comes from the crate's one containment table,** the same one the reader
   and writer use.
+- **Read accessors:** `parent()`, `id()` and `name()` on each operation struct, so that previews, audit logs and a later GSN layer can read an operation they hold. `impl From<&ElementId> for ElementId` lets a returned id be passed on as the next parent (the maintainer, 2026-11-12).
 - **`Mutation::created_ids()`** lists the ids created, in creation order, with the
   operation's own element first.
 - **`EditError`** is `#[non_exhaustive]`, and `code()` returns `Code`. The checks run in this
@@ -61,11 +62,11 @@ library has one aggregate per operation (`commands/operations.h`), applied by
   `CreateClaim` only (`operations.h:23-46`). This follows ADR 0012/0013.
 - **E4.** Parents come from the containment table, so an ArtifactPackage and package
   interfaces and bindings are allowed too (§12.2, ADR 0014). C++ narrows the parent kinds
-  (`commands.cpp:147, 188, 223`).
+  (`commands.cpp:147, 191, 228`).
 - **E5.** An ArgumentPackage can be created as a root (ADR 0010 D1, ADR 0016). C++ requires
   a parent.
 - **E6.** A caller id must be an NCName (XMI 2.5.1 §7.6.1). C++ refuses only empty ids or
-  ids containing whitespace (`commands.cpp:78`).
+  ids containing whitespace (`commands.cpp:99`).
 - **E7.** A caller id does not advance the counter. C++ `advance_id_counter`
   (`commands.cpp:1997-2009`) parses its suffix and can throw on a long one.
 - **E8.** `EditError::code()` returns `Code`, not `Option<Code>`, because every edit refusal

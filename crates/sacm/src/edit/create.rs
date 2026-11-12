@@ -13,6 +13,8 @@ use crate::model::{
 /// [`with_id`](Self::with_id), the id is generated:
 /// `assurance_case_package_<n>`.
 ///
+/// # Examples
+///
 /// ```
 /// use sacm::edit::{self, CreateAssuranceCasePackage};
 /// use sacm::model::{Document, LangString};
@@ -56,7 +58,10 @@ impl CreateAssuranceCasePackage {
     }
 
     /// Gives the new element the id `id` instead of a generated one. It must
-    /// be an XML `NCName` and not already in the document.
+    /// be an XML `NCName` and not already in the document. Otherwise
+    /// [`apply`](super::apply) refuses with
+    /// [`EditError::InvalidId`](super::EditError::InvalidId) or
+    /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
     #[must_use]
     pub fn with_id(self, id: impl Into<ElementId>) -> Self {
         Self {
@@ -103,6 +108,8 @@ impl CreateAssuranceCasePackage {
 /// Apply it with [`edit::apply`](super::apply). Without
 /// [`with_id`](Self::with_id), the id is generated: `argument_package_<n>`.
 ///
+/// # Examples
+///
 /// ```
 /// use sacm::edit::{self, CreateArgumentPackage};
 /// use sacm::model::{Document, ElementKind, LangString};
@@ -144,7 +151,10 @@ impl CreateArgumentPackage {
     }
 
     /// Gives the new element the id `id` instead of a generated one. It must
-    /// be an XML `NCName` and not already in the document.
+    /// be an XML `NCName` and not already in the document. Otherwise
+    /// [`apply`](super::apply) refuses with
+    /// [`EditError::InvalidId`](super::EditError::InvalidId) or
+    /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
     #[must_use]
     pub fn with_id(self, id: impl Into<ElementId>) -> Self {
         Self {
@@ -187,9 +197,13 @@ impl CreateArgumentPackage {
 /// Creates a `Claim` (SACM 2.3 §11.11) as a child of an element whose class
 /// can hold one, such as an `ArgumentPackage`. A Claim is never a root.
 ///
-/// Its `assertionDeclaration` is `asserted`. Apply it with
+/// Its `assertionDeclaration` is
+/// [`Asserted`](crate::model::AssertionDeclaration::Asserted), the SACM
+/// default (§11.10); no operation changes it yet. Apply it with
 /// [`edit::apply`](super::apply). Without [`with_id`](Self::with_id), the id
 /// is generated: `claim_<n>`.
+///
+/// # Examples
 ///
 /// ```
 /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim};
@@ -222,7 +236,10 @@ impl CreateClaim {
     }
 
     /// Gives the new element the id `id` instead of a generated one. It must
-    /// be an XML `NCName` and not already in the document.
+    /// be an XML `NCName` and not already in the document. Otherwise
+    /// [`apply`](super::apply) refuses with
+    /// [`EditError::InvalidId`](super::EditError::InvalidId) or
+    /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
     #[must_use]
     pub fn with_id(self, id: impl Into<ElementId>) -> Self {
         Self {
