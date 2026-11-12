@@ -403,20 +403,6 @@ fn sacm_document(prolog: &str, content: &str) -> Vec<u8> {
     format!("{prolog}{SACM_ROOT_OPEN}{content}{SACM_ROOT_CLOSE}").into_bytes()
 }
 
-/// `text` encoded as UTF-16 with a byte order mark.
-fn utf16_with_bom(text: &str, big_endian: bool) -> Vec<u8> {
-    let mut bytes = Vec::new();
-    for unit in std::iter::once(0xFEFF_u16).chain(text.encode_utf16()) {
-        let pair = if big_endian {
-            unit.to_be_bytes()
-        } else {
-            unit.to_le_bytes()
-        };
-        bytes.extend_from_slice(&pair);
-    }
-    bytes
-}
-
 /// `text` encoded as UTF-32 with a byte order mark.
 fn utf32_with_bom(text: &str, big_endian: bool) -> Vec<u8> {
     let mut bytes = Vec::new();
@@ -1080,7 +1066,8 @@ fn lib_sec_002_empty_whitespace_and_bom_only_input_return_a_value() {
     for input in [&b""[..], b"   \n\t\r\n ", b"\xEF\xBB\xBF"] {
         assert_malformed(row, input);
     }
-    // Byte order marks of encodings the reader refuses; any value will do.
+    // Byte order marks alone: Malformed for UTF-16 (SACM23-XMI-018),
+    // Unsupported for UTF-32 (LIB-API-009); any refusal will do here.
     for input in [
         &b"\xFF\xFE"[..],
         b"\xFE\xFF",
@@ -1295,18 +1282,16 @@ fn lib_api_009_well_formed_non_sacm_document_is_unsupported_at_its_root() {
     );
 }
 
-// --- LIB-API-009 2. UTF-16 and UTF-32 ----------------------------------------
+// --- LIB-API-009 2. UTF-32, and UTF-16 or UCS-4 without a BOM ----------------
+//
+// UTF-16 with a byte order mark is read since SACM23-XMI-018: `xmi_utf16.rs`.
 
 #[test]
-fn lib_api_009_utf16_and_utf32_input_is_unsupported() {
+fn lib_api_009_utf32_input_with_a_bom_is_unsupported() {
     let row = "LIB-API-009";
-    let utf16_text =
-        format!("<?xml version=\"1.0\" encoding=\"UTF-16\"?>\n{SACM_ROOT_OPEN}{SACM_ROOT_CLOSE}");
     let utf32_text =
         format!("<?xml version=\"1.0\" encoding=\"UTF-32\"?>\n{SACM_ROOT_OPEN}{SACM_ROOT_CLOSE}");
     let inputs = [
-        ("UTF-16 LE", utf16_with_bom(&utf16_text, false)),
-        ("UTF-16 BE", utf16_with_bom(&utf16_text, true)),
         ("UTF-32 LE", utf32_with_bom(&utf32_text, false)),
         ("UTF-32 BE", utf32_with_bom(&utf32_text, true)),
     ];
@@ -1547,13 +1532,11 @@ fn lib_api_009_bom_and_first_bytes_refusals_are_located_at_line_1_column_1() {
     let row = "LIB-API-009";
     let text =
         format!("<?xml version=\"1.0\" encoding=\"UTF-16\"?>\n{SACM_ROOT_OPEN}{SACM_ROOT_CLOSE}");
+    // UTF-16 with a byte order mark is read since SACM23-XMI-018, and a
+    // UTF-16 mark alone is Malformed at 1:1 there (`xmi_utf16.rs`).
     let inputs = [
-        ("UTF-16 LE with a BOM", utf16_with_bom(&text, false)),
-        ("UTF-16 BE with a BOM", utf16_with_bom(&text, true)),
         ("UTF-32 LE with a BOM", utf32_with_bom(&text, false)),
         ("UTF-32 BE with a BOM", utf32_with_bom(&text, true)),
-        ("UTF-16 LE BOM only", vec![0xFF, 0xFE]),
-        ("UTF-16 BE BOM only", vec![0xFE, 0xFF]),
         ("UTF-32 LE BOM only", vec![0xFF, 0xFE, 0x00, 0x00]),
         ("UTF-32 BE BOM only", vec![0x00, 0x00, 0xFE, 0xFF]),
         ("BOM-less UTF-16LE", utf16_without_bom(&text, false)),

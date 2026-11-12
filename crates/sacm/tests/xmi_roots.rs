@@ -1076,9 +1076,10 @@ fn sacm23_xmi_001_a_repeated_root_id_is_unsupported_at_the_second_root() {
 
 // --- SACM23-XMI-001 13. Order and determinism --------------------------------
 
-/// `text` encoded as UTF-16 LE with a byte order mark.
-fn utf16le_with_bom(text: &str) -> Vec<u8> {
-    let mut bytes = vec![0xFF, 0xFE];
+/// `text` encoded as UTF-16 LE without a byte order mark, which stays
+/// refused when UTF-16 with a mark is read (SACM23-XMI-018).
+fn utf16le_without_bom(text: &str) -> Vec<u8> {
+    let mut bytes = Vec::new();
     for unit in text.encode_utf16() {
         bytes.extend_from_slice(&unit.to_le_bytes());
     }
@@ -1090,7 +1091,10 @@ fn sacm23_xmi_001_input_checks_come_before_root_classification() {
     let row = "SACM23-XMI-001";
     let claim = |attributes: &str| format!("<sacm:Claim{NS} xmi:id=\"c\"{attributes}/>");
     // Encoding refusals (LIB-API-009): Unsupported, not SACM-XMI-001.
-    let utf16 = utf16le_with_bom(&claim(""));
+    let utf16 = utf16le_without_bom(&format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-16LE\"?>{}",
+        claim("")
+    ));
     assert_unsupported_at(row, &utf16, loc(row, 1, 1));
     let latin1 = format!(
         "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>{}",

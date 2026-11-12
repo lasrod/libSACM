@@ -1856,7 +1856,7 @@ source = "D-NS-PIN; docs/sacm/metamodel-inventory.md (XMI serialization conventi
 kind = "xmi"
 status = "planned"
 depends_on = ["SACM23-XMI-001"]
-notes = "Slice 0021 research: XMI 2.5.1 declares no `xmi:version` attribute (XMI.xsd; §7.8.3 p. 17 has no anyAttribute), so a strict export that writes `xmi:version=\"2.0\"` may not validate against the 2.5.1 schema. C++ writes it (namespaces.h:32 `kXmiVersion`, xmi_writer.cpp:461, 542). Decide keep or drop with an ADR naming that C++ decision, and check it against clause 2."
+notes = "Slice 0021 research: XMI 2.5.1 declares no `xmi:version` attribute (XMI.xsd; §7.8.3 p. 17 has no anyAttribute), so a strict export that writes `xmi:version=\"2.0\"` may not validate against the 2.5.1 schema. C++ writes it (namespaces.h:32 `kXmiVersion`, xmi_writer.cpp:461, 542). Decide keep or drop with an ADR naming that C++ decision, and check it against clause 2. Maintainer decision 2026-11-12: strict export keeps writing `xmi:version=\"2.0\"`, following C++. The ADR for this row records that strict output may then not validate against XMI.xsd 2.5.1."
 
 [[row]]
 id = "SACM23-XMI-004"
@@ -1868,7 +1868,7 @@ source = "XMI 2.5.1 identity; D-ID; D-PRESERVE; assurance-forge libs/sacm io/xmi
 kind = "xmi"
 status = "planned"
 depends_on = ["SACM23-XMI-001"]
-notes = "Slice 0021 research: no row yet owns a missing `xmi:id` (SACM-XMI-004, generated in tolerant mode). The catalog lists it as Error (strict), but the id is `use=\"optional\"` (XMI 2.5.1 §7.6.1, p. 13) and D-STRICT says strict import accepts every schema-conforming document; settle this here or in a new row. SACM23-XMI-001 refuses a missing root id as `Unsupported`."
+notes = "Slice 0021 research: no row yet owns a missing `xmi:id` (SACM-XMI-004, generated in tolerant mode). The catalog lists it as Error (strict), but the id is `use=\"optional\"` (XMI 2.5.1 §7.6.1, p. 13) and D-STRICT says strict import accepts every schema-conforming document; settle this here or in a new row. SACM23-XMI-001 refuses a missing root id as `Unsupported`. Maintainer decision 2026-11-12: strict import accepts an element with no `xmi:id` and reports it with a diagnostic (D-STRICT; the id is optional in XMI 2.5.1). This departs from C++, where SACM-XMI-004 is an Error in strict mode, so the row needs an ADR naming that decision."
 
 [[row]]
 id = "SACM23-XMI-006"
@@ -3191,7 +3191,7 @@ id = "LIB-API-009"
 area = "API"
 milestone = "M1"
 title = "The reader refuses what it cannot represent"
-requirement = "`xmi::read` never returns a document that is missing content from its input (D-PRESERVE). Well-formed input that it cannot fully represent is refused with `ReadError::Unsupported`, which has no catalog code and carries a reason and a location: content that no verified row reads yet (SACM23-XMI-001 reads the first package roots), UTF-16 or UTF-32 input (until SACM23-XMI-018), and a declared encoding other than UTF-8 or ASCII. A declared UTF-8 or ASCII encoding is accepted in any letter case; a byte of 0x80 or above under an ASCII declaration is malformed (SACM-XML-001). Parser capacity limits belong to LIB-SEC-003."
+requirement = "`xmi::read` never returns a document that is missing content from its input (D-PRESERVE). Well-formed input that it cannot fully represent is refused with `ReadError::Unsupported`, which has no catalog code and carries a reason and a location: content that no verified row reads yet (SACM23-XMI-001 reads the first package roots), UTF-16 without a byte order mark, UTF-32 or UCS-4 input, and a declared encoding other than UTF-8 or ASCII in input without a UTF-16 byte order mark (SACM23-XMI-018 reads UTF-16 with one). A declared UTF-8 or ASCII encoding is accepted in any letter case; a byte of 0x80 or above under an ASCII declaration is malformed (SACM-XML-001). Parser capacity limits belong to LIB-SEC-003."
 source = "D-PRESERVE \"Never drop conforming SACM data. Preserve with a diagnostic, or refuse\"; ADR 0015 (interim rule); ADR 0005 B2; XML 1.0 (Fifth Edition) §4.3.3 (encodings; quoted when SACM23-XMI-018 is analysed)"
 kind = "api"
 status = "verified"
@@ -3199,7 +3199,7 @@ verification = "docs/verification/0019-m1-xml-input-safety.md"
 depends_on = ["LIB-API-004", "LIB-DIAG-001"]
 acceptance = [
   "Well-formed SACM input the reader cannot represent yet (e.g. an `AssuranceCasePackage` root with a `name` child, or an `ArtifactPackage` root) is refused with `ReadError::Unsupported`, `code()` `None`, located at the construct it cannot read; no partial document is returned. Which roots are recognised at all is SACM23-XMI-001.",
-  "UTF-16 LE and BE input with a BOM, UTF-32 BOMs, and BOM-less UTF-16 or UCS-4 input recognised by its first bytes (XML 1.0 Appendix F: `3C 00 3F 00`, `00 3C 00 3F` and the four-byte forms), such as a document declaring `UTF-16LE`, are refused with `Unsupported`, never `Malformed` and never misread; the reason does not claim a BOM that is not there. Every BOM and first-bytes refusal is located at line 1, column 1.",
+  "UTF-32 BOMs, and BOM-less UTF-16 or UCS-4 input recognised by its first bytes (XML 1.0 Appendix F: `3C 00 3F 00`, `00 3C 00 3F` and the four-byte forms), such as a document declaring `UTF-16LE`, are refused with `Unsupported`, never `Malformed` and never misread; the reason does not claim a BOM that is not there. Every BOM and first-bytes refusal is located at line 1, column 1. UTF-16 with a byte order mark is read by SACM23-XMI-018.",
   "A declared `encoding=\"ISO-8859-1\"` (and another non-UTF-8 name) is refused with `Unsupported` located at the encoding name (`<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>` at line 1, column 31; with a CR before `encoding`, at line 2), whether or not its bytes are valid UTF-8: a real ISO-8859-1 file with a 0xE9 byte is `Unsupported`, not `Malformed`, because the declaration is read before the UTF-8 check (ADR 0005 B2). Declarations of `UTF-8`, `utf-8`, `Utf-8`, `US-ASCII`, `us-ascii`, `ASCII` and `ascii` are not refused for their encoding: a readable root under each reads `Ok`, and an unreadable one is refused at the root start tag. A non-ASCII character under an ASCII declaration is `Malformed` at that character (`<?xml version=\"1.0\" encoding=\"US-ASCII\"?>\\n<r>café</r>` at line 2, column 7).",
   "The `Unsupported` `Display` is one lowercase line without trailing punctuation, naming the location when known; names from the input are quoted.",
 ]
@@ -3207,7 +3207,7 @@ code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/input.rs"]
 tests = [
   "crates/sacm/tests/xmi_read.rs::lib_api_009_well_formed_sacm_document_is_unsupported_at_the_construct_it_cannot_read",
   "crates/sacm/tests/xmi_read.rs::lib_api_009_well_formed_non_sacm_document_is_unsupported_at_its_root",
-  "crates/sacm/tests/xmi_read.rs::lib_api_009_utf16_and_utf32_input_is_unsupported",
+  "crates/sacm/tests/xmi_read.rs::lib_api_009_utf32_input_with_a_bom_is_unsupported",
   "crates/sacm/tests/xmi_read.rs::lib_api_009_utf16_and_ucs4_without_bom_are_unsupported_by_their_first_bytes",
   "crates/sacm/tests/xmi_read.rs::lib_api_009_declared_non_utf8_encoding_is_unsupported",
   "crates/sacm/tests/xmi_read.rs::lib_api_009_utf8_and_ascii_declarations_in_any_case_are_not_refused",
@@ -3220,18 +3220,47 @@ tests = [
   "crates/sacm/tests/xmi_read.rs::lib_api_009_unsupported_display_is_one_located_line_quoting_names",
   "crates/sacm/tests/xmi_read.rs::lib_api_009_refusal_of_an_encoding_name_with_line_breaks_stays_one_line",
 ]
-notes = "Item 1 and item 3 reworded in slice 0021, when SACM23-XMI-001 made the first inputs readable; re-checked there."
+notes = "Item 1 and item 3 reworded in slice 0021, when SACM23-XMI-001 made the first inputs readable; re-checked there. Reworded in slice 0024, to be re-checked there: UTF-16 moves to SACM23-XMI-018, so item 2 and the requirement no longer list UTF-16 with a byte order mark."
 
 [[row]]
 id = "SACM23-XMI-018"
 area = "XMI"
 milestone = "M1"
 title = "UTF-16 input"
-requirement = "`xmi::read` reads a UTF-16 document (little- and big-endian, with a byte order mark or as declared) exactly as it reads the same document in UTF-8, decoding with std only, because XML 1.0 requires every processor to accept UTF-8 and UTF-16 (ADR 0005 B2). Locations count characters as for UTF-8. Other encodings stay refused (LIB-API-009)."
-source = "XML 1.0 (Fifth Edition) §4.3.3 (quoted when analysed); formal/23-05-08 clause 2 (import every schema-conforming document); ADR 0005 B2; the maintainer's decision of 2026-11-11"
+requirement = "`xmi::read` reads UTF-16 input that begins with a byte order mark (`FF FE` little-endian, `FE FF` big-endian, not followed by `00 00`). It decodes the input with std only (`u16::from_le_bytes`/`from_be_bytes`, `char::decode_utf16`) and then reads it exactly as the same characters in UTF-8, so the `ReadOutput` or `ReadError` is the same. Locations count characters as for UTF-8, and the byte order mark takes no column. The encoding declaration may be absent or name `UTF-16`, `UTF-16LE` or `UTF-16BE`, in any letter case. Any other declared name contradicts the mark and is `Malformed` (SACM-XML-001, XML 1.0 §4.3.3). So are an odd byte count and an unpaired surrogate. Everything else stays `Unsupported`, as in LIB-API-009: UTF-16 without a byte order mark (nothing is guessed), UTF-32 and UCS-4, and a UTF-16 name declared in UTF-8 input. This is the minimal UTF-16 support the maintainer chose on 2026-11-12 (ADR 0005 B2 amendment 1)."
+source = "XML 1.0 (Fifth Edition): §2.2 \"All XML processors MUST accept the UTF-8 and UTF-16 encodings of Unicode\" and [2] Char; §4.3.3 \"All XML processors MUST be able to read entities in both the UTF-8 and UTF-16 encodings. The terms \"UTF-8\" and \"UTF-16\" in this specification do not apply to related character encodings, including but not limited to UTF-16BE, UTF-16LE\", \"Entities encoded in UTF-16 MUST ... begin with the Byte Order Mark\", \"it is a fatal error for an entity including an encoding declaration to be presented to the XML processor in an encoding other than that named in the declaration, or for an entity which begins with neither a Byte Order Mark nor an encoding declaration to use an encoding other than UTF-8\", \"it is a fatal error if an XML entity is determined ... to be in a certain encoding but contains byte sequences that are not legal in that encoding\", \"XML processors SHOULD match character encoding names in a case-insensitive way\"; §1.2 fatal error; §2.11; Appendix F (non-normative) \"the encoding name be checked to match the actual encoding of the entity\"; formal/23-05-08 §2.2, §2.4 (p. 4); ADR 0005 B2 and amendment 1 (the maintainer, 2026-11-12); assurance-forge pugixml.cpp:2055-2101 `guess_buffer_encoding`"
 kind = "xmi"
-status = "planned"
-depends_on = ["LIB-API-009", "SACM23-XMI-001"]
+status = "implemented"
+depends_on = ["LIB-API-009", "SACM23-XMI-001", "LIB-SEC-006", "LIB-SEC-001"]
+acceptance = [
+  "With a byte order mark: a SACM document as UTF-16LE and as UTF-16BE, each with no declaration and with `encoding=` `\"UTF-16\"`, `\"utf-16\"`, `\"UTF-16LE\"` and `\"UTF-16BE\"`, reads `Ok` with the same roots (id, kind, order) and diagnostics as the UTF-8 document.",
+  "Contradicting name: after a UTF-16 byte order mark, `encoding=\"UTF-8\"`, `\"US-ASCII\"` or `\"ISO-8859-1\"` is `Malformed`, `code()` SACM-XML-001, at the first character of the name (line 1, column 31 for `<?xml version=\"1.0\" encoding=\"`), in both byte orders.",
+  "Odd byte count: a complete document plus one trailing byte is `Malformed`, at the position after its last character. `FF FE 3C` is `Malformed` at 1:1.",
+  "Unpaired surrogates are `Malformed` at the surrogate: a lone `D800` in text (`<r>` then U+D800, at 1:4), a lone `DC00`, a high surrogate as the last code unit, and a high surrogate followed by a code unit that is not a low surrogate. A valid pair (U+1F600) in an `xmi:id` reads exactly as in UTF-8.",
+  "A byte order mark followed by nothing (`FF FE` or `FE FF` alone, or followed only by white space) is `Malformed` (no root element) at the same location as the UTF-8 input with `EF BB BF` and the same white space: 1:1 for the mark alone, and otherwise the end of the input.",
+  "Locations: `<!--😀--><r/>` gives `InvalidRoot` at 1:9 in UTF-8, UTF-16LE and UTF-16BE (a character outside the BMP is one column, and the byte order mark takes none). A line feed, a carriage return plus line feed, or a lone carriage return before `<r/>` puts it at 2:1.",
+  "Same output: a fixed list of UTF-8 inputs without an encoding declaration, taken from the `xmi_read.rs` and `xmi_roots.rs` tests, read as UTF-16LE and UTF-16BE with a byte order mark, gives the same result as the UTF-8: the same `Ok` roots and diagnostics, or an equal `ReadError` (variant, location, reason).",
+  "DOCTYPE: a DOCTYPE with an external entity in UTF-16LE or UTF-16BE with a byte order mark is `Doctype` (SACM-SEC-001) at the `<` of `<!DOCTYPE`, and nothing in it is expanded.",
+  "Still `Unsupported` at 1:1: UTF-16 without a byte order mark (first bytes `3C 00 3F 00` or `00 3C 00 3F`, with or without a declaration), the UTF-32 byte order marks (including `FF FE 00 00`, which is UTF-32LE, not UTF-16 plus U+0000) and the four-byte UCS-4 first forms. UTF-8 input that declares `UTF-16` stays `Unsupported` at the name (LIB-API-009).",
+  "W3C suite (LIB-SEC-006): the breakdown is `Doctype` 719, `Unsupported` from the encoding steps 2, `Malformed` 296, and the list of known accepted cases stays empty. The 31 `o-p02fail*` cases are `Malformed`; `hst-lhs-008` and `hst-lhs-009` are `Malformed`; `rmt-e2e-61` and `hst-lhs-007` stay `Unsupported`. The over-strictness guard counts 73 cases, none `Malformed`. If the suite gives other counts, the test pins the real ones and the lead amends this item with the reason.",
+  "Docs: the `read` docs, `ReadError::Malformed`, the `ReadError` location docs and SACM-XML-001 in `docs/sacm/diagnostics.md` say that UTF-16 with a byte order mark is read.",
+]
+code = ["crates/sacm/src/xmi/input.rs", "crates/sacm/src/xmi.rs", "docs/sacm/diagnostics.md", "docs/adr/0005-xml-backend.md"]
+tests = [
+  "crates/sacm/tests/xmi_utf16.rs::sacm23_xmi_018_utf16_with_a_bom_reads_as_the_utf8_document",
+  "crates/sacm/tests/xmi_utf16.rs::sacm23_xmi_018_a_non_utf16_name_after_a_utf16_bom_is_malformed_at_the_name",
+  "crates/sacm/tests/xmi_utf16.rs::sacm23_xmi_018_an_odd_byte_count_is_malformed_after_the_last_character",
+  "crates/sacm/tests/xmi_utf16.rs::sacm23_xmi_018_an_unpaired_surrogate_is_malformed_at_the_surrogate",
+  "crates/sacm/tests/xmi_utf16.rs::sacm23_xmi_018_a_surrogate_pair_in_an_id_reads_as_in_utf8",
+  "crates/sacm/tests/xmi_utf16.rs::sacm23_xmi_018_a_bom_with_no_root_is_malformed_as_in_utf8",
+  "crates/sacm/tests/xmi_utf16.rs::sacm23_xmi_018_locations_count_characters_and_the_bom_takes_no_column",
+  "crates/sacm/tests/xmi_utf16.rs::sacm23_xmi_018_inputs_from_the_read_and_root_tests_give_the_utf8_result",
+  "crates/sacm/tests/xmi_utf16.rs::sacm23_xmi_018_a_doctype_in_utf16_is_refused_at_its_start_and_not_expanded",
+  "crates/sacm/tests/xmi_utf16.rs::sacm23_xmi_018_utf16_without_a_bom_stays_unsupported_at_1_1",
+  "crates/sacm/tests/xmi_utf16.rs::sacm23_xmi_018_utf32_and_ucs4_stay_unsupported_at_1_1",
+  "crates/sacm/tests/xmi_utf16.rs::sacm23_xmi_018_a_utf16_name_declared_in_utf8_stays_unsupported_at_the_name",
+  "crates/sacm/tests/w3c_xml_conformance.rs::sacm23_xmi_018_the_utf16_cases_of_the_suite_have_their_pinned_results",
+]
 
 [[row]]
 id = "LIB-API-005"
@@ -3450,14 +3479,15 @@ requirement = "`cargo xtask fetch-spec` also fetches the W3C XML Conformance Tes
 source = "XML 1.0 5th ed. §1.2 \"fatal error: An error which a conforming XML processor MUST detect and report to the application.\", \"Violations of well-formedness constraints are fatal errors.\"; Namespaces in XML 1.0 3rd ed. §3 \"The prefix xmlns is used only to declare namespace bindings and is by definition bound to the namespace name http://www.w3.org/2000/xmlns/. It MUST NOT be declared.\", §7, §8 \"a processor MUST report violations of namespace well-formedness\"; W3C XML Conformance Test Suite 20130923 (https://www.w3.org/XML/Test/xmlts20130923.tar.gz, SHA-256 9b61db9f5dbffa545f4b8d78422167083a8568c59bd1129f94138f936cf6fc1f) and its testcases.dtd (TYPE, RECOMMENDATION, VERSION, EDITION, ENTITIES); rmt-ns10-032; slice 0021 verification rounds 2-4; ADR 0005 B1; roxmltree 0.21.2 src/parse.rs:779-813 (prefix `xmlns` with local name `xmlns` is not checked); slice 0022 research probe (1,017 applicable cases, 1 accepted)"
 kind = "security"
 status = "verified"
+verification = "docs/verification/0022-m1-w3c-xml-conformance.md"
 depends_on = ["LIB-SEC-005", "LIB-TOOL-020"]
 acceptance = [
   "Fetch: `cargo xtask fetch-spec` downloads the pinned archive to `third_party/xmlconf/`, refuses a hash mismatch (deleting the partial file), extracts it with the system `tar` only after the hash matches, re-extracts when `xmlconf/xmlconf.xml` is missing, and changes nothing when both are present. `--only xmlconf` fetches only the suite, and the OMG sources are untouched. A missing or failing `tar` is an error naming it, never a panic. Tests use a fake downloader; the existing `ARTIFACTS` list is unchanged. `/third_party/xmlconf/` is git-ignored, and the fetch module docs state the fetch-only terms.",
   "Catalogs: the test's catalog list equals the master `xmlconf.xml`'s external entity declarations (21 files); each TEST URI resolves against its own catalog file's directory, and every one exists.",
   "Counts are pinned exactly: 2,585 TEST elements; 1,017 selected (993 XML 1.0, 24 NS 1.0); excluded and named: 309 edition-1-4-only, 172 XML 1.1 or NS 1.1, and the 3 NS1.0 `error` cases.",
-  "Every selected case is refused, with the breakdown pinned: `Doctype` 719, `Unsupported` from the encoding steps 35, `Malformed` 263. An `Unsupported` counts as refused only for a case the test itself sees as UTF-16, UCS-4 or a declared encoding other than UTF-8 or ASCII.",
+  "Every selected case is refused, with the breakdown pinned: `Doctype` 719, `Unsupported` from the encoding steps 2, `Malformed` 296 (after SACM23-XMI-018). An `Unsupported` counts as refused only for a case the test itself sees as UCS-4, as UTF-16 without a byte order mark, or as declaring an encoding other than UTF-8 or ASCII without a UTF-16 byte order mark.",
   "On failure the test lists every accepted case with its id, file, SECTIONS and result. The test's list of known accepted cases is empty; were a case ever listed, it would fail once refused, so the list stays exact.",
-  "Guard against over-strictness: the valid and invalid XML 1.0 and NS 1.0 cases with NAMESPACE `yes` that reach the root stage (71 in this release) are never `Malformed`.",
+  "Guard against over-strictness: the valid and invalid XML 1.0 and NS 1.0 cases with NAMESPACE `yes` that reach the root stage (73 in this release, after SACM23-XMI-018) are never `Malformed`.",
   "No case panics, and the whole run returns within the deadline.",
   "`xmlns:xmlns=\"urn:x\"` gives `Malformed` at the attribute name, on the root and on a child, with single quotes, with white space around `=`, and before an ArtifactPackage root (not `Unsupported`), with a reason of its own in the LIB-SEC-002 form. `xmlns:xmlns=\"\"` gets this reason, not the undeclaring one. `xmlns:xmlns=\"http://www.w3.org/2000/xmlns/\"` keeps the parser's refusal.",
   "Not refused: `xmlns:xmlnsx=\"urn:x\"`, `xmlns:xmlfoo=\"urn:x\"` (§3: processors \"MUST NOT treat them as fatal errors\"), `xmlns:xml=\"http://www.w3.org/XML/1998/namespace\"` (§3 \"MAY … be declared\"), and `xmlns:xmlns='x'` inside a comment, a CDATA section, a PI or an attribute value.",
@@ -3499,5 +3529,5 @@ tests = [
   "xtask/tests/run.rs::lib_sec_006_run_help_lists_fetch_spec_only_xmlconf",
   "xtask/tests/run.rs::lib_sec_006_run_rejects_other_only_forms",
 ]
-verification = "docs/verification/0022-m1-w3c-xml-conformance.md"
+notes = "Reworded in slice 0024, to be re-checked there: SACM23-XMI-018 decodes UTF-16, so the pinned breakdown, the guard count and the classifier change."
 
