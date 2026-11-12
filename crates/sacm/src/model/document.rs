@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 
-use super::containment::admits;
+use super::containment::{Role, role};
 use super::{AbstractClass, AssertionDeclaration, ElementId, ElementKind, LangString};
 
 /// A SACM 2.3 document: one interchange unit (what one SACM XMI file holds),
@@ -84,6 +84,9 @@ struct Node {
     assertion_declaration: Option<AssertionDeclaration>,
     /// The handle of the containing element; `None` for a root.
     parent: Option<usize>,
+    /// The role of the parent's class that holds the element: `Some` exactly
+    /// when it has a parent.
+    role: Option<Role>,
     /// The handles of the contained elements, in containment order.
     children: Vec<usize>,
 }
@@ -313,25 +316,25 @@ impl Document {
         if name.is_some() && !kind.is_a(AbstractClass::ModelElement) {
             return Err(InsertError::NameNotAllowed(id, kind));
         }
-        // A child needs a role of its parent's class; a root must be a package.
-        match parent {
-            Some(parent) => {
-                let parent = &self.nodes[parent];
-                if !admits(parent.kind, kind) {
-                    return Err(InsertError::ContainmentNotAllowed {
-                        id,
-                        kind,
-                        parent: parent.id.clone(),
-                        parent_kind: parent.kind,
-                    });
-                }
+        // A child needs a role of its parent's class, which the node keeps;
+        // a root must be a package.
+        let role = if let Some(parent) = parent {
+            let parent = &self.nodes[parent];
+            let Some(role) = role(parent.kind, kind) else {
+                return Err(InsertError::ContainmentNotAllowed {
+                    id,
+                    kind,
+                    parent: parent.id.clone(),
+                    parent_kind: parent.kind,
+                });
+            };
+            Some(role)
+        } else {
+            if !kind.is_package() {
+                return Err(InsertError::RootNotAllowed(id, kind));
             }
-            None => {
-                if !kind.is_package() {
-                    return Err(InsertError::RootNotAllowed(id, kind));
-                }
-            }
-        }
+            None
+        };
 
         let node = self.nodes.len();
         match parent {
@@ -347,6 +350,7 @@ impl Document {
                 .is_a(AbstractClass::Assertion)
                 .then(AssertionDeclaration::default),
             parent,
+            role,
             children: Vec::new(),
         });
         Ok(())
@@ -395,6 +399,20 @@ impl Document {
     #[cfg(feature = "test-support")]
     #[cfg_attr(docsrs, doc(cfg(feature = "test-support")))]
     pub fn set_assertion_declaration(
+        &mut self,
+        id: &ElementId,
+        declaration: AssertionDeclaration,
+    ) -> Result<(), SetAssertionDeclarationError> {
+        self.set_declaration(id, declaration)
+    }
+
+    /// Sets the `assertionDeclaration` of the Assertion `id`; on an error the
+    /// document is unchanged.
+    ///
+    /// The crate-internal form of the `test-support` seam
+    /// `set_assertion_declaration`, present with or without the feature. The
+    /// XMI reader sets a declaration it reads through it.
+    pub(crate) fn set_declaration(
         &mut self,
         id: &ElementId,
         declaration: AssertionDeclaration,
@@ -658,6 +676,13 @@ impl<'a> SacmElement<'a> {
         self.node().parent.map(|parent| self.document.view(parent))
     }
 
+    /// The role of the parent's class that holds this element, or `None` for
+    /// a root. Stored when the element is added, so it is `Some` exactly when
+    /// [`parent`](Self::parent) is.
+    pub(crate) fn role(self) -> Option<Role> {
+        self.node().role
+    }
+
     /// The elements this one contains directly, in document order.
     pub fn children(self) -> impl Iterator<Item = SacmElement<'a>> {
         let document = self.document;
@@ -774,14 +799,22 @@ impl fmt::Display for InsertError {
 
 impl std::error::Error for InsertError {}
 
-/// Why [`Document::set_assertion_declaration`] refused to set a declaration.
+// `Document::set_assertion_declaration` is not an intra-doc link here:
+// without the feature, that method does not exist.
+/// Why `Document::set_assertion_declaration` refused to set a declaration.
 ///
 /// **Not part of the stable API**: public only under the `test-support`
-/// feature, with [`Document::set_assertion_declaration`].
-#[cfg(feature = "test-support")]
+/// feature, with `Document::set_assertion_declaration`.
 #[cfg_attr(docsrs, doc(cfg(feature = "test-support")))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
+#[cfg_attr(
+    not(feature = "test-support"),
+    expect(
+        unreachable_pub,
+        reason = "public only under the test-support feature, crate-visible otherwise"
+    )
+)]
 pub enum SetAssertionDeclarationError {
     /// The document has no element with this id.
     UnknownElement(ElementId),
@@ -790,7 +823,6 @@ pub enum SetAssertionDeclarationError {
     NotAnAssertion(ElementId, ElementKind),
 }
 
-#[cfg(feature = "test-support")]
 impl fmt::Display for SetAssertionDeclarationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -808,7 +840,6 @@ impl fmt::Display for SetAssertionDeclarationError {
     }
 }
 
-#[cfg(feature = "test-support")]
 impl std::error::Error for SetAssertionDeclarationError {}
 
 #[cfg(test)]

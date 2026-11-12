@@ -13,9 +13,9 @@
 //! - XMI import and deterministic export, with a strict SACM 2.3 mode and an
 //!   explicit tolerant mode for third-party and legacy files; built so far:
 //!   [`xmi::read`], which reads `AssuranceCasePackage` and `ArgumentPackage`
-//!   roots, the packages and Claims in them, and their names, and refuses
-//!   everything else, and [`xmi::write`],
-//!   which writes documents without a non-default `assertionDeclaration`,
+//!   roots, the packages and Claims in them, their names and each Claim's
+//!   `assertionDeclaration`, and refuses everything else, and
+//!   [`xmi::write`], which writes everything a document holds,
 //! - validation against the specification's constraints, reported as
 //!   machine-readable diagnostics with stable codes; built so far: the
 //!   diagnostic type and [`validation::validate`], which reports a
@@ -43,17 +43,16 @@
 //! [`Code::MULTIPLICITY_VIOLATION`](diagnostic::Code::MULTIPLICITY_VIOLATION).
 //! [`sacm::xmi::read`](xmi::read) reads
 //! `AssuranceCasePackage` and `ArgumentPackage` roots, bare or in an
-//! `xmi:XMI` element, and the packages and Claims in them, with their names.
-//! It refuses unsafe and malformed input and roots that are not SACM packages
+//! `xmi:XMI` element, and the packages and Claims in them, with their names
+//! and each Claim's `assertionDeclaration`. It refuses unsafe and malformed input and roots that are not SACM packages
 //! with a diagnostic code, and content it cannot represent yet as
 //! `Unsupported`. [`sacm::xmi::write`](xmi::write) writes a document's roots
-//! and every element under them, with their names, deterministically, but
-//! refuses a non-default `assertionDeclaration` as `Unsupported` until a
-//! later release writes it. [`edit::apply`] creates AssuranceCasePackage,
+//! and every element under them, with their names and declarations,
+//! deterministically. [`edit::apply`] creates AssuranceCasePackage,
 //! ArgumentPackage and Claim elements, with a name and a given or generated
 //! id, or refuses with an [`EditError`](edit::EditError) and changes nothing.
-//! Reading the other element kinds and attributes (such as a `description`, a
-//! `gid` or an `assertionDeclaration`), validation rules other than the
+//! Reading the other element kinds and attributes (such as a `description` or
+//! a `gid`), validation rules other than the
 //! missing name, and the other edit operations are not built yet.
 //!
 //! # Example

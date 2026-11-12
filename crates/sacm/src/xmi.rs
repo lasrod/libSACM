@@ -8,22 +8,22 @@
 //! roots, bare or inside an `xmi:XMI` element, and what they hold of three
 //! kinds: `AssuranceCasePackage` and `ArgumentPackage` elements in an
 //! `AssuranceCasePackage`, and `ArgumentPackage` and `Claim` elements in an
-//! `ArgumentPackage`, each with its id and name (SACM 2.3 §2.2, §2.4, §9.2,
-//! §11.4). It refuses input that is unsafe ([`ReadError::Doctype`], SACM-SEC-001),
-//! not well-formed ([`ReadError::Malformed`], SACM-XML-001) or not rooted in
-//! a SACM package ([`ReadError::InvalidRoot`] and [`ReadError::NoPackage`],
+//! `ArgumentPackage`, each with its id and name, and a Claim's
+//! `assertionDeclaration` (SACM 2.3 §2.2, §2.4, §9.2, §11.4, §11.10). It
+//! refuses input that is unsafe ([`ReadError::Doctype`], SACM-SEC-001), not
+//! well-formed ([`ReadError::Malformed`], SACM-XML-001) or not rooted in a
+//! SACM package ([`ReadError::InvalidRoot`] and [`ReadError::NoPackage`],
 //! SACM-XMI-001). Content it cannot represent yet is refused as
 //! [`ReadError::Unsupported`], never dropped.
 //!
-//! `write` writes every element of a document, with its name, in document
-//! order, in one deterministic form. It refuses a document with no root
+//! `write` writes every element of a document, with its name and, on an
+//! Assertion, its `assertionDeclaration`, in document order, in one
+//! deterministic form. Its only refusals are a document with no root
 //! ([`WriteError::NoRoot`]) and an id or name that XML 1.0 cannot represent
-//! ([`WriteError::UnrepresentableCharacter`]). In this release it also
-//! refuses a non-default `assertionDeclaration` ([`WriteError::Unsupported`]),
-//! because it is not written yet. A document returned by this release's
-//! `read` always writes, and what `write` writes for a document built with
-//! [`edit::apply`](crate::edit::apply) reads back with the same ids, kinds,
-//! names, parents and order.
+//! ([`WriteError::UnrepresentableCharacter`]). A document returned by this
+//! release's `read` always writes, and what `write` writes for a document
+//! built with [`edit::apply`](crate::edit::apply) reads back with the same
+//! ids, kinds, names, declarations, parents and order.
 //!
 //! # Examples
 //!
@@ -110,6 +110,14 @@ mod roots;
 /// type. §11.4's text spells the ArgumentPackage role `argumentationElement`;
 /// this release refuses that spelling as [`ReadError::Unsupported`].
 ///
+/// A Claim's `assertionDeclaration` attribute (§11.10), in no namespace, is
+/// read as its declaration. Its value must be one of the six
+/// [`AssertionDeclaration`](crate::model::AssertionDeclaration) literals
+/// exactly, as XML 1.0 gives it, with no trimming or case folding. Without the
+/// attribute, or with `"asserted"`, the Claim is `asserted`. Any other value
+/// is [`ReadError::Unsupported`] at the attribute, and never read as
+/// `asserted`.
+///
 /// Elements and
 /// attributes are matched by namespace URI and local name, and an `xmi:type`
 /// or `xsi:type` value is resolved as a `QName`, without its leading and
@@ -122,12 +130,12 @@ mod roots;
 /// declarations, `xmi:id`, `xmi:version` and an `xmi:type` or `xsi:type`
 /// naming its own class, and hold at most one `name` and otherwise only white
 /// space, comments, processing instructions and the children above. A child
-/// may carry only namespace declarations, `xmi:id` and its type attributes,
-/// and hold the same content as a root. The `name` must be in no
-/// namespace, carry only `lang`, `content` and an `xmi:type` or `xsi:type`
-/// naming `sacm:LangString`, and hold only white space, comments and
-/// processing instructions. Anything else is
-/// refused as [`ReadError::Unsupported`] until a later release reads it.
+/// may carry only namespace declarations, `xmi:id`, its type attributes and,
+/// on a Claim, `assertionDeclaration`, and hold the same content as a root.
+/// The `name` must be in no namespace, carry only `lang`, `content` and an
+/// `xmi:type` or `xsi:type` naming `sacm:LangString`, and hold only white
+/// space, comments and processing instructions. Anything else is refused as
+/// [`ReadError::Unsupported`] until a later release reads it.
 ///
 /// The input is UTF-8, ASCII, or UTF-16 with a byte order mark, which reads
 /// exactly as the same characters in UTF-8. A DOCTYPE is refused before
@@ -202,15 +210,16 @@ mod roots;
 ///   lacks, a role element in a namespace, a type that names no concrete
 ///   SACM class or that the role does not admit, two types that disagree,
 ///   no type under a role of an abstract type, any other kind (such as a
-///   `description`, a `note` or an `ArgumentReasoning`), text, and attributes
-///   such as `gid` or `assertionDeclaration`, even
-///   `assertionDeclaration="asserted"`, its default.
+///   `description`, a `note` or an `ArgumentReasoning`), text, attributes
+///   such as `gid`, an `assertionDeclaration` value that is not a literal,
+///   and `assertionDeclaration` on a package, even `"asserted"`, or in a
+///   namespace, or as an element.
 ///
 /// # Examples
 ///
 /// ```
 /// use sacm::diagnostic::Code;
-/// use sacm::model::ElementKind;
+/// use sacm::model::{AssertionDeclaration, ElementKind};
 /// use sacm::xmi::{self, ReadError, ReadOptions};
 ///
 /// let options = ReadOptions::default();
@@ -240,13 +249,22 @@ mod roots;
 /// assert_eq!(c1.kind(), ElementKind::Claim);
 /// assert_eq!(c1.parent().map(|parent| parent.id().as_str()), Some("arguments"));
 ///
-/// // Its `assertionDeclaration` is not read yet: refused at the attribute,
-/// // never dropped.
+/// // A Claim's `assertionDeclaration` is read.
 /// let declared = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
 ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
 ///   <argumentElement xmi:type="sacm:Claim" xmi:id="c1" assertionDeclaration="assumed"/>
 /// </sacm:ArgumentPackage>"#;
-/// let error = xmi::read(declared, &options).unwrap_err();
+/// let document = xmi::read(declared, &options)?.into_document();
+/// let c1 = document.get("c1").expect("the Claim was read");
+/// assert_eq!(c1.assertion_declaration(), Some(AssertionDeclaration::Assumed));
+///
+/// // A value that is not a literal is refused at the attribute, never read
+/// // as `asserted`.
+/// let misspelt = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+///   <argumentElement xmi:type="sacm:Claim" xmi:id="c1" assertionDeclaration="Assumed"/>
+/// </sacm:ArgumentPackage>"#;
+/// let error = xmi::read(misspelt, &options).unwrap_err();
 /// assert!(matches!(error, ReadError::Unsupported { .. }));
 /// assert_eq!(error.code(), None);
 /// assert_eq!(error.location().map(|at| (at.line(), at.column())), Some((3, 54)));
@@ -527,7 +545,10 @@ impl std::error::Error for ReadError {}
 /// `useSchemaExtensions`). `xsi:type` is never written, but `read` accepts
 /// both.
 ///
-/// Every element then carries its id as `xmi:id`. A named element's first
+/// Every element then carries its id as `xmi:id`. An Assertion whose
+/// `assertionDeclaration` is not `asserted` then carries
+/// `assertionDeclaration="<literal>"`; `asserted`, the default, is not written
+/// (XMI 2.5.1 §9.4.1). A named element's first
 /// child is its name, `<name lang="…" content="…" />`, with each field written
 /// only if present, so an empty field is `=""` and an absent one is no
 /// attribute; an element with no name has no `name` child. An id is written
@@ -547,10 +568,9 @@ impl std::error::Error for ReadError {}
 ///    character outside XML 1.0's `Char` is
 ///    [`WriteError::UnrepresentableCharacter`], naming the attribute and its
 ///    first such character; then its name's `lang`, then its name's
-///    `content`, the same way;
-///    then a non-default `assertionDeclaration`, which is
-///    [`WriteError::Unsupported`], because this release does not write it
-///    yet.
+///    `content`, the same way.
+///
+/// Nothing else a document holds is refused.
 ///
 /// # Examples
 ///
@@ -581,6 +601,20 @@ impl std::error::Error for ReadError {}
 ///     "xmi:id=\"arguments\">\n  <name lang=\"en\" content=\"Arguments\" />\n</sacm:ArgumentPackage>\n"
 /// ));
 ///
+/// // A `needsSupport` Claim carries its declaration after its id; an
+/// // `asserted` one carries none.
+/// let claims = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+///   <argumentElement xmi:type="sacm:Claim" xmi:id="c1" assertionDeclaration="needsSupport"/>
+///   <argumentElement xmi:type="sacm:Claim" xmi:id="c2" assertionDeclaration="asserted"/>
+/// </sacm:ArgumentPackage>"#;
+/// let document = xmi::read(claims, &ReadOptions::default())?.into_document();
+/// let text = xmi::write(&document, &WriteOptions::default())?;
+/// assert!(text.contains(
+///     "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" assertionDeclaration=\"needsSupport\" />\n"
+/// ));
+/// assert!(text.contains("<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c2\" />\n"));
+///
 /// // A document with no root would be an empty `xmi:XMI`, which a SACM
 /// // reader refuses, so it is refused.
 /// let error = xmi::write(&Document::new(), &WriteOptions::default()).unwrap_err();
@@ -603,7 +637,9 @@ pub struct WriteOptions {}
 
 /// Why [`write`](fn@write) refused a document.
 ///
-/// None of the refusals has a catalog code: [`code`](Self::code) is `None`.
+/// The writer writes everything a [`Document`] holds, so it refuses only a
+/// document with no root and a character XML 1.0 cannot represent. None of
+/// the refusals has a catalog code: [`code`](Self::code) is `None`.
 /// [`element`](Self::element) names the element refused, where there is one.
 ///
 /// # Display
@@ -664,17 +700,6 @@ pub enum WriteError {
         /// The attribute that holds it.
         attribute: WriteAttribute,
     },
-    /// The document holds content this version cannot write yet, such as a
-    /// non-default `assertionDeclaration`. It has no catalog code.
-    /// A document returned by this release's [`read`] never holds such
-    /// content.
-    #[non_exhaustive]
-    Unsupported {
-        /// The element that holds the content.
-        element: ElementId,
-        /// What cannot be written.
-        reason: String,
-    },
 }
 
 impl WriteError {
@@ -684,9 +709,7 @@ impl WriteError {
     pub fn element(&self) -> Option<&ElementId> {
         match self {
             Self::NoRoot => None,
-            Self::UnrepresentableCharacter { element, .. } | Self::Unsupported { element, .. } => {
-                Some(element)
-            }
+            Self::UnrepresentableCharacter { element, .. } => Some(element),
         }
     }
 
@@ -695,7 +718,7 @@ impl WriteError {
     #[must_use]
     pub fn code(&self) -> Option<Code> {
         match self {
-            Self::NoRoot | Self::UnrepresentableCharacter { .. } | Self::Unsupported { .. } => None,
+            Self::NoRoot | Self::UnrepresentableCharacter { .. } => None,
         }
     }
 }
@@ -714,11 +737,6 @@ impl fmt::Display for WriteError {
                 "the element {:?} cannot be written: its {attribute} holds U+{:04X}, which XML 1.0 cannot represent",
                 element.as_str(),
                 u32::from(*character)
-            ),
-            Self::Unsupported { element, reason } => write!(
-                f,
-                "the writer cannot write the element {:?}: {reason}",
-                element.as_str()
             ),
         }
     }

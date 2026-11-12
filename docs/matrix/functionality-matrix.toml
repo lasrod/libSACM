@@ -3424,12 +3424,12 @@ source = "formal/23-05-08 §9.2 (pp. 23-24) \"assuranceCasePackage: AssuranceCas
 kind = "xmi"
 status = "verified"
 depends_on = ["LIB-API-008", "SACM23-XMI-006", "LIB-TOOL-020", "SACM23-AC-001", "SACM23-ARG-001", "SACM23-ARG-002", "SACM23-XMI-002", "SACM23-XMI-012", "LIB-API-009"]
-notes = "Slice 0025: owns strict import requiring the type attribute on an abstract-role child (SACM-XMI-005), moved from SACM23-XMI-006. Export writes `xmi:type` (ADR 0017); import accepts `xmi:type` and `xsi:type`. Moved to M1 by the maintainer, 2026-11-12: edited documents must reload, and M1's round-trip rows need it. Slice 0029 (lead decisions, the minimal options): only kinds whose model row is verified are read (ADR 0016 D5); non-conforming children are `Unsupported`, not coded (ADR 0015's interim rule, as ADR 0016 D6 does for roots); `assertionDeclaration` stays with SACM23-XMI-017; namespace-qualified role elements are refused, as for `name`. Moved out: references (SACM23-XMI-005 and the kind rows); utility children (SACM23-BASE-004/005); `gid`, `isCitation`, `isAbstract` (SACM23-BASE-006/007/008); strict SACM-XMI-003 and tolerant preservation (LIB-COMPAT-003); SACM-XMI-005 (LIB-COMPAT-010); a missing id (SACM23-XMI-020); a duplicate id (SACM23-VAL-001); `argumentationElement` (SACM23-XMI-009); element forms (SACM23-XMI-014/015); XMI metadata (SACM23-XMI-019); legacy shapes (LIB-COMPAT-008). C++ difference: C++ matches role elements by local name in any namespace (`xmi_reader.cpp:1988`); this crate refuses a namespace-qualified role element. Basis: role elements are local declarations, the XMI schema's default is unqualified, and XMI 2.5.1 rule 2a says \"The namespace prefix is ignored for an object that is the value of a Property\", which is ambiguous; the refusal is reversible and closes with LIB-COMPAT-003 (tolerant) if real files need it."
+notes = "Slice 0025: owns strict import requiring the type attribute on an abstract-role child (SACM-XMI-005), moved from SACM23-XMI-006. Export writes `xmi:type` (ADR 0017); import accepts `xmi:type` and `xsi:type`. Moved to M1 by the maintainer, 2026-11-12: edited documents must reload, and M1's round-trip rows need it. Slice 0029 (lead decisions, the minimal options): only kinds whose model row is verified are read (ADR 0016 D5); non-conforming children are `Unsupported`, not coded (ADR 0015's interim rule, as ADR 0016 D6 does for roots); `assertionDeclaration` stays with SACM23-XMI-017; namespace-qualified role elements are refused, as for `name`. Moved out: references (SACM23-XMI-005 and the kind rows); utility children (SACM23-BASE-004/005); `gid`, `isCitation`, `isAbstract` (SACM23-BASE-006/007/008); strict SACM-XMI-003 and tolerant preservation (LIB-COMPAT-003); SACM-XMI-005 (LIB-COMPAT-010); a missing id (SACM23-XMI-020); a duplicate id (SACM23-VAL-001); `argumentationElement` (SACM23-XMI-009); element forms (SACM23-XMI-014/015); XMI metadata (SACM23-XMI-019); legacy shapes (LIB-COMPAT-008). C++ difference: C++ matches role elements by local name in any namespace (`xmi_reader.cpp:1988`); this crate refuses a namespace-qualified role element. Basis: role elements are local declarations, the XMI schema's default is unqualified, and XMI 2.5.1 rule 2a says \"The namespace prefix is ignored for an object that is the value of a Property\", which is ambiguous; the refusal is reversible and closes with LIB-COMPAT-003 (tolerant) if real files need it. Slice 0030: `assertionDeclaration` on a Claim is read (SACM23-XMI-017), so the attribute refusal narrows to non-Assertion children; re-checked there."
 acceptance = [
   "Read: each of the four readable cases reads to its kind, id, name and parent; under a concrete role with no type, a redundant `xmi:type` and a redundant `xsi:type`; under `argumentElement` with `xmi:type` and `xsi:type`. An `xmi:type` and an `xsi:type` on the same child that name the same class read too.",
   "Read: document order holds across roles and with `name` after the children, at depth 3 or more.",
   "Read: type resolution follows SACM23-XMI-002: a prefix declared on the child works, `sacm` rebound on the child is `Unsupported`, surrounding white space is trimmed, and `sacm:claim` is `Unsupported`.",
-  "Each of these is `Unsupported` at an exact line and column, and no document is returned: a non-conforming type under a concrete role and under `argumentElement`; a type naming an abstract class (`sacm:Assertion`, `sacm:ArgumentationElement`, `sacm:ArgumentAsset`); a type naming no SACM class, in a foreign namespace, or unresolvable; an untyped `<argumentElement>`; two type attributes that disagree; `<foo>` and an `<argumentElement>` in an AssuranceCasePackage; `<argumentationElement>`; `<sacm:argumentElement>` and a role element under a default SACM namespace; every conforming kind outside the readable set, in its role; `description`, `note`, `implementationConstraint` and `taggedValue` on each readable kind; a child with no, an empty or a duplicate `xmi:id`; `gid`, `assertionDeclaration` (including `\"asserted\"`), `isCitation`, `xmi:version` or `xmi:uuid` on a child (at the attribute's name); text in a child.",
+  "Each of these is `Unsupported` at an exact line and column, and no document is returned: a non-conforming type under a concrete role and under `argumentElement`; a type naming an abstract class (`sacm:Assertion`, `sacm:ArgumentationElement`, `sacm:ArgumentAsset`); a type naming no SACM class, in a foreign namespace, or unresolvable; an untyped `<argumentElement>`; two type attributes that disagree; `<foo>` and an `<argumentElement>` in an AssuranceCasePackage; `<argumentationElement>`; `<sacm:argumentElement>` and a role element under a default SACM namespace; every conforming kind outside the readable set, in its role; `description`, `note`, `implementationConstraint` and `taggedValue` on each readable kind; a child with no, an empty or a duplicate `xmi:id`; `gid`, `assertionDeclaration` (including `\"asserted\"`) on a child that is not an Assertion, `isCitation`, `xmi:version` or `xmi:uuid` on a child (at the attribute's name); text in a child.",
   "Text whose value is all XML white space is accepted wherever only white space may appear (a root, a child, a `name` and the `xmi:XMI` element), whether written literally, as a CDATA section (`<![CDATA[ ]]>`, `<![CDATA[]]>`) or as character references (`&#x20;`, `&#32;`, `&#9;`, `&#xA;`, `&#xD;`); the document read equals the one without it. `&#xA0;` and `<![CDATA[x]]>` are refused (XML Infoset; XSD 1.0 Part 1 cvc-complex-type 2.3).",
   "Each readable child is refused under every other role name of the same parent class.",
   "Write: for all 339 legal (parent, child) pairs, each child's role name matches a table written in the test from `docs/sacm/metamodel-inventory.md`.",
@@ -3460,13 +3460,41 @@ verification = "docs/verification/0029-m1-read-package-content.md"
 [[row]]
 id = "SACM23-XMI-017"
 area = "XMI"
-milestone = "M2"
+milestone = "M1"
 title = "assertionDeclaration in XMI"
-requirement = "On every Assertion kind, import reads the attribute form of each of the six AssertionDeclaration literals. An absent `assertionDeclaration` reads as `asserted`; an explicit `assertionDeclaration=\"asserted\"` is accepted in both modes without a diagnostic and loads equal to the omitted form. Export omits the attribute when the value is `asserted` and otherwise writes the exact literal spelling. All six literals round-trip on a Claim."
-source = "formal/23-05-08 §11.10 \"assertionDeclaration:AssertionDeclaration[1] = asserted\"; XMI 2.5.1 §9.4.1 \"Properties whose values are the default values are not serialized\" and §7.8.4 \"the XML Schema will never contain default values for Properties\" (quoted when analysed, LIB-TOOL-020); assurance-forge libs/sacm io/xmi_writer.cpp:95-98, io/xmi_reader.cpp:1759-1795"
+requirement = "`xmi::read` reads the `assertionDeclaration` XML attribute, in no namespace, on every readable Assertion kind: in this release a Claim (SACM23-XMI-016), and each later Assertion kind's read row inherits this rule. After XML 1.0 attribute-value normalisation, with no trimming or case folding, the value must be exactly one of `asserted`, `needsSupport`, `assumed`, `axiomatic`, `defeated` or `asCited`, and it reads as that literal. An absent attribute reads as `asserted`; an explicit `assertionDeclaration=\"asserted\"` is accepted without a diagnostic and reads equal to the absent form. Any other value (another letter case, white space anywhere, the empty string, another word) is `ReadError::Unsupported` at the attribute's name, with the value as read in the reason, and is never mapped to `asserted` (SACM23-VAL-006 later reports it as SACM-ENUM-001). The attribute stays `Unsupported` on a non-Assertion element and when namespace-qualified; the element form stays `Unsupported` until SACM23-XMI-014. `xmi::write` writes no attribute for `asserted` and otherwise `assertionDeclaration` with the exact literal, after `xmi:id`, on every element of an Assertion kind (all six) and on no other. Every literal round-trips on a Claim."
+source = "formal/23-05-08 §11.10 (p. 39) \"assertionDeclaration:AssertionDeclaration[1] = asserted\"; §11.8 (p. 38) \"asserted - the default enumeration literal\"; ptc/22-03-13 `Assertion::assertionDeclaration` (defaultValue: literal `asserted`) and the `AssertionDeclaration` ownedLiterals; XMI 2.5.1 §9.4.1 (p. 57) \"Properties whose values are the default values are not serialized\", §7.8.4 (p. 18) \"the XML Schema will never contain default values for Properties\" and `<xsd:attribute name=\"a\" type=\"enumName\" use=\"optional\"/>`, §8.2.1 rule 8 (p. 53) \"a simple type derived from string whose legal values are the enumeration literals\", rule 4k (p. 51); XSD 1.0 Part 2 §4.3.6 \"for string the value of whiteSpace is preserve\", §4.3.5.4; XML 1.0 §3.3.3; D-STRICT; D-PRESERVE; ADR 0015; ADR 0017 amendment 2; assurance-forge `io/xmi_reader.cpp:1759-1815`, `io/xmi_writer.cpp:95-98`"
 kind = "xmi"
-status = "planned"
-depends_on = ["SACM23-XMI-001", "SACM23-ARG-002", "SACM23-XMI-016", "LIB-TOOL-020"]
+status = "implemented"
+depends_on = ["SACM23-XMI-001", "SACM23-ARG-002", "SACM23-ARG-003", "SACM23-XMI-016", "SACM23-XMI-010", "LIB-API-009", "LIB-TOOL-020"]
+notes = "Slice 0030: moved from M2 to M1, because the reader refused most real files at their first Claim (the maintainer, 2026-11-13). C++ differences: C++ maps an unknown literal to `asserted` with SACM-ENUM-001, losing the raw value, and `justification` to `axiomatic` with a TaggedValue (`xmi_reader.cpp:1766-1794`); this crate refuses both until SACM23-VAL-006 and LIB-COMPAT. C++ matches the attribute in any namespace; this crate refuses `sacm:assertionDeclaration`. Editorial defect: §11.11 writes `assertionDeclared` for `assertionDeclaration`."
+acceptance = [
+  "Read: each of the six literals on a Claim (with `xmi:type` and with `xsi:type`) reads to that literal. With no attribute the Claim reads as `asserted`; with `assertionDeclaration=\"asserted\"` the document equals the one without the attribute.",
+  "Read: a value whose character references resolve to a literal (`&#x61;sserted`, `needs&#x53;upport`) reads as that literal.",
+  "Refuse: each of these is `ReadError::Unsupported` and no document is returned: `Asserted`, `NeedsSupport`, `needssupport`, `ASCITED`, `\"\"`, `\" asserted\"`, `\"asserted \"`, `\"needs Support\"`, a literal TAB, LF or CR before, inside or after a literal, `&#9;asserted`, `asserted&#xA;`, `justification`, `byRule`. Each is located at the first character of the attribute's name (exact line and column, after a CRLF and a non-ASCII character), and the reason contains the value as read, quoted and escaped. No case yields `asserted`.",
+  "Refuse: `assertionDeclaration` (including `\"asserted\"`) on an ArgumentPackage or AssuranceCasePackage, root or child, and `sacm:assertionDeclaration` on a Claim, are `Unsupported` at the attribute's name.",
+  "Refuse: `<assertionDeclaration>needsSupport</assertionDeclaration>` in a Claim, with and without the attribute also present, is `Unsupported` at the child's start tag; it is never read and never dropped.",
+  "Write: for each of the six Assertion kinds the model holds and each literal, the output has no `assertionDeclaration` for `asserted` and exactly `assertionDeclaration=\"<literal>\"` otherwise, directly after `xmi:id`. A byte-exact golden pins one `needsSupport` Claim. No non-Assertion element carries the attribute.",
+  "Round trip: for documents built with `edit::apply` and the declaration seam (Claims with each of the six literals, depth 3 or more, sibling Claims with different literals), `read(write(d))` has equal declarations, ids, kinds, names, parents and order, and `write(read(write(d)))` equals `write(d)` byte for byte. A file with an explicit `\"asserted\"`, read and written, has no attribute.",
+  "The SACM23-XMI-010 location table gains the new refusal reason, so it still covers every `Unsupported` reason.",
+]
+code = ["crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi/output.rs", "crates/sacm/src/model/document.rs", "crates/sacm/src/xmi.rs", "docs/adr/0017-xmi-writer.md"]
+tests = [
+  "crates/sacm/tests/xmi_assertion_declaration.rs::sacm23_xmi_017_each_literal_on_a_claim_reads_to_that_literal_with_xmi_type_and_xsi_type",
+  "crates/sacm/tests/xmi_assertion_declaration.rs::sacm23_xmi_017_the_attribute_reads_wherever_it_stands_among_the_claim_attributes_and_with_a_name",
+  "crates/sacm/tests/xmi_assertion_declaration.rs::sacm23_xmi_017_an_absent_attribute_reads_as_asserted_and_an_explicit_asserted_reads_equal_to_it",
+  "crates/sacm/tests/xmi_assertion_declaration.rs::sacm23_xmi_017_a_value_whose_character_references_resolve_to_a_literal_reads_as_that_literal",
+  "crates/sacm/tests/xmi_assertion_declaration.rs::sacm23_xmi_017_every_other_value_is_unsupported_at_the_attribute_name_quoting_the_value_as_read",
+  "crates/sacm/tests/xmi_assertion_declaration.rs::sacm23_xmi_017_no_bad_value_is_ever_read_as_asserted_or_dropped",
+  "crates/sacm/tests/xmi_assertion_declaration.rs::sacm23_xmi_017_the_attribute_on_a_package_root_or_child_is_unsupported_at_its_name",
+  "crates/sacm/tests/xmi_assertion_declaration.rs::sacm23_xmi_017_a_namespace_qualified_attribute_on_a_claim_is_unsupported_at_its_name",
+  "crates/sacm/tests/xmi_assertion_declaration.rs::sacm23_xmi_017_the_element_form_in_a_claim_is_unsupported_at_its_start_tag",
+  "crates/sacm/tests/xmi_assertion_declaration.rs::sacm23_xmi_017_write_puts_each_non_default_literal_directly_after_the_id_on_each_assertion_kind",
+  "crates/sacm/tests/xmi_assertion_declaration.rs::sacm23_xmi_017_no_non_assertion_element_carries_the_attribute",
+  "crates/sacm/tests/xmi_assertion_declaration.rs::sacm23_xmi_017_a_needs_support_claim_matches_the_golden_file",
+  "crates/sacm/tests/xmi_assertion_declaration.rs::sacm23_xmi_017_claims_with_each_literal_round_trip_at_depth_three_and_write_again_to_the_same_bytes",
+  "crates/sacm/tests/xmi_assertion_declaration.rs::sacm23_xmi_017_a_file_with_an_explicit_asserted_is_written_with_no_attribute",
+]
 
 [[row]]
 id = "SACM23-VAL-019"
@@ -3519,31 +3547,27 @@ notes = "Item 1 and item 3 reworded in slice 0021, when SACM23-XMI-001 made the 
 id = "LIB-API-010"
 area = "API"
 milestone = "M1"
-title = "The writer refuses what it cannot write"
-requirement = "`xmi::write` never writes a document that is missing content the `Document` holds (D-PRESERVE). Content that no verified row writes yet makes the write fail with an error naming the element, and nothing is returned. Today that is an `assertionDeclaration` other than the default (until SACM23-XMI-017); names are written (SACM23-XMI-012). This is the write-side twin of ADR 0015's interim rule."
-source = "D-PRESERVE \"Never drop conforming SACM data. Preserve with a diagnostic, or refuse\"; ADR 0015; ADR 0017 and its amendment 1"
+title = "The writer never drops content"
+requirement = "`xmi::write` never returns output that is missing content the `Document` holds (D-PRESERVE). In this release it writes every feature a `Document` can hold: each element's kind, id, name and, on an Assertion, a non-default `assertionDeclaration`; its only refusals are `WriteError::NoRoot` and `WriteError::UnrepresentableCharacter`. A later row that lets a `Document` hold content before a row writes it must, in the same slice, make `write` refuse that content with an error naming the element (`WriteError::Unsupported`, reserved by ADR 0017 amendment 2), and never drop it. This is the write-side twin of ADR 0015's interim rule."
+source = "D-PRESERVE \"Never drop conforming SACM data. Preserve with a diagnostic, or refuse\"; ADR 0015; ADR 0017 and its amendments 1 and 2"
 kind = "api"
 status = "verified"
 depends_on = ["LIB-API-004", "LIB-DIAG-001"]
 acceptance = [
-  "Writing a document in which an Assertion's `assertionDeclaration` is not `asserted` fails with an error naming that element's id, and no output is returned.",
+  "Completeness: a document with every kind in an admitted position (built with `edit::apply` and the test-support seam), every ModelElement named (absent, empty and non-ASCII name fields), and on each of the six Assertion kinds each of the six declarations on at least one element, writes `Ok`. For every element, in document order, the output holds exactly one start tag with its `xmi:id`, its `name` line exactly when it is named, and `assertionDeclaration=\"<literal>\"` exactly when the declaration is not `asserted`.",
   "A named element is written, not refused (SACM23-XMI-012).",
-  "A document without a non-default `assertionDeclaration` writes `Ok`.",
-  "An element that is named and has a non-default `assertionDeclaration` is refused for the declaration, naming the element.",
+  "`WriteError` has exactly the variants `NoRoot` and `UnrepresentableCharacter`; it is a `Send + Sync` error whose variants have no catalog code, with a one-line `Display`.",
+  "The `write`, `WriteError` and crate docs no longer say that any declaration is refused.",
 ]
-code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/output.rs", "docs/adr/0017-xmi-writer.md"]
+code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/output.rs", "crates/sacm/src/model/document.rs", "docs/adr/0017-xmi-writer.md"]
 tests = [
-  "crates/sacm/tests/xmi_write.rs::lib_api_010_every_non_default_assertion_declaration_on_every_assertion_kind_is_refused",
-  "crates/sacm/tests/xmi_write.rs::lib_api_010_a_needs_support_claim_display_is_pinned",
   "crates/sacm/tests/xmi_write.rs::lib_api_010_a_named_element_is_written_not_refused",
-  "crates/sacm/tests/xmi_write.rs::lib_api_010_a_document_without_non_default_declarations_writes_ok",
-  "crates/sacm/tests/xmi_write.rs::lib_api_010_the_refusal_names_the_first_element_in_document_order",
-  "crates/sacm/tests/xmi_write.rs::lib_api_010_an_unrepresentable_id_is_found_before_a_non_default_declaration_on_the_same_element",
-  "crates/sacm/tests/xmi_write.rs::lib_api_010_a_named_assertion_with_a_non_default_declaration_is_refused_naming_it",
+  "crates/sacm/tests/xmi_write.rs::lib_api_010_every_feature_a_document_holds_is_written",
+  "crates/sacm/tests/xmi_write.rs::lib_api_010_write_error_has_exactly_the_variants_no_root_and_unrepresentable_character",
   "crates/sacm/tests/xmi_write.rs::lib_api_010_write_error_is_a_send_sync_error_whose_variants_have_no_catalog_code",
 ]
 verification = "docs/verification/0026-m1-names-in-xmi.md"
-notes = "Reworded and re-checked in slice 0026: names are no longer refused."
+notes = "Reworded and re-checked in slice 0026: names are no longer refused. Reworded in slice 0030: declarations are written (SACM23-XMI-017), so nothing a `Document` holds is refused and `WriteError::Unsupported` is removed until a row needs it; re-checked there."
 
 [[row]]
 id = "SACM23-XMI-018"

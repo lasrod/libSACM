@@ -94,9 +94,8 @@ change bumps the minor version and is listed under **Breaking**.
   spaces per depth, the pinned `sacm` and `xmi` namespaces and `xmi:version="2.0"` on the
   document element only, one root bare or several in `xmi:XMI`, children under their
   role names in document order, `xmi:type` where the role does not give the class, and
-  an `xmi:id` on every element. A document with no root is `WriteError::NoRoot`, an id
-  or name that XML 1.0 cannot represent is `WriteError::UnrepresentableCharacter`, and a
-  non-default `assertionDeclaration` is `WriteError::Unsupported` for now
+  an `xmi:id` on every element. A document with no root is `WriteError::NoRoot`, and an
+  id or name that XML 1.0 cannot represent is `WriteError::UnrepresentableCharacter`
   [SACM23-XMI-003, SACM23-XMI-004, SACM23-XMI-006, SACM23-XMI-007, SACM23-XMI-013,
   LIB-API-010].
 - Names in XMI (ADR 0017 amendment 1). `xmi::write` writes an element's name as its first
@@ -131,6 +130,10 @@ change bumps the minor version and is listed under **Breaking**.
   [SACM23-XMI-016]. Every read refusal now carries the line and column of what it refuses
   (an element's `<`, an attribute's name, text's first character that is not literal
   white space); only the parser's capacity limits have none [SACM23-XMI-010].
+- `xmi::read` and `xmi::write` read and write a Claim's `assertionDeclaration`: `read`
+  takes the six literals exactly and refuses any other value as `Unsupported`; `write`
+  writes every non-default declaration after `xmi:id` and omits `asserted`
+  [SACM23-XMI-017, LIB-API-010].
 
 ### Changed
 

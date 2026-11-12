@@ -1,5 +1,5 @@
 //! The XMI writer (SACM23-XMI-003, -004, -006, -007, -011, -012, -013,
-//! LIB-API-010; ADR 0017 and its amendment 1).
+//! -017, LIB-API-010; ADR 0017 and its amendments 1 and 2).
 //!
 //! Two passes. [`plan`] checks every element and resolves what it is written
 //! as; only if that succeeds does [`write`] build the `String` from the plan,
@@ -12,7 +12,7 @@
 use super::namespaces::{SACM_NS, SACM_PREFIX, XMI_NS, XMI_PREFIX, XMI_VERSION};
 use super::{WriteAttribute, WriteError};
 use crate::model::{
-    AssertionDeclaration, DeclaredType, Document, ElementKind, LangString, SacmElement, role,
+    AssertionDeclaration, DeclaredType, Document, ElementKind, LangString, SacmElement,
 };
 
 /// Line 1 of every output.
@@ -65,6 +65,11 @@ pub(super) fn write(document: &Document) -> Result<String, WriteError> {
         push_attribute_name(&mut out, "id");
         escape_into(&mut out, planned.element.id().as_str());
         out.push('"');
+        if let Some(declaration) = planned.declaration {
+            out.push_str(" assertionDeclaration=\"");
+            out.push_str(declaration.as_str());
+            out.push('"');
+        }
         let name = planned.element.name();
         if name.is_some() || planned.element.children().next().is_some() {
             out.push_str(">\n");
@@ -96,6 +101,9 @@ struct Planned<'a> {
     tag: Tag,
     /// The class written as its `xmi:type`, if one is.
     written_type: Option<ElementKind>,
+    /// Its `assertionDeclaration`, if it is an Assertion not declared
+    /// `asserted`, the default, which is not written (XMI 2.5.1 §9.4.1).
+    declaration: Option<AssertionDeclaration>,
 }
 
 /// The element name an element is written under.
@@ -107,9 +115,9 @@ enum Tag {
 }
 
 /// Checks `document` in ADR 0017's order, a root first, then each element in
-/// document order (its id, its name's `lang` and `content`, its
-/// `assertionDeclaration`, its role),
-/// and returns every element in that order with what it is written as.
+/// document order (its id, its name's `lang` and `content`), and returns
+/// every element in that order with what it is written as. Everything a
+/// document holds is written, so these are the only refusals.
 fn plan(document: &Document) -> Result<Vec<Planned<'_>>, WriteError> {
     if document.roots().next().is_none() {
         return Err(WriteError::NoRoot);
@@ -117,10 +125,6 @@ fn plan(document: &Document) -> Result<Vec<Planned<'_>>, WriteError> {
     let mut plan = Vec::new();
     for element in document.elements() {
         let id = element.id();
-        let unsupported = |reason: String| WriteError::Unsupported {
-            element: id.clone(),
-            reason,
-        };
         let name = element.name();
         for (attribute, value) in [
             (WriteAttribute::Id, Some(id.as_str())),
@@ -140,40 +144,26 @@ fn plan(document: &Document) -> Result<Vec<Planned<'_>>, WriteError> {
                 });
             }
         }
-        // Declarations are written by SACM23-XMI-017.
-        if let Some(declaration) = element
-            .assertion_declaration()
-            .filter(|&declaration| declaration != AssertionDeclaration::default())
-        {
-            return Err(unsupported(format!(
-                "its assertionDeclaration {:?} is not written yet",
-                declaration.as_str()
-            )));
-        }
         let kind = element.kind();
-        let (tag, written_type) = match element.parent() {
+        // A child keeps the role it was added in; a root has none.
+        let (tag, written_type) = match element.role() {
             None => (Tag::Root(kind), None),
-            // A document holds a child only in a role that admits it, so
-            // this refusal is not reached; it stands in for a panic.
-            Some(parent) => match role(parent.kind(), kind) {
-                None => {
-                    return Err(unsupported(
-                        "it is held in no role of its parent's class".to_owned(),
-                    ));
-                }
-                Some(role) => {
-                    let written_type = match role.declared {
-                        DeclaredType::Kind(declared) if declared == kind => None,
-                        DeclaredType::Kind(_) | DeclaredType::Abstract(_) => Some(kind),
-                    };
-                    (Tag::Role(role.name), written_type)
-                }
-            },
+            Some(role) => {
+                let written_type = match role.declared {
+                    DeclaredType::Kind(declared) if declared == kind => None,
+                    DeclaredType::Kind(_) | DeclaredType::Abstract(_) => Some(kind),
+                };
+                (Tag::Role(role.name), written_type)
+            }
         };
+        let declaration = element
+            .assertion_declaration()
+            .filter(|&declaration| declaration != AssertionDeclaration::default());
         plan.push(Planned {
             element,
             tag,
             written_type,
+            declaration,
         });
     }
     Ok(plan)

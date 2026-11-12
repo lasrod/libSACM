@@ -1023,7 +1023,6 @@ fn sacm23_xmi_016_an_unread_attribute_of_a_child_is_unsupported_at_its_name() {
         "foo=\"1\"",
         "o:id=\"x\" xmlns:o=\"urn:o\"",
         "name=\"N\"",
-        "assertionDeclaration=\"assumed\"",
     ];
     for (what, wrap, start) in children {
         for attribute in attributes {
@@ -1033,14 +1032,18 @@ fn sacm23_xmi_016_an_unread_attribute_of_a_child_is_unsupported_at_its_name() {
             ));
         }
     }
-    // "asserted" is the default, but this release does not read the attribute.
-    for declaration in ["asserted", "needsSupport", "asCited"] {
-        cases.push(refused(
-            format!("assertionDeclaration {declaration:?} on a Claim"),
-            in_ap(&format!(
-                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\" {MARK}assertionDeclaration=\"{declaration}\"/>"
-            )),
-        ));
+    // `assertionDeclaration` is read on a Claim (SACM23-XMI-017), but a
+    // package is not an Assertion: refused there, even "asserted", the
+    // default.
+    for (what, wrap, start) in &children[1..] {
+        for declaration in ["asserted", "needsSupport", "assumed", "asCited"] {
+            cases.push(refused(
+                format!("assertionDeclaration {declaration:?} on {what}"),
+                wrap(&format!(
+                    "<{start} xmi:id=\"x\" {MARK}assertionDeclaration=\"{declaration}\"/>"
+                )),
+            ));
+        }
     }
     // Before the type and the id, the attribute is still located at its name.
     cases.push(refused(
