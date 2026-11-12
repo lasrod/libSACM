@@ -3,7 +3,7 @@ slice: 0025
 name: m1-xmi-export
 state: in-progress
 step: verification
-rows: [SACM23-XMI-003, SACM23-XMI-004, SACM23-XMI-006, SACM23-XMI-007, SACM23-XMI-013]
+rows: [SACM23-XMI-003, SACM23-XMI-004, SACM23-XMI-006, SACM23-XMI-007, SACM23-XMI-013, LIB-API-010]
 mode: pr
 base: slice/0024-m1-utf16-input (PR #34)
 ---
