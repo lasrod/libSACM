@@ -1851,47 +1851,121 @@ id = "SACM23-XMI-003"
 area = "XMI"
 milestone = "M1"
 title = "Pinned strict namespace"
-requirement = "Strict export declares the SACM namespace `http://www.omg.org/spec/SACM/20220301` (prefix `sacm`) and the XMI 2.5.1 namespace with `xmi:version=\"2.0\"`; the pin is a single constant in the crate."
-source = "D-NS-PIN; docs/sacm/metamodel-inventory.md (XMI serialization conventions)"
+requirement = "`xmi::write` declares exactly `xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"` and `xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"`, and writes `xmi:version=\"2.0\"`, on the document element only: the bare root, or `xmi:XMI` when there are several roots. Roots and type values use the `sacm` prefix, and role elements are unprefixed (XMI rule 2a). No default namespace and no `xmlns:xsi` is declared. The reader and the writer share one constant per namespace URI. Keeping `xmi:version`, which XMI.xsd 2.5.1 does not declare, follows C++ (the maintainer's decisions of 2026-11-12 (ADR 0017))."
+source = "D-NS-PIN; XMI 2.5.1 §7.5.3 (p. 10) \"identification of the XMI version is indicated by the presence of the XMI namespace declaration\", rule 1e (p. 61), rule 1h (p. 61) \"Document producers can choose their own namespace prefixes\", rule 2a and rule 2d (p. 63); formal/23-05-08 §2.2–2.5; ADR 0017; assurance-forge `metadata/namespaces.h:17-35`, `io/xmi_writer.cpp:456-462, 537-542`"
 kind = "xmi"
-status = "planned"
+status = "verified"
 depends_on = ["SACM23-XMI-001"]
 notes = "Slice 0021 research: XMI 2.5.1 declares no `xmi:version` attribute (XMI.xsd; §7.8.3 p. 17 has no anyAttribute), so a strict export that writes `xmi:version=\"2.0\"` may not validate against the 2.5.1 schema. C++ writes it (namespaces.h:32 `kXmiVersion`, xmi_writer.cpp:461, 542). Decide keep or drop with an ADR naming that C++ decision, and check it against clause 2. Maintainer decision 2026-11-12: strict export keeps writing `xmi:version=\"2.0\"`, following C++. The ADR for this row records that strict output may then not validate against XMI.xsd 2.5.1."
+acceptance = [
+  "For one root and for several roots, the document element carries exactly `xmlns:sacm` and `xmlns:xmi` with the pinned URIs and `xmi:version=\"2.0\"`; no other element carries a namespace declaration or `xmi:version`.",
+  "The output has no `xmlns=\"…\"`, no `xmlns:xsi` and no prefix other than `sacm` and `xmi`.",
+  "A root's element name is `sacm:<Kind>` (the `ElementKind` name); child elements are unprefixed.",
+  "The output for a document with 1 root and with 2 roots (AssuranceCasePackage/ArgumentPackage, nameless, no children) reads back through `xmi::read` to the same ids, kinds and order.",
+]
+code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/output.rs", "docs/adr/0017-xmi-writer.md", "crates/sacm/src/xmi/namespaces.rs", "crates/sacm/src/xmi/roots.rs"]
+tests = [
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_003_one_root_declares_the_pinned_namespaces_and_version_on_the_root_only",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_003_several_roots_declare_the_namespaces_and_version_on_xmi_xmi_only",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_003_no_element_but_the_document_element_declares_a_namespace_or_version",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_003_output_has_no_default_namespace_no_xsi_and_only_the_sacm_and_xmi_prefixes",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_003_roots_are_sacm_prefixed_by_kind_and_children_are_unprefixed",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_003_one_and_two_roots_read_back_to_the_same_ids_kinds_and_order",
+]
+verification = "docs/verification/0025-m1-xmi-export.md"
 
 [[row]]
 id = "SACM23-XMI-004"
 area = "XMI"
 milestone = "M1"
 title = "xmi:id identity"
-requirement = "Every SACMElement is written with an `xmi:id`; ids read from a file are preserved exactly through load, edit and save. An `xmi:id` on a LangString or MultiLangString (neither is a SACMElement) is not kept: it is reported with an Info diagnostic that names the id, and is never dropped silently. C++ reports it on a LangString; it ignores one on a MultiLangString wrapper, and this crate reports that too."
-source = "XMI 2.5.1 identity; D-ID; D-PRESERVE; assurance-forge libs/sacm io/xmi_reader.cpp (LangString xmi:id)"
+requirement = "`xmi::write` writes every element with exactly one `xmi:id` whose value reads back equal to its `ElementId`, with markup characters and TAB, LF and CR escaped (`&amp;`, `&lt;`, `&gt;`, `&quot;`, `&#9;`, `&#10;`, `&#13;`). An id holding a character XML 1.0 cannot represent makes the write fail, and nothing is returned. Ids read from a file are written back exactly; today that means root ids, and each content row extends it. No `xmi:id` is written on a LangString or MultiLangString. An id that is not an NCName is written as it is, escaped, as C++ does. Writing takes `&Document`: it changes nothing and generates no id."
+source = "XMI 2.5.1 §7.6.1 (p. 13) `<xsd:attribute name=\"id\" type=\"xsd:ID\" use=\"optional\"/>` and \"the value for xmi:id is unique across all elements within the file\", rules 2e and 2f (p. 63); D-ID; D-PRESERVE; assurance-forge `io/xmi_writer.cpp:76`"
 kind = "xmi"
-status = "planned"
+status = "verified"
 depends_on = ["SACM23-XMI-001"]
-notes = "Slice 0021 research: no row yet owns a missing `xmi:id` (SACM-XMI-004, generated in tolerant mode). The catalog lists it as Error (strict), but the id is `use=\"optional\"` (XMI 2.5.1 §7.6.1, p. 13) and D-STRICT says strict import accepts every schema-conforming document; settle this here or in a new row. SACM23-XMI-001 refuses a missing root id as `Unsupported`. Maintainer decision 2026-11-12: strict import accepts an element with no `xmi:id` and reports it with a diagnostic (D-STRICT; the id is optional in XMI 2.5.1). This departs from C++, where SACM-XMI-004 is an Error in strict mode, so the row needs an ADR naming that decision."
+notes = "Slice 0021 research: no row yet owns a missing `xmi:id` (SACM-XMI-004, generated in tolerant mode). The catalog lists it as Error (strict), but the id is `use=\"optional\"` (XMI 2.5.1 §7.6.1, p. 13) and D-STRICT says strict import accepts every schema-conforming document; settle this here or in a new row. SACM23-XMI-001 refuses a missing root id as `Unsupported`. Maintainer decision 2026-11-12: strict import accepts an element with no `xmi:id` and reports it with a diagnostic (D-STRICT; the id is optional in XMI 2.5.1). This departs from C++, where SACM-XMI-004 is an Error in strict mode, so the row needs an ADR naming that decision. Slice 0025 research: the LangString `xmi:id` Info rule moves to SACM23-XMI-012 (the first row that reads a LangString); the MultiLangString wrapper rule moves to SACM23-BASE-004; the maintainer's decision on a missing `xmi:id` moves to the new SACM23-XMI-020; \"preserved through edit\" moves to the LIB-EDIT rows."
+acceptance = [
+  "In a document built with `insert` that covers every kind the model admits, each element's start tag has exactly one `xmi:id`, equal to `id().as_str()`.",
+  "Read, write and read again of AssuranceCasePackage and ArgumentPackage roots keeps every id exactly, including ids holding `&`, `<`, `>`, `\"`, `'`, non-ASCII characters, and TAB, LF and CR.",
+  "Writing a document whose id holds U+0001 or U+FFFE fails with an error naming the element, and no output is returned.",
+  "Writing does not change the document (it takes `&Document`).",
+]
+code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/output.rs", "docs/adr/0017-xmi-writer.md"]
+tests = [
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_004_every_element_of_every_kind_has_exactly_one_xmi_id_equal_to_its_id",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_004_read_write_read_keeps_root_ids_with_markup_line_breaks_non_ascii_and_non_ncnames",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_004_id_characters_are_escaped_with_the_pinned_references_and_nothing_else",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_004_an_id_holding_u0001_is_refused_naming_the_element_and_the_character",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_004_an_id_holding_ufffe_is_refused_naming_the_element_and_the_character",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_004_an_id_with_two_unrepresentable_characters_names_the_first",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_004_every_character_outside_xml_char_in_an_id_is_refused",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_004_the_xml_char_boundary_characters_in_an_id_are_written_and_read_back",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_004_writing_takes_a_shared_reference_and_leaves_the_document_unchanged",
+]
+verification = "docs/verification/0025-m1-xmi-export.md"
 
 [[row]]
 id = "SACM23-XMI-006"
 area = "XMI"
 milestone = "M1"
-title = "xsi:type for abstract-typed roles"
-requirement = "When a containment role's declared type is abstract (e.g. `argumentElement`), export writes `xsi:type` naming the concrete class, and strict import requires it (SACM-XMI-005); tolerant import may infer the class from the element name."
-source = "XMI 2.5.1 type rules; docs/sacm/diagnostics.md SACM-XMI-005"
+title = "Type attribute where the class differs from the role's type"
+requirement = "`xmi::write` writes `xmi:type=\"sacm:<Kind>\"` on a child whose class is not known from its role: under the abstract roles `argumentElement`, `artifactElement` and `terminologyElement`, and for an Interface or Binding under one of AssuranceCasePackage's four package roles. Any other child, and every root, has no type attribute. The value is `sacm:` followed by the exact `ElementKind` name. XMI's own form is used (XMI 2.5.1 §7.8.8 and rule 2g; SACM sets no `useSchemaExtensions`), not the `xsi:type` that C++ writes; this is the maintainer's decisions of 2026-11-12 (ADR 0017). Import keeps accepting both `xmi:type` and `xsi:type`, as C++ and EMF do."
+source = "XMI 2.5.1 §7.6.3 (p. 15) \"The type attribute is used to specify the type of object being serialized, when the type is not known from the model\", §7.8.8 (p. 21) \"XMI specifies that inheritance will be copy-down inheritance and therefore uses xmi:type instead of xsi:type\", Table 7.1 (p. 28) useSchemaExtensions default false, production 2g (p. 62), rule 2g (p. 63) \"You must specify the class name using the \"type\" attribute.\" and \"You may only use the XML schema instance type attribute if org.omg.xmi.useSchemaExtensions is true\" (rule 2g and production 2d, read literally, require the attribute on every element; this row takes §7.6.3, specification defect D11); ptc/22-03-13 (no `org.omg.xmi` tags); ADR 0017; assurance-forge `io/xmi_writer.cpp:435-439` (followed for where the type is written; departed from only in `xmi:` versus `xsi:`)"
 kind = "xmi"
-status = "planned"
+status = "verified"
 depends_on = ["SACM23-XMI-001", "SACM23-ARG-002"]
-notes = "Slice 0023 research: XMI 2.5.1 rule 2g (p. 63) \"You may only use the XML schema instance type attribute if org.omg.xmi.useSchemaExtensions is true\", and §7.8.8 (p. 21) \"uses xmi:type instead of xsi:type\". The default is `false` (Table 7.1, p. 28), and ptc/22-03-13 has no `org.omg.xmi` tags. Decide here whether the pinned export form `xsi:type=\"sacm:<Class>\"` (metamodel-inventory.md) stands, and whether strict import accepts `xsi:type` as a tolerance; it may also be a specification defect. Slice 0023 verification: C++ matches a type value's class name case-insensitively (`kind_from_class_name_ci`, `xmi_reader.cpp:2160`); this crate matches exactly. Name that departure here."
+notes = "Slice 0023 research: XMI 2.5.1 rule 2g (p. 63) \"You may only use the XML schema instance type attribute if org.omg.xmi.useSchemaExtensions is true\", and §7.8.8 (p. 21) \"uses xmi:type instead of xsi:type\". The default is `false` (Table 7.1, p. 28), and ptc/22-03-13 has no `org.omg.xmi` tags. Decide here whether the pinned export form `xsi:type=\"sacm:<Class>\"` (metamodel-inventory.md) stands, and whether strict import accepts `xsi:type` as a tolerance; it may also be a specification defect. Slice 0023 verification: C++ matches a type value's class name case-insensitively (`kind_from_class_name_ci`, `xmi_reader.cpp:2160`); this crate matches exactly. Name that departure here. Slice 0025 research: strict import requiring the type attribute (SACM-XMI-005) moves to SACM23-XMI-016, which reads containment children; tolerant inference from the element name moves to the new LIB-COMPAT-010."
+acceptance = [
+  "Every ArgumentationElement kind under an ArgumentPackage is written as `<argumentElement xmi:type=\"sacm:<Kind>\" …>`; likewise every ArtifactElement kind under `artifactElement` and every TerminologyElement kind under `terminologyElement`.",
+  "Under each of AssuranceCasePackage's four package roles, a plain package has no type attribute, and its Interface and Binding have `xmi:type=\"sacm:<Kind>\"` (8 cases).",
+  "Children of `description`, `implementationConstraint`, `note`, `taggedValue` and `property` have no type attribute, and a root never has one.",
+  "The output never contains `xsi:` or `xmlns:xsi`.",
+]
+code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/output.rs", "docs/adr/0017-xmi-writer.md", "crates/sacm/src/model/containment.rs"]
+tests = [
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_006_every_argumentation_element_kind_under_an_argument_package_is_typed",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_006_every_artifact_element_kind_under_an_artifact_package_is_typed",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_006_every_terminology_element_kind_under_a_terminology_package_is_typed",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_006_in_the_four_package_roles_only_interfaces_and_bindings_are_typed",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_006_utility_property_and_root_elements_have_no_type_attribute",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_006_output_never_contains_xsi",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_006_every_child_has_the_role_and_type_its_parent_class_and_kind_give",
+]
+verification = "docs/verification/0025-m1-xmi-export.md"
 
 [[row]]
 id = "SACM23-XMI-007"
 area = "XMI"
 milestone = "M1"
 title = "Deterministic export"
-requirement = "Saving the same model always produces identical bytes: fixed attribute order, containment in model order, fixed indentation and line endings, no dependence on hash iteration order; checked against golden files."
-source = "D-RT"
+requirement = "Writing the same document always produces identical bytes: UTF-8 without a BOM; the declaration `<?xml version=\"1.0\" encoding=\"UTF-8\"?>`; LF line endings; two spaces of indentation per depth; `<x … />` for an element with no children; a final LF. Attributes are in double quotes, in the order namespace declarations, `xmi:version`, `xmi:type`, `xmi:id`. Children are written in model order (ADR 0010 D2), not grouped by role as C++ does. Nothing depends on hash iteration order. The output is checked against golden files."
+source = "D-RT; XMI 2.5.1 §9.5 (p. 60) \"the XML attributes may be serialized in any order\", rule 2a (p. 63); ADR 0010 D2; ADR 0017; assurance-forge `io/xmi.h:18-21`, `tests/test_roundtrip.cpp:892-925`"
 kind = "xmi"
-status = "planned"
+status = "verified"
 depends_on = ["SACM23-XMI-003", "SACM23-XMI-004", "SACM23-XMI-006"]
+acceptance = [
+  "Writing one document twice gives identical bytes, and so does writing a document and its clone.",
+  "Two documents built by the same `insert` sequence, with at least 50 elements, write identical bytes.",
+  "The output equals golden files byte for byte: (a) one ArgumentPackage, bare and self-closing; (b) ArgumentPackage, AssuranceCasePackage, ArgumentPackage inside `xmi:XMI`; (c) an AssuranceCasePackage with nested packages, typed and untyped children, and model order across roles.",
+  "The output has no CR byte and no BOM, line 1 is the declaration, and it ends in exactly one LF.",
+  "In an ArgumentPackage whose children are inserted as Note, Claim, Description, they are written in that order.",
+]
+code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/output.rs", "docs/adr/0017-xmi-writer.md", "crates/sacm/src/model/containment.rs"]
+tests = [
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_007_writing_a_document_twice_or_its_clone_gives_identical_bytes",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_007_two_documents_built_by_the_same_inserts_write_identical_bytes",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_007_one_argument_package_matches_the_single_root_golden_file",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_007_three_roots_match_the_several_roots_golden_file",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_007_a_nested_assurance_case_package_matches_the_nested_golden_file",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_007_output_is_lf_only_without_a_bom_starts_with_the_declaration_and_ends_in_one_lf",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_007_lines_are_indented_two_spaces_per_depth_and_childless_elements_self_close",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_007_attributes_are_written_in_the_pinned_order",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_007_children_are_written_in_model_order_across_roles",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_007_reading_a_golden_file_and_writing_it_gives_the_golden_bytes",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_007_writing_what_was_read_from_written_output_gives_the_same_bytes",
+]
+verification = "docs/verification/0025-m1-xmi-export.md"
 
 [[row]]
 id = "SACM23-XMI-011"
@@ -1914,6 +1988,7 @@ source = "formal/23-05-08 §2.4, §8.6 `name:LangString[1] (composition)`; XMI 2
 kind = "xmi"
 status = "planned"
 depends_on = ["SACM23-XMI-001", "SACM23-BASE-003", "SACM23-XMI-011", "LIB-TOOL-020"]
+notes = "Slice 0025: owns the LangString `xmi:id` rule moved from SACM23-XMI-004 (an `xmi:id` on a LangString is not kept; it is reported with an Info diagnostic naming the id)."
 
 [[row]]
 id = "SACM23-VAL-018"
@@ -1936,6 +2011,7 @@ source = "D-STRICT"
 kind = "api"
 status = "planned"
 depends_on = ["SACM23-XMI-001", "SACM23-XMI-003"]
+notes = "Slice 0025 (ADR 0017 W6): owns the C++ `SaveOptions::namespace_uri` option (`options.h:26-43`; C++ decision #18), that is, export under a namespace other than the pinned SACM URI, including re-export under the namespace a document was read with."
 
 [[row]]
 id = "SACM23-VAL-001"
@@ -2072,6 +2148,7 @@ source = "formal/23-05-08 §8.6, §8.7; ptc/22-03-13 Base::ModelElement, Base::U
 kind = "model"
 status = "planned"
 depends_on = ["SACM23-BASE-002", "SACM23-BASE-003"]
+notes = "Slice 0025: owns the MultiLangString `xmi:id` rule moved from SACM23-XMI-004 (an `xmi:id` on a MultiLangString wrapper or its values is reported, never dropped silently)."
 
 [[row]]
 id = "SACM23-BASE-005"
@@ -2265,11 +2342,29 @@ id = "SACM23-XMI-013"
 area = "XMI"
 milestone = "M1"
 title = "Export of one or more roots"
-requirement = "Export writes every root in document order: one root bare, more than one inside a single `xmi:XMI` element. A root that is not one of the four interchange packages makes strict save fail with an error; it is never dropped."
-source = "formal/23-05-08 §2.2–2.5 (the top object of each unit of interchange); XMI 2.5.1 p. 10 (the XMI element may be left out only for a single top-level object); ADR 0010"
+requirement = "`xmi::write` writes every root in document order: one root bare, more than one inside a single `xmi:XMI` element that carries the namespace declarations and `xmi:version`. Each of the twelve package kinds is written as a root under its class name. A document with no root makes the write fail with an error, and nothing is returned; C++ writes an empty `xmi:XMI` instead (the maintainer's decisions of 2026-11-12 (ADR 0017))."
+source = "XMI 2.5.1 §7.5.3 (p. 10) \"it must be the XMI element if there are multiple elements\"; formal/23-05-08 §2.2–2.5 (pp. 4–5), §9.3 (p. 24), §11.6 (p. 37) \"ArgumentPackageInterface is a kind of ArgumentPackage that defines an interface that may be exchanged between users\"; ADR 0010 D1; ADR 0016; ADR 0017; assurance-forge `io/xmi_writer.cpp:529-549`"
 kind = "xmi"
-status = "planned"
+status = "verified"
 depends_on = ["SACM23-XMI-001", "SACM23-XMI-007"]
+acceptance = [
+  "With one root, the document element is `sacm:<Kind>` and there is no `xmi:XMI`.",
+  "With two or more roots, there is one `xmi:XMI` and the roots are its element children in `roots()` order; a mixed order such as AP, ACP, AP is kept.",
+  "Each of the twelve package kinds written as a single root uses its own class name.",
+  "An empty `Document` makes the write fail with an error, and no output is returned.",
+  "The output for 1 and for 3 AssuranceCasePackage/ArgumentPackage roots reads back to the same ids, kinds and order.",
+]
+code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/output.rs", "docs/adr/0017-xmi-writer.md"]
+tests = [
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_013_one_root_is_the_document_element_with_no_xmi_element",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_013_several_roots_are_the_children_of_one_xmi_element_in_document_order",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_013_each_package_kind_is_written_as_a_single_root_under_its_class_name",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_013_an_empty_document_is_refused_with_no_root",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_013_one_and_three_roots_read_back_to_the_same_ids_kinds_and_order",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_013_every_readable_input_writes_and_reads_back_to_the_same_ids_and_kinds",
+]
+verification = "docs/verification/0025-m1-xmi-export.md"
+notes = "Slice 0025: the earlier clause on \"the four interchange packages\" is dropped; every package kind is a root (§9.3, §11.6, ADR 0016)."
 
 [[row]]
 id = "SACM23-XMI-014"
@@ -3158,11 +3253,12 @@ id = "SACM23-XMI-016"
 area = "XMI"
 milestone = "M2"
 title = "Containment children conform to their role"
-requirement = "Every containment child is written under the role element of the one role that admits it (LIB-API-008), checked for all 339 legal (parent, child) pairs and each role's name against the inventory, with `xsi:type` as SACM23-XMI-006 requires, and is read back into the same kind, parent and order. On import, a child whose class does not conform to its role element's declared type (e.g. `<assuranceCasePackage xsi:type=\"sacm:ArgumentPackage\">`), or that no role of its parent admits, is an error in strict mode and is kept as preserved content with a warning in tolerant mode (D-PRESERVE); it is never re-roled or dropped."
+requirement = "Every containment child is written under the role element of the one role that admits it (LIB-API-008), checked for all 339 legal (parent, child) pairs and each role's name against the inventory, with the type attribute (`xmi:type`) as SACM23-XMI-006 requires, and is read back into the same kind, parent and order. On import, a child whose class does not conform to its role element's declared type (e.g. `<assuranceCasePackage xsi:type=\"sacm:ArgumentPackage\">`), or that no role of its parent admits, is an error in strict mode and is kept as preserved content with a warning in tolerant mode (D-PRESERVE); it is never re-roled or dropped."
 source = "formal/23-05-08 §9.2, §10.4, §11.4, §12.2, §12.6; ptc/22-03-13 composite ends; XMI 2.5.1 type rules (quoted when analysed, LIB-TOOL-020); D-PRESERVE; D-STRICT; slice 0017 research (assurance-forge io/xmi_reader.cpp attach_child places a child by kind, not by role element, and drops one no role admits)"
 kind = "xmi"
 status = "planned"
 depends_on = ["LIB-API-008", "SACM23-XMI-006", "SACM23-XMI-010", "LIB-TOOL-020"]
+notes = "Slice 0025: owns strict import requiring the type attribute on an abstract-role child (SACM-XMI-005), moved from SACM23-XMI-006. Export writes `xmi:type` (ADR 0017); import accepts `xmi:type` and `xsi:type`."
 
 [[row]]
 id = "SACM23-XMI-017"
@@ -3221,6 +3317,36 @@ tests = [
   "crates/sacm/tests/xmi_read.rs::lib_api_009_refusal_of_an_encoding_name_with_line_breaks_stays_one_line",
 ]
 notes = "Item 1 and item 3 reworded in slice 0021, when SACM23-XMI-001 made the first inputs readable; re-checked there. Reworded and re-checked in slice 0024: UTF-16 moves to SACM23-XMI-018, so item 2 and the requirement no longer list UTF-16 with a byte order mark."
+
+[[row]]
+id = "LIB-API-010"
+area = "API"
+milestone = "M1"
+title = "The writer refuses what it cannot write"
+requirement = "`xmi::write` never writes a document that is missing content the `Document` holds (D-PRESERVE). Content that no verified row writes yet makes the write fail with an error naming the element, and nothing is returned: a name (until SACM23-XMI-012) and an `assertionDeclaration` other than the default (until SACM23-XMI-017). This is the write-side twin of ADR 0015's interim rule."
+source = "D-PRESERVE \"Never drop conforming SACM data. Preserve with a diagnostic, or refuse\"; ADR 0015; ADR 0017"
+kind = "api"
+status = "verified"
+depends_on = ["LIB-API-004", "LIB-DIAG-001"]
+acceptance = [
+  "Writing a document in which any element has a name fails with an error naming that element's id, and no output is returned.",
+  "Writing a document in which an Assertion's `assertionDeclaration` is not `asserted` fails with an error naming that element's id, and no output is returned.",
+  "A document without either writes `Ok`.",
+]
+code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/output.rs", "docs/adr/0017-xmi-writer.md"]
+tests = [
+  "crates/sacm/tests/xmi_write.rs::lib_api_010_a_named_element_is_refused_naming_it",
+  "crates/sacm/tests/xmi_write.rs::lib_api_010_a_named_claim_display_is_pinned",
+  "crates/sacm/tests/xmi_write.rs::lib_api_010_an_empty_name_is_still_a_name_and_is_refused",
+  "crates/sacm/tests/xmi_write.rs::lib_api_010_every_non_default_assertion_declaration_on_every_assertion_kind_is_refused",
+  "crates/sacm/tests/xmi_write.rs::lib_api_010_a_needs_support_claim_display_is_pinned",
+  "crates/sacm/tests/xmi_write.rs::lib_api_010_a_document_without_names_or_non_default_declarations_writes_ok",
+  "crates/sacm/tests/xmi_write.rs::lib_api_010_the_refusal_names_the_first_element_in_document_order",
+  "crates/sacm/tests/xmi_write.rs::lib_api_010_an_unrepresentable_id_is_found_before_a_name_on_the_same_element",
+  "crates/sacm/tests/xmi_write.rs::lib_api_010_a_named_assertion_with_a_non_default_declaration_is_refused_naming_it",
+  "crates/sacm/tests/xmi_write.rs::lib_api_010_write_error_is_a_send_sync_error_whose_variants_have_no_catalog_code",
+]
+verification = "docs/verification/0025-m1-xmi-export.md"
 
 [[row]]
 id = "SACM23-XMI-018"
@@ -3450,6 +3576,17 @@ status = "planned"
 depends_on = ["SACM23-XMI-001"]
 
 [[row]]
+id = "SACM23-XMI-020"
+area = "XMI"
+milestone = "M2"
+title = "An element without an xmi:id"
+requirement = "Import, in both load modes, accepts an element with no `xmi:id`. It gives the element a generated id that is unused in the document and deterministic for the input, and reports SACM-XMI-004 naming the generated id and the element's location. This narrows SACM23-XMI-001's `Unsupported` for a root without an id. It departs from C++, where a missing id is an Error in strict mode and the element is dropped (`xmi_reader.cpp:755-762`); this is the maintainer's decision of 2026-11-12."
+source = "XMI 2.5.1 §7.6.1 (p. 13) `use=\"optional\"`; D-STRICT; D-ID; the maintainer's decision of 2026-11-12"
+kind = "xmi"
+status = "planned"
+depends_on = ["SACM23-XMI-001", "SACM23-XMI-004"]
+
+[[row]]
 id = "LIB-COMPAT-009"
 area = "COMPAT"
 milestone = "M6"
@@ -3459,6 +3596,17 @@ source = "docs/sacm/diagnostics.md SACM-XMI-009; assurance-forge xmi_reader.cpp:
 kind = "compliance"
 status = "planned"
 depends_on = ["SACM23-XMI-001", "LIB-COMPAT-001"]
+
+[[row]]
+id = "LIB-COMPAT-010"
+area = "COMPAT"
+milestone = "M2"
+title = "Tolerant inference of a missing type attribute"
+requirement = "A tolerant load of an abstract-role child with no type attribute infers the class from the element's local name, exactly, and reports a warning. A strict load reports SACM-XMI-005 (SACM23-XMI-016)."
+source = "Moved from SACM23-XMI-006 in slice 0025; assurance-forge `xmi_reader.cpp:1103-1116` (case-insensitive there)"
+kind = "compliance"
+status = "planned"
+depends_on = ["LIB-COMPAT-001", "SACM23-XMI-016"]
 
 [[row]]
 id = "LIB-TOOL-021"

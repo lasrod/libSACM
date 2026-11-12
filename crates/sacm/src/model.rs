@@ -83,6 +83,7 @@ mod kind;
 mod lang_string;
 
 pub use argumentation::{AssertionDeclaration, ParseAssertionDeclarationError};
+pub(crate) use containment::{DeclaredType, role};
 #[cfg(not(feature = "test-support"))]
 pub(crate) use document::InsertError;
 pub use document::{Document, SacmElement};

@@ -89,6 +89,16 @@ change bumps the minor version and is listed under **Breaking**.
   that contradicts the mark, an odd byte count and an unpaired surrogate are `Malformed`.
   UTF-16 without a byte order mark, UTF-32 and UCS-4 stay `Unsupported`
   [SACM23-XMI-018].
+- `sacm::xmi`: `write(&Document, &WriteOptions) -> Result<String, WriteError>`,
+  `WriteOptions` and `WriteError` (ADR 0017). Output is deterministic: UTF-8, LF, two
+  spaces per depth, the pinned `sacm` and `xmi` namespaces and `xmi:version="2.0"` on the
+  document element only, one root bare or several in `xmi:XMI`, children under their
+  role names in document order, `xmi:type` where the role does not give the class, and
+  an `xmi:id` on every element. A document with no root is `WriteError::NoRoot`, an id
+  that XML 1.0 cannot represent is `WriteError::UnrepresentableCharacter`, and a name or
+  a non-default `assertionDeclaration` is `WriteError::Unsupported` for now
+  [SACM23-XMI-003, SACM23-XMI-004, SACM23-XMI-006, SACM23-XMI-007, SACM23-XMI-013,
+  LIB-API-010].
 
 ### Changed
 

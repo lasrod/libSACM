@@ -40,6 +40,7 @@ Only an equivalent or accepted mutant may be excluded. An excluded mutant's Excl
 | `xtask/src/matrix.rs:1157:18: replace > with < in cmd_status` | killed | LIB-TOOL-001 | `lib_tool_001_run_matrix_status_counts_each_milestones_rows_by_status` | — |
 | `xtask/src/matrix.rs:1157:18: replace > with >= in cmd_status` | killed | LIB-TOOL-001 | `lib_tool_001_run_matrix_status_counts_each_milestones_rows_by_status` | — |
 | `crates/sacm/src/xmi.rs:245:9: replace ReadOutput::diagnostics -> &[Diagnostic] with Vec::leak(Vec::new())` | equivalent | SACM23-XMI-001 | `read` reports no diagnostic in this release: every `ReadOutput` is built with an empty list (`xmi.rs`, `read`), so the mutant returns what the original does. Remove the exclusion with the first row that reports a diagnostic. | `exclude_re: ^crates/sacm/src/xmi\.rs:\d+:\d+: replace ReadOutput::diagnostics -> &\[Diagnostic\] with Vec::leak\(Vec::new\(\)\)$` |
+| `crates/sacm/src/xmi.rs:569:9: replace WriteError::code -> Option<Code> with None` | equivalent | LIB-API-010 | No `WriteError` variant has a catalog code in this release (ADR 0017), so `code()` returns `None` for every value and the mutant returns what the original does. Remove the exclusion with the first variant that gets a code (SACM-XMI-006 with LIB-COMPAT-001). | `exclude_re: ^crates/sacm/src/xmi\.rs:\d+:\d+: replace WriteError::code -> Option<Code> with None$` |
 
 ## History
 

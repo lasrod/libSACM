@@ -34,13 +34,11 @@ use roxmltree::{Attribute, Node};
 
 use super::ReadError;
 use super::input::{is_xml_space, locate};
+use super::namespaces::{SACM_NS, XMI_NS};
 use crate::model::{Document, ElementId, ElementKind, InsertError};
 
-/// The pinned SACM 2.3 namespace (D-NS-PIN).
-const SACM_NS: &str = "http://www.omg.org/spec/SACM/20220301";
-/// The XMI 2.5.1 namespace.
-const XMI_NS: &str = "http://www.omg.org/spec/XMI/20131001";
-/// The XML Schema instance namespace, of `xsi:type`.
+/// The XML Schema instance namespace, of `xsi:type`, which is read but never
+/// written (ADR 0017 T1).
 const XSI_NS: &str = "http://www.w3.org/2001/XMLSchema-instance";
 
 /// The document whose roots `tree` holds. `text` is the text `tree` was

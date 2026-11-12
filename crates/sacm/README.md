@@ -14,7 +14,9 @@ Assertion's `assertionDeclaration`, the first value types (`LangString`,
 `MultiLangString` and `AssertionDeclaration`) in `sacm::model`, and the
 diagnostic type that findings are reported in (`sacm::diagnostic`). No `Diagnostic` is
 reported yet; `xmi::read`'s refusals carry catalog codes. `sacm::xmi::read` reads `AssuranceCasePackage` and `ArgumentPackage` roots, but nothing inside
-them yet; it refuses what it cannot represent rather than drop it.
+them yet; it refuses what it cannot represent rather than drop it. `sacm::xmi::write`
+writes a document deterministically, and refuses a name or a non-default
+`assertionDeclaration`, which it does not write yet.
 
 Planned:
 
@@ -37,9 +39,9 @@ sacm = "0.1"
 ```
 
 ```rust
-use sacm::xmi::{self, ReadOptions};
+use sacm::xmi::{self, ReadOptions, WriteOptions};
 
-fn main() -> Result<(), xmi::ReadError> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let input = br#"<?xml version="1.0" encoding="UTF-8"?>
 <xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
          xmlns:sacm="http://www.omg.org/spec/SACM/20220301">
@@ -50,12 +52,16 @@ fn main() -> Result<(), xmi::ReadError> {
     for element in document.elements() {
         println!("{} {}", element.kind(), element.id());
     }
+    let text = xmi::write(&document, &WriteOptions::default())?;
+    print!("{text}");
     Ok(())
 }
 ```
 
 `sacm::xmi::read` reads empty `AssuranceCasePackage` and `ArgumentPackage` roots so far; it
-refuses the content of packages rather than drop it.
+refuses the content of packages rather than drop it. `sacm::xmi::write` writes it back
+deterministically, and refuses a name or a non-default `assertionDeclaration` until a
+later release writes them.
 
 See the [crate documentation](https://docs.rs/sacm) for the full API.
 
