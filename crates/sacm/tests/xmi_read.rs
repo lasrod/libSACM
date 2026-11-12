@@ -1294,6 +1294,8 @@ fn lib_api_009_utf32_input_with_a_bom_is_unsupported() {
     let inputs = [
         ("UTF-32 LE", utf32_with_bom(&utf32_text, false)),
         ("UTF-32 BE", utf32_with_bom(&utf32_text, true)),
+        ("UTF-32 LE BOM only", vec![0xFF, 0xFE, 0x00, 0x00]),
+        ("UTF-32 BE BOM only", vec![0x00, 0x00, 0xFE, 0xFF]),
     ];
     for (what, input) in inputs {
         let error = assert_unsupported(row, &input);
@@ -1301,6 +1303,7 @@ fn lib_api_009_utf32_input_with_a_bom_is_unsupported() {
             error.code().is_none(),
             "{row}: the {what} refusal carries a code"
         );
+        assert_refusal_invariants(row, &input, &error);
     }
 }
 

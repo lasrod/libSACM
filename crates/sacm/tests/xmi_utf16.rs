@@ -198,8 +198,8 @@ fn assert_same_as_utf8(what: &str, text: &str) -> Outcome {
 }
 
 /// Asserts that `input` is refused as `Malformed` (SACM-XML-001) at
-/// `location`.
-fn assert_malformed_at(what: &str, input: &[u8], location: SourceLocation) {
+/// `location`, and returns the error.
+fn assert_malformed_at(what: &str, input: &[u8], location: SourceLocation) -> ReadError {
     let result = read(input);
     let Err(error @ ReadError::Malformed { .. }) = &result else {
         panic!(
@@ -218,6 +218,7 @@ fn assert_malformed_at(what: &str, input: &[u8], location: SourceLocation) {
         "{ROW}: {what}: the Malformed refusal of {} is not at {location}: {error}",
         preview(input)
     );
+    error.clone()
 }
 
 /// Asserts that `input` is refused as `Unsupported`, with no code, at
@@ -310,15 +311,50 @@ fn sacm23_xmi_018_utf16_with_a_bom_reads_as_the_utf8_document() {
 
 #[test]
 fn sacm23_xmi_018_a_non_utf16_name_after_a_utf16_bom_is_malformed_at_the_name() {
+    let declaration = |name: &str| format!("<?xml version=\"1.0\" encoding=\"{name}\"?>");
     for name in ["UTF-8", "US-ASCII", "ISO-8859-1"] {
-        let text = format!("<?xml version=\"1.0\" encoding=\"{name}\"?>\n{AP_ROOT}");
+        let text = format!("{}\n{AP_ROOT}", declaration(name));
         for (order_name, order) in ORDERS {
-            assert_malformed_at(
-                &format!("{order_name} with a byte order mark declaring {name:?}"),
-                &utf16(&text, order),
-                loc(1, 31),
-            );
+            let plain = utf16(&text, order);
+            // The declaration is checked before the decoding errors after
+            // it: a lone surrogate after the declaration, or an odd byte
+            // count, does not hide the contradiction.
+            let mut units: Vec<u16> = declaration(name).encode_utf16().collect();
+            units.push(0xD800);
+            units.extend(format!("\n{AP_ROOT}").encode_utf16());
+            let surrogate = units_with_bom(&units, order);
+            let mut odd = plain.clone();
+            odd.push(0x0A);
+            let inputs = [
+                ("", plain),
+                (", then a lone D800", surrogate),
+                (", plus one trailing byte", odd),
+            ];
+            for (variant, input) in inputs {
+                let what =
+                    format!("{order_name} with a byte order mark declaring {name:?}{variant}");
+                let error = assert_malformed_at(&what, &input, loc(1, 31));
+                let shown = error.to_string();
+                assert!(
+                    shown.contains(&format!("{name:?}")) && shown.contains("contradicts"),
+                    "{ROW}: {what}: the refusal does not name the contradicting {name:?}: {shown}"
+                );
+            }
         }
+    }
+    // The exact Display, in both byte orders.
+    let text = format!("{}\n{AP_ROOT}", declaration("UTF-8"));
+    for (order_name, order) in ORDERS {
+        let result = read(&utf16(&text, order));
+        let shown = result.as_ref().map_err(ToString::to_string).err();
+        assert_eq!(
+            shown.as_deref(),
+            Some(
+                "the input is not well-formed XML at line 1, column 31: the declared encoding \
+                 \"UTF-8\" contradicts the UTF-16 byte order mark"
+            ),
+            "{ROW}: {order_name} declaring \"UTF-8\": unexpected Display ({result:?})"
+        );
     }
 }
 

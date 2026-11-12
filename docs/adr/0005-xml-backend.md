@@ -59,7 +59,8 @@ XML library type may appear in the public API.
     `xmlns:xmlns` declared (rmt-ns10-032), which is now refused. Within the suite, the
     list is closed. Outside the suite, other parser leniencies may remain; LIB-SEC-005's
     sweep checks only that libSACM's checks agree with the parser's tree.
-  - **B2.** UTF-8 and ASCII are read now. UTF-16, UTF-32 and UCS-4, with or without a
+  - **B2.** *(For UTF-16, amendment 1 below supersedes this paragraph.)* UTF-8 and
+    ASCII are read now. UTF-16, UTF-32 and UCS-4, with or without a
     BOM, are refused as `Unsupported`, never misread. SACM23-XMI-018 will decode UTF-16
     with std, because XML 1.0 requires every processor to accept it. Other declared
     encodings stay refused, which XML allows. pugixml decodes UTF-16, UTF-32 and Latin-1.

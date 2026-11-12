@@ -1378,7 +1378,8 @@ mod tests {
         );
         // The UTF-8 path borrows the input.
         assert!(matches!(decode(b"<r/>"), Ok(Cow::Borrowed("<r/>"))));
-        // The decoding error comes after the declaration checks.
+        // An unpaired surrogate is refused at the surrogate, and an odd byte
+        // count after the last whole character.
         let reason = |input: &[u8]| {
             decode(input)
                 .map(|_| ())
