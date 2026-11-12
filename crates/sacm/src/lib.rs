@@ -19,7 +19,10 @@
 //!   machine-readable diagnostics with stable codes; built so far: the
 //!   diagnostic type and [`validation::validate`], which reports a
 //!   `ModelElement` with no name,
-//! - SACM-native editing with previews for destructive operations (planned).
+//! - SACM-native editing, each operation checked in full before anything
+//!   changes, with previews for destructive operations; built so far:
+//!   [`edit::apply`] with the operations that create an
+//!   `AssuranceCasePackage`, an `ArgumentPackage` and a `Claim`.
 //!
 //! # Status
 //!
@@ -45,9 +48,11 @@
 //! `Unsupported`. [`sacm::xmi::write`](xmi::write) writes a document's roots
 //! and every element under them, with their names, deterministically, but
 //! refuses a non-default `assertionDeclaration` as `Unsupported` until a
-//! later release writes it.
+//! later release writes it. [`edit::apply`] creates AssuranceCasePackage,
+//! ArgumentPackage and Claim elements, with a name and a given or generated id, or
+//! refuses with an [`EditError`](edit::EditError) and changes nothing.
 //! Reading the content of packages, validation rules other than the missing
-//! name, and editing are not built yet.
+//! name, and the other edit operations are not built yet.
 //!
 //! # Example
 //!
@@ -97,6 +102,8 @@
 //! [`diagnostic::has_errors`].
 //! Write a document back with [`xmi::write`], which returns the
 //! XMI text for you to save.
+//! Build or extend a document with [`edit::apply`] and the create operations
+//! such as [`edit::CreateClaim`].
 //!
 //! # Features
 //!
@@ -115,6 +122,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 pub mod diagnostic;
+pub mod edit;
 pub mod model;
 pub mod validation;
 pub mod xmi;

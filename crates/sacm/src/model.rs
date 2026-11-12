@@ -83,12 +83,13 @@ mod kind;
 mod lang_string;
 
 pub use argumentation::{AssertionDeclaration, ParseAssertionDeclarationError};
-pub(crate) use containment::{DeclaredType, role};
+pub(crate) use containment::{DeclaredType, admits, role};
 #[cfg(not(feature = "test-support"))]
 pub(crate) use document::InsertError;
 pub use document::{Document, SacmElement};
 #[cfg(feature = "test-support")]
 pub use document::{InsertError, SetAssertionDeclarationError};
 pub use id::ElementId;
+pub(crate) use id::is_ncname;
 pub use kind::{AbstractClass, ElementKind, MetamodelPackage};
 pub use lang_string::{LangString, MultiLangString};

@@ -110,6 +110,17 @@ change bumps the minor version and is listed under **Breaking**.
   `Code::MULTIPLICITY_VIOLATION` (SACM-MULT-001, clause 8.6). Reading still loads a
   nameless document. `diagnostic::has_errors` says whether a list holds an Error
   [SACM23-VAL-018].
+- `sacm::edit`, the first editing API (ADR 0019): `apply(&mut Document, impl
+  Into<Operation>) -> Result<Mutation, EditError>` with `CreateAssuranceCasePackage`,
+  `CreateArgumentPackage` (each a root or under a parent) and `CreateClaim`, each with a
+  required `LangString` name and an optional `with_id`. A parent is legal when the
+  containment table admits the kind. A caller id must be an XML NCName; otherwise the id
+  is generated as `<snake_case kind>_<n>`, deterministically. `Mutation::created_ids`
+  lists what was created. Refusals, in check order, leave the document unchanged:
+  `ParentNotFound` (`Code::CMD_TARGET_NOT_FOUND`, SACM-CMD-001), `InvalidParent`
+  (`Code::CMD_INVALID_PARENT`, SACM-CMD-005), `InvalidId` (`Code::ID_INVALID`,
+  SACM-ID-002) and `DuplicateId` (`Code::CMD_DUPLICATE_ID`, SACM-CMD-004).
+  `impl From<&ElementId> for ElementId` [LIB-EDIT-001].
 
 ### Changed
 

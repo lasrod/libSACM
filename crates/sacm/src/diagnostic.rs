@@ -136,6 +136,28 @@ impl Code {
     /// ```
     pub const MULTIPLICITY_VIOLATION: Code = Code::from_static("SACM-MULT-001");
 
+    /// SACM-CMD-001: an operation's target is not in the document. The code
+    /// of [`EditError::ParentNotFound`](crate::edit::EditError::ParentNotFound)
+    /// (LIB-EDIT-001).
+    pub const CMD_TARGET_NOT_FOUND: Code = Code::from_static("SACM-CMD-001");
+
+    /// SACM-CMD-004: a create operation's caller-given id is already in the
+    /// document. The code of
+    /// [`EditError::DuplicateId`](crate::edit::EditError::DuplicateId)
+    /// (LIB-EDIT-001).
+    pub const CMD_DUPLICATE_ID: Code = Code::from_static("SACM-CMD-004");
+
+    /// SACM-CMD-005: the parent cannot contain an element of the requested
+    /// kind. The code of
+    /// [`EditError::InvalidParent`](crate::edit::EditError::InvalidParent)
+    /// (LIB-EDIT-001).
+    pub const CMD_INVALID_PARENT: Code = Code::from_static("SACM-CMD-005");
+
+    /// SACM-ID-002: an element id is not valid syntax: not an XML `NCName`. The
+    /// code of [`EditError::InvalidId`](crate::edit::EditError::InvalidId)
+    /// (LIB-EDIT-001).
+    pub const ID_INVALID: Code = Code::from_static("SACM-ID-002");
+
     /// The code with the given text.
     ///
     /// **Not part of the stable API**: public only under the `test-support`

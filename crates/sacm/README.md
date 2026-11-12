@@ -18,7 +18,9 @@ diagnostic type that findings are reported in (`sacm::diagnostic`), and
 `AssuranceCasePackage` and `ArgumentPackage` roots and their names, but nothing else
 inside them yet; it refuses what it cannot represent rather than drop it.
 `sacm::xmi::write` writes a document and its names deterministically, and refuses a
-non-default `assertionDeclaration`, which it does not write yet.
+non-default `assertionDeclaration`, which it does not write yet. `sacm::edit::apply`
+creates AssuranceCasePackages, ArgumentPackages and Claims, each with a name and a given
+or generated id; a refused operation changes nothing.
 
 Planned:
 
@@ -29,8 +31,8 @@ Planned:
   dialects and legacy revisions and tells you exactly what it accepted.
 - More validation rules against the specification's constraints, reported as structured
   diagnostics with stable codes, severities, clause references and locations.
-- SACM-native editing. Every public mutation either succeeds, keeping the
-  document's structural invariants, or fails and leaves it unchanged.
+- SACM-native editing for every element kind. Every public mutation either succeeds,
+  keeping the document's structural invariants, or fails and leaves it unchanged.
   Destructive edits can be previewed first.
 
 ## Usage

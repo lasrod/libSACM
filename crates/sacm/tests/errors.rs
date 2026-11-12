@@ -4,7 +4,8 @@
 //! Today the only public error type is `model::InsertError`, public under the
 //! `test-support` feature. The crate dev-depends on itself with that feature,
 //! so these tests always see it. Each later error enum (`xmi::ReadError`,
-//! `xmi::WriteError`, `edit::EditError`) joins the checks here with its row.
+//! `xmi::WriteError`) joins the checks here with its row. The contract of
+//! `edit::EditError` is checked in `edit_create.rs` (LIB-EDIT-001).
 //!
 //! Not checked here:
 //! - Item 1's `#[non_exhaustive]`: a test cannot show that an exhaustive match
