@@ -1,8 +1,8 @@
 ---
 slice: 0027
 name: m1-validate-missing-name
-state: in-progress
-step: verification
+state: done
+step: verified
 rows: [SACM23-VAL-018]
 mode: pr
 base: main (0d321d8)
@@ -47,3 +47,4 @@ formal/23-05-08 §8.6; D-SEV; ADR 0011; ADR 0013.
   - The crate README claims no diagnostic is reported.
   - The docs review (2 blocking: the crate README, and a front-page example without validate) and its should-fix items go to the implementer.
   - Logged, not required: a `ReadOutput::into_parts`, and a single cross-constant catalog test.
+- 2026-11-12 verification round 2: PASS at f068309; SACM23-VAL-018 is verified.

@@ -2051,7 +2051,7 @@ title = "A missing name is diagnosed"
 requirement = "`validation::validate` reports each ModelElement whose name is missing (ADR 0013) as exactly one SACM-MULT-001 Error: requirement id SACM23-VAL-018, clause `8.6`, affected ids exactly the element's id, no location, and the message `{Kind} {id:?} has no name (name:LangString[1])`: the id is quoted and escaped as Rust's `{:?}` does, as write errors do. It reports nothing for a UtilityElement, or for a name whose `lang` or `content` is absent or empty. It does not change the document, and the result is sorted by `Diagnostic`'s order (ADR 0011). `diagnostic::has_errors` reports whether a list holds an Error (ADR 0018). SACM-MULT-001's catalog text widens to any multiplicity violation."
 source = "formal/23-05-08 §8.6 (p. 19) \"name:LangString[1] (composition) - the name of the ModelElement.\" and \"All the individual and identifiable elements of a SACM model correspond to a ModelElement.\"; §8.3 (p. 18) `lang:String[0..1]`, `content:String[0..1]`; §8.7-8.12 (UtilityElement has no name); ptc/22-03-13 Base::ModelElement property `_19_0_4_68a022b_1650976745149_959605_5171` (association \"name\", no bounds, so [1..1]); XMI 2.5.1 §7.8.2 (p. 17) \"By default, XMI 2 produces schemas that ignore multiplicities also.\"; D-SEV (a multiplicity on which text and model agree is an error; the maintainer, 2026-11-12); D-VAL-LAYER; ADR 0011; ADR 0013; ADR 0018. C++ cannot represent a missing name (`element.h:177-179`)."
 kind = "validation"
-status = "implemented"
+status = "verified"
 depends_on = ["SACM23-BASE-003", "SACM23-XMI-012", "LIB-DIAG-001", "LIB-API-008"]
 acceptance = [
   "`ElementKind::ALL` filtered by `is_a(AbstractClass::ModelElement)` is exactly 34 kinds, and the other 4 are exactly Description, ImplementationConstraint, Note and TaggedValue.",
@@ -2088,6 +2088,7 @@ tests = [
   "crates/sacm/tests/validation.rs::sacm23_val_018_multiplicity_violation_code_is_sacm_mult_001_in_the_catalog",
   "crates/sacm/tests/validation.rs::sacm23_val_018_a_nameless_element_at_the_end_of_a_deep_chain_is_reported",
 ]
+verification = "docs/verification/0027-m1-validate-missing-name.md"
 
 [[row]]
 id = "LIB-COMPAT-001"
