@@ -1,8 +1,8 @@
 ---
 slice: 0026
 name: m1-names-in-xmi
-state: in-progress
-step: verification
+state: done
+step: verified
 rows: [SACM23-XMI-011, SACM23-XMI-012, LIB-API-010, SACM23-XMI-001, SACM23-XMI-002, LIB-API-009]
 mode: pr
 base: main (e4c13cd)
@@ -56,3 +56,4 @@ ADR 0013, ADR 0017.
   - The reader differences from C++ have no ADR lines.
   - LIB-API-009 example and test disagree.
 - 2026-11-12 docs review: the crate root feature list is stale (blocking). The `attribute: &str` field will become ambiguous, so it is replaced by `WriteAttribute`. ADR 0017 amendment 1 is now proposed, for the maintainer.
+- 2026-11-12 verification round 2: PASS at 32d0a95. XMI-011 and XMI-012 are verified; LIB-API-010, XMI-001, XMI-002 and LIB-API-009 are re-verified. `gh pr ready` waits for the maintainer to accept ADR 0017 amendment 1 (`WriteAttribute`).
