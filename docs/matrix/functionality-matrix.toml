@@ -2048,11 +2048,47 @@ id = "SACM23-VAL-018"
 area = "VAL"
 milestone = "M1"
 title = "A missing name is diagnosed"
-requirement = "A ModelElement without a name is reported as a SACM-MULT-001 error that names the element and cites §8.6 `name:LangString[1]`, and the element is kept. A name whose `lang` or `content` is absent or empty is not a missing name and is not reported. The catalog entry for SACM-MULT-001 is widened to cover a required containment."
-source = "formal/23-05-08 §8.6 `name:LangString[1]`; §8.3 `content:String[0..1]`; D-SEV (a multiplicity in text and model is normative structure: Error); D-VAL-LAYER; ADR 0013; docs/sacm/diagnostics.md SACM-MULT-001"
+requirement = "`validation::validate` reports each ModelElement whose name is missing (ADR 0013) as exactly one SACM-MULT-001 Error: requirement id SACM23-VAL-018, clause `8.6`, affected ids exactly the element's id, no location, and the message `{Kind} {id:?} has no name (name:LangString[1])`: the id is quoted and escaped as Rust's `{:?}` does, as write errors do. It reports nothing for a UtilityElement, or for a name whose `lang` or `content` is absent or empty. It does not change the document, and the result is sorted by `Diagnostic`'s order (ADR 0011). `diagnostic::has_errors` reports whether a list holds an Error (ADR 0018). SACM-MULT-001's catalog text widens to any multiplicity violation."
+source = "formal/23-05-08 §8.6 (p. 19) \"name:LangString[1] (composition) - the name of the ModelElement.\" and \"All the individual and identifiable elements of a SACM model correspond to a ModelElement.\"; §8.3 (p. 18) `lang:String[0..1]`, `content:String[0..1]`; §8.7-8.12 (UtilityElement has no name); ptc/22-03-13 Base::ModelElement property `_19_0_4_68a022b_1650976745149_959605_5171` (association \"name\", no bounds, so [1..1]); XMI 2.5.1 §7.8.2 (p. 17) \"By default, XMI 2 produces schemas that ignore multiplicities also.\"; D-SEV (a multiplicity on which text and model agree is an error; the maintainer, 2026-11-12); D-VAL-LAYER; ADR 0011; ADR 0013; ADR 0018. C++ cannot represent a missing name (`element.h:177-179`)."
 kind = "validation"
-status = "planned"
-depends_on = ["SACM23-BASE-003", "SACM23-XMI-012", "LIB-DIAG-001"]
+status = "verified"
+depends_on = ["SACM23-BASE-003", "SACM23-XMI-012", "LIB-DIAG-001", "LIB-API-008"]
+acceptance = [
+  "`ElementKind::ALL` filtered by `is_a(AbstractClass::ModelElement)` is exactly 34 kinds, and the other 4 are exactly Description, ImplementationConstraint, Note and TaggedValue.",
+  "For each of the 34 kinds, a named ArtifactPackage root holding one nameless element of that kind gives exactly one diagnostic, for that element; each of the 12 package kinds as a nameless root also gives exactly one.",
+  "A document holding all 34 nameless gives 34 diagnostics, one per id; a nameless element in a nameless parent gives two (no cascade, no suppression).",
+  "Each of the 4 UtilityElement kinds under a named ModelElement gives no diagnostic.",
+  "No diagnostic for these names: `LangString::default()`; `lang=\"\"` with `content=\"\"`; `lang` absent with `content=\"\"`; `lang=\"en\"` with `content` absent; `lang=\"\"` with `content` absent; and, read through XMI, `<name/>` and `<name lang=\"\" content=\"\"/>`.",
+  "The fields are pinned: `code() == Code::MULTIPLICITY_VIOLATION` (`\"SACM-MULT-001\"`), `severity()` Error, `requirement_id() == \"SACM23-VAL-018\"`, `clause() == Some(\"8.6\")`, `affected() == [id]`, `location() == None`, `message()` `Claim \"c1\" has no name (name:LangString[1])`, and `Display` `error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: Claim \"c1\" has no name (name:LangString[1])`.",
+  "An awkward id is quoted and escaped as Rust's `{:?}` does: a nameless ArgumentPackage read through `xmi::read` with `xmi:id=\"a&quot;b&#10;c&#92;d&#x301;\"` gives exactly the message `ArgumentPackage \"a\\\"b\\nc\\\\d\\u{301}\" has no name (name:LangString[1])`, written out in the test, and a `Display` on one line.",
+  "The element is kept: after `validate`, `element_count` is unchanged, `get(id)` has `name() == None`, and `xmi::write` output is identical before and after.",
+  "`xmi::read` of a nameless AssuranceCasePackage and a nameless ArgumentPackage root, bare and wrapped, returns `Ok` with no SACM-MULT-001 in `ReadOutput::diagnostics()` (D-VAL-LAYER); `validate` on its document then gives one.",
+  "Order: several findings come out sorted by affected id in byte order (`a10`, `a2`, `b`), whatever the insertion order; equal documents built in different orders give equal results, and two calls give equal results.",
+  "An empty `Document`, and one where every ModelElement has a name, give an empty `Vec`; `has_errors` is false for them and true when a name is missing.",
+  "`docs/sacm/diagnostics.md` lists SACM-MULT-001 with the widened text.",
+  "A nameless element at the end of a deep chain of nested packages is reported without a panic or stack overflow.",
+]
+code = ["crates/sacm/src/validation.rs", "crates/sacm/src/validation/names.rs", "crates/sacm/src/diagnostic.rs", "docs/sacm/diagnostics.md", "docs/adr/0018-validation-entry-point.md"]
+tests = [
+  "crates/sacm/tests/validation.rs::sacm23_val_018_exactly_34_kinds_are_model_elements_and_the_other_4_are_utility_elements",
+  "crates/sacm/tests/validation.rs::sacm23_val_018_each_nameless_model_element_kind_in_a_named_package_gives_one_diagnostic",
+  "crates/sacm/tests/validation.rs::sacm23_val_018_each_nameless_package_root_gives_one_diagnostic",
+  "crates/sacm/tests/validation.rs::sacm23_val_018_all_34_nameless_kinds_give_34_diagnostics_one_per_id",
+  "crates/sacm/tests/validation.rs::sacm23_val_018_a_nameless_element_in_a_nameless_parent_gives_two_diagnostics",
+  "crates/sacm/tests/validation.rs::sacm23_val_018_utility_elements_under_a_named_model_element_give_no_diagnostic",
+  "crates/sacm/tests/validation.rs::sacm23_val_018_absent_or_empty_lang_or_content_is_not_a_missing_name",
+  "crates/sacm/tests/validation.rs::sacm23_val_018_an_empty_name_read_through_xmi_is_not_a_missing_name",
+  "crates/sacm/tests/validation.rs::sacm23_val_018_the_diagnostic_fields_message_and_display_are_pinned",
+  "crates/sacm/tests/validation.rs::sacm23_val_018_an_id_with_a_quote_line_break_backslash_and_combining_mark_is_debug_quoted",
+  "crates/sacm/tests/validation.rs::sacm23_val_018_validate_keeps_the_nameless_element_and_the_written_output",
+  "crates/sacm/tests/validation.rs::sacm23_val_018_reading_a_nameless_root_gives_no_multiplicity_diagnostic_but_validate_does",
+  "crates/sacm/tests/validation.rs::sacm23_val_018_findings_are_sorted_by_affected_id_whatever_the_insertion_order",
+  "crates/sacm/tests/validation.rs::sacm23_val_018_an_empty_or_fully_named_document_gives_no_diagnostic_and_no_errors",
+  "crates/sacm/tests/validation.rs::sacm23_val_018_has_errors_is_true_exactly_when_a_list_holds_an_error",
+  "crates/sacm/tests/validation.rs::sacm23_val_018_multiplicity_violation_code_is_sacm_mult_001_in_the_catalog",
+  "crates/sacm/tests/validation.rs::sacm23_val_018_a_nameless_element_at_the_end_of_a_deep_chain_is_reported",
+]
+verification = "docs/verification/0027-m1-validate-missing-name.md"
 
 [[row]]
 id = "LIB-COMPAT-001"
@@ -3650,7 +3686,7 @@ source = "formal/23-05-08 §8.6 `name:LangString[1]`; XMI 2.5.1 rule 4f (p. 51) 
 kind = "xmi"
 status = "planned"
 depends_on = ["SACM23-XMI-012", "LIB-COMPAT-001", "LIB-COMPAT-003"]
-notes = "Maintainer decision 2026-11-12: the code is SACM-MULT-001, because `name:LangString[1]` held twice is a multiplicity violation. When this row is built, widen SACM-MULT-001's catalog text to \"a property held more or fewer times than its multiplicity allows\", keeping the AssertedRelationship and binding cases as examples. SACM-XMI-003 (\"Unknown element\") is not used, as C++ uses it."
+notes = "Maintainer decision 2026-11-12: the code is SACM-MULT-001, because `name:LangString[1]` held twice is a multiplicity violation. SACM23-VAL-018 has already widened the catalog text to cover it. SACM-XMI-003 (\"Unknown element\") is not used, as C++ uses it."
 
 [[row]]
 id = "SACM23-XMI-022"

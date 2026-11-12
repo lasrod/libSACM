@@ -40,15 +40,16 @@ sacm
 │                ArgumentPackage interchange roots; it refuses unsafe, malformed,
 │                non-package and not-yet-readable input; roxmltree is private,
 │                ADR 0005, ADR 0015 and ADR 0016)
-├── validate     structural invariants and clause-level constraints
-├── diagnostic   Diagnostic, Severity, Code, Location
+├── validation   clause-level constraints, reported as diagnostics
+│                (built: `validate`, with the missing-name rule, ADR 0018)
+├── diagnostic   Diagnostic, Severity, Code, SourceLocation, has_errors
 ├── edit         operations, previews, delete policies, mutation results
 └── compare      semantic equality and differences
 ```
 
 ```text
 bytes    ──► xmi::read            ──► Document + Vec<Diagnostic>
-Document ──► validate::validate   ──► Vec<Diagnostic>
+Document ──► validation::validate ──► Vec<Diagnostic>
 Document ──► edit::apply(op)      ──► Result<MutationResult, EditError>   (atomic)
 Document ──► xmi::write(strict)   ──► Result<bytes, WriteError>           (deterministic; refuses invalid models)
 ```
@@ -63,7 +64,7 @@ Document ──► xmi::write(strict)   ──► Result<bytes, WriteError>     
   Content tolerant mode cannot type is kept beside its parent, so strict save can find
   and refuse it.
 - **Validation:** structural invariants hold after every edit; content constraints are
-  reported by `validate()` (D-VAL-LAYER). Severity follows the clause's modal verb
+  reported by `validation::validate` (D-VAL-LAYER). Severity follows the clause's modal verb
   (D-SEV).
 - **Editing:** operations are values (`CreateClaim { .. }`) applied to a document. Each
   is checked fully before anything changes (D-ATOMIC). Destructive operations have a

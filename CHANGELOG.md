@@ -105,6 +105,11 @@ change bumps the minor version and is listed under **Breaking**.
   XML 1.0 gives them (never trimmed); anything else on or in `name` stays `Unsupported`.
   `WriteError::UnrepresentableCharacter` names the attribute that holds the character
   (`WriteAttribute`) [SACM23-XMI-011, SACM23-XMI-012, LIB-API-010].
+- `sacm::validation::validate(&Document) -> Vec<Diagnostic>` (ADR 0018): reports, sorted
+  and without changing the document, each ModelElement with no name as an Error with
+  `Code::MULTIPLICITY_VIOLATION` (SACM-MULT-001, clause 8.6). Reading still loads a
+  nameless document. `diagnostic::has_errors` says whether a list holds an Error
+  [SACM23-VAL-018].
 
 ### Changed
 

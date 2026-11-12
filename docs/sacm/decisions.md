@@ -43,7 +43,7 @@ implementation. Their original discussion is linked where it exists.
 | ID | Decision |
 |---|---|
 | D-DIAG | Diagnostics are machine-readable: stable code, severity, the matrix row and clause they enforce, affected element ids, source location where available, and a message. Codes are API and never change meaning. Catalog: [diagnostics.md](diagnostics.md). |
-| D-SEV | **Severity follows the clause's own modal verb.** "must" or an OCL invariant → error; "should" without OCL → warning. (assurance-forge #335.) This is why clause 8.2's abstractForm rules split: the citing element's `isAbstract` is stated flatly (error); the referred element's `isAbstract` and type are "should" (warning). |
+| D-SEV | **Severity follows the clause's own modal verb.** "must" or an OCL invariant → error; "should" without OCL → warning. (assurance-forge #335.) This is why clause 8.2's abstractForm rules split: the citing element's `isAbstract` is stated flatly (error); the referred element's `isAbstract` and type are "should" (warning). A multiplicity on which the text and the model agree is normative structure, and violating it is an error (the maintainer, 2026-11-12; §2.4, §6.3). Example: §8.6 `name:LangString[1]`. |
 
 ## Resolutions of defective or contradictory clauses
 

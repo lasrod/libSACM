@@ -163,5 +163,5 @@ T5 said names stay refused until SACM23-XMI-012. That row now writes them, so:
     it until SACM23-XMI-022, which will preserve it.
   - C++ reads an ExpressionLangString type on `name`. This crate refuses it (SACM23-BASE-009).
 
-*Amendment 1 status: proposed. It adds public API (`WriteAttribute`), which waits for the
-maintainer.*
+*Amendment 1 status: accepted (the maintainer merged PR #37, 2026-11-12), including the
+public `WriteAttribute` type.*

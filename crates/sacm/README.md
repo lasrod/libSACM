@@ -12,8 +12,9 @@ Read, edit, validate and write assurance cases in the
 Implemented now: the read-only document model with element names and each
 Assertion's `assertionDeclaration`, the first value types (`LangString`,
 `MultiLangString` and `AssertionDeclaration`) in `sacm::model`, and the
-diagnostic type that findings are reported in (`sacm::diagnostic`). No `Diagnostic` is
-reported yet; `xmi::read`'s refusals carry catalog codes. `sacm::xmi::read` reads
+diagnostic type that findings are reported in (`sacm::diagnostic`), and
+`sacm::validation::validate`, which reports each `ModelElement` with no name as a
+`SACM-MULT-001` error. `xmi::read`'s refusals carry catalog codes. `sacm::xmi::read` reads
 `AssuranceCasePackage` and `ArgumentPackage` roots and their names, but nothing else
 inside them yet; it refuses what it cannot represent rather than drop it.
 `sacm::xmi::write` writes a document and its names deterministically, and refuses a
@@ -26,7 +27,7 @@ Planned:
 - XMI import and deterministic export. Strict mode writes only
   schema-conforming, valid SACM 2.3 models; tolerant mode reads third-party
   dialects and legacy revisions and tells you exactly what it accepted.
-- Validation against the specification's constraints, reported as structured
+- More validation rules against the specification's constraints, reported as structured
   diagnostics with stable codes, severities, clause references and locations.
 - SACM-native editing. Every public mutation either succeeds, keeping the
   document's structural invariants, or fails and leaves it unchanged.
@@ -41,6 +42,7 @@ sacm = "0.1"
 
 ```rust
 use sacm::xmi::{self, ReadOptions, WriteOptions};
+use sacm::{diagnostic, validation};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let input = br#"<?xml version="1.0" encoding="UTF-8"?>
@@ -51,12 +53,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     <name lang="en" content="Arguments"/>
   </sacm:ArgumentPackage>
 </xmi:XMI>"#;
-    let document = xmi::read(input, &ReadOptions::default())?.into_document();
+    let output = xmi::read(input, &ReadOptions::default())?;
+    let document = output.document();
     for element in document.elements() {
         let name = element.name().and_then(|n| n.content());
         println!("{} {} {name:?}", element.kind(), element.id());
     }
-    let text = xmi::write(&document, &WriteOptions::default())?;
+
+    // Check it against SACM's rules: the case package has no name.
+    let mut findings = output.diagnostics().to_vec();
+    findings.extend(validation::validate(document));
+    findings.sort();
+    for finding in &findings {
+        println!("{finding}");
+    }
+    assert!(diagnostic::has_errors(&findings));
+
+    let text = xmi::write(document, &WriteOptions::default())?;
     print!("{text}");
     Ok(())
 }
