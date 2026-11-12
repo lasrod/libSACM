@@ -1,8 +1,8 @@
 ---
 slice: 0029
 name: m1-read-package-content
-state: in-progress
-step: verification
+state: done
+step: verified
 rows: [SACM23-XMI-010, SACM23-XMI-016, LIB-API-009, SACM23-XMI-001]
 mode: pr
 base: slice/0028-m1-create-operations (PR #39)
@@ -43,3 +43,4 @@ ADR 0010, ADR 0015, ADR 0016, ADR 0017.
   - High: `check_text` refused schema-conforming white space written as CDATA or character references. The fix is to accept it; XMI-016 gains an item for it.
   - Unpinned orders: M23 (a duplicate root id) and M12/M13 (a duplicate child id).
   - XMI-010 text-location wording; the `ReadError` docs on locations; a C++ difference note on qualified role elements; the D6 citations become ADR 0015.
+- 2026-11-13 verification round 2: PASS at c6260e4. XMI-016 and XMI-010 are verified; XMI-001 and LIB-API-009 are re-verified.

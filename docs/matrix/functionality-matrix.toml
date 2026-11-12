@@ -1799,7 +1799,7 @@ tests = [
   "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_a_repeated_root_id_is_refused_at_the_root_before_its_attributes_and_content",
   "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_a_root_that_repeats_an_earlier_roots_child_id_is_refused_at_the_root",
 ]
-verification = "docs/verification/0026-m1-names-in-xmi.md"
+verification = "docs/verification/0029-m1-read-package-content.md"
 notes = "Parser leniencies beyond LIB-SEC-005's list were left to LIB-SEC-006 (W3C conformance suite), by the maintainer's decision of 2026-11-11 (slice 0021, verification round 3); LIB-SEC-006 closes the list within the suite (slice 0022). Slice 0026: the unread-content example `<name/>` became `<note/>`, because SACM23-XMI-012 reads names; re-checked there. Slice 0029: a duplicate root id is now refused at its id check, as \"an earlier element\"; re-checked there."
 
 [[row]]
@@ -2465,7 +2465,7 @@ title = "Read refusals are located at what they refuse"
 requirement = "Every `ReadError` from `xmi::read` carries the line and column of the construct it refuses: lines end as in XML 1.0 §2.11, columns count characters, and a leading byte order mark takes no column. An element is located at the `<` of its start tag, an attribute at the first character of its qualified name, text at its first character in the input that is not literal white space (a CDATA section or a character reference is located at its start), and a DOCTYPE at `<!DOCTYPE`. A well-formedness error is located where the input stops being well-formed, or at the end of a truncated input. An unsupported encoding is located at its name, or at line 1, column 1. Only a refusal for the parser's capacity limits has no location."
 source = "D-DIAG \"source location where available\"; ADR 0011; ADR 0015 \"Each refusal carries a `SourceLocation` where one is known\"; XML 1.0 (Fifth Edition) §2.11; assurance-forge `io/xmi_reader.cpp:298-317` (C++ locates at the node, never at an attribute)"
 kind = "xmi"
-status = "implemented"
+status = "verified"
 depends_on = ["SACM23-XMI-016", "SACM23-XMI-012", "LIB-API-009", "LIB-DIAG-001"]
 notes = "Moved to M1 by the maintainer, 2026-11-12: edited documents must reload, and M1's round-trip rows need it. Split in slice 0029: locations on read diagnostics, which `xmi::read` does not yet emit, move to SACM23-XMI-023 (M2)."
 acceptance = [
@@ -2488,6 +2488,7 @@ tests = [
   "crates/sacm/tests/xmi_read_locations.rs::sacm23_xmi_010_hand_counted_locations_after_crlf_a_lone_cr_and_non_ascii",
   "crates/sacm/tests/xmi_read_locations.rs::sacm23_xmi_010_text_after_white_space_written_as_a_reference_or_cdata_is_located_at_that_construct",
 ]
+verification = "docs/verification/0029-m1-read-package-content.md"
 
 [[row]]
 id = "LIB-COMPAT-007"
@@ -3421,7 +3422,7 @@ title = "Containment children conform to their role"
 requirement = "`xmi::read` reads each containment child under its role element: an element in no namespace whose local name is a composite role of the parent's class, as spelled in ptc/22-03-13. The child's class is the one its `xmi:type` or `xsi:type` names, resolved as for roots (SACM23-XMI-002); without a type attribute it is the role's declared type, if that type is concrete (XMI 2.5.1 §7.6.3). The child is read with its `xmi:id`, its name (SACM23-XMI-012) and its parent, in document order across roles (ADR 0010 D2). In this release the readable children are an AssuranceCasePackage in `assuranceCasePackage`, an ArgumentPackage in `argumentPackage` and in `argumentElement`, and a Claim in `argumentElement`; each may carry only namespace declarations, `xmi:id`, a type attribute and one `name`. A child is never re-roled, re-typed or dropped: a type that does not conform to the role, a type naming an abstract or unknown class, a missing type under an abstract role, a role the parent's class lacks, a namespace-qualified role element, and any other child or attribute are refused as `ReadError::Unsupported` at the child's start tag, or at an attribute's name (ADR 0015's interim rule, as ADR 0016 D6 does for roots). `xmi::write` writes each child under the one role that admits it, for all 339 legal pairs, and what it writes for any document `edit::apply` builds reads back to the same ids, kinds, names, parents and order."
 source = "formal/23-05-08 §9.2 (pp. 23-24) \"assuranceCasePackage: AssuranceCasePackage [0..*] (composition)\", \"argumentPackage:Argument::ArgumentPackage[0..*] (composition)\"; §11.3 (p. 36) \"ArgumentationElement (abstract)\"; §11.4 (p. 36) \"argumentationElement:ArgumentationElement[0..*] (composition)\"; ptc/22-03-13 `ArgumentPackage::argumentElement` (composite); XMI 2.5.1 §7.6.3 (p. 15) \"The type attribute is used to specify the type of object being serialized, when the type is not known from the model.\", §7.8.6 (p. 19) \"Each property that is a composite is represented by an XML element, but not by an XML attribute.\", rule 2a (p. 63) \"the XMI name is the name of the Property\", rule 2g (p. 63) (D11); D-PRESERVE; ADR 0015; ADR 0016 D2, D5, D6; ADR 0017; assurance-forge `io/xmi_reader.cpp:914-967, 1993-2090` (which re-roles or drops)."
 kind = "xmi"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-API-008", "SACM23-XMI-006", "LIB-TOOL-020", "SACM23-AC-001", "SACM23-ARG-001", "SACM23-ARG-002", "SACM23-XMI-002", "SACM23-XMI-012", "LIB-API-009"]
 notes = "Slice 0025: owns strict import requiring the type attribute on an abstract-role child (SACM-XMI-005), moved from SACM23-XMI-006. Export writes `xmi:type` (ADR 0017); import accepts `xmi:type` and `xsi:type`. Moved to M1 by the maintainer, 2026-11-12: edited documents must reload, and M1's round-trip rows need it. Slice 0029 (lead decisions, the minimal options): only kinds whose model row is verified are read (ADR 0016 D5); non-conforming children are `Unsupported`, not coded (ADR 0015's interim rule, as ADR 0016 D6 does for roots); `assertionDeclaration` stays with SACM23-XMI-017; namespace-qualified role elements are refused, as for `name`. Moved out: references (SACM23-XMI-005 and the kind rows); utility children (SACM23-BASE-004/005); `gid`, `isCitation`, `isAbstract` (SACM23-BASE-006/007/008); strict SACM-XMI-003 and tolerant preservation (LIB-COMPAT-003); SACM-XMI-005 (LIB-COMPAT-010); a missing id (SACM23-XMI-020); a duplicate id (SACM23-VAL-001); `argumentationElement` (SACM23-XMI-009); element forms (SACM23-XMI-014/015); XMI metadata (SACM23-XMI-019); legacy shapes (LIB-COMPAT-008). C++ difference: C++ matches role elements by local name in any namespace (`xmi_reader.cpp:1988`); this crate refuses a namespace-qualified role element. Basis: role elements are local declarations, the XMI schema's default is unqualified, and XMI 2.5.1 rule 2a says \"The namespace prefix is ignored for an object that is the value of a Property\", which is ambiguous; the refusal is reversible and closes with LIB-COMPAT-003 (tolerant) if real files need it."
 acceptance = [
@@ -3454,6 +3455,7 @@ tests = [
   "crates/sacm/tests/xmi_read_children.rs::sacm23_xmi_016_white_space_written_literally_as_cdata_or_as_references_is_accepted",
   "crates/sacm/tests/xmi_read_children.rs::sacm23_xmi_016_a_no_break_space_reference_or_cdata_holding_text_is_unsupported_where_it_starts",
 ]
+verification = "docs/verification/0029-m1-read-package-content.md"
 
 [[row]]
 id = "SACM23-XMI-017"
@@ -3486,7 +3488,7 @@ requirement = "`xmi::read` never returns a document that is missing content from
 source = "D-PRESERVE \"Never drop conforming SACM data. Preserve with a diagnostic, or refuse\"; ADR 0015 (interim rule); ADR 0005 B2; XML 1.0 (Fifth Edition) §4.3.3 (encodings; quoted when SACM23-XMI-018 is analysed)"
 kind = "api"
 status = "verified"
-verification = "docs/verification/0026-m1-names-in-xmi.md"
+verification = "docs/verification/0029-m1-read-package-content.md"
 depends_on = ["LIB-API-004", "LIB-DIAG-001"]
 acceptance = [
   "Well-formed SACM input the reader cannot represent yet (e.g. an `AssuranceCasePackage` root with a `note` child, or an `ArtifactPackage` root) is refused with `ReadError::Unsupported`, `code()` `None`, located at the construct it cannot read; no partial document is returned. Which roots are recognised at all is SACM23-XMI-001.",
