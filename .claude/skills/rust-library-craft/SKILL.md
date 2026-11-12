@@ -20,7 +20,7 @@ docs/               architecture, ADRs, SACM reference, functionality matrix, ve
 
 Planned module layout of `sacm` (created as slices need them — see `docs/architecture.md`):
 `model` (typed elements, packages, ids, language strings), `xmi` (read/write),
-`validate` (constraint checks), `diagnostic` (codes, severities, locations),
+`validation` (constraint checks), `diagnostic` (codes, severities, locations),
 `edit` (operations, previews, results), `compare` (semantic equality/diff).
 
 ## API conventions
@@ -94,7 +94,7 @@ map. Generated ids are deterministic for a given sequence of operations.
   messages start with the row ID. `cargo xtask matrix check` enforces naming and
   rejects tests no row cites.
 - **Integration tests** (`crates/sacm/tests/*.rs`) use only the public API. Group by
-  area: `xmi_read.rs`, `xmi_write.rs`, `roundtrip.rs`, `validate_*.rs`, `edit_*.rs`.
+  area: `xmi_read.rs`, `xmi_write.rs`, `roundtrip.rs`, `validation*.rs`, `edit_*.rs`.
 - **Fixtures**: `crates/sacm/tests/data/sacm23/<area>/...-valid.sacm.xmi`,
   `.../invalid/...-<reason>.sacm.xmi`, golden output under `tests/data/golden/`.
   Load them with `include_str!` or a path from `env!("CARGO_MANIFEST_DIR")`.

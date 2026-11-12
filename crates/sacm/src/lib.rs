@@ -17,7 +17,8 @@
 //!   which writes documents without a non-default `assertionDeclaration`,
 //! - validation against the specification's constraints, reported as
 //!   machine-readable diagnostics with stable codes; built so far: the
-//!   diagnostic type,
+//!   diagnostic type and [`validation::validate`], which reports a
+//!   `ModelElement` with no name,
 //! - SACM-native editing with previews for destructive operations (planned).
 //!
 //! # Status
@@ -33,7 +34,10 @@
 //! [`MultiLangString`](model::MultiLangString) and
 //! [`AssertionDeclaration`](model::AssertionDeclaration)), in [`model`],
 //! and the [`Diagnostic`](diagnostic::Diagnostic) type that findings are
-//! reported in, in [`diagnostic`]. [`sacm::xmi::read`](xmi::read) reads
+//! reported in, in [`diagnostic`]. [`validation::validate`] checks a
+//! document and reports each `ModelElement` with no name as
+//! [`Code::MULTIPLICITY_VIOLATION`](diagnostic::Code::MULTIPLICITY_VIOLATION).
+//! [`sacm::xmi::read`](xmi::read) reads
 //! `AssuranceCasePackage` and `ArgumentPackage` roots, bare or in an
 //! `xmi:XMI` element, with their names but nothing else inside them yet. It
 //! refuses unsafe and malformed input and roots that are not SACM packages
@@ -42,7 +46,8 @@
 //! and every element under them, with their names, deterministically, but
 //! refuses a non-default `assertionDeclaration` as `Unsupported` until a
 //! later release writes it.
-//! Reading the content of packages, validation and editing are not built yet.
+//! Reading the content of packages, validation rules other than the missing
+//! name, and editing are not built yet.
 //!
 //! # Example
 //!
@@ -97,6 +102,7 @@
 
 pub mod diagnostic;
 pub mod model;
+pub mod validation;
 pub mod xmi;
 
 /// The crate README's examples, compiled and run as doctests.

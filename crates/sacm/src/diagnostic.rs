@@ -11,9 +11,11 @@
 //! it enforces, the ids of the affected elements, an optional
 //! [`SourceLocation`] and a message.
 //!
-//! No function returns diagnostics yet. The XMI reader, validation and
-//! editing will, as their rows are built. Every function that returns
-//! diagnostics returns them sorted by [`Diagnostic`]'s order.
+//! [`validation::validate`](crate::validation::validate) returns
+//! diagnostics, and the XMI reader and editing will as their rows are built.
+//! Every function that returns diagnostics returns them sorted by
+//! [`Diagnostic`]'s order. [`has_errors`] says whether a list holds an
+//! error.
 //!
 //! Diagnostics are read, not built: only this crate creates them. The
 //! `test-support` feature makes the constructors and `with_*` builders
@@ -23,16 +25,14 @@
 //! # Examples
 //!
 //! ```
-//! use sacm::diagnostic::{Diagnostic, Severity};
+//! use sacm::diagnostic::{self, Diagnostic};
 //!
 //! /// Prints each diagnostic on its own line and says whether any is an error.
 //! fn report(diagnostics: &[Diagnostic]) -> bool {
 //!     for diagnostic in diagnostics {
 //!         eprintln!("{diagnostic}");
 //!     }
-//!     diagnostics
-//!         .iter()
-//!         .any(|diagnostic| diagnostic.severity() == Severity::Error)
+//!     diagnostic::has_errors(diagnostics)
 //! }
 //!
 //! assert!(!report(&[]));
@@ -123,6 +123,18 @@ impl Code {
     /// (SACM23-XMI-001). Named after the C++ library's `kXmiInvalidRoot`.
     pub const XMI_INVALID_ROOT: Code = Code::from_static("SACM-XMI-001");
 
+    /// SACM-MULT-001: a property is held more or fewer times than its
+    /// multiplicity allows. [`validation::validate`](crate::validation::validate)
+    /// reports it, as an Error, for a `ModelElement` with no name (§8.6
+    /// `name:LangString[1]`, SACM23-VAL-018).
+    ///
+    /// ```
+    /// use sacm::diagnostic::Code;
+    ///
+    /// assert_eq!(Code::MULTIPLICITY_VIOLATION.as_str(), "SACM-MULT-001");
+    /// ```
+    pub const MULTIPLICITY_VIOLATION: Code = Code::from_static("SACM-MULT-001");
+
     /// The code with the given text.
     ///
     /// **Not part of the stable API**: public only under the `test-support`
@@ -151,6 +163,26 @@ impl fmt::Display for Code {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad(self.0)
     }
+}
+
+/// Whether any of `diagnostics` has [`Severity::Error`].
+///
+/// A document with an error does not conform to SACM. Warnings and
+/// information do not count.
+///
+/// ```
+/// use sacm::diagnostic;
+/// use sacm::model::Document;
+/// use sacm::validation;
+///
+/// let found = validation::validate(&Document::new());
+/// assert!(!diagnostic::has_errors(&found));
+/// ```
+#[must_use]
+pub fn has_errors(diagnostics: &[Diagnostic]) -> bool {
+    diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.severity == Severity::Error)
 }
 
 /// A position in a source file: a 1-based line and column.
@@ -304,10 +336,6 @@ impl Diagnostic {
     }
 
     /// The crate-internal form of `new`.
-    #[cfg_attr(
-        not(feature = "test-support"),
-        expect(dead_code, reason = "the rows that emit diagnostics will build them")
-    )]
     pub(crate) fn create(
         code: Code,
         severity: Severity,
@@ -326,10 +354,6 @@ impl Diagnostic {
     }
 
     /// The crate-internal form of `with_clause`.
-    #[cfg_attr(
-        not(feature = "test-support"),
-        expect(dead_code, reason = "the rows that emit diagnostics will build them")
-    )]
     #[must_use]
     pub(crate) fn set_clause(mut self, clause: &'static str) -> Self {
         self.clause = Some(clause);
@@ -337,10 +361,6 @@ impl Diagnostic {
     }
 
     /// The crate-internal form of `with_affected`.
-    #[cfg_attr(
-        not(feature = "test-support"),
-        expect(dead_code, reason = "the rows that emit diagnostics will build them")
-    )]
     #[must_use]
     pub(crate) fn set_affected(mut self, affected: impl IntoIterator<Item = ElementId>) -> Self {
         self.affected = affected.into_iter().collect();
