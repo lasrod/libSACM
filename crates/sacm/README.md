@@ -14,7 +14,9 @@ Assertion's `assertionDeclaration`, the first value types (`LangString`,
 `MultiLangString` and `AssertionDeclaration`) in `sacm::model`, and the
 diagnostic type that findings are reported in (`sacm::diagnostic`). No `Diagnostic` is
 reported yet; `xmi::read`'s refusals carry catalog codes. `sacm::xmi::read` reads `AssuranceCasePackage` and `ArgumentPackage` roots, but nothing inside
-them yet; it refuses what it cannot represent rather than drop it.
+them yet; it refuses what it cannot represent rather than drop it. `sacm::xmi::write`
+writes a document deterministically, and refuses names and non-default assertion
+declarations, which it does not write yet.
 
 Planned:
 

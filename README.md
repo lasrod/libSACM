@@ -16,8 +16,10 @@ the first value types (`LangString`, `MultiLangString`, `AssertionDeclaration`),
 `sacm::diagnostic` provides the `Diagnostic` type. `sacm::xmi::read` reads
 `AssuranceCasePackage` and `ArgumentPackage` roots, but nothing inside them yet. It
 refuses unsafe and malformed input and roots that are not SACM packages with a diagnostic
-code, and content it cannot represent yet as `Unsupported`. Reading the content of
-packages, XMI export, validation and editing are not built yet. Milestone M0, the foundation, is done: the workspace, CI, the functionality matrix and its gate, and
+code, and content it cannot represent yet as `Unsupported`. `sacm::xmi::write` writes a
+document deterministically, but refuses names and non-default assertion declarations as
+`Unsupported` for now. Reading the content of packages, validation and editing are not
+built yet. Milestone M0, the foundation, is done: the workspace, CI, the functionality matrix and its gate, and
 mutation testing. The [functionality matrix](docs/matrix/functionality-matrix.md)
 shows what is verified; nothing else is claimed.
 

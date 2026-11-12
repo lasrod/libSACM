@@ -50,7 +50,10 @@ We deviate from C++ in seven ways:
   which waits for D5. A type value is resolved as an XSD QName, against the namespaces in
   scope (SACM23-XMI-002). An undeclared prefix, or an unprefixed value with no default
   namespace, is `Unsupported`, which C++ (`xmi_reader.cpp:597-658`) resolves to the bare local
-  name. This clarifies D2; it does not change it.
+  name. This clarifies D2; it does not change it. The class name in a type value must
+  match exactly. C++ falls back to a case-insensitive match (`kind_from_class_name_ci`,
+  `xmi_reader.cpp:2160`; also `:1081`, `:2010` and `:1106`); that leniency is not taken
+  (slice 0025).
 - **D3. No partial document.** C++ reports an invalid root, reads the roots beside it and
   returns a document along with the errors. Here the first refusal is the whole result
   (ADR 0015; ADR 0011 X1). Among the refusals found while reading the roots, SACM-XMI-001

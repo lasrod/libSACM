@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:version="2.0">
+  <sacm:ArgumentPackage xmi:id="arguments_1" />
+  <sacm:AssuranceCasePackage xmi:id="case" />
+  <sacm:ArgumentPackage xmi:id="arguments_2" />
+</xmi:XMI>

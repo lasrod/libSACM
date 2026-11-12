@@ -35,7 +35,7 @@ crate, and name the matrix row that owns it.
 | SACM-XMI-002 | Error (strict) / Warning (tolerant) | Namespace URI is not a pinned SACM 2.3 namespace. |
 | SACM-XMI-003 | Error (strict) / Warning (tolerant) | Unknown element; preserved in tolerant mode, rejected in strict mode. |
 | SACM-XMI-004 | Error (strict) / Warning (tolerant) | Element lacks an `xmi:id`/`id`; generated in tolerant mode. |
-| SACM-XMI-005 | Error (strict) | Containment role has an abstract declared type and the child carries no `xsi:type`. |
+| SACM-XMI-005 | Error (strict) | Containment role has an abstract declared type and the child carries no type attribute (`xmi:type`, or `xsi:type` on import). |
 | SACM-XMI-006 | Error | Strict save refused: document contains preserved unknown content or compatibility-only data. |
 | SACM-XMI-007 | Warning | External (cross-document) `href` reference is not supported; kept as opaque text in compatibility mode only. |
 | SACM-XMI-008 | Warning | Document declares a SACM revision other than 2.3; loaded in compatibility mode. Distinct from SACM-XMI-002, which means the namespace itself is unrecognized. |

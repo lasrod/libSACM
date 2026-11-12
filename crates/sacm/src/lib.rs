@@ -13,7 +13,8 @@
 //! - XMI import and deterministic export, with a strict SACM 2.3 mode and an
 //!   explicit tolerant mode for third-party and legacy files; built so far:
 //!   [`xmi::read`], which reads empty `AssuranceCasePackage` and
-//!   `ArgumentPackage` roots and refuses everything else,
+//!   `ArgumentPackage` roots and refuses everything else, and [`xmi::write`],
+//!   which writes nameless documents with default assertion declarations,
 //! - validation against the specification's constraints, reported as
 //!   machine-readable diagnostics with stable codes; built so far: the
 //!   diagnostic type,
@@ -36,13 +37,16 @@
 //! `AssuranceCasePackage` and `ArgumentPackage` roots, bare or in an
 //! `xmi:XMI` element, but nothing inside them yet. It refuses unsafe and
 //! malformed input and roots that are not SACM packages with a diagnostic
-//! code, and content it cannot represent yet as `Unsupported`. Reading the
-//! content of packages, XMI export, validation and editing are not built yet.
+//! code, and content it cannot represent yet as `Unsupported`.
+//! [`sacm::xmi::write`](xmi::write) writes a document's roots and every
+//! element under them, deterministically, but refuses names and non-default
+//! assertion declarations as `Unsupported` until a later release writes them.
+//! Reading the content of packages, validation and editing are not built yet.
 //!
 //! # Example
 //!
 //! ```
-//! use sacm::xmi::{self, ReadOptions};
+//! use sacm::xmi::{self, ReadOptions, WriteOptions};
 //!
 //! let input = br#"<?xml version="1.0" encoding="UTF-8"?>
 //! <xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
@@ -54,7 +58,11 @@
 //! for element in document.elements() {
 //!     println!("{} {}", element.kind(), element.id());
 //! }
-//! # Ok::<(), xmi::ReadError>(())
+//!
+//! // Write it back as XMI, in the one deterministic form.
+//! let text = xmi::write(&document, &WriteOptions::default())?;
+//! assert!(text.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<xmi:XMI "));
+//! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
 //! Look up an element with [`model::Document::get`], walk every element with

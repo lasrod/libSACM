@@ -1,8 +1,9 @@
-//! Reading SACM 2.3 XMI documents.
+//! Reading and writing SACM 2.3 XMI documents.
 //!
 //! [`read`] takes the bytes of an XMI document and returns a [`ReadOutput`] or
-//! a [`ReadError`]. It does no I/O: the caller reads the file (ADR 0015).
-//! Writing comes later.
+//! a [`ReadError`]. [`write`](fn@write) takes a [`Document`] and returns its XMI text or
+//! a [`WriteError`]. Neither does I/O: the caller reads and writes the file
+//! (ADR 0015).
 //!
 //! In this release `read` reads the interchange roots: `AssuranceCasePackage`
 //! and `ArgumentPackage` elements, bare or inside an `xmi:XMI` element, with
@@ -13,11 +14,18 @@
 //! Content it cannot represent yet is refused as [`ReadError::Unsupported`],
 //! never dropped.
 //!
+//! `write` writes every element of a document, in document order, in one
+//! deterministic form. In this release it refuses a document with a name or a
+//! non-default `assertionDeclaration` in it ([`WriteError::Unsupported`]),
+//! because those are not written yet.
+//!
 //! # Examples
+//!
+//! Reading a document, writing it, and reading the output back:
 //!
 //! ```
 //! use sacm::model::ElementKind;
-//! use sacm::xmi::{self, ReadOptions};
+//! use sacm::xmi::{self, ReadOptions, WriteOptions};
 //!
 //! let input = br#"<?xml version="1.0" encoding="UTF-8"?>
 //! <xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
@@ -31,7 +39,12 @@
 //!     roots,
 //!     [("case", ElementKind::AssuranceCasePackage), ("arguments", ElementKind::ArgumentPackage)]
 //! );
-//! # Ok::<(), xmi::ReadError>(())
+//!
+//! let text = xmi::write(&document, &WriteOptions::default())?;
+//! let back = xmi::read(text.as_bytes(), &ReadOptions::default())?.into_document();
+//! let ids: Vec<_> = back.roots().map(|root| root.id().as_str()).collect();
+//! assert_eq!(ids, ["case", "arguments"]);
+//! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
 //! Reading a file is the caller's I/O. This function shows the shape; the
@@ -60,9 +73,11 @@
 use std::fmt;
 
 use crate::diagnostic::{Code, Diagnostic, SourceLocation};
-use crate::model::Document;
+use crate::model::{Document, ElementId};
 
 mod input;
+mod namespaces;
+mod output;
 mod roots;
 
 /// Reads an XMI document from its bytes.
@@ -417,3 +432,170 @@ impl fmt::Display for ReadError {
 }
 
 impl std::error::Error for ReadError {}
+
+/// Writes a document as XMI text.
+///
+/// The output is deterministic: the same document gives the same bytes. It
+/// is UTF-8 without a byte order mark, starts with
+/// `<?xml version="1.0" encoding="UTF-8"?>`, ends lines with LF, indents two
+/// spaces per depth, writes one tag per line and an element with no children
+/// as `<x … />`, and ends with a LF. One root is the document element; several
+/// are the children of one `xmi:XMI` element, in document order. The document
+/// element alone declares the SACM 2.3 namespace
+/// `http://www.omg.org/spec/SACM/20220301` as `sacm`, the XMI 2.5.1 namespace
+/// `http://www.omg.org/spec/XMI/20131001` as `xmi`, and `xmi:version="2.0"`.
+///
+/// A root is written as `sacm:<Kind>`, and every other element under the name
+/// of the role that holds it in its parent's class, with no prefix, and with
+/// its children in document order. A child carries `xmi:type="sacm:<Kind>"`
+/// exactly when the role's declared type is not its kind: an abstract class,
+/// as for `argumentElement`, or the package that an interface or binding
+/// specializes. Every element then carries its id as `xmi:id`. In attribute
+/// values `&`, `<`, `>`, `"`, TAB, LF and CR are escaped; everything else is
+/// written as it is.
+///
+/// # Errors
+///
+/// The document is checked before anything is written, and the first failure
+/// is returned:
+///
+/// 1. a document with no root is [`WriteError::NoRoot`];
+/// 2. then each element, in [`Document::elements`] order: an id holding a
+///    character outside XML 1.0's `Char` is
+///    [`WriteError::UnrepresentableCharacter`], naming the first such
+///    character; then a name, and then a non-default `assertionDeclaration`,
+///    is [`WriteError::Unsupported`], because this release does not write
+///    them yet.
+///
+/// # Examples
+///
+/// ```
+/// use sacm::model::Document;
+/// use sacm::xmi::{self, ReadOptions, WriteError, WriteOptions};
+///
+/// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments"/>"#;
+/// let document = xmi::read(input, &ReadOptions::default())?.into_document();
+/// let text = xmi::write(&document, &WriteOptions::default())?;
+/// assert_eq!(
+///     text,
+///     "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+///      <sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\" \
+///      xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:version=\"2.0\" \
+///      xmi:id=\"arguments\" />\n"
+/// );
+///
+/// // A document with no root cannot be read back, so it is refused.
+/// let error = xmi::write(&Document::new(), &WriteOptions::default()).unwrap_err();
+/// assert_eq!(error, WriteError::NoRoot);
+/// assert_eq!(error.to_string(), "the document has no root to write");
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+pub fn write(document: &Document, options: &WriteOptions) -> Result<String, WriteError> {
+    let WriteOptions {} = options;
+    output::write(document)
+}
+
+/// Options for [`write`](fn@write).
+///
+/// Empty for now: the save mode (LIB-COMPAT-001) comes later. Use
+/// [`WriteOptions::default`].
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub struct WriteOptions {}
+
+/// Why [`write`](fn@write) refused a document.
+///
+/// None of the refusals has a catalog code: [`code`](Self::code) is `None`.
+/// [`element`](Self::element) names the element refused, where there is one.
+///
+/// # Display
+///
+/// `Display` writes one line that starts in lower case, without trailing
+/// punctuation. Ids are quoted with `{:?}`, so line breaks in them never break
+/// the line. For example:
+///
+/// ```
+/// use sacm::model::Document;
+/// use sacm::xmi::{self, WriteOptions};
+///
+/// let error = xmi::write(&Document::new(), &WriteOptions::default()).unwrap_err();
+/// assert_eq!(error.to_string(), "the document has no root to write");
+/// ```
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum WriteError {
+    /// The document has no root, so there is no document element to write.
+    /// A unit variant, which callers match as `WriteError::NoRoot`.
+    NoRoot,
+    /// An element's id holds a character that XML 1.0 cannot represent: one
+    /// outside its `Char` production, such as U+0000, another C0 control
+    /// other than TAB, LF and CR, U+FFFE or U+FFFF.
+    #[non_exhaustive]
+    UnrepresentableCharacter {
+        /// The element whose id holds the character.
+        element: ElementId,
+        /// The first such character in the id.
+        character: char,
+    },
+    /// The document holds content this version cannot write yet, such as a
+    /// name or a non-default `assertionDeclaration`. It has no catalog code.
+    #[non_exhaustive]
+    Unsupported {
+        /// The element that holds the content.
+        element: ElementId,
+        /// What cannot be written.
+        reason: String,
+    },
+}
+
+impl WriteError {
+    /// The element refused, if the refusal names one: every variant but
+    /// [`NoRoot`](Self::NoRoot).
+    #[must_use]
+    pub fn element(&self) -> Option<&ElementId> {
+        match self {
+            Self::NoRoot => None,
+            Self::UnrepresentableCharacter { element, .. } | Self::Unsupported { element, .. } => {
+                Some(element)
+            }
+        }
+    }
+
+    /// The catalog code of the refusal: `None` for every variant in this
+    /// release.
+    #[must_use]
+    pub fn code(&self) -> Option<Code> {
+        match self {
+            Self::NoRoot | Self::UnrepresentableCharacter { .. } | Self::Unsupported { .. } => None,
+        }
+    }
+}
+
+impl fmt::Display for WriteError {
+    /// Writes the refusal on one line, as described on [`WriteError`].
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NoRoot => f.write_str("the document has no root to write"),
+            Self::UnrepresentableCharacter { element, character } => write!(
+                f,
+                "the element {:?} cannot be written: its xmi:id holds U+{:04X}, which XML 1.0 cannot represent",
+                element.as_str(),
+                u32::from(*character)
+            ),
+            Self::Unsupported { element, reason } => write!(
+                f,
+                "the writer cannot write the element {:?}: {reason}",
+                element.as_str()
+            ),
+        }
+    }
+}
+
+impl std::error::Error for WriteError {}
+
+// A refusal on one thread can be reported on another.
+const _: () = {
+    const fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<WriteError>();
+};
