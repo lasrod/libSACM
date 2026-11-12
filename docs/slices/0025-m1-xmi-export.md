@@ -82,3 +82,4 @@ The code is private:
   - F3 and F4: two orders are not pinned (the first bad character, and the name before the declaration).
   - The docs review found nothing blocking; its should-fix items go to the implementer.
 - 2026-11-12 verification round 2: PASS at a2be90c. All six rows are verified. `gh pr ready` waits for the maintainer to approve ADR 0017 W1–W6.
+- 2026-11-12 maintainer: approved merging PRs #33-#35, which accepts ADR 0017 W1-W6.

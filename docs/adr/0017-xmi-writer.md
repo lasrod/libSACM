@@ -1,6 +1,6 @@
 # 0017. The XMI writer
 
-- Status: T1–T5 accepted (the maintainer, 2026-11-12); W1–W6 proposed
+- Status: accepted (the maintainer: T1–T5 on 2026-11-12; W1–W6 by approving PR #35 for merge, 2026-11-12)
 - Date: 2026-11-12
 - Matrix rows: SACM23-XMI-003, SACM23-XMI-004, SACM23-XMI-006, SACM23-XMI-007,
   SACM23-XMI-013, LIB-API-010
@@ -78,7 +78,7 @@ needed, that will be a new variant; the other two variants are `#[non_exhaustive
   refused, never dropped (LIB-API-010, the write-side twin of ADR 0015's interim rule).
   C++ writes names.
 
-**Departures from C++, proposed:**
+**Departures from C++, accepted with the merge of PR #35:**
 - **W1.** `Result<String, WriteError>`, not `SaveResult { xml, diagnostics, ok }`
   (`options.h:58-62`). This is ADR 0011 X1. C++ never fills diagnostics on a successful
   save (`xmi_writer.cpp:482-556`).
