@@ -55,7 +55,9 @@
 //! declarations, deterministically. [`edit::apply`] creates
 //! AssuranceCasePackage, ArgumentPackage and Claim elements, with a name and
 //! a given or generated id, or refuses with an [`EditError`](edit::EditError)
-//! and changes nothing. Reading the other element kinds and attributes (such
+//! and changes nothing. [`compare::semantic_compare`] lists every difference
+//! in SACM content between two documents, and `==` on a `Document` is true
+//! when there is none. Reading the other element kinds and attributes (such
 //! as a `description` or a `gid`), validation rules other than the missing
 //! name, and the other edit operations are not built yet.
 //!

@@ -1058,6 +1058,43 @@ fn lib_rt_001_a_package_only_on_the_right_gives_every_element_in_pre_order() {
             },
         ],
     );
+
+    // Right's insertion order (q, c, r, q1, r1) differs from its pre-order
+    // (c, q, q1, r, r1): the right-only elements must follow the pre-order.
+    // `p` is the only common root, so there is no RootOrder.
+    let left = roots(&["p"]);
+    let mut right = roots(&["p", "q"]);
+    add(&mut right, Some("p"), ElementKind::Claim, "c", None);
+    add(&mut right, None, ElementKind::ArgumentPackage, "r", None);
+    add(&mut right, Some("q"), ElementKind::Claim, "q1", None);
+    add(&mut right, Some("r"), ElementKind::Claim, "r1", None);
+    assert_differences(
+        "right-only elements inserted in an order other than right's pre-order",
+        &left,
+        &right,
+        &[
+            Difference::RightOnly {
+                id: id("c"),
+                kind: ElementKind::Claim,
+            },
+            Difference::RightOnly {
+                id: id("q"),
+                kind: ElementKind::ArgumentPackage,
+            },
+            Difference::RightOnly {
+                id: id("q1"),
+                kind: ElementKind::Claim,
+            },
+            Difference::RightOnly {
+                id: id("r"),
+                kind: ElementKind::ArgumentPackage,
+            },
+            Difference::RightOnly {
+                id: id("r1"),
+                kind: ElementKind::Claim,
+            },
+        ],
+    );
 }
 
 #[test]

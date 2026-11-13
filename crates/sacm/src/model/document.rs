@@ -51,10 +51,14 @@ use super::{AbstractClass, AssertionDeclaration, ElementId, ElementKind, LangStr
 /// `==` compares SACM content: two documents are equal exactly when
 /// [`semantic_compare`](crate::compare::semantic_compare) finds no
 /// difference between them. Elements are matched by id; kinds, parents,
-/// names, declarations and the order of roots and children are compared. The
-/// counters that generated ids continue from are not, so two equal documents
-/// can generate different next ids: once elements can be deleted, one
-/// document may have generated, then deleted, an id the other never used.
+/// names, `assertionDeclaration`s and the order of roots and children are
+/// compared. `==` is order-sensitive; see [`crate::compare`] to ignore order.
+///
+/// Not compared: the per-kind counters [`edit::apply`](crate::edit::apply)
+/// uses to generate ids such as `claim_1`. They are not SACM content, and XMI
+/// does not carry them. Today two equal documents always generate the same
+/// next id; once elements can be deleted they may not, because one may have
+/// generated and deleted an id the other never used.
 ///
 /// # Examples
 ///

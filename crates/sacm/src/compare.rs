@@ -1,16 +1,43 @@
 //! Comparing documents by their SACM content: [`semantic_compare`] lists
-//! every [`Difference`] between two documents, and `Document: Eq` is true
-//! exactly when there is none (ADR 0020).
+//! every [`Difference`] between two documents, and `==` on two
+//! [`Document`]s is true exactly when there is none.
 //!
 //! Elements are matched by id across the whole document, so an element that
 //! moved to another parent is one [`Difference::Parent`], not a removal and an
 //! addition. For each element both documents hold, the comparison checks its
-//! kind, parent, name and `assertionDeclaration`, and the relative order of
-//! its children; it also checks the relative order of the roots. Values are
-//! compared exactly: a missing name differs from an empty one.
+//! kind, parent, name and
+//! [`assertionDeclaration`](crate::model::AssertionDeclaration) (SACM 2.3
+//! §11.10), and the relative order of its children; it also checks the
+//! relative order of the roots. Values are compared exactly: a missing name
+//! differs from an empty one.
 //!
-//! Not compared: the counters that generated ids continue from, which are not
-//! SACM content and which XMI does not carry. Formatting, attribute order and
+//! Order is compared because equal documents must write equal bytes, though
+//! SACM 2.3 orders no composition. To compare without order, drop the two
+//! order variants:
+//!
+//! ```
+//! use sacm::compare::{Difference, semantic_compare};
+//! use sacm::edit::{self, CreateArgumentPackage};
+//! use sacm::model::{Document, LangString};
+//!
+//! let mut left = Document::new();
+//! edit::apply(&mut left, CreateArgumentPackage::root(LangString::new("A")).with_id("a"))?;
+//! edit::apply(&mut left, CreateArgumentPackage::root(LangString::new("B")).with_id("b"))?;
+//! let mut right = Document::new();
+//! edit::apply(&mut right, CreateArgumentPackage::root(LangString::new("B")).with_id("b"))?;
+//! edit::apply(&mut right, CreateArgumentPackage::root(LangString::new("A")).with_id("a"))?;
+//! assert_ne!(left, right);
+//!
+//! let mut differences = semantic_compare(&left, &right);
+//! differences.retain(|d| !matches!(d, Difference::RootOrder { .. } | Difference::ChildOrder { .. }));
+//! let same_ignoring_order = differences.is_empty();
+//! assert!(same_ignoring_order);
+//! # Ok::<(), sacm::edit::EditError>(())
+//! ```
+//!
+//! Not compared: the per-kind counters [`edit::apply`](crate::edit::apply)
+//! uses to generate ids such as `claim_1`. They are not SACM content, and XMI
+//! does not carry them. Formatting, attribute order and
 //! namespace prefixes are not held by a [`Document`] at all, so two files that
 //! differ only in them read into equal documents.
 //!
@@ -39,7 +66,8 @@
 //!     differences,
 //!     [Difference::RightOnly { id: "c1".into(), kind: ElementKind::Claim }]
 //! );
-//! assert_eq!(differences[0].to_string(), r#"element "c1" (Claim) is only on the right"#);
+//! // Prints: element "c1" (Claim) is only on the right
+//! println!("{}", differences[0]);
 //! assert_ne!(built, reloaded);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
@@ -56,6 +84,8 @@ use crate::model::{
 /// "Left" and "right" are the first and the second document given to
 /// [`semantic_compare`]. Each variant names one feature of one element, except
 /// [`RootOrder`](Self::RootOrder), which is about the document.
+/// [`element_id`](Self::element_id) gives the id to look up with
+/// [`Document::get`](crate::model::Document::get) on either side.
 ///
 /// New variants are added as the model holds more SACM features, so a `match`
 /// needs a wildcard arm.
@@ -74,10 +104,8 @@ use crate::model::{
 ///     right: Some(LangString::new("C1")),
 /// };
 /// assert_eq!(difference.element_id(), Some(&ElementId::from("c1")));
-/// assert_eq!(
-///     difference.to_string(),
-///     r#"element "c1" differs in name: no name on the left, [no lang, content "C1"] on the right"#
-/// );
+/// // Prints: element "c1" differs in name: no name on the left, [no lang, content "C1"] on the right
+/// println!("{difference}");
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -144,7 +172,12 @@ pub enum Difference {
         right: Option<LangString>,
     },
     /// The element has a different `assertionDeclaration` (SACM 2.3 §11.10)
-    /// on each side; `None` means the kind on that side is not an Assertion.
+    /// on each side.
+    ///
+    /// `None` means the kind on that side is not an Assertion (an Assertion
+    /// is a Claim or one of the five asserted-relationship kinds). So a
+    /// `None` side always
+    /// comes with a [`Kind`](Self::Kind) difference for the same id.
     AssertionDeclaration {
         /// The element's id.
         id: ElementId,
@@ -156,7 +189,11 @@ pub enum Difference {
         right: Option<AssertionDeclaration>,
     },
     /// The children the element holds on both sides are in a different
-    /// relative order. The order is across every role (ADR 0010 D2).
+    /// relative order.
+    ///
+    /// Children are one ordered list, whichever composition holds them (for
+    /// example, a package's `argumentElement` children and its utility
+    /// children).
     ///
     /// Only children with this parent on both sides count, so adding,
     /// removing or moving a child is not an order difference.
@@ -201,8 +238,9 @@ impl Difference {
 }
 
 impl fmt::Display for Difference {
-    /// One line: the quoted id, the SACM feature and both values. `{:?}`
-    /// quotes ids and names and escapes line breaks.
+    /// One line: the quoted id, the SACM feature and both values. Ids and
+    /// names are quoted with quotes and line breaks escaped, so the line
+    /// never breaks.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::RootOrder { left, right } => write!(
@@ -321,8 +359,22 @@ impl fmt::Display for Declaration {
 /// Elements are matched by id across the whole document. For an element both
 /// documents hold, its kind, parent, name, `assertionDeclaration` and the
 /// relative order of its children are compared, even when its kind differs.
-/// The relative order of the roots is compared too. The counters that
-/// generated ids continue from are not compared.
+/// The relative order of the roots is compared too. The per-kind counters
+/// that generate ids are not compared.
+///
+/// Order is compared because equal documents must write equal bytes, though
+/// SACM 2.3 orders no composition. To compare without order, drop the two
+/// order variants (the [module example](crate::compare) shows two documents
+/// that differ only in order):
+///
+/// ```
+/// # use sacm::compare::{Difference, semantic_compare};
+/// # let (left, right) = (sacm::model::Document::new(), sacm::model::Document::new());
+/// let mut differences = semantic_compare(&left, &right);
+/// differences.retain(|d| !matches!(d, Difference::RootOrder { .. } | Difference::ChildOrder { .. }));
+/// let same_ignoring_order = differences.is_empty();
+/// # assert!(same_ignoring_order);
+/// ```
 ///
 /// The order of the result:
 /// 1. [`Difference::RootOrder`];
@@ -334,8 +386,8 @@ impl fmt::Display for Declaration {
 /// 3. [`Difference::RightOnly`] for each element only `right` holds, in
 ///    `right`'s pre-order.
 ///
-/// Swapping the arguments reports the same differences with left and right
-/// swapped. The comparison does not recurse and takes time linear in the
+/// Swapping the arguments gives the same differences with left and right
+/// swapped, though possibly in another order. The comparison does not recurse and takes time linear in the
 /// number of elements, so it is safe on arbitrarily deep documents.
 ///
 /// # Examples
@@ -345,18 +397,16 @@ impl fmt::Display for Declaration {
 /// use sacm::edit::{self, CreateArgumentPackage};
 /// use sacm::model::{Document, LangString};
 ///
-/// let build = |name: &str| -> Result<Document, sacm::edit::EditError> {
-///     let mut doc = Document::new();
-///     edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new(name)).with_id("p"))?;
-///     Ok(doc)
-/// };
-/// let (left, right) = (build("Arguments")?, build("Argument")?);
+/// let mut left = Document::new();
+/// edit::apply(&mut left, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+/// let mut right = Document::new();
+/// edit::apply(&mut right, CreateArgumentPackage::root(LangString::new("Evidence")).with_id("p"))?;
 /// assert_eq!(
 ///     semantic_compare(&left, &right),
 ///     [Difference::Name {
 ///         id: "p".into(),
 ///         left: Some(LangString::new("Arguments")),
-///         right: Some(LangString::new("Argument")),
+///         right: Some(LangString::new("Evidence")),
 ///     }]
 /// );
 /// assert_eq!(semantic_compare(&left, &left.clone()), []);
@@ -467,8 +517,8 @@ fn common_children(element: SacmElement<'_>, other: &Document) -> Vec<ElementId>
 
 impl PartialEq for Document {
     /// Whether the documents hold the same SACM content: whether
-    /// [`semantic_compare`] finds no difference. The generated-id counters
-    /// are not compared.
+    /// [`semantic_compare`] finds no difference. The per-kind counters that
+    /// generate ids are not compared.
     fn eq(&self, other: &Self) -> bool {
         semantic_compare(self, other).is_empty()
     }

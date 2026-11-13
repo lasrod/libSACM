@@ -21,6 +21,8 @@ it refuses what it cannot represent rather than drop it.
 `sacm::xmi::write` writes a document, its names and its declarations deterministically.
 `sacm::edit::apply` creates AssuranceCasePackages, ArgumentPackages and Claims, each with
 a name and a given or generated id; a refused operation changes nothing.
+`sacm::compare::semantic_compare` compares two documents by SACM content and names each
+difference.
 
 Planned:
 

@@ -135,7 +135,12 @@ change bumps the minor version and is listed under **Breaking**.
   code yet (SACM-ENUM-001 later), never as `asserted`. `write` writes every non-default
   declaration after `xmi:id` and omits `asserted`, so `WriteError::Unsupported` is
   removed [SACM23-XMI-017, LIB-API-010].
-- `compare::semantic_compare` and `Document: Eq` compare documents by SACM content [LIB-RT-001].
+- `compare::semantic_compare` lists every `Difference` in SACM content between two
+  documents: presence, kind, parent, name, `assertionDeclaration`, and the order of roots
+  and children; generated-id counters are not compared. `Document: PartialEq + Eq` is true
+  when there is none [LIB-RT-001]. Load, save and load gives an equal document and the same
+  bytes for every valid fixture, and documents built with `edit::apply` round-trip
+  [LIB-RT-002, LIB-RT-003].
 
 ### Changed
 
