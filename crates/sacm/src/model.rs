@@ -16,8 +16,10 @@
 //! and which abstract classes it specializes.
 //!
 //! [`LangString`], [`MultiLangString`] and [`AssertionDeclaration`] are
-//! values, not elements: they have no id and no kind, and you construct them
-//! directly, unlike elements, which only a [`Document`] holds.
+//! values, not elements: they have no id and no kind of their own (the
+//! `xmi:id` of a `name` is kept with its owner: [`SacmElement::name_id`]),
+//! and you construct them directly, unlike elements, which only a
+//! [`Document`] holds.
 //!
 //! # Examples
 //!

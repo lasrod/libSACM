@@ -4309,6 +4309,7 @@ tests = [
   "crates/sacm/tests/xmi_name_ids.rs::sacm23_xmi_022_an_empty_name_id_is_invalid_id_at_the_name_and_a_padded_one_is_trimmed",
   "crates/sacm/tests/xmi_name_ids.rs::sacm23_xmi_022_a_name_id_that_is_not_an_ncname_reads_and_is_one_id_002_on_the_owner",
   "crates/sacm/tests/xmi_name_ids.rs::sacm23_xmi_022_documents_differing_only_in_a_name_id_give_one_name_id_difference",
+  "crates/sacm/tests/xmi_name_ids.rs::sacm23_xmi_022_a_name_id_difference_displays_the_owner_and_both_ids",
   "crates/sacm/tests/xmi_name_ids.rs::sacm23_xmi_022_an_xmi_id_on_a_value_element_stays_unsupported_at_the_attribute",
 ]
 code = ["crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi/output.rs", "crates/sacm/src/model/document.rs", "crates/sacm/src/compare.rs", "crates/sacm/src/validation/ids.rs", "crates/sacm/src/edit/create.rs"]
@@ -4384,6 +4385,7 @@ acceptance = [
   "Write back: `write` writes `xmi:id=\"c1\"`; reading it back gives an equal document and no SACM-ID-004; a strict save succeeds.",
   "Edits: after reading `\" c1 \"`, a caller id `c1` is `EditError::DuplicateId`.",
   "`Code::ID_TRIMMED` is SACM-ID-004, in a catalog row naming SACM23-XMI-025.",
+  "Locating stays linear: a package of 20,000 Claims, each with an `xsi:type` before a padded `xmi:id`, reads within the deadline, with every SACM-ID-004 and SACM-XMI-010 at its attribute's name (found by Copilot on PR #50).",
 ]
 tests = [
   "crates/sacm/tests/xmi_padded_ids.rs::sacm23_xmi_025_a_padded_id_reads_trimmed_with_one_info_on_a_root_a_child_and_a_name",
@@ -4393,6 +4395,7 @@ tests = [
   "crates/sacm/tests/xmi_padded_ids.rs::sacm23_xmi_025_write_writes_the_trimmed_id_and_it_reads_back_without_the_info",
   "crates/sacm/tests/xmi_padded_ids.rs::sacm23_xmi_025_after_reading_a_padded_id_a_caller_id_equal_to_the_trimmed_one_is_duplicate_id",
   "crates/sacm/tests/xmi_padded_ids.rs::sacm23_xmi_025_the_catalog_id_004_row_names_the_code_and_the_row",
+  "crates/sacm/tests/xmi_padded_ids.rs::sacm23_xmi_025_many_padded_ids_after_xsi_type_are_located_in_linear_time",
 ]
 code = ["crates/sacm/src/xmi/roots.rs", "crates/sacm/src/diagnostic.rs"]
 

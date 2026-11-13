@@ -112,7 +112,7 @@ mod roots;
 /// written is absent. A root without a `name` has no name.
 ///
 /// Under each root, `read` reads these children, in document order, each
-/// with its `xmi:id` and its name. A child's element name is its role, in no
+/// with its id (see [Ids](#ids)) and its name. A child's element name is its role, in no
 /// namespace:
 ///
 /// | Parent | Role element | Reads | Needs `xmi:type` |
@@ -191,12 +191,14 @@ mod roots;
 ///
 /// An element's id is the value of its `xmi:id`, an `xsd:ID` (XMI 2.5.1
 /// §7.6.1), and only `xmi:id` in the XMI namespace is one: an `id` attribute
-/// in no namespace or another namespace is not read. The ids of the elements
+/// in no namespace or another namespace, such as `id` or `o:id`, is refused
+/// as [`ReadError::Unsupported`]. The ids of the elements
 /// and the names of a file share one id space (ADR 0024):
 ///
 /// - An `xmi:id` with XML white space (space, TAB, LF, CR) around an
 ///   `NCName`, such as `" c1 "`, is read as the trimmed value, `c1`, since an
-///   `xsd:ID`'s white space is collapsed. Any other id is read as written.
+///   `xsd:ID`'s white space is collapsed (XMI 2.5.1 §7.6.1; XML Schema 1.0
+///   Part 2 §4.3.6). Any other id is read as written.
 /// - An element without an `xmi:id`, a root or a child, gets a generated id,
 ///   `<snake_case kind>_<n>` as [`edit::apply`](crate::edit::apply)
 ///   generates one (`claim_1`), with the smallest `n` whose id is the value
@@ -595,7 +597,8 @@ impl ReadOutput {
 
     /// The diagnostics found while reading, sorted by [`Diagnostic`]'s order.
     /// Empty for an input with no `xsi:type` and no `xmi:version`, in which
-    /// every element has an `xmi:id` and none has white space around it.
+    /// every element has an `xmi:id` and no `xmi:id`, of an element or a
+    /// `name`, has white space around it.
     #[must_use]
     pub fn diagnostics(&self) -> &[Diagnostic] {
         &self.diagnostics

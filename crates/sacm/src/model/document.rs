@@ -177,6 +177,9 @@ impl Document {
     /// Whether the document has an element with the given id.
     ///
     /// Agrees with [`get`](Self::get): `contains(id)` is `get(id).is_some()`.
+    /// A name's `xmi:id` ([`SacmElement::name_id`]) identifies no element,
+    /// so `contains` is false for it, but [`edit::apply`](crate::edit::apply)
+    /// still refuses it as a new element's id.
     ///
     /// ```
     /// use sacm::model::Document;

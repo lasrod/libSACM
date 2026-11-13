@@ -196,12 +196,14 @@ impl Code {
     /// an AssuranceCasePackage or another ArgumentPackage.
     pub const CMD_INVALID_PARENT: Code = Code::from_static("SACM-CMD-005");
 
-    /// SACM-ID-001: two or more elements in the input carry the same
-    /// `xmi:id`, which XMI 2.5.1 §7.6.1 requires to be unique within the
-    /// file, an element's or a `name`'s, compared by `xsd:ID` value. The
-    /// code of [`ReadError::DuplicateId`](crate::xmi::ReadError::DuplicateId)
-    /// (SACM23-VAL-001), giving the location of every element that carries
-    /// the repeated `xmi:id`. Fix it by giving each element its own id.
+    /// SACM-ID-001: two or more `xmi:id`s in the input have the same value,
+    /// on elements or on `name`s; XMI 2.5.1 §7.6.1 requires them to be unique
+    /// within the file. Values are compared after white space around an
+    /// `NCName` is trimmed. The code of
+    /// [`ReadError::DuplicateId`](crate::xmi::ReadError::DuplicateId)
+    /// (SACM23-VAL-001), which gives the location of every element carrying
+    /// the value. Fix: give each element and each `name` its own id, or leave
+    /// a `name`'s out.
     ///
     /// ```
     /// use sacm::diagnostic::Code;
@@ -210,24 +212,26 @@ impl Code {
     /// ```
     pub const ID_DUPLICATE: Code = Code::from_static("SACM-ID-001");
 
-    /// SACM-ID-002: an element id is not valid syntax: not an XML `NCName`
-    /// (XMI 2.5.1 §7.6.1: `xmi:id` is an `xsd:ID`). The code of
+    /// SACM-ID-002: an id is not an XML `NCName` (XMI 2.5.1 §7.6.1: `xmi:id`
+    /// is an `xsd:ID`). An `NCName` starts with a letter or `_` and continues
+    /// with letters, digits, `-`, `.` or `_`; it has no spaces and no `:`.
+    ///
+    /// It is the code of
     /// [`EditError::InvalidId`](crate::edit::EditError::InvalidId)
-    /// (LIB-EDIT-001) and of
-    /// [`ReadError::InvalidId`](crate::xmi::ReadError::InvalidId), an empty
-    /// `xmi:id` in the input, on an element or a `name`;
-    /// [`validation::validate`](crate::validation::validate) reports it, as
-    /// an Error, for every other id that is not an `NCName`, a name's
-    /// `xmi:id` included, after XML white space around an `NCName` is
-    /// trimmed on read (SACM23-VAL-020, SACM23-XMI-025). An `NCName` starts with a letter or `_` and continues
-    /// with letters, digits, `-`, `.` or `_`; it has no spaces and no `:`. Or
-    /// leave out `with_id` to have an id generated.
+    /// (LIB-EDIT-001): give an `NCName`, or leave out `with_id` to have an id
+    /// generated. It is the code of
+    /// [`ReadError::InvalidId`](crate::xmi::ReadError::InvalidId) for an
+    /// empty `xmi:id` on an element or a `name`.
+    /// [`validation::validate`](crate::validation::validate) reports it as an
+    /// Error for every other id that is not an `NCName`, a name's `xmi:id`
+    /// included (SACM23-VAL-020). An id with white space around an `NCName`
+    /// is first read trimmed (SACM-ID-004).
     pub const ID_INVALID: Code = Code::from_static("SACM-ID-002");
 
     /// SACM-ID-004: an `xmi:id` has XML white space (space, TAB, LF or CR)
     /// around an `NCName`, so it is read trimmed: an `xmi:id` is an `xsd:ID`,
-    /// whose white space is collapsed (XMI 2.5.1 §7.6.1).
-    /// [`xmi::read`](crate::xmi::read) reports one Info per attribute in both
+    /// whose white space is collapsed (XMI 2.5.1 §7.6.1; XML Schema 1.0 Part 2
+    /// §4.3.6). [`xmi::read`](crate::xmi::read) reports one Info per attribute in both
     /// modes, quoting the value as read, and affecting the trimmed id, or,
     /// for the id of a `name`, the element that owns the name
     /// (SACM23-XMI-025, ADR 0024). [`xmi::write`](crate::xmi::write) writes

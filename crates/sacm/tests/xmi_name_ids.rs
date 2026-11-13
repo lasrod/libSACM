@@ -576,6 +576,74 @@ fn sacm23_xmi_022_documents_differing_only_in_a_name_id_give_one_name_id_differe
     );
 }
 
+#[test]
+fn sacm23_xmi_022_a_name_id_difference_displays_the_owner_and_both_ids() {
+    let with = |name: &str| read_ok(name, &root_holding(name));
+    let n1 = with("<name xmi:id=\"n1\" content=\"P\"/>");
+    let n2 = with("<name xmi:id=\"n2\" content=\"P\"/>");
+    let none = with("<name content=\"P\"/>");
+    let cases = [
+        (
+            "present and absent",
+            &n1,
+            &none,
+            "element \"p\" differs in the xmi:id of its name: \"n1\" on the left, \
+             no id on the right",
+        ),
+        (
+            "absent and present",
+            &none,
+            &n1,
+            "element \"p\" differs in the xmi:id of its name: no id on the left, \
+             \"n1\" on the right",
+        ),
+        (
+            "different values",
+            &n1,
+            &n2,
+            "element \"p\" differs in the xmi:id of its name: \"n1\" on the left, \
+             \"n2\" on the right",
+        ),
+    ];
+    for (what, left, right, expected) in cases {
+        let differences = semantic_compare(left, right);
+        let [difference @ Difference::NameId { .. }] = differences.as_slice() else {
+            panic!("{ROW}: {what}: not one NameId difference: {differences:?}");
+        };
+        let shown = difference.to_string();
+        assert_eq!(shown, expected, "{ROW}: {what}: the Display text");
+        assert!(
+            !shown.contains('\n') && !shown.contains('\r'),
+            "{ROW}: {what}: Display {shown:?} is not one line"
+        );
+        assert!(
+            shown.contains("\"p\"") && shown.contains("xmi:id") && shown.contains("name"),
+            "{ROW}: {what}: Display {shown:?} does not quote the owner and name the feature"
+        );
+    }
+    // Absent is shown differently from any value, including one spelled like it.
+    let absent = Difference::NameId {
+        id: ElementId::from("p"),
+        left: None,
+        right: Some(ElementId::from("n1")),
+    }
+    .to_string();
+    let spelled = Difference::NameId {
+        id: ElementId::from("p"),
+        left: Some(ElementId::from("no id")),
+        right: Some(ElementId::from("n1")),
+    }
+    .to_string();
+    assert_ne!(
+        absent, spelled,
+        "{ROW}: an absent name id displays the same as the id \"no id\""
+    );
+    assert!(
+        absent.contains(": no id on the left") && spelled.contains(": \"no id\" on the left"),
+        "{ROW}: absent {absent:?} is not bare `no id`, or a value {spelled:?} is not quoted"
+    );
+}
+
 // --- Item 6: a value element's id ----------------------------------------------------
 
 #[test]

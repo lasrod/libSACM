@@ -14,6 +14,9 @@
 //! CRLF or a lone CR, and columns count characters.
 
 use std::path::Path;
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use sacm::diagnostic::{Code, Diagnostic, Severity, SourceLocation};
 use sacm::edit::{self, CreateArgumentPackage, CreateClaim, EditError};
@@ -24,6 +27,9 @@ use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteOptions};
 const ROW: &str = "SACM23-XMI-025";
 
 const MODES: [Mode; 2] = [Mode::Strict, Mode::Tolerant];
+
+/// How long one read may take, in debug, for the largest input here.
+const DEADLINE: Duration = Duration::from_secs(5);
 
 /// Marks, in a test input, where an attribute, a start tag or a refusal is
 /// expected.
@@ -476,4 +482,110 @@ fn sacm23_xmi_025_the_catalog_id_004_row_names_the_code_and_the_row() {
             "{ROW}: the SACM-ID-004 row does not name {part}: {line}"
         );
     }
+}
+
+// --- Linear time -----------------------------------------------------------------
+
+/// `xmi::read` in `mode`, on a worker thread. Fails the test when the read
+/// panics or does not return within [`DEADLINE`].
+fn read_within_deadline(mode: Mode, input: &str) -> Result<ReadOutput, ReadError> {
+    let owned = input.as_bytes().to_vec();
+    let (sender, receiver) = mpsc::channel();
+    thread::spawn(move || {
+        // The receiver is gone only after the deadline has already failed the test.
+        let _ = sender.send(xmi::read(&owned, &ReadOptions::default().with_mode(mode)));
+    });
+    match receiver.recv_timeout(DEADLINE) {
+        Ok(result) => result,
+        Err(RecvTimeoutError::Timeout) => panic!(
+            "{ROW}: a {mode:?} read of {} bytes did not return within {DEADLINE:?}",
+            input.len()
+        ),
+        Err(RecvTimeoutError::Disconnected) => panic!("{ROW}: the read panicked"),
+    }
+}
+
+/// The diagnostic with `code` that affects exactly `id`.
+fn found_for<'o>(output: &'o ReadOutput, code: Code, id: &str) -> Option<&'o Diagnostic> {
+    output
+        .diagnostics()
+        .iter()
+        .find(|found| found.code() == code && found.affected() == [ElementId::from(id)])
+}
+
+#[test]
+fn sacm23_xmi_025_many_padded_ids_after_xsi_type_are_located_in_linear_time() {
+    // Each Claim's xsi:type (SACM-XMI-010) comes before its padded xmi:id
+    // (SACM-ID-004) on the same start tag, so a locator that is asked for the
+    // id first and then rescans the input from the start for the earlier
+    // xsi:type is quadratic in the number of Claims.
+    const COUNT: usize = 20_000;
+    let claims = (1..=COUNT)
+        .map(|n| {
+            format!(
+                "  <argumentElement {MARK}xsi:type=\"sacm:Claim\" {MARK}xmi:id=\" c{n} \"/>\r\n"
+            )
+        })
+        .collect::<Vec<String>>()
+        .concat();
+    let template = format!(
+        "{LEAD}<sacm:ArgumentPackage{NS} xmi:id=\"p\">\r\n  <name content=\"P\"/>\r\n{claims}\
+         </sacm:ArgumentPackage>"
+    );
+    let (input, marks) = marked(&template);
+    assert_eq!(marks.len(), 2 * COUNT, "{ROW}: the test input's marks");
+    let started = Instant::now();
+    let output = match read_within_deadline(Mode::Tolerant, &input) {
+        Ok(output) => output,
+        Err(error) => panic!("{ROW}: a tolerant read refused {COUNT} Claims: {error:?} ({error})"),
+    };
+    let elapsed = started.elapsed();
+    let count_of = |code: Code| {
+        output
+            .diagnostics()
+            .iter()
+            .filter(|found| found.code() == code)
+            .count()
+    };
+    assert_eq!(
+        count_of(Code::ID_TRIMMED),
+        COUNT,
+        "{ROW}: not one SACM-ID-004 per Claim (read in {elapsed:?})"
+    );
+    assert_eq!(
+        count_of(Code::XMI_XSI_TYPE),
+        COUNT,
+        "{ROW}: not one SACM-XMI-010 per Claim (read in {elapsed:?})"
+    );
+    assert_eq!(
+        output.diagnostics().len(),
+        2 * COUNT,
+        "{ROW}: diagnostics other than SACM-ID-004 and SACM-XMI-010"
+    );
+    for n in [1, 2, COUNT / 2, COUNT - 1, COUNT] {
+        let id = format!("c{n}");
+        let (type_at, id_at) = (marks[2 * (n - 1)], marks[2 * (n - 1) + 1]);
+        let Some(info) = found_for(&output, Code::ID_TRIMMED, &id) else {
+            panic!("{ROW}: no SACM-ID-004 for {id}");
+        };
+        assert_trimmed_info(&format!("Claim {id}"), info, &id, &format!(" {id} "), id_at);
+        let Some(typed) = found_for(&output, Code::XMI_XSI_TYPE, &id) else {
+            panic!("{ROW}: no SACM-XMI-010 for {id}");
+        };
+        assert_eq!(
+            typed.severity(),
+            Severity::Warning,
+            "{ROW}: Claim {id}: a tolerant xsi:type is not a Warning"
+        );
+        assert_eq!(
+            typed.location(),
+            Some(type_at),
+            "{ROW}: Claim {id}: not at the xsi:type attribute's name"
+        );
+    }
+    assert_eq!(
+        output.document().get("p").map(|p| p.children().count()),
+        Some(COUNT),
+        "{ROW}: not every Claim is read"
+    );
 }

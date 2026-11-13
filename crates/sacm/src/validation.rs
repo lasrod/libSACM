@@ -28,7 +28,8 @@
 //! [`xmi::read`](crate::xmi::read) reads an id such as `1c`, `a:b` or `a b`
 //! as written, so that nothing is lost, and refuses only an empty one; it
 //! reads an `NCName` with XML white space around it, such as `" c1 "`,
-//! trimmed. [`edit::apply`](crate::edit::apply) never creates one. To fix a
+//! trimmed. [`edit::apply`](crate::edit::apply) never creates an id that is
+//! not an `NCName`. To fix a
 //! finding, give the element, or its name, an id that is an `NCName`.
 //!
 //! The result is sorted by [`Diagnostic`]'s order. Its diagnostics have no

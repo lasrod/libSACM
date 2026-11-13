@@ -14,7 +14,8 @@
 //! - [`xmi::read`] reads `AssuranceCasePackage` and `ArgumentPackage` roots
 //!   and the packages and Claims in them, with their names and each Claim's
 //!   `assertionDeclaration`. It refuses what it cannot represent yet rather
-//!   than drop it.
+//!   than drop it. An element without an `xmi:id` gets a generated one, such
+//!   as `claim_1`, which `write` saves; see [Ids](xmi::read#ids).
 //! - [`xmi::write`] writes a document deterministically, and by default
 //!   refuses one that validation reports an Error for.
 //! - [`validation::validate`] reports each element that has no name, and

@@ -94,7 +94,7 @@ const TRIMMED_ID_ROW: &str = "SACM23-XMI-025";
 const DECLARATION: &str = "assertionDeclaration";
 
 /// The document whose roots `tree` holds, read in `mode`, and the
-/// diagnostics found, unsorted. `text` is the text `tree` was parsed from.
+/// diagnostics found, located and in input order, not yet sorted. `text` is the text `tree` was parsed from.
 pub(super) fn read(
     text: &str,
     tree: &roxmltree::Document<'_>,
@@ -106,7 +106,6 @@ pub(super) fn read(
     let mut found = Findings {
         text,
         mode,
-        locator: Locator::new(text),
         ids: BTreeSet::new(),
         reserved: reserved_ids(element),
         generator: IdGenerator::default(),
@@ -125,17 +124,35 @@ pub(super) fn read(
     } = found;
     // An edit generates above every id generated here (ADR 0024).
     generator.commit(&mut document);
-    Ok((document, diagnostics))
+    Ok((document, located(text, diagnostics)))
+}
+
+/// `diagnostics`, each located at its byte offset of `text`, in input order.
+///
+/// They are found in reading order, which is not always input order: an
+/// element's `xmi:id` is read before the attributes written ahead of it. So
+/// they are sorted by offset first (stably, so equal offsets keep reading
+/// order), and one advancing [`Locator`] then locates them all in one pass
+/// over the text, which keeps the read linear in the input.
+fn located(text: &str, mut diagnostics: Vec<(usize, Diagnostic)>) -> Vec<Diagnostic> {
+    diagnostics.sort_by_key(|&(offset, _)| offset);
+    let mut locator = Locator::new(text);
+    diagnostics
+        .into_iter()
+        .map(|(offset, diagnostic)| match locator.locate(offset) {
+            Some(location) => diagnostic.set_location(location),
+            None => diagnostic,
+        })
+        .collect()
 }
 
 /// What pass 2 reads with: the input text, the mode, the ids read so far,
 /// the ids a generated one must avoid, and the diagnostics found so far,
-/// each located with one advancing [`Locator`], so that locating them all
-/// costs one pass over the text.
+/// each with the byte offset it is to be located at, which [`located`]
+/// resolves once the read is done.
 struct Findings<'t, 'a> {
     text: &'t str,
     mode: Mode,
-    locator: Locator<'t>,
     /// The value of every `xmi:id` read so far, of elements and names, in
     /// every root's tree (SACM23-VAL-001, SACM23-XMI-022).
     ids: BTreeSet<&'a str>,
@@ -148,7 +165,9 @@ struct Findings<'t, 'a> {
     /// The number of elements met so far: the next one's place in document
     /// order.
     order: usize,
-    diagnostics: Vec<Diagnostic>,
+    /// The diagnostics found so far, in reading order, each with its byte
+    /// offset in `text`.
+    diagnostics: Vec<(usize, Diagnostic)>,
 }
 
 impl Findings<'_, '_> {
@@ -250,13 +269,9 @@ impl Findings<'_, '_> {
         self.push_at(diagnostic, attribute.range_qname().start);
     }
 
-    /// Adds `diagnostic`, located at byte `offset` of the text.
+    /// Adds `diagnostic`, to be located at byte `offset` of the text.
     fn push_at(&mut self, diagnostic: Diagnostic, offset: usize) {
-        let diagnostic = match self.locator.locate(offset) {
-            Some(location) => diagnostic.set_location(location),
-            None => diagnostic,
-        };
-        self.diagnostics.push(diagnostic);
+        self.diagnostics.push((offset, diagnostic));
     }
 }
 

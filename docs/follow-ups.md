@@ -17,3 +17,5 @@ A docs slice clears them every few slices; add new ones at the end.
 | Verification 0038 | LIB-API-004 | Acceptance items 3-4 ("Every variant's Display ...") should name the error types this row's tests cover. |
 | Verification 0038 | CHANGELOG, docs/architecture.md | CHANGELOG says "one `#[non_exhaustive]` error enum per operation" (`ParseAssertionDeclarationError` is a struct); architecture.md credits the NCName rule to ADR 0018 (its basis is ADR 0015 amendment 2 and ADR 0019 E6). |
 | Verification 0038 | `crates/sacm/tests/errors.rs:4-8` | The module doc says `InsertError` is the only public error type; the others are checked in their own rows' files (see LIB-API-004 item 1). |
+| Docs review 0039 (later API) | `Document`, `ElementId` | There is no public "is this id free?" (`contains` ignores name ids, which `edit::apply` refuses); consider a public `Document::is_id_in_use`. `name_id()` returns an `ElementId` that identifies no element; a distinct type may suit later. |
+| Docs review 0039 | `ReadError` `Display` | A refusal on an element without an `xmi:id` names its generated id, which is not in the file; consider "the element with the generated id ...". |
