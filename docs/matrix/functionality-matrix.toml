@@ -2076,7 +2076,7 @@ tests = [
   "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_a_name_undeclaring_the_default_namespace_reads_as_the_plain_form",
   "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_a_minimized_third_party_name_reads_and_round_trips",
 ]
-verification = "docs/verification/0026-m1-names-in-xmi.md"
+verification = "docs/verification/0037-m1-element-form-values.md"
 
 [[row]]
 id = "SACM23-VAL-018"
@@ -2274,7 +2274,7 @@ tests = [
   "crates/sacm/tests/compare.rs::lib_rt_001_deep_documents_compare_without_panicking",
   "crates/sacm/tests/compare.rs::lib_rt_001_display_shows_both_values",
 ]
-verification = "docs/verification/0031-m1-semantic-comparison.md"
+verification = "docs/verification/0037-m1-element-form-values.md"
 
 [[row]]
 id = "LIB-RT-002"
@@ -2740,7 +2740,7 @@ tests = [
   "crates/sacm/tests/xmi_read_locations.rs::sacm23_xmi_010_text_after_white_space_written_as_a_reference_or_cdata_is_located_at_that_construct",
   "crates/sacm/tests/xmi_read_locations.rs::sacm23_xmi_010_value_element_and_repeated_value_refusals_are_located",
 ]
-verification = "docs/verification/0036-m1-ids-docs-cli.md"
+verification = "docs/verification/0037-m1-element-form-values.md"
 
 [[row]]
 id = "LIB-COMPAT-007"
@@ -2776,7 +2776,7 @@ tests = [
   "crates/sacm/tests/load_and_save_modes.rs::lib_compat_007_a_document_read_tolerantly_with_xsi_type_and_xmi_version_writes_strictly",
   "crates/sacm/tests/load_and_save_modes.rs::lib_compat_007_the_invalid_refusal_says_1_error_for_one_and_3_errors_for_three",
 ]
-verification = "docs/verification/0036-m1-ids-docs-cli.md"
+verification = "docs/verification/0037-m1-element-form-values.md"
 notes = "ADR review, 2026-11-13: decided in the load and save modes ADR with LIB-COMPAT-001: the semver stance (a new validation rule can make the default save fail in a minor release), and the reporting rule (every affected element, ADR 0013, or the first, ADR 0017 W4). Must land before any release (LIB-QA-005). Slice 0035: designed in ADR 0022, which takes over ADR 0013 amendment 1. ADR 0018's consequence: default writes of documents with validation Errors now fail; docs and examples are updated and the CHANGELOG calls it out. Slice 0036: a test's ids or expectations changed for the new id rules (ADR 0015 amendment 2, SACM23-VAL-020); re-checked there."
 
 [[row]]
@@ -2816,7 +2816,7 @@ title = "Element form of single-valued values"
 requirement = "`xmi::read` reads, in both modes and with no diagnostic, the XML element form of the single-valued DataType properties it reads today: a `name`'s `lang` and `content`, and an Assertion's `assertionDeclaration` (in this release a Claim); later rows for `gid`, `isCitation` and `isAbstract` inherit this rule. A value element is in no namespace, carries no attribute and has no element children; its value is its character content exactly (CDATA and references give their characters, comments and processing instructions are ignored, nothing is trimmed: XSD `preserve`), an empty element is the empty string, and an `assertionDeclaration` value must be one of the six literals exactly. The element may appear anywhere among its siblings, and the attribute and element forms may be mixed across different properties. The same document in either form reads to an equal `Document`, and export writes the attribute form. A property written both as an attribute and as an element, or as two elements, is refused in both modes as `ReadError::RepeatedValue` (SACM-MULT-001), naming every occurrence, even when the values are equal (the maintainer, 2026-11-13). A value element with an attribute (`xmi:id`, a type, `xsi:nil`, or the legacy `lang` on `content`), an element child, or a namespace stays `Unsupported` at the offending construct (LIB-COMPAT-003, LIB-COMPAT-008, SACM23-XMI-026); a bad literal stays `Unsupported` at the start tag until SACM23-VAL-006."
 source = "XMI 2.5.1 §7.8.4 (pp. 17-18) \"If the property types are primitives or enumerations, then by default XML attributes and XML elements are declared for these types.\"; §7.11.3 (p. 29) \"Both XML attribute and element • The default\"; §9.3 (p. 56) \"An XMIValueElement is an XML element that can have a value, but cannot contain other XML elements or attributes.\"; §9.4.1 (p. 56) \"Choice of: 1. XMIValueAttribute 2. Nested XMIValueElement\", \"The value of an Enumeration is its name.\"; §9.5.2 production 2b (p. 62), rule 2b (p. 63) \"Each value of a property is represented by an XML element\", rule 2h (p. 63) \"A specific Property shall be serialized in an object either as an XML attribute or as XML elements but not both.\"; §8.2.1 rule 8 (p. 53); XSD 1 §3.1.4, §3.3.4 cl. 3.1; XSD 2 §4.3.6; XML 1.0 §2.11; formal/23-05-08 §2.4 (p. 4), §8.3 (p. 18), §11.10 (p. 39); ptc/22-03-13 (no org.omg.xmi tags); D-PRESERVE; ADR 0015 amendment 2; ADR 0021 amendment 1; assurance-forge `xmi_reader.cpp:1761`, `:1196-1203` (differs)"
 kind = "xmi"
-status = "implemented"
+status = "verified"
 depends_on = ["SACM23-XMI-001", "SACM23-XMI-011", "LIB-TOOL-020", "SACM23-XMI-012", "SACM23-XMI-017", "SACM23-XMI-010"]
 acceptance = [
   "Read, both modes, no diagnostic: `<name><lang>en</lang><content>Case</content></name>`, in either order and on bare and wrapped roots and on a Claim, reads equal to `<name lang=\"en\" content=\"Case\"/>`; mixed `<name lang=\"en\"><content>Case</content></name>` reads the same; `<name><content>Case</content></name>` has no lang; `<content/>` and `<content></content>` read `Some(\"\")`, not absent.",
@@ -2851,6 +2851,7 @@ tests = [
   "crates/sacm/tests/xmi_value_elements.rs::sacm23_xmi_014_each_element_form_input_writes_the_bytes_of_its_attribute_twin_and_reads_back_equal",
   "crates/sacm/tests/xmi_value_elements.rs::sacm23_xmi_014_a_repeated_value_element_is_checked_whole_before_it_counts_as_a_repeat",
 ]
+verification = "docs/verification/0037-m1-element-form-values.md"
 code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/roots.rs", "docs/adr/0021-xmi-reader-content.md", "docs/sacm/diagnostics.md"]
 
 [[row]]
@@ -3788,7 +3789,7 @@ tests = [
   "crates/sacm/tests/xmi_read_children.rs::sacm23_xmi_016_an_empty_child_id_is_invalid_id_at_the_child",
   "crates/sacm/tests/xmi_read_children.rs::sacm23_xmi_016_a_duplicate_child_id_is_duplicate_id_at_the_child",
 ]
-verification = "docs/verification/0036-m1-ids-docs-cli.md"
+verification = "docs/verification/0037-m1-element-form-values.md"
 
 [[row]]
 id = "SACM23-XMI-017"
@@ -3828,7 +3829,7 @@ tests = [
   "crates/sacm/tests/xmi_assertion_declaration.rs::sacm23_xmi_017_claims_with_each_literal_round_trip_at_depth_three_and_write_again_to_the_same_bytes",
   "crates/sacm/tests/xmi_assertion_declaration.rs::sacm23_xmi_017_a_file_with_an_explicit_asserted_is_written_with_no_attribute",
 ]
-verification = "docs/verification/0030-m1-assertion-declaration-in-xmi.md"
+verification = "docs/verification/0037-m1-element-form-values.md"
 
 [[row]]
 id = "SACM23-VAL-019"
@@ -3882,7 +3883,7 @@ requirement = "`xmi::read` never returns a document that is missing content from
 source = "D-PRESERVE \"Never drop conforming SACM data. Preserve with a diagnostic, or refuse\"; ADR 0015 (interim rule); ADR 0005 B2; XML 1.0 (Fifth Edition) §4.3.3 (encodings; quoted when SACM23-XMI-018 is analysed)"
 kind = "api"
 status = "verified"
-verification = "docs/verification/0029-m1-read-package-content.md"
+verification = "docs/verification/0037-m1-element-form-values.md"
 depends_on = ["LIB-API-004", "LIB-DIAG-001"]
 acceptance = [
   "Well-formed SACM input the reader cannot represent yet (e.g. an `AssuranceCasePackage` root with a `note` child, or an `ArtifactPackage` root) is refused with `ReadError::Unsupported`, `code()` `None`, located at the construct it cannot read; no partial document is returned. Which roots are recognised at all is SACM23-XMI-001.",
@@ -3932,7 +3933,7 @@ tests = [
   "crates/sacm/tests/xmi_write.rs::lib_api_010_write_error_has_exactly_the_variants_no_root_unrepresentable_character_and_invalid",
   "crates/sacm/tests/xmi_write.rs::lib_api_010_write_error_is_a_send_sync_error_whose_variants_have_no_catalog_code",
 ]
-verification = "docs/verification/0035-m1-load-and-save-modes.md"
+verification = "docs/verification/0037-m1-element-form-values.md"
 notes = "Reworded and re-checked in slice 0026: names are no longer refused. Reworded in slice 0030: declarations are written (SACM23-XMI-017), so nothing a `Document` holds is refused and `WriteError::Unsupported` is removed until a row needs it; re-checked there. Slice 0035: strict write also refuses invalid documents (`WriteError::Invalid`, LIB-COMPAT-007), so the refusal set is stated per mode; re-checked there. Slice 0037: its error-type test was renamed for the three `WriteError` variants and now asserts `Invalid` too (a follow-up); re-checked there."
 
 [[row]]

@@ -1,8 +1,8 @@
 ---
 slice: 0037
 name: m1-element-form-values
-state: in-progress
-step: verification
+state: done
+step: verified
 rows: [SACM23-XMI-014, SACM23-XMI-012, SACM23-XMI-017, SACM23-XMI-010, SACM23-XMI-016, LIB-API-009, LIB-API-010, LIB-RT-001, LIB-COMPAT-007]
 mode: pr
 base: main
@@ -40,3 +40,6 @@ values are equal. The maintainer chose the same refusal for a second `name`
 - 2026-11-13 choose: the last M1 row, with the follow-ups batch.
 - 2026-11-13 design: research and design in parallel (retried after API 403 errors); the
   maintainer chose to refuse repeated values and a second name.
+- 2026-11-13 verification: round 1 FAIL (two test gaps, one docs claim), fixed in dee5036;
+  round 2 PASS by a fresh verifier (the first one's report was refused by the harness).
+  Record 0037. M1 complete.
