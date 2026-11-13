@@ -1,7 +1,9 @@
 # 0021. The XMI reader: package content
 
-- Status: accepted. This ADR records decisions the maintainer made in slices 0026, 0029 and
-  0030; the maintainer asked for them to be recorded on 2026-11-13.
+- Status: accepted. This ADR records decisions made in slices 0026, 0029 and 0030: by the
+  maintainer (the ADR 0017 amendments, and reading package content before more editing) and
+  by the lead under ADR 0015's interim rule (the minimal options in slice 0029). The
+  maintainer asked for them to be recorded on 2026-11-13.
 - Date: 2026-11-13
 - Matrix rows: SACM23-XMI-012, SACM23-XMI-016, SACM23-XMI-017, SACM23-XMI-010, LIB-API-009
 
@@ -41,23 +43,30 @@ matrix notes and the writer's ADR (0017). This ADR collects them in one place.
 - **Locations.** Every refusal is located at what it refuses: a start tag at its `<`, an
   attribute at its name, and text at its first character that is not white space
   (SACM23-XMI-010).
-- **Interim refusals.** Under ADR 0015's interim rule, the following are refused as
-  `Unsupported` until the row in brackets reads them. They are never re-roled, re-typed or
-  dropped.
-  - A type that does not conform to the role, or that names an abstract or unknown class.
-  - An untyped child under an abstract role (LIB-COMPAT-010; strict SACM-XMI-005).
-  - A role the parent's class lacks, or a namespace-qualified role element
-    (LIB-COMPAT-003).
-  - The spelling `argumentationElement` (SACM23-XMI-009).
+- **Interim refusals: conforming input not read yet.** Under ADR 0015's interim rule,
+  these are refused as `Unsupported` until the row in brackets reads them. They are never
+  re-roled, re-typed or dropped. LIB-API-011 keeps this list in the code and gates the
+  compliance points on it.
   - Kinds not yet readable (their kind rows), and utility children (SACM23-BASE-004/005).
   - `gid`, `isCitation` and `isAbstract` (SACM23-BASE-006/007/008).
-  - A missing or empty id (SACM23-XMI-020), and a duplicate id (SACM23-VAL-001).
+  - An element with no `xmi:id` (SACM23-XMI-020).
   - A second `name` (SACM23-XMI-021), and an `xmi:id` on a LangString (SACM23-XMI-022).
   - Element forms of values and references (SACM23-XMI-014/015).
   - XMI metadata (SACM23-XMI-019).
-  - A name given as text (LIB-COMPAT-008).
-
-  LIB-API-011 keeps this list in the code and gates the compliance points on it.
+- **Refusals of non-conforming input.** These stay refused by a strict load. Tolerant
+  reading of some of them (in brackets) and their catalog codes come with the load modes
+  (LIB-COMPAT-001); until then they are `Unsupported` too (ADR 0015 amendment 1).
+  - A type that does not conform to the role, names an abstract or unknown class, or
+    disagrees with another type attribute.
+  - An untyped child under an abstract role (strict SACM-XMI-005; tolerant LIB-COMPAT-010).
+  - A role the parent's class lacks, or a namespace-qualified role element (tolerant
+    LIB-COMPAT-003).
+  - The spelling `argumentationElement` (SACM23-XMI-009).
+  - An empty `xmi:id`, and a duplicate one (SACM23-VAL-001).
+  - An `assertionDeclaration` value that is not a literal (SACM23-VAL-006), the attribute on
+    an element that is not an Assertion, and `sacm:assertionDeclaration`.
+  - A name given as text (tolerant LIB-COMPAT-008), and any other attribute or text the
+    schema does not allow.
 
 **Differences from C++, one line each:**
 - C++ matches role elements and `name` by local name in any namespace (`xmi_reader.cpp:1988`);
@@ -66,8 +75,12 @@ matrix notes and the writer's ADR (0017). This ADR collects them in one place.
 - C++ reads a name's text as its content (`:805-808`); here it is refused.
 - C++ drops a LangString `xmi:id` with an Info diagnostic (`:793-803`); here it is refused.
 - C++ reads an ExpressionLangString type on `name`; here it is refused (SACM23-BASE-009).
-- C++ maps an unknown declaration literal to `asserted`, losing the value (`:1786-1794`), and
-  `justification` to `axiomatic` (`:1765-1785`); here both are refused.
+- C++ reports an unknown declaration literal as SACM-ENUM-001 and keeps `asserted`, losing the
+  value (`:1786-1794`); here it is refused until SACM23-VAL-006.
+- C++ maps the legacy `justification` to `axiomatic` with a TaggedValue (`:1765-1785`); here it
+  is refused as an unknown literal, and any legacy mapping belongs to LIB-COMPAT.
+- C++ matches `assertionDeclaration` in any namespace (`node.attribute`); here
+  `sacm:assertionDeclaration` is refused.
 - C++ maps `undeveloped="true"` to `needsSupport` (`:1796-1815`); here it is an unread
   attribute.
 

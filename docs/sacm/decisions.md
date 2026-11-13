@@ -59,6 +59,9 @@ Background for each is in [reference/specification-defects.md](reference/specifi
 | D-ARTPKG | 12.2 | An ArtifactPackage admits every ArtifactElement, as `artifactElement:Base::ArtifactElement[0..*]` says ([ADR 0014](../adr/0014-artifact-package-admits-every-artifact-element.md)). |
 | D-TYPE-ATTR | XMI 2.5.1 §7.6.3, §7.8.8, rule 2g | The type attribute is `xmi:type`, written only where the class is not known from the role (specification defect D11); import also accepts `xsi:type` ([ADR 0017](../adr/0017-xmi-writer.md) T1). |
 | D-ORDER | 8–12 | The order of roots and of each element's children is kept and compared, although SACM 2.3 marks no composition ordered, so that equal documents write equal bytes ([ADR 0010](../adr/0010-document-model.md) D1/D2, [ADR 0020](../adr/0020-semantic-comparison.md)). |
+| D-XMI-VERSION | XMI 2.5.1 §7.5.3, rule 1a | The XMI version is identified by the XMI namespace, not by an `xmi:version` attribute; export stops writing it (SACM23-XMI-024; [ADR 0017](../adr/0017-xmi-writer.md) amendment 3). |
+| D-ROLE-UNQUALIFIED | XMI 2.5.1 rule 2a | Role elements and `name` are matched in no namespace; a namespace-qualified one is refused, since rule 2a is ambiguous and the refusal is reversible ([ADR 0021](../adr/0021-xmi-reader-content.md)). |
+| D-ROOT-NAME | XMI 2.5.1 §7.8.1 | A root's element name decides its class; a type attribute naming another class is refused ([ADR 0016](../adr/0016-interchange-roots.md) D2). |
 | D-ENUM-EXACT | 11.8; XMI 2.5.1 §8.2.1 rule 8 | An enumeration value must be exactly one literal, after XML attribute-value normalisation, with no trimming or case folding ([ADR 0021](../adr/0021-xmi-reader-content.md)). |
 | D-DESC-MULT | 8.6 | `ModelElement.description` is stored as a list (the model says `0..*`) so files with several descriptions round-trip, and the text's `0..1` is enforced in validation as a warning. |
 

@@ -20,8 +20,8 @@ findings are `Diagnostic` values. The assurance-forge C++ library is the design 
 - **`Severity`:** `Info < Warning < Error`, with `as_str` and `Display` giving `info`,
   `warning` and `error`.
 - **`Code`:** a newtype over `&'static str`. Each row that emits a code adds its constant,
-  named after the C++ one (`kRefDangling` → `REF_DANGLING`); a test checks that every
-  constant is in `docs/sacm/diagnostics.md`.
+  named after the C++ one (`kRefDangling` → `REF_DANGLING`), and checks in its tests that
+  `docs/sacm/diagnostics.md` has the constant's row.
 - **`SourceLocation`:** a 1-based line and column, where the column counts Unicode scalar
   values. `Display` is `line L, column C`.
 - **`Diagnostic`:** private fields with accessors: `code`, `severity`, `requirement_id`

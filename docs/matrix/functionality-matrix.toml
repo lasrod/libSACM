@@ -1168,7 +1168,7 @@ id = "LIB-DOC-008"
 area = "DOC"
 milestone = "M1"
 title = "ADRs and decisions describe the current design"
-requirement = "Each ADR states the decision as it stands, marks superseded text as superseded where it stands, and agrees with the code, the other ADRs, docs/sacm/decisions.md and CLAUDE.md. Interpretations of the standard made in ADRs have a one-line `D-` entry in docs/sacm/decisions.md that points to the ADR. The ADR index lists every ADR. Decisions that exist only in slice briefs or matrix notes are recorded in an ADR."
+requirement = "Each ADR states the decision as it stands, marks superseded text as superseded where it stands, and agrees with the code, the other ADRs, docs/sacm/decisions.md and CLAUDE.md. Interpretations of the standard made in ADRs (the readings of a clause the standard leaves open or contradicts) have a one-line `D-` entry in docs/sacm/decisions.md that points to the ADR. The ADR index lists every ADR. Decisions that exist only in slice briefs or matrix notes are recorded in an ADR."
 source = "ADR 0001; CLAUDE.md rule 6; ADR review, 2026-11-13 (the maintainer: apply every recommendation)"
 kind = "quality"
 status = "implemented"
@@ -1176,9 +1176,9 @@ depends_on = []
 acceptance = [
   "docs/adr/README.md lists every ADR file with its status.",
   "ADR 0017 reads as the current state (two `WriteError` variants, no declaration refusal, the reader rules moved out) followed by a short history; ADR 0005 and ADR 0016 have their superseded passages condensed the same way.",
-  "A new ADR records the reader's content decisions (slices 0029 and 0030: role elements, type resolution, `name`, `assertionDeclaration`, the interim refusals); ADR 0017 points to it.",
+  "A new ADR records the reader's content decisions (slices 0029 and 0030: role elements, type resolution, `name`, `assertionDeclaration`), with the interim refusals of conforming input, each naming its closing row, kept apart from the refusals of non-conforming input, and every C++ difference the old ADR 0017 amendments listed; ADR 0017 points to it.",
   "ADR 0010 is amended with the current node shape (the stored role and the generated-id counters) and names the open decision on an element without an `xmi:id` (SACM23-XMI-020).",
-  "ADR 0015 is amended: `ReadError::Unsupported` also carries some input defects until their rows give them codes (an unknown literal until SACM23-VAL-006; a missing, empty or duplicate id until SACM23-XMI-020 and SACM23-VAL-001), and each interim refusal is gated by its closing row (LIB-API-011).",
+  "ADR 0015 is amended: `ReadError::Unsupported` carries both limits of this version (conforming input not read yet, such as an element with no `xmi:id`, SACM23-XMI-020) and some defects in the input (an empty or duplicate `xmi:id`, a non-literal `assertionDeclaration`, non-conforming type attributes, and attributes or text the schema does not allow), and states truthfully which refusals are labelled as defects today; each interim refusal is gated by its closing row (LIB-API-011).",
   "ADR 0013 amendment 1 says its strict-save rule moves to the load and save modes ADR with LIB-COMPAT-001/007, and records the open reporting conflict (every affected element in 0013, the first in 0017 W4).",
   "ADR 0017 records the maintainer's 2026-11-13 decision to drop `xmi:version` on export (SACM23-XMI-024).",
   "docs/sacm/decisions.md has one-line entries pointing to ADR 0013 (§8.6), 0014 (§12.2), 0017 T1 (the D11 reading), 0020 (order is compared) and the open `xmi:id` decision.",
@@ -2131,7 +2131,7 @@ source = "D-STRICT"
 kind = "api"
 status = "planned"
 depends_on = ["SACM23-XMI-001", "SACM23-XMI-003"]
-notes = "Slice 0025 (ADR 0017 W6): owns the C++ `SaveOptions::namespace_uri` option (`options.h:26-43`; C++ decision #18), that is, export under a namespace other than the pinned SACM URI, including re-export under the namespace a document was read with. ADR review, 2026-11-13: needs a \"load and save modes\" ADR (with LIB-COMPAT-007) that takes over ADR 0013 amendment 1's strict-save rule and states its semver stance. Strict import reports `xsi:type` with a diagnostic (XMI 2.5.1 rule 2g: \"You may only use the XML schema instance type attribute if org.omg.xmi.useSchemaExtensions is true\"). Must land before any release (LIB-QA-005)."
+notes = "Slice 0025 (ADR 0017 W6): owns the C++ `SaveOptions::namespace_uri` option (`options.h:26-43`; C++ decision #18), that is, export under a namespace other than the pinned SACM URI, including re-export under the namespace a document was read with. ADR review, 2026-11-13: needs a \"load and save modes\" ADR (with LIB-COMPAT-007) that takes over ADR 0013 amendment 1's strict-save rule and states its semver stance. Strict import reports `xsi:type` with a diagnostic whose severity that ADR settles; under D-STRICT a schema-valid document is accepted (XMI 2.5.1 rule 2g: \"You may only use the XML schema instance type attribute if org.omg.xmi.useSchemaExtensions is true\"). Must land before any release (LIB-QA-005)."
 
 [[row]]
 id = "SACM23-VAL-001"
@@ -3377,7 +3377,7 @@ requirement = "Import and export XMI documents whose unit of interchange is Argu
 source = "formal/23-05-08 clause 2"
 kind = "compliance"
 status = "planned"
-depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-ARG-001", "SACM23-ARG-002", "SACM23-ARG-003", "SACM23-ARG-004", "SACM23-ARG-005", "SACM23-ARG-006", "SACM23-ARG-007", "SACM23-ARG-008", "SACM23-ARG-009", "SACM23-ARG-010", "SACM23-ARG-011", "SACM23-ARG-012", "SACM23-ARG-013", "SACM23-ARG-014", "SACM23-ARG-015", "SACM23-XMI-001", "SACM23-XMI-002", "SACM23-XMI-003", "SACM23-XMI-004", "SACM23-XMI-005", "SACM23-XMI-006", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-XMI-009", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-005", "SACM23-VAL-006", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-009", "SACM23-VAL-010", "SACM23-VAL-011", "SACM23-VAL-012", "SACM23-VAL-013", "SACM23-VAL-014", "SACM23-VAL-016", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008", "SACM23-XMI-017", "SACM23-VAL-019", "SACM23-XMI-018", "SACM23-XMI-019", "SACM23-XMI-020", "SACM23-XMI-021", "SACM23-XMI-022", "LIB-API-011"]
+depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-ARG-001", "SACM23-ARG-002", "SACM23-ARG-003", "SACM23-ARG-004", "SACM23-ARG-005", "SACM23-ARG-006", "SACM23-ARG-007", "SACM23-ARG-008", "SACM23-ARG-009", "SACM23-ARG-010", "SACM23-ARG-011", "SACM23-ARG-012", "SACM23-ARG-013", "SACM23-ARG-014", "SACM23-ARG-015", "SACM23-XMI-001", "SACM23-XMI-002", "SACM23-XMI-003", "SACM23-XMI-004", "SACM23-XMI-005", "SACM23-XMI-006", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-XMI-009", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-005", "SACM23-VAL-006", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-009", "SACM23-VAL-010", "SACM23-VAL-011", "SACM23-VAL-012", "SACM23-VAL-013", "SACM23-VAL-014", "SACM23-VAL-016", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008", "SACM23-XMI-017", "SACM23-VAL-019", "SACM23-XMI-018", "SACM23-XMI-019", "SACM23-XMI-020", "SACM23-XMI-021", "SACM23-XMI-022", "LIB-API-011", "SACM23-XMI-024", "SACM23-VAL-020"]
 
 [[row]]
 id = "SACM23-CP-003"
@@ -3388,7 +3388,7 @@ requirement = "Import and export XMI documents whose unit of interchange is Arti
 source = "formal/23-05-08 clause 2"
 kind = "compliance"
 status = "planned"
-depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-ART-001", "SACM23-ART-002", "SACM23-ART-003", "SACM23-ART-004", "SACM23-ART-005", "SACM23-ART-006", "SACM23-ART-007", "SACM23-ART-008", "SACM23-ART-009", "SACM23-ART-010", "SACM23-ART-011", "SACM23-ART-012", "SACM23-ART-013", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-XMI-009", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-013", "SACM23-VAL-014", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008", "SACM23-XMI-018", "SACM23-XMI-019", "SACM23-XMI-020", "SACM23-XMI-021", "SACM23-XMI-022", "LIB-API-011"]
+depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-ART-001", "SACM23-ART-002", "SACM23-ART-003", "SACM23-ART-004", "SACM23-ART-005", "SACM23-ART-006", "SACM23-ART-007", "SACM23-ART-008", "SACM23-ART-009", "SACM23-ART-010", "SACM23-ART-011", "SACM23-ART-012", "SACM23-ART-013", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-XMI-009", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-013", "SACM23-VAL-014", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008", "SACM23-XMI-018", "SACM23-XMI-019", "SACM23-XMI-020", "SACM23-XMI-021", "SACM23-XMI-022", "LIB-API-011", "SACM23-XMI-024", "SACM23-VAL-020"]
 
 [[row]]
 id = "SACM23-CP-004"
@@ -3399,7 +3399,7 @@ requirement = "Import and export XMI documents whose unit of interchange is Term
 source = "formal/23-05-08 clause 2"
 kind = "compliance"
 status = "planned"
-depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-TERM-001", "SACM23-TERM-002", "SACM23-TERM-003", "SACM23-TERM-004", "SACM23-TERM-005", "SACM23-TERM-006", "SACM23-TERM-007", "SACM23-TERM-008", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-009", "SACM23-VAL-013", "SACM23-VAL-014", "SACM23-VAL-017", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008", "SACM23-XMI-018", "SACM23-XMI-019", "SACM23-XMI-020", "SACM23-XMI-021", "SACM23-XMI-022", "LIB-API-011"]
+depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-TERM-001", "SACM23-TERM-002", "SACM23-TERM-003", "SACM23-TERM-004", "SACM23-TERM-005", "SACM23-TERM-006", "SACM23-TERM-007", "SACM23-TERM-008", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-009", "SACM23-VAL-013", "SACM23-VAL-014", "SACM23-VAL-017", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008", "SACM23-XMI-018", "SACM23-XMI-019", "SACM23-XMI-020", "SACM23-XMI-021", "SACM23-XMI-022", "LIB-API-011", "SACM23-XMI-024", "SACM23-VAL-020"]
 
 [[row]]
 id = "SACM23-CP-001"
@@ -3633,6 +3633,7 @@ source = "XMI 2.5.1 §7.6.1 `type=\"xsd:ID\"`; XML Schema 1.0 Part 2 §3.3.8 (ID
 kind = "validation"
 status = "planned"
 depends_on = ["SACM23-VAL-018", "SACM23-XMI-004"]
+notes = "Choose its diagnostic code (extend SACM-ID-002 or add one) before its tests."
 
 [[row]]
 id = "LIB-API-009"
@@ -3701,7 +3702,7 @@ id = "LIB-API-011"
 area = "API"
 milestone = "M2"
 title = "Interim refusals are listed and gated"
-requirement = "Every interim refusal (content refused as `ReadError::Unsupported` or `WriteError` only until a later row reads or writes it) is in one crate-private list that names the closing row. A test checks that every listed row exists in the matrix and is not verified, and every compliance point depends on those rows, so no compliance point can be verified while schema-conforming input is still refused."
+requirement = "Every interim refusal (content refused as `ReadError::Unsupported` or `WriteError` only until a later row reads or writes it) is in one crate-private list that names the closing row. A test checks that every listed row exists in the matrix and is not verified, and every compliance point depends on those rows, so no compliance point can be verified while schema-conforming input is still refused. Each `Unsupported` refusal is also labelled, in its reason and docs, as a limit of this version or a defect in the input (ADR 0015 amendment 1)."
 source = "D-PRESERVE; D-STRICT; ADR 0015; ADR 0016; XMI 2.5.1 §7.6.1 `<xsd:attribute name=\"id\" type=\"xsd:ID\" use=\"optional\"/>`, §7.3.3 \"Tools that rely on XMI are expected to store the extension information and export it again\"; ADR review, 2026-11-13 (the maintainer: apply every recommendation)"
 kind = "api"
 status = "planned"
@@ -3944,7 +3945,7 @@ source = "XMI 2.5.1 §7.6.1 (p. 13) `use=\"optional\"`; D-STRICT; D-ID; the main
 kind = "xmi"
 status = "planned"
 depends_on = ["SACM23-XMI-001", "SACM23-XMI-004"]
-notes = "ADR review, 2026-11-13: needs an ADR before its tests, on the identity of an element without an `xmi:id`: is a generated id marked, is it written back, and how does comparison treat it (ADR 0010, ADR 0013 \"Nothing invents\", ADR 0020)."
+notes = "ADR review, 2026-11-13: needs an ADR before its tests, on the identity of an element without an `xmi:id`: is a generated id marked, is it written back, and how does comparison treat it (ADR 0010, ADR 0013 \"Nothing invents\", ADR 0020). ADR review, 2026-11-13: docs/sacm/diagnostics.md lists SACM-XMI-004 as \"Error (strict)\" for a missing id, which conflicts with D-STRICT and XMI 2.5.1 §7.6.1 `use=\"optional\"`; this row settles it."
 
 [[row]]
 id = "SACM23-XMI-021"
@@ -3986,12 +3987,12 @@ id = "SACM23-XMI-024"
 area = "XMI"
 milestone = "M1"
 title = "No xmi:version on export"
-requirement = "`xmi::write` writes no `xmi:version` attribute: the XMI 2.5.1 namespace declaration identifies the version. The reader keeps ignoring `xmi:version` (SACM23-XMI-001). The golden files change accordingly."
+requirement = "`xmi::write` writes no `xmi:version` attribute: the XMI 2.5.1 namespace declaration identifies the version. The reader keeps ignoring `xmi:version` on the `xmi:XMI` element and on the roots (SACM23-XMI-001); on a child it stays refused (SACM23-XMI-016). The golden files change accordingly."
 source = "XMI 2.5.1 §7.5.3 \"identification of the XMI version is indicated by the presence of the XMI namespace declaration\"; production 1a (\"1b to 1d: // rules deleted //\"); the §7.5.3 `XMI` complexType declares no attributes; CLAUDE.md rule 6; ADR review, 2026-11-13 (the maintainer: apply every recommendation)"
 kind = "xmi"
 status = "planned"
 depends_on = ["SACM23-XMI-007", "SACM23-XMI-013", "SACM23-XMI-001"]
-notes = "Reverses ADR 0017's \"Kept from C++: xmi:version=\\\"2.0\\\"\" (the maintainer, 2026-11-13, on the ADR review): the standard decides, so it comes before C++ (`namespaces.h:32`). A `WriteOptions` switch is added only if a real consumer needs it."
+notes = "Reverses ADR 0017's \"Kept from C++: xmi:version=\\\"2.0\\\"\" (the maintainer, 2026-11-13, on the ADR review): the standard decides, so it comes before C++ (`namespaces.h:32`). A `WriteOptions` switch is added only if a real consumer needs it. docs/sacm/metamodel-inventory.md and the sacm-expert skill's XMI reference, which state `xmi:version=\"2.0\"`, are updated with it."
 
 [[row]]
 id = "LIB-COMPAT-009"

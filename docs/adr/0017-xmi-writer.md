@@ -25,8 +25,9 @@ WriteError>`.
   - `UnrepresentableCharacter { element, character, attribute }`, which is
     `#[non_exhaustive]`. `attribute` is a `WriteAttribute`: `Id`, `NameLang` or
     `NameContent`, a `#[non_exhaustive]` `Copy` enum that later rows extend.
-- Nothing a `Document` holds is refused. The name `Unsupported { element, reason }` (no
-  code, `#[non_exhaustive]`) is reserved: the first row that lets a `Document` hold content
+- `WriteError` is `#[non_exhaustive]`. Nothing a `Document` holds is refused. The name
+  `Unsupported { element, reason }` (no code, `#[non_exhaustive]`) is reserved, and adding it
+  back is additive: the first row that lets a `Document` hold content
   no row writes adds it back in the same slice (LIB-API-010).
 
 **The output, byte for byte:**
@@ -34,7 +35,10 @@ WriteError>`.
   line endings, two spaces per depth, `<x … />` (with a space before `/>`) for an element
   with no children, and a final LF.
 - **The document element** carries `xmlns:sacm` and `xmlns:xmi`. It also carries
-  `xmi:version="2.0"` until SACM23-XMI-024 removes it (amendment 3).
+  `xmi:version="2.0"` until SACM23-XMI-024 removes it (amendment 3). A document with one
+  root writes that root as the document element. One with several roots writes an `xmi:XMI`
+  wrapper as the document element, carrying the declarations, with the roots one level
+  down.
 - **Each element's attributes:** `xmi:type`, when the class is not known from the role
   (T1), then `xmi:id`, then `assertionDeclaration="<literal>"` on an Assertion whose
   declaration is not `asserted`. The default is omitted, as XMI 2.5.1 §9.4.1 says:
@@ -141,6 +145,9 @@ WriteError>`.
 - **Amendment 3, 2026-11-13 (ADR review; SACM23-XMI-024).** The maintainer decided to drop
   `xmi:version`. XMI 2.5.1 decides it: §7.5.3 says "identification of the XMI version is
   indicated by the presence of the XMI namespace declaration", production 1a has no
-  version attribute, and the §7.5.3 `XMI` complexType declares none. "2.0" also contradicts
+  version attribute, and the §7.5.3 `XMI` complexType declares none. Rule 1a's text, "An XMI
+  element has XML attributes that declare namespaces and specify the version of XMI", is
+  met by the namespace declaration itself, which is the attribute that specifies the
+  version. "2.0" also contradicts
   the `20131001` namespace written beside it. A `WriteOptions` switch is added only if a
   real consumer needs it.
