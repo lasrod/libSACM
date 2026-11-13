@@ -2,8 +2,8 @@
 
 - Date: 2026-11-13
 - Row verdict: LIB-DOC-008: PASS
-- Verifier: `sacm-verifier` (independent; read-only), 2 rounds
-- Commit: 943780e. Evidence: CI run 43353447065 (7612a50), and the gates run by the verifier
+- Verifier: `sacm-verifier` (independent; read-only), 2 rounds plus a re-check of the Copilot test fixes
+- Commit: 3c464e3 (the tests); 943780e (the docs). Evidence: CI run 43353447065 (7612a50), and the gates run by the verifier
   on an export of 943780e. Docs and test changes only, so there is nothing to mutate.
 - Slice brief: [docs/slices/0032-m1-adr-review-fixes.md](../slices/0032-m1-adr-review-fixes.md)
 
@@ -31,4 +31,4 @@ check the index and the links. Every quote was checked against XMI 2.5.1 and SAC
 | Medium | LIB-DOC-008 | Three ADR interpretations had no D- entry | D-XMI-VERSION, D-ROLE-UNQUALIFIED, D-ROOT-NAME |
 | Low | LIB-DOC-008 | ADR 0017 wrapper, `#[non_exhaustive]`, rule 1a; row wording | Fixed |
 | Logged | LIB-API-011 | Code and test comments cite the old ADR 0017 amendments | Recorded on LIB-API-011 |
-| Logged | LIB-DOC-008 | The index test compares the first word of a "superseded by NNNN" status | To widen when the first ADR is superseded |
+| Low | LIB-DOC-008 | Copilot: a "superseded by NNNN" status failed the index test, and a fenced or commented-out index passed both tests | The successor is kept; the first rendered table is read; every ADR must be linked (3c464e3); 4 hand mutants killed |
