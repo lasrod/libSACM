@@ -2186,6 +2186,7 @@ tests = [
   "crates/sacm/tests/compare.rs::lib_rt_001_difference_and_document_have_the_designed_traits",
   "crates/sacm/tests/compare.rs::lib_rt_001_formatting_attribute_order_and_prefixes_are_not_compared",
   "crates/sacm/tests/compare.rs::lib_rt_001_deep_documents_compare_without_panicking",
+  "crates/sacm/tests/compare.rs::lib_rt_001_display_shows_both_values",
 ]
 
 [[row]]

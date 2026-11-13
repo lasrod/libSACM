@@ -1374,6 +1374,125 @@ fn lib_rt_001_display_is_one_line_with_the_quoted_id_and_the_feature() {
     );
 }
 
+/// Asserts that `text` holds `list` as one run of quoted ids, in order, each
+/// pair separated by `, `, with no separator before the first id or after the
+/// last; returns where the run starts.
+fn assert_list_shown(what: &str, text: &str, list: &[ElementId]) -> usize {
+    let run = list
+        .iter()
+        .map(|element| format!("{:?}", element.as_str()))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let Some(start) = text.find(&run) else {
+        panic!("{ROW}: the Display of {what} does not show the list {run} in order: {text:?}");
+    };
+    let before = text[..start].trim_end();
+    let after = text[start + run.len()..].trim_start();
+    assert!(
+        !before.ends_with(',') && !after.starts_with(','),
+        "{ROW}: the Display of {what} has a separator before or after the list {run}: {text:?}"
+    );
+    start
+}
+
+#[test]
+fn lib_rt_001_display_shows_both_values() {
+    // Parent: both parent ids, and a root reads differently from a contained side.
+    let moved = Difference::Parent {
+        id: id("moved"),
+        left: Some(id("p1")),
+        right: Some(id("p2")),
+    };
+    let text = moved.to_string();
+    for parent in ["\"p1\"", "\"p2\""] {
+        assert!(
+            text.contains(parent),
+            "{ROW}: the Display of {moved:?} does not show the parent {parent}: {text:?}"
+        );
+    }
+    let from_root = Difference::Parent {
+        id: id("moved"),
+        left: None,
+        right: Some(id("p2")),
+    };
+    assert_ne!(
+        from_root.to_string(),
+        moved.to_string(),
+        "{ROW}: a Parent difference reads the same for a root and for a contained side"
+    );
+    assert!(
+        !from_root.to_string().contains("\"p1\""),
+        "{ROW}: the Display of {from_root:?} shows a parent the root does not have: {from_root}"
+    );
+
+    // AssertionDeclaration: both literals, and `None` reads differently from `Some`.
+    let declared = Difference::AssertionDeclaration {
+        id: id("c1"),
+        left: Some(AssertionDeclaration::NeedsSupport),
+        right: Some(AssertionDeclaration::Assumed),
+    };
+    let text = declared.to_string();
+    for literal in ["needsSupport", "assumed"] {
+        assert!(
+            text.contains(literal),
+            "{ROW}: the Display of {declared:?} does not show the literal {literal}: {text:?}"
+        );
+    }
+    let undeclared = Difference::AssertionDeclaration {
+        id: id("c1"),
+        left: None,
+        right: Some(AssertionDeclaration::Assumed),
+    };
+    assert_ne!(
+        undeclared.to_string(),
+        declared.to_string(),
+        "{ROW}: an AssertionDeclaration difference reads the same for None and for Some"
+    );
+    assert!(
+        !undeclared.to_string().contains("needsSupport"),
+        "{ROW}: the Display of {undeclared:?} shows a literal the side does not have: {undeclared}"
+    );
+
+    // ChildOrder and RootOrder: every id of both lists, in order, separated,
+    // and the left list before the right one.
+    let orders = [
+        Difference::RootOrder {
+            left: ids(&["a", "b", "c"]),
+            right: ids(&["c", "b", "a"]),
+        },
+        Difference::ChildOrder {
+            id: id("parent_x"),
+            left: ids(&["a", "b", "c"]),
+            right: ids(&["b", "c", "a"]),
+        },
+        Difference::ChildOrder {
+            id: id("parent_x"),
+            left: ids(&["a", "b"]),
+            right: ids(&["b", "a"]),
+        },
+    ];
+    for order in orders {
+        let (left, right) = match &order {
+            Difference::RootOrder { left, right } | Difference::ChildOrder { left, right, .. } => {
+                (left.clone(), right.clone())
+            }
+            other => panic!("{ROW}: the test does not expect {other:?}"),
+        };
+        let what = format!("{order:?}");
+        let text = order.to_string();
+        let left_at = assert_list_shown(&what, &text, &left);
+        let right_at = assert_list_shown(&what, &text, &right);
+        assert!(
+            left_at < right_at,
+            "{ROW}: the Display of {what} does not show the left list before the right: {text:?}"
+        );
+        assert!(
+            !text.contains("[, ") && !text.contains(", ]") && !text.contains("\"\""),
+            "{ROW}: the Display of {what} has a misplaced or missing separator: {text:?}"
+        );
+    }
+}
+
 #[test]
 fn lib_rt_001_display_tells_absent_and_empty_names_apart() {
     let with_left = |left: Option<LangString>| {
