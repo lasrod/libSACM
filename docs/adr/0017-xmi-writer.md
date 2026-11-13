@@ -85,6 +85,9 @@ WriteError>`.
 - **T3.** Roots are written in document order (ADR 0010 D1). C++ writes AssuranceCasePackage
   roots first (`:543-548`).
 - **T4.** Children are written in model order, not grouped by role (`:254-337`).
+- **No `xmi:version`.** C++ writes `xmi:version="2.0"` on the document element
+  (`metadata/namespaces.h:32` `kXmiVersion`, `io/xmi_writer.cpp:461, 542`); this crate writes
+  none, as XMI 2.5.1 §7.5.3 decides (amendment 3, SACM23-XMI-024).
 - **W1.** It returns `Result<String, WriteError>`, not `SaveResult { xml, diagnostics, ok }`
   (`options.h:58-62`; ADR 0011 X1). C++ never fills diagnostics on a successful save
   (`xmi_writer.cpp:482-556`).

@@ -5,7 +5,7 @@ state: in-progress
 step: verification
 rows: [SACM23-XMI-024, SACM23-XMI-003, SACM23-XMI-007, SACM23-XMI-013]
 mode: pr
-base: slice/0032-m1-adr-review-fixes (PR #43)
+base: slice/0032-m1-adr-review-fixes (PR #43, merged); PR #44 targets main
 ---
 
 # Slice 0033 — No xmi:version on export

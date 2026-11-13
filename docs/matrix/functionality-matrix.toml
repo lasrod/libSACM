@@ -4015,7 +4015,7 @@ tests = [
   "crates/sacm/tests/xmi_version.rs::sacm23_xmi_024_the_reader_ignores_xmi_version_on_the_wrapper_and_on_the_roots",
   "crates/sacm/tests/xmi_version.rs::sacm23_xmi_024_the_reader_refuses_xmi_version_on_a_child_at_the_attribute_name",
 ]
-notes = "Reverses ADR 0017's \"Kept from C++: xmi:version=\\\"2.0\\\"\" (the maintainer, 2026-11-13, on the ADR review): the standard decides, so it comes before C++ (`namespaces.h:32`). A `WriteOptions` switch is added only if a real consumer needs it. docs/sacm/metamodel-inventory.md and the sacm-expert skill's XMI reference, which state `xmi:version=\"2.0\"`, are updated with it."
+notes = "Reverses ADR 0017's \"Kept from C++: xmi:version=\\\"2.0\\\"\" (the maintainer, 2026-11-13, on the ADR review): the standard decides, so it comes before C++ (`namespaces.h:32`). A `WriteOptions` switch is added only if a real consumer needs it. docs/sacm/metamodel-inventory.md and the sacm-expert skill's XMI reference, which stated `xmi:version=\"2.0\"`, are updated with it (slice 0033)."
 
 [[row]]
 id = "LIB-COMPAT-009"
