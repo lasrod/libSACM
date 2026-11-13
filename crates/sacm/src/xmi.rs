@@ -137,6 +137,9 @@ mod roots;
 /// space, comments, processing instructions and the children above. A child
 /// may carry only namespace declarations, `xmi:id`, its type attributes and,
 /// on a Claim, `assertionDeclaration`, and hold the same content as a root.
+/// An `xmi:version` on a root or on the `xmi:XMI` wrapper is accepted with
+/// any value and ignored: the XMI namespace identifies the version
+/// (XMI 2.5.1 §7.5.3), so [`write()`] does not write it back.
 /// The `name` must be in no namespace, carry only `lang`, `content` and an
 /// `xmi:type` or `xsi:type` naming `sacm:LangString`, and hold only white
 /// space, comments and processing instructions. Anything else is refused as
@@ -541,9 +544,10 @@ impl std::error::Error for ReadError {}
 /// several are the children of one `xmi:XMI` element, in document order
 /// (XMI 2.5.1 §7.5.3). The document element alone declares the SACM 2.3
 /// namespace `http://www.omg.org/spec/SACM/20220301` as `sacm`, the XMI 2.5.1
-/// namespace `http://www.omg.org/spec/XMI/20131001` as `xmi`, and
-/// `xmi:version="2.0"` (the value assurance-forge and EMF-based tools write;
-/// XMI.xsd 2.5.1 does not declare the attribute, see [ADR 0017]).
+/// namespace `http://www.omg.org/spec/XMI/20131001` as `xmi`. No element
+/// carries `xmi:version`: the XMI namespace identifies the version
+/// (XMI 2.5.1 §7.5.3; [ADR 0017] amendment 3), and an `xmi:version` that
+/// [`read`] ignored is not written back.
 ///
 /// [ADR 0017]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0017-xmi-writer.md
 ///
@@ -602,8 +606,7 @@ impl std::error::Error for ReadError {}
 ///     text,
 ///     "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
 ///      <sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\" \
-///      xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:version=\"2.0\" \
-///      xmi:id=\"arguments\" />\n"
+///      xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"arguments\" />\n"
 /// );
 ///
 /// // A name is written as the element's first child.

@@ -12,7 +12,7 @@ single-constant change plus golden-file refresh.
 | Concern | Convention |
 |---|---|
 | SACM namespace | `http://www.omg.org/spec/SACM/20220301` (OMG version URI for 2.3), prefix `sacm` |
-| XMI namespace | `http://www.omg.org/spec/XMI/20131001`, prefix `xmi`, `xmi:version="2.0"` |
+| XMI namespace | `http://www.omg.org/spec/XMI/20131001`, prefix `xmi`. Export writes no `xmi:version`: the namespace identifies the version (XMI 2.5.1 §7.5.3; SACM23-XMI-024). Import ignores `xmi:version` on `xmi:XMI` and on roots |
 | XSI namespace | Not declared on export. Import accepts `xsi:type` as well as `xmi:type` |
 | Root | One package element, `sacm:<Kind>`, for any of the twelve package kinds (the four packages and their Interfaces and Bindings; ADR 0016); more than one root inside a single `xmi:XMI` element (SACM23-XMI-013) |
 | Identity | Every element carries `xmi:id`; ids are preserved exactly; generated ids are deterministic |

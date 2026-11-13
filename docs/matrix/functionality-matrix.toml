@@ -1884,23 +1884,23 @@ id = "SACM23-XMI-003"
 area = "XMI"
 milestone = "M1"
 title = "Pinned strict namespace"
-requirement = "`xmi::write` declares exactly `xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"` and `xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"`, and writes `xmi:version=\"2.0\"`, on the document element only: the bare root, or `xmi:XMI` when there are several roots. Roots and type values use the `sacm` prefix, and role elements are unprefixed (XMI rule 2a). No default namespace and no `xmlns:xsi` is declared. The reader and the writer share one constant per namespace URI. Keeping `xmi:version`, which XMI.xsd 2.5.1 does not declare, follows C++ (the maintainer's decisions of 2026-11-12 (ADR 0017))."
+requirement = "`xmi::write` declares exactly `xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"` and `xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"` on the document element only: the bare root, or `xmi:XMI` when there are several roots. Roots and type values use the `sacm` prefix, and role elements are unprefixed (XMI rule 2a). No default namespace and no `xmlns:xsi` is declared. The reader and the writer share one constant per namespace URI."
 source = "D-NS-PIN; XMI 2.5.1 §7.5.3 (p. 10) \"identification of the XMI version is indicated by the presence of the XMI namespace declaration\", rule 1e (p. 61), rule 1h (p. 61) \"Document producers can choose their own namespace prefixes\", rule 2a and rule 2d (p. 63); formal/23-05-08 §2.2–2.5; ADR 0017; assurance-forge `metadata/namespaces.h:17-35`, `io/xmi_writer.cpp:456-462, 537-542`"
 kind = "xmi"
 status = "verified"
 depends_on = ["SACM23-XMI-001"]
-notes = "Slice 0021 research: XMI 2.5.1 declares no `xmi:version` attribute (XMI.xsd; §7.8.3 p. 17 has no anyAttribute), so a strict export that writes `xmi:version=\"2.0\"` may not validate against the 2.5.1 schema. C++ writes it (namespaces.h:32 `kXmiVersion`, xmi_writer.cpp:461, 542). Decide keep or drop with an ADR naming that C++ decision, and check it against clause 2. Maintainer decision 2026-11-12: strict export keeps writing `xmi:version=\"2.0\"`, following C++. The ADR for this row records that strict output may then not validate against XMI.xsd 2.5.1."
+notes = "Slice 0021 research: XMI 2.5.1 declares no `xmi:version` attribute (XMI.xsd; §7.8.3 p. 17 has no anyAttribute), so a strict export that writes `xmi:version=\"2.0\"` may not validate against the 2.5.1 schema. C++ writes it (namespaces.h:32 `kXmiVersion`, xmi_writer.cpp:461, 542). Decide keep or drop with an ADR naming that C++ decision, and check it against clause 2. Maintainer decision 2026-11-12: strict export keeps writing `xmi:version=\"2.0\"`, following C++. The ADR for this row records that strict output may then not validate against XMI.xsd 2.5.1. Slice 0033: `xmi:version` is no longer written (SACM23-XMI-024; the maintainer, 2026-11-13, on the ADR review); reworded and re-checked there."
 acceptance = [
-  "For one root and for several roots, the document element carries exactly `xmlns:sacm` and `xmlns:xmi` with the pinned URIs and `xmi:version=\"2.0\"`; no other element carries a namespace declaration or `xmi:version`.",
+  "For one root and for several roots, the document element carries exactly `xmlns:sacm` and `xmlns:xmi` with the pinned URIs and nothing else in the XMI namespace; no other element carries a namespace declaration (SACM23-XMI-024: no `xmi:version`).",
   "The output has no `xmlns=\"…\"`, no `xmlns:xsi` and no prefix other than `sacm` and `xmi`.",
   "A root's element name is `sacm:<Kind>` (the `ElementKind` name); child elements are unprefixed.",
   "The output for a document with 1 root and with 2 roots (AssuranceCasePackage/ArgumentPackage, nameless, no children) reads back through `xmi::read` to the same ids, kinds and order.",
 ]
 code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/output.rs", "docs/adr/0017-xmi-writer.md", "crates/sacm/src/xmi/namespaces.rs", "crates/sacm/src/xmi/roots.rs"]
 tests = [
-  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_003_one_root_declares_the_pinned_namespaces_and_version_on_the_root_only",
-  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_003_several_roots_declare_the_namespaces_and_version_on_xmi_xmi_only",
-  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_003_no_element_but_the_document_element_declares_a_namespace_or_version",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_003_one_root_declares_the_pinned_namespaces_on_the_root_only",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_003_several_roots_declare_the_namespaces_on_xmi_xmi_only",
+  "crates/sacm/tests/xmi_write.rs::sacm23_xmi_003_no_element_but_the_document_element_declares_a_namespace",
   "crates/sacm/tests/xmi_write.rs::sacm23_xmi_003_output_has_no_default_namespace_no_xsi_and_only_the_sacm_and_xmi_prefixes",
   "crates/sacm/tests/xmi_write.rs::sacm23_xmi_003_roots_are_sacm_prefixed_by_kind_and_children_are_unprefixed",
   "crates/sacm/tests/xmi_write.rs::sacm23_xmi_003_one_and_two_roots_read_back_to_the_same_ids_kinds_and_order",
@@ -1972,7 +1972,7 @@ id = "SACM23-XMI-007"
 area = "XMI"
 milestone = "M1"
 title = "Deterministic export"
-requirement = "Writing the same document always produces identical bytes: UTF-8 without a BOM; the declaration `<?xml version=\"1.0\" encoding=\"UTF-8\"?>`; LF line endings; two spaces of indentation per depth; `<x … />` for an element with no children; a final LF. Attributes are in double quotes, in the order namespace declarations, `xmi:version`, `xmi:type`, `xmi:id`. Children are written in model order (ADR 0010 D2), not grouped by role as C++ does. Nothing depends on hash iteration order. The output is checked against golden files."
+requirement = "Writing the same document always produces identical bytes: UTF-8 without a BOM; the declaration `<?xml version=\"1.0\" encoding=\"UTF-8\"?>`; LF line endings; two spaces of indentation per depth; `<x … />` for an element with no children; a final LF. Attributes are in double quotes, in the order namespace declarations, `xmi:type`, `xmi:id`, `assertionDeclaration`. Children are written in model order (ADR 0010 D2), not grouped by role as C++ does. Nothing depends on hash iteration order. The output is checked against golden files."
 source = "D-RT; XMI 2.5.1 §9.5 (p. 60) \"the XML attributes may be serialized in any order\", rule 2a (p. 63); ADR 0010 D2; ADR 0017; assurance-forge `io/xmi.h:18-21`, `tests/test_roundtrip.cpp:892-925`"
 kind = "xmi"
 status = "verified"
@@ -2132,7 +2132,7 @@ source = "D-STRICT"
 kind = "api"
 status = "planned"
 depends_on = ["SACM23-XMI-001", "SACM23-XMI-003"]
-notes = "Slice 0025 (ADR 0017 W6): owns the C++ `SaveOptions::namespace_uri` option (`options.h:26-43`; C++ decision #18), that is, export under a namespace other than the pinned SACM URI, including re-export under the namespace a document was read with. ADR review, 2026-11-13: needs a \"load and save modes\" ADR (with LIB-COMPAT-007) that takes over ADR 0013 amendment 1's strict-save rule and states its semver stance. Strict import reports `xsi:type` with a diagnostic whose severity that ADR settles; under D-STRICT a schema-valid document is accepted (XMI 2.5.1 rule 2g: \"You may only use the XML schema instance type attribute if org.omg.xmi.useSchemaExtensions is true\"). Must land before any release (LIB-QA-005)."
+notes = "Slice 0025 (ADR 0017 W6): owns the C++ `SaveOptions::namespace_uri` option (`options.h:26-43`; C++ decision #18), that is, export under a namespace other than the pinned SACM URI, including re-export under the namespace a document was read with. ADR review, 2026-11-13: needs a \"load and save modes\" ADR (with LIB-COMPAT-007) that takes over ADR 0013 amendment 1's strict-save rule and states its semver stance. Strict import reports `xsi:type` with a diagnostic whose severity that ADR settles; under D-STRICT a schema-valid document is accepted (XMI 2.5.1 rule 2g: \"You may only use the XML schema instance type attribute if org.omg.xmi.useSchemaExtensions is true\"). Must land before any release (LIB-QA-005). Slice 0033 research: whether a strict read reports `xmi:version` on the wrapper or roots (not schema-valid under XMI 2.5.1 §2.2.2) with an informational diagnostic is also for that ADR."
 
 [[row]]
 id = "SACM23-VAL-001"
@@ -2614,7 +2614,7 @@ id = "SACM23-XMI-013"
 area = "XMI"
 milestone = "M1"
 title = "Export of one or more roots"
-requirement = "`xmi::write` writes every root in document order: one root bare, more than one inside a single `xmi:XMI` element that carries the namespace declarations and `xmi:version`. Each of the twelve package kinds is written as a root under its class name. A document with no root makes the write fail with an error, and nothing is returned; C++ writes an empty `xmi:XMI` instead (the maintainer's decisions of 2026-11-12 (ADR 0017))."
+requirement = "`xmi::write` writes every root in document order: one root bare, more than one inside a single `xmi:XMI` element that carries the namespace declarations. Each of the twelve package kinds is written as a root under its class name. A document with no root makes the write fail with an error, and nothing is returned; C++ writes an empty `xmi:XMI` instead (the maintainer's decisions of 2026-11-12 (ADR 0017))."
 source = "XMI 2.5.1 §7.5.3 (p. 10) \"it must be the XMI element if there are multiple elements\"; formal/23-05-08 §2.2–2.5 (pp. 4–5), §9.3 (p. 24), §11.6 (p. 37) \"ArgumentPackageInterface is a kind of ArgumentPackage that defines an interface that may be exchanged between users\"; ADR 0010 D1; ADR 0016; ADR 0017; assurance-forge `io/xmi_writer.cpp:529-549`"
 kind = "xmi"
 status = "verified"
@@ -3989,11 +3989,32 @@ id = "SACM23-XMI-024"
 area = "XMI"
 milestone = "M1"
 title = "No xmi:version on export"
-requirement = "`xmi::write` writes no `xmi:version` attribute: the XMI 2.5.1 namespace declaration identifies the version. The reader keeps ignoring `xmi:version` on the `xmi:XMI` element and on the roots (SACM23-XMI-001); on a child it stays refused (SACM23-XMI-016). The golden files change accordingly."
-source = "XMI 2.5.1 §7.5.3 \"identification of the XMI version is indicated by the presence of the XMI namespace declaration\"; production 1a (\"1b to 1d: // rules deleted //\"); the §7.5.3 `XMI` complexType declares no attributes; CLAUDE.md rule 6; ADR review, 2026-11-13 (the maintainer: apply every recommendation)"
+requirement = "`xmi::write` writes no `xmi:version` attribute on any element, for one root or several: the XMI 2.5.1 namespace declaration identifies the version. This amends SACM23-XMI-003, -007 and -013, whose texts and tests no longer name it. Reading a file that has `xmi:version` and writing it back drops the attribute, which carries no SACM or XMI model data. The reader is unchanged: it ignores `xmi:version` on the `xmi:XMI` element and on the roots (SACM23-XMI-001), and refuses it on a child (SACM23-XMI-016). The golden files change accordingly."
+source = "XMI 2.5.1 formal/15-06-07 §2.2.2 (p. 1) \"must be equivalent to those generated by the XMI Document production rules\"; §7.5.3 (p. 10) \"identification of the XMI version is indicated by the presence of the XMI namespace declaration\", and the `XMI` complexType declares no attributes; §7.6.3 (p. 15) `ObjectAttribs` (IdentityAttribs, LinkAttribs, type); §7.8.1 (p. 17) \"The XMI element declares the version of XMI and the namespace for UML\" (an example with namespace declarations only); production 1a (p. 60) (\"1b to 1d: // rules deleted //\"); Annex B.2 item 5 (p. 103); D10; D-XMI-VERSION; ADR 0017 amendment 3; CLAUDE.md rule 6; ADR review, 2026-11-13 (the maintainer: apply every recommendation); assurance-forge `metadata/namespaces.h:32`, `io/xmi_writer.cpp:461, 542` (writes `2.0`)"
 kind = "xmi"
-status = "planned"
-depends_on = ["SACM23-XMI-007", "SACM23-XMI-013", "SACM23-XMI-001"]
+status = "implemented"
+depends_on = ["SACM23-XMI-007", "SACM23-XMI-013", "SACM23-XMI-001", "SACM23-XMI-003", "SACM23-XMI-016"]
+acceptance = [
+  "For a document with one root (each of the twelve package kinds) and one with several roots (AP, ACP, AP), the output has no attribute in the XMI namespace with local name `version` on any element: not on the document element (`sacm:<Kind>` or `xmi:XMI`) and not on a root inside `xmi:XMI`. The document element still carries exactly `xmlns:sacm` and `xmlns:xmi` with the pinned URIs.",
+  "The five golden files (`single-root`, `several-roots`, `nested`, `named`, `needs-support-claim`) match byte for byte after the change; in each, the only difference from the previous golden is that ` xmi:version=\"2.0\"` is gone from the document element.",
+  "Reading a file with `xmi:version=\"2.0\"` and one with `\"2.1\"`, on the wrapper and on the roots, gives a document `==` to the one read from the same file without the attribute; writing either gives the same bytes, with no `xmi:version`. No SACM content is lost: `xmi:version` is a property of no SACM class (ptc/22-03-13) and not part of the XMI document model (§7.6.3 ObjectAttribs, the §7.5.3 complexType), and the version it would state is carried by the `xmlns:xmi` URI.",
+  "Determinism: writing a document twice, its clone, and `write(read(write(d)))` give identical bytes, none containing `xmi:version`.",
+  "The reader is unchanged: `xmi:version` on the wrapper and on roots is ignored (SACM23-XMI-001), and on a child is `Unsupported` at the attribute's name (SACM23-XMI-016); reader test inputs that contain it stay as they are.",
+]
+code = ["crates/sacm/src/xmi/output.rs", "crates/sacm/src/xmi/namespaces.rs", "crates/sacm/src/xmi.rs", "docs/adr/0017-xmi-writer.md"]
+tests = [
+  "crates/sacm/tests/xmi_version.rs::sacm23_xmi_024_each_package_kind_as_a_single_root_is_written_without_xmi_version",
+  "crates/sacm/tests/xmi_version.rs::sacm23_xmi_024_ap_acp_ap_roots_are_written_without_xmi_version_on_the_wrapper_or_a_root",
+  "crates/sacm/tests/xmi_version.rs::sacm23_xmi_024_no_element_of_a_document_holding_every_kind_carries_xmi_version",
+  "crates/sacm/tests/xmi_version.rs::sacm23_xmi_024_the_document_element_carries_nothing_in_the_xmi_namespace_but_an_id",
+  "crates/sacm/tests/xmi_version.rs::sacm23_xmi_024_no_golden_file_carries_xmi_version",
+  "crates/sacm/tests/xmi_version.rs::sacm23_xmi_024_reading_xmi_version_on_the_wrapper_or_the_roots_gives_an_equal_document",
+  "crates/sacm/tests/xmi_version.rs::sacm23_xmi_024_writing_a_document_read_with_xmi_version_gives_the_same_bytes_without_it",
+  "crates/sacm/tests/xmi_version.rs::sacm23_xmi_024_a_golden_file_with_xmi_version_added_writes_back_as_the_golden_file",
+  "crates/sacm/tests/xmi_version.rs::sacm23_xmi_024_writing_twice_a_clone_and_a_read_back_give_identical_bytes_without_xmi_version",
+  "crates/sacm/tests/xmi_version.rs::sacm23_xmi_024_the_reader_ignores_xmi_version_on_the_wrapper_and_on_the_roots",
+  "crates/sacm/tests/xmi_version.rs::sacm23_xmi_024_the_reader_refuses_xmi_version_on_a_child_at_the_attribute_name",
+]
 notes = "Reverses ADR 0017's \"Kept from C++: xmi:version=\\\"2.0\\\"\" (the maintainer, 2026-11-13, on the ADR review): the standard decides, so it comes before C++ (`namespaces.h:32`). A `WriteOptions` switch is added only if a real consumer needs it. docs/sacm/metamodel-inventory.md and the sacm-expert skill's XMI reference, which state `xmi:version=\"2.0\"`, are updated with it."
 
 [[row]]

@@ -91,8 +91,7 @@ change bumps the minor version and is listed under **Breaking**.
   [SACM23-XMI-018].
 - `sacm::xmi`: `write(&Document, &WriteOptions) -> Result<String, WriteError>`,
   `WriteOptions` and `WriteError` (ADR 0017). Output is deterministic: UTF-8, LF, two
-  spaces per depth, the pinned `sacm` and `xmi` namespaces and `xmi:version="2.0"` on the
-  document element only, one root bare or several in `xmi:XMI`, children under their
+  spaces per depth, the pinned `sacm` and `xmi` namespaces on the document element only, one root bare or several in `xmi:XMI`, children under their
   role names in document order, `xmi:type` where the role does not give the class, and
   an `xmi:id` on every element. A document with no root is `WriteError::NoRoot`, and an
   id or name that XML 1.0 cannot represent is `WriteError::UnrepresentableCharacter`
@@ -144,4 +143,6 @@ change bumps the minor version and is listed under **Breaking**.
 
 ### Changed
 
+- `xmi::write` no longer writes `xmi:version`: the XMI namespace identifies the version
+  (XMI 2.5.1 §7.5.3) [SACM23-XMI-024].
 - Simplified the harness: removed CI YAML pin tests and the mutation-exclusions command.
