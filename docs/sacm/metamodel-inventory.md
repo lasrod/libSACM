@@ -16,7 +16,7 @@ divergences from the specification text (formal/23-05-08) resolved as recorded b
 The normative machine-readable model is UML 2.5 XMI of the metamodel and declares **no instance-document namespace URI**, and the specification PDF (formal/23-05-08) prints none either. Clause 2 (Conformance) requires import/export of "XMI documents that conform with the SACM XML Schema produced by applying XMI rules to the normative MOF metamodel". This crate pins the following conventions in a single module of `crates/sacm` (row SACM23-XMI-003; correcting them later is a one-constant change plus golden-file refresh):
 
 - Strict export namespace: `http://www.omg.org/spec/SACM/20220301` (OMG version URI for SACM 2.3), prefix `sacm`.
-- XMI namespace: `http://www.omg.org/spec/XMI/20131001`, prefix `xmi`; `xmi:version="2.0"`.
+- XMI namespace: `http://www.omg.org/spec/XMI/20131001`, prefix `xmi`. Export writes no `xmi:version`: the namespace identifies the XMI version (XMI 2.5.1 §7.5.3; SACM23-XMI-024). Import ignores an `xmi:version` on the `xmi:XMI` wrapper and on a root.
 - Concrete type: export writes `xmi:type="sacm:<Class>"` where the class is not known from the role (XMI 2.5.1 §7.8.8, rule 2g; ADR 0017). No `xsi` namespace is declared. Import accepts `xmi:type` and `xsi:type`.
 - Import accepts (tolerant mode): any namespace URI containing `/spec/SACM/`, the `http://omg.sacm/` reference-implementation family, plus `http://example.org/sacm/2.3` (repo fixtures); other URIs load with a warning in tolerant mode and an error in strict mode.
 - Top interchange objects (Clause 2): `AssuranceCasePackage` (Assurance Case Model compliance point, mandatory), `ArgumentPackage` (Argumentation), `ArtifactPackage` (Artifact).

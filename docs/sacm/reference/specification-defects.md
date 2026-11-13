@@ -226,8 +226,10 @@ XMI.xsd also declares no `version` attribute, although §7.6.3 mentions "the ver
 type attributes" and the §7.10.2 example writes `version="2.1"`.
 
 **This crate** uses `http://www.omg.org/spec/XMI/20131001`, the target namespace of the
-normative schema (SACM23-XMI-001). It reads `xmi:version` and ignores it. Whether
-strict export writes it is decided under SACM23-XMI-003.
+normative schema (SACM23-XMI-001). It reads `xmi:version` on the `xmi:XMI` element and on
+roots and ignores it, and export does not write it (SACM23-XMI-024). One more residue of
+the old attribute: the §7.8.7 (p. 20) datatype complexType still declares
+`<xsd:attribute name="version" … form="qualified"/>`, for datatype values only.
 
 **Suggested resolution.** Use the XMI.xsd namespace throughout the text, and either
 declare `version` in XMI.xsd or drop it from the text.

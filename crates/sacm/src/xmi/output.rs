@@ -9,7 +9,7 @@
 //! one tag per line and `<x … />` for an element with no children. Neither
 //! pass recurses, so deep nesting is safe.
 
-use super::namespaces::{SACM_NS, SACM_PREFIX, XMI_NS, XMI_PREFIX, XMI_VERSION};
+use super::namespaces::{SACM_NS, SACM_PREFIX, XMI_NS, XMI_PREFIX};
 use super::{WriteAttribute, WriteError};
 use crate::model::{
     AssertionDeclaration, DeclaredType, Document, ElementKind, LangString, SacmElement,
@@ -221,8 +221,9 @@ fn push_wrapper_name(out: &mut String) {
     out.push_str(":XMI");
 }
 
-/// Writes the namespace declarations and `xmi:version` of the document
-/// element, each after a space.
+/// Writes the namespace declarations of the document element, each after a
+/// space. No `xmi:version` is written: the XMI namespace identifies the
+/// version (XMI 2.5.1 §7.5.3; ADR 0017 amendment 3).
 fn push_document_attributes(out: &mut String) {
     for (prefix, uri) in [(SACM_PREFIX, SACM_NS), (XMI_PREFIX, XMI_NS)] {
         out.push_str(" xmlns:");
@@ -231,9 +232,6 @@ fn push_document_attributes(out: &mut String) {
         out.push_str(uri);
         out.push('"');
     }
-    push_attribute_name(out, "version");
-    out.push_str(XMI_VERSION);
-    out.push('"');
 }
 
 /// Writes ` xmi:<local>="`, up to the value.

@@ -34,8 +34,8 @@ WriteError>`.
 - **Encoding and layout.** UTF-8 with no BOM, `<?xml version="1.0" encoding="UTF-8"?>`, LF
   line endings, two spaces per depth, `<x … />` (with a space before `/>`) for an element
   with no children, and a final LF.
-- **The document element** carries `xmlns:sacm` and `xmlns:xmi`. It also carries
-  `xmi:version="2.0"` until SACM23-XMI-024 removes it (amendment 3). A document with one
+- **The document element** carries `xmlns:sacm` and `xmlns:xmi`, and no `xmi:version`
+  (amendment 3, SACM23-XMI-024). A document with one
   root writes that root as the document element. One with several roots writes an `xmi:XMI`
   wrapper as the document element, carrying the declarations, with the roots one level
   down.
@@ -85,6 +85,9 @@ WriteError>`.
 - **T3.** Roots are written in document order (ADR 0010 D1). C++ writes AssuranceCasePackage
   roots first (`:543-548`).
 - **T4.** Children are written in model order, not grouped by role (`:254-337`).
+- **No `xmi:version`.** C++ writes `xmi:version="2.0"` on the document element
+  (`metadata/namespaces.h:32` `kXmiVersion`, `io/xmi_writer.cpp:461, 542`); this crate writes
+  none, as XMI 2.5.1 §7.5.3 decides (amendment 3, SACM23-XMI-024).
 - **W1.** It returns `Result<String, WriteError>`, not `SaveResult { xml, diagnostics, ok }`
   (`options.h:58-62`; ADR 0011 X1). C++ never fills diagnostics on a successful save
   (`xmi_writer.cpp:482-556`).
@@ -114,8 +117,8 @@ WriteError>`.
 
 ## Consequences
 
-- Written output follows the XMI rules, except `xmi:version` until SACM23-XMI-024, and with
-  the type attribute placed by the §7.6.3 reading (D11). It is not byte-identical to C++.
+- Written output follows the XMI rules, with the type attribute placed by the §7.6.3
+  reading (D11). It is not byte-identical to C++.
 - Adding diagnostics to a successful write later would change the return type. That is
   accepted, because C++ shows no such case.
 

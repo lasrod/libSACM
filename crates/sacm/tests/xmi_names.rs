@@ -42,7 +42,6 @@ const DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>";
 const DOCUMENT_ATTRIBUTES: &str = concat!(
     " xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
     " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"",
-    " xmi:version=\"2.0\"",
 );
 /// The namespace declarations of a bare root that is read: `sacm`, `xmi`
 /// and `xsi`.

@@ -35,7 +35,9 @@
 //!
 //! The XMI element itself may carry only namespace declarations and
 //! `xmi:version`, and hold, besides its roots, only white space, comments and
-//! processing instructions.
+//! processing instructions. An `xmi:version`, here or on a root, is ignored
+//! with any value: the XMI namespace identifies the version (XMI 2.5.1
+//! §7.5.3), and the writer does not write it (SACM23-XMI-024).
 
 use std::collections::BTreeSet;
 

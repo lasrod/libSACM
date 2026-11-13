@@ -1,6 +1,10 @@
 //! Tests for `sacm::xmi::write`, the XMI writer (SACM23-XMI-003, SACM23-XMI-004,
 //! SACM23-XMI-006, SACM23-XMI-007, SACM23-XMI-013 and LIB-API-010; ADR 0017).
 //!
+//! No element of the output carries `xmi:version` (SACM23-XMI-024): every
+//! test that writes through `write_checked` checks it, and the row's own
+//! tests are in `xmi_version.rs`.
+//!
 //! Documents are built with the `test-support` feature's `Document::insert`
 //! (the crate dev-depends on itself with that feature) or read with
 //! `xmi::read`, and written with `WriteOptions::default()`.
@@ -64,14 +68,13 @@ const DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>";
 const DOCUMENT_ATTRIBUTES: &str = concat!(
     " xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
     " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"",
-    " xmi:version=\"2.0\"",
 );
 /// Every attribute the writer may write today, in the order it must write them:
-/// `assertionDeclaration` directly after `xmi:id` (ADR 0017 amendment 2).
-const ATTRIBUTE_ORDER: [&str; 6] = [
+/// `assertionDeclaration` directly after `xmi:id` (ADR 0017 amendment 2). There
+/// is no `xmi:version` (SACM23-XMI-024).
+const ATTRIBUTE_ORDER: [&str; 5] = [
     "xmlns:sacm",
     "xmlns:xmi",
-    "xmi:version",
     "xmi:type",
     "xmi:id",
     "assertionDeclaration",
@@ -870,15 +873,12 @@ fn assert_matches_document(row: &str, doc: &Document, elements: &[Written]) {
     );
 }
 
-/// Asserts that the document element alone declares the namespaces and the
-/// XMI version, with exactly the attributes it should have: the two
-/// declarations and `xmi:version`, then, on a bare root, its `xmi:id`.
+/// Asserts that the document element alone declares the namespaces, with
+/// exactly the attributes it should have: the two declarations, then, on a
+/// bare root, its `xmi:id`. No element carries `xmi:version`
+/// (SACM23-XMI-024).
 fn assert_document_element_attributes(row: &str, doc: &Document, elements: &[Written]) {
-    let pinned = [
-        ("xmlns:sacm", SACM_NS),
-        ("xmlns:xmi", XMI_NS),
-        ("xmi:version", "2.0"),
-    ];
+    let pinned = [("xmlns:sacm", SACM_NS), ("xmlns:xmi", XMI_NS)];
     let mut expected: Vec<(String, String)> = pinned
         .iter()
         .map(|&(name, value)| (name.to_owned(), value.to_owned()))
@@ -895,12 +895,20 @@ fn assert_document_element_attributes(row: &str, doc: &Document, elements: &[Wri
     for element in &elements[1..] {
         for (name, _) in &element.attributes {
             assert!(
-                !name.starts_with("xmlns") && name != "xmi:version",
+                !name.starts_with("xmlns"),
                 "{row}: <{}> on line {} carries {name}, which only the document element may",
                 element.name,
                 element.line
             );
         }
+    }
+    for element in elements {
+        assert!(
+            element.attribute("xmi:version").is_none(),
+            "{row}: <{}> on line {} carries xmi:version, which nothing may (SACM23-XMI-024)",
+            element.name,
+            element.line
+        );
     }
 }
 
@@ -1010,7 +1018,7 @@ fn assert_error_type<T: Error + Debug + Display + Send + Sync + 'static>() {}
 // ---------------------------------------------------------------------------
 
 #[test]
-fn sacm23_xmi_003_one_root_declares_the_pinned_namespaces_and_version_on_the_root_only() {
+fn sacm23_xmi_003_one_root_declares_the_pinned_namespaces_on_the_root_only() {
     let row = "SACM23-XMI-003";
     let doc = build(
         row,
@@ -1036,15 +1044,14 @@ fn sacm23_xmi_003_one_root_declares_the_pinned_namespaces_and_version_on_the_roo
         [
             ("xmlns:sacm", SACM_NS),
             ("xmlns:xmi", XMI_NS),
-            ("xmi:version", "2.0"),
             ("xmi:id", "case")
         ],
-        "{row}: the bare root's attributes"
+        "{row}: the bare root's attributes, with no xmi:version (SACM23-XMI-024)"
     );
 }
 
 #[test]
-fn sacm23_xmi_003_several_roots_declare_the_namespaces_and_version_on_xmi_xmi_only() {
+fn sacm23_xmi_003_several_roots_declare_the_namespaces_on_xmi_xmi_only() {
     let row = "SACM23-XMI-003";
     let doc = build(
         row,
@@ -1065,12 +1072,8 @@ fn sacm23_xmi_003_several_roots_declare_the_namespaces_and_version_on_xmi_xmi_on
         .collect();
     assert_eq!(
         attributes,
-        [
-            ("xmlns:sacm", SACM_NS),
-            ("xmlns:xmi", XMI_NS),
-            ("xmi:version", "2.0")
-        ],
-        "{row}: the xmi:XMI element's attributes"
+        [("xmlns:sacm", SACM_NS), ("xmlns:xmi", XMI_NS)],
+        "{row}: the xmi:XMI element's attributes, with no xmi:version (SACM23-XMI-024)"
     );
     for &root in &wrapper.children {
         let names: Vec<&str> = elements[root]
@@ -1087,7 +1090,7 @@ fn sacm23_xmi_003_several_roots_declare_the_namespaces_and_version_on_xmi_xmi_on
 }
 
 #[test]
-fn sacm23_xmi_003_no_element_but_the_document_element_declares_a_namespace_or_version() {
+fn sacm23_xmi_003_no_element_but_the_document_element_declares_a_namespace() {
     let row = "SACM23-XMI-003";
     for doc in [every_kind_document(row), nested_document(row)] {
         let (text, _) = write_checked(row, &doc);
@@ -1101,10 +1104,9 @@ fn sacm23_xmi_003_no_element_but_the_document_element_declares_a_namespace_or_ve
             1,
             "{row}: xmlns:xmi is declared more than once"
         );
-        assert_eq!(
-            text.matches("xmi:version=").count(),
-            1,
-            "{row}: xmi:version is written more than once"
+        assert!(
+            !text.contains("xmi:version"),
+            "{row}: xmi:version is written (SACM23-XMI-024)"
         );
     }
 }
@@ -1515,7 +1517,7 @@ fn sacm23_xmi_006_in_the_four_package_roles_only_interfaces_and_bindings_are_typ
     let expected = concat!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n",
         "<sacm:AssuranceCasePackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
-        " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:version=\"2.0\" xmi:id=\"case\">\n",
+        " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"case\">\n",
         "  <assuranceCasePackage xmi:id=\"AssuranceCasePackage\" />\n",
         "  <assuranceCasePackage xmi:type=\"sacm:AssuranceCasePackageInterface\" xmi:id=\"AssuranceCasePackageInterface\" />\n",
         "  <assuranceCasePackage xmi:type=\"sacm:AssuranceCasePackageBinding\" xmi:id=\"AssuranceCasePackageBinding\" />\n",
