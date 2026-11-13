@@ -27,8 +27,8 @@
 //! [`edit::apply`](crate::edit::apply) reads back with the same ids, kinds,
 //! names, declarations, parents and order.
 //!
-//! Both take a [`Mode`] in their options (ADR 0022). Strict is SACM 2.3
-//! conformance; tolerant also accepts recognised variations, as Warnings, and
+//! Both take a [`Mode`] in their options (ADR 0022). Strict aims at SACM 2.3
+//! conformance (see [`Mode`] for what it checks today); tolerant also accepts recognised variations, as Warnings, and
 //! writes a document as it is held. [`ReadOptions`] default to tolerant and
 //! [`WriteOptions`] to strict.
 //!
@@ -164,9 +164,9 @@ mod roots;
 /// # Diagnostics
 ///
 /// A document that is read comes with diagnostics, in
-/// [`ReadOutput::diagnostics`], sorted by [`Diagnostic`]'s order. Each is one
-/// attribute, located at the first character of its name, requirement
-/// LIB-COMPAT-001 (ADR 0022):
+/// [`ReadOutput::diagnostics`], sorted by [`Diagnostic`]'s order. Each is
+/// reported once per attribute, located at the first character of the
+/// attribute's name (LIB-COMPAT-001, ADR 0022):
 ///
 /// - SACM-XMI-010 ([`Code::XMI_XSI_TYPE`]), clause 9.5.2, for each `xsi:type`
 ///   on a root, a child or a `name`. It affects the element, or, for a
@@ -177,9 +177,10 @@ mod roots;
 ///   with both type attributes gets one.
 /// - SACM-XMI-011 ([`Code::XMI_VERSION_IGNORED`]), clause 7.5.3, for each
 ///   `xmi:version` on the `xmi:XMI` element, which affects no element, or on
-///   a root, which it affects. It is Info in both modes.
+///   a root, which it affects. It is Info in both modes. An `xmi:version` on
+///   any other element is refused as [`ReadError::Unsupported`].
 ///
-/// Neither changes the document or refuses the input: in this release both
+/// Neither changes the document nor refuses the input: in this release both
 /// modes read and refuse the same inputs, and give the same document. A
 /// later minor release may add a read diagnostic, so a strict read may then
 /// report an Error where it did not before; the release notes list each one.
@@ -374,9 +375,20 @@ pub fn read(input: &[u8], options: &ReadOptions) -> Result<ReadOutput, ReadError
 /// How strictly [`read`] and [`write`](fn@write) treat a document (D-STRICT,
 /// ADR 0022).
 ///
-/// - [`Strict`](Self::Strict) is SACM 2.3 conformance. A strict read reports
-///   what the standard does not allow as an Error, and a strict write
-///   validates the document and refuses it if validation reports an Error.
+/// - [`Strict`](Self::Strict) aims at SACM 2.3 conformance. A strict read
+///   reports each recognised variation it reads as an Error (in this release,
+///   only `xsi:type`, SACM-XMI-010). It still returns the document and does
+///   not validate it. To check a file, test
+///   [`diagnostic::has_errors`](crate::diagnostic::has_errors) on the read
+///   diagnostics together with the result of
+///   [`validation::validate`](crate::validation::validate).
+///
+///   A strict write validates the document with
+///   [`validation::validate`](crate::validation::validate) and refuses it if
+///   validation reports an Error. Validation does not check everything SACM
+///   requires yet; for example, ids read from a file are not checked
+///   (SACM23-VAL-020). So a strict write is not yet a guarantee of
+///   conformance.
 /// - [`Tolerant`](Self::Tolerant) also accepts recognised variations, and
 ///   reports them as Warnings. A tolerant write writes the document as it is
 ///   held, without validating it.
@@ -398,8 +410,9 @@ pub fn read(input: &[u8], options: &ReadOptions) -> Result<ReadOutput, ReadError
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum Mode {
-    /// SACM 2.3 conformance: what the standard does not allow is an Error,
-    /// and a write refuses a document that validation reports an Error for.
+    /// Aims at SACM 2.3 conformance: a read reports each recognised variation
+    /// as an Error, and a write refuses a document that validation reports an
+    /// Error for.
     Strict,
     /// Recognised variations are read and reported as Warnings, and a write
     /// writes the document as it is held.

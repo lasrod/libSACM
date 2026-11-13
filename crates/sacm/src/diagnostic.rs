@@ -136,9 +136,12 @@ impl Code {
     /// SACM-XMI-011: an `xmi:version` attribute on the `xmi:XMI` element or
     /// a root is present and ignored, because the XMI namespace identifies
     /// the version (XMI 2.5.1 §7.5.3). [`xmi::read`](crate::xmi::read)
-    /// reports one per attribute, as Info in both modes (LIB-COMPAT-001).
-    /// Nothing is lost, and [`xmi::write`](crate::xmi::write) does not write
-    /// it.
+    /// reports one per attribute, as Info in both modes (LIB-COMPAT-001). An
+    /// `xmi:version` on any other element is refused as
+    /// [`ReadError::Unsupported`](crate::xmi::ReadError::Unsupported). Nothing
+    /// is lost and nothing needs fixing. To silence it, remove the attribute,
+    /// or save the document again with [`xmi::write`](crate::xmi::write),
+    /// which does not write it.
     pub const XMI_VERSION_IGNORED: Code = Code::from_static("SACM-XMI-011");
 
     /// SACM-MULT-001: a property has more or fewer values than its
