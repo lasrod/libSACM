@@ -135,6 +135,7 @@ change bumps the minor version and is listed under **Breaking**.
   code yet (SACM-ENUM-001 later), never as `asserted`. `write` writes every non-default
   declaration after `xmi:id` and omits `asserted`, so `WriteError::Unsupported` is
   removed [SACM23-XMI-017, LIB-API-010].
+- `compare::semantic_compare` and `Document: Eq` compare documents by SACM content [LIB-RT-001].
 
 ### Changed
 

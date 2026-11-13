@@ -48,6 +48,7 @@ sacm
 │                (built: `apply`, `Mutation` and the AssuranceCasePackage,
 │                ArgumentPackage and Claim create operations, ADR 0019)
 └── compare      semantic equality and differences
+                 (built: `semantic_compare`, `Difference` and `Document: Eq`, ADR 0020)
 ```
 
 ```text

@@ -23,7 +23,10 @@
 //! - SACM-native editing, each operation checked in full before anything
 //!   changes, with previews for destructive operations; built so far:
 //!   [`edit::apply`] with the operations that create an
-//!   `AssuranceCasePackage`, an `ArgumentPackage` and a `Claim`.
+//!   `AssuranceCasePackage`, an `ArgumentPackage` and a `Claim`,
+//! - semantic comparison: [`compare::semantic_compare`] lists every
+//!   difference in SACM content between two documents, and `==` on a
+//!   [`Document`](model::Document) is true when there is none.
 //!
 //! # Status
 //!
@@ -114,6 +117,8 @@
 //! [`edit::apply`] and the create operations such as [`edit::CreateClaim`];
 //! the [`edit`] module example builds, validates and writes a complete
 //! document, which [`xmi::read`] reads back.
+//! Compare two documents by their SACM content with
+//! [`compare::semantic_compare`], which names each difference, or with `==`.
 //!
 //! # Features
 //!
@@ -132,6 +137,7 @@
 //! [matrix]: https://github.com/lasrod/libSACM/blob/main/docs/matrix/functionality-matrix.md
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+pub mod compare;
 pub mod diagnostic;
 pub mod edit;
 pub mod model;

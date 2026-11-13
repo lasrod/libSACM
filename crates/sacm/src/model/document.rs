@@ -46,6 +46,16 @@ use super::{AbstractClass, AssertionDeclaration, ElementId, ElementKind, LangStr
 /// dropping and traversal do not recurse, so arbitrarily deep nesting is
 /// safe.
 ///
+/// # Equality
+///
+/// `==` compares SACM content: two documents are equal exactly when
+/// [`semantic_compare`](crate::compare::semantic_compare) finds no
+/// difference between them. Elements are matched by id; kinds, parents,
+/// names, declarations and the order of roots and children are compared. The
+/// counters that generated ids continue from are not, so two equal documents
+/// can generate different next ids: once elements can be deleted, one
+/// document may have generated, then deleted, an id the other never used.
+///
 /// # Examples
 ///
 /// ```
@@ -466,6 +476,26 @@ impl Document {
         self.id_counters.insert(kind, n);
     }
 
+    /// The roots, in document order, as [`crate::compare`] compares them.
+    ///
+    /// The one place `compare` reads the document as a whole. `Document` is
+    /// destructured with no `..`, so a field added to it fails to compile
+    /// here until `compare` handles it (ADR 0020).
+    pub(crate) fn compared_roots(&self) -> impl Iterator<Item = SacmElement<'_>> {
+        let Self {
+            // Compared element by element, through `SacmElement::compared`.
+            nodes: _,
+            // Compared as the root order.
+            roots,
+            // Derived from `nodes`: the id of each element.
+            index: _,
+            // Not compared: the generated-id counters are not SACM content
+            // and XMI does not carry them (ADR 0020).
+            id_counters: _,
+        } = self;
+        roots.iter().map(|&node| self.view(node))
+    }
+
     /// The view of the node with handle `node`.
     fn view(&self, node: usize) -> SacmElement<'_> {
         SacmElement {
@@ -683,6 +713,38 @@ impl<'a> SacmElement<'a> {
         self.node().role
     }
 
+    /// The element's features, as [`crate::compare`] compares them.
+    ///
+    /// The one place `compare` reads an element. `Node` is destructured with
+    /// no `..`, so a field added to the model fails to compile here until
+    /// `compare` handles it (ADR 0020).
+    pub(crate) fn compared(self) -> Compared<'a> {
+        let Node {
+            // Matched on: elements are paired by id across the document.
+            id,
+            // Compared.
+            kind,
+            // Compared.
+            name,
+            // Compared.
+            assertion_declaration,
+            // Compared, as the parent's id.
+            parent,
+            // Derived from the parent's kind and the element's kind
+            // (`containment::role`), both compared.
+            role: _,
+            // Compared as the child order, through `children()`.
+            children: _,
+        } = self.node();
+        Compared {
+            id,
+            kind: *kind,
+            parent: parent.map(|parent| self.document.view(parent).id()),
+            name: name.as_ref(),
+            assertion_declaration: *assertion_declaration,
+        }
+    }
+
     /// The elements this one contains directly, in document order.
     pub fn children(self) -> impl Iterator<Item = SacmElement<'a>> {
         let document = self.document;
@@ -698,6 +760,23 @@ impl<'a> SacmElement<'a> {
         // nodes are never removed while the document is borrowed.
         &self.document.nodes[self.node]
     }
+}
+
+/// The features of one element that [`crate::compare`] compares, from
+/// [`SacmElement::compared`]. The child order is read through
+/// [`SacmElement::children`].
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Compared<'a> {
+    /// The element's id.
+    pub(crate) id: &'a ElementId,
+    /// The element's kind.
+    pub(crate) kind: ElementKind,
+    /// The id of the containing element; `None` for a root.
+    pub(crate) parent: Option<&'a ElementId>,
+    /// The element's name; `None` when missing.
+    pub(crate) name: Option<&'a LangString>,
+    /// The element's `assertionDeclaration`; `None` when not an Assertion.
+    pub(crate) assertion_declaration: Option<AssertionDeclaration>,
 }
 
 impl fmt::Debug for SacmElement<'_> {
