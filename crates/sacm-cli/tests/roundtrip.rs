@@ -304,3 +304,58 @@ fn lib_cli_003_invalid_arguments_exit_2_with_usage() {
         );
     }
 }
+
+#[test]
+fn lib_cli_003_strict_changes_neither_the_exit_code_nor_the_output() {
+    // ADR 0023: `--strict` reads the input strictly, but read diagnostics
+    // are not checked, so a strict read's SACM-XMI-010 Error on the
+    // `xsi:type` Claim changes nothing.
+    let strict_read = xmi::read(
+        &fixture("xsi-type.sacm.xmi"),
+        &ReadOptions::default().with_mode(Mode::Strict),
+    )
+    .unwrap_or_else(|error| panic!("{ROW}: setup: xsi-type.sacm.xmi is not readable: {error}"));
+    assert!(
+        strict_read
+            .diagnostics()
+            .iter()
+            .any(|diagnostic| diagnostic.severity() == sacm::diagnostic::Severity::Error),
+        "{ROW}: setup: a strict read of xsi-type.sacm.xmi has no Error, so --strict is not exercised"
+    );
+    for name in ["clean.sacm.xmi", "xsi-type.sacm.xmi"] {
+        let test = format!("lib-cli-003-strict-{name}");
+        let tolerant_out = out_path(&test, "tolerant.sacm.xmi");
+        let strict_out = out_path(&test, "strict.sacm.xmi");
+        let tolerant = roundtrip(&[name, "-o", as_arg(&tolerant_out)]);
+        let strict = roundtrip(&[name, "--strict", "-o", as_arg(&strict_out)]);
+        assert_eq!(
+            tolerant.code,
+            Some(0),
+            "{ROW}: {name}: exit code without --strict; stderr: {}",
+            tolerant.stderr
+        );
+        assert_eq!(
+            strict.code, tolerant.code,
+            "{ROW}: {name}: --strict changes the exit code; stderr: {}",
+            strict.stderr
+        );
+        assert_eq!(
+            strict.stdout, tolerant.stdout,
+            "{ROW}: {name}: --strict changes stdout"
+        );
+        assert_eq!(
+            strict.stdout,
+            format!("{name}: round trip ok\n"),
+            "{ROW}: {name}: stdout with --strict"
+        );
+        let read = |path: &Path| {
+            fs::read(path)
+                .unwrap_or_else(|error| panic!("{ROW}: -o wrote no {}: {error}", path.display()))
+        };
+        assert_eq!(
+            read(&strict_out),
+            read(&tolerant_out),
+            "{ROW}: {name}: --strict changes the -o bytes"
+        );
+    }
+}

@@ -43,7 +43,8 @@ sacm
 │                private; `Mode`, strict or tolerant, in the options; ADR 0005,
 │                0015, 0016, 0017, 0021 and 0022)
 ├── validation   clause-level constraints, reported as diagnostics
-│                (built: `validate`, with the missing-name rule, ADR 0018)
+│                (built: `validate`, with the missing-name and NCName-id rules,
+│                ADR 0018)
 ├── diagnostic   Diagnostic, Severity, Code, SourceLocation, has_errors
 ├── edit         operations, previews, delete policies, mutation results
 │                (built: `apply`, `Mutation` and the AssuranceCasePackage,
