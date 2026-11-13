@@ -51,8 +51,8 @@ use super::{AbstractClass, AssertionDeclaration, ElementId, ElementKind, LangStr
 /// `==` compares SACM content: two documents are equal exactly when
 /// [`semantic_compare`](crate::compare::semantic_compare) finds no
 /// difference between them. Elements are matched by id; kinds, parents,
-/// names, `assertionDeclaration`s and the order of roots and children are
-/// compared. `==` is order-sensitive; see [`crate::compare`] to ignore order.
+/// names, the ids of names, `assertionDeclaration`s and the order of roots
+/// and children are compared. `==` is order-sensitive; see [`crate::compare`] to ignore order.
 ///
 /// Not compared: the per-kind counters [`edit::apply`](crate::edit::apply)
 /// uses to generate ids such as `claim_1`. They are not SACM content, and XMI
@@ -79,6 +79,11 @@ pub struct Document {
     /// The handle of each element by id. Only looked up, never iterated, so
     /// nothing observable depends on its order.
     index: HashMap<ElementId, usize>,
+    /// The handle of the owner of each name id: the `xmi:id` of a `name`,
+    /// which shares the file's id space (ADR 0024) but identifies no element,
+    /// so [`get`](Self::get) does not look in it. Only looked up, never
+    /// iterated.
+    name_ids: HashMap<ElementId, usize>,
     /// The `n` of the last id generated for each kind (`claim_<n>`, ADR
     /// 0019); a kind with none generated yet is absent. Advanced only when a
     /// generated id is used, and copied by `Clone`.
@@ -93,6 +98,9 @@ struct Node {
     /// The element's name; `None` for a missing name, and always `None` for a
     /// `UtilityElement` kind.
     name: Option<LangString>,
+    /// The `xmi:id` of the element's name, if it was read with one: `None`
+    /// whenever `name` is (ADR 0024).
+    name_id: Option<ElementId>,
     /// The element's `assertionDeclaration`: `Some` exactly when the kind is
     /// an Assertion.
     assertion_declaration: Option<AssertionDeclaration>,
@@ -241,7 +249,7 @@ impl Document {
     ///
     /// Refuses, and leaves the document unchanged, when, checked in this order:
     /// - `id` is empty ([`InsertError::EmptyId`]);
-    /// - the document already has an element with `id`
+    /// - the document already has an element, or the name of one, with `id`
     ///   ([`InsertError::DuplicateId`]);
     /// - `parent` is not an element of the document
     ///   ([`InsertError::UnknownParent`]);
@@ -317,7 +325,7 @@ impl Document {
         if id.as_str().is_empty() {
             return Err(InsertError::EmptyId);
         }
-        if self.index.contains_key(&id) {
+        if self.is_id_in_use(id.as_str()) {
             return Err(InsertError::DuplicateId(id));
         }
         let parent = match parent {
@@ -360,6 +368,7 @@ impl Document {
             id,
             kind,
             name,
+            name_id: None,
             assertion_declaration: kind
                 .is_a(AbstractClass::Assertion)
                 .then(AssertionDeclaration::default),
@@ -447,6 +456,41 @@ impl Document {
         }
     }
 
+    /// Sets the `xmi:id` of the name of the element `owner` (ADR 0024); on an
+    /// error the document is unchanged.
+    ///
+    /// The XMI reader keeps a name's id through it. It refuses, with the
+    /// reason, an unknown owner, an owner with no name, an empty id and an id
+    /// already in use, by an element or by a name.
+    pub(crate) fn set_name_id(
+        &mut self,
+        owner: &ElementId,
+        name_id: ElementId,
+    ) -> Result<(), String> {
+        let Some(&node) = self.index.get(owner) else {
+            return Err(format!("the document has no element {:?}", owner.as_str()));
+        };
+        if self.nodes[node].name.is_none() {
+            return Err(format!("the element {:?} has no name", owner.as_str()));
+        }
+        if name_id.as_str().is_empty() {
+            return Err("the name's id is empty".to_owned());
+        }
+        if self.is_id_in_use(name_id.as_str()) {
+            return Err(format!("the id {:?} is already in use", name_id.as_str()));
+        }
+        self.name_ids.insert(name_id.clone(), node);
+        self.nodes[node].name_id = Some(name_id);
+        Ok(())
+    }
+
+    /// Whether `id` is in use in the document's id space: by an element, or
+    /// as the id of a name (ADR 0024). A new element's id, given or
+    /// generated, must not be.
+    pub(crate) fn is_id_in_use(&self, id: &str) -> bool {
+        self.index.contains_key(id) || self.name_ids.contains_key(id)
+    }
+
     /// The id the next generated element of `kind` gets, with its `n`:
     /// `<snake_case kind>_<n>` for the smallest `n` above the kind's counter
     /// whose id is not in use (ADR 0019). The counter is not advanced; see
@@ -460,11 +504,11 @@ impl Document {
             .unwrap_or(0)
             .wrapping_add(1);
         let mut id = generated_id(&prefix, n);
-        // At most `element_count` ids are in use and the candidates are
-        // distinct, so one of the first `element_count + 1` is free: the last
-        // candidate needs no check, and the loop is bounded.
-        for _ in 0..self.nodes.len() {
-            if !self.index.contains_key(&id) {
+        // At most one id per element and one per name are in use, and the
+        // candidates are distinct, so one of the first `in_use + 1` is free:
+        // the last candidate needs no check, and the loop is bounded.
+        for _ in 0..self.nodes.len() + self.name_ids.len() {
+            if !self.is_id_in_use(id.as_str()) {
                 break;
             }
             n = n.wrapping_add(1);
@@ -493,6 +537,9 @@ impl Document {
             roots,
             // Derived from `nodes`: the id of each element.
             index: _,
+            // Derived from `nodes`: the owner of each name id, which is
+            // compared through `SacmElement::compared`.
+            name_ids: _,
             // Not compared: the generated-id counters are not SACM content
             // and XMI does not carry them (ADR 0020).
             id_counters: _,
@@ -512,6 +559,53 @@ impl Document {
 /// `<prefix>_<n>`.
 fn generated_id(prefix: &str, n: u64) -> ElementId {
     ElementId::new(format!("{prefix}_{n}"))
+}
+
+/// The ids the XMI reader generates for the elements it reads without an
+/// `xmi:id` (ADR 0024), in the scheme edits use (ADR 0019), with a counter
+/// per kind that [`commit`](Self::commit) hands to the document read.
+///
+/// Each kind's counter only grows, so the candidates tried for a kind over a
+/// whole read are distinct, and generation is linear in the number of
+/// elements generated and ids reserved.
+#[derive(Debug, Default)]
+pub(crate) struct IdGenerator {
+    /// The `n` of the last id generated for each kind, with the kind's
+    /// prefix.
+    counters: BTreeMap<ElementKind, (String, u64)>,
+}
+
+impl IdGenerator {
+    /// The next id of `kind`: `<snake_case kind>_<n>` for the smallest `n`
+    /// above the kind's counter for which `is_reserved` is false. Ids of
+    /// different kinds never collide, since the prefixes differ and the
+    /// suffix is a number.
+    pub(crate) fn next(
+        &mut self,
+        kind: ElementKind,
+        is_reserved: impl Fn(&str) -> bool,
+    ) -> ElementId {
+        let (prefix, counter) = self
+            .counters
+            .entry(kind)
+            .or_insert_with(|| (snake_case(kind.name()), 0));
+        // The reserved ids are finitely many, so the loop ends.
+        loop {
+            *counter = counter.wrapping_add(1);
+            let id = generated_id(prefix, *counter);
+            if !is_reserved(id.as_str()) {
+                return id;
+            }
+        }
+    }
+
+    /// Sets the counters of `document` to these, so that an edit generates
+    /// above every id generated in the read.
+    pub(crate) fn commit(self, document: &mut Document) {
+        for (kind, (_, n)) in self.counters {
+            document.commit_generated_id(kind, n);
+        }
+    }
 }
 
 /// A SACM class name in snake case: `AssuranceCasePackage` becomes
@@ -668,6 +762,37 @@ impl<'a> SacmElement<'a> {
         self.node().name.as_ref()
     }
 
+    /// The `xmi:id` of the element's `name`, if the name was read with one,
+    /// or `None`. A `LangString` is a class, so its element may carry an id
+    /// (XMI 2.5.1 §7.8.3).
+    ///
+    /// The id is kept with its owner, not on the [`LangString`] value (ADR
+    /// 0024). It shares the document's id space: no element and no other
+    /// name has it, and [`edit::apply`](crate::edit::apply) neither generates
+    /// it nor accepts it as a new element's id. It identifies no element, so
+    /// [`Document::get`] does not find it. [`xmi::write`](crate::xmi::write)
+    /// writes it as the first attribute of `name`. No edit sets it yet, so
+    /// only [`xmi::read`](crate::xmi::read) gives one, and it is `None`
+    /// whenever [`name`](Self::name) is.
+    ///
+    /// ```
+    /// use sacm::xmi::{self, ReadOptions};
+    ///
+    /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+    ///   <name xmi:id="arguments_name" content="Arguments"/>
+    /// </sacm:ArgumentPackage>"#;
+    /// let document = xmi::read(input, &ReadOptions::default())?.into_document();
+    /// let arguments = document.get("arguments").expect("the root was read");
+    /// assert_eq!(arguments.name_id().map(|id| id.as_str()), Some("arguments_name"));
+    /// assert!(document.get("arguments_name").is_none());
+    /// # Ok::<(), sacm::xmi::ReadError>(())
+    /// ```
+    #[must_use]
+    pub fn name_id(self) -> Option<&'a ElementId> {
+        self.node().name_id.as_ref()
+    }
+
     /// The element's `assertionDeclaration` (SACM 2.3 §11.10): whether it is
     /// asserted, assumed, needs support and so on, or `None` when its kind is
     /// not an Assertion.
@@ -731,6 +856,8 @@ impl<'a> SacmElement<'a> {
             // Compared.
             name,
             // Compared.
+            name_id,
+            // Compared.
             assertion_declaration,
             // Compared, as the parent's id.
             parent,
@@ -745,6 +872,7 @@ impl<'a> SacmElement<'a> {
             kind: *kind,
             parent: parent.map(|parent| self.document.view(parent).id()),
             name: name.as_ref(),
+            name_id: name_id.as_ref(),
             assertion_declaration: *assertion_declaration,
         }
     }
@@ -779,6 +907,8 @@ pub(crate) struct Compared<'a> {
     pub(crate) parent: Option<&'a ElementId>,
     /// The element's name; `None` when missing.
     pub(crate) name: Option<&'a LangString>,
+    /// The `xmi:id` of the element's name; `None` when it has none.
+    pub(crate) name_id: Option<&'a ElementId>,
     /// The element's `assertionDeclaration`; `None` when not an Assertion.
     pub(crate) assertion_declaration: Option<AssertionDeclaration>,
 }
@@ -927,8 +1057,8 @@ impl std::error::Error for SetAssertionDeclarationError {}
 
 #[cfg(test)]
 mod tests {
-    use super::snake_case;
-    use crate::model::ElementKind;
+    use super::{Document, IdGenerator, SacmElement, snake_case};
+    use crate::model::{ElementId, ElementKind, LangString};
 
     #[test]
     fn snake_case_splits_a_class_name_at_each_capital() {
@@ -938,5 +1068,95 @@ mod tests {
         );
         assert_eq!(snake_case(ElementKind::Claim.name()), "claim");
         assert_eq!(snake_case("lower"), "lower");
+    }
+
+    /// A document with a named root `p` and an unnamed root `q`.
+    fn two_roots() -> Document {
+        let mut document = Document::new();
+        let named = Some(LangString::new("P"));
+        for (id, name) in [("p", named), ("q", None)] {
+            let inserted =
+                document.insert_node(None, ElementKind::ArgumentPackage, ElementId::new(id), name);
+            assert_eq!(inserted, Ok(()), "{id}");
+        }
+        document
+    }
+
+    #[test]
+    fn set_name_id_refuses_what_would_break_the_id_space_and_changes_nothing() {
+        let mut document = two_roots();
+        let p = ElementId::new("p");
+        for (owner, name_id) in [
+            ("missing", "n1"),
+            ("q", "n1"),
+            ("p", ""),
+            ("p", "p"),
+            ("p", "q"),
+        ] {
+            let refused = document.set_name_id(&ElementId::new(owner), ElementId::new(name_id));
+            assert!(refused.is_err(), "{owner} {name_id:?}");
+        }
+        assert_eq!(document.get("p").and_then(SacmElement::name_id), None);
+        assert!(!document.is_id_in_use("n1"));
+        assert_eq!(document.set_name_id(&p, ElementId::new("n1")), Ok(()));
+        assert!(document.is_id_in_use("n1") && !document.contains("n1"));
+        assert_eq!(
+            document
+                .get("p")
+                .and_then(SacmElement::name_id)
+                .map(ElementId::as_str),
+            Some("n1")
+        );
+        // A name id is in use for a second name and for a new element.
+        assert!(document.set_name_id(&p, ElementId::new("n1")).is_err());
+        let element = document.insert_node(
+            None,
+            ElementKind::ArgumentPackage,
+            ElementId::new("n1"),
+            None,
+        );
+        assert!(element.is_err());
+    }
+
+    #[test]
+    fn a_generated_id_skips_name_ids_and_reserved_ids() {
+        let mut document = two_roots();
+        let p = ElementId::new("p");
+        assert_eq!(document.set_name_id(&p, ElementId::new("claim_1")), Ok(()));
+        assert_eq!(
+            document.next_generated_id(ElementKind::Claim),
+            (ElementId::new("claim_2"), 2)
+        );
+
+        let mut generator = IdGenerator::default();
+        let reserved = |id: &str| matches!(id, "claim_1" | "claim_2");
+        assert_eq!(
+            generator.next(ElementKind::Claim, reserved).as_str(),
+            "claim_3"
+        );
+        assert_eq!(
+            generator.next(ElementKind::Claim, reserved).as_str(),
+            "claim_4"
+        );
+        assert_eq!(
+            generator
+                .next(ElementKind::ArgumentPackage, reserved)
+                .as_str(),
+            "argument_package_1"
+        );
+        let mut read = Document::new();
+        generator.commit(&mut read);
+        assert_eq!(
+            read.next_generated_id(ElementKind::Claim),
+            (ElementId::new("claim_5"), 5)
+        );
+        assert_eq!(
+            read.next_generated_id(ElementKind::ArgumentPackage),
+            (ElementId::new("argument_package_2"), 2)
+        );
+        assert_eq!(
+            read.next_generated_id(ElementKind::AssuranceCasePackage),
+            (ElementId::new("assurance_case_package_1"), 1)
+        );
     }
 }

@@ -130,3 +130,31 @@ matrix notes and the writer's ADR (0017). This ADR collects them in one place.
 - When a value is given both ways, C++ silently keeps one; here the input is refused.
 
 *Amendment 1 status: accepted (the maintainer, 2026-11-13).*
+
+## Amendment 2 (2026-11-14): bad literals and a second name (slice 0039; SACM23-VAL-006, SACM23-XMI-021)
+
+- **A value that is not a literal is refused.**
+  - An `assertionDeclaration` that is not exactly one of the six literals, in either form,
+    is `ReadError::InvalidLiteral { element, property, value, location }` (SACM-ENUM-001),
+    in both modes.
+  - It is located at the attribute's name, or at the value element's `<`.
+  - `value` is the value as read: after attribute-value normalisation, or the element's
+    exact character content.
+  - A `Document` never holds an unknown value (the maintainer, 2026-11-14).
+  - Each occurrence is checked in full before the repeat check, so a bad second occurrence
+    is `InvalidLiteral`.
+- **A second `name` is refused.**
+  - It is `ReadError::RepeatedValue` with property `name` (SACM-MULT-001).
+  - Each later `name` is checked in full first, including its namespace: a qualified
+    `sacm:name` is not an occurrence.
+  - `locations` gives every `name` child, in document order.
+- **The lists shrink.**
+  - The interim list loses the entries for no `xmi:id`, a white-space id, a second name and
+    a LangString id; ADR 0024 reads them.
+  - The non-conforming list loses the literal.
+
+**Difference from C++, one line:**
+- C++ maps an unknown literal to `asserted` with SACM-ENUM-001 (`:1786-1794`); here it is a
+  coded refusal.
+
+*Amendment 2 status: accepted (the maintainer, 2026-11-14).*

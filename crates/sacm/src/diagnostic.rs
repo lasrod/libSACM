@@ -125,6 +125,15 @@ impl Code {
     /// (SACM23-XMI-001). Named after the C++ library's `kXmiInvalidRoot`.
     pub const XMI_INVALID_ROOT: Code = Code::from_static("SACM-XMI-001");
 
+    /// SACM-XMI-004: an element has no `xmi:id`, which XMI 2.5.1 §7.6.1
+    /// makes optional. [`xmi::read`](crate::xmi::read) reads the element
+    /// with a generated id, `<snake_case kind>_<n>` as an edit generates one,
+    /// that no `xmi:id` in the input holds, and reports one Info per element
+    /// in both modes, affecting the generated id (SACM23-XMI-020, ADR 0024).
+    /// The generated id is an ordinary id: [`xmi::write`](crate::xmi::write)
+    /// writes it, so the saved file carries it. Nothing needs fixing.
+    pub const XMI_MISSING_ID: Code = Code::from_static("SACM-XMI-004");
+
     /// SACM-XMI-010: an `xsi:type` attribute is used. XMI 2.5.1 §9.5.2 rule
     /// 2g allows it only if `org.omg.xmi.useSchemaExtensions` is true, and
     /// SACM 2.3 sets no such tag. [`xmi::read`](crate::xmi::read) reports one
@@ -157,6 +166,14 @@ impl Code {
     /// ```
     pub const MULTIPLICITY_VIOLATION: Code = Code::from_static("SACM-MULT-001");
 
+    /// SACM-ENUM-001: a value is not one of its enumeration's literals. The
+    /// code of [`ReadError::InvalidLiteral`](crate::xmi::ReadError::InvalidLiteral),
+    /// an `assertionDeclaration` that is not exactly one of the six
+    /// `AssertionDeclaration` literals, refused in both modes (SACM23-VAL-006).
+    /// Fix: write one of `asserted`, `needsSupport`, `assumed`, `axiomatic`,
+    /// `defeated` and `asCited`, spelled and cased exactly.
+    pub const ENUM_INVALID_LITERAL: Code = Code::from_static("SACM-ENUM-001");
+
     /// SACM-CMD-001: an operation's target is not in the document. The code
     /// of [`EditError::ParentNotFound`](crate::edit::EditError::ParentNotFound)
     /// (LIB-EDIT-001). Create the parent first, or correct its id. Ids are
@@ -181,8 +198,8 @@ impl Code {
 
     /// SACM-ID-001: two or more elements in the input carry the same
     /// `xmi:id`, which XMI 2.5.1 §7.6.1 requires to be unique within the
-    /// file. The code of
-    /// [`ReadError::DuplicateId`](crate::xmi::ReadError::DuplicateId)
+    /// file, an element's or a `name`'s, compared by `xsd:ID` value. The
+    /// code of [`ReadError::DuplicateId`](crate::xmi::ReadError::DuplicateId)
     /// (SACM23-VAL-001), giving the location of every element that carries
     /// the repeated `xmi:id`. Fix it by giving each element its own id.
     ///
@@ -198,12 +215,24 @@ impl Code {
     /// [`EditError::InvalidId`](crate::edit::EditError::InvalidId)
     /// (LIB-EDIT-001) and of
     /// [`ReadError::InvalidId`](crate::xmi::ReadError::InvalidId), an empty
-    /// `xmi:id` in the input; [`validation::validate`](crate::validation::validate)
-    /// reports it, as an Error, for every other id that is not an `NCName`
-    /// (SACM23-VAL-020). An `NCName` starts with a letter or `_` and continues
+    /// `xmi:id` in the input, on an element or a `name`;
+    /// [`validation::validate`](crate::validation::validate) reports it, as
+    /// an Error, for every other id that is not an `NCName`, a name's
+    /// `xmi:id` included, after XML white space around an `NCName` is
+    /// trimmed on read (SACM23-VAL-020, SACM23-XMI-025). An `NCName` starts with a letter or `_` and continues
     /// with letters, digits, `-`, `.` or `_`; it has no spaces and no `:`. Or
     /// leave out `with_id` to have an id generated.
     pub const ID_INVALID: Code = Code::from_static("SACM-ID-002");
+
+    /// SACM-ID-004: an `xmi:id` has XML white space (space, TAB, LF or CR)
+    /// around an `NCName`, so it is read trimmed: an `xmi:id` is an `xsd:ID`,
+    /// whose white space is collapsed (XMI 2.5.1 §7.6.1).
+    /// [`xmi::read`](crate::xmi::read) reports one Info per attribute in both
+    /// modes, quoting the value as read, and affecting the trimmed id, or,
+    /// for the id of a `name`, the element that owns the name
+    /// (SACM23-XMI-025, ADR 0024). [`xmi::write`](crate::xmi::write) writes
+    /// the trimmed id. Nothing needs fixing.
+    pub const ID_TRIMMED: Code = Code::from_static("SACM-ID-004");
 
     /// The code with the given text.
     ///

@@ -5,7 +5,8 @@
 //! Elements are matched by id across the whole document, so an element that
 //! moved to another parent is one [`Difference::Parent`], not a removal and an
 //! addition. For each element both documents hold, the comparison checks its
-//! kind, parent, name and
+//! kind, parent, name, the `xmi:id` of its name
+//! ([`SacmElement::name_id`](crate::model::SacmElement::name_id)) and
 //! [`assertionDeclaration`](crate::model::AssertionDeclaration) (SACM 2.3
 //! §11.10), and the relative order of its children; it also checks the
 //! relative order of the roots. Values are compared exactly: a missing name
@@ -172,6 +173,20 @@ pub enum Difference {
         /// The name in the right document, or `None` when missing.
         right: Option<LangString>,
     },
+    /// The `xmi:id` of the element's name
+    /// ([`SacmElement::name_id`](crate::model::SacmElement::name_id)) differs
+    /// on each side; `None` is a name without an id, or no name.
+    ///
+    /// A name's id is compared because equal documents must write equal
+    /// bytes, and `write` writes it (ADR 0024).
+    NameId {
+        /// The id of the element that owns the name.
+        id: ElementId,
+        /// The name's id in the left document, or `None` when it has none.
+        left: Option<ElementId>,
+        /// The name's id in the right document, or `None` when it has none.
+        right: Option<ElementId>,
+    },
     /// The element has a different `assertionDeclaration` (SACM 2.3 §11.10)
     /// on each side.
     ///
@@ -232,6 +247,7 @@ impl Difference {
             | Self::Kind { id, .. }
             | Self::Parent { id, .. }
             | Self::Name { id, .. }
+            | Self::NameId { id, .. }
             | Self::AssertionDeclaration { id, .. }
             | Self::ChildOrder { id, .. } => Some(id),
         }
@@ -274,6 +290,13 @@ impl fmt::Display for Difference {
                 id.as_str(),
                 Name(left.as_ref()),
                 Name(right.as_ref())
+            ),
+            Self::NameId { id, left, right } => write!(
+                f,
+                "element {:?} differs in the xmi:id of its name: {} on the left, {} on the right",
+                id.as_str(),
+                NameId(left.as_ref()),
+                NameId(right.as_ref())
             ),
             Self::AssertionDeclaration { id, left, right } => write!(
                 f,
@@ -341,6 +364,18 @@ impl fmt::Display for Name<'_> {
     }
 }
 
+/// A name's id for `Display`: quoted, or `no id`.
+struct NameId<'a>(Option<&'a ElementId>);
+
+impl fmt::Display for NameId<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            Some(id) => write!(f, "{:?}", id.as_str()),
+            None => f.write_str("no id"),
+        }
+    }
+}
+
 /// A declaration for `Display`: its SACM literal, or a note that the kind
 /// has none.
 struct Declaration(Option<AssertionDeclaration>);
@@ -358,7 +393,8 @@ impl fmt::Display for Declaration {
 /// order; an empty result means the documents are equal.
 ///
 /// Elements are matched by id across the whole document. For an element both
-/// documents hold, its kind, parent, name, `assertionDeclaration` and the
+/// documents hold, its kind, parent, name, its name's `xmi:id`,
+/// `assertionDeclaration` and the
 /// relative order of its children are compared, even when its kind differs.
 /// The relative order of the roots is compared too. The per-kind counters
 /// that generate ids are not compared.
@@ -381,7 +417,7 @@ impl fmt::Display for Declaration {
 /// 1. [`Difference::RootOrder`];
 /// 2. for each element of `left`, in pre-order: [`Difference::LeftOnly`], or
 ///    else [`Kind`](Difference::Kind), [`Parent`](Difference::Parent),
-///    [`Name`](Difference::Name),
+///    [`Name`](Difference::Name), [`NameId`](Difference::NameId),
 ///    [`AssertionDeclaration`](Difference::AssertionDeclaration) and
 ///    [`ChildOrder`](Difference::ChildOrder), in that order;
 /// 3. [`Difference::RightOnly`] for each element only `right` holds, in
@@ -438,6 +474,8 @@ enum Found<'a> {
     Parent(Compared<'a>, Compared<'a>),
     /// The element's name differs.
     Name(Compared<'a>, Compared<'a>),
+    /// The `xmi:id` of the element's name differs.
+    NameId(Compared<'a>, Compared<'a>),
     /// The element's `assertionDeclaration` differs.
     AssertionDeclaration(Compared<'a>, Compared<'a>),
     /// The element's common children are in a different relative order; the
@@ -473,6 +511,11 @@ impl Found<'_> {
                 id: ours.id.clone(),
                 left: ours.name.cloned(),
                 right: theirs.name.cloned(),
+            },
+            Self::NameId(ours, theirs) => Difference::NameId {
+                id: ours.id.clone(),
+                left: ours.name_id.cloned(),
+                right: theirs.name_id.cloned(),
             },
             Self::AssertionDeclaration(ours, theirs) => Difference::AssertionDeclaration {
                 id: ours.id.clone(),
@@ -519,6 +562,9 @@ fn walk<'a>(
         }
         if ours.name != theirs.name {
             sink(Found::Name(ours, theirs))?;
+        }
+        if ours.name_id != theirs.name_id {
+            sink(Found::NameId(ours, theirs))?;
         }
         if ours.assertion_declaration != theirs.assertion_declaration {
             sink(Found::AssertionDeclaration(ours, theirs))?;

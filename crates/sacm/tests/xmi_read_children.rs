@@ -969,27 +969,25 @@ fn sacm23_xmi_016_every_conforming_kind_outside_the_readable_set_is_unsupported_
 }
 
 #[test]
-fn sacm23_xmi_016_a_missing_or_foreign_child_id_is_unsupported_at_the_child() {
+fn sacm23_xmi_016_a_foreign_child_id_is_unsupported_at_its_name() {
+    // A child with no `xmi:id` is read with a generated id, and a padded id
+    // is read trimmed (SACM23-XMI-020, SACM23-XMI-025): an id attribute that
+    // is not `xmi:id` is not an id, so it is an unread attribute.
     let cases = [
         refused(
-            "no xmi:id on a Claim",
-            in_ap(&format!("{MARK}<argumentElement xmi:type=\"sacm:Claim\"/>")),
-        ),
-        refused(
-            "no xmi:id on an ACP",
-            in_acp(&format!("{MARK}<assuranceCasePackage/>")),
-        ),
-        refused(
-            "an id in no namespace",
+            "an id in no namespace on a Claim",
             in_ap(&format!(
-                "{MARK}<argumentElement xmi:type=\"sacm:Claim\" id=\"x\"/>"
+                "<argumentElement xmi:type=\"sacm:Claim\" {MARK}id=\"x\"/>"
             )),
         ),
-        // A padded id is refused at its attribute name, not at the start tag.
         refused(
-            "a padded xmi:id on a Claim",
+            "an id in no namespace on an ACP",
+            in_acp(&format!("<assuranceCasePackage {MARK}id=\"x\"/>")),
+        ),
+        refused(
+            "an id in a foreign namespace on a Claim",
             in_ap(&format!(
-                "<argumentElement xmi:type=\"sacm:Claim\" {MARK}xmi:id=\" c1 \"/>"
+                "<argumentElement xmlns:o=\"urn:o\" xmi:type=\"sacm:Claim\" {MARK}o:id=\"x\"/>"
             )),
         ),
     ];
@@ -1108,7 +1106,9 @@ fn sacm23_xmi_016_an_unread_attribute_of_a_child_is_unsupported_at_its_name() {
 }
 
 #[test]
-fn sacm23_xmi_016_text_or_a_second_or_unreadable_name_in_a_child_is_unsupported_where_it_starts() {
+fn sacm23_xmi_016_text_or_an_unreadable_name_in_a_child_is_unsupported_where_it_starts() {
+    // A second name is `RepeatedValue` (SACM23-XMI-021), and an `xmi:id` on a
+    // name is read (SACM23-XMI-022), so neither is among these.
     let claim = |content: &str| {
         in_ap(&format!(
             "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\">{content}</argumentElement>"
@@ -1135,12 +1135,8 @@ fn sacm23_xmi_016_text_or_a_second_or_unreadable_name_in_a_child_is_unsupported_
             )),
         ),
         refused(
-            "a second name",
-            claim(&format!("<name content=\"A\"/>{MARK}<name content=\"B\"/>")),
-        ),
-        refused(
             "an attribute of a name",
-            claim(&format!("<name {MARK}xmi:id=\"n\" content=\"A\"/>")),
+            claim(&format!("<name {MARK}xmi:uuid=\"n\" content=\"A\"/>")),
         ),
         refused(
             "a name in the SACM namespace",

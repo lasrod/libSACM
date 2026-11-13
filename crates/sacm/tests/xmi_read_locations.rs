@@ -113,6 +113,7 @@ enum Variant {
     DuplicateId,
     InvalidId,
     RepeatedValue,
+    InvalidLiteral,
 }
 
 /// One refusal site.
@@ -353,7 +354,7 @@ fn wrapper_rows() -> Vec<Row> {
 
 /// The refusals of a root's kind, namespace, id, attributes and content.
 fn root_rows() -> Vec<Row> {
-    use Variant::{DuplicateId, InvalidId, Unsupported};
+    use Variant::{DuplicateId, InvalidId, RepeatedValue, Unsupported};
     let root = |attributes: &str, content: &str| {
         led(&format!(
             "{MARK}<sacm:ArgumentPackage{NS}{attributes}>{content}</sacm:ArgumentPackage>"
@@ -379,7 +380,13 @@ fn root_rows() -> Vec<Row> {
                 "{MARK}<ArgumentPackage xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"a\"/>"
             )),
         ),
-        row("a root with no id", Unsupported, root("", "")),
+        // SACM23-XMI-020: a root with no `xmi:id` is read; an unqualified id
+        // is an attribute that is not read.
+        row(
+            "an unqualified id on a root",
+            Unsupported,
+            led(&format!("<sacm:ArgumentPackage{NS} {MARK}id=\"a\"/>")),
+        ),
         row(
             "a root with an empty id",
             InvalidId,
@@ -393,13 +400,8 @@ fn root_rows() -> Vec<Row> {
                 "<sacm:ArgumentPackage xmi:id=\"a\"/>{MARK}<sacm:ArgumentPackage xmi:id=\"a\"/>"
             )),
         ),
-        // SACM23-VAL-020: an id with white space around an NCName, at the
-        // attribute's name, until SACM23-XMI-025.
-        row(
-            "a root id with white space around it",
-            Unsupported,
-            led(&format!("<sacm:ArgumentPackage{NS} {MARK}xmi:id=\" a \"/>")),
-        ),
+        // SACM23-XMI-025: an id with white space around an NCName is read
+        // trimmed, so it is no refusal.
         row(
             "a root typed as another class",
             Unsupported,
@@ -412,9 +414,10 @@ fn root_rows() -> Vec<Row> {
                 "<sacm:ArgumentPackage{NS} xmi:id=\"a\" {MARK}gid=\"g\"/>"
             )),
         ),
+        // SACM23-XMI-021: at the second name.
         row(
             "a second name of a root",
-            Unsupported,
+            RepeatedValue,
             in_ap(&format!("<name/>{MARK}<name/>")),
         ),
         row(
@@ -435,8 +438,19 @@ fn root_rows() -> Vec<Row> {
 
 /// The refusals of a root's name.
 fn name_rows() -> Vec<Row> {
-    use Variant::Unsupported;
+    use Variant::{DuplicateId, InvalidId, Unsupported};
     vec![
+        // SACM23-XMI-022: a name's id is an id, at the name's start tag.
+        row(
+            "an empty name id",
+            InvalidId,
+            in_ap(&format!("{MARK}<name xmi:id=\"\"/>")),
+        ),
+        row(
+            "a name id repeating its owner's id",
+            DuplicateId,
+            in_ap(&format!("{MARK}<name xmi:id=\"p\"/>")),
+        ),
         row(
             "a name in a namespace",
             Unsupported,
@@ -562,7 +576,15 @@ fn child_content_rows() -> Vec<Row> {
             U,
             in_claim(&format!("{MARK}<note xmi:id=\"n\"/>")),
         ),
-        row("a child with no id", U, element(" xmi:type=\"sacm:Claim\"")),
+        // SACM23-XMI-020: a child with no `xmi:id` is read; an unqualified id
+        // is an attribute that is not read.
+        row(
+            "an unqualified id on a child",
+            U,
+            in_ap(&format!(
+                "<argumentElement xmi:type=\"sacm:Claim\" {MARK}id=\"x\"/>"
+            )),
+        ),
         row(
             "a child with an empty id",
             Variant::InvalidId,
@@ -589,10 +611,10 @@ fn child_content_rows() -> Vec<Row> {
                 "<argumentPackage xmi:id=\"x\" {MARK}assertionDeclaration=\"asserted\"/>"
             )),
         ),
-        // SACM23-XMI-017: a value that is not one of the six literals.
+        // SACM23-VAL-006: a value that is not one of the six literals.
         row(
             "a bad assertionDeclaration literal on a Claim",
-            U,
+            Variant::InvalidLiteral,
             in_ap(&format!(
                 "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\" {MARK}assertionDeclaration=\"Asserted\"/>"
             )),
@@ -607,20 +629,20 @@ fn child_content_rows() -> Vec<Row> {
         row("text in a child", U, in_claim(&format!("  {MARK}x"))),
         row(
             "a second name of a child",
-            U,
+            Variant::RepeatedValue,
             in_claim(&format!("<name/>{MARK}<name/>")),
         ),
         row(
             "an unread attribute of a child's name",
             U,
-            in_claim(&format!("<name {MARK}xmi:id=\"n\"/>")),
+            in_claim(&format!("<name {MARK}xmi:uuid=\"n\"/>")),
         ),
     ]
 }
 
 /// The refusals of value elements (SACM23-XMI-014).
 fn value_element_rows() -> Vec<Row> {
-    use Variant::{RepeatedValue, Unsupported as U};
+    use Variant::{InvalidLiteral, RepeatedValue, Unsupported as U};
     vec![
         row(
             "an attribute of a value element",
@@ -641,9 +663,10 @@ fn value_element_rows() -> Vec<Row> {
                 "<name>{MARK}<sacm:content>N</sacm:content></name>"
             )),
         ),
+        // SACM23-VAL-006: at the value element's `<`.
         row(
             "a bad assertionDeclaration literal in the element form",
-            U,
+            InvalidLiteral,
             in_claim(&format!(
                 "{MARK}<assertionDeclaration>Asserted</assertionDeclaration>"
             )),
@@ -803,6 +826,7 @@ fn variant(error: &ReadError) -> Option<Variant> {
         ReadError::DuplicateId { .. } => Some(Variant::DuplicateId),
         ReadError::InvalidId { .. } => Some(Variant::InvalidId),
         ReadError::RepeatedValue { .. } => Some(Variant::RepeatedValue),
+        ReadError::InvalidLiteral { .. } => Some(Variant::InvalidLiteral),
         _ => None,
     }
 }
@@ -957,6 +981,7 @@ fn sacm23_xmi_010_the_table_covers_every_read_error_variant() {
         Variant::DuplicateId,
         Variant::InvalidId,
         Variant::RepeatedValue,
+        Variant::InvalidLiteral,
     ] {
         assert!(
             rows.iter().any(|row| row.variant == wanted),
@@ -980,10 +1005,14 @@ fn sacm23_xmi_010_display_shows_the_location_for_every_refusal_site() {
         };
         let shown = error.to_string();
         // A duplicate id names every element carrying it (SACM23-VAL-001),
-        // and a repeated value every occurrence (SACM23-XMI-014).
+        // and a repeated value every occurrence (SACM23-XMI-014). A bad
+        // literal gives its location among the literals it lists
+        // (SACM23-VAL-006), not necessarily at the end.
         if matches!(
             error,
-            ReadError::DuplicateId { .. } | ReadError::RepeatedValue { .. }
+            ReadError::DuplicateId { .. }
+                | ReadError::RepeatedValue { .. }
+                | ReadError::InvalidLiteral { .. }
         ) {
             for location in error.locations() {
                 if !shown.contains(&location.to_string()) {

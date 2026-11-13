@@ -548,6 +548,8 @@ enum Expect {
     NoPackage,
     DuplicateId,
     InvalidId,
+    RepeatedValue,
+    InvalidLiteral,
 }
 
 /// The [`Expect`] that `result` is, or `None` for a refusal this file does
@@ -562,6 +564,8 @@ fn category(result: &Result<ReadOutput, ReadError>) -> Option<Expect> {
         Err(ReadError::NoPackage { .. }) => Some(Expect::NoPackage),
         Err(ReadError::DuplicateId { .. }) => Some(Expect::DuplicateId),
         Err(ReadError::InvalidId { .. }) => Some(Expect::InvalidId),
+        Err(ReadError::RepeatedValue { .. }) => Some(Expect::RepeatedValue),
+        Err(ReadError::InvalidLiteral { .. }) => Some(Expect::InvalidLiteral),
         Err(_) => None,
     }
 }
@@ -595,7 +599,8 @@ fn acp(content: &str) -> String {
 )]
 fn table() -> Vec<(&'static str, Vec<u8>, Expect)> {
     use Expect::{
-        Doctype, DuplicateId, InvalidId, InvalidRoot, Malformed, NoPackage, Reads, Unsupported,
+        Doctype, DuplicateId, InvalidId, InvalidLiteral, InvalidRoot, Malformed, NoPackage, Reads,
+        RepeatedValue, Unsupported,
     };
     let text =
         |what: &'static str, input: String, expect: Expect| (what, input.into_bytes(), expect);
@@ -823,10 +828,49 @@ fn table() -> Vec<(&'static str, Vec<u8>, Expect)> {
             ap("<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"\"/>"),
             InvalidId,
         ),
+        // --- A value that is not a literal (SACM-ENUM-001, SACM23-VAL-006),
+        // as an attribute and as an element.
         text(
             "an assertionDeclaration that is not a literal",
             ap("<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\" assertionDeclaration=\"Assumed\"/>"),
-            Unsupported,
+            InvalidLiteral,
+        ),
+        text(
+            "an assertionDeclaration element that is not a literal",
+            ap("<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\">\
+                <assertionDeclaration> assumed</assertionDeclaration></argumentElement>"),
+            InvalidLiteral,
+        ),
+        // --- A second name (SACM-MULT-001, SACM23-XMI-021).
+        text(
+            "a second name",
+            ap("<name content=\"P\"/><name content=\"P\"/>"),
+            RepeatedValue,
+        ),
+        // --- Ids the reader now reads (SACM23-XMI-020, -022, -025), with
+        // their Info in both modes.
+        text(
+            "a root and a child without an xmi:id",
+            format!(
+                "<sacm:ArgumentPackage{NS_XSI}>\n  <name content=\"P\"/>\n  \
+                 <argumentElement xmi:type=\"sacm:Claim\"><name content=\"C\"/></argumentElement>\n\
+                 </sacm:ArgumentPackage>"
+            ),
+            Reads,
+        ),
+        text(
+            "a padded xmi:id on a root and on a child",
+            format!(
+                "<sacm:ArgumentPackage{NS_XSI} xmi:id=\" p \">\n  <name content=\"P\"/>\n  \
+                 <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1&#9;\"/>\n\
+                 </sacm:ArgumentPackage>"
+            ),
+            Reads,
+        ),
+        text(
+            "an xmi:id on a name",
+            ap("<name xmi:id=\"n1\" content=\"P\"/>"),
+            Reads,
         ),
         text(
             "the argumentationElement spelling",
@@ -911,6 +955,8 @@ fn lib_compat_001_both_modes_give_the_same_document_or_the_same_refusal_for_each
         Expect::NoPackage,
         Expect::DuplicateId,
         Expect::InvalidId,
+        Expect::RepeatedValue,
+        Expect::InvalidLiteral,
     ] {
         assert!(
             cases.iter().any(|&(_, _, wanted)| wanted == expect),

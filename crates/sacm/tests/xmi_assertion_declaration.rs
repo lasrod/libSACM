@@ -5,9 +5,9 @@
 //! `xmi::read` reads the attribute on a Claim, the one readable Assertion
 //! kind: after XML attribute-value normalisation, with no trimming or case
 //! folding, the value is one of the six literals, and an absent attribute is
-//! `asserted`. Every other value is `ReadError::Unsupported` at the first
-//! character of the attribute's name, with the value as read, quoted with
-//! `{:?}`, in the reason. `xmi::write` writes `assertionDeclaration="<literal>"`
+//! `asserted`. Every other value is `ReadError::InvalidLiteral`
+//! (SACM-ENUM-001, SACM23-VAL-006) at the first character of the attribute's
+//! name, holding the value as read. `xmi::write` writes `assertionDeclaration="<literal>"`
 //! directly after `xmi:id` on every Assertion whose declaration is not
 //! `asserted`, and nothing for `asserted`.
 //!
@@ -32,9 +32,10 @@
 //! attribute it is `ReadError::RepeatedValue`. Its own rules are tested in
 //! `xmi_value_elements.rs` (SACM23-XMI-014).
 //!
-//! Not checked here: an unknown literal reported as SACM-ENUM-001
-//! (SACM23-VAL-006), and the Assertion kinds other than Claim on read (their
-//! read rows inherit this rule).
+//! Not checked here: the rest of `InvalidLiteral` (its element form,
+//! `Display` and catalog row: `xmi_literals.rs`, SACM23-VAL-006), and the
+//! Assertion kinds other than Claim on read (their read rows inherit this
+//! rule).
 
 use sacm::diagnostic::{Code, Severity, SourceLocation};
 use sacm::edit::{self, CreateArgumentPackage, CreateAssuranceCasePackage, CreateClaim};
@@ -188,6 +189,47 @@ fn assert_unsupported_at_mark(what: &str, template: &str) -> ReadError {
         error.code(),
         None,
         "{ROW}: {what}: an Unsupported refusal has no catalog code"
+    );
+    assert_eq!(
+        error.location(),
+        Some(expected),
+        "{ROW}: {what}: refused at the wrong place: {error:?}"
+    );
+    error
+}
+
+/// Reads `template` without its mark, and returns the refusal, failing the
+/// test unless it is `InvalidLiteral` (SACM-ENUM-001) for the Claim `c1`'s
+/// `assertionDeclaration`, holding `value`, at the mark.
+fn assert_invalid_literal_at_mark(what: &str, template: &str, value: &str) -> ReadError {
+    let (input, expected) = marked(template);
+    let error = match read(&input) {
+        Ok(output) => panic!(
+            "{ROW}: {what}: a document was returned, with {} elements, for {input:?}",
+            output.document().element_count()
+        ),
+        Err(error) => error,
+    };
+    match &error {
+        ReadError::InvalidLiteral {
+            element,
+            property,
+            value: found,
+            ..
+        } => {
+            assert_eq!(element.as_str(), "c1", "{ROW}: {what}: the element");
+            assert_eq!(
+                property, "assertionDeclaration",
+                "{ROW}: {what}: the property"
+            );
+            assert_eq!(found, value, "{ROW}: {what}: the value as read");
+        }
+        other => panic!("{ROW}: {what}: expected InvalidLiteral, got {other:?}"),
+    }
+    assert_eq!(
+        error.code(),
+        Some(Code::ENUM_INVALID_LITERAL),
+        "{ROW}: {what}: the refusal is not SACM-ENUM-001"
     );
     assert_eq!(
         error.location(),
@@ -589,8 +631,8 @@ const BAD_VALUES: [(&str, &str); 25] = [
 ];
 
 #[test]
-fn sacm23_xmi_017_every_other_value_is_unsupported_at_the_attribute_name_quoting_the_value_as_read()
-{
+fn sacm23_xmi_017_every_other_value_is_invalid_literal_at_the_attribute_name_holding_the_value_as_read()
+ {
     // Counted by hand, as a check on `marked`: line 3 holds two spaces,
     // `<!-- é -->` (10 characters, 11 bytes), a space, `<argumentElement`
     // (16), ` xmi:type="sacm:Claim"` (22), ` xmi:id="c1"` (12) and a space: 64
@@ -618,14 +660,28 @@ fn sacm23_xmi_017_every_other_value_is_unsupported_at_the_attribute_name_quoting
             }
             Err(error) => error,
         };
-        let ReadError::Unsupported { reason, .. } = &error else {
+        let ReadError::InvalidLiteral {
+            element,
+            property,
+            value,
+            ..
+        } = &error
+        else {
             failures.push(format!(
-                "{written:?} is refused as {error:?}, not Unsupported"
+                "{written:?} is refused as {error:?}, not InvalidLiteral"
             ));
             continue;
         };
-        if error.code().is_some() {
-            failures.push(format!("{written:?}: the refusal has a code"));
+        if element.as_str() != "c1" || property != "assertionDeclaration" {
+            failures.push(format!(
+                "{written:?}: the refusal names {element:?} and {property:?}"
+            ));
+        }
+        if error.code() != Some(Code::ENUM_INVALID_LITERAL) {
+            failures.push(format!(
+                "{written:?}: the refusal's code is {:?}, not SACM-ENUM-001",
+                error.code()
+            ));
         }
         if error.location() != Some(expected) {
             failures.push(format!(
@@ -633,12 +689,12 @@ fn sacm23_xmi_017_every_other_value_is_unsupported_at_the_attribute_name_quoting
                 error.location()
             ));
         }
-        let quoted = format!("{as_read:?}");
-        if !reason.contains(&quoted) {
+        if value != as_read {
             failures.push(format!(
-                "{written:?}: the reason {reason:?} does not hold the value as read, {quoted}"
+                "{written:?}: the value {value:?} is not the value as read, {as_read:?}"
             ));
         }
+        let quoted = format!("{as_read:?}");
         let shown = error.to_string();
         if !shown.contains(&quoted) || shown.contains('\n') {
             failures.push(format!(
@@ -660,12 +716,16 @@ fn sacm23_xmi_017_no_bad_value_is_ever_read_as_asserted_or_dropped() {
     // Each bad value, beside a valid sibling Claim declared `assumed`: no
     // document is returned at all, so neither Claim can be read as `asserted`
     // or lose its value.
-    for (written, _) in BAD_VALUES {
+    for (written, as_read) in BAD_VALUES {
         let input = in_ap(&format!(
             "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"ok\" assertionDeclaration=\"assumed\"/>\
              <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" {MARK}assertionDeclaration=\"{written}\"/>"
         ));
-        assert_unsupported_at_mark(&format!("{written:?} after a valid sibling"), &input);
+        assert_invalid_literal_at_mark(
+            &format!("{written:?} after a valid sibling"),
+            &input,
+            as_read,
+        );
     }
 }
 
