@@ -77,6 +77,7 @@ needed, that will be a new variant; the other two variants are `#[non_exhaustive
 - **T5.** Content no row writes yet (a name, a non-default `assertionDeclaration`) is
   refused, never dropped (LIB-API-010, the write-side twin of ADR 0015's interim rule).
   C++ writes names.
+  *Superseded by amendment 2: nothing a `Document` holds is refused any more.*
 
 **Departures from C++, accepted with the merge of PR #35:**
 - **W1.** `Result<String, WriteError>`, not `SaveResult { xml, diagnostics, ok }`
@@ -110,8 +111,7 @@ needed, that will be a new variant; the other two variants are `#[non_exhaustive
 - Written output follows the XMI rules except for `xmi:version`, and except that the type
   attribute is written under the §7.6.3 reading (D11). It is not byte-identical to C++
   output.
-- Until SACM23-XMI-017 lands, only documents with default assertion declarations can be
-  written. Names are written since amendment 1.
+- Names are written since amendment 1, and every assertion declaration since amendment 2.
 - Adding diagnostics to a successful write later would change the return type. That is
   accepted, because C++ shows no such case.
 
@@ -134,7 +134,8 @@ T5 said names stay refused until SACM23-XMI-012. That row now writes them, so:
 - **Check order.** For each element: its id; then a character outside `Char` in its name's
   `lang`, then in its `content`, which gives `UnrepresentableCharacter`; then a non-default
   `assertionDeclaration`, which gives `Unsupported`. T5 now refuses only the
-  `assertionDeclaration` (until SACM23-XMI-017).
+  `assertionDeclaration` (until SACM23-XMI-017). *Superseded by amendment 2: the
+  declaration is written, and the check order ends with the name.*
 - **`UnrepresentableCharacter` gains a field, `attribute: WriteAttribute`.** It is a new
   `#[non_exhaustive]` `Copy` enum with the values `Id`, `NameLang` and `NameContent`, and
   later rows add more as they write more attributes. A plain string was rejected: once a
@@ -165,3 +166,33 @@ T5 said names stay refused until SACM23-XMI-012. That row now writes them, so:
 
 *Amendment 1 status: accepted (the maintainer merged PR #37, 2026-11-12), including the
 public `WriteAttribute` type.*
+
+## Amendment 2 — assertionDeclaration (slice 0030; SACM23-XMI-017, LIB-API-010)
+
+- **Writing.** An Assertion's `assertionDeclaration` is written as an unqualified attribute
+  directly after `xmi:id`, spelled as the literal's name, and omitted when the value is
+  `asserted` (§11.10 `= asserted`; XMI 2.5.1 §9.4.1 "Properties whose values are the
+  default values are not serialized"), as C++ does (`xmi_writer.cpp:95-98`). The check
+  order of amendment 1 loses its last step.
+- **T5 ends.** Nothing a `Document` can hold is refused any more, so
+  `WriteError::Unsupported` is removed before any release. The writer's internal "held in
+  no role of its parent's class" check, which could not be reached, is replaced by the role
+  each element stores when it is inserted. The variant's name and shape
+  (`{ element, reason }`, `#[non_exhaustive]`, no catalog code) are reserved: the first row
+  that lets a `Document` hold content no row writes adds it back in the same slice. That is
+  additive, because `WriteError` is `#[non_exhaustive]`.
+- **Reading.** The reader reads the attribute on a Claim and matches its value exactly, after
+  XML attribute-value normalisation (XMI 2.5.1 §8.2.1 rule 8: "a simple type derived from
+  string"; XSD 1.0 Part 2: whiteSpace `preserve`). An explicit `asserted` reads equal to an
+  absent one. Any other value, including white space and other letter cases, is
+  `ReadError::Unsupported` at the attribute until SACM23-VAL-006 (ADR 0015's interim rule).
+- **Differences from C++, one line each:**
+  - C++ reports an unknown literal as SACM-ENUM-001 and keeps the default, losing the raw
+    value (`xmi_reader.cpp:1786-1794`); this crate refuses it until SACM23-VAL-006.
+  - C++ maps the legacy `justification` to `axiomatic` with a TaggedValue (`:1765-1785`);
+    this crate refuses it as an unknown literal (a LIB-COMPAT matter).
+  - C++ maps `undeveloped="true"` to `needsSupport` (`:1796-1815`); this crate refuses it
+    as an unread attribute.
+  - C++ matches the attribute in any namespace; this crate refuses `sacm:assertionDeclaration`.
+
+*Amendment 2 status: accepted (the maintainer, 2026-11-13).*

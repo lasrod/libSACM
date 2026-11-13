@@ -16,12 +16,11 @@ diagnostic type that findings are reported in (`sacm::diagnostic`), and
 `sacm::validation::validate`, which reports each `ModelElement` with no name as a
 `SACM-MULT-001` error. `xmi::read`'s refusals carry catalog codes. `sacm::xmi::read` reads
 `AssuranceCasePackage` and `ArgumentPackage` roots, the AssuranceCasePackages,
-ArgumentPackages and Claims in them, and their names; it refuses what it cannot represent
-rather than drop it.
-`sacm::xmi::write` writes a document and its names deterministically, and refuses a
-non-default `assertionDeclaration`, which it does not write yet. `sacm::edit::apply`
-creates AssuranceCasePackages, ArgumentPackages and Claims, each with a name and a given
-or generated id; a refused operation changes nothing.
+ArgumentPackages and Claims in them, their names and each Claim's `assertionDeclaration`;
+it refuses what it cannot represent rather than drop it.
+`sacm::xmi::write` writes a document, its names and its declarations deterministically.
+`sacm::edit::apply` creates AssuranceCasePackages, ArgumentPackages and Claims, each with
+a name and a given or generated id; a refused operation changes nothing.
 
 Planned:
 
@@ -82,11 +81,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 `sacm::xmi::read` reads `AssuranceCasePackage` and `ArgumentPackage` roots, the
-AssuranceCasePackages, ArgumentPackages and Claims in them, and their names. It refuses
-everything else (other kinds, a `description`, a `gid`, an `assertionDeclaration`) as
-`ReadError::Unsupported` rather than drop it. `sacm::xmi::write` writes the document back
-deterministically, and refuses a non-default `assertionDeclaration` until a later release
-writes it.
+AssuranceCasePackages, ArgumentPackages and Claims in them, their names and each Claim's
+`assertionDeclaration`. It refuses everything else (other kinds, a `description`, a
+`gid`, an `assertionDeclaration` value that is not a SACM literal) as
+`ReadError::Unsupported` rather than drop it. `sacm::xmi::write` writes the
+document back deterministically.
 
 Build a document with `sacm::edit::apply`, then validate, write and read it back:
 

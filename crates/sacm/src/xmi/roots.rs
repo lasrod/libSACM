@@ -1,7 +1,7 @@
 //! The interchange roots of an XMI document, their names and the package
-//! content under them (SACM23-XMI-001, SACM23-XMI-012, SACM23-XMI-016;
-//! formal/23-05-08 §2.2, §2.4; XMI 2.5.1 §7.5.3, §7.6.3, §7.8.6; ADR 0015,
-//! ADR 0016, ADR 0017 amendment 1).
+//! content under them (SACM23-XMI-001, SACM23-XMI-012, SACM23-XMI-016,
+//! SACM23-XMI-017; formal/23-05-08 §2.2, §2.4, §11.10; XMI 2.5.1 §7.5.3,
+//! §7.6.3, §7.8.6; ADR 0015, ADR 0016, ADR 0017 amendments 1 and 2).
 //!
 //! An interchange root is the document element or, when that is the XMI
 //! element, each of its element children outside the XMI namespace. The
@@ -23,9 +23,10 @@
 //!    document order. A `name` is read into its element's name
 //!    (SACM23-XMI-012). A child element is checked the same way, at its start
 //!    tag first: its role, its type and kind, and its `xmi:id`
-//!    (SACM23-XMI-016); then its attributes and its content. The first thing
-//!    this release cannot read is `Unsupported`, at its location; nothing is
-//!    dropped (ADR 0015, D-PRESERVE).
+//!    (SACM23-XMI-016); then its attributes, of which a Claim's
+//!    `assertionDeclaration` is read (SACM23-XMI-017), and its content. The
+//!    first thing this release cannot read is `Unsupported`, at its location;
+//!    nothing is dropped (ADR 0015, D-PRESERVE).
 //!
 //! Names are matched by namespace URI and local name, and a type value is
 //! resolved as a `QName` against the namespaces in scope, so the choice of
@@ -43,7 +44,10 @@ use roxmltree::{Attribute, Node};
 use super::ReadError;
 use super::input::{is_xml_space, locate};
 use super::namespaces::{SACM_NS, XMI_NS};
-use crate::model::{DeclaredType, Document, ElementId, ElementKind, LangString, role_named};
+use crate::model::{
+    AbstractClass, AssertionDeclaration, DeclaredType, Document, ElementId, ElementKind,
+    LangString, role_named,
+};
 
 /// The XML Schema instance namespace, of `xsi:type`, which is read but never
 /// written (ADR 0017 T1).
@@ -171,6 +175,8 @@ struct Pending<'a> {
     kind: ElementKind,
     id: &'a str,
     name: Option<LangString>,
+    /// The `assertionDeclaration` read, if the attribute is written.
+    declaration: Option<AssertionDeclaration>,
     /// The element's name as written in its start tag.
     written: String,
     /// The byte offset of its start tag.
@@ -234,20 +240,28 @@ fn read_root(text: &str, root: Node<'_, '_>, document: &mut Document) -> Result<
     read.sort_by_key(|element| element.order);
     for element in read {
         let what = element.what();
-        document
+        let id = ElementId::new(element.id);
+        let held = document
             .insert_node(
                 element.parent.map(ElementId::new).as_ref(),
                 element.kind,
-                ElementId::new(element.id),
+                id.clone(),
                 element.name,
             )
-            .map_err(|error| {
-                unsupported(
-                    text,
-                    element.at,
-                    format!("{what} cannot be held in the document: {error}"),
-                )
-            })?;
+            .map_err(|error| error.to_string());
+        let declared = held.and_then(|()| match element.declaration {
+            Some(declaration) => document
+                .set_declaration(&id, declaration)
+                .map_err(|error| error.to_string()),
+            None => Ok(()),
+        });
+        declared.map_err(|error| {
+            unsupported(
+                text,
+                element.at,
+                format!("{what} cannot be held in the document: {error}"),
+            )
+        })?;
     }
     Ok(())
 }
@@ -318,14 +332,16 @@ fn root_start<'a>(
         kind,
         id,
         name: None,
+        declaration: None,
         written: name,
         at: at_root,
     })
 }
 
 /// Checks the start tag of `node`, a child element of `parent`: its role,
-/// type and kind, its id, and its other attributes, in that order.
-/// `ids` holds the ids read so far in the root's tree.
+/// type and kind, its id, and its other attributes, in that order, reading
+/// an Assertion's `assertionDeclaration`. `ids` holds the ids read so far in
+/// the root's tree.
 fn child_start<'a>(
     text: &str,
     node: Node<'a, '_>,
@@ -337,11 +353,22 @@ fn child_start<'a>(
     let written = written_name(text, node);
     let what = format!("the element {written:?}");
     let id = read_id(text, node, &what, document, ids)?;
-    // Only `xmi:id` and the type (ADR 0016 D4).
-    if let Some(attribute) = node
-        .attributes()
-        .find(|attribute| !(is_xmi(attribute, "id") || is_type(attribute)))
-    {
+    // Besides `xmi:id` and the type (ADR 0016 D4), only an Assertion's
+    // unqualified `assertionDeclaration`, in document order, so a refusal
+    // after it lands on the later attribute.
+    let is_assertion = kind.is_a(AbstractClass::Assertion);
+    let mut declaration = None;
+    for attribute in node.attributes() {
+        if is_xmi(&attribute, "id") || is_type(&attribute) {
+            continue;
+        }
+        if is_assertion
+            && attribute.namespace().is_none()
+            && attribute.name() == "assertionDeclaration"
+        {
+            declaration = Some(read_declaration(text, &attribute, &written)?);
+            continue;
+        }
         return Err(unread_attribute(text, &attribute, &written));
     }
     Ok(Pending {
@@ -351,6 +378,7 @@ fn child_start<'a>(
         kind,
         id,
         name: None,
+        declaration,
         written,
         at: node.range().start,
     })
@@ -454,6 +482,29 @@ fn child_kind(
         )));
     }
     Ok(kind)
+}
+
+/// The `assertionDeclaration` that `attribute`, of the element written as
+/// `element`, names (SACM23-XMI-017; §11.10; ADR 0017 amendment 2). Its value,
+/// as XML attribute-value normalisation gives it, must be one of the six
+/// literals exactly: nothing is trimmed or case-folded (XMI 2.5.1 §8.2.1 rule
+/// 8). Any other value is refused at the attribute's name, never read as
+/// `asserted` (ADR 0015, until SACM23-VAL-006).
+fn read_declaration(
+    text: &str,
+    attribute: &Attribute<'_, '_>,
+    element: &str,
+) -> Result<AssertionDeclaration, ReadError> {
+    let value = attribute.value();
+    value.parse().map_err(|_| {
+        unsupported(
+            text,
+            attribute.range_qname().start,
+            format!(
+                "the attribute \"assertionDeclaration\" of the element {element:?} has the value {value:?}, which is not an AssertionDeclaration literal"
+            ),
+        )
+    })
 }
 
 /// The `LangString` that the `name` element `node` holds (SACM23-XMI-011,
@@ -711,6 +762,11 @@ mod tests {
             (
                 "<argumentElement xmi:type=\"sacm:AssertedInference\" xmi:id=\"c\"/>".to_owned(),
                 "the AssertedInference \"argumentElement\" in the root element \"sacm:ArgumentPackage\" is not read in this release",
+            ),
+            (
+                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\" assertionDeclaration=\"Assumed\"/>"
+                    .to_owned(),
+                "the attribute \"assertionDeclaration\" of the element \"argumentElement\" has the value \"Assumed\", which is not an AssertionDeclaration literal",
             ),
         ];
         for (content, reason) in cases {
