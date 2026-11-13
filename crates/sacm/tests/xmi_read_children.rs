@@ -1146,9 +1146,10 @@ fn sacm23_xmi_016_text_or_a_second_or_unreadable_name_in_a_child_is_unsupported_
             "a name in the SACM namespace",
             claim(&format!("{MARK}<sacm:name content=\"A\"/>")),
         ),
+        // Not `lang` or `content`, which are value elements (SACM23-XMI-014).
         refused(
             "an element in a name",
-            claim(&format!("<name content=\"A\">{MARK}<content/></name>")),
+            claim(&format!("<name content=\"A\">{MARK}<value/></name>")),
         ),
     ];
     assert_all_unsupported_at_mark("content", &cases);

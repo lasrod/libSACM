@@ -1217,9 +1217,11 @@ fn lib_sec_002_xml_malformed_code_is_sacm_xml_001_in_the_catalog() {
 #[test]
 fn lib_api_009_well_formed_sacm_document_is_unsupported_at_the_construct_it_cannot_read() {
     let row = "LIB-API-009";
-    // A readable root whose `name` child holds an element child, which no
-    // verified row reads (SACM23-XMI-012 reads only the attribute form):
-    // refused at the `content` child, on line 4. `  <name>` is 8 characters.
+    // A readable root whose name's `content` value element holds an element
+    // child, which no row reads (a value element holds only character
+    // content, SACM23-XMI-014; the legacy `value` form is LIB-COMPAT-008):
+    // refused at the `value` start tag, on line 4. `  <name><content>` is 17
+    // characters.
     let name_child = sacm_document(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- LIB-API-009 -->\n",
         "\n  <name><content><value>case</value></content></name>\n",
@@ -1227,8 +1229,8 @@ fn lib_api_009_well_formed_sacm_document_is_unsupported_at_the_construct_it_cann
     let error = assert_unsupported(row, &name_child);
     assert_eq!(
         error.location(),
-        Some(loc(row, 4, 9)),
-        "{row}: the refusal is not located at the start tag of the `content` child of `name`"
+        Some(loc(row, 4, 18)),
+        "{row}: the refusal is not located at the start tag of the `value` child of `content`"
     );
     // An AssuranceCasePackage root with a `note` child, which no verified row
     // reads: `Unsupported`, with no code and no document, at `<note` (line

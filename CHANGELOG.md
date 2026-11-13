@@ -3,7 +3,9 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0, a breaking
-change bumps the minor version and is listed under **Breaking**.
+change bumps the minor version and is listed under **Breaking**. A new validation Error
+rule is not breaking, but it can make a strict `xmi::write` refuse a document it wrote
+before, so each one is listed under **Changed** with its code.
 
 ## [Unreleased]
 
@@ -159,6 +161,12 @@ change bumps the minor version and is listed under **Breaking**.
   and a versioned JSON report (`"format":1`) [LIB-CLI-002].
 - `sacm roundtrip <file> [--strict] [-o <out>]`: read, save strictly, reload and compare;
   `-o` writes the strict output only when the round trip is faithful [LIB-CLI-003].
+- `xmi::WriteError::Invalid`, a strict write's refusal of a document that validation
+  reports an Error for, and `WriteError::diagnostics()`, which gives every such Error
+  [LIB-COMPAT-007].
+- `xmi::read` reads the element form of a name's `lang` and `content` and a Claim's
+  `assertionDeclaration`; a value given twice is `ReadError::RepeatedValue`
+  (SACM-MULT-001) [SACM23-XMI-014].
 
 ### Changed
 

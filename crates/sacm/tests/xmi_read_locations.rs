@@ -112,6 +112,7 @@ enum Variant {
     Unsupported,
     DuplicateId,
     InvalidId,
+    RepeatedValue,
 }
 
 /// One refusal site.
@@ -451,10 +452,12 @@ fn name_rows() -> Vec<Row> {
             Unsupported,
             in_ap(&format!("<name content=\"N\" {MARK}xml:lang=\"en\"/>")),
         ),
+        // `lang` and `content` are value elements (SACM23-XMI-014); `value`
+        // is the legacy form's (LIB-COMPAT-008).
         row(
             "an element in a name",
             Unsupported,
-            in_ap(&format!("<name>{MARK}<content/></name>")),
+            in_ap(&format!("<name>{MARK}<value/></name>")),
         ),
         row(
             "text in a name",
@@ -615,6 +618,62 @@ fn child_content_rows() -> Vec<Row> {
     ]
 }
 
+/// The refusals of value elements (SACM23-XMI-014).
+fn value_element_rows() -> Vec<Row> {
+    use Variant::{RepeatedValue, Unsupported as U};
+    vec![
+        row(
+            "an attribute of a value element",
+            U,
+            in_claim(&format!(
+                "<name><content {MARK}xmi:id=\"v\">N</content></name>"
+            )),
+        ),
+        row(
+            "an element in a value element",
+            U,
+            in_claim(&format!("<name><lang>en{MARK}<b/></lang></name>")),
+        ),
+        row(
+            "a value element in a namespace",
+            U,
+            in_claim(&format!(
+                "<name>{MARK}<sacm:content>N</sacm:content></name>"
+            )),
+        ),
+        row(
+            "a bad assertionDeclaration literal in the element form",
+            U,
+            in_claim(&format!(
+                "{MARK}<assertionDeclaration>Asserted</assertionDeclaration>"
+            )),
+        ),
+        row(
+            "an assertionDeclaration element on a package",
+            U,
+            in_ap(&format!(
+                "{MARK}<assertionDeclaration>asserted</assertionDeclaration>"
+            )),
+        ),
+        // At the second occurrence: here the element after the attribute.
+        row(
+            "a value as an attribute and an element",
+            RepeatedValue,
+            in_claim(&format!(
+                "<name content=\"N\">{MARK}<content>N</content></name>"
+            )),
+        ),
+        row(
+            "a value as two elements",
+            RepeatedValue,
+            in_claim(&format!(
+                "<assertionDeclaration>assumed</assertionDeclaration>\
+                 {MARK}<assertionDeclaration>assumed</assertionDeclaration>"
+            )),
+        ),
+    ]
+}
+
 // --- Reading and locating ---------------------------------------------------
 
 /// How long one `read` may take; a hang fails the test instead of stalling.
@@ -743,6 +802,7 @@ fn variant(error: &ReadError) -> Option<Variant> {
         ReadError::Unsupported { .. } => Some(Variant::Unsupported),
         ReadError::DuplicateId { .. } => Some(Variant::DuplicateId),
         ReadError::InvalidId { .. } => Some(Variant::InvalidId),
+        ReadError::RepeatedValue { .. } => Some(Variant::RepeatedValue),
         _ => None,
     }
 }
@@ -829,6 +889,7 @@ fn all_rows() -> Vec<Row> {
         name_rows(),
         child_role_rows(),
         child_content_rows(),
+        value_element_rows(),
         marked_text_rows(),
     ]
     .into_iter()
@@ -874,6 +935,11 @@ fn sacm23_xmi_010_child_kind_id_attribute_and_content_refusals_are_located() {
 }
 
 #[test]
+fn sacm23_xmi_010_value_element_and_repeated_value_refusals_are_located() {
+    assert_located("value element", &value_element_rows());
+}
+
+#[test]
 fn sacm23_xmi_010_text_after_white_space_written_as_a_reference_or_cdata_is_located_at_that_construct()
  {
     assert_located("marked text", &marked_text_rows());
@@ -890,6 +956,7 @@ fn sacm23_xmi_010_the_table_covers_every_read_error_variant() {
         Variant::Unsupported,
         Variant::DuplicateId,
         Variant::InvalidId,
+        Variant::RepeatedValue,
     ] {
         assert!(
             rows.iter().any(|row| row.variant == wanted),
@@ -912,8 +979,12 @@ fn sacm23_xmi_010_display_shows_the_location_for_every_refusal_site() {
             continue;
         };
         let shown = error.to_string();
-        // A duplicate id names every element carrying it (SACM23-VAL-001).
-        if matches!(error, ReadError::DuplicateId { .. }) {
+        // A duplicate id names every element carrying it (SACM23-VAL-001),
+        // and a repeated value every occurrence (SACM23-XMI-014).
+        if matches!(
+            error,
+            ReadError::DuplicateId { .. } | ReadError::RepeatedValue { .. }
+        ) {
             for location in error.locations() {
                 if !shown.contains(&location.to_string()) {
                     failures.push(format!("{}: {shown:?} does not show {location}", row.what));

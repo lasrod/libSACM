@@ -31,7 +31,7 @@
 //! written from the containment roles in `docs/sacm/metamodel-inventory.md`,
 //! not taken from the crate. A name is not a child element of the model: it
 //! is checked apart, as a `name` child written first with `lang` then
-//! `content` (SACM23-XMI-012; ADR 0017 amendment 1). Its own tests are in
+//! `content` (SACM23-XMI-012; ADR 0017). Its own tests are in
 //! `xmi_names.rs`.
 //!
 //! "Document order" for the refusals is `Document::elements`' order: pre-order,
@@ -73,7 +73,7 @@ const DOCUMENT_ATTRIBUTES: &str = concat!(
     " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"",
 );
 /// Every attribute the writer may write today, in the order it must write them:
-/// `assertionDeclaration` directly after `xmi:id` (ADR 0017 amendment 2). There
+/// `assertionDeclaration` directly after `xmi:id` (ADR 0017). There
 /// is no `xmi:version` (SACM23-XMI-024).
 const ATTRIBUTE_ORDER: [&str; 5] = [
     "xmlns:sacm",
@@ -82,7 +82,7 @@ const ATTRIBUTE_ORDER: [&str; 5] = [
     "xmi:id",
     "assertionDeclaration",
 ];
-/// The element a name is written as (SACM23-XMI-012; ADR 0017 amendment 1).
+/// The element a name is written as (SACM23-XMI-012; ADR 0017).
 const NAME_ELEMENT: &str = "name";
 /// The attributes a `name` child may carry, in the order it must carry them.
 const NAME_ATTRIBUTE_ORDER: [&str; 2] = ["lang", "content"];
@@ -724,7 +724,7 @@ fn expected_tag(
 }
 
 /// The attributes a `name` child is written with for `name`: `lang`, then
-/// `content`, each only when present (ADR 0012, ADR 0017 amendment 1).
+/// `content`, each only when present (ADR 0012, ADR 0017).
 fn name_attributes(name: &LangString) -> Vec<(String, String)> {
     [("lang", name.lang()), ("content", name.content())]
         .into_iter()
@@ -735,7 +735,7 @@ fn name_attributes(name: &LangString) -> Vec<(String, String)> {
 }
 
 /// Asserts that `written`, the output of `element`, holds its name as ADR
-/// 0017 amendment 1 says: one `name` child, written first, with `lang` then
+/// 0017 says: one `name` child, written first, with `lang` then
 /// `content` and nothing else; no `name` child for no name. Returns whether
 /// it has one, and its other children in written order.
 fn assert_written_name(
@@ -784,7 +784,7 @@ fn assert_written_name(
 
 /// The `assertionDeclaration` value `element` is written with: its literal
 /// when it is an Assertion not declared `asserted`, and none otherwise (ADR
-/// 0017 amendment 2; XMI 2.5.1 §9.4.1).
+/// 0017; XMI 2.5.1 §9.4.1).
 fn written_declaration(element: SacmElement<'_>) -> Option<&'static str> {
     element
         .assertion_declaration()
@@ -971,8 +971,8 @@ fn bare_root(kind: ElementKind, escaped_id: &str) -> String {
 }
 
 /// Asserts that `error` refuses the element `id` because its id holds
-/// `character`, names `WriteAttribute::Id` as the attribute that holds it (ADR 0017
-/// amendment 1), and says so.
+/// `character`, names `WriteAttribute::Id` as the attribute that holds it (ADR 0017),
+/// and says so.
 fn assert_unrepresentable(row: &str, error: &WriteError, id: &str, character: char) {
     match error {
         WriteError::UnrepresentableCharacter {
@@ -2361,6 +2361,14 @@ fn lib_api_010_every_feature_a_document_holds_is_written() {
     );
 }
 
+/// Writes `doc` in strict mode, which the test expects to refuse it.
+fn strict_write_err(row: &str, doc: &Document) -> WriteError {
+    match xmi::write(doc, &WriteOptions::default().with_mode(Mode::Strict)) {
+        Ok(text) => panic!("{row}: a strict write accepted {doc:?} and returned:\n{text}"),
+        Err(error) => error,
+    }
+}
+
 /// The name of `error`'s variant, or `None` for any other: `WriteError` is
 /// `#[non_exhaustive]`, so a match outside the crate needs a fallback arm.
 fn write_error_variant(error: &WriteError) -> Option<&'static str> {
@@ -2373,11 +2381,13 @@ fn write_error_variant(error: &WriteError) -> Option<&'static str> {
 }
 
 #[test]
-fn lib_api_010_write_error_has_exactly_the_variants_no_root_and_unrepresentable_character() {
+fn lib_api_010_write_error_has_exactly_the_variants_no_root_unrepresentable_character_and_invalid()
+{
     let row = "LIB-API-010";
     // Every refusal a document can cause in tolerant mode, which does not
     // validate: no root, and a character outside XML 1.0 `Char` in an id, a
-    // name's `lang` and a name's `content`. Strict mode's `Invalid` is
+    // name's `lang` and a name's `content`. Strict mode adds `Invalid`, for
+    // a document `validate` reports an Error for; its rules are
     // LIB-COMPAT-007's, tested in `load_and_save_modes.rs`.
     let mut refused: Vec<(&str, Document, Option<&str>)> = vec![
         ("an empty document", Document::new(), None),
@@ -2421,6 +2431,23 @@ fn lib_api_010_write_error_has_exactly_the_variants_no_root_and_unrepresentable_
         let code: Option<Code> = error.code();
         assert_eq!(code, None, "{row}: {what}: {error:?} has a catalog code");
     }
+    // In strict mode, a nameless root is a validation Error (SACM23-VAL-018).
+    let invalid = strict_write_err(
+        row,
+        &build(row, &[(None, ElementKind::ArgumentPackage, "a")]),
+    );
+    assert_eq!(
+        write_error_variant(&invalid),
+        Some("Invalid"),
+        "{row}: a nameless root written strictly is refused as {invalid:?}"
+    );
+    assert_eq!(
+        invalid.element(),
+        None,
+        "{row}: Invalid names an element: {invalid:?}"
+    );
+    let code: Option<Code> = invalid.code();
+    assert_eq!(code, None, "{row}: {invalid:?} has a catalog code");
 
     // Everything else a document can hold is written, so no other variant
     // can be returned: every Assertion kind with every literal, alone and in
@@ -2464,7 +2491,12 @@ fn lib_api_010_write_error_is_a_send_sync_error_whose_variants_have_no_catalog_c
         LangString::new("n\u{1}"),
     );
     let unrepresentable_name = write_err(row, &named);
-    for error in [no_root, unrepresentable, unrepresentable_name] {
+    // A nameless root, written strictly (LIB-COMPAT-007).
+    let invalid = strict_write_err(
+        row,
+        &build(row, &[(None, ElementKind::ArgumentPackage, "a")]),
+    );
+    for error in [no_root, unrepresentable, unrepresentable_name, invalid] {
         let code: Option<Code> = error.code();
         assert_eq!(code, None, "{row}: {error:?} has a catalog code");
         let message = error.to_string();

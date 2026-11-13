@@ -1,7 +1,7 @@
 //! The interchange roots of an XMI document, their names and the package
 //! content under them (SACM23-XMI-001, SACM23-XMI-012, SACM23-XMI-016,
-//! SACM23-XMI-017; formal/23-05-08 §2.2, §2.4, §11.10; XMI 2.5.1 §7.5.3,
-//! §7.6.3, §7.8.6; ADR 0015, ADR 0016, ADR 0017 amendments 1 and 2).
+//! SACM23-XMI-017, SACM23-XMI-014; formal/23-05-08 §2.2, §2.4, §11.10;
+//! XMI 2.5.1 §7.5.3, §7.6.3, §7.8.4, §7.8.6; ADR 0015, ADR 0016, ADR 0021).
 //!
 //! An interchange root is the document element or, when that is the XMI
 //! element, each of its element children outside the XMI namespace. The
@@ -27,6 +27,12 @@
 //!    `assertionDeclaration` is read (SACM23-XMI-017), and its content. The
 //!    first thing this release cannot read is `Unsupported`, at its location;
 //!    nothing is dropped (ADR 0015, D-PRESERVE).
+//!
+//! A name's `lang` and `content` and a Claim's `assertionDeclaration` are
+//! read from the attribute or from a value element: an element in no
+//! namespace named after the property, whose character content is the value
+//! (SACM23-XMI-014; XMI 2.5.1 §7.8.4; ADR 0021 amendment 1). A property given
+//! more than once is `RepeatedValue` (SACM-MULT-001; XMI 2.5.1 rule 2h).
 //!
 //! Names are matched by namespace URI and local name, and a type value is
 //! resolved as a `QName` against the namespaces in scope, so the choice of
@@ -65,6 +71,10 @@ const XSI_NS: &str = "http://www.w3.org/2001/XMLSchema-instance";
 
 /// The requirement the read diagnostics enforce.
 const MODES_ROW: &str = "LIB-COMPAT-001";
+
+/// The Assertion property read as an attribute or a value element
+/// (formal/23-05-08 §11.10).
+const DECLARATION: &str = "assertionDeclaration";
 
 /// The document whose roots `tree` holds, read in `mode`, and the
 /// diagnostics found, unsorted. `text` is the text `tree` was parsed from.
@@ -128,7 +138,7 @@ impl Findings<'_, '_> {
     fn xmi_version(&mut self, attribute: &Attribute<'_, '_>, subject: &str, id: Option<&str>) {
         let message = format!(
             "the xmi:version {:?} of {subject} is ignored: the XMI namespace identifies the \
-             version, and write does not write it",
+             version (XMI 2.5.1 §7.5.3), and write does not write it",
             attribute.value()
         );
         let diagnostic = Diagnostic::create(
@@ -267,7 +277,8 @@ struct Pending<'a> {
     kind: ElementKind,
     id: &'a str,
     name: Option<LangString>,
-    /// The `assertionDeclaration` read, if the attribute is written.
+    /// The `assertionDeclaration` read, if it is written, as the attribute
+    /// or as a value element.
     declaration: Option<AssertionDeclaration>,
     /// The element's name as written in its start tag.
     written: String,
@@ -299,14 +310,16 @@ fn read_root<'a>(
     let text = found.text;
     let first = root_start(found, root)?;
     // The elements whose content is being read, innermost last, each with
-    // the rest of its content, and the elements read whole. Content is one
-    // `name` (SACM23-XMI-012), readable children (SACM23-XMI-016), white
-    // space, comments and processing instructions.
-    let mut open = vec![(first, root.children())];
+    // its node and the rest of its content, and the elements read whole.
+    // Content is one `name` (SACM23-XMI-012), on an Assertion one
+    // `assertionDeclaration` value element (SACM23-XMI-014), readable
+    // children (SACM23-XMI-016), white space, comments and processing
+    // instructions.
+    let mut open = vec![(first, root, root.children())];
     let mut read = Vec::new();
-    while let Some((element, content)) = open.last_mut() {
+    while let Some((element, holder, content)) = open.last_mut() {
         let Some(node) = content.next() else {
-            read.extend(open.pop().map(|(element, _)| element));
+            read.extend(open.pop().map(|(element, _, _)| element));
             continue;
         };
         if !node.is_element() {
@@ -320,9 +333,29 @@ fn read_root<'a>(
                 ));
             }
             element.name = Some(read_name(found, node, element.kind, element.id)?);
+        } else if element.kind.is_a(AbstractClass::Assertion) && is_value_element(node, DECLARATION)
+        {
+            // Checked whole first, then against an earlier occurrence.
+            let value = read_value(text, node)?;
+            let what = format!(
+                "the element {:?} in the element {:?}",
+                written_name(text, node),
+                element.written
+            );
+            let declaration = parse_declaration(text, &value, node.range().start, &what)?;
+            if element.declaration.is_some() {
+                return Err(repeated_value(
+                    text,
+                    *holder,
+                    DECLARATION,
+                    element.id,
+                    DECLARATION,
+                ));
+            }
+            element.declaration = Some(declaration);
         } else {
             let child = child_start(found, node, element)?;
-            open.push((child, node.children()));
+            open.push((child, node, node.children()));
         }
     }
 
@@ -463,11 +496,10 @@ fn child_start<'a>(
         if is_xmi(&attribute, "id") || is_type(&attribute) {
             continue;
         }
-        if is_assertion
-            && attribute.namespace().is_none()
-            && attribute.name() == "assertionDeclaration"
-        {
-            declaration = Some(read_declaration(text, &attribute, &written)?);
+        if is_assertion && attribute.namespace().is_none() && attribute.name() == DECLARATION {
+            let what = format!("the attribute {DECLARATION:?} of the element {written:?}");
+            let at = attribute.range_qname().start;
+            declaration = Some(parse_declaration(text, attribute.value(), at, &what)?);
             continue;
         }
         return Err(unread_attribute(text, &attribute, &written));
@@ -489,8 +521,8 @@ fn child_start<'a>(
 /// The `xmi:id` of `node` (XMI 2.5.1 §7.6.1), which `what` names, recorded
 /// in `found`. A missing id is `Unsupported` at `node`. An empty id is
 /// `InvalidId` at `node` (SACM-ID-002), and an id an earlier element carries
-/// is `DuplicateId` (SACM-ID-001), naming every element in the input that
-/// carries it (ADR 0015 amendment 2). An id with XML white space around an
+/// is `DuplicateId` (SACM-ID-001), giving the location of every element in
+/// the input that carries it (ADR 0015 amendment 2). An id with XML white space around an
 /// `NCName` is `Unsupported` at the attribute's name until SACM23-XMI-025.
 /// Any other id is read as written; validation reports one that is not an
 /// `NCName` (SACM23-VAL-020).
@@ -625,35 +657,112 @@ fn child_kind(
     Ok(kind)
 }
 
-/// The `assertionDeclaration` that `attribute`, of the element written as
-/// `element`, names (SACM23-XMI-017; §11.10; ADR 0017 amendment 2). Its value,
-/// as XML attribute-value normalisation gives it, must be one of the six
-/// literals exactly: nothing is trimmed or case-folded (XMI 2.5.1 §8.2.1 rule
-/// 8). Any other value is refused at the attribute's name, never read as
-/// `asserted` (ADR 0015, until SACM23-VAL-006).
-fn read_declaration(
+/// The `assertionDeclaration` that `value` names, given by `what`, the
+/// attribute or the value element at byte `offset` of `text`: the attribute's
+/// name or the element's start tag (SACM23-XMI-017, SACM23-XMI-014; §11.10;
+/// ADR 0021). The value, as XML gives it, must be one of the six literals
+/// exactly: nothing is trimmed or case-folded (XMI 2.5.1 §8.2.1 rule 8). Any
+/// other value is refused at `offset`, quoted, and never read as `asserted`
+/// (ADR 0015, until SACM23-VAL-006).
+fn parse_declaration(
     text: &str,
-    attribute: &Attribute<'_, '_>,
-    element: &str,
+    value: &str,
+    offset: usize,
+    what: &str,
 ) -> Result<AssertionDeclaration, ReadError> {
-    let value = attribute.value();
     value.parse().map_err(|_| {
         unsupported(
             text,
-            attribute.range_qname().start,
-            format!(
-                "the attribute \"assertionDeclaration\" of the element {element:?} has the value {value:?}, which is not an AssertionDeclaration literal"
-            ),
+            offset,
+            format!("{what} has the value {value:?}, which is not an AssertionDeclaration literal"),
         )
     })
 }
 
+/// Whether `node` is the value element of the property `local`: an element
+/// in no namespace named `local` (XMI 2.5.1 §7.8.4, production 2b). Under
+/// `xmlns=""` the parser reports the empty string, which is no namespace
+/// name (Namespaces 1.0 §6.2).
+fn is_value_element(node: Node<'_, '_>, local: &str) -> bool {
+    node.is_element()
+        && node.tag_name().namespace().is_none_or(str::is_empty)
+        && node.tag_name().name() == local
+}
+
+/// The value that the value element `node` holds (SACM23-XMI-014; ADR 0021
+/// amendment 1): its character content, joined in document order, exactly.
+/// CDATA sections and references give their characters, comments and
+/// processing instructions are skipped, and nothing is trimmed; the parser
+/// has already ended every line with LF (XML 1.0 §2.11). An empty element is
+/// the empty string. Any attribute is `Unsupported` at its name, and any
+/// element child at its start tag.
+fn read_value(text: &str, node: Node<'_, '_>) -> Result<String, ReadError> {
+    let element = written_name(text, node);
+    if let Some(attribute) = node.attributes().next() {
+        return Err(unread_attribute(text, &attribute, &element));
+    }
+    let mut value = String::new();
+    for child in node.children() {
+        if child.is_element() {
+            return Err(unsupported(
+                text,
+                child.range().start,
+                format!(
+                    "the element {:?} in the value element {element:?} is not read: a value \
+                     element holds only characters",
+                    written_name(text, child)
+                ),
+            ));
+        }
+        if child.is_text() {
+            value.push_str(child.text().unwrap_or_default());
+        }
+    }
+    Ok(value)
+}
+
+/// The `RepeatedValue` refusal of the property `property` of the element
+/// `owner`, given more than once in `holder` (SACM-MULT-001; XMI 2.5.1 rule
+/// 2h). It gives every occurrence, found in one pass over `holder` in
+/// document order and located in one pass over the text: the attribute
+/// `local` in no namespace, if it is written, then every value element
+/// `local`.
+fn repeated_value(
+    text: &str,
+    holder: Node<'_, '_>,
+    local: &str,
+    owner: &str,
+    property: &str,
+) -> ReadError {
+    let mut locator = Locator::new(text);
+    let attribute = holder
+        .attributes()
+        .find(|attribute| attribute.namespace().is_none() && attribute.name() == local)
+        .map(|attribute| attribute.range_qname().start);
+    let elements = holder
+        .children()
+        .filter(|child| is_value_element(*child, local))
+        .map(|child| child.range().start);
+    let locations = attribute
+        .into_iter()
+        .chain(elements)
+        .filter_map(|offset| locator.locate(offset))
+        .collect();
+    ReadError::RepeatedValue {
+        element: ElementId::new(owner),
+        property: property.to_owned(),
+        locations,
+    }
+}
+
 /// The `LangString` that the `name` element `node` holds (SACM23-XMI-011,
-/// SACM23-XMI-012; ADR 0017 amendment 1). It must be in no namespace, carry
-/// only `lang`, `content` and a type naming `LangString`, and hold only white
-/// space, comments and processing instructions. The values are kept as the
-/// parser gives them, untrimmed. An `xsi:type` is reported on the owner: the
-/// element `owner`, of `kind`.
+/// SACM23-XMI-012, SACM23-XMI-014; ADR 0021). It must be in no namespace,
+/// carry only `lang`, `content` and a type naming `LangString`, and hold only
+/// the value elements `lang` and `content`, white space, comments and
+/// processing instructions. Each field is given at most once, as an attribute
+/// or a value element; a second is `RepeatedValue`. The values are kept as
+/// the parser gives them, untrimmed. An `xsi:type` is reported on the owner:
+/// the element `owner`, of `kind`.
 fn read_name(
     found: &mut Findings<'_, '_>,
     node: Node<'_, '_>,
@@ -700,7 +809,12 @@ fn read_name(
         }
     }
     for child in node.children() {
-        if child.is_element() {
+        if !child.is_element() {
+            check_text(text, child, &element)?;
+            continue;
+        }
+        let is_lang = is_value_element(child, "lang");
+        if !(is_lang || is_value_element(child, "content")) {
             return Err(unsupported(
                 text,
                 child.range().start,
@@ -710,7 +824,19 @@ fn read_name(
                 ),
             ));
         }
-        check_text(text, child, &element)?;
+        // Checked whole first, then against an earlier occurrence.
+        let value = read_value(text, child)?;
+        let local = child.tag_name().name();
+        let held = if is_lang { name.lang() } else { name.content() };
+        if held.is_some() {
+            let property = format!("name.{local}");
+            return Err(repeated_value(text, node, local, owner, &property));
+        }
+        if is_lang {
+            name.set_lang(Some(value));
+        } else {
+            name.set_content(Some(value));
+        }
     }
     Ok(name)
 }

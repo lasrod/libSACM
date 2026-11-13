@@ -1,7 +1,7 @@
 //! Tests for names and exact strings in XMI: the `name` containment
 //! (SACM23-XMI-012) and string values that survive XML exactly
 //! (SACM23-XMI-011); formal/23-05-08 §8.3, §8.6; XML 1.0 §3.3.3; ADR 0012,
-//! ADR 0013, ADR 0017 amendment 1.
+//! ADR 0013, ADR 0017 (the writer) and ADR 0021 (the reader).
 //!
 //! Documents are built with the `test-support` feature's `Document::insert`,
 //! or read from inline input, and read with the default options. They are
@@ -25,7 +25,7 @@
 //!
 //! An `UnrepresentableCharacter` refusal names the attribute that holds the
 //! character as a `WriteAttribute` (`Id`, `NameLang` or `NameContent`), and its
-//! message says where (ADR 0017 amendment 1). Both are pinned.
+//! message says where (ADR 0017). Both are pinned.
 
 use std::collections::HashSet;
 use std::sync::mpsc::{self, RecvTimeoutError};
@@ -729,7 +729,7 @@ fn sacm23_xmi_011_within_one_element_the_id_is_checked_before_the_name_and_lang_
         '\u{2}',
     );
 
-    // The name, then the `assertionDeclaration` (ADR 0017 amendment 1).
+    // The name, then the `assertionDeclaration` (ADR 0017).
     let content = LangString::new("\u{3}").with_lang("en");
     let error = write_err(
         row,
@@ -1155,9 +1155,10 @@ fn sacm23_xmi_012_a_type_naming_another_class_on_name_is_unsupported_at_the_name
 #[test]
 fn sacm23_xmi_012_an_element_child_or_text_in_name_is_unsupported_at_that_content() {
     let row = "SACM23-XMI-012";
-    // `  <name>` is 8 characters, so what it holds starts at column 9.
+    // `  <name>` is 8 characters, so what it holds starts at column 9. The
+    // value elements `lang` and `content` are read (SACM23-XMI-014), so they
+    // are not among these.
     for (what, inside) in [
-        ("a content element", "<content>x</content>"),
         ("a value element", "<value content=\"x\"/>"),
         ("text", "text"),
     ] {

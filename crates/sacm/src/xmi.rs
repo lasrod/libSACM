@@ -13,10 +13,11 @@
 //! refuses input that is unsafe ([`ReadError::Doctype`], SACM-SEC-001), not
 //! well-formed ([`ReadError::Malformed`], SACM-XML-001), not rooted in a
 //! SACM package ([`ReadError::InvalidRoot`] and [`ReadError::NoPackage`],
-//! SACM-XMI-001), or with an `xmi:id` that repeats
+//! SACM-XMI-001), with an `xmi:id` that repeats
 //! ([`ReadError::DuplicateId`], SACM-ID-001) or is empty
-//! ([`ReadError::InvalidId`], SACM-ID-002). Content it cannot represent yet is refused as
-//! [`ReadError::Unsupported`], never dropped.
+//! ([`ReadError::InvalidId`], SACM-ID-002), or with a value given twice
+//! ([`ReadError::RepeatedValue`], SACM-MULT-001). Content it cannot represent
+//! yet is refused as [`ReadError::Unsupported`], never dropped.
 //!
 //! `write` writes every element of a document, with its name and, on an
 //! Assertion, its `assertionDeclaration`, in document order, in one
@@ -136,6 +137,22 @@ mod roots;
 /// change what the case declares. Fix: correct the spelling. This release
 /// gives no catalog code; a later release reports it as SACM-ENUM-001.
 ///
+/// Each of these values may also be written as a value element (XMI 2.5.1
+/// §7.8.4): `<lang>` and `<content>` in the `name`, and
+/// `<assertionDeclaration>` in the Claim, in no namespace, anywhere among
+/// their siblings. Both forms read to the same document, and [`write()`]
+/// writes the attribute form. The value is the element's character content,
+/// joined in document order: CDATA sections and references give their
+/// characters, comments and processing instructions are skipped, and an empty
+/// element is the empty string. Element text keeps its white space exactly:
+/// nothing is trimmed, and only a line end (CRLF or a lone CR) reads as LF
+/// (XML 1.0 §2.11). An `assertionDeclaration` element must hold one literal
+/// exactly, as the attribute must; any other value is
+/// [`ReadError::Unsupported`] at its start tag, quoting the value. A value
+/// given more than once, as an attribute and an element or as two elements,
+/// is [`ReadError::RepeatedValue`] (SACM-MULT-001), even when the values are
+/// equal.
+///
 /// Elements and
 /// attributes are matched by namespace URI and local name, and an `xmi:type`
 /// or `xsi:type` value is resolved as a `QName`, without its leading and
@@ -154,10 +171,13 @@ mod roots;
 /// any value and ignored: the XMI namespace identifies the version
 /// (XMI 2.5.1 §7.5.3), so [`write()`] does not write it back. It is reported
 /// as SACM-XMI-011 (see [Diagnostics](#diagnostics)).
+/// A Claim may also hold one `assertionDeclaration` value element.
 /// The `name` must be in no namespace, carry only `lang`, `content` and an
-/// `xmi:type` or `xsi:type` naming `sacm:LangString`, and hold only white
-/// space, comments and processing instructions. Anything else is refused as
-/// [`ReadError::Unsupported`] until a later release reads it.
+/// `xmi:type` or `xsi:type` naming `sacm:LangString`, and hold only the value
+/// elements `lang` and `content`, white space, comments and processing
+/// instructions. A value element may carry no attribute and hold no element.
+/// Anything else is refused as [`ReadError::Unsupported`] until a later
+/// release reads it.
 ///
 /// The input is UTF-8, ASCII, or UTF-16 with a byte order mark, which reads
 /// exactly as the same characters in UTF-8. A DOCTYPE is refused before
@@ -228,6 +248,9 @@ mod roots;
 ///    is checked before its other attributes, and those before its content.
 ///    An empty id is `InvalidId`, and an id that an earlier element carries
 ///    is `DuplicateId`, so a repeat is refused before anything after its id.
+///    A value element is checked whole when it is met, then against the
+///    occurrences before it, so the second occurrence of a value is
+///    `RepeatedValue` unless it is itself refused first.
 ///
 /// The refusals:
 ///
@@ -250,6 +273,10 @@ mod roots;
 ///   [`validation::validate`](crate::validation::validate), except an
 ///   `NCName` with XML white space around it, such as `" c1 "`, which is
 ///   `Unsupported` until a later release.
+/// - [`ReadError::RepeatedValue`] (SACM-MULT-001): a name's `lang` or
+///   `content`, or a Claim's `assertionDeclaration`, is given more than once,
+///   as an attribute and an element or as two elements (XMI 2.5.1 rule 2h),
+///   even with equal values. It gives every occurrence.
 /// - [`ReadError::Unsupported`] (no code): the input is well-formed but this
 ///   version cannot represent it. It is also the refusal of an
 ///   `assertionDeclaration` value that is not a SACM literal, until a later
@@ -265,16 +292,18 @@ mod roots;
 ///   element as the document element (such as `xmi:Documentation`) or beside
 ///   the roots (such as `xmi:documentation`), an attribute of `xmi:XMI` other
 ///   than `xmi:version`, a second `name`, any other attribute or content of a
-///   `name` (such as `xmi:id`, `xml:lang` or a `content` element), a `name` in
-///   a namespace (such as `sacm:name`), and any other attribute or content of
-///   a root or child. For a child, that includes a role its parent's class
-///   lacks, a role element in a namespace, a type that names no concrete
-///   SACM class or that the role does not admit, two types that disagree,
-///   no type under a role of an abstract type, any other kind (such as a
-///   `description`, a `note` or an `ArgumentReasoning`), text, attributes
-///   such as `gid`; an `assertionDeclaration` whose value is not one of the
-///   six literals; and an `assertionDeclaration` that is on a package (even
-///   `"asserted"`), in a namespace, or written as a child element.
+///   `name` (such as `xmi:id`, `xml:lang` or a `value` element), a `name` in
+///   a namespace (such as `sacm:name`), a value element with an attribute
+///   (such as `xmi:id` or `xsi:nil`), an element child or a namespace, and
+///   any other attribute or content of a root or child. For a child, that
+///   includes a role its parent's class lacks, a role element in a
+///   namespace, a type that names no concrete SACM class or that the role
+///   does not admit, two types that disagree, no type under a role of an
+///   abstract type, any other kind (such as a `description`, a `note` or an
+///   `ArgumentReasoning`), text, attributes such as `gid`; an
+///   `assertionDeclaration` whose value is not one of the six literals; and
+///   an `assertionDeclaration`, as an attribute or an element, that is on a
+///   package (even `"asserted"`) or in a namespace.
 ///
 /// # Examples
 ///
@@ -407,7 +436,7 @@ pub fn read(input: &[u8], options: &ReadOptions) -> Result<ReadOutput, ReadError
 ///
 /// `Mode` has no default of its own: [`ReadOptions`] default to `Tolerant`
 /// and [`WriteOptions`] to `Strict`. In this release both modes read and
-/// refuse the same inputs; the mode decides only the severity of
+/// refuse the same inputs: on a read, the mode decides only the severity of
 /// SACM-XMI-010 (see [`read`]). Later releases may add variants, so match it
 /// with a fallback arm.
 ///
@@ -547,9 +576,9 @@ const _: () = {
 /// The refusals of a defect in the input have their own variant and catalog
 /// code: [`Doctype`](Self::Doctype), [`Malformed`](Self::Malformed),
 /// [`InvalidRoot`](Self::InvalidRoot), [`NoPackage`](Self::NoPackage),
-/// [`DuplicateId`](Self::DuplicateId) and [`InvalidId`](Self::InvalidId).
-/// [`Unsupported`](Self::Unsupported), with no code, is input this version
-/// cannot read yet.
+/// [`DuplicateId`](Self::DuplicateId), [`InvalidId`](Self::InvalidId) and
+/// [`RepeatedValue`](Self::RepeatedValue). [`Unsupported`](Self::Unsupported),
+/// with no code, is input this version cannot read yet.
 ///
 /// Every refusal has a [`SourceLocation`] except the parser's capacity-limit
 /// refusals, and [`code`](Self::code) gives its catalog code;
@@ -562,8 +591,9 @@ const _: () = {
 ///
 /// `Display` writes one line that starts in lower case, without trailing
 /// punctuation. The location follows as ` at line L, column C` when it is
-/// known, and the reason after `: `; a [`DuplicateId`](Self::DuplicateId)
-/// lists every location, separated by `; `. Names from the input are quoted with
+/// known, and the reason after `: `; a [`DuplicateId`](Self::DuplicateId) or
+/// [`RepeatedValue`](Self::RepeatedValue) lists every location, separated by
+/// `; `. Names from the input are quoted with
 /// `{:?}`, so line breaks in them never break the line. For example:
 ///
 /// ```
@@ -679,6 +709,51 @@ pub enum ReadError {
         /// What cannot be represented, without a position.
         reason: String,
     },
+    /// A single-valued property is given more than once: as an attribute and
+    /// an element, or as two or more elements (SACM-MULT-001). XMI 2.5.1
+    /// rule 2h serializes a property "either as an XML attribute or as XML
+    /// elements but not both", and the property holds one value, so the
+    /// input is refused even when the values are equal, rather than read
+    /// with one of them dropped. Fix: give the value once.
+    ///
+    /// [`location`](Self::location) is the second occurrence, and
+    /// [`locations`](Self::locations) every occurrence.
+    ///
+    /// ```
+    /// use sacm::diagnostic::Code;
+    /// use sacm::xmi::{self, ReadError, ReadOptions};
+    ///
+    /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+    ///   <name content="Arguments">
+    ///     <content>Arguments</content>
+    ///   </name>
+    /// </sacm:ArgumentPackage>"#;
+    /// let error = xmi::read(input, &ReadOptions::default()).unwrap_err();
+    /// assert!(matches!(
+    ///     &error,
+    ///     ReadError::RepeatedValue { property, .. } if property == "name.content"
+    /// ));
+    /// assert_eq!(error.code(), Some(Code::MULTIPLICITY_VIOLATION));
+    /// assert_eq!(error.location().map(|at| (at.line(), at.column())), Some((4, 5)));
+    /// assert_eq!(
+    ///     error.to_string(),
+    ///     "the single-valued property \"name.content\" of the element \"arguments\" \
+    ///      is given 2 times, at line 3, column 9; line 4, column 5"
+    /// );
+    /// ```
+    #[non_exhaustive]
+    RepeatedValue {
+        /// The element that holds the property; for `name.lang` and
+        /// `name.content`, the element the name belongs to.
+        element: ElementId,
+        /// The property: `name.lang`, `name.content` or
+        /// `assertionDeclaration`.
+        property: String,
+        /// Every occurrence, in document order: an attribute at the first
+        /// character of its name, an element at its `<`. At least two.
+        locations: Vec<SourceLocation>,
+    },
 }
 
 impl ReadError {
@@ -687,7 +762,8 @@ impl ReadError {
     /// [`Malformed`](Self::Malformed), SACM-XMI-001 for
     /// [`InvalidRoot`](Self::InvalidRoot) and [`NoPackage`](Self::NoPackage),
     /// SACM-ID-001 for [`DuplicateId`](Self::DuplicateId), SACM-ID-002 for
-    /// [`InvalidId`](Self::InvalidId), and `None` for
+    /// [`InvalidId`](Self::InvalidId), SACM-MULT-001 for
+    /// [`RepeatedValue`](Self::RepeatedValue), and `None` for
     /// [`Unsupported`](Self::Unsupported).
     #[must_use]
     pub fn code(&self) -> Option<Code> {
@@ -697,6 +773,7 @@ impl ReadError {
             Self::InvalidRoot { .. } | Self::NoPackage { .. } => Some(Code::XMI_INVALID_ROOT),
             Self::DuplicateId { .. } => Some(Code::ID_DUPLICATE),
             Self::InvalidId { .. } => Some(Code::ID_INVALID),
+            Self::RepeatedValue { .. } => Some(Code::MULTIPLICITY_VIOLATION),
             Self::Unsupported { .. } => None,
         }
     }
@@ -705,7 +782,8 @@ impl ReadError {
     /// tag, an attribute at the first character of its name, text at its
     /// first character that is not literal white space (a CDATA section or
     /// reference at its start). For [`DuplicateId`](Self::DuplicateId), the
-    /// first repeat. `None` only when the input exceeds the parser's
+    /// first repeat; for [`RepeatedValue`](Self::RepeatedValue), the second
+    /// occurrence. `None` only when the input exceeds the parser's
     /// capacity.
     ///
     /// Lines end at a line feed, a carriage return and line feed, or a lone
@@ -720,14 +798,19 @@ impl ReadError {
             | Self::NoPackage { location }
             | Self::InvalidId { location, .. }
             | Self::Unsupported { location, .. } => *location,
-            // The first element carries the id; the second repeats it.
-            Self::DuplicateId { locations, .. } => locations.get(1).copied(),
+            // The first element carries the id, or the first occurrence gives
+            // the value; the second repeats it.
+            Self::DuplicateId { locations, .. } | Self::RepeatedValue { locations, .. } => {
+                locations.get(1).copied()
+            }
         }
     }
 
     /// Every location the refusal names: for
     /// [`DuplicateId`](Self::DuplicateId), the start tag of every element
-    /// carrying the id, in document order; for every other refusal, its
+    /// carrying the id, in document order; for
+    /// [`RepeatedValue`](Self::RepeatedValue), every occurrence of the
+    /// value, in document order; for every other refusal, its
     /// [`location`](Self::location), or nothing when it has none.
     ///
     /// ```
@@ -748,9 +831,21 @@ impl ReadError {
             | Self::NoPackage { location }
             | Self::InvalidId { location, .. }
             | Self::Unsupported { location, .. } => location.as_slice(),
-            Self::DuplicateId { locations, .. } => locations,
+            Self::DuplicateId { locations, .. } | Self::RepeatedValue { locations, .. } => {
+                locations
+            }
         }
     }
+}
+
+/// Writes `locations` as `, at L1; L2; …`, the tail of the `Display` of a
+/// refusal that names several.
+fn write_locations(f: &mut fmt::Formatter<'_>, locations: &[SourceLocation]) -> fmt::Result {
+    for (index, location) in locations.iter().enumerate() {
+        f.write_str(if index == 0 { ", at " } else { "; " })?;
+        write!(f, "{location}")?;
+    }
+    Ok(())
 }
 
 impl fmt::Display for ReadError {
@@ -781,11 +876,20 @@ impl fmt::Display for ReadError {
                     id.as_str(),
                     locations.len()
                 )?;
-                for (index, location) in locations.iter().enumerate() {
-                    f.write_str(if index == 0 { ", at " } else { "; " })?;
-                    write!(f, "{location}")?;
-                }
-                return Ok(());
+                return write_locations(f, locations);
+            }
+            Self::RepeatedValue {
+                element,
+                property,
+                locations,
+            } => {
+                write!(
+                    f,
+                    "the single-valued property {property:?} of the element {:?} is given {} times",
+                    element.as_str(),
+                    locations.len()
+                )?;
+                return write_locations(f, locations);
             }
             Self::InvalidId { id, .. } => {
                 write!(f, "the xmi:id {id:?} is not an NCName")?;
@@ -1074,7 +1178,7 @@ pub enum WriteError {
     /// assert_eq!(
     ///     error.to_string(),
     ///     "the document cannot be written in strict mode: validation reports 1 error, \
-    ///      the first is SACM-MULT-001 on \"draft\""
+    ///      SACM-MULT-001 on \"draft\""
     /// );
     ///
     /// // Tolerant mode writes it as it is held.
@@ -1147,7 +1251,8 @@ impl fmt::Display for WriteError {
                     "the document cannot be written in strict mode: validation reports {count} {errors}"
                 )?;
                 if let Some(first) = diagnostics.first() {
-                    write!(f, ", the first is {}", first.code())?;
+                    let lead = if count == 1 { "" } else { "the first is " };
+                    write!(f, ", {lead}{}", first.code())?;
                     if let Some(id) = first.affected().first() {
                         write!(f, " on {:?}", id.as_str())?;
                     }

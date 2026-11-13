@@ -66,6 +66,7 @@ Document production rules".
 | A duplicate `xmi:id` | SACM-ID-001 | SACM23-VAL-001 |
 | An empty `xmi:id`, which is not an NCName | SACM-ID-002 | SACM23-VAL-020 |
 | An `assertionDeclaration` value that is not a literal | SACM-ENUM-001 | SACM23-VAL-006 |
+| A single-valued property given more than once (an attribute and an element, or two elements); a second `name` | SACM-MULT-001 | SACM23-XMI-014, SACM23-XMI-021 |
 | The `argumentationElement` spelling | set by that row | SACM23-XMI-009 |
 | A name given as text | set by that row | LIB-COMPAT-008 |
 | A root's type naming another class (ADR 0016 D2) | SACM-XMI-003 (candidate) | LIB-COMPAT-003 |

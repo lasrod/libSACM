@@ -52,7 +52,7 @@ matrix notes and the writer's ADR (0017). This ADR collects them in one place.
   - An element with no `xmi:id` (SACM23-XMI-020), and an id with XML white space around it
     whose trimmed value is an NCName (SACM23-XMI-025).
   - A second `name` (SACM23-XMI-021), and an `xmi:id` on a LangString (SACM23-XMI-022).
-  - Element forms of values and references (SACM23-XMI-014/015).
+  - Element forms of references (SACM23-XMI-015).
   - XMI metadata (SACM23-XMI-019).
 - **Refusals of non-conforming input.** These stay refused by a strict load. Tolerant
   reading of some of them (in brackets) and their catalog codes are assigned by
@@ -93,3 +93,40 @@ matrix notes and the writer's ADR (0017). This ADR collects them in one place.
   (LIB-RT-003).
 - Real files with content outside the readable set are refused, never misread. Each later
   row shrinks the list of interim refusals.
+
+## Amendment 1 (2026-11-13): element form of values (slice 0037; SACM23-XMI-014)
+
+- **Both forms are read.** A `name`'s `lang` and `content`, and a Claim's
+  `assertionDeclaration`, are read from an element in no namespace named after the property
+  (XMI 2.5.1 §7.8.4, production 2b), as well as from the attribute. Both forms give an
+  equal model, and `write` writes the attribute form. Value elements may appear anywhere
+  among their siblings.
+- **The value is the element's character content, exactly.** CDATA and references give
+  their characters, and comments and processing instructions are ignored. Nothing is
+  trimmed (xsd:string `preserve`; rule 8 for enumerations). An empty element is the empty
+  string.
+  - An `assertionDeclaration` must still be exactly one literal; any other value stays
+    `Unsupported` at the element's start tag until SACM23-VAL-006.
+  - A value element with an attribute (`xmi:id`, a type, `xsi:nil`, or the legacy `lang`
+    on `content`), an element child, or a namespace is `Unsupported` at that construct.
+- **A property given more than once is refused** in both modes: as an attribute and an
+  element, or as two elements, even with equal values. Rule 2h says "A specific Property
+  shall be serialized in an object either as an XML attribute or as XML elements but not
+  both", and the property holds one value.
+  - The refusal is `ReadError::RepeatedValue { element, property, locations }`
+    (SACM-MULT-001), per ADR 0015 amendment 2.
+  - `location()` is the second occurrence, and `locations()` gives every occurrence.
+  - Nothing is chosen or dropped (D-PRESERVE). The maintainer chose this on 2026-11-13,
+    and chose the same for a second `name` (SACM23-XMI-021).
+- **The interim list** loses "element forms of values". The element forms of `gid`,
+  `isCitation` and `isAbstract` come with SACM23-BASE-006/007/008, `xsi:nil` with
+  SACM23-XMI-026, and references with SACM23-XMI-015.
+
+**Differences from C++, one line each:**
+- C++ reads `assertionDeclaration` only as an attribute (`xmi_reader.cpp:1761`); an
+  `<assertionDeclaration>` child is unknown content, and the value stays `asserted`.
+- C++ reads `<name><content>…</content></name>` as the legacy multi-language name and drops
+  `<lang>` (`:1196-1203`); here they are the element forms of `content` and `lang`.
+- When a value is given both ways, C++ silently keeps one; here the input is refused.
+
+*Amendment 1 status: accepted (the maintainer, 2026-11-13).*
