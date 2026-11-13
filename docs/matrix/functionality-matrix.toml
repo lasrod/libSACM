@@ -2136,7 +2136,7 @@ title = "Semantic comparison"
 requirement = "`sacm::compare::semantic_compare(left, right) -> Vec<Difference>` compares two documents by their SACM content and lists every difference, naming the element id and the feature; an empty result means equal, and `Document: PartialEq + Eq` means exactly that (ADR 0020). Elements are matched by id. Compared: presence, kind, parent, name, `assertionDeclaration`, the order of the roots and the relative order of each element's children across roles. Values are compared exactly: a missing name differs from every present name, including `<name/>` (`LangString::default()`) and `content=\"\"`. Not compared: the generated-id counters, which are not SACM content. Formatting, attribute order and prefixes are not held by a `Document`. MultiLangString values are compared in order, though the metamodel does not order `value`; no element holds one in this release. The result is deterministic and in a fixed order, and comparison never panics."
 source = "D-RT; D-ID; ADR 0010 D2; ADR 0012; ADR 0013; ADR 0020; assurance-forge `libs/sacm/include/sacm/compare/semantic_compare.h`, `src/compare/semantic_compare.cpp`"
 kind = "api"
-status = "implemented"
+status = "verified"
 depends_on = ["SACM23-ARG-002", "SACM23-ARG-003", "SACM23-XMI-012", "LIB-EDIT-001"]
 notes = "Slice 0031: designed in ADR 0020. The generated-id counters are excluded so that LIB-RT-003 can hold; LIB-EDIT-002 checks the next generated id on its own."
 acceptance = [
@@ -2188,6 +2188,7 @@ tests = [
   "crates/sacm/tests/compare.rs::lib_rt_001_deep_documents_compare_without_panicking",
   "crates/sacm/tests/compare.rs::lib_rt_001_display_shows_both_values",
 ]
+verification = "docs/verification/0031-m1-semantic-comparison.md"
 
 [[row]]
 id = "LIB-RT-002"
@@ -2197,7 +2198,7 @@ title = "Load → save → load is lossless"
 requirement = "For every valid fixture in scope, `xmi::read`, then `xmi::write` with `WriteOptions::default()` (the only write mode until LIB-COMPAT-001), then `xmi::read` again yields a document that `semantic_compare` finds equal to the first, and the second write gives the same bytes as the first. The fixtures in scope are the files under `crates/sacm/tests/data/sacm23/xmi/` that are not under `invalid/`: the `*-valid.sacm.xmi` files and the golden files, except those listed as pending because they hold kinds no verified row reads yet. In this release one file is pending, `golden/nested.golden.sacm.xmi` (a SACM23-XMI-007 writer golden with a Note, a Description, an ArgumentPackageInterface, an ArtifactPackage, an Artifact and a Property). A pending file must still be refused by `xmi::read` as `Unsupported`; once it reads, it must leave the pending list and join the round trip."
 source = "D-RT \"Semantic round trip (load → save → load yields an equal model) is guaranteed. Textual round trip is not. Output is deterministic\"; ADR 0020"
 kind = "xmi"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-RT-001", "SACM23-XMI-007", "SACM23-XMI-011", "SACM23-XMI-016"]
 acceptance = [
   "Each of `argument-package-root-valid.sacm.xmi`, `assurance-case-package-root-valid.sacm.xmi`, `name-third-party-form-valid.sacm.xmi`, `wrapped-roots-valid.sacm.xmi` and each golden file (`golden/*.golden.sacm.xmi`) that is not pending reads, writes, reads back with `semantic_compare` giving `[]`, and writes the same bytes again.",
@@ -2213,6 +2214,7 @@ tests = [
   "crates/sacm/tests/round_trip.rs::lib_rt_002_every_valid_fixture_reads_writes_reads_back_equal_and_writes_the_same_bytes",
   "crates/sacm/tests/round_trip.rs::lib_rt_002_every_golden_file_writes_back_to_its_own_bytes",
 ]
+verification = "docs/verification/0031-m1-semantic-comparison.md"
 
 [[row]]
 id = "LIB-EDIT-001"
@@ -2304,7 +2306,7 @@ title = "Created documents round-trip"
 requirement = "A document built through the edit API (`edit::apply` only) writes with `WriteOptions::default()`, reads back, validates with no Error (`validation::validate`), and `semantic_compare` finds the reloaded document equal to the built one. Generated ids are kept as written."
 source = "D-RT; LIB-EDIT-001; ADR 0018; ADR 0019; ADR 0020"
 kind = "xmi"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-EDIT-001", "LIB-RT-001", "LIB-RT-002", "SACM23-XMI-016", "SACM23-XMI-017", "SACM23-VAL-018"]
 acceptance = [
   "A deterministic set of documents built with `edit::apply` only (every create operation, generated and caller ids, two or more roots, depth 3 or more, names with absent, empty and non-ASCII fields) writes, reads back, validates with no Error and gives `semantic_compare(&built, &reloaded) == []` and `built == reloaded`.",
@@ -2317,6 +2319,7 @@ tests = [
   "crates/sacm/tests/round_trip.rs::lib_rt_003_documents_with_each_declaration_round_trip_equal_and_valid",
   "crates/sacm/tests/round_trip.rs::lib_rt_003_documents_with_mixed_declarations_round_trip_equal_and_valid",
 ]
+verification = "docs/verification/0031-m1-semantic-comparison.md"
 
 [[row]]
 id = "LIB-CLI-002"

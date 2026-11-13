@@ -1,8 +1,8 @@
 ---
 slice: 0031
 name: m1-semantic-comparison
-state: in-progress
-step: verification
+state: done
+step: verified
 rows: [LIB-RT-001, LIB-RT-002, LIB-RT-003]
 mode: pr
 base: slice/0030-m1-assertion-declaration-in-xmi (PR #41)
@@ -44,3 +44,8 @@ Elements are matched by id. The generated-id counters are not compared.
   changing a loaded Claim, because it unblocks M1's remaining round-trip and editing rows.
 - 2026-11-13 design: ADR 0020 accepted by the maintainer. Acceptance for RT-001/002/003
   written by the lead.
+- 2026-11-13 tests: LIB-RT-002 amended by the lead: `nested.golden.sacm.xmi` holds kinds no
+  row reads, so it is on a named pending list that must still be refused.
+- 2026-11-13 verification: six `Display` mutants closed by a test (830dc74). Round 1 FAIL on
+  a pre-order test gap, closed in f53f06f with the docs review. Round 2 PASS (record 0031).
+  M1 37/46.
