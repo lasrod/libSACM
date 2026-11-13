@@ -15,7 +15,7 @@ and macOS.
 - One workspace with three members: `crates/sacm` (library, published as `sacm`),
   `crates/sacm-cli` (binary `sacm`, published as `sacm-cli`), and `xtask` (automation,
   `publish = false`), invoked as `cargo xtask <command>`.
-- The library is a **single crate** with internal modules (`model`, `xmi`, `validate`,
+- The library is a **single crate** with internal modules (`model`, `xmi`, `validation`,
   `diagnostic`, `edit`, `compare`). It is not split into several published crates until
   there is a concrete user need (e.g. a model-only build without XML); a split later is
   possible behind the same public paths.

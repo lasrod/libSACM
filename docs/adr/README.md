@@ -2,7 +2,8 @@
 
 Lasting decisions about how libSACM is built, one per file, numbered in order. A
 decision about how to *interpret the SACM standard* belongs in
-[../sacm/decisions.md](../sacm/decisions.md) instead.
+[../sacm/decisions.md](../sacm/decisions.md). Where an ADR makes such an interpretation,
+decisions.md has a one-line entry pointing to it.
 
 | ADR | Title | Status |
 |---|---|---|
@@ -22,6 +23,11 @@ decision about how to *interpret the SACM standard* belongs in
 | [0014](0014-artifact-package-admits-every-artifact-element.md) | An ArtifactPackage admits every ArtifactElement | accepted |
 | [0015](0015-xmi-read-entry-point.md) | The XMI read entry point | accepted |
 | [0016](0016-interchange-roots.md) | Interchange roots: deviations from the C++ reader | accepted |
+| [0017](0017-xmi-writer.md) | The XMI writer | accepted |
+| [0018](0018-validation-entry-point.md) | The validation entry point | accepted |
+| [0019](0019-edit-operations.md) | The edit API: operations as values | accepted |
+| [0020](0020-semantic-comparison.md) | Semantic comparison | accepted |
+| [0021](0021-xmi-reader-content.md) | The XMI reader: package content | accepted |
 
 Statuses: `proposed` → `accepted` (maintainer approval) → optionally `superseded by NNNN`.
 Copy [template.md](template.md) for a new record.

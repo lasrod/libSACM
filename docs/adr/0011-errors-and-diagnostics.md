@@ -19,9 +19,9 @@ findings are `Diagnostic` values. The assurance-forge C++ library is the design 
   `Diagnostic`. It is not re-exported at the crate root.
 - **`Severity`:** `Info < Warning < Error`, with `as_str` and `Display` giving `info`,
   `warning` and `error`.
-- **`Code`:** a newtype over `&'static str`. It has no constants yet. Each row that emits a
-  code adds its constant, named after the C++ one (`kRefDangling` → `REF_DANGLING`), and the
-  first one brings a test that every constant is in `docs/sacm/diagnostics.md`.
+- **`Code`:** a newtype over `&'static str`. Each row that emits a code adds its constant,
+  named after the C++ one (`kRefDangling` → `REF_DANGLING`); a test checks that every
+  constant is in `docs/sacm/diagnostics.md`.
 - **`SourceLocation`:** a 1-based line and column, where the column counts Unicode scalar
   values. `Display` is `line L, column C`.
 - **`Diagnostic`:** private fields with accessors: `code`, `severity`, `requirement_id`
@@ -61,13 +61,15 @@ findings are `Diagnostic` values. The assurance-forge C++ library is the design 
   - **X2.** An I/O failure is an error variant whose `source()` is the `io::Error`, with no
     code. C++ files it under SACM-XML-001.
   - **X3.** `SourceLocation` has no `file`, because the caller knows what it loaded.
-  - **X4.** `Diagnostic::operation` is deferred to the edit rows.
+  - **X4.** No `Diagnostic::operation`. Closed by ADR 0019: an edit refusal is a typed
+    `EditError` with a code, not a `Diagnostic`. A field is added only if a row reports edit
+    diagnostics.
   - **X5.** `clause` is added, because D-DIAG requires it.
   - **X6.** A canonical order replaces emission order.
   - **X7.** The module is `diagnostic`, not `validation`, because the reader and edits
     report diagnostics too.
-  - **X8.** `has_errors` is deferred to the first row that produces diagnostics.
-  - **X9.** `Code` is a newtype, and users cannot build a `Diagnostic`.
+  - **X8.** `has_errors` came with the first row that produces diagnostics (ADR 0018).
+  - **X9.** `Code` is a newtype, and users cannot build a `Diagnostic` yet (LIB-DIAG-003).
 
 ## Consequences
 

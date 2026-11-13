@@ -12,7 +12,7 @@ The gate (`cargo xtask matrix check`) reads each verified row's verification rec
 - **Its history:** verification 0004 failed LIB-TOOL-005 twice with that approach. Round 1 found mismatched and nested fences (F1). Round 2 found fences inside list items, which CommonMark closes when the item ends (F4).
 - **More of the same:** LIB-TOOL-015 lists further cases that hide a line in rendered Markdown: HTML blocks and comments, and a backtick fence opener whose info string holds a backtick.
 
-Each fix modelled one more CommonMark rule, and the verifier then found the next one. The prescription P-005b offered three routes:
+Each fix modelled one more CommonMark rule, and the verifier then found the next one. The verifier's prescription offered three routes:
 - A, a real parser;
 - B, list items tracked by hand;
 - C, an ambiguity rule.
@@ -81,11 +81,12 @@ Each fix modelled one more CommonMark rule, and the verifier then found the next
     - a lone CR;
     - a leading byte-order mark.
 
-  The slice 0007 brief lists the exact problem texts (D8 to D11).
+  The slice 0007 brief lists the exact problem texts.
 - **Consequence.**
   - A record passes only when it is plain Markdown.
   - pulldown-cmark deviations inside raw HTML can no longer give a false PASS.
-  - The D6 comment fail-safe is superseded: an unclosed comment is disallowed HTML.
+  - The earlier comment fail-safe (an unclosed comment hides nothing) is superseded: an
+    unclosed comment is disallowed HTML.
   - A repeatable differential test against markdown-rs (`markdown` 1.0, a dev-dependency of `xtask` only) checks the parser's code-block and comment decisions on generated records.
 
 ## Amendment 2 (2026-11-09): the differential test is removed

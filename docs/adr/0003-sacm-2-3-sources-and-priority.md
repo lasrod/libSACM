@@ -20,9 +20,10 @@ revisions.
   that XMI quotes can be checked.) A changed upstream file is an error to investigate, not an
   update to absorb.
 - Source priority for every decision: (1) formal/23-05-08, (2) ptc/22-03-13,
-  (3) XMI/MOF rules it references, (4) OMG issues as clarification, (5) third-party
-  tools as interoperability evidence only, (6) the assurance-forge C++ library as prior
-  art.
+  (3) XMI/MOF rules it references, (4) OMG issues as clarification. Where these are silent
+  or ambiguous, (5) the assurance-forge C++ library's approved design decisions are the
+  default, translated to idiomatic Rust, and each difference is recorded in one line
+  (CLAUDE.md rule 6). (6) Third-party tools are interoperability evidence only.
 - Text/model divergences are resolved as recorded in `docs/sacm/metamodel-inventory.md`
   and `docs/sacm/decisions.md` (D-TEXT-MODEL).
 

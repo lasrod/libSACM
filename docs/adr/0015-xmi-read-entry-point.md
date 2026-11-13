@@ -63,3 +63,17 @@ which return a `LoadResult` with an `ok` flag and an optional document
   names, ids, namespaces and children.
 - **A file function as in C++:** it adds an I/O variant to `ReadError` and gives a second
   way to read.
+
+## Amendment 1 (2026-11-13): what `Unsupported` carries, and how the interim rule closes
+
+- **Two meanings, for now.** `ReadError::Unsupported` is mostly a limit of this version. Until
+  their rows give them catalog codes, it also carries some defects in the input:
+  - an `assertionDeclaration` value that is not a SACM literal (until SACM23-VAL-006);
+  - a missing, empty or duplicate `xmi:id` (until SACM23-XMI-020 and SACM23-VAL-001).
+
+  The reason text and the docs say which kind each refusal is. A caller cannot yet tell
+  them apart by type. Each of those rows replaces its refusal with a coded diagnostic.
+- **The interim rule has an end.** Every interim refusal names the row that will read the
+  content. LIB-API-011 keeps them in one list and checks that each named row is not yet
+  verified. Every compliance point depends on those rows, so no compliance point can be
+  verified while schema-conforming input is still refused.
