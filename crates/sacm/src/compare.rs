@@ -73,9 +73,10 @@
 //! ```
 
 use std::fmt;
+use std::ops::ControlFlow;
 
 use crate::model::{
-    AssertionDeclaration, Document, ElementId, ElementKind, LangString, SacmElement,
+    AssertionDeclaration, Compared, Document, ElementId, ElementKind, LangString, SacmElement,
 };
 
 /// One way in which two documents differ in SACM content, as
@@ -415,80 +416,132 @@ impl fmt::Display for Declaration {
 #[must_use]
 pub fn semantic_compare(left: &Document, right: &Document) -> Vec<Difference> {
     let mut differences = Vec::new();
+    // The sink never breaks, so the walk always runs to the end.
+    let _ = walk(left, right, |found| {
+        differences.push(found.into_difference(left, right));
+        ControlFlow::Continue(())
+    });
+    differences
+}
 
-    let left_roots = common_roots(left, right);
-    let right_roots = common_roots(right, left);
-    if left_roots != right_roots {
-        differences.push(Difference::RootOrder {
-            left: left_roots,
-            right: right_roots,
-        });
+/// One difference as [`walk`] finds it: borrowed from the two documents, so
+/// finding it allocates nothing. [`Found::into_difference`] makes the owned
+/// [`Difference`].
+enum Found<'a> {
+    /// The common roots are in a different relative order.
+    RootOrder,
+    /// Only the left document holds this element.
+    LeftOnly(Compared<'a>),
+    /// The element's kind differs; the left and the right features.
+    Kind(Compared<'a>, Compared<'a>),
+    /// The element's parent differs.
+    Parent(Compared<'a>, Compared<'a>),
+    /// The element's name differs.
+    Name(Compared<'a>, Compared<'a>),
+    /// The element's `assertionDeclaration` differs.
+    AssertionDeclaration(Compared<'a>, Compared<'a>),
+    /// The element's common children are in a different relative order; the
+    /// element in the left and in the right document.
+    ChildOrder(SacmElement<'a>, SacmElement<'a>),
+    /// Only the right document holds this element.
+    RightOnly(SacmElement<'a>),
+}
+
+impl Found<'_> {
+    /// The owned [`Difference`], for the documents the walk compared.
+    fn into_difference(self, left: &Document, right: &Document) -> Difference {
+        match self {
+            Self::RootOrder => Difference::RootOrder {
+                left: common_roots(left, right).cloned().collect(),
+                right: common_roots(right, left).cloned().collect(),
+            },
+            Self::LeftOnly(ours) => Difference::LeftOnly {
+                id: ours.id.clone(),
+                kind: ours.kind,
+            },
+            Self::Kind(ours, theirs) => Difference::Kind {
+                id: ours.id.clone(),
+                left: ours.kind,
+                right: theirs.kind,
+            },
+            Self::Parent(ours, theirs) => Difference::Parent {
+                id: ours.id.clone(),
+                left: ours.parent.cloned(),
+                right: theirs.parent.cloned(),
+            },
+            Self::Name(ours, theirs) => Difference::Name {
+                id: ours.id.clone(),
+                left: ours.name.cloned(),
+                right: theirs.name.cloned(),
+            },
+            Self::AssertionDeclaration(ours, theirs) => Difference::AssertionDeclaration {
+                id: ours.id.clone(),
+                left: ours.assertion_declaration,
+                right: theirs.assertion_declaration,
+            },
+            Self::ChildOrder(ours, theirs) => Difference::ChildOrder {
+                id: ours.id().clone(),
+                left: common_children(ours, right).cloned().collect(),
+                right: common_children(theirs, left).cloned().collect(),
+            },
+            Self::RightOnly(element) => Difference::RightOnly {
+                id: element.id().clone(),
+                kind: element.kind(),
+            },
+        }
+    }
+}
+
+/// The one comparison walk behind [`semantic_compare`] and `==`: gives each
+/// difference to `sink`, in [`semantic_compare`]'s order, until `sink`
+/// breaks. Iterative and linear in the number of elements.
+fn walk<'a>(
+    left: &'a Document,
+    right: &'a Document,
+    mut sink: impl FnMut(Found<'a>) -> ControlFlow<()>,
+) -> ControlFlow<()> {
+    if common_roots(left, right).ne(common_roots(right, left)) {
+        sink(Found::RootOrder)?;
     }
 
     for element in left.elements() {
         let ours = element.compared();
         let Some(other) = right.get(ours.id) else {
-            differences.push(Difference::LeftOnly {
-                id: ours.id.clone(),
-                kind: ours.kind,
-            });
+            sink(Found::LeftOnly(ours))?;
             continue;
         };
         let theirs = other.compared();
-        let id = ours.id;
         if ours.kind != theirs.kind {
-            differences.push(Difference::Kind {
-                id: id.clone(),
-                left: ours.kind,
-                right: theirs.kind,
-            });
+            sink(Found::Kind(ours, theirs))?;
         }
         if ours.parent != theirs.parent {
-            differences.push(Difference::Parent {
-                id: id.clone(),
-                left: ours.parent.cloned(),
-                right: theirs.parent.cloned(),
-            });
+            sink(Found::Parent(ours, theirs))?;
         }
         if ours.name != theirs.name {
-            differences.push(Difference::Name {
-                id: id.clone(),
-                left: ours.name.cloned(),
-                right: theirs.name.cloned(),
-            });
+            sink(Found::Name(ours, theirs))?;
         }
         if ours.assertion_declaration != theirs.assertion_declaration {
-            differences.push(Difference::AssertionDeclaration {
-                id: id.clone(),
-                left: ours.assertion_declaration,
-                right: theirs.assertion_declaration,
-            });
+            sink(Found::AssertionDeclaration(ours, theirs))?;
         }
-        let left_children = common_children(element, right);
-        let right_children = common_children(other, left);
-        if left_children != right_children {
-            differences.push(Difference::ChildOrder {
-                id: id.clone(),
-                left: left_children,
-                right: right_children,
-            });
+        if common_children(element, right).ne(common_children(other, left)) {
+            sink(Found::ChildOrder(element, other))?;
         }
     }
 
     for element in right.elements() {
         if !left.contains(element.id()) {
-            differences.push(Difference::RightOnly {
-                id: element.id().clone(),
-                kind: element.kind(),
-            });
+            sink(Found::RightOnly(element))?;
         }
     }
-    differences
+    ControlFlow::Continue(())
 }
 
-/// The roots of `document` that are roots of `other` too, in `document`'s
-/// order.
-fn common_roots(document: &Document, other: &Document) -> Vec<ElementId> {
+/// The ids of the roots of `document` that are roots of `other` too, in
+/// `document`'s order.
+fn common_roots<'a>(
+    document: &'a Document,
+    other: &'a Document,
+) -> impl Iterator<Item = &'a ElementId> {
     document
         .compared_roots()
         .filter(|root| {
@@ -496,31 +549,33 @@ fn common_roots(document: &Document, other: &Document) -> Vec<ElementId> {
                 .get(root.id())
                 .is_some_and(|theirs| theirs.compared().parent.is_none())
         })
-        .map(|root| root.id().clone())
-        .collect()
+        .map(SacmElement::id)
 }
 
-/// The children of `element` whose parent in `other` is an element with the
-/// same id, in `element`'s order.
-fn common_children(element: SacmElement<'_>, other: &Document) -> Vec<ElementId> {
+/// The ids of the children of `element` whose parent in `other` is an
+/// element with the same id, in `element`'s order.
+fn common_children<'a>(
+    element: SacmElement<'a>,
+    other: &'a Document,
+) -> impl Iterator<Item = &'a ElementId> {
     let parent = element.id();
     element
         .children()
-        .filter(|child| {
+        .filter(move |child| {
             other
                 .get(child.id())
                 .is_some_and(|theirs| theirs.compared().parent == Some(parent))
         })
-        .map(|child| child.id().clone())
-        .collect()
+        .map(SacmElement::id)
 }
 
 impl PartialEq for Document {
     /// Whether the documents hold the same SACM content: whether
-    /// [`semantic_compare`] finds no difference. The per-kind counters that
+    /// [`semantic_compare`] finds no difference. It stops at the first
+    /// difference and builds no [`Difference`]. The per-kind counters that
     /// generate ids are not compared.
     fn eq(&self, other: &Self) -> bool {
-        semantic_compare(self, other).is_empty()
+        walk(self, other, |_| ControlFlow::Break(())).is_continue()
     }
 }
 
