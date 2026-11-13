@@ -4,7 +4,12 @@
 //! ADR 0013, ADR 0017 amendment 1.
 //!
 //! Documents are built with the `test-support` feature's `Document::insert`,
-//! or read from inline input, and written and read with the default options.
+//! or read from inline input, and read with the default options. They are
+//! written in tolerant mode: many are nameless, which a strict write refuses
+//! (LIB-COMPAT-007), and these tests check the output form, not the save mode.
+//! A read reports no diagnostic, except SACM-XMI-010 for an `xsi:type` and
+//! SACM-XMI-011 for an `xmi:version` (LIB-COMPAT-001), which the tests that
+//! read them expect.
 //!
 //! The writer's output has one tag per line (ADR 0017), so a written name is
 //! checked as the exact line after its element's start tag. The full form of
@@ -27,13 +32,13 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
 use std::time::Duration;
 
-use sacm::diagnostic::SourceLocation;
+use sacm::diagnostic::{Code, Severity, SourceLocation};
 use sacm::model::{
     AbstractClass, AssertionDeclaration, Document, ElementId, ElementKind, InsertError, LangString,
     SacmElement,
 };
 use sacm::xmi::{
-    self, ReadError, ReadOptions, ReadOutput, WriteAttribute, WriteError, WriteOptions,
+    self, Mode, ReadError, ReadOptions, ReadOutput, WriteAttribute, WriteError, WriteOptions,
 };
 
 /// Line 1 of every output.
@@ -215,9 +220,11 @@ fn depth(element: SacmElement<'_>) -> usize {
     depth
 }
 
-/// Writes `doc` with the default options.
+/// Writes `doc` in tolerant mode: many documents here are nameless, and a
+/// strict write refuses a validation Error (LIB-COMPAT-007). The output form
+/// is the same in both modes.
 fn write(doc: &Document) -> Result<String, WriteError> {
-    xmi::write(doc, &WriteOptions::default())
+    xmi::write(doc, &WriteOptions::default().with_mode(Mode::Tolerant))
 }
 
 /// Writes `doc`, which the test expects to be written.
@@ -269,11 +276,34 @@ fn read(row: &str, input: &[u8]) -> Result<ReadOutput, ReadError> {
 
 /// Reads `input`, which the test expects to be read without diagnostics.
 fn read_ok(row: &str, input: &[u8]) -> Document {
+    read_ok_reporting(row, input, &[])
+}
+
+/// Reads `input`, which the test expects to be read with exactly the read
+/// diagnostics `expected`, in order: each its code, severity and one affected
+/// id (LIB-COMPAT-001).
+fn read_ok_reporting(row: &str, input: &[u8], expected: &[(Code, Severity, &str)]) -> Document {
     match read(row, input) {
         Ok(output) => {
-            assert!(
-                output.diagnostics().is_empty(),
-                "{row}: reading {:?} gave diagnostics {:?}",
+            let found: Vec<(Code, Severity, Vec<&str>)> = output
+                .diagnostics()
+                .iter()
+                .map(|found| {
+                    (
+                        found.code(),
+                        found.severity(),
+                        found.affected().iter().map(ElementId::as_str).collect(),
+                    )
+                })
+                .collect();
+            let wanted: Vec<(Code, Severity, Vec<&str>)> = expected
+                .iter()
+                .map(|&(code, severity, id)| (code, severity, vec![id]))
+                .collect();
+            assert_eq!(
+                found,
+                wanted,
+                "{row}: reading {:?} gave other diagnostics: {:?}",
                 String::from_utf8_lossy(input),
                 output.diagnostics()
             );
@@ -1155,18 +1185,22 @@ fn sacm23_xmi_012_a_name_element_in_a_namespace_is_unsupported_at_the_element() 
 fn sacm23_xmi_012_a_type_naming_lang_string_on_name_is_accepted() {
     let row = "SACM23-XMI-012";
     let expected = Some(LangString::new("A").with_lang("en"));
-    for attribute in [
-        "xmi:type=\"sacm:LangString\"",
-        "xsi:type=\"sacm:LangString\"",
-        "xmi:type=\" sacm:LangString \"",
-        "xmi:type=\"s:LangString\"",
+    // An `xsi:type` is read, and reported as SACM-XMI-010 on the owner, a
+    // Warning in the default tolerant mode (LIB-COMPAT-001).
+    let xsi_type: &[(Code, Severity, &str)] = &[(Code::XMI_XSI_TYPE, Severity::Warning, "a")];
+    for (attribute, reported) in [
+        ("xmi:type=\"sacm:LangString\"", &[][..]),
+        ("xsi:type=\"sacm:LangString\"", xsi_type),
+        ("xmi:type=\" sacm:LangString \"", &[][..]),
+        ("xmi:type=\"s:LangString\"", &[][..]),
     ] {
         let input = format!(
             "<sacm:ArgumentPackage{NS} xmlns:s=\"http://www.omg.org/spec/SACM/20220301\" \
              xmi:id=\"a\">\n  <name {attribute} lang=\"en\" content=\"A\"/>\n</sacm:ArgumentPackage>"
         );
+        let doc = read_ok_reporting(row, input.as_bytes(), reported);
         assert_eq!(
-            read_root_name(row, &input, "a"),
+            name_of(row, &doc, "a"),
             expected,
             "{row}: a name with {attribute} is not read"
         );
@@ -1230,8 +1264,14 @@ fn sacm23_xmi_012_a_minimized_third_party_name_reads_and_round_trips() {
     let row = "SACM23-XMI-012";
     let input = std::fs::read(THIRD_PARTY)
         .unwrap_or_else(|error| panic!("{row}: cannot read {THIRD_PARTY}: {error}"));
-    let doc = read_ok(row, &input);
     let id = "_hX3kQK1sEe6xAbCdEfGhIj";
+    // The fixture's `xmi:version="2.0"` is reported as SACM-XMI-011, Info
+    // (LIB-COMPAT-001).
+    let doc = read_ok_reporting(
+        row,
+        &input,
+        &[(Code::XMI_VERSION_IGNORED, Severity::Info, id)],
+    );
     let expected = LangString::new("Argument for the braking function").with_lang("English");
     assert_eq!(doc.element_count(), 1, "{row}: the fixture's elements");
     assert_eq!(

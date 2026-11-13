@@ -1,8 +1,9 @@
 //! The XMI writer (SACM23-XMI-003, -004, -006, -007, -011, -012, -013,
-//! -017, LIB-API-010; ADR 0017 and its amendments 1 and 2).
+//! -017, LIB-API-010, LIB-COMPAT-007; ADR 0017 and its amendments 1 and 2,
+//! ADR 0022).
 //!
-//! Two passes. [`plan`] checks every element and resolves what it is written
-//! as; only if that succeeds does [`write`] build the `String` from the plan,
+//! Two passes. [`plan`] checks the document (in strict mode, validating it)
+//! and every element, and resolves what each is written as; only if that succeeds does [`write`] build the `String` from the plan,
 //! so a refusal never leaves partial output, and the output pass has no
 //! lookup that could fail. The output form is pinned byte for byte: UTF-8
 //! without a BOM, the XML declaration, LF line endings, two spaces per depth,
@@ -10,17 +11,19 @@
 //! pass recurses, so deep nesting is safe.
 
 use super::namespaces::{SACM_NS, SACM_PREFIX, XMI_NS, XMI_PREFIX};
-use super::{WriteAttribute, WriteError};
+use super::{Mode, WriteAttribute, WriteError};
+use crate::diagnostic::Severity;
 use crate::model::{
     AssertionDeclaration, DeclaredType, Document, ElementKind, LangString, SacmElement,
 };
+use crate::validation;
 
 /// Line 1 of every output.
 const DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>";
 
-/// `document` written as XMI, or the first reason it cannot be.
-pub(super) fn write(document: &Document) -> Result<String, WriteError> {
-    let plan = plan(document)?;
+/// `document` written as XMI in `mode`, or the first reason it cannot be.
+pub(super) fn write(document: &Document, mode: Mode) -> Result<String, WriteError> {
+    let plan = plan(document, mode)?;
     let wrapped = document.roots().nth(1).is_some();
     let mut out = String::new();
     out.push_str(DECLARATION);
@@ -114,13 +117,24 @@ enum Tag {
     Role(&'static str),
 }
 
-/// Checks `document` in ADR 0017's order, a root first, then each element in
-/// document order (its id, its name's `lang` and `content`), and returns
-/// every element in that order with what it is written as. Everything a
-/// document holds is written, so these are the only refusals.
-fn plan(document: &Document) -> Result<Vec<Planned<'_>>, WriteError> {
+/// Checks `document` in ADR 0022's order, a root first, then, in strict
+/// `mode`, validation, then each element in document order (its id, its
+/// name's `lang` and `content`), and returns every element in that order with
+/// what it is written as. Everything a document holds is written, so these
+/// are the only refusals.
+fn plan(document: &Document, mode: Mode) -> Result<Vec<Planned<'_>>, WriteError> {
     if document.roots().next().is_none() {
         return Err(WriteError::NoRoot);
+    }
+    if mode == Mode::Strict {
+        // Every Error, in `validate`'s order (ADR 0022).
+        let diagnostics: Vec<_> = validation::validate(document)
+            .into_iter()
+            .filter(|found| found.severity() == Severity::Error)
+            .collect();
+        if !diagnostics.is_empty() {
+            return Err(WriteError::Invalid { diagnostics });
+        }
     }
     let mut plan = Vec::new();
     for element in document.elements() {

@@ -9,7 +9,9 @@ You are the **lead**. You choose the work, brief the agents, update the matrix, 
 when a row is verified. You do not write production code or tests: no single actor both
 builds and judges.
 
-- **One invocation is one slice:** 1 to 5 matrix rows that make one reviewable change.
+- **One invocation is one slice:** 4 to 8 related matrix rows (one area or milestone) that
+  make one reviewable change; fewer only when nothing else related is ready (ADR 0006
+  amendment 3).
 - **Keep it simple** (ADR 0006 amendment 2): add a check only if it protects the
   library's users, and write briefs and records short.
 
@@ -52,8 +54,13 @@ builds and judges.
 
 ## 1. Choose
 
-Run `cargo xtask matrix next -n 20`. Take the first ready row, plus ready rows that belong
-with it (the same milestone and area, or tightly coupled).
+Run `cargo xtask matrix next -n 20`. Take 4 to 8 ready rows that belong together (the same
+milestone and area, or tightly coupled). The lead picks the order; the maintainer does not
+choose slices.
+
+**Before a milestone's first slice,** collect every open decision its rows will need (ADRs,
+interpretations the standard leaves open, policy) and put them to the maintainer in one
+batch, in plain language, so slices do not stall waiting for answers.
 
 If nothing is ready, report the blockers and stop the loop.
 
@@ -63,13 +70,17 @@ Copy `references/slice-brief.md` to `docs/slices/NNNN-<name>.md`, with
 `state: in-progress`. Under `mode=pr`, first create the branch `slice/NNNN-<name>` from
 the base found in step 0. Record the base in the brief.
 
-## 3. Research → `analyzed`
+## 3. Research and design → `analyzed`
+
+Research and design are one step: run **sacm-researcher** and, when public API is added or
+changed, **sacm-architect** in parallel, never one after the other.
 
 - **Planned SACM rows:** run **sacm-researcher**. Apply its result to the matrix yourself:
   `requirement`, `source` (with the quoted clause) and `acceptance`, and set
   `status = "analyzed"`. New obligations become new rows. Then run
   `cargo xtask matrix render && cargo xtask matrix check`.
-- **Tooling, QA and docs rows:** skip research, and write their acceptance yourself.
+- **Tooling, QA, docs and library-only (`LIB-*`) rows:** skip research, and write their
+  acceptance yourself.
 
 ## 4. Design
 
@@ -101,14 +112,20 @@ the base found in step 0. Record the base in the brief.
      "Stacked on #N: merge #N first."
    - Request Copilot's review: `gh pr edit N --add-reviewer "@copilot"`.
 2. **Wait for CI.** Download the PR-diff shards' reports (`mutants-diff-shard-N` in the
-   CI run), and the `mutants.yml` shards if that workflow ran.
-   - For a library row: `mutants.yml` runs by itself only on ready PRs, so while the PR
-     is a draft, dispatch it on the head (`gh workflow run mutants.yml --ref <branch>`).
-   - For a tooling row: the PR-diff job is enough, unless the slice removes or weakens
-     tests. Then dispatch `mutants.yml`, because a test-only diff gives the PR-diff job
-     nothing to mutate.
+   CI run). The PR-diff job is the per-slice mutation evidence. The full `mutants.yml` run
+   happens only at a milestone's close (step 9) or weekly, unless the slice changes the
+   mutation config or removes tests.
+   - If the slice removes or weakens tests, dispatch `mutants.yml` on the head
+     (`gh workflow run mutants.yml --ref <branch>`), because a test-only diff gives the
+     PR-diff job nothing to mutate.
 3. **Run sacm-verifier** with the rows, the acceptance, the diff and the run evidence,
-   but not your opinion. If public API changed, run **sacm-docs-reviewer** in parallel.
+   but not your opinion. If public API changed, run **sacm-docs-reviewer** in parallel
+   with the implementer (step 6), not after verification.
+   - Ask the verifier to label each finding **blocking** (wrong behaviour, a test gap in new
+     code, a misreading of the standard, a false claim a user could rely on) or
+     **follow-up** (wording, citations, comments, cosmetic docs). Only blocking findings
+     fail a row. Follow-ups, and docs-review and Copilot comments that are not blocking,
+     go to `docs/follow-ups.md`, which a docs slice clears every few slices.
    - **Library rows:** full depth. At most two fix rounds; after a second FAIL, stop and
      ask the user.
    - **Tooling, QA and docs rows:** one round against the acceptance. A fix round is
@@ -131,15 +148,20 @@ cannot PASS. Stop and ask the user.
    trailer.
 5. **`mode=pr`:**
    - push, and update the PR body (`gh pr edit N --body-file …`);
-   - address every Copilot comment: route it, fix it, reply on its thread with the
-     commit, and leave the thread unresolved;
-   - when PASS and Copilot are done, run `gh pr ready`;
-   - never merge: the user merges.
+   - Copilot comments: fix a blocking one now (route it, fix it, reply on its thread with
+     the commit). Put any other on `docs/follow-ups.md`, and reply on its thread naming
+     that. Leave threads unresolved;
+   - when PASS and CI are green on the final head, run `gh pr ready` and **merge the PR
+     yourself** (`gh pr merge N --merge --match-head-commit <sha>`; the maintainer's
+     standing authorization, 2026-11-13). Never force-push; never merge with red CI or
+     without a recorded PASS;
+   - then retarget the next PR, if any, to `main` and merge `main` into it.
    - Under `/loop`, go straight on to the next slice. It stacks on this PR.
 
 ## 9. Stop and report when
 
-- a milestone's last row is verified (run **matrix-steward** and present the summary);
+- a milestone's last row is verified (dispatch the full `mutants.yml` run on `main` and
+  triage it, run **matrix-steward**, clear `docs/follow-ups.md`, and present the summary);
 - an ADR or open question blocks the work;
 - a library row fails twice;
 - the gate fails for a reason outside the slice;

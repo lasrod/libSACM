@@ -25,10 +25,15 @@
 //! Later releases add rules, so a document with no findings today may have
 //! findings later. A code's meaning never changes.
 //!
+//! A strict [`xmi::write`](crate::xmi::write), the default, runs `validate`
+//! and refuses a document it reports an Error for, as
+//! [`WriteError::Invalid`](crate::xmi::WriteError::Invalid) (ADR 0022).
+//!
 //! To report reading and validation together, copy
 //! [`ReadOutput::diagnostics`](crate::xmi::ReadOutput::diagnostics) into a
-//! `Vec`, extend it with the result and sort it again, as below. (The reader
-//! reports no diagnostics yet; it refuses what it cannot represent.)
+//! `Vec`, extend it with the result and sort it again, as below. The reader
+//! reports an `xsi:type` (SACM-XMI-010) and an `xmi:version` (SACM-XMI-011);
+//! it refuses what it cannot represent.
 //!
 //! # Examples
 //!
@@ -75,6 +80,11 @@ const RULES: &[Rule] = &[names::missing_name];
 ///
 /// The document is not changed. See the [module docs](self) for what is
 /// checked.
+///
+/// A later minor release may add an Error rule. That is not a breaking
+/// change, even though a strict [`xmi::write`](crate::xmi::write) then
+/// refuses a document it wrote before; the release notes list each such rule
+/// (ADR 0022).
 ///
 /// An empty name is a name: `<name/>` gives no finding.
 ///

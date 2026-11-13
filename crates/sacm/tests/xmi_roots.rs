@@ -8,7 +8,10 @@
 //!
 //! "The same document as the bare form" is compared on a projection of the
 //! document (roots in order; every element's id, kind, parent, children and
-//! name; the element count), because `Document` has no `PartialEq`.
+//! name; the element count), because `Document` has no `PartialEq`. A read
+//! reports no diagnostic, except SACM-XMI-010 for an `xsi:type` and
+//! SACM-XMI-011 for an `xmi:version` (LIB-COMPAT-001), which the tests that
+//! read them expect by code, severity and affected id.
 //!
 //! An unread attribute is expected to be refused at the first character of
 //! its name, the place where it starts, as an element is refused at the `<` of
@@ -29,8 +32,8 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
 use std::time::Duration;
 
-use sacm::diagnostic::{Code, SourceLocation};
-use sacm::model::{Document, ElementKind, LangString, SacmElement};
+use sacm::diagnostic::{Code, Severity, SourceLocation};
+use sacm::model::{Document, ElementId, ElementKind, LangString, SacmElement};
 use sacm::xmi::{self, ReadError, ReadOptions, ReadOutput};
 
 /// The pinned SACM 2.3 namespace (D-NS-PIN).
@@ -245,6 +248,31 @@ fn roots_shape(roots: &[(&str, ElementKind)]) -> Shape {
 /// Reads `input` and asserts that it gives a document of shape `expected`,
 /// with no diagnostics.
 fn assert_reads_as(row: &str, what: &str, input: &[u8], expected: &Shape) {
+    assert_reads_reporting(row, what, input, expected, &[]);
+}
+
+/// A read diagnostic as these tests expect it: its code, severity and
+/// affected ids.
+type Reported = (Code, Severity, &'static [&'static str]);
+
+/// SACM-XMI-011 for an `xmi:version` on the wrapper: Info, no affected id
+/// (LIB-COMPAT-001).
+const VERSION_ON_WRAPPER: Reported = (Code::XMI_VERSION_IGNORED, Severity::Info, &[]);
+/// SACM-XMI-011 for an `xmi:version` on the root `a` (LIB-COMPAT-001).
+const VERSION_ON_A: Reported = (Code::XMI_VERSION_IGNORED, Severity::Info, &["a"]);
+/// SACM-XMI-010 for an `xsi:type` on the root `a`, a Warning in the default
+/// tolerant mode (LIB-COMPAT-001).
+const XSI_TYPE_ON_A: Reported = (Code::XMI_XSI_TYPE, Severity::Warning, &["a"]);
+
+/// Reads `input` and asserts that it gives a document of shape `expected`,
+/// with exactly the read diagnostics `reported`, in order.
+fn assert_reads_reporting(
+    row: &str,
+    what: &str,
+    input: &[u8],
+    expected: &Shape,
+    reported: &[Reported],
+) {
     let output = read_ok(row, input);
     assert_eq!(
         &shape(output.document()),
@@ -252,9 +280,25 @@ fn assert_reads_as(row: &str, what: &str, input: &[u8], expected: &Shape) {
         "{row}: {what}: {} does not give the expected document",
         preview(input)
     );
-    assert!(
-        output.diagnostics().is_empty(),
-        "{row}: {what}: reading {} reported diagnostics: {:?}",
+    let found: Vec<(Code, Severity, Vec<&str>)> = output
+        .diagnostics()
+        .iter()
+        .map(|found| {
+            (
+                found.code(),
+                found.severity(),
+                found.affected().iter().map(ElementId::as_str).collect(),
+            )
+        })
+        .collect();
+    let wanted: Vec<(Code, Severity, Vec<&str>)> = reported
+        .iter()
+        .map(|&(code, severity, affected)| (code, severity, affected.to_vec()))
+        .collect();
+    assert_eq!(
+        found,
+        wanted,
+        "{row}: {what}: reading {} reported other diagnostics: {:?}",
         preview(input),
         output.diagnostics()
     );
@@ -620,7 +664,14 @@ fn sacm23_xmi_001_ignorable_content_around_a_bare_root_gives_the_same_document()
         ),
     ];
     for (what, input) in &bare_forms {
-        assert_reads_as(row, what, input.as_bytes(), &bare);
+        // The document is the same; an `xmi:version` on the root is reported
+        // as SACM-XMI-011 (LIB-COMPAT-001).
+        let reported: &[Reported] = if input.contains("xmi:version") {
+            &[VERSION_ON_A]
+        } else {
+            &[]
+        };
+        assert_reads_reporting(row, what, input.as_bytes(), &bare, reported);
     }
 }
 
@@ -679,7 +730,17 @@ fn sacm23_xmi_001_ignorable_content_in_and_around_a_wrapper_gives_the_same_docum
         ),
     ];
     for (what, input) in &wrapped_forms {
-        assert_reads_as(row, what, input.as_bytes(), &two);
+        // The document is the same; an `xmi:version` is reported as
+        // SACM-XMI-011, with no affected id on the wrapper (LIB-COMPAT-001).
+        // The selector reads the input, not the case's name.
+        let reported: &[Reported] = if input.contains(&format!("{wrapper_open} xmi:version")) {
+            &[VERSION_ON_WRAPPER]
+        } else if input.contains("xmi:version") {
+            &[VERSION_ON_A]
+        } else {
+            &[]
+        };
+        assert_reads_reporting(row, what, input.as_bytes(), &two, reported);
     }
 }
 
@@ -690,12 +751,28 @@ fn sacm23_xmi_001_a_type_naming_the_root_class_gives_the_same_document() {
     let row = "SACM23-XMI-001";
     let expected = roots_shape(&[("a", ElementKind::ArgumentPackage)]);
     let xsi = " xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"";
-    let inputs = [
-        format!("<sacm:ArgumentPackage{NS} xmi:id=\"a\" xmi:type=\"sacm:ArgumentPackage\"/>"),
-        format!("<sacm:ArgumentPackage{NS}{xsi} xmi:id=\"a\" xsi:type=\"sacm:ArgumentPackage\"/>"),
+    // The document is the same; an `xsi:type` is reported as SACM-XMI-010
+    // (LIB-COMPAT-001).
+    let inputs: [(String, &[Reported]); 2] = [
+        (
+            format!("<sacm:ArgumentPackage{NS} xmi:id=\"a\" xmi:type=\"sacm:ArgumentPackage\"/>"),
+            &[],
+        ),
+        (
+            format!(
+                "<sacm:ArgumentPackage{NS}{xsi} xmi:id=\"a\" xsi:type=\"sacm:ArgumentPackage\"/>"
+            ),
+            &[XSI_TYPE_ON_A],
+        ),
     ];
-    for input in &inputs {
-        assert_reads_as(row, "a redundant type", input.as_bytes(), &expected);
+    for (input, reported) in &inputs {
+        assert_reads_reporting(
+            row,
+            "a redundant type",
+            input.as_bytes(),
+            &expected,
+            reported,
+        );
     }
 }
 
@@ -1264,7 +1341,7 @@ fn sacm23_xmi_001_read_output_gives_its_document_and_diagnostics() {
     let diagnostics: &[sacm::diagnostic::Diagnostic] = output.diagnostics();
     assert!(
         diagnostics.is_empty(),
-        "{row}: diagnostics() is not empty in this release: {diagnostics:?}"
+        "{row}: diagnostics() is not empty for an input with neither xsi:type nor xmi:version:          {diagnostics:?}"
     );
     let copy = output.clone();
     let document: Document = output.into_document();

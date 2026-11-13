@@ -18,12 +18,19 @@
 //!
 //! `write` writes every element of a document, with its name and, on an
 //! Assertion, its `assertionDeclaration`, in document order, in one
-//! deterministic form. Its only refusals are a document with no root
-//! ([`WriteError::NoRoot`]) and an id or name that XML 1.0 cannot represent
-//! ([`WriteError::UnrepresentableCharacter`]). A document returned by this
-//! release's `read` always writes, and what `write` writes for a document
-//! built with [`edit::apply`](crate::edit::apply) reads back with the same
-//! ids, kinds, names, declarations, parents and order.
+//! deterministic form. Its refusals are a document with no root
+//! ([`WriteError::NoRoot`]), in strict mode a document that validation
+//! reports an Error for ([`WriteError::Invalid`]), and an id or name that
+//! XML 1.0 cannot represent ([`WriteError::UnrepresentableCharacter`]). A
+//! document returned by this release's `read` always writes in tolerant
+//! mode, and what `write` writes for a document built with
+//! [`edit::apply`](crate::edit::apply) reads back with the same ids, kinds,
+//! names, declarations, parents and order.
+//!
+//! Both take a [`Mode`] in their options (ADR 0022). Strict is SACM 2.3
+//! conformance; tolerant also accepts recognised variations, as Warnings, and
+//! writes a document as it is held. [`ReadOptions`] default to tolerant and
+//! [`WriteOptions`] to strict.
 //!
 //! # Examples
 //!
@@ -37,8 +44,12 @@
 //! <xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
 //!          xmlns:sacm="http://www.omg.org/spec/SACM/20220301">
 //!   <sacm:AssuranceCasePackage xmi:id="case">
+//!     <name lang="en" content="Safety case"/>
 //!     <argumentPackage xmi:id="arguments">
-//!       <argumentElement xmi:type="sacm:Claim" xmi:id="c1"/>
+//!       <name lang="en" content="Arguments"/>
+//!       <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+//!         <name lang="en" content="The system is safe"/>
+//!       </argumentElement>
 //!     </argumentPackage>
 //!   </sacm:AssuranceCasePackage>
 //! </xmi:XMI>"#;
@@ -139,7 +150,8 @@ mod roots;
 /// on a Claim, `assertionDeclaration`, and hold the same content as a root.
 /// An `xmi:version` on a root or on the `xmi:XMI` wrapper is accepted with
 /// any value and ignored: the XMI namespace identifies the version
-/// (XMI 2.5.1 §7.5.3), so [`write()`] does not write it back.
+/// (XMI 2.5.1 §7.5.3), so [`write()`] does not write it back. It is reported
+/// as SACM-XMI-011 (see [Diagnostics](#diagnostics)).
 /// The `name` must be in no namespace, carry only `lang`, `content` and an
 /// `xmi:type` or `xsi:type` naming `sacm:LangString`, and hold only white
 /// space, comments and processing instructions. Anything else is refused as
@@ -148,6 +160,29 @@ mod roots;
 /// The input is UTF-8, ASCII, or UTF-16 with a byte order mark, which reads
 /// exactly as the same characters in UTF-8. A DOCTYPE is refused before
 /// anything in it is read, so no entity is declared, resolved or expanded.
+///
+/// # Diagnostics
+///
+/// A document that is read comes with diagnostics, in
+/// [`ReadOutput::diagnostics`], sorted by [`Diagnostic`]'s order. Each is one
+/// attribute, located at the first character of its name, requirement
+/// LIB-COMPAT-001 (ADR 0022):
+///
+/// - SACM-XMI-010 ([`Code::XMI_XSI_TYPE`]), clause 9.5.2, for each `xsi:type`
+///   on a root, a child or a `name`. It affects the element, or, for a
+///   `name`, the element that owns it. It is an Error in [`Mode::Strict`] and
+///   a Warning in [`Mode::Tolerant`]: XMI 2.5.1 §9.5.2 rule 2g allows
+///   `xsi:type` only if `org.omg.xmi.useSchemaExtensions` is true, and SACM
+///   sets no such tag. The type is read as an `xmi:type` would be. An element
+///   with both type attributes gets one.
+/// - SACM-XMI-011 ([`Code::XMI_VERSION_IGNORED`]), clause 7.5.3, for each
+///   `xmi:version` on the `xmi:XMI` element, which affects no element, or on
+///   a root, which it affects. It is Info in both modes.
+///
+/// Neither changes the document or refuses the input: in this release both
+/// modes read and refuse the same inputs, and give the same document. A
+/// later minor release may add a read diagnostic, so a strict read may then
+/// report an Error where it did not before; the release notes list each one.
 ///
 /// # Errors
 ///
@@ -229,9 +264,9 @@ mod roots;
 /// # Examples
 ///
 /// ```
-/// use sacm::diagnostic::Code;
+/// use sacm::diagnostic::{Code, Severity};
 /// use sacm::model::{AssertionDeclaration, ElementKind};
-/// use sacm::xmi::{self, ReadError, ReadOptions};
+/// use sacm::xmi::{self, Mode, ReadError, ReadOptions};
 ///
 /// let options = ReadOptions::default();
 /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
@@ -268,6 +303,23 @@ mod roots;
 /// let document = xmi::read(declared, &options)?.into_document();
 /// let c1 = document.get("c1").expect("the Claim was read");
 /// assert_eq!(c1.assertion_declaration(), Some(AssertionDeclaration::Assumed));
+///
+/// // An `xsi:type` is read as `xmi:type` and reported as SACM-XMI-010 at the
+/// // attribute's name: a Warning in tolerant mode, an Error in strict mode.
+/// let typed = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
+///     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmi:id="arguments">
+///   <argumentElement xsi:type="sacm:Claim" xmi:id="c1"/>
+/// </sacm:ArgumentPackage>"#;
+/// let output = xmi::read(typed, &options)?;
+/// assert_eq!(output.document().get("c1").map(|c1| c1.kind()), Some(ElementKind::Claim));
+/// let found = &output.diagnostics()[0];
+/// assert_eq!(found.code(), Code::XMI_XSI_TYPE);
+/// assert_eq!(found.severity(), Severity::Warning);
+/// assert_eq!(found.affected()[0].as_str(), "c1");
+/// assert_eq!(found.location().map(|at| (at.line(), at.column())), Some((4, 20)));
+/// let strict = xmi::read(typed, &ReadOptions::default().with_mode(Mode::Strict))?;
+/// assert_eq!(strict.diagnostics()[0].severity(), Severity::Error);
 ///
 /// // A value that is not a literal (here the wrong letter case) is refused at
 /// // the attribute's name, line 3, column 54, and never read as `asserted`.
@@ -307,30 +359,105 @@ mod roots;
 /// # Ok::<(), ReadError>(())
 /// ```
 pub fn read(input: &[u8], options: &ReadOptions) -> Result<ReadOutput, ReadError> {
-    let ReadOptions {} = options;
+    let mode = options.mode;
     let text = input::decode(input)?;
     let tree = input::parse(&text)?;
-    let document = roots::read(&text, &tree)?;
+    let (document, mut diagnostics) = roots::read(&text, &tree, mode)?;
+    diagnostics.sort();
     Ok(ReadOutput {
         document,
-        diagnostics: Vec::new(),
+        diagnostics,
+        mode,
     })
 }
 
-/// How [`read`] reads a document.
+/// How strictly [`read`] and [`write`](fn@write) treat a document (D-STRICT,
+/// ADR 0022).
 ///
-/// Empty for now: the load mode (LIB-COMPAT-001) and the resource limits
-/// (LIB-SEC-003) come later. Use [`ReadOptions::default`].
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+/// - [`Strict`](Self::Strict) is SACM 2.3 conformance. A strict read reports
+///   what the standard does not allow as an Error, and a strict write
+///   validates the document and refuses it if validation reports an Error.
+/// - [`Tolerant`](Self::Tolerant) also accepts recognised variations, and
+///   reports them as Warnings. A tolerant write writes the document as it is
+///   held, without validating it.
+///
+/// `Mode` has no default of its own: [`ReadOptions`] default to `Tolerant`
+/// and [`WriteOptions`] to `Strict`. In this release both modes read and
+/// refuse the same inputs; the mode decides only the severity of
+/// SACM-XMI-010 (see [`read`]). Later releases may add variants, so match it
+/// with a fallback arm.
+///
+/// ```
+/// use sacm::xmi::{Mode, ReadOptions, WriteOptions};
+///
+/// assert_eq!(ReadOptions::default().mode(), Mode::Tolerant);
+/// assert_eq!(WriteOptions::default().mode(), Mode::Strict);
+/// let strict = ReadOptions::default().with_mode(Mode::Strict);
+/// assert_eq!(strict.mode(), Mode::Strict);
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
-pub struct ReadOptions {}
+pub enum Mode {
+    /// SACM 2.3 conformance: what the standard does not allow is an Error,
+    /// and a write refuses a document that validation reports an Error for.
+    Strict,
+    /// Recognised variations are read and reported as Warnings, and a write
+    /// writes the document as it is held.
+    Tolerant,
+}
 
-/// What [`read`] returns for a document it reads: the document, and the
-/// diagnostics found while reading it.
+/// How [`read`] reads a document: in which [`Mode`], tolerant by default.
+///
+/// The resource limits (LIB-SEC-003) come later.
+///
+/// ```
+/// use sacm::xmi::{self, Mode, ReadOptions};
+///
+/// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments"/>"#;
+/// let output = xmi::read(input, &ReadOptions::default().with_mode(Mode::Strict))?;
+/// assert_eq!(output.mode(), Mode::Strict);
+/// # Ok::<(), xmi::ReadError>(())
+/// ```
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub struct ReadOptions {
+    /// The mode to read in.
+    mode: Mode,
+}
+
+impl Default for ReadOptions {
+    /// Reads in [`Mode::Tolerant`].
+    fn default() -> Self {
+        Self {
+            mode: Mode::Tolerant,
+        }
+    }
+}
+
+impl ReadOptions {
+    /// These options, reading in `mode`.
+    #[must_use]
+    pub fn with_mode(mut self, mode: Mode) -> Self {
+        self.mode = mode;
+        self
+    }
+
+    /// The mode to read in.
+    #[must_use]
+    pub fn mode(&self) -> Mode {
+        self.mode
+    }
+}
+
+/// What [`read`] returns for a document it reads: the document, the
+/// diagnostics found while reading it, and the mode it was read in.
 ///
 /// The document holds all of the input's content: `read` refuses what it
 /// cannot represent rather than drop it. The diagnostics are sorted by
-/// [`Diagnostic`]'s order, located ones first. This release reports none.
+/// [`Diagnostic`]'s order, located ones first. In this release they are
+/// SACM-XMI-010 for an `xsi:type` and SACM-XMI-011 for an `xmi:version` (see
+/// [`read`]).
 ///
 /// # Examples
 ///
@@ -352,6 +479,8 @@ pub struct ReadOutput {
     document: Document,
     /// The diagnostics, sorted by [`Diagnostic`]'s order.
     diagnostics: Vec<Diagnostic>,
+    /// The mode the document was read in.
+    mode: Mode,
 }
 
 impl ReadOutput {
@@ -362,10 +491,17 @@ impl ReadOutput {
     }
 
     /// The diagnostics found while reading, sorted by [`Diagnostic`]'s order.
-    /// Empty in this release.
+    /// Empty for an input with neither `xsi:type` nor `xmi:version`.
     #[must_use]
     pub fn diagnostics(&self) -> &[Diagnostic] {
         &self.diagnostics
+    }
+
+    /// The mode the document was read in: the mode of the [`ReadOptions`]
+    /// given to [`read`].
+    #[must_use]
+    pub fn mode(&self) -> Mode {
+        self.mode
     }
 
     /// The document read, without the diagnostics.
@@ -561,8 +697,8 @@ impl std::error::Error for ReadError {}
 /// holding an Interface or Binding, such as an `ArgumentPackageInterface` in
 /// an AssuranceCasePackage's `argumentPackage` role. This is XMI's own type
 /// attribute (XMI 2.5.1 §7.6.3, §7.8.8 and rule 2g; SACM sets no
-/// `useSchemaExtensions`). `xsi:type` is never written, but `read` accepts
-/// both.
+/// `useSchemaExtensions`). `xsi:type` is never written; `read` accepts both,
+/// and reports an `xsi:type` as SACM-XMI-010.
 ///
 /// Every element then carries its id as `xmi:id`. After `xmi:id`, an
 /// Assertion whose `assertionDeclaration` is not `asserted` carries
@@ -577,13 +713,29 @@ impl std::error::Error for ReadError {}
 /// validate against an XMI schema. In attribute values `&`, `<`, `>`, `"`,
 /// TAB, LF and CR are escaped; everything else is written as it is.
 ///
+/// # Modes
+///
+/// In [`Mode::Strict`], the default, `write` writes only a document that
+/// [`validation::validate`](crate::validation::validate) reports no Error
+/// for, and refuses any other as [`WriteError::Invalid`]; Warnings and Infos
+/// never refuse. In [`Mode::Tolerant`] it does not validate, and writes the
+/// document as it is held, such as a draft whose elements have no name yet.
+/// The two modes write the same bytes for a document both write.
+///
+/// A later minor release may add a validation Error rule. A strict write may
+/// then refuse a document that it wrote before; this is not a breaking
+/// change, and the release notes list each such rule (ADR 0022).
+///
 /// # Errors
 ///
 /// The document is checked before anything is written, and the first failure
 /// is returned:
 ///
 /// 1. a document with no root is [`WriteError::NoRoot`];
-/// 2. then each element, in [`Document::elements`] order, with all of an
+/// 2. in strict mode only, validation: if `validate` reports an Error, the
+///    refusal is [`WriteError::Invalid`], which holds every Error in
+///    `validate`'s order;
+/// 3. then each element, in [`Document::elements`] order, with all of an
 ///    element's checks run before the next element's: first its id, where a
 ///    character outside XML 1.0's `Char` is
 ///    [`WriteError::UnrepresentableCharacter`], naming the attribute and its
@@ -596,43 +748,52 @@ impl std::error::Error for ReadError {}
 ///
 /// ```
 /// use sacm::model::Document;
-/// use sacm::xmi::{self, ReadOptions, WriteError, WriteOptions};
+/// use sacm::xmi::{self, Mode, ReadOptions, WriteError, WriteOptions};
 ///
+/// // A name is written as the element's first child.
 /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
-///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments"/>"#;
+///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+///   <name lang="en" content="Arguments"/>
+/// </sacm:ArgumentPackage>"#;
 /// let document = xmi::read(input, &ReadOptions::default())?.into_document();
 /// let text = xmi::write(&document, &WriteOptions::default())?;
 /// assert_eq!(
 ///     text,
 ///     "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
 ///      <sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\" \
-///      xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"arguments\" />\n"
+///      xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"arguments\">\n  \
+///      <name lang=\"en\" content=\"Arguments\" />\n\
+///      </sacm:ArgumentPackage>\n"
 /// );
-///
-/// // A name is written as the element's first child.
-/// let named = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
-///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
-///   <name lang="en" content="Arguments"/>
-/// </sacm:ArgumentPackage>"#;
-/// let document = xmi::read(named, &ReadOptions::default())?.into_document();
-/// let text = xmi::write(&document, &WriteOptions::default())?;
-/// assert!(text.ends_with(
-///     "xmi:id=\"arguments\">\n  <name lang=\"en\" content=\"Arguments\" />\n</sacm:ArgumentPackage>\n"
-/// ));
 ///
 /// // A `needsSupport` Claim carries its declaration after its id; an
 /// // `asserted` one carries none.
 /// let claims = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
 ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
-///   <argumentElement xmi:type="sacm:Claim" xmi:id="c1" assertionDeclaration="needsSupport"/>
-///   <argumentElement xmi:type="sacm:Claim" xmi:id="c2" assertionDeclaration="asserted"/>
+///   <name content="Arguments"/>
+///   <argumentElement xmi:type="sacm:Claim" xmi:id="c1" assertionDeclaration="needsSupport">
+///     <name content="C1"/>
+///   </argumentElement>
+///   <argumentElement xmi:type="sacm:Claim" xmi:id="c2" assertionDeclaration="asserted">
+///     <name content="C2"/>
+///   </argumentElement>
 /// </sacm:ArgumentPackage>"#;
 /// let document = xmi::read(claims, &ReadOptions::default())?.into_document();
 /// let text = xmi::write(&document, &WriteOptions::default())?;
 /// assert!(text.contains(
-///     "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" assertionDeclaration=\"needsSupport\" />\n"
+///     "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" assertionDeclaration=\"needsSupport\">\n"
 /// ));
-/// assert!(text.contains("<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c2\" />\n"));
+/// assert!(text.contains("<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c2\">\n"));
+///
+/// // A package with no name is refused in strict mode, the default, and
+/// // written as it is held in tolerant mode.
+/// let draft = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="draft"/>"#;
+/// let document = xmi::read(draft, &ReadOptions::default())?.into_document();
+/// let error = xmi::write(&document, &WriteOptions::default()).unwrap_err();
+/// assert!(matches!(error, WriteError::Invalid { .. }));
+/// let text = xmi::write(&document, &WriteOptions::default().with_mode(Mode::Tolerant))?;
+/// assert!(text.ends_with("xmi:id=\"draft\" />\n"));
 ///
 /// // A document with no root would be an empty `xmi:XMI`, which a SACM
 /// // reader refuses, so it is refused.
@@ -642,30 +803,65 @@ impl std::error::Error for ReadError {}
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 pub fn write(document: &Document, options: &WriteOptions) -> Result<String, WriteError> {
-    let WriteOptions {} = options;
-    output::write(document)
+    output::write(document, options.mode)
 }
 
-/// How [`write`](fn@write) writes a document.
+/// How [`write`](fn@write) writes a document: in which [`Mode`], strict by
+/// default.
 ///
-/// Empty for now: the save mode (LIB-COMPAT-001) comes later. Use
-/// [`WriteOptions::default`].
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+/// ```
+/// use sacm::xmi::{Mode, WriteOptions};
+///
+/// assert_eq!(WriteOptions::default().mode(), Mode::Strict);
+/// // Write a draft as it is held, without validating it.
+/// let drafts = WriteOptions::default().with_mode(Mode::Tolerant);
+/// assert_eq!(drafts.mode(), Mode::Tolerant);
+/// ```
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
-pub struct WriteOptions {}
+pub struct WriteOptions {
+    /// The mode to write in.
+    mode: Mode,
+}
+
+impl Default for WriteOptions {
+    /// Writes in [`Mode::Strict`].
+    fn default() -> Self {
+        Self { mode: Mode::Strict }
+    }
+}
+
+impl WriteOptions {
+    /// These options, writing in `mode`.
+    #[must_use]
+    pub fn with_mode(mut self, mode: Mode) -> Self {
+        self.mode = mode;
+        self
+    }
+
+    /// The mode to write in.
+    #[must_use]
+    pub fn mode(&self) -> Mode {
+        self.mode
+    }
+}
 
 /// Why [`write`](fn@write) refused a document.
 ///
 /// The writer writes everything a [`Document`] holds, so it refuses only a
-/// document with no root and a character XML 1.0 cannot represent. None of
-/// the refusals has a catalog code: [`code`](Self::code) is `None`.
-/// [`element`](Self::element) names the element refused, where there is one.
+/// document with no root, a character XML 1.0 cannot represent, and, in
+/// strict mode, a document that validation reports an Error for. None of the
+/// refusals has a catalog code: [`code`](Self::code) is `None`.
+/// [`element`](Self::element) names the element refused, where there is one,
+/// and [`diagnostics`](Self::diagnostics) gives the validation Errors of
+/// [`Invalid`](Self::Invalid).
 ///
 /// # Display
 ///
 /// `Display` writes one line that starts in lower case, without trailing
 /// punctuation. Ids are quoted with `{:?}`, so line breaks in them never break
-/// the line. For example:
+/// the line. [`Invalid`](Self::Invalid) gives the number of Errors and the
+/// first one's code and first affected id. For example:
 ///
 /// ```
 /// use sacm::model::Document;
@@ -719,25 +915,72 @@ pub enum WriteError {
         /// The attribute that holds it.
         attribute: WriteAttribute,
     },
+    /// In strict mode, [`validation::validate`](crate::validation::validate)
+    /// reports an Error for the document (ADR 0022). `diagnostics` holds every
+    /// Error, in `validate`'s order; each carries its own code and the ids of
+    /// the elements it affects. Fix the findings, or write the document as it
+    /// is held with `WriteOptions::default().with_mode(Mode::Tolerant)`.
+    ///
+    /// ```
+    /// use sacm::diagnostic::Code;
+    /// use sacm::xmi::{self, Mode, ReadOptions, WriteError, WriteOptions};
+    ///
+    /// // An ArgumentPackage with no name, which SACM requires (§8.6).
+    /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="draft"/>"#;
+    /// let document = xmi::read(input, &ReadOptions::default())?.into_document();
+    /// let error = xmi::write(&document, &WriteOptions::default()).unwrap_err();
+    /// assert!(matches!(error, WriteError::Invalid { .. }));
+    /// assert_eq!(error.diagnostics()[0].code(), Code::MULTIPLICITY_VIOLATION);
+    /// assert_eq!(
+    ///     error.to_string(),
+    ///     "the document cannot be written in strict mode: validation reports 1 error, \
+    ///      the first is SACM-MULT-001 on \"draft\""
+    /// );
+    ///
+    /// // Tolerant mode writes it as it is held.
+    /// let tolerant = WriteOptions::default().with_mode(Mode::Tolerant);
+    /// let text = xmi::write(&document, &tolerant)?;
+    /// assert!(text.contains("xmi:id=\"draft\" />"));
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    #[non_exhaustive]
+    Invalid {
+        /// Every validation Error, in `validate`'s order. Never empty.
+        diagnostics: Vec<Diagnostic>,
+    },
 }
 
 impl WriteError {
-    /// The element refused, if the refusal names one: every variant but
-    /// [`NoRoot`](Self::NoRoot).
+    /// The element refused, if the refusal names one: the element of
+    /// [`UnrepresentableCharacter`](Self::UnrepresentableCharacter). `None`
+    /// for [`NoRoot`](Self::NoRoot), and for [`Invalid`](Self::Invalid),
+    /// whose [`diagnostics`](Self::diagnostics) name the elements they affect.
     #[must_use]
     pub fn element(&self) -> Option<&ElementId> {
         match self {
-            Self::NoRoot => None,
+            Self::NoRoot | Self::Invalid { .. } => None,
             Self::UnrepresentableCharacter { element, .. } => Some(element),
         }
     }
 
     /// The catalog code of the refusal: `None` for every variant in this
-    /// release.
+    /// release. The diagnostics of [`Invalid`](Self::Invalid) carry their own
+    /// codes.
     #[must_use]
     pub fn code(&self) -> Option<Code> {
         match self {
-            Self::NoRoot | Self::UnrepresentableCharacter { .. } => None,
+            Self::NoRoot | Self::UnrepresentableCharacter { .. } | Self::Invalid { .. } => None,
+        }
+    }
+
+    /// The validation Errors of [`Invalid`](Self::Invalid), in `validate`'s
+    /// order; empty for every other variant.
+    #[must_use]
+    pub fn diagnostics(&self) -> &[Diagnostic] {
+        match self {
+            Self::Invalid { diagnostics } => diagnostics,
+            Self::NoRoot | Self::UnrepresentableCharacter { .. } => &[],
         }
     }
 }
@@ -757,6 +1000,21 @@ impl fmt::Display for WriteError {
                 element.as_str(),
                 u32::from(*character)
             ),
+            Self::Invalid { diagnostics } => {
+                let count = diagnostics.len();
+                let errors = if count == 1 { "error" } else { "errors" };
+                write!(
+                    f,
+                    "the document cannot be written in strict mode: validation reports {count} {errors}"
+                )?;
+                if let Some(first) = diagnostics.first() {
+                    write!(f, ", the first is {}", first.code())?;
+                    if let Some(id) = first.affected().first() {
+                        write!(f, " on {:?}", id.as_str())?;
+                    }
+                }
+                Ok(())
+            }
         }
     }
 }

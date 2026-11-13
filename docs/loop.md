@@ -1,7 +1,7 @@
 # The engineering loop
 
-libSACM is built in **slices**: small increments, each tied to rows of the
-[functionality matrix](matrix/functionality-matrix.md) and verified independently.
+libSACM is built in **slices**: increments of 4 to 8 related rows of the
+[functionality matrix](matrix/functionality-matrix.md), each verified independently.
 Claude Code agents with fixed roles do most of the work; the maintainer sets direction
 and merges.
 
@@ -43,8 +43,10 @@ change the hook or its scopes.
 ```
 
 Every slice lands through a pull request. The branch is pushed as a draft before
-verification, so that CI on Linux, Windows and macOS and the mutation-testing jobs
-produce the evidence the verifier needs. The maintainer merges; the loop never does.
+verification, so that CI on Linux, Windows and macOS and the mutation testing of the PR's
+diff produce the evidence the verifier needs. The full mutation run happens weekly and at
+each milestone's close. Once the verifier passes and CI is green, the loop merges the PR
+itself (the maintainer's standing authorization, 2026-11-13).
 
 **Stacked PRs.** The loop does not wait for a merge. Each new slice branches from the
 newest open slice PR, and its PR targets that branch.
@@ -60,6 +62,13 @@ newest open slice PR, and its PR targets that branch.
   30 minutes.
 
 Run `cargo xtask fetch-spec` once first: the agents need the normative sources.
+
+**Findings that do not block.** The verifier labels each finding blocking or follow-up.
+Follow-ups (wording, citations, comments), and non-blocking docs-review and Copilot
+comments, go to [follow-ups.md](follow-ups.md). A docs slice clears them every few slices.
+
+**Decisions in batches.** Before a milestone's first slice, the lead collects the
+milestone's open decisions and asks the maintainer in one batch.
 
 ## When the loop stops
 

@@ -15,8 +15,11 @@
 //! test fails once it reads, so that it leaves the list and joins the round
 //! trip.
 //!
-//! Every write uses `WriteOptions::default()`, the only write mode until
-//! LIB-COMPAT-001. Documents for LIB-RT-003 use the public edit API only; the
+//! LIB-RT-002 writes in tolerant mode: several fixtures and golden files are
+//! nameless, which a strict write refuses (LIB-COMPAT-007), and the round trip
+//! is about content, not the save mode. LIB-RT-003 writes with
+//! `WriteOptions::default()`, strict, because a built document validates.
+//! Documents for LIB-RT-003 use the public edit API only; the
 //! `test-support` seam `set_assertion_declaration` is used for the
 //! declarations, which the edit API cannot set yet.
 
@@ -29,7 +32,7 @@ use sacm::model::{
     AssertionDeclaration, Document, ElementId, ElementKind, LangString, SacmElement,
 };
 use sacm::validation;
-use sacm::xmi::{self, ReadError, ReadOptions, WriteOptions};
+use sacm::xmi::{self, Mode, ReadError, ReadOptions, WriteOptions};
 
 /// The directory of the XMI fixtures.
 const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/xmi");
@@ -120,9 +123,11 @@ fn read(bytes: &[u8]) -> Result<Document, String> {
         .map_err(|error| format!("does not read: {error} ({error:?})"))
 }
 
-/// Writes `doc` with the default options, or says why not.
+/// Writes `doc` in tolerant mode, or says why not. Tolerant, because some
+/// fixtures are nameless and a strict write refuses a validation Error
+/// (LIB-COMPAT-007); both modes write the same bytes for a document both write.
 fn write(doc: &Document) -> Result<String, String> {
-    xmi::write(doc, &WriteOptions::default())
+    xmi::write(doc, &WriteOptions::default().with_mode(Mode::Tolerant))
         .map_err(|error| format!("does not write: {error} ({error:?})"))
 }
 

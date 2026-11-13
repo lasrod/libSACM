@@ -146,9 +146,15 @@ change bumps the minor version and is listed under **Breaking**.
   `edit::apply` is all or nothing: on success the document is structurally valid; on a
   refusal it is unchanged (`==` to before, and the same ids are generated next)
   [LIB-EDIT-002].
+- `xmi::Mode`; `ReadOptions`/`WriteOptions::with_mode`; `ReadOutput::mode`; read
+  diagnostics SACM-XMI-010 (`xsi:type`) and SACM-XMI-011 (`xmi:version`, Info)
+  [LIB-COMPAT-001].
 
 ### Changed
 
 - `xmi::write` no longer writes `xmi:version`: the XMI namespace identifies the version
   (XMI 2.5.1 §7.5.3) [SACM23-XMI-024].
+- `xmi::write` is strict by default: it runs `validation::validate` and refuses a
+  document with any Error as `WriteError::Invalid`; write it as held with
+  `WriteOptions::default().with_mode(Mode::Tolerant)` [LIB-COMPAT-007].
 - Simplified the harness: removed CI YAML pin tests and the mutation-exclusions command.

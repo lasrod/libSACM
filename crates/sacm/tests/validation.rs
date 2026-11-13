@@ -16,7 +16,7 @@ use std::path::Path;
 use sacm::diagnostic::{self, Code, Diagnostic, Severity};
 use sacm::model::{AbstractClass, Document, ElementId, ElementKind, LangString};
 use sacm::validation;
-use sacm::xmi::{self, ReadOptions, WriteOptions};
+use sacm::xmi::{self, Mode, ReadOptions, WriteOptions};
 
 /// The row every test here verifies.
 const ROW: &str = "SACM23-VAL-018";
@@ -113,9 +113,11 @@ fn read_ok(input: &str) -> xmi::ReadOutput {
     }
 }
 
-/// Writes `doc` with the default options, which must succeed.
+/// Writes `doc` in tolerant mode, which must succeed. Tolerant, because the
+/// documents here are nameless on purpose and a strict write refuses a
+/// validation Error (LIB-COMPAT-007).
 fn write_ok(doc: &Document) -> String {
-    match xmi::write(doc, &WriteOptions::default()) {
+    match xmi::write(doc, &WriteOptions::default().with_mode(Mode::Tolerant)) {
         Ok(text) => text,
         Err(error) => panic!("{ROW}: write refused the document: {error} ({error:?})"),
     }

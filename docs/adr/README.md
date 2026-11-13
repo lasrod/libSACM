@@ -28,6 +28,7 @@ decisions.md has a one-line entry pointing to it.
 | [0019](0019-edit-operations.md) | The edit API: operations as values | accepted |
 | [0020](0020-semantic-comparison.md) | Semantic comparison | accepted |
 | [0021](0021-xmi-reader-content.md) | The XMI reader: package content | accepted |
+| [0022](0022-load-and-save-modes.md) | Load and save modes | accepted |
 
 Statuses: `proposed` → `accepted` (maintainer approval) → optionally `superseded by NNNN`.
 Copy [template.md](template.md) for a new record.

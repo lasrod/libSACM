@@ -4356,18 +4356,24 @@ fn adrs_with_status(adrs: &[AdrFile], name: &str, status_line: &str) -> Vec<AdrF
     })
 }
 
+/// The last ADR row of the index table, whatever its number, so that
+/// mutations appending a row do not change as ADRs are added.
+fn last_index_row(index: &str) -> String {
+    index
+        .lines()
+        .map(str::trim)
+        .rfind(|line| line.starts_with("| ["))
+        .expect("mutation target: the index table has rows")
+        .to_owned()
+}
+
 /// The header line of the ADR index table.
 const INDEX_HEADER: &str = "| ADR | Title | Status |";
 
 /// `index` with its table between the lines `open` and `close` (a fence, an
 /// HTML comment), so that it is no longer rendered as a table.
 fn wrap_index_table(index: &str, open: &str, close: &str) -> String {
-    let last_row = index
-        .lines()
-        .map(str::trim)
-        .rfind(|line| line.starts_with("| ["))
-        .expect("mutation target: the index table has rows")
-        .to_owned();
+    let last_row = last_index_row(index);
     let opened = edit_line(index, INDEX_HEADER, |line| {
         vec![open.to_owned(), line.to_owned()]
     });
@@ -4472,6 +4478,7 @@ fn adr_index_mutations(index: &str, adrs: &[AdrFile]) -> Vec<IndexMutation> {
     let row_0003 = index_row(index, "0003");
     let row_0005 = index_row(index, "0005");
     let row_0021 = index_row(index, "0021");
+    let last_row = last_index_row(index);
     let mut with_new_adr = adrs.to_vec();
     with_new_adr.push((
         "9998-a-new-decision.md".to_owned(),
@@ -4494,7 +4501,7 @@ fn adr_index_mutations(index: &str, adrs: &[AdrFile]) -> Vec<IndexMutation> {
             "a row for a file that does not exist",
             insert_after(
                 index,
-                &row_0021,
+                &last_row,
                 0,
                 &["| [9999](9999-not-an-adr.md) | Not an ADR | accepted |"],
             ),

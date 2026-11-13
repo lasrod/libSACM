@@ -3,7 +3,7 @@
 //! LIB-API-009; ADR 0005, ADR 0015).
 //!
 //! Every input is an inline byte string. `read` is called with
-//! `ReadOptions::default()`, the only options there are.
+//! `ReadOptions::default()`, which reads in tolerant mode (LIB-COMPAT-001).
 //!
 //! Not checked here:
 //! - LIB-SEC-002 item 6's `#[non_exhaustive]` on `ReadError`: a test cannot
@@ -16,8 +16,10 @@
 //! - LIB-SEC-001 item 3's "attribute value": XML does not allow a literal `<`
 //!   in an attribute value, so a well-formed document can only carry
 //!   `<!DOCTYPE` there escaped, as `&lt;!DOCTYPE`. The test uses that form.
-//! - "In every mode" (LIB-SEC-001): `ReadOptions` has no mode yet
-//!   (LIB-COMPAT-001), so only the default options are exercised.
+//! - "In every mode" (LIB-SEC-001): the tests here use the default, tolerant,
+//!   mode; `load_and_save_modes.rs` (LIB-COMPAT-001) reads a DOCTYPE, an
+//!   external entity and malformed input in both modes and checks that the
+//!   refusals are the same.
 //!
 //! Since SACM23-XMI-001 (slice 0021), AssuranceCasePackage and ArgumentPackage
 //! roots are read, and other roots are refused as SACM-XMI-001. The tests here

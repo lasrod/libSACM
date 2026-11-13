@@ -32,7 +32,7 @@ use std::time::Duration;
 use sacm::diagnostic::SourceLocation;
 use sacm::edit::{self, CreateArgumentPackage, CreateAssuranceCasePackage, CreateClaim};
 use sacm::model::{AbstractClass, Document, ElementId, ElementKind, LangString, SacmElement};
-use sacm::xmi::{self, ReadError, ReadOptions, ReadOutput, WriteOptions};
+use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteOptions};
 
 const ROW: &str = "SACM23-XMI-016";
 
@@ -1362,7 +1362,10 @@ fn sacm23_xmi_016_write_puts_the_child_of_each_of_the_339_legal_pairs_under_the_
             expected.push((child, id, role));
         }
         pairs += expected.len();
-        let text = match xmi::write(&doc, &WriteOptions::default()) {
+        // Tolerant: the children are nameless, and a strict write refuses a
+        // validation Error (LIB-COMPAT-007).
+        let tolerant = WriteOptions::default().with_mode(Mode::Tolerant);
+        let text = match xmi::write(&doc, &tolerant) {
             Ok(text) => text,
             Err(error) => panic!("{ROW}: write refused the {parent} document: {error}"),
         };

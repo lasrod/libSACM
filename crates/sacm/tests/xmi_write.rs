@@ -7,7 +7,10 @@
 //!
 //! Documents are built with the `test-support` feature's `Document::insert`
 //! (the crate dev-depends on itself with that feature) or read with
-//! `xmi::read`, and written with `WriteOptions::default()`.
+//! `xmi::read`, and written in tolerant mode ([`options`]): most of
+//! them are nameless, which a strict write refuses (LIB-COMPAT-007), and these
+//! tests check the bytes of the output form, not the save mode. The modes have
+//! their own tests in `load_and_save_modes.rs`.
 //!
 //! Written output is checked in three ways:
 //! - byte for byte, against an expected string or a golden file under
@@ -56,7 +59,7 @@ use sacm::model::{
     AbstractClass, AssertionDeclaration, Document, ElementId, ElementKind, InsertError, LangString,
     SacmElement,
 };
-use sacm::xmi::{self, ReadError, ReadOptions, WriteAttribute, WriteError, WriteOptions};
+use sacm::xmi::{self, Mode, ReadError, ReadOptions, WriteAttribute, WriteError, WriteOptions};
 
 /// The pinned SACM 2.3 namespace (D-NS-PIN).
 const SACM_NS: &str = "http://www.omg.org/spec/SACM/20220301";
@@ -350,9 +353,16 @@ fn owned(expected: &[(&str, ElementKind)]) -> Vec<(String, ElementKind)> {
 // Writing and reading
 // ---------------------------------------------------------------------------
 
-/// Writes `doc` with the default options.
+/// The options of every write here: tolerant, because most documents here are
+/// nameless and a strict write refuses a validation Error (LIB-COMPAT-007).
+/// The output form is the same in both modes.
+fn options() -> WriteOptions {
+    WriteOptions::default().with_mode(Mode::Tolerant)
+}
+
+/// Writes `doc` with [`options`].
 fn write(doc: &Document) -> Result<String, WriteError> {
-    xmi::write(doc, &WriteOptions::default())
+    xmi::write(doc, &options())
 }
 
 /// Writes `doc`, which the test expects to be written.
@@ -1412,13 +1422,13 @@ fn sacm23_xmi_004_writing_takes_a_shared_reference_and_leaves_the_document_uncha
         bad_id,
     ] {
         let before = projection(&doc);
-        let first = signature(&doc, &WriteOptions::default());
+        let first = signature(&doc, &options());
         assert_eq!(
             projection(&doc),
             before,
             "{row}: writing changed the document"
         );
-        let second = signature(&doc, &WriteOptions::default());
+        let second = signature(&doc, &options());
         assert_eq!(
             projection(&doc),
             before,
@@ -2357,6 +2367,7 @@ fn write_error_variant(error: &WriteError) -> Option<&'static str> {
     match error {
         WriteError::NoRoot => Some("NoRoot"),
         WriteError::UnrepresentableCharacter { .. } => Some("UnrepresentableCharacter"),
+        WriteError::Invalid { .. } => Some("Invalid"),
         _ => None,
     }
 }
@@ -2364,8 +2375,10 @@ fn write_error_variant(error: &WriteError) -> Option<&'static str> {
 #[test]
 fn lib_api_010_write_error_has_exactly_the_variants_no_root_and_unrepresentable_character() {
     let row = "LIB-API-010";
-    // Every refusal a document can cause: no root, and a character outside
-    // XML 1.0 `Char` in an id, a name's `lang` and a name's `content`.
+    // Every refusal a document can cause in tolerant mode, which does not
+    // validate: no root, and a character outside XML 1.0 `Char` in an id, a
+    // name's `lang` and a name's `content`. Strict mode's `Invalid` is
+    // LIB-COMPAT-007's, tested in `load_and_save_modes.rs`.
     let mut refused: Vec<(&str, Document, Option<&str>)> = vec![
         ("an empty document", Document::new(), None),
         (
