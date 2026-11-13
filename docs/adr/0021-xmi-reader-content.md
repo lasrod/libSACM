@@ -61,7 +61,7 @@ matrix notes and the writer's ADR (0017). This ADR collects them in one place.
   - An untyped child under an abstract role (strict SACM-XMI-005; tolerant LIB-COMPAT-010).
   - A role the parent's class lacks, or a namespace-qualified role element (tolerant
     LIB-COMPAT-003).
-  - The spelling `argumentationElement` (SACM23-XMI-009).
+  - The spelling `argumentationElement` (tolerant SACM23-XMI-009).
   - An empty `xmi:id`, and a duplicate one (SACM23-VAL-001).
   - An `assertionDeclaration` value that is not a literal (SACM23-VAL-006), the attribute on
     an element that is not an Assertion, and `sacm:assertionDeclaration`.

@@ -1171,7 +1171,7 @@ title = "ADRs and decisions describe the current design"
 requirement = "Each ADR states the decision as it stands, marks superseded text as superseded where it stands, and agrees with the code, the other ADRs, docs/sacm/decisions.md and CLAUDE.md. Interpretations of the standard made in ADRs (the readings of a clause the standard leaves open or contradicts) have a one-line `D-` entry in docs/sacm/decisions.md that points to the ADR. The ADR index lists every ADR. Decisions that exist only in slice briefs or matrix notes are recorded in an ADR."
 source = "ADR 0001; CLAUDE.md rule 6; ADR review, 2026-11-13 (the maintainer: apply every recommendation)"
 kind = "quality"
-status = "implemented"
+status = "verified"
 depends_on = []
 acceptance = [
   "docs/adr/README.md lists every ADR file with its status.",
@@ -1189,6 +1189,7 @@ tests = [
   "xtask/tests/repo_checks.rs::lib_doc_008_the_adr_index_lists_every_adr_with_its_status",
   "xtask/tests/repo_checks.rs::lib_doc_008_every_adr_link_in_the_decisions_resolves",
 ]
+verification = "docs/verification/0032-m1-adr-review-fixes.md"
 notes = "Slice 0032: the documentation findings of the 2026-11-13 ADR review. The behaviour findings are rows SACM23-XMI-024, LIB-API-011, SACM23-VAL-020 and LIB-DIAG-003, plus notes on SACM23-XMI-020, LIB-COMPAT-001, LIB-COMPAT-007 and SACM23-VAL-006."
 
 [[row]]
@@ -3707,6 +3708,7 @@ source = "D-PRESERVE; D-STRICT; ADR 0015; ADR 0016; XMI 2.5.1 §7.6.1 `<xsd:attr
 kind = "api"
 status = "planned"
 depends_on = ["LIB-API-009", "LIB-API-010"]
+notes = "Slice 0032 (ADR review): code and test comments still cite \"ADR 0017 amendment 1/2\" for rules that now live in ADR 0017's body or ADR 0021 (crates/sacm/src/xmi/roots.rs:4, 488, 511; tests/xmi_names.rs, tests/xmi_assertion_declaration.rs, tests/xmi_write.rs). Update them when this row touches those files."
 
 [[row]]
 id = "SACM23-XMI-018"

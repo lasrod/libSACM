@@ -1,8 +1,8 @@
 ---
 slice: 0032
 name: m1-adr-review-fixes
-state: in-progress
-step: verification
+state: done
+step: verified
 rows: [LIB-DOC-008]
 mode: pr
 base: slice/0031-m1-semantic-comparison (PR #42)
@@ -33,3 +33,6 @@ Quality row: acceptance by the lead. ADR 0001; CLAUDE.md rule 6.
 
 - 2026-11-13 choose: the maintainer's request to apply every recommendation of the ADR
   review, with the easy ones as one task and the rest as matrix rows.
+- 2026-11-13 verification: round 1 FAIL (seven Medium findings, all the lead's: the two
+  meanings of `Unsupported`, the interim list, lost C++ differences, ADR 0011, the
+  compliance-point links, D- entries). Fixed in 943780e. Round 2 PASS (record 0032).
