@@ -90,9 +90,12 @@
 //! a document it saved before.
 //!
 //! Which [`xmi::Mode`] to use: read in tolerant mode, the default, to open
-//! files from other tools, and in strict mode to have each variation from
-//! SACM 2.3 reported as an Error. Save in strict mode, the default, for a
-//! file you hand on.
+//! files from other tools. A strict read reports the variations it
+//! recognises as Errors instead of Warnings (in this release, only
+//! `xsi:type`). Neither mode validates what it reads, so to check a file,
+//! also run [`validation::validate`] and test both lists with
+//! [`diagnostic::has_errors`]. Save in strict mode, the default, for a file
+//! you hand on.
 //!
 //! Walk a document with [`model::Document::elements`], or one level at a
 //! time with [`children`](model::SacmElement::children) and

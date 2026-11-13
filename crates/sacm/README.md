@@ -97,9 +97,11 @@ A strict save refuses a document with a validation Error, as `WriteError::Invali
 draft is saved with `WriteOptions::default().with_mode(Mode::Tolerant)`. A later release
 may add validation rules, so a strict save may then refuse a document it saved before.
 
-Read in tolerant mode, the default, to open files from other tools, and in strict mode to
-have each variation from SACM 2.3 reported as an Error. Save in strict mode, the default,
-for a file you hand on.
+Which `xmi::Mode` to use: read in tolerant mode, the default, to open files from other
+tools. A strict read reports the variations it recognises as Errors instead of Warnings
+(in this release, only `xsi:type`). Neither mode validates what it reads, so to check a
+file, also run `validation::validate` and test both lists with `diagnostic::has_errors`.
+Save in strict mode, the default, for a file you hand on.
 
 See the [crate documentation](https://docs.rs/sacm) for the full API.
 

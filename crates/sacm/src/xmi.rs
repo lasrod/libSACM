@@ -167,15 +167,17 @@ mod roots;
 /// space, comments, processing instructions and the children above. A child
 /// may carry only namespace declarations, `xmi:id`, its type attributes and,
 /// on a Claim, `assertionDeclaration`, and hold the same content as a root.
+/// A Claim may also hold one `assertionDeclaration` value element instead of
+/// the attribute.
 /// An `xmi:version` on a root or on the `xmi:XMI` wrapper is accepted with
 /// any value and ignored: the XMI namespace identifies the version
 /// (XMI 2.5.1 §7.5.3), so [`write()`] does not write it back. It is reported
 /// as SACM-XMI-011 (see [Diagnostics](#diagnostics)).
-/// A Claim may also hold one `assertionDeclaration` value element.
 /// The `name` must be in no namespace, carry only `lang`, `content` and an
 /// `xmi:type` or `xsi:type` naming `sacm:LangString`, and hold only the value
 /// elements `lang` and `content`, white space, comments and processing
-/// instructions. A value element may carry no attribute and hold no element.
+/// instructions. A value element may carry only namespace declarations and
+/// may hold no element.
 /// Anything else is refused as [`ReadError::Unsupported`] until a later
 /// release reads it.
 ///
@@ -250,7 +252,10 @@ mod roots;
 ///    is `DuplicateId`, so a repeat is refused before anything after its id.
 ///    A value element is checked whole when it is met, then against the
 ///    occurrences before it, so the second occurrence of a value is
-///    `RepeatedValue` unless it is itself refused first.
+///    `RepeatedValue` unless it is itself refused first. A later occurrence
+///    is listed in `RepeatedValue`'s
+///    [`locations`](ReadError::locations) even if it is itself malformed,
+///    because each occurrence is checked against those before it.
 ///
 /// The refusals:
 ///
@@ -274,9 +279,10 @@ mod roots;
 ///   `NCName` with XML white space around it, such as `" c1 "`, which is
 ///   `Unsupported` until a later release.
 /// - [`ReadError::RepeatedValue`] (SACM-MULT-001): a name's `lang` or
-///   `content`, or a Claim's `assertionDeclaration`, is given more than once,
-///   as an attribute and an element or as two elements (XMI 2.5.1 rule 2h),
-///   even with equal values. It gives every occurrence.
+///   `content`, or a Claim's `assertionDeclaration`, is given more than once:
+///   as an attribute and an element, which XMI 2.5.1 §9.5.2 rule 2h forbids,
+///   or as two or more elements, though the property holds one value. This
+///   holds even with equal values. It gives every occurrence.
 /// - [`ReadError::Unsupported`] (no code): the input is well-formed but this
 ///   version cannot represent it. It is also the refusal of an
 ///   `assertionDeclaration` value that is not a SACM literal, until a later
@@ -293,8 +299,9 @@ mod roots;
 ///   the roots (such as `xmi:documentation`), an attribute of `xmi:XMI` other
 ///   than `xmi:version`, a second `name`, any other attribute or content of a
 ///   `name` (such as `xmi:id`, `xml:lang` or a `value` element), a `name` in
-///   a namespace (such as `sacm:name`), a value element with an attribute
-///   (such as `xmi:id` or `xsi:nil`), an element child or a namespace, and
+///   a namespace (such as `sacm:name`), a value element that carries an
+///   attribute (such as `xmi:id` or `xsi:nil`), holds an element, or is in a
+///   namespace (such as `sacm:content`), and
 ///   any other attribute or content of a root or child. For a child, that
 ///   includes a role its parent's class lacks, a role element in a
 ///   namespace, a type that names no concrete SACM class or that the role
@@ -435,9 +442,10 @@ pub fn read(input: &[u8], options: &ReadOptions) -> Result<ReadOutput, ReadError
 ///   held, without validating it.
 ///
 /// `Mode` has no default of its own: [`ReadOptions`] default to `Tolerant`
-/// and [`WriteOptions`] to `Strict`. In this release both modes read and
-/// refuse the same inputs: on a read, the mode decides only the severity of
-/// SACM-XMI-010 (see [`read`]). Later releases may add variants, so match it
+/// and [`WriteOptions`] to `Strict`. On a read, in this release, both modes
+/// accept and refuse the same inputs, and the mode decides only the severity
+/// of SACM-XMI-010 (see [`read`]). On a write, it decides whether the
+/// document is validated first. Later releases may add variants, so match it
 /// with a fallback arm.
 ///
 /// ```
@@ -711,7 +719,7 @@ pub enum ReadError {
     },
     /// A single-valued property is given more than once: as an attribute and
     /// an element, or as two or more elements (SACM-MULT-001). XMI 2.5.1
-    /// rule 2h serializes a property "either as an XML attribute or as XML
+    /// §9.5.2 rule 2h serializes a property "either as an XML attribute or as XML
     /// elements but not both", and the property holds one value, so the
     /// input is refused even when the values are equal, rather than read
     /// with one of them dropped. Fix: give the value once.
@@ -1104,7 +1112,8 @@ impl WriteOptions {
 /// `Display` writes one line that starts in lower case, without trailing
 /// punctuation. Ids are quoted with `{:?}`, so line breaks in them never break
 /// the line. [`Invalid`](Self::Invalid) gives the number of Errors and the
-/// first one's code and first affected id. For example:
+/// code and first affected id of the first one, introduced by `the first is`
+/// when there are several. For example:
 ///
 /// ```
 /// use sacm::model::Document;

@@ -2040,7 +2040,7 @@ id = "SACM23-XMI-012"
 area = "XMI"
 milestone = "M1"
 title = "The name containment in XMI"
-requirement = "`xmi::write` writes the name of every ModelElement that has one as exactly one `name` child: in no namespace, with no `xmi:id` or type attribute, as the element's first child (before any containment child), carrying `lang` and then `content` (SACM23-XMI-011 rules). An element whose name is missing is written with no `name` child, and nothing is invented (ADR 0013). `xmi::read` reads one `name` child of a package root into the root's name: no `name` child gives no name, and `<name/>` gives a name whose fields are absent. The `name` child may carry only `lang` and `content` in no namespace, plus an `xmi:type` or `xsi:type` naming `LangString`, and may contain only white space, comments and processing instructions. Anything else on or in it is refused as `ReadError::Unsupported` at its location, never dropped and never reinterpreted (ADR 0015): a second `name` child (SACM23-XMI-021), any other attribute, including `xmi:id` (SACM23-XMI-022) and `xml:lang` (which is not SACM `lang`), a type naming another class, an element child other than the value elements `lang` and `content` (SACM23-XMI-014; LIB-COMPAT-008), non-white-space text, and a `name` element in a namespace. Strict save refusing a nameless element belongs to LIB-COMPAT-007."
+requirement = "`xmi::write` writes the name of every ModelElement that has one as exactly one `name` child: in no namespace, with no `xmi:id` or type attribute, as the element's first child (before any containment child), carrying `lang` and then `content` (SACM23-XMI-011 rules). An element whose name is missing is written with no `name` child, and nothing is invented (ADR 0013). `xmi::read` reads one `name` child of a package root into the root's name: no `name` child gives no name, and `<name/>` gives a name whose fields are absent. The `name` child may carry only `lang` and `content` in no namespace, plus an `xmi:type` or `xsi:type` naming `LangString`, and may contain only the value elements `lang` and `content` (SACM23-XMI-014), white space, comments and processing instructions. Anything else on or in it is refused as `ReadError::Unsupported` at its location, never dropped and never reinterpreted (ADR 0015): a second `name` child (SACM23-XMI-021), any other attribute, including `xmi:id` (SACM23-XMI-022) and `xml:lang` (which is not SACM `lang`), a type naming another class, an element child other than the value elements `lang` and `content` (SACM23-XMI-014; LIB-COMPAT-008), non-white-space text, and a `name` element in a namespace. Strict save refusing a nameless element belongs to LIB-COMPAT-007."
 source = "formal/23-05-08 §8.6 (p. 19) \"name:LangString[1] (composition) - the name of the ModelElement.\"; ptc/22-03-13 Base::ModelElement name (Association \"name\", D8); XMI 2.5.1 §7.8.6 (p. 19) \"Each property that is a composite is represented by an XML element, but not by an XML attribute.\", §7.8.4 (pp. 17-18), rule 2a (p. 63); XML 1.0 §2.12 (`xml:lang`); D-PRESERVE; ADR 0013; ADR 0015; ADR 0017 amendment 1. C++ always writes `<name>`, matches it by local name and keeps the last of two names (`xmi_writer.cpp:255-256`, `xmi_reader.cpp:1182-1218`)"
 kind = "xmi"
 status = "verified"
@@ -2224,7 +2224,7 @@ source = "D-RT; D-ID; ADR 0010 D2; ADR 0012; ADR 0013; ADR 0020; assurance-forge
 kind = "api"
 status = "verified"
 depends_on = ["SACM23-ARG-002", "SACM23-ARG-003", "SACM23-XMI-012", "LIB-EDIT-001"]
-notes = "Slice 0031: designed in ADR 0020. The generated-id counters are excluded so that LIB-RT-003 can hold; LIB-EDIT-002 checks the next generated id on its own. Slice 0037: tests changed for the value elements (SACM23-XMI-014); re-checked there."
+notes = "Slice 0031: designed in ADR 0020. The generated-id counters are excluded so that LIB-RT-003 can hold; LIB-EDIT-002 checks the next generated id on its own. Slice 0037: a test input that still carried `xmi:version` in \"the pinned form\" was corrected (a follow-up); re-checked there."
 acceptance = [
   "Equal: a document compared with itself and with its clone gives `[]` and `==`; two documents built by the same operations in the same order give `[]` and `==`, for documents with two or more roots, depth 3 or more, names with absent, empty and non-ASCII fields, and each of the six declarations.",
   "Counters: a document built with generated ids and the same content inserted with caller ids compare equal.",
@@ -2849,6 +2849,7 @@ tests = [
   "crates/sacm/tests/xmi_value_elements.rs::sacm23_xmi_014_repeated_value_display_is_pinned",
   "crates/sacm/tests/xmi_value_elements.rs::sacm23_xmi_014_repeated_value_boxes_and_downcasts_as_a_send_sync_error",
   "crates/sacm/tests/xmi_value_elements.rs::sacm23_xmi_014_each_element_form_input_writes_the_bytes_of_its_attribute_twin_and_reads_back_equal",
+  "crates/sacm/tests/xmi_value_elements.rs::sacm23_xmi_014_a_repeated_value_element_is_checked_whole_before_it_counts_as_a_repeat",
 ]
 code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/roots.rs", "docs/adr/0021-xmi-reader-content.md", "docs/sacm/diagnostics.md"]
 
@@ -3932,7 +3933,7 @@ tests = [
   "crates/sacm/tests/xmi_write.rs::lib_api_010_write_error_is_a_send_sync_error_whose_variants_have_no_catalog_code",
 ]
 verification = "docs/verification/0035-m1-load-and-save-modes.md"
-notes = "Reworded and re-checked in slice 0026: names are no longer refused. Reworded in slice 0030: declarations are written (SACM23-XMI-017), so nothing a `Document` holds is refused and `WriteError::Unsupported` is removed until a row needs it; re-checked there. Slice 0035: strict write also refuses invalid documents (`WriteError::Invalid`, LIB-COMPAT-007), so the refusal set is stated per mode; re-checked there. Slice 0037: tests changed for the value elements (SACM23-XMI-014); re-checked there."
+notes = "Reworded and re-checked in slice 0026: names are no longer refused. Reworded in slice 0030: declarations are written (SACM23-XMI-017), so nothing a `Document` holds is refused and `WriteError::Unsupported` is removed until a row needs it; re-checked there. Slice 0035: strict write also refuses invalid documents (`WriteError::Invalid`, LIB-COMPAT-007), so the refusal set is stated per mode; re-checked there. Slice 0037: its error-type test was renamed for the three `WriteError` variants and now asserts `Invalid` too (a follow-up); re-checked there."
 
 [[row]]
 id = "LIB-API-011"
@@ -4190,7 +4191,7 @@ notes = "ADR review, 2026-11-13: needs an ADR before its tests, on the identity 
 id = "SACM23-XMI-021"
 area = "XMI"
 milestone = "M2"
-title = "A repeated single-valued containment is kept"
+title = "A repeated single-valued containment is refused"
 requirement = "A repeated single-valued containment (a second `name` now; later `UtilityElement.content` and `TaggedValue.key`) is refused in both load modes with a coded `ReadError` whose `code()` is SACM-MULT-001, naming the element and the location of every occurrence (ADR 0015 amendment 2; ADR 0021 amendment 1). It is never dropped, and no occurrence is chosen. Until this row, it is `Unsupported` (SACM23-XMI-012)."
 source = "formal/23-05-08 §8.6 `name:LangString[1]`; XMI 2.5.1 rule 4f (p. 51) `maxOccurs` \"unbounded\" regardless, §7.8.2; D-PRESERVE; D-SEV"
 kind = "xmi"

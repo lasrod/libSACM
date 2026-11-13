@@ -1210,6 +1210,68 @@ fn sacm23_xmi_014_a_value_given_three_times_names_all_three_occurrences() {
     }
 }
 
+#[test]
+fn sacm23_xmi_014_a_repeated_value_element_is_checked_whole_before_it_counts_as_a_repeat() {
+    // A value element is checked whole (namespace, attributes, children,
+    // value) when it is met, and only then against earlier occurrences: each
+    // of these repeats a value, but the repeat is itself not a value, so the
+    // read is `Unsupported` at that construct, not `RepeatedValue`.
+    let name = "<name lang=\"en\" content=\"C\"/>";
+    let cases = [
+        (
+            "assertionDeclaration=\"defeated\" and an empty declaration element",
+            claim(
+                " assertionDeclaration=\"defeated\"",
+                &format!("{name}{MARK}<assertionDeclaration/>"),
+            ),
+        ),
+        (
+            "a declaration element, then one holding no literal",
+            declared_claim(&format!(
+                "<assertionDeclaration>assumed</assertionDeclaration>\
+                 {MARK}<assertionDeclaration>bogus</assertionDeclaration>"
+            )),
+        ),
+        (
+            "content=\"A\" and a content element with an attribute",
+            in_ap(&format!(
+                "<name content=\"A\"><content {MARK}x=\"1\">A</content></name>"
+            )),
+        ),
+        (
+            "a lang element, then one with an attribute",
+            in_ap(&format!(
+                "<name><lang>en</lang><lang {MARK}x=\"1\">en</lang></name>"
+            )),
+        ),
+        (
+            "a content element, then one holding an element",
+            in_ap(&format!(
+                "<name><content>A</content><content>{MARK}<b/></content></name>"
+            )),
+        ),
+        (
+            "content=\"A\" and a content element holding an element",
+            in_ap(&format!(
+                "<name content=\"A\"><content>{MARK}<b/></content></name>"
+            )),
+        ),
+        (
+            "content=\"A\" and a sacm-prefixed content element",
+            in_ap(&format!(
+                "<name content=\"A\">{MARK}<sacm:content>A</sacm:content></name>"
+            )),
+        ),
+    ];
+    for (what, template) in cases {
+        let error = assert_unsupported_at_mark(what, &template);
+        assert!(
+            !matches!(error, ReadError::RepeatedValue { .. }),
+            "{ROW}: {what}: the repeat was counted before the element was checked: {error:?}"
+        );
+    }
+}
+
 // --- Item 6: Display and the error traits -------------------------------------------
 
 #[test]

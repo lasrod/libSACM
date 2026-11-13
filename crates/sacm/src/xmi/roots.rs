@@ -32,7 +32,7 @@
 //! read from the attribute or from a value element: an element in no
 //! namespace named after the property, whose character content is the value
 //! (SACM23-XMI-014; XMI 2.5.1 §7.8.4; ADR 0021 amendment 1). A property given
-//! more than once is `RepeatedValue` (SACM-MULT-001; XMI 2.5.1 rule 2h).
+//! more than once is `RepeatedValue` (SACM-MULT-001; XMI 2.5.1 §9.5.2 rule 2h).
 //!
 //! Names are matched by namespace URI and local name, and a type value is
 //! resolved as a `QName` against the namespaces in scope, so the choice of
@@ -722,8 +722,8 @@ fn read_value(text: &str, node: Node<'_, '_>) -> Result<String, ReadError> {
 }
 
 /// The `RepeatedValue` refusal of the property `property` of the element
-/// `owner`, given more than once in `holder` (SACM-MULT-001; XMI 2.5.1 rule
-/// 2h). It gives every occurrence, found in one pass over `holder` in
+/// `owner`, given more than once in `holder` (SACM-MULT-001; XMI 2.5.1 §9.5.2
+/// rule 2h). It gives every occurrence, found in one pass over `holder` in
 /// document order and located in one pass over the text: the attribute
 /// `local` in no namespace, if it is written, then every value element
 /// `local`.

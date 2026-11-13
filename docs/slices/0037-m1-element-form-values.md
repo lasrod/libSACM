@@ -3,7 +3,7 @@ slice: 0037
 name: m1-element-form-values
 state: in-progress
 step: verification
-rows: [SACM23-XMI-014, SACM23-XMI-012, SACM23-XMI-017, SACM23-XMI-010, SACM23-XMI-016, LIB-API-009, LIB-API-010, LIB-RT-001]
+rows: [SACM23-XMI-014, SACM23-XMI-012, SACM23-XMI-017, SACM23-XMI-010, SACM23-XMI-016, LIB-API-009, LIB-API-010, LIB-RT-001, LIB-COMPAT-007]
 mode: pr
 base: main
 ---

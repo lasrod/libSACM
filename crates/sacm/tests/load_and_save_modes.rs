@@ -2145,6 +2145,16 @@ fn lib_compat_007_the_invalid_refusal_says_1_error_for_one_and_3_errors_for_thre
         shown.contains("1 error") && !shown.contains("1 errors"),
         "{COMPAT_007}: the refusal with one Error does not say \"1 error\": {shown:?}"
     );
+    assert_eq!(
+        shown,
+        "the document cannot be written in strict mode: validation reports 1 error, \
+         SACM-MULT-001 on \"grandchild\"",
+        "{COMPAT_007}: the refusal with one Error is not the pinned text"
+    );
+    assert!(
+        !shown.contains("the first is"),
+        "{COMPAT_007}: the refusal with one Error says \"the first is\": {shown:?}"
+    );
 
     let three = two_roots(&["r", "child", "grandchild"]);
     let error = write_err(COMPAT_007, "three nameless elements", Mode::Strict, &three);
@@ -2157,5 +2167,10 @@ fn lib_compat_007_the_invalid_refusal_says_1_error_for_one_and_3_errors_for_thre
     assert!(
         shown.contains("3 errors"),
         "{COMPAT_007}: the refusal with three Errors does not say \"3 errors\": {shown:?}"
+    );
+    assert!(
+        shown.contains(", the first is SACM-MULT-001 on \"child\""),
+        "{COMPAT_007}: the refusal with three Errors does not name the first one as \
+         \", the first is SACM-MULT-001 on \\\"child\\\"\": {shown:?}"
     );
 }
