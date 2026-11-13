@@ -37,7 +37,10 @@
     `diagnostics` is `[]` when the file is unreadable. The output is compact: one line, then
     a newline. Escapes use the short forms for LF, CR, TAB, BS and FF, and lowercase
     `\u00XX` otherwise.
-  - On exit 2 in JSON mode, stderr also carries the human `sacm: <file>: …` line.
+  - In JSON mode every result, including an unreadable file, is the JSON object on stdout,
+    and stderr is empty. Only a usage error (exit 2) goes to stderr, as text, with no JSON.
+  - `roundtrip` does not check read diagnostics (that is `validate`'s job), so its `--strict`
+    changes only their severity and, in this release, not the result.
 - **JSON writer.** It is hand-written in the CLI (about 30 lines). There is no serde
   dependency at run time; `serde_json` is a dev-dependency only, for tests.
 - **`sacm roundtrip <file> [--strict] [-o <out>]`.**

@@ -103,6 +103,8 @@ which return a `LoadResult` with an `ok` flag and an optional document
   - It concerns the first id that repeats in document order.
   - `locations` gives the start tag of every element carrying that id, in document order.
   - `location()` is the first repeat.
+  - `ReadError::locations()` gives every location a refusal names: all of them for
+    `DuplicateId`, and `[location]` or `[]` for the other variants.
 - **`ReadError::InvalidId { id, location }`** (SACM-ID-002). The `xmi:id` is empty, which is
   not an NCName and which a `Document` cannot hold. Its location is the element's start tag.
 - **Both refusals apply in both modes.**

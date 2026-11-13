@@ -985,6 +985,13 @@ fn sacm23_xmi_016_a_missing_or_foreign_child_id_is_unsupported_at_the_child() {
                 "{MARK}<argumentElement xmi:type=\"sacm:Claim\" id=\"x\"/>"
             )),
         ),
+        // A padded id is refused at its attribute name, not at the start tag.
+        refused(
+            "a padded xmi:id on a Claim",
+            in_ap(&format!(
+                "<argumentElement xmi:type=\"sacm:Claim\" {MARK}xmi:id=\" c1 \"/>"
+            )),
+        ),
     ];
     assert_all_unsupported_at_mark("id", &cases);
 }

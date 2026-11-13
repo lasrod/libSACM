@@ -1,6 +1,6 @@
 [package]
 name = "sacm-cli"
-description = "Command-line tool to inspect, validate and convert OMG SACM 2.3 assurance cases"
+description = "Validate and convert OMG SACM 2.3 assurance cases"
 readme = "README.md"
 keywords = ["sacm", "assurance-case", "safety-case", "xmi", "cli"]
 categories = ["command-line-utilities", "parser-implementations"]

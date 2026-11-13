@@ -468,12 +468,20 @@ fn sacm23_val_020_an_empty_id_is_invalid_id_at_the_element_in_both_modes() {
             );
             let shown = error.to_string();
             assert_one_lowercase_line(VAL_020, &shown);
-            assert!(
-                shown.contains(&at.to_string()),
-                "{VAL_020}: {what}: Display {shown:?} does not name {at}"
+            assert_eq!(
+                shown,
+                format!("the xmi:id \"\" is not an NCName at {at}"),
+                "{VAL_020}: {what} ({mode:?}): the Display is not the id and its location"
             );
         }
     }
+    // The bare root pinned literally, so the location's own Display is
+    // covered too.
+    assert_eq!(
+        refusal(VAL_020, Mode::Strict, &cases[0].1).to_string(),
+        "the xmi:id \"\" is not an NCName at line 1, column 1",
+        "{VAL_020}: a bare root: the Display is not the id and its location"
+    );
 }
 
 #[test]
@@ -551,6 +559,13 @@ fn sacm23_val_001_two_claims_with_one_id_are_duplicate_id_in_both_modes() {
     let input = ap(&[claim("c1"), claim("c1")]);
     let locations = [loc(VAL_001, 3, 3), loc(VAL_001, 4, 3)];
     assert_duplicate_in_both_modes(VAL_001, "two Claims c1", &input, "c1", &locations);
+    for mode in MODES {
+        assert_eq!(
+            refusal(VAL_001, mode, &input).to_string(),
+            "the xmi:id \"c1\" is carried by 2 elements, at line 3, column 3; line 4, column 3",
+            "{VAL_001}: two Claims c1 ({mode:?}): the Display is not the count and every location"
+        );
+    }
 }
 
 #[test]
@@ -599,6 +614,13 @@ fn sacm23_val_001_three_elements_with_one_id_give_three_locations() {
     let input = ap(&[claim("x"), claim("x"), claim("x")]);
     let locations = [loc(VAL_001, 3, 3), loc(VAL_001, 4, 3), loc(VAL_001, 5, 3)];
     assert_duplicate_in_both_modes(VAL_001, "three Claims x", &input, "x", &locations);
+    for mode in MODES {
+        assert_eq!(
+            refusal(VAL_001, mode, &input).to_string(),
+            "the xmi:id \"x\" is carried by 3 elements, at line 3, column 3; line 4, column 3; line 5, column 3",
+            "{VAL_001}: three Claims x ({mode:?}): the Display is not the count and every location"
+        );
+    }
 }
 
 #[test]

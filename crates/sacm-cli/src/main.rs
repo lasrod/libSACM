@@ -1,12 +1,13 @@
-//! `sacm` — inspect, validate and convert OMG SACM 2.3 assurance cases.
+//! `sacm` — validate and convert OMG SACM 2.3 assurance cases.
 //!
 //! The command-line front end to the [`sacm`] library (ADR 0023). Subcommands
 //! are added as the library gains the capability behind them; see the
 //! functionality matrix (`docs/matrix/functionality-matrix.md`) for what is
 //! planned.
 //!
-//! Exit codes: 0 when the check passed; 1 when it ran and failed (an Error
-//! diagnostic, a refused strict save, or a round-trip difference); 2 when
+//! Exit codes: 0 when the check passed; 1 when it ran and failed (for
+//! `validate`, an Error diagnostic; for `roundtrip`, a refused strict save,
+//! output that does not read back, or a difference); 2 when
 //! the tool could not do the job (a usage error, an I/O error, or input that
 //! `xmi::read` refuses). stdout carries the result; stderr carries only what
 //! stopped the command.
@@ -21,6 +22,7 @@ use std::process::ExitCode;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use sacm::compare::{self, Difference};
 use sacm::diagnostic::{self, Diagnostic, Severity};
+use sacm::model::Document;
 use sacm::validation;
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, WriteOptions};
 
@@ -33,7 +35,7 @@ const FAILED: u8 = 1;
 /// The tool could not do the job.
 const NOT_DONE: u8 = 2;
 
-/// Inspect, validate and convert OMG SACM 2.3 assurance cases.
+/// Validate and convert OMG SACM 2.3 assurance cases.
 #[derive(Debug, Parser)]
 #[command(name = "sacm", bin_name = "sacm", version, about, long_about = None)]
 struct Cli {
@@ -76,7 +78,8 @@ struct ValidateArgs {
 struct RoundtripArgs {
     /// The SACM XMI file to check.
     file: PathBuf,
-    /// Read the input in strict mode.
+    /// Read the input in strict mode (read diagnostics are not checked; see
+    /// `sacm validate`).
     #[arg(long)]
     strict: bool,
     /// Write the strict output here, only when the round trip is faithful.
@@ -89,7 +92,7 @@ struct RoundtripArgs {
 enum Format {
     /// One line per diagnostic, then a summary.
     Human,
-    /// One JSON object (ADR 0023).
+    /// One JSON object on one line (see the sacm-cli README).
     Json,
 }
 
@@ -319,37 +322,13 @@ fn run_roundtrip(
 
     // The strict reload.
     let strict = ReadOptions::default().with_mode(Mode::Strict);
-    let back = match xmi::read(text.as_bytes(), &strict) {
+    let reloaded = xmi::read(text.as_bytes(), &strict);
+    let back = match check_reload(&name, &reloaded, out) {
         Ok(back) => back,
-        Err(error) => {
-            let written = writeln!(
-                out,
-                "{name}: round trip failed: the strict output does not read back: {error}"
-            );
-            return (FAILED, written);
-        }
+        Err(failed) => return failed,
     };
-    let errors: Vec<&Diagnostic> = back
-        .diagnostics()
-        .iter()
-        .filter(|diagnostic| diagnostic.severity() == Severity::Error)
-        .collect();
-    if !errors.is_empty() {
-        let written = errors
-            .iter()
-            .try_for_each(|diagnostic| writeln!(out, "{diagnostic}"))
-            .and_then(|()| {
-                writeln!(
-                    out,
-                    "{name}: round trip failed: the strict output reads back with {} {}",
-                    errors.len(),
-                    plural(errors.len(), "error", "errors")
-                )
-            });
-        return (FAILED, written);
-    }
 
-    let differences = compare::semantic_compare(&document, back.document());
+    let differences = compare::semantic_compare(&document, back);
     if !differences.is_empty() {
         return (FAILED, write_differences(&name, &differences, out));
     }
@@ -365,6 +344,49 @@ fn run_roundtrip(
         }
     }
     (PASSED, writeln!(out, "{name}: round trip ok"))
+}
+
+/// Checks the strict reload of the output: the document it read back, when
+/// it read with no Error diagnostic. Otherwise it writes each Error's line,
+/// then `<file>: round trip failed: the strict output reads back with N
+/// errors`, or, when it does not read at all, `<file>: round trip failed:
+/// the strict output does not read back: <refusal>`, and returns the exit
+/// code with the result of writing.
+fn check_reload<'a>(
+    name: &str,
+    reloaded: &'a Result<xmi::ReadOutput, ReadError>,
+    out: &mut impl Write,
+) -> Result<&'a Document, (u8, io::Result<()>)> {
+    let back = match reloaded {
+        Ok(back) => back,
+        Err(error) => {
+            let written = writeln!(
+                out,
+                "{name}: round trip failed: the strict output does not read back: {error}"
+            );
+            return Err((FAILED, written));
+        }
+    };
+    let errors: Vec<&Diagnostic> = back
+        .diagnostics()
+        .iter()
+        .filter(|diagnostic| diagnostic.severity() == Severity::Error)
+        .collect();
+    if errors.is_empty() {
+        return Ok(back.document());
+    }
+    let written = errors
+        .iter()
+        .try_for_each(|diagnostic| writeln!(out, "{diagnostic}"))
+        .and_then(|()| {
+            writeln!(
+                out,
+                "{name}: round trip failed: the strict output reads back with {} {}",
+                errors.len(),
+                plural(errors.len(), "error", "errors")
+            )
+        });
+    Err((FAILED, written))
 }
 
 /// Writes each difference's line, then
@@ -422,6 +444,48 @@ mod tests {
         );
     }
 
+    /// An `ArgumentPackage` with `claims` Claims typed by `xsi:type`, each a
+    /// SACM-XMI-010 diagnostic, and an `xmi:version`, a SACM-XMI-011 Info
+    /// diagnostic, when `versioned`.
+    fn typed(claims: usize, versioned: bool) -> String {
+        use std::fmt::Write as _;
+
+        let version = if versioned {
+            r#" xmi:version="2.0""#
+        } else {
+            ""
+        };
+        let mut text = format!(
+            r#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmi:id="arguments"{version}>"#
+        );
+        for claim in 0..claims {
+            let _ = write!(
+                text,
+                r#"<argumentElement xsi:type="sacm:Claim" xmi:id="c{claim}"/>"#
+            );
+        }
+        text.push_str("</sacm:ArgumentPackage>");
+        text
+    }
+
+    /// The diagnostics of reading `input` in `mode`.
+    fn read_diagnostics(input: &str, mode: Mode) -> Vec<Diagnostic> {
+        xmi::read(input.as_bytes(), &ReadOptions::default().with_mode(mode))
+            .map(|output| output.diagnostics().to_vec())
+            .unwrap_or_default()
+    }
+
+    /// The lines `write_human` writes for `found`.
+    fn human(found: &[Diagnostic]) -> Vec<String> {
+        let mut out = Vec::new();
+        assert!(write_human("f", "invalid", found, &mut out).is_ok());
+        String::from_utf8(out)
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_owned)
+            .collect()
+    }
+
     #[test]
     fn the_human_summary_counts_each_severity() {
         let mut out = Vec::new();
@@ -429,6 +493,111 @@ mod tests {
         assert_eq!(
             String::from_utf8(out).unwrap_or_default(),
             "f: valid (0 errors, 0 warnings, 0 info)\n"
+        );
+
+        let mut found = read_diagnostics(&typed(3, false), Mode::Strict);
+        found.extend(read_diagnostics(&typed(2, true), Mode::Tolerant));
+        found.sort();
+        let severities = |severity: Severity| {
+            found
+                .iter()
+                .filter(|diagnostic| diagnostic.severity() == severity)
+                .count()
+        };
+        assert_eq!(
+            (
+                severities(Severity::Error),
+                severities(Severity::Warning),
+                severities(Severity::Info)
+            ),
+            (3, 2, 1)
+        );
+        let mut expected: Vec<String> = found.iter().map(ToString::to_string).collect();
+        expected.push("f: invalid (3 errors, 2 warnings, 1 info)".to_owned());
+        assert_eq!(human(&found), expected);
+
+        let mut found = read_diagnostics(&typed(1, false), Mode::Strict);
+        found.extend(read_diagnostics(&typed(1, false), Mode::Tolerant));
+        assert_eq!(
+            human(&found).last().map(String::as_str),
+            Some("f: invalid (1 error, 1 warning, 0 info)")
+        );
+    }
+
+    /// The lines `check_reload` writes for `reloaded`, and its exit code
+    /// when it fails.
+    fn reload(reloaded: &Result<xmi::ReadOutput, ReadError>) -> (Option<u8>, Vec<String>) {
+        let mut out = Vec::new();
+        let code = match check_reload("f", reloaded, &mut out) {
+            Ok(_) => None,
+            Err((code, written)) => {
+                assert!(written.is_ok());
+                Some(code)
+            }
+        };
+        let lines = String::from_utf8(out)
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_owned)
+            .collect();
+        (code, lines)
+    }
+
+    // The reload check of `roundtrip` (LIB-CLI-003). A correct writer gives
+    // output that reads back cleanly, so the binary cannot be driven into it.
+    #[test]
+    fn the_reload_check_passes_warnings_and_fails_errors() {
+        let input = typed(1, true);
+        let tolerant = ReadOptions::default().with_mode(Mode::Tolerant);
+        let warned = xmi::read(input.as_bytes(), &tolerant);
+        assert!(
+            warned
+                .as_ref()
+                .is_ok_and(|output| !output.diagnostics().is_empty())
+        );
+        assert_eq!(reload(&warned), (None, Vec::new()));
+
+        let strict = ReadOptions::default().with_mode(Mode::Strict);
+        let failed = xmi::read(input.as_bytes(), &strict);
+        let errors: Vec<String> = failed
+            .as_ref()
+            .map(|output| {
+                output
+                    .diagnostics()
+                    .iter()
+                    .filter(|diagnostic| diagnostic.severity() == Severity::Error)
+                    .map(ToString::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
+        assert_eq!(errors.len(), 1);
+        let mut expected = errors;
+        expected.push("f: round trip failed: the strict output reads back with 1 error".to_owned());
+        assert_eq!(reload(&failed), (Some(FAILED), expected));
+
+        let two = xmi::read(typed(2, false).as_bytes(), &strict);
+        let (code, lines) = reload(&two);
+        assert_eq!(code, Some(FAILED));
+        assert_eq!(
+            lines.last().map(String::as_str),
+            Some("f: round trip failed: the strict output reads back with 2 errors")
+        );
+
+        let unreadable = xmi::read(b"<r></s>", &strict);
+        let refusal = unreadable
+            .as_ref()
+            .err()
+            .map(ToString::to_string)
+            .unwrap_or_default();
+        assert_ne!(refusal, "");
+        assert_eq!(
+            reload(&unreadable),
+            (
+                Some(FAILED),
+                vec![format!(
+                    "f: round trip failed: the strict output does not read back: {refusal}"
+                )]
+            )
         );
     }
 }

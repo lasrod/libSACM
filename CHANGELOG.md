@@ -149,8 +149,8 @@ change bumps the minor version and is listed under **Breaking**.
 - `xmi::Mode`; `ReadOptions`/`WriteOptions::with_mode`; `ReadOutput::mode`; read
   diagnostics SACM-XMI-010 (`xsi:type`) and SACM-XMI-011 (`xmi:version`, Info)
   [LIB-COMPAT-001].
-- `xmi::ReadError::DuplicateId` (SACM-ID-001, new `Code::ID_DUPLICATE`), naming every
-  element that carries the repeated `xmi:id`, and `xmi::ReadError::InvalidId`
+- `xmi::ReadError::DuplicateId` (SACM-ID-001, new `Code::ID_DUPLICATE`), giving the
+  location of every element that carries the repeated `xmi:id`, and `xmi::ReadError::InvalidId`
   (SACM-ID-002) for an empty `xmi:id`; `ReadError::locations()` gives every location a
   refusal names [SACM23-VAL-001, SACM23-VAL-020].
 - `validation::validate` reports each element whose id is not an XML NCName as a

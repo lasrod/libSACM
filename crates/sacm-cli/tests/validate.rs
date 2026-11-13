@@ -212,9 +212,9 @@ fn lib_cli_002_a_nameless_claim_exits_1_with_the_mult_001_line_and_an_invalid_su
         diagnostics, expected,
         "{ROW}: the diagnostic lines are not the library's, in order"
     );
-    assert!(
-        summary.starts_with("nameless-claim.sacm.xmi: invalid ("),
-        "{ROW}: the last line is not the invalid summary: {summary:?}"
+    assert_eq!(
+        *summary, "nameless-claim.sacm.xmi: invalid (1 error, 0 warnings, 0 info)",
+        "{ROW}: the last line is not the invalid summary with its counts"
     );
     assert_eq!(run.stderr, "", "{ROW}: stderr is not empty");
 }
@@ -227,17 +227,17 @@ fn lib_cli_002_xsi_type_is_a_warning_by_default_and_an_error_with_strict() {
             Mode::Tolerant,
             0,
             "warning SACM-XMI-010 ",
-            "valid (",
+            "xsi-type.sacm.xmi: valid (0 errors, 1 warning, 0 info)",
         ),
         (
             &["--strict", "xsi-type.sacm.xmi"],
             Mode::Strict,
             1,
             "error SACM-XMI-010 ",
-            "invalid (",
+            "xsi-type.sacm.xmi: invalid (1 error, 0 warnings, 0 info)",
         ),
     ];
-    for (args, mode, code, line_start, summary_start) in cases {
+    for (args, mode, code, line_start, wanted_summary) in cases {
         let expected = lines_of(&findings("xsi-type.sacm.xmi", mode));
         assert!(
             expected.iter().any(|line| line.starts_with(line_start)),
@@ -258,9 +258,9 @@ fn lib_cli_002_xsi_type_is_a_warning_by_default_and_an_error_with_strict() {
             diagnostics, expected,
             "{ROW}: {args:?}: the diagnostic lines are not the library's"
         );
-        assert!(
-            summary.starts_with(&format!("xsi-type.sacm.xmi: {summary_start}")),
-            "{ROW}: {args:?}: the last line is not the {summary_start:?} summary: {summary:?}"
+        assert_eq!(
+            *summary, wanted_summary,
+            "{ROW}: {args:?}: the last line is not the summary with its counts"
         );
         assert_eq!(run.stderr, "", "{ROW}: {args:?}: stderr is not empty");
     }
@@ -355,6 +355,9 @@ fn lib_cli_002_json_output_equals_the_golden_text_and_is_identical_across_runs()
             first.stdout, expected,
             "{ROW}: {args:?}: stdout is not {name}"
         );
+        // ADR 0023: in JSON mode every result, an unreadable file included,
+        // is the object on stdout; only a usage error goes to stderr.
+        assert_eq!(first.stderr, "", "{ROW}: {args:?}: stderr is not empty");
         let second = validate(args);
         assert_eq!(
             second.stdout, first.stdout,
@@ -384,6 +387,10 @@ fn lib_cli_002_json_for_a_duplicate_id_has_the_refusal_with_its_code_and_every_l
         run.stderr
     );
     assert_eq!(run.stdout, expected, "{ROW}: the JSON of a duplicate id");
+    assert_eq!(
+        run.stderr, "",
+        "{ROW}: a duplicate id in JSON mode writes to stderr"
+    );
 }
 
 #[test]
@@ -394,6 +401,10 @@ fn lib_cli_002_json_for_a_missing_file_is_unreadable_with_a_refusal() {
         Some(2),
         "{ROW}: exit code; stderr: {}",
         run.stderr
+    );
+    assert_eq!(
+        run.stderr, "",
+        "{ROW}: a missing file in JSON mode writes to stderr"
     );
     let value: Value = serde_json::from_str(&run.stdout)
         .unwrap_or_else(|error| panic!("{ROW}: stdout is not JSON ({error}): {:?}", run.stdout));

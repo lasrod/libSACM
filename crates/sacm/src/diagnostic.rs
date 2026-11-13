@@ -183,8 +183,8 @@ impl Code {
     /// `xmi:id`, which XMI 2.5.1 §7.6.1 requires to be unique within the
     /// file. The code of
     /// [`ReadError::DuplicateId`](crate::xmi::ReadError::DuplicateId)
-    /// (SACM23-VAL-001), which names every element carrying it. Fix it by
-    /// giving each element its own id.
+    /// (SACM23-VAL-001), giving the location of every element that carries
+    /// the repeated `xmi:id`. Fix it by giving each element its own id.
     ///
     /// ```
     /// use sacm::diagnostic::Code;

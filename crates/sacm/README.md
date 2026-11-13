@@ -14,8 +14,8 @@ Read, edit, validate and write assurance cases in the
   It refuses what it cannot represent yet rather than drop it.
 - `sacm::xmi::write` writes a document deterministically. In strict mode, the default, it
   refuses a document that validation reports an Error for.
-- `sacm::validation::validate` reports an element with no name and an id that is not an
-  XML NCName, as diagnostics with stable codes.
+- `sacm::validation::validate` reports each element that has no name, and each element
+  whose id is not an XML `NCName`, as diagnostics with stable codes.
 - `sacm::edit::apply` creates AssuranceCasePackages, ArgumentPackages and Claims; a
   refused edit changes nothing.
 - `sacm::compare::semantic_compare` lists every difference in SACM content between two
@@ -50,7 +50,8 @@ use sacm::validation;
 use sacm::xmi::{self, ReadOptions, WriteOptions};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Load. The input is the bytes of an XMI file; here it is inline.
+    // Load. The input is the bytes of an XMI file, such as
+    // `std::fs::read("case.sacm.xmi")?`; here it is inline.
     let input = br#"<?xml version="1.0" encoding="UTF-8"?>
 <sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="case">
@@ -77,7 +78,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let created = edit::apply(&mut document, CreateClaim::new("arguments", name))?;
     assert_eq!(created.created_ids()[0].as_str(), "claim_1");
 
-    // Validate: every element has a name and a valid id.
+    // Validate. This release checks that every element has a name and an `NCName` id.
     let findings = validation::validate(&document);
     assert!(!diagnostic::has_errors(&findings));
 

@@ -247,7 +247,9 @@ mod roots;
 /// - [`ReadError::InvalidId`] (SACM-ID-002): an element's `xmi:id` is empty.
 ///   Any other id is read as written; one that is not an XML `NCName`, such
 ///   as `1c` or `a b`, is reported by
-///   [`validation::validate`](crate::validation::validate).
+///   [`validation::validate`](crate::validation::validate), except an
+///   `NCName` with XML white space around it, such as `" c1 "`, which is
+///   `Unsupported` until a later release.
 /// - [`ReadError::Unsupported`] (no code): the input is well-formed but this
 ///   version cannot represent it. It is also the refusal of an
 ///   `assertionDeclaration` value that is not a SACM literal, until a later
@@ -624,7 +626,7 @@ pub enum ReadError {
     /// [`locations`](Self::locations) every element carrying the id.
     ///
     /// ```
-    /// use sacm::diagnostic::{Code, SourceLocation};
+    /// use sacm::diagnostic::Code;
     /// use sacm::xmi::{self, ReadError, ReadOptions};
     ///
     /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
@@ -635,7 +637,7 @@ pub enum ReadError {
     /// let error = xmi::read(input, &ReadOptions::default()).unwrap_err();
     /// assert!(matches!(&error, ReadError::DuplicateId { id, .. } if id.as_str() == "c1"));
     /// assert_eq!(error.code(), Some(Code::ID_DUPLICATE));
-    /// assert_eq!(error.location(), SourceLocation::new(4, 3));
+    /// assert_eq!(error.location().map(|at| (at.line(), at.column())), Some((4, 3)));
     /// assert_eq!(error.locations().len(), 2);
     /// assert_eq!(
     ///     error.to_string(),
@@ -654,7 +656,9 @@ pub enum ReadError {
     /// a [`Document`] cannot hold (SACM-ID-002, SACM23-VAL-020). The location
     /// is the `<` of the element's start tag. Other ids that are not
     /// `NCName`s are read as written, and
-    /// [`validation::validate`](crate::validation::validate) reports them.
+    /// [`validation::validate`](crate::validation::validate) reports them,
+    /// except an `NCName` with XML white space around it, such as `" c1 "`,
+    /// which is `Unsupported` until a later release.
     #[non_exhaustive]
     InvalidId {
         /// The id as written: in this release, always empty.
@@ -727,11 +731,13 @@ impl ReadError {
     /// [`location`](Self::location), or nothing when it has none.
     ///
     /// ```
-    /// use sacm::diagnostic::SourceLocation;
     /// use sacm::xmi::{self, ReadOptions};
     ///
     /// let error = xmi::read(b"<r></s>", &ReadOptions::default()).unwrap_err();
-    /// assert_eq!(error.locations(), [SourceLocation::new(1, 4).unwrap()]);
+    /// assert_eq!(
+    ///     error.locations().iter().map(|at| (at.line(), at.column())).collect::<Vec<_>>(),
+    ///     [(1, 4)]
+    /// );
     /// ```
     #[must_use]
     pub fn locations(&self) -> &[SourceLocation] {

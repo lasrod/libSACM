@@ -24,8 +24,9 @@
 //! Edition and Namespaces in XML Third Edition give the full character
 //! ranges); it has no spaces and no `:`. [`xmi::read`](crate::xmi::read)
 //! reads an id such as `1c`, `a:b` or `a b` as written, so that nothing is
-//! lost, and refuses only an empty one; [`edit::apply`](crate::edit::apply)
-//! never creates one. To fix a finding, give the element an id that is an
+//! lost, and refuses only an empty one, except an `NCName` with XML white
+//! space around it, such as `" c1 "`, which is `Unsupported` until a later
+//! release; [`edit::apply`](crate::edit::apply) never creates one. To fix a finding, give the element an id that is an
 //! `NCName`.
 //!
 //! The result is sorted by [`Diagnostic`]'s order. Its diagnostics have no
