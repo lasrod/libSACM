@@ -141,6 +141,11 @@ change bumps the minor version and is listed under **Breaking**.
   when there is none [LIB-RT-001]. Load, save and load gives an equal document and the same
   bytes for every valid fixture, and documents built with `edit::apply` round-trip
   [LIB-RT-002, LIB-RT-003].
+- `edit::Mutation` reports the operation and the ids created, changed and deleted, and
+  `Operation::operation_name()` gives a stable name for logs [LIB-EDIT-003];
+  `edit::apply` is all or nothing: on success the document is structurally valid; on a
+  refusal it is unchanged (`==` to before, and the same ids are generated next)
+  [LIB-EDIT-002].
 
 ### Changed
 

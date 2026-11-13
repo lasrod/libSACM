@@ -117,7 +117,8 @@
 //! XMI text for you to save.
 //! Build a document from scratch, or extend one you read, with
 //! [`edit::apply`] and the create operations such as [`edit::CreateClaim`];
-//! the [`edit`] module example builds, validates and writes a complete
+//! each returns a [`Mutation`](edit::Mutation) with the operation and the ids
+//! it created, changed and deleted; the [`edit`] module example builds, validates and writes a complete
 //! document, which [`xmi::read`] reads back.
 //! Compare two documents by their SACM content with
 //! [`compare::semantic_compare`], which names each difference, or with `==`.

@@ -1,6 +1,6 @@
 //! The create operations (LIB-EDIT-001, ADR 0019).
 
-use super::{EditError, Mutation};
+use super::EditError;
 use crate::model::{
     Document, ElementId, ElementKind, InsertError, LangString, SacmElement, admits, is_ncname,
 };
@@ -89,14 +89,14 @@ impl CreateAssuranceCasePackage {
         &self.name
     }
 
-    /// Checks and applies the operation.
-    pub(super) fn apply(self, document: &mut Document) -> Result<Mutation, EditError> {
+    /// Checks and applies the operation, and returns the ids it created.
+    pub(super) fn apply(&self, document: &mut Document) -> Result<Vec<ElementId>, EditError> {
         create(
             document,
             ElementKind::AssuranceCasePackage,
             self.parent.as_ref(),
-            self.id,
-            self.name,
+            self.id.as_ref(),
+            &self.name,
         )
     }
 }
@@ -182,14 +182,14 @@ impl CreateArgumentPackage {
         &self.name
     }
 
-    /// Checks and applies the operation.
-    pub(super) fn apply(self, document: &mut Document) -> Result<Mutation, EditError> {
+    /// Checks and applies the operation, and returns the ids it created.
+    pub(super) fn apply(&self, document: &mut Document) -> Result<Vec<ElementId>, EditError> {
         create(
             document,
             ElementKind::ArgumentPackage,
             self.parent.as_ref(),
-            self.id,
-            self.name,
+            self.id.as_ref(),
+            &self.name,
         )
     }
 }
@@ -267,28 +267,30 @@ impl CreateClaim {
         &self.name
     }
 
-    /// Checks and applies the operation.
-    pub(super) fn apply(self, document: &mut Document) -> Result<Mutation, EditError> {
+    /// Checks and applies the operation, and returns the ids it created.
+    pub(super) fn apply(&self, document: &mut Document) -> Result<Vec<ElementId>, EditError> {
         create(
             document,
             ElementKind::Claim,
             Some(&self.parent),
-            self.id,
-            self.name,
+            self.id.as_ref(),
+            &self.name,
         )
     }
 }
 
 /// Creates an element of `kind` under `parent` (a root when `None`), with the
-/// id `id` or a generated one, after every check of ADR 0019 in order. On a
-/// refusal the document, its counters included, is unchanged.
+/// id `id` or a generated one, after every check of ADR 0019 in order, and
+/// returns the ids created: the new element's. On a refusal the document,
+/// its counters included, is unchanged: every check runs before the one
+/// change, and the counter moves only after it.
 fn create(
     document: &mut Document,
     kind: ElementKind,
     parent: Option<&ElementId>,
-    id: Option<ElementId>,
-    name: LangString,
-) -> Result<Mutation, EditError> {
+    id: Option<&ElementId>,
+    name: &LangString,
+) -> Result<Vec<ElementId>, EditError> {
     // 1 and 2: the parent exists and its class can hold `kind`.
     if let Some(parent) = parent {
         let Some(parent_kind) = document.get(parent).map(SacmElement::kind) else {
@@ -307,17 +309,17 @@ fn create(
     // 3 and 4: a caller id is an NCName and not in use; otherwise generate one.
     let (id, generated) = if let Some(id) = id {
         if !is_ncname(id.as_str()) {
-            return Err(EditError::InvalidId { id });
+            return Err(EditError::InvalidId { id: id.clone() });
         }
-        if document.contains(&id) {
-            return Err(EditError::DuplicateId { id });
+        if document.contains(id) {
+            return Err(EditError::DuplicateId { id: id.clone() });
         }
-        (id, None)
+        (id.clone(), None)
     } else {
         let (id, n) = document.next_generated_id(kind);
         (id, Some(n))
     };
-    match document.insert_node(parent, kind, id.clone(), Some(name)) {
+    match document.insert_node(parent, kind, id.clone(), Some(name.clone())) {
         Ok(()) => {}
         Err(InsertError::UnknownParent(parent)) => {
             return Err(EditError::ParentNotFound { parent });
@@ -346,5 +348,5 @@ fn create(
     if let Some(n) = generated {
         document.commit_generated_id(kind, n);
     }
-    Ok(Mutation::created(vec![id]))
+    Ok(vec![id])
 }

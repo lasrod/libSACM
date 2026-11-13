@@ -2,8 +2,8 @@
 //!
 //! An operation is a plain value that says what to change. [`apply`] checks
 //! it completely against the document and then either makes the change and
-//! returns a [`Mutation`] listing what it created, or refuses with an
-//! [`EditError`]. **A refused operation changes nothing**: not the elements,
+//! returns a [`Mutation`] (the operation, and the ids it created, changed and
+//! deleted), or refuses with an [`EditError`]. **A refused operation changes nothing**: not the elements,
 //! not the written XMI, and not the ids generated next.
 //!
 //! # Operations
@@ -113,6 +113,23 @@ use crate::model::{Document, ElementId, ElementKind};
 /// Checks `operation` against `document` and applies it, or refuses it and
 /// leaves `document` unchanged.
 ///
+/// `apply` is the only public way to change a [`Document`] (outside the
+/// unstable `test-support` feature), and it is all or nothing:
+/// - **On success** the document stays structurally valid, as every
+///   `Document` is: ids are unique, parent and child links agree, every root
+///   is a package, every child is in a composite role of its parent's class,
+///   and every Assertion has an
+///   [`AssertionDeclaration`](crate::model::AssertionDeclaration) (SACM 2.3
+///   §11.10). The returned [`Mutation`] holds the operation and the ids it created,
+///   changed and deleted.
+/// - **On refusal** the document is unchanged: it is `==` to what it was
+///   before (see [`compare`](crate::compare)), and it generates the same next
+///   ids.
+///
+/// `apply` neither checks content findings nor refuses an operation because
+/// of one; call [`validate`](crate::validation::validate) again after
+/// editing.
+///
 /// Takes any operation struct, such as [`CreateClaim`], or an [`Operation`].
 /// See the [module docs](self) for the operations, the ids and the order of
 /// the checks.
@@ -139,20 +156,32 @@ use crate::model::{Document, ElementId, ElementKind};
 /// assert_eq!(mutation.created_ids(), [ElementId::from("argument_package_1")]);
 ///
 /// let again = CreateArgumentPackage::root(LangString::new("Again")).with_id("argument_package_1");
+/// let before = doc.clone();
 /// let error = edit::apply(&mut doc, again).unwrap_err();
 /// assert!(matches!(error, EditError::DuplicateId { .. }));
-/// assert_eq!(doc.element_count(), 1);
+/// assert_eq!(doc, before); // unchanged
 /// # Ok::<(), EditError>(())
 /// ```
 pub fn apply(
     document: &mut Document,
     operation: impl Into<Operation>,
 ) -> Result<Mutation, EditError> {
-    match operation.into() {
-        Operation::CreateAssuranceCasePackage(operation) => operation.apply(document),
-        Operation::CreateArgumentPackage(operation) => operation.apply(document),
-        Operation::CreateClaim(operation) => operation.apply(document),
-    }
+    let operation = operation.into();
+    // Each operation checks everything before it changes the document, so a
+    // refusal here leaves it untouched.
+    let created = match &operation {
+        Operation::CreateAssuranceCasePackage(create) => create.apply(document)?,
+        Operation::CreateArgumentPackage(create) => create.apply(document)?,
+        Operation::CreateClaim(create) => create.apply(document)?,
+    };
+    Ok(Mutation {
+        operation,
+        created,
+        // A create changes no existing element and deletes none (ADR 0019
+        // amendment 1).
+        changed: Vec::new(),
+        deleted: Vec::new(),
+    })
 }
 
 /// An edit operation, as a value: any of the operation structs.
@@ -181,6 +210,34 @@ pub enum Operation {
     CreateClaim(CreateClaim),
 }
 
+impl Operation {
+    /// The operation's stable name, for logs: the name of its struct, such as
+    /// `"CreateClaim"`.
+    ///
+    /// The names are stable, like a diagnostic [`Code`]: a name never changes
+    /// and is never given to another operation. This release has
+    /// `"CreateAssuranceCasePackage"`, `"CreateArgumentPackage"` and
+    /// `"CreateClaim"`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::edit::{CreateClaim, Operation};
+    /// use sacm::model::LangString;
+    ///
+    /// let operation = Operation::from(CreateClaim::new("arguments", LangString::new("C1")));
+    /// assert_eq!(operation.operation_name(), "CreateClaim");
+    /// ```
+    #[must_use]
+    pub fn operation_name(&self) -> &'static str {
+        match self {
+            Self::CreateAssuranceCasePackage(_) => "CreateAssuranceCasePackage",
+            Self::CreateArgumentPackage(_) => "CreateArgumentPackage",
+            Self::CreateClaim(_) => "CreateClaim",
+        }
+    }
+}
+
 impl From<CreateAssuranceCasePackage> for Operation {
     fn from(operation: CreateAssuranceCasePackage) -> Self {
         Self::CreateAssuranceCasePackage(operation)
@@ -199,36 +256,123 @@ impl From<CreateClaim> for Operation {
     }
 }
 
-/// What an applied operation changed.
+/// What an applied operation did: the operation, and the ids it created,
+/// changed and deleted.
+///
+/// [`apply`] returns one for every operation it applies. The three lists are
+/// what [`semantic_compare`](crate::compare::semantic_compare) of the
+/// document before and after would report; `apply` does not run it (ADR 0019
+/// amendment 1):
+/// - [`created_ids`](Self::created_ids) are in the document after, not
+///   before;
+/// - [`changed_ids`](Self::changed_ids) are in both, with a difference in the
+///   element itself;
+/// - [`deleted_ids`](Self::deleted_ids) are in the document before, not
+///   after.
+///
+/// Adding a child does not change its parent. The new element is reported as
+/// created, and the parent's name, declaration and the order of its existing
+/// children are as before (`semantic_compare` compares the order of the
+/// children both documents hold, so a new child is not a reordering). The
+/// parent is in [`operation`](Self::operation). So in this release, where
+/// every operation is a create, `changed_ids` and `deleted_ids` are always
+/// empty.
+///
+/// A refused operation returns an [`EditError`] instead, and the document is
+/// unchanged; log it with [`EditError::code`]. To log the refused operation's
+/// name, keep a clone of the operation, since `apply` takes it by value.
 ///
 /// # Examples
 ///
+/// An audit-log line:
+///
 /// ```
-/// use sacm::edit::{self, CreateAssuranceCasePackage};
+/// use sacm::edit::{self, CreateArgumentPackage, CreateClaim};
 /// use sacm::model::{Document, ElementId, LangString};
 ///
 /// let mut doc = Document::new();
-/// let operation = CreateAssuranceCasePackage::root(LangString::new("Case")).with_id("case");
-/// let mutation = edit::apply(&mut doc, operation)?;
-/// assert_eq!(mutation.created_ids(), [ElementId::from("case")]);
+/// let arguments = CreateArgumentPackage::root(LangString::new("Arguments")).with_id("arguments");
+/// edit::apply(&mut doc, arguments)?;
+/// // No with_id: the claim's id is generated.
+/// let claim = CreateClaim::new("arguments", LangString::new("The system is safe"));
+/// let mutation = edit::apply(&mut doc, claim)?;
+///
+/// let ids = |ids: &[ElementId]| ids.iter().map(ElementId::as_str).collect::<Vec<_>>().join(",");
+/// let line = format!(
+///     "{} created=[{}] changed=[{}] deleted=[{}]",
+///     mutation.operation().operation_name(),
+///     ids(mutation.created_ids()),
+///     ids(mutation.changed_ids()),
+///     ids(mutation.deleted_ids()),
+/// );
+/// assert_eq!(line, "CreateClaim created=[claim_1] changed=[] deleted=[]");
 /// # Ok::<(), sacm::edit::EditError>(())
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Mutation {
+    operation: Operation,
     created: Vec<ElementId>,
+    changed: Vec<ElementId>,
+    deleted: Vec<ElementId>,
 }
 
 impl Mutation {
-    /// A mutation that created `created`, in creation order.
-    fn created(created: Vec<ElementId>) -> Self {
-        Self { created }
+    /// The operation, exactly as given to [`apply`].
+    ///
+    /// A generated id is not filled in: for an operation without `with_id`,
+    /// its `id()` is still `None`, and the id is in
+    /// [`created_ids`](Self::created_ids).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, Operation};
+    /// use sacm::model::{Document, LangString};
+    ///
+    /// let mut doc = Document::new();
+    /// let operation = CreateArgumentPackage::root(LangString::new("Arguments"));
+    /// let mutation = edit::apply(&mut doc, operation.clone())?;
+    /// assert_eq!(mutation.operation(), &Operation::from(operation));
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    #[must_use]
+    pub fn operation(&self) -> &Operation {
+        &self.operation
     }
 
     /// The ids of the elements created, in creation order, with the
     /// operation's own element first.
+    ///
+    /// They are the ids `semantic_compare(before, after)` reports as only in
+    /// after. A create creates exactly its own element; its parent is not
+    /// changed.
     #[must_use]
     pub fn created_ids(&self) -> &[ElementId] {
         &self.created
+    }
+
+    /// The ids of the existing elements changed, in the document's
+    /// [pre-order](crate::model::Document::elements) after the operation.
+    ///
+    /// They are the ids, in both before and after, for which
+    /// `semantic_compare(before, after)` reports a difference of the element
+    /// itself: its kind, parent, name, declaration or child order. A create
+    /// does not change its parent, so this is empty for every operation in
+    /// this release.
+    #[must_use]
+    pub fn changed_ids(&self) -> &[ElementId] {
+        &self.changed
+    }
+
+    /// The ids of the elements deleted, in the document's
+    /// [pre-order](crate::model::Document::elements) before the operation.
+    ///
+    /// They are the ids `semantic_compare(before, after)` reports as only in
+    /// before. A create deletes nothing, so this is empty for every
+    /// operation in this release.
+    #[must_use]
+    pub fn deleted_ids(&self) -> &[ElementId] {
+        &self.deleted
     }
 }
 
