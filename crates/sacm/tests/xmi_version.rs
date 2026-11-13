@@ -12,7 +12,11 @@
 //! backs it up.
 //!
 //! "The same document" is `Document`'s `==`, the semantic comparison of
-//! LIB-RT-001; a failure lists `semantic_compare`'s differences.
+//! LIB-RT-001; a failure lists `semantic_compare`'s differences. The reader
+//! still ignores `xmi:version` on the wrapper and the roots, and now reports
+//! each as SACM-XMI-011, Info (LIB-COMPAT-001), which the read tests expect.
+//! Documents are written in tolerant mode: most are nameless, which a strict
+//! write refuses (LIB-COMPAT-007), and the tests check the output form.
 //!
 //! Not checked here: SACM23-XMI-024 item 2's "the only difference from the
 //! previous golden is that ` xmi:version="2.0"` is gone". That is a property
@@ -22,11 +26,11 @@
 //! the attribute out of them.
 
 use sacm::compare::semantic_compare;
-use sacm::diagnostic::SourceLocation;
+use sacm::diagnostic::{Code, Severity, SourceLocation};
 use sacm::model::{
     AssertionDeclaration, Document, ElementId, ElementKind, InsertError, LangString,
 };
-use sacm::xmi::{self, ReadError, ReadOptions, ReadOutput, WriteOptions};
+use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteOptions};
 
 const ROW: &str = "SACM23-XMI-024";
 
@@ -201,9 +205,12 @@ fn every_kind_document() -> Document {
 // Writing and reading
 // ---------------------------------------------------------------------------
 
-/// Writes `doc` with the default options, which the test expects to succeed.
+/// Writes `doc` in tolerant mode, which the test expects to succeed.
+/// Tolerant, because most documents here are nameless and a strict write
+/// refuses a validation Error (LIB-COMPAT-007); the output form, which these
+/// tests check, is the same in both modes.
 fn write_ok(what: &str, doc: &Document) -> String {
-    match xmi::write(doc, &WriteOptions::default()) {
+    match xmi::write(doc, &WriteOptions::default().with_mode(Mode::Tolerant)) {
         Ok(text) => text,
         Err(error) => panic!("{ROW}: {what}: write refused the document: {error} ({error:?})"),
     }
@@ -215,6 +222,27 @@ fn read_ok(what: &str, input: &str) -> ReadOutput {
         Ok(output) => output,
         Err(error) => panic!("{ROW}: {what}: read refused the input: {error}\n{input}"),
     }
+}
+
+/// The read diagnostics of `output`, each its code, severity and affected ids.
+fn reported(output: &ReadOutput) -> Vec<(Code, Severity, Vec<&str>)> {
+    output
+        .diagnostics()
+        .iter()
+        .map(|found| {
+            (
+                found.code(),
+                found.severity(),
+                found.affected().iter().map(ElementId::as_str).collect(),
+            )
+        })
+        .collect()
+}
+
+/// The SACM-XMI-011 Info that [`reported`] gives for an `xmi:version` on the
+/// roots `affected`, or on the wrapper when empty (LIB-COMPAT-001).
+fn version_ignored(affected: &[&'static str]) -> (Code, Severity, Vec<&'static str>) {
+    (Code::XMI_VERSION_IGNORED, Severity::Info, affected.to_vec())
 }
 
 /// Asserts that `left == right`, listing the differences when not.
@@ -630,11 +658,42 @@ fn sacm23_xmi_024_reading_xmi_version_on_the_wrapper_or_the_roots_gives_an_equal
         let plain = read_ok(&format!("{what}: without the attribute"), &without);
         let versioned = read_ok(&what, &with);
         assert_same_document(&what, versioned.document(), plain.document());
+        // The read diagnostics are the plain read's and one SACM-XMI-011,
+        // Info, per `xmi:version` (LIB-COMPAT-001), affecting a root or, on
+        // the wrapper, nothing.
+        let added: Vec<_> = versioned
+            .diagnostics()
+            .iter()
+            .filter(|found| !plain.diagnostics().contains(found))
+            .collect();
         assert_eq!(
-            versioned.diagnostics(),
-            plain.diagnostics(),
-            "{ROW}: {what}: the diagnostics differ from the read without xmi:version"
+            versioned.diagnostics().len() - added.len(),
+            plain.diagnostics().len(),
+            "{ROW}: {what}: a diagnostic of the read without xmi:version is missing"
         );
+        let attributes = with.matches(":version=").count();
+        assert_eq!(
+            added.len(),
+            attributes,
+            "{ROW}: {what}: not one diagnostic per xmi:version: {:?}",
+            versioned.diagnostics()
+        );
+        let roots: Vec<&str> = versioned
+            .document()
+            .roots()
+            .map(|root| root.id().as_str())
+            .collect();
+        for found in added {
+            let affected: Vec<&str> = found.affected().iter().map(ElementId::as_str).collect();
+            assert!(
+                found.code() == Code::XMI_VERSION_IGNORED
+                    && found.severity() == Severity::Info
+                    && (affected.is_empty()
+                        || (affected.len() == 1 && roots.contains(&affected[0]))),
+                "{ROW}: {what}: the diagnostic {found:?} is not a SACM-XMI-011 Info on the \
+                 wrapper or a root"
+            );
+        }
     }
 }
 
@@ -763,11 +822,14 @@ fn sacm23_xmi_024_the_reader_ignores_xmi_version_on_the_wrapper_and_on_the_roots
             output.document(),
             reference.document(),
         );
-        assert!(
-            output.diagnostics().is_empty(),
+        // Ignored, and reported as one SACM-XMI-011, Info (LIB-COMPAT-001).
+        assert_eq!(
+            reported(&output),
+            [(Code::XMI_VERSION_IGNORED, Severity::Info, vec!["a"])],
             "{ROW}: {v} on a bare root: diagnostics {:?}",
             output.diagnostics()
         );
+        let info = version_ignored;
         let wrapped = [
             (
                 "on the wrapper",
@@ -775,6 +837,7 @@ fn sacm23_xmi_024_the_reader_ignores_xmi_version_on_the_wrapper_and_on_the_roots
                     "<xmi:XMI{NS}{v}><sacm:ArgumentPackage xmi:id=\"a\"/>\
                      <sacm:AssuranceCasePackage xmi:id=\"n\"/></xmi:XMI>"
                 ),
+                vec![info(&[])],
             ),
             (
                 "on the roots in a wrapper",
@@ -782,14 +845,16 @@ fn sacm23_xmi_024_the_reader_ignores_xmi_version_on_the_wrapper_and_on_the_roots
                     "<xmi:XMI{NS}><sacm:ArgumentPackage xmi:id=\"a\"{v}/>\
                      <sacm:AssuranceCasePackage{v} xmi:id=\"n\"/></xmi:XMI>"
                 ),
+                vec![info(&["a"]), info(&["n"])],
             ),
         ];
-        for (place, input) in wrapped {
+        for (place, input, expected) in wrapped {
             let what = format!("{v} {place}");
             let output = read_ok(&what, &input);
             assert_same_document(&what, output.document(), two.document());
-            assert!(
-                output.diagnostics().is_empty(),
+            assert_eq!(
+                reported(&output),
+                expected,
                 "{ROW}: {what}: diagnostics {:?}",
                 output.diagnostics()
             );

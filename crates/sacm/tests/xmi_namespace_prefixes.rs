@@ -9,10 +9,14 @@
 //!
 //! "The same document" (item 1) is compared on a projection of the document:
 //! the roots in order with their ids and kinds; every element's id, kind,
-//! parent, children and name; the element count; and no diagnostics. The
-//! references are SACM23-XMI-001's `sacm:`/`xmi:` inputs, which are read
-//! first, so a reference that stops reading fails before any variant is
-//! compared with it.
+//! parent, children and name; the element count; and the diagnostics apart
+//! from their locations (code, severity, requirement id, clause, affected ids
+//! and message). The references are SACM23-XMI-001's `sacm:`/`xmi:` inputs,
+//! which are read first, so a reference that stops reading fails before any
+//! variant is compared with it. A reference has no diagnostics, except the
+//! ones with an `xsi:type` or an `xmi:version`, which carry SACM-XMI-010 (a
+//! Warning in the default tolerant mode) or SACM-XMI-011 (Info)
+//! (LIB-COMPAT-001); a variant with that attribute is compared with them.
 //!
 //! A root is refused at the `<` of its start tag and an attribute at the
 //! first character of its name, as in the SACM23-XMI-001 tests.
@@ -22,7 +26,7 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
 use std::time::Duration;
 
-use sacm::diagnostic::{Code, SourceLocation};
+use sacm::diagnostic::{Code, Diagnostic, Severity, SourceLocation};
 use sacm::model::{Document, ElementKind, LangString};
 use sacm::xmi::{self, ReadError, ReadOptions, ReadOutput};
 
@@ -63,6 +67,35 @@ const BARE_A: &str = concat!(
 const WRAPPED_A: &str = concat!(
     "<xmi:XMI xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"",
     " xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\">",
+    "<sacm:ArgumentPackage xmi:id=\"a\"/></xmi:XMI>",
+);
+
+/// SACM23-XMI-001 item 7's redundant `xsi:type`, on [`BARE_A`]: the reference
+/// for a variant with an XSI type, which carries one SACM-XMI-010.
+const BARE_A_XSI_TYPE: &str = concat!(
+    "<sacm:ArgumentPackage",
+    " xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
+    " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"",
+    " xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"",
+    " xmi:id=\"a\" xsi:type=\"sacm:ArgumentPackage\"/>",
+);
+
+/// SACM23-XMI-001 item 6's `xmi:version="2.0"` on [`BARE_A`]: the reference
+/// for a variant with an XMI version on the root, which carries one
+/// SACM-XMI-011.
+const BARE_A_VERSION: &str = concat!(
+    "<sacm:ArgumentPackage",
+    " xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
+    " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"",
+    " xmi:id=\"a\" xmi:version=\"2.0\"/>",
+);
+
+/// SACM23-XMI-001 item 6's `xmi:version="2.0"` on [`WRAPPED_A`]'s wrapper: the
+/// reference for a variant with an XMI version on the wrapper, which carries
+/// one SACM-XMI-011 with no affected id.
+const WRAPPED_A_VERSION: &str = concat!(
+    "<xmi:XMI xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"",
+    " xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\" xmi:version=\"2.0\">",
     "<sacm:ArgumentPackage xmi:id=\"a\"/></xmi:XMI>",
 );
 
@@ -163,6 +196,32 @@ struct Entry {
     name: Option<LangString>,
 }
 
+/// One diagnostic of a [`Shape`], apart from its location.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Unlocated {
+    code: Code,
+    severity: Severity,
+    requirement: String,
+    clause: Option<String>,
+    affected: Vec<String>,
+    message: String,
+}
+
+fn unlocated(diagnostic: &Diagnostic) -> Unlocated {
+    Unlocated {
+        code: diagnostic.code(),
+        severity: diagnostic.severity(),
+        requirement: diagnostic.requirement_id().to_owned(),
+        clause: diagnostic.clause().map(str::to_owned),
+        affected: diagnostic
+            .affected()
+            .iter()
+            .map(|id| id.as_str().to_owned())
+            .collect(),
+        message: diagnostic.message().to_owned(),
+    }
+}
+
 /// What two documents must share to be "the same document" (item 1).
 #[derive(Debug, PartialEq, Eq)]
 struct Shape {
@@ -172,8 +231,11 @@ struct Shape {
     elements: Vec<Entry>,
     /// `Document::element_count`.
     count: usize,
+    /// The read's diagnostics, in order, apart from their locations.
+    diagnostics: Vec<Unlocated>,
 }
 
+/// The shape of a document, with no diagnostics.
 fn shape(document: &Document) -> Shape {
     Shape {
         roots: document
@@ -194,11 +256,12 @@ fn shape(document: &Document) -> Shape {
             })
             .collect(),
         count: document.element_count(),
+        diagnostics: Vec::new(),
     }
 }
 
 /// The shape of a document whose only elements are the given parentless,
-/// unnamed, childless roots, in order.
+/// unnamed, childless roots, in order, with no diagnostics.
 fn roots_shape(roots: &[(&str, ElementKind)]) -> Shape {
     Shape {
         roots: roots
@@ -216,39 +279,81 @@ fn roots_shape(roots: &[(&str, ElementKind)]) -> Shape {
             })
             .collect(),
         count: roots.len(),
+        diagnostics: Vec::new(),
     }
 }
 
-/// Reads `input` and returns its shape, after asserting that the read
-/// reported no diagnostics.
-fn read_shape(what: &str, input: &str) -> Shape {
+/// Reads `input` and returns its shape, with the read's diagnostics.
+fn read_shape(input: &str) -> Shape {
     let output = read_ok(input.as_bytes());
-    assert!(
-        output.diagnostics().is_empty(),
-        "{ROW}: {what}: reading {} reported diagnostics: {:?}",
-        preview(input.as_bytes()),
-        output.diagnostics()
-    );
-    shape(output.document())
+    let mut found = shape(output.document());
+    found.diagnostics = output.diagnostics().iter().map(unlocated).collect();
+    found
 }
 
-/// Reads the SACM23-XMI-001 `reference`, asserts that it is `expected`, and
-/// returns its shape.
+/// Reads the SACM23-XMI-001 `reference`, asserts that it is `expected` with no
+/// diagnostics, and returns its shape.
 fn reference(reference: &str, expected: &[(&str, ElementKind)]) -> Shape {
-    let found = read_shape("the reference", reference);
+    reported_reference(reference, expected, &[])
+}
+
+/// Reads the SACM23-XMI-001 `reference`, asserts that it is `expected` with
+/// diagnostics of exactly the codes and severities `reported`, in order, and
+/// returns its shape.
+fn reported_reference(
+    reference: &str,
+    expected: &[(&str, ElementKind)],
+    reported: &[(Code, Severity)],
+) -> Shape {
+    let found = read_shape(reference);
+    let codes: Vec<(Code, Severity)> = found
+        .diagnostics
+        .iter()
+        .map(|diagnostic| (diagnostic.code, diagnostic.severity))
+        .collect();
+    assert_eq!(
+        codes,
+        reported,
+        "{ROW}: the reference {} does not report the expected diagnostics: {:?}",
+        preview(reference.as_bytes()),
+        found.diagnostics
+    );
+    let mut document = roots_shape(expected);
+    document.diagnostics.clone_from(&found.diagnostics);
     assert_eq!(
         found,
-        roots_shape(expected),
+        document,
         "{ROW}: the reference {} is not the expected document",
         preview(reference.as_bytes())
     );
     found
 }
 
+/// The reference for an ArgumentPackage `a` with a redundant `xsi:type`: one
+/// SACM-XMI-010, a Warning in the default tolerant mode (LIB-COMPAT-001).
+fn xsi_type_reference() -> Shape {
+    reported_reference(
+        BARE_A_XSI_TYPE,
+        &[("a", ElementKind::ArgumentPackage)],
+        &[(Code::XMI_XSI_TYPE, Severity::Warning)],
+    )
+}
+
+/// The reference for an ArgumentPackage `a` with an `xmi:version`, on the
+/// root or on the wrapper: one SACM-XMI-011, Info (LIB-COMPAT-001).
+fn version_reference(input: &str) -> Shape {
+    reported_reference(
+        input,
+        &[("a", ElementKind::ArgumentPackage)],
+        &[(Code::XMI_VERSION_IGNORED, Severity::Info)],
+    )
+}
+
 /// Asserts that `input` gives the same document as the reference whose
-/// shape is `reference`, with no diagnostics.
+/// shape is `reference`, with the same diagnostics apart from their
+/// locations.
 fn assert_same_document(what: &str, input: &str, reference: &Shape) {
-    let found = read_shape(what, input);
+    let found = read_shape(input);
     assert_eq!(
         &found,
         reference,
@@ -387,11 +492,30 @@ fn typed_root(attribute: &str, value: &str) -> String {
 #[test]
 fn sacm23_xmi_002_the_references_are_parentless_unnamed_roots_without_diagnostics() {
     // `reference` asserts the ids and kinds, parent `None`, name `None`, the
-    // element count and empty diagnostics.
+    // element count and empty diagnostics. The references with an attribute
+    // that is reported carry exactly that one diagnostic (LIB-COMPAT-001).
     reference(ACP_ROOT, &[("acp_1", ElementKind::AssuranceCasePackage)]);
     reference(AP_ROOT, &[("arg_1", ElementKind::ArgumentPackage)]);
     reference(BARE_A, &[("a", ElementKind::ArgumentPackage)]);
     reference(WRAPPED_A, &[("a", ElementKind::ArgumentPackage)]);
+    let typed = xsi_type_reference();
+    assert_eq!(
+        typed.diagnostics[0].affected,
+        ["a"],
+        "{ROW}: the SACM-XMI-010 of the xsi:type reference does not affect the root"
+    );
+    let on_root = version_reference(BARE_A_VERSION);
+    assert_eq!(
+        on_root.diagnostics[0].affected,
+        ["a"],
+        "{ROW}: the SACM-XMI-011 of xmi:version on the root does not affect the root"
+    );
+    let on_wrapper = version_reference(WRAPPED_A_VERSION);
+    assert_eq!(
+        on_wrapper.diagnostics[0].affected,
+        Vec::<String>::new(),
+        "{ROW}: the SACM-XMI-011 of xmi:version on the wrapper affects an element"
+    );
 }
 
 // --- 2. The SACM prefix -------------------------------------------------------
@@ -478,24 +602,31 @@ fn sacm23_xmi_002_a_default_sacm_or_xmi_namespace_gives_the_same_document() {
 #[test]
 fn sacm23_xmi_002_any_xmi_and_xsi_prefixes_give_the_same_document() {
     let a = reference(BARE_A, &[("a", ElementKind::ArgumentPackage)]);
+    let a_versioned = version_reference(BARE_A_VERSION);
+    let wrapper_versioned = version_reference(WRAPPED_A_VERSION);
+    let a_typed = xsi_type_reference();
     let x = format!(" xmlns:sacm=\"{SACM_NS}\" xmlns:x=\"{XMI_NS}\"");
     let cases = [
-        ("x:id", format!("<sacm:ArgumentPackage{x} x:id=\"a\"/>")),
+        ("x:id", format!("<sacm:ArgumentPackage{x} x:id=\"a\"/>"), &a),
         (
             "x:version",
             format!("<sacm:ArgumentPackage{x} x:id=\"a\" x:version=\"2.0\"/>"),
+            &a_versioned,
         ),
         (
             "x:type",
             format!("<sacm:ArgumentPackage{x} x:id=\"a\" x:type=\"sacm:ArgumentPackage\"/>"),
+            &a,
         ),
         (
             "an x:XMI wrapper",
             format!("<x:XMI{x}><sacm:ArgumentPackage x:id=\"a\"/></x:XMI>"),
+            &a,
         ),
         (
             "x:version on an x:XMI wrapper",
             format!("<x:XMI{x} x:version=\"2.0\"><sacm:ArgumentPackage x:id=\"a\"/></x:XMI>"),
+            &wrapper_versioned,
         ),
         (
             "i:type",
@@ -503,10 +634,11 @@ fn sacm23_xmi_002_any_xmi_and_xsi_prefixes_give_the_same_document() {
                 "<sacm:ArgumentPackage{x} xmlns:i=\"{XSI_NS}\" x:id=\"a\" \
                  i:type=\"sacm:ArgumentPackage\"/>"
             ),
+            &a_typed,
         ),
     ];
-    for (what, input) in &cases {
-        assert_same_document(what, input, &a);
+    for (what, input, reference) in &cases {
+        assert_same_document(what, input, reference);
     }
 }
 
@@ -515,6 +647,7 @@ fn sacm23_xmi_002_any_xmi_and_xsi_prefixes_give_the_same_document() {
 #[test]
 fn sacm23_xmi_002_declarations_on_the_wrapper_or_the_root_give_the_same_document() {
     let a = reference(BARE_A, &[("a", ElementKind::ArgumentPackage)]);
+    let a_typed = xsi_type_reference();
     let cases = [
         (
             "the SACM declaration on the root only",
@@ -556,7 +689,12 @@ fn sacm23_xmi_002_declarations_on_the_wrapper_or_the_root_give_the_same_document
         ),
     ];
     for (what, input) in &cases {
-        assert_same_document(what, input, &a);
+        let reference = if input.contains("xsi:type") {
+            &a_typed
+        } else {
+            &a
+        };
+        assert_same_document(what, input, reference);
     }
 }
 
@@ -565,6 +703,7 @@ fn sacm23_xmi_002_declarations_on_the_wrapper_or_the_root_give_the_same_document
 #[test]
 fn sacm23_xmi_002_a_prefix_rebound_to_sacm_on_the_root_takes_the_inner_binding() {
     let a = reference(WRAPPED_A, &[("a", ElementKind::ArgumentPackage)]);
+    let a_typed = xsi_type_reference();
     let cases = [
         // The row's input, exactly: `p` is XMI on the wrapper, SACM on the root.
         (
@@ -585,7 +724,12 @@ fn sacm23_xmi_002_a_prefix_rebound_to_sacm_on_the_root_takes_the_inner_binding()
         ),
     ];
     for (what, input) in &cases {
-        assert_same_document(what, input, &a);
+        let reference = if input.contains("xsi:type") {
+            &a_typed
+        } else {
+            &a
+        };
+        assert_same_document(what, input, reference);
     }
 }
 
@@ -617,7 +761,7 @@ fn sacm23_xmi_002_a_prefix_rebound_away_from_sacm_on_the_root_is_unsupported_at_
 
 #[test]
 fn sacm23_xmi_002_an_unprefixed_type_under_a_default_sacm_namespace_reads() {
-    let a = reference(BARE_A, &[("a", ElementKind::ArgumentPackage)]);
+    let a = xsi_type_reference();
     let input = format!(
         "<ArgumentPackage xmlns=\"{SACM_NS}\" xmlns:xmi=\"{XMI_NS}\" xmlns:xsi=\"{XSI_NS}\" \
          xmi:id=\"a\" xsi:type=\"ArgumentPackage\"/>"
@@ -628,6 +772,7 @@ fn sacm23_xmi_002_an_unprefixed_type_under_a_default_sacm_namespace_reads() {
 #[test]
 fn sacm23_xmi_002_white_space_around_a_type_value_is_collapsed_before_it_is_resolved() {
     let a = reference(BARE_A, &[("a", ElementKind::ArgumentPackage)]);
+    let a_typed = xsi_type_reference();
     // A literal tab or line feed in an attribute value is a space after XML
     // attribute-value normalization (XML 1.0 §3.3.3); a character reference
     // keeps the character, so both are given. XSD collapse removes leading and
@@ -643,11 +788,11 @@ fn sacm23_xmi_002_white_space_around_a_type_value_is_collapsed_before_it_is_reso
         "&#13;&#10; sacm:ArgumentPackage &#x9;",
     ];
     for value in values {
-        for attribute in ["xsi:type", "xmi:type"] {
+        for (attribute, reference) in [("xsi:type", &a_typed), ("xmi:type", &a)] {
             assert_same_document(
                 &format!("{attribute}={value:?}"),
                 &typed_root(attribute, value),
-                &a,
+                reference,
             );
         }
     }
@@ -659,7 +804,7 @@ fn sacm23_xmi_002_white_space_around_a_type_value_is_collapsed_before_it_is_reso
     assert_same_document(
         "an unprefixed type with white space under a default SACM",
         &unprefixed,
-        &a,
+        &a_typed,
     );
 }
 
@@ -795,12 +940,15 @@ fn sacm23_xmi_002_a_prefix_spelled_xmi_or_xsi_but_bound_elsewhere_confers_nothin
 #[test]
 fn sacm23_xmi_002_prefixes_spelled_after_another_namespace_are_that_namespace() {
     let a = reference(BARE_A, &[("a", ElementKind::ArgumentPackage)]);
+    // `xmi:type` in XSI is an XSI type, so it carries SACM-XMI-010.
+    let a_typed = xsi_type_reference();
     let cases = [
         (
             "xsi bound to SACM and sacm bound to XMI",
             format!(
                 "<xsi:ArgumentPackage xmlns:xsi=\"{SACM_NS}\" xmlns:sacm=\"{XMI_NS}\" sacm:id=\"a\"/>"
             ),
+            &a,
         ),
         (
             "xmi bound to XSI is a type",
@@ -808,6 +956,7 @@ fn sacm23_xmi_002_prefixes_spelled_after_another_namespace_are_that_namespace() 
                 "<s:ArgumentPackage xmlns:s=\"{SACM_NS}\" xmlns:x=\"{XMI_NS}\" \
                  xmlns:xmi=\"{XSI_NS}\" x:id=\"a\" xmi:type=\"s:ArgumentPackage\"/>"
             ),
+            &a_typed,
         ),
         (
             "a sacm:XMI wrapper in XMI holding an xmi: root in SACM",
@@ -815,10 +964,11 @@ fn sacm23_xmi_002_prefixes_spelled_after_another_namespace_are_that_namespace() 
                 "<sacm:XMI xmlns:sacm=\"{XMI_NS}\" xmlns:xmi=\"{SACM_NS}\">\
                  <xmi:ArgumentPackage sacm:id=\"a\"/></sacm:XMI>"
             ),
+            &a,
         ),
     ];
-    for (what, input) in &cases {
-        assert_same_document(what, input, &a);
+    for (what, input, reference) in &cases {
+        assert_same_document(what, input, reference);
     }
     // `xmi:type` in XSI is a type, so naming another class is refused at the root.
     let other_class = format!(

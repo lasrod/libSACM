@@ -18,7 +18,8 @@ diagnostic type that findings are reported in (`sacm::diagnostic`), and
 `AssuranceCasePackage` and `ArgumentPackage` roots, the AssuranceCasePackages,
 ArgumentPackages and Claims in them, their names and each Claim's `assertionDeclaration`;
 it refuses what it cannot represent rather than drop it.
-`sacm::xmi::write` writes a document, its names and its declarations deterministically.
+`sacm::xmi::write` writes a document, its names and its declarations deterministically;
+in strict mode, the default, it refuses a document that validation reports an Error for.
 `sacm::edit::apply` creates AssuranceCasePackages, ArgumentPackages and Claims, each with
 a name and a given or generated id; a refused operation changes nothing.
 `sacm::compare::semantic_compare` compares two documents by SACM content and names each
@@ -45,7 +46,7 @@ sacm = "0.1"
 ```
 
 ```rust
-use sacm::xmi::{self, ReadOptions, WriteOptions};
+use sacm::xmi::{self, Mode, ReadOptions, WriteError, WriteOptions};
 use sacm::{diagnostic, validation};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -76,7 +77,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     assert!(diagnostic::has_errors(&findings));
 
-    let text = xmi::write(document, &WriteOptions::default())?;
+    // A strict write, the default, refuses it; a tolerant one writes it as it is held.
+    let refused = xmi::write(document, &WriteOptions::default());
+    assert!(matches!(refused, Err(WriteError::Invalid { .. })));
+    let text = xmi::write(document, &WriteOptions::default().with_mode(Mode::Tolerant))?;
     print!("{text}");
     Ok(())
 }
@@ -86,8 +90,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 AssuranceCasePackages, ArgumentPackages and Claims in them, their names and each Claim's
 `assertionDeclaration`. It refuses everything else (other kinds, a `description`, a
 `gid`, an `assertionDeclaration` value that is not a SACM literal) as
-`ReadError::Unsupported` rather than drop it. `sacm::xmi::write` writes the
-document back deterministically.
+`ReadError::Unsupported` rather than drop it, and reports an `xsi:type` (SACM-XMI-010)
+or an `xmi:version` (SACM-XMI-011) as a diagnostic. `sacm::xmi::write` writes the
+document back deterministically. By default it is strict: it refuses a document that
+validation reports an Error for as `WriteError::Invalid`. `Mode::Tolerant` writes the
+document as it is held.
 
 Build a document with `sacm::edit::apply`, then validate, write and read it back:
 

@@ -22,18 +22,23 @@
 //! `Document::set_assertion_declaration`. "The same document" is compared on
 //! a projection ([`shape`]), because `Document` has no `PartialEq`.
 //!
+//! A read reports no diagnostic, except SACM-XMI-010 for each `xsi:type`
+//! (LIB-COMPAT-001), which the tests that read one expect on the Claim. The
+//! documents are written in tolerant mode, because the Assertion kinds other
+//! than Claim are inserted without a name (LIB-COMPAT-007).
+//!
 //! Not checked here: an unknown literal reported as SACM-ENUM-001
 //! (SACM23-VAL-006), the element form of the value (SACM23-XMI-014), and the
 //! Assertion kinds other than Claim on read (their read rows inherit this
 //! rule).
 
-use sacm::diagnostic::SourceLocation;
+use sacm::diagnostic::{Code, Severity, SourceLocation};
 use sacm::edit::{self, CreateArgumentPackage, CreateAssuranceCasePackage, CreateClaim};
 use sacm::model::{
     AbstractClass, AssertionDeclaration, Document, ElementId, ElementKind, InsertError, LangString,
     SacmElement,
 };
-use sacm::xmi::{self, ReadError, ReadOptions, WriteOptions};
+use sacm::xmi::{self, Mode, ReadError, ReadOptions, WriteOptions};
 
 const ROW: &str = "SACM23-XMI-017";
 
@@ -78,10 +83,34 @@ fn read(input: &str) -> Result<xmi::ReadOutput, ReadError> {
 
 /// Reads `input`, which the test expects to be read without diagnostics.
 fn read_ok(what: &str, input: &str) -> Document {
+    read_ok_reporting(what, input, &[])
+}
+
+/// Reads `input`, which the test expects to be read with exactly one
+/// SACM-XMI-010 per id in `xsi_typed`, in order: the element whose
+/// `xsi:type` is reported, a Warning in the default tolerant mode
+/// (LIB-COMPAT-001).
+fn read_ok_reporting(what: &str, input: &str, xsi_typed: &[&str]) -> Document {
     match read(input) {
         Ok(output) => {
-            assert!(
-                output.diagnostics().is_empty(),
+            let found: Vec<(Code, Severity, Vec<&str>)> = output
+                .diagnostics()
+                .iter()
+                .map(|found| {
+                    (
+                        found.code(),
+                        found.severity(),
+                        found.affected().iter().map(ElementId::as_str).collect(),
+                    )
+                })
+                .collect();
+            let wanted: Vec<(Code, Severity, Vec<&str>)> = xsi_typed
+                .iter()
+                .map(|&id| (Code::XMI_XSI_TYPE, Severity::Warning, vec![id]))
+                .collect();
+            assert_eq!(
+                found,
+                wanted,
                 "{ROW}: {what}: reading reported {:?}",
                 output.diagnostics()
             );
@@ -89,6 +118,17 @@ fn read_ok(what: &str, input: &str) -> Document {
         }
         Err(error) => panic!("{ROW}: {what}: read refused {input:?}: {error:?} ({error})"),
     }
+}
+
+/// Reads [`readable_claim`]'s input with `type_attribute`: an `xsi:type` on
+/// the Claim `c1` is reported (LIB-COMPAT-001), an `xmi:type` is not.
+fn read_claim(what: &str, type_attribute: &str, input: &str) -> Document {
+    let reported: &[&str] = if type_attribute == "xsi:type" {
+        &["c1"]
+    } else {
+        &[]
+    };
+    read_ok_reporting(what, input, reported)
 }
 
 /// A 1-based location.
@@ -230,9 +270,17 @@ fn name(content: &str) -> LangString {
     LangString::new(content).with_lang("en")
 }
 
-/// Writes `doc`, which the test expects to be written.
+/// The options of every write here: tolerant, because the Assertion kinds
+/// other than Claim are inserted without a name and a strict write refuses a
+/// validation Error (LIB-COMPAT-007). The output form is the same in both
+/// modes.
+fn write_options() -> WriteOptions {
+    WriteOptions::default().with_mode(Mode::Tolerant)
+}
+
+/// Writes `doc` with [`write_options`], which the test expects to be written.
 fn write_ok(what: &str, doc: &Document) -> String {
-    match xmi::write(doc, &WriteOptions::default()) {
+    match xmi::write(doc, &write_options()) {
         Ok(text) => text,
         Err(error) => panic!("{ROW}: {what}: write refused the document: {error} ({error:?})"),
     }
@@ -356,7 +404,25 @@ fn sacm23_xmi_017_each_literal_on_a_claim_reads_to_that_literal_with_xmi_type_an
                             "{literal:?} with {type_attribute} reads as {read_as:?}"
                         ));
                     }
-                    if !output.diagnostics().is_empty() {
+                    // An `xsi:type` is one SACM-XMI-010 on the Claim, a
+                    // Warning in the default tolerant mode (LIB-COMPAT-001).
+                    let reported: Vec<(Code, Severity, Vec<&str>)> = output
+                        .diagnostics()
+                        .iter()
+                        .map(|found| {
+                            (
+                                found.code(),
+                                found.severity(),
+                                found.affected().iter().map(ElementId::as_str).collect(),
+                            )
+                        })
+                        .collect();
+                    let expected = if type_attribute == "xsi:type" {
+                        vec![(Code::XMI_XSI_TYPE, Severity::Warning, vec!["c1"])]
+                    } else {
+                        Vec::new()
+                    };
+                    if reported != expected {
                         failures.push(format!(
                             "{literal:?} with {type_attribute} reports {:?}",
                             output.diagnostics()
@@ -418,7 +484,14 @@ fn sacm23_xmi_017_the_attribute_reads_wherever_it_stands_among_the_claim_attribu
         ),
     ];
     for (what, input, expected) in cases {
-        let doc = read_ok(what, &input);
+        // The single-quoted case types the Claim with `xsi:type`, which is
+        // reported (LIB-COMPAT-001).
+        let type_attribute = if input.contains("xsi:type") {
+            "xsi:type"
+        } else {
+            "xmi:type"
+        };
+        let doc = read_claim(what, type_attribute, &input);
         assert_eq!(
             declaration_of(what, &doc, "c1"),
             Some(expected),
@@ -431,14 +504,19 @@ fn sacm23_xmi_017_the_attribute_reads_wherever_it_stands_among_the_claim_attribu
 fn sacm23_xmi_017_an_absent_attribute_reads_as_asserted_and_an_explicit_asserted_reads_equal_to_it()
 {
     for type_attribute in ["xmi:type", "xsi:type"] {
-        let absent = read_ok("no attribute", &readable_claim(type_attribute, ""));
+        let absent = read_claim(
+            "no attribute",
+            type_attribute,
+            &readable_claim(type_attribute, ""),
+        );
         assert_eq!(
             declaration_of("no attribute", &absent, "c1"),
             Some(AssertionDeclaration::Asserted),
             "{ROW}: a Claim with no attribute does not read as asserted"
         );
-        let explicit = read_ok(
+        let explicit = read_claim(
             "an explicit asserted",
+            type_attribute,
             &readable_claim(type_attribute, " assertionDeclaration=\"asserted\""),
         );
         assert_eq!(
@@ -764,7 +842,7 @@ fn sacm23_xmi_017_write_puts_each_non_default_literal_directly_after_the_id_on_e
                 "{DECLARATION}\n<sacm:ArgumentPackage{DOCUMENT_ATTRIBUTES} xmi:id=\"arguments\">\n  \
                  <name lang=\"en\" content=\"Arguments\" />\n{element}</sacm:ArgumentPackage>\n"
             );
-            match xmi::write(&doc, &WriteOptions::default()) {
+            match xmi::write(&doc, &write_options()) {
                 Ok(text) if text == expected => {}
                 Ok(text) => failures.push(format!(
                     "a {kind} declared {declaration} is written as\n{text}wanted\n{expected}"
@@ -1035,11 +1113,12 @@ fn sacm23_xmi_017_claims_with_each_literal_round_trip_at_depth_three_and_write_a
 
 #[test]
 fn sacm23_xmi_017_a_file_with_an_explicit_asserted_is_written_with_no_attribute() {
-    let explicit = read_ok(
+    let explicit = read_claim(
         "an explicit asserted",
+        "xsi:type",
         &readable_claim("xsi:type", " assertionDeclaration=\"asserted\""),
     );
-    let absent = read_ok("no attribute", &readable_claim("xsi:type", ""));
+    let absent = read_claim("no attribute", "xsi:type", &readable_claim("xsi:type", ""));
     let text = write_ok("the explicit asserted read back", &explicit);
     assert!(
         !text.contains("assertionDeclaration"),

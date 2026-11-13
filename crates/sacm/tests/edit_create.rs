@@ -33,7 +33,7 @@ use sacm::edit::{
 };
 use sacm::model::{Document, ElementId, ElementKind, LangString, SacmElement};
 use sacm::validation;
-use sacm::xmi::{self, ReadOptions, WriteOptions};
+use sacm::xmi::{self, Mode, ReadOptions, WriteOptions};
 
 /// The row every test here verifies.
 const ROW: &str = "LIB-EDIT-001";
@@ -223,8 +223,12 @@ fn read_file(roots: &str) -> Document {
     }
 }
 
+/// Writes `doc` in tolerant mode. Tolerant, because some documents start
+/// from nameless packages read from a file, and a strict write refuses a
+/// validation Error (LIB-COMPAT-007); the bytes compared are the same in
+/// both modes.
 fn write(doc: &Document) -> String {
-    match xmi::write(doc, &WriteOptions::default()) {
+    match xmi::write(doc, &WriteOptions::default().with_mode(Mode::Tolerant)) {
         Ok(text) => text,
         Err(error) => panic!("{ROW}: the document could not be written: {error}"),
     }

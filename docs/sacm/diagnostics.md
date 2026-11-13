@@ -38,10 +38,12 @@ crate, and name the matrix row that owns it.
 | SACM-XMI-003 | Error (strict) / Warning (tolerant) | Unknown element; preserved in tolerant mode, rejected in strict mode. |
 | SACM-XMI-004 | Error (strict) / Warning (tolerant) | Element lacks an `xmi:id`/`id`; generated in tolerant mode. |
 | SACM-XMI-005 | Error (strict) | Containment role has an abstract declared type and the child carries no type attribute (`xmi:type`, or `xsi:type` on import). |
-| SACM-XMI-006 | Error | Strict save refused: document contains preserved unknown content or compatibility-only data. |
+| SACM-XMI-006 | Error | Strict save refused: document contains preserved unknown content or compatibility-only data (LIB-COMPAT-003). |
 | SACM-XMI-007 | Warning | External (cross-document) `href` reference is not supported; kept as opaque text in compatibility mode only. |
 | SACM-XMI-008 | Warning | Document declares a SACM revision other than 2.3; loaded in compatibility mode. Distinct from SACM-XMI-002, which means the namespace itself is unrecognized. |
 | SACM-XMI-009 | Warning | The document's root is not a SACM interchange package, but SACM packages were found inside it (an ODE `DDIPackage`, say). A tolerant load reads the SACM out and states that the file does not conform, that content outside the SACM packages is not represented, and that saving writes conformant SACM rather than the original container. Strict refuses the document (SACM-XMI-001). |
+| SACM-XMI-010 | Error (strict) / Warning (tolerant) | An `xsi:type` attribute is used; XMI 2.5.1 §9.5.2 rule 2g allows it only if `org.omg.xmi.useSchemaExtensions` is true, and SACM sets no such tag. The document is read as if it were `xmi:type`. Fix: write `xmi:type`. `Code::XMI_XSI_TYPE` (LIB-COMPAT-001, ADR 0022). |
+| SACM-XMI-011 | Info | An `xmi:version` attribute on the `xmi:XMI` element or a root is present and ignored: the XMI namespace identifies the version (XMI 2.5.1 §7.5.3). Nothing is lost and nothing needs fixing. To silence it, remove the attribute, or save the document again with `xmi::write`, which does not write it. `Code::XMI_VERSION_IGNORED` (LIB-COMPAT-001, ADR 0022). |
 
 ## Identity and references
 

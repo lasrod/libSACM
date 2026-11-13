@@ -18,8 +18,10 @@ names, each Assertion's `assertionDeclaration` and the first value types (`LangS
 roots, the AssuranceCasePackages, ArgumentPackages and Claims in them, their names and
 each Claim's `assertionDeclaration`. It refuses unsafe and malformed input and roots
 that are not SACM packages with a diagnostic code, and content it cannot represent yet
-as `Unsupported`.
-`sacm::xmi::write` writes a document, its names and its declarations deterministically.
+as `Unsupported`; it reports an `xsi:type` or an `xmi:version` as a diagnostic. Reading
+and writing take a strict or tolerant `sacm::xmi::Mode`.
+`sacm::xmi::write` writes a document, its names and its declarations deterministically;
+in strict mode, the default, it refuses a document that validation reports an Error for.
 `sacm::validation::validate` reports each `ModelElement` with no name.
 `sacm::edit::apply` creates AssuranceCasePackage, ArgumentPackage and Claim elements,
 each with a name and a given or generated id, or refuses and changes nothing; what it

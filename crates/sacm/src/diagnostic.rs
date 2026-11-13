@@ -11,8 +11,10 @@
 //! it enforces, the ids of the affected elements, an optional
 //! [`SourceLocation`] and a message.
 //!
-//! [`validation::validate`](crate::validation::validate) returns
-//! diagnostics, and the XMI reader and editing will as their rows are built.
+//! [`validation::validate`](crate::validation::validate) and
+//! [`xmi::read`](crate::xmi::read) return diagnostics, and a strict
+//! [`xmi::write`](crate::xmi::write) refuses a document with the validation
+//! Errors in [`WriteError::Invalid`](crate::xmi::WriteError::Invalid).
 //! Every function that returns diagnostics returns them sorted by
 //! [`Diagnostic`]'s order. [`has_errors`] says whether a list holds a
 //! diagnostic of severity [`Severity::Error`].
@@ -122,6 +124,25 @@ impl Code {
     /// [`ReadError::NoPackage`](crate::xmi::ReadError::NoPackage)
     /// (SACM23-XMI-001). Named after the C++ library's `kXmiInvalidRoot`.
     pub const XMI_INVALID_ROOT: Code = Code::from_static("SACM-XMI-001");
+
+    /// SACM-XMI-010: an `xsi:type` attribute is used. XMI 2.5.1 §9.5.2 rule
+    /// 2g allows it only if `org.omg.xmi.useSchemaExtensions` is true, and
+    /// SACM 2.3 sets no such tag. [`xmi::read`](crate::xmi::read) reports one
+    /// per attribute, an Error in strict mode and a Warning in tolerant mode,
+    /// and reads the type as if it were `xmi:type` (LIB-COMPAT-001). Fix it by
+    /// writing `xmi:type`, as [`xmi::write`](crate::xmi::write) does.
+    pub const XMI_XSI_TYPE: Code = Code::from_static("SACM-XMI-010");
+
+    /// SACM-XMI-011: an `xmi:version` attribute on the `xmi:XMI` element or
+    /// a root is present and ignored, because the XMI namespace identifies
+    /// the version (XMI 2.5.1 §7.5.3). [`xmi::read`](crate::xmi::read)
+    /// reports one per attribute, as Info in both modes (LIB-COMPAT-001). An
+    /// `xmi:version` on any other element is refused as
+    /// [`ReadError::Unsupported`](crate::xmi::ReadError::Unsupported). Nothing
+    /// is lost and nothing needs fixing. To silence it, remove the attribute,
+    /// or save the document again with [`xmi::write`](crate::xmi::write),
+    /// which does not write it.
+    pub const XMI_VERSION_IGNORED: Code = Code::from_static("SACM-XMI-011");
 
     /// SACM-MULT-001: a property has more or fewer values than its
     /// multiplicity allows. [`validation::validate`](crate::validation::validate)
@@ -406,10 +427,6 @@ impl Diagnostic {
     }
 
     /// The crate-internal form of `with_location`.
-    #[cfg_attr(
-        not(feature = "test-support"),
-        expect(dead_code, reason = "the rows that emit diagnostics will build them")
-    )]
     #[must_use]
     pub(crate) fn set_location(mut self, location: SourceLocation) -> Self {
         self.location = Some(location);

@@ -38,14 +38,22 @@
 //! processing instructions. An `xmi:version`, here or on a root, is ignored
 //! with any value: the XMI namespace identifies the version (XMI 2.5.1
 //! §7.5.3), and the writer does not write it (SACM23-XMI-024).
+//!
+//! Two attributes are read and reported (LIB-COMPAT-001, ADR 0022), one
+//! diagnostic per attribute at its name: an `xsi:type` is SACM-XMI-010, an
+//! Error in strict mode and a Warning in tolerant mode, and an `xmi:version`
+//! is SACM-XMI-011, Info. Both modes read and refuse the same inputs. A
+//! message names the element by its kind and id, never by the name or prefix
+//! written, so the choice of prefix does not change it (SACM23-XMI-002).
 
 use std::collections::BTreeSet;
 
 use roxmltree::{Attribute, Node};
 
-use super::ReadError;
 use super::input::{is_xml_space, locate};
 use super::namespaces::{SACM_NS, XMI_NS};
+use super::{Mode, ReadError};
+use crate::diagnostic::{Code, Diagnostic, Severity};
 use crate::model::{
     AbstractClass, AssertionDeclaration, DeclaredType, Document, ElementId, ElementKind,
     LangString, role_named,
@@ -55,18 +63,93 @@ use crate::model::{
 /// written (ADR 0017 T1).
 const XSI_NS: &str = "http://www.w3.org/2001/XMLSchema-instance";
 
-/// The document whose roots `tree` holds. `text` is the text `tree` was
-/// parsed from.
-pub(super) fn read(text: &str, tree: &roxmltree::Document<'_>) -> Result<Document, ReadError> {
+/// The requirement the read diagnostics enforce.
+const MODES_ROW: &str = "LIB-COMPAT-001";
+
+/// The document whose roots `tree` holds, read in `mode`, and the
+/// diagnostics found, unsorted. `text` is the text `tree` was parsed from.
+pub(super) fn read(
+    text: &str,
+    tree: &roxmltree::Document<'_>,
+    mode: Mode,
+) -> Result<(Document, Vec<Diagnostic>), ReadError> {
     let element = tree.root_element();
     let is_wrapper = classify(text, element)?;
     let mut document = Document::new();
+    let mut found = Findings {
+        text,
+        mode,
+        diagnostics: Vec::new(),
+    };
     if is_wrapper {
-        read_wrapper(text, element, &mut document)?;
+        read_wrapper(&mut found, element, &mut document)?;
     } else {
-        read_root(text, element, &mut document)?;
+        read_root(&mut found, element, &mut document)?;
     }
-    Ok(document)
+    Ok((document, found.diagnostics))
+}
+
+/// What pass 2 reads with: the input text, the mode, and the diagnostics
+/// found so far.
+struct Findings<'t> {
+    text: &'t str,
+    mode: Mode,
+    diagnostics: Vec<Diagnostic>,
+}
+
+impl Findings<'_> {
+    /// Reports the `xsi:type` `attribute` of `subject`, which affects the
+    /// element `id` (SACM-XMI-010; XMI 2.5.1 §9.5.2 rule 2g).
+    fn xsi_type(&mut self, attribute: &Attribute<'_, '_>, subject: &str, id: &str) {
+        let severity = match self.mode {
+            Mode::Strict => Severity::Error,
+            Mode::Tolerant => Severity::Warning,
+        };
+        let message = format!(
+            "{subject} is typed with xsi:type, which XMI 2.5.1 allows only when \
+             org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; \
+             it is read as xmi:type"
+        );
+        let diagnostic = Diagnostic::create(Code::XMI_XSI_TYPE, severity, MODES_ROW, message)
+            .set_clause("9.5.2")
+            .set_affected([ElementId::new(id)]);
+        self.push(diagnostic, attribute);
+    }
+
+    /// Reports the `xmi:version` `attribute` of `subject`, which affects the
+    /// root `id`, or nothing on the XMI element (SACM-XMI-011; XMI 2.5.1
+    /// §7.5.3).
+    fn xmi_version(&mut self, attribute: &Attribute<'_, '_>, subject: &str, id: Option<&str>) {
+        let message = format!(
+            "the xmi:version {:?} of {subject} is ignored: the XMI namespace identifies the \
+             version, and write does not write it",
+            attribute.value()
+        );
+        let diagnostic = Diagnostic::create(
+            Code::XMI_VERSION_IGNORED,
+            Severity::Info,
+            MODES_ROW,
+            message,
+        )
+        .set_clause("7.5.3")
+        .set_affected(id.map(ElementId::new));
+        self.push(diagnostic, attribute);
+    }
+
+    /// Adds `diagnostic`, located at the name of `attribute`.
+    fn push(&mut self, diagnostic: Diagnostic, attribute: &Attribute<'_, '_>) {
+        let diagnostic = match locate(self.text, attribute.range_qname().start) {
+            Some(location) => diagnostic.set_location(location),
+            None => diagnostic,
+        };
+        self.diagnostics.push(diagnostic);
+    }
+}
+
+/// How a read diagnostic names the element `id` of `kind`: by its kind and
+/// id, never by the name written, which carries a prefix.
+fn subject(kind: ElementKind, id: &str) -> String {
+    format!("the {kind} {id:?}")
 }
 
 /// Pass 1: whether the document element is the XMI element, after checking
@@ -135,16 +218,17 @@ fn invalid_root(text: &str, root: Node<'_, '_>) -> ReadError {
 /// Pass 2 for the XMI element: checks its attributes, then reads its roots
 /// and checks the content beside them, in document order.
 fn read_wrapper(
-    text: &str,
+    found: &mut Findings<'_>,
     wrapper: Node<'_, '_>,
     document: &mut Document,
 ) -> Result<(), ReadError> {
+    let text = found.text;
     let name = written_name(text, wrapper);
-    if let Some(attribute) = wrapper
-        .attributes()
-        .find(|attribute| !is_xmi(attribute, "version"))
-    {
-        return Err(unread_attribute(text, &attribute, &name));
+    for attribute in wrapper.attributes() {
+        if !is_xmi(&attribute, "version") {
+            return Err(unread_attribute(text, &attribute, &name));
+        }
+        found.xmi_version(&attribute, "the XMI element", None);
     }
     for child in wrapper.children() {
         if !child.is_element() {
@@ -160,7 +244,7 @@ fn read_wrapper(
                 ),
             ));
         } else {
-            read_root(text, child, document)?;
+            read_root(found, child, document)?;
         }
     }
     Ok(())
@@ -201,11 +285,16 @@ impl Pending<'_> {
 /// it to `document` as a parentless element, with its tree under it in
 /// document order (ADR 0010 D2). The tree is walked with a stack, not by
 /// recursion, so a deep document cannot exhaust the call stack.
-fn read_root(text: &str, root: Node<'_, '_>, document: &mut Document) -> Result<(), ReadError> {
+fn read_root(
+    found: &mut Findings<'_>,
+    root: Node<'_, '_>,
+    document: &mut Document,
+) -> Result<(), ReadError> {
+    let text = found.text;
     // The ids read so far in this root's tree; earlier roots' trees are in
     // `document`.
     let mut ids = BTreeSet::new();
-    let first = root_start(text, root, document)?;
+    let first = root_start(found, root, document)?;
     ids.insert(first.id);
     // The elements whose content is being read, innermost last, each with
     // the rest of its content, and the elements read whole. Content is one
@@ -228,9 +317,9 @@ fn read_root(text: &str, root: Node<'_, '_>, document: &mut Document) -> Result<
                     format!("{} has a second \"name\"", element.what()),
                 ));
             }
-            element.name = Some(read_name(text, node)?);
+            element.name = Some(read_name(found, node, element.kind, element.id)?);
         } else {
-            let child = child_start(text, node, element, document, &ids)?;
+            let child = child_start(found, node, element, document, &ids)?;
             ids.insert(child.id);
             open.push((child, node.children()));
         }
@@ -271,10 +360,11 @@ fn read_root(text: &str, root: Node<'_, '_>, document: &mut Document) -> Result<
 /// Checks the start tag of `root`: its namespace, kind, id, type and other
 /// attributes, in that order.
 fn root_start<'a>(
-    text: &str,
+    found: &mut Findings<'_>,
     root: Node<'a, '_>,
     document: &Document,
 ) -> Result<Pending<'a>, ReadError> {
+    let text = found.text;
     let at_root = root.range().start;
     let name = written_name(text, root);
     let not_read = |reason: String| unsupported(text, at_root, reason);
@@ -307,6 +397,13 @@ fn root_start<'a>(
 
     let what = format!("the root element {name:?}");
     let id = read_id(text, root, &what, document, &BTreeSet::new())?;
+    for attribute in root.attributes() {
+        if is_xsi_type(&attribute) {
+            found.xsi_type(&attribute, &subject(kind, id), id);
+        } else if is_xmi(&attribute, "version") {
+            found.xmi_version(&attribute, &subject(kind, id), Some(id));
+        }
+    }
 
     // A type must name the root's own class (ADR 0016 D2). Like the kind and
     // the id, it is refused at the root.
@@ -345,12 +442,13 @@ fn root_start<'a>(
 /// an Assertion's `assertionDeclaration`. `ids` holds the ids read so far in
 /// the root's tree.
 fn child_start<'a>(
-    text: &str,
+    found: &mut Findings<'_>,
     node: Node<'a, '_>,
     parent: &Pending<'a>,
     document: &Document,
     ids: &BTreeSet<&str>,
 ) -> Result<Pending<'a>, ReadError> {
+    let text = found.text;
     let kind = child_kind(text, node, parent.kind, &parent.what())?;
     let written = written_name(text, node);
     let what = format!("the element {written:?}");
@@ -361,6 +459,10 @@ fn child_start<'a>(
     let is_assertion = kind.is_a(AbstractClass::Assertion);
     let mut declaration = None;
     for attribute in node.attributes() {
+        if is_xsi_type(&attribute) {
+            found.xsi_type(&attribute, &subject(kind, id), id);
+            continue;
+        }
         if is_xmi(&attribute, "id") || is_type(&attribute) {
             continue;
         }
@@ -513,8 +615,15 @@ fn read_declaration(
 /// SACM23-XMI-012; ADR 0017 amendment 1). It must be in no namespace, carry
 /// only `lang`, `content` and a type naming `LangString`, and hold only white
 /// space, comments and processing instructions. The values are kept as the
-/// parser gives them, untrimmed.
-fn read_name(text: &str, node: Node<'_, '_>) -> Result<LangString, ReadError> {
+/// parser gives them, untrimmed. An `xsi:type` is reported on the owner: the
+/// element `owner`, of `kind`.
+fn read_name(
+    found: &mut Findings<'_>,
+    node: Node<'_, '_>,
+    kind: ElementKind,
+    owner: &str,
+) -> Result<LangString, ReadError> {
+    let text = found.text;
     let at_name = node.range().start;
     let element = written_name(text, node);
     if let Some(namespace) = node.tag_name().namespace().filter(|uri| !uri.is_empty()) {
@@ -545,6 +654,10 @@ fn read_name(text: &str, node: Node<'_, '_>) -> Result<LangString, ReadError> {
         match (attribute.namespace(), attribute.name()) {
             (None, "lang") => name.set_lang(Some(attribute.value().to_owned())),
             (None, "content") => name.set_content(Some(attribute.value().to_owned())),
+            _ if is_xsi_type(&attribute) => {
+                let subject = format!("the name of {}", subject(kind, owner));
+                found.xsi_type(&attribute, &subject, owner);
+            }
             _ if is_type(&attribute) => {}
             _ => return Err(unread_attribute(text, &attribute, &element)),
         }
@@ -601,7 +714,12 @@ fn is_xmi(attribute: &Attribute<'_, '_>, local: &str) -> bool {
 
 /// Whether `attribute` is `xmi:type` or `xsi:type`.
 fn is_type(attribute: &Attribute<'_, '_>) -> bool {
-    is_xmi(attribute, "type") || attribute.namespace() == Some(XSI_NS) && attribute.name() == "type"
+    is_xmi(attribute, "type") || is_xsi_type(attribute)
+}
+
+/// Whether `attribute` is `xsi:type`, in the XML Schema instance namespace.
+fn is_xsi_type(attribute: &Attribute<'_, '_>) -> bool {
+    attribute.namespace() == Some(XSI_NS) && attribute.name() == "type"
 }
 
 /// Whether the type `value`, a `QName` resolved in the scope of `node`, names

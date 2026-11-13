@@ -78,3 +78,27 @@ every role's write scope.
   - **Tooling, QA and docs rows** get one verification round against their stated acceptance. A new bypass class is logged in one line; it becomes a row only if it could let a real library defect pass unnoticed.
   - **CI configuration is protected** by branch protection on `main` (required checks) and by review, not by tests that pin workflow YAML.
 - **Consequence:** the harness stays small. The verifier's depth goes where users of the library are affected.
+
+## Amendment 3 (2026-11-13): a faster loop
+
+The maintainer asked for the loop to go faster without losing what makes the library
+trustworthy. The safeguards stay: tests before code, the independent verifier, the matrix
+gate, and mutation testing of each PR's diff. Changed:
+- **Bigger slices.** A slice takes 4 to 8 related rows, so the fixed cost of a slice is
+  shared.
+- **Full mutation runs** happen weekly and at a milestone's close, not per slice. The PR-diff
+  job remains the per-slice evidence. A slice that removes tests or changes the mutation
+  config still dispatches a full run.
+- **Blocking and follow-up findings.** The verifier labels each finding. Only blocking ones
+  (wrong behaviour, a test gap in new code, a misreading of the standard, a false claim a
+  user could rely on) fail a row. Follow-ups go to `docs/follow-ups.md` and are cleared in
+  batches.
+- **Research and design run in parallel** as one step, and are skipped for library-only
+  rows. The docs reviewer runs only when public API changes, in parallel with the
+  implementer.
+- **Decisions in batches.** A milestone's open decisions are asked for once, before its first
+  slice.
+- **The loop merges its own PRs** after a recorded PASS and green CI. Copilot comments that
+  do not block become follow-ups.
+
+*Amendment 3 status: accepted (the maintainer, 2026-11-13).*

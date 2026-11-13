@@ -93,5 +93,6 @@ default cannot also mean "no name".
   the load and save modes ADR that comes with LIB-COMPAT-001 and LIB-COMPAT-007. That ADR
   also states the semver stance (a new validation rule can make the default save fail in a
   minor release) and settles one conflict: this amendment names every affected element,
-  while ADR 0017 W4 names the first. Until then, this amendment stands, and the writer does
-  not validate yet.
+  while ADR 0017 W4 names the first. *Done: [ADR 0022](0022-load-and-save-modes.md) takes
+  this rule over; validation refusals list every Error, and W4 stays for the writer's own
+  checks.*

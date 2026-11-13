@@ -1,23 +1,13 @@
 name: mutants
 
-# Full mutation-testing run over the whole workspace (LIB-QA-007): weekly, on
-# demand, and on ready (not draft) PRs that change library code or the mutation
-# config. While a PR is a draft, dispatch it for the commit under verification
-# (`gh workflow run mutants.yml --ref <branch>`). The PR job in ci.yml mutates
-# each PR's diff, including xtask changes.
+# Full mutation-testing run over the whole workspace (LIB-QA-007): weekly, and on
+# demand: at each milestone's close, and for a slice that changes the mutation config
+# or removes tests (ADR 0006 amendment 3). The PR job in ci.yml mutates each PR's
+# diff, including xtask changes, and is the per-slice evidence.
 on:
   schedule:
     - cron: "0 3 * * 1"
   workflow_dispatch:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-    paths:
-      - .cargo/mutants.toml
-      - .config/nextest.toml
-      - .github/workflows/mutants.yml
-      - "crates/**"
-      - Cargo.toml
-      - Cargo.lock
 
 permissions:
   contents: read

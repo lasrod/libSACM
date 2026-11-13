@@ -40,7 +40,8 @@ sacm
 │                ArgumentPackage interchange roots and the packages and Claims in
 │                them, refusing unsafe, malformed, non-package and not-yet-readable
 │                input; `write`, for everything a Document holds; roxmltree is
-│                private; ADR 0005, 0015, 0016, 0017 and 0021)
+│                private; `Mode`, strict or tolerant, in the options; ADR 0005,
+│                0015, 0016, 0017, 0021 and 0022)
 ├── validation   clause-level constraints, reported as diagnostics
 │                (built: `validate`, with the missing-name rule, ADR 0018)
 ├── diagnostic   Diagnostic, Severity, Code, SourceLocation, has_errors
@@ -55,7 +56,7 @@ sacm
 bytes    ──► xmi::read            ──► Document + Vec<Diagnostic>
 Document ──► validation::validate ──► Vec<Diagnostic>
 Document ──► edit::apply(op)      ──► Result<Mutation, EditError>         (atomic)
-Document ──► xmi::write           ──► Result<String, WriteError>          (deterministic; does not validate yet, LIB-COMPAT-007)
+Document ──► xmi::write           ──► Result<String, WriteError>          (deterministic; strict by default: refuses a validation Error, ADR 0022)
 ```
 
 - **Model** ([ADR 0010](adr/0010-document-model.md)): a `Document` owns its root

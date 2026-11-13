@@ -15,7 +15,9 @@
 //!   [`xmi::read`], which reads `AssuranceCasePackage` and `ArgumentPackage`
 //!   roots, the packages and Claims in them, their names and each Claim's
 //!   `assertionDeclaration`, and refuses everything else, and
-//!   [`xmi::write`], which writes everything a document holds,
+//!   [`xmi::write`], which writes everything a document holds, refusing in
+//!   strict mode, its default, a document that validation reports an Error
+//!   for; [`xmi::Mode`] selects the mode,
 //! - validation against the specification's constraints, reported as
 //!   machine-readable diagnostics with stable codes; built so far: the
 //!   diagnostic type and [`validation::validate`], which reports a
@@ -50,9 +52,12 @@
 //! and Claims in them, with their names and each Claim's
 //! `assertionDeclaration`. It refuses unsafe and malformed input and roots
 //! that are not SACM packages with a diagnostic code, and content it cannot
-//! represent yet as `Unsupported`. [`sacm::xmi::write`](xmi::write) writes a
-//! document's roots and every element under them, with their names and
-//! declarations, deterministically. [`edit::apply`] creates
+//! represent yet as `Unsupported`, and reports an `xsi:type` or an
+//! `xmi:version` it reads as a diagnostic. [`sacm::xmi::write`](xmi::write)
+//! writes a document's roots and every element under them, with their names
+//! and declarations, deterministically; in strict mode, the default, it
+//! refuses a document that validation reports an Error for, and in tolerant
+//! mode writes it as it is held. [`edit::apply`] creates
 //! AssuranceCasePackage, ArgumentPackage and Claim elements, with a name and
 //! a given or generated id, or refuses with an [`EditError`](edit::EditError)
 //! and changes nothing. [`compare::semantic_compare`] lists every difference
@@ -65,7 +70,7 @@
 //!
 //! ```
 //! use sacm::model::AssertionDeclaration;
-//! use sacm::xmi::{self, ReadOptions, WriteOptions};
+//! use sacm::xmi::{self, Mode, ReadOptions, WriteError, WriteOptions};
 //! use sacm::{diagnostic, validation};
 //!
 //! let input = br#"<?xml version="1.0" encoding="UTF-8"?>
@@ -97,8 +102,14 @@
 //! }
 //! assert!(diagnostic::has_errors(&findings));
 //!
-//! // Write it back as XMI, in the one deterministic form.
-//! let text = xmi::write(document, &WriteOptions::default())?;
+//! // A strict write, the default, refuses a document with a validation Error.
+//! let refused = xmi::write(document, &WriteOptions::default()).unwrap_err();
+//! assert!(matches!(refused, WriteError::Invalid { .. }));
+//! assert_eq!(refused.diagnostics()[0].affected()[0].as_str(), "case");
+//!
+//! // A tolerant write writes it as it is held, in the one deterministic form.
+//! let tolerant = WriteOptions::default().with_mode(Mode::Tolerant);
+//! let text = xmi::write(document, &tolerant)?;
 //! assert!(text.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<xmi:XMI "));
 //! // Saving is ordinary I/O: std::fs::write("case.sacm.xmi", &text)?;
 //! # Ok::<(), Box<dyn std::error::Error>>(())
@@ -114,7 +125,8 @@
 //! its findings with the reader's and test them with
 //! [`diagnostic::has_errors`].
 //! Write a document back with [`xmi::write`], which returns the
-//! XMI text for you to save.
+//! XMI text for you to save; write a draft that does not validate yet with
+//! [`xmi::Mode::Tolerant`].
 //! Build a document from scratch, or extend one you read, with
 //! [`edit::apply`] and the create operations such as [`edit::CreateClaim`];
 //! each returns a [`Mutation`](edit::Mutation) with the operation and the ids
