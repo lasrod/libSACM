@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- LIB-CLI-002, LIB-CLI-003: a clean document. Two package roots, a nested ArgumentPackage, and a named Claim with each of the six assertionDeclaration literals. Reading it gives no diagnostic, validate finds nothing, and a strict save writes it. Hand-written. -->
+<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:sacm="http://www.omg.org/spec/SACM/20220301">
+  <sacm:AssuranceCasePackage xmi:id="case">
+    <name lang="en" content="Braking case"/>
+    <argumentPackage xmi:id="arguments">
+      <name lang="en" content="Arguments"/>
+      <argumentElement xmi:type="sacm:Claim" xmi:id="c_asserted" assertionDeclaration="asserted">
+        <name lang="en" content="The brake stops the vehicle"/>
+      </argumentElement>
+      <argumentElement xmi:type="sacm:Claim" xmi:id="c_assumed" assertionDeclaration="assumed">
+        <name lang="en" content="The road is dry"/>
+      </argumentElement>
+      <argumentElement xmi:type="sacm:Claim" xmi:id="c_axiomatic" assertionDeclaration="axiomatic">
+        <name lang="en" content="Friction opposes motion"/>
+      </argumentElement>
+      <argumentElement xmi:type="sacm:Claim" xmi:id="c_defeated" assertionDeclaration="defeated">
+        <name lang="en" content="The brake never wears"/>
+      </argumentElement>
+      <argumentElement xmi:type="sacm:Claim" xmi:id="c_needs_support" assertionDeclaration="needsSupport">
+        <name lang="en" content="The brake is tested"/>
+      </argumentElement>
+      <argumentElement xmi:type="sacm:ArgumentPackage" xmi:id="nested">
+        <name lang="en" content="Cited arguments"/>
+        <argumentElement xmi:type="sacm:Claim" xmi:id="c_as_cited" assertionDeclaration="asCited">
+          <name lang="en" content="The supplier's brake is certified"/>
+        </argumentElement>
+      </argumentElement>
+    </argumentPackage>
+  </sacm:AssuranceCasePackage>
+  <sacm:ArgumentPackage xmi:id="more">
+    <name lang="en" content="More arguments"/>
+  </sacm:ArgumentPackage>
+</xmi:XMI>

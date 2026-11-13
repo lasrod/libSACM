@@ -6,7 +6,8 @@
 //! `assuranceCasePackage`, an ArgumentPackage in `argumentPackage` and in
 //! `argumentElement`, and a Claim in `argumentElement`. Everything else in a
 //! package is refused as `ReadError::Unsupported` at an exact location, and no
-//! document is returned.
+//! document is returned; an empty or a duplicate `xmi:id` is refused with its
+//! own coded variant, `InvalidId` or `DuplicateId` (ADR 0015 amendment 2).
 //!
 //! Inputs are inline strings, LF-only. The expected location of a refusal is
 //! marked in the input with [`MARK`] (U+2038), which the test removes before
@@ -29,7 +30,7 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
 use std::time::Duration;
 
-use sacm::diagnostic::SourceLocation;
+use sacm::diagnostic::{Code, SourceLocation};
 use sacm::edit::{self, CreateArgumentPackage, CreateAssuranceCasePackage, CreateClaim};
 use sacm::model::{AbstractClass, Document, ElementId, ElementKind, LangString, SacmElement};
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteOptions};
@@ -133,30 +134,54 @@ fn refused(what: impl Into<String>, template: impl Into<String>) -> Refused {
 /// Reads every case and fails, listing each case that is not refused as
 /// `Unsupported` at its mark, with no document.
 fn assert_all_unsupported_at_mark(what: &str, cases: &[Refused]) {
+    assert_all_refused_at_mark(what, cases, "Unsupported", |error| {
+        matches!(error, ReadError::Unsupported { .. }) && error.code().is_none()
+    });
+}
+
+/// Reads every case and fails, listing each case that is not refused at its
+/// mark with a refusal that `is_expected` accepts, named `expected`.
+fn assert_all_refused_at_mark(
+    what: &str,
+    cases: &[Refused],
+    expected: &str,
+    is_expected: fn(&ReadError) -> bool,
+) {
     assert!(!cases.is_empty(), "{ROW}: setup: no cases for {what}");
     let mut failures = Vec::new();
     for case in cases {
-        let (input, expected) = marked(&case.template);
+        let (input, at) = marked(&case.template);
         match read(input.as_bytes()) {
             Ok(output) => failures.push(format!(
                 "{}: a document of {} elements was returned for {input:?}",
                 case.what,
                 output.document().element_count()
             )),
-            Err(error @ ReadError::Unsupported { .. }) if error.location() == Some(expected) => {}
+            Err(error) if is_expected(&error) && error.location() == Some(at) => {}
             Err(error) => failures.push(format!(
-                "{}: expected Unsupported at {expected}, got {error:?} for {input:?}",
+                "{}: expected {expected} at {at}, got {error:?} for {input:?}",
                 case.what
             )),
         }
     }
     assert!(
         failures.is_empty(),
-        "{ROW}: {} of {} {what} cases are not Unsupported at the mark:\n{}",
+        "{ROW}: {} of {} {what} cases are not {expected} at the mark:\n{}",
         failures.len(),
         cases.len(),
         failures.join("\n")
     );
+}
+
+/// A `DuplicateId` refusal with SACM-ID-001 (ADR 0015 amendment 2).
+fn is_duplicate_id(error: &ReadError) -> bool {
+    matches!(error, ReadError::DuplicateId { .. }) && error.code() == Some(Code::ID_DUPLICATE)
+}
+
+/// An `InvalidId` refusal of the empty id, with SACM-ID-002.
+fn is_empty_invalid_id(error: &ReadError) -> bool {
+    matches!(error, ReadError::InvalidId { id, .. } if id.is_empty())
+        && error.code() == Some(Code::ID_INVALID)
 }
 
 // --- Documents ------------------------------------------------------------
@@ -944,7 +969,7 @@ fn sacm23_xmi_016_every_conforming_kind_outside_the_readable_set_is_unsupported_
 }
 
 #[test]
-fn sacm23_xmi_016_a_missing_empty_or_duplicate_child_id_is_unsupported_at_the_child() {
+fn sacm23_xmi_016_a_missing_or_foreign_child_id_is_unsupported_at_the_child() {
     let cases = [
         refused(
             "no xmi:id on a Claim",
@@ -955,15 +980,35 @@ fn sacm23_xmi_016_a_missing_empty_or_duplicate_child_id_is_unsupported_at_the_ch
             in_acp(&format!("{MARK}<assuranceCasePackage/>")),
         ),
         refused(
-            "an empty xmi:id",
-            in_acp(&format!("{MARK}<argumentPackage xmi:id=\"\"/>")),
-        ),
-        refused(
             "an id in no namespace",
             in_ap(&format!(
                 "{MARK}<argumentElement xmi:type=\"sacm:Claim\" id=\"x\"/>"
             )),
         ),
+    ];
+    assert_all_unsupported_at_mark("id", &cases);
+}
+
+#[test]
+fn sacm23_xmi_016_an_empty_child_id_is_invalid_id_at_the_child() {
+    let cases = [
+        refused(
+            "an empty xmi:id on an AP",
+            in_acp(&format!("{MARK}<argumentPackage xmi:id=\"\"/>")),
+        ),
+        refused(
+            "an empty xmi:id on a Claim",
+            in_ap(&format!(
+                "{MARK}<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"\"/>"
+            )),
+        ),
+    ];
+    assert_all_refused_at_mark("empty id", &cases, "InvalidId", is_empty_invalid_id);
+}
+
+#[test]
+fn sacm23_xmi_016_a_duplicate_child_id_is_duplicate_id_at_the_child() {
+    let cases = [
         refused(
             "the root's id",
             in_ap(&format!(
@@ -993,7 +1038,7 @@ fn sacm23_xmi_016_a_missing_empty_or_duplicate_child_id_is_unsupported_at_the_ch
             ),
         ),
     ];
-    assert_all_unsupported_at_mark("id", &cases);
+    assert_all_refused_at_mark("duplicate id", &cases, "DuplicateId", is_duplicate_id);
 }
 
 #[test]
@@ -1105,7 +1150,8 @@ fn sacm23_xmi_016_text_or_a_second_or_unreadable_name_in_a_child_is_unsupported_
 #[test]
 fn sacm23_xmi_016_a_duplicate_child_id_is_refused_at_the_child_before_later_content() {
     // Each duplicate is followed by content that is refused too, so the
-    // duplicate must be found when its start tag is read, not later.
+    // duplicate must be found when its start tag is read, not later: the
+    // refusal is the DuplicateId at the first repeat (ADR 0015 amendment 2).
     let wrapper = "<xmi:XMI xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" \
                    xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\">\n";
     let claim = |id: &str| format!("<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"{id}\"/>");
@@ -1152,7 +1198,12 @@ fn sacm23_xmi_016_a_duplicate_child_id_is_refused_at_the_child_before_later_cont
             )),
         ),
     ];
-    assert_all_unsupported_at_mark("duplicate id before later content", &cases);
+    assert_all_refused_at_mark(
+        "duplicate id before later content",
+        &cases,
+        "DuplicateId",
+        is_duplicate_id,
+    );
 }
 
 // --- Item 5 (new numbering): white space written as CDATA or references ----

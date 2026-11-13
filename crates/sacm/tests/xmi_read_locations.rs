@@ -110,6 +110,8 @@ enum Variant {
     InvalidRoot,
     NoPackage,
     Unsupported,
+    DuplicateId,
+    InvalidId,
 }
 
 /// One refusal site.
@@ -350,7 +352,7 @@ fn wrapper_rows() -> Vec<Row> {
 
 /// The refusals of a root's kind, namespace, id, attributes and content.
 fn root_rows() -> Vec<Row> {
-    use Variant::Unsupported;
+    use Variant::{DuplicateId, InvalidId, Unsupported};
     let root = |attributes: &str, content: &str| {
         led(&format!(
             "{MARK}<sacm:ArgumentPackage{NS}{attributes}>{content}</sacm:ArgumentPackage>"
@@ -379,8 +381,23 @@ fn root_rows() -> Vec<Row> {
         row("a root with no id", Unsupported, root("", "")),
         row(
             "a root with an empty id",
-            Unsupported,
+            InvalidId,
             root(" xmi:id=\"\"", ""),
+        ),
+        // SACM23-VAL-001: at the first repeat.
+        row(
+            "a root repeating an earlier root's id",
+            DuplicateId,
+            wrapped(&format!(
+                "<sacm:ArgumentPackage xmi:id=\"a\"/>{MARK}<sacm:ArgumentPackage xmi:id=\"a\"/>"
+            )),
+        ),
+        // SACM23-VAL-020: an id with white space around an NCName, at the
+        // attribute's name, until SACM23-XMI-025.
+        row(
+            "a root id with white space around it",
+            Unsupported,
+            led(&format!("<sacm:ArgumentPackage{NS} {MARK}xmi:id=\" a \"/>")),
         ),
         row(
             "a root typed as another class",
@@ -404,9 +421,10 @@ fn root_rows() -> Vec<Row> {
             Unsupported,
             in_ap(&format!(" \t {MARK}x")),
         ),
+        // SACM23-VAL-001: an id repeated across classes, at the first repeat.
         row(
             "a root with an earlier root's id",
-            Unsupported,
+            DuplicateId,
             wrapped(&format!(
                 "<sacm:ArgumentPackage xmi:id=\"a\"/>{MARK}<sacm:AssuranceCasePackage xmi:id=\"a\"/>"
             )),
@@ -544,12 +562,12 @@ fn child_content_rows() -> Vec<Row> {
         row("a child with no id", U, element(" xmi:type=\"sacm:Claim\"")),
         row(
             "a child with an empty id",
-            U,
+            Variant::InvalidId,
             element(" xmi:type=\"sacm:Claim\" xmi:id=\"\""),
         ),
         row(
             "a child with a duplicate id",
-            U,
+            Variant::DuplicateId,
             in_ap(&format!(
                 "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>{MARK}<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"
             )),
@@ -723,6 +741,8 @@ fn variant(error: &ReadError) -> Option<Variant> {
         ReadError::InvalidRoot { .. } => Some(Variant::InvalidRoot),
         ReadError::NoPackage { .. } => Some(Variant::NoPackage),
         ReadError::Unsupported { .. } => Some(Variant::Unsupported),
+        ReadError::DuplicateId { .. } => Some(Variant::DuplicateId),
+        ReadError::InvalidId { .. } => Some(Variant::InvalidId),
         _ => None,
     }
 }
@@ -868,6 +888,8 @@ fn sacm23_xmi_010_the_table_covers_every_read_error_variant() {
         Variant::InvalidRoot,
         Variant::NoPackage,
         Variant::Unsupported,
+        Variant::DuplicateId,
+        Variant::InvalidId,
     ] {
         assert!(
             rows.iter().any(|row| row.variant == wanted),
@@ -890,6 +912,15 @@ fn sacm23_xmi_010_display_shows_the_location_for_every_refusal_site() {
             continue;
         };
         let shown = error.to_string();
+        // A duplicate id names every element carrying it (SACM23-VAL-001).
+        if matches!(error, ReadError::DuplicateId { .. }) {
+            for location in error.locations() {
+                if !shown.contains(&location.to_string()) {
+                    failures.push(format!("{}: {shown:?} does not show {location}", row.what));
+                }
+            }
+            continue;
+        }
         // The reason, where the variant has one, follows the location after
         // ": " (the `ReadError` Display rules).
         let before_reason = match &error {

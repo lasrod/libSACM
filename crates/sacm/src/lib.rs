@@ -2,138 +2,95 @@
 //! [OMG Structured Assurance Case Metamodel (SACM) 2.3][sacm].
 //!
 //! An assurance case is a structured argument, backed by evidence, that a
-//! system is acceptably safe, secure or otherwise fit for its purpose. SACM is
-//! the OMG standard for representing such cases so that tools can exchange
-//! them. This crate is an independent, tool-neutral implementation of SACM 2.3.
-//! It aims to provide:
+//! system is acceptably safe, secure or otherwise fit for its purpose. In
+//! SACM, the argument is made of claims, the relationships between them and
+//! the artifacts that back them, grouped in packages. SACM is the OMG
+//! standard for representing such cases so that tools can exchange them, as
+//! XMI files. This crate is an independent, tool-neutral implementation of
+//! SACM 2.3. It is under active development, and its API is not stable yet.
 //!
-//! - a typed model of the whole metamodel (packages, claims, asserted
-//!   relationships, artifacts, terminology, interfaces and bindings), partly
-//!   built (see [Status](#status)),
-//! - XMI import and deterministic export, with a strict SACM 2.3 mode and an
-//!   explicit tolerant mode for third-party and legacy files; built so far:
-//!   [`xmi::read`], which reads `AssuranceCasePackage` and `ArgumentPackage`
-//!   roots, the packages and Claims in them, their names and each Claim's
-//!   `assertionDeclaration`, and refuses everything else, and
-//!   [`xmi::write`], which writes everything a document holds, refusing in
-//!   strict mode, its default, a document that validation reports an Error
-//!   for; [`xmi::Mode`] selects the mode,
-//! - validation against the specification's constraints, reported as
-//!   machine-readable diagnostics with stable codes; built so far: the
-//!   diagnostic type and [`validation::validate`], which reports a
-//!   `ModelElement` with no name,
-//! - SACM-native editing, each operation checked in full before anything
-//!   changes, with previews for destructive operations; built so far:
-//!   [`edit::apply`] with the operations that create an
-//!   `AssuranceCasePackage`, an `ArgumentPackage` and a `Claim`,
-//! - semantic comparison: [`compare::semantic_compare`] lists every
-//!   difference in SACM content between two documents, and `==` on a
-//!   [`Document`](model::Document) is true when there is none.
+//! # What works today
 //!
-//! # Status
+//! - [`xmi::read`] reads `AssuranceCasePackage` and `ArgumentPackage` roots
+//!   and the packages and Claims in them, with their names and each Claim's
+//!   `assertionDeclaration`. It refuses what it cannot represent yet rather
+//!   than drop it.
+//! - [`xmi::write`] writes a document deterministically. In strict mode, the
+//!   default, it refuses a document that validation reports an Error for.
+//! - [`validation::validate`] reports an element with no name and an id that
+//!   is not an XML `NCName`, as [`Diagnostic`](diagnostic::Diagnostic)s with
+//!   stable codes.
+//! - [`edit::apply`] creates `AssuranceCasePackage`, `ArgumentPackage` and
+//!   `Claim` elements; a refused edit changes nothing.
+//! - [`compare::semantic_compare`] lists every difference in SACM content
+//!   between two documents, and `==` on a [`Document`](model::Document) is
+//!   true when there is none.
 //!
-//! This crate is under active development and its API is not yet stable.
-//! What is implemented, and how it is tested, is tracked requirement by
-//! requirement in the [functionality matrix][matrix]. So far the crate
-//! provides the document model, the metamodel's element kinds,
-//! element names ([`SacmElement::name`](model::SacmElement::name)), each
-//! Assertion's `assertionDeclaration` (whether the Assertion is asserted,
-//! assumed, axiomatic, defeated, still needs support, or as cited; SACM 2.3
-//! §11.8), read with [`SacmElement::assertion_declaration`][declaration],
-//! and the first value types ([`LangString`](model::LangString),
-//! [`MultiLangString`](model::MultiLangString) and
-//! [`AssertionDeclaration`](model::AssertionDeclaration)), in [`model`],
-//! and the [`Diagnostic`](diagnostic::Diagnostic) type that findings are
-//! reported in, in [`diagnostic`]. [`validation::validate`] checks a
-//! document and reports each `ModelElement` with no name as
-//! [`Code::MULTIPLICITY_VIOLATION`](diagnostic::Code::MULTIPLICITY_VIOLATION).
-//! [`sacm::xmi::read`](xmi::read) reads `AssuranceCasePackage` and
-//! `ArgumentPackage` roots, bare or in an `xmi:XMI` element, and the packages
-//! and Claims in them, with their names and each Claim's
-//! `assertionDeclaration`. It refuses unsafe and malformed input and roots
-//! that are not SACM packages with a diagnostic code, and content it cannot
-//! represent yet as `Unsupported`, and reports an `xsi:type` or an
-//! `xmi:version` it reads as a diagnostic. [`sacm::xmi::write`](xmi::write)
-//! writes a document's roots and every element under them, with their names
-//! and declarations, deterministically; in strict mode, the default, it
-//! refuses a document that validation reports an Error for, and in tolerant
-//! mode writes it as it is held. [`edit::apply`] creates
-//! AssuranceCasePackage, ArgumentPackage and Claim elements, with a name and
-//! a given or generated id, or refuses with an [`EditError`](edit::EditError)
-//! and changes nothing. [`compare::semantic_compare`] lists every difference
-//! in SACM content between two documents, and `==` on a `Document` is true
-//! when there is none. Reading the other element kinds and attributes (such
-//! as a `description` or a `gid`), validation rules other than the missing
-//! name, and the other edit operations are not built yet.
+//! The [functionality matrix][matrix] tracks every requirement: what is
+//! built, what is planned, and the tests behind each.
 //!
 //! # Example
 //!
+//! Load a document, inspect it, edit it, validate it and save it:
+//!
 //! ```
-//! use sacm::model::AssertionDeclaration;
-//! use sacm::xmi::{self, Mode, ReadOptions, WriteError, WriteOptions};
-//! use sacm::{diagnostic, validation};
+//! use sacm::diagnostic;
+//! use sacm::edit::{self, CreateClaim};
+//! use sacm::model::{ElementKind, LangString};
+//! use sacm::validation;
+//! use sacm::xmi::{self, ReadOptions, WriteOptions};
 //!
+//! // Load. The input is the bytes of an XMI file; here it is inline.
 //! let input = br#"<?xml version="1.0" encoding="UTF-8"?>
-//! <xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
-//!          xmlns:sacm="http://www.omg.org/spec/SACM/20220301">
-//!   <sacm:AssuranceCasePackage xmi:id="case"/>
-//!   <sacm:ArgumentPackage xmi:id="arguments">
+//! <sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+//!     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="case">
+//!   <name lang="en" content="Braking case"/>
+//!   <argumentPackage xmi:id="arguments">
 //!     <name lang="en" content="Arguments"/>
-//!     <argumentElement xmi:type="sacm:Claim" xmi:id="c1" assertionDeclaration="needsSupport">
-//!       <name lang="en" content="The system is safe"/>
+//!     <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+//!       <name lang="en" content="The brake stops the vehicle"/>
 //!     </argumentElement>
-//!   </sacm:ArgumentPackage>
-//! </xmi:XMI>"#;
+//!   </argumentPackage>
+//! </sacm:AssuranceCasePackage>"#;
 //! let output = xmi::read(input, &ReadOptions::default())?;
-//! let document = output.document();
-//! for element in document.elements() {
-//!     let name = element.name().and_then(|n| n.content());
-//!     println!("{} {} {name:?}", element.kind(), element.id());
-//! }
-//! let c1 = document.get("c1").and_then(|c1| c1.assertion_declaration());
-//! assert_eq!(c1, Some(AssertionDeclaration::NeedsSupport));
+//! assert!(output.diagnostics().is_empty());
+//! let mut document = output.into_document();
 //!
-//! // Check it against SACM's rules: the case package has no name.
-//! let mut findings = output.diagnostics().to_vec();
-//! findings.extend(validation::validate(document));
-//! findings.sort();
-//! for finding in &findings {
-//!     println!("{finding}");
-//! }
-//! assert!(diagnostic::has_errors(&findings));
+//! // Inspect.
+//! let c1 = document.get("c1").expect("the Claim was read");
+//! assert_eq!(c1.kind(), ElementKind::Claim);
+//! assert_eq!(c1.name().and_then(|name| name.content()), Some("The brake stops the vehicle"));
+//! assert_eq!(c1.parent().map(|parent| parent.id().as_str()), Some("arguments"));
 //!
-//! // A strict write, the default, refuses a document with a validation Error.
-//! let refused = xmi::write(document, &WriteOptions::default()).unwrap_err();
-//! assert!(matches!(refused, WriteError::Invalid { .. }));
-//! assert_eq!(refused.diagnostics()[0].affected()[0].as_str(), "case");
+//! // Edit: add a Claim to the ArgumentPackage. Its id is generated.
+//! let name = LangString::new("The brake is tested").with_lang("en");
+//! let created = edit::apply(&mut document, CreateClaim::new("arguments", name))?;
+//! assert_eq!(created.created_ids()[0].as_str(), "claim_1");
 //!
-//! // A tolerant write writes it as it is held, in the one deterministic form.
-//! let tolerant = WriteOptions::default().with_mode(Mode::Tolerant);
-//! let text = xmi::write(document, &tolerant)?;
-//! assert!(text.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<xmi:XMI "));
-//! // Saving is ordinary I/O: std::fs::write("case.sacm.xmi", &text)?;
+//! // Validate: every element has a name and a valid id.
+//! let findings = validation::validate(&document);
+//! assert!(!diagnostic::has_errors(&findings));
+//!
+//! // Save. The write is strict by default; writing the file is ordinary I/O,
+//! // such as std::fs::write("case.sacm.xmi", &text).
+//! let text = xmi::write(&document, &WriteOptions::default())?;
+//!
+//! // The saved text reads back as the same document.
+//! let back = xmi::read(text.as_bytes(), &ReadOptions::default())?.into_document();
+//! assert_eq!(back, document);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
-//! Look up an element with [`model::Document::get`], walk every element with
-//! [`model::Document::elements`], or move one level at a time with
-//! [`children`](model::SacmElement::children) and
-//! [`parent`](model::SacmElement::parent). Read an element's name with
-//! [`name`](model::SacmElement::name), and an Assertion's declaration with
-//! [`assertion_declaration`](model::SacmElement::assertion_declaration).
-//! Check a document against SACM's rules with [`validation::validate`]; merge
-//! its findings with the reader's and test them with
-//! [`diagnostic::has_errors`].
-//! Write a document back with [`xmi::write`], which returns the
-//! XMI text for you to save; write a draft that does not validate yet with
-//! [`xmi::Mode::Tolerant`].
-//! Build a document from scratch, or extend one you read, with
-//! [`edit::apply`] and the create operations such as [`edit::CreateClaim`];
-//! each returns a [`Mutation`](edit::Mutation) with the operation and the ids
-//! it created, changed and deleted; the [`edit`] module example builds, validates and writes a complete
-//! document, which [`xmi::read`] reads back.
-//! Compare two documents by their SACM content with
-//! [`compare::semantic_compare`], which names each difference, or with `==`.
+//! A strict save refuses a document with a validation Error, as
+//! [`WriteError::Invalid`](xmi::WriteError::Invalid); a draft is saved with
+//! `WriteOptions::default().with_mode(Mode::Tolerant)` ([`xmi::Mode`]).
+//!
+//! Walk a document with [`model::Document::elements`], or one level at a
+//! time with [`children`](model::SacmElement::children) and
+//! [`parent`](model::SacmElement::parent). To report reading and validation
+//! together, merge [`ReadOutput::diagnostics`](xmi::ReadOutput::diagnostics)
+//! with the findings of [`validation::validate`]. The [`edit`] module builds a
+//! document from scratch.
 //!
 //! # Features
 //!
@@ -148,7 +105,6 @@
 //!   Enable it only under `[dev-dependencies]`.
 //!
 //! [sacm]: https://www.omg.org/spec/SACM/2.3
-//! [declaration]: model::SacmElement::assertion_declaration
 //! [matrix]: https://github.com/lasrod/libSACM/blob/main/docs/matrix/functionality-matrix.md
 #![cfg_attr(docsrs, feature(doc_cfg))]
 

@@ -598,6 +598,7 @@ fn sacm23_xmi_018_inputs_from_the_read_and_root_tests_give_the_utf8_result() {
             Outcome::Refused(ReadError::InvalidRoot { .. }) => "InvalidRoot",
             Outcome::Refused(ReadError::NoPackage { .. }) => "NoPackage",
             Outcome::Refused(ReadError::Unsupported { .. }) => "Unsupported",
+            Outcome::Refused(ReadError::DuplicateId { .. }) => "DuplicateId",
             Outcome::Refused(_) => "another refusal",
         });
     }
@@ -605,6 +606,7 @@ fn sacm23_xmi_018_inputs_from_the_read_and_root_tests_give_the_utf8_result() {
         kinds.into_iter().collect::<Vec<_>>(),
         [
             "Doctype",
+            "DuplicateId",
             "InvalidRoot",
             "Malformed",
             "NoPackage",

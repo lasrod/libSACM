@@ -89,3 +89,38 @@ which return a `LoadResult` with an `ok` flag and an optional document
   yet verified, and labels each refusal's kind. Every compliance point depends on those
   rows, so no compliance point can be verified while schema-conforming input is still
   refused.
+
+## Amendment 2 (2026-11-13): coded refusals for ids (slice 0036; SACM23-VAL-001, SACM23-VAL-020)
+
+- **A defect gets its own variant.** When `read` refuses a defect in the input, the refusal
+  gets its own `ReadError` variant, and `code()` returns its catalog code. `Unsupported`
+  never gains a code; it keeps only the shrinking list of inputs this version cannot read
+  yet.
+- **`ReadError::DuplicateId { id, locations }`** (SACM-ID-001). Two or more elements carry the
+  same `xmi:id`; XMI 2.5.1 §7.6.1 says the value "is unique across all elements within the
+  file". A `Document` holds each id once, so the input is refused, never read with an
+  element dropped or renamed (D-PRESERVE).
+  - It concerns the first id that repeats in document order.
+  - `locations` gives the start tag of every element carrying that id, in document order.
+  - `location()` is the first repeat.
+- **`ReadError::InvalidId { id, location }`** (SACM-ID-002). The `xmi:id` is empty, which is
+  not an NCName and which a `Document` cannot hold. Its location is the element's start tag.
+- **Both refusals apply in both modes.**
+- **Other ids that are not NCNames are read and held as written** (D-ID), for example `1c`,
+  `a:b` and `a b`. `validation::validate` reports each one as SACM-ID-002 (SACM23-VAL-020),
+  so a strict save refuses the document and a tolerant save writes the id back.
+  - NCName follows XML 1.0 Fifth Edition and Namespaces in XML Third Edition, the editions
+    XMI 2.5.1 cites, as ADR 0019 E6 does.
+- **Ids with white space around them.** `xsd:ID` collapses white space, so `" c1 "` is a
+  schema-valid id whose value is `c1`. Where trimming XML white space changes an id and the
+  trimmed value is an NCName, the id is refused as `Unsupported` for now (the interim rule),
+  until a row reads it by its collapsed value.
+
+**Differences from C++, one line each:**
+- C++ reads duplicate ids and reports SACM-ID-001 at load and again in `validate`
+  (`xmi_reader.cpp:2287-2303`, `validate.cpp:312-318`); here the input is refused.
+- C++ reads an empty id and `validate` reports it (`validate.cpp:303-309`); here it is a
+  coded read refusal.
+- C++ `validate` reports only empty ids; here every id that is not an NCName is reported.
+
+*Amendment 2 status: accepted (the maintainer, 2026-11-13).*

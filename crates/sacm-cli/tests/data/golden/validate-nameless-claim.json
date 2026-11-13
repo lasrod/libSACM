@@ -1,0 +1,1 @@
+{"format":1,"file":"nameless-claim.sacm.xmi","mode":"tolerant","result":"invalid","refusal":null,"diagnostics":[{"code":"SACM-MULT-001","severity":"error","requirement":"SACM23-VAL-018","clause":"8.6","location":null,"affected":["c1"],"message":"Claim \"c1\" has no name (name:LangString[1])"}]}

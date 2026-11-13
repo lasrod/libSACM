@@ -1,0 +1,1 @@
+{"format":1,"file":"malformed.sacm.xmi","mode":"tolerant","result":"unreadable","refusal":{"code":"SACM-XML-001","location":{"line":3,"column":4},"locations":[{"line":3,"column":4}],"message":"the input is not well-formed XML at line 3, column 4: the end tag \"s\" does not match the start tag \"r\""},"diagnostics":[]}

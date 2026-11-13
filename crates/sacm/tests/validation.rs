@@ -445,7 +445,12 @@ fn sacm23_val_018_an_id_with_a_quote_line_break_backslash_and_combining_mark_is_
         ["a\"b\nc\\d\u{301}"],
         "{ROW}: {input:?} did not read to the expected id, so it tests nothing"
     );
-    let found = validation::validate(output.document());
+    // The id is not an NCName either (SACM-ID-002); only the name finding is
+    // under test here.
+    let found: Vec<Diagnostic> = validation::validate(output.document())
+        .into_iter()
+        .filter(|finding| finding.code() == Code::MULTIPLICITY_VIOLATION)
+        .collect();
     let [finding] = found.as_slice() else {
         panic!("{ROW}: one nameless ArgumentPackage gave {found:?}, not one finding");
     };

@@ -1134,7 +1134,7 @@ type Template = fn(&str, &str) -> String;
 /// template, and where it is refused. Each is at line 1, column 1, or on a
 /// later line after a fixed indent, so its location does not depend on the
 /// prefix length.
-const REFUSALS: [(&str, Template, (u32, u32)); 7] = [
+const REFUSALS: [(&str, Template, (u32, u32)); 6] = [
     (
         "a package kind not read yet",
         |s, x| {
@@ -1180,17 +1180,6 @@ const REFUSALS: [(&str, Template, (u32, u32)); 7] = [
         (2, 3),
     ),
     (
-        "a repeated id",
-        |s, x| {
-            format!(
-                "<{x}:XMI xmlns:{x}=\"{XMI_NS}\" xmlns:{s}=\"{SACM_NS}\">\n  \
-                     <{s}:ArgumentPackage {x}:id=\"p\"/>\n  \
-                     <{s}:ArgumentPackage {x}:id=\"p\"/>\n</{x}:XMI>"
-            )
-        },
-        (3, 3),
-    ),
-    (
         "an XMI element beside a root",
         |s, x| {
             format!(
@@ -1202,6 +1191,40 @@ const REFUSALS: [(&str, Template, (u32, u32)); 7] = [
         (3, 3),
     ),
 ];
+
+#[test]
+fn sacm23_xmi_002_a_repeated_id_is_the_same_duplicate_id_under_any_prefix() {
+    // The id compares by its value, whatever prefix the XMI namespace has
+    // (SACM23-VAL-001; ADR 0015 amendment 2).
+    let template = |s: &str, x: &str| {
+        format!(
+            "<{x}:XMI xmlns:{x}=\"{XMI_NS}\" xmlns:{s}=\"{SACM_NS}\">\n  \
+             <{s}:ArgumentPackage {x}:id=\"p\"/>\n  \
+             <{s}:ArgumentPackage {x}:id=\"p\"/>\n</{x}:XMI>"
+        )
+    };
+    let reference = template("sacm", "xmi");
+    let expected = refusal(reference.as_bytes());
+    assert!(
+        matches!(&expected, ReadError::DuplicateId { id, .. } if id.as_str() == "p"),
+        "{ROW}: the reference {} is not DuplicateId for \"p\": {expected:?}",
+        preview(reference.as_bytes())
+    );
+    assert_eq!(
+        (expected.code(), expected.locations()),
+        (Some(Code::ID_DUPLICATE), [loc(2, 3), loc(3, 3)].as_slice()),
+        "{ROW}: the reference is not SACM-ID-001 at both roots: {expected}"
+    );
+    for (s, x) in [("s", "x"), ("ü", "ns0"), ("SACM", "XMI"), ("xmi", "sacm")] {
+        let input = template(s, x);
+        assert_eq!(
+            refusal(input.as_bytes()),
+            expected,
+            "{ROW}: with {s:?} and {x:?}, {} is not refused as the reference is",
+            preview(input.as_bytes())
+        );
+    }
+}
 
 #[test]
 fn sacm23_xmi_002_unsupported_refusals_have_the_same_kind_code_and_location_under_any_prefix() {

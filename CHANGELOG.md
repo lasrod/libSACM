@@ -149,6 +149,16 @@ change bumps the minor version and is listed under **Breaking**.
 - `xmi::Mode`; `ReadOptions`/`WriteOptions::with_mode`; `ReadOutput::mode`; read
   diagnostics SACM-XMI-010 (`xsi:type`) and SACM-XMI-011 (`xmi:version`, Info)
   [LIB-COMPAT-001].
+- `xmi::ReadError::DuplicateId` (SACM-ID-001, new `Code::ID_DUPLICATE`), naming every
+  element that carries the repeated `xmi:id`, and `xmi::ReadError::InvalidId`
+  (SACM-ID-002) for an empty `xmi:id`; `ReadError::locations()` gives every location a
+  refusal names [SACM23-VAL-001, SACM23-VAL-020].
+- `validation::validate` reports each element whose id is not an XML NCName as a
+  SACM-ID-002 Error [SACM23-VAL-020].
+- `sacm validate <file> [--strict] [--format human|json]`, with exit codes 0, 1 and 2
+  and a versioned JSON report (`"format":1`) [LIB-CLI-002].
+- `sacm roundtrip <file> [--strict] [-o <out>]`: read, save strictly, reload and compare;
+  `-o` writes the strict output only when the round trip is faithful [LIB-CLI-003].
 
 ### Changed
 
@@ -157,4 +167,14 @@ change bumps the minor version and is listed under **Breaking**.
 - `xmi::write` is strict by default: it runs `validation::validate` and refuses a
   document with any Error as `WriteError::Invalid`; write it as held with
   `WriteOptions::default().with_mode(Mode::Tolerant)` [LIB-COMPAT-007].
+- `xmi::read` refuses a duplicate `xmi:id` as `ReadError::DuplicateId` and an empty one
+  as `ReadError::InvalidId`, coded refusals instead of `Unsupported`; an `xmi:id` with XML
+  white space around an NCName is `Unsupported` until SACM23-XMI-025
+  [SACM23-VAL-001, SACM23-VAL-020].
+- The new validation Error rule SACM-ID-002 can make a strict `xmi::write` refuse a
+  document it wrote before: one holding an id that is not an NCName, such as `1c` or
+  `a b`. Write it as held in tolerant mode [SACM23-VAL-020].
+- Reading a file with many diagnostics locates them in one pass over the text.
+- The crate root and README show a load, inspect, edit, validate and save example
+  [LIB-DOC-001].
 - Simplified the harness: removed CI YAML pin tests and the mutation-exclusions command.

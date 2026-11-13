@@ -11,9 +11,11 @@
 //! `ArgumentPackage`, each with its id and name, and a Claim's
 //! `assertionDeclaration` (SACM 2.3 §2.2, §2.4, §9.2, §11.4, §11.10). It
 //! refuses input that is unsafe ([`ReadError::Doctype`], SACM-SEC-001), not
-//! well-formed ([`ReadError::Malformed`], SACM-XML-001) or not rooted in a
+//! well-formed ([`ReadError::Malformed`], SACM-XML-001), not rooted in a
 //! SACM package ([`ReadError::InvalidRoot`] and [`ReadError::NoPackage`],
-//! SACM-XMI-001). Content it cannot represent yet is refused as
+//! SACM-XMI-001), or with an `xmi:id` that repeats
+//! ([`ReadError::DuplicateId`], SACM-ID-001) or is empty
+//! ([`ReadError::InvalidId`], SACM-ID-002). Content it cannot represent yet is refused as
 //! [`ReadError::Unsupported`], never dropped.
 //!
 //! `write` writes every element of a document, with its name and, on an
@@ -224,6 +226,8 @@ mod roots;
 ///    attributes, each root with its content, and the content beside it
 ///    (`Unsupported`). An element's start tag (its role, type, kind and id)
 ///    is checked before its other attributes, and those before its content.
+///    An empty id is `InvalidId`, and an id that an earlier element carries
+///    is `DuplicateId`, so a repeat is refused before anything after its id.
 ///
 /// The refusals:
 ///
@@ -237,6 +241,13 @@ mod roots;
 ///   one of the twelve SACM package kinds.
 /// - [`ReadError::NoPackage`] (SACM-XMI-001): the `xmi:XMI` element holds no
 ///   root: no element child outside the XMI namespace.
+/// - [`ReadError::DuplicateId`] (SACM-ID-001): two or more elements carry the
+///   same `xmi:id` (XMI 2.5.1 §7.6.1), compared exactly. It names every
+///   element that carries the first id to repeat.
+/// - [`ReadError::InvalidId`] (SACM-ID-002): an element's `xmi:id` is empty.
+///   Any other id is read as written; one that is not an XML `NCName`, such
+///   as `1c` or `a b`, is reported by
+///   [`validation::validate`](crate::validation::validate).
 /// - [`ReadError::Unsupported`] (no code): the input is well-formed but this
 ///   version cannot represent it. It is also the refusal of an
 ///   `assertionDeclaration` value that is not a SACM literal, until a later
@@ -246,7 +257,8 @@ mod roots;
 ///   ASCII in input without a UTF-16 mark, more nodes, attributes or
 ///   namespaces than the parser can hold, the other ten package kinds as
 ///   roots, a package name outside the SACM namespace, an element without an
-///   `xmi:id` or with the id of an earlier element, an `XMI` element outside the
+///   `xmi:id`, an `xmi:id` with XML white space around an `NCName` (such as
+///   `" c1 "`, whose `xsd:ID` value is `c1`), an `XMI` element outside the
 ///   XMI 2.5.1 namespace (such as an older XMI revision's), an XMI-namespace
 ///   element as the document element (such as `xmi:Documentation`) or beside
 ///   the roots (such as `xmi:documentation`), an attribute of `xmi:XMI` other
@@ -386,9 +398,7 @@ pub fn read(input: &[u8], options: &ReadOptions) -> Result<ReadOutput, ReadError
 ///   A strict write validates the document with
 ///   [`validation::validate`](crate::validation::validate) and refuses it if
 ///   validation reports an Error. Validation does not check everything SACM
-///   requires yet; for example, ids read from a file are not checked
-///   (SACM23-VAL-020). So a strict write is not yet a guarantee of
-///   conformance.
+///   requires yet, so a strict write is not yet a guarantee of conformance.
 /// - [`Tolerant`](Self::Tolerant) also accepts recognised variations, and
 ///   reports them as Warnings. A tolerant write writes the document as it is
 ///   held, without validating it.
@@ -532,8 +542,16 @@ const _: () = {
 
 /// Why [`read`] refused its input.
 ///
+/// The refusals of a defect in the input have their own variant and catalog
+/// code: [`Doctype`](Self::Doctype), [`Malformed`](Self::Malformed),
+/// [`InvalidRoot`](Self::InvalidRoot), [`NoPackage`](Self::NoPackage),
+/// [`DuplicateId`](Self::DuplicateId) and [`InvalidId`](Self::InvalidId).
+/// [`Unsupported`](Self::Unsupported), with no code, is input this version
+/// cannot read yet.
+///
 /// Every refusal has a [`SourceLocation`] except the parser's capacity-limit
-/// refusals, and [`code`](Self::code) gives its catalog code. Lines end as XML 1.0 §2.11
+/// refusals, and [`code`](Self::code) gives its catalog code;
+/// [`locations`](Self::locations) gives every location a refusal names. Lines end as XML 1.0 §2.11
 /// ends them (a line feed, a carriage return and line feed, or a lone
 /// carriage return), and a leading byte order mark, UTF-8 or UTF-16, takes
 /// no column. Columns count characters, in UTF-16 input too.
@@ -542,7 +560,8 @@ const _: () = {
 ///
 /// `Display` writes one line that starts in lower case, without trailing
 /// punctuation. The location follows as ` at line L, column C` when it is
-/// known, and the reason after `: `. Names from the input are quoted with
+/// known, and the reason after `: `; a [`DuplicateId`](Self::DuplicateId)
+/// lists every location, separated by `; `. Names from the input are quoted with
 /// `{:?}`, so line breaks in them never break the line. For example:
 ///
 /// ```
@@ -594,6 +613,55 @@ pub enum ReadError {
         /// Where the `xmi:XMI` start tag starts.
         location: Option<SourceLocation>,
     },
+    /// Two or more elements carry the same `xmi:id` (SACM-ID-001,
+    /// SACM23-VAL-001). XMI 2.5.1 §7.6.1 requires the value to be unique
+    /// across all elements within the file, and a [`Document`] holds each id
+    /// once, so the input is refused rather than read with an element dropped
+    /// or renamed. Ids compare as exact strings: `c1` and `C1` differ.
+    ///
+    /// The refusal concerns the first id that repeats in document order.
+    /// [`location`](Self::location) is that first repeat, and
+    /// [`locations`](Self::locations) every element carrying the id.
+    ///
+    /// ```
+    /// use sacm::diagnostic::{Code, SourceLocation};
+    /// use sacm::xmi::{self, ReadError, ReadOptions};
+    ///
+    /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+    ///   <argumentElement xmi:type="sacm:Claim" xmi:id="c1"/>
+    ///   <argumentElement xmi:type="sacm:Claim" xmi:id="c1"/>
+    /// </sacm:ArgumentPackage>"#;
+    /// let error = xmi::read(input, &ReadOptions::default()).unwrap_err();
+    /// assert!(matches!(&error, ReadError::DuplicateId { id, .. } if id.as_str() == "c1"));
+    /// assert_eq!(error.code(), Some(Code::ID_DUPLICATE));
+    /// assert_eq!(error.location(), SourceLocation::new(4, 3));
+    /// assert_eq!(error.locations().len(), 2);
+    /// assert_eq!(
+    ///     error.to_string(),
+    ///     "the xmi:id \"c1\" is carried by 2 elements, at line 3, column 3; line 4, column 3"
+    /// );
+    /// ```
+    #[non_exhaustive]
+    DuplicateId {
+        /// The id that repeats.
+        id: ElementId,
+        /// The `<` of the start tag of every element in the input that
+        /// carries the id, in document order: at least two.
+        locations: Vec<SourceLocation>,
+    },
+    /// An element's `xmi:id` is empty, which is not an XML `NCName` and which
+    /// a [`Document`] cannot hold (SACM-ID-002, SACM23-VAL-020). The location
+    /// is the `<` of the element's start tag. Other ids that are not
+    /// `NCName`s are read as written, and
+    /// [`validation::validate`](crate::validation::validate) reports them.
+    #[non_exhaustive]
+    InvalidId {
+        /// The id as written: in this release, always empty.
+        id: String,
+        /// Where the element's start tag starts.
+        location: Option<SourceLocation>,
+    },
     /// The input is well-formed, but this version cannot represent it. It
     /// has no catalog code.
     ///
@@ -614,13 +682,17 @@ impl ReadError {
     /// [`Doctype`](Self::Doctype), SACM-XML-001 for
     /// [`Malformed`](Self::Malformed), SACM-XMI-001 for
     /// [`InvalidRoot`](Self::InvalidRoot) and [`NoPackage`](Self::NoPackage),
-    /// and `None` for [`Unsupported`](Self::Unsupported).
+    /// SACM-ID-001 for [`DuplicateId`](Self::DuplicateId), SACM-ID-002 for
+    /// [`InvalidId`](Self::InvalidId), and `None` for
+    /// [`Unsupported`](Self::Unsupported).
     #[must_use]
     pub fn code(&self) -> Option<Code> {
         match self {
             Self::Doctype { .. } => Some(Code::XML_DOCTYPE_REJECTED),
             Self::Malformed { .. } => Some(Code::XML_MALFORMED),
             Self::InvalidRoot { .. } | Self::NoPackage { .. } => Some(Code::XMI_INVALID_ROOT),
+            Self::DuplicateId { .. } => Some(Code::ID_DUPLICATE),
+            Self::InvalidId { .. } => Some(Code::ID_INVALID),
             Self::Unsupported { .. } => None,
         }
     }
@@ -628,8 +700,9 @@ impl ReadError {
     /// Where in the input the refusal is: an element at the `<` of its start
     /// tag, an attribute at the first character of its name, text at its
     /// first character that is not literal white space (a CDATA section or
-    /// reference at its start). `None` only when the input exceeds the
-    /// parser's capacity.
+    /// reference at its start). For [`DuplicateId`](Self::DuplicateId), the
+    /// first repeat. `None` only when the input exceeds the parser's
+    /// capacity.
     ///
     /// Lines end at a line feed, a carriage return and line feed, or a lone
     /// carriage return; a leading byte order mark, UTF-8 or UTF-16, takes no
@@ -641,7 +714,35 @@ impl ReadError {
             | Self::Malformed { location, .. }
             | Self::InvalidRoot { location, .. }
             | Self::NoPackage { location }
+            | Self::InvalidId { location, .. }
             | Self::Unsupported { location, .. } => *location,
+            // The first element carries the id; the second repeats it.
+            Self::DuplicateId { locations, .. } => locations.get(1).copied(),
+        }
+    }
+
+    /// Every location the refusal names: for
+    /// [`DuplicateId`](Self::DuplicateId), the start tag of every element
+    /// carrying the id, in document order; for every other refusal, its
+    /// [`location`](Self::location), or nothing when it has none.
+    ///
+    /// ```
+    /// use sacm::diagnostic::SourceLocation;
+    /// use sacm::xmi::{self, ReadOptions};
+    ///
+    /// let error = xmi::read(b"<r></s>", &ReadOptions::default()).unwrap_err();
+    /// assert_eq!(error.locations(), [SourceLocation::new(1, 4).unwrap()]);
+    /// ```
+    #[must_use]
+    pub fn locations(&self) -> &[SourceLocation] {
+        match self {
+            Self::Doctype { location }
+            | Self::Malformed { location, .. }
+            | Self::InvalidRoot { location, .. }
+            | Self::NoPackage { location }
+            | Self::InvalidId { location, .. }
+            | Self::Unsupported { location, .. } => location.as_slice(),
+            Self::DuplicateId { locations, .. } => locations,
         }
     }
 }
@@ -664,6 +765,24 @@ impl fmt::Display for ReadError {
             }
             Self::NoPackage { .. } => {
                 f.write_str("the XMI element holds no SACM package")?;
+                None
+            }
+            // Every location, not only the first repeat.
+            Self::DuplicateId { id, locations } => {
+                write!(
+                    f,
+                    "the xmi:id {:?} is carried by {} elements",
+                    id.as_str(),
+                    locations.len()
+                )?;
+                for (index, location) in locations.iter().enumerate() {
+                    f.write_str(if index == 0 { ", at " } else { "; " })?;
+                    write!(f, "{location}")?;
+                }
+                return Ok(());
+            }
+            Self::InvalidId { id, .. } => {
+                write!(f, "the xmi:id {id:?} is not an NCName")?;
                 None
             }
             Self::Unsupported { reason, .. } => {
@@ -722,8 +841,9 @@ impl std::error::Error for ReadError {}
 /// with each field written only if present, so an empty field is `=""` and an
 /// absent one is no attribute; an element with no name has no `name` child. An id is written
 /// as it is, escaped, and so are a name's fields. An id that is not an XML
-/// `NCName`, such as `1 2`, is written too, but the output then does not
-/// validate against an XMI schema. In attribute values `&`, `<`, `>`, `"`,
+/// `NCName`, such as `1 2`, is a validation Error (SACM-ID-002), so a strict
+/// write refuses it; a tolerant write writes it as it is, and the output
+/// then does not validate against an XMI schema. In attribute values `&`, `<`, `>`, `"`,
 /// TAB, LF and CR are escaped; everything else is written as it is.
 ///
 /// # Modes

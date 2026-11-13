@@ -50,13 +50,13 @@ use std::collections::BTreeSet;
 
 use roxmltree::{Attribute, Node};
 
-use super::input::{is_xml_space, locate};
+use super::input::{Locator, is_xml_space, locate};
 use super::namespaces::{SACM_NS, XMI_NS};
 use super::{Mode, ReadError};
 use crate::diagnostic::{Code, Diagnostic, Severity};
 use crate::model::{
     AbstractClass, AssertionDeclaration, DeclaredType, Document, ElementId, ElementKind,
-    LangString, role_named,
+    LangString, is_ncname, role_named,
 };
 
 /// The XML Schema instance namespace, of `xsi:type`, which is read but never
@@ -79,6 +79,8 @@ pub(super) fn read(
     let mut found = Findings {
         text,
         mode,
+        locator: Locator::new(text),
+        ids: BTreeSet::new(),
         diagnostics: Vec::new(),
     };
     if is_wrapper {
@@ -89,15 +91,19 @@ pub(super) fn read(
     Ok((document, found.diagnostics))
 }
 
-/// What pass 2 reads with: the input text, the mode, and the diagnostics
-/// found so far.
-struct Findings<'t> {
+/// What pass 2 reads with: the input text, the mode, the ids read so far,
+/// and the diagnostics found so far, each located with one advancing
+/// [`Locator`], so that locating them all costs one pass over the text.
+struct Findings<'t, 'a> {
     text: &'t str,
     mode: Mode,
+    locator: Locator<'t>,
+    /// Every `xmi:id` read so far, in every root's tree (SACM23-VAL-001).
+    ids: BTreeSet<&'a str>,
     diagnostics: Vec<Diagnostic>,
 }
 
-impl Findings<'_> {
+impl Findings<'_, '_> {
     /// Reports the `xsi:type` `attribute` of `subject`, which affects the
     /// element `id` (SACM-XMI-010; XMI 2.5.1 §9.5.2 rule 2g).
     fn xsi_type(&mut self, attribute: &Attribute<'_, '_>, subject: &str, id: &str) {
@@ -138,7 +144,7 @@ impl Findings<'_> {
 
     /// Adds `diagnostic`, located at the name of `attribute`.
     fn push(&mut self, diagnostic: Diagnostic, attribute: &Attribute<'_, '_>) {
-        let diagnostic = match locate(self.text, attribute.range_qname().start) {
+        let diagnostic = match self.locator.locate(attribute.range_qname().start) {
             Some(location) => diagnostic.set_location(location),
             None => diagnostic,
         };
@@ -217,9 +223,9 @@ fn invalid_root(text: &str, root: Node<'_, '_>) -> ReadError {
 
 /// Pass 2 for the XMI element: checks its attributes, then reads its roots
 /// and checks the content beside them, in document order.
-fn read_wrapper(
-    found: &mut Findings<'_>,
-    wrapper: Node<'_, '_>,
+fn read_wrapper<'a>(
+    found: &mut Findings<'_, 'a>,
+    wrapper: Node<'a, '_>,
     document: &mut Document,
 ) -> Result<(), ReadError> {
     let text = found.text;
@@ -285,17 +291,13 @@ impl Pending<'_> {
 /// it to `document` as a parentless element, with its tree under it in
 /// document order (ADR 0010 D2). The tree is walked with a stack, not by
 /// recursion, so a deep document cannot exhaust the call stack.
-fn read_root(
-    found: &mut Findings<'_>,
-    root: Node<'_, '_>,
+fn read_root<'a>(
+    found: &mut Findings<'_, 'a>,
+    root: Node<'a, '_>,
     document: &mut Document,
 ) -> Result<(), ReadError> {
     let text = found.text;
-    // The ids read so far in this root's tree; earlier roots' trees are in
-    // `document`.
-    let mut ids = BTreeSet::new();
-    let first = root_start(found, root, document)?;
-    ids.insert(first.id);
+    let first = root_start(found, root)?;
     // The elements whose content is being read, innermost last, each with
     // the rest of its content, and the elements read whole. Content is one
     // `name` (SACM23-XMI-012), readable children (SACM23-XMI-016), white
@@ -319,8 +321,7 @@ fn read_root(
             }
             element.name = Some(read_name(found, node, element.kind, element.id)?);
         } else {
-            let child = child_start(found, node, element, document, &ids)?;
-            ids.insert(child.id);
+            let child = child_start(found, node, element)?;
             open.push((child, node.children()));
         }
     }
@@ -360,9 +361,8 @@ fn read_root(
 /// Checks the start tag of `root`: its namespace, kind, id, type and other
 /// attributes, in that order.
 fn root_start<'a>(
-    found: &mut Findings<'_>,
+    found: &mut Findings<'_, 'a>,
     root: Node<'a, '_>,
-    document: &Document,
 ) -> Result<Pending<'a>, ReadError> {
     let text = found.text;
     let at_root = root.range().start;
@@ -396,7 +396,7 @@ fn root_start<'a>(
     };
 
     let what = format!("the root element {name:?}");
-    let id = read_id(text, root, &what, document, &BTreeSet::new())?;
+    let id = read_id(found, root, &what)?;
     for attribute in root.attributes() {
         if is_xsi_type(&attribute) {
             found.xsi_type(&attribute, &subject(kind, id), id);
@@ -439,20 +439,17 @@ fn root_start<'a>(
 
 /// Checks the start tag of `node`, a child element of `parent`: its role,
 /// type and kind, its id, and its other attributes, in that order, reading
-/// an Assertion's `assertionDeclaration`. `ids` holds the ids read so far in
-/// the root's tree.
+/// an Assertion's `assertionDeclaration`.
 fn child_start<'a>(
-    found: &mut Findings<'_>,
+    found: &mut Findings<'_, 'a>,
     node: Node<'a, '_>,
     parent: &Pending<'a>,
-    document: &Document,
-    ids: &BTreeSet<&str>,
 ) -> Result<Pending<'a>, ReadError> {
     let text = found.text;
     let kind = child_kind(text, node, parent.kind, &parent.what())?;
     let written = written_name(text, node);
     let what = format!("the element {written:?}");
-    let id = read_id(text, node, &what, document, ids)?;
+    let id = read_id(found, node, &what)?;
     // Besides `xmi:id` and the type (ADR 0016 D4), only an Assertion's
     // unqualified `assertionDeclaration`, in document order, so a refusal
     // after it lands on the later attribute.
@@ -476,8 +473,9 @@ fn child_start<'a>(
         return Err(unread_attribute(text, &attribute, &written));
     }
     Ok(Pending {
-        // Each element read before it has added one id.
-        order: ids.len(),
+        // Each element read before it, and this child, has added one id, so
+        // the count grows in document order.
+        order: found.ids.len(),
         parent: Some(parent.id),
         kind,
         id,
@@ -488,29 +486,68 @@ fn child_start<'a>(
     })
 }
 
-/// The `xmi:id` of `node` (XMI 2.5.1 §7.6.1). It must be non-empty and
-/// unlike every id read before it, in `document` or in `ids`. Refusals are
-/// at `node`, which `what` names.
+/// The `xmi:id` of `node` (XMI 2.5.1 §7.6.1), which `what` names, recorded
+/// in `found`. A missing id is `Unsupported` at `node`. An empty id is
+/// `InvalidId` at `node` (SACM-ID-002), and an id an earlier element carries
+/// is `DuplicateId` (SACM-ID-001), naming every element in the input that
+/// carries it (ADR 0015 amendment 2). An id with XML white space around an
+/// `NCName` is `Unsupported` at the attribute's name until SACM23-XMI-025.
+/// Any other id is read as written; validation reports one that is not an
+/// `NCName` (SACM23-VAL-020).
 fn read_id<'a>(
-    text: &str,
+    found: &mut Findings<'_, 'a>,
     node: Node<'a, '_>,
     what: &str,
-    document: &Document,
-    ids: &BTreeSet<&str>,
 ) -> Result<&'a str, ReadError> {
-    let not_read = |reason: String| unsupported(text, node.range().start, reason);
-    match node.attributes().find(|attribute| is_xmi(attribute, "id")) {
-        None => Err(not_read(format!("{what} has no \"xmi:id\""))),
-        Some(id) if id.value().is_empty() => {
-            Err(not_read(format!("{what} has an empty \"xmi:id\"")))
-        }
-        Some(id) if document.contains(id.value()) || ids.contains(id.value()) => {
-            Err(not_read(format!(
-                "{what} has the \"xmi:id\" {:?} of an earlier element",
-                id.value()
-            )))
-        }
-        Some(id) => Ok(id.value()),
+    let text = found.text;
+    let at = node.range().start;
+    let Some(attribute) = node.attributes().find(|attribute| is_xmi(attribute, "id")) else {
+        return Err(unsupported(text, at, format!("{what} has no \"xmi:id\"")));
+    };
+    let id = attribute.value();
+    if id.is_empty() {
+        return Err(ReadError::InvalidId {
+            id: String::new(),
+            location: locate(text, at),
+        });
+    }
+    if !found.ids.insert(id) {
+        return Err(duplicate_id(text, node, id));
+    }
+    // The interim rule: `xsd:ID` collapses white space, so the id's value is
+    // the trimmed one, which this release does not read yet.
+    let trimmed = id.trim_matches(is_xml_space);
+    if trimmed != id && is_ncname(trimmed) {
+        return Err(unsupported(
+            text,
+            attribute.range_qname().start,
+            format!(
+                "{what} has the \"xmi:id\" {id:?}, with white space around it, which is not read in this release"
+            ),
+        ));
+    }
+    Ok(id)
+}
+
+/// The `DuplicateId` refusal of `id`, which `node` repeats: the start tag of
+/// every element in the input that carries it, found in one walk in
+/// document order and located in one pass.
+fn duplicate_id(text: &str, node: Node<'_, '_>, id: &str) -> ReadError {
+    let mut locator = Locator::new(text);
+    let locations = node
+        .document()
+        .root_element()
+        .descendants()
+        .filter(|element| {
+            element
+                .attributes()
+                .any(|attribute| is_xmi(&attribute, "id") && attribute.value() == id)
+        })
+        .filter_map(|element| locator.locate(element.range().start))
+        .collect();
+    ReadError::DuplicateId {
+        id: ElementId::new(id),
+        locations,
     }
 }
 
@@ -618,7 +655,7 @@ fn read_declaration(
 /// parser gives them, untrimmed. An `xsi:type` is reported on the owner: the
 /// element `owner`, of `kind`.
 fn read_name(
-    found: &mut Findings<'_>,
+    found: &mut Findings<'_, '_>,
     node: Node<'_, '_>,
     kind: ElementKind,
     owner: &str,
@@ -872,8 +909,8 @@ mod tests {
                 "the element \"sacm:argumentElement\" in the root element \"sacm:ArgumentPackage\" is in the namespace \"http://www.omg.org/spec/SACM/20220301\", so it is not read as a role",
             ),
             (
-                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"p\"/>".to_owned(),
-                "the element \"argumentElement\" has the \"xmi:id\" \"p\" of an earlier element",
+                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\" c \"/>".to_owned(),
+                "the element \"argumentElement\" has the \"xmi:id\" \" c \", with white space around it, which is not read in this release",
             ),
             (
                 "<argumentElement xmi:type=\"sacm:Assertion\" xmi:id=\"c\"/>".to_owned(),

@@ -546,6 +546,8 @@ enum Expect {
     Malformed,
     InvalidRoot,
     NoPackage,
+    DuplicateId,
+    InvalidId,
 }
 
 /// The [`Expect`] that `result` is, or `None` for a refusal this file does
@@ -558,6 +560,8 @@ fn category(result: &Result<ReadOutput, ReadError>) -> Option<Expect> {
         Err(ReadError::Malformed { .. }) => Some(Expect::Malformed),
         Err(ReadError::InvalidRoot { .. }) => Some(Expect::InvalidRoot),
         Err(ReadError::NoPackage { .. }) => Some(Expect::NoPackage),
+        Err(ReadError::DuplicateId { .. }) => Some(Expect::DuplicateId),
+        Err(ReadError::InvalidId { .. }) => Some(Expect::InvalidId),
         Err(_) => None,
     }
 }
@@ -590,7 +594,9 @@ fn acp(content: &str) -> String {
     reason = "one flat table is easier to review than several"
 )]
 fn table() -> Vec<(&'static str, Vec<u8>, Expect)> {
-    use Expect::{Doctype, InvalidRoot, Malformed, NoPackage, Reads, Unsupported};
+    use Expect::{
+        Doctype, DuplicateId, InvalidId, InvalidRoot, Malformed, NoPackage, Reads, Unsupported,
+    };
     let text =
         |what: &'static str, input: String, expect: Expect| (what, input.into_bytes(), expect);
     let wrapper = |content: &str| {
@@ -796,15 +802,26 @@ fn table() -> Vec<(&'static str, Vec<u8>, Expect)> {
             ap("<argumentElement xmi:id=\"x\"/>"),
             Unsupported,
         ),
+        // --- A duplicate id (SACM-ID-001) and an empty id (SACM-ID-002).
         text(
             "a duplicate xmi:id",
             wrapper("<sacm:ArgumentPackage xmi:id=\"p\"/><sacm:ArgumentPackage xmi:id=\"p\"/>"),
-            Unsupported,
+            DuplicateId,
+        ),
+        text(
+            "a duplicate child xmi:id",
+            ap("<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"p\"/>"),
+            DuplicateId,
         ),
         text(
             "an empty xmi:id",
             format!("<sacm:ArgumentPackage{NS} xmi:id=\"\"/>"),
-            Unsupported,
+            InvalidId,
+        ),
+        text(
+            "an empty child xmi:id",
+            ap("<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"\"/>"),
+            InvalidId,
         ),
         text(
             "an assertionDeclaration that is not a literal",
@@ -892,6 +909,8 @@ fn lib_compat_001_both_modes_give_the_same_document_or_the_same_refusal_for_each
         Expect::Malformed,
         Expect::InvalidRoot,
         Expect::NoPackage,
+        Expect::DuplicateId,
+        Expect::InvalidId,
     ] {
         assert!(
             cases.iter().any(|&(_, _, wanted)| wanted == expect),
@@ -947,6 +966,7 @@ fn lib_compat_001_both_modes_give_the_same_document_or_the_same_refusal_for_each
                 if mem::discriminant(strict) != mem::discriminant(tolerant)
                     || strict.code() != tolerant.code()
                     || strict.location() != tolerant.location()
+                    || strict.locations() != tolerant.locations()
                 {
                     failures.push(format!(
                         "{what}: the refusals differ:\nstrict {strict:?}\ntolerant {tolerant:?}"
@@ -1926,11 +1946,9 @@ fn lib_compat_007_the_invalid_refusal_has_no_code_or_element_and_one_determinist
         !shown.contains('\n'),
         "{COMPAT_007}: an id with a line break breaks the Display: {shown:?}"
     );
-    for part in [
-        "2".to_owned(),
-        "SACM-MULT-001".to_owned(),
-        format!("{odd:?}"),
-    ] {
+    // Two nameless elements and the id that is not an NCName (SACM-ID-002),
+    // which sorts first.
+    for part in ["3".to_owned(), "SACM-ID-002".to_owned(), format!("{odd:?}")] {
         assert!(
             shown.contains(&part),
             "{COMPAT_007}: the Display {shown:?} does not give {part}"

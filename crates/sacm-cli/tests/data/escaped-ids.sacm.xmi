@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- LIB-CLI-002: two Claim ids that are not NCNames and that JSON must escape: a\b (a backslash) and a CR LF b (written as character references). Validate reports each as SACM-ID-002 (SACM23-VAL-020). Hand-written. -->
+<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+  <name lang="en" content="Arguments"/>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="a\b">
+    <name lang="en" content="Backslash"/>
+  </argumentElement>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="a&#xD;&#xA;b">
+    <name lang="en" content="Line break"/>
+  </argumentElement>
+</sacm:ArgumentPackage>
