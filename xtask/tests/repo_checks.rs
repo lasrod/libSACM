@@ -2,8 +2,9 @@
 //! (LIB-QA-001), the MSRV declaration (LIB-QA-002, LIB-DOC-007), the
 //! dependency policy in `deny.toml` (LIB-QA-003), the cargo-mutants
 //! configuration and its triage (LIB-QA-007), the nextest settings that make
-//! mutation outcomes independent of test order (LIB-QA-012, ADR 0009), and
-//! the git-ignore rules (LIB-TOOL-002, LIB-QA-007).
+//! mutation outcomes independent of test order (LIB-QA-012, ADR 0009), the
+//! git-ignore rules (LIB-TOOL-002, LIB-QA-007), and the ADR index and the
+//! links to ADRs (LIB-DOC-008).
 //!
 //! Workflow YAML structure is not pinned here: branch protection on `main`
 //! and review guard it (slice 0012).
@@ -15,6 +16,7 @@
 //! file, which must pass, and to in-memory mutations of a reference text, each
 //! of which must give its codes. The mutations never touch the files on disk.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 
@@ -4055,6 +4057,783 @@ fn lib_qa_012_the_lib_qa_007_checks_accept_exactly_the_nextest_setup() {
         assert!(
             has_code(&lib_qa_007, "unreviewed-key") && problem_codes(&lib_qa_012) == [code],
             "{QA12}: `{key} = {value}` must be LIB-QA-007's `[unreviewed-key]` and LIB-QA-012's `[{code}]`; LIB-QA-007 gave {lib_qa_007:#?}, LIB-QA-012 gave {lib_qa_012:#?}"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// LIB-DOC-008: the ADR index and the links to ADRs
+// ---------------------------------------------------------------------------
+//
+// The rest of the row's acceptance (what each ADR says) is checked by review.
+
+const ADR_DIR: &str = "docs/adr";
+const ADR_INDEX: &str = "docs/adr/README.md";
+const DECISIONS: &str = "docs/sacm/decisions.md";
+
+/// The ADR the mutations edit.
+const ADR_0021: &str = "0021-xmi-reader-content.md";
+
+/// An ADR file: its name in `docs/adr/` and its text.
+type AdrFile = (String, String);
+
+/// The number of an ADR file name `NNNN-*.md`, or `None` for any other name
+/// (`README.md`, `template.md`).
+fn adr_number(name: &str) -> Option<u32> {
+    let digits = name.get(..4)?;
+    let rest = &name[4..];
+    let is_adr = digits.bytes().all(|b| b.is_ascii_digit())
+        && rest.starts_with('-')
+        && Path::new(rest).extension().is_some_and(|ext| ext == "md");
+    if is_adr { digits.parse().ok() } else { None }
+}
+
+/// The names of the files in `docs/adr/`.
+fn adr_dir_names() -> BTreeSet<String> {
+    let entries = fs::read_dir(repository_root().join(ADR_DIR))
+        .unwrap_or_else(|e| panic!("read directory {ADR_DIR}: {e}"));
+    entries
+        .map(|entry| entry.unwrap_or_else(|e| panic!("read directory {ADR_DIR}: {e}")))
+        .filter(|entry| entry.path().is_file())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect()
+}
+
+/// The ADR files `docs/adr/NNNN-*.md`, sorted by name.
+fn adr_files() -> Vec<AdrFile> {
+    adr_dir_names()
+        .into_iter()
+        .filter(|name| adr_number(name).is_some())
+        .map(|name| {
+            let text = read(&format!("{ADR_DIR}/{name}"));
+            (name, text)
+        })
+        .collect()
+}
+
+/// A status as the index check compares it: the first word of `text`,
+/// lower-cased and without punctuation (`accepted`, `proposed`), or, for the
+/// documented `superseded by NNNN`, those words with the successor's number
+/// kept (a link `[NNNN](...)` gives its label). `None` if `text` states no
+/// status, or `superseded` without `by NNNN`.
+fn normal_status(text: &str) -> Option<String> {
+    let word = |w: &str| -> String {
+        w.chars()
+            .filter(|c| c.is_alphanumeric() || *c == '-')
+            .collect::<String>()
+            .to_lowercase()
+    };
+    let mut words = text.split_whitespace();
+    let first = word(words.next()?);
+    if first != "superseded" {
+        return (!first.is_empty()).then_some(first);
+    }
+    if words.next().map(word).as_deref() != Some("by") {
+        return None;
+    }
+    let digits: String = words
+        .next()?
+        .trim_start_matches('[')
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect();
+    (digits.len() == 4).then(|| format!("superseded by {digits}"))
+}
+
+/// The status an ADR states: the [`normal_status`] of its first `- Status:`
+/// line.
+fn adr_status(text: &str) -> Option<String> {
+    let rest = text
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("- Status:"))?;
+    normal_status(rest)
+}
+
+/// The source of the first table that the Markdown `text` renders, or `None`
+/// if it renders none. A table in a code block or an HTML comment is not
+/// rendered.
+fn first_rendered_table(text: &str) -> Option<&str> {
+    use pulldown_cmark::{Event, Options, Parser, Tag};
+    Parser::new_ext(text, Options::ENABLE_TABLES)
+        .into_offset_iter()
+        .find_map(|(event, range)| {
+            matches!(event, Event::Start(Tag::Table(_))).then(|| &text[range])
+        })
+}
+
+/// Whether `cells` are a table's delimiter row (`|---|:--:|`).
+fn is_delimiter_row(cells: &[String]) -> bool {
+    cells
+        .iter()
+        .all(|cell| !cell.is_empty() && cell.chars().all(|c| matches!(c, '-' | ':')))
+}
+
+/// `(label, destination)` of a cell that is exactly one inline link
+/// `[label](destination)`.
+fn cell_link(cell: &str) -> Option<(&str, &str)> {
+    let (label, rest) = cell.strip_prefix('[')?.split_once("](")?;
+    Some((label, rest.strip_suffix(')')?))
+}
+
+/// A row of the ADR index: the ADR it links, its status cell, and that
+/// cell's [`normal_status`].
+struct IndexRow {
+    number: u32,
+    target: String,
+    cell: String,
+    status: Option<String>,
+}
+
+/// The rows of the first table the ADR index `index` renders, with a problem
+/// in `problems` for each row that does not link an ADR by its number; or
+/// `None`, with an `index-header` problem, if it renders no table with `ADR`
+/// and `Status` columns.
+fn index_rows(index: &str, problems: &mut Vec<String>) -> Option<Vec<IndexRow>> {
+    let mut lines = first_rendered_table(index)
+        .into_iter()
+        .flat_map(str::lines)
+        .filter(|line| !line.trim().is_empty())
+        .map(table_cells);
+    let Some(header) = lines.next() else {
+        problems.push(problem("index-header", "the ADR index renders no table"));
+        return None;
+    };
+    let column = |name: &str| header.iter().position(|cell| cell == name);
+    let (Some(adr_column), Some(status_column)) = (column("ADR"), column("Status")) else {
+        problems.push(problem(
+            "index-header",
+            format!("the index table needs `ADR` and `Status` columns; its header is {header:?}"),
+        ));
+        return None;
+    };
+    let mut rows: Vec<IndexRow> = Vec::new();
+    for cells in lines.filter(|cells| !is_delimiter_row(cells)) {
+        let link = cells
+            .get(adr_column)
+            .and_then(|cell| cell_link(cell))
+            .and_then(|(label, target)| adr_number(target).map(|n| (label, target, n)));
+        let Some((label, target, number)) = link else {
+            problems.push(problem(
+                "index-row",
+                format!(
+                    "the row `{}` does not link an ADR file `NNNN-*.md` in its ADR column",
+                    cells.join(" | ")
+                ),
+            ));
+            continue;
+        };
+        if target.get(..4) != Some(label) {
+            problems.push(problem(
+                "index-label",
+                format!("the link to {target} is labelled `{label}`, not its number"),
+            ));
+        }
+        let cell = cells.get(status_column).cloned().unwrap_or_default();
+        rows.push(IndexRow {
+            number,
+            target: target.to_owned(),
+            status: normal_status(&cell),
+            cell,
+        });
+    }
+    Some(rows)
+}
+
+/// LIB-DOC-008: the first table the ADR index `index` renders has one row per
+/// file of `adrs`, linked to that file and labelled with its number, in number
+/// order, whose status cell states the file's [`adr_status`]; and no other
+/// rows. An ADR `superseded by NNNN` names an ADR file of `adrs`.
+fn check_adr_index(index: &str, adrs: &[AdrFile]) -> Vec<String> {
+    let mut problems = Vec::new();
+    let Some(rows) = index_rows(index, &mut problems) else {
+        return problems;
+    };
+    for pair in rows.windows(2) {
+        if pair[1].number < pair[0].number {
+            problems.push(problem(
+                "index-order",
+                format!("{} is listed after {}", pair[1].target, pair[0].target),
+            ));
+        }
+    }
+    let mut listed: BTreeMap<&str, Vec<&IndexRow>> = BTreeMap::new();
+    for row in &rows {
+        listed.entry(&row.target).or_default().push(row);
+    }
+    for (target, entries) in &listed {
+        if entries.len() > 1 {
+            problems.push(problem(
+                "index-duplicate",
+                format!("{target} is listed {} times", entries.len()),
+            ));
+        }
+        if !adrs.iter().any(|(name, _)| name == target) {
+            problems.push(problem(
+                "index-dangling",
+                format!("the index lists {target}, which does not exist"),
+            ));
+        }
+    }
+    for (name, text) in adrs {
+        let Some(status) = adr_status(text) else {
+            problems.push(problem(
+                "adr-status",
+                format!("{name} has no `- Status:` line with a status"),
+            ));
+            continue;
+        };
+        if let Some(successor) = status.strip_prefix("superseded by ") {
+            let exists = adrs
+                .iter()
+                .any(|(other, _)| other.get(..4) == Some(successor));
+            if !exists {
+                problems.push(problem(
+                    "status-successor",
+                    format!("{name} is `{status}`, but there is no ADR {successor}"),
+                ));
+            }
+        }
+        let Some(entries) = listed.get(name.as_str()) else {
+            problems.push(problem(
+                "index-missing",
+                format!("{name} is not listed in the index"),
+            ));
+            continue;
+        };
+        for row in entries
+            .iter()
+            .filter(|row| row.status.as_deref() != Some(status.as_str()))
+        {
+            problems.push(problem(
+                "index-status",
+                format!(
+                    "the index gives {name} the status `{}`; the ADR says `{status}`",
+                    row.cell
+                ),
+            ));
+        }
+    }
+    problems
+}
+
+/// The one line of `text` that starts (trimmed) with `prefix`, trimmed.
+/// Panics if there is not exactly one, so a mutation is never a no-op.
+fn line_starting(text: &str, prefix: &str) -> String {
+    let hits: Vec<&str> = text
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with(prefix))
+        .collect();
+    assert_eq!(
+        hits.len(),
+        1,
+        "mutation target: exactly one line must start with `{prefix}`"
+    );
+    hits[0].to_owned()
+}
+
+/// The index row of ADR `number` (`"0021"`), trimmed.
+fn index_row(index: &str, number: &str) -> String {
+    line_starting(index, &format!("| [{number}]("))
+}
+
+/// `adrs` with the text of `name` replaced by `edit(text)`.
+fn adrs_with(adrs: &[AdrFile], name: &str, edit: impl FnOnce(&str) -> String) -> Vec<AdrFile> {
+    let mut out = adrs.to_vec();
+    let text = out.iter_mut().find(|(n, _)| n == name).map_or_else(
+        || panic!("mutation target `{name}` is an ADR file"),
+        |(_, text)| text,
+    );
+    *text = edit(text);
+    out
+}
+
+/// `adrs` with the `- Status:` line of `name` replaced by `status_line`.
+fn adrs_with_status(adrs: &[AdrFile], name: &str, status_line: &str) -> Vec<AdrFile> {
+    adrs_with(adrs, name, |text| {
+        let line = line_starting(text, "- Status:");
+        replace_line(text, &line, status_line)
+    })
+}
+
+/// The header line of the ADR index table.
+const INDEX_HEADER: &str = "| ADR | Title | Status |";
+
+/// `index` with its table between the lines `open` and `close` (a fence, an
+/// HTML comment), so that it is no longer rendered as a table.
+fn wrap_index_table(index: &str, open: &str, close: &str) -> String {
+    let last_row = index
+        .lines()
+        .map(str::trim)
+        .rfind(|line| line.starts_with("| ["))
+        .expect("mutation target: the index table has rows")
+        .to_owned();
+    let opened = edit_line(index, INDEX_HEADER, |line| {
+        vec![open.to_owned(), line.to_owned()]
+    });
+    edit_line(&opened, &last_row, |line| {
+        vec![line.to_owned(), close.to_owned()]
+    })
+}
+
+/// The successor ADR the superseded mutations add; a number no real ADR
+/// will have soon, so the mutations do not change as ADRs are added.
+const SUCCESSOR: &str = "9997-a-successor.md";
+
+/// `index` and `adrs` with the ADR [`SUCCESSOR`] added (file and last index
+/// row), and with ADR 0021 stating `status_line` and its index row the status
+/// cell `cell`.
+fn with_superseded(
+    index: &str,
+    adrs: &[AdrFile],
+    status_line: &str,
+    cell: &str,
+) -> (String, Vec<AdrFile>) {
+    let last_row = index_row(index, &adrs.last().expect("ADR files").0[..4]);
+    let row_0021 = index_row(index, "0021");
+    let index = insert_after(
+        index,
+        &last_row,
+        0,
+        &[&format!("| [9997]({SUCCESSOR}) | A successor | proposed |")],
+    );
+    let index = replace_line(
+        &index,
+        &row_0021,
+        &row_0021.replace("| accepted |", &format!("| {cell} |")),
+    );
+    let mut adrs = adrs_with_status(adrs, ADR_0021, status_line);
+    adrs.push((
+        SUCCESSOR.to_owned(),
+        "# 9997. A successor\n\n- Status: proposed\n".to_owned(),
+    ));
+    (index, adrs)
+}
+
+/// A mutation of the ADR index or the ADR files: its name, the index, the
+/// ADR files, and the codes it must be reported with.
+type IndexMutation = (&'static str, String, Vec<AdrFile>, &'static [&'static str]);
+
+/// The mutations for the `superseded by NNNN` status and for an index whose
+/// table does not render, each with exactly its codes.
+fn adr_index_status_and_rendering_mutations(index: &str, adrs: &[AdrFile]) -> Vec<IndexMutation> {
+    let superseded = |name: &'static str,
+                      status_line: &str,
+                      cell: &str,
+                      codes: &'static [&'static str]|
+     -> IndexMutation {
+        let (index, adrs) = with_superseded(index, adrs, status_line, cell);
+        (name, index, adrs, codes)
+    };
+    vec![
+        superseded(
+            "the index says superseded without the successor",
+            "- Status: superseded by 9997",
+            "superseded",
+            &["index-status"],
+        ),
+        superseded(
+            "the index names another successor",
+            "- Status: superseded by 9997",
+            "superseded by 9996",
+            &["index-status"],
+        ),
+        superseded(
+            "ADR 0021 superseded by an ADR that does not exist",
+            "- Status: superseded by 9996",
+            "superseded by 9996",
+            &["status-successor"],
+        ),
+        superseded(
+            "ADR 0021 says superseded without the successor",
+            "- Status: superseded",
+            "superseded",
+            &["adr-status"],
+        ),
+        (
+            "the index table in a fenced code block",
+            wrap_index_table(index, "```text", "```"),
+            adrs.to_vec(),
+            &["index-header"],
+        ),
+        (
+            "the index table in an HTML comment",
+            wrap_index_table(index, "<!--", "-->"),
+            adrs.to_vec(),
+            &["index-header"],
+        ),
+    ]
+}
+
+/// The mutations of the real `index` and `adrs` that the index check must
+/// report, each with exactly its codes.
+fn adr_index_mutations(index: &str, adrs: &[AdrFile]) -> Vec<IndexMutation> {
+    let row_0002 = index_row(index, "0002");
+    let row_0003 = index_row(index, "0003");
+    let row_0005 = index_row(index, "0005");
+    let row_0021 = index_row(index, "0021");
+    let mut with_new_adr = adrs.to_vec();
+    with_new_adr.push((
+        "9998-a-new-decision.md".to_owned(),
+        "# 9998. A new decision\n\n- Status: proposed\n".to_owned(),
+    ));
+    vec![
+        (
+            "the row of 0021 removed",
+            delete_line(index, &row_0021),
+            adrs.to_vec(),
+            &["index-missing"],
+        ),
+        (
+            "an ADR file without a row",
+            index.to_owned(),
+            with_new_adr,
+            &["index-missing"],
+        ),
+        (
+            "a row for a file that does not exist",
+            insert_after(
+                index,
+                &row_0021,
+                0,
+                &["| [9999](9999-not-an-adr.md) | Not an ADR | accepted |"],
+            ),
+            adrs.to_vec(),
+            &["index-dangling"],
+        ),
+        (
+            "0002 listed after 0003",
+            insert_after(&delete_line(index, &row_0002), &row_0003, 0, &[&row_0002]),
+            adrs.to_vec(),
+            &["index-order"],
+        ),
+        (
+            "the row of 0021 listed twice",
+            insert_after(index, &row_0021, 0, &[&row_0021]),
+            adrs.to_vec(),
+            &["index-duplicate"],
+        ),
+        (
+            "0010's link labelled 0011",
+            replace_once(
+                index,
+                "[0010](0010-document-model.md)",
+                "[0011](0010-document-model.md)",
+            ),
+            adrs.to_vec(),
+            &["index-label"],
+        ),
+        (
+            "0021's ADR cell not a link",
+            replace_once(index, &format!("[0021]({ADR_0021})"), "0021"),
+            adrs.to_vec(),
+            &["index-missing", "index-row"],
+        ),
+        (
+            "the index gives 0005 the status proposed",
+            replace_line(
+                index,
+                &row_0005,
+                &row_0005.replace("| accepted |", "| proposed |"),
+            ),
+            adrs.to_vec(),
+            &["index-status"],
+        ),
+        (
+            "ADR 0021 says proposed, the index accepted",
+            index.to_owned(),
+            adrs_with_status(adrs, ADR_0021, "- Status: proposed"),
+            &["index-status"],
+        ),
+        (
+            "ADR 0021 has no status line",
+            index.to_owned(),
+            adrs_with(adrs, ADR_0021, |text| {
+                delete_line(text, &line_starting(text, "- Status:"))
+            }),
+            &["adr-status"],
+        ),
+        (
+            "the index has no Status column",
+            replace_once(index, "| ADR | Title | Status |", "| ADR | Title | State |"),
+            adrs.to_vec(),
+            &["index-header"],
+        ),
+    ]
+}
+
+#[test]
+fn lib_doc_008_the_adr_index_lists_every_adr_with_its_status() {
+    let index = read(ADR_INDEX);
+    let adrs = adr_files();
+    assert!(
+        adrs.len() >= 21,
+        "LIB-DOC-008: docs/adr/ must hold the ADR files; found {adrs:?}"
+    );
+    let problems = check_adr_index(&index, &adrs);
+    assert!(
+        problems.is_empty(),
+        "LIB-DOC-008: {ADR_INDEX} must list every ADR, linked, in order, with its status: {problems:#?}"
+    );
+
+    let mut mutations = adr_index_mutations(&index, &adrs);
+    mutations.extend(adr_index_status_and_rendering_mutations(&index, &adrs));
+    for (name, index, adrs, codes) in &mutations {
+        let problems = check_adr_index(index, adrs);
+        assert_eq!(
+            problem_codes(&problems),
+            *codes,
+            "LIB-DOC-008: the index check must report the mutation `{name}` as {codes:?}; it reported {problems:#?}"
+        );
+    }
+
+    // Controls: the status is the first word, lower-cased, without punctuation.
+    for status_line in [
+        "- Status: Accepted, after review",
+        "- Status: accepted (the maintainer, 2026-11-13)",
+        "- Status: accepted. A longer note follows.",
+    ] {
+        let adrs = adrs_with_status(&adrs, ADR_0021, status_line);
+        let problems = check_adr_index(&index, &adrs);
+        assert!(
+            problems.is_empty(),
+            "LIB-DOC-008: `{status_line}` states the status `accepted`, but was reported: {problems:#?}"
+        );
+    }
+
+    // Controls: the documented `superseded by NNNN`, stated alike in the ADR
+    // and the index (the successor kept, a link giving its label).
+    for (status_line, cell) in [
+        ("- Status: superseded by 9997", "superseded by 9997"),
+        (
+            "- Status: Superseded by [9997](9997-a-successor.md).",
+            "superseded by [9997](9997-a-successor.md)",
+        ),
+    ] {
+        let (index, adrs) = with_superseded(&index, &adrs, status_line, cell);
+        let problems = check_adr_index(&index, &adrs);
+        assert!(
+            problems.is_empty(),
+            "LIB-DOC-008: `{status_line}` and the index cell `{cell}` state the same status, but were reported: {problems:#?}"
+        );
+    }
+
+    // Control: the index is the first table that renders; a fenced table
+    // before it, with another status, is not the index.
+    let decoy = [
+        "```text",
+        INDEX_HEADER,
+        "|---|---|---|",
+        "| [0021](0021-xmi-reader-content.md) | Decoy | proposed |",
+        "```",
+        "",
+        INDEX_HEADER,
+    ]
+    .map(str::to_owned);
+    let with_decoy = edit_line(&index, INDEX_HEADER, |_| decoy.to_vec());
+    let problems = check_adr_index(&with_decoy, &adrs);
+    assert!(
+        problems.is_empty(),
+        "LIB-DOC-008: a fenced table before the index is not the index, but the check reported: {problems:#?}"
+    );
+}
+
+/// The destinations of the links in the Markdown `text`, as a renderer
+/// resolves them (inline and reference links; not code spans).
+fn link_destinations(text: &str) -> Vec<String> {
+    use pulldown_cmark::{Event, Options, Parser, Tag};
+    Parser::new_ext(text, Options::ENABLE_TABLES)
+        .filter_map(|event| match event {
+            Event::Start(Tag::Link { dest_url, .. }) => Some(dest_url.into_string()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// LIB-DOC-008: every link of `text` (the file `doc`) that `adr_name` maps,
+/// without its `#fragment`, to a file name in `docs/adr/` names a file of
+/// `existing`. Fragments are not checked.
+fn dangling_adr_links(
+    doc: &str,
+    text: &str,
+    adr_name: fn(&str) -> Option<&str>,
+    existing: &BTreeSet<String>,
+) -> Vec<String> {
+    link_destinations(text)
+        .iter()
+        .filter_map(|dest| {
+            let path = dest.split_once('#').map_or(dest.as_str(), |(path, _)| path);
+            adr_name(path)
+                .filter(|name| !existing.contains(*name))
+                .map(|_| {
+                    problem(
+                        "dangling-link",
+                        format!("{doc} links `{dest}`, which is not a file in {ADR_DIR}/"),
+                    )
+                })
+        })
+        .collect()
+}
+
+/// LIB-DOC-008: every ADR file `NNNN-*.md` of `existing` is the destination
+/// (without its `#fragment`) of a link that the index `text` renders, so an
+/// index whose table does not render (a code block, an HTML comment) is
+/// reported.
+fn unlinked_adrs(text: &str, existing: &BTreeSet<String>) -> Vec<String> {
+    let linked: BTreeSet<String> = link_destinations(text)
+        .into_iter()
+        .map(|dest| {
+            dest.split_once('#')
+                .map_or(dest.clone(), |(path, _)| path.to_owned())
+        })
+        .collect();
+    existing
+        .iter()
+        .filter(|name| adr_number(name).is_some() && !linked.contains(*name))
+        .map(|name| {
+            problem(
+                "index-unlinked",
+                format!("{ADR_INDEX} renders no link to {name}"),
+            )
+        })
+        .collect()
+}
+
+/// In `docs/sacm/decisions.md`: a link `../adr/<name>`.
+fn decisions_adr_link(path: &str) -> Option<&str> {
+    path.strip_prefix("../adr/")
+}
+
+/// In `docs/adr/README.md`: a link to an ADR file `NNNN-*.md`.
+fn index_adr_link(path: &str) -> Option<&str> {
+    adr_number(path).map(|_| path)
+}
+
+/// The mutations of the real ADR index `index` that the link check must
+/// report, each with exactly its codes; `existing` are the files in
+/// `docs/adr/`.
+fn adr_index_link_mutations(
+    index: &str,
+    existing: &BTreeSet<String>,
+) -> Vec<(&'static str, String, Vec<&'static str>)> {
+    let adr_count = existing
+        .iter()
+        .filter(|name| adr_number(name).is_some())
+        .count();
+    let all_unlinked = vec!["index-unlinked"; adr_count];
+    vec![
+        (
+            "a table link renamed",
+            replace_once(index, "(0016-interchange-roots.md)", "(0016-roots.md)"),
+            vec!["dangling-link", "index-unlinked"],
+        ),
+        (
+            "a prose link to an ADR that does not exist",
+            format!("{index}\nSee [ADR 9999](9999-not-an-adr.md).\n"),
+            vec!["dangling-link"],
+        ),
+        (
+            "the index table in a fenced code block",
+            wrap_index_table(index, "```text", "```"),
+            all_unlinked.clone(),
+        ),
+        (
+            "the index table in an HTML comment",
+            wrap_index_table(index, "<!--", "-->"),
+            all_unlinked,
+        ),
+    ]
+}
+
+#[test]
+fn lib_doc_008_every_adr_link_in_the_decisions_resolves() {
+    let existing = adr_dir_names();
+    let decisions = read(DECISIONS);
+    let index = read(ADR_INDEX);
+    let check_decisions =
+        |text: &str| dangling_adr_links(DECISIONS, text, decisions_adr_link, &existing);
+    let check_index = |text: &str| {
+        let mut problems = dangling_adr_links(ADR_INDEX, text, index_adr_link, &existing);
+        problems.extend(unlinked_adrs(text, &existing));
+        problems
+    };
+
+    let in_decisions = link_destinations(&decisions)
+        .iter()
+        .filter(|dest| decisions_adr_link(dest).is_some())
+        .count();
+    assert!(
+        in_decisions >= 5,
+        "LIB-DOC-008: {DECISIONS} must point to the ADRs it rests on; found {in_decisions} links to ../adr/"
+    );
+    let problems = check_decisions(&decisions);
+    assert!(
+        problems.is_empty(),
+        "LIB-DOC-008: every ../adr/ link in {DECISIONS} must name an existing file: {problems:#?}"
+    );
+    let problems = check_index(&index);
+    assert!(
+        problems.is_empty(),
+        "LIB-DOC-008: every NNNN-*.md link in {ADR_INDEX} must name an existing file, and every ADR file must be linked: {problems:#?}"
+    );
+
+    let decisions_mutations = [
+        (
+            "an ADR link renamed",
+            replace_once(
+                &decisions,
+                "../adr/0013-missing-name-stays-missing.md",
+                "../adr/0013-missing-name.md",
+            ),
+        ),
+        (
+            "a link to an ADR that does not exist",
+            format!("{decisions}\nSee [ADR 9999](../adr/9999-not-an-adr.md).\n"),
+        ),
+        (
+            "a dangling link with a fragment",
+            format!("{decisions}\nSee [ADR 9999](../adr/9999-not-an-adr.md#d1).\n"),
+        ),
+        (
+            "a dangling reference link",
+            format!("{decisions}\nSee [ADR 9999].\n\n[ADR 9999]: ../adr/9999-not-an-adr.md\n"),
+        ),
+    ];
+    for (name, text) in &decisions_mutations {
+        let problems = check_decisions(text);
+        assert_eq!(
+            problem_codes(&problems),
+            ["dangling-link"],
+            "LIB-DOC-008: the mutation `{name}` of {DECISIONS} must be reported once as `[dangling-link]`; it reported {problems:#?}"
+        );
+    }
+    let index_mutations = adr_index_link_mutations(&index, &existing);
+    for (name, text, codes) in &index_mutations {
+        let problems = check_index(text);
+        assert_eq!(
+            problem_codes(&problems),
+            *codes,
+            "LIB-DOC-008: the mutation `{name}` of {ADR_INDEX} must be reported as {codes:?}; it reported {problems:#?}"
+        );
+    }
+
+    // Controls: a fragment on an existing ADR, and text in a code span, which
+    // is not a link.
+    for (doc, problems) in [
+        (
+            DECISIONS,
+            check_decisions(&format!(
+                "{decisions}\nSee [ADR 0021](../adr/0021-xmi-reader-content.md#history).\n"
+            )),
+        ),
+        (
+            ADR_INDEX,
+            check_index(&format!("{index}\nWrite `[9999](9999-not-an-adr.md)`.\n")),
+        ),
+    ] {
+        assert!(
+            problems.is_empty(),
+            "LIB-DOC-008: a fragment on an existing ADR, or a code span in {doc}, is not a dangling link, but was reported: {problems:#?}"
         );
     }
 }

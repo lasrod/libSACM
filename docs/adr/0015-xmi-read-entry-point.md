@@ -63,3 +63,29 @@ which return a `LoadResult` with an `ok` flag and an optional document
   names, ids, namespaces and children.
 - **A file function as in C++:** it adds an I/O variant to `ReadError` and gives a second
   way to read.
+
+## Amendment 1 (2026-11-13): what `Unsupported` carries, and how the interim rule closes
+
+- **Two meanings, for now.** `ReadError::Unsupported` carries two kinds of refusal:
+  - **limits of this version:** conforming input that no verified row reads yet, such as an
+    element with no `xmi:id` (XMI 2.5.1 §7.6.1 makes it optional; SACM23-XMI-020);
+  - **defects in the input**, which have no catalog code yet:
+    - an empty `xmi:id`, which is not an `xsd:ID`;
+    - a duplicate `xmi:id` (SACM23-VAL-001);
+    - an `assertionDeclaration` value that is not a SACM literal (SACM23-VAL-006);
+    - `assertionDeclaration` on an element that is not an Assertion;
+    - a type attribute that does not conform to the role, names an abstract or unknown
+      class, disagrees with another type attribute, or on a root names another class
+      (ADR 0016 D2);
+    - any other attribute, namespace-qualified attribute or text that the schema does not
+      allow.
+
+  Today only the literal refusal says, in the `ReadError` docs, that it is a defect in the
+  input. A caller cannot tell the two kinds apart by type. The coded rows replace those
+  refusals with diagnostics. The load and save modes ADR (LIB-COMPAT-001) gives the other
+  defects their codes.
+- **The interim rule has an end.** Every refusal of the first kind names the row that will
+  read the content. LIB-API-011 keeps them in one list, checks that each named row is not
+  yet verified, and labels each refusal's kind. Every compliance point depends on those
+  rows, so no compliance point can be verified while schema-conforming input is still
+  refused.

@@ -45,15 +45,11 @@ We deviate from C++ in seven ways:
 - **D2. A type attribute does not override the element name.** In C++, a resolved
   `xsi:type` or `xmi:type` decides the root's kind (`:2194-2197`). An unresolved one falls
   back to the element name, with a diagnostic (`:2198-2224`). Here the element name decides
-  (XMI §7.8.1). A type is accepted only if it names the same class. Any other type is
-  `Unsupported`, including a subtype such as `xsi:type="sacm:ArgumentPackageInterface"`,
-  which waits for D5. A type value is resolved as an XSD QName, against the namespaces in
-  scope (SACM23-XMI-002). An undeclared prefix, or an unprefixed value with no default
-  namespace, is `Unsupported`, which C++ (`xmi_reader.cpp:597-658`) resolves to the bare local
-  name. This clarifies D2; it does not change it. The class name in a type value must
-  match exactly. C++ falls back to a case-insensitive match (`kind_from_class_name_ci`,
-  `xmi_reader.cpp:2160`; also `:1081`, `:2010` and `:1106`); that leniency is not taken
-  (slice 0025).
+  (XMI §7.8.1). A type is accepted only if it names exactly the same class, resolved as an
+  XSD QName against the namespaces in scope (SACM23-XMI-002). Anything else is
+  `Unsupported`: another class, a subtype (until D5), an unresolvable prefix, or another
+  letter case. C++ resolves an undeclared prefix to the bare local name
+  (`xmi_reader.cpp:597-658`) and falls back to a case-insensitive match (`:2160`).
 - **D3. No partial document.** C++ reports an invalid root, reads the roots beside it and
   returns a document along with the errors. Here the first refusal is the whole result
   (ADR 0015; ADR 0011 X1). Among the refusals found while reading the roots, SACM-XMI-001

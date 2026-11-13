@@ -36,11 +36,11 @@ sacm
 │                names, assertion declarations, LangString, MultiLangString,
 │                AssertionDeclaration)
 ├── xmi          read (tolerant | strict) and write (strict | tolerant); XML details stay private
-│                (built: `read`, for the input layer and the AssuranceCasePackage and
+│                (built: `read`, for the input layer, the AssuranceCasePackage and
 │                ArgumentPackage interchange roots and the packages and Claims in
-│                them; it refuses unsafe, malformed,
-│                non-package and not-yet-readable input; roxmltree is private,
-│                ADR 0005, ADR 0015 and ADR 0016)
+│                them, refusing unsafe, malformed, non-package and not-yet-readable
+│                input; `write`, for everything a Document holds; roxmltree is
+│                private; ADR 0005, 0015, 0016, 0017 and 0021)
 ├── validation   clause-level constraints, reported as diagnostics
 │                (built: `validate`, with the missing-name rule, ADR 0018)
 ├── diagnostic   Diagnostic, Severity, Code, SourceLocation, has_errors
@@ -55,7 +55,7 @@ sacm
 bytes    ──► xmi::read            ──► Document + Vec<Diagnostic>
 Document ──► validation::validate ──► Vec<Diagnostic>
 Document ──► edit::apply(op)      ──► Result<Mutation, EditError>         (atomic)
-Document ──► xmi::write(strict)   ──► Result<bytes, WriteError>           (deterministic; refuses invalid models)
+Document ──► xmi::write           ──► Result<String, WriteError>          (deterministic; does not validate yet, LIB-COMPAT-007)
 ```
 
 - **Model** ([ADR 0010](adr/0010-document-model.md)): a `Document` owns its root

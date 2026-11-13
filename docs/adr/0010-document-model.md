@@ -54,3 +54,22 @@ assurance-forge C++ library (`libs/sacm`) is the approved design reference:
 - **Deferring LIB-API-002's tests.** Rejected: it blocks the rows that depend on it.
 - **Generating `ElementKind` from the metamodel.** Rejected: hand-written code plus a
   drift test is simpler, as in C++.
+
+## Amendment 1 (2026-11-13): the node as it stands
+
+Later rows added to the node. Each element's node now holds:
+- `id`, `kind`, `parent` and `children`, as above;
+- its `name` (ADR 0012, ADR 0013);
+- its `assertionDeclaration` (SACM23-ARG-003);
+- the containment `role` it is held in, computed once when it is inserted (`None` for a
+  root; ADR 0017 amendment 2).
+
+The `Document` also holds one generated-id counter per kind (ADR 0019). The counters are
+not SACM content and are not compared (ADR 0020). `Document` gains `PartialEq` and `Eq`
+from ADR 0020. Exhaustive destructures of the node and the document make a new field fail to
+compile until comparison handles it.
+
+**Open:** "`ElementId` is the `xmi:id`" assumes every element has one. The maintainer
+decided on 2026-11-12 that an element with no `xmi:id` loads with a generated id
+(SACM23-XMI-020). Whether that id is marked, whether it is written back, and how comparison
+treats it needs its own ADR before that row's tests.
