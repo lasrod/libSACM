@@ -2313,7 +2313,7 @@ title = "Atomic mutations"
 requirement = "`edit::apply`, the only public mutation, either succeeds and leaves the document structurally valid, or fails with an error and leaves it unchanged. Structurally valid: ids are unique and `get` finds each; parent and child links agree; `roots()` lists exactly the elements with no parent, each a package; every child's kind is legal under its parent's kind (§8.6, §9.2, §10.4, §11.4, §12.2, §12.6; ADR 0014); every Assertion has a declaration. Content findings of `validate()` are not part of it (D-VAL-LAYER). Unchanged: the document is `==` to a clone taken before (ADR 0020), and a create with a generated id of each kind gives the same id on both."
 source = "D-ATOMIC; D-VAL-LAYER; ADR 0019 and its amendment 1; ADR 0020"
 kind = "editing"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-EDIT-001", "LIB-RT-001"]
 acceptance = [
   "Over a deterministic set of starting documents (empty, built with `edit::apply`, read from the XMI fixtures, and built with the test-support `insert`, including ArtifactPackage parents, Notes and missing names) and a fixed list of legal and illegal operations of every kind with caller and generated ids: after every `Ok`, the four structural checks hold through the public views, checked against a containment table written in the test from the standard, not the crate's.",
@@ -2327,6 +2327,7 @@ tests = [
   "crates/sacm/tests/edit_atomic.rs::lib_edit_002_every_successful_operation_leaves_the_document_structurally_valid",
   "crates/sacm/tests/edit_atomic.rs::lib_edit_002_every_refused_operation_leaves_the_document_equal_with_the_same_next_ids",
 ]
+verification = "docs/verification/0034-m1-atomic-edits-and-results.md"
 
 [[row]]
 id = "LIB-EDIT-003"
@@ -2336,7 +2337,7 @@ title = "Mutation results"
 requirement = "Every successful `edit::apply` returns a `Mutation` with the operation as given (`operation()`), and the ids it created, changed and deleted. `created_ids` and `deleted_ids` are the ids `semantic_compare(before, after)` reports right-only and left-only; `changed_ids` are the ids on both sides it reports a per-element difference for (ADR 0019 amendment 1). A create does not change its parent. `Operation::operation_name()` gives each operation's stable struct name for logs."
 source = "D-RESULT; ADR 0019 and its amendment 1; ADR 0020; assurance-forge `commands/mutation.h:18-48`, `commands.cpp:162-171`, `operations.h:406`"
 kind = "editing"
-status = "implemented"
+status = "verified"
 depends_on = ["LIB-EDIT-001", "LIB-RT-001"]
 acceptance = [
   "For every successful operation in LIB-EDIT-002's set, `created_ids`, `changed_ids` and `deleted_ids` equal the right-only, per-element and left-only ids of `semantic_compare(before, after)`, in creation order, document pre-order after, and pre-order before respectively; for every create in this release `changed_ids` and `deleted_ids` are empty and the parent is not changed.",
@@ -2355,6 +2356,7 @@ tests = [
   "crates/sacm/tests/edit_atomic.rs::lib_edit_003_mutation_and_operation_are_send_and_sync",
   "crates/sacm/tests/edit_atomic.rs::lib_edit_003_mutation_is_clone_debug_partial_eq_and_eq",
 ]
+verification = "docs/verification/0034-m1-atomic-edits-and-results.md"
 
 [[row]]
 id = "LIB-RT-003"
