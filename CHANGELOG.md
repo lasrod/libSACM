@@ -34,7 +34,7 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
   constructors public for tests. It is not part of the stable API.
 - `sacm::diagnostic`: `Diagnostic` (code, severity, matrix row, clause, affected ids,
   source location, message), `Severity`, `Code` and `SourceLocation`, with a one-line
-  `Display` and one total order. No code is emitted yet [LIB-DIAG-001].
+  `Display` and one total order [LIB-DIAG-001].
 - Error convention (ADR 0011): one `#[non_exhaustive]` error enum per operation.
   `InsertError` messages quote and escape ids [LIB-API-004].
 - `sacm::model::LangString`: an optional language tag and optional content, with

@@ -37,7 +37,7 @@ use std::thread;
 use std::time::Duration;
 
 use sacm::diagnostic::{Code, SourceLocation};
-use sacm::xmi::{self, ReadError, ReadOptions, ReadOutput};
+use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput};
 
 /// One mebibyte.
 const MIB: usize = 1 << 20;
@@ -1703,5 +1703,91 @@ fn lib_api_009_refusal_of_an_encoding_name_with_line_breaks_stays_one_line() {
         );
         let error = refusal(row, &input);
         assert_refusal_invariants(row, &input, &error);
+    }
+}
+
+#[test]
+fn lib_sec_002_a_deep_readable_package_chain_reads_without_recursion() {
+    // A chain the reader accepts, so the content reader (not only the
+    // parser) walks all of it: a root ArgumentPackage `p0`, and in each
+    // package's `argumentElement` the next one, down to `p100000`. The
+    // thread has an explicit 2 MiB stack, as in
+    // `lib_sec_002_deep_nesting_returns_without_recursion`; a stack overflow
+    // aborts the test binary, which fails the run. Each document is dropped
+    // on that thread, so a recursive drop would overflow there too.
+    const DEPTH: usize = 100_000;
+    /// Longer than `DEADLINE`, as this reads 100,001 elements twice (about
+    /// 4 s in a debug build), but still below cargo-mutants' minimum test
+    /// timeout of 20 seconds.
+    const CHAIN_DEADLINE: Duration = Duration::from_secs(15);
+    let mut input = String::from(concat!(
+        "<sacm:ArgumentPackage",
+        " xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
+        " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"",
+        " xmi:id=\"p0\">",
+    ));
+    for n in 1..=DEPTH {
+        input.push_str("<argumentElement xmi:type=\"sacm:ArgumentPackage\" xmi:id=\"p");
+        input.push_str(&n.to_string());
+        input.push_str("\">");
+    }
+    input.push_str(&"</argumentElement>".repeat(DEPTH));
+    input.push_str("</sacm:ArgumentPackage>");
+    let input = input.into_bytes();
+    let deepest = format!("p{DEPTH}");
+    let above = format!("p{}", DEPTH - 1);
+
+    let (sender, receiver) = mpsc::channel();
+    thread::Builder::new()
+        .name("lib_sec_002_deep_readable_chain".to_owned())
+        .stack_size(2 * MIB)
+        .spawn(move || {
+            let mut results = Vec::new();
+            for mode in [Mode::Tolerant, Mode::Strict] {
+                let result =
+                    xmi::read(&input, &ReadOptions::default().with_mode(mode)).map(|output| {
+                        let document = output.into_document();
+                        let roots: Vec<String> =
+                            document.roots().map(|root| root.id().to_string()).collect();
+                        let parent = document
+                            .get(deepest.as_str())
+                            .and_then(sacm::model::SacmElement::parent)
+                            .map(|parent| parent.id().to_string());
+                        let summary = (document.element_count(), roots, parent);
+                        // The document drops here, on the 2 MiB thread.
+                        drop(document);
+                        summary
+                    });
+                results.push((mode, result));
+            }
+            // The receiver is gone only after the deadline has already failed the test.
+            let _ = sender.send(results);
+        })
+        .unwrap_or_else(|error| panic!("LIB-SEC-002: cannot spawn the reader thread: {error}"));
+    let results = match receiver.recv_timeout(CHAIN_DEADLINE) {
+        Ok(results) => results,
+        Err(RecvTimeoutError::Timeout) => panic!(
+            "LIB-SEC-002: read did not return within {CHAIN_DEADLINE:?} on a 100,000-deep package chain"
+        ),
+        Err(RecvTimeoutError::Disconnected) => {
+            panic!("LIB-SEC-002: read or drop panicked on a 100,000-deep package chain")
+        }
+    };
+    assert_eq!(results.len(), 2, "LIB-SEC-002: not both modes were read");
+    for (mode, result) in results {
+        let (count, roots, parent) = result.unwrap_or_else(|error| {
+            panic!("LIB-SEC-002: {mode:?}: the 100,000-deep package chain was refused: {error}")
+        });
+        assert_eq!(
+            count,
+            DEPTH + 1,
+            "LIB-SEC-002: {mode:?}: the document does not hold every package of the chain"
+        );
+        assert_eq!(roots, ["p0"], "LIB-SEC-002: {mode:?}: roots");
+        assert_eq!(
+            parent.as_deref(),
+            Some(above.as_str()),
+            "LIB-SEC-002: {mode:?}: the deepest package is missing or not in its parent"
+        );
     }
 }

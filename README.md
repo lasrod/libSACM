@@ -10,13 +10,14 @@ assurance cases as standard XMI.
 
 ## Status
 
-M1 has started: `sacm::model` provides a `Document`, read through borrowing views and
-changed with `sacm::edit::apply`, `ElementId`, the metamodel's element kinds, element
-names, each Assertion's `assertionDeclaration` and the first value types (`LangString`,
-`MultiLangString`, `AssertionDeclaration`), and `sacm::diagnostic` provides the
-`Diagnostic` type. `sacm::xmi::read` reads `AssuranceCasePackage` and `ArgumentPackage`
-roots, the AssuranceCasePackages, ArgumentPackages and Claims in them, their names and
-each Claim's `assertionDeclaration`. It refuses unsafe and malformed input and roots
+Milestone M1, a minimal editable vertical slice, is done: `sacm::model` provides a
+`Document`, read through borrowing views and changed with `sacm::edit::apply`,
+`ElementId`, the metamodel's element kinds, element names, each Assertion's
+`assertionDeclaration` and the first value types (`LangString`, `MultiLangString`,
+`AssertionDeclaration`), and `sacm::diagnostic` provides the `Diagnostic` type.
+`sacm::xmi::read` reads `AssuranceCasePackage` and `ArgumentPackage` roots, the
+AssuranceCasePackages, ArgumentPackages and Claims in them, their names and each
+Claim's `assertionDeclaration`. It refuses unsafe and malformed input and roots
 that are not SACM packages with a diagnostic code, and content it cannot represent yet
 as `Unsupported`; it reports an `xsi:type` or an `xmi:version` as a diagnostic. Reading
 and writing take a strict or tolerant `sacm::xmi::Mode`.
