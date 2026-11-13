@@ -179,9 +179,28 @@ impl Code {
     /// an AssuranceCasePackage or another ArgumentPackage.
     pub const CMD_INVALID_PARENT: Code = Code::from_static("SACM-CMD-005");
 
-    /// SACM-ID-002: an element id is not valid syntax: not an XML `NCName`. The
-    /// code of [`EditError::InvalidId`](crate::edit::EditError::InvalidId)
-    /// (LIB-EDIT-001). An `NCName` starts with a letter or `_` and continues
+    /// SACM-ID-001: two or more elements in the input carry the same
+    /// `xmi:id`, which XMI 2.5.1 §7.6.1 requires to be unique within the
+    /// file. The code of
+    /// [`ReadError::DuplicateId`](crate::xmi::ReadError::DuplicateId)
+    /// (SACM23-VAL-001), giving the location of every element that carries
+    /// the repeated `xmi:id`. Fix it by giving each element its own id.
+    ///
+    /// ```
+    /// use sacm::diagnostic::Code;
+    ///
+    /// assert_eq!(Code::ID_DUPLICATE.as_str(), "SACM-ID-001");
+    /// ```
+    pub const ID_DUPLICATE: Code = Code::from_static("SACM-ID-001");
+
+    /// SACM-ID-002: an element id is not valid syntax: not an XML `NCName`
+    /// (XMI 2.5.1 §7.6.1: `xmi:id` is an `xsd:ID`). The code of
+    /// [`EditError::InvalidId`](crate::edit::EditError::InvalidId)
+    /// (LIB-EDIT-001) and of
+    /// [`ReadError::InvalidId`](crate::xmi::ReadError::InvalidId), an empty
+    /// `xmi:id` in the input; [`validation::validate`](crate::validation::validate)
+    /// reports it, as an Error, for every other id that is not an `NCName`
+    /// (SACM23-VAL-020). An `NCName` starts with a letter or `_` and continues
     /// with letters, digits, `-`, `.` or `_`; it has no spaces and no `:`. Or
     /// leave out `with_id` to have an id generated.
     pub const ID_INVALID: Code = Code::from_static("SACM-ID-002");

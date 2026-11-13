@@ -13,10 +13,12 @@ and clause it enforces, affected element ids, an optional source location
 > verified; until then the crate does not emit it. Tool-specific wording from that
 > project ("Assurance Forge", ODE containers) has been kept where it explains the code.
 > The `sacm::diagnostic::Diagnostic` type exists (LIB-DIAG-001). SACM-MULT-001 is emitted by
-> `sacm::validation::validate` (SACM23-VAL-018). SACM-CMD-001, SACM-CMD-004, SACM-CMD-005 and SACM-ID-002 are
+> `sacm::validation::validate` (SACM23-VAL-018), and SACM-ID-002 too (SACM23-VAL-020).
+> SACM-CMD-001, SACM-CMD-004, SACM-CMD-005 and SACM-ID-002 are
 > produced as the `EditError::code()` of a refused edit (LIB-EDIT-001).
-> SACM-XML-001 (rows LIB-SEC-002 and LIB-SEC-005), SACM-SEC-001 (LIB-SEC-001) and
-> SACM-XMI-001 (SACM23-XMI-001) are produced, as the `ReadError::code()` of a refusal by
+> SACM-XML-001 (rows LIB-SEC-002 and LIB-SEC-005), SACM-SEC-001 (LIB-SEC-001),
+> SACM-XMI-001 (SACM23-XMI-001), SACM-ID-001 (SACM23-VAL-001) and SACM-ID-002
+> (SACM23-VAL-020) are produced, as the `ReadError::code()` of a refusal by
 > `sacm::xmi::read`.
 
 Adding a code: append the row here in the same change that adds its constant to the
@@ -49,8 +51,8 @@ crate, and name the matrix row that owns it.
 
 | Code | Severity | Meaning |
 | --- | --- | --- |
-| SACM-ID-001 | Error | Duplicate element ID. |
-| SACM-ID-002 | Error | Invalid element ID syntax: a new element's id is not an XML NCName (XMI 2.5.1 §7.6.1 `xsd:ID`). `Code::ID_INVALID`, `EditError::InvalidId` (LIB-EDIT-001). Fix: use a name that starts with a letter or `_` and has no spaces or `:`, or leave the id out to have one generated. |
+| SACM-ID-001 | Error | Duplicate element ID: two or more elements in the input carry the same `xmi:id` (XMI 2.5.1 §7.6.1). `xmi::read` refuses the input, giving the location of every element that carries the repeated `xmi:id`. `Code::ID_DUPLICATE`, `ReadError::DuplicateId` (SACM23-VAL-001). Fix: give each element its own id. |
+| SACM-ID-002 | Error | Invalid element ID syntax: an element's id is not an XML NCName (XMI 2.5.1 §7.6.1: `xmi:id` is an `xsd:ID`). `Code::ID_INVALID`. For a new element it is `EditError::InvalidId` (LIB-EDIT-001). For an id read from a file: an empty `xmi:id` is refused as `ReadError::InvalidId`, and any other id that is not an NCName (such as `1c`, `a:b` or `a b`) is read as written and reported by `validation::validate`, so a strict save refuses the document (SACM23-VAL-020). Fix: use a name that starts with a letter or `_` and has no spaces or `:`, or leave the id out to have one generated. |
 | SACM-ID-003 | Error | Duplicate `gid` (clause 8.2: "unique within the scope of the model instance"). Distinct from SACM-ID-001: `gid` is SACM's own model-global identifier rather than the XMI serialization id, and it is the handle third-party tools key on, so a document can be clean on one and broken on the other. An absent or empty `gid` is not an identity and is not compared. |
 | SACM-REF-001 | Error | Dangling reference: target ID does not resolve. |
 | SACM-REF-002 | Error | Reference resolves to an element of the wrong type. |

@@ -38,11 +38,13 @@
 //! roxmltree stays private to the `xmi` module: its errors become our own
 //! reasons and a [`SourceLocation`].
 //!
-//! Every location comes from `locate`, which ends lines as XML 1.0 §2.11
-//! does: a line feed, a carriage return and line feed, or a lone carriage
-//! return each end one line. A leading byte order mark (U+FEFF) takes no
-//! column. roxmltree counts only line feeds, and counts the mark as a
-//! character, so its positions are converted to byte offsets first.
+//! Every location comes from a `Locator` (or `locate`, for one offset), which
+//! ends lines as XML 1.0 §2.11 does: a line feed, a carriage return and line
+//! feed, or a lone carriage return each end one line. A leading byte order
+//! mark (U+FEFF) takes no column. A `Locator` advances, so the many
+//! locations of one read cost one pass over the text. roxmltree counts only
+//! line feeds, and counts the mark as a character, so its positions are
+//! converted to byte offsets first.
 
 use std::borrow::Cow;
 
@@ -828,26 +830,72 @@ fn declaration_end(text: &str) -> Option<usize> {
 /// `offset` is not a character boundary of `text` or the position does not
 /// fit in `u32`.
 pub(super) fn locate(text: &str, offset: usize) -> Option<SourceLocation> {
-    let before = text.get(..offset)?;
-    let before = before.strip_prefix('\u{FEFF}').unwrap_or(before);
-    let mut lines = 0_usize;
-    let mut line_start = 0;
-    let mut after_cr = false;
-    for (index, byte) in before.bytes().enumerate() {
-        match byte {
-            // The line feed of a CRLF: the CR already ended the line.
-            b'\n' if after_cr => line_start = index + 1,
-            b'\n' | b'\r' => {
-                lines = lines.checked_add(1)?;
-                line_start = index + 1;
-            }
-            _ => {}
+    Locator::new(text).locate(offset)
+}
+
+/// Locates byte offsets of one text, as [`locate`] does, with a cursor that
+/// advances: offsets asked for in increasing order cost one pass over the
+/// text in all, so a read that locates many diagnostics stays linear. An
+/// offset before the cursor restarts it from the beginning.
+pub(super) struct Locator<'t> {
+    text: &'t str,
+    /// Where counting starts: after a leading byte order mark.
+    start: usize,
+    /// The byte offset counted up to, a character boundary.
+    cursor: usize,
+    /// The lines ended before the cursor.
+    lines: usize,
+    /// The characters between the start of the cursor's line and the cursor.
+    column: usize,
+    /// Whether the character before the cursor is a carriage return.
+    after_cr: bool,
+}
+
+impl<'t> Locator<'t> {
+    /// A locator for `text`, at its start.
+    pub(super) fn new(text: &'t str) -> Self {
+        let start = if text.starts_with('\u{FEFF}') {
+            '\u{FEFF}'.len_utf8()
+        } else {
+            0
+        };
+        Self {
+            text,
+            start,
+            cursor: start,
+            lines: 0,
+            column: 0,
+            after_cr: false,
         }
-        after_cr = byte == b'\r';
     }
-    let line = u32::try_from(lines.checked_add(1)?).ok()?;
-    let column = before.get(line_start..)?.chars().count().checked_add(1)?;
-    SourceLocation::at(line, u32::try_from(column).ok()?)
+
+    /// The location of byte `offset`, as [`locate`] gives it.
+    pub(super) fn locate(&mut self, offset: usize) -> Option<SourceLocation> {
+        // A character boundary within the text; inside a leading mark only
+        // offset 0 is one, and it is the start.
+        self.text.get(..offset)?;
+        let target = offset.max(self.start);
+        if target < self.cursor {
+            *self = Self::new(self.text);
+        }
+        let between = self.text.get(self.cursor..target)?;
+        for c in between.chars() {
+            match c {
+                // The line feed of a CRLF: the CR already ended the line.
+                '\n' if self.after_cr => {}
+                '\n' | '\r' => {
+                    self.lines = self.lines.saturating_add(1);
+                    self.column = 0;
+                }
+                _ => self.column = self.column.saturating_add(1),
+            }
+            self.after_cr = c == '\r';
+        }
+        self.cursor = target;
+        let line = u32::try_from(self.lines.checked_add(1)?).ok()?;
+        let column = u32::try_from(self.column.checked_add(1)?).ok()?;
+        SourceLocation::at(line, column)
+    }
 }
 
 /// The byte offset in `text` of a roxmltree position. roxmltree counts rows
@@ -1000,6 +1048,61 @@ mod tests {
         assert_eq!(locate("\u{FEFF}<r", 3), SourceLocation::at(1, 1));
         assert_eq!(locate("\u{FEFF}<r", 5), SourceLocation::at(1, 3));
         assert_eq!(locate("a\u{FEFF}b", 4), SourceLocation::at(1, 3));
+    }
+
+    #[test]
+    fn a_locator_gives_locate_s_answer_for_offsets_in_any_order() {
+        let texts = ["\u{FEFF}a\r\nbé\rc\n\nd\r", "x\r\r\n\ny", "", "\u{FEFF}"];
+        for text in texts {
+            let offsets: Vec<usize> = (0..=text.len() + 1).collect();
+            // Forwards, backwards, and back and forth.
+            let mut orders = vec![offsets.clone(), offsets.iter().rev().copied().collect()];
+            orders.push(
+                offsets
+                    .iter()
+                    .flat_map(|&offset| [offset, 0, offset, text.len()])
+                    .collect(),
+            );
+            for order in orders {
+                let mut locator = Locator::new(text);
+                for offset in order {
+                    assert_eq!(
+                        locator.locate(offset),
+                        locate_by_scan(text, offset),
+                        "{text:?} at {offset}"
+                    );
+                }
+            }
+        }
+        // Between two queries the cursor stays on the CR of a CRLF.
+        let mut locator = Locator::new("a\r\nb");
+        assert_eq!(locator.locate(2), SourceLocation::at(2, 1));
+        assert_eq!(locator.locate(3), SourceLocation::at(2, 1));
+        assert_eq!(locator.locate(4), SourceLocation::at(2, 2));
+        assert_eq!(locator.locate(1), SourceLocation::at(1, 2));
+    }
+
+    /// `locate` as one scan from the start, the form before `Locator`.
+    fn locate_by_scan(text: &str, offset: usize) -> Option<SourceLocation> {
+        let before = text.get(..offset)?;
+        let before = before.strip_prefix('\u{FEFF}').unwrap_or(before);
+        let mut lines = 0_usize;
+        let mut line_start = 0;
+        let mut after_cr = false;
+        for (index, byte) in before.bytes().enumerate() {
+            match byte {
+                b'\n' if after_cr => line_start = index + 1,
+                b'\n' | b'\r' => {
+                    lines += 1;
+                    line_start = index + 1;
+                }
+                _ => {}
+            }
+            after_cr = byte == b'\r';
+        }
+        let line = u32::try_from(lines + 1).ok()?;
+        let column = before.get(line_start..)?.chars().count() + 1;
+        SourceLocation::at(line, u32::try_from(column).ok()?)
     }
 
     #[test]

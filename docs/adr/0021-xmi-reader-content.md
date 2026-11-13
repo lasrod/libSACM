@@ -49,7 +49,8 @@ matrix notes and the writer's ADR (0017). This ADR collects them in one place.
   compliance points on it.
   - Kinds not yet readable (their kind rows), and utility children (SACM23-BASE-004/005).
   - `gid`, `isCitation` and `isAbstract` (SACM23-BASE-006/007/008).
-  - An element with no `xmi:id` (SACM23-XMI-020).
+  - An element with no `xmi:id` (SACM23-XMI-020), and an id with XML white space around it
+    whose trimmed value is an NCName (SACM23-XMI-025).
   - A second `name` (SACM23-XMI-021), and an `xmi:id` on a LangString (SACM23-XMI-022).
   - Element forms of values and references (SACM23-XMI-014/015).
   - XMI metadata (SACM23-XMI-019).
@@ -62,7 +63,9 @@ matrix notes and the writer's ADR (0017). This ADR collects them in one place.
   - A role the parent's class lacks, or a namespace-qualified role element (tolerant
     LIB-COMPAT-003).
   - The spelling `argumentationElement` (tolerant SACM23-XMI-009).
-  - An empty `xmi:id`, and a duplicate one (SACM23-VAL-001).
+  - An empty `xmi:id` and a duplicate one are coded refusals now, not `Unsupported`:
+    `ReadError::InvalidId` (SACM-ID-002) and `ReadError::DuplicateId` (SACM-ID-001), per
+    ADR 0015 amendment 2.
   - An `assertionDeclaration` value that is not a literal (SACM23-VAL-006), the attribute on
     an element that is not an Assertion, and `sacm:assertionDeclaration`.
   - A name given as text (tolerant LIB-COMPAT-008), and any other attribute or text the

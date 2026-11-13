@@ -1771,7 +1771,7 @@ id = "SACM23-XMI-001"
 area = "XMI"
 milestone = "M1"
 title = "Interchange roots"
-requirement = "`xmi::read` returns `Ok(ReadOutput)` with a `Document` (and its diagnostics, sorted per ADR 0011: SACM-XMI-010 for `xsi:type` and SACM-XMI-011 for `xmi:version` (LIB-COMPAT-001)) when every interchange root is an `AssuranceCasePackage` or `ArgumentPackage` element in the pinned SACM namespace `http://www.omg.org/spec/SACM/20220301` (D-NS-PIN). A root is the document element, or each element child outside the XMI namespace of an `XMI` element in the XMI 2.5.1 namespace `http://www.omg.org/spec/XMI/20131001`. Elements and attributes are matched by namespace URI and local name, never by prefix (any-prefix equivalence is SACM23-XMI-002). Each root becomes a parentless element of its kind, in document order, whose id is its `xmi:id` exactly. Its name is missing (ADR 0013) unless it has a `name` child, which SACM23-XMI-012 reads. A read root may carry only namespace declarations, `xmi:id`, `xmi:version` (ignored: XMI 2.5.1 identifies its version by namespace) and an `xmi:type` or `xsi:type` naming its own class; its content may be only white space, comments, processing instructions, one `name` child under SACM23-XMI-012's rules, and the children SACM23-XMI-016 reads. The wrapper may carry only namespace declarations and `xmi:version`. Anything else is refused as `ReadError::Unsupported` at its location, never dropped (LIB-API-009): any other child element or attribute of a root, non-white-space text, a root whose `xmi:id` is absent, empty or repeats an earlier element's (since SACM23-XMI-016 a root's children carry ids too), the other ten package kinds as roots (SACM23-ART-001, SACM23-TERM-001, AC-002/003, ARG-014/015), a package-kind name in another namespace or none (LIB-COMPAT-004), an `XMI` element in another namespace (LIB-COMPAT-002), and an XMI-namespace element as a root or wrapper child (SACM23-XMI-019). A root or wrapper child whose local name is none of the twelve package-kind names, and a wrapper with no root, are refused with a `ReadError` whose `code()` is SACM-XMI-001, at that element; among the refusals found while reading the roots this takes precedence over `Unsupported`, so which roots get SACM-XMI-001 does not depend on what a release can read (an `XMI` element outside the XMI namespace is `Unsupported` before its children are classified, ADR 0016 D1). No document is returned beside a refusal (ADR 0015). The XML checks of LIB-SEC-005 run before any root is classified."
+requirement = "`xmi::read` returns `Ok(ReadOutput)` with a `Document` (and its diagnostics, sorted per ADR 0011: SACM-XMI-010 for `xsi:type` and SACM-XMI-011 for `xmi:version` (LIB-COMPAT-001)) when every interchange root is an `AssuranceCasePackage` or `ArgumentPackage` element in the pinned SACM namespace `http://www.omg.org/spec/SACM/20220301` (D-NS-PIN). A root is the document element, or each element child outside the XMI namespace of an `XMI` element in the XMI 2.5.1 namespace `http://www.omg.org/spec/XMI/20131001`. Elements and attributes are matched by namespace URI and local name, never by prefix (any-prefix equivalence is SACM23-XMI-002). Each root becomes a parentless element of its kind, in document order, whose id is its `xmi:id` exactly. Its name is missing (ADR 0013) unless it has a `name` child, which SACM23-XMI-012 reads. A read root may carry only namespace declarations, `xmi:id`, `xmi:version` (ignored: XMI 2.5.1 identifies its version by namespace) and an `xmi:type` or `xsi:type` naming its own class; its content may be only white space, comments, processing instructions, one `name` child under SACM23-XMI-012's rules, and the children SACM23-XMI-016 reads. The wrapper may carry only namespace declarations and `xmi:version`. An empty root id is `ReadError::InvalidId` and a root id that repeats an earlier element's is `ReadError::DuplicateId` (SACM23-VAL-020, SACM23-VAL-001). Anything else is refused as `ReadError::Unsupported` at its location, never dropped (LIB-API-009): any other child element or attribute of a root, non-white-space text, a root whose `xmi:id` is absent or has XML white space around it, the other ten package kinds as roots (SACM23-ART-001, SACM23-TERM-001, AC-002/003, ARG-014/015), a package-kind name in another namespace or none (LIB-COMPAT-004), an `XMI` element in another namespace (LIB-COMPAT-002), and an XMI-namespace element as a root or wrapper child (SACM23-XMI-019). A root or wrapper child whose local name is none of the twelve package-kind names, and a wrapper with no root, are refused with a `ReadError` whose `code()` is SACM-XMI-001, at that element; among the refusals found while reading the roots this takes precedence over `Unsupported`, so which roots get SACM-XMI-001 does not depend on what a release can read (an `XMI` element outside the XMI namespace is `Unsupported` before its children are classified, ADR 0016 D1). No document is returned beside a refusal (ADR 0015). The XML checks of LIB-SEC-005 run before any root is classified."
 source = "formal/23-05-08 §2.2 (p. 4) \"The top object of the Argumentation package as a unit of interchange shall be the Argumentation::ArgumentPackage element of the SACM.\"; §2.4 (p. 4) \"The top object of the Assurance Case package as a unit of interchange shall be the SACM::AssuranceCasePackage element.\"; §2.2/§2.4 \"import and export XMI documents that conform with the SACM XML Schema produced by applying XMI rules to the normative MOF metamodel\"; §9.2 (p. 23) \"When users exchange content, it is expected they use this as the top-level container.\"; XMI 2.5.1 formal/15-06-07 §7.5.3 (p. 10) \"it must be the XMI element if there are multiple elements\", \"the XMI element may not be present when there is only a single top-level object\", \"Each version of XMI is unambiguously identified by its unique namespace URI\"; §7.8.1 (p. 16) \"The XML element name for each model Class, and Association in a document is its short name.\"; §9.5.2 rule 2a (p. 63); §7.6.1 (p. 13) `<xsd:attribute name=\"id\" type=\"xsd:ID\" use=\"optional\"/>`; XMI.xsd targetNamespace `http://www.omg.org/spec/XMI/20131001` (no `version` attribute; specification defect D10); D-NS-PIN; D-PRESERVE; ADR 0013; ADR 0015; ADR 0016; docs/sacm/diagnostics.md SACM-XMI-001; assurance-forge libs/sacm src/io/xmi_reader.cpp:2097-2142, 2191-2285, 2433-2459 (empty wrapper is SACM-XMI-001 as in C++; deviations in ADR 0016)"
 kind = "xmi"
 status = "verified"
@@ -1788,10 +1788,10 @@ acceptance = [
   "SACM-XMI-001 takes precedence: a wrapper holding `<sacm:ArtifactPackage xmi:id=\"f\"/>` then `<sacm:Claim xmi:id=\"c\"/>` gives SACM-XMI-001 at the Claim, not `Unsupported`.",
   "Not readable yet, so `Unsupported` (`code()` `None`) at the stated element: each of the other 10 package-kind roots in the pinned namespace; `<foo:ArgumentPackage xmlns:foo=\"urn:x\" …>`; `<ArgumentPackage xmlns:xmi=\"…20131001\" xmi:id=\"p\"/>` in no namespace; `<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/2.2/argumentation\" …>`; `<xmi:XMI xmlns:xmi=\"http://www.omg.org/XMI\">` and `<XMI>` wrappers holding a valid root; a root `<xmi:Extension>`; a wrapper child `<xmi:documentation>` or `<xmi:extension>` next to a valid root (at that child).",
   "Unread content, so `Unsupported` at that content: on a valid root, any one of `gid=\"g\"`, `gid=\"\"`, `isCitation=\"false\"`, `isAbstract=\"true\"`, `citedElement=\"x\"`, `abstractForm=\"x\"`, `interface=\"x\"`, `xmi:uuid`, `xmi:label`, `href`, `xmi:idref`, `xsi:schemaLocation`, `xml:lang`, `foo=\"1\"`, `ext:a=\"1\"`; a `<note/>` child, an `<argumentPackage/>` child and an `<argumentElement xsi:type=\"sacm:Claim\"/>` child (each without an `xmi:id`), `<xmi:Extension/>`, `<gid>g</gid>`; non-white-space text.",
-  "Ids, so `Unsupported` at the root: no `xmi:id`, `xmi:id=\"\"`, only an unprefixed `id=\"p\"`, or an `id` attribute in another namespace; two wrapped roots with the same `xmi:id` give `Unsupported` at the second.",
+  "Ids: `Unsupported` at the root for no `xmi:id`, only an unprefixed `id=\"p\"`, or an `id` attribute in another namespace; an empty `xmi:id` is `ReadError::InvalidId` (SACM23-VAL-020); two wrapped roots with the same `xmi:id` are `ReadError::DuplicateId` at the second (SACM23-VAL-001).",
   "Order and determinism: the encoding refusals (LIB-API-009), DOCTYPE (LIB-SEC-001) and `Malformed` (LIB-SEC-002, LIB-SEC-005) come before any root classification; the same input always gives the same result.",
   "`ReadOutput` has `document()`, `diagnostics()` (empty unless the input carries `xsi:type` or `xmi:version`, LIB-COMPAT-001) and `into_document()`, and is `Send + Sync` (checked statically). The SACM-XMI-001 refusals follow ADR 0011: `InvalidRoot` and `NoPackage` are `#[non_exhaustive]` `ReadError` variants with a location (also returned by `location()`), its `Display` is one lowercase line without trailing punctuation that quotes names from the input, `source()` is `None`; `Code::XMI_INVALID_ROOT` is SACM-XMI-001 and appears in a table row of docs/sacm/diagnostics.md.",
-  "A root whose `xmi:id` repeats an earlier element's (an earlier root's or its child's) is refused at the root's `<`, before its attributes and content: a second wrapped `<sacm:ArgumentPackage xmi:id=\"a\" gid=\"g\"/>` is refused at its `<`, not at `gid`.",
+  "A root whose `xmi:id` repeats an earlier element's (an earlier root's or its child's) is `ReadError::DuplicateId` at the root's `<`, before its attributes and content: a second wrapped `<sacm:ArgumentPackage xmi:id=\"a\" gid=\"g\"/>` is refused at its `<`, not at `gid`.",
 ]
 code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/roots.rs", "crates/sacm/src/diagnostic.rs", "docs/sacm/diagnostics.md"]
 tests = [
@@ -1816,8 +1816,6 @@ tests = [
   "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_an_unread_attribute_of_a_root_is_unsupported_at_the_attribute",
   "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_an_unread_attribute_of_the_wrapper_is_unsupported_at_the_attribute",
   "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_unread_content_of_a_root_is_unsupported_at_that_content",
-  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_a_missing_empty_or_foreign_root_id_is_unsupported_at_the_root",
-  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_a_repeated_root_id_is_unsupported_at_the_second_root",
   "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_input_checks_come_before_root_classification",
   "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_the_same_input_always_gives_the_same_result",
   "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_read_output_gives_its_document_and_diagnostics",
@@ -1827,9 +1825,12 @@ tests = [
   "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_text_after_white_space_is_refused_at_its_first_character",
   "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_a_repeated_root_id_is_refused_at_the_root_before_its_attributes_and_content",
   "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_a_root_that_repeats_an_earlier_roots_child_id_is_refused_at_the_root",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_an_empty_root_id_is_invalid_id_at_the_root",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_a_missing_or_foreign_root_id_is_unsupported_at_the_root",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_a_repeated_root_id_is_duplicate_id_at_the_second_root",
 ]
-verification = "docs/verification/0035-m1-load-and-save-modes.md"
-notes = "Parser leniencies beyond LIB-SEC-005's list were left to LIB-SEC-006 (W3C conformance suite), by the maintainer's decision of 2026-11-11 (slice 0021, verification round 3); LIB-SEC-006 closes the list within the suite (slice 0022). Slice 0026: the unread-content example `<name/>` became `<note/>`, because SACM23-XMI-012 reads names; re-checked there. Slice 0029: a duplicate root id is now refused at its id check, as \"an earlier element\"; re-checked there. Slice 0035: read diagnostics exist now (SACM-XMI-010, SACM-XMI-011), so `diagnostics()` is no longer always empty; re-checked there."
+verification = "docs/verification/0036-m1-ids-docs-cli.md"
+notes = "Parser leniencies beyond LIB-SEC-005's list were left to LIB-SEC-006 (W3C conformance suite), by the maintainer's decision of 2026-11-11 (slice 0021, verification round 3); LIB-SEC-006 closes the list within the suite (slice 0022). Slice 0026: the unread-content example `<name/>` became `<note/>`, because SACM23-XMI-012 reads names; re-checked there. Slice 0029: a duplicate root id is now refused at its id check, as \"an earlier element\"; re-checked there. Slice 0035: read diagnostics exist now (SACM-XMI-010, SACM-XMI-011), so `diagnostics()` is no longer always empty; re-checked there. Slice 0036: an empty or duplicate `xmi:id` is now a coded refusal (`ReadError::InvalidId`, `ReadError::DuplicateId`; ADR 0015 amendment 2), and a padded id is `Unsupported`; reworded and re-checked there."
 
 [[row]]
 id = "SACM23-XMI-002"
@@ -1875,9 +1876,10 @@ tests = [
   "crates/sacm/tests/xmi_namespace_prefixes.rs::sacm23_xmi_002_invalid_root_names_the_element_with_the_prefix_as_written",
   "crates/sacm/tests/xmi_namespace_prefixes.rs::sacm23_xmi_002_a_wrapper_with_only_xmi_content_under_any_prefix_is_no_package",
   "crates/sacm/tests/xmi_namespace_prefixes.rs::sacm23_xmi_002_unsupported_refusals_have_the_same_kind_code_and_location_under_any_prefix",
+  "crates/sacm/tests/xmi_namespace_prefixes.rs::sacm23_xmi_002_a_repeated_id_is_the_same_duplicate_id_under_any_prefix",
 ]
-verification = "docs/verification/0035-m1-load-and-save-modes.md"
-notes = "Slice 0026: a test's unread-content example `<name/>` became another child, because SACM23-XMI-012 reads names; re-checked there. Slice 0035: inputs with `xsi:type` or `xmi:version` now carry a read diagnostic, so \"the same document\" compares diagnostics apart from location; re-checked there."
+verification = "docs/verification/0036-m1-ids-docs-cli.md"
+notes = "Slice 0026: a test's unread-content example `<name/>` became another child, because SACM23-XMI-012 reads names; re-checked there. Slice 0035: inputs with `xsi:type` or `xmi:version` now carry a read diagnostic, so \"the same document\" compares diagnostics apart from location; re-checked there. Slice 0036: tests updated for the coded id refusals (ADR 0015 amendment 2); re-checked there."
 
 [[row]]
 id = "SACM23-XMI-003"
@@ -1913,11 +1915,11 @@ area = "XMI"
 milestone = "M1"
 title = "xmi:id identity"
 requirement = "`xmi::write` writes every element with exactly one `xmi:id` whose value reads back equal to its `ElementId`, with markup characters and TAB, LF and CR escaped (`&amp;`, `&lt;`, `&gt;`, `&quot;`, `&#9;`, `&#10;`, `&#13;`). An id holding a character XML 1.0 cannot represent makes the write fail, and nothing is returned. Ids read from a file are written back exactly; today that means root ids, and each content row extends it. No `xmi:id` is written on a LangString or MultiLangString. An id that is not an NCName is written as it is, escaped, as C++ does. Writing takes `&Document`: it changes nothing and generates no id."
-source = "XMI 2.5.1 §7.6.1 (p. 13) `<xsd:attribute name=\"id\" type=\"xsd:ID\" use=\"optional\"/>` and \"the value for xmi:id is unique across all elements within the file\", rules 2e and 2f (p. 63); D-ID; D-PRESERVE; assurance-forge `io/xmi_writer.cpp:76`"
+source = "XMI 2.5.1 §7.6.1 (pp. 13-14) `<xsd:attribute name=\"id\" type=\"xsd:ID\" use=\"optional\"/>` and \"the value for xmi:id is unique across all elements within the file\", rules 2e and 2f (p. 63); D-ID; D-PRESERVE; assurance-forge `io/xmi_writer.cpp:76`"
 kind = "xmi"
 status = "verified"
 depends_on = ["SACM23-XMI-001"]
-notes = "Slice 0021 research: no row yet owns a missing `xmi:id` (SACM-XMI-004, generated in tolerant mode). The catalog lists it as Error (strict), but the id is `use=\"optional\"` (XMI 2.5.1 §7.6.1, p. 13) and D-STRICT says strict import accepts every schema-conforming document; settle this here or in a new row. SACM23-XMI-001 refuses a missing root id as `Unsupported`. Maintainer decision 2026-11-12: strict import accepts an element with no `xmi:id` and reports it with a diagnostic (D-STRICT; the id is optional in XMI 2.5.1). This departs from C++, where SACM-XMI-004 is an Error in strict mode, so the row needs an ADR naming that decision. Slice 0025 research: the LangString `xmi:id` Info rule moves to SACM23-XMI-012 (the first row that reads a LangString); the MultiLangString wrapper rule moves to SACM23-BASE-004; the maintainer's decision on a missing `xmi:id` moves to the new SACM23-XMI-020; \"preserved through edit\" moves to the LIB-EDIT rows."
+notes = "Slice 0021 research: no row yet owns a missing `xmi:id` (SACM-XMI-004, generated in tolerant mode). The catalog lists it as Error (strict), but the id is `use=\"optional\"` (XMI 2.5.1 §7.6.1, p. 13) and D-STRICT says strict import accepts every schema-conforming document; settle this here or in a new row. SACM23-XMI-001 refuses a missing root id as `Unsupported`. Maintainer decision 2026-11-12: strict import accepts an element with no `xmi:id` and reports it with a diagnostic (D-STRICT; the id is optional in XMI 2.5.1). This departs from C++, where SACM-XMI-004 is an Error in strict mode, so the row needs an ADR naming that decision. Slice 0025 research: the LangString `xmi:id` Info rule moves to SACM23-XMI-012 (the first row that reads a LangString); the MultiLangString wrapper rule moves to SACM23-BASE-004; the maintainer's decision on a missing `xmi:id` moves to the new SACM23-XMI-020; \"preserved through edit\" moves to the LIB-EDIT rows. Slice 0036: a test's ids or expectations changed for the new id rules (ADR 0015 amendment 2, SACM23-VAL-020); re-checked there."
 acceptance = [
   "In a document built with `insert` that covers every kind the model admits, each element's start tag has exactly one `xmi:id`, equal to `id().as_str()`.",
   "Read, write and read again of AssuranceCasePackage and ArgumentPackage roots keeps every id exactly, including ids holding `&`, `<`, `>`, `\"`, `'`, non-ASCII characters, and TAB, LF and CR.",
@@ -1936,7 +1938,7 @@ tests = [
   "crates/sacm/tests/xmi_write.rs::sacm23_xmi_004_the_xml_char_boundary_characters_in_an_id_are_written_and_read_back",
   "crates/sacm/tests/xmi_write.rs::sacm23_xmi_004_writing_takes_a_shared_reference_and_leaves_the_document_unchanged",
 ]
-verification = "docs/verification/0025-m1-xmi-export.md"
+verification = "docs/verification/0036-m1-ids-docs-cli.md"
 
 [[row]]
 id = "SACM23-XMI-006"
@@ -1977,6 +1979,7 @@ source = "D-RT; XMI 2.5.1 §9.5 (p. 60) \"the XML attributes may be serialized i
 kind = "xmi"
 status = "verified"
 depends_on = ["SACM23-XMI-003", "SACM23-XMI-004", "SACM23-XMI-006"]
+notes = "Slice 0036: a test's ids or expectations changed for the new id rules (ADR 0015 amendment 2, SACM23-VAL-020); re-checked there."
 acceptance = [
   "Writing one document twice gives identical bytes, and so does writing a document and its clone.",
   "Two documents built by the same `insert` sequence, with at least 50 elements, write identical bytes.",
@@ -1998,7 +2001,7 @@ tests = [
   "crates/sacm/tests/xmi_write.rs::sacm23_xmi_007_reading_a_golden_file_and_writing_it_gives_the_golden_bytes",
   "crates/sacm/tests/xmi_write.rs::sacm23_xmi_007_writing_what_was_read_from_written_output_gives_the_same_bytes",
 ]
-verification = "docs/verification/0033-m1-no-xmi-version.md"
+verification = "docs/verification/0036-m1-ids-docs-cli.md"
 
 [[row]]
 id = "SACM23-XMI-011"
@@ -2085,6 +2088,7 @@ source = "formal/23-05-08 §8.6 (p. 19) \"name:LangString[1] (composition) - the
 kind = "validation"
 status = "verified"
 depends_on = ["SACM23-BASE-003", "SACM23-XMI-012", "LIB-DIAG-001", "LIB-API-008"]
+notes = "Slice 0036: a test's ids or expectations changed for the new id rules (ADR 0015 amendment 2, SACM23-VAL-020); re-checked there."
 acceptance = [
   "`ElementKind::ALL` filtered by `is_a(AbstractClass::ModelElement)` is exactly 34 kinds, and the other 4 are exactly Description, ImplementationConstraint, Note and TaggedValue.",
   "For each of the 34 kinds, a named ArtifactPackage root holding one nameless element of that kind gives exactly one diagnostic, for that element; each of the 12 package kinds as a nameless root also gives exactly one.",
@@ -2120,7 +2124,7 @@ tests = [
   "crates/sacm/tests/validation.rs::sacm23_val_018_multiplicity_violation_code_is_sacm_mult_001_in_the_catalog",
   "crates/sacm/tests/validation.rs::sacm23_val_018_a_nameless_element_at_the_end_of_a_deep_chain_is_reported",
 ]
-verification = "docs/verification/0027-m1-validate-missing-name.md"
+verification = "docs/verification/0036-m1-ids-docs-cli.md"
 
 [[row]]
 id = "LIB-COMPAT-001"
@@ -2163,19 +2167,40 @@ tests = [
   "crates/sacm/tests/load_and_save_modes.rs::lib_compat_001_sacm_xmi_010_and_011_messages_name_the_element_by_its_kind_and_quoted_id",
   "crates/sacm/tests/load_and_save_modes.rs::lib_compat_001_sacm_xmi_011_on_the_xmi_element_names_the_xmi_element_and_not_a_root",
 ]
-verification = "docs/verification/0035-m1-load-and-save-modes.md"
-notes = "Slice 0035: designed in ADR 0022 (accepted by the maintainer, 2026-11-13, with SACM-XMI-011 as Info). The C++ `SaveOptions::namespace_uri` moves to LIB-COMPAT-011."
+verification = "docs/verification/0036-m1-ids-docs-cli.md"
+notes = "Slice 0035: designed in ADR 0022 (accepted by the maintainer, 2026-11-13, with SACM-XMI-011 as Info). The C++ `SaveOptions::namespace_uri` moves to LIB-COMPAT-011. Slice 0036: tests updated for the coded id refusals (ADR 0015 amendment 2); re-checked there."
 
 [[row]]
 id = "SACM23-VAL-001"
 area = "VAL"
 milestone = "M1"
 title = "Unique element ids"
-requirement = "Duplicate `xmi:id` values in a document are reported as SACM-ID-001 errors naming every element involved; the edit API refuses to create a duplicate (SACM-CMD-004)."
-source = "XMI 2.5.1 identity; docs/sacm/diagnostics.md SACM-ID-001"
+requirement = "`xmi::read`, in both modes, refuses a document in which two or more elements carry the same `xmi:id` with `ReadError::DuplicateId`, whose `code()` is SACM-ID-001. It concerns the first id that repeats in document order; `locations()` gives the start tag of every element in the input carrying that id, in document order, and `location()` is the first repeat. No document is returned, so no element is dropped (D-PRESERVE; a `Document` holds each id once). Ids compare as exact strings (D-ID). The edit API refuses a caller id already in the document (SACM-CMD-004)."
+source = "XMI 2.5.1 §7.6.1 (p. 14) \"it is important, to be a valid XML document, that the value for xmi:id is unique across all elements within the file\"; §2.2.2; XML 1.0 (Fifth Edition) VC: ID \"A name MUST NOT appear more than once in an XML document as a value of this type\"; ADR 0015 amendment 2; ADR 0022; D-PRESERVE; D-VAL-LAYER; assurance-forge `xmi_reader.cpp:2287-2303` (differs)"
 kind = "validation"
-status = "planned"
-depends_on = ["SACM23-XMI-004", "LIB-DIAG-001", "SACM23-XMI-016"]
+status = "verified"
+depends_on = ["SACM23-XMI-004", "LIB-DIAG-001", "SACM23-XMI-016", "LIB-COMPAT-001"]
+acceptance = [
+  "Two Claims `c1` in one package: `Err(ReadError::DuplicateId)` with `code() == Some(SACM-ID-001)`, `location()` the second Claim's `<`, `locations()` both start tags in order; `Display` names `\"c1\"` and the locations; the same in both modes.",
+  "The same for a repeat across two roots in an `xmi:XMI` wrapper, a root and its descendant, and a child repeating its parent's id.",
+  "Three elements sharing one id give three locations; with two different repeated ids the refusal concerns the one whose first repeat comes first, and the same input always gives the same refusal.",
+  "`c1` and `C1` are not duplicates: the input reads Ok, keeping both ids exactly.",
+  "`ReadError::Unsupported` is no longer returned for a duplicate id; the catalog's SACM-ID-001 row names `Code::ID_DUPLICATE` and `ReadError::DuplicateId`.",
+  "`edit::apply` creating an element with an existing id returns `EditError::DuplicateId` with code SACM-CMD-004 and leaves the document unchanged.",
+]
+tests = [
+  "crates/sacm/tests/ids.rs::sacm23_val_001_two_claims_with_one_id_are_duplicate_id_in_both_modes",
+  "crates/sacm/tests/ids.rs::sacm23_val_001_a_repeat_across_roots_into_a_descendant_and_under_its_parent_is_duplicate_id",
+  "crates/sacm/tests/ids.rs::sacm23_val_001_three_elements_with_one_id_give_three_locations",
+  "crates/sacm/tests/ids.rs::sacm23_val_001_with_two_repeated_ids_the_first_repeat_decides_and_always_the_same",
+  "crates/sacm/tests/ids.rs::sacm23_val_001_ids_that_differ_in_case_are_not_duplicates",
+  "crates/sacm/tests/ids.rs::sacm23_val_001_a_duplicate_is_duplicate_id_before_later_content_that_is_not_read",
+  "crates/sacm/tests/ids.rs::sacm23_val_001_locations_of_every_other_refusal_is_its_one_location_or_none",
+  "crates/sacm/tests/ids.rs::sacm23_val_001_the_catalog_id_001_row_names_the_code_and_the_refusal",
+  "crates/sacm/tests/ids.rs::sacm23_val_001_edit_refuses_an_id_already_in_the_document_and_changes_nothing",
+]
+verification = "docs/verification/0036-m1-ids-docs-cli.md"
+code = ["crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi.rs", "crates/sacm/src/diagnostic.rs", "docs/adr/0015-xmi-read-entry-point.md"]
 
 [[row]]
 id = "SACM23-VAL-006"
@@ -2418,33 +2443,86 @@ id = "LIB-CLI-002"
 area = "CLI"
 milestone = "M1"
 title = "`sacm validate`"
-requirement = "`sacm validate <file>` loads (tolerant by default, `--strict` available), validates, prints diagnostics in a human format or as JSON (`--format json`), and exits 0 when there are no errors, 1 when there are errors, 2 when the file cannot be read."
-source = "Project policy (D-API)"
+requirement = "`sacm validate <file> [--strict] [--format human|json]` reads the file (tolerant by default; `--strict` reads in strict mode), runs `validation::validate`, and reports the read and validation diagnostics together, sorted (ADR 0023). Human format: each diagnostic's `Display` on stdout, then `<file>: valid|invalid (E errors, W warnings, I info)`. JSON: one object `{format: 1, file, mode, result, refusal, diagnostics}`, each diagnostic `{code, severity, requirement, clause, location, affected, message}`, keys always present, RFC 8259 escaping. Exit 0 when no diagnostic is an Error, 1 when one is, 2 when the file cannot be read or the arguments are invalid; an unreadable file prints `sacm: <file>: <code|error> <ReadError>` on stderr in the human format, and JSON reports `result: \"unreadable\"` with the refusal."
+source = "ADR 0023; D-API; D-DIAG; RFC 8259 §7; assurance-forge `libs/sacm/tools/sacm_cli.cpp` (differs: exit 1 for unreadable files; no location, affected ids or clause)"
 kind = "cli"
-status = "planned"
-depends_on = ["LIB-CLI-001", "SACM23-XMI-001", "SACM23-VAL-001"]
+status = "verified"
+depends_on = ["LIB-CLI-001", "SACM23-XMI-001", "SACM23-VAL-001", "LIB-COMPAT-001"]
+acceptance = [
+  "A clean file exits 0 and prints only `<file>: valid (0 errors, 0 warnings, 0 info)`; stderr is empty.",
+  "A file with a nameless Claim exits 1; stdout has the `error SACM-MULT-001 ...` line and an `invalid` summary.",
+  "A file using `xsi:type` exits 0 with a `warning SACM-XMI-010` line; with `--strict` it exits 1 with an `error SACM-XMI-010` line.",
+  "A missing file, malformed XML (SACM-XML-001) and a duplicate id (SACM-ID-001) each exit 2; stderr names the file and the code, and stdout is empty.",
+  "`--format json` for the cases above equals golden text: key order, `\"format\":1`, `null` for an absent clause or location, the `affected` array, `result`, and the `refusal` with its code and locations; a message with `\"`, `\\`, CR, LF and U+0001 is escaped per RFC 8259; the output is identical across runs.",
+  "An unknown flag, `--format xml`, or a missing `<file>` exits 2 with a usage message on stderr.",
+]
+tests = [
+  "crates/sacm-cli/tests/validate.rs::lib_cli_002_a_clean_file_exits_0_and_prints_only_the_valid_summary",
+  "crates/sacm-cli/tests/validate.rs::lib_cli_002_a_nameless_claim_exits_1_with_the_mult_001_line_and_an_invalid_summary",
+  "crates/sacm-cli/tests/validate.rs::lib_cli_002_xsi_type_is_a_warning_by_default_and_an_error_with_strict",
+  "crates/sacm-cli/tests/validate.rs::lib_cli_002_a_missing_malformed_or_duplicate_id_file_exits_2_naming_the_file_and_code",
+  "crates/sacm-cli/tests/validate.rs::lib_cli_002_json_output_equals_the_golden_text_and_is_identical_across_runs",
+  "crates/sacm-cli/tests/validate.rs::lib_cli_002_json_for_a_duplicate_id_has_the_refusal_with_its_code_and_every_location",
+  "crates/sacm-cli/tests/validate.rs::lib_cli_002_json_for_a_missing_file_is_unreadable_with_a_refusal",
+  "crates/sacm-cli/tests/validate.rs::lib_cli_002_json_escapes_quotes_backslashes_and_line_breaks_per_rfc_8259",
+  "crates/sacm-cli/tests/validate.rs::lib_cli_002_json_escapes_control_characters_in_the_file_name",
+  "crates/sacm-cli/tests/validate.rs::lib_cli_002_json_goldens_agree_with_the_library",
+  "crates/sacm-cli/tests/validate.rs::lib_cli_002_an_unknown_flag_a_bad_format_or_no_file_exits_2_with_usage",
+]
+verification = "docs/verification/0036-m1-ids-docs-cli.md"
+code = ["crates/sacm-cli/src/main.rs", "crates/sacm-cli/src/json.rs", "docs/adr/0023-command-line.md"]
 
 [[row]]
 id = "LIB-CLI-003"
 area = "CLI"
 milestone = "M1"
 title = "`sacm roundtrip`"
-requirement = "`sacm roundtrip <file>` loads, saves strictly to memory, reloads and reports any semantic difference, exiting non-zero if there is one; `-o` writes the strict output."
-source = "Project policy (D-API)"
+requirement = "`sacm roundtrip <file> [--strict] [-o <out>]` reads the file (tolerant by default), writes it in strict mode to memory, reads that output back in strict mode, and compares the two with `compare::semantic_compare` (ADR 0023). It prints each `Difference` on one line, then `<file>: round trip ok` or `<file>: round trip failed: <reason>`. Exit 0 when the strict save succeeds, the output reads back with no Error and there is no difference; 1 when the strict save refuses (each Error printed), the output does not read back cleanly, or there is a difference; 2 when the input cannot be read, `-o` cannot be written, or the arguments are invalid. `-o <out>` writes the strict output only when the round trip is faithful."
+source = "ADR 0023; D-API; D-RT; LIB-RT-002; LIB-COMPAT-007; assurance-forge `sacm_cli.cpp` `run_roundtrip` (differs: it fails on load Errors and has no `-o`)"
 kind = "cli"
-status = "planned"
-depends_on = ["LIB-CLI-002", "LIB-RT-002"]
+status = "verified"
+depends_on = ["LIB-CLI-002", "LIB-RT-002", "LIB-COMPAT-007"]
+acceptance = [
+  "A clean fixture (packages, Claims, names, every `assertionDeclaration`) exits 0 with stdout exactly `<file>: round trip ok`.",
+  "With `-o out.xmi` the file's bytes equal `xmi::write(&document, &WriteOptions::default())`, identical across runs.",
+  "A nameless element makes the strict save refuse: exit 1, the `error SACM-MULT-001 ...` line, and `round trip failed: ...`; no `-o` file is created.",
+  "An input using `xsi:type` exits 0 in tolerant mode, and its `-o` output has `xmi:type` and no `xsi:type`.",
+  "The difference report prints each `Difference` `Display` line followed by `round trip failed: N differences` and exits 1; a correct library produces no difference, so this is covered by an untraced unit test in the CLI.",
+  "An unreadable input exits 2 with the same stderr form as `validate`; `-o` into a directory that does not exist exits 2 with a message naming the path.",
+]
+tests = [
+  "crates/sacm-cli/tests/roundtrip.rs::lib_cli_003_a_clean_fixture_exits_0_with_only_the_round_trip_ok_line",
+  "crates/sacm-cli/tests/roundtrip.rs::lib_cli_003_o_writes_the_strict_output_byte_for_byte_and_identically_across_runs",
+  "crates/sacm-cli/tests/roundtrip.rs::lib_cli_003_a_refused_strict_save_exits_1_with_each_error_and_writes_no_output",
+  "crates/sacm-cli/tests/roundtrip.rs::lib_cli_003_an_xsi_type_input_round_trips_tolerantly_and_its_output_uses_xmi_type",
+  "crates/sacm-cli/tests/roundtrip.rs::lib_cli_003_an_unreadable_input_or_an_unwritable_output_exits_2",
+  "crates/sacm-cli/tests/roundtrip.rs::lib_cli_003_invalid_arguments_exit_2_with_usage",
+]
+verification = "docs/verification/0036-m1-ids-docs-cli.md"
+code = ["crates/sacm-cli/src/main.rs", "docs/adr/0023-command-line.md"]
 
 [[row]]
 id = "LIB-DOC-001"
 area = "DOC"
 milestone = "M1"
 title = "Crate root documentation with a complete example"
-requirement = "The crate root explains SACM in plain words, states what is supported (linking the matrix), and shows a runnable load → inspect → validate → edit → save example as a doctest; the crate README mirrors it."
-source = "Project goal (well documented, easy to use)"
+requirement = "The crate root explains SACM in plain words, states what is supported in a short list linking the functionality matrix, and shows a runnable load → inspect → edit → validate → save example as a doctest that succeeds on the default (strict) save; it says in one sentence how to save a draft (`Mode::Tolerant`). The crate README mirrors the example."
+source = "Project policy; ADR 0022; LIB-RT-002"
 kind = "docs"
-status = "planned"
+status = "verified"
 depends_on = ["LIB-EDIT-001", "LIB-RT-002"]
+acceptance = [
+  "The crate-root doctest reads a named document, inspects an element, applies an edit, validates with no Error, writes with `WriteOptions::default()` and reads the output back equal.",
+  "The crate root links the functionality matrix and lists only verified capability.",
+  "The crate README's example is the same and runs as a doctest.",
+  "The crate root says a strict save refuses a document with a validation Error and how to save a draft tolerantly.",
+]
+tests = [
+  "doctest:crates/sacm/src/lib.rs",
+  "doctest:crates/sacm/README.md",
+]
+verification = "docs/verification/0036-m1-ids-docs-cli.md"
+code = ["crates/sacm/src/lib.rs", "crates/sacm/README.md"]
 
 # ===========================================================================
 # M2 — Base model and argumentation
@@ -2637,7 +2715,7 @@ source = "D-DIAG \"source location where available\"; ADR 0011; ADR 0015 \"Each 
 kind = "xmi"
 status = "verified"
 depends_on = ["SACM23-XMI-016", "SACM23-XMI-012", "LIB-API-009", "LIB-DIAG-001"]
-notes = "Moved to M1 by the maintainer, 2026-11-12: edited documents must reload, and M1's round-trip rows need it. Split in slice 0029: locations on read diagnostics, which `xmi::read` does not yet emit, move to SACM23-XMI-023 (M2)."
+notes = "Moved to M1 by the maintainer, 2026-11-12: edited documents must reload, and M1's round-trip rows need it. Split in slice 0029: locations on read diagnostics, which `xmi::read` does not yet emit, move to SACM23-XMI-023 (M2). Slice 0036: tests updated for the coded id refusals (ADR 0015 amendment 2); re-checked there."
 acceptance = [
   "A table test with one input per refusal site (every `ReadError` variant, and every `Unsupported` reason for roots and for children) places each construct at line 3 or later and, where the construct allows it, at column 5 or later after a CRLF, a lone CR and a non-ASCII character, and asserts the exact `location()`. A byte order mark, the first-bytes encodings and the XML declaration are the stated exceptions.",
   "`Display` shows \" at line L, column C\" for every input in the table, before the reason where there is one.",
@@ -2658,7 +2736,7 @@ tests = [
   "crates/sacm/tests/xmi_read_locations.rs::sacm23_xmi_010_hand_counted_locations_after_crlf_a_lone_cr_and_non_ascii",
   "crates/sacm/tests/xmi_read_locations.rs::sacm23_xmi_010_text_after_white_space_written_as_a_reference_or_cdata_is_located_at_that_construct",
 ]
-verification = "docs/verification/0029-m1-read-package-content.md"
+verification = "docs/verification/0036-m1-ids-docs-cli.md"
 
 [[row]]
 id = "LIB-COMPAT-007"
@@ -2694,8 +2772,8 @@ tests = [
   "crates/sacm/tests/load_and_save_modes.rs::lib_compat_007_a_document_read_tolerantly_with_xsi_type_and_xmi_version_writes_strictly",
   "crates/sacm/tests/load_and_save_modes.rs::lib_compat_007_the_invalid_refusal_says_1_error_for_one_and_3_errors_for_three",
 ]
-verification = "docs/verification/0035-m1-load-and-save-modes.md"
-notes = "ADR review, 2026-11-13: decided in the load and save modes ADR with LIB-COMPAT-001: the semver stance (a new validation rule can make the default save fail in a minor release), and the reporting rule (every affected element, ADR 0013, or the first, ADR 0017 W4). Must land before any release (LIB-QA-005). Slice 0035: designed in ADR 0022, which takes over ADR 0013 amendment 1. ADR 0018's consequence: default writes of documents with validation Errors now fail; docs and examples are updated and the CHANGELOG calls it out."
+verification = "docs/verification/0036-m1-ids-docs-cli.md"
+notes = "ADR review, 2026-11-13: decided in the load and save modes ADR with LIB-COMPAT-001: the semver stance (a new validation rule can make the default save fail in a minor release), and the reporting rule (every affected element, ADR 0013, or the first, ADR 0017 W4). Must land before any release (LIB-QA-005). Slice 0035: designed in ADR 0022, which takes over ADR 0013 amendment 1. ADR 0018's consequence: default writes of documents with validation Errors now fail; docs and examples are updated and the CHANGELOG calls it out. Slice 0036: a test's ids or expectations changed for the new id rules (ADR 0015 amendment 2, SACM23-VAL-020); re-checked there."
 
 [[row]]
 id = "SACM23-XMI-013"
@@ -2723,8 +2801,8 @@ tests = [
   "crates/sacm/tests/xmi_write.rs::sacm23_xmi_013_one_and_three_roots_read_back_to_the_same_ids_kinds_and_order",
   "crates/sacm/tests/xmi_write.rs::sacm23_xmi_013_every_readable_input_writes_and_reads_back_to_the_same_ids_and_kinds",
 ]
-verification = "docs/verification/0033-m1-no-xmi-version.md"
-notes = "Slice 0025: the earlier clause on \"the four interchange packages\" is dropped; every package kind is a root (§9.3, §11.6, ADR 0016)."
+verification = "docs/verification/0036-m1-ids-docs-cli.md"
+notes = "Slice 0025: the earlier clause on \"the four interchange packages\" is dropped; every package kind is a root (§9.3, §11.6, ADR 0016). Slice 0036: a test's ids or expectations changed for the new id rules (ADR 0015 amendment 2, SACM23-VAL-020); re-checked there."
 
 [[row]]
 id = "SACM23-XMI-014"
@@ -3477,7 +3555,7 @@ requirement = "Import and export XMI documents whose unit of interchange is Argu
 source = "formal/23-05-08 clause 2"
 kind = "compliance"
 status = "planned"
-depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-ARG-001", "SACM23-ARG-002", "SACM23-ARG-003", "SACM23-ARG-004", "SACM23-ARG-005", "SACM23-ARG-006", "SACM23-ARG-007", "SACM23-ARG-008", "SACM23-ARG-009", "SACM23-ARG-010", "SACM23-ARG-011", "SACM23-ARG-012", "SACM23-ARG-013", "SACM23-ARG-014", "SACM23-ARG-015", "SACM23-XMI-001", "SACM23-XMI-002", "SACM23-XMI-003", "SACM23-XMI-004", "SACM23-XMI-005", "SACM23-XMI-006", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-XMI-009", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-005", "SACM23-VAL-006", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-009", "SACM23-VAL-010", "SACM23-VAL-011", "SACM23-VAL-012", "SACM23-VAL-013", "SACM23-VAL-014", "SACM23-VAL-016", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008", "SACM23-XMI-017", "SACM23-VAL-019", "SACM23-XMI-018", "SACM23-XMI-019", "SACM23-XMI-020", "SACM23-XMI-021", "SACM23-XMI-022", "LIB-API-011", "SACM23-XMI-024", "SACM23-VAL-020"]
+depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-ARG-001", "SACM23-ARG-002", "SACM23-ARG-003", "SACM23-ARG-004", "SACM23-ARG-005", "SACM23-ARG-006", "SACM23-ARG-007", "SACM23-ARG-008", "SACM23-ARG-009", "SACM23-ARG-010", "SACM23-ARG-011", "SACM23-ARG-012", "SACM23-ARG-013", "SACM23-ARG-014", "SACM23-ARG-015", "SACM23-XMI-001", "SACM23-XMI-002", "SACM23-XMI-003", "SACM23-XMI-004", "SACM23-XMI-005", "SACM23-XMI-006", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-XMI-009", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-005", "SACM23-VAL-006", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-009", "SACM23-VAL-010", "SACM23-VAL-011", "SACM23-VAL-012", "SACM23-VAL-013", "SACM23-VAL-014", "SACM23-VAL-016", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008", "SACM23-XMI-017", "SACM23-VAL-019", "SACM23-XMI-018", "SACM23-XMI-019", "SACM23-XMI-020", "SACM23-XMI-021", "SACM23-XMI-022", "LIB-API-011", "SACM23-XMI-024", "SACM23-VAL-020", "SACM23-XMI-025"]
 
 [[row]]
 id = "SACM23-CP-003"
@@ -3488,7 +3566,7 @@ requirement = "Import and export XMI documents whose unit of interchange is Arti
 source = "formal/23-05-08 clause 2"
 kind = "compliance"
 status = "planned"
-depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-ART-001", "SACM23-ART-002", "SACM23-ART-003", "SACM23-ART-004", "SACM23-ART-005", "SACM23-ART-006", "SACM23-ART-007", "SACM23-ART-008", "SACM23-ART-009", "SACM23-ART-010", "SACM23-ART-011", "SACM23-ART-012", "SACM23-ART-013", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-XMI-009", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-013", "SACM23-VAL-014", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008", "SACM23-XMI-018", "SACM23-XMI-019", "SACM23-XMI-020", "SACM23-XMI-021", "SACM23-XMI-022", "LIB-API-011", "SACM23-XMI-024", "SACM23-VAL-020"]
+depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-ART-001", "SACM23-ART-002", "SACM23-ART-003", "SACM23-ART-004", "SACM23-ART-005", "SACM23-ART-006", "SACM23-ART-007", "SACM23-ART-008", "SACM23-ART-009", "SACM23-ART-010", "SACM23-ART-011", "SACM23-ART-012", "SACM23-ART-013", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-XMI-009", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-013", "SACM23-VAL-014", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008", "SACM23-XMI-018", "SACM23-XMI-019", "SACM23-XMI-020", "SACM23-XMI-021", "SACM23-XMI-022", "LIB-API-011", "SACM23-XMI-024", "SACM23-VAL-020", "SACM23-XMI-025"]
 
 [[row]]
 id = "SACM23-CP-004"
@@ -3499,7 +3577,7 @@ requirement = "Import and export XMI documents whose unit of interchange is Term
 source = "formal/23-05-08 clause 2"
 kind = "compliance"
 status = "planned"
-depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-TERM-001", "SACM23-TERM-002", "SACM23-TERM-003", "SACM23-TERM-004", "SACM23-TERM-005", "SACM23-TERM-006", "SACM23-TERM-007", "SACM23-TERM-008", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-009", "SACM23-VAL-013", "SACM23-VAL-014", "SACM23-VAL-017", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008", "SACM23-XMI-018", "SACM23-XMI-019", "SACM23-XMI-020", "SACM23-XMI-021", "SACM23-XMI-022", "LIB-API-011", "SACM23-XMI-024", "SACM23-VAL-020"]
+depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-TERM-001", "SACM23-TERM-002", "SACM23-TERM-003", "SACM23-TERM-004", "SACM23-TERM-005", "SACM23-TERM-006", "SACM23-TERM-007", "SACM23-TERM-008", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-009", "SACM23-VAL-013", "SACM23-VAL-014", "SACM23-VAL-017", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008", "SACM23-XMI-018", "SACM23-XMI-019", "SACM23-XMI-020", "SACM23-XMI-021", "SACM23-XMI-022", "LIB-API-011", "SACM23-XMI-024", "SACM23-VAL-020", "SACM23-XMI-025"]
 
 [[row]]
 id = "SACM23-CP-001"
@@ -3639,12 +3717,12 @@ source = "formal/23-05-08 §9.2 (pp. 23-24) \"assuranceCasePackage: AssuranceCas
 kind = "xmi"
 status = "verified"
 depends_on = ["LIB-API-008", "SACM23-XMI-006", "LIB-TOOL-020", "SACM23-AC-001", "SACM23-ARG-001", "SACM23-ARG-002", "SACM23-XMI-002", "SACM23-XMI-012", "LIB-API-009"]
-notes = "Slice 0025: owns strict import requiring the type attribute on an abstract-role child (SACM-XMI-005), moved from SACM23-XMI-006. Export writes `xmi:type` (ADR 0017); import accepts `xmi:type` and `xsi:type`. Moved to M1 by the maintainer, 2026-11-12: edited documents must reload, and M1's round-trip rows need it. Slice 0029 (lead decisions, the minimal options): only kinds whose model row is verified are read (ADR 0016 D5); non-conforming children are `Unsupported`, not coded (ADR 0015's interim rule, as ADR 0016 D6 does for roots); `assertionDeclaration` stays with SACM23-XMI-017; namespace-qualified role elements are refused, as for `name`. Moved out: references (SACM23-XMI-005 and the kind rows); utility children (SACM23-BASE-004/005); `gid`, `isCitation`, `isAbstract` (SACM23-BASE-006/007/008); strict SACM-XMI-003 and tolerant preservation (LIB-COMPAT-003); SACM-XMI-005 (LIB-COMPAT-010); a missing id (SACM23-XMI-020); a duplicate id (SACM23-VAL-001); `argumentationElement` (SACM23-XMI-009); element forms (SACM23-XMI-014/015); XMI metadata (SACM23-XMI-019); legacy shapes (LIB-COMPAT-008). C++ difference: C++ matches role elements by local name in any namespace (`xmi_reader.cpp:1988`); this crate refuses a namespace-qualified role element. Basis: role elements are local declarations, the XMI schema's default is unqualified, and XMI 2.5.1 rule 2a says \"The namespace prefix is ignored for an object that is the value of a Property\", which is ambiguous; the refusal is reversible and closes with LIB-COMPAT-003 (tolerant) if real files need it. Slice 0030: `assertionDeclaration` on a Claim is read (SACM23-XMI-017), so the attribute refusal narrows to non-Assertion children; re-checked there."
+notes = "Slice 0025: owns strict import requiring the type attribute on an abstract-role child (SACM-XMI-005), moved from SACM23-XMI-006. Export writes `xmi:type` (ADR 0017); import accepts `xmi:type` and `xsi:type`. Moved to M1 by the maintainer, 2026-11-12: edited documents must reload, and M1's round-trip rows need it. Slice 0029 (lead decisions, the minimal options): only kinds whose model row is verified are read (ADR 0016 D5); non-conforming children are `Unsupported`, not coded (ADR 0015's interim rule, as ADR 0016 D6 does for roots); `assertionDeclaration` stays with SACM23-XMI-017; namespace-qualified role elements are refused, as for `name`. Moved out: references (SACM23-XMI-005 and the kind rows); utility children (SACM23-BASE-004/005); `gid`, `isCitation`, `isAbstract` (SACM23-BASE-006/007/008); strict SACM-XMI-003 and tolerant preservation (LIB-COMPAT-003); SACM-XMI-005 (LIB-COMPAT-010); a missing id (SACM23-XMI-020); a duplicate id (SACM23-VAL-001); `argumentationElement` (SACM23-XMI-009); element forms (SACM23-XMI-014/015); XMI metadata (SACM23-XMI-019); legacy shapes (LIB-COMPAT-008). C++ difference: C++ matches role elements by local name in any namespace (`xmi_reader.cpp:1988`); this crate refuses a namespace-qualified role element. Basis: role elements are local declarations, the XMI schema's default is unqualified, and XMI 2.5.1 rule 2a says \"The namespace prefix is ignored for an object that is the value of a Property\", which is ambiguous; the refusal is reversible and closes with LIB-COMPAT-003 (tolerant) if real files need it. Slice 0030: `assertionDeclaration` on a Claim is read (SACM23-XMI-017), so the attribute refusal narrows to non-Assertion children; re-checked there. Slice 0036: an empty or duplicate `xmi:id` is now a coded refusal (`ReadError::InvalidId`, `ReadError::DuplicateId`; ADR 0015 amendment 2), and a padded id is `Unsupported`; reworded and re-checked there."
 acceptance = [
   "Read: each of the four readable cases reads to its kind, id, name and parent; under a concrete role with no type, a redundant `xmi:type` and a redundant `xsi:type`; under `argumentElement` with `xmi:type` and `xsi:type`. An `xmi:type` and an `xsi:type` on the same child that name the same class read too.",
   "Read: document order holds across roles and with `name` after the children, at depth 3 or more.",
   "Read: type resolution follows SACM23-XMI-002: a prefix declared on the child works, `sacm` rebound on the child is `Unsupported`, surrounding white space is trimmed, and `sacm:claim` is `Unsupported`.",
-  "Each of these is `Unsupported` at an exact line and column, and no document is returned: a non-conforming type under a concrete role and under `argumentElement`; a type naming an abstract class (`sacm:Assertion`, `sacm:ArgumentationElement`, `sacm:ArgumentAsset`); a type naming no SACM class, in a foreign namespace, or unresolvable; an untyped `<argumentElement>`; two type attributes that disagree; `<foo>` and an `<argumentElement>` in an AssuranceCasePackage; `<argumentationElement>`; `<sacm:argumentElement>` and a role element under a default SACM namespace; every conforming kind outside the readable set, in its role; `description`, `note`, `implementationConstraint` and `taggedValue` on each readable kind; a child with no, an empty or a duplicate `xmi:id`; `gid`, `assertionDeclaration` (including `\"asserted\"`) on a child that is not an Assertion, `isCitation`, `xmi:version` or `xmi:uuid` on a child (at the attribute's name); text in a child.",
+  "Each of these is `Unsupported` at an exact line and column, and no document is returned: a non-conforming type under a concrete role and under `argumentElement`; a type naming an abstract class (`sacm:Assertion`, `sacm:ArgumentationElement`, `sacm:ArgumentAsset`); a type naming no SACM class, in a foreign namespace, or unresolvable; an untyped `<argumentElement>`; two type attributes that disagree; `<foo>` and an `<argumentElement>` in an AssuranceCasePackage; `<argumentationElement>`; `<sacm:argumentElement>` and a role element under a default SACM namespace; every conforming kind outside the readable set, in its role; `description`, `note`, `implementationConstraint` and `taggedValue` on each readable kind; a child with no `xmi:id` or one with XML white space around it (an empty one is `ReadError::InvalidId` and a duplicate `ReadError::DuplicateId`, ADR 0015 amendment 2); `gid`, `assertionDeclaration` (including `\"asserted\"`) on a child that is not an Assertion, `isCitation`, `xmi:version` or `xmi:uuid` on a child (at the attribute's name); text in a child.",
   "Text whose value is all XML white space is accepted wherever only white space may appear (a root, a child, a `name` and the `xmi:XMI` element), whether written literally, as a CDATA section (`<![CDATA[ ]]>`, `<![CDATA[]]>`) or as character references (`&#x20;`, `&#32;`, `&#9;`, `&#xA;`, `&#xD;`); the document read equals the one without it. `&#xA0;` and `<![CDATA[x]]>` are refused (XML Infoset; XSD 1.0 Part 1 cvc-complex-type 2.3).",
   "Each readable child is refused under every other role name of the same parent class.",
   "Write: for all 339 legal (parent, child) pairs, each child's role name matches a table written in the test from `docs/sacm/metamodel-inventory.md`.",
@@ -3660,7 +3738,6 @@ tests = [
   "crates/sacm/tests/xmi_read_children.rs::sacm23_xmi_016_a_type_naming_an_abstract_unknown_or_foreign_class_is_unsupported_at_the_child",
   "crates/sacm/tests/xmi_read_children.rs::sacm23_xmi_016_a_role_the_parent_class_lacks_or_a_qualified_role_element_is_unsupported_at_the_child",
   "crates/sacm/tests/xmi_read_children.rs::sacm23_xmi_016_every_conforming_kind_outside_the_readable_set_is_unsupported_in_its_role",
-  "crates/sacm/tests/xmi_read_children.rs::sacm23_xmi_016_a_missing_empty_or_duplicate_child_id_is_unsupported_at_the_child",
   "crates/sacm/tests/xmi_read_children.rs::sacm23_xmi_016_an_unread_attribute_of_a_child_is_unsupported_at_its_name",
   "crates/sacm/tests/xmi_read_children.rs::sacm23_xmi_016_text_or_a_second_or_unreadable_name_in_a_child_is_unsupported_where_it_starts",
   "crates/sacm/tests/xmi_read_children.rs::sacm23_xmi_016_each_readable_child_is_refused_under_every_other_role_name_of_its_parent",
@@ -3669,8 +3746,11 @@ tests = [
   "crates/sacm/tests/xmi_read_children.rs::sacm23_xmi_016_a_duplicate_child_id_is_refused_at_the_child_before_later_content",
   "crates/sacm/tests/xmi_read_children.rs::sacm23_xmi_016_white_space_written_literally_as_cdata_or_as_references_is_accepted",
   "crates/sacm/tests/xmi_read_children.rs::sacm23_xmi_016_a_no_break_space_reference_or_cdata_holding_text_is_unsupported_where_it_starts",
+  "crates/sacm/tests/xmi_read_children.rs::sacm23_xmi_016_a_missing_or_foreign_child_id_is_unsupported_at_the_child",
+  "crates/sacm/tests/xmi_read_children.rs::sacm23_xmi_016_an_empty_child_id_is_invalid_id_at_the_child",
+  "crates/sacm/tests/xmi_read_children.rs::sacm23_xmi_016_a_duplicate_child_id_is_duplicate_id_at_the_child",
 ]
-verification = "docs/verification/0030-m1-assertion-declaration-in-xmi.md"
+verification = "docs/verification/0036-m1-ids-docs-cli.md"
 
 [[row]]
 id = "SACM23-XMI-017"
@@ -3728,11 +3808,31 @@ id = "SACM23-VAL-020"
 area = "VAL"
 milestone = "M1"
 title = "An xmi:id is an NCName"
-requirement = "`validation::validate` reports each element whose id is not an NCName as an Error, so a strict save refuses the document (LIB-COMPAT-007) and a tolerant save writes it. Today an id read from a file is written as it is, so strict output can fail `xsd:ID`; SACM-ID-002 covers only ids an edit creates (ADR 0019 E6)."
-source = "XMI 2.5.1 §7.6.1 `type=\"xsd:ID\"`; XML Schema 1.0 Part 2 §3.3.8 (ID is an NCName); ADR 0013 amendment 1; ADR 0017; ADR 0019 E6; ADR review, 2026-11-13 (the maintainer: apply every recommendation)"
+requirement = "`validation::validate` reports each element whose id is not an NCName (XML 1.0 Fifth Edition productions [4], [4a], [5] without `:`; Namespaces in XML 1.0 Third Edition [4]) as one Error SACM-ID-002, with the element's id as its only affected id, clause 7.6.1 and no location, so a strict save refuses the document (LIB-COMPAT-007) and a tolerant save writes the id unchanged (D-ID). `xmi::read`, in both modes, refuses an empty `xmi:id`, which a `Document` cannot hold, as `ReadError::InvalidId` whose `code()` is SACM-ID-002, at the element's start tag. An id with XML white space around it whose trimmed value is an NCName is refused as `Unsupported` until SACM23-XMI-025 (ADR 0015 amendment 2)."
+source = "XMI 2.5.1 §7.6.1 (p. 13) `type=\"xsd:ID\"`; XML Schema 1.0 Part 2 2E §3.3.8 \"The ·lexical space· of ID is the set of all strings that ·match· the NCName production in [Namespaces in XML]\", §4.3.6; Namespaces in XML 1.0 (Third Edition) [4]; XML 1.0 (Fifth Edition) [4], [4a], [5]; ADR 0015 amendment 2; ADR 0019 E6; ADR 0022; D-ID; assurance-forge `validate.cpp:303-309`"
 kind = "validation"
-status = "planned"
+status = "verified"
 depends_on = ["SACM23-VAL-018", "SACM23-XMI-004"]
+acceptance = [
+  "A Claim read with `xmi:id` set to each of `1c`, `-c`, `.c`, `a:b`, `a b` and `·c` reads Ok, on a root and on a child; `validate` returns exactly one Error SACM-ID-002 for it, requirement SACM23-VAL-020, clause `7.6.1`, affected `[id]`, no location, with a message naming the kind and the `{:?}`-quoted id.",
+  "Boundary NCNames give no SACM-ID-002: `_`, `a-b.c`, `x·y`, `à`, `𐀀`; a document built only by edits (caller and generated ids) gives none.",
+  "Two elements with bad ids give two diagnostics in `Diagnostic` order; elements with valid ids beside them give none.",
+  "A strict `xmi::write` of such a document returns `Err(WriteError::Invalid)` holding the SACM-ID-002; a tolerant write keeps the id byte for byte, and reading that output back gives the same id.",
+  "`xmi::read` with `xmi:id=\"\"` on a root and on a child returns `Err(ReadError::InvalidId)` with `code() == Some(SACM-ID-002)` at that element's `<`, in both modes; `Unsupported` is no longer returned for it.",
+  "An id such as `\" c1 \"` or `\"c1&#9;\"` (trimmed value an NCName) is `Unsupported` at the attribute's name in both modes; `\" \"` is read and reported by `validate`.",
+  "The diagnostics catalog's SACM-ID-002 row covers read ids as well as created ones and names SACM23-VAL-020.",
+]
+tests = [
+  "crates/sacm/tests/ids.rs::sacm23_val_020_a_non_ncname_id_reads_and_is_one_id_002_error_on_a_root_and_on_a_child",
+  "crates/sacm/tests/ids.rs::sacm23_val_020_boundary_ncnames_and_edit_built_ids_give_no_id_002",
+  "crates/sacm/tests/ids.rs::sacm23_val_020_two_bad_ids_give_two_findings_in_diagnostic_order_and_valid_ids_give_none",
+  "crates/sacm/tests/ids.rs::sacm23_val_020_strict_write_refuses_and_tolerant_write_keeps_the_id_byte_for_byte",
+  "crates/sacm/tests/ids.rs::sacm23_val_020_an_empty_id_is_invalid_id_at_the_element_in_both_modes",
+  "crates/sacm/tests/ids.rs::sacm23_val_020_a_padded_id_is_unsupported_at_its_name_and_a_space_id_is_reported",
+  "crates/sacm/tests/ids.rs::sacm23_val_020_the_catalog_id_002_row_covers_read_ids_and_names_the_row",
+]
+verification = "docs/verification/0036-m1-ids-docs-cli.md"
+code = ["crates/sacm/src/validation/ids.rs", "crates/sacm/src/validation.rs", "crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi.rs", "docs/adr/0015-xmi-read-entry-point.md"]
 notes = "Choose its diagnostic code (extend SACM-ID-002 or add one) before its tests. Moved to M1 by the maintainer (2026-11-13), as the slice after LIB-COMPAT-007, so strict save writes only schema-conforming files. Its code is SACM-ID-002 per ADR 0022."
 
 [[row]]
@@ -3819,6 +3919,7 @@ source = "XML 1.0 (Fifth Edition): §2.2 \"All XML processors MUST accept the UT
 kind = "xmi"
 status = "verified"
 depends_on = ["LIB-API-009", "SACM23-XMI-001", "LIB-SEC-006", "LIB-SEC-001"]
+notes = "Slice 0036: tests updated for the coded id refusals (ADR 0015 amendment 2); re-checked there."
 acceptance = [
   "With a byte order mark: a SACM document as UTF-16LE and as UTF-16BE, each with no declaration and with `encoding=` `\"UTF-16\"`, `\"utf-16\"`, `\"UTF-16LE\"` and `\"UTF-16BE\"`, reads `Ok` with the same roots (id, kind, order) and diagnostics as the UTF-8 document.",
   "Contradicting name: after a UTF-16 byte order mark, `encoding=\"UTF-8\"`, `\"US-ASCII\"` or `\"ISO-8859-1\"` is `Malformed`, `code()` SACM-XML-001, at the first character of the name (line 1, column 31 for `<?xml version=\"1.0\" encoding=\"`), in both byte orders.",
@@ -3848,7 +3949,7 @@ tests = [
   "crates/sacm/tests/xmi_utf16.rs::sacm23_xmi_018_a_utf16_name_declared_in_utf8_stays_unsupported_at_the_name",
   "crates/sacm/tests/w3c_xml_conformance.rs::sacm23_xmi_018_the_utf16_cases_of_the_suite_have_their_pinned_results",
 ]
-verification = "docs/verification/0024-m1-utf16-input.md"
+verification = "docs/verification/0036-m1-ids-docs-cli.md"
 
 [[row]]
 id = "LIB-API-005"
@@ -4116,6 +4217,17 @@ tests = [
 ]
 verification = "docs/verification/0035-m1-load-and-save-modes.md"
 notes = "Reverses ADR 0017's \"Kept from C++: xmi:version=\\\"2.0\\\"\" (the maintainer, 2026-11-13, on the ADR review): the standard decides, so it comes before C++ (`namespaces.h:32`). A `WriteOptions` switch is added only if a real consumer needs it. docs/sacm/metamodel-inventory.md and the sacm-expert skill's XMI reference, which stated `xmi:version=\"2.0\"`, are updated with it (slice 0033). Slice 0035: an ignored `xmi:version` is now reported as SACM-XMI-011 (Info); re-checked there."
+
+[[row]]
+id = "SACM23-XMI-025"
+area = "XMI"
+milestone = "M2"
+title = "An xmi:id with white space around it"
+requirement = "An `xmi:id` whose XSD-collapsed value is an NCName but whose raw value is not (white space around it) is read and identified by its collapsed value, and compared, written and referenced by it. Until then it is refused as `Unsupported` (ADR 0015 amendment 2; LIB-API-011's interim list)."
+source = "XML Schema 1.0 Part 2 2E §3.3.8, §4.3.6 (ID collapses white space); XML 1.0 (Fifth Edition) §3.3.3; D-ID; ADR 0015 amendment 2"
+kind = "xmi"
+status = "planned"
+depends_on = ["SACM23-VAL-020"]
 
 [[row]]
 id = "LIB-COMPAT-009"

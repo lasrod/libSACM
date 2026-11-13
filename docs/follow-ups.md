@@ -23,3 +23,4 @@ A docs slice clears them every few slices; add new ones at the end.
 | Verification 0035 | `crates/sacm/tests/xmi_roots.rs:1344` | An assertion message has a run of spaces from a line continuation. |
 | Verification 0035 | PR-diff mutants | nextest skips doctests, so a mutant pinned only by a doctest shows as missed; pin such behaviour in a test too. |
 | Copilot #46 (priority: next slice) | `crates/sacm/src/xmi/roots.rs:141`, `xmi/input.rs:830-850` | Locating each read diagnostic rescans the source prefix, so reads with many `xsi:type` (every EMF/C++ file) are quadratic; build a position index once per read or use an advancing cursor, keeping BOM, CRLF and character-column handling. |
+| Implementer 0036 | `crates/sacm/src/xmi/roots.rs:492` | A private doc still says "naming every element" for the duplicate refusal; it gives their locations. |

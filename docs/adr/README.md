@@ -29,6 +29,7 @@ decisions.md has a one-line entry pointing to it.
 | [0020](0020-semantic-comparison.md) | Semantic comparison | accepted |
 | [0021](0021-xmi-reader-content.md) | The XMI reader: package content | accepted |
 | [0022](0022-load-and-save-modes.md) | Load and save modes | accepted |
+| [0023](0023-command-line.md) | The `sacm` command line | accepted |
 
 Statuses: `proposed` → `accepted` (maintainer approval) → optionally `superseded by NNNN`.
 Copy [template.md](template.md) for a new record.

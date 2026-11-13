@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- LIB-CLI-002: two Claims carry the xmi:id c1 (line 5, column 3 and line 8, column 3), so read refuses the file with SACM-ID-001. Hand-written. -->
+<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+  <name lang="en" content="Arguments"/>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+    <name lang="en" content="First"/>
+  </argumentElement>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+    <name lang="en" content="Second"/>
+  </argumentElement>
+</sacm:ArgumentPackage>

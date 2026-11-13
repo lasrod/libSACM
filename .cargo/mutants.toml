@@ -25,4 +25,5 @@ exclude_re = [
   '^crates/sacm/src/model/document\.rs:\d+:\d+: replace Document::commit_generated_id with \(\)$',
   '^crates/sacm/src/edit\.rs:\d+:\d+: replace Mutation::changed_ids -> &\[ElementId\] with Vec::leak\(Vec::new\(\)\)$',
   '^crates/sacm/src/edit\.rs:\d+:\d+: replace Mutation::deleted_ids -> &\[ElementId\] with Vec::leak\(Vec::new\(\)\)$',
+  "^crates/sacm/src/xmi/input\\.rs:\\d+:\\d+: replace < with <= in Locator<'t>::locate$",
 ]

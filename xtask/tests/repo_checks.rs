@@ -2567,7 +2567,6 @@ fn lib_qa_007_mutants_config_check_rejects_broad_exclude_globs() {
         "matrix.rs",
         "xtask/src/nonexistent.rs",
         "xtask/src/[lm]*.rs",
-        "crates/sacm-cli/src/main.rs",
         "xtask/tests/repo_checks.rs",
     ]
     .iter()
@@ -2581,26 +2580,29 @@ fn lib_qa_007_mutants_config_check_rejects_broad_exclude_globs() {
         )
     })
     .collect();
-    // Every source of xtask, read from the real workspace, so that a new file
-    // under xtask/src/ cannot leave one out.
-    let xtask_sources: Vec<String> = real_workspace()
-        .members
-        .iter()
-        .find(|member| member.dir == "xtask")
-        .expect("xtask is a workspace member")
-        .sources
-        .iter()
-        .map(|(path, _)| format!("{path:?}"))
-        .collect();
-    assert!(
-        xtask_sources.len() > 1,
-        "LIB-QA-007: precondition: xtask has several sources to exclude one by one: {xtask_sources:?}"
-    );
-    cases.push(config_plus(
-        "every source of xtask, one by one",
-        &format!("exclude_globs = [{}]", xtask_sources.join(", ")),
-        &["config-exclusion"],
-    ));
+    // Every source of a member, read from the real workspace, so that a new
+    // file under its src/ cannot leave one out.
+    let workspace = real_workspace();
+    for dir in ["xtask", "crates/sacm-cli"] {
+        let member_sources: Vec<String> = workspace
+            .members
+            .iter()
+            .find(|member| member.dir == dir)
+            .unwrap_or_else(|| panic!("LIB-QA-007: {dir} is a workspace member"))
+            .sources
+            .iter()
+            .map(|(path, _)| format!("{path:?}"))
+            .collect();
+        assert!(
+            member_sources.len() > 1,
+            "LIB-QA-007: precondition: {dir} has several sources to exclude one by one: {member_sources:?}"
+        );
+        cases.push(config_plus(
+            format!("every source of {dir}, one by one"),
+            &format!("exclude_globs = [{}]", member_sources.join(", ")),
+            &["config-exclusion"],
+        ));
+    }
     cases.push(config_plus(
         "exclude_globs as a string",
         r#"exclude_globs = "xtask/src/fetch.rs""#,

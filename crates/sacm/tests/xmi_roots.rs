@@ -1119,12 +1119,81 @@ fn sacm23_xmi_001_unread_content_of_a_root_is_unsupported_at_that_content() {
 
 // --- SACM23-XMI-001 12. Ids -------------------------------------------------
 
+/// Asserts that `input` is refused as `DuplicateId` (SACM-ID-001) for `id`,
+/// naming exactly `locations`, with `location()` the second of them
+/// (ADR 0015 amendment 2).
+fn assert_duplicate_id_at(row: &str, input: &[u8], id: &str, locations: &[SourceLocation]) {
+    let error = refusal(row, input);
+    let ReadError::DuplicateId {
+        id: found,
+        locations: found_locations,
+        ..
+    } = &error
+    else {
+        panic!(
+            "{row}: expected DuplicateId for {}, got {error:?}",
+            preview(input)
+        );
+    };
+    assert_eq!(
+        found.as_str(),
+        id,
+        "{row}: the DuplicateId of {} names another id",
+        preview(input)
+    );
+    assert_eq!(
+        found_locations.as_slice(),
+        locations,
+        "{row}: the DuplicateId of {} does not name every element carrying {id:?}",
+        preview(input)
+    );
+    assert_eq!(
+        error.location(),
+        locations.get(1).copied(),
+        "{row}: the DuplicateId of {} is not located at the first repeat",
+        preview(input)
+    );
+    assert_eq!(
+        error.code(),
+        Some(Code::ID_DUPLICATE),
+        "{row}: the DuplicateId of {} does not carry SACM-ID-001",
+        preview(input)
+    );
+}
+
+/// Asserts that `input` is refused as `InvalidId` (SACM-ID-002) for the
+/// empty id at `location` (ADR 0015 amendment 2).
+fn assert_empty_id_at(row: &str, input: &[u8], location: SourceLocation) {
+    let error = refusal(row, input);
+    assert!(
+        matches!(&error, ReadError::InvalidId { id, .. } if id.is_empty()),
+        "{row}: expected InvalidId for {}, got {error:?}",
+        preview(input)
+    );
+    assert_eq!(
+        (error.code(), error.location()),
+        (Some(Code::ID_INVALID), Some(location)),
+        "{row}: the empty id of {} is not SACM-ID-002 at {location}: {error}",
+        preview(input)
+    );
+}
+
 #[test]
-fn sacm23_xmi_001_a_missing_empty_or_foreign_root_id_is_unsupported_at_the_root() {
+fn sacm23_xmi_001_an_empty_root_id_is_invalid_id_at_the_root() {
+    let row = "SACM23-XMI-001";
+    for kind in ["ArgumentPackage", "AssuranceCasePackage"] {
+        let bare = format!("<sacm:{kind}{NS} xmi:id=\"\"/>");
+        assert_empty_id_at(row, bare.as_bytes(), loc(row, 1, 1));
+    }
+    let in_wrapper = wrapped("\n  <sacm:ArgumentPackage xmi:id=\"\"/>\n");
+    assert_empty_id_at(row, in_wrapper.as_bytes(), loc(row, 2, 3));
+}
+
+#[test]
+fn sacm23_xmi_001_a_missing_or_foreign_root_id_is_unsupported_at_the_root() {
     let row = "SACM23-XMI-001";
     let inputs = [
         format!("<sacm:ArgumentPackage{NS}/>"),
-        format!("<sacm:ArgumentPackage{NS} xmi:id=\"\"/>"),
         format!("<sacm:ArgumentPackage{NS} id=\"p\"/>"),
         format!("<sacm:ArgumentPackage{NS} xmlns:o=\"urn:o\" o:id=\"p\"/>"),
         format!("<sacm:AssuranceCasePackage{NS}/>"),
@@ -1138,17 +1207,27 @@ fn sacm23_xmi_001_a_missing_empty_or_foreign_root_id_is_unsupported_at_the_root(
 }
 
 #[test]
-fn sacm23_xmi_001_a_repeated_root_id_is_unsupported_at_the_second_root() {
+fn sacm23_xmi_001_a_repeated_root_id_is_duplicate_id_at_the_second_root() {
     let row = "SACM23-XMI-001";
     let same_kind = wrapped(
         "\n  <sacm:ArgumentPackage xmi:id=\"p\"/>\n  <sacm:ArgumentPackage xmi:id=\"p\"/>\n",
     );
-    assert_unsupported_at(row, same_kind.as_bytes(), loc(row, 3, 3));
+    assert_duplicate_id_at(
+        row,
+        same_kind.as_bytes(),
+        "p",
+        &[loc(row, 2, 3), loc(row, 3, 3)],
+    );
     let other_kind = wrapped(
         "\n  <sacm:AssuranceCasePackage xmi:id=\"p\"/>\n  <sacm:ArgumentPackage xmi:id=\"q\"/>\n  \
          <sacm:ArgumentPackage xmi:id=\"p\"/>\n",
     );
-    assert_unsupported_at(row, other_kind.as_bytes(), loc(row, 4, 3));
+    assert_duplicate_id_at(
+        row,
+        other_kind.as_bytes(),
+        "p",
+        &[loc(row, 2, 3), loc(row, 4, 3)],
+    );
 }
 
 #[test]
@@ -1164,7 +1243,12 @@ fn sacm23_xmi_001_a_repeated_root_id_is_refused_at_the_root_before_its_attribute
          <argumentPackage xmi:id=\"x\" gid=\"g\"/></sacm:AssuranceCasePackage>\n",
     ];
     for content in inputs {
-        assert_unsupported_at(row, wrapped(content).as_bytes(), loc(row, 3, 3));
+        assert_duplicate_id_at(
+            row,
+            wrapped(content).as_bytes(),
+            "a",
+            &[loc(row, 2, 3), loc(row, 3, 3)],
+        );
     }
 }
 
@@ -1180,7 +1264,8 @@ fn sacm23_xmi_001_a_root_that_repeats_an_earlier_roots_child_id_is_refused_at_th
     ];
     for second in seconds {
         let input = wrapped(&format!("{first}{second}"));
-        assert_unsupported_at(row, input.as_bytes(), loc(row, 3, 3));
+        let child = position_of(row, &input, "<argumentElement");
+        assert_duplicate_id_at(row, input.as_bytes(), "c", &[child, loc(row, 3, 3)]);
     }
     // A grandchild's id, at depth 3.
     let deep = wrapped(
@@ -1188,7 +1273,8 @@ fn sacm23_xmi_001_a_root_that_repeats_an_earlier_roots_child_id_is_refused_at_th
          <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\"/></argumentPackage></sacm:AssuranceCasePackage>\n  \
          <sacm:ArgumentPackage xmi:id=\"c\"><foo/></sacm:ArgumentPackage>\n",
     );
-    assert_unsupported_at(row, deep.as_bytes(), loc(row, 3, 3));
+    let grandchild = position_of(row, &deep, "<argumentElement");
+    assert_duplicate_id_at(row, deep.as_bytes(), "c", &[grandchild, loc(row, 3, 3)]);
 }
 
 // --- SACM23-XMI-001 13. Order and determinism --------------------------------
@@ -1508,12 +1594,7 @@ fn sacm23_xmi_001_an_empty_id_is_refused_before_an_unread_attribute() {
     let row = "SACM23-XMI-001";
     // The empty id decides, at the root, even with `foo` after it.
     let input = format!("<sacm:ArgumentPackage{NS} xmi:id=\"\" foo=\"1\"/>");
-    assert_unsupported_exactly(
-        row,
-        input.as_bytes(),
-        loc(row, 1, 1),
-        "the root element \"sacm:ArgumentPackage\" has an empty \"xmi:id\"",
-    );
+    assert_empty_id_at(row, input.as_bytes(), loc(row, 1, 1));
 }
 
 #[test]

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- LIB-CLI-002, LIB-CLI-003: the Claim c1 has no name, so validate reports one SACM-MULT-001 Error and a strict save refuses. Hand-written. -->
+<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+  <name lang="en" content="Arguments"/>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c1"/>
+</sacm:ArgumentPackage>

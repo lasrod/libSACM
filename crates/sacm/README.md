@@ -7,36 +7,31 @@ Read, edit, validate and write assurance cases in the
 > implemented and how it is tested is tracked requirement by requirement in the
 > [functionality matrix](https://github.com/lasrod/libSACM/blob/main/docs/matrix/functionality-matrix.md).
 
-## Status and plans
+## What works today
 
-Implemented now: the document model with element names and each
-Assertion's `assertionDeclaration`, the first value types (`LangString`,
-`MultiLangString` and `AssertionDeclaration`) in `sacm::model`, and the
-diagnostic type that findings are reported in (`sacm::diagnostic`), and
-`sacm::validation::validate`, which reports each `ModelElement` with no name as a
-`SACM-MULT-001` error. `xmi::read`'s refusals carry catalog codes. `sacm::xmi::read` reads
-`AssuranceCasePackage` and `ArgumentPackage` roots, the AssuranceCasePackages,
-ArgumentPackages and Claims in them, their names and each Claim's `assertionDeclaration`;
-it refuses what it cannot represent rather than drop it.
-`sacm::xmi::write` writes a document, its names and its declarations deterministically;
-in strict mode, the default, it refuses a document that validation reports an Error for.
-`sacm::edit::apply` creates AssuranceCasePackages, ArgumentPackages and Claims, each with
-a name and a given or generated id; a refused operation changes nothing.
-`sacm::compare::semantic_compare` compares two documents by SACM content and names each
-difference.
+- `sacm::xmi::read` reads `AssuranceCasePackage` and `ArgumentPackage` roots and the
+  packages and Claims in them, with their names and each Claim's `assertionDeclaration`.
+  It refuses what it cannot represent yet rather than drop it.
+- `sacm::xmi::write` writes a document deterministically. In strict mode, the default, it
+  refuses a document that validation reports an Error for.
+- `sacm::validation::validate` reports each element that has no name, and each element
+  whose id is not an XML `NCName`, as diagnostics with stable codes.
+- `sacm::edit::apply` creates AssuranceCasePackages, ArgumentPackages and Claims; a
+  refused edit changes nothing.
+- `sacm::compare::semantic_compare` lists every difference in SACM content between two
+  documents.
+
+The [functionality matrix](https://github.com/lasrod/libSACM/blob/main/docs/matrix/functionality-matrix.md)
+tracks every requirement: what is built, what is planned, and the tests behind each.
 
 Planned:
 
 - A typed model of the full SACM 2.3 metamodel: assurance case, argumentation,
   artifact and terminology packages, with their interfaces and bindings.
-- XMI import and deterministic export. Strict mode writes only
-  schema-conforming, valid SACM 2.3 models; tolerant mode reads third-party
-  dialects and legacy revisions and tells you exactly what it accepted.
-- More validation rules against the specification's constraints, reported as structured
-  diagnostics with stable codes, severities, clause references and locations.
-- SACM-native editing for every element kind. Every public mutation either succeeds,
-  keeping the document's structural invariants, or fails and leaves it unchanged.
-  Destructive edits can be previewed first.
+- Tolerant reading of third-party dialects and legacy revisions, reporting exactly what
+  was accepted.
+- More validation rules against the specification's constraints.
+- SACM-native editing for every element kind, with previews of destructive edits.
 
 ## Usage
 
@@ -45,92 +40,61 @@ Planned:
 sacm = "0.1"
 ```
 
-```rust
-use sacm::xmi::{self, Mode, ReadOptions, WriteError, WriteOptions};
-use sacm::{diagnostic, validation};
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let input = br#"<?xml version="1.0" encoding="UTF-8"?>
-<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
-         xmlns:sacm="http://www.omg.org/spec/SACM/20220301">
-  <sacm:AssuranceCasePackage xmi:id="case"/>
-  <sacm:ArgumentPackage xmi:id="arguments">
-    <name lang="en" content="Arguments"/>
-    <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
-      <name lang="en" content="The system is safe"/>
-    </argumentElement>
-  </sacm:ArgumentPackage>
-</xmi:XMI>"#;
-    let output = xmi::read(input, &ReadOptions::default())?;
-    let document = output.document();
-    for element in document.elements() {
-        let name = element.name().and_then(|n| n.content());
-        println!("{} {} {name:?}", element.kind(), element.id());
-    }
-
-    // Check it against SACM's rules: the case package has no name.
-    let mut findings = output.diagnostics().to_vec();
-    findings.extend(validation::validate(document));
-    findings.sort();
-    for finding in &findings {
-        println!("{finding}");
-    }
-    assert!(diagnostic::has_errors(&findings));
-
-    // A strict write, the default, refuses it; a tolerant one writes it as it is held.
-    let refused = xmi::write(document, &WriteOptions::default());
-    assert!(matches!(refused, Err(WriteError::Invalid { .. })));
-    let text = xmi::write(document, &WriteOptions::default().with_mode(Mode::Tolerant))?;
-    print!("{text}");
-    Ok(())
-}
-```
-
-`sacm::xmi::read` reads `AssuranceCasePackage` and `ArgumentPackage` roots, the
-AssuranceCasePackages, ArgumentPackages and Claims in them, their names and each Claim's
-`assertionDeclaration`. It refuses everything else (other kinds, a `description`, a
-`gid`, an `assertionDeclaration` value that is not a SACM literal) as
-`ReadError::Unsupported` rather than drop it, and reports an `xsi:type` (SACM-XMI-010)
-or an `xmi:version` (SACM-XMI-011) as a diagnostic. `sacm::xmi::write` writes the
-document back deterministically. By default it is strict: it refuses a document that
-validation reports an Error for as `WriteError::Invalid`. `Mode::Tolerant` writes the
-document as it is held.
-
-Build a document with `sacm::edit::apply`, then validate, write and read it back:
+Load a document, inspect it, edit it, validate it and save it:
 
 ```rust
-use sacm::edit::{self, CreateArgumentPackage, CreateAssuranceCasePackage, CreateClaim};
-use sacm::model::{Document, LangString};
+use sacm::diagnostic;
+use sacm::edit::{self, CreateClaim};
+use sacm::model::{ElementKind, LangString};
 use sacm::validation;
 use sacm::xmi::{self, ReadOptions, WriteOptions};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let name = |text: &str| LangString::new(text).with_lang("en");
-    let mut doc = Document::new();
+    // Load. The input is the bytes of an XMI file, such as
+    // `std::fs::read("case.sacm.xmi")?`; here it is inline.
+    let input = br#"<?xml version="1.0" encoding="UTF-8"?>
+<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="case">
+  <name lang="en" content="Braking case"/>
+  <argumentPackage xmi:id="arguments">
+    <name lang="en" content="Arguments"/>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+      <name lang="en" content="The brake stops the vehicle"/>
+    </argumentElement>
+  </argumentPackage>
+</sacm:AssuranceCasePackage>"#;
+    let output = xmi::read(input, &ReadOptions::default())?;
+    assert!(output.diagnostics().is_empty());
+    let mut document = output.into_document();
 
-    edit::apply(&mut doc, CreateAssuranceCasePackage::root(name("Safety case")).with_id("case"))?;
-    // No with_id: the id is generated. Use it as the next parent.
-    let created = edit::apply(&mut doc, CreateArgumentPackage::new("case", name("Arguments")))?;
-    let arguments = created.created_ids()[0].clone();
-    assert_eq!(arguments.as_str(), "argument_package_1");
-    edit::apply(&mut doc, CreateClaim::new(&arguments, name("The system is safe")).with_id("c_top"))?;
+    // Inspect.
+    let c1 = document.get("c1").expect("the Claim was read");
+    assert_eq!(c1.kind(), ElementKind::Claim);
+    assert_eq!(c1.name().and_then(|name| name.content()), Some("The brake stops the vehicle"));
+    assert_eq!(c1.parent().map(|parent| parent.id().as_str()), Some("arguments"));
 
-    // Every element has a name, so validation finds nothing.
-    assert!(validation::validate(&doc).is_empty());
-    let text = xmi::write(&doc, &WriteOptions::default())?;
-    assert!(text.contains(r#"xmi:id="c_top""#));
-    print!("{text}");
+    // Edit: add a Claim to the ArgumentPackage. Its id is generated.
+    let name = LangString::new("The brake is tested").with_lang("en");
+    let created = edit::apply(&mut document, CreateClaim::new("arguments", name))?;
+    assert_eq!(created.created_ids()[0].as_str(), "claim_1");
 
-    // And it reads back.
+    // Validate. This release checks that every element has a name and an `NCName` id.
+    let findings = validation::validate(&document);
+    assert!(!diagnostic::has_errors(&findings));
+
+    // Save. The write is strict by default; writing the file is ordinary I/O,
+    // such as std::fs::write("case.sacm.xmi", &text).
+    let text = xmi::write(&document, &WriteOptions::default())?;
+
+    // The saved text reads back as the same document.
     let back = xmi::read(text.as_bytes(), &ReadOptions::default())?.into_document();
-    let parent = back.get("c_top").and_then(|claim| claim.parent());
-    assert_eq!(parent.map(|parent| parent.id().as_str()), Some("argument_package_1"));
+    assert_eq!(back, document);
     Ok(())
 }
 ```
 
-`sacm::xmi::read` reads such a file back with the same ids, kinds, names, parents and
-order.
+A strict save refuses a document with a validation Error, as `WriteError::Invalid`; a
+draft is saved with `WriteOptions::default().with_mode(Mode::Tolerant)`.
 
 See the [crate documentation](https://docs.rs/sacm) for the full API.
 

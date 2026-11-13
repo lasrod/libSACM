@@ -22,7 +22,8 @@ as `Unsupported`; it reports an `xsi:type` or an `xmi:version` as a diagnostic. 
 and writing take a strict or tolerant `sacm::xmi::Mode`.
 `sacm::xmi::write` writes a document, its names and its declarations deterministically;
 in strict mode, the default, it refuses a document that validation reports an Error for.
-`sacm::validation::validate` reports each `ModelElement` with no name.
+`sacm::validation::validate` reports each `ModelElement` with no name and each element
+whose id is not an XML `NCName`.
 `sacm::edit::apply` creates AssuranceCasePackage, ArgumentPackage and Claim elements,
 each with a name and a given or generated id, or refuses and changes nothing; what it
 builds writes and reads back. The other element kinds in XMI, the other validation rules
@@ -67,7 +68,7 @@ cargo xtask fetch-spec       # download the OMG SACM 2.3 and XMI 2.5.1 reference
 | Crate | What it is |
 |---|---|
 | [`sacm`](crates/sacm) | The library. |
-| [`sacm-cli`](crates/sacm-cli) | The `sacm` command-line tool (only `sacm version` so far). |
+| [`sacm-cli`](crates/sacm-cli) | The `sacm` command-line tool: `version`, `validate` and `roundtrip`. |
 | `xtask` | Repository tooling (`cargo xtask ...`); not published. |
 
 ## Links

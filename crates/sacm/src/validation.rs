@@ -9,6 +9,7 @@
 //! | Code | Row | Clause | Severity | Finding |
 //! |---|---|---|---|---|
 //! | SACM-MULT-001 | SACM23-VAL-018 | §8.6 | Error | a `ModelElement` has no name (`name:LangString[1]`) |
+//! | SACM-ID-002 | SACM23-VAL-020 | XMI 2.5.1 §7.6.1 | Error | an element's id is not an XML `NCName` (an `xmi:id` is an `xsd:ID`) |
 //!
 //! A `ModelElement`
 //! ([`AbstractClass::ModelElement`](crate::model::AbstractClass::ModelElement))
@@ -17,6 +18,16 @@
 //! (`Description`, `ImplementationConstraint`, `Note`, `TaggedValue`) have no
 //! name and are not checked. An empty name (`<name/>`) is a name. To fix a
 //! finding, give the element a `<name lang="…" content="…"/>` child.
+//!
+//! Every element's id is checked. An `NCName` starts with a letter or `_`
+//! and continues with letters, digits, `-`, `.` or `_` (XML 1.0 Fifth
+//! Edition and Namespaces in XML Third Edition give the full character
+//! ranges); it has no spaces and no `:`. [`xmi::read`](crate::xmi::read)
+//! reads an id such as `1c`, `a:b` or `a b` as written, so that nothing is
+//! lost, and refuses only an empty one, except an `NCName` with XML white
+//! space around it, such as `" c1 "`, which is `Unsupported` until a later
+//! release; [`edit::apply`](crate::edit::apply) never creates one. To fix a finding, give the element an id that is an
+//! `NCName`.
 //!
 //! The result is sorted by [`Diagnostic`]'s order. Its diagnostics have no
 //! [`location`](Diagnostic::location), because a [`Document`] records no
@@ -63,6 +74,7 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
+mod ids;
 mod names;
 
 use crate::diagnostic::Diagnostic;
@@ -72,7 +84,7 @@ use crate::model::Document;
 type Rule = fn(&Document, &mut Vec<Diagnostic>);
 
 /// Every rule, run in turn by [`validate`].
-const RULES: &[Rule] = &[names::missing_name];
+const RULES: &[Rule] = &[names::missing_name, ids::invalid_id];
 
 /// Checks `document` against the SACM rules this release knows and returns
 /// the findings, sorted by [`Diagnostic`]'s order. An empty result means no
