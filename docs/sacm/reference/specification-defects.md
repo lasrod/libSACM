@@ -252,6 +252,18 @@ writes `xmi:type` only where the class is not known from the role (SACM23-XMI-00
 **Suggested resolution.** Make 2g conditional in production 2d and rule 2g, matching
 §7.6.3.
 
+## D12 — Two editorial slips around assertionDeclaration
+
+*Found by libSACM (slice 0030); editorial, no behaviour impact.*
+
+- **SACM §11.11 (p. 39)** says a Claim "can be declared as being assumed (i.e.,
+  assertionDeclared = assumed)". The property is `assertionDeclaration` (§11.10).
+- **XMI 2.5.1 §7.8.4 (p. 18)** prints `<xsd:simpleType base="enumName" >`, which is not a
+  valid schema: a simpleType takes `name`. §8.2.1 rule 8 (p. 53) has the correct
+  `name='…'`, and this crate follows rule 8.
+
+**Suggested resolution.** Correct both texts.
+
 ## Related
 
 - [GSN / SACM metamodel gaps](sacm-gsn-metamodel-gaps.md) — the GSN v3 side, for the SCSC ACWG.

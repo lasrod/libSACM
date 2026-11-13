@@ -562,10 +562,18 @@ fn child_content_rows() -> Vec<Row> {
             )),
         ),
         row(
-            "assertionDeclaration on a Claim",
+            "assertionDeclaration on a child that is not an Assertion",
+            U,
+            in_acp(&format!(
+                "<argumentPackage xmi:id=\"x\" {MARK}assertionDeclaration=\"asserted\"/>"
+            )),
+        ),
+        // SACM23-XMI-017: a value that is not one of the six literals.
+        row(
+            "a bad assertionDeclaration literal on a Claim",
             U,
             in_ap(&format!(
-                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\" {MARK}assertionDeclaration=\"asserted\"/>"
+                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\" {MARK}assertionDeclaration=\"Asserted\"/>"
             )),
         ),
         row(

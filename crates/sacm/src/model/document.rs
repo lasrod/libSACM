@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 
-use super::containment::admits;
+use super::containment::{Role, role};
 use super::{AbstractClass, AssertionDeclaration, ElementId, ElementKind, LangString};
 
 /// A SACM 2.3 document: one interchange unit (what one SACM XMI file holds),
@@ -46,6 +46,20 @@ use super::{AbstractClass, AssertionDeclaration, ElementId, ElementKind, LangStr
 /// dropping and traversal do not recurse, so arbitrarily deep nesting is
 /// safe.
 ///
+/// # Equality
+///
+/// `==` compares SACM content: two documents are equal exactly when
+/// [`semantic_compare`](crate::compare::semantic_compare) finds no
+/// difference between them. Elements are matched by id; kinds, parents,
+/// names, `assertionDeclaration`s and the order of roots and children are
+/// compared. `==` is order-sensitive; see [`crate::compare`] to ignore order.
+///
+/// Not compared: the per-kind counters [`edit::apply`](crate::edit::apply)
+/// uses to generate ids such as `claim_1`. They are not SACM content, and XMI
+/// does not carry them. Today two equal documents always generate the same
+/// next id; once elements can be deleted they may not, because one may have
+/// generated and deleted an id the other never used.
+///
 /// # Examples
 ///
 /// ```
@@ -84,6 +98,9 @@ struct Node {
     assertion_declaration: Option<AssertionDeclaration>,
     /// The handle of the containing element; `None` for a root.
     parent: Option<usize>,
+    /// The role of the parent's class that holds the element: `Some` exactly
+    /// when it has a parent.
+    role: Option<Role>,
     /// The handles of the contained elements, in containment order.
     children: Vec<usize>,
 }
@@ -313,25 +330,25 @@ impl Document {
         if name.is_some() && !kind.is_a(AbstractClass::ModelElement) {
             return Err(InsertError::NameNotAllowed(id, kind));
         }
-        // A child needs a role of its parent's class; a root must be a package.
-        match parent {
-            Some(parent) => {
-                let parent = &self.nodes[parent];
-                if !admits(parent.kind, kind) {
-                    return Err(InsertError::ContainmentNotAllowed {
-                        id,
-                        kind,
-                        parent: parent.id.clone(),
-                        parent_kind: parent.kind,
-                    });
-                }
+        // A child needs a role of its parent's class, which the node keeps;
+        // a root must be a package.
+        let role = if let Some(parent) = parent {
+            let parent = &self.nodes[parent];
+            let Some(role) = role(parent.kind, kind) else {
+                return Err(InsertError::ContainmentNotAllowed {
+                    id,
+                    kind,
+                    parent: parent.id.clone(),
+                    parent_kind: parent.kind,
+                });
+            };
+            Some(role)
+        } else {
+            if !kind.is_package() {
+                return Err(InsertError::RootNotAllowed(id, kind));
             }
-            None => {
-                if !kind.is_package() {
-                    return Err(InsertError::RootNotAllowed(id, kind));
-                }
-            }
-        }
+            None
+        };
 
         let node = self.nodes.len();
         match parent {
@@ -347,6 +364,7 @@ impl Document {
                 .is_a(AbstractClass::Assertion)
                 .then(AssertionDeclaration::default),
             parent,
+            role,
             children: Vec::new(),
         });
         Ok(())
@@ -399,6 +417,20 @@ impl Document {
         id: &ElementId,
         declaration: AssertionDeclaration,
     ) -> Result<(), SetAssertionDeclarationError> {
+        self.set_declaration(id, declaration)
+    }
+
+    /// Sets the `assertionDeclaration` of the Assertion `id`; on an error the
+    /// document is unchanged.
+    ///
+    /// The crate-internal form of the `test-support` seam
+    /// `set_assertion_declaration`, present with or without the feature. The
+    /// XMI reader sets a declaration it reads through it.
+    pub(crate) fn set_declaration(
+        &mut self,
+        id: &ElementId,
+        declaration: AssertionDeclaration,
+    ) -> Result<(), SetAssertionDeclarationError> {
         let Some(&node) = self.index.get(id) else {
             return Err(SetAssertionDeclarationError::UnknownElement(id.clone()));
         };
@@ -446,6 +478,26 @@ impl Document {
     /// element is added.
     pub(crate) fn commit_generated_id(&mut self, kind: ElementKind, n: u64) {
         self.id_counters.insert(kind, n);
+    }
+
+    /// The roots, in document order, as [`crate::compare`] compares them.
+    ///
+    /// The one place `compare` reads the document as a whole. `Document` is
+    /// destructured with no `..`, so a field added to it fails to compile
+    /// here until `compare` handles it (ADR 0020).
+    pub(crate) fn compared_roots(&self) -> impl Iterator<Item = SacmElement<'_>> {
+        let Self {
+            // Compared element by element, through `SacmElement::compared`.
+            nodes: _,
+            // Compared as the root order.
+            roots,
+            // Derived from `nodes`: the id of each element.
+            index: _,
+            // Not compared: the generated-id counters are not SACM content
+            // and XMI does not carry them (ADR 0020).
+            id_counters: _,
+        } = self;
+        roots.iter().map(|&node| self.view(node))
     }
 
     /// The view of the node with handle `node`.
@@ -658,6 +710,45 @@ impl<'a> SacmElement<'a> {
         self.node().parent.map(|parent| self.document.view(parent))
     }
 
+    /// The role of the parent's class that holds this element, or `None` for
+    /// a root. Stored when the element is added, so it is `Some` exactly when
+    /// [`parent`](Self::parent) is.
+    pub(crate) fn role(self) -> Option<Role> {
+        self.node().role
+    }
+
+    /// The element's features, as [`crate::compare`] compares them.
+    ///
+    /// The one place `compare` reads an element. `Node` is destructured with
+    /// no `..`, so a field added to the model fails to compile here until
+    /// `compare` handles it (ADR 0020).
+    pub(crate) fn compared(self) -> Compared<'a> {
+        let Node {
+            // Matched on: elements are paired by id across the document.
+            id,
+            // Compared.
+            kind,
+            // Compared.
+            name,
+            // Compared.
+            assertion_declaration,
+            // Compared, as the parent's id.
+            parent,
+            // Derived from the parent's kind and the element's kind
+            // (`containment::role`), both compared.
+            role: _,
+            // Compared as the child order, through `children()`.
+            children: _,
+        } = self.node();
+        Compared {
+            id,
+            kind: *kind,
+            parent: parent.map(|parent| self.document.view(parent).id()),
+            name: name.as_ref(),
+            assertion_declaration: *assertion_declaration,
+        }
+    }
+
     /// The elements this one contains directly, in document order.
     pub fn children(self) -> impl Iterator<Item = SacmElement<'a>> {
         let document = self.document;
@@ -673,6 +764,23 @@ impl<'a> SacmElement<'a> {
         // nodes are never removed while the document is borrowed.
         &self.document.nodes[self.node]
     }
+}
+
+/// The features of one element that [`crate::compare`] compares, from
+/// [`SacmElement::compared`]. The child order is read through
+/// [`SacmElement::children`].
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Compared<'a> {
+    /// The element's id.
+    pub(crate) id: &'a ElementId,
+    /// The element's kind.
+    pub(crate) kind: ElementKind,
+    /// The id of the containing element; `None` for a root.
+    pub(crate) parent: Option<&'a ElementId>,
+    /// The element's name; `None` when missing.
+    pub(crate) name: Option<&'a LangString>,
+    /// The element's `assertionDeclaration`; `None` when not an Assertion.
+    pub(crate) assertion_declaration: Option<AssertionDeclaration>,
 }
 
 impl fmt::Debug for SacmElement<'_> {
@@ -774,14 +882,22 @@ impl fmt::Display for InsertError {
 
 impl std::error::Error for InsertError {}
 
-/// Why [`Document::set_assertion_declaration`] refused to set a declaration.
+// `Document::set_assertion_declaration` is not an intra-doc link here:
+// without the feature, that method does not exist.
+/// Why `Document::set_assertion_declaration` refused to set a declaration.
 ///
 /// **Not part of the stable API**: public only under the `test-support`
-/// feature, with [`Document::set_assertion_declaration`].
-#[cfg(feature = "test-support")]
+/// feature, with `Document::set_assertion_declaration`.
 #[cfg_attr(docsrs, doc(cfg(feature = "test-support")))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
+#[cfg_attr(
+    not(feature = "test-support"),
+    expect(
+        unreachable_pub,
+        reason = "public only under the test-support feature, crate-visible otherwise"
+    )
+)]
 pub enum SetAssertionDeclarationError {
     /// The document has no element with this id.
     UnknownElement(ElementId),
@@ -790,7 +906,6 @@ pub enum SetAssertionDeclarationError {
     NotAnAssertion(ElementId, ElementKind),
 }
 
-#[cfg(feature = "test-support")]
 impl fmt::Display for SetAssertionDeclarationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -808,7 +923,6 @@ impl fmt::Display for SetAssertionDeclarationError {
     }
 }
 
-#[cfg(feature = "test-support")]
 impl std::error::Error for SetAssertionDeclarationError {}
 
 #[cfg(test)]
