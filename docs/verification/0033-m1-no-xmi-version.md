@@ -27,4 +27,5 @@ attribute back somewhere, are killed. Every quote was checked against the XMI 2.
 |---|---|---|---|
 | Medium | SACM23-XMI-024 | ADR 0017's departures from C++ did not list the `xmi:version` difference (CLAUDE.md rule 6) | Bullet added, naming `namespaces.h:32` and `xmi_writer.cpp:461, 542` (46e87c9) |
 | Low | SACM23-XMI-024 | A CHANGELOG line ran past the width | Rewrapped |
+| Low | SACM23-XMI-003 | Copilot: the reworded acceptance ("nothing else in the XMI namespace") excluded a bare root's `xmi:id`, which XMI-004 requires and the tests expect | Reworded to allow it; the tests (`assert_document_element_attributes`, `sacm23_xmi_003_one_root_…`) already pin exactly that |
 | Logged | — | `compare.rs` labels a reader input that has `xmi:version` "the pinned form" | For the next slice that touches the file |

@@ -1891,7 +1891,7 @@ status = "verified"
 depends_on = ["SACM23-XMI-001"]
 notes = "Slice 0021 research: XMI 2.5.1 declares no `xmi:version` attribute (XMI.xsd; §7.8.3 p. 17 has no anyAttribute), so a strict export that writes `xmi:version=\"2.0\"` may not validate against the 2.5.1 schema. C++ writes it (namespaces.h:32 `kXmiVersion`, xmi_writer.cpp:461, 542). Decide keep or drop with an ADR naming that C++ decision, and check it against clause 2. Maintainer decision 2026-11-12: strict export keeps writing `xmi:version=\"2.0\"`, following C++. The ADR for this row records that strict output may then not validate against XMI.xsd 2.5.1. Slice 0033: `xmi:version` is no longer written (SACM23-XMI-024; the maintainer, 2026-11-13, on the ADR review); reworded and re-checked there."
 acceptance = [
-  "For one root and for several roots, the document element carries exactly `xmlns:sacm` and `xmlns:xmi` with the pinned URIs and nothing else in the XMI namespace; no other element carries a namespace declaration (SACM23-XMI-024: no `xmi:version`).",
+  "For one root and for several roots, the document element carries exactly `xmlns:sacm` and `xmlns:xmi` with the pinned URIs, and in the XMI namespace nothing besides a bare root's own `xmi:id` (SACM23-XMI-004): no `xmi:version` (SACM23-XMI-024). No other element carries a namespace declaration.",
   "The output has no `xmlns=\"…\"`, no `xmlns:xsi` and no prefix other than `sacm` and `xmi`.",
   "A root's element name is `sacm:<Kind>` (the `ElementKind` name); child elements are unprefixed.",
   "The output for a document with 1 root and with 2 roots (AssuranceCasePackage/ArgumentPackage, nameless, no children) reads back through `xmi::read` to the same ids, kinds and order.",
