@@ -12,8 +12,8 @@ Read, edit, validate and write assurance cases in the
 - `sacm::xmi::read` reads `AssuranceCasePackage` and `ArgumentPackage` roots and the
   packages and Claims in them, with their names and each Claim's `assertionDeclaration`.
   It refuses what it cannot represent yet rather than drop it.
-- `sacm::xmi::write` writes a document deterministically. In strict mode, the default, it
-  refuses a document that validation reports an Error for.
+- `sacm::xmi::write` writes a document deterministically, and by default refuses one that
+  validation reports an Error for.
 - `sacm::validation::validate` reports each element that has no name, and each element
   whose id is not an XML `NCName`, as diagnostics with stable codes.
 - `sacm::edit::apply` creates AssuranceCasePackages, ArgumentPackages and Claims; a
@@ -94,7 +94,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 A strict save refuses a document with a validation Error, as `WriteError::Invalid`; a
-draft is saved with `WriteOptions::default().with_mode(Mode::Tolerant)`.
+draft is saved with `WriteOptions::default().with_mode(Mode::Tolerant)`. A later release
+may add validation rules, so a strict save may then refuse a document it saved before.
+
+Which `xmi::Mode` to use: read in tolerant mode, the default, to open files from other
+tools. A strict read reports the variations it recognises as Errors instead of Warnings
+(in this release, only `xsi:type`). Neither mode validates what it reads, so to check a
+file, also run `validation::validate` and test both lists with `diagnostic::has_errors`.
+Save in strict mode, the default, for a file you hand on.
 
 See the [crate documentation](https://docs.rs/sacm) for the full API.
 

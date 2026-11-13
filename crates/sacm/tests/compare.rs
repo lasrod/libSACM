@@ -1619,7 +1619,7 @@ fn lib_rt_001_formatting_attribute_order_and_prefixes_are_not_compared() {
         concat!(
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n",
             "<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
-            " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:version=\"2.0\" xmi:id=\"p\">\n",
+            " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"p\">\n",
             "  <name lang=\"en\" content=\"P\" />\n",
             "  <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" assertionDeclaration=\"assumed\" />\n",
             "</sacm:ArgumentPackage>\n",

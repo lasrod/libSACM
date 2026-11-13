@@ -3,7 +3,10 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0, a breaking
-change bumps the minor version and is listed under **Breaking**.
+change bumps the minor version and is listed under **Breaking**. A new validation Error
+rule is not breaking, but it can make a strict `xmi::write` refuse a document it wrote
+before, so each one is listed under **Changed** with its code. A new read diagnostic that
+is an Error in strict mode, or a new coded read refusal, is listed the same way.
 
 ## [Unreleased]
 
@@ -159,6 +162,12 @@ change bumps the minor version and is listed under **Breaking**.
   and a versioned JSON report (`"format":1`) [LIB-CLI-002].
 - `sacm roundtrip <file> [--strict] [-o <out>]`: read, save strictly, reload and compare;
   `-o` writes the strict output only when the round trip is faithful [LIB-CLI-003].
+- `xmi::WriteError::Invalid`, a strict write's refusal of a document that validation
+  reports an Error for, and `WriteError::diagnostics()`, which gives every such Error
+  [LIB-COMPAT-007].
+- `xmi::read` reads the element form of a name's `lang` and `content` and a Claim's
+  `assertionDeclaration`; a value given more than once, even with equal values, is
+  `ReadError::RepeatedValue` (SACM-MULT-001) [SACM23-XMI-014].
 
 ### Changed
 
@@ -171,6 +180,9 @@ change bumps the minor version and is listed under **Breaking**.
   as `ReadError::InvalidId`, coded refusals instead of `Unsupported`; an `xmi:id` with XML
   white space around an NCName is `Unsupported` until SACM23-XMI-025
   [SACM23-VAL-001, SACM23-VAL-020].
+- `xmi::read` refuses a name's `lang` or `content`, or a Claim's `assertionDeclaration`,
+  given both as an attribute and as an element as `ReadError::RepeatedValue`
+  (SACM-MULT-001) instead of `Unsupported` [SACM23-XMI-014].
 - The new validation Error rule SACM-ID-002 can make a strict `xmi::write` refuse a
   document it wrote before: one holding an id that is not an NCName, such as `1c` or
   `a b`. Write it as held in tolerant mode [SACM23-VAL-020].

@@ -3,8 +3,9 @@
 //! An operation is a plain value that says what to change. [`apply`] checks
 //! it completely against the document and then either makes the change and
 //! returns a [`Mutation`] (the operation, and the ids it created, changed and
-//! deleted), or refuses with an [`EditError`]. **A refused operation changes nothing**: not the elements,
-//! not the written XMI, and not the ids generated next.
+//! deleted), or refuses with an [`EditError`]. **A refused operation changes
+//! nothing**: not the elements, not the written XMI, and not the ids
+//! generated next.
 //!
 //! # Operations
 //!

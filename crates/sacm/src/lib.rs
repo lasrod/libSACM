@@ -15,8 +15,8 @@
 //!   and the packages and Claims in them, with their names and each Claim's
 //!   `assertionDeclaration`. It refuses what it cannot represent yet rather
 //!   than drop it.
-//! - [`xmi::write`] writes a document deterministically. In strict mode, the
-//!   default, it refuses a document that validation reports an Error for.
+//! - [`xmi::write`] writes a document deterministically, and by default
+//!   refuses one that validation reports an Error for.
 //! - [`validation::validate`] reports each element that has no name, and
 //!   each element whose id is not an XML `NCName`, as
 //!   [`Diagnostic`](diagnostic::Diagnostic)s with stable codes.
@@ -85,7 +85,17 @@
 //!
 //! A strict save refuses a document with a validation Error, as
 //! [`WriteError::Invalid`](xmi::WriteError::Invalid); a draft is saved with
-//! `WriteOptions::default().with_mode(Mode::Tolerant)` ([`xmi::Mode`]).
+//! `WriteOptions::default().with_mode(Mode::Tolerant)` ([`xmi::Mode`]). A
+//! later release may add validation rules, so a strict save may then refuse
+//! a document it saved before.
+//!
+//! Which [`xmi::Mode`] to use: read in tolerant mode, the default, to open
+//! files from other tools. A strict read reports the variations it
+//! recognises as Errors instead of Warnings (in this release, only
+//! `xsi:type`). Neither mode validates what it reads, so to check a file,
+//! also run [`validation::validate`] and test both lists with
+//! [`diagnostic::has_errors`]. Save in strict mode, the default, for a file
+//! you hand on.
 //!
 //! Walk a document with [`model::Document::elements`], or one level at a
 //! time with [`children`](model::SacmElement::children) and

@@ -22,6 +22,8 @@ as `Unsupported`; it reports an `xsi:type` or an `xmi:version` as a diagnostic. 
 and writing take a strict or tolerant `sacm::xmi::Mode`.
 `sacm::xmi::write` writes a document, its names and its declarations deterministically;
 in strict mode, the default, it refuses a document that validation reports an Error for.
+A later release may add validation rules, so a strict write may then refuse a document
+it wrote before.
 `sacm::validation::validate` reports each `ModelElement` with no name and each element
 whose id is not an XML `NCName`.
 `sacm::edit::apply` creates AssuranceCasePackage, ArgumentPackage and Claim elements,

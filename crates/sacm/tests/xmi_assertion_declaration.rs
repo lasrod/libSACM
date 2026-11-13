@@ -1,6 +1,6 @@
 //! Tests for `assertionDeclaration` in XMI (SACM23-XMI-017; formal/23-05-08
 //! §11.8, §11.10; XMI 2.5.1 §9.4.1, §7.8.4, §8.2.1 rule 8; XML 1.0 §3.3.3;
-//! ADR 0015, ADR 0017 amendment 2).
+//! ADR 0015, ADR 0017 (the writer), ADR 0021 (the reader)).
 //!
 //! `xmi::read` reads the attribute on a Claim, the one readable Assertion
 //! kind: after XML attribute-value normalisation, with no trimming or case
@@ -27,10 +27,14 @@
 //! documents are written in tolerant mode, because the Assertion kinds other
 //! than Claim are inserted without a name (LIB-COMPAT-007).
 //!
+//! The element form `<assertionDeclaration>` is checked here only as far as
+//! SACM23-XMI-017 states it: it reads as the attribute does, and with the
+//! attribute it is `ReadError::RepeatedValue`. Its own rules are tested in
+//! `xmi_value_elements.rs` (SACM23-XMI-014).
+//!
 //! Not checked here: an unknown literal reported as SACM-ENUM-001
-//! (SACM23-VAL-006), the element form of the value (SACM23-XMI-014), and the
-//! Assertion kinds other than Claim on read (their read rows inherit this
-//! rule).
+//! (SACM23-VAL-006), and the Assertion kinds other than Claim on read (their
+//! read rows inherit this rule).
 
 use sacm::diagnostic::{Code, Severity, SourceLocation};
 use sacm::edit::{self, CreateArgumentPackage, CreateAssuranceCasePackage, CreateClaim};
@@ -749,49 +753,90 @@ fn sacm23_xmi_017_a_namespace_qualified_attribute_on_a_claim_is_unsupported_at_i
 }
 
 #[test]
-fn sacm23_xmi_017_the_element_form_in_a_claim_is_unsupported_at_its_start_tag() {
+fn sacm23_xmi_017_the_element_form_in_a_claim_reads_and_beside_the_attribute_is_a_repeated_value() {
     let element = "<assertionDeclaration>needsSupport</assertionDeclaration>";
     let claim = |attributes: &str, content: &str| {
         in_ap(&format!(
             "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\"{attributes}>{content}</argumentElement>"
         ))
     };
+    // Alone, the element form reads as the attribute form does.
+    let as_element = read_ok("the element form alone", &claim("", element));
+    let as_attribute = read_ok(
+        "the attribute form",
+        &claim(" assertionDeclaration=\"needsSupport\"", ""),
+    );
+    assert_eq!(
+        declaration_of("the element form alone", &as_element, "c1"),
+        Some(AssertionDeclaration::NeedsSupport),
+        "{ROW}: the element form alone is not read as needsSupport"
+    );
+    assert_eq!(
+        shape(&as_element),
+        shape(&as_attribute),
+        "{ROW}: the element form and the attribute form read to other documents"
+    );
+    // Beside the attribute, it is refused as a repeated value, never read
+    // with one of the two dropped: the attribute's name, then the element.
     let cases = [
         (
-            "the element form alone",
-            claim("", &format!("{MARK}{element}")),
-        ),
-        (
             "the element form with the attribute needsSupport",
-            claim(
-                " assertionDeclaration=\"needsSupport\"",
-                &format!("{MARK}{element}"),
-            ),
+            " assertionDeclaration=\"needsSupport\"",
+            String::new(),
         ),
         (
             "the element form with the attribute asserted",
-            claim(
-                " assertionDeclaration=\"asserted\"",
-                &format!("{MARK}{element}"),
-            ),
+            " assertionDeclaration=\"asserted\"",
+            String::new(),
         ),
         (
             "the element form after a name, with the attribute",
-            claim(
-                " assertionDeclaration=\"assumed\"",
-                &format!("<name lang=\"en\" content=\"N\"/>\r\n  {MARK}{element}"),
-            ),
-        ),
-        (
-            "the element form, empty, with the attribute",
-            claim(
-                " assertionDeclaration=\"defeated\"",
-                &format!("{MARK}<assertionDeclaration/>"),
-            ),
+            " assertionDeclaration=\"assumed\"",
+            "<name lang=\"en\" content=\"N\"/>\r\n  ".to_owned(),
         ),
     ];
-    for (what, template) in cases {
-        assert_unsupported_at_mark(what, &template);
+    for (what, attribute, before) in cases {
+        // The same input twice, marked at each occurrence in turn.
+        let (input, attribute_at) = marked(&claim(
+            &attribute.replacen(' ', &format!(" {MARK}"), 1),
+            &format!("{before}{element}"),
+        ));
+        let (same, element_at) = marked(&claim(attribute, &format!("{before}{MARK}{element}")));
+        assert_eq!(
+            input, same,
+            "{ROW}: setup: {what}: the marks moved the text"
+        );
+        let error = match read(&input) {
+            Ok(output) => panic!(
+                "{ROW}: {what}: a document was returned, with {} elements",
+                output.document().element_count()
+            ),
+            Err(error) => error,
+        };
+        match &error {
+            ReadError::RepeatedValue {
+                element: owner,
+                property,
+                ..
+            } => {
+                assert_eq!(owner.as_str(), "c1", "{ROW}: {what}: the element");
+                assert_eq!(
+                    property, "assertionDeclaration",
+                    "{ROW}: {what}: the property"
+                );
+            }
+            other => panic!("{ROW}: {what}: expected RepeatedValue, got {other:?}"),
+        }
+        assert_eq!(
+            error.code(),
+            Some(Code::MULTIPLICITY_VIOLATION),
+            "{ROW}: {what}: the code"
+        );
+        assert_eq!(
+            error.locations(),
+            [attribute_at, element_at],
+            "{ROW}: {what}: the occurrences"
+        );
     }
 }
 

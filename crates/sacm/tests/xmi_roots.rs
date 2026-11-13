@@ -1427,7 +1427,7 @@ fn sacm23_xmi_001_read_output_gives_its_document_and_diagnostics() {
     let diagnostics: &[sacm::diagnostic::Diagnostic] = output.diagnostics();
     assert!(
         diagnostics.is_empty(),
-        "{row}: diagnostics() is not empty for an input with neither xsi:type nor xmi:version:          {diagnostics:?}"
+        "{row}: diagnostics() is not empty for an input with neither xsi:type nor xmi:version: {diagnostics:?}"
     );
     let copy = output.clone();
     let document: Document = output.into_document();

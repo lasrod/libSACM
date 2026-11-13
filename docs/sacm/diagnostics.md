@@ -17,9 +17,9 @@ and clause it enforces, affected element ids, an optional source location
 > SACM-CMD-001, SACM-CMD-004, SACM-CMD-005 and SACM-ID-002 are
 > produced as the `EditError::code()` of a refused edit (LIB-EDIT-001).
 > SACM-XML-001 (rows LIB-SEC-002 and LIB-SEC-005), SACM-SEC-001 (LIB-SEC-001),
-> SACM-XMI-001 (SACM23-XMI-001), SACM-ID-001 (SACM23-VAL-001) and SACM-ID-002
-> (SACM23-VAL-020) are produced, as the `ReadError::code()` of a refusal by
-> `sacm::xmi::read`.
+> SACM-XMI-001 (SACM23-XMI-001), SACM-ID-001 (SACM23-VAL-001), SACM-ID-002
+> (SACM23-VAL-020) and SACM-MULT-001 (SACM23-XMI-014) are produced, as the
+> `ReadError::code()` of a refusal by `sacm::xmi::read`.
 
 Adding a code: append the row here in the same change that adds its constant to the
 crate, and name the matrix row that owns it.
@@ -63,7 +63,7 @@ crate, and name the matrix row that owns it.
 | Code | Severity | Meaning |
 | --- | --- | --- |
 | SACM-ENUM-001 | Error | Invalid enumeration literal (e.g. `assertionDeclaration`). |
-| SACM-MULT-001 | Error | Multiplicity violation: a property held more or fewer times than its multiplicity allows. For example, a ModelElement with no `name` (clause 8.6 `name:LangString[1]`; SACM23-VAL-018, `Code::MULTIPLICITY_VIOLATION`) or, once SACM23-XMI-021 is built, with two, an `AssertedRelationship` with no source (clause 11.13 `source[1..*]`) or not exactly one target (`target[1]`), or a binding with fewer than two participant packages. |
+| SACM-MULT-001 | Error | Multiplicity violation: a property held more or fewer times than its multiplicity allows. For example, a ModelElement with no `name` (clause 8.6 `name:LangString[1]`; SACM23-VAL-018, `Code::MULTIPLICITY_VIOLATION`) or, once SACM23-XMI-021 is built, with two, an `AssertedRelationship` with no source (clause 11.13 `source[1..*]`) or not exactly one target (`target[1]`), or a binding with fewer than two participant packages. For input, `xmi::read` refuses a single-valued property given more than once as `ReadError::RepeatedValue`, giving every occurrence (SACM23-XMI-014): as an attribute and an element (XMI 2.5.1 §9.5.2 rule 2h), or as two or more elements. Fix: give the value once. |
 | SACM-CITE-001 | Error | `isCitation` is true but `citedElement` is absent (or vice-versa constraints per clause 8.2). |
 | SACM-ABS-001 | Error / Warning | An `isAbstract`/`abstractForm` combination the standard rules out. Error: an abstract element using `abstractForm` (clause 8.2 gives it to concrete elements), or a concrete `Expression` referencing abstract `ExpressionElement`s (clause 10.10 OCL). Warning: the referred `abstractForm` target is not abstract, or is a different type — clause 8.2 words both with "should". |
 | SACM-EXPR-001 | Warning | An `ExpressionLangString` carries both an `expression` reference and literal `content`. Clause 8.4: "If expression is not empty, then +content should be empty." A warning because the clause says "should", but a real one: the two carry the same meaning twice and a reader has no rule for which wins. |

@@ -1,6 +1,5 @@
 //! The XMI writer (SACM23-XMI-003, -004, -006, -007, -011, -012, -013,
-//! -017, LIB-API-010, LIB-COMPAT-007; ADR 0017 and its amendments 1 and 2,
-//! ADR 0022).
+//! -017, LIB-API-010, LIB-COMPAT-007; ADR 0017, ADR 0022).
 //!
 //! Two passes. [`plan`] checks the document (in strict mode, validating it)
 //! and every element, and resolves what each is written as; only if that succeeds does [`write`] build the `String` from the plan,
@@ -193,7 +192,7 @@ fn is_xml_char(c: char) -> bool {
 }
 
 /// Writes `name` as a `name` element on its own line at `depth`: `lang`, then
-/// `content`, each only if present (ADR 0017 amendment 1).
+/// `content`, each only if present (ADR 0017).
 fn push_name(out: &mut String, depth: usize, name: &LangString) {
     indent(out, depth);
     out.push_str("<name");
