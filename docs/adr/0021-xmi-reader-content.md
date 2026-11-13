@@ -54,8 +54,8 @@ matrix notes and the writer's ADR (0017). This ADR collects them in one place.
   - Element forms of values and references (SACM23-XMI-014/015).
   - XMI metadata (SACM23-XMI-019).
 - **Refusals of non-conforming input.** These stay refused by a strict load. Tolerant
-  reading of some of them (in brackets) and their catalog codes come with the load modes
-  (LIB-COMPAT-001); until then they are `Unsupported` too (ADR 0015 amendment 1).
+  reading of some of them (in brackets) and their catalog codes are assigned by
+  [ADR 0022](0022-load-and-save-modes.md); until then they are `Unsupported` too (ADR 0015 amendment 1).
   - A type that does not conform to the role, names an abstract or unknown class, or
     disagrees with another type attribute.
   - An untyped child under an abstract role (strict SACM-XMI-005; tolerant LIB-COMPAT-010).

@@ -44,8 +44,8 @@ change the hook or its scopes.
 
 Every slice lands through a pull request. The branch is pushed as a draft before
 verification, so that CI on Linux, Windows and macOS and the mutation testing of the PR's
-diff produce the evidence the verifier needs. The full mutation run happens weekly and at
-each milestone's close. Once the verifier passes and CI is green, the loop merges the PR
+diff produce the evidence the verifier needs. The full mutation run happens weekly, at each
+milestone's close, and for a slice that removes tests or changes the mutation config. Once the verifier passes and CI is green, the loop merges the PR
 itself (the maintainer's standing authorization, 2026-11-13).
 
 **Stacked PRs.** The loop does not wait for a merge. Each new slice branches from the

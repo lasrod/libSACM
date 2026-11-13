@@ -43,7 +43,7 @@ Document production rules".
     It is an Error in strict mode and a Warning in tolerant mode.
   - SACM-XMI-011: `xmi:version` is present and ignored (§7.5.3: the namespace identifies
     the version, and the `XMI` complexType declares no version attribute). It is Info in
-    both modes. The standard is inconsistent here: rule 1a's prose, §7.6.4 and the §7.10.2
+    both modes. The standard is inconsistent here: rule 1a's prose, §7.6.3 and the §7.10.2
     example still mention a version attribute (defect D10). The attribute carries no model
     data, so nothing is lost (the maintainer, 2026-11-13).
 

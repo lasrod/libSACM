@@ -19,7 +19,8 @@ each difference from C++. What the reader does is in ADR 0015, ADR 0016 and ADR 
 
 `sacm::xmi::write(document: &Document, options: &WriteOptions) -> Result<String,
 WriteError>`.
-- `WriteOptions` is empty for now; the save mode comes with LIB-COMPAT-001.
+- `WriteOptions` carries the save mode, strict by default: a strict write validates first
+  and refuses with `WriteError::Invalid` (ADR 0022).
 - `WriteError` (ADR 0011) has two variants, and neither has a catalog code:
   - `NoRoot`, a plain unit variant, so callers can match it exactly;
   - `UnrepresentableCharacter { element, character, attribute }`, which is
@@ -98,7 +99,8 @@ WriteError>`.
   (`pugixml.cpp:4021, 4048-4054`).
 - **W4.** A refusal names the first element in document order. C++ lists every affected
   element (`xmi_writer.cpp:485-500`). The same rule is in ADR 0016 D3. ADR 0013 amendment 1
-  names every affected element for strict save; the load and save modes ADR settles this.
+  names every affected element for strict save. [ADR 0022](0022-load-and-save-modes.md)
+  settles it: a validation refusal lists every Error, and W4 covers the writer's own checks.
 - **W5.** The namespace constants stay crate-private. C++ makes them public
   (`metadata/namespaces.h:17-34`).
 - **W6.** There is no option to export under another SACM namespace. C++ has

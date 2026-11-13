@@ -18,3 +18,7 @@ A docs slice clears them every few slices; add new ones at the end.
 | Docs review 0035 | `crates/sacm/src/lib.rs:18-20`, `crates/sacm/README.md:32-34` | Simplify the `xmi::write` bullet; the README's "Planned" strict-save line reads as already true. |
 | Docs review 0035 (later API) | `ReadOutput`, `Diagnostic` | `ReadOutput::has_errors()`; a way for `Diagnostic::clause()` to name its specification (SACM or XMI). |
 | Implementer 0035 | `crates/sacm/src/xmi.rs` `Mode` doc | "the mode decides only the severity of SACM-XMI-010" should say "on a read"; the mode also decides whether `write` validates. |
+| Verification 0035 | `crates/sacm/tests/xmi_write.rs` | Rename `lib_api_010_write_error_has_exactly_the_variants_no_root_and_unrepresentable_character` (three variants now) and its matrix entry; assert `source()` is `None` for `Invalid` too. |
+| Verification 0035 | LIB-COMPAT-007 | "Warnings and Infos never refuse" is untestable until `validate` emits a Warning; the first such rule adds the test (it must kill removing the Error-only filter). |
+| Verification 0035 | `crates/sacm/tests/xmi_roots.rs:1344` | An assertion message has a run of spaces from a line continuation. |
+| Verification 0035 | PR-diff mutants | nextest skips doctests, so a mutant pinned only by a doctest shows as missed; pin such behaviour in a test too. |

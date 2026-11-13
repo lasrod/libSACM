@@ -1,8 +1,8 @@
 ---
 slice: 0035
 name: m1-load-and-save-modes
-state: in-progress
-step: verification
+state: done
+step: verified
 rows: [LIB-COMPAT-001, LIB-COMPAT-007, SACM23-XMI-002, SACM23-XMI-001, SACM23-XMI-024, LIB-API-010]
 mode: pr
 base: slice/0034-m1-atomic-edits-and-results (PR #45, merged); the PR targets main
@@ -44,3 +44,5 @@ ADR 0022 (accepted). The new `xmi::Mode { Strict, Tolerant }` has no default of 
 - 2026-11-13 design: ADR 0022 accepted by the maintainer; SACM-XMI-011 is Info in both modes;
   SACM23-VAL-020 moves to M1 as the next slice. SACM23-XMI-002's acceptance is reworded and
   re-checked here.
+- 2026-11-13 verification: docs review (two blocking claims) and three PR-diff mutants fixed;
+  one stale requirement line fixed; PASS (record 0035). M1 43/49.
