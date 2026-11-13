@@ -2160,6 +2160,8 @@ tests = [
   "crates/sacm/tests/load_and_save_modes.rs::lib_compat_001_an_input_with_both_attributes_reads_equal_and_writes_the_same_bytes_without_them",
   "crates/sacm/tests/load_and_save_modes.rs::lib_compat_001_read_diagnostics_are_sorted_and_identical_on_every_run",
   "crates/sacm/tests/load_and_save_modes.rs::lib_compat_001_has_errors_is_true_only_for_xsi_type_read_strictly",
+  "crates/sacm/tests/load_and_save_modes.rs::lib_compat_001_sacm_xmi_010_and_011_messages_name_the_element_by_its_kind_and_quoted_id",
+  "crates/sacm/tests/load_and_save_modes.rs::lib_compat_001_sacm_xmi_011_on_the_xmi_element_names_the_xmi_element_and_not_a_root",
 ]
 notes = "Slice 0035: designed in ADR 0022 (accepted by the maintainer, 2026-11-13, with SACM-XMI-011 as Info). The C++ `SaveOptions::namespace_uri` moves to LIB-COMPAT-011."
 
@@ -2689,6 +2691,7 @@ tests = [
   "crates/sacm/tests/load_and_save_modes.rs::lib_compat_007_validation_comes_before_the_writers_own_checks_in_strict_mode_only",
   "crates/sacm/tests/load_and_save_modes.rs::lib_compat_007_the_invalid_refusal_has_no_code_or_element_and_one_deterministic_line",
   "crates/sacm/tests/load_and_save_modes.rs::lib_compat_007_a_document_read_tolerantly_with_xsi_type_and_xmi_version_writes_strictly",
+  "crates/sacm/tests/load_and_save_modes.rs::lib_compat_007_the_invalid_refusal_says_1_error_for_one_and_3_errors_for_three",
 ]
 notes = "ADR review, 2026-11-13: decided in the load and save modes ADR with LIB-COMPAT-001: the semver stance (a new validation rule can make the default save fail in a minor release), and the reporting rule (every affected element, ADR 0013, or the first, ADR 0017 W4). Must land before any release (LIB-QA-005). Slice 0035: designed in ADR 0022, which takes over ADR 0013 amendment 1. ADR 0018's consequence: default writes of documents with validation Errors now fail; docs and examples are updated and the CHANGELOG calls it out."
 

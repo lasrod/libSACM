@@ -1959,3 +1959,185 @@ fn lib_compat_007_a_document_read_tolerantly_with_xsi_type_and_xmi_version_write
         "{COMPAT_007}: the output has xmi:version or xsi:type\n{text}"
     );
 }
+
+// ===========================================================================
+// LIB-COMPAT-001 8. A read diagnostic's message names the element it concerns
+// ===========================================================================
+
+/// Inputs that each give one SACM-XMI-010 or SACM-XMI-011 about an element
+/// with an id: what the input is, the input, the code, and the kind name and
+/// the id the message must give.
+fn subject_cases() -> [(&'static str, String, Code, &'static str, &'static str); 9] {
+    [
+        (
+            "xsi:type on a bare ArgumentPackage",
+            format!(
+                "<sacm:ArgumentPackage{NS_XSI} xmi:id=\"pkg_9\" xsi:type=\"sacm:ArgumentPackage\"/>"
+            ),
+            Code::XMI_XSI_TYPE,
+            "ArgumentPackage",
+            "pkg_9",
+        ),
+        (
+            "xsi:type on a bare AssuranceCasePackage",
+            format!(
+                "<sacm:AssuranceCasePackage{NS_XSI} xmi:id=\"case_9\" \
+                 xsi:type=\"sacm:AssuranceCasePackage\"/>"
+            ),
+            Code::XMI_XSI_TYPE,
+            "AssuranceCasePackage",
+            "case_9",
+        ),
+        (
+            "xmi:version on a bare AssuranceCasePackage",
+            format!("<sacm:AssuranceCasePackage{NS} xmi:id=\"case_9\" xmi:version=\"2.0\"/>"),
+            Code::XMI_VERSION_IGNORED,
+            "AssuranceCasePackage",
+            "case_9",
+        ),
+        (
+            "xmi:version on a wrapped ArgumentPackage",
+            format!(
+                "<xmi:XMI xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\">\
+                 <sacm:ArgumentPackage xmi:id=\"pkg_9\" xmi:version=\"2.1\"/></xmi:XMI>"
+            ),
+            Code::XMI_VERSION_IGNORED,
+            "ArgumentPackage",
+            "pkg_9",
+        ),
+        (
+            "xsi:type on an argumentElement Claim",
+            ap("<argumentElement xsi:type=\"sacm:Claim\" xmi:id=\"claim_9\"/>"),
+            Code::XMI_XSI_TYPE,
+            "Claim",
+            "claim_9",
+        ),
+        (
+            "a redundant xsi:type on argumentPackage",
+            acp("<argumentPackage xsi:type=\"sacm:ArgumentPackage\" xmi:id=\"inner_9\"/>"),
+            Code::XMI_XSI_TYPE,
+            "ArgumentPackage",
+            "inner_9",
+        ),
+        (
+            "xsi:type on a root's name",
+            ap("<name xsi:type=\"sacm:LangString\" content=\"P\"/>"),
+            Code::XMI_XSI_TYPE,
+            "ArgumentPackage",
+            "p",
+        ),
+        (
+            "xsi:type on a Claim's name",
+            ap(
+                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"claim_9\">\
+                <name xsi:type=\"sacm:LangString\" content=\"C\"/></argumentElement>",
+            ),
+            Code::XMI_XSI_TYPE,
+            "Claim",
+            "claim_9",
+        ),
+        (
+            "xsi:type on a root whose id holds a quote",
+            format!(
+                "<sacm:ArgumentPackage{NS_XSI} xmi:id=\"q&quot;9\" xsi:type=\"sacm:ArgumentPackage\"/>"
+            ),
+            Code::XMI_XSI_TYPE,
+            "ArgumentPackage",
+            "q\"9",
+        ),
+    ]
+}
+
+#[test]
+fn lib_compat_001_sacm_xmi_010_and_011_messages_name_the_element_by_its_kind_and_quoted_id() {
+    // Only the kind name and the quoted id are pinned: the wording around
+    // them is not API.
+    for (what, input, code, kind, id) in &subject_cases() {
+        let quoted = format!("{id:?}");
+        for mode in MODES {
+            let output = read_ok(COMPAT_001, what, mode, input);
+            let [diagnostic] = output.diagnostics() else {
+                panic!(
+                    "{COMPAT_001}: {what}: setup: read in {mode:?} mode, there is not one \
+                     diagnostic: {:?}",
+                    output.diagnostics()
+                );
+            };
+            assert_eq!(
+                diagnostic.code(),
+                *code,
+                "{COMPAT_001}: {what}: setup: read in {mode:?} mode, the diagnostic is not {code}"
+            );
+            let message = diagnostic.message();
+            assert!(
+                message.contains(&quoted),
+                "{COMPAT_001}: {what}: read in {mode:?} mode, the {code} message does not give \
+                 the id {id:?} quoted as {quoted}: {message:?}"
+            );
+            assert!(
+                message.contains(kind),
+                "{COMPAT_001}: {what}: read in {mode:?} mode, the {code} message does not give \
+                 the kind {kind}: {message:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn lib_compat_001_sacm_xmi_011_on_the_xmi_element_names_the_xmi_element_and_not_a_root() {
+    // The xmi:XMI element has no id: the message names the XMI element.
+    let wrapper = format!(
+        "<xmi:XMI xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\" xmi:version=\"2.0\">\
+         <sacm:ArgumentPackage xmi:id=\"pkg_9\"/></xmi:XMI>"
+    );
+    for mode in MODES {
+        let output = read_ok(COMPAT_001, "xmi:version on the XMI element", mode, &wrapper);
+        let [diagnostic] = output.diagnostics() else {
+            panic!(
+                "{COMPAT_001}: xmi:version on the XMI element: setup: read in {mode:?} mode, \
+                 there is not one diagnostic: {:?}",
+                output.diagnostics()
+            );
+        };
+        assert!(
+            diagnostic.code() == Code::XMI_VERSION_IGNORED
+                && diagnostic.message().contains("XMI element")
+                && !diagnostic.message().contains("pkg_9"),
+            "{COMPAT_001}: xmi:version on the XMI element, read in {mode:?} mode, is not a \
+             SACM-XMI-011 naming the XMI element and not the root: {diagnostic:?}"
+        );
+    }
+}
+
+// ===========================================================================
+// LIB-COMPAT-007 9. The Invalid refusal counts its Errors in words
+// ===========================================================================
+
+#[test]
+fn lib_compat_007_the_invalid_refusal_says_1_error_for_one_and_3_errors_for_three() {
+    let one = two_roots(&["grandchild"]);
+    let error = write_err(COMPAT_007, "one nameless Claim", Mode::Strict, &one);
+    assert_eq!(
+        error.diagnostics().len(),
+        1,
+        "{COMPAT_007}: setup: the refusal of one nameless Claim does not hold one Error"
+    );
+    let shown = error.to_string();
+    assert!(
+        shown.contains("1 error") && !shown.contains("1 errors"),
+        "{COMPAT_007}: the refusal with one Error does not say \"1 error\": {shown:?}"
+    );
+
+    let three = two_roots(&["r", "child", "grandchild"]);
+    let error = write_err(COMPAT_007, "three nameless elements", Mode::Strict, &three);
+    assert_eq!(
+        error.diagnostics().len(),
+        3,
+        "{COMPAT_007}: setup: the refusal of three nameless elements does not hold three Errors"
+    );
+    let shown = error.to_string();
+    assert!(
+        shown.contains("3 errors"),
+        "{COMPAT_007}: the refusal with three Errors does not say \"3 errors\": {shown:?}"
+    );
+}
