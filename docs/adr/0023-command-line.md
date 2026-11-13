@@ -1,6 +1,7 @@
 # 0023. The `sacm` command line
 
-- Status: accepted (the maintainer, 2026-11-13)
+- Status: accepted (the maintainer, 2026-11-13). Amended the same day (the JSON-mode stream
+  rule, and `roundtrip --strict`), and the amendment confirmed by the maintainer.
 - Date: 2026-11-13
 - Matrix rows: LIB-CLI-002, LIB-CLI-003
 

@@ -1,8 +1,8 @@
 ---
 slice: 0036
 name: m1-ids-docs-cli
-state: in-progress
-step: verification
+state: done
+step: verified
 rows: [SACM23-VAL-020, SACM23-VAL-001, LIB-DOC-001, LIB-CLI-002, LIB-CLI-003, SACM23-XMI-001, SACM23-XMI-016, SACM23-XMI-010, SACM23-XMI-002, SACM23-XMI-018, LIB-COMPAT-001, SACM23-XMI-004, SACM23-XMI-007, SACM23-XMI-013, SACM23-VAL-018, LIB-COMPAT-007]
 mode: pr
 base: main
@@ -48,3 +48,6 @@ ADR 0015 amendment 2 and ADR 0023, both accepted.
   SACM23-VAL-020 was moved to M1 by the maintainer.
 - 2026-11-13 design: researcher and architect in parallel; ADR 0015 amendment 2 and ADR 0023
   accepted by the maintainer in one batch. New row SACM23-XMI-025 (padded ids, M2).
+- 2026-11-13 verification: round 1 FAIL (four mutants and a stale acceptance line; ADR 0023's stream
+  rule aligned to the code). Round 2 PASS (record 0036); the maintainer confirmed the ADR 0023
+  amendment. M1 48/50.
