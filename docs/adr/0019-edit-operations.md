@@ -86,3 +86,40 @@ row.
 - A generic `create(kind, …)`: kinds will grow their own required fields, and misuse such as
   a Claim root could be written.
 - Accepting any non-empty id, as C++ does: it gives output that fails `xsd:ID`.
+
+## Amendment 1 (2026-11-13): edit results and atomicity (slice 0034; LIB-EDIT-002, LIB-EDIT-003)
+
+- **`Mutation`** holds two things: the operation as given (`operation()`), and three id
+  lists.
+  - `created_ids` and `deleted_ids` are the ids that `semantic_compare(before, after)`
+    reports as right-only and left-only.
+  - `changed_ids` are the ids, present on both sides, for which it reports any per-element
+    difference.
+
+  So creating a child does not change its parent: the parent's own features and the relative
+  order of its existing children are unchanged, and the parent is in `operation()`.
+  `changed_ids` and `deleted_ids` are empty for every operation in this release.
+  `Operation::operation_name()` gives the stable struct name (`"CreateClaim"`) for logs. It
+  is a promise, like a diagnostic code.
+- **Atomicity.** `edit::apply` is the only public mutation.
+  - On success, the document is structurally valid: ids are unique, parent and child links
+    agree, roots are packages, every child is in a role of its parent's class, and every
+    Assertion has a declaration.
+  - On refusal, the document is `==` to before and generates the same next ids.
+  - Content findings from `validate()` are not part of structural validity (D-VAL-LAYER).
+
+**Adopted from C++:** created, changed and deleted ids; a create does not report its parent
+as modified (`commands.cpp:162-171`); the stable operation name (`operations.h:406`).
+
+**Differences from C++:**
+- **E9.** `Mutation` holds the typed `Operation`, not `std::string operation`
+  (`mutation.h:38`).
+- **E10.** It has three typed id lists instead of `std::vector<ChangeRecord>` with serialized
+  `before` and `after` strings (`mutation.h:18-33`). The first row whose operation destroys
+  data (a set or a delete) adds typed before-values, without a break.
+- **E11.** There is no `document_revision` (`mutation.h:44`) until the preview rows
+  (D-PREVIEW).
+- **E12.** `changed_ids()` is its own accessor. C++ has only `created_ids()` and
+  `deleted_ids()`, and leaves the changed ids to a filter over `changes`.
+
+*Amendment 1 status: accepted (the maintainer, 2026-11-13).*
