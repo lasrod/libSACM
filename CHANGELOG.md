@@ -143,7 +143,9 @@ change bumps the minor version and is listed under **Breaking**.
   [LIB-RT-002, LIB-RT-003].
 - `edit::Mutation` reports the operation and the ids created, changed and deleted, and
   `Operation::operation_name()` gives a stable name for logs [LIB-EDIT-003];
-  `edit::apply` is atomic [LIB-EDIT-002].
+  `edit::apply` is all or nothing: on success the document is structurally valid; on a
+  refusal it is unchanged (`==` to before, and the same ids are generated next)
+  [LIB-EDIT-002].
 
 ### Changed
 

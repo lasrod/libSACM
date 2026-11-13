@@ -166,7 +166,7 @@ const ARGUMENT_PACKAGES: [ElementKind; 3] = [
     ArgumentPackageBinding,
 ];
 
-/// ArtifactPackage, its interface and its binding (§12.2-§12.4).
+/// ArtifactPackage, its interface and its binding (§12.2, §12.4, §12.5).
 const ARTIFACT_PACKAGES: [ElementKind; 3] = [
     ArtifactPackage,
     ArtifactPackageInterface,
@@ -237,8 +237,9 @@ const PACKAGE_KINDS: [ElementKind; 12] = [
     ArtifactPackageBinding,
 ];
 
-/// The six `Assertion` kinds (§11.8): a Claim and the five asserted
-/// relationships. Each has an `assertionDeclaration` (§11.10, `[1]`).
+/// The six `Assertion` kinds (§11.10 (Claim §11.11, `AssertedRelationship`
+/// §11.13)): a Claim and the five asserted relationships. Each has an
+/// `assertionDeclaration` (§11.10, `[1]`).
 const ASSERTIONS: [ElementKind; 6] = [
     Claim,
     AssertedInference,
@@ -437,8 +438,9 @@ fn named(content: &str) -> LangString {
     LangString::new(content).with_lang("en")
 }
 
-/// The names the operations take in turn: present, `LangString::default()`,
-/// empty content, and non-ASCII.
+/// The names the operations take: present, `LangString::default()`, empty
+/// content, and non-ASCII. [`operations_for`] rotates them per (parent, id
+/// form, kind), so each name form reaches a successful create of each kind.
 fn names() -> [LangString; 4] {
     [
         named("New"),
@@ -765,11 +767,10 @@ fn starting_documents() -> Vec<(String, Document)> {
 /// unique across the list.
 fn operations_for(doc: &Document) -> Vec<Operation> {
     let names = names();
-    let mut name_index = 0;
-    let mut next_name = || {
-        let name = names[name_index % names.len()].clone();
-        name_index += 1;
-        name
+    // The name of the create of kind `kind` with id form `form` under the
+    // `parent`-th parent (the root creates count as one more parent).
+    let name = |parent: usize, form: usize, kind: usize| -> LangString {
+        names[(parent + form + kind) % names.len()].clone()
     };
     let mut fresh_index = 0;
     let mut next_fresh = || {
@@ -783,7 +784,7 @@ fn operations_for(doc: &Document) -> Vec<Operation> {
     parents.push(id(NOWHERE));
 
     let mut operations: Vec<Operation> = Vec::new();
-    for parent in &parents {
+    for (parent_index, parent) in parents.iter().enumerate() {
         // The parent's own id is in use; under NOWHERE, the first id is.
         let duplicate = if doc.contains(parent) {
             Some(parent.clone())
@@ -795,7 +796,7 @@ fn operations_for(doc: &Document) -> Vec<Operation> {
         if let Some(duplicate) = &duplicate {
             caller_ids.push(Some(duplicate.clone()));
         }
-        for caller_id in caller_ids {
+        for (form, caller_id) in caller_ids.into_iter().enumerate() {
             let with = |operation: Operation| -> Operation {
                 match (operation, &caller_id) {
                     (operation, None) => operation,
@@ -811,11 +812,12 @@ fn operations_for(doc: &Document) -> Vec<Operation> {
                     }
                 }
             };
+            let name = |kind: usize| name(parent_index, form, kind);
             operations.push(with(
-                CreateAssuranceCasePackage::new(parent, next_name()).into(),
+                CreateAssuranceCasePackage::new(parent, name(0)).into(),
             ));
-            operations.push(with(CreateArgumentPackage::new(parent, next_name()).into()));
-            operations.push(with(CreateClaim::new(parent, next_name()).into()));
+            operations.push(with(CreateArgumentPackage::new(parent, name(1)).into()));
+            operations.push(with(CreateClaim::new(parent, name(2)).into()));
         }
     }
     let mut root_ids: Vec<Option<ElementId>> =
@@ -823,9 +825,9 @@ fn operations_for(doc: &Document) -> Vec<Operation> {
     if let Some(first) = &first_id {
         root_ids.push(Some(first.clone()));
     }
-    for caller_id in root_ids {
-        let case = CreateAssuranceCasePackage::root(next_name());
-        let arguments = CreateArgumentPackage::root(next_name());
+    for (form, caller_id) in root_ids.into_iter().enumerate() {
+        let case = CreateAssuranceCasePackage::root(name(parents.len(), form, 0));
+        let arguments = CreateArgumentPackage::root(name(parents.len(), form, 1));
         match caller_id {
             None => {
                 operations.push(case.into());

@@ -2,8 +2,8 @@
 //!
 //! An operation is a plain value that says what to change. [`apply`] checks
 //! it completely against the document and then either makes the change and
-//! returns a [`Mutation`] listing what it created, or refuses with an
-//! [`EditError`]. **A refused operation changes nothing**: not the elements,
+//! returns a [`Mutation`] (the operation, and the ids it created, changed and
+//! deleted), or refuses with an [`EditError`]. **A refused operation changes nothing**: not the elements,
 //! not the written XMI, and not the ids generated next.
 //!
 //! # Operations
@@ -113,20 +113,22 @@ use crate::model::{Document, ElementId, ElementKind};
 /// Checks `operation` against `document` and applies it, or refuses it and
 /// leaves `document` unchanged.
 ///
-/// `apply` is the only public way to change a [`Document`], and it is
-/// atomic:
-/// - **On success** the document is structurally valid: ids are unique,
-///   parent and child links agree, every root is a package, every child is in
-///   a role of its parent's class, and every Assertion has a declaration. The
-///   returned [`Mutation`] holds the operation and the ids it created,
+/// `apply` is the only public way to change a [`Document`] (outside the
+/// unstable `test-support` feature), and it is all or nothing:
+/// - **On success** the document stays structurally valid, as every
+///   `Document` is: ids are unique, parent and child links agree, every root
+///   is a package, every child is in a composite role of its parent's class,
+///   and every Assertion has an
+///   [`AssertionDeclaration`](crate::model::AssertionDeclaration) (SACM 2.3
+///   §11.10). The returned [`Mutation`] holds the operation and the ids it created,
 ///   changed and deleted.
 /// - **On refusal** the document is unchanged: it is `==` to what it was
 ///   before (see [`compare`](crate::compare)), and it generates the same next
 ///   ids.
 ///
-/// Content findings of [`validation::validate`](crate::validation::validate),
-/// such as a missing name on an element read from a file, are not part of
-/// structural validity: an edit neither adds them nor removes them.
+/// `apply` neither checks content findings nor refuses an operation because
+/// of one; call [`validate`](crate::validation::validate) again after
+/// editing.
 ///
 /// Takes any operation struct, such as [`CreateClaim`], or an [`Operation`].
 /// See the [module docs](self) for the operations, the ids and the order of
@@ -154,9 +156,10 @@ use crate::model::{Document, ElementId, ElementKind};
 /// assert_eq!(mutation.created_ids(), [ElementId::from("argument_package_1")]);
 ///
 /// let again = CreateArgumentPackage::root(LangString::new("Again")).with_id("argument_package_1");
+/// let before = doc.clone();
 /// let error = edit::apply(&mut doc, again).unwrap_err();
 /// assert!(matches!(error, EditError::DuplicateId { .. }));
-/// assert_eq!(doc.element_count(), 1);
+/// assert_eq!(doc, before); // unchanged
 /// # Ok::<(), EditError>(())
 /// ```
 pub fn apply(
@@ -256,18 +259,28 @@ impl From<CreateClaim> for Operation {
 /// What an applied operation did: the operation, and the ids it created,
 /// changed and deleted.
 ///
-/// [`apply`] returns one for every operation it applies. The three id lists
-/// are defined by [`semantic_compare`](crate::compare::semantic_compare) of
-/// the document before and after (ADR 0019 amendment 1):
-/// - [`created_ids`](Self::created_ids): the ids only after has;
-/// - [`changed_ids`](Self::changed_ids): the ids both have, with any
-///   difference reported for the element itself;
-/// - [`deleted_ids`](Self::deleted_ids): the ids only before has.
+/// [`apply`] returns one for every operation it applies. The three lists are
+/// what [`semantic_compare`](crate::compare::semantic_compare) of the
+/// document before and after would report; `apply` does not run it (ADR 0019
+/// amendment 1):
+/// - [`created_ids`](Self::created_ids) are in the document after, not
+///   before;
+/// - [`changed_ids`](Self::changed_ids) are in both, with a difference in the
+///   element itself;
+/// - [`deleted_ids`](Self::deleted_ids) are in the document before, not
+///   after.
 ///
-/// A create does not change its parent: the parent's own features and the
-/// order of its existing children are as before, and the parent is named in
-/// [`operation`](Self::operation). So in this release, where every operation
-/// is a create, `changed_ids` and `deleted_ids` are always empty.
+/// Adding a child does not change its parent. The new element is reported as
+/// created, and the parent's name, declaration and the order of its existing
+/// children are as before (`semantic_compare` compares the order of the
+/// children both documents hold, so a new child is not a reordering). The
+/// parent is in [`operation`](Self::operation). So in this release, where
+/// every operation is a create, `changed_ids` and `deleted_ids` are always
+/// empty.
+///
+/// A refused operation returns an [`EditError`] instead, and the document is
+/// unchanged; log it with [`EditError::code`]. To log the refused operation's
+/// name, keep a clone of the operation, since `apply` takes it by value.
 ///
 /// # Examples
 ///
@@ -338,8 +351,8 @@ impl Mutation {
         &self.created
     }
 
-    /// The ids of the existing elements changed, in the document's pre-order
-    /// after the operation.
+    /// The ids of the existing elements changed, in the document's
+    /// [pre-order](crate::model::Document::elements) after the operation.
     ///
     /// They are the ids, in both before and after, for which
     /// `semantic_compare(before, after)` reports a difference of the element
@@ -351,8 +364,8 @@ impl Mutation {
         &self.changed
     }
 
-    /// The ids of the elements deleted, in the document's pre-order before
-    /// the operation.
+    /// The ids of the elements deleted, in the document's
+    /// [pre-order](crate::model::Document::elements) before the operation.
     ///
     /// They are the ids `semantic_compare(before, after)` reports as only in
     /// before. A create deletes nothing, so this is empty for every

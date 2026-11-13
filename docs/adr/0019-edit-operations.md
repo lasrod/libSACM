@@ -106,7 +106,11 @@ row.
     agree, roots are packages, every child is in a role of its parent's class, and every
     Assertion has a declaration.
   - On refusal, the document is `==` to before and generates the same next ids.
-  - Content findings from `validate()` are not part of structural validity (D-VAL-LAYER).
+  - Content findings from `validate()` are not part of structural validity (D-VAL-LAYER): an edit may add or remove them, and
+    `apply` does not check them.
+  - References are not part of the model yet. The structural checks gain "references
+    resolve" and the multiplicities of required ends (D-VAL-LAYER) with the first
+    reference row.
 
 **Adopted from C++:** created, changed and deleted ids; a create does not report its parent
 as modified (`commands.cpp:162-171`); the stable operation name (`operations.h:406`).
