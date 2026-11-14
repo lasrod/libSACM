@@ -986,6 +986,43 @@ fn sacm23_xmi_015_a_link_value_with_white_space_around_it_reads_trimmed_with_no_
     }
 }
 
+#[test]
+fn sacm23_xmi_015_an_idref_or_href_fragment_with_white_space_inside_is_unsupported_at_the_attribute()
+ {
+    let row = XMI_015;
+    for (end, flag) in ENDS {
+        // White space inside the trimmed value or fragment: no single id, and
+        // it would write back as `end="a b"`, two ids on a single-valued end.
+        let idrefs =
+            ["a b", "a&#9;b", "a&#10;b", "a&#13;b", " a b "].map(|value| ("xmi:idref", value));
+        let hrefs = ["#a b", "#a&#9;b"].map(|value| ("href", value));
+        for (attribute, value) in idrefs.into_iter().chain(hrefs) {
+            let what = format!("<{end} {attribute}={value:?}/>");
+            let (input, marks) = marked(
+                row,
+                &c1_then_c2(flag, &format!("<{end} {MARK}{attribute}=\"{value}\"/>")),
+            );
+            assert_eq!(marks.len(), 1, "{row}: setup: {what} has not one mark");
+            let error = refused(row, &what, &input);
+            assert_unsupported_at(row, &what, &error, marks[0]);
+        }
+        // Control: white space only around the id is still trimmed, and the
+        // id writes back as one token that reads back equal.
+        let link = format!("<{end} xmi:idref=\" a \"/>");
+        let doc = read_ok(row, &link, &c1_then_c2(flag, &link));
+        assert_eq!(
+            target(row, &doc, "c1", end),
+            Some(ElementId::from("a")),
+            "{row}: {link}: not read as a"
+        );
+        let text = round_trip(row, &link, &doc, Mode::Tolerant);
+        assert!(
+            line_with(row, &text, "c1").contains(&format!(" {end}=\"a\"")),
+            "{row}: {link}: not written back as {end}=\"a\":\n{text}"
+        );
+    }
+}
+
 // --- Item 3: given twice -------------------------------------------------------------------------
 
 #[test]

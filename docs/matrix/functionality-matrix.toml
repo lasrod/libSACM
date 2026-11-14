@@ -3092,6 +3092,7 @@ acceptance = [
   "An element naming an unknown id is kept and gives SACM-REF-001 under `validate`.",
   "`href=\"other.xmi#c2\"`, `href=\"c2\"`, `href=\"#xpointer(...)\"`, `href=\"#\"` and `href=\"\"` are `Unsupported` at the attribute, never dropped.",
   "Both link attributes, neither, an extra attribute (`xmi:id`, `xmi:type`, `foo`), an unqualified `idref`, a child element, non-white-space text and `sacm:citedElement` are each `Unsupported` at that construct.",
+  "An `xmi:idref` holding XML white space inside it after trimming (`\"a b\"`, `\"a&#9;b\"`, `\"a&#10;b\"`) is `Unsupported` at the attribute on both ends, because it is no xsd:IDREF and would write back as two ids; white space around it is still trimmed; an `href` whose fragment holds white space (`href=\"#a b\"`) is likewise `Unsupported` (found by Copilot on PR #53).",
 ]
 tests = [
   "crates/sacm/tests/xmi_references.rs::sacm23_xmi_015_idref_and_href_elements_read_equal_to_the_attribute_anywhere_and_write_as_it",
@@ -3101,6 +3102,7 @@ tests = [
   "crates/sacm/tests/xmi_references.rs::sacm23_xmi_015_a_cross_document_xpointer_or_empty_href_is_unsupported_at_the_attribute",
   "crates/sacm/tests/xmi_references.rs::sacm23_xmi_015_the_cross_document_fixture_is_unsupported_never_dropped",
   "crates/sacm/tests/xmi_references.rs::sacm23_xmi_015_a_malformed_reference_element_is_unsupported_at_that_construct",
+  "crates/sacm/tests/xmi_references.rs::sacm23_xmi_015_an_idref_or_href_fragment_with_white_space_inside_is_unsupported_at_the_attribute",
 ]
 code = ["crates/sacm/src/xmi/roots.rs"]
 

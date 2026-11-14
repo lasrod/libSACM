@@ -1149,6 +1149,17 @@ fn reference_rows() -> Vec<Row> {
             U,
             link(&format!("<citedElement {MARK}idref=\"c\"/>")),
         ),
+        // White space inside the trimmed id: at the attribute's name.
+        row(
+            "an xmi:idref with a space inside",
+            U,
+            link(&format!("<citedElement {MARK}xmi:idref=\" c x \"/>")),
+        ),
+        row(
+            "an xmi:idref with a tab inside",
+            U,
+            link(&format!("<abstractForm {MARK}xmi:idref=\"c&#9;x\"/>")),
+        ),
         row(
             "a cross-document href",
             U,

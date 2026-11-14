@@ -295,9 +295,10 @@ mod roots;
 ///   with exactly one link attribute, `xmi:idref="id"` (in the XMI
 ///   namespace, by any prefix) or an unqualified `href="#id"` (XMI 2.5.1
 ///   §9.5.2 production 2c, rules 2l and 2n, SACM23-XMI-015), anywhere among its
-///   siblings. The value is read without the XML white space around it, and
-///   the element holds only white space, comments and processing
-///   instructions. It reads to the same document as the attribute form,
+///   siblings. The value is read without the XML white space around it; it
+///   names one id, so a value that still holds XML white space inside it is
+///   refused (below). The element holds only white space, comments and
+///   processing instructions. It reads to the same document as the attribute form,
 ///   and [`write()`] writes the attribute form. An attribute and an element
 ///   for the same end, or two elements on a single-valued end, are
 ///   [`ReadError::RepeatedValue`] (XMI 2.5.1 rule 2h), with every
@@ -305,10 +306,14 @@ mod roots;
 /// - **Refused, never dropped,** as [`ReadError::Unsupported`] at the
 ///   construct: a reference element with both link attributes (at the
 ///   second) or neither (at its start tag); any other attribute on it, such
-///   as `xmi:id`, `xmi:type`, an unqualified `idref` or `xmi:href`; an empty
-///   `xmi:idref`; an `href` that is not `#id`: with a document part, such as
-///   `other.xmi#c2` or `c2` (cross-document links are SACM23-XMI-027's), a
-///   pointer such as `#xpointer(id('c2'))`, `#` or empty; a child element
+///   as `xmi:id`, `xmi:type`, an unqualified `idref` or `xmi:href`; an
+///   `xmi:idref` that is empty or, once trimmed, still holds XML white space
+///   (space, TAB, LF or CR), such as `a b` or `a&#9;b`, at the attribute,
+///   since a tolerant [`write()`] would give it back as two ids; an `href`
+///   that is not `#id`: with a document part, such as `other.xmi#c2` or `c2`
+///   (cross-document links are SACM23-XMI-027's), a pointer such as
+///   `#xpointer(id('c2'))`, a fragment with white space inside it, `#` or
+///   empty; a child element
 ///   or text in it; and an end or a reference element in a namespace, such as
 ///   `sacm:citedElement`. A `citedElement` or `abstractForm` on a `name`,
 ///   `content`, `key` or `value` is refused as `Unsupported`: those have no

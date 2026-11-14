@@ -1238,6 +1238,15 @@ fn read_reference(text: &str, node: Node<'_, '_>) -> Result<ElementId, ReadError
                 "the xmi:idref of the reference element {element:?} is empty, so it names no element"
             )));
         }
+        // An `xsd:IDREF` is one token: white space inside it would be read
+        // as one id here but written as an IDREFS attribute of several.
+        if target.contains(is_xml_space) {
+            return Err(not_read(format!(
+                "the xmi:idref {:?} of the reference element {element:?} holds white space, \
+                 so it is not one id",
+                attribute.value()
+            )));
+        }
         link = Some(ElementId::new(target));
     }
     let Some(target) = link else {
@@ -1719,6 +1728,9 @@ mod tests {
             ("#xpointer(id('c2'))", None),
             ("#a#b", None),
             ("#a b", None),
+            ("#a\tb", None),
+            ("#a\nb", None),
+            ("#a\rb", None),
         ] {
             assert_eq!(super::same_document_fragment(value), expected, "{value:?}");
         }
