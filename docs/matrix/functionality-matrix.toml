@@ -4769,6 +4769,53 @@ depends_on = ["LIB-API-009", "LIB-API-010"]
 notes = "Slice 0032 (ADR review): code and test comments still cite \"ADR 0017 amendment 1/2\" for rules that now live in ADR 0017's body or ADR 0021 (crates/sacm/src/xmi/roots.rs:4, 488, 511; tests/xmi_names.rs, tests/xmi_assertion_declaration.rs, tests/xmi_write.rs). Update them when this row touches those files."
 
 [[row]]
+id = "LIB-API-012"
+area = "API"
+milestone = "M2"
+title = "Public containment queries"
+requirement = "The containment table of LIB-API-008 is public on `ElementKind`: whether a kind may contain another, the kinds a kind may contain in a fixed documented order, and whether a kind may be a root (`is_package`). The queries read the same table that insertion and the edit operations use, so they cannot disagree with them. They state what SACM 2.3 admits, not which create operation exists."
+source = "User request: Assurance Forge, GitHub issue #60 (2026-11-14); LIB-API-008"
+kind = "api"
+status = "planned"
+depends_on = ["LIB-API-008"]
+
+[[row]]
+id = "LIB-EDIT-013"
+area = "EDIT"
+milestone = "M2"
+title = "Check an operation without applying it"
+requirement = "`edit::check(&Document, &Operation)` succeeds exactly when `edit::apply` on the same document would succeed, and otherwise returns the same `EditError`; it never changes the document. `check` and `apply` run the same checks through one code path, so they cannot disagree."
+source = "User request: Assurance Forge, GitHub issue #60 (2026-11-14); D-ATOMIC; ADR 0019"
+kind = "editing"
+status = "planned"
+depends_on = ["LIB-EDIT-002", "LIB-EDIT-008", "LIB-EDIT-009", "LIB-EDIT-010"]
+notes = "LIB-EDIT-004 (delete preview) is the richer form of this for one operation."
+
+[[row]]
+id = "LIB-EDIT-014"
+area = "EDIT"
+milestone = "M2"
+title = "Atomic batches of operations"
+requirement = "Several operations apply as one atomic change. Either all succeed, or the document is `==` to before and generates the same next ids, and the error names the refused operation and its `EditError`. A later operation can use an id an earlier one generated. The result holds each operation's `Mutation` in order, and the batch's net created, changed and deleted ids as `semantic_compare(before, after)` defines them for LIB-EDIT-003."
+source = "User request: Assurance Forge, GitHub issue #59 (2026-11-14); ADR 0019 \"Atomic batches of several operations, as the GSN layer will want, belong in a later row\"; D-ATOMIC; D-RESULT"
+kind = "editing"
+status = "planned"
+depends_on = ["LIB-EDIT-003", "LIB-EDIT-013"]
+notes = "Needs an ADR for the API shape: a list of operations, or a closure that applies operations one at a time and sees each `Mutation` (which gives later operations the generated ids without a new id API)."
+
+[[row]]
+id = "LIB-QA-017"
+area = "QA"
+milestone = "M2"
+title = "The library builds for wasm32-unknown-unknown"
+requirement = "CI builds `sacm` for `wasm32-unknown-unknown` with default features, and with `serde` once LIB-API-006 lands; any failure fails the build. The library's non-test code uses no `std::fs`, `std::thread`, `std::process`, `std::env` or system clock (`std::time::Instant`, `SystemTime`), which compile for that target but fail at run time, enforced by a lint. So reading, validating, editing and writing a document from bytes in memory work on that target. JavaScript bindings are LIB-API-007."
+source = "User request: Assurance Forge, GitHub issue #58 (2026-11-14); D-API"
+kind = "quality"
+status = "planned"
+depends_on = ["LIB-QA-001"]
+notes = "On 2026-11-15 `cargo build -p sacm --target wasm32-unknown-unknown` succeeded on main (8183104). A build alone does not prove the second sentence, because std's file system, thread and clock APIs compile for that target."
+
+[[row]]
 id = "SACM23-XMI-018"
 area = "XMI"
 milestone = "M1"
@@ -4874,18 +4921,20 @@ requirement = "Applied mutations can be undone and redone, restoring a semantica
 source = "D-RESULT; Q-UNDO"
 kind = "editing"
 status = "planned"
-depends_on = ["LIB-EDIT-005", "LIB-EDIT-009"]
+depends_on = ["LIB-EDIT-005", "LIB-EDIT-009", "LIB-EDIT-014"]
+notes = "Requirements from Assurance Forge (GitHub issue #61, 2026-11-14), input to Q-UNDO: one user action, even a batch (LIB-EDIT-014), is one undo step; accepting a draft `Document` into the main one is one step; the generated ids after an undo are specified (reused or not); history is per document and in memory; memory use is bounded for cases of thousands of elements. The web client sends changes as operations, which favours inverse operations over snapshots. Measured 2026-11-15 (release build, flat package of claims): `Document::clone` 0.26 ms at 1,000 elements, 1.4 ms at 5,000, 7.8 ms at 20,000; `==` and `semantic_compare` 0.8 ms at 5,000 but 12-16 ms at 20,000 (super-linear)."
 
 [[row]]
 id = "LIB-API-006"
 area = "API"
-milestone = "M7"
-title = "serde support"
-requirement = "An optional `serde` feature serializes the model and diagnostics to self-describing formats (e.g. JSON)."
-source = "User request (none yet)"
+milestone = "M2"
+title = "serde support for edit and diagnostic values"
+requirement = "An optional `serde` feature implements `Serialize` and `Deserialize` for `Operation` and every operation struct, `Mutation`, `EditError`, the value types they carry (`ElementId`, `ElementKind`, `LangString`, `MultiLangString`, `AssertionDeclaration` and the edit selectors) and for `Diagnostic`, `Code`, `Severity` and `SourceLocation`. `Document` does not implement them: XMI stays the only serialization of the model. A deserialized operation is checked by `edit::apply` exactly as a constructed one, and an unknown `Code` or kind name is a deserialization error. The serialized form is documented, golden-tested in JSON and stable as `operation_name()` is."
+source = "User request: Assurance Forge, GitHub issue #57 (2026-11-14); rust-library-craft \"`serde` support, if added, is behind `serde`\"; ADR 0011 \"Later additions are additive: user-built diagnostics, `operation` and serde\""
 kind = "api"
-status = "candidate"
-notes = "Useful for tooling and the CLI's JSON output, but it freezes a second serialization of the model; decide after the model API stabilizes."
+status = "planned"
+depends_on = ["LIB-EDIT-003", "LIB-EDIT-008", "LIB-EDIT-009", "LIB-EDIT-010"]
+notes = "Narrowed 2026-11-15 from \"serializes the model and diagnostics\": leaving `Document` out removes the concern that serde freezes a second serialization of the model. The maintainer decided on 2026-11-15 that the serialized form is a stability promise, like `operation_name()`: changing it is a breaking change. Needs an ADR for the serde dependency (optional, with `derive`) and the JSON shape. LIB-QA-017 builds the wasm target with this feature too."
 
 [[row]]
 id = "LIB-CLI-005"
