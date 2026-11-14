@@ -37,27 +37,27 @@ pub(super) fn invalid_id(document: &Document, found: &mut Vec<Diagnostic>) {
             let Some(text) = element.text(role) else {
                 continue;
             };
-            let owner = format!(
-                "the {} of {} {:?}",
-                role.name(),
-                element.kind().name(),
-                id.as_str()
+            // The role element's id, then each value's, with the value's
+            // 1-based position; the subject is formatted only for a bad id.
+            let ids = text.id().map(|text_id| (None, text_id)).into_iter().chain(
+                text.value_ids()
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(n, value)| {
+                        value.as_ref().map(|value_id| (Some(n + 1), value_id))
+                    }),
             );
-            let ids = text
-                .id()
-                .map(|text_id| (owner.clone(), text_id))
-                .into_iter()
-                .chain(
-                    text.value_ids()
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(n, value)| {
-                            value
-                                .as_ref()
-                                .map(|value_id| (format!("value {} of {owner}", n + 1), value_id))
-                        }),
+            for (position, bad) in ids.filter(|(_, bad)| !is_ncname(bad.as_str())) {
+                let owner = format!(
+                    "the {} of {} {:?}",
+                    role.name(),
+                    element.kind().name(),
+                    id.as_str()
                 );
-            for (subject, bad) in ids.filter(|(_, bad)| !is_ncname(bad.as_str())) {
+                let subject = match position {
+                    Some(n) => format!("value {n} of {owner}"),
+                    None => owner,
+                };
                 let message = format!(
                     "{subject} has the xmi:id {:?}, which is not an NCName \
                      (XMI 2.5.1 §7.6.1: xmi:id is an xsd:ID)",
