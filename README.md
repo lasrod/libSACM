@@ -16,23 +16,26 @@ Milestone M1, a minimal editable vertical slice, is done: `sacm::model` provides
 `assertionDeclaration` and the first value types (`LangString`, `MultiLangString`,
 `AssertionDeclaration`), and `sacm::diagnostic` provides the `Diagnostic` type.
 `sacm::xmi::read` reads `AssuranceCasePackage` and `ArgumentPackage` roots, the
-AssuranceCasePackages, ArgumentPackages and Claims in them, their names, `gid`s and each
-Claim's `assertionDeclaration`, and the descriptions, notes, implementation constraints
-and tagged values of each. It refuses unsafe and malformed input and roots
+AssuranceCasePackages, ArgumentPackages and Claims in them, their names and each
+Claim's `assertionDeclaration`. It refuses unsafe and malformed input and roots
 that are not SACM packages with a diagnostic code, and content it cannot represent yet
 as `Unsupported`; it reports a missing or padded `xmi:id`, an `xsi:type` or an
 `xmi:version` as a diagnostic. Reading and writing take a strict or tolerant `sacm::xmi::Mode`.
-`sacm::xmi::write` writes a document, its names and its declarations deterministically;
-in strict mode, the default, it refuses a document that validation reports an Error for.
-A later release may add validation rules, so a strict write may then refuse a document
-it wrote before.
-`sacm::validation::validate` reports each `ModelElement` with no name, each empty or
-repeated-language `MultiLangString`, each tagged value without a key, and each id that is
+`sacm::xmi::write` writes a document, its names, `gid`s, contents, keys and declarations
+deterministically; in strict mode, the default, it refuses a document that validation
+reports an Error for. A later release may add validation rules, so a strict write may
+then refuse a document it wrote before.
+`sacm::validation::validate` reports each `ModelElement` with no name and each id that is
 not an XML `NCName`.
 `sacm::edit::apply` creates AssuranceCasePackage, ArgumentPackage and Claim elements,
-each with a name and a given or generated id, and descriptions, implementation
-constraints, notes and tagged values on them, or refuses and changes nothing; what it
-builds writes and reads back. The other element kinds in XMI, the other validation rules
+each with a name and a given or generated id, or refuses and changes nothing; what it
+builds writes and reads back.
+
+Milestone M2 has begun: every element's `gid`, and the descriptions, notes,
+implementation constraints and tagged values of each readable element, are read, written
+and compared; `sacm::edit::apply` creates those four kinds; and
+`sacm::validation::validate` reports each `content` or `key` text that is empty or gives one language twice and each
+tagged value without a key. The other element kinds in XMI, the other validation rules
 and the other edit operations are not built yet. Milestone M0, the foundation, is done:
 the workspace, CI, the functionality matrix and its gate, and mutation testing.
 The [functionality matrix](docs/matrix/functionality-matrix.md) shows what is verified;

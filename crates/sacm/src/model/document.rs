@@ -836,7 +836,7 @@ impl<'a> SacmElement<'a> {
     /// ```
     /// use sacm::model::{AbstractClass, Document, ElementId, ElementKind, LangString};
     ///
-    /// // Built with the unstable test-support feature: edit::apply does not create a Note or a missing name.
+    /// // Built with the unstable test-support feature: edit::apply does not create a missing name.
     /// let mut doc = Document::new();
     /// let id = ElementId::from;
     /// let name = LangString::new("Top claim").with_lang("en");
@@ -899,9 +899,11 @@ impl<'a> SacmElement<'a> {
     /// Every element, of every kind, may have one. It is held exactly as
     /// read: `None`, `""` and any other string are three different values,
     /// and nothing is trimmed ([ADR 0012], [ADR 0025]). A gid is not an
-    /// `xmi:id`: it is in no id space, so [`Document::get`] does not find it
-    /// and two elements may share one, and it has no syntax check. No edit
-    /// sets it yet, so only [`xmi::read`](crate::xmi::read) gives one.
+    /// `xmi:id`: it is in no id space, so [`Document::get`] does not find it,
+    /// and it has no syntax check. The document does not stop two elements
+    /// from sharing one, though §8.2 requires a gid to be unique; no rule
+    /// reports that yet (SACM23-VAL-002). No edit sets it yet, so only
+    /// [`xmi::read`](crate::xmi::read) gives one.
     ///
     /// [ADR 0012]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0012-lang-string-absent-and-empty.md
     /// [ADR 0025]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0025-utility-elements-and-gid.md
@@ -931,7 +933,7 @@ impl<'a> SacmElement<'a> {
         self.node().gid.as_deref()
     }
 
-    /// The element's descriptions (SACM 2.3 §8.6, §8.8): its children in the
+    /// The element's descriptions (SACM 2.3 §8.6, §8.9): its children in the
     /// `description` role, in document order.
     ///
     /// They are among [`children`](Self::children), which keeps every child
@@ -960,14 +962,14 @@ impl<'a> SacmElement<'a> {
         self.children_in("description")
     }
 
-    /// The element's implementation constraints (SACM 2.3 §8.6, §8.10): its
+    /// The element's implementation constraints (SACM 2.3 §8.6, §8.8): its
     /// children in the `implementationConstraint` role, in document order.
     /// See [`descriptions`](Self::descriptions).
     pub fn implementation_constraints(self) -> impl Iterator<Item = SacmElement<'a>> {
         self.children_in("implementationConstraint")
     }
 
-    /// The element's notes (SACM 2.3 §8.6, §8.9): its children in the `note`
+    /// The element's notes (SACM 2.3 §8.6, §8.11): its children in the `note`
     /// role, in document order. See [`descriptions`](Self::descriptions).
     pub fn notes(self) -> impl Iterator<Item = SacmElement<'a>> {
         self.children_in("note")
@@ -976,12 +978,23 @@ impl<'a> SacmElement<'a> {
     /// The element's tagged values (SACM 2.3 §8.6, §8.12): its children in
     /// the `taggedValue` role, in document order, those with equal keys
     /// included. See [`descriptions`](Self::descriptions).
+    ///
+    /// A tagged value is a key/value pair: its key is its
+    /// [`key`](Self::key), and its value is its [`content`](Self::content)
+    /// (§8.7). In XMI, a `<value>` element is one `LangString` inside a `key`
+    /// or `content` (§8.5), not the tagged value's value.
     pub fn tagged_values(self) -> impl Iterator<Item = SacmElement<'a>> {
         self.children_in("taggedValue")
     }
 
     /// The `content` of a `UtilityElement` (SACM 2.3 §8.7), or `None` when
     /// it has none or the element is not a `UtilityElement`.
+    ///
+    /// Two things in SACM are called `content`. This one, the role of a
+    /// `UtilityElement` (§8.7), is a whole [`MultiLangString`]: the same
+    /// text in one or more languages. Each of its values is a [`LangString`],
+    /// whose own [`content`](LangString::content) (§8.3
+    /// `content:String[0..1]`) is the text itself.
     ///
     /// A `Description`, `ImplementationConstraint`, `Note` or `TaggedValue`
     /// holds its text as a [`MultiLangString`]. No `content` is `None`, and
@@ -1008,6 +1021,12 @@ impl<'a> SacmElement<'a> {
     ///
     /// let note = doc.get("n1").expect("just created");
     /// assert_eq!(note.content(), Some(&content));
+    /// // The English text is the content of the value whose lang is "en".
+    /// let english = note
+    ///     .content()
+    ///     .and_then(|content| content.values().iter().find(|value| value.lang() == Some("en")))
+    ///     .and_then(LangString::content);
+    /// assert_eq!(english, Some("Reviewed"));
     /// // A package is not a UtilityElement, so it has no content.
     /// assert_eq!(doc.get("p").and_then(|p| p.content()), None);
     /// # Ok::<(), sacm::edit::EditError>(())
@@ -1071,6 +1090,10 @@ impl<'a> SacmElement<'a> {
     /// SACM requires a key (`key:MultiLangString[1]`), so
     /// [`validation::validate`](crate::validation::validate) reports a
     /// `TaggedValue` without one (SACM-MULT-001).
+    ///
+    /// The tagged value's value is its [`content`](Self::content) (§8.7). In
+    /// XMI, a `<value>` element is one `LangString` inside `key` or `content`
+    /// (§8.5), not the tagged value's value.
     ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentPackage, CreateTaggedValue};
@@ -1212,6 +1235,15 @@ impl<'a> SacmElement<'a> {
     }
 
     /// The elements this one contains directly, in document order.
+    ///
+    /// They are held in every role of the element's class, so a
+    /// `ModelElement`'s children include its descriptions, implementation
+    /// constraints, notes and tagged values, among its other children. To
+    /// get one role, use [`descriptions`](Self::descriptions),
+    /// [`implementation_constraints`](Self::implementation_constraints),
+    /// [`notes`](Self::notes) or [`tagged_values`](Self::tagged_values); to
+    /// skip them, filter by kind, for example on
+    /// `!child.kind().is_a(AbstractClass::UtilityElement)`.
     pub fn children(self) -> impl Iterator<Item = SacmElement<'a>> {
         let document = self.document;
         self.node()

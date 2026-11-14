@@ -31,6 +31,30 @@
 //! one, give the `content` or `key` one `<value lang="…" content="…"/>` per
 //! language.
 //!
+//! ```
+//! use sacm::diagnostic::Code;
+//! use sacm::edit::{self, CreateArgumentPackage, CreateNote};
+//! use sacm::model::{Document, LangString, MultiLangString};
+//! use sacm::validation;
+//!
+//! let mut doc = Document::new();
+//! edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+//! // A Note whose content says two things in English.
+//! let content: MultiLangString = [
+//!     LangString::new("Reviewed").with_lang("en"),
+//!     LangString::new("Checked").with_lang("en"),
+//! ]
+//! .into_iter()
+//! .collect();
+//! edit::apply(&mut doc, CreateNote::new("p", content).with_id("n1"))?;
+//!
+//! let found = validation::validate(&doc);
+//! assert_eq!(found.len(), 1);
+//! assert_eq!(found[0].code(), Code::MULTIPLICITY_VIOLATION);
+//! assert_eq!(found[0].affected()[0].as_str(), "n1");
+//! # Ok::<(), sacm::edit::EditError>(())
+//! ```
+//!
 //! Every element's id is checked, and so is the `xmi:id` of every name
 //! ([`SacmElement::name_id`](crate::model::SacmElement::name_id)), `content`,
 //! `key` and `value`
@@ -44,7 +68,8 @@
 //! reads an `NCName` with XML white space around it, such as `" c1 "`,
 //! trimmed. [`edit::apply`](crate::edit::apply) never creates an id that is
 //! not an `NCName`. To fix a
-//! finding, give the element, or its name, an id that is an `NCName`.
+//! finding, give the element, or its name, `content`, `key` or `value`, an
+//! id that is an `NCName`.
 //!
 //! The result is sorted by [`Diagnostic`]'s order. Its diagnostics have no
 //! [`location`](Diagnostic::location), because a [`Document`] records no

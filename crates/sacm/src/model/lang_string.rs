@@ -94,6 +94,10 @@ impl LangString {
     }
 
     /// The content, or `None` if it is absent.
+    ///
+    /// Not to be confused with
+    /// [`SacmElement::content`](crate::model::SacmElement::content), which is
+    /// a `UtilityElement`'s whole `MultiLangString`.
     #[must_use]
     pub fn content(&self) -> Option<&str> {
         self.content.as_deref()

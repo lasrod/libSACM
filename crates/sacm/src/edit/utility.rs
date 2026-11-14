@@ -5,13 +5,14 @@ use super::EditError;
 use super::create::{Features, create};
 use crate::model::{Document, ElementId, ElementKind, MultiLangString};
 
-/// Creates a `Description` (SACM 2.3 §8.8) as the last child of a
+/// Creates a `Description` (SACM 2.3 §8.9) as the last child of a
 /// `ModelElement`, in its `description` role, with a `content`.
 ///
 /// The content is a [`MultiLangString`], kept exactly as given: a
 /// [`LangString`](crate::model::LangString) converts into one with one value.
-/// The parent can be any `ModelElement`; a `UtilityElement` holds nothing, so
-/// one as the parent is [`EditError::InvalidParent`]. Several descriptions
+/// The parent can be any `ModelElement`. A `UtilityElement` contains no
+/// elements, so it is never a parent: one as the parent is
+/// [`EditError::InvalidParent`]. Several descriptions
 /// are kept (D-DESC-MULT). Apply it with [`edit::apply`](super::apply).
 /// Without [`with_id`](Self::with_id), the id is generated:
 /// `description_<n>`.
@@ -101,9 +102,15 @@ impl CreateDescription {
     }
 }
 
-/// Creates an `ImplementationConstraint` (SACM 2.3 §8.10) as the last child
+/// Creates an `ImplementationConstraint` (SACM 2.3 §8.8) as the last child
 /// of a `ModelElement`, in its `implementationConstraint` role, with a
 /// `content`.
+///
+/// An implementation constraint is a condition an abstract element must meet
+/// before it can be made concrete. §8.6 says an element should have
+/// implementation constraints only if it is abstract; this release cannot set
+/// `isAbstract` yet, and a later validation rule (SACM23-VAL-021) will report
+/// the combination.
 ///
 /// It follows the rules of [`CreateDescription`]. Without
 /// [`with_id`](Self::with_id), the id is generated:
@@ -118,7 +125,7 @@ impl CreateDescription {
 /// let mut doc = Document::new();
 /// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("arguments"))?;
 /// edit::apply(&mut doc, CreateClaim::new("arguments", LangString::new("C1")).with_id("c1"))?;
-/// let constraint = CreateImplementationConstraint::new("c1", LangString::new("ISO 26262"));
+/// let constraint = CreateImplementationConstraint::new("c1", LangString::new("Name the brake under test"));
 /// let created = edit::apply(&mut doc, constraint)?;
 /// assert_eq!(created.created_ids()[0].as_str(), "implementation_constraint_1");
 /// # Ok::<(), sacm::edit::EditError>(())
@@ -187,7 +194,7 @@ impl CreateImplementationConstraint {
     }
 }
 
-/// Creates a `Note` (SACM 2.3 §8.9) as the last child of a `ModelElement`,
+/// Creates a `Note` (SACM 2.3 §8.11) as the last child of a `ModelElement`,
 /// in its `note` role, with a `content`.
 ///
 /// It follows the rules of [`CreateDescription`]. Without
@@ -276,9 +283,11 @@ impl CreateNote {
 ///
 /// Both are [`MultiLangString`]s, kept exactly as given; a
 /// [`LangString`](crate::model::LangString) converts into one with one value.
-/// `TaggedValue`s with equal keys are all kept. It otherwise follows the rules
-/// of [`CreateDescription`]. Without [`with_id`](Self::with_id), the id is
-/// generated: `tagged_value_<n>`.
+/// The tagged value's value is its `content` (§8.7). In XMI, a `<value>`
+/// element is one `LangString` inside `key` or `content` (§8.5), not the
+/// tagged value's value. `TaggedValue`s with equal keys are all kept. It
+/// otherwise follows the rules of [`CreateDescription`]. Without
+/// [`with_id`](Self::with_id), the id is generated: `tagged_value_<n>`.
 ///
 /// # Examples
 ///

@@ -14,9 +14,9 @@
 //! | [`CreateAssuranceCasePackage`] | an `AssuranceCasePackage` (§9.2) | [`root`](CreateAssuranceCasePackage::root) | [`new`](CreateAssuranceCasePackage::new) |
 //! | [`CreateArgumentPackage`] | an `ArgumentPackage` (§11.4) | [`root`](CreateArgumentPackage::root) | [`new`](CreateArgumentPackage::new) |
 //! | [`CreateClaim`] | a `Claim` (§11.11) | no | [`new`](CreateClaim::new) |
-//! | [`CreateDescription`] | a `Description` (§8.8) | no | [`new`](CreateDescription::new) |
-//! | [`CreateImplementationConstraint`] | an `ImplementationConstraint` (§8.10) | no | [`new`](CreateImplementationConstraint::new) |
-//! | [`CreateNote`] | a `Note` (§8.9) | no | [`new`](CreateNote::new) |
+//! | [`CreateDescription`] | a `Description` (§8.9) | no | [`new`](CreateDescription::new) |
+//! | [`CreateImplementationConstraint`] | an `ImplementationConstraint` (§8.8) | no | [`new`](CreateImplementationConstraint::new) |
+//! | [`CreateNote`] | a `Note` (§8.11) | no | [`new`](CreateNote::new) |
 //! | [`CreateTaggedValue`] | a `TaggedValue` (§8.12) | no | [`new`](CreateTaggedValue::new) |
 //!
 //! A root is added after the document's last root; a child after its parent's
@@ -38,7 +38,7 @@
 //! the role of their kind, and take their `content` (and a `TaggedValue` its
 //! `key`) as a [`MultiLangString`](crate::model::MultiLangString), stored
 //! exactly as given; a `LangString` converts into one with one value. A
-//! `UtilityElement` holds nothing, so it is never a parent.
+//! `UtilityElement` contains no elements, so it is never a parent.
 //!
 //! # Ids
 //!

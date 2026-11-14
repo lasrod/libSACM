@@ -123,9 +123,9 @@ mod roots;
 /// | AssuranceCasePackage (§9.2) | `assuranceCasePackage` | an AssuranceCasePackage | no |
 /// | AssuranceCasePackage (§9.2) | `argumentPackage` | an ArgumentPackage | no |
 /// | ArgumentPackage (§11.4) | `argumentElement` | an ArgumentPackage or a Claim | yes: the role's type, `ArgumentationElement`, is abstract (§11.3) |
-/// | each of the above (§8.6) | `description` | a Description | no |
+/// | each of the above (§8.6) | `description` | a `Description` | no |
 /// | each of the above (§8.6) | `implementationConstraint` | an `ImplementationConstraint` | no |
-/// | each of the above (§8.6) | `note` | a Note | no |
+/// | each of the above (§8.6) | `note` | a `Note` | no |
 /// | each of the above (§8.6) | `taggedValue` | a `TaggedValue` | no |
 ///
 /// The class is the one the child's `xmi:type` or `xsi:type` names (both, if
@@ -247,7 +247,7 @@ mod roots;
 ///   [`SacmElement::key_value_ids`](crate::model::SacmElement::key_value_ids)).
 ///   They identify no element.
 /// - A `gid` is not an id: it is in no id space, never trimmed and never
-///   generated, and an element and a `gid` may hold the same value.
+///   generated, and a `gid` may be the same string as any `xmi:id`.
 ///
 /// # Diagnostics
 ///
@@ -447,6 +447,7 @@ mod roots;
 /// let arguments = document.get("arguments").expect("the root was read");
 /// assert_eq!(arguments.gid(), Some("urn:x:1"));
 /// let d1 = arguments.descriptions().next().expect("the description was read");
+/// // A description's content() is a MultiLangString; the text is the content() of one of its LangString values.
 /// let content = d1.content().expect("it has a content");
 /// assert_eq!(content.values()[0].content(), Some("Why the brakes are safe"));
 ///
@@ -1152,8 +1153,8 @@ impl std::error::Error for ReadError {}
 /// then does not validate against an XMI schema. In attribute values `&`, `<`, `>`, `"`,
 /// TAB, LF and CR are escaped; everything else is written as it is.
 ///
-/// A `UtilityElement`'s children are its `content` and then, on a `TaggedValue`,
-/// its `key`, superclass first (XMI 2.5.1 Annex B.5.2). Each is its role
+/// Inside a `UtilityElement`, its `content` element is written first, then,
+/// on a `TaggedValue`, its `key`, superclass first (XMI 2.5.1 Annex B.5.2). Each is its role
 /// element, with its `xmi:id` first if it has one, holding one
 /// `<value … />` per value, in order, written as a name is:
 /// `<content>`, `<value lang="en" content="…" />`, `</content>`. An empty

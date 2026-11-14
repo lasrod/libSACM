@@ -201,8 +201,8 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
   differ). `xmi::read` reads it as an attribute or a value element (given twice:
   `RepeatedValue`); `xmi::write` writes it after `xmi:id`; `semantic_compare` reports
   `Difference::Gid`; `WriteAttribute::Gid` [SACM23-BASE-006].
-- `validation::validate` reports an empty `content` or `key`, each language two values
-  of one share, and a TaggedValue with no `key`, as SACM-MULT-001 Errors on the
+- `validation::validate` reports an empty `content` or `key`, each language that two or
+  more values of one share, and a TaggedValue with no `key`, as SACM-MULT-001 Errors on the
   UtilityElement; and a `content`, `key` or `value` `xmi:id` that is not an NCName as
   SACM-ID-002 [SACM23-VAL-010, SACM23-VAL-020].
 
