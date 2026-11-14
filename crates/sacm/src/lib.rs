@@ -27,8 +27,11 @@
 //!   refuses one that validation reports an Error for.
 //! - [`validation::validate`] reports each element that has no name, each
 //!   `content` or `key` text that is empty or gives one language twice, each
-//!   tagged value without a key, and each id that is not an XML `NCName`, as
-//!   [`Diagnostic`](diagnostic::Diagnostic)s with stable codes.
+//!   tagged value without a key, each id that is not an XML `NCName`, each
+//!   `gid` two elements share, each element with more than one description,
+//!   and each `ArgumentPackage` that nests one and also holds other
+//!   argumentation elements, as [`Diagnostic`](diagnostic::Diagnostic)s with
+//!   stable codes.
 //! - [`edit::apply`] creates `AssuranceCasePackage`, `ArgumentPackage` and
 //!   `Claim` elements, and descriptions, implementation constraints, notes
 //!   and tagged values on them ([`edit::CreateNote`],
@@ -80,8 +83,9 @@
 //! let created = edit::apply(&mut document, CreateClaim::new("arguments", name))?;
 //! assert_eq!(created.created_ids()[0].as_str(), "claim_1");
 //!
-//! // Validate. This release checks names, ids, and the content and key of
-//! // descriptions, implementation constraints, notes and tagged values.
+//! // Validate. This release checks names, ids, gids, descriptions, the
+//! // content and key of descriptions, implementation constraints, notes and
+//! // tagged values, and what an ArgumentPackage holds.
 //! let findings = validation::validate(&document);
 //! assert!(!diagnostic::has_errors(&findings));
 //!

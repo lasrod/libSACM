@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-VAL-011: a Claim holds two descriptions; clause 8.6 gives description:Description[0..1], the model 0..*. It reads in both modes with both kept (D-DESC-MULT); validate reports one SACM-MULT-001 Warning affecting c1, and a strict save still writes it. Hand-written; no third-party content. -->
+<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+  <name lang="en" content="Arguments"/>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+    <name lang="en" content="The brakes stop the car"/>
+    <description xmi:id="d1">
+      <content>
+        <value lang="en" content="Stopping distance within the limit"/>
+      </content>
+    </description>
+    <description xmi:id="d2">
+      <content>
+        <value lang="en" content="On a dry road"/>
+      </content>
+    </description>
+  </argumentElement>
+</sacm:ArgumentPackage>

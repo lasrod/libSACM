@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-VAL-012: the ArgumentPackage "arguments" nests the ArgumentPackage "braking" and also holds the Claim "c1"; clause 11.4: "If an ArgumentPackage has nested ArgumentPackages, then it is only allowed to contain ArgumentPackages." Its Note is not argumentation content. It reads in both modes; validate reports one SACM-PKG-001 Error affecting arguments, then c1. Hand-written; no third-party content. -->
+<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+  <name lang="en" content="Arguments"/>
+  <note xmi:id="n1">
+    <content>
+      <value lang="en" content="Split by subsystem"/>
+    </content>
+  </note>
+  <argumentElement xmi:type="sacm:ArgumentPackage" xmi:id="braking">
+    <name lang="en" content="Braking"/>
+  </argumentElement>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+    <name lang="en" content="The car is safe"/>
+  </argumentElement>
+</sacm:ArgumentPackage>

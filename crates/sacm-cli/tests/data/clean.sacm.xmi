@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- LIB-CLI-002, LIB-CLI-003: a clean document. Two package roots, a nested ArgumentPackage, and a named Claim with each of the six assertionDeclaration literals. Reading it gives no diagnostic, validate finds nothing, and a strict save writes it. Hand-written. -->
+<!-- LIB-CLI-002, LIB-CLI-003: a clean document. Two package roots, an ArgumentPackage nested in the root ArgumentPackage, and a named Claim with each of the six assertionDeclaration literals. Each ArgumentPackage holds only Claims or only ArgumentPackages (clause 11.4, SACM23-VAL-012). Reading it gives no diagnostic, validate finds nothing, and a strict save writes it. Hand-written. -->
 <xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:sacm="http://www.omg.org/spec/SACM/20220301">
   <sacm:AssuranceCasePackage xmi:id="case">
     <name lang="en" content="Braking case"/>
@@ -20,15 +20,15 @@
       <argumentElement xmi:type="sacm:Claim" xmi:id="c_needs_support" assertionDeclaration="needsSupport">
         <name lang="en" content="The brake is tested"/>
       </argumentElement>
-      <argumentElement xmi:type="sacm:ArgumentPackage" xmi:id="nested">
-        <name lang="en" content="Cited arguments"/>
-        <argumentElement xmi:type="sacm:Claim" xmi:id="c_as_cited" assertionDeclaration="asCited">
-          <name lang="en" content="The supplier's brake is certified"/>
-        </argumentElement>
-      </argumentElement>
     </argumentPackage>
   </sacm:AssuranceCasePackage>
   <sacm:ArgumentPackage xmi:id="more">
     <name lang="en" content="More arguments"/>
+    <argumentElement xmi:type="sacm:ArgumentPackage" xmi:id="nested">
+      <name lang="en" content="Cited arguments"/>
+      <argumentElement xmi:type="sacm:Claim" xmi:id="c_as_cited" assertionDeclaration="asCited">
+        <name lang="en" content="The supplier's brake is certified"/>
+      </argumentElement>
+    </argumentElement>
   </sacm:ArgumentPackage>
 </xmi:XMI>

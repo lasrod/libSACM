@@ -1488,6 +1488,9 @@ fn create(doc: &mut Document, operation: impl Into<edit::Operation>) -> ElementI
 
 /// A document that holds all four readable pairs, at depth 4, in three
 /// roots, with siblings interleaving roles and both caller and generated ids.
+/// Each `ArgumentPackage` holds only Claims or only packages: a Claim
+/// beside a nested ArgumentPackage is a SACM-PKG-001 Error (SACM23-VAL-012),
+/// and a strict write refuses it.
 fn fixed_document() -> Document {
     let mut doc = Document::new();
     let case = create(
@@ -1495,23 +1498,27 @@ fn fixed_document() -> Document {
         CreateAssuranceCasePackage::root(name_variant(4)).with_id("case"),
     );
     let ap1 = create(&mut doc, CreateArgumentPackage::new(&case, name_variant(0)));
-    create(&mut doc, CreateClaim::new(&ap1, name_variant(1)));
+    let side = create(
+        &mut doc,
+        CreateArgumentPackage::new(&ap1, name_variant(1)).with_id("side"),
+    );
+    create(&mut doc, CreateClaim::new(&side, name_variant(1)));
     let inner = create(
         &mut doc,
         CreateArgumentPackage::new(&ap1, name_variant(2)).with_id("inner"),
     );
-    create(&mut doc, CreateClaim::new(&inner, name_variant(4)));
     let deep = create(
         &mut doc,
         CreateArgumentPackage::new(&inner, name_variant(5)),
     );
+    create(&mut doc, CreateClaim::new(&deep, name_variant(4)));
     create(
         &mut doc,
         CreateClaim::new(&deep, name_variant(6)).with_id("c_deep"),
     );
     create(
         &mut doc,
-        CreateClaim::new(&ap1, name_variant(3)).with_id("c_after"),
+        CreateClaim::new(&side, name_variant(3)).with_id("c_after"),
     );
     let sub = create(
         &mut doc,
@@ -1566,7 +1573,9 @@ fn operation(
 
 /// A document built by `steps` pseudo-random operations from `seed`: a root
 /// one time in five (and first), otherwise a legal child of an existing
-/// package, with a caller id one time in three.
+/// package, with a caller id one time in three. Each ArgumentPackage is made
+/// to hold either only Claims or only packages, chosen when it is
+/// created, so that no package is a SACM-PKG-001 Error (SACM23-VAL-012).
 fn generated_document(seed: u64, steps: u64) -> Document {
     let mut state = seed;
     let mut next = move || {
@@ -1576,7 +1585,9 @@ fn generated_document(seed: u64, steps: u64) -> Document {
         state >> 33
     };
     let mut doc = Document::new();
-    let mut packages: Vec<(ElementId, ElementKind)> = Vec::new();
+    // Each package, its kind, and for an ArgumentPackage whether it holds
+    // Claims (otherwise ArgumentPackages).
+    let mut packages: Vec<(ElementId, ElementKind, bool)> = Vec::new();
     for step in 0..steps {
         let (choice, pick, name) = (next(), next(), name_variant(next()));
         let id = (choice % 3 == 0).then(|| format!("e{seed}_{step}"));
@@ -1590,17 +1601,17 @@ fn generated_document(seed: u64, steps: u64) -> Document {
             (kind, None)
         } else {
             let index = usize::try_from(pick).unwrap_or_default() % packages.len();
-            let (parent, parent_kind) = packages[index].clone();
+            let (parent, parent_kind, holds_claims) = packages[index].clone();
             let kind = match (parent_kind, first_kind) {
                 (ElementKind::AssuranceCasePackage, true) => ElementKind::AssuranceCasePackage,
-                (ElementKind::ArgumentPackage, true) => ElementKind::Claim,
+                (ElementKind::ArgumentPackage, _) if holds_claims => ElementKind::Claim,
                 _ => ElementKind::ArgumentPackage,
             };
             (kind, Some(parent))
         };
         let created = create(&mut doc, operation(kind, parent.as_ref(), name, id));
         if kind != ElementKind::Claim {
-            packages.push((created, kind));
+            packages.push((created, kind, (pick >> 7) % 2 == 0));
         }
     }
     doc

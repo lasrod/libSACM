@@ -1910,11 +1910,13 @@ fn lib_compat_007_validation_comes_before_the_writers_own_checks_in_strict_mode_
     );
 
     // With every element named, the writer's own check refuses in both modes.
+    // The Claim goes in `child`, which holds only Claims: in `s`, beside the
+    // nested `child`, it would be a SACM-PKG-001 Error (SACM23-VAL-012).
     let mut named = two_roots(&[]);
     insert(
         COMPAT_007,
         &mut named,
-        Some("s"),
+        Some("child"),
         ElementKind::Claim,
         "ctl",
         Some(LangString::new("x").with_lang("e\u{1}n")),

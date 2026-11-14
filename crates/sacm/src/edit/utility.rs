@@ -13,7 +13,10 @@ use crate::model::{Document, ElementId, ElementKind, MultiLangString};
 /// The parent can be any `ModelElement`. A `UtilityElement` contains no
 /// elements, so it is never a parent: one as the parent is
 /// [`EditError::InvalidParent`]. Several descriptions
-/// are kept (D-DESC-MULT). Apply it with [`edit::apply`](super::apply).
+/// are kept (D-DESC-MULT), and
+/// [`validation::validate`](crate::validation::validate) reports more than one
+/// as a SACM-MULT-001 Warning (SACM23-VAL-011). Apply it with
+/// [`edit::apply`](super::apply).
 /// Without [`with_id`](Self::with_id), the id is generated:
 /// `description_<n>`.
 ///

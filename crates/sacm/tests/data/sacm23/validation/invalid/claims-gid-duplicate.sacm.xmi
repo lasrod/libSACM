@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-VAL-002: two Claims hold the same gid "urn:example:g"; clause 8.2 requires a gid to be unique within the model instance. It reads in both modes; validate reports one SACM-ID-003 Error affecting c1 and c2. Hand-written; no third-party content. -->
+<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments" gid="urn:example:arguments">
+  <name lang="en" content="Arguments"/>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c1" gid="urn:example:g">
+    <name lang="en" content="The brakes stop the car"/>
+  </argumentElement>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c2" gid="urn:example:g">
+    <name lang="en" content="The brakes are tested"/>
+  </argumentElement>
+</sacm:ArgumentPackage>
