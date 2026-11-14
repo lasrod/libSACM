@@ -2213,7 +2213,8 @@ title = "Enumeration literals"
 requirement = "`xmi::read`, in both load modes, refuses an `assertionDeclaration` value that is not exactly one of the six AssertionDeclaration literals, in the attribute form (SACM23-XMI-017) or the element form (SACM23-XMI-014), as `ReadError::InvalidLiteral { element, property, value, location }` whose `code()` is SACM-ENUM-001 (ADR 0021 amendment 2). `value` is the value as read: after XML attribute-value normalisation for the attribute, the exact character content for the element. It is located at the attribute's name or the value element's `<`. The value is never mapped to `asserted` and never held in a `Document`. `Unsupported` is no longer returned for it."
 source = "formal/23-05-08 §11.8 (p. 38) the six literals, §11.10 (p. 39) \"assertionDeclaration:AssertionDeclaration[1] = asserted\"; ptc/22-03-13 Argumentation::AssertionDeclaration; XMI 2.5.1 rule 8 (p. 53) \"a simple type derived from string whose legal values are the enumeration literals\", rule 2i (p. 64); D-ENUM-EXACT; the maintainer's decision of 2026-11-14; ADR 0021 amendment 2; C++ `xmi_reader.cpp:1788-1794` (keeps `asserted`)"
 kind = "validation"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0039-m2-ids-and-literals.md"
 depends_on = ["SACM23-ARG-003", "SACM23-XMI-001", "LIB-DIAG-001", "SACM23-XMI-017", "SACM23-XMI-014", "SACM23-XMI-023"]
 notes = "SACM23-XMI-017 moved to M1 in slice 0030; this row stays in M2. ADR review, 2026-11-13: decide how the model holds a non-literal value (for tolerant mode) before its tests. Maintainer decision 2026-11-14: refused in both load modes with a coded `ReadError` (SACM-ENUM-001) naming the value and its location; the model does not hold an unknown value. A later compatibility row may map known legacy literals."
 acceptance = [
@@ -4216,7 +4217,8 @@ title = "An element without an xmi:id"
 requirement = "Import, in both load modes, reads an element with no `xmi:id`, a root or a child (ADR 0024). It gets a generated id in the edit scheme `<snake_case kind>_<n>` (ADR 0019) that is unused by every `xmi:id` in the input (later ones, the trimmed values of padded ids and LangString ids included), and deterministic for the input bytes and the same in both modes. Each such element is reported once as SACM-XMI-004, Info in both modes, with the generated id as its only affected id, requirement SACM23-XMI-020, clause 7.6.1, at the element's start tag. The generated id is an ordinary id: it is not marked, it is compared like any id, and `xmi::write` writes it. The document's id counters continue above it, so a later edit never reuses it. An unqualified `id` attribute is not an `xmi:id` (rule 2f). This narrows the `Unsupported` of SACM23-XMI-001 (a root) and SACM23-XMI-016 (a child). It departs from C++, where a missing id is an Error in strict mode and the element is dropped (`xmi_reader.cpp:755-762`)."
 source = "XMI 2.5.1 §7.6.1 (p. 13) `<xsd:attribute name=\"id\" type=\"xsd:ID\" use=\"optional\"/>`, (p. 14) \"the value for xmi:id is unique across all elements within the file\"; rule 2e (p. 63) \"The identity attributes consist of an optional id, label, and uuid.\"; rule 2f \"The name of the identity attribute is \"id\" in the XMI namespace.\"; D-ID; ADR 0024; the maintainer's decisions of 2026-11-12 and 2026-11-14; C++ `xmi_reader.cpp:748-771`, `:2420-2426`"
 kind = "xmi"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0039-m2-ids-and-literals.md"
 depends_on = ["SACM23-XMI-001", "SACM23-XMI-004", "SACM23-XMI-016", "LIB-COMPAT-001", "SACM23-VAL-001", "SACM23-XMI-023", "SACM23-XMI-025", "SACM23-XMI-022", "LIB-EDIT-001", "LIB-RT-001"]
 notes = "ADR review, 2026-11-13: needs an ADR before its tests, on the identity of an element without an `xmi:id`: is a generated id marked, is it written back, and how does comparison treat it (ADR 0010, ADR 0013 \"Nothing invents\", ADR 0020). ADR review, 2026-11-13: docs/sacm/diagnostics.md lists SACM-XMI-004 as \"Error (strict)\" for a missing id, which conflicts with D-STRICT and XMI 2.5.1 §7.6.1 `use=\"optional\"`; this row settles it. Maintainer decision 2026-11-14: SACM-XMI-004 is Info in both modes (a missing id is conforming, XMI 2.5.1 `use=\"optional\"`), and the generated id is written on save like any other id; the catalog row is corrected to match."
 acceptance = [
@@ -4260,7 +4262,8 @@ title = "A repeated single-valued containment is refused"
 requirement = "A ModelElement given two or more `name` elements in no namespace is refused in both load modes as `ReadError::RepeatedValue` (SACM-MULT-001) with `property` `name`, even when the names are equal (ADR 0021 amendment 2). `element` is the owner's id, `locations()` is the start tag of every `name` in document order, and `location()` is the second. Each later `name` is checked in full first. Nothing is chosen or dropped. A repeated `UtilityElement.content` or `TaggedValue.key` inherits this rule when its row reads it. Until this row it is `Unsupported` (SACM23-XMI-012)."
 source = "formal/23-05-08 §8.6 (p. 19) \"name:LangString[1] (composition) - the name of the ModelElement.\"; XMI 2.5.1 §7.8.2 (p. 17) \"By default, XMI 2 produces schemas that ignore multiplicities also.\", rule 4f (p. 51); D-STRICT; D-PRESERVE; ADR 0021 amendments 1 and 2; the maintainer's decision of 2026-11-13; C++ `xmi_reader.cpp:1182-1218` (keeps the last)"
 kind = "xmi"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0039-m2-ids-and-literals.md"
 depends_on = ["SACM23-XMI-012", "SACM23-XMI-014", "SACM23-XMI-023"]
 notes = "Maintainer decision 2026-11-12: the code is SACM-MULT-001, because `name:LangString[1]` held twice is a multiplicity violation. SACM23-VAL-018 has already widened the catalog text to cover it. SACM-XMI-003 (\"Unknown element\") is not used, as C++ uses it. Reworded 2026-11-13 by the maintainer: a coded refusal, consistent with SACM23-XMI-014, since a `Document` holds one name per element."
 acceptance = [
@@ -4289,7 +4292,8 @@ title = "An xmi:id on a LangString"
 requirement = "An `xmi:id` on a `name` LangString (XMI 2.5.1 §7.8.3) is read in both load modes with no diagnostic and kept with the owning element as `SacmElement::name_id()`, not on the `LangString` value (ADR 0024). `xmi::write` writes it back as the first attribute of `name`. It shares the file's id space: a repeat with any element or name id is `DuplicateId` (SACM-ID-001), a caller id equal to it is `EditError::DuplicateId`, and generated ids skip it. It follows the element-id rules: empty is `InvalidId`, padded is trimmed (SACM23-XMI-025), and one that is not an NCName is reported by `validate` as SACM-ID-002 with the owner as the affected id. `semantic_compare` compares it (`Difference::NameId`). An `xmi:id` on a value element (`lang`, `content`) stays refused. This departs from C++, which drops the id with an Info (`xmi_reader.cpp:793-803`)."
 source = "XMI 2.5.1 §7.8.3 (p. 17) \"A class is represented by an XML element, with an XML element or attribute for each property.\" with `<xsd:attribute ref=\"xmi:id\"/>`; ptc/22-03-13 LangString `uml:Class`; rule 2a (p. 63) \"to serialize objects that are the values of Properties\"; §7.6.1 (p. 14) uniqueness; D-ID; D-PRESERVE; ADR 0024; C++ `xmi_reader.cpp:793-803`"
 kind = "xmi"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0039-m2-ids-and-literals.md"
 depends_on = ["SACM23-XMI-012", "SACM23-XMI-014", "SACM23-VAL-001", "LIB-API-010", "LIB-RT-001", "SACM23-VAL-020", "SACM23-XMI-004", "SACM23-XMI-025"]
 notes = "Maintainer decision 2026-11-12: preserve the id; no catalog code is needed. Moved from SACM23-XMI-012 in slice 0026. Not urgent: no corpus file and no C++ output carries such an id. When built, reword verified SACM23-XMI-004 (\"No `xmi:id` is written on a LangString or MultiLangString\"), because a preserved LangString id is written back."
 acceptance = [
@@ -4380,7 +4384,8 @@ title = "An xmi:id with white space around it"
 requirement = "An `xmi:id`, on an element or a `name`, whose value after XML attribute-value normalisation is not an NCName but whose XSD-collapsed value is one is read as the collapsed (trimmed) value (ADR 0024). Collapse removes only #x20, #x9, #xA and #xD. The document identifies, compares, deduplicates and writes the element by that value. It is reported once as Info SACM-ID-004 in both modes: requirement SACM23-XMI-025, clause 7.6.1, the trimmed id as the affected id (the owner's id for a name id), at the attribute's name, with a message quoting the value as read. Other ids are held as written: one that is still not an NCName after trimming is reported by `validate` (SACM23-VAL-020), and an empty one is `InvalidId`. `Unsupported` is no longer returned for it."
 source = "XMI 2.5.1 §7.6.1 (p. 13) `type=\"xsd:ID\"`; XML Schema 1.0 Part 2 (Second Edition) §3.3.8 \"The ·base type· of ID is NCName\", Appendix A (`token` has `<xs:whiteSpace value=\"collapse\"/>`), §4.3.6 \"collapse: After the processing implied by replace, contiguous sequences of #x20's are collapsed to a single #x20, and leading and trailing #x20's are removed.\"; XML 1.0 (Fifth Edition) §3.3.3; D-ID; ADR 0024; the maintainer's decision of 2026-11-14; C++ `xmi_reader.cpp:750-753` (raw)"
 kind = "xmi"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0039-m2-ids-and-literals.md"
 depends_on = ["SACM23-VAL-020", "SACM23-XMI-023", "SACM23-VAL-001", "SACM23-XMI-004"]
 notes = "Maintainer decision 2026-11-14: follow the schema (`xmi:id` is `xsd:ID`, white space collapsed): read the trimmed id, report an Info naming the original value, and write the trimmed id."
 acceptance = [

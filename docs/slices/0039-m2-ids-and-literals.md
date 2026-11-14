@@ -1,8 +1,8 @@
 ---
 slice: 0039
 name: m2-ids-and-literals
-state: in-progress
-step: verification
+state: done
+step: verified
 rows: [SACM23-VAL-006, SACM23-XMI-020, SACM23-XMI-021, SACM23-XMI-022, SACM23-XMI-025]
 mode: pr
 base: main
@@ -55,3 +55,4 @@ Difference::NameId { id: ElementId, left: Option<ElementId>, right: Option<Eleme
 ## Log
 
 - 2026-11-14 choose: the rows the M2 decision batch unblocked, all in the reader.
+- 2026-11-14 verify: PASS in two rounds (two surviving hand mutations, then tests); Copilot found a quadratic locator path, fixed; record 0039.
