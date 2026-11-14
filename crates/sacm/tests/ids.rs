@@ -7,8 +7,9 @@
 //!   (SACM-CMD-004).
 //! - SACM23-VAL-020: an id that is not an `NCName` is read as written and
 //!   reported by `validation::validate` as SACM-ID-002; an empty id is refused
-//!   as `ReadError::InvalidId` (SACM-ID-002); an id with white space around
-//!   an `NCName` is `Unsupported` until SACM23-XMI-025.
+//!   as `ReadError::InvalidId` (SACM-ID-002). An id with white space around
+//!   an `NCName` is read trimmed (SACM23-XMI-025, `xmi_padded_ids.rs`); one of
+//!   white space alone is still held as written.
 //!
 //! Inputs are inline strings, LF-only, built line by line so that each
 //! expected location is counted from the layout: an element at the `<` of
@@ -72,31 +73,6 @@ fn loc(row: &str, line: u32, column: u32) -> SourceLocation {
         panic!("{row}: SourceLocation::new({line}, {column}) refused a 1-based position");
     };
     location
-}
-
-/// The location of the first `needle` in `text` (LF line ends only).
-fn position_of(row: &str, text: &str, needle: &str) -> SourceLocation {
-    assert!(
-        !text.contains('\r'),
-        "{row}: setup: position_of counts LF only"
-    );
-    let Some(offset) = text.find(needle) else {
-        panic!("{row}: setup: {text:?} does not contain {needle:?}");
-    };
-    let before = &text[..offset];
-    let line = before.matches('\n').count() + 1;
-    let column = before
-        .rsplit('\n')
-        .next()
-        .unwrap_or_default()
-        .chars()
-        .count()
-        + 1;
-    loc(
-        row,
-        u32::try_from(line).expect("small test input"),
-        u32::try_from(column).expect("small test input"),
-    )
 }
 
 /// An ArgumentPackage root `p`, named, holding `lines` from line 3, each
@@ -485,51 +461,26 @@ fn sacm23_val_020_an_empty_id_is_invalid_id_at_the_element_in_both_modes() {
 }
 
 #[test]
-fn sacm23_val_020_a_padded_id_is_unsupported_at_its_name_and_a_space_id_is_reported() {
-    for raw in [" c1 ", "c1&#9;"] {
-        let attribute = format!("xmi:id=\"{raw}\"");
-        let cases = [
-            (
-                "a root",
-                format!(
-                    "<sacm:ArgumentPackage{NS} {attribute}><name content=\"P\"/></sacm:ArgumentPackage>"
-                ),
-            ),
-            (
-                "a child",
-                ap(&[format!(
-                    "<argumentElement xmi:type=\"sacm:Claim\" {attribute}><name content=\"C\"/></argumentElement>"
-                )]),
-            ),
-        ];
-        for (what, input) in &cases {
-            let at = position_of(VAL_020, input, &attribute);
-            for mode in MODES {
-                let error = refusal(VAL_020, mode, input);
-                assert!(
-                    matches!(error, ReadError::Unsupported { .. }),
-                    "{VAL_020}: the id {raw:?} on {what} ({mode:?}) is not Unsupported: {error:?}"
-                );
-                assert_eq!(
-                    error.location(),
-                    Some(at),
-                    "{VAL_020}: the id {raw:?} on {what} is not refused at its name: {error}"
-                );
-            }
-        }
+fn sacm23_val_020_an_id_of_white_space_alone_is_read_as_written_and_reported() {
+    // White space alone trims to nothing, which is no NCName: read as
+    // written, and reported. A padded NCName is read trimmed instead
+    // (SACM23-XMI-025).
+    for mode in MODES {
+        let output = read_ok(VAL_020, mode, &ap(&[claim(" ")]));
+        assert!(
+            output.document().get(" ").is_some(),
+            "{VAL_020}: the id \" \" was not held as written ({mode:?})"
+        );
+        let found = id_findings(output.document());
+        assert_eq!(
+            found
+                .iter()
+                .map(|d| d.affected().to_vec())
+                .collect::<Vec<_>>(),
+            [vec![ElementId::from(" ")]],
+            "{VAL_020}: the id \" \" is not one SACM-ID-002 ({mode:?}): {found:?}"
+        );
     }
-    // White space alone trims to nothing, which is no NCName: read, and
-    // reported.
-    let output = read_ok(VAL_020, Mode::Tolerant, &ap(&[claim(" ")]));
-    let found = id_findings(output.document());
-    assert_eq!(
-        found
-            .iter()
-            .map(|d| d.affected().to_vec())
-            .collect::<Vec<_>>(),
-        [vec![ElementId::from(" ")]],
-        "{VAL_020}: the id \" \" is not one SACM-ID-002: {found:?}"
-    );
 }
 
 #[test]

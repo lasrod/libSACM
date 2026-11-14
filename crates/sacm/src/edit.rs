@@ -143,8 +143,8 @@ use crate::model::{Document, ElementId, ElementKind};
 ///   ([`EditError::InvalidParent`]);
 /// - the id given with `with_id` is not an XML `NCName`
 ///   ([`EditError::InvalidId`]);
-/// - the id given with `with_id` is already in the document
-///   ([`EditError::DuplicateId`]).
+/// - the id given with `with_id` is already in the document, as an
+///   element's id or a name's `xmi:id` ([`EditError::DuplicateId`]).
 ///
 /// # Examples
 ///
@@ -427,7 +427,9 @@ pub enum EditError {
         /// The id, as given.
         id: ElementId,
     },
-    /// The id given with `with_id` is already in the document
+    /// The id given with `with_id` is already in the document, as an
+    /// element's id or as the `xmi:id` of a name
+    /// ([`SacmElement::name_id`](crate::model::SacmElement::name_id))
     /// (SACM-CMD-004). Ids are unique across the whole document, not per
     /// parent. Choose another id, or leave out `with_id` to have one
     /// generated.

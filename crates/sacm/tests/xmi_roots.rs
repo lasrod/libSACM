@@ -925,8 +925,9 @@ fn sacm23_xmi_001_invalid_root_takes_precedence_over_unsupported() {
         "<sacm:ArgumentPackage xmi:id=\"a\"><note/></sacm:ArgumentPackage>",
         // A readable root with an attribute it cannot read.
         "<sacm:ArgumentPackage xmi:id=\"a\" gid=\"g\"/>",
-        // A root without an id.
-        "<sacm:ArgumentPackage/>",
+        // A root with an id that is not an `xmi:id`. (A root without an id is
+        // read, SACM23-XMI-020.)
+        "<sacm:ArgumentPackage id=\"a\"/>",
     ];
     for first in before_claim {
         let input = wrapped(&format!("\n  {first}\n  <sacm:Claim xmi:id=\"c\"/>\n"));
@@ -1091,10 +1092,12 @@ fn sacm23_xmi_001_an_unread_attribute_of_the_wrapper_is_unsupported_at_the_attri
 #[test]
 fn sacm23_xmi_001_unread_content_of_a_root_is_unsupported_at_that_content() {
     let row = "SACM23-XMI-001";
+    // Children that neither root reads, with ids: an id-less child that is
+    // readable is read with a generated id (SACM23-XMI-020).
     let children = [
         "<note/>",
-        "<argumentPackage/>",
-        "<argumentElement xsi:type=\"sacm:Claim\"/>",
+        "<artifactPackage xmi:id=\"x\"/>",
+        "<argumentElement xsi:type=\"sacm:AssertedInference\" xmi:id=\"x\"/>",
         "<xmi:Extension/>",
         "<gid>g</gid>",
     ];
@@ -1190,20 +1193,30 @@ fn sacm23_xmi_001_an_empty_root_id_is_invalid_id_at_the_root() {
 }
 
 #[test]
-fn sacm23_xmi_001_a_missing_or_foreign_root_id_is_unsupported_at_the_root() {
+fn sacm23_xmi_001_a_foreign_root_id_is_unsupported_at_its_name() {
     let row = "SACM23-XMI-001";
+    // A root with no `xmi:id` is read with a generated id (SACM23-XMI-020):
+    // an id attribute that is not `xmi:id` is not an id, so it is an unread
+    // attribute, refused at its name.
     let inputs = [
-        format!("<sacm:ArgumentPackage{NS}/>"),
-        format!("<sacm:ArgumentPackage{NS} id=\"p\"/>"),
-        format!("<sacm:ArgumentPackage{NS} xmlns:o=\"urn:o\" o:id=\"p\"/>"),
-        format!("<sacm:AssuranceCasePackage{NS}/>"),
+        (format!("<sacm:ArgumentPackage{NS} id=\"p\"/>"), "id=\"p\""),
+        (
+            format!("<sacm:ArgumentPackage{NS} xmlns:o=\"urn:o\" o:id=\"p\"/>"),
+            "o:id=\"p\"",
+        ),
+        (
+            format!("<sacm:AssuranceCasePackage{NS} id=\"p\"/>"),
+            "id=\"p\"",
+        ),
     ];
-    for input in &inputs {
-        assert_unsupported_at(row, input.as_bytes(), loc(row, 1, 1));
+    for (input, attribute) in &inputs {
+        let at = position_of(row, input, attribute);
+        assert_unsupported_at(row, input.as_bytes(), at);
     }
-    // Wrapped, at the root without an id.
-    let wrapped_input = wrapped("\n  <sacm:ArgumentPackage/>\n");
-    assert_unsupported_at(row, wrapped_input.as_bytes(), loc(row, 2, 3));
+    // Wrapped.
+    let wrapped_input = wrapped("\n  <sacm:ArgumentPackage id=\"p\"/>\n");
+    let at = position_of(row, &wrapped_input, "id=\"p\"");
+    assert_unsupported_at(row, wrapped_input.as_bytes(), at);
 }
 
 #[test]

@@ -13,7 +13,7 @@ use super::namespaces::{SACM_NS, SACM_PREFIX, XMI_NS, XMI_PREFIX};
 use super::{Mode, WriteAttribute, WriteError};
 use crate::diagnostic::Severity;
 use crate::model::{
-    AssertionDeclaration, DeclaredType, Document, ElementKind, LangString, SacmElement,
+    AssertionDeclaration, DeclaredType, Document, ElementId, ElementKind, LangString, SacmElement,
 };
 use crate::validation;
 
@@ -76,7 +76,7 @@ pub(super) fn write(document: &Document, mode: Mode) -> Result<String, WriteErro
         if name.is_some() || planned.element.children().next().is_some() {
             out.push_str(">\n");
             if let Some(name) = name {
-                push_name(&mut out, depth + 1, name);
+                push_name(&mut out, depth + 1, name, planned.element.name_id());
             }
             open.push(planned);
         } else {
@@ -191,11 +191,17 @@ fn is_xml_char(c: char) -> bool {
     )
 }
 
-/// Writes `name` as a `name` element on its own line at `depth`: `lang`, then
-/// `content`, each only if present (ADR 0017).
-fn push_name(out: &mut String, depth: usize, name: &LangString) {
+/// Writes `name` as a `name` element on its own line at `depth`: its `id`,
+/// as `xmi:id`, then `lang`, then `content`, each only if present (ADR 0017,
+/// ADR 0024).
+fn push_name(out: &mut String, depth: usize, name: &LangString, id: Option<&ElementId>) {
     indent(out, depth);
     out.push_str("<name");
+    if let Some(id) = id {
+        push_attribute_name(out, "id");
+        escape_into(out, id.as_str());
+        out.push('"');
+    }
     for (attribute, value) in [("lang", name.lang()), ("content", name.content())] {
         if let Some(value) = value {
             out.push(' ');

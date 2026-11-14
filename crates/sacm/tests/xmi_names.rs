@@ -1112,24 +1112,14 @@ fn sacm23_xmi_012_white_space_comments_and_processing_instructions_in_name_are_a
 }
 
 #[test]
-fn sacm23_xmi_012_a_second_name_is_unsupported_at_the_second_name() {
-    let row = "SACM23-XMI-012";
-    for (first, second) in [
-        ("<name content=\"A\"/>", "<name content=\"B\"/>"),
-        ("<name/>", "<name/>"),
-    ] {
-        let input = root_holding(&format!("  {first}\n  {second}"));
-        assert_unsupported_at(row, "a second name", &input, 3, 3);
-    }
-}
-
-#[test]
 fn sacm23_xmi_012_an_attribute_other_than_lang_and_content_on_name_is_unsupported_at_it() {
     let row = "SACM23-XMI-012";
+    // An `xmi:id` on `name` is read (SACM23-XMI-022), so it is not among
+    // these.
     for attribute in [
         "xml:lang=\"en\"",
-        "xmi:id=\"n1\"",
         "xmi:uuid=\"u1\"",
+        "xmi:label=\"l1\"",
         "foo=\"1\"",
         "sacm:lang=\"en\"",
     ] {

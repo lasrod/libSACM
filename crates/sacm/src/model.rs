@@ -16,8 +16,10 @@
 //! and which abstract classes it specializes.
 //!
 //! [`LangString`], [`MultiLangString`] and [`AssertionDeclaration`] are
-//! values, not elements: they have no id and no kind, and you construct them
-//! directly, unlike elements, which only a [`Document`] holds.
+//! values, not elements: they have no id and no kind of their own (the
+//! `xmi:id` of a `name` is kept with its owner: [`SacmElement::name_id`]),
+//! and you construct them directly, unlike elements, which only a
+//! [`Document`] holds.
 //!
 //! # Examples
 //!
@@ -84,9 +86,9 @@ mod lang_string;
 
 pub use argumentation::{AssertionDeclaration, ParseAssertionDeclarationError};
 pub(crate) use containment::{DeclaredType, admits, role_named};
-pub(crate) use document::Compared;
 #[cfg(not(feature = "test-support"))]
 pub(crate) use document::InsertError;
+pub(crate) use document::{Compared, IdGenerator};
 pub use document::{Document, SacmElement};
 #[cfg(feature = "test-support")]
 pub use document::{InsertError, SetAssertionDeclarationError};

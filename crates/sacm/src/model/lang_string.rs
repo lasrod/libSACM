@@ -23,6 +23,10 @@
 /// `LangString` is a value, not an element: it has no id and no
 /// [`ElementKind`](crate::model::ElementKind), and you construct it directly,
 /// unlike elements, which only a [`Document`](crate::model::Document) holds.
+/// A `name` element may still carry an `xmi:id` (a `LangString` is a class,
+/// XMI 2.5.1 §7.8.3); the document keeps it with the element that owns the
+/// name, as [`SacmElement::name_id`](crate::model::SacmElement::name_id), not
+/// on the value.
 ///
 /// [`Ord`] compares `lang` first, then `content`, with absent before present.
 ///

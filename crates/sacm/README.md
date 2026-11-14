@@ -11,7 +11,9 @@ Read, edit, validate and write assurance cases in the
 
 - `sacm::xmi::read` reads `AssuranceCasePackage` and `ArgumentPackage` roots and the
   packages and Claims in them, with their names and each Claim's `assertionDeclaration`.
-  It refuses what it cannot represent yet rather than drop it.
+  It refuses what it cannot represent yet rather than drop it. An element without an
+  `xmi:id` gets a generated one, such as `claim_1`, which `write` saves; see the Ids
+  section of the `sacm::xmi::read` docs.
 - `sacm::xmi::write` writes a document deterministically, and by default refuses one that
   validation reports an Error for.
 - `sacm::validation::validate` reports each element that has no name, and each element

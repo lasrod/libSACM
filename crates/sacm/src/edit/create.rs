@@ -311,7 +311,7 @@ fn create(
         if !is_ncname(id.as_str()) {
             return Err(EditError::InvalidId { id: id.clone() });
         }
-        if document.contains(id) {
+        if document.is_id_in_use(id.as_str()) {
             return Err(EditError::DuplicateId { id: id.clone() });
         }
         (id.clone(), None)

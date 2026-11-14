@@ -892,17 +892,23 @@ fn sacm23_xmi_002_a_type_value_that_is_not_a_sacm_qname_of_the_root_class_is_uns
 
 #[test]
 fn sacm23_xmi_002_a_prefix_spelled_xmi_or_xsi_but_bound_elsewhere_confers_nothing() {
-    // `xmi:id` in urn:not-xmi is no XMI id: the same refusal as no id at all.
+    // `xmi:id` in urn:not-xmi is no XMI id: an attribute that is not read,
+    // refused at its name. Without it the root has no XMI id, and is read
+    // with a generated one (SACM23-XMI-020), so the attribute is the refusal.
     let not_xmi = format!(
         "<sacm:ArgumentPackage xmlns:sacm=\"{SACM_NS}\" xmlns:xmi=\"urn:not-xmi\" xmi:id=\"a\"/>"
     );
     let no_id =
         format!("<sacm:ArgumentPackage xmlns:sacm=\"{SACM_NS}\" xmlns:xmi=\"urn:not-xmi\"/>");
-    assert_unsupported_at("xmi bound to urn:not-xmi", &not_xmi, loc(1, 1));
-    assert_eq!(
-        refusal(not_xmi.as_bytes()),
-        refusal(no_id.as_bytes()),
-        "{ROW}: an xmi:id in urn:not-xmi is not refused as a root with no XMI id"
+    assert_unsupported_at(
+        "xmi bound to urn:not-xmi",
+        &not_xmi,
+        position_of(&not_xmi, "xmi:id"),
+    );
+    let read_without = read_ok(no_id.as_bytes());
+    assert!(
+        read_without.document().get("a").is_none() && read_without.document().element_count() == 1,
+        "{ROW}: a root with no XMI id is not read with a generated id"
     );
 
     // `xsi:type` in urn:not-xsi is an attribute that is not read, at its name.
@@ -921,12 +927,12 @@ fn sacm23_xmi_002_a_prefix_spelled_xmi_or_xsi_but_bound_elsewhere_confers_nothin
     assert_unsupported_at(
         "an unprefixed id under a default XMI",
         &default_xmi,
-        loc(1, 1),
+        position_of(&default_xmi, "id=\"a\""),
     );
-    assert_eq!(
-        refusal(default_xmi.as_bytes()),
-        refusal(default_xmi_no_id.as_bytes()),
-        "{ROW}: an unprefixed id under a default XMI is not refused as a root with no XMI id"
+    let read_without = read_ok(default_xmi_no_id.as_bytes());
+    assert!(
+        read_without.document().get("a").is_none() && read_without.document().element_count() == 1,
+        "{ROW}: a root with no XMI id under a default XMI is not read with a generated id"
     );
     // The root element itself in the default namespace XMI.
     let root_in_xmi = format!("<ArgumentPackage xmlns=\"{XMI_NS}\" id=\"a\"/>");
@@ -998,13 +1004,15 @@ fn sacm23_xmi_002_namespace_uris_compare_as_exact_strings() {
         );
         assert_unsupported_at(&format!("a wrapped root in {uri:?}"), &wrapped, loc(2, 1));
     }
-    // The XMI and XSI URIs too: a near XMI URI gives no id, or no XMI
-    // wrapper, and a near XSI URI gives an attribute that is not read.
+    // The XMI and XSI URIs too: a near XMI URI gives no XMI id, so its
+    // `xmi:id` is an attribute that is not read, refused at its name (the root
+    // itself would get a generated id, SACM23-XMI-020), or no XMI wrapper;
+    // and a near XSI URI gives an attribute that is not read.
     let near_xmi = "http://www.omg.org/spec/XMI/20131001/";
     let id = format!(
         "<sacm:ArgumentPackage xmlns:sacm=\"{SACM_NS}\" xmlns:xmi=\"{near_xmi}\" xmi:id=\"a\"/>"
     );
-    assert_unsupported_at("an id in a near XMI URI", &id, loc(1, 1));
+    assert_unsupported_at("an id in a near XMI URI", &id, position_of(&id, "xmi:id"));
     let wrapper = format!(
         "<xmi:XMI xmlns:xmi=\"{near_xmi}\" xmlns:sacm=\"{SACM_NS}\">\
          <sacm:ArgumentPackage xmlns:x=\"{XMI_NS}\" x:id=\"a\"/></xmi:XMI>"
@@ -1144,10 +1152,16 @@ const REFUSALS: [(&str, Template, (u32, u32)); 6] = [
         },
         (1, 1),
     ),
+    // A root with no id is read (SACM23-XMI-020); an id in no namespace is
+    // an attribute that is not read.
     (
-        "a root with no id",
-        |s, x| format!("<{s}:ArgumentPackage xmlns:{s}=\"{SACM_NS}\" xmlns:{x}=\"{XMI_NS}\"/>"),
-        (1, 1),
+        "a root with an id in no namespace",
+        |s, x| {
+            format!(
+                "<{s}:ArgumentPackage xmlns:{s}=\"{SACM_NS}\" xmlns:{x}=\"{XMI_NS}\"\n  id=\"a\"/>"
+            )
+        },
+        (2, 3),
     ),
     (
         "a type naming another class",

@@ -3,11 +3,16 @@
 use std::borrow::Borrow;
 use std::fmt;
 
-/// The identifier of an element: its `xmi:id`.
+/// The identifier of an element, its `xmi:id` or an id generated for it,
+/// and also the type of a name's `xmi:id`
+/// ([`SacmElement::name_id`](crate::model::SacmElement::name_id)).
 ///
 /// An `ElementId` keeps its value exactly as given. It is not trimmed, case
-/// folded or otherwise normalised, so an id read from a file is written back
-/// byte for byte. Equality, ordering and hashing are those of the
+/// folded or otherwise normalised. An id read from a file is its `xsd:ID`
+/// value: [`xmi::read`](crate::xmi::read) trims XML white space around an
+/// `NCName` and otherwise keeps the id as written, and
+/// [`xmi::write`](crate::xmi::write) writes it back as its `xsd:ID` value.
+/// Equality, ordering and hashing are those of the
 /// string, and an `ElementId` borrows as a [`str`], so maps and sets keyed by
 /// `ElementId` can be searched with a `&str`.
 ///

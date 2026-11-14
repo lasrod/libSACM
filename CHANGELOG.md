@@ -104,7 +104,8 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
 - Names in XMI (ADR 0017 amendment 1). `xmi::write` writes an element's name as its first
   child, `<name lang="…" content="…" />`, keeping absent and empty fields distinct.
   `xmi::read` reads one `name` child of a package root, with its values exactly as
-  XML 1.0 gives them (never trimmed); anything else on or in `name` stays `Unsupported`.
+  XML 1.0 gives them (never trimmed); anything else on or in `name` stays `Unsupported`,
+  except what later entries read.
   `WriteError::UnrepresentableCharacter` names the attribute that holds the character
   (`WriteAttribute`) [SACM23-XMI-011, SACM23-XMI-012, LIB-API-010].
 - `sacm::validation::validate(&Document) -> Vec<Diagnostic>` (ADR 0018): reports, sorted
@@ -134,8 +135,8 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
   (an element's `<`, an attribute's name, text's first character that is not literal
   white space); only the parser's capacity limits have none [SACM23-XMI-010].
 - `xmi::read` and `xmi::write` read and write a Claim's `assertionDeclaration`. `read`
-  takes the six literals exactly and refuses any other value as `Unsupported`, with no
-  code yet (SACM-ENUM-001 later), never as `asserted`. `write` writes every non-default
+  takes the six literals exactly and refuses any other value as
+  `ReadError::InvalidLiteral` (SACM-ENUM-001), never as `asserted`. `write` writes every non-default
   declaration after `xmi:id` and omits `asserted`, so `WriteError::Unsupported` is
   removed [SACM23-XMI-017, LIB-API-010].
 - `compare::semantic_compare` lists every `Difference` in SACM content between two
@@ -168,6 +169,19 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
 - `xmi::read` reads the element form of a name's `lang` and `content` and a Claim's
   `assertionDeclaration`; a value given more than once, even with equal values, is
   `ReadError::RepeatedValue` (SACM-MULT-001) [SACM23-XMI-014].
+- `xmi::read` reads an element without an `xmi:id`, a root or a child, with a generated
+  id in the edit scheme (`claim_1`) that no `xmi:id` in the file holds, reported as
+  SACM-XMI-004 Info (`Code::XMI_MISSING_ID`); `xmi::write` writes it, and later edits
+  generate above it [SACM23-XMI-020].
+- `xmi::read` reads an `xmi:id` with XML white space around an NCName trimmed, reported as
+  SACM-ID-004 Info (`Code::ID_TRIMMED`); `xmi::write` writes it trimmed [SACM23-XMI-025].
+- `xmi::read` keeps the `xmi:id` of a `name` as `SacmElement::name_id()`, in the
+  document's id space; `xmi::write` writes it back first on `name`, and
+  `semantic_compare` reports `Difference::NameId`; `validate` reports one that is not an
+  NCName as SACM-ID-002 on the owner [SACM23-XMI-022].
+- `ReadError::InvalidLiteral` (SACM-ENUM-001, `Code::ENUM_INVALID_LITERAL`): the refusal,
+  in both modes, of an `assertionDeclaration` that is not one of the six literals
+  [SACM23-VAL-006].
 
 ### Changed
 
@@ -177,9 +191,15 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
   document with any Error as `WriteError::Invalid`; write it as held with
   `WriteOptions::default().with_mode(Mode::Tolerant)` [LIB-COMPAT-007].
 - `xmi::read` refuses a duplicate `xmi:id` as `ReadError::DuplicateId` and an empty one
-  as `ReadError::InvalidId`, coded refusals instead of `Unsupported`; an `xmi:id` with XML
-  white space around an NCName is `Unsupported` until SACM23-XMI-025
+  as `ReadError::InvalidId`, coded refusals instead of `Unsupported`
   [SACM23-VAL-001, SACM23-VAL-020].
+- `xmi::read` refuses an `assertionDeclaration` that is not a literal as
+  `ReadError::InvalidLiteral` (SACM-ENUM-001) instead of `Unsupported` [SACM23-VAL-006].
+- `xmi::read` refuses a second `name` as `ReadError::RepeatedValue` (SACM-MULT-001) with
+  property `name`, instead of `Unsupported` [SACM23-XMI-021].
+- An `id` attribute that is not `xmi:id` (`id`, `o:id`) is refused as `Unsupported` at
+  the attribute's name, now that an element without an `xmi:id` is read
+  [SACM23-XMI-020].
 - `xmi::read` refuses a name's `lang` or `content`, or a Claim's `assertionDeclaration`,
   given both as an attribute and as an element as `ReadError::RepeatedValue`
   (SACM-MULT-001) instead of `Unsupported` [SACM23-XMI-014].

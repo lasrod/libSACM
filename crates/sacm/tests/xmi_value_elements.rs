@@ -30,7 +30,9 @@
 //! Not checked here: `xsi:nil` read as absent (SACM23-XMI-026; here it is an
 //! attribute, so `Unsupported`), the element forms of `gid`, `isCitation` and
 //! `isAbstract` (SACM23-BASE-006/007/008), the legacy `<content lang>` name
-//! (LIB-COMPAT-008), and a bad literal as SACM-ENUM-001 (SACM23-VAL-006).
+//! (LIB-COMPAT-008), and the rest of a bad literal's `InvalidLiteral`
+//! (SACM23-VAL-006, `xmi_literals.rs`): here it is checked only as far as
+//! its kind, value, code and location.
 
 use std::error::Error;
 use std::fmt::{Debug, Display};
@@ -257,6 +259,48 @@ fn assert_unsupported_at_mark(what: &str, template: &str) -> ReadError {
         error.code(),
         None,
         "{ROW}: {what}: an Unsupported refusal has no catalog code"
+    );
+    assert_eq!(
+        error.location(),
+        Some(marks[0]),
+        "{ROW}: {what}: refused at the wrong place: {error}"
+    );
+    error
+}
+
+/// Reads `template` without its one mark, in both modes, and returns the
+/// refusal, failing the test unless it is `InvalidLiteral` (SACM-ENUM-001,
+/// SACM23-VAL-006) for the Claim `c1`'s `assertionDeclaration`, holding
+/// `value`, at the mark.
+fn assert_invalid_literal_at_mark(what: &str, template: &str, value: &str) -> ReadError {
+    let (input, marks) = marked(template);
+    assert_eq!(
+        marks.len(),
+        1,
+        "{ROW}: setup: {what} has {} marks, not one",
+        marks.len()
+    );
+    let error = refused(what, &input);
+    match &error {
+        ReadError::InvalidLiteral {
+            element,
+            property,
+            value: found,
+            ..
+        } => {
+            assert_eq!(element.as_str(), "c1", "{ROW}: {what}: the element");
+            assert_eq!(
+                property, "assertionDeclaration",
+                "{ROW}: {what}: the property"
+            );
+            assert_eq!(found, value, "{ROW}: {what}: the value as read");
+        }
+        other => panic!("{ROW}: {what}: expected InvalidLiteral, got {other:?}"),
+    }
+    assert_eq!(
+        error.code(),
+        Some(Code::ENUM_INVALID_LITERAL),
+        "{ROW}: {what}: the refusal is not SACM-ENUM-001"
     );
     assert_eq!(
         error.location(),
@@ -842,7 +886,7 @@ fn sacm23_xmi_014_a_declaration_element_whose_content_is_a_literal_however_writt
 }
 
 #[test]
-fn sacm23_xmi_014_a_declaration_element_holding_no_literal_is_unsupported_at_its_start_tag_quoting_it()
+fn sacm23_xmi_014_a_declaration_element_holding_no_literal_is_invalid_literal_at_its_start_tag_holding_it()
  {
     let mut failures = Vec::new();
     for (element, as_read) in [
@@ -873,17 +917,12 @@ fn sacm23_xmi_014_a_declaration_element_holding_no_literal_is_unsupported_at_its
             "justification",
         ),
     ] {
-        let error =
-            assert_unsupported_at_mark(element, &declared_claim(&format!("\r\n  {MARK}{element}")));
-        let ReadError::Unsupported { reason, .. } = &error else {
-            unreachable!("checked by assert_unsupported_at_mark");
-        };
+        let error = assert_invalid_literal_at_mark(
+            element,
+            &declared_claim(&format!("\r\n  {MARK}{element}")),
+            as_read,
+        );
         let quoted = format!("{as_read:?}");
-        if !reason.contains(&quoted) {
-            failures.push(format!(
-                "{element:?}: the reason {reason:?} does not quote the value as read, {quoted}"
-            ));
-        }
         let shown = error.to_string();
         if !shown.contains(&quoted) || shown.contains('\n') {
             failures.push(format!(
@@ -1215,15 +1254,18 @@ fn sacm23_xmi_014_a_repeated_value_element_is_checked_whole_before_it_counts_as_
     // A value element is checked whole (namespace, attributes, children,
     // value) when it is met, and only then against earlier occurrences: each
     // of these repeats a value, but the repeat is itself not a value, so the
-    // read is `Unsupported` at that construct, not `RepeatedValue`.
+    // read is refused at that construct, not as `RepeatedValue`: a bad
+    // literal as `InvalidLiteral` (SACM23-VAL-006), the rest as
+    // `Unsupported`.
     let name = "<name lang=\"en\" content=\"C\"/>";
-    let cases = [
+    let literals = [
         (
             "assertionDeclaration=\"defeated\" and an empty declaration element",
             claim(
                 " assertionDeclaration=\"defeated\"",
                 &format!("{name}{MARK}<assertionDeclaration/>"),
             ),
+            "",
         ),
         (
             "a declaration element, then one holding no literal",
@@ -1231,7 +1273,17 @@ fn sacm23_xmi_014_a_repeated_value_element_is_checked_whole_before_it_counts_as_
                 "<assertionDeclaration>assumed</assertionDeclaration>\
                  {MARK}<assertionDeclaration>bogus</assertionDeclaration>"
             )),
+            "bogus",
         ),
+    ];
+    for (what, template, value) in literals {
+        let error = assert_invalid_literal_at_mark(what, &template, value);
+        assert!(
+            !matches!(error, ReadError::RepeatedValue { .. }),
+            "{ROW}: {what}: the repeat was counted before the element was checked: {error:?}"
+        );
+    }
+    let cases = [
         (
             "content=\"A\" and a content element with an attribute",
             in_ap(&format!(

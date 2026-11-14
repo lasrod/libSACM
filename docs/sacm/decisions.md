@@ -25,7 +25,8 @@ implementation. Their original discussion is linked where it exists.
 | D-PRESERVE | Conforming SACM content is never silently dropped. Content the model cannot type yet is preserved in tolerant mode with a diagnostic; strict save refuses a document containing it rather than discard it. |
 | D-STRICT | Two modes. **Strict** is SACM 2.3 conformance behaviour and the default for saving. Strict import accepts (reads without loss, ADR 0022) every document that conforms to the SACM XML Schema in a recognised SACM namespace (D-NS-PIN, LIB-COMPAT-004), including the element forms the schema allows (SACM23-XMI-014 and SACM23-XMI-015); a value given more than once for a single-valued property is refused, though the generated schema allows the repeat (ADR 0021 amendment 1). Strict save writes only schema-conforming, valid models: it refuses a document that validation reports an Error for (ADR 0022, LIB-COMPAT-007). **Tolerant** accepts and reports third-party and legacy variations and is the default for loading; tolerant save writes the document as it is held. Tolerant acceptance is never presented as conformance. |
 | D-RT | Semantic round trip (load → save → load yields an equal model) is guaranteed. Textual round trip is not. Output is deterministic: the same model always saves to the same bytes. |
-| D-ID | Caller-provided and library-generated ids are both supported. Ids read from a file are preserved exactly. Generated ids are stable once created and deterministic for a given sequence of operations. |
+| D-ID | Caller-provided and library-generated ids are both supported. Ids read from a file are preserved exactly, as `xsd:ID` values: XML white space around an NCName is trimmed, with an Info (ADR 0024). Generated ids are stable once created and deterministic for a given sequence of operations. |
+| D-NO-ID | An element read with no `xmi:id` gets a generated id in the edit scheme, unused in the input and deterministic for it. It is an ordinary id: unmarked, compared like any id, and written on save. It is reported as Info SACM-XMI-004 (ADR 0024; the maintainer, 2026-11-14). |
 | D-NS-PIN | The strict export namespace is pinned to `http://www.omg.org/spec/SACM/20220301`. This is a project choice: the standard defines no instance namespace, so no file is reported non-conformant solely for using another one (see `metamodel-inventory.md`). |
 
 ## Editing
@@ -72,7 +73,6 @@ maintainer when a slice needs them.
 
 | ID | Question | Needed by |
 |---|---|---|
-| Q-NO-ID | How is an element without an `xmi:id` identified: is a generated id marked, is it written back, and how does comparison treat it? Needs an ADR ([ADR 0010](../adr/0010-document-model.md) amendment 1). | SACM23-XMI-020 |
 | Q-UNDO | Should undo be built on inverse operations or snapshots? | LIB-EDIT-011 |
 | Q-DATE | How should `date`-typed attributes be represented: validated `xs:date`/`xs:dateTime` lexical forms preserved as text, or parsed values? | SACM23-ART-013 |
 | Q-INTEROP | Which third-party corpus files may be committed (licence review)? assurance-forge carries EPL-2.0 and MIT samples under `libs/sacm/tests/data/interop-thirdparty/`. | LIB-COMPAT-005 |
