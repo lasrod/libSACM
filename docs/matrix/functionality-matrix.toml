@@ -2827,7 +2827,8 @@ title = "metaClaim"
 requirement = "Every element of an Assertion kind (Claim and the five asserted relationship kinds) holds `metaClaim`, a multi-valued reference end typed Claim (§11.10 `[0..*]`), as ids in document order with repeats (`SacmElement::meta_claims() -> &[ElementId]`, empty by default; ADR 0026, ADR 0027). It is the first multi-valued end (`ReferenceEnd::is_many()`): the attribute keeps every token in order, and each `<metaClaim>` element appends one id; an attribute and elements for the end is `RepeatedValue`. It is written as one attribute, ids separated by one space, after `assertionDeclaration`, and compared in order (`Difference::MetaClaims`). A dangling id is SACM-REF-001 with clause `11.10`; a non-Claim target is held (SACM23-VAL-004). On a non-Assertion it is `Unsupported`. Setting it is LIB-EDIT-009."
 source = "formal/23-05-08 §11.10 (p. 39) \"metaClaim:Claim[0..*] - references Claims concerning (i.e., about) the Assertion (e.g., regarding the confidence in the Assertion)\"; ptc/22-03-13 Argumentation::Assertion.metaClaim (0..*, no isOrdered/isUnique); XMI 2.5.1 rule 2b (p. 63) \"for multi-valued properties, there is one XML element for each value\", rule 2h (p. 63), rule 2j (p. 64), §7.8.5 (xsd:IDREFS); D-ORDER; D-STRICT; ADR 0026; ADR 0027; assurance-forge argumentation.h:141-152"
 kind = "model"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0043-m2-asserted-relationships.md"
 depends_on = ["SACM23-ARG-002", "SACM23-XMI-005", "SACM23-XMI-015", "LIB-RT-001", "SACM23-VAL-003"]
 notes = "Slice 0042: as the first multi-valued end, add `ReferenceEnd::is_many()` back (reader appending, `set_references`), and kill the two mutants excluded in docs/quality/mutants-triage.md for it (the id separator in `push_flags_and_references`, the dedupe in `dangling_references`), removing their exclusions."
 acceptance = [
@@ -2870,7 +2871,8 @@ title = "ArgumentReasoning"
 requirement = "ArgumentReasoning (§11.12, superclass ArgumentAsset) is read under `argumentElement` of an ArgumentPackage, written and round-tripped (ADR 0027). It holds `structure`, a single-valued reference to an ArgumentPackage (`SacmElement::structure() -> Option<&ElementId>`; ADR 0026 rules); it has no `assertionDeclaration`, `metaClaim` or `isCounter`. It is created by `CreateArgumentReasoning::new(parent, name)` (with `with_structure`) under the LIB-EDIT-001 contract; a `structure` naming no element is `EditError::ReferenceNotFound`. Setting `structure` later is LIB-EDIT-009."
 source = "formal/23-05-08 §11.12 (p. 40) \"Superclass ArgumentAsset\"; \"structure:ArgumentPackage[0..1] - optional reference to another the ArgumentPackage that provides the detailed structure of the argument being described by the ArgumentReasoning.\"; ptc/22-03-13 Argumentation::ArgumentReasoning.structure (0..1); ADR 0019; ADR 0026; ADR 0027"
 kind = "model"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0043-m2-asserted-relationships.md"
 depends_on = ["SACM23-ARG-001", "SACM23-XMI-005", "SACM23-XMI-016", "LIB-EDIT-001", "SACM23-XMI-015"]
 acceptance = [
   "It reads in both modes with `xmi:type` and `xsi:type`, with name, gid, flags, `citedElement` and utility children.",
@@ -2919,7 +2921,8 @@ title = "AssertedRelationship common features"
 requirement = "Every AssertedRelationship kind holds `source` (multi-valued, ArgumentAsset `[1..*]`, `sources() -> &[ElementId]`), `target` (single-valued, ArgumentAsset `[1]`, `target() -> Option<&ElementId>`), `reasoning` (single-valued, ArgumentReasoning `[0..1]`, `reasoning()`), `isCounter` (Boolean `[1] = false`, `is_counter() -> bool`, read and written by ADR 0026's Boolean rules and only on asserted relationships), plus `assertionDeclaration` (SACM23-XMI-017's rules) and `metaClaim` (ADR 0027). A relationship read with no source or no target is kept as read; nothing is invented (its finding is SACM23-VAL-005). Write order: `... abstractForm assertionDeclaration metaClaim isCounter reasoning source target`. Comparison: `Difference::{IsCounter, Reasoning, Sources, Target}`."
 source = "formal/23-05-08 §11.13 (p. 40) \"isCounter:Boolean[1] = false - a flag indicating whether the AssertedRelationship counters its declared purposes\", \"source:ArgumentAsset[1..*] - reference to the ArgumentAsset(s) that are the source (starting point) of the relationship.\", \"target:ArgumentAsset[1] - reference to the ArgumentAsset(s) that are the target (ending point) of the relationship.\", \"reasoning:ArgumentReasoning[0..1] - an optional reference to the a description of the reasoning underlying the AssertedRelationship.\"; §11.10 (p. 39); ptc/22-03-13 Argumentation::AssertedRelationship (isCounter defaultValue false; source [1..*]; target [1..1]); XMI 2.5.1 rules 2b, 2h, 2j, §9.4.1, Annex B.5.2; D-SEV; ADR 0026; ADR 0027; specification defect D14"
 kind = "model"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0043-m2-asserted-relationships.md"
 depends_on = ["SACM23-ARG-002", "SACM23-ARG-005", "SACM23-XMI-005", "SACM23-XMI-017", "SACM23-ARG-004", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-006"]
 acceptance = [
   "Seam defaults: no sources, no target, no reasoning, `is_counter()` false, `asserted`, no meta-claims.",
@@ -2961,7 +2964,8 @@ title = "AssertedInference"
 requirement = "AssertedInference (§11.14, superclass AssertedRelationship, no features of its own) is read under `argumentElement` of an ArgumentPackage with SACM23-ARG-007's features, written and round-tripped (ADR 0027). It is created by `CreateAssertedInference::new(parent, name, sources, target)` (with `with_id`, `with_reasoning`, `with_is_counter`) under the LIB-EDIT-001 contract, taking premises (sources) and a conclusion (target); after ADR 0019's checks, no source is `EditError::TooFewReferences` (SACM-MULT-001) and a source, target or reasoning naming no element is `EditError::ReferenceNotFound` (SACM-CMD-001); repeated sources are not refused (a content finding, SACM23-VAL-022). Kind-specific end typing is none: the clause has no Constraints section (SACM23-VAL-016). Target types are checked by SACM23-VAL-004."
 source = "formal/23-05-08 §11.14 (pp. 40-41) \"Superclass AssertedRelationship\"; ptc/22-03-13 Argumentation::AssertedInference; ADR 0019; ADR 0026; ADR 0027; D-VAL-LAYER; assurance-forge operations.h:98-107, commands.cpp:500-545, validate.cpp:129-133 (no kind-specific typing)"
 kind = "model"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0043-m2-asserted-relationships.md"
 depends_on = ["SACM23-ARG-007", "SACM23-XMI-016", "LIB-EDIT-001", "LIB-EDIT-002", "SACM23-VAL-005"]
 acceptance = [
   "It reads with its ends in both modes, with `xmi:type` and `xsi:type`; an untyped `<argumentElement>` stays `Unsupported`; the kind in an AssuranceCasePackage is `Unsupported`.",
@@ -3008,7 +3012,8 @@ title = "AssertedContext"
 requirement = "AssertedContext (§11.16, superclass AssertedRelationship, no features of its own) is read under `argumentElement` of an ArgumentPackage with SACM23-ARG-007's features, written and round-tripped (ADR 0027). It is created by `CreateAssertedContext::new(parent, name, sources, target)` (with `with_id`, `with_reasoning`, `with_is_counter`) under the LIB-EDIT-001 contract, taking context sources and a target; after ADR 0019's checks, no source is `EditError::TooFewReferences` (SACM-MULT-001) and a source, target or reasoning naming no element is `EditError::ReferenceNotFound` (SACM-CMD-001); repeated sources are not refused (a content finding, SACM23-VAL-022). Kind-specific end typing is none: the clause has no Constraints section (SACM23-VAL-016). Target types are checked by SACM23-VAL-004."
 source = "formal/23-05-08 §11.16 (p. 41) \"Superclass AssertedRelationship\"; ptc/22-03-13 Argumentation::AssertedContext; ADR 0019; ADR 0026; ADR 0027; D-VAL-LAYER; assurance-forge operations.h:98-107, commands.cpp:500-545, validate.cpp:129-133 (no kind-specific typing)"
 kind = "model"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0043-m2-asserted-relationships.md"
 depends_on = ["SACM23-ARG-007", "SACM23-XMI-016", "LIB-EDIT-001", "LIB-EDIT-002", "SACM23-VAL-005"]
 acceptance = [
   "It reads with its ends in both modes, with `xmi:type` and `xsi:type`; an untyped `<argumentElement>` stays `Unsupported`; the kind in an AssuranceCasePackage is `Unsupported`.",
@@ -3403,7 +3408,8 @@ title = "Relationship multiplicities"
 requirement = "`validation::validate` reports each asserted relationship with no `source`, and each with no `target`, as one SACM-MULT-001 Error per missing end (requirement SACM23-VAL-005, clause `11.13`, affected `[relationship]`, no location), because §11.13 and ptc/22-03-13 agree on `source [1..*]` and `target [1]` (D-SEV). A strict save refuses such a relationship; a tolerant save writes it (ADR 0022, ADR 0027). Two targets cannot be held (`RepeatedValue` on read, ADR 0026). Create operations cannot make one (`TooFewReferences`, the required target argument)."
 source = "formal/23-05-08 §11.13 (p. 40) `source:ArgumentAsset[1..*]`, `target:ArgumentAsset[1]`; ptc/22-03-13 Argumentation::AssertedRelationship source [1..*], target [1..1]; XMI 2.5.1 §7.8.2 (schemas ignore multiplicities); D-SEV; D-VAL-LAYER; ADR 0027"
 kind = "validation"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0043-m2-asserted-relationships.md"
 depends_on = ["SACM23-ARG-007", "SACM23-VAL-018", "LIB-COMPAT-007"]
 acceptance = [
   "An AssertedInference with no `source` gives one SACM-MULT-001 Error, requirement SACM23-VAL-005, clause `11.13`, affected `[relationship]`, no location, the message naming `source`; with no `target`, one naming `target`; with neither, two.",
