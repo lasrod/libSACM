@@ -79,7 +79,8 @@ const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/x
 /// The golden files, under [`FIXTURES`].
 const GOLDEN_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/xmi/golden");
 /// The golden files the reader reads in this release.
-const READABLE_GOLDEN: [&str; 5] = [
+const READABLE_GOLDEN: [&str; 6] = [
+    "artifact-relationships.golden.sacm.xmi",
     "asserted-relationships.golden.sacm.xmi",
     "named.golden.sacm.xmi",
     "needs-support-claim.golden.sacm.xmi",

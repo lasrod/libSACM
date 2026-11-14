@@ -8,8 +8,10 @@
 //! kind, parent, `gid`, its `isCitation` and `isAbstract` flags and the ids
 //! its `citedElement` and `abstractForm` hold (SACM 2.3 §8.2), the
 //! `isCounter` flag and the ids of the `metaClaim`, `reasoning`, `source`,
-//! `target` and `structure` ends of the argumentation kinds (§11.10,
-//! §11.12, §11.13; the multi-valued `metaClaim` and `source` in order, with
+//! `target`, `structure`, `referencedArtifactElement` and group
+//! `argumentElement` ends of the argumentation kinds (§11.2, §11.9, §11.10,
+//! §11.12, §11.13; the multi-valued `metaClaim`, `source`,
+//! `referencedArtifactElement` and `argumentElement` in order, with
 //! repeats), its name, the
 //! `xmi:id` of its name
 //! ([`SacmElement::name_id`](crate::model::SacmElement::name_id)), its
@@ -24,7 +26,7 @@
 //! Order is compared because equal documents must write equal bytes, though
 //! SACM 2.3 orders no composition and no reference end. To compare without
 //! order, drop the two order variants, and compare the multi-valued ends
-//! `metaClaim` and `source` sorted:
+//! sorted:
 //!
 //! ```
 //! use sacm::compare::{Difference, semantic_compare};
@@ -43,7 +45,10 @@
 //! differences.retain(|d| match d {
 //!     Difference::RootOrder { .. } | Difference::ChildOrder { .. } => false,
 //!     // The multi-valued ends are compared in order too: compare them sorted.
-//!     Difference::MetaClaims { left, right, .. } | Difference::Sources { left, right, .. } => {
+//!     Difference::MetaClaims { left, right, .. }
+//!     | Difference::Sources { left, right, .. }
+//!     | Difference::ReferencedArtifactElements { left, right, .. }
+//!     | Difference::GroupMembers { left, right, .. } => {
 //!         let (mut left, mut right) = (left.clone(), right.clone());
 //!         left.sort();
 //!         right.sort();
@@ -316,6 +321,33 @@ pub enum Difference {
         /// The structure's id in the right document, or `None`.
         right: Option<ElementId>,
     },
+    /// The `ArtifactReference`'s `referencedArtifactElement` ids (SACM 2.3
+    /// §11.9,
+    /// [`SacmElement::referenced_artifact_elements`](crate::model::SacmElement::referenced_artifact_elements))
+    /// differ on each side. Compared in order and with repeats, as
+    /// [`MetaClaims`](Self::MetaClaims) are.
+    ReferencedArtifactElements {
+        /// The element's id.
+        id: ElementId,
+        /// The referenced ids in the left document, in order.
+        left: Vec<ElementId>,
+        /// The referenced ids in the right document, in order.
+        right: Vec<ElementId>,
+    },
+    /// The `ArgumentGroup`'s members, its `argumentElement` ids (SACM 2.3
+    /// §11.2,
+    /// [`SacmElement::group_members`](crate::model::SacmElement::group_members)),
+    /// differ on each side. Compared in order and with repeats, as
+    /// [`MetaClaims`](Self::MetaClaims) are.
+    #[doc(alias = "argumentElement")]
+    GroupMembers {
+        /// The group's id.
+        id: ElementId,
+        /// The member ids in the left document, in order.
+        left: Vec<ElementId>,
+        /// The member ids in the right document, in order.
+        right: Vec<ElementId>,
+    },
     /// The element has a different `name` (SACM 2.3 §8.6) on each side;
     /// `None` is a missing name.
     ///
@@ -487,6 +519,8 @@ impl Difference {
             | Self::Sources { id, .. }
             | Self::Target { id, .. }
             | Self::Structure { id, .. }
+            | Self::ReferencedArtifactElements { id, .. }
+            | Self::GroupMembers { id, .. }
             | Self::Name { id, .. }
             | Self::NameId { id, .. }
             | Self::Content { id, .. }
@@ -531,6 +565,10 @@ impl Difference {
             Self::Sources { .. } => ReferenceEnd::Source.name(),
             Self::Target { .. } => ReferenceEnd::Target.name(),
             Self::Structure { .. } => ReferenceEnd::Structure.name(),
+            Self::ReferencedArtifactElements { .. } => {
+                ReferenceEnd::ReferencedArtifactElement.name()
+            }
+            Self::GroupMembers { .. } => ReferenceEnd::GroupMember.name(),
             _ => ReferenceEnd::CitedElement.name(),
         }
     }
@@ -599,7 +637,10 @@ impl fmt::Display for Difference {
                     Target(right.as_ref(), end)
                 )
             }
-            Self::MetaClaims { id, left, right } | Self::Sources { id, left, right } => write!(
+            Self::MetaClaims { id, left, right }
+            | Self::Sources { id, left, right }
+            | Self::ReferencedArtifactElements { id, left, right }
+            | Self::GroupMembers { id, left, right } => write!(
                 f,
                 "element {:?} differs in {}: {} on the left, {} on the right",
                 id.as_str(),
@@ -820,7 +861,8 @@ impl fmt::Display for Declaration {
 /// Elements are matched by id across the whole document. For an element both
 /// documents hold, its kind, parent, `gid`, `isCitation`, `isAbstract`,
 /// `isCounter`, `citedElement`, `abstractForm`, `metaClaim`, `reasoning`,
-/// `source`, `target`, `structure`, name, its name's `xmi:id`, its
+/// `source`, `target`, `structure`, `referencedArtifactElement`, a group's
+/// `argumentElement`, name, its name's `xmi:id`, its
 /// `content` and `key` with their ids, `assertionDeclaration` and the
 /// relative order of its children are compared, even when its kind differs.
 /// The relative order of the roots is compared too. The per-kind counters
@@ -829,7 +871,7 @@ impl fmt::Display for Declaration {
 /// Order is compared because equal documents must write equal bytes, though
 /// SACM 2.3 orders no composition and no reference end. To compare without
 /// order, drop the two order variants, and compare the multi-valued ends
-/// `metaClaim` and `source` sorted (the [module example](crate::compare)
+/// sorted (the [module example](crate::compare)
 /// shows two documents that differ only in order):
 ///
 /// ```
@@ -838,7 +880,10 @@ impl fmt::Display for Declaration {
 /// let mut differences = semantic_compare(&left, &right);
 /// differences.retain(|d| match d {
 ///     Difference::RootOrder { .. } | Difference::ChildOrder { .. } => false,
-///     Difference::MetaClaims { left, right, .. } | Difference::Sources { left, right, .. } => {
+///     Difference::MetaClaims { left, right, .. }
+///     | Difference::Sources { left, right, .. }
+///     | Difference::ReferencedArtifactElements { left, right, .. }
+///     | Difference::GroupMembers { left, right, .. } => {
 ///         let (mut left, mut right) = (left.clone(), right.clone());
 ///         left.sort();
 ///         right.sort();
@@ -862,6 +907,8 @@ impl fmt::Display for Declaration {
 ///    [`MetaClaims`](Difference::MetaClaims),
 ///    [`Reasoning`](Difference::Reasoning), [`Sources`](Difference::Sources),
 ///    [`Target`](Difference::Target), [`Structure`](Difference::Structure),
+///    [`ReferencedArtifactElements`](Difference::ReferencedArtifactElements),
+///    [`GroupMembers`](Difference::GroupMembers),
 ///    [`Name`](Difference::Name),
 ///    [`NameId`](Difference::NameId), [`Content`](Difference::Content),
 ///    [`ContentId`](Difference::ContentId),
@@ -1068,6 +1115,16 @@ fn reference_difference(
         },
         ReferenceEnd::Target => Difference::Target { id, left, right },
         ReferenceEnd::Structure => Difference::Structure { id, left, right },
+        ReferenceEnd::ReferencedArtifactElement => Difference::ReferencedArtifactElements {
+            id,
+            left: all_left.to_vec(),
+            right: all_right.to_vec(),
+        },
+        ReferenceEnd::GroupMember => Difference::GroupMembers {
+            id,
+            left: all_left.to_vec(),
+            right: all_right.to_vec(),
+        },
     }
 }
 

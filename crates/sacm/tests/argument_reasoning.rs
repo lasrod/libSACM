@@ -241,6 +241,25 @@ fn dangling(doc: &Document) -> Vec<Diagnostic> {
         .collect()
 }
 
+/// The SACM-REF-002 findings of `validate` on `doc`: each one's requirement
+/// and affected ids.
+fn wrong_type(doc: &Document) -> Vec<(String, Vec<String>)> {
+    validation::validate(doc)
+        .into_iter()
+        .filter(|found| found.code() == Code::REF_WRONG_TYPE)
+        .map(|found| {
+            (
+                found.requirement_id().to_owned(),
+                found
+                    .affected()
+                    .iter()
+                    .map(|id| id.as_str().to_owned())
+                    .collect(),
+            )
+        })
+        .collect()
+}
+
 /// Asserts that `error` is `Unsupported`, with no code, at `at`.
 fn assert_unsupported_at(what: &str, error: &ReadError, at: SourceLocation) {
     assert!(
@@ -607,10 +626,19 @@ fn sacm23_arg_005_structure_naming_its_package_a_later_package_or_another_root_r
             Some((*target).to_owned()),
             "{ROW}: {what}: not read"
         );
-        // The case root is an AssuranceCasePackage: its type is
-        // SACM23-VAL-004's, so only SACM-REF-001 is asserted absent for it.
+        // The case root is an AssuranceCasePackage, not an ArgumentPackage:
+        // it resolves, so it is not dangling, and SACM23-VAL-004 reports its
+        // type once as SACM-REF-002 (ADR 0028).
         if *target == "case" {
             assert_eq!(dangling(&doc), [], "{ROW}: {what}: reported as dangling");
+            assert_eq!(
+                wrong_type(&doc),
+                [(
+                    "SACM23-VAL-004".to_owned(),
+                    vec!["r1".to_owned(), "case".to_owned()]
+                )],
+                "{ROW}: {what}: not one SACM-REF-002 of SACM23-VAL-004 on [r1, case]"
+            );
         } else {
             assert_eq!(
                 validation::validate(&doc),
@@ -631,6 +659,15 @@ fn sacm23_arg_005_structure_naming_a_claim_is_held_and_a_dangling_one_is_ref_001
         (structure(&doc, "r1"), dangling(&doc)),
         (Some("c1".to_owned()), Vec::new()),
         "{ROW}: {what}: not held, or reported as dangling"
+    );
+    // A Claim is no ArgumentPackage: SACM23-VAL-004 reports it once (ADR 0028).
+    assert_eq!(
+        wrong_type(&doc),
+        [(
+            "SACM23-VAL-004".to_owned(),
+            vec!["r1".to_owned(), "c1".to_owned()]
+        )],
+        "{ROW}: {what}: not one SACM-REF-002 of SACM23-VAL-004 on [r1, c1]"
     );
     let text = round_trip(what, &doc, Mode::Tolerant);
     assert!(

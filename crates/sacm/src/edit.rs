@@ -17,6 +17,11 @@
 //! | [`CreateArgumentReasoning`] | an `ArgumentReasoning` (§11.12), with an optional `structure` | no | [`new`](CreateArgumentReasoning::new) |
 //! | [`CreateAssertedInference`] | an `AssertedInference` (§11.14), with its sources and target, and an optional `reasoning` and `isCounter` | no | [`new`](CreateAssertedInference::new) |
 //! | [`CreateAssertedContext`] | an `AssertedContext` (§11.16), with its sources and target, and an optional `reasoning` and `isCounter` | no | [`new`](CreateAssertedContext::new) |
+//! | [`CreateArtifactReference`] | an `ArtifactReference` (§11.9), with its optional `referencedArtifactElement` ids | no | [`new`](CreateArtifactReference::new) |
+//! | [`CreateArgumentGroup`] | an `ArgumentGroup` (§11.2), with its optional members (`argumentElement`) | no | [`new`](CreateArgumentGroup::new) |
+//! | [`CreateAssertedEvidence`] | an `AssertedEvidence` (§11.15), with its sources and target, and an optional `reasoning` and `isCounter` | no | [`new`](CreateAssertedEvidence::new) |
+//! | [`CreateAssertedArtifactSupport`] | an `AssertedArtifactSupport` (§11.17), with its sources and target, and an optional `reasoning` and `isCounter` | no | [`new`](CreateAssertedArtifactSupport::new) |
+//! | [`CreateAssertedArtifactContext`] | an `AssertedArtifactContext` (§11.18), with its sources and target, and an optional `reasoning` and `isCounter` | no | [`new`](CreateAssertedArtifactContext::new) |
 //! | [`CreateDescription`] | a `Description` (§8.9) | no | [`new`](CreateDescription::new) |
 //! | [`CreateImplementationConstraint`] | an `ImplementationConstraint` (§8.8) | no | [`new`](CreateImplementationConstraint::new) |
 //! | [`CreateNote`] | a `Note` (§8.11) | no | [`new`](CreateNote::new) |
@@ -43,19 +48,26 @@
 //! exactly as given; a `LangString` converts into one with one value. A
 //! `UtilityElement` contains no elements, so it is never a parent.
 //!
-//! An `ArgumentReasoning` and the asserted relationships reference other
-//! elements (ADR 0027). An asserted relationship takes its sources (at least
-//! one, in order, repeats kept) and its target when it is created, as SACM
-//! requires (§11.13 `source:ArgumentAsset[1..*]`, `target:ArgumentAsset[1]`).
-//! Every id they reference must name an element of the document, so an edit
-//! never makes a dangling reference; the id of a name, `content`, `key` or
-//! `value` names no element. Whether each referenced element has the type
-//! SACM declares (an `ArgumentAsset` for a source or the target, an
+//! An `ArgumentReasoning`, an `ArtifactReference`, an `ArgumentGroup` and
+//! the asserted relationships reference other elements (ADR 0027, ADR 0028).
+//! An asserted relationship takes its sources (at least one, in order,
+//! repeats kept) and its target when it is created, as SACM requires
+//! (§11.13 `source:ArgumentAsset[1..*]`, `target:ArgumentAsset[1]`). Every
+//! id they reference must name an element of the document, so an edit never
+//! makes a dangling reference; the id of a name, `content`, `key` or `value`
+//! names no element. And each referenced element must have the type SACM
+//! declares for its end, so an edit never makes a wrongly typed reference
+//! either (D-VAL-LAYER): an `ArgumentAsset` for a source or the target, an
 //! `ArgumentReasoning` for the reasoning, an `ArgumentPackage` for the
-//! structure) is not checked yet, by edits or by validation, so a strict
-//! save does not refuse a wrong one (SACM23-VAL-004).
-//! Setting the references of an existing element, and the `metaClaim` of an
-//! Assertion, come later (LIB-EDIT-009).
+//! structure, an `ArtifactElement` (any element but a `UtilityElement`) for
+//! a `referencedArtifactElement`, and an `ArgumentationElement` for a group
+//! member. The narrower rules of §11.15, §11.17 and §11.18, that the ends of
+//! an `AssertedEvidence`, `AssertedArtifactSupport` or
+//! `AssertedArtifactContext` be `ArtifactReference`s, are content: a create
+//! does not refuse them, and
+//! [`validation::validate`](crate::validation::validate) reports them
+//! (SACM23-VAL-016). Setting the references of an existing element, and the
+//! `metaClaim` of an Assertion, come later (LIB-EDIT-009).
 //!
 //! # Ids
 //!
@@ -88,8 +100,9 @@
 //! | 3. a caller id is an `NCName` | [`EditError::InvalidId`] | SACM-ID-002 | An `NCName` starts with a letter or `_` and continues with letters, digits, `-`, `.` or `_`; it has no spaces and no `:`. Or leave out `with_id` to have an id generated. |
 //! | 4. a caller id is not in use | [`EditError::DuplicateId`] | SACM-CMD-004 | Ids are unique across the whole document, not per parent. Choose another id, or leave out `with_id` to have one generated. |
 //! | 5. an asserted relationship has a source | [`EditError::TooFewReferences`] | SACM-MULT-001 | Give at least one source: SACM requires one (`source:ArgumentAsset[1..*]`). |
-//! | 6. no referenced id holds XML white space (space, TAB, LF, CR): each source in order, then the target, the `reasoning` and the `structure` | [`EditError::InvalidReference`] | SACM-ID-002 | An id such as `a b`, read from a file as written, is not an `NCName` and would be written as two ids. Give the referenced element an `NCName` id in the file. |
+//! | 6. no referenced id holds XML white space (space, TAB, LF, CR): each source in order, then the target, the `reasoning`, the `structure`, the `referencedArtifactElement` ids and the group members | [`EditError::InvalidReference`] | SACM-ID-002 | An id such as `a b`, read from a file as written, is not an `NCName` and would be written as two ids. Give the referenced element an `NCName` id in the file. |
 //! | 7. every referenced id names an element, in the same order | [`EditError::ReferenceNotFound`] | SACM-CMD-001 | Create the referenced element first, or correct its id. Ids are compared exactly, case included. |
+//! | 8. every referenced id names an element of a kind its end admits, in the same order | [`EditError::WrongReferenceType`] | SACM-REF-002 | Reference an element of the end's type: for example, an `ArgumentPackage` as a `structure`, and an `ArgumentAsset`, not a package, as a source. |
 //!
 //! # Writing and reading back
 //!
@@ -141,7 +154,11 @@ mod utility;
 
 use std::fmt;
 
-pub use argumentation::{CreateArgumentReasoning, CreateAssertedContext, CreateAssertedInference};
+pub use argumentation::{
+    CreateArgumentGroup, CreateArgumentReasoning, CreateArtifactReference,
+    CreateAssertedArtifactContext, CreateAssertedArtifactSupport, CreateAssertedContext,
+    CreateAssertedEvidence, CreateAssertedInference,
+};
 pub use create::{CreateArgumentPackage, CreateAssuranceCasePackage, CreateClaim};
 pub use utility::{
     CreateDescription, CreateImplementationConstraint, CreateNote, CreateTaggedValue,
@@ -190,7 +207,9 @@ use crate::model::{Document, ElementId, ElementKind};
 /// - a referenced id holds XML white space, so it cannot be written as one
 ///   id ([`EditError::InvalidReference`]);
 /// - a referenced id names no element of the document
-///   ([`EditError::ReferenceNotFound`]).
+///   ([`EditError::ReferenceNotFound`]);
+/// - a referenced id names an element of a kind its end does not admit
+///   ([`EditError::WrongReferenceType`]).
 ///
 /// # Examples
 ///
@@ -223,6 +242,11 @@ pub fn apply(
         Operation::CreateArgumentReasoning(create) => create.apply(document)?,
         Operation::CreateAssertedInference(create) => create.apply(document)?,
         Operation::CreateAssertedContext(create) => create.apply(document)?,
+        Operation::CreateArtifactReference(create) => create.apply(document)?,
+        Operation::CreateArgumentGroup(create) => create.apply(document)?,
+        Operation::CreateAssertedEvidence(create) => create.apply(document)?,
+        Operation::CreateAssertedArtifactSupport(create) => create.apply(document)?,
+        Operation::CreateAssertedArtifactContext(create) => create.apply(document)?,
         Operation::CreateDescription(create) => create.apply(document)?,
         Operation::CreateImplementationConstraint(create) => create.apply(document)?,
         Operation::CreateNote(create) => create.apply(document)?,
@@ -268,6 +292,16 @@ pub enum Operation {
     CreateAssertedInference(CreateAssertedInference),
     /// Creates an `AssertedContext`.
     CreateAssertedContext(CreateAssertedContext),
+    /// Creates an `ArtifactReference`.
+    CreateArtifactReference(CreateArtifactReference),
+    /// Creates an `ArgumentGroup`.
+    CreateArgumentGroup(CreateArgumentGroup),
+    /// Creates an `AssertedEvidence`.
+    CreateAssertedEvidence(CreateAssertedEvidence),
+    /// Creates an `AssertedArtifactSupport`.
+    CreateAssertedArtifactSupport(CreateAssertedArtifactSupport),
+    /// Creates an `AssertedArtifactContext`.
+    CreateAssertedArtifactContext(CreateAssertedArtifactContext),
     /// Creates a `Description`.
     CreateDescription(CreateDescription),
     /// Creates an `ImplementationConstraint`.
@@ -287,8 +321,11 @@ impl Operation {
     /// `"CreateAssuranceCasePackage"`, `"CreateArgumentPackage"`,
     /// `"CreateClaim"`, `"CreateArgumentReasoning"`,
     /// `"CreateAssertedInference"`, `"CreateAssertedContext"`,
-    /// `"CreateDescription"`, `"CreateImplementationConstraint"`,
-    /// `"CreateNote"` and `"CreateTaggedValue"`.
+    /// `"CreateArtifactReference"`, `"CreateArgumentGroup"`,
+    /// `"CreateAssertedEvidence"`, `"CreateAssertedArtifactSupport"`,
+    /// `"CreateAssertedArtifactContext"`, `"CreateDescription"`,
+    /// `"CreateImplementationConstraint"`, `"CreateNote"` and
+    /// `"CreateTaggedValue"`.
     ///
     /// # Examples
     ///
@@ -308,6 +345,11 @@ impl Operation {
             Self::CreateArgumentReasoning(_) => "CreateArgumentReasoning",
             Self::CreateAssertedInference(_) => "CreateAssertedInference",
             Self::CreateAssertedContext(_) => "CreateAssertedContext",
+            Self::CreateArtifactReference(_) => "CreateArtifactReference",
+            Self::CreateArgumentGroup(_) => "CreateArgumentGroup",
+            Self::CreateAssertedEvidence(_) => "CreateAssertedEvidence",
+            Self::CreateAssertedArtifactSupport(_) => "CreateAssertedArtifactSupport",
+            Self::CreateAssertedArtifactContext(_) => "CreateAssertedArtifactContext",
             Self::CreateDescription(_) => "CreateDescription",
             Self::CreateImplementationConstraint(_) => "CreateImplementationConstraint",
             Self::CreateNote(_) => "CreateNote",
@@ -337,6 +379,18 @@ impl From<CreateClaim> for Operation {
 impl From<CreateArgumentReasoning> for Operation {
     fn from(operation: CreateArgumentReasoning) -> Self {
         Self::CreateArgumentReasoning(operation)
+    }
+}
+
+impl From<CreateArtifactReference> for Operation {
+    fn from(operation: CreateArtifactReference) -> Self {
+        Self::CreateArtifactReference(operation)
+    }
+}
+
+impl From<CreateArgumentGroup> for Operation {
+    fn from(operation: CreateArgumentGroup) -> Self {
+        Self::CreateArgumentGroup(operation)
     }
 }
 
@@ -614,19 +668,75 @@ pub enum EditError {
         id: ElementId,
     },
     /// A referenced id names no element of the document (SACM-CMD-001): a
-    /// source, the target or the `reasoning` of an asserted relationship, or
-    /// the `structure` of an `ArgumentReasoning`. An edit never makes a
-    /// dangling reference (D-VAL-LAYER), and the `xmi:id` of a name,
-    /// `content`, `key` or `value` names no element. The first such id is
-    /// reported: the sources in order, then the target, the reasoning and the
-    /// structure. Create the referenced element first, or correct the id;
-    /// ids are compared exactly, case included.
+    /// source, the target or the `reasoning` of an asserted relationship,
+    /// the `structure` of an `ArgumentReasoning`, a
+    /// `referencedArtifactElement` of an `ArtifactReference` or a member of
+    /// an `ArgumentGroup`. An edit never makes a dangling reference
+    /// (D-VAL-LAYER), and the `xmi:id` of a name, `content`, `key` or
+    /// `value` names no element. The first such id is reported: the sources
+    /// in order, then the target, the reasoning and the structure. Create
+    /// the referenced element first, or correct the id; ids are compared
+    /// exactly, case included.
     #[non_exhaustive]
     ReferenceNotFound {
         /// The end, by its XMI name, such as `target`.
         end: &'static str,
         /// The id, as given.
         id: ElementId,
+    },
+    /// A referenced id names an element of a kind its end's declared type
+    /// does not admit (SACM-REF-002): a `structure` that is no
+    /// `ArgumentPackage`, a source or target that is no `ArgumentAsset`, a
+    /// `reasoning` that is no `ArgumentReasoning`, a
+    /// `referencedArtifactElement` that is a `UtilityElement`, or a group
+    /// member that is no `ArgumentationElement`. An edit never makes a
+    /// wrongly typed reference (D-VAL-LAYER, ADR 0028). It is checked once
+    /// every id is known to name an element
+    /// ([`ReferenceNotFound`](Self::ReferenceNotFound)), in the same order,
+    /// and the first such id is reported. Reference an element of the end's
+    /// type instead.
+    ///
+    /// The narrower §11.15, §11.17 and §11.18 rules, that the ends of an
+    /// `AssertedEvidence`, `AssertedArtifactSupport` or
+    /// `AssertedArtifactContext` be `ArtifactReference`s, are content, not
+    /// refusals: [`validation::validate`](crate::validation::validate)
+    /// reports them (SACM23-VAL-016).
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateArgumentReasoning, CreateClaim, EditError};
+    /// use sacm::model::{Document, ElementKind, LangString};
+    ///
+    /// let mut doc = Document::new();
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+    /// edit::apply(&mut doc, CreateClaim::new("p", LangString::new("C1")).with_id("c1"))?;
+    /// let reasoning = CreateArgumentReasoning::new("p", LangString::new("R1")).with_structure("c1");
+    /// let error = edit::apply(&mut doc, reasoning).unwrap_err();
+    /// assert!(matches!(
+    ///     error,
+    ///     EditError::WrongReferenceType {
+    ///         end: "structure",
+    ///         kind: ElementKind::Claim,
+    ///         expected: "ArgumentPackage",
+    ///         ..
+    ///     }
+    /// ));
+    /// assert_eq!(
+    ///     error.to_string(),
+    ///     r#"the structure "c1" names a Claim, and the structure must be an ArgumentPackage"#
+    /// );
+    /// # Ok::<(), EditError>(())
+    /// ```
+    #[non_exhaustive]
+    WrongReferenceType {
+        /// The end, by its XMI name, such as `structure`.
+        end: &'static str,
+        /// The id, as given.
+        id: ElementId,
+        /// The kind of the element the id names.
+        kind: ElementKind,
+        /// The end's declared type, by its SACM class name, such as
+        /// `ArgumentPackage` or `ArgumentAsset`.
+        expected: &'static str,
     },
 }
 
@@ -637,8 +747,9 @@ impl EditError {
     /// [`InvalidId`](Self::InvalidId), SACM-CMD-004 for
     /// [`DuplicateId`](Self::DuplicateId), SACM-MULT-001 for
     /// [`TooFewReferences`](Self::TooFewReferences), SACM-ID-002 for
-    /// [`InvalidReference`](Self::InvalidReference) and SACM-CMD-001 for
-    /// [`ReferenceNotFound`](Self::ReferenceNotFound).
+    /// [`InvalidReference`](Self::InvalidReference), SACM-CMD-001 for
+    /// [`ReferenceNotFound`](Self::ReferenceNotFound) and SACM-REF-002 for
+    /// [`WrongReferenceType`](Self::WrongReferenceType).
     #[must_use]
     pub fn code(&self) -> Code {
         match self {
@@ -649,6 +760,7 @@ impl EditError {
             Self::InvalidId { .. } | Self::InvalidReference { .. } => Code::ID_INVALID,
             Self::DuplicateId { .. } => Code::CMD_DUPLICATE_ID,
             Self::TooFewReferences { .. } => Code::MULTIPLICITY_VIOLATION,
+            Self::WrongReferenceType { .. } => Code::REF_WRONG_TYPE,
         }
     }
 }
@@ -697,8 +809,30 @@ impl fmt::Display for EditError {
                 "the document has no element {:?} for the {end} to reference",
                 id.as_str()
             ),
+            Self::WrongReferenceType {
+                end,
+                id,
+                kind,
+                expected,
+            } => write!(
+                f,
+                "the {end} {:?} names {} {kind}, and the {end} must be {} {expected}",
+                id.as_str(),
+                article(kind.name()),
+                article(expected)
+            ),
         }
     }
 }
 
 impl std::error::Error for EditError {}
+
+/// The indefinite article before the SACM class name `name`: `an` before a
+/// vowel, `a` otherwise.
+fn article(name: &str) -> &'static str {
+    if name.starts_with(['A', 'E', 'I', 'O', 'U']) {
+        "an"
+    } else {
+        "a"
+    }
+}

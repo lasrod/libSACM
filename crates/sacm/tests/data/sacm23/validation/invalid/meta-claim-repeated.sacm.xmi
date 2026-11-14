@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-VAL-022: the Claim c2 has the metaClaim "m1 m1", which names m1 twice in one multi-valued end (ptc/22-03-13 ends are unique by default). It reads in both modes and is kept as [m1, m1]; validate reports one SACM-MULT-001 Warning with clause 11.10 on [c2, m1], and a strict write still writes it. Every other element is named and valid. Hand-written; no third-party content. -->
+<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+  <name lang="en" content="Arguments"/>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="m1">
+    <name lang="en" content="The hazard analysis is sound"/>
+  </argumentElement>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c2" metaClaim="m1 m1">
+    <name lang="en" content="Every hazard is identified"/>
+  </argumentElement>
+</sacm:ArgumentPackage>

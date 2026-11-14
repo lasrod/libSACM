@@ -35,15 +35,21 @@ Milestone M2 has begun: every element's `gid`, its `isCitation` and `isAbstract`
 its `citedElement` and `abstractForm` references (held as ids, kept even when they name no
 element), and the descriptions, notes, implementation constraints and tagged values of
 each readable element, are read, written and compared. So are ArgumentReasoning,
-AssertedInference and AssertedContext elements, with their sources, target, reasoning,
-`isCounter`, meta-claims and structure. `sacm::edit::apply` creates those three kinds,
-and descriptions, notes, implementation constraints and tagged values; and
+ArtifactReference and ArgumentGroup elements and the five asserted relationships
+(AssertedInference, AssertedEvidence, AssertedContext, AssertedArtifactSupport and
+AssertedArtifactContext), with their sources, target, reasoning, `isCounter`,
+meta-claims, structure, referenced artifact elements and group members.
+`sacm::edit::apply` creates those eight kinds, and descriptions, notes, implementation
+constraints and tagged values, and refuses a reference to an element of the wrong kind;
+and
 `sacm::validation::validate` reports each `content` or `key` text that is empty or gives
 one language twice, each tagged value without a key, each `gid` two elements share, each
 element with more than one description, each ArgumentPackage that nests one and also holds
-other argumentation elements, each reference that names no element, each element with a
-`citedElement` whose `isCitation` is not true, each `abstractForm` that breaks a §8.2
-rule, and each asserted relationship without a source or a target. The other element
+other argumentation elements, each reference that names no element or an element of the
+wrong kind, each element with a `citedElement` whose `isCitation` is not true, each
+`abstractForm` that breaks a §8.2 rule, each asserted relationship without a source or a
+target, each evidence or artifact relationship whose ends are not artifact references,
+and each id a reference end repeats. The other element
 kinds in XMI, the other validation rules
 and the other edit operations are not built yet. Milestone M0, the foundation, is done:
 the workspace, CI, the functionality matrix and its gate, and mutation testing.

@@ -875,8 +875,8 @@ fn sacm23_arg_004_self_forward_and_cross_root_meta_claims_resolve_and_a_package_
         );
         round_trip(what, &doc);
     }
-    // A target of another kind than Claim is held: its typing is
-    // SACM23-VAL-004's. Only SACM-REF-001 is asserted absent here.
+    // A target of another kind than Claim is held, not dangling; its typing
+    // is SACM23-VAL-004's, which reports it once as SACM-REF-002 (ADR 0028).
     for (holder, kind, element_of) in holders() {
         let what = format!("metaClaim=\"p\", naming the package, on {holder}");
         let doc = read_ok(&what, &in_ap(&element_of(" metaClaim=\"p\"", "")));
@@ -884,6 +884,22 @@ fn sacm23_arg_004_self_forward_and_cross_root_meta_claims_resolve_and_a_package_
             (meta_claims(&doc, "x"), dangling(&doc)),
             (ids(&["p"]), Vec::new()),
             "{ROW}: {what}: not held, or reported as dangling"
+        );
+        let all = validation::validate(&doc);
+        let wrong: Vec<(&str, Vec<&str>)> = all
+            .iter()
+            .filter(|found| found.code() == Code::REF_WRONG_TYPE)
+            .map(|found| {
+                (
+                    found.requirement_id(),
+                    found.affected().iter().map(ElementId::as_str).collect(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            wrong,
+            [("SACM23-VAL-004", vec!["x", "p"])],
+            "{ROW}: {what}: not one SACM-REF-002 of SACM23-VAL-004 on [x, p]"
         );
         let text = round_trip(&what, &doc);
         assert_eq!(

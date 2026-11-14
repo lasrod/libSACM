@@ -1,10 +1,10 @@
 //! The interchange roots of an XMI document, their names and the package
 //! content under them (SACM23-XMI-001, SACM23-XMI-005, SACM23-XMI-012,
 //! SACM23-XMI-014, SACM23-XMI-015, SACM23-XMI-016, SACM23-XMI-017,
-//! SACM23-BASE-004, -005, -006, -007, -008, SACM23-ARG-004, -005, -007,
-//! -008, -010; formal/23-05-08 §2.2, §2.4, §8.2-§8.12, §11.10-§11.16; XMI
-//! 2.5.1 §7.5.3, §7.6.3, §7.8.4, §7.8.6, §7.10; ADR 0015, ADR 0016, ADR
-//! 0021, ADR 0025, ADR 0026, ADR 0027).
+//! SACM23-BASE-004, -005, -006, -007, -008, SACM23-ARG-004 to -013;
+//! formal/23-05-08 §2.2, §2.4, §8.2-§8.12, §11.2-§11.18; XMI 2.5.1 §7.5.3,
+//! §7.6.3, §7.8.4, §7.8.6, §7.10; ADR 0015, ADR 0016, ADR 0021, ADR 0025,
+//! ADR 0026, ADR 0027, ADR 0028).
 //!
 //! An interchange root is the document element or, when that is the XMI
 //! element, each of its element children outside the XMI namespace. The
@@ -58,9 +58,14 @@
 //! attribute, whose value is the target ids separated by XML white space
 //! (SACM23-XMI-005), or from reference elements with one `xmi:idref` or
 //! `href="#id"` each (SACM23-XMI-015), and held as ids, resolved or not (ADR
-//! 0026). A multi-valued end (`metaClaim`, `source`) holds every token of
-//! the attribute, or one id per element, in document order. A flag or end
-//! the kind lacks is not read. The id pre-pass also collects every id a reference may name, so
+//! 0026). A multi-valued end (`metaClaim`, `source`,
+//! `referencedArtifactElement`, a group's `argumentElement`) holds every
+//! token of the attribute, or one id per element, in document order. A flag
+//! or end the kind lacks is not read. An `argumentElement` element is a
+//! reference element under an `ArgumentGroup` and a child under an
+//! `ArgumentPackage`: the parent's kind decides, and no class has both
+//! (ADR 0028), so an element nested in a group's `argumentElement` is
+//! refused as a reference element would be, never read as a child. The id pre-pass also collects every id a reference may name, so
 //! that no generated id makes a dangling reference resolve. A property given
 //! more than once, a second `name`, `content` or `key` included, is
 //! `RepeatedValue`
@@ -1089,8 +1094,9 @@ fn child_kind(
     parent_what: &str,
 ) -> Result<ElementKind, ReadError> {
     use ElementKind::{
-        ArgumentPackage, ArgumentReasoning, AssertedContext, AssertedInference,
-        AssuranceCasePackage, Claim,
+        ArgumentGroup, ArgumentPackage, ArgumentReasoning, ArtifactReference,
+        AssertedArtifactContext, AssertedArtifactSupport, AssertedContext, AssertedEvidence,
+        AssertedInference, AssuranceCasePackage, Claim,
     };
 
     let written = written_name(text, node);
@@ -1149,8 +1155,13 @@ fn child_kind(
                     ArgumentPackage
                         | Claim
                         | ArgumentReasoning
+                        | ArtifactReference
+                        | ArgumentGroup
                         | AssertedInference
+                        | AssertedEvidence
                         | AssertedContext
+                        | AssertedArtifactSupport
+                        | AssertedArtifactContext
                 )
         );
     if !readable {

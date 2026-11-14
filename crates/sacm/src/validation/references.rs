@@ -1,5 +1,5 @@
 //! Rules about references between elements and the `SACMElement` flags
-//! (formal/23-05-08 §8.2; ADR 0026).
+//! (formal/23-05-08 §8.2; ADR 0026, ADR 0028).
 
 use std::collections::HashSet;
 
@@ -40,6 +40,50 @@ pub(super) fn dangling_references(document: &Document, found: &mut Vec<Diagnosti
                     )
                     .set_clause(end.clause())
                     .set_affected([element.id().clone(), target.clone()]),
+                );
+            }
+        }
+    }
+}
+
+/// SACM23-VAL-004: each distinct id that a reference end of an element holds
+/// and that names an element whose kind the end's declared type does not
+/// admit is one SACM-REF-002 Error, with the end's clause, affecting the
+/// element, then the id (ADR 0028). The declared types are ptc/22-03-13's,
+/// on which the text agrees (D-SEV). An id that names no element is
+/// SACM-REF-001's alone.
+pub(super) fn wrongly_typed_references(document: &Document, found: &mut Vec<Diagnostic>) {
+    for element in document.elements() {
+        for end in ReferenceEnd::ALL {
+            let declared = end.target();
+            // As in `dangling_references`: once per distinct id, linear in
+            // the end's ids, never iterated.
+            let mut reported = HashSet::new();
+            for id in element.references(end) {
+                let Some(target) = document.get(id) else {
+                    continue;
+                };
+                if declared.admits(target.kind()) || !reported.insert(id.as_str()) {
+                    continue;
+                }
+                let message = format!(
+                    "{} {:?} has the {} {:?}, whose kind {} does not conform to the end's type {}",
+                    element.kind().name(),
+                    element.id().as_str(),
+                    end.name(),
+                    id.as_str(),
+                    target.kind().name(),
+                    declared.name()
+                );
+                found.push(
+                    Diagnostic::create(
+                        Code::REF_WRONG_TYPE,
+                        Severity::Error,
+                        "SACM23-VAL-004",
+                        message,
+                    )
+                    .set_clause(end.clause())
+                    .set_affected([element.id().clone(), id.clone()]),
                 );
             }
         }

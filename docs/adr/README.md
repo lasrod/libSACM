@@ -34,6 +34,7 @@ decisions.md has a one-line entry pointing to it.
 | [0025](0025-utility-elements-and-gid.md) | UtilityElements, MultiLangString roles and gid | accepted |
 | [0026](0026-references-between-elements.md) | References between elements | accepted |
 | [0027](0027-asserted-relationships.md) | Asserted relationships and multi-valued references | accepted |
+| [0028](0028-artifact-references-groups-and-typing.md) | Artifact references, argument groups and reference typing | accepted |
 
 Statuses: `proposed` → `accepted` (maintainer approval) → optionally `superseded by NNNN`.
 Copy [template.md](template.md) for a new record.

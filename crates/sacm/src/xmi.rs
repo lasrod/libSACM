@@ -5,18 +5,21 @@
 //! a [`WriteError`]. Neither does I/O: the caller reads and writes the file.
 //!
 //! In this release `read` reads `AssuranceCasePackage` and `ArgumentPackage`
-//! roots, bare or inside an `xmi:XMI` element, and what they hold of six
+//! roots, bare or inside an `xmi:XMI` element, and what they hold of eleven
 //! kinds: `AssuranceCasePackage` and `ArgumentPackage` elements in an
 //! `AssuranceCasePackage`, and `ArgumentPackage`, `Claim`,
-//! `ArgumentReasoning`, `AssertedInference` and `AssertedContext` elements in
-//! an `ArgumentPackage`, each with its id (generated when it has no
-//! `xmi:id`), `gid`, `isCitation`, `isAbstract`, `citedElement`,
-//! `abstractForm` and name, an Assertion's `assertionDeclaration` and
-//! `metaClaim`, an asserted relationship's `isCounter`, `reasoning`, `source`
-//! and `target`, an `ArgumentReasoning`'s `structure`, and the descriptions,
-//! implementation constraints, notes and tagged values of each, with their
-//! `content` and `key` (SACM 2.3 §2.2, §2.4, §8.2-§8.12, §9.2, §11.4,
-//! §11.10-§11.14, §11.16). A reference is held as the id it names, and one that names no
+//! `ArgumentReasoning`, `ArtifactReference`, `ArgumentGroup`,
+//! `AssertedInference`, `AssertedEvidence`, `AssertedContext`,
+//! `AssertedArtifactSupport` and `AssertedArtifactContext` elements in an
+//! `ArgumentPackage`, each with its id (generated when it has no `xmi:id`),
+//! `gid`, `isCitation`, `isAbstract`, `citedElement`, `abstractForm` and
+//! name, an Assertion's `assertionDeclaration` and `metaClaim`, an asserted
+//! relationship's `isCounter`, `reasoning`, `source` and `target`, an
+//! `ArgumentReasoning`'s `structure`, an `ArtifactReference`'s
+//! `referencedArtifactElement`, an `ArgumentGroup`'s members
+//! (`argumentElement`), and the descriptions, implementation constraints,
+//! notes and tagged values of each, with their `content` and `key` (SACM 2.3
+//! §2.2, §2.4, §8.2-§8.12, §9.2, §11.2, §11.4, §11.9-§11.18). A reference is held as the id it names, and one that names no
 //! element is kept (see [References](fn@read#references)). It refuses input that is unsafe
 //! ([`ReadError::Doctype`], SACM-SEC-001), not well-formed
 //! ([`ReadError::Malformed`], SACM-XML-001), not rooted in a SACM package
@@ -129,7 +132,7 @@ mod roots;
 /// |---|---|---|---|
 /// | AssuranceCasePackage (§9.2) | `assuranceCasePackage` | an AssuranceCasePackage | no |
 /// | AssuranceCasePackage (§9.2) | `argumentPackage` | an ArgumentPackage | no |
-/// | ArgumentPackage (§11.4) | `argumentElement` | an ArgumentPackage, a Claim, an `ArgumentReasoning`, an `AssertedInference` or an `AssertedContext` | yes: the role's type, `ArgumentationElement`, is abstract (§11.3) |
+/// | ArgumentPackage (§11.4) | `argumentElement` | an ArgumentPackage, a Claim, an `ArgumentReasoning`, an `ArtifactReference`, an `ArgumentGroup`, an `AssertedInference`, an `AssertedEvidence`, an `AssertedContext`, an `AssertedArtifactSupport` or an `AssertedArtifactContext` | yes: the role's type, `ArgumentationElement`, is abstract (§11.3) |
 /// | each of the above (§8.6) | `description` | a `Description` | no |
 /// | each of the above (§8.6) | `implementationConstraint` | an `ImplementationConstraint` | no |
 /// | each of the above (§8.6) | `note` | a `Note` | no |
@@ -171,12 +174,21 @@ mod roots;
 /// and nothing repairs a file on read; the §8.2 rules between them are
 /// [`validation::validate`](crate::validation::validate)'s.
 ///
-/// The argumentation kinds have more (ADR 0027). Every Assertion (a Claim, an
-/// `AssertedInference` or an `AssertedContext`) may carry `metaClaim`
+/// The argumentation kinds have more (ADR 0027, ADR 0028). Every Assertion
+/// (a Claim or one of the five asserted relationships) may carry `metaClaim`
 /// (§11.10 `[0..*]`). An asserted relationship (§11.13) may carry the flag
 /// `isCounter` (`[1] = false`), read as `isCitation` is, and the references
 /// `reasoning` (`[0..1]`), `source` (`[1..*]`) and `target` (`[1]`). An
-/// `ArgumentReasoning` may carry `structure` (§11.12 `[0..1]`). A
+/// `ArgumentReasoning` may carry `structure` (§11.12 `[0..1]`), an
+/// `ArtifactReference` `referencedArtifactElement` (§11.9 `[0..*]`), and an
+/// `ArgumentGroup` its members, `argumentElement` (§11.2 `[0..*]`). An
+/// `ArtifactReference` is no Assertion, so it has no `assertionDeclaration`
+/// or `metaClaim`. A group's `argumentElement` is a reference, though it
+/// shares its name with an ArgumentPackage's composite role: under a group,
+/// an `argumentElement` element is a reference element, so one that holds a
+/// nested element, such as `<argumentElement xmi:type="sacm:Claim" .../>`,
+/// is [`ReadError::Unsupported`] as any malformed reference element is, and
+/// never read as a child. A
 /// relationship read without a `source` or a `target` is kept as read, and
 /// nothing is added; [`validation::validate`](crate::validation::validate)
 /// reports it (SACM23-VAL-005). On a kind that lacks one of these, such as
@@ -232,7 +244,9 @@ mod roots;
 /// declarations, `xmi:id`, those five, its type attributes and the features
 /// of its kind above (`assertionDeclaration` and `metaClaim` on an
 /// Assertion, `isCounter`, `reasoning`, `source` and `target` on an asserted
-/// relationship, `structure` on an `ArgumentReasoning`), and hold the same
+/// relationship, `structure` on an `ArgumentReasoning`,
+/// `referencedArtifactElement` on an `ArtifactReference`, `argumentElement`
+/// on an `ArgumentGroup`), and hold the same
 /// content as a root, with a value or reference element for each of its
 /// kind's features, except that a `UtilityElement` holds, besides those
 /// five, only its `content` and `key`.
@@ -298,19 +312,25 @@ mod roots;
 /// [`meta_claims`](crate::model::SacmElement::meta_claims),
 /// [`sources`](crate::model::SacmElement::sources),
 /// [`target`](crate::model::SacmElement::target),
-/// [`reasoning`](crate::model::SacmElement::reasoning) and
-/// [`structure`](crate::model::SacmElement::structure) give it, and
-/// [`Document::get`] resolves it. In this release the reference
-/// ends are `citedElement` and `abstractForm` (§8.2), on every element,
-/// `metaClaim` (§11.10) on every Assertion, `reasoning`, `source` and
-/// `target` (§11.13) on every asserted relationship, and `structure`
-/// (§11.12) on an `ArgumentReasoning`. Two are multi-valued: `metaClaim` and
-/// `source` hold any number of ids, in document order, repeats included
-/// ([ADR 0027], D-ORDER); `metaClaim="m1 m1"` holds `m1` twice. The others
-/// hold at most one. A reference resolves by id across the whole input,
-/// whatever the order: to a later element, an element of another root, or
-/// the element itself. Whether the target is of the end's type is not
-/// checked on read.
+/// [`reasoning`](crate::model::SacmElement::reasoning),
+/// [`structure`](crate::model::SacmElement::structure),
+/// [`referenced_artifact_elements`](crate::model::SacmElement::referenced_artifact_elements)
+/// and [`group_members`](crate::model::SacmElement::group_members) give it,
+/// and [`Document::get`] resolves it. In this release the reference ends are
+/// `citedElement` and `abstractForm` (§8.2), on every element, `metaClaim`
+/// (§11.10) on every Assertion, `reasoning`, `source` and `target` (§11.13)
+/// on every asserted relationship, `structure` (§11.12) on an
+/// `ArgumentReasoning`, `referencedArtifactElement` (§11.9) on an
+/// `ArtifactReference` and `argumentElement` (§11.2) on an `ArgumentGroup`.
+/// Four are multi-valued: `metaClaim`, `source`, `referencedArtifactElement`
+/// and a group's `argumentElement` hold any number of ids, in document
+/// order, repeats included ([ADR 0027], D-ORDER); `metaClaim="m1 m1"` holds
+/// `m1` twice. The others hold at most one. A reference resolves by id
+/// across the whole input, whatever the order: to a later element, an
+/// element of another root, or the element itself. Whether the target is of
+/// the end's type is not checked on read;
+/// [`validation::validate`](crate::validation::validate) reports one that is
+/// not (SACM-REF-002).
 ///
 /// - **The attribute form.** An attribute in no namespace named after the end
 ///   holds the target ids separated by XML white space (`xsd:IDREFS`, XMI
@@ -476,8 +496,9 @@ mod roots;
 ///   two or more elements, though the property holds one value. This holds
 ///   even with equal values. It gives every occurrence. Two or more ids in
 ///   the attribute of a single-valued end are too, with one location per id,
-///   at the attribute's name. A multi-valued `metaClaim` or `source` given
-///   both as an attribute and as elements is too, with every occurrence.
+///   at the attribute's name. A multi-valued end (`metaClaim`, `source`,
+///   `referencedArtifactElement`, a group's `argumentElement`) given both as
+///   an attribute and as elements is too, with every occurrence.
 /// - [`ReadError::InvalidLiteral`] (SACM-ENUM-001): an Assertion's
 ///   `assertionDeclaration` is not exactly one of the six literals, or an
 ///   `isCitation`, `isAbstract` or `isCounter` is not one of `true`,
@@ -508,8 +529,8 @@ mod roots;
 ///   lacks (any child of a `UtilityElement`), a role element in a namespace,
 ///   a type that names no concrete SACM class or that the role does not
 ///   admit, two types that disagree, no type under a role of an abstract
-///   type, any other kind (such as an `AssertedEvidence` or an
-///   `ArgumentPackageInterface`), text, attributes such as `xmi:uuid` or
+///   type, any other kind (such as an `ArgumentPackageInterface` or an
+///   `ArgumentPackageBinding`), text, attributes such as `xmi:uuid` or
 ///   `sacm:isCitation`; a `name` on a `UtilityElement`; an
 ///   `assertionDeclaration`, as an attribute or an element, that is on a
 ///   package or an `ArgumentReasoning` (even `"asserted"`) or in a namespace;
@@ -1360,7 +1381,9 @@ impl std::error::Error for ReadError {}
 /// 2. on an Assertion (§11.10): `assertionDeclaration`, `metaClaim`;
 /// 3. on an asserted relationship (§11.13): `isCounter`, `reasoning`,
 ///    `source`, `target`;
-/// 4. on an `ArgumentReasoning` (§11.12): `structure`.
+/// 4. on an `ArgumentReasoning` (§11.12): `structure`;
+/// 5. on an `ArtifactReference` (§11.9): `referencedArtifactElement`;
+/// 6. on an `ArgumentGroup` (§11.2): `argumentElement`.
 ///
 /// So an `AssertedInference` with everything set starts
 /// `xmi:type xmi:id gid isCitation isAbstract citedElement abstractForm

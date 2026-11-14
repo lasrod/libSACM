@@ -246,8 +246,32 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
   `validation::validate` reports a relationship with no source, and one with no target,
   as SACM-MULT-001 Errors [SACM23-ARG-004, SACM23-ARG-005, SACM23-ARG-007,
   SACM23-ARG-008, SACM23-ARG-010, SACM23-VAL-005].
+- Artifact references, argument groups and the artifact relationships (ADR 0028):
+  `SacmElement::referenced_artifact_elements` and `group_members` give an
+  `ArtifactReference`'s and an `ArgumentGroup`'s ends. `edit::CreateArtifactReference`,
+  `CreateArgumentGroup`, `CreateAssertedEvidence`, `CreateAssertedArtifactSupport` and
+  `CreateAssertedArtifactContext` create them. `semantic_compare` reports
+  `Difference::ReferencedArtifactElements` and `GroupMembers`. `validation::validate`
+  reports a reference whose target has the wrong kind as SACM-REF-002
+  (`Code::REF_WRONG_TYPE`), and an id repeated in one multi-valued end as a SACM-MULT-001
+  Warning [SACM23-ARG-006, SACM23-ARG-009, SACM23-ARG-011, SACM23-ARG-012,
+  SACM23-ARG-013, SACM23-VAL-004, SACM23-VAL-016, SACM23-VAL-022].
 
 ### Changed
+
+- Every create with reference ends, including `CreateArgumentReasoning`,
+  `CreateAssertedInference` and `CreateAssertedContext`, refuses an end whose target does
+  not conform to the end's declared type as `EditError::WrongReferenceType`
+  (SACM-REF-002), after `ReferenceNotFound` [SACM23-VAL-004].
+- The new validation Error rule SACM-REF-002 can make a strict `xmi::write` refuse a
+  document it wrote before: one with a reference whose target has the wrong kind, such as
+  a `metaClaim` naming an ArgumentReasoning, or an AssertedEvidence,
+  AssertedArtifactSupport or AssertedArtifactContext whose ends break §11.15, §11.17 or
+  §11.18. Write it as held in tolerant mode [SACM23-VAL-004, SACM23-VAL-016].
+- `xmi::read` reads `ArtifactReference`, `ArgumentGroup`, `AssertedEvidence`,
+  `AssertedArtifactSupport` and `AssertedArtifactContext` in an `ArgumentPackage`, which
+  it refused as `Unsupported` before [SACM23-ARG-006, SACM23-ARG-009, SACM23-ARG-011,
+  SACM23-ARG-012, SACM23-ARG-013].
 
 - `xmi::write` no longer writes `xmi:version`: the XMI namespace identifies the version
   (XMI 2.5.1 §7.5.3) [SACM23-XMI-024].
