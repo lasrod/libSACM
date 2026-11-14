@@ -308,6 +308,30 @@ pub(super) fn create(
     id: Option<&ElementId>,
     features: Features<'_>,
 ) -> Result<Vec<ElementId>, EditError> {
+    let (id, generated) = checked_place(document, kind, parent, id)?;
+    let (name, content, key) = match features {
+        Features::Name(name) => (Some(name.clone()), None, None),
+        Features::Texts { content, key } => (None, Some(content.clone()), key.cloned()),
+    };
+    document
+        .insert_element(parent, kind, id.clone(), name, content, key)
+        .map_err(|error| refusal(error, &id))?;
+    if let Some(n) = generated {
+        document.commit_generated_id(kind, n);
+    }
+    Ok(vec![id])
+}
+
+/// The id of a new element of `kind` under `parent` (a root when `None`):
+/// `id`, or the next generated one with its `n`, after ADR 0019's four
+/// checks, in order. Changes nothing: the caller commits a generated id
+/// once the element is added.
+pub(super) fn checked_place(
+    document: &Document,
+    kind: ElementKind,
+    parent: Option<&ElementId>,
+    id: Option<&ElementId>,
+) -> Result<(ElementId, Option<u64>), EditError> {
     // 1 and 2: the parent exists and its class can hold `kind`.
     if let Some(parent) = parent {
         let Some(parent_kind) = document.get(parent).map(SacmElement::kind) else {
@@ -324,51 +348,41 @@ pub(super) fn create(
         }
     }
     // 3 and 4: a caller id is an NCName and not in use; otherwise generate one.
-    let (id, generated) = if let Some(id) = id {
+    if let Some(id) = id {
         if !is_ncname(id.as_str()) {
             return Err(EditError::InvalidId { id: id.clone() });
         }
         if document.is_id_in_use(id.as_str()) {
             return Err(EditError::DuplicateId { id: id.clone() });
         }
-        (id.clone(), None)
+        Ok((id.clone(), None))
     } else {
         let (id, n) = document.next_generated_id(kind);
-        (id, Some(n))
-    };
-    let (name, content, key) = match features {
-        Features::Name(name) => (Some(name.clone()), None, None),
-        Features::Texts { content, key } => (None, Some(content.clone()), key.cloned()),
-    };
-    match document.insert_element(parent, kind, id.clone(), name, content, key) {
-        Ok(()) => {}
-        Err(InsertError::UnknownParent(parent)) => {
-            return Err(EditError::ParentNotFound { parent });
-        }
-        Err(InsertError::ContainmentNotAllowed {
+        Ok((id, Some(n)))
+    }
+}
+
+/// The refusal for `error`, from adding the element `id` after
+/// [`checked_place`]'s checks passed.
+pub(super) fn refusal(error: InsertError, id: &ElementId) -> EditError {
+    match error {
+        InsertError::UnknownParent(parent) => EditError::ParentNotFound { parent },
+        InsertError::ContainmentNotAllowed {
             parent,
             parent_kind,
             kind,
             ..
-        }) => {
-            return Err(EditError::InvalidParent {
-                parent,
-                parent_kind,
-                kind,
-            });
-        }
-        Err(InsertError::DuplicateId(id)) => return Err(EditError::DuplicateId { id }),
+        } => EditError::InvalidParent {
+            parent,
+            parent_kind,
+            kind,
+        },
+        InsertError::DuplicateId(id) => EditError::DuplicateId { id },
         // Not reached: the id is an NCName, so not empty, the operations give
         // a name only to ModelElement kinds, and they create roots only of
         // package kinds.
-        Err(
-            InsertError::EmptyId
-            | InsertError::NameNotAllowed(..)
-            | InsertError::RootNotAllowed(..),
-        ) => return Err(EditError::InvalidId { id }),
+        InsertError::EmptyId
+        | InsertError::NameNotAllowed(..)
+        | InsertError::RootNotAllowed(..) => EditError::InvalidId { id: id.clone() },
     }
-    if let Some(n) = generated {
-        document.commit_generated_id(kind, n);
-    }
-    Ok(vec![id])
 }

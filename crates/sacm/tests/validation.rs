@@ -121,6 +121,16 @@ fn assert_findings(doc: &Document, expected: &[Diagnostic], what: &str) {
     );
 }
 
+/// The findings of `validate(doc)` of this row, in its order. An asserted
+/// relationship inserted with no ends is also a SACM23-VAL-005 Error
+/// (ADR 0027), which the tests of every kind leave out.
+fn this_rows_findings(doc: &Document) -> Vec<Diagnostic> {
+    validation::validate(doc)
+        .into_iter()
+        .filter(|found| found.requirement_id() == ROW)
+        .collect()
+}
+
 /// Reads `input` with the default options, which must succeed.
 fn read_ok(input: &str) -> xmi::ReadOutput {
     match xmi::read(input.as_bytes(), &ReadOptions::default()) {
@@ -191,10 +201,10 @@ fn sacm23_val_018_each_nameless_model_element_kind_in_a_named_package_gives_one_
             Some(named("Pkg")),
         );
         add(&mut doc, Some("pkg"), kind, "e", None);
-        assert_findings(
-            &doc,
-            &[missing_name(kind, "e")],
-            &format!("a nameless {kind} in a named ArtifactPackage"),
+        assert_eq!(
+            this_rows_findings(&doc),
+            [missing_name(kind, "e")],
+            "{ROW}: validate on a nameless {kind} in a named ArtifactPackage gave the wrong findings"
         );
     }
 }
@@ -242,7 +252,7 @@ fn sacm23_val_018_all_34_nameless_kinds_give_34_diagnostics_one_per_id() {
         add(&mut doc, Some("pkg"), kind, &id, None);
         expected.push(missing_name(kind, &id));
     }
-    let found = validation::validate(&doc);
+    let found = this_rows_findings(&doc);
     assert_eq!(
         found.len(),
         34,
@@ -662,18 +672,20 @@ fn sacm23_val_018_an_empty_or_fully_named_document_gives_no_diagnostic_and_no_er
     for (index, kind) in UTILITY_KINDS.into_iter().enumerate() {
         add_utility(&mut doc, "pkg", kind, &format!("u{index}"));
     }
-    let found = validation::validate(&doc);
+    // Only this row's findings: the asserted relationships inserted here have
+    // no ends, which is a SACM23-VAL-005 Error each (ADR 0027).
+    let found = this_rows_findings(&doc);
     assert!(
         found.is_empty(),
         "{ROW}: a document where every ModelElement has a name gave {found:?}"
     );
     assert!(
         !diagnostic::has_errors(&found),
-        "{ROW}: has_errors is true for a fully named document's findings"
+        "{ROW}: has_errors is true for a fully named document's SACM23-VAL-018 findings"
     );
 
     add(&mut doc, Some("pkg"), ElementKind::Claim, "nameless", None);
-    let found = validation::validate(&doc);
+    let found = this_rows_findings(&doc);
     assert!(
         diagnostic::has_errors(&found),
         "{ROW}: has_errors is false when a name is missing: {found:?}"

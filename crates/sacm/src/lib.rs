@@ -13,7 +13,7 @@
 //!
 //! - [`xmi::read`] reads `AssuranceCasePackage` and `ArgumentPackage` roots
 //!   and the packages and Claims in them, with their names, `gid`s and each
-//!   Claim's `assertionDeclaration`, and the descriptions, notes,
+//!   Assertion's `assertionDeclaration`, and the descriptions, notes,
 //!   implementation constraints and tagged values of each
 //!   ([`descriptions`](model::SacmElement::descriptions),
 //!   [`notes`](model::SacmElement::notes),
@@ -31,6 +31,14 @@
 //!   element is kept, and [`validation::validate`] reports it as
 //!   SACM-REF-001, so a strict save refuses it; see
 //!   [References](xmi::read#references).
+//!   In an `ArgumentPackage` it also reads `ArgumentReasoning`,
+//!   `AssertedInference` and `AssertedContext` elements, with each
+//!   relationship's [`sources`](model::SacmElement::sources),
+//!   [`target`](model::SacmElement::target),
+//!   [`reasoning`](model::SacmElement::reasoning) and
+//!   [`is_counter`](model::SacmElement::is_counter), each Assertion's
+//!   [`meta_claims`](model::SacmElement::meta_claims) and each reasoning's
+//!   [`structure`](model::SacmElement::structure).
 //!   It refuses what it cannot represent yet rather than drop it. An element
 //!   without an `xmi:id` gets a generated one, such as `claim_1`, which
 //!   `write` saves; see [Ids](xmi::read#ids).
@@ -42,14 +50,16 @@
 //!   `gid` two elements share, each element with more than one description,
 //!   each `ArgumentPackage` that nests one and also holds other
 //!   argumentation elements, each reference that names no element, each
-//!   element with a `citedElement` whose `isCitation` is not true, and each
-//!   `abstractForm` that breaks a §8.2 rule, as
+//!   element with a `citedElement` whose `isCitation` is not true, each
+//!   `abstractForm` that breaks a §8.2 rule, and each asserted relationship
+//!   without a source or a target, as
 //!   [`Diagnostic`](diagnostic::Diagnostic)s with stable codes.
-//! - [`edit::apply`] creates `AssuranceCasePackage`, `ArgumentPackage` and
-//!   `Claim` elements, and descriptions, implementation constraints, notes
-//!   and tagged values on them ([`edit::CreateNote`],
-//!   [`edit::CreateTaggedValue`] and the like); a refused edit changes
-//!   nothing.
+//! - [`edit::apply`] creates `AssuranceCasePackage`, `ArgumentPackage`,
+//!   `Claim`, `ArgumentReasoning`, `AssertedInference` and `AssertedContext`
+//!   elements ([`edit::CreateAssertedInference`] and the like), and
+//!   descriptions, implementation constraints, notes and tagged values on
+//!   them ([`edit::CreateNote`], [`edit::CreateTaggedValue`] and the like);
+//!   a refused edit changes nothing.
 //! - [`compare::semantic_compare`] lists every difference in SACM content
 //!   between two documents, and `==` on a [`Document`](model::Document) is
 //!   true when there is none.
@@ -98,8 +108,8 @@
 //!
 //! // Validate. This release checks names, ids, gids, descriptions, the
 //! // content and key of descriptions, implementation constraints, notes and
-//! // tagged values, what an ArgumentPackage holds, and references, citations
-//! // and abstract forms.
+//! // tagged values, what an ArgumentPackage holds, references, citations,
+//! // abstract forms and the ends of asserted relationships.
 //! let findings = validation::validate(&document);
 //! assert!(!diagnostic::has_errors(&findings));
 //!
@@ -130,11 +140,43 @@
 //! Walk a document with [`model::Document::elements`], or one level at a
 //! time with [`children`](model::SacmElement::children) and
 //! [`parent`](model::SacmElement::parent). Follow a reference, such as
-//! [`cited_element`](model::SacmElement::cited_element), with
-//! [`model::Document::get`]. To report reading and validation
+//! [`cited_element`](model::SacmElement::cited_element) or an asserted
+//! relationship's [`sources`](model::SacmElement::sources) and
+//! [`target`](model::SacmElement::target), with [`model::Document::get`]. To report reading and validation
 //! together, merge [`ReadOutput::diagnostics`](xmi::ReadOutput::diagnostics)
 //! with the findings of [`validation::validate`] and sort the result. The
 //! [`edit`] module builds a document from scratch.
+//!
+//! # Arguments
+//!
+//! In SACM an argument is Claims linked by asserted relationships (§11.13).
+//! An `AssertedInference` (§11.14) asserts that its sources, the premises,
+//! infer its target, the conclusion. An `AssertedContext` (§11.16) gives its
+//! sources as the context of its target. Build them with [`edit`], and read
+//! them back with [`sources`](model::SacmElement::sources) and
+//! [`target`](model::SacmElement::target):
+//!
+//! ```
+//! use sacm::edit::{self, CreateArgumentPackage, CreateAssertedInference, CreateClaim};
+//! use sacm::model::{Document, LangString};
+//!
+//! let mut document = Document::new();
+//! let en = |text: &str| LangString::new(text).with_lang("en");
+//! edit::apply(&mut document, CreateArgumentPackage::root(en("Arguments")).with_id("arguments"))?;
+//! edit::apply(&mut document, CreateClaim::new("arguments", en("The brake is safe")).with_id("c1"))?;
+//! edit::apply(&mut document, CreateClaim::new("arguments", en("The brake stops the vehicle")).with_id("c2"))?;
+//! edit::apply(&mut document, CreateClaim::new("arguments", en("The brake is tested")).with_id("c3"))?;
+//! // The premises c2 and c3 infer the conclusion c1.
+//! let inference = CreateAssertedInference::new("arguments", en("Function and test show safety"), ["c2", "c3"], "c1");
+//! edit::apply(&mut document, inference.with_id("i1"))?;
+//!
+//! let i1 = document.get("i1").expect("just created");
+//! let premises: Vec<_> = i1.sources().iter().filter_map(|id| document.get(id)?.name()?.content()).collect();
+//! assert_eq!(premises, ["The brake stops the vehicle", "The brake is tested"]);
+//! let conclusion = i1.target().and_then(|id| document.get(id)?.name()?.content());
+//! assert_eq!(conclusion, Some("The brake is safe"));
+//! # Ok::<(), sacm::edit::EditError>(())
+//! ```
 //!
 //! # Features
 //!

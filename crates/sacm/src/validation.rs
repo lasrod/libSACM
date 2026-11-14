@@ -15,10 +15,11 @@
 //! | SACM-MULT-001 | SACM23-VAL-011 | §8.6 | Warning | a `ModelElement` has two or more descriptions (`description:Description[0..1]`) |
 //! | SACM-ID-003 | SACM23-VAL-002 | §8.2 | Error | two or more elements hold the same non-empty `gid` ("unique within the scope of the model instance") |
 //! | SACM-PKG-001 | SACM23-VAL-012 | §11.4 | Error | an `ArgumentPackage` nests a plain `ArgumentPackage` and also holds another argumentation element ("only allowed to contain `ArgumentPackages`") |
-//! | SACM-REF-001 | SACM23-VAL-003 | §8.2 | Error | a `citedElement` or `abstractForm` names no element of the document |
+//! | SACM-REF-001 | SACM23-VAL-003 | the end's: §8.2, §11.10, §11.12 or §11.13 | Error | an id a reference end holds (`citedElement`, `abstractForm`, `metaClaim`, `reasoning`, `source`, `target` or `structure`) names no element of the document |
+//! | SACM-MULT-001 | SACM23-VAL-005 | §11.13 | Error | an asserted relationship has no `source` (`source:ArgumentAsset[1..*]`), or no `target` (`target:ArgumentAsset[1]`): one finding per missing end |
 //! | SACM-CITE-001 | SACM23-VAL-007 | §8.2 | Error | an element has a `citedElement` but its `isCitation` is not true (OCL `self.citedElement <> null implies self.isCitation = true`) |
 //! | SACM-ABS-001 | SACM23-VAL-008 | §8.2 | Error | an element with an `abstractForm` is itself abstract ("+isAbstract of the `SACMElement` is false") |
-//! | SACM-ABS-001 | SACM23-VAL-008 | §8.2 | Warning | the `abstractForm` target is not abstract, or is of another kind (both "should") |
+//! | SACM-ABS-001 | SACM23-VAL-008 | §8.2 | Warning | the element the `abstractForm` references is not abstract, or is of another kind (both "should") |
 //!
 //! A `ModelElement`
 //! ([`AbstractClass::ModelElement`](crate::model::AbstractClass::ModelElement))
@@ -100,13 +101,21 @@
 //! (D-PKG-HOMOG). Each package is checked for its own children only. To fix
 //! one, move the other elements into a nested package.
 //!
-//! A reference is held as the id it names (ADR 0026). Each id a
-//! `citedElement` or `abstractForm` holds that names no element of the
-//! document is one SACM-REF-001 finding per element and end, affecting the
-//! element, then the id; an id absent from the document dangles, and so does
+//! A reference is held as the id it names (ADR 0026). Each distinct id a
+//! reference end holds that names no element of the document is one
+//! SACM-REF-001 finding per element and end, with the end's clause, affecting
+//! the element, then the id; an id a multi-valued end holds twice is one
+//! finding. An id absent from the document dangles, and so does
 //! the `xmi:id` of a `name`, `content`, `key` or `value`, which identifies no
 //! element. A reference to any element, the element itself included,
-//! resolves. To fix one, point it at an element, or remove it.
+//! resolves, whatever its kind: the type of the referenced element is not checked yet
+//! (SACM23-VAL-004). To fix one, point it at an element, or remove it.
+//!
+//! An asserted relationship needs at least one `source` and one `target`
+//! (§11.13). One read without them is kept as read, and each missing end is
+//! one SACM-MULT-001 Error, affecting the relationship, so a strict
+//! [`xmi::write`](crate::xmi::write) refuses it. To fix one, give it the
+//! missing end.
 //!
 //! §8.2 asks an element with a `citedElement` to be a citation: one without
 //! `isCitation` true is a SACM-CITE-001 Error, affecting it, whether or not
@@ -115,7 +124,7 @@
 //! SACM-ABS-001 Error, affecting it. When the `abstractForm` names an element,
 //! that element should be abstract and of the same kind: there is one
 //! SACM-ABS-001 Warning when it is not abstract and another when it is of
-//! another kind, each affecting the element, then the target. A target
+//! another kind, each affecting the element, then the referenced element. An `abstractForm`
 //! that names no element gives only SACM-REF-001.
 //!
 //! ```
@@ -196,6 +205,7 @@ mod ids;
 mod multi_lang;
 mod names;
 mod references;
+mod relationships;
 
 use crate::diagnostic::Diagnostic;
 use crate::model::Document;
@@ -214,6 +224,7 @@ const RULES: &[Rule] = &[
     references::dangling_references,
     references::citation,
     references::abstract_form,
+    relationships::relationship_ends,
 ];
 
 /// Checks `document` against the SACM rules this release knows and returns

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-ARG-004, SACM23-ARG-005, SACM23-ARG-007, SACM23-ARG-008, SACM23-ARG-010: asserted relationships in an ArgumentPackage. The AssertedInference i1 concludes c1 from c2 and c3 (attribute form), with the reasoning r1 and the meta-claim m1; r1's structure is the package hazard_arguments. The AssertedContext x1 gives c3 as context to i1 (element form, xmi:idref and href). The AssertedInference i2 counters i1 (isCounter). Every reference resolves and the document validates without a finding. Hand-written; no third-party content. -->
+<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="case">
+  <name lang="en" content="Brake case"/>
+  <argumentPackage xmi:id="arguments">
+    <name lang="en" content="Brake arguments"/>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+      <name lang="en" content="The brakes are acceptably safe"/>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c2">
+      <name lang="en" content="Every identified brake hazard is mitigated"/>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c3" assertionDeclaration="assumed">
+      <name lang="en" content="The brake hazard list is complete"/>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c4" assertionDeclaration="defeated">
+      <name lang="en" content="The brake hazard list is out of date"/>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="m1">
+      <name lang="en" content="The inference from the mitigated hazards is sound"/>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:ArgumentReasoning" xmi:id="r1" structure="hazard_arguments">
+      <name lang="en" content="Argument over each identified hazard"/>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:AssertedInference" xmi:id="i1" target="c1" source="c2 c3" reasoning="r1" metaClaim="m1">
+      <name lang="en" content="The mitigated hazards support the safe brakes"/>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:AssertedContext" xmi:id="x1">
+      <name lang="en" content="The hazard list is the context of the inference"/>
+      <source xmi:idref="c3"/>
+      <target href="#i1"/>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:AssertedInference" xmi:id="i2" isCounter="true" source="c4" target="i1">
+      <name lang="en" content="An out-of-date hazard list counters the inference"/>
+    </argumentElement>
+  </argumentPackage>
+  <argumentPackage xmi:id="hazard_arguments">
+    <name lang="en" content="Hazard arguments"/>
+  </argumentPackage>
+</sacm:AssuranceCasePackage>

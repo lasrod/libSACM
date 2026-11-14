@@ -1,6 +1,7 @@
 //! The XMI writer (SACM23-XMI-003, -004, -005, -006, -007, -011, -012, -013,
 //! -017, SACM23-BASE-004, -005, -006, -007, -008, LIB-API-010,
-//! LIB-COMPAT-007; ADR 0017, ADR 0022, ADR 0025, ADR 0026).
+//! LIB-COMPAT-007, SACM23-ARG-004, -005, -007; ADR 0017, ADR 0022, ADR 0025,
+//! ADR 0026, ADR 0027).
 //!
 //! Two passes. [`plan`] checks the document (in strict mode, validating it)
 //! and every element, and resolves what each is written as; only if that succeeds does [`write`] build the `String` from the plan,
@@ -14,8 +15,8 @@ use super::namespaces::{SACM_NS, SACM_PREFIX, XMI_NS, XMI_PREFIX};
 use super::{Mode, WriteAttribute, WriteError};
 use crate::diagnostic::Severity;
 use crate::model::{
-    AssertionDeclaration, DeclaredType, Document, ElementId, ElementKind, Flag, LangString,
-    ReferenceEnd, SacmElement, Text, TextRole,
+    AbstractClass, AssertionDeclaration, DeclaredType, Document, ElementId, ElementKind, Flag,
+    LangString, OWNERS, ReferenceEnd, SacmElement, Text, TextRole,
 };
 use crate::validation;
 
@@ -75,14 +76,9 @@ pub(super) fn write(document: &Document, mode: Mode) -> Result<String, WriteErro
             escape_into(&mut out, gid);
             out.push('"');
         }
-        // Then the SACMElement flags and references, before the class's own
-        // attributes (superclass first, Annex B.5.2).
-        push_flags_and_references(&mut out, planned.element);
-        if let Some(declaration) = planned.declaration {
-            out.push_str(" assertionDeclaration=\"");
-            out.push_str(declaration.as_str());
-            out.push('"');
-        }
+        // Then the flags, the declaration and the references, class by
+        // class, superclass first (Annex B.5.2; ADR 0027).
+        push_flags_and_references(&mut out, planned.element, planned.declaration);
         let name = planned.element.name();
         let texts =
             [TextRole::Content, TextRole::Key].map(|role| (role, planned.element.text(role)));
@@ -246,34 +242,54 @@ fn is_xml_char(c: char) -> bool {
     )
 }
 
-/// Writes the `SACMElement` flags of `element` and its references as
-/// attributes, each after a space, in table order (ADR 0026): a flag only
-/// when true, as `"true"`, and a reference end only when it holds an id, as
-/// its ids separated by one space, each escaped (`xsd:IDREFS`, XMI 2.5.1
-/// rule 2j).
-fn push_flags_and_references(out: &mut String, element: SacmElement<'_>) {
-    for flag in Flag::ALL {
-        if element.flag(flag) {
-            out.push(' ');
-            out.push_str(flag.name());
-            out.push_str("=\"true\"");
-        }
-    }
-    for end in ReferenceEnd::ALL {
-        let targets = element.references(end);
-        if targets.is_empty() {
-            continue;
-        }
-        out.push(' ');
-        out.push_str(end.name());
-        out.push_str("=\"");
-        for (position, target) in targets.iter().enumerate() {
-            if position > 0 {
+/// Writes the flags of `element`, its `declaration` and its references as
+/// attributes, each after a space (ADR 0026, ADR 0027): for each class that
+/// owns some of them and that the element's kind specializes, superclass
+/// first ([`OWNERS`]), the class's flags, then, on `Assertion`, the
+/// declaration, then the class's ends, each in table order. A flag is
+/// written only when true, as `"true"`, the declaration only when given,
+/// and an end only when it holds an id, as its ids in order, separated by
+/// one space, each escaped (`xsd:IDREFS`, XMI 2.5.1 rule 2j).
+fn push_flags_and_references(
+    out: &mut String,
+    element: SacmElement<'_>,
+    declaration: Option<AssertionDeclaration>,
+) {
+    let kind = element.kind();
+    for owner in OWNERS.into_iter().filter(|owner| owner.admits(kind)) {
+        for flag in Flag::ALL.into_iter().filter(|flag| flag.owner() == owner) {
+            if element.flag(flag) {
                 out.push(' ');
+                out.push_str(flag.name());
+                out.push_str("=\"true\"");
             }
-            escape_into(out, target.as_str());
         }
-        out.push('"');
+        if owner == DeclaredType::Abstract(AbstractClass::Assertion) {
+            if let Some(declaration) = declaration {
+                out.push_str(" assertionDeclaration=\"");
+                out.push_str(declaration.as_str());
+                out.push('"');
+            }
+        }
+        for end in ReferenceEnd::ALL
+            .into_iter()
+            .filter(|end| end.owner() == owner)
+        {
+            let targets = element.references(end);
+            if targets.is_empty() {
+                continue;
+            }
+            out.push(' ');
+            out.push_str(end.name());
+            out.push_str("=\"");
+            for (position, target) in targets.iter().enumerate() {
+                if position > 0 {
+                    out.push(' ');
+                }
+                escape_into(out, target.as_str());
+            }
+            out.push('"');
+        }
     }
 }
 

@@ -5,7 +5,9 @@
 //! One table holds one input per refusal site: every `ReadError` variant, and
 //! every `Unsupported` reason for roots, for children, for utility elements
 //! and their `content` and `key` roles, for `gid` (ADR 0025), and for the
-//! `SACMElement` flags and references (ADR 0026). The expected
+//! `SACMElement` flags and references (ADR 0026), and for the
+//! asserted-relationship features, `metaClaim` and `structure` (ADR 0027).
+//! The expected
 //! location is marked in the input with [`MARK`] (U+2038), which the test
 //! removes before reading, and is counted here: lines end at LF, CRLF or a
 //! lone CR, columns count characters, and a leading byte order mark takes no
@@ -563,7 +565,7 @@ fn child_role_rows() -> Vec<Row> {
         row(
             "a conforming kind outside the readable set",
             U,
-            element(" xmi:type=\"sacm:AssertedInference\" xmi:id=\"x\""),
+            element(" xmi:type=\"sacm:ArgumentPackageInterface\" xmi:id=\"x\""),
         ),
     ]
 }
@@ -1209,6 +1211,132 @@ fn reference_rows() -> Vec<Row> {
     ]
 }
 
+/// An `AssertedInference` `x` in the root `p` with the start-tag `attributes`,
+/// holding `content`.
+fn inference_x(attributes: &str, content: &str) -> String {
+    in_ap(&format!(
+        "<argumentElement xmi:type=\"sacm:AssertedInference\" xmi:id=\"x\"{attributes}>{content}         </argumentElement>"
+    ))
+}
+
+/// The refusals of the asserted-relationship features `isCounter`, `source`,
+/// `target` and `reasoning`, of `metaClaim` and of `structure`
+/// (SACM23-ARG-004, -005, -007; ADR 0027): a feature on a kind that lacks
+/// it, a bad literal, and a second value of a single-valued end, or an
+/// attribute and an element for a multi-valued one.
+#[expect(
+    clippy::too_many_lines,
+    reason = "one flat table is easier to review than several"
+)]
+fn relationship_rows() -> Vec<Row> {
+    use Variant::{InvalidLiteral, RepeatedValue, Unsupported as U};
+    vec![
+        // On a kind that lacks it: at the attribute's name or the element's `<`.
+        row(
+            "isCounter on a Claim",
+            U,
+            claim_x(&format!(" {MARK}isCounter=\"true\""), ""),
+        ),
+        row(
+            "an isCounter element in a Claim",
+            U,
+            claim_x("", &format!("{MARK}<isCounter>true</isCounter>")),
+        ),
+        row(
+            "source on a Claim",
+            U,
+            claim_x(&format!(" {MARK}source=\"c\""), ""),
+        ),
+        row(
+            "a source element in a Claim",
+            U,
+            claim_x("", &format!("{MARK}<source xmi:idref=\"c\"/>")),
+        ),
+        row(
+            "target on an ArgumentPackage root",
+            U,
+            led(&format!(
+                "<sacm:ArgumentPackage{NS} xmi:id=\"a\" {MARK}target=\"a\"/>"
+            )),
+        ),
+        row(
+            "structure on a Claim",
+            U,
+            claim_x(&format!(" {MARK}structure=\"p\""), ""),
+        ),
+        row(
+            "metaClaim on a Note",
+            U,
+            in_ap(&format!("<note xmi:id=\"n\" {MARK}metaClaim=\"c\"/>")),
+        ),
+        row(
+            "sacm:isCounter on a relationship",
+            U,
+            inference_x(&format!(" {MARK}sacm:isCounter=\"true\""), ""),
+        ),
+        row(
+            "an empty source",
+            U,
+            inference_x(&format!(" {MARK}source=\"\""), ""),
+        ),
+        // A bad literal: at the attribute's name.
+        row(
+            "a bad isCounter literal",
+            InvalidLiteral,
+            inference_x(&format!(" {MARK}isCounter=\"yes\""), ""),
+        ),
+        row(
+            "a bad isCounter literal in the element form",
+            InvalidLiteral,
+            inference_x("", &format!("{MARK}<isCounter>t rue</isCounter>")),
+        ),
+        // Two ids on a single-valued end: at the attribute's name.
+        row(
+            "two tokens in target",
+            RepeatedValue,
+            inference_x(&format!(" source=\"c\" {MARK}target=\"c d\""), ""),
+        ),
+        // At the second occurrence.
+        row(
+            "two target elements",
+            RepeatedValue,
+            inference_x(
+                "",
+                &format!("<target xmi:idref=\"c\"/>{MARK}<target href=\"#d\"/>"),
+            ),
+        ),
+        row(
+            "two reasoning elements",
+            RepeatedValue,
+            inference_x(
+                "",
+                &format!("<reasoning xmi:idref=\"r\"/>{MARK}<reasoning xmi:idref=\"r\"/>"),
+            ),
+        ),
+        row(
+            "source as an attribute and an element",
+            RepeatedValue,
+            inference_x(" source=\"c\"", &format!("{MARK}<source xmi:idref=\"d\"/>")),
+        ),
+        row(
+            "metaClaim as an attribute and an element",
+            RepeatedValue,
+            claim_x(
+                " metaClaim=\"c\"",
+                &format!("{MARK}<metaClaim xmi:idref=\"d\"/>"),
+            ),
+        ),
+        row(
+            "isCounter as an attribute and an element",
+            RepeatedValue,
+            inference_x(
+                " isCounter=\"true\"",
+                &format!("{MARK}<isCounter>true</isCounter>"),
+            ),
+        ),
+    ]
+}
+
 // --- Reading and locating ---------------------------------------------------
 
 /// How long one `read` may take; a hang fails the test instead of stalling.
@@ -1432,6 +1560,7 @@ fn all_rows() -> Vec<Row> {
         gid_rows(),
         flag_rows(),
         reference_rows(),
+        relationship_rows(),
     ]
     .into_iter()
     .flatten()
@@ -1508,6 +1637,11 @@ fn sacm23_xmi_010_is_citation_and_is_abstract_refusals_are_located() {
 #[test]
 fn sacm23_xmi_010_cited_element_and_abstract_form_refusals_are_located() {
     assert_located("reference", &reference_rows());
+}
+
+#[test]
+fn sacm23_xmi_010_relationship_meta_claim_and_structure_refusals_are_located() {
+    assert_located("relationship", &relationship_rows());
 }
 
 #[test]

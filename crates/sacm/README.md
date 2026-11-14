@@ -10,14 +10,19 @@ Read, edit, validate and write assurance cases in the
 ## What works today
 
 - `sacm::xmi::read` reads `AssuranceCasePackage` and `ArgumentPackage` roots and the
-  packages and Claims in them, with their names, `gid`s and each Claim's
+  packages and Claims in them, with their names, `gid`s and each Assertion's
   `assertionDeclaration`, and the descriptions, notes, implementation constraints and
   tagged values of each (`SacmElement::descriptions`, `notes`, `tagged_values` and the
   like), with their `content` and, on a tagged value, `key` (`SacmElement::content`,
   `SacmElement::key`). Every element's `isCitation`, `citedElement`, `isAbstract` and
   `abstractForm` are read too (`SacmElement::is_citation`, `cited_element` and the like),
   in the attribute or the element form; a reference is held as the id it names, and one
-  that names no element is kept. It refuses what it cannot represent yet rather than drop it. An
+  that names no element is kept. In an `ArgumentPackage` it also reads
+  `ArgumentReasoning`, `AssertedInference` and `AssertedContext` elements, with each
+  relationship's sources, target, reasoning and `isCounter` (`SacmElement::sources`,
+  `target`, `reasoning`, `is_counter`), each Assertion's meta-claims
+  (`SacmElement::meta_claims`) and each reasoning's `structure`. It refuses what it
+  cannot represent yet rather than drop it. An
   element without an `xmi:id` gets a generated one, such as `claim_1`, which `write`
   saves; see the Ids section of the `sacm::xmi::read` docs.
 - `sacm::xmi::write` writes a document deterministically, and by default refuses one that
@@ -27,11 +32,13 @@ Read, edit, validate and write assurance cases in the
   each id that is not an XML `NCName`, each `gid` two elements share, each element with
   more than one description, each `ArgumentPackage` that nests one and also holds
   other argumentation elements, each reference that names no element, each element with a
-  `citedElement` whose `isCitation` is not true, and each `abstractForm` that breaks a
-  §8.2 rule, as diagnostics
+  `citedElement` whose `isCitation` is not true, each `abstractForm` that breaks a
+  §8.2 rule, and each asserted relationship without a source or a target, as diagnostics
   with stable codes.
-- `sacm::edit::apply` creates AssuranceCasePackages, ArgumentPackages and Claims, and
-  descriptions, implementation constraints, notes and tagged values on them
+- `sacm::edit::apply` creates AssuranceCasePackages, ArgumentPackages, Claims,
+  ArgumentReasonings, AssertedInferences and AssertedContexts
+  (`sacm::edit::CreateAssertedInference` and the like), and descriptions,
+  implementation constraints, notes and tagged values on them
   (`sacm::edit::CreateNote`, `sacm::edit::CreateTaggedValue` and the like); a refused
   edit changes nothing.
 - `sacm::compare::semantic_compare` lists every difference in SACM content between two

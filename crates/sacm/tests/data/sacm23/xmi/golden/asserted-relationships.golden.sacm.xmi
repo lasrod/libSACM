@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+  <name lang="en" content="Arguments" />
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+    <name lang="en" content="The system is acceptably safe" />
+  </argumentElement>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c2">
+    <name lang="en" content="Every identified hazard is mitigated" />
+  </argumentElement>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c3">
+    <name lang="en" content="The hazard list is complete" />
+  </argumentElement>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="m1">
+    <name lang="en" content="The inference is sound" />
+  </argumentElement>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="m2">
+    <name lang="en" content="The context is relevant" />
+  </argumentElement>
+  <argumentElement xmi:type="sacm:ArgumentReasoning" xmi:id="r1" gid="reasoning-1" structure="arguments">
+    <name lang="en" content="Argument over each hazard" />
+  </argumentElement>
+  <argumentElement xmi:type="sacm:AssertedInference" xmi:id="i0" isAbstract="true" source="c2" target="c1">
+    <name lang="en" content="{Premises} support {conclusion}" />
+  </argumentElement>
+  <argumentElement xmi:type="sacm:AssertedInference" xmi:id="i1" gid="inference-1" isCitation="true" citedElement="i0" abstractForm="i0" assertionDeclaration="assumed" metaClaim="m1 m2" isCounter="true" reasoning="r1" source="c2 c3" target="c1">
+    <name lang="en" content="The hazards bear on the conclusion" />
+  </argumentElement>
+  <argumentElement xmi:type="sacm:AssertedContext" xmi:id="x0" isAbstract="true" source="c3" target="i0">
+    <name lang="en" content="{Context} of {inference}" />
+  </argumentElement>
+  <argumentElement xmi:type="sacm:AssertedContext" xmi:id="x1" gid="context-1" isCitation="true" citedElement="x0" abstractForm="x0" assertionDeclaration="axiomatic" metaClaim="m2" isCounter="true" reasoning="r1" source="c3 m2" target="i1">
+    <name lang="en" content="The hazard list is the context" />
+  </argumentElement>
+</sacm:ArgumentPackage>

@@ -231,6 +231,21 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
   `Code::ABSTRACT_FORM_INVALID` (SACM-ABS-001), an abstract element with an
   `abstractForm` as an Error, and an `abstractForm` target that is not abstract or of
   another kind as a Warning [SACM23-VAL-003, SACM23-VAL-007, SACM23-VAL-008].
+- Asserted relationships (ADR 0027). `xmi::read` and `xmi::write` handle
+  `ArgumentReasoning`, `AssertedInference` and `AssertedContext` in an `ArgumentPackage`.
+  `SacmElement::meta_claims` gives an Assertion's `metaClaim` ids, the first multi-valued
+  reference end, in order with repeats. `SacmElement::sources`, `target`, `reasoning` and
+  `is_counter` give an asserted relationship's ends and flag, and `structure` gives an
+  `ArgumentReasoning`'s package. They are written class by class, superclass first: an
+  Assertion's after `assertionDeclaration`. `edit::CreateArgumentReasoning`, `edit::CreateAssertedInference` and
+  `edit::CreateAssertedContext` create them, refusing no source as
+  `EditError::TooFewReferences` (SACM-MULT-001), an id that holds white space as
+  `EditError::InvalidReference` (SACM-ID-002), and an id that names no element as
+  `EditError::ReferenceNotFound` (SACM-CMD-001). `semantic_compare` reports
+  `Difference::IsCounter`, `MetaClaims`, `Reasoning`, `Sources`, `Target` and `Structure`.
+  `validation::validate` reports a relationship with no source, and one with no target,
+  as SACM-MULT-001 Errors [SACM23-ARG-004, SACM23-ARG-005, SACM23-ARG-007,
+  SACM23-ARG-008, SACM23-ARG-010, SACM23-VAL-005].
 
 ### Changed
 
@@ -275,6 +290,14 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
 - The new validation Error rule SACM-ABS-001 can make a strict `xmi::write` refuse a
   document: one with an `abstractForm` on an element whose `isAbstract` is true. Its
   Warnings do not refuse [SACM23-VAL-008].
+- The new validation Error rule SACM-MULT-001 for asserted relationships can make a
+  strict `xmi::write` refuse a document: one with an asserted relationship that has no
+  `source` or no `target`. A tolerant `xmi::write` still writes it as held
+  [SACM23-VAL-005].
+- `xmi::read` reads `ArgumentReasoning`, `AssertedInference` and `AssertedContext` in an
+  `ArgumentPackage`, which it refused as `Unsupported` before. `ReadError::RepeatedValue`
+  for `metaClaim` or `source` given both as an attribute and as elements says so
+  [SACM23-ARG-004, SACM23-ARG-005, SACM23-ARG-008, SACM23-ARG-010].
 - `xmi::read` reads `isCitation`, `isAbstract`, `citedElement` and `abstractForm`, which
   it refused as `Unsupported` before; a flag that is not a Boolean literal is now the
   coded refusal `ReadError::InvalidLiteral` (SACM-ENUM-001), and two ids on one reference

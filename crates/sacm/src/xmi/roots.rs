@@ -1,9 +1,10 @@
 //! The interchange roots of an XMI document, their names and the package
 //! content under them (SACM23-XMI-001, SACM23-XMI-005, SACM23-XMI-012,
 //! SACM23-XMI-014, SACM23-XMI-015, SACM23-XMI-016, SACM23-XMI-017,
-//! SACM23-BASE-004, -005, -006, -007, -008; formal/23-05-08 §2.2, §2.4,
-//! §8.2-§8.12, §11.10; XMI 2.5.1 §7.5.3, §7.6.3, §7.8.4, §7.8.6, §7.10; ADR
-//! 0015, ADR 0016, ADR 0021, ADR 0025, ADR 0026).
+//! SACM23-BASE-004, -005, -006, -007, -008, SACM23-ARG-004, -005, -007,
+//! -008, -010; formal/23-05-08 §2.2, §2.4, §8.2-§8.12, §11.10-§11.16; XMI
+//! 2.5.1 §7.5.3, §7.6.3, §7.8.4, §7.8.6, §7.10; ADR 0015, ADR 0016, ADR
+//! 0021, ADR 0025, ADR 0026, ADR 0027).
 //!
 //! An interchange root is the document element or, when that is the XMI
 //! element, each of its element children outside the XMI namespace. The
@@ -25,7 +26,7 @@
 //!    document order. A `name` is read into its element's name
 //!    (SACM23-XMI-012). A child element is checked the same way, at its start
 //!    tag first: its role, its type and kind, and its `xmi:id`
-//!    (SACM23-XMI-016); then its attributes, of which a Claim's
+//!    (SACM23-XMI-016); then its attributes, of which an Assertion's
 //!    `assertionDeclaration` is read (SACM23-XMI-017), and its content. The
 //!    first thing this release cannot read is `Unsupported`, at its location;
 //!    nothing is dropped (ADR 0015, D-PRESERVE).
@@ -46,16 +47,20 @@
 //! until LIB-COMPAT-008.
 //!
 //! A name's `lang` and `content` (and those of a `value`), every element's
-//! `gid`, `isCitation` and `isAbstract`, and a Claim's `assertionDeclaration`
-//! are read from the attribute or from a value element: an element in no
+//! `gid`, `isCitation` and `isAbstract`, an Assertion's
+//! `assertionDeclaration` and an asserted relationship's `isCounter` are
+//! read from the attribute or from a value element: an element in no
 //! namespace named after the property, whose character content is the value
 //! (SACM23-XMI-014, SACM23-BASE-006, SACM23-BASE-007, SACM23-BASE-008; XMI
-//! 2.5.1 §7.8.4; ADR 0021 amendment 1). A flag is an `xsd:boolean`. Every
-//! element's `citedElement` and `abstractForm` are references, read from the
+//! 2.5.1 §7.8.4; ADR 0021 amendment 1). A flag is an `xsd:boolean`. The
+//! reference ends of the element's kind (every element's `citedElement` and
+//! `abstractForm`, and the argumentation ends of ADR 0027) are read from the
 //! attribute, whose value is the target ids separated by XML white space
-//! (SACM23-XMI-005), or from a reference element with one `xmi:idref` or
-//! `href="#id"` (SACM23-XMI-015), and held as ids, resolved or not (ADR
-//! 0026). The id pre-pass also collects every id a reference may name, so
+//! (SACM23-XMI-005), or from reference elements with one `xmi:idref` or
+//! `href="#id"` each (SACM23-XMI-015), and held as ids, resolved or not (ADR
+//! 0026). A multi-valued end (`metaClaim`, `source`) holds every token of
+//! the attribute, or one id per element, in document order. A flag or end
+//! the kind lacks is not read. The id pre-pass also collects every id a reference may name, so
 //! that no generated id makes a dangling reference resolve. A property given
 //! more than once, a second `name`, `content` or `key` included, is
 //! `RepeatedValue`
@@ -91,8 +96,8 @@ use super::{Mode, ReadError};
 use crate::diagnostic::{Code, Diagnostic, Severity};
 use crate::model::{
     AbstractClass, AssertionDeclaration, DeclaredType, Document, ElementId, ElementKind, Flag,
-    IdGenerator, LangString, ReferenceEnd, Text, TextRole, is_ncname, reference_end_named,
-    role_named,
+    IdGenerator, LangString, ReferenceEnd, Text, TextRole, flag_named, is_ncname,
+    reference_end_named, role_named,
 };
 
 /// The XML Schema instance namespace, of `xsi:type`, which is read but never
@@ -537,10 +542,10 @@ impl Pending {
     /// ([`read_reference`]), then against an earlier occurrence, the
     /// attribute (XMI 2.5.1 rule 2h) or an earlier element.
     ///
-    /// Every end of this release is single-valued, so any second occurrence
-    /// is `RepeatedValue`. The first multi-valued end (SACM23-ARG-004) adds
-    /// `ReferenceEnd::is_many` back, and appends a later element to the
-    /// targets when the end is not also given as an attribute.
+    /// On a multi-valued end, each element appends its target, in document
+    /// order (XMI 2.5.1 rule 2b; ADR 0027), unless the end is also given as
+    /// an attribute, which is `RepeatedValue`. On a single-valued end any
+    /// second occurrence is `RepeatedValue`.
     fn read_reference_element(
         &mut self,
         text: &str,
@@ -549,11 +554,18 @@ impl Pending {
         end: ReferenceEnd,
     ) -> Result<(), ReadError> {
         let target = read_reference(text, node)?;
-        if self.references.iter().any(|(given, _)| *given == end) {
-            let property = end.name();
+        let Some(position) = self.references.iter().position(|(given, _)| *given == end) else {
+            self.references.push((end, vec![target]));
+            return Ok(());
+        };
+        let property = end.name();
+        let in_attribute = holder
+            .attributes()
+            .any(|attribute| is_unqualified(&attribute, property));
+        if !end.is_many() || in_attribute {
             return Err(repeated_value(text, holder, property, &self.id, property));
         }
-        self.references.push((end, vec![target]));
+        self.references[position].1.push(target);
         Ok(())
     }
 }
@@ -575,10 +587,12 @@ impl StartTag {
     /// none repeats here.
     ///
     /// A flag is an `xsd:boolean` ([`parse_flag`]). A reference holds the
-    /// ids its value lists, each token exactly as written
-    /// (SACM23-XMI-005): none is `Unsupported`, since that would read as no
-    /// reference, and two or more on a single-valued end is `RepeatedValue`,
-    /// with one location per token, each at the attribute's name.
+    /// ids its value lists, each token exactly as written, in order and
+    /// with repeats (SACM23-XMI-005, ADR 0027): none is `Unsupported`, since
+    /// that would read as no reference, and two or more on a single-valued
+    /// end is `RepeatedValue`, with one location per token, each at the
+    /// attribute's name. A flag or an end the kind lacks, such as
+    /// `isCounter` on a Claim, is not one, so the caller refuses it.
     fn read(
         &mut self,
         text: &str,
@@ -592,7 +606,7 @@ impl StartTag {
         }
         let at = attribute.range_qname().start;
         let local = attribute.name();
-        if let Some(flag) = Flag::ALL.into_iter().find(|flag| flag.name() == local) {
+        if let Some(flag) = flag_named(kind, local) {
             let value = parse_flag(text, attribute.value(), at, id, flag)?;
             self.flags.push((flag, value));
             return Ok(true);
@@ -612,9 +626,7 @@ impl StartTag {
                 ),
             ));
         }
-        // Every end of this release is single-valued (see
-        // `Pending::read_reference_element`).
-        if count > 1 {
+        if count > 1 && !end.is_many() {
             return Err(ReadError::RepeatedValue {
                 element: id.clone(),
                 property: local.to_owned(),
@@ -644,8 +656,9 @@ fn read_root<'a>(
     // Assertion one `assertionDeclaration` value element (SACM23-XMI-014);
     // on a UtilityElement one `content`, and on a TaggedValue one `key`
     // (SACM23-BASE-004, SACM23-BASE-005); on every element one `gid` value
-    // element (SACM23-BASE-006), one value element per flag and one
-    // reference element per single-valued end (ADR 0026); readable children
+    // element (SACM23-BASE-006), one value element per flag of its kind, one
+    // reference element per single-valued end of its kind and any number per
+    // multi-valued end (ADR 0026, ADR 0027); readable children
     // (SACM23-XMI-016), white space, comments and processing instructions.
     let mut open = vec![(first, root, root.children())];
     let mut read = Vec::new();
@@ -724,9 +737,8 @@ fn read_root<'a>(
                 ));
             }
             element.declaration = Some(declaration);
-        } else if let Some(flag) = Flag::ALL
-            .into_iter()
-            .find(|flag| is_value_element(node, flag.name()))
+        } else if let Some(flag) = flag_named(element.kind, node.tag_name().name())
+            .filter(|flag| is_value_element(node, flag.name()))
         {
             element.read_flag_element(text, *holder, node, flag)?;
         } else if let Some(end) = reference_end_named(element.kind, node.tag_name().name())
@@ -1076,7 +1088,10 @@ fn child_kind(
     parent: ElementKind,
     parent_what: &str,
 ) -> Result<ElementKind, ReadError> {
-    use ElementKind::{ArgumentPackage, AssuranceCasePackage, Claim};
+    use ElementKind::{
+        ArgumentPackage, ArgumentReasoning, AssertedContext, AssertedInference,
+        AssuranceCasePackage, Claim,
+    };
 
     let written = written_name(text, node);
     let not_read = |reason: String| unsupported(text, node.range().start, reason);
@@ -1129,7 +1144,14 @@ fn child_kind(
         || matches!(
             (parent, kind),
             (AssuranceCasePackage, AssuranceCasePackage | ArgumentPackage)
-                | (ArgumentPackage, ArgumentPackage | Claim)
+                | (
+                    ArgumentPackage,
+                    ArgumentPackage
+                        | Claim
+                        | ArgumentReasoning
+                        | AssertedInference
+                        | AssertedContext
+                )
         );
     if !readable {
         return Err(not_read(format!(
@@ -1850,8 +1872,9 @@ mod tests {
                 "the element \"argumentElement\" has the type \"sacm:Assertion\", which names no concrete SACM class",
             ),
             (
-                "<argumentElement xmi:type=\"sacm:AssertedInference\" xmi:id=\"c\"/>".to_owned(),
-                "the AssertedInference \"argumentElement\" in the root element \"sacm:ArgumentPackage\" is not read in this release",
+                "<argumentElement xmi:type=\"sacm:ArgumentPackageInterface\" xmi:id=\"c\"/>"
+                    .to_owned(),
+                "the ArgumentPackageInterface \"argumentElement\" in the root element \"sacm:ArgumentPackage\" is not read in this release",
             ),
         ];
         for (content, reason) in cases {

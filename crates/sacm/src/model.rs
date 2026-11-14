@@ -24,6 +24,15 @@
 //! [`SacmElement::cited_element`] and [`SacmElement::abstract_form`]. A
 //! reference is the [`ElementId`] it names, resolved with [`Document::get`].
 //!
+//! The argumentation kinds reference each other (§11). Every Assertion may
+//! have meta-claims ([`SacmElement::meta_claims`]). An asserted relationship,
+//! such as an `AssertedInference`, relates its
+//! [`sources`](SacmElement::sources) to its [`target`](SacmElement::target),
+//! optionally through an `ArgumentReasoning`
+//! ([`reasoning`](SacmElement::reasoning)), and may be marked as countering
+//! its declared purpose ([`is_counter`](SacmElement::is_counter)). An `ArgumentReasoning` may name
+//! the package that details it ([`structure`](SacmElement::structure)).
+//!
 //! [`LangString`], [`MultiLangString`] and [`AssertionDeclaration`] are
 //! values, not elements: they have no id and no kind of their own (the
 //! `xmi:id` of a `name`, `content` or `key` is kept with its owner:
@@ -106,4 +115,4 @@ pub use id::ElementId;
 pub(crate) use id::is_ncname;
 pub use kind::{AbstractClass, ElementKind, MetamodelPackage};
 pub use lang_string::{LangString, MultiLangString};
-pub(crate) use reference::{Flag, ReferenceEnd, reference_end_named};
+pub(crate) use reference::{Flag, OWNERS, ReferenceEnd, flag_named, reference_end_named};
