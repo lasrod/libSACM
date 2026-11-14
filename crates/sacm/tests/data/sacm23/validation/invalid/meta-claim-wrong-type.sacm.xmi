@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-VAL-004: the Claim c2 has the metaClaim r1 (11.10 metaClaim:Claim[0..*]), which resolves to an ArgumentReasoning, not a Claim. It reads in both modes and is kept; validate reports one SACM-REF-002 Error with clause 11.10 on [c2, r1], so a strict write refuses it. Every other element is named and valid. Hand-written; no third-party content. -->
+<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+  <name lang="en" content="Arguments"/>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+    <name lang="en" content="The system is acceptably safe"/>
+  </argumentElement>
+  <argumentElement xmi:type="sacm:ArgumentReasoning" xmi:id="r1">
+    <name lang="en" content="Argument over each hazard"/>
+  </argumentElement>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c2" metaClaim="r1">
+    <name lang="en" content="The argument over each hazard is sound"/>
+  </argumentElement>
+</sacm:ArgumentPackage>

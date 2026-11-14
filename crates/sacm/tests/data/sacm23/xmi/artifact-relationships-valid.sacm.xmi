@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-ARG-006, SACM23-ARG-009, SACM23-ARG-011, SACM23-ARG-012, SACM23-ARG-013: artifact relationships in an ArgumentPackage. The ArtifactReference report cites the Claims h1 and h2 of the package hazard_log (attribute form); plan cites h1 (element form, xmi:idref); standard cites nothing. The AssertedEvidence e1 supports c1 from report and plan, with the reasoning r1. The AssertedArtifactSupport s1 relates plan to report (element form, href). The AssertedArtifactContext x1 counters report with standard (isCounter). The ArgumentGroup g1 groups c1, report and e1 by reference; they stay children of arguments. Every reference resolves to an element of its end's declared type, every ArtifactReference rule of 11.15, 11.17 and 11.18 holds, and the document validates without a finding. Hand-written; no third-party content. -->
+<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="case">
+  <name lang="en" content="Brake case"/>
+  <argumentPackage xmi:id="arguments">
+    <name lang="en" content="Brake arguments"/>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+      <name lang="en" content="The brakes are acceptably safe"/>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:ArgumentReasoning" xmi:id="r1">
+      <name lang="en" content="Argument over the brake tests"/>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:ArtifactReference" xmi:id="report" referencedArtifactElement="h1 h2">
+      <name lang="en" content="The brake test report"/>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:ArtifactReference" xmi:id="plan">
+      <name lang="en" content="The brake test plan"/>
+      <referencedArtifactElement xmi:idref="h1"/>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:ArtifactReference" xmi:id="standard">
+      <name lang="en" content="A superseded brake standard"/>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:AssertedEvidence" xmi:id="e1" target="c1" source="report plan" reasoning="r1">
+      <name lang="en" content="The test report and plan support the safe brakes"/>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:AssertedArtifactSupport" xmi:id="s1">
+      <name lang="en" content="The test plan supports the test report"/>
+      <source href="#plan"/>
+      <target href="#report"/>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:AssertedArtifactContext" xmi:id="x1" isCounter="true" source="standard" target="report">
+      <name lang="en" content="The superseded standard counters the report's context"/>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:ArgumentGroup" xmi:id="g1" argumentElement="c1 report e1">
+      <name lang="en" content="The test evidence"/>
+    </argumentElement>
+  </argumentPackage>
+  <argumentPackage xmi:id="hazard_log">
+    <name lang="en" content="Hazard log"/>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="h1">
+      <name lang="en" content="Brake fade is identified"/>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="h2">
+      <name lang="en" content="Brake lock-up is identified"/>
+    </argumentElement>
+  </argumentPackage>
+</sacm:AssuranceCasePackage>

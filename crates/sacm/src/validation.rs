@@ -15,8 +15,11 @@
 //! | SACM-MULT-001 | SACM23-VAL-011 | §8.6 | Warning | a `ModelElement` has two or more descriptions (`description:Description[0..1]`) |
 //! | SACM-ID-003 | SACM23-VAL-002 | §8.2 | Error | two or more elements hold the same non-empty `gid` ("unique within the scope of the model instance") |
 //! | SACM-PKG-001 | SACM23-VAL-012 | §11.4 | Error | an `ArgumentPackage` nests a plain `ArgumentPackage` and also holds another argumentation element ("only allowed to contain `ArgumentPackages`") |
-//! | SACM-REF-001 | SACM23-VAL-003 | the end's: §8.2, §11.10, §11.12 or §11.13 | Error | an id a reference end holds (`citedElement`, `abstractForm`, `metaClaim`, `reasoning`, `source`, `target` or `structure`) names no element of the document |
+//! | SACM-REF-001 | SACM23-VAL-003 | the end's: §8.2, §11.2, §11.9, §11.10, §11.12 or §11.13 | Error | an id a reference end holds (`citedElement`, `abstractForm`, `metaClaim`, `reasoning`, `source`, `target`, `structure`, `referencedArtifactElement` or a group's `argumentElement`) names no element of the document |
+//! | SACM-REF-002 | SACM23-VAL-004 | the end's | Error | an id a reference end holds names an element of a kind the end's declared type does not admit, such as a `metaClaim` naming an `ArgumentReasoning` |
+//! | SACM-REF-002 | SACM23-VAL-016 | §11.15, §11.17 or §11.18 | Error | a source of an `AssertedEvidence`, or a source or target of an `AssertedArtifactSupport` or `AssertedArtifactContext`, is an `ArgumentAsset` but not an `ArtifactReference` |
 //! | SACM-MULT-001 | SACM23-VAL-005 | §11.13 | Error | an asserted relationship has no `source` (`source:ArgumentAsset[1..*]`), or no `target` (`target:ArgumentAsset[1]`): one finding per missing end |
+//! | SACM-MULT-001 | SACM23-VAL-022 | the end's: §11.2, §11.9, §11.10 or §11.13 | Warning | a multi-valued reference end of an element holds an id two or more times: one finding per repeated id |
 //! | SACM-CITE-001 | SACM23-VAL-007 | §8.2 | Error | an element has a `citedElement` but its `isCitation` is not true (OCL `self.citedElement <> null implies self.isCitation = true`) |
 //! | SACM-ABS-001 | SACM23-VAL-008 | §8.2 | Error | an element with an `abstractForm` is itself abstract ("+isAbstract of the `SACMElement` is false") |
 //! | SACM-ABS-001 | SACM23-VAL-008 | §8.2 | Warning | the element the `abstractForm` references is not abstract, or is of another kind (both "should") |
@@ -108,8 +111,34 @@
 //! finding. An id absent from the document dangles, and so does
 //! the `xmi:id` of a `name`, `content`, `key` or `value`, which identifies no
 //! element. A reference to any element, the element itself included,
-//! resolves, whatever its kind: the type of the referenced element is not checked yet
-//! (SACM23-VAL-004). To fix one, point it at an element, or remove it.
+//! resolves. To fix one, point it at an element, or remove it.
+//!
+//! Each end has a declared type (ptc/22-03-13, on which the text agrees):
+//! `SACMElement` for `citedElement` and `abstractForm`, `Claim` for
+//! `metaClaim`, `ArgumentReasoning` for `reasoning`, `ArgumentAsset` for
+//! `source` and `target`, `ArgumentPackage` for `structure`,
+//! `ArtifactElement` for `referencedArtifactElement` (every kind but the
+//! `UtilityElement`s)
+//! and `ArgumentationElement` for a group's `argumentElement`. Each distinct
+//! id an end holds that resolves to an element of a kind the type does not
+//! admit is one SACM-REF-002 Error per element and end (SACM23-VAL-004),
+//! with the end's clause, affecting the element, then the id. A dangling id
+//! is only SACM-REF-001. Besides, §11.15 requires the sources of an
+//! `AssertedEvidence`, and §11.17 and §11.18 the sources and target of an
+//! `AssertedArtifactSupport` and an `AssertedArtifactContext`, to be
+//! `ArtifactReference`s: each distinct other `ArgumentAsset` there is one
+//! SACM-REF-002 Error with that clause (SACM23-VAL-016). An id that the
+//! generic rules already report is not reported again, so each wrong
+//! reference is one finding. To fix one, point the reference at an element
+//! of the right kind.
+//!
+//! A multi-valued end (`metaClaim`, `source`, `referencedArtifactElement`, a
+//! group's `argumentElement`) holds its ids in order, repeats included, as
+//! read (ADR 0027). SACM's ends hold each id once, so each id one end of one
+//! element holds two or more times is one SACM-MULT-001 Warning
+//! (SACM23-VAL-022), with the end's clause, affecting the element, then the
+//! id. It is reported whatever else applies to the id, and a strict save
+//! still writes the repeat. To fix one, remove the repeats.
 //!
 //! An asserted relationship needs at least one `source` and one `target`
 //! (§11.13). One read without them is kept as read, and each missing end is
@@ -206,6 +235,7 @@ mod multi_lang;
 mod names;
 mod references;
 mod relationships;
+mod repeats;
 
 use crate::diagnostic::Diagnostic;
 use crate::model::Document;
@@ -222,9 +252,12 @@ const RULES: &[Rule] = &[
     descriptions::repeated_description,
     homogeneity::argument_package_homogeneity,
     references::dangling_references,
+    references::wrongly_typed_references,
     references::citation,
     references::abstract_form,
     relationships::relationship_ends,
+    relationships::artifact_reference_kinds,
+    repeats::repeated_references,
 ];
 
 /// Checks `document` against the SACM rules this release knows and returns

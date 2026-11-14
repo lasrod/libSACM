@@ -40,9 +40,12 @@ use super::{
 /// In this release [`xmi::read`](crate::xmi::read) fills a document with
 /// `AssuranceCasePackage` and `ArgumentPackage` roots, the
 /// `AssuranceCasePackage`, `ArgumentPackage`, `Claim`, `ArgumentReasoning`,
-/// `AssertedInference` and `AssertedContext` elements in them, and the
-/// descriptions, implementation constraints, notes and tagged values of each
-/// of these. [`edit::apply`](crate::edit::apply) creates the same ten kinds.
+/// `ArtifactReference` and `ArgumentGroup` elements, the five asserted
+/// relationships (`AssertedInference`, `AssertedEvidence`,
+/// `AssertedContext`, `AssertedArtifactSupport` and
+/// `AssertedArtifactContext`) in them, and the descriptions, implementation
+/// constraints, notes and tagged values of each of these.
+/// [`edit::apply`](crate::edit::apply) creates the same fifteen kinds.
 /// Tests build documents with other kinds through the `test-support`
 /// feature's `Document::insert`. [`Document::new`] is empty.
 ///
@@ -54,7 +57,10 @@ use super::{
 /// names no element, as a file can (ADR 0026);
 /// [`validation::validate`](crate::validation::validate) reports it
 /// (SACM-REF-001), no edit makes one, and no id an edit generates is one a
-/// reference names.
+/// reference names. Likewise a document may hold a reference to an element
+/// of a kind its end does not admit, such as a `metaClaim` naming an
+/// `ArgumentReasoning`; `validate` reports it (SACM-REF-002), and no edit
+/// makes one.
 ///
 /// Cloning a document copies all of it, including the counters that generated
 /// ids continue from; the copy is independent of the original. Cloning,
@@ -68,10 +74,11 @@ use super::{
 /// difference between them. Elements are matched by id; kinds, parents,
 /// `gid`s, the `isCitation`, `isAbstract` and `isCounter` flags, the ids
 /// each reference end holds (`citedElement`, `abstractForm`, `metaClaim`,
-/// `reasoning`, `source`, `target` and `structure`, in order), names, the
+/// `reasoning`, `source`, `target`, `structure`, `referencedArtifactElement`
+/// and a group's `argumentElement`, in order), names, the
 /// ids of names, `content`s and `key`s with their ids,
 /// `assertionDeclaration`s and the order of roots and children are compared.
-/// `==` is order-sensitive, for the ids of `metaClaim` and `source` too;
+/// `==` is order-sensitive, for the ids of the multi-valued ends too;
 /// see [`crate::compare`] to ignore order.
 ///
 /// Not compared: the per-kind counters [`edit::apply`](crate::edit::apply)
@@ -1270,9 +1277,11 @@ impl<'a> SacmElement<'a> {
     /// unresolved, as [`cited_element`](Self::cited_element) is, in the order
     /// read and with repeats (ADR 0027): `metaClaim="m1 m1"` holds `m1`
     /// twice. Each distinct id that names no element is one SACM-REF-001
-    /// finding of [`validation::validate`](crate::validation::validate). No
-    /// edit sets it yet (LIB-EDIT-009); only [`xmi::read`](crate::xmi::read)
-    /// gives one.
+    /// finding of [`validation::validate`](crate::validation::validate), each
+    /// that names an element that is no Claim is one SACM-REF-002 finding
+    /// (SACM23-VAL-004), and each repeated id is one SACM-MULT-001 Warning
+    /// (SACM23-VAL-022). No edit sets it yet (LIB-EDIT-009); only
+    /// [`xmi::read`](crate::xmi::read) gives one.
     ///
     /// ```
     /// use sacm::xmi::{self, ReadOptions};
@@ -1308,12 +1317,17 @@ impl<'a> SacmElement<'a> {
     /// `AssertedRelationship`.
     ///
     /// For an `AssertedInference` they are the premises; for an
-    /// `AssertedContext`, the context. They are held unresolved and with
-    /// repeats, as [`meta_claims`](Self::meta_claims) are. A relationship
-    /// needs at least one: [`validation::validate`](crate::validation::validate)
-    /// reports one with none as SACM-MULT-001 (SACM23-VAL-005), and
+    /// `AssertedContext`, the context; for an `AssertedEvidence`, the
+    /// evidence, which §11.15 requires to be `ArtifactReference`s. They are
+    /// held unresolved and with repeats, as [`meta_claims`](Self::meta_claims)
+    /// are. A relationship needs at least one:
+    /// [`validation::validate`](crate::validation::validate) reports one with
+    /// none as SACM-MULT-001 (SACM23-VAL-005), and
     /// [`CreateAssertedInference`](crate::edit::CreateAssertedInference)
-    /// refuses to create one.
+    /// refuses to create one. A source that is no `ArgumentAsset` is
+    /// SACM-REF-002 (SACM23-VAL-004), and so is one of an `AssertedEvidence`,
+    /// `AssertedArtifactSupport` or `AssertedArtifactContext` that is no
+    /// `ArtifactReference` (SACM23-VAL-016).
     ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentPackage, CreateAssertedInference, CreateClaim};
@@ -1348,10 +1362,14 @@ impl<'a> SacmElement<'a> {
     ///
     /// For an `AssertedInference` it is the conclusion; for an
     /// `AssertedContext`, the element the context is for, such as a Claim
-    /// (§11.16). It is held
+    /// (§11.16); for an `AssertedEvidence`, what the evidence supports, such
+    /// as a Claim (§11.15). It is held
     /// unresolved. A relationship needs one:
     /// [`validation::validate`](crate::validation::validate) reports one
-    /// without it as SACM-MULT-001 (SACM23-VAL-005). See
+    /// without it as SACM-MULT-001 (SACM23-VAL-005). A target that is no
+    /// `ArgumentAsset` is SACM-REF-002 (SACM23-VAL-004), and so is one of an
+    /// `AssertedArtifactSupport` or `AssertedArtifactContext` that is no
+    /// `ArtifactReference` (§11.17, §11.18, SACM23-VAL-016). See
     /// [`sources`](Self::sources) for an example.
     #[must_use]
     pub fn target(self) -> Option<&'a ElementId> {
@@ -1390,6 +1408,88 @@ impl<'a> SacmElement<'a> {
     #[must_use]
     pub fn structure(self) -> Option<&'a ElementId> {
         self.references(ReferenceEnd::Structure).first()
+    }
+
+    /// The ids of the elements an `ArtifactReference` refers to (SACM 2.3
+    /// §11.9 `referencedArtifactElement:Base::ArtifactElement[0..*]`), in
+    /// document order: empty when it has none or the element is not an
+    /// `ArtifactReference`.
+    ///
+    /// An `ArtifactReference` is how an argument cites an artifact, or any
+    /// other element, such as a Claim of another argument package (§11.1).
+    /// Artifacts themselves (§12, the `ArtifactPackage`) are not supported
+    /// yet, so for now it can name only elements of argument and
+    /// assurance-case packages, or nothing. Every kind except the
+    /// `UtilityElement`s (`Description`, `ImplementationConstraint`, `Note`
+    /// and `TaggedValue`) conforms to `ArtifactElement`, so any of them is a
+    /// well-typed target; a `UtilityElement` is not, and
+    /// [`validation::validate`](crate::validation::validate) reports one as
+    /// SACM-REF-002 (SACM23-VAL-004). The ids are held unresolved and with
+    /// repeats, as [`meta_claims`](Self::meta_claims) are; a repeated id is a
+    /// SACM-MULT-001 Warning (SACM23-VAL-022).
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateArtifactReference, CreateClaim};
+    /// use sacm::model::{Document, LangString};
+    ///
+    /// let mut doc = Document::new();
+    /// let name = |text: &str| LangString::new(text).with_lang("en");
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(name("Arguments")).with_id("p"))?;
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(name("Supplier arguments")).with_id("s"))?;
+    /// edit::apply(&mut doc, CreateClaim::new("s", name("The supplier's brakes meet the spec")).with_id("c1"))?;
+    /// // The argument in p cites the supplier's Claim.
+    /// let reference = CreateArtifactReference::new("p", name("The supplier's brake claim"))
+    ///     .with_referenced_artifact_elements(["c1"]);
+    /// edit::apply(&mut doc, reference.with_id("a1"))?;
+    ///
+    /// let a1 = doc.get("a1").expect("just created");
+    /// let ids: Vec<&str> = a1.referenced_artifact_elements().iter().map(|id| id.as_str()).collect();
+    /// assert_eq!(ids, ["c1"]);
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    #[must_use]
+    pub fn referenced_artifact_elements(self) -> &'a [ElementId] {
+        self.references(ReferenceEnd::ReferencedArtifactElement)
+    }
+
+    /// The ids of the members of an `ArgumentGroup` (SACM 2.3 §11.2
+    /// `argumentElement:ArgumentationElement[0..*]`, which the text spells
+    /// `argumentationElement`), in document order: empty when it has none or
+    /// the element is not an `ArgumentGroup`.
+    ///
+    /// In XMI the end is named `argumentElement`, like the composite role of
+    /// an `ArgumentPackage`, but it is a reference: a member stays where it
+    /// is contained, and `ArgumentGroups` "serve no structural purpose" (§11.2).
+    /// The ids are held unresolved and with repeats, as
+    /// [`meta_claims`](Self::meta_claims) are. A member that is no
+    /// `ArgumentationElement`, such as an `AssuranceCasePackage`, is a
+    /// SACM-REF-002 finding of
+    /// [`validation::validate`](crate::validation::validate)
+    /// (SACM23-VAL-004).
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentGroup, CreateArgumentPackage, CreateClaim};
+    /// use sacm::model::{Document, LangString};
+    ///
+    /// let mut doc = Document::new();
+    /// let name = |text: &str| LangString::new(text).with_lang("en");
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(name("Arguments")).with_id("p"))?;
+    /// edit::apply(&mut doc, CreateClaim::new("p", name("The brakes are safe")).with_id("c1"))?;
+    /// let group = CreateArgumentGroup::new("p", name("Braking")).with_group_members(["c1"]);
+    /// edit::apply(&mut doc, group.with_id("g1"))?;
+    ///
+    /// let g1 = doc.get("g1").expect("just created");
+    /// assert_eq!(g1.group_members().iter().map(|id| id.as_str()).collect::<Vec<_>>(), ["c1"]);
+    /// // The member is still a child of its package.
+    /// let c1 = doc.get("c1").expect("just created");
+    /// assert_eq!(c1.parent().map(|parent| parent.id().as_str()), Some("p"));
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    #[doc(alias = "argumentElement")]
+    #[doc(alias = "argumentationElement")]
+    #[must_use]
+    pub fn group_members(self) -> &'a [ElementId] {
+        self.references(ReferenceEnd::GroupMember)
     }
 
     /// Whether an asserted relationship counters its declared purpose (SACM

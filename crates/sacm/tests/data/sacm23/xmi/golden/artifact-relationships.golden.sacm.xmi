@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="case">
+  <name lang="en" content="Brake case" />
+  <argumentPackage xmi:id="arguments">
+    <name lang="en" content="Brake arguments" />
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+      <name lang="en" content="The brakes are acceptably safe" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="m1">
+      <name lang="en" content="The test evidence is relevant" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:ArgumentReasoning" xmi:id="r1">
+      <name lang="en" content="Argument over the brake tests" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:ArtifactReference" xmi:id="a0" isAbstract="true">
+      <name lang="en" content="{Test report}" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:ArtifactReference" xmi:id="a1" gid="report-1" isCitation="true" citedElement="a0" abstractForm="a0" referencedArtifactElement="h1 h2">
+      <name lang="en" content="The brake test report" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:ArtifactReference" xmi:id="a2">
+      <name lang="en" content="The brake test plan" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:AssertedEvidence" xmi:id="e1" gid="evidence-1" assertionDeclaration="assumed" metaClaim="m1" reasoning="r1" source="a1 a2" target="c1">
+      <name lang="en" content="The test report and plan support the safe brakes" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:AssertedArtifactSupport" xmi:id="s1" isCounter="true" source="a2" target="a1">
+      <name lang="en" content="The plan does not support the report" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:AssertedArtifactContext" xmi:id="x1" assertionDeclaration="axiomatic" source="a2" target="a1">
+      <name lang="en" content="The plan is the context of the report" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:ArgumentGroup" xmi:id="g1" gid="group-1" argumentElement="c1 a1 e1">
+      <name lang="en" content="The test evidence" />
+    </argumentElement>
+  </argumentPackage>
+  <argumentPackage xmi:id="hazard_log">
+    <name lang="en" content="Hazard log" />
+    <argumentElement xmi:type="sacm:Claim" xmi:id="h1">
+      <name lang="en" content="Brake fade is identified" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="h2">
+      <name lang="en" content="Brake lock-up is identified" />
+    </argumentElement>
+  </argumentPackage>
+</sacm:AssuranceCasePackage>

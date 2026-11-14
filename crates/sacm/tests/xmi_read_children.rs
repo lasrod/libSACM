@@ -5,8 +5,9 @@
 //! In this release the readable children are an AssuranceCasePackage in
 //! `assuranceCasePackage`, an ArgumentPackage in `argumentPackage` and in
 //! `argumentElement`, and a Claim, an `ArgumentReasoning`, an
-//! `AssertedInference` and an `AssertedContext` in `argumentElement` (SACM23-ARG-005,
-//! -008 and -010 test the last three), and on each of them
+//! `ArtifactReference`, an `ArgumentGroup` and the five asserted relationships in
+//! `argumentElement` (SACM23-ARG-005, -006 and -008 to -013 test those), and on
+//! each of them
 //! the four `UtilityElement`s in their roles (SACM23-BASE-004 and
 //! SACM23-BASE-005 test those). Everything else in a
 //! package is refused as `ReadError::Unsupported` at an exact location, and no
@@ -382,8 +383,9 @@ fn expected_role(parent: ElementKind, child: ElementKind) -> Option<&'static str
 /// Whether this release reads a `child` under `role` of a `parent`: the
 /// package children, and the four `UtilityElement`s in their own roles on
 /// every `ModelElement` (SACM23-BASE-004, SACM23-BASE-005). An
-/// `ArgumentReasoning`, an `AssertedInference` and an `AssertedContext` are read
-/// in `argumentElement` (SACM23-ARG-005, -008, -010).
+/// `ArgumentReasoning`, an `ArtifactReference`, an `ArgumentGroup` and the five
+/// asserted relationships are read in `argumentElement` (SACM23-ARG-005, -006,
+/// -008 to -013).
 fn is_readable(parent: ElementKind, role: &str, child: ElementKind) -> bool {
     use ElementKind as K;
     let utility = matches!(
@@ -410,8 +412,13 @@ fn is_readable(parent: ElementKind, role: &str, child: ElementKind) -> bool {
                 K::ArgumentPackage
                     | K::Claim
                     | K::ArgumentReasoning
+                    | K::ArtifactReference
+                    | K::ArgumentGroup
                     | K::AssertedInference
+                    | K::AssertedEvidence
                     | K::AssertedContext
+                    | K::AssertedArtifactSupport
+                    | K::AssertedArtifactContext
             )
         )
 }
@@ -978,12 +985,13 @@ fn sacm23_xmi_016_every_conforming_kind_outside_the_readable_set_is_unsupported_
             }
         }
     }
-    // The 7 other ArgumentationElement kinds in the three ArgumentPackage
-    // contexts, and the 10 other package kinds in the two
-    // AssuranceCasePackage contexts. The utility roles are read on every
-    // context (SACM23-BASE-004, SACM23-BASE-005), so none of them is a case.
+    // The 2 other ArgumentationElement kinds (the ArgumentPackage interface
+    // and binding) in the three ArgumentPackage contexts, and the 10 other
+    // package kinds in the two AssuranceCasePackage contexts. The utility
+    // roles are read on every context (SACM23-BASE-004, SACM23-BASE-005), so
+    // none of them is a case.
     assert!(
-        cases.len() >= 2 * 10 + 3 * 7,
+        cases.len() >= 2 * 10 + 3 * 2,
         "{ROW}: setup: only {} cases",
         cases.len()
     );
@@ -1364,8 +1372,21 @@ fn sacm23_xmi_016_each_readable_child_is_refused_under_every_other_role_name_of_
         (K::ArgumentPackage, "argumentElement", K::ArgumentPackage),
         (K::ArgumentPackage, "argumentElement", K::Claim),
         (K::ArgumentPackage, "argumentElement", K::ArgumentReasoning),
+        (K::ArgumentPackage, "argumentElement", K::ArtifactReference),
+        (K::ArgumentPackage, "argumentElement", K::ArgumentGroup),
         (K::ArgumentPackage, "argumentElement", K::AssertedInference),
+        (K::ArgumentPackage, "argumentElement", K::AssertedEvidence),
         (K::ArgumentPackage, "argumentElement", K::AssertedContext),
+        (
+            K::ArgumentPackage,
+            "argumentElement",
+            K::AssertedArtifactSupport,
+        ),
+        (
+            K::ArgumentPackage,
+            "argumentElement",
+            K::AssertedArtifactContext,
+        ),
     ];
     for (context, parent, wrap) in parent_contexts() {
         for &(class, own_role, child) in &readable {
@@ -1388,8 +1409,8 @@ fn sacm23_xmi_016_each_readable_child_is_refused_under_every_other_role_name_of_
         }
     }
     // Two ACP contexts: 2 children x 7 other roles x 2 type attributes;
-    // three AP contexts: 5 children x 4 other roles x 2; a Claim holds none.
-    assert_eq!(cases.len(), 2 * 28 + 3 * 40, "{ROW}: setup: the case count");
+    // three AP contexts: 10 children x 4 other roles x 2; a Claim holds none.
+    assert_eq!(cases.len(), 2 * 28 + 3 * 80, "{ROW}: setup: the case count");
     assert_all_unsupported_at_mark("other role", &cases);
 }
 

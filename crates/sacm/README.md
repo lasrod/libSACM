@@ -18,10 +18,14 @@ Read, edit, validate and write assurance cases in the
   `abstractForm` are read too (`SacmElement::is_citation`, `cited_element` and the like),
   in the attribute or the element form; a reference is held as the id it names, and one
   that names no element is kept. In an `ArgumentPackage` it also reads
-  `ArgumentReasoning`, `AssertedInference` and `AssertedContext` elements, with each
-  relationship's sources, target, reasoning and `isCounter` (`SacmElement::sources`,
-  `target`, `reasoning`, `is_counter`), each Assertion's meta-claims
-  (`SacmElement::meta_claims`) and each reasoning's `structure`. It refuses what it
+  `ArgumentReasoning`, `ArtifactReference` and `ArgumentGroup` elements and the five
+  asserted relationships (`AssertedInference`, `AssertedEvidence`, `AssertedContext`,
+  `AssertedArtifactSupport`, `AssertedArtifactContext`), with each relationship's
+  sources, target, reasoning and `isCounter` (`SacmElement::sources`, `target`,
+  `reasoning`, `is_counter`), each Assertion's meta-claims (`SacmElement::meta_claims`),
+  each reasoning's `structure`, each artifact reference's referenced elements
+  (`SacmElement::referenced_artifact_elements`) and each group's members
+  (`SacmElement::group_members`). It refuses what it
   cannot represent yet rather than drop it. An
   element without an `xmi:id` gets a generated one, such as `claim_1`, which `write`
   saves; see the Ids section of the `sacm::xmi::read` docs.
@@ -31,16 +35,21 @@ Read, edit, validate and write assurance cases in the
   `key` text that is empty or gives one language twice, each tagged value without a key,
   each id that is not an XML `NCName`, each `gid` two elements share, each element with
   more than one description, each `ArgumentPackage` that nests one and also holds
-  other argumentation elements, each reference that names no element, each element with a
-  `citedElement` whose `isCitation` is not true, each `abstractForm` that breaks a
-  §8.2 rule, and each asserted relationship without a source or a target, as diagnostics
-  with stable codes.
+  other argumentation elements, each reference that names no element or an element of the
+  wrong kind, each element with a `citedElement` whose `isCitation` is not true, each
+  `abstractForm` that breaks a §8.2 rule, each asserted relationship without a source or
+  a target, each evidence or artifact relationship whose ends are not artifact references
+  (§11.15, §11.17, §11.18), and each id a reference end repeats, as diagnostics with
+  stable codes.
 - `sacm::edit::apply` creates AssuranceCasePackages, ArgumentPackages, Claims,
-  ArgumentReasonings, AssertedInferences and AssertedContexts
-  (`sacm::edit::CreateAssertedInference` and the like), and descriptions,
+  ArgumentReasonings, ArtifactReferences, ArgumentGroups and the five asserted
+  relationships (`sacm::edit::CreateAssertedInference` and the like), and descriptions,
   implementation constraints, notes and tagged values on them
   (`sacm::edit::CreateNote`, `sacm::edit::CreateTaggedValue` and the like); a refused
-  edit changes nothing.
+  edit changes nothing, and an edit refuses a reference that names no element or an
+  element its end's declared type does not admit. The stricter §11.15, §11.17 and §11.18
+  rules, that evidence and artifact relationships link ArtifactReferences, are left to
+  `sacm::validation::validate`.
 - `sacm::compare::semantic_compare` lists every difference in SACM content between two
   documents.
 

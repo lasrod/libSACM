@@ -6,7 +6,8 @@
 //! every `Unsupported` reason for roots, for children, for utility elements
 //! and their `content` and `key` roles, for `gid` (ADR 0025), and for the
 //! `SACMElement` flags and references (ADR 0026), and for the
-//! asserted-relationship features, `metaClaim` and `structure` (ADR 0027).
+//! asserted-relationship features, `metaClaim` and `structure` (ADR 0027), and
+//! for the `ArtifactReference` and `ArgumentGroup` ends (ADR 0028).
 //! The expected
 //! location is marked in the input with [`MARK`] (U+2038), which the test
 //! removes before reading, and is counted here: lines end at LF, CRLF or a
@@ -1337,6 +1338,95 @@ fn relationship_rows() -> Vec<Row> {
     ]
 }
 
+/// An element `x` of `kind` in the root `p` with the start-tag `attributes`,
+/// holding `content`.
+fn typed_x(kind: &str, attributes: &str, content: &str) -> String {
+    in_ap(&format!(
+        "<argumentElement xmi:type=\"sacm:{kind}\" xmi:id=\"x\"{attributes}>{content}</argumentElement>"
+    ))
+}
+
+/// The refusals of the `ArtifactReference` and `ArgumentGroup` ends
+/// (SACM23-ARG-006, -013; ADR 0028): C++'s `referencedArtifact` alias, the
+/// text's spelling `argumentationElement`, a nested element under a group's
+/// `argumentElement`, an `argumentElement` attribute on a package, an empty
+/// end, an end on a kind that lacks it, and an attribute with an element.
+fn artifact_rows() -> Vec<Row> {
+    use Variant::{RepeatedValue, Unsupported as U};
+    let reference =
+        |attributes: &str, content: &str| typed_x("ArtifactReference", attributes, content);
+    let group = |attributes: &str, content: &str| typed_x("ArgumentGroup", attributes, content);
+    vec![
+        row(
+            "referencedArtifact on an ArtifactReference",
+            U,
+            reference(&format!(" {MARK}referencedArtifact=\"c\""), ""),
+        ),
+        row(
+            "a referencedArtifact element in an ArtifactReference",
+            U,
+            reference("", &format!("{MARK}<referencedArtifact xmi:idref=\"c\"/>")),
+        ),
+        row(
+            "an empty referencedArtifactElement",
+            U,
+            reference(&format!(" {MARK}referencedArtifactElement=\"\""), ""),
+        ),
+        row(
+            "referencedArtifactElement on a Claim",
+            U,
+            claim_x(&format!(" {MARK}referencedArtifactElement=\"c\""), ""),
+        ),
+        row(
+            "referencedArtifactElement as an attribute and an element",
+            RepeatedValue,
+            reference(
+                " referencedArtifactElement=\"c\"",
+                &format!("{MARK}<referencedArtifactElement xmi:idref=\"d\"/>"),
+            ),
+        ),
+        // A group's argumentElement is a reference end: a nested element is
+        // refused as a reference element, at the attribute no reference
+        // element has.
+        row(
+            "a nested element under a group's argumentElement",
+            U,
+            group(
+                "",
+                &format!("<argumentElement {MARK}xmi:type=\"sacm:Claim\" xmi:id=\"c9\"/>"),
+            ),
+        ),
+        row(
+            "argumentationElement on a group",
+            U,
+            group(&format!(" {MARK}argumentationElement=\"c\""), ""),
+        ),
+        row(
+            "an argumentationElement element in a group",
+            U,
+            group(
+                "",
+                &format!("{MARK}<argumentationElement xmi:idref=\"c\"/>"),
+            ),
+        ),
+        row(
+            "an argumentElement attribute on an ArgumentPackage root",
+            U,
+            led(&format!(
+                "<sacm:ArgumentPackage{NS} xmi:id=\"a\" {MARK}argumentElement=\"a\"/>"
+            )),
+        ),
+        row(
+            "a group's argumentElement as an attribute and an element",
+            RepeatedValue,
+            group(
+                " argumentElement=\"c\"",
+                &format!("{MARK}<argumentElement xmi:idref=\"d\"/>"),
+            ),
+        ),
+    ]
+}
+
 // --- Reading and locating ---------------------------------------------------
 
 /// How long one `read` may take; a hang fails the test instead of stalling.
@@ -1561,6 +1651,7 @@ fn all_rows() -> Vec<Row> {
         flag_rows(),
         reference_rows(),
         relationship_rows(),
+        artifact_rows(),
     ]
     .into_iter()
     .flatten()
@@ -1642,6 +1733,11 @@ fn sacm23_xmi_010_cited_element_and_abstract_form_refusals_are_located() {
 #[test]
 fn sacm23_xmi_010_relationship_meta_claim_and_structure_refusals_are_located() {
     assert_located("relationship", &relationship_rows());
+}
+
+#[test]
+fn sacm23_xmi_010_artifact_reference_and_argument_group_refusals_are_located() {
+    assert_located("artifact reference and group", &artifact_rows());
 }
 
 #[test]

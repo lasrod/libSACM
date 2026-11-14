@@ -32,13 +32,17 @@
 //!   SACM-REF-001, so a strict save refuses it; see
 //!   [References](xmi::read#references).
 //!   In an `ArgumentPackage` it also reads `ArgumentReasoning`,
-//!   `AssertedInference` and `AssertedContext` elements, with each
-//!   relationship's [`sources`](model::SacmElement::sources),
+//!   `ArtifactReference` and `ArgumentGroup` elements and the five asserted
+//!   relationships (`AssertedInference`, `AssertedEvidence`,
+//!   `AssertedContext`, `AssertedArtifactSupport`, `AssertedArtifactContext`),
+//!   with each relationship's [`sources`](model::SacmElement::sources),
 //!   [`target`](model::SacmElement::target),
 //!   [`reasoning`](model::SacmElement::reasoning) and
 //!   [`is_counter`](model::SacmElement::is_counter), each Assertion's
-//!   [`meta_claims`](model::SacmElement::meta_claims) and each reasoning's
-//!   [`structure`](model::SacmElement::structure).
+//!   [`meta_claims`](model::SacmElement::meta_claims), each reasoning's
+//!   [`structure`](model::SacmElement::structure), each artifact reference's
+//!   [`referenced_artifact_elements`](model::SacmElement::referenced_artifact_elements)
+//!   and each group's [`group_members`](model::SacmElement::group_members).
 //!   It refuses what it cannot represent yet rather than drop it. An element
 //!   without an `xmi:id` gets a generated one, such as `claim_1`, which
 //!   `write` saves; see [Ids](xmi::read#ids).
@@ -49,17 +53,24 @@
 //!   tagged value without a key, each id that is not an XML `NCName`, each
 //!   `gid` two elements share, each element with more than one description,
 //!   each `ArgumentPackage` that nests one and also holds other
-//!   argumentation elements, each reference that names no element, each
-//!   element with a `citedElement` whose `isCitation` is not true, each
-//!   `abstractForm` that breaks a §8.2 rule, and each asserted relationship
-//!   without a source or a target, as
+//!   argumentation elements, each reference that names no element or an
+//!   element of the wrong kind, each element with a `citedElement` whose
+//!   `isCitation` is not true, each `abstractForm` that breaks a §8.2 rule,
+//!   each asserted relationship without a source or a target, each evidence
+//!   or artifact relationship whose ends are not artifact references (§11.15,
+//!   §11.17, §11.18), and each id a reference end repeats, as
 //!   [`Diagnostic`](diagnostic::Diagnostic)s with stable codes.
 //! - [`edit::apply`] creates `AssuranceCasePackage`, `ArgumentPackage`,
-//!   `Claim`, `ArgumentReasoning`, `AssertedInference` and `AssertedContext`
-//!   elements ([`edit::CreateAssertedInference`] and the like), and
-//!   descriptions, implementation constraints, notes and tagged values on
-//!   them ([`edit::CreateNote`], [`edit::CreateTaggedValue`] and the like);
-//!   a refused edit changes nothing.
+//!   `Claim`, `ArgumentReasoning`, `ArtifactReference` and `ArgumentGroup`
+//!   elements and the five asserted relationships
+//!   ([`edit::CreateAssertedInference`] and the like), and descriptions,
+//!   implementation constraints, notes and tagged values on them
+//!   ([`edit::CreateNote`], [`edit::CreateTaggedValue`] and the like); a
+//!   refused edit changes nothing, and an edit refuses a reference that
+//!   names no element or an element its end's declared type does not admit.
+//!   The stricter §11.15, §11.17 and §11.18 rules, that evidence and
+//!   artifact relationships link `ArtifactReference`s, are left to
+//!   [`validation::validate`].
 //! - [`compare::semantic_compare`] lists every difference in SACM content
 //!   between two documents, and `==` on a [`Document`](model::Document) is
 //!   true when there is none.
@@ -152,13 +163,20 @@
 //! In SACM an argument is Claims linked by asserted relationships (§11.13).
 //! An `AssertedInference` (§11.14) asserts that its sources, the premises,
 //! infer its target, the conclusion. An `AssertedContext` (§11.16) gives its
-//! sources as the context of its target. Build them with [`edit`], and read
+//! sources as the context of its target. An `AssertedEvidence` (§11.15)
+//! supports its target with evidence: its sources are `ArtifactReference`s
+//! (§11.9), which name the artifacts. Artifacts themselves (§12, the
+//! `ArtifactPackage`) are not supported yet, so for now an
+//! `ArtifactReference` can name only elements of argument and
+//! assurance-case packages, or nothing. Build them with [`edit`], and read
 //! them back with [`sources`](model::SacmElement::sources) and
 //! [`target`](model::SacmElement::target):
 //!
 //! ```
-//! use sacm::edit::{self, CreateArgumentPackage, CreateAssertedInference, CreateClaim};
+//! use sacm::edit::{self, CreateArgumentPackage, CreateArtifactReference};
+//! use sacm::edit::{CreateAssertedEvidence, CreateAssertedInference, CreateClaim};
 //! use sacm::model::{Document, LangString};
+//! use sacm::validation;
 //!
 //! let mut document = Document::new();
 //! let en = |text: &str| LangString::new(text).with_lang("en");
@@ -175,6 +193,13 @@
 //! assert_eq!(premises, ["The brake stops the vehicle", "The brake is tested"]);
 //! let conclusion = i1.target().and_then(|id| document.get(id)?.name()?.content());
 //! assert_eq!(conclusion, Some("The brake is safe"));
+//!
+//! // The evidence a1, an ArtifactReference that names nothing yet, supports c3.
+//! edit::apply(&mut document, CreateArtifactReference::new("arguments", en("The brake test report")).with_id("a1"))?;
+//! let evidence = CreateAssertedEvidence::new("arguments", en("The report shows the test"), ["a1"], "c3");
+//! edit::apply(&mut document, evidence.with_id("e1"))?;
+//! assert_eq!(document.get("e1").and_then(|e1| e1.target()).map(|id| id.as_str()), Some("c3"));
+//! assert!(validation::validate(&document).is_empty());
 //! # Ok::<(), sacm::edit::EditError>(())
 //! ```
 //!

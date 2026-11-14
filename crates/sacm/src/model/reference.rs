@@ -1,7 +1,8 @@
 //! The Boolean flags and the non-containment reference ends of the classes
-//! the model holds (formal/23-05-08 §8.2, §11.10, §11.12, §11.13;
-//! SACM23-BASE-007, SACM23-BASE-008, SACM23-XMI-005, SACM23-ARG-004,
-//! SACM23-ARG-005, SACM23-ARG-007; ADR 0026, ADR 0027).
+//! the model holds (formal/23-05-08 §8.2, §11.2, §11.9, §11.10, §11.12,
+//! §11.13; SACM23-BASE-007, SACM23-BASE-008, SACM23-XMI-005, SACM23-ARG-004,
+//! SACM23-ARG-005, SACM23-ARG-006, SACM23-ARG-007, SACM23-ARG-013; ADR 0026,
+//! ADR 0027, ADR 0028).
 //!
 //! Two crate-private tables, [`Flag::ALL`] and [`ReferenceEnd::ALL`], which
 //! the XMI reader, the writer, the id pre-pass, comparison and validation
@@ -18,13 +19,15 @@ use super::{AbstractClass, DeclaredType, ElementKind};
 
 /// The classes that own a flag, the `assertionDeclaration` or a reference
 /// end, superclass first: the order in which `xmi::write` writes each one's
-/// features (XMI 2.5.1 Annex B.5.2; ADR 0027). Within a class it writes the
-/// flags, then, on `Assertion`, the declaration, then the ends.
-pub(crate) const OWNERS: [DeclaredType; 4] = [
+/// features (XMI 2.5.1 Annex B.5.2; ADR 0027, ADR 0028). Within a class it
+/// writes the flags, then, on `Assertion`, the declaration, then the ends.
+pub(crate) const OWNERS: [DeclaredType; 6] = [
     DeclaredType::Abstract(AbstractClass::SACMElement),
     DeclaredType::Abstract(AbstractClass::Assertion),
     DeclaredType::Abstract(AbstractClass::AssertedRelationship),
     DeclaredType::Kind(ElementKind::ArgumentReasoning),
+    DeclaredType::Kind(ElementKind::ArtifactReference),
+    DeclaredType::Kind(ElementKind::ArgumentGroup),
 ];
 
 /// A Boolean property of an element, `false` by default.
@@ -95,12 +98,21 @@ pub(crate) enum ReferenceEnd {
     Target,
     /// `structure:ArgumentPackage[0..1]` of an `ArgumentReasoning` (§11.12).
     Structure,
+    /// `referencedArtifactElement:Base::ArtifactElement[0..*]` of an
+    /// `ArtifactReference` (§11.9).
+    ReferencedArtifactElement,
+    /// `argumentElement:ArgumentationElement[0..*]` of an `ArgumentGroup`
+    /// (§11.2, where the text spells it `argumentationElement`; ptc/22-03-13
+    /// gives no aggregation, so it is a reference, not a composition). Named
+    /// for the group, because `argumentElement` is also the composite role
+    /// of an `ArgumentPackage` (ADR 0028).
+    GroupMember,
 }
 
 impl ReferenceEnd {
     /// Every end, in the order `xmi::write` writes the ends of one class and
     /// `compare` reports them (ptc/22-03-13 order within each class).
-    pub(crate) const ALL: [ReferenceEnd; 7] = [
+    pub(crate) const ALL: [ReferenceEnd; 9] = [
         ReferenceEnd::CitedElement,
         ReferenceEnd::AbstractForm,
         ReferenceEnd::MetaClaim,
@@ -108,6 +120,8 @@ impl ReferenceEnd {
         ReferenceEnd::Source,
         ReferenceEnd::Target,
         ReferenceEnd::Structure,
+        ReferenceEnd::ReferencedArtifactElement,
+        ReferenceEnd::GroupMember,
     ];
 
     /// The end's name, spelled as in the machine-readable model.
@@ -120,6 +134,8 @@ impl ReferenceEnd {
             Self::Source => "source",
             Self::Target => "target",
             Self::Structure => "structure",
+            Self::ReferencedArtifactElement => "referencedArtifactElement",
+            Self::GroupMember => "argumentElement",
         }
     }
 
@@ -127,6 +143,8 @@ impl ReferenceEnd {
     pub(crate) const fn clause(self) -> &'static str {
         match self {
             Self::CitedElement | Self::AbstractForm => "8.2",
+            Self::GroupMember => "11.2",
+            Self::ReferencedArtifactElement => "11.9",
             Self::MetaClaim => "11.10",
             Self::Structure => "11.12",
             Self::Reasoning | Self::Source | Self::Target => "11.13",
@@ -136,7 +154,10 @@ impl ReferenceEnd {
     /// Whether the end holds any number of targets (`[0..*]` or `[1..*]`),
     /// rather than at most one.
     pub(crate) const fn is_many(self) -> bool {
-        matches!(self, Self::MetaClaim | Self::Source)
+        matches!(
+            self,
+            Self::MetaClaim | Self::Source | Self::ReferencedArtifactElement | Self::GroupMember
+        )
     }
 
     /// The class that owns the end: an element of a kind it admits has it.
@@ -150,6 +171,8 @@ impl ReferenceEnd {
                 DeclaredType::Abstract(AbstractClass::AssertedRelationship)
             }
             Self::Structure => DeclaredType::Kind(ElementKind::ArgumentReasoning),
+            Self::ReferencedArtifactElement => DeclaredType::Kind(ElementKind::ArtifactReference),
+            Self::GroupMember => DeclaredType::Kind(ElementKind::ArgumentGroup),
         }
     }
 
@@ -163,6 +186,10 @@ impl ReferenceEnd {
             Self::Reasoning => DeclaredType::Kind(ElementKind::ArgumentReasoning),
             Self::Source | Self::Target => DeclaredType::Abstract(AbstractClass::ArgumentAsset),
             Self::Structure => DeclaredType::Kind(ElementKind::ArgumentPackage),
+            Self::ReferencedArtifactElement => {
+                DeclaredType::Abstract(AbstractClass::ArtifactElement)
+            }
+            Self::GroupMember => DeclaredType::Abstract(AbstractClass::ArgumentationElement),
         }
     }
 }
@@ -177,7 +204,7 @@ pub(crate) fn reference_end_named(kind: ElementKind, local: &str) -> Option<Refe
 #[cfg(test)]
 mod tests {
     use super::{Flag, OWNERS, ReferenceEnd, flag_named, reference_end_named};
-    use crate::model::{AbstractClass, ElementKind};
+    use crate::model::{AbstractClass, ElementKind, role_named};
 
     #[test]
     fn every_kind_has_its_classes_ends_and_flags_by_name_and_no_other() {
@@ -231,16 +258,20 @@ mod tests {
                 "reasoning",
                 "source",
                 "target",
-                "structure"
+                "structure",
+                "referencedArtifactElement",
+                "argumentElement"
             ]
         );
         assert_eq!(
             ReferenceEnd::ALL.map(ReferenceEnd::clause),
-            ["8.2", "8.2", "11.10", "11.13", "11.13", "11.13", "11.12"]
+            [
+                "8.2", "8.2", "11.10", "11.13", "11.13", "11.13", "11.12", "11.9", "11.2"
+            ]
         );
         assert_eq!(
             ReferenceEnd::ALL.map(ReferenceEnd::is_many),
-            [false, false, true, false, true, false, false]
+            [false, false, true, false, true, false, false, true, true]
         );
         // Every owner is in OWNERS, so the writer writes every feature.
         for owner in ReferenceEnd::ALL
@@ -263,8 +294,32 @@ mod tests {
                 "ArgumentReasoning",
                 "ArgumentAsset",
                 "ArgumentAsset",
-                "ArgumentPackage"
+                "ArgumentPackage",
+                "ArtifactElement",
+                "ArgumentationElement"
             ]
         );
+    }
+
+    /// The parent's kind decides how `argumentElement` reads: no class has a
+    /// composite role and a reference end of the same name (ADR 0028).
+    #[test]
+    fn no_class_has_a_role_and_an_end_of_the_same_name() {
+        for &kind in ElementKind::ALL {
+            for end in ReferenceEnd::ALL {
+                if end.owner().admits(kind) {
+                    assert_eq!(role_named(kind, end.name()), None, "{kind} {}", end.name());
+                }
+            }
+        }
+        assert_eq!(
+            reference_end_named(ElementKind::ArgumentGroup, "argumentElement"),
+            Some(ReferenceEnd::GroupMember)
+        );
+        assert_eq!(
+            reference_end_named(ElementKind::ArgumentPackage, "argumentElement"),
+            None
+        );
+        assert!(role_named(ElementKind::ArgumentPackage, "argumentElement").is_some());
     }
 }

@@ -285,8 +285,9 @@ impl Code {
     /// [`validation::validate`](crate::validation::validate) reports one
     /// Error per distinct missing id of each reference end of each element,
     /// with the end's clause (8.2 for `citedElement` and `abstractForm`,
-    /// 11.10 for `metaClaim`, 11.12 for `structure`, 11.13 for `reasoning`,
-    /// `source` and `target`); an id a multi-valued end holds twice is one
+    /// 11.2 for an `ArgumentGroup`'s `argumentElement`, 11.9 for
+    /// `referencedArtifactElement`, 11.10 for `metaClaim`, 11.12 for
+    /// `structure`, 11.13 for `reasoning`, `source` and `target`); an id a multi-valued end holds twice is one
     /// finding. Each affects the referring element, then the missing id
     /// (SACM23-VAL-003). [`xmi::read`](crate::xmi::read) keeps such a
     /// reference in both modes, and a tolerant [`xmi::write`](crate::xmi::write)
@@ -296,6 +297,29 @@ impl Code {
     /// file; edits that set flags and references are LIB-EDIT-008/009, not
     /// built yet.
     pub const REF_DANGLING: Code = Code::from_static("SACM-REF-001");
+
+    /// SACM-REF-002: a reference names an element of a kind its end does not
+    /// admit, such as a `metaClaim` (`Claim[0..*]`, §11.10) naming an
+    /// `ArgumentReasoning`. [`validation::validate`](crate::validation::validate)
+    /// reports one Error per distinct such id of each end of each element,
+    /// with the end's clause, affecting the referring element, then the
+    /// target (SACM23-VAL-004); and one per distinct source of an
+    /// `AssertedEvidence` (§11.15), or source or target of an
+    /// `AssertedArtifactSupport` (§11.17) or `AssertedArtifactContext`
+    /// (§11.18), that is an `ArgumentAsset` but not an `ArtifactReference`
+    /// (SACM23-VAL-016). [`xmi::read`](crate::xmi::read) keeps such a
+    /// reference in both modes and a tolerant [`xmi::write`](crate::xmi::write)
+    /// writes it back; a strict write refuses the document. A create refuses
+    /// an end whose target its declared type does not admit as
+    /// [`EditError::WrongReferenceType`](crate::edit::EditError::WrongReferenceType)
+    /// (ADR 0028). Fix: point the reference at an element of the end's type,
+    /// in the file.
+    ///
+    /// One code covers both rules: the declared-type check (SACM23-VAL-004),
+    /// which edits also refuse, and the `ArtifactReference` rules of §11.15,
+    /// §11.17 and §11.18 (SACM23-VAL-016), which edits accept.
+    /// [`Diagnostic::requirement_id`] tells them apart.
+    pub const REF_WRONG_TYPE: Code = Code::from_static("SACM-REF-002");
 
     /// SACM-CITE-001: an element has a `citedElement` but its `isCitation`
     /// is not true, against the §8.2 constraint

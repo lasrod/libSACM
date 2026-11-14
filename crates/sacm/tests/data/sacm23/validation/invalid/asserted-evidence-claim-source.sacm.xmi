@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-VAL-016: the AssertedEvidence e1 has the source c2, a Claim, where 11.15 requires an ArtifactReference ("The source of AssertedEvidence relationships must be ArtifactReference"). c2 is an ArgumentAsset, so 11.13's declared type holds and SACM23-VAL-004 reports nothing. It reads in both modes and is kept; validate reports one SACM-REF-002 Error with clause 11.15 on [e1, c2], so a strict write refuses it. Every other element is named and valid. Hand-written; no third-party content. -->
+<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+  <name lang="en" content="Arguments"/>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+    <name lang="en" content="The brakes are acceptably safe"/>
+  </argumentElement>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c2">
+    <name lang="en" content="The brakes passed their tests"/>
+  </argumentElement>
+  <argumentElement xmi:type="sacm:AssertedEvidence" xmi:id="e1" source="c2" target="c1">
+    <name lang="en" content="A claim given as evidence"/>
+  </argumentElement>
+</sacm:ArgumentPackage>
