@@ -18,7 +18,7 @@
 use sacm::compare::{Difference, semantic_compare};
 use sacm::diagnostic::{Code, Severity, SourceLocation};
 use sacm::edit::{self, CreateArgumentPackage, CreateClaim, EditError};
-use sacm::model::{Document, ElementId, LangString, SacmElement};
+use sacm::model::{Document, ElementId, ElementKind, LangString, SacmElement};
 use sacm::validation;
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteError, WriteOptions};
 
@@ -393,6 +393,50 @@ fn sacm23_xmi_022_generated_ids_skip_a_name_id_on_read_and_on_edit() {
 }
 
 #[test]
+fn sacm23_xmi_022_generated_ids_skip_name_ids_even_when_they_outnumber_the_elements() {
+    // Two elements (p, claim_2) and two name ids (claim_1, claim_3). The
+    // Claim counter starts at 0, so the generator tries claim_1, claim_2,
+    // claim_3 and claim_4: three ids in use before the free one. That is more
+    // than the element count (2), so a bound of one try per element alone runs
+    // out of candidates on the in-use claim_3; only a bound that also counts
+    // the name ids (2 + 2) reaches claim_4.
+    let mut doc = read_ok(
+        "two elements and two name ids",
+        &root_holding(&format!(
+            "<name xmi:id=\"claim_1\" content=\"P\"/>\r\n  {}",
+            claim("claim_2", "<name xmi:id=\"claim_3\" content=\"C\"/>")
+        )),
+    );
+    assert_eq!(
+        doc.element_count(),
+        2,
+        "{ROW}: setup: the input is not two elements"
+    );
+    let created = match edit::apply(&mut doc, CreateClaim::new("p", LangString::new("New"))) {
+        Ok(mutation) => mutation.created_ids().to_vec(),
+        Err(error) => panic!("{ROW}: creating a Claim with no caller id was refused: {error:?}"),
+    };
+    assert_eq!(
+        created,
+        [ElementId::from("claim_4")],
+        "{ROW}: the generated id is not claim_4, the first id in use by no element and no name"
+    );
+    let Some(element) = doc.get("claim_4") else {
+        panic!("{ROW}: the document has no element claim_4 after the edit");
+    };
+    assert_eq!(
+        (element.kind(), element.parent().map(|p| p.id().as_str())),
+        (ElementKind::Claim, Some("p")),
+        "{ROW}: claim_4 is not a Claim under p"
+    );
+    assert_eq!(
+        doc.element_count(),
+        3,
+        "{ROW}: the edit did not add exactly one element"
+    );
+}
+
+#[test]
 fn sacm23_xmi_022_a_caller_id_equal_to_a_name_id_is_duplicate_id() {
     let mut doc = read_ok(
         "a root whose name is n1",
@@ -523,6 +567,38 @@ fn sacm23_xmi_022_a_name_id_that_is_not_an_ncname_reads_and_is_one_id_002_on_the
     assert!(
         name_lines(&text).contains(&"<name xmi:id=\"1n\" content=\"P\" />"),
         "{ROW}: a tolerant write does not keep the name id 1n:\n{text}"
+    );
+}
+
+#[test]
+fn sacm23_xmi_022_a_name_id_holding_markup_and_tab_is_escaped_on_write_and_reads_back_equal() {
+    let what = "a name id a&b<c TAB";
+    let input = root_holding("<name xmi:id=\"a&amp;b&lt;c&#9;\" content=\"P\"/>");
+    let doc = match read(Mode::Tolerant, &input) {
+        Ok(output) => output.into_document(),
+        Err(error) => panic!("{ROW}: {what}: a tolerant read refused it: {error:?}"),
+    };
+    assert_eq!(
+        name_id_of(what, &doc, "p"),
+        Some("a&b<c\t".to_owned()),
+        "{ROW}: {what}: setup: the name id is not read unescaped"
+    );
+    // Not an NCName, so a strict write refuses it; a tolerant write keeps it.
+    let text = write_in(what, Mode::Tolerant, &doc);
+    let expected = "<name xmi:id=\"a&amp;b&lt;c&#9;\" content=\"P\" />";
+    assert!(
+        name_lines(&text).contains(&expected),
+        "{ROW}: {what}: the output has no line {expected:?}:\n{text}"
+    );
+    let back = match read(Mode::Tolerant, &text) {
+        Ok(output) => output.into_document(),
+        Err(error) => panic!("{ROW}: {what}: the output does not read back: {error:?}\n{text}"),
+    };
+    assert_eq!(back, doc, "{ROW}: {what}: the output reads back different");
+    assert_eq!(
+        name_id_of(what, &back, "p"),
+        Some("a&b<c\t".to_owned()),
+        "{ROW}: {what}: the name id does not survive a write"
     );
 }
 

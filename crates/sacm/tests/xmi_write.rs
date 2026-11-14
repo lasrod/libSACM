@@ -1305,6 +1305,55 @@ fn sacm23_xmi_004_id_characters_are_escaped_with_the_pinned_references_and_nothi
 }
 
 #[test]
+fn sacm23_xmi_004_a_name_id_is_written_escaped_and_reads_back_exactly() {
+    let row = "SACM23-XMI-004";
+    // The name id holds the five markup characters, TAB, LF and CR. It is not
+    // an NCName, so it is read and written tolerantly (a strict write refuses
+    // it); the bytes of the escapes are the same in both modes.
+    let id = "a&b<c>d\"e'f\tg\nh\ri";
+    let escaped = "a&amp;b&lt;c&gt;d&quot;e'f&#9;g&#10;h&#13;i";
+    let input = format!(
+        "{DECLARATION}\n<sacm:ArgumentPackage{DOCUMENT_ATTRIBUTES} xmi:id=\"p\">\n  \
+         <name xmi:id=\"{escaped}\" content=\"P\" />\n</sacm:ArgumentPackage>\n"
+    );
+    let tolerant = ReadOptions::default().with_mode(Mode::Tolerant);
+    let doc = match xmi::read(input.as_bytes(), &tolerant) {
+        Ok(output) => output.into_document(),
+        Err(error) => panic!("{row}: setup: a tolerant read refused the name id: {error:?}"),
+    };
+    let name_id = |doc: &Document| {
+        doc.get("p")
+            .and_then(SacmElement::name_id)
+            .map(|found| found.as_str().to_owned())
+    };
+    assert_eq!(
+        name_id(&doc),
+        Some(id.to_owned()),
+        "{row}: setup: the name id is not read unescaped"
+    );
+    let text = write_ok(row, &doc);
+    let expected = format!("  <name xmi:id=\"{escaped}\" content=\"P\" />");
+    assert!(
+        text.lines().any(|line| line == expected),
+        "{row}: the output has no line {expected:?}:\n{text}"
+    );
+    assert_eq!(
+        text, input,
+        "{row}: the output is not the input's bytes, which are already the pinned form"
+    );
+    let back = match xmi::read(text.as_bytes(), &tolerant) {
+        Ok(output) => output.into_document(),
+        Err(error) => panic!("{row}: the output does not read back: {error:?}\n{text}"),
+    };
+    assert_eq!(back, doc, "{row}: the output reads back different");
+    assert_eq!(
+        name_id(&back),
+        Some(id.to_owned()),
+        "{row}: the name id does not read back exactly"
+    );
+}
+
+#[test]
 fn sacm23_xmi_004_an_id_holding_u0001_is_refused_naming_the_element_and_the_character() {
     let row = "SACM23-XMI-004";
     let doc = build(row, &[(None, ElementKind::ArgumentPackage, "a\u{1}")]);
