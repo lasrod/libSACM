@@ -24,6 +24,9 @@
 
 use std::fmt::Display;
 use std::path::Path;
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::thread;
+use std::time::Duration;
 
 use sacm::compare::{Difference, semantic_compare};
 use sacm::diagnostic::{Code, Diagnostic, Severity, SourceLocation};
@@ -388,6 +391,45 @@ fn assert_repeated(
         ),
         "{row}: {what}: not SACM-MULT-001 at every occurrence"
     );
+}
+
+/// Runs `job` on a worker thread and fails if it does not return within
+/// `deadline` or panics.
+fn within<T: Send + 'static>(
+    row: &str,
+    what: &str,
+    deadline: Duration,
+    job: impl FnOnce() -> T + Send + 'static,
+) -> T {
+    let (sender, receiver) = mpsc::channel();
+    thread::spawn(move || {
+        let _ = sender.send(job());
+    });
+    match receiver.recv_timeout(deadline) {
+        Ok(result) => result,
+        Err(RecvTimeoutError::Timeout) => {
+            panic!("{row}: {what}: did not return within {deadline:?}")
+        }
+        Err(RecvTimeoutError::Disconnected) => panic!("{row}: {what}: panicked"),
+    }
+}
+
+/// The `n`th id of [`missing_tokens`]: `t` and six digits, so that the ids
+/// sort as they are numbered, which is the order `validate` returns them in.
+fn missing_token(n: usize) -> String {
+    format!("t{n:06}")
+}
+
+/// `count` distinct ids `t000000 t000001 ...`, which name no element of
+/// [`in_ap`], separated by one space.
+fn missing_tokens(count: usize) -> String {
+    (0..count).fold(String::new(), |mut tokens, n| {
+        if n > 0 {
+            tokens.push(' ');
+        }
+        tokens.push_str(&missing_token(n));
+        tokens
+    })
 }
 
 /// The id prefix `edit::apply` generates for `kind`.
@@ -1175,6 +1217,46 @@ fn sacm23_arg_007_a_dangling_source_target_or_reasoning_is_ref_001_with_clause_1
 }
 
 #[test]
+fn sacm23_arg_007_validate_is_linear_in_the_missing_ids_of_one_source() {
+    // A pairwise scan of the missing ids of one end is quadratic: 80,000
+    // took 9.2 s in a release build, so 150,000 in a debug build is far past
+    // the deadline.
+    const MISSING: usize = 150_000;
+    let row = ARG_007;
+    let deadline = Duration::from_secs(30);
+    let tokens = missing_tokens(MISSING);
+    for (_, kind) in KINDS {
+        let what = format!("a source of {MISSING} distinct missing ids on an {kind}");
+        let input = x_in_ap(kind, &format!(" source=\"{tokens}\" target=\"c1\""), "");
+        let result = within(row, &what, deadline, move || {
+            let doc = match xmi::read(input.as_bytes(), &ReadOptions::default()) {
+                Ok(output) => output.into_document(),
+                Err(error) => return Err(format!("refused: {error:?}")),
+            };
+            let held = doc.get("x").map_or(0, |x| x.sources().len());
+            let found = dangling(&doc);
+            // The first finding that is not, in token order, an Error with
+            // clause 11.13 on [x, the nth token].
+            let misplaced = found.iter().enumerate().position(|(n, finding)| {
+                let affected = finding.affected();
+                !(finding.severity() == Severity::Error
+                    && finding.clause() == Some("11.13")
+                    && affected.len() == 2
+                    && affected[0].as_str() == "x"
+                    && affected[1].as_str() == missing_token(n))
+            });
+            Ok((held, found.len(), misplaced))
+        });
+        assert_eq!(
+            result,
+            Ok((MISSING, MISSING, None)),
+            "{row}: {what}: not every token held, or not one SACM-REF-001 per id in token order \
+             (the last item is the index of the first finding out of place)"
+        );
+    }
+}
+
+#[test]
 fn sacm23_arg_007_a_context_of_an_inference_and_a_relationship_that_is_its_own_source_give_no_finding()
  {
     let row = ARG_007;
@@ -1281,6 +1363,110 @@ fn sacm23_arg_007_all_six_declarations_round_trip_on_both_kinds_and_a_bad_litera
             (error.code(), error.location()),
             (Some(Code::ENUM_INVALID_LITERAL), marks.first().copied()),
             "{row}: {what}: not SACM-ENUM-001 at the attribute"
+        );
+    }
+}
+
+#[test]
+fn sacm23_arg_007_the_element_form_of_assertion_declaration_reads_on_both_relationship_kinds() {
+    let row = ARG_007;
+    let ends = " source=\"c2\" target=\"c1\"";
+    for (_, kind) in KINDS {
+        for &declaration in AssertionDeclaration::ALL {
+            let literal = declaration.as_str();
+            let what =
+                format!("<assertionDeclaration>{literal}</assertionDeclaration> on an {kind}");
+            let as_element = read_ok(
+                row,
+                &what,
+                &x_in_ap(
+                    kind,
+                    ends,
+                    &format!("<assertionDeclaration>{literal}</assertionDeclaration>"),
+                ),
+            );
+            let as_attribute = read_ok(
+                row,
+                &format!("assertionDeclaration=\"{literal}\" on an {kind}"),
+                &x_in_ap(
+                    kind,
+                    &format!(" assertionDeclaration=\"{literal}\"{ends}"),
+                    "",
+                ),
+            );
+            assert_eq!(
+                element(row, &as_element, "x").assertion_declaration(),
+                Some(declaration),
+                "{row}: {what}: not read"
+            );
+            assert_eq!(
+                semantic_compare(&as_element, &as_attribute),
+                [],
+                "{row}: {what}: does not read equal to the attribute form"
+            );
+            assert!(
+                as_element == as_attribute,
+                "{row}: {what}: reads != to the attribute form"
+            );
+            for mode in MODES {
+                let text = round_trip(row, &what, &as_element, mode);
+                let line = line_with(row, &text, "x");
+                assert!(
+                    !text.contains("<assertionDeclaration"),
+                    "{row}: {what}: written in {mode:?} mode as an element\n{text}"
+                );
+                if declaration == AssertionDeclaration::Asserted {
+                    assert!(
+                        !line.contains("assertionDeclaration"),
+                        "{row}: {what}: the default is written in {mode:?} mode: {line}"
+                    );
+                } else {
+                    assert!(
+                        line.contains(&format!(
+                            " assertionDeclaration=\"{literal}\" source=\"c2\""
+                        )),
+                        "{row}: {what}: not written in {mode:?} mode as the attribute: {line}"
+                    );
+                }
+            }
+        }
+
+        // The attribute and the element form: both locations.
+        let what = format!("the attribute and the element form on an {kind}");
+        let (input, marks) = marked(
+            row,
+            &x_in_ap(
+                kind,
+                &format!(" {MARK}assertionDeclaration=\"assumed\"{ends}"),
+                &format!("{MARK}<assertionDeclaration>assumed</assertionDeclaration>"),
+            ),
+        );
+        let error = refused(row, &what, &input);
+        assert_repeated(row, &what, &error, "x", "assertionDeclaration", &marks);
+
+        // A bad literal in the element form: at its start tag.
+        let what = format!("<assertionDeclaration>Assumed</assertionDeclaration> on an {kind}");
+        let (input, marks) = marked(
+            row,
+            &x_in_ap(
+                kind,
+                ends,
+                &format!("{MARK}<assertionDeclaration>Assumed</assertionDeclaration>"),
+            ),
+        );
+        let error = refused(row, &what, &input);
+        assert!(
+            matches!(
+                &error,
+                ReadError::InvalidLiteral { element, property, value, .. }
+                    if element.as_str() == "x" && property == "assertionDeclaration" && value == "Assumed"
+            ),
+            "{row}: {what}: not InvalidLiteral {{ x, assertionDeclaration, \"Assumed\" }}: {error:?}"
+        );
+        assert_eq!(
+            (error.code(), error.location()),
+            (Some(Code::ENUM_INVALID_LITERAL), marks.first().copied()),
+            "{row}: {what}: not SACM-ENUM-001 at the start tag"
         );
     }
 }
@@ -1777,6 +1963,44 @@ fn sacm23_arg_008_create_asserted_inference_creates_with_its_ends_and_a_generate
 #[test]
 fn sacm23_arg_010_create_asserted_context_creates_with_its_ends_and_a_generated_id() {
     the_create_operation_creates_with_its_ends(ARG_010, ElementKind::AssertedContext);
+}
+
+fn adjacent_repeated_sources_are_kept(row: &str, kind: ElementKind) {
+    let mut doc = built(row);
+    let cases: [(&str, &[&str], &str, &str); 2] = [
+        ("twice", &["c2", "c2"], "c1", "c2 c2"),
+        ("thrice", &["c1", "c1", "c2"], "c3", "c1 c1 c2"),
+    ];
+    for &(id, sources, target, _) in &cases {
+        let mut given = spec(sources, target);
+        given.id = Some(id);
+        create(row, &mut doc, operation(kind, &given));
+        assert_eq!(
+            ends(row, &doc, id),
+            expected_ends(sources, Some(target), None, false),
+            "{row}: the sources {sources:?} are not held exactly as given"
+        );
+    }
+    // A tolerant write: a repeated source is a content finding
+    // (SACM23-VAL-022), which a strict save may come to refuse.
+    let text = round_trip(row, "the adjacent repeated sources", &doc, Mode::Tolerant);
+    for &(id, _, _, written) in &cases {
+        let attribute = format!(" source=\"{written}\"");
+        assert!(
+            line_with(row, &text, id).contains(&attribute),
+            "{row}: {id} is not written with{attribute}\n{text}"
+        );
+    }
+}
+
+#[test]
+fn sacm23_arg_008_create_asserted_inference_keeps_adjacent_repeated_sources() {
+    adjacent_repeated_sources_are_kept(ARG_008, ElementKind::AssertedInference);
+}
+
+#[test]
+fn sacm23_arg_010_create_asserted_context_keeps_adjacent_repeated_sources() {
+    adjacent_repeated_sources_are_kept(ARG_010, ElementKind::AssertedContext);
 }
 
 fn the_create_operation_refuses_unchanged(row: &str, kind: ElementKind) {

@@ -1066,3 +1066,52 @@ fn sacm23_arg_004_a_one_mib_meta_claim_and_ten_thousand_tokens_do_not_panic() {
         );
     }
 }
+
+#[test]
+fn sacm23_arg_004_validate_is_linear_in_the_missing_ids_of_one_meta_claim() {
+    // A pairwise scan of the missing ids of one end is quadratic: 80,000
+    // took 9.2 s in a release build, so 150,000 in a debug build is far past
+    // the deadline.
+    const MISSING: usize = 150_000;
+    let deadline = Duration::from_secs(30);
+    // `t` and six digits, so that the ids sort as they are numbered, which
+    // is the order `validate` returns them in.
+    let token = |n: usize| format!("t{n:06}");
+    let tokens = (0..MISSING).fold(String::new(), |mut tokens, n| {
+        if n > 0 {
+            tokens.push(' ');
+        }
+        tokens.push_str(&token(n));
+        tokens
+    });
+    let input = in_ap(&format!(
+        "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\" metaClaim=\"{tokens}\">\
+         <name content=\"X\"/></argumentElement>"
+    ));
+    let what = format!("a metaClaim of {MISSING} distinct missing ids");
+    let result = within(&what, deadline, move || {
+        let doc = match xmi::read(input.as_bytes(), &ReadOptions::default()) {
+            Ok(output) => output.into_document(),
+            Err(error) => return Err(format!("refused: {error:?}")),
+        };
+        let held = doc.get("x").map_or(0, |x| x.meta_claims().len());
+        let found = dangling(&doc);
+        // The first finding that is not, in token order, an Error with
+        // clause 11.10 on [x, the nth token].
+        let misplaced = found.iter().enumerate().position(|(n, finding)| {
+            let affected = finding.affected();
+            !(finding.severity() == Severity::Error
+                && finding.clause() == Some("11.10")
+                && affected.len() == 2
+                && affected[0].as_str() == "x"
+                && affected[1].as_str() == token(n))
+        });
+        Ok((held, found.len(), misplaced))
+    });
+    assert_eq!(
+        result,
+        Ok((MISSING, MISSING, None)),
+        "{ROW}: {what}: not every token held, or not one SACM-REF-001 per id in token order \
+         (the last item is the index of the first finding out of place)"
+    );
+}

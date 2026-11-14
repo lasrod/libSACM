@@ -2858,6 +2858,7 @@ tests = [
   "crates/sacm/tests/meta_claims.rs::sacm23_arg_004_semantic_compare_reports_meta_claims_compared_in_order_with_repeats",
   "crates/sacm/tests/meta_claims.rs::sacm23_arg_004_an_id_less_claim_beside_meta_claim_claim_1_gets_another_id",
   "crates/sacm/tests/meta_claims.rs::sacm23_arg_004_a_one_mib_meta_claim_and_ten_thousand_tokens_do_not_panic",
+  "crates/sacm/tests/meta_claims.rs::sacm23_arg_004_validate_is_linear_in_the_missing_ids_of_one_meta_claim",
 ]
 code = ["crates/sacm/src/model/reference.rs", "crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi/output.rs", "crates/sacm/src/compare.rs"]
 
@@ -2947,6 +2948,8 @@ tests = [
   "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_007_all_six_declarations_round_trip_on_both_kinds_and_a_bad_literal_is_invalid_literal",
   "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_007_semantic_compare_reports_is_counter_reasoning_sources_and_target",
   "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_007_semantic_compare_reports_every_relationship_feature_after_gid_in_table_order",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_007_the_element_form_of_assertion_declaration_reads_on_both_relationship_kinds",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_007_validate_is_linear_in_the_missing_ids_of_one_source",
 ]
 code = ["crates/sacm/src/model/reference.rs", "crates/sacm/src/model/document.rs", "crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi/output.rs", "crates/sacm/src/compare.rs"]
 
@@ -2982,6 +2985,7 @@ tests = [
   "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_008_create_asserted_inference_refuses_a_reference_id_holding_white_space",
   "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_008_create_asserted_inference_checks_white_space_after_no_source_and_before_missing_ids",
   "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_008_create_asserted_inference_references_an_id_without_white_space",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_008_create_asserted_inference_keeps_adjacent_repeated_sources",
 ]
 code = ["crates/sacm/src/edit/argumentation.rs", "crates/sacm/src/xmi/roots.rs"]
 
@@ -3028,6 +3032,7 @@ tests = [
   "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_010_create_asserted_context_refuses_a_reference_id_holding_white_space",
   "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_010_create_asserted_context_checks_white_space_after_no_source_and_before_missing_ids",
   "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_010_create_asserted_context_references_an_id_without_white_space",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_010_create_asserted_context_keeps_adjacent_repeated_sources",
 ]
 code = ["crates/sacm/src/edit/argumentation.rs", "crates/sacm/src/xmi/roots.rs"]
 
@@ -3174,7 +3179,7 @@ id = "SACM23-XMI-014"
 area = "XMI"
 milestone = "M1"
 title = "Element form of single-valued values"
-requirement = "`xmi::read` reads, in both modes and with no diagnostic, the XML element form of the single-valued DataType properties it reads today: a `name`'s `lang` and `content`, and an Assertion's `assertionDeclaration` (in this release a Claim); `gid` (SACM23-BASE-006) and a `value`'s `lang` and `content` (SACM23-BASE-004) use it too, and later rows for `isCitation` and `isAbstract` inherit it. A value element is in no namespace, carries no attribute and has no element children; its value is its character content exactly (CDATA and references give their characters, comments and processing instructions are ignored, nothing is trimmed: XSD `preserve`), an empty element is the empty string, and an `assertionDeclaration` value must be one of the six literals exactly. The element may appear anywhere among its siblings, and the attribute and element forms may be mixed across different properties. The same document in either form reads to an equal `Document`, and export writes the attribute form. A property written both as an attribute and as an element, or as two elements, is refused in both modes as `ReadError::RepeatedValue` (SACM-MULT-001), naming every occurrence, even when the values are equal (the maintainer, 2026-11-13). A value element with an attribute (`xmi:id`, a type, `xsi:nil`, or the legacy `lang` on `content`), an element child, or a namespace stays `Unsupported` at the offending construct (LIB-COMPAT-003, LIB-COMPAT-008, SACM23-XMI-026); a bad literal is `ReadError::InvalidLiteral` at the start tag (SACM23-VAL-006)."
+requirement = "`xmi::read` reads, in both modes and with no diagnostic, the XML element form of the single-valued DataType properties it reads today: a `name`'s `lang` and `content`, and an Assertion's `assertionDeclaration` (in this release a Claim, an AssertedInference and an AssertedContext, SACM23-ARG-007); `gid` (SACM23-BASE-006) and a `value`'s `lang` and `content` (SACM23-BASE-004) use it too, and later rows for `isCitation` and `isAbstract` inherit it. A value element is in no namespace, carries no attribute and has no element children; its value is its character content exactly (CDATA and references give their characters, comments and processing instructions are ignored, nothing is trimmed: XSD `preserve`), an empty element is the empty string, and an `assertionDeclaration` value must be one of the six literals exactly. The element may appear anywhere among its siblings, and the attribute and element forms may be mixed across different properties. The same document in either form reads to an equal `Document`, and export writes the attribute form. A property written both as an attribute and as an element, or as two elements, is refused in both modes as `ReadError::RepeatedValue` (SACM-MULT-001), naming every occurrence, even when the values are equal (the maintainer, 2026-11-13). A value element with an attribute (`xmi:id`, a type, `xsi:nil`, or the legacy `lang` on `content`), an element child, or a namespace stays `Unsupported` at the offending construct (LIB-COMPAT-003, LIB-COMPAT-008, SACM23-XMI-026); a bad literal is `ReadError::InvalidLiteral` at the start tag (SACM23-VAL-006)."
 source = "XMI 2.5.1 §7.8.4 (pp. 17-18) \"If the property types are primitives or enumerations, then by default XML attributes and XML elements are declared for these types.\"; §7.11.3 (p. 29) \"Both XML attribute and element • The default\"; §9.3 (p. 56) \"An XMIValueElement is an XML element that can have a value, but cannot contain other XML elements or attributes.\"; §9.4.1 (p. 56) \"Choice of: 1. XMIValueAttribute 2. Nested XMIValueElement\", \"The value of an Enumeration is its name.\"; §9.5.2 production 2b (p. 62), rule 2b (p. 63) \"Each value of a property is represented by an XML element\", rule 2h (p. 63) \"A specific Property shall be serialized in an object either as an XML attribute or as XML elements but not both.\"; §8.2.1 rule 8 (p. 53); XSD 1 §3.1.4, §3.3.4 cl. 3.1; XSD 2 §4.3.6; XML 1.0 §2.11; formal/23-05-08 §2.4 (p. 4), §8.3 (p. 18), §11.10 (p. 39); ptc/22-03-13 (no org.omg.xmi tags); D-PRESERVE; ADR 0015 amendment 2; ADR 0021 amendment 1; assurance-forge `xmi_reader.cpp:1761`, `:1196-1203` (differs)"
 kind = "xmi"
 status = "verified"
@@ -3214,7 +3219,7 @@ tests = [
 ]
 verification = "docs/verification/0037-m1-element-form-values.md"
 code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/roots.rs", "docs/adr/0021-xmi-reader-content.md", "docs/sacm/diagnostics.md"]
-notes = "Slice 0039: reworded for SACM23-XMI-020/-021/-022/-025 and SACM23-VAL-006 (ADR 0024, ADR 0021 amendment 2); re-check there. Slice 0040: reworded for ADR 0025 (MultiLangString roles); re-check there."
+notes = "Slice 0039: reworded for SACM23-XMI-020/-021/-022/-025 and SACM23-VAL-006 (ADR 0024, ADR 0021 amendment 2); re-check there. Slice 0040: reworded for ADR 0025 (MultiLangString roles); re-check there. Slice 0043: the readable Assertion kinds now include AssertedInference and AssertedContext (ADR 0027); reworded, re-check there."
 
 [[row]]
 id = "SACM23-XMI-015"

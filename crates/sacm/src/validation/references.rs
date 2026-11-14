@@ -1,6 +1,8 @@
 //! Rules about references between elements and the `SACMElement` flags
 //! (formal/23-05-08 §8.2; ADR 0026).
 
+use std::collections::HashSet;
+
 use crate::diagnostic::{Code, Diagnostic, Severity};
 use crate::model::{Document, ElementId, ReferenceEnd, SacmElement};
 
@@ -12,10 +14,12 @@ use crate::model::{Document, ElementId, ReferenceEnd, SacmElement};
 pub(super) fn dangling_references(document: &Document, found: &mut Vec<Diagnostic>) {
     for element in document.elements() {
         for end in ReferenceEnd::ALL {
-            let targets = element.references(end);
-            for (position, target) in targets.iter().enumerate() {
-                // Once per distinct id: an earlier position reported it.
-                if document.contains(target) || targets.iter().take(position).any(|t| t == target) {
+            // The missing ids of this end reported so far: once per distinct
+            // id, in token order, in time linear in the end's ids. Only
+            // looked up, never iterated, so its order is not observable.
+            let mut reported = HashSet::new();
+            for target in element.references(end) {
+                if document.contains(target) || !reported.insert(target.as_str()) {
                     continue;
                 }
                 let message = format!(
