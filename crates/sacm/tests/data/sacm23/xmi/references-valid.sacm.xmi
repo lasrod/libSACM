@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-XMI-005, SACM23-XMI-015: references in the attribute form (c1, c4, n1) and the element form (c2 with xmi:idref, c3 with href="#id"). c1 refers forward to c2, c2 back to c1, c3 to itself, c4 to the abstract Claim c3, and the Note n1 to its package. Every reference resolves and the document validates without an Error. Hand-written; no third-party content. -->
+<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="case">
+  <name lang="en" content="Case"/>
+  <argumentPackage xmi:id="arguments">
+    <name lang="en" content="Arguments"/>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c1" isCitation="true" citedElement="c2">
+      <name lang="en" content="The brakes are safe"/>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c2" isCitation="true">
+      <name lang="en" content="The brakes are tested"/>
+      <citedElement xmi:idref="c1"/>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c3" isCitation="true" isAbstract="true">
+      <name lang="en" content="{Component} is tested"/>
+      <citedElement href="#c3"/>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c4" abstractForm="c3">
+      <name lang="en" content="The pump is tested"/>
+      <note xmi:id="n1" isCitation="true" citedElement="arguments">
+        <content>
+          <value lang="en" content="See the package"/>
+        </content>
+      </note>
+    </argumentElement>
+  </argumentPackage>
+</sacm:AssuranceCasePackage>

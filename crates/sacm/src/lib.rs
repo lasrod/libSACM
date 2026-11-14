@@ -19,19 +19,32 @@
 //!   [`notes`](model::SacmElement::notes),
 //!   [`tagged_values`](model::SacmElement::tagged_values) and the like), with
 //!   their [`content`](model::SacmElement::content) and, on a tagged value,
-//!   [`key`](model::SacmElement::key). It refuses what it
-//!   cannot represent yet rather than drop it. An element without an `xmi:id`
-//!   gets a generated one, such as `claim_1`, which `write` saves; see
-//!   [Ids](xmi::read#ids).
+//!   [`key`](model::SacmElement::key). Every element's citation and
+//!   abstract-form flags and references are read too
+//!   ([`is_citation`](model::SacmElement::is_citation),
+//!   [`cited_element`](model::SacmElement::cited_element),
+//!   [`is_abstract`](model::SacmElement::is_abstract),
+//!   [`abstract_form`](model::SacmElement::abstract_form)), in the attribute
+//!   or the element form; a reference is held as the id it names, which
+//!   [`Document::get`](model::Document::get) resolves, as in
+//!   `c1.cited_element().and_then(|id| document.get(id))`; one that names no
+//!   element is kept, and [`validation::validate`] reports it as
+//!   SACM-REF-001, so a strict save refuses it; see
+//!   [References](xmi::read#references).
+//!   It refuses what it cannot represent yet rather than drop it. An element
+//!   without an `xmi:id` gets a generated one, such as `claim_1`, which
+//!   `write` saves; see [Ids](xmi::read#ids).
 //! - [`xmi::write`] writes a document deterministically, and by default
 //!   refuses one that validation reports an Error for.
 //! - [`validation::validate`] reports each element that has no name, each
 //!   `content` or `key` text that is empty or gives one language twice, each
 //!   tagged value without a key, each id that is not an XML `NCName`, each
 //!   `gid` two elements share, each element with more than one description,
-//!   and each `ArgumentPackage` that nests one and also holds other
-//!   argumentation elements, as [`Diagnostic`](diagnostic::Diagnostic)s with
-//!   stable codes.
+//!   each `ArgumentPackage` that nests one and also holds other
+//!   argumentation elements, each reference that names no element, each
+//!   element with a `citedElement` whose `isCitation` is not true, and each
+//!   `abstractForm` that breaks a §8.2 rule, as
+//!   [`Diagnostic`](diagnostic::Diagnostic)s with stable codes.
 //! - [`edit::apply`] creates `AssuranceCasePackage`, `ArgumentPackage` and
 //!   `Claim` elements, and descriptions, implementation constraints, notes
 //!   and tagged values on them ([`edit::CreateNote`],
@@ -85,7 +98,8 @@
 //!
 //! // Validate. This release checks names, ids, gids, descriptions, the
 //! // content and key of descriptions, implementation constraints, notes and
-//! // tagged values, and what an ArgumentPackage holds.
+//! // tagged values, what an ArgumentPackage holds, and references, citations
+//! // and abstract forms.
 //! let findings = validation::validate(&document);
 //! assert!(!diagnostic::has_errors(&findings));
 //!
@@ -115,7 +129,9 @@
 //!
 //! Walk a document with [`model::Document::elements`], or one level at a
 //! time with [`children`](model::SacmElement::children) and
-//! [`parent`](model::SacmElement::parent). To report reading and validation
+//! [`parent`](model::SacmElement::parent). Follow a reference, such as
+//! [`cited_element`](model::SacmElement::cited_element), with
+//! [`model::Document::get`]. To report reading and validation
 //! together, merge [`ReadOutput::diagnostics`](xmi::ReadOutput::diagnostics)
 //! with the findings of [`validation::validate`] and sort the result. The
 //! [`edit`] module builds a document from scratch.

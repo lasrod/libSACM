@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-XMI-015: a `citedElement` reference element whose `href` names an element in another document. Cross-document links are SACM23-XMI-027's; until then the reader refuses this as Unsupported at the href, never dropping it. Hand-written; no third-party content. -->
+<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+  <name lang="en" content="Arguments"/>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c1" isCitation="true">
+    <name lang="en" content="The supplier's pump is safe"/>
+    <citedElement href="other.sacm.xmi#c9"/>
+  </argumentElement>
+</sacm:ArgumentPackage>

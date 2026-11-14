@@ -9,10 +9,12 @@
 //! kinds: `AssuranceCasePackage` and `ArgumentPackage` elements in an
 //! `AssuranceCasePackage`, and `ArgumentPackage` and `Claim` elements in an
 //! `ArgumentPackage`, each with its id (generated when it has no `xmi:id`),
-//! `gid` and name, a Claim's `assertionDeclaration`, and the descriptions,
+//! `gid`, `isCitation`, `isAbstract`, `citedElement`, `abstractForm` and
+//! name, a Claim's `assertionDeclaration`, and the descriptions,
 //! implementation constraints, notes and tagged values of each, with their
 //! `content` and `key` (SACM 2.3 §2.2, §2.4, §8.2-§8.12, §9.2, §11.4,
-//! §11.10). It refuses input that is unsafe
+//! §11.10). A reference is held as the id it names, and one that names no
+//! element is kept (see [References](fn@read#references)). It refuses input that is unsafe
 //! ([`ReadError::Doctype`], SACM-SEC-001), not well-formed
 //! ([`ReadError::Malformed`], SACM-XML-001), not rooted in a SACM package
 //! ([`ReadError::InvalidRoot`] and [`ReadError::NoPackage`], SACM-XMI-001),
@@ -23,8 +25,9 @@
 //! it cannot represent yet is refused as [`ReadError::Unsupported`], never
 //! dropped.
 //!
-//! `write` writes every element of a document, with its `gid`, its name, its
-//! `content` and `key` and, on an Assertion, its `assertionDeclaration`, in
+//! `write` writes every element of a document, with its `gid`, its flags and
+//! references, its name, its `content` and `key` and, on an Assertion, its
+//! `assertionDeclaration`, in
 //! document order, in one deterministic form. Its refusals are a document
 //! with no root ([`WriteError::NoRoot`]), in strict mode a document that
 //! validation reports an Error for ([`WriteError::Invalid`]), and an id,
@@ -33,7 +36,8 @@
 //! release's `read` always writes in tolerant mode, and what `write` writes
 //! for a document built with [`edit::apply`](crate::edit::apply) reads back
 //! with the same ids, kinds, names, contents, keys, declarations, parents and
-//! order.
+//! order. A document with a reference that names no element is refused by a
+//! strict `write` (SACM-REF-001) and written as held by a tolerant one.
 //!
 //! Both take a [`Mode`] in their options (ADR 0022). Strict aims at SACM 2.3
 //! conformance (see [`Mode`] for what it checks today); tolerant also accepts recognised variations, as Warnings, and
@@ -151,6 +155,19 @@ mod roots;
 /// absent gid, `""` and any other value are kept apart, and nothing is
 /// trimmed. It is not an id: it is in no id space and has no syntax check.
 ///
+/// Every element may also carry the flags `isCitation` and `isAbstract`
+/// (§8.2 `[0..1]=false`), in no namespace, as an attribute or a value
+/// element. Each is an `xsd:boolean`: its white space is collapsed, `true`
+/// and `1` read as true, and `false` and `0` as false. Without one, the flag
+/// is false, so `false` and absent read alike. Any other value, such as
+/// `TRUE`, `yes` or the empty value, is [`ReadError::InvalidLiteral`]
+/// (SACM-ENUM-001), holding the value as read, in both modes: it is never
+/// read as false. And it may carry the references `citedElement` and
+/// `abstractForm` (§8.2 `[0..1]`), described under
+/// [References](#references). The flag and its reference are independent,
+/// and nothing repairs a file on read; the §8.2 rules between them are
+/// [`validation::validate`](crate::validation::validate)'s.
+///
 /// A Claim's `assertionDeclaration` attribute (§11.10), in no namespace, is
 /// read as its declaration. Its value must be one of the six
 /// [`AssertionDeclaration`](crate::model::AssertionDeclaration) literals:
@@ -165,8 +182,9 @@ mod roots;
 /// the spelling.
 ///
 /// Each of these values may also be written as a value element (XMI 2.5.1
-/// §7.8.4): `<lang>` and `<content>` in the `name` or `value`, `<gid>` in
-/// any element, and `<assertionDeclaration>` in the Claim, in no namespace,
+/// §7.8.4): `<lang>` and `<content>` in the `name` or `value`, `<gid>`,
+/// `<isCitation>` and `<isAbstract>` in any element, and
+/// `<assertionDeclaration>` in the Claim, in no namespace,
 /// anywhere among their siblings. Both forms read to the same document, and [`write()`]
 /// writes the attribute form. The value is the element's character content,
 /// joined in document order: CDATA sections and references give their
@@ -189,15 +207,17 @@ mod roots;
 ///
 /// `read` refuses rather than drops: it never returns a document that is
 /// missing content from its input. A root may carry only namespace
-/// declarations, `xmi:id`, `gid`, `xmi:version` and an `xmi:type` or
-/// `xsi:type` naming its own class, and hold at most one `name`, at most one
-/// `gid` value element and otherwise only white space, comments, processing
+/// declarations, `xmi:id`, `gid`, `isCitation`, `isAbstract`, `citedElement`,
+/// `abstractForm`, `xmi:version` and an `xmi:type` or `xsi:type` naming its
+/// own class, and hold at most one `name`, at most one value or reference
+/// element of each of `gid`, `isCitation`, `isAbstract`, `citedElement` and
+/// `abstractForm`, and otherwise only white space, comments, processing
 /// instructions and the children above. A child may carry only namespace
-/// declarations, `xmi:id`, `gid`, its type attributes and, on a Claim,
+/// declarations, `xmi:id`, those five, its type attributes and, on a Claim,
 /// `assertionDeclaration`, and hold the same content as a root, except that
-/// a `UtilityElement` holds, besides a `gid`, only its `content` and `key`. A
-/// Claim may also hold one `assertionDeclaration` value element instead of
-/// the attribute.
+/// a `UtilityElement` holds, besides those five, only its `content` and
+/// `key`. A Claim may also hold one `assertionDeclaration` value element
+/// instead of the attribute.
 /// An `xmi:version` on a root or on the `xmi:XMI` wrapper is accepted with
 /// any value and ignored: the XMI namespace identifies the version
 /// (XMI 2.5.1 §7.5.3), so [`write()`] does not write it back. It is reported
@@ -233,9 +253,12 @@ mod roots;
 /// - An element without an `xmi:id`, a root or a child, gets a generated id,
 ///   `<snake_case kind>_<n>` as [`edit::apply`](crate::edit::apply)
 ///   generates one (`claim_1`), with the smallest `n` whose id is the value
-///   of no `xmi:id` in the input and was not generated earlier in the read.
-///   It is an ordinary id: [`write()`] writes it, and an edit continues
-///   above it. The same bytes always give the same ids.
+///   of no `xmi:id` in the input, is named by no reference in it (see
+///   [References](#references)), and was not generated earlier in the read,
+///   so a reference that names no element never resolves to a generated
+///   one. It is an ordinary id: [`write()`] writes it, and an edit continues
+///   above it, also skipping every referenced id. The same bytes always give
+///   the same ids.
 /// - An `xmi:id` on a `name` is kept with the element that owns the name, as
 ///   [`SacmElement::name_id`](crate::model::SacmElement::name_id), and
 ///   [`write()`] writes it back. A `name` without one gets none.
@@ -248,6 +271,62 @@ mod roots;
 ///   They identify no element.
 /// - A `gid` is not an id: it is in no id space, never trimmed and never
 ///   generated, and a `gid` may be the same string as any `xmi:id`.
+///
+/// # References
+///
+/// A reference to another element is held as the id it names, unresolved
+/// ([ADR 0026]): [`SacmElement::cited_element`](crate::model::SacmElement::cited_element)
+/// and [`SacmElement::abstract_form`](crate::model::SacmElement::abstract_form)
+/// give it, and [`Document::get`] resolves it. In this release the reference
+/// ends are `citedElement` and `abstractForm` (§8.2), on every element; both
+/// hold at most one target. A reference resolves by id across the whole
+/// input, whatever the order: to a later element, an element of another
+/// root, or the element itself.
+///
+/// - **The attribute form.** An attribute in no namespace named after the end
+///   holds the target ids separated by XML white space (`xsd:IDREFS`, XMI
+///   2.5.1 §9.5.2 rule 2j, SACM23-XMI-005). Each token is held exactly as written:
+///   `" c2 "` is `c2`, and `#c2` is the id `#c2`, not `c2`. A value with no
+///   token, such as `""`, is [`ReadError::Unsupported`], never read as no
+///   reference, and two or more tokens on a single-valued end are
+///   [`ReadError::RepeatedValue`], with one location per token, each at the
+///   attribute's name.
+/// - **The element form.** An element in no namespace named after the end,
+///   with exactly one link attribute, `xmi:idref="id"` (in the XMI
+///   namespace, by any prefix) or an unqualified `href="#id"` (XMI 2.5.1
+///   §9.5.2 production 2c, rules 2l and 2n, SACM23-XMI-015), anywhere among its
+///   siblings. The value is read without the XML white space around it; it
+///   names one id, so a value that still holds XML white space inside it is
+///   refused (below). The element holds only white space, comments and
+///   processing instructions. It reads to the same document as the attribute form,
+///   and [`write()`] writes the attribute form. An attribute and an element
+///   for the same end, or two elements on a single-valued end, are
+///   [`ReadError::RepeatedValue`] (XMI 2.5.1 rule 2h), with every
+///   occurrence.
+/// - **Refused, never dropped,** as [`ReadError::Unsupported`] at the
+///   construct: a reference element with both link attributes (at the
+///   second) or neither (at its start tag); any other attribute on it, such
+///   as `xmi:id`, `xmi:type`, an unqualified `idref` or `xmi:href`; an
+///   `xmi:idref` that is empty or, once trimmed, still holds XML white space
+///   (space, TAB, LF or CR), such as `a b` or `a&#9;b`, at the attribute,
+///   since a tolerant [`write()`] would give it back as two ids; an `href`
+///   that is not `#id`: with a document part, such as `other.xmi#c2` or `c2`
+///   (cross-document links are SACM23-XMI-027's), a pointer such as
+///   `#xpointer(id('c2'))`, a fragment with white space inside it, `#` or
+///   empty; a child element
+///   or text in it; and an end or a reference element in a namespace, such as
+///   `sacm:citedElement`. A `citedElement` or `abstractForm` on a `name`,
+///   `content`, `key` or `value` is refused as `Unsupported`: those have no
+///   references.
+/// - **Dangling references are kept.** A reference whose id names no
+///   element, an id absent from the input or the `xmi:id` of a `name`,
+///   `content`, `key` or `value`, is read in both modes without a
+///   diagnostic, held as written, and written back by a tolerant
+///   [`write()`]. [`validation::validate`](crate::validation::validate)
+///   reports it as SACM-REF-001, an Error (SACM23-VAL-003), so a strict
+///   [`write()`] refuses it.
+///
+/// [ADR 0026]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0026-references-between-elements.md
 ///
 /// # Diagnostics
 ///
@@ -355,16 +434,20 @@ mod roots;
 ///   by its `xsd:ID` value; one that is still not an XML `NCName`, such as
 ///   `1c` or `a b`, is reported by
 ///   [`validation::validate`](crate::validation::validate).
-/// - [`ReadError::RepeatedValue`] (SACM-MULT-001): an element's `gid` or
-///   `name`, a `UtilityElement`'s `content`, a `TaggedValue`'s `key`, the `lang`
-///   or `content` of a name or `value`, or a Claim's `assertionDeclaration`,
-///   is given more than once: as an attribute and an element, which XMI 2.5.1
+/// - [`ReadError::RepeatedValue`] (SACM-MULT-001): an element's `gid`,
+///   `isCitation`, `isAbstract`, `citedElement`, `abstractForm` or `name`, a
+///   `UtilityElement`'s `content`, a `TaggedValue`'s `key`, the `lang` or
+///   `content` of a name or `value`, or a Claim's `assertionDeclaration`, is
+///   given more than once: as an attribute and an element, which XMI 2.5.1
 ///   §9.5.2 rule 2h forbids, or as two or more elements, though the property
 ///   holds one value. This holds even with equal values. It gives every
-///   occurrence.
+///   occurrence. Two or more ids in one `citedElement` or `abstractForm`
+///   attribute are too, with one location per id, at the attribute's name.
 /// - [`ReadError::InvalidLiteral`] (SACM-ENUM-001): a Claim's
-///   `assertionDeclaration` is not exactly one of the six literals, as an
-///   attribute or as an element. It holds the value as read.
+///   `assertionDeclaration` is not exactly one of the six literals, or an
+///   `isCitation` or `isAbstract` is not one of `true`, `false`, `1` and
+///   `0`, white space around them aside, as an attribute or as an element.
+///   It holds the value as read.
 /// - [`ReadError::Unsupported`] (no code): the input is well-formed but this
 ///   version cannot represent it. Examples are UTF-16 without a byte order
 ///   mark, UTF-32 or UCS-4 input, a declared encoding other than UTF-8 or
@@ -383,15 +466,17 @@ mod roots;
 ///   `content` or `key` (such as `gid`, `xml:lang`, the single-language
 ///   shorthand or a `name` element), a value element that carries an
 ///   attribute (such as `xmi:id` or `xsi:nil`), holds an element, or is in a
-///   namespace (such as `sacm:content` or `sacm:gid`), and any other
-///   attribute or content of a root or child. For a child, that includes a
-///   role its parent's class lacks (any child of a `UtilityElement`), a role
-///   element in a namespace, a type that names no concrete SACM class or
-///   that the role does not admit, two types that disagree, no type under a
-///   role of an abstract type, any other kind (such as an
-///   `ArgumentReasoning`), text, attributes such as `isCitation`; a `name`
-///   on a `UtilityElement`; and an `assertionDeclaration`, as an attribute or
-///   an element, that is on a package (even `"asserted"`) or in a namespace.
+///   namespace (such as `sacm:content`, `sacm:gid` or `sacm:isCitation`), a
+///   reference attribute that holds no id, or a malformed reference element
+///   (see [References](#references)), and any other attribute or content of a
+///   root or child. For a child, that includes a role its parent's class
+///   lacks (any child of a `UtilityElement`), a role element in a namespace,
+///   a type that names no concrete SACM class or that the role does not
+///   admit, two types that disagree, no type under a role of an abstract
+///   type, any other kind (such as an `ArgumentReasoning`), text, attributes
+///   such as `xmi:uuid` or `sacm:isCitation`; a `name` on a
+///   `UtilityElement`; and an `assertionDeclaration`, as an attribute or an
+///   element, that is on a package (even `"asserted"`) or in a namespace.
 ///
 /// # Examples
 ///
@@ -490,6 +575,30 @@ mod roots;
 /// let found = &output.diagnostics()[0];
 /// assert_eq!((found.code(), found.severity()), (Code::XMI_MISSING_ID, Severity::Info));
 /// assert_eq!(found.affected()[0].as_str(), "claim_1");
+///
+/// // References, in the attribute form and the element form. One names no
+/// // element: it is kept, and validation reports it as SACM-REF-001.
+/// let cited = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+///   <name content="Arguments"/>
+///   <argumentElement xmi:type="sacm:Claim" xmi:id="c1" isCitation="true" citedElement="c2">
+///     <name content="C1"/>
+///   </argumentElement>
+///   <argumentElement xmi:type="sacm:Claim" xmi:id="c2" isCitation="1">
+///     <name content="C2"/>
+///     <citedElement xmi:idref="c9"/>
+///   </argumentElement>
+/// </sacm:ArgumentPackage>"#;
+/// let document = xmi::read(cited, &options)?.into_document();
+/// let c1 = document.get("c1").expect("the Claim was read");
+/// assert!(c1.is_citation());
+/// assert_eq!(c1.cited_element().map(|id| id.as_str()), Some("c2"));
+/// let c2 = document.get("c2").expect("the Claim was read");
+/// assert_eq!(c2.cited_element().map(|id| id.as_str()), Some("c9"));
+/// assert!(document.get("c9").is_none());
+/// let found = sacm::validation::validate(&document);
+/// assert_eq!(found.len(), 1);
+/// assert_eq!((found[0].code(), found[0].severity()), (Code::REF_DANGLING, Severity::Error));
 ///
 /// // A root that is not a SACM package.
 /// let error = xmi::read(b"<r/>", &options).unwrap_err();
@@ -873,23 +982,36 @@ pub enum ReadError {
         /// value belongs to. An element without an `xmi:id` is named by its
         /// generated id.
         element: ElementId,
-        /// The property: `gid`, `name`, `name.lang`, `name.content`,
-        /// `content`, `content.value.lang`, `content.value.content`, `key`,
+        /// The property: `gid`, `isCitation`, `isAbstract`, `citedElement`,
+        /// `abstractForm`, `name`, `name.lang`, `name.content`, `content`,
+        /// `content.value.lang`, `content.value.content`, `key`,
         /// `key.value.lang`, `key.value.content` or `assertionDeclaration`.
         property: String,
         /// Every occurrence, in document order: an attribute at the first
-        /// character of its name, an element at its `<`. At least two.
+        /// character of its name, an element at its `<`. At least two. Two
+        /// or more ids in one reference attribute give one location per id,
+        /// each at the attribute's name.
         locations: Vec<SourceLocation>,
     },
-    /// A value is not one of its enumeration's literals (SACM-ENUM-001,
-    /// SACM23-VAL-006): in this release, an `assertionDeclaration` that is
-    /// not exactly one of the six
-    /// [`AssertionDeclaration`](crate::model::AssertionDeclaration) literals,
-    /// `asserted`, `needsSupport`, `assumed`, `axiomatic`, `defeated` and
-    /// `asCited` (formal/23-05-08 §11.8). It is refused in both modes, never
-    /// read as `asserted`, because that would silently change what the case
-    /// declares (ADR 0021 amendment 2). Fix: write the literal exactly,
-    /// letter case included, with no white space around it.
+    /// A value is not one of its type's literals (SACM-ENUM-001). In this
+    /// release, either:
+    ///
+    /// - an `assertionDeclaration` that is not exactly one of the six
+    ///   [`AssertionDeclaration`](crate::model::AssertionDeclaration)
+    ///   literals, `asserted`, `needsSupport`, `assumed`, `axiomatic`,
+    ///   `defeated` and `asCited` (formal/23-05-08 §11.8; SACM23-VAL-006).
+    ///   It is never read as `asserted`, because that would silently change
+    ///   what the case declares (ADR 0021 amendment 2). Fix: write the
+    ///   literal exactly, letter case included, with no white space around
+    ///   it.
+    /// - an `isCitation` or `isAbstract` (§8.2) that is not an
+    ///   `xsd:boolean`: `true`, `false`, `1` or `0`, with XML white space
+    ///   around it allowed (SACM23-BASE-007, SACM23-BASE-008). `TRUE`, `yes`
+    ///   and the empty value are refused, never read as false (ADR 0026).
+    ///   Fix: write `true` or `false`.
+    ///
+    /// It is refused in both modes. `Display` gives the literals the
+    /// property accepts as its reason.
     ///
     /// ```
     /// use sacm::diagnostic::Code;
@@ -908,13 +1030,23 @@ pub enum ReadError {
     ///      is not a literal at line 3, column 54: the literals are asserted, needsSupport, \
     ///      assumed, axiomatic, defeated and asCited"
     /// );
+    ///
+    /// let flag = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments" isAbstract="yes"/>"#;
+    /// let error = xmi::read(flag, &ReadOptions::default()).unwrap_err();
+    /// assert_eq!(
+    ///     error.to_string(),
+    ///     "the value \"yes\" of the property \"isAbstract\" of the element \"arguments\" \
+    ///      is not a literal at line 2, column 73: the literals are true, false, 1 and 0"
+    /// );
     /// ```
     #[non_exhaustive]
     InvalidLiteral {
         /// The element that holds the property: its `xmi:id`, or the id
         /// generated for it when it has none.
         element: ElementId,
-        /// The property: in this release, `assertionDeclaration`.
+        /// The property: in this release, `assertionDeclaration`,
+        /// `isCitation` or `isAbstract`.
         property: String,
         /// The value as read: for an attribute, after XML attribute-value
         /// normalisation (XML 1.0 §3.3.3); for a value element, its exact
@@ -1012,10 +1144,18 @@ impl ReadError {
     }
 }
 
-/// The reason of an [`ReadError::InvalidLiteral`] for `assertionDeclaration`,
-/// the one enumeration read in this release: its literals, in §11.8 order.
-const LITERALS_REASON: &str =
-    "the literals are asserted, needsSupport, assumed, axiomatic, defeated and asCited";
+/// The reason of a [`ReadError::InvalidLiteral`] for the property
+/// `property`: the literals it accepts. `assertionDeclaration`'s are its six,
+/// in §11.8 order; every other property read in this release, `isCitation`
+/// and `isAbstract`, is an `xsd:boolean`.
+fn literals_reason(property: &str) -> &'static str {
+    match property {
+        "assertionDeclaration" => {
+            "the literals are asserted, needsSupport, assumed, axiomatic, defeated and asCited"
+        }
+        _ => "the literals are true, false, 1 and 0",
+    }
+}
 
 /// Writes `locations` as `, at L1; L2; …`, the tail of the `Display` of a
 /// refusal that names several.
@@ -1085,7 +1225,7 @@ impl fmt::Display for ReadError {
                     "the value {value:?} of the property {property:?} of the element {:?} is not a literal",
                     element.as_str()
                 )?;
-                Some(LITERALS_REASON)
+                Some(literals_reason(property))
             }
             Self::Unsupported { reason, .. } => {
                 f.write_str("the reader cannot represent the input")?;
@@ -1136,7 +1276,13 @@ impl std::error::Error for ReadError {}
 ///
 /// Every element then carries its id as `xmi:id`, and directly after it its
 /// `gid`, if it has one: `gid=""` for an empty one, and no attribute for an
-/// absent one. Then an
+/// absent one. Then come its `SACMElement` flags and references (§8.2, ADR
+/// 0026): `isCitation="true"` and `isAbstract="true"`, each only when true
+/// (false, the default, is not written), then `citedElement` and
+/// `abstractForm`, each only when it holds an id, as the ids it holds,
+/// separated by one space and escaped, held exactly, whether or not they name
+/// an element. A reference read in the element form is written in this
+/// attribute form. Then an
 /// Assertion whose `assertionDeclaration` is not `asserted` carries
 /// `assertionDeclaration="<literal>"`, spelled as
 /// [`AssertionDeclaration::as_str`](crate::model::AssertionDeclaration::as_str)

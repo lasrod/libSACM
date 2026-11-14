@@ -1,6 +1,6 @@
-//! The XMI writer (SACM23-XMI-003, -004, -006, -007, -011, -012, -013,
-//! -017, SACM23-BASE-004, -005, -006, LIB-API-010, LIB-COMPAT-007; ADR 0017,
-//! ADR 0022, ADR 0025).
+//! The XMI writer (SACM23-XMI-003, -004, -005, -006, -007, -011, -012, -013,
+//! -017, SACM23-BASE-004, -005, -006, -007, -008, LIB-API-010,
+//! LIB-COMPAT-007; ADR 0017, ADR 0022, ADR 0025, ADR 0026).
 //!
 //! Two passes. [`plan`] checks the document (in strict mode, validating it)
 //! and every element, and resolves what each is written as; only if that succeeds does [`write`] build the `String` from the plan,
@@ -14,8 +14,8 @@ use super::namespaces::{SACM_NS, SACM_PREFIX, XMI_NS, XMI_PREFIX};
 use super::{Mode, WriteAttribute, WriteError};
 use crate::diagnostic::Severity;
 use crate::model::{
-    AssertionDeclaration, DeclaredType, Document, ElementId, ElementKind, LangString, SacmElement,
-    Text, TextRole,
+    AssertionDeclaration, DeclaredType, Document, ElementId, ElementKind, Flag, LangString,
+    ReferenceEnd, SacmElement, Text, TextRole,
 };
 use crate::validation;
 
@@ -75,6 +75,9 @@ pub(super) fn write(document: &Document, mode: Mode) -> Result<String, WriteErro
             escape_into(&mut out, gid);
             out.push('"');
         }
+        // Then the SACMElement flags and references, before the class's own
+        // attributes (superclass first, Annex B.5.2).
+        push_flags_and_references(&mut out, planned.element);
         if let Some(declaration) = planned.declaration {
             out.push_str(" assertionDeclaration=\"");
             out.push_str(declaration.as_str());
@@ -191,9 +194,9 @@ fn plan(document: &Document, mode: Mode) -> Result<Vec<Planned<'_>>, WriteError>
 /// attribute that holds it and its first such character, checked in this
 /// order: its id, its gid, its name's `lang` and `content`, then each value
 /// of its `content` and then of its `key`, `lang` before `content`. The ids
-/// of a name, `content`, `key` or `value` are not checked: only
-/// [`xmi::read`](crate::xmi::read) gives them, and what it reads is
-/// representable.
+/// of a name, `content`, `key` or `value`, and the ids a reference holds, are
+/// not checked: only [`xmi::read`](crate::xmi::read) gives them, and what it
+/// reads is representable.
 fn unrepresentable(element: SacmElement<'_>) -> Option<(WriteAttribute, char)> {
     let name = element.name();
     let fields = [
@@ -241,6 +244,37 @@ fn is_xml_char(c: char) -> bool {
         c,
         '\t' | '\n' | '\r' | ' '..='\u{D7FF}' | '\u{E000}'..='\u{FFFD}' | '\u{10000}'..='\u{10FFFF}'
     )
+}
+
+/// Writes the `SACMElement` flags of `element` and its references as
+/// attributes, each after a space, in table order (ADR 0026): a flag only
+/// when true, as `"true"`, and a reference end only when it holds an id, as
+/// its ids separated by one space, each escaped (`xsd:IDREFS`, XMI 2.5.1
+/// rule 2j).
+fn push_flags_and_references(out: &mut String, element: SacmElement<'_>) {
+    for flag in Flag::ALL {
+        if element.flag(flag) {
+            out.push(' ');
+            out.push_str(flag.name());
+            out.push_str("=\"true\"");
+        }
+    }
+    for end in ReferenceEnd::ALL {
+        let targets = element.references(end);
+        if targets.is_empty() {
+            continue;
+        }
+        out.push(' ');
+        out.push_str(end.name());
+        out.push_str("=\"");
+        for (position, target) in targets.iter().enumerate() {
+            if position > 0 {
+                out.push(' ');
+            }
+            escape_into(out, target.as_str());
+        }
+        out.push('"');
+    }
 }
 
 /// Writes `value` as a `tag` element on its own line at `depth`: its `id`,

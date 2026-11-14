@@ -15,6 +15,10 @@
 //! | SACM-MULT-001 | SACM23-VAL-011 | §8.6 | Warning | a `ModelElement` has two or more descriptions (`description:Description[0..1]`) |
 //! | SACM-ID-003 | SACM23-VAL-002 | §8.2 | Error | two or more elements hold the same non-empty `gid` ("unique within the scope of the model instance") |
 //! | SACM-PKG-001 | SACM23-VAL-012 | §11.4 | Error | an `ArgumentPackage` nests a plain `ArgumentPackage` and also holds another argumentation element ("only allowed to contain `ArgumentPackages`") |
+//! | SACM-REF-001 | SACM23-VAL-003 | §8.2 | Error | a `citedElement` or `abstractForm` names no element of the document |
+//! | SACM-CITE-001 | SACM23-VAL-007 | §8.2 | Error | an element has a `citedElement` but its `isCitation` is not true (OCL `self.citedElement <> null implies self.isCitation = true`) |
+//! | SACM-ABS-001 | SACM23-VAL-008 | §8.2 | Error | an element with an `abstractForm` is itself abstract ("+isAbstract of the `SACMElement` is false") |
+//! | SACM-ABS-001 | SACM23-VAL-008 | §8.2 | Warning | the `abstractForm` target is not abstract, or is of another kind (both "should") |
 //!
 //! A `ModelElement`
 //! ([`AbstractClass::ModelElement`](crate::model::AbstractClass::ModelElement))
@@ -96,6 +100,49 @@
 //! (D-PKG-HOMOG). Each package is checked for its own children only. To fix
 //! one, move the other elements into a nested package.
 //!
+//! A reference is held as the id it names (ADR 0026). Each id a
+//! `citedElement` or `abstractForm` holds that names no element of the
+//! document is one SACM-REF-001 finding per element and end, affecting the
+//! element, then the id; an id absent from the document dangles, and so does
+//! the `xmi:id` of a `name`, `content`, `key` or `value`, which identifies no
+//! element. A reference to any element, the element itself included,
+//! resolves. To fix one, point it at an element, or remove it.
+//!
+//! §8.2 asks an element with a `citedElement` to be a citation: one without
+//! `isCitation` true is a SACM-CITE-001 Error, affecting it, whether or not
+//! the cited id resolves; `isCitation` true alone is no finding. An element
+//! with an `abstractForm` must be concrete: one with `isAbstract` true is a
+//! SACM-ABS-001 Error, affecting it. When the `abstractForm` names an element,
+//! that element should be abstract and of the same kind: there is one
+//! SACM-ABS-001 Warning when it is not abstract and another when it is of
+//! another kind, each affecting the element, then the target. A target
+//! that names no element gives only SACM-REF-001.
+//!
+//! ```
+//! use sacm::diagnostic::{Code, Severity};
+//! use sacm::validation;
+//! use sacm::xmi::{self, ReadOptions};
+//!
+//! let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+//!     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+//!   <name content="Arguments"/>
+//!   <argumentElement xmi:type="sacm:Claim" xmi:id="c1" abstractForm="c2">
+//!     <name content="The brakes are safe"/>
+//!   </argumentElement>
+//!   <argumentElement xmi:type="sacm:Claim" xmi:id="c2">
+//!     <name content="The pump is safe"/>
+//!   </argumentElement>
+//! </sacm:ArgumentPackage>"#;
+//! let document = xmi::read(input, &ReadOptions::default())?.into_document();
+//! // c2 is not abstract, so c1 should not conform to it.
+//! let found = validation::validate(&document);
+//! assert_eq!(found.len(), 1);
+//! assert_eq!((found[0].code(), found[0].severity()), (Code::ABSTRACT_FORM_INVALID, Severity::Warning));
+//! let affected: Vec<&str> = found[0].affected().iter().map(|id| id.as_str()).collect();
+//! assert_eq!(affected, ["c1", "c2"]);
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
+//!
 //! The result is sorted by [`Diagnostic`]'s order. Its diagnostics have no
 //! [`location`](Diagnostic::location), because a [`Document`] records no
 //! source positions.
@@ -148,6 +195,7 @@ mod homogeneity;
 mod ids;
 mod multi_lang;
 mod names;
+mod references;
 
 use crate::diagnostic::Diagnostic;
 use crate::model::Document;
@@ -163,6 +211,9 @@ const RULES: &[Rule] = &[
     gid::duplicate_gid,
     descriptions::repeated_description,
     homogeneity::argument_package_homogeneity,
+    references::dangling_references,
+    references::citation,
+    references::abstract_form,
 ];
 
 /// Checks `document` against the SACM rules this release knows and returns

@@ -5,7 +5,9 @@
 //! Elements are matched by id across the whole document, so an element that
 //! moved to another parent is one [`Difference::Parent`], not a removal and an
 //! addition. For each element both documents hold, the comparison checks its
-//! kind, parent, `gid`, name, the `xmi:id` of its name
+//! kind, parent, `gid`, its `isCitation` and `isAbstract` flags and the ids
+//! its `citedElement` and `abstractForm` hold (SACM 2.3 §8.2), its name, the
+//! `xmi:id` of its name
 //! ([`SacmElement::name_id`](crate::model::SacmElement::name_id)), its
 //! `content` and `key` with their ids
 //! ([`SacmElement::content`](crate::model::SacmElement::content) and the
@@ -80,8 +82,8 @@ use std::fmt;
 use std::ops::ControlFlow;
 
 use crate::model::{
-    AssertionDeclaration, Compared, Document, ElementId, ElementKind, LangString, MultiLangString,
-    SacmElement, Text, TextRole,
+    AssertionDeclaration, Compared, Document, ElementId, ElementKind, Flag, LangString,
+    MultiLangString, ReferenceEnd, SacmElement, Text, TextRole,
 };
 
 /// One way in which two documents differ in SACM content, as
@@ -176,6 +178,54 @@ pub enum Difference {
         left: Option<String>,
         /// The gid in the right document, or `None` when it has none.
         right: Option<String>,
+    },
+    /// The element's `isCitation` (SACM 2.3 §8.2,
+    /// [`SacmElement::is_citation`](crate::model::SacmElement::is_citation))
+    /// differs on each side. Absent is `false`.
+    IsCitation {
+        /// The element's id.
+        id: ElementId,
+        /// The flag in the left document.
+        left: bool,
+        /// The flag in the right document.
+        right: bool,
+    },
+    /// The element's `isAbstract` (SACM 2.3 §8.2,
+    /// [`SacmElement::is_abstract`](crate::model::SacmElement::is_abstract))
+    /// differs on each side. Absent is `false`.
+    IsAbstract {
+        /// The element's id.
+        id: ElementId,
+        /// The flag in the left document.
+        left: bool,
+        /// The flag in the right document.
+        right: bool,
+    },
+    /// The element's `citedElement` (SACM 2.3 §8.2,
+    /// [`SacmElement::cited_element`](crate::model::SacmElement::cited_element))
+    /// differs on each side; `None` is no cited element.
+    ///
+    /// References are compared by id, resolved or not: two references to
+    /// ids that name no element differ exactly when the ids do.
+    CitedElement {
+        /// The element's id.
+        id: ElementId,
+        /// The cited id in the left document, or `None`.
+        left: Option<ElementId>,
+        /// The cited id in the right document, or `None`.
+        right: Option<ElementId>,
+    },
+    /// The element's `abstractForm` (SACM 2.3 §8.2,
+    /// [`SacmElement::abstract_form`](crate::model::SacmElement::abstract_form))
+    /// differs on each side; `None` is no abstract form. Compared as
+    /// [`CitedElement`](Self::CitedElement) is.
+    AbstractForm {
+        /// The element's id.
+        id: ElementId,
+        /// The abstract form's id in the left document, or `None`.
+        left: Option<ElementId>,
+        /// The abstract form's id in the right document, or `None`.
+        right: Option<ElementId>,
     },
     /// The element has a different `name` (SACM 2.3 §8.6) on each side;
     /// `None` is a missing name.
@@ -338,6 +388,10 @@ impl Difference {
             | Self::Kind { id, .. }
             | Self::Parent { id, .. }
             | Self::Gid { id, .. }
+            | Self::IsCitation { id, .. }
+            | Self::IsAbstract { id, .. }
+            | Self::CitedElement { id, .. }
+            | Self::AbstractForm { id, .. }
             | Self::Name { id, .. }
             | Self::NameId { id, .. }
             | Self::Content { id, .. }
@@ -361,12 +415,28 @@ impl Difference {
             _ => "content",
         }
     }
+
+    /// The flag and the reference end a difference in one is about, by
+    /// their XMI names: `isAbstract` and `abstractForm` for theirs, and
+    /// `isCitation` and `citedElement` otherwise.
+    fn flag_and_end(&self) -> (&'static str, &'static str) {
+        match self {
+            Self::IsAbstract { .. } | Self::AbstractForm { .. } => {
+                (Flag::IsAbstract.name(), ReferenceEnd::AbstractForm.name())
+            }
+            _ => (Flag::IsCitation.name(), ReferenceEnd::CitedElement.name()),
+        }
+    }
 }
 
 impl fmt::Display for Difference {
     /// One line: the quoted id, the SACM feature and both values. Ids and
     /// names are quoted with quotes and line breaks escaped, so the line
     /// never breaks.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "one arm per variant reads best as one match"
+    )]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::RootOrder { left, right } => write!(
@@ -400,6 +470,22 @@ impl fmt::Display for Difference {
                 Gid(left.as_deref()),
                 Gid(right.as_deref())
             ),
+            Self::IsCitation { id, left, right } | Self::IsAbstract { id, left, right } => write!(
+                f,
+                "element {:?} differs in {}: {left} on the left, {right} on the right",
+                id.as_str(),
+                self.flag_and_end().0
+            ),
+            Self::CitedElement { id, left, right } | Self::AbstractForm { id, left, right } => {
+                let end = self.flag_and_end().1;
+                write!(
+                    f,
+                    "element {:?} differs in {end}: {} on the left, {} on the right",
+                    id.as_str(),
+                    Target(left.as_ref(), end),
+                    Target(right.as_ref(), end)
+                )
+            }
             Self::Name { id, left, right } => write!(
                 f,
                 "element {:?} differs in name: {} on the left, {} on the right",
@@ -503,6 +589,18 @@ impl fmt::Display for Gid<'_> {
     }
 }
 
+/// A reference target for `Display`: its quoted id, or `no <end>`.
+struct Target<'a>(Option<&'a ElementId>, &'static str);
+
+impl fmt::Display for Target<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            Some(id) => write!(f, "{:?}", id.as_str()),
+            None => write!(f, "no {}", self.1),
+        }
+    }
+}
+
 /// A name for `Display`: `no name` when missing, otherwise both fields, each
 /// quoted or written as absent, so absent and empty read differently.
 struct Name<'a>(Option<&'a LangString>);
@@ -599,7 +697,8 @@ impl fmt::Display for Declaration {
 /// order; an empty result means the documents are equal.
 ///
 /// Elements are matched by id across the whole document. For an element both
-/// documents hold, its kind, parent, `gid`, name, its name's `xmi:id`, its
+/// documents hold, its kind, parent, `gid`, `isCitation`, `isAbstract`,
+/// `citedElement`, `abstractForm`, name, its name's `xmi:id`, its
 /// `content` and `key` with their ids, `assertionDeclaration` and the
 /// relative order of its children are compared, even when its kind differs.
 /// The relative order of the roots is compared too. The per-kind counters
@@ -623,7 +722,10 @@ impl fmt::Display for Declaration {
 /// 1. [`Difference::RootOrder`];
 /// 2. for each element of `left`, in pre-order: [`Difference::LeftOnly`], or
 ///    else [`Kind`](Difference::Kind), [`Parent`](Difference::Parent),
-///    [`Gid`](Difference::Gid), [`Name`](Difference::Name),
+///    [`Gid`](Difference::Gid), [`IsCitation`](Difference::IsCitation),
+///    [`IsAbstract`](Difference::IsAbstract),
+///    [`CitedElement`](Difference::CitedElement),
+///    [`AbstractForm`](Difference::AbstractForm), [`Name`](Difference::Name),
 ///    [`NameId`](Difference::NameId), [`Content`](Difference::Content),
 ///    [`ContentId`](Difference::ContentId),
 ///    [`ContentValueIds`](Difference::ContentValueIds),
@@ -685,6 +787,10 @@ enum Found<'a> {
     Parent(Compared<'a>, Compared<'a>),
     /// The element's `gid` differs.
     Gid(Compared<'a>, Compared<'a>),
+    /// The value of one of the element's flags differs.
+    Flag(Flag, Compared<'a>, Compared<'a>),
+    /// The targets of one of the element's reference ends differ.
+    Reference(ReferenceEnd, Compared<'a>, Compared<'a>),
     /// The element's name differs.
     Name(Compared<'a>, Compared<'a>),
     /// The `xmi:id` of the element's name differs.
@@ -731,6 +837,24 @@ impl Found<'_> {
                 left: ours.gid.map(str::to_owned),
                 right: theirs.gid.map(str::to_owned),
             },
+            Self::Flag(flag, ours, theirs) => {
+                let id = ours.id.clone();
+                let (left, right) = (ours.flag(flag), theirs.flag(flag));
+                match flag {
+                    Flag::IsCitation => Difference::IsCitation { id, left, right },
+                    Flag::IsAbstract => Difference::IsAbstract { id, left, right },
+                }
+            }
+            Self::Reference(end, ours, theirs) => {
+                let id = ours.id.clone();
+                // Both ends are single-valued: each holds at most one id.
+                let left = ours.references(end).first().cloned();
+                let right = theirs.references(end).first().cloned();
+                match end {
+                    ReferenceEnd::CitedElement => Difference::CitedElement { id, left, right },
+                    ReferenceEnd::AbstractForm => Difference::AbstractForm { id, left, right },
+                }
+            }
             Self::Name(ours, theirs) => Difference::Name {
                 id: ours.id.clone(),
                 left: ours.name.cloned(),
@@ -813,6 +937,16 @@ fn walk<'a>(
         }
         if ours.gid != theirs.gid {
             sink(Found::Gid(ours, theirs))?;
+        }
+        for flag in Flag::ALL {
+            if ours.flag(flag) != theirs.flag(flag) {
+                sink(Found::Flag(flag, ours, theirs))?;
+            }
+        }
+        for end in ReferenceEnd::ALL {
+            if ours.references(end) != theirs.references(end) {
+                sink(Found::Reference(end, ours, theirs))?;
+            }
         }
         if ours.name != theirs.name {
             sink(Found::Name(ours, theirs))?;

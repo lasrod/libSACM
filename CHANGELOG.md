@@ -214,6 +214,23 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
   SACM23-VAL-012].
 - A test checks that every code the crate can emit has its catalog row and every live
   row names its constant; the catalog's status note states that rule [LIB-DIAG-002].
+- `SacmElement::is_citation()`, `cited_element()`, `is_abstract()` and `abstract_form()`:
+  every element's clause 8.2 flags (false unless the file sets them `true`) and references, held as the
+  ids they name (ADR 0026). `xmi::read` reads a flag as an `xsd:boolean` (`true`, `1`,
+  `false`, `0`), as an attribute or a value element, and refuses any other value as
+  `ReadError::InvalidLiteral`; it reads a reference as an attribute of white-space
+  separated ids or as an element with `xmi:idref` or `href="#id"`, and keeps one that
+  names no element. Generated ids, in the reader and in edits, skip every referenced id.
+  `xmi::write` writes the flags when true and the references as attributes, after
+  `gid`; `semantic_compare` reports `Difference::IsCitation`, `IsAbstract`,
+  `CitedElement` and `AbstractForm` [SACM23-XMI-005, SACM23-XMI-015, SACM23-BASE-007,
+  SACM23-BASE-008].
+- `validation::validate` reports each reference that names no element as a SACM-REF-001
+  Error (`Code::REF_DANGLING`); an element with a `citedElement` but no `isCitation` true
+  as a SACM-CITE-001 Error (`Code::CITATION_INVALID`); and, with
+  `Code::ABSTRACT_FORM_INVALID` (SACM-ABS-001), an abstract element with an
+  `abstractForm` as an Error, and an `abstractForm` target that is not abstract or of
+  another kind as a Warning [SACM23-VAL-003, SACM23-VAL-007, SACM23-VAL-008].
 
 ### Changed
 
@@ -249,6 +266,21 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
   document it wrote before: one with an ArgumentPackage that nests a plain
   ArgumentPackage and also holds a Claim or another argumentation element. Write it as
   held in tolerant mode [SACM23-VAL-012].
+- The new validation Error rule SACM-REF-001 can make a strict `xmi::write` refuse a
+  document: one with a `citedElement` or `abstractForm` that names no element. Write it
+  as held in tolerant mode [SACM23-VAL-003].
+- The new validation Error rule SACM-CITE-001 can make a strict `xmi::write` refuse a
+  document: one with a `citedElement` on an element whose `isCitation` is not true
+  [SACM23-VAL-007].
+- The new validation Error rule SACM-ABS-001 can make a strict `xmi::write` refuse a
+  document: one with an `abstractForm` on an element whose `isAbstract` is true. Its
+  Warnings do not refuse [SACM23-VAL-008].
+- `xmi::read` reads `isCitation`, `isAbstract`, `citedElement` and `abstractForm`, which
+  it refused as `Unsupported` before; a flag that is not a Boolean literal is now the
+  coded refusal `ReadError::InvalidLiteral` (SACM-ENUM-001), and two ids on one reference
+  end `ReadError::RepeatedValue` (SACM-MULT-001). A cross-document `href` is
+  `Unsupported` until SACM23-XMI-027 [SACM23-XMI-005, SACM23-XMI-015, SACM23-BASE-007,
+  SACM23-BASE-008].
 - `xmi::read` reads descriptions, notes, implementation constraints, tagged values and
   `gid`, which it refused as `Unsupported` before [SACM23-BASE-004, SACM23-BASE-005,
   SACM23-BASE-006].

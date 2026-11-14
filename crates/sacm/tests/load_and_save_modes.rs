@@ -714,6 +714,21 @@ fn table() -> Vec<(&'static str, Vec<u8>, Expect)> {
                 <taggedValue xmi:id=\"t\"><key><value content=\"k\"/></key><content/></taggedValue>"),
             Reads,
         ),
+        // SACM23-BASE-007/008, SACM23-XMI-005/015: the SACMElement flags and
+        // references, which ended two interim refusals of this table.
+        text(
+            "an isAbstract on a root",
+            format!("<sacm:ArgumentPackage{NS} xmi:id=\"a\" isAbstract=\"true\"/>"),
+            Reads,
+        ),
+        text(
+            "a Claim's isCitation and citedElement, in both forms",
+            ap("<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" isCitation=\"false\" \
+                citedElement=\"c2\"/>\n  \
+                <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c2\">\
+                <isCitation>1</isCitation><abstractForm xmi:idref=\"nope\"/></argumentElement>"),
+            Reads,
+        ),
         // --- Interim refusals: conforming content this release cannot represent.
         text(
             "an ArtifactPackage root",
@@ -721,8 +736,8 @@ fn table() -> Vec<(&'static str, Vec<u8>, Expect)> {
             Unsupported,
         ),
         text(
-            "an isAbstract on a root",
-            format!("<sacm:ArgumentPackage{NS} xmi:id=\"a\" isAbstract=\"true\"/>"),
+            "an artifactPackage child of an AssuranceCasePackage",
+            acp("<artifactPackage xmi:id=\"f\"/>"),
             Unsupported,
         ),
         text(
@@ -731,8 +746,8 @@ fn table() -> Vec<(&'static str, Vec<u8>, Expect)> {
             Unsupported,
         ),
         text(
-            "a Claim's isCitation",
-            ap("<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" isCitation=\"false\"/>"),
+            "a Claim's xmi:uuid",
+            ap("<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" xmi:uuid=\"u\"/>"),
             Unsupported,
         ),
         text(

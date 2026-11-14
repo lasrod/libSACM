@@ -110,7 +110,9 @@ row.
     `apply` does not check them.
   - References are not part of the model yet. The structural checks gain "references
     resolve" and the multiplicities of required ends (D-VAL-LAYER) with the first
-    reference row.
+    reference row. (Superseded by ADR 0026: the structural invariant is that no edit
+    creates a dangling reference; a dangling reference read from a file is the content
+    finding SACM-REF-001.)
 
 **Adopted from C++:** created, changed and deleted ids; a create does not report its parent
 as modified (`commands.cpp:162-171`); the stable operation name (`operations.h:406`).

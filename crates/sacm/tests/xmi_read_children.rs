@@ -1076,11 +1076,13 @@ fn sacm23_xmi_016_an_unread_attribute_of_a_child_is_unsupported_at_its_name() {
         ("an AP in argumentPackage", in_acp, "argumentPackage"),
         ("an ACP", in_acp, "assuranceCasePackage"),
     ];
-    // `gid` is read (SACM23-BASE-006), so it is not among these.
+    // `gid` is read (SACM23-BASE-006), and `isCitation`, `isAbstract`,
+    // `citedElement` and `abstractForm` in no namespace (SACM23-BASE-007/008),
+    // so they are not among these; in the SACM namespace they are not read.
     let attributes = [
-        "isCitation=\"false\"",
-        "isCitation=\"true\"",
-        "isAbstract=\"true\"",
+        "sacm:isCitation=\"false\"",
+        "sacm:isCitation=\"true\"",
+        "sacm:isAbstract=\"true\"",
         "xmi:version=\"2.0\"",
         "xmi:uuid=\"u\"",
         "xmi:label=\"l\"",
@@ -1111,9 +1113,9 @@ fn sacm23_xmi_016_an_unread_attribute_of_a_child_is_unsupported_at_its_name() {
     }
     // Before the type and the id, the attribute is still located at its name.
     cases.push(refused(
-        "isCitation before the type and the id",
+        "foo before the type and the id",
         in_ap(&format!(
-            "<argumentElement {MARK}isCitation=\"true\" xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"
+            "<argumentElement {MARK}foo=\"true\" xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"
         )),
     ));
     assert_all_unsupported_at_mark("attribute", &cases);

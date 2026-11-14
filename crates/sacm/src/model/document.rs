@@ -5,7 +5,8 @@ use std::fmt;
 
 use super::containment::{Role, role};
 use super::{
-    AbstractClass, AssertionDeclaration, ElementId, ElementKind, LangString, MultiLangString,
+    AbstractClass, AssertionDeclaration, ElementId, ElementKind, Flag, LangString, MultiLangString,
+    ReferenceEnd,
 };
 
 /// A SACM 2.3 document: one interchange unit (what one SACM XMI file holds),
@@ -44,6 +45,13 @@ use super::{
 /// kinds. Tests build documents with other kinds through the `test-support`
 /// feature's `Document::insert`. [`Document::new`] is empty.
 ///
+/// **References** between elements, such as
+/// [`SacmElement::cited_element`], are held as the ids they name, not as
+/// views: [`get`](Self::get) resolves them. A document may hold a reference
+/// whose id names no element, as a file can (ADR 0026);
+/// [`validation::validate`](crate::validation::validate) reports it
+/// (SACM-REF-001), and no id an edit generates is one a reference names.
+///
 /// Cloning a document copies all of it, including the counters that generated
 /// ids continue from; the copy is independent of the original. Cloning,
 /// dropping and traversal do not recurse, so arbitrarily deep nesting is
@@ -54,7 +62,9 @@ use super::{
 /// `==` compares SACM content: two documents are equal exactly when
 /// [`semantic_compare`](crate::compare::semantic_compare) finds no
 /// difference between them. Elements are matched by id; kinds, parents,
-/// `gid`s, names, the ids of names, `content`s and `key`s with their ids,
+/// `gid`s, `isCitation` and `isAbstract` flags, the ids `citedElement` and
+/// `abstractForm` hold, names, the ids of names, `content`s and `key`s with
+/// their ids,
 /// `assertionDeclaration`s and the order of roots and children are compared. `==` is order-sensitive; see [`crate::compare`] to ignore order.
 ///
 /// Not compared: the per-kind counters [`edit::apply`](crate::edit::apply)
@@ -82,16 +92,36 @@ pub struct Document {
     /// The handle of each element by id. Only looked up, never iterated, so
     /// nothing observable depends on its order.
     index: HashMap<ElementId, usize>,
-    /// The handle of the owner of each id that identifies no element: the
-    /// `xmi:id` of a `name` (ADR 0024), of a `content` or `key`, or of a
-    /// `value` in one (ADR 0025). They share the file's id space, but
-    /// [`get`](Self::get) does not look in it. Only looked up, never
-    /// iterated.
-    value_ids: HashMap<ElementId, usize>,
+    /// How each id that is not in `index` is used: as an id that identifies
+    /// no element, the `xmi:id` of a `name` (ADR 0024), of a `content` or
+    /// `key`, or of a `value` in one (ADR 0025), which shares the file's id
+    /// space though [`get`](Self::get) does not look in it; or as a target of
+    /// references (ADR 0026), so that a generated id never makes a dangling
+    /// reference resolve. An element id that references hold is counted
+    /// here too. Derived from the nodes; only looked up, never iterated.
+    /// (One map, not two, keeps `Document` the size it was.)
+    other_ids: HashMap<ElementId, IdUse>,
     /// The `n` of the last id generated for each kind (`claim_<n>`, ADR
     /// 0019); a kind with none generated yet is absent. Advanced only when a
     /// generated id is used, and copied by `Clone`.
     id_counters: BTreeMap<ElementKind, u64>,
+}
+
+/// How an id of `Document::other_ids` is used.
+#[derive(Clone, Copy, Debug, Default)]
+struct IdUse {
+    /// The handle of the element whose `name`, `content`, `key` or `value`
+    /// carries the id as its `xmi:id`, if one does.
+    owner: Option<usize>,
+    /// How many references, of every element and end, hold the id.
+    references: usize,
+}
+
+impl IdUse {
+    /// Whether nothing uses the id any more, so its entry can go.
+    fn is_unused(self) -> bool {
+        self.owner.is_none() && self.references == 0
+    }
 }
 
 /// One element of a [`Document`].
@@ -116,6 +146,14 @@ struct Node {
     /// The element's `assertionDeclaration`: `Some` exactly when the kind is
     /// an Assertion.
     assertion_declaration: Option<AssertionDeclaration>,
+    /// `isCitation` (§8.2): absent is `false`.
+    is_citation: bool,
+    /// `isAbstract` (§8.2): absent is `false`.
+    is_abstract: bool,
+    /// The ids each reference end of the element holds, unresolved and in
+    /// document order (ADR 0026): only the ends that hold one, each once, in
+    /// no particular order (readers look an end up), and never an empty list.
+    references: Vec<(ReferenceEnd, Vec<ElementId>)>,
     /// The handle of the containing element; `None` for a root.
     parent: Option<usize>,
     /// The role of the parent's class that holds the element: `Some` exactly
@@ -164,6 +202,8 @@ impl Document {
     }
 
     /// The element with the given id, or `None` if the document has none.
+    /// It resolves a reference such as [`SacmElement::cited_element`]: `None`
+    /// means the reference names no element of the document (SACM-REF-001).
     ///
     /// Ids are compared exactly, byte for byte. The id may be given as a
     /// `&str`, a `&String` or an `&ElementId`.
@@ -409,6 +449,9 @@ impl Document {
             assertion_declaration: kind
                 .is_a(AbstractClass::Assertion)
                 .then(AssertionDeclaration::default),
+            is_citation: false,
+            is_abstract: false,
+            references: Vec::new(),
             parent,
             role,
             children: Vec::new(),
@@ -516,7 +559,7 @@ impl Document {
         if self.is_id_in_use(name_id.as_str()) {
             return Err(format!("the id {:?} is already in use", name_id.as_str()));
         }
-        self.value_ids.insert(name_id.clone(), node);
+        self.other_ids.entry(name_id.clone()).or_default().owner = Some(node);
         self.nodes[node].name_id = Some(name_id);
         Ok(())
     }
@@ -531,6 +574,90 @@ impl Document {
         };
         self.nodes[node].gid = gid;
         Ok(())
+    }
+
+    /// Sets the flag `flag` of the element `id` (SACM 2.3 §8.2) to `value`.
+    /// Refuses, with the reason, an unknown element; on an error the
+    /// document is unchanged.
+    pub(crate) fn set_flag(
+        &mut self,
+        id: &ElementId,
+        flag: Flag,
+        value: bool,
+    ) -> Result<(), String> {
+        let Some(&node) = self.index.get(id) else {
+            return Err(format!("the document has no element {:?}", id.as_str()));
+        };
+        *self.nodes[node].flag_mut(flag) = value;
+        Ok(())
+    }
+
+    /// Sets the targets of the reference end `end` of the element `owner` to
+    /// `targets`, unresolved and in order, replacing what it held; none
+    /// removes the end (ADR 0026). A target need not name an element.
+    /// Refuses, with the reason, an unknown owner, an owner whose kind has
+    /// no such end, an empty id, and more than one target on a single-valued
+    /// end; on an error the document is unchanged.
+    pub(crate) fn set_references(
+        &mut self,
+        owner: &ElementId,
+        end: ReferenceEnd,
+        targets: Vec<ElementId>,
+    ) -> Result<(), String> {
+        let Some(&node) = self.index.get(owner) else {
+            return Err(format!("the document has no element {:?}", owner.as_str()));
+        };
+        let kind = self.nodes[node].kind;
+        if !end.owner().admits(kind) {
+            return Err(format!(
+                "the {kind} {:?} has no {}",
+                owner.as_str(),
+                end.name()
+            ));
+        }
+        if targets.iter().any(|target| target.as_str().is_empty()) {
+            return Err(format!("a target of the {} is empty", end.name()));
+        }
+        // Every end of this release is single-valued; the first multi-valued
+        // end (SACM23-ARG-004) adds `ReferenceEnd::is_many` back.
+        if targets.len() > 1 {
+            return Err(format!(
+                "the {} holds one target, not {}",
+                end.name(),
+                targets.len()
+            ));
+        }
+        let references = &mut self.nodes[node].references;
+        let old = match references.iter().position(|(held, _)| *held == end) {
+            Some(position) => references.remove(position).1,
+            None => Vec::new(),
+        };
+        for target in &targets {
+            let used = self.other_ids.entry(target.clone()).or_default();
+            used.references = used.references.saturating_add(1);
+        }
+        if !targets.is_empty() {
+            // In no particular order: every reader looks an end up by
+            // `ReferenceEnd`, and iterates `ReferenceEnd::ALL` for order.
+            references.push((end, targets));
+        }
+        for target in &old {
+            self.release(target, |used| {
+                used.references = used.references.saturating_sub(1);
+            });
+        }
+        Ok(())
+    }
+
+    /// Applies `release` to the use of `id` in `other_ids`, and drops the
+    /// entry once nothing uses the id.
+    fn release(&mut self, id: &ElementId, release: impl FnOnce(&mut IdUse)) {
+        if let Some(used) = self.other_ids.get_mut(id) {
+            release(used);
+            if used.is_unused() {
+                self.other_ids.remove(id);
+            }
+        }
     }
 
     /// Sets the `role` of the element `owner` to `text`, replacing what it
@@ -574,10 +701,10 @@ impl Document {
             }
         }
         for id in &old {
-            self.value_ids.remove(id);
+            self.release(id, |used| used.owner = None);
         }
         for id in text.ids() {
-            self.value_ids.insert(id.clone(), node);
+            self.other_ids.entry(id.clone()).or_default().owner = Some(node);
         }
         *self.nodes[node].text_mut(role) = Some(text);
         Ok(())
@@ -588,12 +715,25 @@ impl Document {
     /// `content`, a `key` or a `value` (ADR 0025). A new element's id, given
     /// or generated, must not be.
     pub(crate) fn is_id_in_use(&self, id: &str) -> bool {
-        self.index.contains_key(id) || self.value_ids.contains_key(id)
+        self.index.contains_key(id)
+            || self
+                .other_ids
+                .get(id)
+                .is_some_and(|used| used.owner.is_some())
+    }
+
+    /// Whether some reference, of any element and end, holds `id`.
+    pub(crate) fn is_referenced(&self, id: &str) -> bool {
+        self.other_ids
+            .get(id)
+            .is_some_and(|used| used.references > 0)
     }
 
     /// The id the next generated element of `kind` gets, with its `n`:
     /// `<snake_case kind>_<n>` for the smallest `n` above the kind's counter
-    /// whose id is not in use (ADR 0019). The counter is not advanced; see
+    /// whose id is not in use (ADR 0019) and that no reference holds, so
+    /// that a dangling reference never resolves to a new element by accident
+    /// (ADR 0026). The counter is not advanced; see
     /// [`commit_generated_id`](Self::commit_generated_id).
     pub(crate) fn next_generated_id(&self, kind: ElementKind) -> (ElementId, u64) {
         let prefix = snake_case(kind.name());
@@ -604,12 +744,13 @@ impl Document {
             .unwrap_or(0)
             .wrapping_add(1);
         let mut id = generated_id(&prefix, n);
-        // Each element id and each id that identifies no element is in use
-        // once, and the candidates are distinct, so one of the first
-        // `in_use + 1` is free: the last candidate needs no check, and the
-        // loop is bounded.
-        for _ in 0..self.nodes.len() + self.value_ids.len() {
-            if !self.is_id_in_use(id.as_str()) {
+        // A candidate is taken only if it is an element's id or an id in
+        // `other_ids`, each counted once here, and the candidates are
+        // distinct, so one of the first `taken + 1` is free: the last
+        // candidate needs no check, and the loop is bounded.
+        let taken = self.nodes.len() + self.other_ids.len();
+        for _ in 0..taken {
+            if !self.is_id_in_use(id.as_str()) && !self.is_referenced(id.as_str()) {
                 break;
             }
             n = n.wrapping_add(1);
@@ -639,8 +780,9 @@ impl Document {
             // Derived from `nodes`: the id of each element.
             index: _,
             // Derived from `nodes`: the owner of each id that identifies no
-            // element, which is compared through `SacmElement::compared`.
-            value_ids: _,
+            // element and the references to each id, which are compared
+            // through `SacmElement::compared`.
+            other_ids: _,
             // Not compared: the generated-id counters are not SACM content
             // and XMI does not carry them (ADR 0020).
             id_counters: _,
@@ -935,6 +1077,120 @@ impl<'a> SacmElement<'a> {
         self.node().gid.as_deref()
     }
 
+    /// Whether the element cites another (SACM 2.3 §8.2
+    /// `isCitation[0..1]=false`): `false` unless the document holds `true`.
+    ///
+    /// Every element, of every kind, has the flag. Absent and `false` are the
+    /// same value, since a default is not written (ADR 0026). The flag and
+    /// [`cited_element`](Self::cited_element) are independent: either may be
+    /// present without the other, and nothing repairs a file on read. §8.2
+    /// requires `isCitation` to be true when there is a cited element;
+    /// [`validation::validate`](crate::validation::validate) reports a cited
+    /// element without it as SACM-CITE-001 (SACM23-VAL-007). No edit sets
+    /// the flag yet, so only [`xmi::read`](crate::xmi::read) gives `true`.
+    ///
+    /// ```
+    /// use sacm::xmi::{self, ReadOptions};
+    ///
+    /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+    ///   <name content="Arguments"/>
+    ///   <argumentElement xmi:type="sacm:Claim" xmi:id="c1" isCitation="true" citedElement="c2">
+    ///     <name content="The pump is safe, as the supplier argues"/>
+    ///   </argumentElement>
+    ///   <argumentElement xmi:type="sacm:Claim" xmi:id="c2">
+    ///     <name content="The pump is safe"/>
+    ///   </argumentElement>
+    /// </sacm:ArgumentPackage>"#;
+    /// let document = xmi::read(input, &ReadOptions::default())?.into_document();
+    /// let c1 = document.get("c1").expect("the Claim was read");
+    /// assert!(c1.is_citation());
+    /// // The cited element is an id, which the document resolves.
+    /// let cited = c1.cited_element().and_then(|id| document.get(id));
+    /// assert_eq!(cited.map(|c2| c2.id().as_str()), Some("c2"));
+    /// assert!(!document.get("c2").expect("the Claim was read").is_citation());
+    /// # Ok::<(), sacm::xmi::ReadError>(())
+    /// ```
+    #[must_use]
+    pub fn is_citation(self) -> bool {
+        self.node().is_citation
+    }
+
+    /// The id of the element this one cites (SACM 2.3 §8.2
+    /// `citedElement:SACMElement[0..1]`), or `None`.
+    ///
+    /// The reference is held as the target's id, unresolved: look the target
+    /// up with [`Document::get`]. The id may name no element of the document,
+    /// such as an id absent from the file or the id of a `name`; the document
+    /// keeps it, and [`validation::validate`](crate::validation::validate)
+    /// reports it as SACM-REF-001 (SACM23-VAL-003). No edit sets it yet
+    /// (LIB-EDIT-009); only [`xmi::read`](crate::xmi::read) gives one. See
+    /// [`is_citation`](Self::is_citation) for an example.
+    #[must_use]
+    pub fn cited_element(self) -> Option<&'a ElementId> {
+        self.references(ReferenceEnd::CitedElement).first()
+    }
+
+    /// Whether the element is abstract (SACM 2.3 §8.2
+    /// `isAbstract[0..1]=false`): `false` unless the document holds `true`.
+    ///
+    /// Every element, of every kind, has the flag, under the rules of
+    /// [`is_citation`](Self::is_citation). An abstract element is, for
+    /// example, part of a pattern or template (§8.2); a concrete element
+    /// names the abstract one it conforms to through its
+    /// [`abstract_form`](Self::abstract_form).
+    ///
+    /// ```
+    /// use sacm::xmi::{self, ReadOptions};
+    ///
+    /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+    ///   <name content="Arguments"/>
+    ///   <argumentElement xmi:type="sacm:Claim" xmi:id="pattern" isAbstract="true">
+    ///     <name content="{System} is safe"/>
+    ///   </argumentElement>
+    ///   <argumentElement xmi:type="sacm:Claim" xmi:id="c1" abstractForm="pattern">
+    ///     <name content="The brakes are safe"/>
+    ///   </argumentElement>
+    /// </sacm:ArgumentPackage>"#;
+    /// let document = xmi::read(input, &ReadOptions::default())?.into_document();
+    /// let c1 = document.get("c1").expect("the Claim was read");
+    /// assert!(!c1.is_abstract());
+    /// let form = c1.abstract_form().and_then(|id| document.get(id)).expect("it resolves");
+    /// assert!(form.is_abstract());
+    /// # Ok::<(), sacm::xmi::ReadError>(())
+    /// ```
+    #[must_use]
+    pub fn is_abstract(self) -> bool {
+        self.node().is_abstract
+    }
+
+    /// The id of the abstract element this concrete one conforms to (SACM
+    /// 2.3 §8.2 `abstractForm:SACMElement[0..1]`), or `None`.
+    ///
+    /// Held unresolved, as [`cited_element`](Self::cited_element) is. §8.2
+    /// asks that the element itself be concrete, and that the target be
+    /// abstract and of the same kind;
+    /// [`validation::validate`](crate::validation::validate) reports each
+    /// case that is not as SACM-ABS-001 (SACM23-VAL-008). No edit sets it
+    /// yet (LIB-EDIT-009); only [`xmi::read`](crate::xmi::read) gives one.
+    /// See [`is_abstract`](Self::is_abstract) for an example.
+    #[must_use]
+    pub fn abstract_form(self) -> Option<&'a ElementId> {
+        self.references(ReferenceEnd::AbstractForm).first()
+    }
+
+    /// The value of the flag `flag` of the element.
+    pub(crate) fn flag(self, flag: Flag) -> bool {
+        self.node().flag(flag)
+    }
+
+    /// The ids the reference end `end` of the element holds, in order:
+    /// empty when it holds none.
+    pub(crate) fn references(self, end: ReferenceEnd) -> &'a [ElementId] {
+        targets_of(&self.node().references, end)
+    }
+
     /// The element's descriptions (SACM 2.3 §8.6, §8.9): its children in the
     /// `description` role, in document order.
     ///
@@ -1215,6 +1471,12 @@ impl<'a> SacmElement<'a> {
             key,
             // Compared.
             assertion_declaration,
+            // Compared.
+            is_citation,
+            // Compared.
+            is_abstract,
+            // Compared, end by end.
+            references,
             // Compared, as the parent's id.
             parent,
             // Derived from the parent's kind and the element's kind
@@ -1233,6 +1495,9 @@ impl<'a> SacmElement<'a> {
             content: content.as_ref(),
             key: key.as_ref(),
             assertion_declaration: *assertion_declaration,
+            is_citation: *is_citation,
+            is_abstract: *is_abstract,
+            references,
         }
     }
 
@@ -1285,6 +1550,36 @@ pub(crate) struct Compared<'a> {
     pub(crate) key: Option<&'a Text>,
     /// The element's `assertionDeclaration`; `None` when not an Assertion.
     pub(crate) assertion_declaration: Option<AssertionDeclaration>,
+    /// The element's `isCitation`.
+    is_citation: bool,
+    /// The element's `isAbstract`.
+    is_abstract: bool,
+    /// The ids each reference end holds: only the ends that hold one.
+    references: &'a [(ReferenceEnd, Vec<ElementId>)],
+}
+
+impl<'a> Compared<'a> {
+    /// The value of the flag `flag`.
+    pub(crate) fn flag(&self, flag: Flag) -> bool {
+        match flag {
+            Flag::IsCitation => self.is_citation,
+            Flag::IsAbstract => self.is_abstract,
+        }
+    }
+
+    /// The ids the reference end `end` holds: empty when it holds none.
+    pub(crate) fn references(&self, end: ReferenceEnd) -> &'a [ElementId] {
+        targets_of(self.references, end)
+    }
+}
+
+/// The targets `end` holds in `references`, a node's sparse list of ends:
+/// empty when it holds none.
+fn targets_of(references: &[(ReferenceEnd, Vec<ElementId>)], end: ReferenceEnd) -> &[ElementId] {
+    references
+        .iter()
+        .find(|(held, _)| *held == end)
+        .map_or(&[], |(_, targets)| targets.as_slice())
 }
 
 /// A role of a `UtilityElement` that holds a `MultiLangString` (ADR 0025):
@@ -1372,6 +1667,22 @@ impl Text {
 }
 
 impl Node {
+    /// The value of the flag `flag`.
+    fn flag(&self, flag: Flag) -> bool {
+        match flag {
+            Flag::IsCitation => self.is_citation,
+            Flag::IsAbstract => self.is_abstract,
+        }
+    }
+
+    /// The place of the flag `flag`.
+    fn flag_mut(&mut self, flag: Flag) -> &mut bool {
+        match flag {
+            Flag::IsCitation => &mut self.is_citation,
+            Flag::IsAbstract => &mut self.is_abstract,
+        }
+    }
+
     /// The text the node holds in `role`.
     fn text(&self, role: TextRole) -> Option<&Text> {
         match role {
@@ -1535,6 +1846,7 @@ impl std::error::Error for SetAssertionDeclarationError {}
 mod tests {
     use super::{Document, IdGenerator, SacmElement, Text, TextRole, snake_case};
     use crate::model::{ElementId, ElementKind, LangString};
+    use crate::model::{Flag, ReferenceEnd};
 
     #[test]
     fn snake_case_splits_a_class_name_at_each_capital() {
@@ -1690,6 +2002,97 @@ mod tests {
         assert!(!document.is_id_in_use(" p ") && document.get(" p ").is_none());
         assert_eq!(document.set_gid(&p, None), Ok(()));
         assert_eq!(document.get("p").and_then(SacmElement::gid), None);
+    }
+
+    #[test]
+    fn set_flag_sets_one_flag_and_refuses_an_unknown_element() {
+        let mut document = two_roots();
+        let p = ElementId::new("p");
+        assert!(
+            document
+                .set_flag(&ElementId::new("missing"), Flag::IsCitation, true)
+                .is_err()
+        );
+        assert_eq!(document.set_flag(&p, Flag::IsAbstract, true), Ok(()));
+        let flags = |document: &Document| {
+            document
+                .get("p")
+                .map(|p| (p.is_citation(), p.is_abstract()))
+        };
+        assert_eq!(flags(&document), Some((false, true)));
+        assert_eq!(document.set_flag(&p, Flag::IsAbstract, false), Ok(()));
+        assert_eq!(flags(&document), Some((false, false)));
+    }
+
+    #[test]
+    fn set_references_refuses_what_a_single_valued_end_cannot_hold_and_changes_nothing() {
+        let mut document = two_roots();
+        let ids = |ids: &[&str]| ids.iter().map(|id| ElementId::new(*id)).collect::<Vec<_>>();
+        let end = ReferenceEnd::CitedElement;
+        for (owner, targets) in [
+            ("missing", ids(&["q"])),
+            ("p", ids(&[""])),
+            ("p", ids(&["q", "q"])),
+        ] {
+            let refused = document.set_references(&ElementId::new(owner), end, targets.clone());
+            assert!(refused.is_err(), "{owner} {targets:?}");
+        }
+        assert_eq!(document.get("p").and_then(SacmElement::cited_element), None);
+        assert!(!document.is_referenced("q"));
+    }
+
+    #[test]
+    fn references_are_read_by_end_counted_and_released_when_replaced() {
+        let mut document = two_roots();
+        let (p, q) = (ElementId::new("p"), ElementId::new("q"));
+        let one = |id: &str| vec![ElementId::new(id)];
+        // Set out of table order; each is read back by its end.
+        assert_eq!(
+            document.set_references(&p, ReferenceEnd::AbstractForm, one("claim_1")),
+            Ok(())
+        );
+        assert_eq!(
+            document.set_references(&p, ReferenceEnd::CitedElement, one("claim_1")),
+            Ok(())
+        );
+        assert_eq!(
+            document.set_references(&q, ReferenceEnd::CitedElement, one("p")),
+            Ok(())
+        );
+        let held = document
+            .get("p")
+            .map(|p| ReferenceEnd::ALL.map(|end| p.references(end).first().map(ElementId::as_str)));
+        assert_eq!(held, Some([Some("claim_1"), Some("claim_1")]));
+        // A referenced id is not in use, but no id is generated for it.
+        assert!(document.is_referenced("claim_1") && !document.is_id_in_use("claim_1"));
+        assert!(document.is_referenced("p") && document.is_id_in_use("p"));
+        assert_eq!(
+            document.next_generated_id(ElementKind::Claim),
+            (ElementId::new("claim_2"), 2)
+        );
+        // Each reference is counted: replacing one keeps the other.
+        assert_eq!(
+            document.set_references(&p, ReferenceEnd::AbstractForm, Vec::new()),
+            Ok(())
+        );
+        assert!(document.is_referenced("claim_1"));
+        assert_eq!(
+            document.set_references(&p, ReferenceEnd::CitedElement, one("other")),
+            Ok(())
+        );
+        assert!(!document.is_referenced("claim_1") && document.is_referenced("other"));
+        assert_eq!(
+            document.next_generated_id(ElementKind::Claim),
+            (ElementId::new("claim_1"), 1)
+        );
+        // A name id that is also referenced stays in use when the reference
+        // goes, and stays referenced when only its use as a name id would.
+        assert_eq!(document.set_name_id(&p, ElementId::new("other")), Ok(()));
+        assert_eq!(
+            document.set_references(&p, ReferenceEnd::CitedElement, Vec::new()),
+            Ok(())
+        );
+        assert!(document.is_id_in_use("other") && !document.is_referenced("other"));
     }
 
     #[test]

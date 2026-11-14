@@ -169,12 +169,15 @@ impl Code {
     /// ```
     pub const MULTIPLICITY_VIOLATION: Code = Code::from_static("SACM-MULT-001");
 
-    /// SACM-ENUM-001: a value is not one of its enumeration's literals. The
-    /// code of [`ReadError::InvalidLiteral`](crate::xmi::ReadError::InvalidLiteral),
-    /// an `assertionDeclaration` that is not exactly one of the six
-    /// `AssertionDeclaration` literals, refused in both modes (SACM23-VAL-006).
-    /// Fix: write one of `asserted`, `needsSupport`, `assumed`, `axiomatic`,
-    /// `defeated` and `asCited`, spelled and cased exactly.
+    /// SACM-ENUM-001: a value is not one of its type's literals. The code of
+    /// [`ReadError::InvalidLiteral`](crate::xmi::ReadError::InvalidLiteral),
+    /// refused in both modes: an `assertionDeclaration` that is not exactly
+    /// one of the six `AssertionDeclaration` literals (SACM23-VAL-006), and
+    /// an `isCitation` or `isAbstract` that is not one of the `xsd:boolean`
+    /// literals `true`, `false`, `1` and `0`, with white space around them
+    /// collapsed (SACM23-BASE-007, SACM23-BASE-008). Fix: write one of
+    /// `asserted`, `needsSupport`, `assumed`, `axiomatic`, `defeated` and
+    /// `asCited`, or one of `true` and `false`, spelled and cased exactly.
     pub const ENUM_INVALID_LITERAL: Code = Code::from_static("SACM-ENUM-001");
 
     /// SACM-CMD-001: an operation's target is not in the document. The code
@@ -261,6 +264,47 @@ impl Code {
     /// triggers nor is reported, and `UtilityElement`s are not counted
     /// (D-PKG-HOMOG). Fix: move the other elements into a nested package.
     pub const PACKAGE_CONTENT_INVALID: Code = Code::from_static("SACM-PKG-001");
+
+    /// SACM-REF-001: a reference names no element of the document: an id
+    /// absent from it, or the `xmi:id` of a `name`, `content`, `key` or
+    /// `value`, which identifies no element.
+    /// [`validation::validate`](crate::validation::validate) reports one
+    /// Error per distinct missing id of each reference end of each element,
+    /// with the end's clause (8.2 for `citedElement` and `abstractForm`),
+    /// affecting the referring element, then the missing id
+    /// (SACM23-VAL-003). [`xmi::read`](crate::xmi::read) keeps such a
+    /// reference in both modes, and a tolerant [`xmi::write`](crate::xmi::write)
+    /// writes it back, so nothing is lost; a strict write refuses the
+    /// document (ADR 0026). Fix: point the reference at an element of the
+    /// document, add the element it names, or remove the reference, in the
+    /// file; edits that set flags and references are LIB-EDIT-008/009, not
+    /// built yet.
+    pub const REF_DANGLING: Code = Code::from_static("SACM-REF-001");
+
+    /// SACM-CITE-001: an element has a `citedElement` but its `isCitation`
+    /// is not true, against the §8.2 constraint
+    /// `self.citedElement <> null implies self.isCitation = true`.
+    /// [`validation::validate`](crate::validation::validate) reports one
+    /// Error per such element, affecting it (SACM23-VAL-007). §8.2 states
+    /// only that direction, so `isCitation` true with no `citedElement` is
+    /// no finding (ADR 0026). Fix: set `isCitation="true"`, or remove the
+    /// `citedElement`, in the file; edits that set flags and references are
+    /// LIB-EDIT-008/009, not built yet.
+    pub const CITATION_INVALID: Code = Code::from_static("SACM-CITE-001");
+
+    /// SACM-ABS-001: an `abstractForm` breaks a §8.2 rule.
+    /// [`validation::validate`](crate::validation::validate) reports, for an
+    /// element with an `abstractForm` (SACM23-VAL-008): an Error when its own
+    /// `isAbstract` is true (§8.2: "+isAbstract of the `SACMElement` is
+    /// false"), affecting the element; and, when the target is an element of
+    /// the document, a Warning when the target is not abstract, and another
+    /// when it is of another kind (both "should"), each affecting the
+    /// element, then the target. A target that names no element gives only
+    /// SACM-REF-001. Fix: make the element concrete, or point the
+    /// `abstractForm` at an abstract element of the same kind, in the file;
+    /// edits that set flags and references are LIB-EDIT-008/009, not built
+    /// yet.
+    pub const ABSTRACT_FORM_INVALID: Code = Code::from_static("SACM-ABS-001");
 
     /// The code with the given text.
     ///
@@ -380,8 +424,9 @@ impl fmt::Display for SourceLocation {
 /// if there is one, and last `: ` and the message. For example:
 ///
 /// ```text
-/// error SACM-REF-001 [SACM23-VAL-003] at line 12, column 34: the target "claim_9" does not resolve
-/// error SACM-CITE-001 [SACM23-VAL-007, clause 8.2]: "claim_1" has isCitation true but no citedElement
+/// warning SACM-XMI-010 [LIB-COMPAT-001, clause 9.5.2] at line 4, column 20: the Claim "c1" is typed with xsi:type, …
+/// error SACM-REF-001 [SACM23-VAL-003, clause 8.2]: Claim "claim_1" has the citedElement "claim_9", which names no element of the document …
+/// error SACM-CITE-001 [SACM23-VAL-007, clause 8.2]: Claim "claim_1" has the citedElement "claim_2" but isCitation is not true …
 /// error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: Claim "c1" has no name (name:LangString[1])
 /// ```
 ///

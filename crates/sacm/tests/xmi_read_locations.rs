@@ -4,7 +4,8 @@
 //!
 //! One table holds one input per refusal site: every `ReadError` variant, and
 //! every `Unsupported` reason for roots, for children, for utility elements
-//! and their `content` and `key` roles, and for `gid` (ADR 0025). The expected
+//! and their `content` and `key` roles, for `gid` (ADR 0025), and for the
+//! `SACMElement` flags and references (ADR 0026). The expected
 //! location is marked in the input with [`MARK`] (U+2038), which the test
 //! removes before reading, and is counted here: lines end at LF, CRLF or a
 //! lone CR, columns count characters, and a leading byte order mark takes no
@@ -412,7 +413,7 @@ fn root_rows() -> Vec<Row> {
             "an unread attribute of a root",
             Unsupported,
             led(&format!(
-                "<sacm:ArgumentPackage{NS} xmi:id=\"a\" {MARK}isAbstract=\"true\"/>"
+                "<sacm:ArgumentPackage{NS} xmi:id=\"a\" {MARK}foo=\"1\"/>"
             )),
         ),
         // SACM23-XMI-021: at the second name.
@@ -605,7 +606,7 @@ fn child_content_rows() -> Vec<Row> {
             "an unread attribute of a child",
             U,
             in_ap(&format!(
-                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\" {MARK}isCitation=\"false\"/>"
+                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\" {MARK}foo=\"1\"/>"
             )),
         ),
         row(
@@ -970,6 +971,244 @@ fn gid_rows() -> Vec<Row> {
     ]
 }
 
+/// A Claim `x` in the root `p` with the start-tag `attributes`, holding
+/// `content`.
+fn claim_x(attributes: &str, content: &str) -> String {
+    in_ap(&format!(
+        "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\"{attributes}>{content}</argumentElement>"
+    ))
+}
+
+/// The refusals of the `SACMElement` flags `isCitation` and `isAbstract`
+/// (SACM23-BASE-007/008; ADR 0026): a value that is no Boolean literal, a
+/// repeat, and a flag in the wrong place or form.
+fn flag_rows() -> Vec<Row> {
+    use Variant::{InvalidLiteral, RepeatedValue, Unsupported as U};
+    vec![
+        // At the attribute's name, or the value element's `<`.
+        row(
+            "a bad isCitation literal on a child",
+            InvalidLiteral,
+            claim_x(&format!(" {MARK}isCitation=\"yes\""), ""),
+        ),
+        row(
+            "a bad isAbstract literal on a root",
+            InvalidLiteral,
+            led(&format!(
+                "<sacm:ArgumentPackage{NS} xmi:id=\"a\" {MARK}isAbstract=\"True\"/>"
+            )),
+        ),
+        row(
+            "a bad isAbstract literal in the element form",
+            InvalidLiteral,
+            in_claim(&format!("{MARK}<isAbstract>t rue</isAbstract>")),
+        ),
+        row(
+            "an empty isCitation element",
+            InvalidLiteral,
+            in_ap(&format!("<note xmi:id=\"n\">{MARK}<isCitation/></note>")),
+        ),
+        // At the second occurrence.
+        row(
+            "isCitation as an attribute and an element",
+            RepeatedValue,
+            claim_x(
+                " isCitation=\"true\"",
+                &format!("{MARK}<isCitation>true</isCitation>"),
+            ),
+        ),
+        row(
+            "two isAbstract elements",
+            RepeatedValue,
+            in_claim(&format!(
+                "<isAbstract>1</isAbstract>{MARK}<isAbstract>1</isAbstract>"
+            )),
+        ),
+        row(
+            "sacm:isCitation as an attribute",
+            U,
+            claim_x(&format!(" {MARK}sacm:isCitation=\"true\""), ""),
+        ),
+        row(
+            "sacm:isAbstract as an element",
+            U,
+            in_claim(&format!("{MARK}<sacm:isAbstract>true</sacm:isAbstract>")),
+        ),
+        row(
+            "an attribute of an isCitation element",
+            U,
+            in_claim(&format!("<isCitation {MARK}xmi:id=\"v\">true</isCitation>")),
+        ),
+        row(
+            "an element in an isAbstract element",
+            U,
+            in_claim(&format!("<isAbstract>true{MARK}<b/></isAbstract>")),
+        ),
+        row(
+            "isCitation on a name",
+            U,
+            in_claim(&format!("<name content=\"N\" {MARK}isCitation=\"true\"/>")),
+        ),
+        row(
+            "an isAbstract element in a value",
+            U,
+            in_content(&format!(
+                "<value>{MARK}<isAbstract>true</isAbstract></value>"
+            )),
+        ),
+    ]
+}
+
+/// The refusals of the references `citedElement` and `abstractForm`, in the
+/// attribute form (SACM23-XMI-005) and the element form (SACM23-XMI-015;
+/// ADR 0026).
+#[expect(
+    clippy::too_many_lines,
+    reason = "one flat table is easier to review than several"
+)]
+fn reference_rows() -> Vec<Row> {
+    use Variant::{RepeatedValue, Unsupported as U};
+    let link = |element: &str| claim_x("", element);
+    vec![
+        // Two ids on a single-valued end, at the attribute's name.
+        row(
+            "two tokens in citedElement",
+            RepeatedValue,
+            claim_x(&format!(" {MARK}citedElement=\"c x\""), ""),
+        ),
+        // At the second occurrence: the element after the attribute.
+        row(
+            "citedElement as an attribute and an element",
+            RepeatedValue,
+            claim_x(
+                " citedElement=\"c\"",
+                &format!("{MARK}<citedElement xmi:idref=\"c\"/>"),
+            ),
+        ),
+        row(
+            "two abstractForm elements",
+            RepeatedValue,
+            in_claim(&format!(
+                "<abstractForm xmi:idref=\"c\"/>{MARK}<abstractForm href=\"#c\"/>"
+            )),
+        ),
+        row(
+            "an empty citedElement",
+            U,
+            claim_x(&format!(" {MARK}citedElement=\"\""), ""),
+        ),
+        row(
+            "an abstractForm of white space",
+            U,
+            claim_x(&format!(" {MARK}abstractForm=\" &#9; \""), ""),
+        ),
+        row(
+            "sacm:citedElement as an attribute",
+            U,
+            claim_x(&format!(" {MARK}sacm:citedElement=\"c\""), ""),
+        ),
+        row(
+            "citedElement on a content",
+            U,
+            in_description(&format!("<content {MARK}citedElement=\"c\"/>")),
+        ),
+        // Malformed reference elements.
+        row(
+            "a reference element with both link attributes",
+            U,
+            link(&format!(
+                "<citedElement xmi:idref=\"c\" {MARK}href=\"#c\"/>"
+            )),
+        ),
+        row(
+            "a reference element with no link attribute",
+            U,
+            link(&format!("{MARK}<abstractForm/>")),
+        ),
+        row(
+            "an xmi:id on a reference element",
+            U,
+            link(&format!(
+                "<citedElement {MARK}xmi:id=\"r\" xmi:idref=\"c\"/>"
+            )),
+        ),
+        row(
+            "an xmi:type on a reference element",
+            U,
+            link(&format!(
+                "<abstractForm xmi:idref=\"c\" {MARK}xmi:type=\"sacm:Claim\"/>"
+            )),
+        ),
+        row(
+            "another attribute on a reference element",
+            U,
+            link(&format!("<citedElement href=\"#c\" {MARK}foo=\"1\"/>")),
+        ),
+        row(
+            "an unqualified idref",
+            U,
+            link(&format!("<citedElement {MARK}idref=\"c\"/>")),
+        ),
+        // White space inside the trimmed id: at the attribute's name.
+        row(
+            "an xmi:idref with a space inside",
+            U,
+            link(&format!("<citedElement {MARK}xmi:idref=\" c x \"/>")),
+        ),
+        row(
+            "an xmi:idref with a tab inside",
+            U,
+            link(&format!("<abstractForm {MARK}xmi:idref=\"c&#9;x\"/>")),
+        ),
+        row(
+            "a cross-document href",
+            U,
+            link(&format!("<citedElement {MARK}href=\"other.xmi#c\"/>")),
+        ),
+        row(
+            "an href without a fragment",
+            U,
+            link(&format!("<abstractForm {MARK}href=\"c\"/>")),
+        ),
+        row(
+            "an XPointer href",
+            U,
+            link(&format!(
+                "<citedElement {MARK}href=\"#xpointer(id('c'))\"/>"
+            )),
+        ),
+        row(
+            "an empty fragment href",
+            U,
+            link(&format!("<citedElement {MARK}href=\"#\"/>")),
+        ),
+        row(
+            "an empty href",
+            U,
+            link(&format!("<abstractForm {MARK}href=\"\"/>")),
+        ),
+        row(
+            "an element in a reference element",
+            U,
+            link(&format!(
+                "<citedElement xmi:idref=\"c\">{MARK}<b/></citedElement>"
+            )),
+        ),
+        row(
+            "text in a reference element",
+            U,
+            link(&format!(
+                "<abstractForm xmi:idref=\"c\"> {MARK}c</abstractForm>"
+            )),
+        ),
+        row(
+            "a reference element in a namespace",
+            U,
+            link(&format!("{MARK}<sacm:citedElement xmi:idref=\"c\"/>")),
+        ),
+    ]
+}
+
 // --- Reading and locating ---------------------------------------------------
 
 /// How long one `read` may take; a hang fails the test instead of stalling.
@@ -1191,6 +1430,8 @@ fn all_rows() -> Vec<Row> {
         utility_rows(),
         utility_repeat_and_id_rows(),
         gid_rows(),
+        flag_rows(),
+        reference_rows(),
     ]
     .into_iter()
     .flatten()
@@ -1257,6 +1498,16 @@ fn sacm23_xmi_010_utility_element_and_multi_lang_string_refusals_are_located() {
 #[test]
 fn sacm23_xmi_010_gid_refusals_are_located() {
     assert_located("gid", &gid_rows());
+}
+
+#[test]
+fn sacm23_xmi_010_is_citation_and_is_abstract_refusals_are_located() {
+    assert_located("flag", &flag_rows());
+}
+
+#[test]
+fn sacm23_xmi_010_cited_element_and_abstract_form_refusals_are_located() {
+    assert_located("reference", &reference_rows());
 }
 
 #[test]

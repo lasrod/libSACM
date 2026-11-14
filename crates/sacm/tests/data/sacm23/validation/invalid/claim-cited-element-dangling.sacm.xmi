@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-VAL-003: the Claim c1 cites "c9", which no element of the document carries. It reads in both modes and keeps the reference; validate reports one SACM-REF-001 Error affecting c1 and c9. Hand-written; no third-party content. -->
+<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+  <name lang="en" content="Arguments"/>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c1" isCitation="true" citedElement="c9">
+    <name lang="en" content="The supplier's pump is safe"/>
+  </argumentElement>
+</sacm:ArgumentPackage>
