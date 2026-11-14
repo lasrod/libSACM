@@ -829,24 +829,36 @@ fn sacm23_base_004_a_value_in_the_element_form_reads_equal_to_the_attribute_form
 
 #[test]
 fn sacm23_base_004_a_value_field_given_as_an_attribute_and_an_element_is_repeated_value() {
-    for (what, template) in [
+    // The property is pinned exactly: `content.value.<field>`, as the
+    // `RepeatedValue::property` documentation lists it.
+    for (what, template, expected) in [
         (
             "lang as an attribute and an element",
             description_with(&format!(
                 "<value {MARK}lang=\"en\" content=\"x\">{MARK}<lang>en</lang></value>"
             )),
+            "content.value.lang",
         ),
         (
             "content as an attribute and an element",
             description_with(&format!(
                 "<value {MARK}content=\"x\">{MARK}<content>y</content></value>"
             )),
+            "content.value.content",
         ),
         (
             "two lang elements",
             description_with(&format!(
                 "<value>{MARK}<lang>en</lang>{MARK}<lang>en</lang></value>"
             )),
+            "content.value.lang",
+        ),
+        (
+            "two content elements",
+            description_with(&format!(
+                "<value>{MARK}<content>x</content>{MARK}<content>x</content></value>"
+            )),
+            "content.value.content",
         ),
     ] {
         let (input, marks) = marked(ROW, &template);
@@ -858,18 +870,9 @@ fn sacm23_base_004_a_value_field_given_as_an_attribute_and_an_element_is_repeate
             panic!("{ROW}: {what}: not RepeatedValue: {error:?}");
         };
         assert_eq!(
-            element.as_str(),
-            "d",
-            "{ROW}: {what}: the refusal does not name the Description"
-        );
-        let field = if what.starts_with("content") {
-            "content"
-        } else {
-            "lang"
-        };
-        assert!(
-            property.contains(field),
-            "{ROW}: {what}: the property {property:?} does not name {field:?}"
+            (element.as_str(), property.as_str()),
+            ("d", expected),
+            "{ROW}: {what}: the refusal does not name the Description and {expected:?}"
         );
         assert_eq!(
             (error.code(), error.locations()),

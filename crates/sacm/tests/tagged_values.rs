@@ -543,6 +543,56 @@ fn sacm23_base_005_a_second_key_or_content_is_repeated_value_in_both_modes() {
 }
 
 #[test]
+fn sacm23_base_005_a_key_value_field_given_twice_is_repeated_value_naming_key_value() {
+    // The property is pinned exactly: `key.value.<field>`, as the
+    // `RepeatedValue::property` documentation lists it, so a key's value is
+    // not reported as a content's.
+    for (what, value, expected) in [
+        (
+            "lang as an attribute and an element",
+            format!("<value {MARK}lang=\"en\" content=\"k\">{MARK}<lang>en</lang></value>"),
+            "key.value.lang",
+        ),
+        (
+            "two lang elements",
+            format!(
+                "<value>{MARK}<lang>en</lang>{MARK}<lang>en</lang><content>k</content></value>"
+            ),
+            "key.value.lang",
+        ),
+        (
+            "content as an attribute and an element",
+            format!("<value {MARK}content=\"k\">{MARK}<content>k</content></value>"),
+            "key.value.content",
+        ),
+        (
+            "two content elements",
+            format!("<value>{MARK}<content>k</content>{MARK}<content>k</content></value>"),
+            "key.value.content",
+        ),
+    ] {
+        let (input, marks) = marked(&tagged(&format!("<key>{value}</key>{CONTENT}")));
+        let error = refused(what, &input);
+        let ReadError::RepeatedValue {
+            element, property, ..
+        } = &error
+        else {
+            panic!("{ROW}: {what}: not RepeatedValue: {error:?}");
+        };
+        assert_eq!(
+            (element.as_str(), property.as_str()),
+            ("t", expected),
+            "{ROW}: {what}: the refusal does not name the TaggedValue and {expected:?}"
+        );
+        assert_eq!(
+            (error.code(), error.locations()),
+            (Some(Code::MULTIPLICITY_VIOLATION), marks.as_slice()),
+            "{ROW}: {what}: not SACM-MULT-001 at both occurrences"
+        );
+    }
+}
+
+#[test]
 fn sacm23_base_005_the_key_and_value_shorthands_are_unsupported_naming_lib_compat_008() {
     let cases = [
         (
