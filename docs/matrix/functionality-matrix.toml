@@ -2620,6 +2620,10 @@ tests = [
   "crates/sacm/tests/utility_elements.rs::sacm23_base_004_create_operations_refuse_parent_not_found_invalid_id_and_duplicate_id_in_order",
   "crates/sacm/tests/utility_elements.rs::sacm23_base_004_a_document_built_by_the_create_operations_writes_reads_back_equal_and_validates",
   "crates/sacm/tests/utility_elements.rs::sacm23_base_004_a_character_xml_cannot_represent_in_a_content_value_fails_the_write",
+  "crates/sacm/tests/utility_elements.rs::sacm23_base_004_content_and_content_value_ids_differences_display_every_value_in_order",
+  "crates/sacm/tests/utility_elements.rs::sacm23_base_004_a_content_and_its_values_are_indented_one_level_below_their_owner",
+  "crates/sacm/tests/utility_elements.rs::sacm23_base_004_a_content_attribute_off_a_utility_element_and_another_attribute_on_one_are_only_unread",
+  "crates/sacm/tests/utility_elements.rs::sacm23_base_004_create_operations_return_the_caller_id_and_the_content_they_were_given",
 ]
 code = ["crates/sacm/src/model/document.rs", "crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi/output.rs", "crates/sacm/src/edit/utility.rs", "crates/sacm/src/compare.rs"]
 
@@ -2654,6 +2658,10 @@ tests = [
   "crates/sacm/tests/tagged_values.rs::sacm23_base_005_create_tagged_value_generates_ids_reports_its_fields_and_round_trips",
   "crates/sacm/tests/tagged_values.rs::sacm23_base_005_create_tagged_value_refuses_like_every_create_operation",
   "crates/sacm/tests/tagged_values.rs::sacm23_base_005_a_character_xml_cannot_represent_in_a_key_value_fails_the_write",
+  "crates/sacm/tests/tagged_values.rs::sacm23_base_005_key_and_key_value_ids_differences_display_every_value_in_order",
+  "crates/sacm/tests/tagged_values.rs::sacm23_base_005_a_key_a_content_and_their_values_are_indented_one_level_below_their_owner",
+  "crates/sacm/tests/tagged_values.rs::sacm23_base_005_key_or_value_attributes_off_a_tagged_value_and_another_on_one_are_only_unread",
+  "crates/sacm/tests/tagged_values.rs::sacm23_base_005_create_tagged_value_returns_the_caller_id_key_and_content_it_was_given",
 ]
 code = ["crates/sacm/src/model/document.rs", "crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi/output.rs", "crates/sacm/src/edit/utility.rs", "crates/sacm/src/compare.rs"]
 
@@ -4022,6 +4030,8 @@ tests = [
   "crates/sacm/tests/ids.rs::sacm23_val_020_the_catalog_id_002_row_covers_read_ids_and_names_the_row",
   "crates/sacm/tests/utility_elements.rs::sacm23_val_020_a_content_or_value_id_that_is_not_an_ncname_is_one_id_002_on_the_utility_element",
   "crates/sacm/tests/tagged_values.rs::sacm23_val_020_a_key_or_key_value_id_that_is_not_an_ncname_is_one_id_002_on_the_tagged_value",
+  "crates/sacm/tests/utility_elements.rs::sacm23_val_020_the_message_names_a_bad_value_id_by_its_1_based_position",
+  "crates/sacm/tests/tagged_values.rs::sacm23_val_020_the_message_names_a_bad_key_value_id_by_its_1_based_position",
 ]
 verification = "docs/verification/0036-m1-ids-docs-cli.md"
 code = ["crates/sacm/src/validation/ids.rs", "crates/sacm/src/validation.rs", "crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi.rs", "docs/adr/0015-xmi-read-entry-point.md"]

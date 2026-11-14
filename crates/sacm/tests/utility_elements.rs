@@ -755,6 +755,44 @@ fn sacm23_base_004_the_four_absent_and_empty_lang_and_content_states_of_a_value_
     );
 }
 
+#[test]
+fn sacm23_base_004_a_content_and_its_values_are_indented_one_level_below_their_owner() {
+    let doc = read_ok(
+        ROW,
+        "a Description of a Claim",
+        &ap_root(
+            "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\"><name content=\"C\"/>\
+             <description xmi:id=\"d\"><content><value lang=\"en\" content=\"a\"/>\
+             <value content=\"b\"/></content></description>\
+             <note xmi:id=\"n\"><content/></note></argumentElement>",
+        ),
+    );
+    // Tolerant: the Note's empty content is a validation Error (SACM23-VAL-010).
+    let text = write_in(ROW, "a Description of a Claim", Mode::Tolerant, &doc);
+    let expected = [
+        "  <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\">",
+        "    <name content=\"C\" />",
+        "    <description xmi:id=\"d\">",
+        "      <content>",
+        "        <value lang=\"en\" content=\"a\" />",
+        "        <value content=\"b\" />",
+        "      </content>",
+        "    </description>",
+        "    <note xmi:id=\"n\">",
+        "      <content />",
+        "    </note>",
+        "  </argumentElement>",
+    ];
+    assert!(
+        text.lines()
+            .collect::<Vec<_>>()
+            .windows(expected.len())
+            .any(|window| window == expected),
+        "{ROW}: a content and its values at depths 3 and 4 are not indented one level below \
+         their owner:\n{text}"
+    );
+}
+
 // --- Item 5: the element form of a value --------------------------------------------
 
 #[test]
@@ -1485,6 +1523,48 @@ fn sacm23_base_004_the_single_language_shorthand_is_unsupported_naming_lib_compa
     }
 }
 
+#[test]
+fn sacm23_base_004_a_content_attribute_off_a_utility_element_and_another_attribute_on_one_are_only_unread()
+ {
+    let cases = [
+        (
+            "content= on a Claim",
+            ap_root(&format!(
+                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\" {MARK}content=\"x\"/>"
+            )),
+            "the attribute \"content\" of the element \"argumentElement\" is not read in this release",
+        ),
+        (
+            "content= on an ArgumentPackage child",
+            acp_root(&format!(
+                "<argumentPackage xmi:id=\"a\" {MARK}content=\"x\"/>"
+            )),
+            "the attribute \"content\" of the element \"argumentPackage\" is not read in this release",
+        ),
+        (
+            "foo= on a Description",
+            in_ap(&format!("<description xmi:id=\"d\" {MARK}foo=\"1\"/>")),
+            "the attribute \"foo\" of the element \"description\" is not read in this release",
+        ),
+        (
+            "lang= on a Note",
+            in_ap(&format!("<note xmi:id=\"n\" {MARK}lang=\"en\"/>")),
+            "the attribute \"lang\" of the element \"note\" is not read in this release",
+        ),
+    ];
+    for (what, template, expected) in &cases {
+        let reason = assert_unsupported_at_mark(ROW, what, template);
+        assert_eq!(
+            reason, *expected,
+            "{ROW}: {what}: not an ordinary unread attribute"
+        );
+        assert!(
+            !reason.contains("LIB-COMPAT-008"),
+            "{ROW}: {what}: the reason {reason:?} names LIB-COMPAT-008"
+        );
+    }
+}
+
 // --- Item 10: comparison -----------------------------------------------------------
 
 #[test]
@@ -1639,6 +1719,73 @@ fn sacm23_base_004_documents_differing_only_in_content_or_value_ids_give_content
         ),
         "{ROW}: not Content, ContentId, ContentValueIds in that order: {differences:?}"
     );
+}
+
+#[test]
+fn sacm23_base_004_content_and_content_value_ids_differences_display_every_value_in_order() {
+    let d = || ElementId::from("d");
+    let one = mls(&[en("en", "a")]);
+    let three = mls(&[en("en", "a"), ls(None, Some("b")), ls(Some(""), None)]);
+    let cases = [
+        (
+            "no content and an empty one",
+            Difference::Content {
+                id: d(),
+                left: None,
+                right: Some(MultiLangString::default()),
+            },
+            "element \"d\" differs in content: no content on the left, [] on the right",
+        ),
+        (
+            "one value and three",
+            Difference::Content {
+                id: d(),
+                left: Some(one),
+                right: Some(three.clone()),
+            },
+            "element \"d\" differs in content: [[lang \"en\", content \"a\"]] on the left, \
+             [[lang \"en\", content \"a\"], [no lang, content \"b\"], [lang \"\", no content]] \
+             on the right",
+        ),
+        (
+            "three values and none",
+            Difference::Content {
+                id: d(),
+                left: Some(three),
+                right: None,
+            },
+            "element \"d\" differs in content: \
+             [[lang \"en\", content \"a\"], [no lang, content \"b\"], [lang \"\", no content]] \
+             on the left, no content on the right",
+        ),
+        (
+            "three value ids and one",
+            Difference::ContentValueIds {
+                id: d(),
+                left: some_ids(&[None, Some("v1"), Some("v2")]),
+                right: some_ids(&[Some("v0")]),
+            },
+            "element \"d\" differs in the xmi:ids of its content's values: \
+             [no id, \"v1\", \"v2\"] on the left, [\"v0\"] on the right",
+        ),
+        (
+            "no value ids and two",
+            Difference::ContentValueIds {
+                id: d(),
+                left: Vec::new(),
+                right: some_ids(&[Some("v1"), None]),
+            },
+            "element \"d\" differs in the xmi:ids of its content's values: \
+             [] on the left, [\"v1\", no id] on the right",
+        ),
+    ];
+    for (what, difference, expected) in cases {
+        assert_eq!(
+            difference.to_string(),
+            expected,
+            "{ROW}: {what}: the Display of {difference:?}"
+        );
+    }
 }
 
 // --- Item 11: edits ----------------------------------------------------------------
@@ -1800,6 +1947,57 @@ fn sacm23_base_004_create_operations_report_their_parent_id_and_content_and_thei
             "{ROW}: operation_name() of {operation:?}"
         );
     }
+}
+
+#[test]
+fn sacm23_base_004_create_operations_return_the_caller_id_and_the_content_they_were_given() {
+    let content = mls(&[en("en", "x"), ls(None, Some("y"))]);
+    let x = ElementId::from("x");
+    let c1 = ElementId::from("c1");
+    let description = CreateDescription::new("c1", content.clone());
+    assert_eq!(
+        (
+            description.parent(),
+            description.id(),
+            description.content()
+        ),
+        (&c1, None, &content),
+        "{ROW}: CreateDescription without with_id"
+    );
+    let description = description.with_id("x");
+    assert_eq!(
+        (
+            description.parent(),
+            description.id(),
+            description.content()
+        ),
+        (&c1, Some(&x), &content),
+        "{ROW}: CreateDescription with with_id(\"x\")"
+    );
+    let constraint = CreateImplementationConstraint::new("c1", content.clone());
+    assert_eq!(
+        (constraint.parent(), constraint.id(), constraint.content()),
+        (&c1, None, &content),
+        "{ROW}: CreateImplementationConstraint without with_id"
+    );
+    let constraint = constraint.with_id("x");
+    assert_eq!(
+        (constraint.parent(), constraint.id(), constraint.content()),
+        (&c1, Some(&x), &content),
+        "{ROW}: CreateImplementationConstraint with with_id(\"x\")"
+    );
+    let note = CreateNote::new("c1", content.clone());
+    assert_eq!(
+        (note.parent(), note.id(), note.content()),
+        (&c1, None, &content),
+        "{ROW}: CreateNote without with_id"
+    );
+    let note = note.with_id("x");
+    assert_eq!(
+        (note.parent(), note.id(), note.content()),
+        (&c1, Some(&x), &content),
+        "{ROW}: CreateNote with with_id(\"x\")"
+    );
 }
 
 /// A document holding an element `p` of `kind`: a root if it is a package,
@@ -2094,6 +2292,48 @@ fn sacm23_val_020_a_content_or_value_id_that_is_not_an_ncname_is_one_id_002_on_t
         vec![(Code::ID_INVALID, vec![ElementId::from("d")]); 2],
         "{VAL_020}: two bad ids on one Description are not two findings on it"
     );
+}
+
+#[test]
+fn sacm23_val_020_the_message_names_a_bad_value_id_by_its_1_based_position() {
+    let tail = "which is not an NCName (XMI 2.5.1 §7.6.1: xmi:id is an xsd:ID)";
+    for (what, content, expected) in [
+        (
+            "the content's own id",
+            "<content xmi:id=\"1c\"><value content=\"x\"/></content>".to_owned(),
+            format!("the content of Description \"d\" has the xmi:id \"1c\", {tail}"),
+        ),
+        (
+            "the first value's id",
+            "<content><value xmi:id=\"a b\" content=\"x\"/><value lang=\"sv\" content=\"y\"/></content>"
+                .to_owned(),
+            format!("value 1 of the content of Description \"d\" has the xmi:id \"a b\", {tail}"),
+        ),
+        (
+            "the second value's id, after a value without one",
+            "<content><value content=\"x\"/><value xmi:id=\"a:b\" lang=\"sv\" content=\"y\"/></content>"
+                .to_owned(),
+            format!("value 2 of the content of Description \"d\" has the xmi:id \"a:b\", {tail}"),
+        ),
+        (
+            "the third value's id, after a good one",
+            "<content><value xmi:id=\"v1\" content=\"x\"/><value lang=\"sv\" content=\"y\"/>\
+             <value xmi:id=\"-v\" lang=\"fr\" content=\"z\"/></content>"
+                .to_owned(),
+            format!("value 3 of the content of Description \"d\" has the xmi:id \"-v\", {tail}"),
+        ),
+    ] {
+        let doc = read_ok(VAL_020, what, &in_description(&content));
+        let found = validation::validate(&doc);
+        let [finding] = found.as_slice() else {
+            panic!("{VAL_020}: {what}: not one finding: {found:?}");
+        };
+        assert_eq!(
+            (finding.code(), finding.message()),
+            (Code::ID_INVALID, expected.as_str()),
+            "{VAL_020}: {what}: not the SACM-ID-002 message naming the value's position"
+        );
+    }
 }
 
 // --- SACM23-XMI-004: content and value ids are written escaped ------------------------

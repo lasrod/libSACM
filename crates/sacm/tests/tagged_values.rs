@@ -391,6 +391,43 @@ fn sacm23_base_005_a_tagged_value_reads_on_each_readable_kind_and_is_written_con
     }
 }
 
+#[test]
+fn sacm23_base_005_a_key_a_content_and_their_values_are_indented_one_level_below_their_owner() {
+    let doc = read_ok(
+        ROW,
+        "a TaggedValue of a Claim",
+        &in_ap(
+            "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\"><name content=\"C\"/>\
+             <taggedValue xmi:id=\"t\"><key><value lang=\"en\" content=\"k\"/>\
+             <value lang=\"sv\" content=\"n\"/></key>\
+             <content><value content=\"v\"/></content></taggedValue></argumentElement>",
+        ),
+    );
+    let text = write_in(ROW, "a TaggedValue of a Claim", Mode::Strict, &doc);
+    let expected = [
+        "  <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\">",
+        "    <name content=\"C\" />",
+        "    <taggedValue xmi:id=\"t\">",
+        "      <content>",
+        "        <value content=\"v\" />",
+        "      </content>",
+        "      <key>",
+        "        <value lang=\"en\" content=\"k\" />",
+        "        <value lang=\"sv\" content=\"n\" />",
+        "      </key>",
+        "    </taggedValue>",
+        "  </argumentElement>",
+    ];
+    assert!(
+        text.lines()
+            .collect::<Vec<_>>()
+            .windows(expected.len())
+            .any(|window| window == expected),
+        "{ROW}: a key, a content and their values at depths 3 and 4 are not indented one level \
+         below their owner:\n{text}"
+    );
+}
+
 // --- Item 2: three key states ---------------------------------------------------------
 
 #[test]
@@ -534,6 +571,62 @@ fn sacm23_base_005_the_key_and_value_shorthands_are_unsupported_naming_lib_compa
         assert!(
             reason.contains("LIB-COMPAT-008"),
             "{ROW}: {what}: the reason {reason:?} does not name LIB-COMPAT-008"
+        );
+    }
+}
+
+#[test]
+fn sacm23_base_005_key_or_value_attributes_off_a_tagged_value_and_another_on_one_are_only_unread() {
+    let claim = |attribute: &str| {
+        in_ap(&format!(
+            "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\" {MARK}{attribute}/>"
+        ))
+    };
+    let description =
+        |attribute: &str| in_ap(&format!("<description xmi:id=\"d\" {MARK}{attribute}/>"));
+    let unread = |attribute: &str, element: &str| {
+        format!(
+            "the attribute \"{attribute}\" of the element \"{element}\" is not read in this release"
+        )
+    };
+    let cases = [
+        (
+            "key= on a Description",
+            description("key=\"k\""),
+            unread("key", "description"),
+        ),
+        (
+            "value= on a Description",
+            description("value=\"v\""),
+            unread("value", "description"),
+        ),
+        (
+            "key= on a Claim",
+            claim("key=\"k\""),
+            unread("key", "argumentElement"),
+        ),
+        (
+            "value= on a Claim",
+            claim("value=\"v\""),
+            unread("value", "argumentElement"),
+        ),
+        (
+            "foo= on a TaggedValue",
+            in_ap(&format!(
+                "<taggedValue xmi:id=\"t\" {MARK}foo=\"1\">{KEY}{CONTENT}</taggedValue>"
+            )),
+            unread("foo", "taggedValue"),
+        ),
+    ];
+    for (what, template, expected) in &cases {
+        let reason = assert_unsupported_at_mark(what, template);
+        assert_eq!(
+            reason, *expected,
+            "{ROW}: {what}: not an ordinary unread attribute"
+        );
+        assert!(
+            !reason.contains("LIB-COMPAT-008"),
+            "{ROW}: {what}: the reason {reason:?} names LIB-COMPAT-008"
         );
     }
 }
@@ -777,6 +870,77 @@ fn sacm23_base_005_semantic_compare_reports_key_key_id_and_key_value_ids_separat
     );
 }
 
+#[test]
+fn sacm23_base_005_key_and_key_value_ids_differences_display_every_value_in_order() {
+    let t = || ElementId::from("t");
+    let one = mls(&[ls(Some("en"), Some("a"))]);
+    let three = mls(&[
+        ls(Some("en"), Some("a")),
+        ls(None, Some("b")),
+        ls(Some(""), None),
+    ]);
+    let cases = [
+        (
+            "no key and an empty one",
+            Difference::Key {
+                id: t(),
+                left: None,
+                right: Some(MultiLangString::default()),
+            },
+            "element \"t\" differs in key: no key on the left, [] on the right",
+        ),
+        (
+            "one value and three",
+            Difference::Key {
+                id: t(),
+                left: Some(one),
+                right: Some(three.clone()),
+            },
+            "element \"t\" differs in key: [[lang \"en\", content \"a\"]] on the left, \
+             [[lang \"en\", content \"a\"], [no lang, content \"b\"], [lang \"\", no content]] \
+             on the right",
+        ),
+        (
+            "three values and none",
+            Difference::Key {
+                id: t(),
+                left: Some(three),
+                right: None,
+            },
+            "element \"t\" differs in key: \
+             [[lang \"en\", content \"a\"], [no lang, content \"b\"], [lang \"\", no content]] \
+             on the left, no key on the right",
+        ),
+        (
+            "three value ids and one",
+            Difference::KeyValueIds {
+                id: t(),
+                left: some_ids(&[None, Some("v1"), Some("v2")]),
+                right: some_ids(&[Some("v0")]),
+            },
+            "element \"t\" differs in the xmi:ids of its key's values: \
+             [no id, \"v1\", \"v2\"] on the left, [\"v0\"] on the right",
+        ),
+        (
+            "no value ids and two",
+            Difference::KeyValueIds {
+                id: t(),
+                left: Vec::new(),
+                right: some_ids(&[Some("v1"), None]),
+            },
+            "element \"t\" differs in the xmi:ids of its key's values: \
+             [] on the left, [\"v1\", no id] on the right",
+        ),
+    ];
+    for (what, difference, expected) in cases {
+        assert_eq!(
+            difference.to_string(),
+            expected,
+            "{ROW}: {what}: the Display of {difference:?}"
+        );
+    }
+}
+
 // --- Item 7: CreateTaggedValue -----------------------------------------------------------
 
 #[test]
@@ -861,6 +1025,35 @@ fn sacm23_base_005_create_tagged_value_generates_ids_reports_its_fields_and_roun
         "{ROW}: a built document has validation Errors: {found:?}"
     );
     assert_round_trip("built TaggedValues", &doc, Mode::Strict);
+}
+
+#[test]
+fn sacm23_base_005_create_tagged_value_returns_the_caller_id_key_and_content_it_was_given() {
+    let key = mls(&[ls(Some("en"), Some("ASIL")), ls(None, Some("Integrity"))]);
+    let content = mls(&[ls(Some("en"), Some("D"))]);
+    let c1 = ElementId::from("c1");
+    let operation = CreateTaggedValue::new("c1", key.clone(), content.clone());
+    assert_eq!(
+        (
+            operation.parent(),
+            operation.id(),
+            operation.key(),
+            operation.content()
+        ),
+        (&c1, None, &key, &content),
+        "{ROW}: CreateTaggedValue without with_id"
+    );
+    let operation = operation.with_id("x");
+    assert_eq!(
+        (
+            operation.parent(),
+            operation.id(),
+            operation.key(),
+            operation.content()
+        ),
+        (&c1, Some(&ElementId::from("x")), &key, &content),
+        "{ROW}: CreateTaggedValue with with_id(\"x\")"
+    );
 }
 
 #[test]
@@ -1058,6 +1251,39 @@ fn sacm23_val_020_a_key_or_key_value_id_that_is_not_an_ncname_is_one_id_002_on_t
             read_ok(VAL_020, what, &text),
             doc,
             "{VAL_020}: {what}: a tolerant write does not keep the id"
+        );
+    }
+}
+
+#[test]
+fn sacm23_val_020_the_message_names_a_bad_key_value_id_by_its_1_based_position() {
+    let tail = "which is not an NCName (XMI 2.5.1 §7.6.1: xmi:id is an xsd:ID)";
+    for (what, key, expected) in [
+        (
+            "the key's own id",
+            "<key xmi:id=\".k\"><value content=\"k\"/></key>",
+            format!("the key of TaggedValue \"t\" has the xmi:id \".k\", {tail}"),
+        ),
+        (
+            "the first key value's id",
+            "<key><value xmi:id=\"a b\" content=\"k\"/><value lang=\"sv\" content=\"n\"/></key>",
+            format!("value 1 of the key of TaggedValue \"t\" has the xmi:id \"a b\", {tail}"),
+        ),
+        (
+            "the second key value's id",
+            "<key><value xmi:id=\"k1\" content=\"k\"/><value xmi:id=\"a:b\" lang=\"sv\" content=\"n\"/></key>",
+            format!("value 2 of the key of TaggedValue \"t\" has the xmi:id \"a:b\", {tail}"),
+        ),
+    ] {
+        let doc = read_ok(VAL_020, what, &tagged(&format!("{key}{CONTENT}")));
+        let found = validation::validate(&doc);
+        let [finding] = found.as_slice() else {
+            panic!("{VAL_020}: {what}: not one finding: {found:?}");
+        };
+        assert_eq!(
+            (finding.code(), finding.message()),
+            (Code::ID_INVALID, expected.as_str()),
+            "{VAL_020}: {what}: not the SACM-ID-002 message naming the value's position"
         );
     }
 }
