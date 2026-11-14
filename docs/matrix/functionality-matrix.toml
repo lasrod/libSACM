@@ -3308,6 +3308,7 @@ tests = [
   "crates/sacm/tests/diagnostic_catalog.rs::lib_diag_002_two_rows_for_one_code_are_named_with_the_code_and_both_lines",
   "crates/sacm/tests/diagnostic_catalog.rs::lib_diag_002_a_malformed_row_is_named_with_its_line",
   "crates/sacm/tests/diagnostic_catalog.rs::lib_diag_002_the_scan_finds_constants_and_codes_built_any_other_way",
+  "crates/sacm/tests/diagnostic_catalog.rs::lib_diag_002_a_non_constant_construction_in_diagnostic_rs_is_a_problem",
 ]
 code = ["docs/sacm/diagnostics.md", "crates/sacm/src/diagnostic.rs"]
 

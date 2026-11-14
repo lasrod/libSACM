@@ -226,6 +226,27 @@ fn constant_name(before: &str) -> Option<&str> {
     head.trim_end().ends_with("pub const").then_some(name)
 }
 
+/// The only two places in [`CONSTANTS_FILE`] where `from_static(` is not
+/// followed by a literal, each as (the code just before `from_static(`, the
+/// code just after it), white space as [`code_of`] leaves it: the
+/// constructor's own definition, and the whole of `new`, which delegates to
+/// it.
+const CONSTRUCTOR_CONTEXTS: [(&str, &str); 2] = [
+    ("pub(crate) const fn ", "code: &'static str) -> Self {"),
+    (
+        "pub const fn new(code: &'static str) -> Self { Self::",
+        "code) }",
+    ),
+];
+
+/// Whether the `from_static(` between `before` and `after` is one of
+/// [`CONSTRUCTOR_CONTEXTS`].
+fn is_constructor_context(before: &str, after: &str) -> bool {
+    CONSTRUCTOR_CONTEXTS
+        .iter()
+        .any(|(head, tail)| before.ends_with(head) && after.starts_with(tail))
+}
+
 /// The constants in `files`, each `(path relative to src, text)`, and every
 /// code built some other way.
 fn scan_sources(files: &[(String, String)]) -> (Vec<Constant>, Vec<Problem>) {
@@ -243,8 +264,9 @@ fn scan_sources(files: &[(String, String)]) -> (Vec<Constant>, Vec<Problem>) {
             let name = constant_name(code[..at].trim_end());
             match (in_constants_file, literal, name) {
                 (true, Some(literal), Some(name)) => constants.push(constant(name, literal)),
-                // The constructor's own definition and `new`'s call of it.
-                (true, None, _) => {}
+                // The constructor's own definition and `new`'s call of it,
+                // and nothing else.
+                (true, None, _) if is_constructor_context(&code[..at], after) => {}
                 _ => problems.push(Problem::BuiltOutsideConstant {
                     file: file.clone(),
                     call: snippet(&code[at..]),
@@ -850,4 +872,55 @@ pub const B: Code = Code::from_static(\"SACM-A-001\");
         }],
         "{ROW}: two constants with one text are not reported"
     );
+}
+
+#[test]
+fn lib_diag_002_a_non_constant_construction_in_diagnostic_rs_is_a_problem() {
+    let clean = "\
+pub struct Code(&'static str);
+impl Code {
+    pub const A: Code = Code::from_static(\"SACM-A-001\");
+    pub(crate) const fn from_static(code: &'static str) -> Self {
+        Self(code)
+    }
+    pub const fn new(code: &'static str) -> Self {
+        Self::from_static(code)
+    }
+}
+";
+    // Each hidden construction, and the call the problem must name.
+    for (hidden, call) in [
+        (
+            "fn hidden() -> Code { let text = \"SACM-Z-999\"; Code::from_static(text) }",
+            "from_static(text)",
+        ),
+        (
+            "impl Code { fn hidden() -> Self { let text = \"SACM-Z-999\"; Self::from_static(text) } }",
+            "from_static(text)",
+        ),
+        // `new`'s signature with another body, and its body under another
+        // parameter name, are not `new`.
+        (
+            "impl Other { pub const fn new(code: &'static str) -> Self { let c = Code::from_static(code); c } }",
+            "from_static(code)",
+        ),
+        (
+            "impl Other { pub const fn new(text: &'static str) -> Self { Self::from_static(text) } }",
+            "from_static(text)",
+        ),
+    ] {
+        let file = format!("{clean}{hidden}\n");
+        let (constants, problems) = scan_sources(&[(CONSTANTS_FILE.to_owned(), file)]);
+        assert_eq!(
+            (constants, problems),
+            (
+                vec![constant("A", "SACM-A-001")],
+                vec![Problem::BuiltOutsideConstant {
+                    file: CONSTANTS_FILE.to_owned(),
+                    call: call.to_owned(),
+                }]
+            ),
+            "{ROW}: {hidden:?} in src/{CONSTANTS_FILE} builds a code the scan does not report"
+        );
+    }
 }
