@@ -13,8 +13,10 @@ use crate::model::{
 ///
 /// The name is held exactly as given, `LangString::default()` included, and
 /// keeps the `xmi:id` of the name it replaces
-/// ([`SacmElement::name_id`](crate::model::SacmElement::name_id)). Apply it
-/// with [`edit::apply`](super::apply). It refuses an unknown element as
+/// ([`SacmElement::name_id`](crate::model::SacmElement::name_id)). A name
+/// holding a character XML cannot represent is held, and
+/// [`xmi::write`](crate::xmi::write) refuses it. Apply it with
+/// [`edit::apply`](super::apply). It refuses an unknown element as
 /// [`EditError::ElementNotFound`], then a `UtilityElement`, which has no
 /// name, as [`EditError::FeatureNotApplicable`]. The element is in
 /// [`changed_ids`](super::Mutation::changed_ids) when its name changes.
@@ -315,7 +317,9 @@ impl SetAssertionDeclaration {
 /// (SACM23-VAL-010). [`remove`](Self::remove) removes it. A replaced content
 /// keeps the `xmi:id` of its `content` element, and each value keeps the id
 /// of the value at its position; the ids of values beyond the new length
-/// are freed, as are all of them on a removal (ADR 0029). Apply it with
+/// are freed, as are all of them on a removal (ADR 0029). A content holding
+/// a character XML cannot represent is held, and
+/// [`xmi::write`](crate::xmi::write) refuses it. Apply it with
 /// [`edit::apply`](super::apply). It refuses an unknown element as
 /// [`EditError::ElementNotFound`], then a kind that is no `UtilityElement`
 /// as [`EditError::FeatureNotApplicable`]. The `UtilityElement`, not its

@@ -190,9 +190,11 @@ fn plan(document: &Document, mode: Mode) -> Result<Vec<Planned<'_>>, WriteError>
 /// attribute that holds it and its first such character, checked in this
 /// order: its id, its gid, its name's `lang` and `content`, then each value
 /// of its `content` and then of its `key`, `lang` before `content`. The ids
-/// of a name, `content`, `key` or `value`, and the ids a reference holds, are
-/// not checked: only [`xmi::read`](crate::xmi::read) gives them, and what it
-/// reads is representable.
+/// of a name, `content`, `key` or `value` are not checked: only
+/// [`xmi::read`](crate::xmi::read) gives them, and what it reads is
+/// representable. Nor are the ids a reference holds: they are element ids,
+/// which `xmi::read` or a checked `with_id` gave, or ids `xmi::read` read
+/// from a reference, and each of those is representable.
 fn unrepresentable(element: SacmElement<'_>) -> Option<(WriteAttribute, char)> {
     let name = element.name();
     let fields = [

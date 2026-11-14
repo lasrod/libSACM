@@ -280,8 +280,9 @@ impl Code {
     /// (LIB-EDIT-001): give an `NCName`, or leave out `with_id` to have an id
     /// generated. It is the code of
     /// [`EditError::InvalidReference`](crate::edit::EditError::InvalidReference),
-    /// a reference a create operation is given whose id holds XML white
-    /// space, so it cannot be written as one id. It is the code of
+    /// a referenced id, given to a create, `SetReferences` or `AddReference`
+    /// and not already held, that holds XML white space, so it cannot be
+    /// written as one id. It is the code of
     /// [`ReadError::InvalidId`](crate::xmi::ReadError::InvalidId) for an
     /// empty `xmi:id` on an element or a `name`.
     /// [`validation::validate`](crate::validation::validate) reports it as an

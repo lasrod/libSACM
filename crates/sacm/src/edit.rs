@@ -75,19 +75,20 @@
 //! |---|---|---|
 //! | [`SetName`] | the `name` of a `ModelElement` (§8.6) | [`new`](SetName::new) |
 //! | [`SetGid`] | the `gid` of any element (§8.2) | [`new`](SetGid::new), [`remove`](SetGid::remove) |
-//! | [`SetFlag`] | `isCitation` or `isAbstract` of any element (§8.2), `isCounter` of an asserted relationship (§11.13) | [`new`](SetFlag::new) |
+//! | [`SetFlag`] | one [`Flag`](crate::model::Flag): `isCitation` or `isAbstract` of any element (§8.2), `isCounter` of an asserted relationship (§11.13) | [`new`](SetFlag::new) |
 //! | [`SetAssertionDeclaration`] | the `assertionDeclaration` of an Assertion (§11.10) | [`new`](SetAssertionDeclaration::new) |
 //! | [`SetContent`] | the `content` of a `UtilityElement` (§8.7) | [`new`](SetContent::new), [`remove`](SetContent::remove) |
 //! | [`SetKey`] | the `key` of a `TaggedValue` (§8.12) | [`new`](SetKey::new) |
-//! | [`SetReferences`] | the ids one reference end holds, such as `source` or `metaClaim` | [`new`](SetReferences::new), [`clear`](SetReferences::clear) |
-//! | [`AddReference`] | one reference end, with one id appended | [`new`](AddReference::new) |
-//! | [`RemoveReference`] | one reference end, with every occurrence of one id removed | [`new`](RemoveReference::new) |
+//! | [`SetReferences`] | the ids one [`ReferenceEnd`](crate::model::ReferenceEnd) holds, such as `source` or `metaClaim` | [`new`](SetReferences::new), [`clear`](SetReferences::clear) |
+//! | [`AddReference`] | one [`ReferenceEnd`](crate::model::ReferenceEnd), such as `source` or `metaClaim`, with one id appended | [`new`](AddReference::new) |
+//! | [`RemoveReference`] | one [`ReferenceEnd`](crate::model::ReferenceEnd), such as `source` or `metaClaim`, with every occurrence of one id removed | [`new`](RemoveReference::new) |
 //! | [`ReorderElements`] | the order of an element's children, or of the roots | [`new`](ReorderElements::new), [`roots`](ReorderElements::roots) |
 //!
 //! Each names the element it changes by id, and replaces one feature
-//! exactly as given (ADR 0029). Values are never refused: an empty name, a
-//! duplicate gid, an empty `content` or an `asCited` declaration on an
-//! element that cites nothing are content, which
+//! exactly as given (ADR 0029). The value of a name, gid, flag, declaration,
+//! `content` or key is never refused: an empty name, a duplicate gid, an
+//! empty `content` or an `asCited` declaration on an element that cites
+//! nothing are content, which
 //! [`validation::validate`](crate::validation::validate) reports
 //! (D-VAL-LAYER). A flag and its reference are set independently, such as
 //! `isCitation` and `citedElement`. A reference end stays within its bounds
@@ -172,13 +173,14 @@
 //! A new id is one the end does not hold already; checks 6 to 8 each run
 //! over the new ids in list order, as the creates' checks 6 to 8 do.
 //!
-//! [`ReorderElements`] checks, after the parent:
+//! [`ReorderElements`] checks, after the parent (check 1;
+//! [`ReorderElements::roots`] has no parent, so it skips check 1):
 //!
 //! | Check | Refusal | Code |
 //! |---|---|---|
 //! | 2. the list names at least one element | [`EditError::InvalidOrder`] | SACM-CMD-009 |
 //! | 3. id by id, in list order: it is a direct child of the parent (or a root) | [`EditError::ChildNotFound`] | SACM-CMD-001 |
-//! | 3. id by id, in list order: it was not named before | [`EditError::InvalidOrder`] | SACM-CMD-009 |
+//! | 4. for the same id, right after check 3: it was not named before | [`EditError::InvalidOrder`] | SACM-CMD-009 |
 //!
 //! # Writing and reading back
 //!
@@ -796,11 +798,11 @@ pub enum EditError {
     },
     /// A reference end is given fewer ids than SACM requires
     /// (SACM-MULT-001): an asserted relationship with no source
-    /// (`source:ArgumentAsset[1..*]`, §11.13), or, for an edit, with no
-    /// target (`target:ArgumentAsset[1]`), as [`SetReferences::clear`] of
-    /// the target or [`RemoveReference`] of the last source would leave it.
-    /// `given` is how many ids the end would hold. Give at least `required`
-    /// ids.
+    /// (`source:ArgumentAsset[1..*]`, §11.13) or no target
+    /// (`target:ArgumentAsset[1]`), which [`SetReferences::clear`] of either
+    /// end, or [`RemoveReference`] of the last source or of the target, would
+    /// leave. `given` is how many ids the end would hold. Give at least
+    /// `required` ids.
     ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentPackage, CreateAssertedInference, CreateClaim, EditError};
@@ -1031,6 +1033,19 @@ pub enum EditError {
     },
     /// [`RemoveReference`] names an id the end does not hold (SACM-CMD-001).
     /// Ids are compared exactly, case included. Remove an id the end holds.
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, EditError, RemoveReference};
+    /// use sacm::model::{Document, LangString, ReferenceEnd};
+    ///
+    /// let mut doc = Document::new();
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+    /// edit::apply(&mut doc, CreateClaim::new("p", LangString::new("C1")).with_id("c1"))?;
+    /// let error = edit::apply(&mut doc, RemoveReference::new("c1", ReferenceEnd::MetaClaim, "m1")).unwrap_err();
+    /// assert!(matches!(error, EditError::ReferenceNotHeld { end: "metaClaim", .. }));
+    /// assert_eq!(error.to_string(), "the metaClaim holds no id \"m1\" to remove");
+    /// # Ok::<(), EditError>(())
+    /// ```
     #[non_exhaustive]
     ReferenceNotHeld {
         /// The end, by its XMI name, such as `source`.
@@ -1067,6 +1082,24 @@ pub enum EditError {
     /// [`ReorderElements`] does not give one order (SACM-CMD-009): its list
     /// is empty, or names an element more than once, the first such id in
     /// list order. Name each child, or each root, to move exactly once.
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, EditError, ReorderElements};
+    /// use sacm::model::{Document, ElementId, LangString};
+    ///
+    /// let mut doc = Document::new();
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+    /// edit::apply(&mut doc, CreateClaim::new("p", LangString::new("C1")).with_id("c1"))?;
+    ///
+    /// let empty = edit::apply(&mut doc, ReorderElements::new("p", Vec::<ElementId>::new())).unwrap_err();
+    /// assert!(matches!(empty, EditError::InvalidOrder { repeated: None, .. }));
+    /// assert_eq!(empty.to_string(), "the new order names no element");
+    ///
+    /// let twice = edit::apply(&mut doc, ReorderElements::new("p", ["c1", "c1"])).unwrap_err();
+    /// assert!(matches!(twice, EditError::InvalidOrder { repeated: Some(ref id), .. } if id.as_str() == "c1"));
+    /// assert_eq!(twice.to_string(), "the new order names \"c1\" more than once");
+    /// # Ok::<(), EditError>(())
+    /// ```
     #[non_exhaustive]
     InvalidOrder {
         /// The first id named more than once, or `None` for an empty list.

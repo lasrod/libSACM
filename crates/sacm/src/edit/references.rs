@@ -26,7 +26,7 @@ use crate::model::{Document, ElementId, ReferenceEnd, SacmElement};
 /// 2. a kind that does not own the end, as
 ///    [`EditError::FeatureNotApplicable`];
 /// 3. fewer ids than the end needs, as [`EditError::TooFewReferences`];
-/// 4. more ids than it holds, as [`EditError::TooManyReferences`];
+/// 4. more ids than it allows, as [`EditError::TooManyReferences`];
 /// 5. then, over the ids the end does not hold, an id holding XML white
 ///    space ([`EditError::InvalidReference`]), then one that names no
 ///    element ([`EditError::ReferenceNotFound`]), then one of a kind the end

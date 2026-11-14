@@ -51,9 +51,9 @@ Read, edit, validate and write assurance cases in the
   rules, that evidence and artifact relationships link ArtifactReferences, are left to
   `sacm::validation::validate`. It also changes existing elements of every kind: their
   names, `gid`s, flags and `assertionDeclaration`s (`sacm::edit::SetName` and the
-  like), the `content` and `key` of descriptions, notes and tagged values
-  (`sacm::edit::SetContent`, `sacm::edit::SetKey`), every reference end, within its
-  bounds (`sacm::edit::SetReferences`, `AddReference`, `RemoveReference`), and the
+  like), the `content` and `key` of descriptions, implementation constraints, notes
+  and tagged values (`sacm::edit::SetContent`, `sacm::edit::SetKey`), every reference
+  end, within its bounds (`sacm::edit::SetReferences`, `AddReference`, `RemoveReference`), and the
   order of an element's children or of the roots (`sacm::edit::ReorderElements`).
 - `sacm::compare::semantic_compare` lists every difference in SACM content between two
   documents.

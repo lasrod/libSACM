@@ -262,7 +262,8 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
   - `SetReferences`, `AddReference` and `RemoveReference` edit any reference end;
   - `ReorderElements` reorders an element's children or the document's roots.
 
-  `model::Flag` and `model::ReferenceEnd` name what is edited. A refusal leaves the document
+  `model::Flag` and `model::ReferenceEnd` (both `#[non_exhaustive]`, with a public `name`)
+  name what is edited. A refusal leaves the document
   unchanged: the new `EditError` variants are `ElementNotFound`, `FeatureNotApplicable`
   (SACM-CMD-008, `Code::CMD_FEATURE_NOT_APPLICABLE`), `TooManyReferences`,
   `ReferenceNotHeld`, `ChildNotFound` and `InvalidOrder` (SACM-CMD-009,
