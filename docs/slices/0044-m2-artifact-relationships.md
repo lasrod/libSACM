@@ -1,8 +1,8 @@
 ---
 slice: 0044
 name: m2-artifact-relationships
-state: in-progress
-step: verification
+state: done
+step: verified
 rows: [SACM23-ARG-006, SACM23-ARG-009, SACM23-ARG-011, SACM23-ARG-012, SACM23-ARG-013, SACM23-VAL-004, SACM23-VAL-016, SACM23-VAL-022]
 mode: pr
 base: main
@@ -37,3 +37,4 @@ SACM 2.3 §11; ptc/22-03-13; ADR 0026; ADR 0027; D-SEV; D-VAL-LAYER.
 - 2026-11-14 choose: the remaining argumentation rows and the typing rules they need.
 - 2026-11-14 tests: 97 failing tests over the 8 rows (red on the missing API only); 6 verified rows' tests changed, re-check notes added; VAL-022 reworded to `validate`'s order.
 - 2026-11-14 implement: ADR 0028 built; four clippy lints in the new tests fixed by the test engineer; gate green (1707 tests).
+- 2026-11-15 verify: PASS in one round; the docs review fixed (edits leave §11.15/§11.17/§11.18 to validate; ArtifactElement wording); 4 CI mutants pinned; record 0044.

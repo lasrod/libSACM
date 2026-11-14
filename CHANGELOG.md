@@ -272,7 +272,6 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
   `AssertedArtifactSupport` and `AssertedArtifactContext` in an `ArgumentPackage`, which
   it refused as `Unsupported` before [SACM23-ARG-006, SACM23-ARG-009, SACM23-ARG-011,
   SACM23-ARG-012, SACM23-ARG-013].
-
 - `xmi::write` no longer writes `xmi:version`: the XMI namespace identifies the version
   (XMI 2.5.1 §7.5.3) [SACM23-XMI-024].
 - `xmi::write` is strict by default: it runs `validation::validate` and refuses a
