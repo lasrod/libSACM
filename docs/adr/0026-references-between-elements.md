@@ -94,6 +94,11 @@ an XML attribute or as XML elements but not both" (rule 2h).
 - C++'s catalog and our earlier docs stated the citation rule in both directions; here only
   §8.2's OCL direction is checked.
 
+**Known gap:** XMI 2.5.1 §7.10.1 lets a reference element acting as a proxy carry other
+attributes ("XML attributes may be defined, but not contents"), and rule 2c allows identity
+attributes on it. Such elements are refused as `Unsupported` for now, never dropped
+(D-PRESERVE); a later compatibility row reads them.
+
 ## Consequences
 
 - Files with citations and abstract forms load, compare and save without loss. A dangling

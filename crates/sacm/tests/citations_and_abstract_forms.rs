@@ -536,20 +536,36 @@ fn bad_values_are_invalid_literal(feature: Feature) {
     let row = feature.row;
     let flag = feature.flag;
     for (holder, input_of) in holders() {
+        // Each value as written, and as read: only XML white space surrounds
+        // a literal, so a no-break space (written raw or as `&#xA0;`) or an
+        // em space keeps the value from being one.
+        let not_xml_space = [
+            ("\u{A0}true", "\u{A0}true"),
+            ("true\u{2003}", "true\u{2003}"),
+            ("&#xA0;1", "\u{A0}1"),
+        ];
         let mut cases: Vec<(String, String, String, &str)> = Vec::new();
-        for value in ["TRUE", "True", "yes", "", "t rue", "2", "on", "false true"] {
+        for (written, value) in ["TRUE", "True", "yes", "", "t rue", "2", "on", "false true"]
+            .map(|value| (value, value))
+            .into_iter()
+            .chain(not_xml_space)
+        {
             cases.push((
-                format!("{flag}={value:?}"),
-                format!(" {MARK}{flag}=\"{value}\""),
+                format!("{flag}={written:?}"),
+                format!(" {MARK}{flag}=\"{written}\""),
                 String::new(),
                 value,
             ));
         }
-        for value in ["TRUE", "yes", "", "t rue"] {
+        for (written, value) in ["TRUE", "yes", "", "t rue"]
+            .map(|value| (value, value))
+            .into_iter()
+            .chain(not_xml_space)
+        {
             cases.push((
-                format!("<{flag}>{value:?}</{flag}>"),
+                format!("<{flag}>{written:?}</{flag}>"),
                 String::new(),
-                format!("{MARK}<{flag}>{value}</{flag}>"),
+                format!("{MARK}<{flag}>{written}</{flag}>"),
                 value,
             ));
         }

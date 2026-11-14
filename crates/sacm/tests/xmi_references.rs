@@ -564,7 +564,7 @@ fn sacm23_xmi_005_white_space_around_a_token_is_not_part_of_the_id() {
 fn sacm23_xmi_005_two_tokens_on_a_single_valued_end_are_repeated_value_at_the_attribute() {
     let row = XMI_005;
     for (end, flag) in ENDS {
-        for value in ["a b", "c2 c2", "c2\tc1", " c1  c2 c1 "] {
+        for (value, tokens) in [("a b", 2), ("c2 c2", 2), ("c2\tc1", 2), (" c1  c2 c1 ", 3)] {
             let what = format!("{end}={value:?}");
             let (input, marks) = marked(
                 row,
@@ -588,10 +588,10 @@ fn sacm23_xmi_005_two_tokens_on_a_single_valued_end_are_repeated_value_at_the_at
                 (Some(Code::MULTIPLICITY_VIOLATION), Some(marks[0])),
                 "{row}: {what}: not SACM-MULT-001 at the attribute's name"
             );
-            assert!(
-                error.locations().len() >= 2 && error.locations().iter().all(|at| *at == marks[0]),
-                "{row}: {what}: every occurrence is not the attribute's name: {:?}",
-                error.locations()
+            assert_eq!(
+                error.locations(),
+                vec![marks[0]; tokens].as_slice(),
+                "{row}: {what}: not one occurrence per token, each at the attribute's name"
             );
         }
     }
@@ -723,6 +723,27 @@ fn sacm23_xmi_005_a_generated_id_skips_an_id_that_is_only_referenced() {
             (
                 "an element-form reference after the id-less Claim",
                 format!("{idless}{element_form}"),
+            ),
+            (
+                "an href reference after the id-less Claim",
+                format!(
+                    "{idless}{}",
+                    claim("c1", flag, &format!("<{end} href=\"#claim_1\"/>"))
+                ),
+            ),
+            (
+                "an href reference with white space after the id-less Claim",
+                format!(
+                    "{idless}{}",
+                    claim("c1", flag, &format!("<{end} href=\" #claim_1 \"/>"))
+                ),
+            ),
+            (
+                "an xmi:idref reference with white space after the id-less Claim",
+                format!(
+                    "{idless}{}",
+                    claim("c1", flag, &format!("<{end} xmi:idref=\" claim_1 \"/>"))
+                ),
             ),
         ] {
             let what = format!("{end}: {what}");

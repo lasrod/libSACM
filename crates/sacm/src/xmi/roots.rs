@@ -184,9 +184,13 @@ struct Findings<'t, 'a> {
     /// The value of every `xmi:id` read so far, of elements and names, in
     /// every root's tree (SACM23-VAL-001, SACM23-XMI-022).
     ids: BTreeSet<&'a str>,
-    /// The value of every `xmi:id` in the input, collected before anything
-    /// is read, so that no generated id is one, even one that comes later
-    /// (SACM23-XMI-020).
+    /// The ids a generated one must avoid, collected by [`reserved_ids`]
+    /// before anything is read, so that none is generated, even one that
+    /// comes later: the value of every `xmi:id` in the input (SACM23-XMI-020),
+    /// and every id a reference may name, that is each token of a reference
+    /// attribute, each `xmi:idref` value and each `href` fragment, so that a
+    /// dangling reference never resolves to a generated element
+    /// (SACM23-XMI-005, ADR 0026).
     reserved: BTreeSet<&'a str>,
     /// The ids generated for elements without an `xmi:id`.
     generator: IdGenerator,
