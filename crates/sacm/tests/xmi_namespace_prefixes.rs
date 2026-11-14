@@ -1178,7 +1178,7 @@ const REFUSALS: [(&str, Template, (u32, u32)); 6] = [
         |s, x| {
             format!(
                 "<{s}:ArgumentPackage xmlns:{s}=\"{SACM_NS}\" xmlns:{x}=\"{XMI_NS}\" \
-                     {x}:id=\"a\"\n  gid=\"g\"/>"
+                     {x}:id=\"a\"\n  isAbstract=\"true\"/>"
             )
         },
         (2, 3),
@@ -1188,7 +1188,7 @@ const REFUSALS: [(&str, Template, (u32, u32)); 6] = [
         |s, x| {
             format!(
                 "<{s}:ArgumentPackage xmlns:{s}=\"{SACM_NS}\" xmlns:{x}=\"{XMI_NS}\" \
-                     {x}:id=\"a\">\n  <note/></{s}:ArgumentPackage>"
+                     {x}:id=\"a\">\n  <foo/></{s}:ArgumentPackage>"
             )
         },
         (2, 3),

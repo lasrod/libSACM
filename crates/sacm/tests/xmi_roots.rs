@@ -922,9 +922,9 @@ fn sacm23_xmi_001_invalid_root_takes_precedence_over_unsupported() {
         // An XMI-namespace child.
         "<xmi:documentation/>",
         // A readable root with content it cannot read.
-        "<sacm:ArgumentPackage xmi:id=\"a\"><note/></sacm:ArgumentPackage>",
+        "<sacm:ArgumentPackage xmi:id=\"a\"><foo/></sacm:ArgumentPackage>",
         // A readable root with an attribute it cannot read.
-        "<sacm:ArgumentPackage xmi:id=\"a\" gid=\"g\"/>",
+        "<sacm:ArgumentPackage xmi:id=\"a\" isAbstract=\"true\"/>",
         // A root with an id that is not an `xmi:id`. (A root without an id is
         // read, SACM23-XMI-020.)
         "<sacm:ArgumentPackage id=\"a\"/>",
@@ -940,7 +940,7 @@ fn sacm23_xmi_001_invalid_root_takes_precedence_over_unsupported() {
     );
     assert_invalid_root_at(row, repeated.as_bytes(), loc(row, 4, 3), "sacm:Claim");
     // A bare Claim root with content and attributes that would be Unsupported.
-    let claim = format!("<sacm:Claim{NS} gid=\"g\"><name/>text</sacm:Claim>");
+    let claim = format!("<sacm:Claim{NS} isCitation=\"false\"><name/>text</sacm:Claim>");
     assert_invalid_root_at(row, claim.as_bytes(), loc(row, 1, 1), "sacm:Claim");
 }
 
@@ -1051,9 +1051,10 @@ fn root_start(kind: &str) -> String {
 #[test]
 fn sacm23_xmi_001_an_unread_attribute_of_a_root_is_unsupported_at_the_attribute() {
     let row = "SACM23-XMI-001";
+    // `gid` is read (SACM23-BASE-006), so it is not among these.
     let attributes = [
-        "gid=\"g\"",
-        "gid=\"\"",
+        "isCitation=\"true\"",
+        "isAbstract=\"false\"",
         "isCitation=\"false\"",
         "isAbstract=\"true\"",
         "citedElement=\"x\"",
@@ -1093,13 +1094,15 @@ fn sacm23_xmi_001_an_unread_attribute_of_the_wrapper_is_unsupported_at_the_attri
 fn sacm23_xmi_001_unread_content_of_a_root_is_unsupported_at_that_content() {
     let row = "SACM23-XMI-001";
     // Children that neither root reads, with ids: an id-less child that is
-    // readable is read with a generated id (SACM23-XMI-020).
+    // readable is read with a generated id (SACM23-XMI-020). Utility children
+    // and `<gid>` are read (SACM23-BASE-004/005/006), so they are not among
+    // these.
     let children = [
-        "<note/>",
+        "<foo/>",
         "<artifactPackage xmi:id=\"x\"/>",
         "<argumentElement xsi:type=\"sacm:AssertedInference\" xmi:id=\"x\"/>",
         "<xmi:Extension/>",
-        "<gid>g</gid>",
+        "<isCitation>true</isCitation>",
     ];
     for kind in ["ArgumentPackage", "AssuranceCasePackage"] {
         for child in children {
@@ -1249,11 +1252,11 @@ fn sacm23_xmi_001_a_repeated_root_id_is_refused_at_the_root_before_its_attribute
     // The second root also has an unread attribute, or unread content,
     // either of which would be refused first if the id were checked later.
     let inputs = [
-        "\n  <sacm:ArgumentPackage xmi:id=\"a\"/>\n  <sacm:ArgumentPackage xmi:id=\"a\" gid=\"g\"/>\n",
-        "\n  <sacm:ArgumentPackage xmi:id=\"a\"/>\n  <sacm:ArgumentPackage gid=\"g\" xmi:id=\"a\"/>\n",
+        "\n  <sacm:ArgumentPackage xmi:id=\"a\"/>\n  <sacm:ArgumentPackage xmi:id=\"a\" isAbstract=\"true\"/>\n",
+        "\n  <sacm:ArgumentPackage xmi:id=\"a\"/>\n  <sacm:ArgumentPackage isAbstract=\"true\" xmi:id=\"a\"/>\n",
         "\n  <sacm:ArgumentPackage xmi:id=\"a\"/>\n  <sacm:ArgumentPackage xmi:id=\"a\"><foo/></sacm:ArgumentPackage>\n",
         "\n  <sacm:ArgumentPackage xmi:id=\"a\"/>\n  <sacm:AssuranceCasePackage xmi:id=\"a\">\
-         <argumentPackage xmi:id=\"x\" gid=\"g\"/></sacm:AssuranceCasePackage>\n",
+         <argumentPackage xmi:id=\"x\" isAbstract=\"true\"/></sacm:AssuranceCasePackage>\n",
     ];
     for content in inputs {
         assert_duplicate_id_at(
@@ -1273,7 +1276,7 @@ fn sacm23_xmi_001_a_root_that_repeats_an_earlier_roots_child_id_is_refused_at_th
     let seconds = [
         "  <sacm:ArgumentPackage xmi:id=\"c\"/>\n",
         "  <sacm:ArgumentPackage xmi:id=\"c\"><foo/></sacm:ArgumentPackage>\n",
-        "  <sacm:AssuranceCasePackage xmi:id=\"c\" gid=\"g\"/>\n",
+        "  <sacm:AssuranceCasePackage xmi:id=\"c\" isAbstract=\"true\"/>\n",
     ];
     for second in seconds {
         let input = wrapped(&format!("{first}{second}"));

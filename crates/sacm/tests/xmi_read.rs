@@ -62,7 +62,7 @@ const SAMPLE: &str = concat!(
     " xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"",
     " xmi:version=\"2.0\" xmi:id=\"case_1\">\n",
     "  <argumentPackage xmi:id=\"arg_1\">\n",
-    "    <argumentElement xsi:type=\"sacm:Claim\" xmi:id=\"c_1\" gid=\"g_1\"/>\n",
+    "    <argumentElement xsi:type=\"sacm:Claim\" xmi:id=\"c_1\" isCitation=\"false\"/>\n",
     "    <argumentElement xsi:type=\"sacm:Claim\" xmi:id=\"c_2\">",
     "<description><content><value>speed &lt; 30 km/h<![CDATA[ & more]]></value></content></description>",
     "</argumentElement>\n",
@@ -943,7 +943,7 @@ fn lib_sec_002_unsupported_root_location_counts_lf_crlf_and_lone_cr_as_one_line_
         ("\n\r", 3, 1),
     ];
     for (before, line, column) in children {
-        let input = sacm_document("", &format!("{before}<note/>"));
+        let input = sacm_document("", &format!("{before}<artifactPackage xmi:id=\"f\"/>"));
         let error = assert_unsupported(row, &input);
         assert_eq!(
             error.location(),
@@ -1232,18 +1232,18 @@ fn lib_api_009_well_formed_sacm_document_is_unsupported_at_the_construct_it_cann
         Some(loc(row, 4, 18)),
         "{row}: the refusal is not located at the start tag of the `value` child of `content`"
     );
-    // An AssuranceCasePackage root with a `note` child, which no verified row
-    // reads: `Unsupported`, with no code and no document, at `<note` (line
-    // 4, column 3).
-    let note_child = sacm_document(
+    // An AssuranceCasePackage root with an `artifactPackage` child, which no
+    // verified row reads: `Unsupported`, with no code and no document, at
+    // `<artifactPackage` (line 4, column 3).
+    let unread_child = sacm_document(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- LIB-API-009 -->\n",
-        "\n  <note/>\n",
+        "\n  <artifactPackage xmi:id=\"f\"/>\n",
     );
-    let error = assert_unsupported(row, &note_child);
+    let error = assert_unsupported(row, &unread_child);
     assert_eq!(
         error.location(),
         Some(loc(row, 4, 3)),
-        "{row}: the refusal is not located at the start tag of the `note` child"
+        "{row}: the refusal is not located at the start tag of the `artifactPackage` child"
     );
     // A root that is recognised but not read yet: refused at its start tag,
     // on line 3.
@@ -1267,13 +1267,13 @@ fn lib_api_009_well_formed_sacm_document_is_unsupported_at_the_construct_it_cann
     );
     // The full sample, too. Its `argumentPackage` child and the Claim `c_1`
     // in it are read (SACM23-XMI-016), so the first content it cannot read
-    // is `c_1`'s `gid` attribute (SACM23-BASE-006), refused at the first
-    // character of its name: line 5, column 57.
+    // is `c_1`'s `isCitation` attribute (SACM23-BASE-007), refused at the
+    // first character of its name: line 5, column 57.
     let error = assert_unsupported(row, SAMPLE.as_bytes());
     assert_eq!(
         error.location(),
         Some(loc(row, 5, 57)),
-        "{row}: the sample is not refused at the `gid` of `c_1`"
+        "{row}: the sample is not refused at the `isCitation` of `c_1`"
     );
 }
 

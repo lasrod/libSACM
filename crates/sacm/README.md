@@ -10,16 +10,19 @@ Read, edit, validate and write assurance cases in the
 ## What works today
 
 - `sacm::xmi::read` reads `AssuranceCasePackage` and `ArgumentPackage` roots and the
-  packages and Claims in them, with their names and each Claim's `assertionDeclaration`.
-  It refuses what it cannot represent yet rather than drop it. An element without an
-  `xmi:id` gets a generated one, such as `claim_1`, which `write` saves; see the Ids
-  section of the `sacm::xmi::read` docs.
+  packages and Claims in them, with their names, `gid`s and each Claim's
+  `assertionDeclaration`, and the descriptions, notes, implementation constraints and
+  tagged values of each. It refuses what it cannot represent yet rather than drop it. An
+  element without an `xmi:id` gets a generated one, such as `claim_1`, which `write`
+  saves; see the Ids section of the `sacm::xmi::read` docs.
 - `sacm::xmi::write` writes a document deterministically, and by default refuses one that
   validation reports an Error for.
-- `sacm::validation::validate` reports each element that has no name, and each element
-  whose id is not an XML `NCName`, as diagnostics with stable codes.
-- `sacm::edit::apply` creates AssuranceCasePackages, ArgumentPackages and Claims; a
-  refused edit changes nothing.
+- `sacm::validation::validate` reports each element that has no name, each empty or
+  repeated-language `MultiLangString`, each tagged value without a key, and each id that
+  is not an XML `NCName`, as diagnostics with stable codes.
+- `sacm::edit::apply` creates AssuranceCasePackages, ArgumentPackages and Claims, and
+  descriptions, implementation constraints, notes and tagged values on them; a refused
+  edit changes nothing.
 - `sacm::compare::semantic_compare` lists every difference in SACM content between two
   documents.
 
@@ -80,7 +83,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let created = edit::apply(&mut document, CreateClaim::new("arguments", name))?;
     assert_eq!(created.created_ids()[0].as_str(), "claim_1");
 
-    // Validate. This release checks that every element has a name and an `NCName` id.
+    // Validate. This release checks names, ids and the text of descriptions, notes and
+    // tagged values.
     let findings = validation::validate(&document);
     assert!(!diagnostic::has_errors(&findings));
 

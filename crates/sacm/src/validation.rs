@@ -9,7 +9,9 @@
 //! | Code | Row | Clause | Severity | Finding |
 //! |---|---|---|---|---|
 //! | SACM-MULT-001 | SACM23-VAL-018 | §8.6 | Error | a `ModelElement` has no name (`name:LangString[1]`) |
-//! | SACM-ID-002 | SACM23-VAL-020 | XMI 2.5.1 §7.6.1 | Error | an element's id, or its name's `xmi:id`, is not an XML `NCName` (an `xmi:id` is an `xsd:ID`) |
+//! | SACM-MULT-001 | SACM23-VAL-010 | §8.5 | Error | a `content` or `key` has no value (`value:LangString[1..*]`), or two or more of its values share a language (each `lang` "must be unique") |
+//! | SACM-MULT-001 | SACM23-VAL-010 | §8.12 | Error | a `TaggedValue` has no `key` (`key:MultiLangString[1]`) |
+//! | SACM-ID-002 | SACM23-VAL-020 | XMI 2.5.1 §7.6.1 | Error | an element's id, or the `xmi:id` of its name, `content`, `key` or a `value`, is not an XML `NCName` (an `xmi:id` is an `xsd:ID`) |
 //!
 //! A `ModelElement`
 //! ([`AbstractClass::ModelElement`](crate::model::AbstractClass::ModelElement))
@@ -19,9 +21,21 @@
 //! name and are not checked. An empty name (`<name/>`) is a name. To fix a
 //! finding, give the element a `<name lang="…" content="…"/>` child.
 //!
+//! A `UtilityElement`'s `content`, and a `TaggedValue`'s `key`, is a
+//! `MultiLangString` (§8.5): when present, it must hold at least one value,
+//! and no two of its values may share a `lang`. Languages are compared
+//! exactly: two absent ones are equal, an absent one and `""` differ, and so
+//! do `en` and `EN`. A `content` that is absent gives no finding, but a
+//! `TaggedValue` must have a `key`. Each finding affects the
+//! `UtilityElement`, and the message names the role and the language. To fix
+//! one, give the `content` or `key` one `<value lang="…" content="…"/>` per
+//! language.
+//!
 //! Every element's id is checked, and so is the `xmi:id` of every name
-//! ([`SacmElement::name_id`](crate::model::SacmElement::name_id)), whose
-//! finding affects the element that owns the name. An `NCName` starts with
+//! ([`SacmElement::name_id`](crate::model::SacmElement::name_id)), `content`,
+//! `key` and `value`
+//! ([`SacmElement::content_id`](crate::model::SacmElement::content_id) and
+//! the like), whose finding affects the element that owns it. An `NCName` starts with
 //! a letter or `_` and continues with letters, digits, `-`, `.` or `_` (XML
 //! 1.0 Fifth Edition and Namespaces in XML Third Edition give the full
 //! character ranges); it has no spaces and no `:`.
@@ -79,6 +93,7 @@
 //! ```
 
 mod ids;
+mod multi_lang;
 mod names;
 
 use crate::diagnostic::Diagnostic;
@@ -88,7 +103,11 @@ use crate::model::Document;
 type Rule = fn(&Document, &mut Vec<Diagnostic>);
 
 /// Every rule, run in turn by [`validate`].
-const RULES: &[Rule] = &[names::missing_name, ids::invalid_id];
+const RULES: &[Rule] = &[
+    names::missing_name,
+    multi_lang::multi_lang_strings,
+    ids::invalid_id,
+];
 
 /// Checks `document` against the SACM rules this release knows and returns
 /// the findings, sorted by [`Diagnostic`]'s order. An empty result means no

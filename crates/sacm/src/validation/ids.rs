@@ -1,12 +1,13 @@
 //! Rules about element ids (XMI 2.5.1 §7.6.1).
 
 use crate::diagnostic::{Code, Diagnostic, Severity};
-use crate::model::{Document, ElementId, is_ncname};
+use crate::model::{Document, ElementId, TextRole, is_ncname};
 
 /// SACM23-VAL-020: each element whose id is not an XML `NCName` is one
 /// SACM-ID-002 Error, because an `xmi:id` is an `xsd:ID`, whose lexical space
-/// is the `NCName`s, and so is each name whose `xmi:id` is not one, affecting
-/// the element that owns the name (ADR 0024). The reader holds such an id as
+/// is the `NCName`s, and so is each `xmi:id` of a name (ADR 0024), a
+/// `content`, a `key` or a `value` in one (ADR 0025) that is not one,
+/// affecting the element that owns it. The reader holds such an id as
 /// written (D-ID), so a tolerant save writes it back unchanged.
 pub(super) fn invalid_id(document: &Document, found: &mut Vec<Diagnostic>) {
     for element in document.elements() {
@@ -31,6 +32,39 @@ pub(super) fn invalid_id(document: &Document, found: &mut Vec<Diagnostic>) {
                 name_id.as_str()
             );
             found.push(finding(message, id));
+        }
+        for role in [TextRole::Content, TextRole::Key] {
+            let Some(text) = element.text(role) else {
+                continue;
+            };
+            let owner = format!(
+                "the {} of {} {:?}",
+                role.name(),
+                element.kind().name(),
+                id.as_str()
+            );
+            let ids = text
+                .id()
+                .map(|text_id| (owner.clone(), text_id))
+                .into_iter()
+                .chain(
+                    text.value_ids()
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(n, value)| {
+                            value
+                                .as_ref()
+                                .map(|value_id| (format!("value {} of {owner}", n + 1), value_id))
+                        }),
+                );
+            for (subject, bad) in ids.filter(|(_, bad)| !is_ncname(bad.as_str())) {
+                let message = format!(
+                    "{subject} has the xmi:id {:?}, which is not an NCName \
+                     (XMI 2.5.1 §7.6.1: xmi:id is an xsd:ID)",
+                    bad.as_str()
+                );
+                found.push(finding(message, id));
+            }
         }
     }
 }

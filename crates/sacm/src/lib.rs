@@ -12,17 +12,21 @@
 //! # What works today
 //!
 //! - [`xmi::read`] reads `AssuranceCasePackage` and `ArgumentPackage` roots
-//!   and the packages and Claims in them, with their names and each Claim's
-//!   `assertionDeclaration`. It refuses what it cannot represent yet rather
-//!   than drop it. An element without an `xmi:id` gets a generated one, such
-//!   as `claim_1`, which `write` saves; see [Ids](xmi::read#ids).
+//!   and the packages and Claims in them, with their names, `gid`s and each
+//!   Claim's `assertionDeclaration`, and the descriptions, notes,
+//!   implementation constraints and tagged values of each. It refuses what it
+//!   cannot represent yet rather than drop it. An element without an `xmi:id`
+//!   gets a generated one, such as `claim_1`, which `write` saves; see
+//!   [Ids](xmi::read#ids).
 //! - [`xmi::write`] writes a document deterministically, and by default
 //!   refuses one that validation reports an Error for.
-//! - [`validation::validate`] reports each element that has no name, and
-//!   each element whose id is not an XML `NCName`, as
+//! - [`validation::validate`] reports each element that has no name, each
+//!   empty or repeated-language `MultiLangString`, each tagged value without
+//!   a key, and each id that is not an XML `NCName`, as
 //!   [`Diagnostic`](diagnostic::Diagnostic)s with stable codes.
 //! - [`edit::apply`] creates `AssuranceCasePackage`, `ArgumentPackage` and
-//!   `Claim` elements; a refused edit changes nothing.
+//!   `Claim` elements, and descriptions, implementation constraints, notes
+//!   and tagged values on them; a refused edit changes nothing.
 //! - [`compare::semantic_compare`] lists every difference in SACM content
 //!   between two documents, and `==` on a [`Document`](model::Document) is
 //!   true when there is none.
@@ -69,8 +73,8 @@
 //! let created = edit::apply(&mut document, CreateClaim::new("arguments", name))?;
 //! assert_eq!(created.created_ids()[0].as_str(), "claim_1");
 //!
-//! // Validate. This release checks that every element has a name and an
-//! // `NCName` id.
+//! // Validate. This release checks names, ids and the text of descriptions,
+//! // notes and tagged values.
 //! let findings = validation::validate(&document);
 //! assert!(!diagnostic::has_errors(&findings));
 //!

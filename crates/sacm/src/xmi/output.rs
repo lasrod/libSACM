@@ -1,5 +1,6 @@
 //! The XMI writer (SACM23-XMI-003, -004, -006, -007, -011, -012, -013,
-//! -017, LIB-API-010, LIB-COMPAT-007; ADR 0017, ADR 0022).
+//! -017, SACM23-BASE-004, -005, -006, LIB-API-010, LIB-COMPAT-007; ADR 0017,
+//! ADR 0022, ADR 0025).
 //!
 //! Two passes. [`plan`] checks the document (in strict mode, validating it)
 //! and every element, and resolves what each is written as; only if that succeeds does [`write`] build the `String` from the plan,
@@ -14,6 +15,7 @@ use super::{Mode, WriteAttribute, WriteError};
 use crate::diagnostic::Severity;
 use crate::model::{
     AssertionDeclaration, DeclaredType, Document, ElementId, ElementKind, LangString, SacmElement,
+    Text, TextRole,
 };
 use crate::validation;
 
@@ -67,16 +69,32 @@ pub(super) fn write(document: &Document, mode: Mode) -> Result<String, WriteErro
         push_attribute_name(&mut out, "id");
         escape_into(&mut out, planned.element.id().as_str());
         out.push('"');
+        // A gid comes directly after the id (ADR 0025), escaped like it.
+        if let Some(gid) = planned.element.gid() {
+            out.push_str(" gid=\"");
+            escape_into(&mut out, gid);
+            out.push('"');
+        }
         if let Some(declaration) = planned.declaration {
             out.push_str(" assertionDeclaration=\"");
             out.push_str(declaration.as_str());
             out.push('"');
         }
         let name = planned.element.name();
-        if name.is_some() || planned.element.children().next().is_some() {
+        let texts =
+            [TextRole::Content, TextRole::Key].map(|role| (role, planned.element.text(role)));
+        let has_texts = texts.iter().any(|(_, text)| text.is_some());
+        if name.is_some() || has_texts || planned.element.children().next().is_some() {
             out.push_str(">\n");
             if let Some(name) = name {
-                push_name(&mut out, depth + 1, name, planned.element.name_id());
+                push_lang_string(&mut out, depth + 1, "name", name, planned.element.name_id());
+            }
+            // `content` before `key`, superclass first (XMI 2.5.1 Annex
+            // B.5.2).
+            for (role, text) in texts {
+                if let Some(text) = text {
+                    push_text(&mut out, depth + 1, role, text);
+                }
             }
             open.push(planned);
         } else {
@@ -117,10 +135,10 @@ enum Tag {
 }
 
 /// Checks `document` in ADR 0022's order, a root first, then, in strict
-/// `mode`, validation, then each element in document order (its id, its
-/// name's `lang` and `content`), and returns every element in that order with
-/// what it is written as. Everything a document holds is written, so these
-/// are the only refusals.
+/// `mode`, validation, then each element in document order (see
+/// [`unrepresentable`]), and returns every element in that order with what it
+/// is written as. Everything a document holds is written, so these are the
+/// only refusals.
 fn plan(document: &Document, mode: Mode) -> Result<Vec<Planned<'_>>, WriteError> {
     if document.roots().next().is_none() {
         return Err(WriteError::NoRoot);
@@ -137,25 +155,12 @@ fn plan(document: &Document, mode: Mode) -> Result<Vec<Planned<'_>>, WriteError>
     }
     let mut plan = Vec::new();
     for element in document.elements() {
-        let id = element.id();
-        let name = element.name();
-        for (attribute, value) in [
-            (WriteAttribute::Id, Some(id.as_str())),
-            (WriteAttribute::NameLang, name.and_then(LangString::lang)),
-            (
-                WriteAttribute::NameContent,
-                name.and_then(LangString::content),
-            ),
-        ] {
-            if let Some(character) =
-                value.and_then(|value| value.chars().find(|&c| !is_xml_char(c)))
-            {
-                return Err(WriteError::UnrepresentableCharacter {
-                    element: id.clone(),
-                    character,
-                    attribute,
-                });
-            }
+        if let Some((attribute, character)) = unrepresentable(element) {
+            return Err(WriteError::UnrepresentableCharacter {
+                element: element.id().clone(),
+                character,
+                attribute,
+            });
         }
         let kind = element.kind();
         // A child keeps the role it was added in; a root has none.
@@ -182,6 +187,53 @@ fn plan(document: &Document, mode: Mode) -> Result<Vec<Planned<'_>>, WriteError>
     Ok(plan)
 }
 
+/// The first value `element` holds that XML 1.0 cannot represent, as the
+/// attribute that holds it and its first such character, checked in this
+/// order: its id, its gid, its name's `lang` and `content`, then each value
+/// of its `content` and then of its `key`, `lang` before `content`. The ids
+/// of a name, `content`, `key` or `value` are not checked: only
+/// [`xmi::read`](crate::xmi::read) gives them, and what it reads is
+/// representable.
+fn unrepresentable(element: SacmElement<'_>) -> Option<(WriteAttribute, char)> {
+    let name = element.name();
+    let fields = [
+        (WriteAttribute::Id, Some(element.id().as_str())),
+        (WriteAttribute::Gid, element.gid()),
+        (WriteAttribute::NameLang, name.and_then(LangString::lang)),
+        (
+            WriteAttribute::NameContent,
+            name.and_then(LangString::content),
+        ),
+    ];
+    let texts = [
+        (
+            TextRole::Content,
+            WriteAttribute::ContentValueLang,
+            WriteAttribute::ContentValueContent,
+        ),
+        (
+            TextRole::Key,
+            WriteAttribute::KeyValueLang,
+            WriteAttribute::KeyValueContent,
+        ),
+    ];
+    let values = texts.into_iter().flat_map(move |(role, lang, content)| {
+        element
+            .text(role)
+            .map_or(&[][..], |text| text.value().values())
+            .iter()
+            .flat_map(move |value| [(lang, value.lang()), (content, value.content())])
+    });
+    fields
+        .into_iter()
+        .chain(values)
+        .find_map(|(attribute, value)| {
+            value
+                .and_then(|value| value.chars().find(|&c| !is_xml_char(c)))
+                .map(|character| (attribute, character))
+        })
+}
+
 /// Whether `c` is an XML 1.0 `Char` (§2.2). A Rust `char` is never a
 /// surrogate.
 fn is_xml_char(c: char) -> bool {
@@ -191,18 +243,21 @@ fn is_xml_char(c: char) -> bool {
     )
 }
 
-/// Writes `name` as a `name` element on its own line at `depth`: its `id`,
+/// Writes `value` as a `tag` element on its own line at `depth`: its `id`,
 /// as `xmi:id`, then `lang`, then `content`, each only if present (ADR 0017,
-/// ADR 0024).
-fn push_name(out: &mut String, depth: usize, name: &LangString, id: Option<&ElementId>) {
+/// ADR 0024): a `name`, or a `value` of a `content` or `key`.
+fn push_lang_string(
+    out: &mut String,
+    depth: usize,
+    tag: &str,
+    value: &LangString,
+    id: Option<&ElementId>,
+) {
     indent(out, depth);
-    out.push_str("<name");
-    if let Some(id) = id {
-        push_attribute_name(out, "id");
-        escape_into(out, id.as_str());
-        out.push('"');
-    }
-    for (attribute, value) in [("lang", name.lang()), ("content", name.content())] {
+    out.push('<');
+    out.push_str(tag);
+    push_id(out, id);
+    for (attribute, value) in [("lang", value.lang()), ("content", value.content())] {
         if let Some(value) = value {
             out.push(' ');
             out.push_str(attribute);
@@ -212,6 +267,38 @@ fn push_name(out: &mut String, depth: usize, name: &LangString, id: Option<&Elem
         }
     }
     out.push_str(" />\n");
+}
+
+/// Writes `text` as its `role` element at `depth`, with its `xmi:id` first,
+/// and one `value` element per value under it, in order; with no values,
+/// one empty element (ADR 0025).
+fn push_text(out: &mut String, depth: usize, role: TextRole, text: &Text) {
+    indent(out, depth);
+    out.push('<');
+    out.push_str(role.name());
+    push_id(out, text.id());
+    let values = text.value().values();
+    if values.is_empty() {
+        out.push_str(" />\n");
+        return;
+    }
+    out.push_str(">\n");
+    for (value, id) in values.iter().zip(text.value_ids()) {
+        push_lang_string(out, depth + 1, "value", value, id.as_ref());
+    }
+    indent(out, depth);
+    out.push_str("</");
+    out.push_str(role.name());
+    out.push_str(">\n");
+}
+
+/// Writes ` xmi:id="<id>"`, escaped, if there is an id.
+fn push_id(out: &mut String, id: Option<&ElementId>) {
+    if let Some(id) = id {
+        push_attribute_name(out, "id");
+        escape_into(out, id.as_str());
+        out.push('"');
+    }
 }
 
 /// Writes the element name `tag`.
@@ -288,7 +375,77 @@ fn escape_into(out: &mut String, value: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::{escape_into, is_xml_char};
+    use super::{escape_into, is_xml_char, write};
+    use crate::model::{Document, ElementId, ElementKind, LangString, MultiLangString};
+    use crate::xmi::{Mode, WriteAttribute, WriteError};
+
+    /// The attribute and character a tolerant write of `document` refuses.
+    fn refusal(document: &Document) -> Option<(WriteAttribute, char)> {
+        match write(document, Mode::Tolerant) {
+            Err(WriteError::UnrepresentableCharacter {
+                attribute,
+                character,
+                ..
+            }) => Some((attribute, character)),
+            _ => None,
+        }
+    }
+
+    /// A root `id` named `name` with the gid `gid`.
+    fn root(id: &str, name: &str, gid: &str) -> Document {
+        let mut document = Document::new();
+        let id = ElementId::new(id);
+        let named = Some(LangString::new(name));
+        let inserted = document.insert_node(None, ElementKind::ArgumentPackage, id.clone(), named);
+        assert_eq!(inserted, Ok(()));
+        assert_eq!(document.set_gid(&id, Some(gid.to_owned())), Ok(()));
+        document
+    }
+
+    /// No read input can hold a gid XML cannot represent, so the check is
+    /// pinned here: after the id, before the name (ADR 0025).
+    #[test]
+    fn a_gid_xml_cannot_represent_is_refused_after_the_id_and_before_the_name() {
+        assert_eq!(
+            refusal(&root("p", "P", "g\u{1}")),
+            Some((WriteAttribute::Gid, '\u{1}'))
+        );
+        assert_eq!(
+            refusal(&root("p", "P\u{2}", "g\u{FFFE}")),
+            Some((WriteAttribute::Gid, '\u{FFFE}'))
+        );
+        assert_eq!(
+            refusal(&root("p\u{3}", "P", "g\u{1}")),
+            Some((WriteAttribute::Id, '\u{3}'))
+        );
+        let written = write(&root("p", "P", "a\tb"), Mode::Strict);
+        assert!(
+            written
+                .as_deref()
+                .is_ok_and(|text| text.contains(" xmi:id=\"p\" gid=\"a&#9;b\">")),
+            "{written:?}"
+        );
+    }
+
+    /// A `TaggedValue`'s content is checked before its key, as it is written.
+    #[test]
+    fn a_content_value_is_checked_before_a_key_value() {
+        let mut document = root("p", "P", "g");
+        let bad = |content: &str| MultiLangString::from(LangString::new(content));
+        let inserted = document.insert_element(
+            Some(&ElementId::new("p")),
+            ElementKind::TaggedValue,
+            ElementId::new("t"),
+            None,
+            Some(bad("v\u{4}")),
+            Some(bad("k\u{5}")),
+        );
+        assert_eq!(inserted, Ok(()));
+        assert_eq!(
+            refusal(&document),
+            Some((WriteAttribute::ContentValueContent, '\u{4}'))
+        );
+    }
 
     #[test]
     fn xml_char_bounds() {

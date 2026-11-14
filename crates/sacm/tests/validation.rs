@@ -14,6 +14,7 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 use sacm::diagnostic::{self, Code, Diagnostic, Severity};
+use sacm::edit::{self, CreateTaggedValue};
 use sacm::model::{AbstractClass, Document, ElementId, ElementKind, LangString};
 use sacm::validation;
 use sacm::xmi::{self, Mode, ReadOptions, WriteOptions};
@@ -48,6 +49,21 @@ fn add(
     let parent = parent.map(ElementId::from);
     if let Err(error) = doc.insert(parent.as_ref(), kind, ElementId::from(id), name) {
         panic!("{ROW}: setup could not insert {kind} {id:?}: {error}");
+    }
+}
+
+/// Adds one `UtilityElement` with no name. A `TaggedValue` is created with a
+/// key and a content through `CreateTaggedValue`, because one with no key is
+/// a SACM23-VAL-010 Error; the other kinds are inserted with no content,
+/// which gives no finding.
+fn add_utility(doc: &mut Document, parent: &str, kind: ElementKind, id: &str) {
+    if kind != ElementKind::TaggedValue {
+        add(doc, Some(parent), kind, id, None);
+        return;
+    }
+    let create = CreateTaggedValue::new(parent, LangString::new("k"), LangString::new("v"));
+    if let Err(error) = edit::apply(doc, create.with_id(id)) {
+        panic!("{ROW}: setup could not create the TaggedValue {id:?}: {error}");
     }
 }
 
@@ -281,7 +297,7 @@ fn sacm23_val_018_utility_elements_under_a_named_model_element_give_no_diagnosti
             "pkg",
             Some(named("Pkg")),
         );
-        add(&mut in_package, Some("pkg"), kind, "u", None);
+        add_utility(&mut in_package, "pkg", kind, "u");
         assert_findings(
             &in_package,
             &[],
@@ -303,7 +319,7 @@ fn sacm23_val_018_utility_elements_under_a_named_model_element_give_no_diagnosti
             "c",
             Some(named("C")),
         );
-        add(&mut in_claim, Some("c"), kind, "u", None);
+        add_utility(&mut in_claim, "c", kind, "u");
         assert_findings(&in_claim, &[], &format!("a {kind} in a named Claim"));
     }
 }
@@ -644,7 +660,7 @@ fn sacm23_val_018_an_empty_or_fully_named_document_gives_no_diagnostic_and_no_er
         add(&mut doc, Some("pkg"), kind, &id, Some(named(&id)));
     }
     for (index, kind) in UTILITY_KINDS.into_iter().enumerate() {
-        add(&mut doc, Some("pkg"), kind, &format!("u{index}"), None);
+        add_utility(&mut doc, "pkg", kind, &format!("u{index}"));
     }
     let found = validation::validate(&doc);
     assert!(

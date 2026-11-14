@@ -31,6 +31,7 @@ decisions.md has a one-line entry pointing to it.
 | [0022](0022-load-and-save-modes.md) | Load and save modes | accepted |
 | [0023](0023-command-line.md) | The `sacm` command line | accepted |
 | [0024](0024-ids-read-from-xmi.md) | Ids read from XMI | accepted |
+| [0025](0025-utility-elements-and-gid.md) | UtilityElements, MultiLangString roles and gid | accepted |
 
 Statuses: `proposed` → `accepted` (maintainer approval) → optionally `superseded by NNNN`.
 Copy [template.md](template.md) for a new record.

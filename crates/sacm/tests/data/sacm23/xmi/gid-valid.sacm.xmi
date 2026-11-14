@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-BASE-006: `gid` in the attribute form and the element form, on an AssuranceCasePackage root, an ArgumentPackage child, a Claim and a Note. Values keep their spaces; one is empty; one equals an xmi:id. Hand-written; no third-party content. -->
+<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="case" gid="urn:example:case">
+  <name lang="en" content="Case"/>
+  <argumentPackage xmi:id="arguments">
+    <gid> arguments-1 </gid>
+    <name lang="en" content="Arguments"/>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c1" gid="">
+      <name lang="en" content="The brakes stop the car"/>
+      <note xmi:id="n1">
+        <gid>c1</gid>
+        <content>
+          <value lang="en" content="A note"/>
+        </content>
+      </note>
+    </argumentElement>
+  </argumentPackage>
+</sacm:AssuranceCasePackage>

@@ -132,16 +132,20 @@ impl LangString {
 /// §8.5 gives it `value : LangString [1..*]` and requires each value's `lang`
 /// to be unique. This type enforces neither: it keeps the values in the order
 /// given, including duplicates and repeated languages, and it may be empty,
-/// so a document can be held as it was written. Planned validation will
-/// report an empty list and a repeated `lang`; nothing checks them yet.
+/// so a document can be held as it was written.
+/// [`validation::validate`](crate::validation::validate) reports an empty
+/// one and each repeated `lang` held in a document (SACM-MULT-001).
 ///
 /// Equality and [`Hash`] depend on order: `[en, fr]` and `[fr, en]` are
 /// different values.
 ///
 /// SACM uses it for the `content` of the `UtilityElement` kinds (§8.7), such
-/// as a `Note`, and for other text roles. It is a value, not an element: it
-/// has no id and no [`ElementKind`](crate::model::ElementKind). No element
-/// holds one in this release.
+/// as a `Note`
+/// ([`SacmElement::content`](crate::model::SacmElement::content)), and for the
+/// `key` of a `TaggedValue` (§8.12). It is a value, not an element: it has no
+/// id and no [`ElementKind`](crate::model::ElementKind). The `xmi:id` its
+/// element may carry is kept with the element that holds it
+/// ([`SacmElement::content_id`](crate::model::SacmElement::content_id)).
 ///
 /// # Examples
 ///
@@ -195,6 +199,22 @@ impl MultiLangString {
     /// ```
     pub fn push(&mut self, value: LangString) {
         self.values.push(value);
+    }
+}
+
+impl From<LangString> for MultiLangString {
+    /// A `MultiLangString` of the one value `value`.
+    ///
+    /// ```
+    /// use sacm::model::{LangString, MultiLangString};
+    ///
+    /// let text = MultiLangString::from(LangString::new("Reviewed").with_lang("en"));
+    /// assert_eq!(text.values(), [LangString::new("Reviewed").with_lang("en")]);
+    /// ```
+    fn from(value: LangString) -> Self {
+        Self {
+            values: vec![value],
+        }
     }
 }
 

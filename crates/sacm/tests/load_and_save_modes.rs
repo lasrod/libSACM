@@ -86,8 +86,8 @@ const READABLE_GOLDEN: [&str; 4] = [
     "single-root.golden.sacm.xmi",
 ];
 /// The golden file the reader refuses, as `Unsupported`, in this release: it
-/// holds a Note, a Description, an `ArgumentPackageInterface`, an
-/// ArtifactPackage, an Artifact and a Property.
+/// holds an `ArgumentPackageInterface`, an ArtifactPackage, an Artifact and a
+/// Property (its Note and Description are read, SACM23-BASE-004).
 const UNREADABLE_GOLDEN: &str = "nested.golden.sacm.xmi";
 
 // ---------------------------------------------------------------------------
@@ -700,6 +700,20 @@ fn table() -> Vec<(&'static str, Vec<u8>, Expect)> {
             Reads,
         ),
         ("the third-party fixture", third_party, Reads),
+        // SACM23-BASE-004/005/006: utility children and `gid`, which ended
+        // interim refusals of this table.
+        text(
+            "a gid on a root",
+            format!("<sacm:ArgumentPackage{NS} xmi:id=\"a\" gid=\"g\"/>"),
+            Reads,
+        ),
+        text(
+            "a description, a note and a tagged value",
+            ap("<description xmi:id=\"d\"><content><value lang=\"en\" content=\"x\"/></content></description>\n  \
+                <note xmi:id=\"n\"/>\n  \
+                <taggedValue xmi:id=\"t\"><key><value content=\"k\"/></key><content/></taggedValue>"),
+            Reads,
+        ),
         // --- Interim refusals: conforming content this release cannot represent.
         text(
             "an ArtifactPackage root",
@@ -707,13 +721,13 @@ fn table() -> Vec<(&'static str, Vec<u8>, Expect)> {
             Unsupported,
         ),
         text(
-            "a gid on a root",
-            format!("<sacm:ArgumentPackage{NS} xmi:id=\"a\" gid=\"g\"/>"),
+            "an isAbstract on a root",
+            format!("<sacm:ArgumentPackage{NS} xmi:id=\"a\" isAbstract=\"true\"/>"),
             Unsupported,
         ),
         text(
-            "a description child",
-            ap("<description xmi:id=\"d\"/>"),
+            "the single-language shorthand on a description",
+            ap("<description xmi:id=\"d\" content=\"x\"/>"),
             Unsupported,
         ),
         text(

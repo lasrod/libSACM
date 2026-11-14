@@ -44,7 +44,8 @@
 //! - SACM23-XMI-004's "no `xmi:id` is written on a `LangString` or
 //!   `MultiLangString`": for a name, `assert_matches_document` checks it on
 //!   every written document, and `xmi_names.rs` (SACM23-XMI-012) states it.
-//!   No `MultiLangString` can be written yet (SACM23-BASE-004).
+//!   For a `content`, `key` or `value`, `utility_elements.rs` checks that an
+//!   edit-built one is written with no `xmi:id` (SACM23-XMI-004).
 //! - The `#[non_exhaustive]` attributes of `WriteError`, its variants and
 //!   `WriteOptions`: a test cannot show that an exhaustive pattern fails to
 //!   compile. The patterns here use `..`, as a user must.
