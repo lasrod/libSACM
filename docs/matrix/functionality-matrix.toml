@@ -2571,7 +2571,8 @@ title = "Descriptions, notes and implementation constraints"
 requirement = "Every ModelElement holds its `description`, `implementationConstraint` and `note` children (UtilityElements, §8.7-§8.9, §8.11) as elements with an id and a kind, in document order across roles (D-ORDER), accessed through `SacmElement::descriptions()`, `implementation_constraints()` and `notes()`; several descriptions are kept (D-DESC-MULT) (ADR 0025). A UtilityElement's `content()` is `None` (no `content` child) or a MultiLangString (`<content/>` is empty), and both round-trip. A MultiLangString is written as its role element with one `value` child per LangString, in order and with duplicates; each `value` follows the `name` LangString rules (SACM23-XMI-012, -014). Several `value` children are kept; a second `content` is `RepeatedValue` (SACM23-XMI-021). An `xmi:id` on a `content` element or a `value` is kept by role and position (`content_id()`, `content_value_ids()`), shares the file's id space, is written back and compared (ADR 0024). A UtilityElement has no `name`. A role element with `lang`/`content` attributes or text and no `value` children, and `content=` or text on a UtilityElement, are refused as `Unsupported` until LIB-COMPAT-008. They are created by `CreateDescription`, `CreateImplementationConstraint` and `CreateNote` under the LIB-EDIT-001 contract; changing content is LIB-EDIT-008 and removal LIB-EDIT-004/005. An absent `content` gives no finding (the maintainer, 2026-11-14)."
 source = "formal/23-05-08 §8.6 (p. 19) \"description: Description[0..1] (composition)\", \"note:Note[0..*] (composition)\", \"implementationConstraint: ImplementationConstraint [0..*] (composition)\"; §8.7 (p. 20) \"content:MultiLangString[0..1] (composition)\"; §8.8, §8.9, §8.11 \"Superclass UtilityElement\"; §8.5 (p. 19); ptc/22-03-13 Base::ModelElement, Base::UtilityElement (content [1..1]); XMI 2.5.1 §7.8.3, §7.8.6 \"Each property that is a composite is represented by an XML element, but not by an XML attribute.\", rule 2b; D-DESC-MULT; D-TEXT-MODEL; D-ORDER; ADR 0012; ADR 0024; ADR 0025"
 kind = "model"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0040-m2-descriptions-and-gid.md"
 depends_on = ["SACM23-BASE-002", "SACM23-BASE-003", "SACM23-XMI-014", "SACM23-XMI-021", "SACM23-XMI-022", "SACM23-XMI-020", "LIB-RT-001", "LIB-EDIT-001"]
 notes = "Slice 0040: ADR 0025 (accepted 2026-11-14). A MultiLangString or value `xmi:id` is kept per role and position, as ADR 0024 keeps a name id (this replaces the slice 0025 note that it is reported)."
 acceptance = [
@@ -2635,7 +2636,8 @@ title = "TaggedValue"
 requirement = "TaggedValue (§8.12) in `taggedValue` on every ModelElement is held as an element in document order across roles (`SacmElement::tagged_values()`), with `key()` (§8.12) and `content()` (§8.7), each `None` or a MultiLangString under the SACM23-BASE-004 rules (order, duplicates, absent vs empty, wrapper and value ids) (ADR 0025). `key` and `content` may be read in either order and are written `content` first (XMI 2.5.1 Annex B.5.2); a second `key` or `content` is `RepeatedValue`. TaggedValues with equal keys are all kept, in order. A TaggedValue with no `key` is a validation Error (SACM23-VAL-010). It is created by `CreateTaggedValue::new(parent, key, content)` under the LIB-EDIT-001 contract; changing is LIB-EDIT-008."
 source = "formal/23-05-08 §8.12 (p. 21) \"key:MultiLangString[1] (composition) - the key of the TaggedValue.\", \"This class represents a simple key/value pair\"; §8.7 (p. 20); ptc/22-03-13 Base::TaggedValue (key [1..1]); XMI 2.5.1 Annex B.5.2; ADR 0025"
 kind = "model"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0040-m2-descriptions-and-gid.md"
 depends_on = ["SACM23-BASE-004", "SACM23-XMI-021", "LIB-EDIT-001"]
 acceptance = [
   "`<taggedValue xmi:id=\"t\"><key><value content=\"k\"/></key><content><value lang=\"en\" content=\"v\"/></content></taggedValue>` round-trips, written content first; `content` before `key` in the input reads equal.",
@@ -2674,7 +2676,8 @@ title = "gid"
 requirement = "Every element of every kind holds an optional `gid` String exactly as read (`SacmElement::gid() -> Option<&str>`): absent, `\"\"` and any other string are distinct (ADR 0012, ADR 0025). `xmi::read` reads it in both modes, on roots and children, from the unqualified attribute (after attribute-value normalisation) or a `gid` value element (SACM23-XMI-014: no attribute, no element children, nothing trimmed); given twice, in either form, it is `RepeatedValue` (SACM-MULT-001). It is not an `xmi:id`: it is in no id space, has no syntax check, and is never trimmed or generated. `xmi::write` writes a present gid as an attribute after `xmi:id`, escaped, `gid=\"\"` for empty and nothing for absent; a character XML 1.0 cannot represent fails the write (`WriteAttribute::Gid`). `semantic_compare` reports `Difference::Gid`. Setting it is LIB-EDIT-008; uniqueness is SACM23-VAL-002."
 source = "formal/23-05-08 §8.2 (p. 18) \"gid:String[0..1] - a unique identifier that is unique within the scope of the model instance\"; ptc/22-03-13 Base::SACMElement.gid (String, [0..1]); XMI 2.5.1 §7.8.4 (p. 18), rule 2h (p. 63); ADR 0012; ADR 0021 amendment 1; ADR 0025"
 kind = "model"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0040-m2-descriptions-and-gid.md"
 depends_on = ["SACM23-BASE-003", "SACM23-XMI-004", "SACM23-XMI-014", "SACM23-XMI-021", "LIB-RT-001"]
 notes = "Slice 0037: read in the attribute and the element form by SACM23-XMI-014's rules; the value is a String, exactly."
 acceptance = [
@@ -3140,7 +3143,8 @@ title = "MultiLangString language uniqueness"
 requirement = "`validation::validate` reports, for every MultiLangString a document holds (each present UtilityElement `content` and TaggedValue `key`), one SACM-MULT-001 Error when it has no values (§8.5 `[1..*]`), and one SACM-MULT-001 Error for each language held by two or more of its values (§8.5 \"must be unique\"). `lang` is compared exactly (ADR 0012): two absent are equal; absent, `\"\"` and `en` differ; `en`/`EN` and `en`/`en ` differ. It also reports a TaggedValue with no `key` as SACM-MULT-001 (§8.12 `key:MultiLangString[1]`; ptc `[1..1]`; D-SEV). Each diagnostic has the UtilityElement as its only affected id, requirement SACM23-VAL-010, clause `8.5` (or `8.12` for a missing key), no location, and a message naming the role and, for a repeat, the language. An absent `content` gives no finding (the maintainer, 2026-11-14). Every value is kept; a strict save refuses (LIB-COMPAT-007), a tolerant save writes as held (ADR 0025)."
 source = "formal/23-05-08 §8.5 (p. 19) \"value:LangString[1..*] (composition)\" and \"For each of the LangString in the value feature, their +lang must be unique.\"; §8.12 (p. 21) \"key:MultiLangString[1]\"; ptc/22-03-13 Base::MultiLangString (value lower 1), Base::TaggedValue (key [1..1]); D-SEV; D-TEXT-MODEL; ADR 0012; ADR 0025"
 kind = "validation"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0040-m2-descriptions-and-gid.md"
 depends_on = ["SACM23-BASE-002", "SACM23-BASE-004", "SACM23-BASE-005", "LIB-COMPAT-007", "SACM23-VAL-018"]
 acceptance = [
   "`<content/>` on a Description gives one Error naming the Description and `content`; `<key/>` gives one Error naming `key`; a TaggedValue with no `key` gives one Error, clause `8.12`.",

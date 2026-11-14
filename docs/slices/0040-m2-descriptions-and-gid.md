@@ -1,8 +1,8 @@
 ---
 slice: 0040
 name: m2-descriptions-and-gid
-state: in-progress
-step: verification
+state: done
+step: verified
 rows: [SACM23-BASE-004, SACM23-BASE-005, SACM23-BASE-006, SACM23-VAL-010]
 mode: pr
 base: main
@@ -59,3 +59,4 @@ WriteAttribute::{Gid, ContentValueLang, ContentValueContent, KeyValueLang, KeyVa
 ## Log
 
 - 2026-11-14 choose: the base-model rows that end the utility-child and `gid` refusals.
+- 2026-11-14 verify: PASS in two rounds (19 PR-diff mutants and M50 pinned; stale rows reworded); Copilot found an allocation in id validation, fixed; record 0040.
