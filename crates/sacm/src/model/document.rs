@@ -70,7 +70,9 @@ use super::{
 /// each reference end holds (`citedElement`, `abstractForm`, `metaClaim`,
 /// `reasoning`, `source`, `target` and `structure`, in order), names, the
 /// ids of names, `content`s and `key`s with their ids,
-/// `assertionDeclaration`s and the order of roots and children are compared. `==` is order-sensitive; see [`crate::compare`] to ignore order.
+/// `assertionDeclaration`s and the order of roots and children are compared.
+/// `==` is order-sensitive, for the ids of `metaClaim` and `source` too;
+/// see [`crate::compare`] to ignore order.
 ///
 /// Not compared: the per-kind counters [`edit::apply`](crate::edit::apply)
 /// uses to generate ids such as `claim_1`. They are not SACM content, and XMI
@@ -1344,7 +1346,9 @@ impl<'a> SacmElement<'a> {
     /// `target:ArgumentAsset[1]`), its ending point, or `None` when it has
     /// none or its kind is not an `AssertedRelationship`.
     ///
-    /// For an `AssertedInference` it is the conclusion. It is held
+    /// For an `AssertedInference` it is the conclusion; for an
+    /// `AssertedContext`, the element the context is for, such as a Claim
+    /// (§11.16). It is held
     /// unresolved. A relationship needs one:
     /// [`validation::validate`](crate::validation::validate) reports one
     /// without it as SACM-MULT-001 (SACM23-VAL-005). See
@@ -1389,10 +1393,10 @@ impl<'a> SacmElement<'a> {
     }
 
     /// Whether an asserted relationship counters its declared purpose (SACM
-    /// 2.3 §11.13 `isCounter:Boolean[1] = false`): an `AssertedInference`
-    /// that counters its conclusion, say. `false` unless the document holds
-    /// `true`, and always `false` when the kind is not an
-    /// `AssertedRelationship`.
+    /// 2.3 §11.13 `isCounter:Boolean[1] = false`); §11.13's example is an
+    /// `AssertedEvidence` with `isCounter` true, which is counter-evidence.
+    /// `false` unless the document holds `true`, and always `false` when the
+    /// kind is not an `AssertedRelationship`.
     ///
     /// Absent and `false` are the same value, since a default is not
     /// written (ADR 0026, ADR 0027). See [`sources`](Self::sources) for an

@@ -22,8 +22,9 @@
 //! one.
 //!
 //! Order is compared because equal documents must write equal bytes, though
-//! SACM 2.3 orders no composition. To compare without order, drop the two
-//! order variants:
+//! SACM 2.3 orders no composition and no reference end. To compare without
+//! order, drop the two order variants, and compare the multi-valued ends
+//! `metaClaim` and `source` sorted:
 //!
 //! ```
 //! use sacm::compare::{Difference, semantic_compare};
@@ -39,7 +40,17 @@
 //! assert_ne!(left, right);
 //!
 //! let mut differences = semantic_compare(&left, &right);
-//! differences.retain(|d| !matches!(d, Difference::RootOrder { .. } | Difference::ChildOrder { .. }));
+//! differences.retain(|d| match d {
+//!     Difference::RootOrder { .. } | Difference::ChildOrder { .. } => false,
+//!     // The multi-valued ends are compared in order too: compare them sorted.
+//!     Difference::MetaClaims { left, right, .. } | Difference::Sources { left, right, .. } => {
+//!         let (mut left, mut right) = (left.clone(), right.clone());
+//!         left.sort();
+//!         right.sort();
+//!         left != right
+//!     }
+//!     _ => true,
+//! });
 //! let same_ignoring_order = differences.is_empty();
 //! assert!(same_ignoring_order);
 //! # Ok::<(), sacm::edit::EditError>(())
@@ -816,15 +827,25 @@ impl fmt::Display for Declaration {
 /// that generate ids are not compared.
 ///
 /// Order is compared because equal documents must write equal bytes, though
-/// SACM 2.3 orders no composition. To compare without order, drop the two
-/// order variants (the [module example](crate::compare) shows two documents
-/// that differ only in order):
+/// SACM 2.3 orders no composition and no reference end. To compare without
+/// order, drop the two order variants, and compare the multi-valued ends
+/// `metaClaim` and `source` sorted (the [module example](crate::compare)
+/// shows two documents that differ only in order):
 ///
 /// ```
 /// # use sacm::compare::{Difference, semantic_compare};
 /// # let (left, right) = (sacm::model::Document::new(), sacm::model::Document::new());
 /// let mut differences = semantic_compare(&left, &right);
-/// differences.retain(|d| !matches!(d, Difference::RootOrder { .. } | Difference::ChildOrder { .. }));
+/// differences.retain(|d| match d {
+///     Difference::RootOrder { .. } | Difference::ChildOrder { .. } => false,
+///     Difference::MetaClaims { left, right, .. } | Difference::Sources { left, right, .. } => {
+///         let (mut left, mut right) = (left.clone(), right.clone());
+///         left.sort();
+///         right.sort();
+///         left != right
+///     }
+///     _ => true,
+/// });
 /// let same_ignoring_order = differences.is_empty();
 /// # assert!(same_ignoring_order);
 /// ```

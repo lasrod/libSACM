@@ -29,8 +29,8 @@
 //! such as an `AssertedInference`, relates its
 //! [`sources`](SacmElement::sources) to its [`target`](SacmElement::target),
 //! optionally through an `ArgumentReasoning`
-//! ([`reasoning`](SacmElement::reasoning)), and may counter it
-//! ([`is_counter`](SacmElement::is_counter)). An `ArgumentReasoning` may name
+//! ([`reasoning`](SacmElement::reasoning)), and may be marked as countering
+//! its declared purpose ([`is_counter`](SacmElement::is_counter)). An `ArgumentReasoning` may name
 //! the package that details it ([`structure`](SacmElement::structure)).
 //!
 //! [`LangString`], [`MultiLangString`] and [`AssertionDeclaration`] are

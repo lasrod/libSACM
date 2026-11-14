@@ -2879,6 +2879,7 @@ acceptance = [
   "`assertionDeclaration`, `isCounter`, `metaClaim`, `source`, `target` and `reasoning` on an ArgumentReasoning are each `Unsupported`; an ArgumentReasoning in an AssuranceCasePackage is `Unsupported`.",
   "`CreateArgumentReasoning::new(parent, name)` under an ArgumentPackage gives `argument_reasoning_1`; under an AssuranceCasePackage or a Claim it is `InvalidParent`; `with_structure` naming no element is `ReferenceNotFound`; refusals leave the document unchanged.",
   "`semantic_compare` reports `Difference::Structure`.",
+  "A reference id holding XML white space (an element read with `xmi:id=\"a b\"`) is refused as `EditError::InvalidReference` (SACM-ID-002), after `TooFewReferences` and before `ReferenceNotFound`, leaving the document unchanged (ADR 0027; found by Copilot on PR #54).",
 ]
 tests = [
   "crates/sacm/tests/argument_reasoning.rs::sacm23_arg_005_it_reads_in_both_modes_by_xmi_type_and_xsi_type_with_its_inherited_features",
@@ -2893,6 +2894,8 @@ tests = [
   "crates/sacm/tests/argument_reasoning.rs::sacm23_arg_005_create_argument_reasoning_refuses_a_wrong_parent_and_a_missing_structure_unchanged",
   "crates/sacm/tests/argument_reasoning.rs::sacm23_arg_005_create_argument_reasoning_runs_the_four_create_checks_before_the_structure_check",
   "crates/sacm/tests/argument_reasoning.rs::sacm23_arg_005_semantic_compare_reports_structure",
+  "crates/sacm/tests/argument_reasoning.rs::sacm23_arg_005_create_argument_reasoning_refuses_a_structure_id_holding_white_space",
+  "crates/sacm/tests/argument_reasoning.rs::sacm23_arg_005_create_argument_reasoning_references_a_structure_id_without_white_space",
 ]
 code = ["crates/sacm/src/model/reference.rs", "crates/sacm/src/edit/argumentation.rs", "crates/sacm/src/xmi/roots.rs"]
 
@@ -2963,6 +2966,7 @@ acceptance = [
   "`CreateAssertedInference` succeeds with `asserted_inference_1`, `created_ids` is that id, and the ends are as given; no source is `TooFewReferences`; a missing source, target or reasoning is `ReferenceNotFound`; a refused create leaves the document `==` to before with the same next ids.",
   "Any ArgumentAsset source and target (Claim, ArgumentReasoning, another relationship) give no finding beyond the generic ones.",
   "A document built only by edits, including this kind, writes strictly, reloads, validates clean and compares equal (LIB-RT-003).",
+  "A reference id holding XML white space (an element read with `xmi:id=\"a b\"`) is refused as `EditError::InvalidReference` (SACM-ID-002), after `TooFewReferences` and before `ReferenceNotFound`, leaving the document unchanged (ADR 0027; found by Copilot on PR #54).",
 ]
 tests = [
   "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_008_reads_with_its_ends_by_xmi_type_or_xsi_type_and_is_refused_untyped_or_in_a_case_package",
@@ -2975,6 +2979,9 @@ tests = [
   "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_008_create_asserted_inference_refuses_an_end_naming_the_id_of_a_name",
   "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_008_any_argument_asset_as_source_and_target_gives_no_finding",
   "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_008_a_document_built_only_by_edits_writes_strictly_reloads_and_compares_equal",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_008_create_asserted_inference_refuses_a_reference_id_holding_white_space",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_008_create_asserted_inference_checks_white_space_after_no_source_and_before_missing_ids",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_008_create_asserted_inference_references_an_id_without_white_space",
 ]
 code = ["crates/sacm/src/edit/argumentation.rs", "crates/sacm/src/xmi/roots.rs"]
 
@@ -3005,6 +3012,7 @@ acceptance = [
   "`CreateAssertedContext` succeeds with `asserted_context_1`, `created_ids` is that id, and the ends are as given; no source is `TooFewReferences`; a missing source, target or reasoning is `ReferenceNotFound`; a refused create leaves the document `==` to before with the same next ids.",
   "Any ArgumentAsset source and target (Claim, ArgumentReasoning, another relationship) give no finding beyond the generic ones.",
   "A document built only by edits, including this kind, writes strictly, reloads, validates clean and compares equal (LIB-RT-003).",
+  "A reference id holding XML white space (an element read with `xmi:id=\"a b\"`) is refused as `EditError::InvalidReference` (SACM-ID-002), after `TooFewReferences` and before `ReferenceNotFound`, leaving the document unchanged (ADR 0027; found by Copilot on PR #54).",
 ]
 tests = [
   "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_010_reads_with_its_ends_by_xmi_type_or_xsi_type_and_is_refused_untyped_or_in_a_case_package",
@@ -3017,6 +3025,9 @@ tests = [
   "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_010_create_asserted_context_refuses_an_end_naming_the_id_of_a_name",
   "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_010_any_argument_asset_as_source_and_target_gives_no_finding",
   "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_010_a_document_built_only_by_edits_writes_strictly_reloads_and_compares_equal",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_010_create_asserted_context_refuses_a_reference_id_holding_white_space",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_010_create_asserted_context_checks_white_space_after_no_source_and_before_missing_ids",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_010_create_asserted_context_references_an_id_without_white_space",
 ]
 code = ["crates/sacm/src/edit/argumentation.rs", "crates/sacm/src/xmi/roots.rs"]
 

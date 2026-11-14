@@ -951,6 +951,156 @@ fn sacm23_arg_005_create_argument_reasoning_runs_the_four_create_checks_before_t
     );
 }
 
+// --- A structure id holding XML white space ------------------------------------------------
+
+/// The ids, holding XML white space, that a tolerant read keeps as written
+/// (SACM23-VAL-020): each as written in an attribute, and as held.
+const SPACED: [(&str, &str); 4] = [
+    ("p q", "p q"),
+    ("p&#9;q", "p\tq"),
+    ("p&#10;q", "p\nq"),
+    ("p&#13;q", "p\rq"),
+];
+
+/// Reads `input` in tolerant mode, which the test expects to read.
+fn read_tolerant(what: &str, input: &str) -> Document {
+    match read(Mode::Tolerant, input) {
+        Ok(output) => output.into_document(),
+        Err(error) => panic!("{ROW}: {what}: a tolerant read refused {input:?}: {error:?}"),
+    }
+}
+
+/// A named `argumentPackage` `id`.
+fn package(id: &str) -> String {
+    format!("<argumentPackage xmi:id=\"{id}\"><name content=\"Q\"/></argumentPackage>")
+}
+
+/// An AssuranceCasePackage root `case` holding the ArgumentPackage `p`, with
+/// the Claim `c1`, and then an ArgumentPackage for each id of `ids`, read in
+/// tolerant mode.
+fn packages(what: &str, ids: &[&str]) -> Document {
+    let more: String = ids.iter().map(|id| package(id)).collect();
+    read_tolerant(
+        what,
+        &format!(
+            "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name content=\"Case\"/>\
+             <argumentPackage xmi:id=\"p\"><name content=\"P\"/>{}</argumentPackage>{more}\
+             </sacm:AssuranceCasePackage>",
+            claim("c1")
+        ),
+    )
+}
+
+/// Asserts that `error` is `InvalidReference` for the structure `id`, with
+/// the code SACM-ID-002, and a message quoting the id and naming the end.
+fn assert_invalid_structure(what: &str, error: &EditError, id: &str) {
+    let EditError::InvalidReference {
+        end, id: found_id, ..
+    } = error
+    else {
+        panic!("{ROW}: {what}: not InvalidReference: {error:?}");
+    };
+    assert_eq!(
+        (end_name(end), found_id.as_str(), error.code()),
+        ("structure".to_owned(), id, Code::ID_INVALID),
+        "{ROW}: {what}: not InvalidReference {{ structure, {id:?} }} (SACM-ID-002)"
+    );
+    let message = error.to_string();
+    assert!(
+        message.contains(&format!("{id:?}")) && message.contains("structure"),
+        "{ROW}: {what}: the message {message:?} does not quote the id and name the end"
+    );
+}
+
+#[test]
+fn sacm23_arg_005_create_argument_reasoning_refuses_a_structure_id_holding_white_space() {
+    let written: Vec<&str> = SPACED.iter().map(|&(written, _)| written).collect();
+    let mut doc = packages("ArgumentPackages with ids holding white space", &written);
+    for (_, held) in SPACED {
+        assert_eq!(
+            element(&doc, held).kind(),
+            ElementKind::ArgumentPackage,
+            "{ROW}: setup: the tolerant read does not hold the ArgumentPackage {held:?} as written"
+        );
+        let what = format!("with_structure({held:?})");
+        let error = refuse(
+            &mut doc,
+            &what,
+            CreateArgumentReasoning::new("p", named("R")).with_structure(held),
+        );
+        assert_invalid_structure(&what, &error, held);
+    }
+    // The four create checks of ADR 0019 come first.
+    let spaced = "p q";
+    let error = refuse(
+        &mut doc,
+        "a missing parent and a white-space structure",
+        CreateArgumentReasoning::new("nowhere", named("R")).with_structure(spaced),
+    );
+    assert!(
+        matches!(&error, EditError::ParentNotFound { parent, .. } if parent.as_str() == "nowhere"),
+        "{ROW}: a missing parent and a white-space structure is not ParentNotFound: {error:?}"
+    );
+    let error = refuse(
+        &mut doc,
+        "an invalid id and a white-space structure",
+        CreateArgumentReasoning::new("p", named("R"))
+            .with_id("1r")
+            .with_structure(spaced),
+    );
+    assert!(
+        matches!(&error, EditError::InvalidId { id, .. } if id.as_str() == "1r"),
+        "{ROW}: an invalid id and a white-space structure is not InvalidId: {error:?}"
+    );
+    let error = refuse(
+        &mut doc,
+        "a duplicate id and a white-space structure",
+        CreateArgumentReasoning::new("p", named("R"))
+            .with_id("c1")
+            .with_structure(spaced),
+    );
+    assert!(
+        matches!(&error, EditError::DuplicateId { id, .. } if id.as_str() == "c1"),
+        "{ROW}: a duplicate id and a white-space structure is not DuplicateId: {error:?}"
+    );
+}
+
+#[test]
+fn sacm23_arg_005_create_argument_reasoning_references_a_structure_id_without_white_space() {
+    // A tolerant read holds `1q`, which is no NCName but holds no white
+    // space, as written (SACM23-VAL-020).
+    let mut doc = packages("an ArgumentPackage whose id is no NCName", &["1q"]);
+    for (id, target) in [("by_odd", "1q"), ("by_plain", "p")] {
+        create(
+            &mut doc,
+            CreateArgumentReasoning::new("p", named("R"))
+                .with_id(id)
+                .with_structure(target),
+        );
+        assert_eq!(
+            structure(&doc, id).as_deref(),
+            Some(target),
+            "{ROW}: the created {id} does not hold the structure {target:?}"
+        );
+    }
+    // A tolerant save writes the structure as one id, which reads back the
+    // same.
+    let text = write_in("the edited document", &doc, Mode::Tolerant);
+    let back = read_tolerant("the edited document, written", &text);
+    for (id, target) in [("by_odd", "1q"), ("by_plain", "p")] {
+        assert_eq!(
+            structure(&back, id).as_deref(),
+            Some(target),
+            "{ROW}: {id} does not read back with the structure {target:?}\n{text}"
+        );
+    }
+    assert_eq!(
+        semantic_compare(&doc, &back),
+        [],
+        "{ROW}: the tolerant save does not read back equal\n{text}"
+    );
+}
+
 // --- Item 7: comparison -----------------------------------------------------------------------------
 
 #[test]

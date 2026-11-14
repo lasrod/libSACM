@@ -160,7 +160,13 @@ impl Code {
     /// name. It reports it as a Warning for a `ModelElement` with more than
     /// one description (§8.6 `description:Description[0..1]`,
     /// SACM23-VAL-011): every description is kept, and a strict save is not
-    /// refused; fix it by merging them into one.
+    /// refused; fix it by merging them into one. It reports it as an Error
+    /// for an asserted relationship with no `source` (§11.13
+    /// `source:ArgumentAsset[1..*]`) or no `target` (`target:ArgumentAsset[1]`),
+    /// one per missing end (SACM23-VAL-005); fix it by giving the missing
+    /// end. It is also the code of
+    /// [`EditError::TooFewReferences`](crate::edit::EditError::TooFewReferences)
+    /// and [`ReadError::RepeatedValue`](crate::xmi::ReadError::RepeatedValue).
     ///
     /// ```
     /// use sacm::diagnostic::Code;
@@ -173,17 +179,22 @@ impl Code {
     /// [`ReadError::InvalidLiteral`](crate::xmi::ReadError::InvalidLiteral),
     /// refused in both modes: an `assertionDeclaration` that is not exactly
     /// one of the six `AssertionDeclaration` literals (SACM23-VAL-006), and
-    /// an `isCitation` or `isAbstract` that is not one of the `xsd:boolean`
-    /// literals `true`, `false`, `1` and `0`, with white space around them
-    /// collapsed (SACM23-BASE-007, SACM23-BASE-008). Fix: write one of
+    /// an `isCitation`, `isAbstract` or `isCounter` (SACM23-ARG-007) that is
+    /// not one of the `xsd:boolean` literals `true`, `false`, `1` and `0`,
+    /// with white space around them collapsed (SACM23-BASE-007,
+    /// SACM23-BASE-008). Fix: write one of
     /// `asserted`, `needsSupport`, `assumed`, `axiomatic`, `defeated` and
     /// `asCited`, or one of `true` and `false`, spelled and cased exactly.
     pub const ENUM_INVALID_LITERAL: Code = Code::from_static("SACM-ENUM-001");
 
     /// SACM-CMD-001: an operation's target is not in the document. The code
     /// of [`EditError::ParentNotFound`](crate::edit::EditError::ParentNotFound)
-    /// (LIB-EDIT-001). Create the parent first, or correct its id. Ids are
-    /// compared exactly, case included.
+    /// (LIB-EDIT-001) and of
+    /// [`EditError::ReferenceNotFound`](crate::edit::EditError::ReferenceNotFound),
+    /// a source, target, `reasoning` or `structure` that names no element
+    /// (SACM23-ARG-005, -008, -010). Create the parent or the referenced
+    /// element first, or correct its id. Ids are compared exactly, case
+    /// included.
     pub const CMD_TARGET_NOT_FOUND: Code = Code::from_static("SACM-CMD-001");
 
     /// SACM-CMD-004: a create operation's caller-given id is already in the
@@ -226,6 +237,9 @@ impl Code {
     /// [`EditError::InvalidId`](crate::edit::EditError::InvalidId)
     /// (LIB-EDIT-001): give an `NCName`, or leave out `with_id` to have an id
     /// generated. It is the code of
+    /// [`EditError::InvalidReference`](crate::edit::EditError::InvalidReference),
+    /// a reference a create operation is given whose id holds XML white
+    /// space, so it cannot be written as one id. It is the code of
     /// [`ReadError::InvalidId`](crate::xmi::ReadError::InvalidId) for an
     /// empty `xmi:id` on an element or a `name`.
     /// [`validation::validate`](crate::validation::validate) reports it as an
@@ -270,8 +284,10 @@ impl Code {
     /// `value`, which identifies no element.
     /// [`validation::validate`](crate::validation::validate) reports one
     /// Error per distinct missing id of each reference end of each element,
-    /// with the end's clause (8.2 for `citedElement` and `abstractForm`),
-    /// affecting the referring element, then the missing id
+    /// with the end's clause (8.2 for `citedElement` and `abstractForm`,
+    /// 11.10 for `metaClaim`, 11.12 for `structure`, 11.13 for `reasoning`,
+    /// `source` and `target`); an id a multi-valued end holds twice is one
+    /// finding. Each affects the referring element, then the missing id
     /// (SACM23-VAL-003). [`xmi::read`](crate::xmi::read) keeps such a
     /// reference in both modes, and a tolerant [`xmi::write`](crate::xmi::write)
     /// writes it back, so nothing is lost; a strict write refuses the

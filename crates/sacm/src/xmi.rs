@@ -16,7 +16,7 @@
 //! and `target`, an `ArgumentReasoning`'s `structure`, and the descriptions,
 //! implementation constraints, notes and tagged values of each, with their
 //! `content` and `key` (SACM 2.3 §2.2, §2.4, §8.2-§8.12, §9.2, §11.4,
-//! §11.10-§11.16). A reference is held as the id it names, and one that names no
+//! §11.10-§11.14, §11.16). A reference is held as the id it names, and one that names no
 //! element is kept (see [References](fn@read#references)). It refuses input that is unsafe
 //! ([`ReadError::Doctype`], SACM-SEC-001), not well-formed
 //! ([`ReadError::Malformed`], SACM-XML-001), not rooted in a SACM package
@@ -293,9 +293,14 @@ mod roots;
 /// # References
 ///
 /// A reference to another element is held as the id it names, unresolved
-/// ([ADR 0026]): [`SacmElement::cited_element`](crate::model::SacmElement::cited_element)
-/// and [`SacmElement::abstract_form`](crate::model::SacmElement::abstract_form)
-/// give it, and [`Document::get`] resolves it. In this release the reference
+/// ([ADR 0026]): [`SacmElement::cited_element`](crate::model::SacmElement::cited_element),
+/// [`abstract_form`](crate::model::SacmElement::abstract_form),
+/// [`meta_claims`](crate::model::SacmElement::meta_claims),
+/// [`sources`](crate::model::SacmElement::sources),
+/// [`target`](crate::model::SacmElement::target),
+/// [`reasoning`](crate::model::SacmElement::reasoning) and
+/// [`structure`](crate::model::SacmElement::structure) give it, and
+/// [`Document::get`] resolves it. In this release the reference
 /// ends are `citedElement` and `abstractForm` (§8.2), on every element,
 /// `metaClaim` (§11.10) on every Assertion, `reasoning`, `source` and
 /// `target` (§11.13) on every asserted relationship, and `structure`
@@ -969,12 +974,16 @@ pub enum ReadError {
         /// What cannot be represented, without a position.
         reason: String,
     },
-    /// A single-valued property is given more than once: as an attribute and
-    /// an element, or as two or more elements (SACM-MULT-001). XMI 2.5.1
-    /// §9.5.2 rule 2h serializes a property "either as an XML attribute or as XML
-    /// elements but not both", and the property holds one value, so the
-    /// input is refused even when the values are equal, rather than read
-    /// with one of them dropped. Fix: give the value once.
+    /// A property is given more than XMI allows (SACM-MULT-001): a
+    /// single-valued one more than once, as an attribute and an element or as
+    /// two or more elements, or a multi-valued reference end both as an
+    /// attribute and as elements.
+    ///
+    /// XMI 2.5.1 §9.5.2 rule 2h serializes a property "either as an XML
+    /// attribute or as XML elements but not both", and a single-valued
+    /// property holds one value, so the input is refused even when the values
+    /// are equal, rather than read with one of them dropped. Fix: give the
+    /// value once.
     ///
     /// A multi-valued reference end, `metaClaim` or `source` (ADR 0027),
     /// takes any number of ids, in one attribute or in one element each,

@@ -299,7 +299,7 @@ pub enum ElementKind {
     ArgumentGroup,
     /// `Claim`: a proposition put forward as true.
     Claim,
-    /// `ArgumentReasoning`: the reasoning behind an asserted inference.
+    /// `ArgumentReasoning`: the reasoning behind an asserted relationship.
     ArgumentReasoning,
     /// `ArtifactReference`: a reference from an argument to an artifact.
     ArtifactReference,

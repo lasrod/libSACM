@@ -19,7 +19,7 @@
 //! | SACM-MULT-001 | SACM23-VAL-005 | §11.13 | Error | an asserted relationship has no `source` (`source:ArgumentAsset[1..*]`), or no `target` (`target:ArgumentAsset[1]`): one finding per missing end |
 //! | SACM-CITE-001 | SACM23-VAL-007 | §8.2 | Error | an element has a `citedElement` but its `isCitation` is not true (OCL `self.citedElement <> null implies self.isCitation = true`) |
 //! | SACM-ABS-001 | SACM23-VAL-008 | §8.2 | Error | an element with an `abstractForm` is itself abstract ("+isAbstract of the `SACMElement` is false") |
-//! | SACM-ABS-001 | SACM23-VAL-008 | §8.2 | Warning | the `abstractForm` target is not abstract, or is of another kind (both "should") |
+//! | SACM-ABS-001 | SACM23-VAL-008 | §8.2 | Warning | the element the `abstractForm` references is not abstract, or is of another kind (both "should") |
 //!
 //! A `ModelElement`
 //! ([`AbstractClass::ModelElement`](crate::model::AbstractClass::ModelElement))
@@ -108,7 +108,7 @@
 //! finding. An id absent from the document dangles, and so does
 //! the `xmi:id` of a `name`, `content`, `key` or `value`, which identifies no
 //! element. A reference to any element, the element itself included,
-//! resolves, whatever its kind: the type of a target is not checked yet
+//! resolves, whatever its kind: the type of the referenced element is not checked yet
 //! (SACM23-VAL-004). To fix one, point it at an element, or remove it.
 //!
 //! An asserted relationship needs at least one `source` and one `target`
@@ -124,7 +124,7 @@
 //! SACM-ABS-001 Error, affecting it. When the `abstractForm` names an element,
 //! that element should be abstract and of the same kind: there is one
 //! SACM-ABS-001 Warning when it is not abstract and another when it is of
-//! another kind, each affecting the element, then the target. A target
+//! another kind, each affecting the element, then the referenced element. An `abstractForm`
 //! that names no element gives only SACM-REF-001.
 //!
 //! ```

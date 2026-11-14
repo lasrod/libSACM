@@ -49,6 +49,8 @@ SACM 2.3 §11 relates argument assets through asserted relationships:
     the required sources and target, and an optional `reasoning`, `isCounter` and `structure`.
   - Checks, after ADR 0019's four:
     - at least one source: `EditError::TooFewReferences` (SACM-MULT-001);
+    - no reference id holds XML white space: `EditError::InvalidReference` (SACM-ID-002),
+      because such an id would be written back as two ids (found by Copilot on PR #54);
     - every reference names an element: `EditError::ReferenceNotFound` (SACM-CMD-001),
       because an edit never creates a dangling reference (D-VAL-LAYER).
   - Target types are checked with SACM23-VAL-004 and LIB-EDIT-009 (the next slice).

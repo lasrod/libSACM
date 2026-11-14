@@ -18,9 +18,12 @@ use crate::model::{Document, ElementId, ElementKind, Flag, LangString, Reference
 /// `ArgumentPackage` that gives the reasoning's detailed structure
 /// (`structure:ArgumentPackage[0..1]`). Apply it with
 /// [`edit::apply`](super::apply). After [ADR 0019]'s four checks, a
-/// structure that names no element of the document is
+/// structure whose id holds XML white space, such as the `a b` of an
+/// element read from a file, is [`EditError::InvalidReference`], and one
+/// that names no element of the document is
 /// [`EditError::ReferenceNotFound`]. Whether the structure is an
-/// `ArgumentPackage` is a content finding, not checked here. Without
+/// `ArgumentPackage` is not checked yet, here or by validation
+/// (SACM23-VAL-004). Without
 /// [`with_id`](Self::with_id), the id is generated: `argument_reasoning_<n>`.
 ///
 /// [ADR 0019]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0019-edit-operations.md
@@ -171,7 +174,7 @@ impl Relationship {
     /// Checks and applies the create of a relationship of `kind`, and
     /// returns the ids it created: after [ADR 0019]'s four checks, at least
     /// one source, then every source, in order, the target and the
-    /// reasoning naming an element.
+    /// reasoning holding no white space, then each naming an element.
     ///
     /// [ADR 0019]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0019-edit-operations.md
     fn apply(
@@ -333,12 +336,14 @@ relationship_operation! {
     /// `asserted`, the default (§11.10). Apply it with
     /// [`edit::apply`](super::apply). After [ADR 0019]'s four checks it
     /// refuses no source as [`EditError::TooFewReferences`], then a source
-    /// (in order), the target or the reasoning that names no element of the
-    /// document as [`EditError::ReferenceNotFound`], so an edit never makes a
+    /// (in order), the target or the reasoning whose id holds XML white space
+    /// as [`EditError::InvalidReference`], since it could not be written as
+    /// one id, then one that names no element of the document as
+    /// [`EditError::ReferenceNotFound`], so an edit never makes a
     /// dangling reference (D-VAL-LAYER). The id of a name, `content`, `key`
-    /// or `value` names no element. A repeated source is kept, and whether
-    /// each end has the type SACM declares is a content finding, not checked
-    /// here (ADR 0027). Without [`with_id`](Self::with_id), the id is
+    /// or `value` names no element. A repeated source is kept (ADR 0027),
+    /// and whether each end has the type SACM declares is not checked yet,
+    /// here or by validation (SACM23-VAL-004). Without [`with_id`](Self::with_id), the id is
     /// generated: `asserted_inference_<n>`.
     ///
     /// [ADR 0019]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0019-edit-operations.md
@@ -416,8 +421,9 @@ relationship_operation! {
 ///
 /// The checks, in order: [`checked_place`]'s four (ADR 0019); every end
 /// holds at least the ids it needs ([`EditError::TooFewReferences`]); every
-/// id, end by end and in order, names an element of the document
-/// ([`EditError::ReferenceNotFound`]). On a refusal the document, its
+/// id, end by end and in order, holds no XML white space
+/// ([`EditError::InvalidReference`]); every id, in the same order, names an
+/// element of the document ([`EditError::ReferenceNotFound`]). On a refusal the document, its
 /// counters included, is unchanged: every check runs before the one change.
 fn create_referencing(
     document: &mut Document,
@@ -435,6 +441,19 @@ fn create_referencing(
                 end: end.name(),
                 given: targets.len(),
                 required,
+            });
+        }
+    }
+    // An id with XML white space in it would be written as an IDREFS
+    // attribute of several ids, so it cannot be referenced.
+    for &(end, targets, _) in references {
+        if let Some(spaced) = targets
+            .iter()
+            .find(|target| target.as_str().contains([' ', '\t', '\n', '\r']))
+        {
+            return Err(EditError::InvalidReference {
+                end: end.name(),
+                id: spaced.clone(),
             });
         }
     }

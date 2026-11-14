@@ -10,7 +10,7 @@ Read, edit, validate and write assurance cases in the
 ## What works today
 
 - `sacm::xmi::read` reads `AssuranceCasePackage` and `ArgumentPackage` roots and the
-  packages and Claims in them, with their names, `gid`s and each Claim's
+  packages and Claims in them, with their names, `gid`s and each Assertion's
   `assertionDeclaration`, and the descriptions, notes, implementation constraints and
   tagged values of each (`SacmElement::descriptions`, `notes`, `tagged_values` and the
   like), with their `content` and, on a tagged value, `key` (`SacmElement::content`,

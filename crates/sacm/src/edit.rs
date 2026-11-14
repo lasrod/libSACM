@@ -49,8 +49,11 @@
 //! requires (§11.13 `source:ArgumentAsset[1..*]`, `target:ArgumentAsset[1]`).
 //! Every id they reference must name an element of the document, so an edit
 //! never makes a dangling reference; the id of a name, `content`, `key` or
-//! `value` names no element. Whether each target has the type SACM declares
-//! is a content finding for validation (SACM23-VAL-004), not a refusal.
+//! `value` names no element. Whether each referenced element has the type
+//! SACM declares (an `ArgumentAsset` for a source or the target, an
+//! `ArgumentReasoning` for the reasoning, an `ArgumentPackage` for the
+//! structure) is not checked yet, by edits or by validation, so a strict
+//! save does not refuse a wrong one (SACM23-VAL-004).
 //! Setting the references of an existing element, and the `metaClaim` of an
 //! Assertion, come later (LIB-EDIT-009).
 //!
@@ -85,7 +88,8 @@
 //! | 3. a caller id is an `NCName` | [`EditError::InvalidId`] | SACM-ID-002 | An `NCName` starts with a letter or `_` and continues with letters, digits, `-`, `.` or `_`; it has no spaces and no `:`. Or leave out `with_id` to have an id generated. |
 //! | 4. a caller id is not in use | [`EditError::DuplicateId`] | SACM-CMD-004 | Ids are unique across the whole document, not per parent. Choose another id, or leave out `with_id` to have one generated. |
 //! | 5. an asserted relationship has a source | [`EditError::TooFewReferences`] | SACM-MULT-001 | Give at least one source: SACM requires one (`source:ArgumentAsset[1..*]`). |
-//! | 6. every referenced id names an element: each source in order, then the target, the `reasoning` and the `structure` | [`EditError::ReferenceNotFound`] | SACM-CMD-001 | Create the referenced element first, or correct its id. Ids are compared exactly, case included. |
+//! | 6. no referenced id holds XML white space (space, TAB, LF, CR): each source in order, then the target, the `reasoning` and the `structure` | [`EditError::InvalidReference`] | SACM-ID-002 | An id such as `a b`, read from a file as written, is not an `NCName` and would be written as two ids. Give the referenced element an `NCName` id in the file. |
+//! | 7. every referenced id names an element, in the same order | [`EditError::ReferenceNotFound`] | SACM-CMD-001 | Create the referenced element first, or correct its id. Ids are compared exactly, case included. |
 //!
 //! # Writing and reading back
 //!
@@ -183,6 +187,8 @@ use crate::model::{Document, ElementId, ElementKind};
 ///   `value` ([`EditError::DuplicateId`]);
 /// - an asserted relationship is given no source
 ///   ([`EditError::TooFewReferences`]);
+/// - a referenced id holds XML white space, so it cannot be written as one
+///   id ([`EditError::InvalidReference`]);
 /// - a referenced id names no element of the document
 ///   ([`EditError::ReferenceNotFound`]).
 ///
@@ -571,6 +577,42 @@ pub enum EditError {
         /// How many it needs at least.
         required: usize,
     },
+    /// A referenced id holds XML white space (space, TAB, LF or CR), so it is
+    /// not an `NCName` and cannot be written as one id (SACM-ID-002): written
+    /// to a reference attribute, `a b` would read back as the two ids `a`
+    /// and `b`. A file can give an element such an id, since
+    /// [`xmi::read`](crate::xmi::read) keeps an id as written and
+    /// [`validation::validate`](crate::validation::validate) reports it
+    /// (SACM23-VAL-020). The first such id is reported, in the order of
+    /// [`ReferenceNotFound`](Self::ReferenceNotFound). Give the referenced
+    /// element an `NCName` id in the file first.
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateAssertedInference, EditError};
+    /// use sacm::xmi::{self, ReadOptions};
+    ///
+    /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="p">
+    ///   <argumentElement xmi:type="sacm:Claim" xmi:id="c1"/>
+    ///   <argumentElement xmi:type="sacm:Claim" xmi:id="a b"/>
+    /// </sacm:ArgumentPackage>"#;
+    /// let mut doc = xmi::read(input, &ReadOptions::default())?.into_document();
+    /// let name = sacm::model::LangString::new("I1");
+    /// let error = edit::apply(&mut doc, CreateAssertedInference::new("p", name, ["a b"], "c1")).unwrap_err();
+    /// assert!(matches!(error, EditError::InvalidReference { end: "source", .. }));
+    /// assert_eq!(
+    ///     error.to_string(),
+    ///     "the source \"a b\" holds white space, so it cannot be written as one id"
+    /// );
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    #[non_exhaustive]
+    InvalidReference {
+        /// The end, by its XMI name, such as `source`.
+        end: &'static str,
+        /// The id, as given.
+        id: ElementId,
+    },
     /// A referenced id names no element of the document (SACM-CMD-001): a
     /// source, the target or the `reasoning` of an asserted relationship, or
     /// the `structure` of an `ArgumentReasoning`. An edit never makes a
@@ -594,7 +636,8 @@ impl EditError {
     /// [`InvalidParent`](Self::InvalidParent), SACM-ID-002 for
     /// [`InvalidId`](Self::InvalidId), SACM-CMD-004 for
     /// [`DuplicateId`](Self::DuplicateId), SACM-MULT-001 for
-    /// [`TooFewReferences`](Self::TooFewReferences) and SACM-CMD-001 for
+    /// [`TooFewReferences`](Self::TooFewReferences), SACM-ID-002 for
+    /// [`InvalidReference`](Self::InvalidReference) and SACM-CMD-001 for
     /// [`ReferenceNotFound`](Self::ReferenceNotFound).
     #[must_use]
     pub fn code(&self) -> Code {
@@ -603,7 +646,7 @@ impl EditError {
                 Code::CMD_TARGET_NOT_FOUND
             }
             Self::InvalidParent { .. } => Code::CMD_INVALID_PARENT,
-            Self::InvalidId { .. } => Code::ID_INVALID,
+            Self::InvalidId { .. } | Self::InvalidReference { .. } => Code::ID_INVALID,
             Self::DuplicateId { .. } => Code::CMD_DUPLICATE_ID,
             Self::TooFewReferences { .. } => Code::MULTIPLICITY_VIOLATION,
         }
@@ -643,6 +686,11 @@ impl fmt::Display for EditError {
             } => write!(
                 f,
                 "the {end} is given {given} ids, and SACM requires at least {required}"
+            ),
+            Self::InvalidReference { end, id } => write!(
+                f,
+                "the {end} {:?} holds white space, so it cannot be written as one id",
+                id.as_str()
             ),
             Self::ReferenceNotFound { end, id } => write!(
                 f,

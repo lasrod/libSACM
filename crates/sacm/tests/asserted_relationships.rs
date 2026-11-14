@@ -1982,6 +1982,296 @@ fn sacm23_arg_010_create_asserted_context_refuses_an_end_naming_the_id_of_a_name
     a_reference_to_an_id_that_names_no_element_is_refused(ARG_010, ElementKind::AssertedContext);
 }
 
+// --- A reference id holding XML white space ------------------------------------------------
+
+/// The ids, holding XML white space, that a tolerant read keeps as written
+/// (SACM23-VAL-020): each as written in an attribute, and as held.
+const SPACED: [(&str, &str); 4] = [
+    ("a b", "a b"),
+    ("a&#9;b", "a\tb"),
+    ("a&#10;b", "a\nb"),
+    ("a&#13;b", "a\rb"),
+];
+
+/// Reads `input` in tolerant mode, which the test expects to read.
+fn read_tolerant(row: &str, what: &str, input: &str) -> Document {
+    match read(Mode::Tolerant, input) {
+        Ok(output) => output.into_document(),
+        Err(error) => panic!("{row}: {what}: a tolerant read refused {input:?}: {error:?}"),
+    }
+}
+
+/// [`in_ap`] holding, besides, a named Claim for each id of [`SPACED`], read
+/// in tolerant mode, which holds each id as written.
+fn spaced_document(row: &str) -> Document {
+    let claims: String = SPACED.iter().map(|&(written, _)| claim(written)).collect();
+    let doc = read_tolerant(row, "Claims with ids holding white space", &in_ap(&claims));
+    for (_, held) in SPACED {
+        assert_eq!(
+            element(row, &doc, held).kind(),
+            ElementKind::Claim,
+            "{row}: setup: the tolerant read does not hold the Claim {held:?} as written"
+        );
+    }
+    doc
+}
+
+/// Asserts that `error` is `InvalidReference` for `end` and `id`, with the
+/// code SACM-ID-002, and a message quoting the id and naming the end.
+fn assert_invalid_reference(row: &str, what: &str, error: &EditError, end: &str, id: &str) {
+    let EditError::InvalidReference {
+        end: found_end,
+        id: found_id,
+        ..
+    } = error
+    else {
+        panic!("{row}: {what}: not InvalidReference: {error:?}");
+    };
+    assert_eq!(
+        (end_name(found_end), found_id.as_str(), error.code()),
+        (end.to_owned(), id, Code::ID_INVALID),
+        "{row}: {what}: not InvalidReference {{ {end}, {id:?} }} (SACM-ID-002)"
+    );
+    let message = error.to_string();
+    assert!(
+        message.contains(&format!("{id:?}")) && message.contains(end),
+        "{row}: {what}: the message {message:?} does not quote the id and name the end"
+    );
+}
+
+fn a_reference_id_holding_white_space_is_refused(row: &str, kind: ElementKind) {
+    let mut doc = spaced_document(row);
+    for (_, held) in SPACED {
+        let what = format!("source [{held:?}]");
+        let error = refuse(
+            row,
+            &what,
+            &mut doc,
+            kind,
+            operation(kind, &spec(&[held], "c1")),
+        );
+        assert_invalid_reference(row, &what, &error, "source", held);
+
+        let what = format!("source [\"c2\", {held:?}]");
+        let error = refuse(
+            row,
+            &what,
+            &mut doc,
+            kind,
+            operation(kind, &spec(&["c2", held], "c1")),
+        );
+        assert_invalid_reference(row, &what, &error, "source", held);
+
+        let what = format!("target {held:?}");
+        let error = refuse(
+            row,
+            &what,
+            &mut doc,
+            kind,
+            operation(kind, &spec(&["c2"], held)),
+        );
+        assert_invalid_reference(row, &what, &error, "target", held);
+
+        let what = format!("reasoning {held:?}");
+        let mut spaced_reasoning = spec(&["c2"], "c1");
+        spaced_reasoning.reasoning = Some(held);
+        let error = refuse(
+            row,
+            &what,
+            &mut doc,
+            kind,
+            operation(kind, &spaced_reasoning),
+        );
+        assert_invalid_reference(row, &what, &error, "reasoning", held);
+    }
+}
+
+#[test]
+fn sacm23_arg_008_create_asserted_inference_refuses_a_reference_id_holding_white_space() {
+    a_reference_id_holding_white_space_is_refused(ARG_008, ElementKind::AssertedInference);
+}
+
+#[test]
+fn sacm23_arg_010_create_asserted_context_refuses_a_reference_id_holding_white_space() {
+    a_reference_id_holding_white_space_is_refused(ARG_010, ElementKind::AssertedContext);
+}
+
+fn the_white_space_check_comes_after_the_count_and_before_the_lookup(row: &str, kind: ElementKind) {
+    let mut doc = spaced_document(row);
+    let (spaced, tabbed) = ("a b", "a\tb");
+    // The four create checks of ADR 0019 come first.
+    let mut missing_parent = spec(&[spaced], spaced);
+    missing_parent.parent = "nowhere";
+    let error = refuse(
+        row,
+        "a missing parent and white-space ends",
+        &mut doc,
+        kind,
+        operation(kind, &missing_parent),
+    );
+    assert!(
+        matches!(&error, EditError::ParentNotFound { parent, .. } if parent.as_str() == "nowhere"),
+        "{row}: a missing parent and white-space ends is not ParentNotFound: {error:?}"
+    );
+    let mut invalid_id = spec(&[spaced], spaced);
+    invalid_id.id = Some("1x");
+    let error = refuse(
+        row,
+        "an invalid id and white-space ends",
+        &mut doc,
+        kind,
+        operation(kind, &invalid_id),
+    );
+    assert!(
+        matches!(&error, EditError::InvalidId { id, .. } if id.as_str() == "1x"),
+        "{row}: an invalid id and white-space ends is not InvalidId: {error:?}"
+    );
+    // No source comes before a white-space target.
+    let what = "no source and a white-space target";
+    let error = refuse(
+        row,
+        what,
+        &mut doc,
+        kind,
+        operation(kind, &spec(&[], spaced)),
+    );
+    assert!(
+        matches!(&error, EditError::TooFewReferences { end: "source", .. }),
+        "{row}: {what} is not TooFewReferences {{ source }}: {error:?}"
+    );
+    // A white-space id comes before a missing one, on any end.
+    let what = "a white-space source and a missing target";
+    let error = refuse(
+        row,
+        what,
+        &mut doc,
+        kind,
+        operation(kind, &spec(&[spaced], "nope")),
+    );
+    assert_invalid_reference(row, what, &error, "source", spaced);
+    let what = "a missing source and a white-space target";
+    let error = refuse(
+        row,
+        what,
+        &mut doc,
+        kind,
+        operation(kind, &spec(&["nope"], spaced)),
+    );
+    assert_invalid_reference(row, what, &error, "target", spaced);
+    let what = "a missing target and a white-space reasoning";
+    let mut spaced_reasoning = spec(&["c2"], "nope");
+    spaced_reasoning.reasoning = Some(spaced);
+    let error = refuse(
+        row,
+        what,
+        &mut doc,
+        kind,
+        operation(kind, &spaced_reasoning),
+    );
+    assert_invalid_reference(row, what, &error, "reasoning", spaced);
+    // The first white-space id is reported: the sources, then the target.
+    let what = "a white-space source and target";
+    let error = refuse(
+        row,
+        what,
+        &mut doc,
+        kind,
+        operation(kind, &spec(&["c2", tabbed], spaced)),
+    );
+    assert_invalid_reference(row, what, &error, "source", tabbed);
+}
+
+#[test]
+fn sacm23_arg_008_create_asserted_inference_checks_white_space_after_no_source_and_before_missing_ids()
+ {
+    the_white_space_check_comes_after_the_count_and_before_the_lookup(
+        ARG_008,
+        ElementKind::AssertedInference,
+    );
+}
+
+#[test]
+fn sacm23_arg_010_create_asserted_context_checks_white_space_after_no_source_and_before_missing_ids()
+ {
+    the_white_space_check_comes_after_the_count_and_before_the_lookup(
+        ARG_010,
+        ElementKind::AssertedContext,
+    );
+}
+
+fn an_id_without_white_space_is_referenced(row: &str, kind: ElementKind) {
+    // A tolerant read holds `1c` and `1r`, which are no NCNames but hold no
+    // white space, as written (SACM23-VAL-020).
+    let mut doc = read_tolerant(
+        row,
+        "ids that are no NCNames, without white space",
+        &in_ap(&format!(
+            "{}\n  <argumentElement xmi:type=\"sacm:ArgumentReasoning\" xmi:id=\"1r\">\
+             <name content=\"R\"/></argumentElement>",
+            claim("1c")
+        )),
+    );
+    let mut by_source = spec(&["c2", "1c"], "c1");
+    by_source.id = Some("by_source");
+    by_source.reasoning = Some("1r");
+    create(row, &mut doc, operation(kind, &by_source));
+    let mut by_target = spec(&["c2"], "1c");
+    by_target.id = Some("by_target");
+    by_target.reasoning = Some("r1");
+    create(row, &mut doc, operation(kind, &by_target));
+    // The same ends with the NCNames c3 and r1 also work.
+    let mut plain = spec(&["c3"], "c1");
+    plain.id = Some("plain");
+    plain.reasoning = Some("r1");
+    create(row, &mut doc, operation(kind, &plain));
+    let expected = [
+        (
+            "by_source",
+            expected_ends(&["c2", "1c"], Some("c1"), Some("1r"), false),
+        ),
+        (
+            "by_target",
+            expected_ends(&["c2"], Some("1c"), Some("r1"), false),
+        ),
+        (
+            "plain",
+            expected_ends(&["c3"], Some("c1"), Some("r1"), false),
+        ),
+    ];
+    for (id, want) in &expected {
+        assert_eq!(
+            &ends(row, &doc, id),
+            want,
+            "{row}: the created {id} does not hold its ends"
+        );
+    }
+    // A tolerant save writes each id as one id, which reads back the same.
+    let text = write_in(row, "the edited document", &doc, Mode::Tolerant);
+    let back = read_tolerant(row, "the edited document, written", &text);
+    for (id, want) in &expected {
+        assert_eq!(
+            &ends(row, &back, id),
+            want,
+            "{row}: {id} does not read back with its ends\n{text}"
+        );
+    }
+    assert_eq!(
+        semantic_compare(&doc, &back),
+        [],
+        "{row}: the tolerant save does not read back equal\n{text}"
+    );
+}
+
+#[test]
+fn sacm23_arg_008_create_asserted_inference_references_an_id_without_white_space() {
+    an_id_without_white_space_is_referenced(ARG_008, ElementKind::AssertedInference);
+}
+
+#[test]
+fn sacm23_arg_010_create_asserted_context_references_an_id_without_white_space() {
+    an_id_without_white_space_is_referenced(ARG_010, ElementKind::AssertedContext);
+}
+
 // --- Item 4: any ArgumentAsset at either end --------------------------------------------------------
 
 fn any_argument_asset_at_either_end_gives_no_finding(row: &str, kind: ElementKind) {
