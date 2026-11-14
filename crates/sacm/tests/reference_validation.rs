@@ -381,6 +381,27 @@ fn sacm23_val_003_the_fixture_gives_one_error_on_its_claim() {
 }
 
 #[test]
+fn sacm23_val_003_the_message_names_the_end_s_declared_type() {
+    let row = VAL_003;
+    for (end, attributes) in [
+        ("citedElement", " isCitation=\"true\" citedElement=\"nope\""),
+        ("abstractForm", " abstractForm=\"nope\""),
+    ] {
+        let what = format!("a Claim with {end}=\"nope\"");
+        let finding = one_finding(row, &what, &in_ap(&claim("c1", attributes, "")), &[VAL_003]);
+        assert_finding(row, &what, &finding, REF, &["c1", "nope"], &[]);
+        assert_eq!(
+            finding.message(),
+            format!(
+                "Claim \"c1\" has the {end} \"nope\", which names no element of the document \
+                 (the end's type is SACMElement)"
+            ),
+            "{row}: {what}: the message"
+        );
+    }
+}
+
+#[test]
 fn sacm23_val_003_forward_cross_root_and_self_references_give_no_finding() {
     let row = VAL_003;
     let cases = [

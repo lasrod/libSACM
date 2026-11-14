@@ -152,7 +152,7 @@ struct Node {
     is_abstract: bool,
     /// The ids each reference end of the element holds, unresolved and in
     /// document order (ADR 0026): only the ends that hold one, each once, in
-    /// [`ReferenceEnd::ALL`] order, and never an empty list.
+    /// no particular order (readers look an end up), and never an empty list.
     references: Vec<(ReferenceEnd, Vec<ElementId>)>,
     /// The handle of the containing element; `None` for a root.
     parent: Option<usize>,
@@ -618,7 +618,9 @@ impl Document {
         if targets.iter().any(|target| target.as_str().is_empty()) {
             return Err(format!("a target of the {} is empty", end.name()));
         }
-        if targets.len() > 1 && !end.is_many() {
+        // Every end of this release is single-valued; the first multi-valued
+        // end (SACM23-ARG-004) adds `ReferenceEnd::is_many` back.
+        if targets.len() > 1 {
             return Err(format!(
                 "the {} holds one target, not {}",
                 end.name(),
@@ -635,13 +637,9 @@ impl Document {
             used.references = used.references.saturating_add(1);
         }
         if !targets.is_empty() {
-            // Kept in `ReferenceEnd::ALL` order.
-            let rank = |end: ReferenceEnd| ReferenceEnd::ALL.iter().position(|&e| e == end);
-            let at = references
-                .iter()
-                .position(|(held, _)| rank(*held) > rank(end))
-                .unwrap_or(references.len());
-            references.insert(at, (end, targets));
+            // In no particular order: every reader looks an end up by
+            // `ReferenceEnd`, and iterates `ReferenceEnd::ALL` for order.
+            references.push((end, targets));
         }
         for target in &old {
             self.release(target, |used| {
@@ -2044,11 +2042,11 @@ mod tests {
     }
 
     #[test]
-    fn references_are_kept_in_table_order_counted_and_released_when_replaced() {
+    fn references_are_read_by_end_counted_and_released_when_replaced() {
         let mut document = two_roots();
         let (p, q) = (ElementId::new("p"), ElementId::new("q"));
         let one = |id: &str| vec![ElementId::new(id)];
-        // Set out of table order; held in it.
+        // Set out of table order; each is read back by its end.
         assert_eq!(
             document.set_references(&p, ReferenceEnd::AbstractForm, one("claim_1")),
             Ok(())

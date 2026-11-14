@@ -530,8 +530,13 @@ impl Pending {
 
     /// Reads `node`, a reference element of the end `end` in `holder`, this
     /// element's node (SACM23-XMI-015): checked whole first
-    /// ([`read_reference`]), then against the attribute (XMI 2.5.1 rule 2h)
-    /// and, on a single-valued end, an earlier element.
+    /// ([`read_reference`]), then against an earlier occurrence, the
+    /// attribute (XMI 2.5.1 rule 2h) or an earlier element.
+    ///
+    /// Every end of this release is single-valued, so any second occurrence
+    /// is `RepeatedValue`. The first multi-valued end (SACM23-ARG-004) adds
+    /// `ReferenceEnd::is_many` back, and appends a later element to the
+    /// targets when the end is not also given as an attribute.
     fn read_reference_element(
         &mut self,
         text: &str,
@@ -540,22 +545,11 @@ impl Pending {
         end: ReferenceEnd,
     ) -> Result<(), ReadError> {
         let target = read_reference(text, node)?;
-        let property = end.name();
-        let has_attribute = holder
-            .attributes()
-            .any(|attribute| is_unqualified(&attribute, property));
-        let given = self
-            .references
-            .iter_mut()
-            .find(|(held, _)| *held == end)
-            .map(|(_, targets)| targets);
-        match given {
-            Some(targets) if end.is_many() && !has_attribute => targets.push(target),
-            Some(_) => {
-                return Err(repeated_value(text, holder, property, &self.id, property));
-            }
-            None => self.references.push((end, vec![target])),
+        if self.references.iter().any(|(given, _)| *given == end) {
+            let property = end.name();
+            return Err(repeated_value(text, holder, property, &self.id, property));
         }
+        self.references.push((end, vec![target]));
         Ok(())
     }
 }
@@ -614,7 +608,9 @@ impl StartTag {
                 ),
             ));
         }
-        if count > 1 && !end.is_many() {
+        // Every end of this release is single-valued (see
+        // `Pending::read_reference_element`).
+        if count > 1 {
             return Err(ReadError::RepeatedValue {
                 element: id.clone(),
                 property: local.to_owned(),

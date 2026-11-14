@@ -2780,6 +2780,7 @@ tests = [
   "crates/sacm/tests/citations_and_abstract_forms.rs::sacm23_base_007_is_citation_on_a_name_content_key_or_value_is_unsupported",
   "crates/sacm/tests/citations_and_abstract_forms.rs::sacm23_base_007_semantic_compare_reports_is_citation_and_cited_element",
   "crates/sacm/tests/citations_and_abstract_forms.rs::sacm23_base_007_is_citation_and_cited_element_differences_come_after_gid_and_before_the_name",
+  "crates/sacm/tests/citations_and_abstract_forms.rs::sacm23_base_007_a_cited_element_difference_displays_both_targets_or_no_cited_element",
 ]
 code = ["crates/sacm/src/model/document.rs", "crates/sacm/src/model/reference.rs", "crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi/output.rs", "crates/sacm/src/compare.rs"]
 
@@ -2811,6 +2812,7 @@ tests = [
   "crates/sacm/tests/citations_and_abstract_forms.rs::sacm23_base_008_is_abstract_and_abstract_form_differences_come_after_is_citation_and_cited_element",
   "crates/sacm/tests/citations_and_abstract_forms.rs::sacm23_base_008_an_abstract_form_of_another_kind_on_an_abstract_element_or_on_itself_round_trips",
   "crates/sacm/tests/citations_and_abstract_forms.rs::sacm23_base_008_an_implementation_constraint_on_a_concrete_element_reads",
+  "crates/sacm/tests/citations_and_abstract_forms.rs::sacm23_base_008_an_abstract_form_difference_displays_both_targets_or_no_abstract_form",
 ]
 code = ["crates/sacm/src/model/document.rs", "crates/sacm/src/model/reference.rs", "crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi/output.rs", "crates/sacm/src/compare.rs"]
 
@@ -2824,6 +2826,7 @@ source = "formal/23-05-08 clause 11; ptc/22-03-13 Argumentation::Assertion.metaC
 kind = "model"
 status = "planned"
 depends_on = ["SACM23-ARG-002", "SACM23-XMI-005"]
+notes = "Slice 0042: as the first multi-valued end, add `ReferenceEnd::is_many()` back (reader appending, `set_references`), and kill the two mutants excluded in docs/quality/mutants-triage.md for it (the id separator in `push_flags_and_references`, the dedupe in `dangling_references`), removing their exclusions."
 
 [[row]]
 id = "SACM23-ARG-005"
@@ -3232,6 +3235,7 @@ tests = [
   "crates/sacm/tests/reference_validation.rs::sacm23_val_003_each_dangling_end_and_each_referrer_is_its_own_finding",
   "crates/sacm/tests/reference_validation.rs::sacm23_val_003_a_strict_write_refuses_and_a_tolerant_write_keeps_the_reference",
   "crates/sacm/tests/reference_validation.rs::sacm23_val_003_ref_dangling_is_sacm_ref_001_and_its_catalog_row_names_it_and_the_row",
+  "crates/sacm/tests/reference_validation.rs::sacm23_val_003_the_message_names_the_end_s_declared_type",
 ]
 code = ["crates/sacm/src/validation/references.rs"]
 
@@ -3546,6 +3550,7 @@ source = "D-ATOMIC"
 kind = "editing"
 status = "planned"
 depends_on = ["LIB-EDIT-002", "SACM23-ARG-007", "SACM23-ARG-013", "SACM23-VAL-004"]
+notes = "Slice 0042: when an edit can replace a reference, kill the `IdUse::is_unused -> false` mutant excluded for this row in docs/quality/mutants-triage.md, and remove its exclusion."
 
 [[row]]
 id = "LIB-EDIT-010"

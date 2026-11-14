@@ -5,7 +5,10 @@
 //! the XMI reader, the writer, the id pre-pass, comparison and validation
 //! iterate, so that the name read, the name written and the order written
 //! cannot drift apart. A later end adds one entry here, one accessor and one
-//! `Difference` variant. Crate-private, as the role tables of
+//! `Difference` variant. Every end of this release is single-valued; the
+//! first multi-valued one (SACM23-ARG-004) also adds `is_many()`, which the
+//! reader (an element appended to its end's targets) and
+//! `Document::set_references` then consult. Crate-private, as the role tables of
 //! [`containment`](super::containment) are.
 
 use super::{AbstractClass, DeclaredType, ElementKind};
@@ -52,13 +55,6 @@ impl ReferenceEnd {
         match self {
             Self::CitedElement => "citedElement",
             Self::AbstractForm => "abstractForm",
-        }
-    }
-
-    /// Whether the end holds more than one target: its upper bound is `*`.
-    pub(crate) const fn is_many(self) -> bool {
-        match self {
-            Self::CitedElement | Self::AbstractForm => false,
         }
     }
 
@@ -119,7 +115,6 @@ mod tests {
             ReferenceEnd::ALL.map(ReferenceEnd::name),
             ["citedElement", "abstractForm"]
         );
-        assert!(ReferenceEnd::ALL.iter().all(|end| !end.is_many()));
         assert!(ReferenceEnd::ALL.iter().all(|end| end.clause() == "8.2"));
     }
 }

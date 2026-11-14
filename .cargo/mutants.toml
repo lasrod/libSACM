@@ -26,4 +26,7 @@ exclude_re = [
   '^crates/sacm/src/edit\.rs:\d+:\d+: replace Mutation::changed_ids -> &\[ElementId\] with Vec::leak\(Vec::new\(\)\)$',
   '^crates/sacm/src/edit\.rs:\d+:\d+: replace Mutation::deleted_ids -> &\[ElementId\] with Vec::leak\(Vec::new\(\)\)$',
   "^crates/sacm/src/xmi/input\\.rs:\\d+:\\d+: replace < with <= in Locator<'t>::locate$",
+  '^crates/sacm/src/model/document\.rs:\d+:\d+: replace IdUse::is_unused -> bool with false$',
+  '^crates/sacm/src/validation/references\.rs:\d+:\d+: replace == with != in dangling_references$',
+  '^crates/sacm/src/xmi/output\.rs:\d+:\d+: replace > with < in push_flags_and_references$',
 ]

@@ -1040,6 +1040,47 @@ fn sacm23_base_008_semantic_compare_reports_is_abstract_and_abstract_form() {
     each_value_is_one_difference(ABSTRACT);
 }
 
+/// The exact `Display` of the reference's `Difference`: each side is the
+/// quoted id, or `no <end>` when it has none.
+fn the_end_difference_displays_both_targets(feature: Feature) {
+    let row = feature.row;
+    let end = feature.end;
+    let cases = [
+        (
+            "no target and c2",
+            feature.end_difference("c1", None, Some("c2")),
+            format!("element \"c1\" differs in {end}: no {end} on the left, \"c2\" on the right"),
+        ),
+        (
+            "c2 and no target",
+            feature.end_difference("c1", Some("c2"), None),
+            format!("element \"c1\" differs in {end}: \"c2\" on the left, no {end} on the right"),
+        ),
+        (
+            "c2 and c3",
+            feature.end_difference("c1", Some("c2"), Some("c3")),
+            format!("element \"c1\" differs in {end}: \"c2\" on the left, \"c3\" on the right"),
+        ),
+    ];
+    for (what, difference, expected) in cases {
+        assert_eq!(
+            difference.to_string(),
+            expected,
+            "{row}: {what}: the Display of {difference:?}"
+        );
+    }
+}
+
+#[test]
+fn sacm23_base_007_a_cited_element_difference_displays_both_targets_or_no_cited_element() {
+    the_end_difference_displays_both_targets(CITATION);
+}
+
+#[test]
+fn sacm23_base_008_an_abstract_form_difference_displays_both_targets_or_no_abstract_form() {
+    the_end_difference_displays_both_targets(ABSTRACT);
+}
+
 /// The differences of `c1` between a left and a right document in which it
 /// moves from `a1` to `a2` and every value from `gid` to the name differs.
 fn every_difference_of_c1(row: &str) -> Vec<Difference> {
