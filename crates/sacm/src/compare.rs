@@ -6,7 +6,11 @@
 //! moved to another parent is one [`Difference::Parent`], not a removal and an
 //! addition. For each element both documents hold, the comparison checks its
 //! kind, parent, `gid`, its `isCitation` and `isAbstract` flags and the ids
-//! its `citedElement` and `abstractForm` hold (SACM 2.3 §8.2), its name, the
+//! its `citedElement` and `abstractForm` hold (SACM 2.3 §8.2), the
+//! `isCounter` flag and the ids of the `metaClaim`, `reasoning`, `source`,
+//! `target` and `structure` ends of the argumentation kinds (§11.10,
+//! §11.12, §11.13; the multi-valued `metaClaim` and `source` in order, with
+//! repeats), its name, the
 //! `xmi:id` of its name
 //! ([`SacmElement::name_id`](crate::model::SacmElement::name_id)), its
 //! `content` and `key` with their ids
@@ -201,6 +205,18 @@ pub enum Difference {
         /// The flag in the right document.
         right: bool,
     },
+    /// The asserted relationship's `isCounter` (SACM 2.3 §11.13,
+    /// [`SacmElement::is_counter`](crate::model::SacmElement::is_counter))
+    /// differs on each side. Absent is `false`, and so is the flag of a
+    /// kind that has none.
+    IsCounter {
+        /// The element's id.
+        id: ElementId,
+        /// The flag in the left document.
+        left: bool,
+        /// The flag in the right document.
+        right: bool,
+    },
     /// The element's `citedElement` (SACM 2.3 §8.2,
     /// [`SacmElement::cited_element`](crate::model::SacmElement::cited_element))
     /// differs on each side; `None` is no cited element.
@@ -225,6 +241,68 @@ pub enum Difference {
         /// The abstract form's id in the left document, or `None`.
         left: Option<ElementId>,
         /// The abstract form's id in the right document, or `None`.
+        right: Option<ElementId>,
+    },
+    /// The Assertion's `metaClaim` ids (SACM 2.3 §11.10,
+    /// [`SacmElement::meta_claims`](crate::model::SacmElement::meta_claims))
+    /// differ on each side.
+    ///
+    /// The ids are compared in order and with repeats (D-ORDER, ADR 0027):
+    /// `[m1, m2]` and `[m2, m1]` differ, and so do `[m1]` and `[m1, m1]`.
+    MetaClaims {
+        /// The element's id.
+        id: ElementId,
+        /// The meta-claim ids in the left document, in order.
+        left: Vec<ElementId>,
+        /// The meta-claim ids in the right document, in order.
+        right: Vec<ElementId>,
+    },
+    /// The asserted relationship's `reasoning` (SACM 2.3 §11.13,
+    /// [`SacmElement::reasoning`](crate::model::SacmElement::reasoning))
+    /// differs on each side; `None` is no reasoning. Compared as
+    /// [`CitedElement`](Self::CitedElement) is.
+    Reasoning {
+        /// The element's id.
+        id: ElementId,
+        /// The reasoning's id in the left document, or `None`.
+        left: Option<ElementId>,
+        /// The reasoning's id in the right document, or `None`.
+        right: Option<ElementId>,
+    },
+    /// The asserted relationship's `source` ids (SACM 2.3 §11.13,
+    /// [`SacmElement::sources`](crate::model::SacmElement::sources)) differ
+    /// on each side. Compared in order and with repeats, as
+    /// [`MetaClaims`](Self::MetaClaims) are.
+    Sources {
+        /// The element's id.
+        id: ElementId,
+        /// The source ids in the left document, in order.
+        left: Vec<ElementId>,
+        /// The source ids in the right document, in order.
+        right: Vec<ElementId>,
+    },
+    /// The asserted relationship's `target` (SACM 2.3 §11.13,
+    /// [`SacmElement::target`](crate::model::SacmElement::target)) differs
+    /// on each side; `None` is no target. Compared as
+    /// [`CitedElement`](Self::CitedElement) is.
+    Target {
+        /// The element's id.
+        id: ElementId,
+        /// The target's id in the left document, or `None`.
+        left: Option<ElementId>,
+        /// The target's id in the right document, or `None`.
+        right: Option<ElementId>,
+    },
+    /// The `ArgumentReasoning`'s `structure` (SACM 2.3 §11.12,
+    /// [`SacmElement::structure`](crate::model::SacmElement::structure))
+    /// differs on each side; `None` is no structure. Compared as
+    /// [`CitedElement`](Self::CitedElement) is.
+    Structure {
+        /// The element's id.
+        id: ElementId,
+        /// The structure's id in the left document, or `None`.
+        left: Option<ElementId>,
+        /// The structure's id in the right document, or `None`.
         right: Option<ElementId>,
     },
     /// The element has a different `name` (SACM 2.3 §8.6) on each side;
@@ -390,8 +468,14 @@ impl Difference {
             | Self::Gid { id, .. }
             | Self::IsCitation { id, .. }
             | Self::IsAbstract { id, .. }
+            | Self::IsCounter { id, .. }
             | Self::CitedElement { id, .. }
             | Self::AbstractForm { id, .. }
+            | Self::MetaClaims { id, .. }
+            | Self::Reasoning { id, .. }
+            | Self::Sources { id, .. }
+            | Self::Target { id, .. }
+            | Self::Structure { id, .. }
             | Self::Name { id, .. }
             | Self::NameId { id, .. }
             | Self::Content { id, .. }
@@ -416,15 +500,27 @@ impl Difference {
         }
     }
 
-    /// The flag and the reference end a difference in one is about, by
-    /// their XMI names: `isAbstract` and `abstractForm` for theirs, and
-    /// `isCitation` and `citedElement` otherwise.
-    fn flag_and_end(&self) -> (&'static str, &'static str) {
+    /// The flag a difference in one is about, by its XMI name:
+    /// `isAbstract` and `isCounter` for theirs, and `isCitation` otherwise.
+    fn flag(&self) -> &'static str {
         match self {
-            Self::IsAbstract { .. } | Self::AbstractForm { .. } => {
-                (Flag::IsAbstract.name(), ReferenceEnd::AbstractForm.name())
-            }
-            _ => (Flag::IsCitation.name(), ReferenceEnd::CitedElement.name()),
+            Self::IsAbstract { .. } => Flag::IsAbstract.name(),
+            Self::IsCounter { .. } => Flag::IsCounter.name(),
+            _ => Flag::IsCitation.name(),
+        }
+    }
+
+    /// The reference end a difference in one is about, by its XMI name:
+    /// `citedElement` for its own and for any variant that is about no end.
+    fn end(&self) -> &'static str {
+        match self {
+            Self::AbstractForm { .. } => ReferenceEnd::AbstractForm.name(),
+            Self::MetaClaims { .. } => ReferenceEnd::MetaClaim.name(),
+            Self::Reasoning { .. } => ReferenceEnd::Reasoning.name(),
+            Self::Sources { .. } => ReferenceEnd::Source.name(),
+            Self::Target { .. } => ReferenceEnd::Target.name(),
+            Self::Structure { .. } => ReferenceEnd::Structure.name(),
+            _ => ReferenceEnd::CitedElement.name(),
         }
     }
 }
@@ -470,14 +566,20 @@ impl fmt::Display for Difference {
                 Gid(left.as_deref()),
                 Gid(right.as_deref())
             ),
-            Self::IsCitation { id, left, right } | Self::IsAbstract { id, left, right } => write!(
+            Self::IsCitation { id, left, right }
+            | Self::IsAbstract { id, left, right }
+            | Self::IsCounter { id, left, right } => write!(
                 f,
                 "element {:?} differs in {}: {left} on the left, {right} on the right",
                 id.as_str(),
-                self.flag_and_end().0
+                self.flag()
             ),
-            Self::CitedElement { id, left, right } | Self::AbstractForm { id, left, right } => {
-                let end = self.flag_and_end().1;
+            Self::CitedElement { id, left, right }
+            | Self::AbstractForm { id, left, right }
+            | Self::Reasoning { id, left, right }
+            | Self::Target { id, left, right }
+            | Self::Structure { id, left, right } => {
+                let end = self.end();
                 write!(
                     f,
                     "element {:?} differs in {end}: {} on the left, {} on the right",
@@ -486,6 +588,14 @@ impl fmt::Display for Difference {
                     Target(right.as_ref(), end)
                 )
             }
+            Self::MetaClaims { id, left, right } | Self::Sources { id, left, right } => write!(
+                f,
+                "element {:?} differs in {}: {} on the left, {} on the right",
+                id.as_str(),
+                self.end(),
+                Ids(left),
+                Ids(right)
+            ),
             Self::Name { id, left, right } => write!(
                 f,
                 "element {:?} differs in name: {} on the left, {} on the right",
@@ -698,7 +808,8 @@ impl fmt::Display for Declaration {
 ///
 /// Elements are matched by id across the whole document. For an element both
 /// documents hold, its kind, parent, `gid`, `isCitation`, `isAbstract`,
-/// `citedElement`, `abstractForm`, name, its name's `xmi:id`, its
+/// `isCounter`, `citedElement`, `abstractForm`, `metaClaim`, `reasoning`,
+/// `source`, `target`, `structure`, name, its name's `xmi:id`, its
 /// `content` and `key` with their ids, `assertionDeclaration` and the
 /// relative order of its children are compared, even when its kind differs.
 /// The relative order of the roots is compared too. The per-kind counters
@@ -724,8 +835,13 @@ impl fmt::Display for Declaration {
 ///    else [`Kind`](Difference::Kind), [`Parent`](Difference::Parent),
 ///    [`Gid`](Difference::Gid), [`IsCitation`](Difference::IsCitation),
 ///    [`IsAbstract`](Difference::IsAbstract),
+///    [`IsCounter`](Difference::IsCounter),
 ///    [`CitedElement`](Difference::CitedElement),
-///    [`AbstractForm`](Difference::AbstractForm), [`Name`](Difference::Name),
+///    [`AbstractForm`](Difference::AbstractForm),
+///    [`MetaClaims`](Difference::MetaClaims),
+///    [`Reasoning`](Difference::Reasoning), [`Sources`](Difference::Sources),
+///    [`Target`](Difference::Target), [`Structure`](Difference::Structure),
+///    [`Name`](Difference::Name),
 ///    [`NameId`](Difference::NameId), [`Content`](Difference::Content),
 ///    [`ContentId`](Difference::ContentId),
 ///    [`ContentValueIds`](Difference::ContentValueIds),
@@ -843,18 +959,10 @@ impl Found<'_> {
                 match flag {
                     Flag::IsCitation => Difference::IsCitation { id, left, right },
                     Flag::IsAbstract => Difference::IsAbstract { id, left, right },
+                    Flag::IsCounter => Difference::IsCounter { id, left, right },
                 }
             }
-            Self::Reference(end, ours, theirs) => {
-                let id = ours.id.clone();
-                // Both ends are single-valued: each holds at most one id.
-                let left = ours.references(end).first().cloned();
-                let right = theirs.references(end).first().cloned();
-                match end {
-                    ReferenceEnd::CitedElement => Difference::CitedElement { id, left, right },
-                    ReferenceEnd::AbstractForm => Difference::AbstractForm { id, left, right },
-                }
-            }
+            Self::Reference(end, ours, theirs) => reference_difference(end, &ours, &theirs),
             Self::Name(ours, theirs) => Difference::Name {
                 id: ours.id.clone(),
                 left: ours.name.cloned(),
@@ -907,6 +1015,38 @@ impl Found<'_> {
                 kind: element.kind(),
             },
         }
+    }
+}
+
+/// The difference in the targets of the reference end `end` of one element,
+/// `ours` on the left and `theirs` on the right: the whole lists of a
+/// multi-valued end, in order, and the one id or `None` of a single-valued
+/// end.
+fn reference_difference(
+    end: ReferenceEnd,
+    ours: &Compared<'_>,
+    theirs: &Compared<'_>,
+) -> Difference {
+    let id = ours.id.clone();
+    let (all_left, all_right) = (ours.references(end), theirs.references(end));
+    // A single-valued end holds at most one id.
+    let (left, right) = (all_left.first().cloned(), all_right.first().cloned());
+    match end {
+        ReferenceEnd::CitedElement => Difference::CitedElement { id, left, right },
+        ReferenceEnd::AbstractForm => Difference::AbstractForm { id, left, right },
+        ReferenceEnd::MetaClaim => Difference::MetaClaims {
+            id,
+            left: all_left.to_vec(),
+            right: all_right.to_vec(),
+        },
+        ReferenceEnd::Reasoning => Difference::Reasoning { id, left, right },
+        ReferenceEnd::Source => Difference::Sources {
+            id,
+            left: all_left.to_vec(),
+            right: all_right.to_vec(),
+        },
+        ReferenceEnd::Target => Difference::Target { id, left, right },
+        ReferenceEnd::Structure => Difference::Structure { id, left, right },
     }
 }
 
@@ -1061,3 +1201,72 @@ impl PartialEq for Document {
 }
 
 impl Eq for Document {}
+
+#[cfg(test)]
+mod tests {
+    use super::Difference;
+    use crate::model::ElementId;
+
+    /// The argumentation variants name their feature by its XMI name, and
+    /// show both sides (ADR 0027).
+    #[test]
+    fn the_argumentation_differences_display_their_feature_and_both_sides() {
+        let id = || ElementId::new("x");
+        let ids = |ids: &[&str]| ids.iter().map(|id| ElementId::new(*id)).collect();
+        let one = |value: &str| Some(ElementId::new(value));
+        let cases = [
+            (
+                Difference::IsCounter {
+                    id: id(),
+                    left: true,
+                    right: false,
+                },
+                "element \"x\" differs in isCounter: true on the left, false on the right",
+            ),
+            (
+                Difference::MetaClaims {
+                    id: id(),
+                    left: ids(&["m1", "m2"]),
+                    right: ids(&[]),
+                },
+                "element \"x\" differs in metaClaim: [\"m1\", \"m2\"] on the left, [] on the right",
+            ),
+            (
+                Difference::Reasoning {
+                    id: id(),
+                    left: one("r1"),
+                    right: None,
+                },
+                "element \"x\" differs in reasoning: \"r1\" on the left, no reasoning on the right",
+            ),
+            (
+                Difference::Sources {
+                    id: id(),
+                    left: ids(&["c1"]),
+                    right: ids(&["c1", "c1"]),
+                },
+                "element \"x\" differs in source: [\"c1\"] on the left, [\"c1\", \"c1\"] on the right",
+            ),
+            (
+                Difference::Target {
+                    id: id(),
+                    left: None,
+                    right: one("c2"),
+                },
+                "element \"x\" differs in target: no target on the left, \"c2\" on the right",
+            ),
+            (
+                Difference::Structure {
+                    id: id(),
+                    left: one("p"),
+                    right: one("q"),
+                },
+                "element \"x\" differs in structure: \"p\" on the left, \"q\" on the right",
+            ),
+        ];
+        for (difference, expected) in cases {
+            assert_eq!(difference.to_string(), expected);
+            assert_eq!(difference.element_id(), Some(&id()));
+        }
+    }
+}

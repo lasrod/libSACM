@@ -1,38 +1,79 @@
-//! The `SACMElement` flags and reference ends (formal/23-05-08 §8.2;
-//! SACM23-BASE-007, SACM23-BASE-008, SACM23-XMI-005; ADR 0026).
+//! The Boolean flags and the non-containment reference ends of the classes
+//! the model holds (formal/23-05-08 §8.2, §11.10, §11.12, §11.13;
+//! SACM23-BASE-007, SACM23-BASE-008, SACM23-XMI-005, SACM23-ARG-004,
+//! SACM23-ARG-005, SACM23-ARG-007; ADR 0026, ADR 0027).
 //!
 //! Two crate-private tables, [`Flag::ALL`] and [`ReferenceEnd::ALL`], which
 //! the XMI reader, the writer, the id pre-pass, comparison and validation
 //! iterate, so that the name read, the name written and the order written
-//! cannot drift apart. A later end adds one entry here, one accessor and one
-//! `Difference` variant. Every end of this release is single-valued; the
-//! first multi-valued one (SACM23-ARG-004) also adds `is_many()`, which the
-//! reader (an element appended to its end's targets) and
-//! `Document::set_references` then consult. Crate-private, as the role tables of
-//! [`containment`](super::containment) are.
+//! cannot drift apart. Each entry names the class that owns it, and
+//! [`OWNERS`] orders those classes superclass first, the order `xmi::write`
+//! writes their features in. A later end adds one entry here, one accessor
+//! and one `Difference` variant. A multi-valued end ([`ReferenceEnd::is_many`])
+//! holds every id of its attribute, and each reference element appends one;
+//! a single-valued one holds at most one. Crate-private, as the role tables
+//! of [`containment`](super::containment) are.
 
 use super::{AbstractClass, DeclaredType, ElementKind};
 
-/// A Boolean property of every `SACMElement` (§8.2), `false` by default.
+/// The classes that own a flag, the `assertionDeclaration` or a reference
+/// end, superclass first: the order in which `xmi::write` writes each one's
+/// features (XMI 2.5.1 Annex B.5.2; ADR 0027). Within a class it writes the
+/// flags, then, on `Assertion`, the declaration, then the ends.
+pub(crate) const OWNERS: [DeclaredType; 4] = [
+    DeclaredType::Abstract(AbstractClass::SACMElement),
+    DeclaredType::Abstract(AbstractClass::Assertion),
+    DeclaredType::Abstract(AbstractClass::AssertedRelationship),
+    DeclaredType::Kind(ElementKind::ArgumentReasoning),
+];
+
+/// A Boolean property of an element, `false` by default.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[expect(
+    clippy::enum_variant_names,
+    reason = "the variants are the metamodel's names: isCitation, isAbstract, isCounter"
+)]
 pub(crate) enum Flag {
-    /// `isCitation[0..1]=false`: whether the element cites another.
+    /// `isCitation[0..1]=false` of every `SACMElement` (§8.2): whether the
+    /// element cites another.
     IsCitation,
-    /// `isAbstract[0..1]=false`: whether the element is abstract.
+    /// `isAbstract[0..1]=false` of every `SACMElement` (§8.2): whether the
+    /// element is abstract.
     IsAbstract,
+    /// `isCounter:Boolean[1] = false` of every `AssertedRelationship`
+    /// (§11.13): whether the relationship counters its declared purpose.
+    IsCounter,
 }
 
 impl Flag {
-    /// Every flag, in the order `xmi::write` writes them.
-    pub(crate) const ALL: [Flag; 2] = [Flag::IsCitation, Flag::IsAbstract];
+    /// Every flag, in the order `compare` reports them.
+    pub(crate) const ALL: [Flag; 3] = [Flag::IsCitation, Flag::IsAbstract, Flag::IsCounter];
 
     /// The flag's name, spelled as in the machine-readable model.
     pub(crate) const fn name(self) -> &'static str {
         match self {
             Self::IsCitation => "isCitation",
             Self::IsAbstract => "isAbstract",
+            Self::IsCounter => "isCounter",
         }
     }
+
+    /// The class that owns the flag: an element of a kind it admits has it.
+    pub(crate) const fn owner(self) -> DeclaredType {
+        match self {
+            Self::IsCitation | Self::IsAbstract => {
+                DeclaredType::Abstract(AbstractClass::SACMElement)
+            }
+            Self::IsCounter => DeclaredType::Abstract(AbstractClass::AssertedRelationship),
+        }
+    }
+}
+
+/// The flag named `local` that an element of `kind` has, if any.
+pub(crate) fn flag_named(kind: ElementKind, local: &str) -> Option<Flag> {
+    Flag::ALL
+        .into_iter()
+        .find(|flag| flag.name() == local && flag.owner().admits(kind))
 }
 
 /// A non-containment reference end, which holds the ids of its targets
@@ -43,18 +84,42 @@ pub(crate) enum ReferenceEnd {
     CitedElement,
     /// `abstractForm:SACMElement[0..1]` of every `SACMElement` (§8.2).
     AbstractForm,
+    /// `metaClaim:Claim[0..*]` of every `Assertion` (§11.10).
+    MetaClaim,
+    /// `reasoning:ArgumentReasoning[0..1]` of every `AssertedRelationship`
+    /// (§11.13).
+    Reasoning,
+    /// `source:ArgumentAsset[1..*]` of every `AssertedRelationship` (§11.13).
+    Source,
+    /// `target:ArgumentAsset[1]` of every `AssertedRelationship` (§11.13).
+    Target,
+    /// `structure:ArgumentPackage[0..1]` of an `ArgumentReasoning` (§11.12).
+    Structure,
 }
 
 impl ReferenceEnd {
-    /// Every end, in the order `xmi::write` writes them, after the flags.
-    pub(crate) const ALL: [ReferenceEnd; 2] =
-        [ReferenceEnd::CitedElement, ReferenceEnd::AbstractForm];
+    /// Every end, in the order `xmi::write` writes the ends of one class and
+    /// `compare` reports them (ptc/22-03-13 order within each class).
+    pub(crate) const ALL: [ReferenceEnd; 7] = [
+        ReferenceEnd::CitedElement,
+        ReferenceEnd::AbstractForm,
+        ReferenceEnd::MetaClaim,
+        ReferenceEnd::Reasoning,
+        ReferenceEnd::Source,
+        ReferenceEnd::Target,
+        ReferenceEnd::Structure,
+    ];
 
     /// The end's name, spelled as in the machine-readable model.
     pub(crate) const fn name(self) -> &'static str {
         match self {
             Self::CitedElement => "citedElement",
             Self::AbstractForm => "abstractForm",
+            Self::MetaClaim => "metaClaim",
+            Self::Reasoning => "reasoning",
+            Self::Source => "source",
+            Self::Target => "target",
+            Self::Structure => "structure",
         }
     }
 
@@ -62,7 +127,16 @@ impl ReferenceEnd {
     pub(crate) const fn clause(self) -> &'static str {
         match self {
             Self::CitedElement | Self::AbstractForm => "8.2",
+            Self::MetaClaim => "11.10",
+            Self::Structure => "11.12",
+            Self::Reasoning | Self::Source | Self::Target => "11.13",
         }
+    }
+
+    /// Whether the end holds any number of targets (`[0..*]` or `[1..*]`),
+    /// rather than at most one.
+    pub(crate) const fn is_many(self) -> bool {
+        matches!(self, Self::MetaClaim | Self::Source)
     }
 
     /// The class that owns the end: an element of a kind it admits has it.
@@ -71,6 +145,11 @@ impl ReferenceEnd {
             Self::CitedElement | Self::AbstractForm => {
                 DeclaredType::Abstract(AbstractClass::SACMElement)
             }
+            Self::MetaClaim => DeclaredType::Abstract(AbstractClass::Assertion),
+            Self::Reasoning | Self::Source | Self::Target => {
+                DeclaredType::Abstract(AbstractClass::AssertedRelationship)
+            }
+            Self::Structure => DeclaredType::Kind(ElementKind::ArgumentReasoning),
         }
     }
 
@@ -80,6 +159,10 @@ impl ReferenceEnd {
             Self::CitedElement | Self::AbstractForm => {
                 DeclaredType::Abstract(AbstractClass::SACMElement)
             }
+            Self::MetaClaim => DeclaredType::Kind(ElementKind::Claim),
+            Self::Reasoning => DeclaredType::Kind(ElementKind::ArgumentReasoning),
+            Self::Source | Self::Target => DeclaredType::Abstract(AbstractClass::ArgumentAsset),
+            Self::Structure => DeclaredType::Kind(ElementKind::ArgumentPackage),
         }
     }
 }
@@ -93,28 +176,95 @@ pub(crate) fn reference_end_named(kind: ElementKind, local: &str) -> Option<Refe
 
 #[cfg(test)]
 mod tests {
-    use super::{Flag, ReferenceEnd, reference_end_named};
-    use crate::model::ElementKind;
+    use super::{Flag, OWNERS, ReferenceEnd, flag_named, reference_end_named};
+    use crate::model::{AbstractClass, ElementKind};
 
     #[test]
-    fn every_kind_has_both_ends_by_name_and_no_other() {
+    fn every_kind_has_its_classes_ends_and_flags_by_name_and_no_other() {
         for &kind in ElementKind::ALL {
             for end in ReferenceEnd::ALL {
-                assert_eq!(reference_end_named(kind, end.name()), Some(end));
-                assert!(end.target().admits(kind), "{kind}");
+                let expected = end.owner().admits(kind).then_some(end);
+                assert_eq!(reference_end_named(kind, end.name()), expected, "{kind}");
             }
+            for flag in Flag::ALL {
+                let expected = flag.owner().admits(kind).then_some(flag);
+                assert_eq!(flag_named(kind, flag.name()), expected, "{kind}");
+            }
+            // Every kind has the SACMElement ends and flags.
+            assert!(reference_end_named(kind, "citedElement").is_some());
+            assert!(flag_named(kind, "isAbstract").is_some());
             assert_eq!(reference_end_named(kind, "isCitation"), None);
             assert_eq!(reference_end_named(kind, "citedelement"), None);
+            assert_eq!(flag_named(kind, "citedElement"), None);
         }
+        let relationship = ElementKind::AssertedInference;
+        assert!(relationship.is_a(AbstractClass::AssertedRelationship));
+        assert_eq!(flag_named(relationship, "isCounter"), Some(Flag::IsCounter));
+        assert_eq!(flag_named(ElementKind::Claim, "isCounter"), None);
+        assert_eq!(
+            reference_end_named(ElementKind::Claim, "metaClaim"),
+            Some(ReferenceEnd::MetaClaim)
+        );
+        assert_eq!(reference_end_named(ElementKind::Claim, "source"), None);
+        assert_eq!(
+            reference_end_named(ElementKind::ArgumentReasoning, "structure"),
+            Some(ReferenceEnd::Structure)
+        );
+        assert_eq!(
+            reference_end_named(ElementKind::ArgumentReasoning, "metaClaim"),
+            None
+        );
     }
 
     #[test]
     fn names_are_the_models_spelling_in_write_order() {
-        assert_eq!(Flag::ALL.map(Flag::name), ["isCitation", "isAbstract"]);
+        assert_eq!(
+            Flag::ALL.map(Flag::name),
+            ["isCitation", "isAbstract", "isCounter"]
+        );
         assert_eq!(
             ReferenceEnd::ALL.map(ReferenceEnd::name),
-            ["citedElement", "abstractForm"]
+            [
+                "citedElement",
+                "abstractForm",
+                "metaClaim",
+                "reasoning",
+                "source",
+                "target",
+                "structure"
+            ]
         );
-        assert!(ReferenceEnd::ALL.iter().all(|end| end.clause() == "8.2"));
+        assert_eq!(
+            ReferenceEnd::ALL.map(ReferenceEnd::clause),
+            ["8.2", "8.2", "11.10", "11.13", "11.13", "11.13", "11.12"]
+        );
+        assert_eq!(
+            ReferenceEnd::ALL.map(ReferenceEnd::is_many),
+            [false, false, true, false, true, false, false]
+        );
+        // Every owner is in OWNERS, so the writer writes every feature.
+        for owner in ReferenceEnd::ALL
+            .map(ReferenceEnd::owner)
+            .into_iter()
+            .chain(Flag::ALL.map(Flag::owner))
+        {
+            assert!(OWNERS.contains(&owner), "{}", owner.name());
+        }
+    }
+
+    #[test]
+    fn targets_are_typed_as_the_model_declares() {
+        assert_eq!(
+            ReferenceEnd::ALL.map(|end| end.target().name()),
+            [
+                "SACMElement",
+                "SACMElement",
+                "Claim",
+                "ArgumentReasoning",
+                "ArgumentAsset",
+                "ArgumentAsset",
+                "ArgumentPackage"
+            ]
+        );
     }
 }

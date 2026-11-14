@@ -1105,7 +1105,7 @@ fn sacm23_xmi_001_unread_content_of_a_root_is_unsupported_at_that_content() {
     let children = [
         "<foo/>",
         "<artifactPackage xmi:id=\"x\"/>",
-        "<argumentElement xsi:type=\"sacm:AssertedInference\" xmi:id=\"x\"/>",
+        "<argumentElement xsi:type=\"sacm:ArgumentPackageInterface\" xmi:id=\"x\"/>",
         "<xmi:Extension/>",
         "<sacm:isCitation>true</sacm:isCitation>",
         "<sacm:citedElement xmi:idref=\"p\"/>",

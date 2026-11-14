@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-VAL-005: the AssertedInference i1 has neither a source (§11.13 source:ArgumentAsset[1..*]) nor a target (target:ArgumentAsset[1]). It reads in both modes and is kept; validate reports one SACM-MULT-001 Error for each missing end, so a strict write refuses it. Every other element is named and valid. Hand-written; no third-party content. -->
+<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+  <name lang="en" content="Arguments"/>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+    <name lang="en" content="The system is acceptably safe"/>
+  </argumentElement>
+  <argumentElement xmi:type="sacm:AssertedInference" xmi:id="i1">
+    <name lang="en" content="An inference that relates nothing"/>
+  </argumentElement>
+</sacm:ArgumentPackage>

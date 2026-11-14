@@ -14,6 +14,9 @@
 //! | [`CreateAssuranceCasePackage`] | an `AssuranceCasePackage` (§9.2) | [`root`](CreateAssuranceCasePackage::root) | [`new`](CreateAssuranceCasePackage::new) |
 //! | [`CreateArgumentPackage`] | an `ArgumentPackage` (§11.4) | [`root`](CreateArgumentPackage::root) | [`new`](CreateArgumentPackage::new) |
 //! | [`CreateClaim`] | a `Claim` (§11.11) | no | [`new`](CreateClaim::new) |
+//! | [`CreateArgumentReasoning`] | an `ArgumentReasoning` (§11.12), with an optional `structure` | no | [`new`](CreateArgumentReasoning::new) |
+//! | [`CreateAssertedInference`] | an `AssertedInference` (§11.14), with its sources and target, and an optional `reasoning` and `isCounter` | no | [`new`](CreateAssertedInference::new) |
+//! | [`CreateAssertedContext`] | an `AssertedContext` (§11.16), with its sources and target, and an optional `reasoning` and `isCounter` | no | [`new`](CreateAssertedContext::new) |
 //! | [`CreateDescription`] | a `Description` (§8.9) | no | [`new`](CreateDescription::new) |
 //! | [`CreateImplementationConstraint`] | an `ImplementationConstraint` (§8.8) | no | [`new`](CreateImplementationConstraint::new) |
 //! | [`CreateNote`] | a `Note` (§8.11) | no | [`new`](CreateNote::new) |
@@ -39,6 +42,17 @@
 //! `key`) as a [`MultiLangString`](crate::model::MultiLangString), stored
 //! exactly as given; a `LangString` converts into one with one value. A
 //! `UtilityElement` contains no elements, so it is never a parent.
+//!
+//! An `ArgumentReasoning` and the asserted relationships reference other
+//! elements (ADR 0027). An asserted relationship takes its sources (at least
+//! one, in order, repeats kept) and its target when it is created, as SACM
+//! requires (§11.13 `source:ArgumentAsset[1..*]`, `target:ArgumentAsset[1]`).
+//! Every id they reference must name an element of the document, so an edit
+//! never makes a dangling reference; the id of a name, `content`, `key` or
+//! `value` names no element. Whether each target has the type SACM declares
+//! is a content finding for validation (SACM23-VAL-004), not a refusal.
+//! Setting the references of an existing element, and the `metaClaim` of an
+//! Assertion, come later (LIB-EDIT-009).
 //!
 //! # Ids
 //!
@@ -70,6 +84,8 @@
 //! | 2. the parent can contain the new kind | [`EditError::InvalidParent`] | SACM-CMD-005 | Choose a parent whose class can hold the new kind. For example, a Claim goes in an ArgumentPackage, and an ArgumentPackage in an AssuranceCasePackage or another ArgumentPackage. |
 //! | 3. a caller id is an `NCName` | [`EditError::InvalidId`] | SACM-ID-002 | An `NCName` starts with a letter or `_` and continues with letters, digits, `-`, `.` or `_`; it has no spaces and no `:`. Or leave out `with_id` to have an id generated. |
 //! | 4. a caller id is not in use | [`EditError::DuplicateId`] | SACM-CMD-004 | Ids are unique across the whole document, not per parent. Choose another id, or leave out `with_id` to have one generated. |
+//! | 5. an asserted relationship has a source | [`EditError::TooFewReferences`] | SACM-MULT-001 | Give at least one source: SACM requires one (`source:ArgumentAsset[1..*]`). |
+//! | 6. every referenced id names an element: each source in order, then the target, the `reasoning` and the `structure` | [`EditError::ReferenceNotFound`] | SACM-CMD-001 | Create the referenced element first, or correct its id. Ids are compared exactly, case included. |
 //!
 //! # Writing and reading back
 //!
@@ -115,11 +131,13 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
+mod argumentation;
 mod create;
 mod utility;
 
 use std::fmt;
 
+pub use argumentation::{CreateArgumentReasoning, CreateAssertedContext, CreateAssertedInference};
 pub use create::{CreateArgumentPackage, CreateAssuranceCasePackage, CreateClaim};
 pub use utility::{
     CreateDescription, CreateImplementationConstraint, CreateNote, CreateTaggedValue,
@@ -162,7 +180,11 @@ use crate::model::{Document, ElementId, ElementKind};
 ///   ([`EditError::InvalidId`]);
 /// - the id given with `with_id` is already in the document, as an
 ///   element's id or as the `xmi:id` of a name, a `content`, a `key` or a
-///   `value` ([`EditError::DuplicateId`]).
+///   `value` ([`EditError::DuplicateId`]);
+/// - an asserted relationship is given no source
+///   ([`EditError::TooFewReferences`]);
+/// - a referenced id names no element of the document
+///   ([`EditError::ReferenceNotFound`]).
 ///
 /// # Examples
 ///
@@ -192,6 +214,9 @@ pub fn apply(
         Operation::CreateAssuranceCasePackage(create) => create.apply(document)?,
         Operation::CreateArgumentPackage(create) => create.apply(document)?,
         Operation::CreateClaim(create) => create.apply(document)?,
+        Operation::CreateArgumentReasoning(create) => create.apply(document)?,
+        Operation::CreateAssertedInference(create) => create.apply(document)?,
+        Operation::CreateAssertedContext(create) => create.apply(document)?,
         Operation::CreateDescription(create) => create.apply(document)?,
         Operation::CreateImplementationConstraint(create) => create.apply(document)?,
         Operation::CreateNote(create) => create.apply(document)?,
@@ -231,6 +256,12 @@ pub enum Operation {
     CreateArgumentPackage(CreateArgumentPackage),
     /// Creates a `Claim`.
     CreateClaim(CreateClaim),
+    /// Creates an `ArgumentReasoning`.
+    CreateArgumentReasoning(CreateArgumentReasoning),
+    /// Creates an `AssertedInference`.
+    CreateAssertedInference(CreateAssertedInference),
+    /// Creates an `AssertedContext`.
+    CreateAssertedContext(CreateAssertedContext),
     /// Creates a `Description`.
     CreateDescription(CreateDescription),
     /// Creates an `ImplementationConstraint`.
@@ -248,9 +279,10 @@ impl Operation {
     /// The names are stable, like a diagnostic [`Code`]: a name never changes
     /// and is never given to another operation. This release has
     /// `"CreateAssuranceCasePackage"`, `"CreateArgumentPackage"`,
-    /// `"CreateClaim"`, `"CreateDescription"`,
-    /// `"CreateImplementationConstraint"`, `"CreateNote"` and
-    /// `"CreateTaggedValue"`.
+    /// `"CreateClaim"`, `"CreateArgumentReasoning"`,
+    /// `"CreateAssertedInference"`, `"CreateAssertedContext"`,
+    /// `"CreateDescription"`, `"CreateImplementationConstraint"`,
+    /// `"CreateNote"` and `"CreateTaggedValue"`.
     ///
     /// # Examples
     ///
@@ -267,6 +299,9 @@ impl Operation {
             Self::CreateAssuranceCasePackage(_) => "CreateAssuranceCasePackage",
             Self::CreateArgumentPackage(_) => "CreateArgumentPackage",
             Self::CreateClaim(_) => "CreateClaim",
+            Self::CreateArgumentReasoning(_) => "CreateArgumentReasoning",
+            Self::CreateAssertedInference(_) => "CreateAssertedInference",
+            Self::CreateAssertedContext(_) => "CreateAssertedContext",
             Self::CreateDescription(_) => "CreateDescription",
             Self::CreateImplementationConstraint(_) => "CreateImplementationConstraint",
             Self::CreateNote(_) => "CreateNote",
@@ -290,6 +325,12 @@ impl From<CreateArgumentPackage> for Operation {
 impl From<CreateClaim> for Operation {
     fn from(operation: CreateClaim) -> Self {
         Self::CreateClaim(operation)
+    }
+}
+
+impl From<CreateArgumentReasoning> for Operation {
+    fn from(operation: CreateArgumentReasoning) -> Self {
+        Self::CreateArgumentReasoning(operation)
     }
 }
 
@@ -500,21 +541,71 @@ pub enum EditError {
         /// The id, as given.
         id: ElementId,
     },
+    /// A reference end is given fewer ids than SACM requires
+    /// (SACM-MULT-001): an asserted relationship with no source
+    /// (`source:ArgumentAsset[1..*]`, §11.13). Give at least `required` ids.
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateAssertedInference, CreateClaim, EditError};
+    /// use sacm::model::{Document, ElementId, LangString};
+    ///
+    /// let mut doc = Document::new();
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+    /// edit::apply(&mut doc, CreateClaim::new("p", LangString::new("C1")).with_id("c1"))?;
+    /// let no_sources: Vec<ElementId> = Vec::new();
+    /// let inference = CreateAssertedInference::new("p", LangString::new("I1"), no_sources, "c1");
+    /// let error = edit::apply(&mut doc, inference).unwrap_err();
+    /// assert!(matches!(
+    ///     error,
+    ///     EditError::TooFewReferences { end: "source", given: 0, required: 1, .. }
+    /// ));
+    /// assert_eq!(error.to_string(), "the source is given 0 ids, and SACM requires at least 1");
+    /// # Ok::<(), EditError>(())
+    /// ```
+    #[non_exhaustive]
+    TooFewReferences {
+        /// The end, by its XMI name, such as `source`.
+        end: &'static str,
+        /// How many ids it was given.
+        given: usize,
+        /// How many it needs at least.
+        required: usize,
+    },
+    /// A referenced id names no element of the document (SACM-CMD-001): a
+    /// source, the target or the `reasoning` of an asserted relationship, or
+    /// the `structure` of an `ArgumentReasoning`. An edit never makes a
+    /// dangling reference (D-VAL-LAYER), and the `xmi:id` of a name,
+    /// `content`, `key` or `value` names no element. The first such id is
+    /// reported: the sources in order, then the target, the reasoning and the
+    /// structure. Create the referenced element first, or correct the id;
+    /// ids are compared exactly, case included.
+    #[non_exhaustive]
+    ReferenceNotFound {
+        /// The end, by its XMI name, such as `target`.
+        end: &'static str,
+        /// The id, as given.
+        id: ElementId,
+    },
 }
 
 impl EditError {
     /// The catalog code of the refusal: SACM-CMD-001 for
     /// [`ParentNotFound`](Self::ParentNotFound), SACM-CMD-005 for
     /// [`InvalidParent`](Self::InvalidParent), SACM-ID-002 for
-    /// [`InvalidId`](Self::InvalidId) and SACM-CMD-004 for
-    /// [`DuplicateId`](Self::DuplicateId).
+    /// [`InvalidId`](Self::InvalidId), SACM-CMD-004 for
+    /// [`DuplicateId`](Self::DuplicateId), SACM-MULT-001 for
+    /// [`TooFewReferences`](Self::TooFewReferences) and SACM-CMD-001 for
+    /// [`ReferenceNotFound`](Self::ReferenceNotFound).
     #[must_use]
     pub fn code(&self) -> Code {
         match self {
-            Self::ParentNotFound { .. } => Code::CMD_TARGET_NOT_FOUND,
+            Self::ParentNotFound { .. } | Self::ReferenceNotFound { .. } => {
+                Code::CMD_TARGET_NOT_FOUND
+            }
             Self::InvalidParent { .. } => Code::CMD_INVALID_PARENT,
             Self::InvalidId { .. } => Code::ID_INVALID,
             Self::DuplicateId { .. } => Code::CMD_DUPLICATE_ID,
+            Self::TooFewReferences { .. } => Code::MULTIPLICITY_VIOLATION,
         }
     }
 }
@@ -543,6 +634,19 @@ impl fmt::Display for EditError {
             Self::DuplicateId { id } => write!(
                 f,
                 "the document already has an element with id {:?}",
+                id.as_str()
+            ),
+            Self::TooFewReferences {
+                end,
+                given,
+                required,
+            } => write!(
+                f,
+                "the {end} is given {given} ids, and SACM requires at least {required}"
+            ),
+            Self::ReferenceNotFound { end, id } => write!(
+                f,
+                "the document has no element {:?} for the {end} to reference",
                 id.as_str()
             ),
         }

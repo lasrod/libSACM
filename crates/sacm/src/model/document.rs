@@ -39,18 +39,22 @@ use super::{
 ///
 /// In this release [`xmi::read`](crate::xmi::read) fills a document with
 /// `AssuranceCasePackage` and `ArgumentPackage` roots, the
-/// `AssuranceCasePackage`, `ArgumentPackage` and `Claim` elements in them, and
-/// the descriptions, implementation constraints, notes and tagged values of
-/// each of these. [`edit::apply`](crate::edit::apply) creates the same seven
-/// kinds. Tests build documents with other kinds through the `test-support`
+/// `AssuranceCasePackage`, `ArgumentPackage`, `Claim`, `ArgumentReasoning`,
+/// `AssertedInference` and `AssertedContext` elements in them, and the
+/// descriptions, implementation constraints, notes and tagged values of each
+/// of these. [`edit::apply`](crate::edit::apply) creates the same ten kinds.
+/// Tests build documents with other kinds through the `test-support`
 /// feature's `Document::insert`. [`Document::new`] is empty.
 ///
 /// **References** between elements, such as
-/// [`SacmElement::cited_element`], are held as the ids they name, not as
-/// views: [`get`](Self::get) resolves them. A document may hold a reference
-/// whose id names no element, as a file can (ADR 0026);
+/// [`SacmElement::cited_element`] and [`SacmElement::sources`], are held as
+/// the ids they name, not as views: [`get`](Self::get) resolves them. A
+/// multi-valued end, such as `source`, keeps its ids in order, repeats
+/// included (D-ORDER, ADR 0027). A document may hold a reference whose id
+/// names no element, as a file can (ADR 0026);
 /// [`validation::validate`](crate::validation::validate) reports it
-/// (SACM-REF-001), and no id an edit generates is one a reference names.
+/// (SACM-REF-001), no edit makes one, and no id an edit generates is one a
+/// reference names.
 ///
 /// Cloning a document copies all of it, including the counters that generated
 /// ids continue from; the copy is independent of the original. Cloning,
@@ -62,9 +66,10 @@ use super::{
 /// `==` compares SACM content: two documents are equal exactly when
 /// [`semantic_compare`](crate::compare::semantic_compare) finds no
 /// difference between them. Elements are matched by id; kinds, parents,
-/// `gid`s, `isCitation` and `isAbstract` flags, the ids `citedElement` and
-/// `abstractForm` hold, names, the ids of names, `content`s and `key`s with
-/// their ids,
+/// `gid`s, the `isCitation`, `isAbstract` and `isCounter` flags, the ids
+/// each reference end holds (`citedElement`, `abstractForm`, `metaClaim`,
+/// `reasoning`, `source`, `target` and `structure`, in order), names, the
+/// ids of names, `content`s and `key`s with their ids,
 /// `assertionDeclaration`s and the order of roots and children are compared. `==` is order-sensitive; see [`crate::compare`] to ignore order.
 ///
 /// Not compared: the per-kind counters [`edit::apply`](crate::edit::apply)
@@ -150,6 +155,9 @@ struct Node {
     is_citation: bool,
     /// `isAbstract` (§8.2): absent is `false`.
     is_abstract: bool,
+    /// `isCounter` (§11.13): absent is `false`, and always `false` unless
+    /// the kind is an `AssertedRelationship`.
+    is_counter: bool,
     /// The ids each reference end of the element holds, unresolved and in
     /// document order (ADR 0026): only the ends that hold one, each once, in
     /// no particular order (readers look an end up), and never an empty list.
@@ -396,6 +404,53 @@ impl Document {
         content: Option<MultiLangString>,
         key: Option<MultiLangString>,
     ) -> Result<(), InsertError> {
+        self.insert_handle(parent, kind, id, name, content, key)
+            .map(|_| ())
+    }
+
+    /// [`insert_node`](Self::insert_node), with the element's flags and
+    /// reference ends set as given, unresolved and in order (ADR 0027): on
+    /// an error the document is unchanged.
+    ///
+    /// The create operations of the argumentation kinds use it, so that a
+    /// create is one change. Their checks come first: each flag and end is
+    /// one the kind has, a single-valued end gets one target, and every
+    /// target is the id of an element, so none is empty.
+    pub(crate) fn insert_with_references(
+        &mut self,
+        parent: Option<&ElementId>,
+        kind: ElementKind,
+        id: ElementId,
+        name: Option<LangString>,
+        flags: &[(Flag, bool)],
+        references: Vec<(ReferenceEnd, Vec<ElementId>)>,
+    ) -> Result<(), InsertError> {
+        let node = self.insert_handle(parent, kind, id, name, None, None)?;
+        for &(flag, value) in flags {
+            debug_assert!(flag.owner().admits(kind), "the kind has the flag");
+            *self.nodes[node].flag_mut(flag) = value;
+        }
+        for (end, targets) in references {
+            debug_assert!(
+                reference_problem(kind, end, &targets).is_none(),
+                "the kind has the end, and the end can hold the targets"
+            );
+            self.hold_references(node, end, targets);
+        }
+        Ok(())
+    }
+
+    /// [`insert_element`](Self::insert_element), returning the new node's
+    /// handle.
+    fn insert_handle(
+        &mut self,
+        parent: Option<&ElementId>,
+        kind: ElementKind,
+        id: ElementId,
+        name: Option<LangString>,
+        content: Option<MultiLangString>,
+        key: Option<MultiLangString>,
+    ) -> Result<usize, InsertError> {
         if id.as_str().is_empty() {
             return Err(InsertError::EmptyId);
         }
@@ -451,12 +506,13 @@ impl Document {
                 .then(AssertionDeclaration::default),
             is_citation: false,
             is_abstract: false,
+            is_counter: false,
             references: Vec::new(),
             parent,
             role,
             children: Vec::new(),
         });
-        Ok(())
+        Ok(node)
     }
 
     /// Sets the `assertionDeclaration` (SACM 2.3 §11.10) of the Assertion
@@ -576,9 +632,9 @@ impl Document {
         Ok(())
     }
 
-    /// Sets the flag `flag` of the element `id` (SACM 2.3 §8.2) to `value`.
-    /// Refuses, with the reason, an unknown element; on an error the
-    /// document is unchanged.
+    /// Sets the flag `flag` of the element `id` (SACM 2.3 §8.2, §11.13) to
+    /// `value`. Refuses, with the reason, an unknown element and one whose
+    /// kind has no such flag; on an error the document is unchanged.
     pub(crate) fn set_flag(
         &mut self,
         id: &ElementId,
@@ -588,16 +644,24 @@ impl Document {
         let Some(&node) = self.index.get(id) else {
             return Err(format!("the document has no element {:?}", id.as_str()));
         };
+        let kind = self.nodes[node].kind;
+        if !flag.owner().admits(kind) {
+            return Err(format!(
+                "the {kind} {:?} has no {}",
+                id.as_str(),
+                flag.name()
+            ));
+        }
         *self.nodes[node].flag_mut(flag) = value;
         Ok(())
     }
 
     /// Sets the targets of the reference end `end` of the element `owner` to
-    /// `targets`, unresolved and in order, replacing what it held; none
-    /// removes the end (ADR 0026). A target need not name an element.
-    /// Refuses, with the reason, an unknown owner, an owner whose kind has
-    /// no such end, an empty id, and more than one target on a single-valued
-    /// end; on an error the document is unchanged.
+    /// `targets`, unresolved and in order, repeats included, replacing what
+    /// it held; none removes the end (ADR 0026, ADR 0027). A target need not
+    /// name an element. Refuses, with the reason, an unknown owner, an owner
+    /// whose kind has no such end, an empty id, and more than one target on
+    /// a single-valued end; on an error the document is unchanged.
     pub(crate) fn set_references(
         &mut self,
         owner: &ElementId,
@@ -607,26 +671,17 @@ impl Document {
         let Some(&node) = self.index.get(owner) else {
             return Err(format!("the document has no element {:?}", owner.as_str()));
         };
-        let kind = self.nodes[node].kind;
-        if !end.owner().admits(kind) {
-            return Err(format!(
-                "the {kind} {:?} has no {}",
-                owner.as_str(),
-                end.name()
-            ));
+        if let Some(problem) = reference_problem(self.nodes[node].kind, end, &targets) {
+            return Err(format!("the element {:?} {problem}", owner.as_str()));
         }
-        if targets.iter().any(|target| target.as_str().is_empty()) {
-            return Err(format!("a target of the {} is empty", end.name()));
-        }
-        // Every end of this release is single-valued; the first multi-valued
-        // end (SACM23-ARG-004) adds `ReferenceEnd::is_many` back.
-        if targets.len() > 1 {
-            return Err(format!(
-                "the {} holds one target, not {}",
-                end.name(),
-                targets.len()
-            ));
-        }
+        self.hold_references(node, end, targets);
+        Ok(())
+    }
+
+    /// Sets the targets of `end` of the node `node` to `targets`, replacing
+    /// what it held, and counts each use of an id: the change of
+    /// [`set_references`](Self::set_references), once it is checked.
+    fn hold_references(&mut self, node: usize, end: ReferenceEnd, targets: Vec<ElementId>) {
         let references = &mut self.nodes[node].references;
         let old = match references.iter().position(|(held, _)| *held == end) {
             Some(position) => references.remove(position).1,
@@ -646,7 +701,6 @@ impl Document {
                 used.references = used.references.saturating_sub(1);
             });
         }
-        Ok(())
     }
 
     /// Applies `release` to the use of `id` in `other_ids`, and drops the
@@ -799,6 +853,30 @@ impl Document {
     }
 }
 
+/// Why an element of `kind` cannot hold `targets` in `end`, if it cannot:
+/// its kind has no such end, a target is empty, or a single-valued end is
+/// given more than one target.
+fn reference_problem(
+    kind: ElementKind,
+    end: ReferenceEnd,
+    targets: &[ElementId],
+) -> Option<String> {
+    if !end.owner().admits(kind) {
+        return Some(format!("is a {kind}, which has no {}", end.name()));
+    }
+    if targets.iter().any(|target| target.as_str().is_empty()) {
+        return Some(format!("is given an empty target of the {}", end.name()));
+    }
+    if !end.is_many() && targets.len() > 1 {
+        return Some(format!(
+            "is given {} targets of the {}, which holds one",
+            targets.len(),
+            end.name()
+        ));
+    }
+    None
+}
+
 /// `<prefix>_<n>`.
 fn generated_id(prefix: &str, n: u64) -> ElementId {
     ElementId::new(format!("{prefix}_{n}"))
@@ -923,7 +1001,7 @@ impl<'a> Iterator for PreOrder<'a> {
 ///     package.children().filter(|child| child.kind() == ElementKind::Claim)
 /// }
 ///
-/// // Built with the unstable test-support feature: edit::apply does not create an ArgumentReasoning yet.
+/// // Built with the unstable test-support feature, which inserts an element without a name.
 /// let mut doc = Document::new();
 /// let id = ElementId::from;
 /// doc.insert(None, ElementKind::ArgumentPackage, id("arguments"), None).unwrap();
@@ -1180,6 +1258,150 @@ impl<'a> SacmElement<'a> {
         self.references(ReferenceEnd::AbstractForm).first()
     }
 
+    /// The ids of the Claims about this Assertion (SACM 2.3 §11.10
+    /// `metaClaim:Claim[0..*]`), such as Claims about the confidence in it,
+    /// in document order: empty when it has none or its kind is not an
+    /// Assertion.
+    ///
+    /// Every Assertion (a `Claim` or one of the five asserted relationships;
+    /// see [`AbstractClass::Assertion`]) has the end. The ids are held
+    /// unresolved, as [`cited_element`](Self::cited_element) is, in the order
+    /// read and with repeats (ADR 0027): `metaClaim="m1 m1"` holds `m1`
+    /// twice. Each distinct id that names no element is one SACM-REF-001
+    /// finding of [`validation::validate`](crate::validation::validate). No
+    /// edit sets it yet (LIB-EDIT-009); only [`xmi::read`](crate::xmi::read)
+    /// gives one.
+    ///
+    /// ```
+    /// use sacm::xmi::{self, ReadOptions};
+    ///
+    /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+    ///   <name content="Arguments"/>
+    ///   <argumentElement xmi:type="sacm:Claim" xmi:id="c1" metaClaim="m1 m2">
+    ///     <name content="The brakes are safe"/>
+    ///   </argumentElement>
+    ///   <argumentElement xmi:type="sacm:Claim" xmi:id="m1">
+    ///     <name content="The brake tests are representative"/>
+    ///   </argumentElement>
+    ///   <argumentElement xmi:type="sacm:Claim" xmi:id="m2">
+    ///     <name content="The test team is independent"/>
+    ///   </argumentElement>
+    /// </sacm:ArgumentPackage>"#;
+    /// let document = xmi::read(input, &ReadOptions::default())?.into_document();
+    /// let c1 = document.get("c1").expect("the Claim was read");
+    /// let meta: Vec<&str> = c1.meta_claims().iter().map(|id| id.as_str()).collect();
+    /// assert_eq!(meta, ["m1", "m2"]);
+    /// assert!(document.get("m1").expect("the Claim was read").meta_claims().is_empty());
+    /// # Ok::<(), sacm::xmi::ReadError>(())
+    /// ```
+    #[must_use]
+    pub fn meta_claims(self) -> &'a [ElementId] {
+        self.references(ReferenceEnd::MetaClaim)
+    }
+
+    /// The ids of the sources of an asserted relationship (SACM 2.3 §11.13
+    /// `source:ArgumentAsset[1..*]`), its starting points, in document
+    /// order: empty when it has none or its kind is not an
+    /// `AssertedRelationship`.
+    ///
+    /// For an `AssertedInference` they are the premises; for an
+    /// `AssertedContext`, the context. They are held unresolved and with
+    /// repeats, as [`meta_claims`](Self::meta_claims) are. A relationship
+    /// needs at least one: [`validation::validate`](crate::validation::validate)
+    /// reports one with none as SACM-MULT-001 (SACM23-VAL-005), and
+    /// [`CreateAssertedInference`](crate::edit::CreateAssertedInference)
+    /// refuses to create one.
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateAssertedInference, CreateClaim};
+    /// use sacm::model::{Document, LangString};
+    ///
+    /// let mut doc = Document::new();
+    /// let name = |text: &str| LangString::new(text).with_lang("en");
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(name("Arguments")).with_id("p"))?;
+    /// for (id, text) in [("c1", "The brakes are safe"), ("c2", "Each hazard is mitigated")] {
+    ///     edit::apply(&mut doc, CreateClaim::new("p", name(text)).with_id(id))?;
+    /// }
+    /// let inference = CreateAssertedInference::new("p", name("Mitigation supports safety"), ["c2"], "c1");
+    /// edit::apply(&mut doc, inference.with_id("i1"))?;
+    ///
+    /// let i1 = doc.get("i1").expect("just created");
+    /// assert_eq!(i1.sources().iter().map(|id| id.as_str()).collect::<Vec<_>>(), ["c2"]);
+    /// assert_eq!(i1.target().map(|id| id.as_str()), Some("c1"));
+    /// assert_eq!(i1.reasoning(), None);
+    /// assert!(!i1.is_counter());
+    /// // A Claim has no sources.
+    /// assert!(doc.get("c1").expect("just created").sources().is_empty());
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    #[must_use]
+    pub fn sources(self) -> &'a [ElementId] {
+        self.references(ReferenceEnd::Source)
+    }
+
+    /// The id of the target of an asserted relationship (SACM 2.3 §11.13
+    /// `target:ArgumentAsset[1]`), its ending point, or `None` when it has
+    /// none or its kind is not an `AssertedRelationship`.
+    ///
+    /// For an `AssertedInference` it is the conclusion. It is held
+    /// unresolved. A relationship needs one:
+    /// [`validation::validate`](crate::validation::validate) reports one
+    /// without it as SACM-MULT-001 (SACM23-VAL-005). See
+    /// [`sources`](Self::sources) for an example.
+    #[must_use]
+    pub fn target(self) -> Option<&'a ElementId> {
+        self.references(ReferenceEnd::Target).first()
+    }
+
+    /// The id of the `ArgumentReasoning` behind an asserted relationship
+    /// (SACM 2.3 §11.13 `reasoning:ArgumentReasoning[0..1]`), or `None` when
+    /// it has none or its kind is not an `AssertedRelationship`. It is held
+    /// unresolved. See [`sources`](Self::sources) for an example.
+    #[must_use]
+    pub fn reasoning(self) -> Option<&'a ElementId> {
+        self.references(ReferenceEnd::Reasoning).first()
+    }
+
+    /// The id of the `ArgumentPackage` that gives the detailed structure of
+    /// an `ArgumentReasoning` (SACM 2.3 §11.12
+    /// `structure:ArgumentPackage[0..1]`), or `None` when it has none or the
+    /// element is not an `ArgumentReasoning`. It is held unresolved.
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateArgumentReasoning};
+    /// use sacm::model::{Document, LangString};
+    ///
+    /// let mut doc = Document::new();
+    /// let name = |text: &str| LangString::new(text).with_lang("en");
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(name("Arguments")).with_id("p"))?;
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(name("Hazard arguments")).with_id("hazards"))?;
+    /// let reasoning = CreateArgumentReasoning::new("p", name("Over each hazard")).with_structure("hazards");
+    /// edit::apply(&mut doc, reasoning.with_id("r1"))?;
+    ///
+    /// let r1 = doc.get("r1").expect("just created");
+    /// assert_eq!(r1.structure().map(|id| id.as_str()), Some("hazards"));
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    #[must_use]
+    pub fn structure(self) -> Option<&'a ElementId> {
+        self.references(ReferenceEnd::Structure).first()
+    }
+
+    /// Whether an asserted relationship counters its declared purpose (SACM
+    /// 2.3 §11.13 `isCounter:Boolean[1] = false`): an `AssertedInference`
+    /// that counters its conclusion, say. `false` unless the document holds
+    /// `true`, and always `false` when the kind is not an
+    /// `AssertedRelationship`.
+    ///
+    /// Absent and `false` are the same value, since a default is not
+    /// written (ADR 0026, ADR 0027). See [`sources`](Self::sources) for an
+    /// example.
+    #[must_use]
+    pub fn is_counter(self) -> bool {
+        self.node().is_counter
+    }
+
     /// The value of the flag `flag` of the element.
     pub(crate) fn flag(self, flag: Flag) -> bool {
         self.node().flag(flag)
@@ -1412,7 +1634,7 @@ impl<'a> SacmElement<'a> {
     /// ```
     /// use sacm::model::{AssertionDeclaration, Document, ElementId, ElementKind};
     ///
-    /// // Built with the unstable test-support feature: edit::apply does not create an ArgumentReasoning yet.
+    /// // Built with the unstable test-support feature, which inserts an element without a name.
     /// let mut doc = Document::new();
     /// let id = ElementId::from;
     /// doc.insert(None, ElementKind::ArgumentPackage, id("arguments"), None).unwrap();
@@ -1475,6 +1697,8 @@ impl<'a> SacmElement<'a> {
             is_citation,
             // Compared.
             is_abstract,
+            // Compared.
+            is_counter,
             // Compared, end by end.
             references,
             // Compared, as the parent's id.
@@ -1497,6 +1721,7 @@ impl<'a> SacmElement<'a> {
             assertion_declaration: *assertion_declaration,
             is_citation: *is_citation,
             is_abstract: *is_abstract,
+            is_counter: *is_counter,
             references,
         }
     }
@@ -1554,6 +1779,8 @@ pub(crate) struct Compared<'a> {
     is_citation: bool,
     /// The element's `isAbstract`.
     is_abstract: bool,
+    /// The element's `isCounter`.
+    is_counter: bool,
     /// The ids each reference end holds: only the ends that hold one.
     references: &'a [(ReferenceEnd, Vec<ElementId>)],
 }
@@ -1564,6 +1791,7 @@ impl<'a> Compared<'a> {
         match flag {
             Flag::IsCitation => self.is_citation,
             Flag::IsAbstract => self.is_abstract,
+            Flag::IsCounter => self.is_counter,
         }
     }
 
@@ -1672,6 +1900,7 @@ impl Node {
         match flag {
             Flag::IsCitation => self.is_citation,
             Flag::IsAbstract => self.is_abstract,
+            Flag::IsCounter => self.is_counter,
         }
     }
 
@@ -1680,6 +1909,7 @@ impl Node {
         match flag {
             Flag::IsCitation => &mut self.is_citation,
             Flag::IsAbstract => &mut self.is_abstract,
+            Flag::IsCounter => &mut self.is_counter,
         }
     }
 
@@ -2022,23 +2252,97 @@ mod tests {
         assert_eq!(flags(&document), Some((false, true)));
         assert_eq!(document.set_flag(&p, Flag::IsAbstract, false), Ok(()));
         assert_eq!(flags(&document), Some((false, false)));
+        // A package is no AssertedRelationship, so it has no isCounter.
+        assert!(document.set_flag(&p, Flag::IsCounter, true).is_err());
+        assert_eq!(document.get("p").map(SacmElement::is_counter), Some(false));
     }
 
     #[test]
     fn set_references_refuses_what_a_single_valued_end_cannot_hold_and_changes_nothing() {
         let mut document = two_roots();
         let ids = |ids: &[&str]| ids.iter().map(|id| ElementId::new(*id)).collect::<Vec<_>>();
-        let end = ReferenceEnd::CitedElement;
-        for (owner, targets) in [
-            ("missing", ids(&["q"])),
-            ("p", ids(&[""])),
-            ("p", ids(&["q", "q"])),
+        for (owner, end, targets) in [
+            ("missing", ReferenceEnd::CitedElement, ids(&["q"])),
+            ("p", ReferenceEnd::CitedElement, ids(&[""])),
+            ("p", ReferenceEnd::CitedElement, ids(&["q", "q"])),
+            // A package is no Assertion.
+            ("p", ReferenceEnd::MetaClaim, ids(&["q"])),
         ] {
             let refused = document.set_references(&ElementId::new(owner), end, targets.clone());
             assert!(refused.is_err(), "{owner} {targets:?}");
         }
         assert_eq!(document.get("p").and_then(SacmElement::cited_element), None);
         assert!(!document.is_referenced("q"));
+    }
+
+    #[test]
+    fn a_multi_valued_end_holds_every_target_in_order_with_repeats_and_counts_each() {
+        let mut document = two_roots();
+        let p = ElementId::new("p");
+        let claim = ElementId::new("c");
+        let inserted = document.insert_node(Some(&p), ElementKind::Claim, claim.clone(), None);
+        assert_eq!(inserted, Ok(()));
+        let ids = |ids: &[&str]| ids.iter().map(|id| ElementId::new(*id)).collect::<Vec<_>>();
+        let end = ReferenceEnd::MetaClaim;
+        assert!(
+            document
+                .set_references(&claim, end, ids(&["claim_1", ""]))
+                .is_err()
+        );
+        assert_eq!(
+            document.set_references(&claim, end, ids(&["claim_1", "q", "claim_1"])),
+            Ok(())
+        );
+        assert_eq!(
+            document.get("c").map(SacmElement::meta_claims),
+            Some(ids(&["claim_1", "q", "claim_1"]).as_slice())
+        );
+        assert!(document.is_referenced("claim_1"));
+        // Replacing the list releases each use, repeats included.
+        assert_eq!(document.set_references(&claim, end, ids(&["q"])), Ok(()));
+        assert!(!document.is_referenced("claim_1") && document.is_referenced("q"));
+    }
+
+    #[test]
+    fn insert_with_references_sets_the_flags_and_ends_or_changes_nothing() {
+        let mut document = two_roots();
+        let p = ElementId::new("p");
+        let ids = |ids: &[&str]| ids.iter().map(|id| ElementId::new(*id)).collect::<Vec<_>>();
+        let references = vec![
+            (ReferenceEnd::Source, ids(&["p", "q", "p"])),
+            (ReferenceEnd::Target, ids(&["q"])),
+        ];
+        let flags = [(Flag::IsCounter, true)];
+        // A refused insert sets nothing.
+        let refused = document.insert_with_references(
+            Some(&ElementId::new("missing")),
+            ElementKind::AssertedInference,
+            ElementId::new("i"),
+            None,
+            &flags,
+            references.clone(),
+        );
+        assert!(refused.is_err());
+        assert!(!document.contains("i") && !document.is_referenced("q"));
+        let inserted = document.insert_with_references(
+            Some(&p),
+            ElementKind::AssertedInference,
+            ElementId::new("i"),
+            None,
+            &flags,
+            references,
+        );
+        assert_eq!(inserted, Ok(()));
+        let i = document.get("i");
+        assert_eq!(
+            i.map(|i| (i.sources(), i.target(), i.is_counter())),
+            Some((
+                ids(&["p", "q", "p"]).as_slice(),
+                Some(&ElementId::new("q")),
+                true
+            ))
+        );
+        assert!(document.is_referenced("q"));
     }
 
     #[test]
@@ -2059,9 +2363,10 @@ mod tests {
             document.set_references(&q, ReferenceEnd::CitedElement, one("p")),
             Ok(())
         );
-        let held = document
-            .get("p")
-            .map(|p| ReferenceEnd::ALL.map(|end| p.references(end).first().map(ElementId::as_str)));
+        let held = document.get("p").map(|p| {
+            [ReferenceEnd::CitedElement, ReferenceEnd::AbstractForm]
+                .map(|end| p.references(end).first().map(ElementId::as_str))
+        });
         assert_eq!(held, Some([Some("claim_1"), Some("claim_1")]));
         // A referenced id is not in use, but no id is generated for it.
         assert!(document.is_referenced("claim_1") && !document.is_id_in_use("claim_1"));

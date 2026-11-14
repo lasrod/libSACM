@@ -1832,7 +1832,7 @@ tests = [
   "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_a_repeated_root_id_is_duplicate_id_at_the_second_root",
 ]
 verification = "docs/verification/0036-m1-ids-docs-cli.md"
-notes = "Parser leniencies beyond LIB-SEC-005's list were left to LIB-SEC-006 (W3C conformance suite), by the maintainer's decision of 2026-11-11 (slice 0021, verification round 3); LIB-SEC-006 closes the list within the suite (slice 0022). Slice 0026: the unread-content example `<name/>` became `<note/>`, because SACM23-XMI-012 reads names; re-checked there. Slice 0029: a duplicate root id is now refused at its id check, as \"an earlier element\"; re-checked there. Slice 0035: read diagnostics exist now (SACM-XMI-010, SACM-XMI-011), so `diagnostics()` is no longer always empty; re-checked there. Slice 0036: an empty or duplicate `xmi:id` is now a coded refusal (`ReadError::InvalidId`, `ReadError::DuplicateId`; ADR 0015 amendment 2), and a padded id is `Unsupported`; reworded and re-checked there. Slice 0039: reworded for SACM23-XMI-020/-021/-022/-025 and SACM23-VAL-006 (ADR 0024, ADR 0021 amendment 2); re-check there. Slice 0040: reworded, because utility children and `gid` are read now (SACM23-BASE-004/005/006); its tests use `isCitation`, `isAbstract`, `<foo/>` and `<isCitation>` as unread samples; re-check there. Slice 0042: `isCitation`, `isAbstract`, `citedElement` and `abstractForm` are read now (SACM23-BASE-007/008); its tests need other unread samples; re-check there."
+notes = "Parser leniencies beyond LIB-SEC-005's list were left to LIB-SEC-006 (W3C conformance suite), by the maintainer's decision of 2026-11-11 (slice 0021, verification round 3); LIB-SEC-006 closes the list within the suite (slice 0022). Slice 0026: the unread-content example `<name/>` became `<note/>`, because SACM23-XMI-012 reads names; re-checked there. Slice 0029: a duplicate root id is now refused at its id check, as \"an earlier element\"; re-checked there. Slice 0035: read diagnostics exist now (SACM-XMI-010, SACM-XMI-011), so `diagnostics()` is no longer always empty; re-checked there. Slice 0036: an empty or duplicate `xmi:id` is now a coded refusal (`ReadError::InvalidId`, `ReadError::DuplicateId`; ADR 0015 amendment 2), and a padded id is `Unsupported`; reworded and re-checked there. Slice 0039: reworded for SACM23-XMI-020/-021/-022/-025 and SACM23-VAL-006 (ADR 0024, ADR 0021 amendment 2); re-check there. Slice 0040: reworded, because utility children and `gid` are read now (SACM23-BASE-004/005/006); its tests use `isCitation`, `isAbstract`, `<foo/>` and `<isCitation>` as unread samples; re-check there. Slice 0042: `isCitation`, `isAbstract`, `citedElement` and `abstractForm` are read now (SACM23-BASE-007/008); its tests need other unread samples; re-check there. Slice 0043: a test sample or list changed because ArgumentReasoning, AssertedInference and AssertedContext are read now (ADR 0027); re-check there."
 
 [[row]]
 id = "SACM23-XMI-002"
@@ -2094,7 +2094,7 @@ source = "formal/23-05-08 §8.6 (p. 19) \"name:LangString[1] (composition) - the
 kind = "validation"
 status = "verified"
 depends_on = ["SACM23-BASE-003", "SACM23-XMI-012", "LIB-DIAG-001", "LIB-API-008"]
-notes = "Slice 0036: a test's ids or expectations changed for the new id rules (ADR 0015 amendment 2, SACM23-VAL-020); re-checked there. Slice 0040: two of its tests now build their TaggedValues with a key through `CreateTaggedValue`, because a key-less TaggedValue is a SACM23-VAL-010 Error; re-check there. Slice 0041: its catalog test accepts the `Error / Warning` severity cell of SACM-MULT-001 (SACM23-VAL-011 adds the Warning); re-check there."
+notes = "Slice 0036: a test's ids or expectations changed for the new id rules (ADR 0015 amendment 2, SACM23-VAL-020); re-checked there. Slice 0040: two of its tests now build their TaggedValues with a key through `CreateTaggedValue`, because a key-less TaggedValue is a SACM23-VAL-010 Error; re-check there. Slice 0041: its catalog test accepts the `Error / Warning` severity cell of SACM-MULT-001 (SACM23-VAL-011 adds the Warning); re-check there. Slice 0043: two tests compare only SACM23-VAL-018 findings, because seam-built relationships now also give SACM23-VAL-005 Errors; re-check there."
 acceptance = [
   "`ElementKind::ALL` filtered by `is_a(AbstractClass::ModelElement)` is exactly 34 kinds, and the other 4 are exactly Description, ImplementationConstraint, Note and TaggedValue.",
   "For each of the 34 kinds, a named ArtifactPackage root holding one nameless element of that kind gives exactly one diagnostic, for that element; each of the 12 package kinds as a nameless root also gives exactly one.",
@@ -2174,7 +2174,7 @@ tests = [
   "crates/sacm/tests/load_and_save_modes.rs::lib_compat_001_sacm_xmi_011_on_the_xmi_element_names_the_xmi_element_and_not_a_root",
 ]
 verification = "docs/verification/0036-m1-ids-docs-cli.md"
-notes = "Slice 0035: designed in ADR 0022 (accepted by the maintainer, 2026-11-13, with SACM-XMI-011 as Info). The C++ `SaveOptions::namespace_uri` moves to LIB-COMPAT-011. Slice 0036: tests updated for the coded id refusals (ADR 0015 amendment 2); re-checked there. Slice 0042: its tests replaced `isCitation`/`isAbstract` unread samples (now read, ADR 0026) with other unread ones, locations unchanged; re-check there."
+notes = "Slice 0035: designed in ADR 0022 (accepted by the maintainer, 2026-11-13, with SACM-XMI-011 as Info). The C++ `SaveOptions::namespace_uri` moves to LIB-COMPAT-011. Slice 0036: tests updated for the coded id refusals (ADR 0015 amendment 2); re-checked there. Slice 0042: its tests replaced `isCitation`/`isAbstract` unread samples (now read, ADR 0026) with other unread ones, locations unchanged; re-check there. Slice 0043: a test sample or list changed because ArgumentReasoning, AssertedInference and AssertedContext are read now (ADR 0027); re-check there."
 
 [[row]]
 id = "SACM23-VAL-001"
@@ -2333,7 +2333,7 @@ tests = [
   "crates/sacm/tests/round_trip.rs::lib_rt_002_every_valid_fixture_reads_writes_reads_back_equal_and_writes_the_same_bytes",
   "crates/sacm/tests/round_trip.rs::lib_rt_002_every_golden_file_writes_back_to_its_own_bytes",
 ]
-notes = "Slice 0035: the round trip writes tolerantly, because a strict write refuses the nameless fixtures. Reworded in slice 0038 (M1 audit); re-check required. Slice 0040: the pending golden's description reworded (Notes and Descriptions are read now); the new valid fixtures `utility-elements-valid` and `gid-valid` join the round trip; re-check there."
+notes = "Slice 0035: the round trip writes tolerantly, because a strict write refuses the nameless fixtures. Reworded in slice 0038 (M1 audit); re-check required. Slice 0040: the pending golden's description reworded (Notes and Descriptions are read now); the new valid fixtures `utility-elements-valid` and `gid-valid` join the round trip; re-check there. Slice 0043: a test sample or list changed because ArgumentReasoning, AssertedInference and AssertedContext are read now (ADR 0027); re-check there."
 
 [[row]]
 id = "LIB-EDIT-001"
@@ -2824,23 +2824,77 @@ id = "SACM23-ARG-004"
 area = "ARG"
 milestone = "M2"
 title = "metaClaim"
-requirement = "Assertion `metaClaim` (references to Claims about an assertion) is represented on Claims and asserted relationships, round-tripped and editable."
-source = "formal/23-05-08 clause 11; ptc/22-03-13 Argumentation::Assertion.metaClaim"
+requirement = "Every element of an Assertion kind (Claim and the five asserted relationship kinds) holds `metaClaim`, a multi-valued reference end typed Claim (§11.10 `[0..*]`), as ids in document order with repeats (`SacmElement::meta_claims() -> &[ElementId]`, empty by default; ADR 0026, ADR 0027). It is the first multi-valued end (`ReferenceEnd::is_many()`): the attribute keeps every token in order, and each `<metaClaim>` element appends one id; an attribute and elements for the end is `RepeatedValue`. It is written as one attribute, ids separated by one space, after `assertionDeclaration`, and compared in order (`Difference::MetaClaims`). A dangling id is SACM-REF-001 with clause `11.10`; a non-Claim target is held (SACM23-VAL-004). On a non-Assertion it is `Unsupported`. Setting it is LIB-EDIT-009."
+source = "formal/23-05-08 §11.10 (p. 39) \"metaClaim:Claim[0..*] - references Claims concerning (i.e., about) the Assertion (e.g., regarding the confidence in the Assertion)\"; ptc/22-03-13 Argumentation::Assertion.metaClaim (0..*, no isOrdered/isUnique); XMI 2.5.1 rule 2b (p. 63) \"for multi-valued properties, there is one XML element for each value\", rule 2h (p. 63), rule 2j (p. 64), §7.8.5 (xsd:IDREFS); D-ORDER; D-STRICT; ADR 0026; ADR 0027; assurance-forge argumentation.h:141-152"
 kind = "model"
-status = "planned"
-depends_on = ["SACM23-ARG-002", "SACM23-XMI-005"]
+status = "implemented"
+depends_on = ["SACM23-ARG-002", "SACM23-XMI-005", "SACM23-XMI-015", "LIB-RT-001", "SACM23-VAL-003"]
 notes = "Slice 0042: as the first multi-valued end, add `ReferenceEnd::is_many()` back (reader appending, `set_references`), and kill the two mutants excluded in docs/quality/mutants-triage.md for it (the id separator in `push_flags_and_references`, the dedupe in `dangling_references`), removing their exclusions."
+acceptance = [
+  "Every kind starts with no meta-claims; the end exists exactly on the Assertion kinds.",
+  "On a Claim, an AssertedInference and an AssertedContext: `metaClaim=\"m1\"` reads [m1], `\"m1 m2\"` reads [m1, m2], `\"m2 m1\"` reads [m2, m1]; `write` gives exactly `metaClaim=\"m1 m2\"`; read-write-read is equal and the second write gives the same bytes.",
+  "`<metaClaim xmi:idref=\"m1\"/>`, a `<name .../>`, then `<metaClaim href=\"#m2\"/>` read [m1, m2] and write the attribute form.",
+  "`metaClaim=\"m1\"` with `<metaClaim xmi:idref=\"m2\"/>` is `RepeatedValue` in both modes with every location; `\" m1&#9;m2&#10;\"` reads [m1, m2]; `\"\"` and `\"  \"` are `Unsupported`; `sacm:metaClaim` is `Unsupported`.",
+  "`metaClaim=\"m1 m1\"` reads [m1, m1] and writes back unchanged.",
+  "`metaClaim=\"x y\"`, both missing, gives two SACM-REF-001 (clause `11.10`, affected [owner, x] then [owner, y]); `metaClaim=\"x x\"` gives exactly one.",
+  "`metaClaim` on an ArgumentPackage, an ArgumentReasoning, a Note or a `name` is `Unsupported` at that construct.",
+  "A self, forward or cross-root reference reads with no finding; a target that is an ArgumentPackage reads and round-trips unchanged.",
+  "`semantic_compare`: [m1, m2] vs [m2, m1], and [m1] vs [m1, m1], each give one `MetaClaims`.",
+  "An id-less Claim beside `metaClaim=\"claim_1\"` gets an id other than `claim_1`; a 1 MiB value or 10,000 tokens do not panic.",
+  "The two mutants excluded for this row in docs/quality/mutants-triage.md (the id separator, the dangling dedupe) are killed, and their exclusions removed.",
+]
+tests = [
+  "crates/sacm/tests/meta_claims.rs::sacm23_arg_004_every_kind_starts_with_no_meta_claims",
+  "crates/sacm/tests/meta_claims.rs::sacm23_arg_004_the_end_is_read_on_exactly_the_assertion_kinds",
+  "crates/sacm/tests/meta_claims.rs::sacm23_arg_004_the_attribute_reads_every_token_in_document_order_and_round_trips",
+  "crates/sacm/tests/meta_claims.rs::sacm23_arg_004_two_meta_claims_are_written_as_one_attribute_with_one_space_between_the_ids",
+  "crates/sacm/tests/meta_claims.rs::sacm23_arg_004_meta_claim_elements_append_in_order_around_other_content_and_write_as_the_attribute",
+  "crates/sacm/tests/meta_claims.rs::sacm23_arg_004_an_attribute_and_an_element_are_repeated_value_with_every_location",
+  "crates/sacm/tests/meta_claims.rs::sacm23_arg_004_white_space_separates_tokens_and_an_empty_or_qualified_attribute_is_unsupported",
+  "crates/sacm/tests/meta_claims.rs::sacm23_arg_004_a_repeated_id_is_held_twice_and_written_back_unchanged",
+  "crates/sacm/tests/meta_claims.rs::sacm23_arg_004_two_missing_meta_claims_are_two_dangling_findings_and_a_repeated_one_is_one",
+  "crates/sacm/tests/meta_claims.rs::sacm23_arg_004_meta_claim_on_a_package_a_reasoning_a_note_or_a_name_is_unsupported_at_that_construct",
+  "crates/sacm/tests/meta_claims.rs::sacm23_arg_004_self_forward_and_cross_root_meta_claims_resolve_and_a_package_target_round_trips",
+  "crates/sacm/tests/meta_claims.rs::sacm23_arg_004_semantic_compare_reports_meta_claims_compared_in_order_with_repeats",
+  "crates/sacm/tests/meta_claims.rs::sacm23_arg_004_an_id_less_claim_beside_meta_claim_claim_1_gets_another_id",
+  "crates/sacm/tests/meta_claims.rs::sacm23_arg_004_a_one_mib_meta_claim_and_ten_thousand_tokens_do_not_panic",
+]
+code = ["crates/sacm/src/model/reference.rs", "crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi/output.rs", "crates/sacm/src/compare.rs"]
 
 [[row]]
 id = "SACM23-ARG-005"
 area = "ARG"
 milestone = "M2"
 title = "ArgumentReasoning"
-requirement = "ArgumentReasoning is represented with its optional `structure` reference to an ArgumentPackage, created, round-tripped and editable."
-source = "formal/23-05-08 clause 11; ptc/22-03-13 Argumentation::ArgumentReasoning"
+requirement = "ArgumentReasoning (§11.12, superclass ArgumentAsset) is read under `argumentElement` of an ArgumentPackage, written and round-tripped (ADR 0027). It holds `structure`, a single-valued reference to an ArgumentPackage (`SacmElement::structure() -> Option<&ElementId>`; ADR 0026 rules); it has no `assertionDeclaration`, `metaClaim` or `isCounter`. It is created by `CreateArgumentReasoning::new(parent, name)` (with `with_structure`) under the LIB-EDIT-001 contract; a `structure` naming no element is `EditError::ReferenceNotFound`. Setting `structure` later is LIB-EDIT-009."
+source = "formal/23-05-08 §11.12 (p. 40) \"Superclass ArgumentAsset\"; \"structure:ArgumentPackage[0..1] - optional reference to another the ArgumentPackage that provides the detailed structure of the argument being described by the ArgumentReasoning.\"; ptc/22-03-13 Argumentation::ArgumentReasoning.structure (0..1); ADR 0019; ADR 0026; ADR 0027"
 kind = "model"
-status = "planned"
-depends_on = ["SACM23-ARG-001", "SACM23-XMI-005"]
+status = "implemented"
+depends_on = ["SACM23-ARG-001", "SACM23-XMI-005", "SACM23-XMI-016", "LIB-EDIT-001", "SACM23-XMI-015"]
+acceptance = [
+  "It reads in both modes with `xmi:type` and `xsi:type`, with name, gid, flags, `citedElement` and utility children.",
+  "`structure=\"p1\"` and `<structure xmi:idref=\"p1\"/>` read equal, write after `abstractForm` and round-trip; an absent `structure` is `None` and writes nothing.",
+  "`structure=\"p1 p2\"`, two `<structure>` elements, and attribute plus element are each `RepeatedValue`; `structure=\"\"` is `Unsupported`.",
+  "A `structure` naming its own containing package, or a forward or cross-root package, reads with no finding; one naming a Claim reads and round-trips; a dangling one gives SACM-REF-001 with clause `11.12`.",
+  "`assertionDeclaration`, `isCounter`, `metaClaim`, `source`, `target` and `reasoning` on an ArgumentReasoning are each `Unsupported`; an ArgumentReasoning in an AssuranceCasePackage is `Unsupported`.",
+  "`CreateArgumentReasoning::new(parent, name)` under an ArgumentPackage gives `argument_reasoning_1`; under an AssuranceCasePackage or a Claim it is `InvalidParent`; `with_structure` naming no element is `ReferenceNotFound`; refusals leave the document unchanged.",
+  "`semantic_compare` reports `Difference::Structure`.",
+]
+tests = [
+  "crates/sacm/tests/argument_reasoning.rs::sacm23_arg_005_it_reads_in_both_modes_by_xmi_type_and_xsi_type_with_its_inherited_features",
+  "crates/sacm/tests/argument_reasoning.rs::sacm23_arg_005_the_fixture_reads_its_reasoning_and_structure",
+  "crates/sacm/tests/argument_reasoning.rs::sacm23_arg_005_structure_reads_in_both_forms_writes_after_abstract_form_and_round_trips",
+  "crates/sacm/tests/argument_reasoning.rs::sacm23_arg_005_a_second_structure_is_repeated_value_and_an_empty_one_is_unsupported",
+  "crates/sacm/tests/argument_reasoning.rs::sacm23_arg_005_structure_naming_its_package_a_later_package_or_another_root_resolves",
+  "crates/sacm/tests/argument_reasoning.rs::sacm23_arg_005_structure_naming_a_claim_is_held_and_a_dangling_one_is_ref_001_with_clause_11_12",
+  "crates/sacm/tests/argument_reasoning.rs::sacm23_arg_005_the_assertion_and_relationship_features_on_an_argument_reasoning_are_unsupported",
+  "crates/sacm/tests/argument_reasoning.rs::sacm23_arg_005_an_argument_reasoning_in_an_assurance_case_package_is_unsupported",
+  "crates/sacm/tests/argument_reasoning.rs::sacm23_arg_005_create_argument_reasoning_creates_under_an_argument_package_with_a_generated_id",
+  "crates/sacm/tests/argument_reasoning.rs::sacm23_arg_005_create_argument_reasoning_refuses_a_wrong_parent_and_a_missing_structure_unchanged",
+  "crates/sacm/tests/argument_reasoning.rs::sacm23_arg_005_create_argument_reasoning_runs_the_four_create_checks_before_the_structure_check",
+  "crates/sacm/tests/argument_reasoning.rs::sacm23_arg_005_semantic_compare_reports_structure",
+]
+code = ["crates/sacm/src/model/reference.rs", "crates/sacm/src/edit/argumentation.rs", "crates/sacm/src/xmi/roots.rs"]
 
 [[row]]
 id = "SACM23-ARG-006"
@@ -2858,22 +2912,71 @@ id = "SACM23-ARG-007"
 area = "ARG"
 milestone = "M2"
 title = "AssertedRelationship common features"
-requirement = "The shared features of all asserted relationships — `source` (1..*), `target` (1), optional `reasoning` (ArgumentReasoning), required `isCounter` and the inherited Assertion feature `assertionDeclaration` [1] (default `asserted`) — are represented once and available on every relationship kind, round-tripped and editable. `assertionDeclaration` is SACM23-ARG-002 (model) and SACM23-XMI-017 (XMI)."
-source = "formal/23-05-08 §11.13; ptc/22-03-13 Argumentation::AssertedRelationship; formal/23-05-08 §11.10"
+requirement = "Every AssertedRelationship kind holds `source` (multi-valued, ArgumentAsset `[1..*]`, `sources() -> &[ElementId]`), `target` (single-valued, ArgumentAsset `[1]`, `target() -> Option<&ElementId>`), `reasoning` (single-valued, ArgumentReasoning `[0..1]`, `reasoning()`), `isCounter` (Boolean `[1] = false`, `is_counter() -> bool`, read and written by ADR 0026's Boolean rules and only on asserted relationships), plus `assertionDeclaration` (SACM23-XMI-017's rules) and `metaClaim` (ADR 0027). A relationship read with no source or no target is kept as read; nothing is invented (its finding is SACM23-VAL-005). Write order: `... abstractForm assertionDeclaration metaClaim isCounter reasoning source target`. Comparison: `Difference::{IsCounter, Reasoning, Sources, Target}`."
+source = "formal/23-05-08 §11.13 (p. 40) \"isCounter:Boolean[1] = false - a flag indicating whether the AssertedRelationship counters its declared purposes\", \"source:ArgumentAsset[1..*] - reference to the ArgumentAsset(s) that are the source (starting point) of the relationship.\", \"target:ArgumentAsset[1] - reference to the ArgumentAsset(s) that are the target (ending point) of the relationship.\", \"reasoning:ArgumentReasoning[0..1] - an optional reference to the a description of the reasoning underlying the AssertedRelationship.\"; §11.10 (p. 39); ptc/22-03-13 Argumentation::AssertedRelationship (isCounter defaultValue false; source [1..*]; target [1..1]); XMI 2.5.1 rules 2b, 2h, 2j, §9.4.1, Annex B.5.2; D-SEV; ADR 0026; ADR 0027; specification defect D14"
 kind = "model"
-status = "planned"
-depends_on = ["SACM23-ARG-002", "SACM23-ARG-005", "SACM23-XMI-005", "SACM23-XMI-017"]
+status = "implemented"
+depends_on = ["SACM23-ARG-002", "SACM23-ARG-005", "SACM23-XMI-005", "SACM23-XMI-017", "SACM23-ARG-004", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-006"]
+acceptance = [
+  "Seam defaults: no sources, no target, no reasoning, `is_counter()` false, `asserted`, no meta-claims.",
+  "On an AssertedInference and an AssertedContext, both modes: `source=\"c2 c3\" target=\"c1\" reasoning=\"r1\" isCounter=\"true\" assertionDeclaration=\"assumed\" metaClaim=\"m1\"` reads each value; a byte-exact golden pins the attribute order.",
+  "`isCounter`: `true`, `1`, `\" true \"` and `\"&#9;1&#10;\"` read true; `false`, `0` and absent read false and compare equal; `TRUE`, `yes`, `\"\"` and `t rue` are `InvalidLiteral` naming `isCounter`; `<isCounter>1</isCounter>` reads; attribute plus element is `RepeatedValue`; `sacm:isCounter` is `Unsupported`; written only when true, as `\"true\"`.",
+  "`isCounter`, `source`, `target` and `reasoning` on a Claim, an ArgumentReasoning or an ArgumentPackage are each `Unsupported`.",
+  "`<source>` elements accumulate in order; attribute plus element is `RepeatedValue`; `target=\"a b\"`, `reasoning=\"a b\"`, two `<target>` and two `<reasoning>` are each `RepeatedValue`; `source=\"c1 c1\"` is held twice.",
+  "A relationship with no `source`, no `target`, or neither reads in both modes, and a tolerant write writes it with nothing added.",
+  "A dangling source, target or reasoning gives SACM-REF-001 with clause `11.13`; an AssertedContext targeting an AssertedInference, and a relationship whose source is itself, read with no finding.",
+  "All six `assertionDeclaration` literals read, write and round-trip on each kind; a bad literal is `InvalidLiteral`.",
+  "`semantic_compare` reports `IsCounter`, `Reasoning`, `Sources` (order counts) and `Target`.",
+]
+tests = [
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_007_a_relationship_inserted_through_the_seam_has_no_ends_and_the_defaults",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_007_every_end_and_flag_reads_on_both_kinds_in_both_modes_and_writes_in_order",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_007_the_golden_file_pins_the_attribute_order_of_both_kinds",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_007_is_counter_reads_xsd_boolean_literals_and_is_written_only_when_true",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_007_a_value_that_is_no_boolean_literal_is_invalid_literal_naming_is_counter",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_007_is_counter_given_twice_is_repeated_value_and_in_the_sacm_namespace_is_unsupported",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_007_is_counter_source_target_and_reasoning_on_a_claim_a_reasoning_or_a_package_are_unsupported",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_007_source_elements_accumulate_in_order_and_a_repeated_source_is_held_twice",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_007_source_in_both_forms_and_a_second_target_or_reasoning_are_repeated_value",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_007_a_relationship_missing_its_source_or_target_reads_and_writes_tolerantly_as_read",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_007_a_dangling_source_target_or_reasoning_is_ref_001_with_clause_11_13",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_007_a_context_of_an_inference_and_a_relationship_that_is_its_own_source_give_no_finding",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_007_all_six_declarations_round_trip_on_both_kinds_and_a_bad_literal_is_invalid_literal",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_007_semantic_compare_reports_is_counter_reasoning_sources_and_target",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_007_semantic_compare_reports_every_relationship_feature_after_gid_in_table_order",
+]
+code = ["crates/sacm/src/model/reference.rs", "crates/sacm/src/model/document.rs", "crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi/output.rs", "crates/sacm/src/compare.rs"]
 
 [[row]]
 id = "SACM23-ARG-008"
 area = "ARG"
 milestone = "M2"
 title = "AssertedInference"
-requirement = "AssertedInference is represented, created, round-tripped and editable."
-source = "formal/23-05-08 clause 11; ptc/22-03-13 Argumentation::AssertedInference"
+requirement = "AssertedInference (§11.14, superclass AssertedRelationship, no features of its own) is read under `argumentElement` of an ArgumentPackage with SACM23-ARG-007's features, written and round-tripped (ADR 0027). It is created by `CreateAssertedInference::new(parent, name, sources, target)` (with `with_id`, `with_reasoning`, `with_is_counter`) under the LIB-EDIT-001 contract, taking premises (sources) and a conclusion (target); after ADR 0019's checks, no source is `EditError::TooFewReferences` (SACM-MULT-001) and a source, target or reasoning naming no element is `EditError::ReferenceNotFound` (SACM-CMD-001); repeated sources are not refused (a content finding, SACM23-VAL-022). Kind-specific end typing is none: the clause has no Constraints section (SACM23-VAL-016). Target types are checked by SACM23-VAL-004."
+source = "formal/23-05-08 §11.14 (pp. 40-41) \"Superclass AssertedRelationship\"; ptc/22-03-13 Argumentation::AssertedInference; ADR 0019; ADR 0026; ADR 0027; D-VAL-LAYER; assurance-forge operations.h:98-107, commands.cpp:500-545, validate.cpp:129-133 (no kind-specific typing)"
 kind = "model"
-status = "planned"
-depends_on = ["SACM23-ARG-007"]
+status = "implemented"
+depends_on = ["SACM23-ARG-007", "SACM23-XMI-016", "LIB-EDIT-001", "LIB-EDIT-002", "SACM23-VAL-005"]
+acceptance = [
+  "It reads with its ends in both modes, with `xmi:type` and `xsi:type`; an untyped `<argumentElement>` stays `Unsupported`; the kind in an AssuranceCasePackage is `Unsupported`.",
+  "A golden file round-trips, and the second write gives the same bytes.",
+  "`CreateAssertedInference` succeeds with `asserted_inference_1`, `created_ids` is that id, and the ends are as given; no source is `TooFewReferences`; a missing source, target or reasoning is `ReferenceNotFound`; a refused create leaves the document `==` to before with the same next ids.",
+  "Any ArgumentAsset source and target (Claim, ArgumentReasoning, another relationship) give no finding beyond the generic ones.",
+  "A document built only by edits, including this kind, writes strictly, reloads, validates clean and compares equal (LIB-RT-003).",
+]
+tests = [
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_008_reads_with_its_ends_by_xmi_type_or_xsi_type_and_is_refused_untyped_or_in_a_case_package",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_008_the_fixture_reads_with_its_inferences_and_round_trips",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_008_the_golden_file_round_trips_to_its_own_bytes",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_008_create_asserted_inference_reports_what_it_was_given",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_008_create_asserted_inference_creates_with_its_ends_and_a_generated_id",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_008_create_asserted_inference_refuses_no_source_and_missing_references_unchanged",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_008_create_asserted_inference_runs_the_four_create_checks_before_the_reference_checks",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_008_create_asserted_inference_refuses_an_end_naming_the_id_of_a_name",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_008_any_argument_asset_as_source_and_target_gives_no_finding",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_008_a_document_built_only_by_edits_writes_strictly_reloads_and_compares_equal",
+]
+code = ["crates/sacm/src/edit/argumentation.rs", "crates/sacm/src/xmi/roots.rs"]
 
 [[row]]
 id = "SACM23-ARG-009"
@@ -2891,11 +2994,31 @@ id = "SACM23-ARG-010"
 area = "ARG"
 milestone = "M2"
 title = "AssertedContext"
-requirement = "AssertedContext is represented, created, round-tripped and editable."
-source = "formal/23-05-08 clause 11; ptc/22-03-13 Argumentation::AssertedContext"
+requirement = "AssertedContext (§11.16, superclass AssertedRelationship, no features of its own) is read under `argumentElement` of an ArgumentPackage with SACM23-ARG-007's features, written and round-tripped (ADR 0027). It is created by `CreateAssertedContext::new(parent, name, sources, target)` (with `with_id`, `with_reasoning`, `with_is_counter`) under the LIB-EDIT-001 contract, taking context sources and a target; after ADR 0019's checks, no source is `EditError::TooFewReferences` (SACM-MULT-001) and a source, target or reasoning naming no element is `EditError::ReferenceNotFound` (SACM-CMD-001); repeated sources are not refused (a content finding, SACM23-VAL-022). Kind-specific end typing is none: the clause has no Constraints section (SACM23-VAL-016). Target types are checked by SACM23-VAL-004."
+source = "formal/23-05-08 §11.16 (p. 41) \"Superclass AssertedRelationship\"; ptc/22-03-13 Argumentation::AssertedContext; ADR 0019; ADR 0026; ADR 0027; D-VAL-LAYER; assurance-forge operations.h:98-107, commands.cpp:500-545, validate.cpp:129-133 (no kind-specific typing)"
 kind = "model"
-status = "planned"
-depends_on = ["SACM23-ARG-007"]
+status = "implemented"
+depends_on = ["SACM23-ARG-007", "SACM23-XMI-016", "LIB-EDIT-001", "LIB-EDIT-002", "SACM23-VAL-005"]
+acceptance = [
+  "It reads with its ends in both modes, with `xmi:type` and `xsi:type`; an untyped `<argumentElement>` stays `Unsupported`; the kind in an AssuranceCasePackage is `Unsupported`.",
+  "A golden file round-trips, and the second write gives the same bytes.",
+  "`CreateAssertedContext` succeeds with `asserted_context_1`, `created_ids` is that id, and the ends are as given; no source is `TooFewReferences`; a missing source, target or reasoning is `ReferenceNotFound`; a refused create leaves the document `==` to before with the same next ids.",
+  "Any ArgumentAsset source and target (Claim, ArgumentReasoning, another relationship) give no finding beyond the generic ones.",
+  "A document built only by edits, including this kind, writes strictly, reloads, validates clean and compares equal (LIB-RT-003).",
+]
+tests = [
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_010_reads_with_its_ends_by_xmi_type_or_xsi_type_and_is_refused_untyped_or_in_a_case_package",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_010_the_fixture_reads_with_its_context_and_round_trips",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_010_the_golden_file_round_trips_to_its_own_bytes",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_010_create_asserted_context_reports_what_it_was_given",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_010_create_asserted_context_creates_with_its_ends_and_a_generated_id",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_010_create_asserted_context_refuses_no_source_and_missing_references_unchanged",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_010_create_asserted_context_runs_the_four_create_checks_before_the_reference_checks",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_010_create_asserted_context_refuses_an_end_naming_the_id_of_a_name",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_010_any_argument_asset_as_source_and_target_gives_no_finding",
+  "crates/sacm/tests/asserted_relationships.rs::sacm23_arg_010_a_document_built_only_by_edits_writes_strictly_reloads_and_compares_equal",
+]
+code = ["crates/sacm/src/edit/argumentation.rs", "crates/sacm/src/xmi/roots.rs"]
 
 [[row]]
 id = "SACM23-ARG-011"
@@ -2965,6 +3088,7 @@ tests = [
   "crates/sacm/tests/xmi_read_locations.rs::sacm23_xmi_010_gid_refusals_are_located",
   "crates/sacm/tests/xmi_read_locations.rs::sacm23_xmi_010_is_citation_and_is_abstract_refusals_are_located",
   "crates/sacm/tests/xmi_read_locations.rs::sacm23_xmi_010_cited_element_and_abstract_form_refusals_are_located",
+  "crates/sacm/tests/xmi_read_locations.rs::sacm23_xmi_010_relationship_meta_claim_and_structure_refusals_are_located",
 ]
 verification = "docs/verification/0037-m1-element-form-values.md"
 
@@ -3003,7 +3127,7 @@ tests = [
   "crates/sacm/tests/load_and_save_modes.rs::lib_compat_007_the_invalid_refusal_says_1_error_for_one_and_3_errors_for_three",
 ]
 verification = "docs/verification/0037-m1-element-form-values.md"
-notes = "ADR review, 2026-11-13: decided in the load and save modes ADR with LIB-COMPAT-001: the semver stance (a new validation rule can make the default save fail in a minor release), and the reporting rule (every affected element, ADR 0013, or the first, ADR 0017 W4). Must land before any release (LIB-QA-005). Slice 0035: designed in ADR 0022, which takes over ADR 0013 amendment 1. ADR 0018's consequence: default writes of documents with validation Errors now fail; docs and examples are updated and the CHANGELOG calls it out. Slice 0036: a test's ids or expectations changed for the new id rules (ADR 0015 amendment 2, SACM23-VAL-020); re-checked there. Slice 0041: a test input broke §11.4 homogeneity or held two descriptions, which SACM23-VAL-011/012 now report; the input was changed, not the assertion; re-check there."
+notes = "ADR review, 2026-11-13: decided in the load and save modes ADR with LIB-COMPAT-001: the semver stance (a new validation rule can make the default save fail in a minor release), and the reporting rule (every affected element, ADR 0013, or the first, ADR 0017 W4). Must land before any release (LIB-QA-005). Slice 0035: designed in ADR 0022, which takes over ADR 0013 amendment 1. ADR 0018's consequence: default writes of documents with validation Errors now fail; docs and examples are updated and the CHANGELOG calls it out. Slice 0036: a test's ids or expectations changed for the new id rules (ADR 0015 amendment 2, SACM23-VAL-020); re-checked there. Slice 0041: a test input broke §11.4 homogeneity or held two descriptions, which SACM23-VAL-011/012 now report; the input was changed, not the assertion; re-check there. Slice 0043: a test sample or list changed because ArgumentReasoning, AssertedInference and AssertedContext are read now (ADR 0027); re-check there."
 
 [[row]]
 id = "SACM23-XMI-013"
@@ -3260,11 +3384,26 @@ id = "SACM23-VAL-005"
 area = "VAL"
 milestone = "M2"
 title = "Relationship multiplicities"
-requirement = "An asserted relationship with no source or without exactly one target is reported as SACM-MULT-001; the edit API cannot create one."
-source = "formal/23-05-08 §11.13 (source[1..*], target[1]); SACM-MULT-001"
+requirement = "`validation::validate` reports each asserted relationship with no `source`, and each with no `target`, as one SACM-MULT-001 Error per missing end (requirement SACM23-VAL-005, clause `11.13`, affected `[relationship]`, no location), because §11.13 and ptc/22-03-13 agree on `source [1..*]` and `target [1]` (D-SEV). A strict save refuses such a relationship; a tolerant save writes it (ADR 0022, ADR 0027). Two targets cannot be held (`RepeatedValue` on read, ADR 0026). Create operations cannot make one (`TooFewReferences`, the required target argument)."
+source = "formal/23-05-08 §11.13 (p. 40) `source:ArgumentAsset[1..*]`, `target:ArgumentAsset[1]`; ptc/22-03-13 Argumentation::AssertedRelationship source [1..*], target [1..1]; XMI 2.5.1 §7.8.2 (schemas ignore multiplicities); D-SEV; D-VAL-LAYER; ADR 0027"
 kind = "validation"
-status = "planned"
-depends_on = ["SACM23-ARG-007"]
+status = "implemented"
+depends_on = ["SACM23-ARG-007", "SACM23-VAL-018", "LIB-COMPAT-007"]
+acceptance = [
+  "An AssertedInference with no `source` gives one SACM-MULT-001 Error, requirement SACM23-VAL-005, clause `11.13`, affected `[relationship]`, no location, the message naming `source`; with no `target`, one naming `target`; with neither, two.",
+  "The same for an AssertedContext.",
+  "A relationship with a source and a target gives none, whatever the declaration or `isCounter`.",
+  "A strict write refuses with `WriteError::Invalid`; a tolerant write keeps the relationship as read.",
+]
+tests = [
+  "crates/sacm/tests/relationship_validation.rs::sacm23_val_005_an_asserted_inference_missing_its_source_or_target_gives_one_error_per_missing_end",
+  "crates/sacm/tests/relationship_validation.rs::sacm23_val_005_an_asserted_context_missing_its_source_or_target_gives_one_error_per_missing_end",
+  "crates/sacm/tests/relationship_validation.rs::sacm23_val_005_each_relationship_kind_inserted_without_ends_gives_two_errors",
+  "crates/sacm/tests/relationship_validation.rs::sacm23_val_005_the_fixture_gives_two_errors_on_its_inference",
+  "crates/sacm/tests/relationship_validation.rs::sacm23_val_005_a_relationship_with_a_source_and_a_target_gives_none_whatever_its_declaration_or_is_counter",
+  "crates/sacm/tests/relationship_validation.rs::sacm23_val_005_a_strict_write_refuses_and_a_tolerant_write_keeps_the_relationship_as_read",
+]
+code = ["crates/sacm/src/validation/relationships.rs"]
 
 [[row]]
 id = "SACM23-VAL-007"
@@ -3443,6 +3582,7 @@ source = "formal/23-05-08 clause 11 (each Asserted* subclause)"
 kind = "validation"
 status = "planned"
 depends_on = ["SACM23-ARG-008", "SACM23-ARG-009", "SACM23-ARG-010", "SACM23-ARG-011", "SACM23-ARG-012", "SACM23-VAL-004"]
+notes = "Slice 0043: §11.14 (AssertedInference) and §11.16 (AssertedContext) have no Constraints section, so this row adds no checks for them (ADR 0027)."
 
 [[row]]
 id = "LIB-DIAG-002"
@@ -4187,12 +4327,12 @@ id = "SACM23-XMI-016"
 area = "XMI"
 milestone = "M1"
 title = "Containment children conform to their role"
-requirement = "`xmi::read` reads each containment child under its role element: an element in no namespace whose local name is a composite role of the parent's class, as spelled in ptc/22-03-13. The child's class is the one its `xmi:type` or `xsi:type` names, resolved as for roots (SACM23-XMI-002); without a type attribute it is the role's declared type, if that type is concrete (XMI 2.5.1 §7.6.3). The child is read with its `xmi:id`, its name (SACM23-XMI-012) and its parent, in document order across roles (ADR 0010 D2). In this release the readable children are an AssuranceCasePackage in `assuranceCasePackage`, an ArgumentPackage in `argumentPackage` and in `argumentElement`, and a Claim in `argumentElement`; each may carry only namespace declarations, `xmi:id`, a type attribute, one `name`, one `gid` (SACM23-BASE-006), utility children (SACM23-BASE-004/005) and, on a Claim, one `assertionDeclaration` as an attribute or an element (SACM23-XMI-017, SACM23-XMI-014). A child is never re-roled, re-typed or dropped: a type that does not conform to the role, a type naming an abstract or unknown class, a missing type under an abstract role, a role the parent's class lacks, a namespace-qualified role element, and any other child or attribute are refused as `ReadError::Unsupported` at the child's start tag, or at an attribute's name (ADR 0015's interim rule, as ADR 0016 D6 does for roots). `xmi::write` writes each child under the one role that admits it, for all 339 legal pairs, and what it writes for any document `edit::apply` builds reads back to the same ids, kinds, names, parents and order."
+requirement = "`xmi::read` reads each containment child under its role element: an element in no namespace whose local name is a composite role of the parent's class, as spelled in ptc/22-03-13. The child's class is the one its `xmi:type` or `xsi:type` names, resolved as for roots (SACM23-XMI-002); without a type attribute it is the role's declared type, if that type is concrete (XMI 2.5.1 §7.6.3). The child is read with its `xmi:id`, its name (SACM23-XMI-012) and its parent, in document order across roles (ADR 0010 D2). In this release the readable children are an AssuranceCasePackage in `assuranceCasePackage`, an ArgumentPackage in `argumentPackage` and in `argumentElement`, and a Claim, an ArgumentReasoning, an AssertedInference and an AssertedContext in `argumentElement` (SACM23-ARG-005, -008, -010); each may carry only namespace declarations, `xmi:id`, a type attribute, one `name`, one `gid` (SACM23-BASE-006), utility children (SACM23-BASE-004/005) the flags and references its class has (ADR 0026, ADR 0027) and, on an Assertion, one `assertionDeclaration` as an attribute or an element (SACM23-XMI-017, SACM23-XMI-014). A child is never re-roled, re-typed or dropped: a type that does not conform to the role, a type naming an abstract or unknown class, a missing type under an abstract role, a role the parent's class lacks, a namespace-qualified role element, and any other child or attribute are refused as `ReadError::Unsupported` at the child's start tag, or at an attribute's name (ADR 0015's interim rule, as ADR 0016 D6 does for roots). `xmi::write` writes each child under the one role that admits it, for all 339 legal pairs, and what it writes for any document `edit::apply` builds reads back to the same ids, kinds, names, parents and order."
 source = "formal/23-05-08 §9.2 (pp. 23-24) \"assuranceCasePackage: AssuranceCasePackage [0..*] (composition)\", \"argumentPackage:Argument::ArgumentPackage[0..*] (composition)\"; §11.3 (p. 36) \"ArgumentationElement (abstract)\"; §11.4 (p. 36) \"argumentationElement:ArgumentationElement[0..*] (composition)\"; ptc/22-03-13 `ArgumentPackage::argumentElement` (composite); XMI 2.5.1 §7.6.3 (p. 15) \"The type attribute is used to specify the type of object being serialized, when the type is not known from the model.\", §7.8.6 (p. 19) \"Each property that is a composite is represented by an XML element, but not by an XML attribute.\", rule 2a (p. 63) \"the XMI name is the name of the Property\", rule 2g (p. 63) (D11); D-PRESERVE; ADR 0015; ADR 0016 D2, D5, D6; ADR 0017; assurance-forge `io/xmi_reader.cpp:914-967, 1993-2090` (which re-roles or drops)."
 kind = "xmi"
 status = "verified"
 depends_on = ["LIB-API-008", "SACM23-XMI-006", "LIB-TOOL-020", "SACM23-AC-001", "SACM23-ARG-001", "SACM23-ARG-002", "SACM23-XMI-002", "SACM23-XMI-012", "LIB-API-009"]
-notes = "Slice 0025: owns strict import requiring the type attribute on an abstract-role child (SACM-XMI-005), moved from SACM23-XMI-006. Export writes `xmi:type` (ADR 0017); import accepts `xmi:type` and `xsi:type`. Moved to M1 by the maintainer, 2026-11-12: edited documents must reload, and M1's round-trip rows need it. Slice 0029 (lead decisions, the minimal options): only kinds whose model row is verified are read (ADR 0016 D5); non-conforming children are `Unsupported`, not coded (ADR 0015's interim rule, as ADR 0016 D6 does for roots); `assertionDeclaration` stays with SACM23-XMI-017; namespace-qualified role elements are refused, as for `name`. Moved out: references (SACM23-XMI-005 and the kind rows); utility children (SACM23-BASE-004/005); `gid`, `isCitation`, `isAbstract` (SACM23-BASE-006/007/008); strict SACM-XMI-003 and tolerant preservation (LIB-COMPAT-003); SACM-XMI-005 (LIB-COMPAT-010); a missing id (SACM23-XMI-020); a duplicate id (SACM23-VAL-001); `argumentationElement` (SACM23-XMI-009); element forms (SACM23-XMI-014/015); XMI metadata (SACM23-XMI-019); legacy shapes (LIB-COMPAT-008). C++ difference: C++ matches role elements by local name in any namespace (`xmi_reader.cpp:1988`); this crate refuses a namespace-qualified role element. Basis: role elements are local declarations, the XMI schema's default is unqualified, and XMI 2.5.1 rule 2a says \"The namespace prefix is ignored for an object that is the value of a Property\", which is ambiguous; the refusal is reversible and closes with LIB-COMPAT-003 (tolerant) if real files need it. Slice 0030: `assertionDeclaration` on a Claim is read (SACM23-XMI-017), so the attribute refusal narrows to non-Assertion children; re-checked there. Slice 0036: an empty or duplicate `xmi:id` is now a coded refusal (`ReadError::InvalidId`, `ReadError::DuplicateId`; ADR 0015 amendment 2), and a padded id is `Unsupported`; reworded and re-checked there. Slice 0037: tests changed for the value elements (SACM23-XMI-014); re-checked there. Slice 0039: reworded for SACM23-XMI-020/-021/-022/-025 and SACM23-VAL-006 (ADR 0024, ADR 0021 amendment 2); re-check there. Slice 0040: reworded, because utility children and `gid` are read now (SACM23-BASE-004/005/006); its tests use `isCitation`, `isAbstract`, `<foo/>` and `<isCitation>` as unread samples; re-check there. Slice 0041: a test input broke §11.4 homogeneity or held two descriptions, which SACM23-VAL-011/012 now report; the input was changed, not the assertion; re-check there. Slice 0042: `isCitation`, `isAbstract`, `citedElement` and `abstractForm` are read now (SACM23-BASE-007/008); its tests need other unread samples; re-check there."
+notes = "Slice 0025: owns strict import requiring the type attribute on an abstract-role child (SACM-XMI-005), moved from SACM23-XMI-006. Export writes `xmi:type` (ADR 0017); import accepts `xmi:type` and `xsi:type`. Moved to M1 by the maintainer, 2026-11-12: edited documents must reload, and M1's round-trip rows need it. Slice 0029 (lead decisions, the minimal options): only kinds whose model row is verified are read (ADR 0016 D5); non-conforming children are `Unsupported`, not coded (ADR 0015's interim rule, as ADR 0016 D6 does for roots); `assertionDeclaration` stays with SACM23-XMI-017; namespace-qualified role elements are refused, as for `name`. Moved out: references (SACM23-XMI-005 and the kind rows); utility children (SACM23-BASE-004/005); `gid`, `isCitation`, `isAbstract` (SACM23-BASE-006/007/008); strict SACM-XMI-003 and tolerant preservation (LIB-COMPAT-003); SACM-XMI-005 (LIB-COMPAT-010); a missing id (SACM23-XMI-020); a duplicate id (SACM23-VAL-001); `argumentationElement` (SACM23-XMI-009); element forms (SACM23-XMI-014/015); XMI metadata (SACM23-XMI-019); legacy shapes (LIB-COMPAT-008). C++ difference: C++ matches role elements by local name in any namespace (`xmi_reader.cpp:1988`); this crate refuses a namespace-qualified role element. Basis: role elements are local declarations, the XMI schema's default is unqualified, and XMI 2.5.1 rule 2a says \"The namespace prefix is ignored for an object that is the value of a Property\", which is ambiguous; the refusal is reversible and closes with LIB-COMPAT-003 (tolerant) if real files need it. Slice 0030: `assertionDeclaration` on a Claim is read (SACM23-XMI-017), so the attribute refusal narrows to non-Assertion children; re-checked there. Slice 0036: an empty or duplicate `xmi:id` is now a coded refusal (`ReadError::InvalidId`, `ReadError::DuplicateId`; ADR 0015 amendment 2), and a padded id is `Unsupported`; reworded and re-checked there. Slice 0037: tests changed for the value elements (SACM23-XMI-014); re-checked there. Slice 0039: reworded for SACM23-XMI-020/-021/-022/-025 and SACM23-VAL-006 (ADR 0024, ADR 0021 amendment 2); re-check there. Slice 0040: reworded, because utility children and `gid` are read now (SACM23-BASE-004/005/006); its tests use `isCitation`, `isAbstract`, `<foo/>` and `<isCitation>` as unread samples; re-check there. Slice 0041: a test input broke §11.4 homogeneity or held two descriptions, which SACM23-VAL-011/012 now report; the input was changed, not the assertion; re-check there. Slice 0042: `isCitation`, `isAbstract`, `citedElement` and `abstractForm` are read now (SACM23-BASE-007/008); its tests need other unread samples; re-check there. Slice 0043: ArgumentReasoning, AssertedInference and AssertedContext become readable in `argumentElement` (ADR 0027); its tests using them as unread samples change; re-check there."
 acceptance = [
   "Read: each of the four readable cases reads to its kind, id, name and parent; under a concrete role with no type, a redundant `xmi:type` and a redundant `xsi:type`; under `argumentElement` with `xmi:type` and `xsi:type`. An `xmi:type` and an `xsi:type` on the same child that name the same class read too.",
   "Read: document order holds across roles and with `name` after the children, at depth 3 or more.",
@@ -4232,12 +4372,12 @@ id = "SACM23-XMI-017"
 area = "XMI"
 milestone = "M1"
 title = "assertionDeclaration in XMI"
-requirement = "`xmi::read` reads the `assertionDeclaration` XML attribute, in no namespace, on every readable Assertion kind: in this release a Claim (SACM23-XMI-016), and each later Assertion kind's read row inherits this rule. After XML 1.0 attribute-value normalisation, with no trimming or case folding, the value must be exactly one of `asserted`, `needsSupport`, `assumed`, `axiomatic`, `defeated` or `asCited`, and it reads as that literal. An absent attribute reads as `asserted`; an explicit `assertionDeclaration=\"asserted\"` is accepted without a diagnostic and reads equal to the absent form. Any other value (another letter case, white space anywhere, the empty string, another word) is `ReadError::InvalidLiteral` (SACM-ENUM-001, SACM23-VAL-006) at the attribute's name, holding the value as read, and is never mapped to `asserted`. The attribute stays `Unsupported` on a non-Assertion element and when namespace-qualified; the element form is read by SACM23-XMI-014. `xmi::write` writes no attribute for `asserted` and otherwise `assertionDeclaration` with the exact literal, after `xmi:id`, on every element of an Assertion kind (all six) and on no other. Every literal round-trips on a Claim."
+requirement = "`xmi::read` reads the `assertionDeclaration` XML attribute, in no namespace, on every readable Assertion kind: in this release a Claim (SACM23-XMI-016), an AssertedInference and an AssertedContext (SACM23-ARG-007), and each later Assertion kind's read row inherits this rule. After XML 1.0 attribute-value normalisation, with no trimming or case folding, the value must be exactly one of `asserted`, `needsSupport`, `assumed`, `axiomatic`, `defeated` or `asCited`, and it reads as that literal. An absent attribute reads as `asserted`; an explicit `assertionDeclaration=\"asserted\"` is accepted without a diagnostic and reads equal to the absent form. Any other value (another letter case, white space anywhere, the empty string, another word) is `ReadError::InvalidLiteral` (SACM-ENUM-001, SACM23-VAL-006) at the attribute's name, holding the value as read, and is never mapped to `asserted`. The attribute stays `Unsupported` on a non-Assertion element and when namespace-qualified; the element form is read by SACM23-XMI-014. `xmi::write` writes no attribute for `asserted` and otherwise `assertionDeclaration` with the exact literal, after `xmi:id`, on every element of an Assertion kind (all six) and on no other. Every literal round-trips on a Claim."
 source = "formal/23-05-08 §11.10 (p. 39) \"assertionDeclaration:AssertionDeclaration[1] = asserted\"; §11.8 (p. 38) \"asserted - the default enumeration literal\"; ptc/22-03-13 `Assertion::assertionDeclaration` (defaultValue: literal `asserted`) and the `AssertionDeclaration` ownedLiterals; XMI 2.5.1 §9.4.1 (p. 57) \"Properties whose values are the default values are not serialized\", §7.8.4 (p. 18) \"the XML Schema will never contain default values for Properties\" and `<xsd:attribute name=\"a\" type=\"enumName\" use=\"optional\"/>`, §8.2.1 rule 8 (p. 53) \"a simple type derived from string whose legal values are the enumeration literals\", rule 4k (p. 51); XSD 1.0 Part 2 §4.3.6 \"for string the value of whiteSpace is preserve\", §4.3.5.4; XML 1.0 §3.3.3; D-STRICT; D-PRESERVE; ADR 0015; ADR 0017 amendment 2; assurance-forge `io/xmi_reader.cpp:1759-1815`, `io/xmi_writer.cpp:95-98`"
 kind = "xmi"
 status = "verified"
 depends_on = ["SACM23-XMI-001", "SACM23-ARG-002", "SACM23-ARG-003", "SACM23-XMI-016", "SACM23-XMI-010", "LIB-API-009", "LIB-TOOL-020"]
-notes = "Slice 0030: moved from M2 to M1, because the reader refused most real files at their first Claim (the maintainer, 2026-11-13). C++ differences: C++ maps an unknown literal to `asserted` with SACM-ENUM-001, losing the raw value, and `justification` to `axiomatic` with a TaggedValue (`xmi_reader.cpp:1766-1794`); this crate refuses both until SACM23-VAL-006 and LIB-COMPAT. C++ matches the attribute in any namespace; this crate refuses `sacm:assertionDeclaration`. Editorial defect: §11.11 writes `assertionDeclared` for `assertionDeclaration`. Slice 0037: the element form of `lang` and `content` (and of `assertionDeclaration`) is read now (SACM23-XMI-014); reworded and re-checked there. Slice 0039: reworded for SACM23-XMI-020/-021/-022/-025 and SACM23-VAL-006 (ADR 0024, ADR 0021 amendment 2); re-check there."
+notes = "Slice 0030: moved from M2 to M1, because the reader refused most real files at their first Claim (the maintainer, 2026-11-13). C++ differences: C++ maps an unknown literal to `asserted` with SACM-ENUM-001, losing the raw value, and `justification` to `axiomatic` with a TaggedValue (`xmi_reader.cpp:1766-1794`); this crate refuses both until SACM23-VAL-006 and LIB-COMPAT. C++ matches the attribute in any namespace; this crate refuses `sacm:assertionDeclaration`. Editorial defect: §11.11 writes `assertionDeclared` for `assertionDeclaration`. Slice 0037: the element form of `lang` and `content` (and of `assertionDeclaration`) is read now (SACM23-XMI-014); reworded and re-checked there. Slice 0039: reworded for SACM23-XMI-020/-021/-022/-025 and SACM23-VAL-006 (ADR 0024, ADR 0021 amendment 2); re-check there. Slice 0043: the asserted relationship kinds now read it too (ADR 0027); reworded, re-check there."
 acceptance = [
   "Read: each of the six literals on a Claim (with `xmi:type` and with `xsi:type`) reads to that literal. With no attribute the Claim reads as `asserted`; with `assertionDeclaration=\"asserted\"` the document equals the one without the attribute.",
   "Read: a value whose character references resolve to a literal (`&#x61;sserted`, `needs&#x53;upport`) reads as that literal.",
@@ -4325,6 +4465,18 @@ kind = "validation"
 status = "planned"
 depends_on = ["SACM23-BASE-004", "SACM23-BASE-008"]
 notes = "Found in slice 0040 research. Until SACM23-BASE-008 makes `isAbstract` settable, an edit-built ImplementationConstraint would fail a strict save once this row is built."
+
+[[row]]
+id = "SACM23-VAL-022"
+area = "VAL"
+milestone = "M2"
+title = "Repeated targets in a multi-valued reference end"
+requirement = "`validation::validate` reports each id held two or more times by one multi-valued reference end (`metaClaim`, `source`, and later ends) as one SACM-MULT-001 Warning per repeated id per end, with the end's clause, affected `[element, id]` and no location. The file is kept as read (ADR 0027). It is a Warning because uniqueness comes only from UML's implicit `isUnique` default, not from SACM's text (the maintainer, 2026-11-14)."
+source = "ptc/22-03-13 reference ends with no `isUnique` (UML default true); XMI 2.5.1 §7.8.5 (xsd:IDREFS allows repeats); D-SEV; D-STRICT; ADR 0027"
+kind = "validation"
+status = "planned"
+depends_on = ["SACM23-ARG-004", "SACM23-ARG-007"]
+notes = "Found in slice 0043 research; severity chosen by the maintainer on 2026-11-14."
 
 [[row]]
 id = "LIB-API-009"
