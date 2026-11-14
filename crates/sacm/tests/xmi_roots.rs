@@ -924,7 +924,7 @@ fn sacm23_xmi_001_invalid_root_takes_precedence_over_unsupported() {
         // A readable root with content it cannot read.
         "<sacm:ArgumentPackage xmi:id=\"a\"><foo/></sacm:ArgumentPackage>",
         // A readable root with an attribute it cannot read.
-        "<sacm:ArgumentPackage xmi:id=\"a\" isAbstract=\"true\"/>",
+        "<sacm:ArgumentPackage xmi:id=\"a\" foo=\"1\"/>",
         // A root with an id that is not an `xmi:id`. (A root without an id is
         // read, SACM23-XMI-020.)
         "<sacm:ArgumentPackage id=\"a\"/>",
@@ -940,7 +940,7 @@ fn sacm23_xmi_001_invalid_root_takes_precedence_over_unsupported() {
     );
     assert_invalid_root_at(row, repeated.as_bytes(), loc(row, 4, 3), "sacm:Claim");
     // A bare Claim root with content and attributes that would be Unsupported.
-    let claim = format!("<sacm:Claim{NS} isCitation=\"false\"><name/>text</sacm:Claim>");
+    let claim = format!("<sacm:Claim{NS} foo=\"1\"><name/>text</sacm:Claim>");
     assert_invalid_root_at(row, claim.as_bytes(), loc(row, 1, 1), "sacm:Claim");
 }
 
@@ -1051,14 +1051,17 @@ fn root_start(kind: &str) -> String {
 #[test]
 fn sacm23_xmi_001_an_unread_attribute_of_a_root_is_unsupported_at_the_attribute() {
     let row = "SACM23-XMI-001";
-    // `gid` is read (SACM23-BASE-006), so it is not among these.
+    // `gid` is read (SACM23-BASE-006), and so are `isCitation`, `isAbstract`,
+    // `citedElement` and `abstractForm` in no namespace (SACM23-BASE-007/008,
+    // SACM23-XMI-005), so they are not among these; in a namespace they are
+    // not read.
     let attributes = [
-        "isCitation=\"true\"",
-        "isAbstract=\"false\"",
-        "isCitation=\"false\"",
-        "isAbstract=\"true\"",
-        "citedElement=\"x\"",
-        "abstractForm=\"x\"",
+        "sacm:isCitation=\"true\"",
+        "sacm:isAbstract=\"false\"",
+        "ext:isCitation=\"false\"",
+        "xmi:isAbstract=\"true\"",
+        "sacm:citedElement=\"x\"",
+        "ext:abstractForm=\"x\"",
         "interface=\"x\"",
         "xmi:uuid=\"u\"",
         "xmi:label=\"l\"",
@@ -1095,14 +1098,17 @@ fn sacm23_xmi_001_unread_content_of_a_root_is_unsupported_at_that_content() {
     let row = "SACM23-XMI-001";
     // Children that neither root reads, with ids: an id-less child that is
     // readable is read with a generated id (SACM23-XMI-020). Utility children
-    // and `<gid>` are read (SACM23-BASE-004/005/006), so they are not among
-    // these.
+    // and `<gid>` are read (SACM23-BASE-004/005/006), and so are
+    // `<isCitation>` and the other SACMElement value and reference elements in
+    // no namespace (SACM23-BASE-007/008, SACM23-XMI-015), so they are not
+    // among these; in the SACM namespace they are not read.
     let children = [
         "<foo/>",
         "<artifactPackage xmi:id=\"x\"/>",
         "<argumentElement xsi:type=\"sacm:AssertedInference\" xmi:id=\"x\"/>",
         "<xmi:Extension/>",
-        "<isCitation>true</isCitation>",
+        "<sacm:isCitation>true</sacm:isCitation>",
+        "<sacm:citedElement xmi:idref=\"p\"/>",
     ];
     for kind in ["ArgumentPackage", "AssuranceCasePackage"] {
         for child in children {
@@ -1252,11 +1258,11 @@ fn sacm23_xmi_001_a_repeated_root_id_is_refused_at_the_root_before_its_attribute
     // The second root also has an unread attribute, or unread content,
     // either of which would be refused first if the id were checked later.
     let inputs = [
-        "\n  <sacm:ArgumentPackage xmi:id=\"a\"/>\n  <sacm:ArgumentPackage xmi:id=\"a\" isAbstract=\"true\"/>\n",
-        "\n  <sacm:ArgumentPackage xmi:id=\"a\"/>\n  <sacm:ArgumentPackage isAbstract=\"true\" xmi:id=\"a\"/>\n",
+        "\n  <sacm:ArgumentPackage xmi:id=\"a\"/>\n  <sacm:ArgumentPackage xmi:id=\"a\" foo=\"1\"/>\n",
+        "\n  <sacm:ArgumentPackage xmi:id=\"a\"/>\n  <sacm:ArgumentPackage foo=\"1\" xmi:id=\"a\"/>\n",
         "\n  <sacm:ArgumentPackage xmi:id=\"a\"/>\n  <sacm:ArgumentPackage xmi:id=\"a\"><foo/></sacm:ArgumentPackage>\n",
         "\n  <sacm:ArgumentPackage xmi:id=\"a\"/>\n  <sacm:AssuranceCasePackage xmi:id=\"a\">\
-         <argumentPackage xmi:id=\"x\" isAbstract=\"true\"/></sacm:AssuranceCasePackage>\n",
+         <argumentPackage xmi:id=\"x\" foo=\"1\"/></sacm:AssuranceCasePackage>\n",
     ];
     for content in inputs {
         assert_duplicate_id_at(
@@ -1276,7 +1282,7 @@ fn sacm23_xmi_001_a_root_that_repeats_an_earlier_roots_child_id_is_refused_at_th
     let seconds = [
         "  <sacm:ArgumentPackage xmi:id=\"c\"/>\n",
         "  <sacm:ArgumentPackage xmi:id=\"c\"><foo/></sacm:ArgumentPackage>\n",
-        "  <sacm:AssuranceCasePackage xmi:id=\"c\" isAbstract=\"true\"/>\n",
+        "  <sacm:AssuranceCasePackage xmi:id=\"c\" foo=\"1\"/>\n",
     ];
     for second in seconds {
         let input = wrapped(&format!("{first}{second}"));

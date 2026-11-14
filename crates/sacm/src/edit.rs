@@ -48,7 +48,9 @@
 //! - **Generated** otherwise: `<snake_case kind>_<n>`, such as
 //!   `assurance_case_package_1`, `argument_package_1` or `claim_1`. `n` is the
 //!   smallest number above the document's counter for the kind whose id is not
-//!   already in use, whether a caller gave it or it was read from a file. The
+//!   already in use, whether a caller gave it or it was read from a file, and
+//!   that no reference names, so that a reference naming no element never
+//!   comes to name the new one by accident (ADR 0026). The
 //!   counter advances only when an operation succeeds with a generated id; a
 //!   caller id does not move it.
 //! - **Deterministic:** the same operations, applied to documents built or read

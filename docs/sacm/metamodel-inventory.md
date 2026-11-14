@@ -53,6 +53,7 @@ The rule above -- "where they disagree, follow the text" -- was applied unevenly
 - Clause 8.5 `MultiLangString.value`: the text declares `LangString[1..*]` (composition); the model gives no bounds, so it reads `[1..1]`. **Text followed** -- the library stores a list (`MultiLangString`) that may be empty or repeat a language, so a file is held as written, and validation reports an empty one and each repeated language (clause 8.5 and its own constraint, SACM23-VAL-010), which would be meaningless at `[1..1]`.
 - Clause 8.7 `UtilityElement.content`: text `[0..1]`, model `[1..1]`. **Text followed** (ADR 0025): `SacmElement::content()` is `None` when a file has no `content` and an empty MultiLangString for `<content/>`; the two are kept apart and both are written back. An absent `content` is not reported (the maintainer, 2026-11-14); an empty one is a SACM-MULT-001 Error (clause 8.5 `[1..*]`, SACM23-VAL-010).
 - Clause 8.6 `ModelElement.description`: text `Description[0..1]`, model `[0..*]`. **Model followed** in representation -- the library keeps every description as a child in document order (D-DESC-MULT, SACM23-BASE-004), so a file carrying several round-trips rather than losing all but one -- and the TEXT is to be enforced in validation as a Warning above one (SACM-MULT-001, citing 8.6; SACM23-VAL-011, planned).
+- Clause 8.2 `SACMElement.isCitation` and `isAbstract`: the text declares both `Boolean[0..1]=false`; the model gives them no default value (where it gives `AssertedRelationship.isCounter` one) and types all three Booleans by a MagicDraw profile link, `UML_Standard_Profile.mdzip#eee_1045467100323_191782_59`, rather than UML's `PrimitiveTypes.xmi#Boolean` (specification defects D13, D14). **Text followed** (ADR 0026): each flag is a `bool`, absent reads as `false`, and `xmi::write` writes it only when true (XMI 2.5.1 §9.4.1); it is read as an `xsd:boolean`.
 - Clause 8.4 `ExpressionLangString.expression`: the text marks it "(composition)" while wording it as a reference; the model makes it a plain reference. **Model followed** -- a composition would mean the ExpressionElement lives inside the LangString rather than in the TerminologyPackage the same clause points at.
 - Clauses 11.2/11.4 `ArgumentGroup`/`ArgumentPackage` member role: the text spells it `argumentationElement`, the model `argumentElement`. **Model followed** for output and for import in this release; reading the prose spelling, which the EMF dialect uses, is SACM23-XMI-009.
 - Clause 10.5 `TerminologyPackageInterface` superclass: the text says "TerminologyElement", the model and the clause's own diagram say `TerminologyPackage`. **Model followed.** An interface that is not a package could not contain the citations the same clause requires it to contain.
@@ -139,13 +140,18 @@ Generalization chain: Element
 | Attribute | Type | Multiplicity |
 | --- | --- | --- |
 | gid | String | 0..1 |
-| isCitation | Boolean | 0..1 |
-| isAbstract | Boolean | 0..1 |
+| isCitation | Boolean | 0..1 (`=false`, §8.2) |
+| isAbstract | Boolean | 0..1 (`=false`, §8.2) |
 
 | Reference end | Target type | Multiplicity | Ordered |
 | --- | --- | --- | --- |
 | abstractForm | SACMElement | 0..1 | no |
 | citedElement | SACMElement | 0..1 | no |
+
+The `=false` defaults are the text's (§8.2); ptc/22-03-13 gives these two properties no
+default and types them by a MagicDraw `Boolean` link (`UML_Standard_Profile.mdzip#…`), see
+the divergences above. Both reference ends are unnamed in the model (D8) and take their
+names from the Associations.
 
 ### TaggedValue
 

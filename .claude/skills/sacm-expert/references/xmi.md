@@ -29,8 +29,9 @@ single-constant change plus golden-file refresh.
 - Accepted namespace families: any URI containing `/spec/SACM/`, the EMF reference
   implementation's per-package `http://omg.sacm/2.2/<package>` URIs, and the fixture
   URI `http://example.org/sacm/2.3`. Other URIs: warning (tolerant) / error (strict).
-- `href="#id"` reference forms are accepted; external (cross-document) hrefs are
-  preserved as opaque text with a warning.
+- References: the IDREFS attribute and the element form (`<end xmi:idref="id"/>` or
+  `<end href="#id"/>`) are standard XMI and read in both modes (ADR 0026). Cross-document
+  hrefs are refused until SACM23-XMI-027, never dropped.
 - Variant spellings are accepted on import: the machine-readable model's
   `ArtifactAssertedRelationship` for `ArtifactAssetRelationship` and `occurece` for
   `Event.date`, and the §11.4 text's `argumentationElement` for the model's

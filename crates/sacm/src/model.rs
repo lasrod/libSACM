@@ -19,6 +19,10 @@
 //! `ModelElement` may hold descriptions, implementation constraints, notes
 //! and tagged values ([`SacmElement::descriptions`] and the like), the
 //! `UtilityElement`s whose text is their [`content`](SacmElement::content).
+//! Every element also has the §8.2 flags [`SacmElement::is_citation`] and
+//! [`SacmElement::is_abstract`], and may reference another element through
+//! [`SacmElement::cited_element`] and [`SacmElement::abstract_form`]. A
+//! reference is the [`ElementId`] it names, resolved with [`Document::get`].
 //!
 //! [`LangString`], [`MultiLangString`] and [`AssertionDeclaration`] are
 //! values, not elements: they have no id and no kind of their own (the
@@ -88,6 +92,7 @@ mod document;
 mod id;
 mod kind;
 mod lang_string;
+mod reference;
 
 pub use argumentation::{AssertionDeclaration, ParseAssertionDeclarationError};
 pub(crate) use containment::{DeclaredType, admits, role_named};
@@ -101,3 +106,4 @@ pub use id::ElementId;
 pub(crate) use id::is_ncname;
 pub use kind::{AbstractClass, ElementKind, MetamodelPackage};
 pub use lang_string::{LangString, MultiLangString};
+pub(crate) use reference::{Flag, ReferenceEnd, reference_end_named};

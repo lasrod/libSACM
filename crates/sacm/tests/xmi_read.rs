@@ -62,7 +62,7 @@ const SAMPLE: &str = concat!(
     " xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"",
     " xmi:version=\"2.0\" xmi:id=\"case_1\">\n",
     "  <argumentPackage xmi:id=\"arg_1\">\n",
-    "    <argumentElement xsi:type=\"sacm:Claim\" xmi:id=\"c_1\" isCitation=\"false\"/>\n",
+    "    <argumentElement xsi:type=\"sacm:Claim\" xmi:id=\"c_1\" xmi:uuid=\"u\"/>\n",
     "    <argumentElement xsi:type=\"sacm:Claim\" xmi:id=\"c_2\">",
     "<description><content><value>speed &lt; 30 km/h<![CDATA[ & more]]></value></content></description>",
     "</argumentElement>\n",
@@ -1267,13 +1267,14 @@ fn lib_api_009_well_formed_sacm_document_is_unsupported_at_the_construct_it_cann
     );
     // The full sample, too. Its `argumentPackage` child and the Claim `c_1`
     // in it are read (SACM23-XMI-016), so the first content it cannot read
-    // is `c_1`'s `isCitation` attribute (SACM23-BASE-007), refused at the
-    // first character of its name: line 5, column 57.
+    // is `c_1`'s `xmi:uuid` attribute, refused at the first character of its
+    // name: line 5, column 57. (It was `isCitation` until SACM23-BASE-007
+    // read it.)
     let error = assert_unsupported(row, SAMPLE.as_bytes());
     assert_eq!(
         error.location(),
         Some(loc(row, 5, 57)),
-        "{row}: the sample is not refused at the `isCitation` of `c_1`"
+        "{row}: the sample is not refused at the `xmi:uuid` of `c_1`"
     );
 }
 

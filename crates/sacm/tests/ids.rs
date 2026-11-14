@@ -633,7 +633,7 @@ fn sacm23_val_001_a_duplicate_is_duplicate_id_before_later_content_that_is_not_r
             "an unread attribute on the repeat",
             ap(&[
                 claim("x"),
-                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\" isCitation=\"false\"><name content=\"C\"/></argumentElement>"
+                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\" xmi:uuid=\"u\"><name content=\"C\"/></argumentElement>"
                     .to_owned(),
             ]),
         ),

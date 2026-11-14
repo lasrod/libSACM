@@ -31,13 +31,16 @@ not an XML `NCName`.
 each with a name and a given or generated id, or refuses and changes nothing; what it
 builds writes and reads back.
 
-Milestone M2 has begun: every element's `gid`, and the descriptions, notes,
-implementation constraints and tagged values of each readable element, are read, written
-and compared; `sacm::edit::apply` creates those four kinds; and
-`sacm::validation::validate` reports each `content` or `key` text that is empty or gives one language twice, each
-tagged value without a key, each `gid` two elements share, each element with more than one
-description, and each ArgumentPackage that nests one and also holds other argumentation
-elements. The other element kinds in XMI, the other validation rules
+Milestone M2 has begun: every element's `gid`, its `isCitation` and `isAbstract` flags,
+its `citedElement` and `abstractForm` references (held as ids, kept even when they name no
+element), and the descriptions, notes, implementation constraints and tagged values of
+each readable element, are read, written and compared; `sacm::edit::apply` creates those
+four kinds; and `sacm::validation::validate` reports each `content` or `key` text that is
+empty or gives one language twice, each tagged value without a key, each `gid` two
+elements share, each element with more than one description, each ArgumentPackage that
+nests one and also holds other argumentation elements, each reference that names no
+element, each cited element without `isCitation`, and each `abstractForm` that breaks a
+§8.2 rule. The other element kinds in XMI, the other validation rules
 and the other edit operations are not built yet. Milestone M0, the foundation, is done:
 the workspace, CI, the functionality matrix and its gate, and mutation testing.
 The [functionality matrix](docs/matrix/functionality-matrix.md) shows what is verified;

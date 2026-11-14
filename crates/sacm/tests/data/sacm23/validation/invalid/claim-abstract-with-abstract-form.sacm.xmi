@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-VAL-008: the Claim c1 is abstract and uses abstractForm (to the abstract Claim a); clause 8.2 gives abstractForm to concrete elements ("+isAbstract of the SACMElement is false"). It reads in both modes; validate reports one SACM-ABS-001 Error affecting c1. Hand-written; no third-party content. -->
+<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+  <name lang="en" content="Arguments"/>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="a" isAbstract="true">
+    <name lang="en" content="{System} is safe"/>
+  </argumentElement>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c1" isAbstract="true" abstractForm="a">
+    <name lang="en" content="{Subsystem} is safe"/>
+  </argumentElement>
+</sacm:ArgumentPackage>

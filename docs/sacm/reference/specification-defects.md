@@ -266,6 +266,45 @@ writes `xmi:type` only where the class is not known from the role (SACM23-XMI-00
 
 **Suggested resolution.** Correct both texts.
 
+## D13 — The model omits the clause 8.2 Boolean defaults
+
+*Found by libSACM (slice 0042).*
+
+- **SACM §8.2 (p. 18)** declares "isCitation[0..1]=false" and "isAbstract[0..1]=false".
+- **ptc/22-03-13** gives `SACMElement.isCitation` and `isAbstract` a `lowerValue` of 0
+  and no `defaultValue`, while `AssertedRelationship.isCounter`, typed the same way, has
+  one (`<defaultValue xmi:type="uml:LiteralBoolean" …/>`, false).
+
+Without a default, a file that leaves the flag out says nothing, and XMI 2.5.1 §9.4.1
+("Properties whose values are the default values are not serialized") gives a writer no
+value it may omit.
+
+**This crate** follows the text (ADR 0026): absent and `false` are the same value, and
+`xmi::write` writes the flag only when true (SACM23-BASE-007, SACM23-BASE-008).
+
+**Suggested resolution.** Add `defaultValue` false to both properties in the model.
+
+## D14 — The model types its Booleans by a MagicDraw link
+
+*Found by libSACM (slice 0042).*
+
+ptc/22-03-13 types `SACMElement.isCitation`, `SACMElement.isAbstract` and
+`AssertedRelationship.isCounter` as
+
+```xml
+<type href="UML_Standard_Profile.mdzip#eee_1045467100323_191782_59"/>
+```
+
+a reference into a MagicDraw tool library, not the UML primitive type
+`http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#Boolean`, which its Strings use
+(`PrimitiveTypes.xmi#String`). A tool without that library cannot resolve the type, so
+only the text says these properties are Booleans.
+
+**This crate** takes them as `Boolean` from the text, and reads them as `xsd:boolean`
+(`true`, `false`, `1`, `0`), the XML Schema type XMI 2.5.1 maps a UML Boolean to.
+
+**Suggested resolution.** Type the three properties by `PrimitiveTypes.xmi#Boolean`.
+
 ## Related
 
 - [GSN / SACM metamodel gaps](sacm-gsn-metamodel-gaps.md) — the GSN v3 side, for the SCSC ACWG.

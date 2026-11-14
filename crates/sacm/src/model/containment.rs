@@ -36,6 +36,14 @@ impl DeclaredType {
             Self::Abstract(class) => kind.is_a(class),
         }
     }
+
+    /// The name of the class: the kind's or the abstract class's.
+    pub(crate) const fn name(self) -> &'static str {
+        match self {
+            Self::Kind(kind) => kind.name(),
+            Self::Abstract(class) => class.name(),
+        }
+    }
 }
 
 /// A role named `name` with the declared type `declared`.

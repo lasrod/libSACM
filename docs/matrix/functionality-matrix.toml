@@ -1766,7 +1766,7 @@ tests = [
   "crates/sacm/tests/xmi_roots.rs::lib_sec_002_leading_utf8_bom_takes_no_column_in_invalid_root_and_no_package",
   "crates/sacm/tests/xmi_read.rs::lib_sec_002_a_deep_readable_package_chain_reads_without_recursion",
 ]
-notes = "Slice 0021: the location tests use roots that are still refused once SACM23-XMI-001 reads package roots; re-checked there. Slice 0038 (M1 audit): the no-recursion claim was tested only on input refused at the root; a readable deep chain is added; re-check required."
+notes = "Slice 0021: the location tests use roots that are still refused once SACM23-XMI-001 reads package roots; re-checked there. Slice 0038 (M1 audit): the no-recursion claim was tested only on input refused at the root; a readable deep chain is added; re-check required. Slice 0042: its tests replaced `isCitation`/`isAbstract` unread samples (now read, ADR 0026) with other unread ones, locations unchanged; re-check there."
 
 [[row]]
 id = "SACM23-XMI-001"
@@ -1832,7 +1832,7 @@ tests = [
   "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_a_repeated_root_id_is_duplicate_id_at_the_second_root",
 ]
 verification = "docs/verification/0036-m1-ids-docs-cli.md"
-notes = "Parser leniencies beyond LIB-SEC-005's list were left to LIB-SEC-006 (W3C conformance suite), by the maintainer's decision of 2026-11-11 (slice 0021, verification round 3); LIB-SEC-006 closes the list within the suite (slice 0022). Slice 0026: the unread-content example `<name/>` became `<note/>`, because SACM23-XMI-012 reads names; re-checked there. Slice 0029: a duplicate root id is now refused at its id check, as \"an earlier element\"; re-checked there. Slice 0035: read diagnostics exist now (SACM-XMI-010, SACM-XMI-011), so `diagnostics()` is no longer always empty; re-checked there. Slice 0036: an empty or duplicate `xmi:id` is now a coded refusal (`ReadError::InvalidId`, `ReadError::DuplicateId`; ADR 0015 amendment 2), and a padded id is `Unsupported`; reworded and re-checked there. Slice 0039: reworded for SACM23-XMI-020/-021/-022/-025 and SACM23-VAL-006 (ADR 0024, ADR 0021 amendment 2); re-check there. Slice 0040: reworded, because utility children and `gid` are read now (SACM23-BASE-004/005/006); its tests use `isCitation`, `isAbstract`, `<foo/>` and `<isCitation>` as unread samples; re-check there."
+notes = "Parser leniencies beyond LIB-SEC-005's list were left to LIB-SEC-006 (W3C conformance suite), by the maintainer's decision of 2026-11-11 (slice 0021, verification round 3); LIB-SEC-006 closes the list within the suite (slice 0022). Slice 0026: the unread-content example `<name/>` became `<note/>`, because SACM23-XMI-012 reads names; re-checked there. Slice 0029: a duplicate root id is now refused at its id check, as \"an earlier element\"; re-checked there. Slice 0035: read diagnostics exist now (SACM-XMI-010, SACM-XMI-011), so `diagnostics()` is no longer always empty; re-checked there. Slice 0036: an empty or duplicate `xmi:id` is now a coded refusal (`ReadError::InvalidId`, `ReadError::DuplicateId`; ADR 0015 amendment 2), and a padded id is `Unsupported`; reworded and re-checked there. Slice 0039: reworded for SACM23-XMI-020/-021/-022/-025 and SACM23-VAL-006 (ADR 0024, ADR 0021 amendment 2); re-check there. Slice 0040: reworded, because utility children and `gid` are read now (SACM23-BASE-004/005/006); its tests use `isCitation`, `isAbstract`, `<foo/>` and `<isCitation>` as unread samples; re-check there. Slice 0042: `isCitation`, `isAbstract`, `citedElement` and `abstractForm` are read now (SACM23-BASE-007/008); its tests need other unread samples; re-check there."
 
 [[row]]
 id = "SACM23-XMI-002"
@@ -1881,7 +1881,7 @@ tests = [
   "crates/sacm/tests/xmi_namespace_prefixes.rs::sacm23_xmi_002_a_repeated_id_is_the_same_duplicate_id_under_any_prefix",
 ]
 verification = "docs/verification/0036-m1-ids-docs-cli.md"
-notes = "Slice 0026: a test's unread-content example `<name/>` became another child, because SACM23-XMI-012 reads names; re-checked there. Slice 0035: inputs with `xsi:type` or `xmi:version` now carry a read diagnostic, so \"the same document\" compares diagnostics apart from location; re-checked there. Slice 0036: tests updated for the coded id refusals (ADR 0015 amendment 2); re-checked there."
+notes = "Slice 0026: a test's unread-content example `<name/>` became another child, because SACM23-XMI-012 reads names; re-checked there. Slice 0035: inputs with `xsi:type` or `xmi:version` now carry a read diagnostic, so \"the same document\" compares diagnostics apart from location; re-checked there. Slice 0036: tests updated for the coded id refusals (ADR 0015 amendment 2); re-checked there. Slice 0042: its tests replaced `isCitation`/`isAbstract` unread samples (now read, ADR 0026) with other unread ones, locations unchanged; re-check there."
 
 [[row]]
 id = "SACM23-XMI-003"
@@ -2174,7 +2174,7 @@ tests = [
   "crates/sacm/tests/load_and_save_modes.rs::lib_compat_001_sacm_xmi_011_on_the_xmi_element_names_the_xmi_element_and_not_a_root",
 ]
 verification = "docs/verification/0036-m1-ids-docs-cli.md"
-notes = "Slice 0035: designed in ADR 0022 (accepted by the maintainer, 2026-11-13, with SACM-XMI-011 as Info). The C++ `SaveOptions::namespace_uri` moves to LIB-COMPAT-011. Slice 0036: tests updated for the coded id refusals (ADR 0015 amendment 2); re-checked there."
+notes = "Slice 0035: designed in ADR 0022 (accepted by the maintainer, 2026-11-13, with SACM-XMI-011 as Info). The C++ `SaveOptions::namespace_uri` moves to LIB-COMPAT-011. Slice 0036: tests updated for the coded id refusals (ADR 0015 amendment 2); re-checked there. Slice 0042: its tests replaced `isCitation`/`isAbstract` unread samples (now read, ADR 0026) with other unread ones, locations unchanged; re-check there."
 
 [[row]]
 id = "SACM23-VAL-001"
@@ -2207,6 +2207,7 @@ tests = [
 ]
 verification = "docs/verification/0036-m1-ids-docs-cli.md"
 code = ["crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi.rs", "crates/sacm/src/diagnostic.rs", "docs/adr/0015-xmi-read-entry-point.md"]
+notes = "Slice 0042: its tests replaced `isCitation`/`isAbstract` unread samples (now read, ADR 0026) with other unread ones, locations unchanged; re-check there."
 
 [[row]]
 id = "SACM23-VAL-006"
@@ -2393,6 +2394,7 @@ tests = [
   "crates/sacm/tests/edit_create.rs::lib_edit_001_ncname_later_characters_are_checked_at_every_range_edge",
 ]
 verification = "docs/verification/0028-m1-create-operations.md"
+notes = "Slice 0042: generated ids now also skip referenced ids (ADR 0026); re-check there."
 
 [[row]]
 id = "LIB-EDIT-002"
@@ -2712,35 +2714,105 @@ id = "SACM23-XMI-005"
 area = "XMI"
 milestone = "M2"
 title = "Reference serialization"
-requirement = "Non-containment references are written as attributes named by the reference end holding space-separated xmi:ids; import also accepts child-element and `href=\"#id\"` forms; references to unknown ids are kept and diagnosed, not dropped."
-source = "XMI 2.5.1 reference rules; docs/sacm/metamodel-inventory.md"
+requirement = "A non-containment reference is read from, and written as, an XML attribute in no namespace named by the reference end, whose value is the targets' ids separated by XML white space (xsd:IDREFS; XMI 2.5.1 rules 2h, 2j, 4i) (ADR 0026). In this release the ends are `citedElement` and `abstractForm` (SACM23-BASE-007/008); each later end's row inherits the rule. A reference is held as the target id, each token exactly as read (no `#` stripped), and resolves by id across the whole input whatever the order (a later element, another root, the element itself). A reference naming no element (an id absent from the file, or a `name`, `content`, `key` or `value` id) is kept, written back and reported by `validate` (SACM23-VAL-003); it is never dropped. Two or more ids on a single-valued end is `RepeatedValue` (SACM-MULT-001); an empty or all-white-space value is `Unsupported`; `sacm:citedElement` is `Unsupported`. Generated ids, in the reader and in edits, skip every referenced id. `xmi::write` writes the ids separated by one space, after the SACMElement flags."
+source = "XMI 2.5.1 rule 2h (p. 63) \"either as an XML attribute or as XML elements but not both\"; rule 2j (p. 64) \"The value of the XML attribute contains the XMI ID of each referenced object, separated by a space\"; rule 4i (p. 51); §7.8.5 (p. 19) `type=\"xsd:IDREFS\"`; §7.10.2 (p. 23); XML Schema 1.0 Part 2 §3.3.10, §4.1.2.2 (list types collapse white space); D-PRESERVE; D-ID; ADR 0024; ADR 0026; assurance-forge io/xmi_reader.cpp:877-908, io/xmi_writer.cpp:29-38, 86-91"
 kind = "xmi"
-status = "planned"
-depends_on = ["SACM23-XMI-004"]
+status = "implemented"
+depends_on = ["SACM23-XMI-004", "SACM23-XMI-014", "SACM23-XMI-025", "SACM23-BASE-004"]
+acceptance = [
+  "`citedElement=\"c2\"` on a Claim and `abstractForm=\"p2\"` on a package read with those targets; `write` emits the same attributes, read-write-read is equal and the second write gives the same bytes.",
+  "A forward reference, a reference into another root of the same `xmi:XMI`, and a self-reference each read, round-trip and give no SACM-REF-001.",
+  "`citedElement=\"nope\"` reads in both modes and is held as `nope`; a tolerant write writes it back; `validate` gives SACM-REF-001; a strict write fails with `WriteError::Invalid` holding it.",
+  "`\" c2 \"` and `\"&#9;c2&#10;\"` read as `c2` with no diagnostic, and write as `citedElement=\"c2\"`.",
+  "`citedElement=\"a b\"` is `RepeatedValue` in both modes at the attribute's name; `citedElement=\"\"` and `\"   \"` are `Unsupported`, never read as absent; `sacm:citedElement` is `Unsupported`.",
+  "`citedElement=\"#c2\"` is the id `#c2` (unresolved, SACM-REF-001); a token equal to a non-NCName element id held as written (ADR 0024) resolves to it.",
+  "A target id holding `&`, `<` or `\"` is written escaped and reads back equal.",
+  "An id-less element read beside `citedElement=\"claim_1\"` (a dangling target) gets a generated id other than `claim_1`; an edit's generated id also skips a referenced id.",
+  "Attribute order: `xmi:type`, `xmi:id`, `gid`, `isCitation`, `isAbstract`, `citedElement`, `abstractForm`, then the class's own attributes; output is deterministic.",
+  "A 1 MiB reference value or many tokens do not panic.",
+]
+tests = [
+  "crates/sacm/tests/xmi_references.rs::sacm23_xmi_005_cited_element_on_a_claim_and_abstract_form_on_a_package_read_and_round_trip",
+  "crates/sacm/tests/xmi_references.rs::sacm23_xmi_005_the_fixture_reads_with_its_references_and_round_trips",
+  "crates/sacm/tests/xmi_references.rs::sacm23_xmi_005_forward_cross_root_and_self_references_resolve_and_round_trip",
+  "crates/sacm/tests/xmi_references.rs::sacm23_xmi_005_a_dangling_reference_is_kept_written_back_and_refused_only_by_a_strict_write",
+  "crates/sacm/tests/xmi_references.rs::sacm23_xmi_005_white_space_around_a_token_is_not_part_of_the_id",
+  "crates/sacm/tests/xmi_references.rs::sacm23_xmi_005_two_tokens_on_a_single_valued_end_are_repeated_value_at_the_attribute",
+  "crates/sacm/tests/xmi_references.rs::sacm23_xmi_005_an_empty_or_qualified_reference_attribute_is_unsupported_never_absent",
+  "crates/sacm/tests/xmi_references.rs::sacm23_xmi_005_a_hash_is_part_of_the_token_and_a_non_ncname_id_resolves_as_written",
+  "crates/sacm/tests/xmi_references.rs::sacm23_xmi_005_a_target_id_with_markup_characters_is_written_escaped_and_reads_back_equal",
+  "crates/sacm/tests/xmi_references.rs::sacm23_xmi_005_a_generated_id_skips_an_id_that_is_only_referenced",
+  "crates/sacm/tests/xmi_references.rs::sacm23_xmi_005_an_edits_generated_id_skips_a_referenced_id",
+  "crates/sacm/tests/xmi_references.rs::sacm23_xmi_005_the_flags_and_references_are_written_after_gid_and_before_the_class_attributes",
+  "crates/sacm/tests/xmi_references.rs::sacm23_xmi_005_a_one_mib_reference_or_many_tokens_do_not_panic",
+]
+code = ["crates/sacm/src/model/reference.rs", "crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi/output.rs", "crates/sacm/src/model/document.rs"]
 
 [[row]]
 id = "SACM23-BASE-007"
 area = "BASE"
 milestone = "M2"
 title = "Citations"
-requirement = "SACMElement `isCitation` and `citedElement` are represented on every element, round-tripped and editable; `citedElement` is a reference to any SACMElement."
-source = "formal/23-05-08 §8.2; ptc/22-03-13 Base::SACMElement"
+requirement = "Every element of every kind holds `isCitation`, a Boolean defaulting to false (§8.2 `isCitation[0..1]=false`; `SacmElement::is_citation()`), and an optional `citedElement` reference to any SACMElement (`cited_element() -> Option<&ElementId>`) (ADR 0026). They are independent: either may be present without the other; nothing repairs a file on read. `xmi::read` reads `isCitation` in both modes from the unqualified attribute or a value element (SACM23-XMI-014), as an xsd:boolean: white space collapsed, `true`/`1` true, `false`/`0` false, absent false (`false` equals absent); any other value is `ReadError::InvalidLiteral` (SACM-ENUM-001) quoting it; given twice it is `RepeatedValue`. `citedElement` follows SACM23-XMI-005/015. `xmi::write` writes `isCitation=\"true\"` when true and nothing when false. `semantic_compare` reports `Difference::IsCitation` and `CitedElement`. Setting them is LIB-EDIT-008/009; the §8.2 rule is SACM23-VAL-007."
+source = "formal/23-05-08 §8.2 (p. 18) \"isCitation[0..1]=false - a flag to indicate whether the SACMElement cites another SACMElement.\" and \"citedElement:SACMElement[0..1] - a reference to another SACMElement that the SACMElement cites\"; ptc/22-03-13 Base::SACMElement.isCitation ([0..1], no default) and Association citedElement ([0..1], unnamed end, D8); XMI 2.5.1 §7.8.4, rule 2i, §9.4.1 \"Properties whose values are the default values are not serialized\"; XML Schema 1.0 Part 2 §3.2.2.1; ADR 0021 amendment 1; ADR 0026; assurance-forge model/element.h:69-115, io/xmi_reader.cpp:395-398, 897-905"
 kind = "model"
-status = "planned"
-depends_on = ["SACM23-BASE-003", "SACM23-XMI-005"]
+status = "implemented"
+depends_on = ["SACM23-BASE-003", "SACM23-XMI-005", "SACM23-XMI-014", "SACM23-BASE-006", "LIB-RT-001"]
 notes = "Slice 0037: read in the attribute and the element form by SACM23-XMI-014's rules; the value is a Boolean, white space collapsed and `true`/`false`/`1`/`0` accepted (XSD 2 §4.3.6)."
+acceptance = [
+  "Every kind starts with `is_citation()` false and no `cited_element()`.",
+  "On every readable kind (both packages, Claim, the four UtilityElements): `true`, `1`, `\" true \"` and `\"&#9;1&#10;\"` read true; `false`, `0` and absent read false, and `false` compares equal to absent.",
+  "`TRUE`, `True`, `yes`, `\"\"` and `t rue` are `InvalidLiteral` in both modes, quoting the value and naming `isCitation`; never read as false.",
+  "`<isCitation> true </isCitation>` reads; with an attribute or a child element it is `Unsupported`; attribute plus element, or two elements, is `RepeatedValue`; `sacm:isCitation` is `Unsupported`.",
+  "`write` gives `isCitation=\"true\"` after `gid`, nothing for false, and `\"true\"` for a value read as `\"1\"`; the output round-trips.",
+  "`isCitation` true with no `citedElement`, and `citedElement` with `isCitation` false, both read and round-trip unchanged.",
+  "`isCitation` on `name`, `content`, `key` or `value` is `Unsupported`.",
+  "`semantic_compare` reports `IsCitation` and `CitedElement` after `Gid`.",
+]
+tests = [
+  "crates/sacm/tests/citations_and_abstract_forms.rs::sacm23_base_007_every_kind_starts_with_is_citation_false_and_no_cited_element",
+  "crates/sacm/tests/citations_and_abstract_forms.rs::sacm23_base_007_true_1_false_0_and_absent_read_on_every_readable_kind",
+  "crates/sacm/tests/citations_and_abstract_forms.rs::sacm23_base_007_the_fixture_reads_with_its_citations_and_abstract_forms_and_round_trips",
+  "crates/sacm/tests/citations_and_abstract_forms.rs::sacm23_base_007_a_value_that_is_no_boolean_literal_is_invalid_literal_naming_is_citation",
+  "crates/sacm/tests/citations_and_abstract_forms.rs::sacm23_base_007_the_is_citation_element_form_reads_and_its_malformed_or_repeated_forms_are_refused",
+  "crates/sacm/tests/citations_and_abstract_forms.rs::sacm23_base_007_is_citation_is_written_as_true_after_gid_and_not_at_all_when_false",
+  "crates/sacm/tests/citations_and_abstract_forms.rs::sacm23_base_007_is_citation_and_cited_element_are_independent_and_round_trip_unchanged",
+  "crates/sacm/tests/citations_and_abstract_forms.rs::sacm23_base_007_is_citation_on_a_name_content_key_or_value_is_unsupported",
+  "crates/sacm/tests/citations_and_abstract_forms.rs::sacm23_base_007_semantic_compare_reports_is_citation_and_cited_element",
+  "crates/sacm/tests/citations_and_abstract_forms.rs::sacm23_base_007_is_citation_and_cited_element_differences_come_after_gid_and_before_the_name",
+]
+code = ["crates/sacm/src/model/document.rs", "crates/sacm/src/model/reference.rs", "crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi/output.rs", "crates/sacm/src/compare.rs"]
 
 [[row]]
 id = "SACM23-BASE-008"
 area = "BASE"
 milestone = "M2"
 title = "Abstract elements and abstract forms"
-requirement = "SACMElement `isAbstract` and `abstractForm` are represented on every element, round-tripped and editable."
-source = "formal/23-05-08 §8.2; ptc/22-03-13 Base::SACMElement"
+requirement = "Every element of every kind holds `isAbstract`, a Boolean defaulting to false (§8.2 `isAbstract[0..1]=false`; `SacmElement::is_abstract()`), and an optional `abstractForm` reference to any SACMElement (`abstract_form() -> Option<&ElementId>`), under the SACM23-BASE-007 rules (ADR 0026): independent of each other, read as xsd:boolean and per SACM23-XMI-005/015, `isAbstract=\"true\"` written only when true, compared as `Difference::IsAbstract` and `AbstractForm`. Setting them is LIB-EDIT-008/009; the §8.2 rules are SACM23-VAL-008; the §8.6 ImplementationConstraint rule is SACM23-VAL-021."
+source = "formal/23-05-08 §8.2 (p. 18) \"isAbstract[0..1]=false - a flag to indicate whether the SACMElement is considered to be abstract.\" and \"abstractForm:SACMElement[0..1] - an optional reference to another abstract SACMElement to which this concrete SACMElement conforms.\"; §10.10 (p. 30) \"isAbstract:Boolean\"; ptc/22-03-13 Base::SACMElement.isAbstract and Association abstractForm; then as SACM23-BASE-007"
 kind = "model"
-status = "planned"
-depends_on = ["SACM23-BASE-003", "SACM23-XMI-005"]
+status = "implemented"
+depends_on = ["SACM23-BASE-003", "SACM23-XMI-005", "SACM23-XMI-014", "SACM23-BASE-006", "LIB-RT-001"]
 notes = "Slice 0037: read in the attribute and the element form by SACM23-XMI-014's rules; the value is a Boolean, white space collapsed and `true`/`false`/`1`/`0` accepted (XSD 2 §4.3.6)."
+acceptance = [
+  "SACM23-BASE-007's acceptance items 1-8 hold with `isAbstract` and `abstractForm` in place of `isCitation` and `citedElement`.",
+  "An `abstractForm` naming an element of another kind, an `abstractForm` on an element whose `isAbstract` is true, and an `abstractForm` on itself each read and round-trip unchanged (the findings are SACM23-VAL-008's).",
+  "An ImplementationConstraint on an element whose `isAbstract` is false reads (the finding is SACM23-VAL-021's).",
+]
+tests = [
+  "crates/sacm/tests/citations_and_abstract_forms.rs::sacm23_base_008_every_kind_starts_with_is_abstract_false_and_no_abstract_form",
+  "crates/sacm/tests/citations_and_abstract_forms.rs::sacm23_base_008_true_1_false_0_and_absent_read_on_every_readable_kind",
+  "crates/sacm/tests/citations_and_abstract_forms.rs::sacm23_base_008_a_value_that_is_no_boolean_literal_is_invalid_literal_naming_is_abstract",
+  "crates/sacm/tests/citations_and_abstract_forms.rs::sacm23_base_008_the_is_abstract_element_form_reads_and_its_malformed_or_repeated_forms_are_refused",
+  "crates/sacm/tests/citations_and_abstract_forms.rs::sacm23_base_008_is_abstract_is_written_as_true_after_gid_and_not_at_all_when_false",
+  "crates/sacm/tests/citations_and_abstract_forms.rs::sacm23_base_008_is_abstract_and_abstract_form_are_independent_and_round_trip_unchanged",
+  "crates/sacm/tests/citations_and_abstract_forms.rs::sacm23_base_008_is_abstract_on_a_name_content_key_or_value_is_unsupported",
+  "crates/sacm/tests/citations_and_abstract_forms.rs::sacm23_base_008_semantic_compare_reports_is_abstract_and_abstract_form",
+  "crates/sacm/tests/citations_and_abstract_forms.rs::sacm23_base_008_is_abstract_and_abstract_form_differences_come_after_is_citation_and_cited_element",
+  "crates/sacm/tests/citations_and_abstract_forms.rs::sacm23_base_008_an_abstract_form_of_another_kind_on_an_abstract_element_or_on_itself_round_trips",
+  "crates/sacm/tests/citations_and_abstract_forms.rs::sacm23_base_008_an_implementation_constraint_on_a_concrete_element_reads",
+]
+code = ["crates/sacm/src/model/document.rs", "crates/sacm/src/model/reference.rs", "crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi/output.rs", "crates/sacm/src/compare.rs"]
 
 [[row]]
 id = "SACM23-ARG-004"
@@ -2862,7 +2934,7 @@ source = "D-DIAG \"source location where available\"; ADR 0011; ADR 0015 \"Each 
 kind = "xmi"
 status = "verified"
 depends_on = ["SACM23-XMI-016", "SACM23-XMI-012", "LIB-API-009", "LIB-DIAG-001"]
-notes = "Moved to M1 by the maintainer, 2026-11-12: edited documents must reload, and M1's round-trip rows need it. Split in slice 0029: locations on read diagnostics move to SACM23-XMI-023. Slice 0036: tests updated for the coded id refusals (ADR 0015 amendment 2); re-checked there. Slice 0037: tests changed for the value elements (SACM23-XMI-014); re-checked there. Slice 0040: the table gains the utility-element, MultiLangString and gid refusals (ADR 0025); re-check there."
+notes = "Moved to M1 by the maintainer, 2026-11-12: edited documents must reload, and M1's round-trip rows need it. Split in slice 0029: locations on read diagnostics move to SACM23-XMI-023. Slice 0036: tests updated for the coded id refusals (ADR 0015 amendment 2); re-checked there. Slice 0037: tests changed for the value elements (SACM23-XMI-014); re-checked there. Slice 0040: the table gains the utility-element, MultiLangString and gid refusals (ADR 0025); re-check there. Slice 0042: its tests replaced `isCitation`/`isAbstract` unread samples (now read, ADR 0026) with other unread ones, locations unchanged; re-check there."
 acceptance = [
   "A table test with one input per refusal site (every `ReadError` variant, and every `Unsupported` reason for roots and for children) places each construct at line 3 or later and, where the construct allows it, at column 5 or later after a CRLF, a lone CR and a non-ASCII character, and asserts the exact `location()`. A byte order mark, the first-bytes encodings and the XML declaration are the stated exceptions.",
   "`Display` shows \" at line L, column C\" for every input in the table, before the reason where there is one.",
@@ -2885,6 +2957,8 @@ tests = [
   "crates/sacm/tests/xmi_read_locations.rs::sacm23_xmi_010_value_element_and_repeated_value_refusals_are_located",
   "crates/sacm/tests/xmi_read_locations.rs::sacm23_xmi_010_utility_element_and_multi_lang_string_refusals_are_located",
   "crates/sacm/tests/xmi_read_locations.rs::sacm23_xmi_010_gid_refusals_are_located",
+  "crates/sacm/tests/xmi_read_locations.rs::sacm23_xmi_010_is_citation_and_is_abstract_refusals_are_located",
+  "crates/sacm/tests/xmi_read_locations.rs::sacm23_xmi_010_cited_element_and_abstract_form_refusals_are_located",
 ]
 verification = "docs/verification/0037-m1-element-form-values.md"
 
@@ -3006,11 +3080,29 @@ id = "SACM23-XMI-015"
 area = "XMI"
 milestone = "M2"
 title = "Element form of references"
-requirement = "Import in both modes accepts references written as XML elements (XMI 2.5.1 rule 2c) as well as IDREF and IDREFS attributes, and both load to an equal model. Only the non-XMI dialects stay tolerant-only. Export writes IDREFS attributes."
-source = "formal/23-05-08 §2.4; XMI 2.5.1 rules 4e, 4i and 2c"
+requirement = "Both load modes read a reference given as an empty element in no namespace named by the end, with exactly one link attribute: `xmi:idref=\"id\"` (rule 2l) or an unqualified `href=\"#id\"` (rule 2n, the same document); the value is trimmed (xsd:IDREF, anyURI) and the element may hold only white space, comments and processing instructions (ADR 0026). It reads to a model equal to the attribute form, and `write` writes the attribute form. An attribute and an element for the same end, or two elements on a single-valued end, is `RepeatedValue` (rule 2h). `Unsupported` at that construct: both link attributes or neither; a type attribute, `xmi:id` or another attribute; an unqualified `idref`; `href` with a document part, an XPointer or an empty fragment (cross-document links are SACM23-XMI-027); a child element or text; a namespace-qualified reference element."
+source = "XMI 2.5.1 production 2c (p. 62); rules 2c, 2h (p. 63); 2l, 2m, 2n (p. 64) \"Use the idref attribute to specify the id of an XML element that is referenced in the document; use the href attribute to specify an XML element in another document\"; §7.6.2 (pp. 14-15) LinkAttribs; §7.10.1 (p. 23) \"Proxies ... contain no nested elements\"; D-STRICT; D-ROLE-UNQUALIFIED; ADR 0021 amendment 1; ADR 0026"
 kind = "xmi"
-status = "planned"
+status = "implemented"
 depends_on = ["SACM23-XMI-001", "SACM23-XMI-005", "LIB-TOOL-020"]
+acceptance = [
+  "`<citedElement xmi:idref=\"c2\"/>` and `<citedElement href=\"#c2\"/>` each read equal to `citedElement=\"c2\"`, in both modes and anywhere among the siblings; `write` writes the attribute form.",
+  "`xmi:idref=\" c2 \"` reads as `c2` with no diagnostic.",
+  "Attribute plus element (same or different ids), and two elements, are each `RepeatedValue` in both modes, with every location.",
+  "An element naming an unknown id is kept and gives SACM-REF-001 under `validate`.",
+  "`href=\"other.xmi#c2\"`, `href=\"c2\"`, `href=\"#xpointer(...)\"`, `href=\"#\"` and `href=\"\"` are `Unsupported` at the attribute, never dropped.",
+  "Both link attributes, neither, an extra attribute (`xmi:id`, `xmi:type`, `foo`), an unqualified `idref`, a child element, non-white-space text and `sacm:citedElement` are each `Unsupported` at that construct.",
+]
+tests = [
+  "crates/sacm/tests/xmi_references.rs::sacm23_xmi_015_idref_and_href_elements_read_equal_to_the_attribute_anywhere_and_write_as_it",
+  "crates/sacm/tests/xmi_references.rs::sacm23_xmi_015_a_link_value_with_white_space_around_it_reads_trimmed_with_no_diagnostic",
+  "crates/sacm/tests/xmi_references.rs::sacm23_xmi_015_an_attribute_and_an_element_or_two_elements_are_repeated_value_with_every_location",
+  "crates/sacm/tests/xmi_references.rs::sacm23_xmi_015_an_element_naming_an_unknown_id_is_kept_and_reported_by_validate",
+  "crates/sacm/tests/xmi_references.rs::sacm23_xmi_015_a_cross_document_xpointer_or_empty_href_is_unsupported_at_the_attribute",
+  "crates/sacm/tests/xmi_references.rs::sacm23_xmi_015_the_cross_document_fixture_is_unsupported_never_dropped",
+  "crates/sacm/tests/xmi_references.rs::sacm23_xmi_015_a_malformed_reference_element_is_unsupported_at_that_construct",
+]
+code = ["crates/sacm/src/xmi/roots.rs"]
 
 [[row]]
 id = "LIB-COMPAT-008"
@@ -3115,11 +3207,31 @@ id = "SACM23-VAL-003"
 area = "VAL"
 milestone = "M2"
 title = "Dangling references"
-requirement = "A reference whose target id does not resolve is reported as SACM-REF-001 naming the referring element, the reference end and the missing id."
-source = "XMI 2.5.1; docs/sacm/diagnostics.md SACM-REF-001"
+requirement = "`validation::validate` reports each reference whose target id names no element of the document (an id absent from it, or a `name`, `content`, `key` or `value` id) as one SACM-REF-001 Error (`Code::REF_DANGLING`) per distinct missing id per end, with requirement SACM23-VAL-003, the end's clause (`8.2` for `citedElement` and `abstractForm`), no location, `affected = [referrer, missing id]`, and a message naming the referrer's kind and id, the end and the target. A strict save refuses (ADR 0022); a tolerant save writes the reference as held (ADR 0026)."
+source = "XMI 2.5.1 rule 2j (p. 64) \"Class-typed Properties whose values are objects that are serialized in the same document\"; XML Schema 1.0 Part 1 §3.3.4 (ID/IDREF table: no unbound IDREF); D-SEV (indicative); D-VAL-LAYER; D-PRESERVE; ADR 0026; SACM-REF-001; assurance-forge validation/validate.cpp:344-353"
 kind = "validation"
-status = "planned"
-depends_on = ["SACM23-XMI-005", "LIB-DIAG-001"]
+status = "implemented"
+depends_on = ["SACM23-XMI-005", "LIB-DIAG-001", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-VAL-018", "LIB-COMPAT-007"]
+acceptance = [
+  "A Claim with `citedElement=\"nope\"` gives exactly one SACM-REF-001: Error, SACM23-VAL-003, clause `8.2`, no location, affected `[claim, nope]`, the message naming Claim, the claim id, `citedElement` and `nope`; the same for `abstractForm`.",
+  "A forward, cross-root or self reference gives no finding.",
+  "A reference to a `name`, `content`, `key` or `value` id gives SACM-REF-001.",
+  "An element with both a dangling `citedElement` and a dangling `abstractForm` gives two findings; two elements citing the same missing id give two.",
+  "A strict write refuses with `WriteError::Invalid` holding the finding; a tolerant write keeps the reference.",
+  "`Code::REF_DANGLING` is SACM-REF-001, and the catalog row names it and SACM23-VAL-003.",
+]
+tests = [
+  "crates/sacm/tests/reference_validation.rs::sacm23_val_003_a_dangling_cited_element_is_one_error_naming_the_claim_the_end_and_the_target",
+  "crates/sacm/tests/reference_validation.rs::sacm23_val_003_a_dangling_abstract_form_is_one_error_naming_the_claim_the_end_and_the_target",
+  "crates/sacm/tests/reference_validation.rs::sacm23_val_003_a_dangling_reference_on_every_readable_kind_names_the_kind",
+  "crates/sacm/tests/reference_validation.rs::sacm23_val_003_the_fixture_gives_one_error_on_its_claim",
+  "crates/sacm/tests/reference_validation.rs::sacm23_val_003_forward_cross_root_and_self_references_give_no_finding",
+  "crates/sacm/tests/reference_validation.rs::sacm23_val_003_a_reference_to_a_name_content_key_or_value_id_dangles",
+  "crates/sacm/tests/reference_validation.rs::sacm23_val_003_each_dangling_end_and_each_referrer_is_its_own_finding",
+  "crates/sacm/tests/reference_validation.rs::sacm23_val_003_a_strict_write_refuses_and_a_tolerant_write_keeps_the_reference",
+  "crates/sacm/tests/reference_validation.rs::sacm23_val_003_ref_dangling_is_sacm_ref_001_and_its_catalog_row_names_it_and_the_row",
+]
+code = ["crates/sacm/src/validation/references.rs"]
 
 [[row]]
 id = "SACM23-VAL-004"
@@ -3148,22 +3260,60 @@ id = "SACM23-VAL-007"
 area = "VAL"
 milestone = "M2"
 title = "Citation constraints"
-requirement = "The clause 8.2 citation rules are checked: `isCitation` true requires a `citedElement` and vice versa (SACM-CITE-001), with severity per D-SEV."
-source = "formal/23-05-08 §8.2; SACM-CITE-001; D-SEV"
+requirement = "`validation::validate` reports each SACMElement that has a `citedElement` but whose `isCitation` is not true as one SACM-CITE-001 Error (`Code::CITATION_INVALID`), with requirement SACM23-VAL-007, clause `8.2`, affected `[element]` and no location (§8.2 OCL `self.citedElement <> null implies self.isCitation = true`; D-SEV). `isCitation` true with no `citedElement` is not a §8.2 finding (ADR 0026). A dangling `citedElement` gives this finding as well as SACM-REF-001."
+source = "formal/23-05-08 §8.2 (p. 18) Constraints \"If citedElement is populated, isCitation must be true. OCL: self.citedElement <> null implies self.isCitation = true\"; D-SEV; ADR 0026; assurance-forge validation/validate.cpp:397-408"
 kind = "validation"
-status = "planned"
-depends_on = ["SACM23-BASE-007"]
+status = "implemented"
+depends_on = ["SACM23-BASE-007", "SACM23-VAL-018", "LIB-COMPAT-007"]
+acceptance = [
+  "A Claim with `citedElement=\"c1\"` and no `isCitation` gives one SACM-CITE-001: Error, SACM23-VAL-007, clause `8.2`, affected `[claim]`, no location; the same with `isCitation=\"false\"`.",
+  "`isCitation=\"true\"` with `citedElement` gives no finding; `isCitation=\"true\"` alone gives no finding.",
+  "A dangling `citedElement` without `isCitation` gives both SACM-CITE-001 and SACM-REF-001.",
+  "The rule holds on every readable kind; a strict write refuses.",
+  "`Code::CITATION_INVALID` is SACM-CITE-001, and the catalog row states only the §8.2 OCL direction and names it and SACM23-VAL-007.",
+]
+tests = [
+  "crates/sacm/tests/reference_validation.rs::sacm23_val_007_a_cited_element_without_is_citation_true_is_one_error_on_the_element",
+  "crates/sacm/tests/reference_validation.rs::sacm23_val_007_the_fixture_gives_one_error_on_its_claim",
+  "crates/sacm/tests/reference_validation.rs::sacm23_val_007_is_citation_true_with_or_without_a_cited_element_gives_no_finding",
+  "crates/sacm/tests/reference_validation.rs::sacm23_val_007_a_dangling_cited_element_without_is_citation_gives_both_findings",
+  "crates/sacm/tests/reference_validation.rs::sacm23_val_007_the_rule_holds_on_every_readable_kind_and_a_strict_write_refuses",
+  "crates/sacm/tests/reference_validation.rs::sacm23_val_007_citation_invalid_is_sacm_cite_001_and_its_catalog_row_states_only_the_ocl_direction",
+]
+code = ["crates/sacm/src/validation/references.rs"]
 
 [[row]]
 id = "SACM23-VAL-008"
 area = "VAL"
 milestone = "M2"
 title = "Abstract-form constraints (clause 8.2)"
-requirement = "The clause 8.2 abstract-form rules are checked with the severities of D-SEV: an abstract element using abstractForm is an error; an abstractForm target that is not abstract, or of a different type, is a warning (SACM-ABS-001)."
-source = "formal/23-05-08 §8.2; SACM-ABS-001; D-SEV"
+requirement = "`validation::validate` reports, with requirement SACM23-VAL-008, clause `8.2` and no location: an element with an `abstractForm` whose own `isAbstract` is true as one SACM-ABS-001 Error (stated flatly, D-SEV), affected `[element]`; and, for a resolved `abstractForm` target, a target whose `isAbstract` is not true, and a target of another kind, each as one SACM-ABS-001 Warning (\"should\"), affected `[element, target]` (`Code::ABSTRACT_FORM_INVALID`). A dangling target gives no target-side Warning, only SACM-REF-001; the own-`isAbstract` Error does not depend on the target and still applies. Satisfying the target's ImplementationConstraints is not checked (prose)."
+source = "formal/23-05-08 §8.2 (p. 18) Constraints \"When +abstractForm is used to refer to another SACMElement, +isAbstract of the SACMElement is false, and the +isAbstract of the referred SACMElement should be true. The referred SACMElement should be of the same type of the SACMElement.\"; D-SEV; ADR 0026; assurance-forge validation/validate.cpp:409-447"
 kind = "validation"
-status = "planned"
-depends_on = ["SACM23-BASE-008"]
+status = "implemented"
+depends_on = ["SACM23-BASE-008", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-VAL-003"]
+acceptance = [
+  "A concrete Claim with `abstractForm` naming an abstract Claim gives no finding.",
+  "A Claim with `isAbstract=\"true\"` and an `abstractForm` gives one Error, affected `[claim]`.",
+  "A concrete Claim whose `abstractForm` target is a concrete Claim gives one Warning (target not abstract), affected `[claim, target]`; a target that is an abstract ArgumentPackage gives one Warning (another kind); a concrete ArgumentPackage target gives two Warnings.",
+  "A self-reference on an abstract element gives the Error; on a concrete one the not-abstract Warning.",
+  "A dangling `abstractForm` gives only SACM-REF-001.",
+  "Errors make a strict write refuse; Warnings alone do not.",
+  "`Code::ABSTRACT_FORM_INVALID` is SACM-ABS-001, and the catalog row names it and SACM23-VAL-008.",
+  "An abstract Claim with a dangling `abstractForm` gives the own-`isAbstract` Error and SACM-REF-001, and no Warning.",
+]
+tests = [
+  "crates/sacm/tests/reference_validation.rs::sacm23_val_008_a_concrete_claim_conforming_to_an_abstract_claim_gives_no_finding",
+  "crates/sacm/tests/reference_validation.rs::sacm23_val_008_an_abstract_claim_with_an_abstract_form_is_one_error_on_the_claim",
+  "crates/sacm/tests/reference_validation.rs::sacm23_val_008_the_fixture_gives_one_error_on_its_claim",
+  "crates/sacm/tests/reference_validation.rs::sacm23_val_008_a_target_not_abstract_or_of_another_kind_is_a_warning_on_the_element_and_target",
+  "crates/sacm/tests/reference_validation.rs::sacm23_val_008_a_self_reference_is_the_error_when_abstract_and_the_warning_when_concrete",
+  "crates/sacm/tests/reference_validation.rs::sacm23_val_008_a_dangling_abstract_form_gives_only_ref_001",
+  "crates/sacm/tests/reference_validation.rs::sacm23_val_008_errors_make_a_strict_write_refuse_and_warnings_alone_do_not",
+  "crates/sacm/tests/reference_validation.rs::sacm23_val_008_abstract_form_invalid_is_sacm_abs_001_and_its_catalog_row_names_it_and_the_row",
+  "crates/sacm/tests/reference_validation.rs::sacm23_val_008_an_abstract_claim_with_a_dangling_abstract_form_gives_the_error_and_ref_001_only",
+]
+code = ["crates/sacm/src/validation/references.rs"]
 
 [[row]]
 id = "SACM23-VAL-010"
@@ -3315,6 +3465,7 @@ tests = [
   "crates/sacm/tests/diagnostic_catalog.rs::lib_diag_002_a_non_constant_construction_in_diagnostic_rs_is_a_problem",
 ]
 code = ["docs/sacm/diagnostics.md", "crates/sacm/src/diagnostic.rs"]
+notes = "Slice 0042: its constant table gains REF_DANGLING, CITATION_INVALID and ABSTRACT_FORM_INVALID (19 live codes); re-check there."
 
 [[row]]
 id = "LIB-DIAG-003"
@@ -4027,7 +4178,7 @@ source = "formal/23-05-08 §9.2 (pp. 23-24) \"assuranceCasePackage: AssuranceCas
 kind = "xmi"
 status = "verified"
 depends_on = ["LIB-API-008", "SACM23-XMI-006", "LIB-TOOL-020", "SACM23-AC-001", "SACM23-ARG-001", "SACM23-ARG-002", "SACM23-XMI-002", "SACM23-XMI-012", "LIB-API-009"]
-notes = "Slice 0025: owns strict import requiring the type attribute on an abstract-role child (SACM-XMI-005), moved from SACM23-XMI-006. Export writes `xmi:type` (ADR 0017); import accepts `xmi:type` and `xsi:type`. Moved to M1 by the maintainer, 2026-11-12: edited documents must reload, and M1's round-trip rows need it. Slice 0029 (lead decisions, the minimal options): only kinds whose model row is verified are read (ADR 0016 D5); non-conforming children are `Unsupported`, not coded (ADR 0015's interim rule, as ADR 0016 D6 does for roots); `assertionDeclaration` stays with SACM23-XMI-017; namespace-qualified role elements are refused, as for `name`. Moved out: references (SACM23-XMI-005 and the kind rows); utility children (SACM23-BASE-004/005); `gid`, `isCitation`, `isAbstract` (SACM23-BASE-006/007/008); strict SACM-XMI-003 and tolerant preservation (LIB-COMPAT-003); SACM-XMI-005 (LIB-COMPAT-010); a missing id (SACM23-XMI-020); a duplicate id (SACM23-VAL-001); `argumentationElement` (SACM23-XMI-009); element forms (SACM23-XMI-014/015); XMI metadata (SACM23-XMI-019); legacy shapes (LIB-COMPAT-008). C++ difference: C++ matches role elements by local name in any namespace (`xmi_reader.cpp:1988`); this crate refuses a namespace-qualified role element. Basis: role elements are local declarations, the XMI schema's default is unqualified, and XMI 2.5.1 rule 2a says \"The namespace prefix is ignored for an object that is the value of a Property\", which is ambiguous; the refusal is reversible and closes with LIB-COMPAT-003 (tolerant) if real files need it. Slice 0030: `assertionDeclaration` on a Claim is read (SACM23-XMI-017), so the attribute refusal narrows to non-Assertion children; re-checked there. Slice 0036: an empty or duplicate `xmi:id` is now a coded refusal (`ReadError::InvalidId`, `ReadError::DuplicateId`; ADR 0015 amendment 2), and a padded id is `Unsupported`; reworded and re-checked there. Slice 0037: tests changed for the value elements (SACM23-XMI-014); re-checked there. Slice 0039: reworded for SACM23-XMI-020/-021/-022/-025 and SACM23-VAL-006 (ADR 0024, ADR 0021 amendment 2); re-check there. Slice 0040: reworded, because utility children and `gid` are read now (SACM23-BASE-004/005/006); its tests use `isCitation`, `isAbstract`, `<foo/>` and `<isCitation>` as unread samples; re-check there. Slice 0041: a test input broke §11.4 homogeneity or held two descriptions, which SACM23-VAL-011/012 now report; the input was changed, not the assertion; re-check there."
+notes = "Slice 0025: owns strict import requiring the type attribute on an abstract-role child (SACM-XMI-005), moved from SACM23-XMI-006. Export writes `xmi:type` (ADR 0017); import accepts `xmi:type` and `xsi:type`. Moved to M1 by the maintainer, 2026-11-12: edited documents must reload, and M1's round-trip rows need it. Slice 0029 (lead decisions, the minimal options): only kinds whose model row is verified are read (ADR 0016 D5); non-conforming children are `Unsupported`, not coded (ADR 0015's interim rule, as ADR 0016 D6 does for roots); `assertionDeclaration` stays with SACM23-XMI-017; namespace-qualified role elements are refused, as for `name`. Moved out: references (SACM23-XMI-005 and the kind rows); utility children (SACM23-BASE-004/005); `gid`, `isCitation`, `isAbstract` (SACM23-BASE-006/007/008); strict SACM-XMI-003 and tolerant preservation (LIB-COMPAT-003); SACM-XMI-005 (LIB-COMPAT-010); a missing id (SACM23-XMI-020); a duplicate id (SACM23-VAL-001); `argumentationElement` (SACM23-XMI-009); element forms (SACM23-XMI-014/015); XMI metadata (SACM23-XMI-019); legacy shapes (LIB-COMPAT-008). C++ difference: C++ matches role elements by local name in any namespace (`xmi_reader.cpp:1988`); this crate refuses a namespace-qualified role element. Basis: role elements are local declarations, the XMI schema's default is unqualified, and XMI 2.5.1 rule 2a says \"The namespace prefix is ignored for an object that is the value of a Property\", which is ambiguous; the refusal is reversible and closes with LIB-COMPAT-003 (tolerant) if real files need it. Slice 0030: `assertionDeclaration` on a Claim is read (SACM23-XMI-017), so the attribute refusal narrows to non-Assertion children; re-checked there. Slice 0036: an empty or duplicate `xmi:id` is now a coded refusal (`ReadError::InvalidId`, `ReadError::DuplicateId`; ADR 0015 amendment 2), and a padded id is `Unsupported`; reworded and re-checked there. Slice 0037: tests changed for the value elements (SACM23-XMI-014); re-checked there. Slice 0039: reworded for SACM23-XMI-020/-021/-022/-025 and SACM23-VAL-006 (ADR 0024, ADR 0021 amendment 2); re-check there. Slice 0040: reworded, because utility children and `gid` are read now (SACM23-BASE-004/005/006); its tests use `isCitation`, `isAbstract`, `<foo/>` and `<isCitation>` as unread samples; re-check there. Slice 0041: a test input broke §11.4 homogeneity or held two descriptions, which SACM23-VAL-011/012 now report; the input was changed, not the assertion; re-check there. Slice 0042: `isCitation`, `isAbstract`, `citedElement` and `abstractForm` are read now (SACM23-BASE-007/008); its tests need other unread samples; re-check there."
 acceptance = [
   "Read: each of the four readable cases reads to its kind, id, name and parent; under a concrete role with no type, a redundant `xmi:type` and a redundant `xsi:type`; under `argumentElement` with `xmi:type` and `xsi:type`. An `xmi:type` and an `xsi:type` on the same child that name the same class read too.",
   "Read: document order holds across roles and with `name` after the children, at depth 3 or more.",
@@ -4195,7 +4346,7 @@ tests = [
   "crates/sacm/tests/xmi_read.rs::lib_api_009_unsupported_display_is_one_located_line_quoting_names",
   "crates/sacm/tests/xmi_read.rs::lib_api_009_refusal_of_an_encoding_name_with_line_breaks_stays_one_line",
 ]
-notes = "Item 1 and item 3 reworded in slice 0021, when SACM23-XMI-001 made the first inputs readable; re-checked there. Reworded and re-checked in slice 0024: UTF-16 moves to SACM23-XMI-018, so item 2 and the requirement no longer list UTF-16 with a byte order mark. Slice 0026: the example became a `note` child, because SACM23-XMI-012 reads names; re-checked there. Slice 0029: its sample's `argumentPackage` child becomes readable (SACM23-XMI-016), so the test's refusal moves to the later `assertionDeclaration`; re-checked there. Slice 0037: tests changed for the value elements (SACM23-XMI-014); re-checked there."
+notes = "Item 1 and item 3 reworded in slice 0021, when SACM23-XMI-001 made the first inputs readable; re-checked there. Reworded and re-checked in slice 0024: UTF-16 moves to SACM23-XMI-018, so item 2 and the requirement no longer list UTF-16 with a byte order mark. Slice 0026: the example became a `note` child, because SACM23-XMI-012 reads names; re-checked there. Slice 0029: its sample's `argumentPackage` child becomes readable (SACM23-XMI-016), so the test's refusal moves to the later `assertionDeclaration`; re-checked there. Slice 0037: tests changed for the value elements (SACM23-XMI-014); re-checked there. Slice 0042: its tests replaced `isCitation`/`isAbstract` unread samples (now read, ADR 0026) with other unread ones, locations unchanged; re-check there."
 
 [[row]]
 id = "LIB-API-010"
@@ -4474,7 +4625,7 @@ kind = "xmi"
 status = "verified"
 verification = "docs/verification/0039-m2-ids-and-literals.md"
 depends_on = ["SACM23-XMI-001", "SACM23-XMI-004", "SACM23-XMI-016", "LIB-COMPAT-001", "SACM23-VAL-001", "SACM23-XMI-023", "SACM23-XMI-025", "SACM23-XMI-022", "LIB-EDIT-001", "LIB-RT-001"]
-notes = "ADR review, 2026-11-13: needs an ADR before its tests, on the identity of an element without an `xmi:id`: is a generated id marked, is it written back, and how does comparison treat it (ADR 0010, ADR 0013 \"Nothing invents\", ADR 0020). ADR review, 2026-11-13: docs/sacm/diagnostics.md lists SACM-XMI-004 as \"Error (strict)\" for a missing id, which conflicts with D-STRICT and XMI 2.5.1 §7.6.1 `use=\"optional\"`; this row settles it. Maintainer decision 2026-11-14: SACM-XMI-004 is Info in both modes (a missing id is conforming, XMI 2.5.1 `use=\"optional\"`), and the generated id is written on save like any other id; the catalog row is corrected to match."
+notes = "ADR review, 2026-11-13: needs an ADR before its tests, on the identity of an element without an `xmi:id`: is a generated id marked, is it written back, and how does comparison treat it (ADR 0010, ADR 0013 \"Nothing invents\", ADR 0020). ADR review, 2026-11-13: docs/sacm/diagnostics.md lists SACM-XMI-004 as \"Error (strict)\" for a missing id, which conflicts with D-STRICT and XMI 2.5.1 §7.6.1 `use=\"optional\"`; this row settles it. Maintainer decision 2026-11-14: SACM-XMI-004 is Info in both modes (a missing id is conforming, XMI 2.5.1 `use=\"optional\"`), and the generated id is written on save like any other id; the catalog row is corrected to match. Slice 0042: generated ids now also skip referenced ids (ADR 0026); re-check there."
 acceptance = [
   "In both modes these read Ok, each id-less element with a generated NCName id and exactly one SACM-XMI-004 Info: a single-root document element without `xmi:id`, a root inside `xmi:XMI` without one, a child without one, and all of them at once; `validate` reports nothing for a generated id.",
   "The Info: severity Info in both modes, requirement SACM23-XMI-020, clause `7.6.1`, `affected == [generated id]`, `location()` at the element's `<` (correct after a CRLF), and a message naming the kind and the generated id; read diagnostics stay in document order.",
@@ -4674,6 +4825,18 @@ source = "XMI 2.5.1 §9.4.1 \"When the value of a Property is null, it is serial
 kind = "xmi"
 status = "planned"
 depends_on = ["SACM23-XMI-014"]
+
+[[row]]
+id = "SACM23-XMI-027"
+area = "XMI"
+milestone = "M6"
+title = "Cross-document references"
+requirement = "An `href=\"doc#id\"` reference (XMI 2.5.1 §7.10.2) is read in both modes and held as an external reference (the document and the fragment), written back and compared; it is never dropped. Until this row it is `Unsupported` (SACM23-XMI-015). SACM-XMI-007's catalog row is aligned to this."
+source = "XMI 2.5.1 §7.10.2 (p. 23) \"The URI reference must be of the form URI#id_value\"; rules 2l, 2m, 2n (p. 64); D-PRESERVE; ADR 0026"
+kind = "xmi"
+status = "planned"
+depends_on = ["SACM23-XMI-015"]
+notes = "Found in slice 0042 research. C++ drops cross-document hrefs with a Warning."
 
 [[row]]
 id = "LIB-COMPAT-009"

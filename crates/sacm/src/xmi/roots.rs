@@ -1,8 +1,9 @@
 //! The interchange roots of an XMI document, their names and the package
-//! content under them (SACM23-XMI-001, SACM23-XMI-012, SACM23-XMI-016,
-//! SACM23-XMI-017, SACM23-XMI-014, SACM23-BASE-004, -005, -006; formal/23-05-08
-//! §2.2, §2.4, §8.2-§8.12, §11.10; XMI 2.5.1 §7.5.3, §7.6.3, §7.8.4, §7.8.6;
-//! ADR 0015, ADR 0016, ADR 0021, ADR 0025).
+//! content under them (SACM23-XMI-001, SACM23-XMI-005, SACM23-XMI-012,
+//! SACM23-XMI-014, SACM23-XMI-015, SACM23-XMI-016, SACM23-XMI-017,
+//! SACM23-BASE-004, -005, -006, -007, -008; formal/23-05-08 §2.2, §2.4,
+//! §8.2-§8.12, §11.10; XMI 2.5.1 §7.5.3, §7.6.3, §7.8.4, §7.8.6, §7.10; ADR
+//! 0015, ADR 0016, ADR 0021, ADR 0025, ADR 0026).
 //!
 //! An interchange root is the document element or, when that is the XMI
 //! element, each of its element children outside the XMI namespace. The
@@ -45,15 +46,22 @@
 //! until LIB-COMPAT-008.
 //!
 //! A name's `lang` and `content` (and those of a `value`), every element's
-//! `gid` and a Claim's `assertionDeclaration` are read from the attribute or
-//! from a value element: an element in no namespace named after the
-//! property, whose character content is the value (SACM23-XMI-014,
-//! SACM23-BASE-006; XMI 2.5.1 §7.8.4; ADR 0021 amendment 1). A property given
+//! `gid`, `isCitation` and `isAbstract`, and a Claim's `assertionDeclaration`
+//! are read from the attribute or from a value element: an element in no
+//! namespace named after the property, whose character content is the value
+//! (SACM23-XMI-014, SACM23-BASE-006, SACM23-BASE-007, SACM23-BASE-008; XMI
+//! 2.5.1 §7.8.4; ADR 0021 amendment 1). A flag is an `xsd:boolean`. Every
+//! element's `citedElement` and `abstractForm` are references, read from the
+//! attribute, whose value is the target ids separated by XML white space
+//! (SACM23-XMI-005), or from a reference element with one `xmi:idref` or
+//! `href="#id"` (SACM23-XMI-015), and held as ids, resolved or not (ADR
+//! 0026). The id pre-pass also collects every id a reference may name, so
+//! that no generated id makes a dangling reference resolve. A property given
 //! more than once, a second `name`, `content` or `key` included, is
 //! `RepeatedValue`
 //! (SACM-MULT-001; XMI 2.5.1 §9.5.2 rule 2h; SACM23-XMI-021), and a
-//! declaration that is not a literal is `InvalidLiteral` (SACM-ENUM-001,
-//! SACM23-VAL-006; ADR 0021 amendment 2).
+//! declaration or flag that is not a literal is `InvalidLiteral`
+//! (SACM-ENUM-001, SACM23-VAL-006; ADR 0021 amendment 2, ADR 0026).
 //!
 //! Names are matched by namespace URI and local name, and a type value is
 //! resolved as a `QName` against the namespaces in scope, so the choice of
@@ -82,8 +90,9 @@ use super::namespaces::{SACM_NS, XMI_NS};
 use super::{Mode, ReadError};
 use crate::diagnostic::{Code, Diagnostic, Severity};
 use crate::model::{
-    AbstractClass, AssertionDeclaration, DeclaredType, Document, ElementId, ElementKind,
-    IdGenerator, LangString, Text, TextRole, is_ncname, role_named,
+    AbstractClass, AssertionDeclaration, DeclaredType, Document, ElementId, ElementKind, Flag,
+    IdGenerator, LangString, ReferenceEnd, Text, TextRole, is_ncname, reference_end_named,
+    role_named,
 };
 
 /// The XML Schema instance namespace, of `xsi:type`, which is read but never
@@ -294,15 +303,40 @@ impl Findings<'_, '_> {
     }
 }
 
-/// The value of every `xmi:id` in the tree under `element`, on any element,
-/// as [`id_value`] gives it (ADR 0024). It refuses nothing.
+/// The ids a generated one must avoid, in the tree under `element`, on any
+/// element: the value of every `xmi:id`, as [`id_value`] gives it (ADR
+/// 0024), and every id a reference may hold: each token of an attribute in
+/// no namespace named as a reference end, each `xmi:idref` value, trimmed,
+/// and each `href` fragment (ADR 0026). So a dangling reference never
+/// resolves to a generated element. It refuses nothing, and may hold more
+/// than is read, which only skips more candidates.
 fn reserved_ids<'a>(element: Node<'a, '_>) -> BTreeSet<&'a str> {
-    element
-        .descendants()
-        .flat_map(|node| node.attributes())
-        .filter(|attribute| is_xmi(attribute, "id"))
-        .map(|attribute| id_value(attribute.value()))
-        .collect()
+    let mut reserved = BTreeSet::new();
+    for attribute in element.descendants().flat_map(|node| node.attributes()) {
+        let value = attribute.value();
+        if is_xmi(&attribute, "id") {
+            reserved.insert(id_value(value));
+        } else if is_xmi(&attribute, "idref") {
+            reserved.insert(value.trim_matches(is_xml_space));
+        } else if is_unqualified(&attribute, "href") {
+            if let Some(fragment) = value.trim_matches(is_xml_space).strip_prefix('#') {
+                reserved.insert(fragment);
+            }
+        } else if attribute.namespace().is_none()
+            && ReferenceEnd::ALL
+                .iter()
+                .any(|end| end.name() == attribute.name())
+        {
+            reserved.extend(id_tokens(value));
+        }
+    }
+    reserved
+}
+
+/// The ids of an `xsd:IDREFS` value: its tokens between XML white space,
+/// each exactly as written (XML Schema 1.0 Part 2 §3.3.10, §4.3.6; ADR 0026).
+fn id_tokens(value: &str) -> impl Iterator<Item = &str> {
+    value.split(is_xml_space).filter(|token| !token.is_empty())
 }
 
 /// The `xsd:ID` value of the `xmi:id` value `raw` (SACM23-XMI-025; XMI
@@ -443,6 +477,12 @@ struct Pending {
     /// The `assertionDeclaration` read, if it is written, as the attribute
     /// or as a value element.
     declaration: Option<AssertionDeclaration>,
+    /// Each flag given, as the attribute or as a value element, with its
+    /// value (SACM23-BASE-007, SACM23-BASE-008).
+    flags: Vec<(Flag, bool)>,
+    /// Each reference end given, in the attribute or the element form, with
+    /// its targets in document order (SACM23-XMI-005, SACM23-XMI-015).
+    references: Vec<(ReferenceEnd, Vec<ElementId>)>,
     /// The element's name as written in its start tag.
     written: String,
     /// The byte offset of its start tag.
@@ -467,6 +507,124 @@ impl Pending {
             TextRole::Key => &mut self.key,
         }
     }
+
+    /// Reads `node`, the value element of the flag `flag` in `holder`, this
+    /// element's node (SACM23-BASE-007, SACM23-BASE-008): checked whole
+    /// first, then against an earlier occurrence, the attribute included.
+    fn read_flag_element(
+        &mut self,
+        text: &str,
+        holder: Node<'_, '_>,
+        node: Node<'_, '_>,
+        flag: Flag,
+    ) -> Result<(), ReadError> {
+        let value = read_value(text, node)?;
+        let value = parse_flag(text, &value, node.range().start, &self.id, flag)?;
+        if self.flags.iter().any(|(given, _)| *given == flag) {
+            let property = flag.name();
+            return Err(repeated_value(text, holder, property, &self.id, property));
+        }
+        self.flags.push((flag, value));
+        Ok(())
+    }
+
+    /// Reads `node`, a reference element of the end `end` in `holder`, this
+    /// element's node (SACM23-XMI-015): checked whole first
+    /// ([`read_reference`]), then against the attribute (XMI 2.5.1 rule 2h)
+    /// and, on a single-valued end, an earlier element.
+    fn read_reference_element(
+        &mut self,
+        text: &str,
+        holder: Node<'_, '_>,
+        node: Node<'_, '_>,
+        end: ReferenceEnd,
+    ) -> Result<(), ReadError> {
+        let target = read_reference(text, node)?;
+        let property = end.name();
+        let has_attribute = holder
+            .attributes()
+            .any(|attribute| is_unqualified(&attribute, property));
+        let given = self
+            .references
+            .iter_mut()
+            .find(|(held, _)| *held == end)
+            .map(|(_, targets)| targets);
+        match given {
+            Some(targets) if end.is_many() && !has_attribute => targets.push(target),
+            Some(_) => {
+                return Err(repeated_value(text, holder, property, &self.id, property));
+            }
+            None => self.references.push((end, vec![target])),
+        }
+        Ok(())
+    }
+}
+
+/// What the start tag of an element gives for its `SACMElement` flags and
+/// reference ends (ADR 0026).
+#[derive(Default)]
+struct StartTag {
+    /// Each flag given, with its value.
+    flags: Vec<(Flag, bool)>,
+    /// Each reference end given, with its targets.
+    references: Vec<(ReferenceEnd, Vec<ElementId>)>,
+}
+
+impl StartTag {
+    /// Reads `attribute` of the element `id`, of `kind`, if it is a flag or
+    /// a reference end of the element in no namespace, and returns whether
+    /// it was one. Attributes are unique in a start tag (XML 1.0 §3.1), so
+    /// none repeats here.
+    ///
+    /// A flag is an `xsd:boolean` ([`parse_flag`]). A reference holds the
+    /// ids its value lists, each token exactly as written
+    /// (SACM23-XMI-005): none is `Unsupported`, since that would read as no
+    /// reference, and two or more on a single-valued end is `RepeatedValue`,
+    /// with one location per token, each at the attribute's name.
+    fn read(
+        &mut self,
+        text: &str,
+        attribute: &Attribute<'_, '_>,
+        kind: ElementKind,
+        id: &ElementId,
+        element: &str,
+    ) -> Result<bool, ReadError> {
+        if attribute.namespace().is_some() {
+            return Ok(false);
+        }
+        let at = attribute.range_qname().start;
+        let local = attribute.name();
+        if let Some(flag) = Flag::ALL.into_iter().find(|flag| flag.name() == local) {
+            let value = parse_flag(text, attribute.value(), at, id, flag)?;
+            self.flags.push((flag, value));
+            return Ok(true);
+        }
+        let Some(end) = reference_end_named(kind, local) else {
+            return Ok(false);
+        };
+        let value = attribute.value();
+        let count = id_tokens(value).count();
+        if count == 0 {
+            return Err(unsupported(
+                text,
+                at,
+                format!(
+                    "the attribute {local:?} of the element {element:?} holds no id, so it \
+                     cannot be read as a {local}; leave it out for none"
+                ),
+            ));
+        }
+        if count > 1 && !end.is_many() {
+            return Err(ReadError::RepeatedValue {
+                element: id.clone(),
+                property: local.to_owned(),
+                locations: locate(text, at).map_or_else(Vec::new, |at| vec![at; count]),
+            });
+        }
+        let targets = id_tokens(value).map(ElementId::new).collect();
+        self.references.push((end, targets));
+        Ok(true)
+    }
 }
 
 /// Pass 2 for one root: checks it and its tree in document order, then adds
@@ -486,8 +644,9 @@ fn read_root<'a>(
     // Assertion one `assertionDeclaration` value element (SACM23-XMI-014);
     // on a UtilityElement one `content`, and on a TaggedValue one `key`
     // (SACM23-BASE-004, SACM23-BASE-005); on every element one `gid` value
-    // element (SACM23-BASE-006); readable children (SACM23-XMI-016), white
-    // space, comments and processing instructions.
+    // element (SACM23-BASE-006), one value element per flag and one
+    // reference element per single-valued end (ADR 0026); readable children
+    // (SACM23-XMI-016), white space, comments and processing instructions.
     let mut open = vec![(first, root, root.children())];
     let mut read = Vec::new();
     while let Some((element, holder, content)) = open.last_mut() {
@@ -565,6 +724,15 @@ fn read_root<'a>(
                 ));
             }
             element.declaration = Some(declaration);
+        } else if let Some(flag) = Flag::ALL
+            .into_iter()
+            .find(|flag| is_value_element(node, flag.name()))
+        {
+            element.read_flag_element(text, *holder, node, flag)?;
+        } else if let Some(end) = reference_end_named(element.kind, node.tag_name().name())
+            .filter(|end| is_value_element(node, end.name()))
+        {
+            element.read_reference_element(text, *holder, node, end)?;
         } else {
             let child = child_start(found, node, element)?;
             open.push((child, node, node.children()));
@@ -613,6 +781,18 @@ fn hold(text: &str, document: &mut Document, mut read: Vec<Pending>) -> Result<(
                 Some(held) => document.set_text(&id, role, held),
                 None => Ok(()),
             })
+        });
+        let flagged = held.and_then(|()| {
+            element
+                .flags
+                .into_iter()
+                .try_for_each(|(flag, value)| document.set_flag(&id, flag, value))
+        });
+        let held = flagged.and_then(|()| {
+            element
+                .references
+                .into_iter()
+                .try_for_each(|(end, targets)| document.set_references(&id, end, targets))
         });
         held.map_err(|error| {
             unsupported(
@@ -682,14 +862,19 @@ fn root_start<'a>(found: &mut Findings<'_, 'a>, root: Node<'a, '_>) -> Result<Pe
         )));
     }
 
-    // Any other attribute than `xmi:id`, `xmi:version`, the type and `gid`
-    // is not read yet (ADR 0016 D4).
-    if let Some(attribute) = root.attributes().find(|attribute| {
-        !(is_xmi(attribute, "id")
-            || is_xmi(attribute, "version")
-            || is_type(attribute)
-            || is_unqualified(attribute, GID))
-    }) {
+    // Besides `xmi:id`, `xmi:version`, the type and `gid`, only the
+    // SACMElement flags and references are read, in document order (ADR
+    // 0016 D4, ADR 0026); any other attribute is not read yet.
+    let mut start = StartTag::default();
+    for attribute in root.attributes() {
+        if is_xmi(&attribute, "id")
+            || is_xmi(&attribute, "version")
+            || is_type(&attribute)
+            || is_unqualified(&attribute, GID)
+            || start.read(text, &attribute, kind, &id, &name)?
+        {
+            continue;
+        }
         return Err(unread_attribute(text, &attribute, &name));
     }
 
@@ -707,6 +892,8 @@ fn root_start<'a>(found: &mut Findings<'_, 'a>, root: Node<'a, '_>) -> Result<Pe
         content: None,
         key: None,
         declaration: None,
+        flags: start.flags,
+        references: start.references,
         written: name,
         at: at_root,
     })
@@ -714,7 +901,7 @@ fn root_start<'a>(found: &mut Findings<'_, 'a>, root: Node<'a, '_>) -> Result<Pe
 
 /// Checks the start tag of `node`, a child element of `parent`: its role,
 /// type and kind, its id, and its other attributes, in that order, reading
-/// an Assertion's `assertionDeclaration`.
+/// an Assertion's `assertionDeclaration` and the flags and references.
 fn child_start<'a>(
     found: &mut Findings<'_, 'a>,
     node: Node<'a, '_>,
@@ -725,13 +912,15 @@ fn child_start<'a>(
     let written = written_name(text, node);
     let id = read_id(found, node, kind)?;
     // Besides `xmi:id` and the type (ADR 0016 D4), only an unqualified
-    // `gid`, and an Assertion's unqualified `assertionDeclaration`, in
-    // document order, so a refusal after them lands on the later attribute.
+    // `gid`, an Assertion's unqualified `assertionDeclaration`, and the
+    // SACMElement flags and references (ADR 0026), in document order, so a
+    // refusal after them lands on the later attribute.
     let is_assertion = kind.is_a(AbstractClass::Assertion);
     let is_utility = kind.is_a(AbstractClass::UtilityElement);
     let is_tagged_value = kind == ElementKind::TaggedValue;
     let mut declaration = None;
     let mut gid = None;
+    let mut start = StartTag::default();
     for attribute in node.attributes() {
         if is_xsi_type(&attribute) {
             found.xsi_type(&attribute, &subject(kind, id.as_str()), id.as_str());
@@ -747,6 +936,9 @@ fn child_start<'a>(
         if is_assertion && is_unqualified(&attribute, DECLARATION) {
             let at = attribute.range_qname().start;
             declaration = Some(parse_declaration(text, attribute.value(), at, &id)?);
+            continue;
+        }
+        if start.read(text, &attribute, kind, &id, &written)? {
             continue;
         }
         // The C++ attribute forms of a UtilityElement's content and of a
@@ -770,6 +962,8 @@ fn child_start<'a>(
         content: None,
         key: None,
         declaration,
+        flags: start.flags,
+        references: start.references,
         written,
         at: node.range().start,
     })
@@ -965,6 +1159,134 @@ fn parse_declaration(
         value: value.to_owned(),
         location: locate(text, offset),
     })
+}
+
+/// The value of the flag `flag` of the element `element`, given as `value`
+/// by the attribute or the value element at byte `offset` of `text`
+/// (SACM23-BASE-007, SACM23-BASE-008; ADR 0026). It is an `xsd:boolean`,
+/// whose white space is collapsed (XML Schema 1.0 Part 2 §3.2.2.1, §4.3.6):
+/// `true` and `1` are true, `false` and `0` are false, with XML white space
+/// around them. Any other value, the empty one included, is `InvalidLiteral`
+/// at `offset`, holding the value as read (SACM-ENUM-001), and never read as
+/// false.
+fn parse_flag(
+    text: &str,
+    value: &str,
+    offset: usize,
+    element: &ElementId,
+    flag: Flag,
+) -> Result<bool, ReadError> {
+    // A literal holds no white space, so collapsing a value that reads is
+    // trimming it.
+    match value.trim_matches(is_xml_space) {
+        "true" | "1" => Ok(true),
+        "false" | "0" => Ok(false),
+        _ => Err(ReadError::InvalidLiteral {
+            element: element.clone(),
+            property: flag.name().to_owned(),
+            value: value.to_owned(),
+            location: locate(text, offset),
+        }),
+    }
+}
+
+/// The target of the reference element `node` (SACM23-XMI-015; XMI 2.5.1
+/// production 2c, rules 2l and 2n, §7.10.1; ADR 0026): in no namespace and
+/// named after its end, checked by the caller. Its start tag carries exactly
+/// one link attribute, `xmi:idref="id"` or an unqualified `href="#id"`, and
+/// nothing else; its content is only white space, comments and processing
+/// instructions.
+///
+/// Each attribute is checked in document order, then the link, then the
+/// content, and each refusal is `Unsupported` at its construct: a second link
+/// attribute, any other attribute, a link value that names no element of
+/// this document, no link (at the start tag), a child element, or text.
+fn read_reference(text: &str, node: Node<'_, '_>) -> Result<ElementId, ReadError> {
+    let element = written_name(text, node);
+    let mut link = None;
+    for attribute in node.attributes() {
+        let range = attribute.range_qname();
+        let name = text.get(range.clone()).unwrap_or(attribute.name());
+        let not_read = |reason: String| unsupported(text, range.start, reason);
+        let is_idref = is_xmi(&attribute, "idref");
+        if !(is_idref || is_unqualified(&attribute, "href")) {
+            return Err(not_read(format!(
+                "the attribute {name:?} of the reference element {element:?} is not read: a \
+                 reference element carries only xmi:idref or href"
+            )));
+        }
+        if link.is_some() {
+            return Err(not_read(format!(
+                "the reference element {element:?} carries both xmi:idref and href; give one"
+            )));
+        }
+        let value = attribute.value().trim_matches(is_xml_space);
+        let target = if is_idref {
+            value
+        } else {
+            same_document_fragment(value).ok_or_else(|| {
+                not_read(format!(
+                    "the href {:?} of the reference element {element:?} names no element of \
+                     this document by its id; only href=\"#id\" is read, and cross-document \
+                     links are not read until SACM23-XMI-027",
+                    attribute.value()
+                ))
+            })?
+        };
+        if target.is_empty() {
+            return Err(not_read(format!(
+                "the xmi:idref of the reference element {element:?} is empty, so it names no element"
+            )));
+        }
+        link = Some(ElementId::new(target));
+    }
+    let Some(target) = link else {
+        return Err(unsupported(
+            text,
+            node.range().start,
+            format!(
+                "the reference element {element:?} carries neither xmi:idref nor href, so it \
+                 names no element"
+            ),
+        ));
+    };
+    for child in node.children() {
+        if child.is_element() {
+            return Err(unsupported(
+                text,
+                child.range().start,
+                format!(
+                    "the element {:?} in the reference element {element:?} is not read: a \
+                     reference element holds no elements",
+                    written_name(text, child)
+                ),
+            ));
+        }
+        if let Some(first) = text_offset(text, child) {
+            return Err(unsupported(
+                text,
+                first,
+                format!(
+                    "the reference element {element:?} holds text, which is not read: the \
+                     target is given by xmi:idref or href"
+                ),
+            ));
+        }
+    }
+    Ok(target)
+}
+
+/// The id that the trimmed `href` value `value` names in the same document,
+/// if it is `#id`: a bare fragment, not empty and not a pointer (XMI 2.5.1
+/// rule 2n). `None` for a value with a document part, such as `other.xmi#c`
+/// or `c`, the empty value, `#` and a fragment holding `#`, `(`, `)` or white
+/// space, such as `#xpointer(id('c'))`. The fragment is held exactly, with no
+/// percent-decoding.
+fn same_document_fragment(value: &str) -> Option<&str> {
+    let fragment = value.strip_prefix('#')?;
+    let is_bare = !fragment.is_empty()
+        && !fragment.contains(|c: char| matches!(c, '#' | '(' | ')') || is_xml_space(c));
+    is_bare.then_some(fragment)
 }
 
 /// Whether `node` is the value element of the property `local`: an element
@@ -1382,6 +1704,31 @@ mod tests {
             Err(ReadError::Unsupported { location, reason }) => Some((location, reason)),
             _ => None,
         }
+    }
+
+    #[test]
+    fn only_a_bare_fragment_is_a_same_document_href() {
+        for (value, expected) in [
+            ("#c2", Some("c2")),
+            ("#1c", Some("1c")),
+            ("#a%20b", Some("a%20b")),
+            ("", None),
+            ("#", None),
+            ("c2", None),
+            ("other.xmi#c2", None),
+            ("#xpointer(id('c2'))", None),
+            ("#a#b", None),
+            ("#a b", None),
+        ] {
+            assert_eq!(super::same_document_fragment(value), expected, "{value:?}");
+        }
+    }
+
+    #[test]
+    fn id_tokens_split_on_xml_white_space_only() {
+        let tokens: Vec<&str> = super::id_tokens(" a\tb\n\rc  d\u{A0}e ").collect();
+        assert_eq!(tokens, ["a", "b", "c", "d\u{A0}e"]);
+        assert_eq!(super::id_tokens(" \t ").count(), 0);
     }
 
     #[test]

@@ -14,7 +14,10 @@ Read, edit, validate and write assurance cases in the
   `assertionDeclaration`, and the descriptions, notes, implementation constraints and
   tagged values of each (`SacmElement::descriptions`, `notes`, `tagged_values` and the
   like), with their `content` and, on a tagged value, `key` (`SacmElement::content`,
-  `SacmElement::key`). It refuses what it cannot represent yet rather than drop it. An
+  `SacmElement::key`). Every element's `isCitation`, `citedElement`, `isAbstract` and
+  `abstractForm` are read too (`SacmElement::is_citation`, `cited_element` and the like),
+  in the attribute or the element form; a reference is held as the id it names, and one
+  that names no element is kept. It refuses what it cannot represent yet rather than drop it. An
   element without an `xmi:id` gets a generated one, such as `claim_1`, which `write`
   saves; see the Ids section of the `sacm::xmi::read` docs.
 - `sacm::xmi::write` writes a document deterministically, and by default refuses one that
@@ -22,8 +25,10 @@ Read, edit, validate and write assurance cases in the
 - `sacm::validation::validate` reports each element that has no name, each `content` or
   `key` text that is empty or gives one language twice, each tagged value without a key,
   each id that is not an XML `NCName`, each `gid` two elements share, each element with
-  more than one description, and each `ArgumentPackage` that nests one and also holds
-  other argumentation elements, as diagnostics with stable codes.
+  more than one description, each `ArgumentPackage` that nests one and also holds
+  other argumentation elements, each reference that names no element, each cited element
+  without `isCitation`, and each `abstractForm` that breaks a §8.2 rule, as diagnostics
+  with stable codes.
 - `sacm::edit::apply` creates AssuranceCasePackages, ArgumentPackages and Claims, and
   descriptions, implementation constraints, notes and tagged values on them
   (`sacm::edit::CreateNote`, `sacm::edit::CreateTaggedValue` and the like); a refused
@@ -89,8 +94,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(created.created_ids()[0].as_str(), "claim_1");
 
     // Validate. This release checks names, ids, gids, descriptions, the content and key
-    // of descriptions, implementation constraints, notes and tagged values, and what an
-    // ArgumentPackage holds.
+    // of descriptions, implementation constraints, notes and tagged values, what an
+    // ArgumentPackage holds, and references, citations and abstract forms.
     let findings = validation::validate(&document);
     assert!(!diagnostic::has_errors(&findings));
 

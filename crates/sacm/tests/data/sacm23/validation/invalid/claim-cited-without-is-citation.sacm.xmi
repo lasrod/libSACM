@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-VAL-007: the Claim c2 has a citedElement (c1) but no isCitation, against the clause 8.2 constraint "self.citedElement <> null implies self.isCitation = true". It reads in both modes; validate reports one SACM-CITE-001 Error affecting c2. Hand-written; no third-party content. -->
+<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+  <name lang="en" content="Arguments"/>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+    <name lang="en" content="The brakes stop the car"/>
+  </argumentElement>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c2" citedElement="c1">
+    <name lang="en" content="The brakes stop the car, as cited"/>
+  </argumentElement>
+</sacm:ArgumentPackage>

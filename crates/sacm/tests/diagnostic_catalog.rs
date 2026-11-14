@@ -22,7 +22,7 @@ const ROW: &str = "LIB-DIAG-002";
 
 /// Every `Code` constant, by name. A new constant must be added here, which
 /// the scan checks; each text is checked against `as_str()`.
-const CONSTANTS: [(&str, Code); 16] = [
+const CONSTANTS: [(&str, Code); 19] = [
     ("XML_MALFORMED", Code::XML_MALFORMED),
     ("XML_DOCTYPE_REJECTED", Code::XML_DOCTYPE_REJECTED),
     ("XMI_INVALID_ROOT", Code::XMI_INVALID_ROOT),
@@ -39,11 +39,16 @@ const CONSTANTS: [(&str, Code); 16] = [
     ("GID_DUPLICATE", Code::GID_DUPLICATE),
     ("ID_TRIMMED", Code::ID_TRIMMED),
     ("PACKAGE_CONTENT_INVALID", Code::PACKAGE_CONTENT_INVALID),
+    ("REF_DANGLING", Code::REF_DANGLING),
+    ("CITATION_INVALID", Code::CITATION_INVALID),
+    ("ABSTRACT_FORM_INVALID", Code::ABSTRACT_FORM_INVALID),
 ];
 
-/// The live codes after slice 0041: the 14 before it, SACM-ID-003 and
-/// SACM-PKG-001.
-const LIVE: [&str; 16] = [
+/// The live codes after slice 0042: the 16 of slice 0041, and SACM-REF-001,
+/// SACM-CITE-001 and SACM-ABS-001.
+const LIVE: [&str; 19] = [
+    "SACM-ABS-001",
+    "SACM-CITE-001",
     "SACM-CMD-001",
     "SACM-CMD-004",
     "SACM-CMD-005",
@@ -54,6 +59,7 @@ const LIVE: [&str; 16] = [
     "SACM-ID-004",
     "SACM-MULT-001",
     "SACM-PKG-001",
+    "SACM-REF-001",
     "SACM-SEC-001",
     "SACM-XMI-001",
     "SACM-XMI-004",
@@ -534,7 +540,7 @@ fn lib_diag_002_the_catalog_and_the_crate_agree_in_both_directions() {
     assert_eq!(
         live_codes(&catalog),
         LIVE,
-        "{ROW}: the live catalog rows are not the 16 expected"
+        "{ROW}: the live catalog rows are not the 19 expected"
     );
 }
 
