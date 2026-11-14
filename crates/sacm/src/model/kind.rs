@@ -255,13 +255,14 @@ impl fmt::Display for AbstractClass {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ElementKind {
     // Base (clause 8)
-    /// `Description`: a utility element describing another element.
+    /// `Description`: a utility element describing another element (§8.9).
     Description,
-    /// `ImplementationConstraint`: a constraint on how an element is implemented.
+    /// `ImplementationConstraint`: a condition an abstract element must meet
+    /// before it can be made concrete (§8.8).
     ImplementationConstraint,
-    /// `Note`: a free-form note attached to an element.
+    /// `Note`: a free-form note attached to an element (§8.11).
     Note,
-    /// `TaggedValue`: a key and value attached to an element.
+    /// `TaggedValue`: a key and value attached to an element (§8.12).
     TaggedValue,
     // AssuranceCase (clause 9)
     /// `AssuranceCasePackage`: an assurance case: the package that holds

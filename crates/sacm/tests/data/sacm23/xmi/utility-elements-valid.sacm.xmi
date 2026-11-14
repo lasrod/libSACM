@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-BASE-004 and SACM23-BASE-005: an ArgumentPackage with a Description, and a Claim holding a Note, an ImplementationConstraint, a second Description and a TaggedValue, interleaved. The content and key MultiLangStrings are role elements with `value` children; some carry an `xmi:id` on the role element or on a value. The TaggedValue gives `key` before `content`. Hand-written; no third-party content. -->
+<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+  <name lang="en" content="Braking arguments"/>
+  <description xmi:id="d1">
+    <content xmi:id="d1_content">
+      <value xmi:id="d1_en" lang="en" content="Why the brakes are safe"/>
+      <value lang="sv" content="Varför bromsarna är säkra"/>
+    </content>
+  </description>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+    <name lang="en" content="The brakes stop the car"/>
+    <note xmi:id="n1">
+      <content>
+        <value lang="en" content="Reviewed on 2026-11-14"/>
+      </content>
+    </note>
+    <implementationConstraint xmi:id="i1">
+      <content>
+        <value content="ISO 26262"/>
+      </content>
+    </implementationConstraint>
+    <description xmi:id="d2">
+      <content>
+        <value lang="en" content="A second description"/>
+      </content>
+    </description>
+    <taggedValue xmi:id="t1">
+      <key xmi:id="t1_key">
+        <value content="ASIL"/>
+      </key>
+      <content>
+        <value content="D"/>
+      </content>
+    </taggedValue>
+  </argumentElement>
+</sacm:ArgumentPackage>

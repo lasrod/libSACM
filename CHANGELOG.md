@@ -182,6 +182,29 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
 - `ReadError::InvalidLiteral` (SACM-ENUM-001, `Code::ENUM_INVALID_LITERAL`): the refusal,
   in both modes, of an `assertionDeclaration` that is not one of the six literals
   [SACM23-VAL-006].
+- Descriptions, implementation constraints, notes and tagged values on every
+  ModelElement (ADR 0025): `SacmElement::descriptions()`,
+  `implementation_constraints()`, `notes()` and `tagged_values()` filter the one ordered
+  child list; `content()` and, on a TaggedValue, `key()` are `None` or a
+  `MultiLangString` (absent and empty kept apart), with `content_id()`,
+  `content_value_ids()`, `key_id()` and `key_value_ids()` for the `xmi:id`s of the role
+  and value elements. `xmi::read` reads them (each `value` like a `name`; a second
+  `content` or `key` is `RepeatedValue`; the single-language shorthand stays
+  `Unsupported` until LIB-COMPAT-008); `xmi::write` writes `content` before `key`;
+  `semantic_compare` reports `Difference::Content`, `ContentId`, `ContentValueIds`,
+  `Key`, `KeyId` and `KeyValueIds`; `WriteAttribute` gains `ContentValueLang`,
+  `ContentValueContent`, `KeyValueLang` and `KeyValueContent`. `edit::CreateDescription`,
+  `CreateImplementationConstraint`, `CreateNote` and `CreateTaggedValue` create them
+  under any ModelElement. `impl From<LangString> for MultiLangString`
+  [SACM23-BASE-004, SACM23-BASE-005].
+- `SacmElement::gid()`: every element's `gid`, held exactly (absent, `""` and others
+  differ). `xmi::read` reads it as an attribute or a value element (given twice:
+  `RepeatedValue`); `xmi::write` writes it after `xmi:id`; `semantic_compare` reports
+  `Difference::Gid`; `WriteAttribute::Gid` [SACM23-BASE-006].
+- `validation::validate` reports an empty `content` or `key`, each language that two or
+  more values of one share, and a TaggedValue with no `key`, as SACM-MULT-001 Errors on the
+  UtilityElement; and a `content`, `key` or `value` `xmi:id` that is not an NCName as
+  SACM-ID-002 [SACM23-VAL-010, SACM23-VAL-020].
 
 ### Changed
 
@@ -206,6 +229,13 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
 - The new validation Error rule SACM-ID-002 can make a strict `xmi::write` refuse a
   document it wrote before: one holding an id that is not an NCName, such as `1c` or
   `a b`. Write it as held in tolerant mode [SACM23-VAL-020].
+- The new validation Error rule SACM-MULT-001 for MultiLangStrings can make a strict
+  `xmi::write` refuse a document: one with an empty `content` or `key`, two values in
+  one language, or a TaggedValue without a `key`. Write it as held in tolerant mode
+  [SACM23-VAL-010].
+- `xmi::read` reads descriptions, notes, implementation constraints, tagged values and
+  `gid`, which it refused as `Unsupported` before [SACM23-BASE-004, SACM23-BASE-005,
+  SACM23-BASE-006].
 - Reading a file with many diagnostics locates them in one pass over the text.
 - The crate root and README show a load, inspect, edit, validate and save example
   [LIB-DOC-001].

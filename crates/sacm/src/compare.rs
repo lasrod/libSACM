@@ -5,12 +5,15 @@
 //! Elements are matched by id across the whole document, so an element that
 //! moved to another parent is one [`Difference::Parent`], not a removal and an
 //! addition. For each element both documents hold, the comparison checks its
-//! kind, parent, name, the `xmi:id` of its name
-//! ([`SacmElement::name_id`](crate::model::SacmElement::name_id)) and
-//! [`assertionDeclaration`](crate::model::AssertionDeclaration) (SACM 2.3
-//! §11.10), and the relative order of its children; it also checks the
-//! relative order of the roots. Values are compared exactly: a missing name
-//! differs from an empty one.
+//! kind, parent, `gid`, name, the `xmi:id` of its name
+//! ([`SacmElement::name_id`](crate::model::SacmElement::name_id)), its
+//! `content` and `key` with their ids
+//! ([`SacmElement::content`](crate::model::SacmElement::content) and the
+//! like), its [`assertionDeclaration`](crate::model::AssertionDeclaration)
+//! (SACM 2.3 §11.10), and the relative order of its children; it also checks
+//! the relative order of the roots. Values are compared exactly: a missing
+//! name differs from an empty one, and a missing `content` from an empty
+//! one.
 //!
 //! Order is compared because equal documents must write equal bytes, though
 //! SACM 2.3 orders no composition. To compare without order, drop the two
@@ -77,7 +80,8 @@ use std::fmt;
 use std::ops::ControlFlow;
 
 use crate::model::{
-    AssertionDeclaration, Compared, Document, ElementId, ElementKind, LangString, SacmElement,
+    AssertionDeclaration, Compared, Document, ElementId, ElementKind, LangString, MultiLangString,
+    SacmElement, Text, TextRole,
 };
 
 /// One way in which two documents differ in SACM content, as
@@ -160,6 +164,19 @@ pub enum Difference {
         /// The parent's id in the right document, or `None` for a root.
         right: Option<ElementId>,
     },
+    /// The element has a different `gid` (SACM 2.3 §8.2) on each side;
+    /// `None` is no gid.
+    ///
+    /// Gids are compared exactly: no gid, `""` and `" g"` are three
+    /// different values.
+    Gid {
+        /// The element's id.
+        id: ElementId,
+        /// The gid in the left document, or `None` when it has none.
+        left: Option<String>,
+        /// The gid in the right document, or `None` when it has none.
+        right: Option<String>,
+    },
     /// The element has a different `name` (SACM 2.3 §8.6) on each side;
     /// `None` is a missing name.
     ///
@@ -186,6 +203,80 @@ pub enum Difference {
         left: Option<ElementId>,
         /// The name's id in the right document, or `None` when it has none.
         right: Option<ElementId>,
+    },
+    /// The `content` of a `UtilityElement` (SACM 2.3 §8.7,
+    /// [`SacmElement::content`](crate::model::SacmElement::content)) differs
+    /// on each side; `None` is no content.
+    ///
+    /// Contents are compared exactly and in order: no content, an empty one,
+    /// `[en, fr]` and `[fr, en]` are all different values.
+    Content {
+        /// The element's id.
+        id: ElementId,
+        /// The content in the left document, or `None` when it has none.
+        left: Option<MultiLangString>,
+        /// The content in the right document, or `None` when it has none.
+        right: Option<MultiLangString>,
+    },
+    /// The `xmi:id` of the element's `content`
+    /// ([`SacmElement::content_id`](crate::model::SacmElement::content_id))
+    /// differs on each side; `None` is a content without an id, or none.
+    ContentId {
+        /// The element's id.
+        id: ElementId,
+        /// The content's id in the left document, or `None`.
+        left: Option<ElementId>,
+        /// The content's id in the right document, or `None`.
+        right: Option<ElementId>,
+    },
+    /// The `xmi:id`s of the values of the element's `content`
+    /// ([`SacmElement::content_value_ids`](crate::model::SacmElement::content_value_ids)),
+    /// by position, differ on each side.
+    ///
+    /// A position one side lacks counts as a value without an id, so a
+    /// different number of values without ids is only a
+    /// [`Content`](Self::Content) difference.
+    ContentValueIds {
+        /// The element's id.
+        id: ElementId,
+        /// The value ids in the left document: one per value.
+        left: Vec<Option<ElementId>>,
+        /// The value ids in the right document: one per value.
+        right: Vec<Option<ElementId>>,
+    },
+    /// The `key` of a `TaggedValue` (SACM 2.3 §8.12,
+    /// [`SacmElement::key`](crate::model::SacmElement::key)) differs on each
+    /// side; `None` is no key. Compared as [`Content`](Self::Content) is.
+    Key {
+        /// The element's id.
+        id: ElementId,
+        /// The key in the left document, or `None` when it has none.
+        left: Option<MultiLangString>,
+        /// The key in the right document, or `None` when it has none.
+        right: Option<MultiLangString>,
+    },
+    /// The `xmi:id` of the element's `key`
+    /// ([`SacmElement::key_id`](crate::model::SacmElement::key_id)) differs
+    /// on each side; `None` is a key without an id, or none.
+    KeyId {
+        /// The element's id.
+        id: ElementId,
+        /// The key's id in the left document, or `None`.
+        left: Option<ElementId>,
+        /// The key's id in the right document, or `None`.
+        right: Option<ElementId>,
+    },
+    /// The `xmi:id`s of the values of the element's `key`
+    /// ([`SacmElement::key_value_ids`](crate::model::SacmElement::key_value_ids)),
+    /// by position, differ on each side. Compared as
+    /// [`ContentValueIds`](Self::ContentValueIds) are.
+    KeyValueIds {
+        /// The element's id.
+        id: ElementId,
+        /// The value ids in the left document: one per value.
+        left: Vec<Option<ElementId>>,
+        /// The value ids in the right document: one per value.
+        right: Vec<Option<ElementId>>,
     },
     /// The element has a different `assertionDeclaration` (SACM 2.3 §11.10)
     /// on each side.
@@ -246,10 +337,28 @@ impl Difference {
             | Self::RightOnly { id, .. }
             | Self::Kind { id, .. }
             | Self::Parent { id, .. }
+            | Self::Gid { id, .. }
             | Self::Name { id, .. }
             | Self::NameId { id, .. }
+            | Self::Content { id, .. }
+            | Self::ContentId { id, .. }
+            | Self::ContentValueIds { id, .. }
+            | Self::Key { id, .. }
+            | Self::KeyId { id, .. }
+            | Self::KeyValueIds { id, .. }
             | Self::AssertionDeclaration { id, .. }
             | Self::ChildOrder { id, .. } => Some(id),
+        }
+    }
+}
+
+impl Difference {
+    /// The role a difference in a `content` or `key` is about: `key` for
+    /// the three `Key` variants, and `content` otherwise.
+    fn text_role(&self) -> &'static str {
+        match self {
+            Self::Key { .. } | Self::KeyId { .. } | Self::KeyValueIds { .. } => "key",
+            _ => "content",
         }
     }
 }
@@ -284,6 +393,13 @@ impl fmt::Display for Difference {
                 Parent(left.as_ref()),
                 Parent(right.as_ref())
             ),
+            Self::Gid { id, left, right } => write!(
+                f,
+                "element {:?} differs in gid: {} on the left, {} on the right",
+                id.as_str(),
+                Gid(left.as_deref()),
+                Gid(right.as_deref())
+            ),
             Self::Name { id, left, right } => write!(
                 f,
                 "element {:?} differs in name: {} on the left, {} on the right",
@@ -298,6 +414,36 @@ impl fmt::Display for Difference {
                 NameId(left.as_ref()),
                 NameId(right.as_ref())
             ),
+            Self::Content { id, left, right } | Self::Key { id, left, right } => {
+                let role = self.text_role();
+                write!(
+                    f,
+                    "element {:?} differs in {role}: {} on the left, {} on the right",
+                    id.as_str(),
+                    Values(left.as_ref(), role),
+                    Values(right.as_ref(), role)
+                )
+            }
+            Self::ContentId { id, left, right } | Self::KeyId { id, left, right } => {
+                let role = self.text_role();
+                write!(
+                    f,
+                    "element {:?} differs in the xmi:id of its {role}: {} on the left, {} on the right",
+                    id.as_str(),
+                    NameId(left.as_ref()),
+                    NameId(right.as_ref())
+                )
+            }
+            Self::ContentValueIds { id, left, right } | Self::KeyValueIds { id, left, right } => {
+                let role = self.text_role();
+                write!(
+                    f,
+                    "element {:?} differs in the xmi:ids of its {role}'s values: {} on the left, {} on the right",
+                    id.as_str(),
+                    ValueIds(left),
+                    ValueIds(right)
+                )
+            }
             Self::AssertionDeclaration { id, left, right } => write!(
                 f,
                 "element {:?} differs in assertionDeclaration: {} on the left, {} on the right",
@@ -344,6 +490,19 @@ impl fmt::Display for Parent<'_> {
     }
 }
 
+/// A gid for `Display`: quoted, or `no gid`, so absent and empty read
+/// differently.
+struct Gid<'a>(Option<&'a str>);
+
+impl fmt::Display for Gid<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            Some(gid) => write!(f, "{gid:?}"),
+            None => f.write_str("no gid"),
+        }
+    }
+}
+
 /// A name for `Display`: `no name` when missing, otherwise both fields, each
 /// quoted or written as absent, so absent and empty read differently.
 struct Name<'a>(Option<&'a LangString>);
@@ -353,6 +512,53 @@ impl fmt::Display for Name<'_> {
         let Some(name) = self.0 else {
             return f.write_str("no name");
         };
+        write!(f, "{}", Value(name))
+    }
+}
+
+/// A `content` or `key` for `Display`: `no <role>` when absent, otherwise
+/// its values in order, `[]` when empty.
+struct Values<'a>(Option<&'a MultiLangString>, &'static str);
+
+impl fmt::Display for Values<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Some(values) = self.0 else {
+            return write!(f, "no {}", self.1);
+        };
+        f.write_str("[")?;
+        for (position, value) in values.values().iter().enumerate() {
+            if position > 0 {
+                f.write_str(", ")?;
+            }
+            write!(f, "{}", Value(value))?;
+        }
+        f.write_str("]")
+    }
+}
+
+/// The ids of a text's values for `Display`: `[no id, "v1"]`.
+struct ValueIds<'a>(&'a [Option<ElementId>]);
+
+impl fmt::Display for ValueIds<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("[")?;
+        for (position, id) in self.0.iter().enumerate() {
+            if position > 0 {
+                f.write_str(", ")?;
+            }
+            write!(f, "{}", NameId(id.as_ref()))?;
+        }
+        f.write_str("]")
+    }
+}
+
+/// A `LangString` for `Display`: both fields, each quoted or written as
+/// absent, so absent and empty read differently.
+struct Value<'a>(&'a LangString);
+
+impl fmt::Display for Value<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = self.0;
         match name.lang() {
             Some(lang) => write!(f, "[lang {lang:?}, ")?,
             None => f.write_str("[no lang, ")?,
@@ -364,7 +570,7 @@ impl fmt::Display for Name<'_> {
     }
 }
 
-/// A name's id for `Display`: quoted, or `no id`.
+/// The id of a name, a text or a value for `Display`: quoted, or `no id`.
 struct NameId<'a>(Option<&'a ElementId>);
 
 impl fmt::Display for NameId<'_> {
@@ -393,8 +599,8 @@ impl fmt::Display for Declaration {
 /// order; an empty result means the documents are equal.
 ///
 /// Elements are matched by id across the whole document. For an element both
-/// documents hold, its kind, parent, name, its name's `xmi:id`,
-/// `assertionDeclaration` and the
+/// documents hold, its kind, parent, `gid`, name, its name's `xmi:id`, its
+/// `content` and `key` with their ids, `assertionDeclaration` and the
 /// relative order of its children are compared, even when its kind differs.
 /// The relative order of the roots is compared too. The per-kind counters
 /// that generate ids are not compared.
@@ -417,7 +623,12 @@ impl fmt::Display for Declaration {
 /// 1. [`Difference::RootOrder`];
 /// 2. for each element of `left`, in pre-order: [`Difference::LeftOnly`], or
 ///    else [`Kind`](Difference::Kind), [`Parent`](Difference::Parent),
-///    [`Name`](Difference::Name), [`NameId`](Difference::NameId),
+///    [`Gid`](Difference::Gid), [`Name`](Difference::Name),
+///    [`NameId`](Difference::NameId), [`Content`](Difference::Content),
+///    [`ContentId`](Difference::ContentId),
+///    [`ContentValueIds`](Difference::ContentValueIds),
+///    [`Key`](Difference::Key), [`KeyId`](Difference::KeyId),
+///    [`KeyValueIds`](Difference::KeyValueIds),
 ///    [`AssertionDeclaration`](Difference::AssertionDeclaration) and
 ///    [`ChildOrder`](Difference::ChildOrder), in that order;
 /// 3. [`Difference::RightOnly`] for each element only `right` holds, in
@@ -472,10 +683,18 @@ enum Found<'a> {
     Kind(Compared<'a>, Compared<'a>),
     /// The element's parent differs.
     Parent(Compared<'a>, Compared<'a>),
+    /// The element's `gid` differs.
+    Gid(Compared<'a>, Compared<'a>),
     /// The element's name differs.
     Name(Compared<'a>, Compared<'a>),
     /// The `xmi:id` of the element's name differs.
     NameId(Compared<'a>, Compared<'a>),
+    /// The value of the element's `content` or `key` differs.
+    Text(TextRole, Compared<'a>, Compared<'a>),
+    /// The `xmi:id` of the element's `content` or `key` differs.
+    TextId(TextRole, Compared<'a>, Compared<'a>),
+    /// The ids of the values of the element's `content` or `key` differ.
+    TextValueIds(TextRole, Compared<'a>, Compared<'a>),
     /// The element's `assertionDeclaration` differs.
     AssertionDeclaration(Compared<'a>, Compared<'a>),
     /// The element's common children are in a different relative order; the
@@ -507,6 +726,11 @@ impl Found<'_> {
                 left: ours.parent.cloned(),
                 right: theirs.parent.cloned(),
             },
+            Self::Gid(ours, theirs) => Difference::Gid {
+                id: ours.id.clone(),
+                left: ours.gid.map(str::to_owned),
+                right: theirs.gid.map(str::to_owned),
+            },
             Self::Name(ours, theirs) => Difference::Name {
                 id: ours.id.clone(),
                 left: ours.name.cloned(),
@@ -517,6 +741,33 @@ impl Found<'_> {
                 left: ours.name_id.cloned(),
                 right: theirs.name_id.cloned(),
             },
+            Self::Text(role, ours, theirs) => {
+                let id = ours.id.clone();
+                let left = text_value(&ours, role).cloned();
+                let right = text_value(&theirs, role).cloned();
+                match role {
+                    TextRole::Content => Difference::Content { id, left, right },
+                    TextRole::Key => Difference::Key { id, left, right },
+                }
+            }
+            Self::TextId(role, ours, theirs) => {
+                let id = ours.id.clone();
+                let left = text_id(&ours, role).cloned();
+                let right = text_id(&theirs, role).cloned();
+                match role {
+                    TextRole::Content => Difference::ContentId { id, left, right },
+                    TextRole::Key => Difference::KeyId { id, left, right },
+                }
+            }
+            Self::TextValueIds(role, ours, theirs) => {
+                let id = ours.id.clone();
+                let left = text_value_ids(&ours, role).to_vec();
+                let right = text_value_ids(&theirs, role).to_vec();
+                match role {
+                    TextRole::Content => Difference::ContentValueIds { id, left, right },
+                    TextRole::Key => Difference::KeyValueIds { id, left, right },
+                }
+            }
             Self::AssertionDeclaration(ours, theirs) => Difference::AssertionDeclaration {
                 id: ours.id.clone(),
                 left: ours.assertion_declaration,
@@ -560,11 +811,25 @@ fn walk<'a>(
         if ours.parent != theirs.parent {
             sink(Found::Parent(ours, theirs))?;
         }
+        if ours.gid != theirs.gid {
+            sink(Found::Gid(ours, theirs))?;
+        }
         if ours.name != theirs.name {
             sink(Found::Name(ours, theirs))?;
         }
         if ours.name_id != theirs.name_id {
             sink(Found::NameId(ours, theirs))?;
+        }
+        for role in [TextRole::Content, TextRole::Key] {
+            if text_value(&ours, role) != text_value(&theirs, role) {
+                sink(Found::Text(role, ours, theirs))?;
+            }
+            if text_id(&ours, role) != text_id(&theirs, role) {
+                sink(Found::TextId(role, ours, theirs))?;
+            }
+            if value_ids_differ(text_value_ids(&ours, role), text_value_ids(&theirs, role)) {
+                sink(Found::TextValueIds(role, ours, theirs))?;
+            }
         }
         if ours.assertion_declaration != theirs.assertion_declaration {
             sink(Found::AssertionDeclaration(ours, theirs))?;
@@ -580,6 +845,42 @@ fn walk<'a>(
         }
     }
     ControlFlow::Continue(())
+}
+
+/// The text `element` holds in `role`.
+fn text<'a>(element: &Compared<'a>, role: TextRole) -> Option<&'a Text> {
+    match role {
+        TextRole::Content => element.content,
+        TextRole::Key => element.key,
+    }
+}
+
+/// The value of the text `element` holds in `role`, or `None` without one.
+fn text_value<'a>(element: &Compared<'a>, role: TextRole) -> Option<&'a MultiLangString> {
+    text(element, role).map(Text::value)
+}
+
+/// The `xmi:id` of the text `element` holds in `role`, if it has one.
+fn text_id<'a>(element: &Compared<'a>, role: TextRole) -> Option<&'a ElementId> {
+    text(element, role).and_then(Text::id)
+}
+
+/// The ids of the values of the text `element` holds in `role`: empty
+/// without one.
+fn text_value_ids<'a>(element: &Compared<'a>, role: TextRole) -> &'a [Option<ElementId>] {
+    text(element, role).map_or(&[], Text::value_ids)
+}
+
+/// Whether some position holds a different value id on each side. A
+/// position one side lacks is a value without an id there, so a different
+/// number of values is a difference in the values, not in their ids.
+fn value_ids_differ(left: &[Option<ElementId>], right: &[Option<ElementId>]) -> bool {
+    (0..left.len().max(right.len())).any(|position| id_at(left, position) != id_at(right, position))
+}
+
+/// The value id at `position` of `ids`, or `None` past the end.
+fn id_at(ids: &[Option<ElementId>], position: usize) -> Option<&ElementId> {
+    ids.get(position).and_then(Option::as_ref)
 }
 
 /// The ids of the roots of `document` that are roots of `other` too, in

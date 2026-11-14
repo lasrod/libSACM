@@ -14,6 +14,10 @@
 //! | [`CreateAssuranceCasePackage`] | an `AssuranceCasePackage` (§9.2) | [`root`](CreateAssuranceCasePackage::root) | [`new`](CreateAssuranceCasePackage::new) |
 //! | [`CreateArgumentPackage`] | an `ArgumentPackage` (§11.4) | [`root`](CreateArgumentPackage::root) | [`new`](CreateArgumentPackage::new) |
 //! | [`CreateClaim`] | a `Claim` (§11.11) | no | [`new`](CreateClaim::new) |
+//! | [`CreateDescription`] | a `Description` (§8.9) | no | [`new`](CreateDescription::new) |
+//! | [`CreateImplementationConstraint`] | an `ImplementationConstraint` (§8.8) | no | [`new`](CreateImplementationConstraint::new) |
+//! | [`CreateNote`] | a `Note` (§8.11) | no | [`new`](CreateNote::new) |
+//! | [`CreateTaggedValue`] | a `TaggedValue` (§8.12) | no | [`new`](CreateTaggedValue::new) |
 //!
 //! A root is added after the document's last root; a child after its parent's
 //! last child. A parent is legal exactly when SACM lets its class contain the
@@ -24,10 +28,17 @@
 //! parent, though this release cannot create or read those yet.
 //!
 //! **The name is required**, because SACM gives every `ModelElement` exactly
-//! one name (§8.6 `name:LangString[1]`). Every operation takes it as a
-//! [`LangString`](crate::model::LangString), stored exactly as given. Any
-//! value is accepted, `LangString::default()` included; an empty name is still
-//! a name.
+//! one name (§8.6 `name:LangString[1]`). Every operation that creates one
+//! takes it as a [`LangString`](crate::model::LangString), stored exactly as
+//! given. Any value is accepted, `LangString::default()` included; an empty
+//! name is still a name.
+//!
+//! The four `UtilityElement`s (descriptions, implementation constraints,
+//! notes and tagged values) have no name. They go in any `ModelElement`, in
+//! the role of their kind, and take their `content` (and a `TaggedValue` its
+//! `key`) as a [`MultiLangString`](crate::model::MultiLangString), stored
+//! exactly as given; a `LangString` converts into one with one value. A
+//! `UtilityElement` contains no elements, so it is never a parent.
 //!
 //! # Ids
 //!
@@ -103,10 +114,14 @@
 //! ```
 
 mod create;
+mod utility;
 
 use std::fmt;
 
 pub use create::{CreateArgumentPackage, CreateAssuranceCasePackage, CreateClaim};
+pub use utility::{
+    CreateDescription, CreateImplementationConstraint, CreateNote, CreateTaggedValue,
+};
 
 use crate::diagnostic::Code;
 use crate::model::{Document, ElementId, ElementKind};
@@ -144,7 +159,8 @@ use crate::model::{Document, ElementId, ElementKind};
 /// - the id given with `with_id` is not an XML `NCName`
 ///   ([`EditError::InvalidId`]);
 /// - the id given with `with_id` is already in the document, as an
-///   element's id or a name's `xmi:id` ([`EditError::DuplicateId`]).
+///   element's id or as the `xmi:id` of a name, a `content`, a `key` or a
+///   `value` ([`EditError::DuplicateId`]).
 ///
 /// # Examples
 ///
@@ -174,6 +190,10 @@ pub fn apply(
         Operation::CreateAssuranceCasePackage(create) => create.apply(document)?,
         Operation::CreateArgumentPackage(create) => create.apply(document)?,
         Operation::CreateClaim(create) => create.apply(document)?,
+        Operation::CreateDescription(create) => create.apply(document)?,
+        Operation::CreateImplementationConstraint(create) => create.apply(document)?,
+        Operation::CreateNote(create) => create.apply(document)?,
+        Operation::CreateTaggedValue(create) => create.apply(document)?,
     };
     Ok(Mutation {
         operation,
@@ -209,6 +229,14 @@ pub enum Operation {
     CreateArgumentPackage(CreateArgumentPackage),
     /// Creates a `Claim`.
     CreateClaim(CreateClaim),
+    /// Creates a `Description`.
+    CreateDescription(CreateDescription),
+    /// Creates an `ImplementationConstraint`.
+    CreateImplementationConstraint(CreateImplementationConstraint),
+    /// Creates a `Note`.
+    CreateNote(CreateNote),
+    /// Creates a `TaggedValue`.
+    CreateTaggedValue(CreateTaggedValue),
 }
 
 impl Operation {
@@ -217,8 +245,10 @@ impl Operation {
     ///
     /// The names are stable, like a diagnostic [`Code`]: a name never changes
     /// and is never given to another operation. This release has
-    /// `"CreateAssuranceCasePackage"`, `"CreateArgumentPackage"` and
-    /// `"CreateClaim"`.
+    /// `"CreateAssuranceCasePackage"`, `"CreateArgumentPackage"`,
+    /// `"CreateClaim"`, `"CreateDescription"`,
+    /// `"CreateImplementationConstraint"`, `"CreateNote"` and
+    /// `"CreateTaggedValue"`.
     ///
     /// # Examples
     ///
@@ -235,6 +265,10 @@ impl Operation {
             Self::CreateAssuranceCasePackage(_) => "CreateAssuranceCasePackage",
             Self::CreateArgumentPackage(_) => "CreateArgumentPackage",
             Self::CreateClaim(_) => "CreateClaim",
+            Self::CreateDescription(_) => "CreateDescription",
+            Self::CreateImplementationConstraint(_) => "CreateImplementationConstraint",
+            Self::CreateNote(_) => "CreateNote",
+            Self::CreateTaggedValue(_) => "CreateTaggedValue",
         }
     }
 }
@@ -254,6 +288,30 @@ impl From<CreateArgumentPackage> for Operation {
 impl From<CreateClaim> for Operation {
     fn from(operation: CreateClaim) -> Self {
         Self::CreateClaim(operation)
+    }
+}
+
+impl From<CreateDescription> for Operation {
+    fn from(operation: CreateDescription) -> Self {
+        Self::CreateDescription(operation)
+    }
+}
+
+impl From<CreateImplementationConstraint> for Operation {
+    fn from(operation: CreateImplementationConstraint) -> Self {
+        Self::CreateImplementationConstraint(operation)
+    }
+}
+
+impl From<CreateNote> for Operation {
+    fn from(operation: CreateNote) -> Self {
+        Self::CreateNote(operation)
+    }
+}
+
+impl From<CreateTaggedValue> for Operation {
+    fn from(operation: CreateTaggedValue) -> Self {
+        Self::CreateTaggedValue(operation)
     }
 }
 
@@ -357,7 +415,7 @@ impl Mutation {
     ///
     /// They are the ids, in both before and after, for which
     /// `semantic_compare(before, after)` reports a difference of the element
-    /// itself: its kind, parent, name, declaration or child order. A create
+    /// itself, such as its kind, parent, name or child order. A create
     /// does not change its parent, so this is empty for every operation in
     /// this release.
     #[must_use]
@@ -428,8 +486,10 @@ pub enum EditError {
         id: ElementId,
     },
     /// The id given with `with_id` is already in the document, as an
-    /// element's id or as the `xmi:id` of a name
-    /// ([`SacmElement::name_id`](crate::model::SacmElement::name_id))
+    /// element's id or as the `xmi:id` of a name, a `content`, a `key` or a
+    /// `value`, which identify no element
+    /// ([`SacmElement::name_id`](crate::model::SacmElement::name_id),
+    /// [`SacmElement::content_id`](crate::model::SacmElement::content_id))
     /// (SACM-CMD-004). Ids are unique across the whole document, not per
     /// parent. Choose another id, or leave out `with_id` to have one
     /// generated.

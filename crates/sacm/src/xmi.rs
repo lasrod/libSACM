@@ -8,9 +8,11 @@
 //! roots, bare or inside an `xmi:XMI` element, and what they hold of three
 //! kinds: `AssuranceCasePackage` and `ArgumentPackage` elements in an
 //! `AssuranceCasePackage`, and `ArgumentPackage` and `Claim` elements in an
-//! `ArgumentPackage`, each with its id (generated when it has no `xmi:id`)
-//! and name, and a Claim's `assertionDeclaration` (SACM 2.3 §2.2, §2.4,
-//! §9.2, §11.4, §11.10). It refuses input that is unsafe
+//! `ArgumentPackage`, each with its id (generated when it has no `xmi:id`),
+//! `gid` and name, a Claim's `assertionDeclaration`, and the descriptions,
+//! implementation constraints, notes and tagged values of each, with their
+//! `content` and `key` (SACM 2.3 §2.2, §2.4, §8.2-§8.12, §9.2, §11.4,
+//! §11.10). It refuses input that is unsafe
 //! ([`ReadError::Doctype`], SACM-SEC-001), not well-formed
 //! ([`ReadError::Malformed`], SACM-XML-001), not rooted in a SACM package
 //! ([`ReadError::InvalidRoot`] and [`ReadError::NoPackage`], SACM-XMI-001),
@@ -21,16 +23,17 @@
 //! it cannot represent yet is refused as [`ReadError::Unsupported`], never
 //! dropped.
 //!
-//! `write` writes every element of a document, with its name and, on an
-//! Assertion, its `assertionDeclaration`, in document order, in one
-//! deterministic form. Its refusals are a document with no root
-//! ([`WriteError::NoRoot`]), in strict mode a document that validation
-//! reports an Error for ([`WriteError::Invalid`]), and an id or name that
-//! XML 1.0 cannot represent ([`WriteError::UnrepresentableCharacter`]). A
-//! document returned by this release's `read` always writes in tolerant
-//! mode, and what `write` writes for a document built with
-//! [`edit::apply`](crate::edit::apply) reads back with the same ids, kinds,
-//! names, declarations, parents and order.
+//! `write` writes every element of a document, with its `gid`, its name, its
+//! `content` and `key` and, on an Assertion, its `assertionDeclaration`, in
+//! document order, in one deterministic form. Its refusals are a document
+//! with no root ([`WriteError::NoRoot`]), in strict mode a document that
+//! validation reports an Error for ([`WriteError::Invalid`]), and an id,
+//! gid, name or text that XML 1.0 cannot represent
+//! ([`WriteError::UnrepresentableCharacter`]). A document returned by this
+//! release's `read` always writes in tolerant mode, and what `write` writes
+//! for a document built with [`edit::apply`](crate::edit::apply) reads back
+//! with the same ids, kinds, names, contents, keys, declarations, parents and
+//! order.
 //!
 //! Both take a [`Mode`] in their options (ADR 0022). Strict aims at SACM 2.3
 //! conformance (see [`Mode`] for what it checks today); tolerant also accepts recognised variations, as Warnings, and
@@ -120,11 +123,33 @@ mod roots;
 /// | AssuranceCasePackage (§9.2) | `assuranceCasePackage` | an AssuranceCasePackage | no |
 /// | AssuranceCasePackage (§9.2) | `argumentPackage` | an ArgumentPackage | no |
 /// | ArgumentPackage (§11.4) | `argumentElement` | an ArgumentPackage or a Claim | yes: the role's type, `ArgumentationElement`, is abstract (§11.3) |
+/// | each of the above (§8.6) | `description` | a `Description` | no |
+/// | each of the above (§8.6) | `implementationConstraint` | an `ImplementationConstraint` | no |
+/// | each of the above (§8.6) | `note` | a `Note` | no |
+/// | each of the above (§8.6) | `taggedValue` | a `TaggedValue` | no |
 ///
 /// The class is the one the child's `xmi:type` or `xsi:type` names (both, if
 /// present, must name the same class); without one, it is the role's declared
 /// type. §11.4's text spells the ArgumentPackage role `argumentationElement`;
 /// this release refuses that spelling as [`ReadError::Unsupported`].
+///
+/// The four `UtilityElement`s are children in the same document order as the
+/// rest ([`SacmElement::descriptions`](crate::model::SacmElement::descriptions)
+/// and the like filter it), and several of a role are kept. A `UtilityElement`
+/// has no name and holds no element: its `content` (§8.7) and, on a
+/// `TaggedValue`, its `key` (§8.12), in either order, are each one role element
+/// holding a `MultiLangString` (ADR 0025): `<content>` with one `<value>` per
+/// [`LangString`](crate::model::LangString), in order and with duplicates.
+/// Each `value` is read as a `name` is, below. No `content` is `None`;
+/// `<content/>`, or one holding only white space, comments and processing
+/// instructions, is an empty `MultiLangString`. A `content` or `key` may carry
+/// only `xmi:id` and an `xmi:type` or `xsi:type` naming
+/// `sacm:MultiLangString`.
+///
+/// Every element may carry a `gid` (§8.2), in no namespace, as an attribute or
+/// a value element (below). It is a String, read exactly as XML gives it: an
+/// absent gid, `""` and any other value are kept apart, and nothing is
+/// trimmed. It is not an id: it is in no id space and has no syntax check.
 ///
 /// A Claim's `assertionDeclaration` attribute (§11.10), in no namespace, is
 /// read as its declaration. Its value must be one of the six
@@ -140,9 +165,9 @@ mod roots;
 /// the spelling.
 ///
 /// Each of these values may also be written as a value element (XMI 2.5.1
-/// §7.8.4): `<lang>` and `<content>` in the `name`, and
-/// `<assertionDeclaration>` in the Claim, in no namespace, anywhere among
-/// their siblings. Both forms read to the same document, and [`write()`]
+/// §7.8.4): `<lang>` and `<content>` in the `name` or `value`, `<gid>` in
+/// any element, and `<assertionDeclaration>` in the Claim, in no namespace,
+/// anywhere among their siblings. Both forms read to the same document, and [`write()`]
 /// writes the attribute form. The value is the element's character content,
 /// joined in document order: CDATA sections and references give their
 /// characters, comments and processing instructions are skipped, and an empty
@@ -153,7 +178,7 @@ mod roots;
 /// [`ReadError::InvalidLiteral`] at its start tag, holding the value. A value
 /// given more than once, as an attribute and an element or as two elements,
 /// is [`ReadError::RepeatedValue`] (SACM-MULT-001), even when the values are
-/// equal, and so is a second `name`.
+/// equal, and so is a second `name`, `content` or `key`.
 ///
 /// Elements and
 /// attributes are matched by namespace URI and local name, and an `xmi:type`
@@ -164,24 +189,29 @@ mod roots;
 ///
 /// `read` refuses rather than drops: it never returns a document that is
 /// missing content from its input. A root may carry only namespace
-/// declarations, `xmi:id`, `xmi:version` and an `xmi:type` or `xsi:type`
-/// naming its own class, and hold at most one `name` and otherwise only white
-/// space, comments, processing instructions and the children above. A child
-/// may carry only namespace declarations, `xmi:id`, its type attributes and,
-/// on a Claim, `assertionDeclaration`, and hold the same content as a root.
-/// A Claim may also hold one `assertionDeclaration` value element instead of
+/// declarations, `xmi:id`, `gid`, `xmi:version` and an `xmi:type` or
+/// `xsi:type` naming its own class, and hold at most one `name`, at most one
+/// `gid` value element and otherwise only white space, comments, processing
+/// instructions and the children above. A child may carry only namespace
+/// declarations, `xmi:id`, `gid`, its type attributes and, on a Claim,
+/// `assertionDeclaration`, and hold the same content as a root, except that
+/// a `UtilityElement` holds, besides a `gid`, only its `content` and `key`. A
+/// Claim may also hold one `assertionDeclaration` value element instead of
 /// the attribute.
 /// An `xmi:version` on a root or on the `xmi:XMI` wrapper is accepted with
 /// any value and ignored: the XMI namespace identifies the version
 /// (XMI 2.5.1 §7.5.3), so [`write()`] does not write it back. It is reported
 /// as SACM-XMI-011 (see [Diagnostics](#diagnostics)).
-/// The `name` must be in no namespace, carry only `xmi:id`, `lang`, `content`
-/// and an `xmi:type` or `xsi:type` naming `sacm:LangString`, and hold only the value
-/// elements `lang` and `content`, white space, comments and processing
-/// instructions. A value element may carry only namespace declarations and
-/// may hold no element.
+/// The `name`, and each `value`, must be in no namespace, carry only
+/// `xmi:id`, `lang`, `content` and an `xmi:type` or `xsi:type` naming
+/// `sacm:LangString`, and hold only the value elements `lang` and `content`,
+/// white space, comments and processing instructions. A value element may
+/// carry only namespace declarations and may hold no element.
 /// Anything else is refused as [`ReadError::Unsupported`] until a later
-/// release reads it.
+/// release reads it. That includes the single-language shorthand some tools
+/// write, which LIB-COMPAT-008 is to read: `lang` or `content` attributes or
+/// text on a `content` or `key`, `content="…"` or text on a `UtilityElement`,
+/// and `key="…"` or `value="…"` on a `TaggedValue`.
 ///
 /// The input is UTF-8, ASCII, or UTF-16 with a byte order mark, which reads
 /// exactly as the same characters in UTF-8. A DOCTYPE is refused before
@@ -192,8 +222,9 @@ mod roots;
 /// An element's id is the value of its `xmi:id`, an `xsd:ID` (XMI 2.5.1
 /// §7.6.1), and only `xmi:id` in the XMI namespace is one: an `id` attribute
 /// in no namespace or another namespace, such as `id` or `o:id`, is refused
-/// as [`ReadError::Unsupported`]. The ids of the elements
-/// and the names of a file share one id space (ADR 0024):
+/// as [`ReadError::Unsupported`]. The ids of the elements, and of the names,
+/// `content`s, `key`s and `value`s, of a file share one id space (ADR 0024,
+/// ADR 0025):
 ///
 /// - An `xmi:id` with XML white space (space, TAB, LF, CR) around an
 ///   `NCName`, such as `" c1 "`, is read as the trimmed value, `c1`, since an
@@ -208,6 +239,15 @@ mod roots;
 /// - An `xmi:id` on a `name` is kept with the element that owns the name, as
 ///   [`SacmElement::name_id`](crate::model::SacmElement::name_id), and
 ///   [`write()`] writes it back. A `name` without one gets none.
+/// - So is an `xmi:id` on a `content` or `key`
+///   ([`SacmElement::content_id`](crate::model::SacmElement::content_id),
+///   [`SacmElement::key_id`](crate::model::SacmElement::key_id)), and on each
+///   `value` in one, by position
+///   ([`SacmElement::content_value_ids`](crate::model::SacmElement::content_value_ids),
+///   [`SacmElement::key_value_ids`](crate::model::SacmElement::key_value_ids)).
+///   They identify no element.
+/// - A `gid` is not an id: it is in no id space, never trimmed and never
+///   generated, and a `gid` may be the same string as any `xmi:id`.
 ///
 /// # Diagnostics
 ///
@@ -222,11 +262,13 @@ mod roots;
 ///   names the kind and the id, and is Info in both modes.
 /// - SACM-ID-004 ([`Code::ID_TRIMMED`]), clause 7.6.1, for each `xmi:id` read
 ///   without the white space around it (SACM23-XMI-025). It affects the
-///   trimmed id, or, for the id of a `name`, the element that owns it, quotes
-///   the value as read, and is Info in both modes.
+///   trimmed id, or, for the id of a `name`, `content`, `key` or `value`, the
+///   element that owns it, quotes the value as read, and is Info in both
+///   modes.
 /// - SACM-XMI-010 ([`Code::XMI_XSI_TYPE`]), clause 9.5.2, for each `xsi:type`
-///   on a root, a child or a `name`. It affects the element, or, for a
-///   `name`, the element that owns it. It is an Error in [`Mode::Strict`] and
+///   on a root, a child, a `name`, a `content`, a `key` or a `value`. It
+///   affects the element, or, for the others, the element that owns them. It
+///   is an Error in [`Mode::Strict`] and
 ///   a Warning in [`Mode::Tolerant`]: XMI 2.5.1 §9.5.2 rule 2g allows
 ///   `xsi:type` only if `org.omg.xmi.useSchemaExtensions` is true, and SACM
 ///   sets no such tag. The type is read as an `xmi:type` would be. An element
@@ -280,11 +322,12 @@ mod roots;
 ///    attributes, each root with its content, and the content beside it
 ///    (`Unsupported`). An element's start tag (its role, type, kind and id)
 ///    is checked before its other attributes, and those before its content.
-///    An empty id is `InvalidId`, and an id whose value an earlier element
-///    or name carries is `DuplicateId`, so a repeat is refused before
-///    anything after its id. A value that is not a literal is
-///    `InvalidLiteral` where it is met. A `name` or a value element is
-///    checked whole when it is met, then against the occurrences before it,
+///    An empty id is `InvalidId`, and an id whose value an earlier element,
+///    name, `content`, `key` or `value` carries is `DuplicateId`, so a repeat
+///    is refused before anything after its id. A value that is not a literal
+///    is `InvalidLiteral` where it is met. A `name`, `content`, `key` or
+///    value element is checked whole when it is met, then against the
+///    occurrences before it,
 ///    so the second occurrence of a value is `RepeatedValue` unless it is
 ///    itself refused first. A later occurrence
 ///    is listed in `RepeatedValue`'s
@@ -303,17 +346,19 @@ mod roots;
 ///   one of the twelve SACM package kinds.
 /// - [`ReadError::NoPackage`] (SACM-XMI-001): the `xmi:XMI` element holds no
 ///   root: no element child outside the XMI namespace.
-/// - [`ReadError::DuplicateId`] (SACM-ID-001): two or more elements or names
-///   carry the same `xmi:id` (XMI 2.5.1 §7.6.1), compared by `xsd:ID` value
-///   (see [Ids](#ids)). It names every element that carries the first id to
-///   repeat.
-/// - [`ReadError::InvalidId`] (SACM-ID-002): the `xmi:id` of an element or of
-///   a `name` is empty. Any other id is read by its `xsd:ID` value; one that
-///   is still not an XML `NCName`, such as `1c` or `a b`, is reported by
+/// - [`ReadError::DuplicateId`] (SACM-ID-001): two or more elements (names,
+///   `content`s, `key`s and `value`s included) carry the same `xmi:id`
+///   (XMI 2.5.1 §7.6.1), compared by `xsd:ID` value (see [Ids](#ids)). It
+///   names every element that carries the first id to repeat.
+/// - [`ReadError::InvalidId`] (SACM-ID-002): the `xmi:id` of an element, or
+///   of a `name`, `content`, `key` or `value`, is empty. Any other id is read
+///   by its `xsd:ID` value; one that is still not an XML `NCName`, such as
+///   `1c` or `a b`, is reported by
 ///   [`validation::validate`](crate::validation::validate).
-/// - [`ReadError::RepeatedValue`] (SACM-MULT-001): an element's `name`, a
-///   name's `lang` or `content`, or a Claim's `assertionDeclaration`, is
-///   given more than once: as an attribute and an element, which XMI 2.5.1
+/// - [`ReadError::RepeatedValue`] (SACM-MULT-001): an element's `gid` or
+///   `name`, a `UtilityElement`'s `content`, a `TaggedValue`'s `key`, the `lang`
+///   or `content` of a name or `value`, or a Claim's `assertionDeclaration`,
+///   is given more than once: as an attribute and an element, which XMI 2.5.1
 ///   §9.5.2 rule 2h forbids, or as two or more elements, though the property
 ///   holds one value. This holds even with equal values. It gives every
 ///   occurrence.
@@ -331,19 +376,22 @@ mod roots;
 ///   XMI-namespace element as the document element (such as
 ///   `xmi:Documentation`) or beside the roots (such as `xmi:documentation`),
 ///   an attribute of `xmi:XMI` other than `xmi:version`, any other attribute
-///   or content of a `name` (such as `xml:lang`, `xmi:uuid` or a `value`
-///   element), a `name` in a namespace (such as `sacm:name`), a value
-///   element that carries an
+///   or content of a `name` or `value` (such as `xml:lang`, `xmi:uuid`, `gid`
+///   or a `value` element), a `name` or `value` in a namespace (such as
+///   `sacm:name`) or with a type naming another class (such as
+///   `sacm:ExpressionLangString`), any other attribute or content of a
+///   `content` or `key` (such as `gid`, `xml:lang`, the single-language
+///   shorthand or a `name` element), a value element that carries an
 ///   attribute (such as `xmi:id` or `xsi:nil`), holds an element, or is in a
-///   namespace (such as `sacm:content`), and
-///   any other attribute or content of a root or child. For a child, that
-///   includes a role its parent's class lacks, a role element in a
-///   namespace, a type that names no concrete SACM class or that the role
-///   does not admit, two types that disagree, no type under a role of an
-///   abstract type, any other kind (such as a `description`, a `note` or an
-///   `ArgumentReasoning`), text, attributes such as `gid`; and an
-///   `assertionDeclaration`, as an attribute or an element, that is on a
-///   package (even `"asserted"`) or in a namespace.
+///   namespace (such as `sacm:content` or `sacm:gid`), and any other
+///   attribute or content of a root or child. For a child, that includes a
+///   role its parent's class lacks (any child of a `UtilityElement`), a role
+///   element in a namespace, a type that names no concrete SACM class or
+///   that the role does not admit, two types that disagree, no type under a
+///   role of an abstract type, any other kind (such as an
+///   `ArgumentReasoning`), text, attributes such as `isCitation`; a `name`
+///   on a `UtilityElement`; and an `assertionDeclaration`, as an attribute or
+///   an element, that is on a package (even `"asserted"`) or in a namespace.
 ///
 /// # Examples
 ///
@@ -387,6 +435,21 @@ mod roots;
 /// let document = xmi::read(declared, &options)?.into_document();
 /// let c1 = document.get("c1").expect("the Claim was read");
 /// assert_eq!(c1.assertion_declaration(), Some(AssertionDeclaration::Assumed));
+///
+/// // A gid and a description, with its content, are read.
+/// let described = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments" gid="urn:x:1">
+///   <description xmi:id="d1">
+///     <content><value lang="en" content="Why the brakes are safe"/></content>
+///   </description>
+/// </sacm:ArgumentPackage>"#;
+/// let document = xmi::read(described, &options)?.into_document();
+/// let arguments = document.get("arguments").expect("the root was read");
+/// assert_eq!(arguments.gid(), Some("urn:x:1"));
+/// let d1 = arguments.descriptions().next().expect("the description was read");
+/// // A description's content() is a MultiLangString; the text is the content() of one of its LangString values.
+/// let content = d1.content().expect("it has a content");
+/// assert_eq!(content.values()[0].content(), Some("Why the brakes are safe"));
 ///
 /// // An `xsi:type` is read as `xmi:type` and reported as SACM-XMI-010 at the
 /// // attribute's name: a Warning in tolerant mode, an Error in strict mode.
@@ -773,7 +836,9 @@ pub enum ReadError {
     ///
     /// A `ModelElement`'s `name` (`name:LangString[1]`, formal/23-05-08 §8.6)
     /// is such a property too: two or more `name` elements in no namespace
-    /// are refused, even when they are equal (SACM23-XMI-021).
+    /// are refused, even when they are equal (SACM23-XMI-021). So are a
+    /// `UtilityElement`'s `content` (§8.7 `[0..1]`) and a `TaggedValue`'s `key`
+    /// (§8.12 `[1]`), which are never merged.
     ///
     /// [`location`](Self::location) is the second occurrence, and
     /// [`locations`](Self::locations) every occurrence.
@@ -803,12 +868,14 @@ pub enum ReadError {
     /// ```
     #[non_exhaustive]
     RepeatedValue {
-        /// The element that holds the property; for `name.lang` and
-        /// `name.content`, the element the name belongs to. An element
-        /// without an `xmi:id` is named by its generated id.
+        /// The element that holds the property; for `name.lang`,
+        /// `content.value.lang` and the like, the element the name or the
+        /// value belongs to. An element without an `xmi:id` is named by its
+        /// generated id.
         element: ElementId,
-        /// The property: `name`, `name.lang`, `name.content` or
-        /// `assertionDeclaration`.
+        /// The property: `gid`, `name`, `name.lang`, `name.content`,
+        /// `content`, `content.value.lang`, `content.value.content`, `key`,
+        /// `key.value.lang`, `key.value.content` or `assertionDeclaration`.
         property: String,
         /// Every occurrence, in document order: an attribute at the first
         /// character of its name, an element at its `<`. At least two.
@@ -1067,7 +1134,9 @@ impl std::error::Error for ReadError {}
 /// `useSchemaExtensions`). `xsi:type` is never written; `read` accepts both,
 /// and reports an `xsi:type` as SACM-XMI-010.
 ///
-/// Every element then carries its id as `xmi:id`. After `xmi:id`, an
+/// Every element then carries its id as `xmi:id`, and directly after it its
+/// `gid`, if it has one: `gid=""` for an empty one, and no attribute for an
+/// absent one. Then an
 /// Assertion whose `assertionDeclaration` is not `asserted` carries
 /// `assertionDeclaration="<literal>"`, spelled as
 /// [`AssertionDeclaration::as_str`](crate::model::AssertionDeclaration::as_str)
@@ -1083,6 +1152,14 @@ impl std::error::Error for ReadError {}
 /// write refuses it; a tolerant write writes it as it is, and the output
 /// then does not validate against an XMI schema. In attribute values `&`, `<`, `>`, `"`,
 /// TAB, LF and CR are escaped; everything else is written as it is.
+///
+/// Inside a `UtilityElement`, its `content` element is written first, then,
+/// on a `TaggedValue`, its `key`, superclass first (XMI 2.5.1 Annex B.5.2). Each is its role
+/// element, with its `xmi:id` first if it has one, holding one
+/// `<value … />` per value, in order, written as a name is:
+/// `<content>`, `<value lang="en" content="…" />`, `</content>`. An empty
+/// one is `<content />`, and an absent one is not written. No type attribute
+/// is written on a `UtilityElement`, a `content`, a `key` or a `value`.
 ///
 /// # Modes
 ///
@@ -1110,8 +1187,9 @@ impl std::error::Error for ReadError {}
 ///    element's checks run before the next element's: first its id, where a
 ///    character outside XML 1.0's `Char` is
 ///    [`WriteError::UnrepresentableCharacter`], naming the attribute and its
-///    first such character; then its name's `lang`, then its name's
-///    `content`, the same way.
+///    first such character; then its gid, its name's `lang`, its name's
+///    `content`, and each value of its `content` and then of its `key`,
+///    `lang` before `content`, the same way.
 ///
 /// Nothing else a document holds is refused.
 ///
@@ -1249,7 +1327,8 @@ pub enum WriteError {
     /// Add a package as a root. This variant has no fields and will not gain
     /// any.
     NoRoot,
-    /// An element's id, or its name's `lang` or `content`, holds a character
+    /// An element's id or gid, its name's `lang` or `content`, or the `lang`
+    /// or `content` of a value of its `content` or `key`, holds a character
     /// that XML 1.0 cannot represent: one outside its `Char` production, such
     /// as U+0000, another C0 control other than TAB, LF and CR, U+FFFE or
     /// U+FFFF.
@@ -1280,7 +1359,8 @@ pub enum WriteError {
     /// ```
     #[non_exhaustive]
     UnrepresentableCharacter {
-        /// The element whose id or name holds the character.
+        /// The element whose id, gid, name, `content` or `key` holds the
+        /// character.
         element: ElementId,
         /// The first such character in the attribute.
         character: char,
@@ -1407,15 +1487,31 @@ pub enum WriteAttribute {
     NameLang,
     /// The element's name's `content`.
     NameContent,
+    /// The element's `gid`.
+    Gid,
+    /// The `lang` of a value of the element's `content`.
+    ContentValueLang,
+    /// The `content` of a value of the element's `content`.
+    ContentValueContent,
+    /// The `lang` of a value of the element's `key`.
+    KeyValueLang,
+    /// The `content` of a value of the element's `key`.
+    KeyValueContent,
 }
 
 impl fmt::Display for WriteAttribute {
-    /// Writes `xmi:id`, `name's lang` or `name's content`.
+    /// Writes `xmi:id`, `gid`, `name's lang`, `name's content`, `content
+    /// value's lang` and so on.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::Id => "xmi:id",
             Self::NameLang => "name's lang",
             Self::NameContent => "name's content",
+            Self::Gid => "gid",
+            Self::ContentValueLang => "content value's lang",
+            Self::ContentValueContent => "content value's content",
+            Self::KeyValueLang => "key value's lang",
+            Self::KeyValueContent => "key value's content",
         })
     }
 }

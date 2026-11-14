@@ -4,7 +4,9 @@
 //!
 //! In this release the readable children are an AssuranceCasePackage in
 //! `assuranceCasePackage`, an ArgumentPackage in `argumentPackage` and in
-//! `argumentElement`, and a Claim in `argumentElement`. Everything else in a
+//! `argumentElement`, and a Claim in `argumentElement`, and on each of them
+//! the four `UtilityElement`s in their roles (SACM23-BASE-004 and
+//! SACM23-BASE-005 test those). Everything else in a
 //! package is refused as `ReadError::Unsupported` at an exact location, and no
 //! document is returned; an empty or a duplicate `xmi:id` is refused with its
 //! own coded variant, `InvalidId` or `DuplicateId` (ADR 0015 amendment 2).
@@ -375,25 +377,35 @@ fn expected_role(parent: ElementKind, child: ElementKind) -> Option<&'static str
     admitting.first().map(|(role, _)| *role)
 }
 
-/// Whether this release reads a `child` under `role` of a `parent`.
+/// Whether this release reads a `child` under `role` of a `parent`: the
+/// package children, and the four `UtilityElement`s in their own roles on
+/// every `ModelElement` (SACM23-BASE-004, SACM23-BASE-005).
 fn is_readable(parent: ElementKind, role: &str, child: ElementKind) -> bool {
     use ElementKind as K;
-    matches!(
-        (parent, role, child),
-        (
-            K::AssuranceCasePackage,
-            "assuranceCasePackage",
-            K::AssuranceCasePackage
-        ) | (
-            K::AssuranceCasePackage,
-            "argumentPackage",
-            K::ArgumentPackage
-        ) | (
-            K::ArgumentPackage,
-            "argumentElement",
-            K::ArgumentPackage | K::Claim
+    let utility = matches!(
+        (role, child),
+        ("description", K::Description)
+            | ("implementationConstraint", K::ImplementationConstraint)
+            | ("note", K::Note)
+            | ("taggedValue", K::TaggedValue)
+    );
+    (utility && parent.is_a(AbstractClass::ModelElement))
+        || matches!(
+            (parent, role, child),
+            (
+                K::AssuranceCasePackage,
+                "assuranceCasePackage",
+                K::AssuranceCasePackage
+            ) | (
+                K::AssuranceCasePackage,
+                "argumentPackage",
+                K::ArgumentPackage
+            ) | (
+                K::ArgumentPackage,
+                "argumentElement",
+                K::ArgumentPackage | K::Claim
+            )
         )
-    )
 }
 
 // --- Shapes ---------------------------------------------------------------
@@ -958,10 +970,11 @@ fn sacm23_xmi_016_every_conforming_kind_outside_the_readable_set_is_unsupported_
             }
         }
     }
-    // Every utility role on each of the six contexts, and the 10 other
-    // ArgumentationElement kinds and 8 other package kinds in their roles.
+    // The 10 other ArgumentationElement kinds and 8 other package kinds in
+    // their roles. The utility roles are read on every context
+    // (SACM23-BASE-004, SACM23-BASE-005), so none of them is a case.
     assert!(
-        cases.len() >= 6 * 4 + 2 * 10 + 3 * 10,
+        cases.len() >= 2 * 10 + 3 * 10,
         "{ROW}: setup: only {} cases",
         cases.len()
     );
@@ -1063,8 +1076,9 @@ fn sacm23_xmi_016_an_unread_attribute_of_a_child_is_unsupported_at_its_name() {
         ("an AP in argumentPackage", in_acp, "argumentPackage"),
         ("an ACP", in_acp, "assuranceCasePackage"),
     ];
+    // `gid` is read (SACM23-BASE-006), so it is not among these.
     let attributes = [
-        "gid=\"g\"",
+        "isCitation=\"false\"",
         "isCitation=\"true\"",
         "isAbstract=\"true\"",
         "xmi:version=\"2.0\"",
@@ -1097,9 +1111,9 @@ fn sacm23_xmi_016_an_unread_attribute_of_a_child_is_unsupported_at_its_name() {
     }
     // Before the type and the id, the attribute is still located at its name.
     cases.push(refused(
-        "gid before the type and the id",
+        "isCitation before the type and the id",
         in_ap(&format!(
-            "<argumentElement {MARK}gid=\"g\" xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"
+            "<argumentElement {MARK}isCitation=\"true\" xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"
         )),
     ));
     assert_all_unsupported_at_mark("attribute", &cases);

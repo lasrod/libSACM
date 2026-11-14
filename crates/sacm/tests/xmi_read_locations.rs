@@ -3,7 +3,8 @@
 //! ADR 0015).
 //!
 //! One table holds one input per refusal site: every `ReadError` variant, and
-//! every `Unsupported` reason for roots and for children. The expected
+//! every `Unsupported` reason for roots, for children, for utility elements
+//! and their `content` and `key` roles, and for `gid` (ADR 0025). The expected
 //! location is marked in the input with [`MARK`] (U+2038), which the test
 //! removes before reading, and is counted here: lines end at LF, CRLF or a
 //! lone CR, columns count characters, and a leading byte order mark takes no
@@ -411,7 +412,7 @@ fn root_rows() -> Vec<Row> {
             "an unread attribute of a root",
             Unsupported,
             led(&format!(
-                "<sacm:ArgumentPackage{NS} xmi:id=\"a\" {MARK}gid=\"g\"/>"
+                "<sacm:ArgumentPackage{NS} xmi:id=\"a\" {MARK}isAbstract=\"true\"/>"
             )),
         ),
         // SACM23-XMI-021: at the second name.
@@ -571,10 +572,13 @@ fn child_content_rows() -> Vec<Row> {
     use Variant::Unsupported as U;
     let element = |attributes: &str| in_ap(&format!("{MARK}<argumentElement{attributes}/>"));
     vec![
+        // A utility element in a Claim is read (SACM23-BASE-004).
         row(
-            "a utility element in a Claim at depth 3",
+            "a role a Claim lacks, at depth 3",
             U,
-            in_claim(&format!("{MARK}<note xmi:id=\"n\"/>")),
+            in_claim(&format!(
+                "{MARK}<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"n\"/>"
+            )),
         ),
         // SACM23-XMI-020: a child with no `xmi:id` is read; an unqualified id
         // is an attribute that is not read.
@@ -601,7 +605,7 @@ fn child_content_rows() -> Vec<Row> {
             "an unread attribute of a child",
             U,
             in_ap(&format!(
-                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\" {MARK}gid=\"g\"/>"
+                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\" {MARK}isCitation=\"false\"/>"
             )),
         ),
         row(
@@ -693,6 +697,275 @@ fn value_element_rows() -> Vec<Row> {
                 "<assertionDeclaration>assumed</assertionDeclaration>\
                  {MARK}<assertionDeclaration>assumed</assertionDeclaration>"
             )),
+        ),
+    ]
+}
+
+/// `body` in a Description `d` in the root `p`.
+fn in_description(body: &str) -> String {
+    in_ap(&format!("<description xmi:id=\"d\">{body}</description>"))
+}
+
+/// `body` in the `content` of a Description `d` in the root `p`.
+fn in_content(body: &str) -> String {
+    in_description(&format!("<content>{body}</content>"))
+}
+
+/// `body` in a `taggedValue` `t` in the root `p`.
+fn in_tagged(body: &str) -> String {
+    in_ap(&format!("<taggedValue xmi:id=\"t\">{body}</taggedValue>"))
+}
+
+/// The `Unsupported` refusals of utility elements and their `content` and
+/// `key` roles (SACM23-BASE-004, SACM23-BASE-005; ADR 0025).
+fn utility_rows() -> Vec<Row> {
+    use Variant::Unsupported as U;
+    vec![
+        // The single-language shorthand stays refused until LIB-COMPAT-008,
+        // at its first attribute or its text.
+        row(
+            "the lang and content shorthand on content",
+            U,
+            in_description(&format!("<content {MARK}lang=\"en\" content=\"x\"/>")),
+        ),
+        row(
+            "the content shorthand on content",
+            U,
+            in_description(&format!("<content {MARK}content=\"x\"/>")),
+        ),
+        row(
+            "text in content",
+            U,
+            in_description(&format!("<content>{MARK}x</content>")),
+        ),
+        row(
+            "the lang and content shorthand on key",
+            U,
+            in_tagged(&format!("<key {MARK}lang=\"en\" content=\"k\"/>")),
+        ),
+        row("text in key", U, in_tagged(&format!("<key>{MARK}k</key>"))),
+        row(
+            "content= on a UtilityElement",
+            U,
+            in_ap(&format!("<description xmi:id=\"d\" {MARK}content=\"x\"/>")),
+        ),
+        row(
+            "text in a UtilityElement",
+            U,
+            in_ap(&format!("<description xmi:id=\"d\">{MARK}x</description>")),
+        ),
+        row(
+            "key= on taggedValue",
+            U,
+            in_ap(&format!("<taggedValue xmi:id=\"t\" {MARK}key=\"k\"/>")),
+        ),
+        row(
+            "value= on taggedValue",
+            U,
+            in_ap(&format!("<taggedValue xmi:id=\"t\" {MARK}value=\"v\"/>")),
+        ),
+        // A UtilityElement has no `name`.
+        row(
+            "a name on a UtilityElement",
+            U,
+            in_description(&format!("{MARK}<name content=\"x\"/>")),
+        ),
+        row(
+            "a child content cannot hold",
+            U,
+            in_content(&format!("<value content=\"a\"/>{MARK}<foo/>")),
+        ),
+        row(
+            "content in a namespace",
+            U,
+            in_description(&format!("{MARK}<sacm:content/>")),
+        ),
+        row(
+            "value in a namespace",
+            U,
+            in_content(&format!("{MARK}<sacm:value content=\"x\"/>")),
+        ),
+        row(
+            "an unread attribute of content",
+            U,
+            in_description(&format!("<content {MARK}foo=\"1\"/>")),
+        ),
+        row(
+            "an unread attribute of a value",
+            U,
+            in_content(&format!("<value content=\"x\" {MARK}xml:lang=\"en\"/>")),
+        ),
+        row(
+            "text in a value",
+            U,
+            in_content(&format!("<value lang=\"en\">{MARK}x</value>")),
+        ),
+    ]
+}
+
+/// The repeated `content` and `key` roles, and the refused ids of roles and
+/// values (SACM23-BASE-004, SACM23-BASE-005; ADR 0025).
+fn utility_repeat_and_id_rows() -> Vec<Row> {
+    use Variant::{DuplicateId, InvalidId, RepeatedValue};
+    vec![
+        // SACM23-XMI-021: at the second occurrence.
+        row(
+            "a second content of a UtilityElement",
+            RepeatedValue,
+            in_description(&format!("<content/>{MARK}<content/>")),
+        ),
+        row(
+            "a second key",
+            RepeatedValue,
+            in_tagged(&format!("<key/>{MARK}<key/>")),
+        ),
+        row(
+            "a second content of a TaggedValue, after its key",
+            RepeatedValue,
+            in_tagged(&format!("<content/><key/>{MARK}<content/>")),
+        ),
+        // ADR 0025: role and value ids share the file's id space, so a repeat
+        // is located at the second start tag.
+        row(
+            "a content id repeating its owner's id",
+            DuplicateId,
+            in_ap(&format!(
+                "<description xmi:id=\"d\">{MARK}<content xmi:id=\"d\"/></description>"
+            )),
+        ),
+        row(
+            "a key id repeating its owner's id",
+            DuplicateId,
+            in_ap(&format!(
+                "<taggedValue xmi:id=\"t\">{MARK}<key xmi:id=\"t\"/></taggedValue>"
+            )),
+        ),
+        row(
+            "a value id repeating the content id",
+            DuplicateId,
+            in_ap(&format!(
+                "<description xmi:id=\"d\"><content xmi:id=\"w\">{MARK}<value xmi:id=\"w\"/>\
+                 </content></description>"
+            )),
+        ),
+        row(
+            "a key value id repeating its TaggedValue's id",
+            DuplicateId,
+            in_ap(&format!(
+                "<taggedValue xmi:id=\"t\"><key>{MARK}<value xmi:id=\"t\"/></key></taggedValue>"
+            )),
+        ),
+        row(
+            "an empty content id",
+            InvalidId,
+            in_description(&format!("{MARK}<content xmi:id=\"\"/>")),
+        ),
+        row(
+            "an empty key id",
+            InvalidId,
+            in_tagged(&format!("{MARK}<key xmi:id=\"\"/>")),
+        ),
+        row(
+            "an empty value id",
+            InvalidId,
+            in_content(&format!("{MARK}<value xmi:id=\"\" content=\"x\"/>")),
+        ),
+    ]
+}
+
+/// The refusals of `gid` in the wrong place or form, and given twice
+/// (SACM23-BASE-006; ADR 0025).
+fn gid_rows() -> Vec<Row> {
+    use Variant::{RepeatedValue, Unsupported as U};
+    vec![
+        row(
+            "sacm:gid as an attribute",
+            U,
+            in_ap(&format!(
+                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\" {MARK}sacm:gid=\"g\"/>"
+            )),
+        ),
+        row(
+            "sacm:gid as an element",
+            U,
+            in_claim(&format!("{MARK}<sacm:gid>g</sacm:gid>")),
+        ),
+        row(
+            "gid on a name",
+            U,
+            in_claim(&format!("<name content=\"N\" {MARK}gid=\"g\"/>")),
+        ),
+        row(
+            "a gid element in a name",
+            U,
+            in_claim(&format!("<name content=\"N\">{MARK}<gid>g</gid></name>")),
+        ),
+        row(
+            "gid on content",
+            U,
+            in_description(&format!("<content {MARK}gid=\"g\"/>")),
+        ),
+        row(
+            "a gid element in content",
+            U,
+            in_description(&format!("<content>{MARK}<gid>g</gid></content>")),
+        ),
+        row(
+            "gid on key",
+            U,
+            in_tagged(&format!("<key {MARK}gid=\"g\"/>")),
+        ),
+        row(
+            "gid on a value",
+            U,
+            in_content(&format!("<value {MARK}gid=\"g\" content=\"x\"/>")),
+        ),
+        row(
+            "a gid element in a value",
+            U,
+            in_content(&format!("<value>{MARK}<gid>g</gid></value>")),
+        ),
+        row(
+            "an xmi:id on a gid element",
+            U,
+            in_claim(&format!("<gid {MARK}xmi:id=\"g1\">g</gid>")),
+        ),
+        row(
+            "an element in a gid element",
+            U,
+            in_claim(&format!("<gid>g{MARK}<b/></gid>")),
+        ),
+        // SACM23-XMI-026.
+        row(
+            "xsi:nil on a gid element",
+            U,
+            in_claim(&format!("<gid {MARK}xsi:nil=\"true\"/>")),
+        ),
+        // SACM23-XMI-021: at the second occurrence.
+        row(
+            "a gid as an attribute and an element on a root",
+            RepeatedValue,
+            led(&format!(
+                "<sacm:ArgumentPackage{NS} xmi:id=\"p\" gid=\"g\">{MARK}<gid>g</gid></sacm:ArgumentPackage>"
+            )),
+        ),
+        row(
+            "a gid as an attribute and an element on a child",
+            RepeatedValue,
+            in_ap(&format!(
+                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\" gid=\"g\">\
+                 {MARK}<gid>g</gid></argumentElement>"
+            )),
+        ),
+        row(
+            "two gid elements on a child",
+            RepeatedValue,
+            in_claim(&format!("<gid>g</gid>{MARK}<gid>g</gid>")),
+        ),
+        row(
+            "two gid elements on a UtilityElement",
+            RepeatedValue,
+            in_ap(&format!("<note xmi:id=\"n\"><gid/>{MARK}<gid/></note>")),
         ),
     ]
 }
@@ -915,6 +1188,9 @@ fn all_rows() -> Vec<Row> {
         child_content_rows(),
         value_element_rows(),
         marked_text_rows(),
+        utility_rows(),
+        utility_repeat_and_id_rows(),
+        gid_rows(),
     ]
     .into_iter()
     .flatten()
@@ -967,6 +1243,20 @@ fn sacm23_xmi_010_value_element_and_repeated_value_refusals_are_located() {
 fn sacm23_xmi_010_text_after_white_space_written_as_a_reference_or_cdata_is_located_at_that_construct()
  {
     assert_located("marked text", &marked_text_rows());
+}
+
+#[test]
+fn sacm23_xmi_010_utility_element_and_multi_lang_string_refusals_are_located() {
+    let rows = [utility_rows(), utility_repeat_and_id_rows()]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+    assert_located("utility element", &rows);
+}
+
+#[test]
+fn sacm23_xmi_010_gid_refusals_are_located() {
+    assert_located("gid", &gid_rows());
 }
 
 #[test]

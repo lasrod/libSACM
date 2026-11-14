@@ -15,11 +15,16 @@
 //! SACM 2.3 metamodel itself: which class a kind is, which package defines it,
 //! and which abstract classes it specializes.
 //!
+//! Every element may have a `gid` ([`SacmElement::gid`]), and every
+//! `ModelElement` may hold descriptions, implementation constraints, notes
+//! and tagged values ([`SacmElement::descriptions`] and the like), the
+//! `UtilityElement`s whose text is their [`content`](SacmElement::content).
+//!
 //! [`LangString`], [`MultiLangString`] and [`AssertionDeclaration`] are
 //! values, not elements: they have no id and no kind of their own (the
-//! `xmi:id` of a `name` is kept with its owner: [`SacmElement::name_id`]),
-//! and you construct them directly, unlike elements, which only a
-//! [`Document`] holds.
+//! `xmi:id` of a `name`, `content` or `key` is kept with its owner:
+//! [`SacmElement::name_id`], [`SacmElement::content_id`]), and you construct
+//! them directly, unlike elements, which only a [`Document`] holds.
 //!
 //! # Examples
 //!
@@ -88,7 +93,7 @@ pub use argumentation::{AssertionDeclaration, ParseAssertionDeclarationError};
 pub(crate) use containment::{DeclaredType, admits, role_named};
 #[cfg(not(feature = "test-support"))]
 pub(crate) use document::InsertError;
-pub(crate) use document::{Compared, IdGenerator};
+pub(crate) use document::{Compared, IdGenerator, Text, TextRole};
 pub use document::{Document, SacmElement};
 #[cfg(feature = "test-support")]
 pub use document::{InsertError, SetAssertionDeclarationError};

@@ -1,10 +1,12 @@
 //! The document and its read-only element views.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 
 use super::containment::{Role, role};
-use super::{AbstractClass, AssertionDeclaration, ElementId, ElementKind, LangString};
+use super::{
+    AbstractClass, AssertionDeclaration, ElementId, ElementKind, LangString, MultiLangString,
+};
 
 /// A SACM 2.3 document: one interchange unit (what one SACM XMI file holds),
 /// owning its root packages and every element under them.
@@ -35,11 +37,12 @@ use super::{AbstractClass, AssertionDeclaration, ElementId, ElementKind, LangStr
 /// [ADR 0014]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0014-artifact-package-admits-every-artifact-element.md
 ///
 /// In this release [`xmi::read`](crate::xmi::read) fills a document with
-/// `AssuranceCasePackage` and `ArgumentPackage` roots and the
-/// `AssuranceCasePackage`, `ArgumentPackage` and `Claim` elements in them,
-/// and [`edit::apply`](crate::edit::apply) creates the same three kinds. Tests build
-/// documents with other kinds through the `test-support` feature's
-/// `Document::insert`. [`Document::new`] is empty.
+/// `AssuranceCasePackage` and `ArgumentPackage` roots, the
+/// `AssuranceCasePackage`, `ArgumentPackage` and `Claim` elements in them, and
+/// the descriptions, implementation constraints, notes and tagged values of
+/// each of these. [`edit::apply`](crate::edit::apply) creates the same seven
+/// kinds. Tests build documents with other kinds through the `test-support`
+/// feature's `Document::insert`. [`Document::new`] is empty.
 ///
 /// Cloning a document copies all of it, including the counters that generated
 /// ids continue from; the copy is independent of the original. Cloning,
@@ -51,8 +54,8 @@ use super::{AbstractClass, AssertionDeclaration, ElementId, ElementKind, LangStr
 /// `==` compares SACM content: two documents are equal exactly when
 /// [`semantic_compare`](crate::compare::semantic_compare) finds no
 /// difference between them. Elements are matched by id; kinds, parents,
-/// names, the ids of names, `assertionDeclaration`s and the order of roots
-/// and children are compared. `==` is order-sensitive; see [`crate::compare`] to ignore order.
+/// `gid`s, names, the ids of names, `content`s and `key`s with their ids,
+/// `assertionDeclaration`s and the order of roots and children are compared. `==` is order-sensitive; see [`crate::compare`] to ignore order.
 ///
 /// Not compared: the per-kind counters [`edit::apply`](crate::edit::apply)
 /// uses to generate ids such as `claim_1`. They are not SACM content, and XMI
@@ -79,11 +82,12 @@ pub struct Document {
     /// The handle of each element by id. Only looked up, never iterated, so
     /// nothing observable depends on its order.
     index: HashMap<ElementId, usize>,
-    /// The handle of the owner of each name id: the `xmi:id` of a `name`,
-    /// which shares the file's id space (ADR 0024) but identifies no element,
-    /// so [`get`](Self::get) does not look in it. Only looked up, never
+    /// The handle of the owner of each id that identifies no element: the
+    /// `xmi:id` of a `name` (ADR 0024), of a `content` or `key`, or of a
+    /// `value` in one (ADR 0025). They share the file's id space, but
+    /// [`get`](Self::get) does not look in it. Only looked up, never
     /// iterated.
-    name_ids: HashMap<ElementId, usize>,
+    value_ids: HashMap<ElementId, usize>,
     /// The `n` of the last id generated for each kind (`claim_<n>`, ADR
     /// 0019); a kind with none generated yet is absent. Advanced only when a
     /// generated id is used, and copied by `Clone`.
@@ -95,12 +99,20 @@ pub struct Document {
 struct Node {
     id: ElementId,
     kind: ElementKind,
+    /// The element's `gid` (§8.2), exactly as held; `None` when absent.
+    gid: Option<String>,
     /// The element's name; `None` for a missing name, and always `None` for a
     /// `UtilityElement` kind.
     name: Option<LangString>,
     /// The `xmi:id` of the element's name, if it was read with one: `None`
     /// whenever `name` is (ADR 0024).
     name_id: Option<ElementId>,
+    /// The element's `content` (§8.7): `None` when absent, and always `None`
+    /// unless the kind is a `UtilityElement`.
+    content: Option<Text>,
+    /// The element's `key` (§8.12): `None` when absent, and always `None`
+    /// unless the kind is `TaggedValue`.
+    key: Option<Text>,
     /// The element's `assertionDeclaration`: `Some` exactly when the kind is
     /// an Assertion.
     assertion_declaration: Option<AssertionDeclaration>,
@@ -325,6 +337,25 @@ impl Document {
         id: ElementId,
         name: Option<LangString>,
     ) -> Result<(), InsertError> {
+        self.insert_element(parent, kind, id, name, None, None)
+    }
+
+    /// [`insert_node`](Self::insert_node), with the element's `content` and
+    /// `key`, held without ids.
+    ///
+    /// The caller gives a `content` only for a `UtilityElement` kind and a
+    /// `key` only for a `TaggedValue`, as the create operations do (ADR
+    /// 0025); the reader sets them with [`set_text`](Self::set_text), which
+    /// checks the kind.
+    pub(crate) fn insert_element(
+        &mut self,
+        parent: Option<&ElementId>,
+        kind: ElementKind,
+        id: ElementId,
+        name: Option<LangString>,
+        content: Option<MultiLangString>,
+        key: Option<MultiLangString>,
+    ) -> Result<(), InsertError> {
         if id.as_str().is_empty() {
             return Err(InsertError::EmptyId);
         }
@@ -370,8 +401,11 @@ impl Document {
         self.nodes.push(Node {
             id,
             kind,
+            gid: None,
             name,
             name_id: None,
+            content: content.map(Text::new),
+            key: key.map(Text::new),
             assertion_declaration: kind
                 .is_a(AbstractClass::Assertion)
                 .then(AssertionDeclaration::default),
@@ -482,16 +516,79 @@ impl Document {
         if self.is_id_in_use(name_id.as_str()) {
             return Err(format!("the id {:?} is already in use", name_id.as_str()));
         }
-        self.name_ids.insert(name_id.clone(), node);
+        self.value_ids.insert(name_id.clone(), node);
         self.nodes[node].name_id = Some(name_id);
         Ok(())
     }
 
+    /// Sets the `gid` of the element `id` (SACM 2.3 §8.2) to `gid`, exactly:
+    /// `None` is absent. A gid is not an id, so nothing about its value is
+    /// checked (ADR 0025). Refuses, with the reason, an unknown element; on
+    /// an error the document is unchanged.
+    pub(crate) fn set_gid(&mut self, id: &ElementId, gid: Option<String>) -> Result<(), String> {
+        let Some(&node) = self.index.get(id) else {
+            return Err(format!("the document has no element {:?}", id.as_str()));
+        };
+        self.nodes[node].gid = gid;
+        Ok(())
+    }
+
+    /// Sets the `role` of the element `owner` to `text`, replacing what it
+    /// held, and its ids with it (ADR 0025); on an error the document is
+    /// unchanged.
+    ///
+    /// The XMI reader keeps a `content` or `key` through it. It refuses, with
+    /// the reason, an unknown owner, an owner whose kind has no such role, an
+    /// empty id, an id given twice and an id in use elsewhere, by an element
+    /// or as another id that identifies no element. The ids the role held
+    /// before are free for it.
+    pub(crate) fn set_text(
+        &mut self,
+        owner: &ElementId,
+        role: TextRole,
+        text: Text,
+    ) -> Result<(), String> {
+        let Some(&node) = self.index.get(owner) else {
+            return Err(format!("the document has no element {:?}", owner.as_str()));
+        };
+        let kind = self.nodes[node].kind;
+        if !role.is_held_by(kind) {
+            return Err(format!(
+                "the {kind} {:?} has no {}",
+                owner.as_str(),
+                role.name()
+            ));
+        }
+        let old: Vec<ElementId> = self.nodes[node]
+            .text(role)
+            .map(|held| held.ids().cloned().collect())
+            .unwrap_or_default();
+        let mut seen = BTreeSet::new();
+        for id in text.ids() {
+            if id.as_str().is_empty() {
+                return Err(format!("an id of the {} is empty", role.name()));
+            }
+            let elsewhere = self.is_id_in_use(id.as_str()) && !old.contains(id);
+            if !seen.insert(id.as_str()) || elsewhere {
+                return Err(format!("the id {:?} is already in use", id.as_str()));
+            }
+        }
+        for id in &old {
+            self.value_ids.remove(id);
+        }
+        for id in text.ids() {
+            self.value_ids.insert(id.clone(), node);
+        }
+        *self.nodes[node].text_mut(role) = Some(text);
+        Ok(())
+    }
+
     /// Whether `id` is in use in the document's id space: by an element, or
-    /// as the id of a name (ADR 0024). A new element's id, given or
-    /// generated, must not be.
+    /// as an id that identifies no element: of a name (ADR 0024), a
+    /// `content`, a `key` or a `value` (ADR 0025). A new element's id, given
+    /// or generated, must not be.
     pub(crate) fn is_id_in_use(&self, id: &str) -> bool {
-        self.index.contains_key(id) || self.name_ids.contains_key(id)
+        self.index.contains_key(id) || self.value_ids.contains_key(id)
     }
 
     /// The id the next generated element of `kind` gets, with its `n`:
@@ -507,10 +604,11 @@ impl Document {
             .unwrap_or(0)
             .wrapping_add(1);
         let mut id = generated_id(&prefix, n);
-        // At most one id per element and one per name are in use, and the
-        // candidates are distinct, so one of the first `in_use + 1` is free:
-        // the last candidate needs no check, and the loop is bounded.
-        for _ in 0..self.nodes.len() + self.name_ids.len() {
+        // Each element id and each id that identifies no element is in use
+        // once, and the candidates are distinct, so one of the first
+        // `in_use + 1` is free: the last candidate needs no check, and the
+        // loop is bounded.
+        for _ in 0..self.nodes.len() + self.value_ids.len() {
             if !self.is_id_in_use(id.as_str()) {
                 break;
             }
@@ -540,9 +638,9 @@ impl Document {
             roots,
             // Derived from `nodes`: the id of each element.
             index: _,
-            // Derived from `nodes`: the owner of each name id, which is
-            // compared through `SacmElement::compared`.
-            name_ids: _,
+            // Derived from `nodes`: the owner of each id that identifies no
+            // element, which is compared through `SacmElement::compared`.
+            value_ids: _,
             // Not compared: the generated-id counters are not SACM content
             // and XMI does not carry them (ADR 0020).
             id_counters: _,
@@ -738,7 +836,7 @@ impl<'a> SacmElement<'a> {
     /// ```
     /// use sacm::model::{AbstractClass, Document, ElementId, ElementKind, LangString};
     ///
-    /// // Built with the unstable test-support feature: edit::apply does not create a Note or a missing name.
+    /// // Built with the unstable test-support feature: edit::apply does not create a missing name.
     /// let mut doc = Document::new();
     /// let id = ElementId::from;
     /// let name = LangString::new("Top claim").with_lang("en");
@@ -794,6 +892,253 @@ impl<'a> SacmElement<'a> {
     #[must_use]
     pub fn name_id(self) -> Option<&'a ElementId> {
         self.node().name_id.as_ref()
+    }
+
+    /// The element's `gid` (SACM 2.3 §8.2), or `None` when it has none.
+    ///
+    /// Every element, of every kind, may have one. It is held exactly as
+    /// read: `None`, `""` and any other string are three different values,
+    /// and nothing is trimmed ([ADR 0012], [ADR 0025]). A gid is not an
+    /// `xmi:id`: it is in no id space, so [`Document::get`] does not find it,
+    /// and it has no syntax check. The document does not stop two elements
+    /// from sharing one, though §8.2 requires a gid to be unique; no rule
+    /// reports that yet (SACM23-VAL-002). No edit sets it yet, so only
+    /// [`xmi::read`](crate::xmi::read) gives one.
+    ///
+    /// [ADR 0012]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0012-lang-string-absent-and-empty.md
+    /// [ADR 0025]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0025-utility-elements-and-gid.md
+    ///
+    /// ```
+    /// use sacm::xmi::{self, ReadOptions};
+    ///
+    /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments" gid="urn:x:1">
+    ///   <name content="Arguments"/>
+    ///   <argumentElement xmi:type="sacm:Claim" xmi:id="c1" gid="">
+    ///     <name content="C1"/>
+    ///   </argumentElement>
+    ///   <argumentElement xmi:type="sacm:Claim" xmi:id="c2">
+    ///     <name content="C2"/>
+    ///   </argumentElement>
+    /// </sacm:ArgumentPackage>"#;
+    /// let document = xmi::read(input, &ReadOptions::default())?.into_document();
+    /// let gid = |id: &str| document.get(id).and_then(|element| element.gid());
+    /// assert_eq!(gid("arguments"), Some("urn:x:1"));
+    /// assert_eq!(gid("c1"), Some(""));
+    /// assert_eq!(gid("c2"), None);
+    /// # Ok::<(), sacm::xmi::ReadError>(())
+    /// ```
+    #[must_use]
+    pub fn gid(self) -> Option<&'a str> {
+        self.node().gid.as_deref()
+    }
+
+    /// The element's descriptions (SACM 2.3 §8.6, §8.9): its children in the
+    /// `description` role, in document order.
+    ///
+    /// They are among [`children`](Self::children), which keeps every child
+    /// in one document order across roles. Several are kept (D-DESC-MULT). A
+    /// `UtilityElement` has none.
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateDescription, CreateNote};
+    /// use sacm::model::{Document, LangString};
+    ///
+    /// let mut doc = Document::new();
+    /// let text = |content: &str| LangString::new(content).with_lang("en");
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(text("Arguments")).with_id("arguments"))?;
+    /// edit::apply(&mut doc, CreateDescription::new("arguments", text("Why")).with_id("d1"))?;
+    /// edit::apply(&mut doc, CreateNote::new("arguments", text("Reviewed")).with_id("n1"))?;
+    /// edit::apply(&mut doc, CreateDescription::new("arguments", text("How")).with_id("d2"))?;
+    ///
+    /// let arguments = doc.get("arguments").expect("just created");
+    /// let ids: Vec<&str> = arguments.descriptions().map(|d| d.id().as_str()).collect();
+    /// assert_eq!(ids, ["d1", "d2"]);
+    /// assert_eq!(arguments.notes().count(), 1);
+    /// assert_eq!(arguments.children().count(), 3);
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    pub fn descriptions(self) -> impl Iterator<Item = SacmElement<'a>> {
+        self.children_in("description")
+    }
+
+    /// The element's implementation constraints (SACM 2.3 §8.6, §8.8): its
+    /// children in the `implementationConstraint` role, in document order.
+    /// See [`descriptions`](Self::descriptions).
+    pub fn implementation_constraints(self) -> impl Iterator<Item = SacmElement<'a>> {
+        self.children_in("implementationConstraint")
+    }
+
+    /// The element's notes (SACM 2.3 §8.6, §8.11): its children in the `note`
+    /// role, in document order. See [`descriptions`](Self::descriptions).
+    pub fn notes(self) -> impl Iterator<Item = SacmElement<'a>> {
+        self.children_in("note")
+    }
+
+    /// The element's tagged values (SACM 2.3 §8.6, §8.12): its children in
+    /// the `taggedValue` role, in document order, those with equal keys
+    /// included. See [`descriptions`](Self::descriptions).
+    ///
+    /// A tagged value is a key/value pair: its key is its
+    /// [`key`](Self::key), and its value is its [`content`](Self::content)
+    /// (§8.7). In XMI, a `<value>` element is one `LangString` inside a `key`
+    /// or `content` (§8.5), not the tagged value's value.
+    pub fn tagged_values(self) -> impl Iterator<Item = SacmElement<'a>> {
+        self.children_in("taggedValue")
+    }
+
+    /// The `content` of a `UtilityElement` (SACM 2.3 §8.7), or `None` when
+    /// it has none or the element is not a `UtilityElement`.
+    ///
+    /// Two things in SACM are called `content`. This one, the role of a
+    /// `UtilityElement` (§8.7), is a whole [`MultiLangString`]: the same
+    /// text in one or more languages. Each of its values is a [`LangString`],
+    /// whose own [`content`](LangString::content) (§8.3
+    /// `content:String[0..1]`) is the text itself.
+    ///
+    /// A `Description`, `ImplementationConstraint`, `Note` or `TaggedValue`
+    /// holds its text as a [`MultiLangString`]. No `content` is `None`, and
+    /// `<content/>` is an empty `MultiLangString`: the two are kept apart and
+    /// both are written back ([ADR 0025]). The values are kept in order, with
+    /// duplicates; [`validation::validate`](crate::validation::validate)
+    /// reports an empty one and a repeated language (SACM-MULT-001).
+    ///
+    /// [ADR 0025]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0025-utility-elements-and-gid.md
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateNote};
+    /// use sacm::model::{Document, LangString, MultiLangString};
+    ///
+    /// let mut doc = Document::new();
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+    /// let content: MultiLangString = [
+    ///     LangString::new("Reviewed").with_lang("en"),
+    ///     LangString::new("Granskad").with_lang("sv"),
+    /// ]
+    /// .into_iter()
+    /// .collect();
+    /// edit::apply(&mut doc, CreateNote::new("p", content.clone()).with_id("n1"))?;
+    ///
+    /// let note = doc.get("n1").expect("just created");
+    /// assert_eq!(note.content(), Some(&content));
+    /// // The English text is the content of the value whose lang is "en".
+    /// let english = note
+    ///     .content()
+    ///     .and_then(|content| content.values().iter().find(|value| value.lang() == Some("en")))
+    ///     .and_then(LangString::content);
+    /// assert_eq!(english, Some("Reviewed"));
+    /// // A package is not a UtilityElement, so it has no content.
+    /// assert_eq!(doc.get("p").and_then(|p| p.content()), None);
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    #[must_use]
+    pub fn content(self) -> Option<&'a MultiLangString> {
+        self.node().content.as_ref().map(Text::value)
+    }
+
+    /// The `xmi:id` of the element's `content` element, if it was read with
+    /// one, or `None`.
+    ///
+    /// A `MultiLangString` is a class, so its element may carry an id (XMI
+    /// 2.5.1 §7.8.3). Like a name's id ([`name_id`](Self::name_id)), it is
+    /// kept with the owner, shares the document's id space, identifies no
+    /// element, and is written back as the first attribute of `content`
+    /// (ADR 0024, ADR 0025). No edit sets it, so only
+    /// [`xmi::read`](crate::xmi::read) gives one.
+    ///
+    /// ```
+    /// use sacm::xmi::{self, ReadOptions};
+    ///
+    /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+    ///   <name content="Arguments"/>
+    ///   <note xmi:id="n1">
+    ///     <content xmi:id="n1_content">
+    ///       <value xmi:id="n1_en" lang="en" content="Reviewed"/>
+    ///       <value lang="sv" content="Granskad"/>
+    ///     </content>
+    ///   </note>
+    /// </sacm:ArgumentPackage>"#;
+    /// let document = xmi::read(input, &ReadOptions::default())?.into_document();
+    /// let note = document.get("n1").expect("the note was read");
+    /// assert_eq!(note.content_id().map(|id| id.as_str()), Some("n1_content"));
+    /// let value_ids: Vec<Option<&str>> =
+    ///     note.content_value_ids().iter().map(|id| id.as_ref().map(|id| id.as_str())).collect();
+    /// assert_eq!(value_ids, [Some("n1_en"), None]);
+    /// assert!(document.get("n1_content").is_none());
+    /// # Ok::<(), sacm::xmi::ReadError>(())
+    /// ```
+    #[must_use]
+    pub fn content_id(self) -> Option<&'a ElementId> {
+        self.node().content.as_ref().and_then(Text::id)
+    }
+
+    /// The `xmi:id` of each `value` of the element's `content`, by position:
+    /// one entry per value of [`content`](Self::content), `None` for a value
+    /// read without one, and empty when there is no content. See
+    /// [`content_id`](Self::content_id).
+    #[must_use]
+    pub fn content_value_ids(self) -> &'a [Option<ElementId>] {
+        self.node().content.as_ref().map_or(&[], Text::value_ids)
+    }
+
+    /// The `key` of a `TaggedValue` (SACM 2.3 §8.12), or `None` when it has
+    /// none or the element is not a `TaggedValue`.
+    ///
+    /// It follows the rules of [`content`](Self::content): absent and empty
+    /// are kept apart, and the values are kept in order, with duplicates.
+    /// SACM requires a key (`key:MultiLangString[1]`), so
+    /// [`validation::validate`](crate::validation::validate) reports a
+    /// `TaggedValue` without one (SACM-MULT-001).
+    ///
+    /// The tagged value's value is its [`content`](Self::content) (§8.7). In
+    /// XMI, a `<value>` element is one `LangString` inside `key` or `content`
+    /// (§8.5), not the tagged value's value.
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateTaggedValue};
+    /// use sacm::model::{Document, LangString, MultiLangString};
+    ///
+    /// let mut doc = Document::new();
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+    /// let tagged = CreateTaggedValue::new("p", LangString::new("ASIL"), LangString::new("D"));
+    /// edit::apply(&mut doc, tagged.with_id("t1"))?;
+    ///
+    /// let t1 = doc.get("t1").expect("just created");
+    /// assert_eq!(t1.key(), Some(&MultiLangString::from(LangString::new("ASIL"))));
+    /// assert_eq!(t1.content(), Some(&MultiLangString::from(LangString::new("D"))));
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    #[must_use]
+    pub fn key(self) -> Option<&'a MultiLangString> {
+        self.node().key.as_ref().map(Text::value)
+    }
+
+    /// The `xmi:id` of the element's `key` element, if it was read with one,
+    /// or `None`. See [`content_id`](Self::content_id).
+    #[must_use]
+    pub fn key_id(self) -> Option<&'a ElementId> {
+        self.node().key.as_ref().and_then(Text::id)
+    }
+
+    /// The `xmi:id` of each `value` of the element's `key`, by position: one
+    /// entry per value of [`key`](Self::key), and empty when there is no
+    /// key. See [`content_id`](Self::content_id).
+    #[must_use]
+    pub fn key_value_ids(self) -> &'a [Option<ElementId>] {
+        self.node().key.as_ref().map_or(&[], Text::value_ids)
+    }
+
+    /// The element's children held in the role named `role`, in document
+    /// order.
+    fn children_in(self, role: &'static str) -> impl Iterator<Item = SacmElement<'a>> {
+        self.children()
+            .filter(move |child| child.role().is_some_and(|held| held.name == role))
+    }
+
+    /// The element's `content` or `key`, with its ids.
+    pub(crate) fn text(self, role: TextRole) -> Option<&'a Text> {
+        self.node().text(role)
     }
 
     /// The element's `assertionDeclaration` (SACM 2.3 §11.10): whether it is
@@ -857,9 +1202,15 @@ impl<'a> SacmElement<'a> {
             // Compared.
             kind,
             // Compared.
+            gid,
+            // Compared.
             name,
             // Compared.
             name_id,
+            // Compared: the value, its id and its values' ids.
+            content,
+            // Compared: the value, its id and its values' ids.
+            key,
             // Compared.
             assertion_declaration,
             // Compared, as the parent's id.
@@ -874,13 +1225,25 @@ impl<'a> SacmElement<'a> {
             id,
             kind: *kind,
             parent: parent.map(|parent| self.document.view(parent).id()),
+            gid: gid.as_deref(),
             name: name.as_ref(),
             name_id: name_id.as_ref(),
+            content: content.as_ref(),
+            key: key.as_ref(),
             assertion_declaration: *assertion_declaration,
         }
     }
 
     /// The elements this one contains directly, in document order.
+    ///
+    /// They are held in every role of the element's class, so a
+    /// `ModelElement`'s children include its descriptions, implementation
+    /// constraints, notes and tagged values, among its other children. To
+    /// get one role, use [`descriptions`](Self::descriptions),
+    /// [`implementation_constraints`](Self::implementation_constraints),
+    /// [`notes`](Self::notes) or [`tagged_values`](Self::tagged_values); to
+    /// skip them, filter by kind, for example on
+    /// `!child.kind().is_a(AbstractClass::UtilityElement)`.
     pub fn children(self) -> impl Iterator<Item = SacmElement<'a>> {
         let document = self.document;
         self.node()
@@ -908,12 +1271,120 @@ pub(crate) struct Compared<'a> {
     pub(crate) kind: ElementKind,
     /// The id of the containing element; `None` for a root.
     pub(crate) parent: Option<&'a ElementId>,
+    /// The element's `gid`; `None` when absent.
+    pub(crate) gid: Option<&'a str>,
     /// The element's name; `None` when missing.
     pub(crate) name: Option<&'a LangString>,
     /// The `xmi:id` of the element's name; `None` when it has none.
     pub(crate) name_id: Option<&'a ElementId>,
+    /// The element's `content`, with its ids; `None` when absent.
+    pub(crate) content: Option<&'a Text>,
+    /// The element's `key`, with its ids; `None` when absent.
+    pub(crate) key: Option<&'a Text>,
     /// The element's `assertionDeclaration`; `None` when not an Assertion.
     pub(crate) assertion_declaration: Option<AssertionDeclaration>,
+}
+
+/// A role of a `UtilityElement` that holds a `MultiLangString` (ADR 0025):
+/// `content` on every `UtilityElement` (SACM 2.3 §8.7), and `key` on a
+/// `TaggedValue` (§8.12).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TextRole {
+    /// `content`.
+    Content,
+    /// `key`.
+    Key,
+}
+
+impl TextRole {
+    /// The role's name, as written in XMI.
+    pub(crate) const fn name(self) -> &'static str {
+        match self {
+            Self::Content => "content",
+            Self::Key => "key",
+        }
+    }
+
+    /// Whether an element of `kind` has this role.
+    pub(crate) const fn is_held_by(self, kind: ElementKind) -> bool {
+        match self {
+            Self::Content => kind.is_a(AbstractClass::UtilityElement),
+            Self::Key => kind.is_kind_of(ElementKind::TaggedValue),
+        }
+    }
+}
+
+/// A `MultiLangString` held in a [`TextRole`], with the `xmi:id`s XMI lets
+/// its elements carry (XMI 2.5.1 §7.8.3; ADR 0025): one for the role
+/// element, and one per `value`, by position.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Text {
+    value: MultiLangString,
+    /// The `xmi:id` of the role element.
+    id: Option<ElementId>,
+    /// The `xmi:id` of each value, in order: as many as `value` has values.
+    value_ids: Vec<Option<ElementId>>,
+}
+
+impl Text {
+    /// `value`, with no ids.
+    pub(crate) fn new(value: MultiLangString) -> Self {
+        let value_ids = vec![None; value.len()];
+        Self {
+            value,
+            id: None,
+            value_ids,
+        }
+    }
+
+    /// Sets the `xmi:id` of the role element.
+    pub(crate) fn set_id(&mut self, id: Option<ElementId>) {
+        self.id = id;
+    }
+
+    /// Adds `value`, with the `xmi:id` of its element, at the end.
+    pub(crate) fn push(&mut self, value: LangString, id: Option<ElementId>) {
+        self.value.push(value);
+        self.value_ids.push(id);
+    }
+
+    /// The `MultiLangString`.
+    pub(crate) fn value(&self) -> &MultiLangString {
+        &self.value
+    }
+
+    /// The `xmi:id` of the role element, if it has one.
+    pub(crate) fn id(&self) -> Option<&ElementId> {
+        self.id.as_ref()
+    }
+
+    /// The `xmi:id` of each value, by position.
+    pub(crate) fn value_ids(&self) -> &[Option<ElementId>] {
+        &self.value_ids
+    }
+
+    /// Every id it holds: the role element's, then the values', in order.
+    pub(crate) fn ids(&self) -> impl Iterator<Item = &ElementId> {
+        self.id.iter().chain(self.value_ids.iter().flatten())
+    }
+}
+
+impl Node {
+    /// The text the node holds in `role`.
+    fn text(&self, role: TextRole) -> Option<&Text> {
+        match role {
+            TextRole::Content => self.content.as_ref(),
+            TextRole::Key => self.key.as_ref(),
+        }
+    }
+
+    /// The place of the text the node holds in `role`.
+    fn text_mut(&mut self, role: TextRole) -> &mut Option<Text> {
+        match role {
+            TextRole::Content => &mut self.content,
+            TextRole::Key => &mut self.key,
+        }
+    }
 }
 
 impl fmt::Debug for SacmElement<'_> {
@@ -1060,7 +1531,7 @@ impl std::error::Error for SetAssertionDeclarationError {}
 
 #[cfg(test)]
 mod tests {
-    use super::{Document, IdGenerator, SacmElement, snake_case};
+    use super::{Document, IdGenerator, SacmElement, Text, TextRole, snake_case};
     use crate::model::{ElementId, ElementKind, LangString};
 
     #[test]
@@ -1119,6 +1590,104 @@ mod tests {
             None,
         );
         assert!(element.is_err());
+    }
+
+    /// A Text of `values` with the id `id` and these value ids.
+    fn text(id: Option<&str>, value_ids: &[Option<&str>]) -> Text {
+        let mut held = Text::default();
+        held.set_id(id.map(ElementId::new));
+        for value_id in value_ids {
+            held.push(LangString::new("x"), value_id.map(ElementId::new));
+        }
+        held
+    }
+
+    #[test]
+    fn set_text_refuses_what_would_break_the_id_space_or_the_kind_and_changes_nothing() {
+        let mut document = two_roots();
+        let p = ElementId::new("p");
+        assert_eq!(document.set_name_id(&p, ElementId::new("pn")), Ok(()));
+        for (kind, id) in [(ElementKind::Note, "n"), (ElementKind::TaggedValue, "t")] {
+            let inserted = document.insert_node(Some(&p), kind, ElementId::new(id), None);
+            assert_eq!(inserted, Ok(()), "{id}");
+        }
+        let n = ElementId::new("n");
+        let refusals = [
+            ("missing", TextRole::Content, text(None, &[])),
+            ("p", TextRole::Content, text(None, &[])),
+            ("n", TextRole::Key, text(None, &[])),
+            ("n", TextRole::Content, text(Some(""), &[])),
+            ("n", TextRole::Content, text(None, &[Some("")])),
+            ("n", TextRole::Content, text(Some("w"), &[Some("w")])),
+            ("n", TextRole::Content, text(None, &[Some("v"), Some("v")])),
+            ("n", TextRole::Content, text(Some("q"), &[])),
+            ("n", TextRole::Content, text(None, &[Some("pn")])),
+        ];
+        for (owner, role, held) in refusals {
+            let refused = document.set_text(&ElementId::new(owner), role, held.clone());
+            assert!(refused.is_err(), "{owner} {role:?} {held:?}");
+        }
+        assert_eq!(document.get("n").and_then(SacmElement::content), None);
+        assert!(!document.is_id_in_use("w") && !document.is_id_in_use("v"));
+
+        // Kept: the ids are in use, but identify no element.
+        assert_eq!(
+            document.set_text(&n, TextRole::Content, text(Some("w"), &[None, Some("v")])),
+            Ok(())
+        );
+        assert!(document.is_id_in_use("w") && document.is_id_in_use("v"));
+        assert!(!document.contains("w") && !document.contains("v"));
+        let t = ElementId::new("t");
+        let taken = document.set_text(&t, TextRole::Key, text(Some("v"), &[]));
+        assert!(taken.is_err());
+        // Replaced: the role's own ids are free for it, and the ids it held
+        // are freed.
+        assert_eq!(
+            document.set_text(&n, TextRole::Content, text(Some("v"), &[Some("u")])),
+            Ok(())
+        );
+        assert!(!document.is_id_in_use("w") && document.is_id_in_use("u"));
+        assert_eq!(
+            document.set_text(&t, TextRole::Key, text(Some("w"), &[])),
+            Ok(())
+        );
+        let note = document.get("n");
+        assert_eq!(
+            note.and_then(SacmElement::content_id)
+                .map(ElementId::as_str),
+            Some("v")
+        );
+        assert_eq!(
+            note.map(SacmElement::content_value_ids),
+            Some([Some(ElementId::new("u"))].as_slice())
+        );
+        assert_eq!(
+            document
+                .get("t")
+                .and_then(SacmElement::key_id)
+                .map(ElementId::as_str),
+            Some("w")
+        );
+        assert_eq!(
+            document.next_generated_id(ElementKind::Note),
+            (ElementId::new("note_1"), 1)
+        );
+    }
+
+    #[test]
+    fn set_gid_holds_the_value_exactly_and_refuses_an_unknown_element() {
+        let mut document = two_roots();
+        let p = ElementId::new("p");
+        assert!(
+            document
+                .set_gid(&ElementId::new("missing"), Some("g".to_owned()))
+                .is_err()
+        );
+        assert_eq!(document.set_gid(&p, Some(" p ".to_owned())), Ok(()));
+        assert_eq!(document.get("p").and_then(SacmElement::gid), Some(" p "));
+        assert!(!document.is_id_in_use(" p ") && document.get(" p ").is_none());
+        assert_eq!(document.set_gid(&p, None), Ok(()));
+        assert_eq!(document.get("p").and_then(SacmElement::gid), None);
     }
 
     #[test]

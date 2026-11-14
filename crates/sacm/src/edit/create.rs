@@ -2,7 +2,8 @@
 
 use super::EditError;
 use crate::model::{
-    Document, ElementId, ElementKind, InsertError, LangString, SacmElement, admits, is_ncname,
+    Document, ElementId, ElementKind, InsertError, LangString, MultiLangString, SacmElement,
+    admits, is_ncname,
 };
 
 /// Creates an `AssuranceCasePackage` (SACM 2.3 §9.2): a root, or a child of
@@ -96,7 +97,7 @@ impl CreateAssuranceCasePackage {
             ElementKind::AssuranceCasePackage,
             self.parent.as_ref(),
             self.id.as_ref(),
-            &self.name,
+            Features::Name(&self.name),
         )
     }
 }
@@ -189,7 +190,7 @@ impl CreateArgumentPackage {
             ElementKind::ArgumentPackage,
             self.parent.as_ref(),
             self.id.as_ref(),
-            &self.name,
+            Features::Name(&self.name),
         )
     }
 }
@@ -274,22 +275,38 @@ impl CreateClaim {
             ElementKind::Claim,
             Some(&self.parent),
             self.id.as_ref(),
-            &self.name,
+            Features::Name(&self.name),
         )
     }
 }
 
+/// What a create operation gives its new element besides its id and place:
+/// the `name` of a `ModelElement`, or the `content` of a `UtilityElement` and
+/// the `key` of a `TaggedValue`.
+#[derive(Clone, Copy)]
+pub(super) enum Features<'o> {
+    /// A `ModelElement`'s name.
+    Name(&'o LangString),
+    /// A `UtilityElement`'s `content`, and a `TaggedValue`'s `key`.
+    Texts {
+        /// The `content`.
+        content: &'o MultiLangString,
+        /// The `key`, given exactly for a `TaggedValue`.
+        key: Option<&'o MultiLangString>,
+    },
+}
+
 /// Creates an element of `kind` under `parent` (a root when `None`), with the
-/// id `id` or a generated one, after every check of ADR 0019 in order, and
-/// returns the ids created: the new element's. On a refusal the document,
-/// its counters included, is unchanged: every check runs before the one
-/// change, and the counter moves only after it.
-fn create(
+/// id `id` or a generated one and with `features`, after every check of ADR
+/// 0019 in order, and returns the ids created: the new element's. On a
+/// refusal the document, its counters included, is unchanged: every check
+/// runs before the one change, and the counter moves only after it.
+pub(super) fn create(
     document: &mut Document,
     kind: ElementKind,
     parent: Option<&ElementId>,
     id: Option<&ElementId>,
-    name: &LangString,
+    features: Features<'_>,
 ) -> Result<Vec<ElementId>, EditError> {
     // 1 and 2: the parent exists and its class can hold `kind`.
     if let Some(parent) = parent {
@@ -319,7 +336,11 @@ fn create(
         let (id, n) = document.next_generated_id(kind);
         (id, Some(n))
     };
-    match document.insert_node(parent, kind, id.clone(), Some(name.clone())) {
+    let (name, content, key) = match features {
+        Features::Name(name) => (Some(name.clone()), None, None),
+        Features::Texts { content, key } => (None, Some(content.clone()), key.cloned()),
+    };
+    match document.insert_element(parent, kind, id.clone(), name, content, key) {
         Ok(()) => {}
         Err(InsertError::UnknownParent(parent)) => {
             return Err(EditError::ParentNotFound { parent });
@@ -337,8 +358,9 @@ fn create(
             });
         }
         Err(InsertError::DuplicateId(id)) => return Err(EditError::DuplicateId { id }),
-        // Not reached: the id is an NCName, so not empty, and the operations
-        // create named ModelElement kinds, as roots only for package kinds.
+        // Not reached: the id is an NCName, so not empty, the operations give
+        // a name only to ModelElement kinds, and they create roots only of
+        // package kinds.
         Err(
             InsertError::EmptyId
             | InsertError::NameNotAllowed(..)
