@@ -1129,6 +1129,13 @@ fn lib_edit_008_operations_hold_what_they_are_given() {
         ("i1", Flag::IsCounter, true),
         "{ROW}: SetFlag's accessors"
     );
+    for flag in [Flag::IsCounter, Flag::IsCitation] {
+        assert!(
+            !SetFlag::new("i1", flag, false).value(),
+            "{ROW}: SetFlag::value does not hold false for {}",
+            flag.name()
+        );
+    }
     let declaration = SetAssertionDeclaration::new("c1", AssertionDeclaration::Defeated);
     assert_eq!(
         (declaration.element().as_str(), declaration.declaration()),
