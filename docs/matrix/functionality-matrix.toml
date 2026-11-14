@@ -2717,7 +2717,8 @@ title = "Reference serialization"
 requirement = "A non-containment reference is read from, and written as, an XML attribute in no namespace named by the reference end, whose value is the targets' ids separated by XML white space (xsd:IDREFS; XMI 2.5.1 rules 2h, 2j, 4i) (ADR 0026). In this release the ends are `citedElement` and `abstractForm` (SACM23-BASE-007/008); each later end's row inherits the rule. A reference is held as the target id, each token exactly as read (no `#` stripped), and resolves by id across the whole input whatever the order (a later element, another root, the element itself). A reference naming no element (an id absent from the file, or a `name`, `content`, `key` or `value` id) is kept, written back and reported by `validate` (SACM23-VAL-003); it is never dropped. Two or more ids on a single-valued end is `RepeatedValue` (SACM-MULT-001); an empty or all-white-space value is `Unsupported`; `sacm:citedElement` is `Unsupported`. Generated ids, in the reader and in edits, skip every referenced id. `xmi::write` writes the ids separated by one space, after the SACMElement flags."
 source = "XMI 2.5.1 rule 2h (p. 63) \"either as an XML attribute or as XML elements but not both\"; rule 2j (p. 64) \"The value of the XML attribute contains the XMI ID of each referenced object, separated by a space\"; rule 4i (p. 51); §7.8.5 (p. 19) `type=\"xsd:IDREFS\"`; §7.10.2 (p. 23); XML Schema 1.0 Part 2 §3.3.10, §4.1.2.2 (list types collapse white space); D-PRESERVE; D-ID; ADR 0024; ADR 0026; assurance-forge io/xmi_reader.cpp:877-908, io/xmi_writer.cpp:29-38, 86-91"
 kind = "xmi"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0042-m2-references.md"
 depends_on = ["SACM23-XMI-004", "SACM23-XMI-014", "SACM23-XMI-025", "SACM23-BASE-004"]
 acceptance = [
   "`citedElement=\"c2\"` on a Claim and `abstractForm=\"p2\"` on a package read with those targets; `write` emits the same attributes, read-write-read is equal and the second write gives the same bytes.",
@@ -2756,7 +2757,8 @@ title = "Citations"
 requirement = "Every element of every kind holds `isCitation`, a Boolean defaulting to false (§8.2 `isCitation[0..1]=false`; `SacmElement::is_citation()`), and an optional `citedElement` reference to any SACMElement (`cited_element() -> Option<&ElementId>`) (ADR 0026). They are independent: either may be present without the other; nothing repairs a file on read. `xmi::read` reads `isCitation` in both modes from the unqualified attribute or a value element (SACM23-XMI-014), as an xsd:boolean: white space collapsed, `true`/`1` true, `false`/`0` false, absent false (`false` equals absent); any other value is `ReadError::InvalidLiteral` (SACM-ENUM-001) quoting it; given twice it is `RepeatedValue`. `citedElement` follows SACM23-XMI-005/015. `xmi::write` writes `isCitation=\"true\"` when true and nothing when false. `semantic_compare` reports `Difference::IsCitation` and `CitedElement`. Setting them is LIB-EDIT-008/009; the §8.2 rule is SACM23-VAL-007."
 source = "formal/23-05-08 §8.2 (p. 18) \"isCitation[0..1]=false - a flag to indicate whether the SACMElement cites another SACMElement.\" and \"citedElement:SACMElement[0..1] - a reference to another SACMElement that the SACMElement cites\"; ptc/22-03-13 Base::SACMElement.isCitation ([0..1], no default) and Association citedElement ([0..1], unnamed end, D8); XMI 2.5.1 §7.8.4, rule 2i, §9.4.1 \"Properties whose values are the default values are not serialized\"; XML Schema 1.0 Part 2 §3.2.2.1; ADR 0021 amendment 1; ADR 0026; assurance-forge model/element.h:69-115, io/xmi_reader.cpp:395-398, 897-905"
 kind = "model"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0042-m2-references.md"
 depends_on = ["SACM23-BASE-003", "SACM23-XMI-005", "SACM23-XMI-014", "SACM23-BASE-006", "LIB-RT-001"]
 notes = "Slice 0037: read in the attribute and the element form by SACM23-XMI-014's rules; the value is a Boolean, white space collapsed and `true`/`false`/`1`/`0` accepted (XSD 2 §4.3.6)."
 acceptance = [
@@ -2792,7 +2794,8 @@ title = "Abstract elements and abstract forms"
 requirement = "Every element of every kind holds `isAbstract`, a Boolean defaulting to false (§8.2 `isAbstract[0..1]=false`; `SacmElement::is_abstract()`), and an optional `abstractForm` reference to any SACMElement (`abstract_form() -> Option<&ElementId>`), under the SACM23-BASE-007 rules (ADR 0026): independent of each other, read as xsd:boolean and per SACM23-XMI-005/015, `isAbstract=\"true\"` written only when true, compared as `Difference::IsAbstract` and `AbstractForm`. Setting them is LIB-EDIT-008/009; the §8.2 rules are SACM23-VAL-008; the §8.6 ImplementationConstraint rule is SACM23-VAL-021."
 source = "formal/23-05-08 §8.2 (p. 18) \"isAbstract[0..1]=false - a flag to indicate whether the SACMElement is considered to be abstract.\" and \"abstractForm:SACMElement[0..1] - an optional reference to another abstract SACMElement to which this concrete SACMElement conforms.\"; §10.10 (p. 30) \"isAbstract:Boolean\"; ptc/22-03-13 Base::SACMElement.isAbstract and Association abstractForm; then as SACM23-BASE-007"
 kind = "model"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0042-m2-references.md"
 depends_on = ["SACM23-BASE-003", "SACM23-XMI-005", "SACM23-XMI-014", "SACM23-BASE-006", "LIB-RT-001"]
 notes = "Slice 0037: read in the attribute and the element form by SACM23-XMI-014's rules; the value is a Boolean, white space collapsed and `true`/`false`/`1`/`0` accepted (XSD 2 §4.3.6)."
 acceptance = [
@@ -3086,7 +3089,8 @@ title = "Element form of references"
 requirement = "Both load modes read a reference given as an empty element in no namespace named by the end, with exactly one link attribute: `xmi:idref=\"id\"` (rule 2l) or an unqualified `href=\"#id\"` (rule 2n, the same document); the value is trimmed (xsd:IDREF, anyURI) and the element may hold only white space, comments and processing instructions (ADR 0026). It reads to a model equal to the attribute form, and `write` writes the attribute form. An attribute and an element for the same end, or two elements on a single-valued end, is `RepeatedValue` (rule 2h). `Unsupported` at that construct: both link attributes or neither; a type attribute, `xmi:id` or another attribute; an unqualified `idref`; `href` with a document part, an XPointer or an empty fragment (cross-document links are SACM23-XMI-027); a child element or text; a namespace-qualified reference element."
 source = "XMI 2.5.1 production 2c (p. 62); rules 2c, 2h (p. 63); 2l, 2m, 2n (p. 64) \"Use the idref attribute to specify the id of an XML element that is referenced in the document; use the href attribute to specify an XML element in another document\"; §7.6.2 (pp. 14-15) LinkAttribs; §7.10.1 (p. 23) \"Proxies ... contain no nested elements\"; D-STRICT; D-ROLE-UNQUALIFIED; ADR 0021 amendment 1; ADR 0026"
 kind = "xmi"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0042-m2-references.md"
 depends_on = ["SACM23-XMI-001", "SACM23-XMI-005", "LIB-TOOL-020"]
 acceptance = [
   "`<citedElement xmi:idref=\"c2\"/>` and `<citedElement href=\"#c2\"/>` each read equal to `citedElement=\"c2\"`, in both modes and anywhere among the siblings; `write` writes the attribute form.",
@@ -3215,7 +3219,8 @@ title = "Dangling references"
 requirement = "`validation::validate` reports each reference whose target id names no element of the document (an id absent from it, or a `name`, `content`, `key` or `value` id) as one SACM-REF-001 Error (`Code::REF_DANGLING`) per distinct missing id per end, with requirement SACM23-VAL-003, the end's clause (`8.2` for `citedElement` and `abstractForm`), no location, `affected = [referrer, missing id]`, and a message naming the referrer's kind and id, the end and the target. A strict save refuses (ADR 0022); a tolerant save writes the reference as held (ADR 0026)."
 source = "XMI 2.5.1 rule 2j (p. 64) \"Class-typed Properties whose values are objects that are serialized in the same document\"; XML Schema 1.0 Part 1 §3.3.4 (ID/IDREF table: no unbound IDREF); D-SEV (indicative); D-VAL-LAYER; D-PRESERVE; ADR 0026; SACM-REF-001; assurance-forge validation/validate.cpp:344-353"
 kind = "validation"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0042-m2-references.md"
 depends_on = ["SACM23-XMI-005", "LIB-DIAG-001", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-VAL-018", "LIB-COMPAT-007"]
 acceptance = [
   "A Claim with `citedElement=\"nope\"` gives exactly one SACM-REF-001: Error, SACM23-VAL-003, clause `8.2`, no location, affected `[claim, nope]`, the message naming Claim, the claim id, `citedElement` and `nope`; the same for `abstractForm`.",
@@ -3269,7 +3274,8 @@ title = "Citation constraints"
 requirement = "`validation::validate` reports each SACMElement that has a `citedElement` but whose `isCitation` is not true as one SACM-CITE-001 Error (`Code::CITATION_INVALID`), with requirement SACM23-VAL-007, clause `8.2`, affected `[element]` and no location (§8.2 OCL `self.citedElement <> null implies self.isCitation = true`; D-SEV). `isCitation` true with no `citedElement` is not a §8.2 finding (ADR 0026). A dangling `citedElement` gives this finding as well as SACM-REF-001."
 source = "formal/23-05-08 §8.2 (p. 18) Constraints \"If citedElement is populated, isCitation must be true. OCL: self.citedElement <> null implies self.isCitation = true\"; D-SEV; ADR 0026; assurance-forge validation/validate.cpp:397-408"
 kind = "validation"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0042-m2-references.md"
 depends_on = ["SACM23-BASE-007", "SACM23-VAL-018", "LIB-COMPAT-007"]
 acceptance = [
   "A Claim with `citedElement=\"c1\"` and no `isCitation` gives one SACM-CITE-001: Error, SACM23-VAL-007, clause `8.2`, affected `[claim]`, no location; the same with `isCitation=\"false\"`.",
@@ -3296,7 +3302,8 @@ title = "Abstract-form constraints (clause 8.2)"
 requirement = "`validation::validate` reports, with requirement SACM23-VAL-008, clause `8.2` and no location: an element with an `abstractForm` whose own `isAbstract` is true as one SACM-ABS-001 Error (stated flatly, D-SEV), affected `[element]`; and, for a resolved `abstractForm` target, a target whose `isAbstract` is not true, and a target of another kind, each as one SACM-ABS-001 Warning (\"should\"), affected `[element, target]` (`Code::ABSTRACT_FORM_INVALID`). A dangling target gives no target-side Warning, only SACM-REF-001; the own-`isAbstract` Error does not depend on the target and still applies. Satisfying the target's ImplementationConstraints is not checked (prose)."
 source = "formal/23-05-08 §8.2 (p. 18) Constraints \"When +abstractForm is used to refer to another SACMElement, +isAbstract of the SACMElement is false, and the +isAbstract of the referred SACMElement should be true. The referred SACMElement should be of the same type of the SACMElement.\"; D-SEV; ADR 0026; assurance-forge validation/validate.cpp:409-447"
 kind = "validation"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0042-m2-references.md"
 depends_on = ["SACM23-BASE-008", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-VAL-003"]
 acceptance = [
   "A concrete Claim with `abstractForm` naming an abstract Claim gives no finding.",

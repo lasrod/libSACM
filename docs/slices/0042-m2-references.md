@@ -1,8 +1,8 @@
 ---
 slice: 0042
 name: m2-references
-state: in-progress
-step: verification
+state: done
+step: verified
 rows: [SACM23-XMI-005, SACM23-XMI-015, SACM23-BASE-007, SACM23-BASE-008, SACM23-VAL-003, SACM23-VAL-007, SACM23-VAL-008]
 mode: pr
 base: main
@@ -36,3 +36,4 @@ D-PRESERVE.
 
 - 2026-11-14 choose: SACM23-XMI-005 is the M2 critical path (13 rows depend on it); paired
   with the first properties that hold references.
+- 2026-11-14 verify: PASS in two rounds; Copilot found an idref white-space round-trip bug, fixed; record 0042.
