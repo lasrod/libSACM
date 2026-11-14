@@ -70,7 +70,14 @@
 //!   names no element or an element its end's declared type does not admit.
 //!   The stricter §11.15, §11.17 and §11.18 rules, that evidence and
 //!   artifact relationships link `ArtifactReference`s, are left to
-//!   [`validation::validate`].
+//!   [`validation::validate`]. It also changes existing elements of every
+//!   kind: their names, `gid`s, flags and `assertionDeclaration`s
+//!   ([`edit::SetName`] and the like), the `content` and `key` of
+//!   descriptions, notes and tagged values ([`edit::SetContent`],
+//!   [`edit::SetKey`]), every reference end, within its bounds
+//!   ([`edit::SetReferences`], [`edit::AddReference`],
+//!   [`edit::RemoveReference`]), and the order of an element's children or
+//!   of the roots ([`edit::ReorderElements`]).
 //! - [`compare::semantic_compare`] lists every difference in SACM content
 //!   between two documents, and `==` on a [`Document`](model::Document) is
 //!   true when there is none.

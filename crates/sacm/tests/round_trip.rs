@@ -19,15 +19,17 @@
 //! nameless, which a strict write refuses (LIB-COMPAT-007), and the round trip
 //! is about content, not the save mode. LIB-RT-003 writes with
 //! `WriteOptions::default()`, strict, because a built document validates.
-//! Documents for LIB-RT-003 use the public edit API only; the
-//! `test-support` seam `set_assertion_declaration` is used for the
-//! declarations, which the edit API cannot set yet.
+//! Documents for LIB-RT-003 use the public edit API only, the declarations
+//! included (`SetAssertionDeclaration`, LIB-EDIT-008).
 
 use std::path::{Path, PathBuf};
 
 use sacm::compare::semantic_compare;
 use sacm::diagnostic;
-use sacm::edit::{self, CreateArgumentPackage, CreateAssuranceCasePackage, CreateClaim, Operation};
+use sacm::edit::{
+    self, CreateArgumentPackage, CreateAssuranceCasePackage, CreateClaim, Operation,
+    SetAssertionDeclaration,
+};
 use sacm::model::{
     AssertionDeclaration, Document, ElementId, ElementKind, LangString, SacmElement,
 };
@@ -467,11 +469,11 @@ fn claims(doc: &Document) -> Vec<ElementId> {
         .collect()
 }
 
-/// Sets `declaration` on every Claim of `doc` through the seam.
+/// Sets `declaration` on every Claim of `doc` with `edit::apply`.
 fn declare_all(doc: &mut Document, mut declaration: impl FnMut(usize) -> AssertionDeclaration) {
     for (n, claim) in claims(doc).iter().enumerate() {
         let value = declaration(n);
-        if let Err(error) = doc.set_assertion_declaration(claim, value) {
+        if let Err(error) = edit::apply(doc, SetAssertionDeclaration::new(claim, value)) {
             panic!("{RT_003}: setup could not set {value} on {claim:?}: {error}");
         }
     }

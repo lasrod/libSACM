@@ -7,7 +7,7 @@
 //! nothing**: not the elements, not the written XMI, and not the ids
 //! generated next.
 //!
-//! # Operations
+//! # Operations that create an element
 //!
 //! | Operation | Creates | Root | Under a parent |
 //! |---|---|---|---|
@@ -66,8 +66,46 @@
 //! `AssertedArtifactContext` be `ArtifactReference`s, are content: a create
 //! does not refuse them, and
 //! [`validation::validate`](crate::validation::validate) reports them
-//! (SACM23-VAL-016). Setting the references of an existing element, and the
-//! `metaClaim` of an Assertion, come later (LIB-EDIT-009).
+//! (SACM23-VAL-016). The `metaClaim`, `citedElement` and `abstractForm` of
+//! an element are set after it is created, with [`SetReferences`].
+//!
+//! # Operations that change an element
+//!
+//! | Operation | Changes | Forms |
+//! |---|---|---|
+//! | [`SetName`] | the `name` of a `ModelElement` (§8.6) | [`new`](SetName::new) |
+//! | [`SetGid`] | the `gid` of any element (§8.2) | [`new`](SetGid::new), [`remove`](SetGid::remove) |
+//! | [`SetFlag`] | `isCitation` or `isAbstract` of any element (§8.2), `isCounter` of an asserted relationship (§11.13) | [`new`](SetFlag::new) |
+//! | [`SetAssertionDeclaration`] | the `assertionDeclaration` of an Assertion (§11.10) | [`new`](SetAssertionDeclaration::new) |
+//! | [`SetContent`] | the `content` of a `UtilityElement` (§8.7) | [`new`](SetContent::new), [`remove`](SetContent::remove) |
+//! | [`SetKey`] | the `key` of a `TaggedValue` (§8.12) | [`new`](SetKey::new) |
+//! | [`SetReferences`] | the ids one reference end holds, such as `source` or `metaClaim` | [`new`](SetReferences::new), [`clear`](SetReferences::clear) |
+//! | [`AddReference`] | one reference end, with one id appended | [`new`](AddReference::new) |
+//! | [`RemoveReference`] | one reference end, with every occurrence of one id removed | [`new`](RemoveReference::new) |
+//! | [`ReorderElements`] | the order of an element's children, or of the roots | [`new`](ReorderElements::new), [`roots`](ReorderElements::roots) |
+//!
+//! Each names the element it changes by id, and replaces one feature
+//! exactly as given (ADR 0029). Values are never refused: an empty name, a
+//! duplicate gid, an empty `content` or an `asCited` declaration on an
+//! element that cites nothing are content, which
+//! [`validation::validate`](crate::validation::validate) reports
+//! (D-VAL-LAYER). A flag and its reference are set independently, such as
+//! `isCitation` and `citedElement`. A reference end stays within its bounds
+//! (`source` `[1..*]`, `target` `[1]`, the other single-valued ends
+//! `[0..1]`), and every id it newly holds names an element of a kind it
+//! admits; an id it already holds is kept, even a dangling or wrongly typed
+//! one, so an end read from a file can be repaired one id at a time.
+//!
+//! Ids are kept by position: a replaced name keeps its `xmi:id`, and a
+//! replaced `content` or `key` keeps the id of its element and, for each
+//! value, the id of the value at its position. The ids beyond the new
+//! length, every id of a removed `content`, and an id no reference holds
+//! any more are freed, so a later create may generate them.
+//!
+//! An operation that sets the value held changes nothing: the document is
+//! not written, and [`Mutation::changed_ids`] is empty. Otherwise it is the
+//! element, or for [`ReorderElements::new`] the parent; a root reorder
+//! changes no element, so it reports none.
 //!
 //! # Ids
 //!
@@ -90,6 +128,8 @@
 //!
 //! # Refusals
 //!
+//! ## Creates
+//!
 //! The checks run in this order, and the first that fails is the result. A
 //! root operation has no parent, so it skips the first two.
 //!
@@ -103,6 +143,42 @@
 //! | 6. no referenced id holds XML white space (space, TAB, LF, CR): each source in order, then the target, the `reasoning`, the `structure`, the `referencedArtifactElement` ids and the group members | [`EditError::InvalidReference`] | SACM-ID-002 | An id such as `a b`, read from a file as written, is not an `NCName` and would be written as two ids. Give the referenced element an `NCName` id in the file. |
 //! | 7. every referenced id names an element, in the same order | [`EditError::ReferenceNotFound`] | SACM-CMD-001 | Create the referenced element first, or correct its id. Ids are compared exactly, case included. |
 //! | 8. every referenced id names an element of a kind its end admits, in the same order | [`EditError::WrongReferenceType`] | SACM-REF-002 | Reference an element of the end's type: for example, an `ArgumentPackage` as a `structure`, and an `ArgumentAsset`, not a package, as a source. |
+//!
+//! ## Operations that change an element
+//!
+//! Every check runs before the one change, and the first that fails is the
+//! result. Each operation first checks:
+//!
+//! | Check | Refusal | Code |
+//! |---|---|---|
+//! | 1. the element (for a reorder, the parent) is in the document | [`EditError::ElementNotFound`] | SACM-CMD-001 |
+//! | 2. its kind has the feature: a `ModelElement` for a name, an `AssertedRelationship` for `isCounter`, an Assertion for a declaration, a `UtilityElement` for a `content`, a `TaggedValue` for a key, the end's class for a reference end | [`EditError::FeatureNotApplicable`] | SACM-CMD-008 |
+//!
+//! [`SetName`], [`SetGid`], [`SetFlag`], [`SetAssertionDeclaration`],
+//! [`SetContent`] and [`SetKey`] check nothing more. Every element has a
+//! gid, `isCitation` and `isAbstract`, so those skip the second check too.
+//!
+//! The reference operations then check, in this order:
+//!
+//! | Check | Refusal | Code |
+//! |---|---|---|
+//! | 3. for [`RemoveReference`] only: the end holds the id | [`EditError::ReferenceNotHeld`] | SACM-CMD-001 |
+//! | 4. the end would hold at least the ids it needs: one `source`, one `target` | [`EditError::TooFewReferences`] | SACM-MULT-001 |
+//! | 5. the end would hold at most the ids it allows: one for a single-valued end | [`EditError::TooManyReferences`] | SACM-MULT-001 |
+//! | 6. no new id holds XML white space | [`EditError::InvalidReference`] | SACM-ID-002 |
+//! | 7. every new id names an element | [`EditError::ReferenceNotFound`] | SACM-CMD-001 |
+//! | 8. every new id names an element of a kind the end admits | [`EditError::WrongReferenceType`] | SACM-REF-002 |
+//!
+//! A new id is one the end does not hold already; checks 6 to 8 each run
+//! over the new ids in list order, as the creates' checks 6 to 8 do.
+//!
+//! [`ReorderElements`] checks, after the parent:
+//!
+//! | Check | Refusal | Code |
+//! |---|---|---|
+//! | 2. the list names at least one element | [`EditError::InvalidOrder`] | SACM-CMD-009 |
+//! | 3. id by id, in list order: it is a direct child of the parent (or a root) | [`EditError::ChildNotFound`] | SACM-CMD-001 |
+//! | 3. id by id, in list order: it was not named before | [`EditError::InvalidOrder`] | SACM-CMD-009 |
 //!
 //! # Writing and reading back
 //!
@@ -150,6 +226,9 @@
 
 mod argumentation;
 mod create;
+mod references;
+mod reorder;
+mod set;
 mod utility;
 
 use std::fmt;
@@ -160,6 +239,9 @@ pub use argumentation::{
     CreateAssertedEvidence, CreateAssertedInference,
 };
 pub use create::{CreateArgumentPackage, CreateAssuranceCasePackage, CreateClaim};
+pub use references::{AddReference, RemoveReference, SetReferences};
+pub use reorder::ReorderElements;
+pub use set::{SetAssertionDeclaration, SetContent, SetFlag, SetGid, SetKey, SetName};
 pub use utility::{
     CreateDescription, CreateImplementationConstraint, CreateNote, CreateTaggedValue,
 };
@@ -193,7 +275,7 @@ use crate::model::{Document, ElementId, ElementKind};
 ///
 /// # Errors
 ///
-/// Refuses, checked in this order, when:
+/// Refuses a create, checked in this order, when:
 /// - the parent is not in the document ([`EditError::ParentNotFound`]);
 /// - the parent's class cannot contain the new element's kind
 ///   ([`EditError::InvalidParent`]);
@@ -210,6 +292,21 @@ use crate::model::{Document, ElementId, ElementKind};
 ///   ([`EditError::ReferenceNotFound`]);
 /// - a referenced id names an element of a kind its end does not admit
 ///   ([`EditError::WrongReferenceType`]).
+///
+/// Refuses an operation that changes an element, checked in this order,
+/// when:
+/// - the element, or the parent to reorder, is not in the document
+///   ([`EditError::ElementNotFound`]);
+/// - its kind has no such feature ([`EditError::FeatureNotApplicable`]);
+/// - for [`RemoveReference`], the end does not hold the id
+///   ([`EditError::ReferenceNotHeld`]);
+/// - for a reference operation, the end would hold fewer or more ids than
+///   its bounds allow ([`EditError::TooFewReferences`],
+///   [`EditError::TooManyReferences`]), or an id it does not hold already
+///   fails the create's last three checks;
+/// - for [`ReorderElements`], the list is empty or names an id twice
+///   ([`EditError::InvalidOrder`]), or names an id that is no direct child
+///   or root ([`EditError::ChildNotFound`]).
 ///
 /// # Examples
 ///
@@ -234,30 +331,40 @@ pub fn apply(
 ) -> Result<Mutation, EditError> {
     let operation = operation.into();
     // Each operation checks everything before it changes the document, so a
-    // refusal here leaves it untouched.
-    let created = match &operation {
-        Operation::CreateAssuranceCasePackage(create) => create.apply(document)?,
-        Operation::CreateArgumentPackage(create) => create.apply(document)?,
-        Operation::CreateClaim(create) => create.apply(document)?,
-        Operation::CreateArgumentReasoning(create) => create.apply(document)?,
-        Operation::CreateAssertedInference(create) => create.apply(document)?,
-        Operation::CreateAssertedContext(create) => create.apply(document)?,
-        Operation::CreateArtifactReference(create) => create.apply(document)?,
-        Operation::CreateArgumentGroup(create) => create.apply(document)?,
-        Operation::CreateAssertedEvidence(create) => create.apply(document)?,
-        Operation::CreateAssertedArtifactSupport(create) => create.apply(document)?,
-        Operation::CreateAssertedArtifactContext(create) => create.apply(document)?,
-        Operation::CreateDescription(create) => create.apply(document)?,
-        Operation::CreateImplementationConstraint(create) => create.apply(document)?,
-        Operation::CreateNote(create) => create.apply(document)?,
-        Operation::CreateTaggedValue(create) => create.apply(document)?,
+    // refusal here leaves it untouched. A create changes no existing element
+    // (ADR 0019 amendment 1), an edit creates none (ADR 0029), and none
+    // deletes one.
+    let (created, changed) = match &operation {
+        Operation::CreateAssuranceCasePackage(create) => (create.apply(document)?, Vec::new()),
+        Operation::CreateArgumentPackage(create) => (create.apply(document)?, Vec::new()),
+        Operation::CreateClaim(create) => (create.apply(document)?, Vec::new()),
+        Operation::CreateArgumentReasoning(create) => (create.apply(document)?, Vec::new()),
+        Operation::CreateAssertedInference(create) => (create.apply(document)?, Vec::new()),
+        Operation::CreateAssertedContext(create) => (create.apply(document)?, Vec::new()),
+        Operation::CreateArtifactReference(create) => (create.apply(document)?, Vec::new()),
+        Operation::CreateArgumentGroup(create) => (create.apply(document)?, Vec::new()),
+        Operation::CreateAssertedEvidence(create) => (create.apply(document)?, Vec::new()),
+        Operation::CreateAssertedArtifactSupport(create) => (create.apply(document)?, Vec::new()),
+        Operation::CreateAssertedArtifactContext(create) => (create.apply(document)?, Vec::new()),
+        Operation::CreateDescription(create) => (create.apply(document)?, Vec::new()),
+        Operation::CreateImplementationConstraint(create) => (create.apply(document)?, Vec::new()),
+        Operation::CreateNote(create) => (create.apply(document)?, Vec::new()),
+        Operation::CreateTaggedValue(create) => (create.apply(document)?, Vec::new()),
+        Operation::SetName(set) => (Vec::new(), set.apply(document)?),
+        Operation::SetGid(set) => (Vec::new(), set.apply(document)?),
+        Operation::SetFlag(set) => (Vec::new(), set.apply(document)?),
+        Operation::SetAssertionDeclaration(set) => (Vec::new(), set.apply(document)?),
+        Operation::SetContent(set) => (Vec::new(), set.apply(document)?),
+        Operation::SetKey(set) => (Vec::new(), set.apply(document)?),
+        Operation::SetReferences(set) => (Vec::new(), set.apply(document)?),
+        Operation::AddReference(add) => (Vec::new(), add.apply(document)?),
+        Operation::RemoveReference(remove) => (Vec::new(), remove.apply(document)?),
+        Operation::ReorderElements(reorder) => (Vec::new(), reorder.apply(document)?),
     };
     Ok(Mutation {
         operation,
         created,
-        // A create changes no existing element and deletes none (ADR 0019
-        // amendment 1).
-        changed: Vec::new(),
+        changed,
         deleted: Vec::new(),
     })
 }
@@ -310,6 +417,26 @@ pub enum Operation {
     CreateNote(CreateNote),
     /// Creates a `TaggedValue`.
     CreateTaggedValue(CreateTaggedValue),
+    /// Sets the name of a `ModelElement`.
+    SetName(SetName),
+    /// Sets or removes the `gid` of an element.
+    SetGid(SetGid),
+    /// Sets a flag of an element: `isCitation`, `isAbstract` or `isCounter`.
+    SetFlag(SetFlag),
+    /// Sets the `assertionDeclaration` of an Assertion.
+    SetAssertionDeclaration(SetAssertionDeclaration),
+    /// Sets or removes the `content` of a `UtilityElement`.
+    SetContent(SetContent),
+    /// Sets the `key` of a `TaggedValue`.
+    SetKey(SetKey),
+    /// Replaces the ids a reference end of an element holds.
+    SetReferences(SetReferences),
+    /// Appends an id to a reference end of an element.
+    AddReference(AddReference),
+    /// Removes every occurrence of an id from a reference end of an element.
+    RemoveReference(RemoveReference),
+    /// Reorders the children of an element, or the roots.
+    ReorderElements(ReorderElements),
 }
 
 impl Operation {
@@ -324,8 +451,12 @@ impl Operation {
     /// `"CreateArtifactReference"`, `"CreateArgumentGroup"`,
     /// `"CreateAssertedEvidence"`, `"CreateAssertedArtifactSupport"`,
     /// `"CreateAssertedArtifactContext"`, `"CreateDescription"`,
-    /// `"CreateImplementationConstraint"`, `"CreateNote"` and
-    /// `"CreateTaggedValue"`.
+    /// `"CreateImplementationConstraint"`, `"CreateNote"`,
+    /// `"CreateTaggedValue"`, `"SetName"`, `"SetGid"`, `"SetFlag"`,
+    /// `"SetAssertionDeclaration"`, `"SetContent"`, `"SetKey"`,
+    /// `"SetReferences"`, `"AddReference"`, `"RemoveReference"` and
+    /// `"ReorderElements"`. The two forms of one struct, such as
+    /// [`SetGid::new`] and [`SetGid::remove`], share its name.
     ///
     /// # Examples
     ///
@@ -354,9 +485,46 @@ impl Operation {
             Self::CreateImplementationConstraint(_) => "CreateImplementationConstraint",
             Self::CreateNote(_) => "CreateNote",
             Self::CreateTaggedValue(_) => "CreateTaggedValue",
+            Self::SetName(_) => "SetName",
+            Self::SetGid(_) => "SetGid",
+            Self::SetFlag(_) => "SetFlag",
+            Self::SetAssertionDeclaration(_) => "SetAssertionDeclaration",
+            Self::SetContent(_) => "SetContent",
+            Self::SetKey(_) => "SetKey",
+            Self::SetReferences(_) => "SetReferences",
+            Self::AddReference(_) => "AddReference",
+            Self::RemoveReference(_) => "RemoveReference",
+            Self::ReorderElements(_) => "ReorderElements",
         }
     }
 }
+
+/// Converts each operation struct that is not a create into its
+/// [`Operation`] variant of the same name.
+macro_rules! operation_from {
+    ($($name:ident),* $(,)?) => {
+        $(
+            impl From<$name> for Operation {
+                fn from(operation: $name) -> Self {
+                    Self::$name(operation)
+                }
+            }
+        )*
+    };
+}
+
+operation_from!(
+    SetName,
+    SetGid,
+    SetFlag,
+    SetAssertionDeclaration,
+    SetContent,
+    SetKey,
+    SetReferences,
+    AddReference,
+    RemoveReference,
+    ReorderElements,
+);
 
 impl From<CreateAssuranceCasePackage> for Operation {
     fn from(operation: CreateAssuranceCasePackage) -> Self {
@@ -436,9 +604,15 @@ impl From<CreateTaggedValue> for Operation {
 /// created, and the parent's name, declaration and the order of its existing
 /// children are as before (`semantic_compare` compares the order of the
 /// children both documents hold, so a new child is not a reordering). The
-/// parent is in [`operation`](Self::operation). So in this release, where
-/// every operation is a create, `changed_ids` and `deleted_ids` are always
-/// empty.
+/// parent is in [`operation`](Self::operation).
+///
+/// An operation that changes an element, such as [`SetName`] or
+/// [`ReorderElements`], creates nothing, and changes its element (for a
+/// reorder, the parent) exactly when its value differs from the one held;
+/// setting the value held changes nothing, writes nothing, and gives
+/// `changed_ids` empty. An element a reference names is not changed by the
+/// reference, and a root reorder changes no element. No operation of this
+/// release deletes one, so `deleted_ids` is always empty.
 ///
 /// A refused operation returns an [`EditError`] instead, and the document is
 /// unchanged; log it with [`EditError::code`]. To log the refused operation's
@@ -518,9 +692,28 @@ impl Mutation {
     ///
     /// They are the ids, in both before and after, for which
     /// `semantic_compare(before, after)` reports a difference of the element
-    /// itself, such as its kind, parent, name or child order. A create
-    /// does not change its parent, so this is empty for every operation in
-    /// this release.
+    /// itself, such as its kind, parent, name or child order. A create does
+    /// not change its parent, so it gives none. An operation that changes an
+    /// element gives that element, or none when it sets the value held; a
+    /// [`ReorderElements::new`] gives the parent, and a
+    /// [`ReorderElements::roots`] none.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, SetFlag};
+    /// use sacm::model::{Document, ElementId, Flag, LangString};
+    ///
+    /// let mut doc = Document::new();
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+    /// edit::apply(&mut doc, CreateClaim::new("p", LangString::new("C1")).with_id("c1"))?;
+    ///
+    /// let set = edit::apply(&mut doc, SetFlag::new("c1", Flag::IsAbstract, true))?;
+    /// assert_eq!(set.changed_ids(), [ElementId::from("c1")]);
+    /// let again = edit::apply(&mut doc, SetFlag::new("c1", Flag::IsAbstract, true))?;
+    /// assert!(again.changed_ids().is_empty());
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
     #[must_use]
     pub fn changed_ids(&self) -> &[ElementId] {
         &self.changed
@@ -530,8 +723,8 @@ impl Mutation {
     /// [pre-order](crate::model::Document::elements) before the operation.
     ///
     /// They are the ids `semantic_compare(before, after)` reports as only in
-    /// before. A create deletes nothing, so this is empty for every
-    /// operation in this release.
+    /// before. No operation of this release deletes an element, so this is
+    /// always empty.
     #[must_use]
     pub fn deleted_ids(&self) -> &[ElementId] {
         &self.deleted
@@ -603,7 +796,11 @@ pub enum EditError {
     },
     /// A reference end is given fewer ids than SACM requires
     /// (SACM-MULT-001): an asserted relationship with no source
-    /// (`source:ArgumentAsset[1..*]`, §11.13). Give at least `required` ids.
+    /// (`source:ArgumentAsset[1..*]`, §11.13), or, for an edit, with no
+    /// target (`target:ArgumentAsset[1]`), as [`SetReferences::clear`] of
+    /// the target or [`RemoveReference`] of the last source would leave it.
+    /// `given` is how many ids the end would hold. Give at least `required`
+    /// ids.
     ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentPackage, CreateAssertedInference, CreateClaim, EditError};
@@ -626,10 +823,41 @@ pub enum EditError {
     TooFewReferences {
         /// The end, by its XMI name, such as `source`.
         end: &'static str,
-        /// How many ids it was given.
+        /// How many ids it would hold.
         given: usize,
         /// How many it needs at least.
         required: usize,
+    },
+    /// A reference end is given more ids than SACM allows (SACM-MULT-001):
+    /// two ids on a single-valued end, such as `target`, `reasoning` or
+    /// `citedElement`, or an [`AddReference`] to one that holds an id
+    /// already. The same id twice is two ids. Give at most `allowed` ids, or
+    /// replace the one held with [`SetReferences`].
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, EditError, SetReferences};
+    /// use sacm::model::{Document, LangString, ReferenceEnd};
+    ///
+    /// let mut doc = Document::new();
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+    /// edit::apply(&mut doc, CreateClaim::new("p", LangString::new("C1")).with_id("c1"))?;
+    /// let two = SetReferences::new("c1", ReferenceEnd::CitedElement, ["c1", "c1"]);
+    /// let error = edit::apply(&mut doc, two).unwrap_err();
+    /// assert!(matches!(
+    ///     error,
+    ///     EditError::TooManyReferences { end: "citedElement", given: 2, allowed: 1, .. }
+    /// ));
+    /// assert_eq!(error.to_string(), "the citedElement is given 2 ids, and SACM allows at most 1");
+    /// # Ok::<(), EditError>(())
+    /// ```
+    #[non_exhaustive]
+    TooManyReferences {
+        /// The end, by its XMI name, such as `target`.
+        end: &'static str,
+        /// How many ids it would hold.
+        given: usize,
+        /// How many it holds at most.
+        allowed: usize,
     },
     /// A referenced id holds XML white space (space, TAB, LF or CR), so it is
     /// not an `NCName` and cannot be written as one id (SACM-ID-002): written
@@ -638,8 +866,10 @@ pub enum EditError {
     /// [`xmi::read`](crate::xmi::read) keeps an id as written and
     /// [`validation::validate`](crate::validation::validate) reports it
     /// (SACM23-VAL-020). The first such id is reported, in the order of
-    /// [`ReferenceNotFound`](Self::ReferenceNotFound). Give the referenced
-    /// element an `NCName` id in the file first.
+    /// [`ReferenceNotFound`](Self::ReferenceNotFound). [`SetReferences`]
+    /// and [`AddReference`] check only the ids the end does not hold
+    /// already. Give the referenced element an `NCName` id in the file
+    /// first.
     ///
     /// ```
     /// use sacm::edit::{self, CreateAssertedInference, EditError};
@@ -676,9 +906,11 @@ pub enum EditError {
     /// `value` names no element. The first such id is reported: the sources
     /// in order, then the target, the reasoning, the structure, the
     /// `referencedArtifactElement` ids in order and the group members in
-    /// order. Create
-    /// the referenced element first, or correct the id; ids are compared
-    /// exactly, case included.
+    /// order. [`SetReferences`] and [`AddReference`] check only the ids the
+    /// end does not hold already, in list order, so a dangling id read from
+    /// a file can be kept while the end is edited. Create the referenced
+    /// element first, or correct the id; ids are compared exactly, case
+    /// included.
     #[non_exhaustive]
     ReferenceNotFound {
         /// The end, by its XMI name, such as `target`.
@@ -695,8 +927,9 @@ pub enum EditError {
     /// wrongly typed reference (D-VAL-LAYER, ADR 0028). It is checked once
     /// every id is known to name an element
     /// ([`ReferenceNotFound`](Self::ReferenceNotFound)), in the same order,
-    /// and the first such id is reported. Reference an element of the end's
-    /// type instead.
+    /// and the first such id is reported. [`SetReferences`] and
+    /// [`AddReference`] check only the ids the end does not hold already.
+    /// Reference an element of the end's type instead.
     ///
     /// The narrower §11.15, §11.17 and §11.18 rules, that the ends of an
     /// `AssertedEvidence`, `AssertedArtifactSupport` or
@@ -740,6 +973,105 @@ pub enum EditError {
         /// `ArgumentPackage` or `ArgumentAsset`.
         expected: &'static str,
     },
+    /// The element to edit is not in the document (SACM-CMD-001): the
+    /// element of a set or reference operation, or the parent of a
+    /// [`ReorderElements::new`]. Ids are compared exactly, case included;
+    /// the `xmi:id` of a name, `content`, `key` or `value` names no element.
+    /// Correct the id.
+    ///
+    /// ```
+    /// use sacm::edit::{self, EditError, SetName};
+    /// use sacm::model::{Document, LangString};
+    ///
+    /// let mut doc = Document::new();
+    /// let error = edit::apply(&mut doc, SetName::new("c1", LangString::new("C1"))).unwrap_err();
+    /// assert!(matches!(error, EditError::ElementNotFound { .. }));
+    /// assert_eq!(error.to_string(), "the document has no element \"c1\" to edit");
+    /// ```
+    #[non_exhaustive]
+    ElementNotFound {
+        /// The element's id, as given.
+        element: ElementId,
+    },
+    /// The element's kind has no such feature (SACM-CMD-008): a `name` on a
+    /// `UtilityElement` (§8.6 gives names to `ModelElement`s), `isCounter`
+    /// on a kind that is no `AssertedRelationship` (§11.13), an
+    /// `assertionDeclaration` on one that is no Assertion (§11.10), a
+    /// `content` on one that is no `UtilityElement` (§8.7), a `key` on one
+    /// that is no `TaggedValue` (§8.12), or a reference end the kind does
+    /// not own, such as a `source` on a Claim. Every element has a `gid`,
+    /// `isCitation`, `isAbstract`, `citedElement` and `abstractForm`, so
+    /// those never fail here. Edit an element whose kind has the feature.
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, EditError, SetFlag};
+    /// use sacm::model::{Document, ElementKind, Flag, LangString};
+    ///
+    /// let mut doc = Document::new();
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+    /// edit::apply(&mut doc, CreateClaim::new("p", LangString::new("C1")).with_id("c1"))?;
+    /// let error = edit::apply(&mut doc, SetFlag::new("c1", Flag::IsCounter, true)).unwrap_err();
+    /// assert!(matches!(
+    ///     error,
+    ///     EditError::FeatureNotApplicable { kind: ElementKind::Claim, feature: "isCounter", .. }
+    /// ));
+    /// assert_eq!(error.to_string(), "the Claim \"c1\" has no isCounter");
+    /// # Ok::<(), EditError>(())
+    /// ```
+    #[non_exhaustive]
+    FeatureNotApplicable {
+        /// The element's id.
+        element: ElementId,
+        /// The element's kind.
+        kind: ElementKind,
+        /// The feature, by its XMI name: `name`, `isCounter`,
+        /// `assertionDeclaration`, `content`, `key`, or the name of a
+        /// reference end, such as `source`.
+        feature: &'static str,
+    },
+    /// [`RemoveReference`] names an id the end does not hold (SACM-CMD-001).
+    /// Ids are compared exactly, case included. Remove an id the end holds.
+    #[non_exhaustive]
+    ReferenceNotHeld {
+        /// The end, by its XMI name, such as `source`.
+        end: &'static str,
+        /// The id, as given.
+        id: ElementId,
+    },
+    /// [`ReorderElements`] names an id that is not a direct child of the
+    /// parent, or, for [`ReorderElements::roots`], not a root
+    /// (SACM-CMD-001): a grandchild, another element's child, the parent
+    /// itself, the id of a name, or an id the document does not hold. The
+    /// first such id is reported, in list order. Name only the parent's own
+    /// children, or only roots.
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, EditError, ReorderElements};
+    /// use sacm::model::{Document, LangString};
+    ///
+    /// let mut doc = Document::new();
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+    /// edit::apply(&mut doc, CreateClaim::new("p", LangString::new("C1")).with_id("c1"))?;
+    /// let error = edit::apply(&mut doc, ReorderElements::roots(["c1"])).unwrap_err();
+    /// assert!(matches!(error, EditError::ChildNotFound { parent: None, .. }));
+    /// assert_eq!(error.to_string(), "the document has no root \"c1\"");
+    /// # Ok::<(), EditError>(())
+    /// ```
+    #[non_exhaustive]
+    ChildNotFound {
+        /// The parent's id, or `None` for the roots.
+        parent: Option<ElementId>,
+        /// The id, as given.
+        child: ElementId,
+    },
+    /// [`ReorderElements`] does not give one order (SACM-CMD-009): its list
+    /// is empty, or names an element more than once, the first such id in
+    /// list order. Name each child, or each root, to move exactly once.
+    #[non_exhaustive]
+    InvalidOrder {
+        /// The first id named more than once, or `None` for an empty list.
+        repeated: Option<ElementId>,
+    },
 }
 
 impl EditError {
@@ -748,21 +1080,33 @@ impl EditError {
     /// [`InvalidParent`](Self::InvalidParent), SACM-ID-002 for
     /// [`InvalidId`](Self::InvalidId), SACM-CMD-004 for
     /// [`DuplicateId`](Self::DuplicateId), SACM-MULT-001 for
-    /// [`TooFewReferences`](Self::TooFewReferences), SACM-ID-002 for
+    /// [`TooFewReferences`](Self::TooFewReferences) and
+    /// [`TooManyReferences`](Self::TooManyReferences), SACM-ID-002 for
     /// [`InvalidReference`](Self::InvalidReference), SACM-CMD-001 for
-    /// [`ReferenceNotFound`](Self::ReferenceNotFound) and SACM-REF-002 for
-    /// [`WrongReferenceType`](Self::WrongReferenceType).
+    /// [`ReferenceNotFound`](Self::ReferenceNotFound), SACM-REF-002 for
+    /// [`WrongReferenceType`](Self::WrongReferenceType), SACM-CMD-001 for
+    /// [`ElementNotFound`](Self::ElementNotFound),
+    /// [`ReferenceNotHeld`](Self::ReferenceNotHeld) and
+    /// [`ChildNotFound`](Self::ChildNotFound), SACM-CMD-008 for
+    /// [`FeatureNotApplicable`](Self::FeatureNotApplicable) and SACM-CMD-009
+    /// for [`InvalidOrder`](Self::InvalidOrder).
     #[must_use]
     pub fn code(&self) -> Code {
         match self {
-            Self::ParentNotFound { .. } | Self::ReferenceNotFound { .. } => {
-                Code::CMD_TARGET_NOT_FOUND
-            }
+            Self::ParentNotFound { .. }
+            | Self::ReferenceNotFound { .. }
+            | Self::ElementNotFound { .. }
+            | Self::ReferenceNotHeld { .. }
+            | Self::ChildNotFound { .. } => Code::CMD_TARGET_NOT_FOUND,
             Self::InvalidParent { .. } => Code::CMD_INVALID_PARENT,
             Self::InvalidId { .. } | Self::InvalidReference { .. } => Code::ID_INVALID,
             Self::DuplicateId { .. } => Code::CMD_DUPLICATE_ID,
-            Self::TooFewReferences { .. } => Code::MULTIPLICITY_VIOLATION,
+            Self::TooFewReferences { .. } | Self::TooManyReferences { .. } => {
+                Code::MULTIPLICITY_VIOLATION
+            }
             Self::WrongReferenceType { .. } => Code::REF_WRONG_TYPE,
+            Self::FeatureNotApplicable { .. } => Code::CMD_FEATURE_NOT_APPLICABLE,
+            Self::InvalidOrder { .. } => Code::CMD_INVALID_ORDER,
         }
     }
 }
@@ -800,6 +1144,48 @@ impl fmt::Display for EditError {
             } => write!(
                 f,
                 "the {end} is given {given} ids, and SACM requires at least {required}"
+            ),
+            Self::TooManyReferences {
+                end,
+                given,
+                allowed,
+            } => write!(
+                f,
+                "the {end} is given {given} ids, and SACM allows at most {allowed}"
+            ),
+            Self::ElementNotFound { element } => write!(
+                f,
+                "the document has no element {:?} to edit",
+                element.as_str()
+            ),
+            Self::FeatureNotApplicable {
+                element,
+                kind,
+                feature,
+            } => write!(f, "the {kind} {:?} has no {feature}", element.as_str()),
+            Self::ReferenceNotHeld { end, id } => {
+                write!(f, "the {end} holds no id {:?} to remove", id.as_str())
+            }
+            Self::ChildNotFound {
+                parent: Some(parent),
+                child,
+            } => write!(
+                f,
+                "the element {:?} has no child {:?}",
+                parent.as_str(),
+                child.as_str()
+            ),
+            Self::ChildNotFound {
+                parent: None,
+                child,
+            } => write!(f, "the document has no root {:?}", child.as_str()),
+            Self::InvalidOrder { repeated: None } => f.write_str("the new order names no element"),
+            Self::InvalidOrder {
+                repeated: Some(repeated),
+            } => write!(
+                f,
+                "the new order names {:?} more than once",
+                repeated.as_str()
             ),
             Self::InvalidReference { end, id } => write!(
                 f,

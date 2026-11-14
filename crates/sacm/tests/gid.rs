@@ -11,9 +11,9 @@
 //! as `Difference::Gid`, after `Parent`.
 //!
 //! Not checked here: that a character XML 1.0 cannot represent in a gid fails
-//! the write with `WriteAttribute::Gid`. No public API sets a gid (LIB-EDIT-008
-//! will), and an XML input cannot hold such a character, so no test document
-//! can carry one; `WriteAttribute::Gid`'s `Display` is checked instead.
+//! the write with `WriteAttribute::Gid`. An XML input cannot hold such a
+//! character, so only an edit can set one: that test is LIB-EDIT-008's, in
+//! `set_operations.rs`. `WriteAttribute::Gid`'s `Display` is checked here.
 //!
 //! Expected locations are marked in the input with [`MARK`] (U+2038), which
 //! the test removes before reading.

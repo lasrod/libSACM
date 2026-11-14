@@ -200,7 +200,8 @@ impl CreateArgumentPackage {
 ///
 /// Its `assertionDeclaration` is
 /// [`Asserted`](crate::model::AssertionDeclaration::Asserted), the SACM
-/// default (§11.10); no operation changes it yet. Apply it with
+/// default (§11.10); [`SetAssertionDeclaration`](super::SetAssertionDeclaration)
+/// changes it. Apply it with
 /// [`edit::apply`](super::apply). Without [`with_id`](Self::with_id), the id
 /// is generated: `claim_<n>`.
 ///

@@ -49,7 +49,12 @@ Read, edit, validate and write assurance cases in the
   edit changes nothing, and an edit refuses a reference that names no element or an
   element its end's declared type does not admit. The stricter §11.15, §11.17 and §11.18
   rules, that evidence and artifact relationships link ArtifactReferences, are left to
-  `sacm::validation::validate`.
+  `sacm::validation::validate`. It also changes existing elements of every kind: their
+  names, `gid`s, flags and `assertionDeclaration`s (`sacm::edit::SetName` and the
+  like), the `content` and `key` of descriptions, notes and tagged values
+  (`sacm::edit::SetContent`, `sacm::edit::SetKey`), every reference end, within its
+  bounds (`sacm::edit::SetReferences`, `AddReference`, `RemoveReference`), and the
+  order of an element's children or of the roots (`sacm::edit::ReorderElements`).
 - `sacm::compare::semantic_compare` lists every difference in SACM content between two
   documents.
 

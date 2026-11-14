@@ -45,7 +45,8 @@ use super::{
 /// `AssertedContext`, `AssertedArtifactSupport` and
 /// `AssertedArtifactContext`) in them, and the descriptions, implementation
 /// constraints, notes and tagged values of each of these.
-/// [`edit::apply`](crate::edit::apply) creates the same fifteen kinds.
+/// [`edit::apply`](crate::edit::apply) creates the same fifteen kinds, and
+/// edits the features and the order of elements of every kind.
 /// Tests build documents with other kinds through the `test-support`
 /// feature's `Document::insert`. [`Document::new`] is empty.
 ///
@@ -56,11 +57,11 @@ use super::{
 /// included (D-ORDER, ADR 0027). A document may hold a reference whose id
 /// names no element, as a file can (ADR 0026);
 /// [`validation::validate`](crate::validation::validate) reports it
-/// (SACM-REF-001), no edit makes one, and no id an edit generates is one a
-/// reference names. Likewise a document may hold a reference to an element
-/// of a kind its end does not admit, such as a `metaClaim` naming an
-/// `ArgumentReasoning`; `validate` reports it (SACM-REF-002), and no edit
-/// makes one.
+/// (SACM-REF-001), no edit makes one (an edit keeps one the end already
+/// holds, ADR 0029), and no id an edit generates is one a reference names.
+/// Likewise a document may hold a reference to an element of a kind its end
+/// does not admit, such as a `metaClaim` naming an `ArgumentReasoning`;
+/// `validate` reports it (SACM-REF-002), and no edit makes one.
 ///
 /// Cloning a document copies all of it, including the counters that generated
 /// ids continue from; the copy is independent of the original. Cloning,
@@ -83,9 +84,11 @@ use super::{
 ///
 /// Not compared: the per-kind counters [`edit::apply`](crate::edit::apply)
 /// uses to generate ids such as `claim_1`. They are not SACM content, and XMI
-/// does not carry them. Today two equal documents always generate the same
-/// next id; once elements can be deleted they may not, because one may have
-/// generated and deleted an id the other never used.
+/// does not carry them. So two equal documents may generate different next
+/// ids: an edit can free an id, such as the `xmi:id` of a `value` that
+/// [`SetContent`](crate::edit::SetContent) drops, and a document whose
+/// counter has passed it generates above it, while one whose counter has
+/// not generates it.
 ///
 /// # Examples
 ///
@@ -527,9 +530,9 @@ impl Document {
     /// Sets the `assertionDeclaration` (SACM 2.3 §11.10) of the Assertion
     /// `id`, replacing its previous value.
     ///
-    /// **Not part of the stable API.** A seam of the `test-support` feature,
-    /// until the edit operations exist. It may change or disappear in any
-    /// release.
+    /// **Not part of the stable API.** A seam of the `test-support` feature;
+    /// use [`SetAssertionDeclaration`](crate::edit::SetAssertionDeclaration)
+    /// instead. It may change or disappear in any release.
     ///
     /// # Errors
     ///
@@ -771,6 +774,67 @@ impl Document {
         }
         *self.nodes[node].text_mut(role) = Some(text);
         Ok(())
+    }
+
+    /// Removes the `role` of the element `owner`, and frees its ids (ADR
+    /// 0029). Changes nothing when the document has no element `owner`.
+    pub(crate) fn remove_text(&mut self, owner: &ElementId, role: TextRole) {
+        let Some(&node) = self.index.get(owner) else {
+            return;
+        };
+        if let Some(old) = self.nodes[node].text_mut(role).take() {
+            for id in old.ids() {
+                self.release(id, |used| used.owner = None);
+            }
+        }
+    }
+
+    /// Replaces the name of the element `id` with `name`, keeping the name's
+    /// `xmi:id` (ADR 0029). The caller has checked that the element is a
+    /// `ModelElement`; changes nothing when the document has no element
+    /// `id`.
+    pub(crate) fn replace_name(&mut self, id: &ElementId, name: LangString) {
+        if let Some(&node) = self.index.get(id) {
+            debug_assert!(
+                self.nodes[node].kind.is_a(AbstractClass::ModelElement),
+                "only a ModelElement has a name"
+            );
+            self.nodes[node].name = Some(name);
+        }
+    }
+
+    /// Puts the children of `parent`, or the roots when `None`, that `order`
+    /// names back into the positions they occupy, in the order `order`
+    /// gives; every other child keeps its position (ADR 0029). Returns
+    /// whether the order changed.
+    ///
+    /// The caller has checked that `order` names each of its ids once, and
+    /// only children of `parent` (or roots). Changes nothing when the
+    /// document has no element `parent`.
+    pub(crate) fn reorder(&mut self, parent: Option<&ElementId>, order: &[ElementId]) -> bool {
+        let handles: Vec<usize> = order
+            .iter()
+            .filter_map(|id| self.index.get(id).copied())
+            .collect();
+        let held = match parent {
+            None => &mut self.roots,
+            Some(parent) => match self.index.get(parent) {
+                Some(&parent) => &mut self.nodes[parent].children,
+                None => return false,
+            },
+        };
+        let named: BTreeSet<usize> = handles.iter().copied().collect();
+        let mut next = handles.into_iter();
+        let mut changed = false;
+        for slot in held.iter_mut() {
+            if named.contains(slot) {
+                if let Some(handle) = next.next() {
+                    changed |= *slot != handle;
+                    *slot = handle;
+                }
+            }
+        }
+        changed
     }
 
     /// Whether `id` is in use in the document's id space: by an element, or
@@ -1101,9 +1165,10 @@ impl<'a> SacmElement<'a> {
     /// name has it, and [`edit::apply`](crate::edit::apply) neither generates
     /// it nor accepts it as a new element's id. It identifies no element, so
     /// [`Document::get`] does not find it. [`xmi::write`](crate::xmi::write)
-    /// writes it as the first attribute of `name`. No edit sets it yet, so
-    /// only [`xmi::read`](crate::xmi::read) gives one, and it is `None`
-    /// whenever [`name`](Self::name) is.
+    /// writes it as the first attribute of `name`. Only
+    /// [`xmi::read`](crate::xmi::read) gives one, and it is `None` whenever
+    /// [`name`](Self::name) is; a name replaced with
+    /// [`SetName`](crate::edit::SetName) keeps it (ADR 0029).
     ///
     /// ```
     /// use sacm::xmi::{self, ReadOptions};
@@ -1133,8 +1198,8 @@ impl<'a> SacmElement<'a> {
     /// from sharing one, though §8.2 requires a gid to be unique:
     /// [`validation::validate`](crate::validation::validate) reports each
     /// non-empty value two or more elements hold as a SACM-ID-003 Error
-    /// (SACM23-VAL-002). No edit sets it yet, so only
-    /// [`xmi::read`](crate::xmi::read) gives one.
+    /// (SACM23-VAL-002). [`SetGid`](crate::edit::SetGid) sets or removes it,
+    /// exactly as given, and does not refuse a duplicate.
     ///
     /// [ADR 0012]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0012-lang-string-absent-and-empty.md
     /// [ADR 0025]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0025-utility-elements-and-gid.md
@@ -1173,8 +1238,9 @@ impl<'a> SacmElement<'a> {
     /// present without the other, and nothing repairs a file on read. §8.2
     /// requires `isCitation` to be true when there is a cited element;
     /// [`validation::validate`](crate::validation::validate) reports a cited
-    /// element without it as SACM-CITE-001 (SACM23-VAL-007). No edit sets
-    /// the flag yet, so only [`xmi::read`](crate::xmi::read) gives `true`.
+    /// element without it as SACM-CITE-001 (SACM23-VAL-007).
+    /// [`SetFlag`](crate::edit::SetFlag) sets the flag, independently of the
+    /// cited element (ADR 0029).
     ///
     /// ```
     /// use sacm::xmi::{self, ReadOptions};
@@ -1210,9 +1276,10 @@ impl<'a> SacmElement<'a> {
     /// up with [`Document::get`]. The id may name no element of the document,
     /// such as an id absent from the file or the id of a `name`; the document
     /// keeps it, and [`validation::validate`](crate::validation::validate)
-    /// reports it as SACM-REF-001 (SACM23-VAL-003). No edit sets it yet
-    /// (LIB-EDIT-009); only [`xmi::read`](crate::xmi::read) gives one. See
-    /// [`is_citation`](Self::is_citation) for an example.
+    /// reports it as SACM-REF-001 (SACM23-VAL-003).
+    /// [`SetReferences`](crate::edit::SetReferences) sets it to an id that
+    /// names an element (ADR 0029). See [`is_citation`](Self::is_citation)
+    /// for an example.
     #[must_use]
     pub fn cited_element(self) -> Option<&'a ElementId> {
         self.references(ReferenceEnd::CitedElement).first()
@@ -1259,9 +1326,11 @@ impl<'a> SacmElement<'a> {
     /// asks that the element itself be concrete, and that the target be
     /// abstract and of the same kind;
     /// [`validation::validate`](crate::validation::validate) reports each
-    /// case that is not as SACM-ABS-001 (SACM23-VAL-008). No edit sets it
-    /// yet (LIB-EDIT-009); only [`xmi::read`](crate::xmi::read) gives one.
-    /// See [`is_abstract`](Self::is_abstract) for an example.
+    /// case that is not as SACM-ABS-001 (SACM23-VAL-008).
+    /// [`SetReferences`](crate::edit::SetReferences) sets it, and
+    /// [`SetFlag`](crate::edit::SetFlag) sets `isAbstract`, each
+    /// independently (ADR 0029). See [`is_abstract`](Self::is_abstract) for
+    /// an example.
     #[must_use]
     pub fn abstract_form(self) -> Option<&'a ElementId> {
         self.references(ReferenceEnd::AbstractForm).first()
@@ -1280,8 +1349,9 @@ impl<'a> SacmElement<'a> {
     /// finding of [`validation::validate`](crate::validation::validate), each
     /// that names an element that is no Claim is one SACM-REF-002 finding
     /// (SACM23-VAL-004), and each repeated id is one SACM-MULT-001 Warning
-    /// (SACM23-VAL-022). No edit sets it yet (LIB-EDIT-009); only
-    /// [`xmi::read`](crate::xmi::read) gives one.
+    /// (SACM23-VAL-022). [`SetReferences`](crate::edit::SetReferences),
+    /// [`AddReference`](crate::edit::AddReference) and
+    /// [`RemoveReference`](crate::edit::RemoveReference) edit it.
     ///
     /// ```
     /// use sacm::xmi::{self, ReadOptions};
@@ -1627,8 +1697,10 @@ impl<'a> SacmElement<'a> {
     /// 2.5.1 §7.8.3). Like a name's id ([`name_id`](Self::name_id)), it is
     /// kept with the owner, shares the document's id space, identifies no
     /// element, and is written back as the first attribute of `content`
-    /// (ADR 0024, ADR 0025). No edit sets it, so only
-    /// [`xmi::read`](crate::xmi::read) gives one.
+    /// (ADR 0024, ADR 0025). Only [`xmi::read`](crate::xmi::read) gives
+    /// one; a `content` replaced with [`SetContent`](crate::edit::SetContent)
+    /// keeps it, and each value keeps the id of the value at its position
+    /// (ADR 0029).
     ///
     /// ```
     /// use sacm::xmi::{self, ReadOptions};
@@ -1964,6 +2036,20 @@ impl Text {
             id: None,
             value_ids,
         }
+    }
+
+    /// `value`, with the ids of `held` kept by position (ADR 0029): the role
+    /// element's id, and the id of each value of `held` at a position
+    /// `value` also has. With no `held`, it has no ids.
+    pub(crate) fn keeping_ids(value: MultiLangString, held: Option<&Text>) -> Self {
+        let mut text = Self::new(value);
+        if let Some(held) = held {
+            text.id.clone_from(&held.id);
+            for (kept, old) in text.value_ids.iter_mut().zip(&held.value_ids) {
+                kept.clone_from(old);
+            }
+        }
+        text
     }
 
     /// Sets the `xmi:id` of the role element.

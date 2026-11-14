@@ -1,5 +1,7 @@
 //! Tests for atomic edits and edit results (LIB-EDIT-002, LIB-EDIT-003;
-//! ADR 0019 and its amendment 1; ADR 0020).
+//! ADR 0019 and its amendments 1 and 2; ADR 0020; ADR 0029), and the
+//! properties the set operations of LIB-EDIT-008, LIB-EDIT-009, LIB-EDIT-010
+//! and LIB-EDIT-012 must keep over the same set.
 //!
 //! - LIB-EDIT-002: every `edit::apply` either succeeds and leaves the
 //!   document structurally valid, or refuses and leaves it `==` to a clone
@@ -18,21 +20,38 @@
 //!   later operations meet the elements and counters earlier ones left.
 //!
 //! The starting documents are: empty; built with `edit::apply` only; read
-//! from each readable XMI fixture; and built with the `test-support`
+//! from each readable XMI fixture; built with the `test-support`
 //! `Document::insert`, with ArtifactPackage parents, interfaces and bindings,
-//! Notes, missing names, a set declaration and an id that is not an `NCName`.
+//! Notes, missing names, a set declaration, an id that is not an `NCName`, a
+//! gid and references; and [`EDIT_START`], read from XMI, with every
+//! argumentation kind, ids on a name, a `content` and a `key` and their
+//! values, a dangling id, wrongly typed ids and a relationship without a
+//! source.
 //!
 //! The operations are, for every element of the starting document and for an
-//! id it does not hold ("nowhere"), one create of each kind under it with a
-//! generated id, a fresh caller id, an id that is not an `NCName` and the
-//! parent's own (duplicate) id; and both root creates with each id form. So
-//! the set holds legal operations, and illegal ones with an unknown parent,
-//! an illegal parent kind (a Claim under an AssuranceCasePackage, say), an
-//! invalid id and a duplicate id.
+//! id it does not hold ("nowhere"):
+//! - the creates: one of each kind under it with a generated id, a fresh
+//!   caller id, an id that is not an `NCName` and the parent's own
+//!   (duplicate) id; and both root creates with each id form;
+//! - the attribute edits (LIB-EDIT-008): a name, the current name, a gid, the
+//!   current gid, gid removal, each flag true and false, a declaration and the
+//!   current declaration;
+//! - the content edits (LIB-EDIT-012): a two-value content, the current
+//!   content, content removal, a key and the current key;
+//! - the reference edits (LIB-EDIT-009), for each of the nine ends: `[]`, a
+//!   missing id, `a b`, a well-typed id, two ids, a wrongly typed id, the ids
+//!   held and the id of a name, `content`, `key` or `value`; an add of each of
+//!   those and of a held id; a remove of a held id, of a well-typed id and of
+//!   a missing one;
+//! - the reorders (LIB-EDIT-010): of its children reversed, in their current
+//!   order, empty, with a repeated child, a grandchild, a missing id and the
+//!   id of a name; and the same for the roots.
+//!
+//! So the set holds legal operations and illegal ones of every check.
 //!
 //! # Structural validity
 //!
-//! [`assert_structurally_valid`] checks the four properties of LIB-EDIT-002
+//! [`assert_structurally_valid`] checks the properties of LIB-EDIT-002
 //! through the public views only:
 //! - S1: ids are unique, `get` round-trips each, and
 //!   `elements().count() == element_count()`;
@@ -42,7 +61,23 @@
 //!   parent's kind, by this file's own containment table (§8.6, §9.2, §10.4,
 //!   §11.4, §12.2, §12.6; ADR 0014), not the crate's;
 //! - S4: every Assertion (a Claim or one of the five asserted relationships)
-//!   has a declaration.
+//!   has a declaration;
+//! - S7: every `xmi:id` in the document, of an element, a name, a `content`,
+//!   a `key` or a `value`, is unique.
+//!
+//! [`assert_edit_kept_structure`] checks, for every successful operation,
+//! what it must keep of the document before it:
+//! - S5: every `ModelElement` that had a name still has one, and every
+//!   `TaggedValue` that had a key still has one;
+//! - S6: every (owner, end, id) that is dangling or wrongly typed after the
+//!   operation was so before (D-VAL-LAYER);
+//! - S8: no asserted relationship loses its last source or its target.
+//!
+//! What each operation must answer is written in [`expected_answer`] from
+//! this file's own tables (which kinds have a name, a declaration,
+//! `isCounter`, a `content` and a `key`; each end's owners, declared type and
+//! bounds) and the check orders of ADR 0019 and ADR 0029, not from the
+//! crate's tables.
 //!
 //! "The next generated ids" of a document are observed on a clone: create one
 //! element of each kind there with a generated id and see which ids come out
@@ -58,12 +93,14 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Debug;
 use std::path::Path;
+use std::sync::OnceLock;
 
 use sacm::compare::{Difference, semantic_compare};
 use sacm::diagnostic::Code;
 use sacm::edit::{
-    self, CreateArgumentPackage, CreateAssuranceCasePackage, CreateClaim, EditError, Mutation,
-    Operation,
+    self, AddReference, CreateArgumentPackage, CreateAssuranceCasePackage, CreateClaim, EditError,
+    Mutation, Operation, RemoveReference, ReorderElements, SetAssertionDeclaration, SetContent,
+    SetFlag, SetGid, SetKey, SetName, SetReferences,
 };
 use sacm::model::ElementKind::{
     Activity, ArgumentGroup, ArgumentPackage, ArgumentPackageBinding, ArgumentPackageInterface,
@@ -76,12 +113,17 @@ use sacm::model::ElementKind::{
     TerminologyPackageBinding, TerminologyPackageInterface,
 };
 use sacm::model::{
-    AssertionDeclaration, Document, ElementId, ElementKind, LangString, SacmElement,
+    AssertionDeclaration, Document, ElementId, ElementKind, Flag, LangString, MultiLangString,
+    ReferenceEnd, SacmElement,
 };
 use sacm::xmi::{self, ReadOptions};
 
 const EDIT_002: &str = "LIB-EDIT-002";
 const EDIT_003: &str = "LIB-EDIT-003";
+const EDIT_008: &str = "LIB-EDIT-008";
+const EDIT_009: &str = "LIB-EDIT-009";
+const EDIT_010: &str = "LIB-EDIT-010";
+const EDIT_012: &str = "LIB-EDIT-012";
 
 /// The directory of the XMI fixtures.
 const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/xmi");
@@ -105,6 +147,53 @@ const NOWHERE: &str = "nowhere";
 
 /// The caller id that is not an `NCName`: it starts with a digit.
 const NOT_AN_NCNAME: &str = "1bad";
+
+/// The referenced id that holds white space. `built_with_insert` has an
+/// element with it.
+const WITH_SPACE: &str = "a b";
+
+/// A starting document read from XMI, for the set operations: every
+/// argumentation kind; the root's gid and its name's `xmi:id`; a Description
+/// whose `content` and values have ids and a `TaggedValue` whose `key` and value
+/// have them; a Claim without a name (`c3`) and a grandchild of the root; the
+/// dangling id `x` in `c1`'s `metaClaim` and `i1`'s `source`; the wrongly
+/// typed `structure` `c2`, `referencedArtifactElement` `n1` and group member
+/// `case`; and the `AssertedArtifactContext` `ac1`, read without a source.
+const EDIT_START: &str = r#"<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="case" gid="g-case">
+  <name xmi:id="case_name" lang="en" content="Case"/>
+  <argumentPackage xmi:id="p">
+    <name content="P"/>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c1" isCitation="true" citedElement="c2" metaClaim="m1 x">
+      <name content="C1"/>
+      <description xmi:id="d1">
+        <content xmi:id="d1_content">
+          <value xmi:id="d1_en" lang="en" content="One"/>
+          <value xmi:id="d1_sv" lang="sv" content="Ett"/>
+        </content>
+      </description>
+      <note xmi:id="n1"/>
+      <taggedValue xmi:id="t1">
+        <key xmi:id="t1_key"><value xmi:id="t1_key_en" lang="en" content="ASIL"/></key>
+        <content><value content="D"/></content>
+      </taggedValue>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c2" assertionDeclaration="needsSupport"><name content="C2"/></argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="m1"><name content="M1"/></argumentElement>
+    <argumentElement xmi:type="sacm:ArgumentReasoning" xmi:id="why" structure="c2"><name content="Why"/></argumentElement>
+    <argumentElement xmi:type="sacm:ArtifactReference" xmi:id="r1" referencedArtifactElement="c1 n1"><name content="R1"/></argumentElement>
+    <argumentElement xmi:type="sacm:ArgumentGroup" xmi:id="g1" argumentElement="c1 case"><name content="G1"/></argumentElement>
+    <argumentElement xmi:type="sacm:AssertedInference" xmi:id="i1" source="c2 x" target="c1" reasoning="why"><name content="I1"/></argumentElement>
+    <argumentElement xmi:type="sacm:AssertedEvidence" xmi:id="e1" isCounter="true" source="r1" target="c1"><name content="E1"/></argumentElement>
+    <argumentElement xmi:type="sacm:AssertedContext" xmi:id="ctx1" source="r1" target="c2"><name content="Ctx1"/></argumentElement>
+    <argumentElement xmi:type="sacm:AssertedArtifactSupport" xmi:id="s1" source="r1" target="r1"><name content="S1"/></argumentElement>
+    <argumentElement xmi:type="sacm:AssertedArtifactContext" xmi:id="ac1" target="c1"><name content="Ac1"/></argumentElement>
+  </argumentPackage>
+  <argumentPackage xmi:id="q">
+    <name content="Q"/>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c3"/>
+  </argumentPackage>
+</sacm:AssuranceCasePackage>
+"#;
 
 // ---------------------------------------------------------------------------
 // The containment table, written from the standard
@@ -150,6 +239,49 @@ const MODEL_ELEMENTS: [ElementKind; 34] = [
     Technique,
     Resource,
     Property,
+];
+
+/// Every kind: the 34 `ModelElement`s and the four `UtilityElement`s, all
+/// `SACMElement`s (§8.2).
+const ALL_KINDS: [ElementKind; 38] = [
+    AssuranceCasePackage,
+    AssuranceCasePackageInterface,
+    AssuranceCasePackageBinding,
+    TerminologyPackage,
+    TerminologyPackageInterface,
+    TerminologyPackageBinding,
+    TerminologyGroup,
+    Category,
+    Expression,
+    Term,
+    ArgumentPackage,
+    ArgumentPackageInterface,
+    ArgumentPackageBinding,
+    ArgumentGroup,
+    Claim,
+    ArgumentReasoning,
+    ArtifactReference,
+    AssertedInference,
+    AssertedEvidence,
+    AssertedContext,
+    AssertedArtifactSupport,
+    AssertedArtifactContext,
+    ArtifactPackage,
+    ArtifactPackageInterface,
+    ArtifactPackageBinding,
+    ArtifactGroup,
+    Artifact,
+    ArtifactAssetRelationship,
+    Activity,
+    Event,
+    Participant,
+    Technique,
+    Resource,
+    Property,
+    Description,
+    ImplementationConstraint,
+    Note,
+    TaggedValue,
 ];
 
 /// AssuranceCasePackage, its interface and its binding (§9.2-§9.4).
@@ -239,7 +371,7 @@ const PACKAGE_KINDS: [ElementKind; 12] = [
 
 /// The six `Assertion` kinds (§11.10 (Claim §11.11, `AssertedRelationship`
 /// §11.13)): a Claim and the five asserted relationships. Each has an
-/// `assertionDeclaration` (§11.10, `[1]`).
+/// `assertionDeclaration` (§11.10, `[1]`) and a `metaClaim` end.
 const ASSERTIONS: [ElementKind; 6] = [
     Claim,
     AssertedInference,
@@ -249,9 +381,38 @@ const ASSERTIONS: [ElementKind; 6] = [
     AssertedArtifactContext,
 ];
 
+/// The five `AssertedRelationship` kinds (§11.13-§11.18): what has
+/// `isCounter`, `reasoning`, `source` and `target`.
+const RELATIONSHIPS: [ElementKind; 5] = [
+    AssertedInference,
+    AssertedEvidence,
+    AssertedContext,
+    AssertedArtifactSupport,
+    AssertedArtifactContext,
+];
+
+/// The eight `ArgumentAsset` kinds (§11.7: `ArtifactReference`,
+/// `ArgumentReasoning` and the `Assertion`s): what a `source` and a `target`
+/// admit.
+const ARGUMENT_ASSETS: [ElementKind; 8] = [
+    Claim,
+    ArgumentReasoning,
+    ArtifactReference,
+    AssertedInference,
+    AssertedEvidence,
+    AssertedContext,
+    AssertedArtifactSupport,
+    AssertedArtifactContext,
+];
+
 /// Every legal (parent kind, child kind) pair, from the 12 element-typed
-/// composite roles.
-fn containment_table() -> BTreeSet<(ElementKind, ElementKind)> {
+/// composite roles. Built once: the set asks it for every application.
+fn containment_table() -> &'static BTreeSet<(ElementKind, ElementKind)> {
+    static TABLE: OnceLock<BTreeSet<(ElementKind, ElementKind)>> = OnceLock::new();
+    TABLE.get_or_init(build_containment_table)
+}
+
+fn build_containment_table() -> BTreeSet<(ElementKind, ElementKind)> {
     let mut table = BTreeSet::new();
     let mut admit = |parents: &[ElementKind], children: &[ElementKind]| {
         for &parent in parents {
@@ -287,10 +448,138 @@ fn containment_table() -> BTreeSet<(ElementKind, ElementKind)> {
 }
 
 // ---------------------------------------------------------------------------
+// The reference ends, written from the standard
+// ---------------------------------------------------------------------------
+
+/// One reference end: the kinds that own it, the kinds its declared type
+/// admits, and its bounds (`upper` `None` for `*`).
+struct EndRule {
+    end: ReferenceEnd,
+    owners: &'static [ElementKind],
+    declared: &'static [ElementKind],
+    lower: usize,
+    upper: Option<usize>,
+}
+
+/// The nine ends (ptc/22-03-13; formal/23-05-08 §8.2, §11.2, §11.9, §11.10,
+/// §11.12, §11.13).
+static END_RULES: [EndRule; 9] = [
+    // §8.2 `citedElement:SACMElement[0..1]`.
+    EndRule {
+        end: ReferenceEnd::CitedElement,
+        owners: &ALL_KINDS,
+        declared: &ALL_KINDS,
+        lower: 0,
+        upper: Some(1),
+    },
+    // §8.2 `abstractForm:SACMElement[0..1]`.
+    EndRule {
+        end: ReferenceEnd::AbstractForm,
+        owners: &ALL_KINDS,
+        declared: &ALL_KINDS,
+        lower: 0,
+        upper: Some(1),
+    },
+    // §11.10 `metaClaim:Claim[0..*]`.
+    EndRule {
+        end: ReferenceEnd::MetaClaim,
+        owners: &ASSERTIONS,
+        declared: &[Claim],
+        lower: 0,
+        upper: None,
+    },
+    // §11.13 `reasoning:ArgumentReasoning[0..1]`.
+    EndRule {
+        end: ReferenceEnd::Reasoning,
+        owners: &RELATIONSHIPS,
+        declared: &[ArgumentReasoning],
+        lower: 0,
+        upper: Some(1),
+    },
+    // §11.13 `source:ArgumentAsset[1..*]`.
+    EndRule {
+        end: ReferenceEnd::Source,
+        owners: &RELATIONSHIPS,
+        declared: &ARGUMENT_ASSETS,
+        lower: 1,
+        upper: None,
+    },
+    // §11.13 `target:ArgumentAsset[1]`.
+    EndRule {
+        end: ReferenceEnd::Target,
+        owners: &RELATIONSHIPS,
+        declared: &ARGUMENT_ASSETS,
+        lower: 1,
+        upper: Some(1),
+    },
+    // §11.12 `structure:ArgumentPackage[0..1]`.
+    EndRule {
+        end: ReferenceEnd::Structure,
+        owners: &[ArgumentReasoning],
+        declared: &[ArgumentPackage],
+        lower: 0,
+        upper: Some(1),
+    },
+    // §11.9 `referencedArtifactElement:Base::ArtifactElement[0..*]`: every
+    // ModelElement (ADR 0014).
+    EndRule {
+        end: ReferenceEnd::ReferencedArtifactElement,
+        owners: &[ArtifactReference],
+        declared: &MODEL_ELEMENTS,
+        lower: 0,
+        upper: None,
+    },
+    // §11.2 `argumentElement:ArgumentationElement[0..*]` of an ArgumentGroup.
+    EndRule {
+        end: ReferenceEnd::GroupMember,
+        owners: &[ArgumentGroup],
+        declared: &ARGUMENTATION_ELEMENTS,
+        lower: 0,
+        upper: None,
+    },
+];
+
+/// The rule of `end`.
+fn rule_of(end: ReferenceEnd) -> &'static EndRule {
+    match END_RULES.iter().find(|rule| rule.end == end) {
+        Some(rule) => rule,
+        None => panic!("{EDIT_009}: an end this test does not know: {end:?}"),
+    }
+}
+
+/// The ids `element` holds in `end`, in order, read through the public
+/// accessors.
+fn held(element: SacmElement<'_>, end: ReferenceEnd) -> Vec<ElementId> {
+    fn one(id: Option<&ElementId>) -> Vec<ElementId> {
+        id.into_iter().cloned().collect()
+    }
+    match end {
+        ReferenceEnd::CitedElement => one(element.cited_element()),
+        ReferenceEnd::AbstractForm => one(element.abstract_form()),
+        ReferenceEnd::MetaClaim => element.meta_claims().to_vec(),
+        ReferenceEnd::Reasoning => one(element.reasoning()),
+        ReferenceEnd::Source => element.sources().to_vec(),
+        ReferenceEnd::Target => one(element.target()),
+        ReferenceEnd::Structure => one(element.structure()),
+        ReferenceEnd::ReferencedArtifactElement => element.referenced_artifact_elements().to_vec(),
+        ReferenceEnd::GroupMember => element.group_members().to_vec(),
+        other => panic!("{EDIT_009}: an end this test does not know: {other:?}"),
+    }
+}
+
+/// Whether `value` holds XML white space (space, TAB, LF, CR).
+fn holds_white_space(value: &str) -> bool {
+    value.contains([' ', '\t', '\n', '\r'])
+}
+
+/// The three flags.
+const FLAGS: [Flag; 3] = [Flag::IsCitation, Flag::IsAbstract, Flag::IsCounter];
+
+// ---------------------------------------------------------------------------
 // Structural validity (LIB-EDIT-002), through the public views only
 // ---------------------------------------------------------------------------
 
-/// Asserts the four structural checks S1-S4 on `doc`. `row` and `context`
+/// Asserts the structural checks S1-S4 and S7 on `doc`. `row` and `context`
 /// start every failure message.
 fn assert_structurally_valid(row: &str, context: &str, doc: &Document) {
     let elements: Vec<SacmElement<'_>> = doc.elements().collect();
@@ -298,6 +587,7 @@ fn assert_structurally_valid(row: &str, context: &str, doc: &Document) {
     assert_links_agree(row, context, doc, &elements);
     assert_kinds_are_legal(row, context, doc, &elements);
     assert_assertions_have_declarations(row, context, &elements);
+    assert_xmi_ids_are_unique(row, context, &elements);
 }
 
 /// S1: ids are unique, `get` round-trips each, and every element is visited.
@@ -426,6 +716,124 @@ fn assert_assertions_have_declarations(row: &str, context: &str, elements: &[Sac
     }
 }
 
+/// Every `xmi:id` an element carries: its own, then those of its name, its
+/// `content` and its values, and its `key` and its values.
+fn xmi_ids_of(element: SacmElement<'_>) -> Vec<&ElementId> {
+    let mut ids = vec![element.id()];
+    ids.extend(element.name_id());
+    ids.extend(element.content_id());
+    ids.extend(element.content_value_ids().iter().flatten());
+    ids.extend(element.key_id());
+    ids.extend(element.key_value_ids().iter().flatten());
+    ids
+}
+
+/// S7: every `xmi:id` in the document is unique.
+fn assert_xmi_ids_are_unique(row: &str, context: &str, elements: &[SacmElement<'_>]) {
+    let mut seen = BTreeSet::new();
+    for &element in elements {
+        for id in xmi_ids_of(element) {
+            assert!(
+                seen.insert(id.as_str()),
+                "{row}: {context}: S7: the xmi:id {id:?} is used more than once (last by {:?})",
+                element.id()
+            );
+        }
+    }
+}
+
+/// Asserts S5, S6 and S8 of a successful operation from `before` to `after`.
+fn assert_edit_kept_structure(row: &str, context: &str, before: &Document, after: &Document) {
+    assert_names_kept(row, context, before, after);
+    assert_keys_kept(row, context, before, after);
+    assert_no_new_bad_references(row, context, before, after);
+    assert_required_ends_kept(row, context, before, after);
+}
+
+/// S5, names: every `ModelElement` that had a name still has one.
+fn assert_names_kept(row: &str, context: &str, before: &Document, after: &Document) {
+    for element in before.elements() {
+        if element.name().is_some() {
+            let kept = after.get(element.id()).and_then(SacmElement::name);
+            assert!(
+                kept.is_some(),
+                "{row}: {context}: S5: the {} {:?} lost its name",
+                element.kind(),
+                element.id()
+            );
+        }
+    }
+}
+
+/// S5, keys: every `TaggedValue` that had a key still has one.
+fn assert_keys_kept(row: &str, context: &str, before: &Document, after: &Document) {
+    for element in before.elements() {
+        if element.kind() == TaggedValue && element.key().is_some() {
+            let kept = after.get(element.id()).and_then(SacmElement::key);
+            assert!(
+                kept.is_some(),
+                "{row}: {context}: S5: the TaggedValue {:?} lost its key",
+                element.id()
+            );
+        }
+    }
+}
+
+/// Every (owner, end, id) of `doc` whose id names no element or an element
+/// its end's declared type does not admit, by [`END_RULES`].
+fn bad_references(doc: &Document) -> BTreeSet<(ElementId, &'static str, ElementId)> {
+    let mut bad = BTreeSet::new();
+    for element in doc.elements() {
+        for rule in &END_RULES {
+            for target in held(element, rule.end) {
+                let admitted = doc
+                    .get(&target)
+                    .is_some_and(|found| rule.declared.contains(&found.kind()));
+                if !admitted {
+                    bad.insert((element.id().clone(), rule.end.name(), target));
+                }
+            }
+        }
+    }
+    bad
+}
+
+/// S6: no dangling or wrongly typed reference is new (D-VAL-LAYER).
+fn assert_no_new_bad_references(row: &str, context: &str, before: &Document, after: &Document) {
+    let was = bad_references(before);
+    let new: Vec<_> = bad_references(after).difference(&was).cloned().collect();
+    assert_eq!(
+        new,
+        [],
+        "{row}: {context}: S6: the operation made these (owner, end, id) dangling or wrongly typed"
+    );
+}
+
+/// S8: no asserted relationship loses its last source or its target.
+fn assert_required_ends_kept(row: &str, context: &str, before: &Document, after: &Document) {
+    for element in before.elements() {
+        if !RELATIONSHIPS.contains(&element.kind()) {
+            continue;
+        }
+        let Some(now) = after.get(element.id()) else {
+            panic!(
+                "{row}: {context}: S8: the relationship {:?} is gone",
+                element.id()
+            );
+        };
+        assert!(
+            element.sources().is_empty() || !now.sources().is_empty(),
+            "{row}: {context}: S8: the relationship {:?} lost its last source",
+            element.id()
+        );
+        assert!(
+            element.target().is_none() || now.target().is_some(),
+            "{row}: {context}: S8: the relationship {:?} lost its target",
+            element.id()
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -450,6 +858,21 @@ fn names() -> [LangString; 4] {
     ]
 }
 
+/// The content the content edits set: two values in two languages.
+fn two_values() -> MultiLangString {
+    [
+        LangString::new("Reviewed").with_lang("en"),
+        LangString::new("Granskad").with_lang("sv"),
+    ]
+    .into_iter()
+    .collect()
+}
+
+/// The key the key edits set.
+fn a_key() -> MultiLangString {
+    MultiLangString::from(LangString::new("SIL").with_lang("en"))
+}
+
 /// Applies an operation the test expects to succeed during setup, and
 /// returns the one id it created.
 fn create(row: &str, doc: &mut Document, operation: impl Into<Operation>) -> ElementId {
@@ -462,6 +885,14 @@ fn create(row: &str, doc: &mut Document, operation: impl Into<Operation>) -> Ele
             only.clone()
         }
         Err(error) => panic!("{row}: setup: the operation was refused: {error} ({error:?})"),
+    }
+}
+
+/// Applies an edit the test expects to succeed during setup.
+fn setup_edit(row: &str, doc: &mut Document, operation: impl Into<Operation>) {
+    let operation = operation.into();
+    if let Err(error) = edit::apply(doc, operation.clone()) {
+        panic!("{row}: setup: {operation:?} was refused: {error} ({error:?})");
     }
 }
 
@@ -508,17 +939,111 @@ fn probe_index(kind: ElementKind) -> usize {
     }
 }
 
-/// The kind an operation creates, its parent (`None` for a root) and its
-/// caller id (`None` for a generated one).
-fn parts(operation: &Operation) -> (ElementKind, Option<&ElementId>, Option<&ElementId>) {
+/// What an operation of the set is: a create, with the kind it creates, its
+/// parent (`None` for a root) and its caller id (`None` for a generated
+/// one); or an edit of an existing element, with its coverage label.
+enum Class<'a> {
+    Create {
+        kind: ElementKind,
+        parent: Option<&'a ElementId>,
+        id: Option<&'a ElementId>,
+    },
+    Edit {
+        label: &'static str,
+    },
+}
+
+/// Classifies `operation`.
+fn classify(operation: &Operation) -> Class<'_> {
+    let edit_of = |label| Class::Edit { label };
     match operation {
-        Operation::CreateAssuranceCasePackage(create) => {
-            (AssuranceCasePackage, create.parent(), create.id())
+        Operation::CreateAssuranceCasePackage(create) => Class::Create {
+            kind: AssuranceCasePackage,
+            parent: create.parent(),
+            id: create.id(),
+        },
+        Operation::CreateArgumentPackage(create) => Class::Create {
+            kind: ArgumentPackage,
+            parent: create.parent(),
+            id: create.id(),
+        },
+        Operation::CreateClaim(create) => Class::Create {
+            kind: Claim,
+            parent: Some(create.parent()),
+            id: create.id(),
+        },
+        Operation::SetName(_) => edit_of("SetName"),
+        Operation::SetGid(set) if set.gid().is_some() => edit_of("SetGid"),
+        Operation::SetGid(_) => edit_of("SetGid::remove"),
+        Operation::SetFlag(_) => edit_of("SetFlag"),
+        Operation::SetAssertionDeclaration(_) => edit_of("SetAssertionDeclaration"),
+        Operation::SetContent(set) if set.content().is_some() => edit_of("SetContent"),
+        Operation::SetContent(_) => edit_of("SetContent::remove"),
+        Operation::SetKey(_) => edit_of("SetKey"),
+        Operation::SetReferences(_) => edit_of("SetReferences"),
+        Operation::AddReference(_) => edit_of("AddReference"),
+        Operation::RemoveReference(_) => edit_of("RemoveReference"),
+        Operation::ReorderElements(reorder) if reorder.parent().is_some() => {
+            edit_of("ReorderElements")
         }
-        Operation::CreateArgumentPackage(create) => (ArgumentPackage, create.parent(), create.id()),
-        Operation::CreateClaim(create) => (Claim, Some(create.parent()), create.id()),
+        Operation::ReorderElements(_) => edit_of("ReorderElements::roots"),
         other => panic!("{EDIT_002}: an operation this test does not know: {other:?}"),
     }
+}
+
+/// The coverage labels of the attribute edits (LIB-EDIT-008).
+const ATTRIBUTE_EDITS: [&str; 5] = [
+    "SetName",
+    "SetGid",
+    "SetGid::remove",
+    "SetFlag",
+    "SetAssertionDeclaration",
+];
+
+/// The coverage labels of the reference edits (LIB-EDIT-009).
+const REFERENCE_EDITS: [&str; 3] = ["SetReferences", "AddReference", "RemoveReference"];
+
+/// The coverage labels of the reorders (LIB-EDIT-010).
+const REORDERS: [&str; 2] = ["ReorderElements", "ReorderElements::roots"];
+
+/// The coverage labels of the content edits (LIB-EDIT-012).
+const CONTENT_EDITS: [&str; 3] = ["SetContent", "SetContent::remove", "SetKey"];
+
+/// The answers the set must reach for the edit labelled `label`: `Ok` and
+/// CMD-001 always; CMD-008 for an operation whose feature some kind lacks;
+/// MULT-001 for the reference edits; ID-002 and REF-002 for those that check
+/// the ids given; CMD-009 for the reorders.
+fn required_answers(label: &str) -> Vec<Result<(), &'static str>> {
+    let mut required = vec![Ok(()), Err(Code::CMD_TARGET_NOT_FOUND.as_str())];
+    if !matches!(
+        label,
+        "SetGid" | "SetGid::remove" | "ReorderElements" | "ReorderElements::roots"
+    ) {
+        required.push(Err(Code::CMD_FEATURE_NOT_APPLICABLE.as_str()));
+    }
+    if REFERENCE_EDITS.contains(&label) {
+        required.push(Err(Code::MULTIPLICITY_VIOLATION.as_str()));
+    }
+    if matches!(label, "SetReferences" | "AddReference") {
+        required.push(Err(Code::ID_INVALID.as_str()));
+        required.push(Err(Code::REF_WRONG_TYPE.as_str()));
+    }
+    if REORDERS.contains(&label) {
+        required.push(Err(Code::CMD_INVALID_ORDER.as_str()));
+    }
+    required
+}
+
+/// Whether the set must reach an `Ok` of `label` with empty `changed_ids`
+/// (an add and a remove always change their end).
+fn requires_unchanged_ok(label: &str) -> bool {
+    !matches!(label, "AddReference" | "RemoveReference")
+}
+
+/// Whether the set must reach an `Ok` of `label` with `changed_ids` not
+/// empty (a root reorder reports no id).
+fn requires_changed_ok(label: &str) -> bool {
+    label != "ReorderElements::roots"
 }
 
 /// Whether `value` is an `NCName`, for the ASCII ids this file uses: a letter
@@ -535,10 +1060,57 @@ fn is_ascii_ncname(value: &str) -> bool {
         && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
 }
 
+// ---------------------------------------------------------------------------
+// The oracle: what each operation must answer
+// ---------------------------------------------------------------------------
+
 /// What `edit::apply` must answer for `operation` on `doc`, by this file's
-/// own table and the ADR 0019 check order.
+/// own tables and the check orders of ADR 0019 and ADR 0029.
 fn expected_answer(doc: &Document, operation: &Operation) -> Result<(), Code> {
-    let (kind, parent, caller_id) = parts(operation);
+    match operation {
+        Operation::SetName(set) => {
+            feature_answer(doc, set.element(), |kind| MODEL_ELEMENTS.contains(&kind))
+        }
+        Operation::SetGid(set) => feature_answer(doc, set.element(), |_| true),
+        Operation::SetFlag(set) => {
+            let counter = set.flag() == Flag::IsCounter;
+            feature_answer(doc, set.element(), |kind| {
+                !counter || RELATIONSHIPS.contains(&kind)
+            })
+        }
+        Operation::SetAssertionDeclaration(set) => {
+            feature_answer(doc, set.element(), |kind| ASSERTIONS.contains(&kind))
+        }
+        Operation::SetContent(set) => {
+            feature_answer(doc, set.element(), |kind| UTILITY_ELEMENTS.contains(&kind))
+        }
+        Operation::SetKey(set) => feature_answer(doc, set.element(), |kind| kind == TaggedValue),
+        Operation::SetReferences(set) => {
+            set_references_answer(doc, set.element(), set.end(), set.ids())
+        }
+        Operation::AddReference(add) => {
+            add_reference_answer(doc, add.element(), add.end(), add.id())
+        }
+        Operation::RemoveReference(remove) => {
+            remove_reference_answer(doc, remove.element(), remove.end(), remove.id())
+        }
+        Operation::ReorderElements(reorder) => {
+            reorder_answer(doc, reorder.parent(), reorder.order())
+        }
+        _ => create_answer(doc, operation),
+    }
+}
+
+/// A create: ADR 0019's order.
+fn create_answer(doc: &Document, operation: &Operation) -> Result<(), Code> {
+    let Class::Create {
+        kind,
+        parent,
+        id: caller_id,
+    } = classify(operation)
+    else {
+        panic!("{EDIT_002}: {operation:?} is not a create");
+    };
     if let Some(parent) = parent {
         let Some(parent) = doc.get(parent) else {
             return Err(Code::CMD_TARGET_NOT_FOUND);
@@ -553,6 +1125,143 @@ fn expected_answer(doc: &Document, operation: &Operation) -> Result<(), Code> {
         }
         if doc.contains(caller_id) {
             return Err(Code::CMD_DUPLICATE_ID);
+        }
+    }
+    Ok(())
+}
+
+/// An attribute or content edit: the element is known, then its kind has
+/// the feature. No value is refused.
+fn feature_answer(
+    doc: &Document,
+    element: &ElementId,
+    has_feature: impl Fn(ElementKind) -> bool,
+) -> Result<(), Code> {
+    let Some(found) = doc.get(element) else {
+        return Err(Code::CMD_TARGET_NOT_FOUND);
+    };
+    if !has_feature(found.kind()) {
+        return Err(Code::CMD_FEATURE_NOT_APPLICABLE);
+    }
+    Ok(())
+}
+
+/// The element `element` of `doc` and the rule of `end`, once the element is
+/// known and owns the end.
+fn owner_of<'d>(
+    doc: &'d Document,
+    element: &ElementId,
+    end: ReferenceEnd,
+) -> Result<(SacmElement<'d>, &'static EndRule), Code> {
+    let rule = rule_of(end);
+    let Some(found) = doc.get(element) else {
+        return Err(Code::CMD_TARGET_NOT_FOUND);
+    };
+    if !rule.owners.contains(&found.kind()) {
+        return Err(Code::CMD_FEATURE_NOT_APPLICABLE);
+    }
+    Ok((found, rule))
+}
+
+/// The checks of the ids an end does not hold yet, as the creates run them:
+/// white space in any, then any naming no element, then any naming an
+/// element its end does not admit.
+fn new_ids_answer(doc: &Document, rule: &EndRule, new: &[&ElementId]) -> Result<(), Code> {
+    if new.iter().any(|id| holds_white_space(id.as_str())) {
+        return Err(Code::ID_INVALID);
+    }
+    if new.iter().any(|id| !doc.contains(*id)) {
+        return Err(Code::CMD_TARGET_NOT_FOUND);
+    }
+    let admitted = |id: &&ElementId| {
+        doc.get(*id)
+            .is_some_and(|found| rule.declared.contains(&found.kind()))
+    };
+    if !new.iter().all(admitted) {
+        return Err(Code::REF_WRONG_TYPE);
+    }
+    Ok(())
+}
+
+fn set_references_answer(
+    doc: &Document,
+    element: &ElementId,
+    end: ReferenceEnd,
+    ids: &[ElementId],
+) -> Result<(), Code> {
+    let (found, rule) = owner_of(doc, element, end)?;
+    if ids.len() < rule.lower {
+        return Err(Code::MULTIPLICITY_VIOLATION);
+    }
+    if rule.upper.is_some_and(|upper| ids.len() > upper) {
+        return Err(Code::MULTIPLICITY_VIOLATION);
+    }
+    let held = held(found, end);
+    let new: Vec<&ElementId> = ids.iter().filter(|id| !held.contains(id)).collect();
+    new_ids_answer(doc, rule, &new)
+}
+
+fn add_reference_answer(
+    doc: &Document,
+    element: &ElementId,
+    end: ReferenceEnd,
+    added: &ElementId,
+) -> Result<(), Code> {
+    let (found, rule) = owner_of(doc, element, end)?;
+    let held = held(found, end);
+    if rule.upper.is_some_and(|upper| held.len() + 1 > upper) {
+        return Err(Code::MULTIPLICITY_VIOLATION);
+    }
+    if held.contains(added) {
+        return Ok(());
+    }
+    new_ids_answer(doc, rule, &[added])
+}
+
+fn remove_reference_answer(
+    doc: &Document,
+    element: &ElementId,
+    end: ReferenceEnd,
+    removed: &ElementId,
+) -> Result<(), Code> {
+    let (found, rule) = owner_of(doc, element, end)?;
+    let held = held(found, end);
+    if !held.contains(removed) {
+        return Err(Code::CMD_TARGET_NOT_FOUND);
+    }
+    let remaining = held.iter().filter(|id| *id != removed).count();
+    if remaining < rule.lower {
+        return Err(Code::MULTIPLICITY_VIOLATION);
+    }
+    Ok(())
+}
+
+/// A reorder: the parent is known (not for the roots), the list is not
+/// empty, then id by id: a direct child (or root), not named before.
+fn reorder_answer(
+    doc: &Document,
+    parent: Option<&ElementId>,
+    order: &[ElementId],
+) -> Result<(), Code> {
+    let children: Vec<&ElementId> = match parent {
+        Some(parent) => {
+            let Some(parent) = doc.get(parent) else {
+                return Err(Code::CMD_TARGET_NOT_FOUND);
+            };
+            parent.children().map(SacmElement::id).collect()
+        }
+        None => doc.roots().map(SacmElement::id).collect(),
+    };
+    if order.is_empty() {
+        return Err(Code::CMD_INVALID_ORDER);
+    }
+    let mut seen = BTreeSet::new();
+    for child in order {
+        if !children.contains(&child) {
+            return Err(Code::CMD_TARGET_NOT_FOUND);
+        }
+        if !seen.insert(child) {
+            return Err(Code::CMD_INVALID_ORDER);
         }
     }
     Ok(())
@@ -623,9 +1332,18 @@ fn built_with_edit() -> Document {
 /// Built with the `test-support` seam: kinds and states `edit::apply` does
 /// not produce. ArtifactPackage parents, interfaces and bindings, Notes,
 /// missing names, a non-default declaration, ids that generation must skip
-/// (`claim_1`, `argument_package_2`), and an id that is not an `NCName`
-/// (`a b`), held as inserted.
+/// (`claim_1`, `argument_package_2`), an id that is not an `NCName` (`a b`),
+/// held as inserted, an `AssertedInference` without ends, and, set with
+/// `edit::apply`, a gid (` g `) and references (`loose_claim` cites
+/// `claim_3`; `claim_1` has the meta-claim `c_asserted` twice).
 fn built_with_insert() -> Document {
+    let mut doc = inserted_elements();
+    give_a_gid_and_references(&mut doc);
+    doc
+}
+
+/// The elements of [`built_with_insert`], inserted.
+fn inserted_elements() -> Document {
     let mut doc = Document::new();
     insert(&mut doc, None, ArtifactPackage, "artifacts", None);
     insert(&mut doc, Some("artifacts"), Claim, "loose_claim", None);
@@ -641,12 +1359,12 @@ fn built_with_insert() -> Document {
         &mut doc,
         Some("case_in_artifacts"),
         ArgumentPackage,
-        "a b",
+        WITH_SPACE,
         None,
     );
     insert(
         &mut doc,
-        Some("a b"),
+        Some(WITH_SPACE),
         Claim,
         "claim_1",
         Some(LangString::new("Hazard \u{00E4}r hanterad").with_lang("sv")),
@@ -727,15 +1445,41 @@ fn built_with_insert() -> Document {
     doc
 }
 
+/// Sets, with `edit::apply`, the gid ` g ` of `loose_claim`, its
+/// `citedElement` `claim_3`, and the meta-claim `c_asserted`, twice, of
+/// `claim_1`, in the document of [`inserted_elements`].
+fn give_a_gid_and_references(doc: &mut Document) {
+    setup_edit(EDIT_002, doc, SetGid::new("loose_claim", " g "));
+    setup_edit(
+        EDIT_002,
+        doc,
+        SetReferences::new("loose_claim", ReferenceEnd::CitedElement, ["claim_3"]),
+    );
+    setup_edit(
+        EDIT_002,
+        doc,
+        SetReferences::new(
+            "claim_1",
+            ReferenceEnd::MetaClaim,
+            ["c_asserted", "c_asserted"],
+        ),
+    );
+}
+
+/// Reads `input` with the default options.
+fn read_text(what: &str, input: &[u8]) -> Document {
+    match xmi::read(input, &ReadOptions::default()) {
+        Ok(output) => output.into_document(),
+        Err(error) => panic!("{EDIT_002}: setup: {what} does not read: {error}"),
+    }
+}
+
 /// Reads the fixture `name` under [`FIXTURES`].
 fn read_fixture(name: &str) -> Document {
     let path = Path::new(FIXTURES).join(name);
     let bytes = std::fs::read(&path)
         .unwrap_or_else(|error| panic!("{EDIT_002}: cannot read {}: {error}", path.display()));
-    match xmi::read(&bytes, &ReadOptions::default()) {
-        Ok(output) => output.into_document(),
-        Err(error) => panic!("{EDIT_002}: setup: the fixture {name} does not read: {error}"),
-    }
+    read_text(&format!("the fixture {name}"), &bytes)
 }
 
 /// Every starting document, with a label for messages, in a fixed order.
@@ -750,6 +1494,10 @@ fn starting_documents() -> Vec<(String, Document)> {
             "a document built with insert".to_owned(),
             built_with_insert(),
         ),
+        (
+            "the edit start document".to_owned(),
+            read_text("EDIT_START", EDIT_START.as_bytes()),
+        ),
     ];
     for name in READABLE_FIXTURES {
         starts.push((format!("the fixture {name}"), read_fixture(name)));
@@ -761,11 +1509,18 @@ fn starting_documents() -> Vec<(String, Document)> {
 // The operations
 // ---------------------------------------------------------------------------
 
-/// The fixed list of operations for `doc`: under every element (pre-order)
-/// and under [`NOWHERE`], one create of each kind with each id form; then
-/// both root creates with each id form. Fresh caller ids are `new_<n>`,
-/// unique across the list.
+/// The fixed list of operations for `doc`: the creates of
+/// [`create_operations_for`], then the edits of [`edit_operations_for`].
 fn operations_for(doc: &Document) -> Vec<Operation> {
+    let mut operations = create_operations_for(doc);
+    operations.extend(edit_operations_for(doc));
+    operations
+}
+
+/// Under every element (pre-order) and under [`NOWHERE`], one create of each
+/// kind with each id form; then both root creates with each id form. Fresh
+/// caller ids are `new_<n>`, unique across the list.
+fn create_operations_for(doc: &Document) -> Vec<Operation> {
     let names = names();
     // The name of the create of kind `kind` with id form `form` under the
     // `parent`-th parent (the root creates count as one more parent).
@@ -842,6 +1597,169 @@ fn operations_for(doc: &Document) -> Vec<Operation> {
     operations
 }
 
+/// The first `xmi:id` of `doc` that identifies no element: of a name, a
+/// `content`, a `key` or a `value`.
+fn first_id_of_no_element(doc: &Document) -> Option<ElementId> {
+    doc.elements()
+        .find_map(|element| xmi_ids_of(element).get(1).copied().cloned())
+}
+
+/// The first and the last element of `doc`, in pre-order, of a kind in
+/// `kinds`.
+fn first_and_last_of(doc: &Document, kinds: &[ElementKind]) -> Option<(ElementId, ElementId)> {
+    let mut matching = doc
+        .elements()
+        .filter(|element| kinds.contains(&element.kind()))
+        .map(|element| element.id().clone());
+    let first = matching.next()?;
+    let last = matching.last().unwrap_or_else(|| first.clone());
+    Some((first, last))
+}
+
+/// The first element of `doc`, in pre-order, of a kind not in `kinds`.
+fn first_not_of(doc: &Document, kinds: &[ElementKind]) -> Option<ElementId> {
+    doc.elements()
+        .find(|element| !kinds.contains(&element.kind()))
+        .map(|element| element.id().clone())
+}
+
+/// For every element (pre-order) and [`NOWHERE`]: the attribute, content,
+/// reference and reorder edits the module docs list; then the root
+/// reorders.
+fn edit_operations_for(doc: &Document) -> Vec<Operation> {
+    let names = names();
+    let no_element = first_id_of_no_element(doc);
+    let mut targets: Vec<ElementId> = doc.elements().map(|element| element.id().clone()).collect();
+    targets.push(id(NOWHERE));
+    let mut operations: Vec<Operation> = Vec::new();
+    for (index, element) in targets.iter().enumerate() {
+        let found = doc.get(element);
+        // LIB-EDIT-008: name, gid, flags, declaration.
+        operations.push(SetName::new(element, names[index % names.len()].clone()).into());
+        if let Some(name) = found.and_then(SacmElement::name) {
+            operations.push(SetName::new(element, name.clone()).into());
+        }
+        operations.push(SetGid::new(element, format!("g-{index}")).into());
+        let gid = found.and_then(SacmElement::gid).unwrap_or("");
+        operations.push(SetGid::new(element, gid).into());
+        operations.push(SetGid::remove(element).into());
+        for flag in FLAGS {
+            for value in [true, false] {
+                operations.push(SetFlag::new(element, flag, value).into());
+            }
+        }
+        let declaration = AssertionDeclaration::ALL[index % AssertionDeclaration::ALL.len()];
+        operations.push(SetAssertionDeclaration::new(element, declaration).into());
+        if let Some(current) = found.and_then(SacmElement::assertion_declaration) {
+            operations.push(SetAssertionDeclaration::new(element, current).into());
+        }
+        // LIB-EDIT-012: content and key.
+        operations.push(SetContent::new(element, two_values()).into());
+        if let Some(content) = found.and_then(SacmElement::content) {
+            operations.push(SetContent::new(element, content.clone()).into());
+        }
+        operations.push(SetContent::remove(element).into());
+        operations.push(SetKey::new(element, a_key()).into());
+        if let Some(key) = found.and_then(SacmElement::key) {
+            operations.push(SetKey::new(element, key.clone()).into());
+        }
+        // LIB-EDIT-009: every end.
+        for rule in &END_RULES {
+            push_reference_edits(&mut operations, doc, element, rule, no_element.as_ref());
+        }
+        // LIB-EDIT-010: the children.
+        let children: Vec<ElementId> = found
+            .map(|found| found.children().map(|child| child.id().clone()).collect())
+            .unwrap_or_default();
+        let grandchild = found.and_then(|found| {
+            found
+                .children()
+                .find_map(|child| child.children().next())
+                .map(|grandchild| grandchild.id().clone())
+        });
+        for order in orders(&children, grandchild, no_element.as_ref()) {
+            operations.push(ReorderElements::new(element, order).into());
+        }
+    }
+    let roots: Vec<ElementId> = doc.roots().map(|root| root.id().clone()).collect();
+    let not_a_root = doc
+        .elements()
+        .find(|element| element.parent().is_some())
+        .map(|element| element.id().clone());
+    for order in orders(&roots, not_a_root, no_element.as_ref()) {
+        operations.push(ReorderElements::roots(order).into());
+    }
+    operations
+}
+
+/// The reorder lists for the children `children`: empty, reversed, as they
+/// are, a repeated child, an id that is not a direct child (`not_a_child`),
+/// the id of no element (`no_element`) and a missing id.
+fn orders(
+    children: &[ElementId],
+    not_a_child: Option<ElementId>,
+    no_element: Option<&ElementId>,
+) -> Vec<Vec<ElementId>> {
+    let mut orders = vec![Vec::new(), vec![id(NOWHERE)]];
+    if let Some(first) = children.first() {
+        orders.push(children.iter().rev().cloned().collect());
+        orders.push(children.to_vec());
+        orders.push(vec![first.clone(), first.clone()]);
+    }
+    orders.extend(not_a_child.map(|other| vec![other]));
+    orders.extend(no_element.map(|other| vec![other.clone()]));
+    orders
+}
+
+/// The reference edits of `rule`'s end on `element`.
+fn push_reference_edits(
+    operations: &mut Vec<Operation>,
+    doc: &Document,
+    element: &ElementId,
+    rule: &EndRule,
+    no_element: Option<&ElementId>,
+) {
+    let end = rule.end;
+    let held_ids = doc
+        .get(element)
+        .map(|found| held(found, end))
+        .unwrap_or_default();
+    let well = first_and_last_of(doc, rule.declared);
+    let wrong = first_not_of(doc, rule.declared);
+    let mut lists: Vec<Vec<ElementId>> = vec![vec![id(NOWHERE)], vec![id(WITH_SPACE)]];
+    let mut added: Vec<ElementId> = vec![id(NOWHERE), id(WITH_SPACE)];
+    let mut removed: Vec<ElementId> = vec![id(NOWHERE)];
+    if let Some((first, last)) = &well {
+        lists.push(vec![first.clone()]);
+        lists.push(vec![first.clone(), last.clone()]);
+        added.push(first.clone());
+        removed.push(first.clone());
+    }
+    if let Some(wrong) = &wrong {
+        lists.push(vec![wrong.clone()]);
+        added.push(wrong.clone());
+    }
+    if let Some(first_held) = held_ids.first() {
+        lists.push(held_ids.clone());
+        added.push(first_held.clone());
+        removed.push(first_held.clone());
+    }
+    if let Some(no_element) = no_element {
+        lists.push(vec![no_element.clone()]);
+        added.push(no_element.clone());
+    }
+    operations.push(SetReferences::clear(element, end).into());
+    for ids in lists {
+        operations.push(SetReferences::new(element, end, ids).into());
+    }
+    for value in added {
+        operations.push(AddReference::new(element, end, value).into());
+    }
+    for value in removed {
+        operations.push(RemoveReference::new(element, end, value).into());
+    }
+}
+
 // ---------------------------------------------------------------------------
 // The driver
 // ---------------------------------------------------------------------------
@@ -859,11 +1777,24 @@ struct Applied<'a> {
 /// Applies every operation of the set to every starting document, alone on a
 /// fresh clone and then in sequence on one document, and calls `check` on
 /// each application. Returns the number of applications.
-fn for_every_application(mut check: impl FnMut(&Applied<'_>)) -> usize {
+fn for_every_application(check: impl FnMut(&Applied<'_>)) -> usize {
+    for_selected_applications(|_| true, check)
+}
+
+/// As [`for_every_application`], but applies alone, and checks, only the
+/// operations `selected` accepts. In sequence every operation is applied, so
+/// that the state each one meets is the whole set's.
+fn for_selected_applications(
+    selected: impl Fn(&Operation) -> bool,
+    mut check: impl FnMut(&Applied<'_>),
+) -> usize {
     let mut count = 0;
     for (label, start) in starting_documents() {
         let operations = operations_for(&start);
         for (index, operation) in operations.iter().enumerate() {
+            if !selected(operation) {
+                continue;
+            }
             let before = start.clone();
             let mut after = start.clone();
             let answer = edit::apply(&mut after, operation.clone());
@@ -879,6 +1810,11 @@ fn for_every_application(mut check: impl FnMut(&Applied<'_>)) -> usize {
         }
         let mut doc = start.clone();
         for (index, operation) in operations.iter().enumerate() {
+            if !selected(operation) {
+                // Applied for the state it leaves; its answer is not checked.
+                let _ = edit::apply(&mut doc, operation.clone());
+                continue;
+            }
             let before = doc.clone();
             let answer = edit::apply(&mut doc, operation.clone());
             let context = format!("{label}, in sequence, operation {index} {operation:?}");
@@ -893,6 +1829,65 @@ fn for_every_application(mut check: impl FnMut(&Applied<'_>)) -> usize {
         }
     }
     count
+}
+
+/// Whether `operation` is an edit whose coverage label is in `labels`.
+fn is_edit_in(operation: &Operation, labels: &[&str]) -> bool {
+    matches!(classify(operation), Class::Edit { label } if labels.contains(&label))
+}
+
+/// Over the applications of the edits labelled `labels`: each answer is the
+/// oracle's, and every label reaches every answer of [`required_answers`],
+/// an `Ok` with empty `changed_ids` and one with an id, as
+/// [`requires_unchanged_ok`] and [`requires_changed_ok`] ask.
+fn assert_edit_answers_and_coverage(row: &str, labels: &[&str]) {
+    let mut reached: BTreeSet<(&'static str, Result<(), &'static str>)> = BTreeSet::new();
+    let mut unchanged: BTreeSet<&'static str> = BTreeSet::new();
+    let mut changed: BTreeSet<&'static str> = BTreeSet::new();
+    let total = for_selected_applications(
+        |operation| is_edit_in(operation, labels),
+        |applied| {
+            let expected = expected_answer(applied.before, applied.operation);
+            let actual = applied.answer.as_ref().map(|_| ()).map_err(EditError::code);
+            assert_eq!(
+                actual, expected,
+                "{row}: {}: the answer is not the one this file's tables and ADR 0029 give",
+                applied.context
+            );
+            let Class::Edit { label } = classify(applied.operation) else {
+                return;
+            };
+            reached.insert((label, expected.map_err(Code::as_str)));
+            if let Ok(mutation) = applied.answer {
+                if mutation.changed_ids().is_empty() {
+                    unchanged.insert(label);
+                } else {
+                    changed.insert(label);
+                }
+            }
+        },
+    );
+    assert!(total > 0, "{row}: the set holds none of {labels:?}");
+    for &label in labels {
+        for answer in required_answers(label) {
+            assert!(
+                reached.contains(&(label, answer)),
+                "{row}: the set never reaches {label} answering {answer:?}"
+            );
+        }
+        if requires_unchanged_ok(label) {
+            assert!(
+                unchanged.contains(label),
+                "{row}: the set never reaches {label} succeeding with empty changed_ids"
+            );
+        }
+        if requires_changed_ok(label) {
+            assert!(
+                changed.contains(label),
+                "{row}: the set never reaches {label} succeeding with a changed id"
+            );
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -923,22 +1918,80 @@ fn lib_edit_002_every_starting_document_is_structurally_valid() {
         None,
         "{EDIT_002}: setup: the inserted document has no missing name"
     );
+    let loose = inserted.get("loose_claim");
+    assert_eq!(
+        (
+            loose.and_then(SacmElement::gid),
+            loose
+                .and_then(SacmElement::cited_element)
+                .map(ElementId::as_str)
+        ),
+        (Some(" g "), Some("claim_3")),
+        "{EDIT_002}: setup: the inserted document has no gid or reference"
+    );
+    let start = read_text("EDIT_START", EDIT_START.as_bytes());
+    let get = |value: &str| match start.get(value) {
+        Some(element) => element,
+        None => panic!("{EDIT_002}: setup: the edit start document has no {value:?}"),
+    };
+    let kinds: BTreeSet<ElementKind> = start.elements().map(SacmElement::kind).collect();
+    for kind in RELATIONSHIPS.into_iter().chain([
+        ArtifactReference,
+        ArgumentGroup,
+        ArgumentReasoning,
+        TaggedValue,
+    ]) {
+        assert!(
+            kinds.contains(&kind),
+            "{EDIT_002}: setup: the edit start document has no {kind}"
+        );
+    }
+    assert!(
+        !start.contains("x") && get("c1").meta_claims().contains(&id("x")),
+        "{EDIT_002}: setup: the edit start document has no dangling id"
+    );
+    assert!(
+        bad_references(&start)
+            .iter()
+            .any(|(_, _, target)| start.contains(target)),
+        "{EDIT_002}: setup: the edit start document holds no wrongly typed id"
+    );
+    assert!(
+        get("ac1").sources().is_empty(),
+        "{EDIT_002}: setup: ac1 was read with a source"
+    );
+    assert!(
+        get("case").name_id().is_some()
+            && get("d1").content_id().is_some()
+            && get("d1").content_value_ids().len() == 2
+            && get("t1").key_id().is_some()
+            && get("t1").key_value_ids().iter().all(Option::is_some),
+        "{EDIT_002}: setup: the edit start document lacks the ids of a name, content or key"
+    );
 }
 
 #[test]
 fn lib_edit_002_the_set_has_legal_and_illegal_operations_of_every_kind_with_both_id_forms() {
-    // (kind, caller id given, answer) for every application.
+    // (kind, caller id given, answer) for every create.
     let mut reached: BTreeSet<(ElementKind, bool, Result<(), &'static str>)> = BTreeSet::new();
+    // (label, answer) for every edit.
+    let mut reached_edits: BTreeSet<(&'static str, Result<(), &'static str>)> = BTreeSet::new();
     let total = for_every_application(|applied| {
         let expected = expected_answer(applied.before, applied.operation);
         let actual = applied.answer.as_ref().map(|_| ()).map_err(EditError::code);
         assert_eq!(
             actual, expected,
-            "{EDIT_002}: {}: the answer is not the one the standard's table and ADR 0019 give",
+            "{EDIT_002}: {}: the answer is not the one the standard's table and ADR 0019/0029 give",
             applied.context
         );
-        let (kind, _, caller_id) = parts(applied.operation);
-        reached.insert((kind, caller_id.is_some(), expected.map_err(Code::as_str)));
+        match classify(applied.operation) {
+            Class::Create { kind, id, .. } => {
+                reached.insert((kind, id.is_some(), expected.map_err(Code::as_str)));
+            }
+            Class::Edit { label } => {
+                reached_edits.insert((label, expected.map_err(Code::as_str)));
+            }
+        }
     });
     assert!(total > 0, "{EDIT_002}: the set is empty");
     let mut required: Vec<(ElementKind, bool, Result<(), &'static str>)> = Vec::new();
@@ -957,6 +2010,19 @@ fn lib_edit_002_the_set_has_legal_and_illegal_operations_of_every_kind_with_both
             "{EDIT_002}: the set never reaches (kind, caller id, answer) = {case:?}"
         );
     }
+    for label in ATTRIBUTE_EDITS
+        .into_iter()
+        .chain(CONTENT_EDITS)
+        .chain(REFERENCE_EDITS)
+        .chain(REORDERS)
+    {
+        for answer in required_answers(label) {
+            assert!(
+                reached_edits.contains(&(label, answer)),
+                "{EDIT_002}: the set never reaches {label} answering {answer:?}"
+            );
+        }
+    }
 }
 
 #[test]
@@ -966,6 +2032,7 @@ fn lib_edit_002_every_successful_operation_leaves_the_document_structurally_vali
         if applied.answer.is_ok() {
             successes += 1;
             assert_structurally_valid(EDIT_002, applied.context, applied.after);
+            assert_edit_kept_structure(EDIT_002, applied.context, applied.before, applied.after);
         }
     });
     assert!(
@@ -1018,7 +2085,10 @@ struct Oracle {
     deleted: Vec<ElementId>,
 }
 
-fn oracle(context: &str, before: &Document, after: &Document) -> Oracle {
+/// The [`Oracle`] of `operation` from `before` to `after`. `RootOrder` is
+/// accepted only from a root reorder, and maps to no list: it is about the
+/// document, not an element (ADR 0029).
+fn oracle(context: &str, operation: &Operation, before: &Document, after: &Document) -> Oracle {
     let mut created = Vec::new();
     let mut deleted = Vec::new();
     let mut changed = BTreeSet::new();
@@ -1028,13 +2098,35 @@ fn oracle(context: &str, before: &Document, after: &Document) -> Oracle {
             Difference::LeftOnly { id, .. } => deleted.push(id.clone()),
             Difference::Kind { id, .. }
             | Difference::Parent { id, .. }
+            | Difference::Gid { id, .. }
+            | Difference::IsCitation { id, .. }
+            | Difference::IsAbstract { id, .. }
+            | Difference::IsCounter { id, .. }
+            | Difference::CitedElement { id, .. }
+            | Difference::AbstractForm { id, .. }
+            | Difference::MetaClaims { id, .. }
+            | Difference::Reasoning { id, .. }
+            | Difference::Sources { id, .. }
+            | Difference::Target { id, .. }
+            | Difference::Structure { id, .. }
+            | Difference::ReferencedArtifactElements { id, .. }
+            | Difference::GroupMembers { id, .. }
             | Difference::Name { id, .. }
+            | Difference::NameId { id, .. }
+            | Difference::Content { id, .. }
+            | Difference::ContentId { id, .. }
+            | Difference::ContentValueIds { id, .. }
+            | Difference::Key { id, .. }
+            | Difference::KeyId { id, .. }
+            | Difference::KeyValueIds { id, .. }
             | Difference::AssertionDeclaration { id, .. }
             | Difference::ChildOrder { id, .. } => {
                 changed.insert(id.clone());
             }
-            Difference::RootOrder { .. } => panic!(
-                "{EDIT_003}: {context}: the edit reordered the roots, which no id list reports: {difference}"
+            Difference::RootOrder { .. } => assert!(
+                matches!(operation, Operation::ReorderElements(reorder) if reorder.parent().is_none()),
+                "{EDIT_003}: {context}: an operation that is no root reorder reordered the roots: \
+                 {difference}"
             ),
             other => {
                 panic!("{EDIT_003}: {context}: a Difference this test does not know: {other:?}")
@@ -1062,7 +2154,7 @@ fn lib_edit_003_the_id_lists_equal_the_semantic_comparison_of_before_and_after()
         };
         successes += 1;
         let context = applied.context;
-        let expected = oracle(context, applied.before, applied.after);
+        let expected = oracle(context, applied.operation, applied.before, applied.after);
         assert_eq!(
             mutation.created_ids(),
             expected.created,
@@ -1091,8 +2183,15 @@ fn lib_edit_003_a_create_creates_its_element_and_changes_and_deletes_nothing() {
         let Ok(mutation) = applied.answer else {
             return;
         };
+        let Class::Create {
+            kind,
+            parent,
+            id: caller_id,
+        } = classify(applied.operation)
+        else {
+            return;
+        };
         let context = applied.context;
-        let (kind, parent, caller_id) = parts(applied.operation);
         let own = match caller_id {
             Some(value) => value.clone(),
             None => next_generated_ids(EDIT_003, applied.before)[probe_index(kind)].clone(),
@@ -1141,8 +2240,12 @@ fn lib_edit_003_operation_is_the_operation_given_with_a_generated_id_not_filled_
             applied.operation,
             "{EDIT_003}: {context}: operation() is not the operation given"
         );
-        let (_, _, given_id) = parts(applied.operation);
-        let (_, _, held_id) = parts(mutation.operation());
+        let Class::Create { id: given_id, .. } = classify(applied.operation) else {
+            return;
+        };
+        let Class::Create { id: held_id, .. } = classify(mutation.operation()) else {
+            panic!("{EDIT_003}: {context}: operation() holds an edit for a create");
+        };
         assert_eq!(
             held_id, given_id,
             "{EDIT_003}: {context}: operation() does not hold the id as given"
@@ -1160,7 +2263,7 @@ fn lib_edit_003_operation_is_the_operation_given_with_a_generated_id_not_filled_
 #[test]
 fn lib_edit_003_operation_name_is_the_struct_name() {
     let name = named("N");
-    let cases: [(Operation, &str); 5] = [
+    let cases: [(Operation, &str); 21] = [
         (
             CreateAssuranceCasePackage::root(name.clone()).into(),
             "CreateAssuranceCasePackage",
@@ -1181,7 +2284,44 @@ fn lib_edit_003_operation_name_is_the_struct_name() {
                 .into(),
             "CreateArgumentPackage",
         ),
-        (CreateClaim::new("p", name).into(), "CreateClaim"),
+        (CreateClaim::new("p", name.clone()).into(), "CreateClaim"),
+        (SetName::new("c1", name).into(), "SetName"),
+        (SetGid::new("c1", "g").into(), "SetGid"),
+        (SetGid::remove("c1").into(), "SetGid"),
+        (SetFlag::new("c1", Flag::IsCitation, true).into(), "SetFlag"),
+        (
+            SetAssertionDeclaration::new("c1", AssertionDeclaration::Assumed).into(),
+            "SetAssertionDeclaration",
+        ),
+        (SetContent::new("n1", two_values()).into(), "SetContent"),
+        (SetContent::remove("n1").into(), "SetContent"),
+        (SetKey::new("t1", a_key()).into(), "SetKey"),
+        (
+            SetReferences::new("i1", ReferenceEnd::Source, ["c2"]).into(),
+            "SetReferences",
+        ),
+        (
+            SetReferences::clear("i1", ReferenceEnd::Reasoning).into(),
+            "SetReferences",
+        ),
+        (
+            AddReference::new("i1", ReferenceEnd::Source, "c3").into(),
+            "AddReference",
+        ),
+        (
+            RemoveReference::new("i1", ReferenceEnd::Source, "c3").into(),
+            "RemoveReference",
+        ),
+        (
+            ReorderElements::new("p", ["c2", "c1"]).into(),
+            "ReorderElements",
+        ),
+        (ReorderElements::roots(["q", "p"]).into(), "ReorderElements"),
+        (SetFlag::new("i1", Flag::IsCounter, false).into(), "SetFlag"),
+        (
+            SetReferences::new("c1", ReferenceEnd::GroupMember, Vec::<ElementId>::new()).into(),
+            "SetReferences",
+        ),
     ];
     for (operation, expected) in &cases {
         assert_eq!(
@@ -1220,6 +2360,22 @@ fn lib_edit_003_operation_name_is_the_name_of_the_operation_held_by_the_mutation
         ]),
         "{EDIT_003}: the operation names held by the mutations"
     );
+    // An edit's mutation holds the edit, and its name.
+    let edits: [(Operation, &str); 2] = [
+        (SetGid::new("claim_1", "g").into(), "SetGid"),
+        (ReorderElements::roots(["case"]).into(), "ReorderElements"),
+    ];
+    for (operation, expected) in edits {
+        let mutation = match edit::apply(&mut doc, operation.clone()) {
+            Ok(mutation) => mutation,
+            Err(error) => panic!("{EDIT_003}: setup: {operation:?} was refused: {error}"),
+        };
+        assert_eq!(
+            mutation.operation().operation_name(),
+            expected,
+            "{EDIT_003}: the name of the edit held by the mutation"
+        );
+    }
 }
 
 fn assert_send_sync<T: Send + Sync>() {}
@@ -1272,5 +2428,130 @@ fn lib_edit_003_mutation_is_clone_debug_partial_eq_and_eq() {
     assert!(
         shown.contains("c1"),
         "{EDIT_003}: the Debug of a mutation does not show its ids: {shown}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// LIB-EDIT-008, -009, -010, -012: the set operations join the set
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lib_edit_008_the_attribute_edits_join_the_set_with_every_answer() {
+    assert_edit_answers_and_coverage(EDIT_008, &ATTRIBUTE_EDITS);
+}
+
+#[test]
+fn lib_edit_008_no_successful_operation_of_the_set_removes_a_name() {
+    let mut successes = 0;
+    for_every_application(|applied| {
+        if applied.answer.is_ok() {
+            successes += 1;
+            assert_names_kept(EDIT_008, applied.context, applied.before, applied.after);
+        }
+    });
+    assert!(
+        successes > 0,
+        "{EDIT_008}: no operation of the set succeeded"
+    );
+}
+
+#[test]
+fn lib_edit_009_the_reference_edits_join_the_set_with_every_answer() {
+    assert_edit_answers_and_coverage(EDIT_009, &REFERENCE_EDITS);
+}
+
+#[test]
+fn lib_edit_009_no_successful_edit_of_the_set_adds_a_bad_reference_or_empties_a_required_end() {
+    let mut successes = 0;
+    for_selected_applications(
+        |operation| is_edit_in(operation, &REFERENCE_EDITS),
+        |applied| {
+            if applied.answer.is_ok() {
+                successes += 1;
+                assert_no_new_bad_references(
+                    EDIT_009,
+                    applied.context,
+                    applied.before,
+                    applied.after,
+                );
+                assert_required_ends_kept(EDIT_009, applied.context, applied.before, applied.after);
+            }
+        },
+    );
+    assert!(
+        successes > 0,
+        "{EDIT_009}: no reference edit of the set succeeded"
+    );
+}
+
+#[test]
+fn lib_edit_010_reorder_joins_the_set_with_every_answer() {
+    assert_edit_answers_and_coverage(EDIT_010, &REORDERS);
+}
+
+#[test]
+fn lib_edit_010_every_successful_reorder_of_the_set_keeps_the_elements_parents_and_findings() {
+    let mut root_orders = 0;
+    for_selected_applications(
+        |operation| is_edit_in(operation, &REORDERS),
+        |applied| {
+            if applied.answer.is_err() {
+                return;
+            }
+            let context = applied.context;
+            let (before, after) = (applied.before, applied.after);
+            assert_eq!(
+                after.element_count(),
+                before.element_count(),
+                "{EDIT_010}: {context}: the reorder changed the element count"
+            );
+            for element in before.elements() {
+                let now = after.get(element.id());
+                assert_eq!(
+                    now.and_then(SacmElement::parent).map(SacmElement::id),
+                    element.parent().map(SacmElement::id),
+                    "{EDIT_010}: {context}: the reorder moved {:?}",
+                    element.id()
+                );
+            }
+            let differences = semantic_compare(before, after);
+            assert!(
+                differences.iter().all(|difference| matches!(
+                    difference,
+                    Difference::ChildOrder { .. } | Difference::RootOrder { .. }
+                )),
+                "{EDIT_010}: {context}: the reorder changed more than an order: {differences:?}"
+            );
+            if differences
+                .iter()
+                .any(|difference| matches!(difference, Difference::RootOrder { .. }))
+            {
+                root_orders += 1;
+            }
+        },
+    );
+    assert!(
+        root_orders > 0,
+        "{EDIT_010}: no root reorder of the set changed the root order"
+    );
+}
+
+#[test]
+fn lib_edit_012_the_content_edits_join_the_set_with_every_answer() {
+    assert_edit_answers_and_coverage(EDIT_012, &CONTENT_EDITS);
+}
+
+#[test]
+fn lib_edit_012_no_successful_operation_of_the_set_removes_a_key() {
+    let mut successes = 0;
+    for_every_application(|applied| {
+        if applied.answer.is_ok() {
+            successes += 1;
+            assert_keys_kept(EDIT_012, applied.context, applied.before, applied.after);
+        }
+    });
+    assert!(
+        successes > 0,
+        "{EDIT_012}: no operation of the set succeeded"
     );
 }

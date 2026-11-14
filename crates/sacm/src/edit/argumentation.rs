@@ -8,6 +8,7 @@ use std::slice;
 
 use super::EditError;
 use super::create::{checked_place, refusal};
+use super::references::{check_bounds, check_targets};
 use crate::model::{Document, ElementId, ElementKind, Flag, LangString, ReferenceEnd};
 
 /// Creates an `ArgumentReasoning` (SACM 2.3 §11.12) as the last child of an
@@ -138,7 +139,7 @@ impl CreateArgumentReasoning {
             self.id.as_ref(),
             &self.name,
             &[],
-            &[(ReferenceEnd::Structure, self.structure.as_slice(), 0)],
+            &[(ReferenceEnd::Structure, self.structure.as_slice())],
         )
     }
 }
@@ -292,7 +293,6 @@ impl CreateArtifactReference {
             &[(
                 ReferenceEnd::ReferencedArtifactElement,
                 &self.referenced_artifact_elements,
-                0,
             )],
         )
     }
@@ -424,7 +424,7 @@ impl CreateArgumentGroup {
             self.id.as_ref(),
             &self.name,
             &[],
-            &[(ReferenceEnd::GroupMember, &self.group_members, 0)],
+            &[(ReferenceEnd::GroupMember, &self.group_members)],
         )
     }
 }
@@ -481,9 +481,9 @@ impl Relationship {
             &self.name,
             &[(Flag::IsCounter, self.is_counter)],
             &[
-                (ReferenceEnd::Source, &self.sources, 1),
-                (ReferenceEnd::Target, slice::from_ref(&self.target), 1),
-                (ReferenceEnd::Reasoning, self.reasoning.as_slice(), 0),
+                (ReferenceEnd::Source, &self.sources),
+                (ReferenceEnd::Target, slice::from_ref(&self.target)),
+                (ReferenceEnd::Reasoning, self.reasoning.as_slice()),
             ],
         )
     }
@@ -821,18 +821,15 @@ relationship_operation! {
 
 /// Creates an element of `kind` named `name` under `parent`, with `flags`
 /// set and each reference end of `references` holding its ids, and returns
-/// the ids created: the new element's. Each end comes with the fewest ids it
-/// needs.
+/// the ids created: the new element's.
 ///
 /// The checks, in order: [`checked_place`]'s four (ADR 0019); every end
-/// holds at least the ids it needs ([`EditError::TooFewReferences`]); every
-/// id, end by end and in order, holds no XML white space
-/// ([`EditError::InvalidReference`]); every id, in the same order, names an
-/// element of the document ([`EditError::ReferenceNotFound`]); every id, in
-/// the same order, names an element of a kind its end's declared type admits
-/// ([`EditError::WrongReferenceType`], ADR 0028), so every id is checked for
-/// existence before any is checked for type. On a refusal the document, its
-/// counters included, is unchanged: every check runs before the one change.
+/// holds at least the ids it needs ([`EditError::TooFewReferences`]); then
+/// the referenced ids, by [`check_targets`]: white space, then existence,
+/// then type, each over every end and its ids in order (ADR 0028), the
+/// order a set operation checks them in too (ADR 0029). On a refusal the
+/// document, its counters included, is unchanged: every check runs before
+/// the one change.
 fn create_referencing(
     document: &mut Document,
     kind: ElementKind,
@@ -840,58 +837,21 @@ fn create_referencing(
     id: Option<&ElementId>,
     name: &LangString,
     flags: &[(Flag, bool)],
-    references: &[(ReferenceEnd, &[ElementId], usize)],
+    references: &[(ReferenceEnd, &[ElementId])],
 ) -> Result<Vec<ElementId>, EditError> {
     let (id, generated) = checked_place(document, kind, Some(parent), id)?;
-    for &(end, targets, required) in references {
-        if targets.len() < required {
-            return Err(EditError::TooFewReferences {
-                end: end.name(),
-                given: targets.len(),
-                required,
-            });
-        }
+    for &(end, targets) in references {
+        check_bounds(end, targets.len())?;
     }
-    // An id with XML white space in it would be written as an IDREFS
-    // attribute of several ids, so it cannot be referenced.
-    for &(end, targets, _) in references {
-        if let Some(spaced) = targets
-            .iter()
-            .find(|target| target.as_str().contains([' ', '\t', '\n', '\r']))
-        {
-            return Err(EditError::InvalidReference {
-                end: end.name(),
-                id: spaced.clone(),
-            });
-        }
-    }
-    for &(end, targets, _) in references {
-        if let Some(missing) = targets.iter().find(|target| !document.contains(*target)) {
-            return Err(EditError::ReferenceNotFound {
-                end: end.name(),
-                id: missing.clone(),
-            });
-        }
-    }
-    for &(end, targets, _) in references {
-        let declared = end.target();
-        let wrong = targets.iter().find_map(|target| {
-            let kind = document.get(target)?.kind();
-            (!declared.admits(kind)).then_some((target, kind))
-        });
-        if let Some((target, kind)) = wrong {
-            return Err(EditError::WrongReferenceType {
-                end: end.name(),
-                id: target.clone(),
-                kind,
-                expected: declared.name(),
-            });
-        }
-    }
+    let checked: Vec<(ReferenceEnd, &[ElementId], &[ElementId])> = references
+        .iter()
+        .map(|&(end, targets)| (end, targets, [].as_slice()))
+        .collect();
+    check_targets(document, &checked)?;
     let held = references
         .iter()
-        .filter(|(_, targets, _)| !targets.is_empty())
-        .map(|&(end, targets, _)| (end, targets.to_vec()))
+        .filter(|(_, targets)| !targets.is_empty())
+        .map(|&(end, targets)| (end, targets.to_vec()))
         .collect();
     document
         .insert_with_references(
