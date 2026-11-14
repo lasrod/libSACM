@@ -1358,7 +1358,7 @@ acceptance = [
   "Each accessor returns exactly what the diagnostic was built with: `code`, `severity`, `requirement_id`, `clause` (Some and None), `affected`, `location` (Some and None), `message`.",
   "`affected()` keeps the given order and duplicates.",
   "`Severity` is exactly Info < Warning < Error. `as_str` and `Display` give `info`, `warning` and `error`.",
-  "`Code::as_str` and `Display` return the text unchanged. `Code`'s associated constants are exactly the catalog codes whose rows emit them, each constant checked by the row that emits it; the check in both directions is LIB-DIAG-002 (planned).",
+  "`Code::as_str` and `Display` return the text unchanged. `Code`'s associated constants are exactly the catalog codes whose rows emit them, each constant checked by the row that emits it, and in both directions by LIB-DIAG-002.",
   "`SourceLocation::new` returns None when the line or the column is 0. `line()` and `column()` round-trip, `Display` is `line L, column C`, and the order is by line, then column.",
   "`Diagnostic`'s `Display` matches the ADR 0011 format exactly, with or without a clause and with or without a location.",
   "Sorting any permutation of diagnostics that each differ in one key field gives the ADR 0011 key order. Located diagnostics come first. `a.cmp(&b) == Equal` exactly when `a == b`.",
@@ -3079,7 +3079,8 @@ title = "gid uniqueness"
 requirement = "`validation::validate` reports each non-empty `gid` that two or more elements of the document hold, of any kind and UtilityElements included, as one SACM-ID-003 Error (`Code::GID_DUPLICATE`), citing clause 8.2 and affecting every holder in document order. Values compare exactly, letter case and white space included; an absent or `\"\"` gid is not compared (D-GID-EMPTY), and a gid equal to an `xmi:id` is not a finding. Reading and editing do not refuse a duplicate (D-VAL-LAYER); a strict save refuses one (ADR 0022). It is an Error because the indicative counts as \"must\" (D-SEV, the maintainer, 2026-11-14)."
 source = "formal/23-05-08 §8.2 (p. 18) \"gid:String[0..1] - a unique identifier that is unique within the scope of the model instance\"; ptc/22-03-13 Base::SACMElement.gid (String, 0..1; no isID, no constraint); D-SEV; D-GID-EMPTY; D-VAL-LAYER; SACM-ID-003; ADR 0025; assurance-forge libs/sacm validation/validate.cpp (gid uniqueness), #335"
 kind = "validation"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0041-m2-validation-rules.md"
 depends_on = ["SACM23-BASE-006", "SACM23-VAL-018", "LIB-COMPAT-007"]
 acceptance = [
   "Two Claims with `gid=\"g\"` in one ArgumentPackage read in both modes with no read diagnostic for it; `validate` gives exactly one SACM-ID-003: Error, requirement SACM23-VAL-002, clause `8.2`, no location, affected `[c1, c2]`; the message quotes `\"g\"`, `c1` and `c2`.",
@@ -3202,7 +3203,8 @@ title = "Description multiplicity"
 requirement = "`validation::validate` reports each ModelElement holding two or more `description` children as one SACM-MULT-001 Warning, citing clause 8.6 (`description:Description[0..1]`) and affecting the element. Every description is kept (D-DESC-MULT); none or one gives no finding. Being a Warning, it does not stop a strict save. Notes, implementation constraints and tagged values are `[0..*]` in both text and model and never count."
 source = "formal/23-05-08 §8.6 (p. 19) \"description: Description[0..1] (composition) - the description of the ModelElement.\"; ptc/22-03-13 Base::ModelElement description (composite, 0..*); specification defect D6; metamodel-inventory §8.6; D-DESC-MULT; D-SEV; assurance-forge libs/sacm validation/validate.cpp (descriptions > 1, Warning)"
 kind = "validation"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0041-m2-validation-rules.md"
 depends_on = ["SACM23-BASE-004", "SACM23-VAL-018", "LIB-COMPAT-007"]
 acceptance = [
   "A Claim with two Descriptions reads in both modes with no read diagnostic for it; `validate` gives exactly one SACM-MULT-001: Warning, requirement SACM23-VAL-011, clause `8.6`, no location, affected `[claim]`; the message names the kind, the id, 2 and `description:Description[0..1]`.",
@@ -3235,7 +3237,8 @@ title = "ArgumentPackage homogeneity"
 requirement = "For each plain ArgumentPackage with a plain ArgumentPackage among its `argumentElement` children, `validation::validate` reports each other `argumentElement` child that is not of an ArgumentPackage kind as one SACM-PKG-001 Error (`Code::PACKAGE_CONTENT_INVALID`), citing clause 11.4 and affecting the package, then the child. A contained ArgumentPackageInterface or ArgumentPackageBinding neither triggers the rule nor is reported (D-PKG-HOMOG); UtilityElement children and `name` are not argumentation content; only a plain ArgumentPackage is checked as an owner. The rule is not recursive across levels: each package is checked for its own children. Reading and editing do not refuse it (D-VAL-LAYER); a strict save refuses it (ADR 0022)."
 source = "formal/23-05-08 §11.4 (p. 36) \"ArgumentPackages elements can also be nested.\" and Constraints \"If an ArgumentPackage has nested ArgumentPackages, then it is only allowed to contain ArgumentPackages.\"; §11.6 (pp. 37-38) Superclass ArgumentPackage, \"An ArgumentPackageInterface resides insided the ArgumentPackage to which it refers.\"; ptc/22-03-13 Argumentation::ArgumentPackage argumentElement (composite, 0..*; no OCL); specification defect D4; D-PKG-HOMOG; D-SEV; D-VAL-LAYER; assurance-forge libs/sacm validation/validate.cpp (homogeneity), #334"
 kind = "validation"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0041-m2-validation-rules.md"
 depends_on = ["SACM23-ARG-001", "SACM23-VAL-018", "LIB-COMPAT-007"]
 notes = "The interface/binding exception is exercised by SACM23-ARG-014 and SACM23-ARG-015. Slice 0041: the interface/binding exemption is tested now through the test seam; read-path coverage comes later with SACM23-ARG-014 and SACM23-ARG-015."
 acceptance = [
@@ -3286,7 +3289,8 @@ title = "Diagnostic catalog stays in sync"
 requirement = "Every code the crate can construct is a `Code` associated constant, and the catalog's live rows are exactly those constants. A row of `docs/sacm/diagnostics.md` is live when its Meaning names the `` `Code::NAME` `` constant whose text is that row's code; a row naming none is reserved. A test checks both directions, and the catalog's Status note states this rule instead of a hand-kept list of live codes."
 source = "D-DIAG; docs/sacm/diagnostics.md (\"Adding a code: append the row here in the same change that adds its constant to the crate\"); ADR 0011"
 kind = "quality"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0041-m2-validation-rules.md"
 depends_on = ["LIB-DIAG-001"]
 acceptance = [
   "The test collects the crate's codes by scanning `crates/sacm/src/**/*.rs`: every `Code::from_static(\"…\")` literal is the value of a `pub const NAME: Code` in `diagnostic.rs`, so no code is built elsewhere, and each `(NAME, text)` is checked against `Code::NAME.as_str()`.",

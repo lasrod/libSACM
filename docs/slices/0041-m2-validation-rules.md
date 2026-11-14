@@ -1,8 +1,8 @@
 ---
 slice: 0041
 name: m2-validation-rules
-state: in-progress
-step: verification
+state: done
+step: verified
 rows: [SACM23-VAL-002, SACM23-VAL-011, SACM23-VAL-012, LIB-DIAG-002]
 mode: pr
 base: main
@@ -36,3 +36,4 @@ SACM-ID-003 and SACM-PKG-001.
 - 2026-11-14 choose: the validation rows that ADR 0025's content unblocks, and the catalog
   check.
 - 2026-11-14 decide: duplicate gid is an Error (the maintainer); D-SEV gains the indicative rule; D-GID-EMPTY recorded; homogeneity checks plain owners only.
+- 2026-11-14 verify: PASS in one round; Copilot narrowed the catalog scanner; record 0041.
