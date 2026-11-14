@@ -733,8 +733,11 @@ fn sacm23_val_018_multiplicity_violation_code_is_sacm_mult_001_in_the_catalog() 
             rows.len()
         );
     };
+    // An Error here; SACM23-VAL-011 adds a Warning use, so the severity cell
+    // may also be "Error / Warning".
     assert!(
-        line.starts_with("| SACM-MULT-001 | Error |"),
+        line.starts_with("| SACM-MULT-001 | Error |")
+            || line.starts_with("| SACM-MULT-001 | Error / Warning |"),
         "{ROW}: the catalog's SACM-MULT-001 row is not an Error: {line}"
     );
     // The widened text: any multiplicity violation, with the missing name as

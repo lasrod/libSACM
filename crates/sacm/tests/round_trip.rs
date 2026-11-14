@@ -406,8 +406,15 @@ fn deep_and_wide() -> Document {
             create(&mut doc, operation);
         }
     }
-    // A Claim directly in the outer ArgumentPackage, after the nested one.
-    create(&mut doc, CreateClaim::new(&arguments, LangString::new("")));
+    // A second nested ArgumentPackage after the first, holding a Claim. Not a
+    // Claim directly in the outer package: next to a nested ArgumentPackage
+    // that is a SACM-PKG-001 Error (SACM23-VAL-012, clause 11.4), and these
+    // documents must validate with no Error.
+    let after = create(
+        &mut doc,
+        CreateArgumentPackage::new(&arguments, en("After")).with_id("after_nested"),
+    );
+    create(&mut doc, CreateClaim::new(&after, LangString::new("")));
     let second = create(&mut doc, CreateArgumentPackage::root(en("Second root")));
     create(&mut doc, CreateClaim::new(&second, en("C")));
     create(

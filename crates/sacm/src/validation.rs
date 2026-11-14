@@ -12,6 +12,9 @@
 //! | SACM-MULT-001 | SACM23-VAL-010 | §8.5 | Error | a `content` or `key` has no value (`value:LangString[1..*]`), or two or more of its values share a language (each `lang` "must be unique") |
 //! | SACM-MULT-001 | SACM23-VAL-010 | §8.12 | Error | a `TaggedValue` has no `key` (`key:MultiLangString[1]`) |
 //! | SACM-ID-002 | SACM23-VAL-020 | XMI 2.5.1 §7.6.1 | Error | an element's id, or the `xmi:id` of its name, `content`, `key` or a `value`, is not an XML `NCName` (an `xmi:id` is an `xsd:ID`) |
+//! | SACM-MULT-001 | SACM23-VAL-011 | §8.6 | Warning | a `ModelElement` has two or more descriptions (`description:Description[0..1]`) |
+//! | SACM-ID-003 | SACM23-VAL-002 | §8.2 | Error | two or more elements hold the same non-empty `gid` ("unique within the scope of the model instance") |
+//! | SACM-PKG-001 | SACM23-VAL-012 | §11.4 | Error | an `ArgumentPackage` nests a plain `ArgumentPackage` and also holds another argumentation element ("only allowed to contain `ArgumentPackages`") |
 //!
 //! A `ModelElement`
 //! ([`AbstractClass::ModelElement`](crate::model::AbstractClass::ModelElement))
@@ -71,6 +74,28 @@
 //! finding, give the element, or its name, `content`, `key` or `value`, an
 //! id that is an `NCName`.
 //!
+//! The §8.6 text gives `description:Description[0..1]`, while the model
+//! says `0..*`, so every description is kept and a `ModelElement` with two
+//! or more is a Warning, affecting the element (D-DESC-MULT). Notes,
+//! implementation constraints and tagged values are not counted. To fix one,
+//! merge the descriptions into one.
+//!
+//! A `gid` (§8.2) is compared across the whole document, on elements of
+//! every kind. Each value two or more elements hold is one finding,
+//! affecting every holder in document order. An absent or empty (`""`) gid
+//! is not compared, and values are compared exactly, letter case and white
+//! space included (D-GID-EMPTY). A gid is not an `xmi:id`, so a gid equal
+//! to an id is no finding. To fix one, give each element its own gid.
+//!
+//! An `ArgumentPackage` that nests a plain `ArgumentPackage` may hold only
+//! `ArgumentPackage`s (§11.4). Each other `argumentElement` child, such as a
+//! `Claim`, is one finding, affecting the package, then the child. An
+//! `ArgumentPackageInterface` or `ArgumentPackageBinding` child neither
+//! triggers the rule nor is reported, `UtilityElement` children are not
+//! counted, and only a plain `ArgumentPackage` is checked as an owner
+//! (D-PKG-HOMOG). Each package is checked for its own children only. To fix
+//! one, move the other elements into a nested package.
+//!
 //! The result is sorted by [`Diagnostic`]'s order. Its diagnostics have no
 //! [`location`](Diagnostic::location), because a [`Document`] records no
 //! source positions.
@@ -117,6 +142,9 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
+mod descriptions;
+mod gid;
+mod homogeneity;
 mod ids;
 mod multi_lang;
 mod names;
@@ -132,6 +160,9 @@ const RULES: &[Rule] = &[
     names::missing_name,
     multi_lang::multi_lang_strings,
     ids::invalid_id,
+    gid::duplicate_gid,
+    descriptions::repeated_description,
+    homogeneity::argument_package_homogeneity,
 ];
 
 /// Checks `document` against the SACM rules this release knows and returns

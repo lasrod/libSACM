@@ -205,6 +205,15 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
   more values of one share, and a TaggedValue with no `key`, as SACM-MULT-001 Errors on the
   UtilityElement; and a `content`, `key` or `value` `xmi:id` that is not an NCName as
   SACM-ID-002 [SACM23-VAL-010, SACM23-VAL-020].
+- `validation::validate` reports each non-empty `gid` that two or more elements hold as a
+  SACM-ID-003 Error (`Code::GID_DUPLICATE`) on every holder; a ModelElement with two or
+  more descriptions as a SACM-MULT-001 Warning (clause 8.6
+  `description:Description[0..1]`); and an ArgumentPackage that nests a plain
+  ArgumentPackage and also holds another argumentation element as one SACM-PKG-001 Error
+  (`Code::PACKAGE_CONTENT_INVALID`) per such element [SACM23-VAL-002, SACM23-VAL-011,
+  SACM23-VAL-012].
+- A test checks that every code the crate can emit has its catalog row and every live
+  row names its constant; the catalog's status note states that rule [LIB-DIAG-002].
 
 ### Changed
 
@@ -233,6 +242,13 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
   `xmi::write` refuse a document: one with an empty `content` or `key`, two values in
   one language, or a TaggedValue without a `key`. Write it as held in tolerant mode
   [SACM23-VAL-010].
+- The new validation Error rule SACM-ID-003 can make a strict `xmi::write` refuse a
+  document it wrote before: one where two elements hold the same non-empty `gid`. Write
+  it as held in tolerant mode [SACM23-VAL-002].
+- The new validation Error rule SACM-PKG-001 can make a strict `xmi::write` refuse a
+  document it wrote before: one with an ArgumentPackage that nests a plain
+  ArgumentPackage and also holds a Claim or another argumentation element. Write it as
+  held in tolerant mode [SACM23-VAL-012].
 - `xmi::read` reads descriptions, notes, implementation constraints, tagged values and
   `gid`, which it refused as `Unsupported` before [SACM23-BASE-004, SACM23-BASE-005,
   SACM23-BASE-006].

@@ -901,8 +901,10 @@ impl<'a> SacmElement<'a> {
     /// and nothing is trimmed ([ADR 0012], [ADR 0025]). A gid is not an
     /// `xmi:id`: it is in no id space, so [`Document::get`] does not find it,
     /// and it has no syntax check. The document does not stop two elements
-    /// from sharing one, though §8.2 requires a gid to be unique; no rule
-    /// reports that yet (SACM23-VAL-002). No edit sets it yet, so only
+    /// from sharing one, though §8.2 requires a gid to be unique:
+    /// [`validation::validate`](crate::validation::validate) reports each
+    /// non-empty value two or more elements hold as a SACM-ID-003 Error
+    /// (SACM23-VAL-002). No edit sets it yet, so only
     /// [`xmi::read`](crate::xmi::read) gives one.
     ///
     /// [ADR 0012]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0012-lang-string-absent-and-empty.md

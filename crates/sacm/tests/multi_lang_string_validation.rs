@@ -314,10 +314,17 @@ fn sacm23_val_010_distinct_languages_compared_exactly_and_an_absent_content_give
             ),
         ),
         (
+            // On two elements, the package and its Claim: two Descriptions on
+            // one element are a SACM23-VAL-011 Warning.
             "two Descriptions in the same language",
             in_claim(
-                "<description xmi:id=\"d1\"><content><value lang=\"en\" content=\"a\"/></content></description>\
-                 <description xmi:id=\"d2\"><content><value lang=\"en\" content=\"b\"/></content></description>",
+                "<description xmi:id=\"d2\"><content><value lang=\"en\" content=\"b\"/></content></description>",
+            )
+            .replacen(
+                "<name content=\"P\"/>",
+                "<name content=\"P\"/>\
+                 <description xmi:id=\"d1\"><content><value lang=\"en\" content=\"a\"/></content></description>",
+                1,
             ),
         ),
     ];

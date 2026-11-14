@@ -59,3 +59,11 @@ The assurance-forge C++ library has `sacm::validation::validate(const Document&)
 - A public `Rule` trait: a semver commitment with no user yet.
 - A module named `validate`: `validate::validate` stutters, and C++ names the module
   `validation`.
+
+## Amendment 1 (2026-11-14): rules for gid, descriptions and package homogeneity (slice 0041)
+
+The rules follow this ADR's shape (no location, sorted findings). Differences from C++, one line each:
+- **V7.** A `gid` held by several elements is one SACM-ID-003 finding per value, affecting every holder in document order. C++ emits one per extra holder, affecting {that holder, the first} (`validate.cpp`, gid uniqueness).
+- **V8.** These rules name their own rows (SACM23-VAL-002, -011, -012). C++ names SACM23-BASE-001/002 and SACM23-ARG-002.
+
+*Amendment 1 status: recorded by the lead under the decisions the maintainer made on 2026-11-14 (duplicate gid as an Error); it changes no policy.*

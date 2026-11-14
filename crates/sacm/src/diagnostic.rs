@@ -157,7 +157,10 @@ impl Code {
     /// multiplicity allows. [`validation::validate`](crate::validation::validate)
     /// reports it, as an Error, for a `ModelElement` with no name (§8.6
     /// `name:LangString[1]`, SACM23-VAL-018); fix it by giving the element a
-    /// name.
+    /// name. It reports it as a Warning for a `ModelElement` with more than
+    /// one description (§8.6 `description:Description[0..1]`,
+    /// SACM23-VAL-011): every description is kept, and a strict save is not
+    /// refused; fix it by merging them into one.
     ///
     /// ```
     /// use sacm::diagnostic::Code;
@@ -228,6 +231,16 @@ impl Code {
     /// is first read trimmed (SACM-ID-004).
     pub const ID_INVALID: Code = Code::from_static("SACM-ID-002");
 
+    /// SACM-ID-003: two or more elements hold the same `gid`, which §8.2
+    /// requires to be "unique within the scope of the model instance".
+    /// [`validation::validate`](crate::validation::validate) reports one
+    /// Error per repeated value, affecting every holder in document order
+    /// (SACM23-VAL-002). An absent or empty (`""`) `gid` is not compared;
+    /// every other value is compared exactly, letter case and white space
+    /// included (D-GID-EMPTY). A `gid` is not an `xmi:id` (SACM-ID-001). Fix:
+    /// give each element its own `gid`, or remove the copies.
+    pub const GID_DUPLICATE: Code = Code::from_static("SACM-ID-003");
+
     /// SACM-ID-004: an `xmi:id` has XML white space (space, TAB, LF or CR)
     /// around an `NCName`, so it is read trimmed: an `xmi:id` is an `xsd:ID`,
     /// whose white space is collapsed (XMI 2.5.1 §7.6.1; XML Schema 1.0 Part 2
@@ -237,6 +250,17 @@ impl Code {
     /// (SACM23-XMI-025, ADR 0024). [`xmi::write`](crate::xmi::write) writes
     /// the trimmed id. Nothing needs fixing.
     pub const ID_TRIMMED: Code = Code::from_static("SACM-ID-004");
+
+    /// SACM-PKG-001: a package holds content its clause does not allow.
+    /// [`validation::validate`](crate::validation::validate) reports it as an
+    /// Error for an `ArgumentPackage` that nests a plain `ArgumentPackage`
+    /// and also holds another argumentation element (§11.4: "it is only
+    /// allowed to contain `ArgumentPackages`"), one per such element, affecting
+    /// the package and the element (SACM23-VAL-012). A contained
+    /// `ArgumentPackageInterface` or `ArgumentPackageBinding` neither
+    /// triggers nor is reported, and `UtilityElement`s are not counted
+    /// (D-PKG-HOMOG). Fix: move the other elements into a nested package.
+    pub const PACKAGE_CONTENT_INVALID: Code = Code::from_static("SACM-PKG-001");
 
     /// The code with the given text.
     ///
