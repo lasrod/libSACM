@@ -28,3 +28,4 @@ A docs slice clears them every few slices; add new ones at the end.
 | Verification 0041 | `crates/sacm/tests/multi_lang_string_validation.rs` (SACM23-VAL-010) | Its "same language, two texts" case is now on two elements; add a Description and a Note on one Claim, both `en`, expecting no finding (guards against pooling languages per owner). |
 | Verification 0041 | D-PKG-HOMOG (SACM23-ARG-014/015) | Interface and binding owners are exempt following C++; they are §11.4 ArgumentPackages by inheritance. Re-examine when those rows land. |
 | Verification 0041 | `tests/data/sacm23/validation/invalid/claim-descriptions-repeated.sacm.xmi` | It validates as valid (Warning only) but sits under `invalid/`; consider a `warning/` folder. |
+| Docs review 0042 (later API) | `ReadError::RepeatedValue` | `citedElement="a b"` shows two identical locations (both at the attribute name); consider each token at its own column, or a distinct reason ("holds 2 ids; the end holds one"). |

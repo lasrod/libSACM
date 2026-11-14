@@ -276,7 +276,9 @@ impl Code {
     /// reference in both modes, and a tolerant [`xmi::write`](crate::xmi::write)
     /// writes it back, so nothing is lost; a strict write refuses the
     /// document (ADR 0026). Fix: point the reference at an element of the
-    /// document, add the element it names, or remove the reference.
+    /// document, add the element it names, or remove the reference, in the
+    /// file; edits that set flags and references are LIB-EDIT-008/009, not
+    /// built yet.
     pub const REF_DANGLING: Code = Code::from_static("SACM-REF-001");
 
     /// SACM-CITE-001: an element has a `citedElement` but its `isCitation`
@@ -286,7 +288,8 @@ impl Code {
     /// Error per such element, affecting it (SACM23-VAL-007). §8.2 states
     /// only that direction, so `isCitation` true with no `citedElement` is
     /// no finding (ADR 0026). Fix: set `isCitation="true"`, or remove the
-    /// `citedElement`.
+    /// `citedElement`, in the file; edits that set flags and references are
+    /// LIB-EDIT-008/009, not built yet.
     pub const CITATION_INVALID: Code = Code::from_static("SACM-CITE-001");
 
     /// SACM-ABS-001: an `abstractForm` breaks a §8.2 rule.
@@ -298,7 +301,9 @@ impl Code {
     /// when it is of another kind (both "should"), each affecting the
     /// element, then the target. A target that names no element gives only
     /// SACM-REF-001. Fix: make the element concrete, or point the
-    /// `abstractForm` at an abstract element of the same kind.
+    /// `abstractForm` at an abstract element of the same kind, in the file;
+    /// edits that set flags and references are LIB-EDIT-008/009, not built
+    /// yet.
     pub const ABSTRACT_FORM_INVALID: Code = Code::from_static("SACM-ABS-001");
 
     /// The code with the given text.
@@ -420,8 +425,8 @@ impl fmt::Display for SourceLocation {
 ///
 /// ```text
 /// warning SACM-XMI-010 [LIB-COMPAT-001, clause 9.5.2] at line 4, column 20: the Claim "c1" is typed with xsi:type, …
-/// error SACM-REF-001 [SACM23-VAL-003, clause 8.2]: Claim "claim_1" has the citedElement "claim_9", which names no element of the document
-/// error SACM-CITE-001 [SACM23-VAL-007, clause 8.2]: Claim "claim_1" has the citedElement "claim_2" but isCitation is not true
+/// error SACM-REF-001 [SACM23-VAL-003, clause 8.2]: Claim "claim_1" has the citedElement "claim_9", which names no element of the document …
+/// error SACM-CITE-001 [SACM23-VAL-007, clause 8.2]: Claim "claim_1" has the citedElement "claim_2" but isCitation is not true …
 /// error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: Claim "c1" has no name (name:LangString[1])
 /// ```
 ///

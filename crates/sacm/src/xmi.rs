@@ -285,7 +285,7 @@ mod roots;
 ///
 /// - **The attribute form.** An attribute in no namespace named after the end
 ///   holds the target ids separated by XML white space (`xsd:IDREFS`, XMI
-///   2.5.1 rule 2j, SACM23-XMI-005). Each token is held exactly as written:
+///   2.5.1 §9.5.2 rule 2j, SACM23-XMI-005). Each token is held exactly as written:
 ///   `" c2 "` is `c2`, and `#c2` is the id `#c2`, not `c2`. A value with no
 ///   token, such as `""`, is [`ReadError::Unsupported`], never read as no
 ///   reference, and two or more tokens on a single-valued end are
@@ -294,7 +294,7 @@ mod roots;
 /// - **The element form.** An element in no namespace named after the end,
 ///   with exactly one link attribute, `xmi:idref="id"` (in the XMI
 ///   namespace, by any prefix) or an unqualified `href="#id"` (XMI 2.5.1
-///   production 2c, rules 2l and 2n, SACM23-XMI-015), anywhere among its
+///   §9.5.2 production 2c, rules 2l and 2n, SACM23-XMI-015), anywhere among its
 ///   siblings. The value is read without the XML white space around it, and
 ///   the element holds only white space, comments and processing
 ///   instructions. It reads to the same document as the attribute form,
@@ -310,7 +310,8 @@ mod roots;
 ///   `other.xmi#c2` or `c2` (cross-document links are SACM23-XMI-027's), a
 ///   pointer such as `#xpointer(id('c2'))`, `#` or empty; a child element
 ///   or text in it; and an end or a reference element in a namespace, such as
-///   `sacm:citedElement`. A `name`, `content`, `key` or `value` has no
+///   `sacm:citedElement`. A `citedElement` or `abstractForm` on a `name`,
+///   `content`, `key` or `value` is refused as `Unsupported`: those have no
 ///   references.
 /// - **Dangling references are kept.** A reference whose id names no
 ///   element, an id absent from the input or the `xmi:id` of a `name`,
@@ -461,8 +462,8 @@ mod roots;
 ///   shorthand or a `name` element), a value element that carries an
 ///   attribute (such as `xmi:id` or `xsi:nil`), holds an element, or is in a
 ///   namespace (such as `sacm:content`, `sacm:gid` or `sacm:isCitation`), a
-///   reference that names no id or is malformed (see
-///   [References](#references)), and any other attribute or content of a
+///   reference attribute that holds no id, or a malformed reference element
+///   (see [References](#references)), and any other attribute or content of a
 ///   root or child. For a child, that includes a role its parent's class
 ///   lacks (any child of a `UtilityElement`), a role element in a namespace,
 ///   a type that names no concrete SACM class or that the role does not
@@ -591,6 +592,7 @@ mod roots;
 /// assert_eq!(c2.cited_element().map(|id| id.as_str()), Some("c9"));
 /// assert!(document.get("c9").is_none());
 /// let found = sacm::validation::validate(&document);
+/// assert_eq!(found.len(), 1);
 /// assert_eq!((found[0].code(), found[0].severity()), (Code::REF_DANGLING, Severity::Error));
 ///
 /// // A root that is not a SACM package.

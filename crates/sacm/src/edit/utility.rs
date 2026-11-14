@@ -111,9 +111,10 @@ impl CreateDescription {
 ///
 /// An implementation constraint is a condition an abstract element must meet
 /// before it can be made concrete. §8.6 says an element should have
-/// implementation constraints only if it is abstract; this release cannot set
-/// `isAbstract` yet, and a later validation rule (SACM23-VAL-021) will report
-/// the combination.
+/// implementation constraints only if it is abstract; no edit sets
+/// `isAbstract` yet (LIB-EDIT-008), though a file read with
+/// [`xmi::read`](crate::xmi::read) may carry it, and a later validation rule
+/// (SACM23-VAL-021) will report the combination.
 ///
 /// It follows the rules of [`CreateDescription`]. Without
 /// [`with_id`](Self::with_id), the id is generated:

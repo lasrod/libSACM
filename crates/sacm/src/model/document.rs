@@ -202,6 +202,8 @@ impl Document {
     }
 
     /// The element with the given id, or `None` if the document has none.
+    /// It resolves a reference such as [`SacmElement::cited_element`]: `None`
+    /// means the reference names no element of the document (SACM-REF-001).
     ///
     /// Ids are compared exactly, byte for byte. The id may be given as a
     /// `&str`, a `&String` or an `&ElementId`.
@@ -1123,7 +1125,8 @@ impl<'a> SacmElement<'a> {
     /// up with [`Document::get`]. The id may name no element of the document,
     /// such as an id absent from the file or the id of a `name`; the document
     /// keeps it, and [`validation::validate`](crate::validation::validate)
-    /// reports it as SACM-REF-001 (SACM23-VAL-003). See
+    /// reports it as SACM-REF-001 (SACM23-VAL-003). No edit sets it yet
+    /// (LIB-EDIT-009); only [`xmi::read`](crate::xmi::read) gives one. See
     /// [`is_citation`](Self::is_citation) for an example.
     #[must_use]
     pub fn cited_element(self) -> Option<&'a ElementId> {
@@ -1134,8 +1137,9 @@ impl<'a> SacmElement<'a> {
     /// `isAbstract[0..1]=false`): `false` unless the document holds `true`.
     ///
     /// Every element, of every kind, has the flag, under the rules of
-    /// [`is_citation`](Self::is_citation). An abstract element is a pattern
-    /// that concrete elements conform to through their
+    /// [`is_citation`](Self::is_citation). An abstract element is, for
+    /// example, part of a pattern or template (§8.2); a concrete element
+    /// names the abstract one it conforms to through its
     /// [`abstract_form`](Self::abstract_form).
     ///
     /// ```
@@ -1170,8 +1174,9 @@ impl<'a> SacmElement<'a> {
     /// asks that the element itself be concrete, and that the target be
     /// abstract and of the same kind;
     /// [`validation::validate`](crate::validation::validate) reports each
-    /// case that is not as SACM-ABS-001 (SACM23-VAL-008). See
-    /// [`is_abstract`](Self::is_abstract) for an example.
+    /// case that is not as SACM-ABS-001 (SACM23-VAL-008). No edit sets it
+    /// yet (LIB-EDIT-009); only [`xmi::read`](crate::xmi::read) gives one.
+    /// See [`is_abstract`](Self::is_abstract) for an example.
     #[must_use]
     pub fn abstract_form(self) -> Option<&'a ElementId> {
         self.references(ReferenceEnd::AbstractForm).first()

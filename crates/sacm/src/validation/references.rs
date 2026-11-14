@@ -20,7 +20,7 @@ pub(super) fn dangling_references(document: &Document, found: &mut Vec<Diagnosti
                 }
                 let message = format!(
                     "{} {:?} has the {} {:?}, which names no element of the document \
-                     (a {} is expected)",
+                     (the end's type is {})",
                     element.kind().name(),
                     element.id().as_str(),
                     end.name(),
@@ -113,7 +113,7 @@ pub(super) fn abstract_form(document: &Document, found: &mut Vec<Diagnostic>) {
         }
         if target.kind() != element.kind() {
             let message = format!(
-                "the abstractForm {:?} of {kind} {id:?} is a {}, not a {kind}: it should be of \
+                "the abstractForm {:?} of {kind} {id:?} is of the kind {}, not {kind}: it should be of \
                  the same type (§8.2)",
                 form.as_str(),
                 target.kind().name()

@@ -215,7 +215,7 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
 - A test checks that every code the crate can emit has its catalog row and every live
   row names its constant; the catalog's status note states that rule [LIB-DIAG-002].
 - `SacmElement::is_citation()`, `cited_element()`, `is_abstract()` and `abstract_form()`:
-  every element's clause 8.2 flags (false unless `true`) and references, held as the
+  every element's clause 8.2 flags (false unless the file sets them `true`) and references, held as the
   ids they name (ADR 0026). `xmi::read` reads a flag as an `xsd:boolean` (`true`, `1`,
   `false`, `0`), as an attribute or a value element, and refuses any other value as
   `ReadError::InvalidLiteral`; it reads a reference as an attribute of white-space

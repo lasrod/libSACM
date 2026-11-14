@@ -26,8 +26,9 @@ Read, edit, validate and write assurance cases in the
   `key` text that is empty or gives one language twice, each tagged value without a key,
   each id that is not an XML `NCName`, each `gid` two elements share, each element with
   more than one description, each `ArgumentPackage` that nests one and also holds
-  other argumentation elements, each reference that names no element, each cited element
-  without `isCitation`, and each `abstractForm` that breaks a §8.2 rule, as diagnostics
+  other argumentation elements, each reference that names no element, each element with a
+  `citedElement` whose `isCitation` is not true, and each `abstractForm` that breaks a
+  §8.2 rule, as diagnostics
   with stable codes.
 - `sacm::edit::apply` creates AssuranceCasePackages, ArgumentPackages and Claims, and
   descriptions, implementation constraints, notes and tagged values on them

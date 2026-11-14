@@ -113,8 +113,9 @@
 //! the cited id resolves; `isCitation` true alone is no finding. An element
 //! with an `abstractForm` must be concrete: one with `isAbstract` true is a
 //! SACM-ABS-001 Error, affecting it. When the `abstractForm` names an element,
-//! that element should be abstract and of the same kind: each that is not is
-//! a SACM-ABS-001 Warning, affecting the element, then the target. A target
+//! that element should be abstract and of the same kind: there is one
+//! SACM-ABS-001 Warning when it is not abstract and another when it is of
+//! another kind, each affecting the element, then the target. A target
 //! that names no element gives only SACM-REF-001.
 //!
 //! ```
