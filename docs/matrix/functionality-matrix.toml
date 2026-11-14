@@ -2908,7 +2908,7 @@ id = "SACM23-ARG-006"
 area = "ARG"
 milestone = "M2"
 title = "ArtifactReference"
-requirement = "ArtifactReference (§11.9, superclass ArgumentAsset) is read under `argumentElement` of an ArgumentPackage with its `referencedArtifactElement` end (`Base::ArtifactElement[0..*]`), multi-valued under ADR 0026/0027's rules (`SacmElement::referenced_artifact_elements() -> &[ElementId]`), written after `abstractForm` when non-empty, compared (`Difference::ReferencedArtifactElements`) and round-tripped (ADR 0028). It is not an Assertion: `assertionDeclaration`, `metaClaim`, `isCounter`, `source` and `target` on it are `Unsupported`, as is C++'s `referencedArtifact` alias. It is created by `CreateArtifactReference::new(parent, name)` with `with_id` and `with_referenced_artifact_elements` (none required, repeats kept), after ADR 0019's four checks: `InvalidReference` (white space), `ReferenceNotFound`, then `EditError::WrongReferenceType` (SACM-REF-002) for an end whose target does not conform to its declared type (ADR 0028). Every ModelElement is an ArtifactElement, so a Claim or a package is a well-typed target; only UtilityElements are not."
+requirement = "ArtifactReference (§11.9, superclass ArgumentAsset) is read under `argumentElement` of an ArgumentPackage with its `referencedArtifactElement` end (`Base::ArtifactElement[0..*]`), multi-valued under ADR 0026/0027's rules (`SacmElement::referenced_artifact_elements() -> &[ElementId]`), written after `abstractForm` when non-empty, compared (`Difference::ReferencedArtifactElements`) and round-tripped (ADR 0028). It is not an Assertion: `assertionDeclaration`, `metaClaim`, `isCounter`, `source` and `target` on it are `Unsupported`, as is C++'s `referencedArtifact` alias. It is created by `CreateArtifactReference::new(parent, name)` with `with_id` and `with_referenced_artifact_elements` (none required, repeats kept), after ADR 0019's four checks: `InvalidReference` (white space), `ReferenceNotFound`, then `EditError::WrongReferenceType` (SACM-REF-002) for an end whose target does not conform to its declared type (ADR 0028). Every kind but the UtilityElements conforms to ArtifactElement (which specializes ModelElement), so a Claim or a package is a well-typed target and a Note is not."
 source = "formal/23-05-08 §11.9 (pp. 38-39) \"Superclass ArgumentAsset\", \"referencedArtifactElement:Base::ArtifactElement[0..*] - reference to a collection of ArtifactElements.\"; §11.1 (p. 35) \"It is also possible within a package to cite elements contained within other argument packages (through ArtifactReference).\"; ptc/22-03-13 Argumentation::ArtifactReference (referencedArtifactElement, Base::ArtifactElement, 0..*, no aggregation); XMI 2.5.1 rule 4i (p. 51); ADR 0014; ADR 0026; ADR 0027; ADR 0028; D-ORDER"
 kind = "model"
 status = "implemented"
@@ -2940,6 +2940,7 @@ tests = [
   "crates/sacm/tests/artifact_references.rs::sacm23_arg_006_create_artifact_reference_refuses_an_id_holding_white_space_or_a_name_id",
   "crates/sacm/tests/artifact_references.rs::sacm23_arg_006_create_artifact_reference_accepts_an_artifact_held_through_the_seam",
   "crates/sacm/tests/artifact_references.rs::sacm23_arg_006_the_fixture_and_the_golden_file_read_their_references_and_round_trip",
+  "crates/sacm/tests/artifact_references.rs::sacm23_arg_006_a_referenced_artifact_elements_difference_displays_its_end_and_both_lists",
 ]
 code = ["crates/sacm/src/model/reference.rs", "crates/sacm/src/model/document.rs", "crates/sacm/src/compare.rs", "crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi/output.rs", "crates/sacm/src/edit/argumentation.rs", "crates/sacm/src/edit.rs"]
 
@@ -3186,6 +3187,7 @@ tests = [
   "crates/sacm/tests/argument_groups.rs::sacm23_arg_013_create_argument_group_refuses_a_member_holding_white_space",
   "crates/sacm/tests/argument_groups.rs::sacm23_arg_013_no_readable_class_has_a_composite_role_and_a_reference_end_of_the_same_name",
   "crates/sacm/tests/argument_groups.rs::sacm23_arg_013_the_fixture_and_the_golden_file_read_their_group_and_round_trip",
+  "crates/sacm/tests/argument_groups.rs::sacm23_arg_013_a_group_members_difference_displays_its_end_and_both_lists",
 ]
 code = ["crates/sacm/src/model/reference.rs", "crates/sacm/src/model/document.rs", "crates/sacm/src/compare.rs", "crates/sacm/src/xmi/roots.rs", "crates/sacm/src/edit/argumentation.rs", "crates/sacm/src/edit.rs"]
 
@@ -3541,6 +3543,7 @@ tests = [
   "crates/sacm/tests/reference_typing.rs::sacm23_val_004_a_well_typed_create_of_each_kind_succeeds_and_validates_clean",
   "crates/sacm/tests/reference_typing.rs::sacm23_val_004_ref_wrong_type_is_sacm_ref_002_and_its_catalog_row_names_it_and_the_row",
   "crates/sacm/tests/reference_typing.rs::sacm23_val_004_no_document_yields_sacm_ref_003",
+  "crates/sacm/tests/reference_typing.rs::sacm23_val_004_a_wrong_reference_type_refusal_displays_its_end_id_and_both_types_with_a_or_an",
 ]
 code = ["crates/sacm/src/validation/references.rs", "crates/sacm/src/edit/argumentation.rs", "crates/sacm/src/edit.rs", "crates/sacm/src/diagnostic.rs"]
 

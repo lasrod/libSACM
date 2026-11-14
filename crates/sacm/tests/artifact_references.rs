@@ -10,9 +10,10 @@
 //! repeats, written after `abstractForm` when not empty, and compared as
 //! `Difference::ReferencedArtifactElements`. It is no Assertion, so the
 //! Assertion and relationship features are `Unsupported` on it, as is C++'s
-//! `referencedArtifact` alias. Every `ModelElement` is an `ArtifactElement`, so a
-//! Claim or a package is a well-typed target; only the four `UtilityElement`s
-//! are not. `CreateArtifactReference::new(parent, name)` creates one, with
+//! `referencedArtifact` alias. Every kind except the `UtilityElement`s conforms
+//! to `ArtifactElement` (which specializes `ModelElement` in ptc/22-03-13), so
+//! a Claim or a package is a well-typed target; only the four
+//! `UtilityElement`s are not. `CreateArtifactReference::new(parent, name)` creates one, with
 //! `with_id` and `with_referenced_artifact_elements`, and refuses a reference
 //! that holds white space, names no element, or names an element that is no
 //! `ArtifactElement` (`EditError::WrongReferenceType`, SACM-REF-002).
@@ -844,6 +845,29 @@ fn sacm23_arg_006_semantic_compare_reports_one_referenced_artifact_elements_diff
             },
         ],
         "{ROW}: the differences are not in table order, ending with ReferencedArtifactElements"
+    );
+}
+
+#[test]
+fn sacm23_arg_006_a_referenced_artifact_elements_difference_displays_its_end_and_both_lists() {
+    let doc = |attributes: &str| read_ok(attributes, &x_in_ap(attributes, ""));
+    let found = semantic_compare(
+        &doc(" referencedArtifactElement=\"c1 c2\""),
+        &doc(" referencedArtifactElement=\"c2\""),
+    );
+    let [difference] = found.as_slice() else {
+        panic!("{ROW}: not one difference: {found:?}");
+    };
+    let line = difference.to_string();
+    assert_eq!(
+        line,
+        "element \"x\" differs in referencedArtifactElement: \
+         [\"c1\", \"c2\"] on the left, [\"c2\"] on the right",
+        "{ROW}: the line does not name the end referencedArtifactElement and both lists"
+    );
+    assert!(
+        !line.contains("citedElement"),
+        "{ROW}: the line names citedElement, not referencedArtifactElement: {line:?}"
     );
 }
 

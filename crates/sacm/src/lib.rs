@@ -66,8 +66,11 @@
 //!   ([`edit::CreateAssertedInference`] and the like), and descriptions,
 //!   implementation constraints, notes and tagged values on them
 //!   ([`edit::CreateNote`], [`edit::CreateTaggedValue`] and the like); a
-//!   refused edit changes nothing, and no edit makes a reference that names
-//!   no element or one of the wrong kind.
+//!   refused edit changes nothing, and an edit refuses a reference that
+//!   names no element or an element its end's declared type does not admit.
+//!   The stricter §11.15, §11.17 and §11.18 rules, that evidence and
+//!   artifact relationships link `ArtifactReference`s, are left to
+//!   [`validation::validate`].
 //! - [`compare::semantic_compare`] lists every difference in SACM content
 //!   between two documents, and `==` on a [`Document`](model::Document) is
 //!   true when there is none.
@@ -162,13 +165,18 @@
 //! infer its target, the conclusion. An `AssertedContext` (§11.16) gives its
 //! sources as the context of its target. An `AssertedEvidence` (§11.15)
 //! supports its target with evidence: its sources are `ArtifactReference`s
-//! (§11.9), which name the artifacts. Build them with [`edit`], and read
+//! (§11.9), which name the artifacts. Artifacts themselves (§12, the
+//! `ArtifactPackage`) are not supported yet, so for now an
+//! `ArtifactReference` can name only elements of argument and
+//! assurance-case packages, or nothing. Build them with [`edit`], and read
 //! them back with [`sources`](model::SacmElement::sources) and
 //! [`target`](model::SacmElement::target):
 //!
 //! ```
-//! use sacm::edit::{self, CreateArgumentPackage, CreateAssertedInference, CreateClaim};
+//! use sacm::edit::{self, CreateArgumentPackage, CreateArtifactReference};
+//! use sacm::edit::{CreateAssertedEvidence, CreateAssertedInference, CreateClaim};
 //! use sacm::model::{Document, LangString};
+//! use sacm::validation;
 //!
 //! let mut document = Document::new();
 //! let en = |text: &str| LangString::new(text).with_lang("en");
@@ -185,6 +193,13 @@
 //! assert_eq!(premises, ["The brake stops the vehicle", "The brake is tested"]);
 //! let conclusion = i1.target().and_then(|id| document.get(id)?.name()?.content());
 //! assert_eq!(conclusion, Some("The brake is safe"));
+//!
+//! // The evidence a1, an ArtifactReference that names nothing yet, supports c3.
+//! edit::apply(&mut document, CreateArtifactReference::new("arguments", en("The brake test report")).with_id("a1"))?;
+//! let evidence = CreateAssertedEvidence::new("arguments", en("The report shows the test"), ["a1"], "c3");
+//! edit::apply(&mut document, evidence.with_id("e1"))?;
+//! assert_eq!(document.get("e1").and_then(|e1| e1.target()).map(|id| id.as_str()), Some("c3"));
+//! assert!(validation::validate(&document).is_empty());
 //! # Ok::<(), sacm::edit::EditError>(())
 //! ```
 //!

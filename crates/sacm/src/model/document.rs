@@ -40,7 +40,7 @@ use super::{
 /// In this release [`xmi::read`](crate::xmi::read) fills a document with
 /// `AssuranceCasePackage` and `ArgumentPackage` roots, the
 /// `AssuranceCasePackage`, `ArgumentPackage`, `Claim`, `ArgumentReasoning`,
-/// `ArtifactReference`, `ArgumentGroup` elements and the five asserted
+/// `ArtifactReference` and `ArgumentGroup` elements, the five asserted
 /// relationships (`AssertedInference`, `AssertedEvidence`,
 /// `AssertedContext`, `AssertedArtifactSupport` and
 /// `AssertedArtifactContext`) in them, and the descriptions, implementation
@@ -1362,10 +1362,14 @@ impl<'a> SacmElement<'a> {
     ///
     /// For an `AssertedInference` it is the conclusion; for an
     /// `AssertedContext`, the element the context is for, such as a Claim
-    /// (§11.16). It is held
+    /// (§11.16); for an `AssertedEvidence`, what the evidence supports, such
+    /// as a Claim (§11.15). It is held
     /// unresolved. A relationship needs one:
     /// [`validation::validate`](crate::validation::validate) reports one
-    /// without it as SACM-MULT-001 (SACM23-VAL-005). See
+    /// without it as SACM-MULT-001 (SACM23-VAL-005). A target that is no
+    /// `ArgumentAsset` is SACM-REF-002 (SACM23-VAL-004), and so is one of an
+    /// `AssertedArtifactSupport` or `AssertedArtifactContext` that is no
+    /// `ArtifactReference` (§11.17, §11.18, SACM23-VAL-016). See
     /// [`sources`](Self::sources) for an example.
     #[must_use]
     pub fn target(self) -> Option<&'a ElementId> {
@@ -1413,7 +1417,11 @@ impl<'a> SacmElement<'a> {
     ///
     /// An `ArtifactReference` is how an argument cites an artifact, or any
     /// other element, such as a Claim of another argument package (§11.1).
-    /// Every `ModelElement` is an `ArtifactElement`, so any of them is a
+    /// Artifacts themselves (§12, the `ArtifactPackage`) are not supported
+    /// yet, so for now it can name only elements of argument and
+    /// assurance-case packages, or nothing. Every kind except the
+    /// `UtilityElement`s (`Description`, `ImplementationConstraint`, `Note`
+    /// and `TaggedValue`) conforms to `ArtifactElement`, so any of them is a
     /// well-typed target; a `UtilityElement` is not, and
     /// [`validation::validate`](crate::validation::validate) reports one as
     /// SACM-REF-002 (SACM23-VAL-004). The ids are held unresolved and with
@@ -1427,8 +1435,10 @@ impl<'a> SacmElement<'a> {
     /// let mut doc = Document::new();
     /// let name = |text: &str| LangString::new(text).with_lang("en");
     /// edit::apply(&mut doc, CreateArgumentPackage::root(name("Arguments")).with_id("p"))?;
-    /// edit::apply(&mut doc, CreateClaim::new("p", name("The brakes are safe")).with_id("c1"))?;
-    /// let reference = CreateArtifactReference::new("p", name("The brake test report"))
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(name("Supplier arguments")).with_id("s"))?;
+    /// edit::apply(&mut doc, CreateClaim::new("s", name("The supplier's brakes meet the spec")).with_id("c1"))?;
+    /// // The argument in p cites the supplier's Claim.
+    /// let reference = CreateArtifactReference::new("p", name("The supplier's brake claim"))
     ///     .with_referenced_artifact_elements(["c1"]);
     /// edit::apply(&mut doc, reference.with_id("a1"))?;
     ///

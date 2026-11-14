@@ -674,7 +674,9 @@ pub enum EditError {
     /// an `ArgumentGroup`. An edit never makes a dangling reference
     /// (D-VAL-LAYER), and the `xmi:id` of a name, `content`, `key` or
     /// `value` names no element. The first such id is reported: the sources
-    /// in order, then the target, the reasoning and the structure. Create
+    /// in order, then the target, the reasoning, the structure, the
+    /// `referencedArtifactElement` ids in order and the group members in
+    /// order. Create
     /// the referenced element first, or correct the id; ids are compared
     /// exactly, case included.
     #[non_exhaustive]

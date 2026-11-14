@@ -117,7 +117,8 @@
 //! `SACMElement` for `citedElement` and `abstractForm`, `Claim` for
 //! `metaClaim`, `ArgumentReasoning` for `reasoning`, `ArgumentAsset` for
 //! `source` and `target`, `ArgumentPackage` for `structure`,
-//! `ArtifactElement` for `referencedArtifactElement` (every `ModelElement`)
+//! `ArtifactElement` for `referencedArtifactElement` (every kind but the
+//! `UtilityElement`s)
 //! and `ArgumentationElement` for a group's `argumentElement`. Each distinct
 //! id an end holds that resolves to an element of a kind the type does not
 //! admit is one SACM-REF-002 Error per element and end (SACM23-VAL-004),

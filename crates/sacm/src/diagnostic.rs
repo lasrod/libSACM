@@ -285,8 +285,9 @@ impl Code {
     /// [`validation::validate`](crate::validation::validate) reports one
     /// Error per distinct missing id of each reference end of each element,
     /// with the end's clause (8.2 for `citedElement` and `abstractForm`,
-    /// 11.10 for `metaClaim`, 11.12 for `structure`, 11.13 for `reasoning`,
-    /// `source` and `target`); an id a multi-valued end holds twice is one
+    /// 11.2 for an `ArgumentGroup`'s `argumentElement`, 11.9 for
+    /// `referencedArtifactElement`, 11.10 for `metaClaim`, 11.12 for
+    /// `structure`, 11.13 for `reasoning`, `source` and `target`); an id a multi-valued end holds twice is one
     /// finding. Each affects the referring element, then the missing id
     /// (SACM23-VAL-003). [`xmi::read`](crate::xmi::read) keeps such a
     /// reference in both modes, and a tolerant [`xmi::write`](crate::xmi::write)
@@ -313,6 +314,11 @@ impl Code {
     /// [`EditError::WrongReferenceType`](crate::edit::EditError::WrongReferenceType)
     /// (ADR 0028). Fix: point the reference at an element of the end's type,
     /// in the file.
+    ///
+    /// One code covers both rules: the declared-type check (SACM23-VAL-004),
+    /// which edits also refuse, and the `ArtifactReference` rules of §11.15,
+    /// §11.17 and §11.18 (SACM23-VAL-016), which edits accept.
+    /// [`Diagnostic::requirement_id`] tells them apart.
     pub const REF_WRONG_TYPE: Code = Code::from_static("SACM-REF-002");
 
     /// SACM-CITE-001: an element has a `citedElement` but its `isCitation`

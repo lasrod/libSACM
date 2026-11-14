@@ -153,13 +153,19 @@ impl CreateArgumentReasoning {
 /// an `AssertedEvidence` (§11.15), or either end of an
 /// `AssertedArtifactSupport` or `AssertedArtifactContext` (§11.17, §11.18).
 /// It is no Assertion: it has no `assertionDeclaration` and no `metaClaim`.
+/// Artifacts themselves (§12, the `ArtifactPackage`) are not supported yet,
+/// so for now an `ArtifactReference` can name only elements of argument and
+/// assurance-case packages, or nothing.
 ///
 /// With
 /// [`with_referenced_artifact_elements`](Self::with_referenced_artifact_elements)
 /// it names the elements it refers to: none is required, and the ids are
 /// kept in the order given, repeats included (validation warns about a
-/// repeat, SACM23-VAL-022). Every `ModelElement` is an `ArtifactElement`, so
-/// a Claim or a package is a well-typed target. Apply it with
+/// repeat, SACM23-VAL-022). Every kind except the `UtilityElement`s
+/// (`Description`, `ImplementationConstraint`, `Note` and `TaggedValue`)
+/// conforms to `ArtifactElement`, so a Claim or a package is a well-typed
+/// target, as when an argument cites a Claim of another argument package
+/// (§11.1). Apply it with
 /// [`edit::apply`](super::apply). After [ADR 0019]'s four checks, an id that
 /// holds XML white space is [`EditError::InvalidReference`], then one that
 /// names no element is [`EditError::ReferenceNotFound`], then one that names
@@ -179,9 +185,11 @@ impl CreateArgumentReasoning {
 /// let mut doc = Document::new();
 /// let name = |text: &str| LangString::new(text).with_lang("en");
 /// edit::apply(&mut doc, CreateArgumentPackage::root(name("Arguments")).with_id("p"))?;
-/// edit::apply(&mut doc, CreateClaim::new("p", name("The brakes are safe")).with_id("c1"))?;
+/// edit::apply(&mut doc, CreateArgumentPackage::root(name("Supplier arguments")).with_id("s"))?;
+/// edit::apply(&mut doc, CreateClaim::new("s", name("The supplier's brakes meet the spec")).with_id("c1"))?;
 ///
-/// let reference = CreateArtifactReference::new("p", name("The brake test report"))
+/// // The argument in p cites the supplier's Claim.
+/// let reference = CreateArtifactReference::new("p", name("The supplier's brake claim"))
 ///     .with_referenced_artifact_elements(["c1"]);
 /// let created = edit::apply(&mut doc, reference)?;
 /// assert_eq!(created.created_ids()[0].as_str(), "artifact_reference_1");
@@ -716,7 +724,8 @@ relationship_operation! {
     /// create does not refuse another `ArgumentAsset`, such as a Claim, and
     /// [`validation::validate`](crate::validation::validate) reports it as
     /// SACM-REF-002 (SACM23-VAL-016, D-VAL-LAYER). Its target is not
-    /// narrowed. Without [`with_id`](Self::with_id), the id is generated:
+    /// narrowed. The §11.15 rule is not refused here, so validate before a
+    /// strict save. Without [`with_id`](Self::with_id), the id is generated:
     /// `asserted_evidence_<n>`.
     ///
     /// # Examples
@@ -739,20 +748,21 @@ relationship_operation! {
     /// # Ok::<(), sacm::edit::EditError>(())
     /// ```
     CreateAssertedEvidence, AssertedEvidence,
-    "supporting the claim `target` with the evidence `sources`."
+    "supporting `target`, such as a Claim, with the evidence `sources`."
 }
 
 relationship_operation! {
     /// Creates an `AssertedArtifactSupport` (SACM 2.3 §11.17) as the last
     /// child of an element whose class can hold one, such as an
-    /// `ArgumentPackage`: an assertion that its source artifacts support its
-    /// target artifact.
+    /// `ArgumentPackage`: an assertion that the artifacts its source
+    /// `ArtifactReference`s name support the one its target names.
     ///
     /// It follows the rules of [`CreateAssertedInference`]. §11.17 requires
     /// its sources and target to be `ArtifactReference`s; that is content,
     /// so a create does not refuse another `ArgumentAsset`, and
     /// [`validation::validate`](crate::validation::validate) reports it as
-    /// SACM-REF-002 (SACM23-VAL-016, D-VAL-LAYER). Without
+    /// SACM-REF-002 (SACM23-VAL-016, D-VAL-LAYER). The §11.17 rule is not
+    /// refused here, so validate before a strict save. Without
     /// [`with_id`](Self::with_id), the id is generated:
     /// `asserted_artifact_support_<n>`.
     ///
@@ -774,18 +784,19 @@ relationship_operation! {
     /// # Ok::<(), sacm::edit::EditError>(())
     /// ```
     CreateAssertedArtifactSupport, AssertedArtifactSupport,
-    "asserting that the artifacts `sources` support the artifact `target`."
+    "asserting that the artifacts the `ArtifactReference`s `sources` name support the one `target` names."
 }
 
 relationship_operation! {
     /// Creates an `AssertedArtifactContext` (SACM 2.3 §11.18) as the last
     /// child of an element whose class can hold one, such as an
-    /// `ArgumentPackage`: an assertion that its source artifacts are the
-    /// context of its target artifact.
+    /// `ArgumentPackage`: an assertion that the artifacts its source
+    /// `ArtifactReference`s name are context for the one its target names.
     ///
     /// It follows the rules of [`CreateAssertedArtifactSupport`], with
-    /// §11.18 in place of §11.17. Without [`with_id`](Self::with_id), the id
-    /// is generated: `asserted_artifact_context_<n>`.
+    /// §11.18 in place of §11.17: the §11.18 rule is not refused here, so
+    /// validate before a strict save. Without [`with_id`](Self::with_id),
+    /// the id is generated: `asserted_artifact_context_<n>`.
     ///
     /// # Examples
     ///
@@ -805,7 +816,7 @@ relationship_operation! {
     /// # Ok::<(), sacm::edit::EditError>(())
     /// ```
     CreateAssertedArtifactContext, AssertedArtifactContext,
-    "giving the artifacts `sources` as the context of the artifact `target`."
+    "giving the artifacts the `ArtifactReference`s `sources` name as context for the one `target` names."
 }
 
 /// Creates an element of `kind` named `name` under `parent`, with `flags`

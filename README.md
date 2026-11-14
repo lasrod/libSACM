@@ -40,8 +40,10 @@ ArtifactReference and ArgumentGroup elements and the five asserted relationships
 AssertedArtifactContext), with their sources, target, reasoning, `isCounter`,
 meta-claims, structure, referenced artifact elements and group members.
 `sacm::edit::apply` creates those eight kinds, and descriptions, notes, implementation
-constraints and tagged values, and refuses a reference to an element of the wrong kind;
-and
+constraints and tagged values, and refuses a reference that names no element or an
+element its end's declared type does not admit (the stricter §11.15, §11.17 and §11.18
+rules, that evidence and artifact relationships link ArtifactReferences, are left to
+validation); and
 `sacm::validation::validate` reports each `content` or `key` text that is empty or gives
 one language twice, each tagged value without a key, each `gid` two elements share, each
 element with more than one description, each ArgumentPackage that nests one and also holds

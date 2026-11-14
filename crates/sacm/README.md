@@ -46,8 +46,10 @@ Read, edit, validate and write assurance cases in the
   relationships (`sacm::edit::CreateAssertedInference` and the like), and descriptions,
   implementation constraints, notes and tagged values on them
   (`sacm::edit::CreateNote`, `sacm::edit::CreateTaggedValue` and the like); a refused
-  edit changes nothing, and no edit makes a reference that names no element or one of
-  the wrong kind.
+  edit changes nothing, and an edit refuses a reference that names no element or an
+  element its end's declared type does not admit. The stricter §11.15, §11.17 and §11.18
+  rules, that evidence and artifact relationships link ArtifactReferences, are left to
+  `sacm::validation::validate`.
 - `sacm::compare::semantic_compare` lists every difference in SACM content between two
   documents.
 

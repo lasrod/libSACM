@@ -533,7 +533,9 @@ mod roots;
 ///   `ArgumentPackageBinding`), text, attributes such as `xmi:uuid` or
 ///   `sacm:isCitation`; a `name` on a `UtilityElement`; an
 ///   `assertionDeclaration`, as an attribute or an element, that is on a
-///   package or an `ArgumentReasoning` (even `"asserted"`) or in a namespace;
+///   kind that is no Assertion, such as a package, an `ArgumentReasoning`,
+///   an `ArtifactReference` or an `ArgumentGroup` (even `"asserted"`), or in
+///   a namespace;
 ///   and a flag or reference end on a kind that lacks it, such as
 ///   `isCounter` on a Claim (see [References](#references)).
 ///

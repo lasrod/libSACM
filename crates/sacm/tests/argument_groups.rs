@@ -777,6 +777,29 @@ fn sacm23_arg_013_semantic_compare_reports_one_group_members_difference() {
 }
 
 #[test]
+fn sacm23_arg_013_a_group_members_difference_displays_its_end_and_both_lists() {
+    let doc = |attributes: &str| read_ok(attributes, &g_in_ap(attributes, ""));
+    let found = semantic_compare(
+        &doc(" argumentElement=\"c1\""),
+        &doc(" argumentElement=\"c2 c1\""),
+    );
+    let [difference] = found.as_slice() else {
+        panic!("{ROW}: not one difference: {found:?}");
+    };
+    let line = difference.to_string();
+    assert_eq!(
+        line,
+        "element \"g\" differs in argumentElement: \
+         [\"c1\"] on the left, [\"c2\", \"c1\"] on the right",
+        "{ROW}: the line does not name the end argumentElement and both lists"
+    );
+    assert!(
+        !line.contains("citedElement"),
+        "{ROW}: the line names citedElement, not argumentElement: {line:?}"
+    );
+}
+
+#[test]
 fn sacm23_arg_013_a_group_holding_itself_another_group_or_its_package_gives_no_finding() {
     for (what, value) in [
         ("itself", "g"),

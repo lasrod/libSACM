@@ -993,6 +993,54 @@ fn sacm23_val_004_this_slices_five_creates_refuse_a_wrongly_typed_end_unchanged(
 }
 
 #[test]
+fn sacm23_val_004_a_wrong_reference_type_refusal_displays_its_end_id_and_both_types_with_a_or_an() {
+    let row = VAL_004;
+    let mut doc = built(row);
+    let name = || named("New");
+    let cases: Vec<(&str, Operation, &str)> = vec![
+        (
+            "a Claim as structure",
+            CreateArgumentReasoning::new("p", name())
+                .with_structure("c1")
+                .into(),
+            "the structure \"c1\" names a Claim, and the structure must be an ArgumentPackage",
+        ),
+        (
+            "the case as structure",
+            CreateArgumentReasoning::new("p", name())
+                .with_structure("case")
+                .into(),
+            "the structure \"case\" names an AssuranceCasePackage, \
+             and the structure must be an ArgumentPackage",
+        ),
+        (
+            "a Note as referenced artifact element",
+            CreateArtifactReference::new("p", name())
+                .with_referenced_artifact_elements(["n1"])
+                .into(),
+            "the referencedArtifactElement \"n1\" names a Note, \
+             and the referencedArtifactElement must be an ArtifactElement",
+        ),
+        (
+            "an ArtifactReference as reasoning",
+            CreateAssertedContext::new("p", name(), ["c2"], "c1")
+                .with_reasoning("r1")
+                .into(),
+            "the reasoning \"r1\" names an ArtifactReference, \
+             and the reasoning must be an ArgumentReasoning",
+        ),
+    ];
+    for (what, operation, expected) in cases {
+        let error = refuse(row, what, &mut doc, operation);
+        assert_eq!(
+            error.to_string(),
+            expected,
+            "{row}: {what}: the WrongReferenceType message is not the pinned line"
+        );
+    }
+}
+
+#[test]
 fn sacm23_val_004_a_create_checks_every_id_exists_before_it_checks_any_type() {
     let row = VAL_004;
     let mut doc = built(row);

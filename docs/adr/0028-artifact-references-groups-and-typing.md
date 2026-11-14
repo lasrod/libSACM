@@ -39,8 +39,10 @@ Every reference end has a declared type, and the text and the model agree on eac
   - They are created by `CreateArtifactReference`, `CreateArgumentGroup`,
     `CreateAssertedEvidence`, `CreateAssertedArtifactSupport` and
     `CreateAssertedArtifactContext`.
-  - Artifacts (§12) are not readable yet. An ArtifactReference can cite any ModelElement,
-    because every ModelElement is an ArtifactElement.
+  - Artifacts (§12) are not readable yet. An ArtifactReference can cite any element but a
+    UtilityElement, because every other kind conforms to ArtifactElement (which specializes
+    ModelElement in ptc/22-03-13). This wording was corrected in the docs review; the
+    decision is unchanged.
 - **Typing.**
   - `validate` reports a resolved reference whose target's kind does not conform to the
     end's declared type as SACM-REF-002, an Error (SACM23-VAL-004; D-SEV, text and model
