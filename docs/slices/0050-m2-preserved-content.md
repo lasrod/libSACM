@@ -1,8 +1,8 @@
 ---
 slice: 0050
 name: m2-preserved-content
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [LIB-COMPAT-003, SACM23-XMI-008, LIB-API-011, LIB-TOOL-021]
 mode: pr
 base: main
@@ -78,3 +78,4 @@ Public API:
   maintainer chose to revert e8c6f1d (38ed1be; the unbound-prefix case went to
   follow-ups) and allowed a third round: six control tests, the ArgumentGroup message
   pinned, and the dead release path removed.
+- 2026-11-16 verification round 3: PASS for all four rows (record 0050); full mutants run clean. Rows `verified`. M2 complete.

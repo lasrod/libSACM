@@ -50,7 +50,10 @@ preserved.
   - Namespace URIs, local names, prefixes and values are kept exactly.
   - Fragment text is kept exactly. Top-level stray text is trimmed. Comments and processing
     instructions are dropped, as everywhere in the reader.
-  - Each holder or fragment declares the namespace bindings it needs.
+  - A top fragment declares every binding in scope where it was read (except `xml` and the
+    standard `sacm` and `xmi`). A holder declares the prefixes its preserved attribute names
+    use. A prefix used only inside a preserved value is not yet kept; see docs/follow-ups.md
+    (a bounded fix is pending).
 - **Writing.**
   - A tolerant `xmi::write` writes preserved content back: load, save and load gives an
     equal `Document`, and writing again is byte-identical.
@@ -71,9 +74,11 @@ preserved.
     those ids are dangling references, handled by the reference policy.
   - A preserved child element counts as content for `RejectIfNonEmpty` (the maintainer,
     2026-11-15).
-  - An edit that sets a reference end replaces a preserved attribute of the same name on
-    that element, such as an empty `metaClaim=""` read before the edit; the explicit edit is
-    the repair, and the element is reported changed. A write never emits an attribute twice:
+  - An edit that leaves a reference end holding one or more ids (SetReferences,
+    AddReference, RemoveReference) replaces a preserved attribute of the same name on that
+    element, such as an empty `metaClaim=""` read before the edit; the explicit edit is the
+    repair, and the element is reported changed. Clearing the end, or removing its last id,
+    keeps the preserved attribute. A write never emits an attribute twice:
     a typed end beside a preserved attribute of its name (possible straight from a read, such
     as `metaClaim=""` next to `<metaClaim xmi:idref="c2"/>`) is written in the element form,
     and nothing is dropped (lead decisions, slice 0050 verification).

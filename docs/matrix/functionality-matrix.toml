@@ -3468,7 +3468,8 @@ title = "Unknown content is preserved, not dropped"
 requirement = "`xmi::read` keeps, in both modes, every attribute, child element (with its subtree) and non-white-space text that the SACM XML Schema and the XMI 2.5.1 production rules do not allow where it stands and that no row reads as a tolerance, as preserved content of the element it sits in (ADR 0033). Each gives one SACM-XMI-003 (`Code::XMI_UNKNOWN_CONTENT`; Warning tolerant, Error strict) at it, affecting that element. Nothing inside a preserved subtree is read or reported, but its `xmi:id`s are checked. Preserved content keeps its position (a child at its index among the element's children; attributes after the typed ones, in input order) and its namespace URIs, local names, prefixes and values exactly. A tolerant `xmi::write` writes it back, so load → save → load gives an equal `Document` and a re-write is byte-identical; a strict write refuses it (SACM23-XMI-008). `==` and `semantic_compare` compare it exactly and in order (`Difference::PreservedContent`). Its ids stay in the document's id space; a typed reference to one is SACM-REF-003. Deleting a holder removes its preserved content. Conforming content this version does not read yet stays `ReadError::Unsupported` (LIB-API-011)."
 source = "ADR 0033 (the maintainer, 2026-11-14 and 2026-11-15); D-PRESERVE; D-STRICT; ADR 0022; XMI 2.5.1 §7.3.3 (p. 7) \"Tools that rely on XMI are expected to store the extension information and export it again to enable round trip engineering\"; §2.3.1 (p. 2) \"preserve the extensions of other tools that fall within the XMI namespace\"; §7.8.3 (p. 17) the class complexType (xmi:Extension, xmi:id, ObjectAttribs; no anyAttribute); XML 1.0 §3.1 \"the order of attribute specifications … is not significant\"; formal/23-05-08 §8.12 (p. 21); assurance-forge 65577b3 `model/element.h`, `compat/preserve.h`, `io/xmi_reader.cpp`, `io/xmi_writer.cpp`, `compare/semantic_compare.cpp`"
 kind = "xmi"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0050-m2-preserved-content.md"
 depends_on = ["LIB-COMPAT-001", "SACM23-XMI-016", "LIB-COMPAT-007", "LIB-API-010", "LIB-RT-001", "LIB-EDIT-005", "SACM23-VAL-004", "SACM23-XMI-002"]
 notes = "Maintainer decisions 2026-11-14 (strict keeps with an Error) and 2026-11-15 (only non-conforming content; a preserved child element counts for RejectIfNonEmpty; a root type naming another class is preserved; a discard edit is LIB-EDIT-016, M6). The design and worked example are in ADR 0033 and the slice 0050 brief."
 acceptance = [
@@ -3567,7 +3568,8 @@ title = "Strict save refuses what it cannot write conformantly"
 requirement = "A strict `xmi::write` of a document holding preserved content (LIB-COMPAT-003), however it was read, fails with `WriteError::PreservedContent { elements }` (`code()` SACM-XMI-006, `Code::XMI_STRICT_SAVE_REFUSED`; `element()` None; no diagnostics), listing each holder once in `Document::elements()` order, never empty, and returns no text; it never omits the content. The write checks run in the order `NoRoot`, `PreservedContent`, `Invalid`, unrepresentable characters. A tolerant write writes it."
 source = "ADR 0033; D-PRESERVE; D-STRICT; ADR 0022; `docs/sacm/diagnostics.md` SACM-XMI-006; assurance-forge `io/xmi_writer.cpp:482-505`"
 kind = "xmi"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0050-m2-preserved-content.md"
 depends_on = ["LIB-COMPAT-003", "LIB-COMPAT-007"]
 acceptance = [
   "For documents read tolerant and read strict, the strict write is `Err(PreservedContent)` with the exact holder list in order, `code() == Some(Code::XMI_STRICT_SAVE_REFUSED)` and `element()` None; a holder with only an attribute, only text, only a child, and a root holder are each refused.",
@@ -5272,7 +5274,8 @@ title = "Interim refusals are listed and gated"
 requirement = "Every `ReadError::Unsupported` comes from one crate-private list (`xmi/refusal.rs`), whose entries are `Interim(row)` (conforming input this version does not read; the row reads it), `Tolerance(row)` (non-conforming input a row is to read in tolerant mode), `Limit` (a limit of this version) or `Defect` (non-conforming input with nowhere to be kept). Each reason ends with exactly one label: `(a limit of this version; ROW reads it)`, `(a limit of this version)`, `(a defect in the input; ROW is to read it in tolerant mode)` or `(a defect in the input)`. An xtask test checks that `Unsupported` is built only there, that every `Interim` row exists, is not verified and is in the `depends_on` closure of each of SACM23-CP-001 to -004, and that every `Tolerance` row exists and is not verified."
 source = "D-PRESERVE; D-STRICT; ADR 0015 (and amendment 1); ADR 0016; ADR 0033; XMI 2.5.1 §7.6.1 `<xsd:attribute name=\"id\" type=\"xsd:ID\" use=\"optional\"/>`, §7.3.3 \"Tools that rely on XMI are expected to store the extension information and export it again\"; ADR review, 2026-11-13 (the maintainer: apply every recommendation)"
 kind = "api"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0050-m2-preserved-content.md"
 depends_on = ["LIB-API-009", "LIB-API-010", "LIB-COMPAT-003", "LIB-COMPAT-008", "LIB-COMPAT-010", "SACM23-XMI-026"]
 acceptance = [
   "xtask/tests/interim_refusals.rs: (a) outside comments and `#[cfg(test)]`, the token `Unsupported` appears in `crates/sacm/src` only in `xmi.rs` and `xmi/refusal.rs`; (b) every `Interim(\"…\")` names a row that exists, is not `verified`, and is in the `depends_on` closure of each of SACM23-CP-001 to -004; (c) every `Tolerance` row exists and is not verified; each check reports an in-memory mutation of the source or matrix with its own code.",
@@ -6050,7 +6053,8 @@ title = "XMI.xsd is fetched with the XMI specification"
 requirement = "`cargo xtask fetch-spec` also downloads the normative XMI.xsd (the XMI 2.5.1 cover's `http://www.omg.org/spec/XMI/20131001/XMI.xsd`, fetched over https, which serves the same bytes) as `third_party/sacm-2.3/XMI-2.5.1-XMI.xsd`, pinned by SHA-256 `7b228718d35a15a8e2fb99f078d36eee4b23b7a2cd405e7ac81b9d27bf2fab5d` (4,658 bytes), after XMI 2.5.1."
 source = "XMI 2.5.1 cover (p. i), \"Normative Machine Consumable Files: http://www.omg.org/spec/XMI/20131001/XMI.xsd\"; slice 0050 research (fetched 2026-11-15, http and https identical); the maintainer, 2026-11-15 (pin only XMI.xsd)"
 kind = "tooling"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0050-m2-preserved-content.md"
 depends_on = ["LIB-TOOL-020"]
 acceptance = [
   "`ARTIFACTS` has four entries; the fourth is exactly `{ file_name: \"XMI-2.5.1-XMI.xsd\", url: \"https://www.omg.org/spec/XMI/20131001/XMI.xsd\", sha256: \"7b228718d35a15a8e2fb99f078d36eee4b23b7a2cd405e7ac81b9d27bf2fab5d\", what: \"XMI 2.5.1 normative XML Schema (XMI.xsd)\" }`, and the first three are unchanged.",
