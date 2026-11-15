@@ -512,5 +512,26 @@
       "case",
       "arguments"
     ]
+  },
+  {
+    "type": "DeleteElement",
+    "element": "c1",
+    "reference_policy": "RejectIfReferenced",
+    "package_policy": "RejectIfNonEmpty",
+    "cross_package_policy": "RejectIfExternalReferencesExist"
+  },
+  {
+    "type": "DeleteElement",
+    "element": "c1",
+    "reference_policy": "DeleteReferencingRelationships",
+    "package_policy": "RejectIfNonEmpty",
+    "cross_package_policy": "RejectIfExternalReferencesExist"
+  },
+  {
+    "type": "DeleteElement",
+    "element": "p",
+    "reference_policy": "ScrubReferences",
+    "package_policy": "DeleteRecursively",
+    "cross_package_policy": "ApplyReferencePolicy"
   }
 ]

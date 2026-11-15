@@ -6,7 +6,7 @@ use std::fmt;
 use super::containment::{Role, role};
 use super::{
     AbstractClass, AssertionDeclaration, ElementId, ElementKind, Flag, LangString, MultiLangString,
-    ReferenceEnd,
+    ReferenceEnd, Revision,
 };
 
 /// A SACM 2.3 document: one interchange unit (what one SACM XMI file holds),
@@ -45,8 +45,9 @@ use super::{
 /// `AssertedContext`, `AssertedArtifactSupport` and
 /// `AssertedArtifactContext`) in them, and the descriptions, implementation
 /// constraints, notes and tagged values of each of these.
-/// [`edit::apply`](crate::edit::apply) creates the same fifteen kinds, and
-/// edits the features and the order of elements of every kind.
+/// [`edit::apply`](crate::edit::apply) creates the same fifteen kinds, edits
+/// the features and the order of elements of every kind, and deletes
+/// elements of every kind ([`DeleteElement`](crate::edit::DeleteElement)).
 /// Tests build documents with other kinds through the `test-support`
 /// feature's `Document::insert`. [`Document::new`] is empty.
 ///
@@ -88,7 +89,8 @@ use super::{
 /// ids: an edit can free an id, such as the `xmi:id` of a `value` that
 /// [`SetContent`](crate::edit::SetContent) drops, and a document whose
 /// counter has passed it generates above it, while one whose counter has
-/// not generates it.
+/// not generates it. Nor is the [`revision`](Self::revision) compared: two
+/// reads of one file are `==` and have different revisions.
 ///
 /// # Examples
 ///
@@ -125,7 +127,7 @@ serializable::<sacm::edit::Operation>();
 ```
 "
 )]
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct Document {
     /// Every element, in insertion order. A node's position is its handle.
     nodes: Vec<Node>,
@@ -147,6 +149,24 @@ pub struct Document {
     /// 0019); a kind with none generated yet is absent. Advanced only when a
     /// generated id is used, and copied by `Clone`.
     id_counters: BTreeMap<ElementKind, u64>,
+    /// The state of the document within the process (ADR 0031): fresh for
+    /// a new document and after every successful edit, copied by `Clone`.
+    revision: Revision,
+}
+
+impl Default for Document {
+    /// An empty document, with a fresh [`Revision`]: the same as
+    /// [`Document::new`].
+    fn default() -> Self {
+        Self {
+            nodes: Vec::new(),
+            roots: Vec::new(),
+            index: HashMap::new(),
+            other_ids: HashMap::new(),
+            id_counters: BTreeMap::new(),
+            revision: Revision::fresh(),
+        }
+    }
 }
 
 /// How an id of `Document::other_ids` is used.
@@ -220,6 +240,35 @@ impl Document {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// The document's current state within the process, for
+    /// [`edit::apply_preview`](crate::edit::apply_preview) to tell whether
+    /// the document changed after a preview was taken (LIB-EDIT-007).
+    ///
+    /// A new, default or read document has a revision no other document of
+    /// the process has had, and every successful edit gives a new one, even
+    /// one that changes nothing. A clone has its original's revision until
+    /// either changes. A refused edit, [`edit::check`](crate::edit::check)
+    /// and [`edit::preview`](crate::edit::preview) keep it. See
+    /// [`Revision`].
+    ///
+    /// ```
+    /// use sacm::model::Document;
+    ///
+    /// let (first, second) = (Document::new(), Document::new());
+    /// assert!(first == second); // equal content
+    /// assert_ne!(first.revision(), second.revision()); // different states
+    /// ```
+    #[must_use]
+    pub fn revision(&self) -> Revision {
+        self.revision
+    }
+
+    /// Gives the document a fresh revision: called once by each successful
+    /// edit (ADR 0031).
+    pub(crate) fn renew_revision(&mut self) {
+        self.revision = Revision::fresh();
     }
 
     /// The root elements, in document order.
@@ -406,7 +455,9 @@ impl Document {
         id: ElementId,
         name: Option<LangString>,
     ) -> Result<(), InsertError> {
-        self.insert_node(parent, kind, id, name)
+        self.insert_node(parent, kind, id, name)?;
+        self.renew_revision();
+        Ok(())
     }
 
     /// Adds an element as the last child of `parent`, or as the last root
@@ -599,7 +650,9 @@ impl Document {
         id: &ElementId,
         declaration: AssertionDeclaration,
     ) -> Result<(), SetAssertionDeclarationError> {
-        self.set_declaration(id, declaration)
+        self.set_declaration(id, declaration)?;
+        self.renew_revision();
+        Ok(())
     }
 
     /// Sets the `assertionDeclaration` of the Assertion `id`; on an error the
@@ -862,6 +915,136 @@ impl Document {
         changed
     }
 
+    /// Deletes the elements `deleted`, after removing every id of `deleted`
+    /// from each end of each element of `holders` (ADR 0031).
+    ///
+    /// The caller has checked that `deleted` is closed under containment
+    /// (each element's children are in it too) and that no holder is in it.
+    /// The references the deleted elements held, and the ids of their names,
+    /// `content`s, `key`s and `value`s, are released, so those ids are free;
+    /// the generated-id counters are not rewound, so generation stays
+    /// deterministic. The arena is compacted and every
+    /// handle remapped, in time linear in the size of the document. Ids the
+    /// document does not hold are ignored.
+    pub(crate) fn remove_elements(&mut self, deleted: &[ElementId], holders: &[ElementId]) {
+        let mut doomed = vec![false; self.nodes.len()];
+        for id in deleted {
+            if let Some(slot) = self.index.get(id).and_then(|&node| doomed.get_mut(node)) {
+                *slot = true;
+            }
+        }
+        for holder in holders {
+            self.drop_references_to(holder, &doomed);
+        }
+        for (node, &gone) in doomed.iter().enumerate() {
+            if gone {
+                self.release_node(node);
+            }
+        }
+        self.compact(&doomed);
+    }
+
+    /// Removes from each end of the element `holder`, unless it is doomed
+    /// itself, every id that names a doomed element.
+    fn drop_references_to(&mut self, holder: &ElementId, doomed: &[bool]) {
+        let is_doomed = |index: &HashMap<ElementId, usize>, id: &ElementId| {
+            index
+                .get(id)
+                .is_some_and(|&node| doomed.get(node).copied().unwrap_or(false))
+        };
+        let Some(&node) = self.index.get(holder) else {
+            return;
+        };
+        if is_doomed(&self.index, holder) {
+            return;
+        }
+        let kept: Vec<(ReferenceEnd, Vec<ElementId>)> = self.nodes[node]
+            .references
+            .iter()
+            .filter(|(_, targets)| targets.iter().any(|target| is_doomed(&self.index, target)))
+            .map(|(end, targets)| {
+                let kept = targets
+                    .iter()
+                    .filter(|target| !is_doomed(&self.index, target))
+                    .cloned()
+                    .collect();
+                (*end, kept)
+            })
+            .collect();
+        for (end, targets) in kept {
+            self.hold_references(node, end, targets);
+        }
+    }
+
+    /// Releases what the node `node` holds and owns: the references it
+    /// holds, the ids of its name, `content`, `key` and `value`s, and its own
+    /// id. The node stays in the arena until [`compact`](Self::compact).
+    fn release_node(&mut self, node: usize) {
+        let references = std::mem::take(&mut self.nodes[node].references);
+        for target in references.iter().flat_map(|(_, targets)| targets) {
+            self.release(target, |used| {
+                used.references = used.references.saturating_sub(1);
+            });
+        }
+        let held = &self.nodes[node];
+        let owned: Vec<ElementId> = held
+            .name_id
+            .iter()
+            .chain(held.content.iter().flat_map(Text::ids))
+            .chain(held.key.iter().flat_map(Text::ids))
+            .cloned()
+            .collect();
+        let id = held.id.clone();
+        for owned in &owned {
+            self.release(owned, |used| used.owner = None);
+        }
+        self.index.remove(&id);
+    }
+
+    /// Removes the doomed nodes from the arena, where the survivors keep
+    /// their order, and remaps every handle.
+    fn compact(&mut self, doomed: &[bool]) {
+        let mut remap: Vec<Option<usize>> = Vec::with_capacity(doomed.len());
+        let mut next = 0;
+        for &gone in doomed {
+            if gone {
+                remap.push(None);
+            } else {
+                remap.push(Some(next));
+                next += 1;
+            }
+        }
+        let new = |node: usize| remap.get(node).copied().flatten();
+        let old = std::mem::take(&mut self.nodes);
+        self.nodes = old
+            .into_iter()
+            .zip(doomed)
+            .filter(|(_, gone)| !**gone)
+            .map(|(mut node, _)| {
+                debug_assert!(
+                    node.parent.is_none_or(|parent| new(parent).is_some()),
+                    "the deleted elements are closed under containment"
+                );
+                node.parent = node.parent.and_then(new);
+                node.children = node
+                    .children
+                    .iter()
+                    .filter_map(|&child| new(child))
+                    .collect();
+                node
+            })
+            .collect();
+        self.roots = self.roots.iter().filter_map(|&root| new(root)).collect();
+        for node in self.index.values_mut() {
+            if let Some(moved) = new(*node) {
+                *node = moved;
+            }
+        }
+        for used in self.other_ids.values_mut() {
+            used.owner = used.owner.and_then(new);
+        }
+    }
+
     /// Whether `id` is in use in the document's id space: by an element, or
     /// as an id that identifies no element: of a name (ADR 0024), a
     /// `content`, a `key` or a `value` (ADR 0025). A new element's id, given
@@ -938,6 +1121,9 @@ impl Document {
             // Not compared: the generated-id counters are not SACM content
             // and XMI does not carry them (ADR 0020).
             id_counters: _,
+            // Not compared: the revision identifies a state within the
+            // process, not SACM content (ADR 0031).
+            revision: _,
         } = self;
         roots.iter().map(|&node| self.view(node))
     }
@@ -2613,6 +2799,80 @@ mod tests {
             Ok(())
         );
         assert!(document.is_id_in_use("other") && !document.is_referenced("other"));
+    }
+
+    #[test]
+    fn remove_elements_frees_ids_releases_references_and_remaps_handles() {
+        let mut document = two_roots();
+        let id = ElementId::new;
+        let (p, q, c1, c2, c3) = (id("p"), id("q"), id("c1"), id("c2"), id("c3"));
+        let named = || Some(LangString::new("N"));
+        for (parent, kind, child, name) in [
+            (&p, ElementKind::Claim, &c1, named()),
+            (&c1, ElementKind::Note, &id("n1"), None),
+            (&p, ElementKind::Claim, &c2, named()),
+            (&q, ElementKind::Claim, &c3, named()),
+        ] {
+            let inserted = document.insert_node(Some(parent), kind, child.clone(), name);
+            assert_eq!(inserted, Ok(()), "{child}");
+        }
+        assert_eq!(document.set_name_id(&c1, id("c1_name")), Ok(()));
+        let content = text(Some("n1_content"), &[Some("n1_value")]);
+        assert_eq!(
+            document.set_text(&id("n1"), TextRole::Content, content),
+            Ok(())
+        );
+        for (owner, end, targets) in [
+            (
+                &c2,
+                ReferenceEnd::MetaClaim,
+                vec![c1.clone(), id("ghost"), c1.clone()],
+            ),
+            (&c1, ReferenceEnd::CitedElement, vec![c3.clone()]),
+            (&c3, ReferenceEnd::MetaClaim, vec![c2.clone()]),
+        ] {
+            assert_eq!(document.set_references(owner, end, targets), Ok(()));
+        }
+
+        document.remove_elements(&[c1.clone(), id("n1")], std::slice::from_ref(&c2));
+
+        let order: Vec<&str> = document.elements().map(|e| e.id().as_str()).collect();
+        assert_eq!(order, ["p", "c2", "q", "c3"]);
+        assert_eq!(document.element_count(), 4);
+        let parent_of = |child: &str| {
+            document
+                .get(child)
+                .and_then(SacmElement::parent)
+                .map(|parent| parent.id().as_str())
+        };
+        assert_eq!((parent_of("c2"), parent_of("c3")), (Some("p"), Some("q")));
+        let roots: Vec<&str> = document.roots().map(|r| r.id().as_str()).collect();
+        assert_eq!(roots, ["p", "q"]);
+        // The ids of the deleted elements, their name and their content are
+        // free, and the references they held are released.
+        for freed in ["c1", "n1", "c1_name", "n1_content", "n1_value"] {
+            assert!(!document.is_id_in_use(freed), "{freed}");
+        }
+        assert!(!document.is_referenced("c1") && !document.is_referenced("c3"));
+        assert!(document.is_referenced("ghost") && document.is_referenced("c2"));
+        let kept = document
+            .get("c2")
+            .map(|c2| c2.references(ReferenceEnd::MetaClaim).to_vec());
+        assert_eq!(kept, Some(vec![id("ghost")]));
+        // A freed id may be given again.
+        assert_eq!(
+            document.insert_node(Some(&q), ElementKind::Claim, c1.clone(), named()),
+            Ok(())
+        );
+        assert_eq!(parent_of_owned(&document, "c1"), Some("q".to_owned()));
+    }
+
+    /// The id of the parent of `child`, owned.
+    fn parent_of_owned(document: &Document, child: &str) -> Option<String> {
+        document
+            .get(child)
+            .and_then(SacmElement::parent)
+            .map(|parent| parent.id().as_str().to_owned())
     }
 
     #[test]

@@ -78,9 +78,15 @@
 //!   [`edit::SetKey`]), every reference end, within its bounds
 //!   ([`edit::SetReferences`], [`edit::AddReference`],
 //!   [`edit::RemoveReference`]), and the order of an element's children or
-//!   of the roots ([`edit::ReorderElements`]). [`edit::check`] answers
-//!   whether `apply` would accept an operation, without changing the
-//!   document.
+//!   of the roots ([`edit::ReorderElements`]). [`edit::DeleteElement`]
+//!   deletes an element of any kind under explicit policies, and never
+//!   leaves a reference dangling. [`edit::check`] answers whether `apply`
+//!   would accept an operation, and [`edit::preview`] what it would do,
+//!   with the references to deleted elements a delete removes, without changing the
+//!   document; [`edit::apply_preview`] applies a preview unless the document
+//!   has changed since ([`Document::revision`](model::Document::revision)).
+//!   [`edit::batch`] and [`edit::apply_all`] apply several operations as one
+//!   atomic change.
 //! - [`compare::semantic_compare`] lists every difference in SACM content
 //!   between two documents, and `==` on a [`Document`](model::Document) is
 //!   true when there is none.

@@ -339,7 +339,7 @@ fn read_cases(suite: &Path) -> Vec<Case> {
 /// What `read` did with a case's bytes.
 #[derive(Debug)]
 enum Outcome {
-    Returned(Result<ReadOutput, ReadError>),
+    Returned(Box<Result<ReadOutput, ReadError>>),
     Panicked,
 }
 
@@ -355,7 +355,7 @@ fn read_case(case: &Case, bytes: Vec<u8>) -> Outcome {
         let _ = sender.send(result);
     });
     match receiver.recv_timeout(DEADLINE) {
-        Ok(Ok(result)) => Outcome::Returned(result),
+        Ok(Ok(result)) => Outcome::Returned(Box::new(result)),
         Ok(Err(_)) | Err(RecvTimeoutError::Disconnected) => Outcome::Panicked,
         Err(RecvTimeoutError::Timeout) => panic!(
             "{ROW}: read did not return within {DEADLINE:?} for {}: a scan does not advance",
@@ -422,19 +422,22 @@ fn other_encoding(bytes: &[u8]) -> Option<String> {
 }
 
 fn classify(bytes: &[u8], outcome: &Outcome) -> Class {
-    match outcome {
-        Outcome::Returned(Err(ReadError::Doctype { .. })) => Class::Doctype,
-        Outcome::Returned(Err(ReadError::Malformed { .. })) => Class::Malformed,
-        Outcome::Returned(Err(error @ ReadError::Unsupported { .. })) => {
+    let result = match outcome {
+        Outcome::Returned(result) => &**result,
+        Outcome::Panicked => return Class::Accepted("read panicked".to_owned()),
+    };
+    match result {
+        Err(ReadError::Doctype { .. }) => Class::Doctype,
+        Err(ReadError::Malformed { .. }) => Class::Malformed,
+        Err(error @ ReadError::Unsupported { .. }) => {
             if other_encoding(bytes).is_some() {
                 Class::Encoding
             } else {
                 Class::Accepted(format!("{error:?}"))
             }
         }
-        Outcome::Returned(Err(error)) => Class::Accepted(format!("{error:?}")),
-        Outcome::Returned(Ok(_)) => Class::Accepted("Ok: read as a document".to_owned()),
-        Outcome::Panicked => Class::Accepted("read panicked".to_owned()),
+        Err(error) => Class::Accepted(format!("{error:?}")),
+        Ok(_) => Class::Accepted("Ok: read as a document".to_owned()),
     }
 }
 

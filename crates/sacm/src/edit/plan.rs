@@ -1,16 +1,33 @@
 //! What an operation's checks computed, and the one change that applies it
 //! (LIB-EDIT-013, ADR 0019 amendment 3).
 //!
-//! [`check`](super::check) and [`apply`](super::apply) share one code path:
-//! each operation's `plan` runs every check and builds every refusal, and
-//! returns a [`Plan`]. `check` drops it; `apply` hands it to
-//! [`Plan::commit`], which cannot fail. A `Plan` borrows the operation,
-//! never the document, so `commit` can take the document mutably.
+//! [`check`](super::check), [`preview`](super::preview) and
+//! [`apply`](super::apply) share one code path: each operation's `plan` runs
+//! every check and builds every refusal, and returns a [`Plan`], which also
+//! knows the ids the change creates, changes and deletes ([`Plan::outcome`])
+//! and, for a delete, the references it leaves dangling. `check` drops it;
+//! `preview` reports it; `apply` hands it to [`Plan::commit`], which cannot
+//! fail. So `preview` and `apply` agree by construction (ADR 0031). A `Plan`
+//! borrows the operation, never the document, so `commit` can take the
+//! document mutably.
 
+use super::DanglingReference;
 use crate::model::{
     AssertionDeclaration, Document, ElementId, ElementKind, Flag, LangString, MultiLangString,
     ReferenceEnd, Text, TextRole,
 };
+
+/// The ids a change creates, changes and deletes, in the order a
+/// [`Mutation`](super::Mutation) reports them.
+#[derive(Debug, Default)]
+pub(super) struct Outcome {
+    /// The ids created, in creation order.
+    pub(super) created: Vec<ElementId>,
+    /// The ids changed, in pre-order after the change.
+    pub(super) changed: Vec<ElementId>,
+    /// The ids deleted, in pre-order before the change.
+    pub(super) deleted: Vec<ElementId>,
+}
 
 /// What every check of one operation computed: what [`commit`](Self::commit)
 /// changes. Only a `plan` builds one, once every check has passed.
@@ -35,31 +52,89 @@ pub(super) enum Plan<'o> {
         /// The ids to move, in their new order: each once, each a child of
         /// `parent` (or a root).
         order: &'o [ElementId],
+        /// Whether the order changes: the ids `order` names are not in this
+        /// order now.
+        changes: bool,
     },
+    /// A delete (ADR 0031).
+    Delete(Removal),
 }
 
 impl Plan<'_> {
-    /// Makes the change, and returns the ids created and the ids changed.
+    /// The ids the change creates, changes and deletes, as `commit` will
+    /// make them: what [`Mutation`](super::Mutation) reports.
+    pub(super) fn outcome(&self) -> Outcome {
+        match self {
+            Self::Create(new) => Outcome {
+                created: vec![new.id.clone()],
+                ..Outcome::default()
+            },
+            Self::Unchanged => Outcome::default(),
+            Self::Set { element, .. } => Outcome {
+                changed: vec![(*element).clone()],
+                ..Outcome::default()
+            },
+            // The roots' order is the document's, not an element's.
+            Self::Reorder {
+                parent, changes, ..
+            } => Outcome {
+                changed: parent.filter(|_| *changes).into_iter().cloned().collect(),
+                ..Outcome::default()
+            },
+            Self::Delete(removal) => Outcome {
+                changed: removal.changed.clone(),
+                deleted: removal.deleted.clone(),
+                ..Outcome::default()
+            },
+        }
+    }
+
+    /// The references the change leaves dangling, which it removes: only a
+    /// delete has any.
+    pub(super) fn dangling_references(&self) -> &[DanglingReference] {
+        match self {
+            Self::Delete(removal) => &removal.dangling,
+            _ => &[],
+        }
+    }
+
+    /// Makes the change.
     ///
     /// It cannot fail: everything it relies on, the plan's checks
     /// established against the same document, which nothing has changed
     /// since.
-    pub(super) fn commit(self, document: &mut Document) -> (Vec<ElementId>, Vec<ElementId>) {
+    pub(super) fn commit(self, document: &mut Document) {
         match self {
-            Self::Create(new) => (vec![new.commit(document)], Vec::new()),
-            Self::Unchanged => (Vec::new(), Vec::new()),
-            Self::Set { element, value } => {
-                value.commit(document, element);
-                (Vec::new(), vec![element.clone()])
-            }
-            Self::Reorder { parent, order } => {
+            Self::Create(new) => new.commit(document),
+            Self::Unchanged => {}
+            Self::Set { element, value } => value.commit(document, element),
+            Self::Reorder {
+                parent,
+                order,
+                changes,
+            } => {
                 let changed = document.reorder(parent, order);
-                // The roots' order is the document's, not an element's.
-                let changed = parent.filter(|_| changed).into_iter().cloned().collect();
-                (Vec::new(), changed)
+                debug_assert_eq!(
+                    changed, changes,
+                    "the plan computed whether the order changes"
+                );
             }
+            Self::Delete(removal) => document.remove_elements(&removal.deleted, &removal.changed),
         }
     }
+}
+
+/// What a delete removes, once its checks have passed (ADR 0031).
+#[derive(Debug)]
+pub(super) struct Removal {
+    /// Every element to delete, in pre-order: closed under containment.
+    pub(super) deleted: Vec<ElementId>,
+    /// Every surviving element that holds the id of a deleted one, in
+    /// pre-order: each loses those ids.
+    pub(super) changed: Vec<ElementId>,
+    /// The references held outside the deleted element's subtree that name
+    /// a deleted element, in the order of ADR 0031.
+    pub(super) dangling: Vec<DanglingReference>,
 }
 
 /// A new element, once the create's checks have passed: its kind, place,
@@ -80,9 +155,8 @@ pub(super) struct NewElement<'o> {
 }
 
 impl NewElement<'_> {
-    /// Adds the element, advances the counter for a generated id, and
-    /// returns the element's id.
-    fn commit(self, document: &mut Document) -> ElementId {
+    /// Adds the element, and advances the counter for a generated id.
+    fn commit(self, document: &mut Document) {
         let Self {
             kind,
             parent,
@@ -92,16 +166,11 @@ impl NewElement<'_> {
         } = self;
         let inserted = match features {
             Features::Name(name) => {
-                document.insert_element(parent, kind, id.clone(), Some(name.clone()), None, None)
+                document.insert_element(parent, kind, id, Some(name.clone()), None, None)
             }
-            Features::Texts { content, key } => document.insert_element(
-                parent,
-                kind,
-                id.clone(),
-                None,
-                Some(content.clone()),
-                key.cloned(),
-            ),
+            Features::Texts { content, key } => {
+                document.insert_element(parent, kind, id, None, Some(content.clone()), key.cloned())
+            }
             Features::Referencing {
                 name,
                 flags,
@@ -112,14 +181,7 @@ impl NewElement<'_> {
                     .filter(|(_, targets)| !targets.is_empty())
                     .map(|(end, targets)| (end, targets.to_vec()))
                     .collect();
-                document.insert_with_references(
-                    parent,
-                    kind,
-                    id.clone(),
-                    Some(name.clone()),
-                    &flags,
-                    held,
-                )
+                document.insert_with_references(parent, kind, id, Some(name.clone()), &flags, held)
             }
         };
         inserted.expect(
@@ -130,7 +192,6 @@ impl NewElement<'_> {
         if let Some(n) = generated {
             document.commit_generated_id(kind, n);
         }
-        id
     }
 }
 

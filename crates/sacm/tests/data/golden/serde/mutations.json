@@ -43,5 +43,19 @@
     ],
     "changed_ids": [],
     "deleted_ids": []
+  },
+  {
+    "operation": {
+      "type": "DeleteElement",
+      "element": "c1",
+      "reference_policy": "RejectIfReferenced",
+      "package_policy": "RejectIfNonEmpty",
+      "cross_package_policy": "RejectIfExternalReferencesExist"
+    },
+    "created_ids": [],
+    "changed_ids": [],
+    "deleted_ids": [
+      "c1"
+    ]
   }
 ]

@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use super::EditError;
 use super::set::{ASSERTION_DECLARATION, GID, NAME};
 use crate::diagnostic::Code;
-use crate::model::{AbstractClass, ElementId, ElementKind, Flag, ReferenceEnd, TextRole};
+use crate::model::{AbstractClass, ElementId, ElementKind, Flag, ReferenceEnd, Revision, TextRole};
 
 /// A name as serialized: an end, feature or class name, which reads back to
 /// the crate's static name.
@@ -100,9 +100,37 @@ pub(super) enum EditErrorRecord {
         #[serde(deserialize_with = "serde::Deserialize::deserialize")]
         repeated: Option<ElementId>,
     },
+    /// [`EditError::Referenced`].
+    Referenced {
+        code: Code,
+        holder: ElementId,
+        end: Name,
+        id: ElementId,
+    },
+    /// [`EditError::PreviewExpired`]; each revision is a JSON number (ADR
+    /// 0031).
+    PreviewExpired {
+        code: Code,
+        previewed: u64,
+        current: u64,
+    },
+    /// [`EditError::NotEmpty`].
+    NotEmpty {
+        code: Code,
+        element: ElementId,
+        contained: usize,
+    },
+    /// [`EditError::CrossPackageReference`].
+    CrossPackageReference {
+        code: Code,
+        holder: ElementId,
+        end: Name,
+        id: ElementId,
+    },
 }
 
 impl From<EditError> for EditErrorRecord {
+    #[expect(clippy::too_many_lines, reason = "one arm per EditError variant")]
     fn from(error: EditError) -> Self {
         let code = error.code();
         match error {
@@ -183,6 +211,28 @@ impl From<EditError> for EditErrorRecord {
                 child,
             },
             EditError::InvalidOrder { repeated } => Self::InvalidOrder { code, repeated },
+            EditError::Referenced { holder, end, id } => Self::Referenced {
+                code,
+                holder,
+                end: end.to_owned(),
+                id,
+            },
+            EditError::PreviewExpired { previewed, current } => Self::PreviewExpired {
+                code,
+                previewed: previewed.number(),
+                current: current.number(),
+            },
+            EditError::NotEmpty { element, contained } => Self::NotEmpty {
+                code,
+                element,
+                contained,
+            },
+            EditError::CrossPackageReference { holder, end, id } => Self::CrossPackageReference {
+                code,
+                holder,
+                end: end.to_owned(),
+                id,
+            },
         }
     }
 }
@@ -294,6 +344,48 @@ impl TryFrom<EditErrorRecord> for EditError {
                 child,
             } => (code, Self::ChildNotFound { parent, child }),
             R::InvalidOrder { code, repeated } => (code, Self::InvalidOrder { repeated }),
+            R::Referenced {
+                code,
+                holder,
+                end,
+                id,
+            } => (
+                code,
+                Self::Referenced {
+                    holder,
+                    end: end_name(&end)?,
+                    id,
+                },
+            ),
+            R::PreviewExpired {
+                code,
+                previewed,
+                current,
+            } => (
+                code,
+                Self::PreviewExpired {
+                    previewed: Revision::from_number(previewed),
+                    current: Revision::from_number(current),
+                },
+            ),
+            R::NotEmpty {
+                code,
+                element,
+                contained,
+            } => (code, Self::NotEmpty { element, contained }),
+            R::CrossPackageReference {
+                code,
+                holder,
+                end,
+                id,
+            } => (
+                code,
+                Self::CrossPackageReference {
+                    holder,
+                    end: end_name(&end)?,
+                    id,
+                },
+            ),
         };
         if code == error.code() {
             Ok(error)
@@ -466,6 +558,7 @@ mod tests {
             Operation::AddReference(_) => sampled!(OPERATIONS, "AddReference"),
             Operation::RemoveReference(_) => sampled!(OPERATIONS, "RemoveReference"),
             Operation::ReorderElements(_) => sampled!(OPERATIONS, "ReorderElements"),
+            Operation::DeleteElement(_) => sampled!(OPERATIONS, "DeleteElement"),
         }
     }
 
@@ -490,6 +583,12 @@ mod tests {
             EditError::ReferenceNotHeld { .. } => sampled!(EDIT_ERRORS, "ReferenceNotHeld"),
             EditError::ChildNotFound { .. } => sampled!(EDIT_ERRORS, "ChildNotFound"),
             EditError::InvalidOrder { .. } => sampled!(EDIT_ERRORS, "InvalidOrder"),
+            EditError::Referenced { .. } => sampled!(EDIT_ERRORS, "Referenced"),
+            EditError::PreviewExpired { .. } => sampled!(EDIT_ERRORS, "PreviewExpired"),
+            EditError::NotEmpty { .. } => sampled!(EDIT_ERRORS, "NotEmpty"),
+            EditError::CrossPackageReference { .. } => {
+                sampled!(EDIT_ERRORS, "CrossPackageReference")
+            }
         }
     }
 

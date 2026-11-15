@@ -4,9 +4,20 @@
 //! it completely against the document and then either makes the change and
 //! returns a [`Mutation`] (the operation, and the ids it created, changed and
 //! deleted), or refuses with an [`EditError`]. **A refused operation changes
-//! nothing**: not the elements, not the written XMI, and not the ids
-//! generated next. [`check`] gives the answer `apply` would give, without
-//! changing the document.
+//! nothing**: not the elements, not the written XMI, not the ids generated
+//! next, and not the document's [`revision`](Document::revision). [`check`]
+//! gives the answer `apply` would give, without changing the document, and
+//! [`preview`] also gives the `Mutation` it would return.
+//!
+//! The public mutations are [`apply`], [`apply_preview`], [`batch`] and
+//! [`apply_all`], and each is all or nothing (D-ATOMIC):
+//! - [`apply`] applies one operation;
+//! - [`apply_preview`] applies a [`Preview`] taken with [`preview`], unless
+//!   the document has changed since (SACM-CMD-003);
+//! - [`batch`] applies the operations a closure gives as one change, and
+//!   [`apply_all`] a list of them, so that a later operation can use an id an
+//!   earlier one generated. On a refusal passed on, an error or a panic, the
+//!   document is as it was.
 //!
 //! # Operations that create an element
 //!
@@ -109,6 +120,29 @@
 //! element, or for [`ReorderElements::new`] the parent; a root reorder
 //! changes no element, so it reports none.
 //!
+//! # Deleting an element
+//!
+//! [`DeleteElement`] deletes an element of any kind, everything it contains,
+//! and what its three policies allow, and never leaves a reference dangling
+//! (LIB-EDIT-005, LIB-EDIT-006, ADR 0031). Each policy refuses by default,
+//! so nothing cascades unless asked (D-POLICY):
+//!
+//! | Policy | Refuses (default) | Allows | What it does |
+//! |---|---|---|---|
+//! | [`ReferenceDeletePolicy`]: a reference to a deleted element, held outside its subtree | [`RejectIfReferenced`](ReferenceDeletePolicy::RejectIfReferenced) | [`DeleteReferencingRelationships`](ReferenceDeletePolicy::DeleteReferencingRelationships) | deletes each relationship whose `source`, `target` or `reasoning` names a deleted element |
+//! | | | [`ScrubReferences`](ReferenceDeletePolicy::ScrubReferences) | removes the id; a relationship left with no `source` or `target` is deleted |
+//! | [`PackageDeletePolicy`]: an element that contains elements other than `UtilityElement`s | [`RejectIfNonEmpty`](PackageDeletePolicy::RejectIfNonEmpty) | [`DeleteRecursively`](PackageDeletePolicy::DeleteRecursively) | deletes the element and everything it contains |
+//! | [`CrossPackageReferencePolicy`]: a reference like that, whose holder's nearest package is not that of the element it names | [`RejectIfExternalReferencesExist`](CrossPackageReferencePolicy::RejectIfExternalReferencesExist) | [`ApplyReferencePolicy`](CrossPackageReferencePolicy::ApplyReferencePolicy) | leaves the reference to the reference policy |
+//!
+//! [`preview`] lists the references to deleted elements, which the delete
+//! removes, as [`DanglingReference`]s.
+//!
+//! A delete does not rewind the per-kind counter, so generation stays
+//! deterministic: the next generated id is still the smallest unused number
+//! above the counter. A freed id may be used again: a caller may give it
+//! with `with_id`, and a freed id the caller gave may be generated later. An
+//! application that needs ids unique across its history gives its own.
+//!
 //! # Ids
 //!
 //! - **Given by the caller** with `with_id`: it must be an XML `NCName` (an
@@ -183,6 +217,22 @@
 //! | 3. id by id, in list order: it is a direct child of the parent (or a root) | [`EditError::ChildNotFound`] | SACM-CMD-001 |
 //! | 4. for the same id, right after check 3: it was not named before | [`EditError::InvalidOrder`] | SACM-CMD-009 |
 //!
+//! ## Deletes
+//!
+//! [`DeleteElement`] checks, in this order:
+//!
+//! | Check | Refusal | Code |
+//! |---|---|---|
+//! | 1. the element is in the document | [`EditError::ElementNotFound`] | SACM-CMD-001 |
+//! | 2. under `RejectIfNonEmpty`: it contains no element but `UtilityElement`s | [`EditError::NotEmpty`] | SACM-CMD-006 |
+//! | 3. each dangling reference, in the order of [`Preview::dangling_references`]: one that crosses a package boundary, under `RejectIfExternalReferencesExist` | [`EditError::CrossPackageReference`] | SACM-CMD-007 |
+//! | 3. the same reference, otherwise, under `RejectIfReferenced` | [`EditError::Referenced`] | SACM-CMD-002 |
+//!
+//! ## Previews
+//!
+//! [`apply_preview`] refuses a preview taken at another revision of the
+//! document as [`EditError::PreviewExpired`] (SACM-CMD-003).
+//!
 //! # Writing and reading back
 //!
 //! A document built with [`apply`] validates with
@@ -228,8 +278,11 @@
 //! ```
 
 mod argumentation;
+mod batch;
 mod create;
+mod delete;
 mod plan;
+mod preview;
 #[cfg(feature = "serde")]
 mod record;
 mod references;
@@ -244,7 +297,12 @@ pub use argumentation::{
     CreateAssertedArtifactContext, CreateAssertedArtifactSupport, CreateAssertedContext,
     CreateAssertedEvidence, CreateAssertedInference,
 };
+pub use batch::{Batch, BatchError, BatchMutation};
 pub use create::{CreateArgumentPackage, CreateAssuranceCasePackage, CreateClaim};
+pub use delete::{
+    CrossPackageReferencePolicy, DeleteElement, PackageDeletePolicy, ReferenceDeletePolicy,
+};
+pub use preview::{DanglingReference, Preview};
 pub use references::{AddReference, RemoveReference, SetReferences};
 pub use reorder::ReorderElements;
 pub use set::{SetAssertionDeclaration, SetContent, SetFlag, SetGid, SetKey, SetName};
@@ -253,24 +311,26 @@ pub use utility::{
 };
 
 use crate::diagnostic::Code;
-use crate::model::{Document, ElementId, ElementKind};
-use plan::Plan;
+use crate::model::{Document, ElementId, ElementKind, Revision};
+use plan::{Outcome, Plan};
 
 /// Checks `operation` against `document` and applies it, or refuses it and
 /// leaves `document` unchanged.
 ///
-/// `apply` is the only public way to change a [`Document`] (outside the
-/// unstable `test-support` feature), and it is all or nothing:
+/// `apply`, [`apply_preview`], [`batch`] and [`apply_all`] are the only
+/// public ways to change a [`Document`] (outside the unstable `test-support`
+/// feature), and each is all or nothing:
 /// - **On success** the document stays structurally valid, as every
 ///   `Document` is: ids are unique, parent and child links agree, every root
 ///   is a package, every child is in a composite role of its parent's class,
 ///   and every Assertion has an
 ///   [`AssertionDeclaration`](crate::model::AssertionDeclaration) (SACM 2.3
 ///   §11.10). The returned [`Mutation`] holds the operation and the ids it created,
-///   changed and deleted.
+///   changed and deleted, and the document has a new
+///   [`revision`](Document::revision).
 /// - **On refusal** the document is unchanged: it is `==` to what it was
-///   before (see [`compare`](crate::compare)), and it generates the same next
-///   ids.
+///   before (see [`compare`](crate::compare)), it generates the same next
+///   ids, and its revision is the same.
 ///
 /// `apply` neither checks content findings nor refuses an operation because
 /// of one; call [`validate`](crate::validation::validate) again after
@@ -316,6 +376,12 @@ use plan::Plan;
 ///   ([`EditError::InvalidOrder`]), or names an id that is no direct child
 ///   or root ([`EditError::ChildNotFound`]).
 ///
+/// Refuses a [`DeleteElement`], checked in this order, when the element is
+/// not in the document ([`EditError::ElementNotFound`]), when it is not
+/// empty and the package policy refuses that ([`EditError::NotEmpty`]), or
+/// when the delete would leave a reference dangling that a policy refuses
+/// ([`EditError::CrossPackageReference`], [`EditError::Referenced`]).
+///
 /// # Examples
 ///
 /// ```
@@ -337,17 +403,30 @@ pub fn apply(
     document: &mut Document,
     operation: impl Into<Operation>,
 ) -> Result<Mutation, EditError> {
-    let operation = operation.into();
+    apply_operation(document, operation.into()).map_err(|(_, error)| error)
+}
+
+/// [`apply`], giving the operation back with a refusal: the one code path of
+/// `apply`, [`apply_preview`] and [`Batch::apply`].
+fn apply_operation(
+    document: &mut Document,
+    operation: Operation,
+) -> Result<Mutation, (Box<Operation>, EditError)> {
     // Every check runs in `plan`, before the one change, so a refusal leaves
-    // the document untouched. A create changes no existing element (ADR 0019
-    // amendment 1), an edit creates none (ADR 0029), and none deletes one.
-    let (created, changed) = plan(document, &operation)?.commit(document);
-    Ok(Mutation {
-        operation,
-        created,
-        changed,
-        deleted: Vec::new(),
-    })
+    // the document untouched, its revision included. The plan also knows
+    // what the change creates, changes and deletes (ADR 0031).
+    let planned = plan(document, &operation).map(|plan| {
+        let outcome = plan.outcome();
+        plan.commit(document);
+        outcome
+    });
+    match planned {
+        Ok(outcome) => {
+            document.renew_revision();
+            Ok(Mutation::new(operation, outcome))
+        }
+        Err(error) => Err((Box::new(operation), error)),
+    }
 }
 
 /// Checks `operation` against `document` without applying it: `Ok` exactly
@@ -403,6 +482,219 @@ pub fn check(document: &Document, operation: &Operation) -> Result<(), EditError
     plan(document, operation).map(drop)
 }
 
+/// Shows what [`apply`] would do with `operation`, without changing
+/// `document`: the [`Mutation`] it would return and, for a delete, the
+/// references to deleted elements, which the delete removes (LIB-EDIT-004,
+/// ADR 0031).
+///
+/// `preview` runs the same checks as `apply` and [`check`], through the same
+/// code, and refuses exactly as they do; the mutation it holds is computed
+/// by the same code that `apply` reports from. It takes the document by
+/// shared reference, so the elements, the ids generated next and the
+/// [`revision`](Document::revision) stay as they are. Apply the preview with
+/// [`apply_preview`] while the document is still at the preview's revision.
+/// To learn whether a delete applies under some policy, preview it with that
+/// policy.
+///
+/// # Errors
+///
+/// Returns the [`EditError`] that `apply` would refuse `operation` with.
+///
+/// # Examples
+///
+/// Preview a delete that scrubs the references to the deleted element, then
+/// apply it:
+///
+/// ```
+/// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, DeleteElement, Operation};
+/// use sacm::edit::{ReferenceDeletePolicy, SetReferences};
+/// use sacm::model::{Document, ElementId, LangString, ReferenceEnd};
+///
+/// let mut doc = Document::new();
+/// let name = LangString::new;
+/// edit::apply(&mut doc, CreateArgumentPackage::root(name("Arguments")).with_id("p"))?;
+/// edit::apply(&mut doc, CreateClaim::new("p", name("C1")).with_id("c1"))?;
+/// edit::apply(&mut doc, CreateClaim::new("p", name("C2")).with_id("c2"))?;
+/// edit::apply(&mut doc, SetReferences::new("c2", ReferenceEnd::MetaClaim, ["c1"]))?;
+///
+/// let scrub = DeleteElement::new("c1").with_reference_policy(ReferenceDeletePolicy::ScrubReferences);
+/// let preview = edit::preview(&doc, &Operation::from(scrub))?;
+/// let dangling = &preview.dangling_references()[0];
+/// assert_eq!(dangling.holder().as_str(), "c2");
+/// assert_eq!(dangling.end(), ReferenceEnd::MetaClaim);
+/// assert_eq!(dangling.id().as_str(), "c1");
+/// assert_eq!(preview.mutation().deleted_ids(), [ElementId::from("c1")]);
+/// assert_eq!(preview.mutation().changed_ids(), [ElementId::from("c2")]);
+/// assert!(doc.contains("c1")); // nothing has changed yet
+///
+/// let mutation = edit::apply_preview(&mut doc, &preview)?;
+/// assert_eq!(&mutation, preview.mutation());
+/// assert!(doc.get("c2").is_some_and(|c2| c2.meta_claims().is_empty()));
+/// # Ok::<(), sacm::edit::EditError>(())
+/// ```
+pub fn preview(document: &Document, operation: &Operation) -> Result<Preview, EditError> {
+    let plan = plan(document, operation)?;
+    let dangling = plan.dangling_references().to_vec();
+    let mutation = Mutation::new(operation.clone(), plan.outcome());
+    Ok(Preview::new(document.revision(), mutation, dangling))
+}
+
+/// Applies a [`Preview`] taken by [`preview`], if `document` has not changed
+/// since: if its [`revision`](Document::revision) is still the preview's
+/// (LIB-EDIT-007, ADR 0031).
+///
+/// It then applies the preview's operation, as [`apply`] does, and returns a
+/// [`Mutation`] equal to [`Preview::mutation`]. Every successful edit gives
+/// the document a new revision, so a preview applies at most once. A clone
+/// shares its original's revision until either changes, so a preview taken
+/// on one applies to the other while both are unchanged.
+///
+/// # Errors
+///
+/// Refuses with [`EditError::PreviewExpired`] (SACM-CMD-003), changing
+/// nothing, when the document's revision is not the preview's: preview the
+/// operation again.
+///
+/// # Examples
+///
+/// ```
+/// use sacm::diagnostic::Code;
+/// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, Operation, SetName};
+/// use sacm::model::{Document, LangString};
+///
+/// let mut doc = Document::new();
+/// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+/// let claim = Operation::from(CreateClaim::new("p", LangString::new("C1")));
+/// let preview = edit::preview(&doc, &claim)?;
+///
+/// // The document changes after the preview, so the preview is stale.
+/// edit::apply(&mut doc, SetName::new("p", LangString::new("Renamed")))?;
+/// let error = edit::apply_preview(&mut doc, &preview).unwrap_err();
+/// assert_eq!(error.code(), Code::CMD_PREVIEW_EXPIRED);
+///
+/// // Preview it again, and apply that.
+/// let fresh = edit::preview(&doc, &claim)?;
+/// assert_eq!(edit::apply_preview(&mut doc, &fresh)?.created_ids()[0].as_str(), "claim_1");
+/// # Ok::<(), sacm::edit::EditError>(())
+/// ```
+pub fn apply_preview(document: &mut Document, preview: &Preview) -> Result<Mutation, EditError> {
+    let (previewed, current) = (preview.revision(), document.revision());
+    if previewed != current {
+        return Err(EditError::PreviewExpired { previewed, current });
+    }
+    apply(document, preview.operation().clone())
+}
+
+/// Applies several operations to `document` as one change: all of them, or,
+/// if the closure returns `Err`, none (LIB-EDIT-014, ADR 0032).
+///
+/// The closure gets a [`Batch`]. Each [`Batch::apply`] answers as [`apply`]
+/// would on the state so far, so a later operation can use an id an earlier
+/// one generated, and [`Batch::document`] shows that state. The batch
+/// commits exactly when the closure returns `Ok`:
+/// - **`Ok`**: every accepted operation stays, and the document gets a new
+///   [`revision`](Document::revision), even when nothing changed. A refusal
+///   the closure ignored changed nothing, so it does not stop the commit.
+///   The [`BatchMutation`] holds each accepted [`Mutation`] and the net ids.
+/// - **`Err(e)`**, a refusal passed on with `?` or the closure's own error:
+///   `e` is returned unchanged, and the document is `==` to before, with the
+///   same next generated ids and the same revision.
+///
+/// The closure's error type needs `From<BatchError>` only if it uses `?` on
+/// `tx.apply`. To apply a list of operations, use [`apply_all`].
+///
+/// # Errors
+///
+/// Returns the closure's error, unchanged, and leaves the document as it
+/// was.
+///
+/// # Panics
+///
+/// Propagates a panic in the closure. The document is then unchanged, as
+/// for `Err`.
+///
+/// # Examples
+///
+/// Add an `ArgumentReasoning`, a claim and an `AssertedInference` from that
+/// claim to the top claim, naming the reasoning, as one change:
+///
+/// ```
+/// use sacm::edit::{self, BatchError, CreateArgumentPackage, CreateArgumentReasoning};
+/// use sacm::edit::{CreateAssertedInference, CreateClaim};
+/// use sacm::model::{Document, LangString};
+///
+/// let mut doc = Document::new();
+/// let name = LangString::new;
+/// edit::apply(&mut doc, CreateArgumentPackage::root(name("Arguments")).with_id("p"))?;
+/// edit::apply(&mut doc, CreateClaim::new("p", name("The system is safe")).with_id("top"))?;
+///
+/// let batch = edit::batch(&mut doc, |tx| -> Result<(), BatchError> {
+///     let reasoning = tx.apply(CreateArgumentReasoning::new("p", name("Argue over each hazard")))?;
+///     let reasoning = reasoning.created_ids()[0].clone();
+///     let sub = tx.apply(CreateClaim::new("p", name("Hazard H1 is mitigated")))?;
+///     let sub = sub.created_ids()[0].clone();
+///     let inference = CreateAssertedInference::new("p", name("Inference"), [sub], "top");
+///     tx.apply(inference.with_reasoning(reasoning))?;
+///     Ok(())
+/// })?;
+///
+/// let created: Vec<&str> = batch.created_ids().iter().map(|id| id.as_str()).collect();
+/// assert_eq!(created, ["argument_reasoning_1", "claim_1", "asserted_inference_1"]);
+/// let inference = doc.get("asserted_inference_1").expect("the batch committed");
+/// assert_eq!(inference.reasoning().map(|id| id.as_str()), Some("argument_reasoning_1"));
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+pub fn batch<E>(
+    document: &mut Document,
+    operations: impl FnOnce(&mut Batch<'_>) -> Result<(), E>,
+) -> Result<BatchMutation, E> {
+    batch::run(document, operations)
+}
+
+/// Applies `operations`, in order, as one change: [`batch`] over the list,
+/// stopping at the first refusal (ADR 0032).
+///
+/// It is for operations sent as data, such as a JSON array of
+/// [`Operation`]s. All of them are applied, or none: after a refusal the
+/// document is `==` to before, with the same next generated ids and the
+/// same revision. An empty list commits, and gives a new revision.
+///
+/// # Errors
+///
+/// A [`BatchError`] naming the first refused operation, by its position in
+/// the list, with its [`EditError`].
+///
+/// # Examples
+///
+/// ```
+/// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, Operation, SetName};
+/// use sacm::model::{Document, LangString};
+///
+/// let mut doc = Document::new();
+/// let operations = [
+///     Operation::from(CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p")),
+///     Operation::from(CreateClaim::new("p", LangString::new("C1")).with_id("c1")),
+///     Operation::from(SetName::new("c1", LangString::new("The system is safe"))),
+/// ];
+/// let batch = edit::apply_all(&mut doc, operations)?;
+/// assert_eq!(batch.mutations().len(), 3);
+/// // Net: c1 is created, not changed.
+/// assert_eq!(batch.created_ids().len(), 2);
+/// assert!(batch.changed_ids().is_empty());
+/// # Ok::<(), sacm::edit::BatchError>(())
+/// ```
+pub fn apply_all(
+    document: &mut Document,
+    operations: impl IntoIterator<Item = impl Into<Operation>>,
+) -> Result<BatchMutation, BatchError> {
+    batch(document, |tx| {
+        for operation in operations {
+            tx.apply(operation)?;
+        }
+        Ok(())
+    })
+}
+
 /// Runs every check of `operation` against `document`, and returns what the
 /// change needs: the one code path of [`check`] and [`apply`]. Every refusal
 /// is built here; [`Plan::commit`] builds none.
@@ -433,6 +725,7 @@ fn plan<'o>(document: &Document, operation: &'o Operation) -> Result<Plan<'o>, E
         Operation::AddReference(add) => add.plan(document),
         Operation::RemoveReference(remove) => remove.plan(document),
         Operation::ReorderElements(reorder) => reorder.plan(document),
+        Operation::DeleteElement(delete) => delete.plan(document),
     }
 }
 
@@ -509,6 +802,8 @@ pub enum Operation {
     RemoveReference(RemoveReference),
     /// Reorders the children of an element, or the roots.
     ReorderElements(ReorderElements),
+    /// Deletes an element under explicit policies.
+    DeleteElement(DeleteElement),
 }
 
 impl Operation {
@@ -526,8 +821,8 @@ impl Operation {
     /// `"CreateImplementationConstraint"`, `"CreateNote"`,
     /// `"CreateTaggedValue"`, `"SetName"`, `"SetGid"`, `"SetFlag"`,
     /// `"SetAssertionDeclaration"`, `"SetContent"`, `"SetKey"`,
-    /// `"SetReferences"`, `"AddReference"`, `"RemoveReference"` and
-    /// `"ReorderElements"`. The two forms of one struct, such as
+    /// `"SetReferences"`, `"AddReference"`, `"RemoveReference"`,
+    /// `"ReorderElements"` and `"DeleteElement"`. The two forms of one struct, such as
     /// [`SetGid::new`] and [`SetGid::remove`], share its name.
     ///
     /// # Examples
@@ -567,6 +862,7 @@ impl Operation {
             Self::AddReference(_) => "AddReference",
             Self::RemoveReference(_) => "RemoveReference",
             Self::ReorderElements(_) => "ReorderElements",
+            Self::DeleteElement(_) => "DeleteElement",
         }
     }
 }
@@ -596,6 +892,7 @@ operation_from!(
     AddReference,
     RemoveReference,
     ReorderElements,
+    DeleteElement,
 );
 
 impl From<CreateAssuranceCasePackage> for Operation {
@@ -683,8 +980,10 @@ impl From<CreateTaggedValue> for Operation {
 /// reorder, the parent) exactly when its value differs from the one held;
 /// setting the value held changes nothing, writes nothing, and gives
 /// `changed_ids` empty. An element a reference names is not changed by the
-/// reference, and a root reorder changes no element. No operation of this
-/// release deletes one, so `deleted_ids` is always empty.
+/// reference, and a root reorder changes no element. A [`DeleteElement`]
+/// deletes the element and what it contains and its policies delete, and
+/// changes each surviving element that loses a reference to one of them;
+/// the parent is not changed.
 ///
 /// A refused operation returns an [`EditError`] instead, and the document is
 /// unchanged; log it with [`EditError::code`]. To log the refused operation's
@@ -733,6 +1032,21 @@ pub struct Mutation {
 }
 
 impl Mutation {
+    /// The mutation of `operation`, with the ids its plan computed.
+    fn new(operation: Operation, outcome: Outcome) -> Self {
+        let Outcome {
+            created,
+            changed,
+            deleted,
+        } = outcome;
+        Self {
+            operation,
+            created,
+            changed,
+            deleted,
+        }
+    }
+
     /// The operation, exactly as given to [`apply`].
     ///
     /// A generated id is not filled in: for an operation without `with_id`,
@@ -776,7 +1090,8 @@ impl Mutation {
     /// not change its parent, so it gives none. An operation that changes an
     /// element gives that element, or none when it sets the value held; a
     /// [`ReorderElements::new`] gives the parent, and a
-    /// [`ReorderElements::roots`] none.
+    /// [`ReorderElements::roots`] none. A [`DeleteElement`] gives each
+    /// surviving element that lost an id of a deleted element.
     ///
     /// # Examples
     ///
@@ -803,8 +1118,8 @@ impl Mutation {
     /// [pre-order](crate::model::Document::elements) before the operation.
     ///
     /// They are the ids `semantic_compare(before, after)` reports as only in
-    /// before. No operation of this release deletes an element, so this is
-    /// always empty.
+    /// before. Only a [`DeleteElement`] deletes elements: the element,
+    /// everything it contains, and what its policies delete.
     #[must_use]
     pub fn deleted_ids(&self) -> &[ElementId] {
         &self.deleted
@@ -1185,6 +1500,100 @@ pub enum EditError {
         /// The first id named more than once, or `None` for an empty list.
         repeated: Option<ElementId>,
     },
+    /// A [`DeleteElement`] under [`ReferenceDeletePolicy::RejectIfReferenced`]
+    /// would leave a reference dangling (SACM-CMD-002): an element outside
+    /// the deleted element's subtree holds the id of a deleted element. The
+    /// first such reference is reported, in the order of
+    /// [`Preview::dangling_references`]. Choose
+    /// [`DeleteReferencingRelationships`](ReferenceDeletePolicy::DeleteReferencingRelationships)
+    /// or [`ScrubReferences`](ReferenceDeletePolicy::ScrubReferences), or
+    /// remove the reference first.
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, DeleteElement, EditError, SetReferences};
+    /// use sacm::model::{Document, LangString, ReferenceEnd};
+    ///
+    /// let mut doc = Document::new();
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+    /// edit::apply(&mut doc, CreateClaim::new("p", LangString::new("C1")).with_id("c1"))?;
+    /// edit::apply(&mut doc, CreateClaim::new("p", LangString::new("C2")).with_id("c2"))?;
+    /// edit::apply(&mut doc, SetReferences::new("c2", ReferenceEnd::MetaClaim, ["c1"]))?;
+    /// let error = edit::apply(&mut doc, DeleteElement::new("c1")).unwrap_err();
+    /// assert!(matches!(error, EditError::Referenced { end: "metaClaim", .. }));
+    /// assert_eq!(
+    ///     error.to_string(),
+    ///     "the metaClaim of \"c2\" names \"c1\", and the delete would leave it dangling"
+    /// );
+    /// # Ok::<(), EditError>(())
+    /// ```
+    #[non_exhaustive]
+    Referenced {
+        /// The id of the element that holds the reference.
+        holder: ElementId,
+        /// The end, by its XMI name, such as `metaClaim`.
+        end: &'static str,
+        /// The id the reference names: an element the delete would remove.
+        id: ElementId,
+    },
+    /// [`apply_preview`] was given a [`Preview`] taken at another revision
+    /// of the document (SACM-CMD-003): the document changed after the
+    /// preview was taken, or the preview is of another document. Nothing
+    /// changed. Preview the operation again.
+    #[non_exhaustive]
+    PreviewExpired {
+        /// The revision the preview was taken at.
+        previewed: Revision,
+        /// The document's revision now.
+        current: Revision,
+    },
+    /// A [`DeleteElement`] under [`PackageDeletePolicy::RejectIfNonEmpty`]
+    /// names an element that contains elements other than `UtilityElement`s
+    /// (SACM-CMD-006). Descriptions, implementation constraints, notes and
+    /// tagged values do not count. Choose
+    /// [`DeleteRecursively`](PackageDeletePolicy::DeleteRecursively), or
+    /// delete the contents first.
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, DeleteElement, EditError};
+    /// use sacm::model::{Document, LangString};
+    ///
+    /// let mut doc = Document::new();
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+    /// edit::apply(&mut doc, CreateClaim::new("p", LangString::new("C1")))?;
+    /// let error = edit::apply(&mut doc, DeleteElement::new("p")).unwrap_err();
+    /// assert!(matches!(error, EditError::NotEmpty { contained: 1, .. }));
+    /// assert_eq!(
+    ///     error.to_string(),
+    ///     "the element \"p\" contains 1 element that is no UtilityElement, and the delete is not recursive"
+    /// );
+    /// # Ok::<(), EditError>(())
+    /// ```
+    #[non_exhaustive]
+    NotEmpty {
+        /// The id of the element to delete.
+        element: ElementId,
+        /// How many elements it contains, at any depth, that are not
+        /// `UtilityElement`s.
+        contained: usize,
+    },
+    /// A [`DeleteElement`] under
+    /// [`CrossPackageReferencePolicy::RejectIfExternalReferencesExist`] would
+    /// leave a reference dangling across a package boundary (SACM-CMD-007):
+    /// the holder's nearest package is not that of the element the reference
+    /// names. The first dangling reference a policy refuses is reported, in
+    /// the order of [`Preview::dangling_references`]. Choose
+    /// [`ApplyReferencePolicy`](CrossPackageReferencePolicy::ApplyReferencePolicy)
+    /// with a reference policy that handles it, or remove the reference
+    /// first.
+    #[non_exhaustive]
+    CrossPackageReference {
+        /// The id of the element that holds the reference.
+        holder: ElementId,
+        /// The end, by its XMI name, such as `metaClaim`.
+        end: &'static str,
+        /// The id the reference names: an element the delete would remove.
+        id: ElementId,
+    },
 }
 
 impl EditError {
@@ -1201,8 +1610,12 @@ impl EditError {
     /// [`ElementNotFound`](Self::ElementNotFound),
     /// [`ReferenceNotHeld`](Self::ReferenceNotHeld) and
     /// [`ChildNotFound`](Self::ChildNotFound), SACM-CMD-008 for
-    /// [`FeatureNotApplicable`](Self::FeatureNotApplicable) and SACM-CMD-009
-    /// for [`InvalidOrder`](Self::InvalidOrder).
+    /// [`FeatureNotApplicable`](Self::FeatureNotApplicable), SACM-CMD-009
+    /// for [`InvalidOrder`](Self::InvalidOrder), SACM-CMD-002 for
+    /// [`Referenced`](Self::Referenced), SACM-CMD-003 for
+    /// [`PreviewExpired`](Self::PreviewExpired), SACM-CMD-006 for
+    /// [`NotEmpty`](Self::NotEmpty) and SACM-CMD-007 for
+    /// [`CrossPackageReference`](Self::CrossPackageReference).
     #[must_use]
     pub fn code(&self) -> Code {
         match self {
@@ -1220,12 +1633,17 @@ impl EditError {
             Self::WrongReferenceType { .. } => Code::REF_WRONG_TYPE,
             Self::FeatureNotApplicable { .. } => Code::CMD_FEATURE_NOT_APPLICABLE,
             Self::InvalidOrder { .. } => Code::CMD_INVALID_ORDER,
+            Self::Referenced { .. } => Code::CMD_DELETE_REFERENCED,
+            Self::PreviewExpired { .. } => Code::CMD_PREVIEW_EXPIRED,
+            Self::NotEmpty { .. } => Code::CMD_PACKAGE_NOT_EMPTY,
+            Self::CrossPackageReference { .. } => Code::CMD_EXTERNAL_REFERENCES,
         }
     }
 }
 
 impl fmt::Display for EditError {
     /// Writes the refusal on one line, as described on [`EditError`].
+    #[expect(clippy::too_many_lines, reason = "one arm per EditError variant")]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::ParentNotFound { parent } => write!(
@@ -1321,6 +1739,34 @@ impl fmt::Display for EditError {
                 id.as_str(),
                 article(kind.name()),
                 article(expected)
+            ),
+            Self::Referenced { holder, end, id } => write!(
+                f,
+                "the {end} of {:?} names {:?}, and the delete would leave it dangling",
+                holder.as_str(),
+                id.as_str()
+            ),
+            Self::PreviewExpired { .. } => {
+                f.write_str("the document has changed since the preview was taken")
+            }
+            Self::NotEmpty { element, contained } => write!(
+                f,
+                "the element {:?} contains {contained} {} that {} no UtilityElement, and the \
+                 delete is not recursive",
+                element.as_str(),
+                if *contained == 1 {
+                    "element"
+                } else {
+                    "elements"
+                },
+                if *contained == 1 { "is" } else { "are" }
+            ),
+            Self::CrossPackageReference { holder, end, id } => write!(
+                f,
+                "the {end} of {:?} names {:?} in another package, and the delete would leave it \
+                 dangling",
+                holder.as_str(),
+                id.as_str()
             ),
         }
     }

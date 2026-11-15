@@ -17,6 +17,13 @@
 //!   [`referencing_creates_for`], so that every `Operation` variant is
 //!   accepted and refused, the creates with both id forms. An operation that
 //!   fails two checks gets the first, from both.
+//! - LIB-EDIT-004 (ADR 0031): `edit::preview(&doc, &op)` answers as `apply`
+//!   on a clone, its mutation included, and as `check`; it leaves the
+//!   document `==`, with the same revision and next generated ids; and the
+//!   dangling references of a delete are those of [`delete_plan`].
+//! - LIB-EDIT-005 and LIB-EDIT-006 (ADR 0031): every `DeleteElement` of the
+//!   set answers, deletes and changes what [`delete_plan`] gives, and leaves
+//!   every surviving end its old list minus the deleted ids.
 //!
 //! # The set
 //!
@@ -52,7 +59,20 @@
 //!   a missing one;
 //! - the reorders (LIB-EDIT-010): of its children reversed, in their current
 //!   order, empty, with a repeated child, a grandchild, a missing id and the
-//!   id of a name; and the same for the roots.
+//!   id of a name; and the same for the roots;
+//! - last, the deletes (LIB-EDIT-005, LIB-EDIT-006): of "nowhere", of the
+//!   id of a name, and of every element in reverse pre-order (so that in
+//!   sequence an element's contents go before it), each under the 12 policy
+//!   combinations, from the strictest.
+//!
+//! [`DELETE_START`] is the starting document for the deletes: sources,
+//! targets, reasonings, group members, `metaClaim`, `citedElement` and
+//! `abstractForm` targets, a `structure`, `referencedArtifactElement`s, a
+//! relationship that is the target and one that is the source of another
+//! relationship, nested and sibling packages, Notes, a root holding only a
+//! Note, and dangling ids read from the file. [`built_with_insert`] adds
+//! references into a package interface, and [`EDIT_START`] more dangling
+//! and wrongly typed ids.
 //!
 //! So the set holds legal operations and illegal ones of every check.
 //!
@@ -78,13 +98,16 @@
 //!   `TaggedValue` that had a key still has one;
 //! - S6: every (owner, end, id) that is dangling or wrongly typed after the
 //!   operation was so before (D-VAL-LAYER);
-//! - S8: no asserted relationship loses its last source or its target.
+//! - S8: no surviving asserted relationship loses its last source or its
+//!   target;
+//! - S9: only a `DeleteElement` removes elements.
 //!
 //! What each operation must answer is written in [`expected_answer`] from
 //! this file's own tables (which kinds have a name, a declaration,
 //! `isCounter`, a `content` and a `key`; each end's owners, declared type and
-//! bounds) and the check orders of ADR 0019 and ADR 0029, not from the
-//! crate's tables.
+//! bounds) and the check orders of ADR 0019, ADR 0029 and ADR 0031, not from
+//! the crate's tables. What a delete deletes, changes and leaves dangling is
+//! written in [`delete_plan`] from ADR 0031.
 //!
 //! "The next generated ids" of a document are observed on a clone: create one
 //! element of each kind there with a generated id and see which ids come out
@@ -107,14 +130,21 @@ use std::sync::OnceLock;
 
 use sacm::compare::{Difference, semantic_compare};
 use sacm::diagnostic::Code;
+use sacm::edit::CrossPackageReferencePolicy::{
+    ApplyReferencePolicy, RejectIfExternalReferencesExist,
+};
+use sacm::edit::PackageDeletePolicy::{DeleteRecursively, RejectIfNonEmpty};
+use sacm::edit::ReferenceDeletePolicy::{
+    DeleteReferencingRelationships, RejectIfReferenced, ScrubReferences,
+};
 use sacm::edit::{
     self, AddReference, CreateArgumentGroup, CreateArgumentPackage, CreateArgumentReasoning,
     CreateArtifactReference, CreateAssertedArtifactContext, CreateAssertedArtifactSupport,
     CreateAssertedContext, CreateAssertedEvidence, CreateAssertedInference,
     CreateAssuranceCasePackage, CreateClaim, CreateDescription, CreateImplementationConstraint,
-    CreateNote, CreateTaggedValue, EditError, Mutation, Operation, RemoveReference,
-    ReorderElements, SetAssertionDeclaration, SetContent, SetFlag, SetGid, SetKey, SetName,
-    SetReferences,
+    CreateNote, CreateTaggedValue, CrossPackageReferencePolicy, DeleteElement, EditError, Mutation,
+    Operation, PackageDeletePolicy, ReferenceDeletePolicy, RemoveReference, ReorderElements,
+    SetAssertionDeclaration, SetContent, SetFlag, SetGid, SetKey, SetName, SetReferences,
 };
 use sacm::model::ElementKind::{
     Activity, ArgumentGroup, ArgumentPackage, ArgumentPackageBinding, ArgumentPackageInterface,
@@ -134,6 +164,9 @@ use sacm::xmi::{self, ReadOptions};
 
 const EDIT_002: &str = "LIB-EDIT-002";
 const EDIT_003: &str = "LIB-EDIT-003";
+const EDIT_004: &str = "LIB-EDIT-004";
+const EDIT_005: &str = "LIB-EDIT-005";
+const EDIT_006: &str = "LIB-EDIT-006";
 const EDIT_008: &str = "LIB-EDIT-008";
 const EDIT_009: &str = "LIB-EDIT-009";
 const EDIT_010: &str = "LIB-EDIT-010";
@@ -208,6 +241,54 @@ const EDIT_START: &str = r#"<sacm:AssuranceCasePackage xmlns:sacm="http://www.om
     <argumentElement xmi:type="sacm:Claim" xmi:id="c3"/>
   </argumentPackage>
 </sacm:AssuranceCasePackage>
+"#;
+
+/// A starting document read from XMI, for the deletes (ADR 0031). In `dp`:
+/// `goal`; `sub_a`, with a Note and the `abstractForm` `goal`; `sub_b`, with
+/// the `metaClaim`s `goal` and the dangling `ghost`; `strategy`, whose
+/// `structure` is the nested package `dnested`; `inf_ab` from both subs to
+/// `goal` with the reasoning `strategy` and a Description; `inf_a` from
+/// `sub_a` alone; `ctx_on_inf`, whose target is the relationship `inf_a`;
+/// `inf_on_ctx`, whose source is the relationship `ctx_on_inf`;
+/// `evidence_ref`, referencing `sub_a`, `far` (in the sibling package) and
+/// `ghost`; and `group`, holding `sub_a`, `inf_a` and `ghost`. In `dnested`:
+/// `deep`, citing `goal`, and `inf_deep` from `deep` to `sub_b`. In the
+/// sibling package `dother`: `far`, citing `sub_b` with the `metaClaim`
+/// `goal`, `far_ev` from `evidence_ref` to `far`, and `far_inf` from `far` to
+/// `sub_b`. A second root, `dloose`, holds only a Note.
+const DELETE_START: &str = r#"<xmi:XMI xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001">
+  <sacm:AssuranceCasePackage xmi:id="dcase">
+    <name content="Delete case"/>
+    <argumentPackage xmi:id="dp">
+      <name content="DP"/>
+      <argumentElement xmi:type="sacm:Claim" xmi:id="goal"><name content="Goal"/></argumentElement>
+      <argumentElement xmi:type="sacm:Claim" xmi:id="sub_a" abstractForm="goal"><name content="A"/><note xmi:id="sub_a_note"/></argumentElement>
+      <argumentElement xmi:type="sacm:Claim" xmi:id="sub_b" metaClaim="goal ghost"><name content="B"/></argumentElement>
+      <argumentElement xmi:type="sacm:ArgumentReasoning" xmi:id="strategy" structure="dnested"><name content="Strategy"/></argumentElement>
+      <argumentElement xmi:type="sacm:AssertedInference" xmi:id="inf_ab" source="sub_a sub_b" target="goal" reasoning="strategy">
+        <name content="Iab"/>
+        <description xmi:id="inf_ab_d"><content><value content="Both"/></content></description>
+      </argumentElement>
+      <argumentElement xmi:type="sacm:AssertedInference" xmi:id="inf_a" source="sub_a" target="goal"><name content="Ia"/></argumentElement>
+      <argumentElement xmi:type="sacm:AssertedContext" xmi:id="ctx_on_inf" source="evidence_ref" target="inf_a"><name content="Ctx"/></argumentElement>
+      <argumentElement xmi:type="sacm:AssertedInference" xmi:id="inf_on_ctx" source="ctx_on_inf" target="sub_b"><name content="Ictx"/></argumentElement>
+      <argumentElement xmi:type="sacm:ArtifactReference" xmi:id="evidence_ref" referencedArtifactElement="sub_a far ghost"><name content="E"/></argumentElement>
+      <argumentElement xmi:type="sacm:ArgumentGroup" xmi:id="group" argumentElement="sub_a inf_a ghost"><name content="G"/></argumentElement>
+      <argumentElement xmi:type="sacm:ArgumentPackage" xmi:id="dnested">
+        <name content="Nested"/>
+        <argumentElement xmi:type="sacm:Claim" xmi:id="deep" citedElement="goal"><name content="Deep"/></argumentElement>
+        <argumentElement xmi:type="sacm:AssertedInference" xmi:id="inf_deep" source="deep" target="sub_b"><name content="Id"/></argumentElement>
+      </argumentElement>
+    </argumentPackage>
+    <argumentPackage xmi:id="dother">
+      <name content="Other"/>
+      <argumentElement xmi:type="sacm:Claim" xmi:id="far" citedElement="sub_b" metaClaim="goal"><name content="Far"/></argumentElement>
+      <argumentElement xmi:type="sacm:AssertedEvidence" xmi:id="far_ev" source="evidence_ref" target="far"><name content="Fe"/></argumentElement>
+      <argumentElement xmi:type="sacm:AssertedInference" xmi:id="far_inf" source="far" target="sub_b"><name content="Fi"/></argumentElement>
+    </argumentPackage>
+  </sacm:AssuranceCasePackage>
+  <sacm:ArgumentPackage xmi:id="dloose"><name content="Loose"/><note xmi:id="dloose_note"/></sacm:ArgumentPackage>
+</xmi:XMI>
 "#;
 
 // ---------------------------------------------------------------------------
@@ -757,19 +838,52 @@ fn assert_xmi_ids_are_unique(row: &str, context: &str, elements: &[SacmElement<'
     }
 }
 
-/// Asserts S5, S6 and S8 of a successful operation from `before` to `after`.
-fn assert_edit_kept_structure(row: &str, context: &str, before: &Document, after: &Document) {
+/// Asserts S5, S6, S8 and S9 of a successful `operation` from `before` to
+/// `after`.
+fn assert_edit_kept_structure(
+    row: &str,
+    context: &str,
+    operation: &Operation,
+    before: &Document,
+    after: &Document,
+) {
+    assert_only_a_delete_removes_elements(row, context, operation, before, after);
     assert_names_kept(row, context, before, after);
     assert_keys_kept(row, context, before, after);
     assert_no_new_bad_references(row, context, before, after);
     assert_required_ends_kept(row, context, before, after);
 }
 
-/// S5, names: every `ModelElement` that had a name still has one.
+/// S9: an operation other than a `DeleteElement` keeps every element.
+fn assert_only_a_delete_removes_elements(
+    row: &str,
+    context: &str,
+    operation: &Operation,
+    before: &Document,
+    after: &Document,
+) {
+    if matches!(operation, Operation::DeleteElement(_)) {
+        return;
+    }
+    for element in before.elements() {
+        assert!(
+            after.contains(element.id()),
+            "{row}: {context}: S9: the {} {:?} is gone, and the operation is no delete",
+            element.kind(),
+            element.id()
+        );
+    }
+}
+
+/// S5, names: every surviving `ModelElement` that had a name still has one
+/// (S9 checks that only a delete removes elements).
 fn assert_names_kept(row: &str, context: &str, before: &Document, after: &Document) {
     for element in before.elements() {
+        let Some(now) = after.get(element.id()) else {
+            continue;
+        };
         if element.name().is_some() {
-            let kept = after.get(element.id()).and_then(SacmElement::name);
+            let kept = now.name();
             assert!(
                 kept.is_some(),
                 "{row}: {context}: S5: the {} {:?} lost its name",
@@ -780,11 +894,14 @@ fn assert_names_kept(row: &str, context: &str, before: &Document, after: &Docume
     }
 }
 
-/// S5, keys: every `TaggedValue` that had a key still has one.
+/// S5, keys: every surviving `TaggedValue` that had a key still has one.
 fn assert_keys_kept(row: &str, context: &str, before: &Document, after: &Document) {
     for element in before.elements() {
+        let Some(now) = after.get(element.id()) else {
+            continue;
+        };
         if element.kind() == TaggedValue && element.key().is_some() {
-            let kept = after.get(element.id()).and_then(SacmElement::key);
+            let kept = now.key();
             assert!(
                 kept.is_some(),
                 "{row}: {context}: S5: the TaggedValue {:?} lost its key",
@@ -824,17 +941,15 @@ fn assert_no_new_bad_references(row: &str, context: &str, before: &Document, aft
     );
 }
 
-/// S8: no asserted relationship loses its last source or its target.
+/// S8: no surviving asserted relationship loses its last source or its
+/// target (S9 checks that only a delete removes elements).
 fn assert_required_ends_kept(row: &str, context: &str, before: &Document, after: &Document) {
     for element in before.elements() {
         if !RELATIONSHIPS.contains(&element.kind()) {
             continue;
         }
         let Some(now) = after.get(element.id()) else {
-            panic!(
-                "{row}: {context}: S8: the relationship {:?} is gone",
-                element.id()
-            );
+            continue;
         };
         assert!(
             element.sources().is_empty() || !now.sources().is_empty(),
@@ -1002,6 +1117,7 @@ fn classify(operation: &Operation) -> Class<'_> {
             edit_of("ReorderElements")
         }
         Operation::ReorderElements(_) => edit_of("ReorderElements::roots"),
+        Operation::DeleteElement(_) => edit_of("DeleteElement"),
         other => panic!("{EDIT_002}: an operation this test does not know: {other:?}"),
     }
 }
@@ -1024,12 +1140,22 @@ const REORDERS: [&str; 2] = ["ReorderElements", "ReorderElements::roots"];
 /// The coverage labels of the content edits (LIB-EDIT-012).
 const CONTENT_EDITS: [&str; 3] = ["SetContent", "SetContent::remove", "SetKey"];
 
+/// The coverage label of the deletes (LIB-EDIT-005, LIB-EDIT-006).
+const DELETES: [&str; 1] = ["DeleteElement"];
+
 /// The answers the set must reach for the edit labelled `label`: `Ok` and
 /// CMD-001 always; CMD-008 for an operation whose feature some kind lacks;
 /// MULT-001 for the reference edits; ID-002 and REF-002 for those that check
-/// the ids given; CMD-009 for the reorders.
+/// the ids given; CMD-009 for the reorders; CMD-002, CMD-006 and CMD-007 for
+/// the deletes.
 fn required_answers(label: &str) -> Vec<Result<(), &'static str>> {
     let mut required = vec![Ok(()), Err(Code::CMD_TARGET_NOT_FOUND.as_str())];
+    if DELETES.contains(&label) {
+        required.push(Err(Code::CMD_DELETE_REFERENCED.as_str()));
+        required.push(Err(Code::CMD_PACKAGE_NOT_EMPTY.as_str()));
+        required.push(Err(Code::CMD_EXTERNAL_REFERENCES.as_str()));
+        return required;
+    }
     if !matches!(
         label,
         "SetGid" | "SetGid::remove" | "ReorderElements" | "ReorderElements::roots"
@@ -1112,6 +1238,7 @@ fn expected_answer(doc: &Document, operation: &Operation) -> Result<(), Code> {
         Operation::ReorderElements(reorder) => {
             reorder_answer(doc, reorder.parent(), reorder.order())
         }
+        Operation::DeleteElement(delete) => delete_plan(doc, delete).map(drop),
         _ => create_answer(doc, operation),
     }
 }
@@ -1280,6 +1407,229 @@ fn reorder_answer(
         }
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// The delete oracle, written from ADR 0031
+// ---------------------------------------------------------------------------
+
+/// The three reference policies, from the strictest.
+const REFERENCE_POLICIES: [ReferenceDeletePolicy; 3] = [
+    RejectIfReferenced,
+    DeleteReferencingRelationships,
+    ScrubReferences,
+];
+
+/// The two package policies, from the strictest.
+const PACKAGE_POLICIES: [PackageDeletePolicy; 2] = [RejectIfNonEmpty, DeleteRecursively];
+
+/// The two cross-package policies, from the strictest.
+const CROSS_PACKAGE_POLICIES: [CrossPackageReferencePolicy; 2] =
+    [RejectIfExternalReferencesExist, ApplyReferencePolicy];
+
+/// One dangling reference: holder, end, id, and whether it crosses a package
+/// boundary.
+type Dangling = (ElementId, ReferenceEnd, ElementId, bool);
+
+/// What an accepted delete does, by ADR 0031.
+struct DeletePlan {
+    /// Every deleted element, in pre-order before.
+    deleted: Vec<ElementId>,
+    /// Every surviving element that holds a deleted id, in pre-order.
+    changed: Vec<ElementId>,
+    /// The dangling references, in the order of ADR 0031.
+    dangling: Vec<Dangling>,
+}
+
+/// `element` and everything it contains, in pre-order.
+fn subtree_of(element: SacmElement<'_>) -> Vec<ElementId> {
+    let mut ids = vec![element.id().clone()];
+    for child in element.children() {
+        ids.extend(subtree_of(child));
+    }
+    ids
+}
+
+/// The nearest package of `element`: itself or its closest ancestor of one
+/// of the 12 package, interface and binding kinds.
+fn nearest_package(element: SacmElement<'_>) -> Option<ElementId> {
+    let mut current = Some(element);
+    while let Some(found) = current {
+        if PACKAGE_KINDS.contains(&found.kind()) {
+            return Some(found.id().clone());
+        }
+        current = found.parent();
+    }
+    None
+}
+
+/// Whether the reference policy `policy` deletes the asserted relationship
+/// `relationship` once `deleted` are deleted: under
+/// `DeleteReferencingRelationships` when its source, target or reasoning
+/// names a deleted element; under `ScrubReferences` when it would be left
+/// with no source (it had one) or no target (§11.13).
+fn policy_deletes(
+    policy: ReferenceDeletePolicy,
+    relationship: SacmElement<'_>,
+    deleted: &BTreeSet<ElementId>,
+) -> bool {
+    let sources = relationship.sources();
+    let target = relationship.target();
+    if policy == DeleteReferencingRelationships {
+        sources.iter().any(|id| deleted.contains(id))
+            || target.is_some_and(|id| deleted.contains(id))
+            || relationship
+                .reasoning()
+                .is_some_and(|id| deleted.contains(id))
+    } else if policy == ScrubReferences {
+        (!sources.is_empty() && sources.iter().all(|id| deleted.contains(id)))
+            || target.is_some_and(|id| deleted.contains(id))
+    } else {
+        false
+    }
+}
+
+/// What `delete` must answer on `doc`, and what it deletes, changes and
+/// leaves dangling when accepted (ADR 0031): `ElementNotFound`; then
+/// `NotEmpty` when `RejectIfNonEmpty` meets a contained element that is no
+/// `UtilityElement`; then the deleted set, to a fixpoint; then the first
+/// dangling reference a policy refuses, in list order.
+fn delete_plan(doc: &Document, delete: &DeleteElement) -> Result<DeletePlan, Code> {
+    let Some(target) = doc.get(delete.element()) else {
+        return Err(Code::CMD_TARGET_NOT_FOUND);
+    };
+    let subtree: BTreeSet<ElementId> = subtree_of(target).into_iter().collect();
+    let holds_a_model_element = subtree
+        .iter()
+        .filter(|id| *id != target.id())
+        .filter_map(|id| doc.get(id))
+        .any(|element| !UTILITY_ELEMENTS.contains(&element.kind()));
+    if delete.package_policy() == RejectIfNonEmpty && holds_a_model_element {
+        return Err(Code::CMD_PACKAGE_NOT_EMPTY);
+    }
+    let policy = delete.reference_policy();
+    let mut deleted = subtree.clone();
+    loop {
+        let mut grew = false;
+        for element in doc.elements() {
+            if deleted.contains(element.id())
+                || !RELATIONSHIPS.contains(&element.kind())
+                || !policy_deletes(policy, element, &deleted)
+            {
+                continue;
+            }
+            deleted.extend(subtree_of(element));
+            grew = true;
+        }
+        if !grew {
+            break;
+        }
+    }
+    let dangling = dangling_references(doc, &subtree, &deleted);
+    for (_, _, _, crosses) in &dangling {
+        if *crosses && delete.cross_package_policy() == RejectIfExternalReferencesExist {
+            return Err(Code::CMD_EXTERNAL_REFERENCES);
+        }
+        if policy == RejectIfReferenced {
+            return Err(Code::CMD_DELETE_REFERENCED);
+        }
+    }
+    let changed = doc
+        .elements()
+        .filter(|element| !deleted.contains(element.id()))
+        .filter(|element| {
+            END_RULES.iter().any(|rule| {
+                held(*element, rule.end)
+                    .iter()
+                    .any(|id| deleted.contains(id))
+            })
+        })
+        .map(|element| element.id().clone())
+        .collect();
+    Ok(DeletePlan {
+        deleted: doc
+            .elements()
+            .map(|element| element.id().clone())
+            .filter(|id| deleted.contains(id))
+            .collect(),
+        changed,
+        dangling,
+    })
+}
+
+/// Every reference held by an element outside `subtree` whose id names an
+/// element of `deleted`: by holder in pre-order, then end in the order of
+/// `ReferenceEnd`, then position, one entry per distinct id and end. It
+/// crosses when the holder's nearest package is not that of the element the
+/// id names.
+fn dangling_references(
+    doc: &Document,
+    subtree: &BTreeSet<ElementId>,
+    deleted: &BTreeSet<ElementId>,
+) -> Vec<Dangling> {
+    let mut dangling = Vec::new();
+    for holder in doc.elements() {
+        if subtree.contains(holder.id()) {
+            continue;
+        }
+        for rule in &END_RULES {
+            let mut seen = BTreeSet::new();
+            for id in held(holder, rule.end) {
+                if !deleted.contains(&id) || !seen.insert(id.clone()) {
+                    continue;
+                }
+                let crosses = doc
+                    .get(&id)
+                    .is_some_and(|named| nearest_package(named) != nearest_package(holder));
+                dangling.push((holder.id().clone(), rule.end, id, crosses));
+            }
+        }
+    }
+    dangling
+}
+
+/// The 12 deletes of `element`, one per policy combination, from the
+/// strictest.
+fn deletes_of(element: &ElementId) -> Vec<DeleteElement> {
+    let mut deletes = Vec::new();
+    for reference in REFERENCE_POLICIES {
+        for package in PACKAGE_POLICIES {
+            for cross in CROSS_PACKAGE_POLICIES {
+                deletes.push(
+                    DeleteElement::new(element)
+                        .with_reference_policy(reference)
+                        .with_package_policy(package)
+                        .with_cross_package_policy(cross),
+                );
+            }
+        }
+    }
+    deletes
+}
+
+/// The position of `delete`'s policies among the 12 combinations of
+/// [`deletes_of`].
+fn policy_index(delete: &DeleteElement) -> usize {
+    let position = |found: Option<usize>| match found {
+        Some(index) => index,
+        None => panic!("{EDIT_005}: a policy this test does not know: {delete:?}"),
+    };
+    let reference = position(
+        REFERENCE_POLICIES
+            .iter()
+            .position(|policy| *policy == delete.reference_policy()),
+    );
+    let package = position(
+        PACKAGE_POLICIES
+            .iter()
+            .position(|policy| *policy == delete.package_policy()),
+    );
+    let cross = position(
+        CROSS_PACKAGE_POLICIES
+            .iter()
+            .position(|policy| *policy == delete.cross_package_policy()),
+    );
+    (reference * PACKAGE_POLICIES.len() + package) * CROSS_PACKAGE_POLICIES.len() + cross
 }
 
 // ---------------------------------------------------------------------------
@@ -1513,6 +1863,10 @@ fn starting_documents() -> Vec<(String, Document)> {
             "the edit start document".to_owned(),
             read_text("EDIT_START", EDIT_START.as_bytes()),
         ),
+        (
+            "the delete start document".to_owned(),
+            read_text("DELETE_START", DELETE_START.as_bytes()),
+        ),
     ];
     for name in READABLE_FIXTURES {
         starts.push((format!("the fixture {name}"), read_fixture(name)));
@@ -1525,11 +1879,29 @@ fn starting_documents() -> Vec<(String, Document)> {
 // ---------------------------------------------------------------------------
 
 /// The fixed list of operations for `doc`: the creates of
-/// [`create_operations_for`], then the edits of [`edit_operations_for`].
+/// [`create_operations_for`], the edits of [`edit_operations_for`], then the
+/// deletes of [`delete_operations_for`].
 fn operations_for(doc: &Document) -> Vec<Operation> {
     let mut operations = create_operations_for(doc);
     operations.extend(edit_operations_for(doc));
+    operations.extend(delete_operations_for(doc));
     operations
+}
+
+/// The 12 deletes of [`deletes_of`] of [`NOWHERE`], of the first id of `doc`
+/// that identifies no element, and of every element of `doc` in reverse
+/// pre-order, so that in sequence an element's contents go before it.
+fn delete_operations_for(doc: &Document) -> Vec<Operation> {
+    let mut targets = vec![id(NOWHERE)];
+    targets.extend(first_id_of_no_element(doc));
+    let mut elements: Vec<ElementId> = doc.elements().map(|element| element.id().clone()).collect();
+    elements.reverse();
+    targets.extend(elements);
+    targets
+        .iter()
+        .flat_map(deletes_of)
+        .map(Operation::from)
+        .collect()
 }
 
 /// Under every element (pre-order) and under [`NOWHERE`], one create of each
@@ -2030,6 +2402,7 @@ fn lib_edit_002_the_set_has_legal_and_illegal_operations_of_every_kind_with_both
         .chain(CONTENT_EDITS)
         .chain(REFERENCE_EDITS)
         .chain(REORDERS)
+        .chain(DELETES)
     {
         for answer in required_answers(label) {
             assert!(
@@ -2047,7 +2420,13 @@ fn lib_edit_002_every_successful_operation_leaves_the_document_structurally_vali
         if applied.answer.is_ok() {
             successes += 1;
             assert_structurally_valid(EDIT_002, applied.context, applied.after);
-            assert_edit_kept_structure(EDIT_002, applied.context, applied.before, applied.after);
+            assert_edit_kept_structure(
+                EDIT_002,
+                applied.context,
+                applied.operation,
+                applied.before,
+                applied.after,
+            );
         }
     });
     assert!(
@@ -2577,7 +2956,7 @@ fn lib_edit_012_no_successful_operation_of_the_set_removes_a_key() {
 
 /// Every operation name of this release, in the declaration order of
 /// `Operation`: the set must reach each accepted and refused.
-const OPERATION_NAMES: [&str; 25] = [
+const OPERATION_NAMES: [&str; 26] = [
     "CreateAssuranceCasePackage",
     "CreateArgumentPackage",
     "CreateClaim",
@@ -2603,6 +2982,7 @@ const OPERATION_NAMES: [&str; 25] = [
     "AddReference",
     "RemoveReference",
     "ReorderElements",
+    "DeleteElement",
 ];
 
 /// The first 15 of [`OPERATION_NAMES`]: the creates.
@@ -2854,11 +3234,14 @@ fn reference_refusals(doc: &Document, parent: &ElementId, name: &LangString) -> 
     operations
 }
 
-/// The LIB-EDIT-013 set for `doc`: [`operations_for`], then
-/// [`referencing_creates_for`].
+/// The LIB-EDIT-013 set for `doc`: the operations of [`operations_for`] with
+/// [`referencing_creates_for`] before the deletes, so that in sequence the
+/// creates meet the document the edits left.
 fn check_operations_for(doc: &Document) -> Vec<Operation> {
-    let mut operations = operations_for(doc);
+    let mut operations = create_operations_for(doc);
+    operations.extend(edit_operations_for(doc));
     operations.extend(referencing_creates_for(doc));
+    operations.extend(delete_operations_for(doc));
     operations
 }
 
@@ -3521,5 +3904,454 @@ fn lib_edit_013_an_edit_failing_two_checks_gets_the_first_from_check_and_apply()
                 EditError::InvalidOrder { repeated: Some(repeated), .. } if repeated.as_str() == "case"
             )
         },
+    );
+}
+
+// ---------------------------------------------------------------------------
+// LIB-EDIT-005, LIB-EDIT-006: the deletes join the set
+// ---------------------------------------------------------------------------
+
+/// Whether `operation` is a delete.
+fn is_delete(operation: &Operation) -> bool {
+    matches!(operation, Operation::DeleteElement(_))
+}
+
+#[test]
+fn lib_edit_005_the_delete_start_document_has_what_the_deletes_need() {
+    let doc = read_text("DELETE_START", DELETE_START.as_bytes());
+    let get = |value: &str| match doc.get(value) {
+        Some(element) => element,
+        None => panic!("{EDIT_005}: setup: the delete start document has no {value:?}"),
+    };
+    let roots: Vec<&str> = doc.roots().map(|root| root.id().as_str()).collect();
+    assert_eq!(
+        roots,
+        ["dcase", "dloose"],
+        "{EDIT_005}: setup: the roots of the delete start document"
+    );
+    assert!(
+        RELATIONSHIPS.contains(&get("ctx_on_inf").kind())
+            && get("ctx_on_inf")
+                .target()
+                .is_some_and(|target| RELATIONSHIPS.contains(&get(target.as_str()).kind())),
+        "{EDIT_005}: setup: no relationship targets a relationship"
+    );
+    assert!(
+        get("inf_on_ctx")
+            .sources()
+            .iter()
+            .any(|source| RELATIONSHIPS.contains(&get(source.as_str()).kind())),
+        "{EDIT_005}: setup: no relationship has a relationship as a source"
+    );
+    assert_eq!(
+        (
+            get("dnested").parent().map(|parent| parent.id().as_str()),
+            get("strategy").structure().map(ElementId::as_str),
+            get("sub_a").abstract_form().map(ElementId::as_str),
+            get("deep").cited_element().map(ElementId::as_str),
+        ),
+        (Some("dp"), Some("dnested"), Some("goal"), Some("goal")),
+        "{EDIT_005}: setup: the nested package, the structure, the abstractForm and the citation"
+    );
+    assert!(
+        !doc.contains("ghost") && get("sub_b").meta_claims().contains(&id("ghost")),
+        "{EDIT_005}: setup: the delete start document has no dangling id"
+    );
+}
+
+#[test]
+fn lib_edit_005_the_deletes_join_the_set_with_every_answer() {
+    assert_edit_answers_and_coverage(EDIT_005, &DELETES);
+}
+
+#[test]
+fn lib_edit_005_every_policy_combination_of_the_set_is_accepted_and_refused_as_its_policies_allow()
+{
+    let mut reached: BTreeSet<(usize, Result<(), &'static str>)> = BTreeSet::new();
+    for_selected_applications(is_delete, |applied| {
+        let Operation::DeleteElement(delete) = applied.operation else {
+            return;
+        };
+        let answer = applied
+            .answer
+            .as_ref()
+            .map(|_| ())
+            .map_err(|error| error.code().as_str());
+        reached.insert((policy_index(delete), answer));
+    });
+    for (index, delete) in deletes_of(&id("x")).iter().enumerate() {
+        let mut required = vec![Ok(()), Err(Code::CMD_TARGET_NOT_FOUND.as_str())];
+        if delete.reference_policy() == RejectIfReferenced {
+            required.push(Err(Code::CMD_DELETE_REFERENCED.as_str()));
+        }
+        if delete.package_policy() == RejectIfNonEmpty {
+            required.push(Err(Code::CMD_PACKAGE_NOT_EMPTY.as_str()));
+        }
+        if delete.cross_package_policy() == RejectIfExternalReferencesExist {
+            required.push(Err(Code::CMD_EXTERNAL_REFERENCES.as_str()));
+        }
+        for answer in required {
+            assert!(
+                reached.contains(&(index, answer)),
+                "{EDIT_005}: the set never reaches {delete:?} answering {answer:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn lib_edit_005_every_delete_of_the_set_deletes_and_changes_what_its_policies_give() {
+    let mut accepted = 0;
+    for_selected_applications(is_delete, |applied| {
+        let Operation::DeleteElement(delete) = applied.operation else {
+            return;
+        };
+        let (Ok(mutation), Ok(plan)) = (applied.answer, delete_plan(applied.before, delete)) else {
+            return;
+        };
+        accepted += 1;
+        let context = applied.context;
+        assert_eq!(
+            mutation.deleted_ids(),
+            plan.deleted,
+            "{EDIT_005}: {context}: deleted_ids() is not the deleted set of ADR 0031 in pre-order"
+        );
+        assert_eq!(
+            mutation.changed_ids(),
+            plan.changed,
+            "{EDIT_005}: {context}: changed_ids() is not the surviving holders that lost ids"
+        );
+        assert_eq!(
+            mutation.created_ids(),
+            [] as [ElementId; 0],
+            "{EDIT_005}: {context}: a delete created ids"
+        );
+    });
+    assert!(accepted > 0, "{EDIT_005}: no delete of the set succeeded");
+}
+
+#[test]
+fn lib_edit_005_after_every_successful_delete_of_the_set_each_surviving_end_lost_exactly_the_deleted_ids()
+ {
+    let mut accepted = 0;
+    for_selected_applications(is_delete, |applied| {
+        let Ok(mutation) = applied.answer else {
+            return;
+        };
+        accepted += 1;
+        let (context, before, after) = (applied.context, applied.before, applied.after);
+        assert_structurally_valid(EDIT_005, context, after);
+        assert_edit_kept_structure(EDIT_005, context, applied.operation, before, after);
+        let deleted: BTreeSet<ElementId> = mutation.deleted_ids().iter().cloned().collect();
+        let survivors: Vec<&ElementId> = before
+            .elements()
+            .map(SacmElement::id)
+            .filter(|id| !deleted.contains(*id))
+            .collect();
+        let now: Vec<&ElementId> = after.elements().map(SacmElement::id).collect();
+        assert_eq!(
+            now, survivors,
+            "{EDIT_005}: {context}: the survivors are not the elements before minus deleted_ids"
+        );
+        for element in after.elements() {
+            let Some(old) = before.get(element.id()) else {
+                panic!("{EDIT_005}: {context}: {:?} is new", element.id());
+            };
+            for rule in &END_RULES {
+                let expected: Vec<ElementId> = held(old, rule.end)
+                    .into_iter()
+                    .filter(|id| !deleted.contains(id))
+                    .collect();
+                assert_eq!(
+                    held(element, rule.end),
+                    expected,
+                    "{EDIT_005}: {context}: the {} of {:?} is not its old list minus the deleted ids",
+                    rule.end.name(),
+                    element.id()
+                );
+            }
+        }
+        // A reference that dangled before, read from the file, still does.
+        let now_bad = bad_references(after);
+        for (owner, end, target) in bad_references(before) {
+            if after.contains(&owner) && !before.contains(&target) {
+                assert!(
+                    now_bad.contains(&(owner.clone(), end, target.clone())),
+                    "{EDIT_005}: {context}: the dangling {end} {target:?} of {owner:?} is gone"
+                );
+            }
+        }
+        for difference in semantic_compare(before, after) {
+            assert!(
+                matches!(
+                    difference,
+                    Difference::LeftOnly { .. }
+                        | Difference::CitedElement { .. }
+                        | Difference::AbstractForm { .. }
+                        | Difference::MetaClaims { .. }
+                        | Difference::Reasoning { .. }
+                        | Difference::Sources { .. }
+                        | Difference::Target { .. }
+                        | Difference::Structure { .. }
+                        | Difference::ReferencedArtifactElements { .. }
+                        | Difference::GroupMembers { .. }
+                ),
+                "{EDIT_005}: {context}: the delete changed more than elements and reference ends: {difference}"
+            );
+        }
+    });
+    assert!(accepted > 0, "{EDIT_005}: no delete of the set succeeded");
+}
+
+#[test]
+fn lib_edit_005_the_policies_of_the_set_cascade_scrub_and_remove_ids_from_every_end() {
+    // Reference policies (by index) whose accepted deletes went beyond the
+    // element's subtree; ends that lost an id on a survivor; whether a
+    // relationship survived a scrub of one of its sources.
+    let mut beyond: BTreeSet<usize> = BTreeSet::new();
+    let mut ends: BTreeSet<&'static str> = BTreeSet::new();
+    let mut scrubbed_source = false;
+    for_selected_applications(is_delete, |applied| {
+        let (Operation::DeleteElement(delete), Ok(mutation)) = (applied.operation, applied.answer)
+        else {
+            return;
+        };
+        let (before, after) = (applied.before, applied.after);
+        let subtree = before
+            .get(delete.element())
+            .map(subtree_of)
+            .unwrap_or_default();
+        if mutation
+            .deleted_ids()
+            .iter()
+            .any(|id| !subtree.contains(id))
+        {
+            beyond.insert(policy_index(delete) / 4);
+        }
+        for holder in mutation.changed_ids() {
+            let (Some(old), Some(new)) = (before.get(holder), after.get(holder)) else {
+                continue;
+            };
+            for rule in &END_RULES {
+                if held(old, rule.end) != held(new, rule.end) {
+                    ends.insert(rule.end.name());
+                    if rule.end == ReferenceEnd::Source {
+                        scrubbed_source = true;
+                    }
+                }
+            }
+        }
+    });
+    assert_eq!(
+        beyond,
+        BTreeSet::from([1, 2]),
+        "{EDIT_005}: DeleteReferencingRelationships and ScrubReferences, and only they, delete relationships outside the subtree"
+    );
+    for rule in &END_RULES {
+        // A survivor never loses its target: that deletes the relationship.
+        if rule.end != ReferenceEnd::Target {
+            assert!(
+                ends.contains(rule.end.name()),
+                "{EDIT_005}: no delete of the set removed an id from a {}",
+                rule.end.name()
+            );
+        }
+    }
+    assert!(
+        !ends.contains(ReferenceEnd::Target.name()),
+        "{EDIT_005}: a relationship survived losing its target"
+    );
+    assert!(
+        scrubbed_source,
+        "{EDIT_005}: no relationship of the set survived losing one of its sources"
+    );
+}
+
+#[test]
+fn lib_edit_006_the_set_deletes_non_empty_elements_and_crossing_references_under_the_permissive_policies()
+ {
+    let mut recursive = false;
+    let mut crossing = false;
+    for_selected_applications(is_delete, |applied| {
+        let (Operation::DeleteElement(delete), Ok(_)) = (applied.operation, applied.answer) else {
+            return;
+        };
+        let Ok(plan) = delete_plan(applied.before, delete) else {
+            return;
+        };
+        // A contained element that is no UtilityElement: a UtilityElement
+        // contains nothing, so a direct child decides.
+        let holds_a_model_element = plan.deleted.iter().any(|id| {
+            applied.before.get(id).is_some_and(|element| {
+                !UTILITY_ELEMENTS.contains(&element.kind())
+                    && element
+                        .parent()
+                        .is_some_and(|parent| parent.id() == delete.element())
+            })
+        });
+        if holds_a_model_element {
+            assert!(
+                delete.package_policy() == DeleteRecursively,
+                "{EDIT_006}: {}: a non-empty element was deleted under RejectIfNonEmpty",
+                applied.context
+            );
+            recursive = true;
+        }
+        if plan.dangling.iter().any(|(_, _, _, crosses)| *crosses) {
+            assert!(
+                delete.cross_package_policy() == ApplyReferencePolicy,
+                "{EDIT_006}: {}: a crossing reference was handled under RejectIfExternalReferencesExist",
+                applied.context
+            );
+            crossing = true;
+        }
+    });
+    assert!(
+        recursive,
+        "{EDIT_006}: no non-empty element of the set was deleted recursively"
+    );
+    assert!(
+        crossing,
+        "{EDIT_006}: no delete of the set handled a crossing reference under ApplyReferencePolicy"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// LIB-EDIT-004: every operation of the set can be previewed
+// ---------------------------------------------------------------------------
+
+/// Calls `inspect` with a label, the document and the operation for every
+/// operation of [`check_operations_for`] on every starting document, alone
+/// (on the starting document) and in sequence (on one document to which
+/// each operation is then applied). Returns the number of calls.
+fn for_every_state(mut inspect: impl FnMut(&str, &Document, &Operation)) -> usize {
+    let mut count = 0;
+    for (label, start) in starting_documents() {
+        let operations = check_operations_for(&start);
+        for (index, operation) in operations.iter().enumerate() {
+            let context = format!("{label}, alone, operation {index} {operation:?}");
+            inspect(&context, &start, operation);
+            count += 1;
+        }
+        let mut doc = start.clone();
+        for (index, operation) in operations.iter().enumerate() {
+            let context = format!("{label}, in sequence, operation {index} {operation:?}");
+            inspect(&context, &doc, operation);
+            // Applied for the state it leaves.
+            let _ = edit::apply(&mut doc, operation.clone());
+            count += 1;
+        }
+    }
+    count
+}
+
+#[test]
+fn lib_edit_004_preview_answers_as_apply_and_check_for_every_operation_of_the_set() {
+    let mut refusals = 0;
+    let total = for_every_state(|context, doc, operation| {
+        let previewed = edit::preview(doc, operation);
+        let applied = edit::apply(&mut doc.clone(), operation.clone());
+        assert_eq!(
+            previewed
+                .as_ref()
+                .map(|preview| preview.mutation().clone())
+                .map_err(Clone::clone),
+            applied,
+            "{EDIT_004}: {context}: the preview's mutation is not what apply returns"
+        );
+        assert_eq!(
+            previewed.as_ref().map(|_| ()).map_err(Clone::clone),
+            edit::check(doc, operation),
+            "{EDIT_004}: {context}: preview answers otherwise than check"
+        );
+        match &previewed {
+            Ok(preview) => {
+                assert_eq!(
+                    preview.operation(),
+                    operation,
+                    "{EDIT_004}: {context}: operation() is not the operation previewed"
+                );
+                assert!(
+                    preview.revision() == doc.revision(),
+                    "{EDIT_004}: {context}: revision() is not the document's"
+                );
+            }
+            Err(_) => refusals += 1,
+        }
+    });
+    assert!(
+        refusals > 0 && refusals < total,
+        "{EDIT_004}: of {total} previews, {refusals} were refusals; the set needs both answers"
+    );
+}
+
+#[test]
+fn lib_edit_004_preview_leaves_every_document_of_the_set_equal_with_the_same_revision_and_next_ids()
+{
+    let total = for_every_state(|context, doc, operation| {
+        let before = doc.clone();
+        let revision = doc.revision();
+        let answer = edit::preview(doc, operation).map(|_| ());
+        assert!(
+            *doc == before,
+            "{EDIT_004}: {context}: after preview ({answer:?}) the document is not == to before"
+        );
+        assert!(
+            doc.revision() == revision,
+            "{EDIT_004}: {context}: preview ({answer:?}) changed the revision"
+        );
+        assert_eq!(
+            next_generated_ids_of_every_kind(EDIT_004, doc),
+            next_generated_ids_of_every_kind(EDIT_004, &before),
+            "{EDIT_004}: {context}: preview ({answer:?}) changed the next generated ids"
+        );
+    });
+    assert!(total > 0, "{EDIT_004}: the set is empty");
+}
+
+#[test]
+fn lib_edit_004_the_dangling_references_of_every_preview_of_the_set_are_those_adr_0031_defines() {
+    let mut crossing = (false, false);
+    for_every_state(|context, doc, operation| {
+        let Ok(preview) = edit::preview(doc, operation) else {
+            return;
+        };
+        let listed: Vec<Dangling> = preview
+            .dangling_references()
+            .iter()
+            .map(|dangling| {
+                (
+                    dangling.holder().clone(),
+                    dangling.end(),
+                    dangling.id().clone(),
+                    dangling.crosses_package(),
+                )
+            })
+            .collect();
+        let expected = match operation {
+            Operation::DeleteElement(delete) => match delete_plan(doc, delete) {
+                Ok(plan) => plan.dangling,
+                Err(code) => {
+                    panic!("{EDIT_004}: {context}: previewed, and the oracle refuses {code:?}")
+                }
+            },
+            _ => Vec::new(),
+        };
+        assert_eq!(
+            listed, expected,
+            "{EDIT_004}: {context}: dangling_references() is not the set and order of ADR 0031"
+        );
+        for (_, _, _, crosses) in &listed {
+            if *crosses {
+                crossing.0 = true;
+            } else {
+                crossing.1 = true;
+            }
+        }
+    });
+    assert_eq!(
+        crossing,
+        (true, true),
+        "{EDIT_004}: the set lists no crossing or no non-crossing dangling reference"
     );
 }

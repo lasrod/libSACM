@@ -1,0 +1,14 @@
+[
+  {
+    "holder": "g1",
+    "end": "argumentElement",
+    "id": "c6",
+    "crosses_package": false
+  },
+  {
+    "holder": "c3",
+    "end": "metaClaim",
+    "id": "c6",
+    "crosses_package": true
+  }
+]

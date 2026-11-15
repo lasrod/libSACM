@@ -1,0 +1,133 @@
+[
+  {
+    "mutations": [
+      {
+        "operation": {
+          "type": "CreateArgumentPackage",
+          "parent": null,
+          "id": "p",
+          "name": {
+            "lang": "en",
+            "content": "Arguments"
+          }
+        },
+        "created_ids": [
+          "p"
+        ],
+        "changed_ids": [],
+        "deleted_ids": []
+      },
+      {
+        "operation": {
+          "type": "CreateClaim",
+          "parent": "p",
+          "id": null,
+          "name": {
+            "lang": null,
+            "content": "C1"
+          }
+        },
+        "created_ids": [
+          "claim_1"
+        ],
+        "changed_ids": [],
+        "deleted_ids": []
+      },
+      {
+        "operation": {
+          "type": "SetFlag",
+          "element": "claim_1",
+          "flag": "isAbstract",
+          "value": true
+        },
+        "created_ids": [],
+        "changed_ids": [
+          "claim_1"
+        ],
+        "deleted_ids": []
+      }
+    ],
+    "created_ids": [
+      "p",
+      "claim_1"
+    ],
+    "changed_ids": [],
+    "deleted_ids": []
+  },
+  {
+    "mutations": [
+      {
+        "operation": {
+          "type": "CreateClaim",
+          "parent": "q",
+          "id": "tmp",
+          "name": {
+            "lang": null,
+            "content": "Temp"
+          }
+        },
+        "created_ids": [
+          "tmp"
+        ],
+        "changed_ids": [],
+        "deleted_ids": []
+      },
+      {
+        "operation": {
+          "type": "DeleteElement",
+          "element": "tmp",
+          "reference_policy": "RejectIfReferenced",
+          "package_policy": "RejectIfNonEmpty",
+          "cross_package_policy": "RejectIfExternalReferencesExist"
+        },
+        "created_ids": [],
+        "changed_ids": [],
+        "deleted_ids": [
+          "tmp"
+        ]
+      },
+      {
+        "operation": {
+          "type": "SetName",
+          "element": "c3",
+          "name": {
+            "lang": null,
+            "content": "Renamed"
+          }
+        },
+        "created_ids": [],
+        "changed_ids": [
+          "c3"
+        ],
+        "deleted_ids": []
+      },
+      {
+        "operation": {
+          "type": "DeleteElement",
+          "element": "c5",
+          "reference_policy": "RejectIfReferenced",
+          "package_policy": "RejectIfNonEmpty",
+          "cross_package_policy": "RejectIfExternalReferencesExist"
+        },
+        "created_ids": [],
+        "changed_ids": [],
+        "deleted_ids": [
+          "c5"
+        ]
+      }
+    ],
+    "created_ids": [],
+    "changed_ids": [
+      "c3"
+    ],
+    "deleted_ids": [
+      "c5"
+    ]
+  },
+  {
+    "mutations": [],
+    "created_ids": [],
+    "changed_ids": [],
+    "deleted_ids": []
+  }
+]

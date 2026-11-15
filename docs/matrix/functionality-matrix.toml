@@ -2406,7 +2406,7 @@ source = "D-ATOMIC; D-VAL-LAYER; ADR 0019 and its amendment 1; ADR 0020"
 kind = "editing"
 status = "verified"
 depends_on = ["LIB-EDIT-001", "LIB-RT-001"]
-notes = "Slice 0045: the set, its oracle and its structural checks (S5-S8) grow to the ten edit operations of ADR 0029, with a new starting document; re-check there."
+notes = "Slice 0045: the set, its oracle and its structural checks (S5-S8) grow to the ten edit operations of ADR 0029, with a new starting document; re-check there. Slice 0048 (ADR 0031, ADR 0032): `edit::apply_preview`, `edit::batch` and `edit::apply_all` join `apply` as public mutations; each is atomic under LIB-EDIT-007 and LIB-EDIT-014."
 acceptance = [
   "Over a deterministic set of starting documents (empty, built with `edit::apply`, read from the XMI fixtures, and built with the test-support `insert`, including ArtifactPackage parents, Notes and missing names) and a fixed list of legal and illegal operations of every kind with caller and generated ids: after every `Ok`, the four structural checks hold through the public views, checked against a containment table written in the test from the standard, not the crate's.",
   "After every `Err`, the document `==` its clone taken before, and a create with a generated id of each kind gives the same id on both.",
@@ -3833,11 +3833,39 @@ id = "LIB-EDIT-004"
 area = "EDIT"
 milestone = "M2"
 title = "Delete preview"
-requirement = "Deleting an element can be previewed: the preview lists the element, everything it contains, every relationship and reference that would dangle, and whether the delete is applicable under each policy, without changing the document."
-source = "D-PREVIEW"
+requirement = "Every operation can be previewed with `edit::preview(&Document, &Operation) -> Result<Preview, EditError>` without changing the document: it refuses exactly as `check` and `apply` would, `Preview::mutation()` is the `Mutation` `apply` would return, and `Preview::dangling_references()` lists each reference held outside the deleted element's subtree that names a deleted element (references held by relationships the policy deletes included) (holder, end, id, and whether it crosses a package boundary), ordered by holder in document pre-order, then end, then position. A delete under a given set of policies is refused exactly as `apply` would refuse it."
+source = "D-PREVIEW; ADR 0031 (the maintainer, 2026-11-15); assurance-forge `commands/policies.h`, `commands/operations.h:362`, `commands.cpp:1771-2140`, `document.cpp:36-111`"
 kind = "editing"
-status = "planned"
+status = "implemented"
 depends_on = ["LIB-EDIT-003", "SACM23-ARG-007"]
+acceptance = [
+  "For every starting document and every operation of the extended LIB-EDIT-002 set (deletes under all 12 policy combinations included), `preview(&d, &op).map(|p| p.mutation().clone()) == apply(&mut d.clone(), op)`, and a refusal equals `check`'s.",
+  "After `preview`, the document is `==` to before, with the same next generated ids and the same revision.",
+  "`dangling_references` is exactly the specified set and order, with `crosses_package` true exactly when the holder's nearest package differs from the target's; one entry per distinct id and end.",
+  "`DeleteElement`, `Preview`, `DanglingReference` and the policy enums have rustdoc with an example that previews a delete and applies it; `Preview` serializes (not deserializes) and `DanglingReference` round-trips in the ADR 0030 shape, with golden samples.",
+]
+code = ["crates/sacm/src/edit/preview.rs", "crates/sacm/src/edit/plan.rs", "docs/adr/0031-delete-previews-and-revisions.md"]
+tests = [
+  "crates/sacm/tests/preview.rs::lib_edit_004_preview_takes_the_document_and_the_operation_by_reference",
+  "crates/sacm/tests/preview.rs::lib_edit_004_a_preview_holds_the_operation_the_revision_and_the_mutation_apply_would_return",
+  "crates/sacm/tests/preview.rs::lib_edit_004_preview_refuses_exactly_as_check_and_apply",
+  "crates/sacm/tests/preview.rs::lib_edit_004_preview_changes_nothing_and_generates_no_id",
+  "crates/sacm/tests/preview.rs::lib_edit_004_an_operation_that_deletes_nothing_has_no_dangling_references",
+  "crates/sacm/tests/preview.rs::lib_edit_004_dangling_references_are_the_references_held_outside_the_deleted_subtree_in_order",
+  "crates/sacm/tests/preview.rs::lib_edit_004_references_held_by_a_deleted_relationship_outside_the_subtree_are_listed",
+  "crates/sacm/tests/preview.rs::lib_edit_004_crosses_package_is_true_exactly_when_the_nearest_packages_differ",
+  "crates/sacm/tests/preview.rs::lib_edit_004_crosses_package_counts_interfaces_and_bindings_as_packages",
+  "crates/sacm/tests/preview.rs::lib_edit_004_crosses_package_compares_the_holder_with_the_element_the_reference_names",
+  "crates/sacm/tests/preview.rs::lib_edit_004_a_delete_is_previewed_under_the_policies_it_holds",
+  "crates/sacm/tests/preview.rs::lib_edit_004_preview_and_dangling_reference_are_thread_safe_values",
+  "crates/sacm/tests/edit_atomic.rs::lib_edit_004_preview_answers_as_apply_and_check_for_every_operation_of_the_set",
+  "crates/sacm/tests/edit_atomic.rs::lib_edit_004_preview_leaves_every_document_of_the_set_equal_with_the_same_revision_and_next_ids",
+  "crates/sacm/tests/edit_atomic.rs::lib_edit_004_the_dangling_references_of_every_preview_of_the_set_are_those_adr_0031_defines",
+  "crates/sacm/tests/serde.rs::lib_edit_004_dangling_reference_reads_and_writes_and_preview_writes",
+  "crates/sacm/tests/serde.rs::lib_edit_004_previews_serialize_to_the_golden_json_with_the_revision_as_a_number",
+  "crates/sacm/tests/serde.rs::lib_edit_004_dangling_references_serialize_to_the_golden_json_and_read_back_equal",
+  "crates/sacm/tests/serde.rs::lib_edit_004_a_dangling_reference_with_an_unknown_name_or_key_is_refused",
+]
 
 [[row]]
 id = "LIB-EDIT-005"
@@ -3845,11 +3873,57 @@ area = "EDIT"
 milestone = "M2"
 title = "Element delete policies"
 requirement = "Deleting a referenced element requires an explicit policy — reject if referenced (SACM-CMD-002) or delete the referencing relationships — and never leaves a dangling reference."
-source = "D-POLICY"
+source = "D-POLICY; ADR 0031 (the maintainer, 2026-11-15); assurance-forge `commands/policies.h`, `commands/operations.h:362`, `commands.cpp:1771-2140`, `document.cpp:36-111`"
 kind = "editing"
-status = "planned"
+status = "implemented"
 depends_on = ["LIB-EDIT-004"]
 notes = "Slice 0044: deleting an ArgumentGroup member does not delete the group; group membership is a reference under the chosen policy (moved from SACM23-ARG-013)."
+acceptance = [
+  "`DeleteElement::new(id)` refuses a referenced element with `EditError::Referenced` (SACM-CMD-002, `Code::CMD_DELETE_REFERENCED`) naming the first dangling holder, end and id, and changes nothing; an id that names no element is `ElementNotFound`.",
+  "`DeleteReferencingRelationships` deletes every asserted relationship whose `source`, `target` or `reasoning` names a deleted element (to a fixpoint: a relationship that is itself a source or target), and removes every other dangling id from its end; an ArgumentGroup that loses a member keeps existing.",
+  "`ScrubReferences` removes every dangling id; a relationship left with no `source` or no `target` is deleted (§11.13), so no required end is left empty.",
+  "After every successful delete (D-ATOMIC, D-VAL-LAYER): the structural checks of LIB-EDIT-002 hold, no element holds an id of `deleted_ids`, each surviving end equals its old list minus the deleted ids in order, and references that dangled before the delete (read from a file) are unchanged.",
+  "The `Mutation`: `deleted_ids` are the left-only ids of `semantic_compare(before, after)` in pre-order before, `changed_ids` the surviving holders that lost ids in pre-order after, `created_ids` empty; the parent is not changed.",
+  "A delete does not rewind the per-kind counter: after deleting a generated element, a create of the same kind generates the next number. No promise is made that a freed id is never used again (a caller may give it with `with_id`).",
+]
+code = ["crates/sacm/src/edit/delete.rs", "crates/sacm/src/model/document.rs", "docs/adr/0031-delete-previews-and-revisions.md"]
+tests = [
+  "crates/sacm/tests/delete.rs::lib_edit_005_delete_element_rejects_by_default_and_each_policy_is_set_by_a_builder",
+  "crates/sacm/tests/delete.rs::lib_edit_005_delete_element_is_an_operation_named_delete_element",
+  "crates/sacm/tests/delete.rs::lib_edit_005_an_id_that_names_no_element_is_element_not_found_under_every_policy",
+  "crates/sacm/tests/delete.rs::lib_edit_005_reject_if_referenced_refuses_a_reference_through_every_end",
+  "crates/sacm/tests/delete.rs::lib_edit_005_the_refusal_names_the_first_dangling_reference_by_holder_then_end",
+  "crates/sacm/tests/delete.rs::lib_edit_005_the_references_an_element_holds_do_not_refuse_its_delete",
+  "crates/sacm/tests/delete.rs::lib_edit_005_an_unreferenced_element_is_deleted_and_the_parent_is_not_changed",
+  "crates/sacm/tests/delete.rs::lib_edit_005_a_note_is_deleted_and_its_owner_is_not_changed",
+  "crates/sacm/tests/delete.rs::lib_edit_005_a_root_is_deleted",
+  "crates/sacm/tests/delete.rs::lib_edit_005_delete_referencing_relationships_deletes_each_relationship_naming_a_deleted_source_target_or_reasoning",
+  "crates/sacm/tests/delete.rs::lib_edit_005_delete_referencing_relationships_cascades_to_a_fixpoint",
+  "crates/sacm/tests/delete.rs::lib_edit_005_the_non_reject_policies_remove_every_other_dangling_id_from_its_end",
+  "crates/sacm/tests/delete.rs::lib_edit_005_the_non_reject_policies_remove_a_deleted_structure",
+  "crates/sacm/tests/delete.rs::lib_edit_005_an_argument_group_that_loses_its_last_member_keeps_existing",
+  "crates/sacm/tests/delete.rs::lib_edit_005_deleted_ids_are_in_pre_order_before_and_changed_ids_in_pre_order_after",
+  "crates/sacm/tests/delete.rs::lib_edit_005_scrub_references_keeps_a_relationship_that_still_has_a_source_and_a_target",
+  "crates/sacm/tests/delete.rs::lib_edit_005_scrub_references_removes_a_deleted_reasoning_and_keeps_the_relationship",
+  "crates/sacm/tests/delete.rs::lib_edit_005_scrub_references_deletes_a_relationship_left_without_a_source",
+  "crates/sacm/tests/delete.rs::lib_edit_005_scrub_references_deletes_a_relationship_left_without_a_target",
+  "crates/sacm/tests/delete.rs::lib_edit_005_scrub_references_cascades_to_a_fixpoint",
+  "crates/sacm/tests/delete.rs::lib_edit_005_scrub_references_keeps_a_relationship_read_without_a_source_when_another_end_loses_an_id",
+  "crates/sacm/tests/delete.rs::lib_edit_005_references_that_dangled_before_the_delete_are_unchanged",
+  "crates/sacm/tests/delete.rs::lib_edit_005_a_delete_does_not_rewind_the_id_counter",
+  "crates/sacm/tests/edit_atomic.rs::lib_edit_005_the_delete_start_document_has_what_the_deletes_need",
+  "crates/sacm/tests/edit_atomic.rs::lib_edit_005_the_deletes_join_the_set_with_every_answer",
+  "crates/sacm/tests/edit_atomic.rs::lib_edit_005_every_policy_combination_of_the_set_is_accepted_and_refused_as_its_policies_allow",
+  "crates/sacm/tests/edit_atomic.rs::lib_edit_005_every_delete_of_the_set_deletes_and_changes_what_its_policies_give",
+  "crates/sacm/tests/edit_atomic.rs::lib_edit_005_after_every_successful_delete_of_the_set_each_surviving_end_lost_exactly_the_deleted_ids",
+  "crates/sacm/tests/edit_atomic.rs::lib_edit_005_the_policies_of_the_set_cascade_scrub_and_remove_ids_from_every_end",
+  "crates/sacm/tests/serde.rs::lib_edit_005_delete_element_implements_serialize_and_deserialize",
+  "crates/sacm/tests/serde.rs::lib_edit_005_delete_element_is_written_with_its_element_and_each_policy_by_variant_name",
+  "crates/sacm/tests/serde.rs::lib_edit_005_omitted_delete_policies_read_as_the_reject_defaults",
+  "crates/sacm/tests/serde.rs::lib_edit_005_an_unknown_null_or_misplaced_policy_and_a_missing_element_are_refused",
+  "crates/sacm/tests/serde.rs::lib_edit_005_check_and_apply_answer_a_deserialized_delete_as_its_twin",
+  "crates/sacm/tests/serde.rs::lib_edit_005_a_referenced_refusal_is_written_with_its_code_holder_end_and_id",
+]
 
 [[row]]
 id = "LIB-EDIT-006"
@@ -3857,21 +3931,68 @@ area = "EDIT"
 milestone = "M2"
 title = "Package delete policies"
 requirement = "Deleting a non-empty package requires an explicit policy — reject if non-empty (SACM-CMD-006) or delete recursively — and cross-package references are reported and handled under an explicit policy (SACM-CMD-007)."
-source = "D-POLICY"
+source = "D-POLICY; ADR 0031 (the maintainer, 2026-11-15); assurance-forge `commands/policies.h`, `commands/operations.h:362`, `commands.cpp:1771-2140`, `document.cpp:36-111`"
 kind = "editing"
-status = "planned"
+status = "implemented"
 depends_on = ["LIB-EDIT-004"]
+acceptance = [
+  "`RejectIfNonEmpty` refuses an element that contains any non-UtilityElement with `EditError::NotEmpty` (SACM-CMD-006) giving the count of the non-UtilityElements it contains at any depth; a Claim holding only Notes and Descriptions is not refused. `DeleteRecursively` deletes the whole subtree.",
+  "A reference crosses a package boundary when the holder's nearest package (itself or its closest package, interface or binding ancestor) is not the target's; a nested package is a different package.",
+  "`RejectIfExternalReferencesExist` refuses a crossing dangling reference with `EditError::CrossPackageReference` (SACM-CMD-007); `ApplyReferencePolicy` hands crossing references to the reference policy.",
+  "Check order: ElementNotFound, then CMD-006, then the first refused dangling reference in list order (CMD-007 if it crosses and is rejected, otherwise CMD-002).",
+]
+code = ["crates/sacm/src/edit/delete.rs", "docs/adr/0031-delete-previews-and-revisions.md"]
+tests = [
+  "crates/sacm/tests/delete.rs::lib_edit_006_reject_if_non_empty_refuses_a_package_with_its_count_of_contained_elements",
+  "crates/sacm/tests/delete.rs::lib_edit_006_reject_if_non_empty_refuses_any_element_that_contains_a_model_element",
+  "crates/sacm/tests/delete.rs::lib_edit_006_an_element_holding_only_utility_elements_is_not_refused",
+  "crates/sacm/tests/delete.rs::lib_edit_006_delete_recursively_deletes_the_whole_subtree_and_references_within_it_do_not_refuse",
+  "crates/sacm/tests/delete.rs::lib_edit_006_reject_if_external_references_exist_refuses_a_crossing_reference_with_cmd_007",
+  "crates/sacm/tests/delete.rs::lib_edit_006_apply_reference_policy_hands_crossing_references_to_the_reference_policy",
+  "crates/sacm/tests/delete.rs::lib_edit_006_a_nested_package_is_a_different_package",
+  "crates/sacm/tests/delete.rs::lib_edit_006_the_nearest_package_is_the_element_itself_or_its_closest_package_interface_or_binding_ancestor",
+  "crates/sacm/tests/delete.rs::lib_edit_006_the_first_refused_reference_in_list_order_decides_between_cmd_007_and_cmd_002",
+  "crates/sacm/tests/delete.rs::lib_edit_006_the_check_order_is_element_not_found_then_not_empty_then_references",
+  "crates/sacm/tests/edit_atomic.rs::lib_edit_006_the_set_deletes_non_empty_elements_and_crossing_references_under_the_permissive_policies",
+  "crates/sacm/tests/serde.rs::lib_edit_006_not_empty_and_cross_package_reference_are_written_with_their_codes",
+]
 
 [[row]]
 id = "LIB-EDIT-007"
 area = "EDIT"
 milestone = "M2"
 title = "Stale previews are rejected"
-requirement = "A preview records the document revision it was computed against; applying it after any other mutation fails with SACM-CMD-003 and changes nothing."
-source = "D-PREVIEW"
+requirement = "`Document::revision()` returns an opaque `Revision` identifying the document's state within the process. `edit::apply_preview(&mut Document, &Preview)` refuses a preview taken at another revision with `EditError::PreviewExpired` (SACM-CMD-003) and changes nothing; otherwise it applies the preview's operation and returns a `Mutation` equal to `preview.mutation()`."
+source = "D-PREVIEW; ADR 0031 (the maintainer, 2026-11-15); assurance-forge `commands/policies.h`, `commands/operations.h:362`, `commands.cpp:1771-2140`, `document.cpp:36-111`"
 kind = "editing"
-status = "planned"
+status = "implemented"
 depends_on = ["LIB-EDIT-004"]
+acceptance = [
+  "Revisions: a new, default or read document has a revision distinct from every other document's; `Clone` copies it; `==` ignores it; every successful `apply`, `apply_preview`, `batch` and `apply_all` (even one that changes nothing) gives a new one; a refusal or a rolled-back batch keeps it.",
+  "`apply_preview` after any successful change gives `PreviewExpired` and leaves the document `==` to before, with the same next ids and revision.",
+  "A preview taken on a clone is refused by the original once either has changed.",
+  "A preview applied at once returns a `Mutation` equal to `preview.mutation()`.",
+  "Tests compare revisions only for equality, never their values.",
+]
+code = ["crates/sacm/src/model/revision.rs", "crates/sacm/src/edit/preview.rs", "docs/adr/0031-delete-previews-and-revisions.md"]
+tests = [
+  "crates/sacm/tests/preview.rs::lib_edit_007_apply_preview_takes_the_document_mutably_and_the_preview_by_reference",
+  "crates/sacm/tests/preview.rs::lib_edit_007_new_default_and_read_documents_have_distinct_revisions",
+  "crates/sacm/tests/preview.rs::lib_edit_007_clone_copies_the_revision",
+  "crates/sacm/tests/preview.rs::lib_edit_007_equality_ignores_the_revision",
+  "crates/sacm/tests/preview.rs::lib_edit_007_every_successful_apply_gives_a_new_revision_even_one_that_changes_nothing",
+  "crates/sacm/tests/preview.rs::lib_edit_007_every_successful_apply_preview_batch_and_apply_all_gives_a_new_revision",
+  "crates/sacm/tests/preview.rs::lib_edit_007_a_refusal_or_a_rolled_back_batch_keeps_the_revision",
+  "crates/sacm/tests/preview.rs::lib_edit_007_apply_preview_after_any_successful_change_is_preview_expired_and_changes_nothing",
+  "crates/sacm/tests/preview.rs::lib_edit_007_a_refusal_leaves_a_preview_applicable",
+  "crates/sacm/tests/preview.rs::lib_edit_007_a_preview_taken_on_a_clone_is_refused_by_the_original_once_either_has_changed",
+  "crates/sacm/tests/preview.rs::lib_edit_007_a_preview_of_another_document_is_refused",
+  "crates/sacm/tests/preview.rs::lib_edit_007_a_preview_applied_at_once_returns_its_mutation",
+  "crates/sacm/tests/preview.rs::lib_edit_007_revision_is_a_comparable_thread_safe_value",
+  "crates/sacm/tests/batch.rs::lib_edit_007_a_committed_batch_gives_a_new_revision_even_when_it_changes_nothing",
+  "crates/sacm/tests/batch.rs::lib_edit_007_a_rolled_back_batch_and_a_refused_apply_all_keep_the_revision",
+  "crates/sacm/tests/serde.rs::lib_edit_007_a_real_preview_expired_round_trips_with_its_revisions_as_json_numbers",
+]
 
 [[row]]
 id = "LIB-EDIT-008"
@@ -4999,11 +5120,44 @@ area = "EDIT"
 milestone = "M2"
 title = "Atomic batches of operations"
 requirement = "Several operations apply as one atomic change. Either all succeed, or the document is `==` to before and generates the same next ids, and the error names the refused operation and its `EditError`. A later operation can use an id an earlier one generated. The result holds each operation's `Mutation` in order, and the batch's net created, changed and deleted ids as `semantic_compare(before, after)` defines them for LIB-EDIT-003."
-source = "User request: Assurance Forge, GitHub issue #59 (2026-11-14); ADR 0019 \"Atomic batches of several operations, as the GSN layer will want, belong in a later row\"; D-ATOMIC; D-RESULT"
+source = "User request: Assurance Forge, GitHub issue #59 (2026-11-14); ADR 0019 \"Atomic batches of several operations, as the GSN layer will want, belong in a later row\"; D-ATOMIC; D-RESULT; ADR 0032 (the maintainer, 2026-11-15)"
 kind = "editing"
-status = "planned"
+status = "implemented"
 depends_on = ["LIB-EDIT-003", "LIB-EDIT-013"]
 notes = "Needs an ADR for the API shape: a list of operations, or a closure that applies operations one at a time and sees each `Mutation` (which gives later operations the generated ids without a new id API)."
+acceptance = [
+  "`edit::batch(&mut doc, |tx| ...)`: on `Ok` every operation applied through `tx.apply` is committed and each returned `Mutation` equals what applying the operations one by one gives; a later operation can use an id an earlier one generated.",
+  "On an `Err` from the closure, the closure's error is returned unchanged and the document is `==` to before with the same next ids and revision; a panic in the closure (`catch_unwind`) leaves it as before too. A refusal the closure catches and ignores changes nothing, and the rest commits.",
+  "`edit::apply_all(&mut doc, ops)` equals `batch` over the same list; on the first refusal at index k the document is unchanged and `BatchError` gives `index() == k`, the operation, its `EditError` and `code()`.",
+  "`BatchMutation::mutations()` holds every accepted `Mutation` in order; its net `created_ids`, `changed_ids` and `deleted_ids` are the right-only ids of `semantic_compare(before, after)` in creation order, its per-element ids in document pre-order after, and its left-only ids in pre-order before (an element created and deleted in the batch is in neither), over random sequences from the full operation set, deletes included.",
+  "`BatchMutation` and `BatchError` round-trip in the ADR 0030 shape, with golden samples; the rustdoc example builds an ArgumentReasoning and an AssertedInference that names it in one batch.",
+]
+code = ["crates/sacm/src/edit/batch.rs", "crates/sacm/src/compare.rs", "docs/adr/0032-atomic-batches.md"]
+tests = [
+  "crates/sacm/tests/batch.rs::lib_edit_014_over_random_sequences_each_answer_equals_applying_the_operations_one_by_one",
+  "crates/sacm/tests/batch.rs::lib_edit_014_a_later_operation_uses_an_id_an_earlier_one_generated",
+  "crates/sacm/tests/batch.rs::lib_edit_014_batch_document_shows_the_state_so_far_and_check_answers_on_it",
+  "crates/sacm/tests/batch.rs::lib_edit_014_a_refusal_the_closure_ignores_changes_nothing_and_the_rest_commits",
+  "crates/sacm/tests/batch.rs::lib_edit_014_batch_error_index_counts_every_tx_apply_call_from_0",
+  "crates/sacm/tests/batch.rs::lib_edit_014_an_err_from_the_closure_is_returned_unchanged_and_the_document_is_as_before",
+  "crates/sacm/tests/batch.rs::lib_edit_014_a_refusal_passed_on_with_the_question_mark_rolls_back_the_batch",
+  "crates/sacm/tests/batch.rs::lib_edit_014_an_error_type_without_from_batch_error_needs_no_conversion",
+  "crates/sacm/tests/batch.rs::lib_edit_014_a_panic_in_the_closure_leaves_the_document_as_before",
+  "crates/sacm/tests/batch.rs::lib_edit_014_over_random_sequences_an_err_from_the_closure_rolls_everything_back",
+  "crates/sacm/tests/batch.rs::lib_edit_014_over_random_sequences_apply_all_equals_batch_over_the_same_list",
+  "crates/sacm/tests/batch.rs::lib_edit_014_apply_all_names_the_first_refusal_by_index_operation_and_edit_error",
+  "crates/sacm/tests/batch.rs::lib_edit_014_apply_all_takes_any_list_of_operation_structs",
+  "crates/sacm/tests/batch.rs::lib_edit_014_over_random_sequences_the_net_ids_equal_the_semantic_comparison",
+  "crates/sacm/tests/batch.rs::lib_edit_014_created_ids_are_in_creation_order_not_document_order",
+  "crates/sacm/tests/batch.rs::lib_edit_014_an_element_created_and_deleted_in_the_batch_is_in_neither_list",
+  "crates/sacm/tests/batch.rs::lib_edit_014_an_element_deleted_and_created_again_with_its_id_is_neither_created_nor_deleted",
+  "crates/sacm/tests/batch.rs::lib_edit_014_batch_mutation_and_batch_error_are_send_sync_value_types",
+  "crates/sacm/tests/serde.rs::lib_edit_014_batch_mutation_and_batch_error_implement_serialize_and_deserialize",
+  "crates/sacm/tests/serde.rs::lib_edit_014_batch_mutations_serialize_to_the_golden_json_and_read_back_equal",
+  "crates/sacm/tests/serde.rs::lib_edit_014_batch_errors_serialize_to_the_golden_json_and_read_back_equal",
+  "crates/sacm/tests/serde.rs::lib_edit_014_a_batch_record_with_an_unknown_key_a_missing_key_or_a_bad_index_is_refused",
+  "crates/sacm/tests/serde.rs::lib_edit_014_a_batch_error_read_back_answers_as_the_one_apply_all_returned",
+]
 
 [[row]]
 id = "LIB-QA-017"
