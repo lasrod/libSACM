@@ -1,8 +1,8 @@
 ---
 slice: 0045
 name: m2-set-operations
-state: in-progress
-step: verification
+state: done
+step: verified
 rows: [LIB-EDIT-008, LIB-EDIT-009, LIB-EDIT-010, LIB-EDIT-012]
 mode: pr
 base: main
@@ -44,3 +44,4 @@ Delete (LIB-EDIT-004/005) is not part of this slice.
 - 2026-11-15 design: ADR 0029 accepted; D-RESULT and D-PREVIEW reworded; matrix wording aligned.
 - 2026-11-15 tests: 86 failing tests over the 4 rows plus the extended LIB-EDIT-002/003 set (red on the missing API only); re-check notes on LIB-EDIT-002, -003, LIB-DIAG-002, LIB-RT-003, SACM23-BASE-006.
 - 2026-11-15 implement: ADR 0029 built; one clippy fix in the tests; the `changed_ids` mutant exclusion removed, `IdUse::is_unused` kept as equivalent with a new reason; gate green (1815 tests).
+- 2026-11-15 verify: PASS in one round; the docs review fixed; one CI mutant pinned; a quadratic content replace logged as a follow-up; record 0045.

@@ -75,13 +75,13 @@ one command per feature: `SetName`, `SetGid`, `SetCitation`, `SetMetaClaims`,
 - the repair exception for held unresolved ids (`operations.h:131-143`).
 
 **Differences from C++, one line each:**
-- C++ `SetName` takes a string and a language (`operations.h:225`); here it takes a full
+- C++ `SetName` takes a string and a language (`operations.h:241-245`); here it takes a full
   LangString (ADR 0019 E3).
 - C++ refuses a name on a non-ModelElement as CMD-005 (`commands.cpp:1546`); here it is
   CMD-008.
 - C++ `SetAssertionDeclaration` reports a non-Assertion as CMD-001 (`commands.cpp:620`); here
   it is CMD-008.
-- C++ `SetGid` treats `""` as clear (`operations.h:216`); here `""` is a value, and
+- C++ `SetGid` treats `""` as clear (`operations.h:235-238`); here `""` is a value, and
   `SetGid::remove` clears.
 - C++ `SetCitation` sets `citedElement` and `isCitation` together (`commands.cpp:1369`); here
   they are separate operations.
