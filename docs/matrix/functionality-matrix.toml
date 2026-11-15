@@ -4774,10 +4774,18 @@ area = "API"
 milestone = "M2"
 title = "Public containment queries"
 requirement = "The containment table of LIB-API-008 is public on `ElementKind`: whether a kind may contain another, the kinds a kind may contain in a fixed documented order, and whether a kind may be a root (`is_package`). The queries read the same table that insertion and the edit operations use, so they cannot disagree with them. They state what SACM 2.3 admits, not which create operation exists."
-source = "User request: Assurance Forge, GitHub issue #60 (2026-11-14); LIB-API-008"
+source = "User request: Assurance Forge, GitHub issue #60 (2026-11-14); LIB-API-008; ADR 0010 amendment 2"
 kind = "api"
-status = "planned"
+status = "analyzed"
 depends_on = ["LIB-API-008"]
+acceptance = [
+  "`ElementKind::may_contain(self, child) -> bool` is a `const fn`, `#[must_use]`, and is usable in a `const` item.",
+  "For all 1,444 (parent, child) pairs of the 38 kinds, `may_contain` is true for exactly the 339 legal pairs of the containment table spelled out in the test (LIB-API-008's), and equals whether the test-support `insert` of that child under that parent succeeds.",
+  "For every create operation in this release under a parent of every kind, `edit::apply` is refused with `InvalidParent` exactly when `may_contain(parent kind, created kind)` is false.",
+  "`ElementKind::child_kinds(self)` yields `ElementKind::ALL` filtered by `may_contain(self, _)`, in `ALL` order, without duplicates; the counts over all kinds sum to 339; it is empty for the four UtilityElement kinds, is `[Description, ImplementationConstraint, Note, TaggedValue]` for a Claim, and has 16 kinds for an ArgumentPackage.",
+  "`is_package` is true for exactly the 12 kinds `insert(None, ..)` accepts as a root.",
+  "The rustdoc of `may_contain` says it states what SACM 2.3 admits, not that a create operation exists for the kind or that an edit will succeed, and links `is_package` for roots; a doctest builds an \"add child\" list with `child_kinds`.",
+]
 
 [[row]]
 id = "LIB-EDIT-013"
@@ -4811,8 +4819,14 @@ title = "The library builds for wasm32-unknown-unknown"
 requirement = "CI builds `sacm` for `wasm32-unknown-unknown` with default features, and with `serde` once LIB-API-006 lands; any failure fails the build. The library's non-test code uses no `std::fs`, `std::thread`, `std::process`, `std::env` or system clock (`std::time::Instant`, `SystemTime`), which compile for that target but fail at run time, enforced by a lint. So reading, validating, editing and writing a document from bytes in memory work on that target. JavaScript bindings are LIB-API-007."
 source = "User request: Assurance Forge, GitHub issue #58 (2026-11-14); D-API"
 kind = "quality"
-status = "planned"
+status = "analyzed"
 depends_on = ["LIB-QA-001"]
+acceptance = [
+  "ci.yml has a job that installs the `wasm32-unknown-unknown` target and runs `cargo build -p sacm --target wasm32-unknown-unknown` and the same with `--all-features`; a regression test fails if either command or the target is removed.",
+  "`clippy.toml` lists, as `disallowed-methods` and `disallowed-types` with a reason, the platform APIs that compile for that target but fail at run time: the `std::fs` functions and `File`, `OpenOptions`, `DirEntry` and `ReadDir`; `std::thread::{spawn, sleep, scope}` and `Builder`; `std::process::{exit, abort}` and `Command`; `std::env::{var, var_os, vars, vars_os, args, args_os, current_dir, set_current_dir, temp_dir}`; `std::time::Instant` and `SystemTime`.",
+  "The two lints are allowed workspace-wide (the CLI, xtask and test code may use those APIs) and denied in `sacm`'s non-test code by a crate attribute in `crates/sacm/src/lib.rs` (`#![cfg_attr(not(test), deny(...))]`); a regression test fails if the attribute or any listed path is removed.",
+  "The full gate is green with the lint in place, and CI's wasm job has run green on the slice's PR (verification evidence: run URL).",
+]
 notes = "On 2026-11-15 `cargo build -p sacm --target wasm32-unknown-unknown` succeeded on main (8183104). A build alone does not prove the second sentence, because std's file system, thread and clock APIs compile for that target."
 
 [[row]]

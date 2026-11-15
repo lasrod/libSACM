@@ -24,7 +24,7 @@ library has one aggregate per operation (`commands/operations.h`), applied by
   - All three have `with_id(id)`.
 - **The name is required, as a `LangString`** (ADR 0013): an edit never leaves a ModelElement
   without a name. Any value is accepted, `LangString::default()` included.
-- **Parent legality comes from the crate's one containment table,** the same one the reader
+- **Parent legality comes from the crate's one containment table** (public as `ElementKind::may_contain`, ADR 0010 amendment 2), the same one the reader
   and writer use.
 - **Read accessors:** `parent()`, `id()` and `name()` on each operation struct, so that previews, audit logs and a later GSN layer can read an operation they hold. `impl From<&ElementId> for ElementId` lets a returned id be passed on as the next parent (the maintainer, 2026-11-12).
 - **`Mutation::created_ids()`** lists the ids created, in creation order, with the
