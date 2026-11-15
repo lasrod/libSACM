@@ -1,0 +1,63 @@
+---
+slice: 0046
+name: m2-wasm-and-containment
+state: done
+step: close
+rows: [LIB-QA-017, LIB-API-012]
+mode: pr
+base: main
+---
+
+# Slice 0046 — wasm32 build check and public containment queries
+
+## Scope
+
+Two requests from Assurance Forge that do not touch the edit code that slice 0045 is
+changing.
+- **LIB-QA-017 (GitHub issue #58):** CI builds `sacm` for `wasm32-unknown-unknown`, and a
+  lint keeps file-system, thread, process, environment and clock APIs out of the library's
+  non-test code.
+- **LIB-API-012 (GitHub issue #60, second half):** the containment table becomes public on
+  `ElementKind`.
+
+Left out: `edit::check` (LIB-EDIT-013), batches (LIB-EDIT-014) and serde (LIB-API-006),
+which wait for slice 0045. JavaScript bindings (LIB-API-007).
+
+## Basis
+
+Library and quality rows: acceptance by the lead. The containment table itself is
+LIB-API-008's (verified, slice 0017); this slice only exposes it.
+
+## Design
+
+- **LIB-API-012:** `ElementKind::may_contain(self, child: ElementKind) -> bool` (`const`)
+  and `ElementKind::child_kinds(self) -> impl Iterator<Item = ElementKind>` (in `ALL`
+  order); roots stay `is_package`. ADR 0010 amendment 2 (accepted by the maintainer, 2026-11-15), deviation D4.
+- **LIB-QA-017:** no API. `clippy.toml` lists the platform APIs; workspace lints allow
+  `disallowed_methods`/`disallowed_types`; `sacm`'s `lib.rs` denies them outside `cfg(test)`.
+  CI job `wasm` builds `sacm` for the target, default and all features.
+
+## Log
+
+- 2026-11-15 choose: Assurance Forge issues #57-#61 evaluated; the rows were planned in
+  commit 387a12e (the maintainer chose M2 and a stable serde form). This slice takes the
+  two rows independent of slice 0045, in the worktree `C:\development\libSACM-af-issues`,
+  so that 0045's tree is not touched.
+- 2026-11-15 design: architect brief for LIB-API-012 (parent-side queries only; roles stay
+  private; ADR 0010 amendment 2 proposed). LIB-QA-017 lint mechanism checked in a scratch
+  crate: aliased imports are caught, `cfg(test)` code is not. Both rows `analyzed`.
+- 2026-11-15 tests: blocked. The agent write guard resolves paths against
+  `CLAUDE_PROJECT_DIR` (the main checkout), so agents launched from that session cannot
+  write in this worktree. Resume from a session opened in the worktree.
+- 2026-11-15 tests: slice 0045 merged; the slice moved back to the main checkout (worktree
+  removed) and merged `origin/main`.
+- 2026-11-15 tests: 9 `lib_api_012_*` and 6 `lib_qa_017_*` tests, red confirmed (E0599 for
+  the two methods; missing config). Rows `tests-failing`.
+- 2026-11-15 implementation: methods, lint attribute and workspace allow (implementer);
+  `clippy.toml` lists and the CI `wasm` job (lead). The maintainer accepted ADR 0010
+  amendment 2. Docs review: one blocking finding (the rustdoc said the reader cannot
+  disagree, but it refuses some admitted children until SACM23-XMI-016), fixed with the
+  follow-ups. Full gate green. Rows `implemented`.
+- 2026-11-15 verification: PASS for both rows (record 0046). Copilot found that `Path`
+  file-system methods bypassed the lint; fixed with `std::net` in 13d9d87, re-check PASS.
+  Rows `verified`.

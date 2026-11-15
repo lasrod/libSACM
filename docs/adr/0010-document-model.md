@@ -73,3 +73,24 @@ compile until comparison handles it.
 decided on 2026-11-12 that an element with no `xmi:id` loads with a generated id
 (SACM23-XMI-020). Whether that id is marked, whether it is written back, and how comparison
 treats it needs its own ADR before that row's tests.
+
+## Amendment 2 (2026-11-15): public containment queries (slice 0046; LIB-API-012)
+
+Containment legality becomes public on `ElementKind`, so that an application offers only the
+children the library accepts (GitHub issue #60):
+- `const fn may_contain(self, child: ElementKind) -> bool`: whether a composite role of this
+  kind's class admits `child`;
+- `fn child_kinds(self) -> impl Iterator<Item = ElementKind>`: the kinds it may contain, in
+  the order of `ElementKind::ALL`.
+
+Both read the one table in `model::containment` that insertion, the XMI reader and the edit
+operations use, so they cannot disagree. The reader may still refuse an admitted child it
+cannot read yet (SACM23-XMI-016). `is_package` already answers which kinds may be a
+root. Role names and the role tables stay crate-private until SACM23-XMI-016.
+
+**Deviation from C++:**
+- **D4.** C++ has no public containment query: `metadata/element_kind.h` exposes only
+  `is_package_kind`, and parent legality is internal (`io/xmi_reader.cpp` attach_child,
+  `commands.cpp` parent checks).
+
+*Amendment 2 status: accepted (the maintainer, 2026-11-15).*
