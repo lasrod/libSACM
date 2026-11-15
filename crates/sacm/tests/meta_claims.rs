@@ -19,8 +19,8 @@
 //! - [`sacm23_arg_004_two_missing_meta_claims_are_two_dangling_findings_and_a_repeated_one_is_one`]
 //!   kills `replace == with !=` in `dangling_references` (the dedupe).
 //!
-//! No edit sets `metaClaim` yet (LIB-EDIT-009), so documents are read from
-//! inline XMI. Expected locations are marked in the input with [`MARK`]
+//! Documents are read from inline XMI; the edits that set `metaClaim` are
+//! tested in `reference_edits.rs` (LIB-EDIT-009). Expected locations are marked in the input with [`MARK`]
 //! (U+2038), which the test removes before reading.
 
 use std::sync::mpsc::{self, RecvTimeoutError};

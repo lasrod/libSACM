@@ -70,7 +70,15 @@
 //!   names no element or an element its end's declared type does not admit.
 //!   The stricter §11.15, §11.17 and §11.18 rules, that evidence and
 //!   artifact relationships link `ArtifactReference`s, are left to
-//!   [`validation::validate`].
+//!   [`validation::validate`]. It also changes existing elements of every
+//!   kind: their names, `gid`s, flags and `assertionDeclaration`s
+//!   ([`edit::SetName`] and the like), the `content` and `key` of
+//!   descriptions, implementation constraints, notes and tagged values
+//!   ([`edit::SetContent`],
+//!   [`edit::SetKey`]), every reference end, within its bounds
+//!   ([`edit::SetReferences`], [`edit::AddReference`],
+//!   [`edit::RemoveReference`]), and the order of an element's children or
+//!   of the roots ([`edit::ReorderElements`]).
 //! - [`compare::semantic_compare`] lists every difference in SACM content
 //!   between two documents, and `==` on a [`Document`](model::Document) is
 //!   true when there is none.
@@ -156,7 +164,8 @@
 //! [`target`](model::SacmElement::target), with [`model::Document::get`]. To report reading and validation
 //! together, merge [`ReadOutput::diagnostics`](xmi::ReadOutput::diagnostics)
 //! with the findings of [`validation::validate`] and sort the result. The
-//! [`edit`] module builds a document from scratch.
+//! [`edit`] module builds a document from scratch and changes an existing
+//! one; its tables list which operation edits which SACM feature.
 //!
 //! # Arguments
 //!
@@ -200,6 +209,48 @@
 //! edit::apply(&mut document, evidence.with_id("e1"))?;
 //! assert_eq!(document.get("e1").and_then(|e1| e1.target()).map(|id| id.as_str()), Some("c3"));
 //! assert!(validation::validate(&document).is_empty());
+//! # Ok::<(), sacm::edit::EditError>(())
+//! ```
+//!
+//! Change an argument after it is built: retarget a relationship and add a
+//! source with [`edit::SetReferences`] and [`edit::AddReference`], mark
+//! counter-evidence with [`edit::SetFlag`], and reorder a package's elements
+//! with [`edit::ReorderElements`]:
+//!
+//! ```
+//! use sacm::edit::{self, AddReference, CreateArgumentPackage, CreateArtifactReference};
+//! use sacm::edit::{CreateAssertedEvidence, CreateClaim, ReorderElements, SetFlag, SetReferences};
+//! use sacm::model::{Document, Flag, LangString, ReferenceEnd};
+//! use sacm::validation;
+//!
+//! let mut doc = Document::new();
+//! let en = |text: &str| LangString::new(text).with_lang("en");
+//! edit::apply(&mut doc, CreateArgumentPackage::root(en("Arguments")).with_id("arguments"))?;
+//! edit::apply(&mut doc, CreateClaim::new("arguments", en("The brake is safe")).with_id("c1"))?;
+//! edit::apply(&mut doc, CreateClaim::new("arguments", en("The brake is tested")).with_id("c2"))?;
+//! edit::apply(&mut doc, CreateArtifactReference::new("arguments", en("Bench test report")).with_id("a1"))?;
+//! edit::apply(&mut doc, CreateArtifactReference::new("arguments", en("Road test report")).with_id("a2"))?;
+//! edit::apply(&mut doc, CreateArtifactReference::new("arguments", en("Field failure report")).with_id("a3"))?;
+//!
+//! // Link evidence to a claim: a1 supports c1 ...
+//! let evidence = CreateAssertedEvidence::new("arguments", en("The tests show it"), ["a1"], "c1");
+//! edit::apply(&mut doc, evidence.with_id("e1"))?;
+//! // ... retarget it to the claim it supports, c2, and add a second report.
+//! edit::apply(&mut doc, SetReferences::new("e1", ReferenceEnd::Target, ["c2"]))?;
+//! edit::apply(&mut doc, AddReference::new("e1", ReferenceEnd::Source, "a2"))?;
+//! assert_eq!(doc.get("e1").map(|e1| e1.sources().len()), Some(2));
+//!
+//! // Counter-evidence (§11.13 isCounter): a3 speaks against c1.
+//! let against = CreateAssertedEvidence::new("arguments", en("A failure was seen"), ["a3"], "c1");
+//! edit::apply(&mut doc, against.with_id("e2"))?;
+//! edit::apply(&mut doc, SetFlag::new("e2", Flag::IsCounter, true))?;
+//! assert!(doc.get("e2").is_some_and(|e2| e2.is_counter()));
+//!
+//! // Put c2 before c1; the other children keep their positions.
+//! edit::apply(&mut doc, ReorderElements::new("arguments", ["c2", "c1"]))?;
+//! let order: Vec<&str> = doc.get("arguments").into_iter().flat_map(|p| p.children()).map(|c| c.id().as_str()).collect();
+//! assert_eq!(order, ["c2", "c1", "a1", "a2", "a3", "e1", "e2"]);
+//! assert!(validation::validate(&doc).is_empty());
 //! # Ok::<(), sacm::edit::EditError>(())
 //! ```
 //!
