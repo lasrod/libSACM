@@ -1,0 +1,516 @@
+[
+  {
+    "type": "CreateAssuranceCasePackage",
+    "parent": null,
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Safety case"
+    }
+  },
+  {
+    "type": "CreateAssuranceCasePackage",
+    "parent": null,
+    "id": "case",
+    "name": {
+      "lang": "en",
+      "content": "Safety case"
+    }
+  },
+  {
+    "type": "CreateAssuranceCasePackage",
+    "parent": "case",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Subsystem"
+    }
+  },
+  {
+    "type": "CreateAssuranceCasePackage",
+    "parent": "case",
+    "id": "sub",
+    "name": {
+      "lang": "en",
+      "content": "Subsystem"
+    }
+  },
+  {
+    "type": "CreateArgumentPackage",
+    "parent": null,
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Arguments"
+    }
+  },
+  {
+    "type": "CreateArgumentPackage",
+    "parent": null,
+    "id": "arguments",
+    "name": {
+      "lang": "en",
+      "content": "Arguments"
+    }
+  },
+  {
+    "type": "CreateArgumentPackage",
+    "parent": "case",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Arguments"
+    }
+  },
+  {
+    "type": "CreateArgumentPackage",
+    "parent": "case",
+    "id": "arguments",
+    "name": {
+      "lang": "en",
+      "content": "Arguments"
+    }
+  },
+  {
+    "type": "CreateClaim",
+    "parent": "arguments",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "The system is safe"
+    }
+  },
+  {
+    "type": "CreateClaim",
+    "parent": "arguments",
+    "id": "c1",
+    "name": {
+      "lang": null,
+      "content": null
+    }
+  },
+  {
+    "type": "CreateArgumentReasoning",
+    "parent": "arguments",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Why"
+    },
+    "structure": null
+  },
+  {
+    "type": "CreateArgumentReasoning",
+    "parent": "arguments",
+    "id": "r1",
+    "name": {
+      "lang": "en",
+      "content": "Why"
+    },
+    "structure": "arguments"
+  },
+  {
+    "type": "CreateAssertedInference",
+    "parent": "arguments",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Inference"
+    },
+    "sources": [
+      "c2",
+      "c3"
+    ],
+    "target": "c1",
+    "reasoning": null,
+    "is_counter": false
+  },
+  {
+    "type": "CreateAssertedInference",
+    "parent": "arguments",
+    "id": "i1",
+    "name": {
+      "lang": "en",
+      "content": "Inference"
+    },
+    "sources": [
+      "c2",
+      "c3"
+    ],
+    "target": "c1",
+    "reasoning": "r1",
+    "is_counter": true
+  },
+  {
+    "type": "CreateAssertedContext",
+    "parent": "arguments",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Context"
+    },
+    "sources": [
+      "x1"
+    ],
+    "target": "c1",
+    "reasoning": null,
+    "is_counter": false
+  },
+  {
+    "type": "CreateAssertedContext",
+    "parent": "arguments",
+    "id": "ctx1",
+    "name": {
+      "lang": "en",
+      "content": "Context"
+    },
+    "sources": [
+      "x1"
+    ],
+    "target": "c1",
+    "reasoning": "r1",
+    "is_counter": true
+  },
+  {
+    "type": "CreateAssertedEvidence",
+    "parent": "arguments",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Evidence"
+    },
+    "sources": [
+      "e1"
+    ],
+    "target": "c1",
+    "reasoning": null,
+    "is_counter": false
+  },
+  {
+    "type": "CreateAssertedEvidence",
+    "parent": "arguments",
+    "id": "ev1",
+    "name": {
+      "lang": "en",
+      "content": "Evidence"
+    },
+    "sources": [
+      "e1"
+    ],
+    "target": "c1",
+    "reasoning": "r1",
+    "is_counter": true
+  },
+  {
+    "type": "CreateAssertedArtifactSupport",
+    "parent": "arguments",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Support"
+    },
+    "sources": [
+      "e1"
+    ],
+    "target": "e2",
+    "reasoning": null,
+    "is_counter": false
+  },
+  {
+    "type": "CreateAssertedArtifactSupport",
+    "parent": "arguments",
+    "id": "s1",
+    "name": {
+      "lang": "en",
+      "content": "Support"
+    },
+    "sources": [
+      "e1"
+    ],
+    "target": "e2",
+    "reasoning": "r1",
+    "is_counter": true
+  },
+  {
+    "type": "CreateAssertedArtifactContext",
+    "parent": "arguments",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Artifact context"
+    },
+    "sources": [
+      "e1"
+    ],
+    "target": "e2",
+    "reasoning": null,
+    "is_counter": false
+  },
+  {
+    "type": "CreateAssertedArtifactContext",
+    "parent": "arguments",
+    "id": "ac1",
+    "name": {
+      "lang": "en",
+      "content": "Artifact context"
+    },
+    "sources": [
+      "e1"
+    ],
+    "target": "e2",
+    "reasoning": "r1",
+    "is_counter": true
+  },
+  {
+    "type": "CreateArtifactReference",
+    "parent": "arguments",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Report"
+    },
+    "referenced_artifact_elements": []
+  },
+  {
+    "type": "CreateArtifactReference",
+    "parent": "arguments",
+    "id": "e1",
+    "name": {
+      "lang": "en",
+      "content": "Report"
+    },
+    "referenced_artifact_elements": [
+      "artifact_1",
+      "artifact_2"
+    ]
+  },
+  {
+    "type": "CreateArgumentGroup",
+    "parent": "arguments",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Group"
+    },
+    "group_members": []
+  },
+  {
+    "type": "CreateArgumentGroup",
+    "parent": "arguments",
+    "id": "g1",
+    "name": {
+      "lang": "en",
+      "content": "Group"
+    },
+    "group_members": [
+      "c1",
+      "c2"
+    ]
+  },
+  {
+    "type": "CreateDescription",
+    "parent": "c1",
+    "id": null,
+    "content": [
+      {
+        "lang": "en",
+        "content": "Why it holds"
+      }
+    ]
+  },
+  {
+    "type": "CreateDescription",
+    "parent": "c1",
+    "id": "d1",
+    "content": [
+      {
+        "lang": "en",
+        "content": "Reviewed"
+      },
+      {
+        "lang": "sv",
+        "content": "Granskad"
+      }
+    ]
+  },
+  {
+    "type": "CreateImplementationConstraint",
+    "parent": "c1",
+    "id": null,
+    "content": [
+      {
+        "lang": "en",
+        "content": "Only in mode A"
+      }
+    ]
+  },
+  {
+    "type": "CreateImplementationConstraint",
+    "parent": "c1",
+    "id": "ic1",
+    "content": [
+      {
+        "lang": "en",
+        "content": "Only in mode A"
+      }
+    ]
+  },
+  {
+    "type": "CreateNote",
+    "parent": "c1",
+    "id": null,
+    "content": []
+  },
+  {
+    "type": "CreateNote",
+    "parent": "c1",
+    "id": "n1",
+    "content": [
+      {
+        "lang": "en",
+        "content": "Reviewed"
+      }
+    ]
+  },
+  {
+    "type": "CreateTaggedValue",
+    "parent": "c1",
+    "id": null,
+    "key": [
+      {
+        "lang": "en",
+        "content": "ASIL"
+      }
+    ],
+    "content": [
+      {
+        "lang": null,
+        "content": "D"
+      }
+    ]
+  },
+  {
+    "type": "CreateTaggedValue",
+    "parent": "c1",
+    "id": "t1",
+    "key": [
+      {
+        "lang": "en",
+        "content": "ASIL"
+      }
+    ],
+    "content": [
+      {
+        "lang": null,
+        "content": "D"
+      }
+    ]
+  },
+  {
+    "type": "SetName",
+    "element": "c1",
+    "name": {
+      "lang": "en",
+      "content": "The system is safe enough"
+    }
+  },
+  {
+    "type": "SetGid",
+    "element": "c1",
+    "gid": "G-1"
+  },
+  {
+    "type": "SetGid",
+    "element": "c1",
+    "gid": null
+  },
+  {
+    "type": "SetFlag",
+    "element": "c1",
+    "flag": "isCitation",
+    "value": true
+  },
+  {
+    "type": "SetFlag",
+    "element": "i1",
+    "flag": "isCounter",
+    "value": false
+  },
+  {
+    "type": "SetAssertionDeclaration",
+    "element": "c1",
+    "declaration": "needsSupport"
+  },
+  {
+    "type": "SetContent",
+    "element": "d1",
+    "content": [
+      {
+        "lang": "en",
+        "content": "Reviewed"
+      },
+      {
+        "lang": "sv",
+        "content": "Granskad"
+      }
+    ]
+  },
+  {
+    "type": "SetContent",
+    "element": "d1",
+    "content": null
+  },
+  {
+    "type": "SetKey",
+    "element": "t1",
+    "key": [
+      {
+        "lang": "en",
+        "content": "SIL"
+      }
+    ]
+  },
+  {
+    "type": "SetReferences",
+    "element": "i1",
+    "end": "source",
+    "ids": [
+      "c2",
+      "c3"
+    ]
+  },
+  {
+    "type": "SetReferences",
+    "element": "c1",
+    "end": "metaClaim",
+    "ids": []
+  },
+  {
+    "type": "AddReference",
+    "element": "g1",
+    "end": "argumentElement",
+    "id": "c3"
+  },
+  {
+    "type": "RemoveReference",
+    "element": "i1",
+    "end": "source",
+    "id": "c3"
+  },
+  {
+    "type": "ReorderElements",
+    "parent": "arguments",
+    "order": [
+      "c2",
+      "c1"
+    ]
+  },
+  {
+    "type": "ReorderElements",
+    "parent": null,
+    "order": [
+      "case",
+      "arguments"
+    ]
+  }
+]

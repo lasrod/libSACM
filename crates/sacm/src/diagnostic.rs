@@ -22,7 +22,9 @@
 //! Diagnostics are read, not built: only this crate creates them. The
 //! `test-support` feature makes the constructors and `with_*` builders
 //! public so that tests can build diagnostics. They are not stable API, even
-//! though docs.rs shows them.
+//! though docs.rs shows them. With the `serde` feature a diagnostic also
+//! serializes, and reads back as a record in the stable form of ADR 0030;
+//! nothing in the API takes one as input.
 //!
 //! # Examples
 //!
@@ -42,6 +44,7 @@
 //!
 //! [catalog]: https://github.com/lasrod/libSACM/blob/main/docs/sacm/diagnostics.md
 
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::fmt;
 use std::num::NonZeroU32;
@@ -57,6 +60,11 @@ use crate::model::ElementId;
 /// assert_eq!(Severity::Info.to_string(), "info");
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "lowercase")
+)]
 #[non_exhaustive]
 pub enum Severity {
     /// Information: nothing is wrong.
@@ -103,7 +111,33 @@ impl fmt::Display for Severity {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Code(&'static str);
 
-impl Code {
+/// Defines the catalog codes, each written as an associated constant of
+/// [`Code`], and puts every one of them, in order, in the crate-private
+/// `Code::CATALOG`, so that the constants and the codes serde reads back
+/// cannot drift apart (ADR 0030).
+macro_rules! catalog {
+    ($(
+        $(#[$doc:meta])*
+        pub const $name:ident: Code = Code::$constructor:ident($code:literal);
+    )+) => {
+        impl Code {
+            $(
+                $(#[$doc])*
+                pub const $name: Code = Code::$constructor($code);
+            )+
+
+            /// Every code of the catalog, in the order of the constants:
+            /// the codes a [`Code`] deserializes from (ADR 0030 R5).
+            #[cfg_attr(
+                not(any(feature = "serde", test)),
+                expect(dead_code, reason = "only serde reads the table back")
+            )]
+            pub(crate) const CATALOG: &[Code] = &[$(Code::$name),+];
+        }
+    };
+}
+
+catalog! {
     /// SACM-XML-001: malformed XML. The code of
     /// [`ReadError::Malformed`](crate::xmi::ReadError::Malformed)
     /// (LIB-SEC-002).
@@ -394,7 +428,9 @@ impl Code {
     /// [`SetReferences`](crate::edit::SetReferences); an edit refuses
     /// neither (ADR 0029).
     pub const ABSTRACT_FORM_INVALID: Code = Code::from_static("SACM-ABS-001");
+}
 
+impl Code {
     /// The code with the given text.
     ///
     /// **Not part of the stable API**: public only under the `test-support`
@@ -422,6 +458,34 @@ impl fmt::Display for Code {
     /// Writes [`as_str`](Self::as_str).
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad(self.0)
+    }
+}
+
+/// A code serializes as its text, such as `"SACM-REF-001"` (ADR 0030 R5).
+#[cfg(feature = "serde")]
+impl serde::Serialize for Code {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.0)
+    }
+}
+
+/// A code deserializes from the text of a code of the catalog, exactly; any
+/// other text, including a code the catalog reserves but no constant names
+/// yet, is refused (ADR 0030 R5).
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Code {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Code::CATALOG
+            .iter()
+            .copied()
+            .find(|code| code.0 == text)
+            .ok_or_else(|| {
+                serde::de::Error::invalid_value(
+                    serde::de::Unexpected::Str(&text),
+                    &"a code of the diagnostics catalog, such as \"SACM-REF-001\"",
+                )
+            })
     }
 }
 
@@ -457,6 +521,11 @@ pub fn has_errors(diagnostics: &[Diagnostic]) -> bool {
 /// The column counts Unicode scalar values (`char`s), not bytes. Locations
 /// order by line, then column.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 pub struct SourceLocation {
     line: NonZeroU32,
     column: NonZeroU32,
@@ -544,12 +613,22 @@ impl fmt::Display for SourceLocation {
 ///
 /// Two diagnostics compare `Equal` exactly when they are equal.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 pub struct Diagnostic {
     code: Code,
     severity: Severity,
-    requirement_id: &'static str,
-    clause: Option<&'static str>,
+    // `Cow`, so that a diagnostic read back with serde holds its own text;
+    // the crate's own diagnostics borrow static text.
+    requirement_id: Cow<'static, str>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    clause: Option<Cow<'static, str>>,
+    #[cfg_attr(feature = "serde", serde(default))]
     affected: Vec<ElementId>,
+    #[cfg_attr(feature = "serde", serde(default))]
     location: Option<SourceLocation>,
     message: String,
 }
@@ -614,7 +693,7 @@ impl Diagnostic {
         Self {
             code,
             severity,
-            requirement_id,
+            requirement_id: Cow::Borrowed(requirement_id),
             clause: None,
             affected: Vec::new(),
             location: None,
@@ -625,7 +704,7 @@ impl Diagnostic {
     /// The crate-internal form of `with_clause`.
     #[must_use]
     pub(crate) fn set_clause(mut self, clause: &'static str) -> Self {
-        self.clause = Some(clause);
+        self.clause = Some(Cow::Borrowed(clause));
         self
     }
 
@@ -661,7 +740,7 @@ impl Diagnostic {
     /// [matrix]: https://github.com/lasrod/libSACM/blob/main/docs/matrix/functionality-matrix.md
     #[must_use]
     pub fn requirement_id(&self) -> &str {
-        self.requirement_id
+        &self.requirement_id
     }
 
     /// The clause the diagnostic enforces: a bare clause number, such as
@@ -669,7 +748,7 @@ impl Diagnostic {
     /// if the row cites no clause.
     #[must_use]
     pub fn clause(&self) -> Option<&str> {
-        self.clause
+        self.clause.as_deref()
     }
 
     /// The ids of the affected elements, in the order the crate gave them.
@@ -700,7 +779,7 @@ impl fmt::Display for Diagnostic {
             "{} {} [{}",
             self.severity, self.code, self.requirement_id
         )?;
-        if let Some(clause) = self.clause {
+        if let Some(clause) = &self.clause {
             write!(f, ", clause {clause}")?;
         }
         f.write_str("]")?;
@@ -762,5 +841,22 @@ impl Ord for Diagnostic {
 impl PartialOrd for Diagnostic {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Code;
+
+    #[test]
+    fn the_catalog_table_holds_every_constant_once_in_order() {
+        let texts: Vec<&str> = Code::CATALOG.iter().map(|code| code.as_str()).collect();
+        let mut distinct = texts.clone();
+        distinct.sort_unstable();
+        distinct.dedup();
+        assert_eq!(distinct.len(), texts.len(), "a code is in the table twice");
+        assert_eq!(texts.first(), Some(&Code::XML_MALFORMED.as_str()));
+        assert_eq!(texts.last(), Some(&Code::ABSTRACT_FORM_INVALID.as_str()));
+        assert!(Code::CATALOG.contains(&Code::REF_DANGLING));
     }
 }

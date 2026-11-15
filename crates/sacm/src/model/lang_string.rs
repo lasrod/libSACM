@@ -49,9 +49,16 @@
 /// assert_eq!(lang_only.content(), None);
 /// ```
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 pub struct LangString {
     // Field order is the `Ord` order: `lang`, then `content`.
+    #[cfg_attr(feature = "serde", serde(default))]
     lang: Option<String>,
+    #[cfg_attr(feature = "serde", serde(default))]
     content: Option<String>,
 }
 
@@ -167,6 +174,11 @@ impl LangString {
 /// assert!(MultiLangString::default().is_empty());
 /// ```
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(transparent)
+)]
 pub struct MultiLangString {
     values: Vec<LangString>,
 }

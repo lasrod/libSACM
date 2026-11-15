@@ -1,0 +1,47 @@
+[
+  {
+    "operation": {
+      "type": "CreateArgumentPackage",
+      "parent": null,
+      "id": null,
+      "name": {
+        "lang": "en",
+        "content": "Arguments"
+      }
+    },
+    "created_ids": [
+      "argument_package_1"
+    ],
+    "changed_ids": [],
+    "deleted_ids": []
+  },
+  {
+    "operation": {
+      "type": "SetFlag",
+      "element": "argument_package_1",
+      "flag": "isAbstract",
+      "value": true
+    },
+    "created_ids": [],
+    "changed_ids": [
+      "argument_package_1"
+    ],
+    "deleted_ids": []
+  },
+  {
+    "operation": {
+      "type": "CreateClaim",
+      "parent": "argument_package_1",
+      "id": "c1",
+      "name": {
+        "lang": null,
+        "content": "C1"
+      }
+    },
+    "created_ids": [
+      "c1"
+    ],
+    "changed_ids": [],
+    "deleted_ids": []
+  }
+]

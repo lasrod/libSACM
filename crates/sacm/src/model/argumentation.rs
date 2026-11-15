@@ -36,6 +36,11 @@ use std::str::FromStr;
 /// ```
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "camelCase")
+)]
 pub enum AssertionDeclaration {
     /// `asserted`: the default; the Assertion is asserted.
     #[default]

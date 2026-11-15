@@ -30,6 +30,11 @@ use std::fmt;
 /// assert!(ids.contains("a"));
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(transparent)
+)]
 pub struct ElementId(String);
 
 impl ElementId {

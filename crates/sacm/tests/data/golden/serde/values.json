@@ -1,0 +1,44 @@
+[
+  {
+    "lang": null,
+    "content": null
+  },
+  {
+    "lang": null,
+    "content": ""
+  },
+  {
+    "lang": "en",
+    "content": null
+  },
+  {
+    "lang": "en",
+    "content": "The system is safe"
+  },
+  {
+    "lang": "sv-SE",
+    "content": "Säkerhet ✓ <&> \"citat\""
+  },
+  [
+    {
+      "lang": "en",
+      "content": "Reviewed"
+    },
+    {
+      "lang": "sv",
+      "content": "Granskad"
+    }
+  ],
+  [],
+  [
+    {
+      "lang": null,
+      "content": null
+    }
+  ],
+  {
+    "line": 4,
+    "column": 20
+  },
+  "c1"
+]

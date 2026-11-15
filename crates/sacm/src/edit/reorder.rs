@@ -4,6 +4,7 @@
 use std::collections::BTreeSet;
 
 use super::EditError;
+use super::plan::Plan;
 use crate::model::{Document, ElementId, SacmElement};
 
 /// Reorders some of the direct children of an element, or some of the
@@ -51,7 +52,16 @@ use crate::model::{Document, ElementId, SacmElement};
 /// # Ok::<(), sacm::edit::EditError>(())
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 pub struct ReorderElements {
+    #[cfg_attr(
+        feature = "serde",
+        serde(deserialize_with = "serde::Deserialize::deserialize")
+    )]
     parent: Option<ElementId>,
     order: Vec<ElementId>,
 }
@@ -92,8 +102,8 @@ impl ReorderElements {
         &self.order
     }
 
-    /// Checks and applies the operation, and returns the ids it changed.
-    pub(super) fn apply(&self, document: &mut Document) -> Result<Vec<ElementId>, EditError> {
+    /// Runs every check of the operation, and returns what it changes.
+    pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
         let parent = self.parent.as_ref();
         if let Some(parent) = parent {
             if !document.contains(parent) {
@@ -122,8 +132,9 @@ impl ReorderElements {
                 });
             }
         }
-        let changed = document.reorder(parent, &self.order);
-        // The roots' order is the document's, not an element's.
-        Ok(parent.filter(|_| changed).into_iter().cloned().collect())
+        Ok(Plan::Reorder {
+            parent,
+            order: &self.order,
+        })
     }
 }

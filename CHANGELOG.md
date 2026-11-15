@@ -274,6 +274,15 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
   [LIB-API-012].
 - `sacm` builds for `wasm32-unknown-unknown`, checked in CI, and a lint keeps file-system,
   thread, process, environment, network and clock APIs out of the library [LIB-QA-017].
+- `edit::check(&Document, &Operation)` answers whether `edit::apply` would accept an
+  operation, with the same `EditError` if not, and never changes the document. `check`
+  and `apply` share one code path [LIB-EDIT-013].
+- The optional `serde` feature: `Serialize` and `Deserialize` for `Operation` and every
+  operation struct, `Mutation`, `EditError`, `Diagnostic`, and the values they carry
+  (`ElementId`, `ElementKind`, `LangString`, `MultiLangString`, `AssertionDeclaration`,
+  `Flag`, `ReferenceEnd`, `Code`, `Severity`, `SourceLocation`). The JSON shape is
+  documented in ADR 0030 and stable; unknown keys, names and codes are refused. `Document`
+  is not serialized [LIB-API-006].
 
 ### Changed
 
