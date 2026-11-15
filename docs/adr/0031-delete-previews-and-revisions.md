@@ -82,9 +82,10 @@ SACM 2.3 is silent on editing, so the assurance-forge C++ library's design is th
     `preview.mutation()`.
   - A delete without a preview stays `edit::apply`.
 - **`Document::revision() -> Revision`.** A revision is opaque: it can be compared for
-  equality, and nothing else.
+  equality and hashed, and nothing else.
   - It identifies one state of a document within the process (the maintainer, 2026-11-15),
-    so a preview taken on a copy never applies to the original once either has changed.
+    so a preview taken on a copy never applies to the original if either
+    had changed before the preview was taken.
   - A new, default or read document gets a fresh revision, and so does every successful
     edit, even one that changes nothing.
   - `Clone` copies the revision, and a refusal keeps it.

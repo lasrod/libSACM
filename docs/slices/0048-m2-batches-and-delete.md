@@ -1,8 +1,8 @@
 ---
 slice: 0048
 name: m2-batches-and-delete
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [LIB-EDIT-014, LIB-EDIT-004, LIB-EDIT-005, LIB-EDIT-006, LIB-EDIT-007]
 mode: pr
 base: main
@@ -70,3 +70,9 @@ ADR 0029. The C++ library's delete and preview commands, where the standard is s
   ids: a delete does not rewind the counter, and an application that needs ids unique
   across its history gives its own (ADR 0031 and LIB-EDIT-005 reworded).
 - 2026-11-15 implementation: full gate green. Rows `implemented`.
+- 2026-11-15 verification: PR #65. The PR-diff mutants missed `BatchError`'s `Display`
+  (now pinned). Copilot found the scrub planning quadratic; fixed in 467a0c8 (20,000
+  sources: 13.4 s to 45 ms). CI on 467a0c8 green: 95 caught, 0 missed.
+- 2026-11-15 verification: PASS for all five rows (record 0048). Wording follow-ups fixed;
+  the stale mutants exclusion and fuller delete examples are in docs/follow-ups.md. Rows
+  `verified`.
