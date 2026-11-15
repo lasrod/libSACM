@@ -4,8 +4,8 @@
 //! One table, [`role`], gives both the role's name and its declared type, and
 //! [`admits`] and [`role_named`] are derived from it, so containment legality,
 //! the role names written to XMI and the role names read from it cannot drift
-//! apart. Crate-private, as the C++ library's role
-//! tables are.
+//! apart. The role tables stay crate-private; legality is public through
+//! [`ElementKind::may_contain`] and [`ElementKind::child_kinds`].
 
 use super::{AbstractClass, ElementKind};
 

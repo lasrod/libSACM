@@ -9,20 +9,31 @@
 //! A parent that cannot be a root is placed under an ArtifactPackage root,
 //! the scaffold: an ArtifactPackage contains every kind (items 1 and 6).
 //!
-//! The role table is crate-private, so everything here goes through `insert`.
 //! Item 1 spells the table out by hand; item 9 derives it from
 //! `docs/sacm/metamodel-inventory.md`. Two independent sources must agree with
 //! the implementation.
 //!
+//! LIB-API-012 makes the table public on `ElementKind` (`may_contain`,
+//! `child_kinds`). Item 10 checks those queries against item 1's table,
+//! against `insert` and against every create operation of `sacm::edit`.
+//!
 //! Documents are built through `Document::insert`, the `test-support` seam. The
 //! crate dev-depends on itself with that feature, so these tests always see it.
 //!
-//! Not checked here: that the crate-internal insertion used by the XMI reader
-//! and edit operations applies the same rule. It has no public entry point
-//! yet; SACM23-XMI-016 and the edit rows test it when they arrive.
+//! Not checked here: that the XMI reader applies the same rule. It has no
+//! public entry point for a single child; SACM23-XMI-016 tests it. The edit
+//! operations' parent check is item 10.
 
 use std::collections::BTreeSet;
 use std::path::Path;
+
+use sacm::edit::{
+    self, CreateArgumentGroup, CreateArgumentPackage, CreateArgumentReasoning,
+    CreateArtifactReference, CreateAssertedArtifactContext, CreateAssertedArtifactSupport,
+    CreateAssertedContext, CreateAssertedEvidence, CreateAssertedInference,
+    CreateAssuranceCasePackage, CreateClaim, CreateDescription, CreateImplementationConstraint,
+    CreateNote, CreateTaggedValue, EditError, Operation,
+};
 
 use sacm::model::ElementKind::{
     Activity, ArgumentGroup, ArgumentPackage, ArgumentPackageBinding, ArgumentPackageInterface,
@@ -1279,5 +1290,326 @@ fn lib_api_008_insert_admits_exactly_what_the_inventory_roles_admit() {
         drift.is_empty(),
         "LIB-API-008: insert drifts from the inventory under {} classes: {drift:#?}",
         drift.len()
+    );
+}
+
+// --- 10. Public containment queries (LIB-API-012) ---------------------------------
+
+// These compile only if `may_contain` is a `const fn`.
+const CLAIM_IN_ARGUMENT_PACKAGE: bool = ArgumentPackage.may_contain(Claim);
+const CLAIM_IN_ASSURANCE_CASE_PACKAGE: bool = AssuranceCasePackage.may_contain(Claim);
+const NOTE_IN_NOTE: bool = Note.may_contain(Note);
+
+#[test]
+fn lib_api_012_may_contain_is_usable_in_a_const_item() {
+    assert_eq!(
+        (
+            CLAIM_IN_ARGUMENT_PACKAGE,
+            CLAIM_IN_ASSURANCE_CASE_PACKAGE,
+            NOTE_IN_NOTE
+        ),
+        (true, false, false),
+        "LIB-API-012: may_contain in a const item gives the wrong answers"
+    );
+}
+
+#[test]
+fn lib_api_012_may_contain_is_true_for_exactly_the_339_legal_pairs() {
+    let table = containment_table();
+    let mut mismatches = Vec::new();
+    let mut admitted = 0_usize;
+    for parent in kinds() {
+        for child in kinds() {
+            let answer = parent.may_contain(child);
+            admitted += usize::from(answer);
+            if answer != table.contains(&(parent, child)) {
+                mismatches.push(format!("{parent}.may_contain({child}) is {answer}"));
+            }
+        }
+    }
+    assert!(
+        mismatches.is_empty(),
+        "LIB-API-012: {} of 1,444 pairs disagree with the table, the first: {:#?}",
+        mismatches.len(),
+        &mismatches[..mismatches.len().min(20)]
+    );
+    assert_eq!(
+        admitted, LEGAL_PAIRS,
+        "LIB-API-012: may_contain is not true for 339 of 1,444 pairs"
+    );
+}
+
+#[test]
+fn lib_api_012_may_contain_agrees_with_insert_for_all_1444_pairs() {
+    let mut mismatches = Vec::new();
+    let mut tried = 0_usize;
+    for parent in kinds() {
+        for child in kinds() {
+            let legal = parent.may_contain(child);
+            let answer = insert_under(parent, child);
+            if answer != expected_answer(parent, child, legal) {
+                mismatches.push(format!(
+                    "{child} under {parent}: may_contain is {legal}, insert gives {answer:?}"
+                ));
+            }
+            tried += 1;
+        }
+    }
+    assert!(
+        mismatches.is_empty(),
+        "LIB-API-012: may_contain and insert disagree on {} pairs, the first: {:#?}",
+        mismatches.len(),
+        &mismatches[..mismatches.len().min(20)]
+    );
+    assert_eq!(tried, 1_444, "LIB-API-012: not all 1,444 pairs were tried");
+}
+
+/// Makes a create operation under the parent with the given id.
+type MakeCreate = fn(&str) -> Operation;
+
+/// The ids of the two Claims that an asserted relationship's source and
+/// target name, so that a create under a legal parent succeeds.
+const SOURCE: &str = "source";
+const TARGET: &str = "target";
+
+/// Every create operation of this release, with the kind it creates.
+fn create_operations() -> [(ElementKind, MakeCreate); 15] {
+    [
+        (AssuranceCasePackage, |parent: &str| {
+            CreateAssuranceCasePackage::new(parent, LangString::new("n")).into()
+        }),
+        (ArgumentPackage, |parent: &str| {
+            CreateArgumentPackage::new(parent, LangString::new("n")).into()
+        }),
+        (Claim, |parent: &str| {
+            CreateClaim::new(parent, LangString::new("n")).into()
+        }),
+        (ArgumentReasoning, |parent: &str| {
+            CreateArgumentReasoning::new(parent, LangString::new("n")).into()
+        }),
+        (ArtifactReference, |parent: &str| {
+            CreateArtifactReference::new(parent, LangString::new("n")).into()
+        }),
+        (ArgumentGroup, |parent: &str| {
+            CreateArgumentGroup::new(parent, LangString::new("n")).into()
+        }),
+        (AssertedInference, |parent: &str| {
+            CreateAssertedInference::new(parent, LangString::new("n"), [SOURCE], TARGET).into()
+        }),
+        (AssertedEvidence, |parent: &str| {
+            CreateAssertedEvidence::new(parent, LangString::new("n"), [SOURCE], TARGET).into()
+        }),
+        (AssertedContext, |parent: &str| {
+            CreateAssertedContext::new(parent, LangString::new("n"), [SOURCE], TARGET).into()
+        }),
+        (AssertedArtifactSupport, |parent: &str| {
+            CreateAssertedArtifactSupport::new(parent, LangString::new("n"), [SOURCE], TARGET)
+                .into()
+        }),
+        (AssertedArtifactContext, |parent: &str| {
+            CreateAssertedArtifactContext::new(parent, LangString::new("n"), [SOURCE], TARGET)
+                .into()
+        }),
+        (Description, |parent: &str| {
+            CreateDescription::new(parent, LangString::new("c")).into()
+        }),
+        (ImplementationConstraint, |parent: &str| {
+            CreateImplementationConstraint::new(parent, LangString::new("c")).into()
+        }),
+        (Note, |parent: &str| {
+            CreateNote::new(parent, LangString::new("c")).into()
+        }),
+        (TaggedValue, |parent: &str| {
+            CreateTaggedValue::new(parent, LangString::new("k"), LangString::new("c")).into()
+        }),
+    ]
+}
+
+#[test]
+fn lib_api_012_create_operations_refuse_invalid_parent_exactly_when_may_contain_is_false() {
+    let operations = create_operations();
+    // Guards the list: 15 distinct operations, each named after the kind it
+    // creates.
+    let names: BTreeSet<&str> = operations
+        .iter()
+        .map(|(_, make)| make("parent").operation_name())
+        .collect();
+    assert_eq!(
+        names.len(),
+        15,
+        "LIB-API-012: the create operations are not 15 distinct ones"
+    );
+    for (kind, make) in &operations {
+        assert_eq!(
+            make("parent").operation_name(),
+            format!("Create{kind}"),
+            "LIB-API-012: the operation listed for {kind} does not create it"
+        );
+    }
+    let mut mismatches = Vec::new();
+    let mut refused = 0_usize;
+    for (kind, make) in operations {
+        for parent_kind in kinds() {
+            let mut doc = scaffolded();
+            add_parent(&mut doc, Claim, SOURCE);
+            add_parent(&mut doc, Claim, TARGET);
+            add_parent(&mut doc, parent_kind, "parent");
+            let legal = parent_kind.may_contain(kind);
+            let answer = edit::apply(&mut doc, make("parent"));
+            let right = match &answer {
+                Ok(mutation) => {
+                    legal
+                        && mutation.created_ids().len() == 1
+                        && doc
+                            .get(mutation.created_ids()[0].as_str())
+                            .is_some_and(|created| {
+                                created.kind() == kind
+                                    && created
+                                        .parent()
+                                        .is_some_and(|parent| parent.id().as_str() == "parent")
+                            })
+                }
+                Err(EditError::InvalidParent {
+                    parent,
+                    parent_kind: refused_parent_kind,
+                    kind: refused_kind,
+                    ..
+                }) => {
+                    !legal
+                        && parent.as_str() == "parent"
+                        && *refused_parent_kind == parent_kind
+                        && *refused_kind == kind
+                }
+                Err(_) => false,
+            };
+            refused += usize::from(!legal);
+            if !right {
+                mismatches.push(format!(
+                    "Create{kind} under a {parent_kind}: may_contain is {legal}, apply gives {answer:?}"
+                ));
+            }
+        }
+    }
+    assert!(
+        mismatches.is_empty(),
+        "LIB-API-012: {} creates disagree with may_contain, the first: {:#?}",
+        mismatches.len(),
+        &mismatches[..mismatches.len().min(20)]
+    );
+    let table = containment_table();
+    let expected_refused: usize = operations
+        .iter()
+        .map(|(kind, _)| {
+            kinds()
+                .filter(|&parent| !table.contains(&(parent, *kind)))
+                .count()
+        })
+        .sum();
+    assert_eq!(
+        refused, expected_refused,
+        "LIB-API-012: the number of refused creates is not the table's number of illegal parents"
+    );
+}
+
+#[test]
+fn lib_api_012_child_kinds_is_all_filtered_by_may_contain_in_all_order() {
+    let table = containment_table();
+    let mut total = 0_usize;
+    for parent in kinds() {
+        let children: Vec<ElementKind> = parent.child_kinds().collect();
+        let filtered: Vec<ElementKind> =
+            kinds().filter(|&child| parent.may_contain(child)).collect();
+        let from_table: Vec<ElementKind> = kinds()
+            .filter(|&child| table.contains(&(parent, child)))
+            .collect();
+        assert_eq!(
+            children, filtered,
+            "LIB-API-012: {parent}.child_kinds() is not ElementKind::ALL filtered by may_contain, in order"
+        );
+        assert_eq!(
+            children, from_table,
+            "LIB-API-012: {parent}.child_kinds() is not the table's children of a {parent}, in ALL order"
+        );
+        let unique: BTreeSet<ElementKind> = children.iter().copied().collect();
+        assert_eq!(
+            unique.len(),
+            children.len(),
+            "LIB-API-012: {parent}.child_kinds() repeats a kind: {children:?}"
+        );
+        total += children.len();
+    }
+    assert_eq!(
+        total, LEGAL_PAIRS,
+        "LIB-API-012: child_kinds over all kinds does not sum to 339"
+    );
+}
+
+#[test]
+fn lib_api_012_child_kinds_is_empty_for_the_four_utility_elements() {
+    for kind in UTILITY_ELEMENTS {
+        let children: Vec<ElementKind> = kind.child_kinds().collect();
+        assert!(
+            children.is_empty(),
+            "LIB-API-012: a {kind} may contain nothing, but child_kinds gives {children:?}"
+        );
+    }
+}
+
+#[test]
+fn lib_api_012_child_kinds_of_a_claim_are_the_four_utility_elements() {
+    let children: Vec<ElementKind> = Claim.child_kinds().collect();
+    assert_eq!(
+        children,
+        [Description, ImplementationConstraint, Note, TaggedValue],
+        "LIB-API-012: Claim.child_kinds() is not the four UtilityElement kinds in ALL order"
+    );
+}
+
+#[test]
+fn lib_api_012_child_kinds_of_an_argument_package_are_its_16_kinds() {
+    let children: Vec<ElementKind> = ArgumentPackage.child_kinds().collect();
+    assert_eq!(
+        children,
+        [
+            Description,
+            ImplementationConstraint,
+            Note,
+            TaggedValue,
+            ArgumentPackage,
+            ArgumentPackageInterface,
+            ArgumentPackageBinding,
+            ArgumentGroup,
+            Claim,
+            ArgumentReasoning,
+            ArtifactReference,
+            AssertedInference,
+            AssertedEvidence,
+            AssertedContext,
+            AssertedArtifactSupport,
+            AssertedArtifactContext,
+        ],
+        "LIB-API-012: ArgumentPackage.child_kinds() is not the 4 UtilityElement and 12 ArgumentationElement kinds in ALL order"
+    );
+}
+
+#[test]
+fn lib_api_012_is_package_is_true_for_exactly_the_kinds_insert_accepts_as_roots() {
+    let mut roots = Vec::new();
+    for kind in kinds() {
+        let accepted = Document::new()
+            .insert(None, kind, ElementId::from("root"), None)
+            .is_ok();
+        assert_eq!(
+            kind.is_package(),
+            accepted,
+            "LIB-API-012: {kind}.is_package() disagrees with insert(None, ..)"
+        );
+        if accepted {
+            roots.push(kind);
+        }
+    }
+    assert_eq!(
+        roots, PACKAGE_KINDS,
+        "LIB-API-012: the kinds accepted as roots are not the 12 package kinds"
     );
 }

@@ -33,6 +33,9 @@ todo = "warn"
 unimplemented = "warn"
 print_stdout = "warn"
 print_stderr = "warn"
+# `sacm` denies these in its non-test code (LIB-QA-017); tests and tools may use the platform.
+disallowed_methods = "allow"
+disallowed_types = "allow"
 
 [workspace.lints.rustdoc]
 broken_intra_doc_links = "deny"

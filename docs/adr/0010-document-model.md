@@ -84,7 +84,8 @@ children the library accepts (GitHub issue #60):
   the order of `ElementKind::ALL`.
 
 Both read the one table in `model::containment` that insertion, the XMI reader and the edit
-operations use, so they cannot disagree. `is_package` already answers which kinds may be a
+operations use, so they cannot disagree. The reader may still refuse an admitted child it
+cannot read yet (SACM23-XMI-016). `is_package` already answers which kinds may be a
 root. Role names and the role tables stay crate-private until SACM23-XMI-016.
 
 **Deviation from C++:**
@@ -92,4 +93,4 @@ root. Role names and the role tables stay crate-private until SACM23-XMI-016.
   `is_package_kind`, and parent legality is internal (`io/xmi_reader.cpp` attach_child,
   `commands.cpp` parent checks).
 
-*Amendment 2 status: proposed.*
+*Amendment 2 status: accepted (the maintainer, 2026-11-15).*

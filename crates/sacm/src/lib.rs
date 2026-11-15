@@ -269,6 +269,9 @@
 //! [sacm]: https://www.omg.org/spec/SACM/2.3
 //! [matrix]: https://github.com/lasrod/libSACM/blob/main/docs/matrix/functionality-matrix.md
 #![cfg_attr(docsrs, feature(doc_cfg))]
+// The platform APIs that compile for wasm32-unknown-unknown but fail at run
+// time are listed in clippy.toml; the library never calls them (LIB-QA-017).
+#![cfg_attr(not(test), deny(clippy::disallowed_methods, clippy::disallowed_types))]
 
 pub mod compare;
 pub mod diagnostic;

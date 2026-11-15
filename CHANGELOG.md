@@ -269,6 +269,9 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
   `ReferenceNotHeld`, `ChildNotFound` and `InvalidOrder` (SACM-CMD-009,
   `Code::CMD_INVALID_ORDER`). `Mutation::changed_ids` names the edited element, and is empty
   when nothing changed [LIB-EDIT-008, LIB-EDIT-009, LIB-EDIT-010, LIB-EDIT-012].
+- `ElementKind::may_contain` (a `const fn`) and `ElementKind::child_kinds` answer which
+  kinds SACM 2.3 lets an element contain, from the containment table the edits use
+  [LIB-API-012].
 
 ### Changed
 

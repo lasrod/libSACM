@@ -545,6 +545,11 @@ impl ElementKind {
     /// Whether the kind is a package: an assurance case, terminology, argument
     /// or artifact package, or the interface or binding of one.
     ///
+    /// These are exactly the kinds that may be a root of a
+    /// [`Document`](super::Document) (see
+    /// [`Document::roots`](super::Document::roots)). For which kinds an
+    /// element may contain, see [`may_contain`](Self::may_contain).
+    ///
     /// ```
     /// use sacm::model::ElementKind;
     ///
@@ -569,6 +574,70 @@ impl ElementKind {
                 | Self::ArtifactPackageInterface
                 | Self::ArtifactPackageBinding
         )
+    }
+
+    /// Whether an element of this kind may contain a `child` element: whether
+    /// a composite role of its SACM 2.3 class admits the child's kind.
+    ///
+    /// The roles are `description`, `implementationConstraint`, `note` and
+    /// `taggedValue` on every `ModelElement` (§8.6); `assuranceCasePackage`,
+    /// `argumentPackage`, `artifactPackage` and `terminologyPackage` on
+    /// `AssuranceCasePackage` (§9.2); `terminologyElement` on
+    /// `TerminologyPackage` (§10.4); `argumentElement` on `ArgumentPackage`
+    /// (§11.4); `artifactElement` on `ArtifactPackage`, admitting every
+    /// `ArtifactElement` (§12.2, ADR 0014); and `property` on every
+    /// `ArtifactAsset` (§12.6). Package interfaces and bindings inherit their
+    /// package's roles. A `UtilityElement` holds no elements.
+    ///
+    /// The answer comes from the same table that insertion, the edit
+    /// operations and the XMI writer use, so it cannot disagree with them. It
+    /// states what SACM 2.3 admits. It does not promise that a create
+    /// operation exists for `child`, that a given edit succeeds (ids, names
+    /// and references are checked separately), or that
+    /// [`xmi::read`](crate::xmi::read) reads such a child in this release.
+    /// Multiplicity is not enforced here: a second `Description` is admitted,
+    /// and [`validate`](crate::validation::validate) reports it
+    /// (SACM23-VAL-011). Which kinds may be a root is
+    /// [`is_package`](Self::is_package).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::model::ElementKind;
+    ///
+    /// assert!(ElementKind::ArgumentPackage.may_contain(ElementKind::Claim));
+    /// assert!(!ElementKind::Claim.may_contain(ElementKind::Claim));
+    /// assert!(!ElementKind::AssuranceCasePackage.may_contain(ElementKind::Claim)); // a Claim goes in an ArgumentPackage
+    /// assert!(ElementKind::ArgumentPackage.is_package()); // may be a root
+    /// ```
+    #[must_use]
+    pub const fn may_contain(self, child: ElementKind) -> bool {
+        super::containment::admits(self, child)
+    }
+
+    /// The kinds an element of this kind may contain: [`ElementKind::ALL`]
+    /// filtered by [`may_contain`](Self::may_contain), in the order of `ALL`.
+    ///
+    /// It is empty for the four `UtilityElement` kinds (`Description`,
+    /// `ImplementationConstraint`, `Note` and `TaggedValue`), and may grow as
+    /// `ALL` grows.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::model::ElementKind;
+    ///
+    /// // An "add child" menu for a selected Claim.
+    /// let menu: Vec<&str> = ElementKind::Claim.child_kinds().map(ElementKind::name).collect();
+    /// assert_eq!(menu, ["Description", "ImplementationConstraint", "Note", "TaggedValue"]);
+    /// assert_eq!(ElementKind::Note.child_kinds().count(), 0);
+    /// ```
+    #[must_use = "iterators are lazy and do nothing unless consumed"]
+    pub fn child_kinds(self) -> impl Iterator<Item = ElementKind> {
+        Self::ALL
+            .iter()
+            .copied()
+            .filter(move |&child| self.may_contain(child))
     }
 
     /// The concrete class this kind's class specializes, if any: the package of

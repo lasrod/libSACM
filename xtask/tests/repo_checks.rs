@@ -3,8 +3,9 @@
 //! dependency policy in `deny.toml` (LIB-QA-003), the cargo-mutants
 //! configuration and its triage (LIB-QA-007), the nextest settings that make
 //! mutation outcomes independent of test order (LIB-QA-012, ADR 0009), the
-//! git-ignore rules (LIB-TOOL-002, LIB-QA-007), and the ADR index and the
-//! links to ADRs (LIB-DOC-008).
+//! git-ignore rules (LIB-TOOL-002, LIB-QA-007), the ADR index and the
+//! links to ADRs (LIB-DOC-008), and the wasm32 build and the platform-API
+//! lint (LIB-QA-017).
 //!
 //! Workflow YAML structure is not pinned here: branch protection on `main`
 //! and review guard it (slice 0012).
@@ -206,6 +207,388 @@ fn lib_qa_001_ci_runs_every_gate() {
             ci.contains(trigger),
             "LIB-QA-001: CI must trigger on {trigger}"
         );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// LIB-QA-017: the wasm32 build and the platform-API lint
+// ---------------------------------------------------------------------------
+
+/// The target the library must build for.
+const WASM_TARGET: &str = "wasm32-unknown-unknown";
+
+/// The two wasm builds CI must run, each as a whole command.
+const WASM_BUILDS: [&str; 2] = [
+    "cargo build -p sacm --target wasm32-unknown-unknown",
+    "cargo build -p sacm --target wasm32-unknown-unknown --all-features",
+];
+
+/// The command a workflow line runs: the line without its indent, a `- `
+/// list marker and a `run:` key. A line of a `run: |` block is its own
+/// command.
+fn ci_command(line: &str) -> &str {
+    let line = line.trim();
+    let line = line.strip_prefix("- ").unwrap_or(line);
+    line.strip_prefix("run:").unwrap_or(line).trim()
+}
+
+/// Whether a workflow line installs the wasm target: a toolchain action's
+/// `targets:` input naming it, or `rustup target add` naming it.
+fn installs_wasm_target(line: &str) -> bool {
+    let line = line.trim();
+    let line = line.strip_prefix("- ").unwrap_or(line);
+    (line.starts_with("targets:") || line.contains("rustup target add"))
+        && line.contains(WASM_TARGET)
+}
+
+/// LIB-QA-017: what is missing from `ci.yml` for the wasm builds.
+fn wasm_ci_problems(ci: &str) -> Vec<String> {
+    let mut problems = Vec::new();
+    for build in WASM_BUILDS {
+        // Whole commands, not substrings: the default build is a prefix of
+        // the `--all-features` one.
+        require(
+            &mut problems,
+            ci.lines().any(|line| ci_command(line) == build),
+            "wasm-build",
+            &format!("ci.yml must run `{build}`"),
+        );
+    }
+    require(
+        &mut problems,
+        ci.lines().any(installs_wasm_target),
+        "wasm-target",
+        &format!("ci.yml must install the `{WASM_TARGET}` target (`targets: {WASM_TARGET}`)"),
+    );
+    // "Any failure fails the build."
+    require(
+        &mut problems,
+        !ci.lines()
+            .any(|line| line.trim().starts_with("continue-on-error:")),
+        "wasm-continue-on-error",
+        "ci.yml must not let a job's failure pass (`continue-on-error`)",
+    );
+    problems
+}
+
+/// `ci` without its one line that runs `command` (compared whole).
+fn without_command(ci: &str, command: &str) -> String {
+    let kept: Vec<&str> = ci
+        .lines()
+        .filter(|line| ci_command(line) != command)
+        .collect();
+    assert_eq!(
+        ci.lines().count() - kept.len(),
+        1,
+        "LIB-QA-017: mutation target `{command}` must be one line of ci.yml"
+    );
+    kept.join("\n")
+}
+
+#[test]
+fn lib_qa_017_ci_builds_sacm_for_wasm32() {
+    let problems = wasm_ci_problems(&read(".github/workflows/ci.yml"));
+    assert!(
+        problems.is_empty(),
+        "LIB-QA-017: ci.yml does not build sacm for {WASM_TARGET}: {problems:#?}"
+    );
+}
+
+#[test]
+fn lib_qa_017_wasm_ci_check_reports_a_removed_build_or_target() {
+    let ci = read(".github/workflows/ci.yml");
+    assert!(
+        wasm_ci_problems(&ci).is_empty(),
+        "LIB-QA-017: the mutations need a ci.yml that passes the check"
+    );
+    for build in WASM_BUILDS {
+        let mutated = without_command(&ci, build);
+        assert_eq!(
+            problem_codes(&wasm_ci_problems(&mutated)),
+            ["wasm-build"],
+            "LIB-QA-017: removing `{build}` from ci.yml is not reported"
+        );
+    }
+    let without_target: Vec<&str> = ci
+        .lines()
+        .filter(|line| !installs_wasm_target(line))
+        .collect();
+    assert_eq!(
+        problem_codes(&wasm_ci_problems(&without_target.join("\n"))),
+        ["wasm-target"],
+        "LIB-QA-017: removing the {WASM_TARGET} target install from ci.yml is not reported"
+    );
+    let tolerated = format!("{ci}\n    continue-on-error: true\n");
+    assert_eq!(
+        problem_codes(&wasm_ci_problems(&tolerated)),
+        ["wasm-continue-on-error"],
+        "LIB-QA-017: a job with `continue-on-error: true` is not reported"
+    );
+}
+
+/// The platform APIs that compile for `wasm32-unknown-unknown` but fail at
+/// run time, as `clippy.toml` `disallowed-methods` paths: every free function
+/// of `std::fs` (Rust 1.85), and the listed thread, process and environment
+/// functions.
+const DISALLOWED_METHODS: [&str; 33] = [
+    "std::fs::canonicalize",
+    "std::fs::copy",
+    "std::fs::create_dir",
+    "std::fs::create_dir_all",
+    "std::fs::exists",
+    "std::fs::hard_link",
+    "std::fs::metadata",
+    "std::fs::read",
+    "std::fs::read_dir",
+    "std::fs::read_link",
+    "std::fs::read_to_string",
+    "std::fs::remove_dir",
+    "std::fs::remove_dir_all",
+    "std::fs::remove_file",
+    "std::fs::rename",
+    "std::fs::set_permissions",
+    "std::fs::soft_link",
+    "std::fs::symlink_metadata",
+    "std::fs::write",
+    "std::thread::spawn",
+    "std::thread::sleep",
+    "std::thread::scope",
+    "std::process::exit",
+    "std::process::abort",
+    "std::env::var",
+    "std::env::var_os",
+    "std::env::vars",
+    "std::env::vars_os",
+    "std::env::args",
+    "std::env::args_os",
+    "std::env::current_dir",
+    "std::env::set_current_dir",
+    "std::env::temp_dir",
+];
+
+/// The platform types, as `clippy.toml` `disallowed-types` paths.
+const DISALLOWED_TYPES: [&str; 8] = [
+    "std::fs::File",
+    "std::fs::OpenOptions",
+    "std::fs::DirEntry",
+    "std::fs::ReadDir",
+    "std::thread::Builder",
+    "std::process::Command",
+    "std::time::Instant",
+    "std::time::SystemTime",
+];
+
+/// The `clippy.toml` arrays and the paths each must list.
+const DISALLOWED: [(&str, &[&str]); 2] = [
+    ("disallowed-methods", &DISALLOWED_METHODS),
+    ("disallowed-types", &DISALLOWED_TYPES),
+];
+
+/// LIB-QA-017: what is missing from `clippy.toml` for the platform-API lint.
+/// Every entry must be `{ path = "...", reason = "..." }` with a non-empty
+/// reason, and every listed path must be there.
+fn platform_api_problems(clippy: &toml::Table) -> Vec<String> {
+    let mut problems = Vec::new();
+    for (key, expected) in DISALLOWED {
+        let Some(entries) = clippy.get(key).and_then(toml::Value::as_array) else {
+            problems.push(problem(
+                "platform-api-missing",
+                format!("clippy.toml has no `{key}` array"),
+            ));
+            continue;
+        };
+        let mut paths = BTreeSet::new();
+        for entry in entries {
+            let path = entry.get("path").and_then(toml::Value::as_str);
+            let reason = entry.get("reason").and_then(toml::Value::as_str);
+            if let Some(path) = path {
+                paths.insert(path);
+            }
+            require(
+                &mut problems,
+                path.is_some() && reason.is_some_and(|reason| !reason.trim().is_empty()),
+                "platform-api-reason",
+                &format!("clippy.toml `{key}` entry {entry} has no path or no reason"),
+            );
+        }
+        for path in expected.iter().filter(|path| !paths.contains(*path)) {
+            problems.push(problem(
+                "platform-api-missing",
+                format!("clippy.toml `{key}` does not list `{path}`"),
+            ));
+        }
+    }
+    problems
+}
+
+/// The crate attribute that denies the two lints in `sacm`'s non-test code,
+/// without white space.
+const DENY_PLATFORM_APIS: &str =
+    "#![cfg_attr(not(test),deny(clippy::disallowed_methods,clippy::disallowed_types))]";
+
+/// LIB-QA-017: whether `lib_rs` holds the deny attribute, compared without
+/// white space and outside `//` comments.
+fn platform_deny_problems(lib_rs: &str) -> Vec<String> {
+    let code: String = lib_rs
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("//"))
+        .flat_map(str::chars)
+        .filter(|c| !c.is_whitespace())
+        .collect();
+    let mut problems = Vec::new();
+    require(
+        &mut problems,
+        code.contains(DENY_PLATFORM_APIS),
+        "platform-lint-deny",
+        "crates/sacm/src/lib.rs must have `#![cfg_attr(not(test), deny(clippy::disallowed_methods, clippy::disallowed_types))]`",
+    );
+    problems
+}
+
+/// LIB-QA-017: whether the root `Cargo.toml` allows the two lints
+/// workspace-wide, as `"allow"` or `{ level = "allow", ... }`.
+fn platform_allow_problems(cargo: &toml::Table) -> Vec<String> {
+    let mut problems = Vec::new();
+    for lint in ["disallowed_methods", "disallowed_types"] {
+        let level = lookup(cargo, &["workspace", "lints", "clippy", lint]).and_then(|value| {
+            value
+                .as_str()
+                .or_else(|| value.get("level").and_then(toml::Value::as_str))
+        });
+        require(
+            &mut problems,
+            level == Some("allow"),
+            "platform-lint-allow",
+            &format!("Cargo.toml [workspace.lints.clippy] must set `{lint} = \"allow\"`"),
+        );
+    }
+    problems
+}
+
+#[test]
+fn lib_qa_017_clippy_toml_disallows_the_platform_apis_with_reasons() {
+    let problems = platform_api_problems(&toml_table("clippy.toml"));
+    assert!(
+        problems.is_empty(),
+        "LIB-QA-017: clippy.toml does not disallow the platform APIs: {problems:#?}"
+    );
+}
+
+#[test]
+fn lib_qa_017_sacm_denies_the_platform_lints_outside_tests() {
+    let mut problems = platform_deny_problems(&read("crates/sacm/src/lib.rs"));
+    problems.extend(platform_allow_problems(&toml_table("Cargo.toml")));
+    assert!(
+        problems.is_empty(),
+        "LIB-QA-017: the platform lints are not allowed workspace-wide and denied in sacm: {problems:#?}"
+    );
+}
+
+#[test]
+fn lib_qa_017_clippy_toml_check_reports_a_removed_path_or_reason() {
+    let clippy = toml_table("clippy.toml");
+    assert!(
+        platform_api_problems(&clippy).is_empty(),
+        "LIB-QA-017: the mutations need a clippy.toml that passes the check"
+    );
+    for (key, expected) in DISALLOWED {
+        for path in expected {
+            let mut mutated = clippy.clone();
+            if let Some(entries) = mutated.get_mut(key).and_then(toml::Value::as_array_mut) {
+                entries
+                    .retain(|entry| entry.get("path").and_then(toml::Value::as_str) != Some(path));
+            }
+            assert_eq!(
+                problem_codes(&platform_api_problems(&mutated)),
+                ["platform-api-missing"],
+                "LIB-QA-017: removing `{path}` from clippy.toml `{key}` is not reported"
+            );
+        }
+        for bad in [
+            format!("{{ path = \"{}\", reason = \"\" }}", expected[0]),
+            format!("{{ path = \"{}\", reason = \"  \" }}", expected[0]),
+            format!("{{ path = \"{}\" }}", expected[0]),
+            format!("\"{}\"", expected[0]),
+        ] {
+            let mut mutated = clippy.clone();
+            if let Some(entries) = mutated.get_mut(key).and_then(toml::Value::as_array_mut) {
+                entries.push(toml_value(&bad));
+            }
+            assert_eq!(
+                problem_codes(&platform_api_problems(&mutated)),
+                ["platform-api-reason"],
+                "LIB-QA-017: the clippy.toml `{key}` entry {bad} without a reason is not reported"
+            );
+        }
+    }
+}
+
+#[test]
+fn lib_qa_017_deny_and_allow_checks_report_a_removed_attribute_or_level() {
+    let lib_rs = read("crates/sacm/src/lib.rs");
+    assert!(
+        platform_deny_problems(&lib_rs).is_empty(),
+        "LIB-QA-017: the mutations need a lib.rs that passes the check"
+    );
+    let attribute = lib_rs
+        .lines()
+        .find(|line| {
+            let compact: String = line.chars().filter(|c| !c.is_whitespace()).collect();
+            compact == DENY_PLATFORM_APIS
+        })
+        .map(str::trim)
+        .expect("LIB-QA-017: the deny attribute is one line of lib.rs");
+    for mutated in [
+        delete_line(&lib_rs, attribute),
+        edit_line(&lib_rs, attribute, |line| {
+            vec![format!("{}// {}", leading(line), line.trim())]
+        }),
+        replace_line(
+            &lib_rs,
+            attribute,
+            "#![cfg_attr(not(test), deny(clippy::disallowed_methods))]",
+        ),
+        replace_line(
+            &lib_rs,
+            attribute,
+            "#![deny(clippy::disallowed_methods, clippy::disallowed_types)]",
+        ),
+    ] {
+        assert_eq!(
+            problem_codes(&platform_deny_problems(&mutated)),
+            ["platform-lint-deny"],
+            "LIB-QA-017: a removed or changed deny attribute in lib.rs is not reported"
+        );
+    }
+
+    let cargo = toml_table("Cargo.toml");
+    assert!(
+        platform_allow_problems(&cargo).is_empty(),
+        "LIB-QA-017: the mutations need a Cargo.toml that passes the check"
+    );
+    for lint in ["disallowed_methods", "disallowed_types"] {
+        for level in [None, Some("warn"), Some("deny")] {
+            let mut mutated = cargo.clone();
+            let clippy_lints = mutated
+                .get_mut("workspace")
+                .and_then(|workspace| workspace.get_mut("lints"))
+                .and_then(|lints| lints.get_mut("clippy"))
+                .and_then(toml::Value::as_table_mut)
+                .expect("LIB-QA-017: Cargo.toml has [workspace.lints.clippy]");
+            match level {
+                None => {
+                    clippy_lints.remove(lint);
+                }
+                Some(level) => {
+                    clippy_lints.insert(lint.to_owned(), toml::Value::String(level.to_owned()));
+                }
+            }
+            assert_eq!(
+                problem_codes(&platform_allow_problems(&mutated)),
+                ["platform-lint-allow"],
+                "LIB-QA-017: `{lint}` at {level:?} in [workspace.lints.clippy] is not reported"
+            );
+        }
     }
 }
 

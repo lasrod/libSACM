@@ -85,6 +85,21 @@ jobs:
       - run: cargo xtask fetch-spec --only xmlconf
       - run: cargo +1.85 test -p sacm -p sacm-cli
 
+  wasm:
+    # LIB-QA-017: the library builds for the browser target, as Assurance Forge's web
+    # version needs (GitHub issue #58).
+    name: wasm32 build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo build -p sacm --target wasm32-unknown-unknown
+      - run: cargo build -p sacm --target wasm32-unknown-unknown --all-features
+
   docs:
     name: rustdoc
     runs-on: ubuntu-latest

@@ -765,6 +765,8 @@ pub enum EditError {
     /// say. Choose a parent whose class can hold the new kind. For example, a
     /// Claim goes in an ArgumentPackage, and an ArgumentPackage in an
     /// AssuranceCasePackage or another ArgumentPackage.
+    /// [`ElementKind::may_contain`](crate::model::ElementKind::may_contain)
+    /// answers this before applying.
     #[non_exhaustive]
     InvalidParent {
         /// The parent's id.

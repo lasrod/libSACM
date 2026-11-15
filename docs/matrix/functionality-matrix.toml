@@ -4939,7 +4939,7 @@ title = "Public containment queries"
 requirement = "The containment table of LIB-API-008 is public on `ElementKind`: whether a kind may contain another, the kinds a kind may contain in a fixed documented order, and whether a kind may be a root (`is_package`). The queries read the same table that insertion and the edit operations use, so they cannot disagree with them. They state what SACM 2.3 admits, not which create operation exists."
 source = "User request: Assurance Forge, GitHub issue #60 (2026-11-14); LIB-API-008; ADR 0010 amendment 2"
 kind = "api"
-status = "analyzed"
+status = "implemented"
 depends_on = ["LIB-API-008"]
 acceptance = [
   "`ElementKind::may_contain(self, child) -> bool` is a `const fn`, `#[must_use]`, and is usable in a `const` item.",
@@ -4948,6 +4948,18 @@ acceptance = [
   "`ElementKind::child_kinds(self)` yields `ElementKind::ALL` filtered by `may_contain(self, _)`, in `ALL` order, without duplicates; the counts over all kinds sum to 339; it is empty for the four UtilityElement kinds, is `[Description, ImplementationConstraint, Note, TaggedValue]` for a Claim, and has 16 kinds for an ArgumentPackage.",
   "`is_package` is true for exactly the 12 kinds `insert(None, ..)` accepts as a root.",
   "The rustdoc of `may_contain` says it states what SACM 2.3 admits, not that a create operation exists for the kind or that an edit will succeed, and links `is_package` for roots; a doctest builds an \"add child\" list with `child_kinds`.",
+]
+code = ["crates/sacm/src/model/kind.rs", "crates/sacm/src/model/containment.rs", "docs/adr/0010-document-model.md"]
+tests = [
+  "crates/sacm/tests/containment.rs::lib_api_012_may_contain_is_usable_in_a_const_item",
+  "crates/sacm/tests/containment.rs::lib_api_012_may_contain_is_true_for_exactly_the_339_legal_pairs",
+  "crates/sacm/tests/containment.rs::lib_api_012_may_contain_agrees_with_insert_for_all_1444_pairs",
+  "crates/sacm/tests/containment.rs::lib_api_012_create_operations_refuse_invalid_parent_exactly_when_may_contain_is_false",
+  "crates/sacm/tests/containment.rs::lib_api_012_child_kinds_is_all_filtered_by_may_contain_in_all_order",
+  "crates/sacm/tests/containment.rs::lib_api_012_child_kinds_is_empty_for_the_four_utility_elements",
+  "crates/sacm/tests/containment.rs::lib_api_012_child_kinds_of_a_claim_are_the_four_utility_elements",
+  "crates/sacm/tests/containment.rs::lib_api_012_child_kinds_of_an_argument_package_are_its_16_kinds",
+  "crates/sacm/tests/containment.rs::lib_api_012_is_package_is_true_for_exactly_the_kinds_insert_accepts_as_roots",
 ]
 
 [[row]]
@@ -4959,7 +4971,7 @@ requirement = "`edit::check(&Document, &Operation)` succeeds exactly when `edit:
 source = "User request: Assurance Forge, GitHub issue #60 (2026-11-14); D-ATOMIC; ADR 0019"
 kind = "editing"
 status = "planned"
-depends_on = ["LIB-EDIT-002", "LIB-EDIT-008", "LIB-EDIT-009", "LIB-EDIT-010"]
+depends_on = ["LIB-EDIT-002", "LIB-EDIT-008", "LIB-EDIT-009", "LIB-EDIT-010", "LIB-EDIT-012"]
 notes = "LIB-EDIT-004 (delete preview) is the richer form of this for one operation."
 
 [[row]]
@@ -4982,7 +4994,7 @@ title = "The library builds for wasm32-unknown-unknown"
 requirement = "CI builds `sacm` for `wasm32-unknown-unknown` with default features, and with `serde` once LIB-API-006 lands; any failure fails the build. The library's non-test code uses no `std::fs`, `std::thread`, `std::process`, `std::env` or system clock (`std::time::Instant`, `SystemTime`), which compile for that target but fail at run time, enforced by a lint. So reading, validating, editing and writing a document from bytes in memory work on that target. JavaScript bindings are LIB-API-007."
 source = "User request: Assurance Forge, GitHub issue #58 (2026-11-14); D-API"
 kind = "quality"
-status = "analyzed"
+status = "implemented"
 depends_on = ["LIB-QA-001"]
 acceptance = [
   "ci.yml has a job that installs the `wasm32-unknown-unknown` target and runs `cargo build -p sacm --target wasm32-unknown-unknown` and the same with `--all-features`; a regression test fails if either command or the target is removed.",
@@ -4991,6 +5003,15 @@ acceptance = [
   "The full gate is green with the lint in place, and CI's wasm job has run green on the slice's PR (verification evidence: run URL).",
 ]
 notes = "On 2026-11-15 `cargo build -p sacm --target wasm32-unknown-unknown` succeeded on main (8183104). A build alone does not prove the second sentence, because std's file system, thread and clock APIs compile for that target."
+code = [".github/workflows/ci.yml", "clippy.toml", "Cargo.toml", "crates/sacm/src/lib.rs"]
+tests = [
+  "xtask/tests/repo_checks.rs::lib_qa_017_ci_builds_sacm_for_wasm32",
+  "xtask/tests/repo_checks.rs::lib_qa_017_wasm_ci_check_reports_a_removed_build_or_target",
+  "xtask/tests/repo_checks.rs::lib_qa_017_clippy_toml_disallows_the_platform_apis_with_reasons",
+  "xtask/tests/repo_checks.rs::lib_qa_017_sacm_denies_the_platform_lints_outside_tests",
+  "xtask/tests/repo_checks.rs::lib_qa_017_clippy_toml_check_reports_a_removed_path_or_reason",
+  "xtask/tests/repo_checks.rs::lib_qa_017_deny_and_allow_checks_report_a_removed_attribute_or_level",
+]
 
 [[row]]
 id = "SACM23-XMI-018"

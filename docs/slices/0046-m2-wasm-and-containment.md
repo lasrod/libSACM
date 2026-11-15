@@ -2,7 +2,7 @@
 slice: 0046
 name: m2-wasm-and-containment
 state: in-progress
-step: design
+step: verification
 rows: [LIB-QA-017, LIB-API-012]
 mode: pr
 base: main
@@ -32,7 +32,7 @@ LIB-API-008's (verified, slice 0017); this slice only exposes it.
 
 - **LIB-API-012:** `ElementKind::may_contain(self, child: ElementKind) -> bool` (`const`)
   and `ElementKind::child_kinds(self) -> impl Iterator<Item = ElementKind>` (in `ALL`
-  order); roots stay `is_package`. ADR 0010 amendment 2 (proposed), deviation D4.
+  order); roots stay `is_package`. ADR 0010 amendment 2 (accepted by the maintainer, 2026-11-15), deviation D4.
 - **LIB-QA-017:** no API. `clippy.toml` lists the platform APIs; workspace lints allow
   `disallowed_methods`/`disallowed_types`; `sacm`'s `lib.rs` denies them outside `cfg(test)`.
   CI job `wasm` builds `sacm` for the target, default and all features.
@@ -49,3 +49,12 @@ LIB-API-008's (verified, slice 0017); this slice only exposes it.
 - 2026-11-15 tests: blocked. The agent write guard resolves paths against
   `CLAUDE_PROJECT_DIR` (the main checkout), so agents launched from that session cannot
   write in this worktree. Resume from a session opened in the worktree.
+- 2026-11-15 tests: slice 0045 merged; the slice moved back to the main checkout (worktree
+  removed) and merged `origin/main`.
+- 2026-11-15 tests: 9 `lib_api_012_*` and 6 `lib_qa_017_*` tests, red confirmed (E0599 for
+  the two methods; missing config). Rows `tests-failing`.
+- 2026-11-15 implementation: methods, lint attribute and workspace allow (implementer);
+  `clippy.toml` lists and the CI `wasm` job (lead). The maintainer accepted ADR 0010
+  amendment 2. Docs review: one blocking finding (the rustdoc said the reader cannot
+  disagree, but it refuses some admitted children until SACM23-XMI-016), fixed with the
+  follow-ups. Full gate green. Rows `implemented`.
