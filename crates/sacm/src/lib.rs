@@ -292,8 +292,10 @@
 //! is tagged `"type"` with its operation name, keys are the snake-case
 //! accessor names (for an `EditError`, its variant's field names), every
 //! key is written, and on input a key may be left out only where a builder
-//! sets a default (an operation's `id`, a `LangString`'s `lang` or
-//! `content`). A package create's `"parent": null` means a root; leaving out
+//! sets a default: an operation's `id`, `structure`, `reasoning`,
+//! `is_counter`, `referenced_artifact_elements` and `group_members`; a
+//! `LangString`'s `lang` and `content`; and a `Diagnostic`'s `clause`,
+//! `affected` and `location`. A package create's `"parent": null` means a root; leaving out
 //! `parent` is refused. Unknown keys, names and codes are refused. A
 //! deserialized operation proves nothing: [`edit::check`] and
 //! [`edit::apply`] check it as they check one built in Rust.

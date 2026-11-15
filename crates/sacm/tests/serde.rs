@@ -88,6 +88,9 @@ const OPERATION_NAMES: [&str; 25] = [
     "ReorderElements",
 ];
 
+/// The first 15 of [`OPERATION_NAMES`]: the creates.
+const CREATE_COUNT: usize = 15;
+
 /// Every `EditError` variant of this release, with its catalog code, in
 /// declaration order.
 const EDIT_ERRORS: [(&str, &str); 14] = [
@@ -1564,4 +1567,340 @@ fn lib_api_006_check_and_apply_refuse_an_invalid_deserialized_operation_as_its_t
             )
         },
     );
+}
+
+// ---------------------------------------------------------------------------
+// Every feature name of an EditError reads back
+// ---------------------------------------------------------------------------
+
+/// A document with a Claim `c1` holding a Note `n1`, and an
+/// `ArgumentReasoning` `why`, in the ArgumentPackage `p`.
+const FEATURE_START: &str = r#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="p">
+  <name content="P"/>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+    <name content="C1"/>
+    <note xmi:id="n1"/>
+  </argumentElement>
+  <argumentElement xmi:type="sacm:ArgumentReasoning" xmi:id="why"><name content="Why"/></argumentElement>
+</sacm:ArgumentPackage>
+"#;
+
+#[test]
+fn lib_api_006_a_feature_not_applicable_reads_back_for_every_feature_name() {
+    let doc = match xmi::read(FEATURE_START.as_bytes(), &ReadOptions::default()) {
+        Ok(output) => output.into_document(),
+        Err(error) => panic!("{API_006}: setup: FEATURE_START does not read: {error}"),
+    };
+    let cases: [(Operation, ElementKind, &str); 6] = [
+        (
+            SetName::new("n1", en("N")).into(),
+            ElementKind::Note,
+            "name",
+        ),
+        (
+            SetAssertionDeclaration::new("why", AssertionDeclaration::Assumed).into(),
+            ElementKind::ArgumentReasoning,
+            "assertionDeclaration",
+        ),
+        (
+            SetContent::new("c1", two_values()).into(),
+            ElementKind::Claim,
+            "content",
+        ),
+        (SetKey::new("n1", en("K")).into(), ElementKind::Note, "key"),
+        (
+            SetFlag::new("c1", Flag::IsCounter, true).into(),
+            ElementKind::Claim,
+            "isCounter",
+        ),
+        (
+            AddReference::new("c1", ReferenceEnd::Source, "c1").into(),
+            ElementKind::Claim,
+            "source",
+        ),
+    ];
+    for (operation, kind, feature) in cases {
+        let error = refusal(&doc, operation.clone());
+        assert!(
+            matches!(
+                &error,
+                EditError::FeatureNotApplicable { kind: k, feature: f, .. } if *k == kind && *f == feature
+            ),
+            "{API_006}: setup: {operation:?} is refused as {error:?}, not for its {feature}"
+        );
+        let written = to_json(&error);
+        assert!(
+            written.ends_with(&format!(",\"feature\":\"{feature}\"}}")),
+            "{API_006}: the feature {feature} is not written as its name: {written}"
+        );
+        let read: EditError = from_json(&written);
+        assert_eq!(
+            read, error,
+            "{API_006}: a FeatureNotApplicable for {feature} does not read back"
+        );
+    }
+    // No operation of this release refuses a gid, but the name is a feature.
+    let gid = r#"{"type":"FeatureNotApplicable","code":"SACM-CMD-008","element":"c1","kind":"Claim","feature":"gid"}"#;
+    let read: EditError = from_json(gid);
+    assert!(
+        matches!(
+            &read,
+            EditError::FeatureNotApplicable { feature: "gid", kind: ElementKind::Claim, element, .. }
+                if element.as_str() == "c1"
+        ),
+        "{API_006}: {gid} reads as {read:?}"
+    );
+    assert_eq!(
+        to_json(&read),
+        gid,
+        "{API_006}: a FeatureNotApplicable for gid does not write back"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// R3 and R4 over every object of the golden files
+// ---------------------------------------------------------------------------
+
+type Object = serde_json::Map<String, serde_json::Value>;
+
+/// One changed copy of a golden value: a label naming the change, the
+/// changed value, and the value it must read as `==` to, or `None` if it
+/// must be refused.
+struct Changed {
+    label: String,
+    value: serde_json::Value,
+    reads_as: Option<serde_json::Value>,
+}
+
+/// What `change` makes of one object: (label, changed object, the object it
+/// must read as, or `None`). `root` says whether the object is an element of
+/// the file's top-level array.
+type Change<'a> = &'a dyn Fn(&Object, bool) -> Vec<(String, Object, Option<Object>)>;
+
+/// Every copy of `value` in which exactly one object, at any depth, is
+/// changed by `change`.
+fn changed_copies(value: &serde_json::Value, root: bool, change: Change<'_>) -> Vec<Changed> {
+    let mut copies = Vec::new();
+    match value {
+        serde_json::Value::Object(object) => {
+            for (label, changed, reads_as) in change(object, root) {
+                copies.push(Changed {
+                    label,
+                    value: serde_json::Value::Object(changed),
+                    reads_as: reads_as.map(serde_json::Value::Object),
+                });
+            }
+            for (key, child) in object {
+                for inner in changed_copies(child, false, change) {
+                    let with = |child: serde_json::Value| {
+                        let mut copy = object.clone();
+                        copy.insert(key.clone(), child);
+                        serde_json::Value::Object(copy)
+                    };
+                    copies.push(Changed {
+                        label: format!("{key}.{}", inner.label),
+                        value: with(inner.value),
+                        reads_as: inner.reads_as.map(with),
+                    });
+                }
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for (index, item) in items.iter().enumerate() {
+                for inner in changed_copies(item, root, change) {
+                    let with = |item: serde_json::Value| {
+                        let mut copy = items.clone();
+                        copy[index] = item;
+                        serde_json::Value::Array(copy)
+                    };
+                    copies.push(Changed {
+                        label: format!("[{index}].{}", inner.label),
+                        value: with(inner.value),
+                        reads_as: inner.reads_as.map(with),
+                    });
+                }
+            }
+        }
+        _ => {}
+    }
+    copies
+}
+
+/// The golden file `name`, parsed.
+fn golden_value(name: &str) -> serde_json::Value {
+    match serde_json::from_str(&golden(name)) {
+        Ok(value) => value,
+        Err(error) => panic!("{API_006}: setup: {name} is not JSON: {error}"),
+    }
+}
+
+/// Each copy of the golden file `name` that `change` makes reads as a `T`
+/// `==` to its `reads_as`, or is refused as data. Returns the number of
+/// copies.
+fn assert_changed_copies<T>(name: &str, change: Change<'_>) -> usize
+where
+    T: DeserializeOwned + PartialEq + Debug,
+{
+    let copies = changed_copies(&golden_value(name), true, change);
+    for copy in &copies {
+        let text = copy.value.to_string();
+        let label = &copy.label;
+        match (serde_json::from_str::<T>(&text), &copy.reads_as) {
+            (Ok(read), Some(reads_as)) => {
+                let expected: T = from_json(&reads_as.to_string());
+                assert_eq!(
+                    read, expected,
+                    "{API_006}: {name} {label}: the value does not read as its default"
+                );
+            }
+            (Ok(read), None) => {
+                panic!("{API_006}: {name} {label}: {text} was read, as {read:?}");
+            }
+            (Err(error), None) => assert!(
+                error.is_data(),
+                "{API_006}: {name} {label}: refused as malformed JSON, not as data: {error}"
+            ),
+            (Err(error), Some(_)) => {
+                panic!("{API_006}: {name} {label}: {text} was refused: {error}");
+            }
+        }
+    }
+    copies.len()
+}
+
+/// Runs `assert_changed_copies` over every golden file, with its type.
+fn assert_every_golden_changed(change: Change<'_>) {
+    let counts = [
+        (
+            "operations.json",
+            assert_changed_copies::<Vec<Operation>>("operations.json", change),
+        ),
+        (
+            "mutations.json",
+            assert_changed_copies::<Vec<Mutation>>("mutations.json", change),
+        ),
+        (
+            "edit-errors.json",
+            assert_changed_copies::<Vec<EditError>>("edit-errors.json", change),
+        ),
+        (
+            "diagnostics.json",
+            assert_changed_copies::<Vec<Diagnostic>>("diagnostics.json", change),
+        ),
+        (
+            "values.json",
+            assert_changed_copies::<Values>("values.json", change),
+        ),
+    ];
+    for (name, count) in counts {
+        assert!(
+            count > 0,
+            "{API_006}: setup: no object of {name} was changed"
+        );
+    }
+}
+
+/// The keys of `object` a reader may omit, with the default each reads as
+/// (R3): a create's `id` and builder-set keys, a `LangString`'s `lang`
+/// and `content`, and a `Diagnostic`'s `clause`, `affected` and `location`.
+fn optional_keys(
+    object: &Object,
+    root: bool,
+    diagnostics: bool,
+) -> Vec<(&'static str, serde_json::Value)> {
+    use serde_json::Value;
+    // A create's `id` is its caller id; the `id` of an AddReference or a
+    // RemoveReference is the referenced id, which is required.
+    let is_create = object
+        .get("type")
+        .and_then(Value::as_str)
+        .is_some_and(|name| OPERATION_NAMES[..CREATE_COUNT].contains(&name));
+    if is_create {
+        vec![
+            ("id", Value::Null),
+            ("structure", Value::Null),
+            ("reasoning", Value::Null),
+            ("is_counter", Value::Bool(false)),
+            ("referenced_artifact_elements", Value::Array(Vec::new())),
+            ("group_members", Value::Array(Vec::new())),
+        ]
+    } else if diagnostics && root {
+        vec![
+            ("clause", Value::Null),
+            ("affected", Value::Array(Vec::new())),
+            ("location", Value::Null),
+        ]
+    } else if object.len() == 2 && object.contains_key("lang") && object.contains_key("content") {
+        vec![("lang", Value::Null), ("content", Value::Null)]
+    } else {
+        Vec::new()
+    }
+}
+
+#[test]
+fn lib_api_006_an_unknown_key_in_any_object_of_the_golden_files_is_refused() {
+    let change = |object: &Object, _root: bool| {
+        let mut changed = object.clone();
+        changed.insert("unknown_key".to_owned(), serde_json::Value::Null);
+        vec![("an unknown key".to_owned(), changed, None)]
+    };
+    assert_every_golden_changed(&change);
+}
+
+/// Every copy of `object` without one of its keys: an optional key (see
+/// [`optional_keys`]) must read as the object with its default, and every
+/// other key, the `"type"` tag included, must be refused.
+fn remove_each_key(
+    object: &Object,
+    root: bool,
+    diagnostics: bool,
+) -> Vec<(String, Object, Option<Object>)> {
+    let optional = optional_keys(object, root, diagnostics);
+    object
+        .keys()
+        .map(|key| {
+            let mut without = object.clone();
+            without.remove(key);
+            let reads_as = optional
+                .iter()
+                .find(|(name, _)| name == key)
+                .map(|(_, default)| {
+                    let mut with_default = object.clone();
+                    with_default.insert(key.clone(), default.clone());
+                    with_default
+                });
+            (format!("without {key:?}"), without, reads_as)
+        })
+        .collect()
+}
+
+#[test]
+fn lib_api_006_each_key_of_every_object_of_the_golden_files_is_required_or_has_its_default() {
+    let plain = |object: &Object, root: bool| remove_each_key(object, root, false);
+    let diagnostic = |object: &Object, root: bool| remove_each_key(object, root, true);
+    let counts = [
+        (
+            "operations.json",
+            assert_changed_copies::<Vec<Operation>>("operations.json", &plain),
+        ),
+        (
+            "mutations.json",
+            assert_changed_copies::<Vec<Mutation>>("mutations.json", &plain),
+        ),
+        (
+            "edit-errors.json",
+            assert_changed_copies::<Vec<EditError>>("edit-errors.json", &plain),
+        ),
+        (
+            "diagnostics.json",
+            assert_changed_copies::<Vec<Diagnostic>>("diagnostics.json", &diagnostic),
+        ),
+        (
+            "values.json",
+            assert_changed_copies::<Values>("values.json", &plain),
+        ),
+    ];
+    for (name, count) in counts {
+        assert!(count > 0, "{API_006}: setup: no key of {name} was removed");
+    }
 }

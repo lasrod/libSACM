@@ -5192,6 +5192,9 @@ tests = [
   "crates/sacm/tests/serde.rs::lib_api_006_an_empty_lang_string_object_differs_from_empty_content",
   "crates/sacm/tests/serde.rs::lib_api_006_a_deserialized_operation_equals_its_constructed_twin",
   "crates/sacm/tests/serde.rs::lib_api_006_check_and_apply_refuse_an_invalid_deserialized_operation_as_its_twin",
+  "crates/sacm/tests/serde.rs::lib_api_006_a_feature_not_applicable_reads_back_for_every_feature_name",
+  "crates/sacm/tests/serde.rs::lib_api_006_an_unknown_key_in_any_object_of_the_golden_files_is_refused",
+  "crates/sacm/tests/serde.rs::lib_api_006_each_key_of_every_object_of_the_golden_files_is_required_or_has_its_default",
 ]
 
 [[row]]

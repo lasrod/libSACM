@@ -57,7 +57,8 @@ model, so `Document` is not serialized.
 - **Deserializing proves nothing about origin.** A deserialized `Operation` is checked by
   `check` and `apply` exactly as a constructed one: no operation constructor checks
   anything `apply` does not. A deserialized `Mutation`, `EditError` or `Diagnostic` is a
-  record. Nothing in the API takes one as input.
+  record: `has_errors` reads a deserialized diagnostic's severity as given, and nothing
+  else in the API takes one as input.
 - **The CLI's JSON stays as it is** (ADR 0023). It is a separate versioned contract that
   names the requirement `requirement`, where serde writes `requirement_id`.
 

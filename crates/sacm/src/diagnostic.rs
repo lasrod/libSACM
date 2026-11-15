@@ -23,8 +23,10 @@
 //! `test-support` feature makes the constructors and `with_*` builders
 //! public so that tests can build diagnostics. They are not stable API, even
 //! though docs.rs shows them. With the `serde` feature a diagnostic also
-//! serializes, and reads back as a record in the stable form of ADR 0030;
-//! nothing in the API takes one as input.
+//! serializes, and reads back in the stable form of ADR 0030. A
+//! deserialized `Diagnostic`, `Mutation` or `EditError` is a record:
+//! [`has_errors`] reads a deserialized diagnostic's severity as given, and
+//! nothing else in the API takes one as input.
 //!
 //! # Examples
 //!
