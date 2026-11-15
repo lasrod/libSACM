@@ -299,8 +299,9 @@ mod roots;
 ///   keeping the role element's `xmi:id`;
 /// - `content="…"`, or text, with an optional `lang="…"`, on a
 ///   `UtilityElement`: its `content`, of one value;
-/// - `key="…"` and `value="…"` on a `TaggedValue`: its `key` and its
-///   `content`, of one value with no `lang`.
+/// - `key="…"` and `value="…"` on a `TaggedValue`: its `key`, of one value
+///   with no `lang`, and its `content`, of one value; an optional `lang="…"`
+///   applies to `value="…"`, as to `content="…"` above.
 ///
 /// A tolerant read reads each as its standard form and reports one
 /// SACM-XMI-012 Warning per occurrence ([`Code::XMI_LEGACY_SHAPE`]). Values
@@ -438,7 +439,8 @@ mod roots;
 /// [`ReadOutput::diagnostics`], sorted by [`Diagnostic`]'s order. Each is
 /// reported once per attribute, located at the first character of the
 /// attribute's name, or once per element, located at the `<` of its start
-/// tag (LIB-COMPAT-001, ADR 0022, ADR 0024):
+/// tag, except SACM-XMI-012, which is once per C++ shape and may be located
+/// at text (LIB-COMPAT-001, LIB-COMPAT-008, ADR 0022, ADR 0024):
 ///
 /// - SACM-XMI-004 ([`Code::XMI_MISSING_ID`]), clause 7.6.1, for each element
 ///   read without an `xmi:id` (SACM23-XMI-020). It affects the generated id,
@@ -467,9 +469,10 @@ mod roots;
 ///   literal white space, else the `<` of a `value` in a `name`, affecting
 ///   the element whose name or text it gives.
 ///
-/// None refuses the input. Both modes read and refuse the same inputs, and
-/// give the same document, apart from the C++ shapes, which a strict read
-/// refuses. A later minor release may add a read diagnostic, so a strict
+/// None of these diagnostics refuses the input; a strict read refuses the
+/// C++ shapes as [`ReadError::LegacyShape`] instead of reporting them. Apart
+/// from those, both modes read and refuse the same inputs, and give the same
+/// document. A later minor release may add a read diagnostic, so a strict
 /// read may then report an Error where it did not before; the release notes
 /// list each one.
 ///

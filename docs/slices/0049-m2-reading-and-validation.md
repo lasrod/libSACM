@@ -66,3 +66,10 @@ LIB-COMPAT-012 (M6) takes the legacy shapes that invent or merge elements.
   is equivalent and excluded with a triage row. The stale `deleted_ids` exclusion is removed
   (slice 0048 follow-up). A full mutants run (43693981251) was dispatched because tests were
   replaced.
+- 2026-11-15 verification round 1: PASS for SACM23-XMI-026, LIB-COMPAT-010, SACM23-VAL-019
+  and -021; FAIL for LIB-COMPAT-008 (seven hand mutations survived; stale refusal claims in
+  verified rows). Fixes: controls C1-C7 in legacy_shapes.rs, each killing its mutation; the
+  stale texts in SACM23-BASE-004/005/006, SACM23-XMI-012/014/016, SACM23-ARG-008/010 and
+  LIB-COMPAT-001 corrected; three doc follow-ups fixed, three logged. Copilot found a hole in
+  LIB-QA-018 (a docs-only push after a failed or cancelled code run skipped the code checks);
+  `changes` now also requires CI success on the previous commit, with tests.

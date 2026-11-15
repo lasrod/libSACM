@@ -332,7 +332,6 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
   `ReadError::MissingType` instead of `Unsupported`, and a strict read refuses the C++
   name and text shapes as `ReadError::LegacyShape` instead of `Unsupported`
   [LIB-COMPAT-010, LIB-COMPAT-008].
-
 - Every create with reference ends, including `CreateArgumentReasoning`,
   `CreateAssertedInference` and `CreateAssertedContext`, refuses an end whose target does
   not conform to the end's declared type as `EditError::WrongReferenceType`

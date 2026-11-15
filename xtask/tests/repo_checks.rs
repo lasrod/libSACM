@@ -629,6 +629,31 @@ const CHANGES_DEFAULT: &str = "code=true";
 /// The detection script's output.
 const CHANGES_WRITE: &str = "echo \"code=$code\" >> \"$GITHUB_OUTPUT\"";
 
+/// The `changes` job's permission to read workflow runs, which the
+/// `previous` step's query needs.
+const CHANGES_ACTIONS_READ: &str = "actions: read";
+
+/// The `previous` step's query: the successful runs of this workflow on the
+/// previous commit.
+const PREVIOUS_QUERY: &str = "actions/workflows/ci.yml/runs?head_sha=$BEFORE&status=success";
+
+/// The `previous` step's fail-closed answer, and its output.
+const PREVIOUS_DEFAULT: &str = "ok=false";
+const PREVIOUS_WRITE: &str = "echo \"ok=$ok\" >> \"$GITHUB_OUTPUT\"";
+
+/// The `diff` step reads the `previous` step's answer.
+const PREVIOUS_INPUT: &str = "PREVIOUS_OK: ${{ steps.previous.outputs.ok }}";
+
+/// The ranges of the latest push, which need CI to have succeeded on the
+/// commit before them: a pull request's new commits, and a push.
+const SYNCHRONIZE_RANGE: &str = "if [ \"$EVENT\" = pull_request ] && [ \"$ACTION\" = synchronize ]; then range=\"$BEFORE $AFTER\"; needs_previous=true";
+const PUSH_RANGE: &str =
+    "elif [ \"$EVENT\" = push ]; then range=\"$BEFORE $AFTER\"; needs_previous=true";
+
+/// A docs-only result that needs the previous commit's CI runs everything
+/// unless that CI succeeded.
+const PREVIOUS_OVERRIDE: &str = "if [ \"$code\" = false ] && [ \"$needs_previous\" = true ] && [ \"${PREVIOUS_OK:-}\" != true ]; then";
+
 /// The `test` job runs even when `changes` failed.
 const TEST_JOB_GATE: &str = "if: ${{ !cancelled() }}";
 
@@ -730,13 +755,30 @@ fn job_steps<'a>(body: &[&'a str]) -> Vec<Vec<&'a str>> {
     steps
 }
 
-/// The first `run: |` script of the `changes` job, dedented, or `None` when
-/// there is none.
+/// The `diff` step's script: the detection script.
 fn detection_script(ci: &str) -> Option<String> {
-    let jobs = workflow_jobs(ci);
-    let step = job_steps(job(&jobs, "changes"))
+    changes_step_script(ci, "diff")
+}
+
+/// The `previous` step's script: whether CI succeeded on the previous commit.
+fn previous_script(ci: &str) -> Option<String> {
+    changes_step_script(ci, "previous")
+}
+
+/// The lines of the `changes` job's step `id`, or none.
+fn changes_step<'a>(jobs: &'a [(String, Vec<&'a str>)], id: &str) -> Vec<&'a str> {
+    let id_line = format!("id: {id}");
+    job_steps(job(jobs, "changes"))
         .into_iter()
-        .find(|step| step.iter().any(|line| step_line(line) == "run: |"))?;
+        .find(|step| step.iter().any(|line| step_line(line) == id_line))
+        .unwrap_or_default()
+}
+
+/// The `run: |` script of the `changes` job's step `id`, dedented, or `None`
+/// when there is none.
+fn changes_step_script(ci: &str, id: &str) -> Option<String> {
+    let jobs = workflow_jobs(ci);
+    let step = changes_step(&jobs, id);
     let start = step.iter().position(|line| step_line(line) == "run: |")?;
     let depth = indent(step[start]);
     let body: Vec<&str> = step[start + 1..]
@@ -802,7 +844,79 @@ fn changes_job_problems(ci: &str, jobs: &[(String, Vec<&str>)]) -> Vec<String> {
         "changes-rule",
         &format!("the detection script's only rule must be `{DOCS_RULE}`"),
     );
+    previous_commit_problems(ci, jobs, &script, &mut problems);
     problems
+}
+
+/// LIB-QA-018: what is wrong with the check that CI succeeded on the
+/// previous commit before a docs-only latest push skips anything.
+fn previous_commit_problems(
+    ci: &str,
+    jobs: &[(String, Vec<&str>)],
+    script: &[&str],
+    problems: &mut Vec<String>,
+) {
+    let changes = job(jobs, "changes");
+    let permissions = changes
+        .iter()
+        .position(|line| indent(line) == 4 && line.trim() == "permissions:");
+    require(
+        problems,
+        permissions.is_some_and(|at| {
+            changes[at + 1..]
+                .iter()
+                .take_while(|line| indent(line) > 4)
+                .any(|line| line.trim() == CHANGES_ACTIONS_READ)
+        }),
+        "changes-permissions",
+        &format!("the `changes` job's `permissions:` must have `{CHANGES_ACTIONS_READ}`"),
+    );
+    let previous = changes_step(jobs, "previous");
+    let previous_script = previous_script(ci).unwrap_or_default();
+    let previous_lines: Vec<&str> = previous_script.lines().map(str::trim).collect();
+    require(
+        problems,
+        previous
+            .iter()
+            .any(|line| step_line(line) == "BEFORE: ${{ github.event.before }}")
+            && previous_script.contains(PREVIOUS_QUERY)
+            && previous_lines.first() == Some(&PREVIOUS_DEFAULT)
+            && previous_lines.contains(&PREVIOUS_WRITE),
+        "changes-previous",
+        &format!(
+            "the `changes` job must have a `previous` step that reads `BEFORE`, starts from \
+             `{PREVIOUS_DEFAULT}`, queries `{PREVIOUS_QUERY}` and writes `{PREVIOUS_WRITE}`"
+        ),
+    );
+    require(
+        problems,
+        changes_step(jobs, "diff")
+            .iter()
+            .any(|line| step_line(line) == PREVIOUS_INPUT),
+        "changes-previous-input",
+        &format!("the `diff` step must read `{PREVIOUS_INPUT}`"),
+    );
+    let at = |line: &str| script.iter().position(|l| *l == line);
+    let override_at = at(PREVIOUS_OVERRIDE);
+    let sets_code = override_at.is_some_and(|start| {
+        script[start + 1..]
+            .iter()
+            .take_while(|line| **line != "fi")
+            .any(|line| *line == CHANGES_DEFAULT)
+    });
+    require(
+        problems,
+        at(SYNCHRONIZE_RANGE).is_some()
+            && at(PUSH_RANGE).is_some()
+            && sets_code
+            && override_at > at(DOCS_RULE)
+            && at(CHANGES_WRITE).is_none_or(|write| override_at < Some(write)),
+        "changes-override",
+        &format!(
+            "the detection script must set `needs_previous=true` for a `synchronize` and a \
+             push range, and after the rule apply `{PREVIOUS_OVERRIDE}` with `{CHANGES_DEFAULT}`"
+        ),
+    );
 }
 
 /// LIB-QA-018: what is wrong with `ci.yml`'s documentation-only gates.
@@ -949,18 +1063,13 @@ fn changes_mutations(ci: &str) -> Vec<Mutation> {
             "changes-job",
         ),
         (
-            "the `diff` step renamed".to_owned(),
-            replace_line(ci, "- id: diff", "- id: detect"),
-            "changes-job",
-        ),
-        (
             "the `changes` job's full history removed".to_owned(),
             edit_nth_line(ci, "fetch-depth: 0", 0, None),
             "changes-job",
         ),
         (
             "the default made `false` (fail closed)".to_owned(),
-            replace_line(ci, CHANGES_DEFAULT, "code=false"),
+            edit_nth_line(ci, CHANGES_DEFAULT, 0, Some("code=false")),
             "changes-default",
         ),
         (
@@ -979,6 +1088,7 @@ fn changes_mutations(ci: &str) -> Vec<Mutation> {
             "changes-rule",
         ),
     ];
+    mutations.extend(previous_commit_mutations(ci));
     for widened in [
         "'^docs'",
         "'docs/'",
@@ -997,6 +1107,95 @@ fn changes_mutations(ci: &str) -> Vec<Mutation> {
         ));
     }
     mutations
+}
+
+/// `ci` without the lines from the one starting (trimmed) with `first` up to
+/// and including the one equal (trimmed) to `last`.
+fn without_block(ci: &str, first: &str, last: &str) -> String {
+    let start = ci
+        .lines()
+        .position(|line| line.trim().starts_with(first))
+        .unwrap_or_else(|| panic!("mutation target `{first}` is not in ci.yml"));
+    let length = ci
+        .lines()
+        .skip(start)
+        .position(|line| line.trim() == last)
+        .unwrap_or_else(|| panic!("mutation target `{last}` does not follow `{first}`"));
+    let mut out = String::new();
+    for (n, line) in ci.lines().enumerate() {
+        if n < start || n > start + length {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    out
+}
+
+/// Mutations of the check that CI succeeded on the previous commit.
+fn previous_commit_mutations(ci: &str) -> Vec<Mutation> {
+    vec![
+        (
+            "`actions: read` dropped".to_owned(),
+            delete_line(ci, CHANGES_ACTIONS_READ),
+            "changes-permissions",
+        ),
+        (
+            "the `previous` step removed".to_owned(),
+            without_block(
+                ci,
+                "- id: previous",
+                "echo \"ok=$ok\" >> \"$GITHUB_OUTPUT\"",
+            ),
+            "changes-previous",
+        ),
+        (
+            "the `status=success` filter removed".to_owned(),
+            replace_once(ci, "&status=success", ""),
+            "changes-previous",
+        ),
+        (
+            "the previous commit assumed green".to_owned(),
+            replace_line(ci, PREVIOUS_DEFAULT, "ok=true"),
+            "changes-previous",
+        ),
+        (
+            "the `diff` step not reading the answer".to_owned(),
+            delete_line(ci, PREVIOUS_INPUT),
+            "changes-previous-input",
+        ),
+        (
+            "the `needs_previous` override removed".to_owned(),
+            without_block(ci, PREVIOUS_OVERRIDE, "fi"),
+            "changes-override",
+        ),
+        (
+            "the override failing open no longer (`= false`)".to_owned(),
+            replace_line(
+                ci,
+                PREVIOUS_OVERRIDE,
+                &PREVIOUS_OVERRIDE.replace("!= true", "= false"),
+            ),
+            "changes-override",
+        ),
+        (
+            "`needs_previous=false` for synchronize".to_owned(),
+            replace_line(
+                ci,
+                SYNCHRONIZE_RANGE,
+                &SYNCHRONIZE_RANGE.replace("needs_previous=true", "needs_previous=false"),
+            ),
+            "changes-override",
+        ),
+        (
+            "`needs_previous=false` for a push".to_owned(),
+            replace_line(
+                ci,
+                PUSH_RANGE,
+                &PUSH_RANGE.replace("needs_previous=true", "needs_previous=false"),
+            ),
+            "changes-override",
+        ),
+    ]
 }
 
 /// Mutations of the `test` job's gates, one set per step gate.
@@ -1200,6 +1399,12 @@ fn lib_qa_018_ci_check_reports_a_removed_inverted_or_widened_gate() {
             && has_code(&problems, "changes-rule"),
         "LIB-QA-018: a removed `changes` job is not reported: {problems:#?}"
     );
+    // Without the `diff` step, the job and its script are reported.
+    let problems = docs_only_ci_problems(&replace_line(&ci, "- id: diff", "- id: detect"));
+    assert!(
+        has_code(&problems, "changes-job") && has_code(&problems, "changes-rule"),
+        "LIB-QA-018: a renamed `diff` step is not reported: {problems:#?}"
+    );
 }
 
 // --- The detection script, run on a scratch repository ------------------------------
@@ -1354,8 +1559,9 @@ impl ScratchRepo {
     }
 
     /// Runs `script` with `bash` as a GitHub runner does (`bash -e`), with
-    /// the event variables `event` (the others empty), and returns what it
-    /// wrote to `$GITHUB_OUTPUT`.
+    /// the event variables `event` (the others empty, and `PREVIOUS_OK` unset
+    /// unless `event` gives it), and returns what it wrote to
+    /// `$GITHUB_OUTPUT`.
     fn run_script(&self, bash: &Path, script: &str, event: &[(&str, &str)], n: usize) -> String {
         let script_file = self.root.join(format!("script-{n}.sh"));
         let output_file = self.root.join(format!("github-output-{n}"));
@@ -1372,6 +1578,12 @@ impl ScratchRepo {
                 .find(|(name, _)| *name == var)
                 .map_or("", |(_, value)| *value);
             command.env(var, value);
+        }
+        command.env_remove("PREVIOUS_OK");
+        for (name, value) in event {
+            if *name == "PREVIOUS_OK" {
+                command.env(name, value);
+            }
         }
         let output = command
             .output()
@@ -1478,29 +1690,37 @@ fn pull_request_event(
     ]
 }
 
-#[test]
-fn lib_qa_018_detection_script_is_false_only_for_a_docs_only_range() {
-    let test = "detection";
-    let Some(bash) = script_runner(test) else {
-        return;
-    };
-    let Some(script) = detection_script(&ci_text()) else {
-        panic!("LIB-QA-018: ci.yml's `changes` job has no detection script");
-    };
-    let repo = ScratchRepo::new(test);
-    let h = history(&repo);
+/// `event` with `PREVIOUS_OK` set to `ok`, the `previous` step's answer, or
+/// unset when `ok` is `None`.
+fn with_previous(mut event: Event, ok: Option<&str>) -> Event {
+    if let Some(ok) = ok {
+        event.push(("PREVIOUS_OK", ok.to_owned()));
+    }
+    event
+}
+
+/// `event` with CI known to have succeeded on the previous commit.
+fn green(event: Event) -> Event {
+    with_previous(event, Some("true"))
+}
+
+/// The detection script's cases on the scratch history `h`: what, the
+/// event, and the `code` it must give.
+fn detection_cases(h: &History) -> Vec<(&'static str, Event, bool)> {
     let unknown = "1234567890abcdef1234567890abcdef12345678";
     let zero = "0000000000000000000000000000000000000000";
-    let cases: Vec<(&str, Event, bool)> = vec![
-        // Only docs/ changed: the one case that skips.
+    vec![
+        // Only docs/ changed: the one case that skips. Each latest push here
+        // follows a commit CI succeeded on (`PREVIOUS_OK=true`), so only its
+        // paths decide.
         (
             "a push changing and adding docs/ files",
-            push_event(&h.base, &h.docs),
+            green(push_event(&h.base, &h.docs)),
             false,
         ),
         (
             "a push deleting a docs/ file",
-            push_event(&h.nested_docs, &h.docs_deleted),
+            green(push_event(&h.nested_docs, &h.docs_deleted)),
             false,
         ),
         (
@@ -1515,24 +1735,32 @@ fn lib_qa_018_detection_script_is_false_only_for_a_docs_only_range() {
         ),
         (
             "a pull request's latest push changing only docs/, after code",
-            pull_request_event("synchronize", (&h.docs, &h.code), (&h.base, &h.docs)),
+            green(pull_request_event(
+                "synchronize",
+                (&h.docs, &h.code),
+                (&h.base, &h.docs),
+            )),
             false,
         ),
         // Anything else runs everything.
-        ("a push changing src/", push_event(&h.docs, &h.code), true),
+        (
+            "a push changing src/",
+            green(push_event(&h.docs, &h.code)),
+            true,
+        ),
         (
             "a push changing docs/ and src/",
-            push_event(&h.base, &h.code),
+            green(push_event(&h.base, &h.code)),
             true,
         ),
         (
             "a push adding a top-level docs.md",
-            push_event(&h.code, &h.docs_file),
+            green(push_event(&h.code, &h.docs_file)),
             true,
         ),
         (
             "a push adding crates/x/docs/notes.md",
-            push_event(&h.docs_file, &h.nested_docs),
+            green(push_event(&h.docs_file, &h.nested_docs)),
             true,
         ),
         (
@@ -1542,36 +1770,54 @@ fn lib_qa_018_detection_script_is_false_only_for_a_docs_only_range() {
         ),
         (
             "a pull request's latest push changing src/, after docs",
-            pull_request_event("synchronize", (&h.base, &h.docs), (&h.docs, &h.code)),
+            green(pull_request_event(
+                "synchronize",
+                (&h.base, &h.docs),
+                (&h.docs, &h.code),
+            )),
             true,
         ),
-        ("an empty range", push_event(&h.docs, &h.docs), true),
-        ("a push with no range", push_event("", ""), true),
+        ("an empty range", green(push_event(&h.docs, &h.docs)), true),
+        ("a push with no range", green(push_event("", "")), true),
         (
             "a push creating a branch (before is all zeros)",
-            push_event(zero, &h.docs),
+            green(push_event(zero, &h.docs)),
             true,
         ),
         (
             "a range from an unknown commit",
-            push_event(unknown, &h.docs),
+            green(push_event(unknown, &h.docs)),
             true,
         ),
         (
             "a range to an unknown commit",
-            push_event(&h.base, unknown),
+            green(push_event(&h.base, unknown)),
             true,
         ),
         (
             "a manual run",
-            vec![
+            green(vec![
                 ("EVENT", "workflow_dispatch".to_owned()),
                 ("BEFORE", h.base.clone()),
                 ("AFTER", h.docs.clone()),
-            ],
+            ]),
             true,
         ),
-    ];
+    ]
+}
+
+#[test]
+fn lib_qa_018_detection_script_is_false_only_for_a_docs_only_range() {
+    let test = "detection";
+    let Some(bash) = script_runner(test) else {
+        return;
+    };
+    let Some(script) = detection_script(&ci_text()) else {
+        panic!("LIB-QA-018: ci.yml's `changes` job has no detection script");
+    };
+    let repo = ScratchRepo::new(test);
+    let h = history(&repo);
+    let cases = detection_cases(&h);
     for (n, (what, event, expected)) in cases.iter().enumerate() {
         let event: Vec<(&str, &str)> = event.iter().map(|(k, v)| (*k, v.as_str())).collect();
         assert_eq!(
@@ -1600,17 +1846,48 @@ fn lib_qa_018_detection_cases_catch_a_widened_rule_or_a_closed_default() {
         (
             "the rule widened to '^docs' reads docs.md as documentation",
             replace_once(&script, "'^docs/'", "'^docs'"),
-            push_event(&h.code, &h.docs_file),
+            green(push_event(&h.code, &h.docs_file)),
         ),
         (
             "the rule unanchored reads crates/x/docs/ as documentation",
             replace_once(&script, "'^docs/'", "'docs/'"),
-            push_event(&h.docs_file, &h.nested_docs),
+            green(push_event(&h.docs_file, &h.nested_docs)),
         ),
         (
             "the default made false fails closed on an unknown commit",
-            replace_once(&script, "code=true\n", "code=false\n"),
-            push_event(unknown, &h.docs),
+            replace_once(&script, "\ncode=true\nif [ -n", "\ncode=false\nif [ -n"),
+            green(push_event(unknown, &h.docs)),
+        ),
+        (
+            "without the override, a docs-only push after red CI skips",
+            without_block(&script, PREVIOUS_OVERRIDE, "fi"),
+            with_previous(push_event(&h.base, &h.docs), Some("false")),
+        ),
+        (
+            "with `= false`, a docs-only push with no answer skips",
+            replace_once(&script, "\" != true ]", "\" = false ]"),
+            push_event(&h.base, &h.docs),
+        ),
+        (
+            "with `needs_previous=false` for a push, a push after red CI skips",
+            replace_once(
+                &script,
+                PUSH_RANGE,
+                &PUSH_RANGE.replace("needs_previous=true", "needs_previous=false"),
+            ),
+            with_previous(push_event(&h.base, &h.docs), Some("false")),
+        ),
+        (
+            "with `needs_previous=false` for synchronize, a latest push after red CI skips",
+            replace_once(
+                &script,
+                SYNCHRONIZE_RANGE,
+                &SYNCHRONIZE_RANGE.replace("needs_previous=true", "needs_previous=false"),
+            ),
+            with_previous(
+                pull_request_event("synchronize", (&h.docs, &h.code), (&h.base, &h.docs)),
+                Some("false"),
+            ),
         ),
     ]
     .into_iter()
@@ -1622,6 +1899,182 @@ fn lib_qa_018_detection_cases_catch_a_widened_rule_or_a_closed_default() {
             "LIB-QA-018: the cases do not catch it when {what}"
         );
     }
+}
+
+#[test]
+fn lib_qa_018_a_docs_only_latest_push_skips_only_after_ci_succeeded_on_the_previous_commit() {
+    let test = "previous-ok";
+    let Some(bash) = script_runner(test) else {
+        return;
+    };
+    let Some(script) = detection_script(&ci_text()) else {
+        panic!("LIB-QA-018: ci.yml's `changes` job has no detection script");
+    };
+    let repo = ScratchRepo::new(test);
+    let h = history(&repo);
+    let answers: [(&str, Option<&str>); 5] = [
+        ("true", Some("true")),
+        ("false", Some("false")),
+        ("empty", Some("")),
+        ("unset", None),
+        ("`TRUE`", Some("TRUE")),
+    ];
+    let mut n = 0;
+    // A docs-only latest push skips only when CI succeeded before it.
+    for (what, event) in [
+        ("a docs-only push", push_event(&h.base, &h.docs)),
+        (
+            "a pull request's docs-only latest push",
+            pull_request_event("synchronize", (&h.docs, &h.code), (&h.base, &h.docs)),
+        ),
+    ] {
+        for (answer, ok) in answers {
+            n += 1;
+            let event = with_previous(event.clone(), ok);
+            let event: Vec<(&str, &str)> = event.iter().map(|(k, v)| (*k, v.as_str())).collect();
+            assert_eq!(
+                detect(&bash, &repo, &script, &event, n),
+                ok != Some("true"),
+                "LIB-QA-018: {what} with the previous commit's answer {answer} gives the wrong \
+                 `code`"
+            );
+        }
+    }
+    // A new or reopened pull request's whole range is checked, so the
+    // previous commit does not matter.
+    for action in ["opened", "reopened"] {
+        for (answer, ok) in answers {
+            n += 1;
+            let event = with_previous(
+                pull_request_event(action, (&h.base, &h.docs), (&h.docs, &h.code)),
+                ok,
+            );
+            let event: Vec<(&str, &str)> = event.iter().map(|(k, v)| (*k, v.as_str())).collect();
+            assert!(
+                !detect(&bash, &repo, &script, &event, n),
+                "LIB-QA-018: an {action} docs-only pull request with the answer {answer} runs \
+                 the code jobs"
+            );
+        }
+    }
+}
+
+/// Runs the `previous` step's script with `bash` and a stub `gh` that
+/// prints `answer` (or fails when it is `None`), and returns what the
+/// script wrote to `$GITHUB_OUTPUT` and the arguments `gh` was given.
+fn run_previous(
+    bash: &Path,
+    repo: &ScratchRepo,
+    script: &str,
+    before: &str,
+    answer: Option<&str>,
+    n: usize,
+) -> (String, String) {
+    let bin = repo.root.join(format!("bin-{n}"));
+    fs::create_dir_all(&bin)
+        .unwrap_or_else(|e| panic!("LIB-QA-018: create {}: {e}", bin.display()));
+    let args_file = repo.root.join(format!("gh-args-{n}"));
+    let body = match answer {
+        Some(answer) => format!("printf '%s\n' '{answer}'\n"),
+        None => "echo 'HTTP 403' >&2\nexit 1\n".to_owned(),
+    };
+    let gh = bin.join("gh");
+    fs::write(
+        &gh,
+        format!(
+            "#!/bin/sh\nprintf '%s\n' \"$@\" > '{}'\n{body}",
+            posix(&args_file)
+        ),
+    )
+    .unwrap_or_else(|e| panic!("LIB-QA-018: write {}: {e}", gh.display()));
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&gh, fs::Permissions::from_mode(0o755))
+            .unwrap_or_else(|e| panic!("LIB-QA-018: chmod {}: {e}", gh.display()));
+    }
+    let script_file = repo.root.join(format!("previous-{n}.sh"));
+    let output_file = repo.root.join(format!("previous-output-{n}"));
+    fs::write(&script_file, script)
+        .unwrap_or_else(|e| panic!("LIB-QA-018: write {}: {e}", script_file.display()));
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let path =
+        std::env::join_paths(std::iter::once(bin.clone()).chain(std::env::split_paths(&path)))
+            .unwrap_or_else(|e| panic!("LIB-QA-018: join PATH: {e}"));
+    let output = repo
+        .command(bash)
+        .args(["--noprofile", "--norc", "-e"])
+        .arg(posix(&script_file))
+        .env("PATH", path)
+        .env("GITHUB_OUTPUT", posix(&output_file))
+        .env("GH_TOKEN", "token")
+        .env("REPO", "owner/repo")
+        .env("BEFORE", before)
+        .output()
+        .unwrap_or_else(|e| panic!("LIB-QA-018: run {}: {e}", bash.display()));
+    assert!(
+        output.status.success(),
+        "LIB-QA-018: the `previous` script failed for {answer:?}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    (
+        fs::read_to_string(&output_file).unwrap_or_default(),
+        fs::read_to_string(&args_file).unwrap_or_default(),
+    )
+}
+
+#[test]
+fn lib_qa_018_the_previous_step_says_ok_only_when_the_api_finds_a_successful_run() {
+    let test = "previous-step";
+    let Some(bash) = script_runner(test) else {
+        return;
+    };
+    let Some(script) = previous_script(&ci_text()) else {
+        panic!("LIB-QA-018: ci.yml's `changes` job has no `previous` step script");
+    };
+    let repo = ScratchRepo::new(test);
+    let before = "1234567890abcdef1234567890abcdef12345678";
+    for (n, (what, answer, ok)) in [
+        ("one successful run", Some("1"), true),
+        ("three successful runs", Some("3"), true),
+        ("no successful run", Some("0"), false),
+        ("an empty answer", Some(""), false),
+        ("an answer that is no number", Some("null"), false),
+        ("a failing lookup", None, false),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let (written, args) = run_previous(&bash, &repo, &script, before, answer, n);
+        assert_eq!(
+            written,
+            format!("ok={ok}\n"),
+            "LIB-QA-018: the `previous` step's answer for {what}"
+        );
+        let args: Vec<&str> = args.lines().collect();
+        assert_eq!(
+            args.get(..2),
+            Some(
+                [
+                    "api",
+                    format!(
+                        "repos/owner/repo/actions/workflows/ci.yml/runs?head_sha={before}&status=success"
+                    )
+                    .as_str()
+                ]
+                .as_slice()
+            ),
+            "LIB-QA-018: the `previous` step does not ask for the successful ci.yml runs on the \
+             previous commit ({what})"
+        );
+    }
+    // No previous commit (a new pull request): no lookup, and no answer.
+    let (written, args) = run_previous(&bash, &repo, &script, "", Some("1"), 99);
+    assert_eq!(
+        (written.as_str(), args.as_str()),
+        ("ok=false\n", ""),
+        "LIB-QA-018: with no previous commit the `previous` step looks up or says ok"
+    );
 }
 
 #[test]
@@ -1642,6 +2095,7 @@ fn lib_qa_018_detection_script_counts_code_moved_into_docs_as_a_code_change() {
         ("EVENT", "push"),
         ("BEFORE", h.docs_deleted.as_str()),
         ("AFTER", h.moved_into_docs.as_str()),
+        ("PREVIOUS_OK", "true"),
     ];
     assert!(
         detect(&bash, &repo, &script, &event, 0),

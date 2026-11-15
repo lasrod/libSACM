@@ -1514,6 +1514,163 @@ fn lib_compat_008_the_reader_docs_no_longer_name_this_row_as_pending() {
     }
 }
 
+// --- Controls: text joined across comments and processing instructions, and the refusals ------
+
+/// Asserts that `shape` reads tolerantly as its twin with one Warning per
+/// mark, and that a strict read refuses it with SACM-XMI-012 at the first
+/// mark.
+fn assert_shape_in_both_modes(shape: &Shape) {
+    assert_reads_as_twin(shape);
+    let (input, marks) = marked(&shape.template);
+    let Err(error) = read(Mode::Strict, &input) else {
+        panic!("{ROW}: {}: was read in strict mode", shape.what);
+    };
+    assert_eq!(
+        (error.code(), error.location()),
+        (Some(Code::XMI_LEGACY_SHAPE), marks.first().copied()),
+        "{ROW}: {}: not refused in strict mode with SACM-XMI-012 at the shape: {error:?}",
+        shape.what
+    );
+}
+
+#[test]
+fn lib_compat_008_an_xmi_id_on_the_value_of_a_name_is_unsupported_at_it() {
+    assert_unsupported_at_mark(
+        "an xmi:id on a name's value",
+        &named(&format!(
+            "<name><value {MARK}xmi:id=\"v\" content=\"X\"/></name>"
+        )),
+    );
+}
+
+#[test]
+fn lib_compat_008_text_of_a_utility_element_content_or_key_is_joined_across_comments_and_pis() {
+    for shape in [
+        shape(
+            "text split by a comment on a Description",
+            ap(&format!(
+                "<description xmi:id=\"d\">{MARK}a<!--c-->b</description>"
+            )),
+            &["d"],
+            description("<content><value content=\"ab\"/></content>"),
+        ),
+        shape(
+            "text split by a processing instruction in content",
+            description(&format!("<content>{MARK}a<?pi x?>b</content>")),
+            &["d"],
+            description("<content><value content=\"ab\"/></content>"),
+        ),
+        shape(
+            "text split by a processing instruction in key",
+            tagged(&format!("<key>{MARK}a<?pi x?>b</key>")),
+            &["t"],
+            tagged("<key><value content=\"ab\"/></key>"),
+        ),
+    ] {
+        assert_shape_in_both_modes(&shape);
+    }
+}
+
+#[test]
+fn lib_compat_008_text_of_a_name_or_value_is_joined_across_comments() {
+    for shape in [
+        shape(
+            "text split by a comment in a name",
+            named(&format!("<name>{MARK}b<!--c-->d</name>")),
+            &["c1"],
+            named("<name content=\"bd\"/>"),
+        ),
+        shape(
+            "text split by a comment in a value",
+            description(&format!(
+                "<content><value>{MARK}b<!--c-->d</value></content>"
+            )),
+            &["d"],
+            description("<content><value content=\"bd\"/></content>"),
+        ),
+    ] {
+        assert_shape_in_both_modes(&shape);
+    }
+}
+
+#[test]
+fn lib_compat_008_a_lang_alone_on_content_or_key_is_unsupported_at_it() {
+    for (what, template) in [
+        (
+            "<content lang/>",
+            description(&format!("<content {MARK}lang=\"en\"/>")),
+        ),
+        ("<key lang/>", tagged(&format!("<key {MARK}lang=\"en\"/>"))),
+    ] {
+        assert_unsupported_at_mark(what, &template);
+    }
+}
+
+#[test]
+fn lib_compat_008_content_and_value_attributes_on_a_tagged_value_are_repeated_value() {
+    let (input, marks) = marked(&ap(&format!(
+        "<taggedValue xmi:id=\"t\" {MARK}content=\"w\" {MARK}value=\"v\">{KEY}</taggedValue>"
+    )));
+    let error = refused("content= and value= on a taggedValue", &input);
+    assert!(
+        matches!(&error, ReadError::RepeatedValue { element, property, .. }
+            if element.as_str() == "t" && property == "content.value.content"),
+        "{ROW}: content= and value= on a taggedValue: not RepeatedValue for \
+         content.value.content of t: {error:?}"
+    );
+    assert_eq!(
+        error.locations(),
+        marks.as_slice(),
+        "{ROW}: content= and value= on a taggedValue: not both attributes"
+    );
+}
+
+#[test]
+fn lib_compat_008_a_shorthand_attribute_beside_value_children_is_unsupported_at_it() {
+    for (what, template) in [
+        (
+            "content= on a content with a value",
+            description(&format!(
+                "<content {MARK}content=\"x\"><value content=\"y\"/></content>"
+            )),
+        ),
+        (
+            "lang= on a key with a value",
+            tagged(&format!(
+                "<key {MARK}lang=\"en\"><value content=\"k\"/></key>"
+            )),
+        ),
+    ] {
+        assert_unsupported_at_mark(what, &template);
+    }
+}
+
+#[test]
+fn lib_compat_008_lang_on_a_content_inside_a_value_is_unsupported_at_it() {
+    for (what, template) in [
+        (
+            "in a value of a content",
+            description(&format!(
+                "<content><value><content {MARK}lang=\"en\">x</content></value></content>"
+            )),
+        ),
+        (
+            "in a value of a key",
+            tagged(&format!(
+                "<key><value><content {MARK}lang=\"en\">x</content></value></key>"
+            )),
+        ),
+        (
+            "in a name's value",
+            named(&format!(
+                "<name><value><content {MARK}lang=\"en\">x</content></value></name>"
+            )),
+        ),
+    ] {
+        assert_unsupported_at_mark(what, &template);
+    }
+}
+
 // --- Helpers for the refusals that stay --------------------------------------------------------
 
 /// Reads `template` without its one mark in both modes and asserts that it
