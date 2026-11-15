@@ -1699,7 +1699,13 @@ impl std::error::Error for ReadError {}
 /// written). A reference end is written only when it holds an id, as the ids
 /// it holds, in order, repeats included, separated by one space and escaped,
 /// held exactly, whether or not they name an element. A reference read in
-/// the element form is written in this attribute form. The
+/// the element form is written in this attribute form, except when the
+/// element also holds, as preserved content, an attribute of the end's name
+/// that held no id (such as `metaClaim=""` beside `<metaClaim>` elements):
+/// then each id is written as a `<metaClaim xmi:idref="…" />` element,
+/// after the `name`, `content` and `key`, so that no start tag carries an
+/// attribute twice and nothing is dropped (ADR 0033). An edit that sets the
+/// end replaces such an attribute. The
 /// `assertionDeclaration` is written only when it is not `asserted`, the
 /// default (XMI 2.5.1 §9.4.1), as
 /// [`AssertionDeclaration::as_str`](crate::model::AssertionDeclaration::as_str)

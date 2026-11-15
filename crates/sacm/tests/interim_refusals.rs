@@ -38,6 +38,9 @@ const NS: &str = concat!(
     " xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"",
 );
 
+/// The declaration of `xsi` alone.
+const XSI: &str = "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"";
+
 /// The two labels' openings; a reason holds exactly one label.
 const LABEL_OPENINGS: [&str; 2] = ["(a limit of this version", "(a defect in the input"];
 
@@ -113,6 +116,10 @@ fn assert_refused_with(entry: &str, what: &str, input: &[u8], label: &str) {
         assert!(
             reason.ends_with(label),
             "{ROW}: {entry}: {what}: in {mode:?} mode the reason {reason:?} does not end with {label:?}"
+        );
+        assert!(
+            !reason.contains("  "),
+            "{ROW}: {entry}: {what}: in {mode:?} mode the reason {reason:?} holds a run of spaces"
         );
         let labels: usize = LABEL_OPENINGS
             .iter()
@@ -243,6 +250,24 @@ fn lib_api_011_xmi_metadata_names_sacm23_xmi_019() {
             "xmi:type on the wrapper",
             wrapper(" xmi:type=\"xmi:XMI\"", ""),
         ),
+        ("xmi:uuid on the wrapper", wrapper(" xmi:uuid=\"u\"", "")),
+        ("xmi:label on the wrapper", wrapper(" xmi:label=\"l\"", "")),
+        ("xmi:idref on the wrapper", wrapper(" xmi:idref=\"p\"", "")),
+        ("href on the wrapper", wrapper(" href=\"#p\"", "")),
+        (
+            "xsi:schemaLocation on the wrapper",
+            wrapper(
+                &format!(" {XSI} xsi:schemaLocation=\"{SACM_NS} SACM.xsd\""),
+                "",
+            ),
+        ),
+        (
+            "xsi:noNamespaceSchemaLocation on the wrapper",
+            wrapper(
+                &format!(" {XSI} xsi:noNamespaceSchemaLocation=\"SACM.xsd\""),
+                "",
+            ),
+        ),
         (
             "xmi:id on a reference element",
             package(&format!(
@@ -369,6 +394,18 @@ fn lib_api_011_the_text_spelling_argumentation_element_names_sacm23_xmi_009() {
         "argumentationElement in an ArgumentPackage",
         &input,
         &tolerance("SACM23-XMI-009"),
+    );
+    // The reason, pinned whole: one sentence, single spaces.
+    let error = xmi::read(input.as_bytes(), &ReadOptions::default()).unwrap_err();
+    let ReadError::Unsupported { reason, .. } = &error else {
+        panic!("{ROW}: TextSpelling: not Unsupported: {error:?}");
+    };
+    assert_eq!(
+        reason,
+        "the element \"argumentationElement\" in the root element \"sacm:ArgumentPackage\" is \
+         spelled as in the text of §11.4, and the role is argumentElement (a defect in the \
+         input; SACM23-XMI-009 is to read it in tolerant mode)",
+        "{ROW}: TextSpelling: the reason"
     );
 }
 

@@ -1155,6 +1155,39 @@ impl Document {
                 .is_some_and(|used| used.owner.is_some())
     }
 
+    /// Whether the element `owner` holds, as preserved content, the
+    /// attribute named after `end` in no namespace: one that held no id, such
+    /// as `metaClaim=""` (ADR 0033).
+    pub(crate) fn has_preserved_end(&self, owner: &ElementId, end: ReferenceEnd) -> bool {
+        self.index
+            .get(owner)
+            .and_then(|&node| self.nodes[node].preserved.as_deref())
+            .is_some_and(|preserved| preserved.has_unqualified(end.name()))
+    }
+
+    /// Removes the attribute named after `end` in no namespace from the
+    /// preserved content of the element `owner`, if it holds one, and
+    /// releases what it named: an edit that sets the end replaces it, so the
+    /// element never holds the end twice (ADR 0033). Changes nothing
+    /// otherwise.
+    pub(crate) fn replace_preserved_end(&mut self, owner: &ElementId, end: ReferenceEnd) {
+        let Some(&node) = self.index.get(owner) else {
+            return;
+        };
+        let Some(preserved) = self.nodes[node].preserved.as_mut() else {
+            return;
+        };
+        let released = preserved.remove_unqualified(end.name());
+        if preserved.is_empty() {
+            self.nodes[node].preserved = None;
+        }
+        for target in &released {
+            self.release(target, |used| {
+                used.references = used.references.saturating_sub(1);
+            });
+        }
+    }
+
     /// Whether `id` is the `xmi:id` of an element of some element's
     /// preserved content (ADR 0033): in the id space, though no element has
     /// it and [`get`](Self::get) does not find it.

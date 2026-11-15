@@ -24,4 +24,5 @@ exclude_re = [
   "^crates/sacm/src/xmi/input\\.rs:\\d+:\\d+: replace < with <= in Locator<'t>::locate$",
   '^crates/sacm/src/model/document\.rs:\d+:\d+: replace IdUse::is_unused -> bool with false$',
   "^crates/sacm/src/xmi/roots\\.rs:\\d+:\\d+: replace < with <= in Findings<'_, '_>::legacy_shape$",
+  '^crates/sacm/src/model/document\.rs:\d+:\d+: replace \|\| with && in Document::set_preserved$',
 ]

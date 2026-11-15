@@ -1310,6 +1310,22 @@ fn read_part<'a>(
     if element.kind == ElementKind::ArgumentGroup && is_value_element(node, TEXT_SPELLING) {
         return Err(text_spelling(text, node.range().start, &element.written).into());
     }
+    if let Some(unread) = interface_end(element.kind).filter(|_| is_value_element(node, INTERFACE))
+    {
+        return Err(unsupported(
+            text,
+            node.range().start,
+            unread,
+            &format!(
+                "the reference element {:?} in the element {:?} is the {} end {INTERFACE:?}, \
+                 which is not read in this release",
+                written_name(text, node),
+                element.written,
+                element.kind
+            ),
+        )
+        .into());
+    }
     if is_value_element(node, "name") {
         if element.kind.is_a(AbstractClass::UtilityElement) {
             // A UtilityElement has no name.
@@ -1434,6 +1450,30 @@ fn hold(text: &str, document: &mut Document, mut read: Vec<Pending>) -> Result<(
         })?;
     }
     Ok(())
+}
+
+/// The reference end `interface` of a package (ptc/22-03-13
+/// `AssuranceCasePackage::interface`, `ArgumentPackage::interface`), which
+/// conforms and is read with the package interfaces.
+const INTERFACE: &str = "interface";
+
+/// The entry of the `interface` end of an element of `kind`, if its class
+/// has one this release reads elements of: an AssuranceCasePackage's names
+/// an `AssuranceCasePackageInterface` (SACM23-AC-002), and an
+/// ArgumentPackage's an `ArgumentPackageInterface` (SACM23-ARG-014). It
+/// conforms, so it is refused, not preserved (ADR 0033).
+const fn interface_end(kind: ElementKind) -> Option<Unread> {
+    match kind {
+        ElementKind::AssuranceCasePackage => Some(Unread::AssuranceCasePackageInterface),
+        ElementKind::ArgumentPackage => Some(Unread::ArgumentPackageInterface),
+        _ => None,
+    }
+}
+
+/// The entry of `attribute` of an element of `kind` if it is the
+/// unqualified `interface` end of its class ([`interface_end`]).
+fn interface_attribute(kind: ElementKind, attribute: &Attribute<'_, '_>) -> Option<Unread> {
+    interface_end(kind).filter(|_| is_unqualified(attribute, INTERFACE))
 }
 
 /// The entry of `attribute` of an object (a root, a child, a `name`, a
@@ -1586,7 +1626,9 @@ fn root_start<'a>(found: &mut Findings<'_, 'a>, root: Node<'a, '_>) -> Result<Pe
             Given::Read => continue,
             Given::NoId => {}
             Given::Other => {
-                if let Some(unread) = object_metadata(&attribute) {
+                let unread =
+                    object_metadata(&attribute).or_else(|| interface_attribute(kind, &attribute));
+                if let Some(unread) = unread {
                     return Err(unread_attribute(text, &attribute, &element.written, unread));
                 }
             }
@@ -1687,7 +1729,8 @@ fn child_start<'a>(
             element.key = Some(held);
             continue;
         }
-        if let Some(unread) = object_metadata(&attribute) {
+        let unread = object_metadata(&attribute).or_else(|| interface_attribute(kind, &attribute));
+        if let Some(unread) = unread {
             return Err(unread_attribute(text, &attribute, &element.written, unread));
         }
         element.preserve_attribute(found, &attribute, attribute.range_qname().start)?;
@@ -2693,7 +2736,8 @@ fn text_spelling(text: &str, offset: usize, group: &str) -> ReadError {
         offset,
         Unread::TextSpelling,
         &format!(
-            "{TEXT_SPELLING:?} in the element {group:?} is spelled as in the text of §11.4, and the              end of an ArgumentGroup is argumentElement"
+            "{TEXT_SPELLING:?} in the element {group:?} is spelled as in the text of §11.4, and the \
+             end of an ArgumentGroup is argumentElement"
         ),
     )
 }

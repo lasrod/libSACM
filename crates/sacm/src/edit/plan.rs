@@ -258,10 +258,18 @@ impl Value<'_> {
                  keeps only the role's own ids",
             ),
             Self::Text(role, None) => document.remove_text(element, role),
-            Self::References(end, ids) => document.set_references(element, end, ids).expect(
-                "invariant: the plan found the element, its kind owns the end, and the ids are \
-                 within its bounds and not empty",
-            ),
+            Self::References(end, ids) => {
+                let sets = !ids.is_empty();
+                document.set_references(element, end, ids).expect(
+                    "invariant: the plan found the element, its kind owns the end, and the ids \
+                     are within its bounds and not empty",
+                );
+                // The end is given now: it replaces an attribute of its name
+                // kept as preserved content, which held no id (ADR 0033).
+                if sets {
+                    document.replace_preserved_end(element, end);
+                }
+            }
         }
     }
 }

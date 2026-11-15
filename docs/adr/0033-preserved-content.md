@@ -71,6 +71,12 @@ preserved.
     those ids are dangling references, handled by the reference policy.
   - A preserved child element counts as content for `RejectIfNonEmpty` (the maintainer,
     2026-11-15).
+  - An edit that sets a reference end replaces a preserved attribute of the same name on
+    that element, such as an empty `metaClaim=""` read before the edit; the explicit edit is
+    the repair, and the element is reported changed. A write never emits an attribute twice:
+    a typed end beside a preserved attribute of its name (possible straight from a read, such
+    as `metaClaim=""` next to `<metaClaim xmi:idref="c2"/>`) is written in the element form,
+    and nothing is dropped (lead decisions, slice 0050 verification).
   - No other edit changes or refuses because of preserved content.
   - An explicit "discard preserved content" edit is a later M6 row.
 - **API.** Two additions:

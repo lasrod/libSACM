@@ -1223,6 +1223,204 @@ fn lib_compat_003_a_preserved_part_is_never_a_repeated_value_occurrence() {
     }
 }
 
+#[test]
+fn lib_compat_003_an_empty_multi_valued_end_beside_its_elements_is_preserved_and_they_are_read() {
+    // `metaClaim=""` holds no id, so it is preserved; it is then no attribute
+    // occurrence of the end, so two `metaClaim` elements append as usual
+    // (XMI 2.5.1 rule 2b) instead of being refused by rule 2h.
+    let body = concat!(
+        "  <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" metaClaim=\"\">\n",
+        "    <name content=\"C1\"/>\n",
+        "    <metaClaim xmi:idref=\"c2\"/>\n",
+        "    <metaClaim xmi:idref=\"c3\"/>\n",
+        "  </argumentElement>\n",
+        "  <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c2\"><name content=\"C2\"/></argumentElement>\n",
+        "  <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c3\"><name content=\"C3\"/></argumentElement>\n",
+    );
+    let input = package(body);
+    let at = position_of(&input, "metaClaim=\"\"");
+    for mode in MODES {
+        let output = read_ok("metaClaim=\"\" and two elements", mode, input.as_bytes());
+        assert_eq!(
+            findings(output.diagnostics()),
+            [unknown(mode, at, "c1")],
+            "{ROW}: metaClaim=\"\" beside two metaClaim elements, {mode:?}: not one SACM-XMI-003 \
+             at the attribute"
+        );
+        assert_eq!(
+            output.document().get("c1").map(SacmElement::meta_claims),
+            Some(&ids(&["c2", "c3"])[..]),
+            "{ROW}: metaClaim=\"\" beside two metaClaim elements, {mode:?}: the elements are not \
+             read in order"
+        );
+    }
+}
+
+#[test]
+fn lib_compat_003_a_repeated_value_refusal_does_not_list_a_preserved_occurrence() {
+    for (what, body, property, occurrences) in [
+        (
+            "citedElement=\"\" and two citedElement elements",
+            concat!(
+                "  <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" citedElement=\"\">\n",
+                "    <name content=\"C1\"/>\n",
+                "    <citedElement xmi:idref=\"p\"/>\n",
+                "    <citedElement xmi:idref=\"c1\"/>\n",
+                "  </argumentElement>\n",
+            ),
+            "citedElement",
+            &[
+                "<citedElement xmi:idref=\"p\"/>",
+                "<citedElement xmi:idref=\"c1\"/>",
+            ][..],
+        ),
+        (
+            "two names and a preserved one between them",
+            concat!(
+                "  <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\">\n",
+                "    <name content=\"A\"/>\n",
+                "    <name content=\"X\" v:style=\"bold\"/>\n",
+                "    <name content=\"B\"/>\n",
+                "  </argumentElement>\n",
+            ),
+            "name",
+            &["<name content=\"A\"/>", "<name content=\"B\"/>"][..],
+        ),
+        (
+            "two contents and a preserved one between them",
+            concat!(
+                "  <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\">\n",
+                "    <name content=\"C1\"/>\n",
+                "    <note xmi:id=\"n1\">\n",
+                "      <content><value content=\"A\"/></content>\n",
+                "      <content v:w=\"1\"><value content=\"X\"/></content>\n",
+                "      <content><value content=\"B\"/></content>\n",
+                "    </note>\n",
+                "  </argumentElement>\n",
+            ),
+            "content",
+            &[
+                "<content><value content=\"A\"/>",
+                "<content><value content=\"B\"/>",
+            ][..],
+        ),
+    ] {
+        let input = package(body);
+        let expected: Vec<SourceLocation> = occurrences
+            .iter()
+            .map(|needle| position_of(&input, needle))
+            .collect();
+        for mode in MODES {
+            let error = read_err(what, mode, input.as_bytes());
+            assert!(
+                matches!(&error, ReadError::RepeatedValue { property: given, .. } if given == property),
+                "{ROW}: {what}, {mode:?}: not RepeatedValue of {property:?}: {error:?}"
+            );
+            assert_eq!(
+                error.locations(),
+                expected.as_slice(),
+                "{ROW}: {what}, {mode:?}: the refusal lists a preserved occurrence, or misses a \
+                 typed one"
+            );
+        }
+    }
+}
+
+#[test]
+fn lib_compat_003_an_unknown_content_diagnostic_names_the_attribute_as_written() {
+    for (what, body, written) in [
+        (
+            "a prefixed attribute",
+            concat!(
+                "  <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" v:w=\"1\">\n",
+                "    <name content=\"C1\"/>\n",
+                "  </argumentElement>\n",
+            ),
+            "v:w",
+        ),
+        (
+            "an unprefixed attribute",
+            concat!(
+                "  <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" colour=\"red\">\n",
+                "    <name content=\"C1\"/>\n",
+                "  </argumentElement>\n",
+            ),
+            "colour",
+        ),
+        (
+            "a lang attribute that gives no content on a UtilityElement",
+            concat!(
+                "  <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\">\n",
+                "    <name content=\"C1\"/>\n",
+                "    <note xmi:id=\"n1\" lang=\"en\"/>\n",
+                "  </argumentElement>\n",
+            ),
+            "lang",
+        ),
+    ] {
+        let output = read_ok(what, Mode::Tolerant, package(body).as_bytes());
+        let [diagnostic] = output.diagnostics() else {
+            panic!(
+                "{ROW}: {what}: not one diagnostic: {:?}",
+                output.diagnostics()
+            );
+        };
+        assert_eq!(
+            diagnostic.code(),
+            Code::XMI_UNKNOWN_CONTENT,
+            "{ROW}: {what}: the diagnostic is not SACM-XMI-003"
+        );
+        let lead = format!("the attribute \"{written}\" is not SACM 2.3 where it stands");
+        assert!(
+            diagnostic.message().starts_with(&lead),
+            "{ROW}: {what}: the message does not name the attribute as written ({lead:?}): {:?}",
+            diagnostic.message()
+        );
+        assert_eq!(
+            diagnostic.requirement_id(),
+            ROW,
+            "{ROW}: {what}: SACM-XMI-003 does not cite LIB-COMPAT-003"
+        );
+    }
+}
+
+#[test]
+fn lib_compat_003_an_xml_prefixed_attribute_is_kept_without_declaring_the_xml_prefix() {
+    // The `xml` prefix is bound by definition (Namespaces in XML 1.0 §3), so
+    // neither a holder nor a fragment declares it.
+    let body = concat!(
+        "  <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" xml:lang=\"en\">\n",
+        "    <name content=\"C1\"/>\n",
+        "    <v:x xml:space=\"preserve\"> a </v:x>\n",
+        "  </argumentElement>\n",
+    );
+    let input = package(body);
+    let at = position_of(&input, "xml:lang=\"en\"");
+    for mode in MODES {
+        let output = read_ok("xml:lang", mode, input.as_bytes());
+        assert_eq!(
+            findings(output.diagnostics())[0],
+            unknown(mode, at, "c1"),
+            "{ROW}: xml:lang on a Claim, {mode:?}: not SACM-XMI-003 at the attribute"
+        );
+    }
+    let doc = doc_of("xml:lang", input.as_bytes());
+    let out = assert_round_trip("xml:lang", &doc);
+    assert!(
+        out.contains("<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" xml:lang=\"en\">\n"),
+        "{ROW}: the preserved xml:lang is not written after the typed attributes, with no \
+         binding:\n{out}"
+    );
+    assert!(
+        out.contains("<v:x xmlns:v=\"urn:v\" xml:space=\"preserve\"> a </v:x>"),
+        "{ROW}: the fragment's xml:space is not written as it was, with no binding:\n{out}"
+    );
+    assert!(
+        !out.contains("xmlns:xml"),
+        "{ROW}: the output declares the xml prefix:\n{out}"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Position
 // ---------------------------------------------------------------------------

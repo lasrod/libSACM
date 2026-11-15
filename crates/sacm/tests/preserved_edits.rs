@@ -410,9 +410,12 @@ fn affected_and_clause(found: &Diagnostic) -> (Vec<ElementId>, Option<String>) {
     (found.affected().to_vec(), found.clause().map(str::to_owned))
 }
 
-#[test]
-fn lib_compat_003_a_typed_reference_to_a_preserved_id_is_ref_003_on_every_end() {
-    let input = package(
+/// A Claim c1 holding the preserved `a1`, and one element per reference
+/// end naming a1: citedElement, abstractForm and metaClaim on Claims, the
+/// source and reasoning of an inference, a structure, a
+/// referencedArtifactElement and a group member.
+fn references_to_a_preserved_id() -> String {
+    package(
         &[
             claim("c1", "", "<v:note xmi:id=\"a1\"/>"),
             claim("c2", " isCitation=\"true\" citedElement=\"a1\"", ""),
@@ -434,7 +437,74 @@ fn lib_compat_003_a_typed_reference_to_a_preserved_id_is_ref_003_on_every_end() 
             element("ArgumentGroup", "g1", " argumentElement=\"a1\"", ""),
         ]
         .concat(),
-    );
+    )
+}
+
+/// The SACM-REF-003 findings `references_to_a_preserved_id` gives, as
+/// (affected, clause, message), sorted.
+fn expected_ref_003() -> Vec<(Vec<ElementId>, Option<String>, String)> {
+    let message = |kind: &str, referrer: &str, end: &str, declared: &str| {
+        format!(
+            "{kind} {referrer:?} has the {end} \"a1\", which names an element the document holds \
+             only as preserved content, so its type is not checked (the end's type is {declared})"
+        )
+    };
+    let mut expected: Vec<(Vec<ElementId>, Option<String>, String)> = [
+        ("Claim", "c2", "citedElement", "8.2", "SACMElement"),
+        ("Claim", "c3", "abstractForm", "8.2", "SACMElement"),
+        ("Claim", "c4", "metaClaim", "11.10", "Claim"),
+        (
+            "AssertedInference",
+            "i1",
+            "source",
+            "11.13",
+            "ArgumentAsset",
+        ),
+        (
+            "AssertedInference",
+            "i1",
+            "reasoning",
+            "11.13",
+            "ArgumentReasoning",
+        ),
+        (
+            "ArgumentReasoning",
+            "r1",
+            "structure",
+            "11.12",
+            "ArgumentPackage",
+        ),
+        (
+            "ArtifactReference",
+            "ar1",
+            "referencedArtifactElement",
+            "11.9",
+            "ArtifactElement",
+        ),
+        (
+            "ArgumentGroup",
+            "g1",
+            "argumentElement",
+            "11.2",
+            "ArgumentationElement",
+        ),
+    ]
+    .iter()
+    .map(|(kind, referrer, end, clause, declared)| {
+        (
+            ids(&[referrer, "a1"]),
+            Some((*clause).to_owned()),
+            message(kind, referrer, end, declared),
+        )
+    })
+    .collect();
+    expected.sort();
+    expected
+}
+
+#[test]
+fn lib_compat_003_a_typed_reference_to_a_preserved_id_is_ref_003_on_every_end() {
+    let input = references_to_a_preserved_id();
     let doc = read("typed references to a preserved id", &input);
     let found = validation::validate(&doc);
     for other in [Code::REF_DANGLING, Code::REF_WRONG_TYPE] {
@@ -463,27 +533,25 @@ fn lib_compat_003_a_typed_reference_to_a_preserved_id_is_ref_003_on_every_end() 
             "{ROW}: a validation finding has no location and one line: {finding:?}"
         );
     }
-    let mut got: Vec<(Vec<ElementId>, Option<String>)> =
-        preserved.iter().map(|f| affected_and_clause(f)).collect();
+    let mut got: Vec<(Vec<ElementId>, Option<String>, String)> = preserved
+        .iter()
+        .map(|f| {
+            let (affected, clause) = affected_and_clause(f);
+            (affected, clause, f.message().to_owned())
+        })
+        .collect();
     got.sort();
-    let mut expected: Vec<(Vec<ElementId>, Option<String>)> = [
-        ("c2", "8.2"),
-        ("c3", "8.2"),
-        ("c4", "11.10"),
-        ("i1", "11.13"),
-        ("i1", "11.13"),
-        ("r1", "11.12"),
-        ("ar1", "11.9"),
-        ("g1", "11.2"),
-    ]
-    .iter()
-    .map(|(referrer, clause)| (ids(&[referrer, "a1"]), Some((*clause).to_owned())))
-    .collect();
-    expected.sort();
+    let expected = expected_ref_003();
+    for (_, _, text) in &got {
+        assert!(
+            !text.contains("  "),
+            "{ROW}: a SACM-REF-003 message holds a run of spaces: {text:?}"
+        );
+    }
     assert_eq!(
         got, expected,
         "{ROW}: one SACM-REF-003 per end naming a preserved id, affecting [referrer, id], with \
-         the end's clause"
+         the end's clause and the exact message"
     );
 }
 
@@ -924,6 +992,151 @@ fn lib_compat_003_a_create_appends_after_a_trailing_preserved_child() {
         &out,
         &[&id_attribute("c1"), "<v:x", &id_attribute("c2")],
     );
+}
+
+// ---------------------------------------------------------------------------
+// An end read empty, then set by an edit
+// ---------------------------------------------------------------------------
+
+/// p holding the Claims c1 and c2, an argument reasoning r1, an inference
+/// i1, an artifact reference ar1 and a group g1, with `holder`'s attribute
+/// `end` written empty instead of as usual.
+fn empty_end_document(holder: &str, end: &str) -> String {
+    let extra = |id: &str, own: &[(&str, &str)]| -> String {
+        let mut attributes = String::new();
+        for (name, value) in own {
+            let value = if id == holder && *name == end {
+                ""
+            } else {
+                value
+            };
+            attributes.push_str(&[" ", name, "=\"", value, "\""].concat());
+        }
+        if id == holder && !own.iter().any(|(name, _)| *name == end) {
+            attributes.push_str(&[" ", end, "=\"\""].concat());
+        }
+        attributes
+    };
+    package(
+        &[
+            claim("c1", &extra("c1", &[]), ""),
+            claim("c2", "", ""),
+            element("ArgumentReasoning", "r1", &extra("r1", &[]), ""),
+            element(
+                "AssertedInference",
+                "i1",
+                &extra("i1", &[("source", "c1"), ("target", "c2")]),
+                "",
+            ),
+            element("ArtifactReference", "ar1", &extra("ar1", &[]), ""),
+            element("ArgumentGroup", "g1", &extra("g1", &[]), ""),
+        ]
+        .concat(),
+    )
+}
+
+#[test]
+fn lib_compat_003_setting_an_end_read_empty_replaces_the_preserved_attribute() {
+    // An empty reference attribute is preserved (SACM-XMI-003). The edit
+    // that sets the end replaces the preserved attribute of the same name
+    // (the lead's decision), so the write holds the attribute once and reads
+    // back as the edited document.
+    let cases: Vec<(&str, &str, Vec<Operation>)> = vec![
+        (
+            "c1",
+            "metaClaim",
+            vec![AddReference::new("c1", ReferenceEnd::MetaClaim, "c2").into()],
+        ),
+        (
+            "c1",
+            "citedElement",
+            vec![
+                SetFlag::new("c1", Flag::IsCitation, true).into(),
+                SetReferences::new("c1", ReferenceEnd::CitedElement, ["c2"]).into(),
+            ],
+        ),
+        (
+            "c1",
+            "abstractForm",
+            vec![SetReferences::new("c1", ReferenceEnd::AbstractForm, ["c2"]).into()],
+        ),
+        (
+            "r1",
+            "structure",
+            vec![SetReferences::new("r1", ReferenceEnd::Structure, ["p"]).into()],
+        ),
+        (
+            "i1",
+            "source",
+            vec![AddReference::new("i1", ReferenceEnd::Source, "c1").into()],
+        ),
+        (
+            "i1",
+            "target",
+            vec![SetReferences::new("i1", ReferenceEnd::Target, ["c2"]).into()],
+        ),
+        (
+            "i1",
+            "reasoning",
+            vec![SetReferences::new("i1", ReferenceEnd::Reasoning, ["r1"]).into()],
+        ),
+        (
+            "ar1",
+            "referencedArtifactElement",
+            vec![AddReference::new("ar1", ReferenceEnd::ReferencedArtifactElement, "c1").into()],
+        ),
+        (
+            "g1",
+            "argumentElement",
+            vec![AddReference::new("g1", ReferenceEnd::GroupMember, "c1").into()],
+        ),
+    ];
+    for (holder, end, operations) in cases {
+        let what = format!("{holder}'s {end}=\"\", then set by an edit");
+        let input = empty_end_document(holder, end);
+        let mut doc = read(&what, &input);
+        assert!(
+            doc.get(holder)
+                .is_some_and(SacmElement::has_preserved_content),
+            "{ROW}: {what}: setup: the empty {end} is preserved on {holder}"
+        );
+        for operation in operations {
+            apply(&what, &mut doc, operation);
+        }
+        assert!(
+            doc.get(holder).is_some_and(|e| !e.has_preserved_content()),
+            "{ROW}: {what}: the edit replaced the preserved {end}, so {holder} holds none"
+        );
+        let out = write(&what, &doc);
+        let attribute = format!(" {end}=\"");
+        assert_eq!(
+            out.matches(&attribute).count(),
+            1,
+            "{ROW}: {what}: the output holds {end} once\n{out}"
+        );
+        let again = match xmi::read(out.as_bytes(), &ReadOptions::default()) {
+            Ok(output) => {
+                assert!(
+                    output.diagnostics().is_empty(),
+                    "{ROW}: {what}: the output reads with {:?}",
+                    output.diagnostics()
+                );
+                output.into_document()
+            }
+            Err(error) => panic!("{ROW}: {what}: the output does not read: {error:?}\n{out}"),
+        };
+        assert!(
+            again == doc && semantic_compare(&doc, &again).is_empty(),
+            "{ROW}: {what}: the output reads as the edited document: {:?}",
+            semantic_compare(&doc, &again)
+        );
+        assert!(
+            again
+                .get(holder)
+                .is_some_and(|e| !e.has_preserved_content()),
+            "{ROW}: {what}: no preserved content is read back on {holder}"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------

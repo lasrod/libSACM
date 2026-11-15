@@ -65,3 +65,10 @@ Public API:
   definition), with a test. 92 rewordings across 42 verified rows (matrix-steward draft)
   applied. The stale `WriteError::code` mutants exclusion was removed. Full gate green. Rows
   `implemented`.
+- 2026-11-15 verification round 1: FAIL. Blocking: a duplicate attribute after `end=""`
+  plus an edit (not well-formed); `interface` wrongly preserved (it is a conforming end);
+  MSRV broken by a let-chain; two messages with lost line continuations; the
+  XMI_UNKNOWN_CONTENT advice; and 6 missed PR-diff mutants. Fixes: an edit that sets an
+  end replaces a preserved attribute of its name, and a write uses the element form when a
+  read gives both (ADR 0033); `interface` is refused through AC-002 or ARG-014; tests pin
+  the messages, the empty-end write and the mutants (one more equivalent mutant triaged).

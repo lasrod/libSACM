@@ -40,6 +40,12 @@ use crate::model::{Document, ElementId, ReferenceEnd, SacmElement};
 /// The element is in [`changed_ids`](super::Mutation::changed_ids) when the
 /// end changes; the referenced elements are not.
 ///
+/// An end set to one or more ids replaces an attribute of the end's name
+/// that the element holds as preserved content, such as a `metaClaim=""`
+/// read from a file, which held no id (ADR 0033): the edit is the repair, so
+/// the element is then changed even if the end held those ids already.
+/// [`AddReference`] does the same.
+///
 /// # Examples
 ///
 /// ```
@@ -128,9 +134,12 @@ impl SetReferences {
         let held = owner(document, &self.element, self.end)?.references(self.end);
         check_bounds(self.end, self.ids.len())?;
         check_targets(document, &[(self.end, &self.ids, held)])?;
+        // Setting the ids held still changes the element if it holds the end
+        // as a preserved attribute too, which the set replaces (ADR 0033).
+        let replaces = !self.ids.is_empty() && document.has_preserved_end(&self.element, self.end);
         Ok(changing(
             &self.element,
-            held != self.ids.as_slice(),
+            held != self.ids.as_slice() || replaces,
             Value::References(self.end, self.ids.clone()),
         ))
     }

@@ -190,7 +190,8 @@ catalog! {
     /// A tolerant [`xmi::write`](crate::xmi::write) writes it back; a strict
     /// one refuses it (SACM-XMI-006). Named after the C++ library's
     /// `kXmiUnknownElement`; it covers attributes and text too. Fix: remove
-    /// the content, or move it into an `xmi:Extension`.
+    /// the content, or keep it in an `xmi:Extension` once SACM23-XMI-019
+    /// reads one.
     pub const XMI_UNKNOWN_CONTENT: Code = Code::from_static("SACM-XMI-003");
 
     /// SACM-XMI-006: a strict [`xmi::write`](crate::xmi::write) refuses a

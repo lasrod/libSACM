@@ -30,7 +30,8 @@ pub(super) fn dangling_references(document: &Document, found: &mut Vec<Diagnosti
                 }
                 if document.is_preserved_id(target.as_str()) {
                     let message = format!(
-                        "{} {:?} has the {} {:?}, which names an element the document holds only                          as preserved content, so its type is not checked (the end's type is {})",
+                        "{} {:?} has the {} {:?}, which names an element the document holds only \
+                         as preserved content, so its type is not checked (the end's type is {})",
                         element.kind().name(),
                         element.id().as_str(),
                         end.name(),

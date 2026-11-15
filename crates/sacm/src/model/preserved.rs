@@ -108,6 +108,42 @@ impl Preserved {
         self.attributes.is_empty() && self.children.is_empty()
     }
 
+    /// Whether it holds an attribute `local` in no namespace.
+    pub(crate) fn has_unqualified(&self, local: &str) -> bool {
+        self.attributes
+            .iter()
+            .any(|attr| attr.name.namespace.is_none() && attr.name.local == local)
+    }
+
+    /// Removes the attribute `local` in no namespace, if it holds one, and
+    /// returns the ids its value named, which it no longer counts as
+    /// references: its tokens between XML white space.
+    pub(crate) fn remove_unqualified(&mut self, local: &str) -> Vec<ElementId> {
+        let Some(position) = self
+            .attributes
+            .iter()
+            .position(|attr| attr.name.namespace.is_none() && attr.name.local == local)
+        else {
+            return Vec::new();
+        };
+        let attr = self.attributes.remove(position);
+        let mut released = Vec::new();
+        for token in attr
+            .value
+            .split([' ', '\t', '\n', '\r'])
+            .filter(|token| !token.is_empty())
+        {
+            if let Some(at) = self
+                .references
+                .iter()
+                .position(|held| held.as_str() == token)
+            {
+                released.push(self.references.remove(at));
+            }
+        }
+        released
+    }
+
     /// The number of preserved child elements: text and attributes do not
     /// count (the maintainer, 2026-11-15).
     pub(crate) fn element_count(&self) -> usize {

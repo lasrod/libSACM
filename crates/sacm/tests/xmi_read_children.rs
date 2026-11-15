@@ -294,9 +294,7 @@ fn assert_all_preserved_at_mark(what: &str, cases: &[Preserved]) {
             }
             documents.push(output.into_document());
         }
-        if let [tolerant, strict] = documents.as_slice()
-            && tolerant != strict
-        {
+        if matches!(documents.as_slice(), [tolerant, strict] if tolerant != strict) {
             failures.push(format!("{}: the modes read different documents", case.what));
         }
     }

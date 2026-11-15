@@ -1147,7 +1147,6 @@ fn sacm23_xmi_001_an_unread_attribute_of_a_root_is_unsupported_or_preserved_at_t
         "xmi:isAbstract=\"true\"",
         "sacm:citedElement=\"x\"",
         "ext:abstractForm=\"x\"",
-        "interface=\"x\"",
         "xml:lang=\"en\"",
         "foo=\"1\"",
         "ext:a=\"1\"",
@@ -1162,6 +1161,21 @@ fn sacm23_xmi_001_an_unread_attribute_of_a_root_is_unsupported_or_preserved_at_t
             let input = format!("{}\n  {attribute}/>", root_start(kind));
             assert_preserved_at(row, input.as_bytes(), loc(row, 2, 3), Some("p"));
         }
+        // `interface` is a conforming reference end of both packages
+        // (ptc/22-03-13) that this version does not read yet: refused with
+        // the label of the package's interface row (LIB-API-011).
+        let interface_row = if kind == "ArgumentPackage" {
+            "SACM23-ARG-014"
+        } else {
+            "SACM23-AC-002"
+        };
+        let input = format!("{}\n  interface=\"x\"/>", root_start(kind));
+        let error = assert_unsupported_at(row, input.as_bytes(), loc(row, 2, 3));
+        let label = format!("(a limit of this version; {interface_row} reads it)");
+        assert!(
+            matches!(&error, ReadError::Unsupported { reason, .. } if reason.ends_with(&label)),
+            "{row}: interface on an {kind} root is not labelled {label:?}: {error:?}"
+        );
     }
 }
 
