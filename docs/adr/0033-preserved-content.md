@@ -50,7 +50,11 @@ preserved.
   - Namespace URIs, local names, prefixes and values are kept exactly.
   - Fragment text is kept exactly. Top-level stray text is trimmed. Comments and processing
     instructions are dropped, as everywhere in the reader.
-  - Each holder or fragment declares the namespace bindings it needs.
+  - A top fragment, and a holder of preserved attributes, declares every prefixed binding
+    in scope where it was read, except `xml`, `sacm` and `xmi`, so a QName in a preserved
+    value (`xmi:type="t:Claim"`, `v:ref="u:thing"`) still resolves. No default namespace is
+    declared on a holder, which would move its own unprefixed element (Copilot review on
+    #68).
 - **Writing.**
   - A tolerant `xmi::write` writes preserved content back: load, save and load gives an
     equal `Document`, and writing again is byte-identical.

@@ -13,7 +13,8 @@
 //! Preserved content (LIB-COMPAT-003, ADR 0033) is written back where it
 //! was read: its attributes after the typed ones, each child on its own line
 //! before the typed child it preceded, a fragment as one line with its text
-//! exactly as held, each declaring the namespace bindings it needs. Neither
+//! exactly as held, the holder of attributes and each fragment declaring the
+//! namespace bindings that were in scope where they were read. Neither
 //! pass recurses, so deep nesting is safe.
 
 use super::namespaces::{SACM_NS, SACM_PREFIX, XMI_NS, XMI_PREFIX};
