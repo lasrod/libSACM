@@ -6,7 +6,7 @@
 - Row verdict: LIB-COMPAT-010: PASS
 - Row verdict: SACM23-VAL-019: PASS
 - Row verdict: SACM23-VAL-021: PASS
-- Row verdict: LIB-QA-018: OPEN
+- Row verdict: LIB-QA-018: PASS
 - Verifier: `sacm-verifier` (independent; read-only), two rounds
 - Commit: c2b97e4; evidence:
   - CI run [43701911357](https://github.com/lasrod/libSACM/actions/runs/43701911357): 17/17
@@ -34,8 +34,16 @@ D15).
 **The re-checked rows:** 22 verified rows had their tests or fixtures changed because the new
 rules replace old refusals. Each still makes its point, and the full run is clean.
 
-**LIB-QA-018** stays OPEN until this commit's own CI run shows a docs-only push skipping the
-code-only jobs. Its other bullets passed.
+**LIB-QA-018:** the verifier passed bullets 1-3 and named five checks for bullet 4, which the
+lead made on the docs-only push 1b84f84, run
+[43704277285](https://github.com/lasrod/libSACM/actions/runs/43704277285):
+- the push touched only `docs/` and sits on c2b97e4, whose CI is green;
+- `test (windows-latest)` and `test (macos-latest)` skipped their 7 steps, and `MSRV` and the
+  mutant shards were skipped;
+- the `mutants (PR diff)` aggregator succeeded;
+- `test (ubuntu-latest)` and every other job ran and succeeded, and all required checks are
+  green;
+- run 43701911357 is the code push that ran every job.
 
 ## Findings
 

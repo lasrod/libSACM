@@ -1,8 +1,8 @@
 ---
 slice: 0049
 name: m2-reading-and-validation
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [LIB-COMPAT-008, SACM23-XMI-026, LIB-COMPAT-010, SACM23-VAL-019, SACM23-VAL-021, LIB-QA-018]
 mode: pr
 base: main
@@ -74,3 +74,4 @@ LIB-COMPAT-012 (M6) takes the legacy shapes that invent or merge elements.
   LIB-QA-018 (a docs-only push after a failed or cancelled code run skipped the code checks);
   `changes` now also requires CI success on the previous commit, with tests.
 - 2026-11-15 verification round 2: LIB-COMPAT-008 PASS once four more stale texts (SACM23-XMI-012, -014, -016, BASE-004) and LIB-COMPAT-001 were fixed (wording only, read by the lead as the verifier required); the full mutants run 43699001243 is clean, so the re-checked rows stay verified. Five library rows `verified` (record 0049). LIB-QA-018 waits for this docs-only commit's CI run.
+- 2026-11-15 close: the docs-only push 1b84f84 (run 43704277285) skipped the code-only jobs with all required checks green; LIB-QA-018 `verified`. Slice done.

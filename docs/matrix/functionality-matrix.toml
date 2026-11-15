@@ -5300,7 +5300,8 @@ title = "Documentation-only pushes skip the code-only CI jobs"
 requirement = "A CI job `changes` decides whether the latest push (a pull request's new commits, or a push's before..after) changed any file outside `docs/`, and is true when it cannot tell. A push compared with the commit before it (a pull request's `synchronize`, or a push) is docs-only only if CI succeeded on that commit, so a docs-only push never turns failed, cancelled or unfinished code checks green (Copilot review on #67); a newly opened pull request compares with its base. Only an explicit `false` skips anything: the Windows and macOS test steps, the MSRV job and the PR-diff mutant shards; their required checks pass as skipped. The Ubuntu tests and every other job still run. The `mutants (PR diff)` check passes when every shard passed, or when `changes` succeeded with `false` and the shards were skipped."
 source = "ADR 0006 amendment 4 (the maintainer, 2026-11-15)"
 kind = "quality"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0049-m2-reading-and-validation.md"
 depends_on = ["LIB-QA-001"]
 acceptance = [
   "The `changes` job has a step that asks the GitHub API whether CI succeeded on the previous commit (`actions: read`), and the detection script gives `false` for a docs-only `synchronize` or push range only when that answer is `true`; when it is `false`, missing or the lookup fails, `code` is `true` (shown by running the script with the answer set each way).",
