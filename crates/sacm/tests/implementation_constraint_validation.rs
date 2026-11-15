@@ -339,6 +339,37 @@ fn sacm23_val_021_a_concrete_element_of_each_readable_kind_with_a_constraint_giv
     }
 }
 
+#[test]
+fn sacm23_val_021_the_one_error_names_how_many_constraints_the_element_holds() {
+    // One finding however many constraints, so the message is where the count
+    // shows: "an implementationConstraint" for one, "<n>
+    // implementationConstraints" for more.
+    for (holder, input_of) in holders() {
+        for (constraints, content, says, never) in [
+            (
+                "one constraint",
+                ONE,
+                "an implementationConstraint",
+                "1 implementationConstraints",
+            ),
+            (
+                "two constraints",
+                TWO,
+                "2 implementationConstraints",
+                "an implementationConstraint",
+            ),
+        ] {
+            let what = format!("{holder} with {constraints}");
+            let (_, finding) = one_error_on_x(&what, &input_of("", content));
+            let message = finding.message();
+            assert!(
+                message.contains(says) && !message.contains(never),
+                "{ROW}: {what}: the message {message:?} does not say {says:?}"
+            );
+        }
+    }
+}
+
 // --- Acceptance 2: abstract elements, and the other utility elements ----------------
 
 #[test]

@@ -61,3 +61,8 @@ LIB-COMPAT-012 (M6) takes the legacy shapes that invent or merge elements.
   SACM23-BASE-004, -005, SACM23-VAL-002, -003, -004, -005, -007, -010, -011, -012, -016,
   -018, LIB-EDIT-008, LIB-CLI-002, -003, LIB-API-006. Rows `implemented`. Committed locally
   for a PC restart.
+- 2026-11-15 verification (CI on f9a0e3b): green except the PR-diff mutants, 13 missed in new
+  code. Tests added: 12 killed, plus one extra `holds_beside` mutant; `legacy_shape` `<` → `<=`
+  is equivalent and excluded with a triage row. The stale `deleted_ids` exclusion is removed
+  (slice 0048 follow-up). A full mutants run (43693981251) was dispatched because tests were
+  replaced.

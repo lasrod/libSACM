@@ -3406,6 +3406,7 @@ acceptance = [
 ]
 code = ["crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi.rs", "docs/adr/0022-load-and-save-modes.md"]
 tests = [
+  "crates/sacm/tests/legacy_shapes.rs::lib_compat_008_a_repeated_name_or_value_field_lists_exactly_its_occurrences",
   "crates/sacm/tests/legacy_shapes.rs::lib_compat_008_a_name_attribute_reads_as_name_content_with_no_lang_and_one_warning",
   "crates/sacm/tests/legacy_shapes.rs::lib_compat_008_a_name_attribute_is_written_as_a_name_element_that_strict_reads_with_no_diagnostic",
   "crates/sacm/tests/legacy_shapes.rs::lib_compat_008_a_name_attribute_on_a_utility_element_is_not_read",
@@ -5027,6 +5028,7 @@ acceptance = [
 ]
 code = ["crates/sacm/src/validation/constraints.rs", "crates/sacm/src/diagnostic.rs"]
 tests = [
+  "crates/sacm/tests/implementation_constraint_validation.rs::sacm23_val_021_the_one_error_names_how_many_constraints_the_element_holds",
   "crates/sacm/tests/implementation_constraint_validation.rs::sacm23_val_021_the_setup_gives_no_finding_without_a_constraint",
   "crates/sacm/tests/implementation_constraint_validation.rs::sacm23_val_021_a_concrete_element_of_each_readable_kind_with_a_constraint_gives_one_error",
   "crates/sacm/tests/implementation_constraint_validation.rs::sacm23_val_021_an_abstract_element_with_constraints_gives_no_finding",

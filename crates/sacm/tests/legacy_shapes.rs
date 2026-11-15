@@ -631,21 +631,41 @@ fn tagged_value_shapes() -> Vec<Shape> {
     ]
 }
 
-/// Two shapes in one document.
+/// Two shapes in one document. In the last two, the shape the reader finds
+/// first is the later one in the text, so the strict refusal must still be
+/// the first in the text.
 fn combined_shapes() -> Vec<Shape> {
-    vec![shape(
-        "name= on a Claim and content= on its Description",
-        claim(
-            &format!(" {MARK}name=\"X\""),
-            &format!("<description xmi:id=\"d\" {MARK}content=\"x\"/>"),
+    vec![
+        shape(
+            "name= on a Claim and content= on its Description",
+            claim(
+                &format!(" {MARK}name=\"X\""),
+                &format!("<description xmi:id=\"d\" {MARK}content=\"x\"/>"),
+            ),
+            &["c1", "d"],
+            claim(
+                "",
+                "<name content=\"X\"/><description xmi:id=\"d\"><content><value content=\"x\"/>\
+                 </content></description>",
+            ),
         ),
-        &["c1", "d"],
-        claim(
-            "",
-            "<name content=\"X\"/><description xmi:id=\"d\"><content><value content=\"x\"/>\
-             </content></description>",
+        shape(
+            "value= on a taggedValue and its key as text",
+            ap(&format!(
+                "<taggedValue xmi:id=\"t\" {MARK}value=\"v\"><key>{MARK}k</key></taggedValue>"
+            )),
+            &["t", "t"],
+            tagged(&format!("{KEY}<content><value content=\"v\"/></content>")),
         ),
-    )]
+        shape(
+            "a name holding one value with its content as text",
+            named(&format!(
+                "<name>{MARK}<value lang=\"en\">{MARK}X</value></name>"
+            )),
+            &["c1", "c1"],
+            named("<name lang=\"en\" content=\"X\"/>"),
+        ),
+    ]
 }
 
 fn all_shapes() -> Vec<Shape> {
@@ -1050,26 +1070,152 @@ fn lib_compat_008_a_name_holding_one_value_or_one_content_with_lang_reads_as_tha
 
 #[test]
 fn lib_compat_008_a_name_holding_two_entries_stays_refused() {
-    for (what, input) in [
+    // LIB-COMPAT-012 (M6) is to read these: until then nothing is dropped. A
+    // `value` with anything beside it in its name is refused at the value.
+    for (what, template) in [
         (
             "two values in a name",
-            named(
-                "<name><value lang=\"en\" content=\"X\"/><value lang=\"de\" content=\"Y\"/></name>",
-            ),
+            named(&format!(
+                "<name>{MARK}<value lang=\"en\" content=\"X\"/><value lang=\"de\" content=\"Y\"/></name>"
+            )),
         ),
         (
             "two contents with lang in a name",
-            named("<name><content lang=\"en\">X</content><content lang=\"de\">Y</content></name>"),
+            named(&format!(
+                "<name><content lang=\"en\">X</content>{MARK}<content lang=\"de\">Y</content></name>"
+            )),
         ),
         (
             "a value and a content with lang in a name",
-            named(
-                "<name><value lang=\"en\" content=\"X\"/><content lang=\"de\">Y</content></name>",
-            ),
+            named(&format!(
+                "<name>{MARK}<value lang=\"en\" content=\"X\"/><content lang=\"de\">Y</content></name>"
+            )),
+        ),
+        (
+            "a value and text after it in a name",
+            named(&format!(
+                "<name>{MARK}<value lang=\"en\" content=\"X\"/>y</name>"
+            )),
+        ),
+        (
+            "text and a value after it in a name",
+            named(&format!(
+                "<name>y{MARK}<value lang=\"en\" content=\"X\"/></name>"
+            )),
+        ),
+        (
+            "a value in a name with a lang attribute",
+            named(&format!(
+                "<name lang=\"en\">{MARK}<value content=\"X\"/></name>"
+            )),
+        ),
+        (
+            "a value in a name with a content attribute",
+            named(&format!(
+                "<name content=\"X\">{MARK}<value lang=\"en\"/></name>"
+            )),
+        ),
+        (
+            "a value and a lang element in a name",
+            named(&format!(
+                "<name>{MARK}<value content=\"X\"/><lang>en</lang></name>"
+            )),
         ),
     ] {
-        // LIB-COMPAT-012 (M6) is to read these: until then nothing is dropped.
-        refused(what, &input);
+        assert_unsupported_at_mark(what, &template);
+    }
+}
+
+#[test]
+fn lib_compat_008_a_repeated_name_or_value_field_lists_exactly_its_occurrences() {
+    // A field given twice is refused with every occurrence of that field
+    // and of no other: text counts once, for `content`; a `content` carrying
+    // `lang`, or a `value`, in a name counts for the field it gives.
+    let cases = [
+        (
+            "lang twice beside text",
+            named(&format!(
+                "<name {MARK}lang=\"en\">{MARK}<lang>de</lang>X</name>"
+            )),
+            "name.lang",
+        ),
+        (
+            "content= and text split by a comment",
+            named(&format!(
+                "<name {MARK}content=\"a\">{MARK}b<!--c-->d</name>"
+            )),
+            "name.content",
+        ),
+        (
+            "content= and a content carrying lang",
+            named(&format!(
+                "<name {MARK}content=\"a\">{MARK}<content lang=\"en\">b</content></name>"
+            )),
+            "name.content",
+        ),
+        (
+            "lang twice in a value beside a content carrying lang",
+            description(&format!(
+                "<content><value {MARK}lang=\"en\">{MARK}<lang>de</lang>\
+                 <content lang=\"fr\">x</content></value></content>"
+            )),
+            "content.value.lang",
+        ),
+        (
+            "lang twice beside a value giving only content",
+            named(&format!(
+                "<name {MARK}lang=\"en\">{MARK}<lang>de</lang><value content=\"x\"/></name>"
+            )),
+            "name.lang",
+        ),
+        (
+            "lang twice beside a value giving lang as an attribute",
+            named(&format!(
+                "<name {MARK}lang=\"en\">{MARK}<lang>de</lang>{MARK}<value lang=\"fr\"/></name>"
+            )),
+            "name.lang",
+        ),
+        (
+            "lang twice beside a value giving lang as an element",
+            named(&format!(
+                "<name {MARK}lang=\"en\">{MARK}<lang>de</lang>{MARK}<value><lang>fr</lang></value></name>"
+            )),
+            "name.lang",
+        ),
+        (
+            "lang twice beside a value giving content as text",
+            named(&format!(
+                "<name {MARK}lang=\"en\">{MARK}<lang>de</lang><value>x</value></name>"
+            )),
+            "name.lang",
+        ),
+        (
+            "content twice beside a value giving content as text",
+            named(&format!(
+                "<name {MARK}content=\"a\">{MARK}<content>b</content>{MARK}<value>x</value></name>"
+            )),
+            "name.content",
+        ),
+        (
+            "content twice beside a value giving only lang as an element",
+            named(&format!(
+                "<name {MARK}content=\"a\">{MARK}<content>b</content><value><lang>fr</lang></value></name>"
+            )),
+            "name.content",
+        ),
+    ];
+    for (what, template, expected) in &cases {
+        let (input, marks) = marked(template);
+        let error = refused(what, &input);
+        assert!(
+            matches!(&error, ReadError::RepeatedValue { property, .. } if property == expected),
+            "{ROW}: {what}: not RepeatedValue for {expected}: {error:?} ({error})"
+        );
+        assert_eq!(
+            error.locations(),
+            marks.as_slice(),
+            "{ROW}: {what}: the locations are not exactly the occurrences of the field"
+        );
     }
 }
 
