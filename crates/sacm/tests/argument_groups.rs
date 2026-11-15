@@ -11,7 +11,8 @@
 //! `Difference::GroupMembers`. The parent's kind decides how
 //! `argumentElement` reads: a reference under a group, the composite role
 //! under a package. A nested element under a group's `argumentElement` is
-//! `Unsupported`, never dropped, and the text's spelling
+//! `Unsupported` or, when it is a defect, preserved (ADR 0033), never
+//! dropped, and the text's spelling
 //! `argumentationElement` stays `Unsupported` (SACM23-XMI-009).
 //! `CreateArgumentGroup::new(parent, name)` creates one, with `with_id` and
 //! `with_group_members`.
@@ -274,6 +275,55 @@ fn with_code(doc: &Document, code: Code) -> Vec<Diagnostic> {
         .collect()
 }
 
+/// Asserts that `input` reads in both modes and keeps one construct as
+/// preserved content of `holder` (LIB-COMPAT-003, ADR 0033): exactly one
+/// SACM-XMI-003 at `at`, affecting `holder`, a Warning in tolerant mode and
+/// an Error in strict mode, and the same document in both.
+fn assert_preserved_at(what: &str, input: &str, at: SourceLocation, holder: &str) {
+    let mut documents = Vec::new();
+    for (mode, severity) in [
+        (Mode::Tolerant, Severity::Warning),
+        (Mode::Strict, Severity::Error),
+    ] {
+        let output = match read(mode, input) {
+            Ok(output) => output,
+            Err(error) => panic!(
+                "{ROW}: {what}: a {mode:?} read refused it instead of preserving it: {error:?}"
+            ),
+        };
+        let found: Vec<_> = output
+            .diagnostics()
+            .iter()
+            .filter(|found| found.code() == Code::XMI_UNKNOWN_CONTENT)
+            .map(|found| {
+                (
+                    found.severity(),
+                    found.location(),
+                    found.affected().to_vec(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            found,
+            [(severity, Some(at), list(&[holder]))],
+            "{ROW}: {what}: not one SACM-XMI-003 at the construct affecting {holder:?} in \
+             {mode:?} mode: {:?}",
+            output.diagnostics()
+        );
+        let doc = output.into_document();
+        assert!(
+            doc.get(holder)
+                .is_some_and(SacmElement::has_preserved_content),
+            "{ROW}: {what}: {holder:?} holds no preserved content in {mode:?} mode"
+        );
+        documents.push(doc);
+    }
+    assert_eq!(
+        documents[0], documents[1],
+        "{ROW}: {what}: the modes read different documents"
+    );
+}
+
 /// Asserts that `error` is `Unsupported`, with no code, at `at`.
 fn assert_unsupported_at(what: &str, error: &ReadError, at: SourceLocation) {
     assert!(
@@ -484,10 +534,13 @@ fn sacm23_arg_013_member_elements_by_idref_or_href_read_equal_to_the_attribute()
 /// element in a group is a reference element. A nested element there is
 /// refused as any reference element with an attribute that no reference
 /// element has: at the first such attribute (SACM23-XMI-010's "an xmi:type
-/// on a reference element" and "an xmi:id on a reference element"), or at
-/// its start tag when it has no link (ADR 0026).
+/// on a reference element" and "an xmi:id on a reference element"; those
+/// are conforming XMI this version does not read yet, SACM23-XMI-019). One
+/// with no link and only a name is a defect in a reference element, kept
+/// whole as preserved content of the group (ADR 0033). Never read as a
+/// child.
 #[test]
-fn sacm23_arg_013_a_nested_element_under_a_group_is_unsupported_at_that_construct() {
+fn sacm23_arg_013_a_nested_element_under_a_group_is_unsupported_or_preserved_at_that_construct() {
     for (what, nested) in [
         (
             "a typed Claim",
@@ -512,10 +565,6 @@ fn sacm23_arg_013_a_nested_element_under_a_group_is_unsupported_at_that_construc
             "an untyped element with an id",
             format!("<argumentElement {MARK}xmi:id=\"c9\"/>"),
         ),
-        (
-            "an element with only a name",
-            format!("{MARK}<argumentElement><name content=\"C9\"/></argumentElement>"),
-        ),
     ] {
         let what = format!("{what} inside a group");
         let (input, marks) = marked(&g_in_ap("", &nested));
@@ -533,10 +582,17 @@ fn sacm23_arg_013_a_nested_element_under_a_group_is_unsupported_at_that_construc
     ));
     let error = refused(what, &input);
     assert_unsupported_at(what, &error, marks[0]);
+    // With no link and only a name: preserved whole, never read as a child.
+    let what = "an element with only a name inside a group";
+    let (input, marks) = marked(&g_in_ap(
+        "",
+        &format!("{MARK}<argumentElement><name content=\"C9\"/></argumentElement>"),
+    ));
+    assert_preserved_at(what, &input, marks[0], "g");
 }
 
 #[test]
-fn sacm23_arg_013_an_attribute_and_member_elements_are_repeated_value_and_an_empty_one_is_unsupported()
+fn sacm23_arg_013_an_attribute_and_member_elements_are_repeated_value_and_an_empty_one_is_preserved()
  {
     let what = "the attribute and a member element";
     let (input, marks) = marked(&g_in_ap(
@@ -569,8 +625,7 @@ fn sacm23_arg_013_an_attribute_and_member_elements_are_repeated_value_and_an_emp
         ),
     ] {
         let (input, marks) = marked(&g_in_ap(&attribute, ""));
-        let error = refused(what, &input);
-        assert_unsupported_at(what, &error, marks[0]);
+        assert_preserved_at(what, &input, marks[0], "g");
     }
 }
 
@@ -578,8 +633,11 @@ fn sacm23_arg_013_an_attribute_and_member_elements_are_repeated_value_and_an_emp
 // Item 3: the text's spelling, and the attribute on a package
 // =====================================================================================
 
+/// The text's spelling stays a tolerance this version does not read
+/// (SACM23-XMI-009). An `argumentElement` attribute on a kind with no such
+/// reference end is an attribute its class lacks: preserved (ADR 0033).
 #[test]
-fn sacm23_arg_013_argumentation_element_on_a_group_and_argument_element_on_a_package_are_unsupported()
+fn sacm23_arg_013_argumentation_element_on_a_group_is_unsupported_and_argument_element_on_a_package_is_preserved()
  {
     let cases = [
         (
@@ -600,6 +658,14 @@ fn sacm23_arg_013_argumentation_element_on_a_group_and_argument_element_on_a_pac
                 &format!("{MARK}<argumentationElement xmi:type=\"sacm:Claim\" xmi:id=\"c9\"/>"),
             ),
         ),
+    ];
+    for (what, template) in &cases {
+        let (input, marks) = marked(template);
+        assert_eq!(marks.len(), 1, "{ROW}: setup: {what} has not one mark");
+        let error = refused(what, &input);
+        assert_unsupported_at(what, &error, marks[0]);
+    }
+    let preserved = [
         (
             "an argumentElement attribute on an ArgumentPackage root",
             format!(
@@ -607,6 +673,7 @@ fn sacm23_arg_013_argumentation_element_on_a_group_and_argument_element_on_a_pac
                  <name content=\"P\"/>{}</sacm:ArgumentPackage>",
                 claim("c1")
             ),
+            "p",
         ),
         (
             "an argumentElement attribute on an ArgumentPackage child",
@@ -616,6 +683,7 @@ fn sacm23_arg_013_argumentation_element_on_a_group_and_argument_element_on_a_pac
                  {}</argumentPackage></sacm:AssuranceCasePackage>",
                 claim("c1")
             ),
+            "p",
         ),
         (
             "an argumentElement attribute on a Claim",
@@ -623,13 +691,13 @@ fn sacm23_arg_013_argumentation_element_on_a_group_and_argument_element_on_a_pac
                 "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\" {MARK}argumentElement=\"c1\">\
                  <name content=\"X\"/></argumentElement>"
             )),
+            "x",
         ),
     ];
-    for (what, template) in &cases {
+    for (what, template, holder) in &preserved {
         let (input, marks) = marked(template);
         assert_eq!(marks.len(), 1, "{ROW}: setup: {what} has not one mark");
-        let error = refused(what, &input);
-        assert_unsupported_at(what, &error, marks[0]);
+        assert_preserved_at(what, &input, marks[0], holder);
     }
     // Under an ArgumentPackage, `argumentElement` is the composite role, whose
     // declared type is abstract: an untyped one, a reference element in form,
@@ -1262,14 +1330,27 @@ fn sacm23_arg_013_no_readable_class_has_a_composite_role_and_a_reference_end_of_
                 failures.push(format!("the tables give {kind} a role and an end {role}"));
             }
         }
-        // A role name, as an attribute, is no reference end of the class.
+        // A role name, as an attribute, is no reference end of the class:
+        // an attribute the class lacks, kept as preserved content of the
+        // element (ADR 0033), never read as a reference.
         for role in &roles {
             let (input, marks) = marked(&element_of(&format!(" {MARK}{role}=\"c1\""), ""));
             match read(Mode::Tolerant, &input) {
-                Err(error @ ReadError::Unsupported { .. })
-                    if error.location() == marks.first().copied() => {}
+                Ok(output)
+                    if output
+                        .diagnostics()
+                        .iter()
+                        .filter(|found| found.code() == Code::XMI_UNKNOWN_CONTENT)
+                        .map(|found| (found.location(), found.affected().to_vec()))
+                        .eq([(marks.first().copied(), list(&["x"]))])
+                        && output
+                            .document()
+                            .get("x")
+                            .is_some_and(SacmElement::has_preserved_content) => {}
                 other => failures.push(format!(
-                    "{role}=\"c1\" on a {kind}: not Unsupported at the attribute: {other:?}"
+                    "{role}=\"c1\" on a {kind}: not one SACM-XMI-003 at the attribute, \
+                     preserved by x: {:?}",
+                    other.map(|output| output.diagnostics().to_vec())
                 )),
             }
         }

@@ -31,15 +31,20 @@
 //! an untyped child under an abstract role ([`ReadError::MissingType`],
 //! SACM-XMI-005). A tolerant read also reads the name and text shapes of the
 //! assurance-forge C++ library, with a Warning each, which a strict read
-//! refuses ([`ReadError::LegacyShape`], SACM-XMI-012). Content it cannot
-//! represent yet is refused as [`ReadError::Unsupported`], never dropped.
+//! refuses ([`ReadError::LegacyShape`], SACM-XMI-012). Content that is not
+//! SACM 2.3 where it stands, such as a vendor attribute or child element, is
+//! kept as written as preserved content of its element, with SACM-XMI-003
+//! (see [Preserved content](fn@read#preserved-content)); conforming content
+//! this release does not read yet is refused as [`ReadError::Unsupported`].
+//! Nothing is dropped.
 //!
 //! `write` writes every element of a document, with its `gid`, its flags and
 //! references, its name, its `content` and `key` and, on an Assertion, its
-//! `assertionDeclaration`, in
+//! `assertionDeclaration`, and the preserved content `read` kept, in
 //! document order, in one deterministic form. Its refusals are a document
 //! with no root ([`WriteError::NoRoot`]), in strict mode a document that
-//! validation reports an Error for ([`WriteError::Invalid`]), and an id,
+//! holds preserved content ([`WriteError::PreservedContent`], SACM-XMI-006)
+//! or that validation reports an Error for ([`WriteError::Invalid`]), and an id,
 //! gid, name or text that XML 1.0 cannot represent
 //! ([`WriteError::UnrepresentableCharacter`]). A document returned by this
 //! release's `read` always writes in tolerant mode, and what `write` writes
@@ -112,6 +117,8 @@ use crate::model::{Document, ElementId, ReferenceEnd};
 mod input;
 mod namespaces;
 mod output;
+mod preserve;
+mod refusal;
 mod roots;
 
 /// Reads an XMI document from its bytes.
@@ -194,13 +201,13 @@ mod roots;
 /// shares its name with an ArgumentPackage's composite role: under a group,
 /// an `argumentElement` element is a reference element, so one that holds a
 /// nested element, such as `<argumentElement xmi:type="sacm:Claim" .../>`,
-/// is [`ReadError::Unsupported`] as any malformed reference element is, and
-/// never read as a child. A
+/// is preserved as any malformed reference element is, and never read as a
+/// child. A
 /// relationship read without a `source` or a `target` is kept as read, and
 /// nothing is added; [`validation::validate`](crate::validation::validate)
 /// reports it (SACM23-VAL-005). On a kind that lacks one of these, such as
 /// `isCounter` on a Claim or `metaClaim` on an `ArgumentReasoning`, it is
-/// [`ReadError::Unsupported`].
+/// preserved (see [Preserved content](#preserved-content)).
 ///
 /// An Assertion's `assertionDeclaration` attribute (§11.10), in no namespace, is
 /// read as its declaration. Its value must be one of the six
@@ -242,9 +249,10 @@ mod roots;
 /// usual. Any other value, such as `TRUE`, `yes` or `""`, is
 /// [`ReadError::InvalidLiteral`] (SACM-ENUM-001) with the property
 /// `xsi:nil`. A nil element holds no characters, not even white space, and
-/// no element: either is [`ReadError::Unsupported`] at it. A nil element
+/// no element: either does not conform, and is preserved. A nil element
 /// still counts as an occurrence for `RepeatedValue`. `xsi:nil` on any other
-/// element, and an unqualified `nil`, is an attribute that is not read.
+/// element, and an unqualified `nil`, is an attribute its class lacks, and
+/// is preserved.
 /// [`write()`] writes the property as omitted (SACM23-XMI-026).
 ///
 /// Elements and
@@ -254,23 +262,22 @@ mod roots;
 /// prefix does not matter. The SACM namespace is
 /// `http://www.omg.org/spec/SACM/20220301`.
 ///
-/// `read` refuses rather than drops: it never returns a document that is
-/// missing content from its input. A root may carry only namespace
-/// declarations, `xmi:id`, `gid`, `isCitation`, `isAbstract`, `citedElement`,
-/// `abstractForm`, `xmi:version` and an `xmi:type` or `xsi:type` naming its
-/// own class, and hold at most one `name`, at most one value or reference
-/// element of each of `gid`, `isCitation`, `isAbstract`, `citedElement` and
-/// `abstractForm`, and otherwise only white space, comments, processing
-/// instructions and the children above. A child may carry only namespace
-/// declarations, `xmi:id`, those five, its type attributes and the features
-/// of its kind above (`assertionDeclaration` and `metaClaim` on an
-/// Assertion, `isCounter`, `reasoning`, `source` and `target` on an asserted
-/// relationship, `structure` on an `ArgumentReasoning`,
-/// `referencedArtifactElement` on an `ArtifactReference`, `argumentElement`
-/// on an `ArgumentGroup`), and hold the same
-/// content as a root, with a value or reference element for each of its
-/// kind's features, except that a `UtilityElement` holds, besides those
-/// five, only its `content` and `key`.
+/// `read` never returns a document that is missing content from its input.
+/// A root may carry namespace declarations, `xmi:id`, `gid`, `isCitation`,
+/// `isAbstract`, `citedElement`, `abstractForm`, `xmi:version` and an
+/// `xmi:type` or `xsi:type` naming its own class, and hold at most one
+/// `name`, at most one value or reference element of each of `gid`,
+/// `isCitation`, `isAbstract`, `citedElement` and `abstractForm`, white
+/// space, comments, processing instructions and the children above. A
+/// child may carry namespace declarations, `xmi:id`, those five, its type
+/// attributes and the features of its kind above (`assertionDeclaration`
+/// and `metaClaim` on an Assertion, `isCounter`, `reasoning`, `source` and
+/// `target` on an asserted relationship, `structure` on an
+/// `ArgumentReasoning`, `referencedArtifactElement` on an
+/// `ArtifactReference`, `argumentElement` on an `ArgumentGroup`), and hold
+/// the same content as a root, with a value or reference element for each
+/// of its kind's features, except that a `UtilityElement` holds, besides
+/// those five, only its `content` and `key`.
 /// An `xmi:version` on a root or on the `xmi:XMI` wrapper is accepted with
 /// any value and ignored: the XMI namespace identifies the version
 /// (XMI 2.5.1 §7.5.3), so [`write()`] does not write it back. It is reported
@@ -280,8 +287,76 @@ mod roots;
 /// `sacm:LangString`, and hold only the value elements `lang` and `content`,
 /// white space, comments and processing instructions. A value element may
 /// carry only namespace declarations and `xsi:nil`, and may hold no element.
-/// Anything else is refused as [`ReadError::Unsupported`] until a later
-/// release reads it, except the C++ shapes below.
+/// What else an element carries or holds is either conforming content this
+/// release does not read yet, refused as [`ReadError::Unsupported`], or
+/// content that does not conform, kept as preserved content (below), except
+/// the C++ shapes below.
+///
+/// # Preserved content
+///
+/// Content that neither the SACM XML Schema nor the XMI 2.5.1 production
+/// rules allow where it stands, and that no tolerance reads, is kept
+/// exactly as written, in both modes, as preserved content of the element
+/// it sits in, its holder (LIB-COMPAT-003, ADR 0033). That is:
+///
+/// - an attribute the element's class lacks, such as a vendor attribute,
+///   `isCounter` on a Claim, an `id` in no namespace, `xmi:version` on a
+///   child, an XMI attribute XMI.xsd does not define, or a reference
+///   attribute that holds no id, such as `citedElement=""`;
+/// - a child element in another namespace, or under a role the class
+///   lacks, and any child of a `UtilityElement`;
+/// - a child whose type names no concrete SACM class, is not admitted by
+///   its role, or disagrees with its other type attribute;
+/// - a `name`, `content`, `key`, value element or reference element that
+///   does not conform inside, kept whole, so the property is not given;
+/// - text that is not all white space in element-only content;
+/// - a root's type attribute naming another class (the root is read as the
+///   kind its element name gives).
+///
+/// Each construct gives one SACM-XMI-003 ([`Code::XMI_UNKNOWN_CONTENT`]),
+/// affecting the holder, at the attribute's name, the element's start tag
+/// or the text's first character that is not literal white space: a
+/// Warning in tolerant mode and an Error in strict mode. Nothing inside a
+/// preserved element is read or reported, but each `xmi:id` in it is
+/// checked: an empty one is [`ReadError::InvalidId`], and a repeated one
+/// [`ReadError::DuplicateId`]. A preserved part is no occurrence of a
+/// property, so it never makes a [`ReadError::RepeatedValue`].
+///
+/// [`SacmElement::has_preserved_content`](crate::model::SacmElement::has_preserved_content)
+/// tells a holder. The content keeps its place: a child its index among the
+/// holder's children, and an attribute its place after the typed ones, in
+/// input order. Namespace URIs, prefixes, local names, attribute values and
+/// the text inside an element are kept exactly; text in a holder is
+/// trimmed of XML white space, and comments and processing instructions
+/// are dropped, as everywhere in the reader. A preserved id stays in the
+/// document's id space, though [`Document::get`] does not find it, and a
+/// reference to one is SACM-REF-003 in
+/// [`validation::validate`](crate::validation::validate). A tolerant
+/// [`write()`] writes the content back; a strict one refuses it.
+///
+/// Two inputs do not conform and have nowhere to be kept, so they are
+/// refused as [`ReadError::Unsupported`]: an attribute or text on the
+/// `xmi:XMI` element, which is no element of the document, and an
+/// attribute that would be preserved but whose prefix `sacm` or `xmi` is
+/// bound to another namespace than SACM 2.3 or XMI 2.5.1, which the written
+/// element binds them to.
+///
+/// ```
+/// use sacm::diagnostic::{Code, Severity};
+/// use sacm::xmi::{self, ReadOptions};
+///
+/// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:v="urn:vendor" xmi:id="p">
+///   <name content="P"/>
+///   <v:layout x="10" y="20"/>
+/// </sacm:ArgumentPackage>"#;
+/// let output = xmi::read(input, &ReadOptions::default())?;
+/// let found = &output.diagnostics()[0];
+/// assert_eq!((found.code(), found.severity()), (Code::XMI_UNKNOWN_CONTENT, Severity::Warning));
+/// assert_eq!(found.location().map(|at| (at.line(), at.column())), Some((4, 3)));
+/// assert!(output.document().get("p").is_some_and(|p| p.has_preserved_content()));
+/// # Ok::<(), xmi::ReadError>(())
+/// ```
 ///
 /// # The C++ name and text shapes
 ///
@@ -314,9 +389,11 @@ mod roots;
 /// never applies a tolerance: once the rest of the input reads without a
 /// refusal, it refuses the first shape as [`ReadError::LegacyShape`]. Both
 /// modes of [`write()`] write the standard form. Shapes that would invent or
-/// merge elements stay refused as [`ReadError::Unsupported`], such as a
-/// `name` holding two values, a `value` beside other fields in a `name`, or
-/// text beside the `value`s of a `content` (LIB-COMPAT-012).
+/// merge elements do not conform, and are preserved whole, such as a `name`
+/// holding two values, a `value` beside other fields in a `name`, or text
+/// beside the `value`s of a `content` (LIB-COMPAT-012 is to read them). An
+/// `xmi:id` on the `value` of a `name` is XMI metadata this release does not
+/// read (SACM23-XMI-019), refused as [`ReadError::Unsupported`].
 ///
 /// The input is UTF-8, ASCII, or UTF-16 with a byte order mark, which reads
 /// exactly as the same characters in UTF-8. A DOCTYPE is refused before
@@ -326,8 +403,9 @@ mod roots;
 ///
 /// An element's id is the value of its `xmi:id`, an `xsd:ID` (XMI 2.5.1
 /// §7.6.1), and only `xmi:id` in the XMI namespace is one: an `id` attribute
-/// in no namespace or another namespace, such as `id` or `o:id`, is refused
-/// as [`ReadError::Unsupported`]. The ids of the elements, and of the names,
+/// in no namespace or another namespace, such as `id` or `o:id`, is an
+/// attribute the class lacks, and is preserved. The ids of the elements, and
+/// of the names,
 /// `content`s, `key`s and `value`s, of a file share one id space (ADR 0024,
 /// ADR 0025):
 ///
@@ -389,8 +467,8 @@ mod roots;
 ///   holds the target ids separated by XML white space (`xsd:IDREFS`, XMI
 ///   2.5.1 §9.5.2 rule 2j, SACM23-XMI-005). Each token is held exactly as written:
 ///   `" c2 "` is `c2`, and `#c2` is the id `#c2`, not `c2`. A value with no
-///   token, such as `""`, is [`ReadError::Unsupported`], never read as no
-///   reference. A multi-valued end holds every token, and two or more tokens
+///   token, such as `""`, does not conform: it is preserved, never read as
+///   no reference. A multi-valued end holds every token, and two or more tokens
 ///   on a single-valued end are [`ReadError::RepeatedValue`], with one
 ///   location per token, each at the attribute's name.
 /// - **The element form.** An element in no namespace named after the end,
@@ -406,22 +484,24 @@ mod roots;
 ///   attribute and an element for the same end, or two elements on a
 ///   single-valued end, are [`ReadError::RepeatedValue`] (XMI 2.5.1 rule
 ///   2h), with every occurrence.
-/// - **Refused, never dropped,** as [`ReadError::Unsupported`] at the
-///   construct: a reference element with both link attributes (at the
-///   second) or neither (at its start tag); any other attribute on it, such
-///   as `xmi:id`, `xmi:type`, an unqualified `idref` or `xmi:href`; an
+/// - **Preserved, never dropped,** at its start tag, is a reference element
+///   that does not conform: with both link attributes or neither, with any
+///   other attribute such as an unqualified `idref` or `xmi:href`, with an
 ///   `xmi:idref` that is empty or, once trimmed, still holds XML white space
-///   (space, TAB, LF or CR), such as `a b` or `a&#9;b`, at the attribute,
-///   since a tolerant [`write()`] would give it back as two ids; an `href`
-///   that is not `#id`: with a document part, such as `other.xmi#c2` or `c2`
-///   (cross-document links are SACM23-XMI-027's), a pointer such as
+///   (space, TAB, LF or CR), such as `a b` or `a&#9;b`, since a tolerant
+///   [`write()`] would give it back as two ids, or holding a child element
+///   or text. So is an end or a reference element in a namespace, such as
+///   `sacm:citedElement`, a reference on a `name`, `content`, `key` or
+///   `value`, which have none, and an end on a kind that lacks it, such as
+///   `source` on a Claim or `metaClaim` on a Note (see
+///   [Preserved content](#preserved-content)).
+/// - **Refused** as [`ReadError::Unsupported`] at the attribute is what
+///   conforms but is not read yet: an `href` that is not `#id`, with a
+///   document part, such as `other.xmi#c2` or `c2`, a pointer such as
 ///   `#xpointer(id('c2'))`, a fragment with white space inside it, `#` or
-///   empty; a child element
-///   or text in it; and an end or a reference element in a namespace, such as
-///   `sacm:citedElement`. A reference on a `name`, `content`, `key` or
-///   `value` is refused as `Unsupported`: those have no references. So is
-///   an end on a kind that lacks it, such as `source` on a Claim or
-///   `metaClaim` on a Note.
+///   empty, and an `XLink` attribute (cross-document links are
+///   SACM23-XMI-027's); and the identity attributes `xmi:id`, `xmi:type`,
+///   `xsi:type`, `xmi:uuid` and `xmi:label` (SACM23-XMI-019).
 /// - **Dangling references are kept.** A reference whose id names no
 ///   element, an id absent from the input or the `xmi:id` of a `name`,
 ///   `content`, `key` or `value`, is read in both modes without a
@@ -440,8 +520,15 @@ mod roots;
 /// reported once per attribute, located at the first character of the
 /// attribute's name, or once per element, located at the `<` of its start
 /// tag, except SACM-XMI-012, which is once per C++ shape and may be located
-/// at text (LIB-COMPAT-001, LIB-COMPAT-008, ADR 0022, ADR 0024):
+/// at text, and SACM-XMI-003, which is once per preserved construct and may
+/// be located at text (LIB-COMPAT-001, LIB-COMPAT-003, LIB-COMPAT-008,
+/// ADR 0022, ADR 0024, ADR 0033):
 ///
+/// - SACM-XMI-003 ([`Code::XMI_UNKNOWN_CONTENT`]), clause 7.3.3, for each
+///   construct kept as preserved content (see
+///   [Preserved content](#preserved-content)). It affects the element that
+///   holds it, and is an Error in [`Mode::Strict`] and a Warning in
+///   [`Mode::Tolerant`].
 /// - SACM-XMI-004 ([`Code::XMI_MISSING_ID`]), clause 7.6.1, for each element
 ///   read without an `xmi:id` (SACM23-XMI-020). It affects the generated id,
 ///   names the kind and the id, and is Info in both modes.
@@ -461,7 +548,8 @@ mod roots;
 /// - SACM-XMI-011 ([`Code::XMI_VERSION_IGNORED`]), clause 7.5.3, for each
 ///   `xmi:version` on the `xmi:XMI` element, which affects no element, or on
 ///   a root, which it affects. It is Info in both modes. An `xmi:version` on
-///   any other element is refused as [`ReadError::Unsupported`].
+///   any other element is an attribute XMI.xsd does not define, and is
+///   preserved.
 /// - SACM-XMI-012 ([`Code::XMI_LEGACY_SHAPE`]), clause 7.8.6, a Warning for
 ///   each C++ shape a tolerant read reads (LIB-COMPAT-008, see
 ///   [The C++ name and text shapes](#the-c-name-and-text-shapes)), at the
@@ -472,7 +560,7 @@ mod roots;
 /// None of these diagnostics refuses the input; a strict read refuses the
 /// C++ shapes as [`ReadError::LegacyShape`] instead of reporting them. Apart
 /// from those, both modes read and refuse the same inputs, and give the same
-/// document. A later minor release may add a read diagnostic, so a strict
+/// document, preserved content included. A later minor release may add a read diagnostic, so a strict
 /// read may then report an Error where it did not before; the release notes
 /// list each one.
 ///
@@ -516,16 +604,16 @@ mod roots;
 ///    (`Unsupported`). An element's start tag (its role, type, kind and id)
 ///    is checked before its other attributes, and those before its content.
 ///    An empty id is `InvalidId`, and an id whose value an earlier element,
-///    name, `content`, `key` or `value` carries is `DuplicateId`, so a repeat
-///    is refused before anything after its id. A value that is not a literal
-///    is `InvalidLiteral` where it is met. A `name`, `content`, `key` or
-///    value element is checked whole when it is met, then against the
-///    occurrences before it,
-///    so the second occurrence of a value is `RepeatedValue` unless it is
-///    itself refused first. A later occurrence
-///    is listed in `RepeatedValue`'s
-///    [`locations`](ReadError::locations) even if it is itself malformed,
-///    because each occurrence is checked against those before it;
+///    name, `content`, `key`, `value` or preserved element carries is
+///    `DuplicateId`, so a repeat is refused before anything after its id. A
+///    value that is not a literal is `InvalidLiteral` where it is met. A
+///    `name`, `content`, `key`, value or reference element is checked whole
+///    when it is met, then, unless it is preserved, against the occurrences
+///    before it, so the second occurrence of a value is `RepeatedValue`
+///    unless it is itself refused or preserved first. A later occurrence is
+///    listed in `RepeatedValue`'s [`locations`](ReadError::locations) even
+///    if it does not conform itself, because each occurrence is checked
+///    against those before it;
 /// 9. in strict mode, the first C++ shape in the input (`LegacyShape`).
 ///
 /// The refusals:
@@ -541,13 +629,14 @@ mod roots;
 /// - [`ReadError::NoPackage`] (SACM-XMI-001): the `xmi:XMI` element holds no
 ///   root: no element child outside the XMI namespace.
 /// - [`ReadError::DuplicateId`] (SACM-ID-001): two or more elements (names,
-///   `content`s, `key`s and `value`s included) carry the same `xmi:id`
-///   (XMI 2.5.1 §7.6.1), compared by `xsd:ID` value (see [Ids](#ids)). It
-///   names every element that carries the first id to repeat.
-/// - [`ReadError::InvalidId`] (SACM-ID-002): the `xmi:id` of an element, or
-///   of a `name`, `content`, `key` or `value`, is empty. Any other id is read
-///   by its `xsd:ID` value; one that is still not an XML `NCName`, such as
-///   `1c` or `a b`, is reported by
+///   `content`s, `key`s, `value`s and preserved elements included) carry the
+///   same `xmi:id` (XMI 2.5.1 §7.6.1), compared by `xsd:ID` value (see
+///   [Ids](#ids)). It names every element that carries the first id to
+///   repeat.
+/// - [`ReadError::InvalidId`] (SACM-ID-002): the `xmi:id` of an element, of
+///   a `name`, `content`, `key` or `value`, or of an element of preserved
+///   content, is empty. Any other id is read by its `xsd:ID` value; one that
+///   is still not an XML `NCName`, such as `1c` or `a b`, is reported by
 ///   [`validation::validate`](crate::validation::validate).
 /// - [`ReadError::RepeatedValue`] (SACM-MULT-001): an element's `gid`,
 ///   `isCitation`, `isAbstract`, `citedElement`, `abstractForm` or `name`, a
@@ -561,7 +650,8 @@ mod roots;
 ///   the attribute of a single-valued end are too, with one location per id,
 ///   at the attribute's name. A multi-valued end (`metaClaim`, `source`,
 ///   `referencedArtifactElement`, a group's `argumentElement`) given both as
-///   an attribute and as elements is too, with every occurrence.
+///   an attribute and as elements is too, with every occurrence. Preserved
+///   content is never an occurrence.
 /// - [`ReadError::InvalidLiteral`] (SACM-ENUM-001): an Assertion's
 ///   `assertionDeclaration` is not exactly one of the six literals, or an
 ///   `isCitation`, `isAbstract` or `isCounter` is not one of `true`,
@@ -573,40 +663,39 @@ mod roots;
 /// - [`ReadError::LegacyShape`] (SACM-XMI-012), in strict mode only: a C++
 ///   name or text shape (see
 ///   [The C++ name and text shapes](#the-c-name-and-text-shapes)).
-/// - [`ReadError::Unsupported`] (no code): the input is well-formed but this
-///   version cannot represent it. Examples are UTF-16 without a byte order
-///   mark, UTF-32 or UCS-4 input, a declared encoding other than UTF-8 or
-///   ASCII in input without a UTF-16 mark, more nodes, attributes or
-///   namespaces than the parser can hold, the other ten package kinds as
-///   roots, a package name outside the SACM namespace, an `id` attribute
-///   that is not `xmi:id` (such as `id` or `o:id`), an `XMI` element outside
-///   the XMI 2.5.1 namespace (such as an older XMI revision's), an
-///   XMI-namespace element as the document element (such as
-///   `xmi:Documentation`) or beside the roots (such as `xmi:documentation`),
-///   an attribute of `xmi:XMI` other than `xmi:version`, any other attribute
-///   or content of a `name` or `value` (such as `xml:lang`, `xmi:uuid`, `gid`
-///   or a `value` element), a `name` or `value` in a namespace (such as
-///   `sacm:name`) or with a type naming another class (such as
-///   `sacm:ExpressionLangString`), any other attribute or content of a
-///   `content` or `key` (such as `gid`, `xml:lang`, text beside a `value`
-///   or a `name` element), a value element that carries an attribute other
-///   than `xsi:nil` (such as `xmi:id`), holds an element, is nil and holds
-///   characters, or is in a
-///   namespace (such as `sacm:content`, `sacm:gid` or `sacm:isCitation`), a
-///   reference attribute that holds no id, or a malformed reference element
-///   (see [References](#references)), and any other attribute or content of a
-///   root or child. For a child, that includes a role its parent's class
-///   lacks (any child of a `UtilityElement`), a role element in a namespace,
-///   a type that names no concrete SACM class or that the role does not
-///   admit, two types that disagree, any other kind (such as an `ArgumentPackageInterface` or an
-///   `ArgumentPackageBinding`), text, attributes such as `xmi:uuid` or
-///   `sacm:isCitation`; a `name` on a `UtilityElement`; an
-///   `assertionDeclaration`, as an attribute or an element, that is on a
-///   kind that is no Assertion, such as a package, an `ArgumentReasoning`,
-///   an `ArtifactReference` or an `ArgumentGroup` (even `"asserted"`), or in
-///   a namespace;
-///   and a flag or reference end on a kind that lacks it, such as
-///   `isCounter` on a Claim (see [References](#references)).
+/// - [`ReadError::Unsupported`] (no code): well-formed input this version
+///   does not read, and that a document cannot keep as preserved content
+///   (LIB-API-011). Its reason ends with one label that says why: `(a limit
+///   of this version; ROW reads it)` for conforming input a row is to read,
+///   `(a limit of this version)` for a limit, `(a defect in the input; ROW
+///   is to read it in tolerant mode)` for input that does not conform and
+///   that a row is to read as a tolerance, and `(a defect in the input)` for
+///   input that does not conform and has nowhere to be kept. In this
+///   release they are:
+///   - conforming input not read yet: the other ten package kinds, as roots
+///     or children (such as an `ArgumentPackageInterface`); a root outside
+///     the SACM 2.3 namespace (LIB-COMPAT-004); XMI metadata
+///     (SACM23-XMI-019): an XMI-namespace element as the document element,
+///     beside the roots or in an element (such as `xmi:Documentation` or
+///     `xmi:Extension`), `xmi:uuid`, `xmi:label`, `xmi:idref` and `href` on
+///     an element, a `name`, a `content`, a `key` or a `value`,
+///     `xsi:schemaLocation`, `xmi:id`, `xmi:type`, `xmi:uuid` and
+///     `xmi:label` on the `xmi:XMI` element or on a reference element, and
+///     an `xmi:id` on the `value` of a `name`; a cross-document `href` or an
+///     `XLink` attribute on a reference element (SACM23-XMI-027); and a `name`
+///     or `value` typed `sacm:ExpressionLangString` (SACM23-BASE-009);
+///   - limits: UTF-16 without a byte order mark, UTF-32 or UCS-4 input, a
+///     declared encoding other than UTF-8 or ASCII in input without a UTF-16
+///     mark, and more nodes, attributes or namespaces than the parser can
+///     hold;
+///   - tolerances not read yet: an `XMI` element outside the XMI 2.5.1
+///     namespace, such as an older XMI revision's (LIB-COMPAT-002), and the
+///     §11.4 text spelling `argumentationElement`, as the role of an
+///     ArgumentPackage or the end of an `ArgumentGroup` (SACM23-XMI-009);
+///   - defects with nowhere to be kept: any other attribute, or text, on the
+///     `xmi:XMI` element, and an attribute that would be preserved but whose
+///     prefix `sacm` or `xmi` is bound to another namespace (see
+///     [Preserved content](#preserved-content)).
 ///
 /// # Examples
 ///
@@ -771,26 +860,31 @@ pub fn read(input: &[u8], options: &ReadOptions) -> Result<ReadOutput, ReadError
 ///
 /// - [`Strict`](Self::Strict) aims at SACM 2.3 conformance. A strict read
 ///   reports each recognised variation it reads as an Error (in this release,
-///   only `xsi:type`, SACM-XMI-010), and refuses the C++ name and text shapes
-///   that a tolerant read reads ([`ReadError::LegacyShape`], SACM-XMI-012).
-///   Otherwise it returns the document, and does not validate it. To check a file, test
+///   `xsi:type`, SACM-XMI-010), and each construct it keeps as preserved
+///   content as an Error (SACM-XMI-003), and refuses the C++ name and text
+///   shapes that a tolerant read reads ([`ReadError::LegacyShape`],
+///   SACM-XMI-012). Otherwise it returns the document, and does not validate
+///   it. To check a file, test
 ///   [`diagnostic::has_errors`](crate::diagnostic::has_errors) on the read
 ///   diagnostics together with the result of
 ///   [`validation::validate`](crate::validation::validate).
 ///
-///   A strict write validates the document with
-///   [`validation::validate`](crate::validation::validate) and refuses it if
-///   validation reports an Error. Validation does not check everything SACM
+///   A strict write refuses a document that holds preserved content
+///   ([`WriteError::PreservedContent`], SACM-XMI-006), then validates the
+///   document with [`validation::validate`](crate::validation::validate) and
+///   refuses it if validation reports an Error. Validation does not check everything SACM
 ///   requires yet, so a strict write is not yet a guarantee of conformance.
 /// - [`Tolerant`](Self::Tolerant) also accepts recognised variations, and
-///   reports them as Warnings. A tolerant write writes the document as it is
-///   held, without validating it.
+///   reports them, and preserved content, as Warnings. A tolerant write
+///   writes the document as it is held, preserved content included, without
+///   validating it.
 ///
 /// `Mode` has no default of its own: [`ReadOptions`] default to `Tolerant`
 /// and [`WriteOptions`] to `Strict`. On a read, in this release, the mode
-/// decides the severity of SACM-XMI-010 and whether the C++ shapes are read
-/// (see [`read`]); both modes accept and refuse the same other inputs. On a
-/// write, it decides whether the document is validated first. Later releases may add variants, so match it
+/// decides the severity of SACM-XMI-010 and SACM-XMI-003 and whether the C++
+/// shapes are read (see [`read`]); both modes accept and refuse the same
+/// other inputs. On a write, it decides whether preserved content is
+/// refused and the document is validated first. Later releases may add variants, so match it
 /// with a fallback arm.
 ///
 /// ```
@@ -805,7 +899,8 @@ pub fn read(input: &[u8], options: &ReadOptions) -> Result<ReadOutput, ReadError
 #[non_exhaustive]
 pub enum Mode {
     /// Aims at SACM 2.3 conformance: a read reports each recognised variation
-    /// as an Error, and a write refuses a document that validation reports an
+    /// and each preserved construct as an Error, and a write refuses a
+    /// document that holds preserved content or that validation reports an
     /// Error for.
     Strict,
     /// Recognised variations are read and reported as Warnings, and a write
@@ -860,12 +955,14 @@ impl ReadOptions {
 /// What [`read`] returns for a document it reads: the document, the
 /// diagnostics found while reading it, and the mode it was read in.
 ///
-/// The document holds all of the input's content: `read` refuses what it
-/// cannot represent rather than drop it. The diagnostics are sorted by
-/// [`Diagnostic`]'s order, located ones first. In this release they are
-/// SACM-XMI-004 for an element without an `xmi:id`, SACM-ID-004 for an
-/// `xmi:id` read trimmed, SACM-XMI-010 for an `xsi:type`, SACM-XMI-011 for
-/// an `xmi:version` and SACM-XMI-012 for a C++ shape (see [`read`]).
+/// The document holds all of the input's content: `read` keeps what is not
+/// SACM 2.3 as preserved content, and refuses what it does not read yet,
+/// rather than drop it. The diagnostics are sorted by [`Diagnostic`]'s
+/// order, located ones first. In this release they are SACM-XMI-003 for a
+/// preserved construct, SACM-XMI-004 for an element without an `xmi:id`,
+/// SACM-ID-004 for an `xmi:id` read trimmed, SACM-XMI-010 for an
+/// `xsi:type`, SACM-XMI-011 for an `xmi:version` and SACM-XMI-012 for a C++
+/// shape (see [`read`]).
 ///
 /// # Examples
 ///
@@ -899,9 +996,10 @@ impl ReadOutput {
     }
 
     /// The diagnostics found while reading, sorted by [`Diagnostic`]'s order.
-    /// Empty for an input with no `xsi:type`, no `xmi:version` and no C++
-    /// shape, in which every element has an `xmi:id` and no `xmi:id`, of an
-    /// element or a `name`, has white space around it.
+    /// Empty for an input with no `xsi:type`, no `xmi:version`, no C++
+    /// shape and no content that is not SACM 2.3, in which every element has
+    /// an `xmi:id` and no `xmi:id`, of an element or a `name`, has white space
+    /// around it.
     #[must_use]
     pub fn diagnostics(&self) -> &[Diagnostic] {
         &self.diagnostics
@@ -937,7 +1035,9 @@ const _: () = {
 /// [`InvalidLiteral`](Self::InvalidLiteral),
 /// [`LegacyShape`](Self::LegacyShape) and
 /// [`MissingType`](Self::MissingType). [`Unsupported`](Self::Unsupported),
-/// with no code, is input this version cannot read yet.
+/// with no code, is well-formed input this version does not read, and that
+/// a document cannot keep as preserved content; its reason says why with a
+/// label (see [`read`]'s refusals).
 ///
 /// Every refusal has a [`SourceLocation`] except the parser's capacity-limit
 /// refusals, and [`code`](Self::code) gives its catalog code;
@@ -1060,13 +1160,38 @@ pub enum ReadError {
         /// Where the element's start tag starts.
         location: Option<SourceLocation>,
     },
-    /// The input is well-formed, but this version cannot represent it. It
-    /// has no catalog code.
+    /// Well-formed input this version does not read, and that a document
+    /// cannot keep as preserved content (LIB-API-011, ADR 0033). It has no
+    /// catalog code.
+    ///
+    /// The reason ends with exactly one label: `(a limit of this version;
+    /// ROW reads it)` for conforming input the matrix row ROW is to read,
+    /// `(a limit of this version)` for a limit such as an encoding, `(a defect
+    /// in the input; ROW is to read it in tolerant mode)` for input that does
+    /// not conform and that ROW is to read as a tolerance, and `(a defect in
+    /// the input)` for input that does not conform and has nowhere to be
+    /// kept, such as an attribute on the `xmi:XMI` element. Content that does
+    /// not conform and has a place to be kept is never refused: [`read`]
+    /// preserves it.
+    ///
+    /// ```
+    /// use sacm::xmi::{self, ReadError, ReadOptions};
+    ///
+    /// let input = br#"<sacm:ArgumentPackageInterface xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="i"/>"#;
+    /// let error = xmi::read(input, &ReadOptions::default()).unwrap_err();
+    /// assert!(matches!(
+    ///     &error,
+    ///     ReadError::Unsupported { reason, .. }
+    ///         if reason.ends_with("(a limit of this version; SACM23-ARG-014 reads it)")
+    /// ));
+    /// ```
     #[non_exhaustive]
     Unsupported {
-        /// Where the content that cannot be represented starts.
+        /// Where the content that is not read starts.
         location: Option<SourceLocation>,
-        /// What cannot be represented, without a position.
+        /// What is not read, and why, ending with its label, without a
+        /// position.
         reason: String,
     },
     /// A property is given more than XMI allows (SACM-MULT-001): a
@@ -1574,7 +1699,13 @@ impl std::error::Error for ReadError {}
 /// written). A reference end is written only when it holds an id, as the ids
 /// it holds, in order, repeats included, separated by one space and escaped,
 /// held exactly, whether or not they name an element. A reference read in
-/// the element form is written in this attribute form. The
+/// the element form is written in this attribute form, except when the
+/// element also holds, as preserved content, an attribute of the end's name
+/// that held no id (such as `metaClaim=""` beside `<metaClaim>` elements):
+/// then each id is written as a `<metaClaim xmi:idref="…" />` element,
+/// after the `name`, `content` and `key`, so that no start tag carries an
+/// attribute twice and nothing is dropped (ADR 0033). An edit that sets the
+/// end replaces such an attribute. The
 /// `assertionDeclaration` is written only when it is not `asserted`, the
 /// default (XMI 2.5.1 §9.4.1), as
 /// [`AssertionDeclaration::as_str`](crate::model::AssertionDeclaration::as_str)
@@ -1599,14 +1730,58 @@ impl std::error::Error for ReadError {}
 /// one is `<content />`, and an absent one is not written. No type attribute
 /// is written on a `UtilityElement`, a `content`, a `key` or a `value`.
 ///
+/// # Preserved content
+///
+/// What [`read`] kept as preserved content, because it is not SACM 2.3
+/// where it stands (see [Preserved content](fn@read#preserved-content)), a
+/// tolerant `write` writes back where it was read (LIB-COMPAT-003, ADR
+/// 0033): its attributes after the element's typed attributes, in input
+/// order, after the namespace declarations they need; each of its children
+/// on its own line, before the typed child it preceded, after the element's
+/// `name`, `content` and `key`, and before the end tag when it followed the
+/// last. Text in the element is written trimmed, `&`, `<`, `>` and CR
+/// escaped. A preserved element is written with its subtree on one line,
+/// exactly as held: names with their prefixes, attribute values escaped as
+/// above, text exactly, and `<x … />` for one that holds nothing. It
+/// declares every namespace binding that was in scope where it was read,
+/// other than `xml` and `sacm` and `xmi` bound as the document element binds
+/// them, and each element inside declares what it declared. So a written
+/// document reads back to an equal one, and writes again to the same bytes.
+/// A strict write refuses a document that holds any, as
+/// [`WriteError::PreservedContent`].
+///
+/// ```
+/// use sacm::xmi::{self, Mode, ReadOptions, WriteOptions};
+///
+/// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:v="urn:vendor" xmi:id="p">
+///   <v:layout x="10"/>
+///   <name content="P"/>
+/// </sacm:ArgumentPackage>"#;
+/// let document = xmi::read(input, &ReadOptions::default())?.into_document();
+/// let text = xmi::write(&document, &WriteOptions::default().with_mode(Mode::Tolerant))?;
+/// assert_eq!(
+///     text,
+///     "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+///      <sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\" \
+///      xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"p\">\n  \
+///      <name content=\"P\" />\n  \
+///      <v:layout xmlns:v=\"urn:vendor\" x=\"10\" />\n\
+///      </sacm:ArgumentPackage>\n"
+/// );
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+///
 /// # Modes
 ///
 /// In [`Mode::Strict`], the default, `write` writes only a document that
+/// holds no preserved content and that
 /// [`validation::validate`](crate::validation::validate) reports no Error
-/// for, and refuses any other as [`WriteError::Invalid`]; Warnings and Infos
-/// never refuse. In [`Mode::Tolerant`] it does not validate, and writes the
-/// document as it is held, such as a draft whose elements have no name yet.
-/// The two modes write the same bytes for a document both write.
+/// for, and refuses any other as [`WriteError::PreservedContent`] or
+/// [`WriteError::Invalid`]; Warnings and Infos never refuse. In
+/// [`Mode::Tolerant`] it does neither, and writes the document as it is
+/// held, such as a draft whose elements have no name yet. The two modes
+/// write the same bytes for a document both write.
 ///
 /// A later minor release may add a validation Error rule. A strict write may
 /// then refuse a document that it wrote before; this is not a breaking
@@ -1618,16 +1793,20 @@ impl std::error::Error for ReadError {}
 /// is returned:
 ///
 /// 1. a document with no root is [`WriteError::NoRoot`];
-/// 2. in strict mode only, validation: if `validate` reports an Error, the
+/// 2. in strict mode only, preserved content: a document that holds any is
+///    [`WriteError::PreservedContent`], which lists each element that holds
+///    some (SACM-XMI-006);
+/// 3. in strict mode only, validation: if `validate` reports an Error, the
 ///    refusal is [`WriteError::Invalid`], which holds every Error in
 ///    `validate`'s order;
-/// 3. then each element, in [`Document::elements`] order, with all of an
+/// 4. then each element, in [`Document::elements`] order, with all of an
 ///    element's checks run before the next element's: first its id, where a
 ///    character outside XML 1.0's `Char` is
 ///    [`WriteError::UnrepresentableCharacter`], naming the attribute and its
 ///    first such character; then its gid, its name's `lang`, its name's
 ///    `content`, and each value of its `content` and then of its `key`,
-///    `lang` before `content`, the same way.
+///    `lang` before `content`, the same way. Preserved content is not
+///    checked: [`read`] read it, so it is representable.
 ///
 /// Nothing else a document holds is refused.
 ///
@@ -1737,11 +1916,12 @@ impl WriteOptions {
 ///
 /// The writer writes everything a [`Document`] holds, so it refuses only a
 /// document with no root, a character XML 1.0 cannot represent, and, in
-/// strict mode, a document that validation reports an Error for. None of the
-/// refusals has a catalog code: [`code`](Self::code) is `None`.
-/// [`element`](Self::element) names the element refused, where there is one,
-/// and [`diagnostics`](Self::diagnostics) gives the validation Errors of
-/// [`Invalid`](Self::Invalid).
+/// strict mode, a document that holds preserved content or that validation
+/// reports an Error for. Only [`PreservedContent`](Self::PreservedContent)
+/// has a catalog code, SACM-XMI-006; [`code`](Self::code) is `None` for the
+/// others. [`element`](Self::element) names the element refused, where there
+/// is one, and [`diagnostics`](Self::diagnostics) gives the validation Errors
+/// of [`Invalid`](Self::Invalid).
 ///
 /// # Display
 ///
@@ -1749,7 +1929,9 @@ impl WriteOptions {
 /// punctuation. Ids are quoted with `{:?}`, so line breaks in them never break
 /// the line. [`Invalid`](Self::Invalid) gives the number of Errors and the
 /// code and first affected id of the first one, introduced by `the first is`
-/// when there are several. For example:
+/// when there are several, and [`PreservedContent`](Self::PreservedContent)
+/// the one element that holds preserved content, or their number and the
+/// first. For example:
 ///
 /// ```
 /// use sacm::model::Document;
@@ -1839,28 +2021,69 @@ pub enum WriteError {
         /// Every validation Error, in `validate`'s order. Never empty.
         diagnostics: Vec<Diagnostic>,
     },
+    /// In strict mode, the document holds preserved content: what
+    /// [`read`] kept, as written, because it is not SACM 2.3 where it stands
+    /// (SACM-XMI-006, SACM23-XMI-008, ADR 0033). It is refused before
+    /// validation. Write the document in tolerant mode, which writes the
+    /// content back, or delete the elements that hold it.
+    ///
+    /// ```
+    /// use sacm::diagnostic::Code;
+    /// use sacm::xmi::{self, Mode, ReadOptions, WriteError, WriteOptions};
+    ///
+    /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:v="urn:vendor"
+    ///     xmi:id="p" v:colour="red">
+    ///   <name content="P"/>
+    /// </sacm:ArgumentPackage>"#;
+    /// let document = xmi::read(input, &ReadOptions::default())?.into_document();
+    /// let error = xmi::write(&document, &WriteOptions::default()).unwrap_err();
+    /// assert!(matches!(&error, WriteError::PreservedContent { elements, .. } if elements[0].as_str() == "p"));
+    /// assert_eq!(error.code(), Some(Code::XMI_STRICT_SAVE_REFUSED));
+    /// assert_eq!(
+    ///     error.to_string(),
+    ///     "the document cannot be written in strict mode: the element \"p\" holds preserved \
+    ///      content that is not SACM 2.3"
+    /// );
+    ///
+    /// // Tolerant mode writes it back.
+    /// let text = xmi::write(&document, &WriteOptions::default().with_mode(Mode::Tolerant))?;
+    /// assert!(text.contains(r#"xmi:id="p" xmlns:v="urn:vendor" v:colour="red">"#));
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    #[non_exhaustive]
+    PreservedContent {
+        /// Each element that holds preserved content, once, in
+        /// [`Document::elements`] order. Never empty.
+        elements: Vec<ElementId>,
+    },
 }
 
 impl WriteError {
     /// The element refused, if the refusal names one: the element of
     /// [`UnrepresentableCharacter`](Self::UnrepresentableCharacter). `None`
-    /// for [`NoRoot`](Self::NoRoot), and for [`Invalid`](Self::Invalid),
-    /// whose [`diagnostics`](Self::diagnostics) name the elements they affect.
+    /// for [`NoRoot`](Self::NoRoot), for [`Invalid`](Self::Invalid), whose
+    /// [`diagnostics`](Self::diagnostics) name the elements they affect, and
+    /// for [`PreservedContent`](Self::PreservedContent), which lists its
+    /// elements.
     #[must_use]
     pub fn element(&self) -> Option<&ElementId> {
         match self {
-            Self::NoRoot | Self::Invalid { .. } => None,
+            Self::NoRoot | Self::Invalid { .. } | Self::PreservedContent { .. } => None,
             Self::UnrepresentableCharacter { element, .. } => Some(element),
         }
     }
 
-    /// The catalog code of the refusal: `None` for every variant in this
-    /// release. The diagnostics of [`Invalid`](Self::Invalid) carry their own
-    /// codes.
+    /// The catalog code of the refusal: SACM-XMI-006
+    /// ([`Code::XMI_STRICT_SAVE_REFUSED`]) for
+    /// [`PreservedContent`](Self::PreservedContent), and `None` for every
+    /// other variant. The diagnostics of [`Invalid`](Self::Invalid) carry
+    /// their own codes.
     #[must_use]
     pub fn code(&self) -> Option<Code> {
         match self {
             Self::NoRoot | Self::UnrepresentableCharacter { .. } | Self::Invalid { .. } => None,
+            Self::PreservedContent { .. } => Some(Code::XMI_STRICT_SAVE_REFUSED),
         }
     }
 
@@ -1870,7 +2093,9 @@ impl WriteError {
     pub fn diagnostics(&self) -> &[Diagnostic] {
         match self {
             Self::Invalid { diagnostics } => diagnostics,
-            Self::NoRoot | Self::UnrepresentableCharacter { .. } => &[],
+            Self::NoRoot
+            | Self::UnrepresentableCharacter { .. }
+            | Self::PreservedContent { .. } => &[],
         }
     }
 }
@@ -1905,6 +2130,23 @@ impl fmt::Display for WriteError {
                     }
                 }
                 Ok(())
+            }
+            Self::PreservedContent { elements } => {
+                f.write_str("the document cannot be written in strict mode: ")?;
+                match elements.as_slice() {
+                    [one] => write!(
+                        f,
+                        "the element {:?} holds preserved content that is not SACM 2.3",
+                        one.as_str()
+                    ),
+                    [first, ..] => write!(
+                        f,
+                        "{} elements hold preserved content that is not SACM 2.3, the first is {:?}",
+                        elements.len(),
+                        first.as_str()
+                    ),
+                    [] => f.write_str("it holds preserved content that is not SACM 2.3"),
+                }
             }
         }
     }

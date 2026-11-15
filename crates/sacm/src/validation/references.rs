@@ -13,6 +13,10 @@ use crate::model::{
 /// with the end's clause, affecting the element, then the id. An id absent
 /// from the document dangles, and so does the `xmi:id` of a `name`,
 /// `content`, `key` or `value`, which identifies no element.
+///
+/// LIB-COMPAT-003: an id that an element of preserved content carries is in
+/// the file, merely not read, so it is one SACM-REF-003 Warning instead, the
+/// same way (ADR 0033).
 pub(super) fn dangling_references(document: &Document, found: &mut Vec<Diagnostic>) {
     for element in document.elements() {
         for end in ReferenceEnd::ALL {
@@ -22,6 +26,28 @@ pub(super) fn dangling_references(document: &Document, found: &mut Vec<Diagnosti
             let mut reported = HashSet::new();
             for target in element.references(end) {
                 if document.contains(target) || !reported.insert(target.as_str()) {
+                    continue;
+                }
+                if document.is_preserved_id(target.as_str()) {
+                    let message = format!(
+                        "{} {:?} has the {} {:?}, which names an element the document holds only \
+                         as preserved content, so its type is not checked (the end's type is {})",
+                        element.kind().name(),
+                        element.id().as_str(),
+                        end.name(),
+                        target.as_str(),
+                        end.target().name()
+                    );
+                    found.push(
+                        Diagnostic::create(
+                            Code::REF_PRESERVED_TARGET,
+                            Severity::Warning,
+                            "LIB-COMPAT-003",
+                            message,
+                        )
+                        .set_clause(end.clause())
+                        .set_affected([element.id().clone(), target.clone()]),
+                    );
                     continue;
                 }
                 let message = format!(

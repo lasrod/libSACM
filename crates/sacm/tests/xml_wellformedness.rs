@@ -26,6 +26,7 @@ use std::thread;
 use std::time::Duration;
 
 use sacm::diagnostic::{Code, SourceLocation};
+use sacm::model::{ElementId, SacmElement};
 use sacm::xmi::{self, ReadError, ReadOptions, ReadOutput};
 
 /// The lead of the `Malformed` `Display`, before the location and reason.
@@ -991,19 +992,37 @@ fn lib_sec_005_a_comment_starting_with_gt_does_not_hide_a_later_construct() {
 }
 
 #[test]
-fn lib_sec_005_cdata_with_spaces_and_quotes_is_skipped_whole() {
+fn lib_sec_005_cdata_with_spaces_and_quotes_is_skipped_whole_and_preserved() {
     let row = "LIB-SEC-005";
-    // The CDATA section is text: the root cannot hold it yet, so it is
-    // Unsupported at the section, never Malformed for what the section
-    // holds.
+    // The CDATA section is text in element-only content: kept as preserved
+    // content of the root, with one SACM-XMI-003 at the section (ADR 0033),
+    // never Malformed for what the section holds.
     let input = root_holding("<![CDATA[ a='&#xD800;' xmlns:p='' <?xml?>]]>");
-    let error = assert_unsupported_at(row, &input, 1, 134);
+    let output = match read(row, &input) {
+        Ok(output) => output,
+        Err(error) => panic!(
+            "{row}: the CDATA section is refused instead of preserved: {error:?} for {}",
+            preview(&input)
+        ),
+    };
+    let found: Vec<_> = output
+        .diagnostics()
+        .iter()
+        .filter(|found| found.code() == Code::XMI_UNKNOWN_CONTENT)
+        .map(|found| (found.location(), found.affected().to_vec()))
+        .collect();
     assert_eq!(
-        error.to_string(),
-        "the reader cannot represent the input at line 1, column 134: \
-         the element \"sacm:ArgumentPackage\" holds text, which is not read in this release",
-        "{row}: unexpected Display for {}",
-        preview(&input)
+        found,
+        [(SourceLocation::new(1, 134), vec![ElementId::from("p")])],
+        "{row}: the CDATA section is not one SACM-XMI-003 at it, affecting p: {:?}",
+        output.diagnostics()
+    );
+    assert!(
+        output
+            .document()
+            .get("p")
+            .is_some_and(SacmElement::has_preserved_content),
+        "{row}: the root does not hold the CDATA section as preserved content"
     );
 }
 

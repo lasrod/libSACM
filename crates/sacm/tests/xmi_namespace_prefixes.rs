@@ -27,8 +27,8 @@ use std::thread;
 use std::time::Duration;
 
 use sacm::diagnostic::{Code, Diagnostic, Severity, SourceLocation};
-use sacm::model::{Document, ElementKind, LangString};
-use sacm::xmi::{self, ReadError, ReadOptions, ReadOutput};
+use sacm::model::{Document, ElementId, ElementKind, LangString, SacmElement};
+use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput};
 
 const ROW: &str = "SACM23-XMI-002";
 
@@ -360,6 +360,68 @@ fn assert_same_document(what: &str, input: &str, reference: &Shape) {
         "{ROW}: {what}: {} does not give the same document as the reference",
         preview(input.as_bytes())
     );
+}
+
+/// Asserts that `input` reads in both modes and keeps one construct as
+/// preserved content (LIB-COMPAT-003, ADR 0033) of `holder`, or of the one
+/// root when `holder` is `None`: exactly one SACM-XMI-003 at `at`, affecting
+/// the holder, a Warning in tolerant mode and an Error in strict mode, and
+/// the same document in both, which it returns.
+fn assert_preserved_at(
+    what: &str,
+    input: &str,
+    at: SourceLocation,
+    holder: Option<&str>,
+) -> Document {
+    let mut documents = Vec::new();
+    for (mode, severity) in [
+        (Mode::Tolerant, Severity::Warning),
+        (Mode::Strict, Severity::Error),
+    ] {
+        let output = match xmi::read(input.as_bytes(), &ReadOptions::default().with_mode(mode)) {
+            Ok(output) => output,
+            Err(error) => panic!(
+                "{ROW}: {what}: a {mode:?} read refused it instead of preserving it: {error:?}"
+            ),
+        };
+        let doc = output.document();
+        let roots: Vec<_> = doc.roots().collect();
+        let expected = match (holder, roots.as_slice()) {
+            (Some(holder), _) => ElementId::from(holder),
+            (None, [root]) => root.id().clone(),
+            (None, _) => panic!("{ROW}: setup: {what} has not one root"),
+        };
+        let found: Vec<_> = output
+            .diagnostics()
+            .iter()
+            .filter(|found| found.code() == Code::XMI_UNKNOWN_CONTENT)
+            .map(|found| {
+                (
+                    found.severity(),
+                    found.location(),
+                    found.affected().to_vec(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            found,
+            [(severity, Some(at), vec![expected.clone()])],
+            "{ROW}: {what}: not one SACM-XMI-003 at the construct affecting {expected} in \
+             {mode:?} mode: {:?}",
+            output.diagnostics()
+        );
+        assert!(
+            doc.get(expected.as_str())
+                .is_some_and(SacmElement::has_preserved_content),
+            "{ROW}: {what}: {expected} holds no preserved content in {mode:?} mode"
+        );
+        documents.push(output.into_document());
+    }
+    assert_eq!(
+        documents[0], documents[1],
+        "{ROW}: {what}: the modes read different documents"
+    );
+    documents.swap_remove(0)
 }
 
 /// Asserts that `input` is refused as `Unsupported`, with no code, at
@@ -734,18 +796,23 @@ fn sacm23_xmi_002_a_prefix_rebound_to_sacm_on_the_root_takes_the_inner_binding()
 }
 
 #[test]
-fn sacm23_xmi_002_a_prefix_rebound_away_from_sacm_on_the_root_is_unsupported_at_the_root() {
+fn sacm23_xmi_002_a_prefix_rebound_away_from_sacm_preserves_the_type_and_refuses_the_root() {
+    // The type names no SACM class there: a root's type naming another
+    // class, kept as preserved content of the root at the attribute
+    // (ADR 0033, D-ROOT-NAME).
     let type_away = format!(
         "<xmi:XMI xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\" \
          xmlns:xsi=\"{XSI_NS}\" xmlns:t=\"{SACM_NS}\">\n\
          <sacm:ArgumentPackage xmlns:t=\"urn:other\" xmi:id=\"a\" \
          xsi:type=\"t:ArgumentPackage\"/>\n</xmi:XMI>"
     );
-    assert_unsupported_at(
+    assert_preserved_at(
         "t rebound from SACM to urn:other in the type",
         &type_away,
-        position_of(&type_away, "<sacm:ArgumentPackage"),
+        position_of(&type_away, "xsi:type"),
+        Some("a"),
     );
+    // A root outside the SACM namespace is not read yet (LIB-COMPAT-004).
     let element_away = format!(
         "<xmi:XMI xmlns:xmi=\"{XMI_NS}\" xmlns:s=\"{SACM_NS}\">\n\
          <s:ArgumentPackage xmlns:s=\"urn:other\" xmi:id=\"a\"/>\n</xmi:XMI>"
@@ -809,8 +876,8 @@ fn sacm23_xmi_002_white_space_around_a_type_value_is_collapsed_before_it_is_reso
 }
 
 #[test]
-fn sacm23_xmi_002_a_type_value_that_is_not_a_sacm_qname_of_the_root_class_is_unsupported_at_the_root()
- {
+fn sacm23_xmi_002_a_type_value_that_is_not_a_sacm_qname_of_the_root_class_is_preserved_at_the_type()
+{
     let declarations = format!(
         " xmlns:sacm=\"{SACM_NS}\" xmlns:xmi=\"{XMI_NS}\" xmlns:xsi=\"{XSI_NS}\" xmi:id=\"a\""
     );
@@ -883,8 +950,16 @@ fn sacm23_xmi_002_a_type_value_that_is_not_a_sacm_qname_of_the_root_class_is_uns
             typed_root("xmi:type", "zz:ArgumentPackage"),
         ),
     ];
+    // A type that names no SACM class, or another class, is kept as
+    // preserved content of the root, at the type attribute (ADR 0033,
+    // D-ROOT-NAME).
     for (what, input) in &cases {
-        assert_unsupported_at(what, input, loc(1, 1));
+        let attribute = if input.contains(" xmi:type=") {
+            "xmi:type"
+        } else {
+            "xsi:type"
+        };
+        assert_preserved_at(what, input, position_of(input, attribute), Some("a"));
     }
 }
 
@@ -893,8 +968,10 @@ fn sacm23_xmi_002_a_type_value_that_is_not_a_sacm_qname_of_the_root_class_is_uns
 #[test]
 fn sacm23_xmi_002_a_prefix_spelled_xmi_or_xsi_but_bound_elsewhere_confers_nothing() {
     // `xmi:id` in urn:not-xmi is no XMI id: an attribute that is not read,
-    // refused at its name. Without it the root has no XMI id, and is read
-    // with a generated one (SACM23-XMI-020), so the attribute is the refusal.
+    // and that cannot be kept because its prefix `xmi` is bound elsewhere
+    // (ADR 0033), refused at its name. Without it the root has no XMI id,
+    // and is read with a generated one (SACM23-XMI-020), so the attribute is
+    // the refusal.
     let not_xmi = format!(
         "<sacm:ArgumentPackage xmlns:sacm=\"{SACM_NS}\" xmlns:xmi=\"urn:not-xmi\" xmi:id=\"a\"/>"
     );
@@ -911,23 +988,35 @@ fn sacm23_xmi_002_a_prefix_spelled_xmi_or_xsi_but_bound_elsewhere_confers_nothin
         "{ROW}: a root with no XMI id is not read with a generated id"
     );
 
-    // `xsi:type` in urn:not-xsi is an attribute that is not read, at its name.
+    // `xsi:type` in urn:not-xsi is an attribute the class lacks, kept as
+    // preserved content at its name (ADR 0033).
     let foreign_type = format!(
         "<sacm:ArgumentPackage xmlns:sacm=\"{SACM_NS}\" xmlns:xmi=\"{XMI_NS}\" \
          xmlns:xsi=\"urn:not-xsi\" xmi:id=\"a\"\n  xsi:type=\"sacm:ArgumentPackage\"/>"
     );
-    assert_unsupported_at("xsi bound to urn:not-xsi", &foreign_type, loc(2, 3));
+    assert_preserved_at(
+        "xsi bound to urn:not-xsi",
+        &foreign_type,
+        loc(2, 3),
+        Some("a"),
+    );
 
     // An unprefixed attribute is in no namespace, whatever the default
-    // namespace (Namespaces §6.2).
+    // namespace (Namespaces §6.2): an attribute the class lacks, preserved
+    // on the root, which has a generated id.
     let default_xmi =
         format!("<s:ArgumentPackage xmlns=\"{XMI_NS}\" xmlns:s=\"{SACM_NS}\" id=\"a\"/>");
     let default_xmi_no_id =
         format!("<s:ArgumentPackage xmlns=\"{XMI_NS}\" xmlns:s=\"{SACM_NS}\"/>");
-    assert_unsupported_at(
+    let doc = assert_preserved_at(
         "an unprefixed id under a default XMI",
         &default_xmi,
         position_of(&default_xmi, "id=\"a\""),
+        None,
+    );
+    assert!(
+        doc.get("a").is_none(),
+        "{ROW}: an unprefixed id under a default XMI is read as the root's id"
     );
     let read_without = read_ok(default_xmi_no_id.as_bytes());
     assert!(
@@ -976,7 +1065,9 @@ fn sacm23_xmi_002_prefixes_spelled_after_another_namespace_are_that_namespace() 
     for (what, input, reference) in &cases {
         assert_same_document(what, input, reference);
     }
-    // `xmi:type` in XSI is a type, so naming another class is refused at the root.
+    // `xmi:type` in XSI is a type naming another class. It does not conform,
+    // and its prefix `xmi` is bound to another namespace than XMI, so it
+    // cannot be kept as preserved content (ADR 0033): still refused.
     let other_class = format!(
         "<s:ArgumentPackage xmlns:s=\"{SACM_NS}\" xmlns:x=\"{XMI_NS}\" \
          xmlns:xmi=\"{XSI_NS}\" x:id=\"a\" xmi:type=\"s:Claim\"/>"
@@ -1007,7 +1098,8 @@ fn sacm23_xmi_002_namespace_uris_compare_as_exact_strings() {
     // The XMI and XSI URIs too: a near XMI URI gives no XMI id, so its
     // `xmi:id` is an attribute that is not read, refused at its name (the root
     // itself would get a generated id, SACM23-XMI-020), or no XMI wrapper;
-    // and a near XSI URI gives an attribute that is not read.
+    // and a near XSI URI gives an attribute the class lacks, preserved
+    // (ADR 0033).
     let near_xmi = "http://www.omg.org/spec/XMI/20131001/";
     let id = format!(
         "<sacm:ArgumentPackage xmlns:sacm=\"{SACM_NS}\" xmlns:xmi=\"{near_xmi}\" xmi:id=\"a\"/>"
@@ -1023,7 +1115,12 @@ fn sacm23_xmi_002_namespace_uris_compare_as_exact_strings() {
          xmlns:xsi=\"HTTP://www.w3.org/2001/XMLSchema-instance\" xmi:id=\"a\"\n  \
          xsi:type=\"sacm:ArgumentPackage\"/>"
     );
-    assert_unsupported_at("a type in a near XSI URI", &type_in_near_xsi, loc(2, 3));
+    assert_preserved_at(
+        "a type in a near XSI URI",
+        &type_in_near_xsi,
+        loc(2, 3),
+        Some("a"),
+    );
 }
 
 // --- 10. No namespace -----------------------------------------------------------
@@ -1152,43 +1249,46 @@ const REFUSALS: [(&str, Template, (u32, u32)); 6] = [
         },
         (1, 1),
     ),
-    // A root with no id is read (SACM23-XMI-020); an id in no namespace is
-    // an attribute that is not read.
+    // Conforming content this version does not read yet: an interface as
+    // the root (SACM23-ARG-014), XMI metadata on a root (SACM23-XMI-019).
+    // Content that does not conform is preserved (ADR 0033), so it is no
+    // sample here.
     (
-        "a root with an id in no namespace",
+        "an interface as the root",
         |s, x| {
             format!(
-                "<{s}:ArgumentPackage xmlns:{s}=\"{SACM_NS}\" xmlns:{x}=\"{XMI_NS}\"\n  id=\"a\"/>"
-            )
-        },
-        (2, 3),
-    ),
-    (
-        "a type naming another class",
-        |s, x| {
-            format!(
-                "<{s}:ArgumentPackage xmlns:{s}=\"{SACM_NS}\" xmlns:{x}=\"{XMI_NS}\" \
-                     {x}:id=\"a\" {x}:type=\"{s}:Claim\"/>"
+                "<{s}:ArgumentPackageInterface xmlns:{s}=\"{SACM_NS}\" xmlns:{x}=\"{XMI_NS}\" \
+                     {x}:id=\"a\"/>"
             )
         },
         (1, 1),
     ),
     (
-        "an attribute not read",
+        "an xmi:uuid on a root",
         |s, x| {
             format!(
                 "<{s}:ArgumentPackage xmlns:{s}=\"{SACM_NS}\" xmlns:{x}=\"{XMI_NS}\" \
-                     {x}:id=\"a\"\n  foo=\"1\"/>"
+                     {x}:id=\"a\"\n  {x}:uuid=\"u\"/>"
             )
         },
         (2, 3),
     ),
     (
-        "content not read",
+        "an xmi:label on a root",
         |s, x| {
             format!(
                 "<{s}:ArgumentPackage xmlns:{s}=\"{SACM_NS}\" xmlns:{x}=\"{XMI_NS}\" \
-                     {x}:id=\"a\">\n  <foo/></{s}:ArgumentPackage>"
+                     {x}:id=\"a\"\n  {x}:label=\"l\"/>"
+            )
+        },
+        (2, 3),
+    ),
+    (
+        "an xmi:Extension in a root",
+        |s, x| {
+            format!(
+                "<{s}:ArgumentPackage xmlns:{s}=\"{SACM_NS}\" xmlns:{x}=\"{XMI_NS}\" \
+                     {x}:id=\"a\">\n  <{x}:Extension/></{s}:ArgumentPackage>"
             )
         },
         (2, 3),

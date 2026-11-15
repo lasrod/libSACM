@@ -6,8 +6,10 @@
 //! `assertionDeclaration`, from an XML element in no namespace named after
 //! the property, as well as from the attribute. The value is the element's
 //! character content exactly; an empty element is the empty string. A value
-//! element with an attribute, an element child or a namespace is
-//! `Unsupported` at that construct. A property given twice (attribute and
+//! element with an attribute, an element child or a namespace does not
+//! conform: the whole `name`, or the `assertionDeclaration` element, is kept
+//! as preserved content, at its start tag (ADR 0033); one in the XMI
+//! namespace is `Unsupported` there (SACM23-XMI-019). A property given twice (attribute and
 //! element, or two elements) is `ReadError::RepeatedValue` (SACM-MULT-001) in
 //! both modes, with every occurrence located: an attribute at its name, an
 //! element at its `<`.
@@ -41,8 +43,8 @@ use std::thread;
 use std::time::Duration;
 
 use sacm::compare::semantic_compare;
-use sacm::diagnostic::{Code, SourceLocation};
-use sacm::model::{AssertionDeclaration, Document, LangString};
+use sacm::diagnostic::{Code, Severity, SourceLocation};
+use sacm::model::{AssertionDeclaration, Document, ElementId, LangString, SacmElement};
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteOptions};
 
 const ROW: &str = "SACM23-XMI-014";
@@ -237,6 +239,73 @@ fn refused(what: &str, input: &str) -> ReadError {
         "{ROW}: {what}: the modes refuse differently"
     );
     strict
+}
+
+/// Asserts that `input` reads in both modes and keeps one construct as
+/// preserved content of `holder` (LIB-COMPAT-003, ADR 0033): exactly one
+/// SACM-XMI-003 at `at`, affecting `holder`, a Warning in tolerant mode and
+/// an Error in strict mode, and the same document in both.
+fn assert_preserved_at(what: &str, input: &str, at: SourceLocation, holder: &str) {
+    let mut documents = Vec::new();
+    for (mode, severity) in [
+        (Mode::Tolerant, Severity::Warning),
+        (Mode::Strict, Severity::Error),
+    ] {
+        let output = match read(mode, input) {
+            Ok(output) => output,
+            Err(error) => panic!(
+                "{ROW}: {what}: a {mode:?} read refused it instead of preserving it: {error:?}"
+            ),
+        };
+        let found: Vec<_> = output
+            .diagnostics()
+            .iter()
+            .filter(|found| found.code() == Code::XMI_UNKNOWN_CONTENT)
+            .map(|found| {
+                (
+                    found.severity(),
+                    found.location(),
+                    found.affected().to_vec(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            found,
+            [(severity, Some(at), vec![ElementId::from(holder)])],
+            "{ROW}: {what}: not one SACM-XMI-003 at the construct affecting {holder:?} in \
+             {mode:?} mode: {:?}",
+            output.diagnostics()
+        );
+        let doc = output.into_document();
+        assert!(
+            doc.get(holder)
+                .is_some_and(SacmElement::has_preserved_content),
+            "{ROW}: {what}: {holder:?} holds no preserved content in {mode:?} mode"
+        );
+        documents.push(doc);
+    }
+    assert_eq!(
+        documents[0], documents[1],
+        "{ROW}: {what}: the modes read different documents"
+    );
+}
+
+/// Reads `template` without its one mark in both modes and asserts that the
+/// construct at the mark is kept as preserved content (LIB-COMPAT-003, ADR
+/// 0033) of the element whose `xmi:id` comes last before the mark.
+fn assert_preserved_at_mark(what: &str, template: &str) {
+    let (input, marks) = marked(template);
+    assert_eq!(marks.len(), 1, "{ROW}: setup: {what} has not one mark");
+    let before = template.split(MARK).next().unwrap_or_default();
+    let Some(holder) = before
+        .rsplit("xmi:id=\"")
+        .next()
+        .filter(|_| before.contains("xmi:id=\""))
+        .and_then(|rest| rest.split('"').next())
+    else {
+        panic!("{ROW}: setup: {what} has no xmi:id before its mark");
+    };
+    assert_preserved_at(what, &input, marks[0], holder);
 }
 
 /// Reads `template` without its one mark, in both modes, and returns the
@@ -756,7 +825,7 @@ fn sacm23_xmi_014_an_asserted_element_reads_equal_to_no_declaration() {
 }
 
 #[test]
-fn sacm23_xmi_014_a_value_element_reads_only_on_its_owner_and_elsewhere_is_unsupported_at_its_start_tag()
+fn sacm23_xmi_014_a_value_element_reads_only_on_its_owner_and_elsewhere_is_preserved_at_its_start_tag()
  {
     // On its owner it reads.
     let doc = read_ok(
@@ -768,7 +837,7 @@ fn sacm23_xmi_014_a_value_element_reads_only_on_its_owner_and_elsewhere_is_unsup
         Some(AssertionDeclaration::Assumed),
         "{ROW}: the declaration element on a Claim is not read"
     );
-    // Elsewhere it stays refused at its start tag.
+    // Elsewhere it is preserved, at its start tag.
     let element = format!("{MARK}<assertionDeclaration>asserted</assertionDeclaration>");
     let cases = [
         ("an ArgumentPackage root", in_ap(&element)),
@@ -801,8 +870,10 @@ fn sacm23_xmi_014_a_value_element_reads_only_on_its_owner_and_elsewhere_is_unsup
             in_ap(&format!("{MARK}<lang>en</lang>")),
         ),
     ];
+    // A role the class lacks: kept as preserved content of its holder
+    // (ADR 0033).
     for (what, template) in cases {
-        assert_unsupported_at_mark(what, &template);
+        assert_preserved_at_mark(what, &template);
     }
 }
 
@@ -959,8 +1030,34 @@ fn value_elements(place: &dyn Fn(&str) -> (String, String)) -> Vec<(String, Stri
     cases
 }
 
+/// [`value_elements`], with the mark moved to the start tag of the child the
+/// defect keeps whole as preserved content (ADR 0033): the `name` holding
+/// `lang` or `content`, held by the root `a`, or the `assertionDeclaration`
+/// element, held by the Claim `c1`.
+fn value_elements_marked_whole(place: &dyn Fn(&str) -> (String, String)) -> Vec<(String, String)> {
+    let mut cases = Vec::new();
+    for element in ["lang", "content"] {
+        let (what, inner) = place(element);
+        let inner = inner.replace(MARK, "");
+        cases.push((
+            format!("{what} on <{element}>"),
+            in_ap(&format!("{MARK}<name>{inner}</name>")),
+        ));
+    }
+    let (what, inner) = place("assertionDeclaration");
+    let inner = inner.replace(MARK, "");
+    cases.push((
+        format!("{what} on <assertionDeclaration>"),
+        declared_claim(&format!("{MARK}{inner}")),
+    ));
+    cases
+}
+
 #[test]
-fn sacm23_xmi_014_an_attribute_on_a_value_element_is_unsupported_at_its_name() {
+fn sacm23_xmi_014_an_attribute_on_a_value_element_is_preserved_with_its_name_or_element() {
+    // A value element has no attributes: a defect that keeps the whole name,
+    // or the whole `assertionDeclaration` element, as preserved content, at
+    // its start tag (ADR 0033).
     for attribute in [
         "xmi:id=\"v\"",
         "xmi:type=\"sacm:LangString\"",
@@ -968,7 +1065,7 @@ fn sacm23_xmi_014_an_attribute_on_a_value_element_is_unsupported_at_its_name() {
         "foo=\"1\"",
         "lang=\"en\"",
     ] {
-        for (what, template) in value_elements(&|element| {
+        for (what, template) in value_elements_marked_whole(&|element| {
             let value = if element == "assertionDeclaration" {
                 "assumed"
             } else {
@@ -984,13 +1081,13 @@ fn sacm23_xmi_014_an_attribute_on_a_value_element_is_unsupported_at_its_name() {
             if attribute == "lang=\"en\"" && what.ends_with("on <content>") {
                 continue;
             }
-            assert_unsupported_at_mark(&what, &template);
+            assert_preserved_at_mark(&what, &template);
         }
     }
 }
 
 #[test]
-fn sacm23_xmi_014_an_element_in_a_value_element_is_unsupported_at_its_start_tag() {
+fn sacm23_xmi_014_an_element_in_a_value_element_is_preserved_with_its_name_or_element() {
     for (form, inner) in [
         ("an empty element", "{MARK}<b/>"),
         ("an element after text", "x{MARK}<b/>"),
@@ -998,7 +1095,7 @@ fn sacm23_xmi_014_an_element_in_a_value_element_is_unsupported_at_its_start_tag(
         ("a value element", "{MARK}<content>x</content>"),
         ("a value child of the legacy form", "{MARK}<value>x</value>"),
     ] {
-        for (what, template) in value_elements(&|element| {
+        for (what, template) in value_elements_marked_whole(&|element| {
             (
                 form.to_owned(),
                 format!(
@@ -1007,13 +1104,13 @@ fn sacm23_xmi_014_an_element_in_a_value_element_is_unsupported_at_its_start_tag(
                 ),
             )
         }) {
-            assert_unsupported_at_mark(&what, &template);
+            assert_preserved_at_mark(&what, &template);
         }
     }
 }
 
 #[test]
-fn sacm23_xmi_014_a_value_element_in_a_namespace_is_unsupported_at_its_start_tag() {
+fn sacm23_xmi_014_a_value_element_in_a_namespace_is_preserved_or_unsupported_at_its_start_tag() {
     // In no namespace it reads, however the no-namespace is reached.
     for twin in mixed_twins()
         .iter()
@@ -1040,7 +1137,7 @@ fn sacm23_xmi_014_a_value_element_in_a_namespace_is_unsupported_at_its_start_tag
             "{e}".to_owned(),
         ),
     ] {
-        for (what, template) in value_elements(&|element| {
+        let place = |element: &str| {
             let value = if element == "assertionDeclaration" {
                 "assumed"
             } else {
@@ -1054,8 +1151,19 @@ fn sacm23_xmi_014_a_value_element_in_a_namespace_is_unsupported_at_its_start_tag
                     close.replace("{e}", element)
                 ),
             )
-        }) {
-            assert_unsupported_at_mark(&what, &template);
+        };
+        if form == "xmi-prefixed" {
+            // An XMI-namespace element in an object is XMI metadata this
+            // version does not read yet (SACM23-XMI-019): refused there.
+            for (what, template) in value_elements(&place) {
+                assert_unsupported_at_mark(&what, &template);
+            }
+        } else {
+            // Not conforming: the whole name, or the element itself, is kept
+            // as preserved content, at its start tag (ADR 0033).
+            for (what, template) in value_elements_marked_whole(&place) {
+                assert_preserved_at_mark(&what, &template);
+            }
         }
     }
 }
@@ -1248,10 +1356,10 @@ fn sacm23_xmi_014_a_value_given_three_times_names_all_three_occurrences() {
 fn sacm23_xmi_014_a_repeated_value_element_is_checked_whole_before_it_counts_as_a_repeat() {
     // A value element is checked whole (namespace, attributes, children,
     // value) when it is met, and only then against earlier occurrences: each
-    // of these repeats a value, but the repeat is itself not a value, so the
-    // read is refused at that construct, not as `RepeatedValue`: a bad
-    // literal as `InvalidLiteral` (SACM23-VAL-006), the rest as
-    // `Unsupported`.
+    // of these repeats a value, but the repeat is itself not a value, so it
+    // is not a `RepeatedValue`: a bad literal is `InvalidLiteral`
+    // (SACM23-VAL-006), and a defect inside a name keeps the whole name as
+    // preserved content of the root, at its start tag (ADR 0033).
     let name = "<name lang=\"en\" content=\"C\"/>";
     let literals = [
         (
@@ -1282,40 +1390,37 @@ fn sacm23_xmi_014_a_repeated_value_element_is_checked_whole_before_it_counts_as_
         (
             "content=\"A\" and a content element with an attribute",
             in_ap(&format!(
-                "<name content=\"A\"><content {MARK}x=\"1\">A</content></name>"
+                "{MARK}<name content=\"A\"><content x=\"1\">A</content></name>"
             )),
         ),
         (
             "a lang element, then one with an attribute",
             in_ap(&format!(
-                "<name><lang>en</lang><lang {MARK}x=\"1\">en</lang></name>"
+                "{MARK}<name><lang>en</lang><lang x=\"1\">en</lang></name>"
             )),
         ),
         (
             "a content element, then one holding an element",
             in_ap(&format!(
-                "<name><content>A</content><content>{MARK}<b/></content></name>"
+                "{MARK}<name><content>A</content><content><b/></content></name>"
             )),
         ),
         (
             "content=\"A\" and a content element holding an element",
             in_ap(&format!(
-                "<name content=\"A\"><content>{MARK}<b/></content></name>"
+                "{MARK}<name content=\"A\"><content><b/></content></name>"
             )),
         ),
         (
             "content=\"A\" and a sacm-prefixed content element",
             in_ap(&format!(
-                "<name content=\"A\">{MARK}<sacm:content>A</sacm:content></name>"
+                "{MARK}<name content=\"A\"><sacm:content>A</sacm:content></name>"
             )),
         ),
     ];
     for (what, template) in cases {
-        let error = assert_unsupported_at_mark(what, &template);
-        assert!(
-            !matches!(error, ReadError::RepeatedValue { .. }),
-            "{ROW}: {what}: the repeat was counted before the element was checked: {error:?}"
-        );
+        // Preserved: so no `RepeatedValue` either.
+        assert_preserved_at_mark(what, &template);
     }
 }
 

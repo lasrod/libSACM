@@ -25,12 +25,15 @@ Read, edit, validate and write assurance cases in the
   `reasoning`, `is_counter`), each Assertion's meta-claims (`SacmElement::meta_claims`),
   each reasoning's `structure`, each artifact reference's referenced elements
   (`SacmElement::referenced_artifact_elements`) and each group's members
-  (`SacmElement::group_members`). It refuses what it
-  cannot represent yet rather than drop it. An
+  (`SacmElement::group_members`). Content that is not SACM 2.3 where it stands, such as
+  a vendor attribute or element, is kept as written as preserved content, with
+  SACM-XMI-003 (`SacmElement::has_preserved_content`); conforming content it does not
+  read yet is refused, never dropped. An
   element without an `xmi:id` gets a generated one, such as `claim_1`, which `write`
   saves; see the Ids section of the `sacm::xmi::read` docs.
-- `sacm::xmi::write` writes a document deterministically, and by default refuses one that
-  validation reports an Error for.
+- `sacm::xmi::write` writes a document deterministically, preserved content included,
+  and by default refuses one that holds preserved content or that validation reports an
+  Error for.
 - `sacm::validation::validate` reports each element that has no name, each `content` or
   `key` text that is empty or gives one language twice, each tagged value without a key,
   each id that is not an XML `NCName`, each `gid` two elements share, each element with

@@ -18,7 +18,8 @@
 //! `content` and `key` with their ids
 //! ([`SacmElement::content`](crate::model::SacmElement::content) and the
 //! like), its [`assertionDeclaration`](crate::model::AssertionDeclaration)
-//! (SACM 2.3 §11.10), and the relative order of its children; it also checks
+//! (SACM 2.3 §11.10), the relative order of its children, and its preserved
+//! content (LIB-COMPAT-003, ADR 0033), exactly and in order; it also checks
 //! the relative order of the roots. Values are compared exactly: a missing
 //! name differs from an empty one, and a missing `content` from an empty
 //! one.
@@ -64,8 +65,9 @@
 //! Not compared: the per-kind counters [`edit::apply`](crate::edit::apply)
 //! uses to generate ids such as `claim_1`. They are not SACM content, and XMI
 //! does not carry them. Formatting, attribute order and
-//! namespace prefixes are not held by a [`Document`] at all, so two files that
-//! differ only in them read into equal documents.
+//! namespace prefixes are not held by a [`Document`] at all, except in
+//! preserved content, which is compared exactly, so two files that differ
+//! only in them elsewhere read into equal documents.
 //!
 //! # Examples
 //!
@@ -483,6 +485,18 @@ pub enum Difference {
         /// The common children, in the right document's order.
         right: Vec<ElementId>,
     },
+    /// The element's preserved content, what [`xmi::read`](crate::xmi::read)
+    /// kept as written because it is not SACM 2.3 where it stands, differs
+    /// on each side (LIB-COMPAT-003, ADR 0033), or one side holds none.
+    ///
+    /// It is compared exactly and in order: namespace URIs, prefixes, local
+    /// names, attribute values and order, text, and where each child stands
+    /// among the element's children. Comments and processing instructions
+    /// are not held, so they never differ.
+    PreservedContent {
+        /// The element's id.
+        id: ElementId,
+    },
 }
 
 impl Difference {
@@ -530,7 +544,8 @@ impl Difference {
             | Self::KeyId { id, .. }
             | Self::KeyValueIds { id, .. }
             | Self::AssertionDeclaration { id, .. }
-            | Self::ChildOrder { id, .. } => Some(id),
+            | Self::ChildOrder { id, .. }
+            | Self::PreservedContent { id } => Some(id),
         }
     }
 }
@@ -706,6 +721,11 @@ impl fmt::Display for Difference {
                 Ids(left),
                 Ids(right)
             ),
+            Self::PreservedContent { id } => write!(
+                f,
+                "element {:?} differs in its preserved content",
+                id.as_str()
+            ),
         }
     }
 }
@@ -863,8 +883,9 @@ impl fmt::Display for Declaration {
 /// `isCounter`, `citedElement`, `abstractForm`, `metaClaim`, `reasoning`,
 /// `source`, `target`, `structure`, `referencedArtifactElement`, a group's
 /// `argumentElement`, name, its name's `xmi:id`, its
-/// `content` and `key` with their ids, `assertionDeclaration` and the
-/// relative order of its children are compared, even when its kind differs.
+/// `content` and `key` with their ids, `assertionDeclaration`, the
+/// relative order of its children and its preserved content, exactly
+/// (ADR 0033), are compared, even when its kind differs.
 /// The relative order of the roots is compared too. The per-kind counters
 /// that generate ids are not compared.
 ///
@@ -915,8 +936,9 @@ impl fmt::Display for Declaration {
 ///    [`ContentValueIds`](Difference::ContentValueIds),
 ///    [`Key`](Difference::Key), [`KeyId`](Difference::KeyId),
 ///    [`KeyValueIds`](Difference::KeyValueIds),
-///    [`AssertionDeclaration`](Difference::AssertionDeclaration) and
-///    [`ChildOrder`](Difference::ChildOrder), in that order;
+///    [`AssertionDeclaration`](Difference::AssertionDeclaration),
+///    [`ChildOrder`](Difference::ChildOrder) and
+///    [`PreservedContent`](Difference::PreservedContent), in that order;
 /// 3. [`Difference::RightOnly`] for each element only `right` holds, in
 ///    `right`'s pre-order.
 ///
@@ -990,6 +1012,8 @@ enum Found<'a> {
     /// The element's common children are in a different relative order; the
     /// element in the left and in the right document.
     ChildOrder(SacmElement<'a>, SacmElement<'a>),
+    /// The element's preserved content differs.
+    PreservedContent(Compared<'a>),
     /// Only the right document holds this element.
     RightOnly(SacmElement<'a>),
 }
@@ -1077,6 +1101,9 @@ impl Found<'_> {
                 id: ours.id().clone(),
                 left: common_children(ours, right).cloned().collect(),
                 right: common_children(theirs, left).cloned().collect(),
+            },
+            Self::PreservedContent(ours) => Difference::PreservedContent {
+                id: ours.id.clone(),
             },
             Self::RightOnly(element) => Difference::RightOnly {
                 id: element.id().clone(),
@@ -1222,6 +1249,9 @@ fn compare_element<'a>(
     }
     if common_children(element, right).ne(common_children(other, left)) {
         sink(Found::ChildOrder(element, other))?;
+    }
+    if ours.preserved != theirs.preserved {
+        sink(Found::PreservedContent(ours))?;
     }
     ControlFlow::Continue(())
 }

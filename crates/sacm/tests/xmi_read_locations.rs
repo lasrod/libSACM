@@ -11,7 +11,9 @@
 //! strict refusals of the C++ name and text shapes (SACM-XMI-012,
 //! LIB-COMPAT-008) and the untyped child under an abstract role
 //! (SACM-XMI-005, LIB-COMPAT-010). A row is read in tolerant mode unless it
-//! says strict.
+//! says strict. Content that does not conform is no refusal site since
+//! ADR 0033: the sites where it used to be refused are in [`preserved_rows`],
+//! where one SACM-XMI-003 must be at the same construct (LIB-COMPAT-003).
 //! The expected
 //! location is marked in the input with [`MARK`] (U+2038), which the test
 //! removes before reading, and is counted here: lines end at LF, CRLF or a
@@ -37,10 +39,14 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
 use std::time::Duration;
 
-use sacm::diagnostic::{Code, SourceLocation};
+use sacm::diagnostic::{Code, Severity, SourceLocation};
+use sacm::model::{ElementId, SacmElement};
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput};
 
 const ROW: &str = "SACM23-XMI-010";
+
+/// The row of the preserved-content sites ([`preserved_rows`]).
+const COMPAT_003: &str = "LIB-COMPAT-003";
 
 /// Marks, in a test input, where the refusal is expected.
 const MARK: char = '\u{2038}';
@@ -128,6 +134,10 @@ enum Variant {
     /// SACM-XMI-005, an untyped child under an abstract role
     /// (LIB-COMPAT-010).
     MissingType,
+    /// Not refused: read with one SACM-XMI-003 there, the content kept as
+    /// preserved content (LIB-COMPAT-003, ADR 0033). Only in
+    /// [`preserved_rows`].
+    Preserved,
 }
 
 /// One refusal site.
@@ -404,12 +414,15 @@ fn root_rows() -> Vec<Row> {
                 "{MARK}<ArgumentPackage xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"a\"/>"
             )),
         ),
-        // SACM23-XMI-020: a root with no `xmi:id` is read; an unqualified id
-        // is an attribute that is not read.
+        // XMI metadata this version does not read yet (SACM23-XMI-019). An
+        // unqualified id, or another attribute the class lacks, is preserved
+        // instead (ADR 0033): `preserved_rows`.
         row(
-            "an unqualified id on a root",
+            "an xmi:uuid on a root",
             Unsupported,
-            led(&format!("<sacm:ArgumentPackage{NS} {MARK}id=\"a\"/>")),
+            led(&format!(
+                "<sacm:ArgumentPackage{NS} xmi:id=\"a\" {MARK}xmi:uuid=\"u\"/>"
+            )),
         ),
         row(
             "a root with an empty id",
@@ -427,15 +440,10 @@ fn root_rows() -> Vec<Row> {
         // SACM23-XMI-025: an id with white space around an NCName is read
         // trimmed, so it is no refusal.
         row(
-            "a root typed as another class",
-            Unsupported,
-            root(" xmi:id=\"a\" xmi:type=\"sacm:Claim\"", ""),
-        ),
-        row(
-            "an unread attribute of a root",
+            "an xmi:label on a root",
             Unsupported,
             led(&format!(
-                "<sacm:ArgumentPackage{NS} xmi:id=\"a\" {MARK}foo=\"1\"/>"
+                "<sacm:ArgumentPackage{NS} xmi:id=\"a\" {MARK}xmi:label=\"l\"/>"
             )),
         ),
         // SACM23-XMI-021: at the second name.
@@ -443,11 +451,6 @@ fn root_rows() -> Vec<Row> {
             "a second name of a root",
             RepeatedValue,
             in_ap(&format!("<name/>{MARK}<name/>")),
-        ),
-        row(
-            "text in a root",
-            Unsupported,
-            in_ap(&format!(" \t {MARK}x")),
         ),
         // SACM23-VAL-001: an id repeated across classes, at the first repeat.
         row(
@@ -475,29 +478,22 @@ fn name_rows() -> Vec<Row> {
             DuplicateId,
             in_ap(&format!("{MARK}<name xmi:id=\"p\"/>")),
         ),
+        // An ExpressionLangString is not read yet (SACM23-BASE-009).
         row(
-            "a name in a namespace",
+            "a name typed as an ExpressionLangString",
             Unsupported,
-            in_ap(&format!("{MARK}<sacm:name/>")),
+            in_ap(&format!(
+                "{MARK}<name xmi:type=\"sacm:ExpressionLangString\" content=\"N\"/>"
+            )),
         ),
         row(
-            "a name typed as another class",
+            "an xmi:uuid on a name",
             Unsupported,
-            in_ap(&format!("{MARK}<name xmi:type=\"sacm:Claim\"/>")),
-        ),
-        row(
-            "an unread attribute of a name",
-            Unsupported,
-            in_ap(&format!("<name content=\"N\" {MARK}xml:lang=\"en\"/>")),
+            in_ap(&format!("<name content=\"N\" {MARK}xmi:uuid=\"n\"/>")),
         ),
         // `lang` and `content` are value elements (SACM23-XMI-014); one
         // `value`, and text, are C++ shapes, refused in strict mode
         // (LIB-COMPAT-008).
-        row(
-            "an element in a name",
-            Unsupported,
-            in_ap(&format!("<name>{MARK}<foo/></name>")),
-        ),
         row(
             "a value in a name, strict",
             LegacyShape,
@@ -519,18 +515,6 @@ fn child_role_rows() -> Vec<Row> {
     let element = |attributes: &str| in_ap(&format!("{MARK}<argumentElement{attributes}/>"));
     vec![
         row(
-            "a role the parent's class lacks",
-            U,
-            in_ap(&format!("{MARK}<foo/>")),
-        ),
-        row(
-            "argumentElement in an AssuranceCasePackage",
-            U,
-            in_acp(&format!(
-                "{MARK}<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"
-            )),
-        ),
-        row(
             "argumentationElement",
             U,
             in_ap(&format!(
@@ -538,61 +522,9 @@ fn child_role_rows() -> Vec<Row> {
             )),
         ),
         row(
-            "a namespace-qualified role element",
-            U,
-            in_ap(&format!(
-                "{MARK}<sacm:argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"
-            )),
-        ),
-        row(
-            "a role element under a default SACM namespace",
-            U,
-            led(&format!(
-                "<ArgumentPackage xmlns=\"http://www.omg.org/spec/SACM/20220301\" xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" \
-             xmi:id=\"p\">{MARK}<argumentElement xmi:type=\"Claim\" xmi:id=\"x\"/></ArgumentPackage>"
-            )),
-        ),
-        row(
-            "a type that does not conform to a concrete role",
-            U,
-            in_acp(&format!(
-                "{MARK}<argumentPackage xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"
-            )),
-        ),
-        row(
-            "a type that does not conform to argumentElement",
-            U,
-            element(" xmi:type=\"sacm:Term\" xmi:id=\"x\""),
-        ),
-        row(
-            "a type naming an abstract class",
-            U,
-            element(" xsi:type=\"sacm:Assertion\" xmi:id=\"x\""),
-        ),
-        row(
-            "a type naming no SACM class",
-            U,
-            element(" xmi:type=\"sacm:Goal\" xmi:id=\"x\""),
-        ),
-        row(
-            "a type in a foreign namespace",
-            U,
-            element(" xmlns:o=\"urn:o\" xmi:type=\"o:Claim\" xmi:id=\"x\""),
-        ),
-        row(
-            "an unresolvable type",
-            U,
-            element(" xmi:type=\"nope:Claim\" xmi:id=\"x\""),
-        ),
-        row(
             "an untyped argumentElement",
             Variant::MissingType,
             element(" xmi:id=\"x\""),
-        ),
-        row(
-            "two type attributes that disagree",
-            U,
-            element(" xmi:type=\"sacm:Claim\" xsi:type=\"sacm:ArgumentPackage\" xmi:id=\"x\""),
         ),
         row(
             "a conforming kind outside the readable set",
@@ -607,22 +539,12 @@ fn child_content_rows() -> Vec<Row> {
     use Variant::Unsupported as U;
     let element = |attributes: &str| in_ap(&format!("{MARK}<argumentElement{attributes}/>"));
     vec![
-        // A utility element in a Claim is read (SACM23-BASE-004).
+        // XMI metadata in a Claim, at depth 3 (SACM23-XMI-019). A utility
+        // element in a Claim is read (SACM23-BASE-004).
         row(
-            "a role a Claim lacks, at depth 3",
+            "an xmi:Extension in a Claim, at depth 3",
             U,
-            in_claim(&format!(
-                "{MARK}<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"n\"/>"
-            )),
-        ),
-        // SACM23-XMI-020: a child with no `xmi:id` is read; an unqualified id
-        // is an attribute that is not read.
-        row(
-            "an unqualified id on a child",
-            U,
-            in_ap(&format!(
-                "<argumentElement xmi:type=\"sacm:Claim\" {MARK}id=\"x\"/>"
-            )),
+            in_claim(&format!("{MARK}<xmi:Extension/>")),
         ),
         row(
             "a child with an empty id",
@@ -634,20 +556,6 @@ fn child_content_rows() -> Vec<Row> {
             Variant::DuplicateId,
             in_ap(&format!(
                 "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>{MARK}<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"
-            )),
-        ),
-        row(
-            "an unread attribute of a child",
-            U,
-            in_ap(&format!(
-                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\" {MARK}foo=\"1\"/>"
-            )),
-        ),
-        row(
-            "assertionDeclaration on a child that is not an Assertion",
-            U,
-            in_acp(&format!(
-                "<argumentPackage xmi:id=\"x\" {MARK}assertionDeclaration=\"asserted\"/>"
             )),
         ),
         // SACM23-VAL-006: a value that is not one of the six literals.
@@ -665,7 +573,6 @@ fn child_content_rows() -> Vec<Row> {
                 "<argumentPackage xmi:id=\"x\" {MARK}xmi:uuid=\"u\"/>"
             )),
         ),
-        row("text in a child", U, in_claim(&format!("  {MARK}x"))),
         row(
             "a second name of a child",
             Variant::RepeatedValue,
@@ -681,40 +588,14 @@ fn child_content_rows() -> Vec<Row> {
 
 /// The refusals of value elements (SACM23-XMI-014).
 fn value_element_rows() -> Vec<Row> {
-    use Variant::{InvalidLiteral, RepeatedValue, Unsupported as U};
+    use Variant::{InvalidLiteral, RepeatedValue};
     vec![
-        row(
-            "an attribute of a value element",
-            U,
-            in_claim(&format!(
-                "<name><content {MARK}xmi:id=\"v\">N</content></name>"
-            )),
-        ),
-        row(
-            "an element in a value element",
-            U,
-            in_claim(&format!("<name><lang>en{MARK}<b/></lang></name>")),
-        ),
-        row(
-            "a value element in a namespace",
-            U,
-            in_claim(&format!(
-                "<name>{MARK}<sacm:content>N</sacm:content></name>"
-            )),
-        ),
         // SACM23-VAL-006: at the value element's `<`.
         row(
             "a bad assertionDeclaration literal in the element form",
             InvalidLiteral,
             in_claim(&format!(
                 "{MARK}<assertionDeclaration>Asserted</assertionDeclaration>"
-            )),
-        ),
-        row(
-            "an assertionDeclaration element on a package",
-            U,
-            in_ap(&format!(
-                "{MARK}<assertionDeclaration>asserted</assertionDeclaration>"
             )),
         ),
         // At the second occurrence: here the element after the attribute.
@@ -808,36 +689,11 @@ fn utility_rows() -> Vec<Row> {
             in_ap(&format!("<taggedValue xmi:id=\"t\" {MARK}value=\"v\"/>")),
         )
         .strict(),
-        // A UtilityElement has no `name`.
+        // XMI metadata this version does not read yet (SACM23-XMI-019).
         row(
-            "a name on a UtilityElement",
+            "an xmi:Extension in a Description",
             U,
-            in_description(&format!("{MARK}<name content=\"x\"/>")),
-        ),
-        row(
-            "a child content cannot hold",
-            U,
-            in_content(&format!("<value content=\"a\"/>{MARK}<foo/>")),
-        ),
-        row(
-            "content in a namespace",
-            U,
-            in_description(&format!("{MARK}<sacm:content/>")),
-        ),
-        row(
-            "value in a namespace",
-            U,
-            in_content(&format!("{MARK}<sacm:value content=\"x\"/>")),
-        ),
-        row(
-            "an unread attribute of content",
-            U,
-            in_description(&format!("<content {MARK}foo=\"1\"/>")),
-        ),
-        row(
-            "an unread attribute of a value",
-            U,
-            in_content(&format!("<value content=\"x\" {MARK}xml:lang=\"en\"/>")),
+            in_description(&format!("<content/>{MARK}<xmi:Extension/>")),
         ),
         // Text in a value is a C++ shape (LIB-COMPAT-008): refused in strict
         // mode at the text.
@@ -923,65 +779,8 @@ fn utility_repeat_and_id_rows() -> Vec<Row> {
 /// The refusals of `gid` in the wrong place or form, and given twice
 /// (SACM23-BASE-006; ADR 0025).
 fn gid_rows() -> Vec<Row> {
-    use Variant::{RepeatedValue, Unsupported as U};
+    use Variant::RepeatedValue;
     vec![
-        row(
-            "sacm:gid as an attribute",
-            U,
-            in_ap(&format!(
-                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\" {MARK}sacm:gid=\"g\"/>"
-            )),
-        ),
-        row(
-            "sacm:gid as an element",
-            U,
-            in_claim(&format!("{MARK}<sacm:gid>g</sacm:gid>")),
-        ),
-        row(
-            "gid on a name",
-            U,
-            in_claim(&format!("<name content=\"N\" {MARK}gid=\"g\"/>")),
-        ),
-        row(
-            "a gid element in a name",
-            U,
-            in_claim(&format!("<name content=\"N\">{MARK}<gid>g</gid></name>")),
-        ),
-        row(
-            "gid on content",
-            U,
-            in_description(&format!("<content {MARK}gid=\"g\"/>")),
-        ),
-        row(
-            "a gid element in content",
-            U,
-            in_description(&format!("<content>{MARK}<gid>g</gid></content>")),
-        ),
-        row(
-            "gid on key",
-            U,
-            in_tagged(&format!("<key {MARK}gid=\"g\"/>")),
-        ),
-        row(
-            "gid on a value",
-            U,
-            in_content(&format!("<value {MARK}gid=\"g\" content=\"x\"/>")),
-        ),
-        row(
-            "a gid element in a value",
-            U,
-            in_content(&format!("<value>{MARK}<gid>g</gid></value>")),
-        ),
-        row(
-            "an xmi:id on a gid element",
-            U,
-            in_claim(&format!("<gid {MARK}xmi:id=\"g1\">g</gid>")),
-        ),
-        row(
-            "an element in a gid element",
-            U,
-            in_claim(&format!("<gid>g{MARK}<b/></gid>")),
-        ),
         // SACM23-XMI-021: at the second occurrence.
         row(
             "a gid as an attribute and an element on a root",
@@ -1023,7 +822,7 @@ fn claim_x(attributes: &str, content: &str) -> String {
 /// (SACM23-BASE-007/008; ADR 0026): a value that is no Boolean literal, a
 /// repeat, and a flag in the wrong place or form.
 fn flag_rows() -> Vec<Row> {
-    use Variant::{InvalidLiteral, RepeatedValue, Unsupported as U};
+    use Variant::{InvalidLiteral, RepeatedValue};
     vec![
         // At the attribute's name, or the value element's `<`.
         row(
@@ -1064,48 +863,12 @@ fn flag_rows() -> Vec<Row> {
                 "<isAbstract>1</isAbstract>{MARK}<isAbstract>1</isAbstract>"
             )),
         ),
-        row(
-            "sacm:isCitation as an attribute",
-            U,
-            claim_x(&format!(" {MARK}sacm:isCitation=\"true\""), ""),
-        ),
-        row(
-            "sacm:isAbstract as an element",
-            U,
-            in_claim(&format!("{MARK}<sacm:isAbstract>true</sacm:isAbstract>")),
-        ),
-        row(
-            "an attribute of an isCitation element",
-            U,
-            in_claim(&format!("<isCitation {MARK}xmi:id=\"v\">true</isCitation>")),
-        ),
-        row(
-            "an element in an isAbstract element",
-            U,
-            in_claim(&format!("<isAbstract>true{MARK}<b/></isAbstract>")),
-        ),
-        row(
-            "isCitation on a name",
-            U,
-            in_claim(&format!("<name content=\"N\" {MARK}isCitation=\"true\"/>")),
-        ),
-        row(
-            "an isAbstract element in a value",
-            U,
-            in_content(&format!(
-                "<value>{MARK}<isAbstract>true</isAbstract></value>"
-            )),
-        ),
     ]
 }
 
 /// The refusals of the references `citedElement` and `abstractForm`, in the
 /// attribute form (SACM23-XMI-005) and the element form (SACM23-XMI-015;
 /// ADR 0026).
-#[expect(
-    clippy::too_many_lines,
-    reason = "one flat table is easier to review than several"
-)]
 fn reference_rows() -> Vec<Row> {
     use Variant::{RepeatedValue, Unsupported as U};
     let link = |element: &str| claim_x("", element);
@@ -1132,39 +895,7 @@ fn reference_rows() -> Vec<Row> {
                 "<abstractForm xmi:idref=\"c\"/>{MARK}<abstractForm href=\"#c\"/>"
             )),
         ),
-        row(
-            "an empty citedElement",
-            U,
-            claim_x(&format!(" {MARK}citedElement=\"\""), ""),
-        ),
-        row(
-            "an abstractForm of white space",
-            U,
-            claim_x(&format!(" {MARK}abstractForm=\" &#9; \""), ""),
-        ),
-        row(
-            "sacm:citedElement as an attribute",
-            U,
-            claim_x(&format!(" {MARK}sacm:citedElement=\"c\""), ""),
-        ),
-        row(
-            "citedElement on a content",
-            U,
-            in_description(&format!("<content {MARK}citedElement=\"c\"/>")),
-        ),
         // Malformed reference elements.
-        row(
-            "a reference element with both link attributes",
-            U,
-            link(&format!(
-                "<citedElement xmi:idref=\"c\" {MARK}href=\"#c\"/>"
-            )),
-        ),
-        row(
-            "a reference element with no link attribute",
-            U,
-            link(&format!("{MARK}<abstractForm/>")),
-        ),
         row(
             "an xmi:id on a reference element",
             U,
@@ -1179,27 +910,7 @@ fn reference_rows() -> Vec<Row> {
                 "<abstractForm xmi:idref=\"c\" {MARK}xmi:type=\"sacm:Claim\"/>"
             )),
         ),
-        row(
-            "another attribute on a reference element",
-            U,
-            link(&format!("<citedElement href=\"#c\" {MARK}foo=\"1\"/>")),
-        ),
-        row(
-            "an unqualified idref",
-            U,
-            link(&format!("<citedElement {MARK}idref=\"c\"/>")),
-        ),
-        // White space inside the trimmed id: at the attribute's name.
-        row(
-            "an xmi:idref with a space inside",
-            U,
-            link(&format!("<citedElement {MARK}xmi:idref=\" c x \"/>")),
-        ),
-        row(
-            "an xmi:idref with a tab inside",
-            U,
-            link(&format!("<abstractForm {MARK}xmi:idref=\"c&#9;x\"/>")),
-        ),
+        // An href that is not `#id` (SACM23-XMI-027): at the attribute's name.
         row(
             "a cross-document href",
             U,
@@ -1227,25 +938,6 @@ fn reference_rows() -> Vec<Row> {
             U,
             link(&format!("<abstractForm {MARK}href=\"\"/>")),
         ),
-        row(
-            "an element in a reference element",
-            U,
-            link(&format!(
-                "<citedElement xmi:idref=\"c\">{MARK}<b/></citedElement>"
-            )),
-        ),
-        row(
-            "text in a reference element",
-            U,
-            link(&format!(
-                "<abstractForm xmi:idref=\"c\"> {MARK}c</abstractForm>"
-            )),
-        ),
-        row(
-            "a reference element in a namespace",
-            U,
-            link(&format!("{MARK}<sacm:citedElement xmi:idref=\"c\"/>")),
-        ),
     ]
 }
 
@@ -1262,61 +954,9 @@ fn inference_x(attributes: &str, content: &str) -> String {
 /// (SACM23-ARG-004, -005, -007; ADR 0027): a feature on a kind that lacks
 /// it, a bad literal, and a second value of a single-valued end, or an
 /// attribute and an element for a multi-valued one.
-#[expect(
-    clippy::too_many_lines,
-    reason = "one flat table is easier to review than several"
-)]
 fn relationship_rows() -> Vec<Row> {
-    use Variant::{InvalidLiteral, RepeatedValue, Unsupported as U};
+    use Variant::{InvalidLiteral, RepeatedValue};
     vec![
-        // On a kind that lacks it: at the attribute's name or the element's `<`.
-        row(
-            "isCounter on a Claim",
-            U,
-            claim_x(&format!(" {MARK}isCounter=\"true\""), ""),
-        ),
-        row(
-            "an isCounter element in a Claim",
-            U,
-            claim_x("", &format!("{MARK}<isCounter>true</isCounter>")),
-        ),
-        row(
-            "source on a Claim",
-            U,
-            claim_x(&format!(" {MARK}source=\"c\""), ""),
-        ),
-        row(
-            "a source element in a Claim",
-            U,
-            claim_x("", &format!("{MARK}<source xmi:idref=\"c\"/>")),
-        ),
-        row(
-            "target on an ArgumentPackage root",
-            U,
-            led(&format!(
-                "<sacm:ArgumentPackage{NS} xmi:id=\"a\" {MARK}target=\"a\"/>"
-            )),
-        ),
-        row(
-            "structure on a Claim",
-            U,
-            claim_x(&format!(" {MARK}structure=\"p\""), ""),
-        ),
-        row(
-            "metaClaim on a Note",
-            U,
-            in_ap(&format!("<note xmi:id=\"n\" {MARK}metaClaim=\"c\"/>")),
-        ),
-        row(
-            "sacm:isCounter on a relationship",
-            U,
-            inference_x(&format!(" {MARK}sacm:isCounter=\"true\""), ""),
-        ),
-        row(
-            "an empty source",
-            U,
-            inference_x(&format!(" {MARK}source=\"\""), ""),
-        ),
         // A bad literal: at the attribute's name.
         row(
             "a bad isCounter literal",
@@ -1395,26 +1035,6 @@ fn artifact_rows() -> Vec<Row> {
     let group = |attributes: &str, content: &str| typed_x("ArgumentGroup", attributes, content);
     vec![
         row(
-            "referencedArtifact on an ArtifactReference",
-            U,
-            reference(&format!(" {MARK}referencedArtifact=\"c\""), ""),
-        ),
-        row(
-            "a referencedArtifact element in an ArtifactReference",
-            U,
-            reference("", &format!("{MARK}<referencedArtifact xmi:idref=\"c\"/>")),
-        ),
-        row(
-            "an empty referencedArtifactElement",
-            U,
-            reference(&format!(" {MARK}referencedArtifactElement=\"\""), ""),
-        ),
-        row(
-            "referencedArtifactElement on a Claim",
-            U,
-            claim_x(&format!(" {MARK}referencedArtifactElement=\"c\""), ""),
-        ),
-        row(
             "referencedArtifactElement as an attribute and an element",
             RepeatedValue,
             reference(
@@ -1445,13 +1065,6 @@ fn artifact_rows() -> Vec<Row> {
                 "",
                 &format!("{MARK}<argumentationElement xmi:idref=\"c\"/>"),
             ),
-        ),
-        row(
-            "an argumentElement attribute on an ArgumentPackage root",
-            U,
-            led(&format!(
-                "<sacm:ArgumentPackage{NS} xmi:id=\"a\" {MARK}argumentElement=\"a\"/>"
-            )),
         ),
         row(
             "a group's argumentElement as an attribute and an element",
@@ -1627,16 +1240,11 @@ fn assert_located(group: &str, rows: &[Row]) {
 }
 
 /// Text after white space written as a reference or a CDATA section: at the
-/// start of that construct.
+/// start of that construct. In an element, such text is preserved instead
+/// (ADR 0033), at the same place: [`preserved_rows`].
 fn marked_text_rows() -> Vec<Row> {
     use Variant::Unsupported as U;
     vec![
-        row("\"&#x20;x\" in a root", U, in_ap(&format!("{MARK}&#x20;x"))),
-        row(
-            "\"&#x20;x\" after literal white space in a Claim",
-            U,
-            in_claim(&format!(" 	 {MARK}&#x20;x")),
-        ),
         row(
             "\"&#x20;x\" in a name, strict",
             Variant::LegacyShape,
@@ -1651,14 +1259,11 @@ fn marked_text_rows() -> Vec<Row> {
             )),
         ),
         row(
-            "\"<![CDATA[ x]]>\" in a root",
+            "\"<![CDATA[ x]]>\" in the wrapper",
             U,
-            in_ap(&format!("{MARK}<![CDATA[ x]]>")),
-        ),
-        row(
-            "\"<![CDATA[ x]]>\" after literal white space in a Claim",
-            U,
-            in_claim(&format!("  {MARK}<![CDATA[ x]]>")),
+            wrapped(&format!(
+                "{MARK}<![CDATA[ x]]><sacm:ArgumentPackage xmi:id=\"a\"/>"
+            )),
         ),
         row(
             "\"<![CDATA[ x]]>\" in a name, strict",
@@ -1666,10 +1271,756 @@ fn marked_text_rows() -> Vec<Row> {
             in_ap(&format!("<name>{MARK}<![CDATA[ x]]></name>")),
         )
         .strict(),
-        row(
-            "\"<![CDATA[ ]]>x\" in a Claim",
-            U,
-            in_claim(&format!("{MARK}<![CDATA[ ]]>x")),
+    ]
+}
+
+/// How the holder of a [`preserved_rows`] construct is known.
+#[derive(Clone, Copy, Debug)]
+enum Holder {
+    /// The element whose `xmi:id` comes last before the mark.
+    LastIdBeforeMark,
+    /// An element with a generated id: the construct is an id that is not an
+    /// `xmi:id` (SACM23-XMI-020).
+    Generated,
+}
+
+/// The sites of content that does not conform and that a refusal used to be
+/// located at: since ADR 0033 each is kept as preserved content, with one
+/// SACM-XMI-003 at the same construct (LIB-COMPAT-003, by SACM23-XMI-023's
+/// rules: an attribute at its name, an element at its `<`, text at its
+/// first character that is not literal white space). A defect inside a
+/// `name`, `content`, `key`, value element or reference element keeps that
+/// whole child, so it is marked at the child's start tag. The rows read in
+/// tolerant mode; the test reads each in strict mode too.
+#[expect(
+    clippy::too_many_lines,
+    reason = "one flat table is easier to review than several"
+)]
+fn preserved_rows() -> Vec<(Row, Holder)> {
+    use Holder::{Generated, LastIdBeforeMark as Last};
+    use Variant::Preserved as P;
+    let element = |attributes: &str| in_ap(&format!("{MARK}<argumentElement{attributes}/>"));
+    let link = |element: &str| claim_x("", element);
+    let reference =
+        |attributes: &str, content: &str| typed_x("ArtifactReference", attributes, content);
+    vec![
+        // Roots.
+        (
+            row(
+                "an unqualified id on a root",
+                P,
+                led(&format!("<sacm:ArgumentPackage{NS} {MARK}id=\"a\"/>")),
+            ),
+            Generated,
+        ),
+        (
+            row(
+                "a root typed as another class",
+                P,
+                led(&format!(
+                    "<sacm:ArgumentPackage{NS} xmi:id=\"a\" {MARK}xmi:type=\"sacm:Claim\"/>"
+                )),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "an unread attribute of a root",
+                P,
+                led(&format!(
+                    "<sacm:ArgumentPackage{NS} xmi:id=\"a\" {MARK}foo=\"1\"/>"
+                )),
+            ),
+            Last,
+        ),
+        (
+            row("text in a root", P, in_ap(&format!(" \t {MARK}x"))),
+            Last,
+        ),
+        (
+            row(
+                "target on an ArgumentPackage root",
+                P,
+                led(&format!(
+                    "<sacm:ArgumentPackage{NS} xmi:id=\"a\" {MARK}target=\"a\"/>"
+                )),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "an argumentElement attribute on an ArgumentPackage root",
+                P,
+                led(&format!(
+                    "<sacm:ArgumentPackage{NS} xmi:id=\"a\" {MARK}argumentElement=\"a\"/>"
+                )),
+            ),
+            Last,
+        ),
+        // Names: the whole name, at its start tag.
+        (
+            row(
+                "a name in a namespace",
+                P,
+                in_ap(&format!("{MARK}<sacm:name/>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "an unread attribute of a name",
+                P,
+                in_ap(&format!("{MARK}<name content=\"N\" xml:lang=\"en\"/>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "an element in a name",
+                P,
+                in_ap(&format!("{MARK}<name><foo/></name>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "a name typed as another class",
+                P,
+                in_ap(&format!("{MARK}<name xmi:type=\"sacm:Claim\"/>")),
+            ),
+            Last,
+        ),
+        // Children's roles and types: the whole child.
+        (
+            row(
+                "a role the parent's class lacks",
+                P,
+                in_ap(&format!("{MARK}<foo/>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "argumentElement in an AssuranceCasePackage",
+                P,
+                in_acp(&format!(
+                    "{MARK}<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"
+                )),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "a namespace-qualified role element",
+                P,
+                in_ap(&format!(
+                    "{MARK}<sacm:argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"
+                )),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "a role element under a default SACM namespace",
+                P,
+                led(&format!(
+                    "<ArgumentPackage xmlns=\"http://www.omg.org/spec/SACM/20220301\" xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" \
+                     xmi:id=\"p\">{MARK}<argumentElement xmi:type=\"Claim\" xmi:id=\"x\"/></ArgumentPackage>"
+                )),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "a type that does not conform to a concrete role",
+                P,
+                in_acp(&format!(
+                    "{MARK}<argumentPackage xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"
+                )),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "a type that does not conform to argumentElement",
+                P,
+                element(" xmi:type=\"sacm:Term\" xmi:id=\"x\""),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "a type naming an abstract class",
+                P,
+                element(" xsi:type=\"sacm:Assertion\" xmi:id=\"x\""),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "a type naming no SACM class",
+                P,
+                element(" xmi:type=\"sacm:Goal\" xmi:id=\"x\""),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "a type in a foreign namespace",
+                P,
+                element(" xmlns:o=\"urn:o\" xmi:type=\"o:Claim\" xmi:id=\"x\""),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "an unresolvable type",
+                P,
+                element(" xmi:type=\"nope:Claim\" xmi:id=\"x\""),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "two type attributes that disagree",
+                P,
+                element(" xmi:type=\"sacm:Claim\" xsi:type=\"sacm:ArgumentPackage\" xmi:id=\"x\""),
+            ),
+            Last,
+        ),
+        // Children's content and attributes.
+        (
+            row(
+                "a role a Claim lacks, at depth 3",
+                P,
+                in_claim(&format!(
+                    "{MARK}<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"n\"/>"
+                )),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "an unqualified id on a child",
+                P,
+                in_ap(&format!(
+                    "<argumentElement xmi:type=\"sacm:Claim\" {MARK}id=\"x\"/>"
+                )),
+            ),
+            Generated,
+        ),
+        (
+            row(
+                "an unread attribute of a child",
+                P,
+                in_ap(&format!(
+                    "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\" {MARK}foo=\"1\"/>"
+                )),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "assertionDeclaration on a child that is not an Assertion",
+                P,
+                in_acp(&format!(
+                    "<argumentPackage xmi:id=\"x\" {MARK}assertionDeclaration=\"asserted\"/>"
+                )),
+            ),
+            Last,
+        ),
+        (
+            row("text in a child", P, in_claim(&format!("  {MARK}x"))),
+            Last,
+        ),
+        // Value elements: the whole name, or the element itself.
+        (
+            row(
+                "an attribute of a value element",
+                P,
+                in_claim(&format!(
+                    "{MARK}<name><content xmi:id=\"v\">N</content></name>"
+                )),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "an element in a value element",
+                P,
+                in_claim(&format!("{MARK}<name><lang>en<b/></lang></name>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "a value element in a namespace",
+                P,
+                in_claim(&format!(
+                    "{MARK}<name><sacm:content>N</sacm:content></name>"
+                )),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "an assertionDeclaration element on a package",
+                P,
+                in_ap(&format!(
+                    "{MARK}<assertionDeclaration>asserted</assertionDeclaration>"
+                )),
+            ),
+            Last,
+        ),
+        // Text written as a reference or CDATA: at the start of that
+        // construct.
+        (
+            row("\"&#x20;x\" in a root", P, in_ap(&format!("{MARK}&#x20;x"))),
+            Last,
+        ),
+        (
+            row(
+                "\"&#x20;x\" after literal white space in a Claim",
+                P,
+                in_claim(&format!(" \t {MARK}&#x20;x")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "\"<![CDATA[ x]]>\" in a root",
+                P,
+                in_ap(&format!("{MARK}<![CDATA[ x]]>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "\"<![CDATA[ x]]>\" after literal white space in a Claim",
+                P,
+                in_claim(&format!("  {MARK}<![CDATA[ x]]>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "\"<![CDATA[ ]]>x\" in a Claim",
+                P,
+                in_claim(&format!("{MARK}<![CDATA[ ]]>x")),
+            ),
+            Last,
+        ),
+        // Utility elements and their roles: the whole `content` or `key`.
+        (
+            row(
+                "a name on a UtilityElement",
+                P,
+                in_description(&format!("{MARK}<name content=\"x\"/>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "a child content cannot hold",
+                P,
+                in_description(&format!(
+                    "{MARK}<content><value content=\"a\"/><foo/></content>"
+                )),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "content in a namespace",
+                P,
+                in_description(&format!("{MARK}<sacm:content/>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "value in a namespace",
+                P,
+                in_description(&format!(
+                    "{MARK}<content><sacm:value content=\"x\"/></content>"
+                )),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "an unread attribute of content",
+                P,
+                in_description(&format!("{MARK}<content foo=\"1\"/>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "an unread attribute of a value",
+                P,
+                in_description(&format!(
+                    "{MARK}<content><value content=\"x\" xml:lang=\"en\"/></content>"
+                )),
+            ),
+            Last,
+        ),
+        // gid in the wrong place or form.
+        (
+            row(
+                "sacm:gid as an attribute",
+                P,
+                in_ap(&format!(
+                    "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\" {MARK}sacm:gid=\"g\"/>"
+                )),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "sacm:gid as an element",
+                P,
+                in_claim(&format!("{MARK}<sacm:gid>g</sacm:gid>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "gid on a name",
+                P,
+                in_claim(&format!("{MARK}<name content=\"N\" gid=\"g\"/>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "a gid element in a name",
+                P,
+                in_claim(&format!("{MARK}<name content=\"N\"><gid>g</gid></name>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "gid on content",
+                P,
+                in_description(&format!("{MARK}<content gid=\"g\"/>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "a gid element in content",
+                P,
+                in_description(&format!("{MARK}<content><gid>g</gid></content>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "gid on key",
+                P,
+                in_tagged(&format!("{MARK}<key gid=\"g\"/>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "gid on a value",
+                P,
+                in_description(&format!(
+                    "{MARK}<content><value gid=\"g\" content=\"x\"/></content>"
+                )),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "a gid element in a value",
+                P,
+                in_description(&format!(
+                    "{MARK}<content><value><gid>g</gid></value></content>"
+                )),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "an xmi:id on a gid element",
+                P,
+                in_claim(&format!("{MARK}<gid xmi:id=\"g1\">g</gid>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "an element in a gid element",
+                P,
+                in_claim(&format!("{MARK}<gid>g<b/></gid>")),
+            ),
+            Last,
+        ),
+        // The SACMElement flags in the wrong place or form.
+        (
+            row(
+                "sacm:isCitation as an attribute",
+                P,
+                claim_x(&format!(" {MARK}sacm:isCitation=\"true\""), ""),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "sacm:isAbstract as an element",
+                P,
+                in_claim(&format!("{MARK}<sacm:isAbstract>true</sacm:isAbstract>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "an attribute of an isCitation element",
+                P,
+                in_claim(&format!("{MARK}<isCitation xmi:id=\"v\">true</isCitation>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "an element in an isAbstract element",
+                P,
+                in_claim(&format!("{MARK}<isAbstract>true<b/></isAbstract>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "isCitation on a name",
+                P,
+                in_claim(&format!("{MARK}<name content=\"N\" isCitation=\"true\"/>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "an isAbstract element in a value",
+                P,
+                in_description(&format!(
+                    "{MARK}<content><value><isAbstract>true</isAbstract></value></content>"
+                )),
+            ),
+            Last,
+        ),
+        // citedElement and abstractForm: an attribute that holds no id, and a
+        // defect inside a reference element (the whole element).
+        (
+            row(
+                "an empty citedElement",
+                P,
+                claim_x(&format!(" {MARK}citedElement=\"\""), ""),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "an abstractForm of white space",
+                P,
+                claim_x(&format!(" {MARK}abstractForm=\" &#9; \""), ""),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "sacm:citedElement as an attribute",
+                P,
+                claim_x(&format!(" {MARK}sacm:citedElement=\"c\""), ""),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "citedElement on a content",
+                P,
+                in_description(&format!("{MARK}<content citedElement=\"c\"/>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "a reference element with both link attributes",
+                P,
+                link(&format!(
+                    "{MARK}<citedElement xmi:idref=\"c\" href=\"#c\"/>"
+                )),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "a reference element with no link attribute",
+                P,
+                link(&format!("{MARK}<abstractForm/>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "another attribute on a reference element",
+                P,
+                link(&format!("{MARK}<citedElement href=\"#c\" foo=\"1\"/>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "an unqualified idref",
+                P,
+                link(&format!("{MARK}<citedElement idref=\"c\"/>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "an xmi:idref with a space inside",
+                P,
+                link(&format!("{MARK}<citedElement xmi:idref=\" c x \"/>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "an xmi:idref with a tab inside",
+                P,
+                link(&format!("{MARK}<abstractForm xmi:idref=\"c&#9;x\"/>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "an element in a reference element",
+                P,
+                link(&format!(
+                    "{MARK}<citedElement xmi:idref=\"c\"><b/></citedElement>"
+                )),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "text in a reference element",
+                P,
+                link(&format!(
+                    "{MARK}<abstractForm xmi:idref=\"c\"> c</abstractForm>"
+                )),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "a reference element in a namespace",
+                P,
+                link(&format!("{MARK}<sacm:citedElement xmi:idref=\"c\"/>")),
+            ),
+            Last,
+        ),
+        // Relationship features, metaClaim and structure on a kind that
+        // lacks them, and an empty end.
+        (
+            row(
+                "isCounter on a Claim",
+                P,
+                claim_x(&format!(" {MARK}isCounter=\"true\""), ""),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "an isCounter element in a Claim",
+                P,
+                claim_x("", &format!("{MARK}<isCounter>true</isCounter>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "source on a Claim",
+                P,
+                claim_x(&format!(" {MARK}source=\"c\""), ""),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "a source element in a Claim",
+                P,
+                claim_x("", &format!("{MARK}<source xmi:idref=\"c\"/>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "structure on a Claim",
+                P,
+                claim_x(&format!(" {MARK}structure=\"p\""), ""),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "metaClaim on a Note",
+                P,
+                in_ap(&format!("<note xmi:id=\"n\" {MARK}metaClaim=\"c\"/>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "sacm:isCounter on a relationship",
+                P,
+                inference_x(&format!(" {MARK}sacm:isCounter=\"true\""), ""),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "an empty source",
+                P,
+                inference_x(&format!(" {MARK}source=\"\""), ""),
+            ),
+            Last,
+        ),
+        // The ArtifactReference end.
+        (
+            row(
+                "referencedArtifact on an ArtifactReference",
+                P,
+                reference(&format!(" {MARK}referencedArtifact=\"c\""), ""),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "a referencedArtifact element in an ArtifactReference",
+                P,
+                reference("", &format!("{MARK}<referencedArtifact xmi:idref=\"c\"/>")),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "an empty referencedArtifactElement",
+                P,
+                reference(&format!(" {MARK}referencedArtifactElement=\"\""), ""),
+            ),
+            Last,
+        ),
+        (
+            row(
+                "referencedArtifactElement on a Claim",
+                P,
+                claim_x(&format!(" {MARK}referencedArtifactElement=\"c\""), ""),
+            ),
+            Last,
         ),
     ]
 }
@@ -1861,6 +2212,77 @@ fn sacm23_xmi_010_display_shows_the_location_for_every_refusal_site() {
         failures.is_empty(),
         "{ROW}: {} rows do not show their location:\n{}",
         failures.len(),
+        failures.join("\n")
+    );
+}
+
+#[test]
+fn lib_compat_003_content_once_refused_at_a_site_of_the_table_is_preserved_at_that_construct() {
+    let rows = preserved_rows();
+    let mut failures = Vec::new();
+    for (row, holder) in &rows {
+        let (input, expected) = input_of(row);
+        check_lead(row, expected);
+        let before = row.text.split(MARK).next().unwrap_or_default();
+        let last_id = before
+            .rsplit("xmi:id=\"")
+            .next()
+            .filter(|_| before.contains("xmi:id=\""))
+            .and_then(|rest| rest.split('"').next());
+        let written: Vec<&str> = row
+            .text
+            .split("id=\"")
+            .skip(1)
+            .filter_map(|rest| rest.split('"').next())
+            .collect();
+        for (mode, severity) in [
+            (Mode::Tolerant, Severity::Warning),
+            (Mode::Strict, Severity::Error),
+        ] {
+            let output = match read(&input, mode) {
+                Ok(output) => output,
+                Err(error) => {
+                    failures.push(format!(
+                        "{}: a {mode:?} read refused it instead of preserving it: {error:?}",
+                        row.what
+                    ));
+                    continue;
+                }
+            };
+            let found: Vec<_> = output
+                .diagnostics()
+                .iter()
+                .filter(|found| found.code() == Code::XMI_UNKNOWN_CONTENT)
+                .collect();
+            let holds = |id: &ElementId| {
+                output
+                    .document()
+                    .get(id.as_str())
+                    .is_some_and(SacmElement::has_preserved_content)
+                    && match holder {
+                        Holder::LastIdBeforeMark => last_id == Some(id.as_str()),
+                        Holder::Generated => !written.contains(&id.as_str()),
+                    }
+            };
+            match found.as_slice() {
+                [found]
+                    if found.severity() == severity
+                        && found.location() == Some(expected)
+                        && matches!(found.affected(), [id] if holds(id)) => {}
+                _ => failures.push(format!(
+                    "{}: expected one SACM-XMI-003 at {expected} affecting {holder:?} \
+                     {last_id:?} in {mode:?} mode, got {:?}",
+                    row.what,
+                    output.diagnostics()
+                )),
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{COMPAT_003}: {} failures (each row read in both modes) in {} preserved-content rows:\n{}",
+        failures.len(),
+        rows.len(),
         failures.join("\n")
     );
 }

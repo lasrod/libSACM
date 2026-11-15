@@ -224,7 +224,7 @@
 //! | Check | Refusal | Code |
 //! |---|---|---|
 //! | 1. the element is in the document | [`EditError::ElementNotFound`] | SACM-CMD-001 |
-//! | 2. under `RejectIfNonEmpty`: it contains no element but `UtilityElement`s | [`EditError::NotEmpty`] | SACM-CMD-006 |
+//! | 2. under `RejectIfNonEmpty`: it contains no element but `UtilityElement`s, and no preserved child element (ADR 0033) | [`EditError::NotEmpty`] | SACM-CMD-006 |
 //! | 3. each dangling reference, in the order of [`Preview::dangling_references`]: one that crosses a package boundary, under `RejectIfExternalReferencesExist` | [`EditError::CrossPackageReference`] | SACM-CMD-007 |
 //! | 3. the same reference, otherwise, under `RejectIfReferenced` | [`EditError::Referenced`] | SACM-CMD-002 |
 //!
@@ -983,7 +983,8 @@ impl From<CreateTaggedValue> for Operation {
 /// reference, and a root reorder changes no element. A [`DeleteElement`]
 /// deletes the element and what it contains and its policies delete, and
 /// changes each surviving element that loses a reference to one of them;
-/// the parent is not changed.
+/// the parent is not changed, unless a preserved child of it comes after a
+/// deleted child and so moves to a lower index (ADR 0033).
 ///
 /// A refused operation returns an [`EditError`] instead, and the document is
 /// unchanged; log it with [`EditError::code`]. To log the refused operation's
@@ -1091,7 +1092,8 @@ impl Mutation {
     /// element gives that element, or none when it sets the value held; a
     /// [`ReorderElements::new`] gives the parent, and a
     /// [`ReorderElements::roots`] none. A [`DeleteElement`] gives each
-    /// surviving element that lost an id of a deleted element.
+    /// surviving element that lost an id of a deleted element, and each whose
+    /// preserved child moved to a lower index (ADR 0033).
     ///
     /// # Examples
     ///
@@ -1549,7 +1551,8 @@ pub enum EditError {
     /// A [`DeleteElement`] under [`PackageDeletePolicy::RejectIfNonEmpty`]
     /// names an element that contains elements other than `UtilityElement`s
     /// (SACM-CMD-006). Descriptions, implementation constraints, notes and
-    /// tagged values do not count. Choose
+    /// tagged values do not count; each child element of preserved content
+    /// anywhere in the subtree does (ADR 0033). Choose
     /// [`DeleteRecursively`](PackageDeletePolicy::DeleteRecursively), or
     /// delete the contents first.
     ///
@@ -1573,7 +1576,8 @@ pub enum EditError {
         /// The id of the element to delete.
         element: ElementId,
         /// How many elements it contains, at any depth, that are not
-        /// `UtilityElement`s.
+        /// `UtilityElement`s, with the preserved child elements of every
+        /// element of its subtree, itself included.
         contained: usize,
     },
     /// A [`DeleteElement`] under

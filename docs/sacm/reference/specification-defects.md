@@ -217,7 +217,10 @@ the prose or drop the list.
 
 *Found by libSACM (slice 0021); a defect of XMI 2.5.1 (formal/15-06-07), not of SACM.*
 
-- **The cover and the normative XMI.xsd** use `http://www.omg.org/spec/XMI/20131001`.
+- **The cover and the normative XMI.xsd** use `http://www.omg.org/spec/XMI/20131001`. The
+  schema is pinned as `third_party/sacm-2.3/XMI-2.5.1-XMI.xsd` (SHA-256
+  `7b228718d35a15a8e2fb99f078d36eee4b23b7a2cd405e7ac81b9d27bf2fab5d`, LIB-TOOL-021), which
+  `cargo xtask fetch-spec` downloads.
 - **§7.5.1 (p. 8)** reads: "The version of this XMI specification is 2.4.1, and its XMI
   namespace is "http://www.omg.org/spec/XMI/20110701,"".
 - **Rule 1f (p. 60)** writes `"xmlns:xmi='http://www.omg.org/spec/XMI/20100901'"`.

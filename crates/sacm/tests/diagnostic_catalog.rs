@@ -22,7 +22,7 @@ const ROW: &str = "LIB-DIAG-002";
 
 /// Every `Code` constant, by name. A new constant must be added here, which
 /// the scan checks; each text is checked against `as_str()`.
-const CONSTANTS: [(&str, Code); 29] = [
+const CONSTANTS: [(&str, Code); 32] = [
     ("XML_MALFORMED", Code::XML_MALFORMED),
     ("XML_DOCTYPE_REJECTED", Code::XML_DOCTYPE_REJECTED),
     ("XMI_INVALID_ROOT", Code::XMI_INVALID_ROOT),
@@ -31,6 +31,8 @@ const CONSTANTS: [(&str, Code); 29] = [
     ("XMI_XSI_TYPE", Code::XMI_XSI_TYPE),
     ("XMI_VERSION_IGNORED", Code::XMI_VERSION_IGNORED),
     ("XMI_LEGACY_SHAPE", Code::XMI_LEGACY_SHAPE),
+    ("XMI_UNKNOWN_CONTENT", Code::XMI_UNKNOWN_CONTENT),
+    ("XMI_STRICT_SAVE_REFUSED", Code::XMI_STRICT_SAVE_REFUSED),
     ("MULTIPLICITY_VIOLATION", Code::MULTIPLICITY_VIOLATION),
     ("ENUM_INVALID_LITERAL", Code::ENUM_INVALID_LITERAL),
     ("CMD_TARGET_NOT_FOUND", Code::CMD_TARGET_NOT_FOUND),
@@ -52,6 +54,7 @@ const CONSTANTS: [(&str, Code); 29] = [
     ("PACKAGE_CONTENT_INVALID", Code::PACKAGE_CONTENT_INVALID),
     ("REF_DANGLING", Code::REF_DANGLING),
     ("REF_WRONG_TYPE", Code::REF_WRONG_TYPE),
+    ("REF_PRESERVED_TARGET", Code::REF_PRESERVED_TARGET),
     ("CITATION_INVALID", Code::CITATION_INVALID),
     ("AS_CITED_INVALID", Code::AS_CITED_INVALID),
     ("ABSTRACT_FORM_INVALID", Code::ABSTRACT_FORM_INVALID),
@@ -63,8 +66,10 @@ const CONSTANTS: [(&str, Code); 29] = [
 /// (LIB-EDIT-008, LIB-EDIT-010); and SACM-CMD-002, SACM-CMD-003,
 /// SACM-CMD-006 and SACM-CMD-007 of slice 0048 (LIB-EDIT-005, LIB-EDIT-006,
 /// LIB-EDIT-007); and SACM-CITE-002 (SACM23-VAL-019), SACM-XMI-005
-/// (LIB-COMPAT-010) and SACM-XMI-012 (LIB-COMPAT-008) of slice 0049.
-const LIVE: [&str; 29] = [
+/// (LIB-COMPAT-010) and SACM-XMI-012 (LIB-COMPAT-008) of slice 0049; and
+/// SACM-XMI-003 (LIB-COMPAT-003), SACM-XMI-006 (SACM23-XMI-008) and
+/// SACM-REF-003 (LIB-COMPAT-003) of slice 0050 (ADR 0033).
+const LIVE: [&str; 32] = [
     "SACM-ABS-001",
     "SACM-CITE-001",
     "SACM-CITE-002",
@@ -86,10 +91,13 @@ const LIVE: [&str; 29] = [
     "SACM-PKG-001",
     "SACM-REF-001",
     "SACM-REF-002",
+    "SACM-REF-003",
     "SACM-SEC-001",
     "SACM-XMI-001",
+    "SACM-XMI-003",
     "SACM-XMI-004",
     "SACM-XMI-005",
+    "SACM-XMI-006",
     "SACM-XMI-010",
     "SACM-XMI-011",
     "SACM-XMI-012",

@@ -233,21 +233,73 @@ fn refused(what: &str, input: &str) -> ReadError {
     errors.swap_remove(0)
 }
 
-/// Asserts that `template` is refused as `Unsupported`, with no code, at its
-/// one mark, in both modes. Returns the reason.
-fn assert_unsupported_at_mark(what: &str, template: &str) -> String {
+/// Asserts that `input` reads in both modes and keeps one construct as
+/// preserved content of `holder` (LIB-COMPAT-003, ADR 0033): exactly one
+/// SACM-XMI-003 at `at`, affecting `holder`, a Warning in tolerant mode and
+/// an Error in strict mode, and the same document in both, which it returns.
+fn assert_preserved_at(what: &str, input: &str, at: SourceLocation, holder: &str) -> Document {
+    let mut documents = Vec::new();
+    for (mode, severity) in [
+        (Mode::Tolerant, Severity::Warning),
+        (Mode::Strict, Severity::Error),
+    ] {
+        let output = match read(mode, input) {
+            Ok(output) => output,
+            Err(error) => panic!(
+                "{ROW}: {what}: a {mode:?} read refused it instead of preserving it: {error:?}"
+            ),
+        };
+        let found: Vec<_> = output
+            .diagnostics()
+            .iter()
+            .filter(|found| found.code() == Code::XMI_UNKNOWN_CONTENT)
+            .map(|found| {
+                (
+                    found.severity(),
+                    found.location(),
+                    found.affected().to_vec(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            found,
+            [(severity, Some(at), vec![ElementId::from(holder)])],
+            "{ROW}: {what}: not one SACM-XMI-003 at the construct affecting {holder:?} in \
+             {mode:?} mode: {:?}",
+            output.diagnostics()
+        );
+        let doc = output.into_document();
+        assert!(
+            doc.get(holder)
+                .is_some_and(SacmElement::has_preserved_content),
+            "{ROW}: {what}: {holder:?} holds no preserved content in {mode:?} mode"
+        );
+        documents.push(doc);
+    }
+    assert_eq!(
+        documents[0], documents[1],
+        "{ROW}: {what}: the modes read different documents"
+    );
+    documents.swap_remove(0)
+}
+
+/// Reads `template` without its one mark in both modes and asserts that the
+/// construct at the mark is kept as preserved content (LIB-COMPAT-003, ADR
+/// 0033) of the element whose `xmi:id` comes last before the mark, and
+/// returns the document.
+fn assert_preserved_at_mark(what: &str, template: &str) -> Document {
     let (input, marks) = marked(template);
     assert_eq!(marks.len(), 1, "{ROW}: setup: {what} has not one mark");
-    let error = refused(what, &input);
-    let ReadError::Unsupported { reason, .. } = &error else {
-        panic!("{ROW}: {what}: not Unsupported: {error:?} ({error})");
+    let before = template.split(MARK).next().unwrap_or_default();
+    let Some(holder) = before
+        .rsplit("xmi:id=\"")
+        .next()
+        .filter(|_| before.contains("xmi:id=\""))
+        .and_then(|rest| rest.split('"').next())
+    else {
+        panic!("{ROW}: setup: {what} has no xmi:id before its mark");
     };
-    assert_eq!(
-        (error.code(), error.location()),
-        (None, Some(marks[0])),
-        "{ROW}: {what}: not refused with no code at the mark: {error}"
-    );
-    reason.clone()
+    assert_preserved_at(what, &input, marks[0], holder)
 }
 
 fn write_in(row: &str, what: &str, mode: Mode, doc: &Document) -> String {
@@ -594,7 +646,8 @@ fn sacm23_base_005_a_key_value_field_given_twice_is_repeated_value_naming_key_va
 }
 
 #[test]
-fn sacm23_base_005_key_or_value_attributes_off_a_tagged_value_and_another_on_one_are_only_unread() {
+fn sacm23_base_005_key_or_value_attributes_off_a_tagged_value_and_another_on_one_are_only_preserved()
+ {
     let claim = |attribute: &str| {
         in_ap(&format!(
             "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\" {MARK}{attribute}/>"
@@ -602,55 +655,49 @@ fn sacm23_base_005_key_or_value_attributes_off_a_tagged_value_and_another_on_one
     };
     let description =
         |attribute: &str| in_ap(&format!("<description xmi:id=\"d\" {MARK}{attribute}/>"));
-    let unread = |attribute: &str, element: &str| {
-        format!(
-            "the attribute \"{attribute}\" of the element \"{element}\" is not read in this release"
-        )
-    };
+    // Attributes the class lacks: each is kept as preserved content of its
+    // element (ADR 0033), and none is read as the C++ shorthand
+    // (LIB-COMPAT-008): no SACM-XMI-012, and no key or content.
     let cases = [
-        (
-            "key= on a Description",
-            description("key=\"k\""),
-            unread("key", "description"),
-        ),
-        (
-            "value= on a Description",
-            description("value=\"v\""),
-            unread("value", "description"),
-        ),
-        (
-            "key= on a Claim",
-            claim("key=\"k\""),
-            unread("key", "argumentElement"),
-        ),
-        (
-            "value= on a Claim",
-            claim("value=\"v\""),
-            unread("value", "argumentElement"),
-        ),
+        ("key= on a Description", description("key=\"k\""), "d"),
+        ("value= on a Description", description("value=\"v\""), "d"),
+        ("key= on a Claim", claim("key=\"k\""), "c"),
+        ("value= on a Claim", claim("value=\"v\""), "c"),
         (
             "foo= on a TaggedValue",
             in_ap(&format!(
                 "<taggedValue xmi:id=\"t\" {MARK}foo=\"1\">{KEY}{CONTENT}</taggedValue>"
             )),
-            unread("foo", "taggedValue"),
+            "t",
         ),
     ];
-    for (what, template, expected) in &cases {
-        let reason = assert_unsupported_at_mark(what, template);
-        assert_eq!(
-            reason, *expected,
-            "{ROW}: {what}: not an ordinary unread attribute"
-        );
-        assert!(
-            !reason.contains("LIB-COMPAT-008"),
-            "{ROW}: {what}: the reason {reason:?} names LIB-COMPAT-008"
-        );
+    for (what, template, holder) in &cases {
+        let doc = assert_preserved_at_mark(what, template);
+        let (input, _) = marked(template);
+        for mode in [Mode::Tolerant, Mode::Strict] {
+            if let Ok(output) = read(mode, &input) {
+                assert!(
+                    output
+                        .diagnostics()
+                        .iter()
+                        .all(|found| found.code() != Code::XMI_LEGACY_SHAPE),
+                    "{ROW}: {what}: read as a LIB-COMPAT-008 shape in {mode:?} mode: {:?}",
+                    output.diagnostics()
+                );
+            }
+        }
+        if *holder != "t" {
+            let element = doc.get(*holder);
+            assert!(
+                element.is_some_and(|found| found.key().is_none() && found.content().is_none()),
+                "{ROW}: {what}: the attribute was read as a key or a content"
+            );
+        }
     }
 }
 
 #[test]
-fn sacm23_base_005_content_a_tagged_value_cannot_hold_is_unsupported_where_it_starts() {
+fn sacm23_base_005_content_a_tagged_value_cannot_hold_is_preserved_where_it_starts() {
     let cases = [
         (
             "a taggedValue in a TaggedValue",
@@ -669,26 +716,29 @@ fn sacm23_base_005_content_a_tagged_value_cannot_hold_is_unsupported_where_it_st
         ("sacm:key", tagged(&format!("{MARK}<sacm:key/>"))),
         (
             "text after a key value",
-            tagged(&format!("<key><value content=\"k\"/>{MARK}x</key>")),
+            tagged(&format!("{MARK}<key><value content=\"k\"/>x</key>")),
         ),
-        ("foo on key", tagged(&format!("<key {MARK}foo=\"1\"/>"))),
+        ("foo on key", tagged(&format!("{MARK}<key foo=\"1\"/>"))),
         (
             "xml:lang on a key value",
             tagged(&format!(
-                "<key><value {MARK}xml:lang=\"en\" content=\"k\"/></key>"
+                "{MARK}<key><value xml:lang=\"en\" content=\"k\"/></key>"
             )),
         ),
         (
             "another child of key",
-            tagged(&format!("<key>{MARK}<foo/></key>")),
+            tagged(&format!("{MARK}<key><foo/></key>")),
         ),
         (
             "a type naming another class on key",
             tagged(&format!("{MARK}<key xmi:type=\"sacm:LangString\"/>")),
         ),
     ];
+    // Any child of a UtilityElement other than its roles, and a defect inside
+    // `key`, which keeps the whole key: preserved content of t, at the start
+    // tag of that child (ADR 0033).
     for (what, template) in &cases {
-        assert_unsupported_at_mark(what, template);
+        assert_preserved_at_mark(what, template);
     }
     // The type attributes naming the classes are accepted.
     let typed = read_ok(

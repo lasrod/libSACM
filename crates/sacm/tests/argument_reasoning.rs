@@ -260,16 +260,52 @@ fn wrong_type(doc: &Document) -> Vec<(String, Vec<String>)> {
         .collect()
 }
 
-/// Asserts that `error` is `Unsupported`, with no code, at `at`.
-fn assert_unsupported_at(what: &str, error: &ReadError, at: SourceLocation) {
-    assert!(
-        matches!(error, ReadError::Unsupported { .. }) && error.code().is_none(),
-        "{ROW}: {what}: not Unsupported: {error:?}"
-    );
+/// Asserts that `input` reads in both modes and keeps one construct as
+/// preserved content of `holder` (LIB-COMPAT-003, ADR 0033): exactly one
+/// SACM-XMI-003 at `at`, affecting `holder`, a Warning in tolerant mode and
+/// an Error in strict mode, and the same document in both.
+fn assert_preserved_at(what: &str, input: &str, at: SourceLocation, holder: &str) {
+    let mut documents = Vec::new();
+    for (mode, severity) in [
+        (Mode::Tolerant, Severity::Warning),
+        (Mode::Strict, Severity::Error),
+    ] {
+        let output = match read(mode, input) {
+            Ok(output) => output,
+            Err(error) => panic!(
+                "{ROW}: {what}: a {mode:?} read refused it instead of preserving it: {error:?}"
+            ),
+        };
+        let found: Vec<_> = output
+            .diagnostics()
+            .iter()
+            .filter(|found| found.code() == Code::XMI_UNKNOWN_CONTENT)
+            .map(|found| {
+                (
+                    found.severity(),
+                    found.location(),
+                    found.affected().to_vec(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            found,
+            [(severity, Some(at), vec![ElementId::from(holder)])],
+            "{ROW}: {what}: not one SACM-XMI-003 at the construct affecting {holder:?} in \
+             {mode:?} mode: {:?}",
+            output.diagnostics()
+        );
+        let doc = output.into_document();
+        assert!(
+            doc.get(holder)
+                .is_some_and(SacmElement::has_preserved_content),
+            "{ROW}: {what}: {holder:?} holds no preserved content in {mode:?} mode"
+        );
+        documents.push(doc);
+    }
     assert_eq!(
-        error.location(),
-        Some(at),
-        "{ROW}: {what}: not refused at the construct: {error}"
+        documents[0], documents[1],
+        "{ROW}: {what}: the modes read different documents"
     );
 }
 
@@ -542,7 +578,7 @@ fn sacm23_arg_005_structure_reads_in_both_forms_writes_after_abstract_form_and_r
 // --- Item 3: a second value -------------------------------------------------------------------
 
 #[test]
-fn sacm23_arg_005_a_second_structure_is_repeated_value_and_an_empty_one_is_unsupported() {
+fn sacm23_arg_005_a_second_structure_is_repeated_value_and_an_empty_one_is_preserved() {
     for (what, attributes, content) in [
         (
             "structure=\"q p\"",
@@ -569,9 +605,9 @@ fn sacm23_arg_005_a_second_structure_is_repeated_value_and_an_empty_one_is_unsup
         ("structure=\"  \"", format!(" {MARK}structure=\"  \"")),
         ("sacm:structure", format!(" {MARK}sacm:structure=\"q\"")),
     ] {
+        // Not conforming: kept as preserved content of r1 (ADR 0033).
         let (input, marks) = marked(&in_case(&reasoning("r1", &attribute, "")));
-        let error = refused(what, &input);
-        assert_unsupported_at(what, &error, marks[0]);
+        assert_preserved_at(what, &input, marks[0], "r1");
     }
 }
 
@@ -712,8 +748,7 @@ fn sacm23_arg_005_structure_naming_a_claim_is_held_and_a_dangling_one_is_ref_001
 // --- Item 5: what an ArgumentReasoning does not have ---------------------------------------------
 
 #[test]
-fn sacm23_arg_005_the_assertion_and_relationship_features_on_an_argument_reasoning_are_unsupported()
-{
+fn sacm23_arg_005_the_assertion_and_relationship_features_on_an_argument_reasoning_are_preserved() {
     let mut cases: Vec<(String, String, String)> = Vec::new();
     for (name, value) in [
         ("assertionDeclaration", "asserted"),
@@ -750,13 +785,14 @@ fn sacm23_arg_005_the_assertion_and_relationship_features_on_an_argument_reasoni
             reasoning("r0", "", ""),
             reasoning("r1", attributes, content)
         )));
-        let error = refused(&what, &input);
-        assert_unsupported_at(&what, &error, marks[0]);
+        // Content the class lacks: kept as preserved content of r1
+        // (ADR 0033).
+        assert_preserved_at(&what, &input, marks[0], "r1");
     }
 }
 
 #[test]
-fn sacm23_arg_005_an_argument_reasoning_in_an_assurance_case_package_is_unsupported() {
+fn sacm23_arg_005_an_argument_reasoning_in_an_assurance_case_package_is_preserved() {
     for (what, child) in [
         (
             "in argumentPackage",
@@ -776,8 +812,9 @@ fn sacm23_arg_005_an_argument_reasoning_in_an_assurance_case_package_is_unsuppor
             "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\">\n  <name content=\"Case\"/>\n  \
              {MARK}{child}\n</sacm:AssuranceCasePackage>"
         ));
-        let error = refused(&what, &input);
-        assert_unsupported_at(&what, &error, marks[0]);
+        // A role the class lacks, or a type the role does not admit: the
+        // child is kept whole as preserved content of the case (ADR 0033).
+        assert_preserved_at(&what, &input, marks[0], "case");
     }
 }
 

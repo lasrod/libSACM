@@ -231,6 +231,33 @@ fn xmi_version(root: Option<&str>, at: SourceLocation) -> Finding {
     }
 }
 
+/// A diagnostic as its code, severity, affected ids and location.
+type Projected = (Code, Severity, Vec<String>, Option<SourceLocation>);
+
+/// `diagnostics` without their requirement, clause and message.
+fn without_clauses(diagnostics: &[Diagnostic]) -> Vec<Projected> {
+    findings(diagnostics)
+        .into_iter()
+        .map(|found| (found.code, found.severity, found.affected, found.location))
+        .collect()
+}
+
+/// The SACM-XMI-003 of content kept as preserved content (LIB-COMPAT-003,
+/// ADR 0033) at `at`, read in `mode`, affecting `element`: a Warning in
+/// tolerant mode and an Error in strict mode. Its clause is not pinned here.
+fn unknown_content(mode: Mode, element: &str, at: SourceLocation) -> Projected {
+    (
+        Code::XMI_UNKNOWN_CONTENT,
+        if mode == Mode::Strict {
+            Severity::Error
+        } else {
+            Severity::Warning
+        },
+        vec![element.to_owned()],
+        Some(at),
+    )
+}
+
 /// Reads `input` in `mode` and asserts that it gives exactly `expected`, in
 /// that order, and the same document as `plain`, the input without the
 /// attributes that are reported. Returns the output.
@@ -545,6 +572,9 @@ fn lib_compat_001_read_output_reports_the_mode_it_was_read_in() {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Expect {
     Reads,
+    /// Read, with one construct kept as preserved content: one SACM-XMI-003
+    /// (LIB-COMPAT-003, ADR 0033).
+    Preserved,
     Unsupported,
     Doctype,
     Malformed,
@@ -562,6 +592,14 @@ enum Expect {
 /// not know.
 fn category(result: &Result<ReadOutput, ReadError>) -> Option<Expect> {
     match result {
+        Ok(output)
+            if output
+                .diagnostics()
+                .iter()
+                .any(|found| found.code() == Code::XMI_UNKNOWN_CONTENT) =>
+        {
+            Some(Expect::Preserved)
+        }
         Ok(_) => Some(Expect::Reads),
         Err(ReadError::Unsupported { .. }) => Some(Expect::Unsupported),
         Err(ReadError::Doctype { .. }) => Some(Expect::Doctype),
@@ -607,7 +645,7 @@ fn acp(content: &str) -> String {
 fn table() -> Vec<(&'static str, Vec<u8>, Expect)> {
     use Expect::{
         Doctype, DuplicateId, InvalidId, InvalidLiteral, InvalidRoot, Malformed, MissingType,
-        NoPackage, Reads, RepeatedValue, Unsupported,
+        NoPackage, Preserved, Reads, RepeatedValue, Unsupported,
     };
     let text =
         |what: &'static str, input: String, expect: Expect| (what, input.into_bytes(), expect);
@@ -767,71 +805,72 @@ fn table() -> Vec<(&'static str, Vec<u8>, Expect)> {
             format!("<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><sacm:ArgumentPackage{NS} xmi:id=\"a\"/>"),
             Unsupported,
         ),
-        // --- ADR 0021's non-conforming refusals (ADR 0022's table).
+        // --- ADR 0021's non-conforming inputs (ADR 0022's table): kept as
+        // preserved content in both modes (ADR 0033).
         text(
             "a type that does not conform to the role",
             acp("<argumentPackage xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"),
-            Unsupported,
+            Preserved,
         ),
         text(
             "a type naming an abstract class",
             ap("<argumentElement xmi:type=\"sacm:Assertion\" xmi:id=\"x\"/>"),
-            Unsupported,
+            Preserved,
         ),
         text(
             "a type naming an unknown class",
             ap("<argumentElement xmi:type=\"sacm:Nothing\" xmi:id=\"x\"/>"),
-            Unsupported,
+            Preserved,
         ),
         text(
             "a type naming a class case-insensitively",
             ap("<argumentElement xmi:type=\"sacm:claim\" xmi:id=\"x\"/>"),
-            Unsupported,
+            Preserved,
         ),
         text(
             "two type attributes that disagree",
             ap("<argumentElement xmi:type=\"sacm:Claim\" xsi:type=\"sacm:ArgumentPackage\" xmi:id=\"x\"/>"),
-            Unsupported,
+            Preserved,
         ),
         text(
             "a role the parent's class lacks",
             acp("<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"),
-            Unsupported,
+            Preserved,
         ),
         text(
             "a plural role name",
             ap("<argumentElements xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"),
-            Unsupported,
+            Preserved,
         ),
         text(
             "a namespace-qualified role",
             ap("<sacm:argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"),
-            Unsupported,
+            Preserved,
         ),
         text(
             "a namespace-qualified name",
             ap("<sacm:name content=\"P\"/>"),
-            Unsupported,
+            Preserved,
         ),
         text(
             "assertionDeclaration on a package",
             ap("<argumentElement xmi:type=\"sacm:ArgumentPackage\" xmi:id=\"x\" assertionDeclaration=\"asserted\"/>"),
-            Unsupported,
+            Preserved,
         ),
         text(
             "sacm:assertionDeclaration",
             ap("<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\" sacm:assertionDeclaration=\"assumed\"/>"),
-            Unsupported,
+            Preserved,
         ),
         text(
             "an attribute the schema does not allow",
             ap("<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\" foo=\"1\"/>"),
-            Unsupported,
+            Preserved,
         ),
         text(
             "text in a root",
             ap("text"),
-            Unsupported,
+            Preserved,
         ),
         // --- An untyped child under an abstract role (SACM-XMI-005,
         // LIB-COMPAT-010).
@@ -913,12 +952,12 @@ fn table() -> Vec<(&'static str, Vec<u8>, Expect)> {
         text(
             "a root's type naming another class",
             format!("<sacm:ArgumentPackage{NS_XSI} xmi:id=\"a\" xsi:type=\"sacm:Claim\"/>"),
-            Unsupported,
+            Preserved,
         ),
         text(
             "xmi:version on a child",
             ap("<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\" xmi:version=\"2.0\"/>"),
-            Unsupported,
+            Preserved,
         ),
         text(
             "an older XMI wrapper",
@@ -971,11 +1010,29 @@ fn table() -> Vec<(&'static str, Vec<u8>, Expect)> {
     ]
 }
 
+/// A failure unless a [`Expect::Preserved`] input's tolerant findings hold
+/// exactly one SACM-XMI-003, a Warning, and any other input's none.
+fn unknown_content_failure(what: &str, expect: Expect, tolerant: &[Finding]) -> Option<String> {
+    let unknown: Vec<Severity> = tolerant
+        .iter()
+        .filter(|found| found.code == Code::XMI_UNKNOWN_CONTENT)
+        .map(|found| found.severity)
+        .collect();
+    let expected: &[Severity] = if expect == Expect::Preserved {
+        &[Severity::Warning]
+    } else {
+        &[]
+    };
+    (unknown != expected)
+        .then(|| format!("{what}: SACM-XMI-003 in tolerant mode is {unknown:?}, not {expected:?}"))
+}
+
 #[test]
 fn lib_compat_001_both_modes_give_the_same_document_or_the_same_refusal_for_each_input() {
     let cases = table();
     for expect in [
         Expect::Reads,
+        Expect::Preserved,
         Expect::Unsupported,
         Expect::Doctype,
         Expect::Malformed,
@@ -1017,14 +1074,18 @@ fn lib_compat_001_both_modes_give_the_same_document_or_the_same_refusal_for_each
                         tolerant.mode()
                     ));
                 }
-                // The same findings, apart from the severity of SACM-XMI-010.
+                // The same findings, apart from the severity of SACM-XMI-010
+                // and of SACM-XMI-003 (ADR 0033).
                 let strict_findings = findings(strict.diagnostics());
                 let tolerant_findings = findings(tolerant.diagnostics());
                 let as_tolerant: Vec<Finding> = strict_findings
                     .iter()
                     .cloned()
                     .map(|mut found| {
-                        if found.code == Code::XMI_XSI_TYPE && found.severity == Severity::Error {
+                        if (found.code == Code::XMI_XSI_TYPE
+                            || found.code == Code::XMI_UNKNOWN_CONTENT)
+                            && found.severity == Severity::Error
+                        {
                             found.severity = Severity::Warning;
                         }
                         found
@@ -1036,6 +1097,7 @@ fn lib_compat_001_both_modes_give_the_same_document_or_the_same_refusal_for_each
                          strict {strict_findings:?}\ntolerant {tolerant_findings:?}"
                     ));
                 }
+                failures.extend(unknown_content_failure(what, *expect, &tolerant_findings));
             }
             (Err(strict), Err(tolerant)) => {
                 if mem::discriminant(strict) != mem::discriminant(tolerant)
@@ -1303,18 +1365,20 @@ fn lib_compat_001_xsi_type_under_any_prefix_bound_to_xsi_is_sacm_xmi_010() {
             &[xsi_type(mode, "a", loc(2, 3))],
         );
     }
-    // The prefix `xsi` bound elsewhere is no XSI type: it is refused, in
-    // both modes, as an attribute that is not read (SACM23-XMI-002).
+    // The prefix `xsi` bound elsewhere is no XSI type: no SACM-XMI-010, but
+    // an attribute the class lacks, kept as preserved content of the root in
+    // both modes (SACM23-XMI-002, ADR 0033).
     let foreign = format!(
         "<sacm:ArgumentPackage{NS} xmlns:xsi=\"urn:not-xsi\" xmi:id=\"a\"\n  \
          xsi:type=\"sacm:ArgumentPackage\"/>"
     );
     for mode in MODES {
-        let error = read_err(COMPAT_001, "xsi bound to urn:not-xsi", mode, &foreign);
-        assert!(
-            matches!(error, ReadError::Unsupported { .. }) && error.location() == Some(loc(2, 3)),
-            "{COMPAT_001}: xsi bound to urn:not-xsi is not Unsupported at the attribute in \
-             {mode:?} mode: {error:?}"
+        let output = read_ok(COMPAT_001, "xsi bound to urn:not-xsi", mode, &foreign);
+        assert_eq!(
+            without_clauses(output.diagnostics()),
+            [unknown_content(mode, "a", loc(2, 3))],
+            "{COMPAT_001}: xsi bound to urn:not-xsi is not one SACM-XMI-003 at the attribute in \
+             {mode:?} mode"
         );
     }
 }
@@ -1420,30 +1484,47 @@ fn lib_compat_001_xmi_version_under_another_xmi_prefix_is_sacm_xmi_011() {
 }
 
 #[test]
-fn lib_compat_001_xmi_version_on_a_child_stays_unsupported_in_both_modes() {
+fn lib_compat_001_xmi_version_on_a_child_is_preserved_in_both_modes() {
+    // `xmi:version` belongs on a root or the wrapper only: on a child it does
+    // not conform, and is kept as preserved content of the child, with one
+    // SACM-XMI-003 and no SACM-XMI-011 (ADR 0033).
     let children = [
-        acp("<argumentPackage xmi:id=\"ap\" xmi:version=\"2.0\"/>"),
-        ap("<argumentElement xmi:type=\"sacm:Claim\" xmi:version=\"2.1\" xmi:id=\"c1\"/>"),
-        ap("<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" xmi:version=\"\"/>"),
+        (
+            acp("<argumentPackage xmi:id=\"ap\" xmi:version=\"2.0\"/>"),
+            "ap",
+        ),
+        (
+            ap("<argumentElement xmi:type=\"sacm:Claim\" xmi:version=\"2.1\" xmi:id=\"c1\"/>"),
+            "c1",
+        ),
+        (
+            ap("<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" xmi:version=\"\"/>"),
+            "c1",
+        ),
     ];
-    for input in &children {
+    for (input, holder) in &children {
         let at = position_of(input, "xmi:version=");
-        let strict = read_err(COMPAT_001, "xmi:version on a child", Mode::Strict, input);
-        let tolerant = read_err(COMPAT_001, "xmi:version on a child", Mode::Tolerant, input);
-        for (mode, error) in [(Mode::Strict, &strict), (Mode::Tolerant, &tolerant)] {
-            assert!(
-                matches!(error, ReadError::Unsupported { .. }),
-                "{COMPAT_001}: xmi:version on a child is not Unsupported in {mode:?} mode: {error:?}"
-            );
+        let mut documents = Vec::new();
+        for mode in MODES {
+            let output = read_ok(COMPAT_001, "xmi:version on a child", mode, input);
             assert_eq!(
-                error.location(),
-                Some(at),
-                "{COMPAT_001}: xmi:version on a child is not refused at its name in {mode:?} mode"
+                without_clauses(output.diagnostics()),
+                [unknown_content(mode, holder, at)],
+                "{COMPAT_001}: xmi:version on a child is not one SACM-XMI-003 at its name in \
+                 {mode:?} mode"
             );
+            assert!(
+                output
+                    .document()
+                    .get(*holder)
+                    .is_some_and(SacmElement::has_preserved_content),
+                "{COMPAT_001}: {holder:?} holds no preserved content in {mode:?} mode"
+            );
+            documents.push(output.into_document());
         }
         assert_eq!(
-            strict, tolerant,
-            "{COMPAT_001}: xmi:version on a child is refused differently in the two modes"
+            documents[0], documents[1],
+            "{COMPAT_001}: xmi:version on a child reads differently in the two modes"
         );
     }
 }

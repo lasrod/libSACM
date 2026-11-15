@@ -28,9 +28,9 @@
 use sacm::compare::semantic_compare;
 use sacm::diagnostic::{Code, Severity, SourceLocation};
 use sacm::model::{
-    AssertionDeclaration, Document, ElementId, ElementKind, InsertError, LangString,
+    AssertionDeclaration, Document, ElementId, ElementKind, InsertError, LangString, SacmElement,
 };
-use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteOptions};
+use sacm::xmi::{self, Mode, ReadOptions, ReadOutput, WriteOptions};
 
 const ROW: &str = "SACM23-XMI-024";
 
@@ -862,8 +862,60 @@ fn sacm23_xmi_024_the_reader_ignores_xmi_version_on_the_wrapper_and_on_the_roots
     }
 }
 
+/// Asserts that `input`, read in both modes, keeps the child `holder`'s
+/// `xmi:version` as preserved content: exactly one SACM-XMI-003 at `expected`,
+/// affecting `holder`, a Warning in tolerant mode and an Error in strict mode,
+/// and no SACM-XMI-011 (ADR 0033).
+fn assert_child_version_preserved(what: &str, input: &str, expected: SourceLocation, holder: &str) {
+    for (mode, severity) in [
+        (Mode::Tolerant, Severity::Warning),
+        (Mode::Strict, Severity::Error),
+    ] {
+        let output = match xmi::read(input.as_bytes(), &ReadOptions::default().with_mode(mode)) {
+            Ok(output) => output,
+            Err(error) => panic!(
+                "{ROW}: {what}: a {mode:?} read refused it instead of preserving it: \
+                     {error:?}"
+            ),
+        };
+        let found: Vec<_> = output
+            .diagnostics()
+            .iter()
+            .filter(|found| found.code() == Code::XMI_UNKNOWN_CONTENT)
+            .map(|found| {
+                (
+                    found.severity(),
+                    found.location(),
+                    found.affected().to_vec(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            found,
+            [(severity, Some(expected), vec![ElementId::from(holder)])],
+            "{ROW}: {what}: not one SACM-XMI-003 at the attribute affecting {holder:?} \
+             in {mode:?} mode: {:?}",
+            output.diagnostics()
+        );
+        assert!(
+            output
+                .diagnostics()
+                .iter()
+                .all(|found| found.code() != Code::XMI_VERSION_IGNORED),
+            "{ROW}: {what}: xmi:version on a child is reported as SACM-XMI-011"
+        );
+        assert!(
+            output
+                .document()
+                .get(holder)
+                .is_some_and(SacmElement::has_preserved_content),
+            "{ROW}: {what}: {holder:?} holds no preserved content in {mode:?} mode"
+        );
+    }
+}
+
 #[test]
-fn sacm23_xmi_024_the_reader_refuses_xmi_version_on_a_child_at_the_attribute_name() {
+fn sacm23_xmi_024_the_reader_preserves_xmi_version_on_a_child_at_the_attribute_name() {
     // Each child is on line 2 of its root; the attribute's name is located.
     let acp = |child: &str| {
         format!(
@@ -911,27 +963,17 @@ fn sacm23_xmi_024_the_reader_refuses_xmi_version_on_a_child_at_the_attribute_nam
             let Some(expected) = SourceLocation::new(2, column) else {
                 panic!("{ROW}: {what}: setup: SourceLocation::new(2, {column}) refused");
             };
-            match xmi::read(input.as_bytes(), &ReadOptions::default()) {
-                Ok(output) => panic!(
-                    "{ROW}: {what}: a document of {} elements was returned for {input:?}",
-                    output.document().element_count()
-                ),
-                Err(error @ ReadError::Unsupported { .. }) => {
-                    assert_eq!(
-                        error.location(),
-                        Some(expected),
-                        "{ROW}: {what}: the refusal's location"
-                    );
-                    assert_eq!(
-                        error.code(),
-                        None,
-                        "{ROW}: {what}: Unsupported has no catalog code"
-                    );
-                }
-                Err(error) => {
-                    panic!("{ROW}: {what}: refused as {error:?}, not as Unsupported at {expected}")
-                }
-            }
+            // `xmi:version` belongs on a root or the wrapper only: on a child it
+            // does not conform, and is kept as preserved content of the child
+            // at the attribute's name (ADR 0033).
+            let Some(holder) = line_2
+                .split("xmi:id=\"")
+                .nth(1)
+                .and_then(|rest| rest.split('"').next())
+            else {
+                panic!("{ROW}: {what}: setup: line 2 has no xmi:id");
+            };
+            assert_child_version_preserved(&what, &input, expected, holder);
         }
     }
 }

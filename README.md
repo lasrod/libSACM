@@ -18,12 +18,13 @@ Milestone M1, a minimal editable vertical slice, is done: `sacm::model` provides
 `sacm::xmi::read` reads `AssuranceCasePackage` and `ArgumentPackage` roots, the
 AssuranceCasePackages, ArgumentPackages and Claims in them, their names and each
 Claim's `assertionDeclaration`. It refuses unsafe and malformed input and roots
-that are not SACM packages with a diagnostic code, and content it cannot represent yet
-as `Unsupported`; it reports a missing or padded `xmi:id`, an `xsi:type` or an
+that are not SACM packages with a diagnostic code; it keeps content that is not SACM 2.3
+as preserved content, with SACM-XMI-003, and refuses conforming content it does not read
+yet as `Unsupported`; it reports a missing or padded `xmi:id`, an `xsi:type` or an
 `xmi:version` as a diagnostic. Reading and writing take a strict or tolerant `sacm::xmi::Mode`.
 `sacm::xmi::write` writes a document, its names, `gid`s, contents, keys and declarations
-deterministically; in strict mode, the default, it refuses a document that validation
-reports an Error for. A later release may add validation rules, so a strict write may
+deterministically, preserved content included; in strict mode, the default, it refuses a
+document that holds preserved content or that validation reports an Error for. A later release may add validation rules, so a strict write may
 then refuse a document it wrote before.
 `sacm::validation::validate` reports each `ModelElement` with no name and each id that is
 not an XML `NCName`.

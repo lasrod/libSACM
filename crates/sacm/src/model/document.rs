@@ -6,7 +6,7 @@ use std::fmt;
 use super::containment::{Role, role};
 use super::{
     AbstractClass, AssertionDeclaration, ElementId, ElementKind, Flag, LangString, MultiLangString,
-    ReferenceEnd, Revision,
+    Preserved, ReferenceEnd, Revision,
 };
 
 /// A SACM 2.3 document: one interchange unit (what one SACM XMI file holds),
@@ -64,10 +64,19 @@ use super::{
 /// does not admit, such as a `metaClaim` naming an `ArgumentReasoning`;
 /// `validate` reports it (SACM-REF-002), and no edit makes one.
 ///
-/// Cloning a document copies all of it, including the counters that generated
-/// ids continue from; the copy is independent of the original. Cloning,
-/// dropping and traversal do not recurse, so arbitrarily deep nesting is
-/// safe.
+/// **Preserved content** is what [`xmi::read`](crate::xmi::read) kept, as
+/// written, because it is not SACM 2.3 where it stands, such as a vendor
+/// attribute or child element (ADR 0033): each element that holds some says
+/// so ([`SacmElement::has_preserved_content`]). It has no API of its own
+/// besides that; [`xmi::write`](crate::xmi::write) writes it back in
+/// tolerant mode. The ids of its elements stay in the document's id space:
+/// [`get`](Self::get) does not find them, no edit can take or name one, and
+/// deleting the element that holds them frees them.
+///
+/// Cloning a document copies all of it, preserved content included, and the
+/// counters that generated ids continue from; the copy is independent of the
+/// original. Cloning, dropping and traversal do not recurse, so arbitrarily
+/// deep nesting is safe, in preserved content too.
 ///
 /// # Equality
 ///
@@ -79,9 +88,11 @@ use super::{
 /// `reasoning`, `source`, `target`, `structure`, `referencedArtifactElement`
 /// and a group's `argumentElement`, in order), names, the
 /// ids of names, `content`s and `key`s with their ids,
-/// `assertionDeclaration`s and the order of roots and children are compared.
-/// `==` is order-sensitive, for the ids of the multi-valued ends too;
-/// see [`crate::compare`] to ignore order.
+/// `assertionDeclaration`s, the order of roots and children, and each
+/// element's preserved content are compared. Formatting, attribute order and
+/// namespace prefixes are not held, except in preserved content, which is
+/// compared exactly. `==` is order-sensitive, for the ids of the
+/// multi-valued ends too; see [`crate::compare`] to ignore order.
 ///
 /// Not compared: the per-kind counters [`edit::apply`](crate::edit::apply)
 /// uses to generate ids such as `claim_1`. They are not SACM content, and XMI
@@ -173,8 +184,12 @@ impl Default for Document {
 #[derive(Clone, Copy, Debug, Default)]
 struct IdUse {
     /// The handle of the element whose `name`, `content`, `key` or `value`
-    /// carries the id as its `xmi:id`, if one does.
+    /// carries the id as its `xmi:id`, or whose preserved content does, if
+    /// one does.
     owner: Option<usize>,
+    /// Whether the owner holds the id in its preserved content (ADR 0033),
+    /// rather than on a `name`, `content`, `key` or `value`.
+    preserved: bool,
     /// How many references, of every element and end, hold the id.
     references: usize,
 }
@@ -226,6 +241,10 @@ struct Node {
     role: Option<Role>,
     /// The handles of the contained elements, in containment order.
     children: Vec<usize>,
+    /// What the element was read with that is not SACM 2.3 where it stands
+    /// (LIB-COMPAT-003, ADR 0033); `None` when it holds none. Boxed, so an
+    /// element without it costs one word.
+    preserved: Option<Box<Preserved>>,
 }
 
 impl Document {
@@ -599,6 +618,7 @@ impl Document {
             parent,
             role,
             children: Vec::new(),
+            preserved: None,
         });
         Ok(node)
     }
@@ -707,6 +727,54 @@ impl Document {
         }
         self.other_ids.entry(name_id.clone()).or_default().owner = Some(node);
         self.nodes[node].name_id = Some(name_id);
+        Ok(())
+    }
+
+    /// Gives the element `owner` the preserved content `preserved` (ADR
+    /// 0033), which it did not hold; on an error the document is unchanged.
+    ///
+    /// The XMI reader keeps what does not conform through it. The ids of the
+    /// content join the document's id space, owned by the element, and each
+    /// id it may name counts as a reference, so that none is generated. It
+    /// refuses, with the reason, an unknown owner, an owner that holds
+    /// preserved content already, an empty id, an id given twice and an id
+    /// already in use. Empty content changes nothing.
+    pub(crate) fn set_preserved(
+        &mut self,
+        owner: &ElementId,
+        preserved: Preserved,
+    ) -> Result<(), String> {
+        let Some(&node) = self.index.get(owner) else {
+            return Err(format!("the document has no element {:?}", owner.as_str()));
+        };
+        if self.nodes[node].preserved.is_some() {
+            return Err(format!(
+                "the element {:?} holds preserved content already",
+                owner.as_str()
+            ));
+        }
+        if preserved.is_empty() {
+            return Ok(());
+        }
+        let mut seen = BTreeSet::new();
+        for id in &preserved.ids {
+            if id.as_str().is_empty() {
+                return Err("an id of the preserved content is empty".to_owned());
+            }
+            if !seen.insert(id.as_str()) || self.is_id_in_use(id.as_str()) {
+                return Err(format!("the id {:?} is already in use", id.as_str()));
+            }
+        }
+        for id in &preserved.ids {
+            let used = self.other_ids.entry(id.clone()).or_default();
+            used.owner = Some(node);
+            used.preserved = true;
+        }
+        for id in &preserved.references {
+            let used = self.other_ids.entry(id.clone()).or_default();
+            used.references = used.references.saturating_add(1);
+        }
+        self.nodes[node].preserved = Some(Box::new(preserved));
         Ok(())
     }
 
@@ -945,27 +1013,34 @@ impl Document {
     }
 
     /// Removes from each end of the element `holder`, unless it is doomed
-    /// itself, every id that names a doomed element.
+    /// itself, every id that names a doomed element, and every id of the
+    /// preserved content of a doomed element, which the delete frees (ADR
+    /// 0033).
     fn drop_references_to(&mut self, holder: &ElementId, doomed: &[bool]) {
-        let is_doomed = |index: &HashMap<ElementId, usize>, id: &ElementId| {
-            index
-                .get(id)
-                .is_some_and(|&node| doomed.get(node).copied().unwrap_or(false))
+        let is_gone = |node: usize| doomed.get(node).copied().unwrap_or(false);
+        let is_doomed = |document: &Self, id: &ElementId| {
+            document.index.get(id).is_some_and(|&node| is_gone(node))
+                || document
+                    .other_ids
+                    .get(id)
+                    .filter(|used| used.preserved)
+                    .and_then(|used| used.owner)
+                    .is_some_and(is_gone)
         };
         let Some(&node) = self.index.get(holder) else {
             return;
         };
-        if is_doomed(&self.index, holder) {
+        if is_doomed(self, holder) {
             return;
         }
         let kept: Vec<(ReferenceEnd, Vec<ElementId>)> = self.nodes[node]
             .references
             .iter()
-            .filter(|(_, targets)| targets.iter().any(|target| is_doomed(&self.index, target)))
+            .filter(|(_, targets)| targets.iter().any(|target| is_doomed(self, target)))
             .map(|(end, targets)| {
                 let kept = targets
                     .iter()
-                    .filter(|target| !is_doomed(&self.index, target))
+                    .filter(|target| !is_doomed(self, target))
                     .cloned()
                     .collect();
                 (*end, kept)
@@ -985,6 +1060,19 @@ impl Document {
             self.release(target, |used| {
                 used.references = used.references.saturating_sub(1);
             });
+        }
+        if let Some(preserved) = self.nodes[node].preserved.take() {
+            for target in &preserved.references {
+                self.release(target, |used| {
+                    used.references = used.references.saturating_sub(1);
+                });
+            }
+            for id in &preserved.ids {
+                self.release(id, |used| {
+                    used.owner = None;
+                    used.preserved = false;
+                });
+            }
         }
         let held = &self.nodes[node];
         let owned: Vec<ElementId> = held
@@ -1026,6 +1114,16 @@ impl Document {
                     "the deleted elements are closed under containment"
                 );
                 node.parent = node.parent.and_then(new);
+                // A preserved child keeps its place among the typed children
+                // that survive (ADR 0033).
+                if let Some(preserved) = node.preserved.as_mut() {
+                    let kept: Vec<bool> = node
+                        .children
+                        .iter()
+                        .map(|&child| new(child).is_some())
+                        .collect();
+                    preserved.shift(&kept);
+                }
                 node.children = node
                     .children
                     .iter()
@@ -1055,6 +1153,51 @@ impl Document {
                 .other_ids
                 .get(id)
                 .is_some_and(|used| used.owner.is_some())
+    }
+
+    /// Whether the element `owner` holds, as preserved content, the
+    /// attribute named after `end` in no namespace: one that held no id, such
+    /// as `metaClaim=""` (ADR 0033).
+    pub(crate) fn has_preserved_end(&self, owner: &ElementId, end: ReferenceEnd) -> bool {
+        self.index
+            .get(owner)
+            .and_then(|&node| self.nodes[node].preserved.as_deref())
+            .is_some_and(|preserved| preserved.has_unqualified(end.name()))
+    }
+
+    /// Removes the attribute named after `end` in no namespace from the
+    /// preserved content of the element `owner`, if it holds one: an edit
+    /// that sets the end replaces it, so the element never holds the end
+    /// twice (ADR 0033). Such an attribute held no id, so it named no
+    /// reference to release. Changes nothing otherwise.
+    pub(crate) fn replace_preserved_end(&mut self, owner: &ElementId, end: ReferenceEnd) {
+        let Some(&node) = self.index.get(owner) else {
+            return;
+        };
+        let Some(preserved) = self.nodes[node].preserved.as_mut() else {
+            return;
+        };
+        preserved.remove_unqualified(end.name());
+        if preserved.is_empty() {
+            self.nodes[node].preserved = None;
+        }
+    }
+
+    /// Whether `id` is the `xmi:id` of an element of some element's
+    /// preserved content (ADR 0033): in the id space, though no element has
+    /// it and [`get`](Self::get) does not find it.
+    pub(crate) fn is_preserved_id(&self, id: &str) -> bool {
+        self.preserved_id_owner(id).is_some()
+    }
+
+    /// The element whose preserved content holds the `xmi:id` `id`, if one
+    /// does (ADR 0033).
+    pub(crate) fn preserved_id_owner(&self, id: &str) -> Option<SacmElement<'_>> {
+        self.other_ids
+            .get(id)
+            .filter(|used| used.preserved)
+            .and_then(|used| used.owner)
+            .map(|node| self.view(node))
     }
 
     /// Whether some reference, of any element and end, holds `id`.
@@ -2095,6 +2238,8 @@ impl<'a> SacmElement<'a> {
             role: _,
             // Compared as the child order, through `children()`.
             children: _,
+            // Compared exactly and in order (ADR 0033).
+            preserved,
         } = self.node();
         Compared {
             id,
@@ -2110,6 +2255,7 @@ impl<'a> SacmElement<'a> {
             is_abstract: *is_abstract,
             is_counter: *is_counter,
             references,
+            preserved: preserved.as_deref(),
         }
     }
 
@@ -2129,6 +2275,41 @@ impl<'a> SacmElement<'a> {
             .children
             .iter()
             .map(move |&child| document.view(child))
+    }
+
+    /// Whether the element holds preserved content: something it was read
+    /// with from XMI that is not SACM 2.3 where it stands, such as a vendor
+    /// attribute or child element, kept exactly as written (LIB-COMPAT-003,
+    /// ADR 0033).
+    ///
+    /// [`xmi::read`](crate::xmi::read) keeps it, with one SACM-XMI-003 per
+    /// construct, rather than drop it. A tolerant
+    /// [`xmi::write`](crate::xmi::write) writes it back where it stood, and a
+    /// strict one refuses the document
+    /// ([`WriteError::PreservedContent`](crate::xmi::WriteError::PreservedContent)).
+    /// An element built with [`edit::apply`](crate::edit::apply) holds none.
+    ///
+    /// ```
+    /// use sacm::xmi::{self, ReadOptions};
+    ///
+    /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:v="urn:vendor"
+    ///     xmi:id="p" v:colour="red">
+    ///   <name content="P"/>
+    /// </sacm:ArgumentPackage>"#;
+    /// let document = xmi::read(input, &ReadOptions::default())?.into_document();
+    /// let p = document.get("p").expect("the root was read");
+    /// assert!(p.has_preserved_content());
+    /// # Ok::<(), xmi::ReadError>(())
+    /// ```
+    #[must_use]
+    pub fn has_preserved_content(self) -> bool {
+        self.node().preserved.is_some()
+    }
+
+    /// The element's preserved content, if it holds any (ADR 0033).
+    pub(crate) fn preserved(self) -> Option<&'a Preserved> {
+        self.node().preserved.as_deref()
     }
 
     /// The element's node in the arena.
@@ -2170,6 +2351,8 @@ pub(crate) struct Compared<'a> {
     is_counter: bool,
     /// The ids each reference end holds: only the ends that hold one.
     references: &'a [(ReferenceEnd, Vec<ElementId>)],
+    /// The element's preserved content; `None` when it holds none.
+    pub(crate) preserved: Option<&'a Preserved>,
 }
 
 impl<'a> Compared<'a> {

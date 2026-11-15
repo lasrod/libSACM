@@ -9,16 +9,18 @@
 //! `argumentElement` (SACM23-ARG-005, -006 and -008 to -013 test those), and on
 //! each of them
 //! the four `UtilityElement`s in their roles (SACM23-BASE-004 and
-//! SACM23-BASE-005 test those). Everything else in a
-//! package is refused as `ReadError::Unsupported` at an exact location, and no
-//! document is returned; an empty or a duplicate `xmi:id` is refused with its
-//! own coded variant, `InvalidId` or `DuplicateId` (ADR 0015 amendment 2).
+//! SACM23-BASE-005 test those). Conforming content this version does not
+//! read yet is refused as `ReadError::Unsupported` at an exact location, and
+//! no document is returned; content that does not conform is kept as
+//! preserved content of its element, with one SACM-XMI-003 at that location
+//! (ADR 0033); an empty or a duplicate `xmi:id` is refused with its own coded
+//! variant, `InvalidId` or `DuplicateId` (ADR 0015 amendment 2).
 //!
-//! Inputs are inline strings, LF-only. The expected location of a refusal is
-//! marked in the input with [`MARK`] (U+2038), which the test removes before
-//! reading: an element is refused at the `<` of its start tag, an attribute at
-//! the first character of its qualified name, text at its first character
-//! that is not white space.
+//! Inputs are inline strings, LF-only. The expected location of a refusal or
+//! of preserved content is marked in the input with [`MARK`] (U+2038), which
+//! the test removes before reading: an element at the `<` of its start tag,
+//! an attribute at the first character of its qualified name, text at its
+//! first character that is not white space.
 //!
 //! The containment roles and their declared types in [`roles_of`] are written
 //! here from the "Concrete class -> containment roles" table of
@@ -35,7 +37,7 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
 use std::time::Duration;
 
-use sacm::diagnostic::{Code, SourceLocation};
+use sacm::diagnostic::{Code, Severity, SourceLocation};
 use sacm::edit::{self, CreateArgumentPackage, CreateAssuranceCasePackage, CreateClaim};
 use sacm::model::{AbstractClass, Document, ElementId, ElementKind, LangString, SacmElement};
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteOptions};
@@ -172,6 +174,134 @@ fn assert_all_refused_at_mark(
     assert!(
         failures.is_empty(),
         "{ROW}: {} of {} {what} cases are not {expected} at the mark:\n{}",
+        failures.len(),
+        cases.len(),
+        failures.join("\n")
+    );
+}
+
+/// One input that must be read with one construct kept as preserved content
+/// at its mark (LIB-COMPAT-003, ADR 0033).
+struct Preserved {
+    what: String,
+    template: String,
+    /// The element that holds it; `None` for an element with a generated
+    /// id.
+    holder: Option<String>,
+}
+
+/// A [`Preserved`] case held by the element whose `xmi:id` comes last
+/// before the mark.
+fn preserved(what: impl Into<String>, template: impl Into<String>) -> Preserved {
+    let template = template.into();
+    let before = template.split(MARK).next().unwrap_or_default();
+    let holder = before
+        .rsplit("xmi:id=\"")
+        .next()
+        .filter(|_| before.contains("xmi:id=\""))
+        .and_then(|rest| rest.split('"').next())
+        .map(str::to_owned);
+    let what = what.into();
+    assert!(
+        holder.is_some(),
+        "{ROW}: setup: {what} has no xmi:id before its mark"
+    );
+    Preserved {
+        what,
+        template,
+        holder,
+    }
+}
+
+/// A [`Preserved`] case held by `holder`.
+fn preserved_by(what: impl Into<String>, template: impl Into<String>, holder: &str) -> Preserved {
+    Preserved {
+        what: what.into(),
+        template: template.into(),
+        holder: Some(holder.to_owned()),
+    }
+}
+
+/// A [`Preserved`] case held by an element with a generated id.
+fn preserved_generated(what: impl Into<String>, template: impl Into<String>) -> Preserved {
+    Preserved {
+        what: what.into(),
+        template: template.into(),
+        holder: None,
+    }
+}
+
+/// Reads every case in both modes and fails, listing each case that is not
+/// read with exactly one SACM-XMI-003 at its mark, affecting its holder (a
+/// Warning in tolerant mode, an Error in strict mode), with the holder
+/// reporting preserved content and the same document in both modes.
+fn assert_all_preserved_at_mark(what: &str, cases: &[Preserved]) {
+    assert!(!cases.is_empty(), "{ROW}: setup: no cases for {what}");
+    let mut failures = Vec::new();
+    for case in cases {
+        let (input, at) = marked(&case.template);
+        let mut documents = Vec::new();
+        for (mode, severity) in [
+            (Mode::Tolerant, Severity::Warning),
+            (Mode::Strict, Severity::Error),
+        ] {
+            let output = match xmi::read(input.as_bytes(), &ReadOptions::default().with_mode(mode))
+            {
+                Ok(output) => output,
+                Err(error) => {
+                    failures.push(format!(
+                        "{}: a {mode:?} read refused it instead of preserving it: {error:?}",
+                        case.what
+                    ));
+                    continue;
+                }
+            };
+            let found: Vec<_> = output
+                .diagnostics()
+                .iter()
+                .filter(|found| found.code() == Code::XMI_UNKNOWN_CONTENT)
+                .collect();
+            let holds = |id: &ElementId| {
+                output
+                    .document()
+                    .get(id.as_str())
+                    .is_some_and(SacmElement::has_preserved_content)
+                    && case.holder.as_deref().map_or_else(
+                        // A generated id is none of the ids written.
+                        || {
+                            !case
+                                .template
+                                .split("id=\"")
+                                .skip(1)
+                                .filter_map(|rest| rest.split('"').next())
+                                .any(|written| written == id.as_str())
+                        },
+                        |holder| id.as_str() == holder,
+                    )
+            };
+            match found.as_slice() {
+                [found]
+                    if found.severity() == severity
+                        && found.location() == Some(at)
+                        && matches!(found.affected(), [id] if holds(id)) => {}
+                _ => failures.push(format!(
+                    "{}: expected one SACM-XMI-003 at {at} affecting {:?} in {mode:?} mode, \
+                     got {:?}",
+                    case.what,
+                    case.holder,
+                    output.diagnostics()
+                )),
+            }
+            documents.push(output.into_document());
+        }
+        if matches!(documents.as_slice(), [tolerant, strict] if tolerant != strict) {
+            failures.push(format!("{}: the modes read different documents", case.what));
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{ROW}: {} failures (each case read in both modes) in {} {what} cases that are not \
+         preserved at the mark:\n{}",
         failures.len(),
         cases.len(),
         failures.join("\n")
@@ -707,41 +837,43 @@ fn sacm23_xmi_016_a_child_type_resolves_as_a_qname_with_a_prefix_declared_on_the
 }
 
 #[test]
-fn sacm23_xmi_016_a_rebound_sacm_prefix_or_a_miscased_class_in_a_child_type_is_unsupported() {
+fn sacm23_xmi_016_a_rebound_sacm_prefix_or_a_miscased_class_in_a_child_type_is_preserved() {
     let other = " xmlns:sacm=\"urn:not-sacm\"";
     let cases = [
-        refused(
+        preserved(
             "sacm rebound on a Claim",
             in_ap(&format!(
                 "{MARK}<argumentElement{other} xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"
             )),
         ),
-        refused(
+        preserved(
             "sacm rebound on an AP in a concrete role",
             in_acp(&format!(
                 "{MARK}<argumentPackage{other} xmi:type=\"sacm:ArgumentPackage\" xmi:id=\"x\"/>"
             )),
         ),
-        refused(
+        preserved(
             "sacm:claim",
             in_ap(&format!(
                 "{MARK}<argumentElement xmi:type=\"sacm:claim\" xmi:id=\"x\"/>"
             )),
         ),
-        refused(
+        preserved(
             "sacm:claim as xsi:type",
             in_ap(&format!(
                 "{MARK}<argumentElement xsi:type=\"sacm:claim\" xmi:id=\"x\"/>"
             )),
         ),
-        refused(
+        preserved(
             "white space inside the type",
             in_ap(&format!(
                 "{MARK}<argumentElement xmi:type=\"sacm: Claim\" xmi:id=\"x\"/>"
             )),
         ),
     ];
-    assert_all_unsupported_at_mark("type resolution", &cases);
+    // A type naming no concrete class: the child is kept whole as preserved
+    // content of its parent (ADR 0033).
+    assert_all_preserved_at_mark("type resolution", &cases);
 }
 
 // --- Item 4: what is refused, and where -----------------------------------
@@ -755,8 +887,8 @@ fn typed_child(wrap: Wrap, role: &str, attribute: &str, value: &str) -> String {
 }
 
 #[test]
-fn sacm23_xmi_016_a_type_that_does_not_conform_to_the_role_is_unsupported_at_the_child() {
-    let mut cases: Vec<Refused> = [
+fn sacm23_xmi_016_a_type_that_does_not_conform_to_the_role_is_preserved_at_the_child() {
+    let mut cases: Vec<Preserved> = [
         (in_acp as Wrap, "argumentPackage", "xmi:type", "sacm:Claim"),
         (
             in_acp,
@@ -788,7 +920,7 @@ fn sacm23_xmi_016_a_type_that_does_not_conform_to_the_role_is_unsupported_at_the
     ]
     .into_iter()
     .map(|(wrap, role, attribute, value)| {
-        refused(
+        preserved(
             format!("{attribute}={value:?} in {role}"),
             typed_child(wrap, role, attribute, value),
         )
@@ -808,26 +940,28 @@ fn sacm23_xmi_016_a_type_that_does_not_conform_to_the_role_is_unsupported_at_the
         ),
     ];
     cases.extend([
-        refused(
+        preserved(
             "disagreeing xmi:type and xsi:type",
             in_ap(&format!(
                 "{MARK}<argumentElement xmi:type=\"sacm:Claim\" xsi:type=\"sacm:ArgumentPackage\" xmi:id=\"x\"/>"
             )),
         ),
-        refused(
+        preserved(
             "disagreeing types in a concrete role",
             in_acp(&format!(
                 "{MARK}<argumentPackage xsi:type=\"sacm:ArgumentPackage\" xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"
             )),
         ),
-        refused(
+        preserved(
             "a bad type at depth 3",
             in_ap_in_acp(&format!(
                 "{MARK}<argumentElement xmi:type=\"sacm:Clam\" xmi:id=\"c\"/>"
             )),
         ),
     ]);
-    assert_all_unsupported_at_mark("non-conforming type", &cases);
+    // Not admitted by the role, or two types that disagree: the child is
+    // kept whole as preserved content of its parent (ADR 0033).
+    assert_all_preserved_at_mark("non-conforming type", &cases);
     assert_all_refused_at_mark("untyped", &untyped, "SACM-XMI-005", |error| {
         !matches!(error, ReadError::Unsupported { .. })
             && error.code() == Some(Code::XMI_MISSING_TYPE)
@@ -835,7 +969,7 @@ fn sacm23_xmi_016_a_type_that_does_not_conform_to_the_role_is_unsupported_at_the
 }
 
 #[test]
-fn sacm23_xmi_016_a_type_naming_an_abstract_unknown_or_foreign_class_is_unsupported_at_the_child() {
+fn sacm23_xmi_016_a_type_naming_an_abstract_unknown_or_foreign_class_is_preserved_at_the_child() {
     let mut values: Vec<String> = [
         "Assertion",
         "ArgumentationElement",
@@ -859,38 +993,40 @@ fn sacm23_xmi_016_a_type_naming_an_abstract_unknown_or_foreign_class_is_unsuppor
         ]
         .map(str::to_owned),
     );
-    let mut cases: Vec<Refused> = values
+    let mut cases: Vec<Preserved> = values
         .iter()
         .map(|value| {
-            refused(
+            preserved(
                 format!("xmi:type={value:?}"),
                 typed_child(in_ap, "argumentElement", "xmi:type", value),
             )
         })
         .collect();
     cases.extend([
-        refused(
+        preserved(
             "a foreign namespace",
             in_ap(&format!(
                 "{MARK}<argumentElement xmlns:o=\"urn:o\" xmi:type=\"o:Claim\" xmi:id=\"x\"/>"
             )),
         ),
-        refused(
+        preserved(
             "a foreign namespace in a concrete role",
             in_acp(&format!(
                 "{MARK}<argumentPackage xmlns:o=\"urn:o\" xsi:type=\"o:ArgumentPackage\" xmi:id=\"x\"/>"
             )),
         ),
-        refused(
+        preserved(
             "an abstract class in a concrete role",
             typed_child(in_acp, "argumentPackage", "xmi:type", "sacm:ArgumentationElement"),
         ),
     ]);
-    assert_all_unsupported_at_mark("abstract or unknown type", &cases);
+    // A type naming no concrete class: the child is kept whole as preserved
+    // content of its parent (ADR 0033).
+    assert_all_preserved_at_mark("abstract or unknown type", &cases);
 }
 
 #[test]
-fn sacm23_xmi_016_a_role_the_parent_class_lacks_or_a_qualified_role_element_is_unsupported_at_the_child()
+fn sacm23_xmi_016_a_role_the_parent_class_lacks_or_a_qualified_role_element_is_preserved_at_the_child()
  {
     let default_sacm = format!(
         "<ArgumentPackage xmlns=\"http://www.omg.org/spec/SACM/20220301\" \
@@ -898,27 +1034,65 @@ fn sacm23_xmi_016_a_role_the_parent_class_lacks_or_a_qualified_role_element_is_u
          {MARK}<argumentElement xmi:type=\"Claim\" xmi:id=\"x\"/>\n</ArgumentPackage>"
     );
     let cases = [
-        refused("<foo> in an ACP", in_acp(&format!("{MARK}<foo/>"))),
-        refused(
+        preserved("<foo> in an ACP", in_acp(&format!("{MARK}<foo/>"))),
+        preserved(
             "<foo> in an AP",
             in_ap(&format!("{MARK}<foo xmi:id=\"x\"/>")),
         ),
-        refused(
+        preserved(
             "argumentElement in an ACP",
             in_acp(&format!(
                 "{MARK}<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"
             )),
         ),
-        refused(
+        preserved(
             "argumentElement in an ACP child",
             in_acp_child(&format!(
                 "{MARK}<argumentElement xmi:type=\"sacm:ArgumentPackage\" xmi:id=\"x\"/>"
             )),
         ),
-        refused(
+        preserved(
             "argumentPackage in an AP",
             in_ap(&format!("{MARK}<argumentPackage xmi:id=\"x\"/>")),
         ),
+        preserved(
+            "sacm:argumentElement",
+            in_ap(&format!(
+                "{MARK}<sacm:argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"
+            )),
+        ),
+        preserved(
+            "sacm:argumentPackage",
+            in_acp(&format!("{MARK}<sacm:argumentPackage xmi:id=\"x\"/>")),
+        ),
+        preserved(
+            "a role element in a foreign namespace",
+            in_acp(&format!(
+                "{MARK}<o:assuranceCasePackage xmlns:o=\"urn:o\" xmi:id=\"x\"/>"
+            )),
+        ),
+        preserved(
+            "a role element under a default SACM namespace",
+            default_sacm,
+        ),
+        preserved(
+            "argumentElement in a Claim",
+            in_claim(&format!(
+                "{MARK}<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"
+            )),
+        ),
+        preserved(
+            "a Claim element as a child",
+            in_ap(&format!("{MARK}<sacm:Claim xmi:id=\"x\"/>")),
+        ),
+    ];
+    // Not conforming: kept whole as preserved content of the parent
+    // (ADR 0033).
+    assert_all_preserved_at_mark("role", &cases);
+    // The text's spelling `argumentationElement` is a tolerance not read yet
+    // (SACM23-XMI-009), and an XMI-namespace element is XMI metadata not read
+    // yet (SACM23-XMI-019): still refused.
+    let refusals = [
         refused(
             "argumentationElement in an AP",
             in_ap(&format!(
@@ -932,43 +1106,13 @@ fn sacm23_xmi_016_a_role_the_parent_class_lacks_or_a_qualified_role_element_is_u
             )),
         ),
         refused(
-            "sacm:argumentElement",
-            in_ap(&format!(
-                "{MARK}<sacm:argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"
-            )),
-        ),
-        refused(
-            "sacm:argumentPackage",
-            in_acp(&format!("{MARK}<sacm:argumentPackage xmi:id=\"x\"/>")),
-        ),
-        refused(
-            "a role element in a foreign namespace",
-            in_acp(&format!(
-                "{MARK}<o:assuranceCasePackage xmlns:o=\"urn:o\" xmi:id=\"x\"/>"
-            )),
-        ),
-        refused(
-            "a role element under a default SACM namespace",
-            default_sacm,
-        ),
-        refused(
             "a role element in an XMI-namespace",
             in_ap(&format!(
                 "{MARK}<xmi:argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"
             )),
         ),
-        refused(
-            "argumentElement in a Claim",
-            in_claim(&format!(
-                "{MARK}<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"
-            )),
-        ),
-        refused(
-            "a Claim element as a child",
-            in_ap(&format!("{MARK}<sacm:Claim xmi:id=\"x\"/>")),
-        ),
     ];
-    assert_all_unsupported_at_mark("role", &cases);
+    assert_all_unsupported_at_mark("role", &refusals);
 }
 
 #[test]
@@ -1006,29 +1150,31 @@ fn sacm23_xmi_016_every_conforming_kind_outside_the_readable_set_is_unsupported_
 }
 
 #[test]
-fn sacm23_xmi_016_a_foreign_child_id_is_unsupported_at_its_name() {
+fn sacm23_xmi_016_a_foreign_child_id_is_preserved_at_its_name() {
     // A child with no `xmi:id` is read with a generated id, and a padded id
     // is read trimmed (SACM23-XMI-020, SACM23-XMI-025): an id attribute that
     // is not `xmi:id` is not an id, so it is an unread attribute.
     let cases = [
-        refused(
+        preserved_generated(
             "an id in no namespace on a Claim",
             in_ap(&format!(
                 "<argumentElement xmi:type=\"sacm:Claim\" {MARK}id=\"x\"/>"
             )),
         ),
-        refused(
+        preserved_generated(
             "an id in no namespace on an ACP",
             in_acp(&format!("<assuranceCasePackage {MARK}id=\"x\"/>")),
         ),
-        refused(
+        preserved_generated(
             "an id in a foreign namespace on a Claim",
             in_ap(&format!(
                 "<argumentElement xmlns:o=\"urn:o\" xmi:type=\"sacm:Claim\" {MARK}o:id=\"x\"/>"
             )),
         ),
     ];
-    assert_all_unsupported_at_mark("id", &cases);
+    // An attribute the class lacks: kept as preserved content of the child,
+    // which has a generated id (ADR 0033).
+    assert_all_preserved_at_mark("id", &cases);
 }
 
 #[test]
@@ -1084,7 +1230,7 @@ fn sacm23_xmi_016_a_duplicate_child_id_is_duplicate_id_at_the_child() {
 }
 
 #[test]
-fn sacm23_xmi_016_an_unread_attribute_of_a_child_is_unsupported_at_its_name() {
+fn sacm23_xmi_016_an_unread_attribute_of_a_child_is_unsupported_or_preserved_at_its_name() {
     let mut cases = Vec::new();
     let children = [
         (
@@ -1103,33 +1249,43 @@ fn sacm23_xmi_016_an_unread_attribute_of_a_child_is_unsupported_at_its_name() {
     // `gid` is read (SACM23-BASE-006), and `isCitation`, `isAbstract`,
     // `citedElement` and `abstractForm` in no namespace (SACM23-BASE-007/008),
     // so they are not among these; in the SACM namespace they are not read.
+    // `xmi:uuid` and `xmi:label` are XMI metadata not read yet
+    // (SACM23-XMI-019): refused. The others do not conform where they stand
+    // (`xmi:version` belongs on a root or the wrapper only): kept as
+    // preserved content of the child (ADR 0033).
+    let unread = ["xmi:uuid=\"u\"", "xmi:label=\"l\""];
     let attributes = [
         "sacm:isCitation=\"false\"",
         "sacm:isCitation=\"true\"",
         "sacm:isAbstract=\"true\"",
         "xmi:version=\"2.0\"",
-        "xmi:uuid=\"u\"",
-        "xmi:label=\"l\"",
         "foo=\"1\"",
         "o:id=\"x\" xmlns:o=\"urn:o\"",
         // `name=` in no namespace is a C++ shape (LIB-COMPAT-008); in the
         // SACM namespace it is not read.
         "sacm:name=\"N\"",
     ];
+    let mut refusals = Vec::new();
     for (what, wrap, start) in children {
+        for attribute in unread {
+            refusals.push(refused(
+                format!("{attribute} on {what}"),
+                wrap(&format!("<{start} xmi:id=\"x\"\n      {MARK}{attribute}/>")),
+            ));
+        }
         for attribute in attributes {
-            cases.push(refused(
+            cases.push(preserved(
                 format!("{attribute} on {what}"),
                 wrap(&format!("<{start} xmi:id=\"x\"\n      {MARK}{attribute}/>")),
             ));
         }
     }
     // `assertionDeclaration` is read on a Claim (SACM23-XMI-017), but a
-    // package is not an Assertion: refused there, even "asserted", the
+    // package is not an Assertion: preserved there, even "asserted", the
     // default.
     for (what, wrap, start) in &children[1..] {
         for declaration in ["asserted", "needsSupport", "assumed", "asCited"] {
-            cases.push(refused(
+            cases.push(preserved(
                 format!("assertionDeclaration {declaration:?} on {what}"),
                 wrap(&format!(
                     "<{start} xmi:id=\"x\" {MARK}assertionDeclaration=\"{declaration}\"/>"
@@ -1138,17 +1294,19 @@ fn sacm23_xmi_016_an_unread_attribute_of_a_child_is_unsupported_at_its_name() {
         }
     }
     // Before the type and the id, the attribute is still located at its name.
-    cases.push(refused(
+    cases.push(preserved_by(
         "foo before the type and the id",
         in_ap(&format!(
             "<argumentElement {MARK}foo=\"true\" xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"
         )),
+        "x",
     ));
-    assert_all_unsupported_at_mark("attribute", &cases);
+    assert_all_preserved_at_mark("attribute", &cases);
+    assert_all_unsupported_at_mark("unread XMI attribute", &refusals);
 }
 
 #[test]
-fn sacm23_xmi_016_text_or_an_unreadable_name_in_a_child_is_unsupported_where_it_starts() {
+fn sacm23_xmi_016_text_or_an_unreadable_name_in_a_child_is_preserved_where_it_starts() {
     // A second name is `RepeatedValue` (SACM23-XMI-021), and an `xmi:id` on a
     // name is read (SACM23-XMI-022), so neither is among these.
     let claim = |content: &str| {
@@ -1157,45 +1315,52 @@ fn sacm23_xmi_016_text_or_an_unreadable_name_in_a_child_is_unsupported_where_it_
         ))
     };
     let cases = [
-        refused("text in a Claim", claim(&format!("{MARK}x"))),
-        refused("text after white space", claim(&format!("\n     {MARK}x"))),
-        refused(
+        preserved("text in a Claim", claim(&format!("{MARK}x"))),
+        preserved("text after white space", claim(&format!("\n     {MARK}x"))),
+        preserved(
             "text after a name",
             claim(&format!("<name content=\"X\"/>{MARK}x")),
         ),
-        refused("CDATA in a Claim", claim(&format!("{MARK}<![CDATA[x]]>"))),
-        refused(
+        preserved("CDATA in a Claim", claim(&format!("{MARK}<![CDATA[x]]>"))),
+        preserved(
             "text in an ACP child",
             in_acp(&format!(
                 "<assuranceCasePackage xmi:id=\"x\">{MARK}t</assuranceCasePackage>"
             )),
         ),
-        refused(
+        preserved(
             "text in an AP child",
             in_acp(&format!(
                 "<argumentPackage xmi:id=\"x\">  {MARK}t</argumentPackage>"
             )),
         ),
-        refused(
-            "an attribute of a name",
-            claim(&format!("<name {MARK}xmi:uuid=\"n\" content=\"A\"/>")),
-        ),
-        refused(
+        preserved(
             "a name in the SACM namespace",
             claim(&format!("{MARK}<sacm:name content=\"A\"/>")),
         ),
         // Not `lang` or `content`, which are value elements (SACM23-XMI-014).
-        refused(
+        // A defect inside the name keeps the whole name, at its start tag.
+        preserved(
             "an element in a name",
-            claim(&format!("<name content=\"A\">{MARK}<value/></name>")),
+            claim(&format!("{MARK}<name content=\"A\"><value/></name>")),
         ),
     ];
-    assert_all_unsupported_at_mark("content", &cases);
+    // Text in element-only content, a name in the SACM namespace, and a
+    // defect inside a name are kept as preserved content of the child
+    // (ADR 0033).
+    assert_all_preserved_at_mark("content", &cases);
+    // `xmi:uuid` on a name is XMI metadata not read yet (SACM23-XMI-019).
+    let refusals = [refused(
+        "an attribute of a name",
+        claim(&format!("<name {MARK}xmi:uuid=\"n\" content=\"A\"/>")),
+    )];
+    assert_all_unsupported_at_mark("content", &refusals);
 }
 
 #[test]
 fn sacm23_xmi_016_a_duplicate_child_id_is_refused_at_the_child_before_later_content() {
-    // Each duplicate is followed by content that is refused too, so the
+    // Each duplicate is followed by content that is refused too (XMI
+    // metadata not read yet, SACM23-XMI-019), so the
     // duplicate must be found when its start tag is read, not later: the
     // refusal is the DuplicateId at the first repeat (ADR 0015 amendment 2).
     let wrapper = "<xmi:XMI xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" \
@@ -1203,42 +1368,46 @@ fn sacm23_xmi_016_a_duplicate_child_id_is_refused_at_the_child_before_later_cont
     let claim = |id: &str| format!("<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"{id}\"/>");
     let cases = [
         refused(
-            "an earlier root's id, then <foo/>",
+            "an earlier root's id, then <xmi:Extension/>",
             format!(
                 "{wrapper}<sacm:ArgumentPackage xmi:id=\"a\"/>\n<sacm:ArgumentPackage xmi:id=\"b\">\
-                 {MARK}{}<foo/></sacm:ArgumentPackage>\n</xmi:XMI>",
+                 {MARK}{}<xmi:Extension/></sacm:ArgumentPackage>\n</xmi:XMI>",
                 claim("a")
             ),
         ),
         refused(
-            "an earlier root's child's id, then <foo/>",
+            "an earlier root's child's id, then <xmi:Extension/>",
             format!(
                 "{wrapper}<sacm:ArgumentPackage xmi:id=\"a\">{}</sacm:ArgumentPackage>\n\
-                 <sacm:ArgumentPackage xmi:id=\"b\">{MARK}{}<foo/></sacm:ArgumentPackage>\n</xmi:XMI>",
+                 <sacm:ArgumentPackage xmi:id=\"b\">{MARK}{}<xmi:Extension/></sacm:ArgumentPackage>\n</xmi:XMI>",
                 claim("c"),
                 claim("c")
             ),
         ),
         refused(
-            "a sibling's id, then <foo/>",
-            in_ap(&format!("{}{MARK}{}<foo/>", claim("x"), claim("x"))),
-        ),
-        refused(
-            "the root's own id, then <foo/>",
-            in_ap(&format!("{MARK}{}<foo/>", claim("arguments"))),
-        ),
-        refused(
-            "a sibling's id, with <foo/> inside",
+            "a sibling's id, then <xmi:Extension/>",
             in_ap(&format!(
-                "{}{MARK}<argumentElement xmi:type=\"sacm:ArgumentPackage\" xmi:id=\"x\"><foo/></argumentElement>",
+                "{}{MARK}{}<xmi:Extension/>",
+                claim("x"),
                 claim("x")
             )),
         ),
         refused(
-            "a cousin's id, then <foo/>",
+            "the root's own id, then <xmi:Extension/>",
+            in_ap(&format!("{MARK}{}<xmi:Extension/>", claim("arguments"))),
+        ),
+        refused(
+            "a sibling's id, with <xmi:Extension/> inside",
+            in_ap(&format!(
+                "{}{MARK}<argumentElement xmi:type=\"sacm:ArgumentPackage\" xmi:id=\"x\"><xmi:Extension/></argumentElement>",
+                claim("x")
+            )),
+        ),
+        refused(
+            "a cousin's id, then <xmi:Extension/>",
             in_acp(&format!(
                 "<argumentPackage xmi:id=\"a\">{}</argumentPackage>\
-                 <argumentPackage xmi:id=\"b\">{MARK}{}<foo/></argumentPackage>",
+                 <argumentPackage xmi:id=\"b\">{MARK}{}<xmi:Extension/></argumentPackage>",
                 claim("x"),
                 claim("x")
             )),
@@ -1334,9 +1503,12 @@ fn sacm23_xmi_016_white_space_written_literally_as_cdata_or_as_references_is_acc
 }
 
 #[test]
-fn sacm23_xmi_016_a_no_break_space_reference_or_cdata_holding_text_is_unsupported_where_it_starts()
-{
+fn sacm23_xmi_016_a_no_break_space_reference_or_cdata_holding_text_is_preserved_where_it_starts() {
+    // In an element: non-white-space text in element-only content, kept as
+    // preserved content of the element (ADR 0033).
     let mut cases = Vec::new();
+    // On the wrapper: no element to hold it, so refused.
+    let mut on_wrapper = Vec::new();
     // In a name that has `content="C"`, the text is a second `content` (a
     // LIB-COMPAT-008 shape): `RepeatedValue`, whose location is the text.
     let mut in_names = Vec::new();
@@ -1348,25 +1520,25 @@ fn sacm23_xmi_016_a_no_break_space_reference_or_cdata_holding_text_is_unsupporte
         "&#160;",
     ] {
         for (slot, place) in SLOTS.iter().enumerate() {
-            let list = if place.ends_with("'s name") {
-                &mut in_names
-            } else {
-                &mut cases
-            };
             let marked = format!("{MARK}{text}");
-            let mut slots = [""; 8];
-            slots[slot] = &marked;
-            list.push(refused(format!("{text:?} in {place}"), with_slots(&slots)));
             // After literal white space, still at the construct.
             let spaced = format!(" \n {MARK}{text}");
-            slots[slot] = &spaced;
-            list.push(refused(
-                format!("{text:?} after white space in {place}"),
-                with_slots(&slots),
-            ));
+            for (form, slot_text) in [("", &marked), ("after white space ", &spaced)] {
+                let mut slots = [""; 8];
+                slots[slot] = slot_text;
+                let what = format!("{text:?} {form}in {place}");
+                if place.ends_with("'s name") {
+                    in_names.push(refused(what, with_slots(&slots)));
+                } else if place.starts_with("the wrapper") {
+                    on_wrapper.push(refused(what, with_slots(&slots)));
+                } else {
+                    cases.push(preserved(what, with_slots(&slots)));
+                }
+            }
         }
     }
-    assert_all_unsupported_at_mark("non-white-space text", &cases);
+    assert_all_preserved_at_mark("non-white-space text", &cases);
+    assert_all_unsupported_at_mark("non-white-space text on the wrapper", &on_wrapper);
     assert_all_refused_at_mark(
         "non-white-space text in a name",
         &in_names,
@@ -1378,7 +1550,7 @@ fn sacm23_xmi_016_a_no_break_space_reference_or_cdata_holding_text_is_unsupporte
 // --- Item 5: a readable child under any other role ------------------------
 
 #[test]
-fn sacm23_xmi_016_each_readable_child_is_refused_under_every_other_role_name_of_its_parent() {
+fn sacm23_xmi_016_each_readable_child_is_preserved_under_every_other_role_name_of_its_parent() {
     use ElementKind as K;
     let mut cases = Vec::new();
     let readable = [
@@ -1421,7 +1593,7 @@ fn sacm23_xmi_016_each_readable_child_is_refused_under_every_other_role_name_of_
                     continue;
                 }
                 for attribute in ["xmi:type", "xsi:type"] {
-                    cases.push(refused(
+                    cases.push(preserved(
                         format!("{child} under {role} of {context}, by {attribute}"),
                         wrap(&format!(
                             "{MARK}<{role} {attribute}=\"sacm:{child}\" xmi:id=\"x\"/>"
@@ -1434,7 +1606,9 @@ fn sacm23_xmi_016_each_readable_child_is_refused_under_every_other_role_name_of_
     // Two ACP contexts: 2 children x 7 other roles x 2 type attributes;
     // three AP contexts: 10 children x 4 other roles x 2; a Claim holds none.
     assert_eq!(cases.len(), 2 * 28 + 3 * 80, "{ROW}: setup: the case count");
-    assert_all_unsupported_at_mark("other role", &cases);
+    // A type the role does not admit: the child is kept whole as preserved
+    // content of its parent (ADR 0033).
+    assert_all_preserved_at_mark("other role", &cases);
 }
 
 // --- Item 6: the role names written for the 339 legal pairs ---------------

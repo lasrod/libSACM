@@ -5,7 +5,7 @@ use std::collections::{BTreeSet, HashMap};
 
 use super::plan::{Plan, Removal};
 use super::{DanglingReference, EditError};
-use crate::model::{AbstractClass, Document, ElementId, ReferenceEnd, SacmElement};
+use crate::model::{AbstractClass, Document, ElementId, Preserved, ReferenceEnd, SacmElement};
 
 /// Deletes an element, everything it contains, and whatever its policies
 /// allow, so that no reference is left dangling.
@@ -29,6 +29,11 @@ use crate::model::{AbstractClass, Document, ElementId, ReferenceEnd, SacmElement
 ///   it names is refused (SACM-CMD-007) or handled by the reference policy
 ///   ([`CrossPackageReferencePolicy`]).
 ///
+/// **Preserved content** (ADR 0033) goes with the element that holds it, and
+/// its ids are freed. A reference to one of them, held outside the deleted
+/// subtree, is a dangling reference like one to a deleted element, handled
+/// by the policies; its package is that of the element that held it.
+///
 /// **What is deleted** is the element and everything it contains, plus each
 /// asserted relationship the reference policy deletes, with its contents, to
 /// a fixpoint: a relationship can be the source or target of another.
@@ -39,7 +44,8 @@ use crate::model::{AbstractClass, Document, ElementId, ReferenceEnd, SacmElement
 ///
 /// **The checks**, in order: the element is in the document
 /// ([`EditError::ElementNotFound`]); it contains nothing but
-/// `UtilityElement`s, unless [`PackageDeletePolicy::DeleteRecursively`]
+/// `UtilityElement`s, and no element of its subtree holds a preserved child
+/// element, unless [`PackageDeletePolicy::DeleteRecursively`]
 /// ([`EditError::NotEmpty`]); then each dangling reference, in the order of
 /// [`Preview::dangling_references`](super::Preview::dangling_references):
 /// the first a policy refuses is the answer, as
@@ -47,9 +53,12 @@ use crate::model::{AbstractClass, Document, ElementId, ReferenceEnd, SacmElement
 /// the cross-package policy refuses it, and otherwise as
 /// [`EditError::Referenced`].
 ///
-/// The [`Mutation`](super::Mutation) lists every deleted element in
-/// pre-order before the delete, and each surviving element that lost ids, in
-/// pre-order after. Nothing is created, and the parent is not changed.
+/// The [`Mutation`](super::Mutation) lists every deleted element, and no
+/// preserved id, in pre-order before the delete, and, in pre-order after,
+/// each surviving element that lost ids and each whose preserved child moved
+/// to a lower index among its children because a child before it was
+/// deleted (ADR 0033). Nothing is created, and the parent is not changed
+/// otherwise.
 ///
 /// A delete does not rewind the per-kind counter, so generation stays
 /// deterministic: the next generated id is still the smallest unused number
@@ -138,8 +147,10 @@ pub enum ReferenceDeletePolicy {
 /// (ADR 0031).
 ///
 /// An element is non-empty when it contains, at any depth, an element that
-/// is not a `UtilityElement`. Descriptions, implementation constraints,
-/// notes and tagged values go with their owner under either policy.
+/// is not a `UtilityElement`, or when it or an element it contains holds a
+/// preserved child element (ADR 0033; preserved attributes and text do not
+/// count). Descriptions, implementation constraints, notes and tagged values
+/// go with their owner under either policy.
 ///
 /// # Examples
 ///
@@ -266,6 +277,13 @@ impl DeleteElement {
         };
         let subtree = tree.subtree(start);
         if self.package_policy == PackageDeletePolicy::RejectIfNonEmpty {
+            // Each preserved child element anywhere in the subtree is content
+            // too (ADR 0033); preserved attributes and text are not.
+            let preserved: usize = subtree
+                .clone()
+                .filter_map(|position| tree.elements[position].preserved())
+                .map(Preserved::element_count)
+                .sum();
             let contained = subtree
                 .clone()
                 .skip(1)
@@ -274,7 +292,8 @@ impl DeleteElement {
                         .kind()
                         .is_a(AbstractClass::UtilityElement)
                 })
-                .count();
+                .count()
+                .saturating_add(preserved);
             if contained > 0 {
                 return Err(EditError::NotEmpty {
                     element: self.element.clone(),
@@ -305,18 +324,27 @@ impl DeleteElement {
             }
         }
 
-        // The holders that survive lose the deleted ids. The dangling
-        // references are in holder pre-order, so each holder's are together.
-        let mut changed: Vec<ElementId> = Vec::new();
+        // The holders that survive lose the deleted ids, and a survivor whose
+        // preserved child comes after a deleted child of it has that child
+        // moved to a lower index (ADR 0033): both change, in pre-order.
+        let mut is_changed = vec![false; tree.elements.len()];
         for reference in &dangling {
-            let holder = reference.holder();
-            let survives = tree
-                .position(holder)
-                .is_some_and(|position| !deleted[position]);
-            if survives && changed.last() != Some(holder) {
-                changed.push(holder.clone());
+            if let Some(position) = tree.position(reference.holder()) {
+                is_changed[position] = true;
             }
         }
+        for (position, element) in tree.elements.iter().enumerate() {
+            if !deleted[position] && tree.moves_preserved(*element, &deleted) {
+                is_changed[position] = true;
+            }
+        }
+        let changed: Vec<ElementId> = tree
+            .elements
+            .iter()
+            .enumerate()
+            .filter(|&(position, _)| is_changed[position] && !deleted[position])
+            .map(|(_, element)| element.id().clone())
+            .collect();
         let deleted = tree
             .elements
             .iter()
@@ -338,7 +366,9 @@ impl DeleteElement {
 struct Tree<'d> {
     /// Every element, in pre-order.
     elements: Vec<SacmElement<'d>>,
-    /// The position of each element, by id. Only looked up.
+    /// The position of each element, by id, and of the element whose
+    /// preserved content holds each preserved id (ADR 0033), which goes
+    /// with it. Only looked up.
     positions: HashMap<&'d ElementId, usize>,
     /// The position after the last element of each element's subtree: a
     /// subtree is a range of the pre-order.
@@ -355,7 +385,14 @@ impl<'d> Tree<'d> {
         let positions: HashMap<&'d ElementId, usize> = elements
             .iter()
             .enumerate()
-            .map(|(position, element)| (element.id(), position))
+            .flat_map(|(position, element)| {
+                let preserved = element
+                    .preserved()
+                    .map_or(&[][..], |held| held.ids.as_slice());
+                std::iter::once(element.id())
+                    .chain(preserved)
+                    .map(move |id| (id, position))
+            })
             .collect();
         let parents: Vec<Option<usize>> = elements
             .iter()
@@ -404,6 +441,22 @@ impl<'d> Tree<'d> {
         position..self.ends.get(position).copied().unwrap_or(position)
     }
 
+    /// Whether deleting `deleted` moves a preserved child of `element` to a
+    /// lower index among its children: whether a child of it before its last
+    /// preserved child is deleted (ADR 0033).
+    fn moves_preserved(&self, element: SacmElement<'_>, deleted: &[bool]) -> bool {
+        let Some(last) = element
+            .preserved()
+            .and_then(|preserved| preserved.children.iter().map(|placed| placed.index).max())
+        else {
+            return false;
+        };
+        element
+            .children()
+            .take(last)
+            .any(|child| self.is_deleted(deleted, child.id()))
+    }
+
     /// Whether `id` names an element of `deleted`.
     fn is_deleted(&self, deleted: &[bool], id: &ElementId) -> bool {
         self.position(id)
@@ -446,12 +499,20 @@ impl<'d> Tree<'d> {
                 }
             }
         }
-        // Each element enters `pending` once, when it is first deleted.
+        // Each element enters `pending` once, when it is first deleted; the
+        // ids of its preserved content go with it (ADR 0033).
         while let Some(position) = pending.pop() {
-            let Some(held) = triggers.get(self.elements[position].id()) else {
-                continue;
-            };
-            for &(relationship, end) in held {
+            let element = self.elements[position];
+            let preserved = element
+                .preserved()
+                .map_or(&[][..], |held| held.ids.as_slice());
+            let held = std::iter::once(element.id())
+                .chain(preserved)
+                .filter_map(|id| triggers.get(id))
+                .flatten()
+                .copied()
+                .collect::<Vec<_>>();
+            for (relationship, end) in held {
                 if deleted[relationship] {
                     continue;
                 }

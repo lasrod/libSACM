@@ -15,7 +15,8 @@
 
 use std::path::Path;
 
-use sacm::diagnostic::{Code, SourceLocation};
+use sacm::diagnostic::{Code, Severity, SourceLocation};
+use sacm::model::{ElementId, SacmElement};
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput};
 
 const ROW: &str = "SACM23-XMI-021";
@@ -196,8 +197,56 @@ fn assert_refused_at_mark(
     );
 }
 
-fn is_unsupported(error: &ReadError) -> bool {
-    matches!(error, ReadError::Unsupported { .. }) && error.code().is_none()
+/// Reads `template` without its one mark in both modes and asserts that the
+/// construct at the mark is kept as preserved content of `holder`
+/// (LIB-COMPAT-003, ADR 0033): exactly one SACM-XMI-003 there, affecting
+/// `holder`, a Warning in tolerant mode and an Error in strict mode, never a
+/// `RepeatedValue`; and that `holder`'s name content is `name`.
+fn assert_preserved_at_mark(what: &str, template: &str, holder: &str, name: Option<&str>) {
+    let (input, marks) = marked(template);
+    assert_eq!(marks.len(), 1, "{ROW}: setup: {what} has not one mark");
+    for (mode, severity) in [
+        (Mode::Tolerant, Severity::Warning),
+        (Mode::Strict, Severity::Error),
+    ] {
+        let output = match read(mode, &input) {
+            Ok(output) => output,
+            Err(error) => panic!(
+                "{ROW}: {what}: a {mode:?} read refused it instead of preserving it: {error:?}"
+            ),
+        };
+        let found: Vec<_> = output
+            .diagnostics()
+            .iter()
+            .filter(|found| found.code() == Code::XMI_UNKNOWN_CONTENT)
+            .map(|found| {
+                (
+                    found.severity(),
+                    found.location(),
+                    found.affected().to_vec(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            found,
+            [(severity, Some(marks[0]), vec![ElementId::from(holder)])],
+            "{ROW}: {what}: not one SACM-XMI-003 at the construct affecting {holder:?} in \
+             {mode:?} mode: {:?}",
+            output.diagnostics()
+        );
+        let element = output.document().get(holder);
+        assert!(
+            element.is_some_and(SacmElement::has_preserved_content),
+            "{ROW}: {what}: {holder:?} holds no preserved content in {mode:?} mode"
+        );
+        assert_eq!(
+            element.and_then(|found| found
+                .name()
+                .and_then(|name| name.content().map(str::to_owned))),
+            name.map(str::to_owned),
+            "{ROW}: {what}: {holder:?} does not keep its first name in {mode:?} mode"
+        );
+    }
 }
 
 // --- Item 1: two names -------------------------------------------------------
@@ -273,11 +322,14 @@ fn sacm23_xmi_021_three_names_give_three_locations_and_the_second_is_the_locatio
 }
 
 #[test]
-fn sacm23_xmi_021_a_malformed_second_name_is_refused_as_its_own_defect_first() {
-    let unsupported: [(&str, String); 3] = [
+fn sacm23_xmi_021_a_malformed_second_name_is_preserved_as_its_own_defect_not_repeated() {
+    // A defect inside the second name keeps that whole name as preserved
+    // content of c1, at its start tag; a preserved part is no occurrence, so
+    // c1 keeps its first name and there is no `RepeatedValue` (ADR 0033).
+    let malformed: [(&str, String); 3] = [
         (
             "a second name with an unread attribute",
-            in_claim(&format!("<name content=\"A\"/><name {MARK}foo=\"1\"/>")),
+            in_claim(&format!("<name content=\"A\"/>{MARK}<name foo=\"1\"/>")),
         ),
         (
             "a second name typed as another class",
@@ -287,13 +339,13 @@ fn sacm23_xmi_021_a_malformed_second_name_is_refused_as_its_own_defect_first() {
         ),
         (
             "a second name holding an element",
-            in_claim(&format!("<name content=\"A\"/><name>{MARK}<foo/></name>")),
+            in_claim(&format!("<name content=\"A\"/>{MARK}<name><foo/></name>")),
         ),
     ];
     // Text, or one `value`, in a second name is a C++ shape (LIB-COMPAT-008,
     // `legacy_shapes.rs`), not a malformed name.
-    for (what, template) in &unsupported {
-        assert_refused_at_mark(what, template, "Unsupported", is_unsupported);
+    for (what, template) in &malformed {
+        assert_preserved_at_mark(what, template, "c1", Some("A"));
     }
     // A second name whose own `content` is given twice: that repeat first.
     let (input, marks) = marked(&in_claim(&format!(
@@ -347,28 +399,33 @@ fn sacm23_xmi_021_names_separated_by_children_white_space_comments_or_pis_still_
 
 #[test]
 fn sacm23_xmi_021_a_qualified_name_or_a_name_attribute_is_not_an_occurrence() {
+    // A name in a namespace is no `name` role element: kept as preserved
+    // content of its holder, which keeps its first name (ADR 0033).
     let cases = [
         (
             "sacm:name after a name on a root",
             root_holding(&format!(
                 "  <name content=\"A\"/>\n  {MARK}<sacm:name content=\"B\"/>"
             )),
+            "a",
         ),
         (
             "sacm:name after a name on a Claim",
             in_claim(&format!(
                 "<name content=\"A\"/>{MARK}<sacm:name content=\"B\"/>"
             )),
+            "c1",
         ),
         (
             "a name in the SACM default namespace after a name",
             in_claim(&format!(
                 "<name content=\"A\"/>{MARK}<name xmlns=\"http://www.omg.org/spec/SACM/20220301\" content=\"B\"/>"
             )),
+            "c1",
         ),
     ];
-    for (what, template) in &cases {
-        assert_refused_at_mark(what, template, "Unsupported", is_unsupported);
+    for (what, template, holder) in &cases {
+        assert_preserved_at_mark(what, template, holder, Some("A"));
     }
     // A `name=` attribute is a C++ shape (LIB-COMPAT-008), so with a name
     // element the name is given twice: `RepeatedValue` for `name`, at the

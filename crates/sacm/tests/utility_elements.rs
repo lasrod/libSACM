@@ -296,6 +296,81 @@ fn refused(row: &str, what: &str, input: &str) -> ReadError {
     errors.swap_remove(0)
 }
 
+/// Asserts that `input` reads in both modes and keeps one construct as
+/// preserved content of `holder` (LIB-COMPAT-003, ADR 0033): exactly one
+/// SACM-XMI-003 at `at`, affecting `holder`, a Warning in tolerant mode and
+/// an Error in strict mode, and the same document in both, which it returns.
+fn assert_preserved_at(
+    row: &str,
+    what: &str,
+    input: &str,
+    at: SourceLocation,
+    holder: &str,
+) -> Document {
+    let mut documents = Vec::new();
+    for (mode, severity) in [
+        (Mode::Tolerant, Severity::Warning),
+        (Mode::Strict, Severity::Error),
+    ] {
+        let output = match read(mode, input) {
+            Ok(output) => output,
+            Err(error) => panic!(
+                "{row}: {what}: a {mode:?} read refused it instead of preserving it: {error:?}"
+            ),
+        };
+        let found: Vec<_> = output
+            .diagnostics()
+            .iter()
+            .filter(|found| found.code() == Code::XMI_UNKNOWN_CONTENT)
+            .map(|found| {
+                (
+                    found.severity(),
+                    found.location(),
+                    found.affected().to_vec(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            found,
+            [(severity, Some(at), vec![ElementId::from(holder)])],
+            "{row}: {what}: not one SACM-XMI-003 at the construct affecting {holder:?} in \
+             {mode:?} mode: {:?}",
+            output.diagnostics()
+        );
+        let doc = output.into_document();
+        assert!(
+            doc.get(holder)
+                .is_some_and(SacmElement::has_preserved_content),
+            "{row}: {what}: {holder:?} holds no preserved content in {mode:?} mode"
+        );
+        documents.push(doc);
+    }
+    assert_eq!(
+        documents[0], documents[1],
+        "{row}: {what}: the modes read different documents"
+    );
+    documents.swap_remove(0)
+}
+
+/// Reads `template` without its one mark in both modes and asserts that the
+/// construct at the mark is kept as preserved content (LIB-COMPAT-003, ADR
+/// 0033) of the element whose `xmi:id` comes last before the mark, and
+/// returns the document.
+fn assert_preserved_at_mark(row: &str, what: &str, template: &str) -> Document {
+    let (input, marks) = marked(row, template);
+    assert_eq!(marks.len(), 1, "{row}: setup: {what} has not one mark");
+    let before = template.split(MARK).next().unwrap_or_default();
+    let Some(holder) = before
+        .rsplit("xmi:id=\"")
+        .next()
+        .filter(|_| before.contains("xmi:id=\""))
+        .and_then(|rest| rest.split('"').next())
+    else {
+        panic!("{row}: setup: {what} has no xmi:id before its mark");
+    };
+    assert_preserved_at(row, what, &input, marks[0], holder)
+}
+
 /// Reads `template` without its marks in both modes and asserts that it is
 /// refused as `Unsupported`, with no code, at its one mark. Returns the
 /// reason.
@@ -971,7 +1046,8 @@ fn sacm23_base_004_type_attributes_naming_the_classes_are_accepted_and_none_is_w
 }
 
 #[test]
-fn sacm23_base_004_a_type_naming_another_class_is_unsupported_at_its_element() {
+fn sacm23_base_004_a_type_naming_another_class_is_preserved_and_an_expression_lang_string_is_unsupported_at_its_element()
+ {
     let cases = [
         (
             "sacm:Note on description",
@@ -992,19 +1068,24 @@ fn sacm23_base_004_a_type_naming_another_class_is_unsupported_at_its_element() {
             )),
         ),
         (
-            "sacm:ExpressionLangString on value",
-            description_with(&format!(
-                "{MARK}<value xmi:type=\"sacm:ExpressionLangString\" content=\"x\"/>"
-            )),
-        ),
-        (
             "sacm:LangString on content",
             in_description(&format!("{MARK}<content xmi:type=\"sacm:LangString\"/>")),
         ),
     ];
+    // A type the role does not admit: the child is kept whole as preserved
+    // content of its holder (ADR 0033).
     for (what, template) in &cases {
-        assert_unsupported_at_mark(ROW, what, template);
+        assert_preserved_at_mark(ROW, what, template);
     }
+    // An ExpressionLangString is conforming, and not read yet
+    // (SACM23-BASE-009).
+    assert_unsupported_at_mark(
+        ROW,
+        "sacm:ExpressionLangString on value",
+        &description_with(&format!(
+            "{MARK}<value xmi:type=\"sacm:ExpressionLangString\" content=\"x\"/>"
+        )),
+    );
 }
 
 // --- Item 8: ids ------------------------------------------------------------------
@@ -1387,10 +1468,10 @@ fn sacm23_base_004_a_caller_id_equal_to_a_content_or_value_id_is_duplicate_id() 
     assert_eq!(doc, before, "{ROW}: a refused edit changed the document");
 }
 
-// --- Item 9: refused, never dropped ------------------------------------------------
+// --- Item 9: preserved, never dropped ------------------------------------------------
 
 #[test]
-fn sacm23_base_004_content_a_utility_element_cannot_hold_is_unsupported_where_it_starts() {
+fn sacm23_base_004_content_a_utility_element_cannot_hold_is_preserved_where_it_starts() {
     let cases = [
         (
             "a name on a Description",
@@ -1428,62 +1509,75 @@ fn sacm23_base_004_content_a_utility_element_cannot_hold_is_unsupported_where_it
         ),
         (
             "sacm:value",
-            description_with(&format!("{MARK}<sacm:value content=\"x\"/>")),
+            in_description(&format!(
+                "{MARK}<content><sacm:value content=\"x\"/></content>"
+            )),
         ),
         (
             "another child of content",
-            description_with(&format!("<value content=\"a\"/>{MARK}<foo/>")),
+            in_description(&format!(
+                "{MARK}<content><value content=\"a\"/><foo/></content>"
+            )),
         ),
         (
             "a name in content",
-            description_with(&format!("{MARK}<name content=\"x\"/>")),
+            in_description(&format!("{MARK}<content><name content=\"x\"/></content>")),
         ),
         (
             "a lang element in content",
-            description_with(&format!("{MARK}<lang>en</lang>")),
+            in_description(&format!("{MARK}<content><lang>en</lang></content>")),
         ),
         (
             "a value in a value",
-            description_with(&format!("<value>{MARK}<value/></value>")),
+            in_description(&format!("{MARK}<content><value><value/></value></content>")),
         ),
         (
             "an element in a value's lang element",
-            description_with(&format!("<value><lang>en{MARK}<b/></lang></value>")),
+            in_description(&format!(
+                "{MARK}<content><value><lang>en<b/></lang></value></content>"
+            )),
         ),
     ];
+    // Any child of a UtilityElement other than its roles, and a defect inside
+    // `content` or a `value`, which keeps the whole content: preserved content
+    // of the holder, at the start tag of that child (ADR 0033).
     for (what, template) in &cases {
-        assert_unsupported_at_mark(ROW, what, template);
+        assert_preserved_at_mark(ROW, what, template);
     }
 }
 
 #[test]
-fn sacm23_base_004_text_or_an_attribute_a_utility_element_cannot_hold_is_unsupported_where_it_starts()
- {
+fn sacm23_base_004_text_or_an_attribute_a_utility_element_cannot_hold_is_preserved_where_it_starts()
+{
     let cases = [
         (
             "text after a value in content",
-            description_with(&format!("<value content=\"a\"/> {MARK}x")),
+            in_description(&format!(
+                "{MARK}<content><value content=\"a\"/> x</content>"
+            )),
         ),
         (
             "xml:lang on content",
-            in_description(&format!("<content {MARK}xml:lang=\"en\"/>")),
+            in_description(&format!("{MARK}<content xml:lang=\"en\"/>")),
         ),
         (
             "foo on content",
-            in_description(&format!("<content {MARK}foo=\"1\"/>")),
+            in_description(&format!("{MARK}<content foo=\"1\"/>")),
         ),
         (
             "xml:lang on a value",
-            description_with(&format!("<value content=\"x\" {MARK}xml:lang=\"en\"/>")),
+            in_description(&format!(
+                "{MARK}<content><value content=\"x\" xml:lang=\"en\"/></content>"
+            )),
         ),
         (
             "foo on a value",
-            description_with(&format!("<value {MARK}foo=\"1\"/>")),
+            in_description(&format!("{MARK}<content><value foo=\"1\"/></content>")),
         ),
         (
             "an xmi:id on a value's content element",
-            description_with(&format!(
-                "<value><content {MARK}xmi:id=\"x\">x</content></value>"
+            in_description(&format!(
+                "{MARK}<content><value><content xmi:id=\"x\">x</content></value></content>"
             )),
         ),
         (
@@ -1497,49 +1591,59 @@ fn sacm23_base_004_text_or_an_attribute_a_utility_element_cannot_hold_is_unsuppo
             )),
         ),
     ];
+    // An attribute the class lacks, at its name; a defect inside `content`,
+    // as the whole content, at its start tag (ADR 0033).
     for (what, template) in &cases {
-        assert_unsupported_at_mark(ROW, what, template);
+        assert_preserved_at_mark(ROW, what, template);
     }
 }
 
 #[test]
-fn sacm23_base_004_a_content_attribute_off_a_utility_element_and_another_attribute_on_one_are_only_unread()
+fn sacm23_base_004_a_content_attribute_off_a_utility_element_and_another_attribute_on_one_are_only_preserved()
  {
+    // Attributes the class lacks: each is kept as preserved content of its
+    // element (ADR 0033), and none is read as the C++ shorthand
+    // (LIB-COMPAT-008): no SACM-XMI-012, and no content.
     let cases = [
         (
             "content= on a Claim",
             ap_root(&format!(
                 "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\" {MARK}content=\"x\"/>"
             )),
-            "the attribute \"content\" of the element \"argumentElement\" is not read in this release",
         ),
         (
             "content= on an ArgumentPackage child",
             acp_root(&format!(
                 "<argumentPackage xmi:id=\"a\" {MARK}content=\"x\"/>"
             )),
-            "the attribute \"content\" of the element \"argumentPackage\" is not read in this release",
         ),
         (
             "foo= on a Description",
             in_ap(&format!("<description xmi:id=\"d\" {MARK}foo=\"1\"/>")),
-            "the attribute \"foo\" of the element \"description\" is not read in this release",
         ),
         (
             "lang= on a Note",
             in_ap(&format!("<note xmi:id=\"n\" {MARK}lang=\"en\"/>")),
-            "the attribute \"lang\" of the element \"note\" is not read in this release",
         ),
     ];
-    for (what, template, expected) in &cases {
-        let reason = assert_unsupported_at_mark(ROW, what, template);
-        assert_eq!(
-            reason, *expected,
-            "{ROW}: {what}: not an ordinary unread attribute"
-        );
+    for (what, template) in &cases {
+        let doc = assert_preserved_at_mark(ROW, what, template);
+        let (input, _) = marked(ROW, template);
+        for mode in [Mode::Tolerant, Mode::Strict] {
+            if let Ok(output) = read(mode, &input) {
+                assert!(
+                    output
+                        .diagnostics()
+                        .iter()
+                        .all(|found| found.code() != Code::XMI_LEGACY_SHAPE),
+                    "{ROW}: {what}: read as a LIB-COMPAT-008 shape in {mode:?} mode: {:?}",
+                    output.diagnostics()
+                );
+            }
+        }
         assert!(
-            !reason.contains("LIB-COMPAT-008"),
-            "{ROW}: {what}: the reason {reason:?} names LIB-COMPAT-008"
+            doc.elements().all(|element| element.content().is_none()),
+            "{ROW}: {what}: the attribute was read as a content"
         );
     }
 }
