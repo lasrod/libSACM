@@ -1141,60 +1141,87 @@ fn walk<'a>(
     }
 
     for element in left.elements() {
-        let ours = element.compared();
-        let Some(other) = right.get(ours.id) else {
-            sink(Found::LeftOnly(ours))?;
+        let Some(other) = right.get(element.id()) else {
+            sink(Found::LeftOnly(element.compared()))?;
             continue;
         };
-        let theirs = other.compared();
-        if ours.kind != theirs.kind {
-            sink(Found::Kind(ours, theirs))?;
-        }
-        if ours.parent != theirs.parent {
-            sink(Found::Parent(ours, theirs))?;
-        }
-        if ours.gid != theirs.gid {
-            sink(Found::Gid(ours, theirs))?;
-        }
-        for flag in Flag::ALL {
-            if ours.flag(flag) != theirs.flag(flag) {
-                sink(Found::Flag(flag, ours, theirs))?;
-            }
-        }
-        for end in ReferenceEnd::ALL {
-            if ours.references(end) != theirs.references(end) {
-                sink(Found::Reference(end, ours, theirs))?;
-            }
-        }
-        if ours.name != theirs.name {
-            sink(Found::Name(ours, theirs))?;
-        }
-        if ours.name_id != theirs.name_id {
-            sink(Found::NameId(ours, theirs))?;
-        }
-        for role in [TextRole::Content, TextRole::Key] {
-            if text_value(&ours, role) != text_value(&theirs, role) {
-                sink(Found::Text(role, ours, theirs))?;
-            }
-            if text_id(&ours, role) != text_id(&theirs, role) {
-                sink(Found::TextId(role, ours, theirs))?;
-            }
-            if value_ids_differ(text_value_ids(&ours, role), text_value_ids(&theirs, role)) {
-                sink(Found::TextValueIds(role, ours, theirs))?;
-            }
-        }
-        if ours.assertion_declaration != theirs.assertion_declaration {
-            sink(Found::AssertionDeclaration(ours, theirs))?;
-        }
-        if common_children(element, right).ne(common_children(other, left)) {
-            sink(Found::ChildOrder(element, other))?;
-        }
+        compare_element(left, right, element, other, &mut sink)?;
     }
 
     for element in right.elements() {
         if !left.contains(element.id()) {
             sink(Found::RightOnly(element))?;
         }
+    }
+    ControlFlow::Continue(())
+}
+
+/// Whether the element `id`, held by both documents, differs between them:
+/// whether [`semantic_compare`] reports a difference of the element itself
+/// (not `LeftOnly`, `RightOnly` or `RootOrder`). `false` when either
+/// document lacks it. Linear in the element's features and children.
+pub(crate) fn element_differs(left: &Document, right: &Document, id: &ElementId) -> bool {
+    match (left.get(id), right.get(id)) {
+        (Some(element), Some(other)) => {
+            compare_element(left, right, element, other, &mut |_| ControlFlow::Break(())).is_break()
+        }
+        _ => false,
+    }
+}
+
+/// Gives each difference of `element` of `left` and `other`, the element
+/// with its id in `right`, to `sink`, in [`semantic_compare`]'s order, until
+/// `sink` breaks.
+fn compare_element<'a>(
+    left: &'a Document,
+    right: &'a Document,
+    element: SacmElement<'a>,
+    other: SacmElement<'a>,
+    sink: &mut impl FnMut(Found<'a>) -> ControlFlow<()>,
+) -> ControlFlow<()> {
+    let ours = element.compared();
+    let theirs = other.compared();
+    if ours.kind != theirs.kind {
+        sink(Found::Kind(ours, theirs))?;
+    }
+    if ours.parent != theirs.parent {
+        sink(Found::Parent(ours, theirs))?;
+    }
+    if ours.gid != theirs.gid {
+        sink(Found::Gid(ours, theirs))?;
+    }
+    for flag in Flag::ALL {
+        if ours.flag(flag) != theirs.flag(flag) {
+            sink(Found::Flag(flag, ours, theirs))?;
+        }
+    }
+    for end in ReferenceEnd::ALL {
+        if ours.references(end) != theirs.references(end) {
+            sink(Found::Reference(end, ours, theirs))?;
+        }
+    }
+    if ours.name != theirs.name {
+        sink(Found::Name(ours, theirs))?;
+    }
+    if ours.name_id != theirs.name_id {
+        sink(Found::NameId(ours, theirs))?;
+    }
+    for role in [TextRole::Content, TextRole::Key] {
+        if text_value(&ours, role) != text_value(&theirs, role) {
+            sink(Found::Text(role, ours, theirs))?;
+        }
+        if text_id(&ours, role) != text_id(&theirs, role) {
+            sink(Found::TextId(role, ours, theirs))?;
+        }
+        if value_ids_differ(text_value_ids(&ours, role), text_value_ids(&theirs, role)) {
+            sink(Found::TextValueIds(role, ours, theirs))?;
+        }
+    }
+    if ours.assertion_declaration != theirs.assertion_declaration {
+        sink(Found::AssertionDeclaration(ours, theirs))?;
+    }
+    if common_children(element, right).ne(common_children(other, left)) {
+        sink(Found::ChildOrder(element, other))?;
     }
     ControlFlow::Continue(())
 }

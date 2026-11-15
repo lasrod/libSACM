@@ -132,9 +132,25 @@ impl ReorderElements {
                 });
             }
         }
+        // The named ids, in the order they are held now: the order changes
+        // exactly when that is not `order`.
+        let held: Vec<&ElementId> = match parent.and_then(|parent| document.get(parent)) {
+            Some(parent) => parent
+                .children()
+                .map(SacmElement::id)
+                .filter(|child| seen.contains(child))
+                .collect(),
+            None => document
+                .roots()
+                .map(SacmElement::id)
+                .filter(|root| seen.contains(root))
+                .collect(),
+        };
+        let changes = !held.iter().copied().eq(&self.order);
         Ok(Plan::Reorder {
             parent,
             order: &self.order,
+            changes,
         })
     }
 }

@@ -243,6 +243,27 @@ catalog! {
     /// included.
     pub const CMD_TARGET_NOT_FOUND: Code = Code::from_static("SACM-CMD-001");
 
+    /// SACM-CMD-002: a delete would leave a reference dangling, and its
+    /// reference policy is `RejectIfReferenced`. The code of
+    /// [`EditError::Referenced`](crate::edit::EditError::Referenced)
+    /// (LIB-EDIT-005). Choose `DeleteReferencingRelationships` or
+    /// `ScrubReferences`, or remove the reference first. Named after the C++
+    /// library's code.
+    ///
+    /// ```
+    /// use sacm::diagnostic::Code;
+    ///
+    /// assert_eq!(Code::CMD_DELETE_REFERENCED.as_str(), "SACM-CMD-002");
+    /// ```
+    pub const CMD_DELETE_REFERENCED: Code = Code::from_static("SACM-CMD-002");
+
+    /// SACM-CMD-003: a preview is applied to a document that changed after
+    /// the preview was taken, or to another document. The code of
+    /// [`EditError::PreviewExpired`](crate::edit::EditError::PreviewExpired)
+    /// (LIB-EDIT-007). Preview the operation again. Named after the C++
+    /// library's code.
+    pub const CMD_PREVIEW_EXPIRED: Code = Code::from_static("SACM-CMD-003");
+
     /// SACM-CMD-004: a create operation's caller-given id is already in the
     /// document. The code of
     /// [`EditError::DuplicateId`](crate::edit::EditError::DuplicateId)
@@ -258,6 +279,22 @@ catalog! {
     /// example, a Claim goes in an ArgumentPackage, and an ArgumentPackage in
     /// an AssuranceCasePackage or another ArgumentPackage.
     pub const CMD_INVALID_PARENT: Code = Code::from_static("SACM-CMD-005");
+
+    /// SACM-CMD-006: a delete names an element that contains elements other
+    /// than `UtilityElement`s, and its package policy is `RejectIfNonEmpty`.
+    /// The code of [`EditError::NotEmpty`](crate::edit::EditError::NotEmpty)
+    /// (LIB-EDIT-006). Choose `DeleteRecursively`, or delete the contents
+    /// first. Named after the C++ library's code.
+    pub const CMD_PACKAGE_NOT_EMPTY: Code = Code::from_static("SACM-CMD-006");
+
+    /// SACM-CMD-007: a delete would leave a reference dangling across a
+    /// package boundary, and its cross-package policy is
+    /// `RejectIfExternalReferencesExist`. The code of
+    /// [`EditError::CrossPackageReference`](crate::edit::EditError::CrossPackageReference)
+    /// (LIB-EDIT-006). Choose `ApplyReferencePolicy` with a reference policy
+    /// that handles the reference, or remove it first. Named after the C++
+    /// library's code.
+    pub const CMD_EXTERNAL_REFERENCES: Code = Code::from_static("SACM-CMD-007");
 
     /// SACM-CMD-008: the operation does not apply to the element's kind. The
     /// element exists, but its class has no such feature: a `name` on a

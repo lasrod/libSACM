@@ -109,5 +109,31 @@
     "type": "InvalidOrder",
     "code": "SACM-CMD-009",
     "repeated": "c1"
+  },
+  {
+    "type": "Referenced",
+    "code": "SACM-CMD-002",
+    "holder": "c2",
+    "end": "metaClaim",
+    "id": "c1"
+  },
+  {
+    "type": "PreviewExpired",
+    "code": "SACM-CMD-003",
+    "previewed": 1,
+    "current": 2
+  },
+  {
+    "type": "NotEmpty",
+    "code": "SACM-CMD-006",
+    "element": "r",
+    "contained": 1
+  },
+  {
+    "type": "CrossPackageReference",
+    "code": "SACM-CMD-007",
+    "holder": "c3",
+    "end": "metaClaim",
+    "id": "c4"
   }
 ]

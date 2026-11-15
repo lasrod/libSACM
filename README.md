@@ -53,8 +53,8 @@ wrong kind, each element with a `citedElement` whose `isCitation` is not true, e
 `abstractForm` that breaks a §8.2 rule, each asserted relationship without a source or a
 target, each evidence or artifact relationship whose ends are not artifact references,
 and each id a reference end repeats. The other element kinds in XMI, the other
-validation rules and the other edit operations, such as delete and undo, are not built
-yet. Milestone M0, the foundation, is done: the workspace, CI, the functionality matrix
+validation rules and undo are not built yet; editing covers creating, setting, reordering
+and deleting elements, previews and atomic batches. Milestone M0, the foundation, is done: the workspace, CI, the functionality matrix
 and its gate, and mutation testing.
 The [functionality matrix](docs/matrix/functionality-matrix.md) shows what is verified;
 nothing else is claimed.

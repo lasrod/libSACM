@@ -1,4 +1,10 @@
-//! Tests for the `serde` feature (LIB-API-006; ADR 0030, shape rules R1-R7).
+//! Tests for the `serde` feature (LIB-API-006; ADR 0030, shape rules R1-R7),
+//! and for the values slice 0048 adds to it (ADR 0031, ADR 0032):
+//! `DeleteElement` and its policies (LIB-EDIT-005, LIB-EDIT-006), the
+//! `EditError` variants `Referenced`, `NotEmpty`, `CrossPackageReference`
+//! (LIB-EDIT-005, LIB-EDIT-006) and `PreviewExpired` (LIB-EDIT-007),
+//! `DanglingReference` and the write-only `Preview` (LIB-EDIT-004), and
+//! `BatchMutation` and `BatchError` (LIB-EDIT-014).
 //!
 //! - Golden files under `tests/data/golden/serde/` fix the JSON shape, which
 //!   is a stability promise: serializing the samples built here with
@@ -23,9 +29,16 @@
 //!   and `apply` answer it exactly as the twin (ADR 0030 "Deserializing
 //!   proves nothing about origin").
 //!
+//! - A `Revision` is process-dependent (ADR 0031), so no golden file holds a
+//!   real one: the `PreviewExpired` sample of `edit-errors.json` is read from
+//!   JSON with the revisions 1 and 2, a real stale preview's refusal is
+//!   round-tripped on its own, and `previews.json` holds each `"revision"`
+//!   as 0, which the test writes in place of the real number after checking
+//!   it is one.
+//!
 //! Not checked here:
-//! - That `Document` implements neither trait: a `compile_fail` doctest in the
-//!   crate.
+//! - That `Document` implements neither trait, and that `Preview` does not
+//!   implement `Deserialize`: `compile_fail` doctests in the crate.
 //! - That `sacm` has no serde dependency without the feature, and the wasm32,
 //!   `cargo deny` and MSRV builds with it: CI and the gate.
 
@@ -37,13 +50,14 @@ use std::path::Path;
 
 use sacm::diagnostic::{Code, Diagnostic, Severity, SourceLocation};
 use sacm::edit::{
-    self, AddReference, CreateArgumentGroup, CreateArgumentPackage, CreateArgumentReasoning,
-    CreateArtifactReference, CreateAssertedArtifactContext, CreateAssertedArtifactSupport,
-    CreateAssertedContext, CreateAssertedEvidence, CreateAssertedInference,
-    CreateAssuranceCasePackage, CreateClaim, CreateDescription, CreateImplementationConstraint,
-    CreateNote, CreateTaggedValue, EditError, Mutation, Operation, RemoveReference,
-    ReorderElements, SetAssertionDeclaration, SetContent, SetFlag, SetGid, SetKey, SetName,
-    SetReferences,
+    self, AddReference, BatchError, BatchMutation, CreateArgumentGroup, CreateArgumentPackage,
+    CreateArgumentReasoning, CreateArtifactReference, CreateAssertedArtifactContext,
+    CreateAssertedArtifactSupport, CreateAssertedContext, CreateAssertedEvidence,
+    CreateAssertedInference, CreateAssuranceCasePackage, CreateClaim, CreateDescription,
+    CreateImplementationConstraint, CreateNote, CreateTaggedValue, CrossPackageReferencePolicy,
+    DanglingReference, DeleteElement, EditError, Mutation, Operation, PackageDeletePolicy, Preview,
+    ReferenceDeletePolicy, RemoveReference, ReorderElements, SetAssertionDeclaration, SetContent,
+    SetFlag, SetGid, SetKey, SetName, SetReferences,
 };
 use sacm::model::{
     AssertionDeclaration, Document, ElementId, ElementKind, Flag, LangString, MultiLangString,
@@ -54,13 +68,18 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 const API_006: &str = "LIB-API-006";
+const EDIT_004: &str = "LIB-EDIT-004";
+const EDIT_005: &str = "LIB-EDIT-005";
+const EDIT_006: &str = "LIB-EDIT-006";
+const EDIT_007: &str = "LIB-EDIT-007";
+const EDIT_014: &str = "LIB-EDIT-014";
 
 /// The directory of the golden JSON files.
 const GOLDEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/golden/serde");
 
-/// Every operation name of this release, in the declaration order of
-/// `Operation`.
-const OPERATION_NAMES: [&str; 25] = [
+/// Every operation name of this release: the creates first, in the order of
+/// `operations.json`.
+const OPERATION_NAMES: [&str; 26] = [
     "CreateAssuranceCasePackage",
     "CreateArgumentPackage",
     "CreateClaim",
@@ -86,14 +105,15 @@ const OPERATION_NAMES: [&str; 25] = [
     "AddReference",
     "RemoveReference",
     "ReorderElements",
+    "DeleteElement",
 ];
 
 /// The first 15 of [`OPERATION_NAMES`]: the creates.
 const CREATE_COUNT: usize = 15;
 
-/// Every `EditError` variant of this release, with its catalog code, in
-/// declaration order.
-const EDIT_ERRORS: [(&str, &str); 14] = [
+/// Every `EditError` variant of this release, with its catalog code, in the
+/// order of `edit-errors.json`.
+const EDIT_ERRORS: [(&str, &str); 18] = [
     ("ParentNotFound", "SACM-CMD-001"),
     ("InvalidParent", "SACM-CMD-005"),
     ("InvalidId", "SACM-ID-002"),
@@ -108,11 +128,15 @@ const EDIT_ERRORS: [(&str, &str); 14] = [
     ("ReferenceNotHeld", "SACM-CMD-001"),
     ("ChildNotFound", "SACM-CMD-001"),
     ("InvalidOrder", "SACM-CMD-009"),
+    ("Referenced", "SACM-CMD-002"),
+    ("PreviewExpired", "SACM-CMD-003"),
+    ("NotEmpty", "SACM-CMD-006"),
+    ("CrossPackageReference", "SACM-CMD-007"),
 ];
 
 /// Every catalog `Code` constant of this release. The catalog cross-check
 /// keeps it in step with `docs/sacm/diagnostics.md`.
-const CODES: [Code; 22] = [
+const CODES: [Code; 26] = [
     Code::XML_MALFORMED,
     Code::XML_DOCTYPE_REJECTED,
     Code::XMI_INVALID_ROOT,
@@ -122,8 +146,12 @@ const CODES: [Code; 22] = [
     Code::MULTIPLICITY_VIOLATION,
     Code::ENUM_INVALID_LITERAL,
     Code::CMD_TARGET_NOT_FOUND,
+    Code::CMD_DELETE_REFERENCED,
+    Code::CMD_PREVIEW_EXPIRED,
     Code::CMD_DUPLICATE_ID,
     Code::CMD_INVALID_PARENT,
+    Code::CMD_PACKAGE_NOT_EMPTY,
+    Code::CMD_EXTERNAL_REFERENCES,
     Code::CMD_FEATURE_NOT_APPLICABLE,
     Code::CMD_INVALID_ORDER,
     Code::ID_DUPLICATE,
@@ -180,6 +208,66 @@ const ERROR_START: &str = r#"<sacm:AssuranceCasePackage xmlns:sacm="http://www.o
 </sacm:AssuranceCasePackage>
 "#;
 
+/// The document the delete samples are taken on. Three `ArgumentPackage`s:
+/// - `p`: the Claims `c1`, `c2` (meta-claim `c1`), `c4` and `c6`, and the
+///   `ArgumentGroup` `g1` (member `c6`);
+/// - `q`: the Claim `c3` (meta-claims `c4` and `c6`, across the package
+///   boundary);
+/// - `r`: the Claim `c5`, its only element.
+///
+/// So deleting `c1` dangles one reference inside `p` (CMD-002), deleting `c4`
+/// one across it (CMD-007), deleting `r` meets one contained element
+/// (CMD-006), and deleting `c6` dangles one of each.
+const DELETE_START: &str = r#"<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="case">
+  <name content="Case"/>
+  <argumentPackage xmi:id="p">
+    <name content="P"/>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c1"><name content="C1"/></argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c2" metaClaim="c1"><name content="C2"/></argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c4"><name content="C4"/></argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c6"><name content="C6"/></argumentElement>
+    <argumentElement xmi:type="sacm:ArgumentGroup" xmi:id="g1" argumentElement="c6"><name content="G1"/></argumentElement>
+  </argumentPackage>
+  <argumentPackage xmi:id="q">
+    <name content="Q"/>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c3" metaClaim="c4 c6"><name content="C3"/></argumentElement>
+  </argumentPackage>
+  <argumentPackage xmi:id="r">
+    <name content="R"/>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c5"><name content="C5"/></argumentElement>
+  </argumentPackage>
+</sacm:AssuranceCasePackage>
+"#;
+
+/// The `PreviewExpired` sample of `edit-errors.json`: a revision depends on
+/// the process, so the sample is read from JSON, not refused by a real stale
+/// preview.
+const PREVIEW_EXPIRED_JSON: &str =
+    r#"{"type":"PreviewExpired","code":"SACM-CMD-003","previewed":1,"current":2}"#;
+
+/// The three policy keys of `DeleteElement`, each with its default, the
+/// reject variant, and its other variants (ADR 0031).
+const DELETE_POLICIES: [(&str, &str, &[&str]); 3] = [
+    (
+        "reference_policy",
+        "RejectIfReferenced",
+        &["DeleteReferencingRelationships", "ScrubReferences"],
+    ),
+    ("package_policy", "RejectIfNonEmpty", &["DeleteRecursively"]),
+    (
+        "cross_package_policy",
+        "RejectIfExternalReferencesExist",
+        &["ApplyReferencePolicy"],
+    ),
+];
+
+/// `DeleteElement::new("c1")` with every key written, compact.
+const DELETE_JSON: &str = r#"{"type":"DeleteElement","element":"c1","reference_policy":"RejectIfReferenced","package_policy":"RejectIfNonEmpty","cross_package_policy":"RejectIfExternalReferencesExist"}"#;
+
+/// The keys of a serialized `Preview`, in order (ADR 0031): the operation is
+/// the mutation's, so it is written once, inside `mutation`.
+const PREVIEW_KEYS: [&str; 3] = ["revision", "mutation", "dangling_references"];
+
 /// A valid `CreateClaim`, compact: the example of ADR 0030.
 const CLAIM_JSON: &str = r#"{"type":"CreateClaim","parent":"arguments","id":null,"name":{"lang":"en","content":"The system is safe"}}"#;
 
@@ -233,22 +321,30 @@ fn assert_golden<T>(name: &str, values: &T)
 where
     T: Serialize + DeserializeOwned + PartialEq + Debug,
 {
+    assert_golden_for(API_006, name, values);
+}
+
+/// [`assert_golden`], with messages that start with `row`.
+fn assert_golden_for<T>(row: &str, name: &str, values: &T)
+where
+    T: Serialize + DeserializeOwned + PartialEq + Debug,
+{
     let expected = golden(name);
     let written = match serde_json::to_string_pretty(values) {
         Ok(text) => text + "\n",
-        Err(error) => panic!("{API_006}: the samples of {name} do not serialize: {error}"),
+        Err(error) => panic!("{row}: the samples of {name} do not serialize: {error}"),
     };
     assert_eq!(
         written, expected,
-        "{API_006}: serializing the samples does not give the bytes of {name}"
+        "{row}: serializing the samples does not give the bytes of {name}"
     );
     let read: T = match serde_json::from_str(&expected) {
         Ok(read) => read,
-        Err(error) => panic!("{API_006}: {name} does not read back: {error}"),
+        Err(error) => panic!("{row}: {name} does not read back: {error}"),
     };
     assert_eq!(
         &read, values,
-        "{API_006}: {name} reads back to values other than the samples"
+        "{row}: {name} reads back to values other than the samples"
     );
 }
 
@@ -256,19 +352,30 @@ where
 /// `to` is refused as data (not as malformed JSON): the refusal is caused by
 /// the change, which `what` names.
 fn assert_refused<T: DeserializeOwned + Debug>(what: &str, valid: &str, from: &str, to: &str) {
+    assert_refused_for::<T>(API_006, what, valid, from, to);
+}
+
+/// [`assert_refused`], with messages that start with `row`.
+fn assert_refused_for<T: DeserializeOwned + Debug>(
+    row: &str,
+    what: &str,
+    valid: &str,
+    from: &str,
+    to: &str,
+) {
     let invalid = valid.replacen(from, to, 1);
     assert_ne!(
         invalid, valid,
-        "{API_006}: setup: {what}: {from:?} is not in {valid}"
+        "{row}: setup: {what}: {from:?} is not in {valid}"
     );
     if let Err(error) = serde_json::from_str::<T>(valid) {
-        panic!("{API_006}: setup: {what}: the valid twin {valid} does not read: {error}");
+        panic!("{row}: setup: {what}: the valid twin {valid} does not read: {error}");
     }
     match serde_json::from_str::<T>(&invalid) {
-        Ok(value) => panic!("{API_006}: {what}: {invalid} was read as {value:?}"),
+        Ok(value) => panic!("{row}: {what}: {invalid} was read as {value:?}"),
         Err(error) => assert!(
             error.is_data(),
-            "{API_006}: {what}: {invalid} is refused as malformed JSON, not as data: {error}"
+            "{row}: {what}: {invalid} is refused as malformed JSON, not as data: {error}"
         ),
     }
 }
@@ -332,6 +439,48 @@ fn error_start() -> Document {
     }
 }
 
+fn delete_start() -> Document {
+    match xmi::read(DELETE_START.as_bytes(), &ReadOptions::default()) {
+        Ok(output) => output.into_document(),
+        Err(error) => panic!("{EDIT_005}: setup: DELETE_START does not read: {error}"),
+    }
+}
+
+/// `DeleteElement::new(element)` that scrubs every reference, across
+/// packages too.
+fn scrubbing_delete(element: &str) -> DeleteElement {
+    DeleteElement::new(element)
+        .with_reference_policy(ReferenceDeletePolicy::ScrubReferences)
+        .with_cross_package_policy(CrossPackageReferencePolicy::ApplyReferencePolicy)
+}
+
+/// The preview of `operation`, which must be accepted, on `doc`.
+fn previewed(doc: &Document, operation: impl Into<Operation>) -> Preview {
+    let operation = operation.into();
+    match edit::preview(doc, &operation) {
+        Ok(preview) => preview,
+        Err(error) => {
+            panic!("{EDIT_004}: setup: the preview of {operation:?} was refused: {error}")
+        }
+    }
+}
+
+/// `apply_all`'s outcome, which must be accepted.
+fn committed(result: Result<BatchMutation, BatchError>) -> BatchMutation {
+    match result {
+        Ok(batch) => batch,
+        Err(error) => panic!("{EDIT_014}: setup: the batch was refused: {error}"),
+    }
+}
+
+/// `apply_all`'s outcome, which must be a refusal.
+fn batch_refusal(result: Result<BatchMutation, BatchError>) -> BatchError {
+    match result {
+        Ok(batch) => panic!("{EDIT_014}: setup: the batch was accepted: {batch:?}"),
+        Err(error) => error,
+    }
+}
+
 // ---------------------------------------------------------------------------
 // The samples
 // ---------------------------------------------------------------------------
@@ -344,6 +493,7 @@ fn operation_samples() -> Vec<Operation> {
     samples.extend(argumentation_samples());
     samples.extend(utility_samples());
     samples.extend(edit_samples());
+    samples.extend(delete_samples());
     samples
 }
 
@@ -467,8 +617,25 @@ fn edit_samples() -> Vec<Operation> {
     ]
 }
 
-/// Three mutations, as `edit::apply` returns them: a create with a generated
-/// id, a flag set, and a create with a caller id. In the order of
+/// The deletes of [`operation_samples`]: with the default policies, with one
+/// set, and with every policy set to its other variant, so that each of the
+/// seven policy variants is written.
+fn delete_samples() -> Vec<Operation> {
+    vec![
+        DeleteElement::new("c1").into(),
+        DeleteElement::new("c1")
+            .with_reference_policy(ReferenceDeletePolicy::DeleteReferencingRelationships)
+            .into(),
+        DeleteElement::new("p")
+            .with_reference_policy(ReferenceDeletePolicy::ScrubReferences)
+            .with_package_policy(PackageDeletePolicy::DeleteRecursively)
+            .with_cross_package_policy(CrossPackageReferencePolicy::ApplyReferencePolicy)
+            .into(),
+    ]
+}
+
+/// Four mutations, as `edit::apply` returns them: a create with a generated
+/// id, a flag set, a create with a caller id, and its delete. In the order of
 /// `mutations.json`.
 fn mutation_samples() -> Vec<Mutation> {
     let mut doc = Document::new();
@@ -482,14 +649,29 @@ fn mutation_samples() -> Vec<Mutation> {
             &mut doc,
             CreateClaim::new("argument_package_1", LangString::new("C1")).with_id("c1"),
         ),
+        applied(&mut doc, DeleteElement::new("c1")),
     ]
 }
 
 /// Every `EditError` variant, as `edit::apply` refuses on [`ERROR_START`],
 /// with both forms of `ChildNotFound` and `InvalidOrder`, and a second
-/// `WrongReferenceType` and `FeatureNotApplicable`. In the order of
-/// `edit-errors.json`.
+/// `WrongReferenceType` and `FeatureNotApplicable`; then the delete refusals
+/// on [`DELETE_START`] and the sample [`PREVIEW_EXPIRED_JSON`]. In the order
+/// of `edit-errors.json`.
 fn edit_error_samples() -> Vec<EditError> {
+    let mut samples = edit_refusal_samples();
+    let deletes = delete_start();
+    samples.extend([
+        refusal(&deletes, DeleteElement::new("c1")),
+        from_json(PREVIEW_EXPIRED_JSON),
+        refusal(&deletes, DeleteElement::new("r")),
+        refusal(&deletes, DeleteElement::new("c4")),
+    ]);
+    samples
+}
+
+/// The samples of [`edit_error_samples`] refused on [`ERROR_START`].
+fn edit_refusal_samples() -> Vec<EditError> {
     let doc = error_start();
     let name = || LangString::new("N");
     vec![
@@ -586,6 +768,77 @@ fn value_samples() -> Values {
     )
 }
 
+/// Three batches, as `edit::apply_all` commits them: creates with a caller
+/// and a generated id and a flag set; a create and a delete of `tmp`, a
+/// rename and a delete, whose net ids name `tmp` nowhere; and an empty batch.
+/// In the order of `batch-mutations.json`.
+fn batch_mutation_samples() -> Vec<BatchMutation> {
+    let first: [Operation; 3] = [
+        CreateArgumentPackage::root(en("Arguments"))
+            .with_id("p")
+            .into(),
+        CreateClaim::new("p", LangString::new("C1")).into(),
+        SetFlag::new("claim_1", Flag::IsAbstract, true).into(),
+    ];
+    let second: [Operation; 4] = [
+        CreateClaim::new("q", LangString::new("Temp"))
+            .with_id("tmp")
+            .into(),
+        DeleteElement::new("tmp").into(),
+        SetName::new("c3", LangString::new("Renamed")).into(),
+        DeleteElement::new("c5").into(),
+    ];
+    vec![
+        committed(edit::apply_all(&mut Document::new(), first)),
+        committed(edit::apply_all(&mut delete_start(), second)),
+        committed(edit::apply_all(
+            &mut Document::new(),
+            Vec::<Operation>::new(),
+        )),
+    ]
+}
+
+/// Two refused batches: a create under a missing parent after an accepted
+/// create, and a delete of a referenced element at index 0. In the order of
+/// `batch-errors.json`.
+fn batch_error_samples() -> Vec<BatchError> {
+    let first: [Operation; 2] = [
+        CreateArgumentPackage::root(en("Arguments"))
+            .with_id("p")
+            .into(),
+        CreateClaim::new("nowhere", LangString::new("C1")).into(),
+    ];
+    vec![
+        batch_refusal(edit::apply_all(&mut Document::new(), first)),
+        batch_refusal(edit::apply_all(
+            &mut delete_start(),
+            [DeleteElement::new("c1")],
+        )),
+    ]
+}
+
+/// Two previews on [`DELETE_START`]: a scrubbing delete of `c6`, which
+/// dangles a group member inside its package and a meta-claim across it, and
+/// a create, which dangles nothing. In the order of `previews.json`.
+fn preview_samples() -> Vec<Preview> {
+    let doc = delete_start();
+    vec![
+        previewed(&doc, scrubbing_delete("c6")),
+        previewed(
+            &doc,
+            CreateClaim::new("p", LangString::new("C7")).with_id("c7"),
+        ),
+    ]
+}
+
+/// The dangling references of the delete preview of [`preview_samples`]. In
+/// the order of `dangling-references.json`.
+fn dangling_reference_samples() -> Vec<DanglingReference> {
+    previewed(&delete_start(), scrubbing_delete("c6"))
+        .dangling_references()
+        .to_vec()
+}
+
 // ---------------------------------------------------------------------------
 // The traits
 // ---------------------------------------------------------------------------
@@ -669,6 +922,14 @@ fn assert_bare<T>(value: &T)
 where
     T: Serialize + DeserializeOwned + Into<Operation> + Clone + PartialEq + Debug,
 {
+    assert_bare_for(API_006, value);
+}
+
+/// [`assert_bare`], with messages that start with `row`.
+fn assert_bare_for<T>(row: &str, value: &T)
+where
+    T: Serialize + DeserializeOwned + Into<Operation> + Clone + PartialEq + Debug,
+{
     let operation: Operation = value.clone().into();
     let tagged = to_json(&operation);
     let tag = format!("\"type\":\"{}\",", operation.operation_name());
@@ -676,13 +937,10 @@ where
     assert_eq!(
         bare,
         tagged.replacen(&tag, "", 1),
-        "{API_006}: the bare {value:?} is not its Operation without \"type\""
+        "{row}: the bare {value:?} is not its Operation without \"type\""
     );
     let read: T = from_json(&bare);
-    assert_eq!(
-        &read, value,
-        "{API_006}: the bare {bare} does not read back"
-    );
+    assert_eq!(&read, value, "{row}: the bare {bare} does not read back");
 }
 
 #[test]
@@ -1768,7 +2026,8 @@ where
     copies.len()
 }
 
-/// Runs `assert_changed_copies` over every golden file, with its type.
+/// Runs `assert_changed_copies` over every golden file that reads back, with
+/// its type: all but `previews.json`, since a `Preview` is written only.
 fn assert_every_golden_changed(change: Change<'_>) {
     let counts = [
         (
@@ -1791,6 +2050,18 @@ fn assert_every_golden_changed(change: Change<'_>) {
             "values.json",
             assert_changed_copies::<Values>("values.json", change),
         ),
+        (
+            "batch-mutations.json",
+            assert_changed_copies::<Vec<BatchMutation>>("batch-mutations.json", change),
+        ),
+        (
+            "batch-errors.json",
+            assert_changed_copies::<Vec<BatchError>>("batch-errors.json", change),
+        ),
+        (
+            "dangling-references.json",
+            assert_changed_copies::<Vec<DanglingReference>>("dangling-references.json", change),
+        ),
     ];
     for (name, count) in counts {
         assert!(
@@ -1801,8 +2072,9 @@ fn assert_every_golden_changed(change: Change<'_>) {
 }
 
 /// The keys of `object` a reader may omit, with the default each reads as
-/// (R3): a create's `id` and builder-set keys, a `LangString`'s `lang`
-/// and `content`, and a `Diagnostic`'s `clause`, `affected` and `location`.
+/// (R3): a create's `id` and builder-set keys, a `DeleteElement`'s three
+/// policies (the reject variants, ADR 0031), a `LangString`'s `lang` and
+/// `content`, and a `Diagnostic`'s `clause`, `affected` and `location`.
 fn optional_keys(
     object: &Object,
     root: bool,
@@ -1815,7 +2087,13 @@ fn optional_keys(
         .get("type")
         .and_then(Value::as_str)
         .is_some_and(|name| OPERATION_NAMES[..CREATE_COUNT].contains(&name));
-    if is_create {
+    let is_delete = object.get("type").and_then(Value::as_str) == Some("DeleteElement");
+    if is_delete {
+        DELETE_POLICIES
+            .iter()
+            .map(|(key, default, _)| (*key, Value::String((*default).to_owned())))
+            .collect()
+    } else if is_create {
         vec![
             ("id", Value::Null),
             ("structure", Value::Null),
@@ -1899,8 +2177,580 @@ fn lib_api_006_each_key_of_every_object_of_the_golden_files_is_required_or_has_i
             "values.json",
             assert_changed_copies::<Values>("values.json", &plain),
         ),
+        (
+            "batch-mutations.json",
+            assert_changed_copies::<Vec<BatchMutation>>("batch-mutations.json", &plain),
+        ),
+        (
+            "batch-errors.json",
+            assert_changed_copies::<Vec<BatchError>>("batch-errors.json", &plain),
+        ),
+        (
+            "dangling-references.json",
+            assert_changed_copies::<Vec<DanglingReference>>("dangling-references.json", &plain),
+        ),
     ];
     for (name, count) in counts {
         assert!(count > 0, "{API_006}: setup: no key of {name} was removed");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The values of slice 0048 (ADR 0031, ADR 0032)
+// ---------------------------------------------------------------------------
+
+fn assert_serialize<T: Serialize>() {}
+
+#[test]
+fn lib_edit_005_delete_element_implements_serialize_and_deserialize() {
+    assert_serde::<DeleteElement>();
+}
+
+#[test]
+fn lib_edit_004_dangling_reference_reads_and_writes_and_preview_writes() {
+    assert_serde::<DanglingReference>();
+    assert_serialize::<Preview>();
+}
+
+#[test]
+fn lib_edit_014_batch_mutation_and_batch_error_implement_serialize_and_deserialize() {
+    assert_serde::<BatchMutation>();
+    assert_serde::<BatchError>();
+}
+
+/// `name` in lower camel case: `reference_policy` is `referencePolicy`.
+fn lower_camel(name: &str) -> String {
+    let mut parts = name.split('_');
+    let mut camel = parts.next().unwrap_or_default().to_owned();
+    for part in parts {
+        let mut chars = part.chars();
+        if let Some(first) = chars.next() {
+            camel.extend(first.to_uppercase());
+            camel.push_str(chars.as_str());
+        }
+    }
+    camel
+}
+
+/// `name` with its first letter in lower case: `RejectIfReferenced` is
+/// `rejectIfReferenced`.
+fn lower_first(name: &str) -> String {
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(first) => first.to_lowercase().chain(chars).collect(),
+        None => String::new(),
+    }
+}
+
+/// [`DELETE_JSON`] with the policy `key` set to `variant`.
+fn delete_json_with(key: &str, variant: &str) -> String {
+    let Some((_, default, _)) = DELETE_POLICIES.iter().find(|(name, _, _)| *name == key) else {
+        panic!("{EDIT_005}: setup: no policy {key}");
+    };
+    DELETE_JSON.replacen(
+        &format!("\"{key}\":\"{default}\""),
+        &format!("\"{key}\":\"{variant}\""),
+        1,
+    )
+}
+
+#[test]
+fn lib_edit_005_delete_element_is_written_with_its_element_and_each_policy_by_variant_name() {
+    let default = Operation::from(DeleteElement::new("c1"));
+    assert_eq!(
+        to_json(&default),
+        DELETE_JSON,
+        "{EDIT_005}: DeleteElement::new is not written with the element and the three reject \
+         policies"
+    );
+    let cases: [(DeleteElement, &str, &str); 4] = [
+        (
+            DeleteElement::new("c1")
+                .with_reference_policy(ReferenceDeletePolicy::DeleteReferencingRelationships),
+            "reference_policy",
+            "DeleteReferencingRelationships",
+        ),
+        (
+            DeleteElement::new("c1").with_reference_policy(ReferenceDeletePolicy::ScrubReferences),
+            "reference_policy",
+            "ScrubReferences",
+        ),
+        (
+            DeleteElement::new("c1").with_package_policy(PackageDeletePolicy::DeleteRecursively),
+            "package_policy",
+            "DeleteRecursively",
+        ),
+        (
+            DeleteElement::new("c1")
+                .with_cross_package_policy(CrossPackageReferencePolicy::ApplyReferencePolicy),
+            "cross_package_policy",
+            "ApplyReferencePolicy",
+        ),
+    ];
+    for (delete, key, variant) in cases {
+        let expected = delete_json_with(key, variant);
+        let operation = Operation::from(delete.clone());
+        assert_eq!(
+            to_json(&operation),
+            expected,
+            "{EDIT_005}: the {key} {variant} is not written as its variant name"
+        );
+        let read: Operation = from_json(&expected);
+        assert_eq!(read, operation, "{EDIT_005}: {expected} does not read back");
+        assert_bare_for(EDIT_005, &delete);
+    }
+    let read: Operation = from_json(DELETE_JSON);
+    assert_eq!(
+        read, default,
+        "{EDIT_005}: {DELETE_JSON} does not read as DeleteElement::new"
+    );
+}
+
+#[test]
+fn lib_edit_005_omitted_delete_policies_read_as_the_reject_defaults() {
+    let bare: Operation = from_json(r#"{"type":"DeleteElement","element":"c1"}"#);
+    let default = Operation::from(DeleteElement::new("c1"));
+    assert_eq!(
+        bare, default,
+        "{EDIT_005}: a DeleteElement with only its element is not DeleteElement::new"
+    );
+    for (key, value, _) in DELETE_POLICIES {
+        let without = DELETE_JSON.replacen(&format!(",\"{key}\":\"{value}\""), "", 1);
+        assert_ne!(
+            without, DELETE_JSON,
+            "{EDIT_005}: setup: {key} is not in {DELETE_JSON}"
+        );
+        let read: Operation = from_json(&without);
+        assert_eq!(
+            read, default,
+            "{EDIT_005}: a DeleteElement without {key} does not read as its reject default"
+        );
+    }
+    let scrub: Operation = from_json(
+        r#"{"type":"DeleteElement","element":"c1","reference_policy":"ScrubReferences"}"#,
+    );
+    assert_eq!(
+        scrub,
+        Operation::from(
+            DeleteElement::new("c1").with_reference_policy(ReferenceDeletePolicy::ScrubReferences)
+        ),
+        "{EDIT_005}: a DeleteElement with one policy does not read the others as the defaults"
+    );
+}
+
+#[test]
+fn lib_edit_005_an_unknown_null_or_misplaced_policy_and_a_missing_element_are_refused() {
+    for (key, default, others) in DELETE_POLICIES {
+        let value = format!("\"{default}\"");
+        let refuse = |what: &str, to: &str| {
+            assert_refused_for::<Operation>(EDIT_005, what, DELETE_JSON, &value, to);
+        };
+        refuse(&format!("an unknown {key}"), "\"Widget\"");
+        refuse(
+            &format!("a {key} in lower camel case"),
+            &format!("\"{}\"", lower_first(default)),
+        );
+        refuse(&format!("a null {key}"), "null");
+        refuse(&format!("a {key} as a number"), "0");
+        // A variant of another policy is no variant of this one.
+        for (other, other_default, other_variants) in DELETE_POLICIES {
+            if other == key {
+                continue;
+            }
+            for variant in other_variants.iter().chain([&other_default]) {
+                refuse(
+                    &format!("the {other} {variant} as a {key}"),
+                    &format!("\"{variant}\""),
+                );
+            }
+        }
+        for variant in others {
+            let valid = delete_json_with(key, variant);
+            assert_refused_for::<Operation>(
+                EDIT_005,
+                &format!("the {key} {variant} in lower case"),
+                &valid,
+                variant,
+                &variant.to_lowercase(),
+            );
+        }
+        assert_refused_for::<Operation>(
+            EDIT_005,
+            &format!("a misspelt {key}"),
+            DELETE_JSON,
+            &format!("\"{key}\""),
+            &format!("\"{}\"", lower_camel(key)),
+        );
+    }
+    assert_refused_for::<Operation>(
+        EDIT_005,
+        "a DeleteElement without element",
+        DELETE_JSON,
+        r#""element":"c1","#,
+        "",
+    );
+    assert_refused_for::<Operation>(
+        EDIT_005,
+        "a DeleteElement with a null element",
+        DELETE_JSON,
+        r#""c1""#,
+        "null",
+    );
+    assert_refused_for::<Operation>(
+        EDIT_005,
+        "an unknown key in a DeleteElement",
+        DELETE_JSON,
+        "{",
+        r#"{"policy":null,"#,
+    );
+}
+
+#[test]
+fn lib_edit_005_check_and_apply_answer_a_deserialized_delete_as_its_twin() {
+    let doc = delete_start();
+    let cases: [(&str, DeleteElement); 4] = [
+        (
+            r#"{"type":"DeleteElement","element":"c1"}"#,
+            DeleteElement::new("c1"),
+        ),
+        (
+            r#"{"type":"DeleteElement","element":"r","reference_policy":"ScrubReferences"}"#,
+            DeleteElement::new("r").with_reference_policy(ReferenceDeletePolicy::ScrubReferences),
+        ),
+        (
+            r#"{"type":"DeleteElement","element":"c4"}"#,
+            DeleteElement::new("c4"),
+        ),
+        (
+            r#"{"type":"DeleteElement","element":"c6","reference_policy":"ScrubReferences","cross_package_policy":"ApplyReferencePolicy"}"#,
+            scrubbing_delete("c6"),
+        ),
+    ];
+    for (text, twin) in cases {
+        let twin = Operation::from(twin);
+        let read: Operation = from_json(text);
+        assert_eq!(read, twin, "{EDIT_005}: {text} does not read as its twin");
+        assert_eq!(
+            edit::check(&doc, &read),
+            edit::check(&doc, &twin),
+            "{EDIT_005}: check answers {text} otherwise than its twin"
+        );
+        let (mut via_read, mut via_twin) = (doc.clone(), doc.clone());
+        assert_eq!(
+            edit::apply(&mut via_read, read),
+            edit::apply(&mut via_twin, twin),
+            "{EDIT_005}: apply answers {text} otherwise than its twin"
+        );
+        assert_eq!(
+            via_read, via_twin,
+            "{EDIT_005}: applying {text} leaves another document than its twin"
+        );
+    }
+}
+
+/// `error` serializes as `expected`, compact, and reads back `==`.
+fn assert_error_json(row: &str, error: &EditError, expected: &str) {
+    let written = to_json(error);
+    assert_eq!(
+        written, expected,
+        "{row}: {error:?} is not written with its type, code and fields"
+    );
+    let read: EditError = from_json(&written);
+    assert_eq!(&read, error, "{row}: {written} does not read back");
+}
+
+#[test]
+fn lib_edit_005_a_referenced_refusal_is_written_with_its_code_holder_end_and_id() {
+    let error = refusal(&delete_start(), DeleteElement::new("c1"));
+    let expected =
+        r#"{"type":"Referenced","code":"SACM-CMD-002","holder":"c2","end":"metaClaim","id":"c1"}"#;
+    assert_error_json(EDIT_005, &error, expected);
+    assert_refused_for::<EditError>(
+        EDIT_005,
+        "an unknown end in a Referenced",
+        expected,
+        "metaClaim",
+        "metaclaim",
+    );
+    assert_refused_for::<EditError>(
+        EDIT_005,
+        "a Referenced with another code",
+        expected,
+        "SACM-CMD-002",
+        "SACM-CMD-006",
+    );
+}
+
+#[test]
+fn lib_edit_006_not_empty_and_cross_package_reference_are_written_with_their_codes() {
+    let doc = delete_start();
+    let not_empty = r#"{"type":"NotEmpty","code":"SACM-CMD-006","element":"r","contained":1}"#;
+    assert_error_json(EDIT_006, &refusal(&doc, DeleteElement::new("r")), not_empty);
+    let crossing = r#"{"type":"CrossPackageReference","code":"SACM-CMD-007","holder":"c3","end":"metaClaim","id":"c4"}"#;
+    assert_error_json(EDIT_006, &refusal(&doc, DeleteElement::new("c4")), crossing);
+    for (what, from, to) in [
+        ("a negative count", "1}", "-1}"),
+        ("a count as a string", "1}", "\"1\"}"),
+        ("a null count", "1}", "null}"),
+    ] {
+        assert_refused_for::<EditError>(EDIT_006, what, not_empty, from, to);
+    }
+    assert_refused_for::<EditError>(
+        EDIT_006,
+        "a CrossPackageReference with the code of Referenced",
+        crossing,
+        "SACM-CMD-007",
+        "SACM-CMD-002",
+    );
+}
+
+#[test]
+fn lib_edit_007_a_real_preview_expired_round_trips_with_its_revisions_as_json_numbers() {
+    let mut doc = delete_start();
+    let preview = previewed(&doc, SetName::new("c1", en("Renamed")));
+    applied(&mut doc, SetName::new("c2", en("Changed first")));
+    let error = match edit::apply_preview(&mut doc, &preview) {
+        Ok(mutation) => panic!("{EDIT_007}: setup: a stale preview was applied: {mutation:?}"),
+        Err(error) => error,
+    };
+    assert!(
+        matches!(
+            &error,
+            EditError::PreviewExpired { previewed, current, .. }
+                if *previewed == preview.revision() && *current == doc.revision()
+        ),
+        "{EDIT_007}: setup: the stale preview is refused as {error:?}"
+    );
+    let written = to_json(&error);
+    let value: serde_json::Value = from_json(&written);
+    let number = |key: &str| value.get(key).and_then(serde_json::Value::as_u64);
+    let (Some(previewed), Some(current)) = (number("previewed"), number("current")) else {
+        panic!("{EDIT_007}: the revisions of {written} are not JSON numbers");
+    };
+    assert_eq!(
+        written,
+        format!(
+            r#"{{"type":"PreviewExpired","code":"SACM-CMD-003","previewed":{previewed},"current":{current}}}"#
+        ),
+        "{EDIT_007}: a PreviewExpired is not written with its type, code and two revisions"
+    );
+    assert_ne!(
+        previewed, current,
+        "{EDIT_007}: the two revisions of a stale preview are written as one number"
+    );
+    let preview_value: serde_json::Value = from_json(&to_json(&preview));
+    assert_eq!(
+        preview_value
+            .get("revision")
+            .and_then(serde_json::Value::as_u64),
+        Some(previewed),
+        "{EDIT_007}: previewed is not written as the preview's revision"
+    );
+    let read: EditError = from_json(&written);
+    assert_eq!(read, error, "{EDIT_007}: {written} does not read back");
+    for (what, from, to) in [
+        (
+            "a revision as a string",
+            "\"current\":2",
+            "\"current\":\"2\"",
+        ),
+        ("a null revision", "\"previewed\":1", "\"previewed\":null"),
+    ] {
+        assert_refused_for::<EditError>(EDIT_007, what, PREVIEW_EXPIRED_JSON, from, to);
+    }
+}
+
+/// `text` with the number of every `"revision": n` line written as 0.
+fn mask_revisions(text: &str) -> String {
+    let mut masked = String::new();
+    for line in text.lines() {
+        let replaced = line
+            .split_once("\"revision\": ")
+            .and_then(|(indent, rest)| {
+                let digits = rest.trim_end_matches(',');
+                let comma = &rest[digits.len()..];
+                (!digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit()))
+                    .then(|| format!("{indent}\"revision\": 0{comma}"))
+            });
+        masked.push_str(replaced.as_deref().unwrap_or(line));
+        masked.push('\n');
+    }
+    masked
+}
+
+/// The JSON number `preview` writes as its revision.
+fn revision_number(preview: &Preview) -> u64 {
+    let value: serde_json::Value = from_json(&to_json(preview));
+    match value.get("revision").and_then(serde_json::Value::as_u64) {
+        Some(number) => number,
+        None => panic!("{EDIT_004}: the revision of {value} is not a JSON number"),
+    }
+}
+
+#[test]
+fn lib_edit_004_previews_serialize_to_the_golden_json_with_the_revision_as_a_number() {
+    let samples = preview_samples();
+    let numbers: Vec<u64> = samples.iter().map(revision_number).collect();
+    assert!(
+        numbers.windows(2).all(|pair| pair[0] == pair[1]),
+        "{EDIT_004}: two previews of one document state write different revisions {numbers:?}"
+    );
+    let mut changed = delete_start();
+    applied(&mut changed, SetName::new("c2", en("Changed")));
+    let later = previewed(&changed, SetName::new("c1", en("Later")));
+    assert_ne!(
+        Some(revision_number(&later)),
+        numbers.first().copied(),
+        "{EDIT_004}: a preview of a changed document writes the same revision"
+    );
+    for preview in &samples {
+        let value: serde_json::Value = from_json(&to_json(preview));
+        let keys: BTreeSet<&str> = value
+            .as_object()
+            .map(|object| object.keys().map(String::as_str).collect())
+            .unwrap_or_default();
+        assert_eq!(
+            keys,
+            PREVIEW_KEYS.into_iter().collect::<BTreeSet<_>>(),
+            "{EDIT_004}: a Preview is not written with the keys {PREVIEW_KEYS:?}"
+        );
+        let part = |key: &str| value.get(key).cloned().unwrap_or_default();
+        let as_value = |text: String| from_json::<serde_json::Value>(&text);
+        assert_eq!(
+            part("mutation"),
+            as_value(to_json(preview.mutation())),
+            "{EDIT_004}: a Preview's mutation is not written as its Mutation"
+        );
+        assert_eq!(
+            part("dangling_references"),
+            as_value(to_json(&preview.dangling_references())),
+            "{EDIT_004}: a Preview's dangling_references are not written as a list of them"
+        );
+    }
+    let written = match serde_json::to_string_pretty(&samples) {
+        Ok(text) => text + "\n",
+        Err(error) => panic!("{EDIT_004}: the previews do not serialize: {error}"),
+    };
+    assert_eq!(
+        mask_revisions(&written),
+        golden("previews.json"),
+        "{EDIT_004}: serializing the previews, revisions written as 0, does not give the bytes \
+         of previews.json"
+    );
+}
+
+#[test]
+fn lib_edit_004_dangling_references_serialize_to_the_golden_json_and_read_back_equal() {
+    assert_golden_for(
+        EDIT_004,
+        "dangling-references.json",
+        &dangling_reference_samples(),
+    );
+}
+
+#[test]
+fn lib_edit_004_a_dangling_reference_with_an_unknown_name_or_key_is_refused() {
+    let valid = r#"{"holder":"g1","end":"argumentElement","id":"c6","crosses_package":false}"#;
+    let refuse = |what: &str, from: &str, to: &str| {
+        assert_refused_for::<DanglingReference>(EDIT_004, what, valid, from, to);
+    };
+    refuse("an unknown key", "{", r#"{"position":0,"#);
+    refuse("an end by its Rust name", "argumentElement", "GroupMember");
+    refuse("an unknown end", "argumentElement", "member");
+    refuse("crosses_package as a string", "false", "\"false\"");
+    refuse("crosses_package null", "false", "null");
+    for key in [
+        r#""holder":"g1","#,
+        r#""end":"argumentElement","#,
+        r#""id":"c6","#,
+        r#","crosses_package":false"#,
+    ] {
+        refuse(&format!("a DanglingReference without {key}"), key, "");
+    }
+}
+
+#[test]
+fn lib_edit_014_batch_mutations_serialize_to_the_golden_json_and_read_back_equal() {
+    assert_golden_for(EDIT_014, "batch-mutations.json", &batch_mutation_samples());
+}
+
+#[test]
+fn lib_edit_014_batch_errors_serialize_to_the_golden_json_and_read_back_equal() {
+    assert_golden_for(EDIT_014, "batch-errors.json", &batch_error_samples());
+}
+
+#[test]
+fn lib_edit_014_a_batch_record_with_an_unknown_key_a_missing_key_or_a_bad_index_is_refused() {
+    let batch = r#"{"mutations":[],"created_ids":[],"changed_ids":[],"deleted_ids":[]}"#;
+    assert_refused_for::<BatchMutation>(
+        EDIT_014,
+        "an unknown key in a BatchMutation",
+        batch,
+        "{",
+        r#"{"undone":true,"#,
+    );
+    for key in [
+        r#""mutations":[],"#,
+        r#""created_ids":[],"#,
+        r#""changed_ids":[],"#,
+        r#","deleted_ids":[]"#,
+    ] {
+        assert_refused_for::<BatchMutation>(
+            EDIT_014,
+            &format!("a BatchMutation without {key}"),
+            batch,
+            key,
+            "",
+        );
+    }
+    let error = r#"{"index":0,"operation":{"type":"SetName","element":"c1","name":{}},"error":{"type":"ElementNotFound","code":"SACM-CMD-001","element":"c1"}}"#;
+    assert_refused_for::<BatchError>(
+        EDIT_014,
+        "an unknown key in a BatchError",
+        error,
+        "{",
+        r#"{"code":"SACM-CMD-001","#,
+    );
+    for key in [
+        r#""index":0,"#,
+        r#""operation":{"type":"SetName","element":"c1","name":{}},"#,
+        r#","error":{"type":"ElementNotFound","code":"SACM-CMD-001","element":"c1"}"#,
+    ] {
+        assert_refused_for::<BatchError>(
+            EDIT_014,
+            &format!("a BatchError without {key}"),
+            error,
+            key,
+            "",
+        );
+    }
+    for (what, from, to) in [
+        ("a negative index", "\"index\":0", "\"index\":-1"),
+        ("an index as a string", "\"index\":0", "\"index\":\"0\""),
+        ("a null index", "\"index\":0", "\"index\":null"),
+        (
+            "an error whose code does not match its variant",
+            "\"code\":\"SACM-CMD-001\"",
+            "\"code\":\"SACM-CMD-004\"",
+        ),
+    ] {
+        assert_refused_for::<BatchError>(EDIT_014, what, error, from, to);
+    }
+}
+
+#[test]
+fn lib_edit_014_a_batch_error_read_back_answers_as_the_one_apply_all_returned() {
+    for error in batch_error_samples() {
+        let read: BatchError = from_json(&to_json(&error));
+        assert_eq!(
+            (read.index(), read.operation(), read.error(), read.code()),
+            (
+                error.index(),
+                error.operation(),
+                error.error(),
+                error.code()
+            ),
+            "{EDIT_014}: a BatchError read back answers otherwise than the one returned"
+        );
     }
 }

@@ -1,0 +1,56 @@
+[
+  {
+    "revision": 0,
+    "mutation": {
+      "operation": {
+        "type": "DeleteElement",
+        "element": "c6",
+        "reference_policy": "ScrubReferences",
+        "package_policy": "RejectIfNonEmpty",
+        "cross_package_policy": "ApplyReferencePolicy"
+      },
+      "created_ids": [],
+      "changed_ids": [
+        "g1",
+        "c3"
+      ],
+      "deleted_ids": [
+        "c6"
+      ]
+    },
+    "dangling_references": [
+      {
+        "holder": "g1",
+        "end": "argumentElement",
+        "id": "c6",
+        "crosses_package": false
+      },
+      {
+        "holder": "c3",
+        "end": "metaClaim",
+        "id": "c6",
+        "crosses_package": true
+      }
+    ]
+  },
+  {
+    "revision": 0,
+    "mutation": {
+      "operation": {
+        "type": "CreateClaim",
+        "parent": "p",
+        "id": "c7",
+        "name": {
+          "lang": null,
+          "content": "C7"
+        }
+      },
+      "created_ids": [
+        "c7"
+      ],
+      "changed_ids": [],
+      "deleted_ids": []
+    },
+    "dangling_references": []
+  }
+]

@@ -283,6 +283,28 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
   `Flag`, `ReferenceEnd`, `Code`, `Severity`, `SourceLocation`). The JSON shape is
   documented in ADR 0030 and stable; unknown keys, names and codes are refused. `Document`
   is not serialized [LIB-API-006].
+- `edit::preview(&Document, &Operation)` returns the `Preview` of any operation: the
+  `Mutation` `apply` would return and, for a delete, each `DanglingReference` (holder, end,
+  id, whether it crosses a package boundary), without changing the document. A `Preview`
+  serializes but does not deserialize [LIB-EDIT-004].
+- `edit::DeleteElement` deletes an element of any kind and what it contains, refusing a
+  referenced element unless its `ReferenceDeletePolicy` is `DeleteReferencingRelationships`
+  or `ScrubReferences` (`EditError::Referenced`, `Code::CMD_DELETE_REFERENCED`); a
+  successful delete never leaves a dangling reference. A delete does not rewind the id
+  counters, so generation stays deterministic; a freed id may be used again
+  [LIB-EDIT-005].
+- `DeleteElement` refuses a non-empty element unless its `PackageDeletePolicy` is
+  `DeleteRecursively` (`EditError::NotEmpty`, `Code::CMD_PACKAGE_NOT_EMPTY`), and a
+  reference across a package boundary unless its `CrossPackageReferencePolicy` is
+  `ApplyReferencePolicy` (`EditError::CrossPackageReference`,
+  `Code::CMD_EXTERNAL_REFERENCES`) [LIB-EDIT-006].
+- `Document::revision()` returns an opaque `model::Revision`, new for every document and
+  every successful edit, and `edit::apply_preview` refuses a preview taken at another
+  revision (`EditError::PreviewExpired`, `Code::CMD_PREVIEW_EXPIRED`) [LIB-EDIT-007].
+- `edit::batch(&mut Document, |tx| ...)` and `edit::apply_all` apply several operations as
+  one atomic change; a later operation can use an id an earlier one generated. The
+  `BatchMutation` holds each `Mutation` and the net created, changed and deleted ids, and
+  a `BatchError` names the refused operation by index [LIB-EDIT-014].
 
 ### Changed
 

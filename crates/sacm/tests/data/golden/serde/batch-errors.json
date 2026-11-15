@@ -1,0 +1,36 @@
+[
+  {
+    "index": 1,
+    "operation": {
+      "type": "CreateClaim",
+      "parent": "nowhere",
+      "id": null,
+      "name": {
+        "lang": null,
+        "content": "C1"
+      }
+    },
+    "error": {
+      "type": "ParentNotFound",
+      "code": "SACM-CMD-001",
+      "parent": "nowhere"
+    }
+  },
+  {
+    "index": 0,
+    "operation": {
+      "type": "DeleteElement",
+      "element": "c1",
+      "reference_policy": "RejectIfReferenced",
+      "package_policy": "RejectIfNonEmpty",
+      "cross_package_policy": "RejectIfExternalReferencesExist"
+    },
+    "error": {
+      "type": "Referenced",
+      "code": "SACM-CMD-002",
+      "holder": "c2",
+      "end": "metaClaim",
+      "id": "c1"
+    }
+  }
+]

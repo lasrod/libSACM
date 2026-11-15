@@ -36,6 +36,10 @@
 //! edits that set them ([`SetFlag`](crate::edit::SetFlag),
 //! [`SetReferences`](crate::edit::SetReferences) and the like).
 //!
+//! [`Document::revision`] returns the document's [`Revision`], which
+//! identifies its current state within the process, for
+//! [`edit::apply_preview`](crate::edit::apply_preview).
+//!
 //! [`LangString`], [`MultiLangString`] and [`AssertionDeclaration`] are
 //! values, not elements: they have no id and no kind of their own (the
 //! `xmi:id` of a `name`, `content` or `key` is kept with its owner:
@@ -105,6 +109,7 @@ mod id;
 mod kind;
 mod lang_string;
 mod reference;
+mod revision;
 
 pub use argumentation::{AssertionDeclaration, ParseAssertionDeclarationError};
 pub(crate) use containment::{DeclaredType, admits, role_named};
@@ -118,3 +123,4 @@ pub use kind::{AbstractClass, ElementKind, MetamodelPackage};
 pub use lang_string::{LangString, MultiLangString};
 pub use reference::{Flag, ReferenceEnd};
 pub(crate) use reference::{OWNERS, flag_named, reference_end_named};
+pub use revision::Revision;

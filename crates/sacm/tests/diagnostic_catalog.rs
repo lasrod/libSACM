@@ -22,7 +22,7 @@ const ROW: &str = "LIB-DIAG-002";
 
 /// Every `Code` constant, by name. A new constant must be added here, which
 /// the scan checks; each text is checked against `as_str()`.
-const CONSTANTS: [(&str, Code); 22] = [
+const CONSTANTS: [(&str, Code); 26] = [
     ("XML_MALFORMED", Code::XML_MALFORMED),
     ("XML_DOCTYPE_REJECTED", Code::XML_DOCTYPE_REJECTED),
     ("XMI_INVALID_ROOT", Code::XMI_INVALID_ROOT),
@@ -32,8 +32,12 @@ const CONSTANTS: [(&str, Code); 22] = [
     ("MULTIPLICITY_VIOLATION", Code::MULTIPLICITY_VIOLATION),
     ("ENUM_INVALID_LITERAL", Code::ENUM_INVALID_LITERAL),
     ("CMD_TARGET_NOT_FOUND", Code::CMD_TARGET_NOT_FOUND),
+    ("CMD_DELETE_REFERENCED", Code::CMD_DELETE_REFERENCED),
+    ("CMD_PREVIEW_EXPIRED", Code::CMD_PREVIEW_EXPIRED),
     ("CMD_DUPLICATE_ID", Code::CMD_DUPLICATE_ID),
     ("CMD_INVALID_PARENT", Code::CMD_INVALID_PARENT),
+    ("CMD_PACKAGE_NOT_EMPTY", Code::CMD_PACKAGE_NOT_EMPTY),
+    ("CMD_EXTERNAL_REFERENCES", Code::CMD_EXTERNAL_REFERENCES),
     (
         "CMD_FEATURE_NOT_APPLICABLE",
         Code::CMD_FEATURE_NOT_APPLICABLE,
@@ -53,13 +57,19 @@ const CONSTANTS: [(&str, Code); 22] = [
 /// The live codes after slice 0045: the 16 of slice 0041, SACM-REF-001,
 /// SACM-CITE-001 and SACM-ABS-001 of slice 0042, SACM-REF-002
 /// (SACM23-VAL-004) of slice 0044, and SACM-CMD-008 and SACM-CMD-009
-/// (LIB-EDIT-008, LIB-EDIT-010).
-const LIVE: [&str; 22] = [
+/// (LIB-EDIT-008, LIB-EDIT-010); and SACM-CMD-002, SACM-CMD-003,
+/// SACM-CMD-006 and SACM-CMD-007 of slice 0048 (LIB-EDIT-005, LIB-EDIT-006,
+/// LIB-EDIT-007).
+const LIVE: [&str; 26] = [
     "SACM-ABS-001",
     "SACM-CITE-001",
     "SACM-CMD-001",
+    "SACM-CMD-002",
+    "SACM-CMD-003",
     "SACM-CMD-004",
     "SACM-CMD-005",
+    "SACM-CMD-006",
+    "SACM-CMD-007",
     "SACM-CMD-008",
     "SACM-CMD-009",
     "SACM-ENUM-001",
