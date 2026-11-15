@@ -1166,10 +1166,10 @@ impl Document {
     }
 
     /// Removes the attribute named after `end` in no namespace from the
-    /// preserved content of the element `owner`, if it holds one, and
-    /// releases what it named: an edit that sets the end replaces it, so the
-    /// element never holds the end twice (ADR 0033). Changes nothing
-    /// otherwise.
+    /// preserved content of the element `owner`, if it holds one: an edit
+    /// that sets the end replaces it, so the element never holds the end
+    /// twice (ADR 0033). Such an attribute held no id, so it named no
+    /// reference to release. Changes nothing otherwise.
     pub(crate) fn replace_preserved_end(&mut self, owner: &ElementId, end: ReferenceEnd) {
         let Some(&node) = self.index.get(owner) else {
             return;
@@ -1177,14 +1177,9 @@ impl Document {
         let Some(preserved) = self.nodes[node].preserved.as_mut() else {
             return;
         };
-        let released = preserved.remove_unqualified(end.name());
+        preserved.remove_unqualified(end.name());
         if preserved.is_empty() {
             self.nodes[node].preserved = None;
-        }
-        for target in &released {
-            self.release(target, |used| {
-                used.references = used.references.saturating_sub(1);
-            });
         }
     }
 

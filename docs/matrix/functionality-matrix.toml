@@ -3472,6 +3472,7 @@ status = "implemented"
 depends_on = ["LIB-COMPAT-001", "SACM23-XMI-016", "LIB-COMPAT-007", "LIB-API-010", "LIB-RT-001", "LIB-EDIT-005", "SACM23-VAL-004", "SACM23-XMI-002"]
 notes = "Maintainer decisions 2026-11-14 (strict keeps with an Error) and 2026-11-15 (only non-conforming content; a preserved child element counts for RejectIfNonEmpty; a root type naming another class is preserved; a discard edit is LIB-EDIT-016, M6). The design and worked example are in ADR 0033 and the slice 0050 brief."
 acceptance = [
+  "A tolerant write never emits an attribute twice: an edit that leaves a reference end non-empty (SetReferences, AddReference, RemoveReference) replaces a preserved attribute of the end's name on that element and reports it changed, and a typed end read beside a preserved attribute of its name is written in the element form; output reads back equal (lead decisions, slice 0050 verification).",
   "The ADR 0033 worked fixture (classes 1-5, A3 and A5 in one ArgumentPackage) reads in both modes with exactly eight SACM-XMI-003 at the stated locations, affecting the stated holders (Warning tolerant, Error strict, same document): `get(\"a1\")` is None, c2 has no `name()` and no `abstract_form()`, and `validate` gives SACM-MULT-001 on c2 and SACM-REF-003 `[c3, a1]` and no REF-001.",
   "Its tolerant write is exactly the expected text (each holder or fragment declaring the bindings it needs), `read(out) == read(in)`, `semantic_compare` is empty, and `write(read(out)) == out` byte for byte.",
   "Each class alone, on a root, on a UtilityElement and inside `content`/`key`/`value`, differs from the same input without the construct only by `[PreservedContent { holder }]`; a root `<sacm:ArgumentPackage xmi:type=\"sacm:Claim\">` reads as an ArgumentPackage with the type preserved, SACM-XMI-003 and no SACM-XMI-010.",
@@ -3485,6 +3486,12 @@ acceptance = [
 ]
 code = ["crates/sacm/src/model/preserved.rs", "crates/sacm/src/xmi/preserve.rs", "crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi/output.rs", "crates/sacm/src/compare.rs", "crates/sacm/src/edit/delete.rs", "docs/adr/0033-preserved-content.md"]
 tests = [
+  "crates/sacm/tests/preserved_edits.rs::lib_compat_003_setting_the_ids_held_still_replaces_an_empty_preserved_end",
+  "crates/sacm/tests/preserved_edits.rs::lib_compat_003_setting_an_end_to_no_ids_keeps_an_empty_preserved_end",
+  "crates/sacm/tests/preserved_edits.rs::lib_compat_003_a_namespaced_attribute_of_an_end_s_name_is_not_that_end",
+  "crates/sacm/tests/preserved_edits.rs::lib_compat_003_setting_an_end_replaces_only_the_unqualified_attribute_of_its_name",
+  "crates/sacm/tests/preserved_edits.rs::lib_compat_003_removing_the_last_id_keeps_an_empty_preserved_end",
+  "crates/sacm/tests/preserved_edits.rs::lib_compat_003_an_unnamed_holder_writes_an_end_beside_its_preserved_attribute_as_an_element",
   "crates/sacm/tests/preserved_content.rs::lib_compat_003_a_repeated_value_refusal_does_not_list_a_preserved_occurrence",
   "crates/sacm/tests/preserved_content.rs::lib_compat_003_an_empty_multi_valued_end_beside_its_elements_is_preserved_and_they_are_read",
   "crates/sacm/tests/preserved_content.rs::lib_compat_003_an_unknown_content_diagnostic_names_the_attribute_as_written",
@@ -5275,6 +5282,7 @@ acceptance = [
 ]
 code = ["crates/sacm/src/xmi/refusal.rs"]
 tests = [
+  "crates/sacm/tests/interim_refusals.rs::lib_api_011_the_text_spelling_in_an_argument_group_names_sacm23_xmi_009",
   "crates/sacm/tests/interface_ends.rs::lib_api_011_the_interface_end_of_a_package_is_unsupported_with_its_row_in_both_modes",
   "crates/sacm/tests/interface_ends.rs::lib_api_011_an_interface_in_another_namespace_is_preserved_not_refused",
   "crates/sacm/tests/interim_refusals.rs::lib_api_011_a_cross_document_href_names_sacm23_xmi_027",

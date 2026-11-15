@@ -409,6 +409,33 @@ fn lib_api_011_the_text_spelling_argumentation_element_names_sacm23_xmi_009() {
     );
 }
 
+#[test]
+fn lib_api_011_the_text_spelling_in_an_argument_group_names_sacm23_xmi_009() {
+    let input = package(
+        "<argumentElement xmi:type=\"sacm:ArgumentGroup\" xmi:id=\"g\"><name content=\"g\"/>\
+         <argumentationElement xmi:idref=\"c1\"/></argumentElement>\
+         <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\"><name content=\"c1\"/></argumentElement>",
+    );
+    assert_text_refused_with(
+        "TextSpelling",
+        "argumentationElement in an ArgumentGroup",
+        &input,
+        &tolerance("SACM23-XMI-009"),
+    );
+    // The reason, pinned whole: one sentence, single spaces.
+    let error = xmi::read(input.as_bytes(), &ReadOptions::default()).unwrap_err();
+    let ReadError::Unsupported { reason, .. } = &error else {
+        panic!("{ROW}: TextSpelling: not Unsupported: {error:?}");
+    };
+    assert_eq!(
+        reason,
+        "\"argumentationElement\" in the element \"argumentElement\" is spelled as in the text \
+         of §11.4, and the end of an ArgumentGroup is argumentElement (a defect in the input; \
+         SACM23-XMI-009 is to read it in tolerant mode)",
+        "{ROW}: TextSpelling in an ArgumentGroup: the reason"
+    );
+}
+
 // --- Limit: encodings ----------------------------------------------------------------
 
 #[test]

@@ -246,6 +246,10 @@ impl AddReference {
 /// repaired, and once no reference holds it, an edit may generate it as a
 /// new element's id. Apply it with [`edit::apply`](super::apply).
 ///
+/// Like [`SetReferences`] and [`AddReference`], a removal that leaves the
+/// end holding one or more ids replaces an attribute of the end's name that
+/// the element holds as preserved content, which held no id (ADR 0033).
+///
 /// # Examples
 ///
 /// ```

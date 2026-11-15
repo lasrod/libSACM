@@ -115,33 +115,15 @@ impl Preserved {
             .any(|attr| attr.name.namespace.is_none() && attr.name.local == local)
     }
 
-    /// Removes the attribute `local` in no namespace, if it holds one, and
-    /// returns the ids its value named, which it no longer counts as
-    /// references: its tokens between XML white space.
-    pub(crate) fn remove_unqualified(&mut self, local: &str) -> Vec<ElementId> {
-        let Some(position) = self
-            .attributes
-            .iter()
-            .position(|attr| attr.name.namespace.is_none() && attr.name.local == local)
-        else {
-            return Vec::new();
-        };
-        let attr = self.attributes.remove(position);
-        let mut released = Vec::new();
-        for token in attr
-            .value
-            .split([' ', '\t', '\n', '\r'])
-            .filter(|token| !token.is_empty())
-        {
-            if let Some(at) = self
-                .references
-                .iter()
-                .position(|held| held.as_str() == token)
-            {
-                released.push(self.references.remove(at));
-            }
-        }
-        released
+    /// Removes the attribute `local` in no namespace, if it holds one.
+    ///
+    /// Only an edit that sets a reference end removes one: the reader keeps
+    /// an attribute named after an end the element's kind owns only when it
+    /// holds no id, and an edit cannot set an end the kind lacks, so the
+    /// attribute counts no reference and none is released.
+    pub(crate) fn remove_unqualified(&mut self, local: &str) {
+        self.attributes
+            .retain(|attr| !(attr.name.namespace.is_none() && attr.name.local == local));
     }
 
     /// The number of preserved child elements: text and attributes do not

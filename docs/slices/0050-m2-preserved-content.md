@@ -72,3 +72,9 @@ Public API:
   end replaces a preserved attribute of its name, and a write uses the element form when a
   read gives both (ADR 0033); `interface` is refused through AC-002 or ARG-014; tests pin
   the messages, the empty-end write and the mutants (one more equivalent mutant triaged).
+- 2026-11-16 verification round 2: FAIL. The Copilot binding fix (e8c6f1d) made every read
+  O(elements x bindings); 6 PR-diff and 8 hand mutants survived in the edit and write
+  paths; one message was pinned on the wrong path. The loop stopped and asked. The
+  maintainer chose to revert e8c6f1d (38ed1be; the unbound-prefix case went to
+  follow-ups) and allowed a third round: six control tests, the ArgumentGroup message
+  pinned, and the dead release path removed.
