@@ -15,9 +15,9 @@
 //!   target that is not abstract, and one for a target of another kind,
 //!   affected `[element, target]`. A dangling target gives only SACM-REF-001.
 //!
-//! None of them has a location. A reference only comes from `xmi::read`
-//! today (LIB-EDIT-008/009 will set them), so every document is read from
-//! inline XMI, with every `ModelElement` named so that no other rule reports.
+//! None of them has a location. Every document is read from inline XMI (the
+//! edits that set flags and references are tested in `set_operations.rs` and
+//! `reference_edits.rs`, LIB-EDIT-008/009), with every `ModelElement` named so that no other rule reports.
 //! Messages are checked only for what they must name.
 
 use std::path::Path;

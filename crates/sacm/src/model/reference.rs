@@ -4,7 +4,9 @@
 //! SACM23-ARG-005, SACM23-ARG-006, SACM23-ARG-007, SACM23-ARG-013; ADR 0026,
 //! ADR 0027, ADR 0028).
 //!
-//! Two crate-private tables, [`Flag::ALL`] and [`ReferenceEnd::ALL`], which
+//! [`Flag`] and [`ReferenceEnd`] are public, so that an edit can name the
+//! flag or end it sets (ADR 0029); only their `name` is. Their tables stay
+//! crate-private: [`Flag::ALL`] and [`ReferenceEnd::ALL`], which
 //! the XMI reader, the writer, the id pre-pass, comparison and validation
 //! iterate, so that the name read, the name written and the order written
 //! cannot drift apart. Each entry names the class that owns it, and
@@ -12,8 +14,9 @@
 //! writes their features in. A later end adds one entry here, one accessor
 //! and one `Difference` variant. A multi-valued end ([`ReferenceEnd::is_many`])
 //! holds every id of its attribute, and each reference element appends one;
-//! a single-valued one holds at most one. Crate-private, as the role tables
-//! of [`containment`](super::containment) are.
+//! a single-valued one holds at most one. The owners, declared types and
+//! bounds are crate-private, as the role tables of
+//! [`containment`](super::containment) are.
 
 use super::{AbstractClass, DeclaredType, ElementKind};
 
@@ -30,13 +33,23 @@ pub(crate) const OWNERS: [DeclaredType; 6] = [
     DeclaredType::Kind(ElementKind::ArgumentGroup),
 ];
 
-/// A Boolean property of an element, `false` by default.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[expect(
-    clippy::enum_variant_names,
-    reason = "the variants are the metamodel's names: isCitation, isAbstract, isCounter"
-)]
-pub(crate) enum Flag {
+/// A Boolean property of an element, `false` by default: the flag a
+/// [`SetFlag`](crate::edit::SetFlag) sets.
+///
+/// Every element has `isCitation` and `isAbstract` (SACM 2.3 §8.2); an
+/// asserted relationship also has `isCounter` (§11.13). Later releases may
+/// add flags, so a `match` on `Flag` needs a wildcard arm.
+///
+/// # Examples
+///
+/// ```
+/// use sacm::model::Flag;
+///
+/// assert_eq!(Flag::IsCounter.name(), "isCounter");
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum Flag {
     /// `isCitation[0..1]=false` of every `SACMElement` (§8.2): whether the
     /// element cites another.
     IsCitation,
@@ -52,8 +65,10 @@ impl Flag {
     /// Every flag, in the order `compare` reports them.
     pub(crate) const ALL: [Flag; 3] = [Flag::IsCitation, Flag::IsAbstract, Flag::IsCounter];
 
-    /// The flag's name, spelled as in the machine-readable model.
-    pub(crate) const fn name(self) -> &'static str {
+    /// The flag's name, spelled as in the machine-readable model and in
+    /// XMI: `isCitation`, `isAbstract` or `isCounter`.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
         match self {
             Self::IsCitation => "isCitation",
             Self::IsAbstract => "isAbstract",
@@ -80,9 +95,29 @@ pub(crate) fn flag_named(kind: ElementKind, local: &str) -> Option<Flag> {
 }
 
 /// A non-containment reference end, which holds the ids of its targets
-/// unresolved (ADR 0026).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ReferenceEnd {
+/// unresolved (ADR 0026): the end a [`SetReferences`](crate::edit::SetReferences),
+/// [`AddReference`](crate::edit::AddReference) or
+/// [`RemoveReference`](crate::edit::RemoveReference) edits.
+///
+/// Each end belongs to a class, and only the elements of that class have it:
+/// every element has `citedElement` and `abstractForm`, every Assertion has
+/// `metaClaim`, and so on, as each variant says. An end holds at most one id
+/// (`[0..1]`, or exactly one for `target`), or any number in order, repeats
+/// included (`[0..*]`, or at least one for `source`). Later releases may add
+/// ends, so a `match` on `ReferenceEnd` needs a wildcard arm.
+///
+/// # Examples
+///
+/// ```
+/// use sacm::model::ReferenceEnd;
+///
+/// assert_eq!(ReferenceEnd::Source.name(), "source");
+/// // A group's members are its `argumentElement` references.
+/// assert_eq!(ReferenceEnd::GroupMember.name(), "argumentElement");
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum ReferenceEnd {
     /// `citedElement:SACMElement[0..1]` of every `SACMElement` (§8.2).
     CitedElement,
     /// `abstractForm:SACMElement[0..1]` of every `SACMElement` (§8.2).
@@ -106,6 +141,7 @@ pub(crate) enum ReferenceEnd {
     /// gives no aggregation, so it is a reference, not a composition). Named
     /// for the group, because `argumentElement` is also the composite role
     /// of an `ArgumentPackage` (ADR 0028).
+    #[doc(alias = "argumentElement")]
     GroupMember,
 }
 
@@ -124,8 +160,13 @@ impl ReferenceEnd {
         ReferenceEnd::GroupMember,
     ];
 
-    /// The end's name, spelled as in the machine-readable model.
-    pub(crate) const fn name(self) -> &'static str {
+    /// The end's name, spelled as in the machine-readable model and in XMI:
+    /// `citedElement`, `abstractForm`, `metaClaim`, `reasoning`, `source`,
+    /// `target`, `structure`, `referencedArtifactElement` or, for
+    /// [`GroupMember`](Self::GroupMember), `argumentElement`. It is the `end`
+    /// an [`EditError`](crate::edit::EditError) names.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
         match self {
             Self::CitedElement => "citedElement",
             Self::AbstractForm => "abstractForm",
@@ -158,6 +199,21 @@ impl ReferenceEnd {
             self,
             Self::MetaClaim | Self::Source | Self::ReferencedArtifactElement | Self::GroupMember
         )
+    }
+
+    /// The fewest ids the end holds: 1 for `source` (`[1..*]`) and `target`
+    /// (`[1]`), 0 for every other end.
+    pub(crate) const fn lower_bound(self) -> usize {
+        match self {
+            Self::Source | Self::Target => 1,
+            _ => 0,
+        }
+    }
+
+    /// The most ids the end holds: `Some(1)` for a single-valued end, `None`
+    /// for a multi-valued one ([`is_many`](Self::is_many)).
+    pub(crate) const fn upper_bound(self) -> Option<usize> {
+        if self.is_many() { None } else { Some(1) }
     }
 
     /// The class that owns the end: an element of a kind it admits has it.
@@ -272,6 +328,24 @@ mod tests {
         assert_eq!(
             ReferenceEnd::ALL.map(ReferenceEnd::is_many),
             [false, false, true, false, true, false, false, true, true]
+        );
+        assert_eq!(
+            ReferenceEnd::ALL.map(ReferenceEnd::lower_bound),
+            [0, 0, 0, 0, 1, 1, 0, 0, 0]
+        );
+        assert_eq!(
+            ReferenceEnd::ALL.map(ReferenceEnd::upper_bound),
+            [
+                Some(1),
+                Some(1),
+                None,
+                Some(1),
+                None,
+                Some(1),
+                Some(1),
+                None,
+                None
+            ]
         );
         // Every owner is in OWNERS, so the writer writes every feature.
         for owner in ReferenceEnd::ALL

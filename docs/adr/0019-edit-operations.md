@@ -129,3 +129,13 @@ as modified (`commands.cpp:162-171`); the stable operation name (`operations.h:4
   `deleted_ids()`, and leaves the changed ids to a filter over `changes`.
 
 *Amendment 1 status: accepted (the maintainer, 2026-11-13).*
+
+## Amendment 2 (2026-11-15): before-values move to undo (slice 0045; LIB-EDIT-008, -009, -010, -012)
+
+E10 is amended: the set operations do not add typed before-values. `Mutation` keeps the
+operation and its three id lists, which is enough for an audit log. Before-values, or whatever
+else undo and redo need, move to LIB-EDIT-011, which chooses its mechanism under Q-UNDO
+(inverse operations or snapshots). Adding them then is still additive: a new `Mutation`
+accessor or a separate undo type.
+
+*Amendment 2 status: accepted (the maintainer, 2026-11-15).*

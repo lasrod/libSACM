@@ -32,6 +32,9 @@
 //! ([`reasoning`](SacmElement::reasoning)), and may be marked as countering
 //! its declared purpose ([`is_counter`](SacmElement::is_counter)). An `ArgumentReasoning` may name
 //! the package that details it ([`structure`](SacmElement::structure)).
+//! [`Flag`] and [`ReferenceEnd`] name a flag and a reference end, for the
+//! edits that set them ([`SetFlag`](crate::edit::SetFlag),
+//! [`SetReferences`](crate::edit::SetReferences) and the like).
 //!
 //! [`LangString`], [`MultiLangString`] and [`AssertionDeclaration`] are
 //! values, not elements: they have no id and no kind of their own (the
@@ -115,4 +118,5 @@ pub use id::ElementId;
 pub(crate) use id::is_ncname;
 pub use kind::{AbstractClass, ElementKind, MetamodelPackage};
 pub use lang_string::{LangString, MultiLangString};
-pub(crate) use reference::{Flag, OWNERS, ReferenceEnd, flag_named, reference_end_named};
+pub use reference::{Flag, ReferenceEnd};
+pub(crate) use reference::{OWNERS, flag_named, reference_end_named};

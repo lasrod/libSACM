@@ -43,7 +43,8 @@ meta-claims, structure, referenced artifact elements and group members.
 constraints and tagged values, and refuses a reference that names no element or an
 element its end's declared type does not admit (the stricter §11.15, §11.17 and §11.18
 rules, that evidence and artifact relationships link ArtifactReferences, are left to
-validation); and
+validation), and edits the names, `gid`s, flags, declarations, contents, keys and
+references of existing elements and the order of children and roots; and
 `sacm::validation::validate` reports each `content` or `key` text that is empty or gives
 one language twice, each tagged value without a key, each `gid` two elements share, each
 element with more than one description, each ArgumentPackage that nests one and also holds
@@ -51,10 +52,10 @@ other argumentation elements, each reference that names no element or an element
 wrong kind, each element with a `citedElement` whose `isCitation` is not true, each
 `abstractForm` that breaks a §8.2 rule, each asserted relationship without a source or a
 target, each evidence or artifact relationship whose ends are not artifact references,
-and each id a reference end repeats. The other element
-kinds in XMI, the other validation rules
-and the other edit operations are not built yet. Milestone M0, the foundation, is done:
-the workspace, CI, the functionality matrix and its gate, and mutation testing.
+and each id a reference end repeats. The other element kinds in XMI, the other
+validation rules and the other edit operations, such as delete and undo, are not built
+yet. Milestone M0, the foundation, is done: the workspace, CI, the functionality matrix
+and its gate, and mutation testing.
 The [functionality matrix](docs/matrix/functionality-matrix.md) shows what is verified;
 nothing else is claimed.
 

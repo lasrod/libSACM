@@ -256,6 +256,19 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
   (`Code::REF_WRONG_TYPE`), and an id repeated in one multi-valued end as a SACM-MULT-001
   Warning [SACM23-ARG-006, SACM23-ARG-009, SACM23-ARG-011, SACM23-ARG-012,
   SACM23-ARG-013, SACM23-VAL-004, SACM23-VAL-016, SACM23-VAL-022].
+- Edits that change an existing element (ADR 0029):
+  - `edit::SetName`, `SetGid`, `SetFlag`, `SetAssertionDeclaration`, `SetContent` and
+    `SetKey` set a feature;
+  - `SetReferences`, `AddReference` and `RemoveReference` edit any reference end;
+  - `ReorderElements` reorders an element's children or the document's roots.
+
+  `model::Flag` and `model::ReferenceEnd` (both `#[non_exhaustive]`, with a public `name`)
+  name what is edited. A refusal leaves the document
+  unchanged: the new `EditError` variants are `ElementNotFound`, `FeatureNotApplicable`
+  (SACM-CMD-008, `Code::CMD_FEATURE_NOT_APPLICABLE`), `TooManyReferences`,
+  `ReferenceNotHeld`, `ChildNotFound` and `InvalidOrder` (SACM-CMD-009,
+  `Code::CMD_INVALID_ORDER`). `Mutation::changed_ids` names the edited element, and is empty
+  when nothing changed [LIB-EDIT-008, LIB-EDIT-009, LIB-EDIT-010, LIB-EDIT-012].
 
 ### Changed
 

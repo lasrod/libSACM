@@ -20,8 +20,9 @@
 //! itself (IDREFS, the element form, dangling ids) is `xmi_references.rs`;
 //! the §8.2 rules are `reference_validation.rs`.
 //!
-//! No edit sets these values yet (LIB-EDIT-008/009), so documents are read
-//! from inline XMI. Expected locations are marked in the input with [`MARK`]
+//! Documents are read from inline XMI; the edits that set these values are
+//! tested in `set_operations.rs` (LIB-EDIT-008) and `reference_edits.rs`
+//! (LIB-EDIT-009). Expected locations are marked in the input with [`MARK`]
 //! (U+2038), which the test removes before reading.
 
 use std::path::Path;

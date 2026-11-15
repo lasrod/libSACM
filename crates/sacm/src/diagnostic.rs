@@ -166,7 +166,10 @@ impl Code {
     /// one per missing end (SACM23-VAL-005); fix it by giving the missing
     /// end. It is also the code of
     /// [`EditError::TooFewReferences`](crate::edit::EditError::TooFewReferences)
-    /// and [`ReadError::RepeatedValue`](crate::xmi::ReadError::RepeatedValue).
+    /// and [`EditError::TooManyReferences`](crate::edit::EditError::TooManyReferences),
+    /// an edit that would give a reference end fewer or more ids than its
+    /// bounds allow, and of
+    /// [`ReadError::RepeatedValue`](crate::xmi::ReadError::RepeatedValue).
     ///
     /// ```
     /// use sacm::diagnostic::Code;
@@ -189,10 +192,17 @@ impl Code {
 
     /// SACM-CMD-001: an operation's target is not in the document. The code
     /// of [`EditError::ParentNotFound`](crate::edit::EditError::ParentNotFound)
-    /// (LIB-EDIT-001) and of
+    /// (LIB-EDIT-001), of
     /// [`EditError::ReferenceNotFound`](crate::edit::EditError::ReferenceNotFound),
-    /// a source, target, `reasoning` or `structure` that names no element
-    /// (SACM23-ARG-005, -008, -010). Create the parent or the referenced
+    /// a referenced id that names no element (SACM23-ARG-005, -008, -010,
+    /// LIB-EDIT-009), of
+    /// [`EditError::ElementNotFound`](crate::edit::EditError::ElementNotFound),
+    /// an element to edit that is not in the document (LIB-EDIT-008 to
+    /// LIB-EDIT-012), of
+    /// [`EditError::ReferenceNotHeld`](crate::edit::EditError::ReferenceNotHeld),
+    /// an id to remove that the end does not hold (LIB-EDIT-009), and of
+    /// [`EditError::ChildNotFound`](crate::edit::EditError::ChildNotFound),
+    /// an id to reorder that is no child or root (LIB-EDIT-010). Create the
     /// element first, or correct its id. Ids are compared exactly, case
     /// included.
     pub const CMD_TARGET_NOT_FOUND: Code = Code::from_static("SACM-CMD-001");
@@ -212,6 +222,38 @@ impl Code {
     /// example, a Claim goes in an ArgumentPackage, and an ArgumentPackage in
     /// an AssuranceCasePackage or another ArgumentPackage.
     pub const CMD_INVALID_PARENT: Code = Code::from_static("SACM-CMD-005");
+
+    /// SACM-CMD-008: the operation does not apply to the element's kind. The
+    /// element exists, but its class has no such feature: a `name` on a
+    /// `UtilityElement` (§8.6 gives names to `ModelElement`s), `isCounter` on
+    /// a kind that is no `AssertedRelationship` (§11.13), an
+    /// `assertionDeclaration` on one that is no Assertion (§11.10), a
+    /// `content` on one that is no `UtilityElement` (§8.7), a `key` on one
+    /// that is no `TaggedValue` (§8.12), or a reference end the kind does not
+    /// own, such as a `source` on a Claim. The code of
+    /// [`EditError::FeatureNotApplicable`](crate::edit::EditError::FeatureNotApplicable)
+    /// (LIB-EDIT-008, LIB-EDIT-009, LIB-EDIT-012). Edit an element whose kind
+    /// has the feature, or correct the id.
+    ///
+    /// ```
+    /// use sacm::diagnostic::Code;
+    ///
+    /// assert_eq!(Code::CMD_FEATURE_NOT_APPLICABLE.as_str(), "SACM-CMD-008");
+    /// ```
+    pub const CMD_FEATURE_NOT_APPLICABLE: Code = Code::from_static("SACM-CMD-008");
+
+    /// SACM-CMD-009: a reorder's list does not give one order: it names no
+    /// element, or names one more than once. The code of
+    /// [`EditError::InvalidOrder`](crate::edit::EditError::InvalidOrder)
+    /// (LIB-EDIT-010). Name each child, or each root, to move exactly once,
+    /// in the new order; the children not named keep their positions.
+    ///
+    /// ```
+    /// use sacm::diagnostic::Code;
+    ///
+    /// assert_eq!(Code::CMD_INVALID_ORDER.as_str(), "SACM-CMD-009");
+    /// ```
+    pub const CMD_INVALID_ORDER: Code = Code::from_static("SACM-CMD-009");
 
     /// SACM-ID-001: two or more `xmi:id`s in the input have the same value,
     /// on elements or on `name`s; XMI 2.5.1 §7.6.1 requires them to be unique
@@ -238,8 +280,9 @@ impl Code {
     /// (LIB-EDIT-001): give an `NCName`, or leave out `with_id` to have an id
     /// generated. It is the code of
     /// [`EditError::InvalidReference`](crate::edit::EditError::InvalidReference),
-    /// a reference a create operation is given whose id holds XML white
-    /// space, so it cannot be written as one id. It is the code of
+    /// a referenced id, given to a create, `SetReferences` or `AddReference`
+    /// and not already held, that holds XML white space, so it cannot be
+    /// written as one id. It is the code of
     /// [`ReadError::InvalidId`](crate::xmi::ReadError::InvalidId) for an
     /// empty `xmi:id` on an element or a `name`.
     /// [`validation::validate`](crate::validation::validate) reports it as an
@@ -294,8 +337,9 @@ impl Code {
     /// writes it back, so nothing is lost; a strict write refuses the
     /// document (ADR 0026). Fix: point the reference at an element of the
     /// document, add the element it names, or remove the reference, in the
-    /// file; edits that set flags and references are LIB-EDIT-008/009, not
-    /// built yet.
+    /// file or with [`SetReferences`](crate::edit::SetReferences) or
+    /// [`RemoveReference`](crate::edit::RemoveReference) (LIB-EDIT-009),
+    /// which refuse a new dangling id but keep one the end already holds.
     pub const REF_DANGLING: Code = Code::from_static("SACM-REF-001");
 
     /// SACM-REF-002: a reference names an element of a kind its end does not
@@ -309,11 +353,14 @@ impl Code {
     /// (§11.18), that is an `ArgumentAsset` but not an `ArtifactReference`
     /// (SACM23-VAL-016). [`xmi::read`](crate::xmi::read) keeps such a
     /// reference in both modes and a tolerant [`xmi::write`](crate::xmi::write)
-    /// writes it back; a strict write refuses the document. A create refuses
-    /// an end whose target its declared type does not admit as
+    /// writes it back; a strict write refuses the document. A create, and
+    /// [`SetReferences`](crate::edit::SetReferences) or
+    /// [`AddReference`](crate::edit::AddReference) for an id the end does
+    /// not already hold, refuses an id its end's declared type does not
+    /// admit as
     /// [`EditError::WrongReferenceType`](crate::edit::EditError::WrongReferenceType)
-    /// (ADR 0028). Fix: point the reference at an element of the end's type,
-    /// in the file.
+    /// (ADR 0028, ADR 0029). Fix: point the reference at an element of the
+    /// end's type, in the file or with an edit.
     ///
     /// One code covers both rules: the declared-type check (SACM23-VAL-004),
     /// which edits also refuse, and the `ArtifactReference` rules of §11.15,
@@ -328,8 +375,9 @@ impl Code {
     /// Error per such element, affecting it (SACM23-VAL-007). §8.2 states
     /// only that direction, so `isCitation` true with no `citedElement` is
     /// no finding (ADR 0026). Fix: set `isCitation="true"`, or remove the
-    /// `citedElement`, in the file; edits that set flags and references are
-    /// LIB-EDIT-008/009, not built yet.
+    /// `citedElement`, in the file or with [`SetFlag`](crate::edit::SetFlag)
+    /// or [`SetReferences::clear`](crate::edit::SetReferences::clear); an
+    /// edit refuses neither alone (ADR 0029).
     pub const CITATION_INVALID: Code = Code::from_static("SACM-CITE-001");
 
     /// SACM-ABS-001: an `abstractForm` breaks a §8.2 rule.
@@ -341,9 +389,10 @@ impl Code {
     /// when it is of another kind (both "should"), each affecting the
     /// element, then the target. A target that names no element gives only
     /// SACM-REF-001. Fix: make the element concrete, or point the
-    /// `abstractForm` at an abstract element of the same kind, in the file;
-    /// edits that set flags and references are LIB-EDIT-008/009, not built
-    /// yet.
+    /// `abstractForm` at an abstract element of the same kind, in the file
+    /// or with [`SetFlag`](crate::edit::SetFlag) and
+    /// [`SetReferences`](crate::edit::SetReferences); an edit refuses
+    /// neither (ADR 0029).
     pub const ABSTRACT_FORM_INVALID: Code = Code::from_static("SACM-ABS-001");
 
     /// The code with the given text.
