@@ -794,7 +794,8 @@ fn sacm23_xmi_016_a_type_that_does_not_conform_to_the_role_is_unsupported_at_the
         )
     })
     .collect();
-    cases.extend([
+    // Untyped under an abstract role: SACM-XMI-005 (LIB-COMPAT-010).
+    let untyped = [
         refused(
             "an untyped argumentElement",
             in_ap(&format!("{MARK}<argumentElement xmi:id=\"x\"/>")),
@@ -805,6 +806,8 @@ fn sacm23_xmi_016_a_type_that_does_not_conform_to_the_role_is_unsupported_at_the
                 "{MARK}<argumentElement xmi:id=\"x\"><name content=\"X\"/></argumentElement>"
             )),
         ),
+    ];
+    cases.extend([
         refused(
             "disagreeing xmi:type and xsi:type",
             in_ap(&format!(
@@ -825,6 +828,10 @@ fn sacm23_xmi_016_a_type_that_does_not_conform_to_the_role_is_unsupported_at_the
         ),
     ]);
     assert_all_unsupported_at_mark("non-conforming type", &cases);
+    assert_all_refused_at_mark("untyped", &untyped, "SACM-XMI-005", |error| {
+        !matches!(error, ReadError::Unsupported { .. })
+            && error.code() == Some(Code::XMI_MISSING_TYPE)
+    });
 }
 
 #[test]
@@ -1105,7 +1112,9 @@ fn sacm23_xmi_016_an_unread_attribute_of_a_child_is_unsupported_at_its_name() {
         "xmi:label=\"l\"",
         "foo=\"1\"",
         "o:id=\"x\" xmlns:o=\"urn:o\"",
-        "name=\"N\"",
+        // `name=` in no namespace is a C++ shape (LIB-COMPAT-008); in the
+        // SACM namespace it is not read.
+        "sacm:name=\"N\"",
     ];
     for (what, wrap, start) in children {
         for attribute in attributes {
@@ -1328,6 +1337,9 @@ fn sacm23_xmi_016_white_space_written_literally_as_cdata_or_as_references_is_acc
 fn sacm23_xmi_016_a_no_break_space_reference_or_cdata_holding_text_is_unsupported_where_it_starts()
 {
     let mut cases = Vec::new();
+    // In a name that has `content="C"`, the text is a second `content` (a
+    // LIB-COMPAT-008 shape): `RepeatedValue`, whose location is the text.
+    let mut in_names = Vec::new();
     for text in [
         "&#xA0;",
         "<![CDATA[x]]>",
@@ -1336,20 +1348,31 @@ fn sacm23_xmi_016_a_no_break_space_reference_or_cdata_holding_text_is_unsupporte
         "&#160;",
     ] {
         for (slot, place) in SLOTS.iter().enumerate() {
+            let list = if place.ends_with("'s name") {
+                &mut in_names
+            } else {
+                &mut cases
+            };
             let marked = format!("{MARK}{text}");
             let mut slots = [""; 8];
             slots[slot] = &marked;
-            cases.push(refused(format!("{text:?} in {place}"), with_slots(&slots)));
+            list.push(refused(format!("{text:?} in {place}"), with_slots(&slots)));
             // After literal white space, still at the construct.
             let spaced = format!(" \n {MARK}{text}");
             slots[slot] = &spaced;
-            cases.push(refused(
+            list.push(refused(
                 format!("{text:?} after white space in {place}"),
                 with_slots(&slots),
             ));
         }
     }
     assert_all_unsupported_at_mark("non-white-space text", &cases);
+    assert_all_refused_at_mark(
+        "non-white-space text in a name",
+        &in_names,
+        "RepeatedValue name.content",
+        |error| matches!(error, ReadError::RepeatedValue { property, .. } if property == "name.content"),
+    );
 }
 
 // --- Item 5: a readable child under any other role ------------------------

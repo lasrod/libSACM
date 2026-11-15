@@ -288,7 +288,16 @@ fn sacm23_val_011_interleaved_descriptions_count_and_other_utility_roles_do_not(
 
     for role in ["note", "implementationConstraint", "taggedValue"] {
         let body = utility(role, "u1") + &utility(role, "u2");
-        no_finding(&format!("two {role}s on a Claim"), &in_claim(&body));
+        let mut input = in_claim(&body);
+        if role == "implementationConstraint" {
+            // Only an abstract element may hold one (§8.6, SACM23-VAL-021).
+            input = input.replacen(
+                "xmi:id=\"claim\"",
+                "xmi:id=\"claim\" isAbstract=\"true\"",
+                1,
+            );
+        }
+        no_finding(&format!("two {role}s on a Claim"), &input);
     }
 }
 

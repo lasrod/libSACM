@@ -59,6 +59,12 @@ fn root_p(body: &str) -> String {
     )
 }
 
+/// [`root_p`] with `p` abstract, as §8.6 asks of an element holding an
+/// implementation constraint (SACM23-VAL-021).
+fn abstract_root_p(body: &str) -> String {
+    root_p(body).replacen("xmi:id=\"p\"", "xmi:id=\"p\" isAbstract=\"true\"", 1)
+}
+
 /// An AssuranceCasePackage root `case` holding an ArgumentPackage `p` named
 /// "P" holding `body`.
 fn p_in_case(body: &str) -> String {
@@ -335,13 +341,16 @@ fn sacm23_val_012_each_package_is_checked_for_its_own_children() {
 #[test]
 fn sacm23_val_012_utility_children_do_not_count_and_a_claim_beside_them_does() {
     let what = "p holding every utility kind and q";
-    let found = read_findings(what, &root_p(&(every_utility() + &package("q", ""))));
+    let found = read_findings(
+        what,
+        &abstract_root_p(&(every_utility() + &package("q", ""))),
+    );
     assert!(found.is_empty(), "{ROW}: {what}: findings: {found:?}");
 
     let what = "p holding every utility kind, q and c";
     let found = read_findings(
         what,
-        &root_p(&[every_utility(), package("q", ""), claim("c")].concat()),
+        &abstract_root_p(&[every_utility(), package("q", ""), claim("c")].concat()),
     );
     assert_findings(what, &found, &[("p", "c")]);
 }
@@ -471,7 +480,8 @@ fn sacm23_val_012_edits_that_mix_the_content_succeed_and_validate_reports() {
 #[test]
 fn sacm23_val_012_a_strict_write_refuses_and_a_tolerant_write_keeps_every_child() {
     let what = "p{c1, q, every utility kind, c2}";
-    let input = root_p(&[claim("c1"), package("q", ""), every_utility(), claim("c2")].concat());
+    let input =
+        abstract_root_p(&[claim("c1"), package("q", ""), every_utility(), claim("c2")].concat());
     let doc = read_ok(what, &input);
     let expected = validation::validate(&doc);
     assert_findings(what, &expected, &[("p", "c1"), ("p", "c2")]);

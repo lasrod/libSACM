@@ -26,10 +26,13 @@
 //! ([`ReadError::InvalidRoot`] and [`ReadError::NoPackage`], SACM-XMI-001),
 //! with an `xmi:id` that repeats ([`ReadError::DuplicateId`], SACM-ID-001)
 //! or is empty ([`ReadError::InvalidId`], SACM-ID-002), with a value given
-//! twice ([`ReadError::RepeatedValue`], SACM-MULT-001), or with a value that
-//! is not a literal ([`ReadError::InvalidLiteral`], SACM-ENUM-001). Content
-//! it cannot represent yet is refused as [`ReadError::Unsupported`], never
-//! dropped.
+//! twice ([`ReadError::RepeatedValue`], SACM-MULT-001), with a value that
+//! is not a literal ([`ReadError::InvalidLiteral`], SACM-ENUM-001), or with
+//! an untyped child under an abstract role ([`ReadError::MissingType`],
+//! SACM-XMI-005). A tolerant read also reads the name and text shapes of the
+//! assurance-forge C++ library, with a Warning each, which a strict read
+//! refuses ([`ReadError::LegacyShape`], SACM-XMI-012). Content it cannot
+//! represent yet is refused as [`ReadError::Unsupported`], never dropped.
 //!
 //! `write` writes every element of a document, with its `gid`, its flags and
 //! references, its name, its `content` and `key` and, on an Assertion, its
@@ -140,7 +143,10 @@ mod roots;
 ///
 /// The class is the one the child's `xmi:type` or `xsi:type` names (both, if
 /// present, must name the same class); without one, it is the role's declared
-/// type. §11.4's text spells the ArgumentPackage role `argumentationElement`;
+/// type. Under a role whose declared type is abstract, such as
+/// `argumentElement`, a child without one is [`ReadError::MissingType`]
+/// (SACM-XMI-005), in both modes: its element name is the role, so no class
+/// can be inferred (XMI 2.5.1 §7.6.3), and none is guessed. §11.4's text spells the ArgumentPackage role `argumentationElement`;
 /// this release refuses that spelling as [`ReadError::Unsupported`].
 ///
 /// The four `UtilityElement`s are children in the same document order as the
@@ -154,7 +160,8 @@ mod roots;
 /// `<content/>`, or one holding only white space, comments and processing
 /// instructions, is an empty `MultiLangString`. A `content` or `key` may carry
 /// only `xmi:id` and an `xmi:type` or `xsi:type` naming
-/// `sacm:MultiLangString`.
+/// `sacm:MultiLangString`, besides the C++ shorthand (see
+/// [The C++ name and text shapes](#the-c-name-and-text-shapes)).
 ///
 /// Every element may carry a `gid` (§8.2), in no namespace, as an attribute or
 /// a value element (below). It is a String, read exactly as XML gives it: an
@@ -226,6 +233,20 @@ mod roots;
 /// is [`ReadError::RepeatedValue`] (SACM-MULT-001), even when the values are
 /// equal, and so is a second `name`, `content` or `key`.
 ///
+/// A value element may carry `xsi:nil` (XMI 2.5.1 §9.4.1), in the XML Schema
+/// instance namespace `http://www.w3.org/2001/XMLSchema-instance`, by any
+/// prefix. It is an `xsd:boolean`: `true` or `1`, white space around them
+/// collapsed, reads exactly as if the property were not written (an absent
+/// `gid`, `lang` or `content`, a false flag, an `asserted` declaration), in
+/// both modes and with no diagnostic, and `false` or `0` reads the content as
+/// usual. Any other value, such as `TRUE`, `yes` or `""`, is
+/// [`ReadError::InvalidLiteral`] (SACM-ENUM-001) with the property
+/// `xsi:nil`. A nil element holds no characters, not even white space, and
+/// no element: either is [`ReadError::Unsupported`] at it. A nil element
+/// still counts as an occurrence for `RepeatedValue`. `xsi:nil` on any other
+/// element, and an unqualified `nil`, is an attribute that is not read.
+/// [`write()`] writes the property as omitted (SACM23-XMI-026).
+///
 /// Elements and
 /// attributes are matched by namespace URI and local name, and an `xmi:type`
 /// or `xsi:type` value is resolved as a `QName`, without its leading and
@@ -258,12 +279,44 @@ mod roots;
 /// `xmi:id`, `lang`, `content` and an `xmi:type` or `xsi:type` naming
 /// `sacm:LangString`, and hold only the value elements `lang` and `content`,
 /// white space, comments and processing instructions. A value element may
-/// carry only namespace declarations and may hold no element.
+/// carry only namespace declarations and `xsi:nil`, and may hold no element.
 /// Anything else is refused as [`ReadError::Unsupported`] until a later
-/// release reads it. That includes the single-language shorthand some tools
-/// write, which LIB-COMPAT-008 is to read: `lang` or `content` attributes or
-/// text on a `content` or `key`, `content="…"` or text on a `UtilityElement`,
-/// and `key="…"` or `value="…"` on a `TaggedValue`.
+/// release reads it, except the C++ shapes below.
+///
+/// # The C++ name and text shapes
+///
+/// The assurance-forge C++ library writes some names and texts in shapes
+/// that XMI 2.5.1 does not define, each of which maps one to one onto the
+/// standard form (LIB-COMPAT-008, ADR 0022 amendment 1):
+///
+/// - a `name="…"` attribute on a root or child that is no `UtilityElement`:
+///   its name, with the value as `content` and no `lang`;
+/// - text in a `name` or a `value`: its `content`;
+/// - a `name` holding one `value`, and nothing else, or one `content`
+///   carrying a `lang` attribute: the name's `lang` and `content`;
+/// - on a `content` or `key` with no `value`, a `content` attribute or text,
+///   with an optional `lang` attribute: a `MultiLangString` of one value,
+///   keeping the role element's `xmi:id`;
+/// - `content="…"`, or text, with an optional `lang="…"`, on a
+///   `UtilityElement`: its `content`, of one value;
+/// - `key="…"` and `value="…"` on a `TaggedValue`: its `key`, of one value
+///   with no `lang`, and its `content`, of one value; an optional `lang="…"`
+///   applies to `value="…"`, as to `content="…"` above.
+///
+/// A tolerant read reads each as its standard form and reports one
+/// SACM-XMI-012 Warning per occurrence ([`Code::XMI_LEGACY_SHAPE`]). Values
+/// are kept exactly: absent is not `""`, nothing is trimmed, and text is all
+/// of the element's character content, joined, with CDATA sections and
+/// references giving their characters; text that is all white space is no
+/// shape, and neither is a `lang` attribute alone. A field given both in a
+/// shape and in the standard form, or twice, is [`ReadError::RepeatedValue`]
+/// in both modes: `content="a"` and text in one `name`, say. A strict read
+/// never applies a tolerance: once the rest of the input reads without a
+/// refusal, it refuses the first shape as [`ReadError::LegacyShape`]. Both
+/// modes of [`write()`] write the standard form. Shapes that would invent or
+/// merge elements stay refused as [`ReadError::Unsupported`], such as a
+/// `name` holding two values, a `value` beside other fields in a `name`, or
+/// text beside the `value`s of a `content` (LIB-COMPAT-012).
 ///
 /// The input is UTF-8, ASCII, or UTF-16 with a byte order mark, which reads
 /// exactly as the same characters in UTF-8. A DOCTYPE is refused before
@@ -386,7 +439,8 @@ mod roots;
 /// [`ReadOutput::diagnostics`], sorted by [`Diagnostic`]'s order. Each is
 /// reported once per attribute, located at the first character of the
 /// attribute's name, or once per element, located at the `<` of its start
-/// tag (LIB-COMPAT-001, ADR 0022, ADR 0024):
+/// tag, except SACM-XMI-012, which is once per C++ shape and may be located
+/// at text (LIB-COMPAT-001, LIB-COMPAT-008, ADR 0022, ADR 0024):
 ///
 /// - SACM-XMI-004 ([`Code::XMI_MISSING_ID`]), clause 7.6.1, for each element
 ///   read without an `xmi:id` (SACM23-XMI-020). It affects the generated id,
@@ -408,11 +462,19 @@ mod roots;
 ///   `xmi:version` on the `xmi:XMI` element, which affects no element, or on
 ///   a root, which it affects. It is Info in both modes. An `xmi:version` on
 ///   any other element is refused as [`ReadError::Unsupported`].
+/// - SACM-XMI-012 ([`Code::XMI_LEGACY_SHAPE`]), clause 7.8.6, a Warning for
+///   each C++ shape a tolerant read reads (LIB-COMPAT-008, see
+///   [The C++ name and text shapes](#the-c-name-and-text-shapes)), at the
+///   shape's first attribute, else its first text character that is not
+///   literal white space, else the `<` of a `value` in a `name`, affecting
+///   the element whose name or text it gives.
 ///
-/// None refuses the input: in this release both
-/// modes read and refuse the same inputs, and give the same document. A
-/// later minor release may add a read diagnostic, so a strict read may then
-/// report an Error where it did not before; the release notes list each one.
+/// None of these diagnostics refuses the input; a strict read refuses the
+/// C++ shapes as [`ReadError::LegacyShape`] instead of reporting them. Apart
+/// from those, both modes read and refuse the same inputs, and give the same
+/// document. A later minor release may add a read diagnostic, so a strict
+/// read may then report an Error where it did not before; the release notes
+/// list each one.
 ///
 /// # Errors
 ///
@@ -463,7 +525,8 @@ mod roots;
 ///    itself refused first. A later occurrence
 ///    is listed in `RepeatedValue`'s
 ///    [`locations`](ReadError::locations) even if it is itself malformed,
-///    because each occurrence is checked against those before it.
+///    because each occurrence is checked against those before it;
+/// 9. in strict mode, the first C++ shape in the input (`LegacyShape`).
 ///
 /// The refusals:
 ///
@@ -503,7 +566,13 @@ mod roots;
 ///   `assertionDeclaration` is not exactly one of the six literals, or an
 ///   `isCitation`, `isAbstract` or `isCounter` is not one of `true`,
 ///   `false`, `1` and `0`, white space around them aside, as an attribute or
-///   as an element. It holds the value as read.
+///   as an element, or the `xsi:nil` of a value element is not either. It
+///   holds the value as read.
+/// - [`ReadError::MissingType`] (SACM-XMI-005): a child under a role whose
+///   declared type is abstract has no `xmi:type` or `xsi:type`.
+/// - [`ReadError::LegacyShape`] (SACM-XMI-012), in strict mode only: a C++
+///   name or text shape (see
+///   [The C++ name and text shapes](#the-c-name-and-text-shapes)).
 /// - [`ReadError::Unsupported`] (no code): the input is well-formed but this
 ///   version cannot represent it. Examples are UTF-16 without a byte order
 ///   mark, UTF-32 or UCS-4 input, a declared encoding other than UTF-8 or
@@ -519,17 +588,17 @@ mod roots;
 ///   or a `value` element), a `name` or `value` in a namespace (such as
 ///   `sacm:name`) or with a type naming another class (such as
 ///   `sacm:ExpressionLangString`), any other attribute or content of a
-///   `content` or `key` (such as `gid`, `xml:lang`, the single-language
-///   shorthand or a `name` element), a value element that carries an
-///   attribute (such as `xmi:id` or `xsi:nil`), holds an element, or is in a
+///   `content` or `key` (such as `gid`, `xml:lang`, text beside a `value`
+///   or a `name` element), a value element that carries an attribute other
+///   than `xsi:nil` (such as `xmi:id`), holds an element, is nil and holds
+///   characters, or is in a
 ///   namespace (such as `sacm:content`, `sacm:gid` or `sacm:isCitation`), a
 ///   reference attribute that holds no id, or a malformed reference element
 ///   (see [References](#references)), and any other attribute or content of a
 ///   root or child. For a child, that includes a role its parent's class
 ///   lacks (any child of a `UtilityElement`), a role element in a namespace,
 ///   a type that names no concrete SACM class or that the role does not
-///   admit, two types that disagree, no type under a role of an abstract
-///   type, any other kind (such as an `ArgumentPackageInterface` or an
+///   admit, two types that disagree, any other kind (such as an `ArgumentPackageInterface` or an
 ///   `ArgumentPackageBinding`), text, attributes such as `xmi:uuid` or
 ///   `sacm:isCitation`; a `name` on a `UtilityElement`; an
 ///   `assertionDeclaration`, as an attribute or an element, that is on a
@@ -702,8 +771,9 @@ pub fn read(input: &[u8], options: &ReadOptions) -> Result<ReadOutput, ReadError
 ///
 /// - [`Strict`](Self::Strict) aims at SACM 2.3 conformance. A strict read
 ///   reports each recognised variation it reads as an Error (in this release,
-///   only `xsi:type`, SACM-XMI-010). It still returns the document and does
-///   not validate it. To check a file, test
+///   only `xsi:type`, SACM-XMI-010), and refuses the C++ name and text shapes
+///   that a tolerant read reads ([`ReadError::LegacyShape`], SACM-XMI-012).
+///   Otherwise it returns the document, and does not validate it. To check a file, test
 ///   [`diagnostic::has_errors`](crate::diagnostic::has_errors) on the read
 ///   diagnostics together with the result of
 ///   [`validation::validate`](crate::validation::validate).
@@ -717,10 +787,10 @@ pub fn read(input: &[u8], options: &ReadOptions) -> Result<ReadOutput, ReadError
 ///   held, without validating it.
 ///
 /// `Mode` has no default of its own: [`ReadOptions`] default to `Tolerant`
-/// and [`WriteOptions`] to `Strict`. On a read, in this release, both modes
-/// accept and refuse the same inputs, and the mode decides only the severity
-/// of SACM-XMI-010 (see [`read`]). On a write, it decides whether the
-/// document is validated first. Later releases may add variants, so match it
+/// and [`WriteOptions`] to `Strict`. On a read, in this release, the mode
+/// decides the severity of SACM-XMI-010 and whether the C++ shapes are read
+/// (see [`read`]); both modes accept and refuse the same other inputs. On a
+/// write, it decides whether the document is validated first. Later releases may add variants, so match it
 /// with a fallback arm.
 ///
 /// ```
@@ -794,8 +864,8 @@ impl ReadOptions {
 /// cannot represent rather than drop it. The diagnostics are sorted by
 /// [`Diagnostic`]'s order, located ones first. In this release they are
 /// SACM-XMI-004 for an element without an `xmi:id`, SACM-ID-004 for an
-/// `xmi:id` read trimmed, SACM-XMI-010 for an `xsi:type` and SACM-XMI-011 for
-/// an `xmi:version` (see [`read`]).
+/// `xmi:id` read trimmed, SACM-XMI-010 for an `xsi:type`, SACM-XMI-011 for
+/// an `xmi:version` and SACM-XMI-012 for a C++ shape (see [`read`]).
 ///
 /// # Examples
 ///
@@ -829,9 +899,9 @@ impl ReadOutput {
     }
 
     /// The diagnostics found while reading, sorted by [`Diagnostic`]'s order.
-    /// Empty for an input with no `xsi:type` and no `xmi:version`, in which
-    /// every element has an `xmi:id` and no `xmi:id`, of an element or a
-    /// `name`, has white space around it.
+    /// Empty for an input with no `xsi:type`, no `xmi:version` and no C++
+    /// shape, in which every element has an `xmi:id` and no `xmi:id`, of an
+    /// element or a `name`, has white space around it.
     #[must_use]
     pub fn diagnostics(&self) -> &[Diagnostic] {
         &self.diagnostics
@@ -863,8 +933,10 @@ const _: () = {
 /// code: [`Doctype`](Self::Doctype), [`Malformed`](Self::Malformed),
 /// [`InvalidRoot`](Self::InvalidRoot), [`NoPackage`](Self::NoPackage),
 /// [`DuplicateId`](Self::DuplicateId), [`InvalidId`](Self::InvalidId),
-/// [`RepeatedValue`](Self::RepeatedValue) and
-/// [`InvalidLiteral`](Self::InvalidLiteral). [`Unsupported`](Self::Unsupported),
+/// [`RepeatedValue`](Self::RepeatedValue),
+/// [`InvalidLiteral`](Self::InvalidLiteral),
+/// [`LegacyShape`](Self::LegacyShape) and
+/// [`MissingType`](Self::MissingType). [`Unsupported`](Self::Unsupported),
 /// with no code, is input this version cannot read yet.
 ///
 /// Every refusal has a [`SourceLocation`] except the parser's capacity-limit
@@ -1014,7 +1086,8 @@ pub enum ReadError {
     /// Fix: give every id in the attribute, or each in its own element.
     ///
     /// A `ModelElement`'s `name` (`name:LangString[1]`, formal/23-05-08 §8.6)
-    /// is such a property too: two or more `name` elements in no namespace
+    /// is such a property too: two or more `name` elements in no namespace,
+    /// or the C++ `name` attribute and a `name` element (LIB-COMPAT-008),
     /// are refused, even when they are equal (SACM23-XMI-021). So are a
     /// `UtilityElement`'s `content` (§8.7 `[0..1]`) and a `TaggedValue`'s `key`
     /// (§8.12 `[1]`), which are never merged.
@@ -1097,6 +1170,9 @@ pub enum ReadError {
     ///   and the empty value are refused, never read as false (ADR 0026).
     ///   Fix: write `true` or `false`.
     ///
+    /// - the `xsi:nil` of a value element (SACM23-XMI-026), which is an
+    ///   `xsd:boolean` as the flags are. Fix: write `true` or `false`.
+    ///
     /// It is refused in both modes. `Display` gives the literals the
     /// property accepts as its reason.
     ///
@@ -1133,7 +1209,7 @@ pub enum ReadError {
         /// generated for it when it has none.
         element: ElementId,
         /// The property: in this release, `assertionDeclaration`,
-        /// `isCitation`, `isAbstract` or `isCounter`.
+        /// `isCitation`, `isAbstract`, `isCounter` or `xsi:nil`.
         property: String,
         /// The value as read: for an attribute, after XML attribute-value
         /// normalisation (XML 1.0 §3.3.3); for a value element, its exact
@@ -1141,6 +1217,83 @@ pub enum ReadError {
         value: String,
         /// The first character of the attribute's name, or the `<` of the
         /// value element's start tag.
+        location: Option<SourceLocation>,
+    },
+    /// A strict read met a name or a text written in a shape of the
+    /// assurance-forge C++ library (SACM-XMI-012, LIB-COMPAT-008), such as
+    /// a `name="…"` attribute or text in a `name`. A tolerant read reads
+    /// each such shape as its standard form, with a Warning; a strict read
+    /// never applies a tolerance (ADR 0022 amendment 1), so it refuses the
+    /// first one, once the rest of the input has read without a refusal.
+    /// See [`read`] for the shapes. Fix: read the file in tolerant mode and
+    /// write it again, which writes the standard form.
+    ///
+    /// ```
+    /// use sacm::diagnostic::Code;
+    /// use sacm::xmi::{self, Mode, ReadError, ReadOptions};
+    ///
+    /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments" name="Arguments"/>"#;
+    /// let strict = ReadOptions::default().with_mode(Mode::Strict);
+    /// let error = xmi::read(input, &strict).unwrap_err();
+    /// assert!(matches!(&error, ReadError::LegacyShape { element, .. } if element.as_str() == "arguments"));
+    /// assert_eq!(error.code(), Some(Code::XMI_LEGACY_SHAPE));
+    /// assert_eq!(error.location().map(|at| (at.line(), at.column())), Some((2, 73)));
+    ///
+    /// // A tolerant read reads it as `<name content="Arguments"/>`, with a Warning.
+    /// let output = xmi::read(input, &ReadOptions::default())?;
+    /// let name = output.document().get("arguments").and_then(|root| root.name());
+    /// assert_eq!(name.and_then(|name| name.content()), Some("Arguments"));
+    /// assert_eq!(output.diagnostics()[0].code(), Code::XMI_LEGACY_SHAPE);
+    /// # Ok::<(), ReadError>(())
+    /// ```
+    #[non_exhaustive]
+    LegacyShape {
+        /// The element whose name or text the shape gives: its `xmi:id`,
+        /// or the id generated for it.
+        element: ElementId,
+        /// What is written, without a position, such as `the name of the
+        /// ArgumentPackage "arguments" is given as the attribute "name"`.
+        shape: String,
+        /// Where the shape is: its first attribute's name, else its first
+        /// text character that is not literal white space (a CDATA section
+        /// or reference at its start), else, for a `value` in a `name`, the
+        /// `<` of the `value`.
+        location: Option<SourceLocation>,
+    },
+    /// A child under a containment role whose declared type is abstract
+    /// carries no `xmi:type` or `xsi:type` (SACM-XMI-005, LIB-COMPAT-010),
+    /// such as an `<argumentElement>` with none in an `ArgumentPackage`. Its
+    /// element name is its role, so its class cannot be inferred (XMI 2.5.1
+    /// §7.6.3), and none is guessed. Refused in both modes. Fix: give it an
+    /// `xmi:type` naming its class, such as `xmi:type="sacm:Claim"`.
+    ///
+    /// ```
+    /// use sacm::diagnostic::Code;
+    /// use sacm::xmi::{self, ReadError, ReadOptions};
+    ///
+    /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+    ///   <argumentElement xmi:id="c1"/>
+    /// </sacm:ArgumentPackage>"#;
+    /// let error = xmi::read(input, &ReadOptions::default()).unwrap_err();
+    /// assert!(matches!(&error, ReadError::MissingType { role, .. } if role == "argumentElement"));
+    /// assert_eq!(error.code(), Some(Code::XMI_MISSING_TYPE));
+    /// assert_eq!(
+    ///     error.to_string(),
+    ///     "the element \"argumentElement\" has no xmi:type, and its role has the abstract \
+    ///      type ArgumentationElement at line 3, column 3: give it an xmi:type that names \
+    ///      its class"
+    /// );
+    /// ```
+    #[non_exhaustive]
+    MissingType {
+        /// The role: the element's local name.
+        role: String,
+        /// The role's declared type, an abstract class, such as
+        /// `ArgumentationElement`.
+        declared_type: String,
+        /// The `<` of the element's start tag.
         location: Option<SourceLocation>,
     },
 }
@@ -1153,7 +1306,9 @@ impl ReadError {
     /// SACM-ID-001 for [`DuplicateId`](Self::DuplicateId), SACM-ID-002 for
     /// [`InvalidId`](Self::InvalidId), SACM-MULT-001 for
     /// [`RepeatedValue`](Self::RepeatedValue), SACM-ENUM-001 for
-    /// [`InvalidLiteral`](Self::InvalidLiteral), and `None` for
+    /// [`InvalidLiteral`](Self::InvalidLiteral), SACM-XMI-012 for
+    /// [`LegacyShape`](Self::LegacyShape), SACM-XMI-005 for
+    /// [`MissingType`](Self::MissingType), and `None` for
     /// [`Unsupported`](Self::Unsupported).
     #[must_use]
     pub fn code(&self) -> Option<Code> {
@@ -1165,6 +1320,8 @@ impl ReadError {
             Self::InvalidId { .. } => Some(Code::ID_INVALID),
             Self::RepeatedValue { .. } => Some(Code::MULTIPLICITY_VIOLATION),
             Self::InvalidLiteral { .. } => Some(Code::ENUM_INVALID_LITERAL),
+            Self::LegacyShape { .. } => Some(Code::XMI_LEGACY_SHAPE),
+            Self::MissingType { .. } => Some(Code::XMI_MISSING_TYPE),
             Self::Unsupported { .. } => None,
         }
     }
@@ -1189,6 +1346,8 @@ impl ReadError {
             | Self::NoPackage { location }
             | Self::InvalidId { location, .. }
             | Self::InvalidLiteral { location, .. }
+            | Self::LegacyShape { location, .. }
+            | Self::MissingType { location, .. }
             | Self::Unsupported { location, .. } => *location,
             // The first element carries the id, or the first occurrence gives
             // the value; the second repeats it.
@@ -1223,6 +1382,8 @@ impl ReadError {
             | Self::NoPackage { location }
             | Self::InvalidId { location, .. }
             | Self::InvalidLiteral { location, .. }
+            | Self::LegacyShape { location, .. }
+            | Self::MissingType { location, .. }
             | Self::Unsupported { location, .. } => location.as_slice(),
             Self::DuplicateId { locations, .. } | Self::RepeatedValue { locations, .. } => {
                 locations
@@ -1234,7 +1395,7 @@ impl ReadError {
 /// The reason of a [`ReadError::InvalidLiteral`] for the property
 /// `property`: the literals it accepts. `assertionDeclaration`'s are its six,
 /// in §11.8 order; every other property read in this release, `isCitation`,
-/// `isAbstract` and `isCounter`, is an `xsd:boolean`.
+/// `isAbstract`, `isCounter` and `xsi:nil`, is an `xsd:boolean`.
 fn literals_reason(property: &str) -> &'static str {
     match property {
         "assertionDeclaration" => {
@@ -1325,6 +1486,25 @@ impl fmt::Display for ReadError {
                     element.as_str()
                 )?;
                 Some(literals_reason(property))
+            }
+            Self::LegacyShape { shape, .. } => {
+                write!(f, "{shape}, a shape of the assurance-forge C++ library")?;
+                Some(
+                    "a strict read refuses it; a tolerant read reads it as its standard form, \
+                     which write writes",
+                )
+            }
+            Self::MissingType {
+                role,
+                declared_type,
+                ..
+            } => {
+                write!(
+                    f,
+                    "the element {role:?} has no xmi:type, and its role has the abstract type \
+                     {declared_type}"
+                )?;
+                Some("give it an xmi:type that names its class")
             }
             Self::Unsupported { reason, .. } => {
                 f.write_str("the reader cannot represent the input")?;

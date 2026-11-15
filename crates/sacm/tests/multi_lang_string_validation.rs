@@ -43,11 +43,13 @@ const KEY: &str = "<key><value content=\"k\"/></key>";
 // --- Inputs and helpers ------------------------------------------------------------
 
 /// A Claim `c1` named "C" holding `body`, in an ArgumentPackage root `p`
-/// named "P".
+/// named "P". It is abstract, because §8.6 allows an implementation
+/// constraint only on an abstract element (SACM23-VAL-021).
 fn in_claim(body: &str) -> String {
     format!(
         "<sacm:ArgumentPackage{NS} xmi:id=\"p\"><name content=\"P\"/>\
-         <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\"><name content=\"C\"/>{body}\
+         <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" isAbstract=\"true\">\
+         <name content=\"C\"/>{body}\
          </argumentElement></sacm:ArgumentPackage>"
     )
 }

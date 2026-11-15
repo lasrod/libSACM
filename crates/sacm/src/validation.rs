@@ -23,6 +23,8 @@
 //! | SACM-CITE-001 | SACM23-VAL-007 | §8.2 | Error | an element has a `citedElement` but its `isCitation` is not true (OCL `self.citedElement <> null implies self.isCitation = true`) |
 //! | SACM-ABS-001 | SACM23-VAL-008 | §8.2 | Error | an element with an `abstractForm` is itself abstract ("+isAbstract of the `SACMElement` is false") |
 //! | SACM-ABS-001 | SACM23-VAL-008 | §8.2 | Warning | the element the `abstractForm` references is not abstract, or is of another kind (both "should") |
+//! | SACM-ABS-001 | SACM23-VAL-021 | §8.6 | Error | a `ModelElement` with one or more `implementationConstraint`s is not abstract (OCL `implementationConstraint->size() > 0 implies isAbstract = true`) |
+//! | SACM-CITE-002 | SACM23-VAL-019 | §11.8 | Warning | an Assertion declared `asCited` is not a citation (`isCitation` not true), has no `citedElement`, or cites an element that is no Assertion: one finding each |
 //!
 //! A `ModelElement`
 //! ([`AbstractClass::ModelElement`](crate::model::AbstractClass::ModelElement))
@@ -156,6 +158,21 @@
 //! another kind, each affecting the element, then the referenced element. An `abstractForm`
 //! that names no element gives only SACM-REF-001.
 //!
+//! §8.6 allows implementation constraints only on an abstract element. A
+//! `ModelElement` with one or more `implementationConstraint` children whose
+//! `isAbstract` is not true is one SACM-ABS-001 Error, affecting it, however
+//! many constraints it has, so a strict save refuses it. To fix one, set
+//! `isAbstract="true"`, or remove the constraints.
+//!
+//! §11.8 derives an `asCited` declaration from the cited Assertion. An
+//! Assertion declared `asCited` gets one SACM-CITE-002 Warning when its
+//! `isCitation` is not true and one when it has no `citedElement`, each
+//! affecting it, and one when its `citedElement` names an element that is
+//! not of an Assertion kind, affecting it, then that element. A
+//! `citedElement` that names no element gives only SACM-REF-001. To fix
+//! one, make the element a citation of a Claim or an asserted relationship,
+//! or give it another declaration.
+//!
 //! ```
 //! use sacm::diagnostic::{Code, Severity};
 //! use sacm::validation;
@@ -227,6 +244,7 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
+mod constraints;
 mod descriptions;
 mod gid;
 mod homogeneity;
@@ -254,7 +272,9 @@ const RULES: &[Rule] = &[
     references::dangling_references,
     references::wrongly_typed_references,
     references::citation,
+    references::as_cited,
     references::abstract_form,
+    constraints::implementation_constraints,
     relationships::relationship_ends,
     relationships::artifact_reference_kinds,
     repeats::repeated_references,

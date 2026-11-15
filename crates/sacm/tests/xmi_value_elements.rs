@@ -27,10 +27,10 @@
 //! No input here has an `xsi:type` or an `xmi:version`, so a read reports no
 //! diagnostic.
 //!
-//! Not checked here: `xsi:nil` read as absent (SACM23-XMI-026; here it is an
-//! attribute, so `Unsupported`), the element forms of `gid`, `isCitation` and
-//! `isAbstract` (SACM23-BASE-006/007/008), the legacy `<content lang>` name
-//! (LIB-COMPAT-008), and the rest of a bad literal's `InvalidLiteral`
+//! Not checked here: `xsi:nil` on a value element (SACM23-XMI-026,
+//! `xsi_nil.rs`), the element forms of `gid`, `isCitation` and
+//! `isAbstract` (SACM23-BASE-006/007/008), the C++ `<content lang>` name
+//! (LIB-COMPAT-008, `legacy_shapes.rs`), and the rest of a bad literal's `InvalidLiteral`
 //! (SACM23-VAL-006, `xmi_literals.rs`): here it is checked only as far as
 //! its kind, value, code and location.
 
@@ -965,8 +965,6 @@ fn sacm23_xmi_014_an_attribute_on_a_value_element_is_unsupported_at_its_name() {
         "xmi:id=\"v\"",
         "xmi:type=\"sacm:LangString\"",
         "xsi:type=\"sacm:LangString\"",
-        "xsi:nil=\"true\"",
-        "xsi:nil=\"false\"",
         "foo=\"1\"",
         "lang=\"en\"",
     ] {
@@ -981,17 +979,14 @@ fn sacm23_xmi_014_an_attribute_on_a_value_element_is_unsupported_at_its_name() {
                 format!("<{element}\r\n    {MARK}{attribute}>{value}</{element}>"),
             )
         }) {
+            // A name holding one `content` carrying `lang` is a C++ shape
+            // (LIB-COMPAT-008, `legacy_shapes.rs`).
+            if attribute == "lang=\"en\"" && what.ends_with("on <content>") {
+                continue;
+            }
             assert_unsupported_at_mark(&what, &template);
         }
     }
-    // The legacy multi-language form's `<content lang>`, with its value as
-    // text (LIB-COMPAT-008): the attribute is refused, at its name.
-    assert_unsupported_at_mark(
-        "<content lang> in a name with a lang attribute",
-        &in_ap(&format!(
-            "<name lang=\"en\"><content {MARK}lang=\"en\">x</content></name>"
-        )),
-    );
 }
 
 #[test]

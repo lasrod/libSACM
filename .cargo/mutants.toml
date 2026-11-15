@@ -22,7 +22,7 @@ additional_cargo_test_args = ["--profile=mutants", "--no-tests=warn"]
 # Equivalent mutants, each with a row in docs/quality/mutants-triage.md.
 exclude_re = [
   '^crates/sacm/src/xmi\.rs:\d+:\d+: replace WriteError::code -> Option<Code> with None$',
-  '^crates/sacm/src/edit\.rs:\d+:\d+: replace Mutation::deleted_ids -> &\[ElementId\] with Vec::leak\(Vec::new\(\)\)$',
   "^crates/sacm/src/xmi/input\\.rs:\\d+:\\d+: replace < with <= in Locator<'t>::locate$",
   '^crates/sacm/src/model/document\.rs:\d+:\d+: replace IdUse::is_unused -> bool with false$',
+  "^crates/sacm/src/xmi/roots\\.rs:\\d+:\\d+: replace < with <= in Findings<'_, '_>::legacy_shape$",
 ]

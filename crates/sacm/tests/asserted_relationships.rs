@@ -1675,13 +1675,6 @@ fn reads_by_either_type_and_is_refused_untyped_or_in_a_case_package(row: &str, k
     }
     for (what, template) in [
         (
-            "an untyped argumentElement with ends".to_owned(),
-            in_ap(&format!(
-                "{MARK}<argumentElement xmi:id=\"x\" source=\"c2\" target=\"c1\"><name content=\"I\"/>\
-                 </argumentElement>"
-            )),
-        ),
-        (
             format!("an {kind} in argumentPackage of an AssuranceCasePackage"),
             format!(
                 "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name content=\"Case\"/>\
@@ -1707,6 +1700,22 @@ fn reads_by_either_type_and_is_refused_untyped_or_in_a_case_package(row: &str, k
         let error = refused(row, &what, &input);
         assert_unsupported_at(row, &what, &error, marks[0]);
     }
+    // Untyped under the abstract role `argumentElement`: SACM-XMI-005
+    // (LIB-COMPAT-010).
+    let what = "an untyped argumentElement with ends";
+    let (input, marks) = marked(
+        row,
+        &in_ap(&format!(
+            "{MARK}<argumentElement xmi:id=\"x\" source=\"c2\" target=\"c1\"><name content=\"I\"/>\
+             </argumentElement>"
+        )),
+    );
+    let error = refused(row, what, &input);
+    assert_eq!(
+        (error.code(), error.location()),
+        (Some(Code::XMI_MISSING_TYPE), Some(marks[0])),
+        "{row}: {what}: not SACM-XMI-005 at its start tag: {error:?}"
+    );
 }
 
 #[test]

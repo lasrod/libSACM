@@ -75,6 +75,10 @@ the base found in step 0. Record the base in the brief.
 Research and design are one step: run **sacm-researcher** and, when public API is added or
 changed, **sacm-architect** in parallel, never one after the other.
 
+- **Overlap (ADR 0006 amendment 4):** start the next slice's research and design while the
+  current slice waits for CI or the verifier; those agents only read. Its tests and code
+  wait for the current PR to merge, or stack on its branch.
+
 - **Planned SACM rows:** run **sacm-researcher**. Apply its result to the matrix yourself:
   `requirement`, `source` (with the quoted clause) and `acceptance`, and set
   `status = "analyzed"`. New obligations become new rows. Then run
@@ -87,6 +91,8 @@ changed, **sacm-architect** in parallel, never one after the other.
 - **Public API added or changed:** run **sacm-architect**.
 - **ADRs:** an ADR is `proposed` until the user approves it.
 - **The brief:** record the key signatures in it.
+- **Exact design (ADR 0006 amendment 4):** ask the architect to fix exact names, field and
+  key order, golden JSON samples and check order, so the test engineer has nothing to guess.
 
 ## 5. Failing tests → `tests-failing`
 
@@ -119,8 +125,9 @@ changed, **sacm-architect** in parallel, never one after the other.
      (`gh workflow run mutants.yml --ref <branch>`), because a test-only diff gives the
      PR-diff job nothing to mutate.
 3. **Run sacm-verifier** with the rows, the acceptance, the diff and the run evidence,
-   but not your opinion. If public API changed, run **sacm-docs-reviewer** in parallel
-   with the implementer (step 6), not after verification.
+   but not your opinion. If the slice adds a lot of public API, run **sacm-docs-reviewer**
+   in parallel with the implementer (step 6). If it adds little, ask the verifier to review
+   the docs too, and skip the docs reviewer (ADR 0006 amendment 4).
    - Ask the verifier to label each finding **blocking** (wrong behaviour, a test gap in new
      code, a misreading of the standard, a false claim a user could rely on) or
      **follow-up** (wording, citations, comments, cosmetic docs). Only blocking findings

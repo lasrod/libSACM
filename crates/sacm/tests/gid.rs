@@ -617,10 +617,6 @@ fn sacm23_base_006_a_gid_in_the_wrong_place_or_form_is_unsupported_at_that_const
             "an element in a gid element",
             in_ap(&claim("c1", "", &format!("<gid>g{MARK}<b/></gid>"))),
         ),
-        (
-            "xsi:nil on a gid element",
-            in_ap(&claim("c1", "", &format!("<gid {MARK}xsi:nil=\"true\"/>"))),
-        ),
     ];
     for (what, template) in &cases {
         let (input, marks) = marked(template);

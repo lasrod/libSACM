@@ -14,8 +14,8 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 use sacm::diagnostic::{self, Code, Diagnostic, Severity};
-use sacm::edit::{self, CreateTaggedValue};
-use sacm::model::{AbstractClass, Document, ElementId, ElementKind, LangString};
+use sacm::edit::{self, CreateTaggedValue, SetFlag};
+use sacm::model::{AbstractClass, Document, ElementId, ElementKind, Flag, LangString};
 use sacm::validation;
 use sacm::xmi::{self, Mode, ReadOptions, WriteOptions};
 
@@ -295,6 +295,17 @@ fn sacm23_val_018_a_nameless_element_in_a_nameless_parent_gives_two_diagnostics(
 // 4. UtilityElements have no name to miss
 // ---------------------------------------------------------------------------
 
+/// Makes `owner` abstract when `kind` is `ImplementationConstraint`, which
+/// only an abstract element may hold (SACM23-VAL-021).
+fn made_abstract_for_a_constraint(doc: &mut Document, owner: &str, kind: ElementKind) {
+    if kind != ElementKind::ImplementationConstraint {
+        return;
+    }
+    if let Err(error) = edit::apply(doc, SetFlag::new(owner, Flag::IsAbstract, true)) {
+        panic!("{ROW}: setup: SetFlag({owner}, IsAbstract, true) was refused: {error:?}");
+    }
+}
+
 #[test]
 fn sacm23_val_018_utility_elements_under_a_named_model_element_give_no_diagnostic() {
     for kind in UTILITY_KINDS {
@@ -308,6 +319,7 @@ fn sacm23_val_018_utility_elements_under_a_named_model_element_give_no_diagnosti
             Some(named("Pkg")),
         );
         add_utility(&mut in_package, "pkg", kind, "u");
+        made_abstract_for_a_constraint(&mut in_package, "pkg", kind);
         assert_findings(
             &in_package,
             &[],
@@ -330,6 +342,7 @@ fn sacm23_val_018_utility_elements_under_a_named_model_element_give_no_diagnosti
             Some(named("C")),
         );
         add_utility(&mut in_claim, "c", kind, "u");
+        made_abstract_for_a_constraint(&mut in_claim, "c", kind);
         assert_findings(&in_claim, &[], &format!("a {kind} in a named Claim"));
     }
 }

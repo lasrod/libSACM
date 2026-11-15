@@ -239,9 +239,16 @@ fn sacm23_val_005_a_relationship_with_a_source_and_a_target_gives_none_whatever_
  {
     for kind in [ElementKind::AssertedInference, ElementKind::AssertedContext] {
         for &declaration in AssertionDeclaration::ALL {
+            // An asCited Assertion should be a citation of an Assertion
+            // (§11.8, SACM23-VAL-019).
+            let citation = if declaration == AssertionDeclaration::AsCited {
+                " isCitation=\"true\" citedElement=\"c1\""
+            } else {
+                ""
+            };
             for counter in ["", " isCounter=\"true\"", " isCounter=\"false\""] {
                 let attributes = format!(
-                    " assertionDeclaration=\"{}\"{counter} source=\"c2\" target=\"c1\"",
+                    " assertionDeclaration=\"{}\"{citation}{counter} source=\"c2\" target=\"c1\"",
                     declaration.as_str()
                 );
                 let what = format!("an {kind} with{attributes}");

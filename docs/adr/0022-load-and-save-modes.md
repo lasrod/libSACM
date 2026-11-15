@@ -105,3 +105,41 @@ Document production rules".
   writes only valid models.
 - **Tolerant read applies C++'s leniencies now** (case-insensitive class names, plural
   stripping). Rejected: each is a tolerance that needs its own row and test.
+
+## Amendment 1 (2026-11-15): the C++ name and text shapes, xsi:nil, untyped abstract-role children (slice 0049)
+
+The maintainer decided on 2026-11-15 (LIB-COMPAT-008, SACM23-XMI-026, LIB-COMPAT-010):
+- **The C++ name and text shapes are tolerances.** A tolerant read takes each one-to-one
+  shape as its standard form, with one SACM-XMI-012 Warning per occurrence. Covered: `name=`,
+  text as `content`, a `name` holding one `value` or one `content lang`, the single-language
+  MultiLangString shorthand, `content=` or text on a UtilityElement, and `key=`/`value=` on
+  a `taggedValue`.
+  - A strict read refuses each shape with SACM-XMI-012, as this ADR's rule says: strict
+    never applies a tolerance.
+  - Both saves write only the standard form.
+  - Shapes that invent or merge elements belong to the legacy app dialect, LIB-COMPAT-012
+    (M6). Its files are in the SACM 2.2 namespace. These shapes are a multi-entry name,
+    merged `content` siblings, and `content`, `statement` or `description` on an element
+    read as a Description.
+- **`xsi:nil="true"` on a value element reads as omitted,** in both modes and with no
+  diagnostic (XMI 2.5.1 §9.4.1, §7.15). An absent String, a false flag and an `asserted`
+  declaration are what omitting gives.
+- **An untyped child under an abstract role is refused in both modes with SACM-XMI-005.** Its
+  local name is the role, so no class can be inferred, and none is guessed.
+- **Codes.**
+  - New SACM-XMI-012: Error when strict refuses, Warning when tolerant reads.
+  - New SACM-CITE-002 (Warning, SACM23-VAL-019).
+  - SACM-ABS-001's Error part widened to an implementation constraint on an element whose
+    `isAbstract` is not true (SACM23-VAL-021, the §8.6 OCL).
+
+**Differences from C++:**
+- **T1.** C++ reads every shape silently, in both modes.
+- **T2.** Where a value is given twice, C++ picks one (`xmi_reader.cpp:1270-1275`, `805-809`).
+  Here that is `RepeatedValue` (SACM-MULT-001).
+- **T3.** C++ drops empty shorthands (`:841-845`, `:1173-1176`). Here `""` is kept
+  (ADR 0012).
+- **T4.** C++ reports an implementation constraint on a concrete element as SACM-CITE-001
+  (`validate.cpp:461-468`). Here it is SACM-ABS-001, because SACM-CITE-001 means a
+  `citedElement` without `isCitation`, and codes never change meaning (D-DIAG).
+
+*Amendment 1 status: accepted (the maintainer, 2026-11-15).*

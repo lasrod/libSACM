@@ -1143,21 +1143,20 @@ fn sacm23_xmi_012_a_type_naming_another_class_on_name_is_unsupported_at_the_name
 }
 
 #[test]
-fn sacm23_xmi_012_an_element_child_or_text_in_name_is_unsupported_at_that_content() {
+fn sacm23_xmi_012_an_element_child_in_name_is_unsupported_at_it() {
     let row = "SACM23-XMI-012";
     // `  <name>` is 8 characters, so what it holds starts at column 9. The
     // value elements `lang` and `content` are read (SACM23-XMI-014), so they
-    // are not among these.
+    // are not among these. One `value`, and text, are the C++ shapes of
+    // LIB-COMPAT-008 (`legacy_shapes.rs`).
     for (what, inside) in [
-        ("a value element", "<value content=\"x\"/>"),
-        ("text", "text"),
+        ("an element", "<foo content=\"x\"/>"),
+        ("an element after a comment", "<!--c--><foo/>"),
     ] {
         let input = root_holding(&format!("  <name>{inside}</name>"));
-        assert_unsupported_at(row, what, &input, 2, 9);
+        let column = if what.ends_with("comment") { 17 } else { 9 };
+        assert_unsupported_at(row, what, &input, 2, column);
     }
-    // Text after a comment, at its first character.
-    let after_comment = root_holding("  <name><!--c-->x</name>");
-    assert_unsupported_at(row, "text after a comment", &after_comment, 2, 17);
 }
 
 #[test]

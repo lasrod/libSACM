@@ -8,8 +8,9 @@
 //! `UtilityElement`'s `content` is absent (`None`) or a `MultiLangString`, held in
 //! order with duplicates; `<content/>` is an empty one. An `xmi:id` on
 //! `content` or on a `value` is kept by role and position, shares the file's
-//! id space and is written first on its element. Single-language shorthands
-//! stay `Unsupported` until LIB-COMPAT-008.
+//! id space and is written first on its element. The single-language
+//! shorthands, and text in a `value`, are LIB-COMPAT-008, tested in
+//! `legacy_shapes.rs`.
 //!
 //! Also here, for the rows this slice rewords:
 //! - SACM23-VAL-020: a `content` or `value` id that is not an `NCName` is one
@@ -36,10 +37,10 @@ use sacm::compare::{Difference, semantic_compare};
 use sacm::diagnostic::{self, Code, Severity, SourceLocation};
 use sacm::edit::{
     self, CreateArgumentPackage, CreateAssuranceCasePackage, CreateClaim, CreateDescription,
-    CreateImplementationConstraint, CreateNote, EditError, Operation,
+    CreateImplementationConstraint, CreateNote, EditError, Operation, SetFlag,
 };
 use sacm::model::{
-    AbstractClass, Document, ElementId, ElementKind, LangString, MultiLangString, SacmElement,
+    AbstractClass, Document, ElementId, ElementKind, Flag, LangString, MultiLangString, SacmElement,
 };
 use sacm::validation;
 use sacm::xmi::{
@@ -89,6 +90,17 @@ fn in_ap(body: &str) -> String {
         "<sacm:ArgumentPackage{NS} xmi:id=\"p\">\n  <name content=\"P\"/>\n  {body}\n\
          </sacm:ArgumentPackage>"
     )
+}
+
+/// [`in_ap`] with `p` abstract, as §8.6 asks of an element holding an
+/// implementation constraint (SACM23-VAL-021).
+fn in_abstract_ap(body: &str) -> String {
+    abstract_p(&in_ap(body))
+}
+
+/// `input` with the element `p` abstract (SACM23-VAL-021).
+fn abstract_p(input: &str) -> String {
+    input.replacen("xmi:id=\"p\"", "xmi:id=\"p\" isAbstract=\"true\"", 1)
 }
 
 /// A Description `d` holding `body`, in [`in_ap`].
@@ -435,7 +447,8 @@ fn sacm23_base_004_each_utility_role_reads_on_each_readable_kind_as_root_and_chi
         );
         for (context, parent_kind, input) in contexts(&body) {
             let what = format!("a {role} in {context}");
-            let doc = read_ok(ROW, &what, &input);
+            // The parent is abstract: an implementation constraint needs it.
+            let doc = read_ok(ROW, &what, &abstract_p(&input));
             let u = element(ROW, &doc, "u");
             assert_eq!(u.kind(), kind, "{ROW}: {what}: the kind");
             assert_eq!(
@@ -564,7 +577,7 @@ fn sacm23_base_004_interleaved_utility_children_keep_document_order_and_several_
     let doc = read_ok(
         ROW,
         "interleaved children",
-        &in_ap(
+        &in_abstract_ap(
             "<description xmi:id=\"d1\"><content><value content=\"one\"/></content></description>\n  \
              <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\"><name content=\"C\"/></argumentElement>\n  \
              <note xmi:id=\"n1\"><content><value content=\"n\"/></content></note>\n  \
@@ -656,7 +669,11 @@ fn sacm23_base_004_a_content_keeps_its_values_in_order_with_duplicates() {
 fn sacm23_base_004_no_content_child_is_none_and_writes_nothing() {
     for (role, _, _) in ROLES {
         let what = format!("a {role} with no content");
-        let doc = read_ok(ROW, &what, &in_ap(&format!("<{role} xmi:id=\"u\"/>")));
+        let doc = read_ok(
+            ROW,
+            &what,
+            &in_abstract_ap(&format!("<{role} xmi:id=\"u\"/>")),
+        );
         let u = element(ROW, &doc, "u");
         assert_eq!(
             (u.content(), u.content_id(), u.content_value_ids()),
@@ -914,7 +931,7 @@ fn sacm23_base_004_type_attributes_naming_the_classes_are_accepted_and_none_is_w
     let plain = read_ok(
         ROW,
         "untyped",
-        &in_ap(
+        &in_abstract_ap(
             "<description xmi:id=\"d\"><content><value lang=\"en\" content=\"x\"/></content></description>\
              <note xmi:id=\"n\"/><implementationConstraint xmi:id=\"i\"/>",
         ),
@@ -922,7 +939,7 @@ fn sacm23_base_004_type_attributes_naming_the_classes_are_accepted_and_none_is_w
     let typed = read_ok(
         ROW,
         "typed",
-        &in_ap(
+        &in_abstract_ap(
             "<description xmi:type=\"sacm:Description\" xmi:id=\"d\">\
              <content xmi:type=\"sacm:MultiLangString\">\
              <value xmi:type=\"sacm:LangString\" lang=\"en\" content=\"x\"/></content></description>\
@@ -1448,10 +1465,6 @@ fn sacm23_base_004_text_or_an_attribute_a_utility_element_cannot_hold_is_unsuppo
             description_with(&format!("<value content=\"a\"/> {MARK}x")),
         ),
         (
-            "text in a value",
-            description_with(&format!("<value lang=\"en\">{MARK}x</value>")),
-        ),
-        (
             "xml:lang on content",
             in_description(&format!("<content {MARK}xml:lang=\"en\"/>")),
         ),
@@ -1486,43 +1499,6 @@ fn sacm23_base_004_text_or_an_attribute_a_utility_element_cannot_hold_is_unsuppo
     ];
     for (what, template) in &cases {
         assert_unsupported_at_mark(ROW, what, template);
-    }
-}
-
-#[test]
-fn sacm23_base_004_the_single_language_shorthand_is_unsupported_naming_lib_compat_008() {
-    let cases = [
-        (
-            "<content lang=\"en\" content=\"x\"/>",
-            in_description(&format!("<content {MARK}lang=\"en\" content=\"x\"/>")),
-        ),
-        (
-            "<content content=\"x\"/>",
-            in_description(&format!("<content {MARK}content=\"x\"/>")),
-        ),
-        (
-            "<content>x</content>",
-            in_description(&format!("<content>{MARK}x</content>")),
-        ),
-        (
-            "<description content=\"x\"/>",
-            in_ap(&format!("<description xmi:id=\"d\" {MARK}content=\"x\"/>")),
-        ),
-        (
-            "<description>x</description>",
-            in_ap(&format!("<description xmi:id=\"d\">{MARK}x</description>")),
-        ),
-        (
-            "<note content=\"x\"/>",
-            in_ap(&format!("<note xmi:id=\"n\" {MARK}content=\"x\"/>")),
-        ),
-    ];
-    for (what, template) in &cases {
-        let reason = assert_unsupported_at_mark(ROW, what, template);
-        assert!(
-            reason.contains("LIB-COMPAT-008"),
-            "{ROW}: {what}: the reason {reason:?} does not name LIB-COMPAT-008"
-        );
     }
 }
 
@@ -2139,7 +2115,10 @@ fn sacm23_base_004_create_operations_refuse_parent_not_found_invalid_id_and_dupl
 fn sacm23_base_004_a_document_built_by_the_create_operations_writes_reads_back_equal_and_validates()
 {
     let mut doc = built();
+    // c1 is made abstract: only an abstract element may hold an
+    // implementation constraint (§8.6, SACM23-VAL-021).
     let operations = [
+        SetFlag::new("c1", Flag::IsAbstract, true).into(),
         create_operation("description", "case", mls(&[en("en", "A case")]), None),
         create_operation(
             "note",

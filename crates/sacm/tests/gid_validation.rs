@@ -286,15 +286,20 @@ fn sacm23_val_002_two_duplicated_values_give_two_findings_in_sorted_order() {
 
 #[test]
 fn sacm23_val_002_each_utility_kind_sharing_a_gid_with_a_claim_is_one_finding() {
-    for (role, extra) in [
-        ("description", ""),
-        ("implementationConstraint", ""),
-        ("note", ""),
-        ("taggedValue", "<key><value content=\"k\"/></key>"),
+    // An implementation constraint is only allowed on an abstract element
+    // (§8.6, SACM23-VAL-021), so its Claim is abstract.
+    for (role, extra, flag) in [
+        ("description", "", ""),
+        ("implementationConstraint", "", " isAbstract=\"true\""),
+        ("note", "", ""),
+        ("taggedValue", "<key><value content=\"k\"/></key>", ""),
     ] {
         let what = format!("a {role} sharing \"g\" with its Claim");
         let utility = format!("<{role} xmi:id=\"u\" gid=\"g\">{extra}</{role}>");
-        let finding = one_finding(&what, &in_ap(&claim("c1", " gid=\"g\"", &utility)));
+        let finding = one_finding(
+            &what,
+            &in_ap(&claim("c1", &format!(" gid=\"g\"{flag}"), &utility)),
+        );
         assert_finding(&what, &finding, &["c1", "u"], &["\"g\""]);
     }
 }

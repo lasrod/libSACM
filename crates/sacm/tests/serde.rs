@@ -136,13 +136,15 @@ const EDIT_ERRORS: [(&str, &str); 18] = [
 
 /// Every catalog `Code` constant of this release. The catalog cross-check
 /// keeps it in step with `docs/sacm/diagnostics.md`.
-const CODES: [Code; 26] = [
+const CODES: [Code; 29] = [
     Code::XML_MALFORMED,
     Code::XML_DOCTYPE_REJECTED,
     Code::XMI_INVALID_ROOT,
     Code::XMI_MISSING_ID,
+    Code::XMI_MISSING_TYPE,
     Code::XMI_XSI_TYPE,
     Code::XMI_VERSION_IGNORED,
+    Code::XMI_LEGACY_SHAPE,
     Code::MULTIPLICITY_VIOLATION,
     Code::ENUM_INVALID_LITERAL,
     Code::CMD_TARGET_NOT_FOUND,
@@ -162,6 +164,7 @@ const CODES: [Code; 26] = [
     Code::REF_DANGLING,
     Code::REF_WRONG_TYPE,
     Code::CITATION_INVALID,
+    Code::AS_CITED_INVALID,
     Code::ABSTRACT_FORM_INVALID,
 ];
 

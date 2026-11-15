@@ -102,3 +102,24 @@ gate, and mutation testing of each PR's diff. Changed:
   do not block become follow-ups.
 
 *Amendment 3 status: accepted (the maintainer, 2026-11-13).*
+
+## Amendment 4 (2026-11-15): less waiting
+
+The maintainer adopted five more speed-ups. The safeguards of amendment 3 stay. Changed:
+- **Overlap.** While slice N waits for CI or verification, the next slice's research and
+  design run. Those agents only read. Its tests and code wait until slice N's PR merges, or
+  stack on its branch.
+- **Exact design briefs.** The architect's brief fixes exact names, field and key order,
+  golden JSON samples and check order. Test engineers then have nothing to guess.
+- **A milestone's decisions in one batch**, asked before its first slice. This applies
+  amendment 3's rule strictly, starting with M3.
+- **Documentation-only commits skip the heavy CI jobs.** When a push or pull request changes
+  only `docs/**`, CI skips the test, MSRV and PR-diff mutation jobs. The format, lint,
+  rustdoc, matrix, deny, hook and wasm jobs still run. This is LIB-QA-018. A slice's last
+  commit (the verification record and the matrix statuses) then costs minutes, not a full
+  run. A merge to `main` brings the slice's code, so it still runs everything.
+- **One review for small API changes.** When a slice adds little public API, the verifier
+  also reviews its documentation, and the docs reviewer is not run. Slices that add a lot of
+  public API keep both.
+
+*Amendment 4 status: accepted (the maintainer, 2026-11-15).*

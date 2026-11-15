@@ -122,9 +122,12 @@ fn holders() -> [Holder; 7] {
             "an ImplementationConstraint",
             "ImplementationConstraint",
             |attributes: &str| {
+                // In an abstract package: only an abstract element may hold
+                // a constraint (§8.6, SACM23-VAL-021).
                 in_ap(&format!(
                     "<implementationConstraint xmi:id=\"x\"{attributes}/>"
                 ))
+                .replacen("xmi:id=\"p\"", "xmi:id=\"p\" isAbstract=\"true\"", 1)
             },
         ),
         ("a Note", "Note", |attributes: &str| {

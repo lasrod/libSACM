@@ -22,6 +22,72 @@ env:
   SACM_XMLCONF_DIR: ${{ github.workspace }}/third_party/xmlconf/xmlconf
 
 jobs:
+  # LIB-QA-018: whether the latest push changed anything outside docs/. The gates below
+  # fail open: they skip only on an explicit `code=false`, so a failed `changes` job runs
+  # everything. A push that
+  # changes only docs/ (such as a slice's verification record) skips the jobs that can
+  # only fail on code: the Windows and macOS tests, MSRV and the PR-diff mutants. Their
+  # required checks pass as skipped. The Ubuntu tests still run, because the xtask and
+  # catalog tests read docs/. When in doubt, `code` is true.
+  #
+  # A push compared with the commit before it (a pull request's new commits, or a push to
+  # main) may skip only if CI succeeded on that commit, so a docs-only push never turns
+  # failed, cancelled or unfinished code checks green; each docs-only run vouches for its
+  # predecessor in turn. A newly opened pull request compares with its base, which CI
+  # verified when it reached main.
+  changes:
+    name: changed paths
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: previous
+        name: Whether CI succeeded on the previous commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          ok=false
+          if [ -n "$BEFORE" ] && n=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$BEFORE&status=success" --jq '.total_count') && [ "$n" -gt 0 ]; then
+            ok=true
+          fi
+          echo "CI succeeded on $BEFORE: $ok"
+          echo "ok=$ok" >> "$GITHUB_OUTPUT"
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          PREVIOUS_OK: ${{ steps.previous.outputs.ok }}
+        run: |
+          set -u
+          range=""
+          needs_previous=false
+          if [ "$EVENT" = pull_request ] && [ "$ACTION" = synchronize ]; then range="$BEFORE $AFTER"; needs_previous=true
+          elif [ "$EVENT" = pull_request ]; then range="$BASE $HEAD"
+          elif [ "$EVENT" = push ]; then range="$BEFORE $AFTER"; needs_previous=true
+          fi
+          code=true
+          if [ -n "$range" ] && files=$(git diff --name-only --no-renames $range) && [ -n "$files" ]; then
+            if ! echo "$files" | grep -qv '^docs/'; then code=false; fi
+          fi
+          if [ "$code" = false ] && [ "$needs_previous" = true ] && [ "${PREVIOUS_OK:-}" != true ]; then
+            echo "docs only, but CI did not succeed on the previous commit"
+            code=true
+          fi
+          echo "changed outside docs/: $code"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
   fmt:
     name: rustfmt
     runs-on: ubuntu-latest
@@ -47,28 +113,42 @@ jobs:
 
   test:
     name: test (${{ matrix.os }})
+    needs: changes
+    # Runs even if `changes` failed: only an explicit "docs only" skips anything.
+    if: ${{ !cancelled() }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    # LIB-QA-018: the steps are skipped on Windows and macOS when only docs/ changed (the
+    # job must still exist, because its check is required).
     steps:
       - uses: actions/checkout@v7
+        if: needs.changes.outputs.code != 'false' || matrix.os == 'ubuntu-latest'
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        if: needs.changes.outputs.code != 'false' || matrix.os == 'ubuntu-latest'
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: needs.changes.outputs.code != 'false' || matrix.os == 'ubuntu-latest'
       - name: Cache the W3C XML Conformance Test Suite (LIB-SEC-006)
+        if: needs.changes.outputs.code != 'false' || matrix.os == 'ubuntu-latest'
         uses: actions/cache@v6
         with:
           path: third_party/xmlconf
           key: xmlconf-9b61db9f5dbffa545f4b8d78422167083a8568c59bd1129f94138f936cf6fc1f
       - run: cargo xtask fetch-spec --only xmlconf
+        if: needs.changes.outputs.code != 'false' || matrix.os == 'ubuntu-latest'
       - run: cargo test --workspace --all-features
+        if: needs.changes.outputs.code != 'false' || matrix.os == 'ubuntu-latest'
       - run: cargo test -p xtask
+        if: needs.changes.outputs.code != 'false' || matrix.os == 'ubuntu-latest'
 
   msrv:
     name: MSRV
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -149,7 +229,8 @@ jobs:
   # a contiguous block, which left one shard about twice as slow as another.
   mutants-shard:
     name: mutants (PR diff, shard ${{ matrix.shard }})
-    if: github.event_name == 'pull_request'
+    needs: changes
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -191,10 +272,12 @@ jobs:
   mutants:
     name: mutants (PR diff)
     if: always() && github.event_name == 'pull_request'
-    needs: mutants-shard
+    needs: [changes, mutants-shard]
     runs-on: ubuntu-latest
     steps:
-      - name: Every shard passed
+      - name: Every shard passed, or only docs/ changed (LIB-QA-018)
         env:
           RESULT: ${{ needs.mutants-shard.result }}
-        run: test "$RESULT" = success
+          CHANGES: ${{ needs.changes.result }}
+          CODE: ${{ needs.changes.outputs.code }}
+        run: test "$RESULT" = success || { test "$CHANGES" = success && test "$CODE" = false && test "$RESULT" = skipped; }

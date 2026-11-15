@@ -3,7 +3,9 @@
 //!
 //! - LIB-COMPAT-001: `ReadOptions` carries an `xmi::Mode`, tolerant by
 //!   default, and `ReadOutput::mode()` reports it. Both modes read and refuse
-//!   the same inputs. `xsi:type` is SACM-XMI-010 (XMI 2.5.1 §9.5.2 rule 2g), an
+//!   the same inputs, apart from the C++ name and text shapes, which a
+//!   tolerant read reads and a strict read refuses (LIB-COMPAT-008, ADR 0022
+//!   amendment 1, `legacy_shapes.rs`). `xsi:type` is SACM-XMI-010 (XMI 2.5.1 §9.5.2 rule 2g), an
 //!   Error in strict mode and a Warning in tolerant mode; `xmi:version` on the
 //!   `xmi:XMI` element or a root is SACM-XMI-011 (§7.5.3), Info in both.
 //! - LIB-COMPAT-007: `WriteOptions` carries a mode, strict by default. A strict
@@ -552,6 +554,8 @@ enum Expect {
     InvalidId,
     RepeatedValue,
     InvalidLiteral,
+    /// SACM-XMI-005 (LIB-COMPAT-010), known by its code.
+    MissingType,
 }
 
 /// The [`Expect`] that `result` is, or `None` for a refusal this file does
@@ -568,6 +572,7 @@ fn category(result: &Result<ReadOutput, ReadError>) -> Option<Expect> {
         Err(ReadError::InvalidId { .. }) => Some(Expect::InvalidId),
         Err(ReadError::RepeatedValue { .. }) => Some(Expect::RepeatedValue),
         Err(ReadError::InvalidLiteral { .. }) => Some(Expect::InvalidLiteral),
+        Err(error) if error.code() == Some(Code::XMI_MISSING_TYPE) => Some(Expect::MissingType),
         Err(_) => None,
     }
 }
@@ -601,8 +606,8 @@ fn acp(content: &str) -> String {
 )]
 fn table() -> Vec<(&'static str, Vec<u8>, Expect)> {
     use Expect::{
-        Doctype, DuplicateId, InvalidId, InvalidLiteral, InvalidRoot, Malformed, NoPackage, Reads,
-        RepeatedValue, Unsupported,
+        Doctype, DuplicateId, InvalidId, InvalidLiteral, InvalidRoot, Malformed, MissingType,
+        NoPackage, Reads, RepeatedValue, Unsupported,
     };
     let text =
         |what: &'static str, input: String, expect: Expect| (what, input.into_bytes(), expect);
@@ -743,11 +748,6 @@ fn table() -> Vec<(&'static str, Vec<u8>, Expect)> {
             Unsupported,
         ),
         text(
-            "the single-language shorthand on a description",
-            ap("<description xmi:id=\"d\" content=\"x\"/>"),
-            Unsupported,
-        ),
-        text(
             "a Claim's xmi:uuid",
             ap("<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" xmi:uuid=\"u\"/>"),
             Unsupported,
@@ -833,10 +833,12 @@ fn table() -> Vec<(&'static str, Vec<u8>, Expect)> {
             ap("text"),
             Unsupported,
         ),
+        // --- An untyped child under an abstract role (SACM-XMI-005,
+        // LIB-COMPAT-010).
         text(
             "an untyped child under an abstract role",
             ap("<argumentElement xmi:id=\"x\"/>"),
-            Unsupported,
+            MissingType,
         ),
         // --- A duplicate id (SACM-ID-001) and an empty id (SACM-ID-002).
         text(
@@ -906,11 +908,6 @@ fn table() -> Vec<(&'static str, Vec<u8>, Expect)> {
         text(
             "the argumentationElement spelling",
             ap("<argumentationElement xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"),
-            Unsupported,
-        ),
-        text(
-            "a name given as text",
-            ap("<name>P</name>"),
             Unsupported,
         ),
         text(
@@ -988,6 +985,7 @@ fn lib_compat_001_both_modes_give_the_same_document_or_the_same_refusal_for_each
         Expect::InvalidId,
         Expect::RepeatedValue,
         Expect::InvalidLiteral,
+        Expect::MissingType,
     ] {
         assert!(
             cases.iter().any(|&(_, _, wanted)| wanted == expect),
