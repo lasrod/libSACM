@@ -722,26 +722,76 @@ fn sacm23_xmi_022_a_name_id_difference_displays_the_owner_and_both_ids() {
 
 // --- Item 6: a value element's id ----------------------------------------------------
 
+/// Asserts that `input` reads in both modes and keeps one construct as
+/// preserved content of `holder` (LIB-COMPAT-003, ADR 0033): exactly one
+/// SACM-XMI-003 at `at`, affecting `holder`, a Warning in tolerant mode and
+/// an Error in strict mode, and the same document in both, which it returns.
+fn assert_preserved_at(what: &str, input: &str, at: SourceLocation, holder: &str) -> Document {
+    let mut documents = Vec::new();
+    for (mode, severity) in [
+        (Mode::Tolerant, Severity::Warning),
+        (Mode::Strict, Severity::Error),
+    ] {
+        let output = match read(mode, input) {
+            Ok(output) => output,
+            Err(error) => panic!(
+                "{ROW}: {what}: a {mode:?} read refused it instead of preserving it: {error:?}"
+            ),
+        };
+        let found: Vec<_> = output
+            .diagnostics()
+            .iter()
+            .filter(|found| found.code() == Code::XMI_UNKNOWN_CONTENT)
+            .map(|found| {
+                (
+                    found.severity(),
+                    found.location(),
+                    found.affected().to_vec(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            found,
+            [(severity, Some(at), vec![ElementId::from(holder)])],
+            "{ROW}: {what}: not one SACM-XMI-003 at the construct affecting {holder:?} in \
+             {mode:?} mode: {:?}",
+            output.diagnostics()
+        );
+        let doc = output.into_document();
+        assert!(
+            doc.get(holder)
+                .is_some_and(SacmElement::has_preserved_content),
+            "{ROW}: {what}: {holder:?} holds no preserved content in {mode:?} mode"
+        );
+        documents.push(doc);
+    }
+    assert_eq!(
+        documents[0], documents[1],
+        "{ROW}: {what}: the modes read different documents"
+    );
+    documents.swap_remove(0)
+}
+
 #[test]
-fn sacm23_xmi_022_an_xmi_id_on_a_value_element_stays_unsupported_at_the_attribute() {
+fn sacm23_xmi_022_an_xmi_id_on_a_value_element_is_preserved_with_its_name() {
+    // A value element has no id: a defect inside the name, which keeps the
+    // whole name as preserved content of p, at its start tag, and leaves p
+    // with no name; the name's own id stays in the id space (ADR 0033).
     for template in [
         root_holding(&format!(
-            "<name><content {MARK}xmi:id=\"v1\">x</content></name>"
+            "{MARK}<name><content xmi:id=\"v1\">x</content></name>"
         )),
         root_holding(&format!(
-            "<name xmi:id=\"n1\"><lang {MARK}xmi:id=\"v1\">en</lang></name>"
+            "{MARK}<name xmi:id=\"n1\"><lang xmi:id=\"v1\">en</lang></name>"
         )),
     ] {
         let (input, marks) = marked(&template);
-        let error = refused("an id on a value element", &input);
+        let doc = assert_preserved_at("an id on a value element", &input, marks[0], "p");
         assert!(
-            matches!(error, ReadError::Unsupported { .. }) && error.code().is_none(),
-            "{ROW}: an id on a value element is not Unsupported: {error:?}"
-        );
-        assert_eq!(
-            error.location(),
-            Some(marks[0]),
-            "{ROW}: an id on a value element is not refused at the attribute: {error}"
+            doc.get("p").is_some_and(|p| p.name().is_none())
+                && doc.get("n1").is_none()
+                && doc.get("v1").is_none(),
+            "{ROW}: an id on a value element: p has a name, or a preserved id is an element"
         );
     }
 }

@@ -21,7 +21,7 @@
 use std::path::Path;
 
 use sacm::compare::{Difference, semantic_compare};
-use sacm::diagnostic::{Code, SourceLocation};
+use sacm::diagnostic::{Code, Severity, SourceLocation};
 use sacm::edit::{self, CreateClaim};
 use sacm::model::{Document, ElementId, LangString, SacmElement};
 use sacm::validation;
@@ -548,89 +548,144 @@ fn sacm23_base_006_a_gid_has_no_syntax_check_and_is_never_trimmed() {
 
 // --- Item 5: refusals ---------------------------------------------------------------
 
+/// Asserts that `input` reads in both modes and keeps one construct as
+/// preserved content of `holder` (LIB-COMPAT-003, ADR 0033): exactly one
+/// SACM-XMI-003 at `at`, affecting `holder`, a Warning in tolerant mode and
+/// an Error in strict mode, and the same document in both.
+fn assert_preserved_at(what: &str, input: &str, at: SourceLocation, holder: &str) {
+    let mut documents = Vec::new();
+    for (mode, severity) in [
+        (Mode::Tolerant, Severity::Warning),
+        (Mode::Strict, Severity::Error),
+    ] {
+        let output = match read(mode, input) {
+            Ok(output) => output,
+            Err(error) => panic!(
+                "{ROW}: {what}: a {mode:?} read refused it instead of preserving it: {error:?}"
+            ),
+        };
+        let found: Vec<_> = output
+            .diagnostics()
+            .iter()
+            .filter(|found| found.code() == Code::XMI_UNKNOWN_CONTENT)
+            .map(|found| {
+                (
+                    found.severity(),
+                    found.location(),
+                    found.affected().to_vec(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            found,
+            [(severity, Some(at), vec![ElementId::from(holder)])],
+            "{ROW}: {what}: not one SACM-XMI-003 at the construct affecting {holder:?} in \
+             {mode:?} mode: {:?}",
+            output.diagnostics()
+        );
+        let doc = output.into_document();
+        assert!(
+            doc.get(holder)
+                .is_some_and(SacmElement::has_preserved_content),
+            "{ROW}: {what}: {holder:?} holds no preserved content in {mode:?} mode"
+        );
+        documents.push(doc);
+    }
+    assert_eq!(
+        documents[0], documents[1],
+        "{ROW}: {what}: the modes read different documents"
+    );
+}
+
+/// A gid in the wrong place or form does not conform: it is kept as preserved
+/// content of its holder, an attribute at its name, and a defect inside a
+/// name, content, key, value or gid element as that whole child, at its start
+/// tag (ADR 0033).
 #[test]
-fn sacm23_base_006_a_gid_in_the_wrong_place_or_form_is_unsupported_at_that_construct() {
+fn sacm23_base_006_a_gid_in_the_wrong_place_or_form_is_preserved_at_that_construct() {
     let description =
         |body: &str| in_ap(&format!("<description xmi:id=\"d\">{body}</description>"));
     let cases = [
         (
             "sacm:gid as an attribute",
             in_ap(&claim("c1", &format!(" {MARK}sacm:gid=\"g\""), "")),
+            "c1",
         ),
         (
             "sacm:gid as an element",
             in_ap(&claim("c1", "", &format!("{MARK}<sacm:gid>g</sacm:gid>"))),
+            "c1",
         ),
         (
             "gid on name",
             in_ap(&claim(
                 "c1",
                 "",
-                &format!("<name content=\"N\" {MARK}gid=\"g\"/>"),
+                &format!("{MARK}<name content=\"N\" gid=\"g\"/>"),
             ))
             .replacen("<name content=\"C\"/>", "", 1),
+            "c1",
         ),
         (
             "a gid element in name",
             in_ap(&claim(
                 "c1",
                 "",
-                &format!("<name content=\"N\">{MARK}<gid>g</gid></name>"),
+                &format!("{MARK}<name content=\"N\"><gid>g</gid></name>"),
             ))
             .replacen("<name content=\"C\"/>", "", 1),
+            "c1",
         ),
         (
             "gid on content",
-            description(&format!("<content {MARK}gid=\"g\"/>")),
+            description(&format!("{MARK}<content gid=\"g\"/>")),
+            "d",
         ),
         (
             "a gid element in content",
-            description(&format!("<content>{MARK}<gid>g</gid></content>")),
+            description(&format!("{MARK}<content><gid>g</gid></content>")),
+            "d",
         ),
         (
             "gid on key",
             in_ap(&format!(
-                "<taggedValue xmi:id=\"t\"><key {MARK}gid=\"g\"/></taggedValue>"
+                "<taggedValue xmi:id=\"t\">{MARK}<key gid=\"g\"/></taggedValue>"
             )),
+            "t",
         ),
         (
             "gid on value",
             description(&format!(
-                "<content><value {MARK}gid=\"g\" content=\"x\"/></content>"
+                "{MARK}<content><value gid=\"g\" content=\"x\"/></content>"
             )),
+            "d",
         ),
         (
             "a gid element in value",
             description(&format!(
-                "<content><value>{MARK}<gid>g</gid></value></content>"
+                "{MARK}<content><value><gid>g</gid></value></content>"
             )),
+            "d",
         ),
         (
             "an xmi:id on a gid element",
             in_ap(&claim(
                 "c1",
                 "",
-                &format!("<gid {MARK}xmi:id=\"x\">g</gid>"),
+                &format!("{MARK}<gid xmi:id=\"x\">g</gid>"),
             )),
+            "c1",
         ),
         (
             "an element in a gid element",
-            in_ap(&claim("c1", "", &format!("<gid>g{MARK}<b/></gid>"))),
+            in_ap(&claim("c1", "", &format!("{MARK}<gid>g<b/></gid>"))),
+            "c1",
         ),
     ];
-    for (what, template) in &cases {
+    for (what, template, holder) in &cases {
         let (input, marks) = marked(template);
         assert_eq!(marks.len(), 1, "{ROW}: setup: {what} has not one mark");
-        let error = refused(what, &input);
-        assert!(
-            matches!(error, ReadError::Unsupported { .. }) && error.code().is_none(),
-            "{ROW}: {what}: not Unsupported: {error:?}"
-        );
-        assert_eq!(
-            error.location(),
-            Some(marks[0]),
-            "{ROW}: {what}: not refused at the construct: {error}"
-        );
+        assert_preserved_at(what, &input, marks[0], holder);
     }
 }
 

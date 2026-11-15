@@ -51,6 +51,7 @@ use std::borrow::Cow;
 use crate::diagnostic::SourceLocation;
 
 use super::ReadError;
+use super::refusal::{Unread, unsupported, unsupported_at};
 
 /// The text of `input`, if it is UTF-8 (or ASCII, if declared so) or UTF-16
 /// with a byte order mark, its XML declaration is well-formed, and it
@@ -63,21 +64,23 @@ pub(super) fn decode(input: &[u8]) -> Result<Cow<'_, str>, ReadError> {
             (Cow::Owned(text), Encoding::Utf16, error)
         }
         Some(Bom::Other(encoding)) => {
-            return Err(ReadError::Unsupported {
-                location: SourceLocation::at(1, 1),
-                reason: format!(
+            return Err(unsupported_at(
+                SourceLocation::at(1, 1),
+                Unread::Encoding,
+                &format!(
                     "the input starts with a {encoding} byte order mark, and only UTF-8, ASCII and UTF-16 are read"
                 ),
-            });
+            ));
         }
         None => {
             if let Some(encoding) = encoding_by_first_bytes(input) {
-                return Err(ReadError::Unsupported {
-                    location: SourceLocation::at(1, 1),
-                    reason: format!(
+                return Err(unsupported_at(
+                    SourceLocation::at(1, 1),
+                    Unread::Encoding,
+                    &format!(
                         "the input is encoded in {encoding}, and only UTF-8, ASCII and UTF-16 starting with U+FEFF are read"
                     ),
-                });
+                ));
             }
             let (text, error) = decode_utf8(input);
             (Cow::Borrowed(text), Encoding::Utf8, error)
@@ -255,12 +258,14 @@ fn check_supported(
         return Ok(());
     }
     match encoding {
-        Encoding::Utf8 => Err(ReadError::Unsupported {
-            location: locate(text, declared.offset),
-            reason: format!(
+        Encoding::Utf8 => Err(unsupported(
+            text,
+            declared.offset,
+            Unread::Encoding,
+            &format!(
                 "the declared encoding {name:?} is not supported: without a UTF-16 byte order mark, only UTF-8 and ASCII are read"
             ),
-        }),
+        )),
         Encoding::Utf16 => Err(malformed(
             text,
             declared.offset,
@@ -929,10 +934,7 @@ fn refusal(text: &str, error: &roxmltree::Error) -> ReadError {
             location: doctype_offset(text).and_then(|offset| locate(text, offset)),
         },
         E::NodesLimitReached | E::AttributesLimitReached | E::NamespacesLimitReached => {
-            ReadError::Unsupported {
-                location: None,
-                reason: reason(error),
-            }
+            unsupported_at(None, Unread::Capacity, &reason(error))
         }
         E::NoRootNode | E::UnclosedRootNode | E::UnexpectedEndOfStream => ReadError::Malformed {
             location: locate(text, text.len()),
@@ -1153,7 +1155,7 @@ mod tests {
                 Err(ReadError::Unsupported {
                     location: SourceLocation::at(1, 1),
                     reason: format!(
-                        "the input is encoded in {encoding}, and only UTF-8, ASCII and UTF-16 starting with U+FEFF are read"
+                        "the input is encoded in {encoding}, and only UTF-8, ASCII and UTF-16 starting with U+FEFF are read (a limit of this version)"
                     ),
                 }),
             );
@@ -1456,7 +1458,7 @@ mod tests {
             decode(latin1),
             Err(ReadError::Unsupported {
                 location: SourceLocation::at(1, 31),
-                reason: "the declared encoding \"ISO-8859-1\" is not supported: without a UTF-16 byte order mark, only UTF-8 and ASCII are read"
+                reason: "the declared encoding \"ISO-8859-1\" is not supported: without a UTF-16 byte order mark, only UTF-8 and ASCII are read (a limit of this version)"
                     .to_owned(),
             })
         );
@@ -1551,7 +1553,7 @@ mod tests {
                 refusal(text, &limit),
                 ReadError::Unsupported {
                     location: None,
-                    reason: reason(&limit),
+                    reason: format!("{} (a limit of this version)", reason(&limit)),
                 },
                 "{limit:?}"
             );

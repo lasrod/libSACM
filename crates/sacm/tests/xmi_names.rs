@@ -348,6 +348,60 @@ fn root_holding(content: &str) -> String {
     format!("<sacm:ArgumentPackage{NS} xmi:id=\"a\">\n{content}\n</sacm:ArgumentPackage>")
 }
 
+/// Asserts that `input` reads in both modes and keeps one construct as
+/// preserved content of `holder` (LIB-COMPAT-003, ADR 0033): exactly one
+/// SACM-XMI-003 at line `line`, column `column`, affecting `holder`, a
+/// Warning in tolerant mode and an Error in strict mode, the same document
+/// in both, and `holder` without a name.
+fn assert_preserved_at(row: &str, what: &str, input: &str, line: u32, column: u32, holder: &str) {
+    let mut documents = Vec::new();
+    for (mode, severity) in [
+        (Mode::Tolerant, Severity::Warning),
+        (Mode::Strict, Severity::Error),
+    ] {
+        let output = match xmi::read(input.as_bytes(), &ReadOptions::default().with_mode(mode)) {
+            Ok(output) => output,
+            Err(error) => panic!(
+                "{row}: {what}: a {mode:?} read refused it instead of preserving it: {error:?}"
+            ),
+        };
+        let found: Vec<_> = output
+            .diagnostics()
+            .iter()
+            .filter(|found| found.code() == Code::XMI_UNKNOWN_CONTENT)
+            .map(|found| {
+                (
+                    found.severity(),
+                    found.location(),
+                    found.affected().to_vec(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            found,
+            [(
+                severity,
+                Some(loc(row, line, column)),
+                vec![ElementId::from(holder)]
+            )],
+            "{row}: {what}: not one SACM-XMI-003 at line {line}, column {column} affecting \
+             {holder:?} in {mode:?} mode: {:?}",
+            output.diagnostics()
+        );
+        let doc = output.into_document();
+        assert!(
+            doc.get(holder)
+                .is_some_and(|found| found.has_preserved_content() && found.name().is_none()),
+            "{row}: {what}: {holder:?} holds no preserved content, or has a name, in {mode:?} mode"
+        );
+        documents.push(doc);
+    }
+    assert_eq!(
+        documents[0], documents[1],
+        "{row}: {what}: the modes read different documents"
+    );
+}
+
 /// Asserts that `input` is refused as `Unsupported`, with no code, at line
 /// `line`, column `column`, and that no document is returned.
 fn assert_unsupported_at(row: &str, what: &str, input: &str, line: u32, column: u32) {
@@ -1112,62 +1166,69 @@ fn sacm23_xmi_012_white_space_comments_and_processing_instructions_in_name_are_a
 }
 
 #[test]
-fn sacm23_xmi_012_an_attribute_other_than_lang_and_content_on_name_is_unsupported_at_it() {
+fn sacm23_xmi_012_an_attribute_other_than_lang_and_content_on_name_is_unsupported_or_preserved() {
     let row = "SACM23-XMI-012";
     // An `xmi:id` on `name` is read (SACM23-XMI-022), so it is not among
-    // these.
-    for attribute in [
-        "xml:lang=\"en\"",
-        "xmi:uuid=\"u1\"",
-        "xmi:label=\"l1\"",
-        "foo=\"1\"",
-        "sacm:lang=\"en\"",
-    ] {
+    // these. The XMI attributes are conforming and not read yet
+    // (SACM23-XMI-019): refused at the attribute.
+    for attribute in ["xmi:uuid=\"u1\"", "xmi:label=\"l1\""] {
         // The attribute starts line 3, after four spaces.
         let input = root_holding(&format!("  <name content=\"A\"\n    {attribute}/>"));
         assert_unsupported_at(row, attribute, &input, 3, 5);
     }
-}
-
-#[test]
-fn sacm23_xmi_012_a_type_naming_another_class_on_name_is_unsupported_at_the_name() {
-    let row = "SACM23-XMI-012";
-    for attribute in [
-        "xmi:type=\"sacm:ExpressionLangString\"",
-        "xsi:type=\"sacm:ExpressionLangString\"",
-        "xmi:type=\"sacm:MultiLangString\"",
-    ] {
+    // The others do not conform: a defect inside the name, which keeps the
+    // whole name as preserved content of a, at its start tag (ADR 0033).
+    for attribute in ["xml:lang=\"en\"", "foo=\"1\"", "sacm:lang=\"en\""] {
         let input = root_holding(&format!("  <name content=\"A\"\n    {attribute}/>"));
-        assert_unsupported_at(row, attribute, &input, 2, 3);
+        assert_preserved_at(row, attribute, &input, 2, 3, "a");
     }
 }
 
 #[test]
-fn sacm23_xmi_012_an_element_child_in_name_is_unsupported_at_it() {
+fn sacm23_xmi_012_a_type_naming_another_class_on_name_is_unsupported_or_preserved_at_the_name() {
     let row = "SACM23-XMI-012";
-    // `  <name>` is 8 characters, so what it holds starts at column 9. The
-    // value elements `lang` and `content` are read (SACM23-XMI-014), so they
-    // are not among these. One `value`, and text, are the C++ shapes of
-    // LIB-COMPAT-008 (`legacy_shapes.rs`).
+    // An ExpressionLangString is conforming and not read yet
+    // (SACM23-BASE-009).
+    for attribute in [
+        "xmi:type=\"sacm:ExpressionLangString\"",
+        "xsi:type=\"sacm:ExpressionLangString\"",
+    ] {
+        let input = root_holding(&format!("  <name content=\"A\"\n    {attribute}/>"));
+        assert_unsupported_at(row, attribute, &input, 2, 3);
+    }
+    // A type the role does not admit: the whole name is preserved
+    // (ADR 0033).
+    let attribute = "xmi:type=\"sacm:MultiLangString\"";
+    let input = root_holding(&format!("  <name content=\"A\"\n    {attribute}/>"));
+    assert_preserved_at(row, attribute, &input, 2, 3, "a");
+}
+
+#[test]
+fn sacm23_xmi_012_an_element_child_in_name_is_preserved_with_the_name() {
+    let row = "SACM23-XMI-012";
+    // The value elements `lang` and `content` are read (SACM23-XMI-014), so
+    // they are not among these. One `value`, and text, are the C++ shapes of
+    // LIB-COMPAT-008 (`legacy_shapes.rs`). Another element is a defect
+    // inside the name, which keeps the whole name as preserved content of a,
+    // at its start tag, line 2, column 3 (ADR 0033).
     for (what, inside) in [
         ("an element", "<foo content=\"x\"/>"),
         ("an element after a comment", "<!--c--><foo/>"),
     ] {
         let input = root_holding(&format!("  <name>{inside}</name>"));
-        let column = if what.ends_with("comment") { 17 } else { 9 };
-        assert_unsupported_at(row, what, &input, 2, column);
+        assert_preserved_at(row, what, &input, 2, 3, "a");
     }
 }
 
 #[test]
-fn sacm23_xmi_012_a_name_element_in_a_namespace_is_unsupported_at_the_element() {
+fn sacm23_xmi_012_a_name_element_in_a_namespace_is_preserved_at_the_element() {
     let row = "SACM23-XMI-012";
     for element in [
         "<sacm:name content=\"A\"/>",
         "<name xmlns=\"http://www.omg.org/spec/SACM/20220301\" content=\"A\"/>",
     ] {
         let input = root_holding(&format!("  {element}"));
-        assert_unsupported_at(row, element, &input, 2, 3);
+        assert_preserved_at(row, element, &input, 2, 3, "a");
     }
 }
 
@@ -1211,11 +1272,11 @@ fn sacm23_xmi_012_the_type_on_name_is_resolved_in_the_scope_of_the_name_element(
         "{row}: a type whose prefix is declared on `name` is not resolved there"
     );
     // `sacm` rebound on `name`: the type names no SACM class there, though it
-    // would on the root.
+    // would on the root, so the whole name is preserved (ADR 0033).
     let rebound_on_name = root_holding(
         "  <name xmlns:sacm=\"urn:other\" xmi:type=\"sacm:LangString\" content=\"A\"/>",
     );
-    assert_unsupported_at(row, "sacm rebound on name", &rebound_on_name, 2, 3);
+    assert_preserved_at(row, "sacm rebound on name", &rebound_on_name, 2, 3, "a");
 }
 
 #[test]

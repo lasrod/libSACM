@@ -10,7 +10,8 @@
 //! elements for the end is `RepeatedValue`. It is written as one attribute,
 //! the ids separated by one space, after `assertionDeclaration`, and compared
 //! in order (`Difference::MetaClaims`). A missing id is SACM-REF-001 with
-//! clause `11.10`. On any other kind it is `Unsupported`.
+//! clause `11.10`. On any other kind it is content the class lacks, kept as
+//! preserved content (ADR 0033).
 //!
 //! Two tests here kill the mutants that docs/quality/mutants-triage.md
 //! excluded for this row:
@@ -285,17 +286,71 @@ fn dangling(doc: &Document) -> Vec<Diagnostic> {
         .collect()
 }
 
-/// Asserts that `error` is `Unsupported`, with no code, at `at`.
-fn assert_unsupported_at(what: &str, error: &ReadError, at: SourceLocation) {
-    assert!(
-        matches!(error, ReadError::Unsupported { .. }) && error.code().is_none(),
-        "{ROW}: {what}: not Unsupported: {error:?}"
-    );
+/// Asserts that `input` reads in both modes and keeps one construct as
+/// preserved content of `holder` (LIB-COMPAT-003, ADR 0033): exactly one
+/// SACM-XMI-003 at `at`, affecting `holder`, a Warning in tolerant mode and
+/// an Error in strict mode, and the same document in both.
+fn assert_preserved_at(what: &str, input: &str, at: SourceLocation, holder: &str) {
+    let mut documents = Vec::new();
+    for (mode, severity) in [
+        (Mode::Tolerant, Severity::Warning),
+        (Mode::Strict, Severity::Error),
+    ] {
+        let output = match read(mode, input) {
+            Ok(output) => output,
+            Err(error) => panic!(
+                "{ROW}: {what}: a {mode:?} read refused it instead of preserving it: {error:?}"
+            ),
+        };
+        let found: Vec<_> = output
+            .diagnostics()
+            .iter()
+            .filter(|found| found.code() == Code::XMI_UNKNOWN_CONTENT)
+            .map(|found| {
+                (
+                    found.severity(),
+                    found.location(),
+                    found.affected().to_vec(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            found,
+            [(severity, Some(at), vec![ElementId::from(holder)])],
+            "{ROW}: {what}: not one SACM-XMI-003 at the construct affecting {holder:?} in \
+             {mode:?} mode: {:?}",
+            output.diagnostics()
+        );
+        let doc = output.into_document();
+        assert!(
+            doc.get(holder)
+                .is_some_and(SacmElement::has_preserved_content),
+            "{ROW}: {what}: {holder:?} holds no preserved content in {mode:?} mode"
+        );
+        documents.push(doc);
+    }
     assert_eq!(
-        error.location(),
-        Some(at),
-        "{ROW}: {what}: not refused at the construct: {error}"
+        documents[0], documents[1],
+        "{ROW}: {what}: the modes read different documents"
     );
+}
+
+/// Reads `template` without its one mark in both modes and asserts that the
+/// construct at the mark is kept as preserved content (LIB-COMPAT-003, ADR
+/// 0033) of the element whose `xmi:id` comes last before the mark.
+fn assert_preserved_at_mark(what: &str, template: &str) {
+    let (input, marks) = marked(template);
+    assert_eq!(marks.len(), 1, "{ROW}: setup: {what} has not one mark");
+    let before = template.split(MARK).next().unwrap_or_default();
+    let Some(holder) = before
+        .rsplit("xmi:id=\"")
+        .next()
+        .filter(|_| before.contains("xmi:id=\""))
+        .and_then(|rest| rest.split('"').next())
+    else {
+        panic!("{ROW}: setup: {what} has no xmi:id before its mark");
+    };
+    assert_preserved_at(what, &input, marks[0], holder);
 }
 
 /// Runs `job` on a worker thread and fails if it does not return within
@@ -435,15 +490,15 @@ fn sacm23_arg_004_the_end_is_read_on_exactly_the_assertion_kinds() {
             "a name",
             in_ap(&format!(
                 "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\">\
-                 <name content=\"X\" {MARK}metaClaim=\"m1\"/></argumentElement>"
+                 {MARK}<name content=\"X\" metaClaim=\"m1\"/></argumentElement>"
             )),
         ),
     ];
+    // Not an Assertion: an attribute its class lacks, kept as preserved
+    // content of x; on a name, the whole name (ADR 0033).
     for (what, template) in &others {
         let what = format!("metaClaim on {what}");
-        let (input, marks) = marked(template);
-        let error = refused(&what, &input);
-        assert_unsupported_at(&what, &error, marks[0]);
+        assert_preserved_at_mark(&what, template);
     }
 }
 
@@ -612,8 +667,7 @@ fn sacm23_arg_004_an_attribute_and_an_element_are_repeated_value_with_every_loca
 }
 
 #[test]
-fn sacm23_arg_004_white_space_separates_tokens_and_an_empty_or_qualified_attribute_is_unsupported()
-{
+fn sacm23_arg_004_white_space_separates_tokens_and_an_empty_or_qualified_attribute_is_preserved() {
     for (holder, _, element_of) in holders() {
         let what = format!("metaClaim=\" m1&#9;m2&#10;\" on {holder}");
         let doc = read_ok(
@@ -630,18 +684,18 @@ fn sacm23_arg_004_white_space_separates_tokens_and_an_empty_or_qualified_attribu
             ("metaClaim=\"  \"", format!(" {MARK}metaClaim=\"  \"")),
             ("sacm:metaClaim", format!(" {MARK}sacm:metaClaim=\"m1\"")),
         ] {
+            // Not conforming: kept as preserved content of x (ADR 0033).
             let what = format!("{form} on {holder}");
-            let (input, marks) = marked(&in_ap(&element_of(&attribute, "")));
-            let error = refused(&what, &input);
-            assert_unsupported_at(&what, &error, marks[0]);
+            assert_preserved_at_mark(&what, &in_ap(&element_of(&attribute, "")));
         }
         let what = format!("<sacm:metaClaim> on {holder}");
-        let (input, marks) = marked(&in_ap(&element_of(
-            "",
-            &format!("{MARK}<sacm:metaClaim xmi:idref=\"m1\"/>"),
-        )));
-        let error = refused(&what, &input);
-        assert_unsupported_at(&what, &error, marks[0]);
+        assert_preserved_at_mark(
+            &what,
+            &in_ap(&element_of(
+                "",
+                &format!("{MARK}<sacm:metaClaim xmi:idref=\"m1\"/>"),
+            )),
+        );
     }
 }
 
@@ -738,7 +792,7 @@ fn sacm23_arg_004_two_missing_meta_claims_are_two_dangling_findings_and_a_repeat
 // --- Item 7: other kinds --------------------------------------------------------------------------
 
 #[test]
-fn sacm23_arg_004_meta_claim_on_a_package_a_reasoning_a_note_or_a_name_is_unsupported_at_that_construct()
+fn sacm23_arg_004_meta_claim_on_a_package_a_reasoning_a_note_or_a_name_is_preserved_at_that_construct()
  {
     let cases = [
         (
@@ -786,23 +840,22 @@ fn sacm23_arg_004_meta_claim_on_a_package_a_reasoning_a_note_or_a_name_is_unsupp
             "the attribute on a name",
             in_ap(&format!(
                 "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\">\
-                 <name content=\"X\" {MARK}metaClaim=\"m1\"/></argumentElement>"
+                 {MARK}<name content=\"X\" metaClaim=\"m1\"/></argumentElement>"
             )),
         ),
         (
             "an element in a name",
             in_ap(&format!(
                 "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\">\
-                 <name content=\"X\">{MARK}<metaClaim xmi:idref=\"m1\"/></name></argumentElement>"
+                 {MARK}<name content=\"X\"><metaClaim xmi:idref=\"m1\"/></name></argumentElement>"
             )),
         ),
     ];
+    // Content the class lacks: kept as preserved content of its holder; on
+    // or in a name, the whole name (ADR 0033).
     for (what, template) in &cases {
         let what = format!("metaClaim: {what}");
-        let (input, marks) = marked(template);
-        assert_eq!(marks.len(), 1, "{ROW}: setup: {what} has not one mark");
-        let error = refused(&what, &input);
-        assert_unsupported_at(&what, &error, marks[0]);
+        assert_preserved_at_mark(&what, template);
     }
 }
 

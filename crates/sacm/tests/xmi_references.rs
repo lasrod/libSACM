@@ -266,6 +266,55 @@ fn dangling_affected(doc: &Document) -> Vec<Vec<String>> {
         .collect()
 }
 
+/// Asserts that `input` reads in both modes and keeps one construct as
+/// preserved content of `holder` (LIB-COMPAT-003, ADR 0033): exactly one
+/// SACM-XMI-003 at `at`, affecting `holder`, a Warning in tolerant mode and
+/// an Error in strict mode, and the same document in both.
+fn assert_preserved_at(row: &str, what: &str, input: &str, at: SourceLocation, holder: &str) {
+    let mut documents = Vec::new();
+    for (mode, severity) in [
+        (Mode::Tolerant, Severity::Warning),
+        (Mode::Strict, Severity::Error),
+    ] {
+        let output = match read(mode, input) {
+            Ok(output) => output,
+            Err(error) => panic!(
+                "{row}: {what}: a {mode:?} read refused it instead of preserving it: {error:?}"
+            ),
+        };
+        let found: Vec<_> = output
+            .diagnostics()
+            .iter()
+            .filter(|found| found.code() == Code::XMI_UNKNOWN_CONTENT)
+            .map(|found| {
+                (
+                    found.severity(),
+                    found.location(),
+                    found.affected().to_vec(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            found,
+            [(severity, Some(at), vec![ElementId::from(holder)])],
+            "{row}: {what}: not one SACM-XMI-003 at the construct affecting {holder:?} in \
+             {mode:?} mode: {:?}",
+            output.diagnostics()
+        );
+        let doc = output.into_document();
+        assert!(
+            doc.get(holder)
+                .is_some_and(SacmElement::has_preserved_content),
+            "{row}: {what}: {holder:?} holds no preserved content in {mode:?} mode"
+        );
+        documents.push(doc);
+    }
+    assert_eq!(
+        documents[0], documents[1],
+        "{row}: {what}: the modes read different documents"
+    );
+}
+
 /// Asserts that `error` is `Unsupported`, with no code, at `at`.
 fn assert_unsupported_at(row: &str, what: &str, error: &ReadError, at: SourceLocation) {
     assert!(
@@ -598,7 +647,9 @@ fn sacm23_xmi_005_two_tokens_on_a_single_valued_end_are_repeated_value_at_the_at
 }
 
 #[test]
-fn sacm23_xmi_005_an_empty_or_qualified_reference_attribute_is_unsupported_never_absent() {
+fn sacm23_xmi_005_an_empty_or_qualified_reference_attribute_is_preserved_never_absent() {
+    // Not conforming: kept as preserved content of c1, at the attribute
+    // (ADR 0033).
     let row = XMI_005;
     for (end, flag) in ENDS {
         for (what, attribute) in [
@@ -616,8 +667,7 @@ fn sacm23_xmi_005_an_empty_or_qualified_reference_attribute_is_unsupported_never
         ] {
             let what = format!("{end}: {what}");
             let (input, marks) = marked(row, &c1_then_c2(&format!("{flag} {attribute}"), ""));
-            let error = refused(row, &what, &input);
-            assert_unsupported_at(row, &what, &error, marks[0]);
+            assert_preserved_at(row, &what, &input, marks[0], "c1");
         }
     }
 }
@@ -907,7 +957,8 @@ fn sacm23_xmi_005_a_one_mib_reference_or_many_tokens_do_not_panic() {
             "{row}: {what}: not RepeatedValue: {:?}",
             result.as_ref().err()
         );
-        // 1 MiB of white space: no token.
+        // 1 MiB of white space: no token, so not conforming, kept as
+        // preserved content of c1 (ADR 0033).
         let blank = " ".repeat(MIB);
         let input = c1_then_c2(&format!("{flag} {end}=\"{blank}\""), "");
         let what = format!("1 MiB of white space in {end}");
@@ -915,9 +966,16 @@ fn sacm23_xmi_005_a_one_mib_reference_or_many_tokens_do_not_panic() {
             xmi::read(input.as_bytes(), &ReadOptions::default())
         });
         assert!(
-            matches!(result, Err(ReadError::Unsupported { .. })),
-            "{row}: {what}: not Unsupported: {:?}",
-            result.as_ref().err()
+            result.as_ref().is_ok_and(|output| {
+                output
+                    .diagnostics()
+                    .iter()
+                    .filter(|found| found.code() == Code::XMI_UNKNOWN_CONTENT)
+                    .map(Diagnostic::affected)
+                    .eq([&[ElementId::from("c1")][..]])
+            }),
+            "{row}: {what}: not one SACM-XMI-003 affecting c1: {:?}",
+            result.as_ref().map(ReadOutput::diagnostics)
         );
     }
 }
@@ -1008,16 +1066,26 @@ fn sacm23_xmi_015_a_link_value_with_white_space_around_it_reads_trimmed_with_no_
 }
 
 #[test]
-fn sacm23_xmi_015_an_idref_or_href_fragment_with_white_space_inside_is_unsupported_at_the_attribute()
- {
+fn sacm23_xmi_015_an_idref_with_white_space_inside_is_preserved_and_such_an_href_unsupported() {
     let row = XMI_015;
     for (end, flag) in ENDS {
         // White space inside the trimmed value or fragment: no single id, and
         // it would write back as `end="a b"`, two ids on a single-valued end.
-        let idrefs =
-            ["a b", "a&#9;b", "a&#10;b", "a&#13;b", " a b "].map(|value| ("xmi:idref", value));
+        // An `xmi:idref` that is no id is a defect inside the reference
+        // element, which keeps the whole element as preserved content of c1,
+        // at its start tag (ADR 0033).
+        for value in ["a b", "a&#9;b", "a&#10;b", "a&#13;b", " a b "] {
+            let what = format!("<{end} xmi:idref={value:?}/>");
+            let (input, marks) = marked(
+                row,
+                &c1_then_c2(flag, &format!("{MARK}<{end} xmi:idref=\"{value}\"/>")),
+            );
+            assert_preserved_at(row, &what, &input, marks[0], "c1");
+        }
+        // An `href` that is not `#id` is a reference this version does not
+        // read yet (SACM23-XMI-027): refused at the attribute.
         let hrefs = ["#a b", "#a&#9;b"].map(|value| ("href", value));
-        for (attribute, value) in idrefs.into_iter().chain(hrefs) {
+        for (attribute, value) in hrefs {
             let what = format!("<{end} {attribute}={value:?}/>");
             let (input, marks) = marked(
                 row,
@@ -1174,23 +1242,76 @@ fn sacm23_xmi_015_the_cross_document_fixture_is_unsupported_never_dropped() {
 // --- Item 6: other malformed reference elements ------------------------------------------------------
 
 #[test]
-fn sacm23_xmi_015_a_malformed_reference_element_is_unsupported_at_that_construct() {
+fn sacm23_xmi_015_a_malformed_reference_element_is_preserved_or_unsupported_at_that_construct() {
     let row = XMI_015;
     for (end, flag) in ENDS {
-        let cases = [
+        // A defect inside a reference element keeps the whole element as
+        // preserved content of c1, at its start tag, and the end absent
+        // (ADR 0033).
+        let preserved = [
             (
-                "both link attributes, at the second",
-                format!("<{end} xmi:idref=\"c2\" {MARK}href=\"#c2\"/>"),
+                "both link attributes",
+                format!("{MARK}<{end} xmi:idref=\"c2\" href=\"#c2\"/>"),
             ),
             (
                 "both link attributes, href first",
-                format!("<{end} href=\"#c2\" {MARK}xmi:idref=\"c2\"/>"),
+                format!("{MARK}<{end} href=\"#c2\" xmi:idref=\"c2\"/>"),
             ),
             ("neither link attribute", format!("{MARK}<{end}/>")),
             (
                 "neither link attribute, with content",
                 format!("{MARK}<{end}> <!-- c --> </{end}>"),
             ),
+            (
+                "another attribute",
+                format!("{MARK}<{end} xmi:idref=\"c2\" foo=\"1\"/>"),
+            ),
+            (
+                "an unqualified idref",
+                format!("{MARK}<{end} idref=\"c2\"/>"),
+            ),
+            (
+                "an href in the XMI namespace",
+                format!("{MARK}<{end} xmi:href=\"#c2\"/>"),
+            ),
+            (
+                "a child element",
+                format!("{MARK}<{end} xmi:idref=\"c2\"><b/></{end}>"),
+            ),
+            (
+                "a nested reference element",
+                format!("{MARK}<{end} xmi:idref=\"c2\"><{end} xmi:idref=\"c2\"/></{end}>"),
+            ),
+            (
+                "text",
+                format!("{MARK}<{end} xmi:idref=\"c2\">  c2</{end}>"),
+            ),
+            (
+                "the SACM namespace",
+                format!("{MARK}<sacm:{end} xmi:idref=\"c2\"/>"),
+            ),
+            // No id at all: preserved, never read as absent.
+            ("an empty idref", format!("{MARK}<{end} xmi:idref=\"\"/>")),
+            (
+                "an idref of white space",
+                format!("{MARK}<{end} xmi:idref=\"  \"/>"),
+            ),
+            (
+                "text as the only content",
+                format!("{MARK}<{end}>c2</{end}>"),
+            ),
+        ];
+        for (what, content) in &preserved {
+            let what = format!("<{end}>: {what}");
+            let (input, marks) = marked(row, &c1_then_c2(flag, content));
+            assert_eq!(marks.len(), 1, "{row}: setup: {what} has not one mark");
+            assert_preserved_at(row, &what, &input, marks[0], "c1");
+        }
+        // The identity attributes on a reference element are conforming XMI
+        // this version does not read yet (SACM23-XMI-019): refused at the
+        // attribute. `xsi:type` is taken as the type attribute, as
+        // LIB-COMPAT-001 reads it.
+        let refusals = [
             (
                 "an xmi:id",
                 format!("<{end} {MARK}xmi:id=\"r\" xmi:idref=\"c2\"/>"),
@@ -1203,66 +1324,13 @@ fn sacm23_xmi_015_a_malformed_reference_element_is_unsupported_at_that_construct
                 "an xsi:type",
                 format!("<{end} href=\"#c2\" {MARK}xsi:type=\"sacm:Claim\"/>"),
             ),
-            (
-                "another attribute",
-                format!("<{end} xmi:idref=\"c2\" {MARK}foo=\"1\"/>"),
-            ),
-            (
-                "an unqualified idref",
-                format!("<{end} {MARK}idref=\"c2\"/>"),
-            ),
-            (
-                "an href in the XMI namespace",
-                format!("<{end} {MARK}xmi:href=\"#c2\"/>"),
-            ),
-            (
-                "a child element",
-                format!("<{end} xmi:idref=\"c2\">{MARK}<b/></{end}>"),
-            ),
-            (
-                "a nested reference element",
-                format!("<{end} xmi:idref=\"c2\">{MARK}<{end} xmi:idref=\"c2\"/></{end}>"),
-            ),
-            (
-                "text",
-                format!("<{end} xmi:idref=\"c2\">  {MARK}c2</{end}>"),
-            ),
-            (
-                "the SACM namespace",
-                format!("{MARK}<sacm:{end} xmi:idref=\"c2\"/>"),
-            ),
         ];
-        for (what, content) in &cases {
+        for (what, content) in &refusals {
             let what = format!("<{end}>: {what}");
             let (input, marks) = marked(row, &c1_then_c2(flag, content));
             assert_eq!(marks.len(), 1, "{row}: setup: {what} has not one mark");
             let error = refused(row, &what, &input);
             assert_unsupported_at(row, &what, &error, marks[0]);
-        }
-        // No id at all: refused, never read as absent. ADR 0026 does not say
-        // whether at the element or at the attribute, so either is accepted.
-        for (what, content) in [
-            (
-                "an empty idref",
-                format!("{MARK}<{end} {MARK}xmi:idref=\"\"/>"),
-            ),
-            (
-                "an idref of white space",
-                format!("{MARK}<{end} {MARK}xmi:idref=\"  \"/>"),
-            ),
-            (
-                "text as the only content",
-                format!("{MARK}<{end}>{MARK}c2</{end}>"),
-            ),
-        ] {
-            let what = format!("<{end}>: {what}");
-            let (input, marks) = marked(row, &c1_then_c2(flag, &content));
-            let error = refused(row, &what, &input);
-            assert!(
-                matches!(error, ReadError::Unsupported { .. })
-                    && error.location().is_some_and(|at| marks.contains(&at)),
-                "{row}: {what}: not Unsupported at the element or the construct: {error:?}"
-            );
         }
     }
 }

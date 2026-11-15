@@ -16,6 +16,7 @@
 //! | SACM-ID-003 | SACM23-VAL-002 | §8.2 | Error | two or more elements hold the same non-empty `gid` ("unique within the scope of the model instance") |
 //! | SACM-PKG-001 | SACM23-VAL-012 | §11.4 | Error | an `ArgumentPackage` nests a plain `ArgumentPackage` and also holds another argumentation element ("only allowed to contain `ArgumentPackages`") |
 //! | SACM-REF-001 | SACM23-VAL-003 | the end's: §8.2, §11.2, §11.9, §11.10, §11.12 or §11.13 | Error | an id a reference end holds (`citedElement`, `abstractForm`, `metaClaim`, `reasoning`, `source`, `target`, `structure`, `referencedArtifactElement` or a group's `argumentElement`) names no element of the document |
+//! | SACM-REF-003 | LIB-COMPAT-003 | the end's | Warning | an id a reference end holds is the `xmi:id` of an element the document holds only as preserved content (ADR 0033), so its type cannot be checked |
 //! | SACM-REF-002 | SACM23-VAL-004 | the end's | Error | an id a reference end holds names an element of a kind the end's declared type does not admit, such as a `metaClaim` naming an `ArgumentReasoning` |
 //! | SACM-REF-002 | SACM23-VAL-016 | §11.15, §11.17 or §11.18 | Error | a source of an `AssertedEvidence`, or a source or target of an `AssertedArtifactSupport` or `AssertedArtifactContext`, is an `ArgumentAsset` but not an `ArtifactReference` |
 //! | SACM-MULT-001 | SACM23-VAL-005 | §11.13 | Error | an asserted relationship has no `source` (`source:ArgumentAsset[1..*]`), or no `target` (`target:ArgumentAsset[1]`): one finding per missing end |
@@ -113,7 +114,11 @@
 //! finding. An id absent from the document dangles, and so does
 //! the `xmi:id` of a `name`, `content`, `key` or `value`, which identifies no
 //! element. A reference to any element, the element itself included,
-//! resolves. To fix one, point it at an element, or remove it.
+//! resolves. To fix one, point it at an element, or remove it. An id of an
+//! element of preserved content (ADR 0033) is in the file, merely not read:
+//! it is one SACM-REF-003 Warning instead, the same way, and never
+//! SACM-REF-001 or SACM-REF-002. References inside preserved content are
+//! not checked.
 //!
 //! Each end has a declared type (ptc/22-03-13, on which the text agrees):
 //! `SACMElement` for `citedElement` and `abstractForm`, `Claim` for

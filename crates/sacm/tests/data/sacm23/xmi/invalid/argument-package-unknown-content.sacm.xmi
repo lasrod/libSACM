@@ -1,0 +1,26 @@
+<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:v="urn:v" xmi:id="p">
+  <name content="P"/>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c1" v:w="3" isCounter="true">
+    <name content="C1"/>
+    <v:note v:by="ann">Because <v:em>tested</v:em></v:note>
+  </argumentElement>
+  <argumentElement xmi:type="sacm:Artifact" xmi:id="a1"/>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c2" citedElement="">
+    <name content="C2" v:style="bold"/>
+    <abstractForm xmi:idref="c1" role="x"/>
+  </argumentElement>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c3" isCitation="true" citedElement="a1">
+    Draft: <![CDATA[check & see]]>
+    <name content="C3"/>
+  </argumentElement>
+</sacm:ArgumentPackage>
+<!--
+  LIB-COMPAT-003, SACM23-XMI-008: the ADR 0033 worked example (slice 0050 design).
+  Content SACM 2.3 does not allow where it stands, one construct of each class:
+  (1) unread attributes v:w and isCounter on a Claim (4,54) (4,62); (2) a foreign child
+  v:note (6,5); (3) an Artifact under argumentElement, a type the role does not admit
+  (8,3); (A5) citedElement="" (9,54); (4) a defect inside a name (10,5) and inside a
+  reference element (11,5); (5) text in element-only content (14,5). Each is preserved
+  with one SACM-XMI-003. This comment stands after the root so that it moves no location.
+-->

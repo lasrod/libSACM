@@ -16,7 +16,7 @@ rule below exists to make that failure loud.
 
 ## Operating rules
 
-1. **Quote, don't recall.** The normative sources, and XMI 2.5.1, are fetched
+1. **Quote, don't recall.** The normative sources, XMI 2.5.1 and its XMI.xsd, are fetched
    (hash-pinned) by `cargo xtask fetch-spec` into `third_party/sacm-2.3/`. Any claim about what the
    standard requires cites a clause and quotes it. This skill is orientation; the PDF
    is authority. If you cannot fetch the sources, say so rather than guess.

@@ -108,6 +108,7 @@ mod document;
 mod id;
 mod kind;
 mod lang_string;
+mod preserved;
 mod reference;
 mod revision;
 
@@ -121,6 +122,7 @@ pub use id::ElementId;
 pub(crate) use id::is_ncname;
 pub use kind::{AbstractClass, ElementKind, MetamodelPackage};
 pub use lang_string::{LangString, MultiLangString};
+pub(crate) use preserved::{Attr, Event, Fragment, Item, Placed, Preserved, QName};
 pub use reference::{Flag, ReferenceEnd};
 pub(crate) use reference::{OWNERS, flag_named, reference_end_named};
 pub use revision::Revision;

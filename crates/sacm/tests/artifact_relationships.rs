@@ -216,26 +216,6 @@ fn read_ok(row: &str, what: &str, input: &str) -> Document {
     read_typed(row, what, input)
 }
 
-/// Reads `input` in both modes, which the test expects to be refused the same
-/// in both, and returns the refusal.
-fn refused(row: &str, what: &str, input: &str) -> ReadError {
-    let mut errors = Vec::new();
-    for mode in MODES {
-        match read(mode, input) {
-            Ok(output) => panic!(
-                "{row}: {what}: a {mode:?} read returned a document of {} elements for {input:?}",
-                output.document().element_count()
-            ),
-            Err(error) => errors.push(error),
-        }
-    }
-    assert_eq!(
-        errors[0], errors[1],
-        "{row}: {what}: the modes refuse differently"
-    );
-    errors.swap_remove(0)
-}
-
 fn write_in(row: &str, what: &str, doc: &Document, mode: Mode) -> String {
     match xmi::write(doc, &WriteOptions::default().with_mode(mode)) {
         Ok(text) => text,
@@ -310,16 +290,52 @@ fn line_with<'t>(row: &str, text: &'t str, id: &str) -> &'t str {
     line.trim()
 }
 
-/// Asserts that `error` is `Unsupported`, with no code, at `at`.
-fn assert_unsupported_at(row: &str, what: &str, error: &ReadError, at: SourceLocation) {
-    assert!(
-        matches!(error, ReadError::Unsupported { .. }) && error.code().is_none(),
-        "{row}: {what}: not Unsupported: {error:?}"
-    );
+/// Asserts that `input` reads in both modes and keeps one construct as
+/// preserved content of `holder` (LIB-COMPAT-003, ADR 0033): exactly one
+/// SACM-XMI-003 at `at`, affecting `holder`, a Warning in tolerant mode and
+/// an Error in strict mode, and the same document in both.
+fn assert_preserved_at(row: &str, what: &str, input: &str, at: SourceLocation, holder: &str) {
+    let mut documents = Vec::new();
+    for (mode, severity) in [
+        (Mode::Tolerant, Severity::Warning),
+        (Mode::Strict, Severity::Error),
+    ] {
+        let output = match read(mode, input) {
+            Ok(output) => output,
+            Err(error) => panic!(
+                "{row}: {what}: a {mode:?} read refused it instead of preserving it: {error:?}"
+            ),
+        };
+        let found: Vec<_> = output
+            .diagnostics()
+            .iter()
+            .filter(|found| found.code() == Code::XMI_UNKNOWN_CONTENT)
+            .map(|found| {
+                (
+                    found.severity(),
+                    found.location(),
+                    found.affected().to_vec(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            found,
+            [(severity, Some(at), vec![ElementId::from(holder)])],
+            "{row}: {what}: not one SACM-XMI-003 at the construct affecting {holder:?} in \
+             {mode:?} mode: {:?}",
+            output.diagnostics()
+        );
+        let doc = output.into_document();
+        assert!(
+            doc.get(holder)
+                .is_some_and(SacmElement::has_preserved_content),
+            "{row}: {what}: {holder:?} holds no preserved content in {mode:?} mode"
+        );
+        documents.push(doc);
+    }
     assert_eq!(
-        error.location(),
-        Some(at),
-        "{row}: {what}: not refused at the construct: {error}"
+        documents[0], documents[1],
+        "{row}: {what}: the modes read different documents"
     );
 }
 
@@ -634,8 +650,10 @@ fn reads_every_feature_and_writes_in_order(row: &str, kind: ElementKind) {
     );
 }
 
-fn is_refused_outside_an_argument_package(row: &str, kind: ElementKind) {
-    for (what, template) in [
+/// Outside an ArgumentPackage, or with another kind's end, the content is
+/// not conforming: kept as preserved content of its holder (ADR 0033).
+fn is_preserved_outside_an_argument_package(row: &str, kind: ElementKind) {
+    for (what, template, holder) in [
         (
             format!("an {kind} in argumentElement of an AssuranceCasePackage"),
             format!(
@@ -643,6 +661,7 @@ fn is_refused_outside_an_argument_package(row: &str, kind: ElementKind) {
                  {MARK}<argumentElement xmi:type=\"sacm:{kind}\" xmi:id=\"x\"/>\
                  </sacm:AssuranceCasePackage>"
             ),
+            "case",
         ),
         (
             format!("an {kind} in a Claim"),
@@ -650,6 +669,7 @@ fn is_refused_outside_an_argument_package(row: &str, kind: ElementKind) {
                 "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"y\"><name content=\"Y\"/>\
                  {MARK}<argumentElement xmi:type=\"sacm:{kind}\" xmi:id=\"x\"/></argumentElement>"
             )),
+            "y",
         ),
         (
             format!("an {kind} with the attribute of an ArtifactReference"),
@@ -658,11 +678,11 @@ fn is_refused_outside_an_argument_package(row: &str, kind: ElementKind) {
                 &format!(" source=\"a1\" target=\"c1\" {MARK}referencedArtifactElement=\"c1\""),
                 "",
             ),
+            "x",
         ),
     ] {
         let (input, marks) = marked(row, &template);
-        let error = refused(row, &what, &input);
-        assert_unsupported_at(row, &what, &error, marks[0]);
+        assert_preserved_at(row, &what, &input, marks[0], holder);
     }
 }
 
@@ -682,18 +702,18 @@ fn sacm23_arg_012_reads_every_relationship_feature_in_both_modes_and_writes_in_o
 }
 
 #[test]
-fn sacm23_arg_009_is_unsupported_outside_an_argument_package_and_with_another_kinds_end() {
-    is_refused_outside_an_argument_package(ARG_009, ElementKind::AssertedEvidence);
+fn sacm23_arg_009_is_preserved_outside_an_argument_package_and_with_another_kinds_end() {
+    is_preserved_outside_an_argument_package(ARG_009, ElementKind::AssertedEvidence);
 }
 
 #[test]
-fn sacm23_arg_011_is_unsupported_outside_an_argument_package_and_with_another_kinds_end() {
-    is_refused_outside_an_argument_package(ARG_011, ElementKind::AssertedArtifactSupport);
+fn sacm23_arg_011_is_preserved_outside_an_argument_package_and_with_another_kinds_end() {
+    is_preserved_outside_an_argument_package(ARG_011, ElementKind::AssertedArtifactSupport);
 }
 
 #[test]
-fn sacm23_arg_012_is_unsupported_outside_an_argument_package_and_with_another_kinds_end() {
-    is_refused_outside_an_argument_package(ARG_012, ElementKind::AssertedArtifactContext);
+fn sacm23_arg_012_is_preserved_outside_an_argument_package_and_with_another_kinds_end() {
+    is_preserved_outside_an_argument_package(ARG_012, ElementKind::AssertedArtifactContext);
 }
 
 fn the_golden_file_round_trips_to_its_own_bytes(row: &str, kind: ElementKind) {

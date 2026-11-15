@@ -1217,20 +1217,20 @@ fn lib_sec_002_xml_malformed_code_is_sacm_xml_001_in_the_catalog() {
 #[test]
 fn lib_api_009_well_formed_sacm_document_is_unsupported_at_the_construct_it_cannot_read() {
     let row = "LIB-API-009";
-    // A readable root whose name's `content` value element holds an element
-    // child, which no row reads (a value element holds only character
-    // content, SACM23-XMI-014; the legacy `value` form is LIB-COMPAT-008):
-    // refused at the `value` start tag, on line 4. `  <name><content>` is 17
-    // characters.
+    // A readable root whose name carries `xmi:uuid`, conforming XMI that no
+    // verified row reads yet (SACM23-XMI-019): refused at the attribute's
+    // name, on line 4. `  <name ` is 8 characters. (Content that does not
+    // conform, such as an element in a value element, is preserved instead,
+    // ADR 0033.)
     let name_child = sacm_document(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- LIB-API-009 -->\n",
-        "\n  <name><content><value>case</value></content></name>\n",
+        "\n  <name xmi:uuid=\"u\" content=\"case\"/>\n",
     );
     let error = assert_unsupported(row, &name_child);
     assert_eq!(
         error.location(),
-        Some(loc(row, 4, 18)),
-        "{row}: the refusal is not located at the start tag of the `value` child of `content`"
+        Some(loc(row, 4, 9)),
+        "{row}: the refusal is not located at the `xmi:uuid` of the name"
     );
     // An AssuranceCasePackage root with an `artifactPackage` child, which no
     // verified row reads: `Unsupported`, with no code and no document, at
@@ -1675,14 +1675,19 @@ fn lib_api_009_unsupported_display_is_one_located_line_quoting_names() {
     display_reason(row, &error, UNSUPPORTED_LEAD);
     assert_quoted_wherever_named(row, &error.to_string(), "ArtifactPackage");
 
-    // A child and an attribute that a readable root cannot carry.
-    let child = sacm_document("<?xml version=\"1.0\"?>\n", "<zqxchild/>");
+    // A child and an attribute that a readable root cannot read yet: XMI
+    // metadata (SACM23-XMI-019) under a prefix that only they use.
+    let child = sacm_document(
+        "<?xml version=\"1.0\"?>\n",
+        "<zqxchild:Extension xmlns:zqxchild=\"http://www.omg.org/spec/XMI/20131001\"/>",
+    );
     let error = assert_unsupported(row, &child);
     display_reason(row, &error, UNSUPPORTED_LEAD);
     assert_quoted_wherever_named(row, &error.to_string(), "zqxchild");
     let attribute = b"<?xml version=\"1.0\"?>\n<sacm:ArgumentPackage \
         xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\" \
-        xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"p\" zqxattr=\"1\"/>";
+        xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" \
+        xmlns:zqxattr=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"p\" zqxattr:uuid=\"u\"/>";
     let error = assert_unsupported(row, attribute);
     display_reason(row, &error, UNSUPPORTED_LEAD);
     assert_quoted_wherever_named(row, &error.to_string(), "zqxattr");

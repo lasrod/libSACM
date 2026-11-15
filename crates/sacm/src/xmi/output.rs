@@ -3,20 +3,26 @@
 //! LIB-COMPAT-007, SACM23-ARG-004, -005, -007; ADR 0017, ADR 0022, ADR 0025,
 //! ADR 0026, ADR 0027).
 //!
-//! Two passes. [`plan`] checks the document (in strict mode, validating it)
+//! Two passes. [`plan`] checks the document (in strict mode, refusing
+//! preserved content and validating it)
 //! and every element, and resolves what each is written as; only if that succeeds does [`write`] build the `String` from the plan,
 //! so a refusal never leaves partial output, and the output pass has no
 //! lookup that could fail. The output form is pinned byte for byte: UTF-8
 //! without a BOM, the XML declaration, LF line endings, two spaces per depth,
-//! one tag per line and `<x … />` for an element with no children. Neither
+//! one tag per line and `<x … />` for an element with no children.
+//! Preserved content (LIB-COMPAT-003, ADR 0033) is written back where it
+//! was read: its attributes after the typed ones, each child on its own line
+//! before the typed child it preceded, a fragment as one line with its text
+//! exactly as held, each declaring the namespace bindings it needs. Neither
 //! pass recurses, so deep nesting is safe.
 
 use super::namespaces::{SACM_NS, SACM_PREFIX, XMI_NS, XMI_PREFIX};
 use super::{Mode, WriteAttribute, WriteError};
 use crate::diagnostic::Severity;
 use crate::model::{
-    AbstractClass, AssertionDeclaration, DeclaredType, Document, ElementId, ElementKind, Flag,
-    LangString, OWNERS, ReferenceEnd, SacmElement, Text, TextRole,
+    AbstractClass, AssertionDeclaration, Attr, DeclaredType, Document, ElementId, ElementKind,
+    Event, Flag, Fragment, Item, LangString, OWNERS, QName, ReferenceEnd, SacmElement, Text,
+    TextRole,
 };
 use crate::validation;
 
@@ -43,17 +49,23 @@ pub(super) fn write(document: &Document, mode: Mode) -> Result<String, WriteErro
     // The elements whose start tag is written and whose end tag is not, the
     // innermost last. The plan is in pre-order, so an element's parent is
     // on this stack when the element comes.
-    let mut open: Vec<&Planned<'_>> = Vec::new();
+    let mut open: Vec<Open<'_, '_>> = Vec::new();
     for planned in &plan {
         let parent = planned.element.parent().map(SacmElement::id);
-        while let Some(&top) = open.last() {
-            if Some(top.element.id()) == parent {
+        while let Some(top) = open.last() {
+            if Some(top.planned.element.id()) == parent {
                 break;
             }
-            open.pop();
-            push_end_tag(&mut out, base + open.len(), &top.tag);
+            if let Some(top) = open.pop() {
+                close(&mut out, base + open.len(), top);
+            }
         }
         let depth = base + open.len();
+        // The parent's preserved children placed before this one (ADR 0033).
+        if let Some(top) = open.last_mut() {
+            top.push_placed(&mut out, depth, Some(top.written));
+            top.written = top.written.saturating_add(1);
+        }
         indent(&mut out, depth);
         out.push('<');
         push_tag(&mut out, &planned.tag);
@@ -79,11 +91,24 @@ pub(super) fn write(document: &Document, mode: Mode) -> Result<String, WriteErro
         // Then the flags, the declaration and the references, class by
         // class, superclass first (Annex B.5.2; ADR 0027).
         push_flags_and_references(&mut out, planned.element, planned.declaration);
+        // Then the preserved attributes, after the bindings they need, in
+        // input order (ADR 0033).
+        let preserved = planned.element.preserved();
+        if let Some(preserved) = preserved {
+            for (prefix, uri) in &preserved.namespaces {
+                push_namespace(&mut out, Some(prefix), uri);
+            }
+            for attr in &preserved.attributes {
+                push_attr(&mut out, attr);
+            }
+        }
         let name = planned.element.name();
         let texts =
             [TextRole::Content, TextRole::Key].map(|role| (role, planned.element.text(role)));
         let has_texts = texts.iter().any(|(_, text)| text.is_some());
-        if name.is_some() || has_texts || planned.element.children().next().is_some() {
+        let has_placed = preserved.is_some_and(|preserved| !preserved.children.is_empty());
+        if name.is_some() || has_texts || has_placed || planned.element.children().next().is_some()
+        {
             out.push_str(">\n");
             if let Some(name) = name {
                 push_lang_string(&mut out, depth + 1, "name", name, planned.element.name_id());
@@ -95,13 +120,17 @@ pub(super) fn write(document: &Document, mode: Mode) -> Result<String, WriteErro
                     push_text(&mut out, depth + 1, role, text);
                 }
             }
-            open.push(planned);
+            open.push(Open {
+                planned,
+                written: 0,
+                placed: 0,
+            });
         } else {
             out.push_str(" />\n");
         }
     }
     while let Some(top) = open.pop() {
-        push_end_tag(&mut out, base + open.len(), &top.tag);
+        close(&mut out, base + open.len(), top);
     }
 
     if wrapped {
@@ -110,6 +139,133 @@ pub(super) fn write(document: &Document, mode: Mode) -> Result<String, WriteErro
         out.push_str(">\n");
     }
     Ok(out)
+}
+
+/// An element whose start tag is written and whose end tag is not.
+struct Open<'p, 'a> {
+    /// The element.
+    planned: &'p Planned<'a>,
+    /// The number of its typed children written so far.
+    written: usize,
+    /// The number of its preserved children written so far.
+    placed: usize,
+}
+
+impl Open<'_, '_> {
+    /// Writes, at `depth`, the element's preserved children not written yet
+    /// that are placed before its typed child at index `before`, or all of
+    /// them for `None` (ADR 0033).
+    fn push_placed(&mut self, out: &mut String, depth: usize, before: Option<usize>) {
+        let Some(preserved) = self.planned.element.preserved() else {
+            return;
+        };
+        for placed in preserved.children.iter().skip(self.placed) {
+            if before.is_some_and(|before| placed.index > before) {
+                break;
+            }
+            indent(out, depth);
+            match &placed.item {
+                Item::Text(text) => escape_text_into(out, text),
+                Item::Element(fragment) => push_fragment(out, fragment),
+            }
+            out.push('\n');
+            self.placed = self.placed.saturating_add(1);
+        }
+    }
+}
+
+/// Writes the rest of the element `top`, whose start tag is at `depth`: its
+/// preserved children not written yet, then its end tag.
+fn close(out: &mut String, depth: usize, mut top: Open<'_, '_>) {
+    top.push_placed(out, depth + 1, None);
+    push_end_tag(out, depth, &top.planned.tag);
+}
+
+/// Writes `fragment`, preserved content (ADR 0033), on the current line:
+/// each element with its bindings, then its attributes, and `<x … />` when
+/// it holds nothing; its text exactly, escaped. Flat, so never recursive.
+fn push_fragment(out: &mut String, fragment: &Fragment) {
+    let mut names: Vec<&QName> = Vec::new();
+    let mut events = fragment.events.iter().peekable();
+    while let Some(event) = events.next() {
+        match event {
+            Event::Start {
+                name,
+                namespaces,
+                attributes,
+            } => {
+                out.push('<');
+                push_qname(out, name);
+                for (prefix, uri) in namespaces {
+                    push_namespace(out, prefix.as_deref(), uri);
+                }
+                for attr in attributes {
+                    push_attr(out, attr);
+                }
+                if matches!(events.peek(), Some(Event::End)) {
+                    events.next();
+                    out.push_str(" />");
+                } else {
+                    out.push('>');
+                    names.push(name);
+                }
+            }
+            Event::Text(text) => escape_text_into(out, text),
+            Event::End => {
+                if let Some(name) = names.pop() {
+                    out.push_str("</");
+                    push_qname(out, name);
+                    out.push('>');
+                }
+            }
+        }
+    }
+}
+
+/// Writes ` xmlns:<prefix>="<uri>"`, or ` xmlns="<uri>"` for the default
+/// namespace, escaped.
+fn push_namespace(out: &mut String, prefix: Option<&str>, uri: &str) {
+    out.push_str(" xmlns");
+    if let Some(prefix) = prefix {
+        out.push(':');
+        out.push_str(prefix);
+    }
+    out.push_str("=\"");
+    escape_into(out, uri);
+    out.push('"');
+}
+
+/// Writes ` <name>="<value>"`, escaped.
+fn push_attr(out: &mut String, attr: &Attr) {
+    out.push(' ');
+    push_qname(out, &attr.name);
+    out.push_str("=\"");
+    escape_into(out, &attr.value);
+    out.push('"');
+}
+
+/// Writes `name` as written: `prefix:local`, or `local`.
+fn push_qname(out: &mut String, name: &QName) {
+    if let Some(prefix) = &name.prefix {
+        out.push_str(prefix);
+        out.push(':');
+    }
+    out.push_str(&name.local);
+}
+
+/// Writes `text` as character data: `&`, `<`, `>` and CR escaped, so it
+/// reads back as it is held; everything else, TAB and LF included, as it
+/// is.
+fn escape_text_into(out: &mut String, text: &str) {
+    for c in text.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '\r' => out.push_str("&#13;"),
+            other => out.push(other),
+        }
+    }
 }
 
 /// One element, checked, with what it is written as.
@@ -133,16 +289,26 @@ enum Tag {
     Role(&'static str),
 }
 
-/// Checks `document` in ADR 0022's order, a root first, then, in strict
-/// `mode`, validation, then each element in document order (see
-/// [`unrepresentable`]), and returns every element in that order with what it
-/// is written as. Everything a document holds is written, so these are the
-/// only refusals.
+/// Checks `document` in ADR 0022's and ADR 0033's order, a root first,
+/// then, in strict `mode`, preserved content and validation, then each
+/// element in document order (see [`unrepresentable`]), and returns every
+/// element in that order with what it is written as. Everything a document
+/// holds is written, so these are the only refusals.
 fn plan(document: &Document, mode: Mode) -> Result<Vec<Planned<'_>>, WriteError> {
     if document.roots().next().is_none() {
         return Err(WriteError::NoRoot);
     }
     if mode == Mode::Strict {
+        // Preserved content is not SACM 2.3: each holder once, in document
+        // order, before validation (SACM23-XMI-008, ADR 0033).
+        let elements: Vec<ElementId> = document
+            .elements()
+            .filter(|element| element.has_preserved_content())
+            .map(|element| element.id().clone())
+            .collect();
+        if !elements.is_empty() {
+            return Err(WriteError::PreservedContent { elements });
+        }
         // Every Error, in `validate`'s order (ADR 0022).
         let diagnostics: Vec<_> = validation::validate(document)
             .into_iter()

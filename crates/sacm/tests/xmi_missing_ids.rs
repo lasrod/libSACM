@@ -701,7 +701,7 @@ fn sacm23_xmi_020_no_id_is_generated_for_a_name() {
 }
 
 #[test]
-fn sacm23_xmi_020_an_unqualified_id_is_not_an_xmi_id_and_stays_refused_at_its_name() {
+fn sacm23_xmi_020_an_unqualified_id_is_not_an_xmi_id_and_is_preserved_at_its_name() {
     let cases = [
         (
             "an id on a root",
@@ -723,18 +723,47 @@ fn sacm23_xmi_020_an_unqualified_id_is_not_an_xmi_id_and_stays_refused_at_its_na
             )),
         ),
     ];
+    // An attribute the class lacks: kept as preserved content of its element,
+    // which has a generated id; no element has the id as written (ADR 0033).
     for (what, template) in &cases {
         let (input, marks) = marked(template);
-        for mode in MODES {
-            let error = refused(what, mode, &input);
-            assert!(
-                matches!(error, ReadError::Unsupported { .. }) && error.code().is_none(),
-                "{ROW}: {what} ({mode:?}): expected Unsupported, got {error:?}"
-            );
+        let written = if what.contains("root") { "p" } else { "c1" };
+        for (mode, severity) in [
+            (Mode::Tolerant, Severity::Warning),
+            (Mode::Strict, Severity::Error),
+        ] {
+            let output = read_ok(what, mode, &input);
+            let found: Vec<&Diagnostic> = output
+                .diagnostics()
+                .iter()
+                .filter(|found| found.code() == Code::XMI_UNKNOWN_CONTENT)
+                .collect();
+            let [found] = found.as_slice() else {
+                panic!(
+                    "{ROW}: {what} ({mode:?}): not one SACM-XMI-003: {:?}",
+                    output.diagnostics()
+                );
+            };
             assert_eq!(
-                error.location(),
-                Some(marks[0]),
-                "{ROW}: {what} ({mode:?}): not refused at the attribute's name: {error}"
+                (found.severity(), found.location()),
+                (severity, Some(marks[0])),
+                "{ROW}: {what} ({mode:?}): not at the attribute's name"
+            );
+            let doc = output.document();
+            let holder = match found.affected() {
+                [holder] => doc.get(holder.as_str()),
+                _ => None,
+            };
+            assert!(
+                holder.is_some_and(|holder| {
+                    holder.has_preserved_content() && holder.id().as_str() != written
+                }),
+                "{ROW}: {what} ({mode:?}): SACM-XMI-003 does not affect one element with a \
+                 generated id holding the attribute: {found:?}"
+            );
+            assert!(
+                doc.get(written).is_none(),
+                "{ROW}: {what} ({mode:?}): the unqualified id was read as an id"
             );
         }
     }

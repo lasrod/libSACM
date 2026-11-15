@@ -627,7 +627,8 @@ fn sacm23_val_001_ids_that_differ_in_case_are_not_duplicates() {
 #[test]
 fn sacm23_val_001_a_duplicate_is_duplicate_id_before_later_content_that_is_not_read() {
     // The repeat carries an unread attribute, or is followed by an unread
-    // element: the duplicate, earlier in the document, decides.
+    // element (conforming XMI this version does not read, SACM23-XMI-019):
+    // the duplicate, earlier in the document, decides.
     let cases = [
         (
             "an unread attribute on the repeat",
@@ -637,7 +638,10 @@ fn sacm23_val_001_a_duplicate_is_duplicate_id_before_later_content_that_is_not_r
                     .to_owned(),
             ]),
         ),
-        ("an unread element after the repeat", ap(&[claim("x"), claim("x"), "<foo/>".to_owned()])),
+        (
+            "an unread element after the repeat",
+            ap(&[claim("x"), claim("x"), "<xmi:Extension/>".to_owned()]),
+        ),
     ];
     for (what, input) in &cases {
         let locations = [loc(VAL_001, 3, 3), loc(VAL_001, 4, 3)];

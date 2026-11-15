@@ -351,16 +351,52 @@ fn dangling(doc: &Document) -> Vec<Diagnostic> {
         .collect()
 }
 
-/// Asserts that `error` is `Unsupported`, with no code, at `at`.
-fn assert_unsupported_at(row: &str, what: &str, error: &ReadError, at: SourceLocation) {
-    assert!(
-        matches!(error, ReadError::Unsupported { .. }) && error.code().is_none(),
-        "{row}: {what}: not Unsupported: {error:?}"
-    );
+/// Asserts that `input` reads in both modes and keeps one construct as
+/// preserved content of `holder` (LIB-COMPAT-003, ADR 0033): exactly one
+/// SACM-XMI-003 at `at`, affecting `holder`, a Warning in tolerant mode and
+/// an Error in strict mode, and the same document in both.
+fn assert_preserved_at(row: &str, what: &str, input: &str, at: SourceLocation, holder: &str) {
+    let mut documents = Vec::new();
+    for (mode, severity) in [
+        (Mode::Tolerant, Severity::Warning),
+        (Mode::Strict, Severity::Error),
+    ] {
+        let output = match read(mode, input) {
+            Ok(output) => output,
+            Err(error) => panic!(
+                "{row}: {what}: a {mode:?} read refused it instead of preserving it: {error:?}"
+            ),
+        };
+        let found: Vec<_> = output
+            .diagnostics()
+            .iter()
+            .filter(|found| found.code() == Code::XMI_UNKNOWN_CONTENT)
+            .map(|found| {
+                (
+                    found.severity(),
+                    found.location(),
+                    found.affected().to_vec(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            found,
+            [(severity, Some(at), vec![ElementId::from(holder)])],
+            "{row}: {what}: not one SACM-XMI-003 at the construct affecting {holder:?} in \
+             {mode:?} mode: {:?}",
+            output.diagnostics()
+        );
+        let doc = output.into_document();
+        assert!(
+            doc.get(holder)
+                .is_some_and(SacmElement::has_preserved_content),
+            "{row}: {what}: {holder:?} holds no preserved content in {mode:?} mode"
+        );
+        documents.push(doc);
+    }
     assert_eq!(
-        error.location(),
-        Some(at),
-        "{row}: {what}: not refused at the construct: {error}"
+        documents[0], documents[1],
+        "{row}: {what}: the modes read different documents"
     );
 }
 
@@ -861,8 +897,8 @@ fn sacm23_arg_007_a_value_that_is_no_boolean_literal_is_invalid_literal_naming_i
 }
 
 #[test]
-fn sacm23_arg_007_is_counter_given_twice_is_repeated_value_and_in_the_sacm_namespace_is_unsupported()
- {
+fn sacm23_arg_007_is_counter_given_twice_is_repeated_value_and_in_the_sacm_namespace_is_preserved()
+{
     let row = ARG_007;
     for (_, kind) in KINDS {
         for (what, attributes, content) in [
@@ -894,10 +930,10 @@ fn sacm23_arg_007_is_counter_given_twice_is_repeated_value_and_in_the_sacm_names
                 format!("{MARK}<sacm:isCounter>true</sacm:isCounter>"),
             ),
         ] {
+            // Not conforming: kept as preserved content of x (ADR 0033).
             let what = format!("{what} on an {kind}");
             let (input, marks) = marked(row, &x_in_ap(kind, &attributes, &content));
-            let error = refused(row, &what, &input);
-            assert_unsupported_at(row, &what, &error, marks[0]);
+            assert_preserved_at(row, &what, &input, marks[0], "x");
         }
     }
 }
@@ -905,7 +941,7 @@ fn sacm23_arg_007_is_counter_given_twice_is_repeated_value_and_in_the_sacm_names
 // --- Item 4: on other kinds -------------------------------------------------------------------
 
 #[test]
-fn sacm23_arg_007_is_counter_source_target_and_reasoning_on_a_claim_a_reasoning_or_a_package_are_unsupported()
+fn sacm23_arg_007_is_counter_source_target_and_reasoning_on_a_claim_a_reasoning_or_a_package_are_preserved()
  {
     let row = ARG_007;
     let features = [
@@ -963,12 +999,18 @@ fn sacm23_arg_007_is_counter_source_target_and_reasoning_on_a_claim_a_reasoning_
                 ),
             ),
         ];
+        // Content the class lacks: kept as preserved content of the Claim or
+        // ArgumentReasoning x, or of the package p (ADR 0033).
         for (holder, template) in &cases {
             let what = format!("{feature} on {holder}");
             let (input, marks) = marked(row, template);
             assert_eq!(marks.len(), 1, "{row}: setup: {what} has not one mark");
-            let error = refused(row, &what, &input);
-            assert_unsupported_at(row, &what, &error, marks[0]);
+            let id = if holder.contains("ArgumentPackage") {
+                "p"
+            } else {
+                "x"
+            };
+            assert_preserved_at(row, &what, &input, marks[0], id);
         }
     }
 }
@@ -1114,10 +1156,10 @@ fn sacm23_arg_007_source_in_both_forms_and_a_second_target_or_reasoning_are_repe
                 format!(" {MARK}sacm:source=\"c2\" target=\"c1\""),
             ),
         ] {
+            // Not conforming: kept as preserved content of x (ADR 0033).
             let what = format!("{what} on an {kind}");
             let (input, marks) = marked(row, &x_in_ap(kind, &attribute, ""));
-            let error = refused(row, &what, &input);
-            assert_unsupported_at(row, &what, &error, marks[0]);
+            assert_preserved_at(row, &what, &input, marks[0], "x");
         }
     }
 }
@@ -1636,7 +1678,10 @@ fn sacm23_arg_007_semantic_compare_reports_every_relationship_feature_after_gid_
 
 // --- Item 1: reading ---------------------------------------------------------------------------
 
-fn reads_by_either_type_and_is_refused_untyped_or_in_a_case_package(row: &str, kind: ElementKind) {
+fn reads_by_either_type_and_is_refused_untyped_and_preserved_in_a_case_package(
+    row: &str,
+    kind: ElementKind,
+) {
     for type_attribute in [
         format!(" xmi:type=\"sacm:{kind}\""),
         format!(" xsi:type=\"sacm:{kind}\""),
@@ -1696,9 +1741,16 @@ fn reads_by_either_type_and_is_refused_untyped_or_in_a_case_package(row: &str, k
             )),
         ),
     ] {
+        // A type the role does not admit, or a role the class lacks: the
+        // child is kept whole as preserved content of the case or the Claim
+        // y (ADR 0033).
         let (input, marks) = marked(row, &template);
-        let error = refused(row, &what, &input);
-        assert_unsupported_at(row, &what, &error, marks[0]);
+        let holder = if what.ends_with("a Claim") {
+            "y"
+        } else {
+            "case"
+        };
+        assert_preserved_at(row, &what, &input, marks[0], holder);
     }
     // Untyped under the abstract role `argumentElement`: SACM-XMI-005
     // (LIB-COMPAT-010).
@@ -1719,18 +1771,18 @@ fn reads_by_either_type_and_is_refused_untyped_or_in_a_case_package(row: &str, k
 }
 
 #[test]
-fn sacm23_arg_008_reads_with_its_ends_by_xmi_type_or_xsi_type_and_is_refused_untyped_or_in_a_case_package()
+fn sacm23_arg_008_reads_with_its_ends_by_xmi_type_or_xsi_type_and_is_refused_untyped_and_preserved_in_a_case_package()
  {
-    reads_by_either_type_and_is_refused_untyped_or_in_a_case_package(
+    reads_by_either_type_and_is_refused_untyped_and_preserved_in_a_case_package(
         ARG_008,
         ElementKind::AssertedInference,
     );
 }
 
 #[test]
-fn sacm23_arg_010_reads_with_its_ends_by_xmi_type_or_xsi_type_and_is_refused_untyped_or_in_a_case_package()
+fn sacm23_arg_010_reads_with_its_ends_by_xmi_type_or_xsi_type_and_is_refused_untyped_and_preserved_in_a_case_package()
  {
-    reads_by_either_type_and_is_refused_untyped_or_in_a_case_package(
+    reads_by_either_type_and_is_refused_untyped_and_preserved_in_a_case_package(
         ARG_010,
         ElementKind::AssertedContext,
     );

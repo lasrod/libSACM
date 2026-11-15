@@ -321,8 +321,35 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
   Assertion declared `asCited` that is not a citation of an Assertion [SACM23-VAL-019].
 - `validation::validate` reports an `implementationConstraint` on an element whose
   `isAbstract` is not true as a SACM-ABS-001 Error [SACM23-VAL-021].
+- Preserved content: `xmi::read` keeps, in both modes, content that is not SACM 2.3 where
+  it stands (an attribute the class lacks, a foreign or unknown child, a child whose type
+  the role does not admit, a defect inside a `name`, `content`, `key`, value or reference
+  element, text in element-only content, a root's type naming another class) exactly as
+  written, with one SACM-XMI-003 per construct (`Code::XMI_UNKNOWN_CONTENT`; Warning
+  tolerant, Error strict). `SacmElement::has_preserved_content` tells a holder; a
+  tolerant `xmi::write` writes it back where it stood; `==` and `semantic_compare`
+  compare it exactly (`Difference::PreservedContent`); its ids stay in the id space, and
+  `validation::validate` reports a reference to one as SACM-REF-003
+  (`Code::REF_PRESERVED_TARGET`, a Warning) [LIB-COMPAT-003].
+- A strict `xmi::write` refuses a document that holds preserved content as
+  `WriteError::PreservedContent { elements }` (SACM-XMI-006,
+  `Code::XMI_STRICT_SAVE_REFUSED`), before validation [SACM23-XMI-008].
+- Every `ReadError::Unsupported` reason ends with one label that says why it is refused:
+  `(a limit of this version; ROW reads it)`, `(a limit of this version)`, `(a defect in
+  the input; ROW is to read it in tolerant mode)` or `(a defect in the input)`, from one
+  list that an xtask test gates [LIB-API-011].
+- `cargo xtask fetch-spec` also fetches the normative XMI.xsd of XMI 2.5.1, hash-pinned
+  [LIB-TOOL-021].
 
 ### Changed
+
+- `xmi::read` keeps content that is not SACM 2.3 where it stands as preserved content,
+  with SACM-XMI-003, which is an Error in strict mode, instead of refusing it as
+  `Unsupported`: a strict read may report an Error where it refused before, and a strict
+  `xmi::write` refuses such a document as `WriteError::PreservedContent`
+  [LIB-COMPAT-003, SACM23-XMI-008].
+- `WriteError::code()` is `Some(Code::XMI_STRICT_SAVE_REFUSED)` for the new
+  `WriteError::PreservedContent`; it stays `None` for the other variants [SACM23-XMI-008].
 
 - The new validation Error rule SACM-ABS-001 for implementation constraints (clause 8.6)
   can make a strict `xmi::write` refuse a document it wrote before: one with an

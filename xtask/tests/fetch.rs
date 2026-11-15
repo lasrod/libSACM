@@ -1,6 +1,6 @@
 //! Acceptance tests for hash-pinned fetching of the SACM 2.3 sources
-//! (LIB-TOOL-002), XMI 2.5.1 (LIB-TOOL-020) and the W3C XML Conformance Test
-//! Suite (LIB-SEC-006).
+//! (LIB-TOOL-002), XMI 2.5.1 (LIB-TOOL-020), its XMI.xsd (LIB-TOOL-021) and
+//! the W3C XML Conformance Test Suite (LIB-SEC-006).
 //!
 //! `fetch_into` and `fetch_suite` are driven with fake downloaders (and fake
 //! extractors), so no test touches the network. `curl_download` is driven
@@ -407,16 +407,17 @@ const SACM_ARTIFACTS: [Artifact; 2] = [
     },
 ];
 
+/// LIB-TOOL-021 appends XMI.xsd after the XMI 2.5.1 specification, so the
+/// specification is pinned at index 2 rather than as the last artifact. The
+/// name is kept because the matrix cites it.
 #[test]
 fn lib_tool_020_artifacts_end_with_the_xmi_2_5_1_pin() {
-    assert_eq!(
-        ARTIFACTS.len(),
-        3,
-        "LIB-TOOL-020: ARTIFACTS lists the two SACM sources and XMI 2.5.1, got {:?}",
-        ARTIFACTS.iter().map(|a| a.file_name).collect::<Vec<_>>()
-    );
-    let Some(xmi) = ARTIFACTS.last() else {
-        panic!("LIB-TOOL-020: ARTIFACTS is empty");
+    let Some(xmi) = ARTIFACTS.get(2) else {
+        panic!(
+            "LIB-TOOL-020: ARTIFACTS lists the two SACM sources, then XMI 2.5.1 at index 2, \
+             got {:?}",
+            ARTIFACTS.iter().map(|a| a.file_name).collect::<Vec<_>>()
+        );
     };
     assert_eq!(
         (xmi.file_name, xmi.url, xmi.sha256),
@@ -425,8 +426,67 @@ fn lib_tool_020_artifacts_end_with_the_xmi_2_5_1_pin() {
             "https://www.omg.org/spec/XMI/2.5.1/PDF",
             "2bf97c670f128affc9ed5dc202ef748101afd0eee8ee662e8763da6092c80c1b",
         ),
-        "LIB-TOOL-020: the last artifact is XMI 2.5.1 (formal/15-06-07) with its file name, URL \
-         and SHA-256 pin"
+        "LIB-TOOL-020: the artifact at index 2 is XMI 2.5.1 (formal/15-06-07) with its file \
+         name, URL and SHA-256 pin"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// LIB-TOOL-021: XMI.xsd is pinned after the XMI 2.5.1 specification
+// ---------------------------------------------------------------------------
+
+/// The first three artifacts as LIB-TOOL-002 and LIB-TOOL-020 pinned them.
+const FIRST_THREE_ARTIFACTS: [Artifact; 3] = [
+    SACM_ARTIFACTS[0],
+    SACM_ARTIFACTS[1],
+    Artifact {
+        file_name: "XMI-2.5.1-formal-15-06-07.pdf",
+        url: "https://www.omg.org/spec/XMI/2.5.1/PDF",
+        sha256: "2bf97c670f128affc9ed5dc202ef748101afd0eee8ee662e8763da6092c80c1b",
+        what: "XMI 2.5.1 formal specification (formal/15-06-07)",
+    },
+];
+
+/// The XMI 2.5.1 normative XML Schema, exactly as LIB-TOOL-021 states it.
+const XMI_XSD: Artifact = Artifact {
+    file_name: "XMI-2.5.1-XMI.xsd",
+    url: "https://www.omg.org/spec/XMI/20131001/XMI.xsd",
+    sha256: "7b228718d35a15a8e2fb99f078d36eee4b23b7a2cd405e7ac81b9d27bf2fab5d",
+    what: "XMI 2.5.1 normative XML Schema (XMI.xsd)",
+};
+
+#[test]
+fn lib_tool_021_artifacts_has_four_entries() {
+    assert_eq!(
+        ARTIFACTS.len(),
+        4,
+        "LIB-TOOL-021: ARTIFACTS lists the two SACM sources, XMI 2.5.1 and XMI.xsd, got {:?}",
+        ARTIFACTS.iter().map(|a| a.file_name).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn lib_tool_021_the_fourth_artifact_is_the_xmi_xsd_pin() {
+    assert_eq!(
+        ARTIFACTS.get(3),
+        Some(&XMI_XSD),
+        "LIB-TOOL-021: the fourth artifact is XMI.xsd with exactly the file name, https URL, \
+         SHA-256 pin and description of the acceptance"
+    );
+}
+
+#[test]
+fn lib_tool_021_the_first_three_artifacts_are_unchanged() {
+    assert!(
+        ARTIFACTS.len() >= 3,
+        "LIB-TOOL-021: ARTIFACTS still lists the first three sources, got {} entries",
+        ARTIFACTS.len()
+    );
+    assert_eq!(
+        ARTIFACTS[..3],
+        FIRST_THREE_ARTIFACTS,
+        "LIB-TOOL-021: the SACM sources and the XMI 2.5.1 specification keep their file names, \
+         URLs, pins, descriptions and order, ahead of XMI.xsd"
     );
 }
 

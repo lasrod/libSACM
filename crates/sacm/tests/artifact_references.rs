@@ -9,8 +9,9 @@
 //! (`SacmElement::referenced_artifact_elements`), held in document order with
 //! repeats, written after `abstractForm` when not empty, and compared as
 //! `Difference::ReferencedArtifactElements`. It is no Assertion, so the
-//! Assertion and relationship features are `Unsupported` on it, as is C++'s
-//! `referencedArtifact` alias. Every kind except the `UtilityElement`s conforms
+//! Assertion and relationship features on it, and C++'s `referencedArtifact`
+//! alias, are content its class lacks, kept as preserved content (ADR 0033).
+//! Every kind except the `UtilityElement`s conforms
 //! to `ArtifactElement` (which specializes `ModelElement` in ptc/22-03-13), so
 //! a Claim or a package is a well-typed target; only the four
 //! `UtilityElement`s are not. `CreateArtifactReference::new(parent, name)` creates one, with
@@ -262,16 +263,52 @@ fn with_code(doc: &Document, code: Code) -> Vec<Diagnostic> {
         .collect()
 }
 
-/// Asserts that `error` is `Unsupported`, with no code, at `at`.
-fn assert_unsupported_at(what: &str, error: &ReadError, at: SourceLocation) {
-    assert!(
-        matches!(error, ReadError::Unsupported { .. }) && error.code().is_none(),
-        "{ROW}: {what}: not Unsupported: {error:?}"
-    );
+/// Asserts that `input` reads in both modes and keeps one construct as
+/// preserved content of `holder` (LIB-COMPAT-003, ADR 0033): exactly one
+/// SACM-XMI-003 at `at`, affecting `holder`, a Warning in tolerant mode and
+/// an Error in strict mode, and the same document in both.
+fn assert_preserved_at(what: &str, input: &str, at: SourceLocation, holder: &str) {
+    let mut documents = Vec::new();
+    for (mode, severity) in [
+        (Mode::Tolerant, Severity::Warning),
+        (Mode::Strict, Severity::Error),
+    ] {
+        let output = match read(mode, input) {
+            Ok(output) => output,
+            Err(error) => panic!(
+                "{ROW}: {what}: a {mode:?} read refused it instead of preserving it: {error:?}"
+            ),
+        };
+        let found: Vec<_> = output
+            .diagnostics()
+            .iter()
+            .filter(|found| found.code() == Code::XMI_UNKNOWN_CONTENT)
+            .map(|found| {
+                (
+                    found.severity(),
+                    found.location(),
+                    found.affected().to_vec(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            found,
+            [(severity, Some(at), vec![ElementId::from(holder)])],
+            "{ROW}: {what}: not one SACM-XMI-003 at the construct affecting {holder:?} in \
+             {mode:?} mode: {:?}",
+            output.diagnostics()
+        );
+        let doc = output.into_document();
+        assert!(
+            doc.get(holder)
+                .is_some_and(SacmElement::has_preserved_content),
+            "{ROW}: {what}: {holder:?} holds no preserved content in {mode:?} mode"
+        );
+        documents.push(doc);
+    }
     assert_eq!(
-        error.location(),
-        Some(at),
-        "{ROW}: {what}: not refused at the construct: {error}"
+        documents[0], documents[1],
+        "{ROW}: {what}: the modes read different documents"
     );
 }
 
@@ -549,8 +586,8 @@ fn sacm23_arg_006_reference_elements_by_idref_or_href_read_equal_to_the_attribut
 }
 
 #[test]
-fn sacm23_arg_006_an_attribute_and_elements_are_repeated_value_and_an_empty_attribute_is_unsupported()
- {
+fn sacm23_arg_006_an_attribute_and_elements_are_repeated_value_and_an_empty_attribute_is_preserved()
+{
     // The attribute and an element.
     let what = "the attribute and an element";
     let (input, marks) = marked(&x_in_ap(
@@ -608,21 +645,20 @@ fn sacm23_arg_006_an_attribute_and_elements_are_repeated_value_and_an_empty_attr
             format!(" {MARK}sacm:referencedArtifactElement=\"c1\""),
         ),
     ] {
+        // Not conforming: kept as preserved content of x (ADR 0033).
         let (input, marks) = marked(&x_in_ap(&attribute, ""));
-        let error = refused(what, &input);
-        assert_unsupported_at(what, &error, marks[0]);
+        assert_preserved_at(what, &input, marks[0], "x");
     }
     let what = "a reference element in the SACM namespace";
     let (input, marks) = marked(&x_in_ap(
         "",
         &format!("{MARK}<sacm:referencedArtifactElement xmi:idref=\"c1\"/>"),
     ));
-    let error = refused(what, &input);
-    assert_unsupported_at(what, &error, marks[0]);
+    assert_preserved_at(what, &input, marks[0], "x");
 }
 
 #[test]
-fn sacm23_arg_006_referenced_artifact_element_on_another_kind_is_unsupported() {
+fn sacm23_arg_006_referenced_artifact_element_on_another_kind_is_preserved() {
     let attribute = format!(" {MARK}referencedArtifactElement=\"c1\"");
     let element_form = format!("{MARK}<referencedArtifactElement xmi:idref=\"c1\"/>");
     let typed = |kind: &str, attributes: &str, content: &str| {
@@ -632,15 +668,25 @@ fn sacm23_arg_006_referenced_artifact_element_on_another_kind_is_unsupported() {
         ))
     };
     let cases = [
-        ("a Claim, as an attribute", typed("Claim", &attribute, "")),
-        ("a Claim, as an element", typed("Claim", "", &element_form)),
+        (
+            "a Claim, as an attribute",
+            typed("Claim", &attribute, ""),
+            "x",
+        ),
+        (
+            "a Claim, as an element",
+            typed("Claim", "", &element_form),
+            "x",
+        ),
         (
             "an ArgumentReasoning, as an attribute",
             typed("ArgumentReasoning", &attribute, ""),
+            "x",
         ),
         (
             "an ArgumentGroup, as an element",
             typed("ArgumentGroup", "", &element_form),
+            "x",
         ),
         (
             "an AssertedEvidence, as an attribute",
@@ -649,6 +695,7 @@ fn sacm23_arg_006_referenced_artifact_element_on_another_kind_is_unsupported() {
                 &format!(" source=\"c1\" target=\"c2\"{attribute}"),
                 "",
             ),
+            "x",
         ),
         (
             "an ArgumentPackage root, as an attribute",
@@ -656,18 +703,20 @@ fn sacm23_arg_006_referenced_artifact_element_on_another_kind_is_unsupported() {
                 "<sacm:ArgumentPackage{NS} xmi:id=\"p\"{attribute}><name content=\"P\"/>\
                  </sacm:ArgumentPackage>"
             ),
+            "p",
         ),
         (
             "a Note, as an attribute",
             in_ap(&format!("<note xmi:id=\"n\"{attribute}/>")),
+            "n",
         ),
     ];
-    for (holder, template) in &cases {
+    // Content the class lacks: kept as preserved content (ADR 0033).
+    for (holder, template, id) in &cases {
         let what = format!("{END} on {holder}");
         let (input, marks) = marked(template);
         assert_eq!(marks.len(), 1, "{ROW}: setup: {what} has not one mark");
-        let error = refused(&what, &input);
-        assert_unsupported_at(&what, &error, marks[0]);
+        assert_preserved_at(&what, &input, marks[0], id);
     }
 }
 
@@ -880,7 +929,7 @@ fn sacm23_arg_006_a_referenced_artifact_elements_difference_displays_its_end_and
 // =====================================================================================
 
 #[test]
-fn sacm23_arg_006_assertion_and_relationship_features_and_the_referenced_artifact_alias_are_unsupported()
+fn sacm23_arg_006_assertion_and_relationship_features_and_the_referenced_artifact_alias_are_preserved()
  {
     let attributes = [
         ("assertionDeclaration", "assumed"),
@@ -894,8 +943,7 @@ fn sacm23_arg_006_assertion_and_relationship_features_and_the_referenced_artifac
     for (feature, value) in attributes {
         let what = format!("{feature}=\"{value}\" on an ArtifactReference");
         let (input, marks) = marked(&x_in_ap(&format!(" {MARK}{feature}=\"{value}\""), ""));
-        let error = refused(&what, &input);
-        assert_unsupported_at(&what, &error, marks[0]);
+        assert_preserved_at(&what, &input, marks[0], "x");
     }
     let elements = [
         (
@@ -914,8 +962,7 @@ fn sacm23_arg_006_assertion_and_relationship_features_and_the_referenced_artifac
     for (feature, content) in elements {
         let what = format!("a {feature} element in an ArtifactReference");
         let (input, marks) = marked(&x_in_ap("", &format!("{MARK}{content}")));
-        let error = refused(&what, &input);
-        assert_unsupported_at(&what, &error, marks[0]);
+        assert_preserved_at(&what, &input, marks[0], "x");
     }
 }
 

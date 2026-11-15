@@ -27,9 +27,17 @@
 //!    (SACM23-XMI-012). A child element is checked the same way, at its start
 //!    tag first: its role, its type and kind, and its `xmi:id`
 //!    (SACM23-XMI-016); then its attributes, of which an Assertion's
-//!    `assertionDeclaration` is read (SACM23-XMI-017), and its content. The
-//!    first thing this release cannot read is `Unsupported`, at its location;
-//!    nothing is dropped (ADR 0015, D-PRESERVE).
+//!    `assertionDeclaration` is read (SACM23-XMI-017), and its content.
+//!    Content that does not conform where it stands is kept as preserved
+//!    content of the element it sits in, with one SACM-XMI-003 per construct
+//!    (LIB-COMPAT-003, ADR 0033): an attribute, a child with its subtree,
+//!    text, or a `name`, `content`, `key`, value or reference element that
+//!    does not conform inside, kept whole. A part is read whole first, and
+//!    what it reported and the ids it took are given back if it is
+//!    preserved after all. The first conforming thing this release does not
+//!    read is `Unsupported`, at its location, labelled by its entry of
+//!    `refusal::Unread` (LIB-API-011); nothing is dropped (ADR 0015,
+//!    D-PRESERVE).
 //!
 //! Before pass 2, every `xmi:id` value in the input is collected, so that the
 //! id generated for an element without one is no id written anywhere in the
@@ -97,7 +105,9 @@
 //!
 //! The XMI element itself may carry only namespace declarations and
 //! `xmi:version`, and hold, besides its roots, only white space, comments and
-//! processing instructions. An `xmi:version`, here or on a root, is ignored
+//! processing instructions; it is no element of the document, so anything
+//! else on it has nowhere to be kept, and is refused (a defect, or XMI
+//! metadata not read yet). An `xmi:version`, here or on a root, is ignored
 //! with any value: the XMI namespace identifies the version (XMI 2.5.1
 //! §7.5.3), and the writer does not write it (SACM23-XMI-024).
 //!
@@ -114,14 +124,43 @@ use std::collections::BTreeSet;
 use roxmltree::{Attribute, Node};
 
 use super::input::{Locator, is_xml_space, locate};
-use super::namespaces::{SACM_NS, XMI_NS};
+use super::namespaces::{SACM_NS, SACM_PREFIX, XMI_NS, XMI_PREFIX};
+use super::preserve;
+use super::refusal::{Unread, unsupported};
 use super::{Mode, ReadError};
 use crate::diagnostic::{Code, Diagnostic, Severity};
 use crate::model::{
-    AbstractClass, AssertionDeclaration, DeclaredType, Document, ElementId, ElementKind, Flag,
-    IdGenerator, LangString, ReferenceEnd, Text, TextRole, flag_named, is_ncname,
-    reference_end_named, role_named,
+    AbstractClass, AssertionDeclaration, Attr, DeclaredType, Document, ElementId, ElementKind,
+    Flag, IdGenerator, Item, LangString, Placed, Preserved, ReferenceEnd, Text, TextRole,
+    flag_named, is_ncname, reference_end_named, role_named,
 };
+
+/// The §11.4 text spelling of `argumentElement`, which SACM23-XMI-009 is to
+/// read in tolerant mode, as the role of an ArgumentPackage and the
+/// reference end of an `ArgumentGroup`.
+const TEXT_SPELLING: &str = "argumentationElement";
+
+/// The `XLink` namespace, whose attributes on a reference element are a
+/// cross-document link (SACM23-XMI-027).
+const XLINK_NS: &str = "http://www.w3.org/1999/xlink";
+
+/// The requirement of the diagnostics for preserved content.
+const PRESERVED_ROW: &str = "LIB-COMPAT-003";
+
+/// Why a part of the input is not read: a refusal, or content that does not
+/// conform, which the caller keeps as preserved content (ADR 0033).
+enum Fault {
+    /// The input is refused.
+    Refused(ReadError),
+    /// The part does not conform: the caller preserves the whole of it.
+    Defect,
+}
+
+impl From<ReadError> for Fault {
+    fn from(error: ReadError) -> Self {
+        Self::Refused(error)
+    }
+}
 
 /// The XML Schema instance namespace, of `xsi:type` and `xsi:nil`, which are
 /// read but never written (ADR 0017 T1; SACM23-XMI-026).
@@ -162,6 +201,7 @@ pub(super) fn read(
         text,
         mode,
         ids: BTreeSet::new(),
+        id_log: Vec::new(),
         reserved: reserved_ids(element),
         generator: IdGenerator::default(),
         order: 0,
@@ -219,8 +259,13 @@ struct Findings<'t, 'a> {
     text: &'t str,
     mode: Mode,
     /// The value of every `xmi:id` read so far, of elements and names, in
-    /// every root's tree (SACM23-VAL-001, SACM23-XMI-022).
+    /// every root's tree (SACM23-VAL-001, SACM23-XMI-022), preserved content
+    /// included (ADR 0033).
     ids: BTreeSet<&'a str>,
+    /// The values of `ids`, in the order they were added, so that a part
+    /// that is preserved after all can give back the ids read inside it
+    /// ([`Findings::rollback`]).
+    id_log: Vec<&'a str>,
     /// The ids a generated one must avoid, collected by [`reserved_ids`]
     /// before anything is read, so that none is generated, even one that
     /// comes later: the value of every `xmi:id` in the input (SACM23-XMI-020),
@@ -241,6 +286,68 @@ struct Findings<'t, 'a> {
     /// offset, the element it belongs to and what it is, which [`read`]
     /// refuses once the input has read whole (LIB-COMPAT-008).
     legacy: Option<(usize, ElementId, String)>,
+}
+
+/// What [`Findings`] holds before a part is read, so that a part that turns
+/// out not to conform can be preserved as if it had not been read.
+struct Checkpoint {
+    /// The number of diagnostics found.
+    diagnostics: usize,
+    /// The first C++ shape found in strict mode.
+    legacy: Option<(usize, ElementId, String)>,
+    /// The number of ids read.
+    ids: usize,
+}
+
+impl<'a> Findings<'_, 'a> {
+    /// Records `value`, an `xmi:id` value, as read; `false` if it was read
+    /// before.
+    fn insert_id(&mut self, value: &'a str) -> bool {
+        let inserted = self.ids.insert(value);
+        if inserted {
+            self.id_log.push(value);
+        }
+        inserted
+    }
+
+    /// Where the read is, before a part that may be preserved.
+    fn checkpoint(&self) -> Checkpoint {
+        Checkpoint {
+            diagnostics: self.diagnostics.len(),
+            legacy: self.legacy.clone(),
+            ids: self.id_log.len(),
+        }
+    }
+
+    /// Forgets everything found since `checkpoint`: the part is preserved,
+    /// and nothing inside a preserved part is read or reported (ADR 0033).
+    fn rollback(&mut self, checkpoint: Checkpoint) {
+        self.diagnostics.truncate(checkpoint.diagnostics);
+        self.legacy = checkpoint.legacy;
+        for id in self.id_log.drain(checkpoint.ids..) {
+            self.ids.remove(id);
+        }
+    }
+
+    /// Reports the construct `what` at byte `offset`, preserved in `holder`
+    /// (SACM-XMI-003, LIB-COMPAT-003; XMI 2.5.1 §7.3.3): an Error in strict
+    /// mode and a Warning in tolerant mode.
+    fn unknown(&mut self, offset: usize, what: &str, holder: &Pending) {
+        let severity = match self.mode {
+            Mode::Strict => Severity::Error,
+            Mode::Tolerant => Severity::Warning,
+        };
+        let message = format!(
+            "{what} is not SACM 2.3 where it stands, so it is kept as written as preserved \
+             content of {}, which a tolerant write writes back and a strict write refuses",
+            subject(holder.kind, holder.id.as_str())
+        );
+        let diagnostic =
+            Diagnostic::create(Code::XMI_UNKNOWN_CONTENT, severity, PRESERVED_ROW, message)
+                .set_clause("7.3.3")
+                .set_affected([holder.id.clone()]);
+        self.push_at(diagnostic, offset);
+    }
 }
 
 impl Findings<'_, '_> {
@@ -386,24 +493,38 @@ impl Findings<'_, '_> {
 fn reserved_ids<'a>(element: Node<'a, '_>) -> BTreeSet<&'a str> {
     let mut reserved = BTreeSet::new();
     for attribute in element.descendants().flat_map(|node| node.attributes()) {
-        let value = attribute.value();
         if is_xmi(&attribute, "id") {
-            reserved.insert(id_value(value));
-        } else if is_xmi(&attribute, "idref") {
-            reserved.insert(value.trim_matches(is_xml_space));
-        } else if is_unqualified(&attribute, "href") {
-            if let Some(fragment) = value.trim_matches(is_xml_space).strip_prefix('#') {
-                reserved.insert(fragment);
-            }
-        } else if attribute.namespace().is_none()
-            && ReferenceEnd::ALL
-                .iter()
-                .any(|end| end.name() == attribute.name())
-        {
-            reserved.extend(id_tokens(value));
+            reserved.insert(id_value(attribute.value()));
+        } else {
+            reserved.extend(reference_tokens(&attribute));
         }
     }
     reserved
+}
+
+/// The ids `attribute` may name as a reference (ADR 0026, ADR 0033): its
+/// value, trimmed, for an `xmi:idref`; the fragment of an `href`, trimmed;
+/// and each token of an attribute in no namespace named as a reference end.
+/// None for any other attribute.
+fn reference_tokens<'a>(attribute: &Attribute<'a, '_>) -> Vec<&'a str> {
+    let value = attribute.value();
+    if is_xmi(attribute, "idref") {
+        vec![value.trim_matches(is_xml_space)]
+    } else if is_unqualified(attribute, "href") {
+        value
+            .trim_matches(is_xml_space)
+            .strip_prefix('#')
+            .into_iter()
+            .collect()
+    } else if attribute.namespace().is_none()
+        && ReferenceEnd::ALL
+            .iter()
+            .any(|end| end.name() == attribute.name())
+    {
+        id_tokens(value).collect()
+    } else {
+        Vec::new()
+    }
 }
 
 /// The ids of an `xsd:IDREFS` value: its tokens between XML white space,
@@ -453,7 +574,8 @@ fn classify(text: &str, element: Node<'_, '_>) -> Result<bool, ReadError> {
         (Some(XMI_NS), _) => Err(unsupported(
             text,
             element.range().start,
-            format!(
+            Unread::XmiMetadata,
+            &format!(
                 "the XMI element {:?} is not read as a root in this release",
                 written_name(text, element)
             ),
@@ -463,7 +585,8 @@ fn classify(text: &str, element: Node<'_, '_>) -> Result<bool, ReadError> {
         (_, "XMI") => Err(unsupported(
             text,
             element.range().start,
-            format!(
+            Unread::OtherXmiNamespace,
+            &format!(
                 "the element {:?} is not in the XMI namespace {XMI_NS:?}, so it is not read as the XMI element",
                 written_name(text, element)
             ),
@@ -501,21 +624,43 @@ fn read_wrapper<'a>(
 ) -> Result<(), ReadError> {
     let text = found.text;
     let name = written_name(text, wrapper);
+    // The wrapper is no element of the document, so what it carries besides
+    // `xmi:version` and the XMI attributes XMI.xsd gives it has nowhere to
+    // be kept (ADR 0033).
     for attribute in wrapper.attributes() {
-        if !is_xmi(&attribute, "version") {
-            return Err(unread_attribute(text, &attribute, &name));
+        if is_xmi(&attribute, "version") {
+            found.xmi_version(&attribute, "the XMI element", None);
+            continue;
         }
-        found.xmi_version(&attribute, "the XMI element", None);
+        let is_metadata = ["id", "type", "uuid", "label", "idref"]
+            .iter()
+            .any(|local| is_xmi(&attribute, local))
+            || is_unqualified(&attribute, "href")
+            || is_schema_location(&attribute);
+        let unread = if is_metadata {
+            Unread::XmiMetadata
+        } else {
+            Unread::WrapperContent
+        };
+        return Err(unread_attribute(text, &attribute, &name, unread));
     }
     for child in wrapper.children() {
         if !child.is_element() {
-            check_text(text, child, &name)?;
+            if let Some(first) = text_offset(text, child) {
+                return Err(unsupported(
+                    text,
+                    first,
+                    Unread::WrapperContent,
+                    &format!("the element {name:?} holds text, which has no element to be kept in"),
+                ));
+            }
         } else if child.tag_name().namespace() == Some(XMI_NS) {
             // XMI document metadata, read by SACM23-XMI-019.
             return Err(unsupported(
                 text,
                 child.range().start,
-                format!(
+                Unread::XmiMetadata,
+                &format!(
                     "the XMI element {:?} in {name:?} is not read in this release",
                     written_name(text, child)
                 ),
@@ -570,6 +715,59 @@ struct Pending {
     written: String,
     /// The byte offset of its start tag.
     at: usize,
+    /// The number of its children read so far: the index of the next.
+    children: usize,
+    /// Its preserved content so far (LIB-COMPAT-003, ADR 0033).
+    kept: Kept,
+}
+
+/// The preserved content of one element as it is read (ADR 0033).
+#[derive(Default)]
+struct Kept {
+    /// The attributes, each with the byte offset of its name: sorted by it
+    /// when the element is held, so they keep their input order.
+    attributes: Vec<(usize, Attr)>,
+    /// The bindings their prefixes need.
+    namespaces: Vec<(String, String)>,
+    /// The children, in input order.
+    children: Vec<Placed>,
+    /// The `xmi:id` value of each element of the children.
+    ids: Vec<ElementId>,
+    /// Each id the content may name as a reference.
+    references: Vec<ElementId>,
+    /// The byte offset of each preserved attribute's name and child's start
+    /// tag: no occurrence of a property (`RepeatedValue`).
+    offsets: BTreeSet<usize>,
+}
+
+impl Kept {
+    /// Whether the construct at byte `offset` is preserved.
+    fn holds(&self, offset: usize) -> bool {
+        self.offsets.contains(&offset)
+    }
+
+    /// The preserved content, its attributes in input order and its
+    /// bindings by prefix.
+    fn into_preserved(self) -> Preserved {
+        let Self {
+            mut attributes,
+            mut namespaces,
+            children,
+            ids,
+            references,
+            offsets: _,
+        } = self;
+        attributes.sort_by_key(|(offset, _)| *offset);
+        namespaces.sort();
+        namespaces.dedup();
+        Preserved {
+            namespaces,
+            attributes: attributes.into_iter().map(|(_, attr)| attr).collect(),
+            children,
+            ids,
+            references,
+        }
+    }
 }
 
 impl Pending {
@@ -615,7 +813,13 @@ impl Pending {
             return Ok(());
         };
         if self.content.is_some() {
-            return Err(repeated_content(text, holder, &self.id, &self.shorthand));
+            return Err(repeated_content(
+                text,
+                holder,
+                &self.id,
+                &self.shorthand,
+                &self.kept,
+            ));
         }
         if let Some(attribute) = self.shorthand.content_at {
             return Err(repeated(
@@ -628,17 +832,147 @@ impl Pending {
         Ok(())
     }
 
+    /// Keeps `attribute` of this element as preserved content, reported at
+    /// its name (ADR 0033). An attribute whose prefix `sacm` or `xmi` is
+    /// bound to another namespace than SACM 2.3 or XMI 2.5.1 cannot be
+    /// written back on the element's start tag, where the writer binds them
+    /// so, and is refused at byte `refuse_at` instead (a defect).
+    fn preserve_attribute<'a>(
+        &mut self,
+        found: &mut Findings<'_, 'a>,
+        attribute: &Attribute<'a, '_>,
+        refuse_at: usize,
+    ) -> Result<(), ReadError> {
+        let text = found.text;
+        let at = attribute.range_qname().start;
+        let attr = preserve::attr(text, attribute);
+        let written = attr.name.written();
+        if let Some(prefix) = attr.name.prefix.as_deref() {
+            let uri = attribute.namespace().unwrap_or_default();
+            let pinned = match prefix {
+                SACM_PREFIX => Some(SACM_NS),
+                XMI_PREFIX => Some(XMI_NS),
+                _ => None,
+            };
+            match pinned {
+                Some(pinned) if pinned != uri => {
+                    return Err(unsupported(
+                        text,
+                        refuse_at,
+                        Unread::UnwritablePrefix,
+                        &format!(
+                            "the attribute {written:?} of the element {:?} is not SACM 2.3, and \
+                             cannot be kept: its prefix {prefix:?} is bound to {uri:?}, and the \
+                             written element binds it to {pinned:?}",
+                            self.written
+                        ),
+                    ));
+                }
+                Some(_) => {}
+                None if prefix == "xml" => {}
+                None => self
+                    .kept
+                    .namespaces
+                    .push((prefix.to_owned(), uri.to_owned())),
+            }
+        }
+        self.kept.references.extend(
+            reference_tokens(attribute)
+                .into_iter()
+                .filter(|token| !token.is_empty())
+                .map(ElementId::new),
+        );
+        self.kept.offsets.insert(at);
+        self.kept.attributes.push((at, attr));
+        found.unknown(at, &format!("the attribute {written:?}"), self);
+        Ok(())
+    }
+
+    /// Keeps `node`, a child element of this element, with its subtree, as
+    /// preserved content placed before the next typed child, reported at its
+    /// start tag (ADR 0033). Nothing inside it is read or reported, but each
+    /// `xmi:id` in it is checked: an empty one is `InvalidId`, and one read
+    /// before `DuplicateId`.
+    fn preserve_element<'a>(
+        &mut self,
+        found: &mut Findings<'_, 'a>,
+        node: Node<'a, '_>,
+    ) -> Result<(), ReadError> {
+        let text = found.text;
+        for element in node.descendants().filter(Node::is_element) {
+            for attribute in element.attributes() {
+                if is_xmi(&attribute, "id") {
+                    let value = checked_id(found, element, &attribute)?;
+                    self.kept.ids.push(ElementId::new(value));
+                } else {
+                    self.kept.references.extend(
+                        reference_tokens(&attribute)
+                            .into_iter()
+                            .filter(|token| !token.is_empty())
+                            .map(ElementId::new),
+                    );
+                }
+            }
+        }
+        let at = node.range().start;
+        self.kept.offsets.insert(at);
+        self.kept.children.push(Placed {
+            index: self.children,
+            item: Item::Element(preserve::fragment(text, node)),
+        });
+        let what = format!("the element {:?}", written_name(text, node));
+        found.unknown(at, &what, self);
+        Ok(())
+    }
+
+    /// Keeps `node`, a child of this element, as preserved text if it is
+    /// text that is not all XML white space, trimmed of it, reported at its
+    /// first character that is not literal white space (ADR 0033). Text
+    /// right after preserved text, with no child between, joins it after an
+    /// LF, as a read of the written output gives it.
+    fn preserve_text(&mut self, found: &mut Findings<'_, '_>, node: Node<'_, '_>) {
+        let Some(first) = text_offset(found.text, node) else {
+            return;
+        };
+        let piece = node.text().unwrap_or_default().trim_matches(is_xml_space);
+        if let Some(Placed {
+            index,
+            item: Item::Text(joined),
+        }) = self.kept.children.last_mut()
+        {
+            if *index == self.children {
+                joined.push('\n');
+                joined.push_str(piece);
+                return;
+            }
+        }
+        self.kept.children.push(Placed {
+            index: self.children,
+            item: Item::Text(piece.to_owned()),
+        });
+        found.unknown(first, "text", self);
+    }
+
     /// Ends the element once its content is read: a `content` given in the
     /// C++ shape on a `UtilityElement` becomes its content, a
     /// `MultiLangString` of one value, reported at the shape
-    /// (LIB-COMPAT-008). A `lang` attribute that gives no content is not
-    /// read.
-    fn finish(&mut self, found: &mut Findings<'_, '_>) -> Result<(), ReadError> {
-        let shorthand = std::mem::take(&mut self.shorthand);
+    /// (LIB-COMPAT-008). A `lang` attribute that gives no content is no
+    /// shape: it is preserved (ADR 0033).
+    fn finish(&mut self, found: &mut Findings<'_, '_>) {
+        let mut shorthand = std::mem::take(&mut self.shorthand);
+        let lang = shorthand.lang_attr.take();
         let (value, at) = match shorthand.into_lang_string() {
             Ok(Some(given)) => given,
-            Ok(None) => return Ok(()),
-            Err(lang) => return Err(unread_attribute_at(found.text, lang, "lang", &self.written)),
+            Ok(None) => return,
+            Err(at) => {
+                if let Some(attr) = lang {
+                    let what = format!("the attribute {:?}", attr.name.written());
+                    self.kept.offsets.insert(at);
+                    self.kept.attributes.push((at, attr));
+                    found.unknown(at, &what, self);
+                }
+                return;
+            }
         };
         let shape = format!(
             "the content of {} is given on the element itself",
@@ -648,7 +982,6 @@ impl Pending {
         let mut held = Text::default();
         held.push(value, None);
         self.content = Some(held);
-        Ok(())
     }
 
     /// Reads `node`, the value element of the flag `flag` in `holder`, this
@@ -660,7 +993,7 @@ impl Pending {
         holder: Node<'_, '_>,
         node: Node<'_, '_>,
         flag: Flag,
-    ) -> Result<(), ReadError> {
+    ) -> Result<(), Fault> {
         // A nil flag reads as the flag not written: false (SACM23-XMI-026).
         let value = match read_value(text, node, &self.id)? {
             Some(value) => parse_flag(text, &value, node.range().start, &self.id, flag)?,
@@ -668,7 +1001,7 @@ impl Pending {
         };
         if self.flags.iter().any(|(given, _)| *given == flag) {
             let property = flag.name();
-            return Err(repeated_value(text, holder, property, &self.id, property));
+            return Err(self.repeated(text, holder, property, property).into());
         }
         self.flags.push((flag, value));
         Ok(())
@@ -689,21 +1022,30 @@ impl Pending {
         holder: Node<'_, '_>,
         node: Node<'_, '_>,
         end: ReferenceEnd,
-    ) -> Result<(), ReadError> {
+    ) -> Result<(), Fault> {
         let target = read_reference(text, node)?;
         let Some(position) = self.references.iter().position(|(given, _)| *given == end) else {
             self.references.push((end, vec![target]));
             return Ok(());
         };
         let property = end.name();
-        let in_attribute = holder
-            .attributes()
-            .any(|attribute| is_unqualified(&attribute, property));
+        let in_attribute = holder.attributes().any(|attribute| {
+            is_unqualified(&attribute, property) && !self.kept.holds(attribute.range_qname().start)
+        });
         if !end.is_many() || in_attribute {
-            return Err(repeated_value(text, holder, property, &self.id, property));
+            return Err(self.repeated(text, holder, property, property).into());
         }
         self.references[position].1.push(target);
         Ok(())
+    }
+
+    /// The `RepeatedValue` refusal of the property `property` of this
+    /// element, whose node is `holder`, given more than once as the
+    /// attribute or the value element `local`, as [`repeated_value`] finds
+    /// it, without the occurrences kept as preserved content, which are
+    /// none (ADR 0033).
+    fn repeated(&self, text: &str, holder: Node<'_, '_>, local: &str, property: &str) -> ReadError {
+        repeated_value(text, holder, local, &self.id, property, &self.kept)
     }
 }
 
@@ -717,51 +1059,56 @@ struct StartTag {
     references: Vec<(ReferenceEnd, Vec<ElementId>)>,
 }
 
+/// What [`StartTag::read`] made of an attribute.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Given {
+    /// A flag or a reference end of the element, read.
+    Read,
+    /// A reference end of the element that holds no id, which does not
+    /// conform: the caller preserves it (ADR 0033), never reading it as no
+    /// reference.
+    NoId,
+    /// Neither a flag nor a reference end of the element.
+    Other,
+}
+
 impl StartTag {
     /// Reads `attribute` of the element `id`, of `kind`, if it is a flag or
-    /// a reference end of the element in no namespace, and returns whether
-    /// it was one. Attributes are unique in a start tag (XML 1.0 §3.1), so
-    /// none repeats here.
+    /// a reference end of the element in no namespace, and says what it
+    /// was. Attributes are unique in a start tag (XML 1.0 §3.1), so none
+    /// repeats here.
     ///
     /// A flag is an `xsd:boolean` ([`parse_flag`]). A reference holds the
     /// ids its value lists, each token exactly as written, in order and
-    /// with repeats (SACM23-XMI-005, ADR 0027): none is `Unsupported`, since
-    /// that would read as no reference, and two or more on a single-valued
-    /// end is `RepeatedValue`, with one location per token, each at the
-    /// attribute's name. A flag or an end the kind lacks, such as
-    /// `isCounter` on a Claim, is not one, so the caller refuses it.
+    /// with repeats (SACM23-XMI-005, ADR 0027): none is [`Given::NoId`],
+    /// and two or more on a single-valued end is `RepeatedValue`, with one
+    /// location per token, each at the attribute's name. A flag or an end
+    /// the kind lacks, such as `isCounter` on a Claim, is
+    /// [`Given::Other`].
     fn read(
         &mut self,
         text: &str,
         attribute: &Attribute<'_, '_>,
         kind: ElementKind,
         id: &ElementId,
-        element: &str,
-    ) -> Result<bool, ReadError> {
+    ) -> Result<Given, ReadError> {
         if attribute.namespace().is_some() {
-            return Ok(false);
+            return Ok(Given::Other);
         }
         let at = attribute.range_qname().start;
         let local = attribute.name();
         if let Some(flag) = flag_named(kind, local) {
             let value = parse_flag(text, attribute.value(), at, id, flag)?;
             self.flags.push((flag, value));
-            return Ok(true);
+            return Ok(Given::Read);
         }
         let Some(end) = reference_end_named(kind, local) else {
-            return Ok(false);
+            return Ok(Given::Other);
         };
         let value = attribute.value();
         let count = id_tokens(value).count();
         if count == 0 {
-            return Err(unsupported(
-                text,
-                at,
-                format!(
-                    "the attribute {local:?} of the element {element:?} holds no id, so it \
-                     cannot be read as a {local}; leave it out for none"
-                ),
-            ));
+            return Ok(Given::NoId);
         }
         if count > 1 && !end.is_many() {
             return Err(ReadError::RepeatedValue {
@@ -772,7 +1119,7 @@ impl StartTag {
         }
         let targets = id_tokens(value).map(ElementId::new).collect();
         self.references.push((end, targets));
-        Ok(true)
+        Ok(Given::Read)
     }
 }
 
@@ -786,6 +1133,9 @@ struct Shorthand {
     lang: Option<String>,
     /// The byte offset of the `lang` attribute.
     lang_at: Option<usize>,
+    /// The `lang` attribute as written, kept as preserved content if it
+    /// gives no shape (ADR 0033).
+    lang_attr: Option<Attr>,
     /// The content given by an attribute.
     content: Option<String>,
     /// The byte offset of the attribute that gave the content.
@@ -819,12 +1169,13 @@ impl Shorthand {
     /// Reads `attribute`, the `lang`, or one that gives the content.
     /// Returns the byte offset of an earlier attribute that gave the content,
     /// if this one gives it again.
-    fn read_attribute(&mut self, attribute: &Attribute<'_, '_>) -> Result<(), usize> {
+    fn read_attribute(&mut self, text: &str, attribute: &Attribute<'_, '_>) -> Result<(), usize> {
         let at = attribute.range_qname().start;
         let value = attribute.value().to_owned();
         if attribute.name() == "lang" {
             self.lang = Some(value);
             self.lang_at = Some(at);
+            self.lang_attr = Some(preserve::attr(text, attribute));
         } else {
             if let Some(earlier) = self.content_at {
                 return Err(earlier);
@@ -894,103 +1245,134 @@ fn read_root<'a>(
     while let Some((element, holder, content)) = open.last_mut() {
         let Some(node) = content.next() else {
             if let Some((mut element, _, _)) = open.pop() {
-                element.finish(found)?;
+                element.finish(found);
                 read.push(element);
             }
             continue;
         };
-        let is_utility = element.kind.is_a(AbstractClass::UtilityElement);
+        let holder = *holder;
         if !node.is_element() {
-            if is_utility {
+            if element.kind.is_a(AbstractClass::UtilityElement) {
                 // Text on a UtilityElement is the C++ form of its content.
-                element.read_utility_text(text, *holder, node)?;
+                element.read_utility_text(text, holder, node)?;
             } else {
-                check_text(text, node, &element.written)?;
+                // Text in element-only content does not conform (ADR 0033).
+                element.preserve_text(found, node);
             }
-        } else if node.tag_name().name() == "name" {
-            if is_utility {
-                return Err(unsupported(
-                    text,
-                    node.range().start,
-                    format!(
-                        "the element {:?} in {} is not read: {} is a UtilityElement, which \
-                         has no name",
-                        written_name(text, node),
-                        element.what(),
-                        subject(element.kind, element.id.as_str())
-                    ),
-                ));
+            continue;
+        }
+        // A property part is read whole, and kept as preserved content
+        // instead, as if it had not been read, if it turns out not to
+        // conform (ADR 0033).
+        let checkpoint = found.checkpoint();
+        match read_part(found, element, holder, node) {
+            Ok(true) => {}
+            Ok(false) => match child_start(found, node, element)? {
+                Some(child) => {
+                    element.children = element.children.saturating_add(1);
+                    open.push((child, node, node.children()));
+                }
+                None => element.preserve_element(found, node)?,
+            },
+            Err(Fault::Refused(error)) => return Err(error),
+            Err(Fault::Defect) => {
+                found.rollback(checkpoint);
+                element.preserve_element(found, node)?;
             }
-            // Checked whole first, its namespace included, so that only a
-            // `name` in no namespace is an occurrence; then against an
-            // earlier name (SACM23-XMI-021; ADR 0021 amendment 2).
-            let (name, name_id) = read_name(found, node, element.kind, &element.id)?;
-            if element.name.is_some() {
-                return Err(repeated_value(text, *holder, "name", &element.id, "name"));
-            }
-            element.name = Some(name);
-            element.name_id = name_id;
-        } else if is_value_element(node, GID) {
-            // Checked whole first, then against an earlier occurrence.
-            let value = read_value(text, node, &element.id)?;
-            if std::mem::replace(&mut element.has_gid, true) {
-                return Err(repeated_value(text, *holder, GID, &element.id, GID));
-            }
-            element.gid = value;
-        } else if let Some(role) = [TextRole::Content, TextRole::Key]
-            .into_iter()
-            .find(|role| role.is_held_by(element.kind) && is_value_element(node, role.name()))
-        {
-            // Checked whole first, then against an earlier occurrence.
-            let held = read_text(found, node, role, element.kind, &element.id)?;
-            if element.has_text(role) {
-                return Err(match role {
-                    TextRole::Content => {
-                        repeated_content(text, *holder, &element.id, &element.shorthand)
-                    }
-                    TextRole::Key => repeated_value(text, *holder, "key", &element.id, "key"),
-                });
-            }
-            *element.text_mut(role) = Some(held);
-        } else if element.kind.is_a(AbstractClass::Assertion) && is_value_element(node, DECLARATION)
-        {
-            // Checked whole first, then against an earlier occurrence.
-            // A nil declaration reads as one not written: `asserted`
-            // (SACM23-XMI-026).
-            let declaration = match read_value(text, node, &element.id)? {
-                Some(value) => parse_declaration(text, &value, node.range().start, &element.id)?,
-                None => AssertionDeclaration::Asserted,
-            };
-            if element.declaration.is_some() {
-                return Err(repeated_value(
-                    text,
-                    *holder,
-                    DECLARATION,
-                    &element.id,
-                    DECLARATION,
-                ));
-            }
-            element.declaration = Some(declaration);
-        } else if let Some(flag) = flag_named(element.kind, node.tag_name().name())
-            .filter(|flag| is_value_element(node, flag.name()))
-        {
-            element.read_flag_element(text, *holder, node, flag)?;
-        } else if let Some(end) = reference_end_named(element.kind, node.tag_name().name())
-            .filter(|end| is_value_element(node, end.name()))
-        {
-            element.read_reference_element(text, *holder, node, end)?;
-        } else {
-            let child = child_start(found, node, element)?;
-            open.push((child, node, node.children()));
         }
     }
     hold(text, document, read)
 }
 
+/// Reads `node`, an element in `holder`, the node of `element`, if it is a
+/// property part of the element, and returns whether it was one. A part is
+/// a `name` on a `ModelElement` (SACM23-XMI-012), an `assertionDeclaration`
+/// value element on an Assertion (SACM23-XMI-014), a `content` on a
+/// `UtilityElement` and a `key` on a `TaggedValue` (SACM23-BASE-004,
+/// SACM23-BASE-005), a `gid` value element on every element
+/// (SACM23-BASE-006), a value element per flag of its kind, and a
+/// reference element per end of its kind, one per single-valued end and
+/// any number per multi-valued end (ADR 0026, ADR 0027). Each is checked
+/// whole first, then against the occurrences before it that were read, so a
+/// second is `RepeatedValue` (SACM23-XMI-021; ADR 0021 amendment 2).
+///
+/// A part that does not conform, and a `name` on a `UtilityElement`, is
+/// [`Fault::Defect`]: the caller keeps it whole as preserved content, and
+/// the property is not given (ADR 0033).
+fn read_part<'a>(
+    found: &mut Findings<'_, 'a>,
+    element: &mut Pending,
+    holder: Node<'a, '_>,
+    node: Node<'a, '_>,
+) -> Result<bool, Fault> {
+    let text = found.text;
+    let local = node.tag_name().name();
+    if element.kind == ElementKind::ArgumentGroup && is_value_element(node, TEXT_SPELLING) {
+        return Err(text_spelling(text, node.range().start, &element.written).into());
+    }
+    if is_value_element(node, "name") {
+        if element.kind.is_a(AbstractClass::UtilityElement) {
+            // A UtilityElement has no name.
+            return Err(Fault::Defect);
+        }
+        let (name, name_id) = read_name(found, node, element.kind, &element.id)?;
+        if element.name.is_some() {
+            return Err(element.repeated(text, holder, "name", "name").into());
+        }
+        element.name = Some(name);
+        element.name_id = name_id;
+    } else if is_value_element(node, GID) {
+        let value = read_value(text, node, &element.id)?;
+        if std::mem::replace(&mut element.has_gid, true) {
+            return Err(element.repeated(text, holder, GID, GID).into());
+        }
+        element.gid = value;
+    } else if let Some(role) = [TextRole::Content, TextRole::Key]
+        .into_iter()
+        .find(|role| role.is_held_by(element.kind) && is_value_element(node, role.name()))
+    {
+        let held = read_text(found, node, role, element.kind, &element.id)?;
+        if element.has_text(role) {
+            return Err(match role {
+                TextRole::Content => {
+                    repeated_content(text, holder, &element.id, &element.shorthand, &element.kept)
+                }
+                TextRole::Key => element.repeated(text, holder, "key", "key"),
+            }
+            .into());
+        }
+        *element.text_mut(role) = Some(held);
+    } else if element.kind.is_a(AbstractClass::Assertion) && is_value_element(node, DECLARATION) {
+        // A nil declaration reads as one not written: `asserted`
+        // (SACM23-XMI-026).
+        let declaration = match read_value(text, node, &element.id)? {
+            Some(value) => parse_declaration(text, &value, node.range().start, &element.id)?,
+            None => AssertionDeclaration::Asserted,
+        };
+        if element.declaration.is_some() {
+            return Err(element
+                .repeated(text, holder, DECLARATION, DECLARATION)
+                .into());
+        }
+        element.declaration = Some(declaration);
+    } else if let Some(flag) =
+        flag_named(element.kind, local).filter(|flag| is_value_element(node, flag.name()))
+    {
+        element.read_flag_element(text, holder, node, flag)?;
+    } else if let Some(end) =
+        reference_end_named(element.kind, local).filter(|end| is_value_element(node, end.name()))
+    {
+        element.read_reference_element(text, holder, node, end)?;
+    } else {
+        return Ok(false);
+    }
+    Ok(true)
+}
+
 /// Adds the elements of one root's tree, read whole, to `document`, each
-/// with everything read for it, in document order, so a parent comes before
-/// its children. Everything is checked, so the inserts succeed; a failure
-/// would still be a refusal, never a panic.
+/// with everything read for it, its preserved content included, in document
+/// order, so a parent comes before its children. Everything is checked, so
+/// the inserts succeed; a failure would still be a refusal, never a panic.
 fn hold(text: &str, document: &mut Document, mut read: Vec<Pending>) -> Result<(), ReadError> {
     read.sort_by_key(|element| element.order);
     for element in read {
@@ -1034,21 +1416,81 @@ fn hold(text: &str, document: &mut Document, mut read: Vec<Pending>) -> Result<(
                 .into_iter()
                 .try_for_each(|(flag, value)| document.set_flag(&id, flag, value))
         });
-        let held = flagged.and_then(|()| {
+        let referenced = flagged.and_then(|()| {
             element
                 .references
                 .into_iter()
                 .try_for_each(|(end, targets)| document.set_references(&id, end, targets))
         });
+        let held =
+            referenced.and_then(|()| document.set_preserved(&id, element.kept.into_preserved()));
         held.map_err(|error| {
             unsupported(
                 text,
                 element.at,
-                format!("{what} cannot be held in the document: {error}"),
+                Unread::Unheld,
+                &format!("{what} cannot be held in the document: {error}"),
             )
         })?;
     }
     Ok(())
+}
+
+/// The entry of `attribute` of an object (a root, a child, a `name`, a
+/// `content`, a `key` or a `value`) if it is XMI metadata this version
+/// does not read yet (SACM23-XMI-019): `xmi:uuid`, `xmi:label`,
+/// `xmi:idref`, `href`, and `xsi:schemaLocation` or
+/// `xsi:noNamespaceSchemaLocation`. They conform, so they are refused, not
+/// preserved (ADR 0033).
+fn object_metadata(attribute: &Attribute<'_, '_>) -> Option<Unread> {
+    let is_metadata = ["uuid", "label", "idref"]
+        .iter()
+        .any(|local| is_xmi(attribute, local))
+        || is_unqualified(attribute, "href")
+        || is_schema_location(attribute);
+    is_metadata.then_some(Unread::XmiMetadata)
+}
+
+/// Whether `attribute` is `xsi:schemaLocation` or
+/// `xsi:noNamespaceSchemaLocation`.
+fn is_schema_location(attribute: &Attribute<'_, '_>) -> bool {
+    attribute.namespace() == Some(XSI_NS)
+        && matches!(
+            attribute.name(),
+            "schemaLocation" | "noNamespaceSchemaLocation"
+        )
+}
+
+/// The element `node` of `kind` with the id `id`, written as `written`,
+/// before anything but its start tag is read.
+fn pending(
+    found: &mut Findings<'_, '_>,
+    node: Node<'_, '_>,
+    parent: Option<ElementId>,
+    kind: ElementKind,
+    id: ElementId,
+    written: String,
+) -> Pending {
+    Pending {
+        order: found.next_order(),
+        parent,
+        kind,
+        id,
+        gid: None,
+        has_gid: false,
+        name: None,
+        name_id: None,
+        content: None,
+        shorthand: Shorthand::default(),
+        key: None,
+        declaration: None,
+        flags: Vec::new(),
+        references: Vec::new(),
+        written,
+        at: node.range().start,
+        children: 0,
+        kept: Kept::default(),
+    }
 }
 
 /// Checks the start tag of `root`: its namespace, kind, id, type and other
@@ -1057,129 +1499,134 @@ fn root_start<'a>(found: &mut Findings<'_, 'a>, root: Node<'a, '_>) -> Result<Pe
     let text = found.text;
     let at_root = root.range().start;
     let name = written_name(text, root);
-    let not_read = |reason: String| unsupported(text, at_root, reason);
 
     // The namespace, then the kind (ADR 0016 D5, D6). Under `xmlns=""` the
     // parser reports the empty string, which is no namespace name
-    // (Namespaces 1.0 §2.2, §6.2).
+    // (Namespaces 1.0 §2.2, §6.2). Every package kind but the two read has
+    // its entry; pass 1 has refused a root of any other name.
     let namespace = root.tag_name().namespace().filter(|uri| !uri.is_empty());
     let kind = match (namespace, package_kind(&root)) {
-        (
-            Some(SACM_NS),
-            Some(kind @ (ElementKind::AssuranceCasePackage | ElementKind::ArgumentPackage)),
-        ) => kind,
-        (Some(SACM_NS), _) => {
-            return Err(not_read(format!(
-                "the root element {name:?} is not read in this release"
-            )));
-        }
+        (Some(SACM_NS), Some(kind)) => match Unread::kind(kind) {
+            None => kind,
+            Some(unread) => {
+                return Err(unsupported(
+                    text,
+                    at_root,
+                    unread,
+                    &format!("the root element {name:?} is not read in this release"),
+                ));
+            }
+        },
+        (Some(SACM_NS), None) => return Err(invalid_root(text, root)),
         (Some(namespace), _) => {
-            return Err(not_read(format!(
-                "the root element {name:?} is in the namespace {namespace:?}, not the SACM 2.3 namespace {SACM_NS:?}"
-            )));
+            return Err(unsupported(
+                text,
+                at_root,
+                Unread::OtherSacmNamespace,
+                &format!(
+                    "the root element {name:?} is in the namespace {namespace:?}, not the SACM 2.3 namespace {SACM_NS:?}"
+                ),
+            ));
         }
         (None, _) => {
-            return Err(not_read(format!(
-                "the root element {name:?} is in no namespace, not the SACM 2.3 namespace {SACM_NS:?}"
-            )));
+            return Err(unsupported(
+                text,
+                at_root,
+                Unread::OtherSacmNamespace,
+                &format!(
+                    "the root element {name:?} is in no namespace, not the SACM 2.3 namespace {SACM_NS:?}"
+                ),
+            ));
         }
     };
 
-    let what = format!("the root element {name:?}");
     let id = read_id(found, root, kind)?;
+    let mut element = pending(found, root, None, kind, id, name);
+    let id = element.id.clone();
     let id_text = id.as_str();
-    for attribute in root.attributes() {
-        if is_xsi_type(&attribute) {
-            found.xsi_type(&attribute, &subject(kind, id_text), id_text);
-        } else if is_xmi(&attribute, "version") {
-            found.xmi_version(&attribute, &subject(kind, id_text), Some(id_text));
-        }
-    }
 
-    // A type must name the root's own class (ADR 0016 D2). Like the kind and
-    // the id, it is refused at the root.
-    if let Some(attribute) = root
-        .attributes()
-        .find(|attribute| is_type(attribute) && !names_class(root, attribute.value(), kind.name()))
-    {
-        return Err(not_read(format!(
-            "{what} has the type {:?}, which names another class",
-            attribute.value()
-        )));
+    // A type naming the root's own class is read, an `xsi:type` reported;
+    // one naming another class does not conform, and is preserved (ADR
+    // 0033, D-ROOT-NAME). Like the kind and the id, it is checked first, at
+    // the root.
+    for attribute in root.attributes().filter(is_type) {
+        if names_class(root, attribute.value(), kind.name()) {
+            if is_xsi_type(&attribute) {
+                found.xsi_type(&attribute, &subject(kind, id_text), id_text);
+            }
+        } else {
+            element.preserve_attribute(found, &attribute, at_root)?;
+        }
     }
 
     // Besides `xmi:id`, `xmi:version`, the type and `gid`, only the
     // SACMElement flags and references are read, in document order (ADR
-    // 0016 D4, ADR 0026), and the C++ `name` attribute (LIB-COMPAT-008);
-    // any other attribute is not read yet.
+    // 0016 D4, ADR 0026), and the C++ `name` attribute (LIB-COMPAT-008).
+    // XMI metadata is not read yet; anything else does not conform, and is
+    // preserved (ADR 0033).
     let mut start = StartTag::default();
-    let mut named = None;
     for attribute in root.attributes() {
+        if is_type(&attribute) || is_xmi(&attribute, "id") {
+            continue;
+        }
+        if is_xmi(&attribute, "version") {
+            found.xmi_version(&attribute, &subject(kind, id_text), Some(id_text));
+            continue;
+        }
         if is_unqualified(&attribute, "name") {
-            named = Some(read_name_attribute(found, &attribute, kind, &id));
+            element.name = Some(read_name_attribute(found, &attribute, kind, &id));
             continue;
         }
-        if is_xmi(&attribute, "id")
-            || is_xmi(&attribute, "version")
-            || is_type(&attribute)
-            || is_unqualified(&attribute, GID)
-            || start.read(text, &attribute, kind, &id, &name)?
-        {
+        if is_unqualified(&attribute, GID) {
+            element.gid = Some(attribute.value().to_owned());
+            element.has_gid = true;
             continue;
         }
-        return Err(unread_attribute(text, &attribute, &name));
+        match start.read(text, &attribute, kind, &id)? {
+            Given::Read => continue,
+            Given::NoId => {}
+            Given::Other => {
+                if let Some(unread) = object_metadata(&attribute) {
+                    return Err(unread_attribute(text, &attribute, &element.written, unread));
+                }
+            }
+        }
+        element.preserve_attribute(found, &attribute, attribute.range_qname().start)?;
     }
-
-    let root_gid = root
-        .attributes()
-        .find(|attribute| is_unqualified(attribute, GID))
-        .map(|attribute| attribute.value().to_owned());
-    Ok(Pending {
-        order: found.next_order(),
-        parent: None,
-        kind,
-        id,
-        has_gid: root_gid.is_some(),
-        gid: root_gid,
-        name: named,
-        name_id: None,
-        content: None,
-        shorthand: Shorthand::default(),
-        key: None,
-        declaration: None,
-        flags: start.flags,
-        references: start.references,
-        written: name,
-        at: at_root,
-    })
+    element.flags = start.flags;
+    element.references = start.references;
+    Ok(element)
 }
 
 /// Checks the start tag of `node`, a child element of `parent`: its role,
 /// type and kind, its id, and its other attributes, in that order, reading
 /// an Assertion's `assertionDeclaration` and the flags and references.
+/// `None` if the child does not conform as a whole (its role, namespace or
+/// type), so the caller preserves it whole (ADR 0033).
 fn child_start<'a>(
     found: &mut Findings<'_, 'a>,
     node: Node<'a, '_>,
     parent: &Pending,
-) -> Result<Pending, ReadError> {
+) -> Result<Option<Pending>, ReadError> {
     let text = found.text;
-    let kind = child_kind(text, node, parent.kind, &parent.what())?;
+    let ChildKind::Read(kind) = child_kind(text, node, parent.kind, &parent.what())? else {
+        return Ok(None);
+    };
     let written = written_name(text, node);
     let id = read_id(found, node, kind)?;
+    let mut element = pending(found, node, Some(parent.id.clone()), kind, id, written);
+    let id = element.id.clone();
     // Besides `xmi:id` and the type (ADR 0016 D4), only an unqualified
     // `gid`, an Assertion's unqualified `assertionDeclaration`, and the
     // SACMElement flags and references (ADR 0026), and the C++ shapes
     // (LIB-COMPAT-008): `name` on a ModelElement, and `lang`, `content` and,
     // on a TaggedValue, `key` and `value` on a UtilityElement, in document
-    // order, so a refusal after them lands on the later attribute.
+    // order, so a refusal after them lands on the later attribute. XMI
+    // metadata is not read yet; anything else does not conform, and is
+    // preserved (ADR 0033).
     let is_assertion = kind.is_a(AbstractClass::Assertion);
     let is_utility = kind.is_a(AbstractClass::UtilityElement);
     let is_tagged_value = kind == ElementKind::TaggedValue;
-    let mut declaration = None;
-    let mut gid = None;
-    let mut named = None;
-    let mut key = None;
-    let mut shorthand = Shorthand::default();
     let mut start = StartTag::default();
     for attribute in node.attributes() {
         if is_xsi_type(&attribute) {
@@ -1190,19 +1637,29 @@ fn child_start<'a>(
             continue;
         }
         if is_unqualified(&attribute, GID) {
-            gid = Some(attribute.value().to_owned());
+            element.gid = Some(attribute.value().to_owned());
+            element.has_gid = true;
             continue;
         }
         if is_assertion && is_unqualified(&attribute, DECLARATION) {
             let at = attribute.range_qname().start;
-            declaration = Some(parse_declaration(text, attribute.value(), at, &id)?);
+            element.declaration = Some(parse_declaration(text, attribute.value(), at, &id)?);
             continue;
         }
-        if start.read(text, &attribute, kind, &id, &written)? {
-            continue;
+        match start.read(text, &attribute, kind, &id)? {
+            Given::Read => continue,
+            Given::NoId => {
+                element.preserve_attribute(found, &attribute, attribute.range_qname().start)?;
+                continue;
+            }
+            Given::Other => {}
+        }
+        if kind == ElementKind::ArgumentGroup && is_unqualified(&attribute, TEXT_SPELLING) {
+            let at = attribute.range_qname().start;
+            return Err(text_spelling(text, at, &element.written));
         }
         if !is_utility && is_unqualified(&attribute, "name") {
-            named = Some(read_name_attribute(found, &attribute, kind, &id));
+            element.name = Some(read_name_attribute(found, &attribute, kind, &id));
             continue;
         }
         // The C++ attribute forms of a UtilityElement's content and of a
@@ -1211,7 +1668,7 @@ fn child_start<'a>(
             || is_unqualified(&attribute, "content")
             || (is_tagged_value && is_unqualified(&attribute, "value"));
         if is_utility && gives_content {
-            if let Err(earlier) = shorthand.read_attribute(&attribute) {
+            if let Err(earlier) = element.shorthand.read_attribute(text, &attribute) {
                 let at = attribute.range_qname().start;
                 return Err(repeated(text, &id, "content.value.content", [earlier, at]));
             }
@@ -1227,29 +1684,17 @@ fn child_start<'a>(
             value.set_content(Some(attribute.value().to_owned()));
             let mut held = Text::default();
             held.push(value, None);
-            key = Some(held);
+            element.key = Some(held);
             continue;
         }
-        return Err(unread_attribute(text, &attribute, &written));
+        if let Some(unread) = object_metadata(&attribute) {
+            return Err(unread_attribute(text, &attribute, &element.written, unread));
+        }
+        element.preserve_attribute(found, &attribute, attribute.range_qname().start)?;
     }
-    Ok(Pending {
-        order: found.next_order(),
-        parent: Some(parent.id.clone()),
-        kind,
-        id,
-        has_gid: gid.is_some(),
-        gid,
-        name: named,
-        name_id: None,
-        content: None,
-        shorthand,
-        key,
-        declaration,
-        flags: start.flags,
-        references: start.references,
-        written,
-        at: node.range().start,
-    })
+    element.flags = start.flags;
+    element.references = start.references;
+    Ok(Some(element))
 }
 
 /// The name that `attribute`, an unqualified `name` on the `ModelElement`
@@ -1335,7 +1780,7 @@ fn checked_id<'a>(
         });
     }
     let value = id_value(raw);
-    if !found.ids.insert(value) {
+    if !found.insert_id(value) {
         return Err(duplicate_id(found.text, node, value));
     }
     Ok(value)
@@ -1364,54 +1809,73 @@ fn duplicate_id(text: &str, node: Node<'_, '_>, id: &str) -> ReadError {
     }
 }
 
+/// What [`child_kind`] makes of a child element.
+enum ChildKind {
+    /// It is read, as an element of this kind.
+    Read(ElementKind),
+    /// It does not conform as a whole, by its namespace, role or type: the
+    /// caller keeps it as preserved content (ADR 0033).
+    Preserve,
+}
+
 /// The kind of the child element `node` of a `parent` element, which
 /// `parent_what` names (SACM23-XMI-016; XMI 2.5.1 §7.6.3, §7.8.6).
 ///
 /// The child is a role element: in no namespace, and named as a composite
 /// role of the parent's class. Its kind is the class its type attributes
 /// name, which must agree; without one, it is the role's declared type, if
-/// that is concrete. The kind must conform to the role and be one this
-/// release reads (ADR 0016 D5, D6). Without a type under a role of an
-/// abstract type, it is `MissingType` (SACM-XMI-005, LIB-COMPAT-010). Every
-/// refusal is at the child's start tag.
+/// that is concrete. The kind must conform to the role (ADR 0016 D5, D6).
+/// A child that is none of this is [`ChildKind::Preserve`] (ADR 0033),
+/// except two refusals: an element in the XMI namespace, XMI metadata
+/// (SACM23-XMI-019), and the §11.4 text spelling `argumentationElement` in
+/// an ArgumentPackage (SACM23-XMI-009). Without a type under a role of an
+/// abstract type, it is `MissingType` (SACM-XMI-005, LIB-COMPAT-010). A
+/// conforming kind this release does not read is refused by its entry.
+/// Every refusal is at the child's start tag.
 fn child_kind(
     text: &str,
     node: Node<'_, '_>,
     parent: ElementKind,
     parent_what: &str,
-) -> Result<ElementKind, ReadError> {
-    use ElementKind::{
-        ArgumentGroup, ArgumentPackage, ArgumentReasoning, ArtifactReference,
-        AssertedArtifactContext, AssertedArtifactSupport, AssertedContext, AssertedEvidence,
-        AssertedInference, AssuranceCasePackage, Claim,
-    };
-
+) -> Result<ChildKind, ReadError> {
     let written = written_name(text, node);
-    let not_read = |reason: String| unsupported(text, node.range().start, reason);
-    if let Some(namespace) = node.tag_name().namespace().filter(|uri| !uri.is_empty()) {
-        return Err(not_read(format!(
-            "the element {written:?} in {parent_what} is in the namespace {namespace:?}, so it is not read as a role"
-        )));
+    let at = node.range().start;
+    match node.tag_name().namespace().filter(|uri| !uri.is_empty()) {
+        Some(XMI_NS) => {
+            return Err(unsupported(
+                text,
+                at,
+                Unread::XmiMetadata,
+                &format!(
+                    "the XMI element {written:?} in {parent_what} is not read in this release"
+                ),
+            ));
+        }
+        Some(_) => return Ok(ChildKind::Preserve),
+        None => {}
     }
-    let Some(role) = role_named(parent, node.tag_name().name()) else {
-        return Err(not_read(format!(
-            "the element {written:?} in {parent_what} is not a role of {parent}"
-        )));
+    let local = node.tag_name().name();
+    let Some(role) = role_named(parent, local) else {
+        if parent == ElementKind::ArgumentPackage && local == TEXT_SPELLING {
+            return Err(unsupported(
+                text,
+                at,
+                Unread::TextSpelling,
+                &format!(
+                    "the element {written:?} in {parent_what} is spelled as in the text of §11.4, \
+                     and the role is argumentElement"
+                ),
+            ));
+        }
+        return Ok(ChildKind::Preserve);
     };
     let mut typed = None;
     for attribute in node.attributes().filter(is_type) {
         let Some(kind) = type_kind(node, attribute.value()) else {
-            return Err(not_read(format!(
-                "the element {written:?} has the type {:?}, which names no concrete SACM class",
-                attribute.value()
-            )));
+            return Ok(ChildKind::Preserve);
         };
         match typed {
-            Some(earlier) if earlier != kind => {
-                return Err(not_read(format!(
-                    "the element {written:?} has two types, which name {earlier} and {kind}"
-                )));
-            }
+            Some(earlier) if earlier != kind => return Ok(ChildKind::Preserve),
             _ => typed = Some(kind),
         }
     }
@@ -1422,44 +1886,24 @@ fn child_kind(
             return Err(ReadError::MissingType {
                 role: role.name.to_owned(),
                 declared_type: class.name().to_owned(),
-                location: locate(text, node.range().start),
+                location: locate(text, at),
             });
         }
     };
     if !role.declared.admits(kind) {
-        return Err(not_read(format!(
-            "the element {written:?} has the type {kind}, which its role {:?} does not admit",
-            role.name
-        )));
+        return Ok(ChildKind::Preserve);
     }
-    // The readable children: the package content above, and the
-    // UtilityElements in their own roles, which every ModelElement has (a
-    // role was found, so the parent is one). At most one role of a class
-    // admits a kind, so the parent and the kind decide the role.
-    let readable = kind.is_a(AbstractClass::UtilityElement)
-        || matches!(
-            (parent, kind),
-            (AssuranceCasePackage, AssuranceCasePackage | ArgumentPackage)
-                | (
-                    ArgumentPackage,
-                    ArgumentPackage
-                        | Claim
-                        | ArgumentReasoning
-                        | ArtifactReference
-                        | ArgumentGroup
-                        | AssertedInference
-                        | AssertedEvidence
-                        | AssertedContext
-                        | AssertedArtifactSupport
-                        | AssertedArtifactContext
-                )
-        );
-    if !readable {
-        return Err(not_read(format!(
-            "the {kind} {written:?} in {parent_what} is not read in this release"
-        )));
+    // The readable children: every kind a role of a readable class admits,
+    // but the package kinds this release does not read.
+    if let Some(unread) = Unread::kind(kind) {
+        return Err(unsupported(
+            text,
+            at,
+            unread,
+            &format!("the {kind} {written:?} in {parent_what} is not read in this release"),
+        ));
     }
-    Ok(kind)
+    Ok(ChildKind::Read(kind))
 }
 
 /// The `assertionDeclaration` that `value` names, of the element `element`,
@@ -1521,89 +1965,71 @@ fn parse_flag(
 /// instructions.
 ///
 /// Each attribute is checked in document order, then the link, then the
-/// content, and each refusal is `Unsupported` at its construct: a second link
-/// attribute, any other attribute, a link value that names no element of
-/// this document, no link (at the start tag), a child element, or text.
-fn read_reference(text: &str, node: Node<'_, '_>) -> Result<ElementId, ReadError> {
+/// content. The identity attributes `xmi:id`, `xmi:type` (or `xsi:type`),
+/// `xmi:uuid` and `xmi:label` are XMI metadata not read yet
+/// (SACM23-XMI-019), and an `XLink` attribute or an `href` that is not `#id`
+/// a cross-document link not read yet (SACM23-XMI-027): each is refused at
+/// the attribute. Anything else that does not conform is
+/// [`Fault::Defect`]: a second link attribute, any other attribute, an
+/// `xmi:idref` that is empty or holds white space, no link, a child
+/// element, or text. The caller then keeps the whole element as preserved
+/// content (ADR 0033).
+fn read_reference(text: &str, node: Node<'_, '_>) -> Result<ElementId, Fault> {
     let element = written_name(text, node);
     let mut link = None;
     for attribute in node.attributes() {
-        let range = attribute.range_qname();
-        let name = text.get(range.clone()).unwrap_or(attribute.name());
-        let not_read = |reason: String| unsupported(text, range.start, reason);
         let is_idref = is_xmi(&attribute, "idref");
         if !(is_idref || is_unqualified(&attribute, "href")) {
-            return Err(not_read(format!(
-                "the attribute {name:?} of the reference element {element:?} is not read: a \
-                 reference element carries only xmi:idref or href"
-            )));
+            let is_identity = ["id", "type", "uuid", "label"]
+                .iter()
+                .any(|local| is_xmi(&attribute, local))
+                || is_xsi_type(&attribute);
+            let unread = if is_identity {
+                Unread::XmiMetadata
+            } else if attribute.namespace() == Some(XLINK_NS) {
+                Unread::CrossDocumentHref
+            } else {
+                return Err(Fault::Defect);
+            };
+            return Err(unread_attribute(text, &attribute, &element, unread).into());
         }
         if link.is_some() {
-            return Err(not_read(format!(
-                "the reference element {element:?} carries both xmi:idref and href; give one"
-            )));
+            return Err(Fault::Defect);
         }
         let value = attribute.value().trim_matches(is_xml_space);
         let target = if is_idref {
             value
         } else {
-            same_document_fragment(value).ok_or_else(|| {
-                not_read(format!(
-                    "the href {:?} of the reference element {element:?} names no element of \
-                     this document by its id; only href=\"#id\" is read, and cross-document \
-                     links are not read until SACM23-XMI-027",
-                    attribute.value()
-                ))
-            })?
+            let Some(fragment) = same_document_fragment(value) else {
+                return Err(unsupported(
+                    text,
+                    attribute.range_qname().start,
+                    Unread::CrossDocumentHref,
+                    &format!(
+                        "the href {:?} of the reference element {element:?} names no element of \
+                         this document by its id; only href=\"#id\" is read in this release",
+                        attribute.value()
+                    ),
+                )
+                .into());
+            };
+            fragment
         };
-        if target.is_empty() {
-            return Err(not_read(format!(
-                "the xmi:idref of the reference element {element:?} is empty, so it names no element"
-            )));
-        }
         // An `xsd:IDREF` is one token: white space inside it would be read
         // as one id here but written as an IDREFS attribute of several.
-        if target.contains(is_xml_space) {
-            return Err(not_read(format!(
-                "the xmi:idref {:?} of the reference element {element:?} holds white space, \
-                 so it is not one id",
-                attribute.value()
-            )));
+        if target.is_empty() || target.contains(is_xml_space) {
+            return Err(Fault::Defect);
         }
         link = Some(ElementId::new(target));
     }
     let Some(target) = link else {
-        return Err(unsupported(
-            text,
-            node.range().start,
-            format!(
-                "the reference element {element:?} carries neither xmi:idref nor href, so it \
-                 names no element"
-            ),
-        ));
+        return Err(Fault::Defect);
     };
-    for child in node.children() {
-        if child.is_element() {
-            return Err(unsupported(
-                text,
-                child.range().start,
-                format!(
-                    "the element {:?} in the reference element {element:?} is not read: a \
-                     reference element holds no elements",
-                    written_name(text, child)
-                ),
-            ));
-        }
-        if let Some(first) = text_offset(text, child) {
-            return Err(unsupported(
-                text,
-                first,
-                format!(
-                    "the reference element {element:?} holds text, which is not read: the \
-                     target is given by xmi:idref or href"
-                ),
-            ));
-        }
+    if node
+        .children()
+        .any(|child| child.is_element() || text_offset(text, child).is_some())
+    {
+        return Err(Fault::Defect);
     }
     Ok(target)
 }
@@ -1633,11 +2059,7 @@ fn is_value_element(node: Node<'_, '_>, local: &str) -> bool {
 
 /// The value that the value element `node` of the element `owner` holds,
 /// or `None` if it is nil, as [`read_value_element`] reads it.
-fn read_value(
-    text: &str,
-    node: Node<'_, '_>,
-    owner: &ElementId,
-) -> Result<Option<String>, ReadError> {
+fn read_value(text: &str, node: Node<'_, '_>, owner: &ElementId) -> Result<Option<String>, Fault> {
     read_value_element(text, node, owner, false).map(|(value, _)| value)
 }
 
@@ -1660,16 +2082,15 @@ type LangAttribute = (String, usize);
 /// XML Schema 1.0 Part 1 §3.3.4): `true` or `1` makes it nil, read as the
 /// property not written, and `false` or `0` reads it as usual, white space
 /// around them collapsed; any other value is `InvalidLiteral` at the
-/// attribute's name. A nil element holds no characters, not even white
-/// space, and no element: either is `Unsupported` at it. Any other attribute
-/// is `Unsupported` at its name, and any element child at its start tag.
+/// attribute's name. A nil element that holds characters, even white
+/// space, or an element, any other attribute, and an element child do not
+/// conform: [`Fault::Defect`] (ADR 0033).
 fn read_value_element(
     text: &str,
     node: Node<'_, '_>,
     owner: &ElementId,
     takes_lang: bool,
-) -> Result<(Option<String>, Option<LangAttribute>), ReadError> {
-    let element = written_name(text, node);
+) -> Result<(Option<String>, Option<LangAttribute>), Fault> {
     let mut nil = false;
     let mut lang = None;
     for attribute in node.attributes() {
@@ -1679,33 +2100,15 @@ fn read_value_element(
             let at = attribute.range_qname().start;
             lang = Some((attribute.value().to_owned(), at));
         } else {
-            return Err(unread_attribute(text, &attribute, &element));
+            return Err(Fault::Defect);
         }
     }
     let mut value = String::new();
     for child in node.children() {
-        if child.is_element() {
-            return Err(unsupported(
-                text,
-                child.range().start,
-                format!(
-                    "the element {:?} in the value element {element:?} is not read: a value \
-                     element holds only characters",
-                    written_name(text, child)
-                ),
-            ));
+        if child.is_element() || (nil && child.is_text()) {
+            return Err(Fault::Defect);
         }
         if child.is_text() {
-            if nil {
-                return Err(unsupported(
-                    text,
-                    child.range().start,
-                    format!(
-                        "the value element {element:?} is nil (its xsi:nil is true) but holds \
-                         characters; a nil element holds none, not even white space"
-                    ),
-                ));
-            }
             value.push_str(child.text().unwrap_or_default());
         }
     }
@@ -1759,39 +2162,46 @@ fn repeated(
 /// found in one pass over `holder` in document order: the attribute `local`
 /// in no namespace, if it is written, then every value element `local`. For
 /// `name`, that is the C++ `name` attribute (LIB-COMPAT-008) and every
-/// `name` child in no namespace (SACM23-XMI-021).
+/// `name` child in no namespace (SACM23-XMI-021). What `kept` holds as
+/// preserved content is no occurrence (ADR 0033).
 fn repeated_value(
     text: &str,
     holder: Node<'_, '_>,
     local: &str,
     owner: &ElementId,
     property: &str,
+    kept: &Kept,
 ) -> ReadError {
     let attribute = holder
         .attributes()
         .find(|attribute| is_unqualified(attribute, local))
-        .map(|attribute| attribute.range_qname().start);
+        .map(|attribute| attribute.range_qname().start)
+        .filter(|&at| !kept.holds(at));
     let elements = holder
         .children()
         .filter(|child| is_value_element(*child, local))
-        .map(|child| child.range().start);
+        .map(|child| child.range().start)
+        .filter(|&at| !kept.holds(at));
     repeated(text, owner, property, attribute.into_iter().chain(elements))
 }
 
 /// The `RepeatedValue` refusal of the `content` of the `UtilityElement`
 /// `owner`, whose node is `holder`: the C++ shape on the element itself, at
 /// the location of `shorthand` if it is given (LIB-COMPAT-008), and every
-/// `content` element, in document order.
+/// `content` element that `kept` does not hold as preserved content, in
+/// document order.
 fn repeated_content(
     text: &str,
     holder: Node<'_, '_>,
     owner: &ElementId,
     shorthand: &Shorthand,
+    kept: &Kept,
 ) -> ReadError {
     let elements = holder
         .children()
         .filter(|child| is_value_element(*child, TextRole::Content.name()))
-        .map(|child| child.range().start);
+        .map(|child| child.range().start)
+        .filter(|&at| !kept.holds(at));
     let mut offsets: Vec<usize> = shorthand.at().into_iter().chain(elements).collect();
     offsets.sort_unstable();
     repeated(text, owner, TextRole::Content.name(), offsets)
@@ -1867,7 +2277,7 @@ fn read_name<'a>(
     node: Node<'a, '_>,
     kind: ElementKind,
     owner: &ElementId,
-) -> Result<(LangString, Option<ElementId>), ReadError> {
+) -> Result<(LangString, Option<ElementId>), Fault> {
     let subject = format!("the name of {}", subject(kind, owner.as_str()));
     read_lang_string(found, node, &subject, owner, "name")
 }
@@ -1885,30 +2295,24 @@ fn read_name<'a>(
 /// Without a `value`, `lang` and `content` attributes on it, and text in
 /// it, are the C++ single-language shorthand (LIB-COMPAT-008): one value,
 /// whose content is the text, all of it, or the attribute, never both. It
-/// is reported at its first attribute, else at its text. Beside a `value`,
-/// either is `Unsupported`. An `xsi:type`, and an `xmi:id` read trimmed, are
-/// reported on the owner.
+/// is reported at its first attribute, else at its text. An `xsi:type`, and
+/// an `xmi:id` read trimmed, are reported on the owner. XMI metadata on it,
+/// or an XMI element in it, is refused (SACM23-XMI-019). Anything else,
+/// such as either shorthand beside a `value` or a `lang` alone, does not
+/// conform: [`Fault::Defect`] (ADR 0033).
 fn read_text<'a>(
     found: &mut Findings<'_, 'a>,
     node: Node<'a, '_>,
     role: TextRole,
     kind: ElementKind,
     owner: &ElementId,
-) -> Result<Text, ReadError> {
+) -> Result<Text, Fault> {
     let text = found.text;
     let element = written_name(text, node);
-    if let Some(attribute) = node.attributes().find(|attribute| {
-        is_type(attribute) && !names_class(node, attribute.value(), "MultiLangString")
+    if node.attributes().any(|attribute| {
+        is_type(&attribute) && !names_class(node, attribute.value(), "MultiLangString")
     }) {
-        return Err(unsupported(
-            text,
-            node.range().start,
-            format!(
-                "the element {element:?} has the type {:?}, which names another class than \
-                 MultiLangString",
-                attribute.value()
-            ),
-        ));
+        return Err(Fault::Defect);
     }
     let subject = format!("the {} of {}", role.name(), subject(kind, owner.as_str()));
     let mut held = Text::default();
@@ -1920,25 +2324,17 @@ fn read_text<'a>(
     for attribute in node.attributes() {
         if is_unqualified(&attribute, "lang") || is_unqualified(&attribute, "content") {
             if has_values {
-                let range = attribute.range_qname();
-                let name = text.get(range.clone()).unwrap_or(attribute.name());
-                return Err(unsupported(
-                    text,
-                    range.start,
-                    format!(
-                        "the attribute {name:?} of the element {element:?} is not read: a {} \
-                         that holds `value` elements gives each language in a `value`",
-                        role.name()
-                    ),
-                ));
+                return Err(Fault::Defect);
             }
             // Attributes are unique in a start tag (XML 1.0 §3.1), so the
             // content is given once here and this never refuses.
-            let _ = shorthand.read_attribute(&attribute);
+            let _ = shorthand.read_attribute(text, &attribute);
         } else if is_xsi_type(&attribute) {
             found.xsi_type(&attribute, &subject, owner.as_str());
+        } else if let Some(unread) = object_metadata(&attribute) {
+            return Err(unread_attribute(text, &attribute, &element, unread).into());
         } else if !(is_type(&attribute) || is_xmi(&attribute, "id")) {
-            return Err(unread_attribute(text, &attribute, &element));
+            return Err(Fault::Defect);
         }
     }
     let value_subject = format!("a value of {subject}");
@@ -1946,37 +2342,20 @@ fn read_text<'a>(
     for child in node.children() {
         if !child.is_element() {
             if has_values {
-                if let Some(first) = text_offset(text, child) {
-                    return Err(unsupported(
-                        text,
-                        first,
-                        format!(
-                            "the element {element:?} holds text beside `value` elements, which \
-                             is not read: a {} gives each language in a `value`",
-                            role.name()
-                        ),
-                    ));
+                if text_offset(text, child).is_some() {
+                    return Err(Fault::Defect);
                 }
             } else if let Some(first) = shorthand.add_text(text, child) {
                 if let Some(attribute) = shorthand.content_at {
                     let property = format!("{property}.content");
-                    return Err(repeated(text, owner, &property, [attribute, first]));
+                    return Err(repeated(text, owner, &property, [attribute, first]).into());
                 }
             }
         } else if is_value_element(child, "value") {
             let (value, id) = read_lang_string(found, child, &value_subject, owner, &property)?;
             held.push(value, id);
         } else {
-            return Err(unsupported(
-                text,
-                child.range().start,
-                format!(
-                    "the element {:?} in {element:?} is not read: a {} holds only `value` \
-                     elements",
-                    written_name(text, child),
-                    role.name()
-                ),
-            ));
+            return Err(xmi_element_in(text, child, &element));
         }
     }
     match shorthand.into_lang_string() {
@@ -1986,9 +2365,28 @@ fn read_text<'a>(
             held.push(value, None);
         }
         Ok(None) => {}
-        Err(lang) => return Err(unread_attribute_at(text, lang, "lang", &element)),
+        Err(_) => return Err(Fault::Defect),
     }
     Ok(held)
+}
+
+/// What an element `child` that `element`, a `name`, `content`, `key` or
+/// `value`, does not read makes it: refused if it is in the XMI namespace,
+/// which is XMI metadata not read yet (SACM23-XMI-019), and otherwise
+/// [`Fault::Defect`] (ADR 0033).
+fn xmi_element_in(text: &str, child: Node<'_, '_>, element: &str) -> Fault {
+    if child.tag_name().namespace() != Some(XMI_NS) {
+        return Fault::Defect;
+    }
+    Fault::Refused(unsupported(
+        text,
+        child.range().start,
+        Unread::XmiMetadata,
+        &format!(
+            "the XMI element {:?} in {element:?} is not read in this release",
+            written_name(text, child)
+        ),
+    ))
 }
 
 /// The `LangString` that `node`, a `name` or a `value` of a `content` or
@@ -2009,15 +2407,19 @@ fn read_text<'a>(
 /// The C++ shapes are read too, each reported (LIB-COMPAT-008): text, all
 /// of it, as the `content`, at its first character that is not literal
 /// white space; and in a `name`, one `value` (at its `<`) or one `content`
-/// carrying `lang` (at that attribute), as the name's fields. A second such
-/// entry is `Unsupported`: a name holds one `LangString`.
+/// carrying `lang` (at that attribute), as the name's fields.
+///
+/// XMI metadata on it, an XMI element in it, and an `ExpressionLangString`
+/// type are conforming and not read yet, so refused. Anything else does
+/// not conform, such as a second `value` or `content` carrying `lang` in a
+/// `name`, which holds one `LangString`: [`Fault::Defect`] (ADR 0033).
 fn read_lang_string<'a>(
     found: &mut Findings<'_, 'a>,
     node: Node<'a, '_>,
     subject: &str,
     owner: &ElementId,
     property: &str,
-) -> Result<(LangString, Option<ElementId>), ReadError> {
+) -> Result<(LangString, Option<ElementId>), Fault> {
     let text = found.text;
     let element = written_name(text, node);
     let is_name = property == "name";
@@ -2035,7 +2437,12 @@ fn read_lang_string<'a>(
                 Ok(())
             }
             _ if is_type(&attribute) || is_xmi(&attribute, "id") => Ok(()),
-            _ => return Err(unread_attribute(text, &attribute, &element)),
+            _ => {
+                return Err(match object_metadata(&attribute) {
+                    Some(unread) => unread_attribute(text, &attribute, &element, unread).into(),
+                    None => Fault::Defect,
+                });
+            }
         };
         // Attributes are unique in a start tag (XML 1.0 §3.1), so neither
         // field is given twice here.
@@ -2068,8 +2475,10 @@ fn read_lang_string<'a>(
         } else if is_value_element(child, "content") {
             let (value, lang) = read_value_element(text, child, owner, is_name)?;
             if let Some((lang, at)) = lang {
+                // A name holds one LangString: a second entry merges
+                // entries, which LIB-COMPAT-012 is to read.
                 if std::mem::replace(&mut has_entry, true) {
-                    return Err(second_entry(text, child, &element));
+                    return Err(Fault::Defect);
                 }
                 fields.lang(Some(lang)).map_err(repeated)?;
                 let shape = format!("{subject} holds a content carrying lang");
@@ -2079,9 +2488,9 @@ fn read_lang_string<'a>(
         } else if is_name && is_value_element(child, "value") {
             // The name's one LangString: the name holds nothing else.
             if holds_beside(text, node, child) {
-                return Err(value_beside(text, child, &element));
+                return Err(Fault::Defect);
             }
-            let value = read_name_value(found, child, subject, owner, &element)?;
+            let value = read_name_value(found, child, subject, owner)?;
             has_entry = true;
             let shape = format!("{subject} holds a value");
             found.legacy_shape(child.range().start, owner, shape);
@@ -2092,14 +2501,7 @@ fn read_lang_string<'a>(
                 fields.content(Some(content.to_owned())).map_err(repeated)?;
             }
         } else {
-            return Err(unsupported(
-                text,
-                child.range().start,
-                format!(
-                    "the element {:?} in {element:?} is not read in this release",
-                    written_name(text, child)
-                ),
-            ));
+            return Err(xmi_element_in(text, child, &element));
         }
     }
     let mut name = fields.value;
@@ -2109,33 +2511,37 @@ fn read_lang_string<'a>(
     Ok((name, name_id))
 }
 
-/// Refuses, at its start tag, `node`, a `name` or `value` written as
-/// `element`, if it is in a namespace or typed as another class than
-/// `LangString`, as a root is.
-fn check_lang_string_tag(text: &str, node: Node<'_, '_>, element: &str) -> Result<(), ReadError> {
-    let at_name = node.range().start;
-    if let Some(namespace) = node.tag_name().namespace().filter(|uri| !uri.is_empty()) {
-        return Err(unsupported(
-            text,
-            at_name,
-            format!(
-                "the element {element:?} is in the namespace {namespace:?}, so it is not read as a {}",
-                node.tag_name().name()
-            ),
-        ));
-    }
-    if let Some(attribute) = node
-        .attributes()
-        .find(|attribute| is_type(attribute) && !names_class(node, attribute.value(), "LangString"))
+/// Checks the start tag of `node`, a `name` or `value` written as
+/// `element`: an `ExpressionLangString` type is not read yet
+/// (SACM23-BASE-009), and refused at the start tag; a namespace or a type
+/// naming another class than `LangString` does not conform:
+/// [`Fault::Defect`] (ADR 0033).
+fn check_lang_string_tag(text: &str, node: Node<'_, '_>, element: &str) -> Result<(), Fault> {
+    if node
+        .tag_name()
+        .namespace()
+        .is_some_and(|uri| !uri.is_empty())
     {
-        return Err(unsupported(
-            text,
-            at_name,
-            format!(
-                "the element {element:?} has the type {:?}, which names another class than LangString",
-                attribute.value()
-            ),
-        ));
+        return Err(Fault::Defect);
+    }
+    for attribute in node.attributes().filter(is_type) {
+        match sacm_class(node, attribute.value()) {
+            Some("LangString") => {}
+            Some("ExpressionLangString") => {
+                return Err(unsupported(
+                    text,
+                    node.range().start,
+                    Unread::ExpressionLangString,
+                    &format!(
+                        "the element {element:?} has the type {:?}, which is not read in this \
+                         release",
+                        attribute.value()
+                    ),
+                )
+                .into());
+            }
+            _ => return Err(Fault::Defect),
+        }
     }
     Ok(())
 }
@@ -2169,29 +2575,21 @@ impl Fields {
     }
 }
 
-/// The `LangString` that `node`, a `value` in the `name` written as `name`
-/// that `subject` names, holds: the C++ shape of a name's one `LangString`
+/// The `LangString` that `node`, a `value` in a `name` that `subject`
+/// names, holds: the C++ shape of a name's one `LangString`
 /// (LIB-COMPAT-008), read as a `value` of a `content` is. An `xmi:id` on it
-/// is `Unsupported`: a name has one id, on the `name`.
+/// is XMI metadata on a value that this version does not read, since a
+/// name has one id, on the `name` (SACM23-XMI-019): refused at it.
 fn read_name_value<'a>(
     found: &mut Findings<'_, 'a>,
     node: Node<'a, '_>,
     subject: &str,
     owner: &ElementId,
-    name: &str,
-) -> Result<LangString, ReadError> {
+) -> Result<LangString, Fault> {
     let text = found.text;
     if let Some(attribute) = node.attributes().find(|attribute| is_xmi(attribute, "id")) {
-        let range = attribute.range_qname();
-        let id = text.get(range.clone()).unwrap_or(attribute.name());
-        return Err(unsupported(
-            text,
-            range.start,
-            format!(
-                "the attribute {id:?} of a value in {name:?} is not read: a name has one \
-                 xmi:id, on the name"
-            ),
-        ));
+        let element = written_name(text, node);
+        return Err(unread_attribute(text, &attribute, &element, Unread::XmiMetadata).into());
     }
     let subject = format!("the value in {subject}");
     read_lang_string(found, node, &subject, owner, "name.value").map(|(value, _)| value)
@@ -2210,57 +2608,6 @@ fn holds_beside(text: &str, name: Node<'_, '_>, value: Node<'_, '_>) -> bool {
                 .any(|local| is_value_element(child, local))
                 || text_offset(text, child).is_some())
     })
-}
-
-/// The `Unsupported` refusal of `value`, a `value` in the `name` written as
-/// `name` that holds a field besides it: the C++ shape of a name's one
-/// `LangString` is a `name` holding one `value` and nothing else
-/// (LIB-COMPAT-008); the rest merges entries, which is not read
-/// (LIB-COMPAT-012).
-fn value_beside(text: &str, value: Node<'_, '_>, name: &str) -> ReadError {
-    unsupported(
-        text,
-        value.range().start,
-        format!(
-            "the element {:?} in {name:?} is not read: a name holds one LangString, so a \
-             name that holds a value holds nothing else in this release",
-            written_name(text, value)
-        ),
-    )
-}
-
-/// The `Unsupported` refusal of `entry`, a second `value` or `content`
-/// carrying `lang` in the `name` written as `name`: a name holds one
-/// `LangString`, and the C++ multi-entry name is not read (LIB-COMPAT-012).
-fn second_entry(text: &str, entry: Node<'_, '_>, name: &str) -> ReadError {
-    unsupported(
-        text,
-        entry.range().start,
-        format!(
-            "the element {:?} in {name:?} is not read: a name holds one LangString, so a \
-             name holding more than one value or content carrying lang is not read in this \
-             release",
-            written_name(text, entry)
-        ),
-    )
-}
-
-/// Refuses `node` if it is text whose value is not all XML white space
-/// (space, TAB, LF, CR), however it is written: a CDATA section or character
-/// reference that stands for white space is white space (the XML Infoset).
-/// The refusal is at the text's first character in the input that is not
-/// literal white space; a CDATA section or reference there is located at its
-/// start, so `<![CDATA[x]]>` is refused at the `<![CDATA[`, and `&#xA0;` at
-/// the `&`.
-fn check_text(text: &str, node: Node<'_, '_>, parent: &str) -> Result<(), ReadError> {
-    match text_offset(text, node) {
-        Some(first) => Err(unsupported(
-            text,
-            first,
-            format!("the element {parent:?} holds text, which is not read in this release"),
-        )),
-        None => Ok(()),
-    }
 }
 
 /// Where the refusal of `node` is, if it is text whose value is not all XML
@@ -2337,29 +2684,36 @@ fn sacm_class<'v>(node: Node<'_, '_>, value: &'v str) -> Option<&'v str> {
     (node.lookup_namespace_uri(prefix) == Some(SACM_NS)).then_some(local)
 }
 
-/// The `Unsupported` refusal of an attribute that is not read, at its name.
-fn unread_attribute(text: &str, attribute: &Attribute<'_, '_>, element: &str) -> ReadError {
-    let range = attribute.range_qname();
-    let name = text.get(range.clone()).unwrap_or(attribute.name());
-    unread_attribute_at(text, range.start, name, element)
-}
-
-/// The `Unsupported` refusal of the attribute `name` of the element written
-/// as `element`, whose name is at byte `offset` of `text`.
-fn unread_attribute_at(text: &str, offset: usize, name: &str, element: &str) -> ReadError {
+/// The refusal of the §11.4 text spelling `argumentationElement` at byte
+/// `offset`, an attribute or element of the `ArgumentGroup` written as
+/// `group`, whose end is spelled `argumentElement` (SACM23-XMI-009).
+fn text_spelling(text: &str, offset: usize, group: &str) -> ReadError {
     unsupported(
         text,
         offset,
-        format!("the attribute {name:?} of the element {element:?} is not read in this release"),
+        Unread::TextSpelling,
+        &format!(
+            "{TEXT_SPELLING:?} in the element {group:?} is spelled as in the text of §11.4, and the              end of an ArgumentGroup is argumentElement"
+        ),
     )
 }
 
-/// An `Unsupported` refusal at byte `offset` of `text`.
-fn unsupported(text: &str, offset: usize, reason: String) -> ReadError {
-    ReadError::Unsupported {
-        location: locate(text, offset),
-        reason,
-    }
+/// The refusal of `attribute` of the element written as `element`, at its
+/// name, as the entry `unread` labels it.
+fn unread_attribute(
+    text: &str,
+    attribute: &Attribute<'_, '_>,
+    element: &str,
+    unread: Unread,
+) -> ReadError {
+    let range = attribute.range_qname();
+    let name = text.get(range.clone()).unwrap_or(attribute.name());
+    unsupported(
+        text,
+        range.start,
+        unread,
+        &format!("the attribute {name:?} of the element {element:?} is not read in this release"),
+    )
 }
 
 /// The name of `element` as written in its start tag: `prefix:Local`, or
@@ -2392,6 +2746,19 @@ mod tests {
             Err(ReadError::Unsupported { location, reason }) => Some((location, reason)),
             _ => None,
         }
+    }
+
+    /// The locations of the diagnostics of `content` in the root `p`, read.
+    fn locations(content: &str) -> Option<Vec<Option<SourceLocation>>> {
+        let input = format!("{OPEN}{content}</sacm:ArgumentPackage>");
+        let output = read(input.as_bytes(), &ReadOptions::default()).ok()?;
+        Some(
+            output
+                .diagnostics()
+                .iter()
+                .map(crate::diagnostic::Diagnostic::location)
+                .collect(),
+        )
     }
 
     #[test]
@@ -2434,14 +2801,12 @@ mod tests {
             " 	<!-- c -->
  ",
         ] {
-            let input = format!("{OPEN}{content}</sacm:ArgumentPackage>");
-            let read = read(input.as_bytes(), &ReadOptions::default());
-            assert!(read.is_ok(), "{content:?}: {read:?}");
+            assert_eq!(locations(content), Some(Vec::new()), "{content:?}");
         }
     }
 
     #[test]
-    fn other_text_is_refused_at_its_first_character_that_is_not_literal_white_space() {
+    fn other_text_is_preserved_at_its_first_character_that_is_not_literal_white_space() {
         for (content, column) in [
             ("  x", 3),
             ("  &#xA0;", 3),
@@ -2450,8 +2815,8 @@ mod tests {
             (" <!-- c --> &#9;x", 13),
         ] {
             assert_eq!(
-                refusal(content).map(|(location, _)| location),
-                Some(SourceLocation::at(2, column)),
+                locations(content),
+                Some(vec![SourceLocation::at(2, column)]),
                 "{content:?}"
             );
         }
@@ -2499,40 +2864,24 @@ mod tests {
     }
 
     #[test]
-    fn refusals_name_the_root_or_the_child_element() {
-        let claim = "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\">";
+    fn refusals_name_the_child_element_and_its_entry() {
         let cases = [
             (
-                format!("{claim}<foo/></argumentElement>"),
-                "the element \"foo\" in the element \"argumentElement\" is not a role of Claim",
+                "<argumentElement xmi:type=\"sacm:ArgumentPackageInterface\" xmi:id=\"c\"/>",
+                "the ArgumentPackageInterface \"argumentElement\" in the root element \"sacm:ArgumentPackage\" is not read in this release (a limit of this version; SACM23-ARG-014 reads it)",
             ),
             (
-                "<argumentElement xmi:type=\"sacm:Note\" xmi:id=\"c\"/>".to_owned(),
-                "the element \"argumentElement\" has the type Note, which its role \"argumentElement\" does not admit",
+                "<argumentationElement xmi:type=\"sacm:Claim\" xmi:id=\"c\"/>",
+                "the element \"argumentationElement\" in the root element \"sacm:ArgumentPackage\" is spelled as in the text of §11.4, and the role is argumentElement (a defect in the input; SACM23-XMI-009 is to read it in tolerant mode)",
             ),
             (
-                "<argumentElement xmi:type=\"sacm:Term\" xsi:type=\"sacm:Claim\" xmi:id=\"c\" \
-                 xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"/>"
-                    .to_owned(),
-                "the element \"argumentElement\" has two types, which name Term and Claim",
-            ),
-            (
-                "<sacm:argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\"/>".to_owned(),
-                "the element \"sacm:argumentElement\" in the root element \"sacm:ArgumentPackage\" is in the namespace \"http://www.omg.org/spec/SACM/20220301\", so it is not read as a role",
-            ),
-            (
-                "<argumentElement xmi:type=\"sacm:Assertion\" xmi:id=\"c\"/>".to_owned(),
-                "the element \"argumentElement\" has the type \"sacm:Assertion\", which names no concrete SACM class",
-            ),
-            (
-                "<argumentElement xmi:type=\"sacm:ArgumentPackageInterface\" xmi:id=\"c\"/>"
-                    .to_owned(),
-                "the ArgumentPackageInterface \"argumentElement\" in the root element \"sacm:ArgumentPackage\" is not read in this release",
+                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\"><xmi:Extension/></argumentElement>",
+                "the XMI element \"xmi:Extension\" in the element \"argumentElement\" is not read in this release (a limit of this version; SACM23-XMI-019 reads it)",
             ),
         ];
         for (content, reason) in cases {
             assert_eq!(
-                refusal(&content).map(|(_, reason)| reason).as_deref(),
+                refusal(content).map(|(_, reason)| reason).as_deref(),
                 Some(reason),
                 "{content:?}"
             );

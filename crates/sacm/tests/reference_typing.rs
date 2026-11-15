@@ -33,7 +33,7 @@ use sacm::edit::{
     CreateAssertedContext, CreateAssertedEvidence, CreateAssertedInference,
     CreateAssuranceCasePackage, CreateClaim, CreateNote, EditError, Operation,
 };
-use sacm::model::{AbstractClass, Document, ElementId, ElementKind, LangString};
+use sacm::model::{AbstractClass, Document, ElementId, ElementKind, LangString, SacmElement};
 use sacm::validation;
 use sacm::xmi::{self, Mode, ReadOptions, WriteError, WriteOptions};
 
@@ -1175,16 +1175,28 @@ fn sacm23_val_004_ref_wrong_type_is_sacm_ref_002_and_its_catalog_row_names_it_an
             "{row}: the catalog's SACM-REF-002 row does not name {part}: {line}"
         );
     }
-    // SACM-REF-003 is LIB-COMPAT-003's: no constant names it.
-    let reserved = catalog_row(row, "SACM-REF-003");
+    // SACM-REF-003 is LIB-COMPAT-003's (ADR 0033): a Warning, named by its
+    // own constant, never by REF_WRONG_TYPE's.
+    let preserved = catalog_row(row, "SACM-REF-003");
     assert!(
-        !reserved.contains("`Code::"),
-        "{row}: the catalog's SACM-REF-003 row names a constant: {reserved}"
+        preserved.starts_with("| SACM-REF-003 | Warning |")
+            && preserved.contains("`Code::REF_PRESERVED_TARGET`")
+            && !preserved.contains("`Code::REF_WRONG_TYPE`"),
+        "{row}: the catalog's SACM-REF-003 row is not a Warning naming \
+         `Code::REF_PRESERVED_TARGET`: {preserved}"
+    );
+    assert_eq!(
+        Code::REF_PRESERVED_TARGET.as_str(),
+        "SACM-REF-003",
+        "{row}: Code::REF_PRESERVED_TARGET is not SACM-REF-003"
     );
 }
 
 #[test]
-fn sacm23_val_004_no_document_yields_sacm_ref_003() {
+fn sacm23_val_004_no_document_without_preserved_content_yields_sacm_ref_003() {
+    // SACM-REF-003 is for a typed reference to an id held only in preserved
+    // content (LIB-COMPAT-003, ADR 0033), so a document without preserved
+    // content never yields it, and SACM23-VAL-004's wrong types never do.
     let row = VAL_004;
     let mut documents: Vec<(String, Document)> = Vec::new();
     for end in ends() {
@@ -1217,10 +1229,20 @@ fn sacm23_val_004_no_document_yields_sacm_ref_003() {
             }
         }
     }
-    for (what, doc) in &documents {
+    let without_preserved: Vec<&(String, Document)> = documents
+        .iter()
+        .filter(|(_, doc)| !doc.elements().any(SacmElement::has_preserved_content))
+        .collect();
+    assert!(
+        without_preserved
+            .iter()
+            .any(|(what, _)| what.ends_with(".sacm.xmi")),
+        "{row}: setup: no fixture without preserved content was read"
+    );
+    for (what, doc) in without_preserved {
         let found: Vec<Diagnostic> = validation::validate(doc)
             .into_iter()
-            .filter(|finding| finding.code().as_str() == "SACM-REF-003")
+            .filter(|finding| finding.code() == Code::REF_PRESERVED_TARGET)
             .collect();
         assert_eq!(found, [], "{row}: {what} yields SACM-REF-003");
     }

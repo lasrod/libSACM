@@ -22,8 +22,10 @@
 //! the test removes before reading. Inputs end lines with LF only.
 
 use sacm::compare::semantic_compare;
-use sacm::diagnostic::{Code, SourceLocation};
-use sacm::model::{AssertionDeclaration, Document, LangString, MultiLangString, SacmElement};
+use sacm::diagnostic::{Code, Severity, SourceLocation};
+use sacm::model::{
+    AssertionDeclaration, Document, ElementId, LangString, MultiLangString, SacmElement,
+};
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteOptions};
 
 const ROW: &str = "SACM23-XMI-026";
@@ -173,6 +175,73 @@ fn refused(what: &str, input: &str) -> ReadError {
         "{ROW}: {what}: the modes refuse differently"
     );
     errors.swap_remove(0)
+}
+
+/// Asserts that `input` reads in both modes and keeps one construct as
+/// preserved content of `holder` (LIB-COMPAT-003, ADR 0033): exactly one
+/// SACM-XMI-003 at `at`, affecting `holder`, a Warning in tolerant mode and
+/// an Error in strict mode, and the same document in both.
+fn assert_preserved_at(what: &str, input: &str, at: SourceLocation, holder: &str) {
+    let mut documents = Vec::new();
+    for (mode, severity) in [
+        (Mode::Tolerant, Severity::Warning),
+        (Mode::Strict, Severity::Error),
+    ] {
+        let output = match read(mode, input) {
+            Ok(output) => output,
+            Err(error) => panic!(
+                "{ROW}: {what}: a {mode:?} read refused it instead of preserving it: {error:?}"
+            ),
+        };
+        let found: Vec<_> = output
+            .diagnostics()
+            .iter()
+            .filter(|found| found.code() == Code::XMI_UNKNOWN_CONTENT)
+            .map(|found| {
+                (
+                    found.severity(),
+                    found.location(),
+                    found.affected().to_vec(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            found,
+            [(severity, Some(at), vec![ElementId::from(holder)])],
+            "{ROW}: {what}: not one SACM-XMI-003 at the construct affecting {holder:?} in \
+             {mode:?} mode: {:?}",
+            output.diagnostics()
+        );
+        let doc = output.into_document();
+        assert!(
+            doc.get(holder)
+                .is_some_and(SacmElement::has_preserved_content),
+            "{ROW}: {what}: {holder:?} holds no preserved content in {mode:?} mode"
+        );
+        documents.push(doc);
+    }
+    assert_eq!(
+        documents[0], documents[1],
+        "{ROW}: {what}: the modes read different documents"
+    );
+}
+
+/// Reads `template` without its one mark in both modes and asserts that the
+/// construct at the mark is kept as preserved content (LIB-COMPAT-003, ADR
+/// 0033) of the element whose `xmi:id` comes last before the mark.
+fn assert_preserved_at_mark(what: &str, template: &str) {
+    let (input, marks) = marked(template);
+    assert_eq!(marks.len(), 1, "{ROW}: setup: {what} has not one mark");
+    let before = template.split(MARK).next().unwrap_or_default();
+    let Some(holder) = before
+        .rsplit("xmi:id=\"")
+        .next()
+        .filter(|_| before.contains("xmi:id=\""))
+        .and_then(|rest| rest.split('"').next())
+    else {
+        panic!("{ROW}: setup: {what} has no xmi:id before its mark");
+    };
+    assert_preserved_at(what, &input, marks[0], holder);
 }
 
 /// Reads `template` without its one mark in both modes and returns the
@@ -541,84 +610,91 @@ fn sacm23_xmi_026_an_xsi_nil_that_is_not_a_boolean_literal_is_invalid_literal_at
 // --- Acceptance item 5: a nil element with content --------------------------------------------
 
 #[test]
-fn sacm23_xmi_026_a_nil_element_with_a_character_or_element_child_is_refused_at_it() {
+fn sacm23_xmi_026_a_nil_element_with_a_character_or_element_child_is_preserved_whole() {
+    // A nil element must hold no characters and no elements (XML Schema
+    // Part 1, cvc-elt 3.2.1): it does not conform, so the value element is
+    // kept whole as preserved content of c1, at its start tag, or the whole
+    // name when it is a name's `content` (ADR 0033). Never a bad literal.
     for (what, template) in [
         (
             "text",
-            claim(&format!("<gid xsi:nil=\"true\">{MARK}x</gid>")),
+            claim(&format!("{MARK}<gid xsi:nil=\"true\">x</gid>")),
         ),
         (
             "white space",
-            claim(&format!("<gid xsi:nil=\"true\">{MARK} </gid>")),
+            claim(&format!("{MARK}<gid xsi:nil=\"true\"> </gid>")),
         ),
         (
             "a reference",
-            claim(&format!("<gid xsi:nil=\"1\">{MARK}&#x20;</gid>")),
+            claim(&format!("{MARK}<gid xsi:nil=\"1\">&#x20;</gid>")),
         ),
         (
             "a CDATA section",
-            claim(&format!("<gid xsi:nil=\"true\">{MARK}<![CDATA[x]]></gid>")),
+            claim(&format!("{MARK}<gid xsi:nil=\"true\"><![CDATA[x]]></gid>")),
         ),
         (
             "text after a comment",
-            claim(&format!("<gid xsi:nil=\"true\"><!--c-->{MARK}x</gid>")),
+            claim(&format!("{MARK}<gid xsi:nil=\"true\"><!--c-->x</gid>")),
         ),
         (
             "an element",
-            claim(&format!("<gid xsi:nil=\"true\">{MARK}<b/></gid>")),
+            claim(&format!("{MARK}<gid xsi:nil=\"true\"><b/></gid>")),
         ),
         (
             "a literal in a nil declaration",
             claim(&format!(
-                "<assertionDeclaration xsi:nil=\"true\">{MARK}assumed</assertionDeclaration>"
+                "{MARK}<assertionDeclaration xsi:nil=\"true\">assumed</assertionDeclaration>"
             )),
         ),
         (
             "a literal in a nil flag",
             claim(&format!(
-                "<isAbstract xsi:nil=\"true\">{MARK}true</isAbstract>"
+                "{MARK}<isAbstract xsi:nil=\"true\">true</isAbstract>"
             )),
         ),
         (
             "text in a nil content of a name",
             named(&format!(
-                "<name><content xsi:nil=\"true\">{MARK}X</content></name>"
+                "{MARK}<name><content xsi:nil=\"true\">X</content></name>"
             )),
         ),
     ] {
-        let error = refused_at_mark(what, &template);
-        assert!(
-            !matches!(error, ReadError::InvalidLiteral { .. }),
-            "{ROW}: {what}: refused as a bad literal: {error:?}"
-        );
+        assert_preserved_at_mark(what, &template);
     }
 }
 
 // --- Acceptance item 6: xsi:nil elsewhere -------------------------------------------------------
 
 #[test]
-fn sacm23_xmi_026_xsi_nil_on_an_element_that_is_not_a_value_element_stays_refused_at_the_attribute()
-{
+fn sacm23_xmi_026_xsi_nil_on_an_element_that_is_not_a_value_element_is_preserved() {
+    // Not conforming. On an element, an attribute its class lacks, kept at
+    // its name; inside a name, content, key, value, reference or gid
+    // element, a defect that keeps that whole child, at its start tag. Each
+    // is preserved content of the element whose `xmi:id` comes last before
+    // the mark (ADR 0033).
     let cases = [
-        ("a name", named(&format!("<name {MARK}xsi:nil=\"true\"/>"))),
+        ("a name", named(&format!("{MARK}<name xsi:nil=\"true\"/>"))),
         (
             "a name with nil false",
-            named(&format!("<name content=\"C\" {MARK}xsi:nil=\"false\"/>")),
+            named(&format!("{MARK}<name content=\"C\" xsi:nil=\"false\"/>")),
         ),
         (
             "a value",
-            content_values(&format!("<value {MARK}xsi:nil=\"true\"/>")),
+            claim(&format!(
+                "<description xmi:id=\"d\">{MARK}<content><value xsi:nil=\"true\"/></content>\
+                 </description>"
+            )),
         ),
         (
             "a content role element",
             claim(&format!(
-                "<description xmi:id=\"d\"><content {MARK}xsi:nil=\"true\"/></description>"
+                "<description xmi:id=\"d\">{MARK}<content xsi:nil=\"true\"/></description>"
             )),
         ),
         (
             "a key role element",
             claim(&format!(
-                "<taggedValue xmi:id=\"t\"><key {MARK}xsi:nil=\"true\"/></taggedValue>"
+                "<taggedValue xmi:id=\"t\">{MARK}<key xsi:nil=\"true\"/></taggedValue>"
             )),
         ),
         (
@@ -642,24 +718,20 @@ fn sacm23_xmi_026_xsi_nil_on_an_element_that_is_not_a_value_element_stays_refuse
             "a reference element",
             ap(&format!(
                 "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\"><name content=\"C\"/>\
-                 <citedElement xmi:idref=\"c1\" {MARK}xsi:nil=\"true\"/></argumentElement>"
+                 {MARK}<citedElement xmi:idref=\"c1\" xsi:nil=\"true\"/></argumentElement>"
             )),
         ),
         (
             "an unqualified nil on a gid",
-            claim(&format!("<gid {MARK}nil=\"true\">g</gid>")),
+            claim(&format!("{MARK}<gid nil=\"true\">g</gid>")),
         ),
         (
             "an unqualified nil on a name's lang",
-            named(&format!("<name><lang {MARK}nil=\"true\"/></name>")),
+            named(&format!("{MARK}<name><lang nil=\"true\"/></name>")),
         ),
     ];
     for (what, template) in &cases {
-        let error = refused_at_mark(what, template);
-        assert!(
-            matches!(error, ReadError::Unsupported { .. }) && error.code().is_none(),
-            "{ROW}: {what}: not Unsupported: {error:?} ({error})"
-        );
+        assert_preserved_at_mark(what, template);
     }
 }
 

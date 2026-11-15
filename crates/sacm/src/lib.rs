@@ -43,11 +43,16 @@
 //!   [`structure`](model::SacmElement::structure), each artifact reference's
 //!   [`referenced_artifact_elements`](model::SacmElement::referenced_artifact_elements)
 //!   and each group's [`group_members`](model::SacmElement::group_members).
-//!   It refuses what it cannot represent yet rather than drop it. An element
+//!   Content that is not SACM 2.3 where it stands, such as a vendor
+//!   attribute or element, is kept as written as preserved content, with
+//!   SACM-XMI-003 ([`has_preserved_content`](model::SacmElement::has_preserved_content);
+//!   see [Preserved content](xmi::read#preserved-content)); conforming content
+//!   it does not read yet is refused, never dropped. An element
 //!   without an `xmi:id` gets a generated one, such as `claim_1`, which
 //!   `write` saves; see [Ids](xmi::read#ids).
-//! - [`xmi::write`] writes a document deterministically, and by default
-//!   refuses one that validation reports an Error for.
+//! - [`xmi::write`] writes a document deterministically, preserved content
+//!   included, and by default refuses one that holds preserved content or
+//!   that validation reports an Error for.
 //! - [`validation::validate`] reports each element that has no name, each
 //!   `content` or `key` text that is empty or gives one language twice, each
 //!   tagged value without a key, each id that is not an XML `NCName`, each

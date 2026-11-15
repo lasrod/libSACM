@@ -25,8 +25,8 @@ use std::fmt::{Debug, Display};
 use std::path::Path;
 
 use sacm::compare::semantic_compare;
-use sacm::diagnostic::{Code, SourceLocation};
-use sacm::model::{AssertionDeclaration, Document, SacmElement};
+use sacm::diagnostic::{Code, Severity, SourceLocation};
+use sacm::model::{AssertionDeclaration, Document, ElementId, SacmElement};
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput};
 
 const ROW: &str = "SACM23-VAL-006";
@@ -439,10 +439,10 @@ fn sacm23_val_006_the_first_defect_in_document_order_decides() {
     );
 }
 
-// --- Item 5: unchanged refusals ----------------------------------------------
+// --- Item 5: preserved, not refused -------------------------------------------
 
 #[test]
-fn sacm23_val_006_the_property_on_a_non_assertion_and_a_qualified_attribute_stay_unsupported() {
+fn sacm23_val_006_the_property_on_a_non_assertion_and_a_qualified_attribute_are_preserved() {
     let mut cases = Vec::new();
     for value in ["asserted", "foo"] {
         let attribute = format!("{MARK}assertionDeclaration=\"{value}\"");
@@ -471,20 +471,78 @@ fn sacm23_val_006_the_property_on_a_non_assertion_and_a_qualified_attribute_stay
             )),
         ));
     }
+    // Content the class lacks: kept as preserved content of its holder, and
+    // never checked as a literal (ADR 0033).
     for (what, template) in &cases {
-        let (input, at) = marked_once(what, template);
-        let error = refused(what, &input);
-        assert!(
-            matches!(error, ReadError::Unsupported { .. }),
-            "{ROW}: {what}: expected Unsupported, got {error:?}"
-        );
-        assert_eq!(error.code(), None, "{ROW}: {what}: Unsupported has a code");
-        assert_eq!(
-            error.location(),
-            Some(at),
-            "{ROW}: {what}: refused elsewhere: {error}"
-        );
+        assert_preserved_at_mark(what, template);
     }
+}
+
+/// Asserts that `input` reads in both modes and keeps one construct as
+/// preserved content of `holder` (LIB-COMPAT-003, ADR 0033): exactly one
+/// SACM-XMI-003 at `at`, affecting `holder`, a Warning in tolerant mode and
+/// an Error in strict mode, and the same document in both.
+fn assert_preserved_at(what: &str, input: &str, at: SourceLocation, holder: &str) {
+    let mut documents = Vec::new();
+    for (mode, severity) in [
+        (Mode::Tolerant, Severity::Warning),
+        (Mode::Strict, Severity::Error),
+    ] {
+        let output = match read(mode, input) {
+            Ok(output) => output,
+            Err(error) => panic!(
+                "{ROW}: {what}: a {mode:?} read refused it instead of preserving it: {error:?}"
+            ),
+        };
+        let found: Vec<_> = output
+            .diagnostics()
+            .iter()
+            .filter(|found| found.code() == Code::XMI_UNKNOWN_CONTENT)
+            .map(|found| {
+                (
+                    found.severity(),
+                    found.location(),
+                    found.affected().to_vec(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            found,
+            [(severity, Some(at), vec![ElementId::from(holder)])],
+            "{ROW}: {what}: not one SACM-XMI-003 at the construct affecting {holder:?} in \
+             {mode:?} mode: {:?}",
+            output.diagnostics()
+        );
+        let doc = output.into_document();
+        assert!(
+            doc.get(holder)
+                .is_some_and(SacmElement::has_preserved_content),
+            "{ROW}: {what}: {holder:?} holds no preserved content in {mode:?} mode"
+        );
+        documents.push(doc);
+    }
+    assert_eq!(
+        documents[0], documents[1],
+        "{ROW}: {what}: the modes read different documents"
+    );
+}
+
+/// Reads `template` without its one mark in both modes and asserts that the
+/// construct at the mark is kept as preserved content (LIB-COMPAT-003, ADR
+/// 0033) of the element whose `xmi:id` comes last before the mark.
+fn assert_preserved_at_mark(what: &str, template: &str) {
+    let (input, marks) = marked(template);
+    assert_eq!(marks.len(), 1, "{ROW}: setup: {what} has not one mark");
+    let before = template.split(MARK).next().unwrap_or_default();
+    let Some(holder) = before
+        .rsplit("xmi:id=\"")
+        .next()
+        .filter(|_| before.contains("xmi:id=\""))
+        .and_then(|rest| rest.split('"').next())
+    else {
+        panic!("{ROW}: setup: {what} has no xmi:id before its mark");
+    };
+    assert_preserved_at(what, &input, marks[0], holder);
 }
 
 // --- Item 6: the literals still read -----------------------------------------

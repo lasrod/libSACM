@@ -170,32 +170,70 @@ fn marked(template: &str) -> (String, SourceLocation) {
     (text, loc(line, column))
 }
 
-/// Reads `template` without its mark, and returns the refusal, failing the
-/// test unless it is `Unsupported` with no code, at the mark.
-fn assert_unsupported_at_mark(what: &str, template: &str) -> ReadError {
-    let (input, expected) = marked(template);
-    let error = match read(&input) {
-        Ok(output) => panic!(
-            "{ROW}: {what}: a document was returned, with {} elements, for {input:?}",
-            output.document().element_count()
-        ),
-        Err(error) => error,
+/// Asserts that `input` reads in both modes and keeps one construct as
+/// preserved content of `holder` (LIB-COMPAT-003, ADR 0033): exactly one
+/// SACM-XMI-003 at `at`, affecting `holder`, a Warning in tolerant mode and
+/// an Error in strict mode, and the same document in both.
+fn assert_preserved_at(what: &str, input: &str, at: SourceLocation, holder: &str) {
+    let mut documents = Vec::new();
+    for (mode, severity) in [
+        (Mode::Tolerant, Severity::Warning),
+        (Mode::Strict, Severity::Error),
+    ] {
+        let output = match xmi::read(input.as_bytes(), &ReadOptions::default().with_mode(mode)) {
+            Ok(output) => output,
+            Err(error) => panic!(
+                "{ROW}: {what}: a {mode:?} read refused it instead of preserving it: {error:?}"
+            ),
+        };
+        let found: Vec<_> = output
+            .diagnostics()
+            .iter()
+            .filter(|found| found.code() == Code::XMI_UNKNOWN_CONTENT)
+            .map(|found| {
+                (
+                    found.severity(),
+                    found.location(),
+                    found.affected().to_vec(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            found,
+            [(severity, Some(at), vec![ElementId::from(holder)])],
+            "{ROW}: {what}: not one SACM-XMI-003 at the construct affecting {holder:?} in \
+             {mode:?} mode: {:?}",
+            output.diagnostics()
+        );
+        let doc = output.into_document();
+        assert!(
+            doc.get(holder)
+                .is_some_and(SacmElement::has_preserved_content),
+            "{ROW}: {what}: {holder:?} holds no preserved content in {mode:?} mode"
+        );
+        documents.push(doc);
+    }
+    assert_eq!(
+        documents[0], documents[1],
+        "{ROW}: {what}: the modes read different documents"
+    );
+}
+
+/// Reads `template` without its one mark in both modes and asserts that the
+/// construct at the mark is kept as preserved content (LIB-COMPAT-003, ADR
+/// 0033) of the element whose `xmi:id` comes last before the mark.
+fn assert_preserved_at_mark(what: &str, template: &str) {
+    let (input, at) = marked(template);
+    let before = template.split(MARK).next().unwrap_or_default();
+    let Some(holder) = before
+        .rsplit("xmi:id=\"")
+        .next()
+        .filter(|_| before.contains("xmi:id=\""))
+        .and_then(|rest| rest.split('"').next())
+    else {
+        panic!("{ROW}: setup: {what} has no xmi:id before its mark");
     };
-    assert!(
-        matches!(error, ReadError::Unsupported { .. }),
-        "{ROW}: {what}: expected Unsupported, got {error:?}"
-    );
-    assert_eq!(
-        error.code(),
-        None,
-        "{ROW}: {what}: an Unsupported refusal has no catalog code"
-    );
-    assert_eq!(
-        error.location(),
-        Some(expected),
-        "{ROW}: {what}: refused at the wrong place: {error:?}"
-    );
-    error
+    assert_preserved_at(what, &input, at, holder);
 }
 
 /// Reads `template` without its mark, and returns the refusal, failing the
@@ -729,10 +767,10 @@ fn sacm23_xmi_017_no_bad_value_is_ever_read_as_asserted_or_dropped() {
     }
 }
 
-// --- Refuse: elsewhere ------------------------------------------------------
+// --- Preserve: elsewhere ----------------------------------------------------
 
 #[test]
-fn sacm23_xmi_017_the_attribute_on_a_package_root_or_child_is_unsupported_at_its_name() {
+fn sacm23_xmi_017_the_attribute_on_a_package_root_or_child_is_preserved_at_its_name() {
     for value in ["asserted", "needsSupport", "assumed", "Asserted"] {
         let attribute = format!("{MARK}assertionDeclaration=\"{value}\"");
         let cases = [
@@ -766,14 +804,16 @@ fn sacm23_xmi_017_the_attribute_on_a_package_root_or_child_is_unsupported_at_its
                 )),
             ),
         ];
+        // An attribute a package lacks: kept as preserved content of the
+        // package, never checked as a literal (ADR 0033).
         for (what, template) in cases {
-            assert_unsupported_at_mark(&format!("{value:?} on {what}"), &template);
+            assert_preserved_at_mark(&format!("{value:?} on {what}"), &template);
         }
     }
 }
 
 #[test]
-fn sacm23_xmi_017_a_namespace_qualified_attribute_on_a_claim_is_unsupported_at_its_name() {
+fn sacm23_xmi_017_a_namespace_qualified_attribute_on_a_claim_is_preserved_at_its_name() {
     let claim = |attributes: &str| {
         in_ap(&format!(
             "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" {attributes}/>"
@@ -799,7 +839,7 @@ fn sacm23_xmi_017_a_namespace_qualified_attribute_on_a_claim_is_unsupported_at_i
             )),
         ),
         // The unqualified attribute is read; the qualified one after it is
-        // still refused, at its own name.
+        // still preserved, at its own name.
         (
             "sacm:assertionDeclaration after a readable assertionDeclaration",
             claim(&format!(
@@ -807,8 +847,10 @@ fn sacm23_xmi_017_a_namespace_qualified_attribute_on_a_claim_is_unsupported_at_i
             )),
         ),
     ];
+    // An attribute the class lacks: kept as preserved content of c1
+    // (ADR 0033).
     for (what, template) in cases {
-        assert_unsupported_at_mark(what, &template);
+        assert_preserved_at_mark(what, &template);
     }
 }
 

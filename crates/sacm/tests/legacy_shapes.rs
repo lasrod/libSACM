@@ -782,7 +782,7 @@ fn lib_compat_008_a_name_attribute_is_written_as_a_name_element_that_strict_read
 }
 
 #[test]
-fn lib_compat_008_a_name_attribute_on_a_utility_element_is_not_read() {
+fn lib_compat_008_a_name_attribute_on_a_utility_element_is_not_read_and_is_preserved() {
     // A UtilityElement is no ModelElement and has no name (§8.7).
     for (what, template) in [
         (
@@ -796,7 +796,7 @@ fn lib_compat_008_a_name_attribute_on_a_utility_element_is_not_read() {
             )),
         ),
     ] {
-        assert_unsupported_at_mark(what, &template);
+        assert_preserved_at_mark(what, &template);
     }
 }
 
@@ -1069,60 +1069,62 @@ fn lib_compat_008_a_name_holding_one_value_or_one_content_with_lang_reads_as_tha
 }
 
 #[test]
-fn lib_compat_008_a_name_holding_two_entries_stays_refused() {
-    // LIB-COMPAT-012 (M6) is to read these: until then nothing is dropped. A
-    // `value` with anything beside it in its name is refused at the value.
+fn lib_compat_008_a_name_holding_two_entries_is_preserved_whole() {
+    // In a SACM 2.3 file a `name` is one LangString: two entries, or a
+    // `value` with anything beside it, do not conform. The whole name is kept
+    // as preserved content of c1, at its start tag (ADR 0033); LIB-COMPAT-012
+    // (M6) is to read the multi-entry form.
     for (what, template) in [
         (
             "two values in a name",
             named(&format!(
-                "<name>{MARK}<value lang=\"en\" content=\"X\"/><value lang=\"de\" content=\"Y\"/></name>"
+                "{MARK}<name><value lang=\"en\" content=\"X\"/><value lang=\"de\" content=\"Y\"/></name>"
             )),
         ),
         (
             "two contents with lang in a name",
             named(&format!(
-                "<name><content lang=\"en\">X</content>{MARK}<content lang=\"de\">Y</content></name>"
+                "{MARK}<name><content lang=\"en\">X</content><content lang=\"de\">Y</content></name>"
             )),
         ),
         (
             "a value and a content with lang in a name",
             named(&format!(
-                "<name>{MARK}<value lang=\"en\" content=\"X\"/><content lang=\"de\">Y</content></name>"
+                "{MARK}<name><value lang=\"en\" content=\"X\"/><content lang=\"de\">Y</content></name>"
             )),
         ),
         (
             "a value and text after it in a name",
             named(&format!(
-                "<name>{MARK}<value lang=\"en\" content=\"X\"/>y</name>"
+                "{MARK}<name><value lang=\"en\" content=\"X\"/>y</name>"
             )),
         ),
         (
             "text and a value after it in a name",
             named(&format!(
-                "<name>y{MARK}<value lang=\"en\" content=\"X\"/></name>"
+                "{MARK}<name>y<value lang=\"en\" content=\"X\"/></name>"
             )),
         ),
         (
             "a value in a name with a lang attribute",
             named(&format!(
-                "<name lang=\"en\">{MARK}<value content=\"X\"/></name>"
+                "{MARK}<name lang=\"en\"><value content=\"X\"/></name>"
             )),
         ),
         (
             "a value in a name with a content attribute",
             named(&format!(
-                "<name content=\"X\">{MARK}<value lang=\"en\"/></name>"
+                "{MARK}<name content=\"X\"><value lang=\"en\"/></name>"
             )),
         ),
         (
             "a value and a lang element in a name",
             named(&format!(
-                "<name>{MARK}<value content=\"X\"/><lang>en</lang></name>"
+                "{MARK}<name><value content=\"X\"/><lang>en</lang></name>"
             )),
         ),
     ] {
-        assert_unsupported_at_mark(what, &template);
+        assert_preserved_at_mark(what, &template);
     }
 }
 
@@ -1268,18 +1270,18 @@ fn lib_compat_008_the_single_language_shorthand_of_content_and_key_reads_as_one_
 }
 
 #[test]
-fn lib_compat_008_text_beside_value_children_stays_refused() {
+fn lib_compat_008_text_beside_value_children_is_preserved_with_its_content_or_key() {
     for (what, template) in [
         (
             "text after a value in content",
-            description(&format!("<content><value content=\"a\"/>{MARK}x</content>")),
+            description(&format!("{MARK}<content><value content=\"a\"/>x</content>")),
         ),
         (
             "text after a value in key",
-            tagged(&format!("<key><value content=\"k\"/>{MARK}x</key>")),
+            tagged(&format!("{MARK}<key><value content=\"k\"/>x</key>")),
         ),
     ] {
-        assert_unsupported_at_mark(what, &template);
+        assert_preserved_at_mark(what, &template);
     }
 }
 
@@ -1331,7 +1333,7 @@ fn lib_compat_008_key_and_value_attributes_on_a_tagged_value_read_as_its_key_and
 }
 
 #[test]
-fn lib_compat_008_value_or_key_attributes_on_any_other_kind_stay_refused() {
+fn lib_compat_008_value_or_key_attributes_on_any_other_kind_are_preserved() {
     let claim_with =
         |attribute: &str| claim(&format!(" {MARK}{attribute}"), "<name content=\"C\"/>");
     for (what, template) in [
@@ -1363,7 +1365,7 @@ fn lib_compat_008_value_or_key_attributes_on_any_other_kind_stay_refused() {
         ),
         ("key= on a Claim", claim_with("key=\"k\"")),
     ] {
-        assert_unsupported_at_mark(what, &template);
+        assert_preserved_at_mark(what, &template);
     }
 }
 
@@ -1594,15 +1596,15 @@ fn lib_compat_008_text_of_a_name_or_value_is_joined_across_comments() {
 }
 
 #[test]
-fn lib_compat_008_a_lang_alone_on_content_or_key_is_unsupported_at_it() {
+fn lib_compat_008_a_lang_alone_on_content_or_key_is_preserved_with_it() {
     for (what, template) in [
         (
             "<content lang/>",
-            description(&format!("<content {MARK}lang=\"en\"/>")),
+            description(&format!("{MARK}<content lang=\"en\"/>")),
         ),
-        ("<key lang/>", tagged(&format!("<key {MARK}lang=\"en\"/>"))),
+        ("<key lang/>", tagged(&format!("{MARK}<key lang=\"en\"/>"))),
     ] {
-        assert_unsupported_at_mark(what, &template);
+        assert_preserved_at_mark(what, &template);
     }
 }
 
@@ -1626,52 +1628,120 @@ fn lib_compat_008_content_and_value_attributes_on_a_tagged_value_are_repeated_va
 }
 
 #[test]
-fn lib_compat_008_a_shorthand_attribute_beside_value_children_is_unsupported_at_it() {
+fn lib_compat_008_a_shorthand_attribute_beside_value_children_is_preserved_with_its_content_or_key()
+{
     for (what, template) in [
         (
             "content= on a content with a value",
             description(&format!(
-                "<content {MARK}content=\"x\"><value content=\"y\"/></content>"
+                "{MARK}<content content=\"x\"><value content=\"y\"/></content>"
             )),
         ),
         (
             "lang= on a key with a value",
             tagged(&format!(
-                "<key {MARK}lang=\"en\"><value content=\"k\"/></key>"
+                "{MARK}<key lang=\"en\"><value content=\"k\"/></key>"
             )),
         ),
     ] {
-        assert_unsupported_at_mark(what, &template);
+        assert_preserved_at_mark(what, &template);
     }
 }
 
 #[test]
-fn lib_compat_008_lang_on_a_content_inside_a_value_is_unsupported_at_it() {
+fn lib_compat_008_lang_on_a_content_inside_a_value_is_preserved_with_its_name_content_or_key() {
     for (what, template) in [
         (
             "in a value of a content",
             description(&format!(
-                "<content><value><content {MARK}lang=\"en\">x</content></value></content>"
+                "{MARK}<content><value><content lang=\"en\">x</content></value></content>"
             )),
         ),
         (
             "in a value of a key",
             tagged(&format!(
-                "<key><value><content {MARK}lang=\"en\">x</content></value></key>"
+                "{MARK}<key><value><content lang=\"en\">x</content></value></key>"
             )),
         ),
         (
             "in a name's value",
             named(&format!(
-                "<name><value><content {MARK}lang=\"en\">x</content></value></name>"
+                "{MARK}<name><value><content lang=\"en\">x</content></value></name>"
             )),
         ),
     ] {
-        assert_unsupported_at_mark(what, &template);
+        assert_preserved_at_mark(what, &template);
     }
 }
 
-// --- Helpers for the refusals that stay --------------------------------------------------------
+// --- Helpers for the refusals that stay, and for what is preserved -----------------------------
+
+/// Asserts that `input` reads in both modes and keeps one construct as
+/// preserved content of `holder` (LIB-COMPAT-003, ADR 0033): exactly one
+/// SACM-XMI-003 at `at`, affecting `holder`, a Warning in tolerant mode and
+/// an Error in strict mode, and the same document in both.
+fn assert_preserved_at(what: &str, input: &str, at: SourceLocation, holder: &str) {
+    let mut documents = Vec::new();
+    for (mode, severity) in [
+        (Mode::Tolerant, Severity::Warning),
+        (Mode::Strict, Severity::Error),
+    ] {
+        let output = match read(mode, input) {
+            Ok(output) => output,
+            Err(error) => panic!(
+                "{ROW}: {what}: a {mode:?} read refused it instead of preserving it: {error:?}"
+            ),
+        };
+        let found: Vec<_> = output
+            .diagnostics()
+            .iter()
+            .filter(|found| found.code() == Code::XMI_UNKNOWN_CONTENT)
+            .map(|found| {
+                (
+                    found.severity(),
+                    found.location(),
+                    found.affected().to_vec(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            found,
+            [(severity, Some(at), vec![ElementId::from(holder)])],
+            "{ROW}: {what}: not one SACM-XMI-003 at the construct affecting {holder:?} in \
+             {mode:?} mode: {:?}",
+            output.diagnostics()
+        );
+        let doc = output.into_document();
+        assert!(
+            doc.get(holder)
+                .is_some_and(SacmElement::has_preserved_content),
+            "{ROW}: {what}: {holder:?} holds no preserved content in {mode:?} mode"
+        );
+        documents.push(doc);
+    }
+    assert_eq!(
+        documents[0], documents[1],
+        "{ROW}: {what}: the modes read different documents"
+    );
+}
+
+/// Reads `template` without its one mark in both modes and asserts that the
+/// construct at the mark is kept as preserved content (LIB-COMPAT-003, ADR
+/// 0033) of the element whose `xmi:id` comes last before the mark.
+fn assert_preserved_at_mark(what: &str, template: &str) {
+    let (input, marks) = marked(template);
+    assert_eq!(marks.len(), 1, "{ROW}: setup: {what} has not one mark");
+    let before = template.split(MARK).next().unwrap_or_default();
+    let Some(holder) = before
+        .rsplit("xmi:id=\"")
+        .next()
+        .filter(|_| before.contains("xmi:id=\""))
+        .and_then(|rest| rest.split('"').next())
+    else {
+        panic!("{ROW}: setup: {what} has no xmi:id before its mark");
+    };
+    assert_preserved_at(what, &input, marks[0], holder);
+}
 
 /// Reads `template` without its one mark in both modes and asserts that it
 /// is refused as `Unsupported`, with no code, at the mark.

@@ -28,7 +28,7 @@
 use std::path::Path;
 
 use sacm::compare::{Difference, semantic_compare};
-use sacm::diagnostic::{Code, SourceLocation};
+use sacm::diagnostic::{Code, Severity, SourceLocation};
 use sacm::edit::{self, CreateArgumentPackage, CreateClaim};
 use sacm::model::{Document, ElementId, ElementKind, LangString, SacmElement};
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteOptions};
@@ -328,16 +328,52 @@ fn line_with<'t>(row: &str, text: &'t str, id: &str) -> &'t str {
     line.trim()
 }
 
-/// Asserts that `error` is `Unsupported`, with no code, at `at`.
-fn assert_unsupported_at(row: &str, what: &str, error: &ReadError, at: SourceLocation) {
-    assert!(
-        matches!(error, ReadError::Unsupported { .. }) && error.code().is_none(),
-        "{row}: {what}: not Unsupported: {error:?}"
-    );
+/// Asserts that `input` reads in both modes and keeps one construct as
+/// preserved content of `holder` (LIB-COMPAT-003, ADR 0033): exactly one
+/// SACM-XMI-003 at `at`, affecting `holder`, a Warning in tolerant mode and
+/// an Error in strict mode, and the same document in both.
+fn assert_preserved_at(row: &str, what: &str, input: &str, at: SourceLocation, holder: &str) {
+    let mut documents = Vec::new();
+    for (mode, severity) in [
+        (Mode::Tolerant, Severity::Warning),
+        (Mode::Strict, Severity::Error),
+    ] {
+        let output = match read(mode, input) {
+            Ok(output) => output,
+            Err(error) => panic!(
+                "{row}: {what}: a {mode:?} read refused it instead of preserving it: {error:?}"
+            ),
+        };
+        let found: Vec<_> = output
+            .diagnostics()
+            .iter()
+            .filter(|found| found.code() == Code::XMI_UNKNOWN_CONTENT)
+            .map(|found| {
+                (
+                    found.severity(),
+                    found.location(),
+                    found.affected().to_vec(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            found,
+            [(severity, Some(at), vec![ElementId::from(holder)])],
+            "{row}: {what}: not one SACM-XMI-003 at the construct affecting {holder:?} in \
+             {mode:?} mode: {:?}",
+            output.diagnostics()
+        );
+        let doc = output.into_document();
+        assert!(
+            doc.get(holder)
+                .is_some_and(SacmElement::has_preserved_content),
+            "{row}: {what}: {holder:?} holds no preserved content in {mode:?} mode"
+        );
+        documents.push(doc);
+    }
     assert_eq!(
-        error.location(),
-        Some(at),
-        "{row}: {what}: not refused at the construct: {error}"
+        documents[0], documents[1],
+        "{row}: {what}: the modes read different documents"
     );
 }
 
@@ -624,7 +660,7 @@ fn sacm23_base_008_a_value_that_is_no_boolean_literal_is_invalid_literal_naming_
     clippy::too_many_lines,
     reason = "the item's reading, refusals and repeats read best as one list"
 )]
-fn the_element_form_reads_and_is_refused_where_malformed(feature: Feature) {
+fn the_element_form_reads_is_preserved_where_malformed_and_refused_when_repeated(feature: Feature) {
     let row = feature.row;
     let flag = feature.flag;
     // Anywhere among the siblings.
@@ -670,33 +706,33 @@ fn the_element_form_reads_and_is_refused_where_malformed(feature: Feature) {
         );
     }
 
-    // Refused at the construct.
-    let unsupported = [
+    // Not conforming: a defect in the value element keeps it whole, and the
+    // element or attribute in the SACM namespace is kept, as preserved
+    // content of c1, at the construct (ADR 0033).
+    let preserved = [
         (
             "an attribute on the value element",
-            format!("<{flag} {MARK}xmi:id=\"v\">true</{flag}>"),
+            format!("{MARK}<{flag} xmi:id=\"v\">true</{flag}>"),
         ),
         (
             "a child element in the value element",
-            format!("<{flag}>true{MARK}<b/></{flag}>"),
+            format!("{MARK}<{flag}>true<b/></{flag}>"),
         ),
         (
             "the value element in the SACM namespace",
             format!("{MARK}<sacm:{flag}>true</sacm:{flag}>"),
         ),
     ];
-    for (what, content) in &unsupported {
+    for (what, content) in &preserved {
         let (input, marks) = marked(row, &in_ap(&claim("c1", "", content)));
-        let error = refused(row, what, &input);
-        assert_unsupported_at(row, what, &error, marks[0]);
+        assert_preserved_at(row, what, &input, marks[0], "c1");
     }
     let (input, marks) = marked(
         row,
         &in_ap(&claim("c1", &format!(" {MARK}sacm:{flag}=\"true\""), "")),
     );
     let what = format!("sacm:{flag} as an attribute");
-    let error = refused(row, &what, &input);
-    assert_unsupported_at(row, &what, &error, marks[0]);
+    assert_preserved_at(row, &what, &input, marks[0], "c1");
 
     // Given twice, with every occurrence.
     for (holder, input_of) in holders() {
@@ -742,15 +778,15 @@ fn the_element_form_reads_and_is_refused_where_malformed(feature: Feature) {
 }
 
 #[test]
-fn sacm23_base_007_the_is_citation_element_form_reads_and_its_malformed_or_repeated_forms_are_refused()
+fn sacm23_base_007_the_is_citation_element_form_reads_its_malformed_forms_are_preserved_and_repeated_ones_refused()
  {
-    the_element_form_reads_and_is_refused_where_malformed(CITATION);
+    the_element_form_reads_is_preserved_where_malformed_and_refused_when_repeated(CITATION);
 }
 
 #[test]
-fn sacm23_base_008_the_is_abstract_element_form_reads_and_its_malformed_or_repeated_forms_are_refused()
+fn sacm23_base_008_the_is_abstract_element_form_reads_its_malformed_forms_are_preserved_and_repeated_ones_refused()
  {
-    the_element_form_reads_and_is_refused_where_malformed(ABSTRACT);
+    the_element_form_reads_is_preserved_where_malformed_and_refused_when_repeated(ABSTRACT);
 }
 
 // --- Item 5: writing ---------------------------------------------------------------------
@@ -913,55 +949,71 @@ fn not_on_a_name_content_key_or_value(feature: Feature) {
             format!("<{} xmi:idref=\"c1\"/>", feature.end),
         ),
     ] {
+        // A defect inside a name, content, key or value keeps that whole
+        // child of the holder as preserved content, located at its start
+        // tag (ADR 0033).
         let cases = [
             (
                 "on a name",
-                named(&format!("<name content=\"N\" {MARK}{attribute}/>")),
+                named(&format!("{MARK}<name content=\"N\" {attribute}/>")),
+                "c1",
             ),
             (
                 "in a name",
-                named(&format!("<name content=\"N\">{MARK}{element}</name>")),
+                named(&format!("{MARK}<name content=\"N\">{element}</name>")),
+                "c1",
             ),
             (
                 "on a content",
-                description(&format!("<content {MARK}{attribute}/>")),
+                description(&format!("{MARK}<content {attribute}/>")),
+                "d",
             ),
             (
                 "in a content",
-                description(&format!("<content>{MARK}{element}</content>")),
+                description(&format!("{MARK}<content>{element}</content>")),
+                "d",
             ),
-            ("on a key", tagged(&format!("<key {MARK}{attribute}/>"))),
-            ("in a key", tagged(&format!("<key>{MARK}{element}</key>"))),
+            (
+                "on a key",
+                tagged(&format!("{MARK}<key {attribute}/>")),
+                "t",
+            ),
+            (
+                "in a key",
+                tagged(&format!("{MARK}<key>{element}</key>")),
+                "t",
+            ),
             (
                 "on a value",
                 description(&format!(
-                    "<content><value content=\"x\" {MARK}{attribute}/></content>"
+                    "{MARK}<content><value content=\"x\" {attribute}/></content>"
                 )),
+                "d",
             ),
             (
                 "in a value",
                 description(&format!(
-                    "<content><value content=\"x\">{MARK}{element}</value></content>"
+                    "{MARK}<content><value content=\"x\">{element}</value></content>"
                 )),
+                "d",
             ),
         ];
-        for (place, template) in &cases {
+        for (place, template, holder) in &cases {
             let what = format!("{attribute} {place}");
             let (input, marks) = marked(row, template);
             assert_eq!(marks.len(), 1, "{row}: setup: {what} has not one mark");
-            let error = refused(row, &what, &input);
-            assert_unsupported_at(row, &what, &error, marks[0]);
+            assert_preserved_at(row, &what, &input, marks[0], holder);
         }
     }
 }
 
 #[test]
-fn sacm23_base_007_is_citation_on_a_name_content_key_or_value_is_unsupported() {
+fn sacm23_base_007_is_citation_on_a_name_content_key_or_value_is_preserved() {
     not_on_a_name_content_key_or_value(CITATION);
 }
 
 #[test]
-fn sacm23_base_008_is_abstract_on_a_name_content_key_or_value_is_unsupported() {
+fn sacm23_base_008_is_abstract_on_a_name_content_key_or_value_is_preserved() {
     not_on_a_name_content_key_or_value(ABSTRACT);
 }
 
