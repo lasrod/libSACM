@@ -5134,6 +5134,7 @@ acceptance = [
 ]
 code = ["crates/sacm/src/edit/batch.rs", "crates/sacm/src/compare.rs", "docs/adr/0032-atomic-batches.md"]
 tests = [
+  "crates/sacm/tests/batch.rs::lib_edit_014_batch_error_display_names_the_index_the_operation_and_the_refusal",
   "crates/sacm/tests/batch.rs::lib_edit_014_over_random_sequences_each_answer_equals_applying_the_operations_one_by_one",
   "crates/sacm/tests/batch.rs::lib_edit_014_a_later_operation_uses_an_id_an_earlier_one_generated",
   "crates/sacm/tests/batch.rs::lib_edit_014_batch_document_shows_the_state_so_far_and_check_answers_on_it",

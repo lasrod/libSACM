@@ -423,31 +423,49 @@ impl<'d> Tree<'d> {
         if policy == ReferenceDeletePolicy::RejectIfReferenced {
             return deleted;
         }
-        // The relationships whose `source`, `target` or `reasoning` holds an
-        // id: the only ends through which a delete cascades.
-        let mut triggers: HashMap<&ElementId, Vec<usize>> = HashMap::new();
+        // The ends through which a delete cascades: each occurrence of an id
+        // in the `source` or `target` of an asserted relationship, and under
+        // `DeleteReferencingRelationships` in its `reasoning` too. `remaining`
+        // counts each relationship's source occurrences not yet deleted, so
+        // each reference is looked at once and the fixpoint is linear in the
+        // number of references.
+        let mut ends = vec![ReferenceEnd::Source, ReferenceEnd::Target];
+        if policy == ReferenceDeletePolicy::DeleteReferencingRelationships {
+            ends.push(ReferenceEnd::Reasoning);
+        }
+        let mut triggers: HashMap<&ElementId, Vec<(usize, ReferenceEnd)>> = HashMap::new();
+        let mut remaining = vec![0_usize; self.elements.len()];
         for (position, element) in self.elements.iter().enumerate() {
             if !element.kind().is_a(AbstractClass::AssertedRelationship) {
                 continue;
             }
-            for end in [
-                ReferenceEnd::Source,
-                ReferenceEnd::Target,
-                ReferenceEnd::Reasoning,
-            ] {
+            remaining[position] = element.sources().len();
+            for &end in &ends {
                 for id in element.references(end) {
-                    triggers.entry(id).or_default().push(position);
+                    triggers.entry(id).or_default().push((position, end));
                 }
             }
         }
+        // Each element enters `pending` once, when it is first deleted.
         while let Some(position) = pending.pop() {
-            let Some(relationships) = triggers.get(self.elements[position].id()) else {
+            let Some(held) = triggers.get(self.elements[position].id()) else {
                 continue;
             };
-            for &relationship in relationships {
-                if deleted[relationship]
-                    || !self.policy_deletes(policy, self.elements[relationship], &deleted)
-                {
+            for &(relationship, end) in held {
+                if deleted[relationship] {
+                    continue;
+                }
+                let goes = match (policy, end) {
+                    // A `source` that had ids loses its last one.
+                    (ReferenceDeletePolicy::ScrubReferences, ReferenceEnd::Source) => {
+                        remaining[relationship] = remaining[relationship].saturating_sub(1);
+                        remaining[relationship] == 0
+                    }
+                    // Any cascading end of the relationship names a deleted
+                    // element, or the scrub removes its `target`.
+                    _ => true,
+                };
+                if !goes {
                     continue;
                 }
                 for inner in self.subtree(relationship) {
@@ -459,30 +477,6 @@ impl<'d> Tree<'d> {
             }
         }
         deleted
-    }
-
-    /// Whether `policy` deletes the asserted relationship `relationship`
-    /// once `deleted` are deleted.
-    fn policy_deletes(
-        &self,
-        policy: ReferenceDeletePolicy,
-        relationship: SacmElement<'_>,
-        deleted: &[bool],
-    ) -> bool {
-        let gone = |id: &ElementId| self.is_deleted(deleted, id);
-        let sources = relationship.sources();
-        let target_gone = relationship.target().is_some_and(gone);
-        match policy {
-            ReferenceDeletePolicy::DeleteReferencingRelationships => {
-                sources.iter().any(gone)
-                    || target_gone
-                    || relationship.reasoning().is_some_and(gone)
-            }
-            ReferenceDeletePolicy::ScrubReferences => {
-                (!sources.is_empty() && sources.iter().all(gone)) || target_gone
-            }
-            ReferenceDeletePolicy::RejectIfReferenced => false,
-        }
     }
 
     /// Every reference held by an element outside `subtree` that names an

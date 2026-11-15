@@ -1510,6 +1510,43 @@ fn lib_edit_014_apply_all_names_the_first_refusal_by_index_operation_and_edit_er
 }
 
 #[test]
+fn lib_edit_014_batch_error_display_names_the_index_the_operation_and_the_refusal() {
+    let mut doc = batch_start();
+    let operations: [Operation; 2] = [
+        CreateClaim::new("p", named("Zero")).into(),
+        SetName::new(NOWHERE, named("One")).into(),
+    ];
+    let result = edit::apply_all(&mut doc, operations);
+    let Err(error) = result else {
+        panic!("{EDIT_014}: setup: apply_all accepted a SetName of {NOWHERE:?}: {result:?}");
+    };
+    let shown = error.to_string();
+    assert_eq!(
+        shown,
+        "operation 1 (SetName) of the batch was refused: the document has no element \
+         \"nowhere\" to edit",
+        "{EDIT_014}: BatchError's Display does not name the index, the operation and the refusal"
+    );
+    assert_eq!(
+        shown,
+        format!(
+            "operation {} ({}) of the batch was refused: {}",
+            error.index(),
+            error.operation().operation_name(),
+            error.error()
+        ),
+        "{EDIT_014}: BatchError's Display does not end with the EditError's Display"
+    );
+    assert!(
+        shown.starts_with(char::is_lowercase)
+            && !shown.ends_with(['.', '!', '?'])
+            && !shown.contains('\n'),
+        "{EDIT_014}: BatchError's Display is not one lowercase line without a trailing \
+         punctuation mark: {shown:?}"
+    );
+}
+
+#[test]
 fn lib_edit_014_apply_all_takes_any_list_of_operation_structs() {
     let mut doc = batch_start();
     let names = [
