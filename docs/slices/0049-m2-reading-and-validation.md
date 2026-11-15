@@ -73,3 +73,4 @@ LIB-COMPAT-012 (M6) takes the legacy shapes that invent or merge elements.
   LIB-COMPAT-001 corrected; three doc follow-ups fixed, three logged. Copilot found a hole in
   LIB-QA-018 (a docs-only push after a failed or cancelled code run skipped the code checks);
   `changes` now also requires CI success on the previous commit, with tests.
+- 2026-11-15 verification round 2: LIB-COMPAT-008 PASS once four more stale texts (SACM23-XMI-012, -014, -016, BASE-004) and LIB-COMPAT-001 were fixed (wording only, read by the lead as the verifier required); the full mutants run 43699001243 is clean, so the re-checked rows stay verified. Five library rows `verified` (record 0049). LIB-QA-018 waits for this docs-only commit's CI run.
