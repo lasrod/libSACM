@@ -4939,7 +4939,8 @@ title = "Public containment queries"
 requirement = "The containment table of LIB-API-008 is public on `ElementKind`: whether a kind may contain another, the kinds a kind may contain in a fixed documented order, and whether a kind may be a root (`is_package`). The queries read the same table that insertion and the edit operations use, so they cannot disagree with them. They state what SACM 2.3 admits, not which create operation exists."
 source = "User request: Assurance Forge, GitHub issue #60 (2026-11-14); LIB-API-008; ADR 0010 amendment 2"
 kind = "api"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0046-m2-wasm-and-containment.md"
 depends_on = ["LIB-API-008"]
 acceptance = [
   "`ElementKind::may_contain(self, child) -> bool` is a `const fn`, `#[must_use]`, and is usable in a `const` item.",
@@ -4994,7 +4995,8 @@ title = "The library builds for wasm32-unknown-unknown"
 requirement = "CI builds `sacm` for `wasm32-unknown-unknown` with default features, and with `serde` once LIB-API-006 lands; any failure fails the build. The library's non-test code uses no `std::fs`, `std::thread`, `std::process`, `std::env` or system clock (`std::time::Instant`, `SystemTime`), which compile for that target but fail at run time, enforced by a lint. So reading, validating, editing and writing a document from bytes in memory work on that target. JavaScript bindings are LIB-API-007."
 source = "User request: Assurance Forge, GitHub issue #58 (2026-11-14); D-API"
 kind = "quality"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0046-m2-wasm-and-containment.md"
 depends_on = ["LIB-QA-001"]
 acceptance = [
   "ci.yml has a job that installs the `wasm32-unknown-unknown` target and runs `cargo build -p sacm --target wasm32-unknown-unknown` and the same with `--all-features`; a regression test fails if either command or the target is removed.",

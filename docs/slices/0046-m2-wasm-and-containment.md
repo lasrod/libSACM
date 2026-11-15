@@ -1,8 +1,8 @@
 ---
 slice: 0046
 name: m2-wasm-and-containment
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [LIB-QA-017, LIB-API-012]
 mode: pr
 base: main
@@ -58,3 +58,6 @@ LIB-API-008's (verified, slice 0017); this slice only exposes it.
   amendment 2. Docs review: one blocking finding (the rustdoc said the reader cannot
   disagree, but it refuses some admitted children until SACM23-XMI-016), fixed with the
   follow-ups. Full gate green. Rows `implemented`.
+- 2026-11-15 verification: PASS for both rows (record 0046). Copilot found that `Path`
+  file-system methods bypassed the lint; fixed with `std::net` in 13d9d87, re-check PASS.
+  Rows `verified`.
