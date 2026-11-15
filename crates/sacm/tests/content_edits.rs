@@ -559,6 +559,39 @@ fn lib_edit_012_a_freed_value_id_may_be_generated() {
     );
 }
 
+#[test]
+fn lib_edit_012_a_freed_value_id_at_or_below_the_counter_is_not_generated() {
+    // A value of n8 carries the id claim_2, so the first two generated
+    // Claims are claim_1 and claim_3 and the Claim counter stands at 3.
+    let input = format!(
+        "<sacm:ArgumentPackage{NS} xmi:id=\"p\"><name content=\"P\"/>\
+         <note xmi:id=\"n8\"><content>\
+         <value xmi:id=\"v1\" content=\"a\"/><value xmi:id=\"claim_2\" content=\"b\"/>\
+         </content></note></sacm:ArgumentPackage>"
+    );
+    let mut doc = read(&input);
+    let generated: Vec<ElementId> = ["a", "b"]
+        .into_iter()
+        .map(|name| apply(&mut doc, CreateClaim::new("p", named(name))).created_ids()[0].clone())
+        .collect();
+    assert_eq!(
+        generated,
+        [id("claim_1"), id("claim_3")],
+        "{ROW}: setup: generation does not skip the value id claim_2"
+    );
+    apply(&mut doc, SetContent::new("n8", LangString::new("a")));
+    assert!(
+        is_free(&doc, "claim_2"),
+        "{ROW}: setup: shortening the content does not free claim_2"
+    );
+    let next = apply(&mut doc, CreateClaim::new("p", named("c")));
+    assert_eq!(
+        next.created_ids(),
+        [id("claim_4")],
+        "{ROW}: the freed claim_2, below the Claim counter, is generated again"
+    );
+}
+
 // --- Item 6: changed_ids and refusals ----------------------------------------------
 
 #[test]

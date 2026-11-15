@@ -3985,6 +3985,7 @@ tests = [
   "crates/sacm/tests/reference_edits.rs::lib_edit_009_changed_ids_is_the_owner_when_the_end_changes_and_empty_when_not",
   "crates/sacm/tests/reference_edits.rs::lib_edit_009_errors_have_their_codes_and_one_line_displays",
   "crates/sacm/tests/reference_edits.rs::lib_edit_009_operations_hold_what_they_are_given_and_name_their_struct",
+  "crates/sacm/tests/reference_edits.rs::lib_edit_009_a_freed_dangling_id_at_or_below_the_counter_is_not_generated",
 ]
 code = ["crates/sacm/src/edit/references.rs", "crates/sacm/src/edit/argumentation.rs", "crates/sacm/src/edit/set.rs", "crates/sacm/src/edit.rs", "crates/sacm/src/model/reference.rs", "crates/sacm/src/model/document.rs"]
 
@@ -4063,6 +4064,7 @@ tests = [
   "crates/sacm/tests/content_edits.rs::lib_edit_012_operations_hold_what_they_are_given_and_name_their_struct",
   "crates/sacm/tests/edit_atomic.rs::lib_edit_012_the_content_edits_join_the_set_with_every_answer",
   "crates/sacm/tests/edit_atomic.rs::lib_edit_012_no_successful_operation_of_the_set_removes_a_key",
+  "crates/sacm/tests/content_edits.rs::lib_edit_012_a_freed_value_id_at_or_below_the_counter_is_not_generated",
 ]
 code = ["crates/sacm/src/edit/set.rs", "crates/sacm/src/edit.rs", "crates/sacm/src/model/document.rs"]
 

@@ -37,6 +37,7 @@ Every quotation was checked against SACM 2.3 §8.2, §8.6, §8.7, §8.12, §11.9
 | Severity | Row | Finding | Resolution |
 |---|---|---|---|
 | BLOCKING | LIB-EDIT-008 | CI mutants: `SetFlag::value -> true` survived. | A test pins `false` (2d4b5e1). |
+| BLOCKING | LIB-EDIT-009, LIB-EDIT-012 | Copilot: edits now free ids, so the `commit_generated_id` mutant (excluded as equivalent until deletes existed) changes behaviour. | Two tests pin that a freed id at or below the counter is not generated again; the exclusion is removed. |
 | BLOCKING | docs | Docs review: a wrong bound condition, the wrong end in `TooFewReferences`, and no example of editing a relationship's ends (plus 10 smaller items). | All fixed (c844b2b). |
 | FOLLOW-UP | LIB-EDIT-012 | `Document::set_text` is quadratic when a large content is replaced with an equally large one (32k values take 694 ms). | In `docs/follow-ups.md`. |
 | FOLLOW-UP | LIB-EDIT-009, ADR 0029 | A stale line number in the triage, and two C++ line citations. | Fixed. |

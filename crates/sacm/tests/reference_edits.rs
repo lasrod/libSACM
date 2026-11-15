@@ -1393,6 +1393,41 @@ fn lib_edit_009_a_dangling_id_is_skipped_until_its_last_reference_goes() {
 }
 
 #[test]
+fn lib_edit_009_a_freed_dangling_id_at_or_below_the_counter_is_not_generated() {
+    // c1 references the absent claim_2, so the first two generated Claims
+    // are claim_1 and claim_3 and the Claim counter stands at 3.
+    let input = format!(
+        "<sacm:ArgumentPackage{NS} xmi:id=\"p\"><name content=\"P\"/>{}</sacm:ArgumentPackage>",
+        typed("Claim", "c1", " citedElement=\"claim_2\"", "")
+    );
+    let mut doc = read(&input);
+    let generated: Vec<ElementId> = ["a", "b"]
+        .into_iter()
+        .map(|name| apply(&mut doc, CreateClaim::new("p", named(name))).created_ids()[0].clone())
+        .collect();
+    assert_eq!(
+        generated,
+        ids(&["claim_1", "claim_3"]),
+        "{ROW}: setup: generation does not skip the referenced claim_2"
+    );
+    apply(
+        &mut doc,
+        RemoveReference::new("c1", ReferenceEnd::CitedElement, "claim_2"),
+    );
+    assert_eq!(
+        held_by(&doc, "c1", ReferenceEnd::CitedElement),
+        Vec::<ElementId>::new(),
+        "{ROW}: setup: c1 still references claim_2"
+    );
+    let next = apply(&mut doc, CreateClaim::new("p", named("c")));
+    assert_eq!(
+        next.created_ids(),
+        ids(&["claim_4"]),
+        "{ROW}: the freed claim_2, below the Claim counter, is generated again"
+    );
+}
+
+#[test]
 fn lib_edit_009_a_dangling_id_held_by_two_references_is_freed_only_by_the_last() {
     let input = generation_input(&format!(
         "{}{}",
