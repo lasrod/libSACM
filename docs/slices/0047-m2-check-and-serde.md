@@ -1,8 +1,8 @@
 ---
 slice: 0047
 name: m2-check-and-serde
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [LIB-EDIT-013, LIB-API-006]
 mode: pr
 base: main
@@ -57,3 +57,6 @@ decided on 2026-11-15 that the serialized form is a stability promise.
   the private mirror `edit/record.rs` (a derive would give only `Deserialize<'static>`) and
   a `catalog!` macro for `Code`. Docs review: nothing blocking; nine doc follow-ups applied,
   two recorded. Full gate green. Rows `implemented`.
+- 2026-11-15 verification: LIB-EDIT-013 PASS; LIB-API-006 FAIL in round 1 (three test gaps
+  with surviving mutants: unknown keys, required keys, feature-name read-back), fixed by
+  three golden-file-driven tests in d336b06; round 2 PASS (record 0047). Rows `verified`.
