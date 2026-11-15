@@ -5,8 +5,9 @@
 //! one ordered child list, with `key()` and `content()`, each absent or a
 //! `MultiLangString` under the SACM23-BASE-004 rules. `key` and `content` are
 //! read in either order and written `content` first. A second `key` or
-//! `content` is `RepeatedValue`; the `key=`/`value=` attribute shorthand stays
-//! `Unsupported` until LIB-COMPAT-008. `CreateTaggedValue` creates one.
+//! `content` is `RepeatedValue`; the `key=`/`value=` attribute shorthand and
+//! the single-language `key` shorthand are LIB-COMPAT-008, tested in
+//! `legacy_shapes.rs`. `CreateTaggedValue` creates one.
 //!
 //! Also here, for the rows this slice rewords: SACM23-VAL-020 (a `key` or key
 //! `value` id that is not an `NCName` is one SACM-ID-002 on the `TaggedValue`) and
@@ -588,39 +589,6 @@ fn sacm23_base_005_a_key_value_field_given_twice_is_repeated_value_naming_key_va
             (error.code(), error.locations()),
             (Some(Code::MULTIPLICITY_VIOLATION), marks.as_slice()),
             "{ROW}: {what}: not SACM-MULT-001 at both occurrences"
-        );
-    }
-}
-
-#[test]
-fn sacm23_base_005_the_key_and_value_shorthands_are_unsupported_naming_lib_compat_008() {
-    let cases = [
-        (
-            "key= on taggedValue",
-            in_ap(&format!(
-                "<taggedValue xmi:id=\"t\" {MARK}key=\"k\">{CONTENT}</taggedValue>"
-            )),
-        ),
-        (
-            "value= on taggedValue",
-            in_ap(&format!(
-                "<taggedValue xmi:id=\"t\" {MARK}value=\"v\">{KEY}</taggedValue>"
-            )),
-        ),
-        (
-            "<key lang content>",
-            tagged(&format!("<key {MARK}lang=\"en\" content=\"k\"/>{CONTENT}")),
-        ),
-        (
-            "<key>k</key>",
-            tagged(&format!("<key>{MARK}k</key>{CONTENT}")),
-        ),
-    ];
-    for (what, template) in &cases {
-        let reason = assert_unsupported_at_mark(what, template);
-        assert!(
-            reason.contains("LIB-COMPAT-008"),
-            "{ROW}: {what}: the reason {reason:?} does not name LIB-COMPAT-008"
         );
     }
 }

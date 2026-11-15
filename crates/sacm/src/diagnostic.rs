@@ -170,6 +170,15 @@ catalog! {
     /// writes it, so the saved file carries it. Nothing needs fixing.
     pub const XMI_MISSING_ID: Code = Code::from_static("SACM-XMI-004");
 
+    /// SACM-XMI-005: a child under a containment role whose declared type is
+    /// abstract carries no `xmi:type` (or `xsi:type`), so its class is not
+    /// known (XMI 2.5.1 §7.6.3). Its element name is the role, so no class
+    /// can be inferred, and none is guessed. The code of
+    /// [`ReadError::MissingType`](crate::xmi::ReadError::MissingType),
+    /// refused in both modes (LIB-COMPAT-010, ADR 0022). Fix: give the child
+    /// an `xmi:type` naming its class, such as `xmi:type="sacm:Claim"`.
+    pub const XMI_MISSING_TYPE: Code = Code::from_static("SACM-XMI-005");
+
     /// SACM-XMI-010: an `xsi:type` attribute is used. XMI 2.5.1 §9.5.2 rule
     /// 2g allows it only if `org.omg.xmi.useSchemaExtensions` is true, and
     /// SACM 2.3 sets no such tag. [`xmi::read`](crate::xmi::read) reports one
@@ -188,6 +197,16 @@ catalog! {
     /// or save the document again with [`xmi::write`](crate::xmi::write),
     /// which does not write it.
     pub const XMI_VERSION_IGNORED: Code = Code::from_static("SACM-XMI-011");
+
+    /// SACM-XMI-012: a name or a text is written in a shape of the
+    /// assurance-forge C++ library that maps one to one onto its standard
+    /// form, such as a `name="…"` attribute or text in a `name`. A tolerant
+    /// [`xmi::read`](crate::xmi::read) reads it as its standard form and
+    /// reports one Warning per occurrence; a strict read refuses it as
+    /// [`ReadError::LegacyShape`](crate::xmi::ReadError::LegacyShape)
+    /// (LIB-COMPAT-008, ADR 0022 amendment 1). Both saves write the standard
+    /// form. Fix: read the file in tolerant mode and save it again.
+    pub const XMI_LEGACY_SHAPE: Code = Code::from_static("SACM-XMI-012");
 
     /// SACM-MULT-001: a property has more or fewer values than its
     /// multiplicity allows. [`validation::validate`](crate::validation::validate)
@@ -453,8 +472,24 @@ catalog! {
     /// edit refuses neither alone (ADR 0029).
     pub const CITATION_INVALID: Code = Code::from_static("SACM-CITE-001");
 
-    /// SACM-ABS-001: an `abstractForm` breaks a §8.2 rule.
-    /// [`validation::validate`](crate::validation::validate) reports, for an
+    /// SACM-CITE-002: an Assertion declared `asCited` is not a citation of
+    /// an Assertion. §11.8 derives an `asCited` declaration from "the cited
+    /// Assertion", so [`validation::validate`](crate::validation::validate)
+    /// reports one Warning when its `isCitation` is not true, and one when
+    /// its `citedElement` is absent or names an element that is not of an
+    /// Assertion kind (SACM23-VAL-019). A `citedElement` that names no
+    /// element gives only SACM-REF-001. A strict save is not refused. Fix:
+    /// make the element a citation of a Claim or an asserted relationship,
+    /// or give it another declaration.
+    pub const AS_CITED_INVALID: Code = Code::from_static("SACM-CITE-002");
+
+    /// SACM-ABS-001: an `abstractForm` breaks a §8.2 rule, or an
+    /// implementation constraint is on a concrete element (§8.6).
+    /// [`validation::validate`](crate::validation::validate) reports one
+    /// Error for each `ModelElement` with one or more
+    /// `implementationConstraint` children whose `isAbstract` is not true,
+    /// affecting it (SACM23-VAL-021); fix it by making the element abstract
+    /// or removing the constraints. It reports, for an
     /// element with an `abstractForm` (SACM23-VAL-008): an Error when its own
     /// `isAbstract` is true (§8.2: "+isAbstract of the `SACMElement` is
     /// false"), affecting the element; and, when the target is an element of

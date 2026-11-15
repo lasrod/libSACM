@@ -43,8 +43,25 @@
 //! each with its `content` and, on a `TaggedValue`, its `key`: a role element
 //! holding one `value` per `LangString`, each read like a `name`, with the
 //! `xmi:id`s of both kept by role and position (SACM23-BASE-004,
-//! SACM23-BASE-005; ADR 0025). The single-language shorthand is refused
-//! until LIB-COMPAT-008.
+//! SACM23-BASE-005; ADR 0025).
+//!
+//! The name and text shapes of the assurance-forge C++ library that map one
+//! to one onto a `LangString` or a `MultiLangString` are read as their
+//! standard form, each with one SACM-XMI-012 Warning (LIB-COMPAT-008; ADR
+//! 0022 amendment 1): `name="…"` on a `ModelElement`, text as the `content` of
+//! a `name` or `value`, a `name` holding one `value` or one `content`
+//! carrying `lang`, the single-language shorthand of a `content` or `key`
+//! (`lang`/`content` attributes or text, with no `value`), `lang=`,
+//! `content=` or text on a `UtilityElement`, and `key=` and `value=` on a
+//! `TaggedValue`. A strict read reads them the same way and then, if the rest
+//! of the input read without a refusal, refuses the first one, so that every
+//! refusal both modes share comes first. A field given both in a shape and
+//! in the standard form, or twice, is `RepeatedValue`.
+//!
+//! `xsi:nil` on a value element is an `xsd:boolean` (SACM23-XMI-026; XMI
+//! 2.5.1 §9.4.1): true reads as if the property were not written, which
+//! still counts as an occurrence, false reads the content, and a nil element
+//! holds no characters or elements.
 //!
 //! A name's `lang` and `content` (and those of a `value`), every element's
 //! `gid`, `isCitation` and `isAbstract`, an Assertion's
@@ -87,7 +104,8 @@
 //! Two attributes are read and reported (LIB-COMPAT-001, ADR 0022), one
 //! diagnostic per attribute at its name: an `xsi:type` is SACM-XMI-010, an
 //! Error in strict mode and a Warning in tolerant mode, and an `xmi:version`
-//! is SACM-XMI-011, Info. Both modes read and refuse the same inputs. A
+//! is SACM-XMI-011, Info. Both modes read and refuse the same inputs, apart
+//! from the C++ shapes above, which a strict read refuses. A
 //! message names the element by its kind and id, never by the name or prefix
 //! written, so the choice of prefix does not change it (SACM23-XMI-002).
 
@@ -105,8 +123,8 @@ use crate::model::{
     reference_end_named, role_named,
 };
 
-/// The XML Schema instance namespace, of `xsi:type`, which is read but never
-/// written (ADR 0017 T1).
+/// The XML Schema instance namespace, of `xsi:type` and `xsi:nil`, which are
+/// read but never written (ADR 0017 T1; SACM23-XMI-026).
 const XSI_NS: &str = "http://www.w3.org/2001/XMLSchema-instance";
 
 /// The requirement the read diagnostics of `xsi:type` and `xmi:version`
@@ -119,6 +137,9 @@ const MISSING_ID_ROW: &str = "SACM23-XMI-020";
 /// The requirement of the Info for an `xmi:id` read trimmed.
 const TRIMMED_ID_ROW: &str = "SACM23-XMI-025";
 
+/// The requirement of the Warnings for the C++ name and text shapes.
+const LEGACY_ROW: &str = "LIB-COMPAT-008";
+
 /// The Assertion property read as an attribute or a value element
 /// (formal/23-05-08 §11.10).
 const DECLARATION: &str = "assertionDeclaration";
@@ -126,10 +147,6 @@ const DECLARATION: &str = "assertionDeclaration";
 /// The `SACMElement` property read as an attribute or a value element
 /// (formal/23-05-08 §8.2).
 const GID: &str = "gid";
-
-/// Why the single-language shorthand of a `MultiLangString` is refused.
-const SHORTHAND: &str = "the single-language shorthand of a MultiLangString is not read \
-                         until LIB-COMPAT-008; write a `value` child per language";
 
 /// The document whose roots `tree` holds, read in `mode`, and the
 /// diagnostics found, located and in input order, not yet sorted. `text` is the text `tree` was parsed from.
@@ -149,6 +166,7 @@ pub(super) fn read(
         generator: IdGenerator::default(),
         order: 0,
         diagnostics: Vec::new(),
+        legacy: None,
     };
     if is_wrapper {
         read_wrapper(&mut found, element, &mut document)?;
@@ -158,8 +176,17 @@ pub(super) fn read(
     let Findings {
         generator,
         diagnostics,
+        legacy,
         ..
     } = found;
+    // A strict read never applies a tolerance (ADR 0022 amendment 1).
+    if let Some((offset, element, shape)) = legacy {
+        return Err(ReadError::LegacyShape {
+            element,
+            shape,
+            location: locate(text, offset),
+        });
+    }
     // An edit generates above every id generated here (ADR 0024).
     generator.commit(&mut document);
     Ok((document, located(text, diagnostics)))
@@ -210,6 +237,10 @@ struct Findings<'t, 'a> {
     /// The diagnostics found so far, in reading order, each with its byte
     /// offset in `text`.
     diagnostics: Vec<(usize, Diagnostic)>,
+    /// In strict mode, the first C++ shape read, by offset: its byte
+    /// offset, the element it belongs to and what it is, which [`read`]
+    /// refuses once the input has read whole (LIB-COMPAT-008).
+    legacy: Option<(usize, ElementId, String)>,
 }
 
 impl Findings<'_, '_> {
@@ -304,6 +335,34 @@ impl Findings<'_, '_> {
         .set_clause("7.5.3")
         .set_affected(id.map(ElementId::new));
         self.push(diagnostic, attribute);
+    }
+
+    /// Reports the C++ shape at byte `offset` that `shape` describes, which
+    /// gives a name or a text of the element `owner`: one SACM-XMI-012
+    /// Warning, and in strict mode the refusal [`read`] returns if this is
+    /// the first shape (LIB-COMPAT-008; XMI 2.5.1 §7.8.6; ADR 0022
+    /// amendment 1).
+    fn legacy_shape(&mut self, offset: usize, owner: &ElementId, shape: String) {
+        let message = format!(
+            "{shape}, a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; \
+             it is read as its standard form, which write writes"
+        );
+        let diagnostic = Diagnostic::create(
+            Code::XMI_LEGACY_SHAPE,
+            Severity::Warning,
+            LEGACY_ROW,
+            message,
+        )
+        .set_clause("7.8.6")
+        .set_affected([owner.clone()]);
+        self.push_at(diagnostic, offset);
+        let is_first = self
+            .legacy
+            .as_ref()
+            .is_none_or(|(first, _, _)| offset < *first);
+        if self.mode == Mode::Strict && is_first {
+            self.legacy = Some((offset, owner.clone(), shape));
+        }
     }
 
     /// Adds `diagnostic`, located at the name of `attribute`.
@@ -481,11 +540,21 @@ struct Pending {
     id: ElementId,
     /// The `gid` read, as the attribute or as a value element.
     gid: Option<String>,
+    /// Whether the `gid` is given, a nil value element included
+    /// (SACM23-XMI-026).
+    has_gid: bool,
+    /// The name read, as a `name` element or, in the C++ shape, a `name`
+    /// attribute (LIB-COMPAT-008).
     name: Option<LangString>,
     /// The `xmi:id` of the name, if it has one (SACM23-XMI-022).
     name_id: Option<ElementId>,
-    /// The `content` of a `UtilityElement`, with its ids.
+    /// The `content` of a `UtilityElement` read from its `content` element,
+    /// with its ids.
     content: Option<Text>,
+    /// The `content` of a `UtilityElement` given on the element itself, in
+    /// the C++ shape (LIB-COMPAT-008); [`finish`](Self::finish) makes it
+    /// the content.
+    shorthand: Shorthand,
     /// The `key` of a `TaggedValue`, with its ids.
     key: Option<Text>,
     /// The `assertionDeclaration` read, if it is written, as the attribute
@@ -522,6 +591,66 @@ impl Pending {
         }
     }
 
+    /// Whether `role` is given already: by its role element, or, for the
+    /// `content`, in the C++ shape on the element itself.
+    fn has_text(&self, role: TextRole) -> bool {
+        match role {
+            TextRole::Content => self.content.is_some() || self.shorthand.is_given(),
+            TextRole::Key => self.key.is_some(),
+        }
+    }
+
+    /// Reads `node`, text in `holder`, this element's node, a
+    /// `UtilityElement`: the C++ shape of its `content` (LIB-COMPAT-008),
+    /// with any `lang=` and `content=` it carries. Text that is all white
+    /// space is no shape but joins one. A `content` element given as well is
+    /// `RepeatedValue`, and so is `content=` with text.
+    fn read_utility_text(
+        &mut self,
+        text: &str,
+        holder: Node<'_, '_>,
+        node: Node<'_, '_>,
+    ) -> Result<(), ReadError> {
+        let Some(first) = self.shorthand.add_text(text, node) else {
+            return Ok(());
+        };
+        if self.content.is_some() {
+            return Err(repeated_content(text, holder, &self.id, &self.shorthand));
+        }
+        if let Some(attribute) = self.shorthand.content_at {
+            return Err(repeated(
+                text,
+                &self.id,
+                "content.value.content",
+                [attribute, first],
+            ));
+        }
+        Ok(())
+    }
+
+    /// Ends the element once its content is read: a `content` given in the
+    /// C++ shape on a `UtilityElement` becomes its content, a
+    /// `MultiLangString` of one value, reported at the shape
+    /// (LIB-COMPAT-008). A `lang` attribute that gives no content is not
+    /// read.
+    fn finish(&mut self, found: &mut Findings<'_, '_>) -> Result<(), ReadError> {
+        let shorthand = std::mem::take(&mut self.shorthand);
+        let (value, at) = match shorthand.into_lang_string() {
+            Ok(Some(given)) => given,
+            Ok(None) => return Ok(()),
+            Err(lang) => return Err(unread_attribute_at(found.text, lang, "lang", &self.written)),
+        };
+        let shape = format!(
+            "the content of {} is given on the element itself",
+            subject(self.kind, self.id.as_str())
+        );
+        found.legacy_shape(at, &self.id, shape);
+        let mut held = Text::default();
+        held.push(value, None);
+        self.content = Some(held);
+        Ok(())
+    }
+
     /// Reads `node`, the value element of the flag `flag` in `holder`, this
     /// element's node (SACM23-BASE-007, SACM23-BASE-008): checked whole
     /// first, then against an earlier occurrence, the attribute included.
@@ -532,8 +661,11 @@ impl Pending {
         node: Node<'_, '_>,
         flag: Flag,
     ) -> Result<(), ReadError> {
-        let value = read_value(text, node)?;
-        let value = parse_flag(text, &value, node.range().start, &self.id, flag)?;
+        // A nil flag reads as the flag not written: false (SACM23-XMI-026).
+        let value = match read_value(text, node, &self.id)? {
+            Some(value) => parse_flag(text, &value, node.range().start, &self.id, flag)?,
+            None => false,
+        };
         if self.flags.iter().any(|(given, _)| *given == flag) {
             let property = flag.name();
             return Err(repeated_value(text, holder, property, &self.id, property));
@@ -644,6 +776,98 @@ impl StartTag {
     }
 }
 
+/// The single-language shorthand of a `MultiLangString`, a C++ shape
+/// (LIB-COMPAT-008): its one `LangString`, given by a `content` attribute
+/// (on a `TaggedValue` also `value`) or by text, with an optional `lang`
+/// attribute, on a `content` or `key` role element or on a
+/// `UtilityElement` itself. A `lang` alone gives no shape.
+#[derive(Default)]
+struct Shorthand {
+    lang: Option<String>,
+    /// The byte offset of the `lang` attribute.
+    lang_at: Option<usize>,
+    /// The content given by an attribute.
+    content: Option<String>,
+    /// The byte offset of the attribute that gave the content.
+    content_at: Option<usize>,
+    /// Every text read so far, joined in document order.
+    characters: String,
+    /// The first text character that is not literal white space, once some
+    /// text is not all white space.
+    text_at: Option<usize>,
+}
+
+impl Shorthand {
+    /// Whether the shape is given: a content, by an attribute or by text.
+    fn is_given(&self) -> bool {
+        self.content_at.is_some() || self.text_at.is_some()
+    }
+
+    /// Where the shape is, if it is given: its first attribute's name, else
+    /// its first text character that is not literal white space.
+    fn at(&self) -> Option<usize> {
+        if !self.is_given() {
+            return None;
+        }
+        [self.lang_at, self.content_at]
+            .into_iter()
+            .flatten()
+            .min()
+            .or(self.text_at)
+    }
+
+    /// Reads `attribute`, the `lang`, or one that gives the content.
+    /// Returns the byte offset of an earlier attribute that gave the content,
+    /// if this one gives it again.
+    fn read_attribute(&mut self, attribute: &Attribute<'_, '_>) -> Result<(), usize> {
+        let at = attribute.range_qname().start;
+        let value = attribute.value().to_owned();
+        if attribute.name() == "lang" {
+            self.lang = Some(value);
+            self.lang_at = Some(at);
+        } else {
+            if let Some(earlier) = self.content_at {
+                return Err(earlier);
+            }
+            self.content = Some(value);
+            self.content_at = Some(at);
+        }
+        Ok(())
+    }
+
+    /// Adds `node`, a child that is not an element, to the text, and
+    /// returns where it is if it is the first that is not all white space.
+    fn add_text(&mut self, text: &str, node: Node<'_, '_>) -> Option<usize> {
+        if node.is_text() {
+            self.characters.push_str(node.text().unwrap_or_default());
+        }
+        if self.text_at.is_some() {
+            return None;
+        }
+        let first = text_offset(text, node)?;
+        self.text_at = Some(first);
+        Some(first)
+    }
+
+    /// The `LangString` given, and where the shape is, if it is given: the
+    /// text, all of it, is its content when some of it is not white space.
+    /// A `lang` with no content is no shape: `Err` holds where the
+    /// attribute is, which is then not read.
+    fn into_lang_string(self) -> Result<Option<(LangString, usize)>, usize> {
+        let Some(at) = self.at() else {
+            return self.lang_at.map_or(Ok(None), Err);
+        };
+        let mut value = LangString::default();
+        value.set_lang(self.lang);
+        value.set_content(if self.text_at.is_some() {
+            Some(self.characters)
+        } else {
+            self.content
+        });
+        Ok(Some((value, at)))
+    }
+}
+
 /// Pass 2 for one root: checks it and its tree in document order, then adds
 /// it to `document` as a parentless element, with its tree under it in
 /// document order (ADR 0010 D2). The tree is walked with a stack, not by
@@ -669,14 +893,17 @@ fn read_root<'a>(
     let mut read = Vec::new();
     while let Some((element, holder, content)) = open.last_mut() {
         let Some(node) = content.next() else {
-            read.extend(open.pop().map(|(element, _, _)| element));
+            if let Some((mut element, _, _)) = open.pop() {
+                element.finish(found)?;
+                read.push(element);
+            }
             continue;
         };
         let is_utility = element.kind.is_a(AbstractClass::UtilityElement);
         if !node.is_element() {
             if is_utility {
                 // Text on a UtilityElement is the C++ form of its content.
-                check_shorthand_text(text, node, &element.written)?;
+                element.read_utility_text(text, *holder, node)?;
             } else {
                 check_text(text, node, &element.written)?;
             }
@@ -705,33 +932,35 @@ fn read_root<'a>(
             element.name_id = name_id;
         } else if is_value_element(node, GID) {
             // Checked whole first, then against an earlier occurrence.
-            let value = read_value(text, node)?;
-            if element.gid.is_some() {
+            let value = read_value(text, node, &element.id)?;
+            if std::mem::replace(&mut element.has_gid, true) {
                 return Err(repeated_value(text, *holder, GID, &element.id, GID));
             }
-            element.gid = Some(value);
+            element.gid = value;
         } else if let Some(role) = [TextRole::Content, TextRole::Key]
             .into_iter()
             .find(|role| role.is_held_by(element.kind) && is_value_element(node, role.name()))
         {
             // Checked whole first, then against an earlier occurrence.
             let held = read_text(found, node, role, element.kind, &element.id)?;
-            if element.text_mut(role).is_some() {
-                let property = role.name();
-                return Err(repeated_value(
-                    text,
-                    *holder,
-                    property,
-                    &element.id,
-                    property,
-                ));
+            if element.has_text(role) {
+                return Err(match role {
+                    TextRole::Content => {
+                        repeated_content(text, *holder, &element.id, &element.shorthand)
+                    }
+                    TextRole::Key => repeated_value(text, *holder, "key", &element.id, "key"),
+                });
             }
             *element.text_mut(role) = Some(held);
         } else if element.kind.is_a(AbstractClass::Assertion) && is_value_element(node, DECLARATION)
         {
             // Checked whole first, then against an earlier occurrence.
-            let value = read_value(text, node)?;
-            let declaration = parse_declaration(text, &value, node.range().start, &element.id)?;
+            // A nil declaration reads as one not written: `asserted`
+            // (SACM23-XMI-026).
+            let declaration = match read_value(text, node, &element.id)? {
+                Some(value) => parse_declaration(text, &value, node.range().start, &element.id)?,
+                None => AssertionDeclaration::Asserted,
+            };
             if element.declaration.is_some() {
                 return Err(repeated_value(
                     text,
@@ -881,9 +1110,15 @@ fn root_start<'a>(found: &mut Findings<'_, 'a>, root: Node<'a, '_>) -> Result<Pe
 
     // Besides `xmi:id`, `xmi:version`, the type and `gid`, only the
     // SACMElement flags and references are read, in document order (ADR
-    // 0016 D4, ADR 0026); any other attribute is not read yet.
+    // 0016 D4, ADR 0026), and the C++ `name` attribute (LIB-COMPAT-008);
+    // any other attribute is not read yet.
     let mut start = StartTag::default();
+    let mut named = None;
     for attribute in root.attributes() {
+        if is_unqualified(&attribute, "name") {
+            named = Some(read_name_attribute(found, &attribute, kind, &id));
+            continue;
+        }
         if is_xmi(&attribute, "id")
             || is_xmi(&attribute, "version")
             || is_type(&attribute)
@@ -895,18 +1130,21 @@ fn root_start<'a>(found: &mut Findings<'_, 'a>, root: Node<'a, '_>) -> Result<Pe
         return Err(unread_attribute(text, &attribute, &name));
     }
 
+    let root_gid = root
+        .attributes()
+        .find(|attribute| is_unqualified(attribute, GID))
+        .map(|attribute| attribute.value().to_owned());
     Ok(Pending {
         order: found.next_order(),
         parent: None,
         kind,
         id,
-        gid: root
-            .attributes()
-            .find(|attribute| is_unqualified(attribute, GID))
-            .map(|attribute| attribute.value().to_owned()),
-        name: None,
+        has_gid: root_gid.is_some(),
+        gid: root_gid,
+        name: named,
         name_id: None,
         content: None,
+        shorthand: Shorthand::default(),
         key: None,
         declaration: None,
         flags: start.flags,
@@ -930,13 +1168,18 @@ fn child_start<'a>(
     let id = read_id(found, node, kind)?;
     // Besides `xmi:id` and the type (ADR 0016 D4), only an unqualified
     // `gid`, an Assertion's unqualified `assertionDeclaration`, and the
-    // SACMElement flags and references (ADR 0026), in document order, so a
-    // refusal after them lands on the later attribute.
+    // SACMElement flags and references (ADR 0026), and the C++ shapes
+    // (LIB-COMPAT-008): `name` on a ModelElement, and `lang`, `content` and,
+    // on a TaggedValue, `key` and `value` on a UtilityElement, in document
+    // order, so a refusal after them lands on the later attribute.
     let is_assertion = kind.is_a(AbstractClass::Assertion);
     let is_utility = kind.is_a(AbstractClass::UtilityElement);
     let is_tagged_value = kind == ElementKind::TaggedValue;
     let mut declaration = None;
     let mut gid = None;
+    let mut named = None;
+    let mut key = None;
+    let mut shorthand = Shorthand::default();
     let mut start = StartTag::default();
     for attribute in node.attributes() {
         if is_xsi_type(&attribute) {
@@ -958,13 +1201,34 @@ fn child_start<'a>(
         if start.read(text, &attribute, kind, &id, &written)? {
             continue;
         }
+        if !is_utility && is_unqualified(&attribute, "name") {
+            named = Some(read_name_attribute(found, &attribute, kind, &id));
+            continue;
+        }
         // The C++ attribute forms of a UtilityElement's content and of a
-        // TaggedValue's key and value (ADR 0025).
-        let shorthand = (is_utility && is_unqualified(&attribute, "content"))
-            || (is_tagged_value
-                && (is_unqualified(&attribute, "key") || is_unqualified(&attribute, "value")));
-        if shorthand {
-            return Err(shorthand_attribute(text, &attribute, &written));
+        // TaggedValue's key and value.
+        let gives_content = is_unqualified(&attribute, "lang")
+            || is_unqualified(&attribute, "content")
+            || (is_tagged_value && is_unqualified(&attribute, "value"));
+        if is_utility && gives_content {
+            if let Err(earlier) = shorthand.read_attribute(&attribute) {
+                let at = attribute.range_qname().start;
+                return Err(repeated(text, &id, "content.value.content", [earlier, at]));
+            }
+            continue;
+        }
+        if is_tagged_value && is_unqualified(&attribute, "key") {
+            let shape = format!(
+                "the key of {} is given as the attribute \"key\"",
+                subject(kind, id.as_str())
+            );
+            found.legacy_shape(attribute.range_qname().start, &id, shape);
+            let mut value = LangString::default();
+            value.set_content(Some(attribute.value().to_owned()));
+            let mut held = Text::default();
+            held.push(value, None);
+            key = Some(held);
+            continue;
         }
         return Err(unread_attribute(text, &attribute, &written));
     }
@@ -973,17 +1237,39 @@ fn child_start<'a>(
         parent: Some(parent.id.clone()),
         kind,
         id,
+        has_gid: gid.is_some(),
         gid,
-        name: None,
+        name: named,
         name_id: None,
         content: None,
-        key: None,
+        shorthand,
+        key,
         declaration,
         flags: start.flags,
         references: start.references,
         written,
         at: node.range().start,
     })
+}
+
+/// The name that `attribute`, an unqualified `name` on the `ModelElement`
+/// `id` of `kind`, gives in the C++ shape (LIB-COMPAT-008): a `LangString`
+/// whose `content` is the value, exactly, and whose `lang` is absent,
+/// reported at the attribute's name.
+fn read_name_attribute(
+    found: &mut Findings<'_, '_>,
+    attribute: &Attribute<'_, '_>,
+    kind: ElementKind,
+    id: &ElementId,
+) -> LangString {
+    let shape = format!(
+        "the name of {} is given as the attribute \"name\"",
+        subject(kind, id.as_str())
+    );
+    found.legacy_shape(attribute.range_qname().start, id, shape);
+    let mut name = LangString::default();
+    name.set_content(Some(attribute.value().to_owned()));
+    name
 }
 
 /// The id of `node`, an element of `kind` (XMI 2.5.1 §7.6.1): the value of
@@ -1085,8 +1371,9 @@ fn duplicate_id(text: &str, node: Node<'_, '_>, id: &str) -> ReadError {
 /// role of the parent's class. Its kind is the class its type attributes
 /// name, which must agree; without one, it is the role's declared type, if
 /// that is concrete. The kind must conform to the role and be one this
-/// release reads (ADR 0016 D5, D6). Every refusal is at the child's start
-/// tag.
+/// release reads (ADR 0016 D5, D6). Without a type under a role of an
+/// abstract type, it is `MissingType` (SACM-XMI-005, LIB-COMPAT-010). Every
+/// refusal is at the child's start tag.
 fn child_kind(
     text: &str,
     node: Node<'_, '_>,
@@ -1130,10 +1417,13 @@ fn child_kind(
     }
     let kind = match (typed, role.declared) {
         (Some(kind), _) | (None, DeclaredType::Kind(kind)) => kind,
+        // Named after its role, so no class can be inferred (LIB-COMPAT-010).
         (None, DeclaredType::Abstract(class)) => {
-            return Err(not_read(format!(
-                "the element {written:?} has no type, and its role has the abstract type {class}"
-            )));
+            return Err(ReadError::MissingType {
+                role: role.name.to_owned(),
+                declared_type: class.name().to_owned(),
+                location: locate(text, node.range().start),
+            });
         }
     };
     if !role.declared.admits(kind) {
@@ -1341,17 +1631,56 @@ fn is_value_element(node: Node<'_, '_>, local: &str) -> bool {
         && node.tag_name().name() == local
 }
 
-/// The value that the value element `node` holds (SACM23-XMI-014; ADR 0021
-/// amendment 1): its character content, joined in document order, exactly.
-/// CDATA sections and references give their characters, comments and
-/// processing instructions are skipped, and nothing is trimmed; the parser
-/// has already ended every line with LF (XML 1.0 §2.11). An empty element is
-/// the empty string. Any attribute is `Unsupported` at its name, and any
-/// element child at its start tag.
-fn read_value(text: &str, node: Node<'_, '_>) -> Result<String, ReadError> {
+/// The value that the value element `node` of the element `owner` holds,
+/// or `None` if it is nil, as [`read_value_element`] reads it.
+fn read_value(
+    text: &str,
+    node: Node<'_, '_>,
+    owner: &ElementId,
+) -> Result<Option<String>, ReadError> {
+    read_value_element(text, node, owner, false).map(|(value, _)| value)
+}
+
+/// The `lang` attribute of a `content` in a `name`, the C++ shape
+/// (LIB-COMPAT-008): its value and the byte offset of its name.
+type LangAttribute = (String, usize);
+
+/// What the value element `node` of the element `owner` holds: its value,
+/// or `None` if it is nil, and, when `takes_lang`, the value and byte offset
+/// of a `lang` attribute on it, the C++ shape of a `content` in a `name`
+/// (LIB-COMPAT-008).
+///
+/// The value is its character content, joined in document order, exactly
+/// (SACM23-XMI-014; ADR 0021 amendment 1). CDATA sections and references
+/// give their characters, comments and processing instructions are skipped,
+/// and nothing is trimmed; the parser has already ended every line with LF
+/// (XML 1.0 §2.11). An empty element is the empty string.
+///
+/// Its `xsi:nil` is an `xsd:boolean` (SACM23-XMI-026; XMI 2.5.1 §9.4.1;
+/// XML Schema 1.0 Part 1 §3.3.4): `true` or `1` makes it nil, read as the
+/// property not written, and `false` or `0` reads it as usual, white space
+/// around them collapsed; any other value is `InvalidLiteral` at the
+/// attribute's name. A nil element holds no characters, not even white
+/// space, and no element: either is `Unsupported` at it. Any other attribute
+/// is `Unsupported` at its name, and any element child at its start tag.
+fn read_value_element(
+    text: &str,
+    node: Node<'_, '_>,
+    owner: &ElementId,
+    takes_lang: bool,
+) -> Result<(Option<String>, Option<LangAttribute>), ReadError> {
     let element = written_name(text, node);
-    if let Some(attribute) = node.attributes().next() {
-        return Err(unread_attribute(text, &attribute, &element));
+    let mut nil = false;
+    let mut lang = None;
+    for attribute in node.attributes() {
+        if is_xsi_nil(&attribute) {
+            nil = parse_nil(text, &attribute, owner)?;
+        } else if takes_lang && is_unqualified(&attribute, "lang") {
+            let at = attribute.range_qname().start;
+            lang = Some((attribute.value().to_owned(), at));
+        } else {
+            return Err(unread_attribute(text, &attribute, &element));
+        }
     }
     let mut value = String::new();
     for child in node.children() {
@@ -1367,20 +1696,70 @@ fn read_value(text: &str, node: Node<'_, '_>) -> Result<String, ReadError> {
             ));
         }
         if child.is_text() {
+            if nil {
+                return Err(unsupported(
+                    text,
+                    child.range().start,
+                    format!(
+                        "the value element {element:?} is nil (its xsi:nil is true) but holds \
+                         characters; a nil element holds none, not even white space"
+                    ),
+                ));
+            }
             value.push_str(child.text().unwrap_or_default());
         }
     }
-    Ok(value)
+    Ok((if nil { None } else { Some(value) }, lang))
+}
+
+/// Whether the `xsi:nil` `attribute` of a value element of the element
+/// `owner` is true: an `xsd:boolean`, `true` or `1`, and `false` or `0`,
+/// with XML white space around them (XML Schema 1.0 Part 2 §3.2.2.1;
+/// SACM23-XMI-026). Any other value, the empty one included, is
+/// `InvalidLiteral` at the attribute's name, holding the value as read.
+fn parse_nil(
+    text: &str,
+    attribute: &Attribute<'_, '_>,
+    owner: &ElementId,
+) -> Result<bool, ReadError> {
+    match attribute.value().trim_matches(is_xml_space) {
+        "true" | "1" => Ok(true),
+        "false" | "0" => Ok(false),
+        _ => Err(ReadError::InvalidLiteral {
+            element: owner.clone(),
+            property: "xsi:nil".to_owned(),
+            value: attribute.value().to_owned(),
+            location: locate(text, attribute.range_qname().start),
+        }),
+    }
 }
 
 /// The `RepeatedValue` refusal of the property `property` of the element
-/// `owner`, given more than once in `holder` (SACM-MULT-001; XMI 2.5.1 §9.5.2
-/// rule 2h). It gives every occurrence, found in one pass over `holder` in
-/// document order and located in one pass over the text: the attribute
-/// `local` in no namespace, if it is written, then every value element
-/// `local`. For `name`, that is every `name` child in no namespace: a `name`
-/// attribute is refused with the start tag, before the content is read, so
-/// it is never an occurrence (SACM23-XMI-021).
+/// `owner`, given at the byte `offsets` of `text`, in document order,
+/// located in one pass (SACM-MULT-001; XMI 2.5.1 §9.5.2 rule 2h).
+fn repeated(
+    text: &str,
+    owner: &ElementId,
+    property: &str,
+    offsets: impl IntoIterator<Item = usize>,
+) -> ReadError {
+    let mut locator = Locator::new(text);
+    ReadError::RepeatedValue {
+        element: owner.clone(),
+        property: property.to_owned(),
+        locations: offsets
+            .into_iter()
+            .filter_map(|offset| locator.locate(offset))
+            .collect(),
+    }
+}
+
+/// The `RepeatedValue` refusal of the property `property` of the element
+/// `owner`, given more than once in `holder`. It gives every occurrence,
+/// found in one pass over `holder` in document order: the attribute `local`
+/// in no namespace, if it is written, then every value element `local`. For
+/// `name`, that is the C++ `name` attribute (LIB-COMPAT-008) and every
+/// `name` child in no namespace (SACM23-XMI-021).
 fn repeated_value(
     text: &str,
     holder: Node<'_, '_>,
@@ -1388,25 +1767,95 @@ fn repeated_value(
     owner: &ElementId,
     property: &str,
 ) -> ReadError {
-    let mut locator = Locator::new(text);
     let attribute = holder
         .attributes()
-        .find(|attribute| attribute.namespace().is_none() && attribute.name() == local)
+        .find(|attribute| is_unqualified(attribute, local))
         .map(|attribute| attribute.range_qname().start);
     let elements = holder
         .children()
         .filter(|child| is_value_element(*child, local))
         .map(|child| child.range().start);
-    let locations = attribute
-        .into_iter()
-        .chain(elements)
-        .filter_map(|offset| locator.locate(offset))
-        .collect();
-    ReadError::RepeatedValue {
-        element: owner.clone(),
-        property: property.to_owned(),
-        locations,
+    repeated(text, owner, property, attribute.into_iter().chain(elements))
+}
+
+/// The `RepeatedValue` refusal of the `content` of the `UtilityElement`
+/// `owner`, whose node is `holder`: the C++ shape on the element itself, at
+/// the location of `shorthand` if it is given (LIB-COMPAT-008), and every
+/// `content` element, in document order.
+fn repeated_content(
+    text: &str,
+    holder: Node<'_, '_>,
+    owner: &ElementId,
+    shorthand: &Shorthand,
+) -> ReadError {
+    let elements = holder
+        .children()
+        .filter(|child| is_value_element(*child, TextRole::Content.name()))
+        .map(|child| child.range().start);
+    let mut offsets: Vec<usize> = shorthand.at().into_iter().chain(elements).collect();
+    offsets.sort_unstable();
+    repeated(text, owner, TextRole::Content.name(), offsets)
+}
+
+/// The `RepeatedValue` refusal of the field `field`, `lang` or `content`, of
+/// the `LangString` that `holder`, a `name` or a `value` of the element
+/// `owner`, holds; `property` names the `LangString` (`name`,
+/// `content.value`, `key.value`). It gives every occurrence in document
+/// order: the attribute, each value element and, for `content`, the text, at
+/// its first character that is not literal white space; and in a `name` the
+/// other C++ shapes (LIB-COMPAT-008), the `lang` attribute of a `content`
+/// element and each `value` element that gives the field.
+fn repeated_field(
+    text: &str,
+    holder: Node<'_, '_>,
+    field: &str,
+    owner: &ElementId,
+    property: &str,
+) -> ReadError {
+    let is_name = property == "name";
+    let mut offsets = Vec::new();
+    if let Some(attribute) = holder
+        .attributes()
+        .find(|attribute| is_unqualified(attribute, field))
+    {
+        offsets.push(attribute.range_qname().start);
     }
+    let mut has_text = false;
+    for child in holder.children() {
+        if !child.is_element() {
+            if field == "content" && !has_text {
+                if let Some(first) = text_offset(text, child) {
+                    offsets.push(first);
+                    has_text = true;
+                }
+            }
+            continue;
+        }
+        let lang_on_content = child
+            .attributes()
+            .find(|attribute| is_unqualified(attribute, "lang"))
+            .filter(|_| is_name && field == "lang" && is_value_element(child, "content"));
+        if let Some(attribute) = lang_on_content {
+            offsets.push(attribute.range_qname().start);
+        } else if is_value_element(child, field)
+            || (is_name && is_value_element(child, "value") && gives_field(text, child, field))
+        {
+            offsets.push(child.range().start);
+        }
+    }
+    repeated(text, owner, &format!("{property}.{field}"), offsets)
+}
+
+/// Whether `value`, a `value` element in a `name`, gives the field `field`:
+/// as an attribute, a value element or, for `content`, text.
+fn gives_field(text: &str, value: Node<'_, '_>, field: &str) -> bool {
+    value
+        .attributes()
+        .any(|attribute| is_unqualified(&attribute, field))
+        || value.children().any(|child| {
+            is_value_element(child, field)
+                || (field == "content" && text_offset(text, child).is_some())
+        })
 }
 
 /// The `LangString` that the `name` element `node` holds (SACM23-XMI-011,
@@ -1431,10 +1880,14 @@ fn read_name<'a>(
 /// at the start tag first, and holds only `value` elements in no namespace,
 /// white space, comments and processing instructions. Each `value` is read
 /// as a `name` is ([`read_lang_string`]), so values are kept in order, with
-/// duplicates. With no `value`, it is an empty `MultiLangString`. `lang` or
-/// `content` on it, and text in it, are the single-language shorthand,
-/// refused until LIB-COMPAT-008. An `xsi:type`, and an `xmi:id` read
-/// trimmed, are reported on the owner.
+/// duplicates. With no `value`, it is an empty `MultiLangString`.
+///
+/// Without a `value`, `lang` and `content` attributes on it, and text in
+/// it, are the C++ single-language shorthand (LIB-COMPAT-008): one value,
+/// whose content is the text, all of it, or the attribute, never both. It
+/// is reported at its first attribute, else at its text. Beside a `value`,
+/// either is `Unsupported`. An `xsi:type`, and an `xmi:id` read trimmed, are
+/// reported on the owner.
 fn read_text<'a>(
     found: &mut Findings<'_, 'a>,
     node: Node<'a, '_>,
@@ -1460,9 +1913,28 @@ fn read_text<'a>(
     let subject = format!("the {} of {}", role.name(), subject(kind, owner.as_str()));
     let mut held = Text::default();
     held.set_id(read_owned_id(found, node, &subject, owner)?);
+    let has_values = node
+        .children()
+        .any(|child| is_value_element(child, "value"));
+    let mut shorthand = Shorthand::default();
     for attribute in node.attributes() {
         if is_unqualified(&attribute, "lang") || is_unqualified(&attribute, "content") {
-            return Err(shorthand_attribute(text, &attribute, &element));
+            if has_values {
+                let range = attribute.range_qname();
+                let name = text.get(range.clone()).unwrap_or(attribute.name());
+                return Err(unsupported(
+                    text,
+                    range.start,
+                    format!(
+                        "the attribute {name:?} of the element {element:?} is not read: a {} \
+                         that holds `value` elements gives each language in a `value`",
+                        role.name()
+                    ),
+                ));
+            }
+            // Attributes are unique in a start tag (XML 1.0 §3.1), so the
+            // content is given once here and this never refuses.
+            let _ = shorthand.read_attribute(&attribute);
         } else if is_xsi_type(&attribute) {
             found.xsi_type(&attribute, &subject, owner.as_str());
         } else if !(is_type(&attribute) || is_xmi(&attribute, "id")) {
@@ -1473,7 +1945,24 @@ fn read_text<'a>(
     let property = format!("{}.value", role.name());
     for child in node.children() {
         if !child.is_element() {
-            check_shorthand_text(text, child, &element)?;
+            if has_values {
+                if let Some(first) = text_offset(text, child) {
+                    return Err(unsupported(
+                        text,
+                        first,
+                        format!(
+                            "the element {element:?} holds text beside `value` elements, which \
+                             is not read: a {} gives each language in a `value`",
+                            role.name()
+                        ),
+                    ));
+                }
+            } else if let Some(first) = shorthand.add_text(text, child) {
+                if let Some(attribute) = shorthand.content_at {
+                    let property = format!("{property}.content");
+                    return Err(repeated(text, owner, &property, [attribute, first]));
+                }
+            }
         } else if is_value_element(child, "value") {
             let (value, id) = read_lang_string(found, child, &value_subject, owner, &property)?;
             held.push(value, id);
@@ -1490,6 +1979,15 @@ fn read_text<'a>(
             ));
         }
     }
+    match shorthand.into_lang_string() {
+        Ok(Some((value, at))) => {
+            let shape = format!("{subject} is given in the single-language shorthand");
+            found.legacy_shape(at, owner, shape);
+            held.push(value, None);
+        }
+        Ok(None) => {}
+        Err(lang) => return Err(unread_attribute_at(text, lang, "lang", &element)),
+    }
     Ok(held)
 }
 
@@ -1505,7 +2003,14 @@ fn read_text<'a>(
 /// `RepeatedValue`. The values are kept as the parser gives them, untrimmed.
 /// Its `xmi:id`, if any, is returned with it, after the namespace and the
 /// type are checked and before the other attributes (SACM23-XMI-022). An
-/// `xsi:type` is reported on the element `owner`.
+/// `xsi:type` is reported on the element `owner`. A nil value element gives
+/// its field as not written, and still counts as given (SACM23-XMI-026).
+///
+/// The C++ shapes are read too, each reported (LIB-COMPAT-008): text, all
+/// of it, as the `content`, at its first character that is not literal
+/// white space; and in a `name`, one `value` (at its `<`) or one `content`
+/// carrying `lang` (at that attribute), as the name's fields. A second such
+/// entry is `Unsupported`: a name holds one `LangString`.
 fn read_lang_string<'a>(
     found: &mut Findings<'_, 'a>,
     node: Node<'a, '_>,
@@ -1514,8 +2019,101 @@ fn read_lang_string<'a>(
     property: &str,
 ) -> Result<(LangString, Option<ElementId>), ReadError> {
     let text = found.text;
-    let at_name = node.range().start;
     let element = written_name(text, node);
+    let is_name = property == "name";
+    check_lang_string_tag(text, node, &element)?;
+    let name_id = read_owned_id(found, node, subject, owner)?;
+    let repeated = |field: &str| repeated_field(text, node, field, owner, property);
+    let mut fields = Fields::default();
+    for attribute in node.attributes() {
+        let value = || Some(attribute.value().to_owned());
+        let given = match (attribute.namespace(), attribute.name()) {
+            (None, "lang") => fields.lang(value()),
+            (None, "content") => fields.content(value()),
+            _ if is_xsi_type(&attribute) => {
+                found.xsi_type(&attribute, subject, owner.as_str());
+                Ok(())
+            }
+            _ if is_type(&attribute) || is_xmi(&attribute, "id") => Ok(()),
+            _ => return Err(unread_attribute(text, &attribute, &element)),
+        };
+        // Attributes are unique in a start tag (XML 1.0 §3.1), so neither
+        // field is given twice here.
+        given.map_err(repeated)?;
+    }
+    // The text, all of it, and where it first is not white space.
+    let mut characters = String::new();
+    let mut text_at = None;
+    // Whether a `value`, or a `content` carrying `lang`, gave the name.
+    let mut has_entry = false;
+    for child in node.children() {
+        if !child.is_element() {
+            if child.is_text() {
+                characters.push_str(child.text().unwrap_or_default());
+            }
+            if text_at.is_none() {
+                if let Some(first) = text_offset(text, child) {
+                    fields.content(None).map_err(repeated)?;
+                    text_at = Some(first);
+                    let shape = format!("{subject} has its content as text");
+                    found.legacy_shape(first, owner, shape);
+                }
+            }
+            continue;
+        }
+        if is_value_element(child, "lang") {
+            // Checked whole first, then against an earlier occurrence.
+            let value = read_value(text, child, owner)?;
+            fields.lang(value).map_err(repeated)?;
+        } else if is_value_element(child, "content") {
+            let (value, lang) = read_value_element(text, child, owner, is_name)?;
+            if let Some((lang, at)) = lang {
+                if std::mem::replace(&mut has_entry, true) {
+                    return Err(second_entry(text, child, &element));
+                }
+                fields.lang(Some(lang)).map_err(repeated)?;
+                let shape = format!("{subject} holds a content carrying lang");
+                found.legacy_shape(at, owner, shape);
+            }
+            fields.content(value).map_err(repeated)?;
+        } else if is_name && is_value_element(child, "value") {
+            // The name's one LangString: the name holds nothing else.
+            if holds_beside(text, node, child) {
+                return Err(value_beside(text, child, &element));
+            }
+            let value = read_name_value(found, child, subject, owner, &element)?;
+            has_entry = true;
+            let shape = format!("{subject} holds a value");
+            found.legacy_shape(child.range().start, owner, shape);
+            if let Some(lang) = value.lang() {
+                fields.lang(Some(lang.to_owned())).map_err(repeated)?;
+            }
+            if let Some(content) = value.content() {
+                fields.content(Some(content.to_owned())).map_err(repeated)?;
+            }
+        } else {
+            return Err(unsupported(
+                text,
+                child.range().start,
+                format!(
+                    "the element {:?} in {element:?} is not read in this release",
+                    written_name(text, child)
+                ),
+            ));
+        }
+    }
+    let mut name = fields.value;
+    if text_at.is_some() {
+        name.set_content(Some(characters));
+    }
+    Ok((name, name_id))
+}
+
+/// Refuses, at its start tag, `node`, a `name` or `value` written as
+/// `element`, if it is in a namespace or typed as another class than
+/// `LangString`, as a root is.
+fn check_lang_string_tag(text: &str, node: Node<'_, '_>, element: &str) -> Result<(), ReadError> {
+    let at_name = node.range().start;
     if let Some(namespace) = node.tag_name().namespace().filter(|uri| !uri.is_empty()) {
         return Err(unsupported(
             text,
@@ -1526,7 +2124,6 @@ fn read_lang_string<'a>(
             ),
         ));
     }
-    // Like a root's, a type naming another class is refused at the start tag.
     if let Some(attribute) = node
         .attributes()
         .find(|attribute| is_type(attribute) && !names_class(node, attribute.value(), "LangString"))
@@ -1540,48 +2137,112 @@ fn read_lang_string<'a>(
             ),
         ));
     }
-    let name_id = read_owned_id(found, node, subject, owner)?;
-    let mut name = LangString::default();
-    for attribute in node.attributes() {
-        match (attribute.namespace(), attribute.name()) {
-            (None, "lang") => name.set_lang(Some(attribute.value().to_owned())),
-            (None, "content") => name.set_content(Some(attribute.value().to_owned())),
-            _ if is_xsi_type(&attribute) => found.xsi_type(&attribute, subject, owner.as_str()),
-            _ if is_type(&attribute) || is_xmi(&attribute, "id") => {}
-            _ => return Err(unread_attribute(text, &attribute, &element)),
+    Ok(())
+}
+
+/// The fields of a `LangString` as they are read, each with whether it is
+/// given, a nil one included (SACM23-XMI-026).
+#[derive(Default)]
+struct Fields {
+    value: LangString,
+    has_lang: bool,
+    has_content: bool,
+}
+
+impl Fields {
+    /// Gives the `lang`, or returns `"lang"` if it is given already.
+    fn lang(&mut self, lang: Option<String>) -> Result<(), &'static str> {
+        if std::mem::replace(&mut self.has_lang, true) {
+            return Err("lang");
         }
+        self.value.set_lang(lang);
+        Ok(())
     }
-    for child in node.children() {
-        if !child.is_element() {
-            check_text(text, child, &element)?;
-            continue;
+
+    /// Gives the `content`, or returns `"content"` if it is given already.
+    fn content(&mut self, content: Option<String>) -> Result<(), &'static str> {
+        if std::mem::replace(&mut self.has_content, true) {
+            return Err("content");
         }
-        let is_lang = is_value_element(child, "lang");
-        if !(is_lang || is_value_element(child, "content")) {
-            return Err(unsupported(
-                text,
-                child.range().start,
-                format!(
-                    "the element {:?} in {element:?} is not read in this release",
-                    written_name(text, child)
-                ),
-            ));
-        }
-        // Checked whole first, then against an earlier occurrence.
-        let value = read_value(text, child)?;
-        let local = child.tag_name().name();
-        let held = if is_lang { name.lang() } else { name.content() };
-        if held.is_some() {
-            let property = format!("{property}.{local}");
-            return Err(repeated_value(text, node, local, owner, &property));
-        }
-        if is_lang {
-            name.set_lang(Some(value));
-        } else {
-            name.set_content(Some(value));
-        }
+        self.value.set_content(content);
+        Ok(())
     }
-    Ok((name, name_id))
+}
+
+/// The `LangString` that `node`, a `value` in the `name` written as `name`
+/// that `subject` names, holds: the C++ shape of a name's one `LangString`
+/// (LIB-COMPAT-008), read as a `value` of a `content` is. An `xmi:id` on it
+/// is `Unsupported`: a name has one id, on the `name`.
+fn read_name_value<'a>(
+    found: &mut Findings<'_, 'a>,
+    node: Node<'a, '_>,
+    subject: &str,
+    owner: &ElementId,
+    name: &str,
+) -> Result<LangString, ReadError> {
+    let text = found.text;
+    if let Some(attribute) = node.attributes().find(|attribute| is_xmi(attribute, "id")) {
+        let range = attribute.range_qname();
+        let id = text.get(range.clone()).unwrap_or(attribute.name());
+        return Err(unsupported(
+            text,
+            range.start,
+            format!(
+                "the attribute {id:?} of a value in {name:?} is not read: a name has one \
+                 xmi:id, on the name"
+            ),
+        ));
+    }
+    let subject = format!("the value in {subject}");
+    read_lang_string(found, node, &subject, owner, "name.value").map(|(value, _)| value)
+}
+
+/// Whether `name`, a `name` element, holds a field besides its `value`
+/// child `value`: a `lang` or `content` attribute, a value element, another
+/// `value`, or text that is not all white space.
+fn holds_beside(text: &str, name: Node<'_, '_>, value: Node<'_, '_>) -> bool {
+    name.attributes().any(|attribute| {
+        is_unqualified(&attribute, "lang") || is_unqualified(&attribute, "content")
+    }) || name.children().any(|child| {
+        child != value
+            && (["lang", "content", "value"]
+                .iter()
+                .any(|local| is_value_element(child, local))
+                || text_offset(text, child).is_some())
+    })
+}
+
+/// The `Unsupported` refusal of `value`, a `value` in the `name` written as
+/// `name` that holds a field besides it: the C++ shape of a name's one
+/// `LangString` is a `name` holding one `value` and nothing else
+/// (LIB-COMPAT-008); the rest merges entries, which is not read
+/// (LIB-COMPAT-012).
+fn value_beside(text: &str, value: Node<'_, '_>, name: &str) -> ReadError {
+    unsupported(
+        text,
+        value.range().start,
+        format!(
+            "the element {:?} in {name:?} is not read: a name holds one LangString, so a \
+             name that holds a value holds nothing else in this release",
+            written_name(text, value)
+        ),
+    )
+}
+
+/// The `Unsupported` refusal of `entry`, a second `value` or `content`
+/// carrying `lang` in the `name` written as `name`: a name holds one
+/// `LangString`, and the C++ multi-entry name is not read (LIB-COMPAT-012).
+fn second_entry(text: &str, entry: Node<'_, '_>, name: &str) -> ReadError {
+    unsupported(
+        text,
+        entry.range().start,
+        format!(
+            "the element {:?} in {name:?} is not read: a name holds one LangString, so a \
+             name holding more than one value or content carrying lang is not read in this \
+             release",
+            written_name(text, entry)
+        ),
+    )
 }
 
 /// Refuses `node` if it is text whose value is not all XML white space
@@ -1597,20 +2258,6 @@ fn check_text(text: &str, node: Node<'_, '_>, parent: &str) -> Result<(), ReadEr
             text,
             first,
             format!("the element {parent:?} holds text, which is not read in this release"),
-        )),
-        None => Ok(()),
-    }
-}
-
-/// Refuses `node` as [`check_text`] does, in a `UtilityElement` or in a
-/// `content`, `key` or `value` of one, where text is the single-language
-/// shorthand of a `MultiLangString` (ADR 0025).
-fn check_shorthand_text(text: &str, node: Node<'_, '_>, parent: &str) -> Result<(), ReadError> {
-    match text_offset(text, node) {
-        Some(first) => Err(unsupported(
-            text,
-            first,
-            format!("the element {parent:?} holds text: {SHORTHAND}"),
         )),
         None => Ok(()),
     }
@@ -1655,6 +2302,11 @@ fn is_xsi_type(attribute: &Attribute<'_, '_>) -> bool {
     attribute.namespace() == Some(XSI_NS) && attribute.name() == "type"
 }
 
+/// Whether `attribute` is `xsi:nil`, in the XML Schema instance namespace.
+fn is_xsi_nil(attribute: &Attribute<'_, '_>) -> bool {
+    attribute.namespace() == Some(XSI_NS) && attribute.name() == "nil"
+}
+
 /// Whether the type `value`, a `QName` resolved in the scope of `node`, names
 /// the SACM class `class`. The value's leading and trailing white space is
 /// removed first, as a `QName`'s is collapsed (XML Schema 1.0 Part 2 §4.3.6);
@@ -1689,22 +2341,16 @@ fn sacm_class<'v>(node: Node<'_, '_>, value: &'v str) -> Option<&'v str> {
 fn unread_attribute(text: &str, attribute: &Attribute<'_, '_>, element: &str) -> ReadError {
     let range = attribute.range_qname();
     let name = text.get(range.clone()).unwrap_or(attribute.name());
-    unsupported(
-        text,
-        range.start,
-        format!("the attribute {name:?} of the element {element:?} is not read in this release"),
-    )
+    unread_attribute_at(text, range.start, name, element)
 }
 
-/// The `Unsupported` refusal of an attribute that is the single-language
-/// shorthand of a `MultiLangString`, at its name (ADR 0025).
-fn shorthand_attribute(text: &str, attribute: &Attribute<'_, '_>, element: &str) -> ReadError {
-    let range = attribute.range_qname();
-    let name = text.get(range.clone()).unwrap_or(attribute.name());
+/// The `Unsupported` refusal of the attribute `name` of the element written
+/// as `element`, whose name is at byte `offset` of `text`.
+fn unread_attribute_at(text: &str, offset: usize, name: &str, element: &str) -> ReadError {
     unsupported(
         text,
-        range.start,
-        format!("the attribute {name:?} of the element {element:?} is not read: {SHORTHAND}"),
+        offset,
+        format!("the attribute {name:?} of the element {element:?} is not read in this release"),
     )
 }
 
@@ -1859,10 +2505,6 @@ mod tests {
             (
                 format!("{claim}<foo/></argumentElement>"),
                 "the element \"foo\" in the element \"argumentElement\" is not a role of Claim",
-            ),
-            (
-                "<argumentElement xmi:id=\"c\"/>".to_owned(),
-                "the element \"argumentElement\" has no type, and its role has the abstract type ArgumentationElement",
             ),
             (
                 "<argumentElement xmi:type=\"sacm:Note\" xmi:id=\"c\"/>".to_owned(),

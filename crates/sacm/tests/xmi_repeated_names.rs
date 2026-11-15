@@ -274,14 +274,10 @@ fn sacm23_xmi_021_three_names_give_three_locations_and_the_second_is_the_locatio
 
 #[test]
 fn sacm23_xmi_021_a_malformed_second_name_is_refused_as_its_own_defect_first() {
-    let unsupported: [(&str, String); 4] = [
+    let unsupported: [(&str, String); 3] = [
         (
             "a second name with an unread attribute",
             in_claim(&format!("<name content=\"A\"/><name {MARK}foo=\"1\"/>")),
-        ),
-        (
-            "a second name holding text",
-            in_claim(&format!("<name content=\"A\"/><name>{MARK}x</name>")),
         ),
         (
             "a second name typed as another class",
@@ -291,9 +287,11 @@ fn sacm23_xmi_021_a_malformed_second_name_is_refused_as_its_own_defect_first() {
         ),
         (
             "a second name holding an element",
-            in_claim(&format!("<name content=\"A\"/><name>{MARK}<value/></name>")),
+            in_claim(&format!("<name content=\"A\"/><name>{MARK}<foo/></name>")),
         ),
     ];
+    // Text, or one `value`, in a second name is a C++ shape (LIB-COMPAT-008,
+    // `legacy_shapes.rs`), not a malformed name.
     for (what, template) in &unsupported {
         assert_refused_at_mark(what, template, "Unsupported", is_unsupported);
     }
@@ -368,24 +366,29 @@ fn sacm23_xmi_021_a_qualified_name_or_a_name_attribute_is_not_an_occurrence() {
                 "<name content=\"A\"/>{MARK}<name xmlns=\"http://www.omg.org/spec/SACM/20220301\" content=\"B\"/>"
             )),
         ),
-        (
-            "a name attribute on a root with a name element",
-            format!(
-                "<sacm:ArgumentPackage{NS} xmi:id=\"a\" {MARK}name=\"x\">\n  <name content=\"A\"/>\n\
-                 </sacm:ArgumentPackage>"
-            ),
-        ),
-        (
-            "a name attribute on a Claim with a name element",
-            in_ap(&format!(
-                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" {MARK}name=\"x\">\
-                 <name content=\"A\"/></argumentElement>"
-            )),
-        ),
     ];
     for (what, template) in &cases {
         assert_refused_at_mark(what, template, "Unsupported", is_unsupported);
     }
+    // A `name=` attribute is a C++ shape (LIB-COMPAT-008), so with a name
+    // element the name is given twice: `RepeatedValue` for `name`, at the
+    // attribute and at the element, in both modes.
+    assert_repeated_name(
+        "a name attribute on a root with a name element",
+        &format!(
+            "<sacm:ArgumentPackage{NS} xmi:id=\"a\" {MARK}name=\"x\">\n  {MARK}<name content=\"A\"/>\n\
+             </sacm:ArgumentPackage>"
+        ),
+        "a",
+    );
+    assert_repeated_name(
+        "a name attribute on a Claim with a name element",
+        &in_ap(&format!(
+            "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" {MARK}name=\"x\">\
+             {MARK}<name content=\"A\"/></argumentElement>"
+        )),
+        "c1",
+    );
 }
 
 // --- Item 5: Display, docs and the catalog -----------------------------------

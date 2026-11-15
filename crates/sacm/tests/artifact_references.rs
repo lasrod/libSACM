@@ -28,9 +28,9 @@ use sacm::diagnostic::{Code, Diagnostic, Severity, SourceLocation};
 use sacm::edit::{
     self, CreateArgumentPackage, CreateArtifactReference, CreateAssuranceCasePackage, CreateClaim,
     CreateDescription, CreateImplementationConstraint, CreateNote, CreateTaggedValue, EditError,
-    Operation,
+    Operation, SetFlag,
 };
-use sacm::model::{AbstractClass, Document, ElementId, ElementKind, LangString, SacmElement};
+use sacm::model::{AbstractClass, Document, ElementId, ElementKind, Flag, LangString, SacmElement};
 use sacm::validation;
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteOptions};
 
@@ -299,7 +299,8 @@ fn create(doc: &mut Document, operation: impl Into<Operation>) -> ElementId {
 /// A document built by edits: the AssuranceCasePackage `case` holding the
 /// `ArgumentPackage`s `p` and `q`; `p` holds the Claims c1 and c2, and c1 holds
 /// the Description d1, the `ImplementationConstraint` i1, the Note n1 and the
-/// `TaggedValue` t1.
+/// `TaggedValue` t1. c1 is abstract, as §8.6 asks of an element with an
+/// implementation constraint (SACM23-VAL-021).
 fn built() -> Document {
     let mut doc = Document::new();
     create(
@@ -316,6 +317,9 @@ fn built() -> Document {
     );
     create(&mut doc, CreateClaim::new("p", named("C1")).with_id("c1"));
     create(&mut doc, CreateClaim::new("p", named("C2")).with_id("c2"));
+    if let Err(error) = edit::apply(&mut doc, SetFlag::new("c1", Flag::IsAbstract, true)) {
+        panic!("{ROW}: setup: SetFlag(c1, IsAbstract, true) was refused: {error:?}");
+    }
     create(
         &mut doc,
         CreateDescription::new("c1", named("D")).with_id("d1"),
@@ -927,10 +931,16 @@ fn sacm23_arg_006_it_has_no_assertion_declaration_and_its_inherited_features_rou
                 " gid=\"ref-x\" isCitation=\"true\" citedElement=\"y\" abstractForm=\"y\" \
                  referencedArtifactElement=\"c1\"",
                 "<description xmi:id=\"x_d\"><content><value content=\"D\"/></content></description>\
-                 <implementationConstraint xmi:id=\"x_i\"/><note xmi:id=\"x_n\"/>\
+                 <note xmi:id=\"x_n\"/>\
                  <taggedValue xmi:id=\"x_t\"><key><value content=\"K\"/></key></taggedValue>"
             ),
-            reference("y", " isAbstract=\"true\"", "")
+            // x has an abstractForm, so it is concrete; the constraint is on
+            // the abstract y, as §8.6 asks (SACM23-VAL-021).
+            reference(
+                "y",
+                " isAbstract=\"true\"",
+                "<implementationConstraint xmi:id=\"y_i\"/>"
+            )
         )),
     );
     let x = element(&doc, "x");
@@ -966,11 +976,19 @@ fn sacm23_arg_006_it_has_no_assertion_declaration_and_its_inherited_features_rou
         kinds,
         [
             ElementKind::Description,
-            ElementKind::ImplementationConstraint,
             ElementKind::Note,
             ElementKind::TaggedValue
         ],
         "{ROW}: {what}: the utility elements are not its children in order"
+    );
+    let y_kinds: Vec<ElementKind> = element(&doc, "y")
+        .children()
+        .map(SacmElement::kind)
+        .collect();
+    assert_eq!(
+        y_kinds,
+        [ElementKind::ImplementationConstraint],
+        "{ROW}: {what}: the implementation constraint is not y's child"
     );
     assert_eq!(
         validation::validate(&doc),

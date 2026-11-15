@@ -172,6 +172,7 @@ tests = [
   "xtask/tests/repo_checks.rs::lib_qa_001_ci_runs_every_gate",
 ]
 verification = "docs/verification/0001-m0-tooling-verification-round2.md"
+notes = "Since LIB-QA-018 (ADR 0006 amendment 4), a push that changes only `docs/` skips the Windows and macOS test steps, MSRV and the PR-diff mutants; the Ubuntu tests and every other gate still run."
 
 [[row]]
 id = "LIB-QA-002"
@@ -2075,7 +2076,7 @@ tests = [
   "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_white_space_comments_and_processing_instructions_in_name_are_accepted",
   "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_an_attribute_other_than_lang_and_content_on_name_is_unsupported_at_it",
   "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_a_type_naming_another_class_on_name_is_unsupported_at_the_name",
-  "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_an_element_child_or_text_in_name_is_unsupported_at_that_content",
+  "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_an_element_child_in_name_is_unsupported_at_it",
   "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_a_name_element_in_a_namespace_is_unsupported_at_the_element",
   "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_a_type_naming_lang_string_on_name_is_accepted",
   "crates/sacm/tests/xmi_names.rs::sacm23_xmi_012_the_type_on_name_is_resolved_in_the_scope_of_the_name_element",
@@ -2618,7 +2619,6 @@ tests = [
   "crates/sacm/tests/utility_elements.rs::sacm23_base_004_a_caller_id_equal_to_a_content_or_value_id_is_duplicate_id",
   "crates/sacm/tests/utility_elements.rs::sacm23_base_004_content_a_utility_element_cannot_hold_is_unsupported_where_it_starts",
   "crates/sacm/tests/utility_elements.rs::sacm23_base_004_text_or_an_attribute_a_utility_element_cannot_hold_is_unsupported_where_it_starts",
-  "crates/sacm/tests/utility_elements.rs::sacm23_base_004_the_single_language_shorthand_is_unsupported_naming_lib_compat_008",
   "crates/sacm/tests/utility_elements.rs::sacm23_base_004_documents_differing_only_in_content_give_one_content_difference",
   "crates/sacm/tests/utility_elements.rs::sacm23_base_004_documents_differing_only_in_content_or_value_ids_give_content_id_or_content_value_ids",
   "crates/sacm/tests/utility_elements.rs::sacm23_base_004_create_operations_create_with_generated_ids_and_report_their_fields",
@@ -2659,7 +2659,6 @@ tests = [
   "crates/sacm/tests/tagged_values.rs::sacm23_base_005_absent_empty_and_default_keys_are_three_states_that_round_trip",
   "crates/sacm/tests/tagged_values.rs::sacm23_base_005_two_tagged_values_with_the_same_key_are_both_kept_in_order",
   "crates/sacm/tests/tagged_values.rs::sacm23_base_005_a_second_key_or_content_is_repeated_value_in_both_modes",
-  "crates/sacm/tests/tagged_values.rs::sacm23_base_005_the_key_and_value_shorthands_are_unsupported_naming_lib_compat_008",
   "crates/sacm/tests/tagged_values.rs::sacm23_base_005_content_a_tagged_value_cannot_hold_is_unsupported_where_it_starts",
   "crates/sacm/tests/tagged_values.rs::sacm23_base_005_key_ids_are_kept_by_role_and_position_and_written_first",
   "crates/sacm/tests/tagged_values.rs::sacm23_base_005_semantic_compare_reports_key_key_id_and_key_value_ids_separately_from_content",
@@ -3388,12 +3387,45 @@ id = "LIB-COMPAT-008"
 area = "COMPAT"
 milestone = "M2"
 title = "The C++ library's name and text shapes"
-requirement = "Documents written by the assurance-forge C++ library load without loss in both modes: the legacy multi-language `<name>` with `<content lang>` children (the first entry is the name; the rest are kept, never dropped), a `name=\"…\"` attribute on the element, the single-language shorthand of a MultiLangString role (`lang`/`content` attributes, or text, on a `content` or `key` role element with no `value` children, read as one value), `content=` or text directly on a UtilityElement, and `key=`/`value=` attributes on a `taggedValue` (each refused as `Unsupported` until this row, ADR 0025). Tolerant mode reports each with a warning, strict mode with an error, and strict save writes only the standard form."
-source = "D-PRESERVE; D-STRICT; assurance-forge libs/sacm io/xmi_reader.cpp (name, read_multi_lang_values); slice 0016 verification"
+requirement = "A tolerant `xmi::read` reads, as their standard form and with one SACM-XMI-012 Warning per occurrence, the name and text shapes the assurance-forge C++ library reads that map one to one onto a LangString or a MultiLangString: a `name=\"…\"` attribute on a ModelElement (its `content`, `lang` absent); text as the `content` of a `name` or `value`; a `name` holding one `value`, or one `content` carrying `lang`; the single-language shorthand of a `content` or `key` role element (`lang`/`content` attributes or text, with no `value`), read as a MultiLangString of one value; `content=` (with optional `lang=`) or text directly on a UtilityElement; and `key=` and `value=` on a `taggedValue` (its `key` and its `content`). Values are kept exactly: absent is not `\"\"` (ADR 0012), and nothing is trimmed. A field given both in a shorthand and in the standard form, or twice, is `RepeatedValue` (SACM-MULT-001) in both modes. A strict read refuses each shape with SACM-XMI-012 (ADR 0022). Both saves write only the standard form. Shapes that invent or merge elements are LIB-COMPAT-012."
+source = "XMI 2.5.1 §7.8.6 (p. 19) \"Each property that is a composite is represented by an XML element, but not by an XML attribute.\"; rule 4a (p. 50) \"If the org.omg.xmi.contentType value is mixed, then the mixed attribute is included.\"; formal/23-05-08 §8.5 \"value:LangString[1..*]\", §8.6 \"name:LangString[1] (composition)\"; D-PRESERVE; D-STRICT; ADR 0022 amendment 1 (the maintainer, 2026-11-15); ADR 0025; assurance-forge 65577b3 `libs/sacm/src/io/xmi_reader.cpp:786-846, 1150-1281`, `src/legacy_sacm/sacm_serializer.cpp:27-133`"
 kind = "xmi"
-status = "planned"
-depends_on = ["LIB-COMPAT-001", "SACM23-XMI-012", "SACM23-BASE-004", "SACM23-XMI-014"]
-notes = "Slice 0026: owns `<name>text</name>` (text as content) and `<name><value …/></name>`, which SACM23-XMI-012 refuses as `Unsupported`."
+status = "implemented"
+depends_on = ["LIB-COMPAT-001", "SACM23-XMI-012", "SACM23-BASE-004", "SACM23-XMI-014", "SACM23-BASE-005", "SACM23-XMI-021", "SACM23-XMI-022"]
+acceptance = [
+  "Tolerant: `<sacm:Claim … name=\"X\">` reads with name `lang` None and `content` Some(\"X\") and one SACM-XMI-012 Warning at the attribute's name affecting the element; `name=\"\"` gives Some(\"\"); it writes as `<name content=\"X\"/>`, and the output reads in strict mode with no diagnostic.",
+  "Tolerant: `<name>X</name>` gives content \"X\" exactly; `<name lang=\"en\"> X </name>` gives `lang` \"en\" and content \" X \" untrimmed; CDATA and character references give their characters; white-space-only text is no shorthand; the name's `xmi:id` is kept.",
+  "`<name content=\"a\">b</name>`, `<name><content>a</content>b</name>`, `name=\"a\"` with a `<name>` child, and `<name lang=\"en\"><content lang=\"de\">x</content></name>` are each `RepeatedValue` (SACM-MULT-001) in both modes listing every occurrence.",
+  "`<name><value lang=\"en\" content=\"X\"/></name>` and `<name><content lang=\"en\">X</content></name>` read as name {en, X} with one Warning; two or more such entries stay refused (LIB-COMPAT-012).",
+  "`<content lang=\"en\">t</content>`, `<content lang=\"en\" content=\"t\"/>` and `<key>k</key>` each read as a MultiLangString of one value with one Warning; the role element's `xmi:id` is kept as its content or key id; text beside `value` children stays refused.",
+  "`<description content=\"x\"/>`, `<note lang=\"en\">x</note>` and `<description content=\"\"/>` read as content [{None,\"x\"}], [{en,\"x\"}] and [{None,\"\"}]; each combined with a `<content>` child is `RepeatedValue`.",
+  "`<taggedValue key=\"k\" value=\"v\"/>` reads as key [{None,\"k\"}] and content [{None,\"v\"}]; `key=` with `<key>` is `RepeatedValue`; `value=` on any other kind stays refused.",
+  "Strict: each shape is refused with SACM-XMI-012 at the construct (attribute name, first non-white-space text character, or start tag); none is `Unsupported` any more.",
+  "Every tolerant read here, written by `xmi::write` in either mode, gives the standard form, and reading it back is `==` to the tolerant read with no diagnostic.",
+  "The catalog row SACM-XMI-012 names LIB-COMPAT-008; the shorthand messages and the `xmi` module docs no longer name LIB-COMPAT-008 as pending; the tests that pinned the old refusals are updated.",
+]
+code = ["crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi.rs", "docs/adr/0022-load-and-save-modes.md"]
+tests = [
+  "crates/sacm/tests/legacy_shapes.rs::lib_compat_008_a_name_attribute_reads_as_name_content_with_no_lang_and_one_warning",
+  "crates/sacm/tests/legacy_shapes.rs::lib_compat_008_a_name_attribute_is_written_as_a_name_element_that_strict_reads_with_no_diagnostic",
+  "crates/sacm/tests/legacy_shapes.rs::lib_compat_008_a_name_attribute_on_a_utility_element_is_not_read",
+  "crates/sacm/tests/legacy_shapes.rs::lib_compat_008_text_in_a_name_is_its_content_exactly_with_one_warning",
+  "crates/sacm/tests/legacy_shapes.rs::lib_compat_008_white_space_only_text_is_no_shorthand",
+  "crates/sacm/tests/legacy_shapes.rs::lib_compat_008_a_value_given_by_a_shorthand_and_the_standard_form_is_repeated_value_in_both_modes",
+  "crates/sacm/tests/legacy_shapes.rs::lib_compat_008_a_second_name_given_as_text_is_a_repeated_name_in_tolerant_mode",
+  "crates/sacm/tests/legacy_shapes.rs::lib_compat_008_a_name_holding_one_value_or_one_content_with_lang_reads_as_that_name",
+  "crates/sacm/tests/legacy_shapes.rs::lib_compat_008_a_name_holding_two_entries_stays_refused",
+  "crates/sacm/tests/legacy_shapes.rs::lib_compat_008_the_single_language_shorthand_of_content_and_key_reads_as_one_value",
+  "crates/sacm/tests/legacy_shapes.rs::lib_compat_008_text_beside_value_children_stays_refused",
+  "crates/sacm/tests/legacy_shapes.rs::lib_compat_008_content_or_text_on_a_utility_element_reads_as_its_content",
+  "crates/sacm/tests/legacy_shapes.rs::lib_compat_008_key_and_value_attributes_on_a_tagged_value_read_as_its_key_and_content",
+  "crates/sacm/tests/legacy_shapes.rs::lib_compat_008_value_or_key_attributes_on_any_other_kind_stay_refused",
+  "crates/sacm/tests/legacy_shapes.rs::lib_compat_008_a_strict_read_refuses_each_shape_with_sacm_xmi_012_at_the_construct",
+  "crates/sacm/tests/legacy_shapes.rs::lib_compat_008_the_strict_refusal_of_a_shape_shows_its_location",
+  "crates/sacm/tests/legacy_shapes.rs::lib_compat_008_each_tolerant_read_is_written_in_the_standard_form_and_reads_back_strictly_equal",
+  "crates/sacm/tests/legacy_shapes.rs::lib_compat_008_the_catalog_row_of_sacm_xmi_012_is_live_and_names_this_row",
+  "crates/sacm/tests/legacy_shapes.rs::lib_compat_008_the_reader_docs_no_longer_name_this_row_as_pending",
+]
 
 [[row]]
 id = "LIB-TOOL-020"
@@ -4580,6 +4612,18 @@ status = "planned"
 depends_on = ["LIB-COMPAT-001", "SACM23-XMI-005", "SACM23-XMI-002"]
 
 [[row]]
+id = "LIB-COMPAT-012"
+area = "COMPAT"
+milestone = "M6"
+title = "The assurance-forge legacy app dialect"
+requirement = "A tolerant load imports the assurance-forge legacy app dialect (`src/legacy_sacm/sacm_serializer.cpp`): class-named children (`<claim>`, `<Claim>`), unqualified `id`, `ref=`/`href` links, a multi-language `<name>` (the first entry is the name; the rest are kept, never dropped), repeated shorthand `content` siblings merged, and `content=`, `<content lang>`, `<statement>` and `description=` read as Descriptions, each reported. A strict load refuses them."
+source = "Slice 0049 research (2026-11-15); assurance-forge 65577b3 `libs/sacm/src/io/xmi_reader.cpp:1187-1219, 1276-1316, 2037-2058`, `docs/sacm/sacm-interop-corpus.md` (\"legacy app dialect\"); D-PRESERVE; D-STRICT; ADR 0022"
+kind = "xmi"
+status = "planned"
+depends_on = ["LIB-COMPAT-004", "LIB-COMPAT-008", "LIB-COMPAT-003"]
+notes = "Its files are in the SACM 2.2 namespace, so LIB-COMPAT-004 comes first. C++ keeps the extra name entries as a TaggedValue keyed `sacm.import.name`; decide before the tests."
+
+[[row]]
 id = "LIB-COMPAT-004"
 area = "COMPAT"
 milestone = "M6"
@@ -4896,11 +4940,36 @@ id = "SACM23-VAL-019"
 area = "VAL"
 milestone = "M2"
 title = "asCited declarations are citations"
-requirement = "An Assertion declared `asCited` that is not a citation (`isCitation` not true), or whose `citedElement` is not an Assertion, is reported as a warning naming the element (§11.8 \"should\", D-SEV). The element is kept."
-source = "formal/23-05-08 §11.8: \"asCited - a flag indicating that because the Assertion is cited, the AssertionDeclaration should be transitively derived from the value of the AssertionDeclaration of the cited Assertion.\"; D-SEV; slice 0018 research (assurance-forge has no such check)"
+requirement = "`validation::validate` reports an element of an Assertion kind whose `assertionDeclaration` is `asCited` with one SACM-CITE-002 Warning when its `isCitation` is not true, and one when its `citedElement` is absent or names an element of the document that is not of an Assertion kind (affecting the element, then that target). Each has requirement SACM23-VAL-019, clause 11.8 and no location. A `citedElement` that names no element gives only SACM-REF-001. The element is kept, and a strict save is not refused."
+source = "formal/23-05-08 §11.8 (p. 38) \"asCited - a flag indicating that because the Assertion is cited, the AssertionDeclaration should be transitively derived from the value of the AssertionDeclaration of the cited Assertion.\"; §11.11 (p. 39); §8.2 (p. 18) \"isCitation[0..1]=false\", \"citedElement:SACMElement[0..1]\"; D-SEV; the maintainer, 2026-11-15 (code SACM-CITE-002)"
 kind = "validation"
-status = "planned"
-depends_on = ["SACM23-ARG-002", "SACM23-BASE-007"]
+status = "implemented"
+depends_on = ["SACM23-ARG-002", "SACM23-BASE-007", "SACM23-ARG-008", "SACM23-ARG-009", "SACM23-ARG-010", "SACM23-ARG-011", "SACM23-ARG-012", "SACM23-VAL-003", "SACM23-VAL-007"]
+acceptance = [
+  "Each of the six Assertion kinds declared asCited, with `isCitation=\"true\"` and a `citedElement` naming a Claim or an AssertedInference, gives no SACM-CITE-002 finding; the kinds need not match.",
+  "asCited with `isCitation` false and no `citedElement` gives two Warnings, both affecting `[element]`; with `isCitation` true and no `citedElement`, one.",
+  "asCited citing an ArgumentReasoning, an ArtifactReference or an ArgumentPackage gives one Warning affecting `[element, target]`; a dangling `citedElement` gives SACM-REF-001 only.",
+  "`isCitation` false with a `citedElement` naming a Claim gives SACM-CITE-001 (Error, SACM23-VAL-007) and this row's Warning.",
+  "A citation of an Assertion not declared asCited, and every other literal, give no finding; a strict write succeeds when these are the only findings.",
+  "`SetAssertionDeclaration` to asCited on a non-citation succeeds, and `validate` then warns.",
+  "The catalog row SACM-CITE-002 (Warning) names SACM23-VAL-019.",
+]
+code = ["crates/sacm/src/validation/references.rs", "crates/sacm/src/diagnostic.rs"]
+tests = [
+  "crates/sacm/tests/as_cited_validation.rs::sacm23_val_019_the_setup_gives_no_finding_without_as_cited",
+  "crates/sacm/tests/as_cited_validation.rs::sacm23_val_019_an_as_cited_citation_of_a_claim_or_an_asserted_inference_gives_no_finding",
+  "crates/sacm/tests/as_cited_validation.rs::sacm23_val_019_an_as_cited_non_citation_without_cited_element_gives_two_warnings_on_the_element",
+  "crates/sacm/tests/as_cited_validation.rs::sacm23_val_019_an_as_cited_citation_without_cited_element_gives_one_warning_on_the_element",
+  "crates/sacm/tests/as_cited_validation.rs::sacm23_val_019_an_as_cited_citation_of_a_non_assertion_gives_one_warning_on_the_element_and_target",
+  "crates/sacm/tests/as_cited_validation.rs::sacm23_val_019_an_as_cited_citation_of_itself_gives_no_finding",
+  "crates/sacm/tests/as_cited_validation.rs::sacm23_val_019_a_dangling_cited_element_gives_only_ref_001",
+  "crates/sacm/tests/as_cited_validation.rs::sacm23_val_019_a_cited_claim_without_is_citation_gives_cite_001_and_this_row_s_warning",
+  "crates/sacm/tests/as_cited_validation.rs::sacm23_val_019_findings_come_in_validate_s_order_code_then_affected_ids",
+  "crates/sacm/tests/as_cited_validation.rs::sacm23_val_019_every_other_declaration_gives_no_finding",
+  "crates/sacm/tests/as_cited_validation.rs::sacm23_val_019_the_warnings_do_not_refuse_a_strict_write",
+  "crates/sacm/tests/as_cited_validation.rs::sacm23_val_019_set_assertion_declaration_as_cited_on_a_non_citation_succeeds_and_validate_warns",
+  "crates/sacm/tests/as_cited_validation.rs::sacm23_val_019_as_cited_invalid_is_sacm_cite_002_and_its_catalog_row_names_it_and_the_row",
+]
 
 [[row]]
 id = "SACM23-VAL-020"
@@ -4943,12 +5012,30 @@ id = "SACM23-VAL-021"
 area = "VAL"
 milestone = "M2"
 title = "Implementation constraints only on abstract elements"
-requirement = "`validation::validate` reports a ModelElement that has an `implementationConstraint` and whose `isAbstract` is not true as an Error (the §8.6 OCL; D-SEV). Its code is chosen before its tests (C++ uses SACM-CITE-001)."
-source = "formal/23-05-08 §8.6 (p. 20) \"ImplementationConstraints should only be specified if +isAbstract is true OCL: self.implmentationConstraint->size() > 0 implies self.isAbstract = true\"; C++ validate.cpp:461-468"
+requirement = "`validation::validate` reports each ModelElement that has one or more `implementationConstraint` children and whose `isAbstract` is not true as one SACM-ABS-001 Error, with requirement SACM23-VAL-021, clause 8.6, affected `[element]` and no location (the §8.6 OCL; D-SEV). A strict save then refuses the document; reading and editing do not."
+source = "formal/23-05-08 §8.6 (p. 20) \"ImplementationConstraints should only be specified if +isAbstract is true OCL: self.implmentationConstraint->size() > 0 implies self.isAbstract = true\" (spec defect D15: the property is `implementationConstraint`); §8.2 (p. 18) \"isAbstract[0..1]=false\"; D-SEV; D-VAL-LAYER; ADR 0029; the maintainer, 2026-11-15 (SACM-ABS-001 widened); assurance-forge `validate.cpp:461-468` (SACM-CITE-001)"
 kind = "validation"
-status = "planned"
-depends_on = ["SACM23-BASE-004", "SACM23-BASE-008"]
-notes = "Found in slice 0040 research. Until SACM23-BASE-008 makes `isAbstract` settable, an edit-built ImplementationConstraint would fail a strict save once this row is built."
+status = "implemented"
+depends_on = ["SACM23-BASE-004", "SACM23-BASE-008", "LIB-EDIT-008", "SACM23-VAL-008"]
+acceptance = [
+  "Each readable ModelElement kind (both packages, Claim, ArgumentReasoning, ArtifactReference, ArgumentGroup, the five relationships) with one constraint and `isAbstract` false gives exactly one Error; with two constraints still one.",
+  "The same element with `isAbstract=\"true\"` gives none; Descriptions, Notes and TaggedValues alone give none.",
+  "A strict write returns `WriteError::Invalid` holding it; a tolerant write keeps the constraint.",
+  "`CreateImplementationConstraint` under a concrete Claim succeeds and `validate` reports the Error; `SetFlag(c, IsAbstract, true)` clears it and a strict write then succeeds.",
+  "It is independent of SACM-ABS-001's clause 8.2 findings (an abstract element with an `abstractForm` gives that Error as well).",
+  "The catalog row SACM-ABS-001 covers it and names SACM23-VAL-021.",
+]
+code = ["crates/sacm/src/validation/constraints.rs", "crates/sacm/src/diagnostic.rs"]
+tests = [
+  "crates/sacm/tests/implementation_constraint_validation.rs::sacm23_val_021_the_setup_gives_no_finding_without_a_constraint",
+  "crates/sacm/tests/implementation_constraint_validation.rs::sacm23_val_021_a_concrete_element_of_each_readable_kind_with_a_constraint_gives_one_error",
+  "crates/sacm/tests/implementation_constraint_validation.rs::sacm23_val_021_an_abstract_element_with_constraints_gives_no_finding",
+  "crates/sacm/tests/implementation_constraint_validation.rs::sacm23_val_021_descriptions_notes_and_tagged_values_alone_give_no_finding",
+  "crates/sacm/tests/implementation_constraint_validation.rs::sacm23_val_021_a_strict_write_refuses_and_a_tolerant_write_keeps_the_constraint",
+  "crates/sacm/tests/implementation_constraint_validation.rs::sacm23_val_021_create_implementation_constraint_then_set_is_abstract_clears_the_error",
+  "crates/sacm/tests/implementation_constraint_validation.rs::sacm23_val_021_is_independent_of_the_clause_8_2_abstract_form_findings",
+  "crates/sacm/tests/implementation_constraint_validation.rs::sacm23_val_021_abstract_form_invalid_covers_it_and_its_catalog_row_names_the_row",
+]
 
 [[row]]
 id = "SACM23-VAL-022"
@@ -5191,6 +5278,32 @@ tests = [
   "xtask/tests/repo_checks.rs::lib_qa_017_sacm_denies_the_platform_lints_outside_tests",
   "xtask/tests/repo_checks.rs::lib_qa_017_clippy_toml_check_reports_a_removed_path_or_reason",
   "xtask/tests/repo_checks.rs::lib_qa_017_deny_and_allow_checks_report_a_removed_attribute_or_level",
+]
+
+[[row]]
+id = "LIB-QA-018"
+area = "QA"
+milestone = "M2"
+title = "Documentation-only pushes skip the code-only CI jobs"
+requirement = "A CI job `changes` decides whether the latest push (a pull request's new commits, or a push's before..after) changed any file outside `docs/`, and is true when it cannot tell. Only an explicit `false` skips anything: the Windows and macOS test steps, the MSRV job and the PR-diff mutant shards; their required checks pass as skipped. The Ubuntu tests and every other job still run. The `mutants (PR diff)` check passes when every shard passed, or when `changes` succeeded with `false` and the shards were skipped."
+source = "ADR 0006 amendment 4 (the maintainer, 2026-11-15)"
+kind = "quality"
+status = "implemented"
+depends_on = ["LIB-QA-001"]
+acceptance = [
+  "ci.yml has the `changes` job with the `docs/` rule and fail-open default, and the four gates (`test` steps on non-Ubuntu, `msrv`, `mutants-shard`, the `mutants` aggregator) use `!= 'false'` or the explicit skip condition; the Ubuntu test steps are never skipped; a regression test fails if any gate is removed or inverted, or if the rule widens beyond `docs/`.",
+  "The detection script gives `false` for a docs-only range and `true` for a range touching any other path, an empty range, or a failing `git diff` (checked by running the script on a scratch repository in the test).",
+  "CI on the slice's PR shows a docs-only push skipping the four jobs with all required checks green, and a code push running them (verification evidence: run URLs).",
+]
+code = [".github/workflows/ci.yml"]
+tests = [
+  "xtask/tests/repo_checks.rs::lib_qa_018_ci_skips_only_the_code_only_jobs_on_a_docs_only_push",
+  "xtask/tests/repo_checks.rs::lib_qa_018_the_detection_script_is_found_with_its_rule_and_default",
+  "xtask/tests/repo_checks.rs::lib_qa_018_ci_check_reports_a_removed_inverted_or_widened_gate",
+  "xtask/tests/repo_checks.rs::lib_qa_018_detection_script_is_false_only_for_a_docs_only_range",
+  "xtask/tests/repo_checks.rs::lib_qa_018_detection_cases_catch_a_widened_rule_or_a_closed_default",
+  "xtask/tests/repo_checks.rs::lib_qa_018_detection_script_counts_code_moved_into_docs_as_a_code_change",
+  "xtask/tests/repo_checks.rs::lib_qa_018_mutants_check_passes_only_when_every_shard_passed_or_docs_only_skipped_them",
 ]
 
 [[row]]
@@ -5674,11 +5787,32 @@ id = "SACM23-XMI-026"
 area = "XMI"
 milestone = "M2"
 title = "xsi:nil on a value element"
-requirement = "`xsi:nil=\"true\"` on a value element reads as absent for a [0..1] property (`lang`, `content`, `gid`); on the [1] `assertionDeclaration` it is a multiplicity refusal (SACM-MULT-001). `xsi:nil=\"false\"` reads the text. Until this row it is `Unsupported` (SACM23-XMI-014)."
-source = "XMI 2.5.1 §9.4.1 \"When the value of a Property is null, it is serialized as XMIValueElement with attribute nil='true'.\"; §7.8.4 `nillable=\"true\"`; Table 7.1 `includeNils` default true; XSD 1 §3.3.4"
+requirement = "On a value element of a DataType-typed property (`gid`, `isCitation`, `isAbstract`, `isCounter`, `assertionDeclaration`, and `lang`/`content` in a `name` or `value`), `xsi:nil` is read in both modes as an `xsd:boolean`: `true`/`1` reads exactly as if the property were not written (absent for a [0..1] String, `false` for a flag, `asserted` for `assertionDeclaration`), `false`/`0` reads the element's content as usual, and any other value is `InvalidLiteral` (SACM-ENUM-001). A nil element with any character or element child is refused, as is `xsi:nil` on any element that is not a value element (not nillable). A nil occurrence counts for `RepeatedValue`. Nothing is reported, and `write` writes the property as omitted."
+source = "XMI 2.5.1 §9.4.1 (p. 56) \"When the value of a Property is null, it is serialized as XMIValueElement with attribute nil='true'.\"; rule 2b (p. 63) \"Null values may be serialized as well, unless the value of the org.omg.xmi.includeNils tag is \\\"false,\\\" in which case you may not serialize null values.\"; Table 7.1 (p. 27) `includeNils` default `true`; §7.11.2 (p. 28); production 4d (pp. 48, 50) `nillable='true'`; §7.15 (p. 43) \"If P is included but empty in the XMI file, the property is unset; if mandatory, it is instead set to its default value.\"; XML Schema 1.0 Part 1 §3.3.4 cvc-elt 3.1 and 3.2.1, §3.2.7; the maintainer, 2026-11-15 (nil reads as omitted)"
 kind = "xmi"
-status = "planned"
-depends_on = ["SACM23-XMI-014"]
+status = "implemented"
+depends_on = ["SACM23-XMI-014", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-ARG-007", "SACM23-XMI-017", "SACM23-VAL-006"]
+acceptance = [
+  "`<gid xsi:nil=\"true\"/>`, `<name><lang xsi:nil=\"1\"/></name>` and `<value><content xsi:nil=\" true \"/></value>` read as absent: `==` to the same file without the element and different from `<gid/>` (`\"\"`); no diagnostic, in either mode.",
+  "`xsi:nil=\"false\"` on `<gid>x</gid>` gives \"x\"; on `<gid xsi:nil=\"false\"/>` it gives `\"\"`; on `<assertionDeclaration xsi:nil=\"0\">assumed</assertionDeclaration>` it gives assumed.",
+  "`<isCitation xsi:nil=\"true\"/>`, `<isAbstract …/>` and `<isCounter …/>` read as false, and `<assertionDeclaration xsi:nil=\"true\"/>` as asserted, each `==` to the file without the element.",
+  "`xsi:nil=\"TRUE\"`, `\"yes\"` and `\"\"` are each `InvalidLiteral` (SACM-ENUM-001) naming `xsi:nil`, at the attribute.",
+  "`<gid xsi:nil=\"true\">x</gid>` and `<gid xsi:nil=\"true\"> </gid>` are refused at the text; a comment or processing instruction inside is accepted.",
+  "`xsi:nil` on `<name>`, `<value>`, a `content`/`key` role element, a child element or a reference element stays refused at the attribute; an unqualified `nil` is an unread attribute.",
+  "`gid=\"x\"` with `<gid xsi:nil=\"true\"/>`, and two nil `gid` elements, are each `RepeatedValue`.",
+  "Writing a nil-read document writes no `xsi:nil` and no element for the property, and it reads back `==`.",
+]
+code = ["crates/sacm/src/xmi/roots.rs"]
+tests = [
+  "crates/sacm/tests/xsi_nil.rs::sacm23_xmi_026_a_nil_value_element_reads_as_if_the_property_were_not_written",
+  "crates/sacm/tests/xsi_nil.rs::sacm23_xmi_026_a_nil_value_reads_as_absent_a_nil_flag_as_false_and_a_nil_declaration_as_asserted",
+  "crates/sacm/tests/xsi_nil.rs::sacm23_xmi_026_nil_false_reads_the_element_content_as_usual",
+  "crates/sacm/tests/xsi_nil.rs::sacm23_xmi_026_an_xsi_nil_that_is_not_a_boolean_literal_is_invalid_literal_at_the_attribute",
+  "crates/sacm/tests/xsi_nil.rs::sacm23_xmi_026_a_nil_element_with_a_character_or_element_child_is_refused_at_it",
+  "crates/sacm/tests/xsi_nil.rs::sacm23_xmi_026_xsi_nil_on_an_element_that_is_not_a_value_element_stays_refused_at_the_attribute",
+  "crates/sacm/tests/xsi_nil.rs::sacm23_xmi_026_a_nil_occurrence_counts_for_repeated_value",
+  "crates/sacm/tests/xsi_nil.rs::sacm23_xmi_026_a_nil_read_document_is_written_with_the_property_omitted_and_reads_back_equal",
+]
 
 [[row]]
 id = "SACM23-XMI-027"
@@ -5708,12 +5842,25 @@ id = "LIB-COMPAT-010"
 area = "COMPAT"
 milestone = "M2"
 title = "Tolerant inference of a missing type attribute"
-requirement = "A tolerant load of an abstract-role child with no type attribute infers the class from the element's local name, exactly, and reports a warning. A strict load reports SACM-XMI-005 (SACM23-XMI-016)."
-source = "Moved from SACM23-XMI-006 in slice 0025; assurance-forge `xmi_reader.cpp:1103-1116` (case-insensitive there)"
+requirement = "An element under a role whose declared type is abstract, with no `xmi:type` or `xsi:type`, is refused in both modes with the coded refusal SACM-XMI-005 at its start tag: its local name is the role, so no class can be inferred, and none is guessed (ADR 0022)."
+source = "XMI 2.5.1 §7.6.3 (p. 15) \"The type attribute is used to specify the type of object being serialized, when the type is not known from the model.\"; ADR 0022 (its codes table: an untyped child under an abstract role is SACM-XMI-005); the maintainer, 2026-11-15 (a refusal, not an inference); assurance-forge `xmi_reader.cpp:1103-1116` (tries the role name as a class name, then drops the child)"
 kind = "compliance"
-status = "planned"
+status = "implemented"
 depends_on = ["LIB-COMPAT-001", "SACM23-XMI-016"]
-notes = "M1 audit (slice 0038): as worded it cannot be tested, because an abstract-role element is named after its role, not a class. Before its tests, name the input shapes (which dialect, one example element each), and say whether strict mode refuses or reads with an Error."
+notes = "Reworded 2026-11-15 (slice 0049 research): no tool is known to write this shape, and an abstract-role element is named after its role, so nothing can be inferred. Class-named children (`<Claim>`, `<claim>`) are the legacy dialect, LIB-COMPAT-012."
+acceptance = [
+  "`<argumentElement xmi:id=\"c1\"/>` under an ArgumentPackage is refused in both modes with code SACM-XMI-005 at its `<`; so is one with a `name` or children.",
+  "The same element with `xmi:type` or `xsi:type` naming a concrete admitted class reads as before.",
+  "`<argumentPackage>` under an AssuranceCasePackage (a concrete declared type) still reads untyped.",
+  "SACM-XMI-005's catalog row is live, Error, both modes; `Unsupported` is no longer returned for this input.",
+]
+code = ["crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi.rs"]
+tests = [
+  "crates/sacm/tests/untyped_abstract_roles.rs::lib_compat_010_an_untyped_child_under_an_abstract_role_is_sacm_xmi_005_at_its_start_tag",
+  "crates/sacm/tests/untyped_abstract_roles.rs::lib_compat_010_the_same_element_typed_as_a_concrete_admitted_class_reads_as_before",
+  "crates/sacm/tests/untyped_abstract_roles.rs::lib_compat_010_an_untyped_child_under_a_concrete_role_still_reads",
+  "crates/sacm/tests/untyped_abstract_roles.rs::lib_compat_010_the_catalog_row_of_sacm_xmi_005_is_live_and_an_error_in_both_modes",
+]
 
 [[row]]
 id = "LIB-TOOL-021"

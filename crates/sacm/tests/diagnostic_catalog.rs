@@ -22,13 +22,15 @@ const ROW: &str = "LIB-DIAG-002";
 
 /// Every `Code` constant, by name. A new constant must be added here, which
 /// the scan checks; each text is checked against `as_str()`.
-const CONSTANTS: [(&str, Code); 26] = [
+const CONSTANTS: [(&str, Code); 29] = [
     ("XML_MALFORMED", Code::XML_MALFORMED),
     ("XML_DOCTYPE_REJECTED", Code::XML_DOCTYPE_REJECTED),
     ("XMI_INVALID_ROOT", Code::XMI_INVALID_ROOT),
     ("XMI_MISSING_ID", Code::XMI_MISSING_ID),
+    ("XMI_MISSING_TYPE", Code::XMI_MISSING_TYPE),
     ("XMI_XSI_TYPE", Code::XMI_XSI_TYPE),
     ("XMI_VERSION_IGNORED", Code::XMI_VERSION_IGNORED),
+    ("XMI_LEGACY_SHAPE", Code::XMI_LEGACY_SHAPE),
     ("MULTIPLICITY_VIOLATION", Code::MULTIPLICITY_VIOLATION),
     ("ENUM_INVALID_LITERAL", Code::ENUM_INVALID_LITERAL),
     ("CMD_TARGET_NOT_FOUND", Code::CMD_TARGET_NOT_FOUND),
@@ -51,6 +53,7 @@ const CONSTANTS: [(&str, Code); 26] = [
     ("REF_DANGLING", Code::REF_DANGLING),
     ("REF_WRONG_TYPE", Code::REF_WRONG_TYPE),
     ("CITATION_INVALID", Code::CITATION_INVALID),
+    ("AS_CITED_INVALID", Code::AS_CITED_INVALID),
     ("ABSTRACT_FORM_INVALID", Code::ABSTRACT_FORM_INVALID),
 ];
 
@@ -59,10 +62,12 @@ const CONSTANTS: [(&str, Code); 26] = [
 /// (SACM23-VAL-004) of slice 0044, and SACM-CMD-008 and SACM-CMD-009
 /// (LIB-EDIT-008, LIB-EDIT-010); and SACM-CMD-002, SACM-CMD-003,
 /// SACM-CMD-006 and SACM-CMD-007 of slice 0048 (LIB-EDIT-005, LIB-EDIT-006,
-/// LIB-EDIT-007).
-const LIVE: [&str; 26] = [
+/// LIB-EDIT-007); and SACM-CITE-002 (SACM23-VAL-019), SACM-XMI-005
+/// (LIB-COMPAT-010) and SACM-XMI-012 (LIB-COMPAT-008) of slice 0049.
+const LIVE: [&str; 29] = [
     "SACM-ABS-001",
     "SACM-CITE-001",
+    "SACM-CITE-002",
     "SACM-CMD-001",
     "SACM-CMD-002",
     "SACM-CMD-003",
@@ -84,8 +89,10 @@ const LIVE: [&str; 26] = [
     "SACM-SEC-001",
     "SACM-XMI-001",
     "SACM-XMI-004",
+    "SACM-XMI-005",
     "SACM-XMI-010",
     "SACM-XMI-011",
+    "SACM-XMI-012",
     "SACM-XML-001",
 ];
 

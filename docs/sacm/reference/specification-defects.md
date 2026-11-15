@@ -305,6 +305,28 @@ only the text says these properties are Booleans.
 
 **Suggested resolution.** Type the three properties by `PrimitiveTypes.xmi#Boolean`.
 
+## D15 — The clause 8.6 OCL misspells implementationConstraint
+
+formal/23-05-08 §8.6 (p. 20) gives the constraint as
+`self.implmentationConstraint->size() > 0 implies self.isAbstract = true`. The property is
+`implementationConstraint` (§8.6 Associations; ptc/22-03-13), so the OCL as written does
+not type-check.
+
+**This crate** enforces the intended rule (SACM23-VAL-021, SACM-ABS-001).
+
+**Suggested resolution.** Correct the spelling.
+
+## D16 — XMI 2.5.1 production 2b gives a nil value no element name
+
+XMI 2.5.1 production 2b (p. 62) has the alternative `( "<xsi:nil='true'/>" )`, which names
+no element and so is not an XMIValueElement; §9.4.1 (p. 56) says a null property value "is
+serialized as XMIValueElement with attribute nil='true'". The production as restated on
+p. 104 omits the nil alternative altogether.
+
+**This crate** reads `xsi:nil` on a value element, as §9.4.1 says (SACM23-XMI-026).
+
+**Suggested resolution.** Write the alternative as `"<" //xmiName// " xsi:nil='true'/>"`.
+
 ## Related
 
 - [GSN / SACM metamodel gaps](sacm-gsn-metamodel-gaps.md) — the GSN v3 side, for the SCSC ACWG.

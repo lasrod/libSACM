@@ -7,7 +7,11 @@
 //! and their `content` and `key` roles, for `gid` (ADR 0025), and for the
 //! `SACMElement` flags and references (ADR 0026), and for the
 //! asserted-relationship features, `metaClaim` and `structure` (ADR 0027), and
-//! for the `ArtifactReference` and `ArgumentGroup` ends (ADR 0028).
+//! for the `ArtifactReference` and `ArgumentGroup` ends (ADR 0028); the
+//! strict refusals of the C++ name and text shapes (SACM-XMI-012,
+//! LIB-COMPAT-008) and the untyped child under an abstract role
+//! (SACM-XMI-005, LIB-COMPAT-010). A row is read in tolerant mode unless it
+//! says strict.
 //! The expected
 //! location is marked in the input with [`MARK`] (U+2038), which the test
 //! removes before reading, and is counted here: lines end at LF, CRLF or a
@@ -33,8 +37,8 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
 use std::time::Duration;
 
-use sacm::diagnostic::SourceLocation;
-use sacm::xmi::{self, ReadError, ReadOptions, ReadOutput};
+use sacm::diagnostic::{Code, SourceLocation};
+use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput};
 
 const ROW: &str = "SACM23-XMI-010";
 
@@ -119,6 +123,11 @@ enum Variant {
     InvalidId,
     RepeatedValue,
     InvalidLiteral,
+    /// SACM-XMI-012, a C++ shape in strict mode (LIB-COMPAT-008).
+    LegacyShape,
+    /// SACM-XMI-005, an untyped child under an abstract role
+    /// (LIB-COMPAT-010).
+    MissingType,
 }
 
 /// One refusal site.
@@ -128,6 +137,7 @@ struct Row {
     form: Form,
     lead: Lead,
     variant: Variant,
+    mode: Mode,
 }
 
 fn row(what: &'static str, variant: Variant, text: impl Into<String>) -> Row {
@@ -137,6 +147,7 @@ fn row(what: &'static str, variant: Variant, text: impl Into<String>) -> Row {
         form: Form::Utf8,
         lead: Lead::Full,
         variant,
+        mode: Mode::Tolerant,
     }
 }
 
@@ -147,6 +158,14 @@ impl Row {
 
     fn lead(self, lead: Lead) -> Self {
         Self { lead, ..self }
+    }
+
+    /// The row read in strict mode.
+    fn strict(self) -> Self {
+        Self {
+            mode: Mode::Strict,
+            ..self
+        }
     }
 }
 
@@ -443,7 +462,7 @@ fn root_rows() -> Vec<Row> {
 
 /// The refusals of a root's name.
 fn name_rows() -> Vec<Row> {
-    use Variant::{DuplicateId, InvalidId, Unsupported};
+    use Variant::{DuplicateId, InvalidId, LegacyShape, Unsupported};
     vec![
         // SACM23-XMI-022: a name's id is an id, at the name's start tag.
         row(
@@ -471,18 +490,26 @@ fn name_rows() -> Vec<Row> {
             Unsupported,
             in_ap(&format!("<name content=\"N\" {MARK}xml:lang=\"en\"/>")),
         ),
-        // `lang` and `content` are value elements (SACM23-XMI-014); `value`
-        // is the legacy form's (LIB-COMPAT-008).
+        // `lang` and `content` are value elements (SACM23-XMI-014); one
+        // `value`, and text, are C++ shapes, refused in strict mode
+        // (LIB-COMPAT-008).
         row(
             "an element in a name",
             Unsupported,
-            in_ap(&format!("<name>{MARK}<value/></name>")),
+            in_ap(&format!("<name>{MARK}<foo/></name>")),
         ),
         row(
-            "text in a name",
-            Unsupported,
+            "a value in a name, strict",
+            LegacyShape,
+            in_ap(&format!("<name>{MARK}<value/></name>")),
+        )
+        .strict(),
+        row(
+            "text in a name, strict",
+            LegacyShape,
             in_ap(&format!("<name> {MARK}x</name>")),
-        ),
+        )
+        .strict(),
     ]
 }
 
@@ -557,7 +584,11 @@ fn child_role_rows() -> Vec<Row> {
             U,
             element(" xmi:type=\"nope:Claim\" xmi:id=\"x\""),
         ),
-        row("an untyped argumentElement", U, element(" xmi:id=\"x\"")),
+        row(
+            "an untyped argumentElement",
+            Variant::MissingType,
+            element(" xmi:id=\"x\""),
+        ),
         row(
             "two type attributes that disagree",
             U,
@@ -721,53 +752,62 @@ fn in_tagged(body: &str) -> String {
 }
 
 /// The `Unsupported` refusals of utility elements and their `content` and
-/// `key` roles (SACM23-BASE-004, SACM23-BASE-005; ADR 0025).
+/// `key` roles (SACM23-BASE-004, SACM23-BASE-005; ADR 0025), and the strict
+/// refusals of their C++ shorthands (LIB-COMPAT-008).
 fn utility_rows() -> Vec<Row> {
-    use Variant::Unsupported as U;
+    use Variant::{LegacyShape as L, Unsupported as U};
     vec![
-        // The single-language shorthand stays refused until LIB-COMPAT-008,
-        // at its first attribute or its text.
+        // The C++ shorthands (LIB-COMPAT-008): strict refuses each at its
+        // first attribute or its text.
         row(
             "the lang and content shorthand on content",
-            U,
+            L,
             in_description(&format!("<content {MARK}lang=\"en\" content=\"x\"/>")),
-        ),
+        )
+        .strict(),
         row(
             "the content shorthand on content",
-            U,
+            L,
             in_description(&format!("<content {MARK}content=\"x\"/>")),
-        ),
+        )
+        .strict(),
         row(
             "text in content",
-            U,
+            L,
             in_description(&format!("<content>{MARK}x</content>")),
-        ),
+        )
+        .strict(),
         row(
             "the lang and content shorthand on key",
-            U,
+            L,
             in_tagged(&format!("<key {MARK}lang=\"en\" content=\"k\"/>")),
-        ),
-        row("text in key", U, in_tagged(&format!("<key>{MARK}k</key>"))),
+        )
+        .strict(),
+        row("text in key", L, in_tagged(&format!("<key>{MARK}k</key>"))).strict(),
         row(
             "content= on a UtilityElement",
-            U,
+            L,
             in_ap(&format!("<description xmi:id=\"d\" {MARK}content=\"x\"/>")),
-        ),
+        )
+        .strict(),
         row(
             "text in a UtilityElement",
-            U,
+            L,
             in_ap(&format!("<description xmi:id=\"d\">{MARK}x</description>")),
-        ),
+        )
+        .strict(),
         row(
             "key= on taggedValue",
-            U,
+            L,
             in_ap(&format!("<taggedValue xmi:id=\"t\" {MARK}key=\"k\"/>")),
-        ),
+        )
+        .strict(),
         row(
             "value= on taggedValue",
-            U,
+            L,
             in_ap(&format!("<taggedValue xmi:id=\"t\" {MARK}value=\"v\"/>")),
-        ),
+        )
+        .strict(),
         // A UtilityElement has no `name`.
         row(
             "a name on a UtilityElement",
@@ -799,11 +839,14 @@ fn utility_rows() -> Vec<Row> {
             U,
             in_content(&format!("<value content=\"x\" {MARK}xml:lang=\"en\"/>")),
         ),
+        // Text in a value is a C++ shape (LIB-COMPAT-008): refused in strict
+        // mode at the text.
         row(
-            "text in a value",
-            U,
+            "text in a value, strict",
+            L,
             in_content(&format!("<value lang=\"en\">{MARK}x</value>")),
-        ),
+        )
+        .strict(),
     ]
 }
 
@@ -938,12 +981,6 @@ fn gid_rows() -> Vec<Row> {
             "an element in a gid element",
             U,
             in_claim(&format!("<gid>g{MARK}<b/></gid>")),
-        ),
-        // SACM23-XMI-026.
-        row(
-            "xsi:nil on a gid element",
-            U,
-            in_claim(&format!("<gid {MARK}xsi:nil=\"true\"/>")),
         ),
         // SACM23-XMI-021: at the second occurrence.
         row(
@@ -1432,12 +1469,12 @@ fn artifact_rows() -> Vec<Row> {
 /// How long one `read` may take; a hang fails the test instead of stalling.
 const DEADLINE: Duration = Duration::from_secs(5);
 
-/// `xmi::read` with the default options, on a worker thread.
-fn read(input: &[u8]) -> Result<ReadOutput, ReadError> {
+/// `xmi::read` in `mode`, on a worker thread.
+fn read(input: &[u8], mode: Mode) -> Result<ReadOutput, ReadError> {
     let owned = input.to_vec();
     let (sender, receiver) = mpsc::channel();
     thread::spawn(move || {
-        let _ = sender.send(xmi::read(&owned, &ReadOptions::default()));
+        let _ = sender.send(xmi::read(&owned, &ReadOptions::default().with_mode(mode)));
     });
     match receiver.recv_timeout(DEADLINE) {
         Ok(result) => result,
@@ -1557,6 +1594,8 @@ fn variant(error: &ReadError) -> Option<Variant> {
         ReadError::InvalidId { .. } => Some(Variant::InvalidId),
         ReadError::RepeatedValue { .. } => Some(Variant::RepeatedValue),
         ReadError::InvalidLiteral { .. } => Some(Variant::InvalidLiteral),
+        _ if error.code() == Some(Code::XMI_LEGACY_SHAPE) => Some(Variant::LegacyShape),
+        _ if error.code() == Some(Code::XMI_MISSING_TYPE) => Some(Variant::MissingType),
         _ => None,
     }
 }
@@ -1568,13 +1607,13 @@ fn assert_located(group: &str, rows: &[Row]) {
     for row in rows {
         let (input, expected) = input_of(row);
         check_lead(row, expected);
-        match read(&input) {
+        match read(&input, row.mode) {
             Ok(_) => failures.push(format!("{}: a document was returned", row.what)),
             Err(error)
                 if variant(&error) == Some(row.variant) && error.location() == Some(expected) => {}
             Err(error) => failures.push(format!(
-                "{}: expected {:?} at {expected}, got {error:?}",
-                row.what, row.variant
+                "{}: expected {:?} at {expected} in {:?} mode, got {error:?}",
+                row.what, row.variant, row.mode
             )),
         }
     }
@@ -1599,10 +1638,11 @@ fn marked_text_rows() -> Vec<Row> {
             in_claim(&format!(" 	 {MARK}&#x20;x")),
         ),
         row(
-            "\"&#x20;x\" in a name",
-            U,
+            "\"&#x20;x\" in a name, strict",
+            Variant::LegacyShape,
             in_ap(&format!("<name>{MARK}&#x20;x</name>")),
-        ),
+        )
+        .strict(),
         row(
             "\"&#x20;x\" in the wrapper",
             U,
@@ -1621,10 +1661,11 @@ fn marked_text_rows() -> Vec<Row> {
             in_claim(&format!("  {MARK}<![CDATA[ x]]>")),
         ),
         row(
-            "\"<![CDATA[ x]]>\" in a name",
-            U,
+            "\"<![CDATA[ x]]>\" in a name, strict",
+            Variant::LegacyShape,
             in_ap(&format!("<name>{MARK}<![CDATA[ x]]></name>")),
-        ),
+        )
+        .strict(),
         row(
             "\"<![CDATA[ ]]>x\" in a Claim",
             U,
@@ -1753,6 +1794,8 @@ fn sacm23_xmi_010_the_table_covers_every_read_error_variant() {
         Variant::InvalidId,
         Variant::RepeatedValue,
         Variant::InvalidLiteral,
+        Variant::LegacyShape,
+        Variant::MissingType,
     ] {
         assert!(
             rows.iter().any(|row| row.variant == wanted),
@@ -1766,7 +1809,7 @@ fn sacm23_xmi_010_display_shows_the_location_for_every_refusal_site() {
     let mut failures = Vec::new();
     for row in all_rows() {
         let (input, _) = input_of(&row);
-        let Err(error) = read(&input) else {
+        let Err(error) = read(&input, row.mode) else {
             failures.push(format!("{}: a document was returned", row.what));
             continue;
         };
@@ -1779,11 +1822,17 @@ fn sacm23_xmi_010_display_shows_the_location_for_every_refusal_site() {
         // and a repeated value every occurrence (SACM23-XMI-014). A bad
         // literal gives its location among the literals it lists
         // (SACM23-VAL-006), not necessarily at the end.
+        // The variants of SACM-XMI-012 and SACM-XMI-005 (LIB-COMPAT-008,
+        // LIB-COMPAT-010) are known here only by their code, so only that
+        // the location is shown is checked.
         if matches!(
             error,
             ReadError::DuplicateId { .. }
                 | ReadError::RepeatedValue { .. }
                 | ReadError::InvalidLiteral { .. }
+        ) || matches!(
+            variant(&error),
+            Some(Variant::LegacyShape | Variant::MissingType)
         ) {
             for location in error.locations() {
                 if !shown.contains(&location.to_string()) {
@@ -1839,7 +1888,7 @@ fn sacm23_xmi_010_hand_counted_locations_after_crlf_a_lone_cr_and_non_ascii() {
         (b"\xEF\xBB\xBF<!-- \xC3\xA9 -->\r\n\r\n    <r/>", 3, 5),
     ];
     for (input, line, column) in cases {
-        let Err(error) = read(input) else {
+        let Err(error) = read(input, Mode::Tolerant) else {
             panic!("{ROW}: {:?} was read", String::from_utf8_lossy(input));
         };
         assert_eq!(

@@ -4,11 +4,14 @@
 //! configuration and its triage (LIB-QA-007), the nextest settings that make
 //! mutation outcomes independent of test order (LIB-QA-012, ADR 0009), the
 //! git-ignore rules (LIB-TOOL-002, LIB-QA-007), the ADR index and the
-//! links to ADRs (LIB-DOC-008), and the wasm32 build and the platform-API
-//! lint (LIB-QA-017).
+//! links to ADRs (LIB-DOC-008), the wasm32 build and the platform-API
+//! lint (LIB-QA-017), and the CI gates that let a documentation-only push
+//! skip the code-only jobs (LIB-QA-018).
 //!
-//! Workflow YAML structure is not pinned here: branch protection on `main`
-//! and review guard it (slice 0012).
+//! Workflow YAML structure is otherwise not pinned here: branch protection
+//! on `main` and review guard it (slice 0012). The LIB-QA-018 gates are
+//! pinned line by line, and its detection script is run on a scratch git
+//! repository with the platform's bash and git.
 //!
 //! Each check is a function over a file's text or parsed TOML that returns the
 //! problems it finds. Every problem starts with a stable code in brackets
@@ -19,7 +22,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 use xtask::fetch::DEFAULT_DEST;
 
@@ -605,6 +609,1081 @@ fn lib_qa_017_deny_and_allow_checks_report_a_removed_attribute_or_level() {
                 "LIB-QA-017: `{lint}` at {level:?} in [workspace.lints.clippy] is not reported"
             );
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// LIB-QA-018: documentation-only pushes skip the code-only CI jobs
+// ---------------------------------------------------------------------------
+
+/// The `changes` job's output, read by every gate.
+const CHANGES_OUTPUT: &str = "code: ${{ steps.diff.outputs.code }}";
+
+/// The detection script's rule: only a file outside `docs/` makes `code`
+/// true. Any other pattern widens or narrows what counts as documentation.
+const DOCS_RULE: &str = "if ! echo \"$files\" | grep -qv '^docs/'; then code=false; fi";
+
+/// The detection script's fail-open default.
+const CHANGES_DEFAULT: &str = "code=true";
+
+/// The detection script's output.
+const CHANGES_WRITE: &str = "echo \"code=$code\" >> \"$GITHUB_OUTPUT\"";
+
+/// The `test` job runs even when `changes` failed.
+const TEST_JOB_GATE: &str = "if: ${{ !cancelled() }}";
+
+/// Each `test` step: skipped only on an explicit `false`, and never on
+/// Ubuntu.
+const TEST_STEP_GATE: &str =
+    "if: needs.changes.outputs.code != 'false' || matrix.os == 'ubuntu-latest'";
+
+const MSRV_GATE: &str = "if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}";
+
+const MUTANTS_SHARD_GATE: &str = "if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.changes.outputs.code != 'false' }}";
+
+/// The `mutants (PR diff)` aggregator: it runs whatever the shards did, and
+/// passes when every shard passed, or when `changes` succeeded with `false`
+/// and the shards were skipped.
+const MUTANTS_GATE: &str = "if: always() && github.event_name == 'pull_request'";
+const MUTANTS_NEEDS: &str = "needs: [changes, mutants-shard]";
+const MUTANTS_RUN: &str = "run: test \"$RESULT\" = success || { test \"$CHANGES\" = success && test \"$CODE\" = false && test \"$RESULT\" = skipped; }";
+const MUTANTS_ENV: [&str; 3] = [
+    "RESULT: ${{ needs.mutants-shard.result }}",
+    "CHANGES: ${{ needs.changes.result }}",
+    "CODE: ${{ needs.changes.outputs.code }}",
+];
+
+/// The jobs that may read `changes`; every other job always runs.
+const CHANGES_JOBS: [&str; 5] = ["changes", "test", "msrv", "mutants-shard", "mutants"];
+
+/// The jobs of a workflow, in order: each key two spaces deep under `jobs:`,
+/// with the lines of its body. Comment lines are dropped; blank lines kept.
+fn workflow_jobs(ci: &str) -> Vec<(String, Vec<&str>)> {
+    let mut jobs: Vec<(String, Vec<&str>)> = Vec::new();
+    let mut in_jobs = false;
+    for line in ci.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('#') {
+            continue;
+        }
+        if !trimmed.is_empty() && indent(line) == 0 {
+            in_jobs = trimmed == "jobs:";
+            continue;
+        }
+        if !in_jobs {
+            continue;
+        }
+        if indent(line) == 2 && !trimmed.contains(' ') {
+            if let Some(name) = trimmed.strip_suffix(':') {
+                jobs.push((name.to_owned(), Vec::new()));
+                continue;
+            }
+        }
+        if let Some((_, body)) = jobs.last_mut() {
+            body.push(line);
+        }
+    }
+    jobs
+}
+
+/// The body of the job `name`, empty when there is none.
+fn job<'a>(jobs: &'a [(String, Vec<&'a str>)], name: &str) -> &'a [&'a str] {
+    jobs.iter()
+        .find(|(job, _)| job == name)
+        .map_or(&[], |(_, body)| body.as_slice())
+}
+
+/// Whether the job `body` has the job-level line (four spaces deep) `key`.
+fn has_job_line(body: &[&str], key: &str) -> bool {
+    body.iter()
+        .any(|line| indent(line) == 4 && line.trim() == key)
+}
+
+/// A step line without its indent and `- ` list marker.
+fn step_line(line: &str) -> &str {
+    let line = line.trim();
+    line.strip_prefix("- ").unwrap_or(line)
+}
+
+/// The steps of the job `body`: each `- ` item six spaces deep under its
+/// `steps:`, with its lines.
+fn job_steps<'a>(body: &[&'a str]) -> Vec<Vec<&'a str>> {
+    let mut steps: Vec<Vec<&str>> = Vec::new();
+    let mut in_steps = false;
+    for &line in body {
+        if line.trim().is_empty() {
+            continue;
+        }
+        if indent(line) <= 4 {
+            in_steps = line.trim() == "steps:";
+            continue;
+        }
+        if !in_steps {
+            continue;
+        }
+        if indent(line) == 6 && line.trim_start().starts_with("- ") {
+            steps.push(vec![line]);
+        } else if let Some(step) = steps.last_mut() {
+            step.push(line);
+        }
+    }
+    steps
+}
+
+/// The first `run: |` script of the `changes` job, dedented, or `None` when
+/// there is none.
+fn detection_script(ci: &str) -> Option<String> {
+    let jobs = workflow_jobs(ci);
+    let step = job_steps(job(&jobs, "changes"))
+        .into_iter()
+        .find(|step| step.iter().any(|line| step_line(line) == "run: |"))?;
+    let start = step.iter().position(|line| step_line(line) == "run: |")?;
+    let depth = indent(step[start]);
+    let body: Vec<&str> = step[start + 1..]
+        .iter()
+        .copied()
+        .take_while(|line| line.trim().is_empty() || indent(line) > depth)
+        .collect();
+    let margin = body
+        .iter()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| indent(line))
+        .min()?;
+    let mut script = String::new();
+    for line in body {
+        script.push_str(line.get(margin..).unwrap_or(""));
+        script.push('\n');
+    }
+    Some(script)
+}
+
+/// LIB-QA-018: what is wrong with `ci.yml`'s `changes` job and its
+/// detection script.
+fn changes_job_problems(ci: &str, jobs: &[(String, Vec<&str>)]) -> Vec<String> {
+    let mut problems = Vec::new();
+    let changes = job(jobs, "changes");
+    let diff_step = job_steps(changes)
+        .into_iter()
+        .any(|step| step.iter().any(|line| step_line(line) == "id: diff"));
+    require(
+        &mut problems,
+        changes.iter().any(|line| line.trim() == "outputs:")
+            && changes.iter().any(|line| line.trim() == CHANGES_OUTPUT)
+            && changes.iter().any(|line| line.trim() == "fetch-depth: 0")
+            && diff_step,
+        "changes-job",
+        &format!(
+            "ci.yml must have a `changes` job with the output `{CHANGES_OUTPUT}`, a `diff` step \
+             and `fetch-depth: 0`"
+        ),
+    );
+    let script = detection_script(ci).unwrap_or_default();
+    let script: Vec<&str> = script.lines().map(str::trim).collect();
+    let default_at = script.iter().position(|line| *line == CHANGES_DEFAULT);
+    let first_false = script.iter().position(|line| line.contains("code=false"));
+    require(
+        &mut problems,
+        default_at.is_some_and(|at| first_false.is_none_or(|first| at < first))
+            && script.contains(&CHANGES_WRITE),
+        "changes-default",
+        &format!(
+            "the detection script must start from `{CHANGES_DEFAULT}` (fail open) and write \
+             `{CHANGES_WRITE}`"
+        ),
+    );
+    let greps: Vec<&str> = script
+        .iter()
+        .copied()
+        .filter(|line| line.contains("grep"))
+        .collect();
+    require(
+        &mut problems,
+        greps == [DOCS_RULE],
+        "changes-rule",
+        &format!("the detection script's only rule must be `{DOCS_RULE}`"),
+    );
+    problems
+}
+
+/// LIB-QA-018: what is wrong with `ci.yml`'s documentation-only gates.
+fn docs_only_ci_problems(ci: &str) -> Vec<String> {
+    let jobs = workflow_jobs(ci);
+    let mut problems = changes_job_problems(ci, &jobs);
+
+    let test = job(&jobs, "test");
+    require(
+        &mut problems,
+        has_job_line(test, "needs: changes") && has_job_line(test, TEST_JOB_GATE),
+        "test-job-gate",
+        &format!("the `test` job must have `needs: changes` and `{TEST_JOB_GATE}`"),
+    );
+    let steps = job_steps(test);
+    require(
+        &mut problems,
+        !steps.is_empty()
+            && steps
+                .iter()
+                .all(|step| step.iter().any(|line| step_line(line) == TEST_STEP_GATE)),
+        "test-step-gate",
+        &format!("every step of the `test` job must have `{TEST_STEP_GATE}`"),
+    );
+
+    for (name, gate, code) in [
+        ("msrv", MSRV_GATE, "msrv-gate"),
+        ("mutants-shard", MUTANTS_SHARD_GATE, "mutants-shard-gate"),
+    ] {
+        let body = job(&jobs, name);
+        require(
+            &mut problems,
+            has_job_line(body, "needs: changes") && has_job_line(body, gate),
+            code,
+            &format!("the `{name}` job must have `needs: changes` and `{gate}`"),
+        );
+    }
+
+    let mutants = job(&jobs, "mutants");
+    require(
+        &mut problems,
+        has_job_line(mutants, MUTANTS_NEEDS)
+            && has_job_line(mutants, MUTANTS_GATE)
+            && MUTANTS_ENV
+                .iter()
+                .chain([&MUTANTS_RUN])
+                .all(|key| mutants.iter().any(|line| step_line(line) == *key)),
+        "mutants-gate",
+        &format!(
+            "the `mutants` job must have `{MUTANTS_NEEDS}`, `{MUTANTS_GATE}`, the env \
+             {MUTANTS_ENV:?} and `{MUTANTS_RUN}`"
+        ),
+    );
+
+    for (name, body) in &jobs {
+        if CHANGES_JOBS.contains(&name.as_str()) {
+            continue;
+        }
+        let reads_changes = body.iter().any(|line| {
+            line.contains("needs.changes")
+                || (indent(line) == 4
+                    && line.trim().starts_with("needs:")
+                    && line.contains("changes"))
+        });
+        require(
+            &mut problems,
+            !reads_changes,
+            "other-job-gated",
+            &format!("the `{name}` job must not depend on `changes`: it always runs"),
+        );
+    }
+    problems
+}
+
+/// `text` with the `n`th (0-based) line equal (trimmed) to `target`
+/// replaced by `replacement`, keeping its indentation, or deleted when
+/// `replacement` is `None`. Panics if there is no such line.
+fn edit_nth_line(text: &str, target: &str, n: usize, replacement: Option<&str>) -> String {
+    let hits = text.lines().filter(|line| line.trim() == target).count();
+    assert!(
+        n < hits,
+        "mutation target `{target}` occurs {hits} times, not more than {n}"
+    );
+    let mut seen = 0;
+    let mut out = String::new();
+    for line in text.lines() {
+        if line.trim() == target {
+            seen += 1;
+            if seen == n + 1 {
+                if let Some(replacement) = replacement {
+                    out.push_str(leading(line));
+                    out.push_str(replacement);
+                    out.push('\n');
+                }
+                continue;
+            }
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
+/// `ci.yml` with LF line ends, so that multi-line mutations match on every
+/// platform.
+fn ci_text() -> String {
+    read(".github/workflows/ci.yml").replace("\r\n", "\n")
+}
+
+#[test]
+fn lib_qa_018_ci_skips_only_the_code_only_jobs_on_a_docs_only_push() {
+    let problems = docs_only_ci_problems(&ci_text());
+    assert!(
+        problems.is_empty(),
+        "LIB-QA-018: ci.yml's documentation-only gates are wrong: {problems:#?}"
+    );
+}
+
+#[test]
+fn lib_qa_018_the_detection_script_is_found_with_its_rule_and_default() {
+    let Some(script) = detection_script(&ci_text()) else {
+        panic!("LIB-QA-018: ci.yml's `changes` job has no `run: |` script in its `diff` step");
+    };
+    let lines: Vec<&str> = script.lines().map(str::trim).collect();
+    for line in [CHANGES_DEFAULT, DOCS_RULE, CHANGES_WRITE] {
+        assert!(
+            lines.contains(&line),
+            "LIB-QA-018: the detection script has no line `{line}`:\n{script}"
+        );
+    }
+}
+
+/// A mutation of `ci.yml`: what it does, the mutated text, and the one
+/// problem code it must give.
+type Mutation = (String, String, &'static str);
+
+/// Mutations of the `changes` job and its detection script.
+fn changes_mutations(ci: &str) -> Vec<Mutation> {
+    let mut mutations: Vec<Mutation> = vec![
+        // The `changes` job.
+        (
+            "the `code` output removed".to_owned(),
+            delete_line(ci, CHANGES_OUTPUT),
+            "changes-job",
+        ),
+        (
+            "the `diff` step renamed".to_owned(),
+            replace_line(ci, "- id: diff", "- id: detect"),
+            "changes-job",
+        ),
+        (
+            "the `changes` job's full history removed".to_owned(),
+            edit_nth_line(ci, "fetch-depth: 0", 0, None),
+            "changes-job",
+        ),
+        (
+            "the default made `false` (fail closed)".to_owned(),
+            replace_line(ci, CHANGES_DEFAULT, "code=false"),
+            "changes-default",
+        ),
+        (
+            "the output no longer written".to_owned(),
+            delete_line(ci, CHANGES_WRITE),
+            "changes-default",
+        ),
+        (
+            "a second rule added".to_owned(),
+            insert_after(
+                ci,
+                DOCS_RULE,
+                0,
+                &["if ! echo \"$files\" | grep -qv '^crates/'; then code=false; fi"],
+            ),
+            "changes-rule",
+        ),
+    ];
+    for widened in [
+        "'^docs'",
+        "'docs/'",
+        "'^d'",
+        "'^[a-z]*/'",
+        "'^docs/\\|^src/'",
+    ] {
+        mutations.push((
+            format!("the rule widened to {widened}"),
+            replace_line(
+                ci,
+                DOCS_RULE,
+                &format!("if ! echo \"$files\" | grep -qv {widened}; then code=false; fi"),
+            ),
+            "changes-rule",
+        ));
+    }
+    mutations
+}
+
+/// Mutations of the `test` job's gates, one set per step gate.
+fn test_job_mutations(ci: &str) -> Vec<Mutation> {
+    let step_gates = ci
+        .lines()
+        .filter(|line| line.trim() == TEST_STEP_GATE)
+        .count();
+    let last_test_step = format!(
+        "      - run: cargo test -p xtask
+        {TEST_STEP_GATE}
+"
+    );
+    let mut mutations: Vec<Mutation> = vec![
+        // The `test` job.
+        (
+            "the `test` job's `!cancelled()` removed".to_owned(),
+            delete_line(ci, TEST_JOB_GATE),
+            "test-job-gate",
+        ),
+        (
+            "the `test` job gated as a whole (skipping Ubuntu)".to_owned(),
+            replace_line(
+                ci,
+                TEST_JOB_GATE,
+                "if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}",
+            ),
+            "test-job-gate",
+        ),
+        (
+            "the `test` job's `needs: changes` removed".to_owned(),
+            edit_nth_line(ci, "needs: changes", 0, None),
+            "test-job-gate",
+        ),
+        (
+            "an ungated step added to the `test` job".to_owned(),
+            replace_once(
+                ci,
+                &last_test_step,
+                &format!("{last_test_step}      - run: cargo test --doc\n"),
+            ),
+            "test-step-gate",
+        ),
+    ];
+    for n in 0..step_gates {
+        for (what, replacement) in [
+            ("removed", None),
+            (
+                "inverted to `== 'true'`",
+                Some("if: needs.changes.outputs.code == 'true' || matrix.os == 'ubuntu-latest'"),
+            ),
+            (
+                "without the Ubuntu exception",
+                Some("if: needs.changes.outputs.code != 'false'"),
+            ),
+        ] {
+            mutations.push((
+                format!("test step {n}'s gate {what}"),
+                edit_nth_line(ci, TEST_STEP_GATE, n, replacement),
+                "test-step-gate",
+            ));
+        }
+    }
+    mutations
+}
+
+/// Mutations of the `msrv`, `mutants-shard` and `mutants` gates, and a
+/// gate on a job that must always run.
+fn other_job_mutations(ci: &str) -> Vec<Mutation> {
+    vec![
+        // MSRV and the mutant shards.
+        (
+            "the `msrv` gate removed".to_owned(),
+            delete_line(ci, MSRV_GATE),
+            "msrv-gate",
+        ),
+        (
+            "the `msrv` gate inverted to `== 'true'`".to_owned(),
+            replace_line(
+                ci,
+                MSRV_GATE,
+                "if: ${{ !cancelled() && needs.changes.outputs.code == 'true' }}",
+            ),
+            "msrv-gate",
+        ),
+        (
+            "the `msrv` gate without `!cancelled()` (fail closed)".to_owned(),
+            replace_line(
+                ci,
+                MSRV_GATE,
+                "if: ${{ needs.changes.outputs.code != 'false' }}",
+            ),
+            "msrv-gate",
+        ),
+        (
+            "the `msrv` job's `needs: changes` removed".to_owned(),
+            edit_nth_line(ci, "needs: changes", 1, None),
+            "msrv-gate",
+        ),
+        (
+            "the `mutants-shard` gate removed".to_owned(),
+            delete_line(ci, MUTANTS_SHARD_GATE),
+            "mutants-shard-gate",
+        ),
+        (
+            "the `mutants-shard` gate inverted to `== 'true'`".to_owned(),
+            replace_line(
+                ci,
+                MUTANTS_SHARD_GATE,
+                "if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.changes.outputs.code == 'true' }}",
+            ),
+            "mutants-shard-gate",
+        ),
+        (
+            "the `mutants-shard` job's `needs: changes` removed".to_owned(),
+            edit_nth_line(ci, "needs: changes", 2, None),
+            "mutants-shard-gate",
+        ),
+        // The aggregator.
+        (
+            "the aggregator passing any skipped shard".to_owned(),
+            replace_line(
+                ci,
+                MUTANTS_RUN,
+                "run: test \"$RESULT\" = success || test \"$RESULT\" = skipped",
+            ),
+            "mutants-gate",
+        ),
+        (
+            "the aggregator not reading `code`".to_owned(),
+            delete_line(ci, MUTANTS_ENV[2]),
+            "mutants-gate",
+        ),
+        (
+            "the aggregator not needing `changes`".to_owned(),
+            replace_line(ci, MUTANTS_NEEDS, "needs: mutants-shard"),
+            "mutants-gate",
+        ),
+        (
+            "the aggregator not run when a shard is skipped".to_owned(),
+            replace_line(ci, MUTANTS_GATE, "if: github.event_name == 'pull_request'"),
+            "mutants-gate",
+        ),
+        // Every other job still runs.
+        (
+            "the rustdoc job gated".to_owned(),
+            insert_after(
+                ci,
+                "name: rustdoc",
+                0,
+                &[
+                    "needs: changes",
+                    "if: needs.changes.outputs.code != 'false'",
+                ],
+            ),
+            "other-job-gated",
+        ),
+    ]
+}
+
+#[test]
+fn lib_qa_018_ci_check_reports_a_removed_inverted_or_widened_gate() {
+    let ci = ci_text();
+    assert!(
+        docs_only_ci_problems(&ci).is_empty(),
+        "LIB-QA-018: the mutations need a ci.yml that passes the check"
+    );
+    assert_eq!(
+        ci.lines()
+            .filter(|line| line.trim() == TEST_STEP_GATE)
+            .count(),
+        job_steps(job(&workflow_jobs(&ci), "test")).len(),
+        "LIB-QA-018: setup: not one step gate per test step"
+    );
+    let mutations: Vec<Mutation> = changes_mutations(&ci)
+        .into_iter()
+        .chain(test_job_mutations(&ci))
+        .chain(other_job_mutations(&ci))
+        .collect();
+    for (what, mutated, code) in &mutations {
+        assert_eq!(
+            problem_codes(&docs_only_ci_problems(mutated)),
+            [*code],
+            "LIB-QA-018: {what} is not reported as only `{code}`"
+        );
+    }
+
+    // Without the `changes` job, its checks report it.
+    let start = ci
+        .find("\n  changes:\n")
+        .expect("LIB-QA-018: setup: the changes job");
+    let end = ci[start + 1..]
+        .find("\n  fmt:\n")
+        .map(|at| start + 1 + at)
+        .expect("LIB-QA-018: setup: the job after changes");
+    let without_changes = format!("{}{}", &ci[..start], &ci[end..]);
+    let problems = docs_only_ci_problems(&without_changes);
+    assert!(
+        has_code(&problems, "changes-job")
+            && has_code(&problems, "changes-default")
+            && has_code(&problems, "changes-rule"),
+        "LIB-QA-018: a removed `changes` job is not reported: {problems:#?}"
+    );
+}
+
+// --- The detection script, run on a scratch repository ------------------------------
+
+/// Whether `program --version` runs and succeeds.
+fn runs(program: &Path) -> bool {
+    Command::new(program)
+        .arg("--version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+/// A bash to run the workflow's scripts with, as GitHub's runners do. On
+/// Windows, `bash` would resolve to System32's WSL launcher before `PATH`,
+/// so a Git for Windows or MSYS2 bash is looked for on `PATH` and next to
+/// `git`.
+fn find_bash() -> Option<PathBuf> {
+    if !cfg!(windows) {
+        let bash = PathBuf::from("bash");
+        return runs(&bash).then_some(bash);
+    }
+    let mut candidates = Vec::new();
+    if let Some(path) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&path) {
+            let lower = dir.to_string_lossy().to_lowercase();
+            if !lower.contains("system32") && !lower.contains("windowsapps") {
+                candidates.push(dir.join("bash.exe"));
+            }
+        }
+    }
+    if let Ok(output) = Command::new("git").arg("--exec-path").output() {
+        // <root>/mingw64/libexec/git-core, or <root>/ucrt64/libexec/git-core.
+        let exec_path = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
+        if let Some(root) = exec_path.ancestors().nth(3) {
+            candidates.push(root.join("bin").join("bash.exe"));
+            candidates.push(root.join("usr").join("bin").join("bash.exe"));
+        }
+    }
+    candidates
+        .into_iter()
+        .find(|candidate| candidate.is_file() && runs(candidate))
+}
+
+/// The bash to run the scripts with, or `None` to skip because bash or git
+/// is missing on this machine. On CI, where both always exist, a missing
+/// one fails the test instead.
+fn script_runner(test: &str) -> Option<PathBuf> {
+    let bash = find_bash();
+    let git = runs(Path::new("git"));
+    if let (Some(bash), true) = (&bash, git) {
+        return Some(bash.clone());
+    }
+    let missing = if git { "bash" } else { "git" };
+    assert!(
+        std::env::var_os("CI").is_none(),
+        "LIB-QA-018: {test}: {missing} is not available on CI"
+    );
+    skip(test, missing);
+    None
+}
+
+/// Says that the test `test` is skipped because `missing` is not available.
+#[expect(
+    clippy::print_stderr,
+    reason = "a skipped LIB-QA-018 check must be seen in the test output"
+)]
+fn skip(test: &str, missing: &str) {
+    eprintln!("LIB-QA-018: {test}: skipped: {missing} is not available on this machine");
+}
+
+/// A path as bash and git read it on every platform: with `/` separators.
+fn posix(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+/// A fresh git repository under the system temp directory, removed on drop.
+/// Git runs with no global or system configuration.
+struct ScratchRepo {
+    root: PathBuf,
+    repo: PathBuf,
+    config: PathBuf,
+}
+
+impl ScratchRepo {
+    fn new(test: &str) -> Self {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos());
+        let root = std::env::temp_dir().join(format!(
+            "xtask-lib-qa-018-{test}-{}-{nanos}",
+            std::process::id()
+        ));
+        let repo = root.join("repo");
+        fs::create_dir_all(&repo)
+            .unwrap_or_else(|e| panic!("LIB-QA-018: create {}: {e}", repo.display()));
+        let config = root.join("gitconfig");
+        fs::write(&config, "")
+            .unwrap_or_else(|e| panic!("LIB-QA-018: write {}: {e}", config.display()));
+        let scratch = Self { root, repo, config };
+        scratch.git(&["init", "--quiet"]);
+        scratch
+    }
+
+    /// `program` run in the repository, with its git configuration.
+    fn command(&self, program: &Path) -> Command {
+        let mut command = Command::new(program);
+        command
+            .current_dir(&self.repo)
+            .env("GIT_CONFIG_GLOBAL", posix(&self.config))
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_AUTHOR_NAME", "LIB-QA-018")
+            .env("GIT_AUTHOR_EMAIL", "lib-qa-018@example.invalid")
+            .env("GIT_COMMITTER_NAME", "LIB-QA-018")
+            .env("GIT_COMMITTER_EMAIL", "lib-qa-018@example.invalid");
+        command
+    }
+
+    /// Runs git with `args`, which must succeed, and returns its output.
+    fn git(&self, args: &[&str]) -> String {
+        let output = self
+            .command(Path::new("git"))
+            .args(["-c", "commit.gpgsign=false", "-c", "core.autocrlf=false"])
+            .args(args)
+            .output()
+            .unwrap_or_else(|e| panic!("LIB-QA-018: run git {args:?}: {e}"));
+        assert!(
+            output.status.success(),
+            "LIB-QA-018: git {args:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8_lossy(&output.stdout).trim().to_owned()
+    }
+
+    /// Writes `text` to the file `rel` of the work tree.
+    fn write(&self, rel: &str, text: &str) {
+        let path = self.repo.join(rel);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .unwrap_or_else(|e| panic!("LIB-QA-018: create {}: {e}", parent.display()));
+        }
+        fs::write(&path, text)
+            .unwrap_or_else(|e| panic!("LIB-QA-018: write {}: {e}", path.display()));
+    }
+
+    /// Commits every change in the work tree and returns the commit's id.
+    fn commit(&self, message: &str) -> String {
+        self.git(&["add", "--all"]);
+        self.git(&["commit", "--quiet", "-m", message]);
+        self.git(&["rev-parse", "HEAD"])
+    }
+
+    /// Runs `script` with `bash` as a GitHub runner does (`bash -e`), with
+    /// the event variables `event` (the others empty), and returns what it
+    /// wrote to `$GITHUB_OUTPUT`.
+    fn run_script(&self, bash: &Path, script: &str, event: &[(&str, &str)], n: usize) -> String {
+        let script_file = self.root.join(format!("script-{n}.sh"));
+        let output_file = self.root.join(format!("github-output-{n}"));
+        fs::write(&script_file, script)
+            .unwrap_or_else(|e| panic!("LIB-QA-018: write {}: {e}", script_file.display()));
+        let mut command = self.command(bash);
+        command
+            .args(["--noprofile", "--norc", "-e"])
+            .arg(posix(&script_file))
+            .env("GITHUB_OUTPUT", posix(&output_file));
+        for var in ["EVENT", "ACTION", "BEFORE", "AFTER", "BASE", "HEAD"] {
+            let value = event
+                .iter()
+                .find(|(name, _)| *name == var)
+                .map_or("", |(_, value)| *value);
+            command.env(var, value);
+        }
+        let output = command
+            .output()
+            .unwrap_or_else(|e| panic!("LIB-QA-018: run {}: {e}", bash.display()));
+        assert!(
+            output.status.success(),
+            "LIB-QA-018: the script failed for {event:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        fs::read_to_string(&output_file).unwrap_or_default()
+    }
+}
+
+impl Drop for ScratchRepo {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.root);
+    }
+}
+
+/// Runs the detection script for `event` and returns `code`: the script
+/// must write exactly one line, `code=true` or `code=false`.
+fn detect(bash: &Path, repo: &ScratchRepo, script: &str, event: &[(&str, &str)], n: usize) -> bool {
+    let written = repo.run_script(bash, script, event, n);
+    match written.lines().collect::<Vec<_>>().as_slice() {
+        ["code=true"] => true,
+        ["code=false"] => false,
+        _ => panic!("LIB-QA-018: for {event:?} the script wrote {written:?}, not one `code=` line"),
+    }
+}
+
+/// The commits of the scratch history, in order.
+struct History {
+    /// README.md, src/lib.rs and docs/guide.md.
+    base: String,
+    /// docs/guide.md changed and docs/sub/new.md added.
+    docs: String,
+    /// src/lib.rs changed.
+    code: String,
+    /// docs.md added at the top: not under docs/.
+    docs_file: String,
+    /// crates/x/docs/notes.md added: a docs/ that is not the top one.
+    nested_docs: String,
+    /// docs/guide.md deleted.
+    docs_deleted: String,
+    /// src/lib.rs moved to docs/lib.rs.
+    moved_into_docs: String,
+}
+
+fn history(repo: &ScratchRepo) -> History {
+    repo.write("README.md", "readme\n");
+    repo.write("src/lib.rs", "pub fn answer() -> u32 {\n    42\n}\n");
+    repo.write("docs/guide.md", "# Guide\n");
+    let base = repo.commit("base");
+    repo.write("docs/guide.md", "# Guide\n\nMore.\n");
+    repo.write("docs/sub/new.md", "# New\n");
+    let docs = repo.commit("docs only");
+    repo.write("src/lib.rs", "pub fn answer() -> u32 {\n    43\n}\n");
+    let code = repo.commit("code");
+    repo.write("docs.md", "not under docs/\n");
+    let docs_file = repo.commit("a top-level docs.md");
+    repo.write("crates/x/docs/notes.md", "nested\n");
+    let nested_docs = repo.commit("a nested docs/");
+    repo.git(&["rm", "--quiet", "docs/guide.md"]);
+    let docs_deleted = repo.commit("a docs file deleted");
+    repo.git(&["mv", "src/lib.rs", "docs/lib.rs"]);
+    let moved_into_docs = repo.commit("code moved into docs/");
+    History {
+        base,
+        docs,
+        code,
+        docs_file,
+        nested_docs,
+        docs_deleted,
+        moved_into_docs,
+    }
+}
+
+/// The event variables a detection script runs with, by name.
+type Event = Vec<(&'static str, String)>;
+
+/// A push event from `before` to `after`.
+fn push_event(before: &str, after: &str) -> Event {
+    vec![
+        ("EVENT", "push".to_owned()),
+        ("BEFORE", before.to_owned()),
+        ("AFTER", after.to_owned()),
+    ]
+}
+
+/// A pull request event: `action`, the pull request's `base` and `head`,
+/// and the latest push's `before` and `after`.
+fn pull_request_event(
+    action: &str,
+    (base, head): (&str, &str),
+    (before, after): (&str, &str),
+) -> Event {
+    vec![
+        ("EVENT", "pull_request".to_owned()),
+        ("ACTION", action.to_owned()),
+        ("BASE", base.to_owned()),
+        ("HEAD", head.to_owned()),
+        ("BEFORE", before.to_owned()),
+        ("AFTER", after.to_owned()),
+    ]
+}
+
+#[test]
+fn lib_qa_018_detection_script_is_false_only_for_a_docs_only_range() {
+    let test = "detection";
+    let Some(bash) = script_runner(test) else {
+        return;
+    };
+    let Some(script) = detection_script(&ci_text()) else {
+        panic!("LIB-QA-018: ci.yml's `changes` job has no detection script");
+    };
+    let repo = ScratchRepo::new(test);
+    let h = history(&repo);
+    let unknown = "1234567890abcdef1234567890abcdef12345678";
+    let zero = "0000000000000000000000000000000000000000";
+    let cases: Vec<(&str, Event, bool)> = vec![
+        // Only docs/ changed: the one case that skips.
+        (
+            "a push changing and adding docs/ files",
+            push_event(&h.base, &h.docs),
+            false,
+        ),
+        (
+            "a push deleting a docs/ file",
+            push_event(&h.nested_docs, &h.docs_deleted),
+            false,
+        ),
+        (
+            "a new pull request changing only docs/",
+            pull_request_event("opened", (&h.base, &h.docs), ("", "")),
+            false,
+        ),
+        (
+            "a reopened pull request changing only docs/",
+            pull_request_event("reopened", (&h.base, &h.docs), ("", "")),
+            false,
+        ),
+        (
+            "a pull request's latest push changing only docs/, after code",
+            pull_request_event("synchronize", (&h.docs, &h.code), (&h.base, &h.docs)),
+            false,
+        ),
+        // Anything else runs everything.
+        ("a push changing src/", push_event(&h.docs, &h.code), true),
+        (
+            "a push changing docs/ and src/",
+            push_event(&h.base, &h.code),
+            true,
+        ),
+        (
+            "a push adding a top-level docs.md",
+            push_event(&h.code, &h.docs_file),
+            true,
+        ),
+        (
+            "a push adding crates/x/docs/notes.md",
+            push_event(&h.docs_file, &h.nested_docs),
+            true,
+        ),
+        (
+            "a new pull request changing src/",
+            pull_request_event("opened", (&h.docs, &h.code), ("", "")),
+            true,
+        ),
+        (
+            "a pull request's latest push changing src/, after docs",
+            pull_request_event("synchronize", (&h.base, &h.docs), (&h.docs, &h.code)),
+            true,
+        ),
+        ("an empty range", push_event(&h.docs, &h.docs), true),
+        ("a push with no range", push_event("", ""), true),
+        (
+            "a push creating a branch (before is all zeros)",
+            push_event(zero, &h.docs),
+            true,
+        ),
+        (
+            "a range from an unknown commit",
+            push_event(unknown, &h.docs),
+            true,
+        ),
+        (
+            "a range to an unknown commit",
+            push_event(&h.base, unknown),
+            true,
+        ),
+        (
+            "a manual run",
+            vec![
+                ("EVENT", "workflow_dispatch".to_owned()),
+                ("BEFORE", h.base.clone()),
+                ("AFTER", h.docs.clone()),
+            ],
+            true,
+        ),
+    ];
+    for (n, (what, event, expected)) in cases.iter().enumerate() {
+        let event: Vec<(&str, &str)> = event.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        assert_eq!(
+            detect(&bash, &repo, &script, &event, n),
+            *expected,
+            "LIB-QA-018: the detection script gives the wrong `code` for {what}"
+        );
+    }
+}
+
+#[test]
+fn lib_qa_018_detection_cases_catch_a_widened_rule_or_a_closed_default() {
+    // The scratch-repository cases bite: each mutated script gives the
+    // wrong `code` for one of them.
+    let test = "detection-mutants";
+    let Some(bash) = script_runner(test) else {
+        return;
+    };
+    let Some(script) = detection_script(&ci_text()) else {
+        panic!("LIB-QA-018: ci.yml's `changes` job has no detection script");
+    };
+    let repo = ScratchRepo::new(test);
+    let h = history(&repo);
+    let unknown = "1234567890abcdef1234567890abcdef12345678";
+    for (n, (what, mutated, event)) in [
+        (
+            "the rule widened to '^docs' reads docs.md as documentation",
+            replace_once(&script, "'^docs/'", "'^docs'"),
+            push_event(&h.code, &h.docs_file),
+        ),
+        (
+            "the rule unanchored reads crates/x/docs/ as documentation",
+            replace_once(&script, "'^docs/'", "'docs/'"),
+            push_event(&h.docs_file, &h.nested_docs),
+        ),
+        (
+            "the default made false fails closed on an unknown commit",
+            replace_once(&script, "code=true\n", "code=false\n"),
+            push_event(unknown, &h.docs),
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let event: Vec<(&str, &str)> = event.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        assert!(
+            !detect(&bash, &repo, &mutated, &event, n),
+            "LIB-QA-018: the cases do not catch it when {what}"
+        );
+    }
+}
+
+#[test]
+fn lib_qa_018_detection_script_counts_code_moved_into_docs_as_a_code_change() {
+    // `git diff --name-only` shows a rename by its new path only, so a file
+    // moved out of the code into docs/ must not read as a docs-only push:
+    // the code lost a file.
+    let test = "rename";
+    let Some(bash) = script_runner(test) else {
+        return;
+    };
+    let Some(script) = detection_script(&ci_text()) else {
+        panic!("LIB-QA-018: ci.yml's `changes` job has no detection script");
+    };
+    let repo = ScratchRepo::new(test);
+    let h = history(&repo);
+    let event = [
+        ("EVENT", "push"),
+        ("BEFORE", h.docs_deleted.as_str()),
+        ("AFTER", h.moved_into_docs.as_str()),
+    ];
+    assert!(
+        detect(&bash, &repo, &script, &event, 0),
+        "LIB-QA-018: moving src/lib.rs to docs/lib.rs reads as a docs-only push, so the code \
+         jobs would be skipped"
+    );
+}
+
+#[test]
+fn lib_qa_018_mutants_check_passes_only_when_every_shard_passed_or_docs_only_skipped_them() {
+    let test = "aggregator";
+    let Some(bash) = script_runner(test) else {
+        return;
+    };
+    let command = MUTANTS_RUN
+        .strip_prefix("run: ")
+        .expect("LIB-QA-018: the aggregator's `run:` line");
+    for (result, changes, code, passes) in [
+        ("success", "success", "true", true),
+        ("success", "success", "false", true),
+        ("success", "failure", "", true),
+        ("skipped", "success", "false", true),
+        ("skipped", "success", "true", false),
+        ("skipped", "failure", "", false),
+        ("skipped", "failure", "false", false),
+        ("failure", "success", "false", false),
+        ("failure", "success", "true", false),
+        ("cancelled", "success", "false", false),
+    ] {
+        let status = Command::new(&bash)
+            .args(["--noprofile", "--norc", "-e", "-c", command])
+            .env("RESULT", result)
+            .env("CHANGES", changes)
+            .env("CODE", code)
+            .status()
+            .unwrap_or_else(|e| panic!("LIB-QA-018: run {}: {e}", bash.display()));
+        assert_eq!(
+            status.success(),
+            passes,
+            "LIB-QA-018: the `mutants (PR diff)` check with shards {result}, `changes` \
+             {changes} and code {code:?}"
+        );
     }
 }
 

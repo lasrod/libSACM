@@ -677,10 +677,6 @@ fn the_element_form_reads_and_is_refused_where_malformed(feature: Feature) {
             format!("<{flag} {MARK}xmi:id=\"v\">true</{flag}>"),
         ),
         (
-            "xsi:nil on the value element",
-            format!("<{flag} {MARK}xsi:nil=\"true\"/>"),
-        ),
-        (
             "a child element in the value element",
             format!("<{flag}>true{MARK}<b/></{flag}>"),
         ),

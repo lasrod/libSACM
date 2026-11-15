@@ -62,7 +62,9 @@ fn typed(kind: &str, id: &str, attributes: &str, content: &str) -> String {
 /// An AssuranceCasePackage root `case` holding the ArgumentPackage `p`,
 /// which holds one valid element of each readable kind and then `body`:
 /// - the Claims c1 and c2, c1 holding the Description d1, the
-///   `ImplementationConstraint` ic1, the Note n1 and the `TaggedValue` t1;
+///   `ImplementationConstraint` ic1, the Note n1 and the `TaggedValue` t1
+///   (c1 is abstract: only an abstract element may hold a constraint,
+///   SACM23-VAL-021);
 /// - the `ArgumentReasoning` why;
 /// - the `ArtifactReference`s r1 and r2;
 /// - the `ArgumentGroup` g1 and the `AssertedInference` i1 (c2 to c1).
@@ -76,7 +78,7 @@ fn in_case(body: &str) -> String {
         typed(
             "Claim",
             "c1",
-            "",
+            " isAbstract=\"true\"",
             "<description xmi:id=\"d1\"><content><value content=\"D\"/></content></description>\
              <implementationConstraint xmi:id=\"ic1\"/><note xmi:id=\"n1\"/>\
              <taggedValue xmi:id=\"t1\"><key><value content=\"K\"/></key></taggedValue>"

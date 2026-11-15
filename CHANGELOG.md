@@ -305,8 +305,33 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
   one atomic change; a later operation can use an id an earlier one generated. The
   `BatchMutation` holds each `Mutation` and the net created, changed and deleted ids, and
   a `BatchError` names the refused operation by index [LIB-EDIT-014].
+- A tolerant `xmi::read` reads the assurance-forge C++ library's one-to-one name and text
+  shapes (`name="…"`, text in a `name` or `value`, a `name` holding one `value` or one
+  `content lang`, the single-language shorthand of a `content` or `key`, `content=` or
+  text on a UtilityElement, `key=`/`value=` on a TaggedValue) as their standard form, with
+  one SACM-XMI-012 Warning each (`Code::XMI_LEGACY_SHAPE`); a strict read refuses them as
+  `ReadError::LegacyShape` [LIB-COMPAT-008].
+- `xmi::read` reads `xsi:nil` on a value element as an `xsd:boolean`: true reads as the
+  property not written, false reads the content, and another value is
+  `ReadError::InvalidLiteral` [SACM23-XMI-026].
+- An untyped child under an abstract role, such as an `argumentElement` with no
+  `xmi:type`, is refused in both modes as `ReadError::MissingType`
+  (`Code::XMI_MISSING_TYPE`, SACM-XMI-005) [LIB-COMPAT-010].
+- `validation::validate` warns, as SACM-CITE-002 (`Code::AS_CITED_INVALID`), about an
+  Assertion declared `asCited` that is not a citation of an Assertion [SACM23-VAL-019].
+- `validation::validate` reports an `implementationConstraint` on an element whose
+  `isAbstract` is not true as a SACM-ABS-001 Error [SACM23-VAL-021].
 
 ### Changed
+
+- The new validation Error rule SACM-ABS-001 for implementation constraints (clause 8.6)
+  can make a strict `xmi::write` refuse a document it wrote before: one with an
+  `implementationConstraint` on a concrete element. Write it as held in tolerant mode
+  [SACM23-VAL-021].
+- `xmi::read` refuses an untyped child under an abstract role as the coded
+  `ReadError::MissingType` instead of `Unsupported`, and a strict read refuses the C++
+  name and text shapes as `ReadError::LegacyShape` instead of `Unsupported`
+  [LIB-COMPAT-010, LIB-COMPAT-008].
 
 - Every create with reference ends, including `CreateArgumentReasoning`,
   `CreateAssertedInference` and `CreateAssertedContext`, refuses an end whose target does

@@ -4,7 +4,9 @@
 use std::collections::HashSet;
 
 use crate::diagnostic::{Code, Diagnostic, Severity};
-use crate::model::{Document, ElementId, ReferenceEnd, SacmElement};
+use crate::model::{
+    AbstractClass, AssertionDeclaration, Document, ElementId, ReferenceEnd, SacmElement,
+};
 
 /// SACM23-VAL-003: each distinct id that a reference end of an element holds
 /// and that names no element of the document is one SACM-REF-001 Error,
@@ -121,6 +123,63 @@ pub(super) fn citation(document: &Document, found: &mut Vec<Diagnostic>) {
             .set_affected([element.id().clone()]),
         );
     }
+}
+
+/// SACM23-VAL-019: an Assertion declared `asCited` should be a citation of
+/// an Assertion, because §11.8 derives its declaration "from the value of
+/// the `AssertionDeclaration` of the cited Assertion" (D-SEV). Each of these
+/// is one SACM-CITE-002 Warning, with clause 11.8: its `isCitation` is not
+/// true, affecting the element; it has no `citedElement`, affecting the
+/// element; its `citedElement` names an element of the document that is
+/// not of an Assertion kind, affecting the element, then that element. A
+/// `citedElement` that names no element is left to SACM-REF-001.
+pub(super) fn as_cited(document: &Document, found: &mut Vec<Diagnostic>) {
+    for element in document.elements() {
+        if element.assertion_declaration() != Some(AssertionDeclaration::AsCited) {
+            continue;
+        }
+        let (kind, id) = (element.kind().name(), element.id().as_str());
+        if !element.is_citation() {
+            let message = format!(
+                "{kind} {id:?} is declared asCited but isCitation is not true: an asCited \
+                 Assertion takes its declaration from the Assertion it cites (§11.8)"
+            );
+            found.push(as_cited_finding(message, [element.id().clone()]));
+        }
+        let Some(cited) = element.cited_element() else {
+            let message = format!(
+                "{kind} {id:?} is declared asCited but has no citedElement: an asCited \
+                 Assertion takes its declaration from the Assertion it cites (§11.8)"
+            );
+            found.push(as_cited_finding(message, [element.id().clone()]));
+            continue;
+        };
+        let Some(target) = document.get(cited) else {
+            continue;
+        };
+        if !target.kind().is_a(AbstractClass::Assertion) {
+            let message = format!(
+                "{kind} {id:?} is declared asCited but its citedElement {:?} is of the kind \
+                 {}, which is no Assertion: an asCited Assertion takes its declaration from the Assertion it \
+                 cites (§11.8)",
+                cited.as_str(),
+                target.kind().name()
+            );
+            found.push(as_cited_finding(message, pair(element, cited)));
+        }
+    }
+}
+
+/// A SACM-CITE-002 Warning of SACM23-VAL-019.
+fn as_cited_finding(message: String, affected: impl IntoIterator<Item = ElementId>) -> Diagnostic {
+    Diagnostic::create(
+        Code::AS_CITED_INVALID,
+        Severity::Warning,
+        "SACM23-VAL-019",
+        message,
+    )
+    .set_clause("11.8")
+    .set_affected(affected)
 }
 
 /// SACM23-VAL-008: for each element with an `abstractForm`, §8.2 says "the

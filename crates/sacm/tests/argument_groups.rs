@@ -618,14 +618,6 @@ fn sacm23_arg_013_argumentation_element_on_a_group_and_argument_element_on_a_pac
             ),
         ),
         (
-            "an argumentElement reference element in an ArgumentPackage",
-            format!(
-                "<sacm:ArgumentPackage{NS} xmi:id=\"p\"><name content=\"P\"/>{}\
-                 {MARK}<argumentElement xmi:idref=\"c1\"/></sacm:ArgumentPackage>",
-                claim("c1")
-            ),
-        ),
-        (
             "an argumentElement attribute on a Claim",
             in_ap(&format!(
                 "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\" {MARK}argumentElement=\"c1\">\
@@ -639,6 +631,21 @@ fn sacm23_arg_013_argumentation_element_on_a_group_and_argument_element_on_a_pac
         let error = refused(what, &input);
         assert_unsupported_at(what, &error, marks[0]);
     }
+    // Under an ArgumentPackage, `argumentElement` is the composite role, whose
+    // declared type is abstract: an untyped one, a reference element in form,
+    // is SACM-XMI-005 at its start tag (LIB-COMPAT-010).
+    let what = "an argumentElement reference element in an ArgumentPackage";
+    let (input, marks) = marked(&format!(
+        "<sacm:ArgumentPackage{NS} xmi:id=\"p\"><name content=\"P\"/>{}\
+         {MARK}<argumentElement xmi:idref=\"c1\"/></sacm:ArgumentPackage>",
+        claim("c1")
+    ));
+    let error = refused(what, &input);
+    assert_eq!(
+        (error.code(), error.location()),
+        (Some(Code::XMI_MISSING_TYPE), Some(marks[0])),
+        "{ROW}: {what}: not SACM-XMI-005 at its start tag: {error:?}"
+    );
     // The composite role still reads under a package.
     let what = "a Claim in argumentElement of an ArgumentPackage";
     let doc = read_ok(what, &in_ap(""));
