@@ -83,7 +83,7 @@ jobs:
           path: third_party/xmlconf
           key: xmlconf-9b61db9f5dbffa545f4b8d78422167083a8568c59bd1129f94138f936cf6fc1f
       - run: cargo xtask fetch-spec --only xmlconf
-      - run: cargo +1.85 test -p sacm -p sacm-cli
+      - run: cargo +1.85 test -p sacm -p sacm-cli --all-features
 
   wasm:
     # LIB-QA-017: the library builds for the browser target, as Assurance Forge's web

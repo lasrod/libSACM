@@ -1,10 +1,8 @@
 //! The create operations (LIB-EDIT-001, ADR 0019).
 
 use super::EditError;
-use crate::model::{
-    Document, ElementId, ElementKind, InsertError, LangString, MultiLangString, SacmElement,
-    admits, is_ncname,
-};
+use super::plan::{Features, NewElement, Plan};
+use crate::model::{Document, ElementId, ElementKind, LangString, SacmElement, admits, is_ncname};
 
 /// Creates an `AssuranceCasePackage` (SACM 2.3 §9.2): a root, or a child of
 /// an element whose class can hold one, such as another
@@ -29,8 +27,18 @@ use crate::model::{
 /// # Ok::<(), sacm::edit::EditError>(())
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 pub struct CreateAssuranceCasePackage {
+    #[cfg_attr(
+        feature = "serde",
+        serde(deserialize_with = "serde::Deserialize::deserialize")
+    )]
     parent: Option<ElementId>,
+    #[cfg_attr(feature = "serde", serde(default))]
     id: Option<ElementId>,
     name: LangString,
 }
@@ -90,9 +98,9 @@ impl CreateAssuranceCasePackage {
         &self.name
     }
 
-    /// Checks and applies the operation, and returns the ids it created.
-    pub(super) fn apply(&self, document: &mut Document) -> Result<Vec<ElementId>, EditError> {
-        create(
+    /// Runs every check of the operation, and returns what it creates.
+    pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
+        plan_create(
             document,
             ElementKind::AssuranceCasePackage,
             self.parent.as_ref(),
@@ -122,8 +130,18 @@ impl CreateAssuranceCasePackage {
 /// # Ok::<(), sacm::edit::EditError>(())
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 pub struct CreateArgumentPackage {
+    #[cfg_attr(
+        feature = "serde",
+        serde(deserialize_with = "serde::Deserialize::deserialize")
+    )]
     parent: Option<ElementId>,
+    #[cfg_attr(feature = "serde", serde(default))]
     id: Option<ElementId>,
     name: LangString,
 }
@@ -183,9 +201,9 @@ impl CreateArgumentPackage {
         &self.name
     }
 
-    /// Checks and applies the operation, and returns the ids it created.
-    pub(super) fn apply(&self, document: &mut Document) -> Result<Vec<ElementId>, EditError> {
-        create(
+    /// Runs every check of the operation, and returns what it creates.
+    pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
+        plan_create(
             document,
             ElementKind::ArgumentPackage,
             self.parent.as_ref(),
@@ -220,8 +238,14 @@ impl CreateArgumentPackage {
 /// # Ok::<(), sacm::edit::EditError>(())
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 pub struct CreateClaim {
     parent: ElementId,
+    #[cfg_attr(feature = "serde", serde(default))]
     id: Option<ElementId>,
     name: LangString,
 }
@@ -269,9 +293,9 @@ impl CreateClaim {
         &self.name
     }
 
-    /// Checks and applies the operation, and returns the ids it created.
-    pub(super) fn apply(&self, document: &mut Document) -> Result<Vec<ElementId>, EditError> {
-        create(
+    /// Runs every check of the operation, and returns what it creates.
+    pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
+        plan_create(
             document,
             ElementKind::Claim,
             Some(&self.parent),
@@ -281,52 +305,31 @@ impl CreateClaim {
     }
 }
 
-/// What a create operation gives its new element besides its id and place:
-/// the `name` of a `ModelElement`, or the `content` of a `UtilityElement` and
-/// the `key` of a `TaggedValue`.
-#[derive(Clone, Copy)]
-pub(super) enum Features<'o> {
-    /// A `ModelElement`'s name.
-    Name(&'o LangString),
-    /// A `UtilityElement`'s `content`, and a `TaggedValue`'s `key`.
-    Texts {
-        /// The `content`.
-        content: &'o MultiLangString,
-        /// The `key`, given exactly for a `TaggedValue`.
-        key: Option<&'o MultiLangString>,
-    },
-}
-
-/// Creates an element of `kind` under `parent` (a root when `None`), with the
-/// id `id` or a generated one and with `features`, after every check of ADR
-/// 0019 in order, and returns the ids created: the new element's. On a
-/// refusal the document, its counters included, is unchanged: every check
-/// runs before the one change, and the counter moves only after it.
-pub(super) fn create(
-    document: &mut Document,
+/// The plan of a new element of `kind` under `parent` (a root when
+/// `None`), with the id `id` or a generated one and with `features`, after
+/// [`checked_place`]'s checks. Changes nothing: the commit adds the element
+/// and then advances the counter for a generated id.
+pub(super) fn plan_create<'o>(
+    document: &Document,
     kind: ElementKind,
-    parent: Option<&ElementId>,
+    parent: Option<&'o ElementId>,
     id: Option<&ElementId>,
-    features: Features<'_>,
-) -> Result<Vec<ElementId>, EditError> {
+    features: Features<'o>,
+) -> Result<Plan<'o>, EditError> {
     let (id, generated) = checked_place(document, kind, parent, id)?;
-    let (name, content, key) = match features {
-        Features::Name(name) => (Some(name.clone()), None, None),
-        Features::Texts { content, key } => (None, Some(content.clone()), key.cloned()),
-    };
-    document
-        .insert_element(parent, kind, id.clone(), name, content, key)
-        .map_err(|error| refusal(error, &id))?;
-    if let Some(n) = generated {
-        document.commit_generated_id(kind, n);
-    }
-    Ok(vec![id])
+    Ok(Plan::Create(NewElement {
+        kind,
+        parent,
+        id,
+        generated,
+        features,
+    }))
 }
 
 /// The id of a new element of `kind` under `parent` (a root when `None`):
 /// `id`, or the next generated one with its `n`, after ADR 0019's four
-/// checks, in order. Changes nothing: the caller commits a generated id
-/// once the element is added.
+/// checks, in order. Changes nothing: the commit advances the counter for a
+/// generated id once the element is added.
 pub(super) fn checked_place(
     document: &Document,
     kind: ElementKind,
@@ -360,30 +363,5 @@ pub(super) fn checked_place(
     } else {
         let (id, n) = document.next_generated_id(kind);
         Ok((id, Some(n)))
-    }
-}
-
-/// The refusal for `error`, from adding the element `id` after
-/// [`checked_place`]'s checks passed.
-pub(super) fn refusal(error: InsertError, id: &ElementId) -> EditError {
-    match error {
-        InsertError::UnknownParent(parent) => EditError::ParentNotFound { parent },
-        InsertError::ContainmentNotAllowed {
-            parent,
-            parent_kind,
-            kind,
-            ..
-        } => EditError::InvalidParent {
-            parent,
-            parent_kind,
-            kind,
-        },
-        InsertError::DuplicateId(id) => EditError::DuplicateId { id },
-        // Not reached: the id is an NCName, so not empty, the operations give
-        // a name only to ModelElement kinds, and they create roots only of
-        // package kinds.
-        InsertError::EmptyId
-        | InsertError::NameNotAllowed(..)
-        | InsertError::RootNotAllowed(..) => EditError::InvalidId { id: id.clone() },
     }
 }

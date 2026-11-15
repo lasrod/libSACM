@@ -5,7 +5,8 @@
 //! returns a [`Mutation`] (the operation, and the ids it created, changed and
 //! deleted), or refuses with an [`EditError`]. **A refused operation changes
 //! nothing**: not the elements, not the written XMI, and not the ids
-//! generated next.
+//! generated next. [`check`] gives the answer `apply` would give, without
+//! changing the document.
 //!
 //! # Operations that create an element
 //!
@@ -228,6 +229,9 @@
 
 mod argumentation;
 mod create;
+mod plan;
+#[cfg(feature = "serde")]
+mod record;
 mod references;
 mod reorder;
 mod set;
@@ -250,6 +254,7 @@ pub use utility::{
 
 use crate::diagnostic::Code;
 use crate::model::{Document, ElementId, ElementKind};
+use plan::Plan;
 
 /// Checks `operation` against `document` and applies it, or refuses it and
 /// leaves `document` unchanged.
@@ -273,7 +278,8 @@ use crate::model::{Document, ElementId, ElementKind};
 ///
 /// Takes any operation struct, such as [`CreateClaim`], or an [`Operation`].
 /// See the [module docs](self) for the operations, the ids and the order of
-/// the checks.
+/// the checks. To ask whether `apply` would accept an operation without
+/// changing the document, use [`check`], which gives the same answer.
 ///
 /// # Errors
 ///
@@ -332,43 +338,102 @@ pub fn apply(
     operation: impl Into<Operation>,
 ) -> Result<Mutation, EditError> {
     let operation = operation.into();
-    // Each operation checks everything before it changes the document, so a
-    // refusal here leaves it untouched. A create changes no existing element
-    // (ADR 0019 amendment 1), an edit creates none (ADR 0029), and none
-    // deletes one.
-    let (created, changed) = match &operation {
-        Operation::CreateAssuranceCasePackage(create) => (create.apply(document)?, Vec::new()),
-        Operation::CreateArgumentPackage(create) => (create.apply(document)?, Vec::new()),
-        Operation::CreateClaim(create) => (create.apply(document)?, Vec::new()),
-        Operation::CreateArgumentReasoning(create) => (create.apply(document)?, Vec::new()),
-        Operation::CreateAssertedInference(create) => (create.apply(document)?, Vec::new()),
-        Operation::CreateAssertedContext(create) => (create.apply(document)?, Vec::new()),
-        Operation::CreateArtifactReference(create) => (create.apply(document)?, Vec::new()),
-        Operation::CreateArgumentGroup(create) => (create.apply(document)?, Vec::new()),
-        Operation::CreateAssertedEvidence(create) => (create.apply(document)?, Vec::new()),
-        Operation::CreateAssertedArtifactSupport(create) => (create.apply(document)?, Vec::new()),
-        Operation::CreateAssertedArtifactContext(create) => (create.apply(document)?, Vec::new()),
-        Operation::CreateDescription(create) => (create.apply(document)?, Vec::new()),
-        Operation::CreateImplementationConstraint(create) => (create.apply(document)?, Vec::new()),
-        Operation::CreateNote(create) => (create.apply(document)?, Vec::new()),
-        Operation::CreateTaggedValue(create) => (create.apply(document)?, Vec::new()),
-        Operation::SetName(set) => (Vec::new(), set.apply(document)?),
-        Operation::SetGid(set) => (Vec::new(), set.apply(document)?),
-        Operation::SetFlag(set) => (Vec::new(), set.apply(document)?),
-        Operation::SetAssertionDeclaration(set) => (Vec::new(), set.apply(document)?),
-        Operation::SetContent(set) => (Vec::new(), set.apply(document)?),
-        Operation::SetKey(set) => (Vec::new(), set.apply(document)?),
-        Operation::SetReferences(set) => (Vec::new(), set.apply(document)?),
-        Operation::AddReference(add) => (Vec::new(), add.apply(document)?),
-        Operation::RemoveReference(remove) => (Vec::new(), remove.apply(document)?),
-        Operation::ReorderElements(reorder) => (Vec::new(), reorder.apply(document)?),
-    };
+    // Every check runs in `plan`, before the one change, so a refusal leaves
+    // the document untouched. A create changes no existing element (ADR 0019
+    // amendment 1), an edit creates none (ADR 0029), and none deletes one.
+    let (created, changed) = plan(document, &operation)?.commit(document);
     Ok(Mutation {
         operation,
         created,
         changed,
         deleted: Vec::new(),
     })
+}
+
+/// Checks `operation` against `document` without applying it: `Ok` exactly
+/// when [`apply`] would accept it, and otherwise the same [`EditError`].
+///
+/// `check` runs the same checks as `apply`, in the same order, through the
+/// same code, so the two cannot disagree (ADR 0019 amendment 3). It never
+/// changes the document: it takes it by shared reference, so the elements,
+/// the written XMI and the ids generated next stay as they are. A create
+/// without `with_id` gets the same generated id after any number of checks.
+///
+/// It takes the operation by reference, so the caller keeps it, to apply
+/// later or to show in a menu. What an accepted operation would create or
+/// change is not reported; `apply` returns that in its [`Mutation`].
+///
+/// Like `apply`, it runs no validation: `Ok` does not mean the edited
+/// document will have no findings; see
+/// [`validation::validate`](crate::validation::validate).
+///
+/// # Errors
+///
+/// Returns the [`EditError`] that `apply` would refuse `operation` with, in
+/// the order of the checks listed in the [module docs](self#refusals).
+///
+/// # Examples
+///
+/// A refused operation is reported, and the document is unchanged:
+///
+/// ```
+/// use sacm::diagnostic::Code;
+/// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, EditError, Operation};
+/// use sacm::model::{Document, LangString};
+///
+/// let mut doc = Document::new();
+/// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+/// let before = doc.clone();
+///
+/// // A Claim needs a parent the document holds.
+/// let misplaced = Operation::from(CreateClaim::new("nowhere", LangString::new("C1")));
+/// let error = edit::check(&doc, &misplaced).unwrap_err();
+/// assert!(matches!(error, EditError::ParentNotFound { .. }));
+/// assert_eq!(error.code(), Code::CMD_TARGET_NOT_FOUND);
+/// assert_eq!(doc, before); // unchanged
+///
+/// // An accepted operation is still the caller's, to apply.
+/// let claim = Operation::from(CreateClaim::new("p", LangString::new("C1")));
+/// assert_eq!(edit::check(&doc, &claim), Ok(()));
+/// let mutation = edit::apply(&mut doc, claim)?;
+/// assert_eq!(mutation.created_ids()[0].as_str(), "claim_1");
+/// # Ok::<(), EditError>(())
+/// ```
+pub fn check(document: &Document, operation: &Operation) -> Result<(), EditError> {
+    plan(document, operation).map(drop)
+}
+
+/// Runs every check of `operation` against `document`, and returns what the
+/// change needs: the one code path of [`check`] and [`apply`]. Every refusal
+/// is built here; [`Plan::commit`] builds none.
+fn plan<'o>(document: &Document, operation: &'o Operation) -> Result<Plan<'o>, EditError> {
+    match operation {
+        Operation::CreateAssuranceCasePackage(create) => create.plan(document),
+        Operation::CreateArgumentPackage(create) => create.plan(document),
+        Operation::CreateClaim(create) => create.plan(document),
+        Operation::CreateArgumentReasoning(create) => create.plan(document),
+        Operation::CreateAssertedInference(create) => create.plan(document),
+        Operation::CreateAssertedContext(create) => create.plan(document),
+        Operation::CreateArtifactReference(create) => create.plan(document),
+        Operation::CreateArgumentGroup(create) => create.plan(document),
+        Operation::CreateAssertedEvidence(create) => create.plan(document),
+        Operation::CreateAssertedArtifactSupport(create) => create.plan(document),
+        Operation::CreateAssertedArtifactContext(create) => create.plan(document),
+        Operation::CreateDescription(create) => create.plan(document),
+        Operation::CreateImplementationConstraint(create) => create.plan(document),
+        Operation::CreateNote(create) => create.plan(document),
+        Operation::CreateTaggedValue(create) => create.plan(document),
+        Operation::SetName(set) => set.plan(document),
+        Operation::SetGid(set) => set.plan(document),
+        Operation::SetFlag(set) => set.plan(document),
+        Operation::SetAssertionDeclaration(set) => set.plan(document),
+        Operation::SetContent(set) => set.plan(document),
+        Operation::SetKey(set) => set.plan(document),
+        Operation::SetReferences(set) => set.plan(document),
+        Operation::AddReference(add) => add.plan(document),
+        Operation::RemoveReference(remove) => remove.plan(document),
+        Operation::ReorderElements(reorder) => reorder.plan(document),
+    }
 }
 
 /// An edit operation, as a value: any of the operation structs.
@@ -387,6 +452,11 @@ pub fn apply(
 /// assert!(matches!(operation, Operation::CreateClaim(_)));
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(tag = "type")
+)]
 #[non_exhaustive]
 pub enum Operation {
     /// Creates an `AssuranceCasePackage`.
@@ -647,10 +717,18 @@ impl From<CreateTaggedValue> for Operation {
 /// # Ok::<(), sacm::edit::EditError>(())
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 pub struct Mutation {
     operation: Operation,
+    #[cfg_attr(feature = "serde", serde(rename = "created_ids"))]
     created: Vec<ElementId>,
+    #[cfg_attr(feature = "serde", serde(rename = "changed_ids"))]
     changed: Vec<ElementId>,
+    #[cfg_attr(feature = "serde", serde(rename = "deleted_ids"))]
     deleted: Vec<ElementId>,
 }
 

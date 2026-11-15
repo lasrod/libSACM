@@ -3,10 +3,20 @@
 //! `key` (LIB-EDIT-008, LIB-EDIT-012, ADR 0029).
 
 use super::EditError;
+use super::plan::{Plan, Value};
 use crate::model::{
     AbstractClass, AssertionDeclaration, Document, ElementId, ElementKind, Flag, LangString,
     MultiLangString, SacmElement, Text, TextRole,
 };
+
+/// The XMI name of the `name` feature, as [`EditError::FeatureNotApplicable`]
+/// names it.
+pub(super) const NAME: &str = "name";
+/// The XMI name of the `gid` feature.
+pub(super) const GID: &str = "gid";
+/// The XMI name of the `assertionDeclaration` feature, as
+/// [`EditError::FeatureNotApplicable`] names it.
+pub(super) const ASSERTION_DECLARATION: &str = "assertionDeclaration";
 
 /// Sets the `name` (SACM 2.3 §8.6 `name:LangString[1]`) of a `ModelElement`,
 /// replacing the name it has, or giving one to an element read without one.
@@ -42,6 +52,11 @@ use crate::model::{
 /// # Ok::<(), sacm::edit::EditError>(())
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 pub struct SetName {
     element: ElementId,
     name: LangString,
@@ -69,16 +84,16 @@ impl SetName {
         &self.name
     }
 
-    /// Checks and applies the operation, and returns the ids it changed.
-    pub(super) fn apply(&self, document: &mut Document) -> Result<Vec<ElementId>, EditError> {
-        let target = edited(document, &self.element, "name", |kind| {
+    /// Runs every check of the operation, and returns what it changes.
+    pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
+        let target = edited(document, &self.element, NAME, |kind| {
             kind.is_a(AbstractClass::ModelElement)
         })?;
-        if target.name() == Some(&self.name) {
-            return Ok(Vec::new());
-        }
-        document.replace_name(&self.element, self.name.clone());
-        Ok(vec![self.element.clone()])
+        Ok(changing(
+            &self.element,
+            target.name() != Some(&self.name),
+            Value::Name(&self.name),
+        ))
     }
 }
 
@@ -109,8 +124,17 @@ impl SetName {
 /// # Ok::<(), sacm::edit::EditError>(())
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 pub struct SetGid {
     element: ElementId,
+    #[cfg_attr(
+        feature = "serde",
+        serde(deserialize_with = "serde::Deserialize::deserialize")
+    )]
     gid: Option<String>,
 }
 
@@ -145,15 +169,14 @@ impl SetGid {
         self.gid.as_deref()
     }
 
-    /// Checks and applies the operation, and returns the ids it changed.
-    pub(super) fn apply(&self, document: &mut Document) -> Result<Vec<ElementId>, EditError> {
-        let target = edited(document, &self.element, "gid", |_| true)?;
-        if target.gid() == self.gid.as_deref() {
-            return Ok(Vec::new());
-        }
-        let set = document.set_gid(&self.element, self.gid.clone());
-        debug_assert!(set.is_ok(), "the element exists: {set:?}");
-        Ok(vec![self.element.clone()])
+    /// Runs every check of the operation, and returns what it changes.
+    pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
+        let target = edited(document, &self.element, GID, |_| true)?;
+        Ok(changing(
+            &self.element,
+            target.gid() != self.gid.as_deref(),
+            Value::Gid(self.gid.as_deref()),
+        ))
     }
 }
 
@@ -187,6 +210,11 @@ impl SetGid {
 /// # Ok::<(), sacm::edit::EditError>(())
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 pub struct SetFlag {
     element: ElementId,
     flag: Flag,
@@ -222,18 +250,17 @@ impl SetFlag {
         self.value
     }
 
-    /// Checks and applies the operation, and returns the ids it changed.
-    pub(super) fn apply(&self, document: &mut Document) -> Result<Vec<ElementId>, EditError> {
+    /// Runs every check of the operation, and returns what it changes.
+    pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
         let flag = self.flag;
         let target = edited(document, &self.element, flag.name(), |kind| {
             flag.owner().admits(kind)
         })?;
-        if target.flag(flag) == self.value {
-            return Ok(Vec::new());
-        }
-        let set = document.set_flag(&self.element, flag, self.value);
-        debug_assert!(set.is_ok(), "the element exists and has the flag: {set:?}");
-        Ok(vec![self.element.clone()])
+        Ok(changing(
+            &self.element,
+            target.flag(flag) != self.value,
+            Value::Flag(flag, self.value),
+        ))
     }
 }
 
@@ -262,6 +289,11 @@ impl SetFlag {
 /// # Ok::<(), sacm::edit::EditError>(())
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 pub struct SetAssertionDeclaration {
     element: ElementId,
     declaration: AssertionDeclaration,
@@ -289,20 +321,16 @@ impl SetAssertionDeclaration {
         self.declaration
     }
 
-    /// Checks and applies the operation, and returns the ids it changed.
-    pub(super) fn apply(&self, document: &mut Document) -> Result<Vec<ElementId>, EditError> {
-        let target = edited(document, &self.element, "assertionDeclaration", |kind| {
+    /// Runs every check of the operation, and returns what it changes.
+    pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
+        let target = edited(document, &self.element, ASSERTION_DECLARATION, |kind| {
             kind.is_a(AbstractClass::Assertion)
         })?;
-        if target.assertion_declaration() == Some(self.declaration) {
-            return Ok(Vec::new());
-        }
-        let set = document.set_declaration(&self.element, self.declaration);
-        debug_assert!(
-            set.is_ok(),
-            "the element exists and is an Assertion: {set:?}"
-        );
-        Ok(vec![self.element.clone()])
+        Ok(changing(
+            &self.element,
+            target.assertion_declaration() != Some(self.declaration),
+            Value::Declaration(self.declaration),
+        ))
     }
 }
 
@@ -348,8 +376,17 @@ impl SetAssertionDeclaration {
 /// # Ok::<(), sacm::edit::EditError>(())
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 pub struct SetContent {
     element: ElementId,
+    #[cfg_attr(
+        feature = "serde",
+        serde(deserialize_with = "serde::Deserialize::deserialize")
+    )]
     content: Option<MultiLangString>,
 }
 
@@ -385,9 +422,9 @@ impl SetContent {
         self.content.as_ref()
     }
 
-    /// Checks and applies the operation, and returns the ids it changed.
-    pub(super) fn apply(&self, document: &mut Document) -> Result<Vec<ElementId>, EditError> {
-        set_text(
+    /// Runs every check of the operation, and returns what it changes.
+    pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
+        plan_text(
             document,
             &self.element,
             TextRole::Content,
@@ -422,6 +459,11 @@ impl SetContent {
 /// # Ok::<(), sacm::edit::EditError>(())
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 pub struct SetKey {
     element: ElementId,
     key: MultiLangString,
@@ -450,35 +492,36 @@ impl SetKey {
         &self.key
     }
 
-    /// Checks and applies the operation, and returns the ids it changed.
-    pub(super) fn apply(&self, document: &mut Document) -> Result<Vec<ElementId>, EditError> {
-        set_text(document, &self.element, TextRole::Key, Some(&self.key))
+    /// Runs every check of the operation, and returns what it changes.
+    pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
+        plan_text(document, &self.element, TextRole::Key, Some(&self.key))
     }
 }
 
-/// Sets the `role` of `element` to `value`, or removes it when `None`,
-/// keeping the ids by position, and returns the ids changed: `element`
-/// exactly when the value or its ids change.
-fn set_text(
-    document: &mut Document,
-    element: &ElementId,
+/// The plan of setting the `role` of `element` to `value`, or of removing
+/// it when `None`, keeping the ids by position: a change exactly when the
+/// value or its ids change.
+fn plan_text<'o>(
+    document: &Document,
+    element: &'o ElementId,
     role: TextRole,
     value: Option<&MultiLangString>,
-) -> Result<Vec<ElementId>, EditError> {
+) -> Result<Plan<'o>, EditError> {
     let target = edited(document, element, role.name(), |kind| role.is_held_by(kind))?;
     let held = target.text(role);
     let text = value.map(|value| Text::keeping_ids(value.clone(), held));
-    if held == text.as_ref() {
-        return Ok(Vec::new());
+    let changes = held != text.as_ref();
+    Ok(changing(element, changes, Value::Text(role, text)))
+}
+
+/// The plan of an operation that sets a feature of `element` to `value`:
+/// [`Plan::Unchanged`] unless the value `changes`.
+pub(super) fn changing<'o>(element: &'o ElementId, changes: bool, value: Value<'o>) -> Plan<'o> {
+    if changes {
+        Plan::Set { element, value }
+    } else {
+        Plan::Unchanged
     }
-    match text {
-        Some(text) => {
-            let set = document.set_text(element, role, text);
-            debug_assert!(set.is_ok(), "the kept ids are the role's own: {set:?}");
-        }
-        None => document.remove_text(element, role),
-    }
-    Ok(vec![element.clone()])
 }
 
 /// The element `element` of `document`, once it is known

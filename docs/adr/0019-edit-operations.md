@@ -139,3 +139,34 @@ else undo and redo need, move to LIB-EDIT-011, which chooses its mechanism under
 accessor or a separate undo type.
 
 *Amendment 2 status: accepted (the maintainer, 2026-11-15).*
+
+## Amendment 3 (2026-11-15): checking an operation without applying it (slice 0047; LIB-EDIT-013)
+
+- **`edit::check(document: &Document, operation: &Operation) -> Result<(), EditError>`.**
+  - It returns `Ok` exactly when `apply` would accept the operation, and otherwise the same
+    `EditError`.
+  - It never changes the document. `Document` has no interior mutability, so the borrow
+    guarantees it.
+  - It takes `&Operation`, because what people check without applying is a value they hold:
+    a menu entry, a proposed change, or a record read from JSON.
+- **One code path.**
+  - Each operation has a crate-private `plan(&self, &Document) -> Result<Plan, EditError>`
+    that runs every check and computes what the change needs: the id to use, the new value,
+    or the final id list.
+  - `check` is `plan` alone. `apply` is `plan` followed by `commit`, and `commit` cannot
+    fail.
+  - Every refusal is built in `plan`.
+- **`check` stays `()`.** What an operation would create, change or delete is a preview
+  (D-PREVIEW; LIB-EDIT-004 and LIB-EDIT-007), and it goes in a separate function. A batch
+  (LIB-EDIT-014) learns generated ids from each `Mutation`.
+
+**Adopted from C++:** one check routine shared by preview and apply
+(`commands::detail::check`, `document.cpp:36-70`), and the operation taken by reference.
+
+**Differences from C++:**
+- **E13.** `check` returns `Result<(), EditError>`. C++ `Document::preview` returns
+  `OperationPreview { can_apply, effects, diagnostics, document_revision }`
+  (`mutation.h:52-58`): its effects and revision are LIB-EDIT-004/007 here.
+- **E14.** `check` is a free function, not a method, as E1 is.
+
+*Amendment 3 status: accepted (the maintainer, 2026-11-15).*

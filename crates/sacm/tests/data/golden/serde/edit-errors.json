@@ -1,0 +1,113 @@
+[
+  {
+    "type": "ParentNotFound",
+    "code": "SACM-CMD-001",
+    "parent": "nowhere"
+  },
+  {
+    "type": "InvalidParent",
+    "code": "SACM-CMD-005",
+    "parent": "case",
+    "parent_kind": "AssuranceCasePackage",
+    "kind": "Claim"
+  },
+  {
+    "type": "InvalidId",
+    "code": "SACM-ID-002",
+    "id": "1bad"
+  },
+  {
+    "type": "DuplicateId",
+    "code": "SACM-CMD-004",
+    "id": "c1"
+  },
+  {
+    "type": "TooFewReferences",
+    "code": "SACM-MULT-001",
+    "end": "source",
+    "given": 0,
+    "required": 1
+  },
+  {
+    "type": "TooManyReferences",
+    "code": "SACM-MULT-001",
+    "end": "citedElement",
+    "given": 2,
+    "allowed": 1
+  },
+  {
+    "type": "InvalidReference",
+    "code": "SACM-ID-002",
+    "end": "source",
+    "id": "a b"
+  },
+  {
+    "type": "ReferenceNotFound",
+    "code": "SACM-CMD-001",
+    "end": "target",
+    "id": "nowhere"
+  },
+  {
+    "type": "WrongReferenceType",
+    "code": "SACM-REF-002",
+    "end": "structure",
+    "id": "c1",
+    "kind": "Claim",
+    "expected": "ArgumentPackage"
+  },
+  {
+    "type": "WrongReferenceType",
+    "code": "SACM-REF-002",
+    "end": "source",
+    "id": "p",
+    "kind": "ArgumentPackage",
+    "expected": "ArgumentAsset"
+  },
+  {
+    "type": "ElementNotFound",
+    "code": "SACM-CMD-001",
+    "element": "nowhere"
+  },
+  {
+    "type": "FeatureNotApplicable",
+    "code": "SACM-CMD-008",
+    "element": "c1",
+    "kind": "Claim",
+    "feature": "isCounter"
+  },
+  {
+    "type": "FeatureNotApplicable",
+    "code": "SACM-CMD-008",
+    "element": "c1",
+    "kind": "Claim",
+    "feature": "source"
+  },
+  {
+    "type": "ReferenceNotHeld",
+    "code": "SACM-CMD-001",
+    "end": "metaClaim",
+    "id": "m1"
+  },
+  {
+    "type": "ChildNotFound",
+    "code": "SACM-CMD-001",
+    "parent": "p",
+    "child": "case"
+  },
+  {
+    "type": "ChildNotFound",
+    "code": "SACM-CMD-001",
+    "parent": null,
+    "child": "c1"
+  },
+  {
+    "type": "InvalidOrder",
+    "code": "SACM-CMD-009",
+    "repeated": null
+  },
+  {
+    "type": "InvalidOrder",
+    "code": "SACM-CMD-009",
+    "repeated": "c1"
+  }
+]

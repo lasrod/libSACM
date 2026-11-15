@@ -2,7 +2,8 @@
 //! SACM23-BASE-005; LIB-EDIT-001, ADR 0019, ADR 0025).
 
 use super::EditError;
-use super::create::{Features, create};
+use super::create::plan_create;
+use super::plan::{Features, Plan};
 use crate::model::{Document, ElementId, ElementKind, MultiLangString};
 
 /// Creates a `Description` (SACM 2.3 §8.9) as the last child of a
@@ -43,8 +44,14 @@ use crate::model::{Document, ElementId, ElementKind, MultiLangString};
 /// # Ok::<(), sacm::edit::EditError>(())
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 pub struct CreateDescription {
     parent: ElementId,
+    #[cfg_attr(feature = "serde", serde(default))]
     id: Option<ElementId>,
     content: MultiLangString,
 }
@@ -92,9 +99,9 @@ impl CreateDescription {
         &self.content
     }
 
-    /// Checks and applies the operation, and returns the ids it created.
-    pub(super) fn apply(&self, document: &mut Document) -> Result<Vec<ElementId>, EditError> {
-        create_utility(
+    /// Runs every check of the operation, and returns what it creates.
+    pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
+        plan_utility(
             document,
             ElementKind::Description,
             &self.parent,
@@ -134,8 +141,14 @@ impl CreateDescription {
 /// # Ok::<(), sacm::edit::EditError>(())
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 pub struct CreateImplementationConstraint {
     parent: ElementId,
+    #[cfg_attr(feature = "serde", serde(default))]
     id: Option<ElementId>,
     content: MultiLangString,
 }
@@ -184,9 +197,9 @@ impl CreateImplementationConstraint {
         &self.content
     }
 
-    /// Checks and applies the operation, and returns the ids it created.
-    pub(super) fn apply(&self, document: &mut Document) -> Result<Vec<ElementId>, EditError> {
-        create_utility(
+    /// Runs every check of the operation, and returns what it creates.
+    pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
+        plan_utility(
             document,
             ElementKind::ImplementationConstraint,
             &self.parent,
@@ -218,8 +231,14 @@ impl CreateImplementationConstraint {
 /// # Ok::<(), sacm::edit::EditError>(())
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 pub struct CreateNote {
     parent: ElementId,
+    #[cfg_attr(feature = "serde", serde(default))]
     id: Option<ElementId>,
     content: MultiLangString,
 }
@@ -267,9 +286,9 @@ impl CreateNote {
         &self.content
     }
 
-    /// Checks and applies the operation, and returns the ids it created.
-    pub(super) fn apply(&self, document: &mut Document) -> Result<Vec<ElementId>, EditError> {
-        create_utility(
+    /// Runs every check of the operation, and returns what it creates.
+    pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
+        plan_utility(
             document,
             ElementKind::Note,
             &self.parent,
@@ -312,8 +331,14 @@ impl CreateNote {
 /// # Ok::<(), sacm::edit::EditError>(())
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 pub struct CreateTaggedValue {
     parent: ElementId,
+    #[cfg_attr(feature = "serde", serde(default))]
     id: Option<ElementId>,
     key: MultiLangString,
     content: MultiLangString,
@@ -374,9 +399,9 @@ impl CreateTaggedValue {
         &self.content
     }
 
-    /// Checks and applies the operation, and returns the ids it created.
-    pub(super) fn apply(&self, document: &mut Document) -> Result<Vec<ElementId>, EditError> {
-        create_utility(
+    /// Runs every check of the operation, and returns what it creates.
+    pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
+        plan_utility(
             document,
             ElementKind::TaggedValue,
             &self.parent,
@@ -387,17 +412,17 @@ impl CreateTaggedValue {
     }
 }
 
-/// Creates a `UtilityElement` of `kind` under `parent` with `content`, and
-/// `key` for a `TaggedValue`, under the checks every create runs.
-fn create_utility(
-    document: &mut Document,
+/// The plan of a `UtilityElement` of `kind` under `parent` with `content`,
+/// and `key` for a `TaggedValue`, under the checks every create runs.
+fn plan_utility<'o>(
+    document: &Document,
     kind: ElementKind,
-    parent: &ElementId,
+    parent: &'o ElementId,
     id: Option<&ElementId>,
-    content: &MultiLangString,
-    key: Option<&MultiLangString>,
-) -> Result<Vec<ElementId>, EditError> {
-    create(
+    content: &'o MultiLangString,
+    key: Option<&'o MultiLangString>,
+) -> Result<Plan<'o>, EditError> {
+    plan_create(
         document,
         kind,
         Some(parent),

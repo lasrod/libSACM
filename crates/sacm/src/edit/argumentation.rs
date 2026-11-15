@@ -7,7 +7,8 @@
 use std::slice;
 
 use super::EditError;
-use super::create::{checked_place, refusal};
+use super::create::checked_place;
+use super::plan::{Features, NewElement, Plan};
 use super::references::{check_bounds, check_targets};
 use crate::model::{Document, ElementId, ElementKind, Flag, LangString, ReferenceEnd};
 
@@ -56,10 +57,17 @@ use crate::model::{Document, ElementId, ElementKind, Flag, LangString, Reference
 /// # Ok::<(), EditError>(())
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 pub struct CreateArgumentReasoning {
     parent: ElementId,
+    #[cfg_attr(feature = "serde", serde(default))]
     id: Option<ElementId>,
     name: LangString,
+    #[cfg_attr(feature = "serde", serde(default))]
     structure: Option<ElementId>,
 }
 
@@ -130,9 +138,9 @@ impl CreateArgumentReasoning {
         self.structure.as_ref()
     }
 
-    /// Checks and applies the operation, and returns the ids it created.
-    pub(super) fn apply(&self, document: &mut Document) -> Result<Vec<ElementId>, EditError> {
-        create_referencing(
+    /// Runs every check of the operation, and returns what it creates.
+    pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
+        plan_referencing(
             document,
             ElementKind::ArgumentReasoning,
             &self.parent,
@@ -203,10 +211,17 @@ impl CreateArgumentReasoning {
 /// # Ok::<(), EditError>(())
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 pub struct CreateArtifactReference {
     parent: ElementId,
+    #[cfg_attr(feature = "serde", serde(default))]
     id: Option<ElementId>,
     name: LangString,
+    #[cfg_attr(feature = "serde", serde(default))]
     referenced_artifact_elements: Vec<ElementId>,
 }
 
@@ -281,9 +296,9 @@ impl CreateArtifactReference {
         &self.referenced_artifact_elements
     }
 
-    /// Checks and applies the operation, and returns the ids it created.
-    pub(super) fn apply(&self, document: &mut Document) -> Result<Vec<ElementId>, EditError> {
-        create_referencing(
+    /// Runs every check of the operation, and returns what it creates.
+    pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
+        plan_referencing(
             document,
             ElementKind::ArtifactReference,
             &self.parent,
@@ -339,10 +354,17 @@ impl CreateArtifactReference {
 /// # Ok::<(), EditError>(())
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 pub struct CreateArgumentGroup {
     parent: ElementId,
+    #[cfg_attr(feature = "serde", serde(default))]
     id: Option<ElementId>,
     name: LangString,
+    #[cfg_attr(feature = "serde", serde(default))]
     group_members: Vec<ElementId>,
 }
 
@@ -415,9 +437,9 @@ impl CreateArgumentGroup {
         &self.group_members
     }
 
-    /// Checks and applies the operation, and returns the ids it created.
-    pub(super) fn apply(&self, document: &mut Document) -> Result<Vec<ElementId>, EditError> {
-        create_referencing(
+    /// Runs every check of the operation, and returns what it creates.
+    pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
+        plan_referencing(
             document,
             ElementKind::ArgumentGroup,
             &self.parent,
@@ -432,13 +454,21 @@ impl CreateArgumentGroup {
 /// What the create operations of the asserted relationships are given
 /// (SACM 2.3 §11.13), shared by all five.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 struct Relationship {
     parent: ElementId,
+    #[cfg_attr(feature = "serde", serde(default))]
     id: Option<ElementId>,
     name: LangString,
     sources: Vec<ElementId>,
     target: ElementId,
+    #[cfg_attr(feature = "serde", serde(default))]
     reasoning: Option<ElementId>,
+    #[cfg_attr(feature = "serde", serde(default))]
     is_counter: bool,
 }
 
@@ -461,19 +491,15 @@ impl Relationship {
         }
     }
 
-    /// Checks and applies the create of a relationship of `kind`, and
-    /// returns the ids it created: after [ADR 0019]'s four checks, at least
+    /// Runs every check of the create of a relationship of `kind`, and
+    /// returns what it creates: after [ADR 0019]'s four checks, at least
     /// one source, then every source, in order, the target and the
     /// reasoning holding no white space, then each naming an element, then
     /// each naming an element of its end's declared type.
     ///
     /// [ADR 0019]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0019-edit-operations.md
-    fn apply(
-        &self,
-        document: &mut Document,
-        kind: ElementKind,
-    ) -> Result<Vec<ElementId>, EditError> {
-        create_referencing(
+    fn plan<'o>(&'o self, document: &Document, kind: ElementKind) -> Result<Plan<'o>, EditError> {
+        plan_referencing(
             document,
             kind,
             &self.parent,
@@ -499,6 +525,11 @@ macro_rules! relationship_operation {
     ) => {
         $(#[$meta])*
         #[derive(Clone, Debug, PartialEq, Eq)]
+        #[cfg_attr(
+            feature = "serde",
+            derive(serde::Serialize, serde::Deserialize),
+            serde(transparent)
+        )]
         pub struct $name {
             relationship: Relationship,
         }
@@ -598,13 +629,13 @@ macro_rules! relationship_operation {
                 self.relationship.is_counter
             }
 
-            /// Checks and applies the operation, and returns the ids it
-            /// created.
-            pub(super) fn apply(
-                &self,
-                document: &mut Document,
-            ) -> Result<Vec<ElementId>, EditError> {
-                self.relationship.apply(document, ElementKind::$kind)
+            /// Runs every check of the operation, and returns what it
+            /// creates.
+            pub(super) fn plan<'o>(
+                &'o self,
+                document: &Document,
+            ) -> Result<Plan<'o>, EditError> {
+                self.relationship.plan(document, ElementKind::$kind)
             }
         }
 
@@ -819,26 +850,25 @@ relationship_operation! {
     "giving the artifacts the `ArtifactReference`s `sources` name as context for the one `target` names."
 }
 
-/// Creates an element of `kind` named `name` under `parent`, with `flags`
-/// set and each reference end of `references` holding its ids, and returns
-/// the ids created: the new element's.
+/// The plan of an element of `kind` named `name` under `parent`, with
+/// `flags` set and each reference end of `references` holding its ids.
 ///
 /// The checks, in order: [`checked_place`]'s four (ADR 0019); every end
 /// holds at least the ids it needs ([`EditError::TooFewReferences`]); then
 /// the referenced ids, by [`check_targets`]: white space, then existence,
 /// then type, each over every end and its ids in order (ADR 0028), the
-/// order a set operation checks them in too (ADR 0029). On a refusal the
-/// document, its counters included, is unchanged: every check runs before
-/// the one change.
-fn create_referencing(
-    document: &mut Document,
+/// order a set operation checks them in too (ADR 0029). Changes nothing:
+/// the commit adds the element, and then advances the counter for a
+/// generated id.
+fn plan_referencing<'o>(
+    document: &Document,
     kind: ElementKind,
-    parent: &ElementId,
+    parent: &'o ElementId,
     id: Option<&ElementId>,
-    name: &LangString,
+    name: &'o LangString,
     flags: &[(Flag, bool)],
-    references: &[(ReferenceEnd, &[ElementId])],
-) -> Result<Vec<ElementId>, EditError> {
+    references: &[(ReferenceEnd, &'o [ElementId])],
+) -> Result<Plan<'o>, EditError> {
     let (id, generated) = checked_place(document, kind, Some(parent), id)?;
     for &(end, targets) in references {
         check_bounds(end, targets.len())?;
@@ -848,23 +878,15 @@ fn create_referencing(
         .map(|&(end, targets)| (end, targets, [].as_slice()))
         .collect();
     check_targets(document, &checked)?;
-    let held = references
-        .iter()
-        .filter(|(_, targets)| !targets.is_empty())
-        .map(|&(end, targets)| (end, targets.to_vec()))
-        .collect();
-    document
-        .insert_with_references(
-            Some(parent),
-            kind,
-            id.clone(),
-            Some(name.clone()),
-            flags,
-            held,
-        )
-        .map_err(|error| refusal(error, &id))?;
-    if let Some(n) = generated {
-        document.commit_generated_id(kind, n);
-    }
-    Ok(vec![id])
+    Ok(Plan::Create(NewElement {
+        kind,
+        parent: Some(parent),
+        id,
+        generated,
+        features: Features::Referencing {
+            name,
+            flags: flags.to_vec(),
+            references: references.to_vec(),
+        },
+    }))
 }

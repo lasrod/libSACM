@@ -100,6 +100,31 @@ use super::{
 /// assert!(doc.roots().next().is_none());
 /// assert!(doc.get("claim_top").is_none());
 /// ```
+///
+/// # Serde
+///
+/// A document is not serialized with serde: XMI, through
+/// [`xmi::write`](crate::xmi::write) and [`xmi::read`](crate::xmi::read), is
+/// its only serialization (ADR 0030). The `serde` feature serializes the
+/// operations that edit it and the values they carry instead.
+#[cfg_attr(
+    feature = "serde",
+    doc = r"
+With the feature, this does not compile:
+
+```compile_fail
+fn serializable<T: serde::Serialize + serde::de::DeserializeOwned>() {}
+serializable::<sacm::model::Document>();
+```
+
+while the same check of an operation does:
+
+```
+fn serializable<T: serde::Serialize + serde::de::DeserializeOwned>() {}
+serializable::<sacm::edit::Operation>();
+```
+"
+)]
 #[derive(Clone, Default)]
 pub struct Document {
     /// Every element, in insertion order. A node's position is its handle.

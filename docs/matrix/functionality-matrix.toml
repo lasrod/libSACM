@@ -4969,11 +4969,29 @@ area = "EDIT"
 milestone = "M2"
 title = "Check an operation without applying it"
 requirement = "`edit::check(&Document, &Operation)` succeeds exactly when `edit::apply` on the same document would succeed, and otherwise returns the same `EditError`; it never changes the document. `check` and `apply` run the same checks through one code path, so they cannot disagree."
-source = "User request: Assurance Forge, GitHub issue #60 (2026-11-14); D-ATOMIC; ADR 0019"
+source = "User request: Assurance Forge, GitHub issue #60 (2026-11-14); D-ATOMIC; ADR 0019; ADR 0019 amendment 3 (the maintainer, 2026-11-15)"
 kind = "editing"
-status = "planned"
+status = "verified"
+verification = "docs/verification/0047-m2-check-and-serde.md"
 depends_on = ["LIB-EDIT-002", "LIB-EDIT-008", "LIB-EDIT-009", "LIB-EDIT-010", "LIB-EDIT-012"]
 notes = "LIB-EDIT-004 (delete preview) is the richer form of this for one operation."
+acceptance = [
+  "For every starting document and every operation of the LIB-EDIT-002 set (accepted and refused, every operation struct, caller and generated ids), `edit::check(&doc, &op)` equals `edit::apply(&mut doc.clone(), op.clone()).map(drop)`, the same `EditError` included.",
+  "After `check`, the document is `==` to a clone taken before, and a create with a generated id of each kind gives the same id on both.",
+  "An operation that fails two checks gets the first in ADR 0019's check order from both `check` and `apply`.",
+  "`check` and `apply` share one crate-private `plan`; `commit` returns no `Result` and builds no `EditError` (checked by review of the code).",
+  "The rustdoc of `check` has an example: a refused operation is reported and the document is unchanged.",
+]
+code = ["crates/sacm/src/edit.rs", "crates/sacm/src/edit/plan.rs", "docs/adr/0019-edit-operations.md"]
+tests = [
+  "crates/sacm/tests/edit_atomic.rs::lib_edit_013_check_takes_the_document_and_the_operation_by_reference",
+  "crates/sacm/tests/edit_atomic.rs::lib_edit_013_check_answers_as_apply_for_every_operation_of_the_set",
+  "crates/sacm/tests/edit_atomic.rs::lib_edit_013_the_set_has_every_operation_struct_accepted_and_refused_with_both_id_forms",
+  "crates/sacm/tests/edit_atomic.rs::lib_edit_013_check_leaves_the_document_equal_with_the_same_next_ids_of_every_kind",
+  "crates/sacm/tests/edit_atomic.rs::lib_edit_013_a_checked_create_of_each_kind_gets_the_generated_id_an_unchecked_one_gets",
+  "crates/sacm/tests/edit_atomic.rs::lib_edit_013_a_create_failing_two_checks_gets_the_first_from_check_and_apply",
+  "crates/sacm/tests/edit_atomic.rs::lib_edit_013_an_edit_failing_two_checks_gets_the_first_from_check_and_apply",
+]
 
 [[row]]
 id = "LIB-EDIT-014"
@@ -5130,11 +5148,56 @@ area = "API"
 milestone = "M2"
 title = "serde support for edit and diagnostic values"
 requirement = "An optional `serde` feature implements `Serialize` and `Deserialize` for `Operation` and every operation struct, `Mutation`, `EditError`, the value types they carry (`ElementId`, `ElementKind`, `LangString`, `MultiLangString`, `AssertionDeclaration` and the edit selectors) and for `Diagnostic`, `Code`, `Severity` and `SourceLocation`. `Document` does not implement them: XMI stays the only serialization of the model. A deserialized operation is checked by `edit::apply` exactly as a constructed one, and an unknown `Code` or kind name is a deserialization error. The serialized form is documented, golden-tested in JSON and stable as `operation_name()` is."
-source = "User request: Assurance Forge, GitHub issue #57 (2026-11-14); rust-library-craft \"`serde` support, if added, is behind `serde`\"; ADR 0011 \"Later additions are additive: user-built diagnostics, `operation` and serde\""
+source = "User request: Assurance Forge, GitHub issue #57 (2026-11-14); rust-library-craft \"`serde` support, if added, is behind `serde`\"; ADR 0011 \"Later additions are additive: user-built diagnostics, `operation` and serde\"; ADR 0030 (the maintainer, 2026-11-15)"
 kind = "api"
-status = "planned"
+status = "verified"
+verification = "docs/verification/0047-m2-check-and-serde.md"
 depends_on = ["LIB-EDIT-003", "LIB-EDIT-008", "LIB-EDIT-009", "LIB-EDIT-010"]
 notes = "Narrowed 2026-11-15 from \"serializes the model and diagnostics\": leaving `Document` out removes the concern that serde freezes a second serialization of the model. The maintainer decided on 2026-11-15 that the serialized form is a stability promise, like `operation_name()`: changing it is a breaking change. Needs an ADR for the serde dependency (optional, with `derive`) and the JSON shape. LIB-QA-017 builds the wasm target with this feature too."
+acceptance = [
+  "With the `serde` feature, every type ADR 0030 lists implements `Serialize` and `Deserialize`; `Document` does not (a `compile_fail` doctest). Without the feature, `sacm` has no serde dependency.",
+  "Golden JSON files fix the shape of every operation struct (each constructor form: root and parent, with and without id, set and remove), a `Mutation`, every `EditError` variant, a full and a minimal `Diagnostic`, and LangString and MultiLangString values. Serializing gives the file's bytes, and deserializing the file gives values `==` to the originals. A test with an exhaustive `match` fails to compile when an `Operation` or `EditError` variant has no sample.",
+  "Every operation's `\"type\"` is its `operation_name()`; every `ElementKind`, `Flag`, `ReferenceEnd`, `AssertionDeclaration`, `Severity` and catalog `Code` round-trips as its name or code string.",
+  "Refused on input: an unknown `type`, an unknown key, a missing required key (a package create's `parent` included), an unknown code, kind, flag, end, feature or expected-class name, an `EditError` whose `code` does not match its variant, and a location line or column of 0.",
+  "An omitted optional key reads as the constructor default; `{}` and `{\"content\":\"\"}` are different LangStrings.",
+  "A deserialized operation is `==` to its constructed twin, and `check` and `apply` refuse an invalid one (`\"id\":\"a b\"` gives `InvalidId`) exactly as a constructed one.",
+  "The wasm32 build with `--all-features`, `cargo deny` and the MSRV build pass with the feature.",
+]
+code = ["crates/sacm/Cargo.toml", "crates/sacm/src/edit/record.rs", "crates/sacm/src/diagnostic.rs", "crates/sacm/src/lib.rs", "docs/adr/0030-serde-for-edit-and-diagnostic-values.md"]
+tests = [
+  "crates/sacm/tests/serde.rs::lib_api_006_every_listed_type_implements_serialize_and_deserialize",
+  "crates/sacm/tests/serde.rs::lib_api_006_operations_serialize_to_the_golden_json_and_read_back_equal",
+  "crates/sacm/tests/serde.rs::lib_api_006_every_operation_is_tagged_first_with_its_operation_name",
+  "crates/sacm/tests/serde.rs::lib_api_006_an_operation_struct_serializes_as_its_operation_without_the_tag",
+  "crates/sacm/tests/serde.rs::lib_api_006_mutations_serialize_to_the_golden_json_and_read_back_equal",
+  "crates/sacm/tests/serde.rs::lib_api_006_edit_errors_serialize_to_the_golden_json_and_read_back_equal",
+  "crates/sacm/tests/serde.rs::lib_api_006_every_edit_error_is_tagged_with_its_variant_then_its_code",
+  "crates/sacm/tests/serde.rs::lib_api_006_diagnostics_serialize_to_the_golden_json_and_read_back_equal",
+  "crates/sacm/tests/serde.rs::lib_api_006_values_serialize_to_the_golden_json_and_read_back_equal",
+  "crates/sacm/tests/serde.rs::lib_api_006_every_element_kind_round_trips_as_its_name",
+  "crates/sacm/tests/serde.rs::lib_api_006_every_flag_round_trips_as_its_name",
+  "crates/sacm/tests/serde.rs::lib_api_006_every_reference_end_round_trips_as_its_name",
+  "crates/sacm/tests/serde.rs::lib_api_006_every_assertion_declaration_round_trips_as_its_name",
+  "crates/sacm/tests/serde.rs::lib_api_006_every_severity_round_trips_as_its_name",
+  "crates/sacm/tests/serde.rs::lib_api_006_every_catalog_code_round_trips_as_its_code_and_a_reserved_one_is_refused",
+  "crates/sacm/tests/serde.rs::lib_api_006_an_element_id_is_a_string_read_unchecked",
+  "crates/sacm/tests/serde.rs::lib_api_006_an_unknown_type_is_refused",
+  "crates/sacm/tests/serde.rs::lib_api_006_an_unknown_key_is_refused",
+  "crates/sacm/tests/serde.rs::lib_api_006_a_package_create_without_parent_is_refused",
+  "crates/sacm/tests/serde.rs::lib_api_006_an_operation_without_a_required_key_is_refused",
+  "crates/sacm/tests/serde.rs::lib_api_006_a_record_without_a_required_key_is_refused",
+  "crates/sacm/tests/serde.rs::lib_api_006_an_unknown_code_severity_or_kind_name_is_refused",
+  "crates/sacm/tests/serde.rs::lib_api_006_an_unknown_flag_end_feature_class_or_declaration_name_is_refused",
+  "crates/sacm/tests/serde.rs::lib_api_006_an_edit_error_whose_code_does_not_match_its_variant_is_refused",
+  "crates/sacm/tests/serde.rs::lib_api_006_a_location_line_or_column_of_0_is_refused",
+  "crates/sacm/tests/serde.rs::lib_api_006_an_omitted_optional_key_reads_as_the_constructor_default",
+  "crates/sacm/tests/serde.rs::lib_api_006_an_empty_lang_string_object_differs_from_empty_content",
+  "crates/sacm/tests/serde.rs::lib_api_006_a_deserialized_operation_equals_its_constructed_twin",
+  "crates/sacm/tests/serde.rs::lib_api_006_check_and_apply_refuse_an_invalid_deserialized_operation_as_its_twin",
+  "crates/sacm/tests/serde.rs::lib_api_006_a_feature_not_applicable_reads_back_for_every_feature_name",
+  "crates/sacm/tests/serde.rs::lib_api_006_an_unknown_key_in_any_object_of_the_golden_files_is_refused",
+  "crates/sacm/tests/serde.rs::lib_api_006_each_key_of_every_object_of_the_golden_files_is_required_or_has_its_default",
+]
 
 [[row]]
 id = "LIB-CLI-005"

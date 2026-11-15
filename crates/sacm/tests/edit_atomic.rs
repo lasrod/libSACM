@@ -10,6 +10,13 @@
 //!   the operation as given and the ids created, changed and deleted, which
 //!   equal what `semantic_compare(before, after)` reports right-only,
 //!   per-element and left-only.
+//! - LIB-EDIT-013 (ADR 0019 amendment 3): `edit::check(&doc, &op)` equals
+//!   `edit::apply(&mut doc.clone(), op.clone()).map(drop)`, the same
+//!   `EditError` included, and leaves the document `==` to before with the
+//!   same next generated id of every kind. It runs over the set extended with
+//!   [`referencing_creates_for`], so that every `Operation` variant is
+//!   accepted and refused, the creates with both id forms. An operation that
+//!   fails two checks gets the first, from both.
 //!
 //! # The set
 //!
@@ -89,6 +96,9 @@
 //!   API; the verifier reviews it.
 //! - The audit-log example in the `Mutation` rustdoc (LIB-EDIT-003 item 5):
 //!   a doctest, checked by review.
+//! - That `check` and `apply` share one crate-private `plan`, and that
+//!   `commit` returns no `Result` and builds no `EditError` (LIB-EDIT-013
+//!   item 4), and the example in the rustdoc of `check` (item 5): by review.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Debug;
@@ -98,9 +108,13 @@ use std::sync::OnceLock;
 use sacm::compare::{Difference, semantic_compare};
 use sacm::diagnostic::Code;
 use sacm::edit::{
-    self, AddReference, CreateArgumentPackage, CreateAssuranceCasePackage, CreateClaim, EditError,
-    Mutation, Operation, RemoveReference, ReorderElements, SetAssertionDeclaration, SetContent,
-    SetFlag, SetGid, SetKey, SetName, SetReferences,
+    self, AddReference, CreateArgumentGroup, CreateArgumentPackage, CreateArgumentReasoning,
+    CreateArtifactReference, CreateAssertedArtifactContext, CreateAssertedArtifactSupport,
+    CreateAssertedContext, CreateAssertedEvidence, CreateAssertedInference,
+    CreateAssuranceCasePackage, CreateClaim, CreateDescription, CreateImplementationConstraint,
+    CreateNote, CreateTaggedValue, EditError, Mutation, Operation, RemoveReference,
+    ReorderElements, SetAssertionDeclaration, SetContent, SetFlag, SetGid, SetKey, SetName,
+    SetReferences,
 };
 use sacm::model::ElementKind::{
     Activity, ArgumentGroup, ArgumentPackage, ArgumentPackageBinding, ArgumentPackageInterface,
@@ -124,6 +138,7 @@ const EDIT_008: &str = "LIB-EDIT-008";
 const EDIT_009: &str = "LIB-EDIT-009";
 const EDIT_010: &str = "LIB-EDIT-010";
 const EDIT_012: &str = "LIB-EDIT-012";
+const EDIT_013: &str = "LIB-EDIT-013";
 
 /// The directory of the XMI fixtures.
 const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/xmi");
@@ -2553,5 +2568,958 @@ fn lib_edit_012_no_successful_operation_of_the_set_removes_a_key() {
     assert!(
         successes > 0,
         "{EDIT_012}: no operation of the set succeeded"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// LIB-EDIT-013: check an operation without applying it
+// ---------------------------------------------------------------------------
+
+/// Every operation name of this release, in the declaration order of
+/// `Operation`: the set must reach each accepted and refused.
+const OPERATION_NAMES: [&str; 25] = [
+    "CreateAssuranceCasePackage",
+    "CreateArgumentPackage",
+    "CreateClaim",
+    "CreateArgumentReasoning",
+    "CreateAssertedInference",
+    "CreateAssertedContext",
+    "CreateArtifactReference",
+    "CreateArgumentGroup",
+    "CreateAssertedEvidence",
+    "CreateAssertedArtifactSupport",
+    "CreateAssertedArtifactContext",
+    "CreateDescription",
+    "CreateImplementationConstraint",
+    "CreateNote",
+    "CreateTaggedValue",
+    "SetName",
+    "SetGid",
+    "SetFlag",
+    "SetAssertionDeclaration",
+    "SetContent",
+    "SetKey",
+    "SetReferences",
+    "AddReference",
+    "RemoveReference",
+    "ReorderElements",
+];
+
+/// The first 15 of [`OPERATION_NAMES`]: the creates.
+const CREATE_COUNT: usize = 15;
+
+/// A document read from XMI for the check-order cases: a Claim `c1` with a
+/// Description `d1`, a Claim with the id `a b` (not an `NCName`, kept as
+/// read), an `ArgumentReasoning` `why` and an `AssertedInference` `i1` from `c1`
+/// to `c1`, in the ArgumentPackage `p` of the AssuranceCasePackage `case`.
+const CHECK_ORDER_START: &str = r#"<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="case">
+  <name content="Case"/>
+  <argumentPackage xmi:id="p">
+    <name content="P"/>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+      <name content="C1"/>
+      <description xmi:id="d1"><content><value content="D1"/></content></description>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="a b"><name content="Spaced"/></argumentElement>
+    <argumentElement xmi:type="sacm:ArgumentReasoning" xmi:id="why"><name content="Why"/></argumentElement>
+    <argumentElement xmi:type="sacm:AssertedInference" xmi:id="i1" source="c1" target="c1"><name content="I1"/></argumentElement>
+  </argumentPackage>
+</sacm:AssuranceCasePackage>
+"#;
+
+/// Whether a create has a caller id: `Some(true)` for a caller id,
+/// `Some(false)` for a generated one, and `None` for an operation that is
+/// not a create.
+fn has_caller_id(operation: &Operation) -> Option<bool> {
+    let id = match operation {
+        Operation::CreateAssuranceCasePackage(create) => create.id(),
+        Operation::CreateArgumentPackage(create) => create.id(),
+        Operation::CreateClaim(create) => create.id(),
+        Operation::CreateArgumentReasoning(create) => create.id(),
+        Operation::CreateAssertedInference(create) => create.id(),
+        Operation::CreateAssertedContext(create) => create.id(),
+        Operation::CreateArtifactReference(create) => create.id(),
+        Operation::CreateArgumentGroup(create) => create.id(),
+        Operation::CreateAssertedEvidence(create) => create.id(),
+        Operation::CreateAssertedArtifactSupport(create) => create.id(),
+        Operation::CreateAssertedArtifactContext(create) => create.id(),
+        Operation::CreateDescription(create) => create.id(),
+        Operation::CreateImplementationConstraint(create) => create.id(),
+        Operation::CreateNote(create) => create.id(),
+        Operation::CreateTaggedValue(create) => create.id(),
+        _ => return None,
+    };
+    Some(id.is_some())
+}
+
+/// `operation`, a create, given the caller id `value`; unchanged for `None`.
+fn with_caller_id(operation: Operation, value: Option<&ElementId>) -> Operation {
+    let Some(value) = value else {
+        return operation;
+    };
+    match operation {
+        Operation::CreateAssuranceCasePackage(create) => create.with_id(value).into(),
+        Operation::CreateArgumentPackage(create) => create.with_id(value).into(),
+        Operation::CreateClaim(create) => create.with_id(value).into(),
+        Operation::CreateArgumentReasoning(create) => create.with_id(value).into(),
+        Operation::CreateAssertedInference(create) => create.with_id(value).into(),
+        Operation::CreateAssertedContext(create) => create.with_id(value).into(),
+        Operation::CreateArtifactReference(create) => create.with_id(value).into(),
+        Operation::CreateArgumentGroup(create) => create.with_id(value).into(),
+        Operation::CreateAssertedEvidence(create) => create.with_id(value).into(),
+        Operation::CreateAssertedArtifactSupport(create) => create.with_id(value).into(),
+        Operation::CreateAssertedArtifactContext(create) => create.with_id(value).into(),
+        Operation::CreateDescription(create) => create.with_id(value).into(),
+        Operation::CreateImplementationConstraint(create) => create.with_id(value).into(),
+        Operation::CreateNote(create) => create.with_id(value).into(),
+        Operation::CreateTaggedValue(create) => create.with_id(value).into(),
+        other => panic!("{EDIT_013}: setup: {other:?} is not a create"),
+    }
+}
+
+/// The five asserted relationship creates under `parent`, from `sources` to
+/// `target`, with `reasoning` if given, and `is_counter`.
+fn relationship_creates(
+    parent: &ElementId,
+    name: &LangString,
+    sources: &[ElementId],
+    target: &ElementId,
+    reasoning: Option<&ElementId>,
+    is_counter: bool,
+) -> [Operation; 5] {
+    macro_rules! relationship {
+        ($create:ident) => {{
+            let mut create =
+                $create::new(parent, name.clone(), sources, target).with_is_counter(is_counter);
+            if let Some(reasoning) = reasoning {
+                create = create.with_reasoning(reasoning);
+            }
+            Operation::from(create)
+        }};
+    }
+    [
+        relationship!(CreateAssertedInference),
+        relationship!(CreateAssertedContext),
+        relationship!(CreateAssertedEvidence),
+        relationship!(CreateAssertedArtifactSupport),
+        relationship!(CreateAssertedArtifactContext),
+    ]
+}
+
+/// The first element of `doc`, in pre-order, of a kind in `kinds`.
+fn first_of(doc: &Document, kinds: &[ElementKind]) -> Option<ElementId> {
+    first_and_last_of(doc, kinds).map(|(first, _)| first)
+}
+
+/// The creates [`create_operations_for`] leaves out: the twelve that are no
+/// package and no Claim, which the LIB-EDIT-002 oracle does not model.
+///
+/// Under every element (pre-order) and under [`NOWHERE`]: one of each with
+/// each id form (generated, a fresh `check_new_<n>`, [`NOT_AN_NCNAME`], and
+/// the parent's own id), each referencing the first element of the end's
+/// declared type where the document has one, and [`NOWHERE`] for a source or
+/// target where it has none. Then, with a generated id, each reference
+/// refusal of [`reference_refusals`].
+fn referencing_creates_for(doc: &Document) -> Vec<Operation> {
+    let names = names();
+    let nowhere = id(NOWHERE);
+    let asset = first_of(doc, &ARGUMENT_ASSETS).unwrap_or_else(|| nowhere.clone());
+    let reasoning = first_of(doc, &[ArgumentReasoning]);
+    let structure = first_of(doc, &[ArgumentPackage]);
+    let artifact = first_of(doc, &MODEL_ELEMENTS);
+    let member = first_of(doc, &ARGUMENTATION_ELEMENTS);
+    let first_id = doc.elements().next().map(|element| element.id().clone());
+
+    let mut parents: Vec<ElementId> = doc.elements().map(|element| element.id().clone()).collect();
+    parents.push(nowhere);
+
+    let mut operations: Vec<Operation> = Vec::new();
+    for (parent_index, parent) in parents.iter().enumerate() {
+        let duplicate = if doc.contains(parent) {
+            Some(parent.clone())
+        } else {
+            first_id.clone()
+        };
+        let mut caller_ids: Vec<Option<ElementId>> = vec![
+            None,
+            Some(id(&format!("check_new_{parent_index}"))),
+            Some(id(NOT_AN_NCNAME)),
+        ];
+        caller_ids.extend(duplicate.map(Some));
+        for (form, caller_id) in caller_ids.iter().enumerate() {
+            let name = |kind: usize| names[(parent_index + form + kind) % names.len()].clone();
+            let mut argument_reasoning = CreateArgumentReasoning::new(parent, name(0));
+            if let Some(structure) = &structure {
+                argument_reasoning = argument_reasoning.with_structure(structure);
+            }
+            let mut reference = CreateArtifactReference::new(parent, name(1));
+            if let Some(artifact) = &artifact {
+                reference = reference.with_referenced_artifact_elements([artifact]);
+            }
+            let mut group = CreateArgumentGroup::new(parent, name(2));
+            if let Some(member) = &member {
+                group = group.with_group_members([member]);
+            }
+            let mut creates: Vec<Operation> =
+                vec![argument_reasoning.into(), reference.into(), group.into()];
+            creates.extend(relationship_creates(
+                parent,
+                &name(3),
+                std::slice::from_ref(&asset),
+                &asset,
+                reasoning.as_ref(),
+                form % 2 == 1,
+            ));
+            creates.push(CreateDescription::new(parent, two_values()).into());
+            creates.push(CreateImplementationConstraint::new(parent, name(4)).into());
+            creates.push(CreateNote::new(parent, MultiLangString::default()).into());
+            creates.push(CreateTaggedValue::new(parent, a_key(), two_values()).into());
+            operations.extend(
+                creates
+                    .into_iter()
+                    .map(|create| with_caller_id(create, caller_id.as_ref())),
+            );
+        }
+        let name = names[parent_index % names.len()].clone();
+        operations.extend(reference_refusals(doc, parent, &name));
+    }
+    operations
+}
+
+/// The reference refusals under `parent`, with generated ids: an asserted
+/// relationship of each kind with no source; with a source, a target or a
+/// reasoning that holds white space ([`WITH_SPACE`]), names no element
+/// ([`NOWHERE`]), or names the first element of a kind its end does not
+/// admit; and an `ArgumentReasoning` `structure`, an `ArtifactReference`
+/// `referencedArtifactElement` and an `ArgumentGroup` member of each of those
+/// three.
+fn reference_refusals(doc: &Document, parent: &ElementId, name: &LangString) -> Vec<Operation> {
+    let asset = first_of(doc, &ARGUMENT_ASSETS).unwrap_or_else(|| id(NOWHERE));
+    let bad = |declared: &[ElementKind]| -> Vec<ElementId> {
+        let mut ids = vec![id(WITH_SPACE), id(NOWHERE)];
+        ids.extend(first_not_of(doc, declared));
+        ids
+    };
+    let mut operations: Vec<Operation> = Vec::new();
+    operations.extend(relationship_creates(parent, name, &[], &asset, None, false));
+    for value in bad(&ARGUMENT_ASSETS) {
+        operations.extend(relationship_creates(
+            parent,
+            name,
+            std::slice::from_ref(&value),
+            &asset,
+            None,
+            false,
+        ));
+        operations.extend(relationship_creates(
+            parent,
+            name,
+            std::slice::from_ref(&asset),
+            &value,
+            None,
+            false,
+        ));
+    }
+    for value in bad(&[ArgumentReasoning]) {
+        operations.extend(relationship_creates(
+            parent,
+            name,
+            std::slice::from_ref(&asset),
+            &asset,
+            Some(&value),
+            false,
+        ));
+    }
+    for value in bad(&[ArgumentPackage]) {
+        operations.push(
+            CreateArgumentReasoning::new(parent, name.clone())
+                .with_structure(value)
+                .into(),
+        );
+    }
+    for value in bad(&MODEL_ELEMENTS) {
+        operations.push(
+            CreateArtifactReference::new(parent, name.clone())
+                .with_referenced_artifact_elements([value])
+                .into(),
+        );
+    }
+    for value in bad(&ARGUMENTATION_ELEMENTS) {
+        operations.push(
+            CreateArgumentGroup::new(parent, name.clone())
+                .with_group_members([value])
+                .into(),
+        );
+    }
+    operations
+}
+
+/// The LIB-EDIT-013 set for `doc`: [`operations_for`], then
+/// [`referencing_creates_for`].
+fn check_operations_for(doc: &Document) -> Vec<Operation> {
+    let mut operations = operations_for(doc);
+    operations.extend(referencing_creates_for(doc));
+    operations
+}
+
+/// One create of each of the 15 kinds, with a generated id, in the order of
+/// [`OPERATION_NAMES`] after the first three: the packages under
+/// `package_parent`, the rest under `parent`, and the asserted relationships
+/// from and to `asset`.
+fn creates_of_every_kind(package_parent: &str, parent: &str, asset: &str) -> Vec<Operation> {
+    let parent = id(parent);
+    let asset = id(asset);
+    let mut creates: Vec<Operation> = vec![
+        CreateAssuranceCasePackage::new(package_parent, named("Case")).into(),
+        CreateArgumentPackage::new(package_parent, named("Arguments")).into(),
+        CreateClaim::new(&parent, named("Claim")).into(),
+        CreateArgumentReasoning::new(&parent, named("Reasoning")).into(),
+        CreateArtifactReference::new(&parent, named("Reference")).into(),
+        CreateArgumentGroup::new(&parent, named("Group")).into(),
+    ];
+    creates.extend(relationship_creates(
+        &parent,
+        &named("Relationship"),
+        std::slice::from_ref(&asset),
+        &asset,
+        None,
+        false,
+    ));
+    creates.push(CreateDescription::new(&parent, named("Description")).into());
+    creates.push(CreateImplementationConstraint::new(&parent, named("Constraint")).into());
+    creates.push(CreateNote::new(&parent, named("Note")).into());
+    creates.push(CreateTaggedValue::new(&parent, a_key(), named("Value")).into());
+    creates
+}
+
+/// The ids the next generated element of each of the 15 kinds the edit API
+/// creates would get, observed on a clone so that `doc` is untouched: a root
+/// AssuranceCasePackage and ArgumentPackage, a Claim in that ArgumentPackage,
+/// and there one of each other kind, the relationships from and to the Claim.
+fn next_generated_ids_of_every_kind(row: &str, doc: &Document) -> Vec<ElementId> {
+    let mut probe = doc.clone();
+    let case = create(
+        row,
+        &mut probe,
+        CreateAssuranceCasePackage::root(named("probe")),
+    );
+    let arguments = create(row, &mut probe, CreateArgumentPackage::root(named("probe")));
+    let claim = create(
+        row,
+        &mut probe,
+        CreateClaim::new(&arguments, named("probe")),
+    );
+    let mut ids = vec![case, arguments.clone(), claim.clone()];
+    for operation in creates_of_every_kind(arguments.as_str(), arguments.as_str(), claim.as_str())
+        .into_iter()
+        .skip(3)
+    {
+        ids.push(create(row, &mut probe, operation));
+    }
+    ids
+}
+
+/// One check of one operation: the document `check` was given, a clone taken
+/// before, and the answers of `check` and of `apply` to a clone.
+struct Checked<'a> {
+    context: &'a str,
+    operation: &'a Operation,
+    before: &'a Document,
+    doc: &'a Document,
+    check_answer: &'a Result<(), EditError>,
+    apply_answer: &'a Result<(), EditError>,
+}
+
+/// Checks every operation of [`check_operations_for`] on every starting
+/// document, alone (on the starting document itself) and in sequence (on one
+/// document to which each operation is then applied), and calls `inspect` on
+/// each. Returns the number of checks.
+fn for_every_check(mut inspect: impl FnMut(&Checked<'_>)) -> usize {
+    let mut count = 0;
+    for (label, start) in starting_documents() {
+        let operations = check_operations_for(&start);
+        for (index, operation) in operations.iter().enumerate() {
+            let before = start.clone();
+            let checked = edit::check(&start, operation);
+            let applied = edit::apply(&mut start.clone(), operation.clone()).map(drop);
+            let context = format!("{label}, alone, operation {index} {operation:?}");
+            inspect(&Checked {
+                context: &context,
+                operation,
+                before: &before,
+                doc: &start,
+                check_answer: &checked,
+                apply_answer: &applied,
+            });
+            count += 1;
+        }
+        let mut doc = start.clone();
+        for (index, operation) in operations.iter().enumerate() {
+            let before = doc.clone();
+            let checked = edit::check(&doc, operation);
+            let mut next = doc.clone();
+            let applied = edit::apply(&mut next, operation.clone()).map(drop);
+            let context = format!("{label}, in sequence, operation {index} {operation:?}");
+            inspect(&Checked {
+                context: &context,
+                operation,
+                before: &before,
+                doc: &doc,
+                check_answer: &checked,
+                apply_answer: &applied,
+            });
+            doc = next;
+            count += 1;
+        }
+    }
+    count
+}
+
+/// Checks and applies `operation`, which fails two or more checks, to `doc`,
+/// and asserts that both give the same answer, the first failure, which
+/// `is_first` accepts and `first` names.
+fn assert_first_failure(
+    doc: &Document,
+    operation: impl Into<Operation>,
+    first: &str,
+    is_first: impl Fn(&EditError) -> bool,
+) {
+    let operation = operation.into();
+    let before = doc.clone();
+    let checked = edit::check(doc, &operation);
+    let applied = edit::apply(&mut doc.clone(), operation.clone()).map(drop);
+    assert_eq!(
+        checked, applied,
+        "{EDIT_013}: {operation:?}: check and apply answer differently"
+    );
+    assert!(
+        *doc == before,
+        "{EDIT_013}: {operation:?}: the check changed the document"
+    );
+    assert!(
+        matches!(&checked, Err(error) if is_first(error)),
+        "{EDIT_013}: {operation:?} fails two checks, and the answer {checked:?} is not the first, {first}"
+    );
+}
+
+#[test]
+fn lib_edit_013_check_takes_the_document_and_the_operation_by_reference() {
+    let check: fn(&Document, &Operation) -> Result<(), EditError> = edit::check;
+    let doc = Document::new();
+    let accepted = Operation::from(CreateArgumentPackage::root(named("Arguments")));
+    assert_eq!(
+        check(&doc, &accepted),
+        Ok(()),
+        "{EDIT_013}: check refused a root ArgumentPackage on an empty document"
+    );
+    let refused = Operation::from(CreateClaim::new(NOWHERE, named("Claim")));
+    assert!(
+        matches!(
+            check(&doc, &refused),
+            Err(EditError::ParentNotFound { ref parent, .. }) if parent.as_str() == NOWHERE
+        ),
+        "{EDIT_013}: check accepted a Claim under a parent the document does not hold"
+    );
+    // The caller still holds both operations, and the document is empty.
+    assert_eq!(doc.element_count(), 0, "{EDIT_013}: check added an element");
+    assert_eq!(
+        edit::apply(&mut doc.clone(), accepted).map(drop),
+        Ok(()),
+        "{EDIT_013}: the checked operation was refused by apply"
+    );
+}
+
+#[test]
+fn lib_edit_013_check_answers_as_apply_for_every_operation_of_the_set() {
+    let mut refusals = 0;
+    let total = for_every_check(|checked| {
+        assert_eq!(
+            checked.check_answer, checked.apply_answer,
+            "{EDIT_013}: {}: check answers otherwise than apply",
+            checked.context
+        );
+        if checked.apply_answer.is_err() {
+            refusals += 1;
+        }
+    });
+    assert!(
+        refusals > 0 && refusals < total,
+        "{EDIT_013}: of {total} checks, {refusals} were refusals; the set needs both answers"
+    );
+}
+
+#[test]
+fn lib_edit_013_the_set_has_every_operation_struct_accepted_and_refused_with_both_id_forms() {
+    // (operation name, accepted) for every operation, and (operation name,
+    // caller id given, accepted) for every create.
+    let mut reached: BTreeSet<(&'static str, bool)> = BTreeSet::new();
+    let mut reached_creates: BTreeSet<(&'static str, bool, bool)> = BTreeSet::new();
+    for_every_check(|checked| {
+        let name = checked.operation.operation_name();
+        let accepted = checked.apply_answer.is_ok();
+        reached.insert((name, accepted));
+        if let Some(caller) = has_caller_id(checked.operation) {
+            reached_creates.insert((name, caller, accepted));
+        }
+    });
+    let answer = |accepted: bool| if accepted { "accepted" } else { "refused" };
+    for name in OPERATION_NAMES {
+        for accepted in [true, false] {
+            assert!(
+                reached.contains(&(name, accepted)),
+                "{EDIT_013}: the set never reaches {name} {}",
+                answer(accepted)
+            );
+        }
+    }
+    for name in &OPERATION_NAMES[..CREATE_COUNT] {
+        for caller in [false, true] {
+            for accepted in [true, false] {
+                assert!(
+                    reached_creates.contains(&(*name, caller, accepted)),
+                    "{EDIT_013}: the set never reaches {name} with a {} id {}",
+                    if caller { "caller" } else { "generated" },
+                    answer(accepted)
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn lib_edit_013_check_leaves_the_document_equal_with_the_same_next_ids_of_every_kind() {
+    let total = for_every_check(|checked| {
+        let context = checked.context;
+        assert!(
+            checked.doc == checked.before,
+            "{EDIT_013}: {context}: after check ({:?}) the document is not == to before",
+            checked.check_answer
+        );
+        assert_eq!(
+            next_generated_ids_of_every_kind(EDIT_013, checked.doc),
+            next_generated_ids_of_every_kind(EDIT_013, checked.before),
+            "{EDIT_013}: {context}: check ({:?}) changed the next generated ids",
+            checked.check_answer
+        );
+    });
+    assert!(total > 0, "{EDIT_013}: the set is empty");
+}
+
+#[test]
+fn lib_edit_013_a_checked_create_of_each_kind_gets_the_generated_id_an_unchecked_one_gets() {
+    let mut doc = read_text("CHECK_ORDER_START", CHECK_ORDER_START.as_bytes());
+    let accepted = creates_of_every_kind("case", "p", "c1");
+    let refused = creates_of_every_kind(NOWHERE, NOWHERE, "c1");
+    assert_eq!(
+        accepted.len(),
+        CREATE_COUNT,
+        "{EDIT_013}: setup: not one create of each kind"
+    );
+    for (operation, twin) in accepted.into_iter().zip(refused) {
+        let mut unchecked = doc.clone();
+        for _ in 0..2 {
+            assert_eq!(
+                edit::check(&doc, &operation),
+                Ok(()),
+                "{EDIT_013}: setup: check refused {operation:?}"
+            );
+            assert!(
+                matches!(
+                    edit::check(&doc, &twin),
+                    Err(EditError::ParentNotFound { .. })
+                ),
+                "{EDIT_013}: setup: check did not refuse {twin:?} for its parent"
+            );
+        }
+        let unchecked_id = create(EDIT_013, &mut unchecked, operation.clone());
+        let checked_id = create(EDIT_013, &mut doc, operation.clone());
+        assert_eq!(
+            checked_id,
+            unchecked_id,
+            "{EDIT_013}: {}: after two checks, accepted and refused, the generated id is not the one an unchecked document gives",
+            operation.operation_name()
+        );
+    }
+}
+
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one case per pair of checks reads best as one list"
+)]
+fn lib_edit_013_a_create_failing_two_checks_gets_the_first_from_check_and_apply() {
+    let doc = read_text("CHECK_ORDER_START", CHECK_ORDER_START.as_bytes());
+    let name = || named("N");
+    let none = Vec::<ElementId>::new;
+
+    // The check order of the module docs of `edit`, "Creates".
+    assert_first_failure(
+        &doc,
+        CreateClaim::new(NOWHERE, name()).with_id(NOT_AN_NCNAME),
+        "ParentNotFound (1) before InvalidId (3)",
+        |error| matches!(error, EditError::ParentNotFound { parent, .. } if parent.as_str() == NOWHERE),
+    );
+    assert_first_failure(
+        &doc,
+        CreateTaggedValue::new(NOWHERE, a_key(), two_values()).with_id("c1"),
+        "ParentNotFound (1) before DuplicateId (4)",
+        |error| matches!(error, EditError::ParentNotFound { parent, .. } if parent.as_str() == NOWHERE),
+    );
+    assert_first_failure(
+        &doc,
+        CreateAssertedArtifactContext::new(NOWHERE, name(), none(), NOWHERE),
+        "ParentNotFound (1) before TooFewReferences (5) and ReferenceNotFound (7)",
+        |error| matches!(error, EditError::ParentNotFound { parent, .. } if parent.as_str() == NOWHERE),
+    );
+    assert_first_failure(
+        &doc,
+        CreateClaim::new("case", name()).with_id("c1"),
+        "InvalidParent (2) before DuplicateId (4)",
+        |error| {
+            matches!(
+                error,
+                EditError::InvalidParent { parent, parent_kind: AssuranceCasePackage, kind: Claim, .. }
+                    if parent.as_str() == "case"
+            )
+        },
+    );
+    assert_first_failure(
+        &doc,
+        CreateArgumentPackage::new("c1", name()).with_id("c1"),
+        "InvalidParent (2) before DuplicateId (4), for a package",
+        |error| {
+            matches!(
+                error,
+                EditError::InvalidParent { parent, parent_kind: Claim, kind: ArgumentPackage, .. }
+                    if parent.as_str() == "c1"
+            )
+        },
+    );
+    assert_first_failure(
+        &doc,
+        CreateArgumentReasoning::new("case", name()).with_structure(NOWHERE),
+        "InvalidParent (2) before ReferenceNotFound (7)",
+        |error| {
+            matches!(
+                error,
+                EditError::InvalidParent {
+                    kind: ArgumentReasoning,
+                    ..
+                }
+            )
+        },
+    );
+    assert_first_failure(
+        &doc,
+        CreateDescription::new("d1", two_values()).with_id(NOT_AN_NCNAME),
+        "InvalidParent (2: a UtilityElement contains nothing) before InvalidId (3)",
+        |error| {
+            matches!(
+                error,
+                EditError::InvalidParent {
+                    parent_kind: Description,
+                    kind: Description,
+                    ..
+                }
+            )
+        },
+    );
+    assert_first_failure(
+        &doc,
+        CreateImplementationConstraint::new("d1", name()).with_id("c1"),
+        "InvalidParent (2) before DuplicateId (4), for a UtilityElement",
+        |error| {
+            matches!(
+                error,
+                EditError::InvalidParent {
+                    kind: ImplementationConstraint,
+                    ..
+                }
+            )
+        },
+    );
+    assert_first_failure(
+        &doc,
+        CreateClaim::new("p", name()).with_id(WITH_SPACE),
+        "InvalidId (3) before DuplicateId (4): `a b` is in use",
+        |error| matches!(error, EditError::InvalidId { id, .. } if id.as_str() == WITH_SPACE),
+    );
+    assert_first_failure(
+        &doc,
+        CreateAssuranceCasePackage::root(name()).with_id(WITH_SPACE),
+        "InvalidId (3) before DuplicateId (4), for a root",
+        |error| matches!(error, EditError::InvalidId { id, .. } if id.as_str() == WITH_SPACE),
+    );
+    assert_first_failure(
+        &doc,
+        CreateNote::new("c1", name()).with_id(WITH_SPACE),
+        "InvalidId (3) before DuplicateId (4), for a UtilityElement",
+        |error| matches!(error, EditError::InvalidId { id, .. } if id.as_str() == WITH_SPACE),
+    );
+    assert_first_failure(
+        &doc,
+        CreateAssertedInference::new("p", name(), none(), NOWHERE).with_id("c1"),
+        "DuplicateId (4) before TooFewReferences (5) and ReferenceNotFound (7)",
+        |error| matches!(error, EditError::DuplicateId { id, .. } if id.as_str() == "c1"),
+    );
+    assert_first_failure(
+        &doc,
+        CreateAssertedInference::new("p", name(), none(), NOWHERE),
+        "TooFewReferences (5) before ReferenceNotFound (7)",
+        |error| {
+            matches!(
+                error,
+                EditError::TooFewReferences {
+                    end: "source",
+                    given: 0,
+                    required: 1,
+                    ..
+                }
+            )
+        },
+    );
+    assert_first_failure(
+        &doc,
+        CreateAssertedInference::new("p", name(), [NOWHERE], WITH_SPACE),
+        "InvalidReference (6) of the target before ReferenceNotFound (7) of a source",
+        |error| {
+            matches!(
+                error,
+                EditError::InvalidReference { end: "target", id, .. } if id.as_str() == WITH_SPACE
+            )
+        },
+    );
+    assert_first_failure(
+        &doc,
+        CreateAssertedEvidence::new("p", name(), [NOWHERE, WITH_SPACE], "c1"),
+        "InvalidReference (6) of the second source before ReferenceNotFound (7) of the first",
+        |error| {
+            matches!(
+                error,
+                EditError::InvalidReference { end: "source", id, .. } if id.as_str() == WITH_SPACE
+            )
+        },
+    );
+    assert_first_failure(
+        &doc,
+        CreateAssertedInference::new("p", name(), ["p"], NOWHERE),
+        "ReferenceNotFound (7) of the target before WrongReferenceType (8) of a source",
+        |error| {
+            matches!(
+                error,
+                EditError::ReferenceNotFound { end: "target", id, .. } if id.as_str() == NOWHERE
+            )
+        },
+    );
+    assert_first_failure(
+        &doc,
+        CreateAssertedArtifactSupport::new("p", name(), ["p"], "c1").with_reasoning(NOWHERE),
+        "ReferenceNotFound (7) of the reasoning before WrongReferenceType (8) of a source",
+        |error| {
+            matches!(
+                error,
+                EditError::ReferenceNotFound { end: "reasoning", id, .. } if id.as_str() == NOWHERE
+            )
+        },
+    );
+    assert_first_failure(
+        &doc,
+        CreateArtifactReference::new("p", name())
+            .with_referenced_artifact_elements(["d1", NOWHERE]),
+        "ReferenceNotFound (7) of the second id before WrongReferenceType (8) of the first",
+        |error| {
+            matches!(
+                error,
+                EditError::ReferenceNotFound { end: "referencedArtifactElement", id, .. }
+                    if id.as_str() == NOWHERE
+            )
+        },
+    );
+    assert_first_failure(
+        &doc,
+        CreateArgumentGroup::new("p", name()).with_group_members(["case", WITH_SPACE]),
+        "InvalidReference (6) of the second member before WrongReferenceType (8) of the first",
+        |error| {
+            matches!(
+                error,
+                EditError::InvalidReference { end: "argumentElement", id, .. }
+                    if id.as_str() == WITH_SPACE
+            )
+        },
+    );
+    assert_first_failure(
+        &doc,
+        CreateAssertedContext::new("p", name(), ["c1"], "p").with_reasoning("c1"),
+        "WrongReferenceType (8) of the target before that of the reasoning",
+        |error| {
+            matches!(
+                error,
+                EditError::WrongReferenceType {
+                    end: "target",
+                    kind: ArgumentPackage,
+                    ..
+                }
+            )
+        },
+    );
+}
+
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one case per pair of checks reads best as one list"
+)]
+fn lib_edit_013_an_edit_failing_two_checks_gets_the_first_from_check_and_apply() {
+    let doc = read_text("CHECK_ORDER_START", CHECK_ORDER_START.as_bytes());
+    let none = Vec::<ElementId>::new;
+
+    // The check orders of the module docs of `edit`, "Operations that change
+    // an element".
+    assert_first_failure(
+        &doc,
+        SetFlag::new(NOWHERE, Flag::IsCounter, true),
+        "ElementNotFound (1) before FeatureNotApplicable (2)",
+        |error| matches!(error, EditError::ElementNotFound { element, .. } if element.as_str() == NOWHERE),
+    );
+    assert_first_failure(
+        &doc,
+        SetReferences::new(NOWHERE, ReferenceEnd::Source, none()),
+        "ElementNotFound (1) before TooFewReferences (4)",
+        |error| matches!(error, EditError::ElementNotFound { element, .. } if element.as_str() == NOWHERE),
+    );
+    assert_first_failure(
+        &doc,
+        SetReferences::new("c1", ReferenceEnd::Source, [NOWHERE]),
+        "FeatureNotApplicable (2) before ReferenceNotFound (7)",
+        |error| {
+            matches!(
+                error,
+                EditError::FeatureNotApplicable { kind: Claim, feature: "source", element, .. }
+                    if element.as_str() == "c1"
+            )
+        },
+    );
+    assert_first_failure(
+        &doc,
+        RemoveReference::new("i1", ReferenceEnd::Structure, NOWHERE),
+        "FeatureNotApplicable (2) before ReferenceNotHeld (3)",
+        |error| {
+            matches!(
+                error,
+                EditError::FeatureNotApplicable {
+                    kind: AssertedInference,
+                    feature: "structure",
+                    ..
+                }
+            )
+        },
+    );
+    assert_first_failure(
+        &doc,
+        SetReferences::new("i1", ReferenceEnd::Target, [NOWHERE, "c1"]),
+        "TooManyReferences (5) before ReferenceNotFound (7)",
+        |error| {
+            matches!(
+                error,
+                EditError::TooManyReferences {
+                    end: "target",
+                    given: 2,
+                    allowed: 1,
+                    ..
+                }
+            )
+        },
+    );
+    assert_first_failure(
+        &doc,
+        AddReference::new("i1", ReferenceEnd::Target, NOWHERE),
+        "TooManyReferences (5) before ReferenceNotFound (7), for an add",
+        |error| {
+            matches!(
+                error,
+                EditError::TooManyReferences {
+                    end: "target",
+                    given: 2,
+                    allowed: 1,
+                    ..
+                }
+            )
+        },
+    );
+    assert_first_failure(
+        &doc,
+        SetReferences::new("i1", ReferenceEnd::Reasoning, [WITH_SPACE, NOWHERE]),
+        "TooManyReferences (5) before InvalidReference (6) and ReferenceNotFound (7)",
+        |error| {
+            matches!(
+                error,
+                EditError::TooManyReferences {
+                    end: "reasoning",
+                    ..
+                }
+            )
+        },
+    );
+    assert_first_failure(
+        &doc,
+        SetReferences::new("i1", ReferenceEnd::Source, [NOWHERE, WITH_SPACE]),
+        "InvalidReference (6) of the second new id before ReferenceNotFound (7) of the first",
+        |error| {
+            matches!(
+                error,
+                EditError::InvalidReference { end: "source", id, .. } if id.as_str() == WITH_SPACE
+            )
+        },
+    );
+    assert_first_failure(
+        &doc,
+        SetReferences::new("i1", ReferenceEnd::Source, ["p", NOWHERE]),
+        "ReferenceNotFound (7) of the second new id before WrongReferenceType (8) of the first",
+        |error| {
+            matches!(
+                error,
+                EditError::ReferenceNotFound { end: "source", id, .. } if id.as_str() == NOWHERE
+            )
+        },
+    );
+    assert_first_failure(
+        &doc,
+        ReorderElements::new(NOWHERE, none()),
+        "ElementNotFound (1) before InvalidOrder (2)",
+        |error| matches!(error, EditError::ElementNotFound { element, .. } if element.as_str() == NOWHERE),
+    );
+    assert_first_failure(
+        &doc,
+        ReorderElements::new("p", [NOWHERE, "c1", "c1"]),
+        "ChildNotFound (3) of the first id before InvalidOrder (4) of the third",
+        |error| {
+            matches!(
+                error,
+                EditError::ChildNotFound { parent: Some(parent), child, .. }
+                    if parent.as_str() == "p" && child.as_str() == NOWHERE
+            )
+        },
+    );
+    assert_first_failure(
+        &doc,
+        ReorderElements::new("p", ["c1", "c1", NOWHERE]),
+        "InvalidOrder (4) of the second id before ChildNotFound (3) of the third",
+        |error| {
+            matches!(
+                error,
+                EditError::InvalidOrder { repeated: Some(repeated), .. } if repeated.as_str() == "c1"
+            )
+        },
+    );
+    assert_first_failure(
+        &doc,
+        ReorderElements::roots(["case", "case", "p"]),
+        "InvalidOrder (4) of the second root before ChildNotFound (3) of a child",
+        |error| {
+            matches!(
+                error,
+                EditError::InvalidOrder { repeated: Some(repeated), .. } if repeated.as_str() == "case"
+            )
+        },
     );
 }

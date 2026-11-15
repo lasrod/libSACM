@@ -6,7 +6,8 @@ use std::collections::BTreeSet;
 use std::slice;
 
 use super::EditError;
-use super::set::edited;
+use super::plan::{Plan, Value};
+use super::set::{changing, edited};
 use crate::model::{Document, ElementId, ReferenceEnd, SacmElement};
 
 /// Replaces the ids one reference end of an element holds (SACM 2.3 §8.2,
@@ -66,6 +67,11 @@ use crate::model::{Document, ElementId, ReferenceEnd, SacmElement};
 /// # Ok::<(), EditError>(())
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 pub struct SetReferences {
     element: ElementId,
     end: ReferenceEnd,
@@ -117,16 +123,16 @@ impl SetReferences {
         &self.ids
     }
 
-    /// Checks and applies the operation, and returns the ids it changed.
-    pub(super) fn apply(&self, document: &mut Document) -> Result<Vec<ElementId>, EditError> {
+    /// Runs every check of the operation, and returns what it changes.
+    pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
         let held = owner(document, &self.element, self.end)?.references(self.end);
         check_bounds(self.end, self.ids.len())?;
         check_targets(document, &[(self.end, &self.ids, held)])?;
-        if held == self.ids.as_slice() {
-            return Ok(Vec::new());
-        }
-        hold(document, &self.element, self.end, self.ids.clone());
-        Ok(vec![self.element.clone()])
+        Ok(changing(
+            &self.element,
+            held != self.ids.as_slice(),
+            Value::References(self.end, self.ids.clone()),
+        ))
     }
 }
 
@@ -165,6 +171,11 @@ impl SetReferences {
 /// # Ok::<(), sacm::edit::EditError>(())
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 pub struct AddReference {
     element: ElementId,
     end: ReferenceEnd,
@@ -200,15 +211,17 @@ impl AddReference {
         &self.id
     }
 
-    /// Checks and applies the operation, and returns the ids it changed.
-    pub(super) fn apply(&self, document: &mut Document) -> Result<Vec<ElementId>, EditError> {
+    /// Runs every check of the operation, and returns what it changes.
+    pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
         let held = owner(document, &self.element, self.end)?.references(self.end);
         check_bounds(self.end, held.len().saturating_add(1))?;
         check_targets(document, &[(self.end, slice::from_ref(&self.id), held)])?;
         let mut ids = held.to_vec();
         ids.push(self.id.clone());
-        hold(document, &self.element, self.end, ids);
-        Ok(vec![self.element.clone()])
+        Ok(Plan::Set {
+            element: &self.element,
+            value: Value::References(self.end, ids),
+        })
     }
 }
 
@@ -247,6 +260,11 @@ impl AddReference {
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 pub struct RemoveReference {
     element: ElementId,
     end: ReferenceEnd,
@@ -282,8 +300,8 @@ impl RemoveReference {
         &self.id
     }
 
-    /// Checks and applies the operation, and returns the ids it changed.
-    pub(super) fn apply(&self, document: &mut Document) -> Result<Vec<ElementId>, EditError> {
+    /// Runs every check of the operation, and returns what it changes.
+    pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
         let held = owner(document, &self.element, self.end)?.references(self.end);
         if !held.contains(&self.id) {
             return Err(EditError::ReferenceNotHeld {
@@ -293,8 +311,10 @@ impl RemoveReference {
         }
         let ids: Vec<ElementId> = held.iter().filter(|id| **id != self.id).cloned().collect();
         check_bounds(self.end, ids.len())?;
-        hold(document, &self.element, self.end, ids);
-        Ok(vec![self.element.clone()])
+        Ok(Plan::Set {
+            element: &self.element,
+            value: Value::References(self.end, ids),
+        })
     }
 }
 
@@ -390,13 +410,4 @@ pub(super) fn check_targets(
         }
     }
     Ok(())
-}
-
-/// Sets `end` of `element` to hold `ids`, once every check has passed.
-fn hold(document: &mut Document, element: &ElementId, end: ReferenceEnd, ids: Vec<ElementId>) {
-    let set = document.set_references(element, end, ids);
-    debug_assert!(
-        set.is_ok(),
-        "the element owns the end, and the ids are within its bounds: {set:?}"
-    );
 }

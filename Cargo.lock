@@ -265,6 +265,8 @@ version = "0.1.0"
 dependencies = [
  "roxmltree",
  "sacm",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

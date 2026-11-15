@@ -78,7 +78,9 @@
 //!   [`edit::SetKey`]), every reference end, within its bounds
 //!   ([`edit::SetReferences`], [`edit::AddReference`],
 //!   [`edit::RemoveReference`]), and the order of an element's children or
-//!   of the roots ([`edit::ReorderElements`]).
+//!   of the roots ([`edit::ReorderElements`]). [`edit::check`] answers
+//!   whether `apply` would accept an operation, without changing the
+//!   document.
 //! - [`compare::semantic_compare`] lists every difference in SACM content
 //!   between two documents, and `==` on a [`Document`](model::Document) is
 //!   true when there is none.
@@ -265,6 +267,83 @@
 //!   tests can build diagnostics. It is **not part of the stable API** and
 //!   may change or disappear in any release.
 //!   Enable it only under `[dev-dependencies]`.
+//! - `serde` (off by default): see below.
+//!
+//! ## The `serde` feature
+//!
+//! Enable it in `Cargo.toml`:
+//!
+//! ```toml
+//! sacm = { version = "0.1", features = ["serde"] }
+//! ```
+//!
+//! The examples use `serde_json`; add it yourself.
+//!
+//! With `serde`, every operation ([`edit::Operation`] and each operation
+//! struct), [`edit::Mutation`], [`edit::EditError`],
+//! [`diagnostic::Diagnostic`] and the values they carry (ids, kinds, names,
+//! flags, reference ends, codes, severities and locations) implement
+//! `Serialize` and `Deserialize`. So an edit can cross a process boundary,
+//! travel between users or be kept as an audit log. A
+//! [`Document`](model::Document) does not: XMI is its only serialization.
+//!
+//! The JSON shape is documented in [ADR 0030][adr-0030] and is **stable**,
+//! as [`operation_name`](edit::Operation::operation_name) is: an operation
+//! is tagged `"type"` with its operation name, keys are the snake-case
+//! accessor names (for an `EditError`, its variant's field names), every
+//! key is written, and on input a key may be left out only where a builder
+//! sets a default: an operation's `id`, `structure`, `reasoning`,
+//! `is_counter`, `referenced_artifact_elements` and `group_members`; a
+//! `LangString`'s `lang` and `content`; and a `Diagnostic`'s `clause`,
+//! `affected` and `location`. A package create's `"parent": null` means a root; leaving out
+//! `parent` is refused. Unknown keys, names and codes are refused. A
+//! deserialized operation proves nothing: [`edit::check`] and
+//! [`edit::apply`] check it as they check one built in Rust.
+//!
+//! Adding a variant, or a key whose default keeps the old meaning, is not a
+//! breaking change, so JSON from an older release still reads. JSON from a
+//! newer release may be refused. A diagnostic's `message` text is not part
+//! of the promise. Use a self-describing format such as JSON; the `"type"`
+//! tags do not work with bincode or postcard.
+//!
+//! ```
+//! # #[cfg(feature = "serde")]
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! use sacm::edit::{self, CreateArgumentPackage, CreateClaim, Mutation, Operation};
+//! use sacm::model::{Document, LangString};
+//!
+//! let mut document = Document::new();
+//! let arguments = CreateArgumentPackage::root(LangString::new("Arguments")).with_id("arguments");
+//! edit::apply(&mut document, arguments)?;
+//!
+//! // An operation received as JSON, from a user interface, say.
+//! let json = r#"{"type":"CreateClaim","parent":"arguments","id":null,"name":{"lang":"en","content":"The system is safe"}}"#;
+//! let operation: Operation = serde_json::from_str(json)?;
+//! // Optional: apply runs the same checks; a UI calls check before offering the edit.
+//! edit::check(&document, &operation)?;
+//! let mutation = edit::apply(&mut document, operation)?;
+//!
+//! // What it did, as a record for the audit log.
+//! let record = serde_json::to_string(&mutation)?;
+//! assert!(record.starts_with(r#"{"operation":{"type":"CreateClaim","parent":"arguments","#));
+//! assert!(record.ends_with(r#""created_ids":["claim_1"],"changed_ids":[],"deleted_ids":[]}"#));
+//! let read: Mutation = serde_json::from_str(&record)?;
+//! assert_eq!(read, mutation);
+//!
+//! // A refusal carries its catalog code after its type.
+//! let misplaced = Operation::from(CreateClaim::new("nowhere", LangString::new("C1")));
+//! let error = edit::check(&document, &misplaced).unwrap_err();
+//! assert_eq!(
+//!     serde_json::to_string(&error)?,
+//!     r#"{"type":"ParentNotFound","code":"SACM-CMD-001","parent":"nowhere"}"#
+//! );
+//! # Ok(())
+//! # }
+//! # #[cfg(not(feature = "serde"))]
+//! # fn main() {}
+//! ```
+//!
+//! [adr-0030]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0030-serde-for-edit-and-diagnostic-values.md
 //!
 //! [sacm]: https://www.omg.org/spec/SACM/2.3
 //! [matrix]: https://github.com/lasrod/libSACM/blob/main/docs/matrix/functionality-matrix.md

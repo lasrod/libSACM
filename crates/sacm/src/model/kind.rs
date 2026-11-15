@@ -253,6 +253,7 @@ impl fmt::Display for AbstractClass {
 /// ```
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ElementKind {
     // Base (clause 8)
     /// `Description`: a utility element describing another element (§8.9).

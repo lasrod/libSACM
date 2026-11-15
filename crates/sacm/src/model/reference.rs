@@ -48,6 +48,11 @@ pub(crate) const OWNERS: [DeclaredType; 6] = [
 /// assert_eq!(Flag::IsCounter.name(), "isCounter");
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "camelCase")
+)]
 #[non_exhaustive]
 pub enum Flag {
     /// `isCitation[0..1]=false` of every `SACMElement` (§8.2): whether the
@@ -116,6 +121,11 @@ pub(crate) fn flag_named(kind: ElementKind, local: &str) -> Option<Flag> {
 /// assert_eq!(ReferenceEnd::GroupMember.name(), "argumentElement");
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "camelCase")
+)]
 #[non_exhaustive]
 pub enum ReferenceEnd {
     /// `citedElement:SACMElement[0..1]` of every `SACMElement` (§8.2).
@@ -142,6 +152,7 @@ pub enum ReferenceEnd {
     /// for the group, because `argumentElement` is also the composite role
     /// of an `ArgumentPackage` (ADR 0028).
     #[doc(alias = "argumentElement")]
+    #[cfg_attr(feature = "serde", serde(rename = "argumentElement"))]
     GroupMember,
 }
 
