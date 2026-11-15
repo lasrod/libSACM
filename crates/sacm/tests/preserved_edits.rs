@@ -1304,6 +1304,60 @@ fn lib_compat_003_removing_the_last_id_keeps_an_empty_preserved_end() {
 }
 
 #[test]
+fn lib_compat_003_removing_one_of_two_ids_beside_an_empty_preserved_end_writes_the_end_once() {
+    // c1 holds metaClaim [c2, c3] as elements and metaClaim="" preserved.
+    // Removing c2 leaves c3 in the end, which replaces the preserved
+    // attribute, so the end is written once and c1 changes.
+    let what = "RemoveReference c1 metaClaim c2 of [c2, c3] beside metaClaim=\"\"";
+    let input = package(&format!(
+        "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" metaClaim=\"\">\
+         <name content=\"c1\"/><metaClaim xmi:idref=\"c2\"/><metaClaim xmi:idref=\"c3\"/>\
+         </argumentElement>{}{}",
+        claim("c2", "", ""),
+        claim("c3", "", "")
+    ));
+    let before = read(what, &input);
+    assert!(
+        holds_preserved(&before, "c1")
+            && before
+                .get("c1")
+                .is_some_and(|c1| c1.meta_claims() == ids(&["c2", "c3"]).as_slice()),
+        "{ROW}: {what}: setup: c1 holds [c2, c3] and the preserved metaClaim=\"\""
+    );
+    let (doc, mutation, out) = edited(
+        what,
+        &input,
+        RemoveReference::new("c1", ReferenceEnd::MetaClaim, "c2"),
+    );
+    assert_eq!(
+        mutation.changed_ids(),
+        ids(&["c1"]),
+        "{ROW}: {what}: the remove changes c1 only"
+    );
+    assert!(
+        doc.get("c1")
+            .is_some_and(|c1| c1.meta_claims() == ids(&["c3"]).as_slice()),
+        "{ROW}: {what}: c1's metaClaim is [c3]"
+    );
+    assert!(
+        !holds_preserved(&doc, "c1"),
+        "{ROW}: {what}: the end left with c3 replaces the preserved attribute, so c1 holds none"
+    );
+    let attributes = out.matches(" metaClaim=\"").count();
+    let elements = out.matches("<metaClaim").count();
+    assert_eq!(
+        attributes + elements,
+        1,
+        "{ROW}: {what}: the end is written once ({attributes} attributes, {elements} elements)\n{out}"
+    );
+    assert!(
+        !out.contains(" metaClaim=\"\""),
+        "{ROW}: {what}: the empty metaClaim is not written\n{out}"
+    );
+    assert_reads_back(what, &doc, &out);
+}
+
+#[test]
 fn lib_compat_003_an_unnamed_holder_writes_an_end_beside_its_preserved_attribute_as_an_element() {
     // c1 has no name: the reference element is what keeps its start tag
     // open.

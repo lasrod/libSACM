@@ -35,7 +35,8 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
 - `sacm::diagnostic`: `Diagnostic` (code, severity, matrix row, clause, affected ids,
   source location, message), `Severity`, `Code` and `SourceLocation`, with a one-line
   `Display` and one total order [LIB-DIAG-001].
-- Error convention (ADR 0011): one `#[non_exhaustive]` error enum per operation.
+- Error convention (ADR 0011): one `#[non_exhaustive]` error type per operation (an enum,
+  or a struct with private fields, ADR 0011 amendment 2).
   `InsertError` messages quote and escape ids [LIB-API-004].
 - `sacm::model::LangString`: an optional language tag and optional content, with
   absent, empty and non-empty kept distinct (ADR 0012) [SACM23-BASE-001].
@@ -343,6 +344,16 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
 
 ### Changed
 
+- `ReadError::RepeatedValue` locates each id of a repeated reference attribute at its own
+  character, and its `Display` names at most the first two locations and the count;
+  `locations()` still lists every occurrence [SACM23-XMI-005].
+- A containment role element in reference form (`xmi:idref` or `href`, a proxy) is refused
+  as not read in this release (SACM23-XMI-019, SACM23-XMI-027) instead of `MissingType`
+  [LIB-COMPAT-010].
+- An empty CDATA section under `xsi:nil="true"` counts as no content [SACM23-XMI-026].
+- A root in another SACM revision's namespace is refused as a tolerance not built yet
+  (LIB-COMPAT-004), not as conforming input not read yet [LIB-API-011].
+- Replacing a large `content` or `key` keeps its ids in linear time [LIB-EDIT-012].
 - `xmi::read` keeps content that is not SACM 2.3 where it stands as preserved content,
   with SACM-XMI-003, which is an Error in strict mode, instead of refusing it as
   `Unsupported`: a strict read may report an Error where it refused before, and a strict

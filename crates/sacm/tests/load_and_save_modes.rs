@@ -11,7 +11,9 @@
 //! - LIB-COMPAT-007: `WriteOptions` carries a mode, strict by default. A strict
 //!   write validates after the `NoRoot` check and refuses any validation Error
 //!   with `WriteError::Invalid`, which holds every Error in `validate`'s order;
-//!   the writer's own checks come after. A tolerant write does not validate.
+//!   the writer's own checks come after. Warnings never refuse: a document
+//!   whose only findings are Warnings writes strictly as it writes tolerantly.
+//!   A tolerant write does not validate.
 //!
 //! A read diagnostic is compared as a [`Finding`]: its code, severity,
 //! requirement id, clause, affected ids and location. The message is not
@@ -31,11 +33,10 @@
 //!   `WriteError::Invalid` is `#[non_exhaustive]`: a test cannot show that an
 //!   impl is missing or that an exhaustive pattern fails to compile. The
 //!   patterns here use `..`, as a user must.
-//! - LIB-COMPAT-007's "Warnings and Infos never refuse": `validate` reports
-//!   only Errors in this release (SACM23-VAL-018), so no document has a
-//!   validation Warning or Info to write.
-//! - LIB-COMPAT-007's semver stance, and "schema-conforming once SACM23-VAL-020
-//!   checks ids": documentation and a later row.
+//! - LIB-COMPAT-007's semver stance: documentation. Its "schema-conforming"
+//!   ids are SACM23-VAL-020's: a strict write of an id that is not an `NCName`
+//!   is refused in `xmi_write.rs`
+//!   (`sacm23_xmi_004_a_strict_write_of_an_id_holding_u0001_is_invalid_with_sacm_id_002`).
 
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -1860,6 +1861,61 @@ fn lib_compat_007_every_document_without_a_validation_error_writes_strictly_as_t
             "{COMPAT_007}: {what}: writing changed the document"
         );
     }
+}
+
+#[test]
+fn lib_compat_007_a_validation_warning_does_not_refuse_a_strict_write() {
+    // A Claim with two descriptions (SACM23-VAL-011) and a repeated
+    // metaClaim (SACM23-VAL-022): two Warnings, no Error.
+    let what = "a document whose only findings are Warnings";
+    let input = format!(
+        "<sacm:ArgumentPackage{NS} xmi:id=\"p\"><name lang=\"en\" content=\"P\"/>\
+         <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"m1\">\
+         <name lang=\"en\" content=\"M\"/></argumentElement>\
+         <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" metaClaim=\"m1 m1\">\
+         <name lang=\"en\" content=\"C\"/>\
+         <description xmi:id=\"d1\"><content><value content=\"one\"/></content></description>\
+         <description xmi:id=\"d2\"><content><value content=\"two\"/></content></description>\
+         </argumentElement></sacm:ArgumentPackage>"
+    );
+    let output = read_ok(COMPAT_007, what, Mode::Tolerant, &input);
+    assert_eq!(
+        output.diagnostics(),
+        [],
+        "{COMPAT_007}: {what}: setup: the read reports a diagnostic"
+    );
+    let doc = output.into_document();
+    let found = findings(&validation::validate(&doc));
+    let mut rules: Vec<(Severity, &str)> = found
+        .iter()
+        .map(|f| (f.severity, f.requirement.as_str()))
+        .collect();
+    rules.sort_by_key(|&(_, requirement)| requirement);
+    assert_eq!(
+        rules,
+        [
+            (Severity::Warning, "SACM23-VAL-011"),
+            (Severity::Warning, "SACM23-VAL-022"),
+        ],
+        "{COMPAT_007}: {what}: setup: validate does not give exactly the two Warnings: {found:?}"
+    );
+    let before = doc.clone();
+    let strict = write_ok(COMPAT_007, what, Mode::Strict, &doc);
+    let tolerant = write_ok(COMPAT_007, what, Mode::Tolerant, &doc);
+    assert_eq!(
+        strict, tolerant,
+        "{COMPAT_007}: {what}: the strict and tolerant writes differ"
+    );
+    assert!(
+        doc == before,
+        "{COMPAT_007}: {what}: writing changed the document"
+    );
+    let back = read_ok(COMPAT_007, "the strict output", Mode::Strict, &strict).into_document();
+    assert_eq!(
+        semantic_compare(&doc, &back),
+        [],
+        "{COMPAT_007}: {what}: the strict output does not read back equal\n{strict}"
+    );
 }
 
 #[test]

@@ -330,10 +330,12 @@ fn lib_api_011_a_cross_document_href_names_sacm23_xmi_027() {
     }
 }
 
-// --- Interim: other SACM namespaces (LIB-COMPAT-004) --------------------------------
+// --- Tolerance: other SACM namespaces (LIB-COMPAT-004) ------------------------------
 
 #[test]
 fn lib_api_011_a_root_outside_the_sacm_2_3_namespace_names_lib_compat_004() {
+    // A root in another namespace is not SACM 2.3, so it does not conform:
+    // LIB-COMPAT-004 is a tolerance (the maintainer's decision, 2026-11-16).
     let other = format!(
         "<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/2.2/argumentation\" \
          xmlns:xmi=\"{XMI_NS}\" xmi:id=\"p\"><name content=\"p\"/></sacm:ArgumentPackage>"
@@ -342,7 +344,7 @@ fn lib_api_011_a_root_outside_the_sacm_2_3_namespace_names_lib_compat_004() {
         "OtherSacmNamespace",
         "a root in a SACM 2.2 namespace",
         &other,
-        &interim("LIB-COMPAT-004"),
+        &tolerance("LIB-COMPAT-004"),
     );
 }
 

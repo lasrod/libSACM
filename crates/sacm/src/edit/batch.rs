@@ -304,7 +304,10 @@ impl NetIds {
     /// An element in both documents can differ only if an operation reported
     /// it, or if it is the parent of an element the batch created or
     /// deleted: an element deleted and created again with its id may stand
-    /// elsewhere among its parent's children.
+    /// elsewhere among its parent's children. A created element's parent is
+    /// looked up after the batch and a deleted one's before it: an id that
+    /// is in the other document too was also deleted or created again, and
+    /// that other mutation names it.
     fn of(before: &Document, after: &Document, mutations: &[Mutation]) -> Self {
         let mut seen: HashSet<&ElementId> = HashSet::new();
         let mut created = Vec::new();
@@ -324,12 +327,12 @@ impl NetIds {
         let mut touched: HashSet<&ElementId> = HashSet::new();
         for mutation in mutations {
             touched.extend(mutation.changed_ids());
-            for id in mutation.created_ids().iter().chain(mutation.deleted_ids()) {
+            let created = mutation.created_ids().iter().map(|id| (id, after));
+            let deleted = mutation.deleted_ids().iter().map(|id| (id, before));
+            for (id, document) in created.chain(deleted) {
                 touched.insert(id);
-                for document in [before, after] {
-                    if let Some(parent) = document.get(id).and_then(SacmElement::parent) {
-                        touched.insert(parent.id());
-                    }
+                if let Some(parent) = document.get(id).and_then(SacmElement::parent) {
+                    touched.insert(parent.id());
                 }
             }
         }

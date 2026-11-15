@@ -18,6 +18,11 @@
 //! absent. The last part of item 6 (the operations join the LIB-EDIT-002
 //! set) is in `edit_atomic.rs`.
 
+use std::fmt::Write as _;
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::thread;
+use std::time::Duration;
+
 use sacm::compare::{Difference, semantic_compare};
 use sacm::diagnostic::{Code, Severity};
 use sacm::edit::{
@@ -706,4 +711,75 @@ fn lib_edit_012_operations_hold_what_they_are_given_and_name_their_struct() {
     ] {
         assert_eq!(operation.operation_name(), name, "{ROW}: operation_name()");
     }
+}
+
+// --- Performance -----------------------------------------------------------------
+
+/// Runs `job` on a worker thread and fails if it does not return within
+/// `deadline` or panics.
+fn within<T: Send + 'static>(
+    what: &str,
+    deadline: Duration,
+    job: impl FnOnce() -> T + Send + 'static,
+) -> T {
+    let (sender, receiver) = mpsc::channel();
+    thread::spawn(move || {
+        let _ = sender.send(job());
+    });
+    match receiver.recv_timeout(deadline) {
+        Ok(result) => result,
+        Err(RecvTimeoutError::Timeout) => {
+            panic!("{ROW}: {what}: did not return within {deadline:?}")
+        }
+        Err(RecvTimeoutError::Disconnected) => panic!("{ROW}: {what}: panicked"),
+    }
+}
+
+#[test]
+fn lib_edit_012_replacing_a_large_content_keeps_ids_in_linear_time() {
+    // Checking each new value id against a list of the old ones is
+    // quadratic: 100,000 values are about 5e9 comparisons, past the deadline
+    // in a debug build (50,000 took about 7 s, inside it), where a linear
+    // edit takes well under a second. The deadline only catches that, not
+    // ordinary slowness.
+    const VALUES: usize = 100_000;
+    let deadline = Duration::from_secs(20);
+    let values = (0..VALUES).fold(String::new(), |mut values, n| {
+        let _ = write!(values, "<value xmi:id=\"v{n}\" content=\"old {n}\"/>");
+        values
+    });
+    let input = format!(
+        "<sacm:ArgumentPackage{NS} xmi:id=\"p\"><name content=\"P\"/>\
+         <note xmi:id=\"n\"><content xmi:id=\"c\">{values}</content></note>\
+         </sacm:ArgumentPackage>"
+    );
+    let mut doc = read(&input);
+    let replacement: MultiLangString = (0..VALUES)
+        .map(|n| LangString::new(format!("new {n}")))
+        .collect();
+    let what = format!("SetContent of {VALUES} values over {VALUES} with ids");
+    let doc = within(&what, deadline, move || {
+        let answer = edit::apply(&mut doc, SetContent::new("n", replacement));
+        answer.map(|mutation| (doc, mutation.changed_ids().to_vec()))
+    });
+    let (doc, changed) = match doc {
+        Ok(done) => done,
+        Err(error) => panic!("{ROW}: {what}: refused: {error}"),
+    };
+    assert_eq!(changed, [id("n")], "{ROW}: {what}: changed_ids");
+    let n = element(&doc, "n");
+    let kept: Vec<Option<String>> = (0..VALUES).map(|k| Some(format!("v{k}"))).collect();
+    assert!(
+        n.content_id().map(ElementId::as_str) == Some("c")
+            && n.content_value_ids()
+                .iter()
+                .map(|value| value.as_ref().map(|v| v.as_str().to_owned()))
+                .eq(kept),
+        "{ROW}: {what}: the content does not keep c and every value id by position"
+    );
+    assert_eq!(
+        n.content().map(MultiLangString::len),
+        Some(VALUES),
+        "{ROW}: {what}: the content is not the {VALUES} new values"
+    );
 }

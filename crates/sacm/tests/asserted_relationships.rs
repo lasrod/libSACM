@@ -1089,7 +1089,7 @@ fn sacm23_arg_007_source_in_both_forms_and_a_second_target_or_reasoning_are_repe
             (
                 "target=\"c1 c2\"",
                 "target",
-                format!(" source=\"c3\" {MARK}{MARK}target=\"c1 c2\""),
+                format!(" source=\"c3\" target=\"{MARK}c1 {MARK}c2\""),
                 String::new(),
             ),
             (
@@ -1107,7 +1107,7 @@ fn sacm23_arg_007_source_in_both_forms_and_a_second_target_or_reasoning_are_repe
             (
                 "reasoning=\"r1 c1\"",
                 "reasoning",
-                format!(" source=\"c3\" target=\"c1\" {MARK}{MARK}reasoning=\"r1 c1\""),
+                format!(" source=\"c3\" target=\"c1\" reasoning=\"{MARK}r1 {MARK}c1\""),
                 String::new(),
             ),
             (

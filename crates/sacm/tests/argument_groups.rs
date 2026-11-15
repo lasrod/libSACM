@@ -699,9 +699,10 @@ fn sacm23_arg_013_argumentation_element_on_a_group_is_unsupported_and_argument_e
         assert_eq!(marks.len(), 1, "{ROW}: setup: {what} has not one mark");
         assert_preserved_at(what, &input, marks[0], holder);
     }
-    // Under an ArgumentPackage, `argumentElement` is the composite role, whose
-    // declared type is abstract: an untyped one, a reference element in form,
-    // is SACM-XMI-005 at its start tag (LIB-COMPAT-010).
+    // Under an ArgumentPackage, `argumentElement` is the composite role: a
+    // reference element there is the reference form of a composite, which
+    // this version does not read yet, at its start tag (LIB-COMPAT-010, the
+    // maintainer's decision), not a group member and not SACM-XMI-005.
     let what = "an argumentElement reference element in an ArgumentPackage";
     let (input, marks) = marked(&format!(
         "<sacm:ArgumentPackage{NS} xmi:id=\"p\"><name content=\"P\"/>{}\
@@ -709,10 +710,14 @@ fn sacm23_arg_013_argumentation_element_on_a_group_is_unsupported_and_argument_e
         claim("c1")
     ));
     let error = refused(what, &input);
-    assert_eq!(
-        (error.code(), error.location()),
-        (Some(Code::XMI_MISSING_TYPE), Some(marks[0])),
-        "{ROW}: {what}: not SACM-XMI-005 at its start tag: {error:?}"
+    assert!(
+        matches!(
+            &error,
+            ReadError::Unsupported { location, reason, .. }
+                if *location == Some(marks[0])
+                    && reason.ends_with("(a limit of this version; SACM23-XMI-019 reads it)")
+        ),
+        "{ROW}: {what}: not Unsupported at its start tag naming SACM23-XMI-019: {error:?}"
     );
     // The composite role still reads under a package.
     let what = "a Claim in argumentElement of an ArgumentPackage";

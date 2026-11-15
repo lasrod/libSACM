@@ -77,9 +77,12 @@ const KNOWN_ACCEPTED: &[&str] = &[];
 /// test timeout of 20 seconds, as in `xml_wellformedness.rs`.
 const DEADLINE: Duration = Duration::from_secs(5);
 
-/// How long all the reads of one run may take together (item 7). A debug
-/// run takes well under a second.
-const RUN_DEADLINE: Duration = Duration::from_secs(15);
+/// How long all the reads of one run may take together (item 7). A hang
+/// bound only: a read that never returns fails at [`DEADLINE`], naming its
+/// case, so this catches only reads that each return but together run for
+/// minutes. It is not a speed bound; a debug run takes well under a second,
+/// and the margin keeps a loaded machine from failing the run on time alone.
+const RUN_DEADLINE: Duration = Duration::from_secs(120);
 
 // --- Finding the suite ----------------------------------------------------
 

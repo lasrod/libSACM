@@ -13,12 +13,13 @@
 //! clause `11.10`. On any other kind it is content the class lacks, kept as
 //! preserved content (ADR 0033).
 //!
-//! Two tests here kill the mutants that docs/quality/mutants-triage.md
-//! excluded for this row:
+//! Two tests here kill mutants that would otherwise survive for this row
+//! (docs/quality/mutants-triage.md no longer lists either):
 //! - [`sacm23_arg_004_two_meta_claims_are_written_as_one_attribute_with_one_space_between_the_ids`]
 //!   kills `replace > with <` in `push_flags_and_references` (the separator);
 //! - [`sacm23_arg_004_two_missing_meta_claims_are_two_dangling_findings_and_a_repeated_one_is_one`]
-//!   kills `replace == with !=` in `dangling_references` (the dedupe).
+//!   kills `delete !` in `dangling_references` (the dedupe,
+//!   `!reported.insert(..)`).
 //!
 //! Documents are read from inline XMI; the edits that set `metaClaim` are
 //! tested in `reference_edits.rs` (LIB-EDIT-009). Expected locations are marked in the input with [`MARK`]
@@ -722,9 +723,9 @@ fn sacm23_arg_004_a_repeated_id_is_held_twice_and_written_back_unchanged() {
 
 // --- Item 6: dangling ids ------------------------------------------------------------------------
 
-/// Kills the mutant `replace == with !=` in `dangling_references`
-/// (docs/quality/mutants-triage.md): with it, `"x y"` gives one finding and
-/// `"x x"` gives two.
+/// Kills the mutant `delete !` in `dangling_references`, on
+/// `!reported.insert(..)`: with it, `"x y"` gives no finding and `"x x"`
+/// gives one.
 #[test]
 fn sacm23_arg_004_two_missing_meta_claims_are_two_dangling_findings_and_a_repeated_one_is_one() {
     for (holder, kind, element_of) in holders() {

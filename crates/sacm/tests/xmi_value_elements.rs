@@ -1332,6 +1332,18 @@ fn sacm23_xmi_014_a_value_given_three_times_names_all_three_occurrences() {
             "name.content",
         ),
         (
+            // The repeat is the well-formed second occurrence, so the name
+            // is refused, not preserved; the malformed third is still an
+            // occurrence of the field.
+            "a content attribute, a content element and one with an attribute",
+            in_ap(&format!(
+                "<name {MARK}content=\"A\">{MARK}<content>A</content>\
+                 {MARK}<content x=\"1\">B</content></name>"
+            )),
+            "a",
+            "name.content",
+        ),
+        (
             "three assertionDeclaration elements",
             declared_claim(&format!(
                 "{MARK}<assertionDeclaration>assumed</assertionDeclaration>\

@@ -582,7 +582,7 @@ fn sacm23_arg_005_a_second_structure_is_repeated_value_and_an_empty_one_is_prese
     for (what, attributes, content) in [
         (
             "structure=\"q p\"",
-            format!(" {MARK}{MARK}structure=\"q p\""),
+            format!(" structure=\"{MARK}q {MARK}p\""),
             String::new(),
         ),
         (

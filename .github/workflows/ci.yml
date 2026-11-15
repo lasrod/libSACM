@@ -53,9 +53,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           BEFORE: ${{ github.event.before }}
+          EVENT: ${{ github.event_name }}
         run: |
           ok=false
-          if [ -n "$BEFORE" ] && n=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$BEFORE&status=success" --jq '.total_count') && [ "$n" -gt 0 ]; then
+          if [ -n "$BEFORE" ] && n=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$BEFORE&status=success&event=$EVENT" --jq '.total_count') && [ "$n" -gt 0 ]; then
             ok=true
           fi
           echo "CI succeeded on $BEFORE: $ok"

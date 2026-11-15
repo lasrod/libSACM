@@ -533,6 +533,71 @@ fn id_tokens(value: &str) -> impl Iterator<Item = &str> {
     value.split(is_xml_space).filter(|token| !token.is_empty())
 }
 
+/// The byte offset in `text` of the first character, as written, of each
+/// id token of `attribute`'s value, in order (SACM23-XMI-005): the value is
+/// normalized again from the source (XML 1.0 §3.3.3), with each character
+/// reference standing for its character at its `&`, and each literal white
+/// space, a CRLF counting once, for a space. `None` when that does not give
+/// the tokens of the parsed value, which no well-formed input causes.
+fn token_starts(text: &str, attribute: &Attribute<'_, '_>) -> Option<Vec<usize>> {
+    let range = attribute.range_value();
+    let raw = text.get(range.clone())?;
+    let mut starts = Vec::new();
+    let mut token = String::new();
+    let mut tokens = id_tokens(attribute.value());
+    let mut rest = raw.char_indices().peekable();
+    // Ends the token being built, if any, checking it against the parsed one.
+    let mut close = |token: &mut String| -> Option<()> {
+        if !token.is_empty() {
+            (tokens.next()? == token.as_str()).then_some(())?;
+            token.clear();
+        }
+        Some(())
+    };
+    while let Some((offset, c)) = rest.next() {
+        let normalized = match c {
+            '&' => {
+                let end = raw.get(offset..)?.find(';')?;
+                let name = raw.get(offset + 1..offset + end)?;
+                while rest.next_if(|&(at, _)| at <= offset + end).is_some() {}
+                character_reference(name)?
+            }
+            '\r' => {
+                rest.next_if(|&(_, next)| next == '\n');
+                ' '
+            }
+            other => other,
+        };
+        if is_xml_space(normalized) {
+            close(&mut token)?;
+        } else {
+            if token.is_empty() {
+                starts.push(range.start + offset);
+            }
+            token.push(normalized);
+        }
+    }
+    close(&mut token)?;
+    tokens.next().is_none().then_some(starts)
+}
+
+/// The character the reference `&name;` stands for: a predefined entity
+/// (XML 1.0 §4.6) or a character reference (§4.1). `None` for any other.
+fn character_reference(name: &str) -> Option<char> {
+    let code = match name {
+        "lt" => return Some('<'),
+        "gt" => return Some('>'),
+        "amp" => return Some('&'),
+        "apos" => return Some('\''),
+        "quot" => return Some('"'),
+        _ => match name.strip_prefix("#x") {
+            Some(hex) => u32::from_str_radix(hex, 16).ok()?,
+            None => name.strip_prefix('#')?.parse().ok()?,
+        },
+    };
+    char::from_u32(code)
+}
+
 /// The `xsd:ID` value of the `xmi:id` value `raw` (SACM23-XMI-025; XMI
 /// 2.5.1 §7.6.1; XML Schema 1.0 Part 2 §4.3.6; ADR 0024): without the XML
 /// white space (#x20, #x9, #xA, #xD) at both ends when that leaves an
@@ -1111,10 +1176,16 @@ impl StartTag {
             return Ok(Given::NoId);
         }
         if count > 1 && !end.is_many() {
+            let starts = token_starts(text, attribute)
+                .unwrap_or_else(|| std::iter::repeat_n(at, count).collect());
+            let mut locator = Locator::new(text);
             return Err(ReadError::RepeatedValue {
                 element: id.clone(),
                 property: local.to_owned(),
-                locations: locate(text, at).map_or_else(Vec::new, |at| vec![at; count]),
+                locations: starts
+                    .into_iter()
+                    .filter_map(|start| locator.locate(start))
+                    .collect(),
             });
         }
         let targets = id_tokens(value).map(ElementId::new).collect();
@@ -1872,7 +1943,9 @@ enum ChildKind {
 /// except two refusals: an element in the XMI namespace, XMI metadata
 /// (SACM23-XMI-019), and the §11.4 text spelling `argumentationElement` in
 /// an ArgumentPackage (SACM23-XMI-009). Without a type under a role of an
-/// abstract type, it is `MissingType` (SACM-XMI-005, LIB-COMPAT-010). A
+/// abstract type, it is `MissingType` (SACM-XMI-005, LIB-COMPAT-010),
+/// unless it carries an `xmi:idref` or an `href`, the reference form of a
+/// composite, which is refused by its entry ([`proxy_link`]). A
 /// conforming kind this release does not read is refused by its entry.
 /// Every refusal is at the child's start tag.
 fn child_kind(
@@ -1924,8 +1997,22 @@ fn child_kind(
     }
     let kind = match (typed, role.declared) {
         (Some(kind), _) | (None, DeclaredType::Kind(kind)) => kind,
-        // Named after its role, so no class can be inferred (LIB-COMPAT-010).
+        // Named after its role, so no class can be inferred (LIB-COMPAT-010),
+        // unless it is the reference form of a composite, a proxy, which
+        // names its object rather than leaving its class out (XMI 2.5.1
+        // §7.10.1): not read yet.
         (None, DeclaredType::Abstract(class)) => {
+            if let Some(unread) = proxy_link(node) {
+                return Err(unsupported(
+                    text,
+                    at,
+                    unread,
+                    &format!(
+                        "the element {written:?} in {parent_what} is the reference form of a \
+                         {class}, which is not read in this release"
+                    ),
+                ));
+            }
             return Err(ReadError::MissingType {
                 role: role.name.to_owned(),
                 declared_type: class.name().to_owned(),
@@ -1947,6 +2034,20 @@ fn child_kind(
         ));
     }
     Ok(ChildKind::Read(kind))
+}
+
+/// The entry of the role element `node` if it is in the reference form of a
+/// composite (XMI 2.5.1 §7.10.1): an `xmi:idref` (SACM23-XMI-019), else an
+/// unqualified `href` (SACM23-XMI-027) (LIB-COMPAT-010).
+fn proxy_link(node: Node<'_, '_>) -> Option<Unread> {
+    let attributes = || node.attributes();
+    if attributes().any(|attribute| is_xmi(&attribute, "idref")) {
+        Some(Unread::XmiMetadata)
+    } else if attributes().any(|attribute| is_unqualified(&attribute, "href")) {
+        Some(Unread::CrossDocumentHref)
+    } else {
+        None
+    }
 }
 
 /// The `assertionDeclaration` that `value` names, of the element `element`,
@@ -2126,7 +2227,8 @@ type LangAttribute = (String, usize);
 /// property not written, and `false` or `0` reads it as usual, white space
 /// around them collapsed; any other value is `InvalidLiteral` at the
 /// attribute's name. A nil element that holds characters, even white
-/// space, or an element, any other attribute, and an element child do not
+/// space (an empty CDATA section holds none), or an element, any other
+/// attribute, and an element child do not
 /// conform: [`Fault::Defect`] (ADR 0033).
 fn read_value_element(
     text: &str,
@@ -2148,7 +2250,12 @@ fn read_value_element(
     }
     let mut value = String::new();
     for child in node.children() {
-        if child.is_element() || (nil && child.is_text()) {
+        // An empty text node, such as an empty CDATA section, holds no
+        // characters (SACM23-XMI-026).
+        let has_characters = child
+            .text()
+            .is_some_and(|characters| !characters.is_empty());
+        if child.is_element() || (nil && child.is_text() && has_characters) {
             return Err(Fault::Defect);
         }
         if child.is_text() {
@@ -2823,6 +2930,25 @@ mod tests {
             ("#a\rb", None),
         ] {
             assert_eq!(super::same_document_fragment(value), expected, "{value:?}");
+        }
+    }
+
+    #[test]
+    fn a_character_reference_stands_for_its_character() {
+        for (name, character) in [
+            ("lt", Some('<')),
+            ("gt", Some('>')),
+            ("amp", Some('&')),
+            ("apos", Some('\'')),
+            ("quot", Some('"')),
+            ("#32", Some(' ')),
+            ("#x9", Some('\t')),
+            ("#x1F600", Some('\u{1F600}')),
+            ("#xD800", None),
+            ("nbsp", None),
+            ("#", None),
+        ] {
+            assert_eq!(super::character_reference(name), character, "{name}");
         }
     }
 

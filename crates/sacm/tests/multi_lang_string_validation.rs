@@ -329,6 +329,15 @@ fn sacm23_val_010_distinct_languages_compared_exactly_and_an_absent_content_give
                 1,
             ),
         ),
+        (
+            // Languages are compared within one content, never pooled per
+            // owner.
+            "a Description and a Note on one Claim in the same language",
+            in_claim(
+                "<description xmi:id=\"d\"><content><value lang=\"en\" content=\"a\"/></content></description>\
+                 <note xmi:id=\"n\"><content><value lang=\"en\" content=\"b\"/></content></note>",
+            ),
+        ),
     ];
     for (what, input) in &cases {
         let found = validation::validate(&read(what, input));

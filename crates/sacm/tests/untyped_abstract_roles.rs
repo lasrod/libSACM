@@ -218,6 +218,73 @@ fn lib_compat_010_an_untyped_child_under_an_abstract_role_is_sacm_xmi_005_at_its
 }
 
 #[test]
+fn lib_compat_010_a_reference_form_element_under_an_abstract_role_is_not_missing_type() {
+    // A role element with `xmi:idref` or `href` is the reference form of a
+    // composite (XMI 2.5.1 §7.10.1, a proxy), not an untyped object: no
+    // class is missing, so it is no SACM-XMI-005. This version does not read
+    // it yet (the maintainer's decision): `Unsupported`, at its start tag,
+    // in both modes, naming the row that reads it, SACM23-XMI-019 for
+    // `xmi:idref` and SACM23-XMI-027 for `href`.
+    const IDREF: &str = "(a limit of this version; SACM23-XMI-019 reads it)";
+    const HREF: &str = "(a limit of this version; SACM23-XMI-027 reads it)";
+    let claim = "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\"/>\n  ";
+    let cases = [
+        (
+            "an argumentElement xmi:idref in an ArgumentPackage",
+            ap(&format!("{claim}{MARK}<argumentElement xmi:idref=\"c1\"/>")),
+            IDREF,
+        ),
+        (
+            "an argumentElement href=\"#c1\" in an ArgumentPackage",
+            ap(&format!("{claim}{MARK}<argumentElement href=\"#c1\"/>")),
+            HREF,
+        ),
+        (
+            "an argumentElement href to another document in an ArgumentPackage",
+            ap(&format!(
+                "{claim}{MARK}<argumentElement href=\"o.xmi#c1\"/>"
+            )),
+            HREF,
+        ),
+        (
+            "an argumentElement xmi:idref in an argumentPackage of an AssuranceCasePackage",
+            acp(&format!(
+                "<argumentPackage xmi:id=\"a\"><name content=\"A\"/>{claim}\
+                 {MARK}<argumentElement xmi:idref=\"c1\"/></argumentPackage>"
+            )),
+            IDREF,
+        ),
+    ];
+    for (what, template, label) in &cases {
+        let (input, marks) = marked(template);
+        assert_eq!(marks.len(), 1, "{ROW}: setup: {what} has not one mark");
+        for mode in MODES {
+            let error = match read(mode, &input) {
+                Ok(output) => panic!(
+                    "{ROW}: {what}: a {mode:?} read returned a document of {} elements",
+                    output.document().element_count()
+                ),
+                Err(error) => error,
+            };
+            let ReadError::Unsupported {
+                location, reason, ..
+            } = &error
+            else {
+                panic!("{ROW}: {what}: {mode:?}: not Unsupported: {error:?} ({error})");
+            };
+            assert!(
+                error.code().is_none()
+                    && *location == Some(marks[0])
+                    && reason.ends_with(label)
+                    && !reason.contains('\n'),
+                "{ROW}: {what}: {mode:?}: not Unsupported at the start tag ending {label:?}: \
+                 {error:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn lib_compat_010_the_same_element_typed_as_a_concrete_admitted_class_reads_as_before() {
     for (what, body, kind) in [
         (

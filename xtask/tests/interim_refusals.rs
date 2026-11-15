@@ -7,8 +7,9 @@
 //! checks keep that list honest:
 //!
 //! - (a) outside comments and `#[cfg(test)]` items, the token `Unsupported`
-//!   appears in `crates/sacm/src` only in `xmi.rs` (where `ReadError` is
-//!   declared) and in `xmi/refusal.rs`;
+//!   appears in `crates/sacm/src` only in `xmi/refusal.rs` and, in `xmi.rs`,
+//!   in the declaration of `ReadError` (the variant) and in
+//!   `Self::Unsupported` match arms, so `xmi.rs` builds none;
 //! - (b) every `Interim("ROW")` names a matrix row that exists, is not
 //!   `verified`, and is in the `depends_on` closure of each of SACM23-CP-001
 //!   to SACM23-CP-004, so no compliance point can be verified while the
@@ -34,9 +35,10 @@ const SACM_SRC: &str = "crates/sacm/src";
 /// The one list of refusals, relative to [`SACM_SRC`].
 const LIST: &str = "xmi/refusal.rs";
 
-/// The files, relative to [`SACM_SRC`], that may name `Unsupported`: the
-/// declaration of `ReadError` and the list.
-const ALLOWED: [&str; 2] = ["xmi.rs", LIST];
+/// The file, relative to [`SACM_SRC`], that declares `ReadError`, which may
+/// name `Unsupported` only in that declaration and in `Self::Unsupported`
+/// match arms.
+const XMI_RS: &str = "xmi.rs";
 
 /// The compliance points whose `depends_on` closure must hold every
 /// `Interim` row.
@@ -325,8 +327,62 @@ fn word_offsets(code: &str, token: &str) -> Vec<usize> {
 // The checks
 // ---------------------------------------------------------------------------
 
+/// The index after the bracket that closes the one at `open` in `skeleton`.
+fn closing(skeleton: &[u8], open: usize) -> usize {
+    let mut depth = 0usize;
+    for (offset, &byte) in skeleton[open..].iter().enumerate() {
+        match byte {
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b']' | b'}' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return open + offset + 1;
+                }
+            }
+            _ => {}
+        }
+    }
+    skeleton.len()
+}
+
+/// The offset of the first byte at or after `from` in `skeleton` that is not
+/// white space.
+fn skip_space(skeleton: &[u8], from: usize) -> usize {
+    from + skeleton[from..]
+        .iter()
+        .take_while(|byte| byte.is_ascii_whitespace())
+        .count()
+}
+
+/// Whether the `Unsupported` at `at` in `skeleton` (comments, literals and
+/// `#[cfg(test)]` items blanked) may stand in `xmi.rs`: as a variant of the
+/// `enum ReadError` declaration, or as `Self::Unsupported` in a match arm,
+/// its pattern followed by `=>`, `|` or a guard.
+fn allowed_in_xmi_rs(skeleton: &[u8], at: usize) -> bool {
+    let text = String::from_utf8_lossy(skeleton);
+    let in_declaration = word_offsets(&text, "ReadError")
+        .into_iter()
+        .filter(|&name| text[..name].trim_end().ends_with("enum"))
+        .any(|name| (name..item_end(skeleton, name)).contains(&at));
+    if in_declaration && !text[..at].ends_with("::") {
+        return true;
+    }
+    if !text[..at].ends_with("Self::") {
+        return false;
+    }
+    let mut after = skip_space(skeleton, at + "Unsupported".len());
+    if skeleton.get(after) == Some(&b'{') {
+        after = skip_space(skeleton, closing(skeleton, after));
+    }
+    let rest = &skeleton[after..];
+    rest.starts_with(b"=>")
+        || rest.starts_with(b"|")
+        || (rest.starts_with(b"if") && rest.get(2).is_some_and(|b| !is_ident_byte(*b)))
+}
+
 /// Check (a): `Unsupported`, outside comments and `#[cfg(test)]` items, only
-/// in the [`ALLOWED`] files, and the list exists.
+/// in the list and, in `xmi.rs`, in the `ReadError` declaration and its
+/// `Self::Unsupported` match arms; and the list exists.
 fn unsupported_problems(files: &BTreeMap<String, String>) -> Vec<String> {
     let mut problems = Vec::new();
     if !files.contains_key(LIST) {
@@ -336,10 +392,26 @@ fn unsupported_problems(files: &BTreeMap<String, String>) -> Vec<String> {
         ));
     }
     for (path, text) in files {
-        if ALLOWED.contains(&path.as_str()) {
+        if path == LIST {
             continue;
         }
         let code = code_outside_tests(text);
+        if path == XMI_RS {
+            let (_, skeleton) = masks(&code);
+            for at in word_offsets(&code, "Unsupported") {
+                if !allowed_in_xmi_rs(&skeleton, at) {
+                    problems.push(problem(
+                        "unsupported-in-xmi-rs",
+                        format!(
+                            "{SACM_SRC}/{path}:{} names Unsupported outside the ReadError \
+                             declaration and its Self::Unsupported match arms",
+                            line_of(text, at)
+                        ),
+                    ));
+                }
+            }
+            continue;
+        }
         for at in word_offsets(&code, "Unsupported") {
             problems.push(problem(
                 "unsupported-outside-list",
@@ -695,20 +767,88 @@ fn lib_api_011_unsupported_check_is_not_fooled_by_literals_or_short_test_items()
     }
 }
 
+/// `files` with `extra` appended to `path`.
+fn appended(files: &BTreeMap<String, String>, path: &str, extra: &str) -> BTreeMap<String, String> {
+    let mut files = files.clone();
+    let text = files
+        .get_mut(path)
+        .unwrap_or_else(|| panic!("{ROW}: setup: {SACM_SRC}/{path} does not exist"));
+    text.push_str(extra);
+    files
+}
+
 #[test]
-fn lib_api_011_unsupported_check_allows_xmi_rs_and_the_list() {
-    let mut files = sacm_sources();
-    for path in ALLOWED {
-        let text = files
-            .get_mut(path)
-            .unwrap_or_else(|| panic!("{ROW}: setup: {SACM_SRC}/{path} does not exist"));
-        text.push_str("\nfn extra() { let _ = ReadError::Unsupported { location: None, reason: String::new() }; }\n");
-    }
-    let problems = unsupported_problems(&files);
+fn lib_api_011_unsupported_check_allows_the_list_and_the_declaration_and_match_arms_of_xmi_rs() {
+    let files = sacm_sources();
+    let built = "\nfn extra() { let _ = ReadError::Unsupported { location: None, reason: String::new() }; }\n";
+    let problems = unsupported_problems(&appended(&files, LIST, built));
     assert!(
         problems.is_empty(),
-        "{ROW}: xmi.rs and {LIST} may name Unsupported: {problems:#?}"
+        "{ROW}: {LIST} may build Unsupported: {problems:#?}"
     );
+    let arms = concat!(
+        "\nimpl ReadError {\n",
+        "    fn extra(&self) -> bool {\n",
+        "        match self {\n",
+        "            Self::Unsupported { reason, .. } if reason.is_empty() => true,\n",
+        "            Self::Doctype { .. }\n",
+        "            | Self::Unsupported {\n",
+        "                location: None, ..\n",
+        "            } => false,\n",
+        "            Self::Unsupported { .. } | Self::NoPackage { .. } => true,\n",
+        "            _ => false,\n",
+        "        }\n",
+        "    }\n",
+        "}\n",
+    );
+    let problems = unsupported_problems(&appended(&files, XMI_RS, arms));
+    assert!(
+        problems.is_empty(),
+        "{ROW}: Self::Unsupported match arms in xmi.rs are allowed: {problems:#?}"
+    );
+}
+
+#[test]
+fn lib_api_011_unsupported_check_reports_a_construction_in_xmi_rs() {
+    let files = sacm_sources();
+    let cases = [
+        (
+            "ReadError::Unsupported built in a function",
+            "\nfn extra() -> ReadError {\n    \
+             ReadError::Unsupported { location: None, reason: String::new() }\n}\n",
+        ),
+        (
+            "Self::Unsupported built in an impl",
+            "\nimpl ReadError {\n    fn extra() -> Self {\n        \
+             Self::Unsupported { location: None, reason: String::new() }\n    }\n}\n",
+        ),
+        (
+            "Self::Unsupported built as a match arm's value",
+            "\nimpl ReadError {\n    fn extra(&self) -> Self {\n        match self {\n            \
+             _ => Self::Unsupported { location: None, reason: String::new() },\n        }\n    }\n}\n",
+        ),
+        (
+            "a ReadError::Unsupported match arm, not Self::",
+            "\nfn extra(e: &ReadError) -> bool {\n    \
+             match e { ReadError::Unsupported { .. } => true, _ => false }\n}\n",
+        ),
+        (
+            "a variant Unsupported of another enum",
+            "\nenum Other {\n    Unsupported,\n}\n",
+        ),
+        (
+            "Unsupported in a string literal",
+            "\nfn extra() -> &'static str { \"Unsupported\" }\n",
+        ),
+    ];
+    for (what, extra) in cases {
+        assert_only(
+            what,
+            &unsupported_problems(&appended(&files, XMI_RS, extra)),
+            "unsupported-in-xmi-rs",
+            1,
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -901,21 +1041,21 @@ fn lib_api_011_tolerance_rows_are_not_checked_against_the_compliance_points() {
 }
 
 // ---------------------------------------------------------------------------
-// The compliance points name the two rows the maintainer added (2026-11-15)
+// The compliance points name the row the maintainer added (2026-11-15).
+// LIB-COMPAT-004, added with it, is a Tolerance since 2026-11-16 and no
+// longer gates them.
 // ---------------------------------------------------------------------------
 
 #[test]
-fn lib_api_011_each_compliance_point_depends_directly_on_xmi_027_and_compat_004() {
+fn lib_api_011_each_compliance_point_depends_directly_on_xmi_027() {
     let rows = matrix_rows(&matrix());
     for point in COMPLIANCE_POINTS {
         let Some((_, depends_on)) = rows.get(point) else {
             panic!("{ROW}: the matrix has no row {point}");
         };
-        for row in ["SACM23-XMI-027", "LIB-COMPAT-004"] {
-            assert!(
-                depends_on.iter().any(|d| d == row),
-                "{ROW}: {point} lists {row} in its depends_on (the maintainer, 2026-11-15)"
-            );
-        }
+        assert!(
+            depends_on.iter().any(|d| d == "SACM23-XMI-027"),
+            "{ROW}: {point} lists SACM23-XMI-027 in its depends_on (the maintainer, 2026-11-15)"
+        );
     }
 }

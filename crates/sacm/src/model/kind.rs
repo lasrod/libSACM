@@ -585,7 +585,8 @@ impl ElementKind {
     /// `argumentPackage`, `artifactPackage` and `terminologyPackage` on
     /// `AssuranceCasePackage` (§9.2); `terminologyElement` on
     /// `TerminologyPackage` (§10.4); `argumentElement` on `ArgumentPackage`
-    /// (§11.4); `artifactElement` on `ArtifactPackage`, admitting every
+    /// (§11.4: the spelling of the model, where the text says
+    /// `argumentationElement`, D-TEXT-MODEL); `artifactElement` on `ArtifactPackage`, admitting every
     /// `ArtifactElement` (§12.2, ADR 0014); and `property` on every
     /// `ArtifactAsset` (§12.6). Package interfaces and bindings inherit their
     /// package's roles. A `UtilityElement` holds no elements.
@@ -598,7 +599,10 @@ impl ElementKind {
     /// [`xmi::read`](crate::xmi::read) reads such a child in this release.
     /// Multiplicity is not enforced here: a second `Description` is admitted,
     /// and [`validate`](crate::validation::validate) reports it
-    /// (SACM23-VAL-011). Which kinds may be a root is
+    /// (SACM23-VAL-011). Nor does it check the rule of §11.4 that an
+    /// `ArgumentPackage` holding nested `ArgumentPackage`s holds only
+    /// `ArgumentPackage`s; `validate` reports that (SACM23-VAL-012). Which
+    /// kinds may be a root is
     /// [`is_package`](Self::is_package).
     ///
     /// # Examples

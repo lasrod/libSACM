@@ -13,9 +13,9 @@
 //! - LIB-EDIT-013 (ADR 0019 amendment 3): `edit::check(&doc, &op)` equals
 //!   `edit::apply(&mut doc.clone(), op.clone()).map(drop)`, the same
 //!   `EditError` included, and leaves the document `==` to before with the
-//!   same next generated id of every kind. It runs over the set extended with
-//!   [`referencing_creates_for`], so that every `Operation` variant is
-//!   accepted and refused, the creates with both id forms. An operation that
+//!   same next generated id of every kind. It runs over the set, in which
+//!   every `Operation` variant is accepted and refused, the creates with both
+//!   id forms. An operation that
 //!   fails two checks gets the first, from both.
 //! - LIB-EDIT-004 (ADR 0031): `edit::preview(&doc, &op)` answers as `apply`
 //!   on a clone, its mutation included, and as `check`; it leaves the
@@ -44,9 +44,12 @@
 //!
 //! The operations are, for every element of the starting document and for an
 //! id it does not hold ("nowhere"):
-//! - the creates: one of each kind under it with a generated id, a fresh
-//!   caller id, an id that is not an `NCName` and the parent's own
-//!   (duplicate) id; and both root creates with each id form;
+//! - the creates: one of each of the 15 kinds under it with a generated id,
+//!   a fresh caller id, an id that is not an `NCName` and the parent's own
+//!   (duplicate) id, the referencing ones naming ids of the document; with a
+//!   generated id, each create with an end refused for no source, a
+//!   white-space id, a missing id or a wrongly typed id; and both root
+//!   creates with each id form;
 //! - the attribute edits (LIB-EDIT-008): a name, the current name, a gid, the
 //!   current gid, gid removal, each flag true and false, a declaration and the
 //!   current declaration;
@@ -1041,31 +1044,36 @@ fn insert(
     }
 }
 
-/// The ids the next generated AssuranceCasePackage, ArgumentPackage and Claim
-/// would get, observed on a clone so that `doc` is untouched.
-fn next_generated_ids(row: &str, doc: &Document) -> [ElementId; 3] {
-    let mut probe = doc.clone();
-    let case = create(
-        row,
-        &mut probe,
-        CreateAssuranceCasePackage::root(named("probe")),
-    );
-    let arguments = create(row, &mut probe, CreateArgumentPackage::root(named("probe")));
-    let claim = create(
-        row,
-        &mut probe,
-        CreateClaim::new(&arguments, named("probe")),
-    );
-    [case, arguments, claim]
+/// The ids the next generated element of each of the 15 kinds the edit API
+/// creates would get, observed on a clone so that `doc` is untouched: those
+/// of [`next_generated_ids_of_every_kind`].
+fn next_generated_ids(row: &str, doc: &Document) -> Vec<ElementId> {
+    next_generated_ids_of_every_kind(row, doc)
 }
 
-/// The position of `kind` in [`next_generated_ids`].
+/// The position of `kind` in [`next_generated_ids`]: the order of
+/// [`creates_of_every_kind`].
 fn probe_index(kind: ElementKind) -> usize {
-    match kind {
-        AssuranceCasePackage => 0,
-        ArgumentPackage => 1,
-        Claim => 2,
-        other => panic!("{EDIT_003}: the edit API does not create a {other}"),
+    const ORDER: [ElementKind; CREATE_COUNT] = [
+        AssuranceCasePackage,
+        ArgumentPackage,
+        Claim,
+        ArgumentReasoning,
+        ArtifactReference,
+        ArgumentGroup,
+        AssertedInference,
+        AssertedContext,
+        AssertedEvidence,
+        AssertedArtifactSupport,
+        AssertedArtifactContext,
+        Description,
+        ImplementationConstraint,
+        Note,
+        TaggedValue,
+    ];
+    match ORDER.iter().position(|&created| created == kind) {
+        Some(index) => index,
+        None => panic!("{EDIT_003}: the edit API does not create a {kind}"),
     }
 }
 
@@ -1086,7 +1094,35 @@ enum Class<'a> {
 /// Classifies `operation`.
 fn classify(operation: &Operation) -> Class<'_> {
     let edit_of = |label| Class::Edit { label };
+    // A create with a parent.
+    macro_rules! under {
+        ($create:expr, $kind:expr) => {
+            Class::Create {
+                kind: $kind,
+                parent: Some($create.parent()),
+                id: $create.id(),
+            }
+        };
+    }
     match operation {
+        Operation::CreateArgumentReasoning(create) => under!(create, ArgumentReasoning),
+        Operation::CreateArtifactReference(create) => under!(create, ArtifactReference),
+        Operation::CreateArgumentGroup(create) => under!(create, ArgumentGroup),
+        Operation::CreateAssertedInference(create) => under!(create, AssertedInference),
+        Operation::CreateAssertedContext(create) => under!(create, AssertedContext),
+        Operation::CreateAssertedEvidence(create) => under!(create, AssertedEvidence),
+        Operation::CreateAssertedArtifactSupport(create) => {
+            under!(create, AssertedArtifactSupport)
+        }
+        Operation::CreateAssertedArtifactContext(create) => {
+            under!(create, AssertedArtifactContext)
+        }
+        Operation::CreateDescription(create) => under!(create, Description),
+        Operation::CreateImplementationConstraint(create) => {
+            under!(create, ImplementationConstraint)
+        }
+        Operation::CreateNote(create) => under!(create, Note),
+        Operation::CreateTaggedValue(create) => under!(create, TaggedValue),
         Operation::CreateAssuranceCasePackage(create) => Class::Create {
             kind: AssuranceCasePackage,
             parent: create.parent(),
@@ -1269,7 +1305,70 @@ fn create_answer(doc: &Document, operation: &Operation) -> Result<(), Code> {
             return Err(Code::CMD_DUPLICATE_ID);
         }
     }
+    // ADR 0027's checks of the ends, then ADR 0028's typing: a relationship
+    // has a source; no id holds white space; every id names an element; and,
+    // only then, every id names an element its end's declared type admits.
+    let ends = create_ends(operation);
+    if RELATIONSHIPS.contains(&kind)
+        && ends
+            .iter()
+            .all(|(end, ids)| *end != ReferenceEnd::Source || ids.is_empty())
+    {
+        return Err(Code::MULTIPLICITY_VIOLATION);
+    }
+    let all_ids = || ends.iter().flat_map(|(_, ids)| ids.iter().copied());
+    if all_ids().any(|value| holds_white_space(value.as_str())) {
+        return Err(Code::ID_INVALID);
+    }
+    if all_ids().any(|value| !doc.contains(value)) {
+        return Err(Code::CMD_TARGET_NOT_FOUND);
+    }
+    for (end, ids) in &ends {
+        let declared = rule_of(*end).declared;
+        if ids.iter().any(|value| {
+            doc.get(value)
+                .is_some_and(|found| !declared.contains(&found.kind()))
+        }) {
+            return Err(Code::REF_WRONG_TYPE);
+        }
+    }
     Ok(())
+}
+
+/// The reference ends a create gives, each with its ids in order.
+fn create_ends(operation: &Operation) -> Vec<(ReferenceEnd, Vec<&ElementId>)> {
+    macro_rules! relationship {
+        ($create:expr) => {
+            vec![
+                (
+                    ReferenceEnd::Reasoning,
+                    $create.reasoning().into_iter().collect(),
+                ),
+                (ReferenceEnd::Source, $create.sources().iter().collect()),
+                (ReferenceEnd::Target, vec![$create.target()]),
+            ]
+        };
+    }
+    match operation {
+        Operation::CreateArgumentReasoning(create) => vec![(
+            ReferenceEnd::Structure,
+            create.structure().into_iter().collect(),
+        )],
+        Operation::CreateArtifactReference(create) => vec![(
+            ReferenceEnd::ReferencedArtifactElement,
+            create.referenced_artifact_elements().iter().collect(),
+        )],
+        Operation::CreateArgumentGroup(create) => vec![(
+            ReferenceEnd::GroupMember,
+            create.group_members().iter().collect(),
+        )],
+        Operation::CreateAssertedInference(create) => relationship!(create),
+        Operation::CreateAssertedContext(create) => relationship!(create),
+        Operation::CreateAssertedEvidence(create) => relationship!(create),
+        Operation::CreateAssertedArtifactSupport(create) => relationship!(create),
+        Operation::CreateAssertedArtifactContext(create) => relationship!(create),
+        _ => Vec::new(),
+    }
 }
 
 /// An attribute or content edit: the element is known, then its kind has
@@ -1904,9 +2003,12 @@ fn delete_operations_for(doc: &Document) -> Vec<Operation> {
         .collect()
 }
 
-/// Under every element (pre-order) and under [`NOWHERE`], one create of each
-/// kind with each id form; then both root creates with each id form. Fresh
-/// caller ids are `new_<n>`, unique across the list.
+/// Under every element (pre-order) and under [`NOWHERE`]: one create of each
+/// of the 15 kinds with each id form (the twelve of
+/// [`CreateEnds::other_creates`] referencing ids of `doc`), then, with a
+/// generated id, each reference refusal of [`reference_refusals`]; last both
+/// root creates with each id form. Fresh caller ids are `new_<n>`, one per
+/// parent, so that in sequence the second create given one is a duplicate.
 fn create_operations_for(doc: &Document) -> Vec<Operation> {
     let names = names();
     // The name of the create of kind `kind` with id form `form` under the
@@ -1921,6 +2023,7 @@ fn create_operations_for(doc: &Document) -> Vec<Operation> {
         fresh
     };
     let first_id = doc.elements().next().map(|element| element.id().clone());
+    let ends = CreateEnds::of(doc);
 
     let mut parents: Vec<ElementId> = doc.elements().map(|element| element.id().clone()).collect();
     parents.push(id(NOWHERE));
@@ -1939,28 +2042,21 @@ fn create_operations_for(doc: &Document) -> Vec<Operation> {
             caller_ids.push(Some(duplicate.clone()));
         }
         for (form, caller_id) in caller_ids.into_iter().enumerate() {
-            let with = |operation: Operation| -> Operation {
-                match (operation, &caller_id) {
-                    (operation, None) => operation,
-                    (Operation::CreateAssuranceCasePackage(create), Some(value)) => {
-                        create.with_id(value).into()
-                    }
-                    (Operation::CreateArgumentPackage(create), Some(value)) => {
-                        create.with_id(value).into()
-                    }
-                    (Operation::CreateClaim(create), Some(value)) => create.with_id(value).into(),
-                    (other, Some(_)) => {
-                        panic!("{EDIT_002}: an operation this test does not know: {other:?}")
-                    }
-                }
-            };
             let name = |kind: usize| name(parent_index, form, kind);
-            operations.push(with(
+            let mut creates: Vec<Operation> = vec![
                 CreateAssuranceCasePackage::new(parent, name(0)).into(),
-            ));
-            operations.push(with(CreateArgumentPackage::new(parent, name(1)).into()));
-            operations.push(with(CreateClaim::new(parent, name(2)).into()));
+                CreateArgumentPackage::new(parent, name(1)).into(),
+                CreateClaim::new(parent, name(2)).into(),
+            ];
+            creates.extend(ends.other_creates(parent, &name, form));
+            operations.extend(
+                creates
+                    .into_iter()
+                    .map(|create| with_caller_id(create, caller_id.as_ref())),
+            );
         }
+        let name = names[parent_index % names.len()].clone();
+        operations.extend(reference_refusals(doc, parent, &name));
     }
     let mut root_ids: Vec<Option<ElementId>> =
         vec![None, Some(id(&next_fresh())), Some(id(NOT_AN_NCNAME))];
@@ -2382,7 +2478,23 @@ fn lib_edit_002_the_set_has_legal_and_illegal_operations_of_every_kind_with_both
     });
     assert!(total > 0, "{EDIT_002}: the set is empty");
     let mut required: Vec<(ElementKind, bool, Result<(), &'static str>)> = Vec::new();
-    for kind in [AssuranceCasePackage, ArgumentPackage, Claim] {
+    for kind in [
+        AssuranceCasePackage,
+        ArgumentPackage,
+        Claim,
+        ArgumentReasoning,
+        ArtifactReference,
+        ArgumentGroup,
+        AssertedInference,
+        AssertedContext,
+        AssertedEvidence,
+        AssertedArtifactSupport,
+        AssertedArtifactContext,
+        Description,
+        ImplementationConstraint,
+        Note,
+        TaggedValue,
+    ] {
         for caller in [false, true] {
             required.push((kind, caller, Ok(())));
             required.push((kind, caller, Err(Code::CMD_TARGET_NOT_FOUND.as_str())));
@@ -2390,6 +2502,16 @@ fn lib_edit_002_the_set_has_legal_and_illegal_operations_of_every_kind_with_both
         }
         required.push((kind, true, Err(Code::ID_INVALID.as_str())));
         required.push((kind, true, Err(Code::CMD_DUPLICATE_ID.as_str())));
+        // The checks of the ends (ADR 0027, ADR 0028), reached with a
+        // generated id: a white-space id, and one naming a wrongly typed
+        // element; a relationship with no source.
+        if !UTILITY_ELEMENTS.contains(&kind) && !PACKAGE_KINDS.contains(&kind) && kind != Claim {
+            required.push((kind, false, Err(Code::ID_INVALID.as_str())));
+            required.push((kind, false, Err(Code::REF_WRONG_TYPE.as_str())));
+        }
+        if RELATIONSHIPS.contains(&kind) {
+            required.push((kind, false, Err(Code::MULTIPLICITY_VIOLATION.as_str())));
+        }
     }
     for case in required {
         assert!(
@@ -3053,7 +3175,7 @@ fn with_caller_id(operation: Operation, value: Option<&ElementId>) -> Operation 
         Operation::CreateImplementationConstraint(create) => create.with_id(value).into(),
         Operation::CreateNote(create) => create.with_id(value).into(),
         Operation::CreateTaggedValue(create) => create.with_id(value).into(),
-        other => panic!("{EDIT_013}: setup: {other:?} is not a create"),
+        other => panic!("{EDIT_002}: setup: {other:?} is not a create"),
     }
 }
 
@@ -3091,79 +3213,67 @@ fn first_of(doc: &Document, kinds: &[ElementKind]) -> Option<ElementId> {
     first_and_last_of(doc, kinds).map(|(first, _)| first)
 }
 
-/// The creates [`create_operations_for`] leaves out: the twelve that are no
-/// package and no Claim, which the LIB-EDIT-002 oracle does not model.
-///
-/// Under every element (pre-order) and under [`NOWHERE`]: one of each with
-/// each id form (generated, a fresh `check_new_<n>`, [`NOT_AN_NCNAME`], and
-/// the parent's own id), each referencing the first element of the end's
-/// declared type where the document has one, and [`NOWHERE`] for a source or
-/// target where it has none. Then, with a generated id, each reference
-/// refusal of [`reference_refusals`].
-fn referencing_creates_for(doc: &Document) -> Vec<Operation> {
-    let names = names();
-    let nowhere = id(NOWHERE);
-    let asset = first_of(doc, &ARGUMENT_ASSETS).unwrap_or_else(|| nowhere.clone());
-    let reasoning = first_of(doc, &[ArgumentReasoning]);
-    let structure = first_of(doc, &[ArgumentPackage]);
-    let artifact = first_of(doc, &MODEL_ELEMENTS);
-    let member = first_of(doc, &ARGUMENTATION_ELEMENTS);
-    let first_id = doc.elements().next().map(|element| element.id().clone());
+/// The ids the twelve creates that are no package and no Claim reference in
+/// `doc`: the first element of each end's declared type where the document
+/// has one, and [`NOWHERE`] for a source or target where it has none.
+struct CreateEnds {
+    asset: ElementId,
+    reasoning: Option<ElementId>,
+    structure: Option<ElementId>,
+    artifact: Option<ElementId>,
+    member: Option<ElementId>,
+}
 
-    let mut parents: Vec<ElementId> = doc.elements().map(|element| element.id().clone()).collect();
-    parents.push(nowhere);
-
-    let mut operations: Vec<Operation> = Vec::new();
-    for (parent_index, parent) in parents.iter().enumerate() {
-        let duplicate = if doc.contains(parent) {
-            Some(parent.clone())
-        } else {
-            first_id.clone()
-        };
-        let mut caller_ids: Vec<Option<ElementId>> = vec![
-            None,
-            Some(id(&format!("check_new_{parent_index}"))),
-            Some(id(NOT_AN_NCNAME)),
-        ];
-        caller_ids.extend(duplicate.map(Some));
-        for (form, caller_id) in caller_ids.iter().enumerate() {
-            let name = |kind: usize| names[(parent_index + form + kind) % names.len()].clone();
-            let mut argument_reasoning = CreateArgumentReasoning::new(parent, name(0));
-            if let Some(structure) = &structure {
-                argument_reasoning = argument_reasoning.with_structure(structure);
-            }
-            let mut reference = CreateArtifactReference::new(parent, name(1));
-            if let Some(artifact) = &artifact {
-                reference = reference.with_referenced_artifact_elements([artifact]);
-            }
-            let mut group = CreateArgumentGroup::new(parent, name(2));
-            if let Some(member) = &member {
-                group = group.with_group_members([member]);
-            }
-            let mut creates: Vec<Operation> =
-                vec![argument_reasoning.into(), reference.into(), group.into()];
-            creates.extend(relationship_creates(
-                parent,
-                &name(3),
-                std::slice::from_ref(&asset),
-                &asset,
-                reasoning.as_ref(),
-                form % 2 == 1,
-            ));
-            creates.push(CreateDescription::new(parent, two_values()).into());
-            creates.push(CreateImplementationConstraint::new(parent, name(4)).into());
-            creates.push(CreateNote::new(parent, MultiLangString::default()).into());
-            creates.push(CreateTaggedValue::new(parent, a_key(), two_values()).into());
-            operations.extend(
-                creates
-                    .into_iter()
-                    .map(|create| with_caller_id(create, caller_id.as_ref())),
-            );
+impl CreateEnds {
+    fn of(doc: &Document) -> Self {
+        Self {
+            asset: first_of(doc, &ARGUMENT_ASSETS).unwrap_or_else(|| id(NOWHERE)),
+            reasoning: first_of(doc, &[ArgumentReasoning]),
+            structure: first_of(doc, &[ArgumentPackage]),
+            artifact: first_of(doc, &MODEL_ELEMENTS),
+            member: first_of(doc, &ARGUMENTATION_ELEMENTS),
         }
-        let name = names[parent_index % names.len()].clone();
-        operations.extend(reference_refusals(doc, parent, &name));
     }
-    operations
+
+    /// The twelve creates that are no package and no Claim under `parent`,
+    /// with generated ids, named by `name`: the `ArgumentReasoning`,
+    /// `ArtifactReference` and `ArgumentGroup` with these ends, the five asserted
+    /// relationships from and to `asset` with `reasoning` (`isCounter` for an
+    /// odd `form`), and the four `UtilityElement`s.
+    fn other_creates(
+        &self,
+        parent: &ElementId,
+        name: &dyn Fn(usize) -> LangString,
+        form: usize,
+    ) -> Vec<Operation> {
+        let mut argument_reasoning = CreateArgumentReasoning::new(parent, name(3));
+        if let Some(structure) = &self.structure {
+            argument_reasoning = argument_reasoning.with_structure(structure);
+        }
+        let mut reference = CreateArtifactReference::new(parent, name(4));
+        if let Some(artifact) = &self.artifact {
+            reference = reference.with_referenced_artifact_elements([artifact]);
+        }
+        let mut group = CreateArgumentGroup::new(parent, name(5));
+        if let Some(member) = &self.member {
+            group = group.with_group_members([member]);
+        }
+        let mut creates: Vec<Operation> =
+            vec![argument_reasoning.into(), reference.into(), group.into()];
+        creates.extend(relationship_creates(
+            parent,
+            &name(6),
+            std::slice::from_ref(&self.asset),
+            &self.asset,
+            self.reasoning.as_ref(),
+            form % 2 == 1,
+        ));
+        creates.push(CreateDescription::new(parent, two_values()).into());
+        creates.push(CreateImplementationConstraint::new(parent, name(7)).into());
+        creates.push(CreateNote::new(parent, MultiLangString::default()).into());
+        creates.push(CreateTaggedValue::new(parent, a_key(), two_values()).into());
+        creates
+    }
 }
 
 /// The reference refusals under `parent`, with generated ids: an asserted
@@ -3234,15 +3344,11 @@ fn reference_refusals(doc: &Document, parent: &ElementId, name: &LangString) -> 
     operations
 }
 
-/// The LIB-EDIT-013 set for `doc`: the operations of [`operations_for`] with
-/// [`referencing_creates_for`] before the deletes, so that in sequence the
-/// creates meet the document the edits left.
+/// The LIB-EDIT-013 set for `doc`: the operations of [`operations_for`],
+/// whose creates include every create with both id forms and its reference
+/// refusals.
 fn check_operations_for(doc: &Document) -> Vec<Operation> {
-    let mut operations = create_operations_for(doc);
-    operations.extend(edit_operations_for(doc));
-    operations.extend(referencing_creates_for(doc));
-    operations.extend(delete_operations_for(doc));
-    operations
+    operations_for(doc)
 }
 
 /// One create of each of the 15 kinds, with a generated id, in the order of

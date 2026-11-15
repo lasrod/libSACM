@@ -609,13 +609,14 @@ fn entry(
 
 // --- Item 1: the four readable cases ---------------------------------------
 
-#[test]
-fn sacm23_xmi_016_each_readable_child_reads_to_its_kind_id_name_and_parent() {
+/// The readable children of item 1, as (role, type attribute, child kind):
+/// concrete roles untyped and with a redundant type of either form;
+/// `argumentElement` with either form; an `xmi:type` and an `xsi:type` that
+/// agree, in either order; and every other readable kind of
+/// `argumentElement` (ADR 0027, ADR 0028) with either form of type.
+fn readable_children() -> Vec<(&'static str, String, ElementKind)> {
     use ElementKind as K;
-    // (role, type attribute, child kind): concrete roles untyped and with a
-    // redundant type of either form; `argumentElement` with either form; and
-    // an `xmi:type` and an `xsi:type` that agree, in either order.
-    let cases = [
+    let fixed = [
         (
             "argumentElement",
             " xmi:type=\"sacm:Claim\" xsi:type=\"sacm:Claim\"",
@@ -671,8 +672,32 @@ fn sacm23_xmi_016_each_readable_child_reads_to_its_kind_id_name_and_parent() {
         ("argumentElement", " xmi:type=\"sacm:Claim\"", K::Claim),
         ("argumentElement", " xsi:type=\"sacm:Claim\"", K::Claim),
     ];
+    let mut cases: Vec<(&'static str, String, ElementKind)> = fixed
+        .into_iter()
+        .map(|(role, attribute, kind)| (role, attribute.to_owned(), kind))
+        .collect();
+    for kind in [
+        K::ArgumentReasoning,
+        K::AssertedInference,
+        K::AssertedContext,
+        K::ArtifactReference,
+        K::ArgumentGroup,
+        K::AssertedEvidence,
+        K::AssertedArtifactSupport,
+        K::AssertedArtifactContext,
+    ] {
+        for form in ["xmi:type", "xsi:type"] {
+            cases.push(("argumentElement", format!(" {form}=\"sacm:{kind}\""), kind));
+        }
+    }
+    cases
+}
+
+#[test]
+fn sacm23_xmi_016_each_readable_child_reads_to_its_kind_id_name_and_parent() {
+    use ElementKind as K;
     let name = || Some(LangString::new("Child").with_lang("en"));
-    for (role, attribute, kind) in cases {
+    for (role, attribute, kind) in readable_children() {
         let child = format!(
             "<{role}{attribute} xmi:id=\"child\"><name lang=\"en\" content=\"Child\"/></{role}>"
         );

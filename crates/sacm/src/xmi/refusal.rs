@@ -20,7 +20,9 @@ use crate::model::ElementKind;
 /// Why input is refused rather than read or preserved.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Refusal {
-    /// Conforming input this version does not read yet; the row reads it.
+    /// Input this version does not read yet, and the row reads: conforming
+    /// input, and XMI-namespace elements that XMI.xsd does not define
+    /// (SACM23-XMI-019).
     Interim(&'static str),
     /// Input that does not conform, which the row is to read in tolerant
     /// mode.
@@ -74,7 +76,8 @@ pub(super) enum Unread {
     /// `xsi:schemaLocation`.
     XmiMetadata,
     /// An `href` that is not `#id`, or `XLink` attributes on a reference
-    /// element.
+    /// element; or an `href` on an untyped role element of a composite,
+    /// its reference form.
     CrossDocumentHref,
     /// A root outside the SACM 2.3 namespace.
     OtherSacmNamespace,
@@ -134,7 +137,7 @@ impl Unread {
             Self::ArgumentPackageBinding => Refusal::Interim("SACM23-ARG-015"),
             Self::XmiMetadata => Refusal::Interim("SACM23-XMI-019"),
             Self::CrossDocumentHref => Refusal::Interim("SACM23-XMI-027"),
-            Self::OtherSacmNamespace => Refusal::Interim("LIB-COMPAT-004"),
+            Self::OtherSacmNamespace => Refusal::Tolerance("LIB-COMPAT-004"),
             Self::ExpressionLangString => Refusal::Interim("SACM23-BASE-009"),
             Self::OtherXmiNamespace => Refusal::Tolerance("LIB-COMPAT-002"),
             Self::TextSpelling => Refusal::Tolerance("SACM23-XMI-009"),
