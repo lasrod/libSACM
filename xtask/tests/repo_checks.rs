@@ -328,9 +328,10 @@ fn lib_qa_017_wasm_ci_check_reports_a_removed_build_or_target() {
 
 /// The platform APIs that compile for `wasm32-unknown-unknown` but fail at
 /// run time, as `clippy.toml` `disallowed-methods` paths: every free function
-/// of `std::fs` (Rust 1.85), and the listed thread, process and environment
-/// functions.
-const DISALLOWED_METHODS: [&str; 33] = [
+/// of `std::fs` (Rust 1.85), the listed thread, process and environment
+/// functions, and the `std::path::Path` methods that touch the file system
+/// (its lexical methods, such as `join` and `parent`, stay allowed).
+const DISALLOWED_METHODS: [&str; 43] = [
     "std::fs::canonicalize",
     "std::fs::copy",
     "std::fs::create_dir",
@@ -364,10 +365,22 @@ const DISALLOWED_METHODS: [&str; 33] = [
     "std::env::current_dir",
     "std::env::set_current_dir",
     "std::env::temp_dir",
+    "std::path::Path::exists",
+    "std::path::Path::try_exists",
+    "std::path::Path::is_file",
+    "std::path::Path::is_dir",
+    "std::path::Path::is_symlink",
+    "std::path::Path::metadata",
+    "std::path::Path::symlink_metadata",
+    "std::path::Path::canonicalize",
+    "std::path::Path::read_link",
+    "std::path::Path::read_dir",
 ];
 
-/// The platform types, as `clippy.toml` `disallowed-types` paths.
-const DISALLOWED_TYPES: [&str; 8] = [
+/// The platform types, as `clippy.toml` `disallowed-types` paths: the
+/// `std::fs` handles, the thread builder, the process command, the system
+/// clocks and the `std::net` sockets.
+const DISALLOWED_TYPES: [&str; 11] = [
     "std::fs::File",
     "std::fs::OpenOptions",
     "std::fs::DirEntry",
@@ -376,6 +389,9 @@ const DISALLOWED_TYPES: [&str; 8] = [
     "std::process::Command",
     "std::time::Instant",
     "std::time::SystemTime",
+    "std::net::TcpListener",
+    "std::net::TcpStream",
+    "std::net::UdpSocket",
 ];
 
 /// The `clippy.toml` arrays and the paths each must list.

@@ -272,6 +272,8 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
 - `ElementKind::may_contain` (a `const fn`) and `ElementKind::child_kinds` answer which
   kinds SACM 2.3 lets an element contain, from the containment table the edits use
   [LIB-API-012].
+- `sacm` builds for `wasm32-unknown-unknown`, checked in CI, and a lint keeps file-system,
+  thread, process, environment, network and clock APIs out of the library [LIB-QA-017].
 
 ### Changed
 
