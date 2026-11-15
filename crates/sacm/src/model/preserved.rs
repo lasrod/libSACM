@@ -17,10 +17,9 @@ use super::ElementId;
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Preserved {
     /// The namespace bindings the holder's start tag declares for
-    /// `attributes`, empty when it has none: every prefixed binding in scope
-    /// at the holder in the input but `xml`, `sacm` and `xmi`, so that their
-    /// names and any `QName` in their values resolve as they did. Sorted by
-    /// prefix.
+    /// `attributes`: each prefix they use, other than `xml`, and `sacm` and
+    /// `xmi` bound to the SACM 2.3 and XMI 2.5.1 namespaces, which the
+    /// document element declares. Sorted by prefix.
     pub(crate) namespaces: Vec<(String, String)>,
     /// The attributes, in input order.
     pub(crate) attributes: Vec<Attr>,
@@ -128,10 +127,6 @@ impl Preserved {
             return Vec::new();
         };
         let attr = self.attributes.remove(position);
-        // The bindings are declared for the attributes only.
-        if self.attributes.is_empty() {
-            self.namespaces.clear();
-        }
         let mut released = Vec::new();
         for token in attr
             .value

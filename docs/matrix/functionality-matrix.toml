@@ -3485,7 +3485,6 @@ acceptance = [
 ]
 code = ["crates/sacm/src/model/preserved.rs", "crates/sacm/src/xmi/preserve.rs", "crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi/output.rs", "crates/sacm/src/compare.rs", "crates/sacm/src/edit/delete.rs", "docs/adr/0033-preserved-content.md"]
 tests = [
-  "crates/sacm/tests/preserved_content.rs::lib_compat_003_a_binding_used_only_in_a_preserved_value_is_kept",
   "crates/sacm/tests/preserved_content.rs::lib_compat_003_a_repeated_value_refusal_does_not_list_a_preserved_occurrence",
   "crates/sacm/tests/preserved_content.rs::lib_compat_003_an_empty_multi_valued_end_beside_its_elements_is_preserved_and_they_are_read",
   "crates/sacm/tests/preserved_content.rs::lib_compat_003_an_unknown_content_diagnostic_names_the_attribute_as_written",

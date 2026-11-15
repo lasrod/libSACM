@@ -80,27 +80,6 @@ fn in_scope(node: Node<'_, '_>) -> Vec<(Option<String>, String)> {
     bindings
 }
 
-/// The prefixed bindings in scope at `node`, a holder, that its written
-/// start tag declares if it keeps a preserved attribute (ADR 0033), by
-/// prefix: every one but `xml`, which is never declared, and `sacm` and
-/// `xmi`, which the writer binds to SACM 2.3 and XMI 2.5.1 for the typed
-/// attributes. So an attribute's name, and a `QName` in its value, resolve
-/// as they did. A default namespace is never declared on a holder, whose
-/// own name is in no namespace. Empty, with nothing allocated, when only
-/// those three are in scope.
-pub(super) fn holder_scope(node: Node<'_, '_>) -> Vec<(String, String)> {
-    let mut bindings: Vec<(String, String)> = node
-        .namespaces()
-        .filter_map(|namespace| {
-            let prefix = namespace.name()?;
-            (!matches!(prefix, "xml" | SACM_PREFIX | XMI_PREFIX))
-                .then(|| (prefix.to_owned(), namespace.uri().to_owned()))
-        })
-        .collect();
-    bindings.sort();
-    bindings
-}
-
 /// The bindings `node` declares itself: those in scope at it that are not
 /// in scope at its parent with the same URI. The default first, then by
 /// prefix.

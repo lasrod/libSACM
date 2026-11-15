@@ -727,11 +727,8 @@ struct Kept {
     /// The attributes, each with the byte offset of its name: sorted by it
     /// when the element is held, so they keep their input order.
     attributes: Vec<(usize, Attr)>,
-    /// The prefixed namespace bindings in scope at the element in the
-    /// input, but `xml`, `sacm` and `xmi`, by prefix: what the element
-    /// declares if it keeps an attribute, so that the attribute's name and
-    /// any `QName` in its value resolve as they did (ADR 0033).
-    scope: Vec<(String, String)>,
+    /// The bindings their prefixes need.
+    namespaces: Vec<(String, String)>,
     /// The children, in input order.
     children: Vec<Placed>,
     /// The `xmi:id` value of each element of the children.
@@ -749,23 +746,20 @@ impl Kept {
         self.offsets.contains(&offset)
     }
 
-    /// The preserved content, its attributes in input order, with the
-    /// bindings in scope if it keeps any attribute.
+    /// The preserved content, its attributes in input order and its
+    /// bindings by prefix.
     fn into_preserved(self) -> Preserved {
         let Self {
             mut attributes,
-            scope,
+            mut namespaces,
             children,
             ids,
             references,
             offsets: _,
         } = self;
         attributes.sort_by_key(|(offset, _)| *offset);
-        let namespaces = if attributes.is_empty() {
-            Vec::new()
-        } else {
-            scope
-        };
+        namespaces.sort();
+        namespaces.dedup();
         Preserved {
             namespaces,
             attributes: attributes.into_iter().map(|(_, attr)| attr).collect(),
@@ -874,9 +868,12 @@ impl Pending {
                         ),
                     ));
                 }
-                // The binding is in scope at the element, so `kept.scope`
-                // declares it.
-                Some(_) | None => {}
+                Some(_) => {}
+                None if prefix == "xml" => {}
+                None => self
+                    .kept
+                    .namespaces
+                    .push((prefix.to_owned(), uri.to_owned())),
             }
         }
         self.kept.references.extend(
@@ -1532,10 +1529,7 @@ fn pending(
         written,
         at: node.range().start,
         children: 0,
-        kept: Kept {
-            scope: preserve::holder_scope(node),
-            ..Kept::default()
-        },
+        kept: Kept::default(),
     }
 }
 

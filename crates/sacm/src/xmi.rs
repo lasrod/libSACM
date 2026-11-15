@@ -1736,11 +1736,7 @@ impl std::error::Error for ReadError {}
 /// where it stands (see [Preserved content](fn@read#preserved-content)), a
 /// tolerant `write` writes back where it was read (LIB-COMPAT-003, ADR
 /// 0033): its attributes after the element's typed attributes, in input
-/// order, after a declaration of every prefixed namespace binding that was
-/// in scope at the element where it was read, other than `xml`, `sacm` and
-/// `xmi` (which the written element binds to SACM 2.3 and XMI 2.5.1), so
-/// that their names and any `QName` in their values, such as `t:Claim` with
-/// `t` bound to the SACM namespace, resolve as they did; each of its children
+/// order, after the namespace declarations they need; each of its children
 /// on its own line, before the typed child it preceded, after the element's
 /// `name`, `content` and `key`, and before the end tag when it followed the
 /// last. Text in the element is written trimmed, `&`, `<`, `>` and CR
