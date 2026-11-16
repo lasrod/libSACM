@@ -1,8 +1,8 @@
 ---
 slice: 0051
 name: m2-close
-state: in-progress
-step: verification
+state: done
+step: done
 rows: [LIB-COMPAT-004, LIB-COMPAT-010, LIB-EDIT-012, SACM23-XMI-005, SACM23-XMI-026, LIB-QA-018]
 mode: pr
 base: main
@@ -83,3 +83,4 @@ No new public API. Behaviour changes:
   The lead amended D-STRICT and D-NS-PIN for the 2026-11-16 decision; the tolerance label no longer calls the input a defect. The matrix wording is fixed. Tests and the code fix are next.
 - 2026-11-16 fix round 1: done. New tests: a lone CR, a name id that stays REF-001 after a delete, ids inside preserved content that a delete leaves alone, the proxy routing (cited under LIB-API-011), the tolerance label, and a ratio-based timing control. Code: an `href` proxy names XMI-027, typed or untyped and in any role; the tolerance label is `(strict mode never reads it; …)`. The docs are aligned (CHANGELOG, diagnostics catalog, inventory, D-STRICT and D-NS-PIN). Gate green: 2,231 workspace tests, 1,721 without features, 431 xtask.
 - 2026-11-16 verification round 2: FAIL on LIB-API-011 and LIB-COMPAT-010. Two hand mutants survive: a qualified `href` treated as unqualified in `role_metadata` and in `proxy_link`. LIB-API-011 [2] is also stale. The nine other rows pass. The CI PR-diff mutants for af6193a: 48 caught, 0 missed. The maintainer allowed a third round, limited to the two test cases and the rewording (done by the lead). Three wording points went to follow-ups.
+- 2026-11-16 verification round 3: PASS (3037da3), against round 2's prescription. Record: docs/verification/0051-m2-close.md. CI is green, and the PR-diff mutants are 48 caught and 0 missed. The eight re-verified rows now cite the record. M2 is closed.

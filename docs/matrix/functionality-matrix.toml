@@ -2721,7 +2721,7 @@ requirement = "A non-containment reference is read from, and written as, an XML 
 source = "XMI 2.5.1 rule 2h (p. 63) \"either as an XML attribute or as XML elements but not both\"; rule 2j (p. 64) \"The value of the XML attribute contains the XMI ID of each referenced object, separated by a space\"; rule 4i (p. 51); §7.8.5 (p. 19) `type=\"xsd:IDREFS\"`; §7.10.2 (p. 23); XML Schema 1.0 Part 2 §3.3.10, §4.1.2.2 (list types collapse white space); D-PRESERVE; D-ID; ADR 0024; ADR 0026; assurance-forge io/xmi_reader.cpp:877-908, io/xmi_writer.cpp:29-38, 86-91"
 kind = "xmi"
 status = "verified"
-verification = "docs/verification/0042-m2-references.md"
+verification = "docs/verification/0051-m2-close.md"
 depends_on = ["SACM23-XMI-004", "SACM23-XMI-014", "SACM23-XMI-025", "SACM23-BASE-004"]
 acceptance = [
   "`citedElement=\"c2\"` on a Claim and `abstractForm=\"p2\"` on a package read with those targets; `write` emits the same attributes, read-write-read is equal and the second write gives the same bytes.",
@@ -3476,7 +3476,7 @@ requirement = "`xmi::read` keeps, in both modes, every attribute, child element 
 source = "ADR 0033 (the maintainer, 2026-11-14 and 2026-11-15); D-PRESERVE; D-STRICT; ADR 0022; XMI 2.5.1 §7.3.3 (p. 7) \"Tools that rely on XMI are expected to store the extension information and export it again to enable round trip engineering\"; §2.3.1 (p. 2) \"preserve the extensions of other tools that fall within the XMI namespace\"; §7.8.3 (p. 17) the class complexType (xmi:Extension, xmi:id, ObjectAttribs; no anyAttribute); XML 1.0 §3.1 \"the order of attribute specifications … is not significant\"; formal/23-05-08 §8.12 (p. 21); assurance-forge 65577b3 `model/element.h`, `compat/preserve.h`, `io/xmi_reader.cpp`, `io/xmi_writer.cpp`, `compare/semantic_compare.cpp`"
 kind = "xmi"
 status = "verified"
-verification = "docs/verification/0050-m2-preserved-content.md"
+verification = "docs/verification/0051-m2-close.md"
 depends_on = ["LIB-COMPAT-001", "SACM23-XMI-016", "LIB-COMPAT-007", "LIB-API-010", "LIB-RT-001", "LIB-EDIT-005", "SACM23-VAL-004", "SACM23-XMI-002"]
 notes = "Maintainer decisions 2026-11-14 (strict keeps with an Error) and 2026-11-15 (only non-conforming content; a preserved child element counts for RejectIfNonEmpty; a root type naming another class is preserved; a discard edit is LIB-EDIT-016, M6). The design and worked example are in ADR 0033 and the slice 0050 brief."
 acceptance = [
@@ -4040,7 +4040,7 @@ requirement = "Deleting a referenced element requires an explicit policy — rej
 source = "D-POLICY; ADR 0031 (the maintainer, 2026-11-15); assurance-forge `commands/policies.h`, `commands/operations.h:362`, `commands.cpp:1771-2140`, `document.cpp:36-111`"
 kind = "editing"
 status = "verified"
-verification = "docs/verification/0048-m2-batches-and-delete.md"
+verification = "docs/verification/0051-m2-close.md"
 depends_on = ["LIB-EDIT-004"]
 notes = "Slice 0044: deleting an ArgumentGroup member does not delete the group; group membership is a reference under the chosen policy (moved from SACM23-ARG-013)."
 acceptance = [
@@ -4327,7 +4327,7 @@ requirement = "The `content` of an existing Description, ImplementationConstrain
 source = "formal/23-05-08 §8.7 (p. 20) \"content:MultiLangString[0..1] (composition) - a MultiLangString to describe the content of the UtilityElement in (possibly) multiple languages\"; §8.12 (p. 21) \"key:MultiLangString[1] (composition) - the key of the TaggedValue.\"; §8.5 (p. 19); ADR 0025; D-VAL-LAYER; D-PRESERVE; assurance-forge `operations.h:247-358` (departure: addressed by id, whole value replaced)"
 kind = "editing"
 status = "verified"
-verification = "docs/verification/0045-m2-set-operations.md"
+verification = "docs/verification/0051-m2-close.md"
 depends_on = ["LIB-EDIT-002", "LIB-EDIT-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-VAL-010"]
 notes = "Split from LIB-EDIT-008 in slice 0045 research. Maintainer decisions of 2026-11-15 (slice 0045): a kind without the feature is the new SACM-CMD-008 and a bad order list the new SACM-CMD-009; `citedElement` and `isCitation` are set independently (unlike C++ `SetCitation`); reorder applies to the children of any element and to the roots; typed before-values move to LIB-EDIT-011 (ADR 0019 E10 amended). Lead decisions: a replaced name or content keeps its role element's `xmi:id` and its value ids by position (D-PRESERVE); removing an id removes every occurrence, and an id the end does not hold is refused."
 acceptance = [
@@ -5318,7 +5318,7 @@ requirement = "Every `ReadError::Unsupported` comes from one crate-private list 
 source = "D-PRESERVE; D-STRICT; ADR 0015 (and amendment 1); ADR 0016; ADR 0033; XMI 2.5.1 §7.6.1 `<xsd:attribute name=\"id\" type=\"xsd:ID\" use=\"optional\"/>`, §7.3.3 \"Tools that rely on XMI are expected to store the extension information and export it again\"; ADR review, 2026-11-13 (the maintainer: apply every recommendation)"
 kind = "api"
 status = "verified"
-verification = "docs/verification/0050-m2-preserved-content.md"
+verification = "docs/verification/0051-m2-close.md"
 depends_on = ["LIB-API-009", "LIB-API-010", "LIB-COMPAT-003", "LIB-COMPAT-008", "LIB-COMPAT-010", "SACM23-XMI-026"]
 acceptance = [
   "xtask/tests/interim_refusals.rs: (a) outside comments and `#[cfg(test)]`, the token `Unsupported` appears in `crates/sacm/src` only in `xmi.rs` and `xmi/refusal.rs`; (b) every `Interim(\"…\")` names a row that exists, is not `verified`, and is in the `depends_on` closure of each of SACM23-CP-001 to -004; (c) every `Tolerance` row exists and is not verified; each check reports an in-memory mutation of the source or matrix with its own code.",
@@ -5514,7 +5514,7 @@ requirement = "A CI job `changes` decides whether the latest push (a pull reques
 source = "ADR 0006 amendment 4 (the maintainer, 2026-11-15)"
 kind = "quality"
 status = "verified"
-verification = "docs/verification/0049-m2-reading-and-validation.md"
+verification = "docs/verification/0051-m2-close.md"
 depends_on = ["LIB-QA-001"]
 acceptance = [
   "The `changes` job has a step that asks the GitHub API whether CI succeeded on the previous commit (`actions: read`), and the detection script gives `false` for a docs-only `synchronize` or push range only when that answer is `true`; when it is `false`, missing or the lookup fails, `code` is `true` (shown by running the script with the answer set each way).",
@@ -6054,7 +6054,7 @@ requirement = "On a value element of a DataType-typed property (`gid`, `isCitati
 source = "XMI 2.5.1 §9.4.1 (p. 56) \"When the value of a Property is null, it is serialized as XMIValueElement with attribute nil='true'.\"; rule 2b (p. 63) \"Null values may be serialized as well, unless the value of the org.omg.xmi.includeNils tag is \\\"false,\\\" in which case you may not serialize null values.\"; Table 7.1 (p. 27) `includeNils` default `true`; §7.11.2 (p. 28); production 4d (pp. 48, 50) `nillable='true'`; §7.15 (p. 43) \"If P is included but empty in the XMI file, the property is unset; if mandatory, it is instead set to its default value.\"; XML Schema 1.0 Part 1 §3.3.4 cvc-elt 3.1 and 3.2.1, §3.2.7; the maintainer, 2026-11-15 (nil reads as omitted)"
 kind = "xmi"
 status = "verified"
-verification = "docs/verification/0049-m2-reading-and-validation.md"
+verification = "docs/verification/0051-m2-close.md"
 depends_on = ["SACM23-XMI-014", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-ARG-007", "SACM23-XMI-017", "SACM23-VAL-006"]
 acceptance = [
   "`<gid xsi:nil=\"true\"/>`, `<name><lang xsi:nil=\"1\"/></name>` and `<value><content xsi:nil=\" true \"/></value>` read as absent: `==` to the same file without the element and different from `<gid/>` (`\"\"`); no diagnostic, in either mode.",
@@ -6111,7 +6111,7 @@ requirement = "An element under a role whose declared type is abstract, with no 
 source = "XMI 2.5.1 §7.6.3 (p. 15) \"The type attribute is used to specify the type of object being serialized, when the type is not known from the model.\"; ADR 0022 (its codes table: an untyped child under an abstract role is SACM-XMI-005); the maintainer, 2026-11-15 (a refusal, not an inference); assurance-forge `xmi_reader.cpp:1103-1116` (tries the role name as a class name, then drops the child)"
 kind = "compliance"
 status = "verified"
-verification = "docs/verification/0049-m2-reading-and-validation.md"
+verification = "docs/verification/0051-m2-close.md"
 depends_on = ["LIB-COMPAT-001", "SACM23-XMI-016"]
 notes = "Reworded 2026-11-15 (slice 0049 research): no tool is known to write this shape, and an abstract-role element is named after its role, so nothing can be inferred. Class-named children (`<Claim>`, `<claim>`) are the legacy dialect, LIB-COMPAT-012."
 acceptance = [
