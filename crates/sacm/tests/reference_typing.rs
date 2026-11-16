@@ -36,7 +36,7 @@ use sacm::edit::{
 };
 use sacm::model::{AbstractClass, Document, ElementId, ElementKind, LangString, SacmElement};
 use sacm::validation;
-use sacm::xmi::{self, Mode, ReadOptions, WriteError, WriteOptions};
+use sacm::xmi::{self, Mode, ReadOptions, WriteOptions};
 
 const VAL_004: &str = "SACM23-VAL-004";
 const VAL_016: &str = "SACM23-VAL-016";
@@ -319,26 +319,34 @@ fn assert_wrong_type(
     );
 }
 
-/// A strict write of `doc` must be `WriteError::Invalid` holding each of
-/// `expected`.
-fn assert_strict_write_refuses(row: &str, what: &str, doc: &Document, expected: &[Diagnostic]) {
-    let error = match xmi::write(doc, &WriteOptions::default()) {
-        Ok(text) => panic!("{row}: {what}: a strict write returned:\n{text}"),
-        Err(error) => error,
-    };
-    let WriteError::Invalid { diagnostics, .. } = &error else {
-        panic!("{row}: {what}: the strict refusal is not Invalid: {error:?}");
-    };
+/// `validate(doc)` holds each of `expected`, and a strict write of `doc`,
+/// which checks schema validity only (ADR 0035 D4; an IDREF is untyped, so
+/// a reference of the wrong type is schema-valid), writes it as a tolerant
+/// write does.
+fn assert_strict_write_writes(row: &str, what: &str, doc: &Document, expected: &[Diagnostic]) {
     assert!(
         !expected.is_empty(),
         "{row}: {what}: setup: nothing is expected"
     );
+    let found = validation::validate(doc);
     for finding in expected {
         assert!(
-            diagnostics.contains(finding),
-            "{row}: {what}: the strict refusal does not hold {finding:?}: {diagnostics:?}"
+            found.contains(finding),
+            "{row}: {what}: setup: validate does not hold {finding:?}: {found:?}"
         );
     }
+    let strict = match xmi::write(doc, &WriteOptions::default()) {
+        Ok(text) => text,
+        Err(error) => panic!("{row}: {what}: a strict write refused: {error:?}"),
+    };
+    let tolerant = match xmi::write(doc, &WriteOptions::default().with_mode(Mode::Tolerant)) {
+        Ok(text) => text,
+        Err(error) => panic!("{row}: {what}: a tolerant write refused: {error:?}"),
+    };
+    assert_eq!(
+        strict, tolerant,
+        "{row}: {what}: the strict write is not the tolerant one"
+    );
 }
 
 /// A tolerant write of `doc` must succeed, read back equal in both modes, and
@@ -796,7 +804,7 @@ fn sacm23_val_004_a_repeated_wrongly_typed_source_is_one_error_and_one_repeat_wa
 // --- Item 5: loading and saving -----------------------------------------------------------
 
 #[test]
-fn sacm23_val_004_a_strict_write_refuses_a_tolerant_write_keeps_the_bytes_and_both_loads_succeed() {
+fn sacm23_val_004_a_strict_and_a_tolerant_write_keep_the_bytes_and_both_loads_succeed() {
     let row = VAL_004;
     for (what, kind, attributes) in [
         (
@@ -829,7 +837,7 @@ fn sacm23_val_004_a_strict_write_refuses_a_tolerant_write_keeps_the_bytes_and_bo
         let doc = read_ok(row, what, &x_in_case(kind, attributes));
         let expected = of_row(&doc, row);
         assert_eq!(expected.len(), 1, "{row}: {what}: setup: {expected:?}");
-        assert_strict_write_refuses(row, what, &doc, &expected);
+        assert_strict_write_writes(row, what, &doc, &expected);
         let text = tolerant_round_trip(row, what, &doc);
         let Some(line) = text.lines().find(|line| line.contains("xmi:id=\"x\"")) else {
             panic!("{row}: {what}: x is not written\n{text}");
@@ -1501,7 +1509,7 @@ fn sacm23_val_016_a_dangling_note_or_missing_end_gives_only_the_generic_finding(
 // --- Item 6: saving and creating ----------------------------------------------------------
 
 #[test]
-fn sacm23_val_016_a_strict_write_refuses_and_create_asserted_evidence_from_a_claim_succeeds() {
+fn sacm23_val_016_a_strict_write_keeps_it_and_create_asserted_evidence_from_a_claim_succeeds() {
     let row = VAL_016;
     for (kind, attributes) in [
         ("AssertedEvidence", " source=\"c1\" target=\"c2\""),
@@ -1511,7 +1519,7 @@ fn sacm23_val_016_a_strict_write_refuses_and_create_asserted_evidence_from_a_cla
         let what = format!("an {kind} with{attributes}");
         let doc = read_ok(row, &what, &x_in_case(kind, attributes));
         let expected = of_row(&doc, row);
-        assert_strict_write_refuses(row, &what, &doc, &expected);
+        assert_strict_write_writes(row, &what, &doc, &expected);
         tolerant_round_trip(row, &what, &doc);
     }
     // A create does not refuse it: it is content (D-VAL-LAYER).

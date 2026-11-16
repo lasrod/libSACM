@@ -2,7 +2,7 @@
 slice: NNNN
 name: short-name
 state: in-progress   # in-progress | done | stopped
-step: research       # research | design | tests | implementation | verification | close
+step: design         # design | tests | implementation | verification | close
 rows: [ROW-ID, ROW-ID]
 mode: pr             # pr | local
 ---
@@ -24,6 +24,6 @@ Public API added or changed, and any ADR. Omit this section if there is none.
 
 ## Log
 
-- YYYY-MM-DD <step>: one line per event.
+- YYYY-MM-DD <step>: one line per event, including any approved change to a step-1 test.
 
 Keep the brief under one page.

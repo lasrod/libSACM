@@ -158,3 +158,19 @@ matrix notes and the writer's ADR (0017). This ADR collects them in one place.
   coded refusal.
 
 *Amendment 2 status: accepted (the maintainer, 2026-11-14).*
+
+## Amendment 3 (2026-11-16): repeats and bad literals are strict refusals (ADR 0035)
+
+These two refusals now apply to a strict read only:
+- amendment 1, "a property given more than once is refused in both modes";
+- amendment 2, "a value that is not a literal is refused … in both modes".
+
+A tolerant read follows ADR 0035 D1:
+- **A repeated value:** the first occurrence is read and the rest are preserved, each with
+  SACM-MULT-001.
+- **A bad literal:** it is preserved, with SACM-ENUM-001, and the model holds the default.
+
+"A `Document` never holds an unknown value" still holds, because the bad value is preserved
+content, not a model value.
+
+*Amendment 3 status: accepted (the maintainer, 2026-11-16).*

@@ -26,7 +26,8 @@ xtask/                cargo xtask: matrix gate, fetch-spec
 docs/matrix/          functionality matrix (edit the .toml, then `cargo xtask matrix render`)
 docs/sacm/            decisions, diagnostics catalog, metamodel inventory, spec defects
 docs/adr/ docs/slices/ docs/verification/
-.claude/agents/       the seven roles     .claude/skills/   sacm-expert, rust-library-craft, sacm-slice
+.claude/agents/       sacm-designer, sacm-builder, sacm-verifier; matrix-steward (milestone close)
+.claude/skills/       sacm-expert, rust-library-craft, sacm-slice
 .claude/hooks/        agent write-scope guard (write-scopes.json)
 ```
 
@@ -43,11 +44,9 @@ docs/adr/ docs/slices/ docs/verification/
 5. **No `unsafe`, no panics on input, deterministic output.**
 6. **Settled decisions are policy**: [docs/sacm/decisions.md](docs/sacm/decisions.md).
    Quote the standard; do not recall it. **Compliance with SACM 2.3 (and XMI 2.5.1)
-   comes before the assurance-forge C++ library.** Where the standard decides, follow it.
-   Where it is silent or ambiguous, follow the C++ library's approved design decisions
-   (its `libs/sacm` API, ADRs and `docs/sacm`) as they translate to idiomatic Rust. Record
-   each difference from C++ in one line in an ADR, naming the C++ decision. Prefer the
-   simplest compliant design.
+   comes first.** Where the standard decides, follow it. Where it is silent, choose the
+   simplest design a library user needs; consult the assurance-forge C++ library only
+   when stuck (ADR 0006 amendment 5).
 7. **Agent roles keep their boundaries** — the write-scope hook enforces Write/Edit;
    no role writes outside its scope through Bash either.
 

@@ -29,7 +29,8 @@
 //!   [`Document::get`](model::Document::get) resolves, as in
 //!   `c1.cited_element().and_then(|id| document.get(id))`; one that names no
 //!   element is kept, and [`validation::validate`] reports it as
-//!   SACM-REF-001, so a strict save refuses it; see
+//!   SACM-REF-001, and a strict save refuses it, since the output would not
+//!   be schema-valid; see
 //!   [References](xmi::read#references).
 //!   In an `ArgumentPackage` it also reads `ArgumentReasoning`,
 //!   `ArtifactReference` and `ArgumentGroup` elements and the five asserted
@@ -49,13 +50,17 @@
 //!   Content that is not SACM 2.3 where it stands, such as a vendor
 //!   attribute or element, is kept as written as preserved content, with
 //!   SACM-XMI-003 ([`has_preserved_content`](model::SacmElement::has_preserved_content);
-//!   see [Preserved content](xmi::read#preserved-content)); conforming content
-//!   it does not read yet is refused, never dropped. An element
+//!   see [Preserved content](xmi::read#preserved-content)). A tolerant read,
+//!   the default, opens every well-formed file with SACM 2.3 package roots:
+//!   what a strict read refuses, such as a value that is no literal or
+//!   conforming content not read yet, it keeps as preserved content with a
+//!   Warning, never dropped (see [Modes](xmi#modes)). An element
 //!   without an `xmi:id` gets a generated one, such as `claim_1`, which
 //!   `write` saves; see [Ids](xmi::read#ids).
 //! - [`xmi::write`] writes a document deterministically, preserved content
-//!   included, and by default refuses one that holds preserved content or
-//!   that validation reports an Error for.
+//!   included. A strict save, the default, refuses output that would not be
+//!   schema-valid, and one that holds preserved content; it never validates,
+//!   so call [`validation::validate`] for model checks.
 //! - [`validation::validate`] reports each element that has no name, each
 //!   `content` or `key` text that is empty or gives one language twice, each
 //!   tagged value without a key, each id that is not an XML `NCName`, each
@@ -160,19 +165,23 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
-//! A strict save refuses a document with a validation Error, as
-//! [`WriteError::Invalid`](xmi::WriteError::Invalid); a draft is saved with
-//! `WriteOptions::default().with_mode(Mode::Tolerant)` ([`xmi::Mode`]). A
-//! later release may add validation rules, so a strict save may then refuse
-//! a document it saved before.
+//! A strict save refuses output that would not be schema-valid, an `xmi:id`
+//! that is no `NCName` or a reference to no `xmi:id` it writes, as
+//! [`WriteError::Invalid`](xmi::WriteError::Invalid), and a document that
+//! holds preserved content, as
+//! [`WriteError::PreservedContent`](xmi::WriteError::PreservedContent). It
+//! never validates: a draft with an open model Error, such as an element with
+//! no name, saves strictly. Call [`validation::validate`] for model checks.
 //!
 //! Which [`xmi::Mode`] to use: read in tolerant mode, the default, to open
-//! files from other tools. A strict read reports the variations it
-//! recognises as Errors instead of Warnings (in this release, only
-//! `xsi:type`). Neither mode validates what it reads, so to check a file,
-//! also run [`validation::validate`] and test both lists with
+//! files from other tools: it keeps what a strict read refuses, with a
+//! Warning. A strict read refuses what it does not read, and reports the
+//! variations it recognises as Errors instead of Warnings. Neither mode
+//! validates what it reads, so to check a file, also run
+//! [`validation::validate`] and test both lists with
 //! [`diagnostic::has_errors`]. Save in strict mode, the default, for a file
-//! you hand on.
+//! you hand on; save in tolerant mode to keep what a tolerant read
+//! preserved.
 //!
 //! Walk a document with [`model::Document::elements`], or one level at a
 //! time with [`children`](model::SacmElement::children) and
@@ -336,8 +345,8 @@
 //! travel between users or be kept as an audit log. A
 //! [`Document`](model::Document) does not: XMI is its only serialization.
 //!
-//! The JSON shape is documented in [ADR 0030][adr-0030] and is **stable**,
-//! as [`operation_name`](edit::Operation::operation_name) is: an operation
+//! The JSON shape is documented in [ADR 0030][adr-0030] and follows the
+//! crate's semver (see ADR 0030): an operation
 //! is tagged `"type"` with its operation name, keys are the snake-case
 //! accessor names (for an `EditError`, its variant's field names), every
 //! key is written, and on input a key may be left out only where a builder
@@ -350,8 +359,9 @@
 //! [`edit::apply`] check it as they check one built in Rust.
 //!
 //! Adding a variant, or a key whose default keeps the old meaning, is not a
-//! breaking change, so JSON from an older release still reads. JSON from a
-//! newer release may be refused. A diagnostic's `message` text is not part
+//! breaking change; a change to a key, tag or meaning is, and ships only in
+//! a release that bumps the minor version (0.x). JSON from a newer release
+//! may be refused. A diagnostic's `message` text is not part
 //! of the promise. Use a self-describing format such as JSON; the `"type"`
 //! tags do not work with bincode or postcard.
 //!

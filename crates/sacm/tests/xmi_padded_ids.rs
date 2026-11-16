@@ -366,7 +366,10 @@ fn sacm23_xmi_025_an_id_still_not_an_ncname_after_trimming_is_held_as_written() 
         "{MARK}<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"\"/>"
     ));
     let (input, marks) = marked(&template);
-    for mode in MODES {
+    // A strict read refuses it; a tolerant read gives the element a
+    // generated id (LIB-COMPAT-001, ADR 0035).
+    {
+        let mode = Mode::Strict;
         let error = refused("an empty id", mode, &input);
         assert!(
             matches!(&error, ReadError::InvalidId { id, .. } if id.is_empty()),

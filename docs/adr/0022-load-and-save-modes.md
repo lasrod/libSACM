@@ -143,3 +143,16 @@ The maintainer decided on 2026-11-15 (LIB-COMPAT-008, SACM23-XMI-026, LIB-COMPAT
   `citedElement` without `isCitation`, and codes never change meaning (D-DIAG).
 
 *Amendment 1 status: accepted (the maintainer, 2026-11-15).*
+
+## Amendment 2 (2026-11-16): strict save is schema only; tolerant read opens any file (ADR 0035)
+
+- **Saving:** these are replaced by ADR 0035 D4:
+  - "strict save validates", and M3 and M4;
+  - the consequence "editors save drafts with `Mode::Tolerant`".
+
+  A strict save refuses only output that would not be schema-valid, and never runs
+  `validate`.
+- **Reading:** "both modes read and refuse the same inputs" is replaced by ADR 0035 D1.
+- **Amendment 1:** its refusal of an untyped child under an abstract role is strict only.
+
+*Amendment 2 status: accepted (the maintainer, 2026-11-16).*

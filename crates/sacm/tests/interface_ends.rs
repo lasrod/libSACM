@@ -1,13 +1,14 @@
 //! Tests that the `interface` reference end of an AssuranceCasePackage and an
 //! ArgumentPackage is refused as conforming content this version does not
-//! read yet, with its package's row, and never preserved (LIB-API-011;
+//! read yet, with its package's row, by a strict read (LIB-API-011;
 //! ADR 0033; ptc/22-03-13 `AssuranceCasePackage::interface`,
 //! `ArgumentPackage::interface`).
 //!
 //! The end is conforming SACM, read by SACM23-AC-002 and SACM23-ARG-014, so
 //! ADR 0033 refuses it as `Unsupported` with the label
 //! `(a limit of this version; ROW reads it)`: an attribute at its name, an
-//! element at its start tag, the same in both modes. An `interface` in another
+//! element at its start tag, in strict mode; a tolerant read keeps it as
+//! preserved content (ADR 0035). An `interface` in another
 //! namespace is not that end: it does not conform and is kept as preserved
 //! content of the package, with one SACM-XMI-003 at it. The ArtifactPackage's
 //! `interface` (SACM23-ART-012) is tested with the ArtifactPackage, in
@@ -161,43 +162,37 @@ fn read(mode: Mode, input: &str) -> Result<ReadOutput, ReadError> {
     xmi::read(input.as_bytes(), &ReadOptions::default().with_mode(mode))
 }
 
+/// A strict read refuses the end; a tolerant read keeps it as preserved
+/// content with SACM-XMI-014 (LIB-COMPAT-001, ADR 0035).
 #[test]
-fn lib_api_011_the_interface_end_of_a_package_is_unsupported_with_its_row_in_both_modes() {
+fn lib_api_011_the_interface_end_of_a_package_is_unsupported_with_its_row_in_strict_mode() {
     for package in packages() {
         let label = format!("(a limit of this version; {} reads it)", package.row);
         for (form, attribute, content) in forms("") {
             let what = format!("{form} on {}", package.what);
             let (input, at) = marked(&(package.wrap)(&attribute, &content));
-            let mut errors = Vec::new();
-            for mode in [Mode::Tolerant, Mode::Strict] {
-                match read(mode, &input) {
-                    Ok(output) => panic!(
-                        "{ROW}: {what}: a {mode:?} read returned a document, with {:?}",
-                        output.diagnostics()
-                    ),
-                    Err(error) => {
-                        assert!(
-                            matches!(
-                                &error,
-                                ReadError::Unsupported { reason, .. } if reason.ends_with(&label)
-                            ),
-                            "{ROW}: {what}: not Unsupported labelled {label:?} in {mode:?} mode: \
-                             {error:?}"
-                        );
-                        assert_eq!(
-                            (error.code(), error.location()),
-                            (None, Some(at)),
-                            "{ROW}: {what}: not refused with no code at the construct in \
-                             {mode:?} mode: {error}"
-                        );
-                        errors.push(error);
-                    }
+            match read(Mode::Strict, &input) {
+                Ok(output) => panic!(
+                    "{ROW}: {what}: a strict read returned a document, with {:?}",
+                    output.diagnostics()
+                ),
+                Err(error) => {
+                    assert!(
+                        matches!(
+                            &error,
+                            ReadError::Unsupported { reason, .. } if reason.ends_with(&label)
+                        ),
+                        "{ROW}: {what}: not Unsupported labelled {label:?} in strict mode: \
+                         {error:?}"
+                    );
+                    assert_eq!(
+                        (error.code(), error.location()),
+                        (None, Some(at)),
+                        "{ROW}: {what}: not refused with no code at the construct in strict \
+                         mode: {error}"
+                    );
                 }
             }
-            assert_eq!(
-                errors[0], errors[1],
-                "{ROW}: {what}: the modes refuse differently"
-            );
         }
     }
 }

@@ -27,7 +27,7 @@ use std::time::Duration;
 
 use sacm::diagnostic::{Code, SourceLocation};
 use sacm::model::{ElementId, SacmElement};
-use sacm::xmi::{self, ReadError, ReadOptions, ReadOutput};
+use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput};
 
 /// The lead of the `Malformed` `Display`, before the location and reason.
 const MALFORMED_LEAD: &str = "the input is not well-formed XML";
@@ -71,11 +71,16 @@ const DEADLINE: Duration = Duration::from_secs(5);
 /// with a message that starts with `row`, when the read panics or does not
 /// return within [`DEADLINE`].
 fn read(row: &str, input: &[u8]) -> Result<ReadOutput, ReadError> {
+    read_with(row, input, ReadOptions::default())
+}
+
+/// `xmi::read` with `options`, on a worker thread, as [`read`].
+fn read_with(row: &str, input: &[u8], options: ReadOptions) -> Result<ReadOutput, ReadError> {
     let owned = input.to_vec();
     let (sender, receiver) = mpsc::channel();
     thread::spawn(move || {
         // The receiver is gone only after the deadline has already failed the test.
-        let _ = sender.send(xmi::read(&owned, &ReadOptions::default()));
+        let _ = sender.send(xmi::read(&owned, &options));
     });
     match receiver.recv_timeout(DEADLINE) {
         Ok(result) => result,
@@ -137,10 +142,11 @@ fn assert_malformed_at(row: &str, input: &[u8], line: u32, column: u32) -> ReadE
     error
 }
 
-/// Asserts that `input` is refused as `Unsupported` (no code) at `line` and
-/// `column`, and returns the error.
+/// Asserts that a strict read refuses `input` as `Unsupported` (no code) at
+/// `line` and `column`, and returns the error. A tolerant read keeps a root
+/// it does not read yet (LIB-COMPAT-003, ADR 0035).
 fn assert_unsupported_at(row: &str, input: &[u8], line: u32, column: u32) -> ReadError {
-    let result = read(row, input);
+    let result = read_with(row, input, ReadOptions::default().with_mode(Mode::Strict));
     let Err(error) = result else {
         panic!(
             "{row}: read returned a document for {}; expected Unsupported",
@@ -924,8 +930,8 @@ fn lib_sec_005_character_reference_refusals_quote_the_reference_and_name_its_kin
 // `]]>`. A scan that ends one early reads its text as markup, refusing what
 // is not there or missing what is.
 
-/// A TerminologyPackage root: recognised but not read yet, so `Unsupported` at
-/// its start tag (ADR 0016 D5).
+/// A TerminologyPackage root: recognised but not read yet, so a strict read
+/// refuses it as `Unsupported` at its start tag (ADR 0016 D5, ADR 0035).
 const TERMINOLOGY_ROOT: &str = concat!(
     "<sacm:TerminologyPackage",
     " xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",

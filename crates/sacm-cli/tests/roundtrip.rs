@@ -161,11 +161,13 @@ fn lib_cli_003_o_writes_the_strict_output_byte_for_byte_and_identically_across_r
 
 #[test]
 fn lib_cli_003_a_refused_strict_save_exits_1_with_each_error_and_writes_no_output() {
+    // A strict save checks schema validity only (ADR 0035 D4): a reference
+    // naming no xmi:id is refused, SACM-REF-001.
     let error = match xmi::write(
-        &document("nameless-claim.sacm.xmi"),
+        &document("dangling-reference.sacm.xmi"),
         &WriteOptions::default(),
     ) {
-        Ok(text) => panic!("{ROW}: setup: the nameless Claim was written strictly: {text}"),
+        Ok(text) => panic!("{ROW}: setup: the dangling reference was written strictly: {text}"),
         Err(error) => error,
     };
     assert!(
@@ -178,13 +180,11 @@ fn lib_cli_003_a_refused_strict_save_exits_1_with_each_error_and_writes_no_outpu
         .map(ToString::to_string)
         .collect();
     assert!(
-        expected
-            .iter()
-            .any(|line| line.starts_with("error SACM-MULT-001 ")),
-        "{ROW}: setup: the refusal holds no SACM-MULT-001: {expected:?}"
+        expected.len() == 1 && expected[0].starts_with("error SACM-REF-001 "),
+        "{ROW}: setup: the refusal is not one SACM-REF-001: {expected:?}"
     );
     let out = out_path("lib-cli-003-refused", "out.sacm.xmi");
-    let run = roundtrip(&["nameless-claim.sacm.xmi", "-o", as_arg(&out)]);
+    let run = roundtrip(&["dangling-reference.sacm.xmi", "-o", as_arg(&out)]);
     assert_eq!(
         run.code,
         Some(1),
@@ -200,7 +200,7 @@ fn lib_cli_003_a_refused_strict_save_exits_1_with_each_error_and_writes_no_outpu
         "{ROW}: the Error lines are not the refusal's, in order"
     );
     assert!(
-        summary.starts_with("nameless-claim.sacm.xmi: round trip failed: "),
+        summary.starts_with("dangling-reference.sacm.xmi: round trip failed: "),
         "{ROW}: the last line is not the failure: {summary:?}"
     );
     assert!(

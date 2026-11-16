@@ -159,24 +159,17 @@ fn read_ok(what: &str, input: &str) -> Document {
     documents.swap_remove(0)
 }
 
-/// Reads `input` in both modes, which the test expects to be refused the same
-/// in both, and returns the refusal.
+/// Reads `input` in strict mode, which the test expects to refuse it, and
+/// returns the refusal. A tolerant read keeps what a strict read refuses
+/// here (LIB-COMPAT-001, ADR 0035).
 fn refused(what: &str, input: &str) -> ReadError {
-    let mut errors = Vec::new();
-    for mode in MODES {
-        match read(mode, input) {
-            Ok(output) => panic!(
-                "{ROW}: {what}: {mode:?} read returned a document of {} elements for {input:?}",
-                output.document().element_count()
-            ),
-            Err(error) => errors.push(error),
-        }
+    match read(Mode::Strict, input) {
+        Ok(output) => panic!(
+            "{ROW}: {what}: a strict read returned a document of {} elements for {input:?}",
+            output.document().element_count()
+        ),
+        Err(error) => error,
     }
-    assert_eq!(
-        errors[0], errors[1],
-        "{ROW}: {what}: the modes refuse differently"
-    );
-    errors.swap_remove(0)
 }
 
 /// Asserts that `error` is `InvalidLiteral` for the Claim `c1`'s
@@ -242,7 +235,7 @@ fn assert_one_lowercase_line(what: &str, text: &str) {
 // --- Item 1: the attribute form ----------------------------------------------
 
 #[test]
-fn sacm23_val_006_each_bad_attribute_value_on_a_claim_is_invalid_literal_in_both_modes() {
+fn sacm23_val_006_each_bad_attribute_value_on_a_claim_is_invalid_literal_in_strict_mode() {
     for value in [
         "foo",
         "Asserted",
@@ -697,8 +690,8 @@ fn sacm23_val_006_the_catalog_enum_001_row_names_the_code_and_the_refusal() {
     );
     let line = catalog_row(Code::ENUM_INVALID_LITERAL);
     assert!(
-        line.starts_with("| SACM-ENUM-001 | Error |"),
-        "{ROW}: the row is not an Error: {line}"
+        line.starts_with("| SACM-ENUM-001 | Error (strict) / Warning (tolerant read) |"),
+        "{ROW}: the row is not an Error in strict mode and a Warning in a tolerant read: {line}"
     );
     for part in [
         "`Code::ENUM_INVALID_LITERAL`",

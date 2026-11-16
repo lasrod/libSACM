@@ -26,14 +26,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 AGENTS_DIR = REPO_ROOT / ".claude" / "agents"
 SETTINGS_FILE = REPO_ROOT / ".claude" / "settings.json"
 
-READ_ONLY_ROLES = (
-    "sacm-researcher",
-    "sacm-architect",
-    "sacm-verifier",
-    "matrix-steward",
-    "sacm-docs-reviewer",
-)
-WRITING_ROLES = ("sacm-test-engineer", "sacm-implementer")
+READ_ONLY_ROLES = ("sacm-designer", "sacm-verifier", "matrix-steward")
+WRITING_ROLES = ("sacm-builder",)
 GUARD_FILES = (
     ".claude/hooks/agent_write_guard.py",
     ".claude/hooks/write-scopes.json",
@@ -43,10 +37,9 @@ GUARD_FILES = (
 SCOPES = {
     "agents": {
         "sacm-verifier": {"allow": []},
-        "sacm-test-engineer": {"allow": ["crates/*/tests/**"]},
-        "sacm-implementer": {
-            "allow": ["crates/*/src/**", "docs/**"],
-            "deny": ["docs/matrix/**"],
+        "sacm-builder": {
+            "allow": ["crates/*/tests/**", "crates/*/src/**", "docs/**"],
+            "deny": ["docs/matrix/**", "docs/verification/**", "docs/adr/**"],
         },
     }
 }
@@ -99,33 +92,40 @@ class WriteGuardTests(unittest.TestCase):
         self.assertIsNone(self.decide("Read", "sacm-verifier", "docs/x.md"))
         self.assertIsNone(self.decide("Bash", "sacm-verifier", "docs/x.md"))
 
-    def test_lib_tool_003_test_engineer_confined_to_tests(self) -> None:
-        self.assertIsNone(self.decide("Write", "sacm-test-engineer", "crates/sacm/tests/xmi.rs"))
+    def test_lib_tool_003_builder_confined_to_its_scope(self) -> None:
+        self.assertIsNone(self.decide("Write", "sacm-builder", "crates/sacm/tests/xmi.rs"))
         self.assertIsNone(
-            self.decide("Write", "sacm-test-engineer", "crates/sacm/tests/data/a/b.sacm.xmi")
+            self.decide("Write", "sacm-builder", "crates/sacm/tests/data/a/b.sacm.xmi")
         )
-        self.assertTrue(denied(self.decide("Edit", "sacm-test-engineer", "crates/sacm/src/lib.rs")))
+        self.assertIsNone(self.decide("Edit", "sacm-builder", "crates/sacm/src/model/mod.rs"))
+        self.assertIsNone(self.decide("Edit", "sacm-builder", "docs/guide.md"))
+        for path in ("Cargo.toml", ".claude/settings.json", "xtask/src/lib.rs"):
+            with self.subTest(path=path):
+                self.assertTrue(denied(self.decide("Edit", "sacm-builder", path)))
 
-    def test_lib_tool_003_implementer_cannot_touch_tests_or_matrix(self) -> None:
-        self.assertIsNone(self.decide("Edit", "sacm-implementer", "crates/sacm/src/model/mod.rs"))
-        self.assertIsNone(self.decide("Edit", "sacm-implementer", "docs/guide.md"))
-        self.assertTrue(denied(self.decide("Edit", "sacm-implementer", "crates/sacm/tests/a.rs")))
-        self.assertTrue(
-            denied(self.decide("Edit", "sacm-implementer", "docs/matrix/functionality-matrix.toml"))
-        )
+    def test_lib_tool_003_builder_cannot_touch_matrix_records_or_adrs(self) -> None:
+        self.assertIsNone(self.decide("Edit", "sacm-builder", "crates/sacm/src/model/mod.rs"))
+        self.assertIsNone(self.decide("Edit", "sacm-builder", "docs/guide.md"))
+        for path in (
+            "docs/matrix/functionality-matrix.toml",
+            "docs/verification/x.md",
+            "docs/adr/x.md",
+        ):
+            with self.subTest(path=path):
+                self.assertTrue(denied(self.decide("Edit", "sacm-builder", path)))
 
     def test_lib_tool_003_paths_outside_repository_are_denied(self) -> None:
         outside = str(Path(self.root).parent / "elsewhere.rs")
         payload = {
             "tool_name": "Write",
-            "agent_type": "sacm-implementer",
+            "agent_type": "sacm-builder",
             "tool_input": {"file_path": outside},
         }
         self.assertTrue(denied(guard.decide(payload, SCOPES, self.root)))
 
     def test_lib_tool_003_dot_dot_cannot_escape_scope(self) -> None:
-        sneaky = "crates/sacm/tests/../src/lib.rs"
-        self.assertTrue(denied(self.decide("Write", "sacm-test-engineer", sneaky)))
+        sneaky = "crates/sacm/tests/../../../docs/matrix/functionality-matrix.toml"
+        self.assertTrue(denied(self.decide("Write", "sacm-builder", sneaky)))
 
     def test_lib_tool_003_unlisted_agents_use_normal_flow(self) -> None:
         self.assertIsNone(self.decide("Write", "general-purpose", "crates/sacm/src/lib.rs"))
@@ -192,35 +192,50 @@ class RealScopesTests(unittest.TestCase):
                     with self.subTest(role=role, path=path, tool=tool):
                         self.assert_denied(role, path, tool)
 
-    def test_lib_tool_003_real_scopes_confine_test_engineer_to_tests(self) -> None:
-        role = "sacm-test-engineer"
-        for path in ("crates/sacm/tests/x.rs", "xtask/tests/x.rs", ".claude/hooks/test_x.py"):
-            with self.subTest(path=path):
-                self.assert_allowed(role, path)
-        for path in (
-            "crates/sacm/src/lib.rs",
-            "xtask/src/lib.rs",
-            "docs/matrix/functionality-matrix.toml",
-        ):
-            with self.subTest(path=path):
-                self.assert_denied(role, path)
-
-    def test_lib_tool_003_real_scopes_keep_implementer_out_of_tests_matrix_records_and_adrs(
-        self,
-    ) -> None:
-        role = "sacm-implementer"
-        for path in ("crates/sacm/src/lib.rs", "xtask/src/lib.rs", "docs/guide.md"):
-            with self.subTest(path=path):
-                self.assert_allowed(role, path)
+    def test_lib_tool_003_real_scopes_confine_builder_to_its_scope(self) -> None:
+        # The builder (ADR 0006 amendment 5) writes tests, code, docs and its scratch
+        # copies, and nothing else: not the guard, its scopes or the settings.
+        role = "sacm-builder"
         for path in (
             "crates/sacm/tests/x.rs",
+            "crates/sacm/tests/data/a/b.sacm.xmi",
             "xtask/tests/x.rs",
+            ".claude/hooks/test_x.py",
+            "crates/sacm/src/lib.rs",
+            "xtask/src/lib.rs",
+            "docs/guide.md",
+            "target/scratch/b/crates/sacm/src/lib.rs",
+        ):
+            with self.subTest(path=path):
+                self.assert_allowed(role, path)
+        for path in (
+            *GUARD_FILES,
+            ".claude/agents/sacm-builder.md",
+            ".github/workflows/ci.yml",
+            "deny.toml",
+            "target/te/x.rs",
             "docs/matrix/functionality-matrix.toml",
             "docs/verification/x.md",
             "docs/adr/x.md",
         ):
             with self.subTest(path=path):
                 self.assert_denied(role, path)
+
+    def test_lib_tool_003_real_scopes_keep_builder_out_of_matrix_records_and_adrs(
+        self,
+    ) -> None:
+        role = "sacm-builder"
+        for path in ("crates/sacm/src/lib.rs", "xtask/src/lib.rs", "docs/guide.md"):
+            with self.subTest(path=path):
+                self.assert_allowed(role, path)
+        for path in (
+            "docs/matrix/functionality-matrix.toml",
+            "docs/verification/x.md",
+            "docs/adr/x.md",
+        ):
+            for tool in ("Write", "Edit"):
+                with self.subTest(role=role, path=path, tool=tool):
+                    self.assert_denied(role, path, tool)
 
     def test_lib_tool_003_real_scopes_keep_writing_roles_off_the_guard(self) -> None:
         for role in WRITING_ROLES:
@@ -255,11 +270,11 @@ class RealScopesTests(unittest.TestCase):
             "LIB-TOOL-003: MultiEdit by a read-only role is denied",
         )
         self.assertTrue(
-            denied(multiedit("sacm-test-engineer", "crates/sacm/src/lib.rs")),
+            denied(multiedit("sacm-builder", "docs/matrix/functionality-matrix.toml")),
             "LIB-TOOL-003: MultiEdit outside a scope is denied",
         )
         self.assertIsNone(
-            multiedit("sacm-test-engineer", "crates/sacm/tests/x.rs"),
+            multiedit("sacm-builder", "crates/sacm/tests/x.rs"),
             "LIB-TOOL-003: MultiEdit inside a scope is allowed",
         )
 
@@ -362,7 +377,7 @@ class GuardedDecideTests(unittest.TestCase):
     def test_lib_tool_003_internal_error_denies_subagent_writes(self) -> None:
         with mock.patch.object(guard, "decide", side_effect=RuntimeError("boom")):
             for tool in sorted(guard.WRITE_TOOLS):
-                for agent in ("sacm-verifier", "sacm-implementer", "general-purpose"):
+                for agent in ("sacm-verifier", "sacm-builder", "general-purpose"):
                     with self.subTest(tool=tool, agent=agent):
                         payload = call(tool, agent, "crates/sacm/src/lib.rs", self.root)
                         self.assertTrue(
@@ -389,8 +404,8 @@ class GuardedDecideTests(unittest.TestCase):
         cases = (
             ("Write", None, "crates/sacm/src/lib.rs"),
             ("Write", "sacm-verifier", "docs/x.md"),
-            ("Write", "sacm-test-engineer", "crates/sacm/tests/x.rs"),
-            ("Edit", "sacm-test-engineer", "crates/sacm/src/lib.rs"),
+            ("Write", "sacm-builder", "crates/sacm/tests/x.rs"),
+            ("Edit", "sacm-builder", "docs/matrix/m.toml"),
             ("Read", "sacm-verifier", "docs/x.md"),
             ("Write", "general-purpose", "crates/sacm/src/lib.rs"),
         )
@@ -412,7 +427,7 @@ class GuardedDecideTests(unittest.TestCase):
         return stdout.getvalue()
 
     def test_lib_tool_003_main_denies_subagent_writes_when_decide_raises(self) -> None:
-        payload = call("Write", "sacm-implementer", "crates/sacm/src/lib.rs", self.root)
+        payload = call("Write", "sacm-builder", "crates/sacm/src/lib.rs", self.root)
         with mock.patch.object(guard, "decide", side_effect=RuntimeError("boom")):
             out = self.run_main(payload)
         self.assertTrue(
@@ -421,7 +436,7 @@ class GuardedDecideTests(unittest.TestCase):
         )
 
     def test_lib_tool_003_main_denies_subagent_writes_when_loading_scopes_raises(self) -> None:
-        payload = call("Write", "sacm-implementer", "crates/sacm/src/lib.rs", self.root)
+        payload = call("Write", "sacm-builder", "crates/sacm/src/lib.rs", self.root)
         with mock.patch.object(guard, "load_scopes", side_effect=RuntimeError("boom")):
             out = self.run_main(payload)
         self.assertTrue(
@@ -534,7 +549,7 @@ class FailClosedTests(unittest.TestCase):
         self.assertEqual(out, "", f"LIB-TOOL-003: main() must print nothing when {why}")
 
     def test_lib_tool_003_guarded_decide_fails_closed_on_every_exception_type(self) -> None:
-        subagent = call("Write", "sacm-implementer", "crates/sacm/src/lib.rs", self.root)
+        subagent = call("Write", "sacm-builder", "crates/sacm/src/lib.rs", self.root)
         main_session = call("Write", None, "crates/sacm/src/lib.rs", self.root)
         read = call("Read", "sacm-verifier", "docs/x.md", self.root)
         for exc in EXCEPTION_TYPES:
@@ -555,7 +570,7 @@ class FailClosedTests(unittest.TestCase):
                 )
 
     def test_lib_tool_003_main_fails_closed_when_decide_raises_any_exception_type(self) -> None:
-        subagent = call("Write", "sacm-implementer", "crates/sacm/src/lib.rs", self.root)
+        subagent = call("Write", "sacm-builder", "crates/sacm/src/lib.rs", self.root)
         main_session = call("Write", None, "crates/sacm/src/lib.rs", self.root)
         for exc in EXCEPTION_TYPES:
             with self.subTest(exception=exc.__name__), mock.patch.object(
@@ -569,7 +584,7 @@ class FailClosedTests(unittest.TestCase):
     def test_lib_tool_003_main_fails_closed_when_load_scopes_raises_any_exception_type(
         self,
     ) -> None:
-        subagent = call("Write", "sacm-implementer", "crates/sacm/src/lib.rs", self.root)
+        subagent = call("Write", "sacm-builder", "crates/sacm/src/lib.rs", self.root)
         main_session = call("Write", None, "crates/sacm/src/lib.rs", self.root)
         for exc in EXCEPTION_TYPES:
             with self.subTest(exception=exc.__name__), mock.patch.object(
@@ -594,7 +609,7 @@ class FailClosedTests(unittest.TestCase):
     ) -> None:
         for what, tool_input in MALFORMED_TOOL_INPUTS:
             with self.subTest(what):
-                payload = malformed(tool_input, "sacm-test-engineer")
+                payload = malformed(tool_input, "sacm-builder")
                 self.assert_decide_raises(payload, SCOPES, what)
                 self.assertTrue(
                     denied(self.guarded(payload)),
@@ -610,7 +625,7 @@ class FailClosedTests(unittest.TestCase):
         self.assertIsInstance(real_scopes, dict, "LIB-TOOL-003: the real write-scopes.json loads")
         for what, tool_input in MALFORMED_TOOL_INPUTS:
             with self.subTest(what):
-                payload = malformed(tool_input, "sacm-test-engineer")
+                payload = malformed(tool_input, "sacm-builder")
                 self.assert_decide_raises(payload, real_scopes, what)
                 self.assert_main_denies(payload, what)
                 self.assert_main_silent(
@@ -667,28 +682,27 @@ class FailClosedTests(unittest.TestCase):
             )
             self.assertIsNone(
                 guard.decide(
-                    call("Write", "sacm-test-engineer", "CRATES/SACM/TESTS/x.rs", self.root),
+                    call("Write", "sacm-builder", "CRATES/SACM/TESTS/x.rs", self.root),
                     SCOPES,
                     self.root,
                 ),
-                "LIB-TOOL-003: on Windows CRATES/SACM/TESTS/x.rs is inside the test engineer's "
-                "scope",
+                "LIB-TOOL-003: on Windows CRATES/SACM/TESTS/x.rs is inside the builder's scope",
             )
             self.assertTrue(
                 denied(
                     guard.decide(
-                        call("Write", "sacm-test-engineer", "CRATES/SACM/SRC/lib.rs", self.root),
+                        call("Write", "sacm-builder", "XTASK/SRC/lib.rs", self.root),
                         SCOPES,
                         self.root,
                     )
                 ),
-                "LIB-TOOL-003: on Windows CRATES/SACM/SRC/lib.rs is still outside the scope",
+                "LIB-TOOL-003: on Windows XTASK/SRC/lib.rs is still outside the scope",
             )
             for path in ("DOCS/MATRIX/m.toml", "docs/MATRIX/m.toml"):
                 self.assertTrue(
                     denied(
                         guard.decide(
-                            call("Write", "sacm-implementer", path, self.root),
+                            call("Write", "sacm-builder", path, self.root),
                             SCOPES,
                             self.root,
                         )
@@ -713,17 +727,16 @@ class FailClosedTests(unittest.TestCase):
             self.assertTrue(
                 denied(
                     guard.decide(
-                        call("Write", "sacm-test-engineer", "CRATES/SACM/TESTS/x.rs", self.root),
+                        call("Write", "sacm-builder", "CRATES/SACM/TESTS/x.rs", self.root),
                         SCOPES,
                         self.root,
                     )
                 ),
-                "LIB-TOOL-003: off Windows CRATES/SACM/TESTS/x.rs is outside the test engineer's "
-                "scope",
+                "LIB-TOOL-003: off Windows CRATES/SACM/TESTS/x.rs is outside the builder's scope",
             )
             self.assertIsNone(
                 guard.decide(
-                    call("Write", "sacm-implementer", "docs/MATRIX/m.toml", self.root),
+                    call("Write", "sacm-builder", "docs/MATRIX/m.toml", self.root),
                     SCOPES,
                     self.root,
                 ),
@@ -1040,8 +1053,8 @@ class LaunchPathTests(unittest.TestCase):
     ) -> None:
         """An out-of-scope write is denied and an in-scope one allowed, each by the
         guard run with the `used` interpreter."""
-        role = "sacm-test-engineer"
-        outside = self.payload("Write", role, "xtask/src/lib.rs")
+        role = "sacm-builder"
+        outside = self.payload("Write", role, "docs/matrix/lib_tool_008_x.toml")
         proc, logs = self.launch(stubs, outside)
         self.assert_guard_denied(proc, outside, f"{why}, out-of-scope write")
         self.assertTrue(
@@ -1076,8 +1089,8 @@ class LaunchPathTests(unittest.TestCase):
         stubs = {"python3": "works", "python": "fails"}
         self.assert_judged_by(stubs, "python3", "python3 works")
         for payload in (
-            self.payload("Write", "sacm-test-engineer", "xtask/src/lib.rs"),
-            self.payload("Write", "sacm-test-engineer", "xtask/tests/lib_tool_008_x.rs"),
+            self.payload("Write", "sacm-builder", "docs/matrix/lib_tool_008_x.toml"),
+            self.payload("Write", "sacm-builder", "xtask/tests/lib_tool_008_x.rs"),
         ):
             proc, logs = self.launch(stubs, payload)
             self.assertEqual(
@@ -1090,7 +1103,7 @@ class LaunchPathTests(unittest.TestCase):
     # -- criterion 3: fail closed -------------------------------------------
 
     def test_lib_tool_008_no_working_interpreter_fails_closed_with_exit_2(self) -> None:
-        payload = self.payload("Write", "sacm-test-engineer", "xtask/tests/lib_tool_008_x.rs")
+        payload = self.payload("Write", "sacm-builder", "xtask/tests/lib_tool_008_x.rs")
         cases = {
             "both fail": {"python3": "fails", "python": "fails"},
             "both missing": {"python3": None, "python": None},
@@ -1120,8 +1133,8 @@ class LaunchPathTests(unittest.TestCase):
     def test_lib_tool_008_hook_command_judges_notebook_edit_by_notebook_path(self) -> None:
         stubs = {"python3": "works", "python": "fails"}
         cases = (
-            ("sacm-test-engineer", "xtask/tests/lib_tool_008_x.ipynb", False),
-            ("sacm-test-engineer", "crates/sacm/src/lib_tool_008_x.ipynb", True),
+            ("sacm-builder", "xtask/tests/lib_tool_008_x.ipynb", False),
+            ("sacm-builder", "docs/verification/lib_tool_008_x.ipynb", True),
             ("sacm-verifier", "xtask/tests/lib_tool_008_x.ipynb", True),
             ("sacm-verifier", "docs/lib_tool_008_x.ipynb", True),
         )
@@ -1191,20 +1204,21 @@ class NotebookPathTests(unittest.TestCase):
 
     def test_lib_tool_008_notebook_path_inside_a_writer_scope_is_allowed(self) -> None:
         for agent, rel in (
-            ("sacm-test-engineer", "xtask/tests/x.ipynb"),
-            ("sacm-test-engineer", "crates/sacm/tests/data/x.ipynb"),
-            ("sacm-implementer", "crates/sacm/src/x.ipynb"),
-            ("sacm-implementer", "docs/x.ipynb"),
+            ("sacm-builder", "xtask/tests/x.ipynb"),
+            ("sacm-builder", "crates/sacm/tests/data/x.ipynb"),
+            ("sacm-builder", "crates/sacm/tests/x.ipynb"),
+            ("sacm-builder", "crates/sacm/src/x.ipynb"),
+            ("sacm-builder", "docs/x.ipynb"),
         ):
             with self.subTest(agent=agent, path=rel):
                 self.assert_allowed(agent, rel)
 
     def test_lib_tool_008_notebook_path_outside_a_writer_scope_is_denied(self) -> None:
         for agent, rel in (
-            ("sacm-test-engineer", "crates/sacm/src/x.ipynb"),
-            ("sacm-test-engineer", "docs/x.ipynb"),
-            ("sacm-implementer", "crates/sacm/tests/x.ipynb"),
-            ("sacm-implementer", "docs/matrix/x.ipynb"),
+            ("sacm-builder", "docs/matrix/x.ipynb"),
+            ("sacm-builder", "docs/verification/x.ipynb"),
+            ("sacm-builder", "docs/adr/x.ipynb"),
+            ("sacm-builder", "deny.toml.ipynb"),
         ):
             with self.subTest(agent=agent, path=rel):
                 self.assert_denied_for_path(agent, rel)

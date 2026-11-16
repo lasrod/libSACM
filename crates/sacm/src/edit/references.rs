@@ -136,7 +136,8 @@ impl SetReferences {
         check_targets(document, &[(self.end, &self.ids, held)])?;
         // Setting the ids held still changes the element if it holds the end
         // as a preserved attribute too, which the set replaces (ADR 0033).
-        let replaces = !self.ids.is_empty() && document.has_preserved_end(&self.element, self.end);
+        let replaces = !self.ids.is_empty()
+            && document.has_preserved_attribute(&self.element, self.end.name());
         Ok(changing(
             &self.element,
             held != self.ids.as_slice() || replaces,

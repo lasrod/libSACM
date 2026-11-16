@@ -276,9 +276,22 @@ fn read_ok(row: &str, what: &str, input: &str) -> Document {
     documents.swap_remove(0)
 }
 
-/// Reads `input` in both modes, which the test expects to be refused the same
-/// in both, and returns the refusal.
+/// Reads `input` in strict mode, which the test expects to refuse it, and
+/// returns the refusal. A tolerant read keeps what a strict read refuses
+/// here (LIB-COMPAT-001, ADR 0035).
 fn refused(row: &str, what: &str, input: &str) -> ReadError {
+    match read(Mode::Strict, input) {
+        Ok(output) => panic!(
+            "{row}: {what}: a strict read returned a document of {} elements for {input:?}",
+            output.document().element_count()
+        ),
+        Err(error) => error,
+    }
+}
+
+/// Reads `input` in both modes, which the test expects to be refused the same
+/// in both (a refusal of both modes, LIB-COMPAT-001), and returns the refusal.
+fn refused_in_both_modes(row: &str, what: &str, input: &str) -> ReadError {
     let mut errors = Vec::new();
     for mode in MODES {
         match read(mode, input) {
@@ -371,7 +384,7 @@ fn assert_preserved_at_mark(row: &str, what: &str, template: &str) -> Document {
     assert_preserved_at(row, what, &input, marks[0], holder)
 }
 
-/// Reads `template` without its marks in both modes and asserts that it is
+/// Reads `template` without its marks in strict mode and asserts that it is
 /// refused as `Unsupported`, with no code, at its one mark. Returns the
 /// reason.
 fn assert_unsupported_at_mark(row: &str, what: &str, template: &str) -> String {
@@ -393,7 +406,7 @@ fn assert_unsupported_at_mark(row: &str, what: &str, template: &str) -> String {
     reason.clone()
 }
 
-/// Reads `template` without its marks in both modes and asserts that it is
+/// Reads `template` without its marks in strict mode and asserts that it is
 /// refused as `RepeatedValue` of `property` on `element`, with one location
 /// per mark, in order.
 fn assert_repeated(row: &str, what: &str, template: &str, element: &str, property: &str) {
@@ -1190,7 +1203,7 @@ fn sacm23_base_004_a_padded_utility_id_is_trimmed_an_empty_one_is_invalid_and_a_
         ),
     ] {
         let (input, marks) = marked(ROW, &template);
-        let error = refused(ROW, what, &input);
+        let error = refused_in_both_modes(ROW, what, &input);
         assert!(
             matches!(&error, ReadError::DuplicateId { id: found, .. } if found.as_str() == id),
             "{ROW}: {what}: not DuplicateId for {id:?}: {error:?}"
@@ -1311,7 +1324,7 @@ fn sacm23_base_004_a_content_or_value_id_repeating_any_id_is_duplicate_id_at_bot
     ];
     for (what, template, id) in &cases {
         let (input, marks) = marked(ROW, template);
-        let error = refused(ROW, what, &input);
+        let error = refused_in_both_modes(ROW, what, &input);
         assert!(
             matches!(&error, ReadError::DuplicateId { id: found, .. } if found.as_str() == *id),
             "{ROW}: {what}: not DuplicateId for {id:?}: {error:?}"

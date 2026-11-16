@@ -253,11 +253,16 @@ fn write_err(row: &str, doc: &Document) -> WriteError {
 /// `xmi::read` with the default options, on a worker thread. Fails the test
 /// when the read panics or does not return within [`DEADLINE`].
 fn read(row: &str, input: &[u8]) -> Result<ReadOutput, ReadError> {
+    read_with(row, input, ReadOptions::default())
+}
+
+/// `xmi::read` with `options`, on a worker thread, as [`read`].
+fn read_with(row: &str, input: &[u8], options: ReadOptions) -> Result<ReadOutput, ReadError> {
     let owned = input.to_vec();
     let (sender, receiver) = mpsc::channel();
     thread::spawn(move || {
         // The receiver is gone only after the deadline has already failed the test.
-        let _ = sender.send(xmi::read(&owned, &ReadOptions::default()));
+        let _ = sender.send(xmi::read(&owned, &options));
     });
     match receiver.recv_timeout(DEADLINE) {
         Ok(result) => result,
@@ -402,10 +407,12 @@ fn assert_preserved_at(row: &str, what: &str, input: &str, line: u32, column: u3
     );
 }
 
-/// Asserts that `input` is refused as `Unsupported`, with no code, at line
-/// `line`, column `column`, and that no document is returned.
+/// Asserts that a strict read refuses `input` as `Unsupported`, with no
+/// code, at line `line`, column `column`, and returns no document. A
+/// tolerant read keeps it (LIB-COMPAT-001, ADR 0035).
 fn assert_unsupported_at(row: &str, what: &str, input: &str, line: u32, column: u32) {
-    let error = match read(row, input.as_bytes()) {
+    let strict = ReadOptions::default().with_mode(Mode::Strict);
+    let error = match read_with(row, input.as_bytes(), strict) {
         Ok(output) => panic!(
             "{row}: {what}: read returned a document of {} elements for {input:?}",
             output.document().element_count()

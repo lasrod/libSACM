@@ -10,7 +10,7 @@
 //! A fragment is a flat list of pre-order events, so cloning, comparing,
 //! dropping and writing one never recurses, however deep it is.
 
-use super::ElementId;
+use super::{ElementId, ReferenceEnd};
 
 /// The preserved content of one element, its holder: attributes after the
 /// typed ones, in input order, and children placed among its typed children.
@@ -115,15 +115,39 @@ impl Preserved {
             .any(|attr| attr.name.namespace.is_none() && attr.name.local == local)
     }
 
-    /// Removes the attribute `local` in no namespace, if it holds one.
+    /// Removes the attribute `local` in no namespace, if it holds one, and
+    /// returns the ids it named as a reference, each once per time
+    /// [`references`](Self::references) counted it, which it no longer
+    /// counts.
     ///
-    /// Only an edit that sets a reference end removes one: the reader keeps
-    /// an attribute named after an end the element's kind owns only when it
-    /// holds no id, and an edit cannot set an end the kind lacks, so the
-    /// attribute counts no reference and none is released.
-    pub(crate) fn remove_unqualified(&mut self, local: &str) {
-        self.attributes
-            .retain(|attr| !(attr.name.namespace.is_none() && attr.name.local == local));
+    /// An edit that sets the property of that name removes it: a reference
+    /// end, which the reader keeps as an attribute when it holds no id, or a
+    /// single-valued end given two ids in a tolerant read (`target="c2
+    /// c3"`), or a flag or `assertionDeclaration` whose value is no literal
+    /// (ADR 0033, ADR 0035).
+    pub(crate) fn remove_unqualified(&mut self, local: &str) -> Vec<ElementId> {
+        let is_end = ReferenceEnd::ALL.iter().any(|end| end.name() == local);
+        let mut tokens = Vec::new();
+        self.attributes.retain(|attr| {
+            let removed = attr.name.namespace.is_none() && attr.name.local == local;
+            if removed && is_end {
+                tokens.extend(
+                    attr.value
+                        .split([' ', '\t', '\n', '\r'])
+                        .filter(|token| !token.is_empty())
+                        .map(ElementId::new),
+                );
+            }
+            !removed
+        });
+        let mut released = Vec::new();
+        for id in tokens {
+            if let Some(position) = self.references.iter().position(|held| *held == id) {
+                self.references.remove(position);
+                released.push(id);
+            }
+        }
+        released
     }
 
     /// The number of preserved child elements: text and attributes do not

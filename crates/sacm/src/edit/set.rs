@@ -256,9 +256,13 @@ impl SetFlag {
         let target = edited(document, &self.element, flag.name(), |kind| {
             flag.owner().admits(kind)
         })?;
+        // Setting the value held still changes the element if it holds an
+        // attribute of the flag's name as preserved content, whose value was
+        // no literal, which the set replaces (ADR 0035).
+        let replaces = document.has_preserved_attribute(&self.element, flag.name());
         Ok(changing(
             &self.element,
-            target.flag(flag) != self.value,
+            target.flag(flag) != self.value || replaces,
             Value::Flag(flag, self.value),
         ))
     }
@@ -326,9 +330,11 @@ impl SetAssertionDeclaration {
         let target = edited(document, &self.element, ASSERTION_DECLARATION, |kind| {
             kind.is_a(AbstractClass::Assertion)
         })?;
+        // As for a flag: a preserved attribute of the name is replaced.
+        let replaces = document.has_preserved_attribute(&self.element, ASSERTION_DECLARATION);
         Ok(changing(
             &self.element,
-            target.assertion_declaration() != Some(self.declaration),
+            target.assertion_declaration() != Some(self.declaration) || replaces,
             Value::Declaration(self.declaration),
         ))
     }

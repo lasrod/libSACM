@@ -17,11 +17,15 @@ packages, the argumentation elements (Claim, ArgumentReasoning, ArtifactReferenc
 ArgumentGroup and the five asserted relationships) and the artifact elements Property,
 Technique, Participant and ArtifactGroup, each with its name, `gid`, flags, references,
 descriptions, notes, implementation constraints and tagged values. Content that is not
-SACM 2.3 is kept as preserved content (SACM-XMI-003); conforming content it does not read
-yet, such as an Artifact, a terminology element or an interface, is refused as
-`Unsupported`. Nothing is dropped.
+SACM 2.3 is kept as preserved content (SACM-XMI-003). A tolerant read, the default, opens
+every well-formed file with SACM 2.3 package roots: what a strict read refuses, such as a
+value that is no literal or conforming content not read yet (an Artifact, a terminology
+element, an interface), it keeps as preserved content with a Warning (SACM-XMI-014 for
+content not read yet). Nothing is dropped.
 
-`sacm::xmi::write` writes the same kinds deterministically, `sacm::edit::apply` creates
+`sacm::xmi::write` writes the same kinds deterministically; a strict save, the default,
+checks only that the output is schema-valid, so a draft saves, and an application calls
+`validate` for model checks. `sacm::edit::apply` creates
 and edits them atomically, `sacm::validation::validate` checks names, ids, gids, contents,
 references and the argumentation rules, and `sacm::compare::semantic_compare` lists
 differences. The terminology package, interfaces and bindings, the other validation rules

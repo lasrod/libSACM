@@ -512,6 +512,10 @@ fn sacm23_xmi_018_locations_count_characters_and_the_bom_takes_no_column() {
 // --- Item 7. The same output as UTF-8 ----------------------------------------------
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one flat table of inputs is easier to review than several"
+)]
 fn sacm23_xmi_018_inputs_from_the_read_and_root_tests_give_the_utf8_result() {
     let wrapper = |content: &str| {
         format!(
@@ -558,6 +562,14 @@ fn sacm23_xmi_018_inputs_from_the_read_and_root_tests_give_the_utf8_result() {
         (
             "an unread attribute",
             format!("<sacm:ArgumentPackage{NS} xmi:id=\"a\" xmi:uuid=\"u\"/>"),
+        ),
+        // A tolerant read keeps the two inputs above (ADR 0035); a root in
+        // another SACM namespace stays Unsupported in both modes.
+        (
+            "a root in a SACM 2.2 namespace",
+            "<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/2.2/argumentation\" \
+             xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"a\"/>"
+                .to_owned(),
         ),
         (
             "a repeated root id",

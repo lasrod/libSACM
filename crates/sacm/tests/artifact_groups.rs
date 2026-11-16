@@ -176,24 +176,17 @@ fn read_ok(what: &str, input: &str) -> Document {
     documents.swap_remove(0)
 }
 
-/// Reads `input` in both modes, which the test expects to refuse the same in
-/// both, and returns the refusal.
+/// Reads `input` in strict mode, which the test expects to refuse it, and
+/// returns the refusal. A tolerant read keeps what a strict read refuses
+/// here (LIB-COMPAT-001, ADR 0035).
 fn refused(what: &str, input: &str) -> ReadError {
-    let mut errors = Vec::new();
-    for mode in MODES {
-        match read(mode, input) {
-            Ok(output) => panic!(
-                "{ROW}: {what}: a {mode:?} read returned a document of {} elements for {input:?}",
-                output.document().element_count()
-            ),
-            Err(error) => errors.push(error),
-        }
+    match read(Mode::Strict, input) {
+        Ok(output) => panic!(
+            "{ROW}: {what}: a strict read returned a document of {} elements for {input:?}",
+            output.document().element_count()
+        ),
+        Err(error) => error,
     }
-    assert_eq!(
-        errors[0], errors[1],
-        "{ROW}: {what}: the modes refuse differently"
-    );
-    errors.swap_remove(0)
 }
 
 /// Asserts that `template`, without its one mark, reads in both modes and
@@ -715,18 +708,17 @@ fn sacm23_art_011_every_artifact_element_member_validates_and_a_utility_element_
         )],
         "{ROW}: {what}: not one SACM-REF-002 Error with clause 12.3 on [g, d1]"
     );
-    let error = match xmi::write(&doc, &WriteOptions::default().with_mode(Mode::Strict)) {
-        Ok(text) => panic!("{ROW}: {what}: a strict write accepted it:\n{text}"),
-        Err(error) => error,
-    };
-    assert!(
-        matches!(error, WriteError::Invalid { .. }),
-        "{ROW}: {what}: a strict write is not Invalid: {error:?}"
-    );
+    // An IDREF is untyped, so the schema check does not refuse it (ADR 0035
+    // D4): a strict write writes it as a tolerant one does.
     let text = write_in(what, &doc, Mode::Tolerant);
     assert!(
         line_with(&text, "g").ends_with(" artifactElement=\"t1 d1\">"),
         "{ROW}: {what}: a tolerant write does not keep the member\n{text}"
+    );
+    assert_eq!(
+        write_in(what, &doc, Mode::Strict),
+        text,
+        "{ROW}: {what}: the strict write is not the tolerant one"
     );
 }
 
@@ -841,16 +833,16 @@ fn sacm23_art_011_fixture_variants_d_e_and_f_validate_as_the_brief_gives() {
         )],
         "{ROW}: {what}"
     );
-    assert!(
-        matches!(
-            xmi::write(&doc, &WriteOptions::default().with_mode(Mode::Strict)),
-            Err(WriteError::Invalid { .. })
-        ),
-        "{ROW}: {what}: a strict write is not Invalid"
+    // SACM-REF-002 is no schema error (ADR 0035 D4): a strict write writes
+    // it as a tolerant one does.
+    let text = write_in(what, &doc, Mode::Tolerant);
+    assert_eq!(
+        write_in(what, &doc, Mode::Strict),
+        text,
+        "{ROW}: {what}: the strict write is not the tolerant one"
     );
     assert!(
-        line_with(&write_in(what, &doc, Mode::Tolerant), "analysis")
-            .contains(" artifactElement=\"fta d1\""),
+        line_with(&text, "analysis").contains(" artifactElement=\"fta d1\""),
         "{ROW}: {what}: a tolerant write does not keep the attribute"
     );
     // (e) An absent member.
@@ -1222,8 +1214,8 @@ fn sacm23_art_011_no_artifact_class_has_a_composite_role_and_a_reference_end_of_
                 )),
             }
         }
-        // An end name, as a nested typed element, is no composite role: it
-        // is refused, never read as a child.
+        // An end name, as a nested typed element, is no composite role: a strict
+        // read refuses it, never reading it as a child.
         for end in &ends {
             let input = element_of(
                 "",
@@ -1231,7 +1223,7 @@ fn sacm23_art_011_no_artifact_class_has_a_composite_role_and_a_reference_end_of_
                     "<{end} xmi:type=\"sacm:Technique\" xmi:id=\"z9\"><name content=\"Z\"/></{end}>"
                 ),
             );
-            match read(Mode::Tolerant, &input) {
+            match read(Mode::Strict, &input) {
                 Err(error @ ReadError::Unsupported { .. }) if error.location().is_some() => {}
                 other => failures.push(format!(
                     "a nested Technique in {end} of a {kind}: not Unsupported: {other:?}"

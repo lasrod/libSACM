@@ -1375,7 +1375,7 @@ fn lib_tool_009_a_duplicate_bad_code_reports_both_problems() {
 /// The environment variable that points the `xtask` binary at another
 /// repository root. **Not yet designed:** the binary resolves its root at
 /// compile time, so a test cannot run it on a temporary tree; this name is the
-/// test engineer's proposal to the lead.
+/// builder's proposal to the lead.
 const ROOT_ENV: &str = "XTASK_ROOT";
 
 /// [`GATE_TOML`] plus a planned row with an unknown milestone and an unknown

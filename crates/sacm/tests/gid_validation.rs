@@ -21,7 +21,7 @@ use sacm::diagnostic::{self, Code, Diagnostic, Severity};
 use sacm::edit::{self, CreateClaim};
 use sacm::model::{Document, ElementId, LangString};
 use sacm::validation;
-use sacm::xmi::{self, Mode, ReadOptions, WriteError, WriteOptions};
+use sacm::xmi::{self, Mode, ReadOptions, WriteOptions};
 
 const ROW: &str = "SACM23-VAL-002";
 
@@ -399,8 +399,10 @@ fn sacm23_val_002_an_attribute_gid_and_an_element_gid_of_one_value_are_one_findi
 
 // --- Item 7: saving -----------------------------------------------------------------
 
+/// A strict write checks schema validity only (ADR 0035 D4): a duplicate
+/// gid, a validation Error, does not refuse it.
 #[test]
-fn sacm23_val_002_a_strict_write_refuses_and_a_tolerant_write_keeps_both_gids() {
+fn sacm23_val_002_a_strict_and_a_tolerant_write_keep_both_gids() {
     let what = "two Claims with gid=\"g\"";
     let doc = read_ok(
         what,
@@ -413,17 +415,10 @@ fn sacm23_val_002_a_strict_write_refuses_and_a_tolerant_write_keeps_both_gids() 
         "{ROW}: {what}: setup: not one finding: {expected:?}"
     );
 
-    let error = match xmi::write(&doc, &WriteOptions::default()) {
-        Ok(text) => panic!("{ROW}: {what}: a strict write returned:\n{text}"),
-        Err(error) => error,
+    let strict = match xmi::write(&doc, &WriteOptions::default()) {
+        Ok(text) => text,
+        Err(error) => panic!("{ROW}: {what}: a strict write refused: {error:?}"),
     };
-    let WriteError::Invalid { diagnostics, .. } = &error else {
-        panic!("{ROW}: {what}: the strict refusal is not Invalid: {error:?}");
-    };
-    assert_eq!(
-        diagnostics, &expected,
-        "{ROW}: {what}: the strict refusal does not hold the finding"
-    );
 
     let text = match xmi::write(&doc, &WriteOptions::default().with_mode(Mode::Tolerant)) {
         Ok(text) => text,
@@ -439,6 +434,10 @@ fn sacm23_val_002_a_strict_write_refuses_and_a_tolerant_write_keeps_both_gids() 
         semantic_compare(&doc, &back),
         [],
         "{ROW}: {what}: the tolerant output does not read back equal\n{text}"
+    );
+    assert_eq!(
+        strict, text,
+        "{ROW}: {what}: the strict write is not the tolerant one"
     );
 }
 

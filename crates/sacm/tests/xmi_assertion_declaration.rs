@@ -86,6 +86,15 @@ fn read(input: &str) -> Result<xmi::ReadOutput, ReadError> {
     xmi::read(input.as_bytes(), &ReadOptions::default())
 }
 
+/// Reads `input` in strict mode, which refuses what a tolerant read keeps
+/// as preserved content with a Warning (LIB-COMPAT-001, ADR 0035).
+fn read_strict(input: &str) -> Result<xmi::ReadOutput, ReadError> {
+    xmi::read(
+        input.as_bytes(),
+        &ReadOptions::default().with_mode(Mode::Strict),
+    )
+}
+
 /// Reads `input`, which the test expects to be read without diagnostics.
 fn read_ok(what: &str, input: &str) -> Document {
     read_ok_reporting(what, input, &[])
@@ -236,12 +245,13 @@ fn assert_preserved_at_mark(what: &str, template: &str) {
     assert_preserved_at(what, &input, at, holder);
 }
 
-/// Reads `template` without its mark, and returns the refusal, failing the
-/// test unless it is `InvalidLiteral` (SACM-ENUM-001) for the Claim `c1`'s
-/// `assertionDeclaration`, holding `value`, at the mark.
+/// Reads `template` without its mark, in strict mode, and returns the
+/// refusal, failing the test unless it is `InvalidLiteral` (SACM-ENUM-001)
+/// for the Claim `c1`'s `assertionDeclaration`, holding `value`, at the
+/// mark.
 fn assert_invalid_literal_at_mark(what: &str, template: &str, value: &str) -> ReadError {
     let (input, expected) = marked(template);
-    let error = match read(&input) {
+    let error = match read_strict(&input) {
         Ok(output) => panic!(
             "{ROW}: {what}: a document was returned, with {} elements, for {input:?}",
             output.document().element_count()
@@ -685,7 +695,7 @@ fn sacm23_xmi_017_every_other_value_is_invalid_literal_at_the_attribute_name_hol
     for (written, as_read) in BAD_VALUES {
         let template = claim_with(&format!("{MARK}assertionDeclaration=\"{written}\""));
         let (input, expected) = marked(&template);
-        let error = match read(&input) {
+        let error = match read_strict(&input) {
             Ok(output) => {
                 failures.push(format!(
                     "{written:?} is read, as {:?}",
@@ -908,7 +918,7 @@ fn sacm23_xmi_017_the_element_form_in_a_claim_reads_and_beside_the_attribute_is_
             input, same,
             "{ROW}: setup: {what}: the marks moved the text"
         );
-        let error = match read(&input) {
+        let error = match read_strict(&input) {
             Ok(output) => panic!(
                 "{ROW}: {what}: a document was returned, with {} elements",
                 output.document().element_count()

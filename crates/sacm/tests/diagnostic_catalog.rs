@@ -25,7 +25,7 @@ const ROW: &str = "LIB-DIAG-002";
 
 /// Every `Code` constant, by name. A new constant must be added here, which
 /// the scan checks; each text is checked against `as_str()`.
-const CONSTANTS: [(&str, Code); 32] = [
+const CONSTANTS: [(&str, Code); 34] = [
     ("XML_MALFORMED", Code::XML_MALFORMED),
     ("XML_DOCTYPE_REJECTED", Code::XML_DOCTYPE_REJECTED),
     ("XMI_INVALID_ROOT", Code::XMI_INVALID_ROOT),
@@ -36,6 +36,8 @@ const CONSTANTS: [(&str, Code); 32] = [
     ("XMI_LEGACY_SHAPE", Code::XMI_LEGACY_SHAPE),
     ("XMI_UNKNOWN_CONTENT", Code::XMI_UNKNOWN_CONTENT),
     ("XMI_STRICT_SAVE_REFUSED", Code::XMI_STRICT_SAVE_REFUSED),
+    ("XMI_EXTERNAL_HREF", Code::XMI_EXTERNAL_HREF),
+    ("XMI_UNREAD_CONTENT", Code::XMI_UNREAD_CONTENT),
     ("MULTIPLICITY_VIOLATION", Code::MULTIPLICITY_VIOLATION),
     ("ENUM_INVALID_LITERAL", Code::ENUM_INVALID_LITERAL),
     ("CMD_TARGET_NOT_FOUND", Code::CMD_TARGET_NOT_FOUND),
@@ -63,6 +65,13 @@ const CONSTANTS: [(&str, Code); 32] = [
     ("ABSTRACT_FORM_INVALID", Code::ABSTRACT_FORM_INVALID),
 ];
 
+/// Every live code, [`LIVE`], sorted.
+fn all_live() -> Vec<String> {
+    let mut live: Vec<String> = LIVE.iter().map(|&code| code.to_owned()).collect();
+    live.sort();
+    live
+}
+
 /// The live codes, one per constant: the 16 of slice 0041; SACM-REF-001,
 /// SACM-CITE-001 and SACM-ABS-001 of slice 0042; SACM-REF-002
 /// (SACM23-VAL-004) of slice 0044; SACM-CMD-008 and SACM-CMD-009
@@ -71,8 +80,9 @@ const CONSTANTS: [(&str, Code); 32] = [
 /// LIB-EDIT-007); SACM-CITE-002 (SACM23-VAL-019), SACM-XMI-005
 /// (LIB-COMPAT-010) and SACM-XMI-012 (LIB-COMPAT-008) of slice 0049; and
 /// SACM-XMI-003 (LIB-COMPAT-003), SACM-XMI-006 (SACM23-XMI-008) and
-/// SACM-REF-003 (LIB-COMPAT-003) of slice 0050 (ADR 0033).
-const LIVE: [&str; 32] = [
+/// SACM-REF-003 (LIB-COMPAT-003) of slice 0050 (ADR 0033); and SACM-XMI-007
+/// and SACM-XMI-014 (LIB-API-011) of slice 0053 (ADR 0035).
+const LIVE: [&str; 34] = [
     "SACM-ABS-001",
     "SACM-CITE-001",
     "SACM-CITE-002",
@@ -101,9 +111,11 @@ const LIVE: [&str; 32] = [
     "SACM-XMI-004",
     "SACM-XMI-005",
     "SACM-XMI-006",
+    "SACM-XMI-007",
     "SACM-XMI-010",
     "SACM-XMI-011",
     "SACM-XMI-012",
+    "SACM-XMI-014",
     "SACM-XML-001",
 ];
 
@@ -670,7 +682,7 @@ fn lib_diag_002_every_code_the_crate_builds_is_a_constant_of_diagnostic_rs() {
         scanned, listed,
         "{ROW}: the constants in src/diagnostic.rs are not those this test lists"
     );
-    for (name, code) in CONSTANTS {
+    for &(name, code) in &CONSTANTS {
         let Some(found) = constants.iter().find(|c| c.name == name) else {
             panic!("{ROW}: the scan did not find Code::{name}");
         };
@@ -692,11 +704,12 @@ fn lib_diag_002_the_catalog_and_the_crate_agree_in_both_directions() {
         "{ROW}: docs/sacm/diagnostics.md and the crate disagree:\n{}",
         report(&problems)
     );
+    let live = all_live();
     assert_eq!(
         live_codes(&catalog),
-        LIVE,
+        live,
         "{ROW}: the live catalog rows are not the {} expected",
-        LIVE.len()
+        live.len()
     );
 }
 

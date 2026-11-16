@@ -92,3 +92,14 @@ Example: `{"type":"CreateClaim","parent":"arguments","id":null,"name":{"lang":"e
 - **Ignoring unknown keys.** A misspelt key would silently fall back to its default.
 - **Serializing `Document`.** That would freeze a second serialization of the model beside
   XMI.
+
+## Amendment 1 (2026-11-16): the JSON shape follows semver until 1.0
+
+This replaces the stability promise.
+- **What is breaking:** a change to a key, a tag or a meaning. It ships only in a release that
+  bumps the minor version (0.x) and is listed under Breaking. JSON written by one such
+  release need not read in another.
+- **What is not breaking:** adding a variant or a defaulted key.
+- **Deserialize:** it stays for every listed type, `EditError` and `Diagnostic` included.
+
+*Amendment 1 status: accepted (the maintainer, 2026-11-16).*

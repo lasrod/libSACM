@@ -406,7 +406,9 @@ fn sacm23_val_020_strict_write_refuses_and_tolerant_write_keeps_the_id_byte_for_
 }
 
 #[test]
-fn sacm23_val_020_an_empty_id_is_invalid_id_at_the_element_in_both_modes() {
+fn sacm23_val_020_an_empty_id_is_invalid_id_at_the_element_in_strict_mode() {
+    // A tolerant read gives the element a generated id instead, with
+    // SACM-ID-002 as a Warning (LIB-COMPAT-001, ADR 0035).
     let bare_root = format!("<sacm:ArgumentPackage{NS} xmi:id=\"\"/>");
     let wrapped_root = format!("{WRAPPER_OPEN}\n  <sacm:ArgumentPackage xmi:id=\"\"/>\n</xmi:XMI>");
     let child = ap(&["<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"\"/>".to_owned()]);
@@ -416,7 +418,8 @@ fn sacm23_val_020_an_empty_id_is_invalid_id_at_the_element_in_both_modes() {
         ("a child", child, loc(VAL_020, 3, 3)),
     ];
     for (what, input, at) in &cases {
-        for mode in MODES {
+        {
+            let mode = Mode::Strict;
             let error = refusal(VAL_020, mode, input);
             let ReadError::InvalidId { id, location, .. } = &error else {
                 panic!("{VAL_020}: {what} ({mode:?}): expected InvalidId, got {error:?}");
@@ -657,9 +660,10 @@ fn sacm23_val_001_locations_of_every_other_refusal_is_its_one_location_or_none()
         [loc(VAL_001, 1, 4)],
         "{VAL_001}: locations() of a Malformed refusal is not [location()]"
     );
+    // A tolerant read keeps an unread root (LIB-COMPAT-003, ADR 0035).
     let unsupported = refusal(
         VAL_001,
-        Mode::Tolerant,
+        Mode::Strict,
         &format!("<sacm:TerminologyPackage{NS} xmi:id=\"a\"/>"),
     );
     assert_eq!(

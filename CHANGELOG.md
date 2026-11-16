@@ -3,10 +3,9 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0, a breaking
-change bumps the minor version and is listed under **Breaking**. A new validation Error
-rule is not breaking, but it can make a strict `xmi::write` refuse a document it wrote
-before, so each one is listed under **Changed** with its code. A new read diagnostic that
-is an Error in strict mode, or a new coded read refusal, is listed the same way.
+change bumps the minor version and is listed under **Breaking**. A strict `xmi::write`
+checks schema validity only, so a new validation rule never changes what it writes. A new
+strict read refusal, or a new strict write refusal, is listed under **Changed**.
 
 ## [Unreleased]
 
@@ -152,8 +151,13 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
   refusal it is unchanged (`==` to before, and the same ids are generated next)
   [LIB-EDIT-002].
 - `xmi::Mode`; `ReadOptions`/`WriteOptions::with_mode`; `ReadOutput::mode`; read
-  diagnostics SACM-XMI-010 (`xsi:type`) and SACM-XMI-011 (`xmi:version`, Info)
-  [LIB-COMPAT-001].
+  diagnostics SACM-XMI-010 (`xsi:type`) and SACM-XMI-011 (`xmi:version`, Info). A
+  tolerant read, the default, opens every well-formed file with SACM 2.3 package roots:
+  it refuses only a DOCTYPE, malformed XML, `InvalidRoot`, `NoPackage`, `DuplicateId`
+  and `Unsupported` for an encoding, a limit or a root outside SACM 2.3 or XMI 2.5.1,
+  and keeps every other construct a strict read refuses as preserved content, with one
+  Warning at the strict refusal's location (SACM-ENUM-001, SACM-MULT-001, SACM-XMI-005,
+  SACM-ID-002 with a generated id), and never reports an Error [LIB-COMPAT-001].
 - `xmi::ReadError::DuplicateId` (SACM-ID-001, new `Code::ID_DUPLICATE`), giving the
   location of every element that carries the repeated `xmi:id`, and `xmi::ReadError::InvalidId`
   (SACM-ID-002) for an empty `xmi:id`; `ReadError::locations()` gives every location a
@@ -164,9 +168,11 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
   and a versioned JSON report (`"format":1`) [LIB-CLI-002].
 - `sacm roundtrip <file> [--strict] [-o <out>]`: read, save strictly, reload and compare;
   `-o` writes the strict output only when the round trip is faithful [LIB-CLI-003].
-- `xmi::WriteError::Invalid`, a strict write's refusal of a document that validation
-  reports an Error for, and `WriteError::diagnostics()`, which gives every such Error
-  [LIB-COMPAT-007].
+- `xmi::WriteError::Invalid`, a strict write's refusal of output that would not be
+  schema-valid: one SACM-ID-002 per `xmi:id` that is no `NCName` and one SACM-REF-001 per
+  reference to no `xmi:id` the output writes, in `Diagnostic` order; and
+  `WriteError::diagnostics()`, which gives every such Error. A strict write never runs
+  `validate` [LIB-COMPAT-007].
 - `xmi::read` reads the element form of a name's `lang` and `content` and a Claim's
   `assertionDeclaration`; a value given more than once, even with equal values, is
   `ReadError::RepeatedValue` (SACM-MULT-001) [SACM23-XMI-014].
@@ -180,9 +186,12 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
   document's id space; `xmi::write` writes it back first on `name`, and
   `semantic_compare` reports `Difference::NameId`; `validate` reports one that is not an
   NCName as SACM-ID-002 on the owner [SACM23-XMI-022].
-- `ReadError::InvalidLiteral` (SACM-ENUM-001, `Code::ENUM_INVALID_LITERAL`): the refusal,
-  in both modes, of an `assertionDeclaration` that is not one of the six literals
-  [SACM23-VAL-006].
+- `ReadError::InvalidLiteral` (SACM-ENUM-001, `Code::ENUM_INVALID_LITERAL`): a strict
+  read's refusal of an `assertionDeclaration` that is not one of the six literals. A
+  tolerant read keeps the value as preserved content, with SACM-ENUM-001 as a Warning,
+  and holds `asserted`; the value counts as the property's first occurrence, and
+  `SetAssertionDeclaration` and `SetFlag` replace a preserved attribute of their
+  property's name [SACM23-VAL-006].
 - Descriptions, implementation constraints, notes and tagged values on every
   ModelElement (ADR 0025): `SacmElement::descriptions()`,
   `implementation_constraints()`, `notes()` and `tagged_values()` filter the one ordered
@@ -282,8 +291,8 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
   operation struct, `Mutation`, `EditError`, `Diagnostic`, and the values they carry
   (`ElementId`, `ElementKind`, `LangString`, `MultiLangString`, `AssertionDeclaration`,
   `Flag`, `ReferenceEnd`, `Code`, `Severity`, `SourceLocation`). The JSON shape is
-  documented in ADR 0030 and stable; unknown keys, names and codes are refused. `Document`
-  is not serialized [LIB-API-006].
+  documented in ADR 0030; it follows semver, not a frozen format. Unknown keys, names and
+  codes are refused. `Document` is not serialized [LIB-API-006].
 - `edit::preview(&Document, &Operation)` returns the `Preview` of any operation: the
   `Mutation` `apply` would return and, for a delete, each `DanglingReference` (holder, end,
   id, whether it crosses a package boundary), without changing the document. A `Preview`
@@ -316,8 +325,9 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
   property not written, false reads the content, and another value is
   `ReadError::InvalidLiteral` [SACM23-XMI-026].
 - An untyped child under an abstract role, such as an `argumentElement` with no
-  `xmi:type`, is refused in both modes as `ReadError::MissingType`
-  (`Code::XMI_MISSING_TYPE`, SACM-XMI-005) [LIB-COMPAT-010].
+  `xmi:type`, is refused by a strict read as `ReadError::MissingType`
+  (`Code::XMI_MISSING_TYPE`, SACM-XMI-005); a tolerant read keeps it (LIB-COMPAT-001)
+  [LIB-COMPAT-010].
 - `validation::validate` warns, as SACM-CITE-002 (`Code::AS_CITED_INVALID`), about an
   Assertion declared `asCited` that is not a citation of an Assertion [SACM23-VAL-019].
 - `validation::validate` reports an `implementationConstraint` on an element whose
@@ -331,14 +341,27 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
   tolerant `xmi::write` writes it back where it stood; `==` and `semantic_compare`
   compare it exactly (`Difference::PreservedContent`); its ids stay in the id space, and
   `validation::validate` reports a reference to one as SACM-REF-003
-  (`Code::REF_PRESERVED_TARGET`, a Warning) [LIB-COMPAT-003].
+  (`Code::REF_PRESERVED_TARGET`, a Warning). A document holds preserved content outside
+  its elements too: in tolerant mode, the attributes, text and XMI-namespace children of
+  `xmi:XMI` and a root of a kind not read yet, placed among the roots, which root
+  create, delete and reorder keep in place; `Document::has_preserved_content` tells it,
+  `Difference::DocumentPreservedContent` compares it, and a tolerant `xmi::write`
+  writes it back on and in `xmi:XMI`, which it then always writes. A preserved attribute
+  whose prefix `sacm` or `xmi` is bound elsewhere is kept under the first unbound `nsN`
+  [LIB-COMPAT-003].
 - A strict `xmi::write` refuses a document that holds preserved content as
   `WriteError::PreservedContent { elements }` (SACM-XMI-006,
-  `Code::XMI_STRICT_SAVE_REFUSED`), before validation [SACM23-XMI-008].
+  `Code::XMI_STRICT_SAVE_REFUSED`), before the schema check; `elements` is empty when
+  only the document holds it [SACM23-XMI-008].
 - Every `ReadError::Unsupported` reason ends with one label that says why it is refused:
   `(a limit of this version; ROW reads it)`, `(a limit of this version)`, `(strict mode
   never reads it; ROW is to read it in tolerant mode)` or `(a defect in the input)`, from one
-  list that an xtask test gates [LIB-API-011].
+  list that an xtask test gates. The same list says what a tolerant read does with each
+  entry: it keeps conforming content not read yet as preserved content with the new
+  SACM-XMI-014 (`Code::XMI_UNREAD_CONTENT`), whose message ends `; ROW reads it`, a
+  cross-document `href` with SACM-XMI-007 (`Code::XMI_EXTERNAL_HREF`), now live, and a
+  defect with SACM-XMI-003, and refuses only the limits and a root outside SACM 2.3 or
+  XMI 2.5.1 [LIB-API-011].
 - `cargo xtask fetch-spec` also fetches the normative XMI.xsd of XMI 2.5.1, hash-pinned
   [LIB-TOOL-021].
 - `xmi::read` and `xmi::write` handle `ArtifactPackage` (as a root, in an
@@ -355,6 +378,25 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
 
 ### Changed
 
+- A tolerant `xmi::read` returns a document where it refused one before: for a value
+  that is no literal, a value given twice, an untyped child under an abstract role, an
+  empty `xmi:id`, content on `xmi:XMI`, a rebound `sacm` or `xmi` prefix, and conforming
+  content not read yet, each kept as preserved content with a Warning. A strict read is
+  unchanged, and each entry below that says `xmi::read` refuses something now describes a
+  strict read (ADR 0035; the maintainer, 2026-11-16) [LIB-COMPAT-001, LIB-COMPAT-003,
+  LIB-API-011, SACM23-VAL-006].
+- A strict `xmi::write` checks schema validity only and never runs `validate`: it writes
+  a document with model Errors, such as an element with no name or a relationship with no
+  target, that it refused as `WriteError::Invalid` before; that variant now holds the
+  schema errors, SACM-ID-002 and SACM-REF-001, and its `Display` counts "schema errors".
+  No validation rule refuses a strict write: SACM-ABS-001, SACM-CITE-001, SACM-ID-003,
+  SACM-MULT-001, SACM-PKG-001 and SACM-REF-002 are reported by `validate` only (ADR 0035
+  D4; the maintainer, 2026-11-16) [LIB-COMPAT-007, SACM23-XMI-008].
+- `WriteError::PreservedContent`'s `Display` no longer says "that is not SACM 2.3", and
+  says when the document alone holds the content [SACM23-XMI-008].
+- The `serde` JSON shape follows the crate's semver until 1.0, rather than being frozen: a
+  change to a key, tag or meaning ships only in a release that bumps the minor version
+  (ADR 0030 amendment 1; the maintainer, 2026-11-16) [LIB-API-006].
 - `ReadError::RepeatedValue` locates each id of a repeated reference attribute at its own
   character, and its `Display` names at most the first two locations and the count;
   `locations()` still lists every occurrence [SACM23-XMI-005].
@@ -380,10 +422,6 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
 - `WriteError::code()` is `Some(Code::XMI_STRICT_SAVE_REFUSED)` for the new
   `WriteError::PreservedContent`; it stays `None` for the other variants [SACM23-XMI-008].
 
-- The new validation Error rule SACM-ABS-001 for implementation constraints (clause 8.6)
-  can make a strict `xmi::write` refuse a document it wrote before: one with an
-  `implementationConstraint` on a concrete element. Write it as held in tolerant mode
-  [SACM23-VAL-021].
 - `xmi::read` refuses an untyped child under an abstract role as the coded
   `ReadError::MissingType` instead of `Unsupported`, and a strict read refuses the C++
   name and text shapes as `ReadError::LegacyShape` instead of `Unsupported`
@@ -392,11 +430,6 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
   `CreateAssertedInference` and `CreateAssertedContext`, refuses an end whose target does
   not conform to the end's declared type as `EditError::WrongReferenceType`
   (SACM-REF-002), after `ReferenceNotFound` [SACM23-VAL-004].
-- The new validation Error rule SACM-REF-002 can make a strict `xmi::write` refuse a
-  document it wrote before: one with a reference whose target has the wrong kind, such as
-  a `metaClaim` naming an ArgumentReasoning, or an AssertedEvidence,
-  AssertedArtifactSupport or AssertedArtifactContext whose ends break §11.15, §11.17 or
-  §11.18. Write it as held in tolerant mode [SACM23-VAL-004, SACM23-VAL-016].
 - `SacmElement::group_members()` also answers for an ArtifactGroup, with its
   `artifactElement` ids [SACM23-ART-011].
 - `xmi::read` reads an `ArtifactPackage` and its Techniques, Participants, Properties and
@@ -410,8 +443,8 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
   SACM23-ARG-012, SACM23-ARG-013].
 - `xmi::write` no longer writes `xmi:version`: the XMI namespace identifies the version
   (XMI 2.5.1 §7.5.3) [SACM23-XMI-024].
-- `xmi::write` is strict by default: it runs `validation::validate` and refuses a
-  document with any Error as `WriteError::Invalid`; write it as held with
+- `xmi::write` is strict by default: it refuses output that would not be schema-valid as
+  `WriteError::Invalid`, and preserved content; write it as held with
   `WriteOptions::default().with_mode(Mode::Tolerant)` [LIB-COMPAT-007].
 - `xmi::read` refuses a duplicate `xmi:id` as `ReadError::DuplicateId` and an empty one
   as `ReadError::InvalidId`, coded refusals instead of `Unsupported`
@@ -426,33 +459,12 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
 - `xmi::read` refuses a name's `lang` or `content`, or a Claim's `assertionDeclaration`,
   given both as an attribute and as an element as `ReadError::RepeatedValue`
   (SACM-MULT-001) instead of `Unsupported` [SACM23-XMI-014].
-- The new validation Error rule SACM-ID-002 can make a strict `xmi::write` refuse a
-  document it wrote before: one holding an id that is not an NCName, such as `1c` or
-  `a b`. Write it as held in tolerant mode [SACM23-VAL-020].
-- The new validation Error rule SACM-MULT-001 for MultiLangStrings can make a strict
-  `xmi::write` refuse a document: one with an empty `content` or `key`, two values in
-  one language, or a TaggedValue without a `key`. Write it as held in tolerant mode
-  [SACM23-VAL-010].
-- The new validation Error rule SACM-ID-003 can make a strict `xmi::write` refuse a
-  document it wrote before: one where two elements hold the same non-empty `gid`. Write
-  it as held in tolerant mode [SACM23-VAL-002].
-- The new validation Error rule SACM-PKG-001 can make a strict `xmi::write` refuse a
-  document it wrote before: one with an ArgumentPackage that nests a plain
-  ArgumentPackage and also holds a Claim or another argumentation element. Write it as
-  held in tolerant mode [SACM23-VAL-012].
-- The new validation Error rule SACM-REF-001 can make a strict `xmi::write` refuse a
-  document: one with a `citedElement` or `abstractForm` that names no element. Write it
-  as held in tolerant mode [SACM23-VAL-003].
-- The new validation Error rule SACM-CITE-001 can make a strict `xmi::write` refuse a
-  document: one with a `citedElement` on an element whose `isCitation` is not true
-  [SACM23-VAL-007].
-- The new validation Error rule SACM-ABS-001 can make a strict `xmi::write` refuse a
-  document: one with an `abstractForm` on an element whose `isAbstract` is true. Its
-  Warnings do not refuse [SACM23-VAL-008].
-- The new validation Error rule SACM-MULT-001 for asserted relationships can make a
-  strict `xmi::write` refuse a document: one with an asserted relationship that has no
-  `source` or no `target`. A tolerant `xmi::write` still writes it as held
-  [SACM23-VAL-005].
+- A strict `xmi::write` refuses a document holding an id that is not an NCName, such as
+  `1c` or `a b`, as `WriteError::Invalid` with SACM-ID-002, a schema error. Write it as
+  held in tolerant mode [SACM23-VAL-020].
+- A strict `xmi::write` refuses a document with a reference that names no `xmi:id` the
+  output writes, as `WriteError::Invalid` with SACM-REF-001, a schema error. Write it as
+  held in tolerant mode [SACM23-VAL-003].
 - `xmi::read` reads `ArgumentReasoning`, `AssertedInference` and `AssertedContext` in an
   `ArgumentPackage`, which it refused as `Unsupported` before. `ReadError::RepeatedValue`
   for `metaClaim` or `source` given both as an attribute and as elements says so

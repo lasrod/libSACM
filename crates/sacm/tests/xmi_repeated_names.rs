@@ -3,11 +3,12 @@
 //! ADR 0021 amendments 1 and 2).
 //!
 //! A `ModelElement` given two or more `name` elements in no namespace is refused
-//! in both modes as `ReadError::RepeatedValue` (SACM-MULT-001) with property
+//! in strict mode as `ReadError::RepeatedValue` (SACM-MULT-001) with property
 //! `name`, even when the names are equal. `element` is the owner, `locations()`
 //! the start tag of every `name` in document order, and `location()` the
 //! second. Each later `name` is checked in full first, so a malformed later
-//! name is refused as its own defect.
+//! name is refused as its own defect. A tolerant read keeps the first name
+//! and preserves the rest, with SACM-MULT-001 as a Warning (ADR 0035).
 //!
 //! Expected locations are marked in the input with [`MARK`] (U+2038), which
 //! the test removes before reading, and are counted here: lines end at LF,
@@ -20,8 +21,6 @@ use sacm::model::{ElementId, SacmElement};
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput};
 
 const ROW: &str = "SACM23-XMI-021";
-
-const MODES: [Mode; 2] = [Mode::Strict, Mode::Tolerant];
 
 /// Marks, in a test input, where a refusal or an occurrence is expected.
 const MARK: char = '\u{2038}';
@@ -104,24 +103,17 @@ fn read(mode: Mode, input: &str) -> Result<ReadOutput, ReadError> {
     xmi::read(input.as_bytes(), &ReadOptions::default().with_mode(mode))
 }
 
-/// Reads `input` in both modes, which the test expects to be refused the same
-/// in both, and returns the refusal.
+/// Reads `input` in strict mode, which the test expects to refuse it, and
+/// returns the refusal. A tolerant read keeps what a strict read refuses
+/// here (LIB-COMPAT-001, ADR 0035).
 fn refused(what: &str, input: &str) -> ReadError {
-    let mut errors = Vec::new();
-    for mode in MODES {
-        match read(mode, input) {
-            Ok(output) => panic!(
-                "{ROW}: {what}: {mode:?} read returned a document of {} elements for {input:?}",
-                output.document().element_count()
-            ),
-            Err(error) => errors.push(error),
-        }
+    match read(Mode::Strict, input) {
+        Ok(output) => panic!(
+            "{ROW}: {what}: a strict read returned a document of {} elements for {input:?}",
+            output.document().element_count()
+        ),
+        Err(error) => error,
     }
-    assert_eq!(
-        errors[0], errors[1],
-        "{ROW}: {what}: the modes refuse differently"
-    );
-    errors.swap_remove(0)
 }
 
 /// Asserts that `template`, read in both modes, is `RepeatedValue` for the
@@ -168,7 +160,7 @@ fn assert_repeated_name(what: &str, template: &str, owner: &str) -> ReadError {
     error
 }
 
-/// Asserts that `template`, read in both modes, is refused at its one mark
+/// Asserts that `template`, read in strict mode, is refused at its one mark
 /// with a refusal `is_expected` accepts, and is not `RepeatedValue` for
 /// `name`.
 fn assert_refused_at_mark(
@@ -252,7 +244,7 @@ fn assert_preserved_at_mark(what: &str, template: &str, holder: &str, name: Opti
 // --- Item 1: two names -------------------------------------------------------
 
 #[test]
-fn sacm23_xmi_021_two_names_on_a_root_or_a_child_are_repeated_value_in_both_modes() {
+fn sacm23_xmi_021_two_names_on_a_root_or_a_child_are_repeated_value_in_strict_mode() {
     let cases = [
         (
             "two different names on a root",

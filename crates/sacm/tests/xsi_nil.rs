@@ -16,7 +16,7 @@
 //!
 //! "Reads as omitted" is `==` to the same file without the element. The
 //! refusal of a nil element with content is checked by its location, in both
-//! modes; its variant is the implementer's (the lead confirms).
+//! modes; its variant is the builder's (the lead confirms).
 //!
 //! Expected locations are marked in the input with [`MARK`] (U+2038), which
 //! the test removes before reading. Inputs end lines with LF only.
@@ -157,24 +157,17 @@ fn read_ok(what: &str, input: &str) -> Document {
     documents.swap_remove(0)
 }
 
-/// Reads `input` in both modes, which the test expects to be refused the same
-/// in both, and returns the refusal.
+/// Reads `input` in strict mode, which the test expects to refuse it, and
+/// returns the refusal. A tolerant read keeps what a strict read refuses
+/// here (LIB-COMPAT-001, ADR 0035).
 fn refused(what: &str, input: &str) -> ReadError {
-    let mut errors = Vec::new();
-    for mode in MODES {
-        match read(mode, input) {
-            Ok(output) => panic!(
-                "{ROW}: {what}: a {mode:?} read returned a document of {} elements for {input:?}",
-                output.document().element_count()
-            ),
-            Err(error) => errors.push(error),
-        }
+    match read(Mode::Strict, input) {
+        Ok(output) => panic!(
+            "{ROW}: {what}: a strict read returned a document of {} elements for {input:?}",
+            output.document().element_count()
+        ),
+        Err(error) => error,
     }
-    assert_eq!(
-        errors[0], errors[1],
-        "{ROW}: {what}: the modes refuse differently"
-    );
-    errors.swap_remove(0)
 }
 
 /// Asserts that `input` reads in both modes and keeps one construct as
@@ -244,7 +237,7 @@ fn assert_preserved_at_mark(what: &str, template: &str) {
     assert_preserved_at(what, &input, marks[0], holder);
 }
 
-/// Reads `template` without its one mark in both modes and returns the
+/// Reads `template` without its one mark in strict mode and returns the
 /// refusal, which the test expects at the mark.
 fn refused_at_mark(what: &str, template: &str) -> ReadError {
     let (input, marks) = marked(template);

@@ -138,3 +138,18 @@ preserved.
   defect.
 - **Holding fragments as raw XML text.** A raw string cannot be compared or re-declared
   correctly once prefixes move.
+
+## Amendment 1 (2026-11-16): tolerant read keeps more; document-level content (ADR 0035)
+
+- **What stays refused:** this section now applies to a strict read. A tolerant read keeps
+  conforming content not read yet, with SACM-XMI-014 (SACM-XMI-007 for a cross-document
+  `href`), and the other strict refusals as ADR 0035 D1 states.
+- **Wrapper-level content:** the rejected alternative "Preserving wrapper-level content" is
+  reversed by ADR 0035 D3. A document holds preserved content outside its elements.
+- **The prefix exception:** a preserved attribute whose prefix binds `sacm` or `xmi` to
+  another URI is kept in tolerant mode. Its namespace URI and local name are kept, and the
+  prefix is replaced by the first `nsN` unbound at the holder. This is the one place a
+  prefix is not kept exactly.
+- **P8:** it now reads "checked before the schema check".
+
+*Amendment 1 status: accepted (the maintainer, 2026-11-16).*

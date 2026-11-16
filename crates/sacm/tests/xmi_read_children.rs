@@ -67,10 +67,15 @@ const DEADLINE: Duration = Duration::from_secs(5);
 /// `xmi::read` with the default options, on a worker thread. Fails the test
 /// when the read panics or does not return within [`DEADLINE`].
 fn read(input: &[u8]) -> Result<ReadOutput, ReadError> {
+    read_with(input, ReadOptions::default())
+}
+
+/// `xmi::read` with `options`, on a worker thread, as [`read`].
+fn read_with(input: &[u8], options: ReadOptions) -> Result<ReadOutput, ReadError> {
     let owned = input.to_vec();
     let (sender, receiver) = mpsc::channel();
     thread::spawn(move || {
-        let _ = sender.send(xmi::read(&owned, &ReadOptions::default()));
+        let _ = sender.send(xmi::read(&owned, &options));
     });
     match receiver.recv_timeout(DEADLINE) {
         Ok(result) => result,
@@ -142,16 +147,19 @@ fn refused(what: impl Into<String>, template: impl Into<String>) -> Refused {
     }
 }
 
-/// Reads every case and fails, listing each case that is not refused as
-/// `Unsupported` at its mark, with no document.
+/// Reads every case in strict mode and fails, listing each case that is not
+/// refused as `Unsupported` at its mark, with no document.
 fn assert_all_unsupported_at_mark(what: &str, cases: &[Refused]) {
     assert_all_refused_at_mark(what, cases, "Unsupported", |error| {
         matches!(error, ReadError::Unsupported { .. }) && error.code().is_none()
     });
 }
 
-/// Reads every case and fails, listing each case that is not refused at its
-/// mark with a refusal that `is_expected` accepts, named `expected`.
+/// Reads every case in strict mode and fails, listing each case that is not
+/// refused at its mark with a refusal that `is_expected` accepts, named
+/// `expected`. A tolerant read keeps what a strict read refuses, except a
+/// duplicate id and the other refusals of both modes (LIB-COMPAT-001,
+/// ADR 0035).
 fn assert_all_refused_at_mark(
     what: &str,
     cases: &[Refused],
@@ -162,7 +170,10 @@ fn assert_all_refused_at_mark(
     let mut failures = Vec::new();
     for case in cases {
         let (input, at) = marked(&case.template);
-        match read(input.as_bytes()) {
+        match read_with(
+            input.as_bytes(),
+            ReadOptions::default().with_mode(Mode::Strict),
+        ) {
             Ok(output) => failures.push(format!(
                 "{}: a document of {} elements was returned for {input:?}",
                 case.what,

@@ -1,22 +1,22 @@
 {
   "$comment": "Where each project subagent may write with Write/Edit/MultiEdit/NotebookEdit. Enforced by agent_write_guard.py. Paths are repository-relative globs ('*' = one path segment, '**' = any depth). 'deny' wins over 'allow'. An empty 'allow' means read-only. Agents not listed here (and the main session) are left to the normal permission flow. Bash is NOT covered; the agent definitions prohibit writing through it. No agent may write the guard itself, this file or .claude/settings.json (ADR 0006, amendment 1).",
   "agents": {
-    "sacm-researcher": { "allow": [] },
-    "sacm-architect": { "allow": [] },
-    "sacm-verifier": { "allow": [] },
-    "matrix-steward": { "allow": [] },
-    "sacm-docs-reviewer": { "allow": [] },
-    "sacm-test-engineer": {
+    "sacm-verifier": {
+      "allow": []
+    },
+    "matrix-steward": {
+      "allow": []
+    },
+    "sacm-designer": {
+      "allow": []
+    },
+    "sacm-builder": {
       "allow": [
         "crates/*/tests/**",
         "crates/*/benches/**",
         "fuzz/**",
         "xtask/tests/**",
-        ".claude/hooks/test_*.py"
-      ]
-    },
-    "sacm-implementer": {
-      "allow": [
+        ".claude/hooks/test_*.py",
         "crates/*/src/**",
         "crates/*/examples/**",
         "crates/*/Cargo.toml",
@@ -27,9 +27,14 @@
         "Cargo.lock",
         "docs/**",
         "README.md",
-        "CHANGELOG.md"
+        "CHANGELOG.md",
+        "target/scratch/**"
       ],
-      "deny": ["docs/matrix/**", "docs/verification/**", "docs/adr/**"]
+      "deny": [
+        "docs/matrix/**",
+        "docs/verification/**",
+        "docs/adr/**"
+      ]
     }
   }
 }

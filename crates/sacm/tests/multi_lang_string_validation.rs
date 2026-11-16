@@ -19,7 +19,7 @@ use sacm::compare::semantic_compare;
 use sacm::diagnostic::{Code, Diagnostic, Severity};
 use sacm::model::{Document, ElementId, LangString, MultiLangString};
 use sacm::validation;
-use sacm::xmi::{self, Mode, ReadOptions, WriteError, WriteOptions};
+use sacm::xmi::{self, Mode, ReadOptions, WriteOptions};
 
 const ROW: &str = "SACM23-VAL-010";
 
@@ -378,10 +378,12 @@ fn sacm23_val_010_findings_are_in_diagnostic_order_and_deterministic() {
     }
 }
 
-// --- Item 5: kept, refused strictly, written tolerantly ------------------------------------
+// --- Item 5: kept, and written as held in both modes --------------------------------------
 
+/// A strict write checks schema validity only (ADR 0035 D4), so these
+/// validation Errors do not refuse it.
 #[test]
-fn sacm23_val_010_values_are_kept_a_strict_save_refuses_and_a_tolerant_save_writes_as_held() {
+fn sacm23_val_010_values_are_kept_and_a_strict_and_a_tolerant_write_keep_them_as_held() {
     let input = in_claim(
         "<description xmi:id=\"d\"><content><value lang=\"en\" content=\"a\"/>\
          <value lang=\"en\" content=\"b\"/></content></description>\
@@ -406,23 +408,18 @@ fn sacm23_val_010_values_are_kept_a_strict_save_refuses_and_a_tolerant_save_writ
         ),
         "{ROW}: the repeated values are not all kept"
     );
-    let error = match xmi::write(&doc, &WriteOptions::default()) {
-        Ok(text) => panic!("{ROW}: a strict save wrote the document:\n{text}"),
-        Err(error) => error,
+    let strict = match xmi::write(&doc, &WriteOptions::default()) {
+        Ok(text) => text,
+        Err(error) => panic!("{ROW}: a strict save refused: {error:?}"),
     };
-    assert!(
-        matches!(&error, WriteError::Invalid { .. }),
-        "{ROW}: a strict save is not WriteError::Invalid: {error:?}"
-    );
-    assert_eq!(
-        error.diagnostics(),
-        found.as_slice(),
-        "{ROW}: the strict refusal does not hold these diagnostics"
-    );
     let text = match xmi::write(&doc, &WriteOptions::default().with_mode(Mode::Tolerant)) {
         Ok(text) => text,
         Err(error) => panic!("{ROW}: a tolerant save refused: {error:?}"),
     };
+    assert_eq!(
+        strict, text,
+        "{ROW}: the strict save is not the tolerant one"
+    );
     let back = read("written tolerantly", &text);
     assert_eq!(
         semantic_compare(&doc, &back),

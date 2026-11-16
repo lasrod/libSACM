@@ -4,9 +4,12 @@
 //! A strict `xmi::write` of a document holding preserved content
 //! (LIB-COMPAT-003), however it was read, fails with
 //! `WriteError::PreservedContent { elements }`: SACM-XMI-006, no element, no
-//! diagnostics, each holder once in `Document::elements()` order. The write
-//! checks run in the order `NoRoot`, `PreservedContent`, `Invalid`,
-//! unrepresentable characters. A tolerant write writes the content.
+//! diagnostics, each holder once in `Document::elements()` order, and no
+//! element when only the document holds content outside its elements. The
+//! write checks run in the order `NoRoot`, `PreservedContent`, `Invalid`
+//! (the schema check: SACM-ID-002 and SACM-REF-001, never `validate`),
+//! unrepresentable characters (ADR 0035 D4). A tolerant write writes the
+//! content.
 //!
 //! What preserved content is, and its exact tolerant output, are
 //! LIB-COMPAT-003's, in `preserved_content.rs`.
@@ -200,26 +203,109 @@ fn sacm23_xmi_008_a_strict_write_of_the_worked_fixture_lists_every_holder_in_doc
     }
 }
 
+/// The writer cannot show that content it did not read is schema-valid, so
+/// preserved content is refused before the schema check (ADR 0035 D4).
 #[test]
-fn sacm23_xmi_008_preserved_content_is_refused_before_validation() {
+fn sacm23_xmi_008_preserved_content_is_refused_before_the_schema_check() {
     let doc = read_in("the worked fixture", Mode::Tolerant, WORKED);
-    let errors: Vec<Code> = validation::validate(&doc)
+    let error = strict_err("the worked fixture", &doc);
+    assert_refused_for("the worked fixture", &error, &["p", "c1", "c2", "c3"]);
+    // A holder and a schema error: a reference naming no xmi:id
+    // (SACM-REF-001), and an xmi:id that is no NCName (SACM-ID-002).
+    let input = fill(&[
+        ("C1_ATTR", " v:w=\"1\""),
+        ("C2_ATTR", " isCitation=\"true\" citedElement=\"zz\""),
+        ("NOTE_ATTR", " gid=\"g\""),
+    ])
+    .replace("xmi:id=\"n1\"", "xmi:id=\"1n\"");
+    let doc = read_in(
+        "a holder and two schema errors",
+        Mode::Tolerant,
+        input.as_bytes(),
+    );
+    let schema: Vec<Code> = validation::validate(&doc)
         .iter()
-        .filter(|diagnostic| diagnostic.severity() == Severity::Error)
+        .filter(|found| found.severity() == Severity::Error)
         .map(sacm::diagnostic::Diagnostic::code)
+        .filter(|&code| code == Code::REF_DANGLING || code == Code::ID_INVALID)
         .collect();
     assert_eq!(
-        errors,
-        [Code::MULTIPLICITY_VIOLATION],
-        "{ROW}: setup: the worked fixture does not validate with c2's missing name as its Error"
+        schema,
+        [Code::ID_INVALID, Code::REF_DANGLING],
+        "{ROW}: setup: the document does not have the two schema errors"
     );
-    let error = strict_err("the worked fixture", &doc);
+    let error = strict_err("a holder and two schema errors", &doc);
     assert!(
         !matches!(error, WriteError::Invalid { .. }),
-        "{ROW}: the strict write reports the validation Error before the preserved content: \
-         {error:?}"
+        "{ROW}: the strict write reports a schema error before the preserved content: {error:?}"
     );
-    assert_refused_for("the worked fixture", &error, &["p", "c1", "c2", "c3"]);
+    assert_refused_for("a holder and two schema errors", &error, &["c1"]);
+}
+
+/// Content that is outside every element (on or under `xmi:XMI`) is
+/// refused with no element listed (ADR 0035 D3, D4).
+#[test]
+fn sacm23_xmi_008_only_document_level_content_is_refused_with_no_elements() {
+    let root = "<sacm:ArgumentPackage xmi:id=\"p\"><name content=\"P\"/></sacm:ArgumentPackage>";
+    let wrapper = |attributes: &str, body: &str| {
+        format!(
+            "<xmi:XMI xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" \
+             xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\" xmlns:v=\"urn:v\"{attributes}>\
+             {body}</xmi:XMI>"
+        )
+    };
+    for (what, input) in [
+        ("a vendor attribute on xmi:XMI", wrapper(" v:w=\"1\"", root)),
+        (
+            "an xmi:Documentation beside the root",
+            wrapper("", &format!("<xmi:Documentation/>{root}")),
+        ),
+        (
+            "a TerminologyPackage root beside the root",
+            wrapper(
+                "",
+                &format!(
+                    "{root}<sacm:TerminologyPackage xmi:id=\"t\"><name content=\"T\"/>\
+                     </sacm:TerminologyPackage>"
+                ),
+            ),
+        ),
+    ] {
+        let doc = read_in(what, Mode::Tolerant, input.as_bytes());
+        assert!(
+            doc.elements()
+                .all(|element| !element.has_preserved_content()),
+            "{ROW}: {what}: setup: an element holds preserved content"
+        );
+        let error = strict_err(what, &doc);
+        assert!(
+            matches!(&error, WriteError::PreservedContent { elements, .. } if elements.is_empty()),
+            "{ROW}: {what}: the strict write is not PreservedContent with no element: {error:?}"
+        );
+        assert_eq!(
+            (error.code(), error.element(), error.diagnostics()),
+            (Some(Code::XMI_STRICT_SAVE_REFUSED), None, &[][..]),
+            "{ROW}: {what}: not SACM-XMI-006 with no element and no diagnostics"
+        );
+        assert_eq!(
+            error.to_string(),
+            "the document cannot be written in strict mode: the document holds preserved \
+             content outside its elements",
+            "{ROW}: {what}: the Display"
+        );
+        write_ok(what, &doc, &tolerant());
+    }
+    // With an element that holds some too, the elements are listed.
+    let input = wrapper(
+        " v:w=\"1\"",
+        "<sacm:ArgumentPackage xmi:id=\"p\" v:x=\"2\"><name content=\"P\"/></sacm:ArgumentPackage>",
+    );
+    let doc = read_in("the wrapper and p", Mode::Tolerant, input.as_bytes());
+    assert_refused_for(
+        "the wrapper and p",
+        &strict_err("the wrapper and p", &doc),
+        &["p"],
+    );
 }
 
 #[test]
@@ -305,22 +391,22 @@ fn sacm23_xmi_008_display_names_one_holder_or_counts_several_and_names_the_first
     assert_eq!(
         strict_err("one holder", &doc).to_string(),
         "the document cannot be written in strict mode: the element \"c1\" holds preserved \
-         content that is not SACM 2.3",
+         content",
         "{ROW}: the refusal of one holder does not display the pinned text"
     );
     let two = fill(&[("C2_ATTR", " v:w=\"2\""), ("C1_CHILD", "\n    <v:x/>")]);
     let doc = read_in("two holders", Mode::Tolerant, two.as_bytes());
     assert_eq!(
         strict_err("two holders", &doc).to_string(),
-        "the document cannot be written in strict mode: 2 elements hold preserved content that \
-         is not SACM 2.3, the first is \"c1\"",
+        "the document cannot be written in strict mode: 2 elements hold preserved content, \
+         the first is \"c1\"",
         "{ROW}: the refusal of two holders does not display the pinned text"
     );
     let doc = read_in("the worked fixture", Mode::Tolerant, WORKED);
     assert_eq!(
         strict_err("the worked fixture", &doc).to_string(),
-        "the document cannot be written in strict mode: 4 elements hold preserved content that \
-         is not SACM 2.3, the first is \"p\"",
+        "the document cannot be written in strict mode: 4 elements hold preserved content, \
+         the first is \"p\"",
         "{ROW}: the refusal of the worked fixture does not display the pinned text"
     );
 }
@@ -407,8 +493,9 @@ fn sacm23_xmi_008_preserved_content_is_refused_before_an_unrepresentable_charact
 }
 
 #[test]
-fn sacm23_xmi_008_without_preserved_content_validation_comes_before_an_unrepresentable_character() {
-    // c2 cites an id no element has: SACM-REF-001, an Error.
+fn sacm23_xmi_008_without_preserved_content_the_schema_check_comes_before_an_unrepresentable_character()
+ {
+    // c2 cites an id no element has: SACM-REF-001, a schema error.
     let input = fill(&[("C2_ATTR", " isCitation=\"true\" citedElement=\"zz\"")]);
     let mut doc = read_in("a dangling reference", Mode::Tolerant, input.as_bytes());
     if let Err(error) = edit::apply(&mut doc, SetName::new("c1", LangString::new("bad\u{1}"))) {
@@ -417,9 +504,9 @@ fn sacm23_xmi_008_without_preserved_content_validation_comes_before_an_unreprese
     let error = strict_err("a dangling reference and a control character", &doc);
     assert!(
         matches!(&error, WriteError::Invalid { diagnostics, .. }
-            if diagnostics.iter().any(|found| found.code() == Code::REF_DANGLING)),
-        "{ROW}: with a validation Error and a control character, a strict write is not \
-         Invalid: {error:?}"
+            if diagnostics.iter().map(sacm::diagnostic::Diagnostic::code).eq([Code::REF_DANGLING])),
+        "{ROW}: with a schema error and a control character, a strict write is not Invalid \
+         with the one SACM-REF-001: {error:?}"
     );
     let error = match xmi::write(&doc, &tolerant()) {
         Ok(text) => panic!("{ROW}: a tolerant write wrote U+0001:\n{text}"),
@@ -461,6 +548,7 @@ fn sacm23_xmi_008_a_tolerant_write_of_the_same_documents_succeeds_and_keeps_the_
 #[test]
 fn sacm23_xmi_008_strict_output_without_preserved_content_is_unchanged() {
     let mut written = 0_usize;
+    let mut drafts = 0_usize;
     for name in GOLDEN {
         let path = format!("{GOLDEN_DIR}{name}");
         let expected = std::fs::read_to_string(&path)
@@ -472,32 +560,26 @@ fn sacm23_xmi_008_strict_output_without_preserved_content_is_unchanged() {
                     .all(|element| !element.has_preserved_content()),
                 "{ROW}: the golden file {name} reads with preserved content"
             );
-            let has_error = validation::validate(&doc)
+            // Some golden files are drafts (unnamed packages): a strict write
+            // checks schema validity only, so it writes them too (ADR 0035).
+            if validation::validate(&doc)
                 .iter()
-                .any(|diagnostic| diagnostic.severity() == Severity::Error);
-            if has_error {
-                // Some golden files are drafts (unnamed packages): a strict
-                // write still refuses them for validation, never for content.
-                let error = strict_err(name, &doc);
-                assert!(
-                    matches!(error, WriteError::Invalid { .. }),
-                    "{ROW}: the strict write of the draft golden file {name}, read {mode:?}, is \
-                     not Invalid: {error:?}"
-                );
-            } else {
-                assert_eq!(
-                    write_ok(name, &doc, &strict()),
-                    expected,
-                    "{ROW}: the strict write of the golden file {name}, read {mode:?}, is not \
-                     the golden file"
-                );
-                written += 1;
+                .any(|diagnostic| diagnostic.severity() == Severity::Error)
+            {
+                drafts += 1;
             }
+            assert_eq!(
+                write_ok(name, &doc, &strict()),
+                expected,
+                "{ROW}: the strict write of the golden file {name}, read {mode:?}, is not the \
+                 golden file"
+            );
+            written += 1;
         }
     }
     assert!(
-        written > 0,
-        "{ROW}: setup: no golden file writes in strict mode"
+        written == GOLDEN.len() * MODES.len() && drafts > 0,
+        "{ROW}: setup: not every golden file was written ({written}), or none is a draft"
     );
 }
 

@@ -49,7 +49,8 @@ sacm
 │   ├── input        bytes to a well-formed XML tree, or a refusal (ADR 0015, 0016)
 │   ├── roots        the interchange roots and the package content under them (ADR 0016, 0021, 0024)
 │   ├── preserve     non-SACM content kept as written (ADR 0033)
-│   ├── refusal      the one list of what read refuses as Unsupported (ADR 0033)
+│   ├── refusal      the one list of what a strict read refuses as Unsupported, and what a
+│   │                tolerant read does with each entry (ADR 0033, 0035)
 │   ├── namespaces   the SACM and XMI namespace pins (ADR 0017)
 │   └── output       the writer: plan, then one deterministic form (ADR 0017, 0022)
 ├── validation     validate: clause-level rules reported as diagnostics (ADR 0018)
@@ -73,7 +74,7 @@ Document ──► validation::validate ──► Vec<Diagnostic>
 Document ──► edit::apply(op)      ──► Result<Mutation, EditError>         (atomic)
 Document ──► edit::preview(op)    ──► Result<Preview, EditError>          (edit::apply_preview applies it)
 Document ──► edit::apply_all(ops) ──► Result<BatchMutation, BatchError>   (all or nothing, ADR 0032)
-Document ──► xmi::write           ──► Result<String, WriteError>          (deterministic; strict by default: refuses a validation Error, ADR 0022)
+Document ──► xmi::write           ──► Result<String, WriteError>          (deterministic; strict by default: schema-valid output only, ADR 0035)
 ```
 
 - **Model** ([ADR 0010](adr/0010-document-model.md)): a `Document` owns its root
@@ -85,7 +86,15 @@ Document ──► xmi::write           ──► Result<String, WriteError>    
   never raw storage.
   Content that is not SACM 2.3 where it stands is kept, as written, as preserved content
   of its element ([ADR 0033](adr/0033-preserved-content.md)), so a strict save can find
-  and refuse it.
+  and refuse it. A tolerant read, the default, keeps everything else a strict read
+  refuses the same way, with a Warning, so it opens every well-formed file with SACM 2.3
+  package roots; content on or under `xmi:XMI` is held by the document, outside its
+  elements ([ADR 0035](adr/0035-tolerant-read-and-schema-only-save.md)).
+- **Modes** ([ADR 0035](adr/0035-tolerant-read-and-schema-only-save.md)): a strict read
+  refuses what it does not read; a tolerant read keeps it. A strict write checks schema
+  validity only (preserved content, an `xmi:id` that is no `NCName`, a reference to no
+  written `xmi:id`) and never runs `validate`, so a draft saves strictly; an application
+  calls `validate` for model checks.
 - **Validation:** structural invariants hold after every edit; content constraints are
   reported by `validation::validate` (D-VAL-LAYER). Severity follows the clause's modal verb
   (D-SEV).

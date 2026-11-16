@@ -67,12 +67,16 @@ use super::{
 ///
 /// **Preserved content** is what [`xmi::read`](crate::xmi::read) kept, as
 /// written, because it is not SACM 2.3 where it stands, such as a vendor
-/// attribute or child element (ADR 0033): each element that holds some says
-/// so ([`SacmElement::has_preserved_content`]). It has no API of its own
-/// besides that; [`xmi::write`](crate::xmi::write) writes it back in
-/// tolerant mode. The ids of its elements stay in the document's id space:
-/// [`get`](Self::get) does not find them, no edit can take or name one, and
-/// deleting the element that holds them frees them.
+/// attribute or child element (ADR 0033), or, in tolerant mode, because a
+/// strict read refuses it, such as a value that is no literal or an element
+/// of a kind not read yet (ADR 0035): each element that holds some says so
+/// ([`SacmElement::has_preserved_content`]), and the document holds what
+/// is on or under `xmi:XMI` outside its elements, placed among the roots
+/// ([`has_preserved_content`](Self::has_preserved_content) tells both). It
+/// has no API of its own besides that; [`xmi::write`](crate::xmi::write)
+/// writes it back in tolerant mode. The ids of its elements stay in the
+/// document's id space: [`get`](Self::get) does not find them, no edit can
+/// take or name one, and deleting the element that holds them frees them.
 ///
 /// Cloning a document copies all of it, preserved content included, and the
 /// counters that generated ids continue from; the copy is independent of the
@@ -90,8 +94,9 @@ use super::{
 /// an `ArgumentGroup`'s `argumentElement` and an `ArtifactGroup`'s
 /// `artifactElement`, in order), names, the
 /// ids of names, `content`s and `key`s with their ids,
-/// `assertionDeclaration`s, the order of roots and children, and each
-/// element's preserved content are compared. Formatting, attribute order and
+/// `assertionDeclaration`s, the order of roots and children, each element's
+/// preserved content and the document's own, outside its elements, are
+/// compared. Formatting, attribute order and
 /// namespace prefixes are not held, except in preserved content, which is
 /// compared exactly. `==` is order-sensitive, for the ids of the
 /// multi-valued ends too; see [`crate::compare`] to ignore order.
@@ -165,6 +170,11 @@ pub struct Document {
     /// The state of the document within the process (ADR 0031): fresh for
     /// a new document and after every successful edit, copied by `Clone`.
     revision: Revision,
+    /// The preserved content outside every element (ADR 0035 D3): the
+    /// attributes of the `xmi:XMI` element, and its children that are no
+    /// root read, such as `xmi:Documentation` or a root of a kind not read
+    /// yet, placed among the roots. `None` when it holds none.
+    preserved: Option<Box<Preserved>>,
 }
 
 impl Default for Document {
@@ -178,6 +188,7 @@ impl Default for Document {
             other_ids: HashMap::new(),
             id_counters: BTreeMap::new(),
             revision: Revision::fresh(),
+            preserved: None,
         }
     }
 }
@@ -192,6 +203,9 @@ struct IdUse {
     /// Whether the owner holds the id in its preserved content (ADR 0033),
     /// rather than on a `name`, `content`, `key` or `value`.
     preserved: bool,
+    /// Whether the document's own preserved content, outside every element,
+    /// holds the id (ADR 0035 D3); `owner` is then `None`.
+    document: bool,
     /// How many references, of every element and end, hold the id.
     references: usize,
 }
@@ -199,7 +213,7 @@ struct IdUse {
 impl IdUse {
     /// Whether nothing uses the id any more, so its entry can go.
     fn is_unused(self) -> bool {
-        self.owner.is_none() && self.references == 0
+        self.owner.is_none() && !self.document && self.references == 0
     }
 }
 
@@ -758,15 +772,7 @@ impl Document {
         if preserved.is_empty() {
             return Ok(());
         }
-        let mut seen = BTreeSet::new();
-        for id in &preserved.ids {
-            if id.as_str().is_empty() {
-                return Err("an id of the preserved content is empty".to_owned());
-            }
-            if !seen.insert(id.as_str()) || self.is_id_in_use(id.as_str()) {
-                return Err(format!("the id {:?} is already in use", id.as_str()));
-            }
-        }
+        check_preserved_ids(self, &preserved)?;
         for id in &preserved.ids {
             let used = self.other_ids.entry(id.clone()).or_default();
             used.owner = Some(node);
@@ -1120,6 +1126,12 @@ impl Document {
                 node
             })
             .collect();
+        // Content outside every element keeps its place among the roots that
+        // survive (ADR 0035 D3).
+        if let Some(preserved) = self.preserved.as_mut() {
+            let kept: Vec<bool> = self.roots.iter().map(|&root| new(root).is_some()).collect();
+            preserved.shift(&kept);
+        }
         self.roots = self.roots.iter().filter_map(|&root| new(root)).collect();
         for node in self.index.values_mut() {
             if let Some(moved) = new(*node) {
@@ -1142,52 +1154,114 @@ impl Document {
             || self
                 .other_ids
                 .get(id)
-                .is_some_and(|used| used.owner.is_some())
+                .is_some_and(|used| used.owner.is_some() || used.document)
     }
 
     /// Whether the element `owner` holds, as preserved content, the
-    /// attribute named after `end` in no namespace: one that held no id, such
-    /// as `metaClaim=""` (ADR 0033).
-    pub(crate) fn has_preserved_end(&self, owner: &ElementId, end: ReferenceEnd) -> bool {
+    /// attribute `local` in no namespace, such as a reference end's
+    /// `metaClaim=""` that held no id (ADR 0033), or an `isAbstract="yes"`
+    /// that is no literal (ADR 0035).
+    pub(crate) fn has_preserved_attribute(&self, owner: &ElementId, local: &str) -> bool {
         self.index
             .get(owner)
             .and_then(|&node| self.nodes[node].preserved.as_deref())
-            .is_some_and(|preserved| preserved.has_unqualified(end.name()))
+            .is_some_and(|preserved| preserved.has_unqualified(local))
     }
 
-    /// Removes the attribute named after `end` in no namespace from the
-    /// preserved content of the element `owner`, if it holds one: an edit
-    /// that sets the end replaces it, so the element never holds the end
-    /// twice (ADR 0033). Such an attribute held no id, so it named no
-    /// reference to release. Changes nothing otherwise.
-    pub(crate) fn replace_preserved_end(&mut self, owner: &ElementId, end: ReferenceEnd) {
+    /// Removes the attribute `local` in no namespace from the preserved
+    /// content of the element `owner`, if it holds one: an edit that sets
+    /// the property of that name replaces it, so the element never holds the
+    /// property twice (ADR 0033, ADR 0035). The ids it named as a reference
+    /// are released. Changes nothing otherwise.
+    pub(crate) fn replace_preserved_attribute(&mut self, owner: &ElementId, local: &str) {
         let Some(&node) = self.index.get(owner) else {
             return;
         };
         let Some(preserved) = self.nodes[node].preserved.as_mut() else {
             return;
         };
-        preserved.remove_unqualified(end.name());
+        let released = preserved.remove_unqualified(local);
         if preserved.is_empty() {
             self.nodes[node].preserved = None;
         }
+        for id in &released {
+            self.release(id, |used| {
+                used.references = used.references.saturating_sub(1);
+            });
+        }
     }
 
-    /// Whether `id` is the `xmi:id` of an element of some element's
-    /// preserved content (ADR 0033): in the id space, though no element has
-    /// it and [`get`](Self::get) does not find it.
+    /// Whether `id` is the `xmi:id` of an element of preserved content, of
+    /// an element or of the document (ADR 0033, ADR 0035 D3): in the id
+    /// space, though no element has it and [`get`](Self::get) does not find
+    /// it.
     pub(crate) fn is_preserved_id(&self, id: &str) -> bool {
-        self.preserved_id_owner(id).is_some()
-    }
-
-    /// The element whose preserved content holds the `xmi:id` `id`, if one
-    /// does (ADR 0033).
-    pub(crate) fn preserved_id_owner(&self, id: &str) -> Option<SacmElement<'_>> {
         self.other_ids
             .get(id)
-            .filter(|used| used.preserved)
-            .and_then(|used| used.owner)
-            .map(|node| self.view(node))
+            .is_some_and(|used| (used.preserved && used.owner.is_some()) || used.document)
+    }
+
+    /// Whether the document holds preserved content anywhere: in an element
+    /// ([`SacmElement::has_preserved_content`]), or outside every element,
+    /// on or under the `xmi:XMI` element, such as `xsi:schemaLocation`, an
+    /// `xmi:Documentation` or a root of a kind this release does not read
+    /// yet (ADR 0035 D3). A strict [`xmi::write`](crate::xmi::write)
+    /// refuses a document that holds some
+    /// ([`WriteError::PreservedContent`](crate::xmi::WriteError::PreservedContent)).
+    ///
+    /// ```
+    /// use sacm::xmi::{self, ReadOptions};
+    ///
+    /// let input = br#"<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
+    ///     xmlns:sacm="http://www.omg.org/spec/SACM/20220301">
+    ///   <xmi:Documentation exporter="tool"/>
+    ///   <sacm:ArgumentPackage xmi:id="p"><name content="P"/></sacm:ArgumentPackage>
+    /// </xmi:XMI>"#;
+    /// let document = xmi::read(input, &ReadOptions::default())?.into_document();
+    /// assert!(document.has_preserved_content());
+    /// // No element holds it: the document does, outside its elements.
+    /// assert!(document.elements().all(|element| !element.has_preserved_content()));
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    #[must_use]
+    pub fn has_preserved_content(&self) -> bool {
+        self.preserved.is_some() || self.elements().any(SacmElement::has_preserved_content)
+    }
+
+    /// The preserved content outside every element, if the document holds
+    /// any (ADR 0035 D3).
+    pub(crate) fn document_preserved(&self) -> Option<&Preserved> {
+        self.preserved.as_deref()
+    }
+
+    /// Gives the document the preserved content `preserved` outside every
+    /// element (ADR 0035 D3), which it did not hold; on an error the
+    /// document is unchanged.
+    ///
+    /// The XMI reader keeps what the `xmi:XMI` element holds besides its
+    /// roots through it. The ids of the content join the document's id
+    /// space, and each id it may name counts as a reference, so that none is
+    /// generated. It refuses, with the reason, a document that holds such
+    /// content already, an empty id, an id given twice and an id already in
+    /// use. Empty content changes nothing.
+    pub(crate) fn set_document_preserved(&mut self, preserved: Preserved) -> Result<(), String> {
+        if self.preserved.is_some() {
+            return Err("the document holds preserved content already".to_owned());
+        }
+        if preserved.is_empty() {
+            return Ok(());
+        }
+        check_preserved_ids(self, &preserved)?;
+        for id in &preserved.ids {
+            let used = self.other_ids.entry(id.clone()).or_default();
+            used.document = true;
+        }
+        for id in &preserved.references {
+            let used = self.other_ids.entry(id.clone()).or_default();
+            used.references = used.references.saturating_add(1);
+        }
+        self.preserved = Some(Box::new(preserved));
+        Ok(())
     }
 
     /// Whether some reference, of any element and end, holds `id`.
@@ -1257,6 +1331,9 @@ impl Document {
             // Not compared: the revision identifies a state within the
             // process, not SACM content (ADR 0031).
             revision: _,
+            // Compared through `document_preserved`, as
+            // `Difference::DocumentPreservedContent` (ADR 0035 D3).
+            preserved: _,
         } = self;
         roots.iter().map(|&node| self.view(node))
     }
@@ -1268,6 +1345,21 @@ impl Document {
             node,
         }
     }
+}
+
+/// Checks that the ids of `preserved` can join the id space of `document`:
+/// none is empty, given twice or already in use.
+fn check_preserved_ids(document: &Document, preserved: &Preserved) -> Result<(), String> {
+    let mut seen = BTreeSet::new();
+    for id in &preserved.ids {
+        if id.as_str().is_empty() {
+            return Err("an id of the preserved content is empty".to_owned());
+        }
+        if !seen.insert(id.as_str()) || document.is_id_in_use(id.as_str()) {
+            return Err(format!("the id {:?} is already in use", id.as_str()));
+        }
+    }
+    Ok(())
 }
 
 /// Why an element of `kind` cannot hold `targets` in `end`, if it cannot:

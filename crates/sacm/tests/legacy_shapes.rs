@@ -174,24 +174,17 @@ fn read_plain(what: &str, input: &str) -> Document {
     documents.swap_remove(0)
 }
 
-/// Reads `input` in both modes, which the test expects to be refused the same
-/// in both, and returns the refusal.
+/// Reads `input` in strict mode, which the test expects to refuse it, and
+/// returns the refusal. A tolerant read keeps what a strict read refuses
+/// here (LIB-COMPAT-001, ADR 0035).
 fn refused(what: &str, input: &str) -> ReadError {
-    let mut errors = Vec::new();
-    for mode in MODES {
-        match read(mode, input) {
-            Ok(output) => panic!(
-                "{ROW}: {what}: a {mode:?} read returned a document of {} elements for {input:?}",
-                output.document().element_count()
-            ),
-            Err(error) => errors.push(error),
-        }
+    match read(Mode::Strict, input) {
+        Ok(output) => panic!(
+            "{ROW}: {what}: a strict read returned a document of {} elements for {input:?}",
+            output.document().element_count()
+        ),
+        Err(error) => error,
     }
-    assert_eq!(
-        errors[0], errors[1],
-        "{ROW}: {what}: the modes refuse differently"
-    );
-    errors.swap_remove(0)
 }
 
 /// Writes `doc` in `mode`, which the test expects to succeed.
@@ -882,7 +875,7 @@ fn lib_compat_008_white_space_only_text_is_no_shorthand() {
     clippy::too_many_lines,
     reason = "one flat table is easier to review than several"
 )]
-fn lib_compat_008_a_value_given_by_a_shorthand_and_the_standard_form_is_repeated_value_in_both_modes()
+fn lib_compat_008_a_value_given_by_a_shorthand_and_the_standard_form_is_repeated_value_in_strict_mode()
  {
     let cases = [
         (
@@ -1029,18 +1022,29 @@ fn lib_compat_008_a_second_name_given_as_text_is_a_repeated_name_in_tolerant_mod
     let (input, marks) = marked(&named(&format!(
         "{MARK}<name content=\"A\"/>{MARK}<name>x</name>"
     )));
-    let Err(error) = read(Mode::Tolerant, &input) else {
-        panic!("{ROW}: a second name given as text was read");
-    };
-    assert!(
-        matches!(&error, ReadError::RepeatedValue { element, property, .. }
-            if element.as_str() == "c1" && property == "name"),
-        "{ROW}: a second name given as text is not RepeatedValue for name: {error:?}"
-    );
+    // A tolerant read keeps the first name and preserves the second, with
+    // one SACM-MULT-001 Warning at it (LIB-COMPAT-001, ADR 0035).
+    let output = read_in("a second name given as text", Mode::Tolerant, &input);
+    let repeats: Vec<_> = output
+        .diagnostics()
+        .iter()
+        .filter(|found| found.code() == Code::MULTIPLICITY_VIOLATION)
+        .map(|found| (found.severity(), found.location()))
+        .collect();
     assert_eq!(
-        error.locations(),
-        marks.as_slice(),
-        "{ROW}: a second name given as text: the locations"
+        repeats,
+        [(Severity::Warning, Some(marks[1]))],
+        "{ROW}: a second name given as text is not one SACM-MULT-001 Warning at it: {:?}",
+        output.diagnostics()
+    );
+    let c1 = element("a second name given as text", output.document(), "c1");
+    assert_eq!(
+        (
+            c1.name().and_then(LangString::content),
+            c1.has_preserved_content()
+        ),
+        (Some("A"), true),
+        "{ROW}: a second name given as text: not the first name, with the second preserved"
     );
     assert!(
         read(Mode::Strict, &input).is_err(),
@@ -1743,7 +1747,7 @@ fn assert_preserved_at_mark(what: &str, template: &str) {
     assert_preserved_at(what, &input, marks[0], holder);
 }
 
-/// Reads `template` without its one mark in both modes and asserts that it
+/// Reads `template` without its one mark in strict mode and asserts that it
 /// is refused as `Unsupported`, with no code, at the mark.
 fn assert_unsupported_at_mark(what: &str, template: &str) {
     let (input, marks) = marked(template);

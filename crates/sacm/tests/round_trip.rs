@@ -125,9 +125,9 @@ fn read(bytes: &[u8]) -> Result<Document, String> {
         .map_err(|error| format!("does not read: {error} ({error:?})"))
 }
 
-/// Writes `doc` in tolerant mode, or says why not. Tolerant, because some
-/// fixtures are nameless and a strict write refuses a validation Error
-/// (LIB-COMPAT-007); both modes write the same bytes for a document both write.
+/// Writes `doc` in tolerant mode, or says why not. Tolerant, because a strict
+/// write refuses preserved content and schema errors (LIB-COMPAT-007, ADR 0035
+/// D4); both modes write the same bytes for a document both write.
 fn write(doc: &Document) -> Result<String, String> {
     xmi::write(doc, &WriteOptions::default().with_mode(Mode::Tolerant))
         .map_err(|error| format!("does not write: {error} ({error:?})"))
@@ -236,11 +236,14 @@ fn lib_rt_002_each_pending_fixture_is_still_refused_as_unsupported() {
     let row = "LIB-RT-002";
     for (pending, why) in PENDING {
         let path = Path::new(FIXTURES).join(pending);
-        match xmi::read(&bytes_of(row, &path), &ReadOptions::default()) {
+        // A tolerant read keeps what this release does not read yet, as
+        // preserved content (ADR 0035); a strict read still refuses it.
+        let strict = ReadOptions::default().with_mode(Mode::Strict);
+        match xmi::read(&bytes_of(row, &path), &strict) {
             Err(ReadError::Unsupported { .. }) => {}
             Ok(_) => panic!(
-                "{row}: the pending file {pending} now reads; take it off the pending list \
-                 (pending because it {why}) so that it joins the round trip"
+                "{row}: the pending file {pending} now reads strictly; take it off the pending \
+                 list (pending because it {why}) so that it joins the round trip"
             ),
             Err(error) => panic!(
                 "{row}: the pending file {pending} is refused, but not as Unsupported: \

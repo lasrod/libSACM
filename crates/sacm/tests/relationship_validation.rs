@@ -18,7 +18,7 @@ use std::path::Path;
 use sacm::diagnostic::{Code, Diagnostic, Severity};
 use sacm::model::{AssertionDeclaration, Document, ElementId, ElementKind, LangString};
 use sacm::validation;
-use sacm::xmi::{self, Mode, ReadOptions, WriteError, WriteOptions};
+use sacm::xmi::{self, Mode, ReadOptions, WriteOptions};
 
 const ROW: &str = "SACM23-VAL-005";
 
@@ -280,8 +280,11 @@ fn sacm23_val_005_a_relationship_with_a_source_and_a_target_gives_none_whatever_
 
 // --- Item 4: saving ---------------------------------------------------------------------------
 
+/// A strict write checks schema validity only (ADR 0035 D4; XMI 2.5.1
+/// §7.8.2: the default schema ignores multiplicities), so a missing source
+/// or target does not refuse it.
 #[test]
-fn sacm23_val_005_a_strict_write_refuses_and_a_tolerant_write_keeps_the_relationship_as_read() {
+fn sacm23_val_005_a_strict_and_a_tolerant_write_keep_the_relationship_as_read() {
     for kind in [ElementKind::AssertedInference, ElementKind::AssertedContext] {
         for (what, attributes) in [
             ("no source", " target=\"c1\""),
@@ -296,23 +299,20 @@ fn sacm23_val_005_a_strict_write_refuses_and_a_tolerant_write_keeps_the_relation
                 "{ROW}: {what}: setup: validate reports nothing"
             );
             let before = doc.clone();
-            let error = match xmi::write(&doc, &WriteOptions::default()) {
-                Ok(text) => panic!("{ROW}: {what}: a strict write returned:\n{text}"),
-                Err(error) => error,
+            let strict = match xmi::write(&doc, &WriteOptions::default()) {
+                Ok(text) => text,
+                Err(error) => panic!("{ROW}: {what}: a strict write refused: {error:?}"),
             };
-            let WriteError::Invalid { diagnostics, .. } = &error else {
-                panic!("{ROW}: {what}: the strict refusal is not Invalid: {error:?}");
-            };
-            assert_eq!(
-                diagnostics, &expected,
-                "{ROW}: {what}: the strict refusal does not hold exactly the findings"
-            );
             assert!(
                 doc == before,
-                "{ROW}: {what}: the refused write changed the document"
+                "{ROW}: {what}: the strict write changed the document"
             );
 
             let text = tolerant_write(&what, &doc);
+            assert_eq!(
+                strict, text,
+                "{ROW}: {what}: the strict write is not the tolerant one"
+            );
             let Some(line) = text.lines().find(|line| line.contains("xmi:id=\"x\"")) else {
                 panic!(
                     "{ROW}: {what}: x is not written

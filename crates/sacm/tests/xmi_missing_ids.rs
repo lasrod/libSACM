@@ -805,7 +805,10 @@ fn sacm23_xmi_020_an_empty_xmi_id_stays_invalid_id() {
     let (input, marks) = marked(&in_ap(&format!(
         "{MARK}<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"\"><name content=\"C\"/></argumentElement>"
     )));
-    for mode in MODES {
+    // A strict read refuses it; a tolerant read gives the element a
+    // generated id, with SACM-ID-002 as a Warning (LIB-COMPAT-001, ADR 0035).
+    {
+        let mode = Mode::Strict;
         let error = refused("an empty xmi:id", mode, &input);
         assert!(
             matches!(&error, ReadError::InvalidId { id, .. } if id.is_empty()),

@@ -14,7 +14,10 @@
 //! - `(a defect in the input)` for `Defect`.
 //!
 //! One input (or a few, where the entry covers several constructs) per entry
-//! of the list, read in both modes, is refused with that entry's label. Two
+//! of the list, read in strict mode, is refused with that entry's label. A
+//! tolerant read refuses only the limits, the other namespaces and an XMI
+//! document element, and keeps the rest as preserved content with a Warning
+//! (ADR 0035; tested in `tolerant_read.rs`). Two
 //! entries have no input: a parser capacity limit (`Capacity`) and a failed
 //! insert into the document (`Unheld`), which no well-formed input of a
 //! test's size reaches.
@@ -98,11 +101,15 @@ fn utf32be_with_bom(text: &str) -> Vec<u8> {
     bytes
 }
 
-/// Asserts that `input` (described by `what`) is `Unsupported` in both
-/// modes, with a location, and that its reason ends with `label` and holds
-/// no other label.
+/// Asserts that `input` (described by `what`) is `Unsupported` in strict
+/// mode, with a location, and that its reason ends with `label` and holds
+/// no other label. What a tolerant read does with it is
+/// `lib_api_011_each_kept_entry_reads_tolerantly_with_its_code_and_row`'s
+/// and `lib_api_011_the_refused_entries_are_unsupported_in_both_modes`'s
+/// (ADR 0035).
 fn assert_refused_with(entry: &str, what: &str, input: &[u8], label: &str) {
-    for mode in MODES {
+    {
+        let mode = Mode::Strict;
         let result = xmi::read(input, &ReadOptions::default().with_mode(mode));
         let error = match result {
             Ok(output) => panic!(
@@ -150,6 +157,11 @@ fn assert_refused_with(entry: &str, what: &str, input: &[u8], label: &str) {
             error.to_string()
         );
     }
+}
+
+/// Strict read options.
+fn strict() -> ReadOptions {
+    ReadOptions::default().with_mode(Mode::Strict)
 }
 
 fn assert_text_refused_with(entry: &str, what: &str, input: &str, label: &str) {
@@ -456,7 +468,7 @@ fn lib_api_011_the_text_spelling_argumentation_element_names_sacm23_xmi_009() {
         &tolerance("SACM23-XMI-009"),
     );
     // The reason, pinned whole: one sentence, single spaces.
-    let error = xmi::read(input.as_bytes(), &ReadOptions::default()).unwrap_err();
+    let error = xmi::read(input.as_bytes(), &strict()).unwrap_err();
     let ReadError::Unsupported { reason, .. } = &error else {
         panic!("{ROW}: TextSpelling: not Unsupported: {error:?}");
     };
@@ -483,7 +495,7 @@ fn lib_api_011_the_text_spelling_in_an_argument_group_names_sacm23_xmi_009() {
         &tolerance("SACM23-XMI-009"),
     );
     // The reason, pinned whole: one sentence, single spaces.
-    let error = xmi::read(input.as_bytes(), &ReadOptions::default()).unwrap_err();
+    let error = xmi::read(input.as_bytes(), &strict()).unwrap_err();
     let ReadError::Unsupported { reason, .. } = &error else {
         panic!("{ROW}: TextSpelling: not Unsupported: {error:?}");
     };
@@ -566,4 +578,78 @@ fn lib_api_011_a_preserved_attribute_binding_sacm_or_xmi_elsewhere_is_a_defect_i
         &xmi_elsewhere,
         DEFECT,
     );
+}
+
+// --- The entries a tolerant read refuses too (ADR 0035 D1) --------------------------
+
+/// The refused set of `Unread::tolerant()`: an encoding, a root outside
+/// SACM 2.3, an `XMI` element outside XMI 2.5.1 and an XMI-namespace
+/// document element are `Unsupported` in both modes, with the same refusal.
+/// `Capacity` and `Unheld` have no input of a test's size. Every other entry
+/// is kept by a tolerant read (`tolerant_read.rs`).
+#[test]
+fn lib_api_011_the_refused_entries_are_unsupported_in_both_modes() {
+    let root = package("");
+    let cases: Vec<(&str, Vec<u8>, String)> = vec![
+        (
+            "Encoding: UTF-32 BE with a byte order mark",
+            utf32be_with_bom(&root),
+            LIMIT.to_owned(),
+        ),
+        (
+            "Encoding: a declared ISO-8859-1",
+            format!("<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>{root}").into_bytes(),
+            LIMIT.to_owned(),
+        ),
+        (
+            "OtherSacmNamespace: a root in a SACM 2.2 namespace",
+            format!(
+                "<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/2.2/argumentation\" \
+                 xmlns:xmi=\"{XMI_NS}\" xmi:id=\"p\"><name content=\"p\"/></sacm:ArgumentPackage>"
+            )
+            .into_bytes(),
+            tolerance("LIB-COMPAT-004"),
+        ),
+        (
+            "OtherXmiNamespace: an XMI element in the XMI 2.0 namespace",
+            format!(
+                "<xmi:XMI xmlns:xmi=\"http://www.omg.org/XMI\" xmlns:x=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\">\
+                 <sacm:ArgumentPackage x:id=\"p\"><name content=\"p\"/></sacm:ArgumentPackage></xmi:XMI>"
+            )
+            .into_bytes(),
+            tolerance("LIB-COMPAT-002"),
+        ),
+        (
+            "XmiMetadata: xmi:Documentation as the document element",
+            format!("<xmi:Documentation xmlns:xmi=\"{XMI_NS}\"/>").into_bytes(),
+            interim("SACM23-XMI-019"),
+        ),
+    ];
+    for (what, input, label) in &cases {
+        let mut errors = Vec::new();
+        for mode in MODES {
+            match xmi::read(input, &ReadOptions::default().with_mode(mode)) {
+                Ok(output) => panic!(
+                    "{ROW}: {what}: a {mode:?} read returned a document, with {:?}",
+                    output.diagnostics()
+                ),
+                Err(error) => {
+                    assert!(
+                        matches!(
+                            &error,
+                            ReadError::Unsupported { reason, location, .. }
+                                if reason.ends_with(label.as_str()) && location.is_some()
+                        ),
+                        "{ROW}: {what}: a {mode:?} read is not Unsupported labelled {label:?}: \
+                         {error:?}"
+                    );
+                    errors.push(error);
+                }
+            }
+        }
+        assert_eq!(
+            errors[0], errors[1],
+            "{ROW}: {what}: the modes refuse differently"
+        );
+    }
 }

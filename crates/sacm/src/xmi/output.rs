@@ -4,8 +4,9 @@
 //! ADR 0026, ADR 0027).
 //!
 //! Two passes. [`plan`] checks the document (in strict mode, refusing
-//! preserved content and validating it)
-//! and every element, and resolves what each is written as; only if that succeeds does [`write`] build the `String` from the plan,
+//! preserved content and output that would not be schema-valid, ADR 0035
+//! D4) and every element, and resolves what each is written as; only if that
+//! succeeds does [`write`] build the `String` from the plan,
 //! so a refusal never leaves partial output, and the output pass has no
 //! lookup that could fail. The output form is pinned byte for byte: UTF-8
 //! without a BOM, the XML declaration, LF line endings, two spaces per depth,
@@ -13,12 +14,14 @@
 //! Preserved content (LIB-COMPAT-003, ADR 0033) is written back where it
 //! was read: its attributes after the typed ones, each child on its own line
 //! before the typed child it preceded, a fragment as one line with its text
-//! exactly as held, each declaring the namespace bindings it needs. Neither
-//! pass recurses, so deep nesting is safe.
+//! exactly as held, each declaring the namespace bindings it needs. The
+//! document's own preserved content, outside every element, is written on
+//! and in the `xmi:XMI` element, its children among the roots; a document
+//! that holds some is always wrapped (ADR 0035 D3). Neither pass recurses,
+//! so deep nesting is safe.
 
 use super::namespaces::{SACM_NS, SACM_PREFIX, XMI_NS, XMI_PREFIX};
 use super::{Mode, WriteAttribute, WriteError};
-use crate::diagnostic::Severity;
 use crate::model::{
     AbstractClass, AssertionDeclaration, Attr, DeclaredType, Document, ElementId, ElementKind,
     Event, Flag, Fragment, Item, LangString, OWNERS, Preserved, QName, ReferenceEnd, SacmElement,
@@ -32,15 +35,17 @@ const DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>";
 /// `document` written as XMI in `mode`, or the first reason it cannot be.
 pub(super) fn write(document: &Document, mode: Mode) -> Result<String, WriteError> {
     let plan = plan(document, mode)?;
-    let wrapped = document.roots().nth(1).is_some();
+    // The preserved content outside every element, how many of its children
+    // are written so far, and how many roots (ADR 0035 D3).
+    let outside = document.document_preserved();
+    let mut outside_placed = 0;
+    let mut roots_written = 0_usize;
+    let wrapped = document.roots().nth(1).is_some() || outside.is_some();
     let mut out = String::new();
     out.push_str(DECLARATION);
     out.push('\n');
     let base = if wrapped {
-        out.push('<');
-        push_wrapper_name(&mut out);
-        push_document_attributes(&mut out);
-        out.push_str(">\n");
+        push_wrapper_start(&mut out, outside);
         1
     } else {
         0
@@ -61,44 +66,23 @@ pub(super) fn write(document: &Document, mode: Mode) -> Result<String, WriteErro
             }
         }
         let depth = base + open.len();
-        // The parent's preserved children placed before this one (ADR 0033).
+        // The parent's preserved children placed before this one (ADR 0033),
+        // or, before a root, the document's (ADR 0035 D3).
         if let Some(top) = open.last_mut() {
             top.push_placed(&mut out, depth, Some(top.written));
             top.written = top.written.saturating_add(1);
+        } else if let Some(outside) = outside {
+            push_placed(
+                &mut out,
+                depth,
+                outside,
+                &mut outside_placed,
+                Some(roots_written),
+            );
+            roots_written = roots_written.saturating_add(1);
         }
-        indent(&mut out, depth);
-        out.push('<');
-        push_tag(&mut out, &planned.tag);
-        if depth == 0 {
-            push_document_attributes(&mut out);
-        }
-        if let Some(kind) = planned.written_type {
-            push_attribute_name(&mut out, "type");
-            out.push_str(SACM_PREFIX);
-            out.push(':');
-            out.push_str(kind.name());
-            out.push('"');
-        }
-        push_attribute_name(&mut out, "id");
-        escape_into(&mut out, planned.element.id().as_str());
-        out.push('"');
-        // A gid comes directly after the id (ADR 0025), escaped like it.
-        if let Some(gid) = planned.element.gid() {
-            out.push_str(" gid=\"");
-            escape_into(&mut out, gid);
-            out.push('"');
-        }
-        // Then the flags, the declaration and the references, class by
-        // class, superclass first (Annex B.5.2; ADR 0027).
-        // An end the element also holds as a preserved attribute of the same
-        // name (which held no id) is written in the element form, so that
-        // no start tag carries one attribute twice (ADR 0033).
         let preserved = planned.element.preserved();
-        let as_elements = ends_as_elements(planned.element);
-        push_flags_and_references(&mut out, planned.element, planned.declaration, &as_elements);
-        // Then the preserved attributes, after the bindings they need, in
-        // input order (ADR 0033).
-        push_preserved_attributes(&mut out, preserved);
+        let as_elements = push_start_tag(&mut out, depth, planned);
         let name = planned.element.name();
         let texts =
             [TextRole::Content, TextRole::Key].map(|role| (role, planned.element.text(role)));
@@ -134,6 +118,9 @@ pub(super) fn write(document: &Document, mode: Mode) -> Result<String, WriteErro
     while let Some(top) = open.pop() {
         close(&mut out, base + open.len(), top);
     }
+    if let Some(outside) = outside {
+        push_placed(&mut out, base, outside, &mut outside_placed, None);
+    }
 
     if wrapped {
         out.push_str("</");
@@ -141,6 +128,47 @@ pub(super) fn write(document: &Document, mode: Mode) -> Result<String, WriteErro
         out.push_str(">\n");
     }
     Ok(out)
+}
+
+/// Writes the start tag of `planned` at `depth`, up to its `>`: its name,
+/// the document element's namespace declarations at depth 0, its type, id
+/// and gid, its flags, declaration and references, and its preserved
+/// attributes. Returns the ends written in the element form instead
+/// ([`ends_as_elements`]).
+fn push_start_tag(out: &mut String, depth: usize, planned: &Planned<'_>) -> Vec<ReferenceEnd> {
+    indent(out, depth);
+    out.push('<');
+    push_tag(out, &planned.tag);
+    if depth == 0 {
+        push_document_attributes(out);
+    }
+    if let Some(kind) = planned.written_type {
+        push_attribute_name(out, "type");
+        out.push_str(SACM_PREFIX);
+        out.push(':');
+        out.push_str(kind.name());
+        out.push('"');
+    }
+    push_attribute_name(out, "id");
+    escape_into(out, planned.element.id().as_str());
+    out.push('"');
+    // A gid comes directly after the id (ADR 0025), escaped like it.
+    if let Some(gid) = planned.element.gid() {
+        out.push_str(" gid=\"");
+        escape_into(out, gid);
+        out.push('"');
+    }
+    // Then the flags, the declaration and the references, class by class,
+    // superclass first (Annex B.5.2; ADR 0027). An end the element also
+    // holds as a preserved attribute of the same name (which held no id) is
+    // written in the element form, so that no start tag carries one
+    // attribute twice (ADR 0033).
+    let as_elements = ends_as_elements(planned.element);
+    push_flags_and_references(out, planned.element, planned.declaration, &as_elements);
+    // Then the preserved attributes, after the bindings they need, in input
+    // order (ADR 0033).
+    push_preserved_attributes(out, planned.element.preserved());
+    as_elements
 }
 
 /// The ends of `element` that hold an id and that it also holds, as
@@ -208,21 +236,34 @@ impl Open<'_, '_> {
     /// that are placed before its typed child at index `before`, or all of
     /// them for `None` (ADR 0033).
     fn push_placed(&mut self, out: &mut String, depth: usize, before: Option<usize>) {
-        let Some(preserved) = self.planned.element.preserved() else {
-            return;
-        };
-        for placed in preserved.children.iter().skip(self.placed) {
-            if before.is_some_and(|before| placed.index > before) {
-                break;
-            }
-            indent(out, depth);
-            match &placed.item {
-                Item::Text(text) => escape_text_into(out, text),
-                Item::Element(fragment) => push_fragment(out, fragment),
-            }
-            out.push('\n');
-            self.placed = self.placed.saturating_add(1);
+        if let Some(preserved) = self.planned.element.preserved() {
+            push_placed(out, depth, preserved, &mut self.placed, before);
         }
+    }
+}
+
+/// Writes, at `depth`, the children of `preserved` after the first
+/// `written` that are placed before the typed child at index `before`, or
+/// all of them for `None`, each on its own line, and counts them in
+/// `written` (ADR 0033).
+fn push_placed(
+    out: &mut String,
+    depth: usize,
+    preserved: &Preserved,
+    written: &mut usize,
+    before: Option<usize>,
+) {
+    for placed in preserved.children.iter().skip(*written) {
+        if before.is_some_and(|before| placed.index > before) {
+            break;
+        }
+        indent(out, depth);
+        match &placed.item {
+            Item::Text(text) => escape_text_into(out, text),
+            Item::Element(fragment) => push_fragment(out, fragment),
+        }
+        out.push('\n');
+        *written = written.saturating_add(1);
     }
 }
 
@@ -341,31 +382,32 @@ enum Tag {
     Role(&'static str),
 }
 
-/// Checks `document` in ADR 0022's and ADR 0033's order, a root first,
-/// then, in strict `mode`, preserved content and validation, then each
-/// element in document order (see [`unrepresentable`]), and returns every
-/// element in that order with what it is written as. Everything a document
-/// holds is written, so these are the only refusals.
+/// Checks `document` in ADR 0035 D4's order: a root, or preserved content
+/// outside every element, first; then, in strict `mode`, preserved content
+/// and the schema check; then each element in document order (see
+/// [`unrepresentable`]); and returns every element in that order with what
+/// it is written as. Everything a document holds is written, so these are
+/// the only refusals.
 fn plan(document: &Document, mode: Mode) -> Result<Vec<Planned<'_>>, WriteError> {
-    if document.roots().next().is_none() {
+    if document.roots().next().is_none() && document.document_preserved().is_none() {
         return Err(WriteError::NoRoot);
     }
     if mode == Mode::Strict {
-        // Preserved content is not SACM 2.3: each holder once, in document
-        // order, before validation (SACM23-XMI-008, ADR 0033).
+        // The writer cannot show that content it did not read is
+        // schema-valid: each holder once, in document order, before the
+        // schema check (SACM23-XMI-008, ADR 0033, ADR 0035 D4). Content
+        // outside every element names no holder.
         let elements: Vec<ElementId> = document
             .elements()
             .filter(|element| element.has_preserved_content())
             .map(|element| element.id().clone())
             .collect();
-        if !elements.is_empty() {
+        if !elements.is_empty() || document.document_preserved().is_some() {
             return Err(WriteError::PreservedContent { elements });
         }
-        // Every Error, in `validate`'s order (ADR 0022).
-        let diagnostics: Vec<_> = validation::validate(document)
-            .into_iter()
-            .filter(|found| found.severity() == Severity::Error)
-            .collect();
+        // Every schema error, in `Diagnostic` order; never `validate` (ADR
+        // 0035 D4).
+        let diagnostics = validation::schema_errors(document);
         if !diagnostics.is_empty() {
             return Err(WriteError::Invalid { diagnostics });
         }
@@ -590,6 +632,17 @@ fn push_end_tag(out: &mut String, depth: usize, tag: &Tag) {
     indent(out, depth);
     out.push_str("</");
     push_tag(out, tag);
+    out.push_str(">\n");
+}
+
+/// Writes the start tag of `xmi:XMI` on its own line: its namespace
+/// declarations, then the attributes of `outside`, the document's preserved
+/// content, with the bindings they need (ADR 0035 D3).
+fn push_wrapper_start(out: &mut String, outside: Option<&Preserved>) {
+    out.push('<');
+    push_wrapper_name(out);
+    push_document_attributes(out);
+    push_preserved_attributes(out, outside);
     out.push_str(">\n");
 }
 

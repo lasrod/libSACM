@@ -229,16 +229,11 @@ fn refused_in(what: &str, mode: Mode, input: &str) -> ReadError {
     }
 }
 
-/// Reads `input` in both modes, which the test expects to be refused the
-/// same in both, and returns the refusal.
+/// Reads `input` in strict mode, which the test expects to refuse it, and
+/// returns the refusal. A tolerant read keeps what a strict read refuses
+/// here (LIB-COMPAT-001, ADR 0035).
 fn refused(what: &str, input: &str) -> ReadError {
-    let strict = refused_in(what, Mode::Strict, input);
-    let tolerant = refused_in(what, Mode::Tolerant, input);
-    assert_eq!(
-        strict, tolerant,
-        "{ROW}: {what}: the modes refuse differently"
-    );
-    strict
+    refused_in(what, Mode::Strict, input)
 }
 
 /// Asserts that `input` reads in both modes and keeps one construct as
@@ -308,7 +303,7 @@ fn assert_preserved_at_mark(what: &str, template: &str) {
     assert_preserved_at(what, &input, marks[0], holder);
 }
 
-/// Reads `template` without its one mark, in both modes, and returns the
+/// Reads `template` without its one mark, in strict mode, and returns the
 /// refusal, failing the test unless it is `Unsupported` with no code, at the
 /// mark.
 fn assert_unsupported_at_mark(what: &str, template: &str) -> ReadError {
@@ -337,7 +332,7 @@ fn assert_unsupported_at_mark(what: &str, template: &str) -> ReadError {
     error
 }
 
-/// Reads `template` without its one mark, in both modes, and returns the
+/// Reads `template` without its one mark, in strict mode, and returns the
 /// refusal, failing the test unless it is `InvalidLiteral` (SACM-ENUM-001,
 /// SACM23-VAL-006) for the Claim `c1`'s `assertionDeclaration`, holding
 /// `value`, at the mark.
@@ -1170,7 +1165,7 @@ fn sacm23_xmi_014_a_value_element_in_a_namespace_is_preserved_or_unsupported_at_
 
 // --- Item 5: repeats ----------------------------------------------------------------
 
-/// Reads `template` without its marks, in both modes, and asserts that it is
+/// Reads `template` without its marks, in strict mode, and asserts that it is
 /// refused as `RepeatedValue` of `property` on `element`, with one location
 /// per mark, in order, and `location()` the second. Returns the refusal.
 fn assert_repeated(what: &str, template: &str, element: &str, property: &str) -> ReadError {
@@ -1313,7 +1308,7 @@ fn repeats() -> Vec<(&'static str, String, &'static str, &'static str)> {
 }
 
 #[test]
-fn sacm23_xmi_014_a_value_given_twice_is_a_repeated_value_in_both_modes_naming_every_occurrence() {
+fn sacm23_xmi_014_a_value_given_twice_is_a_repeated_value_in_strict_mode_naming_every_occurrence() {
     for (what, template, element, property) in repeats() {
         let error = assert_repeated(what, &template, element, property);
         assert_eq!(error.locations().len(), 2, "{ROW}: {what}: two occurrences");

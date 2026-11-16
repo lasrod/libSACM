@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- LIB-CLI-003: the Claim c1 cites "nope", which no element of the file carries, so its output would not be schema-valid (an IDREF naming no ID, SACM-REF-001) and a strict save refuses it. Hand-written. -->
+<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+  <name lang="en" content="Arguments"/>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c1" isCitation="true" citedElement="nope">
+    <name lang="en" content="The system is safe"/>
+  </argumentElement>
+</sacm:ArgumentPackage>

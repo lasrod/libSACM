@@ -2,18 +2,21 @@
 //! D-STRICT, D-SEV).
 //!
 //! - LIB-COMPAT-001: `ReadOptions` carries an `xmi::Mode`, tolerant by
-//!   default, and `ReadOutput::mode()` reports it. Both modes read and refuse
-//!   the same inputs, apart from the C++ name and text shapes, which a
-//!   tolerant read reads and a strict read refuses (LIB-COMPAT-008, ADR 0022
-//!   amendment 1, `legacy_shapes.rs`). `xsi:type` is SACM-XMI-010 (XMI 2.5.1 §9.5.2 rule 2g), an
+//!   default, and `ReadOutput::mode()` reports it. Both modes read the same
+//!   documents from the inputs both read, and refuse alike a DOCTYPE,
+//!   malformed XML, `InvalidRoot`, `NoPackage`, `DuplicateId` and the
+//!   limits; what else a strict read refuses, a tolerant read keeps as
+//!   preserved content with a Warning (ADR 0035 D1; `tolerant_read.rs`).
+//!   `xsi:type` is SACM-XMI-010 (XMI 2.5.1 §9.5.2 rule 2g), an
 //!   Error in strict mode and a Warning in tolerant mode; `xmi:version` on the
 //!   `xmi:XMI` element or a root is SACM-XMI-011 (§7.5.3), Info in both.
 //! - LIB-COMPAT-007: `WriteOptions` carries a mode, strict by default. A strict
-//!   write validates after the `NoRoot` check and refuses any validation Error
-//!   with `WriteError::Invalid`, which holds every Error in `validate`'s order;
-//!   the writer's own checks come after. Warnings never refuse: a document
-//!   whose only findings are Warnings writes strictly as it writes tolerantly.
-//!   A tolerant write does not validate.
+//!   write writes only schema-valid output (ADR 0035 D4): it refuses `NoRoot`,
+//!   then preserved content, then `WriteError::Invalid` for an `xmi:id` that
+//!   is not an `NCName` (SACM-ID-002) or a reference naming no written
+//!   `xmi:id` (SACM-REF-001), then an unrepresentable character. It never
+//!   validates, so a content Error never refuses it. A tolerant write writes
+//!   the document as held.
 //!
 //! A read diagnostic is compared as a [`Finding`]: its code, severity,
 //! requirement id, clause, affected ids and location. The message is not
@@ -21,22 +24,20 @@
 //! characters. An attribute is located at the first character of its name,
 //! its prefix included.
 //!
-//! "The same for every input of the existing read tests" (LIB-COMPAT-001
-//! item 2) is checked on a representative table, [`table`]: each readable
-//! shape, each interim refusal, each ADR 0021 non-conforming refusal, a
-//! DOCTYPE, malformed XML, `InvalidRoot` and `NoPackage`. Each entry states
-//! what it is expected to give in tolerant mode, so the table cannot drift
-//! into testing nothing.
+//! "The same in both modes" is checked on a representative table, [`table`]:
+//! each readable shape, each ADR 0021 non-conforming input (preserved in
+//! both modes), the encoding limits, a DOCTYPE, malformed XML,
+//! `InvalidRoot`, `NoPackage` and `DuplicateId`. Each entry states what it is
+//! expected to give in tolerant mode, so the table cannot drift into testing
+//! nothing. What a strict read refuses and a tolerant read keeps is
+//! `tolerant_read.rs`'s table (ADR 0035).
 //!
 //! Not checked here:
 //! - `Mode` has no `Default` and is `#[non_exhaustive]`, and
 //!   `WriteError::Invalid` is `#[non_exhaustive]`: a test cannot show that an
 //!   impl is missing or that an exhaustive pattern fails to compile. The
 //!   patterns here use `..`, as a user must.
-//! - LIB-COMPAT-007's semver stance: documentation. Its "schema-conforming"
-//!   ids are SACM23-VAL-020's: a strict write of an id that is not an `NCName`
-//!   is refused in `xmi_write.rs`
-//!   (`sacm23_xmi_004_a_strict_write_of_an_id_holding_u0001_is_invalid_with_sacm_id_002`).
+//! - LIB-COMPAT-007's semver stance: documentation.
 
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -399,66 +400,6 @@ fn validation_errors(doc: &Document) -> Vec<Diagnostic> {
         .collect()
 }
 
-/// Asserts that `error` is `WriteError::Invalid` holding exactly `expected`,
-/// through both the variant's field and `diagnostics()`.
-fn assert_invalid(what: &str, error: &WriteError, expected: &[Diagnostic]) {
-    let WriteError::Invalid { diagnostics, .. } = error else {
-        panic!("{COMPAT_007}: {what}: the refusal is not Invalid: {error:?}");
-    };
-    assert_eq!(
-        diagnostics, expected,
-        "{COMPAT_007}: {what}: the refusal does not hold validate's Errors in its order"
-    );
-    assert_eq!(
-        error.diagnostics(),
-        expected,
-        "{COMPAT_007}: {what}: diagnostics() is not the refusal's diagnostics"
-    );
-}
-
-/// A document with two roots, `r` (an AssuranceCasePackage) and `s` (an
-/// ArgumentPackage) holding `child` (an ArgumentPackage) holding `grandchild`
-/// (a Claim). The elements whose ids are in `nameless` have no name; each
-/// other one is named after its id.
-fn two_roots(nameless: &[&str]) -> Document {
-    let row = COMPAT_007;
-    let name = |id: &str| (!nameless.contains(&id)).then(|| en(id));
-    let mut doc = Document::new();
-    insert(
-        row,
-        &mut doc,
-        None,
-        ElementKind::AssuranceCasePackage,
-        "r",
-        name("r"),
-    );
-    insert(
-        row,
-        &mut doc,
-        None,
-        ElementKind::ArgumentPackage,
-        "s",
-        name("s"),
-    );
-    insert(
-        row,
-        &mut doc,
-        Some("s"),
-        ElementKind::ArgumentPackage,
-        "child",
-        name("child"),
-    );
-    insert(
-        row,
-        &mut doc,
-        Some("child"),
-        ElementKind::Claim,
-        "grandchild",
-        name("grandchild"),
-    );
-    doc
-}
-
 /// Reads the golden file `name`.
 fn golden(row: &str, name: &str) -> String {
     let path = Path::new(GOLDEN_DIR).join(name);
@@ -568,7 +509,8 @@ fn lib_compat_001_read_output_reports_the_mode_it_was_read_in() {
 }
 
 // ===========================================================================
-// LIB-COMPAT-001 2. Both modes read and refuse the same inputs
+// LIB-COMPAT-001 2. Both modes read alike what both read, and refuse alike
+// what both refuse
 // ===========================================================================
 
 /// What an input of [`table`] gives in tolerant mode.
@@ -584,11 +526,6 @@ enum Expect {
     InvalidRoot,
     NoPackage,
     DuplicateId,
-    InvalidId,
-    RepeatedValue,
-    InvalidLiteral,
-    /// SACM-XMI-005 (LIB-COMPAT-010), known by its code.
-    MissingType,
 }
 
 /// The [`Expect`] that `result` is, or `None` for a refusal this file does
@@ -610,10 +547,6 @@ fn category(result: &Result<ReadOutput, ReadError>) -> Option<Expect> {
         Err(ReadError::InvalidRoot { .. }) => Some(Expect::InvalidRoot),
         Err(ReadError::NoPackage { .. }) => Some(Expect::NoPackage),
         Err(ReadError::DuplicateId { .. }) => Some(Expect::DuplicateId),
-        Err(ReadError::InvalidId { .. }) => Some(Expect::InvalidId),
-        Err(ReadError::RepeatedValue { .. }) => Some(Expect::RepeatedValue),
-        Err(ReadError::InvalidLiteral { .. }) => Some(Expect::InvalidLiteral),
-        Err(error) if error.code() == Some(Code::XMI_MISSING_TYPE) => Some(Expect::MissingType),
         Err(_) => None,
     }
 }
@@ -647,8 +580,7 @@ fn acp(content: &str) -> String {
 )]
 fn table() -> Vec<(&'static str, Vec<u8>, Expect)> {
     use Expect::{
-        Doctype, DuplicateId, InvalidId, InvalidLiteral, InvalidRoot, Malformed, MissingType,
-        NoPackage, Preserved, Reads, RepeatedValue, Unsupported,
+        Doctype, DuplicateId, InvalidRoot, Malformed, NoPackage, Preserved, Reads, Unsupported,
     };
     let text =
         |what: &'static str, input: String, expect: Expect| (what, input.into_bytes(), expect);
@@ -777,27 +709,9 @@ fn table() -> Vec<(&'static str, Vec<u8>, Expect)> {
                 <isCitation>1</isCitation><abstractForm xmi:idref=\"nope\"/></argumentElement>"),
             Reads,
         ),
-        // --- Interim refusals: conforming content this release cannot represent.
-        text(
-            "a TerminologyPackage root",
-            format!("<sacm:TerminologyPackage{NS} xmi:id=\"f\"/>"),
-            Unsupported,
-        ),
-        text(
-            "a terminologyPackage child of an AssuranceCasePackage",
-            acp("<terminologyPackage xmi:id=\"f\"/>"),
-            Unsupported,
-        ),
-        text(
-            "a Claim's xmi:uuid",
-            ap("<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" xmi:uuid=\"u\"/>"),
-            Unsupported,
-        ),
-        text(
-            "an ArgumentPackageInterface in argumentElement",
-            ap("<argumentElement xmi:type=\"sacm:ArgumentPackageInterface\" xmi:id=\"i1\"/>"),
-            Unsupported,
-        ),
+        // --- The limits a tolerant read refuses too (ADR 0035 D1). Conforming
+        // content this release does not read yet, which a strict read refuses
+        // and a tolerant read keeps, is `tolerant_read.rs`'s table.
         (
             "UTF-32 with a byte order mark",
             vec![0xFF, 0xFE, 0x00, 0x00, b'<', 0, 0, 0, b'r', 0, 0, 0, b'/', 0, 0, 0, b'>', 0, 0, 0],
@@ -875,14 +789,10 @@ fn table() -> Vec<(&'static str, Vec<u8>, Expect)> {
             ap("text"),
             Preserved,
         ),
-        // --- An untyped child under an abstract role (SACM-XMI-005,
-        // LIB-COMPAT-010).
-        text(
-            "an untyped child under an abstract role",
-            ap("<argumentElement xmi:id=\"x\"/>"),
-            MissingType,
-        ),
-        // --- A duplicate id (SACM-ID-001) and an empty id (SACM-ID-002).
+        // --- A duplicate id (SACM-ID-001), refused in both modes. An untyped
+        // child under an abstract role, an empty id, a value that is not a
+        // literal and a second name are refused by a strict read and kept
+        // by a tolerant one: `tolerant_read.rs`'s table (ADR 0035).
         text(
             "a duplicate xmi:id",
             wrapper("<sacm:ArgumentPackage xmi:id=\"p\"/><sacm:ArgumentPackage xmi:id=\"p\"/>"),
@@ -892,35 +802,6 @@ fn table() -> Vec<(&'static str, Vec<u8>, Expect)> {
             "a duplicate child xmi:id",
             ap("<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"p\"/>"),
             DuplicateId,
-        ),
-        text(
-            "an empty xmi:id",
-            format!("<sacm:ArgumentPackage{NS} xmi:id=\"\"/>"),
-            InvalidId,
-        ),
-        text(
-            "an empty child xmi:id",
-            ap("<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"\"/>"),
-            InvalidId,
-        ),
-        // --- A value that is not a literal (SACM-ENUM-001, SACM23-VAL-006),
-        // as an attribute and as an element.
-        text(
-            "an assertionDeclaration that is not a literal",
-            ap("<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\" assertionDeclaration=\"Assumed\"/>"),
-            InvalidLiteral,
-        ),
-        text(
-            "an assertionDeclaration element that is not a literal",
-            ap("<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\">\
-                <assertionDeclaration> assumed</assertionDeclaration></argumentElement>"),
-            InvalidLiteral,
-        ),
-        // --- A second name (SACM-MULT-001, SACM23-XMI-021).
-        text(
-            "a second name",
-            ap("<name content=\"P\"/><name content=\"P\"/>"),
-            RepeatedValue,
         ),
         // --- Ids the reader now reads (SACM23-XMI-020, -022, -025), with
         // their Info in both modes.
@@ -946,11 +827,6 @@ fn table() -> Vec<(&'static str, Vec<u8>, Expect)> {
             "an xmi:id on a name",
             ap("<name xmi:id=\"n1\" content=\"P\"/>"),
             Reads,
-        ),
-        text(
-            "the argumentationElement spelling",
-            ap("<argumentationElement xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"),
-            Unsupported,
         ),
         text(
             "a root's type naming another class",
@@ -1042,10 +918,6 @@ fn lib_compat_001_both_modes_give_the_same_document_or_the_same_refusal_for_each
         Expect::InvalidRoot,
         Expect::NoPackage,
         Expect::DuplicateId,
-        Expect::InvalidId,
-        Expect::RepeatedValue,
-        Expect::InvalidLiteral,
-        Expect::MissingType,
     ] {
         assert!(
             cases.iter().any(|&(_, _, wanted)| wanted == expect),
@@ -1157,18 +1029,13 @@ fn lib_compat_001_every_golden_file_reads_with_no_diagnostic_in_either_mode() {
             );
         }
     }
-    // The nested golden file is refused in both modes, the same way.
+    // The nested golden file holds kinds this release does not read: a
+    // strict read refuses it, and a tolerant read keeps them (ADR 0035).
     let text = golden(COMPAT_001, UNREADABLE_GOLDEN);
     let strict = read_err(COMPAT_001, UNREADABLE_GOLDEN, Mode::Strict, &text);
-    let tolerant = read_err(COMPAT_001, UNREADABLE_GOLDEN, Mode::Tolerant, &text);
     assert!(
-        matches!(tolerant, ReadError::Unsupported { .. }),
-        "{COMPAT_001}: {UNREADABLE_GOLDEN} is not refused as Unsupported: {tolerant:?}"
-    );
-    assert_eq!(
-        (mem::discriminant(&strict), strict.location()),
-        (mem::discriminant(&tolerant), tolerant.location()),
-        "{COMPAT_001}: {UNREADABLE_GOLDEN} is refused differently in the two modes"
+        matches!(strict, ReadError::Unsupported { .. }),
+        "{COMPAT_001}: {UNREADABLE_GOLDEN} is not refused as Unsupported in strict mode: {strict:?}"
     );
 }
 
@@ -1712,205 +1579,209 @@ fn lib_compat_001_has_errors_is_true_only_for_xsi_type_read_strictly() {
 }
 
 // ===========================================================================
-// LIB-COMPAT-007 1. The save mode
+// LIB-COMPAT-007 1. Content Errors never refuse a strict write
 // ===========================================================================
 
-#[test]
-fn lib_compat_007_write_options_default_to_strict_and_with_mode_sets_the_mode() {
-    assert_eq!(
-        WriteOptions::default().mode(),
-        Mode::Strict,
-        "{COMPAT_007}: WriteOptions::default() is not strict"
-    );
-    assert_eq!(
-        WriteOptions::default().with_mode(Mode::Tolerant).mode(),
-        Mode::Tolerant,
-        "{COMPAT_007}: with_mode(Mode::Tolerant) does not set tolerant"
-    );
-    assert_eq!(
-        WriteOptions::default()
-            .with_mode(Mode::Tolerant)
-            .with_mode(Mode::Strict)
-            .mode(),
-        Mode::Strict,
-        "{COMPAT_007}: a later with_mode does not replace an earlier one"
-    );
-    assert_eq!(
-        WriteOptions::default().with_mode(Mode::Strict),
-        WriteOptions::default(),
-        "{COMPAT_007}: strict write options are not the default ones"
-    );
-    // The default refuses what only tolerant mode writes.
-    let nameless = two_roots(&["grandchild"]);
-    assert!(
-        matches!(
-            xmi::write(&nameless, &WriteOptions::default()),
-            Err(WriteError::Invalid { .. })
-        ),
-        "{COMPAT_007}: the default write does not refuse a nameless Claim"
-    );
-    write_ok(COMPAT_007, "a nameless Claim", Mode::Tolerant, &nameless);
+/// A bare ArgumentPackage `p`, named, holding `content`.
+fn named_ap(content: &str) -> String {
+    format!(
+        "<sacm:ArgumentPackage{NS} xmi:id=\"p\"><name content=\"P\"/>{content}</sacm:ArgumentPackage>"
+    )
 }
 
-// ===========================================================================
-// LIB-COMPAT-007 2-3. Strict refuses validate's Errors, every one, in order
-// ===========================================================================
-
-#[test]
-fn lib_compat_007_strict_refuses_a_nameless_model_element_with_validates_errors() {
-    let doc = two_roots(&["grandchild"]);
-    let expected = validation_errors(&doc);
-    assert_eq!(
-        expected.len(),
-        1,
-        "{COMPAT_007}: setup: validate does not report the nameless Claim alone"
-    );
-    let error = write_err(COMPAT_007, "a nameless Claim", Mode::Strict, &doc);
-    assert_invalid("a nameless Claim", &error, &expected);
-    let default = match xmi::write(&doc, &WriteOptions::default()) {
-        Ok(text) => panic!("{COMPAT_007}: the default write returned:\n{text}"),
-        Err(error) => error,
-    };
-    assert_eq!(
-        default, error,
-        "{COMPAT_007}: the default write refuses differently from an explicit strict one"
-    );
+/// A Claim `id`, named after its id, carrying `attributes`.
+fn named_claim(id: &str, attributes: &str) -> String {
+    format!(
+        "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"{id}\"{attributes}>\
+         <name content=\"{id}\"/></argumentElement>"
+    )
 }
 
-#[test]
-fn lib_compat_007_three_nameless_elements_across_two_roots_are_three_sacm_mult_001() {
-    let doc = two_roots(&["r", "child", "grandchild"]);
-    let expected = validation_errors(&doc);
-    let error = write_err(COMPAT_007, "three nameless elements", Mode::Strict, &doc);
-    assert_invalid("three nameless elements", &error, &expected);
-    let listed: Vec<(Code, Severity, Vec<String>)> = error
-        .diagnostics()
-        .iter()
-        .map(|found| {
-            (
-                found.code(),
-                found.severity(),
-                found
-                    .affected()
-                    .iter()
-                    .map(|id| id.as_str().to_owned())
-                    .collect(),
-            )
-        })
-        .collect();
-    let mult = |id: &str| {
-        (
-            Code::MULTIPLICITY_VIOLATION,
-            Severity::Error,
-            vec![id.to_owned()],
-        )
-    };
-    // validate's order: by affected id.
-    assert_eq!(
-        listed,
-        [mult("child"), mult("grandchild"), mult("r")],
-        "{COMPAT_007}: the refusal does not list one SACM-MULT-001 per nameless id"
-    );
-}
-
-// ===========================================================================
-// LIB-COMPAT-007 4. A valid document writes the same bytes in both modes
-// ===========================================================================
-
-#[test]
-fn lib_compat_007_every_document_without_a_validation_error_writes_strictly_as_tolerantly() {
-    let mut documents: Vec<(String, Document)> = built_with_edit(COMPAT_007)
-        .into_iter()
-        .map(|(what, doc)| (what.to_owned(), doc))
-        .collect();
-    documents.push(("every element named".to_owned(), two_roots(&[])));
-    // Utility elements have no name and are not ModelElements.
-    let mut utilities = two_roots(&[]);
-    insert(
-        COMPAT_007,
-        &mut utilities,
-        Some("child"),
-        ElementKind::Note,
-        "note",
-        None,
-    );
-    insert(
-        COMPAT_007,
-        &mut utilities,
-        Some("grandchild"),
-        ElementKind::Description,
-        "description",
-        None,
-    );
-    documents.push((
-        "named elements with a Note and a Description".to_owned(),
-        utilities,
-    ));
-    for (what, doc) in &documents {
-        assert!(
-            !diagnostic::has_errors(&validation::validate(doc)),
-            "{COMPAT_007}: {what}: setup: validate reports an Error"
-        );
-        let before = doc.clone();
-        let strict = write_ok(COMPAT_007, what, Mode::Strict, doc);
-        let tolerant = write_ok(COMPAT_007, what, Mode::Tolerant, doc);
-        assert_eq!(
-            strict, tolerant,
-            "{COMPAT_007}: {what}: the strict and tolerant writes differ"
-        );
-        assert!(
-            *doc == before,
-            "{COMPAT_007}: {what}: writing changed the document"
-        );
-    }
-}
-
-#[test]
-fn lib_compat_007_a_validation_warning_does_not_refuse_a_strict_write() {
-    // A Claim with two descriptions (SACM23-VAL-011) and a repeated
-    // metaClaim (SACM23-VAL-022): two Warnings, no Error.
-    let what = "a document whose only findings are Warnings";
-    let input = format!(
-        "<sacm:ArgumentPackage{NS} xmi:id=\"p\"><name lang=\"en\" content=\"P\"/>\
-         <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"m1\">\
-         <name lang=\"en\" content=\"M\"/></argumentElement>\
-         <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" metaClaim=\"m1 m1\">\
-         <name lang=\"en\" content=\"C\"/>\
-         <description xmi:id=\"d1\"><content><value content=\"one\"/></content></description>\
-         <description xmi:id=\"d2\"><content><value content=\"two\"/></content></description>\
-         </argumentElement></sacm:ArgumentPackage>"
-    );
-    let output = read_ok(COMPAT_007, what, Mode::Tolerant, &input);
+/// Reads `input` tolerantly, which the test expects to read with no read
+/// diagnostic, and returns the document.
+fn document_of(what: &str, input: &str) -> Document {
+    let output = read_ok(COMPAT_007, what, Mode::Tolerant, input);
     assert_eq!(
         output.diagnostics(),
         [],
         "{COMPAT_007}: {what}: setup: the read reports a diagnostic"
     );
-    let doc = output.into_document();
-    let found = findings(&validation::validate(&doc));
-    let mut rules: Vec<(Severity, &str)> = found
-        .iter()
-        .map(|f| (f.severity, f.requirement.as_str()))
-        .collect();
-    rules.sort_by_key(|&(_, requirement)| requirement);
-    assert_eq!(
-        rules,
-        [
-            (Severity::Warning, "SACM23-VAL-011"),
-            (Severity::Warning, "SACM23-VAL-022"),
-        ],
-        "{COMPAT_007}: {what}: setup: validate does not give exactly the two Warnings: {found:?}"
-    );
-    let before = doc.clone();
-    let strict = write_ok(COMPAT_007, what, Mode::Strict, &doc);
-    let tolerant = write_ok(COMPAT_007, what, Mode::Tolerant, &doc);
-    assert_eq!(
-        strict, tolerant,
-        "{COMPAT_007}: {what}: the strict and tolerant writes differ"
-    );
+    output.into_document()
+}
+
+/// Whether `code` is one the strict-save schema check gives: SACM-ID-002 or
+/// SACM-REF-001 (ADR 0035 D4).
+fn is_schema_code(code: Code) -> bool {
+    code == Code::ID_INVALID || code == Code::REF_DANGLING
+}
+
+/// A diagnostic as its code, severity and affected ids.
+fn coded(found: &Diagnostic) -> (Code, Severity, Vec<String>) {
+    (
+        found.code(),
+        found.severity(),
+        found
+            .affected()
+            .iter()
+            .map(|id| id.as_str().to_owned())
+            .collect(),
+    )
+}
+
+/// `(code, Error, ids)`, as [`coded`] gives it.
+fn error_of(code: Code, ids: &[&str]) -> (Code, Severity, Vec<String>) {
+    (
+        code,
+        Severity::Error,
+        ids.iter().map(|&id| id.to_owned()).collect(),
+    )
+}
+
+/// A strict write is schema-only (ADR 0035 D4; XMI 2.5.1 §7.8.2 "By default,
+/// XMI 2 produces schemas that ignore multiplicities also"; SACM §2.2): a
+/// document that `validate` reports a model Error for, and no schema error,
+/// writes strictly, byte-identical to a tolerant write. So do the golden
+/// files, the nameless drafts included, a document whose only findings are
+/// Warnings, and one read with `xsi:type` and `xmi:version`.
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one flat table is easier to review than several"
+)]
+fn lib_compat_007_content_errors_never_refuse_a_strict_write() {
+    let cases = [
+        (
+            "a nameless package",
+            format!("<sacm:ArgumentPackage{NS} xmi:id=\"p\"/>"),
+            Code::MULTIPLICITY_VIOLATION,
+        ),
+        (
+            "a relationship without a source or a target",
+            named_ap(&format!(
+                "{}<argumentElement xmi:type=\"sacm:AssertedInference\" xmi:id=\"i1\">\
+                 <name content=\"I1\"/></argumentElement>",
+                named_claim("c1", "")
+            )),
+            Code::MULTIPLICITY_VIOLATION,
+        ),
+        (
+            "a duplicate gid",
+            named_ap(&format!(
+                "{}{}",
+                named_claim("c1", " gid=\"g\""),
+                named_claim("c2", " gid=\"g\"")
+            )),
+            Code::GID_DUPLICATE,
+        ),
+        (
+            "a metaClaim naming an ArgumentReasoning (SACM-REF-002)",
+            named_ap(&format!(
+                "{}<argumentElement xmi:type=\"sacm:ArgumentReasoning\" xmi:id=\"r1\">\
+                 <name content=\"R1\"/></argumentElement>",
+                named_claim("c1", " metaClaim=\"r1\"")
+            )),
+            Code::REF_WRONG_TYPE,
+        ),
+        (
+            "an ArgumentPackage nesting a package beside a Claim (SACM-PKG-001)",
+            named_ap(&format!(
+                "<argumentElement xmi:type=\"sacm:ArgumentPackage\" xmi:id=\"q\">\
+                 <name content=\"Q\"/></argumentElement>{}",
+                named_claim("c1", "")
+            )),
+            Code::PACKAGE_CONTENT_INVALID,
+        ),
+        (
+            "an implementation constraint on a concrete element (SACM-ABS-001)",
+            named_ap(
+                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\"><name content=\"c1\"/>\
+                 <implementationConstraint xmi:id=\"k1\"><content><value content=\"k\"/></content>\
+                 </implementationConstraint></argumentElement>",
+            ),
+            Code::ABSTRACT_FORM_INVALID,
+        ),
+        (
+            "a citedElement without isCitation (SACM-CITE-001)",
+            named_ap(&format!(
+                "{}{}",
+                named_claim("c1", " citedElement=\"c2\""),
+                named_claim("c2", "")
+            )),
+            Code::CITATION_INVALID,
+        ),
+    ];
+    for (what, input, code) in &cases {
+        let doc = document_of(what, input);
+        let errors: Vec<Code> = validation_errors(&doc)
+            .iter()
+            .map(Diagnostic::code)
+            .collect();
+        assert!(
+            errors.contains(code) && !errors.iter().any(|&found| is_schema_code(found)),
+            "{COMPAT_007}: {what}: setup: validate does not give {code} without a schema \
+             error: {errors:?}"
+        );
+        let before = doc.clone();
+        let tolerant = write_ok(COMPAT_007, what, Mode::Tolerant, &doc);
+        let strict = write_ok(COMPAT_007, what, Mode::Strict, &doc);
+        assert_eq!(
+            strict, tolerant,
+            "{COMPAT_007}: {what}: the strict write is not the tolerant one"
+        );
+        assert!(
+            doc == before,
+            "{COMPAT_007}: {what}: writing changed the document"
+        );
+    }
+
+    // The golden files, the nameless drafts among them: each writes back
+    // unchanged in both modes.
+    let mut drafts = 0;
+    for name in READABLE_GOLDEN {
+        let text = golden(COMPAT_007, name);
+        let doc = read_ok(COMPAT_007, name, Mode::Tolerant, &text).into_document();
+        if !validation_errors(&doc).is_empty() {
+            drafts += 1;
+        }
+        for mode in MODES {
+            assert_eq!(
+                write_ok(COMPAT_007, name, mode, &doc),
+                text,
+                "{COMPAT_007}: {name} is not written back unchanged in {mode:?} mode"
+            );
+        }
+    }
     assert!(
-        doc == before,
-        "{COMPAT_007}: {what}: writing changed the document"
+        drafts >= 2,
+        "{COMPAT_007}: setup: fewer than two golden files have a validation Error ({drafts})"
+    );
+
+    // A document whose only findings are Warnings: two descriptions on a
+    // Claim (SACM23-VAL-011) and a repeated metaClaim (SACM23-VAL-022).
+    let what = "a document whose only findings are Warnings";
+    let doc = document_of(
+        what,
+        &format!(
+            "<sacm:ArgumentPackage{NS} xmi:id=\"p\"><name lang=\"en\" content=\"P\"/>\
+             <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"m1\">\
+             <name lang=\"en\" content=\"M\"/></argumentElement>\
+             <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" metaClaim=\"m1 m1\">\
+             <name lang=\"en\" content=\"C\"/>\
+             <description xmi:id=\"d1\"><content><value content=\"one\"/></content></description>\
+             <description xmi:id=\"d2\"><content><value content=\"two\"/></content></description>\
+             </argumentElement></sacm:ArgumentPackage>"
+        ),
+    );
+    let found = validation::validate(&doc);
+    assert!(
+        !found.is_empty() && !diagnostic::has_errors(&found),
+        "{COMPAT_007}: {what}: setup: validate does not give Warnings alone: {found:?}"
+    );
+    let strict = write_ok(COMPAT_007, what, Mode::Strict, &doc);
+    assert_eq!(
+        strict,
+        write_ok(COMPAT_007, what, Mode::Tolerant, &doc),
+        "{COMPAT_007}: {what}: the strict and tolerant writes differ"
     );
     let back = read_ok(COMPAT_007, "the strict output", Mode::Strict, &strict).into_document();
     assert_eq!(
@@ -1918,102 +1789,217 @@ fn lib_compat_007_a_validation_warning_does_not_refuse_a_strict_write() {
         [],
         "{COMPAT_007}: {what}: the strict output does not read back equal\n{strict}"
     );
-}
 
-#[test]
-fn lib_compat_007_the_golden_files_are_written_unchanged_by_the_modes_that_write_them() {
-    let mut valid = 0;
-    let mut invalid = 0;
-    for name in READABLE_GOLDEN {
-        let text = golden(COMPAT_007, name);
-        let doc = read_ok(COMPAT_007, name, Mode::Tolerant, &text).into_document();
-        let tolerant = write_ok(COMPAT_007, name, Mode::Tolerant, &doc);
-        assert_eq!(
-            tolerant, text,
-            "{COMPAT_007}: {name} is not written back unchanged in tolerant mode"
-        );
-        let errors = validation_errors(&doc);
-        if errors.is_empty() {
-            valid += 1;
-            assert_eq!(
-                write_ok(COMPAT_007, name, Mode::Strict, &doc),
-                text,
-                "{COMPAT_007}: {name} is not written back unchanged in strict mode"
-            );
-        } else {
-            invalid += 1;
-            let error = write_err(COMPAT_007, name, Mode::Strict, &doc);
-            assert_invalid(name, &error, &errors);
-        }
-    }
+    // A document read tolerantly with xsi:type and xmi:version: their read
+    // diagnostics are not schema errors of the output.
+    let (with, _) = with_both_attributes();
+    let doc = read_ok(COMPAT_007, "both attributes", Mode::Tolerant, &with).into_document();
+    let text = write_ok(COMPAT_007, "both attributes", Mode::Strict, &doc);
     assert!(
-        valid >= 2 && invalid >= 2,
-        "{COMPAT_007}: setup: the golden files are not both valid ({valid}) and nameless ({invalid})"
+        text.contains("xmi:type=\"sacm:Claim\"")
+            && !text.contains("xmi:version")
+            && !text.contains("xsi:"),
+        "{COMPAT_007}: both attributes: the strict output is not in the standard form\n{text}"
     );
 }
 
 // ===========================================================================
-// LIB-COMPAT-007 5. Tolerant writes a nameless document as it is held
+// LIB-COMPAT-007 2. The schema errors: SACM-ID-002 and SACM-REF-001
 // ===========================================================================
 
+/// An `xmi:id` is an `xsd:ID` (XMI.xsd `<xsd:attribute name="id"
+/// type="xsd:ID"/>`), whose lexical space is the `NCName`s (XML Schema
+/// Part 2 §3.3.8). One SACM-ID-002 per such id, of an element, a name, a
+/// `content` or a `value`, affecting the element that owns it.
 #[test]
-fn lib_compat_007_tolerant_writes_a_nameless_document_with_no_name_and_it_reads_back_equal() {
-    let doc = two_roots(&["r", "s", "child", "grandchild"]);
-    let before = doc.clone();
-    let refused = write_err(COMPAT_007, "a nameless document", Mode::Strict, &doc);
+fn lib_compat_007_a_non_ncname_id_is_one_id_002() {
+    let cases = [
+        (
+            "xmi:id=\"1c\" on a Claim",
+            named_ap(&named_claim("1c", "")),
+            "1c",
+        ),
+        (
+            "name id 1n",
+            named_ap(
+                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\">\
+                 <name xmi:id=\"1n\" content=\"C1\"/></argumentElement>",
+            ),
+            "c1",
+        ),
+        (
+            "content id 1t on a Note",
+            named_ap(
+                "<note xmi:id=\"n\"><content xmi:id=\"1t\"><value content=\"x\"/></content></note>",
+            ),
+            "n",
+        ),
+        (
+            "value id 1v in a Note's content",
+            named_ap(
+                "<note xmi:id=\"n\"><content><value xmi:id=\"1v\" content=\"x\"/></content></note>",
+            ),
+            "n",
+        ),
+    ];
+    for (what, input, owner) in &cases {
+        let doc = document_of(what, input);
+        let error = write_err(COMPAT_007, what, Mode::Strict, &doc);
+        assert!(
+            matches!(error, WriteError::Invalid { .. }),
+            "{COMPAT_007}: {what}: the strict write is not Invalid: {error:?}"
+        );
+        assert_eq!(
+            error.diagnostics().iter().map(coded).collect::<Vec<_>>(),
+            [error_of(Code::ID_INVALID, &[owner])],
+            "{COMPAT_007}: {what}: not one SACM-ID-002 Error affecting {owner:?}"
+        );
+        let text = write_ok(COMPAT_007, what, Mode::Tolerant, &doc);
+        assert!(
+            text.contains("xmi:id=\"1"),
+            "{COMPAT_007}: {what}: the tolerant write does not keep the id\n{text}"
+        );
+    }
+}
+
+/// An IDREF naming no ID is schema-invalid (XML Schema Part 1 §3.3.4,
+/// Validation Root Valid (ID/IDREF) clause 1; XMI 2.5.1 §8.2.1 rule 4i): one
+/// SACM-REF-001 affecting the element and the id.
+#[test]
+fn lib_compat_007_a_dangling_reference_is_one_ref_001() {
+    let what = "citedElement=\"nope\"";
+    let doc = document_of(
+        what,
+        &named_ap(&named_claim(
+            "c1",
+            " isCitation=\"true\" citedElement=\"nope\"",
+        )),
+    );
+    let error = write_err(COMPAT_007, what, Mode::Strict, &doc);
     assert!(
-        doc == before,
-        "{COMPAT_007}: the refused strict write changed the document"
+        matches!(error, WriteError::Invalid { .. }),
+        "{COMPAT_007}: {what}: the strict write is not Invalid: {error:?}"
     );
     assert_eq!(
-        refused.diagnostics().len(),
-        4,
-        "{COMPAT_007}: the strict refusal does not list the four nameless elements"
+        error.diagnostics().iter().map(coded).collect::<Vec<_>>(),
+        [error_of(Code::REF_DANGLING, &["c1", "nope"])],
+        "{COMPAT_007}: {what}: not one SACM-REF-001 Error affecting [c1, nope]"
     );
-    let text = write_ok(COMPAT_007, "a nameless document", Mode::Tolerant, &doc);
+    // A tolerant write writes it as held (ADR 0026).
+    let text = write_ok(COMPAT_007, what, Mode::Tolerant, &doc);
     assert!(
-        doc == before,
-        "{COMPAT_007}: the tolerant write changed the document"
+        text.contains("citedElement=\"nope\""),
+        "{COMPAT_007}: {what}: the tolerant write does not keep the reference\n{text}"
+    );
+}
+
+/// The `xmi:id` of a name is an ID the output writes, so a reference to it
+/// is XSD-valid and a strict write writes it, though `validate` still
+/// reports SACM-REF-001 (a name identifies no element; ADR 0024).
+#[test]
+fn lib_compat_007_a_reference_to_a_name_id_is_written() {
+    let what = "a citedElement naming a name's xmi:id";
+    let doc = document_of(
+        what,
+        &named_ap(&format!(
+            "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\">\
+             <name xmi:id=\"n1\" content=\"C1\"/></argumentElement>{}",
+            named_claim("c2", " isCitation=\"true\" citedElement=\"n1\"")
+        )),
     );
     assert!(
-        !text.contains("<name"),
-        "{COMPAT_007}: the nameless document is written with a name\n{text}"
+        validation_errors(&doc)
+            .iter()
+            .any(|found| found.code() == Code::REF_DANGLING),
+        "{COMPAT_007}: {what}: setup: validate does not report SACM-REF-001"
     );
-    for mode in MODES {
-        let back = read_ok(COMPAT_007, "the tolerant output", mode, &text);
-        assert_eq!(
-            semantic_compare(&doc, back.document()),
-            [],
-            "{COMPAT_007}: the tolerant output read in {mode:?} mode is not the document\n{text}"
-        );
-    }
+    let strict = write_ok(COMPAT_007, what, Mode::Strict, &doc);
+    assert!(
+        strict.contains("citedElement=\"n1\"") && strict.contains("xmi:id=\"n1\""),
+        "{COMPAT_007}: {what}: the strict output does not keep the reference and the id\n{strict}"
+    );
+    assert_eq!(
+        strict,
+        write_ok(COMPAT_007, what, Mode::Tolerant, &doc),
+        "{COMPAT_007}: {what}: the strict write is not the tolerant one"
+    );
 }
 
 // ===========================================================================
-// LIB-COMPAT-007 6. The order of the checks
+// LIB-COMPAT-007 3. The order of the refusals
 // ===========================================================================
 
+/// A strict write refuses `NoRoot`, then `PreservedContent`, then `Invalid`,
+/// then an unrepresentable character (ADR 0035 D4). A tolerant write refuses
+/// only the first and the last.
 #[test]
-fn lib_compat_007_an_empty_document_is_no_root_in_both_modes() {
+fn lib_compat_007_the_refusals_come_in_order() {
+    // NoRoot, in both modes.
     for mode in MODES {
-        let error = write_err(COMPAT_007, "an empty document", mode, &Document::new());
         assert_eq!(
-            error,
+            write_err(COMPAT_007, "an empty document", mode, &Document::new()),
             WriteError::NoRoot,
             "{COMPAT_007}: an empty document written in {mode:?} mode is not NoRoot"
         );
-        assert_eq!(
-            error.diagnostics(),
-            [],
-            "{COMPAT_007}: NoRoot has diagnostics"
-        );
     }
-}
 
-#[test]
-fn lib_compat_007_validation_comes_before_the_writers_own_checks_in_strict_mode_only() {
-    // A U+0001 in a root's name, and a nameless Claim after it in document
-    // order.
+    // Preserved content comes before the schema check.
+    let what = "preserved content and a dangling reference";
+    let doc = read_ok(
+        COMPAT_007,
+        what,
+        Mode::Tolerant,
+        &format!(
+            "<sacm:ArgumentPackage{NS} xmlns:v=\"urn:v\" xmi:id=\"p\" v:colour=\"red\">\
+             <name content=\"P\"/>{}</sacm:ArgumentPackage>",
+            named_claim("1c", " isCitation=\"true\" citedElement=\"nope\"")
+        ),
+    )
+    .into_document();
+    let error = write_err(COMPAT_007, what, Mode::Strict, &doc);
+    assert!(
+        matches!(&error, WriteError::PreservedContent { elements, .. }
+            if elements.iter().map(ElementId::as_str).eq(["p"])),
+        "{COMPAT_007}: {what}: the strict write is not PreservedContent [p]: {error:?}"
+    );
+
+    // The schema check comes before an unrepresentable character.
+    let what = "a dangling reference and a U+0001 in a name";
+    let mut doc = document_of(
+        what,
+        &named_ap(&named_claim(
+            "c1",
+            " isCitation=\"true\" citedElement=\"nope\"",
+        )),
+    );
+    if let Err(error) = edit::apply(
+        &mut doc,
+        edit::SetName::new("p", LangString::new("bad\u{1}")),
+    ) {
+        panic!("{COMPAT_007}: {what}: setup: the name was not set: {error}");
+    }
+    let strict = write_err(COMPAT_007, what, Mode::Strict, &doc);
+    assert_eq!(
+        strict.diagnostics().iter().map(coded).collect::<Vec<_>>(),
+        [error_of(Code::REF_DANGLING, &["c1", "nope"])],
+        "{COMPAT_007}: {what}: the strict write is not Invalid with the SACM-REF-001: {strict:?}"
+    );
+    let tolerant = write_err(COMPAT_007, what, Mode::Tolerant, &doc);
+    assert!(
+        matches!(
+            &tolerant,
+            WriteError::UnrepresentableCharacter {
+                element,
+                character: '\u{1}',
+                attribute: WriteAttribute::NameContent,
+                ..
+            } if element.as_str() == "p"
+        ),
+        "{COMPAT_007}: {what}: the tolerant write does not refuse the U+0001: {tolerant:?}"
+    );
+
+    // A content Error is no schema error: with a nameless Claim and a
+    // U+0001, the character is what a strict write refuses.
     let mut bad = Document::new();
     insert(
         COMPAT_007,
@@ -2031,113 +2017,84 @@ fn lib_compat_007_validation_comes_before_the_writers_own_checks_in_strict_mode_
         "c1",
         None,
     );
-    let expected = validation_errors(&bad);
-    let strict = write_err(
-        COMPAT_007,
-        "a nameless Claim and a U+0001",
-        Mode::Strict,
-        &bad,
-    );
-    assert_invalid("a nameless Claim and a U+0001", &strict, &expected);
-    let tolerant = write_err(
-        COMPAT_007,
-        "a nameless Claim and a U+0001",
-        Mode::Tolerant,
-        &bad,
-    );
-    assert!(
-        matches!(
-            &tolerant,
-            WriteError::UnrepresentableCharacter {
-                element,
-                character: '\u{1}',
-                attribute: WriteAttribute::NameContent,
-                ..
-            } if element.as_str() == "p"
-        ),
-        "{COMPAT_007}: tolerant mode does not refuse the U+0001: {tolerant:?}"
-    );
-    assert_eq!(
-        tolerant.diagnostics(),
-        [],
-        "{COMPAT_007}: UnrepresentableCharacter has diagnostics"
-    );
-
-    // With every element named, the writer's own check refuses in both modes.
-    // The Claim goes in `child`, which holds only Claims: in `s`, beside the
-    // nested `child`, it would be a SACM-PKG-001 Error (SACM23-VAL-012).
-    let mut named = two_roots(&[]);
-    insert(
-        COMPAT_007,
-        &mut named,
-        Some("child"),
-        ElementKind::Claim,
-        "ctl",
-        Some(LangString::new("x").with_lang("e\u{1}n")),
-    );
     for mode in MODES {
-        let error = write_err(COMPAT_007, "a named document with a U+0001", mode, &named);
+        let error = write_err(COMPAT_007, "a nameless Claim and a U+0001", mode, &bad);
         assert!(
             matches!(
                 &error,
                 WriteError::UnrepresentableCharacter {
                     element,
-                    attribute: WriteAttribute::NameLang,
+                    attribute: WriteAttribute::NameContent,
                     ..
-                } if element.as_str() == "ctl"
+                } if element.as_str() == "p"
             ),
-            "{COMPAT_007}: a named document with a U+0001 written in {mode:?} mode is not \
-             refused by the writer's check: {error:?}"
+            "{COMPAT_007}: a nameless Claim and a U+0001 written in {mode:?} mode is not \
+             refused for the character: {error:?}"
         );
     }
 }
 
 // ===========================================================================
-// LIB-COMPAT-007 7. The refusal's code, element and Display
+// LIB-COMPAT-007 4. The Invalid refusal's code, element and Display
 // ===========================================================================
 
 #[test]
-fn lib_compat_007_the_invalid_refusal_has_no_code_or_element_and_one_deterministic_line() {
-    let three = two_roots(&["r", "child", "grandchild"]);
-    let error = write_err(COMPAT_007, "three nameless elements", Mode::Strict, &three);
-    assert_eq!(error.code(), None, "{COMPAT_007}: Invalid has a code");
+fn lib_compat_007_the_invalid_display_counts_schema_errors() {
+    let what = "one dangling target";
+    let one = document_of(
+        what,
+        &named_ap(&format!(
+            "{}<argumentElement xmi:type=\"sacm:AssertedInference\" xmi:id=\"i1\" source=\"c1\" \
+             target=\"nope\"><name content=\"I1\"/></argumentElement>",
+            named_claim("c1", "")
+        )),
+    );
+    let error = write_err(COMPAT_007, what, Mode::Strict, &one);
     assert_eq!(
-        error.element(),
-        None,
-        "{COMPAT_007}: Invalid names an element"
-    );
-    let shown = error.to_string();
-    assert!(
-        !shown.contains('\n') && !shown.contains('\r'),
-        "{COMPAT_007}: the Display is not one line: {shown:?}"
-    );
-    assert!(
-        shown.starts_with(|c: char| c.is_lowercase()),
-        "{COMPAT_007}: the Display does not start in lower case: {shown:?}"
-    );
-    assert!(
-        !shown.ends_with(['.', '!', ';', ':']),
-        "{COMPAT_007}: the Display ends with punctuation: {shown:?}"
-    );
-    for part in ["3", "SACM-MULT-001", "\"child\""] {
-        assert!(
-            shown.contains(part),
-            "{COMPAT_007}: the Display {shown:?} does not give {part}: the number of Errors, \
-             the first one's code and its quoted id"
-        );
-    }
-    let again = write_err(COMPAT_007, "three nameless elements", Mode::Strict, &three);
-    assert_eq!(
-        again, error,
-        "{COMPAT_007}: a second write refuses differently"
+        (error.code(), error.element()),
+        (None, None),
+        "{COMPAT_007}: {what}: Invalid has a code or an element"
     );
     assert_eq!(
-        again.to_string(),
-        shown,
-        "{COMPAT_007}: a second write displays differently"
+        error.to_string(),
+        "the document cannot be written in strict mode: 1 schema error, SACM-REF-001 on \"i1\"",
+        "{COMPAT_007}: {what}: the Display"
     );
 
-    // An id with a quote and a line break is quoted with {:?}.
+    let what = "two non-NCName ids and a dangling reference";
+    let three = document_of(
+        what,
+        &named_ap(&format!(
+            "{}{}{}",
+            named_claim("c3", " isCitation=\"true\" citedElement=\"nope\""),
+            named_claim("2c", ""),
+            named_claim("1c", "")
+        )),
+    );
+    let error = write_err(COMPAT_007, what, Mode::Strict, &three);
+    assert_eq!(
+        error.diagnostics().iter().map(coded).collect::<Vec<_>>(),
+        [
+            error_of(Code::ID_INVALID, &["1c"]),
+            error_of(Code::ID_INVALID, &["2c"]),
+            error_of(Code::REF_DANGLING, &["c3", "nope"]),
+        ],
+        "{COMPAT_007}: {what}: not the three schema errors in Diagnostic order"
+    );
+    let shown = error.to_string();
+    assert_eq!(
+        shown,
+        "the document cannot be written in strict mode: 3 schema errors, the first is \
+         SACM-ID-002 on \"1c\"",
+        "{COMPAT_007}: {what}: the Display"
+    );
+    assert_eq!(
+        write_err(COMPAT_007, what, Mode::Strict, &three).to_string(),
+        shown,
+        "{COMPAT_007}: {what}: a second write displays differently"
+    );
+
+    // An id with a quote and a line break is quoted with {:?}, on one line.
     let odd = "a\"b\nc";
     let mut doc = Document::new();
     insert(
@@ -2146,51 +2103,15 @@ fn lib_compat_007_the_invalid_refusal_has_no_code_or_element_and_one_determinist
         None,
         ElementKind::ArgumentPackage,
         odd,
-        None,
-    );
-    insert(
-        COMPAT_007,
-        &mut doc,
-        Some(odd),
-        ElementKind::Claim,
-        "z",
-        None,
+        Some(en("P")),
     );
     let error = write_err(COMPAT_007, "an id with a line break", Mode::Strict, &doc);
-    let shown = error.to_string();
-    assert!(
-        !shown.contains('\n'),
-        "{COMPAT_007}: an id with a line break breaks the Display: {shown:?}"
-    );
-    // Two nameless elements and the id that is not an NCName (SACM-ID-002),
-    // which sorts first.
-    for part in ["3".to_owned(), "SACM-ID-002".to_owned(), format!("{odd:?}")] {
-        assert!(
-            shown.contains(&part),
-            "{COMPAT_007}: the Display {shown:?} does not give {part}"
-        );
-    }
-}
-
-// ===========================================================================
-// LIB-COMPAT-007 8. A document read from xsi:type and xmi:version writes strictly
-// ===========================================================================
-
-#[test]
-fn lib_compat_007_a_document_read_tolerantly_with_xsi_type_and_xmi_version_writes_strictly() {
-    let (with, _) = with_both_attributes();
-    let doc = read_ok(COMPAT_007, "both attributes", Mode::Tolerant, &with).into_document();
-    let text = match xmi::write(&doc, &WriteOptions::default()) {
-        Ok(text) => text,
-        Err(error) => panic!("{COMPAT_007}: the document does not write strictly: {error:?}"),
-    };
-    assert!(
-        text.contains("xmi:type=\"sacm:Claim\""),
-        "{COMPAT_007}: the output has no xmi:type\n{text}"
-    );
-    assert!(
-        !text.contains("xmi:version") && !text.contains("xsi:"),
-        "{COMPAT_007}: the output has xmi:version or xsi:type\n{text}"
+    assert_eq!(
+        error.to_string(),
+        format!(
+            "the document cannot be written in strict mode: 1 schema error, SACM-ID-002 on {odd:?}"
+        ),
+        "{COMPAT_007}: an id with a line break: the Display"
     );
 }
 
@@ -2341,52 +2262,4 @@ fn lib_compat_001_sacm_xmi_011_on_the_xmi_element_names_the_xmi_element_and_not_
              SACM-XMI-011 naming the XMI element and not the root: {diagnostic:?}"
         );
     }
-}
-
-// ===========================================================================
-// LIB-COMPAT-007 9. The Invalid refusal counts its Errors in words
-// ===========================================================================
-
-#[test]
-fn lib_compat_007_the_invalid_refusal_says_1_error_for_one_and_3_errors_for_three() {
-    let one = two_roots(&["grandchild"]);
-    let error = write_err(COMPAT_007, "one nameless Claim", Mode::Strict, &one);
-    assert_eq!(
-        error.diagnostics().len(),
-        1,
-        "{COMPAT_007}: setup: the refusal of one nameless Claim does not hold one Error"
-    );
-    let shown = error.to_string();
-    assert!(
-        shown.contains("1 error") && !shown.contains("1 errors"),
-        "{COMPAT_007}: the refusal with one Error does not say \"1 error\": {shown:?}"
-    );
-    assert_eq!(
-        shown,
-        "the document cannot be written in strict mode: validation reports 1 error, \
-         SACM-MULT-001 on \"grandchild\"",
-        "{COMPAT_007}: the refusal with one Error is not the pinned text"
-    );
-    assert!(
-        !shown.contains("the first is"),
-        "{COMPAT_007}: the refusal with one Error says \"the first is\": {shown:?}"
-    );
-
-    let three = two_roots(&["r", "child", "grandchild"]);
-    let error = write_err(COMPAT_007, "three nameless elements", Mode::Strict, &three);
-    assert_eq!(
-        error.diagnostics().len(),
-        3,
-        "{COMPAT_007}: setup: the refusal of three nameless elements does not hold three Errors"
-    );
-    let shown = error.to_string();
-    assert!(
-        shown.contains("3 errors"),
-        "{COMPAT_007}: the refusal with three Errors does not say \"3 errors\": {shown:?}"
-    );
-    assert!(
-        shown.contains(", the first is SACM-MULT-001 on \"child\""),
-        "{COMPAT_007}: the refusal with three Errors does not name the first one as \
-         \", the first is SACM-MULT-001 on \\\"child\\\"\": {shown:?}"
-    );
 }
