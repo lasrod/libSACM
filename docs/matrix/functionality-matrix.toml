@@ -1832,7 +1832,7 @@ tests = [
   "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_a_foreign_root_id_is_preserved_at_its_name",
   "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_a_repeated_root_id_is_duplicate_id_at_the_second_root",
 ]
-verification = "docs/verification/0036-m1-ids-docs-cli.md"
+verification = "docs/verification/0052-m3-artifact-basics.md"
 notes = "Parser leniencies beyond LIB-SEC-005's list were left to LIB-SEC-006 (W3C conformance suite), by the maintainer's decision of 2026-11-11 (slice 0021, verification round 3); LIB-SEC-006 closes the list within the suite (slice 0022). Slice 0026: the unread-content example `<name/>` became `<note/>`, because SACM23-XMI-012 reads names; re-checked there. Slice 0029: a duplicate root id is now refused at its id check, as \"an earlier element\"; re-checked there. Slice 0035: read diagnostics exist now (SACM-XMI-010, SACM-XMI-011), so `diagnostics()` is no longer always empty; re-checked there. Slice 0036: an empty or duplicate `xmi:id` is now a coded refusal (`ReadError::InvalidId`, `ReadError::DuplicateId`; ADR 0015 amendment 2), and a padded id is `Unsupported`; reworded and re-checked there. Slice 0039: reworded for SACM23-XMI-020/-021/-022/-025 and SACM23-VAL-006 (ADR 0024, ADR 0021 amendment 2); re-check there. Slice 0040: reworded, because utility children and `gid` are read now (SACM23-BASE-004/005/006); its tests use `isCitation`, `isAbstract`, `<foo/>` and `<isCitation>` as unread samples; re-check there. Slice 0042: `isCitation`, `isAbstract`, `citedElement` and `abstractForm` are read now (SACM23-BASE-007/008); its tests need other unread samples; re-check there. Slice 0043: a test sample or list changed because ArgumentReasoning, AssertedInference and AssertedContext are read now (ADR 0027); re-check there."
 
 [[row]]
@@ -2453,7 +2453,7 @@ tests = [
   "crates/sacm/tests/edit_atomic.rs::lib_edit_003_mutation_is_clone_debug_partial_eq_and_eq",
   "crates/sacm/tests/edit_atomic.rs::lib_edit_003_operation_name_of_the_artifact_creates_is_the_struct_name",
 ]
-verification = "docs/verification/0034-m1-atomic-edits-and-results.md"
+verification = "docs/verification/0052-m3-artifact-basics.md"
 
 [[row]]
 id = "LIB-RT-003"
@@ -4373,7 +4373,8 @@ title = "ArtifactPackage"
 requirement = "ArtifactPackage (§12.2) is read and written as a root (bare or inside `xmi:XMI`), in an AssuranceCasePackage's `artifactPackage` role, and nested in another ArtifactPackage's `artifactElement` role with `xmi:type`; it holds its ArtifactElements in the composite role `artifactElement : ArtifactElement [0..*]` in document order (every ArtifactElement kind is admitted: LIB-API-008, ADR 0014), so the kinds already readable are also read inside it. An untyped `artifactElement` child is `MissingType` (SACM-XMI-005); one in reference form is a not-yet-read proxy (SACM23-XMI-019, SACM23-XMI-027). ArtifactElement kinds this release does not read yet (Artifact, Resource, Activity, Event, ArtifactAssetRelationship, and the Terminology kinds) are refused as `Interim` naming their rows (LIB-API-011), the type `ArtifactAssertedRelationship` as `Tolerance(SACM23-XMI-009)`, and its `interface` end as `Interim(SACM23-ART-012)`. `edit::CreateArtifactPackage` creates one as a root or a child (ADR 0034)."
 source = "formal/23-05-08 §12.2 (`artifactElement:Base::ArtifactElement[0..*] (composition)`; \"ArtifactPackages can also be nested\"); ptc/22-03-13 Artifact::ArtifactPackage (`artifactElement : ArtifactElement [0..*]`, composite; `interface : ArtifactPackageInterface [0..*]`); clause 2 (ArtifactPackage is a unit of interchange); ADR 0034"
 kind = "model"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0052-m3-artifact-basics.md"
 code = ["crates/sacm/src/xmi/refusal.rs", "crates/sacm/src/xmi/roots.rs", "crates/sacm/src/edit/artifact.rs", "crates/sacm/src/edit.rs"]
 depends_on = ["SACM23-AC-001", "SACM23-XMI-005", "LIB-API-008"]
 acceptance = [
@@ -4428,7 +4429,8 @@ title = "Property"
 requirement = "Property (§12.8) is read and written in the composite role `property : Property [0..*]` of every ArtifactAsset this release reads (Property, Technique, Participant), untyped or typed `sacm:Property`, and typed in an ArtifactPackage's `artifactElement`. `SacmElement::properties()` lists an asset's `property` children in document order; a Property held directly in an ArtifactPackage is a child of the package, not a property of it. A `property` element typed as another class, or under an element that is not an ArtifactAsset, is preserved content (SACM-XMI-003). `edit::CreateProperty` creates one where the containment table admits it."
 source = "formal/23-05-08 §12.6 and §12.8 (\"Property enables the specification of the characteristics of an Artifact\"); ptc/22-03-13 Artifact::ArtifactAsset.property (`property : Property [0..*]`, composite), Artifact::Property; ADR 0034"
 kind = "model"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0052-m3-artifact-basics.md"
 code = ["crates/sacm/src/model/document.rs", "crates/sacm/src/edit/artifact.rs", "crates/sacm/src/edit.rs"]
 depends_on = ["SACM23-ART-001"]
 acceptance = [
@@ -4500,7 +4502,8 @@ title = "Technique"
 requirement = "Technique (§12.12), an ArtifactAsset with no attributes of its own, is read and written typed in an ArtifactPackage's `artifactElement`, with its Base features (name, utility elements, gid, flags, `citedElement`, `abstractForm`) and its `property` children (SACM23-ART-003), and round-trips. `edit::CreateTechnique` creates one in an ArtifactPackage, and the existing edits (SetName, SetGid, SetFlag, SetReferences, ReorderElements, DeleteElement) apply to it."
 source = "formal/23-05-08 §12.12; ptc/22-03-13 Artifact::Technique (generalization ArtifactAsset); ADR 0034"
 kind = "model"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0052-m3-artifact-basics.md"
 code = ["crates/sacm/src/edit/artifact.rs", "crates/sacm/src/edit.rs"]
 depends_on = ["SACM23-ART-003"]
 acceptance = [
@@ -4522,7 +4525,8 @@ title = "Participant"
 requirement = "Participant (§12.13), an ArtifactAsset with no attributes of its own, is read and written typed in an ArtifactPackage's `artifactElement`, with its Base features (name, utility elements, gid, flags, `citedElement`, `abstractForm`) and its `property` children (SACM23-ART-003), and round-trips. `edit::CreateParticipant` creates one in an ArtifactPackage, and the existing edits (SetName, SetGid, SetFlag, SetReferences, ReorderElements, DeleteElement) apply to it."
 source = "formal/23-05-08 §12.13; ptc/22-03-13 Artifact::Participant (generalization ArtifactAsset); ADR 0034"
 kind = "model"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0052-m3-artifact-basics.md"
 code = ["crates/sacm/src/edit/artifact.rs", "crates/sacm/src/edit.rs"]
 depends_on = ["SACM23-ART-003"]
 acceptance = [
@@ -4555,7 +4559,8 @@ title = "ArtifactGroup"
 requirement = "ArtifactGroup (§12.3) is read and written typed in an ArtifactPackage's `artifactElement`, with the reference end `artifactElement : ArtifactElement [0..*]` (ptc gives it no aggregation, so it is a reference, not a containment), held as `ReferenceEnd::ArtifactGroupMember` (ADR 0034, the maintainer's M3 decision 5). The parent's kind decides: under an ArtifactGroup `artifactElement` is the member end (an IDREFS attribute, or elements with `xmi:idref` or `href=\"#id\"`, read as SACM23-ARG-013 reads `argumentElement`); under an ArtifactPackage it is the composite role. `group_members()` answers for both group kinds; members stay children of their own package. The end follows SACM23-XMI-005/015 (serialization), SACM23-VAL-003/004/022 (dangling, typing to ArtifactElement, repeats) and LIB-EDIT-009 (edits); it has no lower bound, so a scrub leaves the group, even when empty. `edit::CreateArtifactGroup` takes its members."
 source = "formal/23-05-08 §12.3 (`artifactElement:ArtifactElement[0..*]`, no composition; ArtifactGroups \"serve no structural purpose\"); ptc/22-03-13 Artifact::ArtifactGroup (`artifactElement : ArtifactElement [0..*]`, no aggregation); ADR 0034"
 kind = "model"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0052-m3-artifact-basics.md"
 code = ["crates/sacm/src/model/reference.rs", "crates/sacm/src/model/document.rs", "crates/sacm/src/compare.rs", "crates/sacm/src/edit/artifact.rs", "crates/sacm/src/edit/argumentation.rs", "crates/sacm/src/edit.rs"]
 depends_on = ["SACM23-ART-001", "SACM23-XMI-015", "SACM23-VAL-004", "LIB-EDIT-009", "LIB-EDIT-005"]
 acceptance = [
@@ -5176,7 +5181,7 @@ tests = [
   "crates/sacm/tests/xmi_read_children.rs::sacm23_xmi_016_an_empty_child_id_is_invalid_id_at_the_child",
   "crates/sacm/tests/xmi_read_children.rs::sacm23_xmi_016_a_duplicate_child_id_is_duplicate_id_at_the_child",
 ]
-verification = "docs/verification/0037-m1-element-form-values.md"
+verification = "docs/verification/0052-m3-artifact-basics.md"
 
 [[row]]
 id = "SACM23-XMI-017"
@@ -5426,7 +5431,7 @@ requirement = "Every `ReadError::Unsupported` comes from one crate-private list 
 source = "D-PRESERVE; D-STRICT; ADR 0015 (and amendment 1); ADR 0016; ADR 0033; XMI 2.5.1 §7.6.1 `<xsd:attribute name=\"id\" type=\"xsd:ID\" use=\"optional\"/>`, §7.3.3 \"Tools that rely on XMI are expected to store the extension information and export it again\"; ADR review, 2026-11-13 (the maintainer: apply every recommendation)"
 kind = "api"
 status = "verified"
-verification = "docs/verification/0051-m2-close.md"
+verification = "docs/verification/0052-m3-artifact-basics.md"
 depends_on = ["LIB-API-009", "LIB-API-010", "LIB-COMPAT-003", "LIB-COMPAT-008", "LIB-COMPAT-010", "SACM23-XMI-026"]
 acceptance = [
   "xtask/tests/interim_refusals.rs: (a) outside comments and `#[cfg(test)]`, the token `Unsupported` appears in `crates/sacm/src` only in `xmi.rs` and `xmi/refusal.rs`; (b) every `Interim(\"…\")` names a row that exists, is not `verified`, and is in the `depends_on` closure of SACM23-CP-001 and SACM23-CP-003 (whose units of interchange, an AssuranceCasePackage and an ArtifactPackage, can hold every kind) and, for an `SACM23-ARG-` row, of CP-002, for an `SACM23-TERM-` row, of CP-004, and for a row of no package, of all four (the maintainer, 2026-11-16: a refusal gates the compliance points whose documents can hold it, not the Argumentation or Terminology point for another package's kinds); (c) every `Tolerance` row exists and is not verified; each check reports an in-memory mutation of the source or matrix with its own code.",
@@ -5800,7 +5805,7 @@ requirement = "An optional `serde` feature implements `Serialize` and `Deseriali
 source = "User request: Assurance Forge, GitHub issue #57 (2026-11-14); rust-library-craft \"`serde` support, if added, is behind `serde`\"; ADR 0011 \"Later additions are additive: user-built diagnostics, `operation` and serde\"; ADR 0030 (the maintainer, 2026-11-15)"
 kind = "api"
 status = "verified"
-verification = "docs/verification/0047-m2-check-and-serde.md"
+verification = "docs/verification/0052-m3-artifact-basics.md"
 depends_on = ["LIB-EDIT-003", "LIB-EDIT-008", "LIB-EDIT-009", "LIB-EDIT-010"]
 notes = "Narrowed 2026-11-15 from \"serializes the model and diagnostics\": leaving `Document` out removes the concern that serde freezes a second serialization of the model. The maintainer decided on 2026-11-15 that the serialized form is a stability promise, like `operation_name()`: changing it is a breaking change. Needs an ADR for the serde dependency (optional, with `derive`) and the JSON shape. LIB-QA-017 builds the wasm target with this feature too."
 acceptance = [

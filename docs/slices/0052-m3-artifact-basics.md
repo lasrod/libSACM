@@ -1,8 +1,8 @@
 ---
 slice: 0052
 name: m3-artifact-basics
-state: in-progress
-step: verification
+state: done
+step: done
 rows: [SACM23-ART-001, SACM23-ART-003, SACM23-ART-008, SACM23-ART-009, SACM23-ART-011]
 mode: pr
 base: main
@@ -70,3 +70,4 @@ The architect's brief of 2026-11-15 is in `target/slice-0052-architect-brief.md`
   - LIB-API-011's requirement text.
   The verifier also found that the lead's prefix rule let CP-003 miss Terminology rows. An ArtifactPackage can hold every kind, so every Interim row now gates CP-001 and CP-003, plus its own package's point; CP-003 gains TERM-004/005/006.
 - 2026-11-16 fix round 1: done. New tests cover an unknown, abstract, foreign or wrongly-cased type in `artifactElement`, and the model spelling preserved where its kind is not admitted. The gate rule is now CP-001 and CP-003 plus the row's own package's point, with a test for a TERM row against CP-003. The rustdoc of `xmi.rs`, `document.rs` and `compare.rs`, the README and the catalog are brought up to date. Gate green: 2,311 workspace tests, 1,796 without features, 435 xtask.
+- 2026-11-16 verification round 2: PASS (d9bda7d). Record: docs/verification/0052-m3-artifact-basics.md. The five ART rows are verified.
