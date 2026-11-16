@@ -29,8 +29,8 @@
 //! not SACM 2.3 where it stands, such as a vendor attribute or child
 //! element, is kept as written as preserved content of its element, with
 //! SACM-XMI-003 (see [Preserved content](fn@read#preserved-content)), and a
-//! tolerant read keeps what a strict read refuses the same way, with a
-//! Warning (see [Modes](#modes)). Nothing is dropped.
+//! tolerant read keeps most of what a strict read refuses the same way, with
+//! a Warning (see [Modes](#modes) for which). Nothing is dropped.
 //!
 //! `write` writes every element of a document, with its `gid`, its flags and
 //! references, its name, its `content` and `key` and, on an Assertion, its

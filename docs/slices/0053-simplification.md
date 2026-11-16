@@ -1,8 +1,8 @@
 ---
 slice: 0053
 name: simplification
-state: in-progress
-step: implementation
+state: done
+step: done
 rows: [LIB-COMPAT-001, LIB-COMPAT-003, LIB-COMPAT-007, LIB-API-011, SACM23-VAL-006, SACM23-XMI-008, LIB-API-006]
 mode: pr
 base: main
@@ -96,3 +96,4 @@ The design brief is `target/slice-0053-simplification-brief.md` (git-ignored).
   - the NoRoot test now covers wrapper text and a wrapper attribute;
   - the stale preserved-content rustdoc is fixed.
   Each hand mutation is now caught.
+- 2026-11-16 verification round 3: PASS for all seven rows (record: docs/verification/0053-simplification.md). Two wording findings were fixed directly. Closed.

@@ -982,7 +982,8 @@ fn lib_compat_003_document_preserved_content_is_one_difference() {
 }
 
 /// With every root deleted, a document whose preserved content outside its
-/// elements is only XMI metadata holds no SACM package, so both writes are
+/// elements is only XMI metadata, text or attributes of `xmi:XMI` holds no
+/// SACM package, so both writes are
 /// `NoRoot` (an `xmi:XMI` holding no package is `NoPackage` on read). A
 /// root of a kind not read yet that the document holds is a root: it is
 /// written, wrapped.
