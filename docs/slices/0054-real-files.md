@@ -1,8 +1,8 @@
 ---
 slice: 0054
 name: real-files
-state: in-progress
-step: verification
+state: done
+step: done
 rows: [LIB-COMPAT-015, LIB-CLI-002, LIB-API-016]
 mode: pr
 base: main
@@ -63,3 +63,4 @@ ADR 0023 amendment 1.
 - 2026-11-16 implementation: `sacm-builder` step 2 is done.
   - The step-1 tests pass unchanged. Cargo-mutants caught 16 of 16. One hand mutation survived, the JSON `mode` of a tolerant refusal, and it is now killed by a new test.
   - The lead added the ADR 0023 and ADR 0035 notes, the LIB-CLI-003 wording and the CHANGELOG flag line.
+- 2026-11-16 verification: PASS for all three rows in round 1 (record: docs/verification/0054-real-files.md). The four wording findings were fixed directly with the verifier's text. Closed.

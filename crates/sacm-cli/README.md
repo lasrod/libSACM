@@ -24,9 +24,14 @@ names the default. Giving both flags is a usage error.
 - A file that a strict read refuses but a tolerant read opens is `invalid` (exit 1). The
   refusal is printed on stdout, then
   `<file>: invalid (refused by a strict read; --tolerant opens it)`.
-- `--tolerant` reads in tolerant mode, which opens any well-formed file with SACM 2.3
-  roots and reports what a strict read refuses as Warnings. Its summary says `readable`,
-  never `valid`, and `invalid` when a diagnostic is an Error.
+- A strict refusal of conforming content this version does not read yet (its message
+  ends `(a limit of this version; …)`) is `invalid` too: the check could not confirm the
+  file, which does not mean that the file breaks SACM 2.3.
+- `--tolerant` reads in tolerant mode, which also opens a file that a strict read refuses
+  for a bad value or for content this version does not read yet, and reports what a
+  strict read refuses as Warnings. It still refuses a DOCTYPE, malformed XML, a root
+  outside SACM 2.3, a repeated `xmi:id` and an encoding it cannot decode (exit 2). Its
+  summary says `readable`, never `valid`, and `invalid` when a diagnostic is an Error.
 
 ```console
 $ sacm validate case.sacm.xmi
@@ -49,10 +54,12 @@ case.sacm.xmi: invalid (1 error, 0 warnings, 0 info)
   cites: SACM 2.3, or XMI 2.5.1 for SACM-ID-* and SACM-XMI-*.
 - `refusal` is `null`, or `{"code","location","locations","message"}`: the strict
   refusal of a file only a tolerant read opens (with `"result":"invalid"` and
-  `"diagnostics":[]`), or the refusal of an unreadable file, in the mode asked for. `location` is where the refusal is (for
-  SACM-ID-001, the first repeat); `locations` is every place it names. `code` is `null`
-  for an I/O error and for input this version cannot read yet (`Unsupported`). An I/O
-  error also has `"location":null` and `"locations":[]`.
+  `"diagnostics":[]`), or the refusal of an unreadable file, in the mode asked for.
+  `location` is where the refusal is (for SACM-ID-001, the first repeat); `locations` is
+  every place it names. `code` is `null` for an I/O error and for an `Unsupported`
+  refusal: input this version cannot read yet, or a defect such as an attribute on
+  `xmi:XMI` that is neither SACM 2.3 nor XMI 2.5.1. An I/O error also has
+  `"location":null` and `"locations":[]`.
 - Every key is always present, with `null` where a value is absent. A location is
   `{"line":L,"column":C}`.
 - `"format":1` is the version of this shape. Keys may be added; a rename, a removal or a

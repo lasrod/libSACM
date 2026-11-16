@@ -49,11 +49,13 @@ struct Cli {
 enum Command {
     /// Print the tool version and the SACM revision it implements.
     Version,
-    /// Read a SACM XMI file strictly, validate it and report every diagnostic.
+    /// Read a SACM XMI file (strictly by default), validate it and report
+    /// every diagnostic.
     ///
-    /// Exits 0 when the file is valid, 1 when it is not (an Error diagnostic,
-    /// or a strict refusal of a file a tolerant read opens), and 2 when
-    /// neither a strict nor a tolerant read opens it.
+    /// Exits 0 when the check passes (`valid`, or `readable` with
+    /// `--tolerant`), 1 when it fails (an Error diagnostic, or a strict
+    /// refusal of a file a tolerant read opens), and 2 when the file cannot be
+    /// read from disk or neither a strict nor a tolerant read opens it.
     Validate(ValidateArgs),
     /// Check that a SACM XMI file survives a strict save and reload unchanged.
     ///
@@ -72,8 +74,11 @@ struct ValidateArgs {
     /// strict read refuses is invalid.
     #[arg(long)]
     strict: bool,
-    /// Read in tolerant mode, which opens any well-formed file with SACM 2.3
-    /// roots; the summary says "readable", never "valid".
+    /// Read in tolerant mode, which also opens a file a strict read refuses
+    /// for a bad value or content not read yet, reporting it as Warnings; it
+    /// still refuses a DOCTYPE, malformed XML, a root outside SACM 2.3, a
+    /// repeated `xmi:id` and an encoding it cannot decode. The summary says
+    /// "readable", never "valid".
     #[arg(long, conflicts_with = "strict")]
     tolerant: bool,
     /// How to report.

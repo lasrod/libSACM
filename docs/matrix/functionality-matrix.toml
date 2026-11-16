@@ -2532,7 +2532,7 @@ tests = [
   "crates/sacm-cli/tests/validate.rs::lib_cli_002_json_for_a_strict_refusal_without_a_code_is_invalid_or_unreadable_by_what_a_tolerant_read_opens",
   "crates/sacm-cli/tests/validate.rs::lib_cli_002_json_for_a_file_a_tolerant_read_refuses_names_the_tolerant_mode",
 ]
-verification = "docs/verification/0036-m1-ids-docs-cli.md"
+verification = "docs/verification/0054-real-files.md"
 code = ["crates/sacm-cli/src/main.rs", "crates/sacm-cli/src/json.rs", "crates/sacm-cli/README.md", "docs/adr/0023-command-line.md"]
 notes = "Slice 0041: a test input broke §11.4 homogeneity or held two descriptions, which SACM23-VAL-011/012 now report; the input was changed, not the assertion; re-check there. Strict by default: the maintainer, 2026-11-16 (slice 0054), after the review found a tolerant read could report a non-conforming file as valid."
 
@@ -5817,7 +5817,8 @@ title = "Real files are read"
 requirement = "`cargo xtask fetch-corpus` downloads SACM files that tools other than this crate wrote, at URLs pinned to a commit with SHA-256 pins (`CORPUS` in `xtask/src/fetch.rs`), into the git-ignored `third_party/corpus/`, with the policy of `fetch-spec`; they are never committed. An xtask test reads each file tolerantly and strictly, validates the document a tolerant read returns, writes it back tolerantly and reads that back, and reports per file the outcome of each step, the diagnostics by code and severity with counts, and whether the write-back reads back semantically equal. The report is deterministic; `docs/compat/corpus.md` holds the list and the report, which the test checks. A file in a namespace other than SACM 2.3's, or one neither mode opens, is recorded as refused, not a failure. Every refusal or loss the report shows is mapped in `docs/compat/corpus.md` to a matrix row or a note, or is fixed."
 source = "the maintainer, 2026-11-16 (independent review; consumer needs before M4 and M5); SACM 2.3 formal/23-05-08 §2.4 \"Software that conforms to the specification at the Assurance Case Model compliance point shall be able to import and export XMI documents that conform with the SACM XML Schema produced by applying XMI rules to the normative MOF metamodel defined in this entire specification.\"; LIB-TOOL-002 (pinned fetch); LIB-SEC-006 (a fetched corpus skipped when absent); LIB-COMPAT-005 (the committed corpus, M6); assurance-forge `docs/sacm/sacm-interop-corpus.md` at b0a0f0d (its corpus, which this list extends)"
 kind = "xmi"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0054-real-files.md"
 depends_on = ["LIB-COMPAT-001", "LIB-TOOL-002", "LIB-TOOL-021"]
 code = ["xtask/src/fetch.rs", "xtask/src/lib.rs", "xtask/Cargo.toml", ".gitignore", ".github/workflows/ci.yml", "docs/compat/corpus.md"]
 tests = [
@@ -5879,7 +5880,8 @@ title = "ReadOutput::has_errors"
 requirement = "`ReadOutput::has_errors()` says whether the read reported any Error, so an application can tell a strict read's Errors (SACM-XMI-003, SACM-XMI-010) from a clean or warnings-only read without scanning the diagnostics. It equals `diagnostic::has_errors(output.diagnostics())`, which stays the function for any other list."
 source = "the maintainer, 2026-11-16 (independent review; consumer needs before M4 and M5); docs review 0045 (moved from LIB-API-013)"
 kind = "api"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0054-real-files.md"
 depends_on = ["LIB-COMPAT-001"]
 code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/lib.rs"]
 tests = [
