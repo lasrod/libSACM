@@ -5323,7 +5323,7 @@ depends_on = ["LIB-API-009", "LIB-API-010", "LIB-COMPAT-003", "LIB-COMPAT-008", 
 acceptance = [
   "xtask/tests/interim_refusals.rs: (a) outside comments and `#[cfg(test)]`, the token `Unsupported` appears in `crates/sacm/src` only in `xmi.rs` and `xmi/refusal.rs`; (b) every `Interim(\"…\")` names a row that exists, is not `verified`, and is in the `depends_on` closure of each of SACM23-CP-001 to -004; (c) every `Tolerance` row exists and is not verified; each check reports an in-memory mutation of the source or matrix with its own code.",
   "One input per `Unread` variant gives `Unsupported` whose reason ends with that variant's label and row.",
-  "SACM23-XMI-027 and LIB-COMPAT-004 are in the `depends_on` of SACM23-CP-001 to -004 (the maintainer, 2026-11-15).",
+  "SACM23-XMI-027 is in the `depends_on` of SACM23-CP-001 to -004 (the maintainer, 2026-11-15); LIB-COMPAT-004 is not, being a `Tolerance` row (the maintainer, 2026-11-16).",
   "The stale \"ADR 0017 amendment 1/2\" citations in code and test comments are gone.",
 ]
 code = ["crates/sacm/src/xmi/refusal.rs"]
@@ -5364,6 +5364,7 @@ tests = [
   "xtask/tests/interim_refusals.rs::lib_api_011_unsupported_is_named_only_in_xmi_rs_and_the_refusal_list",
   "crates/sacm/tests/untyped_abstract_roles.rs::lib_api_011_a_role_element_with_xmi_idref_names_sacm23_xmi_019",
   "crates/sacm/tests/untyped_abstract_roles.rs::lib_api_011_a_role_element_with_an_unqualified_href_names_sacm23_xmi_027",
+  "crates/sacm/tests/untyped_abstract_roles.rs::lib_api_011_a_role_element_with_a_qualified_href_is_preserved_not_refused",
 ]
 
 [[row]]
@@ -6083,7 +6084,7 @@ id = "SACM23-XMI-027"
 area = "XMI"
 milestone = "M6"
 title = "Cross-document references"
-requirement = "An `href=\"doc#id\"` reference (XMI 2.5.1 §7.10.2) is read in both modes and held as an external reference (the document and the fragment), written back and compared; it is never dropped. Until this row it is `Unsupported` (SACM23-XMI-015). SACM-XMI-007's catalog row is aligned to this. `href` values that name no element by a fragment (an empty `href`, `#` alone, an XPointer, white space in the fragment) are not cross-document references: this row reads them or keeps them as preserved content (ADR 0033; XMI 2.5.1 §7.10.2 `URI#id_value`), so that none is left without an owner when the `CrossDocumentHref` entry of LIB-API-011 is removed. A role element in reference form carrying an unqualified `href` (a proxy of a contained element held in another document), typed or untyped, under an abstract or a concrete role, is this row's; until then it is refused as not read yet (the maintainer, 2026-11-16)."
+requirement = "An `href=\"doc#id\"` reference (XMI 2.5.1 §7.10.2) is read in both modes and held as an external reference (the document and the fragment), written back and compared; it is never dropped. Until this row it is `Unsupported` (SACM23-XMI-015). SACM-XMI-007's catalog row is aligned to this. `href` values that name no element by a fragment (an empty `href`, `#` alone, an XPointer, white space in the fragment) are not cross-document references: this row reads them or keeps them as preserved content (ADR 0033; XMI 2.5.1 §7.10.2 `URI#id_value`), so that none is left without an owner when the `CrossDocumentHref` entry of LIB-API-011 is removed. A role element in reference form carrying an unqualified `href` (a proxy of a contained element named by an `href`, in this document or another), typed or untyped, under an abstract or a concrete role, is this row's; until then it is refused as not read yet (the maintainer, 2026-11-16)."
 source = "XMI 2.5.1 §7.10.2 (p. 23) \"The URI reference must be of the form URI#id_value\"; rules 2l, 2m, 2n (p. 64); D-PRESERVE; ADR 0026"
 kind = "xmi"
 status = "planned"
@@ -6127,6 +6128,7 @@ tests = [
   "crates/sacm/tests/untyped_abstract_roles.rs::lib_compat_010_the_same_element_typed_as_a_concrete_admitted_class_reads_as_before",
   "crates/sacm/tests/untyped_abstract_roles.rs::lib_compat_010_an_untyped_child_under_a_concrete_role_still_reads",
   "crates/sacm/tests/untyped_abstract_roles.rs::lib_compat_010_the_catalog_row_of_sacm_xmi_005_is_live_and_an_error_in_both_modes",
+  "crates/sacm/tests/untyped_abstract_roles.rs::lib_compat_010_a_qualified_href_does_not_make_a_reference_form",
 ]
 
 [[row]]
