@@ -950,3 +950,88 @@ fn lib_sec_006_run_rejects_other_only_forms() {
     }
     assert_suite_tree_untouched(&tree);
 }
+
+// ---------------------------------------------------------------------------
+// LIB-COMPAT-015 item 1: `fetch-corpus` (no network)
+// ---------------------------------------------------------------------------
+
+use xtask::fetch::{CORPUS, CORPUS_DEST};
+
+const G4: &str = "junk G4: not the pinned corpus file";
+
+/// Where `fetch-corpus` puts the corpus, relative to the root.
+const CORPUS_DIR: &str = "third_party/corpus";
+
+/// The first corpus file, by name: planted with junk so that a command
+/// wrongly dispatched to `fetch-corpus` fails offline on its hash instead of
+/// downloading.
+const FIRST_CORPUS_FILE: &str = "af-examples-kitchen-blender.sacm";
+
+#[test]
+fn lib_compat_015_run_fetch_corpus_checks_third_party_corpus_under_the_root() {
+    assert_eq!(
+        CORPUS_DEST, CORPUS_DIR,
+        "LIB-COMPAT-015: the corpus goes to third_party/corpus"
+    );
+    let name = CORPUS[0].file_name;
+    let rel = format!("{CORPUS_DIR}/{name}");
+    let tree = TempTree::new("run-fetch-corpus");
+    tree.write(&rel, G4);
+
+    let message = run_err(&["fetch-corpus"], tree.root());
+
+    assert!(
+        message.contains("exists but its SHA-256 is")
+            && message.contains(&sha256_hex(G4.as_bytes()))
+            && message.contains(name),
+        "LIB-COMPAT-015: `fetch-corpus` checks <root>/{CORPUS_DIR} and reports the file there \
+         and its hash, got {message:?}"
+    );
+    assert_eq!(
+        bytes(tree.root(), &rel),
+        Some(G4.as_bytes().to_vec()),
+        "LIB-COMPAT-015: `fetch-corpus` leaves the planted {rel} byte-identical"
+    );
+    assert_eq!(
+        entries(tree.root(), CORPUS_DIR),
+        [name],
+        "LIB-COMPAT-015: nothing is added to {CORPUS_DIR}"
+    );
+}
+
+#[test]
+fn lib_compat_015_the_usage_lists_fetch_corpus_and_third_party_corpus_is_git_ignored() {
+    let tree = TempTree::new("run-help-fetch-corpus");
+    tree.write(&format!("{CORPUS_DIR}/{FIRST_CORPUS_FILE}"), G4);
+
+    let out = run_ok(&["help"], tree.root());
+    assert!(
+        out.lines()
+            .any(|l| l.trim_start().starts_with("fetch-corpus ")),
+        "LIB-COMPAT-015: `help` lists `fetch-corpus` as a command, wrote {out:?}"
+    );
+    assert!(
+        out.contains(CORPUS_DIR),
+        "LIB-COMPAT-015: `help` says the corpus goes to {CORPUS_DIR}, wrote {out:?}"
+    );
+
+    let message = run_err(&["fetch-corpus", "extra"], tree.root());
+    assert!(
+        message.starts_with("unrecognized arguments: fetch-corpus extra"),
+        "LIB-COMPAT-015: `fetch-corpus extra` is unrecognized, got {message:?}"
+    );
+    assert_eq!(
+        bytes(tree.root(), &format!("{CORPUS_DIR}/{FIRST_CORPUS_FILE}")),
+        Some(G4.as_bytes().to_vec()),
+        "LIB-COMPAT-015: the planted corpus file is untouched"
+    );
+
+    let path = xtask::repo_root().join(".gitignore");
+    let text = fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("LIB-COMPAT-015: read {}: {e}", path.display()));
+    assert!(
+        text.lines()
+            .any(|line| line.trim() == "/third_party/corpus/"),
+        "LIB-COMPAT-015: .gitignore lists /third_party/corpus/, so the corpus is never committed"
+    );
+}

@@ -1009,10 +1009,9 @@ pub fn read(input: &[u8], options: &ReadOptions) -> Result<ReadOutput, ReadError
 ///   SACM-XMI-012), a value that is no literal, a value given twice, an
 ///   untyped child under an abstract role, an empty `xmi:id`, and conforming
 ///   content not read yet. Otherwise it returns the document, and does not
-///   validate it. To check a file, test
-///   [`diagnostic::has_errors`](crate::diagnostic::has_errors) on the read
-///   diagnostics together with the result of
-///   [`validation::validate`](crate::validation::validate).
+///   validate it. To check a file, test [`ReadOutput::has_errors`] on the
+///   read, and [`diagnostic::has_errors`](crate::diagnostic::has_errors) on
+///   the findings of [`validation::validate`](crate::validation::validate).
 ///
 ///   A strict write writes only schema-valid output: it refuses a document
 ///   that holds preserved content ([`WriteError::PreservedContent`],
@@ -1161,6 +1160,44 @@ impl ReadOutput {
     #[must_use]
     pub fn diagnostics(&self) -> &[Diagnostic] {
         &self.diagnostics
+    }
+
+    /// Whether any of the read's [`diagnostics`](Self::diagnostics) is an
+    /// Error: the same as
+    /// [`diagnostic::has_errors`](crate::diagnostic::has_errors)`(self.diagnostics())`.
+    ///
+    /// Only a strict read reports Errors: in this release, SACM-XMI-010 for an
+    /// `xsi:type` and SACM-XMI-003 for content that does not conform where it
+    /// stands. A tolerant read reports what a strict read refuses as Warnings,
+    /// so for it this is always `false`. A read without Errors is no
+    /// conformance check on its own: run
+    /// [`validation::validate`](crate::validation::validate) on the document
+    /// and test its findings with
+    /// [`diagnostic::has_errors`](crate::diagnostic::has_errors).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::xmi::{self, Mode, ReadOptions};
+    ///
+    /// // A Claim typed with xsi:type rather than xmi:type.
+    /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
+    ///     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmi:id="arguments">
+    ///   <argumentElement xsi:type="sacm:Claim" xmi:id="c1"/>
+    /// </sacm:ArgumentPackage>"#;
+    ///
+    /// let strict = xmi::read(input, &ReadOptions::default().with_mode(Mode::Strict))?;
+    /// assert!(strict.has_errors()); // SACM-XMI-010, an Error
+    ///
+    /// let tolerant = xmi::read(input, &ReadOptions::default())?;
+    /// assert!(!tolerant.has_errors()); // the same finding, as a Warning
+    /// assert_eq!(tolerant.diagnostics().len(), 1);
+    /// # Ok::<(), xmi::ReadError>(())
+    /// ```
+    #[must_use]
+    pub fn has_errors(&self) -> bool {
+        crate::diagnostic::has_errors(&self.diagnostics)
     }
 
     /// The mode the document was read in: the mode of the [`ReadOptions`]

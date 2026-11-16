@@ -178,8 +178,9 @@
 //! Warning. A strict read refuses what it does not read, and reports the
 //! variations it recognises as Errors instead of Warnings. Neither mode
 //! validates what it reads. To check that a file conforms, read it in strict
-//! mode, run [`validation::validate`], and test both lists with
-//! [`diagnostic::has_errors`]: a tolerant read reports what a strict read
+//! mode, run [`validation::validate`], and test the read with
+//! [`ReadOutput::has_errors`](xmi::ReadOutput::has_errors) and the findings
+//! with [`diagnostic::has_errors`]: a tolerant read reports what a strict read
 //! refuses as Warnings and keeps it as preserved content
 //! ([`Document::has_preserved_content`](model::Document::has_preserved_content)),
 //! so its diagnostics alone are no conformance check. Save in strict mode, the default, for a file

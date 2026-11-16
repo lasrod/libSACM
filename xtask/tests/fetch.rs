@@ -1073,3 +1073,227 @@ fn lib_sec_006_tar_extract_unpacks_an_archive_into_the_directory() {
         "LIB-SEC-006: the archive is kept"
     );
 }
+
+// ---------------------------------------------------------------------------
+// LIB-COMPAT-015: the corpus of SACM files written by other tools
+// ---------------------------------------------------------------------------
+
+use xtask::fetch::{CORPUS, fetch_each};
+
+/// Where the corpus URLs point: raw files of a repository at a commit.
+const RAW_PREFIX: &str = "https://raw.githubusercontent.com/";
+
+/// Whether `text` is all lowercase hex digits.
+fn lowercase_hex(text: &str) -> bool {
+    text.bytes()
+        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+#[test]
+fn lib_compat_015_the_corpus_pins_are_well_formed_unique_and_pinned_to_commits() {
+    assert_eq!(CORPUS.len(), 15, "LIB-COMPAT-015: CORPUS has 15 entries");
+    let mut names = std::collections::BTreeSet::new();
+    let mut repositories = std::collections::BTreeSet::new();
+    for artifact in CORPUS {
+        let name = artifact.file_name;
+        assert!(
+            artifact.sha256.len() == 64 && lowercase_hex(artifact.sha256),
+            "LIB-COMPAT-015: the pin of {name} is not 64 lowercase hex digits: {:?}",
+            artifact.sha256
+        );
+        assert!(
+            !name.is_empty()
+                && !name.contains(['/', '\\'])
+                && !name.contains("..")
+                && !name.starts_with('.'),
+            "LIB-COMPAT-015: {name:?} is not a plain file name"
+        );
+        assert!(
+            names.insert(name),
+            "LIB-COMPAT-015: the file name {name} is used twice"
+        );
+        assert!(
+            !artifact.what.is_empty(),
+            "LIB-COMPAT-015: {name} has no description"
+        );
+        let segments: Vec<&str> = artifact
+            .url
+            .strip_prefix(RAW_PREFIX)
+            .map(|path| path.split('/').collect())
+            .unwrap_or_default();
+        let [owner, repository, commit, rest @ ..] = segments.as_slice() else {
+            panic!(
+                "LIB-COMPAT-015: the URL of {name} is not {RAW_PREFIX}<owner>/<repo>/<commit>/...: {}",
+                artifact.url
+            );
+        };
+        assert!(
+            !owner.is_empty()
+                && !repository.is_empty()
+                && !rest.is_empty()
+                && rest.iter().all(|segment| !segment.is_empty()),
+            "LIB-COMPAT-015: the URL of {name} does not name an owner, a repository and a file: {}",
+            artifact.url
+        );
+        assert!(
+            commit.len() == 40 && lowercase_hex(commit),
+            "LIB-COMPAT-015: the URL of {name} is not pinned to a 40-digit lowercase commit: {}",
+            artifact.url
+        );
+        repositories.insert((*owner, *repository));
+    }
+    assert!(
+        repositories.len() >= 2,
+        "LIB-COMPAT-015: the corpus comes from fewer than two repositories: {repositories:?}"
+    );
+    assert!(
+        repositories.iter().any(|(owner, _)| *owner != "lasrod"),
+        "LIB-COMPAT-015: no corpus repository is outside lasrod/: {repositories:?}"
+    );
+}
+
+/// The `fetch_each` lines for [`ARTIFACT`] and [`OTHER`] in `dir`, each
+/// with `label`.
+fn fetch_each_lines(dir: &TempDir, label: &str) -> String {
+    format!(
+        "{label} {} ({})\n{label} {} ({})\n",
+        dir.file(ARTIFACT.file_name).display(),
+        ARTIFACT.what,
+        dir.file(OTHER.file_name).display(),
+        OTHER.what
+    )
+}
+
+#[test]
+fn lib_compat_015_fetch_each_writes_a_line_per_file_and_needs_no_network_when_all_are_present() {
+    let dir = TempDir::new("lib-compat-015-fetch-each");
+    let mut urls: Vec<String> = Vec::new();
+    let mut out = Vec::new();
+
+    let first = fetch_each(
+        dir.path(),
+        &[ARTIFACT, OTHER],
+        &mut |url: &str, path: &Path| {
+            urls.push(url.to_owned());
+            fs::write(path, ABC).map_err(|e| e.to_string())
+        },
+        &mut out,
+    );
+
+    assert_eq!(first, Ok(()), "LIB-COMPAT-015: the first run fetches both");
+    assert_eq!(
+        urls,
+        [ARTIFACT.url, OTHER.url],
+        "LIB-COMPAT-015: each missing file is downloaded once, in order"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&out),
+        fetch_each_lines(&dir, "fetched "),
+        "LIB-COMPAT-015: the first run writes one `fetched` line per file"
+    );
+    assert_eq!(
+        dir.entries(),
+        ["other.bin", "reference.bin"],
+        "LIB-COMPAT-015: both files are in place and no .part file is left"
+    );
+
+    let mut calls = 0_usize;
+    let mut again = Vec::new();
+    let second = fetch_each(
+        dir.path(),
+        &[ARTIFACT, OTHER],
+        &mut |_url: &str, _path: &Path| {
+            calls += 1;
+            Err("LIB-COMPAT-015: no download when every file is present".to_owned())
+        },
+        &mut again,
+    );
+
+    assert_eq!(
+        second,
+        Ok(()),
+        "LIB-COMPAT-015: the second run succeeds with no network"
+    );
+    assert_eq!(calls, 0, "LIB-COMPAT-015: the second run downloads nothing");
+    assert_eq!(
+        String::from_utf8_lossy(&again),
+        fetch_each_lines(&dir, "ok      "),
+        "LIB-COMPAT-015: the second run writes one `ok` line per file"
+    );
+}
+
+#[test]
+fn lib_compat_015_fetch_each_names_the_file_on_a_hash_mismatch_and_leaves_no_partial_file() {
+    // A download that does not match its pin, after one that does.
+    let dir = TempDir::new("lib-compat-015-mismatch");
+    let changed: &[u8] = b"changed upstream";
+    let mut out = Vec::new();
+    let result = fetch_each(
+        dir.path(),
+        &[ARTIFACT, OTHER],
+        &mut |url: &str, path: &Path| {
+            let bytes = if url == OTHER.url { changed } else { ABC };
+            fs::write(path, bytes).map_err(|e| e.to_string())
+        },
+        &mut out,
+    );
+    let err = result.expect_err("LIB-COMPAT-015: a download that does not match its pin fails");
+    assert!(
+        err.contains(OTHER.url) && err.contains(ABC_SHA256) && err.contains(&sha256_hex(changed)),
+        "LIB-COMPAT-015: the error names the URL, the pinned hash and the received hash, got \
+         {err:?}"
+    );
+    assert_eq!(
+        dir.entries(),
+        ["reference.bin"],
+        "LIB-COMPAT-015: the file fetched before stays; neither a .part file nor the bad file is \
+         left"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&out),
+        format!(
+            "fetched  {} ({})\n",
+            dir.file(ARTIFACT.file_name).display(),
+            ARTIFACT.what
+        ),
+        "LIB-COMPAT-015: only the file fetched before the error has a line"
+    );
+
+    // An existing file with another hash.
+    let dir = TempDir::new("lib-compat-015-tampered");
+    let local: &[u8] = b"local edit";
+    let path = dir.file(ARTIFACT.file_name);
+    fs::write(&path, local).expect("LIB-COMPAT-015: write fixture");
+    let mut calls = 0_usize;
+    let mut out = Vec::new();
+    let result = fetch_each(
+        dir.path(),
+        &[ARTIFACT],
+        &mut |_url: &str, part: &Path| {
+            calls += 1;
+            fs::write(part, ABC).map_err(|e| e.to_string())
+        },
+        &mut out,
+    );
+    let err = result.expect_err("LIB-COMPAT-015: an existing file with another hash fails");
+    assert!(
+        err.contains(&path.display().to_string()) && err.contains(&sha256_hex(local)),
+        "LIB-COMPAT-015: the error names the file and its hash, got {err:?}"
+    );
+    assert_eq!(calls, 0, "LIB-COMPAT-015: nothing is downloaded");
+    assert_eq!(
+        fs::read(&path).ok().as_deref(),
+        Some(local),
+        "LIB-COMPAT-015: the existing file is byte-identical afterwards"
+    );
+    assert_eq!(
+        dir.entries(),
+        [ARTIFACT.file_name],
+        "LIB-COMPAT-015: no .part file is created"
+    );
+    assert!(
+        out.is_empty(),
+        "LIB-COMPAT-015: a refused file has no line, wrote {:?}",
+        String::from_utf8_lossy(&out)
+    );
+}

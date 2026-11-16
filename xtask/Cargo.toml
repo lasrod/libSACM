@@ -17,5 +17,10 @@ serde = { version = "1", features = ["derive"] }
 sha2 = "0.11"
 toml = "1.2"
 
+[dev-dependencies]
+# The corpus test reads real SACM files through the library's public API
+# (LIB-COMPAT-015); a workspace path crate, not a third-party dependency.
+sacm.workspace = true
+
 [lints]
 workspace = true

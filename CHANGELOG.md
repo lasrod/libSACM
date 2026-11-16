@@ -164,7 +164,7 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   refusal names [SACM23-VAL-001, SACM23-VAL-020].
 - `validation::validate` reports each element whose id is not an XML NCName as a
   SACM-ID-002 Error [SACM23-VAL-020].
-- `sacm validate <file> [--strict] [--format human|json]`, with exit codes 0, 1 and 2
+- `sacm validate <file> [--strict | --tolerant] [--format human|json]`, with exit codes 0, 1 and 2
   and a versioned JSON report (`"format":1`) [LIB-CLI-002].
 - `sacm roundtrip <file> [--strict] [-o <out>]`: read, save strictly, reload and compare;
   `-o` writes the strict output only when the round trip is faithful [LIB-CLI-003].
@@ -375,9 +375,24 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 - `ReferenceEnd::ArtifactGroupMember` (`artifactElement`), an ArtifactGroup's member end,
   and `Difference::ArtifactGroupMembers` [SACM23-ART-011].
 - `SacmElement::properties()`: an artifact asset's `property` children [SACM23-ART-003].
+- `ReadOutput::has_errors()`: whether a read reported any Error, so an application can
+  tell a strict read's Errors from a clean or warnings-only read without scanning the
+  diagnostics [LIB-API-016].
+- `cargo xtask fetch-corpus`: downloads 15 SACM files written by other tools (Assurance
+  Forge, ACEditor, Epsilon, the EMF SACM implementation, ATL, DEIS ODE), pinned by SHA-256,
+  into the git-ignored `third_party/corpus/`. A test reads each in both modes, validates it
+  and writes it back tolerantly, and `docs/compat/corpus.md` records the results and the
+  row each gap belongs to [LIB-COMPAT-015].
 
 ### Changed
 
+- `sacm validate` reads strictly by default: a file is `valid` only when a strict read
+  accepts it and no diagnostic is an Error, and a file that a strict read refuses but a
+  tolerant read opens is `invalid` (exit 1, with the refusal on stdout), no longer
+  unreadable (exit 2). `--tolerant` reads in tolerant mode and reports `readable`, never
+  `valid`, in its summary and in the JSON `result`. `--strict` names the default, and
+  giving both is a usage error (ADR 0023 amendment; the maintainer, 2026-11-16)
+  [LIB-CLI-002].
 - A tolerant `xmi::read` returns a document where it refused one before: for a value
   that is no literal, a value given twice, an untyped child under an abstract role, an
   empty `xmi:id`, content on `xmi:XMI`, a rebound `sacm` or `xmi` prefix, and conforming

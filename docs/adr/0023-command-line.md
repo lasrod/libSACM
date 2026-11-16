@@ -17,10 +17,11 @@
   - 1: the check ran and failed: an Error diagnostic, a refused strict save, or a round-trip
     difference.
   - 2: the tool could not do the job: a usage error, an I/O error, or input that `read`
-    refuses.
+    refuses. Amendment 1 narrows this for `validate` to input that neither mode reads.
 - **Streams.** stdout carries the result. stderr carries only what stopped the command.
 - **`sacm validate <file> [--strict] [--format human|json]`.**
-  - It reads the file (tolerant by default) and runs `validation::validate`.
+  - It reads the file (tolerant by default; since amendment 1, strictly by default, and
+    tolerantly with `--tolerant`) and runs `validation::validate`.
   - It reports the read and validation diagnostics together, sorted.
   - Human format: one `Display` line per diagnostic, then
     `<file>: valid|invalid (E errors, W warnings, I info)`.
@@ -65,3 +66,24 @@
 
 - Scripts can tell "invalid" (1) from "could not check" (2).
 - A later JSON format moves `"format"` to 2.
+
+## Amendment 1 (the maintainer, 2026-11-16; LIB-CLI-002, slice 0054)
+
+`sacm validate` is a conformance check, so it reads strictly by default (D-STRICT:
+tolerant acceptance is never presented as conformance).
+
+- **Flags.** `--tolerant` reads in tolerant mode. `--strict` stays and names the default.
+  Giving both is a usage error.
+- **Pass.** A file passes (exit 0) only when a strict read accepts it and no read or
+  validation diagnostic is an Error.
+- **A strict refusal of a file that a tolerant read opens** is a failed check:
+  - exit 1, result `invalid`;
+  - human output, on stdout: the refusal as `<file>: <code|error> <ReadError>`, then
+    `<file>: invalid (refused by a strict read; --tolerant opens it)`;
+  - JSON: the refusal object, with `result:"invalid"` and `diagnostics:[]`.
+- **Exit 2** stays for usage errors, I/O errors, and input that neither mode reads. The CLI
+  decides by reading the same bytes tolerantly.
+- **With `--tolerant`,** a file with no Error is `readable`, never `valid`.
+- **JSON `"format"` stays 1,** because no release has shipped format 1.
+- **`roundtrip`** keeps its tolerant default: it converts a file to the strict form and
+  does not report conformance.

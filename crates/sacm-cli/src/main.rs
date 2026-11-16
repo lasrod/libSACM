@@ -6,9 +6,11 @@
 //! planned.
 //!
 //! Exit codes: 0 when the check passed; 1 when it ran and failed (for
-//! `validate`, an Error diagnostic; for `roundtrip`, a refused strict save,
-//! output that does not read back, or a difference); 2 when
-//! the tool could not do the job (a usage error, an I/O error, or input that
+//! `validate`, an Error diagnostic, or a strict refusal of a file a tolerant
+//! read opens; for `roundtrip`, a refused strict save, output that does not
+//! read back, or a difference); 2 when the tool could not do the job (a usage
+//! error, an I/O error, or input it cannot read: for `validate`, input
+//! neither a strict nor a tolerant read opens; for `roundtrip`, input that
 //! `xmi::read` refuses). stdout carries the result; stderr carries only what
 //! stopped the command.
 
@@ -47,10 +49,11 @@ struct Cli {
 enum Command {
     /// Print the tool version and the SACM revision it implements.
     Version,
-    /// Read a SACM XMI file, validate it and report every diagnostic.
+    /// Read a SACM XMI file strictly, validate it and report every diagnostic.
     ///
-    /// Exits 0 when no diagnostic is an Error, 1 when one is, and 2 when the
-    /// file cannot be read.
+    /// Exits 0 when the file is valid, 1 when it is not (an Error diagnostic,
+    /// or a strict refusal of a file a tolerant read opens), and 2 when
+    /// neither a strict nor a tolerant read opens it.
     Validate(ValidateArgs),
     /// Check that a SACM XMI file survives a strict save and reload unchanged.
     ///
@@ -65,10 +68,14 @@ enum Command {
 struct ValidateArgs {
     /// The SACM XMI file to check.
     file: PathBuf,
-    /// Read in strict mode, where a recognised variation such as `xsi:type`
-    /// is an Error.
+    /// Read in strict mode, the default: SACM 2.3 as specified; a file a
+    /// strict read refuses is invalid.
     #[arg(long)]
     strict: bool,
+    /// Read in tolerant mode, which opens any well-formed file with SACM 2.3
+    /// roots; the summary says "readable", never "valid".
+    #[arg(long, conflicts_with = "strict")]
+    tolerant: bool,
     /// How to report.
     #[arg(long, value_enum, default_value_t = Format::Human)]
     format: Format,
@@ -210,44 +217,75 @@ fn read_file(file: &std::path::Path, mode: Mode) -> Result<xmi::ReadOutput, Refu
     xmi::read(&bytes, &ReadOptions::default().with_mode(mode)).map_err(|error| read_refusal(&error))
 }
 
+/// The line naming a refusal: `<file>: <code|error> <message>`.
+fn refusal_line(name: &str, refusal: &Refusal) -> String {
+    let code = refusal.code.unwrap_or("error");
+    format!("{name}: {code} {}", refusal.message)
+}
+
 /// Writes the stderr line of a file that cannot be read:
 /// `sacm: <file>: <code|error> <message>`.
 fn report_unreadable(name: &str, refusal: &Refusal, err: &mut impl Write) -> io::Result<()> {
-    let code = refusal.code.unwrap_or("error");
-    writeln!(err, "sacm: {name}: {code} {}", refusal.message)
+    writeln!(err, "sacm: {}", refusal_line(name, refusal))
 }
 
-/// `sacm validate` (LIB-CLI-002).
+/// `sacm validate` (LIB-CLI-002, ADR 0023 amendment 1).
+///
+/// The file is read in the mode asked for, strict by default. A strict
+/// refusal is a failed check (exit 1) when a tolerant read of the same bytes
+/// opens the file, and an unreadable file (exit 2) when it does not; the
+/// refusal reported is always the strict one.
 fn run_validate(
     args: &ValidateArgs,
     out: &mut impl Write,
     err: &mut impl Write,
 ) -> (u8, io::Result<()>) {
     let name = file_name(&args.file);
-    let mode = if args.strict {
-        Mode::Strict
-    } else {
+    let mode = if args.tolerant {
         Mode::Tolerant
+    } else {
+        Mode::Strict
     };
-    let output = match read_file(&args.file, mode) {
+    let bytes = match fs::read(&args.file) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            return report_refusal(
+                args.format,
+                &name,
+                mode,
+                &io_refusal(&error),
+                false,
+                out,
+                err,
+            );
+        }
+    };
+    let output = match xmi::read(&bytes, &ReadOptions::default().with_mode(mode)) {
         Ok(output) => output,
-        Err(refusal) => {
-            let written = match args.format {
-                Format::Human => report_unreadable(&name, &refusal, err),
-                Format::Json => out.write_all(
-                    json::report(&name, mode_name(mode), "unreadable", Some(&refusal), &[])
-                        .as_bytes(),
-                ),
-            };
-            return (NOT_DONE, written);
+        Err(error) => {
+            // Only on this path is the file read a second time.
+            let tolerant = ReadOptions::default().with_mode(Mode::Tolerant);
+            let opens = mode == Mode::Strict && xmi::read(&bytes, &tolerant).is_ok();
+            return report_refusal(
+                args.format,
+                &name,
+                mode,
+                &read_refusal(&error),
+                opens,
+                out,
+                err,
+            );
         }
     };
     let mut found = output.diagnostics().to_vec();
     found.extend(validation::validate(output.document()));
     found.sort();
-    let valid = !diagnostic::has_errors(&found);
-    let code = if valid { PASSED } else { FAILED };
-    let result = if valid { "valid" } else { "invalid" };
+    let (code, result) = match (diagnostic::has_errors(&found), mode) {
+        (true, _) => (FAILED, "invalid"),
+        (false, Mode::Strict) => (PASSED, "valid"),
+        // Tolerant acceptance is never reported as conformance (D-STRICT).
+        (false, _) => (PASSED, "readable"),
+    };
     let written = match args.format {
         Format::Human => write_human(&name, result, &found, out),
         Format::Json => {
@@ -257,8 +295,43 @@ fn run_validate(
     (code, written)
 }
 
+/// Reports a file `validate` could not read in `mode`. When `opens`, a
+/// tolerant read opens what a strict read refused: the check failed (exit 1,
+/// result `invalid`), and in the human format the refusal and
+/// `<file>: invalid (refused by a strict read; --tolerant opens it)` go to
+/// stdout. Otherwise the file is unreadable (exit 2, result `unreadable`),
+/// and in the human format its refusal goes to stderr.
+fn report_refusal(
+    format: Format,
+    name: &str,
+    mode: Mode,
+    refusal: &Refusal,
+    opens: bool,
+    out: &mut impl Write,
+    err: &mut impl Write,
+) -> (u8, io::Result<()>) {
+    let (code, result) = if opens {
+        (FAILED, "invalid")
+    } else {
+        (NOT_DONE, "unreadable")
+    };
+    let written = match format {
+        Format::Json => out
+            .write_all(json::report(name, mode_name(mode), result, Some(refusal), &[]).as_bytes()),
+        Format::Human if opens => writeln!(out, "{}", refusal_line(name, refusal)).and_then(|()| {
+            writeln!(
+                out,
+                "{name}: invalid (refused by a strict read; --tolerant opens it)"
+            )
+        }),
+        Format::Human => report_unreadable(name, refusal, err),
+    };
+    (code, written)
+}
+
 /// Writes each diagnostic's line, then
-/// `<file>: valid|invalid (E errors, W warnings, I info)`.
+/// `<file>: <result> (E errors, W warnings, I info)`, where `<result>` is
+/// `valid`, `readable` or `invalid`.
 fn write_human(
     name: &str,
     result: &str,

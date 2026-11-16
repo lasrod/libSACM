@@ -2499,23 +2499,25 @@ id = "LIB-CLI-002"
 area = "CLI"
 milestone = "M1"
 title = "`sacm validate`"
-requirement = "`sacm validate <file> [--strict] [--format human|json]` reads the file (tolerant by default; `--strict` reads in strict mode), runs `validation::validate`, and reports the read and validation diagnostics together, sorted (ADR 0023). Human format: each diagnostic's `Display` on stdout, then `<file>: valid|invalid (E errors, W warnings, I info)`. JSON: one object `{format: 1, file, mode, result, refusal, diagnostics}`, each diagnostic `{code, severity, requirement, clause, location, affected, message}`, keys always present, RFC 8259 escaping. Exit 0 when no diagnostic is an Error, 1 when one is, 2 when the file cannot be read or the arguments are invalid; an unreadable file prints `sacm: <file>: <code|error> <ReadError>` on stderr in the human format, and JSON reports `result: \"unreadable\"` with the refusal."
-source = "ADR 0023; D-API; D-DIAG; RFC 8259 §7; assurance-forge `libs/sacm/tools/sacm_cli.cpp` (differs: exit 1 for unreadable files; no location, affected ids or clause)"
+requirement = "`sacm validate <file> [--strict | --tolerant] [--format human|json]` reads the file strictly by default (`--strict` names the default, `--tolerant` reads in tolerant mode, both together are a usage error), runs `validation::validate` on the document read, and reports the read and validation diagnostics together, sorted (ADR 0023 amendment of 2026-11-16). A file passes only when a strict read accepts it and no diagnostic is an Error. Human format: each diagnostic's `Display` on stdout, then `<file>: <result> (E errors, W warnings, I info)`, where `<result>` is `valid` or `invalid` in strict mode and `readable` or `invalid` with `--tolerant`; tolerant acceptance is never reported as `valid`. A strict refusal of a file that a tolerant read opens prints `<file>: <code|error> <ReadError>` and `<file>: invalid (refused by a strict read; --tolerant opens it)` on stdout. JSON: one object `{format: 1, file, mode, result, refusal, diagnostics}`, `mode` `strict` or `tolerant`, `result` `valid`, `readable`, `invalid` or `unreadable`; each diagnostic `{code, severity, requirement, clause, location, affected, message}`, keys always present, RFC 8259 escaping; `refusal` is the strict refusal of a file only a tolerant read opens (with `result: \"invalid\"` and `diagnostics: []`), or the refusal of an unreadable file. Exit 0 when the check passes (`valid`, or `readable` with `--tolerant`), 1 when it fails (an Error diagnostic, or a strict refusal of a file a tolerant read opens), 2 when the arguments are invalid, the file cannot be read from disk, or neither a strict nor a tolerant read opens it; an unreadable file prints `sacm: <file>: <code|error> <ReadError>`, the refusal in the mode asked for, on stderr in the human format."
+source = "ADR 0023 (amended 2026-11-16); the maintainer, 2026-11-16 (strict by default: anything a strict read refuses is an error and exit 1; `--tolerant` says readable, not valid); D-STRICT \"Tolerant acceptance is never presented as conformance.\"; SACM 2.3 formal/23-05-08 §2.4 (import and export of XMI documents that conform with the SACM XML Schema); ADR 0035 D1 (what a tolerant read refuses); D-API; D-DIAG; RFC 8259 §7; assurance-forge `libs/sacm/tools/sacm_cli.cpp` (differs: exit 1 for unreadable files; no location, affected ids or clause)"
 kind = "cli"
 status = "verified"
 depends_on = ["LIB-CLI-001", "SACM23-XMI-001", "SACM23-VAL-001", "LIB-COMPAT-001", "SACM23-VAL-018"]
 acceptance = [
-  "A clean file exits 0 and prints only `<file>: valid (0 errors, 0 warnings, 0 info)`; stderr is empty.",
+  "A clean file exits 0 and prints only `<file>: valid (0 errors, 0 warnings, 0 info)`, by default and with `--strict`; stderr is empty.",
+  "With `--tolerant` the summary never says `valid`: a clean file prints only `<file>: readable (0 errors, 0 warnings, 0 info)` and exits 0; `xsi-type.sacm.xmi` prints its `warning SACM-XMI-010` line and `readable (0 errors, 1 warning, 0 info)` and exits 0; a nameless Claim is `invalid` and exits 1.",
   "A file with a nameless Claim exits 1; stdout has the `error SACM-MULT-001 ...` line and an `invalid` summary.",
-  "A file using `xsi:type` exits 0 with a `warning SACM-XMI-010` line; with `--strict` it exits 1 with an `error SACM-XMI-010` line.",
-  "A missing file, malformed XML (SACM-XML-001) and a duplicate id (SACM-ID-001) each exit 2; stderr names the file and the code, and stdout is empty.",
-  "`--format json` for the cases above equals golden text: key order, `\"format\":1`, `null` for an absent clause or location, the `affected` array, `result`, and the `refusal` with its code and locations; a message with `\"`, `\\`, CR, LF and U+0001 is escaped per RFC 8259; the output is identical across runs.",
-  "An unknown flag, `--format xml`, or a missing `<file>` exits 2 with a usage message on stderr.",
+  "A file using `xsi:type` exits 1 by default and with `--strict`, with an `error SACM-XMI-010` line and `invalid (1 error, 0 warnings, 0 info)`.",
+  "A file a strict read refuses and a tolerant read opens exits 1 with stdout exactly `<file>: <code|error> <ReadError>` then `<file>: invalid (refused by a strict read; --tolerant opens it)`, and stderr empty: `bad-literal.sacm.xmi` (SACM-ENUM-001) and `xmi-attribute.sacm.xmi` (`Unsupported`, printed as `error`). With `--tolerant`, `bad-literal.sacm.xmi` exits 0 with its `warning SACM-ENUM-001` line and a `readable` summary.",
+  "A missing file, malformed XML (SACM-XML-001), a duplicate id (SACM-ID-001) and `latin-1.sacm.xmi` (`Unsupported` in both modes) each exit 2, by default and with `--tolerant`; stderr is the one line `sacm: <file>: <code|error> <ReadError>`, and stdout is empty.",
+  "`--format json` equals the golden texts `validate-clean.json`, `validate-clean-tolerant.json`, `validate-nameless-claim.json`, `validate-xsi-type.json` (default and `--strict`), `validate-xsi-type-tolerant.json`, `validate-bad-literal.json`, `validate-bad-literal-tolerant.json` and `validate-malformed.json`: key order, `\"format\":1`, `mode`, `result`, `null` for an absent clause or location, the `affected` array, and the `refusal` with its code and locations; `xmi-attribute.sacm.xmi` gives `result:\"invalid\"` with `\"code\":null` and exit 1, `latin-1.sacm.xmi` `result:\"unreadable\"` with `\"code\":null` and exit 2; a message with `\"`, `\\`, CR, LF and U+0001 is escaped per RFC 8259; the output is identical across runs, and stderr is empty.",
+  "An unknown flag, `--format xml`, `--strict` together with `--tolerant`, or a missing `<file>` exits 2 with a usage message on stderr.",
 ]
 tests = [
   "crates/sacm-cli/tests/validate.rs::lib_cli_002_a_clean_file_exits_0_and_prints_only_the_valid_summary",
   "crates/sacm-cli/tests/validate.rs::lib_cli_002_a_nameless_claim_exits_1_with_the_mult_001_line_and_an_invalid_summary",
-  "crates/sacm-cli/tests/validate.rs::lib_cli_002_xsi_type_is_a_warning_by_default_and_an_error_with_strict",
+  "crates/sacm-cli/tests/validate.rs::lib_cli_002_xsi_type_is_an_error_by_default_and_a_warning_with_tolerant",
   "crates/sacm-cli/tests/validate.rs::lib_cli_002_a_missing_malformed_or_duplicate_id_file_exits_2_naming_the_file_and_code",
   "crates/sacm-cli/tests/validate.rs::lib_cli_002_json_output_equals_the_golden_text_and_is_identical_across_runs",
   "crates/sacm-cli/tests/validate.rs::lib_cli_002_json_for_a_duplicate_id_has_the_refusal_with_its_code_and_every_location",
@@ -2524,10 +2526,15 @@ tests = [
   "crates/sacm-cli/tests/validate.rs::lib_cli_002_json_escapes_control_characters_in_the_file_name",
   "crates/sacm-cli/tests/validate.rs::lib_cli_002_json_goldens_agree_with_the_library",
   "crates/sacm-cli/tests/validate.rs::lib_cli_002_an_unknown_flag_a_bad_format_or_no_file_exits_2_with_usage",
+  "crates/sacm-cli/tests/validate.rs::lib_cli_002_with_tolerant_the_summary_says_readable_never_valid",
+  "crates/sacm-cli/tests/validate.rs::lib_cli_002_a_strict_refusal_of_a_file_a_tolerant_read_opens_exits_1_on_stdout",
+  "crates/sacm-cli/tests/validate.rs::lib_cli_002_a_file_neither_mode_opens_exits_2_even_without_a_code",
+  "crates/sacm-cli/tests/validate.rs::lib_cli_002_json_for_a_strict_refusal_without_a_code_is_invalid_or_unreadable_by_what_a_tolerant_read_opens",
+  "crates/sacm-cli/tests/validate.rs::lib_cli_002_json_for_a_file_a_tolerant_read_refuses_names_the_tolerant_mode",
 ]
 verification = "docs/verification/0036-m1-ids-docs-cli.md"
-code = ["crates/sacm-cli/src/main.rs", "crates/sacm-cli/src/json.rs", "docs/adr/0023-command-line.md"]
-notes = "Slice 0041: a test input broke §11.4 homogeneity or held two descriptions, which SACM23-VAL-011/012 now report; the input was changed, not the assertion; re-check there."
+code = ["crates/sacm-cli/src/main.rs", "crates/sacm-cli/src/json.rs", "crates/sacm-cli/README.md", "docs/adr/0023-command-line.md"]
+notes = "Slice 0041: a test input broke §11.4 homogeneity or held two descriptions, which SACM23-VAL-011/012 now report; the input was changed, not the assertion; re-check there. Strict by default: the maintainer, 2026-11-16 (slice 0054), after the review found a tolerant read could report a non-conforming file as valid."
 
 [[row]]
 id = "LIB-CLI-003"
@@ -2546,7 +2553,7 @@ acceptance = [
   "A reference naming no element (`dangling-reference.sacm.xmi`) makes the strict save refuse: exit 1, the `error SACM-REF-001 ...` line, and `round trip failed: ...`; no `-o` file is created.",
   "An input using `xsi:type` exits 0 in tolerant mode, and its `-o` output has `xmi:type` and no `xsi:type`.",
   "The difference report prints each `Difference` `Display` line followed by `round trip failed: N differences` and exits 1; a correct library produces no difference, so this is covered by an untraced unit test in the CLI.",
-  "An unreadable input exits 2 with the same stderr form as `validate`; `-o` into a directory that does not exist exits 2 with a message naming the path.",
+  "An unreadable input exits 2 with the same stderr form as an unreadable file in `validate`; `-o` into a directory that does not exist exits 2 with a message naming the path.",
   "`--strict` gives the same exit code and stdout as without it, for a clean fixture and for an `xsi:type` input (read diagnostics are not checked; ADR 0023).",
 ]
 tests = [
@@ -5791,19 +5798,45 @@ depends_on = ["LIB-EDIT-005", "LIB-EDIT-009", "LIB-EDIT-014"]
 notes = "Requirements from Assurance Forge (GitHub issue #61, 2026-11-14), input to Q-UNDO: one user action, even a batch (LIB-EDIT-014), is one undo step; accepting a draft `Document` into the main one is one step; the generated ids after an undo are specified (reused or not); history is per document and in memory; memory use is bounded for cases of thousands of elements. The web client sends changes as operations, which favours inverse operations over snapshots. Measured 2026-11-15 (release build, flat package of claims): `Document::clone` 0.26 ms at 1,000 elements, 1.4 ms at 5,000, 7.8 ms at 20,000; `==` and `semantic_compare` 0.8 ms at 5,000 but 12-16 ms at 20,000 (super-linear)."
 
 [[row]]
+id = "LIB-COMPAT-016"
+area = "COMPAT"
+milestone = "M6"
+title = "ISO-8859-1 input"
+requirement = "`xmi::read` reads, in both modes, a document whose XML declaration names the encoding ISO-8859-1 (the name compared case-insensitively), decoding each byte as the Unicode scalar value of the same number, with locations counted as for UTF-8. Other single-byte encodings stay `Unsupported` (a limit of this version)."
+source = "XML 1.0 5th ed. §4.3.3 \"All XML processors MUST be able to read entities in both the UTF-8 and UTF-16 encodings.\" (other encodings are optional, so this is a convenience); D-STRICT (a conforming document in another encoding still conforms to the SACM XML Schema, so strict mode reads it too); LIB-COMPAT-015 corpus (justification-factory-*.xmi, ATL output)"
+kind = "xmi"
+status = "candidate"
+depends_on = ["LIB-API-009", "SACM23-XMI-018", "LIB-COMPAT-015"]
+notes = "Found by the corpus (slice 0054). Whether to accept the IANA aliases (latin1, l1, ISO_8859-1, IBM819, CP819) is open. Both corpus files are also in the SACM 2.0 namespace, so LIB-COMPAT-004 is needed before they read."
+
+[[row]]
 id = "LIB-COMPAT-015"
 area = "COMPAT"
 milestone = "M3"
 title = "Real files are read"
-requirement = "`cargo xtask fetch-corpus` downloads SACM files written by real tools (the EMF reference implementation's sample models, and files Assurance Forge has written, at pinned URLs with SHA-256), never committed, as `fetch-spec` does. An xtask test reads each one tolerantly and strictly and writes it back tolerantly, and reports per file: the read result, the diagnostics by code, and whether the tolerant write reads back equal. Every refusal or loss it finds becomes a matrix row or is fixed. The corpus list and its results are in `docs/compat/corpus.md`."
-source = "the maintainer, 2026-11-16 (independent review; consumer needs before M4 and M5); LIB-COMPAT-005 (the committed corpus, M6)"
+requirement = "`cargo xtask fetch-corpus` downloads SACM files that tools other than this crate wrote, at URLs pinned to a commit with SHA-256 pins (`CORPUS` in `xtask/src/fetch.rs`), into the git-ignored `third_party/corpus/`, with the policy of `fetch-spec`; they are never committed. An xtask test reads each file tolerantly and strictly, validates the document a tolerant read returns, writes it back tolerantly and reads that back, and reports per file the outcome of each step, the diagnostics by code and severity with counts, and whether the write-back reads back semantically equal. The report is deterministic; `docs/compat/corpus.md` holds the list and the report, which the test checks. A file in a namespace other than SACM 2.3's, or one neither mode opens, is recorded as refused, not a failure. Every refusal or loss the report shows is mapped in `docs/compat/corpus.md` to a matrix row or a note, or is fixed."
+source = "the maintainer, 2026-11-16 (independent review; consumer needs before M4 and M5); SACM 2.3 formal/23-05-08 §2.4 \"Software that conforms to the specification at the Assurance Case Model compliance point shall be able to import and export XMI documents that conform with the SACM XML Schema produced by applying XMI rules to the normative MOF metamodel defined in this entire specification.\"; LIB-TOOL-002 (pinned fetch); LIB-SEC-006 (a fetched corpus skipped when absent); LIB-COMPAT-005 (the committed corpus, M6); assurance-forge `docs/sacm/sacm-interop-corpus.md` at b0a0f0d (its corpus, which this list extends)"
 kind = "xmi"
-status = "planned"
-depends_on = ["LIB-COMPAT-001", "LIB-TOOL-021"]
+status = "implemented"
+depends_on = ["LIB-COMPAT-001", "LIB-TOOL-002", "LIB-TOOL-021"]
+code = ["xtask/src/fetch.rs", "xtask/src/lib.rs", "xtask/Cargo.toml", ".gitignore", ".github/workflows/ci.yml", "docs/compat/corpus.md"]
+tests = [
+  "xtask/tests/fetch.rs::lib_compat_015_the_corpus_pins_are_well_formed_unique_and_pinned_to_commits",
+  "xtask/tests/fetch.rs::lib_compat_015_fetch_each_writes_a_line_per_file_and_needs_no_network_when_all_are_present",
+  "xtask/tests/fetch.rs::lib_compat_015_fetch_each_names_the_file_on_a_hash_mismatch_and_leaves_no_partial_file",
+  "xtask/tests/run.rs::lib_compat_015_run_fetch_corpus_checks_third_party_corpus_under_the_root",
+  "xtask/tests/run.rs::lib_compat_015_the_usage_lists_fetch_corpus_and_third_party_corpus_is_git_ignored",
+  "xtask/tests/corpus.rs::lib_compat_015_the_corpus_report_equals_the_one_in_docs_compat_corpus_md",
+  "xtask/tests/corpus.rs::lib_compat_015_the_corpus_report_is_the_same_on_a_second_run",
+  "xtask/tests/corpus.rs::lib_compat_015_an_absent_corpus_is_skipped_unless_configured",
+  "xtask/tests/corpus.rs::lib_compat_015_the_files_table_lists_every_corpus_file_in_order",
+]
 acceptance = [
-  "`cargo xtask fetch-corpus` fetches each listed file, checks its SHA-256, and stores it under `third_party/corpus/` (git-ignored); a hash mismatch is an error naming the file.",
-  "The corpus test reads each file in both modes and writes it back tolerantly, and its report lists, per file, the outcome and the diagnostic codes with counts; it is deterministic.",
-  "At least two sources are listed, at least one of them a tool other than this crate.",
+  "`cargo xtask fetch-corpus` fetches each `CORPUS` file into `third_party/corpus/` (git-ignored) with the `fetch_into` policy, one `ok`/`fetched` line per file: a file present with its pin is not downloaded, so a complete corpus needs no network; a download that does not match its pin fails naming the URL and both hashes and leaves no `.part` file; an existing file with another hash fails naming its path and is left untouched. The usage lists the command, and `fetch-spec`'s output is unchanged.",
+  "`CORPUS` has 15 entries with unique plain file names and 64-digit lowercase SHA-256 pins; each URL is `https://raw.githubusercontent.com/<owner>/<repo>/<40-hex commit>/...`; they come from at least two repositories, at least one outside `lasrod/`.",
+  "The corpus test checks each file's SHA-256, then reports per file, in `CORPUS` order, `tolerant read` and `strict read` (`read; <codes>`, or `refused <Variant>[ <code>][ at line L, column C][ <label>]`) and, for a file the tolerant read opens, `validate` (`<codes>`) and `tolerant write` (`reads back equal`, `reads back with N differences`, `does not read back: ...` or `refused: ...`), where `<codes>` is `none` or `<CODE> <severity> <count>` sorted by code then severity, then a totals line. Two runs give the same text, and it equals the block in `docs/compat/corpus.md`; when not, the test shows the actual report.",
+  "With `SACM_CORPUS_DIR` unset and a corpus file absent, the test prints a SKIPPED notice naming `cargo xtask fetch-corpus` on stderr and passes; with it set, an absent file fails the test, and an empty value is an error; a file with another hash always fails it. CI's Linux test job fetches the corpus (cached by the hash of `xtask/src/fetch.rs`) and runs the test with `SACM_CORPUS_DIR` set.",
+  "`docs/compat/corpus.md` lists every `CORPUS` file in order with its repository and commit, licence, writing tool, namespace and reason; holds the report; and maps each refusal, each Error and each loss to a matrix row or a note.",
 ]
 
 [[row]]
@@ -5843,13 +5876,20 @@ id = "LIB-API-016"
 area = "API"
 milestone = "M3"
 title = "ReadOutput::has_errors"
-requirement = "`ReadOutput::has_errors()` says whether the read reported any Error, so an application can tell a strict read's Errors (SACM-XMI-003, SACM-XMI-010) from a clean or warnings-only read without scanning the diagnostics."
+requirement = "`ReadOutput::has_errors()` says whether the read reported any Error, so an application can tell a strict read's Errors (SACM-XMI-003, SACM-XMI-010) from a clean or warnings-only read without scanning the diagnostics. It equals `diagnostic::has_errors(output.diagnostics())`, which stays the function for any other list."
 source = "the maintainer, 2026-11-16 (independent review; consumer needs before M4 and M5); docs review 0045 (moved from LIB-API-013)"
 kind = "api"
-status = "planned"
+status = "implemented"
 depends_on = ["LIB-COMPAT-001"]
+code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/lib.rs"]
+tests = [
+  "crates/sacm/tests/load_and_save_modes.rs::lib_api_016_has_errors_is_true_only_for_a_strict_read_with_xsi_type",
+  "crates/sacm/tests/load_and_save_modes.rs::lib_api_016_has_errors_agrees_with_diagnostic_has_errors",
+]
 acceptance = [
-  "It is true for a strict read with an `xsi:type`, and false for the same input read tolerantly and for a clean read; it has a rustdoc example.",
+  "It is true for a strict read with an `xsi:type`, and false for the same input read tolerantly (which has a Warning) and for a clean input in either mode; it has a rustdoc example.",
+  "It equals `diagnostic::has_errors(output.diagnostics())` for an input with an `xsi:type`, one with only an `xmi:version` (an Info), one with an element that is not SACM 2.3 (SACM-XMI-003: an Error strictly, a Warning tolerantly) and a clean one, each read in both modes.",
+  "The `Mode::Strict` docs and the crate docs name it for the read and `diagnostic::has_errors` for the findings of `validate`.",
 ]
 
 [[row]]
