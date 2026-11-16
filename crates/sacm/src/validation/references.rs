@@ -19,7 +19,7 @@ use crate::model::{
 /// same way (ADR 0033).
 pub(super) fn dangling_references(document: &Document, found: &mut Vec<Diagnostic>) {
     for element in document.elements() {
-        for end in ReferenceEnd::ALL {
+        for &end in ReferenceEnd::ALL {
             // The missing ids of this end reported so far: once per distinct
             // id, in token order, in time linear in the end's ids. Only
             // looked up, never iterated, so its order is not observable.
@@ -65,7 +65,7 @@ pub(super) fn dangling_references(document: &Document, found: &mut Vec<Diagnosti
 /// report a reference to the `xmi:id` of a `name`, which is written.
 pub(super) fn unwritten_references(document: &Document, found: &mut Vec<Diagnostic>) {
     for element in document.elements() {
-        for end in ReferenceEnd::ALL {
+        for &end in ReferenceEnd::ALL {
             // As in `dangling_references`: once per distinct id.
             let mut reported = HashSet::new();
             for target in element.references(end) {
@@ -109,7 +109,7 @@ fn dangling(element: SacmElement<'_>, end: ReferenceEnd, target: &ElementId) -> 
 /// SACM-REF-001's alone.
 pub(super) fn wrongly_typed_references(document: &Document, found: &mut Vec<Diagnostic>) {
     for element in document.elements() {
-        for end in ReferenceEnd::ALL {
+        for &end in ReferenceEnd::ALL {
             let declared = end.target();
             // As in `dangling_references`: once per distinct id, linear in
             // the end's ids, never iterated.

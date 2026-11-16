@@ -165,6 +165,24 @@ impl Preserved {
             .count()
     }
 
+    /// Whether a child is placed after the typed child at `index`: whether
+    /// removing or inserting a typed child there moves it.
+    pub(crate) fn places_after(&self, index: usize) -> bool {
+        self.children.iter().any(|placed| placed.index > index)
+    }
+
+    /// Places the children again after a typed child is inserted at `index`
+    /// of their holder's children (ADR 0036 D1): each child placed after the
+    /// typed child it followed, so an index above `index` rises by one, and
+    /// one at `index` stays in front of the new child.
+    pub(crate) fn make_room(&mut self, index: usize) {
+        for placed in &mut self.children {
+            if placed.index > index {
+                placed.index = placed.index.saturating_add(1);
+            }
+        }
+    }
+
     /// Places the children again after the typed children of their holder
     /// changed from `before` to those of `before` that `kept` says survive:
     /// each index becomes the number of surviving typed children before it,

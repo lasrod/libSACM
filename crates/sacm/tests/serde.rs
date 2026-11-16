@@ -65,6 +65,8 @@ use sacm::edit::{
     CreateActivity, CreateArtifact, CreateEvent, CreateResource, SetDate, SetEndTime, SetLocation,
     SetStartTime, SetVersion,
 };
+// The operations of slice 0056 (ADR 0036, ADR 0030 amendment 2).
+use sacm::edit::{CopyElements, MoveElement};
 use sacm::model::{
     AssertionDeclaration, Document, ElementId, ElementKind, Flag, LangString, MultiLangString,
     ReferenceEnd,
@@ -79,13 +81,16 @@ const EDIT_005: &str = "LIB-EDIT-005";
 const EDIT_006: &str = "LIB-EDIT-006";
 const EDIT_007: &str = "LIB-EDIT-007";
 const EDIT_014: &str = "LIB-EDIT-014";
+const EDIT_017: &str = "LIB-EDIT-017";
+const EDIT_018: &str = "LIB-EDIT-018";
 
 /// The directory of the golden JSON files.
 const GOLDEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/golden/serde");
 
 /// Every operation name of this release: the creates first, in the order of
-/// `operations.json`.
-const OPERATION_NAME_COUNT: usize = 40;
+/// `operations.json`. `CopyElements` has no sample: it is not serialized
+/// (ADR 0030 amendment 2).
+const OPERATION_NAME_COUNT: usize = 41;
 const OPERATION_NAMES: [&str; OPERATION_NAME_COUNT] = [
     "CreateAssuranceCasePackage",
     "CreateArgumentPackage",
@@ -126,6 +131,7 @@ const OPERATION_NAMES: [&str; OPERATION_NAME_COUNT] = [
     "AddReference",
     "RemoveReference",
     "ReorderElements",
+    "MoveElement",
     "DeleteElement",
 ];
 
@@ -134,7 +140,8 @@ const CREATE_COUNT: usize = 24;
 
 /// Every `EditError` variant of this release, with its catalog code, in the
 /// order of `edit-errors.json`.
-const EDIT_ERRORS: [(&str, &str); 18] = [
+const EDIT_ERROR_COUNT: usize = 21;
+const EDIT_ERRORS: [(&str, &str); EDIT_ERROR_COUNT] = [
     ("ParentNotFound", "SACM-CMD-001"),
     ("InvalidParent", "SACM-CMD-005"),
     ("InvalidId", "SACM-ID-002"),
@@ -153,6 +160,10 @@ const EDIT_ERRORS: [(&str, &str); 18] = [
     ("PreviewExpired", "SACM-CMD-003"),
     ("NotEmpty", "SACM-CMD-006"),
     ("CrossPackageReference", "SACM-CMD-007"),
+    // The refusals of slice 0056 (LIB-EDIT-017).
+    ("InvalidRoot", "SACM-CMD-005"),
+    ("ParentInSubtree", "SACM-CMD-005"),
+    ("PositionOutOfRange", "SACM-CMD-009"),
 ];
 
 /// Every catalog `Code` constant of this release. The catalog cross-check
@@ -687,7 +698,7 @@ fn artifact_samples() -> Vec<Operation> {
 
 /// The operations of [`operation_samples`] that change an element.
 fn edit_samples() -> Vec<Operation> {
-    vec![
+    let mut samples: Vec<Operation> = vec![
         SetName::new("c1", en("The system is safe enough")).into(),
         SetGid::new("c1", "G-1").into(),
         SetGid::remove("c1").into(),
@@ -715,6 +726,19 @@ fn edit_samples() -> Vec<Operation> {
         RemoveReference::new("i1", ReferenceEnd::Source, "c3").into(),
         ReorderElements::new("arguments", ["c2", "c1"]).into(),
         ReorderElements::roots(["case", "arguments"]).into(),
+    ];
+    // The moves of slice 0056 (LIB-EDIT-017): appended, at a position, and
+    // to the roots at a position.
+    samples.extend(move_samples());
+    samples
+}
+
+/// The moves of [`edit_samples`]: `new`, `with_position` and `root`.
+fn move_samples() -> Vec<Operation> {
+    vec![
+        MoveElement::new("c1", "evidence").into(),
+        MoveElement::new("c2", "arguments").with_position(0).into(),
+        MoveElement::root("sub").with_position(1).into(),
     ]
 }
 
@@ -736,11 +760,11 @@ fn delete_samples() -> Vec<Operation> {
 }
 
 /// Four mutations, as `edit::apply` returns them: a create with a generated
-/// id, a flag set, a create with a caller id, and its delete. In the order of
-/// `mutations.json`.
+/// id, a flag set, a create with a caller id, and its delete; then a move of
+/// slice 0056. In the order of `mutations.json`.
 fn mutation_samples() -> Vec<Mutation> {
     let mut doc = Document::new();
-    vec![
+    let mut samples = vec![
         applied(&mut doc, CreateArgumentPackage::root(en("Arguments"))),
         applied(
             &mut doc,
@@ -751,7 +775,20 @@ fn mutation_samples() -> Vec<Mutation> {
             CreateClaim::new("argument_package_1", LangString::new("C1")).with_id("c1"),
         ),
         applied(&mut doc, DeleteElement::new("c1")),
-    ]
+    ];
+    // A move of slice 0056 (LIB-EDIT-017): c2 into the root q.
+    {
+        applied(
+            &mut doc,
+            CreateArgumentPackage::root(LangString::new("Q")).with_id("q"),
+        );
+        applied(
+            &mut doc,
+            CreateClaim::new("argument_package_1", LangString::new("C2")).with_id("c2"),
+        );
+        samples.push(applied(&mut doc, MoveElement::new("c2", "q")));
+    }
+    samples
 }
 
 /// Every `EditError` variant, as `edit::apply` refuses on [`ERROR_START`],
@@ -782,6 +819,16 @@ fn edit_error_samples() -> Vec<EditError> {
         refusal(&assets, SetStartTime::new("report", "t")),
         refusal(&assets, SetEndTime::new("report", "t")),
     ]);
+    // The refusals of slice 0056 (LIB-EDIT-017), on ERROR_START.
+    {
+        let doc = error_start();
+        samples.extend([
+            refusal(&doc, MoveElement::root("c1")),
+            refusal(&doc, MoveElement::new("p", "p")),
+            refusal(&doc, MoveElement::new("c1", "p").with_position(2)),
+            refusal(&doc, MoveElement::root("case").with_position(1)),
+        ]);
+    }
     samples
 }
 
@@ -2310,7 +2357,11 @@ fn optional_keys(
         .and_then(Value::as_str)
         .is_some_and(|name| OPERATION_NAMES[..CREATE_COUNT].contains(&name));
     let is_delete = object.get("type").and_then(Value::as_str) == Some("DeleteElement");
-    if is_delete {
+    // A MoveElement's `position` may be omitted: after the last (LIB-EDIT-017).
+    let is_move = object.get("type").and_then(Value::as_str) == Some("MoveElement");
+    if is_move {
+        vec![("position", Value::Null)]
+    } else if is_delete {
         DELETE_POLICIES
             .iter()
             .map(|(key, default, _)| (*key, Value::String((*default).to_owned())))
@@ -2980,4 +3031,326 @@ fn lib_edit_014_a_batch_error_read_back_answers_as_the_one_apply_all_returned() 
             "{EDIT_014}: a BatchError read back answers otherwise than the one returned"
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// The values of slice 0056 (ADR 0036, ADR 0030 amendment 2)
+// ---------------------------------------------------------------------------
+
+/// The three moves of `operations.json`, each with its compact JSON.
+const MOVE_JSON: [&str; 3] = [
+    r#"{"type":"MoveElement","element":"c1","parent":"evidence","position":null}"#,
+    r#"{"type":"MoveElement","element":"c2","parent":"arguments","position":0}"#,
+    r#"{"type":"MoveElement","element":"sub","parent":null,"position":1}"#,
+];
+
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the operation, its refusals and its mutation read best as one list"
+)]
+fn lib_edit_017_move_element_and_its_refusals_round_trip_as_their_golden_json() {
+    assert_serde::<MoveElement>();
+    // `new`, `with_position` and `root`.
+    let moves = move_samples();
+    assert_eq!(
+        moves.len(),
+        MOVE_JSON.len(),
+        "{EDIT_017}: setup: three moves"
+    );
+    for (operation, expected) in moves.iter().zip(MOVE_JSON) {
+        assert_eq!(
+            to_json(operation),
+            expected,
+            "{EDIT_017}: {operation:?} is not written as its golden JSON"
+        );
+        let read: Operation = from_json(expected);
+        assert_eq!(
+            &read, operation,
+            "{EDIT_017}: {expected} does not read back"
+        );
+        assert_eq!(
+            operation.operation_name(),
+            "MoveElement",
+            "{EDIT_017}: operation_name()"
+        );
+    }
+    assert_bare_for(EDIT_017, &MoveElement::new("c1", "evidence"));
+    assert_bare_for(EDIT_017, &MoveElement::root("sub").with_position(1));
+
+    // `position` may be omitted, as after the last; `parent` may not, even
+    // for the roots.
+    let omitted: Operation =
+        from_json(r#"{"type":"MoveElement","element":"c1","parent":"evidence"}"#);
+    assert_eq!(
+        omitted,
+        Operation::from(MoveElement::new("c1", "evidence")),
+        "{EDIT_017}: an omitted position does not read as after the last"
+    );
+    for (what, valid, from, to) in [
+        (
+            "a root move without parent",
+            MOVE_JSON[2],
+            r#""parent":null,"#,
+            "",
+        ),
+        (
+            "a move without parent",
+            MOVE_JSON[0],
+            r#""parent":"evidence","#,
+            "",
+        ),
+        (
+            "a move without element",
+            MOVE_JSON[0],
+            r#""element":"c1","#,
+            "",
+        ),
+        (
+            "an unknown key",
+            MOVE_JSON[0],
+            r#""position":null"#,
+            r#""position":null,"after":"c2""#,
+        ),
+        (
+            "a negative position",
+            MOVE_JSON[1],
+            r#""position":0"#,
+            r#""position":-1"#,
+        ),
+        (
+            "a position as a string",
+            MOVE_JSON[1],
+            r#""position":0"#,
+            r#""position":"0""#,
+        ),
+    ] {
+        assert_refused_for::<Operation>(EDIT_017, what, valid, from, to);
+    }
+
+    // A deserialized move answers as its twin.
+    let doc = error_start();
+    let accepted = r#"{"type":"MoveElement","element":"c1","parent":"p","position":1}"#;
+    let read: Operation = from_json(accepted);
+    assert_eq!(
+        read,
+        Operation::from(MoveElement::new("c1", "p").with_position(1)),
+        "{EDIT_017}: {accepted} does not read as its twin"
+    );
+    assert_eq!(
+        edit::apply(&mut doc.clone(), read),
+        edit::apply(
+            &mut doc.clone(),
+            MoveElement::new("c1", "p").with_position(1)
+        ),
+        "{EDIT_017}: apply answers {accepted} otherwise than its twin"
+    );
+    let refused_root = r#"{"type":"MoveElement","element":"c1","parent":null,"position":null}"#;
+    let read: Operation = from_json(refused_root);
+    let twin = Operation::from(MoveElement::root("c1"));
+    assert_eq!(
+        read, twin,
+        "{EDIT_017}: {refused_root} does not read as its twin"
+    );
+    let answer = edit::apply(&mut doc.clone(), twin).map(drop);
+    assert!(
+        matches!(&answer, Err(EditError::InvalidRoot { .. })),
+        "{EDIT_017}: setup: the twin of {refused_root} gives {answer:?}"
+    );
+    assert_eq!(
+        edit::check(&doc, &read),
+        answer,
+        "{EDIT_017}: check answers {refused_root} otherwise than its twin"
+    );
+
+    // The three refusals, as `edit-errors.json` holds them.
+    let refusals = [
+        (
+            refusal(&doc, MoveElement::root("c1")),
+            r#"{"type":"InvalidRoot","code":"SACM-CMD-005","element":"c1","kind":"Claim"}"#,
+        ),
+        (
+            refusal(&doc, MoveElement::new("p", "p")),
+            r#"{"type":"ParentInSubtree","code":"SACM-CMD-005","element":"p","parent":"p"}"#,
+        ),
+        (
+            refusal(&doc, MoveElement::new("c1", "p").with_position(2)),
+            r#"{"type":"PositionOutOfRange","code":"SACM-CMD-009","parent":"p","position":2,"children":1}"#,
+        ),
+        (
+            refusal(&doc, MoveElement::root("case").with_position(1)),
+            r#"{"type":"PositionOutOfRange","code":"SACM-CMD-009","parent":null,"position":1,"children":0}"#,
+        ),
+    ];
+    for (error, expected) in &refusals {
+        assert_error_json(EDIT_017, error, expected);
+    }
+    for (what, valid, from, to) in [
+        (
+            "an InvalidRoot with the code of another refusal",
+            refusals[0].1,
+            "SACM-CMD-005",
+            "SACM-CMD-009",
+        ),
+        (
+            "a PositionOutOfRange without parent",
+            refusals[3].1,
+            r#""parent":null,"#,
+            "",
+        ),
+        (
+            "a ParentInSubtree with an unknown key",
+            refusals[1].1,
+            r#""parent":"p""#,
+            r#""parent":"p","depth":1"#,
+        ),
+    ] {
+        assert_refused_for::<EditError>(EDIT_017, what, valid, from, to);
+    }
+
+    // The move of `mutations.json`.
+    let Some(move_mutation) = mutation_samples().pop() else {
+        panic!("{EDIT_017}: setup: no mutation sample");
+    };
+    assert_eq!(
+        to_json(&move_mutation),
+        r#"{"operation":{"type":"MoveElement","element":"c2","parent":"q","position":null},"created_ids":[],"changed_ids":["c2"],"deleted_ids":[]}"#,
+        "{EDIT_017}: the move's Mutation is not written as its golden JSON"
+    );
+    let read: Mutation = from_json(&to_json(&move_mutation));
+    assert_eq!(
+        read, move_mutation,
+        "{EDIT_017}: the move's Mutation does not read back"
+    );
+
+    // The golden files hold them: `operations.json` the three moves right
+    // after the ReorderElements samples, `edit-errors.json` the four
+    // refusals last, and `mutations.json` the move last. (The bytes are
+    // fixed by the LIB-API-006 golden tests, over every sample.)
+    let value = |text: &str| -> serde_json::Value { from_json(text) };
+    let items = |name: &str| -> Vec<serde_json::Value> {
+        match golden_value(name) {
+            serde_json::Value::Array(items) => items,
+            other => panic!("{EDIT_017}: setup: {name} is no array: {other}"),
+        }
+    };
+    let operations = items("operations.json");
+    let Some(first) = operations
+        .iter()
+        .position(|item| item.get("type") == Some(&value(r#""MoveElement""#)))
+    else {
+        panic!("{EDIT_017}: operations.json holds no MoveElement sample");
+    };
+    let expected: Vec<serde_json::Value> = MOVE_JSON.iter().map(|text| value(text)).collect();
+    assert_eq!(
+        operations.get(first..first + 3),
+        Some(expected.as_slice()),
+        "{EDIT_017}: operations.json does not hold the three moves in order"
+    );
+    assert_eq!(
+        (
+            first
+                .checked_sub(1)
+                .and_then(|index| operations.get(index))
+                .and_then(|item| item.get("type")),
+            operations.get(first + 3).and_then(|item| item.get("type")),
+        ),
+        (
+            Some(&value(r#""ReorderElements""#)),
+            Some(&value(r#""DeleteElement""#))
+        ),
+        "{EDIT_017}: the moves of operations.json are not after the ReorderElements samples"
+    );
+    let errors = items("edit-errors.json");
+    let expected: Vec<serde_json::Value> = refusals.iter().map(|(_, text)| value(text)).collect();
+    assert_eq!(
+        errors.get(errors.len().saturating_sub(4)..),
+        Some(expected.as_slice()),
+        "{EDIT_017}: edit-errors.json does not end with the four refusals"
+    );
+    assert_eq!(
+        items("mutations.json").last(),
+        Some(&value(&to_json(&move_mutation))),
+        "{EDIT_017}: mutations.json does not end with the move"
+    );
+}
+
+#[test]
+fn lib_edit_018_copy_elements_is_neither_serialized_nor_deserialized() {
+    let source = error_start();
+    let copy = match CopyElements::new(&source, ["c1"], "p") {
+        Ok(copy) => copy,
+        Err(error) => panic!("{EDIT_018}: setup: the copy was refused: {error}"),
+    };
+    let operation = Operation::from(copy.clone());
+    assert_eq!(
+        operation.operation_name(),
+        "CopyElements",
+        "{EDIT_018}: operation_name()"
+    );
+
+    // Serializing the operation, or anything that holds it, is an Err.
+    assert!(
+        serde_json::to_string(&operation).is_err(),
+        "{EDIT_018}: Operation::CopyElements serializes"
+    );
+    let mut target = error_start();
+    let preview = match edit::preview(&target, &operation) {
+        Ok(preview) => preview,
+        Err(error) => panic!("{EDIT_018}: setup: the copy was refused: {error}"),
+    };
+    assert!(
+        serde_json::to_string(preview.mutation()).is_err(),
+        "{EDIT_018}: a Mutation holding a copy serializes"
+    );
+    assert!(
+        serde_json::to_string(&preview).is_err(),
+        "{EDIT_018}: a Preview holding a copy serializes"
+    );
+    let mutation = applied(&mut target, copy.clone());
+    assert!(
+        serde_json::to_string(&mutation).is_err(),
+        "{EDIT_018}: an applied copy's Mutation serializes"
+    );
+    assert!(
+        serde_json::to_string_pretty(&vec![mutation]).is_err(),
+        "{EDIT_018}: a list of Mutations holding a copy serializes"
+    );
+    let batch = committed(edit::apply_all(&mut error_start(), [copy]));
+    assert!(
+        serde_json::to_string(&batch).is_err(),
+        "{EDIT_018}: a BatchMutation holding a copy serializes"
+    );
+    // Control: the same values without a copy serialize.
+    assert!(
+        serde_json::to_string(&committed(edit::apply_all(
+            &mut error_start(),
+            [MoveElement::new("c1", "p")]
+        )))
+        .is_ok(),
+        "{EDIT_018}: setup: a BatchMutation without a copy does not serialize"
+    );
+
+    // The tag does not deserialize, with or without fields.
+    for text in [
+        r#"{"type":"CopyElements"}"#,
+        r#"{"type":"CopyElements","parent":"p"}"#,
+        r#"{"type":"CopyElements","parent":"p","source_ids":["c1"]}"#,
+        r#"{"type":"CopyElements","parent":null,"copied":{}}"#,
+    ] {
+        match serde_json::from_str::<Operation>(text) {
+            Ok(read) => panic!("{EDIT_018}: {text} was read as {read:?}"),
+            Err(error) => assert!(
+                error.is_data(),
+                "{EDIT_018}: {text} is refused as malformed JSON, not as data: {error}"
+            ),
+        }
+    }
+    let in_a_mutation = r#"{"operation":{"type":"CopyElements"},"created_ids":[],"changed_ids":[],"deleted_ids":[]}"#;
+    assert!(
+        serde_json::from_str::<Mutation>(in_a_mutation).is_err(),
+        "{EDIT_018}: a Mutation holding the tag CopyElements reads"
+    );
+    // Control: a valid twin of the tag reads.
+    let _: Operation = from_json(MOVE_JSON[0]);
 }

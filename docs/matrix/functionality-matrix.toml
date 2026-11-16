@@ -2423,7 +2423,7 @@ source = "D-ATOMIC; D-VAL-LAYER; ADR 0019 and its amendment 1; ADR 0020"
 kind = "editing"
 status = "verified"
 depends_on = ["LIB-EDIT-001", "LIB-RT-001"]
-notes = "Slice 0045: the set, its oracle and its structural checks (S5-S8) grow to the ten edit operations of ADR 0029, with a new starting document; re-check there. Slice 0048 (ADR 0031, ADR 0032): `edit::apply_preview`, `edit::batch` and `edit::apply_all` join `apply` as public mutations; each is atomic under LIB-EDIT-007 and LIB-EDIT-014."
+notes = "Slice 0045: the set, its oracle and its structural checks (S5-S8) grow to the ten edit operations of ADR 0029, with a new starting document; re-check there. Slice 0048 (ADR 0031, ADR 0032): `edit::apply_preview`, `edit::batch` and `edit::apply_all` join `apply` as public mutations; each is atomic under LIB-EDIT-007 and LIB-EDIT-014. Slice 0056: the set grows with `MoveElement` and `CopyElements`; re-check there."
 acceptance = [
   "Over a deterministic set of starting documents (empty, built with `edit::apply`, read from the XMI fixtures, and built with the test-support `insert`, including ArtifactPackage parents, Notes and missing names) and a fixed list of legal and illegal operations of every kind with caller and generated ids: after every `Ok`, the four structural checks hold through the public views, checked against a containment table written in the test from the standard, not the crate's.",
   "After every `Err`, the document `==` its clone taken before, and a create with a generated id of each kind gives the same id on both.",
@@ -2449,7 +2449,7 @@ source = "D-RESULT; ADR 0019 and its amendment 1; ADR 0020; assurance-forge `com
 kind = "editing"
 status = "verified"
 depends_on = ["LIB-EDIT-001", "LIB-RT-001"]
-notes = "Slice 0045: its oracle maps every per-element difference to changed and `RootOrder` from `ReorderElements::roots` to no list; the operation-name test covers the ten new names; re-check there."
+notes = "Slice 0045: its oracle maps every per-element difference to changed and `RootOrder` from `ReorderElements::roots` to no list; the operation-name test covers the ten new names; re-check there. Slice 0056: a move changes the element when its parent changes, and each parent whose child order or preserved placement changes, and a copy creates its copies in pre-order; re-check there."
 acceptance = [
   "For every successful operation in LIB-EDIT-002's set, `created_ids`, `changed_ids` and `deleted_ids` equal the right-only, per-element and left-only ids of `semantic_compare(before, after)`, in creation order, document pre-order after, and pre-order before respectively; for every create in this release `changed_ids` and `deleted_ids` are empty and the parent is not changed.",
   "`operation()` equals the operation given to `apply`, with a generated id not filled in.",
@@ -5230,12 +5230,13 @@ id = "LIB-API-008"
 area = "API"
 milestone = "M1"
 title = "Containment legality"
-requirement = "The model knows, for every (parent kind, child kind) pair, whether a SACM 2.3 composite role of the parent's class admits the child, per ptc/22-03-13 with the inventory's recorded divergences. The roles are ModelElement `description`, `implementationConstraint`, `note` and `taggedValue`; AssuranceCasePackage `assuranceCasePackage`, `argumentPackage`, `artifactPackage` and `terminologyPackage`; ArgumentPackage `argumentElement`; TerminologyPackage `terminologyElement`; ArtifactPackage `artifactElement`; and ArtifactAsset `property`. Subclasses inherit roles, package interfaces and bindings included. Every insertion refuses a child whose kind no role of the parent's class admits, and leaves the document unchanged; this binds the crate-internal insertion that the XMI reader and edit operations use, and the test-support `insert`. ArtifactPackage `artifactElement` admits every ArtifactElement kind, as the metamodel types it (ADR 0014). A root must be a package kind (`ElementKind::is_package`: the four packages, their interfaces and bindings; ADR 0010 D1 \"of any package kind\"); any other root is refused with `InsertError::RootNotAllowed`, as C++ refuses it (`io/xmi_reader.cpp` read_root, `is_package_kind`, `kXmiInvalidRoot`). Multiplicity is not enforced on insertion (D-VAL-LAYER, D-DESC-MULT). Which role a child fills, role names and multiplicities become observable with SACM23-XMI-016."
+requirement = "The model knows, for every (parent kind, child kind) pair, whether a SACM 2.3 composite role of the parent's class admits the child, per ptc/22-03-13 with the inventory's recorded divergences. The roles are ModelElement `description`, `implementationConstraint`, `note` and `taggedValue`; AssuranceCasePackage `assuranceCasePackage`, `argumentPackage`, `artifactPackage` and `terminologyPackage`; ArgumentPackage `argumentElement`; TerminologyPackage `terminologyElement`; ArtifactPackage `artifactElement`; and ArtifactAsset `property`. Subclasses inherit roles, package interfaces and bindings included. Every insertion refuses a child whose kind no role of the parent's class admits, and leaves the document unchanged; this binds the crate-internal insertion that the XMI reader and the create operations use, and the test-support `insert`; `MoveElement` and `CopyElements` check the same table before they change anything (LIB-EDIT-017, LIB-EDIT-018). ArtifactPackage `artifactElement` admits every ArtifactElement kind, as the metamodel types it (ADR 0014). A root must be a package kind (`ElementKind::is_package`: the four packages, their interfaces and bindings; ADR 0010 D1 \"of any package kind\"); any other root is refused with `InsertError::RootNotAllowed`, as C++ refuses it (`io/xmi_reader.cpp` read_root, `is_package_kind`, `kXmiInvalidRoot`). Multiplicity is not enforced on insertion (D-VAL-LAYER, D-DESC-MULT). Which role a child fills, role names and multiplicities become observable with SACM23-XMI-016."
 source = "docs/sacm/decisions.md D-VAL-LAYER: \"**Structural** invariants (ids unique, references resolve, containment legal, multiplicities of required ends) hold after every successful mutation.\"; ptc/22-03-13 ownedAttribute aggregation=\"composite\" (12 element-typed ends, all 0..*); formal/23-05-08 §8.6 \"implementationConstraint: ImplementationConstraint [0..*] (composition)\", \"note:Note[0..*] (composition)\", \"taggedValue: TaggedValue [0..*] (composition)\", \"description: Description[0..1] (composition)\" (D-DESC-MULT); §9.2 (four sub-package compositions); §10.4 \"TerminologyElement:TerminologyElement[0..*] (composition)\" (spec defect D9); §11.4 \"argumentationElement:ArgumentationElement[0..*] (composition)\"; §12.2 \"artifactElement:Base::ArtifactElement[0..*] (composition)\"; §12.6 \"property:Property[0..*] (composition)\"; §12.14 ArtifactAssetRelationship \"Superclass ArtifactAsset\" (D-TEXT-MODEL); ADR 0010 D1/D2; ADR 0014; assurance-forge libs/sacm io/xmi_reader.cpp attach_child, io/name_tables.cpp"
 kind = "api"
 status = "verified"
 verification = "docs/verification/0017-m1-assurance-case-package.md"
 depends_on = ["LIB-API-002", "LIB-API-003", "LIB-API-004"]
+notes = "Slice 0056: moves and copies check the table in their own plans; re-check there."
 acceptance = [
   "Exhaustive table test: for every (parent kind, child kind) pair of the 38 kinds, `insert(Some(parent), child, ..)` succeeds for exactly the 339 legal pairs of the containment table and is refused for the other 1,105. The test spells out the table itself rather than calling `is_a`.",
   "Every containment refusal leaves the document unchanged (`element_count`, `contains`, `elements()`, `roots()`, the parent's `children()`) and returns `InsertError::ContainmentNotAllowed { id, kind, parent, parent_kind }`, whose `Display` follows the LIB-API-004 rules, e.g. `element \"c1\" of kind Claim cannot be contained in element \"case\" of kind AssuranceCasePackage`.",
@@ -5668,7 +5669,7 @@ kind = "editing"
 status = "verified"
 verification = "docs/verification/0047-m2-check-and-serde.md"
 depends_on = ["LIB-EDIT-002", "LIB-EDIT-008", "LIB-EDIT-009", "LIB-EDIT-010", "LIB-EDIT-012"]
-notes = "LIB-EDIT-004 (delete preview) is the richer form of this for one operation."
+notes = "LIB-EDIT-004 (delete preview) is the richer form of this for one operation. Slice 0056: moves and copies join the set; re-check there."
 acceptance = [
   "For every starting document and every operation of the LIB-EDIT-002 set (accepted and refused, every operation struct, caller and generated ids), `edit::check(&doc, &op)` equals `edit::apply(&mut doc.clone(), op.clone()).map(drop)`, the same `EditError` included.",
   "After `check`, the document is `==` to a clone taken before, and a create with a generated id of each kind gives the same id on both.",
@@ -5698,12 +5699,12 @@ kind = "editing"
 status = "verified"
 verification = "docs/verification/0048-m2-batches-and-delete.md"
 depends_on = ["LIB-EDIT-003", "LIB-EDIT-013"]
-notes = "Needs an ADR for the API shape: a list of operations, or a closure that applies operations one at a time and sees each `Mutation` (which gives later operations the generated ids without a new id API)."
+notes = "Needs an ADR for the API shape: a list of operations, or a closure that applies operations one at a time and sees each `Mutation` (which gives later operations the generated ids without a new id API). Slice 0056: net changed ids also take the parents of moved elements (ADR 0036 D4); re-check there."
 acceptance = [
   "`edit::batch(&mut doc, |tx| ...)`: on `Ok` every operation applied through `tx.apply` is committed and each returned `Mutation` equals what applying the operations one by one gives; a later operation can use an id an earlier one generated.",
   "On an `Err` from the closure, the closure's error is returned unchanged and the document is `==` to before with the same next ids and revision; a panic in the closure (`catch_unwind`) leaves it as before too. A refusal the closure catches and ignores changes nothing, and the rest commits.",
   "`edit::apply_all(&mut doc, ops)` equals `batch` over the same list; on the first refusal at index k the document is unchanged and `BatchError` gives `index() == k`, the operation, its `EditError` and `code()`.",
-  "`BatchMutation::mutations()` holds every accepted `Mutation` in order; its net `created_ids`, `changed_ids` and `deleted_ids` are the right-only ids of `semantic_compare(before, after)` in creation order, its per-element ids in document pre-order after, and its left-only ids in pre-order before (an element created and deleted in the batch is in neither), over random sequences from the full operation set, deletes included.",
+  "`BatchMutation::mutations()` holds every accepted `Mutation` in order; its net `created_ids`, `changed_ids` and `deleted_ids` are the right-only ids of `semantic_compare(before, after)` in creation order, its per-element ids in document pre-order after, and its left-only ids in pre-order before (an element created and deleted in the batch is in neither), over random sequences of creates, sets, reorders and deletes; moves and copies in a batch are held to it by targeted tests (LIB-EDIT-017, LIB-EDIT-018; ADR 0036 D4).",
   "`BatchMutation` and `BatchError` round-trip in the ADR 0030 shape, with golden samples; the rustdoc example builds an ArgumentReasoning and an AssertedInference that names it in one batch.",
 ]
 code = ["crates/sacm/src/edit/batch.rs", "crates/sacm/src/compare.rs", "docs/adr/0032-atomic-batches.md"]
@@ -5950,31 +5951,76 @@ id = "LIB-EDIT-017"
 area = "EDIT"
 milestone = "M3"
 title = "Move an element"
-requirement = "A `MoveElement { element, parent, position }` operation moves an element, with its subtree, to another parent in the same document, at a position among the new parent's children; the containment table decides legal parents (`InvalidParent` otherwise); moving an element under itself or a descendant is refused; ids and references are unchanged. The `Mutation` names the element and both parents as changed. It works with `check`, `preview`, batches and serde like every operation."
-source = "the maintainer, 2026-11-16 (independent review; consumer needs before M4 and M5); Assurance Forge (drag and drop in an editor)"
+requirement = "A `MoveElement` operation moves an element, with everything it contains and its preserved content, under another parent (`new`) or to the roots (`root`), after the last child or root, or at a position (`with_position`): its index among the new parent's children (or the roots) after the move, from 0 to the number of the others. Ids, references and the element's features do not change; its parent, its role and the order do. The containment table decides the legal parents (`InvalidParent`), and a root must be a package (`InvalidRoot`). Moving an element into itself or an element it contains is `ParentInSubtree`, and a position past the end is `PositionOutOfRange`. A preserved child of either parent keeps its place after the typed child it followed. `changed_ids` follow LIB-EDIT-003: the element when its parent changes, and a parent whose child order or preserved placement changes, in pre-order after. A move to the place the element holds changes nothing. It works with `check`, `preview`, batches and serde like every operation."
+source = "the maintainer, 2026-11-16 (independent review; consumer needs before M4 and M5); Assurance Forge (drag and drop in an editor); containment: LIB-API-008, ADR 0014; ADR 0036"
 kind = "api"
-status = "planned"
-depends_on = ["LIB-EDIT-010", "LIB-API-012"]
+status = "implemented"
+depends_on = ["LIB-EDIT-010", "LIB-API-012", "LIB-COMPAT-003"]
+code = ["crates/sacm/src/edit/move_element.rs", "crates/sacm/src/model/document.rs", "crates/sacm/src/edit/batch.rs", "docs/adr/0036-moving-and-copying-elements.md"]
+tests = [
+  "crates/sacm/tests/batch.rs::lib_edit_017_a_batch_that_moves_an_element_away_and_back_reports_the_parent_whose_order_changed",
+  "crates/sacm/tests/edit_atomic.rs::lib_edit_017_move_joins_the_set_with_every_answer",
+  "crates/sacm/tests/move_element.rs::lib_edit_017_a_claim_moves_between_packages_and_within_one",
+  "crates/sacm/tests/move_element.rs::lib_edit_017_with_position_puts_the_element_at_that_index",
+  "crates/sacm/tests/move_element.rs::lib_edit_017_a_move_between_package_kinds_writes_the_new_role_and_reads_back_equal",
+  "crates/sacm/tests/move_element.rs::lib_edit_017_a_package_moves_to_the_roots_and_back",
+  "crates/sacm/tests/move_element.rs::lib_edit_017_preserved_children_keep_their_place_after_the_typed_child_they_followed",
+  "crates/sacm/tests/move_element.rs::lib_edit_017_a_move_to_the_place_it_holds_changes_nothing",
+  "crates/sacm/tests/move_element.rs::lib_edit_017_move_element_is_send_sync_clone_debug_eq_and_converts_into_operation",
+  "crates/sacm/tests/move_element.rs::lib_edit_017_operation_name_is_move_element",
+  "crates/sacm/tests/move_element.rs::lib_edit_017_a_move_keeps_ids_references_preserved_content_and_findings",
+  "crates/sacm/tests/move_element.rs::lib_edit_017_refusals_come_in_order_and_change_nothing",
+  "crates/sacm/tests/serde.rs::lib_edit_017_move_element_and_its_refusals_round_trip_as_their_golden_json",
+  "crates/sacm/tests/move_element.rs::lib_edit_017_changed_ids_are_in_pre_order_after_the_move_when_preserved_placement_shifts",
+]
 acceptance = [
-  "A Claim moves between two ArgumentPackages and within one package to a new position; `children()` of both parents reflect it; the document is otherwise `==` to before.",
-  "Refusals: an unknown element or parent, an illegal parent kind, the element itself or a descendant as the parent, and a position past the end; each leaves the document unchanged.",
-  "The operation has a golden JSON sample and an `operation_name()`.",
+  "A Claim moves from one ArgumentPackage to another, appended and with `with_position(0)`, and within one package from last to first. `children()` of both parents reflect it, and `semantic_compare` reports exactly `Parent` for the Claim (between packages) or `ChildOrder` for the package (within one).",
+  "A Claim moves to an ArtifactPackage and back. An ArgumentPackage moves from an AssuranceCasePackage into an ArgumentPackage, then to the roots. Each result writes and reads back `==`.",
+  "Refusals, in order, each leaving the document `==` with the same revision and next ids: an unknown element (`ElementNotFound`), an unknown parent (`ParentNotFound`), a parent whose class cannot hold the kind (`InvalidParent`) or `root` of a kind that is no package (`InvalidRoot`), the element or a descendant as the parent (`ParentInSubtree`), a position past the end (`PositionOutOfRange`). An operation failing two checks gets the first.",
+  "Ids, every reference to the moved subtree, its preserved content and the next generated ids are unchanged, and `validate` gives the same findings before and after a move between two ArgumentPackages.",
+  "Preserved children of the old and new parent keep their place after the typed child they followed. A parent whose preserved child changes index is in `changed_ids`. A move to the place held gives empty `changed_ids` and an `==` document.",
+  "Moves join LIB-EDIT-002's set. Their Mutations satisfy LIB-EDIT-003, `check`, `preview` and `apply` agree, and a batch that moves an element away and back reports the parent whose child order changed (LIB-EDIT-014 net ids).",
+  "Golden JSON for `new`, `with_position` and `root`, `operation_name()` `\"MoveElement\"`, and golden samples for the three new `EditError` variants.",
 ]
 
 [[row]]
 id = "LIB-EDIT-018"
 area = "EDIT"
 milestone = "M3"
-title = "Copy a subtree from another document"
-requirement = "An operation copies an element and its subtree from a source `Document` under a parent in the target document, so an application can accept a draft built elsewhere (GitHub issue #61, an AI proposal). Ids that clash with the target are given new generated ids, and references inside the copied subtree follow the new ids; references that leave the subtree are kept as they are. The `Mutation` lists the created ids in pre-order, and the refusals follow the create rules."
-source = "the maintainer, 2026-11-16 (independent review; consumer needs before M4 and M5); GitHub issue #61 (accepting an AI draft)"
+title = "Copy elements from another document"
+requirement = "`CopyElements` copies elements of a source `Document`, each with everything it contains, under a parent of the target (`new`) or as roots (`root`), after the last child or root, in the order given, so an application can accept a draft built in another document (GitHub issue #61). The source elements are captured when the operation is built (`ElementNotFound` for an id the source lacks); an element listed twice, or inside another listed element, is copied once. An element keeps its id when it is an NCName free in the target (no element, part or preserved content holds it and no reference names it); otherwise it gets a generated id that avoids every id the copy keeps or names. A name, `content`, `key`, `location` or `value` keeps its `xmi:id` when it is free, and is copied without one otherwise. A reference to a copied element follows its new id; every other reference is kept as written. The copy is checked as a create: the parent (`ParentNotFound`, `InvalidParent`, `InvalidRoot`), the preserved content's ids (`DuplicateId`), required ends (`TooFewReferences`), and every reference against the target and the copies (`ReferenceNotFound`, `WrongReferenceType`; a typed end never holds an id with white space, so `InvalidReference` cannot arise). An unknown parent is `ParentNotFound` even for an empty list. Everything else, preserved content included, is copied exactly. The `Mutation` lists the created ids in pre-order, the i-th being the copy of `source_ids()[i]`, and changes and deletes nothing. It works with `check`, `preview` and batches. It is the one operation serde does not serialize (ADR 0030 amendment 2)."
+source = "the maintainer, 2026-11-16 (independent review; consumer needs before M4 and M5); GitHub issue #61 (accepting an AI draft); XMI 2.5.1 §7.6.1 (p. 14) \"XML semantics require the values of this attribute to be unique within an XML document; however, the value is not required to be globally unique.\"; formal/23-05-08 §8.2 (p. 18) \"gid:String[0..1] - a unique identifier that is unique within the scope of the model instance\"; D-VAL-LAYER; D-PRESERVE; ADR 0036; ADR 0030 amendment 2"
 kind = "api"
-status = "planned"
-depends_on = ["LIB-EDIT-014", "LIB-API-012"]
+status = "implemented"
+depends_on = ["LIB-EDIT-001", "LIB-EDIT-009", "LIB-EDIT-014", "LIB-API-012", "LIB-COMPAT-003"]
+code = ["crates/sacm/src/edit/copy.rs", "crates/sacm/src/model/document.rs", "docs/adr/0036-moving-and-copying-elements.md"]
+tests = [
+  "crates/sacm/tests/batch.rs::lib_edit_018_a_copy_and_an_edit_of_its_copy_commit_as_one_batch",
+  "crates/sacm/tests/copy_elements.rs::lib_edit_018_a_draft_of_four_elements_is_copied_under_a_package_with_its_references",
+  "crates/sacm/tests/copy_elements.rs::lib_edit_018_clashing_ids_get_generated_ids_and_internal_references_follow_them",
+  "crates/sacm/tests/copy_elements.rs::lib_edit_018_a_copy_within_one_document_duplicates_the_elements",
+  "crates/sacm/tests/copy_elements.rs::lib_edit_018_references_leaving_the_copy_are_kept_as_written",
+  "crates/sacm/tests/copy_elements.rs::lib_edit_018_source_ids_pair_with_created_ids_in_pre_order",
+  "crates/sacm/tests/copy_elements.rs::lib_edit_018_an_element_listed_twice_or_inside_another_is_copied_once",
+  "crates/sacm/tests/copy_elements.rs::lib_edit_018_preserved_content_is_copied_exactly_or_refused_as_duplicate_id",
+  "crates/sacm/tests/copy_elements.rs::lib_edit_018_unresolvable_references_are_refused_as_a_create_would_be",
+  "crates/sacm/tests/copy_elements.rs::lib_edit_018_generated_ids_avoid_the_ids_the_copy_keeps_and_names",
+  "crates/sacm/tests/copy_elements.rs::lib_edit_018_copy_elements_is_send_sync_clone_debug_eq_and_converts_into_operation",
+  "crates/sacm/tests/edit_atomic.rs::lib_edit_018_copy_joins_the_set_with_every_answer",
+  "crates/sacm/tests/serde.rs::lib_edit_018_copy_elements_is_neither_serialized_nor_deserialized",
+  "crates/sacm/tests/copy_elements.rs::lib_edit_018_part_ids_are_kept_when_free_and_dropped_when_not",
+  "crates/sacm/tests/copy_elements.rs::lib_edit_018_refusals_come_in_order_and_change_nothing",
+  "crates/sacm/tests/copy_elements.rs::lib_edit_018_a_generated_id_skips_every_taken_candidate",
+  "crates/sacm/tests/copy_elements.rs::lib_edit_018_a_copy_moved_to_the_place_it_holds_changes_nothing",
+  "crates/sacm/tests/copy_elements.rs::lib_edit_018_a_generated_id_avoids_a_part_id_and_a_preserved_id_the_copy_keeps",
+]
 acceptance = [
-  "A Strategy with two Claims and an AssertedInference between them, built in a scratch document, is copied under a package of the target: the target gains four elements, in order, with their references intact.",
-  "When an id of the source already exists in the target, the copy gets a generated id and every reference inside the copy names the new id; the mapping is reported.",
-  "Refusals (unknown source element, illegal parent) leave the target unchanged.",
+  "An ArgumentReasoning, two Claims and an AssertedInference from one Claim to the other naming the reasoning, built in a scratch document, are copied as a list under an ArgumentPackage of the target. The target gains four elements, appended in order, with ids, names and references intact, and `validate` reports nothing new.",
+  "When ids of the source exist in the target (copying a package within one document included), each copy gets a generated id and every reference inside the copy names the new ids. A reference leaving the copy is kept. `source_ids()` zipped with `created_ids()` is the mapping. A free source id is kept, and generated ids avoid it.",
+  "Free part ids are kept and clashing ones dropped. Preserved content is copied exactly and its ids join the target. Preserved content that holds an id in use, or names an id the copy changes, is `DuplicateId`.",
+  "Refusals, in order, each leaving the target `==` with the same revision and next ids: an id the source lacks, at construction (`ElementNotFound`); an unknown parent (also with an empty list); an illegal parent kind, or a root that is no package; `DuplicateId`; a relationship with no source or target (`TooFewReferences`); a reference naming nothing in the target, or naming an element of a kind its end does not admit.",
+  "Copies join LIB-EDIT-002's set (from the document itself and from a fixed second source). Their Mutations satisfy LIB-EDIT-003, `check`, `preview` and `apply` agree, and a batch of a copy followed by a SetName of the copy commits with the net ids of `semantic_compare`.",
+  "With `serde`, serializing `Operation::CopyElements`, or a `Mutation` holding one, is an `Err`, and `{\"type\":\"CopyElements\"}` does not deserialize. `operation_name()` is `\"CopyElements\"`.",
 ]
 
 [[row]]
@@ -6015,38 +6061,72 @@ id = "LIB-API-014"
 area = "API"
 milestone = "M3"
 title = "Who references an element"
-requirement = "`Document::referrers(id)` lists every typed reference that names `id`: the holder, the end and the position, in document pre-order of holders, then `ReferenceEnd::ALL` order, then position, so an application can answer \"what supports this claim?\" without walking every element. Its cost is linear in the number of referrers, not in the size of the document, so the document keeps an index of referrers for it."
-source = "Docs review 0043 (docs/follow-ups.md); the maintainer, 2026-11-16 (needed by the GSN layer, moved to M3)"
+requirement = "`Document::referrers(id)` lists every typed reference that names `id`, whether or not an element has that id: the holder, the end and the id's position in the end. They are ordered by holder in document pre-order, then by end in `ReferenceEnd::ALL` order, then by position; an id held twice in one end gives two entries. References preserved content may hold are not typed and are not listed. So an application can answer \"what supports this claim?\" without walking every element. The document keeps an index of referrers, updated by every edit, so the cost grows with the number of referrers and the depth of their holders, not with the size of the document."
+source = "Docs review 0043 (docs/follow-ups.md); the maintainer, 2026-11-16 (needed by the GSN layer, moved to M3); ADR 0036"
 kind = "api"
-status = "planned"
-depends_on = ["LIB-EDIT-009", "SACM23-ARG-013"]
+status = "implemented"
+depends_on = ["LIB-EDIT-009", "SACM23-ARG-013", "LIB-API-015"]
+code = ["crates/sacm/src/model/document.rs", "docs/adr/0036-moving-and-copying-elements.md"]
+tests = [
+  "crates/sacm/tests/edit_atomic.rs::lib_api_014_referrers_equal_a_full_scan_after_every_operation_of_the_set",
+  "crates/sacm/tests/referrers.rs::lib_api_014_referrers_list_holder_end_and_position_in_order",
+  "crates/sacm/tests/referrers.rs::lib_api_014_referrers_follow_pre_order_after_a_reorder_and_a_move",
+  "crates/sacm/tests/referrers.rs::lib_api_014_an_id_held_twice_in_one_end_gives_two_entries",
+  "crates/sacm/tests/referrers.rs::lib_api_014_one_holder_with_two_ends_gives_an_entry_per_end_in_all_order",
+  "crates/sacm/tests/referrers.rs::lib_api_014_an_unreferenced_id_and_one_named_only_by_preserved_content_give_none",
+  "crates/sacm/tests/referrers.rs::lib_api_014_a_dangling_id_and_a_preserved_id_give_their_referrers",
+  "crates/sacm/tests/referrers.rs::lib_api_014_referrers_of_a_read_document_equal_a_full_scan",
+  "crates/sacm/tests/referrers.rs::lib_api_014_the_dangling_references_of_a_delete_are_referrers_outside_the_subtree",
+  "crates/sacm/tests/referrers.rs::lib_api_014_referrer_is_send_sync_copy_and_debug",
+  "crates/sacm/tests/referrers.rs::lib_api_014_referrers_equal_a_full_scan_after_each_edit_of_a_sequence",
+  "crates/sacm/tests/referrers.rs::lib_api_014_referrers_follow_pre_order_across_a_copied_root_and_a_later_one",
+]
+acceptance = [
+  "A Claim `top` that is the target of two AssertedInferences, the source of a third, and twice the `metaClaim` of a Claim gives five entries, in the stated order. After a `ReorderElements` that swaps the two inferences, their entries swap.",
+  "An id nothing references gives none, and so does an id that only preserved content names. A dangling id, and a preserved id a typed end names, give their referrers.",
+  "After every successful operation of LIB-EDIT-002's set (moves, copies and deletes included), `referrers(id)` for every id any end holds equals a full scan through `SacmElement::references` in the stated order. The same holds on a document read from XMI.",
+  "A delete preview's dangling references equal the referrers of the deleted ids held outside the subtree, one per id and end.",
+]
 
 [[row]]
 id = "LIB-API-015"
 area = "API"
 milestone = "M3"
 title = "Public flag and reference-end readers"
-requirement = "`SacmElement::flag(Flag)` and `SacmElement::references(ReferenceEnd)` are public, with `Flag::applies_to(ElementKind)`, `ReferenceEnd::applies_to(ElementKind)` and the end's bounds, so a generic property panel can list an element's flags and ends without mapping each variant by hand."
-source = "Docs review 0045 (docs/follow-ups.md); the maintainer, 2026-11-16 (needed by the GSN layer, moved to M3)"
+requirement = "`SacmElement::flag(Flag)` and `SacmElement::references(ReferenceEnd)` are public: a flag the kind lacks is `false`, and an end it lacks holds no id. `Flag::ALL` and `ReferenceEnd::ALL` list every flag and end in a documented order, as `&'static` slices so a later variant is additive. `Flag::applies_to(kind)` and `ReferenceEnd::applies_to(kind)` say whether an element of `kind` has it. `ReferenceEnd::bounds(kind)` gives the fewest and most ids the end holds on an element of `kind`, as `(lower, upper)` with `None` for no upper bound, and `None` when the kind has no such end; bounds depend on the owner (§11.13 `target:ArgumentAsset[1]`, §12.14 `target:ArtifactAsset[1..*]`). So a generic property panel can list an element's flags and ends without mapping each variant by hand. They read the tables the reader, writer and edits use."
+source = "Docs review 0045 (docs/follow-ups.md); the maintainer, 2026-11-16 (needed by the GSN layer, moved to M3); formal/23-05-08 §11.13 (p. 40) \"target:ArgumentAsset[1]\"; §12.14 (p. 50) \"target:ArtifactAsset[1..*]\"; ADR 0029 amendment 1"
 kind = "api"
-status = "planned"
+status = "implemented"
 depends_on = ["LIB-EDIT-008", "LIB-EDIT-009"]
+code = ["crates/sacm/src/model/reference.rs", "crates/sacm/src/model/document.rs", "docs/adr/0029-set-reference-and-reorder-operations.md"]
+tests = [
+  "crates/sacm/tests/flag_and_end_readers.rs::lib_api_015_applies_to_agrees_with_set_flag_and_set_references_for_every_kind",
+  "crates/sacm/tests/flag_and_end_readers.rs::lib_api_015_bounds_agree_with_the_reference_edit_refusals_for_every_kind",
+  "crates/sacm/tests/flag_and_end_readers.rs::lib_api_015_references_and_flag_equal_the_named_accessors",
+  "crates/sacm/tests/flag_and_end_readers.rs::lib_api_015_all_lists_every_flag_and_end_in_order",
+]
+acceptance = [
+  "For every kind in `ElementKind::ALL`, `Flag::applies_to` and `ReferenceEnd::applies_to` are true exactly when a `SetFlag`, or a `SetReferences::clear`, of that flag or end is not `FeatureNotApplicable`.",
+  "`bounds` on an AssertedInference is `Some((1, None))` for `source` and `Some((1, Some(1)))` for `target`; on a Claim `Some((0, Some(1)))` for `citedElement`, `Some((0, None))` for `metaClaim`, `None` for `source`; for every end and kind it agrees with SetReferences' `TooFewReferences` and `TooManyReferences`.",
+  "`references(end)` equals the named accessor for every end, and is empty for an end the kind lacks (`GroupMember` on an ArtifactGroup included). `flag(f)` equals `is_citation`, `is_abstract` and `is_counter`.",
+  "`Flag::ALL` is `[IsCitation, IsAbstract, IsCounter]`, and `ReferenceEnd::ALL` is the ten ends in write order. A doctest lists a Claim's flags and ends as a property panel would.",
+]
 
 [[row]]
 id = "LIB-API-006"
 area = "API"
 milestone = "M2"
 title = "serde support for edit and diagnostic values"
-requirement = "An optional `serde` feature implements `Serialize` and `Deserialize` for `Operation` and every operation struct, `Mutation`, `EditError`, the value types they carry (`ElementId`, `ElementKind`, `LangString`, `MultiLangString`, `AssertionDeclaration` and the edit selectors) and for `Diagnostic`, `Code`, `Severity` and `SourceLocation`. `Document` does not implement them: XMI stays the only serialization of the model. A deserialized operation is checked by `edit::apply` exactly as a constructed one, and an unknown `Code` or kind name is a deserialization error. The serialized form is documented and golden-tested in JSON; the goldens guard against accidental change, and the shape changes only in a semver-breaking release (ADR 0030 amendment 1; the maintainer, 2026-11-16)."
+requirement = "An optional `serde` feature implements `Serialize` and `Deserialize` for `Operation` and every operation struct but `CopyElements`, which holds a snapshot of another document: serializing an `Operation::CopyElements` is an error, and its tag does not deserialize (ADR 0030 amendment 2), `Mutation`, `EditError`, the value types they carry (`ElementId`, `ElementKind`, `LangString`, `MultiLangString`, `AssertionDeclaration` and the edit selectors) and for `Diagnostic`, `Code`, `Severity` and `SourceLocation`. `Document` does not implement them: XMI stays the only serialization of the model. A deserialized operation is checked by `edit::apply` exactly as a constructed one, and an unknown `Code` or kind name is a deserialization error. The serialized form is documented and golden-tested in JSON; the goldens guard against accidental change, and the shape changes only in a semver-breaking release (ADR 0030 amendment 1; the maintainer, 2026-11-16)."
 source = "User request: Assurance Forge, GitHub issue #57 (2026-11-14); rust-library-craft \"`serde` support, if added, is behind `serde`\"; ADR 0011 \"Later additions are additive: user-built diagnostics, `operation` and serde\"; ADR 0030 (the maintainer, 2026-11-15)"
 kind = "api"
 status = "verified"
 verification = "docs/verification/0053-simplification.md"
 depends_on = ["LIB-EDIT-003", "LIB-EDIT-008", "LIB-EDIT-009", "LIB-EDIT-010"]
-notes = "Narrowed 2026-11-15 from \"serializes the model and diagnostics\": leaving `Document` out removes the concern that serde freezes a second serialization of the model. The maintainer decided on 2026-11-15 that the serialized form is a stability promise, like `operation_name()`: changing it is a breaking change. Needs an ADR for the serde dependency (optional, with `derive`) and the JSON shape. LIB-QA-017 builds the wasm target with this feature too."
+notes = "Narrowed 2026-11-15 from \"serializes the model and diagnostics\": leaving `Document` out removes the concern that serde freezes a second serialization of the model. The maintainer decided on 2026-11-15 that the serialized form is a stability promise, like `operation_name()`: changing it is a breaking change. Needs an ADR for the serde dependency (optional, with `derive`) and the JSON shape. LIB-QA-017 builds the wasm target with this feature too. Slice 0056: `CopyElements` is not serialized (ADR 0030 amendment 2); `MoveElement` and the three new `EditError` variants have goldens; re-check there."
 acceptance = [
   "With the `serde` feature, every type ADR 0030 lists implements `Serialize` and `Deserialize`; `Document` does not (a `compile_fail` doctest). Without the feature, `sacm` has no serde dependency.",
-  "Golden JSON files fix the shape of every operation struct (each constructor form: root and parent, with and without id, set and remove), a `Mutation`, every `EditError` variant, a full and a minimal `Diagnostic`, and LangString and MultiLangString values. Serializing gives the file's bytes, and deserializing the file gives values `==` to the originals. A test with an exhaustive `match` fails to compile when an `Operation` or `EditError` variant has no sample.",
+  "Golden JSON files fix the shape of every operation struct but `CopyElements` (each constructor form: root and parent, with and without id, set and remove), a `Mutation`, every `EditError` variant, a full and a minimal `Diagnostic`, and LangString and MultiLangString values. Serializing gives the file's bytes, and deserializing the file gives values `==` to the originals. A test with an exhaustive `match` fails to compile when an `Operation` or `EditError` variant has no sample.",
   "Every operation's `\"type\"` is its `operation_name()`; every `ElementKind`, `Flag`, `ReferenceEnd`, `AssertionDeclaration`, `Severity` and catalog `Code` round-trips as its name or code string.",
   "Refused on input: an unknown `type`, an unknown key, a missing required key (a package create's `parent` included), an unknown code, kind, flag, end, feature or expected-class name, an `EditError` whose `code` does not match its variant, and a location line or column of 0.",
   "An omitted optional key reads as the constructor default; `{}` and `{\"content\":\"\"}` are different LangStrings.",

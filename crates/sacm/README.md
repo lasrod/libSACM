@@ -70,6 +70,12 @@ Read, edit, validate and write assurance cases in the
   `SetLocation`, `SetStartTime`, `SetEndTime`), every reference
   end, within its bounds (`sacm::edit::SetReferences`, `AddReference`, `RemoveReference`), and the
   order of an element's children or of the roots (`sacm::edit::ReorderElements`).
+  `sacm::edit::MoveElement` moves an element, with everything it contains, under another
+  parent or to the roots, and `sacm::edit::CopyElements` copies elements of another
+  document, such as a draft, with fresh ids where theirs clash.
+- `Document::referrers` lists the typed references that name an id, and
+  `SacmElement::flag` and `SacmElement::references`, with `Flag::ALL` and
+  `ReferenceEnd::ALL`, read an element's flags and ends without naming each one.
 - `sacm::compare::semantic_compare` lists every difference in SACM content between two
   documents.
 

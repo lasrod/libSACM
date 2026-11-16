@@ -398,6 +398,21 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   `StartTime` and `EndTime`; `WriteAttribute::Version`, `Date`, `StartTime`, `EndTime`,
   `LocationValueLang` and `LocationValueContent` [SACM23-ART-002, SACM23-ART-004,
   SACM23-ART-005].
+- `edit::MoveElement` moves an element, with everything it contains, under another
+  parent or to the roots, after the last child or at a position (`with_position`). Ids,
+  references and preserved content are unchanged. New refusals: `EditError::InvalidRoot`
+  and `EditError::ParentInSubtree` (SACM-CMD-005), and `EditError::PositionOutOfRange`
+  (SACM-CMD-009) [LIB-EDIT-017].
+- `edit::CopyElements` copies elements of another `Document`, with everything they
+  contain, under a parent or as roots. A clashing id gets a generated one, and the
+  copies' references follow the new ids. `source_ids()` pairs with
+  `Mutation::created_ids()`. It works with `check`, `preview` and batches, and it is the
+  one operation serde does not serialize [LIB-EDIT-018].
+- `Document::referrers` and `model::Referrer` list every typed reference that names an
+  id: its holder, end and position, in document order [LIB-API-014].
+- `SacmElement::flag` and `SacmElement::references` are public. Also new: `Flag::ALL`,
+  `Flag::applies_to`, `ReferenceEnd::ALL`, `ReferenceEnd::applies_to` and
+  `ReferenceEnd::bounds` [LIB-API-015].
 
 ### Changed
 

@@ -25,8 +25,8 @@ content not read yet). Nothing is dropped.
 
 `sacm::xmi::write` writes the same kinds deterministically; a strict save, the default,
 checks only that the output is schema-valid, so a draft saves, and an application calls
-`validate` for model checks. `sacm::edit::apply` creates
-and edits them atomically, `sacm::validation::validate` checks names, ids, gids, contents,
+`validate` for model checks. `sacm::edit::apply` creates, edits, moves, copies and
+deletes them atomically, `sacm::validation::validate` checks names, ids, gids, contents,
 references and the argumentation rules, and `sacm::compare::semantic_compare` lists
 differences. The terminology package, interfaces and bindings, the other validation rules
 and undo are not built yet. The [functionality matrix](docs/matrix/functionality-matrix.md)

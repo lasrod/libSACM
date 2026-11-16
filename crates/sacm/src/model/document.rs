@@ -48,7 +48,9 @@ use super::{
 /// `AssertedArtifactContext`) in them, and the descriptions, implementation
 /// constraints, notes and tagged values of each of these.
 /// [`edit::apply`](crate::edit::apply) creates the same twenty-four kinds, edits
-/// the features and the order of elements of every kind, and deletes
+/// the features and the order of elements of every kind, moves and copies
+/// them ([`MoveElement`](crate::edit::MoveElement),
+/// [`CopyElements`](crate::edit::CopyElements)), and deletes
 /// elements of every kind ([`DeleteElement`](crate::edit::DeleteElement)).
 /// Tests build documents with other kinds through the `test-support`
 /// feature's `Document::insert`. [`Document::new`] is empty.
@@ -195,7 +197,7 @@ impl Default for Document {
 }
 
 /// How an id of `Document::other_ids` is used.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 struct IdUse {
     /// The handle of the element whose `name`, `content`, `key`, `location` or `value`
     /// carries the id as its `xmi:id`, or whose preserved content does, if
@@ -207,13 +209,19 @@ struct IdUse {
     /// Whether the document's own preserved content, outside every element,
     /// holds the id (ADR 0035 D3); `owner` is then `None`.
     document: bool,
-    /// How many references, of every element and end, hold the id.
+    /// How many references, of every element and end, hold the id: the
+    /// typed ones and those preserved content may hold.
     references: usize,
+    /// The handle of the element that holds the id in a typed end, once per
+    /// occurrence, in no particular order: the index of
+    /// [`Document::referrers`] (ADR 0036 D3). Preserved content's references
+    /// are not typed, so they are counted in `references` only.
+    holders: Vec<usize>,
 }
 
 impl IdUse {
     /// Whether nothing uses the id any more, so its entry can go.
-    fn is_unused(self) -> bool {
+    fn is_unused(&self) -> bool {
         self.owner.is_none() && !self.document && self.references == 0
     }
 }
@@ -261,6 +269,11 @@ struct Node {
     references: Vec<(ReferenceEnd, Vec<ElementId>)>,
     /// The handle of the containing element; `None` for a root.
     parent: Option<usize>,
+    /// The element's index among its parent's children, or among the
+    /// roots: derived from `children` and `roots`, so that
+    /// [`Document::referrers`] can order holders by document order without
+    /// walking the document (ADR 0036 D3).
+    slot: usize,
     /// The role of the parent's class that holds the element: `Some` exactly
     /// when it has a parent.
     role: Option<Role>,
@@ -654,10 +667,13 @@ impl Document {
         };
 
         let node = self.nodes.len();
-        match parent {
-            Some(parent) => self.nodes[parent].children.push(node),
-            None => self.roots.push(node),
-        }
+        let slot = if let Some(parent) = parent {
+            self.nodes[parent].children.push(node);
+            self.nodes[parent].children.len() - 1
+        } else {
+            self.roots.push(node);
+            self.roots.len() - 1
+        };
         self.index.insert(id.clone(), node);
         self.nodes.push(Node {
             id,
@@ -677,6 +693,7 @@ impl Document {
             is_counter: false,
             references: Vec::new(),
             parent,
+            slot,
             role,
             children: Vec::new(),
             preserved: None,
@@ -939,6 +956,7 @@ impl Document {
         for target in &targets {
             let used = self.other_ids.entry(target.clone()).or_default();
             used.references = used.references.saturating_add(1);
+            used.holders.push(node);
         }
         if !targets.is_empty() {
             // In no particular order: every reader looks an end up by
@@ -948,6 +966,7 @@ impl Document {
         for target in &old {
             self.release(target, |used| {
                 used.references = used.references.saturating_sub(1);
+                release_holder(&mut used.holders, node);
             });
         }
     }
@@ -1055,12 +1074,16 @@ impl Document {
             .iter()
             .filter_map(|id| self.index.get(id).copied())
             .collect();
-        let held = match parent {
-            None => &mut self.roots,
+        let parent = match parent {
+            None => None,
             Some(parent) => match self.index.get(parent) {
-                Some(&parent) => &mut self.nodes[parent].children,
+                Some(&parent) => Some(parent),
                 None => return false,
             },
+        };
+        let held = match parent {
+            None => &mut self.roots,
+            Some(parent) => &mut self.nodes[parent].children,
         };
         let named: BTreeSet<usize> = handles.iter().copied().collect();
         let mut next = handles.into_iter();
@@ -1073,6 +1096,7 @@ impl Document {
                 }
             }
         }
+        self.renumber_children(parent, 0);
         changed
     }
 
@@ -1150,12 +1174,13 @@ impl Document {
     fn release_node(&mut self, node: usize) {
         let references = std::mem::take(&mut self.nodes[node].references);
         let preserved = self.nodes[node].preserved.take();
-        let preserved_references = preserved.iter().flat_map(|held| &held.references);
-        for target in references
-            .iter()
-            .flat_map(|(_, targets)| targets)
-            .chain(preserved_references)
-        {
+        for target in references.iter().flat_map(|(_, targets)| targets) {
+            self.release(target, |used| {
+                used.references = used.references.saturating_sub(1);
+                release_holder(&mut used.holders, node);
+            });
+        }
+        for target in preserved.iter().flat_map(|held| &held.references) {
             self.release(target, |used| {
                 used.references = used.references.saturating_sub(1);
             });
@@ -1224,8 +1249,31 @@ impl Document {
         self.other_ids.retain(|_, used| {
             used.owner = used.owner.and_then(new);
             used.preserved &= used.owner.is_some();
+            // A doomed holder released its references first.
+            used.holders = used
+                .holders
+                .iter()
+                .filter_map(|&holder| new(holder))
+                .collect();
             !used.is_unused()
         });
+        for parent in 0..self.nodes.len() {
+            self.renumber_children(Some(parent), 0);
+        }
+        self.renumber_children(None, 0);
+    }
+
+    /// Sets the `slot` of each child of `parent`, or of each root for
+    /// `None`, from the index `from` on, to its index.
+    fn renumber_children(&mut self, parent: Option<usize>, from: usize) {
+        let held = match parent {
+            Some(parent) => &self.nodes[parent].children,
+            None => &self.roots,
+        };
+        let handles: Vec<usize> = held.iter().skip(from).copied().collect();
+        for (offset, handle) in handles.into_iter().enumerate() {
+            self.nodes[handle].slot = from + offset;
+        }
     }
 
     /// Whether `id` is in use in the document's id space: by an element, or
@@ -1430,6 +1478,609 @@ impl Document {
     }
 }
 
+/// Referrers (LIB-API-014; ADR 0036 D3).
+impl Document {
+    /// Every typed reference that names `id`, whether or not an element has
+    /// that id: the holder, the end and the id's position in the end
+    /// (LIB-API-014).
+    ///
+    /// They are ordered by holder in document pre-order, then by end in
+    /// [`ReferenceEnd::ALL`] order, then by position; an id an end holds
+    /// twice gives two entries. A dangling id, the id of a name, `content`,
+    /// `key`, `location` or `value`, and the `xmi:id` of preserved content
+    /// have referrers too. References that preserved content may hold are
+    /// not typed, so they are not listed.
+    ///
+    /// The document keeps an index of the holders of each id, which every
+    /// edit updates, so the cost grows with the number of referrers and the
+    /// depth of their holders, not with the size of the document.
+    ///
+    /// # Examples
+    ///
+    /// What supports a claim: the relationships whose `target` it is.
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateAssertedInference, CreateClaim};
+    /// use sacm::model::{Document, LangString, ReferenceEnd};
+    ///
+    /// let mut doc = Document::new();
+    /// let name = LangString::new;
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(name("Arguments")).with_id("p"))?;
+    /// edit::apply(&mut doc, CreateClaim::new("p", name("The system is safe")).with_id("top"))?;
+    /// edit::apply(&mut doc, CreateClaim::new("p", name("H1 is mitigated")).with_id("h1"))?;
+    /// edit::apply(&mut doc, CreateAssertedInference::new("p", name("I1"), ["h1"], "top").with_id("i1"))?;
+    ///
+    /// let support: Vec<&str> = doc
+    ///     .referrers("top")
+    ///     .into_iter()
+    ///     .filter(|referrer| referrer.end() == ReferenceEnd::Target)
+    ///     .map(|referrer| referrer.holder().id().as_str())
+    ///     .collect();
+    /// assert_eq!(support, ["i1"]);
+    /// assert!(doc.referrers("i1").is_empty());
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    #[must_use]
+    pub fn referrers<Q: AsRef<str> + ?Sized>(&self, id: &Q) -> Vec<Referrer<'_>> {
+        let id = id.as_ref();
+        let Some(used) = self.other_ids.get(id) else {
+            return Vec::new();
+        };
+        let mut holders = used.holders.clone();
+        holders.sort_unstable();
+        holders.dedup();
+        let mut ordered: Vec<(Vec<usize>, usize)> = holders
+            .into_iter()
+            .map(|holder| (self.slot_path(holder), holder))
+            .collect();
+        ordered.sort_unstable();
+        let mut found = Vec::new();
+        for (_, holder) in ordered {
+            let view = self.view(holder);
+            for &end in ReferenceEnd::ALL {
+                for (position, held) in view.references(end).iter().enumerate() {
+                    if held.as_str() == id {
+                        found.push(Referrer {
+                            holder: view,
+                            end,
+                            position,
+                        });
+                    }
+                }
+            }
+        }
+        found
+    }
+
+    /// The slots of `node` and its ancestors, from its root down: ordered as
+    /// the document's pre-order, an ancestor before its descendants.
+    fn slot_path(&self, node: usize) -> Vec<usize> {
+        let mut path = Vec::new();
+        let mut current = Some(node);
+        while let Some(handle) = current {
+            path.push(self.nodes[handle].slot);
+            current = self.nodes[handle].parent;
+        }
+        path.reverse();
+        path
+    }
+}
+
+/// Moves (LIB-EDIT-017; ADR 0036 D1).
+impl Document {
+    /// What moving `element` under `parent` (to the roots for `None`) at
+    /// `position` of the others changes, as `semantic_compare` reports it
+    /// (LIB-EDIT-003): `None` when it is the place the element holds;
+    /// otherwise the ids changed, in pre-order after the move. Under the same
+    /// parent, that is the parent (the roots' order is the document's);
+    /// under another, the element, and a parent whose preserved content is
+    /// placed after the typed child removed or inserted.
+    ///
+    /// The caller has checked the move (ADR 0036 D1): every id names an
+    /// element, the parent may hold the element and is not in its subtree,
+    /// and `position` is at most the number of the others.
+    pub(crate) fn move_changes(
+        &self,
+        element: &ElementId,
+        parent: Option<&ElementId>,
+        position: usize,
+    ) -> Option<Vec<ElementId>> {
+        let moved = *self.index.get(element)?;
+        let new_parent = match parent {
+            Some(parent) => Some(*self.index.get(parent)?),
+            None => None,
+        };
+        let old_parent = self.nodes[moved].parent;
+        let old_index = self.nodes[moved].slot;
+        if old_parent == new_parent {
+            if old_index == position {
+                return None;
+            }
+            return Some(
+                new_parent
+                    .map(|parent| self.nodes[parent].id.clone())
+                    .into_iter()
+                    .collect(),
+            );
+        }
+        let shifts = |holder: Option<usize>, index: usize| {
+            holder.filter(|&holder| {
+                self.nodes[holder]
+                    .preserved
+                    .as_deref()
+                    .is_some_and(|preserved| preserved.places_after(index))
+            })
+        };
+        let old = shifts(old_parent, old_index);
+        let new = shifts(new_parent, position);
+        let mut changed: Vec<usize> = Vec::with_capacity(3);
+        changed.extend(new);
+        changed.push(moved);
+        if let Some(old) = old {
+            // Where the old parent stands after the move: outside the new
+            // parent, where it stood relative to that parent; inside it (or
+            // among the roots), before the element exactly when its branch
+            // there comes before the position. Neither parent is in the moved
+            // subtree, so their own order does not change.
+            let before_element =
+                if let Some(new) = new_parent.filter(|&new| !self.is_inside(old, new)) {
+                    self.slot_path(old) < self.slot_path(new)
+                } else {
+                    let branch = self.branch_under(old, new_parent);
+                    self.nodes[branch].slot < position
+                };
+            let at = if before_element {
+                // After the new parent, if that is listed and comes first.
+                usize::from(new.is_some_and(|new| self.slot_path(new) < self.slot_path(old)))
+            } else {
+                changed.len()
+            };
+            changed.insert(at, old);
+        }
+        Some(
+            changed
+                .into_iter()
+                .map(|node| self.nodes[node].id.clone())
+                .collect(),
+        )
+    }
+
+    /// Whether `node` is `ancestor` or inside it.
+    fn is_inside(&self, node: usize, ancestor: usize) -> bool {
+        let mut current = Some(node);
+        while let Some(handle) = current {
+            if handle == ancestor {
+                return true;
+            }
+            current = self.nodes[handle].parent;
+        }
+        false
+    }
+
+    /// `node` or its ancestor that is a child of `parent`, or a root for
+    /// `None`; `node` is inside `parent`.
+    fn branch_under(&self, node: usize, parent: Option<usize>) -> usize {
+        let mut branch = node;
+        while self.nodes[branch].parent != parent {
+            match self.nodes[branch].parent {
+                Some(up) => branch = up,
+                None => break,
+            }
+        }
+        branch
+    }
+
+    /// Moves `element`, with its subtree and its preserved content, under
+    /// `parent` (to the roots for `None`) at `position` of the others: its
+    /// index there after the move. Its role is the new parent's role for its
+    /// kind; ids, references and features do not change. A preserved child
+    /// of either parent keeps its place after the typed child it followed.
+    ///
+    /// The caller has checked the move ([`move_changes`](Self::move_changes)).
+    /// Changes nothing when an id names no element.
+    pub(crate) fn move_element(
+        &mut self,
+        element: &ElementId,
+        parent: Option<&ElementId>,
+        position: usize,
+    ) {
+        let Some(&moved) = self.index.get(element) else {
+            return;
+        };
+        let new_parent = match parent {
+            Some(parent) => match self.index.get(parent) {
+                Some(&parent) => Some(parent),
+                None => return,
+            },
+            None => None,
+        };
+        let old_parent = self.nodes[moved].parent;
+        let siblings = match old_parent {
+            Some(parent) => &mut self.nodes[parent].children,
+            None => &mut self.roots,
+        };
+        let Some(old_index) = siblings.iter().position(|&sibling| sibling == moved) else {
+            return;
+        };
+        let kept: Vec<bool> = siblings.iter().map(|&sibling| sibling != moved).collect();
+        siblings.remove(old_index);
+        let preserved = match old_parent {
+            Some(parent) => self.nodes[parent].preserved.as_deref_mut(),
+            None => self.preserved.as_deref_mut(),
+        };
+        if let Some(preserved) = preserved {
+            preserved.shift(&kept);
+        }
+        self.renumber_children(old_parent, old_index);
+
+        let siblings = match new_parent {
+            Some(parent) => &mut self.nodes[parent].children,
+            None => &mut self.roots,
+        };
+        let at = position.min(siblings.len());
+        siblings.insert(at, moved);
+        let preserved = match new_parent {
+            Some(parent) => self.nodes[parent].preserved.as_deref_mut(),
+            None => self.preserved.as_deref_mut(),
+        };
+        if let Some(preserved) = preserved {
+            preserved.make_room(at);
+        }
+        let kind = self.nodes[moved].kind;
+        self.nodes[moved].role = new_parent.and_then(|parent| role(self.nodes[parent].kind, kind));
+        self.nodes[moved].parent = new_parent;
+        self.renumber_children(new_parent, at);
+    }
+}
+
+/// Copies (LIB-EDIT-018; ADR 0036 D2).
+impl Document {
+    /// The elements `listed` of the document, each with everything it
+    /// contains, captured for a copy: the tops (each listed element not
+    /// inside another listed one, each once) in list order, each with its
+    /// subtree in pre-order. Refuses with the first id, in list order, that
+    /// names no element.
+    pub(crate) fn snapshot(&self, listed: &[ElementId]) -> Result<Snapshot, ElementId> {
+        let mut handles = Vec::with_capacity(listed.len());
+        for id in listed {
+            match self.index.get(id) {
+                Some(&handle) => handles.push(handle),
+                None => return Err(id.clone()),
+            }
+        }
+        let named: BTreeSet<usize> = handles.iter().copied().collect();
+        let mut seen = BTreeSet::new();
+        let mut elements: Vec<Captured> = Vec::new();
+        for top in handles {
+            let inside = {
+                let mut up = self.nodes[top].parent;
+                let mut inside = false;
+                while let Some(ancestor) = up {
+                    if named.contains(&ancestor) {
+                        inside = true;
+                        break;
+                    }
+                    up = self.nodes[ancestor].parent;
+                }
+                inside
+            };
+            if inside || !seen.insert(top) {
+                continue;
+            }
+            let mut pending = vec![(top, None)];
+            while let Some((node, parent)) = pending.pop() {
+                let index = elements.len();
+                elements.push(self.capture(node, parent));
+                for &child in self.nodes[node].children.iter().rev() {
+                    pending.push((child, Some(index)));
+                }
+            }
+        }
+        let ids = elements.iter().map(|element| element.id.clone()).collect();
+        Ok(Snapshot { elements, ids })
+    }
+
+    /// The node `node` as captured, under the captured element `parent`.
+    /// `Node` is destructured with no `..`, so a field added to the model
+    /// fails to compile here until a copy handles it.
+    fn capture(&self, node: usize, parent: Option<usize>) -> Captured {
+        let Node {
+            id,
+            kind,
+            gid,
+            name,
+            name_id,
+            content,
+            key,
+            location,
+            strings,
+            assertion_declaration,
+            is_citation,
+            is_abstract,
+            is_counter,
+            references,
+            // Replaced by the place in the capture.
+            parent: _,
+            // Set where the copy is added.
+            slot: _,
+            // Recomputed from the copy's parent.
+            role: _,
+            // Captured as the elements that follow, in pre-order.
+            children: _,
+            preserved,
+        } = &self.nodes[node];
+        Captured {
+            id: id.clone(),
+            kind: *kind,
+            gid: gid.clone(),
+            name: name.clone(),
+            name_id: name_id.clone(),
+            content: content.clone(),
+            key: key.clone(),
+            location: location.clone(),
+            strings: strings.clone(),
+            assertion_declaration: *assertion_declaration,
+            is_citation: *is_citation,
+            is_abstract: *is_abstract,
+            is_counter: *is_counter,
+            references: references.clone(),
+            preserved: preserved.clone(),
+            parent,
+        }
+    }
+
+    /// Whether `id` is free in the document's id space: no element, part or
+    /// preserved content holds it, and no reference, typed or preserved,
+    /// names it (ADR 0036 D2).
+    pub(crate) fn is_free(&self, id: &str) -> bool {
+        !self.is_id_in_use(id) && !self.is_referenced(id)
+    }
+
+    /// The next generated id of `kind` above `after` (the kind's counter
+    /// for `None`), with its `n`, that is free and not in `avoid`.
+    pub(crate) fn generated_id_avoiding(
+        &self,
+        kind: ElementKind,
+        after: Option<u64>,
+        avoid: &BTreeSet<ElementId>,
+    ) -> (ElementId, u64) {
+        let prefix = snake_case(kind.name());
+        let start = after.unwrap_or_else(|| self.id_counters.get(&kind).copied().unwrap_or(0));
+        let mut n = start.wrapping_add(1);
+        let mut id = generated_id(&prefix, n);
+        // Each candidate taken is distinct and taken by one of these, so one
+        // of the first `taken + 1` is free, and the loop is bounded.
+        let taken = self.nodes.len() + self.other_ids.len() + avoid.len();
+        for _ in 0..taken {
+            if self.is_free(id.as_str()) && !avoid.contains(&id) {
+                break;
+            }
+            n = n.wrapping_add(1);
+            id = generated_id(&prefix, n);
+        }
+        (id, n)
+    }
+
+    /// Adds the copies of the elements of `snapshot` under `parent` (as roots
+    /// for `None`), after the last child or root, in the snapshot's order:
+    /// the i-th with the id `ids[i]`, each part keeping its `xmi:id` only if
+    /// it is in `kept`, each reference to a copied element naming its copy,
+    /// and everything else as captured, preserved content included.
+    ///
+    /// The caller has checked the copy (ADR 0036 D2): the parent may hold
+    /// each top, `ids` and the kept part ids and preserved ids are free and
+    /// distinct, and every reference resolves. Changes nothing when the
+    /// document has no element `parent`.
+    pub(crate) fn insert_copy(
+        &mut self,
+        parent: Option<&ElementId>,
+        snapshot: &Snapshot,
+        ids: &[ElementId],
+        kept: &BTreeSet<ElementId>,
+    ) {
+        let parent = match parent {
+            Some(parent) => match self.index.get(parent) {
+                Some(&parent) => Some(parent),
+                None => return,
+            },
+            None => None,
+        };
+        let mapped: BTreeMap<&ElementId, &ElementId> = snapshot.ids.iter().zip(ids).collect();
+        let keep = |id: &Option<ElementId>| id.clone().filter(|id| kept.contains(id));
+        let keep_text = |text: &Option<Text>| {
+            text.as_ref().map(|text| Text {
+                value: text.value.clone(),
+                id: keep(&text.id),
+                value_ids: text.value_ids.iter().map(keep).collect(),
+            })
+        };
+        let mut handles: Vec<usize> = Vec::with_capacity(snapshot.elements.len());
+        for (captured, id) in snapshot.elements.iter().zip(ids) {
+            let holder = match captured.parent {
+                Some(index) => handles.get(index).copied(),
+                None => parent,
+            };
+            let node = self.nodes.len();
+            let slot = if let Some(holder) = holder {
+                self.nodes[holder].children.push(node);
+                self.nodes[holder].children.len() - 1
+            } else {
+                self.roots.push(node);
+                self.roots.len() - 1
+            };
+            let role = holder.and_then(|holder| role(self.nodes[holder].kind, captured.kind));
+            self.index.insert(id.clone(), node);
+            self.nodes.push(Node {
+                id: id.clone(),
+                kind: captured.kind,
+                gid: captured.gid.clone(),
+                name: captured.name.clone(),
+                name_id: keep(&captured.name_id),
+                content: keep_text(&captured.content),
+                key: keep_text(&captured.key),
+                location: keep_text(&captured.location),
+                strings: captured.strings.clone(),
+                assertion_declaration: captured.assertion_declaration,
+                is_citation: captured.is_citation,
+                is_abstract: captured.is_abstract,
+                is_counter: captured.is_counter,
+                references: Vec::new(),
+                parent: holder,
+                slot,
+                role,
+                children: Vec::new(),
+                preserved: None,
+            });
+            let parts: Vec<ElementId> = {
+                let added = &self.nodes[node];
+                added
+                    .name_id
+                    .iter()
+                    .chain(
+                        TextRole::ALL
+                            .iter()
+                            .filter_map(|&role| added.text(role))
+                            .flat_map(Text::ids),
+                    )
+                    .cloned()
+                    .collect()
+            };
+            for part in parts {
+                self.other_ids.entry(part).or_default().owner = Some(node);
+            }
+            for (end, targets) in &captured.references {
+                let targets = targets
+                    .iter()
+                    .map(|target| {
+                        mapped
+                            .get(target)
+                            .map_or_else(|| target.clone(), |&copy| copy.clone())
+                    })
+                    .collect();
+                self.hold_references(node, *end, targets);
+            }
+            if let Some(preserved) = &captured.preserved {
+                for id in &preserved.ids {
+                    let used = self.other_ids.entry(id.clone()).or_default();
+                    used.owner = Some(node);
+                    used.preserved = true;
+                }
+                for id in &preserved.references {
+                    let used = self.other_ids.entry(id.clone()).or_default();
+                    used.references = used.references.saturating_add(1);
+                }
+                self.nodes[node].preserved = Some(preserved.clone());
+            }
+            handles.push(node);
+        }
+    }
+}
+
+/// Elements of a document, each with everything it contains, captured for
+/// a [`CopyElements`](crate::edit::CopyElements) when it is built (ADR 0036
+/// D2): an owned snapshot, independent of the document.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Snapshot {
+    /// The captured elements: the tops in list order, each followed by its
+    /// subtree in pre-order.
+    elements: Vec<Captured>,
+    /// Their ids, in the same order.
+    ids: Vec<ElementId>,
+}
+
+/// One captured element: a [`Node`] with its place in the [`Snapshot`]
+/// instead of handles.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Captured {
+    id: ElementId,
+    kind: ElementKind,
+    gid: Option<String>,
+    name: Option<LangString>,
+    name_id: Option<ElementId>,
+    content: Option<Text>,
+    key: Option<Text>,
+    location: Option<Text>,
+    strings: Vec<(StringAttribute, String)>,
+    assertion_declaration: Option<AssertionDeclaration>,
+    is_citation: bool,
+    is_abstract: bool,
+    is_counter: bool,
+    references: Vec<(ReferenceEnd, Vec<ElementId>)>,
+    preserved: Option<Box<Preserved>>,
+    /// The index of the captured element that contains it; `None` for a
+    /// top.
+    parent: Option<usize>,
+}
+
+impl Snapshot {
+    /// The ids of the captured elements, in order.
+    pub(crate) fn ids(&self) -> &[ElementId] {
+        &self.ids
+    }
+
+    /// The captured elements, in order, as views.
+    pub(crate) fn elements(&self) -> impl Iterator<Item = CapturedElement<'_>> {
+        self.elements
+            .iter()
+            .map(|captured| CapturedElement { captured })
+    }
+}
+
+/// A view of one element of a [`Snapshot`].
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CapturedElement<'s> {
+    captured: &'s Captured,
+}
+
+impl<'s> CapturedElement<'s> {
+    /// Its id in the source.
+    pub(crate) fn id(self) -> &'s ElementId {
+        &self.captured.id
+    }
+
+    /// Its kind.
+    pub(crate) fn kind(self) -> ElementKind {
+        self.captured.kind
+    }
+
+    /// Whether it is a top: not inside another captured element.
+    pub(crate) fn is_top(self) -> bool {
+        self.captured.parent.is_none()
+    }
+
+    /// The ids its end `end` holds, in order.
+    pub(crate) fn references(self, end: ReferenceEnd) -> &'s [ElementId] {
+        targets_of(&self.captured.references, end)
+    }
+
+    /// The ids of its name, `content`, `key`, `location` and their values.
+    pub(crate) fn part_ids(self) -> impl Iterator<Item = &'s ElementId> {
+        let captured = self.captured;
+        captured.name_id.iter().chain(
+            [&captured.content, &captured.key, &captured.location]
+                .into_iter()
+                .flatten()
+                .flat_map(Text::ids),
+        )
+    }
+
+    /// The `xmi:id`s of its preserved content.
+    pub(crate) fn preserved_ids(self) -> &'s [ElementId] {
+        self.captured
+            .preserved
+            .as_deref()
+            .map_or(&[], |preserved| &preserved.ids)
+    }
+
+    /// The ids its preserved content may name.
+    pub(crate) fn preserved_references(self) -> &'s [ElementId] {
+        self.captured
+            .preserved
+            .as_deref()
+            .map_or(&[], |preserved| &preserved.references)
+    }
+}
+
 /// Checks that the ids of `preserved` can join the id space of `document`:
 /// none is empty, given twice or already in use.
 fn check_preserved_ids(document: &Document, preserved: &Preserved) -> Result<(), String> {
@@ -1467,6 +2118,14 @@ fn reference_problem(
         ));
     }
     None
+}
+
+/// Removes one occurrence of `holder` from `holders`, whose order does not
+/// matter.
+fn release_holder(holders: &mut Vec<usize>, holder: usize) {
+    if let Some(position) = holders.iter().position(|&held| held == holder) {
+        holders.swap_remove(position);
+    }
 }
 
 /// `<prefix>_<n>`.
@@ -2104,14 +2763,66 @@ impl<'a> SacmElement<'a> {
         self.node().is_counter
     }
 
-    /// The value of the flag `flag` of the element.
-    pub(crate) fn flag(self, flag: Flag) -> bool {
+    /// The value of the flag `flag` of the element: what
+    /// [`is_citation`](Self::is_citation), [`is_abstract`](Self::is_abstract)
+    /// or [`is_counter`](Self::is_counter) gives. A flag the kind lacks
+    /// ([`Flag::applies_to`]) is `false`.
+    ///
+    /// See [`references`](Self::references) for a property panel built on it.
+    #[must_use]
+    pub fn flag(self, flag: Flag) -> bool {
         self.node().flag(flag)
     }
 
-    /// The ids the reference end `end` of the element holds, in order:
-    /// empty when it holds none.
-    pub(crate) fn references(self, end: ReferenceEnd) -> &'a [ElementId] {
+    /// The ids the reference end `end` of the element holds, in order,
+    /// repeats included: what the end's own accessor, such as
+    /// [`meta_claims`](Self::meta_claims) or [`target`](Self::target),
+    /// gives. An end the kind lacks ([`ReferenceEnd::applies_to`]) holds no
+    /// id; so does an `ArgumentGroup`'s `artifactElement` and an
+    /// `ArtifactGroup`'s `argumentElement`.
+    ///
+    /// # Examples
+    ///
+    /// A generic property panel: a Claim's flags and ends, with their
+    /// bounds, without naming each variant.
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, SetFlag, SetReferences};
+    /// use sacm::model::{Document, Flag, LangString, ReferenceEnd};
+    ///
+    /// let mut doc = Document::new();
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+    /// edit::apply(&mut doc, CreateClaim::new("p", LangString::new("C1")).with_id("c1"))?;
+    /// edit::apply(&mut doc, CreateClaim::new("p", LangString::new("C2")).with_id("c2"))?;
+    /// edit::apply(&mut doc, SetFlag::new("c2", Flag::IsAbstract, true))?;
+    /// edit::apply(&mut doc, SetReferences::new("c2", ReferenceEnd::MetaClaim, ["c1"]))?;
+    ///
+    /// let c2 = doc.get("c2").expect("just created");
+    /// let mut panel = Vec::new();
+    /// for &flag in Flag::ALL.iter().filter(|flag| flag.applies_to(c2.kind())) {
+    ///     panel.push(format!("{} = {}", flag.name(), c2.flag(flag)));
+    /// }
+    /// for &end in ReferenceEnd::ALL {
+    ///     if let Some((lower, upper)) = end.bounds(c2.kind()) {
+    ///         let upper = upper.map_or("*".to_owned(), |upper| upper.to_string());
+    ///         let ids: Vec<&str> = c2.references(end).iter().map(|id| id.as_str()).collect();
+    ///         panel.push(format!("{} [{lower}..{upper}] = {ids:?}", end.name()));
+    ///     }
+    /// }
+    /// assert_eq!(
+    ///     panel,
+    ///     [
+    ///         "isCitation = false",
+    ///         "isAbstract = true",
+    ///         "citedElement [0..1] = []",
+    ///         "abstractForm [0..1] = []",
+    ///         "metaClaim [0..*] = [\"c1\"]",
+    ///     ]
+    /// );
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    #[must_use]
+    pub fn references(self, end: ReferenceEnd) -> &'a [ElementId] {
         targets_of(&self.node().references, end)
     }
 
@@ -2578,6 +3289,9 @@ impl<'a> SacmElement<'a> {
             references,
             // Compared, as the parent's id.
             parent,
+            // Derived from the parent's children (or the roots), which are
+            // compared as the child order.
+            slot: _,
             // Derived from the parent's kind and the element's kind
             // (`containment::role`), both compared.
             role: _,
@@ -2943,6 +3657,58 @@ impl fmt::Debug for SacmElement<'_> {
             .field("kind", &self.kind())
             .field("id", self.id())
             .finish_non_exhaustive()
+    }
+}
+
+/// One typed reference to an id, as [`Document::referrers`] lists it: the
+/// element that holds it, the end, and the id's position in the end
+/// (LIB-API-014).
+///
+/// It borrows the document, like [`SacmElement`].
+///
+/// # Examples
+///
+/// ```
+/// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, SetReferences};
+/// use sacm::model::{Document, LangString, ReferenceEnd};
+///
+/// let mut doc = Document::new();
+/// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+/// edit::apply(&mut doc, CreateClaim::new("p", LangString::new("C1")).with_id("c1"))?;
+/// edit::apply(&mut doc, CreateClaim::new("p", LangString::new("C2")).with_id("c2"))?;
+/// edit::apply(&mut doc, SetReferences::new("c2", ReferenceEnd::MetaClaim, ["c1", "c1"]))?;
+///
+/// let referrers = doc.referrers("c1");
+/// assert_eq!(referrers.len(), 2);
+/// assert_eq!(referrers[1].holder().id().as_str(), "c2");
+/// assert_eq!(referrers[1].end(), ReferenceEnd::MetaClaim);
+/// assert_eq!(referrers[1].position(), 1);
+/// # Ok::<(), sacm::edit::EditError>(())
+/// ```
+#[derive(Clone, Copy, Debug)]
+pub struct Referrer<'a> {
+    holder: SacmElement<'a>,
+    end: ReferenceEnd,
+    position: usize,
+}
+
+impl<'a> Referrer<'a> {
+    /// The element that holds the reference.
+    #[must_use]
+    pub fn holder(self) -> SacmElement<'a> {
+        self.holder
+    }
+
+    /// The end that holds it.
+    #[must_use]
+    pub fn end(self) -> ReferenceEnd {
+        self.end
+    }
+
+    /// The id's position in the end, from 0: for a single-valued end, 0.
+    #[must_use]
+    pub fn position(self) -> usize {
+        self.position
     }
 }
 

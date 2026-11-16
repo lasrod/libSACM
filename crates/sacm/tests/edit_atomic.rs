@@ -156,6 +156,8 @@ use sacm::edit::{
     CreateActivity, CreateArtifact, CreateEvent, CreateResource, SetDate, SetEndTime, SetLocation,
     SetStartTime, SetVersion,
 };
+// The operations of slice 0056 (ADR 0036).
+use sacm::edit::{CopyElements, MoveElement};
 use sacm::model::ElementKind::{
     Activity, ArgumentGroup, ArgumentPackage, ArgumentPackageBinding, ArgumentPackageInterface,
     ArgumentReasoning, Artifact, ArtifactAssetRelationship, ArtifactGroup, ArtifactPackage,
@@ -182,6 +184,9 @@ const EDIT_009: &str = "LIB-EDIT-009";
 const EDIT_010: &str = "LIB-EDIT-010";
 const EDIT_012: &str = "LIB-EDIT-012";
 const EDIT_013: &str = "LIB-EDIT-013";
+const EDIT_017: &str = "LIB-EDIT-017";
+const EDIT_018: &str = "LIB-EDIT-018";
+const API_014: &str = "LIB-API-014";
 
 /// The directory of the XMI fixtures.
 const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/xmi");
@@ -1215,6 +1220,10 @@ fn classify(operation: &Operation) -> Class<'_> {
             edit_of("ReorderElements")
         }
         Operation::ReorderElements(_) => edit_of("ReorderElements::roots"),
+        Operation::MoveElement(moved) if moved.parent().is_some() => edit_of("MoveElement"),
+        Operation::MoveElement(_) => edit_of("MoveElement::root"),
+        Operation::CopyElements(copy) if copy.parent().is_some() => edit_of("CopyElements"),
+        Operation::CopyElements(_) => edit_of("CopyElements::root"),
         Operation::DeleteElement(_) => edit_of("DeleteElement"),
         other => panic!("{EDIT_002}: an operation this test does not know: {other:?}"),
     }
@@ -1240,6 +1249,14 @@ const CONTENT_EDITS: [&str; 3] = ["SetContent", "SetContent::remove", "SetKey"];
 
 /// The coverage label of the deletes (LIB-EDIT-005, LIB-EDIT-006).
 const DELETES: [&str; 1] = ["DeleteElement"];
+
+/// The coverage labels of the moves (LIB-EDIT-017): under a parent, and to
+/// the roots.
+const MOVES: [&str; 2] = ["MoveElement", "MoveElement::root"];
+
+/// The coverage labels of the copies (LIB-EDIT-018): under a parent, and as
+/// roots.
+const COPIES: [&str; 2] = ["CopyElements", "CopyElements::root"];
 
 /// The created kinds that are no package and no `UtilityElement` and whose
 /// create gives no reference end: a Claim, and the `ArtifactAsset`s, which
@@ -1277,6 +1294,30 @@ const ASSET_VALUE_EDITS: [&str; 10] = [
 /// the deletes.
 fn required_answers(label: &str) -> Vec<Result<(), &'static str>> {
     let mut required = vec![Ok(()), Err(Code::CMD_TARGET_NOT_FOUND.as_str())];
+    // A move: the element and the parent are known (CMD-001), the parent
+    // can hold it or a root is a package, and it is not moved into itself
+    // (CMD-005), and the position is in range (CMD-009).
+    if MOVES.contains(&label) {
+        required.push(Err(Code::CMD_INVALID_PARENT.as_str()));
+        required.push(Err(Code::CMD_INVALID_ORDER.as_str()));
+        return required;
+    }
+    // A copy under a parent: the parent is known and every reference names
+    // an element (CMD-001), the parent can hold each top (CMD-005), every
+    // relationship has its required ends (MULT-001), and every reference
+    // names an element of a kind its end admits (REF-002). As roots: each
+    // top is a package (CMD-005). No preserved content is in the set, and
+    // no end can hold an id with white space, so CMD-004 and ID-002 are
+    // reached in `copy_elements.rs` only.
+    if label == "CopyElements" {
+        required.push(Err(Code::CMD_INVALID_PARENT.as_str()));
+        required.push(Err(Code::MULTIPLICITY_VIOLATION.as_str()));
+        required.push(Err(Code::REF_WRONG_TYPE.as_str()));
+        return required;
+    }
+    if label == "CopyElements::root" {
+        return vec![Ok(()), Err(Code::CMD_INVALID_PARENT.as_str())];
+    }
     if DELETES.contains(&label) {
         required.push(Err(Code::CMD_DELETE_REFERENCED.as_str()));
         required.push(Err(Code::CMD_PACKAGE_NOT_EMPTY.as_str()));
@@ -1309,9 +1350,9 @@ fn requires_unchanged_ok(label: &str) -> bool {
 }
 
 /// Whether the set must reach an `Ok` of `label` with `changed_ids` not
-/// empty (a root reorder reports no id).
+/// empty (a root reorder reports no id, and a copy changes nothing).
 fn requires_changed_ok(label: &str) -> bool {
-    label != "ReorderElements::roots"
+    label != "ReorderElements::roots" && !COPIES.contains(&label)
 }
 
 /// Whether `value` is an `NCName`, for the ASCII ids this file uses: a letter
@@ -1374,6 +1415,8 @@ fn expected_answer(doc: &Document, operation: &Operation) -> Result<(), Code> {
         Operation::ReorderElements(reorder) => {
             reorder_answer(doc, reorder.parent(), reorder.order())
         }
+        Operation::MoveElement(moved) => move_answer(doc, moved),
+        Operation::CopyElements(copy) => copy_answer(doc, copy),
         Operation::DeleteElement(delete) => delete_plan(doc, delete).map(drop),
         _ => create_answer(doc, operation),
     }
@@ -1610,6 +1653,417 @@ fn reorder_answer(
         }
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// The move and copy oracles, written from ADR 0036
+// ---------------------------------------------------------------------------
+
+/// A move (ADR 0036 D1): the element is known; under a parent, the parent
+/// is known and its kind can hold the element's, by this file's containment
+/// table, or for the roots the element is a package; the parent is not the
+/// element and not inside it; and the position is at most the number of
+/// the others.
+fn move_answer(doc: &Document, moved: &MoveElement) -> Result<(), Code> {
+    let Some(element) = doc.get(moved.element()) else {
+        return Err(Code::CMD_TARGET_NOT_FOUND);
+    };
+    let others = if let Some(parent) = moved.parent() {
+        let Some(found) = doc.get(parent) else {
+            return Err(Code::CMD_TARGET_NOT_FOUND);
+        };
+        if !containment_table().contains(&(found.kind(), element.kind())) {
+            return Err(Code::CMD_INVALID_PARENT);
+        }
+        if subtree_of(element).contains(parent) {
+            return Err(Code::CMD_INVALID_PARENT);
+        }
+        found
+            .children()
+            .filter(|child| child.id() != element.id())
+            .count()
+    } else {
+        if !PACKAGE_KINDS.contains(&element.kind()) {
+            return Err(Code::CMD_INVALID_PARENT);
+        }
+        doc.roots().filter(|root| root.id() != element.id()).count()
+    };
+    if moved.position().is_some_and(|position| position > others) {
+        return Err(Code::CMD_INVALID_ORDER);
+    }
+    Ok(())
+}
+
+/// Where a copy of the set came from: the source document, and whether it
+/// is the starting document itself (rather than [`COPY_SOURCE`]).
+struct CopySource {
+    copy: CopyElements,
+    source: Document,
+    from_itself: bool,
+}
+
+thread_local! {
+    /// Every copy [`copy_operations_for`] built on this thread, most recent
+    /// last. `CopyElements` keeps its snapshot private, so the oracles look
+    /// the source up by the copy.
+    static COPY_SOURCES: std::cell::RefCell<Vec<CopySource>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Builds `CopyElements::new` (or `root` for `None`) of `elements` of
+/// `source` under `parent`, which must succeed, and remembers its source.
+fn remembered_copy(
+    source: &Document,
+    from_itself: bool,
+    elements: &[ElementId],
+    parent: Option<&ElementId>,
+) -> Operation {
+    let built = match parent {
+        Some(parent) => CopyElements::new(source, elements.iter().cloned(), parent),
+        None => CopyElements::root(source, elements.iter().cloned()),
+    };
+    let copy = match built {
+        Ok(copy) => copy,
+        Err(error) => panic!("{EDIT_018}: setup: the copy of {elements:?} was refused: {error}"),
+    };
+    COPY_SOURCES.with(|sources| {
+        sources.borrow_mut().push(CopySource {
+            copy: copy.clone(),
+            source: source.clone(),
+            from_itself,
+        });
+    });
+    copy.into()
+}
+
+/// The source of `copy`, which [`remembered_copy`] built on this thread,
+/// and whether it was the starting document itself.
+fn source_of(copy: &CopyElements) -> (Document, bool) {
+    let found = COPY_SOURCES.with(|sources| {
+        sources
+            .borrow()
+            .iter()
+            .rev()
+            .find(|known| known.copy == *copy)
+            .map(|known| (known.source.clone(), known.from_itself))
+    });
+    match found {
+        Some(found) => found,
+        None => panic!("{EDIT_018}: setup: a copy this test did not build: {copy:?}"),
+    }
+}
+
+/// The copied elements of `copy` in `source`, in the order of
+/// `source_ids()`.
+fn copied_elements<'s>(source: &'s Document, copy: &CopyElements) -> Vec<SacmElement<'s>> {
+    copy.source_ids()
+        .iter()
+        .map(|value| match source.get(value) {
+            Some(found) => found,
+            None => panic!("{EDIT_018}: source_ids() names {value:?}, which the source lacks"),
+        })
+        .collect()
+}
+
+/// A copy (ADR 0036 D2), checked as a create: the parent is known; each top
+/// (a copied element whose parent is not copied), in order, can be held by
+/// the parent, or is a package for the roots; (no preserved content is in
+/// the set); every copied relationship has a source and a target; then,
+/// over every id the copied elements' ends hold, mapped (an id of a copied
+/// element names its copy, any other is kept), in three passes: no kept id
+/// holds white space, every kept id names an element of the target, and
+/// every id names an element of a kind its end admits.
+fn copy_answer(doc: &Document, copy: &CopyElements) -> Result<(), Code> {
+    let (source, _) = source_of(copy);
+    let copied = copied_elements(&source, copy);
+    let is_copied = |value: &ElementId| copy.source_ids().contains(value);
+    let parent_kind = match copy.parent() {
+        Some(parent) => match doc.get(parent) {
+            Some(found) => Some(found.kind()),
+            None => return Err(Code::CMD_TARGET_NOT_FOUND),
+        },
+        None => None,
+    };
+    for top in copied.iter().filter(|element| {
+        !element
+            .parent()
+            .is_some_and(|parent| is_copied(parent.id()))
+    }) {
+        let legal = match parent_kind {
+            Some(kind) => containment_table().contains(&(kind, top.kind())),
+            None => PACKAGE_KINDS.contains(&top.kind()),
+        };
+        if !legal {
+            return Err(Code::CMD_INVALID_PARENT);
+        }
+    }
+    assert!(
+        !source.has_preserved_content(),
+        "{EDIT_018}: setup: a source of the set holds preserved content"
+    );
+    for element in &copied {
+        if RELATIONSHIPS.contains(&element.kind())
+            && (element.sources().is_empty() || element.target().is_none())
+        {
+            return Err(Code::MULTIPLICITY_VIOLATION);
+        }
+    }
+    // (declared kinds, the id as held, the kind it names after mapping)
+    let mut references: Vec<(&[ElementKind], ElementId, Option<ElementKind>)> = Vec::new();
+    for element in &copied {
+        for rule in &END_RULES {
+            for value in held(*element, rule.end) {
+                let named = if is_copied(&value) {
+                    source.get(&value).map(SacmElement::kind)
+                } else {
+                    doc.get(&value).map(SacmElement::kind)
+                };
+                references.push((rule.declared, value, named));
+            }
+        }
+    }
+    let kept = || references.iter().filter(|(_, value, _)| !is_copied(value));
+    if kept().any(|(_, value, _)| holds_white_space(value.as_str())) {
+        return Err(Code::ID_INVALID);
+    }
+    if kept().any(|(_, _, named)| named.is_none()) {
+        return Err(Code::CMD_TARGET_NOT_FOUND);
+    }
+    if references
+        .iter()
+        .any(|(declared, _, named)| named.is_some_and(|kind| !declared.contains(&kind)))
+    {
+        return Err(Code::REF_WRONG_TYPE);
+    }
+    Ok(())
+}
+
+/// `kind`'s name in `snake_case`: `AssertedInference` is
+/// `asserted_inference`.
+fn snake_case(kind: ElementKind) -> String {
+    let mut snake = String::new();
+    for (index, character) in kind.name().chars().enumerate() {
+        if character.is_ascii_uppercase() {
+            if index > 0 {
+                snake.push('_');
+            }
+            snake.push(character.to_ascii_lowercase());
+        } else {
+            snake.push(character);
+        }
+    }
+    snake
+}
+
+/// Whether `value` has the form of a generated id of `kind`:
+/// `<snake_case kind>_<n>`, `n` at least 1.
+fn is_generated_form(kind: ElementKind, value: &str) -> bool {
+    value
+        .strip_prefix(&format!("{}_", snake_case(kind)))
+        .is_some_and(|number| {
+            !number.starts_with('0') && number.parse::<u64>().is_ok_and(|n| n >= 1)
+        })
+}
+
+/// What a successful `copy` from `before` to `after` must have made (ADR
+/// 0036 D2): one copy per source id, kept or generated as the id rules
+/// say, with every feature but the ids copied exactly, a part's id kept
+/// only when free, each reference mapped, and the tops appended to the
+/// parent (or the roots) in order.
+#[expect(
+    clippy::too_many_lines,
+    reason = "one check per rule of ADR 0036 D2 reads best as one list"
+)]
+fn assert_copy_made(
+    context: &str,
+    before: &Document,
+    after: &Document,
+    copy: &CopyElements,
+    mutation: &Mutation,
+) -> (usize, usize) {
+    let (source, _) = source_of(copy);
+    let copied = copied_elements(&source, copy);
+    let sources = copy.source_ids();
+    let created = mutation.created_ids();
+    assert_eq!(
+        created.len(),
+        sources.len(),
+        "{EDIT_018}: {context}: one created id per source id"
+    );
+    let mapped = |value: &ElementId| -> ElementId {
+        match sources.iter().position(|from| from == value) {
+            Some(index) => created[index].clone(),
+            None => value.clone(),
+        }
+    };
+    // Free in the target: no element or part holds it, and no reference
+    // names it (no preserved content is in the set).
+    let in_use: BTreeSet<ElementId> = before
+        .elements()
+        .flat_map(|element| xmi_ids_of(element).into_iter().cloned().collect::<Vec<_>>())
+        .collect();
+    let referenced: BTreeSet<ElementId> = before
+        .elements()
+        .flat_map(|element| {
+            END_RULES
+                .iter()
+                .flat_map(|rule| held(element, rule.end))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    let keeps = |value: &ElementId| {
+        is_ascii_ncname(value.as_str()) && !in_use.contains(value) && !referenced.contains(value)
+    };
+    let named: BTreeSet<ElementId> = copied
+        .iter()
+        .flat_map(|element| {
+            END_RULES
+                .iter()
+                .flat_map(|rule| held(*element, rule.end))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    let mut kept_ids: BTreeSet<ElementId> = BTreeSet::new();
+    for original in &copied {
+        kept_ids.extend(
+            xmi_ids_of(*original)
+                .into_iter()
+                .filter(|value| keeps(value))
+                .cloned(),
+        );
+    }
+    let (mut kept, mut generated) = (0, 0);
+    for (original, to) in copied.iter().zip(created) {
+        let from = original.id();
+        let Some(made) = after.get(to) else {
+            panic!("{EDIT_018}: {context}: the copy {to:?} of {from:?} is not in the document");
+        };
+        if keeps(from) {
+            assert_eq!(
+                to, from,
+                "{EDIT_018}: {context}: the free id {from:?} is not kept"
+            );
+            kept += 1;
+        } else {
+            assert!(
+                is_generated_form(original.kind(), to.as_str())
+                    && !in_use.contains(to)
+                    && !referenced.contains(to)
+                    && !kept_ids.contains(to)
+                    && !named.contains(to),
+                "{EDIT_018}: {context}: the copy of {from:?} has the id {to:?}, which is no \
+                 generated id of a {} free in the target and avoiding the ids the copy keeps \
+                 and names",
+                original.kind()
+            );
+            generated += 1;
+        }
+        assert_eq!(
+            (
+                made.kind(),
+                made.name(),
+                made.gid(),
+                made.is_citation(),
+                made.is_abstract(),
+                made.is_counter(),
+                made.assertion_declaration(),
+            ),
+            (
+                original.kind(),
+                original.name(),
+                original.gid(),
+                original.is_citation(),
+                original.is_abstract(),
+                original.is_counter(),
+                original.assertion_declaration(),
+            ),
+            "{EDIT_018}: {context}: the features of {to:?}, the copy of {from:?}"
+        );
+        assert_eq!(
+            (made.content(), made.key(), made.location()),
+            (original.content(), original.key(), original.location()),
+            "{EDIT_018}: {context}: the content, key and location of {to:?}"
+        );
+        assert_eq!(
+            (
+                made.version(),
+                made.date(),
+                made.start_time(),
+                made.end_time()
+            ),
+            (
+                original.version(),
+                original.date(),
+                original.start_time(),
+                original.end_time()
+            ),
+            "{EDIT_018}: {context}: the strings of {to:?}"
+        );
+        let part = |value: Option<&ElementId>| value.filter(|value| keeps(value)).cloned();
+        let parts = |values: &[Option<ElementId>]| -> Vec<Option<ElementId>> {
+            values.iter().map(|value| part(value.as_ref())).collect()
+        };
+        assert_eq!(
+            (
+                made.name_id().cloned(),
+                made.content_id().cloned(),
+                made.content_value_ids().to_vec(),
+                made.key_id().cloned(),
+                made.key_value_ids().to_vec(),
+                made.location_id().cloned(),
+                made.location_value_ids().to_vec(),
+            ),
+            (
+                part(original.name_id()),
+                part(original.content_id()),
+                parts(original.content_value_ids()),
+                part(original.key_id()),
+                parts(original.key_value_ids()),
+                part(original.location_id()),
+                parts(original.location_value_ids()),
+            ),
+            "{EDIT_018}: {context}: the part ids of {to:?}: kept when free, dropped otherwise"
+        );
+        let expected_parent = match original.parent() {
+            Some(parent) if sources.contains(parent.id()) => Some(mapped(parent.id())),
+            _ => copy.parent().cloned(),
+        };
+        assert_eq!(
+            made.parent().map(|parent| parent.id().clone()),
+            expected_parent,
+            "{EDIT_018}: {context}: the parent of {to:?}"
+        );
+        for rule in &END_RULES {
+            let expected: Vec<ElementId> = held(*original, rule.end).iter().map(mapped).collect();
+            assert_eq!(
+                held(made, rule.end),
+                expected,
+                "{EDIT_018}: {context}: the {} of {to:?}: a copied id maps to its copy, any \
+                 other is kept",
+                rule.end.name()
+            );
+        }
+    }
+    // The tops' copies, in order, end the parent's children or the roots.
+    let tops: Vec<ElementId> = copied
+        .iter()
+        .zip(created)
+        .filter(|(original, _)| {
+            !original
+                .parent()
+                .is_some_and(|parent| sources.contains(parent.id()))
+        })
+        .map(|(_, to)| to.clone())
+        .collect();
+    let siblings: Vec<ElementId> = match copy.parent().and_then(|parent| after.get(parent)) {
+        Some(parent) => parent.children().map(|child| child.id().clone()).collect(),
+        None => after.roots().map(|root| root.id().clone()).collect(),
+    };
+    assert!(
+        siblings.ends_with(&tops),
+        "{EDIT_018}: {context}: the copies {tops:?} are not appended in order: {siblings:?}"
+    );
+    (kept, generated)
 }
 
 // ---------------------------------------------------------------------------
@@ -2082,12 +2536,200 @@ fn starting_documents() -> Vec<(String, Document)> {
 // ---------------------------------------------------------------------------
 
 /// The fixed list of operations for `doc`: the creates of
-/// [`create_operations_for`], the edits of [`edit_operations_for`], then the
-/// deletes of [`delete_operations_for`].
+/// [`create_operations_for`], the edits of [`edit_operations_for`], the
+/// moves of `move_operations_for` and the copies of `copy_operations_for`
+/// (slice 0056), then the deletes of [`delete_operations_for`].
 fn operations_for(doc: &Document) -> Vec<Operation> {
     let mut operations = create_operations_for(doc);
     operations.extend(edit_operations_for(doc));
+    {
+        operations.extend(move_operations_for(doc));
+        operations.extend(copy_operations_for(doc));
+    }
     operations.extend(delete_operations_for(doc));
+    operations
+}
+
+/// The moves of the set (LIB-EDIT-017): of [`NOWHERE`], under and to the
+/// roots; then for every element (pre-order): under the first and last
+/// package of each family, the first element that is no package, and
+/// [`NOWHERE`]; to position 0 of the first of those and past its end; into
+/// itself and its first child; to the place it holds, to the end and the
+/// start of its parent, and into its grandparent; and to the roots,
+/// appended, first, at the place it holds and past the end.
+fn move_operations_for(doc: &Document) -> Vec<Operation> {
+    let mut operations: Vec<Operation> = vec![
+        MoveElement::new(NOWHERE, NOWHERE).into(),
+        MoveElement::root(NOWHERE).into(),
+        MoveElement::root(NOWHERE).with_position(0).into(),
+    ];
+    let mut parents: Vec<ElementId> = Vec::new();
+    for family in [
+        ASSURANCE_CASE_PACKAGES,
+        ARGUMENT_PACKAGES,
+        ARTIFACT_PACKAGES,
+    ] {
+        if let Some((first, last)) = first_and_last_of(doc, &family) {
+            if last != first {
+                parents.push(last);
+            }
+            parents.push(first);
+        }
+    }
+    parents.extend(first_not_of(doc, &PACKAGE_KINDS));
+    parents.push(id(NOWHERE));
+    let roots = doc.roots().count();
+    for element in doc.elements() {
+        let moved = element.id();
+        for parent in &parents {
+            operations.push(MoveElement::new(moved, parent).into());
+        }
+        if let Some(first) = parents.first() {
+            let others = doc.get(first).map_or(0, |found| {
+                found.children().filter(|child| child.id() != moved).count()
+            });
+            operations.push(MoveElement::new(moved, first).with_position(0).into());
+            operations.push(
+                MoveElement::new(moved, first)
+                    .with_position(others + 1)
+                    .into(),
+            );
+        }
+        operations.push(MoveElement::new(moved, moved).into());
+        if let Some(child) = element.children().next() {
+            operations.push(MoveElement::new(moved, child.id()).into());
+        }
+        if let Some(parent) = element.parent() {
+            let index = parent
+                .children()
+                .position(|child| child.id() == moved)
+                .unwrap_or_default();
+            operations.push(
+                MoveElement::new(moved, parent.id())
+                    .with_position(index)
+                    .into(),
+            );
+            operations.push(MoveElement::new(moved, parent.id()).into());
+            operations.push(MoveElement::new(moved, parent.id()).with_position(0).into());
+            if let Some(grandparent) = parent.parent() {
+                operations.push(MoveElement::new(moved, grandparent.id()).into());
+            }
+        } else {
+            let index = doc
+                .roots()
+                .position(|root| root.id() == moved)
+                .unwrap_or_default();
+            operations.push(MoveElement::root(moved).with_position(index).into());
+        }
+        operations.push(MoveElement::root(moved).into());
+        operations.push(MoveElement::root(moved).with_position(0).into());
+        operations.push(MoveElement::root(moved).with_position(roots + 1).into());
+    }
+    operations
+}
+
+/// The fixed second source of the copies (LIB-EDIT-018), read as written:
+/// in the ArgumentPackage `draft`, the `ArgumentReasoning` `r1`; the Claim
+/// `top2` with a gid; the Claim `c1`, with an `xmi:id` on its name and a
+/// Note, which clashes in several starting documents; the `AssertedInference`
+/// `i1` from `c1` to `top2` with the reasoning `r1`; the Claim `out`, whose
+/// `metaClaim` `goal` leaves the copy (a Claim of the delete start document,
+/// absent elsewhere); the `AssertedContext` `ctx_bad` from `top2` to `case` (an
+/// AssuranceCasePackage where a starting document has it); the
+/// `AssertedInference` `nosrc`, with no source; and the nested ArgumentPackage
+/// `sub`, holding the Claim `claim_1`.
+const COPY_SOURCE: &str = r#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="draft">
+  <name content="Draft"/>
+  <argumentElement xmi:type="sacm:ArgumentReasoning" xmi:id="r1"><name content="R1"/></argumentElement>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="top2" gid="G-top"><name content="Top"/></argumentElement>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c1"><name xmi:id="c1_name" lang="en" content="C1"/><note xmi:id="n9"/></argumentElement>
+  <argumentElement xmi:type="sacm:AssertedInference" xmi:id="i1" source="c1" target="top2" reasoning="r1"><name content="I1"/></argumentElement>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="out" metaClaim="goal"><name content="Out"/></argumentElement>
+  <argumentElement xmi:type="sacm:AssertedContext" xmi:id="ctx_bad" source="top2" target="case"><name content="Ctx"/></argumentElement>
+  <argumentElement xmi:type="sacm:AssertedInference" xmi:id="nosrc" target="top2"><name content="No source"/></argumentElement>
+  <argumentElement xmi:type="sacm:ArgumentPackage" xmi:id="sub">
+    <name content="Sub"/>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="claim_1"><name content="Generated"/></argumentElement>
+  </argumentElement>
+</sacm:ArgumentPackage>
+"#;
+
+/// The copies of the set (LIB-EDIT-018). From [`COPY_SOURCE`], under the
+/// first ArgumentPackage, the first ArtifactPackage, the first Claim and
+/// [`NOWHERE`]: the draft (`r1`, `top2`, `c1`, `i1`), `out`, `ctx_bad` with
+/// `top2`, `nosrc`, and nothing; and as roots `sub`, `top2` and the whole
+/// draft. From `doc` itself: the second, third and last element of its
+/// pre-order, each under its parent (or as a root), as a root and under
+/// [`NOWHERE`]; the last element with its parent; the first ArgumentPackage
+/// under its parent; and the first relationship with its sources.
+fn copy_operations_for(doc: &Document) -> Vec<Operation> {
+    let second = read_text("COPY_SOURCE", COPY_SOURCE.as_bytes());
+    let list = |values: &[&str]| -> Vec<ElementId> { values.iter().copied().map(id).collect() };
+    let mut operations = Vec::new();
+    let mut parents: Vec<ElementId> = [
+        first_of(doc, &ARGUMENT_PACKAGES),
+        first_of(doc, &ARTIFACT_PACKAGES),
+        first_of(doc, &[Claim]),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    parents.push(id(NOWHERE));
+    for parent in &parents {
+        for values in [
+            &["r1", "top2", "c1", "i1"][..],
+            &["out"],
+            &["ctx_bad", "top2"],
+            &["nosrc"],
+            &[],
+        ] {
+            operations.push(remembered_copy(&second, false, &list(values), Some(parent)));
+        }
+    }
+    for values in [&["sub"][..], &["top2"], &["draft"]] {
+        operations.push(remembered_copy(&second, false, &list(values), None));
+    }
+    let elements: Vec<SacmElement<'_>> = doc.elements().collect();
+    let mut own: Vec<SacmElement<'_>> = elements.iter().skip(1).take(2).copied().collect();
+    own.extend(elements.last().copied());
+    for element in &own {
+        let values = [element.id().clone()];
+        let parent = element.parent().map(|parent| parent.id().clone());
+        operations.push(remembered_copy(doc, true, &values, parent.as_ref()));
+        operations.push(remembered_copy(doc, true, &values, None));
+        operations.push(remembered_copy(doc, true, &values, Some(&id(NOWHERE))));
+    }
+    if let Some(last) = elements.last() {
+        if let Some(parent) = last.parent() {
+            let values = [last.id().clone(), parent.id().clone()];
+            let holder = parent.parent().map(|holder| holder.id().clone());
+            operations.push(remembered_copy(doc, true, &values, holder.as_ref()));
+        }
+    }
+    if let Some(package) = first_of(doc, &ARGUMENT_PACKAGES).and_then(|found| doc.get(&found)) {
+        let parent = package.parent().map(|parent| parent.id().clone());
+        operations.push(remembered_copy(
+            doc,
+            true,
+            &[package.id().clone()],
+            parent.as_ref(),
+        ));
+    }
+    if let Some(relationship) = elements
+        .iter()
+        .find(|element| RELATIONSHIPS.contains(&element.kind()) && !element.sources().is_empty())
+    {
+        let mut values = vec![relationship.id().clone()];
+        values.extend(
+            relationship
+                .sources()
+                .iter()
+                .filter(|source| doc.contains(*source))
+                .cloned(),
+        );
+        let parent = relationship.parent().map(|parent| parent.id().clone());
+        operations.push(remembered_copy(doc, true, &values, parent.as_ref()));
+    }
     operations
 }
 
@@ -2811,7 +3453,7 @@ fn oracle(context: &str, operation: &Operation, before: &Document, after: &Docum
                 changed.insert(id.clone());
             }
             Difference::RootOrder { .. } => assert!(
-                matches!(operation, Operation::ReorderElements(reorder) if reorder.parent().is_none()),
+                reorders_roots(operation),
                 "{EDIT_003}: {context}: an operation that is no root reorder reordered the roots: \
                  {difference}"
             ),
@@ -2829,6 +3471,16 @@ fn oracle(context: &str, operation: &Operation, before: &Document, after: &Docum
         created,
         changed,
         deleted,
+    }
+}
+
+/// Whether `operation` may change the order of the roots: a root reorder,
+/// or a move to the roots (LIB-EDIT-017).
+fn reorders_roots(operation: &Operation) -> bool {
+    match operation {
+        Operation::ReorderElements(reorder) => reorder.parent().is_none(),
+        Operation::MoveElement(moved) => moved.parent().is_none(),
+        _ => false,
     }
 }
 
@@ -3295,7 +3947,7 @@ fn lib_edit_012_no_successful_operation_of_the_set_removes_a_key() {
 
 /// Every operation name of this release, in the declaration order of
 /// `Operation`: the set must reach each accepted and refused.
-const OPERATION_NAME_COUNT: usize = 40;
+const OPERATION_NAME_COUNT: usize = 42;
 const OPERATION_NAMES: [&str; OPERATION_NAME_COUNT] = [
     "CreateAssuranceCasePackage",
     "CreateArgumentPackage",
@@ -3336,6 +3988,8 @@ const OPERATION_NAMES: [&str; OPERATION_NAME_COUNT] = [
     "AddReference",
     "RemoveReference",
     "ReorderElements",
+    "MoveElement",
+    "CopyElements",
     "DeleteElement",
 ];
 
@@ -4810,4 +5464,238 @@ fn lib_edit_004_the_dangling_references_of_every_preview_of_the_set_are_those_ad
         (true, true),
         "{EDIT_004}: the set lists no crossing or no non-crossing dangling reference"
     );
+}
+
+// ---------------------------------------------------------------------------
+// LIB-EDIT-017, LIB-EDIT-018: moves and copies join the set
+// ---------------------------------------------------------------------------
+
+/// Whether `operation` is a move.
+fn is_move(operation: &Operation) -> bool {
+    matches!(operation, Operation::MoveElement(_))
+}
+
+/// Whether `operation` is a copy.
+fn is_copy(operation: &Operation) -> bool {
+    matches!(operation, Operation::CopyElements(_))
+}
+
+#[test]
+fn lib_edit_017_move_joins_the_set_with_every_answer() {
+    // Every answer of the oracle (written from ADR 0036 and this file's
+    // containment table), and an Ok with and without changed ids. The other
+    // tests of the set check that the moves keep the document structurally
+    // valid, leave a refused document unchanged, and give the Mutation that
+    // semantic_compare reports, from check, preview and apply alike.
+    assert_edit_answers_and_coverage(EDIT_017, &MOVES);
+
+    let mut between = 0;
+    for_selected_applications(is_move, |applied| {
+        let (Operation::MoveElement(moved), Ok(mutation)) = (applied.operation, applied.answer)
+        else {
+            return;
+        };
+        let (context, before, after) = (applied.context, applied.before, applied.after);
+        let element = moved.element();
+        let (Some(old), Some(new)) = (before.get(element), after.get(element)) else {
+            panic!("{EDIT_017}: {context}: the moved element is gone");
+        };
+        assert_eq!(
+            new.parent().map(SacmElement::id),
+            moved.parent(),
+            "{EDIT_017}: {context}: the element is not under the parent given"
+        );
+        let siblings: Vec<&ElementId> = match new.parent() {
+            Some(parent) => parent.children().map(SacmElement::id).collect(),
+            None => after.roots().map(SacmElement::id).collect(),
+        };
+        let others = siblings.len().saturating_sub(1);
+        assert_eq!(
+            siblings.iter().position(|sibling| *sibling == element),
+            Some(moved.position().unwrap_or(others)),
+            "{EDIT_017}: {context}: the element is not at the position given, or last"
+        );
+        assert_eq!(
+            subtree_of(new),
+            subtree_of(old),
+            "{EDIT_017}: {context}: the subtree changed"
+        );
+        assert_eq!(
+            after.element_count(),
+            before.element_count(),
+            "{EDIT_017}: {context}: the element count changed"
+        );
+        for holder in before.elements() {
+            let Some(now) = after.get(holder.id()) else {
+                panic!("{EDIT_017}: {context}: {:?} is gone", holder.id());
+            };
+            for rule in &END_RULES {
+                assert_eq!(
+                    held(now, rule.end),
+                    held(holder, rule.end),
+                    "{EDIT_017}: {context}: the {} of {:?} changed",
+                    rule.end.name(),
+                    holder.id()
+                );
+            }
+        }
+        assert_eq!(
+            next_generated_ids(EDIT_017, after),
+            next_generated_ids(EDIT_017, before),
+            "{EDIT_017}: {context}: the move changed the next generated ids"
+        );
+        for difference in semantic_compare(before, after) {
+            assert!(
+                matches!(
+                    difference,
+                    Difference::Parent { .. }
+                        | Difference::ChildOrder { .. }
+                        | Difference::RootOrder { .. }
+                ),
+                "{EDIT_017}: {context}: the move changed more than a parent and an order: {difference}"
+            );
+        }
+        if old.parent().map(SacmElement::id) != new.parent().map(SacmElement::id) {
+            between += 1;
+            assert!(
+                mutation.changed_ids().contains(element),
+                "{EDIT_017}: {context}: a move to another parent does not change the element"
+            );
+        }
+    });
+    assert!(
+        between > 0,
+        "{EDIT_017}: no move of the set changed an element's parent"
+    );
+}
+
+#[test]
+fn lib_edit_018_copy_joins_the_set_with_every_answer() {
+    // As for the moves, the other tests of the set check what every
+    // operation must keep; here, what a copy must make.
+    assert_edit_answers_and_coverage(EDIT_018, &COPIES);
+
+    // (from the document itself, from the second source); kept and
+    // generated ids.
+    let mut accepted = (0, 0);
+    let (mut kept, mut generated) = (0, 0);
+    for_selected_applications(is_copy, |applied| {
+        let (Operation::CopyElements(copy), Ok(mutation)) = (applied.operation, applied.answer)
+        else {
+            return;
+        };
+        let context = applied.context;
+        let (more_kept, more_generated) =
+            assert_copy_made(context, applied.before, applied.after, copy, mutation);
+        kept += more_kept;
+        generated += more_generated;
+        if source_of(copy).1 {
+            accepted.0 += 1;
+        } else {
+            accepted.1 += 1;
+        }
+        assert!(
+            mutation.changed_ids().is_empty() && mutation.deleted_ids().is_empty(),
+            "{EDIT_018}: {context}: a copy changed or deleted ids: {mutation:?}"
+        );
+        assert_eq!(
+            applied.after.element_count(),
+            applied.before.element_count() + copy.source_ids().len(),
+            "{EDIT_018}: {context}: the element count"
+        );
+    });
+    assert!(
+        accepted.0 > 0 && accepted.1 > 0,
+        "{EDIT_018}: the set accepts no copy from the document itself or from the second \
+         source: {accepted:?}"
+    );
+    assert!(
+        kept > 0 && generated > 0,
+        "{EDIT_018}: the set's copies never keep ({kept}) or never generate ({generated}) an id"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// LIB-API-014: the referrers after every operation of the set
+// ---------------------------------------------------------------------------
+
+/// `doc.referrers(id)` equals a full scan through `SacmElement::references`
+/// (holder in pre-order, end in `ReferenceEnd::ALL` order, which
+/// [`END_RULES`] follows, then position) for every id any end holds, and
+/// is empty for every element id no end holds.
+fn assert_referrers_are_a_full_scan(context: &str, doc: &Document) {
+    let mut scan: BTreeMap<ElementId, Vec<(ElementId, &'static str, usize)>> = BTreeMap::new();
+    for holder in doc.elements() {
+        for rule in &END_RULES {
+            for (position, value) in holder.references(rule.end).iter().enumerate() {
+                scan.entry(value.clone()).or_default().push((
+                    holder.id().clone(),
+                    rule.end.name(),
+                    position,
+                ));
+            }
+        }
+    }
+    for (value, expected) in &scan {
+        let listed: Vec<(ElementId, &'static str, usize)> = doc
+            .referrers(value)
+            .iter()
+            .map(|referrer| {
+                (
+                    referrer.holder().id().clone(),
+                    referrer.end().name(),
+                    referrer.position(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            &listed, expected,
+            "{API_014}: {context}: the referrers of {value:?} are not the full scan"
+        );
+    }
+    for element in doc.elements() {
+        if !scan.contains_key(element.id()) {
+            assert!(
+                doc.referrers(element.id()).is_empty(),
+                "{API_014}: {context}: {:?}, which no end holds, has referrers",
+                element.id()
+            );
+        }
+    }
+}
+
+#[test]
+fn lib_api_014_referrers_equal_a_full_scan_after_every_operation_of_the_set() {
+    for (label, start) in starting_documents() {
+        assert_referrers_are_a_full_scan(&format!("{label}, as read"), &start);
+    }
+    let mut reached: BTreeSet<&'static str> = BTreeSet::new();
+    let total = for_every_application(|applied| {
+        if applied.answer.is_err() {
+            return;
+        }
+        assert_referrers_are_a_full_scan(applied.context, applied.after);
+        reached.insert(match classify(applied.operation) {
+            Class::Create { .. } => "create",
+            Class::Edit { label } => label,
+        });
+    });
+    assert!(total > 0, "{API_014}: the set is empty");
+    for label in [
+        "create",
+        "SetReferences",
+        "AddReference",
+        "RemoveReference",
+        "ReorderElements",
+    ]
+    .into_iter()
+    .chain(MOVES)
+    .chain(COPIES)
+    .chain(DELETES)
+    {
+        assert!(
+            reached.contains(label),
+            "{API_014}: no {label} of the set succeeded"
+        );
+    }
 }

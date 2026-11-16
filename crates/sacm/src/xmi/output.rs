@@ -192,7 +192,8 @@ fn ends_as_elements(element: SacmElement<'_>) -> Vec<ReferenceEnd> {
         return Vec::new();
     };
     ReferenceEnd::ALL
-        .into_iter()
+        .iter()
+        .copied()
         .filter(|end| !element.references(*end).is_empty() && preserved.has_unqualified(end.name()))
         .collect()
 }
@@ -546,7 +547,11 @@ fn push_flags_and_references(
 ) {
     let kind = element.kind();
     for owner in OWNERS.into_iter().filter(|owner| owner.admits(kind)) {
-        for flag in Flag::ALL.into_iter().filter(|flag| flag.owner() == owner) {
+        for flag in Flag::ALL
+            .iter()
+            .copied()
+            .filter(|flag| flag.owner() == owner)
+        {
             if element.flag(flag) {
                 out.push(' ');
                 out.push_str(flag.name());
@@ -561,7 +566,8 @@ fn push_flags_and_references(
             }
         }
         for end in ReferenceEnd::ALL
-            .into_iter()
+            .iter()
+            .copied()
             .filter(|end| end.owner() == owner)
         {
             let targets = element.references(end);

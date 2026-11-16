@@ -15,7 +15,11 @@ use crate::model::{Document, ReferenceEnd};
 /// reported whatever else applies to the id.
 pub(super) fn repeated_references(document: &Document, found: &mut Vec<Diagnostic>) {
     for element in document.elements() {
-        for end in ReferenceEnd::ALL.into_iter().filter(|end| end.is_many()) {
+        for end in ReferenceEnd::ALL
+            .iter()
+            .copied()
+            .filter(|end| end.is_many())
+        {
             let targets = element.references(end);
             if targets.len() < 2 {
                 continue;

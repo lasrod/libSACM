@@ -129,6 +129,27 @@ pub(super) enum EditErrorRecord {
         end: Name,
         id: ElementId,
     },
+    /// [`EditError::InvalidRoot`].
+    InvalidRoot {
+        code: Code,
+        element: ElementId,
+        kind: ElementKind,
+    },
+    /// [`EditError::ParentInSubtree`].
+    ParentInSubtree {
+        code: Code,
+        element: ElementId,
+        parent: ElementId,
+    },
+    /// [`EditError::PositionOutOfRange`]; `parent` is required, `null` for
+    /// the roots.
+    PositionOutOfRange {
+        code: Code,
+        #[serde(deserialize_with = "serde::Deserialize::deserialize")]
+        parent: Option<ElementId>,
+        position: usize,
+        children: usize,
+    },
 }
 
 impl From<EditError> for EditErrorRecord {
@@ -234,6 +255,26 @@ impl From<EditError> for EditErrorRecord {
                 holder,
                 end: end.to_owned(),
                 id,
+            },
+            EditError::InvalidRoot { element, kind } => Self::InvalidRoot {
+                code,
+                element,
+                kind,
+            },
+            EditError::ParentInSubtree { element, parent } => Self::ParentInSubtree {
+                code,
+                element,
+                parent,
+            },
+            EditError::PositionOutOfRange {
+                parent,
+                position,
+                children,
+            } => Self::PositionOutOfRange {
+                code,
+                parent,
+                position,
+                children,
             },
         }
     }
@@ -388,6 +429,29 @@ impl TryFrom<EditErrorRecord> for EditError {
                     id,
                 },
             ),
+            R::InvalidRoot {
+                code,
+                element,
+                kind,
+            } => (code, Self::InvalidRoot { element, kind }),
+            R::ParentInSubtree {
+                code,
+                element,
+                parent,
+            } => (code, Self::ParentInSubtree { element, parent }),
+            R::PositionOutOfRange {
+                code,
+                parent,
+                position,
+                children,
+            } => (
+                code,
+                Self::PositionOutOfRange {
+                    parent,
+                    position,
+                    children,
+                },
+            ),
         };
         if code == error.code() {
             Ok(error)
@@ -437,7 +501,7 @@ fn end_name(text: &str) -> Result<&'static str, String> {
     known(
         "reference end",
         text,
-        ReferenceEnd::ALL.into_iter().map(ReferenceEnd::name),
+        ReferenceEnd::ALL.iter().copied().map(ReferenceEnd::name),
     )
 }
 
@@ -452,8 +516,8 @@ fn feature_name(text: &str) -> Result<&'static str, String> {
             .into_iter()
             .chain(TextRole::ALL.into_iter().map(TextRole::name))
             .chain(StringAttribute::ALL.into_iter().map(StringAttribute::name))
-            .chain(Flag::ALL.into_iter().map(Flag::name))
-            .chain(ReferenceEnd::ALL.into_iter().map(ReferenceEnd::name)),
+            .chain(Flag::ALL.iter().copied().map(Flag::name))
+            .chain(ReferenceEnd::ALL.iter().copied().map(ReferenceEnd::name)),
     )
 }
 
@@ -570,6 +634,9 @@ mod tests {
             Operation::AddReference(_) => sampled!(OPERATIONS, "AddReference"),
             Operation::RemoveReference(_) => sampled!(OPERATIONS, "RemoveReference"),
             Operation::ReorderElements(_) => sampled!(OPERATIONS, "ReorderElements"),
+            Operation::MoveElement(_) => sampled!(OPERATIONS, "MoveElement"),
+            // Not serialized, so it has no sample (ADR 0030 amendment 2).
+            Operation::CopyElements(_) => "CopyElements",
             Operation::DeleteElement(_) => sampled!(OPERATIONS, "DeleteElement"),
         }
     }
@@ -601,6 +668,9 @@ mod tests {
             EditError::CrossPackageReference { .. } => {
                 sampled!(EDIT_ERRORS, "CrossPackageReference")
             }
+            EditError::InvalidRoot { .. } => sampled!(EDIT_ERRORS, "InvalidRoot"),
+            EditError::ParentInSubtree { .. } => sampled!(EDIT_ERRORS, "ParentInSubtree"),
+            EditError::PositionOutOfRange { .. } => sampled!(EDIT_ERRORS, "PositionOutOfRange"),
         }
     }
 

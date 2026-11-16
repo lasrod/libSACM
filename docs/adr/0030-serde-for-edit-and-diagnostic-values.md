@@ -103,3 +103,14 @@ This replaces the stability promise.
 - **Deserialize:** it stays for every listed type, `EditError` and `Diagnostic` included.
 
 *Amendment 1 status: accepted (the maintainer, 2026-11-16).*
+
+## Amendment 2 (accepted by the maintainer with ADR 0036, 2026-11-17; slice 0056)
+
+`Operation::CopyElements` is not serialized. It holds a snapshot of a source document,
+which has no JSON form, since this ADR rejects serializing `Document`:
+- serializing it, or a `Mutation` that holds one, is a serde error;
+- the tag `"CopyElements"` does not deserialize.
+
+A JSON client builds a draft with create operations instead.
+
+*Amendment 2 status: accepted (the maintainer, 2026-11-17, with ADR 0036).*

@@ -567,7 +567,7 @@ impl<'d> Tree<'d> {
             if subtree.contains(&position) {
                 continue;
             }
-            for end in ReferenceEnd::ALL {
+            for &end in ReferenceEnd::ALL {
                 let mut seen: BTreeSet<&ElementId> = BTreeSet::new();
                 for id in holder.references(end) {
                     if !self.is_deleted(deleted, id) || !seen.insert(id) {

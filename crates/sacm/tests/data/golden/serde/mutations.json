@@ -57,5 +57,18 @@
     "deleted_ids": [
       "c1"
     ]
+  },
+  {
+    "operation": {
+      "type": "MoveElement",
+      "element": "c2",
+      "parent": "q",
+      "position": null
+    },
+    "created_ids": [],
+    "changed_ids": [
+      "c2"
+    ],
+    "deleted_ids": []
   }
 ]
