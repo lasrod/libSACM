@@ -209,6 +209,8 @@ catalog! {
     /// [`WriteError::PreservedContent`](crate::xmi::WriteError::PreservedContent)
     /// (SACM23-XMI-008, ADR 0033, ADR 0035). Fix: write it in tolerant mode,
     /// which writes the content back, or delete the elements that hold it.
+    /// Content the document holds outside its elements can be written only
+    /// in tolerant mode in this release.
     pub const XMI_STRICT_SAVE_REFUSED: Code = Code::from_static("SACM-XMI-006");
 
     /// SACM-XMI-007: a reference to an element of another document, an

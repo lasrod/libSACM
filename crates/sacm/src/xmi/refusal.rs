@@ -15,8 +15,8 @@
 //! A tolerant read keeps most entries as preserved content, with one Warning
 //! ([`Unread::tolerant`], ADR 0035 D1, D2): conforming content not read yet
 //! with SACM-XMI-014 (SACM-XMI-007 for a cross-document `href`), and the
-//! defects with SACM-XMI-003. It refuses only the limits and a root outside
-//! SACM 2.3 or XMI 2.5.1.
+//! defects with SACM-XMI-003. It refuses only the limits, a root outside
+//! SACM 2.3 or XMI 2.5.1, and an XMI-namespace document element.
 //!
 //! The xtask test `xtask/tests/interim_refusals.rs` keeps this list honest:
 //! no other file of the crate builds the refusal, every `Interim` row is

@@ -16,7 +16,9 @@
 
 use sacm::compare::{Difference, semantic_compare};
 use sacm::diagnostic::{self, Code, Diagnostic, Severity, SourceLocation};
-use sacm::edit::{self, CreateArgumentPackage, DeleteElement, EditError, ReorderElements};
+use sacm::edit::{
+    self, CreateArgumentPackage, CreateClaim, DeleteElement, EditError, ReorderElements,
+};
 use sacm::model::{Document, ElementId, LangString, SacmElement};
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteError, WriteOptions};
 
@@ -922,6 +924,11 @@ fn lib_compat_003_document_preserved_content_is_one_difference() {
     let one = read_doc("v:w=\"1\"", &wrapper(" v:w=\"1\"", ""));
     let two = read_doc("v:w=\"2\"", &wrapper(" v:w=\"2\"", ""));
     let none = read_doc("no wrapper content", &wrapper("", ""));
+    assert!(
+        !none.has_preserved_content() && one.has_preserved_content(),
+        "{COMPAT_003}: has_preserved_content is not false for a clean read and true for one \
+         with wrapper content"
+    );
     assert_eq!(
         semantic_compare(&one, &one.clone()),
         [],
@@ -971,5 +978,139 @@ fn lib_compat_003_document_preserved_content_is_one_difference() {
         semantic_compare(&before, &moved),
         [Difference::DocumentPreservedContent],
         "{COMPAT_003}: content moved among the roots is not one DocumentPreservedContent"
+    );
+}
+
+/// With every root deleted, a document whose preserved content outside its
+/// elements is only XMI metadata holds no SACM package, so both writes are
+/// `NoRoot` (an `xmi:XMI` holding no package is `NoPackage` on read). A
+/// root of a kind not read yet that the document holds is a root: it is
+/// written, wrapped.
+#[test]
+fn lib_compat_003_deleting_every_root_beside_document_level_content_is_no_root() {
+    let what = "xmi:Documentation beside the one root p, p deleted";
+    let input = format!(
+        "<xmi:XMI xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\"><xmi:Documentation/>\
+         <sacm:ArgumentPackage xmi:id=\"p\"><name content=\"p\"/></sacm:ArgumentPackage>\
+         </xmi:XMI>"
+    );
+    let mut doc = tolerant(COMPAT_003, what, &input).into_document();
+    if let Err(error) = edit::apply(&mut doc, DeleteElement::new("p")) {
+        panic!("{COMPAT_003}: {what}: setup: the delete was refused: {error:?}");
+    }
+    assert!(
+        doc.roots().next().is_none() && doc.has_preserved_content(),
+        "{COMPAT_003}: {what}: setup: no root is left and the metadata is"
+    );
+    for mode in [Mode::Strict, Mode::Tolerant] {
+        assert_eq!(
+            write(&doc, mode),
+            Err(WriteError::NoRoot),
+            "{COMPAT_003}: {what}: a {mode:?} write is not NoRoot"
+        );
+    }
+
+    // The control: a bare root of a kind not read yet is written, wrapped.
+    let what = "a bare TerminologyPackage root";
+    let doc = tolerant(COMPAT_003, what, &root_of("TerminologyPackage")).into_document();
+    let text = write_tolerant(COMPAT_003, what, &doc);
+    assert!(
+        text.contains("<xmi:XMI ") && text.contains("<sacm:TerminologyPackage"),
+        "{COMPAT_003}: {what}: not written wrapped\n{text}"
+    );
+    assert!(
+        matches!(
+            write(&doc, Mode::Strict),
+            Err(WriteError::PreservedContent { .. })
+        ),
+        "{COMPAT_003}: {what}: a strict write is not PreservedContent"
+    );
+}
+
+/// A kept `xmi:id` of `xmi:XMI` is in the document's id space: a root that
+/// repeats it is `DuplicateId`, and an edit cannot take it. A strict read
+/// refuses it as XMI metadata not read yet.
+#[test]
+fn lib_compat_003_a_wrapper_id_is_in_the_id_space() {
+    let what = "xmi:id=\"w\" on the wrapper";
+    let input = wrapper(" xmi:id=\"w\"", "");
+    let strict = strict_refusal(COMPAT_003, what, &input);
+    assert!(
+        matches!(strict, ReadError::Unsupported { .. }),
+        "{COMPAT_003}: {what}: the strict refusal is not Unsupported: {strict:?}"
+    );
+    let mut doc = tolerant(COMPAT_003, what, &input).into_document();
+    let answer = edit::apply(
+        &mut doc,
+        CreateClaim::new("p", LangString::new("C")).with_id("w"),
+    );
+    assert!(
+        matches!(&answer, Err(EditError::DuplicateId { id, .. }) if id.as_str() == "w"),
+        "{COMPAT_003}: {what}: with_id(\"w\") is not DuplicateId: {answer:?}"
+    );
+
+    let what = "a wrapper xmi:id that the root repeats";
+    match read(Mode::Tolerant, &wrapper(" xmi:id=\"p\"", "")) {
+        Err(error) => assert_eq!(
+            error.code(),
+            Some(Code::ID_DUPLICATE),
+            "{COMPAT_003}: {what}: not DuplicateId: {error:?}"
+        ),
+        Ok(output) => panic!(
+            "{COMPAT_003}: {what}: a tolerant read returned a document, with {:?}",
+            output.diagnostics()
+        ),
+    }
+}
+
+/// An empty `xmi:id` on `xmi:XMI` identifies nothing: a tolerant read keeps
+/// it as written, outside the id space, with one SACM-ID-002 Warning
+/// affecting no element, beside its SACM-XMI-014.
+#[test]
+fn lib_compat_003_an_empty_wrapper_id_is_id_002() {
+    let what = "xmi:id=\"\" on the wrapper";
+    let output = tolerant(COMPAT_003, what, &wrapper(" xmi:id=\"\"", ""));
+    let found: Vec<(Code, Severity, usize)> = output
+        .diagnostics()
+        .iter()
+        .map(|found| (found.code(), found.severity(), found.affected().len()))
+        .collect();
+    assert_eq!(
+        found,
+        [
+            (Code::ID_INVALID, Severity::Warning, 0),
+            (Code::XMI_UNREAD_CONTENT, Severity::Warning, 0),
+        ],
+        "{COMPAT_003}: {what}: not one SACM-ID-002 and one SACM-XMI-014 affecting no element"
+    );
+    let doc = output.into_document();
+    assert!(
+        doc.has_preserved_content(),
+        "{COMPAT_003}: {what}: the empty id is not kept"
+    );
+    assert_round_trips(COMPAT_003, what, &doc);
+}
+
+/// The `xmi:id` of document-level content stays in the id space when an
+/// element is deleted: the delete frees only what the element owned.
+#[test]
+fn lib_compat_003_a_document_level_id_stays_in_the_id_space_after_a_delete() {
+    let what = "xmi:Documentation xmi:id=\"d\" beside a package holding c1, c1 deleted";
+    let input = format!(
+        "<xmi:XMI xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\">\
+         <xmi:Documentation xmi:id=\"d\"/>{}</xmi:XMI>",
+        package(&claim("c1", "", ""))
+    );
+    let mut doc = tolerant(COMPAT_003, what, &input).into_document();
+    if let Err(error) = edit::apply(&mut doc, DeleteElement::new("c1")) {
+        panic!("{COMPAT_003}: {what}: setup: the delete was refused: {error:?}");
+    }
+    let answer = edit::apply(
+        &mut doc,
+        CreateClaim::new("p", LangString::new("C")).with_id("d"),
+    );
+    assert!(
+        matches!(&answer, Err(EditError::DuplicateId { id, .. }) if id.as_str() == "d"),
+        "{COMPAT_003}: {what}: with_id(\"d\") is not DuplicateId: {answer:?}"
     );
 }

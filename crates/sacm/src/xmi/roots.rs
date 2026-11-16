@@ -1040,6 +1040,18 @@ fn read_wrapper<'a>(
             );
         }
         outside.keep_attribute(found, wrapper, &attribute, keep)?;
+        // A kept `xmi:id` of the wrapper is in the id space, as any id of the
+        // document's preserved content is; an empty one identifies nothing,
+        // and is kept as written outside it, with SACM-ID-002 (ADR 0035).
+        if is_xmi(&attribute, "id") {
+            if attribute.value().is_empty() {
+                let read_as = "it is kept as written, outside the id space";
+                found.empty_id(wrapper, "the XMI element", read_as, None);
+            } else {
+                let value = checked_id(found, wrapper, &attribute)?;
+                outside.ids.push(ElementId::new(value));
+            }
+        }
     }
     for child in wrapper.children() {
         if !child.is_element() {
@@ -1247,21 +1259,21 @@ impl Kept {
         if let Some((_, prefix)) = self.renamed.iter().find(|(held, _)| held == uri) {
             return prefix.clone();
         }
-        let taken = |candidate: &str, kept: &Self| {
-            node.lookup_namespace_uri(Some(candidate)).is_some()
-                || kept
-                    .namespaces
-                    .iter()
-                    .any(|(prefix, _)| prefix == candidate)
-        };
-        // At most one candidate per binding in scope or held is taken, so
-        // the loop ends.
+        // The numbers N of the prefixes `nsN` that are taken: bound at `node`,
+        // or used by a binding the holder keeps. They are finitely many, each
+        // step passes a distinct one, so the loop ends. A prefix such as
+        // `ns01` takes 1 too, which only skips a free candidate.
+        let taken: BTreeSet<usize> = node
+            .namespaces()
+            .filter_map(roxmltree::Namespace::name)
+            .chain(self.namespaces.iter().map(|(prefix, _)| prefix.as_str()))
+            .filter_map(|prefix| prefix.strip_prefix("ns")?.parse().ok())
+            .collect();
         let mut n = 1_usize;
-        let mut prefix = format!("ns{n}");
-        while taken(&prefix, self) {
+        while taken.contains(&n) {
             n = n.saturating_add(1);
-            prefix = format!("ns{n}");
         }
+        let prefix = format!("ns{n}");
         self.namespaces.push((prefix.clone(), uri.to_owned()));
         self.renamed.push((uri.to_owned(), prefix.clone()));
         prefix
@@ -1500,7 +1512,6 @@ impl Pending {
         node: Node<'_, '_>,
     ) -> Result<(), ReadError> {
         let text = found.text;
-        let before = self.shorthand.characters.len();
         let Some(first) = self.shorthand.add_text(text, node) else {
             return Ok(());
         };
@@ -1516,8 +1527,10 @@ impl Pending {
         } else {
             return Ok(());
         };
-        // The text is no part of the content: it is kept as it is.
-        self.shorthand.characters.truncate(before);
+        // The text is no part of the content: it is kept as it is. With no
+        // text where the shape starts, the characters gathered are never
+        // read (`Shorthand::into_lang_string`), and the next text that is not
+        // all white space is a repeat too.
         self.shorthand.text_at = None;
         self.kept.keep_text(found, node, keep);
         Ok(())
@@ -4139,6 +4152,49 @@ mod tests {
         assert_eq!(
             i.and_then(SacmElement::target).map(ElementId::as_str),
             Some("c1")
+        );
+    }
+
+    /// Removing a kept attribute releases exactly the references it counted:
+    /// none for a flag, the ids of a reference end, each once per time it was
+    /// counted, and never another id the holder's preserved content names.
+    #[test]
+    fn replacing_a_kept_attribute_releases_only_its_own_references() {
+        let input = in_p(
+            "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\"/>\
+             <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c3\"/>\
+             <argumentElement xmlns:v=\"urn:v\" xmi:type=\"sacm:AssertedInference\" \
+             xmi:id=\"i\" source=\"c1\" target=\"c1 c1\" isCounter=\"c3\" v:note=\"c3\">\
+             <v:x href=\"#c3\"/></argumentElement>",
+        );
+        let (_, mut document) = kept(&input);
+        assert!(document.is_referenced("c3"), "the preserved href counts c3");
+        // A flag named no reference: c3 stays referenced by the href.
+        let flag = crate::edit::SetFlag::new("i", crate::model::Flag::IsCounter, false);
+        assert!(crate::edit::apply(&mut document, flag).is_ok());
+        assert!(
+            document.is_referenced("c3"),
+            "removing isCounter=\"c3\" released c3"
+        );
+        // The end's two c1 are released, and nothing else.
+        let set = crate::edit::SetReferences::new("i", crate::model::ReferenceEnd::Target, ["c1"]);
+        assert!(crate::edit::apply(&mut document, set).is_ok());
+        assert!(
+            document.is_referenced("c3"),
+            "removing target=\"c1 c1\" released c3"
+        );
+        assert!(
+            document
+                .get("i")
+                .is_some_and(SacmElement::has_preserved_content)
+        );
+        // Deleting the holder releases the href's c3.
+        let delete = crate::edit::DeleteElement::new("i")
+            .with_package_policy(crate::edit::PackageDeletePolicy::DeleteRecursively);
+        assert!(crate::edit::apply(&mut document, delete).is_ok());
+        assert!(
+            !document.is_referenced("c3"),
+            "the deleted href still counts c3"
         );
     }
 

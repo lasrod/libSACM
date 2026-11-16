@@ -1680,7 +1680,7 @@ fn lib_compat_003_a_preserved_part_is_never_a_repeated_value_occurrence() {
 
 /// Asserts that `input` is `Unsupported` in strict mode, labelled a defect
 /// in the input. A tolerant read keeps it, with SACM-XMI-003 (ADR 0035;
-/// `document_preserved_content.rs`).
+/// `unread_content.rs`).
 fn assert_defect(what: &str, input: &str) {
     {
         let mode = Mode::Strict;

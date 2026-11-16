@@ -65,7 +65,7 @@ The maintainer wants a library that is simply usable.
 
 ## Consequences
 
-- An editor opens real files, shows the Warnings, and saves drafts strictly.
+- An editor opens real files and shows the Warnings. It saves a draft strictly when the draft holds no preserved content; a file that holds some, such as an `xsi:schemaLocation`, saves in tolerant mode until the rows that read it are built.
 - A tolerant read now continues past points where it used to stop, so its paths need
   mutation and property testing.
 - `sacm validate` on a tolerantly read file with a bad literal reports Warnings and exits 0.

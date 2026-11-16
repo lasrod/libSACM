@@ -1835,6 +1835,14 @@ fn lib_compat_007_a_non_ncname_id_is_one_id_002() {
             "n",
         ),
         (
+            "key id 1k on a TaggedValue",
+            named_ap(
+                "<taggedValue xmi:id=\"t\"><content><value content=\"x\"/></content>\
+                 <key xmi:id=\"1k\"><value content=\"k\"/></key></taggedValue>",
+            ),
+            "t",
+        ),
+        (
             "value id 1v in a Note's content",
             named_ap(
                 "<note xmi:id=\"n\"><content><value xmi:id=\"1v\" content=\"x\"/></content></note>",
@@ -1860,6 +1868,53 @@ fn lib_compat_007_a_non_ncname_id_is_one_id_002() {
             "{COMPAT_007}: {what}: the tolerant write does not keep the id\n{text}"
         );
     }
+}
+
+/// `WriteOptions` default to strict, and `with_mode` sets the mode; the
+/// default refuses output that would not be schema-valid, which tolerant mode
+/// writes (ADR 0022, ADR 0035 D4).
+#[test]
+fn lib_compat_007_write_options_default_to_strict_and_with_mode_sets_the_mode() {
+    assert_eq!(
+        WriteOptions::default().mode(),
+        Mode::Strict,
+        "{COMPAT_007}: WriteOptions::default() is not strict"
+    );
+    assert_eq!(
+        WriteOptions::default().with_mode(Mode::Tolerant).mode(),
+        Mode::Tolerant,
+        "{COMPAT_007}: with_mode(Mode::Tolerant) does not set tolerant"
+    );
+    assert_eq!(
+        WriteOptions::default()
+            .with_mode(Mode::Tolerant)
+            .with_mode(Mode::Strict)
+            .mode(),
+        Mode::Strict,
+        "{COMPAT_007}: a later with_mode does not replace an earlier one"
+    );
+    assert_eq!(
+        WriteOptions::default().with_mode(Mode::Strict),
+        WriteOptions::default(),
+        "{COMPAT_007}: strict write options are not the default ones"
+    );
+    // The default refuses what only tolerant mode writes.
+    let what = "citedElement=\"nope\"";
+    let dangling = document_of(
+        what,
+        &named_ap(&named_claim(
+            "c1",
+            " isCitation=\"true\" citedElement=\"nope\"",
+        )),
+    );
+    assert!(
+        matches!(
+            xmi::write(&dangling, &WriteOptions::default()),
+            Err(WriteError::Invalid { .. })
+        ),
+        "{COMPAT_007}: the default write does not refuse a dangling reference"
+    );
+    write_ok(COMPAT_007, what, Mode::Tolerant, &dangling);
 }
 
 /// An IDREF naming no ID is schema-invalid (XML Schema Part 1 §3.3.4,

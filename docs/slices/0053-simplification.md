@@ -68,3 +68,22 @@ The design brief is `target/slice-0053-simplification-brief.md` (git-ignored).
   Mutants: 172 on the diff of `roots.rs`, `refusal.rs` and `output.rs`. Five unit tests were added for the misses; the one left is a timeout, an infinite loop in `Kept::rename`.
 - 2026-11-16 matrix (lead): 45 rows reworded so that no sentence states a both-modes refusal or a validating strict save. LIB-COMPAT-001 now says that a refusal a read row states without naming a mode is a strict read's. LIB-TOOL-003/007 follow the new roles. The in-scope rows keep `verified` on their old records until this slice's record replaces them. The gate forbids a verified row from depending on an unverified one.
 - 2026-11-16 roles: the five old role files and their write scopes are removed. The hook tests use the new roles, and four were renamed.
+- 2026-11-16 verification round 1: FAIL. The findings:
+  - two defects:
+    - a write with no root beside document-level content was not `NoRoot`;
+    - the wrapper's `xmi:id` was never checked;
+  - four test gaps, the same ones CI's mutants run missed;
+  - a lost default-mode test;
+  - wording in the matrix, the docs and `Cargo.toml`;
+  - a `Kept::rename` mutant that timed out and failed CI (prescription D4).
+- 2026-11-16 fix round (the only one): `sacm-builder` fixed every blocking and non-blocking item.
+  - The rename loop is now bounded.
+  - The two `check_preserved_ids` mutants are excluded as equivalent, and the stale `set_preserved` exclusion is removed.
+  - The lead reworded the matrix and ADR 0035 and cited the six new tests.
+  - The lead's record of test changes since the confirmed red:
+    - the gates were removed (`unread_content.rs`, the catalog lists);
+    - `serde.rs` `CODES` gained the two live codes;
+    - one comment was fixed in `round_trip.rs`;
+    - the hook tests use the new roles;
+    - this round's new tests were added.
+    No step-1 assertion was weakened.

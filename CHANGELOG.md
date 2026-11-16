@@ -154,8 +154,8 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   diagnostics SACM-XMI-010 (`xsi:type`) and SACM-XMI-011 (`xmi:version`, Info). A
   tolerant read, the default, opens every well-formed file with SACM 2.3 package roots:
   it refuses only a DOCTYPE, malformed XML, `InvalidRoot`, `NoPackage`, `DuplicateId`
-  and `Unsupported` for an encoding, a limit or a root outside SACM 2.3 or XMI 2.5.1,
-  and keeps every other construct a strict read refuses as preserved content, with one
+  and `Unsupported` for an encoding, a limit, a root outside SACM 2.3 or XMI 2.5.1, or
+  an XMI-namespace document element, and keeps every other construct a strict read refuses as preserved content, with one
   Warning at the strict refusal's location (SACM-ENUM-001, SACM-MULT-001, SACM-XMI-005,
   SACM-ID-002 with a generated id), and never reports an Error [LIB-COMPAT-001].
 - `xmi::ReadError::DuplicateId` (SACM-ID-001, new `Code::ID_DUPLICATE`), giving the
@@ -360,8 +360,8 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   entry: it keeps conforming content not read yet as preserved content with the new
   SACM-XMI-014 (`Code::XMI_UNREAD_CONTENT`), whose message ends `; ROW reads it`, a
   cross-document `href` with SACM-XMI-007 (`Code::XMI_EXTERNAL_HREF`), now live, and a
-  defect with SACM-XMI-003, and refuses only the limits and a root outside SACM 2.3 or
-  XMI 2.5.1 [LIB-API-011].
+  defect with SACM-XMI-003, and refuses only the limits, a root outside SACM 2.3 or
+  XMI 2.5.1, and an XMI-namespace document element [LIB-API-011].
 - `cargo xtask fetch-spec` also fetches the normative XMI.xsd of XMI 2.5.1, hash-pinned
   [LIB-TOOL-021].
 - `xmi::read` and `xmi::write` handle `ArtifactPackage` (as a root, in an

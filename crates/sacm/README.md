@@ -150,9 +150,12 @@ draft with an open model Error, such as an element with no name, saves strictly.
 Which `xmi::Mode` to use: read in tolerant mode, the default, to open files from other
 tools: it keeps what a strict read refuses, with a Warning. A strict read refuses what it
 does not read, and reports the variations it recognises as Errors instead of Warnings.
-Neither mode validates what it reads, so to check a file, also run `validation::validate`
-and test both lists with `diagnostic::has_errors`. Save in strict mode, the default, for a
-file you hand on; save in tolerant mode to keep what a tolerant read preserved.
+Neither mode validates what it reads. To check that a file conforms, read it in strict
+mode, run `validation::validate`, and test both lists with `diagnostic::has_errors`: a
+tolerant read reports what a strict read refuses as Warnings and keeps it as preserved
+content (`Document::has_preserved_content`), so its diagnostics alone are no conformance
+check. Save in strict mode, the default, for a file you hand on; save in tolerant mode to
+keep what a tolerant read preserved.
 
 See the [crate documentation](https://docs.rs/sacm) for the full API.
 

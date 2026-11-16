@@ -1187,6 +1187,10 @@ fn sacm23_val_006_set_assertion_declaration_and_set_flag_replace_the_preserved_a
         (Some(AssertionDeclaration::Assumed), false),
         "{VAL_006}: {what}: not assumed with nothing preserved"
     );
+    assert!(
+        !doc.has_preserved_content(),
+        "{VAL_006}: {what}: the repaired document still holds preserved content"
+    );
     let text = match write(&doc, Mode::Strict) {
         Ok(text) => text,
         Err(error) => {
@@ -1315,5 +1319,54 @@ fn sacm23_val_006_a_tolerant_write_never_emits_a_property_attribute_twice() {
     assert!(
         count(tag, "isAbstract=") == 1 && tag.contains("isAbstract=\"true\""),
         "{VAL_006}: {what}: after SetFlag, not isAbstract=\"true\" once: {tag}"
+    );
+}
+
+/// A declaration attribute that is no literal counts as the first
+/// occurrence, so a later declaration element is a repeat: the Assertion
+/// holds `asserted`, and the element's value is never read.
+#[test]
+fn sacm23_val_006_a_bad_declaration_attribute_counts_as_the_first_occurrence() {
+    let what = "assertionDeclaration=\"Assumed\" and an element axiomatic";
+    let input = package(&claim(
+        "c1",
+        " assertionDeclaration=\"Assumed\"",
+        "<assertionDeclaration>axiomatic</assertionDeclaration>",
+    ));
+    let strict = strict_refusal(VAL_006, what, &input);
+    assert_eq!(
+        strict.code(),
+        Some(Code::ENUM_INVALID_LITERAL),
+        "{VAL_006}: {what}: setup: the strict refusal is not the literal"
+    );
+    let output = tolerant(VAL_006, what, &input);
+    let literal = with_code(&output, Code::ENUM_INVALID_LITERAL);
+    let repeat = with_code(&output, Code::MULTIPLICITY_VIOLATION);
+    assert!(
+        literal.len() == 1
+            && literal[0].location() == strict.location()
+            && repeat.len() == 1
+            && repeat[0].location() > strict.location(),
+        "{VAL_006}: {what}: not SACM-ENUM-001 at the attribute and SACM-MULT-001 at the \
+         element: {:?}",
+        output.diagnostics()
+    );
+    assert_eq!(
+        output.diagnostics().len(),
+        2,
+        "{VAL_006}: {what}: other diagnostics: {:?}",
+        output.diagnostics()
+    );
+    let doc = output.into_document();
+    assert_eq!(
+        element(VAL_006, what, &doc, "c1").assertion_declaration(),
+        Some(AssertionDeclaration::Asserted),
+        "{VAL_006}: {what}: the element's axiomatic is read"
+    );
+    let text = assert_round_trips(VAL_006, what, &doc);
+    assert_eq!(
+        count(start_tag(VAL_006, &text, "c1"), "assertionDeclaration="),
+        1,
+        "{VAL_006}: {what}: assertionDeclaration is not written once as an attribute\n{text}"
     );
 }

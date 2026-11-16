@@ -1195,8 +1195,9 @@ const _: () = {
 /// with no code, is well-formed input this version does not read; its
 /// reason says why with a label (see [`read`]'s refusals).
 ///
-/// The first five, and `Unsupported` for an encoding, a parser limit or a
-/// root outside SACM 2.3 or XMI 2.5.1, are refused in both modes. The rest
+/// The first five, and `Unsupported` for an encoding, a parser limit, a root
+/// outside SACM 2.3 or XMI 2.5.1, or an XMI-namespace document element, are
+/// refused in both modes. The rest
 /// are refused in strict mode only: a tolerant read keeps the construct as
 /// preserved content with a Warning of the variant's code, or, for
 /// `Unsupported`, of SACM-XMI-014, SACM-XMI-007 or SACM-XMI-003 (ADR 0035
@@ -2023,8 +2024,9 @@ impl std::error::Error for ReadError {}
 /// The document is checked before anything is written, and the first failure
 /// is returned:
 ///
-/// 1. a document with no root, and no preserved content outside its
-///    elements, is [`WriteError::NoRoot`];
+/// 1. a document with no root, neither an element nor a root of a kind not
+///    read yet that it holds as preserved content, is [`WriteError::NoRoot`],
+///    in both modes: an `xmi:XMI` holding only XMI metadata holds no package;
 /// 2. in strict mode only, preserved content: a document that holds any is
 ///    [`WriteError::PreservedContent`], which lists each element that holds
 ///    some (SACM-XMI-006), and no element when only the document holds it;
@@ -2180,9 +2182,10 @@ impl WriteOptions {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum WriteError {
-    /// The document has no root, so there is no document element to write.
-    /// Add a package as a root. This variant has no fields and will not gain
-    /// any.
+    /// The document has no root, neither an element nor a root of a kind
+    /// not read yet that it holds as preserved content, so there is no SACM
+    /// package to write. Add a package as a root. This variant has no fields
+    /// and will not gain any.
     NoRoot,
     /// An element's id or gid, its name's `lang` or `content`, or the `lang`
     /// or `content` of a value of its `content` or `key`, holds a character
@@ -2273,6 +2276,8 @@ pub enum WriteError {
     /// writer cannot show that content it did not read is schema-valid. It is
     /// refused before the schema check. Write the document in tolerant mode,
     /// which writes the content back, or delete the elements that hold it.
+    /// Content the document holds outside its elements can be written only in
+    /// tolerant mode in this release.
     ///
     /// ```
     /// use sacm::diagnostic::Code;
