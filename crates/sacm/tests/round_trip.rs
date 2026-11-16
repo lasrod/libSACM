@@ -47,8 +47,8 @@ const GOLDEN: &str = "golden";
 const PENDING: [(&str, &str); 1] = [(
     // A SACM23-XMI-007 writer golden; `xmi::read` refuses it as Unsupported.
     "golden/nested.golden.sacm.xmi",
-    "holds an ArgumentPackageInterface and an Artifact (with a Property), which no \
-     verified row reads yet",
+    "holds an ArgumentPackageInterface, which no verified row reads yet (its Artifact, with \
+     a Property, is read since slice 0055)",
 )];
 
 /// The three states of one `LangString` field: absent, empty and non-empty

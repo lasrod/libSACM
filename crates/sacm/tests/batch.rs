@@ -57,6 +57,11 @@ use sacm::edit::{
     PackageDeletePolicy, ReferenceDeletePolicy, RemoveReference, ReorderElements,
     SetAssertionDeclaration, SetContent, SetFlag, SetGid, SetKey, SetName, SetReferences,
 };
+// The operations of slice 0055 (ADR 0034 amendment 1).
+use sacm::edit::{
+    CreateActivity, CreateArtifact, CreateEvent, CreateResource, SetDate, SetEndTime, SetLocation,
+    SetStartTime, SetVersion,
+};
 use sacm::model::{
     AssertionDeclaration, Document, ElementId, ElementKind, Flag, LangString, MultiLangString,
     ReferenceEnd, SacmElement,
@@ -282,6 +287,10 @@ fn next_generated_ids(doc: &Document) -> Vec<ElementId> {
         CreateTechnique::new(a, name()).into(),
         CreateParticipant::new(a, name()).into(),
         CreateArtifactGroup::new(a, name()).into(),
+        CreateArtifact::new(a, name()).into(),
+        CreateEvent::new(a, name()).into(),
+        CreateResource::new(a, name()).into(),
+        CreateActivity::new(a, name()).into(),
     ];
     ids.push(artifacts.clone());
     for operation in artifact_rest {
@@ -410,7 +419,15 @@ fn net_ids<'m>(
             | Difference::KeyId { id, .. }
             | Difference::KeyValueIds { id, .. }
             | Difference::AssertionDeclaration { id, .. }
-            | Difference::ChildOrder { id, .. } => {
+            | Difference::ChildOrder { id, .. }
+            // The values of slice 0055 (ADR 0034 amendment 1).
+            | Difference::Version { id, .. }
+            | Difference::Date { id, .. }
+            | Difference::Location { id, .. }
+            | Difference::LocationId { id, .. }
+            | Difference::LocationValueIds { id, .. }
+            | Difference::StartTime { id, .. }
+            | Difference::EndTime { id, .. } => {
                 changed.insert(id.clone());
             }
             other => {
@@ -731,6 +748,31 @@ fn random_operation(rng: &mut Rng, doc: &Document, history: &mut History) -> Ope
         17 => SetKey::new(&target, named("SIL")).into(),
         18..=20 => random_reference_edit(rng, doc, &ids, &target),
         21 => random_reorder(rng, doc, &ids, &target),
+        // The creates and value edits of slice 0055 (ADR 0034 amendment 1).
+        22 => match rng.below(9) {
+            0 => create!(
+                CreateArtifact::new(&target, name)
+                    .with_version("1.2")
+                    .with_date("2024-03-01")
+            ),
+            1 => create!(CreateEvent::new(&target, name).with_date("spring 2024")),
+            2 => create!(CreateResource::new(&target, name).with_location(two_values())),
+            3 => create!(
+                CreateActivity::new(&target, name)
+                    .with_start_time("2024-02-12")
+                    .with_end_time("2024-02-01")
+            ),
+            4 if rng.flip() => SetVersion::new(&target, "1.3").into(),
+            4 => SetVersion::remove(&target).into(),
+            5 if rng.flip() => SetDate::new(&target, "2024-03-06").into(),
+            5 => SetDate::remove(&target).into(),
+            6 if rng.flip() => SetLocation::new(&target, two_values()).into(),
+            6 => SetLocation::remove(&target).into(),
+            7 if rng.flip() => SetStartTime::new(&target, "2024-02-13").into(),
+            7 => SetStartTime::remove(&target).into(),
+            _ if rng.flip() => SetEndTime::new(&target, "2024-02-28").into(),
+            _ => SetEndTime::remove(&target).into(),
+        },
         _ => random_delete(rng, &ids, history),
     }
 }

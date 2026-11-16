@@ -18,7 +18,9 @@
 //! ([`SacmElement::name_id`](crate::model::SacmElement::name_id)), its
 //! `content` and `key` with their ids
 //! ([`SacmElement::content`](crate::model::SacmElement::content) and the
-//! like), its [`assertionDeclaration`](crate::model::AssertionDeclaration)
+//! like), an `Artifact`'s `version`, the `date` of an `Artifact` or an
+//! `Event`, a `Resource`'s `location` with its ids, an `Activity`'s
+//! `startTime` and `endTime` (§12.7, §12.9, §12.10, §12.11), its [`assertionDeclaration`](crate::model::AssertionDeclaration)
 //! (SACM 2.3 §11.10), the relative order of its children, and its preserved
 //! content (LIB-COMPAT-003, ADR 0033), exactly and in order; it also checks
 //! the relative order of the roots. Values are compared exactly: a missing
@@ -107,7 +109,7 @@ use std::ops::ControlFlow;
 
 use crate::model::{
     AssertionDeclaration, Compared, Document, ElementId, ElementKind, Flag, LangString,
-    MultiLangString, ReferenceEnd, SacmElement, Text, TextRole,
+    MultiLangString, ReferenceEnd, SacmElement, StringAttribute, Text, TextRole,
 };
 
 /// One way in which two documents differ in SACM content, as
@@ -482,6 +484,93 @@ pub enum Difference {
         /// The value ids in the right document: one per value.
         right: Vec<Option<ElementId>>,
     },
+    /// The `version` of an `Artifact` (SACM 2.3 §12.7,
+    /// [`SacmElement::version`](crate::model::SacmElement::version)) differs
+    /// on each side; `None` is no version.
+    ///
+    /// Versions are compared exactly, as gids are: no version, `""` and
+    /// `" 1.2"` are three different values.
+    Version {
+        /// The element's id.
+        id: ElementId,
+        /// The version in the left document, or `None` when it has none.
+        left: Option<String>,
+        /// The version in the right document, or `None` when it has none.
+        right: Option<String>,
+    },
+    /// The `date` of an `Artifact` or an `Event` (SACM 2.3 §12.7, §12.9,
+    /// [`SacmElement::date`](crate::model::SacmElement::date)) differs on
+    /// each side; `None` is no date.
+    ///
+    /// Dates are held as written (D-DATE) and compared exactly: `2024-03-01`
+    /// and `2024-03-01 ` differ, and so do no date and `""`.
+    Date {
+        /// The element's id.
+        id: ElementId,
+        /// The date in the left document, or `None` when it has none.
+        left: Option<String>,
+        /// The date in the right document, or `None` when it has none.
+        right: Option<String>,
+    },
+    /// The `location` of a `Resource` (SACM 2.3 §12.10,
+    /// [`SacmElement::location`](crate::model::SacmElement::location))
+    /// differs on each side; `None` is no location. Compared as
+    /// [`Content`](Self::Content) is.
+    Location {
+        /// The element's id.
+        id: ElementId,
+        /// The location in the left document, or `None` when it has none.
+        left: Option<MultiLangString>,
+        /// The location in the right document, or `None` when it has none.
+        right: Option<MultiLangString>,
+    },
+    /// The `xmi:id` of the element's `location`
+    /// ([`SacmElement::location_id`](crate::model::SacmElement::location_id))
+    /// differs on each side; `None` is a location without an id, or none.
+    LocationId {
+        /// The element's id.
+        id: ElementId,
+        /// The location's id in the left document, or `None`.
+        left: Option<ElementId>,
+        /// The location's id in the right document, or `None`.
+        right: Option<ElementId>,
+    },
+    /// The `xmi:id`s of the values of the element's `location`
+    /// ([`SacmElement::location_value_ids`](crate::model::SacmElement::location_value_ids)),
+    /// by position, differ on each side. Compared as
+    /// [`ContentValueIds`](Self::ContentValueIds) are.
+    LocationValueIds {
+        /// The element's id.
+        id: ElementId,
+        /// The value ids in the left document: one per value.
+        left: Vec<Option<ElementId>>,
+        /// The value ids in the right document: one per value.
+        right: Vec<Option<ElementId>>,
+    },
+    /// The `startTime` of an `Activity` (SACM 2.3 §12.11,
+    /// [`SacmElement::start_time`](crate::model::SacmElement::start_time))
+    /// differs on each side; `None` is none. Compared exactly, as
+    /// [`Date`](Self::Date) is.
+    StartTime {
+        /// The element's id.
+        id: ElementId,
+        /// The start time in the left document, or `None` when it has none.
+        left: Option<String>,
+        /// The start time in the right document, or `None` when it has none.
+        right: Option<String>,
+    },
+    /// The `endTime` of an `Activity` (SACM 2.3 §12.11,
+    /// [`SacmElement::end_time`](crate::model::SacmElement::end_time))
+    /// differs on each side; `None` is none. Compared exactly, as
+    /// [`Date`](Self::Date) is.
+    EndTime {
+        /// The element's id.
+        id: ElementId,
+        /// The end time in the left document, or `None` when it has none.
+        left: Option<String>,
+        /// The end time in the right document, or `None` when it has none.
+        right: Option<String>,
+    },
     /// The element has a different `assertionDeclaration` (SACM 2.3 §11.10)
     /// on each side.
     ///
@@ -586,6 +675,13 @@ impl Difference {
             | Self::Key { id, .. }
             | Self::KeyId { id, .. }
             | Self::KeyValueIds { id, .. }
+            | Self::Version { id, .. }
+            | Self::Date { id, .. }
+            | Self::Location { id, .. }
+            | Self::LocationId { id, .. }
+            | Self::LocationValueIds { id, .. }
+            | Self::StartTime { id, .. }
+            | Self::EndTime { id, .. }
             | Self::AssertionDeclaration { id, .. }
             | Self::ChildOrder { id, .. }
             | Self::PreservedContent { id } => Some(id),
@@ -594,12 +690,30 @@ impl Difference {
 }
 
 impl Difference {
-    /// The role a difference in a `content` or `key` is about: `key` for
-    /// the three `Key` variants, and `content` otherwise.
+    /// The role a difference in a `content`, `key` or `location` is about:
+    /// `key` for the three `Key` variants, `location` for the three
+    /// `Location` variants, and `content` otherwise.
     fn text_role(&self) -> &'static str {
         match self {
-            Self::Key { .. } | Self::KeyId { .. } | Self::KeyValueIds { .. } => "key",
-            _ => "content",
+            Self::Key { .. } | Self::KeyId { .. } | Self::KeyValueIds { .. } => {
+                TextRole::Key.name()
+            }
+            Self::Location { .. } | Self::LocationId { .. } | Self::LocationValueIds { .. } => {
+                TextRole::Location.name()
+            }
+            _ => TextRole::Content.name(),
+        }
+    }
+
+    /// The string-valued attribute a difference in one is about, by its XMI
+    /// name: `date`, `startTime` and `endTime` for theirs, and `version`
+    /// otherwise.
+    fn string(&self) -> &'static str {
+        match self {
+            Self::Date { .. } => StringAttribute::Date.name(),
+            Self::StartTime { .. } => StringAttribute::StartTime.name(),
+            Self::EndTime { .. } => StringAttribute::EndTime.name(),
+            _ => StringAttribute::Version.name(),
         }
     }
 
@@ -722,7 +836,9 @@ impl fmt::Display for Difference {
                 NameId(left.as_ref()),
                 NameId(right.as_ref())
             ),
-            Self::Content { id, left, right } | Self::Key { id, left, right } => {
+            Self::Content { id, left, right }
+            | Self::Key { id, left, right }
+            | Self::Location { id, left, right } => {
                 let role = self.text_role();
                 write!(
                     f,
@@ -732,7 +848,9 @@ impl fmt::Display for Difference {
                     Values(right.as_ref(), role)
                 )
             }
-            Self::ContentId { id, left, right } | Self::KeyId { id, left, right } => {
+            Self::ContentId { id, left, right }
+            | Self::KeyId { id, left, right }
+            | Self::LocationId { id, left, right } => {
                 let role = self.text_role();
                 write!(
                     f,
@@ -742,7 +860,22 @@ impl fmt::Display for Difference {
                     NameId(right.as_ref())
                 )
             }
-            Self::ContentValueIds { id, left, right } | Self::KeyValueIds { id, left, right } => {
+            Self::Version { id, left, right }
+            | Self::Date { id, left, right }
+            | Self::StartTime { id, left, right }
+            | Self::EndTime { id, left, right } => {
+                let attribute = self.string();
+                write!(
+                    f,
+                    "element {:?} differs in {attribute}: {} on the left, {} on the right",
+                    id.as_str(),
+                    Quoted(left.as_deref(), attribute),
+                    Quoted(right.as_deref(), attribute)
+                )
+            }
+            Self::ContentValueIds { id, left, right }
+            | Self::KeyValueIds { id, left, right }
+            | Self::LocationValueIds { id, left, right } => {
                 let role = self.text_role();
                 write!(
                     f,
@@ -815,6 +948,19 @@ impl fmt::Display for Gid<'_> {
         match self.0 {
             Some(gid) => write!(f, "{gid:?}"),
             None => f.write_str("no gid"),
+        }
+    }
+}
+
+/// A string-valued attribute for `Display`: quoted, or `no <attribute>`, so
+/// absent and empty read differently.
+struct Quoted<'a>(Option<&'a str>, &'static str);
+
+impl fmt::Display for Quoted<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            Some(value) => write!(f, "{value:?}"),
+            None => write!(f, "no {}", self.1),
         }
     }
 }
@@ -932,7 +1078,8 @@ impl fmt::Display for Declaration {
 /// `source`, `target`, `structure`, `referencedArtifactElement`, an
 /// `ArgumentGroup`'s `argumentElement`, an `ArtifactGroup`'s
 /// `artifactElement`, name, its name's `xmi:id`, its
-/// `content` and `key` with their ids, `assertionDeclaration`, the
+/// `content` and `key` with their ids, `version`, `date`, `location` with its
+/// ids, `startTime`, `endTime`, `assertionDeclaration`, the
 /// relative order of its children and its preserved content, exactly
 /// (ADR 0033), are compared, even when its kind differs.
 /// The relative order of the roots is compared too. The per-kind counters
@@ -988,6 +1135,11 @@ impl fmt::Display for Declaration {
 ///    [`ContentValueIds`](Difference::ContentValueIds),
 ///    [`Key`](Difference::Key), [`KeyId`](Difference::KeyId),
 ///    [`KeyValueIds`](Difference::KeyValueIds),
+///    [`Version`](Difference::Version), [`Date`](Difference::Date),
+///    [`Location`](Difference::Location),
+///    [`LocationId`](Difference::LocationId),
+///    [`LocationValueIds`](Difference::LocationValueIds),
+///    [`StartTime`](Difference::StartTime), [`EndTime`](Difference::EndTime),
 ///    [`AssertionDeclaration`](Difference::AssertionDeclaration),
 ///    [`ChildOrder`](Difference::ChildOrder) and
 ///    [`PreservedContent`](Difference::PreservedContent), in that order;
@@ -1061,6 +1213,8 @@ enum Found<'a> {
     TextId(TextRole, Compared<'a>, Compared<'a>),
     /// The ids of the values of the element's `content` or `key` differ.
     TextValueIds(TextRole, Compared<'a>, Compared<'a>),
+    /// The value of one of the element's string-valued attributes differs.
+    String(StringAttribute, Compared<'a>, Compared<'a>),
     /// The element's `assertionDeclaration` differs.
     AssertionDeclaration(Compared<'a>, Compared<'a>),
     /// The element's common children are in a different relative order; the
@@ -1127,6 +1281,7 @@ impl Found<'_> {
                 match role {
                     TextRole::Content => Difference::Content { id, left, right },
                     TextRole::Key => Difference::Key { id, left, right },
+                    TextRole::Location => Difference::Location { id, left, right },
                 }
             }
             Self::TextId(role, ours, theirs) => {
@@ -1136,6 +1291,7 @@ impl Found<'_> {
                 match role {
                     TextRole::Content => Difference::ContentId { id, left, right },
                     TextRole::Key => Difference::KeyId { id, left, right },
+                    TextRole::Location => Difference::LocationId { id, left, right },
                 }
             }
             Self::TextValueIds(role, ours, theirs) => {
@@ -1145,8 +1301,10 @@ impl Found<'_> {
                 match role {
                     TextRole::Content => Difference::ContentValueIds { id, left, right },
                     TextRole::Key => Difference::KeyValueIds { id, left, right },
+                    TextRole::Location => Difference::LocationValueIds { id, left, right },
                 }
             }
+            Self::String(attribute, ours, theirs) => string_difference(attribute, &ours, &theirs),
             Self::AssertionDeclaration(ours, theirs) => Difference::AssertionDeclaration {
                 id: ours.id.clone(),
                 left: ours.assertion_declaration,
@@ -1165,6 +1323,24 @@ impl Found<'_> {
                 kind: element.kind(),
             },
         }
+    }
+}
+
+/// The difference in the string-valued `attribute` of one element, `ours`
+/// on the left and `theirs` on the right: each value exactly, or `None`.
+fn string_difference(
+    attribute: StringAttribute,
+    ours: &Compared<'_>,
+    theirs: &Compared<'_>,
+) -> Difference {
+    let id = ours.id.clone();
+    let left = ours.string(attribute).map(str::to_owned);
+    let right = theirs.string(attribute).map(str::to_owned);
+    match attribute {
+        StringAttribute::Version => Difference::Version { id, left, right },
+        StringAttribute::Date => Difference::Date { id, left, right },
+        StringAttribute::StartTime => Difference::StartTime { id, left, right },
+        StringAttribute::EndTime => Difference::EndTime { id, left, right },
     }
 }
 
@@ -1296,15 +1472,24 @@ fn compare_element<'a>(
     if ours.name_id != theirs.name_id {
         sink(Found::NameId(ours, theirs))?;
     }
-    for role in [TextRole::Content, TextRole::Key] {
-        if text_value(&ours, role) != text_value(&theirs, role) {
-            sink(Found::Text(role, ours, theirs))?;
-        }
-        if text_id(&ours, role) != text_id(&theirs, role) {
-            sink(Found::TextId(role, ours, theirs))?;
-        }
-        if value_ids_differ(text_value_ids(&ours, role), text_value_ids(&theirs, role)) {
-            sink(Found::TextValueIds(role, ours, theirs))?;
+    for feature in COMPARED_VALUES {
+        match feature {
+            Valued::Text(role) => {
+                if text_value(&ours, role) != text_value(&theirs, role) {
+                    sink(Found::Text(role, ours, theirs))?;
+                }
+                if text_id(&ours, role) != text_id(&theirs, role) {
+                    sink(Found::TextId(role, ours, theirs))?;
+                }
+                if value_ids_differ(text_value_ids(&ours, role), text_value_ids(&theirs, role)) {
+                    sink(Found::TextValueIds(role, ours, theirs))?;
+                }
+            }
+            Valued::String(attribute) => {
+                if ours.string(attribute) != theirs.string(attribute) {
+                    sink(Found::String(attribute, ours, theirs))?;
+                }
+            }
         }
     }
     if ours.assertion_declaration != theirs.assertion_declaration {
@@ -1319,11 +1504,36 @@ fn compare_element<'a>(
     ControlFlow::Continue(())
 }
 
+/// A feature with a value, after the name: a text role or a string-valued
+/// attribute.
+#[derive(Clone, Copy)]
+enum Valued {
+    /// A role that holds a `MultiLangString`, with its ids.
+    Text(TextRole),
+    /// A string-valued attribute.
+    String(StringAttribute),
+}
+
+/// The features with a value, in the order [`semantic_compare`] reports
+/// them: `content` and `key`, then `version` and `date`, then `location`,
+/// then `startTime` and `endTime`. A test of the crate keeps it total over
+/// [`TextRole::ALL`] and [`StringAttribute::ALL`].
+const COMPARED_VALUES: [Valued; 7] = [
+    Valued::Text(TextRole::Content),
+    Valued::Text(TextRole::Key),
+    Valued::String(StringAttribute::Version),
+    Valued::String(StringAttribute::Date),
+    Valued::Text(TextRole::Location),
+    Valued::String(StringAttribute::StartTime),
+    Valued::String(StringAttribute::EndTime),
+];
+
 /// The text `element` holds in `role`.
 fn text<'a>(element: &Compared<'a>, role: TextRole) -> Option<&'a Text> {
     match role {
         TextRole::Content => element.content,
         TextRole::Key => element.key,
+        TextRole::Location => element.location,
     }
 }
 
@@ -1402,8 +1612,8 @@ impl Eq for Document {}
 
 #[cfg(test)]
 mod tests {
-    use super::Difference;
-    use crate::model::ElementId;
+    use super::{COMPARED_VALUES, Difference, Valued};
+    use crate::model::{ElementId, StringAttribute, TextRole};
 
     /// The argumentation variants name their feature by its XMI name, and
     /// show both sides (ADR 0027).
@@ -1460,6 +1670,84 @@ mod tests {
                     right: one("q"),
                 },
                 "element \"x\" differs in structure: \"p\" on the left, \"q\" on the right",
+            ),
+        ];
+        for (difference, expected) in cases {
+            assert_eq!(difference.to_string(), expected);
+            assert_eq!(difference.element_id(), Some(&id()));
+        }
+    }
+
+    /// Every text role and every string-valued attribute is compared, each
+    /// once (ADR 0034 amendment 1).
+    #[test]
+    fn the_compared_values_cover_every_text_role_and_string_attribute_once() {
+        let roles: Vec<TextRole> = COMPARED_VALUES
+            .iter()
+            .filter_map(|feature| match feature {
+                Valued::Text(role) => Some(*role),
+                Valued::String(_) => None,
+            })
+            .collect();
+        let attributes: Vec<StringAttribute> = COMPARED_VALUES
+            .iter()
+            .filter_map(|feature| match feature {
+                Valued::String(attribute) => Some(*attribute),
+                Valued::Text(_) => None,
+            })
+            .collect();
+        assert_eq!(roles, TextRole::ALL);
+        assert_eq!(attributes, StringAttribute::ALL);
+    }
+
+    /// The string-valued and location variants name their feature, and show
+    /// both sides, absent apart from empty.
+    #[test]
+    fn the_asset_value_differences_display_their_feature_and_both_sides() {
+        let id = || ElementId::new("x");
+        let text = |value: &str| Some(value.to_owned());
+        let cases = [
+            (
+                Difference::Version {
+                    id: id(),
+                    left: text(""),
+                    right: None,
+                },
+                "element \"x\" differs in version: \"\" on the left, no version on the right",
+            ),
+            (
+                Difference::StartTime {
+                    id: id(),
+                    left: None,
+                    right: text("t"),
+                },
+                "element \"x\" differs in startTime: no startTime on the left, \"t\" on the right",
+            ),
+            (
+                Difference::EndTime {
+                    id: id(),
+                    left: text("a"),
+                    right: text("b"),
+                },
+                "element \"x\" differs in endTime: \"a\" on the left, \"b\" on the right",
+            ),
+            (
+                Difference::LocationId {
+                    id: id(),
+                    left: Some(ElementId::new("l")),
+                    right: None,
+                },
+                "element \"x\" differs in the xmi:id of its location: \"l\" on the left, no id \
+                 on the right",
+            ),
+            (
+                Difference::LocationValueIds {
+                    id: id(),
+                    left: vec![None],
+                    right: vec![Some(ElementId::new("v"))],
+                },
+                "element \"x\" differs in the xmi:ids of its location's values: [no id] on the \
+                 left, [\"v\"] on the right",
             ),
         ];
         for (difference, expected) in cases {

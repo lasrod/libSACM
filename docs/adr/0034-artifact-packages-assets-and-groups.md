@@ -110,3 +110,34 @@ The maintainer's M3 decisions of 2026-11-15 apply:
   ends apart from the variant.
 - **One `CreateArtifactAsset { kind }`, as in C++.** It accepts fields that do not apply
   to the kind. Decision 6 rejected it.
+
+## Amendment 1 (accepted by the maintainer, 2026-11-16; slice 0055)
+
+Artifact (§12.7), Event (§12.9), Resource (§12.10) and Activity (§12.11) are read and
+written typed in an ArtifactPackage's `artifactElement`, the same way as the kinds above.
+Their Interim entries in the refusal list go.
+
+- **Values held verbatim** (D-DATE):
+  - Artifact's `version`;
+  - the four date-typed values: Artifact and Event `date`, Activity `startTime` and `endTime`.
+
+  Each is read and written as `gid` is: from its attribute or its value element, and written
+  as an attribute.
+- **`location`** is a MultiLangString role of a Resource, read and written as a
+  UtilityElement's `content` is. It is written after `name`. It has no single-language
+  shorthand, and nothing is reported when it is absent: the text gives it no multiplicity,
+  and the model has no such property (D-SEV, spec defect D5).
+- **`occurece`**, the model's spelling of Event's `date`, is the `ModelSpelling` tolerance
+  until SACM23-XMI-009 reads it. A strict read refuses it. A tolerant read keeps it with
+  SACM-XMI-014.
+- **Edits:** each class has one create operation with builder methods (`CreateArtifact`,
+  `CreateResource`, `CreateActivity`, `CreateEvent`), and each attribute has one Set
+  operation, in the pattern of SetGid and SetContent (`SetVersion`, `SetDate`,
+  `SetStartTime`, `SetEndTime`, `SetLocation`).
+- **Comparison:** each attribute has one `Difference` variant.
+
+**Alternatives considered:**
+- **One generic `SetValue { attribute }`, like SetFlag.** Rejected: it reads worse, and
+  each of these attributes belongs to one kind (`date` to two).
+- **Parsed date types.** Rejected under D-DATE: they would lose how a value was written and
+  refuse values the schema accepts.

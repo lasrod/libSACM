@@ -25,7 +25,7 @@ use super::{Mode, WriteAttribute, WriteError};
 use crate::model::{
     AbstractClass, AssertionDeclaration, Attr, DeclaredType, Document, ElementId, ElementKind,
     Event, Flag, Fragment, Item, LangString, OWNERS, Preserved, QName, ReferenceEnd, SacmElement,
-    Text, TextRole,
+    StringAttribute, Text, TextRole,
 };
 use crate::validation;
 
@@ -84,8 +84,7 @@ pub(super) fn write(document: &Document, mode: Mode) -> Result<String, WriteErro
         let preserved = planned.element.preserved();
         let as_elements = push_start_tag(&mut out, depth, planned);
         let name = planned.element.name();
-        let texts =
-            [TextRole::Content, TextRole::Key].map(|role| (role, planned.element.text(role)));
+        let texts = TextRole::ALL.map(|role| (role, planned.element.text(role)));
         let has_texts = texts.iter().any(|(_, text)| text.is_some());
         let has_placed = preserved.is_some_and(|preserved| !preserved.children.is_empty());
         if name.is_some()
@@ -99,7 +98,8 @@ pub(super) fn write(document: &Document, mode: Mode) -> Result<String, WriteErro
                 push_lang_string(&mut out, depth + 1, "name", name, planned.element.name_id());
             }
             // `content` before `key`, superclass first (XMI 2.5.1 Annex
-            // B.5.2).
+            // B.5.2), and a Resource's `location` after its name (ADR 0034
+            // amendment 1).
             for (role, text) in texts {
                 if let Some(text) = text {
                     push_text(&mut out, depth + 1, role, text);
@@ -132,8 +132,8 @@ pub(super) fn write(document: &Document, mode: Mode) -> Result<String, WriteErro
 
 /// Writes the start tag of `planned` at `depth`, up to its `>`: its name,
 /// the document element's namespace declarations at depth 0, its type, id
-/// and gid, its flags, declaration and references, and its preserved
-/// attributes. Returns the ends written in the element form instead
+/// and gid, its flags, declaration and references, its string-valued
+/// attributes, and its preserved attributes. Returns the ends written in the element form instead
 /// ([`ends_as_elements`]).
 fn push_start_tag(out: &mut String, depth: usize, planned: &Planned<'_>) -> Vec<ReferenceEnd> {
     indent(out, depth);
@@ -165,6 +165,18 @@ fn push_start_tag(out: &mut String, depth: usize, planned: &Planned<'_>) -> Vec<
     // attribute twice (ADR 0033).
     let as_elements = ends_as_elements(planned.element);
     push_flags_and_references(out, planned.element, planned.declaration, &as_elements);
+    // Then the kind's string-valued attributes, `version`, `date`,
+    // `startTime` and `endTime`, each exactly as held and escaped (ADR 0034
+    // amendment 1, D-DATE).
+    for attribute in StringAttribute::ALL {
+        if let Some(value) = planned.element.string(attribute) {
+            out.push(' ');
+            out.push_str(attribute.name());
+            out.push_str("=\"");
+            escape_into(out, value);
+            out.push('"');
+        }
+    }
     // Then the preserved attributes, after the bindings they need, in input
     // order (ADR 0033).
     push_preserved_attributes(out, planned.element.preserved());
@@ -450,9 +462,11 @@ fn plan(document: &Document, mode: Mode) -> Result<Vec<Planned<'_>>, WriteError>
 
 /// The first value `element` holds that XML 1.0 cannot represent, as the
 /// attribute that holds it and its first such character, checked in this
-/// order: its id, its gid, its name's `lang` and `content`, then each value
-/// of its `content` and then of its `key`, `lang` before `content`. The ids
-/// of a name, `content`, `key` or `value` are not checked: only
+/// order: its id, its gid, its `version`, `date`, `startTime` and
+/// `endTime`, its name's `lang` and `content`, then each value of its
+/// `content`, then of its `key` and then of its `location`, `lang` before
+/// `content`. The ids of a name, `content`, `key`, `location` or `value`
+/// are not checked: only
 /// [`xmi::read`](crate::xmi::read) gives them, and what it reads is
 /// representable. Nor are the ids a reference holds: they are element ids,
 /// which `xmi::read` or a checked `with_id` gave, or ids `xmi::read` read
@@ -462,6 +476,10 @@ fn unrepresentable(element: SacmElement<'_>) -> Option<(WriteAttribute, char)> {
     let fields = [
         (WriteAttribute::Id, Some(element.id().as_str())),
         (WriteAttribute::Gid, element.gid()),
+        (WriteAttribute::Version, element.version()),
+        (WriteAttribute::Date, element.date()),
+        (WriteAttribute::StartTime, element.start_time()),
+        (WriteAttribute::EndTime, element.end_time()),
         (WriteAttribute::NameLang, name.and_then(LangString::lang)),
         (
             WriteAttribute::NameContent,
@@ -478,6 +496,11 @@ fn unrepresentable(element: SacmElement<'_>) -> Option<(WriteAttribute, char)> {
             TextRole::Key,
             WriteAttribute::KeyValueLang,
             WriteAttribute::KeyValueContent,
+        ),
+        (
+            TextRole::Location,
+            WriteAttribute::LocationValueLang,
+            WriteAttribute::LocationValueContent,
         ),
     ];
     let values = texts.into_iter().flat_map(move |(role, lang, content)| {

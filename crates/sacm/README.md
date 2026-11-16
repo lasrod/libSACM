@@ -26,8 +26,11 @@ Read, edit, validate and write assurance cases in the
   each reasoning's `structure`, each artifact reference's referenced elements
   (`SacmElement::referenced_artifact_elements`) and each group's members
   (`SacmElement::group_members`). In an `ArtifactPackage` it reads `Technique`,
-  `Participant`, `Property` and `ArtifactGroup` elements, with each asset's properties
-  (`SacmElement::properties`) and each group's members. Content that is not SACM 2.3 where it stands, such as
+  `Participant`, `Property`, `ArtifactGroup`, `Artifact`, `Event`, `Resource` and
+  `Activity` elements, with each asset's properties (`SacmElement::properties`), each
+  group's members, an Artifact's `version`, the `date` of an Artifact or an Event, an
+  Activity's `startTime` and `endTime`, each held exactly as written, and a Resource's
+  `location` (`SacmElement::version`, `date`, `start_time`, `end_time`, `location`). Content that is not SACM 2.3 where it stands, such as
   a vendor attribute or element, is kept as written as preserved content, with
   SACM-XMI-003 (`SacmElement::has_preserved_content`). A tolerant read, the default,
   opens every well-formed file with SACM 2.3 package roots: what a strict read refuses,
@@ -38,8 +41,8 @@ Read, edit, validate and write assurance cases in the
 - `sacm::xmi::write` writes a document deterministically, preserved content included.
   A strict save, the default, refuses output that would not be schema-valid and a
   document that holds preserved content; it never validates.
-- `sacm::validation::validate` reports each element that has no name, each `content` or
-  `key` text that is empty or gives one language twice, each tagged value without a key,
+- `sacm::validation::validate` reports each element that has no name, each `content`,
+  `key` or `location` text that is empty or gives one language twice, each tagged value without a key,
   each id that is not an XML `NCName`, each `gid` two elements share, each element with
   more than one description, each `ArgumentPackage` that nests one and also holds
   other argumentation elements, each reference that names no element or an element of the
@@ -51,8 +54,8 @@ Read, edit, validate and write assurance cases in the
 - `sacm::edit::apply` creates AssuranceCasePackages, ArgumentPackages, Claims,
   ArgumentReasonings, ArtifactReferences, ArgumentGroups and the five asserted
   relationships (`sacm::edit::CreateAssertedInference` and the like), ArtifactPackages,
-  Properties, Techniques, Participants and ArtifactGroups
-  (`sacm::edit::CreateArtifactPackage` and the like), and descriptions,
+  Properties, Techniques, Participants, ArtifactGroups, Artifacts, Events, Resources and
+  Activities (`sacm::edit::CreateArtifactPackage` and the like), and descriptions,
   implementation constraints, notes and tagged values on them
   (`sacm::edit::CreateNote`, `sacm::edit::CreateTaggedValue` and the like); a refused
   edit changes nothing, and an edit refuses a reference that names no element or an
@@ -61,7 +64,10 @@ Read, edit, validate and write assurance cases in the
   `sacm::validation::validate`. It also changes existing elements of every kind: their
   names, `gid`s, flags and `assertionDeclaration`s (`sacm::edit::SetName` and the
   like), the `content` and `key` of descriptions, implementation constraints, notes
-  and tagged values (`sacm::edit::SetContent`, `sacm::edit::SetKey`), every reference
+  and tagged values (`sacm::edit::SetContent`, `sacm::edit::SetKey`), an Artifact's
+  `version`, the `date` of an Artifact or an Event, a Resource's `location` and an
+  Activity's `startTime` and `endTime` (`sacm::edit::SetVersion`, `SetDate`,
+  `SetLocation`, `SetStartTime`, `SetEndTime`), every reference
   end, within its bounds (`sacm::edit::SetReferences`, `AddReference`, `RemoveReference`), and the
   order of an element's children or of the roots (`sacm::edit::ReorderElements`).
 - `sacm::compare::semantic_compare` lists every difference in SACM content between two

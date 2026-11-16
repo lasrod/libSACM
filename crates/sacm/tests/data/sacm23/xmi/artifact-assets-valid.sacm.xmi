@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-ART-002, SACM23-ART-004 to -007: the worked example of slice 0055 (ADR 0034 amendment 1). The ArtifactPackage root evidence holds, typed in artifactElement: the Artifact report, with a gid, version="1.2" and date="2024-03-01" as attributes and the Property report_passed in its property role; the Event released, whose date is a dateTime with an offset; the Event reviewed, whose date "spring 2024" is no xsd:date and is held as written (D-DATE); the Resource report_pdf, whose description comes before its location, which has an xmi:id and two values (en, sv); and the Activity testing, whose startTime and endTime are given as value elements. It reads with no diagnostic in either mode, validates without a finding, and writes golden/artifact-assets.golden.sacm.xmi, where location moves directly after name and the times are written as attributes. Hand-written; no third-party content. -->
+<sacm:ArtifactPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="evidence">
+  <name lang="en" content="Brake evidence"/>
+  <artifactElement xmi:type="sacm:Artifact" xmi:id="report" gid="DOC-17" version="1.2" date="2024-03-01">
+    <name lang="en" content="Brake test report"/>
+    <property xmi:id="report_passed">
+      <name lang="en" content="All tests passed"/>
+    </property>
+  </artifactElement>
+  <artifactElement xmi:type="sacm:Event" xmi:id="released" date="2024-03-05T14:00:00+01:00">
+    <name lang="en" content="Report released"/>
+  </artifactElement>
+  <artifactElement xmi:type="sacm:Event" xmi:id="reviewed" date="spring 2024">
+    <name lang="en" content="Report reviewed"/>
+  </artifactElement>
+  <artifactElement xmi:type="sacm:Resource" xmi:id="report_pdf">
+    <name lang="en" content="Report PDF"/>
+    <description xmi:id="report_pdf_d"><content><value lang="en" content="Signed copy"/></content></description>
+    <location xmi:id="report_pdf_location">
+      <value lang="en" content="https://example.org/reports/brake-1.2.pdf"/>
+      <value lang="sv" content="https://example.org/rapporter/brake-1.2.pdf"/>
+    </location>
+  </artifactElement>
+  <artifactElement xmi:type="sacm:Activity" xmi:id="testing">
+    <name lang="en" content="Brake testing"/>
+    <startTime>2024-02-12</startTime>
+    <endTime>2024-02-29T17:30:00Z</endTime>
+  </artifactElement>
+</sacm:ArtifactPackage>

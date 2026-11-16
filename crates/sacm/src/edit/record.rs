@@ -12,7 +12,9 @@ use serde::{Deserialize, Serialize};
 use super::EditError;
 use super::set::{ASSERTION_DECLARATION, GID, NAME};
 use crate::diagnostic::Code;
-use crate::model::{AbstractClass, ElementId, ElementKind, Flag, ReferenceEnd, Revision, TextRole};
+use crate::model::{
+    AbstractClass, ElementId, ElementKind, Flag, ReferenceEnd, Revision, StringAttribute, TextRole,
+};
 
 /// A name as serialized: an end, feature or class name, which reads back to
 /// the crate's static name.
@@ -442,18 +444,14 @@ fn end_name(text: &str) -> Result<&'static str, String> {
 /// The XMI name of the feature `text` names: one an operation edits (ADR
 /// 0029), a flag or a reference end.
 fn feature_name(text: &str) -> Result<&'static str, String> {
-    let features = [
-        NAME,
-        GID,
-        ASSERTION_DECLARATION,
-        TextRole::Content.name(),
-        TextRole::Key.name(),
-    ];
+    let features = [NAME, GID, ASSERTION_DECLARATION];
     known(
         "feature",
         text,
         features
             .into_iter()
+            .chain(TextRole::ALL.into_iter().map(TextRole::name))
+            .chain(StringAttribute::ALL.into_iter().map(StringAttribute::name))
             .chain(Flag::ALL.into_iter().map(Flag::name))
             .chain(ReferenceEnd::ALL.into_iter().map(ReferenceEnd::name)),
     )
@@ -551,6 +549,10 @@ mod tests {
             Operation::CreateTechnique(_) => sampled!(OPERATIONS, "CreateTechnique"),
             Operation::CreateParticipant(_) => sampled!(OPERATIONS, "CreateParticipant"),
             Operation::CreateArtifactGroup(_) => sampled!(OPERATIONS, "CreateArtifactGroup"),
+            Operation::CreateArtifact(_) => sampled!(OPERATIONS, "CreateArtifact"),
+            Operation::CreateEvent(_) => sampled!(OPERATIONS, "CreateEvent"),
+            Operation::CreateResource(_) => sampled!(OPERATIONS, "CreateResource"),
+            Operation::CreateActivity(_) => sampled!(OPERATIONS, "CreateActivity"),
             Operation::SetName(_) => sampled!(OPERATIONS, "SetName"),
             Operation::SetGid(_) => sampled!(OPERATIONS, "SetGid"),
             Operation::SetFlag(_) => sampled!(OPERATIONS, "SetFlag"),
@@ -559,6 +561,11 @@ mod tests {
             }
             Operation::SetContent(_) => sampled!(OPERATIONS, "SetContent"),
             Operation::SetKey(_) => sampled!(OPERATIONS, "SetKey"),
+            Operation::SetVersion(_) => sampled!(OPERATIONS, "SetVersion"),
+            Operation::SetDate(_) => sampled!(OPERATIONS, "SetDate"),
+            Operation::SetLocation(_) => sampled!(OPERATIONS, "SetLocation"),
+            Operation::SetStartTime(_) => sampled!(OPERATIONS, "SetStartTime"),
+            Operation::SetEndTime(_) => sampled!(OPERATIONS, "SetEndTime"),
             Operation::SetReferences(_) => sampled!(OPERATIONS, "SetReferences"),
             Operation::AddReference(_) => sampled!(OPERATIONS, "AddReference"),
             Operation::RemoveReference(_) => sampled!(OPERATIONS, "RemoveReference"),

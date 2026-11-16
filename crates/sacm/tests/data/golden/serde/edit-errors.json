@@ -135,5 +135,40 @@
     "holder": "c3",
     "end": "metaClaim",
     "id": "c4"
+  },
+  {
+    "type": "FeatureNotApplicable",
+    "code": "SACM-CMD-008",
+    "element": "testing",
+    "kind": "Activity",
+    "feature": "date"
+  },
+  {
+    "type": "FeatureNotApplicable",
+    "code": "SACM-CMD-008",
+    "element": "released",
+    "kind": "Event",
+    "feature": "version"
+  },
+  {
+    "type": "FeatureNotApplicable",
+    "code": "SACM-CMD-008",
+    "element": "report",
+    "kind": "Artifact",
+    "feature": "location"
+  },
+  {
+    "type": "FeatureNotApplicable",
+    "code": "SACM-CMD-008",
+    "element": "report",
+    "kind": "Artifact",
+    "feature": "startTime"
+  },
+  {
+    "type": "FeatureNotApplicable",
+    "code": "SACM-CMD-008",
+    "element": "report",
+    "kind": "Artifact",
+    "feature": "endTime"
   }
 ]

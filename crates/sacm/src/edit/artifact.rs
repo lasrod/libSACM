@@ -1,18 +1,22 @@
 //! The create operations of the Artifact package: `ArtifactPackage`,
-//! `Property`, `Technique`, `Participant` and `ArtifactGroup`
-//! (SACM23-ART-001, SACM23-ART-003, SACM23-ART-008, SACM23-ART-009,
-//! SACM23-ART-011; LIB-EDIT-001, ADR 0019, ADR 0028, ADR 0034).
+//! `Property`, `Technique`, `Participant`, `ArtifactGroup`, `Artifact`,
+//! `Event`, `Resource` and `Activity` (SACM23-ART-001, SACM23-ART-003,
+//! SACM23-ART-004 to SACM23-ART-009, SACM23-ART-011; LIB-EDIT-001, ADR 0019,
+//! ADR 0028, ADR 0034 and its amendment 1).
 //!
 //! There is one create per class (ADR 0034). Each runs ADR 0019's four
 //! checks through the containment table, so a parent is legal exactly when a
 //! composite role of its class admits the new kind; the group's members then
-//! get ADR 0028's reference checks.
+//! get ADR 0028's reference checks. The values of an Artifact, an Event, a
+//! Resource and an Activity are held as given and never refused (D-DATE).
 
 use super::EditError;
 use super::argumentation::plan_referencing;
 use super::create::plan_create;
 use super::plan::{Features, Plan};
-use crate::model::{Document, ElementId, ElementKind, LangString, ReferenceEnd};
+use crate::model::{
+    Document, ElementId, ElementKind, LangString, MultiLangString, ReferenceEnd, StringAttribute,
+};
 
 /// Creates an `ArtifactPackage` (SACM 2.3 §12.2): a root, or a child of an
 /// element whose class can hold one, an `AssuranceCasePackage` (its
@@ -455,6 +459,593 @@ impl CreateArtifactGroup {
             &[],
             &[(ReferenceEnd::ArtifactGroupMember, &self.group_members)],
         )
+    }
+}
+
+/// Creates an `Artifact` (SACM 2.3 §12.7) as the last child of an element
+/// whose class can hold one: an `ArtifactPackage`. An Artifact is never a
+/// root.
+///
+/// An Artifact "represents the distinguishable units of data used in a
+/// structured assurance case" (§12.7), such as a test report, a model or a
+/// review record. It is an `ArtifactAsset`, so it can hold
+/// [`properties`](crate::model::SacmElement::properties), and it has a
+/// `version` (`version: String[0..1]`) and a `date` (`date: date[0..1]`,
+/// "the date on which the artifact was created"), given with
+/// [`with_version`](Self::with_version) and [`with_date`](Self::with_date)
+/// and held exactly as given (D-DATE). Apply it with
+/// [`edit::apply`](super::apply); it runs [ADR 0019]'s four checks and
+/// nothing else. Without [`with_id`](Self::with_id), the id is generated:
+/// `artifact_<n>`.
+///
+/// [ADR 0019]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0019-edit-operations.md
+///
+/// # Examples
+///
+/// ```
+/// use sacm::edit::{self, CreateArtifact, CreateArtifactPackage, CreateEvent, CreateResource, SetDate};
+/// use sacm::model::{Document, LangString};
+/// use sacm::xmi::{self, WriteOptions};
+///
+/// let en = |text: &str| LangString::new(text).with_lang("en");
+/// let mut doc = Document::new();
+/// edit::apply(&mut doc, CreateArtifactPackage::root(en("Brake evidence")).with_id("evidence"))?;
+/// edit::apply(&mut doc, CreateArtifact::new("evidence", en("Brake test report"))
+///     .with_id("report").with_version("1.2").with_date("2024-03-01"))?;
+/// edit::apply(&mut doc, CreateResource::new("evidence", en("Report PDF"))
+///     .with_location(en("https://example.org/brake-1.2.pdf")))?;
+/// edit::apply(&mut doc, CreateEvent::new("evidence", en("Report released")).with_id("released"))?;
+/// edit::apply(&mut doc, SetDate::new("released", "2024-03-05"))?;
+///
+/// let report = doc.get("report").expect("just created");
+/// assert_eq!((report.version(), report.date()), (Some("1.2"), Some("2024-03-01")));
+/// let xml = xmi::write(&doc, &WriteOptions::default())?;
+/// assert!(xml.contains(r#"xmi:id="report" version="1.2" date="2024-03-01""#));
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
+pub struct CreateArtifact {
+    parent: ElementId,
+    #[cfg_attr(feature = "serde", serde(default))]
+    id: Option<ElementId>,
+    name: LangString,
+    #[cfg_attr(feature = "serde", serde(default))]
+    version: Option<String>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    date: Option<String>,
+}
+
+impl CreateArtifact {
+    /// Creates an `Artifact` named `name` as the last child of `parent`,
+    /// with no version and no date.
+    #[must_use]
+    pub fn new(parent: impl Into<ElementId>, name: LangString) -> Self {
+        Self {
+            parent: parent.into(),
+            id: None,
+            name,
+            version: None,
+            date: None,
+        }
+    }
+
+    /// Gives the new element the id `id` instead of a generated one. It must
+    /// be an XML `NCName` and not already in the document. Otherwise
+    /// [`apply`](super::apply) refuses with
+    /// [`EditError::InvalidId`](super::EditError::InvalidId) or
+    /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
+    #[must_use]
+    pub fn with_id(self, id: impl Into<ElementId>) -> Self {
+        Self {
+            id: Some(id.into()),
+            ..self
+        }
+    }
+
+    /// Gives the new Artifact the `version` `version`, exactly as given,
+    /// replacing any given before.
+    #[doc(alias = "version")]
+    #[must_use]
+    pub fn with_version(self, version: impl Into<String>) -> Self {
+        Self {
+            version: Some(version.into()),
+            ..self
+        }
+    }
+
+    /// Gives the new Artifact the `date` `date`, exactly as given, replacing
+    /// any given before: SACM 2.3 gives `date` no lexical form (D-DATE).
+    #[must_use]
+    pub fn with_date(self, date: impl Into<String>) -> Self {
+        Self {
+            date: Some(date.into()),
+            ..self
+        }
+    }
+
+    /// The parent's id.
+    #[must_use]
+    pub fn parent(&self) -> &ElementId {
+        &self.parent
+    }
+
+    /// The id given with [`with_id`](Self::with_id), or `None` when the id
+    /// is to be generated.
+    #[must_use]
+    pub fn id(&self) -> Option<&ElementId> {
+        self.id.as_ref()
+    }
+
+    /// The new element's name.
+    #[must_use]
+    pub fn name(&self) -> &LangString {
+        &self.name
+    }
+
+    /// The version given with [`with_version`](Self::with_version), or
+    /// `None`.
+    #[must_use]
+    pub fn version(&self) -> Option<&str> {
+        self.version.as_deref()
+    }
+
+    /// The date given with [`with_date`](Self::with_date), or `None`.
+    #[must_use]
+    pub fn date(&self) -> Option<&str> {
+        self.date.as_deref()
+    }
+
+    /// Runs every check of the operation, and returns what it creates.
+    pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
+        plan_create(
+            document,
+            ElementKind::Artifact,
+            Some(&self.parent),
+            self.id.as_ref(),
+            Features::Asset {
+                name: &self.name,
+                strings: vec![
+                    (StringAttribute::Version, self.version.as_deref()),
+                    (StringAttribute::Date, self.date.as_deref()),
+                ],
+                location: None,
+            },
+        )
+    }
+}
+
+/// Creates an `Event` (SACM 2.3 §12.9) as the last child of an element whose
+/// class can hold one: an `ArtifactPackage`. An Event is never a root.
+///
+/// An Event "enables the specification of the events in the lifecycle of an
+/// Artifact" (§12.9), such as a release or a review. It is an
+/// `ArtifactAsset`, so it can hold
+/// [`properties`](crate::model::SacmElement::properties), and it has a
+/// `date` (`date: date[0..1]`, "the date on which the Event occurred"),
+/// given with [`with_date`](Self::with_date) and held exactly as given
+/// (D-DATE). Apply it with [`edit::apply`](super::apply). Without
+/// [`with_id`](Self::with_id), the id is generated: `event_<n>`.
+///
+/// # Examples
+///
+/// ```
+/// use sacm::edit::{self, CreateArtifactPackage, CreateEvent};
+/// use sacm::model::{Document, ElementKind, LangString};
+///
+/// let mut doc = Document::new();
+/// let en = |text: &str| LangString::new(text).with_lang("en");
+/// edit::apply(&mut doc, CreateArtifactPackage::root(en("Evidence")).with_id("evidence"))?;
+/// let released = CreateEvent::new("evidence", en("Report released")).with_date("2024-03-05");
+/// let created = edit::apply(&mut doc, released)?;
+///
+/// let event = doc.get(&created.created_ids()[0]).expect("just created");
+/// assert_eq!((event.id().as_str(), event.kind()), ("event_1", ElementKind::Event));
+/// assert_eq!(event.date(), Some("2024-03-05"));
+/// # Ok::<(), sacm::edit::EditError>(())
+/// ```
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
+pub struct CreateEvent {
+    parent: ElementId,
+    #[cfg_attr(feature = "serde", serde(default))]
+    id: Option<ElementId>,
+    name: LangString,
+    #[cfg_attr(feature = "serde", serde(default))]
+    date: Option<String>,
+}
+
+impl CreateEvent {
+    /// Creates an `Event` named `name` as the last child of `parent`, with
+    /// no date.
+    #[must_use]
+    pub fn new(parent: impl Into<ElementId>, name: LangString) -> Self {
+        Self {
+            parent: parent.into(),
+            id: None,
+            name,
+            date: None,
+        }
+    }
+
+    /// Gives the new element the id `id` instead of a generated one. It must
+    /// be an XML `NCName` and not already in the document. Otherwise
+    /// [`apply`](super::apply) refuses with
+    /// [`EditError::InvalidId`](super::EditError::InvalidId) or
+    /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
+    #[must_use]
+    pub fn with_id(self, id: impl Into<ElementId>) -> Self {
+        Self {
+            id: Some(id.into()),
+            ..self
+        }
+    }
+
+    /// Gives the new Event the `date` `date`, exactly as given, replacing
+    /// any given before: SACM 2.3 gives `date` no lexical form (D-DATE).
+    #[must_use]
+    pub fn with_date(self, date: impl Into<String>) -> Self {
+        Self {
+            date: Some(date.into()),
+            ..self
+        }
+    }
+
+    /// The parent's id.
+    #[must_use]
+    pub fn parent(&self) -> &ElementId {
+        &self.parent
+    }
+
+    /// The id given with [`with_id`](Self::with_id), or `None` when the id
+    /// is to be generated.
+    #[must_use]
+    pub fn id(&self) -> Option<&ElementId> {
+        self.id.as_ref()
+    }
+
+    /// The new element's name.
+    #[must_use]
+    pub fn name(&self) -> &LangString {
+        &self.name
+    }
+
+    /// The date given with [`with_date`](Self::with_date), or `None`.
+    #[must_use]
+    pub fn date(&self) -> Option<&str> {
+        self.date.as_deref()
+    }
+
+    /// Runs every check of the operation, and returns what it creates.
+    pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
+        plan_create(
+            document,
+            ElementKind::Event,
+            Some(&self.parent),
+            self.id.as_ref(),
+            Features::Asset {
+                name: &self.name,
+                strings: vec![(StringAttribute::Date, self.date.as_deref())],
+                location: None,
+            },
+        )
+    }
+}
+
+/// Creates a `Resource` (SACM 2.3 §12.10) as the last child of an element
+/// whose class can hold one: an `ArtifactPackage`. A Resource is never a
+/// root.
+///
+/// A Resource "corresponds to the tangible objects representing an
+/// Artifact" (§12.10), such as a file or a printed copy. It is an
+/// `ArtifactAsset`, so it can hold
+/// [`properties`](crate::model::SacmElement::properties), and it has a
+/// `location` (`location:Base::MultiLangString`, "the path or URL
+/// specifying the location of the Resource, can be in multiple languages"),
+/// given with [`with_location`](Self::with_location) and held exactly as
+/// given. Apply it with [`edit::apply`](super::apply). Without
+/// [`with_id`](Self::with_id), the id is generated: `resource_<n>`.
+///
+/// # Examples
+///
+/// ```
+/// use sacm::edit::{self, CreateArtifactPackage, CreateResource};
+/// use sacm::model::{Document, LangString, MultiLangString};
+///
+/// let mut doc = Document::new();
+/// let en = |text: &str| LangString::new(text).with_lang("en");
+/// edit::apply(&mut doc, CreateArtifactPackage::root(en("Evidence")).with_id("evidence"))?;
+/// let pdf = CreateResource::new("evidence", en("Report PDF"))
+///     .with_location(en("https://example.org/brake-1.2.pdf"));
+/// let created = edit::apply(&mut doc, pdf)?;
+///
+/// let resource = doc.get(&created.created_ids()[0]).expect("just created");
+/// assert_eq!(resource.id().as_str(), "resource_1");
+/// let location = MultiLangString::from(en("https://example.org/brake-1.2.pdf"));
+/// assert_eq!(resource.location(), Some(&location));
+/// # Ok::<(), sacm::edit::EditError>(())
+/// ```
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
+pub struct CreateResource {
+    parent: ElementId,
+    #[cfg_attr(feature = "serde", serde(default))]
+    id: Option<ElementId>,
+    name: LangString,
+    #[cfg_attr(feature = "serde", serde(default))]
+    location: Option<MultiLangString>,
+}
+
+impl CreateResource {
+    /// Creates a `Resource` named `name` as the last child of `parent`, with
+    /// no location.
+    #[must_use]
+    pub fn new(parent: impl Into<ElementId>, name: LangString) -> Self {
+        Self {
+            parent: parent.into(),
+            id: None,
+            name,
+            location: None,
+        }
+    }
+
+    /// Gives the new element the id `id` instead of a generated one. It must
+    /// be an XML `NCName` and not already in the document. Otherwise
+    /// [`apply`](super::apply) refuses with
+    /// [`EditError::InvalidId`](super::EditError::InvalidId) or
+    /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
+    #[must_use]
+    pub fn with_id(self, id: impl Into<ElementId>) -> Self {
+        Self {
+            id: Some(id.into()),
+            ..self
+        }
+    }
+
+    /// Gives the new Resource the `location` `location`, held exactly,
+    /// replacing any given before. A [`LangString`] converts into a location
+    /// of one value. An empty one, or one with a repeated language, is
+    /// accepted, and [`validation::validate`](crate::validation::validate)
+    /// reports it (SACM23-VAL-010).
+    #[must_use]
+    pub fn with_location(self, location: impl Into<MultiLangString>) -> Self {
+        Self {
+            location: Some(location.into()),
+            ..self
+        }
+    }
+
+    /// The parent's id.
+    #[must_use]
+    pub fn parent(&self) -> &ElementId {
+        &self.parent
+    }
+
+    /// The id given with [`with_id`](Self::with_id), or `None` when the id
+    /// is to be generated.
+    #[must_use]
+    pub fn id(&self) -> Option<&ElementId> {
+        self.id.as_ref()
+    }
+
+    /// The new element's name.
+    #[must_use]
+    pub fn name(&self) -> &LangString {
+        &self.name
+    }
+
+    /// The location given with [`with_location`](Self::with_location), or
+    /// `None`.
+    #[must_use]
+    pub fn location(&self) -> Option<&MultiLangString> {
+        self.location.as_ref()
+    }
+
+    /// Runs every check of the operation, and returns what it creates.
+    pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
+        plan_create(
+            document,
+            ElementKind::Resource,
+            Some(&self.parent),
+            self.id.as_ref(),
+            Features::Asset {
+                name: &self.name,
+                strings: Vec::new(),
+                location: self.location.as_ref(),
+            },
+        )
+    }
+}
+
+/// Creates an `Activity` (SACM 2.3 §12.11) as the last child of an element
+/// whose class can hold one: an `ArtifactPackage`. An Activity is never a
+/// root.
+///
+/// An Activity "represents units of work related to the management of
+/// `ArtifactAssets`" (§12.11), such as a test campaign or a review. It is an
+/// `ArtifactAsset`, so it can hold
+/// [`properties`](crate::model::SacmElement::properties), and it has a
+/// `startTime` and an `endTime` (`date[0..1]`, "time when the activity
+/// started" and "ended"), given with
+/// [`with_start_time`](Self::with_start_time) and
+/// [`with_end_time`](Self::with_end_time) and held exactly as given
+/// (D-DATE); SACM 2.3 states no order between them, so none is checked.
+/// Apply it with [`edit::apply`](super::apply). Without
+/// [`with_id`](Self::with_id), the id is generated: `activity_<n>`.
+///
+/// # Examples
+///
+/// ```
+/// use sacm::edit::{self, CreateActivity, CreateArtifactPackage};
+/// use sacm::model::{Document, LangString};
+///
+/// let mut doc = Document::new();
+/// let en = |text: &str| LangString::new(text).with_lang("en");
+/// edit::apply(&mut doc, CreateArtifactPackage::root(en("Evidence")).with_id("evidence"))?;
+/// let testing = CreateActivity::new("evidence", en("Brake testing"))
+///     .with_id("testing")
+///     .with_start_time("2024-02-12")
+///     .with_end_time("2024-02-29T17:30:00Z");
+/// edit::apply(&mut doc, testing)?;
+///
+/// let testing = doc.get("testing").expect("just created");
+/// assert_eq!(testing.start_time(), Some("2024-02-12"));
+/// assert_eq!(testing.end_time(), Some("2024-02-29T17:30:00Z"));
+/// # Ok::<(), sacm::edit::EditError>(())
+/// ```
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
+pub struct CreateActivity {
+    parent: ElementId,
+    #[cfg_attr(feature = "serde", serde(default))]
+    id: Option<ElementId>,
+    name: LangString,
+    #[cfg_attr(feature = "serde", serde(default))]
+    start_time: Option<String>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    end_time: Option<String>,
+}
+
+impl CreateActivity {
+    /// Creates an `Activity` named `name` as the last child of `parent`,
+    /// with no start or end time.
+    #[must_use]
+    pub fn new(parent: impl Into<ElementId>, name: LangString) -> Self {
+        Self {
+            parent: parent.into(),
+            id: None,
+            name,
+            start_time: None,
+            end_time: None,
+        }
+    }
+
+    /// Gives the new element the id `id` instead of a generated one. It must
+    /// be an XML `NCName` and not already in the document. Otherwise
+    /// [`apply`](super::apply) refuses with
+    /// [`EditError::InvalidId`](super::EditError::InvalidId) or
+    /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
+    #[must_use]
+    pub fn with_id(self, id: impl Into<ElementId>) -> Self {
+        Self {
+            id: Some(id.into()),
+            ..self
+        }
+    }
+
+    /// Gives the new Activity the `startTime` `start_time`, exactly as
+    /// given, replacing any given before (D-DATE).
+    #[doc(alias = "startTime")]
+    #[must_use]
+    pub fn with_start_time(self, start_time: impl Into<String>) -> Self {
+        Self {
+            start_time: Some(start_time.into()),
+            ..self
+        }
+    }
+
+    /// Gives the new Activity the `endTime` `end_time`, exactly as given,
+    /// replacing any given before (D-DATE).
+    #[doc(alias = "endTime")]
+    #[must_use]
+    pub fn with_end_time(self, end_time: impl Into<String>) -> Self {
+        Self {
+            end_time: Some(end_time.into()),
+            ..self
+        }
+    }
+
+    /// The parent's id.
+    #[must_use]
+    pub fn parent(&self) -> &ElementId {
+        &self.parent
+    }
+
+    /// The id given with [`with_id`](Self::with_id), or `None` when the id
+    /// is to be generated.
+    #[must_use]
+    pub fn id(&self) -> Option<&ElementId> {
+        self.id.as_ref()
+    }
+
+    /// The new element's name.
+    #[must_use]
+    pub fn name(&self) -> &LangString {
+        &self.name
+    }
+
+    /// The start time given with [`with_start_time`](Self::with_start_time),
+    /// or `None`.
+    #[doc(alias = "startTime")]
+    #[must_use]
+    pub fn start_time(&self) -> Option<&str> {
+        self.start_time.as_deref()
+    }
+
+    /// The end time given with [`with_end_time`](Self::with_end_time), or
+    /// `None`.
+    #[doc(alias = "endTime")]
+    #[must_use]
+    pub fn end_time(&self) -> Option<&str> {
+        self.end_time.as_deref()
+    }
+
+    /// Runs every check of the operation, and returns what it creates.
+    pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
+        plan_create(
+            document,
+            ElementKind::Activity,
+            Some(&self.parent),
+            self.id.as_ref(),
+            Features::Asset {
+                name: &self.name,
+                strings: vec![
+                    (StringAttribute::StartTime, self.start_time.as_deref()),
+                    (StringAttribute::EndTime, self.end_time.as_deref()),
+                ],
+                location: None,
+            },
+        )
+    }
+}
+
+impl From<CreateArtifact> for super::Operation {
+    fn from(operation: CreateArtifact) -> Self {
+        Self::CreateArtifact(operation)
+    }
+}
+
+impl From<CreateEvent> for super::Operation {
+    fn from(operation: CreateEvent) -> Self {
+        Self::CreateEvent(operation)
+    }
+}
+
+impl From<CreateResource> for super::Operation {
+    fn from(operation: CreateResource) -> Self {
+        Self::CreateResource(operation)
+    }
+}
+
+impl From<CreateActivity> for super::Operation {
+    fn from(operation: CreateActivity) -> Self {
+        Self::CreateActivity(operation)
     }
 }
 

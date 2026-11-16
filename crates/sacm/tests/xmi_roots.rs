@@ -1213,7 +1213,8 @@ fn sacm23_xmi_001_unread_content_of_a_root_is_unsupported_or_preserved_at_that_c
     let artifact_package = "<artifactPackage xmi:id=\"x\"/>";
     let terminology_package = "<terminologyPackage xmi:id=\"x\"/>";
     let interface = "<argumentElement xsi:type=\"sacm:ArgumentPackageInterface\" xmi:id=\"x\"/>";
-    let artifact = "<artifactElement xmi:type=\"sacm:Artifact\" xmi:id=\"x\"/>";
+    let relationship =
+        "<artifactElement xmi:type=\"sacm:ArtifactAssetRelationship\" xmi:id=\"x\"/>";
     for (kind, conforming_unread, not_conforming) in [
         // The interface is an ArgumentPackage's conforming child (SACM23-ARG-014);
         // `artifactPackage` is a role an ArgumentPackage lacks.
@@ -1221,9 +1222,9 @@ fn sacm23_xmi_001_unread_content_of_a_root_is_unsupported_or_preserved_at_that_c
         // A TerminologyPackage is an AssuranceCasePackage's conforming child
         // (SACM23-TERM-001); `argumentElement` is a role it lacks.
         ("AssuranceCasePackage", terminology_package, interface),
-        // An Artifact is an ArtifactPackage's conforming child (SACM23-ART-004);
-        // `argumentElement` is a role it lacks.
-        ("ArtifactPackage", artifact, interface),
+        // An ArtifactAssetRelationship is an ArtifactPackage's conforming child
+        // (SACM23-ART-010); `argumentElement` is a role it lacks.
+        ("ArtifactPackage", relationship, interface),
     ] {
         // Conforming content this version does not read yet: refused at it.
         for child in [conforming_unread, "<xmi:Extension/>"] {

@@ -15,7 +15,7 @@ use super::DanglingReference;
 use super::set::ASSERTION_DECLARATION;
 use crate::model::{
     AssertionDeclaration, Document, ElementId, ElementKind, Flag, LangString, MultiLangString,
-    ReferenceEnd, Text, TextRole,
+    ReferenceEnd, StringAttribute, Text, TextRole,
 };
 
 /// The ids a change creates, changes and deletes, in the order a
@@ -184,6 +184,19 @@ impl NewElement<'_> {
                     .collect();
                 document.insert_with_references(parent, kind, id, Some(name.clone()), &flags, held)
             }
+            Features::Asset {
+                name,
+                strings,
+                location,
+            } => {
+                let strings = strings
+                    .into_iter()
+                    .filter_map(|(attribute, value)| {
+                        value.map(|value| (attribute, value.to_owned()))
+                    })
+                    .collect();
+                document.insert_asset(parent, kind, id, name.clone(), strings, location.cloned())
+            }
         };
         inserted.expect(
             "invariant: the plan found the parent, whose class holds the kind, or made a root of a \
@@ -219,6 +232,17 @@ pub(super) enum Features<'o> {
         /// bounds; an end with none holds nothing.
         references: Vec<(ReferenceEnd, &'o [ElementId])>,
     },
+    /// The name, string-valued attributes and `location` of an
+    /// `ArtifactAsset` kind (ADR 0034 amendment 1).
+    Asset {
+        /// The name.
+        name: &'o LangString,
+        /// Each attribute, one the kind holds, each once, with its value
+        /// held exactly, or `None` when it is not given.
+        strings: Vec<(StringAttribute, Option<&'o str>)>,
+        /// The `location`, given only for a `Resource`.
+        location: Option<&'o MultiLangString>,
+    },
 }
 
 /// The new value of one feature of an element, once the operation's checks
@@ -229,6 +253,9 @@ pub(super) enum Value<'o> {
     Name(&'o LangString),
     /// The gid, or `None` to remove it.
     Gid(Option<&'o str>),
+    /// A string-valued attribute the element's kind holds, or `None` to
+    /// remove it.
+    String(StringAttribute, Option<&'o str>),
     /// A flag the element's kind has.
     Flag(Flag, bool),
     /// The `assertionDeclaration` of an Assertion.
@@ -248,6 +275,9 @@ impl Value<'_> {
             Self::Gid(gid) => document
                 .set_gid(element, gid.map(str::to_owned))
                 .expect("invariant: the plan found the element"),
+            Self::String(attribute, value) => document
+                .set_string(element, attribute, value.map(str::to_owned))
+                .expect("invariant: the plan found the element, and its kind holds the attribute"),
             Self::Flag(flag, value) => {
                 document
                     .set_flag(element, flag, value)

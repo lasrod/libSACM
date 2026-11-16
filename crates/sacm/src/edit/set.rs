@@ -1,12 +1,14 @@
 //! The operations that set a feature of an existing element: its name, gid,
-//! flags, `assertionDeclaration`, and a `UtilityElement`'s `content` and
-//! `key` (LIB-EDIT-008, LIB-EDIT-012, ADR 0029).
+//! flags, `assertionDeclaration`, a `UtilityElement`'s `content` and `key`
+//! (LIB-EDIT-008, LIB-EDIT-012, ADR 0029), and an `ArtifactAsset`'s
+//! `version`, `date`, `location`, `startTime` and `endTime` (SACM23-ART-002,
+//! SACM23-ART-004, SACM23-ART-005; ADR 0034 amendment 1).
 
 use super::EditError;
 use super::plan::{Plan, Value};
 use crate::model::{
     AbstractClass, AssertionDeclaration, Document, ElementId, ElementKind, Flag, LangString,
-    MultiLangString, SacmElement, Text, TextRole,
+    MultiLangString, SacmElement, StringAttribute, Text, TextRole,
 };
 
 /// The XMI name of the `name` feature, as [`EditError::FeatureNotApplicable`]
@@ -502,6 +504,337 @@ impl SetKey {
     pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
         plan_text(document, &self.element, TextRole::Key, Some(&self.key))
     }
+}
+
+/// Defines the operation that sets or removes one string-valued attribute
+/// of an `ArtifactAsset` kind (D-DATE; ADR 0034 amendment 1): the struct
+/// `$name`, holding the value in `$field`, its methods, and its conversion
+/// into an [`Operation`](super::Operation).
+macro_rules! string_set {
+    (
+        $(#[$meta:meta])*
+        $name:ident, $field:ident, $attribute:ident, $what:literal
+    ) => {
+        $(#[$meta])*
+        #[derive(Clone, Debug, PartialEq, Eq)]
+        #[cfg_attr(
+            feature = "serde",
+            derive(serde::Serialize, serde::Deserialize),
+            serde(deny_unknown_fields)
+        )]
+        pub struct $name {
+            element: ElementId,
+            #[cfg_attr(
+                feature = "serde",
+                serde(deserialize_with = "serde::Deserialize::deserialize")
+            )]
+            $field: Option<String>,
+        }
+
+        impl $name {
+            #[doc = concat!(
+                "Sets the `", $what, "` of `element` to `", stringify!($field),
+                "`, exactly as given."
+            )]
+            #[must_use]
+            pub fn new(element: impl Into<ElementId>, $field: impl Into<String>) -> Self {
+                Self {
+                    element: element.into(),
+                    $field: Some($field.into()),
+                }
+            }
+
+            #[doc = concat!("Removes the `", $what, "` of `element`.")]
+            #[must_use]
+            pub fn remove(element: impl Into<ElementId>) -> Self {
+                Self {
+                    element: element.into(),
+                    $field: None,
+                }
+            }
+
+            /// The id of the element to edit.
+            #[must_use]
+            pub fn element(&self) -> &ElementId {
+                &self.element
+            }
+
+            #[doc = concat!("The `", $what, "` to set, or `None` to remove it.")]
+            #[must_use]
+            pub fn $field(&self) -> Option<&str> {
+                self.$field.as_deref()
+            }
+
+            /// Runs every check of the operation, and returns what it
+            /// changes.
+            pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
+                plan_string(
+                    document,
+                    &self.element,
+                    StringAttribute::$attribute,
+                    self.$field.as_deref(),
+                )
+            }
+        }
+
+        impl From<$name> for super::Operation {
+            fn from(operation: $name) -> Self {
+                Self::$name(operation)
+            }
+        }
+    };
+}
+
+string_set! {
+    /// Sets or removes the `version` (SACM 2.3 §12.7 `version: String[0..1]`,
+    /// "the version of the artifact") of an `Artifact`.
+    ///
+    /// [`new`](Self::new) sets it exactly as given: `""` is a value, not a
+    /// removal, and nothing is trimmed. [`remove`](Self::remove) removes it.
+    /// A version holding a character XML cannot represent is held, and
+    /// [`xmi::write`](crate::xmi::write) refuses it
+    /// ([`WriteAttribute::Version`](crate::xmi::WriteAttribute::Version)).
+    /// Apply it with [`edit::apply`](super::apply). It refuses an unknown
+    /// element as [`EditError::ElementNotFound`], then a kind that is no
+    /// `Artifact` as [`EditError::FeatureNotApplicable`], naming `version`.
+    /// The element is in [`changed_ids`](super::Mutation::changed_ids) when
+    /// its version changes.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArtifact, CreateArtifactPackage, SetVersion};
+    /// use sacm::model::{Document, ElementId, LangString};
+    ///
+    /// let mut doc = Document::new();
+    /// let en = |text: &str| LangString::new(text).with_lang("en");
+    /// edit::apply(&mut doc, CreateArtifactPackage::root(en("Evidence")).with_id("evidence"))?;
+    /// let report = CreateArtifact::new("evidence", en("Brake test report")).with_id("report");
+    /// edit::apply(&mut doc, report.with_version("1.2"))?;
+    ///
+    /// let set = edit::apply(&mut doc, SetVersion::new("report", "1.3"))?;
+    /// assert_eq!(set.changed_ids(), [ElementId::from("report")]);
+    /// assert_eq!(doc.get("report").and_then(|report| report.version()), Some("1.3"));
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    SetVersion, version, Version, "version"
+}
+
+string_set! {
+    /// Sets or removes the `date` of an `Artifact` (SACM 2.3 §12.7, "the
+    /// date on which the artifact was created") or an `Event` (§12.9, "the
+    /// date on which the Event occurred").
+    ///
+    /// SACM 2.3 gives `date` no lexical form, and its XML Schema types it
+    /// `xsd:string`, so [`new`](Self::new) holds any string exactly as given,
+    /// `2024-03-01`, `spring 2024` and `""` alike, and nothing ever reports
+    /// one (D-DATE). [`remove`](Self::remove) removes it. A date holding a
+    /// character XML cannot represent is held, and
+    /// [`xmi::write`](crate::xmi::write) refuses it
+    /// ([`WriteAttribute::Date`](crate::xmi::WriteAttribute::Date)). Apply it
+    /// with [`edit::apply`](super::apply). It refuses an unknown element as
+    /// [`EditError::ElementNotFound`], then a kind that is neither an
+    /// `Artifact` nor an `Event` as [`EditError::FeatureNotApplicable`],
+    /// naming `date`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArtifactPackage, CreateEvent, SetDate};
+    /// use sacm::model::{Document, LangString};
+    ///
+    /// let mut doc = Document::new();
+    /// let en = |text: &str| LangString::new(text).with_lang("en");
+    /// edit::apply(&mut doc, CreateArtifactPackage::root(en("Evidence")).with_id("evidence"))?;
+    /// edit::apply(&mut doc, CreateEvent::new("evidence", en("Report released")).with_id("released"))?;
+    ///
+    /// edit::apply(&mut doc, SetDate::new("released", "2024-03-05T14:00:00+01:00"))?;
+    /// let date = doc.get("released").and_then(|event| event.date());
+    /// assert_eq!(date, Some("2024-03-05T14:00:00+01:00"));
+    /// edit::apply(&mut doc, SetDate::remove("released"))?;
+    /// assert_eq!(doc.get("released").and_then(|event| event.date()), None);
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    SetDate, date, Date, "date"
+}
+
+string_set! {
+    /// Sets or removes the `startTime` (SACM 2.3 §12.11, "time when the
+    /// activity started") of an `Activity`.
+    ///
+    /// The value is held exactly as given, as [`SetDate`]'s is (D-DATE), and
+    /// nothing checks it against the `endTime`: SACM 2.3 states no order.
+    /// Apply it with [`edit::apply`](super::apply). It refuses an unknown
+    /// element as [`EditError::ElementNotFound`], then a kind that is no
+    /// `Activity` as [`EditError::FeatureNotApplicable`], naming `startTime`;
+    /// [`xmi::write`](crate::xmi::write) refuses a character XML cannot
+    /// represent
+    /// ([`WriteAttribute::StartTime`](crate::xmi::WriteAttribute::StartTime)).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateActivity, CreateArtifactPackage, SetStartTime};
+    /// use sacm::model::{Document, LangString};
+    ///
+    /// let mut doc = Document::new();
+    /// let en = |text: &str| LangString::new(text).with_lang("en");
+    /// edit::apply(&mut doc, CreateArtifactPackage::root(en("Evidence")).with_id("evidence"))?;
+    /// edit::apply(&mut doc, CreateActivity::new("evidence", en("Brake testing")).with_id("testing"))?;
+    /// edit::apply(&mut doc, SetStartTime::new("testing", "2024-02-12"))?;
+    /// assert_eq!(doc.get("testing").and_then(|testing| testing.start_time()), Some("2024-02-12"));
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    SetStartTime, start_time, StartTime, "startTime"
+}
+
+string_set! {
+    /// Sets or removes the `endTime` (SACM 2.3 §12.11, "time when the
+    /// activity ended") of an `Activity`.
+    ///
+    /// The value is held exactly as given, as [`SetDate`]'s is (D-DATE), and
+    /// nothing checks it against the `startTime`: SACM 2.3 states no order.
+    /// Apply it with [`edit::apply`](super::apply). It refuses an unknown
+    /// element as [`EditError::ElementNotFound`], then a kind that is no
+    /// `Activity` as [`EditError::FeatureNotApplicable`], naming `endTime`;
+    /// [`xmi::write`](crate::xmi::write) refuses a character XML cannot
+    /// represent
+    /// ([`WriteAttribute::EndTime`](crate::xmi::WriteAttribute::EndTime)).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateActivity, CreateArtifactPackage, SetEndTime};
+    /// use sacm::model::{Document, LangString};
+    ///
+    /// let mut doc = Document::new();
+    /// let en = |text: &str| LangString::new(text).with_lang("en");
+    /// edit::apply(&mut doc, CreateArtifactPackage::root(en("Evidence")).with_id("evidence"))?;
+    /// let testing = CreateActivity::new("evidence", en("Brake testing")).with_id("testing");
+    /// edit::apply(&mut doc, testing.with_end_time("2024-02-29T17:30:00Z"))?;
+    /// edit::apply(&mut doc, SetEndTime::remove("testing"))?;
+    /// assert_eq!(doc.get("testing").and_then(|testing| testing.end_time()), None);
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    SetEndTime, end_time, EndTime, "endTime"
+}
+
+/// Sets or removes the `location` (SACM 2.3 §12.10
+/// `location:Base::MultiLangString`, "the path or URL specifying the location
+/// of the Resource, can be in multiple languages") of a `Resource`.
+///
+/// It follows the rules of [`SetContent`]: [`new`](Self::new) replaces the
+/// whole location with any `MultiLangString`, held exactly, an empty one or
+/// one with a repeated language included, which
+/// [`validation::validate`](crate::validation::validate) reports
+/// (SACM23-VAL-010); [`remove`](Self::remove) removes it. A replaced
+/// location keeps the `xmi:id` of its `location` element, and each value
+/// keeps the id of the value at its position; the ids of values beyond the
+/// new length are freed, as are all of them on a removal. A location
+/// holding a character XML cannot represent is held, and
+/// [`xmi::write`](crate::xmi::write) refuses it. Apply it with
+/// [`edit::apply`](super::apply). It refuses an unknown element as
+/// [`EditError::ElementNotFound`], then a kind that is no `Resource` as
+/// [`EditError::FeatureNotApplicable`], naming `location`.
+///
+/// # Examples
+///
+/// ```
+/// use sacm::edit::{self, CreateArtifactPackage, CreateResource, SetLocation};
+/// use sacm::model::{Document, LangString, MultiLangString};
+///
+/// let mut doc = Document::new();
+/// let lang = |text: &str, lang: &str| LangString::new(text).with_lang(lang);
+/// edit::apply(&mut doc, CreateArtifactPackage::root(lang("Evidence", "en")).with_id("evidence"))?;
+/// edit::apply(&mut doc, CreateResource::new("evidence", lang("Report PDF", "en")).with_id("pdf"))?;
+///
+/// let location: MultiLangString = [
+///     lang("https://example.org/reports/brake.pdf", "en"),
+///     lang("https://example.org/rapporter/brake.pdf", "sv"),
+/// ]
+/// .into_iter()
+/// .collect();
+/// edit::apply(&mut doc, SetLocation::new("pdf", location.clone()))?;
+/// assert_eq!(doc.get("pdf").and_then(|pdf| pdf.location()), Some(&location));
+/// edit::apply(&mut doc, SetLocation::remove("pdf"))?;
+/// assert_eq!(doc.get("pdf").and_then(|pdf| pdf.location()), None);
+/// # Ok::<(), sacm::edit::EditError>(())
+/// ```
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
+pub struct SetLocation {
+    element: ElementId,
+    #[cfg_attr(
+        feature = "serde",
+        serde(deserialize_with = "serde::Deserialize::deserialize")
+    )]
+    location: Option<MultiLangString>,
+}
+
+impl SetLocation {
+    /// Sets the location of `element` to `location`. A [`LangString`]
+    /// converts into a location of one value.
+    #[must_use]
+    pub fn new(element: impl Into<ElementId>, location: impl Into<MultiLangString>) -> Self {
+        Self {
+            element: element.into(),
+            location: Some(location.into()),
+        }
+    }
+
+    /// Removes the location of `element`.
+    #[must_use]
+    pub fn remove(element: impl Into<ElementId>) -> Self {
+        Self {
+            element: element.into(),
+            location: None,
+        }
+    }
+
+    /// The id of the element to edit.
+    #[must_use]
+    pub fn element(&self) -> &ElementId {
+        &self.element
+    }
+
+    /// The location to set, or `None` to remove it.
+    #[must_use]
+    pub fn location(&self) -> Option<&MultiLangString> {
+        self.location.as_ref()
+    }
+
+    /// Runs every check of the operation, and returns what it changes.
+    pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
+        plan_text(
+            document,
+            &self.element,
+            TextRole::Location,
+            self.location.as_ref(),
+        )
+    }
+}
+
+/// The plan of setting the string-valued `attribute` of `element` to
+/// `value`, or of removing it when `None`: a change exactly when the value
+/// changes.
+fn plan_string<'o>(
+    document: &Document,
+    element: &'o ElementId,
+    attribute: StringAttribute,
+    value: Option<&'o str>,
+) -> Result<Plan<'o>, EditError> {
+    let target = edited(document, element, attribute.name(), |kind| {
+        attribute.is_held_by(kind)
+    })?;
+    Ok(changing(
+        element,
+        target.string(attribute) != value,
+        Value::String(attribute, value),
+    ))
 }
 
 /// The plan of setting the `role` of `element` to `value`, or of removing

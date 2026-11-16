@@ -41,12 +41,13 @@ use super::{
 /// `AssuranceCasePackage`, `ArgumentPackage` and `ArtifactPackage` roots, the
 /// `AssuranceCasePackage`, `ArgumentPackage`, `ArtifactPackage`, `Claim`,
 /// `ArgumentReasoning`, `ArtifactReference`, `ArgumentGroup`, `Property`,
-/// `Technique`, `Participant` and `ArtifactGroup` elements, the five asserted
+/// `Technique`, `Participant`, `ArtifactGroup`, `Artifact`, `Event`, `Resource`
+/// and `Activity` elements, the five asserted
 /// relationships (`AssertedInference`, `AssertedEvidence`,
 /// `AssertedContext`, `AssertedArtifactSupport` and
 /// `AssertedArtifactContext`) in them, and the descriptions, implementation
 /// constraints, notes and tagged values of each of these.
-/// [`edit::apply`](crate::edit::apply) creates the same twenty kinds, edits
+/// [`edit::apply`](crate::edit::apply) creates the same twenty-four kinds, edits
 /// the features and the order of elements of every kind, and deletes
 /// elements of every kind ([`DeleteElement`](crate::edit::DeleteElement)).
 /// Tests build documents with other kinds through the `test-support`
@@ -93,8 +94,8 @@ use super::{
 /// `reasoning`, `source`, `target`, `structure`, `referencedArtifactElement`,
 /// an `ArgumentGroup`'s `argumentElement` and an `ArtifactGroup`'s
 /// `artifactElement`, in order), names, the
-/// ids of names, `content`s and `key`s with their ids,
-/// `assertionDeclaration`s, the order of roots and children, each element's
+/// ids of names, `content`s, `key`s and `location`s with their ids,
+/// `version`s, `date`s, `startTime`s, `endTime`s, `assertionDeclaration`s, the order of roots and children, each element's
 /// preserved content and the document's own, outside its elements, are
 /// compared. Formatting, attribute order and
 /// namespace prefixes are not held, except in preserved content, which is
@@ -196,12 +197,12 @@ impl Default for Document {
 /// How an id of `Document::other_ids` is used.
 #[derive(Clone, Copy, Debug, Default)]
 struct IdUse {
-    /// The handle of the element whose `name`, `content`, `key` or `value`
+    /// The handle of the element whose `name`, `content`, `key`, `location` or `value`
     /// carries the id as its `xmi:id`, or whose preserved content does, if
     /// one does.
     owner: Option<usize>,
     /// Whether the owner holds the id in its preserved content (ADR 0033),
-    /// rather than on a `name`, `content`, `key` or `value`.
+    /// rather than on a `name`, `content`, `key`, `location` or `value`.
     preserved: bool,
     /// Whether the document's own preserved content, outside every element,
     /// holds the id (ADR 0035 D3); `owner` is then `None`.
@@ -236,6 +237,14 @@ struct Node {
     /// The element's `key` (§8.12): `None` when absent, and always `None`
     /// unless the kind is `TaggedValue`.
     key: Option<Text>,
+    /// The element's `location` (§12.10): `None` when absent, and always
+    /// `None` unless the kind is `Resource`.
+    location: Option<Text>,
+    /// The string-valued attributes the element holds, each exactly as held
+    /// (D-DATE): only the ones given, each once, each one the kind holds
+    /// ([`StringAttribute::is_held_by`]), in no particular order (readers
+    /// look one up).
+    strings: Vec<(StringAttribute, String)>,
     /// The element's `assertionDeclaration`: `Some` exactly when the kind is
     /// an Assertion.
     assertion_declaration: Option<AssertionDeclaration>,
@@ -565,6 +574,38 @@ impl Document {
         Ok(())
     }
 
+    /// [`insert_node`](Self::insert_node), with the element's string-valued
+    /// attributes and its `location` set as given, held exactly and without
+    /// ids (ADR 0034 amendment 1): on an error the document is unchanged.
+    ///
+    /// The create operations of the `ArtifactAsset` kinds use it, so that a
+    /// create is one change. Each attribute is one the kind holds, given
+    /// once, and a `location` is given only for a `Resource`.
+    pub(crate) fn insert_asset(
+        &mut self,
+        parent: Option<&ElementId>,
+        kind: ElementKind,
+        id: ElementId,
+        name: LangString,
+        strings: Vec<(StringAttribute, String)>,
+        location: Option<MultiLangString>,
+    ) -> Result<(), InsertError> {
+        debug_assert!(
+            strings
+                .iter()
+                .all(|(attribute, _)| attribute.is_held_by(kind)),
+            "the kind holds each attribute"
+        );
+        debug_assert!(
+            location.is_none() || TextRole::Location.is_held_by(kind),
+            "only a Resource has a location"
+        );
+        let node = self.insert_handle(parent, kind, id, Some(name), None, None)?;
+        self.nodes[node].strings = strings;
+        self.nodes[node].location = location.map(Text::new);
+        Ok(())
+    }
+
     /// [`insert_element`](Self::insert_element), returning the new node's
     /// handle.
     fn insert_handle(
@@ -626,6 +667,8 @@ impl Document {
             name_id: None,
             content: content.map(Text::new),
             key: key.map(Text::new),
+            location: None,
+            strings: Vec::new(),
             assertion_declaration: kind
                 .is_a(AbstractClass::Assertion)
                 .then(AssertionDeclaration::default),
@@ -797,6 +840,44 @@ impl Document {
             return Err(format!("the document has no element {:?}", id.as_str()));
         };
         self.nodes[node].gid = gid;
+        Ok(())
+    }
+
+    /// Sets the string-valued `attribute` of the element `id` to `value`,
+    /// exactly: `None` is absent (D-DATE). Nothing about the value is
+    /// checked. Refuses, with the reason, an unknown element and one whose
+    /// kind does not hold the attribute; on an error the document is
+    /// unchanged.
+    pub(crate) fn set_string(
+        &mut self,
+        id: &ElementId,
+        attribute: StringAttribute,
+        value: Option<String>,
+    ) -> Result<(), String> {
+        let Some(&node) = self.index.get(id) else {
+            return Err(format!("the document has no element {:?}", id.as_str()));
+        };
+        let node = &mut self.nodes[node];
+        if !attribute.is_held_by(node.kind) {
+            return Err(format!(
+                "the {} {:?} has no {}",
+                node.kind,
+                id.as_str(),
+                attribute.name()
+            ));
+        }
+        let held = node
+            .strings
+            .iter()
+            .position(|(given, _)| *given == attribute);
+        match (held, value) {
+            (Some(position), Some(value)) => node.strings[position].1 = value,
+            (Some(position), None) => {
+                node.strings.remove(position);
+            }
+            (None, Some(value)) => node.strings.push((attribute, value)),
+            (None, None) => {}
+        }
         Ok(())
     }
 
@@ -2232,11 +2313,146 @@ impl<'a> SacmElement<'a> {
         self.node().key.as_ref().map_or(&[], Text::value_ids)
     }
 
+    /// The `version` of an `Artifact` (SACM 2.3 §12.7 `version: String[0..1]`,
+    /// "the version of the artifact"), exactly as written, or `None` when it
+    /// has none or the element is not an `Artifact`.
+    ///
+    /// Nothing is trimmed or normalised: `""` and `" v2 "` are values. An
+    /// `xmi:version` on the document element is the XMI version, never this
+    /// one.
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArtifact, CreateArtifactPackage, SetVersion};
+    /// use sacm::model::{Document, LangString};
+    ///
+    /// let mut doc = Document::new();
+    /// let en = |text: &str| LangString::new(text).with_lang("en");
+    /// edit::apply(&mut doc, CreateArtifactPackage::root(en("Evidence")).with_id("evidence"))?;
+    /// let report = CreateArtifact::new("evidence", en("Brake test report")).with_id("report");
+    /// edit::apply(&mut doc, report.with_version("1.2"))?;
+    /// assert_eq!(doc.get("report").and_then(|report| report.version()), Some("1.2"));
+    ///
+    /// edit::apply(&mut doc, SetVersion::remove("report"))?;
+    /// assert_eq!(doc.get("report").and_then(|report| report.version()), None);
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    #[must_use]
+    pub fn version(self) -> Option<&'a str> {
+        self.string(StringAttribute::Version)
+    }
+
+    /// The `date` of an `Artifact` (§12.7, "the date on which the artifact
+    /// was created") or an `Event` (§12.9, "the date on which the Event
+    /// occurred"), exactly as written, or `None` when it has none or the
+    /// element is neither.
+    ///
+    /// SACM 2.3 gives `date` no lexical form, and the XML Schema its XMI
+    /// rules produce types it `xsd:string`, so any string is held as written
+    /// and never diagnosed: `2024-03-01`, `2024-03-01T09:30:00Z`,
+    /// `spring 2024` and `""` alike (D-DATE). Parsing it is up to the
+    /// application.
+    ///
+    /// ```
+    /// use sacm::xmi::{self, ReadOptions};
+    ///
+    /// let input = br#"<sacm:ArtifactPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="evidence">
+    ///   <name content="Evidence"/>
+    ///   <artifactElement xmi:type="sacm:Event" xmi:id="released" date="2024-03-05T14:00:00+01:00">
+    ///     <name content="Report released"/>
+    ///   </artifactElement>
+    ///   <artifactElement xmi:type="sacm:Event" xmi:id="reviewed" date="spring 2024">
+    ///     <name content="Report reviewed"/>
+    ///   </artifactElement>
+    /// </sacm:ArtifactPackage>"#;
+    /// let output = xmi::read(input, &ReadOptions::default())?;
+    /// assert!(output.diagnostics().is_empty());
+    /// let document = output.into_document();
+    /// let date = |id: &str| document.get(id).and_then(|event| event.date());
+    /// assert_eq!(date("released"), Some("2024-03-05T14:00:00+01:00"));
+    /// assert_eq!(date("reviewed"), Some("spring 2024"));
+    /// # Ok::<(), sacm::xmi::ReadError>(())
+    /// ```
+    #[must_use]
+    pub fn date(self) -> Option<&'a str> {
+        self.string(StringAttribute::Date)
+    }
+
+    /// The `startTime` of an `Activity` (§12.11, "time when the activity
+    /// started"), held as [`date`](Self::date) is, or `None` when it has none
+    /// or the element is not an `Activity`.
+    #[must_use]
+    pub fn start_time(self) -> Option<&'a str> {
+        self.string(StringAttribute::StartTime)
+    }
+
+    /// The `endTime` of an `Activity` (§12.11, "time when the activity
+    /// ended"), held as [`date`](Self::date) is, or `None` when it has none
+    /// or the element is not an `Activity`. Nothing checks it against the
+    /// [`start_time`](Self::start_time): SACM 2.3 states no order.
+    #[must_use]
+    pub fn end_time(self) -> Option<&'a str> {
+        self.string(StringAttribute::EndTime)
+    }
+
+    /// The `location` of a `Resource` (§12.10 `location:Base::MultiLangString`,
+    /// "the path or URL specifying the location of the Resource, can be in
+    /// multiple languages"), or `None` when it has none or the element is not
+    /// a `Resource`.
+    ///
+    /// It is held as a [`content`](Self::content) is: no `location` is
+    /// `None` and `<location/>` an empty `MultiLangString`, and the values
+    /// are kept in order, with duplicates.
+    /// [`validation::validate`](crate::validation::validate) checks it as
+    /// every `MultiLangString` (SACM-MULT-001); the text gives `location` no
+    /// multiplicity, so a Resource without one gives no finding.
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArtifactPackage, CreateResource};
+    /// use sacm::model::{Document, LangString, MultiLangString};
+    ///
+    /// let mut doc = Document::new();
+    /// let en = |text: &str| LangString::new(text).with_lang("en");
+    /// edit::apply(&mut doc, CreateArtifactPackage::root(en("Evidence")).with_id("evidence"))?;
+    /// let pdf = CreateResource::new("evidence", en("Report PDF")).with_id("report_pdf");
+    /// edit::apply(&mut doc, pdf.with_location(en("https://example.org/brake-1.2.pdf")))?;
+    ///
+    /// let location = doc.get("report_pdf").and_then(|resource| resource.location());
+    /// assert_eq!(location, Some(&MultiLangString::from(en("https://example.org/brake-1.2.pdf"))));
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    #[must_use]
+    pub fn location(self) -> Option<&'a MultiLangString> {
+        self.node().location.as_ref().map(Text::value)
+    }
+
+    /// The `xmi:id` of the element's `location` element, if it was read with
+    /// one, or `None`. See [`content_id`](Self::content_id).
+    #[must_use]
+    pub fn location_id(self) -> Option<&'a ElementId> {
+        self.node().location.as_ref().and_then(Text::id)
+    }
+
+    /// The `xmi:id` of each `value` of the element's `location`, by
+    /// position: one entry per value of [`location`](Self::location), and
+    /// empty when there is no location. See
+    /// [`content_value_ids`](Self::content_value_ids).
+    #[must_use]
+    pub fn location_value_ids(self) -> &'a [Option<ElementId>] {
+        self.node().location.as_ref().map_or(&[], Text::value_ids)
+    }
+
+    /// The value of the string-valued `attribute`, exactly as held, or
+    /// `None` when the element has none.
+    pub(crate) fn string(self, attribute: StringAttribute) -> Option<&'a str> {
+        string_of(&self.node().strings, attribute)
+    }
+
     /// The element's properties (SACM 2.3 §12.6 `property:Property[0..*]`):
     /// its children in the `property` role, in document order.
     ///
-    /// Every `ArtifactAsset` has the role, such as a `Property`, a `Technique`
-    /// or a `Participant`; for any other kind it is empty. A `Property` held
+    /// Every `ArtifactAsset` has the role, such as a `Property`, a `Technique`,
+    /// an `Artifact` or a `Resource`; for any other kind it is empty. A `Property` held
     /// directly in an `ArtifactPackage`'s `artifactElement` is a child of the
     /// package, not a property of it. The properties are among
     /// [`children`](Self::children).
@@ -2271,7 +2487,7 @@ impl<'a> SacmElement<'a> {
             .filter(move |child| child.role().is_some_and(|held| held.name == role))
     }
 
-    /// The element's `content` or `key`, with its ids.
+    /// The element's `content`, `key` or `location`, with its ids.
     pub(crate) fn text(self, role: TextRole) -> Option<&'a Text> {
         self.node().text(role)
     }
@@ -2346,6 +2562,10 @@ impl<'a> SacmElement<'a> {
             content,
             // Compared: the value, its id and its values' ids.
             key,
+            // Compared: the value, its id and its values' ids.
+            location,
+            // Compared, attribute by attribute.
+            strings,
             // Compared.
             assertion_declaration,
             // Compared.
@@ -2375,6 +2595,8 @@ impl<'a> SacmElement<'a> {
             name_id: name_id.as_ref(),
             content: content.as_ref(),
             key: key.as_ref(),
+            location: location.as_ref(),
+            strings,
             assertion_declaration: *assertion_declaration,
             is_citation: *is_citation,
             is_abstract: *is_abstract,
@@ -2470,6 +2692,10 @@ pub(crate) struct Compared<'a> {
     pub(crate) content: Option<&'a Text>,
     /// The element's `key`, with its ids; `None` when absent.
     pub(crate) key: Option<&'a Text>,
+    /// The element's `location`, with its ids; `None` when absent.
+    pub(crate) location: Option<&'a Text>,
+    /// The string-valued attributes the element holds: only the ones given.
+    strings: &'a [(StringAttribute, String)],
     /// The element's `assertionDeclaration`; `None` when not an Assertion.
     pub(crate) assertion_declaration: Option<AssertionDeclaration>,
     /// The element's `isCitation`.
@@ -2498,6 +2724,20 @@ impl<'a> Compared<'a> {
     pub(crate) fn references(&self, end: ReferenceEnd) -> &'a [ElementId] {
         targets_of(self.references, end)
     }
+
+    /// The value of the string-valued `attribute`, or `None` when absent.
+    pub(crate) fn string(&self, attribute: StringAttribute) -> Option<&'a str> {
+        string_of(self.strings, attribute)
+    }
+}
+
+/// The value `attribute` has in `strings`, a node's sparse list of
+/// string-valued attributes: `None` when absent.
+fn string_of(strings: &[(StringAttribute, String)], attribute: StringAttribute) -> Option<&str> {
+    strings
+        .iter()
+        .find(|(held, _)| *held == attribute)
+        .map(|(_, value)| value.as_str())
 }
 
 /// The targets `end` holds in `references`, a node's sparse list of ends:
@@ -2509,23 +2749,30 @@ fn targets_of(references: &[(ReferenceEnd, Vec<ElementId>)], end: ReferenceEnd) 
         .map_or(&[], |(_, targets)| targets.as_slice())
 }
 
-/// A role of a `UtilityElement` that holds a `MultiLangString` (ADR 0025):
-/// `content` on every `UtilityElement` (SACM 2.3 §8.7), and `key` on a
-/// `TaggedValue` (§8.12).
+/// A role that holds a `MultiLangString` (ADR 0025, ADR 0034 amendment 1):
+/// `content` on every `UtilityElement` (SACM 2.3 §8.7), `key` on a
+/// `TaggedValue` (§8.12), and `location` on a `Resource` (§12.10).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TextRole {
     /// `content`.
     Content,
     /// `key`.
     Key,
+    /// `location`.
+    Location,
 }
 
 impl TextRole {
+    /// Every role, in the order they are written: superclass first (XMI
+    /// 2.5.1 Annex B.5.2).
+    pub(crate) const ALL: [Self; 3] = [Self::Content, Self::Key, Self::Location];
+
     /// The role's name, as written in XMI.
     pub(crate) const fn name(self) -> &'static str {
         match self {
             Self::Content => "content",
             Self::Key => "key",
+            Self::Location => "location",
         }
     }
 
@@ -2534,6 +2781,50 @@ impl TextRole {
         match self {
             Self::Content => kind.is_a(AbstractClass::UtilityElement),
             Self::Key => kind.is_kind_of(ElementKind::TaggedValue),
+            Self::Location => kind.is_kind_of(ElementKind::Resource),
+        }
+    }
+}
+
+/// An attribute of an `ArtifactAsset` kind that holds a string exactly as
+/// written (D-DATE; ADR 0034 amendment 1): an Artifact's `version` (SACM 2.3
+/// §12.7), and the `date`-typed `date` of an Artifact or an Event (§12.7,
+/// §12.9) and `startTime` and `endTime` of an Activity (§12.11), which the
+/// XMI rules type `xsd:string`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum StringAttribute {
+    /// `version`.
+    Version,
+    /// `date`.
+    Date,
+    /// `startTime`.
+    StartTime,
+    /// `endTime`.
+    EndTime,
+}
+
+impl StringAttribute {
+    /// Every attribute, in the order they are written.
+    pub(crate) const ALL: [Self; 4] = [Self::Version, Self::Date, Self::StartTime, Self::EndTime];
+
+    /// The attribute's name, as written in XMI.
+    pub(crate) const fn name(self) -> &'static str {
+        match self {
+            Self::Version => "version",
+            Self::Date => "date",
+            Self::StartTime => "startTime",
+            Self::EndTime => "endTime",
+        }
+    }
+
+    /// Whether an element of `kind` has this attribute.
+    pub(crate) const fn is_held_by(self, kind: ElementKind) -> bool {
+        match self {
+            Self::Version => kind.is_kind_of(ElementKind::Artifact),
+            Self::Date => {
+                kind.is_kind_of(ElementKind::Artifact) || kind.is_kind_of(ElementKind::Event)
+            }
+            Self::StartTime | Self::EndTime => kind.is_kind_of(ElementKind::Activity),
         }
     }
 }
@@ -2631,6 +2922,7 @@ impl Node {
         match role {
             TextRole::Content => self.content.as_ref(),
             TextRole::Key => self.key.as_ref(),
+            TextRole::Location => self.location.as_ref(),
         }
     }
 
@@ -2639,6 +2931,7 @@ impl Node {
         match role {
             TextRole::Content => &mut self.content,
             TextRole::Key => &mut self.key,
+            TextRole::Location => &mut self.location,
         }
     }
 }

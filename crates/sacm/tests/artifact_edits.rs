@@ -13,6 +13,21 @@
 //! member in order, as for an `ArgumentGroup`). A refusal leaves the document
 //! `==` to before, and `edit::check` and `edit::preview` answer as
 //! `edit::apply` does.
+//!
+//! Slice 0055 (ADR 0034 amendment 1) adds `CreateArtifact` (SACM23-ART-004),
+//! `CreateResource` (SACM23-ART-005), `CreateActivity` (SACM23-ART-006) and
+//! `CreateEvent` (SACM23-ART-007), which follow the same checks; `SetVersion`
+//! and `Difference::Version` (SACM23-ART-004); and `SetLocation`,
+//! `Difference::Location`, `LocationId` and `LocationValueIds`, with the
+//! validation of a location (SACM23-ART-005).
+
+use sacm::diagnostic::Severity;
+use sacm::edit::{
+    CreateActivity, CreateArtifact, CreateEvent, CreateResource, DeleteElement,
+    PackageDeletePolicy, SetDate, SetEndTime, SetLocation, SetName, SetStartTime, SetVersion,
+};
+use sacm::model::MultiLangString;
+use sacm::xmi::{WriteAttribute, WriteError};
 
 use sacm::compare::{Difference, semantic_compare};
 use sacm::diagnostic::{Code, Diagnostic};
@@ -31,6 +46,10 @@ const ART_003: &str = "SACM23-ART-003";
 const ART_008: &str = "SACM23-ART-008";
 const ART_009: &str = "SACM23-ART-009";
 const ART_011: &str = "SACM23-ART-011";
+const ART_004: &str = "SACM23-ART-004";
+const ART_005: &str = "SACM23-ART-005";
+const ART_006: &str = "SACM23-ART-006";
+const ART_007: &str = "SACM23-ART-007";
 
 /// The group end's name, as in ptc/22-03-13.
 const END: &str = "artifactElement";
@@ -1370,5 +1389,1129 @@ fn sacm23_art_001_each_artifact_create_converts_into_its_operation_variant() {
             && matches!(&cases[3].0, Operation::CreateParticipant(_))
             && matches!(&cases[4].0, Operation::CreateArtifactGroup(_)),
         "{ART_001}: the From impls do not give the operation variants"
+    );
+}
+
+// =====================================================================================
+// Slice 0055: CreateArtifact, CreateResource, CreateActivity, CreateEvent
+// =====================================================================================
+
+/// [`built`], with the Artifact `a1` in `evidence`, for the creates whose
+/// parent must not be an Artifact.
+fn built_with_an_artifact(row: &str) -> Document {
+    let mut doc = built();
+    create(
+        row,
+        &mut doc,
+        CreateArtifact::new("evidence", named("A1")).with_id("a1"),
+    );
+    doc
+}
+
+/// Asserts that `make` under the Artifact `a1` is `InvalidParent`.
+fn assert_an_artifact_is_no_parent(row: &str, kind: ElementKind, make: Make) {
+    let mut doc = built_with_an_artifact(row);
+    let error = refuse(row, &mut doc, make(Some("a1"), None));
+    assert_eq!(
+        refusal(&error),
+        (
+            "InvalidParent".to_owned(),
+            vec![
+                "a1".to_owned(),
+                "Artifact".to_owned(),
+                kind.name().to_owned()
+            ]
+        ),
+        "{row}: a {kind} under an Artifact"
+    );
+}
+
+/// Whether a caller may give a new Technique in `evidence` the id `value`.
+fn is_free(row: &str, doc: &Document, value: &str) -> bool {
+    let mut probe = doc.clone();
+    match edit::apply(
+        &mut probe,
+        CreateTechnique::new("evidence", named("probe")).with_id(value),
+    ) {
+        Ok(_) => true,
+        Err(EditError::DuplicateId { .. }) => false,
+        Err(other) => panic!("{row}: probing the id {value:?}: {other:?}"),
+    }
+}
+
+/// Asserts that `operation` is `FeatureNotApplicable` on `element`, of
+/// `kind`, naming `feature`, with SACM-CMD-008.
+fn assert_not_applicable(
+    row: &str,
+    doc: &mut Document,
+    operation: impl Into<Operation>,
+    target: &str,
+    kind: ElementKind,
+    feature: &str,
+) {
+    let error = refuse(row, doc, operation);
+    assert!(
+        matches!(
+            &error,
+            EditError::FeatureNotApplicable { element, kind: found, feature: found_feature, .. }
+                if element.as_str() == target && *found == kind && *found_feature == feature
+        ),
+        "{row}: {feature} on the {kind} {target}: not FeatureNotApplicable: {error:?}"
+    );
+    assert_eq!(
+        error.code(),
+        Code::CMD_FEATURE_NOT_APPLICABLE,
+        "{row}: {feature} on the {kind} {target}: not SACM-CMD-008"
+    );
+}
+
+/// A document read from XMI: the ArtifactPackage `evidence` holding the
+/// Resource `r`, whose location has the id `l` and two values with the ids
+/// `v1` and `v2`; the Technique `t`, the Artifact `a1`, the Event `e1` and the
+/// Activity `act`.
+fn with_a_location(row: &str) -> Document {
+    read_back(
+        row,
+        "<sacm:ArtifactPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\" \
+         xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"evidence\">\
+         <name content=\"E\"/>\
+         <artifactElement xmi:type=\"sacm:Resource\" xmi:id=\"r\"><name content=\"R\"/>\
+         <location xmi:id=\"l\"><value xmi:id=\"v1\" lang=\"en\" content=\"a\"/>\
+         <value xmi:id=\"v2\" lang=\"sv\" content=\"b\"/></location></artifactElement>\
+         <artifactElement xmi:type=\"sacm:Technique\" xmi:id=\"t\"><name content=\"T\"/>\
+         </artifactElement>\
+         <artifactElement xmi:type=\"sacm:Artifact\" xmi:id=\"a1\"><name content=\"A\"/>\
+         </artifactElement>\
+         <artifactElement xmi:type=\"sacm:Event\" xmi:id=\"e1\"><name content=\"E1\"/>\
+         </artifactElement>\
+         <artifactElement xmi:type=\"sacm:Activity\" xmi:id=\"act\"><name content=\"Act\"/>\
+         </artifactElement></sacm:ArtifactPackage>",
+    )
+}
+
+/// An ArtifactPackage `evidence` holding the Resource `r` with `location`
+/// after its name, read in tolerant mode.
+fn resource_with(row: &str, location: &str) -> Document {
+    let text = format!(
+        "<sacm:ArtifactPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\" \
+         xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"evidence\">\
+         <name content=\"E\"/><artifactElement xmi:type=\"sacm:Resource\" xmi:id=\"r\">\
+         <name content=\"R\"/>{location}</artifactElement></sacm:ArtifactPackage>"
+    );
+    match xmi::read(
+        text.as_bytes(),
+        &ReadOptions::default().with_mode(Mode::Tolerant),
+    ) {
+        Ok(output) => output.into_document(),
+        Err(error) => panic!("{row}: setup: {location} does not read: {error:?}"),
+    }
+}
+
+/// The element and attribute of the refusal of a write of `doc` in both
+/// modes, which must refuse it for a character XML cannot represent.
+fn unrepresentable(row: &str, doc: &Document) -> (String, WriteAttribute) {
+    let mut found = Vec::new();
+    for mode in [Mode::Strict, Mode::Tolerant] {
+        match xmi::write(doc, &WriteOptions::default().with_mode(mode)) {
+            Ok(text) => panic!("{row}: written in {mode:?} mode: {text}"),
+            Err(WriteError::UnrepresentableCharacter {
+                element, attribute, ..
+            }) => found.push((element.as_str().to_owned(), attribute)),
+            Err(other) => panic!("{row}: not UnrepresentableCharacter in {mode:?}: {other:?}"),
+        }
+    }
+    assert_eq!(found[0], found[1], "{row}: the modes refuse otherwise");
+    found.swap_remove(0)
+}
+
+// --- SACM23-ART-004: CreateArtifact, SetVersion, Difference::Version ------------------
+
+#[test]
+fn sacm23_art_004_create_artifact_reports_what_it_was_given() {
+    let operation = CreateArtifact::new("evidence", named("Report"));
+    assert_eq!(
+        (
+            operation.parent().as_str(),
+            operation.id(),
+            operation.name(),
+            operation.version(),
+            operation.date()
+        ),
+        ("evidence", None, &named("Report"), None, None),
+        "{ART_004}: the defaults"
+    );
+    // Each builder replaces what it was given before; every value is held.
+    let operation = operation
+        .with_id("first")
+        .with_version("1.0")
+        .with_date("2024-01-01")
+        .with_id("report")
+        .with_version(" 1.2 ")
+        .with_date("");
+    assert_eq!(
+        (
+            operation.id().map(ElementId::as_str),
+            operation.version(),
+            operation.date()
+        ),
+        (Some("report"), Some(" 1.2 "), Some("")),
+        "{ART_004}: the builders"
+    );
+    assert_eq!(
+        Operation::from(operation.clone()).operation_name(),
+        "CreateArtifact",
+        "{ART_004}: operation_name()"
+    );
+    let mut doc = built();
+    let created = create(ART_004, &mut doc, operation);
+    let report = element(ART_004, &doc, created.as_str());
+    assert_eq!(
+        (
+            created.as_str(),
+            report.kind(),
+            report
+                .parent()
+                .map(|parent| parent.id().as_str().to_owned()),
+            report.name(),
+            report.version(),
+            report.date()
+        ),
+        (
+            "report",
+            ElementKind::Artifact,
+            Some("evidence".to_owned()),
+            Some(&named("Report")),
+            Some(" 1.2 "),
+            Some("")
+        ),
+        "{ART_004}: the created Artifact"
+    );
+    let text = write_strict(ART_004, &doc);
+    assert_eq!(
+        line_with(ART_004, &text, "report"),
+        "<artifactElement xmi:type=\"sacm:Artifact\" xmi:id=\"report\" version=\" 1.2 \" date=\"\">",
+        "{ART_004}: the created Artifact is not written with its values\n{text}"
+    );
+    let back = read_back(ART_004, &text);
+    assert!(back == doc, "{ART_004}: the built document reads back !=");
+}
+
+#[test]
+fn sacm23_art_004_create_artifact_legal_parents_refusals_and_generated_id() {
+    let make: Make = |parent, id| {
+        let create = CreateArtifact::new(parent.unwrap_or("evidence"), named("N"))
+            .with_version("1")
+            .with_date("2024-03-01");
+        match id {
+            Some(id) => create.with_id(id).into(),
+            None => create.into(),
+        }
+    };
+    assert_create_rules(
+        ART_004,
+        ElementKind::Artifact,
+        make,
+        "artifact",
+        &[
+            ("evidence", "artifactElement"),
+            ("shared", "artifactElement"),
+        ],
+        &["case", "p", "t1", "g1", "pa1", "pr1", "c1"],
+    );
+    assert_an_artifact_is_no_parent(ART_004, ElementKind::Artifact, make);
+}
+
+#[test]
+fn sacm23_art_004_set_version_sets_removes_and_refuses_a_kind_without_it() {
+    let mut doc = built_with_an_artifact(ART_004);
+    create(
+        ART_004,
+        &mut doc,
+        CreateEvent::new("evidence", named("E1")).with_id("e1"),
+    );
+    create(
+        ART_004,
+        &mut doc,
+        CreateActivity::new("evidence", named("Act")).with_id("act"),
+    );
+    for value in ["1.2", "1.2", "", " v2 ", "1.2.3-rc.1+build"] {
+        let before = element(ART_004, &doc, "a1").version().map(str::to_owned);
+        let mutation = applied(ART_004, &mut doc, SetVersion::new("a1", value));
+        let expected = if before.as_deref() == Some(value) {
+            Vec::new()
+        } else {
+            list(&["a1"])
+        };
+        assert_eq!(
+            (
+                element(ART_004, &doc, "a1").version(),
+                mutation.changed_ids()
+            ),
+            (Some(value), expected.as_slice()),
+            "{ART_004}: SetVersion {value:?}"
+        );
+    }
+    let mutation = applied(ART_004, &mut doc, SetVersion::remove("a1"));
+    assert_eq!(
+        (
+            element(ART_004, &doc, "a1").version(),
+            mutation.changed_ids()
+        ),
+        (None, list(&["a1"]).as_slice()),
+        "{ART_004}: SetVersion::remove"
+    );
+    let mutation = applied(ART_004, &mut doc, SetVersion::remove("a1"));
+    assert_eq!(
+        mutation.changed_ids(),
+        [],
+        "{ART_004}: SetVersion::remove of no version"
+    );
+    // An unknown element, then a kind without a version.
+    let error = refuse(ART_004, &mut doc, SetVersion::new("nowhere", "1"));
+    assert!(
+        matches!(&error, EditError::ElementNotFound { element, .. } if element.as_str() == "nowhere")
+            && error.code() == Code::CMD_TARGET_NOT_FOUND,
+        "{ART_004}: SetVersion on an unknown element: {error:?}"
+    );
+    for (target, kind) in [
+        ("e1", ElementKind::Event),
+        ("act", ElementKind::Activity),
+        ("t1", ElementKind::Technique),
+        ("pa1", ElementKind::Participant),
+        ("c1", ElementKind::Claim),
+        ("evidence", ElementKind::ArtifactPackage),
+    ] {
+        assert_not_applicable(
+            ART_004,
+            &mut doc,
+            SetVersion::new(target, "1"),
+            target,
+            kind,
+            "version",
+        );
+        assert_not_applicable(
+            ART_004,
+            &mut doc,
+            SetVersion::remove(target),
+            target,
+            kind,
+            "version",
+        );
+    }
+    // U+0001 is accepted, and the write refuses it.
+    applied(ART_004, &mut doc, SetVersion::new("a1", "a\u{1}b"));
+    assert_eq!(
+        element(ART_004, &doc, "a1").version(),
+        Some("a\u{1}b"),
+        "{ART_004}: a version holding U+0001 is not held"
+    );
+    assert_eq!(
+        unrepresentable(ART_004, &doc),
+        ("a1".to_owned(), WriteAttribute::Version),
+        "{ART_004}: the write refusal of a version holding U+0001"
+    );
+    // The operation holds what it is given.
+    let set = SetVersion::new("a1", "1.3");
+    assert_eq!(
+        (
+            set.element().as_str(),
+            set.version(),
+            SetVersion::remove("a1").version(),
+            Operation::from(set.clone()).operation_name()
+        ),
+        ("a1", Some("1.3"), None, "SetVersion"),
+        "{ART_004}: SetVersion's accessors"
+    );
+}
+
+#[test]
+fn sacm23_art_004_semantic_compare_reports_one_version_difference() {
+    let with = |version: Option<&str>| {
+        let mut doc = built();
+        let mut create_report = CreateArtifact::new("evidence", named("Report")).with_id("report");
+        if let Some(version) = version {
+            create_report = create_report.with_version(version);
+        }
+        create(ART_004, &mut doc, create_report);
+        doc
+    };
+    for (left, right) in [
+        (Some("1.2"), Some("1.3")),
+        (Some("1.2"), Some("1.2 ")),
+        (None, Some("")),
+        (Some("1.2"), None),
+    ] {
+        let found = semantic_compare(&with(left), &with(right));
+        assert_eq!(
+            found,
+            [Difference::Version {
+                id: ElementId::from("report"),
+                left: left.map(str::to_owned),
+                right: right.map(str::to_owned),
+            }],
+            "{ART_004}: {left:?} against {right:?}: not one Version difference"
+        );
+        assert_eq!(
+            found[0].element_id(),
+            Some(&ElementId::from("report")),
+            "{ART_004}: element_id()"
+        );
+    }
+    for (left, right, shown) in [
+        (
+            Some("1.2"),
+            Some("1.3"),
+            "element \"report\" differs in version: \"1.2\" on the left, \"1.3\" on the right",
+        ),
+        (
+            None,
+            Some(""),
+            "element \"report\" differs in version: no version on the left, \"\" on the right",
+        ),
+    ] {
+        let found = semantic_compare(&with(left), &with(right));
+        assert_eq!(
+            found.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            [shown],
+            "{ART_004}: the Display of Version"
+        );
+    }
+}
+
+#[test]
+fn sacm23_art_004_an_artifact_holds_properties_and_deleting_it_is_not_empty() {
+    let mut doc = built_with_an_artifact(ART_004);
+    create(
+        ART_004,
+        &mut doc,
+        CreateProperty::new("a1", named("Signed")).with_id("signed"),
+    );
+    assert_eq!(
+        (
+            element(ART_004, &doc, "a1")
+                .properties()
+                .map(|property| property.id().as_str().to_owned())
+                .collect::<Vec<_>>(),
+            placed(ART_004, &doc, "signed").0
+        ),
+        (vec!["signed".to_owned()], ElementKind::Property),
+        "{ART_004}: the Artifact's property"
+    );
+    let text = write_strict(ART_004, &doc);
+    assert_eq!(
+        line_with(ART_004, &text, "signed"),
+        "<property xmi:id=\"signed\">",
+        "{ART_004}: the property is not written in the property role\n{text}"
+    );
+    let error = refuse(ART_004, &mut doc, DeleteElement::new("a1"));
+    assert!(
+        matches!(&error, EditError::NotEmpty { element, contained: 1, .. } if element.as_str() == "a1"),
+        "{ART_004}: deleting an Artifact holding a Property: not NotEmpty {{ contained: 1 }}: \
+         {error:?}"
+    );
+    let mutation = applied(
+        ART_004,
+        &mut doc,
+        DeleteElement::new("a1").with_package_policy(PackageDeletePolicy::DeleteRecursively),
+    );
+    assert_eq!(
+        strs(mutation.deleted_ids()),
+        ["a1", "signed"],
+        "{ART_004}: a recursive delete of the Artifact"
+    );
+}
+
+// --- SACM23-ART-005: CreateResource, SetLocation, validation and comparison ---------
+
+#[test]
+fn sacm23_art_005_create_resource_legal_parents_refusals_and_generated_id() {
+    let location = || -> MultiLangString {
+        [
+            named("https://example.org/r.pdf"),
+            LangString::new("https://example.org/sv/r.pdf").with_lang("sv"),
+        ]
+        .into_iter()
+        .collect()
+    };
+    let operation = CreateResource::new("evidence", named("PDF"));
+    assert_eq!(
+        (
+            operation.parent().as_str(),
+            operation.id(),
+            operation.name(),
+            operation.location()
+        ),
+        ("evidence", None, &named("PDF"), None),
+        "{ART_005}: the defaults"
+    );
+    let operation = operation
+        .with_location(named("first"))
+        .with_id("pdf")
+        .with_location(location());
+    assert_eq!(
+        (operation.id().map(ElementId::as_str), operation.location()),
+        (Some("pdf"), Some(&location())),
+        "{ART_005}: with_location replaces what it was given"
+    );
+    assert_eq!(
+        CreateResource::new("evidence", named("PDF"))
+            .with_location(MultiLangString::default())
+            .location(),
+        Some(&MultiLangString::default()),
+        "{ART_005}: an empty location is held"
+    );
+    assert_eq!(
+        Operation::from(operation.clone()).operation_name(),
+        "CreateResource",
+        "{ART_005}: operation_name()"
+    );
+    let mut doc = built();
+    create(ART_005, &mut doc, operation);
+    let pdf = element(ART_005, &doc, "pdf");
+    assert_eq!(
+        (
+            pdf.kind(),
+            pdf.location(),
+            pdf.location_id(),
+            pdf.location_value_ids()
+        ),
+        (
+            ElementKind::Resource,
+            Some(&location()),
+            None,
+            [None, None].as_slice()
+        ),
+        "{ART_005}: the created Resource"
+    );
+    let text = write_strict(ART_005, &doc);
+    assert!(
+        text.contains(
+            "<name lang=\"en\" content=\"PDF\" />\n        <location>\n          \
+             <value lang=\"en\" content=\"https://example.org/r.pdf\" />"
+        ),
+        "{ART_005}: the location is not written after the name\n{text}"
+    );
+    assert!(
+        read_back(ART_005, &text) == doc,
+        "{ART_005}: the built document reads back !="
+    );
+    let make: Make = |parent, id| {
+        let create = CreateResource::new(parent.unwrap_or("evidence"), named("N"))
+            .with_location(LangString::new("https://example.org/n").with_lang("en"));
+        match id {
+            Some(id) => create.with_id(id).into(),
+            None => create.into(),
+        }
+    };
+    assert_create_rules(
+        ART_005,
+        ElementKind::Resource,
+        make,
+        "resource",
+        &[
+            ("evidence", "artifactElement"),
+            ("shared", "artifactElement"),
+        ],
+        &["case", "p", "t1", "g1", "pa1", "pr1", "c1"],
+    );
+    assert_an_artifact_is_no_parent(ART_005, ElementKind::Resource, make);
+}
+
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "replacing, lengthening and removing one location read best together"
+)]
+fn sacm23_art_005_set_location_replaces_keeps_ids_by_position_and_removes() {
+    let value_ids = |doc: &Document| -> Vec<Option<String>> {
+        element(ART_005, doc, "r")
+            .location_value_ids()
+            .iter()
+            .map(|found| found.as_ref().map(|value| value.as_str().to_owned()))
+            .collect()
+    };
+    let some = |values: &[Option<&str>]| -> Vec<Option<String>> {
+        values
+            .iter()
+            .map(|value| value.map(str::to_owned))
+            .collect()
+    };
+    // A shorter location keeps the location id and v1, and frees v2.
+    let mut doc = with_a_location(ART_005);
+    assert!(
+        !is_free(ART_005, &doc, "v2") && !is_free(ART_005, &doc, "l"),
+        "{ART_005}: setup: the location ids are free"
+    );
+    let mutation = applied(ART_005, &mut doc, SetLocation::new("r", named("only")));
+    assert_eq!(
+        (
+            mutation.changed_ids(),
+            element(ART_005, &doc, "r").location(),
+            element(ART_005, &doc, "r")
+                .location_id()
+                .map(ElementId::as_str),
+            value_ids(&doc)
+        ),
+        (
+            list(&["r"]).as_slice(),
+            Some(&MultiLangString::from(named("only"))),
+            Some("l"),
+            some(&[Some("v1")])
+        ),
+        "{ART_005}: a shorter location"
+    );
+    assert!(
+        is_free(ART_005, &doc, "v2")
+            && !is_free(ART_005, &doc, "v1")
+            && !is_free(ART_005, &doc, "l"),
+        "{ART_005}: v2 is not freed, or l or v1 is"
+    );
+    let text = write_strict(ART_005, &doc);
+    assert!(
+        text.contains("<location xmi:id=\"l\">")
+            && text.contains("<value xmi:id=\"v1\" lang=\"en\" content=\"only\" />")
+            && !text.contains("\"v2\""),
+        "{ART_005}: the kept ids are not written, or the freed one is\n{text}"
+    );
+    // The same location again changes nothing.
+    let mutation = applied(ART_005, &mut doc, SetLocation::new("r", named("only")));
+    assert_eq!(
+        mutation.changed_ids(),
+        [],
+        "{ART_005}: the same location again"
+    );
+    // A longer location keeps the ids it has and adds values without one.
+    let mut doc = with_a_location(ART_005);
+    let longer: MultiLangString = [named("a"), named("b"), named("c")].into_iter().collect();
+    applied(ART_005, &mut doc, SetLocation::new("r", longer.clone()));
+    assert_eq!(
+        (element(ART_005, &doc, "r").location(), value_ids(&doc)),
+        (Some(&longer), some(&[Some("v1"), Some("v2"), None])),
+        "{ART_005}: a longer location"
+    );
+    // An empty location is held, and validate reports it; it is no refusal.
+    applied(
+        ART_005,
+        &mut doc,
+        SetLocation::new("r", MultiLangString::default()),
+    );
+    assert_eq!(
+        (element(ART_005, &doc, "r").location(), value_ids(&doc)),
+        (Some(&MultiLangString::default()), Vec::new()),
+        "{ART_005}: an empty location"
+    );
+    assert_eq!(
+        validation::validate(&doc)
+            .iter()
+            .map(|found| (found.code(), found.requirement_id().to_owned()))
+            .collect::<Vec<_>>(),
+        [(Code::MULTIPLICITY_VIOLATION, "SACM23-VAL-010".to_owned())],
+        "{ART_005}: an empty location is not one SACM23-VAL-010 finding"
+    );
+    // Removing frees every id.
+    let mut doc = with_a_location(ART_005);
+    let mutation = applied(ART_005, &mut doc, SetLocation::remove("r"));
+    let r = element(ART_005, &doc, "r");
+    assert_eq!(
+        (
+            mutation.changed_ids(),
+            r.location(),
+            r.location_id(),
+            r.location_value_ids().len()
+        ),
+        (list(&["r"]).as_slice(), None, None, 0),
+        "{ART_005}: SetLocation::remove"
+    );
+    for value in ["l", "v1", "v2"] {
+        assert!(
+            is_free(ART_005, &doc, value),
+            "{ART_005}: {value:?} is still in use after the remove"
+        );
+    }
+    let mutation = applied(ART_005, &mut doc, SetLocation::remove("r"));
+    assert_eq!(
+        mutation.changed_ids(),
+        [],
+        "{ART_005}: removing no location"
+    );
+    // An unknown element, then a kind that is no Resource.
+    let error = refuse(ART_005, &mut doc, SetLocation::new("nowhere", named("x")));
+    assert!(
+        matches!(&error, EditError::ElementNotFound { element, .. } if element.as_str() == "nowhere"),
+        "{ART_005}: SetLocation on an unknown element: {error:?}"
+    );
+    for (target, kind) in [
+        ("t", ElementKind::Technique),
+        ("a1", ElementKind::Artifact),
+        ("e1", ElementKind::Event),
+        ("act", ElementKind::Activity),
+        ("evidence", ElementKind::ArtifactPackage),
+    ] {
+        assert_not_applicable(
+            ART_005,
+            &mut doc,
+            SetLocation::new(target, named("x")),
+            target,
+            kind,
+            "location",
+        );
+        assert_not_applicable(
+            ART_005,
+            &mut doc,
+            SetLocation::remove(target),
+            target,
+            kind,
+            "location",
+        );
+    }
+    // The operation holds what it is given.
+    let set = SetLocation::new("r", named("x"));
+    assert_eq!(
+        (
+            set.element().as_str(),
+            set.location(),
+            SetLocation::remove("r").location(),
+            Operation::from(set.clone()).operation_name()
+        ),
+        (
+            "r",
+            Some(&MultiLangString::from(named("x"))),
+            None,
+            "SetLocation"
+        ),
+        "{ART_005}: SetLocation's accessors"
+    );
+}
+
+#[test]
+fn sacm23_art_005_validate_checks_a_location_as_every_multi_lang_string() {
+    // An empty location, and a repeated language: one SACM23-VAL-010 Error
+    // each, on the Resource, clause 8.5, with no location.
+    for (what, location, named_parts) in [
+        ("an empty location", "<location/>", vec!["location"]),
+        (
+            "<location></location>",
+            "<location></location>",
+            vec!["location"],
+        ),
+        (
+            "[en:a, en:b]",
+            "<location><value lang=\"en\" content=\"a\"/><value lang=\"en\" content=\"b\"/>\
+             </location>",
+            vec!["location", "en"],
+        ),
+    ] {
+        let found = validation::validate(&resource_with(ART_005, location));
+        let [finding] = found.as_slice() else {
+            panic!("{ART_005}: {what}: not one finding: {found:?}");
+        };
+        assert_eq!(
+            (
+                finding.code(),
+                finding.severity(),
+                finding.requirement_id(),
+                finding.clause(),
+                finding.affected(),
+                finding.location()
+            ),
+            (
+                Code::MULTIPLICITY_VIOLATION,
+                Severity::Error,
+                "SACM23-VAL-010",
+                Some("8.5"),
+                list(&["r"]).as_slice(),
+                None
+            ),
+            "{ART_005}: {what}: not one SACM23-VAL-010 Error on the Resource"
+        );
+        for part in named_parts {
+            assert!(
+                finding.message().contains(part),
+                "{ART_005}: {what}: the message {:?} does not name {part:?}",
+                finding.message()
+            );
+        }
+    }
+    // A location or value id that is no NCName: SACM-ID-002, SACM23-VAL-020.
+    for (what, location) in [
+        (
+            "a location id that is no NCName",
+            "<location xmi:id=\"1l\"><value content=\"a\"/></location>",
+        ),
+        (
+            "a value id that is no NCName",
+            "<location><value xmi:id=\"1v\" content=\"a\"/></location>",
+        ),
+    ] {
+        let found = validation::validate(&resource_with(ART_005, location));
+        let [finding] = found.as_slice() else {
+            panic!("{ART_005}: {what}: not one finding: {found:?}");
+        };
+        assert_eq!(
+            (
+                finding.code(),
+                finding.severity(),
+                finding.requirement_id(),
+                finding.affected()
+            ),
+            (
+                Code::ID_INVALID,
+                Severity::Error,
+                "SACM23-VAL-020",
+                list(&["r"]).as_slice()
+            ),
+            "{ART_005}: {what}: not one SACM23-VAL-020 Error on the Resource"
+        );
+    }
+    // No location, and a valid one: no finding.
+    for (what, location) in [
+        ("no location", ""),
+        (
+            "two languages",
+            "<location><value lang=\"en\" content=\"a\"/><value lang=\"sv\" content=\"b\"/>\
+             </location>",
+        ),
+        (
+            "one value with no lang",
+            "<location><value content=\"a\"/></location>",
+        ),
+    ] {
+        assert_eq!(
+            validation::validate(&resource_with(ART_005, location)),
+            [],
+            "{ART_005}: {what}: validate reports it"
+        );
+    }
+}
+
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the three differences and the write refusals of one role read best together"
+)]
+fn sacm23_art_005_semantic_compare_and_write_refusals_cover_the_location() {
+    let r = || ElementId::from("r");
+    // Absent against empty.
+    let found = semantic_compare(
+        &resource_with(ART_005, ""),
+        &resource_with(ART_005, "<location/>"),
+    );
+    assert_eq!(
+        found,
+        [Difference::Location {
+            id: r(),
+            left: None,
+            right: Some(MultiLangString::default()),
+        }],
+        "{ART_005}: no location against an empty one"
+    );
+    assert_eq!(
+        (found[0].element_id(), found[0].to_string()),
+        (
+            Some(&r()),
+            "element \"r\" differs in location: no location on the left, [] on the right"
+                .to_owned()
+        ),
+        "{ART_005}: the element_id() and Display of Location"
+    );
+    // Values compared in order, with their fields.
+    let found = semantic_compare(
+        &resource_with(
+            ART_005,
+            "<location><value lang=\"en\" content=\"a\"/></location>",
+        ),
+        &resource_with(
+            ART_005,
+            "<location><value lang=\"en\" content=\"a\"/><value content=\"b\"/></location>",
+        ),
+    );
+    assert_eq!(
+        found.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        [
+            "element \"r\" differs in location: [[lang \"en\", content \"a\"]] on the left, \
+          [[lang \"en\", content \"a\"], [no lang, content \"b\"]] on the right"
+        ],
+        "{ART_005}: the Display of Location with values"
+    );
+    // All three, in order.
+    let found = semantic_compare(
+        &resource_with(
+            ART_005,
+            "<location xmi:id=\"l\"><value xmi:id=\"v1\" lang=\"en\" content=\"a\"/></location>",
+        ),
+        &resource_with(
+            ART_005,
+            "<location><value lang=\"en\" content=\"b\"/></location>",
+        ),
+    );
+    assert_eq!(
+        found,
+        [
+            Difference::Location {
+                id: r(),
+                left: Some(MultiLangString::from(named("a"))),
+                right: Some(MultiLangString::from(named("b"))),
+            },
+            Difference::LocationId {
+                id: r(),
+                left: Some(ElementId::from("l")),
+                right: None,
+            },
+            Difference::LocationValueIds {
+                id: r(),
+                left: vec![Some(ElementId::from("v1"))],
+                right: vec![None],
+            },
+        ],
+        "{ART_005}: not Location, LocationId and LocationValueIds, in that order"
+    );
+    // U+0001 in a value is held, and refused on write: the lang before the
+    // content, and the name before both.
+    let mut doc = with_a_location(ART_005);
+    applied(
+        ART_005,
+        &mut doc,
+        SetLocation::new("r", LangString::new("a\u{1}").with_lang("e\u{1}")),
+    );
+    applied(
+        ART_005,
+        &mut doc,
+        SetName::new("r", LangString::new("n\u{1}")),
+    );
+    assert_eq!(
+        unrepresentable(ART_005, &doc),
+        ("r".to_owned(), WriteAttribute::NameContent),
+        "{ART_005}: the name before the location"
+    );
+    applied(ART_005, &mut doc, SetName::new("r", named("R")));
+    assert_eq!(
+        unrepresentable(ART_005, &doc),
+        ("r".to_owned(), WriteAttribute::LocationValueLang),
+        "{ART_005}: a location value's lang"
+    );
+    applied(
+        ART_005,
+        &mut doc,
+        SetLocation::new("r", LangString::new("a\u{1}").with_lang("en")),
+    );
+    assert_eq!(
+        unrepresentable(ART_005, &doc),
+        ("r".to_owned(), WriteAttribute::LocationValueContent),
+        "{ART_005}: a location value's content"
+    );
+    assert_eq!(
+        [
+            WriteAttribute::LocationValueLang,
+            WriteAttribute::LocationValueContent
+        ]
+        .map(|attribute| attribute.to_string()),
+        ["location value's lang", "location value's content"],
+        "{ART_005}: the Display of the location WriteAttributes"
+    );
+}
+
+// --- SACM23-ART-006 and SACM23-ART-007: CreateActivity and CreateEvent ---------------
+
+#[test]
+fn sacm23_art_006_create_activity_legal_parents_refusals_and_generated_id() {
+    let operation = CreateActivity::new("evidence", named("Testing"));
+    assert_eq!(
+        (
+            operation.parent().as_str(),
+            operation.id(),
+            operation.name(),
+            operation.start_time(),
+            operation.end_time()
+        ),
+        ("evidence", None, &named("Testing"), None, None),
+        "{ART_006}: the defaults"
+    );
+    let operation = operation
+        .with_start_time("x")
+        .with_end_time("y")
+        .with_id("testing")
+        .with_start_time("2024-02-12")
+        .with_end_time("2024-02-01");
+    assert_eq!(
+        (
+            operation.id().map(ElementId::as_str),
+            operation.start_time(),
+            operation.end_time()
+        ),
+        (Some("testing"), Some("2024-02-12"), Some("2024-02-01")),
+        "{ART_006}: the builders replace what they were given"
+    );
+    assert_eq!(
+        Operation::from(operation.clone()).operation_name(),
+        "CreateActivity",
+        "{ART_006}: operation_name()"
+    );
+    let mut doc = built();
+    create(ART_006, &mut doc, operation);
+    let testing = element(ART_006, &doc, "testing");
+    assert_eq!(
+        (testing.kind(), testing.start_time(), testing.end_time()),
+        (
+            ElementKind::Activity,
+            Some("2024-02-12"),
+            Some("2024-02-01")
+        ),
+        "{ART_006}: the created Activity"
+    );
+    assert_eq!(
+        validation::validate(&doc),
+        [],
+        "{ART_006}: an endTime before the startTime is a finding"
+    );
+    let text = write_strict(ART_006, &doc);
+    assert_eq!(
+        line_with(ART_006, &text, "testing"),
+        "<artifactElement xmi:type=\"sacm:Activity\" xmi:id=\"testing\" startTime=\"2024-02-12\" \
+         endTime=\"2024-02-01\">",
+        "{ART_006}: the created Activity's start tag\n{text}"
+    );
+    let make: Make = |parent, id| {
+        let create = CreateActivity::new(parent.unwrap_or("evidence"), named("N"))
+            .with_start_time("2024-02-12");
+        match id {
+            Some(id) => create.with_id(id).into(),
+            None => create.into(),
+        }
+    };
+    assert_create_rules(
+        ART_006,
+        ElementKind::Activity,
+        make,
+        "activity",
+        &[
+            ("evidence", "artifactElement"),
+            ("shared", "artifactElement"),
+        ],
+        &["case", "p", "t1", "g1", "pa1", "pr1", "c1"],
+    );
+    assert_an_artifact_is_no_parent(ART_006, ElementKind::Activity, make);
+}
+
+#[test]
+fn sacm23_art_007_create_event_legal_parents_refusals_and_generated_id() {
+    let operation = CreateEvent::new("evidence", named("Released"));
+    assert_eq!(
+        (
+            operation.parent().as_str(),
+            operation.id(),
+            operation.name(),
+            operation.date()
+        ),
+        ("evidence", None, &named("Released"), None),
+        "{ART_007}: the defaults"
+    );
+    let operation = operation
+        .with_date("x")
+        .with_id("released")
+        .with_date("2024-03-05");
+    assert_eq!(
+        (operation.id().map(ElementId::as_str), operation.date()),
+        (Some("released"), Some("2024-03-05")),
+        "{ART_007}: the builders replace what they were given"
+    );
+    assert_eq!(
+        Operation::from(operation.clone()).operation_name(),
+        "CreateEvent",
+        "{ART_007}: operation_name()"
+    );
+    let mut doc = built();
+    create(ART_007, &mut doc, operation);
+    let released = element(ART_007, &doc, "released");
+    assert_eq!(
+        (released.kind(), released.date()),
+        (ElementKind::Event, Some("2024-03-05")),
+        "{ART_007}: the created Event"
+    );
+    // SetDate applies to it, as to an Artifact; SetStartTime does not.
+    applied(ART_007, &mut doc, SetDate::new("released", "spring 2024"));
+    assert_eq!(
+        element(ART_007, &doc, "released").date(),
+        Some("spring 2024"),
+        "{ART_007}: SetDate on the created Event"
+    );
+    assert_not_applicable(
+        ART_007,
+        &mut doc,
+        SetStartTime::new("released", "2024"),
+        "released",
+        ElementKind::Event,
+        "startTime",
+    );
+    let make: Make = |parent, id| {
+        let create = CreateEvent::new(parent.unwrap_or("evidence"), named("N")).with_date("d");
+        match id {
+            Some(id) => create.with_id(id).into(),
+            None => create.into(),
+        }
+    };
+    assert_create_rules(
+        ART_007,
+        ElementKind::Event,
+        make,
+        "event",
+        &[
+            ("evidence", "artifactElement"),
+            ("shared", "artifactElement"),
+        ],
+        &["case", "p", "t1", "g1", "pa1", "pr1", "c1"],
+    );
+    assert_an_artifact_is_no_parent(ART_007, ElementKind::Event, make);
+}
+
+#[test]
+fn sacm23_art_004_the_new_artifact_operations_are_send_sync_clone_debug_eq_and_convert_into_operation()
+ {
+    assert_send_sync::<CreateArtifact>();
+    assert_send_sync::<CreateEvent>();
+    assert_send_sync::<CreateResource>();
+    assert_send_sync::<CreateActivity>();
+    assert_send_sync::<SetVersion>();
+    assert_send_sync::<SetDate>();
+    assert_send_sync::<SetLocation>();
+    assert_send_sync::<SetStartTime>();
+    assert_send_sync::<SetEndTime>();
+    let cases: [(Operation, &str); 9] = [
+        (
+            CreateArtifact::new("a", named("A")).into(),
+            "CreateArtifact",
+        ),
+        (CreateEvent::new("a", named("E")).into(), "CreateEvent"),
+        (
+            CreateResource::new("a", named("R")).into(),
+            "CreateResource",
+        ),
+        (
+            CreateActivity::new("a", named("A")).into(),
+            "CreateActivity",
+        ),
+        (SetVersion::new("x", "1").into(), "SetVersion"),
+        (SetDate::remove("x").into(), "SetDate"),
+        (SetLocation::new("x", named("l")).into(), "SetLocation"),
+        (SetStartTime::new("x", "s").into(), "SetStartTime"),
+        (SetEndTime::remove("x").into(), "SetEndTime"),
+    ];
+    for (operation, name) in &cases {
+        assert_eq!(
+            operation.operation_name(),
+            *name,
+            "{ART_004}: operation_name() of {operation:?}"
+        );
+    }
+    assert!(
+        matches!(&cases[0].0, Operation::CreateArtifact(_))
+            && matches!(&cases[1].0, Operation::CreateEvent(_))
+            && matches!(&cases[2].0, Operation::CreateResource(_))
+            && matches!(&cases[3].0, Operation::CreateActivity(_))
+            && matches!(&cases[4].0, Operation::SetVersion(_))
+            && matches!(&cases[5].0, Operation::SetDate(_))
+            && matches!(&cases[6].0, Operation::SetLocation(_))
+            && matches!(&cases[7].0, Operation::SetStartTime(_))
+            && matches!(&cases[8].0, Operation::SetEndTime(_)),
+        "{ART_004}: the From impls do not give the operation variants"
     );
 }

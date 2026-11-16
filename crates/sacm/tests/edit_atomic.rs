@@ -151,6 +151,11 @@ use sacm::edit::{
     ReorderElements, SetAssertionDeclaration, SetContent, SetFlag, SetGid, SetKey, SetName,
     SetReferences,
 };
+// The operations of slice 0055 (ADR 0034 amendment 1).
+use sacm::edit::{
+    CreateActivity, CreateArtifact, CreateEvent, CreateResource, SetDate, SetEndTime, SetLocation,
+    SetStartTime, SetVersion,
+};
 use sacm::model::ElementKind::{
     Activity, ArgumentGroup, ArgumentPackage, ArgumentPackageBinding, ArgumentPackageInterface,
     ArgumentReasoning, Artifact, ArtifactAssetRelationship, ArtifactGroup, ArtifactPackage,
@@ -184,8 +189,9 @@ const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/x
 /// The fixtures `xmi::read` reads in this release, relative to [`FIXTURES`].
 /// `golden/nested.golden.sacm.xmi` holds kinds the reader refuses, and the
 /// files under `invalid/` are refused by design.
-const READABLE_FIXTURES: [&str; 10] = [
+const READABLE_FIXTURES: [&str; 11] = [
     "argument-package-root-valid.sacm.xmi",
+    "artifact-assets-valid.sacm.xmi",
     "artifact-package-valid.sacm.xmi",
     "assurance-case-package-root-valid.sacm.xmi",
     "name-third-party-form-valid.sacm.xmi",
@@ -845,6 +851,9 @@ fn xmi_ids_of(element: SacmElement<'_>) -> Vec<&ElementId> {
     ids.extend(element.content_value_ids().iter().flatten());
     ids.extend(element.key_id());
     ids.extend(element.key_value_ids().iter().flatten());
+    // A Resource's `location` and its values (SACM23-ART-005).
+    ids.extend(element.location_id());
+    ids.extend(element.location_value_ids().iter().flatten());
     ids
 }
 
@@ -1096,6 +1105,10 @@ fn probe_index(kind: ElementKind) -> usize {
         Technique,
         Participant,
         ArtifactGroup,
+        Artifact,
+        Event,
+        Resource,
+        Activity,
     ];
     match ORDER.iter().position(|&created| created == kind) {
         Some(index) => index,
@@ -1153,6 +1166,10 @@ fn classify(operation: &Operation) -> Class<'_> {
         Operation::CreateTechnique(create) => under!(create, Technique),
         Operation::CreateParticipant(create) => under!(create, Participant),
         Operation::CreateArtifactGroup(create) => under!(create, ArtifactGroup),
+        Operation::CreateArtifact(create) => under!(create, Artifact),
+        Operation::CreateEvent(create) => under!(create, Event),
+        Operation::CreateResource(create) => under!(create, Resource),
+        Operation::CreateActivity(create) => under!(create, Activity),
         Operation::CreateArtifactPackage(create) => Class::Create {
             kind: ArtifactPackage,
             parent: create.parent(),
@@ -1181,6 +1198,16 @@ fn classify(operation: &Operation) -> Class<'_> {
         Operation::SetContent(set) if set.content().is_some() => edit_of("SetContent"),
         Operation::SetContent(_) => edit_of("SetContent::remove"),
         Operation::SetKey(_) => edit_of("SetKey"),
+        Operation::SetVersion(set) if set.version().is_some() => edit_of("SetVersion"),
+        Operation::SetVersion(_) => edit_of("SetVersion::remove"),
+        Operation::SetDate(set) if set.date().is_some() => edit_of("SetDate"),
+        Operation::SetDate(_) => edit_of("SetDate::remove"),
+        Operation::SetLocation(set) if set.location().is_some() => edit_of("SetLocation"),
+        Operation::SetLocation(_) => edit_of("SetLocation::remove"),
+        Operation::SetStartTime(set) if set.start_time().is_some() => edit_of("SetStartTime"),
+        Operation::SetStartTime(_) => edit_of("SetStartTime::remove"),
+        Operation::SetEndTime(set) if set.end_time().is_some() => edit_of("SetEndTime"),
+        Operation::SetEndTime(_) => edit_of("SetEndTime::remove"),
         Operation::SetReferences(_) => edit_of("SetReferences"),
         Operation::AddReference(_) => edit_of("AddReference"),
         Operation::RemoveReference(_) => edit_of("RemoveReference"),
@@ -1213,6 +1240,35 @@ const CONTENT_EDITS: [&str; 3] = ["SetContent", "SetContent::remove", "SetKey"];
 
 /// The coverage label of the deletes (LIB-EDIT-005, LIB-EDIT-006).
 const DELETES: [&str; 1] = ["DeleteElement"];
+
+/// The created kinds that are no package and no `UtilityElement` and whose
+/// create gives no reference end: a Claim, and the `ArtifactAsset`s, which
+/// have no end of their own (§12.6).
+const CREATES_WITHOUT_ENDS: &[ElementKind] = &[
+    Claim,
+    Property,
+    Technique,
+    Participant,
+    Artifact,
+    Event,
+    Resource,
+    Activity,
+];
+
+/// The coverage labels of the value edits of slice 0055 (SACM23-ART-002,
+/// -004, -005; ADR 0034 amendment 1), which join the LIB-EDIT-002 set.
+const ASSET_VALUE_EDITS: [&str; 10] = [
+    "SetVersion",
+    "SetVersion::remove",
+    "SetDate",
+    "SetDate::remove",
+    "SetLocation",
+    "SetLocation::remove",
+    "SetStartTime",
+    "SetStartTime::remove",
+    "SetEndTime",
+    "SetEndTime::remove",
+];
 
 /// The answers the set must reach for the edit labelled `label`: `Ok` and
 /// CMD-001 always; CMD-008 for an operation whose feature some kind lacks;
@@ -1297,6 +1353,15 @@ fn expected_answer(doc: &Document, operation: &Operation) -> Result<(), Code> {
             feature_answer(doc, set.element(), |kind| UTILITY_ELEMENTS.contains(&kind))
         }
         Operation::SetKey(set) => feature_answer(doc, set.element(), |kind| kind == TaggedValue),
+        // §12.7 `version`, §12.7 and §12.9 `date`, §12.10 `location`, §12.11
+        // `startTime` and `endTime`.
+        Operation::SetVersion(set) => feature_answer(doc, set.element(), |kind| kind == Artifact),
+        Operation::SetDate(set) => {
+            feature_answer(doc, set.element(), |kind| kind == Artifact || kind == Event)
+        }
+        Operation::SetLocation(set) => feature_answer(doc, set.element(), |kind| kind == Resource),
+        Operation::SetStartTime(set) => feature_answer(doc, set.element(), |kind| kind == Activity),
+        Operation::SetEndTime(set) => feature_answer(doc, set.element(), |kind| kind == Activity),
         Operation::SetReferences(set) => {
             set_references_answer(doc, set.element(), set.end(), set.ids())
         }
@@ -2189,6 +2254,9 @@ fn edit_operations_for(doc: &Document) -> Vec<Operation> {
         if let Some(key) = found.and_then(SacmElement::key) {
             operations.push(SetKey::new(element, key.clone()).into());
         }
+        // Slice 0055: each value of an ArtifactAsset, set, set to what it is,
+        // and removed.
+        push_asset_value_edits(&mut operations, found, element, index);
         // LIB-EDIT-009: every end.
         for rule in &END_RULES {
             push_reference_edits(&mut operations, doc, element, rule, no_element.as_ref());
@@ -2216,6 +2284,43 @@ fn edit_operations_for(doc: &Document) -> Vec<Operation> {
         operations.push(ReorderElements::roots(order).into());
     }
     operations
+}
+
+/// The value edits of slice 0055 for `element` (`found` when the document
+/// holds it, the `index`-th target): `version`, `date`, `startTime` and
+/// `endTime` set to a new value, to the one held and removed; `location` set
+/// to two values, to the one held and removed.
+fn push_asset_value_edits(
+    operations: &mut Vec<Operation>,
+    found: Option<SacmElement<'_>>,
+    element: &ElementId,
+    index: usize,
+) {
+    operations.push(SetVersion::new(element, format!("v-{index}")).into());
+    if let Some(version) = found.and_then(SacmElement::version) {
+        operations.push(SetVersion::new(element, version).into());
+    }
+    operations.push(SetVersion::remove(element).into());
+    operations.push(SetDate::new(element, format!("2024-03-{index:02}")).into());
+    if let Some(date) = found.and_then(SacmElement::date) {
+        operations.push(SetDate::new(element, date).into());
+    }
+    operations.push(SetDate::remove(element).into());
+    operations.push(SetLocation::new(element, two_values()).into());
+    if let Some(location) = found.and_then(SacmElement::location) {
+        operations.push(SetLocation::new(element, location.clone()).into());
+    }
+    operations.push(SetLocation::remove(element).into());
+    operations.push(SetStartTime::new(element, format!("s-{index}")).into());
+    if let Some(start) = found.and_then(SacmElement::start_time) {
+        operations.push(SetStartTime::new(element, start).into());
+    }
+    operations.push(SetStartTime::remove(element).into());
+    operations.push(SetEndTime::new(element, format!("e-{index}")).into());
+    if let Some(end) = found.and_then(SacmElement::end_time) {
+        operations.push(SetEndTime::new(element, end).into());
+    }
+    operations.push(SetEndTime::remove(element).into());
 }
 
 /// The reorder lists for the children `children`: empty, reversed, as they
@@ -2542,6 +2647,10 @@ fn lib_edit_002_the_set_has_legal_and_illegal_operations_of_every_kind_with_both
         Technique,
         Participant,
         ArtifactGroup,
+        Artifact,
+        Event,
+        Resource,
+        Activity,
     ] {
         for caller in [false, true] {
             required.push((kind, caller, Ok(())));
@@ -2556,7 +2665,7 @@ fn lib_edit_002_the_set_has_legal_and_illegal_operations_of_every_kind_with_both
         // The artifact assets have no end of their own (§12.6).
         if !UTILITY_ELEMENTS.contains(&kind)
             && !PACKAGE_KINDS.contains(&kind)
-            && ![Claim, Property, Technique, Participant].contains(&kind)
+            && !CREATES_WITHOUT_ENDS.contains(&kind)
         {
             required.push((kind, false, Err(Code::ID_INVALID.as_str())));
             required.push((kind, false, Err(Code::REF_WRONG_TYPE.as_str())));
@@ -2577,6 +2686,7 @@ fn lib_edit_002_the_set_has_legal_and_illegal_operations_of_every_kind_with_both
         .chain(REFERENCE_EDITS)
         .chain(REORDERS)
         .chain(DELETES)
+        .chain(ASSET_VALUE_EDITS)
     {
         for answer in required_answers(label) {
             assert!(
@@ -2689,7 +2799,15 @@ fn oracle(context: &str, operation: &Operation, before: &Document, after: &Docum
             | Difference::KeyId { id, .. }
             | Difference::KeyValueIds { id, .. }
             | Difference::AssertionDeclaration { id, .. }
-            | Difference::ChildOrder { id, .. } => {
+            | Difference::ChildOrder { id, .. }
+            // The values of slice 0055 (ADR 0034 amendment 1).
+            | Difference::Version { id, .. }
+            | Difference::Date { id, .. }
+            | Difference::Location { id, .. }
+            | Difference::LocationId { id, .. }
+            | Difference::LocationValueIds { id, .. }
+            | Difference::StartTime { id, .. }
+            | Difference::EndTime { id, .. } => {
                 changed.insert(id.clone());
             }
             Difference::RootOrder { .. } => assert!(
@@ -3177,7 +3295,8 @@ fn lib_edit_012_no_successful_operation_of_the_set_removes_a_key() {
 
 /// Every operation name of this release, in the declaration order of
 /// `Operation`: the set must reach each accepted and refused.
-const OPERATION_NAMES: [&str; 31] = [
+const OPERATION_NAME_COUNT: usize = 40;
+const OPERATION_NAMES: [&str; OPERATION_NAME_COUNT] = [
     "CreateAssuranceCasePackage",
     "CreateArgumentPackage",
     "CreateClaim",
@@ -3198,12 +3317,21 @@ const OPERATION_NAMES: [&str; 31] = [
     "CreateTechnique",
     "CreateParticipant",
     "CreateArtifactGroup",
+    "CreateArtifact",
+    "CreateEvent",
+    "CreateResource",
+    "CreateActivity",
     "SetName",
     "SetGid",
     "SetFlag",
     "SetAssertionDeclaration",
     "SetContent",
     "SetKey",
+    "SetVersion",
+    "SetDate",
+    "SetLocation",
+    "SetStartTime",
+    "SetEndTime",
     "SetReferences",
     "AddReference",
     "RemoveReference",
@@ -3211,8 +3339,8 @@ const OPERATION_NAMES: [&str; 31] = [
     "DeleteElement",
 ];
 
-/// The first 20 of [`OPERATION_NAMES`]: the creates.
-const CREATE_COUNT: usize = 20;
+/// The first 24 of [`OPERATION_NAMES`]: the creates.
+const CREATE_COUNT: usize = 24;
 
 /// A document read from XMI for the check-order cases: a Claim `c1` with a
 /// Description `d1`, a Claim with the id `a b` (not an `NCName`, kept as
@@ -3260,6 +3388,10 @@ fn has_caller_id(operation: &Operation) -> Option<bool> {
         Operation::CreateTechnique(create) => create.id(),
         Operation::CreateParticipant(create) => create.id(),
         Operation::CreateArtifactGroup(create) => create.id(),
+        Operation::CreateArtifact(create) => create.id(),
+        Operation::CreateEvent(create) => create.id(),
+        Operation::CreateResource(create) => create.id(),
+        Operation::CreateActivity(create) => create.id(),
         _ => return None,
     };
     Some(id.is_some())
@@ -3291,6 +3423,10 @@ fn with_caller_id(operation: Operation, value: Option<&ElementId>) -> Operation 
         Operation::CreateTechnique(create) => create.with_id(value).into(),
         Operation::CreateParticipant(create) => create.with_id(value).into(),
         Operation::CreateArtifactGroup(create) => create.with_id(value).into(),
+        Operation::CreateArtifact(create) => create.with_id(value).into(),
+        Operation::CreateEvent(create) => create.with_id(value).into(),
+        Operation::CreateResource(create) => create.with_id(value).into(),
+        Operation::CreateActivity(create) => create.with_id(value).into(),
         other => panic!("{EDIT_002}: setup: {other:?} is not a create"),
     }
 }
@@ -3371,6 +3507,21 @@ impl CreateEnds {
             CreateTechnique::new(parent, name(10)).into(),
             CreateParticipant::new(parent, name(11)).into(),
             group.into(),
+            // The creates of slice 0055, each with its values.
+            CreateArtifact::new(parent, name(13))
+                .with_version("1.2")
+                .with_date("2024-03-01")
+                .into(),
+            CreateEvent::new(parent, name(14))
+                .with_date("spring 2024")
+                .into(),
+            CreateResource::new(parent, name(15))
+                .with_location(two_values())
+                .into(),
+            CreateActivity::new(parent, name(16))
+                .with_start_time("2024-02-12")
+                .with_end_time("2024-02-01")
+                .into(),
         ]
     }
 
@@ -3525,6 +3676,11 @@ fn artifact_creates_of_every_kind(package_parent: &str, artifact_parent: &str) -
         CreateTechnique::new(artifact_parent, named("Technique")).into(),
         CreateParticipant::new(artifact_parent, named("Participant")).into(),
         CreateArtifactGroup::new(artifact_parent, named("Artifact group")).into(),
+        // The creates of slice 0055, in the order of `Operation`.
+        CreateArtifact::new(artifact_parent, named("Artifact")).into(),
+        CreateEvent::new(artifact_parent, named("Event")).into(),
+        CreateResource::new(artifact_parent, named("Resource")).into(),
+        CreateActivity::new(artifact_parent, named("Activity")).into(),
     ]
 }
 

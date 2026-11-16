@@ -520,6 +520,95 @@
     ]
   },
   {
+    "type": "CreateArtifact",
+    "parent": "evidence",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Brake test report"
+    },
+    "version": null,
+    "date": null
+  },
+  {
+    "type": "CreateArtifact",
+    "parent": "evidence",
+    "id": "report",
+    "name": {
+      "lang": "en",
+      "content": "Brake test report"
+    },
+    "version": "1.2",
+    "date": "2024-03-01"
+  },
+  {
+    "type": "CreateEvent",
+    "parent": "evidence",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Report released"
+    },
+    "date": null
+  },
+  {
+    "type": "CreateEvent",
+    "parent": "evidence",
+    "id": "released",
+    "name": {
+      "lang": "en",
+      "content": "Report released"
+    },
+    "date": "2024-03-05"
+  },
+  {
+    "type": "CreateResource",
+    "parent": "evidence",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Report PDF"
+    },
+    "location": null
+  },
+  {
+    "type": "CreateResource",
+    "parent": "evidence",
+    "id": "report_pdf",
+    "name": {
+      "lang": "en",
+      "content": "Report PDF"
+    },
+    "location": [
+      {
+        "lang": "en",
+        "content": "https://example.org/r.pdf"
+      }
+    ]
+  },
+  {
+    "type": "CreateActivity",
+    "parent": "evidence",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Brake testing"
+    },
+    "start_time": null,
+    "end_time": null
+  },
+  {
+    "type": "CreateActivity",
+    "parent": "evidence",
+    "id": "testing",
+    "name": {
+      "lang": "en",
+      "content": "Brake testing"
+    },
+    "start_time": "2024-02-12",
+    "end_time": "2024-02-29T17:30:00Z"
+  },
+  {
     "type": "SetName",
     "element": "c1",
     "name": {
@@ -582,6 +671,65 @@
         "content": "SIL"
       }
     ]
+  },
+  {
+    "type": "SetVersion",
+    "element": "report",
+    "version": "1.3"
+  },
+  {
+    "type": "SetVersion",
+    "element": "report",
+    "version": null
+  },
+  {
+    "type": "SetDate",
+    "element": "released",
+    "date": "2024-03-06"
+  },
+  {
+    "type": "SetDate",
+    "element": "released",
+    "date": null
+  },
+  {
+    "type": "SetLocation",
+    "element": "report_pdf",
+    "location": [
+      {
+        "lang": "en",
+        "content": "Reviewed"
+      },
+      {
+        "lang": "sv",
+        "content": "Granskad"
+      }
+    ]
+  },
+  {
+    "type": "SetLocation",
+    "element": "report_pdf",
+    "location": null
+  },
+  {
+    "type": "SetStartTime",
+    "element": "testing",
+    "start_time": "2024-02-12"
+  },
+  {
+    "type": "SetStartTime",
+    "element": "testing",
+    "start_time": null
+  },
+  {
+    "type": "SetEndTime",
+    "element": "testing",
+    "end_time": "2024-02-29T17:30:00Z"
+  },
+  {
+    "type": "SetEndTime",
+    "element": "testing",
+    "end_time": null
   },
   {
     "type": "SetReferences",

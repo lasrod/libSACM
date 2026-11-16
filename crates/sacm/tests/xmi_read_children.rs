@@ -568,9 +568,9 @@ fn expected_role(parent: ElementKind, child: ElementKind) -> Option<&'static str
 /// asserted relationships are read in `argumentElement` (SACM23-ARG-005, -006,
 /// -008 to -013). An ArtifactPackage is read in `artifactPackage`, and holds
 /// in `artifactElement` every kind read in `argumentElement`, the
-/// AssuranceCasePackage, and the five artifact kinds of slice 0052; a
-/// Property is read in `property` of the three assets read (SACM23-ART-001,
-/// -003, -008, -009, -011; ADR 0034).
+/// AssuranceCasePackage, the five artifact kinds of slice 0052 and the four
+/// of slice 0055; a Property is read in `property` of the seven assets read
+/// (SACM23-ART-001, -003 to -009, -011; ADR 0034 and its amendment 1).
 fn is_readable(parent: ElementKind, role: &str, child: ElementKind) -> bool {
     use ElementKind as K;
     let utility = matches!(
@@ -627,8 +627,18 @@ fn is_readable(parent: ElementKind, role: &str, child: ElementKind) -> bool {
                     | K::Technique
                     | K::Participant
                     | K::ArtifactGroup
+                    | K::Artifact
+                    | K::Resource
+                    | K::Activity
+                    | K::Event
             ) | (
-                K::Property | K::Technique | K::Participant,
+                K::Property
+                    | K::Technique
+                    | K::Participant
+                    | K::Artifact
+                    | K::Resource
+                    | K::Activity
+                    | K::Event,
                 "property",
                 K::Property
             )
@@ -1245,14 +1255,14 @@ fn sacm23_xmi_016_every_conforming_kind_outside_the_readable_set_is_unsupported_
     }
     // The 2 other ArgumentationElement kinds (the ArgumentPackage interface
     // and binding) in the three ArgumentPackage contexts, the 9 other
-    // package kinds in the two AssuranceCasePackage contexts, and the 18
+    // package kinds in the two AssuranceCasePackage contexts, and the 14
     // ArtifactElement kinds not read yet (9 package, interface and binding
-    // kinds and 9 others, ADR 0034) in the three ArtifactPackage contexts.
-    // The utility roles are read on every context (SACM23-BASE-004,
-    // SACM23-BASE-005), so none of them is a case.
+    // kinds and 5 others, ADR 0034 and its amendment 1) in the three
+    // ArtifactPackage contexts. The utility roles are read on every context
+    // (SACM23-BASE-004, SACM23-BASE-005), so none of them is a case.
     assert_eq!(
         cases.len(),
-        2 * 9 + 3 * 2 + 3 * 18,
+        2 * 9 + 3 * 2 + 3 * 14,
         "{ROW}: setup: the case count"
     );
     assert_all_unsupported_at_mark("unreadable kind", &cases);

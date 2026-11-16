@@ -43,7 +43,7 @@ Where ptc/22-03-13 disagrees with the normative specification text (formal/23-05
 
 - Clause 12.14: class is `ArtifactAssetRelationship` with superclass `ArtifactAsset`; the machine-readable model names it `ArtifactAssertedRelationship` and omits the generalization.
 - Clause 12.9: `Event`'s attribute is `date: date[0..1]`; the machine-readable model spells it `occurece`.
-- Clauses 12.7/12.8/12.9 type `date`, `startTime`, `endTime`, and Artifact `date` as `date`; the machine-readable model references an undefined MagicDraw datatype id for them.
+- Clauses 12.7/12.9/12.11 type `date`, `startTime`, `endTime`, and Artifact `date` as `date`; the machine-readable model references an undefined MagicDraw datatype id for them.
 - Clause 11.3 marks `ArgumentationElement` abstract; the machine-readable model does not.
 
 ### Divergences between the text and the model, and the direction taken (issue #337)
@@ -59,7 +59,7 @@ The rule above -- "where they disagree, follow the text" -- was applied unevenly
 - Clause 10.5 `TerminologyPackageInterface` superclass: the text says "TerminologyElement", the model and the clause's own diagram say `TerminologyPackage`. **Model followed.** An interface that is not a package could not contain the citations the same clause requires it to contain.
 - Clause 10.4 `TerminologyPackage` member role: the text spells it `TerminologyElement` and its prose omits TerminologyGroup. **Model followed**: output writes `terminologyElement`, tolerant import also accepts the text spelling, and TerminologyGroup is admitted (specification defect D9).
 - Clauses 10.4, 11.4 and 12.2 package `interface` references: the model declares an `interface` reference (0..*, to the package's interface class) on TerminologyPackage, ArgumentPackage and ArtifactPackage, as clause 9.2 does for AssuranceCasePackage; the text of those three clauses omits it. **Model followed** (SACM23-ARG-014, SACM23-ART-012, SACM23-TERM-007).
-- Clause 12.10 `Resource.location`: the text declares `location: Base::MultiLangString (composition)` -- the resource's path or URL; the model omits it entirely. **TEXT followed** (as for clauses 8.5 and 8.7 above): it is the only payload `Resource` carries, so a reader without it keeps resources that say nothing about where anything is, and a text-conformant `<location>` fell into preserved content, which strict save then refused. To be represented as `Resource::location()` (planned).
+- Clause 12.10 `Resource.location`: the text declares `location: Base::MultiLangString (composition)` -- the resource's path or URL; the model omits it entirely. **TEXT followed** (as for clauses 8.5 and 8.7 above): it is the only payload `Resource` carries, so a reader without it keeps resources that say nothing about where anything is, and a text-conformant `<location>` fell into preserved content, which strict save then refused. Represented as `SacmElement::location()` (slice 0055, ADR 0034 amendment 1).
 
 Two further defects in the specification TEXT, recorded because they affect what can be enforced rather than what is represented:
 

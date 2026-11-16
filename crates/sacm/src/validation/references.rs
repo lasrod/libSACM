@@ -12,7 +12,7 @@ use crate::model::{
 /// and that names no element of the document is one SACM-REF-001 Error,
 /// with the end's clause, affecting the element, then the id. An id absent
 /// from the document dangles, and so does the `xmi:id` of a `name`,
-/// `content`, `key` or `value`, which identifies no element.
+/// `content`, `key`, `location` or `value`, which identifies no element.
 ///
 /// LIB-COMPAT-003: an id that an element of preserved content carries is in
 /// the file, merely not read, so it is one SACM-REF-003 Warning instead, the
@@ -58,7 +58,7 @@ pub(super) fn dangling_references(document: &Document, found: &mut Vec<Diagnosti
 
 /// LIB-COMPAT-007: each distinct id that a reference end of an element holds
 /// and that is no `xmi:id` the output of [`xmi::write`](crate::xmi::write)
-/// writes, of an element or of a `name`, `content`, `key` or `value`, is one
+/// writes, of an element or of a `name`, `content`, `key`, `location` or `value`, is one
 /// SACM-REF-001 Error, as [`dangling_references`] gives it: an IDREF naming
 /// no ID is not schema-valid (XML Schema 1.0 Part 1 §3.3.4; XMI 2.5.1
 /// §8.2.1 rule 4i; ADR 0035 D4). Unlike `dangling_references`, it does not

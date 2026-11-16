@@ -42,7 +42,7 @@
 //!
 //! [`LangString`], [`MultiLangString`] and [`AssertionDeclaration`] are
 //! values, not elements: they have no id and no kind of their own (the
-//! `xmi:id` of a `name`, `content` or `key` is kept with its owner:
+//! `xmi:id` of a `name`, `content`, `key` or `location` is kept with its owner:
 //! [`SacmElement::name_id`], [`SacmElement::content_id`]), and you construct
 //! them directly, unlike elements, which only a [`Document`] holds.
 //!
@@ -114,7 +114,7 @@ mod revision;
 
 pub use argumentation::{AssertionDeclaration, ParseAssertionDeclarationError};
 pub(crate) use containment::{DeclaredType, admits, role_named};
-pub(crate) use document::{Compared, IdGenerator, Text, TextRole};
+pub(crate) use document::{Compared, IdGenerator, StringAttribute, Text, TextRole};
 pub use document::{Document, SacmElement};
 #[cfg(feature = "test-support")]
 pub use document::{InsertError, SetAssertionDeclarationError};

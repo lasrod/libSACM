@@ -924,11 +924,11 @@ fn lib_compat_001_a_tolerant_read_reports_no_error() {
             ),
         ),
         (
-            "an Artifact in an ArtifactPackage",
+            "an ArtifactAssetRelationship in an ArtifactPackage",
             format!(
                 "<sacm:ArtifactPackage{NS} xmi:id=\"a\"><name content=\"A\"/>\
-                 <artifactElement xmi:type=\"sacm:Artifact\" xmi:id=\"x\"><name content=\"X\"/>\
-                 </artifactElement></sacm:ArtifactPackage>"
+                 <artifactElement xmi:type=\"sacm:ArtifactAssetRelationship\" xmi:id=\"x\">\
+                 <name content=\"X\"/></artifactElement></sacm:ArtifactPackage>"
             ),
         ),
         (

@@ -982,10 +982,12 @@ fn one_entry(row: &str) -> String {
 
 #[test]
 fn lib_api_011_interim_check_requires_an_art_row_in_cp_001_and_cp_003_but_not_cp_002_or_cp_004() {
-    // SACM23-ART-004 (Artifact, an interim entry from slice 0052) is in the
-    // closures of SACM23-CP-001 and SACM23-CP-003 and in neither of the two
-    // others: an Artifact is not argumentation or terminology content.
-    let list = one_entry("SACM23-ART-004");
+    // SACM23-ART-010 (ArtifactAssetRelationship, an interim entry since slice
+    // 0052) is in the closures of SACM23-CP-001 and SACM23-CP-003 and in
+    // neither of the two others: it is not argumentation or terminology
+    // content. (Slice 0055 reads the Artifact, SACM23-ART-004, this test
+    // first used.)
+    let list = one_entry("SACM23-ART-010");
     let rows = matrix_rows(&matrix());
     for (point, inside) in [
         ("SACM23-CP-001", true),
@@ -994,9 +996,9 @@ fn lib_api_011_interim_check_requires_an_art_row_in_cp_001_and_cp_003_but_not_cp
         ("SACM23-CP-004", false),
     ] {
         assert_eq!(
-            closure(&rows, point).contains("SACM23-ART-004"),
+            closure(&rows, point).contains("SACM23-ART-010"),
             inside,
-            "{ROW}: setup: SACM23-ART-004 in the closure of {point} is not {inside}"
+            "{ROW}: setup: SACM23-ART-010 in the closure of {point} is not {inside}"
         );
     }
     let problems = interim_problems(&list, &matrix());
@@ -1014,7 +1016,7 @@ fn lib_api_011_interim_check_requires_an_art_row_in_cp_001_and_cp_003_but_not_cp
         );
         let problems = interim_problems(&list, &emptied);
         assert_only(
-            &format!("SACM23-ART-004 with {point} emptied"),
+            &format!("SACM23-ART-010 with {point} emptied"),
             &problems,
             "interim-row-outside-compliance-point",
             1,
@@ -1128,13 +1130,10 @@ fn lib_api_011_interim_check_requires_a_term_row_in_cp_003() {
 
 #[test]
 fn lib_api_011_the_slice_0052_interim_rows_gate_their_compliance_points_in_the_matrix() {
-    // The nine kinds an ArtifactPackage exposes and slice 0052 does not read
-    // (ADR 0034): each must pass check (b) with the matrix as it is.
+    // The kinds an ArtifactPackage exposes that slice 0052 does not read
+    // (ADR 0034), less the four slice 0055 reads (ADR 0034 amendment 1): each
+    // must pass check (b) with the matrix as it is.
     for row in [
-        "SACM23-ART-004",
-        "SACM23-ART-005",
-        "SACM23-ART-006",
-        "SACM23-ART-007",
         "SACM23-ART-010",
         "SACM23-TERM-002",
         "SACM23-TERM-004",
