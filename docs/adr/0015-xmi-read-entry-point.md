@@ -126,3 +126,11 @@ which return a `LoadResult` with an `ok` flag and an optional document
 - C++ `validate` reports only empty ids; here every id that is not an NCName is reported.
 
 *Amendment 2 status: accepted (the maintainer, 2026-11-13).*
+
+## Amendment 3 (2026-11-16): `InvalidId` is strict only (ADR 0035)
+
+"Both refusals apply in both modes" now applies to `DuplicateId` only. A tolerant read gives
+an element with an empty `xmi:id` a generated id, with SACM-ID-002 as a Warning (ADR 0035
+D1).
+
+*Amendment 3 status: accepted (the maintainer, 2026-11-16).*

@@ -517,8 +517,10 @@ pub enum Difference {
         right: Vec<ElementId>,
     },
     /// The element's preserved content, what [`xmi::read`](crate::xmi::read)
-    /// kept as written because it is not SACM 2.3 where it stands, differs
-    /// on each side (LIB-COMPAT-003, ADR 0033), or one side holds none.
+    /// kept as written instead of read, because it is not SACM 2.3 where it
+    /// stands or, in tolerant mode, because a strict read refuses it, differs
+    /// on each side (LIB-COMPAT-003, ADR 0033, ADR 0035), or one side holds
+    /// none.
     ///
     /// It is compared exactly and in order: namespace URIs, prefixes, local
     /// names, attribute values and order, text, and where each child stands
@@ -528,6 +530,15 @@ pub enum Difference {
         /// The element's id.
         id: ElementId,
     },
+    /// The preserved content outside every element differs on each side, or
+    /// one side holds none (ADR 0035 D3): what [`xmi::read`](crate::xmi::read)
+    /// kept of the `xmi:XMI` element besides its roots, such as its
+    /// attributes, an `xmi:Documentation` or a root of a kind not read yet.
+    ///
+    /// It is compared as [`PreservedContent`](Self::PreservedContent) is,
+    /// with where each child stands among the roots.
+    /// [`element_id`](Difference::element_id) is `None`: no element holds it.
+    DocumentPreservedContent,
 }
 
 impl Difference {
@@ -548,7 +559,7 @@ impl Difference {
     #[must_use]
     pub fn element_id(&self) -> Option<&ElementId> {
         match self {
-            Self::RootOrder { .. } => None,
+            Self::RootOrder { .. } | Self::DocumentPreservedContent => None,
             Self::LeftOnly { id, .. }
             | Self::RightOnly { id, .. }
             | Self::Kind { id, .. }
@@ -760,6 +771,9 @@ impl fmt::Display for Difference {
                 "element {:?} differs in its preserved content",
                 id.as_str()
             ),
+            Self::DocumentPreservedContent => {
+                f.write_str("the documents differ in their preserved content outside every element")
+            }
         }
     }
 }
@@ -953,7 +967,8 @@ impl fmt::Display for Declaration {
 /// ```
 ///
 /// The order of the result:
-/// 1. [`Difference::RootOrder`];
+/// 1. [`Difference::RootOrder`], then
+///    [`Difference::DocumentPreservedContent`];
 /// 2. for each element of `left`, in pre-order: [`Difference::LeftOnly`], or
 ///    else [`Kind`](Difference::Kind), [`Parent`](Difference::Parent),
 ///    [`Gid`](Difference::Gid), [`IsCitation`](Difference::IsCitation),
@@ -1022,6 +1037,8 @@ pub fn semantic_compare(left: &Document, right: &Document) -> Vec<Difference> {
 enum Found<'a> {
     /// The common roots are in a different relative order.
     RootOrder,
+    /// The preserved content outside every element differs.
+    DocumentPreservedContent,
     /// Only the left document holds this element.
     LeftOnly(Compared<'a>),
     /// The element's kind differs; the left and the right features.
@@ -1063,6 +1080,7 @@ impl Found<'_> {
                 left: common_roots(left, right).cloned().collect(),
                 right: common_roots(right, left).cloned().collect(),
             },
+            Self::DocumentPreservedContent => Difference::DocumentPreservedContent,
             Self::LeftOnly(ours) => Difference::LeftOnly {
                 id: ours.id.clone(),
                 kind: ours.kind,
@@ -1207,6 +1225,9 @@ fn walk<'a>(
 ) -> ControlFlow<()> {
     if common_roots(left, right).ne(common_roots(right, left)) {
         sink(Found::RootOrder)?;
+    }
+    if left.document_preserved() != right.document_preserved() {
+        sink(Found::DocumentPreservedContent)?;
     }
 
     for element in left.elements() {

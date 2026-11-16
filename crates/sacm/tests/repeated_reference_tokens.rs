@@ -17,7 +17,10 @@ use sacm::xmi::{self, Mode, ReadError, ReadOptions};
 
 const ROW: &str = "SACM23-XMI-005";
 
-const MODES: [Mode; 2] = [Mode::Strict, Mode::Tolerant];
+/// The modes that refuse a repeated value: strict only. A tolerant read
+/// keeps the first value and preserves the rest, with SACM-MULT-001 as a
+/// Warning (LIB-COMPAT-001, ADR 0035).
+const MODES: [Mode; 1] = [Mode::Strict];
 
 /// Marks an expected location in a template.
 const MARK: char = '\u{2038}';

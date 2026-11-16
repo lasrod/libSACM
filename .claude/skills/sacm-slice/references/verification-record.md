@@ -16,7 +16,7 @@ One or two sentences: what was shown, and how (tests, mutants report, hand mutat
 
 ## Findings
 
-| Severity | Row | Finding | Resolution |
+| Blocking / non-blocking | Row | Finding | Resolution |
 |---|---|---|---|
 
 Keep the record under one page. The verifier's full report stays in the session, not here.

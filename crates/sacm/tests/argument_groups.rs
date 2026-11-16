@@ -178,24 +178,17 @@ fn read_tolerant(what: &str, input: &str) -> Document {
     }
 }
 
-/// Reads `input` in both modes, which the test expects to be refused the same
-/// in both, and returns the refusal.
+/// Reads `input` in strict mode, which the test expects to refuse it, and
+/// returns the refusal. A tolerant read keeps what strict refuses
+/// (LIB-COMPAT-001, ADR 0035).
 fn refused(what: &str, input: &str) -> ReadError {
-    let mut errors = Vec::new();
-    for mode in MODES {
-        match read(mode, input) {
-            Ok(output) => panic!(
-                "{ROW}: {what}: a {mode:?} read returned a document of {} elements for {input:?}",
-                output.document().element_count()
-            ),
-            Err(error) => errors.push(error),
-        }
+    match read(Mode::Strict, input) {
+        Ok(output) => panic!(
+            "{ROW}: {what}: a strict read returned a document of {} elements for {input:?}",
+            output.document().element_count()
+        ),
+        Err(error) => error,
     }
-    assert_eq!(
-        errors[0], errors[1],
-        "{ROW}: {what}: the modes refuse differently"
-    );
-    errors.swap_remove(0)
 }
 
 fn write_in(what: &str, doc: &Document, mode: Mode) -> String {
@@ -1359,9 +1352,9 @@ fn sacm23_arg_013_no_readable_class_has_a_composite_role_and_a_reference_end_of_
                 )),
             }
         }
-        // An end name, as a nested typed element, is no composite role: it
-        // is refused (where within it is SACM23-XMI-010's), never read as a
-        // child.
+        // An end name, as a nested typed element, is no composite role: a
+        // strict read refuses it (where within it is SACM23-XMI-010's), never
+        // reading it as a child.
         for end in &ends {
             let input = element_of(
                 "",
@@ -1369,7 +1362,7 @@ fn sacm23_arg_013_no_readable_class_has_a_composite_role_and_a_reference_end_of_
                     "<{end} xmi:type=\"sacm:Claim\" xmi:id=\"z9\"><name content=\"Z\"/></{end}>"
                 ),
             );
-            match read(Mode::Tolerant, &input) {
+            match read(Mode::Strict, &input) {
                 Err(error @ ReadError::Unsupported { .. }) if error.location().is_some() => {}
                 other => failures.push(format!(
                     "a nested Claim in {end} of a {kind}: not Unsupported: {other:?}"

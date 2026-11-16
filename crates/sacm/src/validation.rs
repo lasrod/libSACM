@@ -293,10 +293,9 @@ const RULES: &[Rule] = &[
 /// The document is not changed. See the [module docs](self) for what is
 /// checked.
 ///
-/// A later minor release may add an Error rule. That is not a breaking
-/// change, even though a strict [`xmi::write`](crate::xmi::write) then
-/// refuses a document it wrote before; the release notes list each such rule
-/// (ADR 0022).
+/// A later minor release may add a rule. That is not a breaking change, and
+/// it never changes what a strict [`xmi::write`](crate::xmi::write) writes,
+/// which checks schema validity only (ADR 0035 D4).
 ///
 /// An empty name is a name: `<name/>` gives no finding.
 ///
@@ -314,8 +313,28 @@ const RULES: &[Rule] = &[
 /// ```
 #[must_use]
 pub fn validate(document: &Document) -> Vec<Diagnostic> {
+    run(document, RULES)
+}
+
+/// The rules of the schema check a strict [`xmi::write`](crate::xmi::write)
+/// runs (LIB-COMPAT-007, ADR 0035 D4): an `xmi:id` that is no `NCName`
+/// (XML Schema 1.0 Part 2 §3.3.8), and a reference to no `xmi:id` the output
+/// writes (Part 1 §3.3.4, XMI 2.5.1 rule 4i).
+const SCHEMA_RULES: &[Rule] = &[ids::invalid_id, references::unwritten_references];
+
+/// The Errors that make the XMI output of `document` schema-invalid, sorted
+/// by [`Diagnostic`]'s order: one SACM-ID-002 per `xmi:id` that is no
+/// `NCName`, and one SACM-REF-001 per distinct reference id of an end that
+/// names no `xmi:id` the output writes. It is no part of [`validate`], which
+/// it never runs (ADR 0035 D4).
+pub(crate) fn schema_errors(document: &Document) -> Vec<Diagnostic> {
+    run(document, SCHEMA_RULES)
+}
+
+/// The findings of `rules` about `document`, sorted.
+fn run(document: &Document, rules: &[Rule]) -> Vec<Diagnostic> {
     let mut found = Vec::new();
-    for rule in RULES {
+    for rule in rules {
         rule(document, &mut found);
     }
     found.sort();

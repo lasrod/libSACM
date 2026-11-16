@@ -240,8 +240,10 @@ fn no_finding(row: &str, what: &str, input: &str) {
     assert!(found.is_empty(), "{row}: {what}: findings: {found:?}");
 }
 
-/// A strict write of `doc` must be `WriteError::Invalid` holding `expected`
-/// among its Errors.
+/// A strict write of `doc` must be `WriteError::Invalid` holding exactly
+/// `expected`, which are SACM-REF-001: the schema check (ADR 0035 D4; XML
+/// Schema Part 1 §3.3.4) refuses a reference naming no `xmi:id`, and no
+/// other validation Error.
 fn assert_strict_write_refuses(row: &str, what: &str, doc: &Document, expected: &[Diagnostic]) {
     let error = match xmi::write(doc, &WriteOptions::default()) {
         Ok(text) => panic!("{row}: {what}: a strict write returned:\n{text}"),
@@ -250,12 +252,41 @@ fn assert_strict_write_refuses(row: &str, what: &str, doc: &Document, expected: 
     let WriteError::Invalid { diagnostics, .. } = &error else {
         panic!("{row}: {what}: the strict refusal is not Invalid: {error:?}");
     };
+    assert!(
+        expected
+            .iter()
+            .all(|finding| finding.code() == Code::REF_DANGLING),
+        "{row}: {what}: setup: not only SACM-REF-001 expected: {expected:?}"
+    );
+    assert_eq!(
+        diagnostics, expected,
+        "{row}: {what}: the strict refusal does not hold exactly the SACM-REF-001"
+    );
+}
+
+/// `validate(doc)` holds each of `expected`, and a strict write of `doc`,
+/// which checks schema validity only (ADR 0035 D4), writes it as a tolerant
+/// write does.
+fn assert_strict_write_writes(row: &str, what: &str, doc: &Document, expected: &[Diagnostic]) {
+    let found = validation::validate(doc);
     for finding in expected {
         assert!(
-            diagnostics.contains(finding),
-            "{row}: {what}: the strict refusal does not hold {finding:?}: {diagnostics:?}"
+            found.contains(finding),
+            "{row}: {what}: setup: validate does not hold {finding:?}: {found:?}"
         );
     }
+    let strict = match xmi::write(doc, &WriteOptions::default()) {
+        Ok(text) => text,
+        Err(error) => panic!("{row}: {what}: a strict write refused: {error:?}"),
+    };
+    let tolerant = match xmi::write(doc, &WriteOptions::default().with_mode(Mode::Tolerant)) {
+        Ok(text) => text,
+        Err(error) => panic!("{row}: {what}: a tolerant write refused: {error:?}"),
+    };
+    assert_eq!(
+        strict, tolerant,
+        "{row}: {what}: the strict write is not the tolerant one"
+    );
 }
 
 /// A tolerant write of `doc` must succeed and read back equal; returns it.
@@ -700,7 +731,7 @@ fn sacm23_val_007_a_dangling_cited_element_without_is_citation_gives_both_findin
 }
 
 #[test]
-fn sacm23_val_007_the_rule_holds_on_every_readable_kind_and_a_strict_write_refuses() {
+fn sacm23_val_007_the_rule_holds_on_every_readable_kind_and_a_strict_write_keeps_it() {
     let row = VAL_007;
     for (holder, _, input_of) in holders() {
         // A self-reference resolves, so only the citation rule reports.
@@ -711,7 +742,7 @@ fn sacm23_val_007_the_rule_holds_on_every_readable_kind_and_a_strict_write_refus
             panic!("{row}: {what}: not one finding: {found:?}");
         };
         assert_finding(row, &what, finding, CITE, &["x"], &["x"]);
-        assert_strict_write_refuses(row, &what, &doc, &found);
+        assert_strict_write_writes(row, &what, &doc, &found);
         let text = tolerant_round_trip(row, &what, &doc);
         assert!(
             text.contains(" citedElement=\"x\""),
@@ -975,7 +1006,7 @@ fn sacm23_val_008_an_abstract_claim_with_a_dangling_abstract_form_gives_the_erro
 }
 
 #[test]
-fn sacm23_val_008_errors_make_a_strict_write_refuse_and_warnings_alone_do_not() {
+fn sacm23_val_008_neither_errors_nor_warnings_refuse_a_strict_write() {
     let row = VAL_008;
     let what = "an abstract Claim with an abstractForm";
     let doc = read_ok(
@@ -988,7 +1019,7 @@ fn sacm23_val_008_errors_make_a_strict_write_refuse_and_warnings_alone_do_not() 
         )),
     );
     let expected = findings(row, what, &doc, &[VAL_008]);
-    assert_strict_write_refuses(row, what, &doc, &expected);
+    assert_strict_write_writes(row, what, &doc, &expected);
     tolerant_round_trip(row, what, &doc);
 
     let what = "a concrete Claim conforming to the concrete ArgumentPackage q";

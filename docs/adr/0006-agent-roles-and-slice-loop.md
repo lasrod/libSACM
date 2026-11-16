@@ -123,3 +123,25 @@ The maintainer adopted five more speed-ups. The safeguards of amendment 3 stay. 
   public API keep both.
 
 *Amendment 4 status: accepted (the maintainer, 2026-11-15).*
+
+## Amendment 5 (2026-11-16): fewer roles, one fix round, C++ only when stuck
+
+An independent review (2026-11-16) found the process out of proportion for a 0.x library
+with one main consumer. The maintainer adopted:
+- **Three working roles:**
+  - a **designer**, who does research and API design together;
+  - a **builder**, who writes the failing tests first and then the code;
+  - an independent **verifier**, who also reviews the docs.
+
+  The lead confirms the red between the builder's two steps. The matrix steward runs only at
+  a milestone close. No single actor both builds and judges: the verifier stays independent.
+- **One fix round:** one verification round plus one fix round, then the lead asks the
+  maintainer. Full depth is reserved for rows that touch reading, writing or data
+  integrity. Wording findings are fixed directly, not logged as follow-ups.
+- **C++ only when stuck:** the assurance-forge C++ library is consulted only when the
+  standard leaves a question open and the project has no answer. ADRs no longer carry a
+  "Differences from C++" section.
+
+Mutation testing stays on the PR path.
+
+*Amendment 5 status: accepted (the maintainer, 2026-11-16).*

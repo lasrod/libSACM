@@ -170,24 +170,17 @@ fn read_ok(row: &str, what: &str, input: &str) -> Document {
     output.into_document()
 }
 
-/// Reads `input` in both modes, which the test expects to be refused the same
-/// in both, and returns the refusal.
+/// Reads `input` in strict mode, which the test expects to refuse it, and
+/// returns the refusal. A tolerant read keeps what a strict read refuses
+/// here (LIB-COMPAT-001, ADR 0035).
 fn refused(row: &str, what: &str, input: &str) -> ReadError {
-    let mut errors = Vec::new();
-    for mode in MODES {
-        match read(mode, input) {
-            Ok(output) => panic!(
-                "{row}: {what}: a {mode:?} read returned a document of {} elements for {input:?}",
-                output.document().element_count()
-            ),
-            Err(error) => errors.push(error),
-        }
+    match read(Mode::Strict, input) {
+        Ok(output) => panic!(
+            "{row}: {what}: a strict read returned a document of {} elements for {input:?}",
+            output.document().element_count()
+        ),
+        Err(error) => error,
     }
-    assert_eq!(
-        errors[0], errors[1],
-        "{row}: {what}: the modes refuse differently"
-    );
-    errors.swap_remove(0)
 }
 
 fn write_in(row: &str, what: &str, doc: &Document, mode: Mode) -> String {
@@ -957,12 +950,16 @@ fn sacm23_xmi_005_a_one_mib_reference_or_many_tokens_do_not_panic() {
             }
             Err(error) => panic!("{row}: {what}: refused: {error:?}"),
         }
-        // Many tokens: one value repeated, refused without a panic or a hang.
+        // Many tokens: one value repeated, refused by a strict read without
+        // a panic or a hang (a tolerant read keeps it, ADR 0035).
         let many = "c2 ".repeat(MIB / 3);
         let input = c1_then_c2(&format!("{flag} {end}=\"{many}\""), "");
         let what = format!("{} tokens in {end}", MIB / 3);
         let result = within(row, &what, deadline, move || {
-            xmi::read(input.as_bytes(), &ReadOptions::default())
+            xmi::read(
+                input.as_bytes(),
+                &ReadOptions::default().with_mode(Mode::Strict),
+            )
         });
         assert!(
             matches!(result, Err(ReadError::RepeatedValue { .. })),

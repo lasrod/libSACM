@@ -26,7 +26,7 @@ use sacm::diagnostic::{self, Code, Diagnostic, Severity};
 use sacm::edit::{self, CreateArgumentPackage, CreateClaim};
 use sacm::model::{AbstractClass, Document, ElementId, ElementKind, LangString};
 use sacm::validation;
-use sacm::xmi::{self, Mode, ReadOptions, WriteError, WriteOptions};
+use sacm::xmi::{self, Mode, ReadOptions, WriteOptions};
 
 use ElementKind::{
     ArgumentPackage as Package, ArgumentPackageBinding as Binding,
@@ -477,8 +477,10 @@ fn sacm23_val_012_edits_that_mix_the_content_succeed_and_validate_reports() {
 
 // --- Item 9: saving -----------------------------------------------------------------
 
+/// A strict write checks schema validity only (ADR 0035 D4): SACM-PKG-001,
+/// a validation Error, does not refuse it.
 #[test]
-fn sacm23_val_012_a_strict_write_refuses_and_a_tolerant_write_keeps_every_child() {
+fn sacm23_val_012_a_strict_and_a_tolerant_write_keep_every_child() {
     let what = "p{c1, q, every utility kind, c2}";
     let input =
         abstract_root_p(&[claim("c1"), package("q", ""), every_utility(), claim("c2")].concat());
@@ -486,17 +488,10 @@ fn sacm23_val_012_a_strict_write_refuses_and_a_tolerant_write_keeps_every_child(
     let expected = validation::validate(&doc);
     assert_findings(what, &expected, &[("p", "c1"), ("p", "c2")]);
 
-    let error = match xmi::write(&doc, &WriteOptions::default()) {
-        Ok(text) => panic!("{ROW}: {what}: a strict write returned:\n{text}"),
-        Err(error) => error,
+    let strict = match xmi::write(&doc, &WriteOptions::default()) {
+        Ok(text) => text,
+        Err(error) => panic!("{ROW}: {what}: a strict write refused: {error:?}"),
     };
-    let WriteError::Invalid { diagnostics, .. } = &error else {
-        panic!("{ROW}: {what}: the strict refusal is not Invalid: {error:?}");
-    };
-    assert_eq!(
-        diagnostics, &expected,
-        "{ROW}: {what}: the strict refusal does not hold the findings"
-    );
 
     let text = match xmi::write(&doc, &WriteOptions::default().with_mode(Mode::Tolerant)) {
         Ok(text) => text,
@@ -512,6 +507,10 @@ fn sacm23_val_012_a_strict_write_refuses_and_a_tolerant_write_keeps_every_child(
         semantic_compare(&doc, &back),
         [],
         "{ROW}: {what}: the tolerant output does not read back equal\n{text}"
+    );
+    assert_eq!(
+        strict, text,
+        "{ROW}: {what}: the strict write is not the tolerant one"
     );
 }
 

@@ -213,9 +213,22 @@ fn read_ok(row: &str, what: &str, input: &str) -> Document {
     documents.swap_remove(0)
 }
 
-/// Reads `input` in both modes, which the test expects to be refused the same
-/// in both, and returns the refusal.
+/// Reads `input` in strict mode, which the test expects to refuse it, and
+/// returns the refusal. A tolerant read keeps what a strict read refuses
+/// here (LIB-COMPAT-001, ADR 0035).
 fn refused(what: &str, input: &str) -> ReadError {
+    match read(Mode::Strict, input) {
+        Ok(output) => panic!(
+            "{ROW}: {what}: a strict read returned a document of {} elements for {input:?}",
+            output.document().element_count()
+        ),
+        Err(error) => error,
+    }
+}
+
+/// Reads `input` in both modes, which the test expects to be refused the same
+/// in both (a refusal of both modes, LIB-COMPAT-001), and returns the refusal.
+fn refused_in_both_modes(what: &str, input: &str) -> ReadError {
     let mut errors = Vec::new();
     for mode in MODES {
         match read(mode, input) {
@@ -563,7 +576,7 @@ fn sacm23_base_005_two_tagged_values_with_the_same_key_are_both_kept_in_order() 
 // --- Item 4: refusals ---------------------------------------------------------------
 
 #[test]
-fn sacm23_base_005_a_second_key_or_content_is_repeated_value_in_both_modes() {
+fn sacm23_base_005_a_second_key_or_content_is_repeated_value_in_strict_mode() {
     for (what, body, property) in [
         (
             "two keys",
@@ -824,7 +837,7 @@ fn sacm23_base_005_key_ids_are_kept_by_role_and_position_and_written_first() {
         ),
     ] {
         let (input, marks) = marked(&template);
-        let error = refused(what, &input);
+        let error = refused_in_both_modes(what, &input);
         assert!(
             matches!(&error, ReadError::DuplicateId { id: found, .. } if found.as_str() == id),
             "{ROW}: {what}: not DuplicateId for {id:?}: {error:?}"

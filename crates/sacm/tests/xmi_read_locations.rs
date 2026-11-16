@@ -10,8 +10,10 @@
 //! for the `ArtifactReference` and `ArgumentGroup` ends (ADR 0028); the
 //! strict refusals of the C++ name and text shapes (SACM-XMI-012,
 //! LIB-COMPAT-008) and the untyped child under an abstract role
-//! (SACM-XMI-005, LIB-COMPAT-010). A row is read in tolerant mode unless it
-//! says strict. Content that does not conform is no refusal site since
+//! (SACM-XMI-005, LIB-COMPAT-010). Every row is read in strict mode: a
+//! tolerant read keeps what a strict read refuses, except a DOCTYPE,
+//! malformed XML, no SACM 2.3 root, a duplicate id and the limits
+//! (ADR 0035). Content that does not conform is no refusal site since
 //! ADR 0033: the sites where it used to be refused are in [`preserved_rows`],
 //! where one SACM-XMI-003 must be at the same construct (LIB-COMPAT-003).
 //! The expected
@@ -157,7 +159,10 @@ fn row(what: &'static str, variant: Variant, text: impl Into<String>) -> Row {
         form: Form::Utf8,
         lead: Lead::Full,
         variant,
-        mode: Mode::Tolerant,
+        // A tolerant read keeps what a strict read refuses, except a
+        // DOCTYPE, malformed XML, no SACM 2.3 root, a duplicate id and the
+        // limits (LIB-COMPAT-001, ADR 0035), so every site is read strictly.
+        mode: Mode::Strict,
     }
 }
 

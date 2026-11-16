@@ -174,19 +174,27 @@ catalog! {
     /// abstract carries no `xmi:type` (or `xsi:type`), so its class is not
     /// known (XMI 2.5.1 §7.6.3). Its element name is the role, so no class
     /// can be inferred, and none is guessed. The code of
-    /// [`ReadError::MissingType`](crate::xmi::ReadError::MissingType),
-    /// refused in both modes (LIB-COMPAT-010, ADR 0022). Fix: give the child
-    /// an `xmi:type` naming its class, such as `xmi:type="sacm:Claim"`.
+    /// [`ReadError::MissingType`](crate::xmi::ReadError::MissingType) in
+    /// strict mode (LIB-COMPAT-010, ADR 0022). A tolerant read keeps the
+    /// child whole as preserved content of its parent, its `xmi:id`s in the
+    /// id space, with one Warning at its start tag affecting the parent
+    /// (LIB-COMPAT-001, ADR 0035). Fix: give the child an `xmi:type` naming
+    /// its class, such as `xmi:type="sacm:Claim"`.
     pub const XMI_MISSING_TYPE: Code = Code::from_static("SACM-XMI-005");
 
     /// SACM-XMI-003: content that neither the SACM XML Schema nor the XMI
     /// 2.5.1 production rules allow where it stands, such as a vendor
     /// attribute or child element, an attribute the element's class lacks,
     /// a child whose type the role does not admit, or text in element-only
-    /// content. [`xmi::read`](crate::xmi::read) keeps it exactly as written,
-    /// in both modes, as preserved content of the element it sits in, and
-    /// reports one per construct, affecting that element: a Warning in
-    /// tolerant mode and an Error in strict mode (LIB-COMPAT-003, ADR 0033).
+    /// content, and an attribute or text on the `xmi:XMI` element.
+    /// [`xmi::read`](crate::xmi::read) keeps it exactly as written, in both
+    /// modes, as preserved content of the element it sits in, or of the
+    /// document for content on `xmi:XMI`, and reports one per construct,
+    /// affecting that element: a Warning in tolerant mode and an Error in
+    /// strict mode (LIB-COMPAT-003, ADR 0033). A preserved attribute whose
+    /// prefix `sacm` or `xmi` is bound to another namespace is refused by a
+    /// strict read; a tolerant read keeps it under the first prefix `nsN`
+    /// unbound at its element, which the message names (ADR 0035).
     /// A tolerant [`xmi::write`](crate::xmi::write) writes it back; a strict
     /// one refuses it (SACM-XMI-006). Named after the C++ library's
     /// `kXmiUnknownElement`; it covers attributes and text too. Fix: remove
@@ -195,12 +203,26 @@ catalog! {
     pub const XMI_UNKNOWN_CONTENT: Code = Code::from_static("SACM-XMI-003");
 
     /// SACM-XMI-006: a strict [`xmi::write`](crate::xmi::write) refuses a
-    /// document that holds preserved content (SACM-XMI-003), because it is
-    /// not SACM 2.3. The code of
+    /// document that holds preserved content (SACM-XMI-003, SACM-XMI-007,
+    /// SACM-XMI-014), because it cannot show that content it did not read
+    /// is schema-valid. The code of
     /// [`WriteError::PreservedContent`](crate::xmi::WriteError::PreservedContent)
-    /// (SACM23-XMI-008, ADR 0033). Fix: write it in tolerant mode, which
-    /// writes the content back, or delete the elements that hold it.
+    /// (SACM23-XMI-008, ADR 0033, ADR 0035). Fix: write it in tolerant mode,
+    /// which writes the content back, or delete the elements that hold it.
+    /// Content the document holds outside its elements can be written only
+    /// in tolerant mode in this release.
     pub const XMI_STRICT_SAVE_REFUSED: Code = Code::from_static("SACM-XMI-006");
+
+    /// SACM-XMI-007: a reference to an element of another document, an
+    /// `href` with a document part such as `other.xmi#c9`, or `XLink`
+    /// attributes, which this release does not read yet. A tolerant
+    /// [`xmi::read`](crate::xmi::read) keeps the reference element, or the
+    /// role element in reference form, whole as preserved content, with one
+    /// Warning; the reference end stays empty. A strict read refuses it as
+    /// [`ReadError::Unsupported`](crate::xmi::ReadError::Unsupported)
+    /// (LIB-API-011, ADR 0035; SACM23-XMI-027 reads it). It is never
+    /// SACM-XMI-003: such a reference conforms.
+    pub const XMI_EXTERNAL_HREF: Code = Code::from_static("SACM-XMI-007");
 
     /// SACM-XMI-010: an `xsi:type` attribute is used. XMI 2.5.1 §9.5.2 rule
     /// 2g allows it only if `org.omg.xmi.useSchemaExtensions` is true, and
@@ -232,6 +254,19 @@ catalog! {
     /// form. Fix: read the file in tolerant mode and save it again.
     pub const XMI_LEGACY_SHAPE: Code = Code::from_static("SACM-XMI-012");
 
+    /// SACM-XMI-014: conforming content this release does not read yet,
+    /// which a tolerant [`xmi::read`](crate::xmi::read) keeps as preserved
+    /// content with one Warning: an element of a kind not read yet (such as
+    /// an `Artifact` or a `TerminologyPackage`), a package's `interface`
+    /// end, an `ExpressionLangString`, XMI metadata (such as `xmi:uuid`,
+    /// `xsi:schemaLocation` or `xmi:Documentation`), or a spelling
+    /// SACM23-XMI-009 reads. It is not a defect: the message ends naming the
+    /// row that reads it. A strict read refuses it as
+    /// [`ReadError::Unsupported`](crate::xmi::ReadError::Unsupported), and a
+    /// strict write refuses a document that holds it (SACM-XMI-006)
+    /// (LIB-API-011, ADR 0035).
+    pub const XMI_UNREAD_CONTENT: Code = Code::from_static("SACM-XMI-014");
+
     /// SACM-MULT-001: a property has more or fewer values than its
     /// multiplicity allows. [`validation::validate`](crate::validation::validate)
     /// reports it, as an Error, for a `ModelElement` with no name (§8.6
@@ -248,7 +283,10 @@ catalog! {
     /// and [`EditError::TooManyReferences`](crate::edit::EditError::TooManyReferences),
     /// an edit that would give a reference end fewer or more ids than its
     /// bounds allow, and of
-    /// [`ReadError::RepeatedValue`](crate::xmi::ReadError::RepeatedValue).
+    /// [`ReadError::RepeatedValue`](crate::xmi::ReadError::RepeatedValue)
+    /// in strict mode; a tolerant read reads the first occurrence and keeps
+    /// each later one as preserved content, with one Warning at it
+    /// (LIB-COMPAT-001, ADR 0035).
     ///
     /// ```
     /// use sacm::diagnostic::Code;
@@ -259,12 +297,15 @@ catalog! {
 
     /// SACM-ENUM-001: a value is not one of its type's literals. The code of
     /// [`ReadError::InvalidLiteral`](crate::xmi::ReadError::InvalidLiteral),
-    /// refused in both modes: an `assertionDeclaration` that is not exactly
+    /// refused in strict mode: an `assertionDeclaration` that is not exactly
     /// one of the six `AssertionDeclaration` literals (SACM23-VAL-006), and
     /// an `isCitation`, `isAbstract` or `isCounter` (SACM23-ARG-007) that is
     /// not one of the `xsd:boolean` literals `true`, `false`, `1` and `0`,
     /// with white space around them collapsed (SACM23-BASE-007,
-    /// SACM23-BASE-008). Fix: write one of
+    /// SACM23-BASE-008). A tolerant read keeps the attribute or value
+    /// element as preserved content, with one Warning, and holds the
+    /// default, `asserted` or false (SACM23-VAL-006, ADR 0035). Fix: write
+    /// one of
     /// `asserted`, `needsSupport`, `assumed`, `axiomatic`, `defeated` and
     /// `asCited`, or one of `true` and `false`, spelled and cased exactly.
     pub const ENUM_INVALID_LITERAL: Code = Code::from_static("SACM-ENUM-001");
@@ -400,11 +441,15 @@ catalog! {
     /// and not already held, that holds XML white space, so it cannot be
     /// written as one id. It is the code of
     /// [`ReadError::InvalidId`](crate::xmi::ReadError::InvalidId) for an
-    /// empty `xmi:id` on an element or a `name`.
+    /// empty `xmi:id` on an element or a `name` in strict mode; a tolerant
+    /// read gives such an element a generated id, and a `name` none, with
+    /// one Warning (ADR 0035).
     /// [`validation::validate`](crate::validation::validate) reports it as an
     /// Error for every other id that is not an `NCName`, a name's `xmi:id`
-    /// included (SACM23-VAL-020). An id with white space around an `NCName`
-    /// is first read trimmed (SACM-ID-004).
+    /// included (SACM23-VAL-020), and a strict
+    /// [`xmi::write`](crate::xmi::write) refuses such an id (schema check,
+    /// not `validate`). An id with white space around an `NCName` is first
+    /// read trimmed (SACM-ID-004).
     pub const ID_INVALID: Code = Code::from_static("SACM-ID-002");
 
     /// SACM-ID-003: two or more elements hold the same `gid`, which §8.2
@@ -451,8 +496,9 @@ catalog! {
     /// finding. Each affects the referring element, then the missing id
     /// (SACM23-VAL-003). [`xmi::read`](crate::xmi::read) keeps such a
     /// reference in both modes, and a tolerant [`xmi::write`](crate::xmi::write)
-    /// writes it back, so nothing is lost; a strict write refuses the
-    /// document (ADR 0026). Fix: point the reference at an element of the
+    /// writes it back, so nothing is lost; a strict write refuses a
+    /// reference that names no `xmi:id` it writes (schema check, not
+    /// `validate`; ADR 0026, ADR 0035). Fix: point the reference at an element of the
     /// document, add the element it names, or remove the reference, in the
     /// file or with [`SetReferences`](crate::edit::SetReferences) or
     /// [`RemoveReference`](crate::edit::RemoveReference) (LIB-EDIT-009),

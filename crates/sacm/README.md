@@ -29,13 +29,15 @@ Read, edit, validate and write assurance cases in the
   `Participant`, `Property` and `ArtifactGroup` elements, with each asset's properties
   (`SacmElement::properties`) and each group's members. Content that is not SACM 2.3 where it stands, such as
   a vendor attribute or element, is kept as written as preserved content, with
-  SACM-XMI-003 (`SacmElement::has_preserved_content`); conforming content it does not
-  read yet is refused, never dropped. An
-  element without an `xmi:id` gets a generated one, such as `claim_1`, which `write`
+  SACM-XMI-003 (`SacmElement::has_preserved_content`). A tolerant read, the default,
+  opens every well-formed file with SACM 2.3 package roots: what a strict read refuses,
+  such as a value that is no literal or conforming content not read yet, it keeps as
+  preserved content with a Warning, never dropped (`Document::has_preserved_content`).
+  An element without an `xmi:id` gets a generated one, such as `claim_1`, which `write`
   saves; see the Ids section of the `sacm::xmi::read` docs.
-- `sacm::xmi::write` writes a document deterministically, preserved content included,
-  and by default refuses one that holds preserved content or that validation reports an
-  Error for.
+- `sacm::xmi::write` writes a document deterministically, preserved content included.
+  A strict save, the default, refuses output that would not be schema-valid and a
+  document that holds preserved content; it never validates.
 - `sacm::validation::validate` reports each element that has no name, each `content` or
   `key` text that is empty or gives one language twice, each tagged value without a key,
   each id that is not an XML `NCName`, each `gid` two elements share, each element with
@@ -139,15 +141,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-A strict save refuses a document with a validation Error, as `WriteError::Invalid`; a
-draft is saved with `WriteOptions::default().with_mode(Mode::Tolerant)`. A later release
-may add validation rules, so a strict save may then refuse a document it saved before.
+A strict save refuses output that would not be schema-valid, an `xmi:id` that is no
+`NCName` or a reference to no `xmi:id` it writes, as `WriteError::Invalid`, and a document
+that holds preserved content, as `WriteError::PreservedContent`. It never validates: a
+draft with an open model Error, such as an element with no name, saves strictly. Call
+`validation::validate` for model checks.
 
 Which `xmi::Mode` to use: read in tolerant mode, the default, to open files from other
-tools. A strict read reports the variations it recognises as Errors instead of Warnings
-(in this release, only `xsi:type`). Neither mode validates what it reads, so to check a
-file, also run `validation::validate` and test both lists with `diagnostic::has_errors`.
-Save in strict mode, the default, for a file you hand on.
+tools: it keeps what a strict read refuses, with a Warning. A strict read refuses what it
+does not read, and reports the variations it recognises as Errors instead of Warnings.
+Neither mode validates what it reads. To check that a file conforms, read it in strict
+mode, run `validation::validate`, and test both lists with `diagnostic::has_errors`: a
+tolerant read reports what a strict read refuses as Warnings and keeps it as preserved
+content (`Document::has_preserved_content`), so its diagnostics alone are no conformance
+check. Save in strict mode, the default, for a file you hand on; save in tolerant mode to
+keep what a tolerant read preserved.
 
 See the [crate documentation](https://docs.rs/sacm) for the full API.
 

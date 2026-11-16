@@ -112,26 +112,20 @@ fn read_ok(what: &str, input: &str) -> Document {
     documents.swap_remove(0)
 }
 
-/// Reads `template` without its one mark in both modes and asserts that it
-/// is refused the same in both, with SACM-XMI-005 at the mark.
+/// Reads `template` without its one mark in strict mode and asserts that it
+/// is refused with SACM-XMI-005 at the mark. A tolerant read preserves the
+/// child in its parent, with SACM-XMI-005 as a Warning (LIB-COMPAT-001,
+/// ADR 0035).
 fn assert_missing_type_at_mark(what: &str, template: &str) {
     let (input, marks) = marked(template);
     assert_eq!(marks.len(), 1, "{ROW}: setup: {what} has not one mark");
-    let mut errors = Vec::new();
-    for mode in MODES {
-        match read(mode, &input) {
-            Ok(output) => panic!(
-                "{ROW}: {what}: a {mode:?} read returned a document of {} elements for {input:?}",
-                output.document().element_count()
-            ),
-            Err(error) => errors.push(error),
-        }
-    }
-    assert_eq!(
-        errors[0], errors[1],
-        "{ROW}: {what}: the modes refuse differently"
-    );
-    let error = &errors[0];
+    let error = &match read(Mode::Strict, &input) {
+        Ok(output) => panic!(
+            "{ROW}: {what}: a strict read returned a document of {} elements for {input:?}",
+            output.document().element_count()
+        ),
+        Err(error) => error,
+    };
     assert!(
         !matches!(error, ReadError::Unsupported { .. }),
         "{ROW}: {what}: still Unsupported: {error:?} ({error})"
@@ -265,13 +259,15 @@ fn lib_compat_010_a_reference_form_element_under_an_abstract_role_is_not_missing
     }
 }
 
-/// Reads `template` without its one mark in both modes and asserts that it
+/// Reads `template` without its one mark in strict mode and asserts that it
 /// is `Unsupported`, with no code, at the mark, its one-line reason ending
-/// with `label`; `row` names the row in the messages.
+/// with `label`; `row` names the row in the messages. A tolerant read keeps
+/// it (ADR 0035).
 fn assert_unsupported_at_mark(row: &str, what: &str, template: &str, label: &str) {
     let (input, marks) = marked(template);
     assert_eq!(marks.len(), 1, "{row}: setup: {what} has not one mark");
-    for mode in MODES {
+    {
+        let mode = Mode::Strict;
         let error = match read(mode, &input) {
             Ok(output) => panic!(
                 "{row}: {what}: a {mode:?} read returned a document of {} elements",
@@ -593,7 +589,7 @@ fn lib_compat_010_an_untyped_child_under_a_concrete_role_still_reads() {
 }
 
 #[test]
-fn lib_compat_010_the_catalog_row_of_sacm_xmi_005_is_live_and_an_error_in_both_modes() {
+fn lib_compat_010_the_catalog_row_of_sacm_xmi_005_is_live_and_an_error_in_strict_mode() {
     assert_eq!(
         Code::XMI_MISSING_TYPE.as_str(),
         "SACM-XMI-005",
@@ -616,8 +612,9 @@ fn lib_compat_010_the_catalog_row_of_sacm_xmi_005_is_live_and_an_error_in_both_m
     let cells: Vec<&str> = row.split('|').map(str::trim).collect();
     assert_eq!(
         cells.get(2).copied(),
-        Some("Error"),
-        "{ROW}: the severity of SACM-XMI-005 is not Error in both modes: {row}"
+        Some("Error (strict) / Warning (tolerant read)"),
+        "{ROW}: the severity of SACM-XMI-005 is not an Error in strict mode and a Warning \
+         in a tolerant read: {row}"
     );
     for needle in ["`Code::XMI_MISSING_TYPE`", "LIB-COMPAT-010"] {
         assert!(

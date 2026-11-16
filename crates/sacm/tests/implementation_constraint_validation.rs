@@ -26,7 +26,7 @@ use sacm::edit::{
 };
 use sacm::model::{Document, ElementId, ElementKind, Flag, LangString};
 use sacm::validation;
-use sacm::xmi::{self, Mode, ReadOptions, WriteError, WriteOptions};
+use sacm::xmi::{self, Mode, ReadOptions, WriteOptions};
 
 const ROW: &str = "SACM23-VAL-021";
 const VAL_008: &str = "SACM23-VAL-008";
@@ -241,18 +241,26 @@ fn one_error_on_x(what: &str, input: &str) -> (Document, Diagnostic) {
     (doc, finding)
 }
 
-/// A strict write of `doc` must be `WriteError::Invalid` holding `expected`.
-fn assert_strict_write_refuses(what: &str, doc: &Document, expected: &Diagnostic) {
-    let error = match xmi::write(doc, &WriteOptions::default()) {
-        Ok(text) => panic!("{ROW}: {what}: a strict write returned:\n{text}"),
-        Err(error) => error,
-    };
-    let WriteError::Invalid { diagnostics, .. } = &error else {
-        panic!("{ROW}: {what}: the strict refusal is not Invalid: {error:?}");
-    };
+/// `validate(doc)` holds `expected`, and a strict write of `doc`, which
+/// checks schema validity only (ADR 0035 D4), writes it as a tolerant write
+/// does.
+fn assert_strict_write_writes(what: &str, doc: &Document, expected: &Diagnostic) {
+    let found = validation::validate(doc);
     assert!(
-        diagnostics.contains(expected),
-        "{ROW}: {what}: the strict refusal does not hold {expected:?}: {diagnostics:?}"
+        found.contains(expected),
+        "{ROW}: {what}: setup: validate does not hold {expected:?}: {found:?}"
+    );
+    let strict = match xmi::write(doc, &WriteOptions::default()) {
+        Ok(text) => text,
+        Err(error) => panic!("{ROW}: {what}: a strict write refused: {error:?}"),
+    };
+    let tolerant = match xmi::write(doc, &WriteOptions::default().with_mode(Mode::Tolerant)) {
+        Ok(text) => text,
+        Err(error) => panic!("{ROW}: {what}: a tolerant write refused: {error:?}"),
+    };
+    assert_eq!(
+        strict, tolerant,
+        "{ROW}: {what}: the strict write is not the tolerant one"
     );
 }
 
@@ -408,7 +416,7 @@ fn sacm23_val_021_descriptions_notes_and_tagged_values_alone_give_no_finding() {
 // --- Acceptance 3: strict and tolerant writes ---------------------------------------
 
 #[test]
-fn sacm23_val_021_a_strict_write_refuses_and_a_tolerant_write_keeps_the_constraint() {
+fn sacm23_val_021_a_strict_and_a_tolerant_write_keep_the_constraint() {
     for (holder, input_of) in holders() {
         let what = format!("{holder}, concrete, with two constraints");
         let (doc, finding) = one_error_on_x(&what, &input_of("", TWO));
@@ -417,7 +425,7 @@ fn sacm23_val_021_a_strict_write_refuses_and_a_tolerant_write_keeps_the_constrai
             ["ic1", "ic2"],
             "{ROW}: {what}: reading did not keep both constraints"
         );
-        assert_strict_write_refuses(&what, &doc, &finding);
+        assert_strict_write_writes(&what, &doc, &finding);
         let text = write_round_trip(&what, &doc, Mode::Tolerant);
         for id in ["ic1", "ic2"] {
             assert!(
@@ -480,7 +488,7 @@ fn sacm23_val_021_create_implementation_constraint_then_set_is_abstract_clears_t
         panic!("{ROW}: {what}: not one finding: {found:?}");
     };
     assert_error(what, finding, "c");
-    assert_strict_write_refuses(what, &doc, finding);
+    assert_strict_write_writes(what, &doc, finding);
 
     if let Err(error) = edit::apply(&mut doc, SetFlag::new("c", Flag::IsAbstract, true)) {
         panic!("{ROW}: SetFlag(c, IsAbstract, true) was refused: {error:?}");

@@ -1902,7 +1902,7 @@ fn check_cycles(matrix: &Matrix, rows: &HashMap<&str, &Row>, errors: &mut Vec<St
 /// one per test, in this order of precedence:
 ///
 /// 1. A traced test in a file with a path component `src` is in production
-///    source, where the implementer can add or change it, whether or not it
+///    source, where the builder can add or change it, whether or not it
 ///    runs or is cited.
 /// 2. An ignored or skipped traced test is not evidence, whether or not it is
 ///    cited.

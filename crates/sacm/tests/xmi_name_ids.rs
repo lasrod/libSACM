@@ -123,9 +123,22 @@ fn read_ok(what: &str, input: &str) -> Document {
     documents.swap_remove(0)
 }
 
-/// Reads `input` in both modes, which the test expects to be refused the same
-/// in both, and returns the refusal.
+/// Reads `input` in strict mode, which the test expects to refuse it, and
+/// returns the refusal. A tolerant read keeps what a strict read refuses
+/// here (LIB-COMPAT-001, ADR 0035).
 fn refused(what: &str, input: &str) -> ReadError {
+    match read(Mode::Strict, input) {
+        Ok(output) => panic!(
+            "{ROW}: {what}: a strict read returned a document of {} elements for {input:?}",
+            output.document().element_count()
+        ),
+        Err(error) => error,
+    }
+}
+
+/// Reads `input` in both modes, which the test expects to be refused the same
+/// in both (a refusal of both modes, LIB-COMPAT-001), and returns the refusal.
+fn refused_in_both_modes(what: &str, input: &str) -> ReadError {
     let mut errors = Vec::new();
     for mode in MODES {
         match read(mode, input) {
@@ -327,7 +340,7 @@ fn sacm23_xmi_022_a_name_id_repeating_any_id_is_duplicate_id_at_both_start_tags(
     ];
     for (what, template, id) in &cases {
         let (input, marks) = marked(template);
-        let error = refused(what, &input);
+        let error = refused_in_both_modes(what, &input);
         assert!(
             matches!(&error, ReadError::DuplicateId { id: found, .. } if found.as_str() == *id),
             "{ROW}: {what}: not DuplicateId for {id:?}: {error:?}"

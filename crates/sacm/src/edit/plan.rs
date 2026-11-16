@@ -12,6 +12,7 @@
 //! document mutably.
 
 use super::DanglingReference;
+use super::set::ASSERTION_DECLARATION;
 use crate::model::{
     AssertionDeclaration, Document, ElementId, ElementKind, Flag, LangString, MultiLangString,
     ReferenceEnd, Text, TextRole,
@@ -247,12 +248,21 @@ impl Value<'_> {
             Self::Gid(gid) => document
                 .set_gid(element, gid.map(str::to_owned))
                 .expect("invariant: the plan found the element"),
-            Self::Flag(flag, value) => document
-                .set_flag(element, flag, value)
-                .expect("invariant: the plan found the element, and its kind has the flag"),
-            Self::Declaration(declaration) => document
-                .set_declaration(element, declaration)
-                .expect("invariant: the plan found the element, and it is an Assertion"),
+            Self::Flag(flag, value) => {
+                document
+                    .set_flag(element, flag, value)
+                    .expect("invariant: the plan found the element, and its kind has the flag");
+                // The flag is given now: it replaces an attribute of its name
+                // kept as preserved content, whose value was no literal (ADR
+                // 0035).
+                document.replace_preserved_attribute(element, flag.name());
+            }
+            Self::Declaration(declaration) => {
+                document
+                    .set_declaration(element, declaration)
+                    .expect("invariant: the plan found the element, and it is an Assertion");
+                document.replace_preserved_attribute(element, ASSERTION_DECLARATION);
+            }
             Self::Text(role, Some(text)) => document.set_text(element, role, text).expect(
                 "invariant: the plan found the element, its kind holds the role, and the text \
                  keeps only the role's own ids",
@@ -267,7 +277,7 @@ impl Value<'_> {
                 // The end is given now: it replaces an attribute of its name
                 // kept as preserved content, which held no id (ADR 0033).
                 if sets {
-                    document.replace_preserved_end(element, end);
+                    document.replace_preserved_attribute(element, end.name());
                 }
             }
         }

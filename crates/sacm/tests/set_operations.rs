@@ -610,8 +610,8 @@ fn lib_edit_008_a_gid_holding_a_character_xml_cannot_represent_is_accepted_and_t
     for target in ["c1", "n1"] {
         let mut doc = read(&every_readable_kind(""));
         // c1 holds an implementation constraint, which needs it abstract
-        // (§8.6, SACM23-VAL-021); otherwise the strict write refuses it as
-        // Invalid before it reaches the gid.
+        // (§8.6, SACM23-VAL-021). A strict write checks schema validity
+        // only (ADR 0035), so it reaches the gid either way.
         apply(&mut doc, SetFlag::new("c1", Flag::IsAbstract, true));
         let mutation = apply(&mut doc, SetGid::new(target, "a\u{1}b"));
         assert_eq!(

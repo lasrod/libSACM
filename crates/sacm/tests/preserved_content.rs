@@ -1310,7 +1310,9 @@ fn lib_compat_003_a_repeated_value_refusal_does_not_list_a_preserved_occurrence(
             .iter()
             .map(|needle| position_of(&input, needle))
             .collect();
-        for mode in MODES {
+        // A tolerant read keeps the first and preserves the rest (ADR 0035).
+        {
+            let mode = Mode::Strict;
             let error = read_err(what, mode, input.as_bytes());
             assert!(
                 matches!(&error, ReadError::RepeatedValue { property: given, .. } if given == property),
@@ -1900,7 +1902,9 @@ fn lib_compat_003_an_empty_preserved_id_is_an_invalid_id() {
     ] {
         let input = package(body);
         let expected = position_of(&input, at);
-        for mode in MODES {
+        // A tolerant read keeps it verbatim with a Warning (ADR 0035).
+        {
+            let mode = Mode::Strict;
             let error = read_err(what, mode, input.as_bytes());
             assert!(
                 matches!(&error, ReadError::InvalidId { id, .. } if id.is_empty()),

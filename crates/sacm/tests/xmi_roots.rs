@@ -34,7 +34,7 @@ use std::time::Duration;
 
 use sacm::diagnostic::{Code, Severity, SourceLocation};
 use sacm::model::{Document, ElementId, ElementKind, LangString, SacmElement};
-use sacm::xmi::{self, ReadError, ReadOptions, ReadOutput};
+use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput};
 
 /// The pinned SACM 2.3 namespace (D-NS-PIN).
 const SACM_NS: &str = "http://www.omg.org/spec/SACM/20220301";
@@ -100,11 +100,16 @@ const DEADLINE: Duration = Duration::from_secs(5);
 /// with a message that starts with `row`, when the read panics or does not
 /// return within [`DEADLINE`].
 fn read(row: &str, input: &[u8]) -> Result<ReadOutput, ReadError> {
+    read_with(row, input, ReadOptions::default())
+}
+
+/// `xmi::read` with `options`, on a worker thread, as [`read`].
+fn read_with(row: &str, input: &[u8], options: ReadOptions) -> Result<ReadOutput, ReadError> {
     let owned = input.to_vec();
     let (sender, receiver) = mpsc::channel();
     thread::spawn(move || {
         // The receiver is gone only after the deadline has already failed the test.
-        let _ = sender.send(xmi::read(&owned, &ReadOptions::default()));
+        let _ = sender.send(xmi::read(&owned, &options));
     });
     match receiver.recv_timeout(DEADLINE) {
         Ok(result) => result,
@@ -140,9 +145,12 @@ fn read_ok(row: &str, input: &[u8]) -> ReadOutput {
     }
 }
 
-/// Reads `input`, which the test expects to be refused, and returns why.
+/// Reads `input` in strict mode, which the test expects to refuse it, and
+/// returns why. A tolerant read keeps what a strict read refuses, except a
+/// DOCTYPE, malformed XML, no SACM 2.3 root, a duplicate id and the limits
+/// (LIB-COMPAT-001, ADR 0035).
 fn refusal(row: &str, input: &[u8]) -> ReadError {
-    match read(row, input) {
+    match read_with(row, input, ReadOptions::default().with_mode(Mode::Strict)) {
         Ok(output) => panic!(
             "{row}: read returned a document for {}: {:?}",
             preview(input),

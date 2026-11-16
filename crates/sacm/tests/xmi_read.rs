@@ -103,11 +103,16 @@ const DEADLINE: Duration = Duration::from_secs(5);
 /// with a message that starts with `row`, when the read panics or does not
 /// return within [`DEADLINE`].
 fn read(row: &str, input: &[u8]) -> Result<ReadOutput, ReadError> {
+    read_with(row, input, ReadOptions::default())
+}
+
+/// `xmi::read` with `options`, on a worker thread, as [`read`].
+fn read_with(row: &str, input: &[u8], options: ReadOptions) -> Result<ReadOutput, ReadError> {
     let owned = input.to_vec();
     let (sender, receiver) = mpsc::channel();
     thread::spawn(move || {
         // The receiver is gone only after the deadline has already failed the test.
-        let _ = sender.send(xmi::read(&owned, &ReadOptions::default()));
+        let _ = sender.send(xmi::read(&owned, &options));
     });
     match receiver.recv_timeout(DEADLINE) {
         Ok(result) => result,
@@ -132,9 +137,12 @@ fn preview(input: &[u8]) -> String {
     }
 }
 
-/// Reads `input`, which the test expects to be refused, and returns why.
+/// Reads `input` in strict mode, which the test expects to refuse it, and
+/// returns why. A tolerant read refuses only a DOCTYPE, malformed XML, no
+/// SACM 2.3 root, a duplicate id and the limits, and keeps the rest as
+/// preserved content with a Warning (LIB-COMPAT-001, ADR 0035).
 fn refusal(row: &str, input: &[u8]) -> ReadError {
-    match read(row, input) {
+    match read_with(row, input, ReadOptions::default().with_mode(Mode::Strict)) {
         Ok(output) => panic!("{row}: read returned Ok({output:?}) for {}", preview(input)),
         Err(error) => error,
     }

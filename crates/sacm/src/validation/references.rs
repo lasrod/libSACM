@@ -50,28 +50,55 @@ pub(super) fn dangling_references(document: &Document, found: &mut Vec<Diagnosti
                     );
                     continue;
                 }
-                let message = format!(
-                    "{} {:?} has the {} {:?}, which names no element of the document \
-                     (the end's type is {})",
-                    element.kind().name(),
-                    element.id().as_str(),
-                    end.name(),
-                    target.as_str(),
-                    end.target().name()
-                );
-                found.push(
-                    Diagnostic::create(
-                        Code::REF_DANGLING,
-                        Severity::Error,
-                        "SACM23-VAL-003",
-                        message,
-                    )
-                    .set_clause(end.clause())
-                    .set_affected([element.id().clone(), target.clone()]),
-                );
+                found.push(dangling(element, end, target));
             }
         }
     }
+}
+
+/// LIB-COMPAT-007: each distinct id that a reference end of an element holds
+/// and that is no `xmi:id` the output of [`xmi::write`](crate::xmi::write)
+/// writes, of an element or of a `name`, `content`, `key` or `value`, is one
+/// SACM-REF-001 Error, as [`dangling_references`] gives it: an IDREF naming
+/// no ID is not schema-valid (XML Schema 1.0 Part 1 §3.3.4; XMI 2.5.1
+/// §8.2.1 rule 4i; ADR 0035 D4). Unlike `dangling_references`, it does not
+/// report a reference to the `xmi:id` of a `name`, which is written.
+pub(super) fn unwritten_references(document: &Document, found: &mut Vec<Diagnostic>) {
+    for element in document.elements() {
+        for end in ReferenceEnd::ALL {
+            // As in `dangling_references`: once per distinct id.
+            let mut reported = HashSet::new();
+            for target in element.references(end) {
+                if document.is_id_in_use(target.as_str()) || !reported.insert(target.as_str()) {
+                    continue;
+                }
+                found.push(dangling(element, end, target));
+            }
+        }
+    }
+}
+
+/// The SACM-REF-001 Error for the id `target` of the end `end` of
+/// `element`, which names no element: with the end's clause, affecting the
+/// element, then the id.
+fn dangling(element: SacmElement<'_>, end: ReferenceEnd, target: &ElementId) -> Diagnostic {
+    let message = format!(
+        "{} {:?} has the {} {:?}, which names no element of the document \
+         (the end's type is {})",
+        element.kind().name(),
+        element.id().as_str(),
+        end.name(),
+        target.as_str(),
+        end.target().name()
+    );
+    Diagnostic::create(
+        Code::REF_DANGLING,
+        Severity::Error,
+        "SACM23-VAL-003",
+        message,
+    )
+    .set_clause(end.clause())
+    .set_affected([element.id().clone(), target.clone()])
 }
 
 /// SACM23-VAL-004: each distinct id that a reference end of an element holds

@@ -379,9 +379,8 @@ fn owned(expected: &[(&str, ElementKind)]) -> Vec<(String, ElementKind)> {
 // Writing and reading
 // ---------------------------------------------------------------------------
 
-/// The options of every write here: tolerant, because most documents here are
-/// nameless and a strict write refuses a validation Error (LIB-COMPAT-007).
-/// The output form is the same in both modes.
+/// The options of every write here: tolerant, which writes a document as it
+/// is held (LIB-COMPAT-007). The output form is the same in both modes.
 fn options() -> WriteOptions {
     WriteOptions::default().with_mode(Mode::Tolerant)
 }
@@ -1394,8 +1393,9 @@ fn sacm23_xmi_004_an_id_holding_u0001_is_refused_naming_the_element_and_the_char
 
 #[test]
 fn sacm23_xmi_004_a_strict_write_of_an_id_holding_u0001_is_invalid_with_sacm_id_002() {
-    // Strict validation (SACM23-VAL-020) comes before the writer's own
-    // UnrepresentableCharacter check.
+    // The schema check refuses it first (SACM-ID-002, the SACM23-VAL-020
+    // rule; ADR 0035 D4), before the writer's own UnrepresentableCharacter
+    // check.
     let row = "SACM23-XMI-004";
     let mut doc = Document::new();
     insert_named(
@@ -2711,6 +2711,19 @@ fn lib_api_010_every_feature_a_document_holds_is_written() {
     assert_features_written(row);
 }
 
+/// A named ArgumentPackage root whose id `1a` is not an `NCName`: one
+/// SACM-ID-002 schema error for a strict write (ADR 0035 D4).
+fn non_ncname_root(row: &str) -> Document {
+    let mut doc = Document::new();
+    insert_named(
+        row,
+        &mut doc,
+        (None, ElementKind::ArgumentPackage, "1a"),
+        LangString::new("Arguments"),
+    );
+    doc
+}
+
 /// Writes `doc` in strict mode, which the test expects to refuse it.
 fn strict_write_err(row: &str, doc: &Document) -> WriteError {
     match xmi::write(doc, &WriteOptions::default().with_mode(Mode::Strict)) {
@@ -2774,8 +2787,8 @@ fn lib_api_010_write_error_refuses_only_no_root_unrepresentable_character_invali
     // name's `lang` and a name's `content`. Strict mode adds
     // `PreservedContent`, for a document that holds preserved content
     // (SACM23-XMI-008, `strict_save_preserved.rs`), and `Invalid`, for a
-    // document `validate` reports an Error for; its rules are
-    // LIB-COMPAT-007's, tested in `load_and_save_modes.rs`.
+    // document whose output would not be schema-valid (ADR 0035 D4); its
+    // rules are LIB-COMPAT-007's, tested in `load_and_save_modes.rs`.
     let mut refused: Vec<(&str, Document, Option<&str>)> = vec![
         ("an empty document", Document::new(), None),
         (
@@ -2818,16 +2831,20 @@ fn lib_api_010_write_error_refuses_only_no_root_unrepresentable_character_invali
         let code: Option<Code> = error.code();
         assert_eq!(code, None, "{row}: {what}: {error:?} has a catalog code");
     }
-    // In strict mode, a nameless root is a validation Error (SACM23-VAL-018).
-    let invalid = strict_write_err(
-        row,
-        &build(row, &[(None, ElementKind::ArgumentPackage, "a")]),
-    );
+    // In strict mode, an id that is not an NCName is a schema error
+    // (SACM-ID-002); a nameless root, a validation Error only, is not.
+    let invalid = strict_write_err(row, &non_ncname_root(row));
     assert_eq!(
         write_error_variant(&invalid),
         Some("Invalid"),
-        "{row}: a nameless root written strictly is refused as {invalid:?}"
+        "{row}: a root with the id \"1a\" written strictly is refused as {invalid:?}"
     );
+    if let Err(error) = xmi::write(
+        &build(row, &[(None, ElementKind::ArgumentPackage, "a")]),
+        &WriteOptions::default(),
+    ) {
+        panic!("{row}: a nameless root written strictly is refused: {error:?}");
+    }
     assert_eq!(
         invalid.element(),
         None,
@@ -2880,11 +2897,8 @@ fn lib_api_010_write_error_is_a_send_sync_error_and_only_preserved_content_has_a
         LangString::new("n\u{1}"),
     );
     let unrepresentable_name = write_err(row, &named);
-    // A nameless root, written strictly (LIB-COMPAT-007).
-    let invalid = strict_write_err(
-        row,
-        &build(row, &[(None, ElementKind::ArgumentPackage, "a")]),
-    );
+    // An id that is not an NCName, written strictly (LIB-COMPAT-007).
+    let invalid = strict_write_err(row, &non_ncname_root(row));
     // Preserved content, written strictly (SACM23-XMI-008).
     let preserved = strict_write_err(row, &features_document(row));
     for (error, expected) in [

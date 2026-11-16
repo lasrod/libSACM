@@ -41,6 +41,7 @@ decisions.md has a one-line entry pointing to it.
 | [0032](0032-atomic-batches.md) | Atomic batches of operations | accepted |
 | [0033](0033-preserved-content.md) | Preserved content | accepted |
 | [0034](0034-artifact-packages-assets-and-groups.md) | Artifact packages, assets and groups | accepted |
+| [0035](0035-tolerant-read-and-schema-only-save.md) | Tolerant read opens any file; strict save is schema only | accepted |
 
 Statuses: `proposed` → `accepted` (maintainer approval) → optionally `superseded by NNNN`.
 Copy [template.md](template.md) for a new record.

@@ -1678,10 +1678,12 @@ fn lib_compat_003_a_preserved_part_is_never_a_repeated_value_occurrence() {
     }
 }
 
-/// Asserts that `input` is `Unsupported` in both modes, labelled a defect
-/// in the input.
+/// Asserts that `input` is `Unsupported` in strict mode, labelled a defect
+/// in the input. A tolerant read keeps it, with SACM-XMI-003 (ADR 0035;
+/// `unread_content.rs`).
 fn assert_defect(what: &str, input: &str) {
-    for mode in MODES {
+    {
+        let mode = Mode::Strict;
         let Err(error) = xmi::read(input.as_bytes(), &ReadOptions::default().with_mode(mode))
         else {
             panic!("{ROW}: {what}: a {mode:?} read accepted it");
@@ -1728,5 +1730,165 @@ fn lib_compat_003_a_preserved_attribute_binding_sacm_or_xmi_elsewhere_is_unsuppo
             "<argumentElement xmlns:x=\"{XMI_NS}\" xmlns:xmi=\"urn:example:other\" \
              x:type=\"sacm:Claim\" x:id=\"c1\" xmi:extra=\"1\"><name content=\"c1\"/></argumentElement>"
         )),
+    );
+}
+
+/// A tolerant read keeps a preserved attribute whose prefix `sacm` or `xmi`
+/// is bound to another URI, with one SACM-XMI-003 naming the new prefix: its
+/// namespace URI and local name are kept, and the prefix is replaced by the
+/// first `nsN` unbound at the holder (ADR 0033 amendment 1, ADR 0035).
+#[test]
+fn lib_compat_003_a_rebound_sacm_prefix_is_kept_under_ns1() {
+    for (what, holder_attributes, renamed) in [
+        (
+            "sacm bound to another URI",
+            format!(
+                "xmlns:s=\"{SACM_NS}\" xmlns:sacm=\"urn:example:other\" xmi:type=\"s:Claim\" \
+                 xmi:id=\"c1\" sacm:extra=\"1\""
+            ),
+            "ns1",
+        ),
+        (
+            "xmi bound to another URI",
+            format!(
+                "xmlns:x=\"{XMI_NS}\" xmlns:xmi=\"urn:example:other\" x:type=\"sacm:Claim\" \
+                 x:id=\"c1\" xmi:extra=\"1\""
+            ),
+            "ns1",
+        ),
+        (
+            "sacm bound to another URI, and ns1 bound at the holder",
+            format!(
+                "xmlns:s=\"{SACM_NS}\" xmlns:sacm=\"urn:example:other\" xmlns:ns1=\"urn:taken\" \
+                 xmi:type=\"s:Claim\" xmi:id=\"c1\" ns1:kept=\"2\" sacm:extra=\"1\""
+            ),
+            "ns2",
+        ),
+    ] {
+        let input = package(&format!(
+            "<argumentElement {holder_attributes}><name content=\"c1\"/></argumentElement>"
+        ));
+        let Err(strict) = xmi::read(
+            input.as_bytes(),
+            &ReadOptions::default().with_mode(Mode::Strict),
+        ) else {
+            panic!("{ROW}: {what}: setup: a strict read accepted it");
+        };
+        let output = match xmi::read(input.as_bytes(), &ReadOptions::default()) {
+            Ok(output) => output,
+            Err(error) => panic!("{ROW}: {what}: a tolerant read refused it: {error:?}"),
+        };
+        let at_extra: Vec<&Diagnostic> = output
+            .diagnostics()
+            .iter()
+            .filter(|found| found.location() == strict.location())
+            .collect();
+        assert!(
+            at_extra.len() == 1
+                && at_extra[0].code() == Code::XMI_UNKNOWN_CONTENT
+                && at_extra[0].severity() == Severity::Warning
+                && at_extra[0].affected() == ids(&["c1"])
+                && at_extra[0].message().contains(renamed),
+            "{ROW}: {what}: not one SACM-XMI-003 Warning on c1 at the attribute naming \
+             {renamed}: {:?}",
+            output.diagnostics()
+        );
+        let doc = output.into_document();
+        assert!(
+            doc.get("c1")
+                .is_some_and(SacmElement::has_preserved_content),
+            "{ROW}: {what}: c1 does not hold the attribute"
+        );
+        let text = write(what, &doc);
+        let Some(tag) = text.lines().find(|line| line.contains("xmi:id=\"c1\"")) else {
+            panic!("{ROW}: {what}: c1 is not written\n{text}");
+        };
+        assert!(
+            tag.contains(&format!("xmlns:{renamed}=\"urn:example:other\""))
+                && tag.contains(&format!("{renamed}:extra=\"1\""))
+                && !tag.contains("sacm:extra")
+                && !tag.contains("xmi:extra"),
+            "{ROW}: {what}: the attribute is not written as {renamed}:extra in urn:example:other: \
+             {tag}"
+        );
+        let back = read(&format!("{what}, written"), &text);
+        assert!(
+            back == doc && semantic_compare(&doc, &back).is_empty(),
+            "{ROW}: {what}: the output does not read back equal\n{text}"
+        );
+        assert_eq!(
+            write(what, &back),
+            text,
+            "{ROW}: {what}: writing again is not byte-identical"
+        );
+    }
+}
+
+/// Two attributes whose prefixes `sacm` and `xmi` are rebound to two other
+/// namespaces on one holder take `ns1` and `ns2`: a prefix one of the
+/// holder's kept bindings already uses is taken (ADR 0035).
+#[test]
+fn lib_compat_003_two_rebound_prefixes_on_one_holder_take_ns1_and_ns2() {
+    let what = "sacm and xmi rebound to urn:a and urn:b on one Claim";
+    let input = package(&format!(
+        "<argumentElement xmlns:s=\"{SACM_NS}\" xmlns:x=\"{XMI_NS}\" xmlns:sacm=\"urn:a\" \
+         xmlns:xmi=\"urn:b\" x:type=\"s:Claim\" x:id=\"c1\" sacm:p=\"1\" xmi:q=\"2\">\
+         <name content=\"c1\"/></argumentElement>"
+    ));
+    let output = match xmi::read(input.as_bytes(), &ReadOptions::default()) {
+        Ok(output) => output,
+        Err(error) => panic!("{ROW}: {what}: a tolerant read refused it: {error:?}"),
+    };
+    let found: Vec<(Code, Severity, Vec<ElementId>, bool, bool)> = output
+        .diagnostics()
+        .iter()
+        .map(|found| {
+            (
+                found.code(),
+                found.severity(),
+                found.affected().to_vec(),
+                found.message().contains("\"ns1\""),
+                found.message().contains("\"ns2\""),
+            )
+        })
+        .collect();
+    assert_eq!(
+        found,
+        [
+            (
+                Code::XMI_UNKNOWN_CONTENT,
+                Severity::Warning,
+                ids(&["c1"]),
+                true,
+                false
+            ),
+            (
+                Code::XMI_UNKNOWN_CONTENT,
+                Severity::Warning,
+                ids(&["c1"]),
+                false,
+                true
+            ),
+        ],
+        "{ROW}: {what}: not two SACM-XMI-003 Warnings on c1 naming ns1, then ns2"
+    );
+    let doc = output.into_document();
+    let text = write(what, &doc);
+    for binding in ["xmlns:ns1=\"urn:a\"", "xmlns:ns2=\"urn:b\""] {
+        assert_eq!(
+            text.matches(binding).count(),
+            1,
+            "{ROW}: {what}: {binding} is not declared exactly once\n{text}"
+        );
+    }
+    let back = read(&format!("{what}, written"), &text);
+    assert!(
+        back == doc,
+        "{ROW}: {what}: the output does not read back equal\n{text}"
+    );
+    assert_eq!(
+        write(what, &back),
+        text,
+        "{ROW}: {what}: writing again is not byte-identical"
     );
 }
