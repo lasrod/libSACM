@@ -568,9 +568,9 @@ fn expected_role(parent: ElementKind, child: ElementKind) -> Option<&'static str
 /// asserted relationships are read in `argumentElement` (SACM23-ARG-005, -006,
 /// -008 to -013). An ArtifactPackage is read in `artifactPackage`, and holds
 /// in `artifactElement` every kind read in `argumentElement`, the
-/// AssuranceCasePackage, and the five artifact kinds of slice 0052; a
-/// Property is read in `property` of the three assets read (SACM23-ART-001,
-/// -003, -008, -009, -011; ADR 0034).
+/// AssuranceCasePackage, the five artifact kinds of slice 0052 and the four
+/// of slice 0055; a Property is read in `property` of the seven assets read
+/// (SACM23-ART-001, -003 to -009, -011; ADR 0034 and its amendment 1).
 fn is_readable(parent: ElementKind, role: &str, child: ElementKind) -> bool {
     use ElementKind as K;
     let utility = matches!(
@@ -632,7 +632,13 @@ fn is_readable(parent: ElementKind, role: &str, child: ElementKind) -> bool {
                     | K::Activity
                     | K::Event
             ) | (
-                K::Property | K::Technique | K::Participant,
+                K::Property
+                    | K::Technique
+                    | K::Participant
+                    | K::Artifact
+                    | K::Resource
+                    | K::Activity
+                    | K::Event,
                 "property",
                 K::Property
             )

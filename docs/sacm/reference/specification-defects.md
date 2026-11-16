@@ -375,7 +375,7 @@ true)", and §12.11 (Semantics) of "ArtifactActivityRelationships" and
 "ActivityRelationships". SACM 2.3 defines none of these classes: clause 11 has
 `AssertedEvidence` (§11.15), and §12.14 defines only `ArtifactAssetRelationship`.
 
-**This crate** is not affected: the Semantics sections are informative.
+**This crate** is not affected: these sentences name no class or property the crate reads or writes.
 
 **Suggested resolution.** Use the defined class names: `AssertedEvidence` and
 `ArtifactAssetRelationship`.

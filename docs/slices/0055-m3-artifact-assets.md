@@ -79,3 +79,9 @@ No new diagnostic codes.
   - Reworded the verified rows the change made false: ART-001, ART-003, VAL-010, VAL-020,
     LIB-RT-001, LIB-RT-002, XMI-007, XMI-014, XMI-016 and LIB-COMPAT-007 (LIB-API-011 got
     a note only).
+- 2026-11-17 verify, round 1: FAIL, with three blocking findings: no serde golden for the
+  other four `FeatureNotApplicable` features; no test that string attributes come before
+  preserved attributes; and a stale `XMI_UNREAD_CONTENT` rustdoc example. The verifier
+  also gave wording fixes. The fix round adds four golden refusals (lead approved) and one
+  order test, and applies the verifier's exact text. The lead fixed ART-003's and XMI-014's
+  matrix phrases.

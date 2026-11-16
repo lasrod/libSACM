@@ -773,6 +773,15 @@ fn edit_error_samples() -> Vec<EditError> {
         &artifact_assets_start(),
         SetDate::new("testing", "2024-03-06"),
     ));
+    // The other value edits of slice 0055, each on a kind without the value,
+    // so each feature name reads back (SACM23-ART-004, -005, -006).
+    let assets = artifact_assets_start();
+    samples.extend([
+        refusal(&assets, SetVersion::new("released", "1.3")),
+        refusal(&assets, SetLocation::new("report", en("x"))),
+        refusal(&assets, SetStartTime::new("report", "t")),
+        refusal(&assets, SetEndTime::new("report", "t")),
+    ]);
     samples
 }
 

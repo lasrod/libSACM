@@ -290,7 +290,7 @@ mod roots;
 /// [`ReadError::InvalidLiteral`] at its start tag, holding the value. A value
 /// given more than once, as an attribute and an element or as two elements,
 /// is [`ReadError::RepeatedValue`] (SACM-MULT-001) in strict mode, even when
-/// the values are equal, and so is a second `name`, `content` or `key`. A
+/// the values are equal, and so is a second `name`, `content`, `key` or `location`. A
 /// tolerant read reads the first occurrence and keeps each later one as
 /// preserved content, with SACM-MULT-001 as a Warning at it.
 ///
@@ -495,12 +495,14 @@ mod roots;
 /// - An `xmi:id` on a `name` is kept with the element that owns the name, as
 ///   [`SacmElement::name_id`](crate::model::SacmElement::name_id), and
 ///   [`write()`] writes it back. A `name` without one gets none.
-/// - So is an `xmi:id` on a `content` or `key`
+/// - So is an `xmi:id` on a `content`, `key` or `location`
 ///   ([`SacmElement::content_id`](crate::model::SacmElement::content_id),
-///   [`SacmElement::key_id`](crate::model::SacmElement::key_id)), and on each
+///   [`SacmElement::key_id`](crate::model::SacmElement::key_id),
+///   [`SacmElement::location_id`](crate::model::SacmElement::location_id)), and on each
 ///   `value` in one, by position
 ///   ([`SacmElement::content_value_ids`](crate::model::SacmElement::content_value_ids),
-///   [`SacmElement::key_value_ids`](crate::model::SacmElement::key_value_ids)).
+///   [`SacmElement::key_value_ids`](crate::model::SacmElement::key_value_ids),
+///   [`SacmElement::location_value_ids`](crate::model::SacmElement::location_value_ids)).
 ///   They identify no element.
 /// - A `gid` is not an id: it is in no id space, never trimmed and never
 ///   generated, and a `gid` may be the same string as any `xmi:id`.
@@ -1963,6 +1965,11 @@ impl std::error::Error for ReadError {}
 /// 6. on an `ArgumentGroup` (§11.2): `argumentElement`;
 /// 7. on an `ArtifactGroup` (§12.3): `artifactElement`.
 ///
+/// Then come the string-valued attributes, each only when present, exactly
+/// as held and escaped: an Artifact's `version` and `date`, an Event's
+/// `date`, and an Activity's `startTime` and `endTime` (ADR 0034 amendment
+/// 1).
+///
 /// So an `AssertedInference` with everything set starts
 /// `xmi:type xmi:id gid isCitation isAbstract citedElement abstractForm
 /// assertionDeclaration metaClaim isCounter reasoning source target`. A flag
@@ -1994,7 +2001,9 @@ impl std::error::Error for ReadError {}
 /// TAB, LF and CR are escaped; everything else is written as it is.
 ///
 /// Inside a `UtilityElement`, its `content` element is written first, then,
-/// on a `TaggedValue`, its `key`, superclass first (XMI 2.5.1 Annex B.5.2). Each is its role
+/// on a `TaggedValue`, its `key`, superclass first (XMI 2.5.1 Annex B.5.2).
+/// A Resource's `location` is written the same way, directly after its
+/// `name`. Each is its role
 /// element, with its `xmi:id` first if it has one, holding one
 /// `<value … />` per value, in order, written as a name is:
 /// `<content>`, `<value lang="en" content="…" />`, `</content>`. An empty
@@ -2231,9 +2240,10 @@ pub enum WriteError {
     /// package to write. Add a package as a root. This variant has no fields
     /// and will not gain any.
     NoRoot,
-    /// An element's id or gid, its name's `lang` or `content`, or the `lang`
-    /// or `content` of a value of its `content` or `key`, holds a character
-    /// that XML 1.0 cannot represent: one outside its `Char` production, such
+    /// An element's id, gid, `version`, `date`, `startTime` or `endTime`,
+    /// its name's `lang` or `content`, or the `lang` or `content` of a value
+    /// of its `content`, `key` or `location`, holds a character that XML 1.0
+    /// cannot represent: one outside its `Char` production, such
     /// as U+0000, another C0 control other than TAB, LF and CR, U+FFFE or
     /// U+FFFF.
     ///

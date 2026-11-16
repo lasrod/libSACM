@@ -1377,3 +1377,53 @@ fn sacm23_art_002_a_preserved_value_element_is_no_occurrence_so_a_later_one_is_r
         );
     }
 }
+
+/// SACM23-ART-002 acceptance 2: the string-valued attributes are written
+/// after the element's flags and references and before its preserved
+/// attributes, in the order `version`, `date`, `startTime`, `endTime`,
+/// whatever order the input gave them in.
+#[test]
+fn sacm23_art_002_string_attributes_are_written_before_preserved_attributes() {
+    let input = in_a(&format!(
+        "{}{}{}",
+        asset(
+            "Artifact",
+            "x1",
+            " foo=\"1\" date=\"2024-03-01\" version=\"1.2\"",
+            ""
+        ),
+        asset("Event", "x2", " foo=\"1\" date=\"2024-03-05\"", ""),
+        asset(
+            "Activity",
+            "x3",
+            " foo=\"1\" endTime=\"e\" startTime=\"s\"",
+            ""
+        ),
+    ));
+    let doc = tolerant("preserved attributes beside the values", &input).into_document();
+    let text = write_in("a tolerant write", &doc, Mode::Tolerant);
+    for (id, expected) in [
+        (
+            "x1",
+            "<artifactElement xmi:type=\"sacm:Artifact\" xmi:id=\"x1\" version=\"1.2\" \
+             date=\"2024-03-01\" foo=\"1\">",
+        ),
+        (
+            "x2",
+            "<artifactElement xmi:type=\"sacm:Event\" xmi:id=\"x2\" date=\"2024-03-05\" \
+             foo=\"1\">",
+        ),
+        (
+            "x3",
+            "<artifactElement xmi:type=\"sacm:Activity\" xmi:id=\"x3\" startTime=\"s\" \
+             endTime=\"e\" foo=\"1\">",
+        ),
+    ] {
+        assert_eq!(
+            line_with(&text, id),
+            expected,
+            "{ROW}: {id}: the start tag does not write the values before the preserved \
+             attribute\n{text}"
+        );
+    }
+}
