@@ -36,7 +36,7 @@ use sacm::edit::{
     PackageDeletePolicy, ReferenceDeletePolicy, SetReferences,
 };
 use sacm::model::{Document, ElementId, ElementKind, LangString, ReferenceEnd, SacmElement};
-use sacm::xmi::{self, ReadOptions};
+use sacm::xmi::{self, Mode, ReadOptions, WriteOptions};
 
 const EDIT_005: &str = "LIB-EDIT-005";
 const EDIT_006: &str = "LIB-EDIT-006";
@@ -1343,6 +1343,81 @@ fn lib_edit_005_references_that_dangled_before_the_delete_are_unchanged() {
         (vec!["c1", "r"], vec!["h", "g"]),
         "{EDIT_005}: r names c1 as a source, so it goes"
     );
+}
+
+/// The tolerant write of `doc`.
+fn tolerant_write(row: &str, context: &str, doc: &Document) -> String {
+    match xmi::write(doc, &WriteOptions::default().with_mode(Mode::Tolerant)) {
+        Ok(out) => out,
+        Err(error) => panic!("{row}: {context}: the tolerant write failed: {error:?}"),
+    }
+}
+
+#[test]
+fn lib_edit_005_an_id_named_only_inside_preserved_content_is_not_refused_listed_or_scrubbed() {
+    // Preserved content is opaque (ADR 0033): an `xmi:idref`, an `href` or
+    // an attribute of a preserved fragment that names c2 is no typed
+    // reference, so deleting c2 is not refused, lists no dangling reference,
+    // changes no holder, and the fragment is written back as read.
+    const V: &str = r#"xmlns:v="urn:example:vendor""#;
+    let idref = format!(r#"<v:link {V} xmi:idref="c2" />"#);
+    let href = format!(r##"<v:link {V} href="#c2" />"##);
+    let cases = [
+        (
+            "a preserved <v:link xmi:idref=\"c2\"/>",
+            element("Claim", "c1", "", &idref),
+            idref.clone(),
+        ),
+        (
+            "a preserved <v:link href=\"#c2\"/>",
+            element("Claim", "c1", "", &href),
+            href.clone(),
+        ),
+        (
+            "a preserved attribute v:ref=\"c2\"",
+            element("Claim", "c1", &format!(r#"{V} v:ref="c2""#), ""),
+            r#"v:ref="c2""#.to_owned(),
+        ),
+    ];
+    for (what, holder, fragment) in &cases {
+        let text = case(&package("p", &format!("{holder}{}", claim("c2", ""))));
+        let read_doc = read(EDIT_005, &text);
+        let written = tolerant_write(EDIT_005, what, &read_doc);
+        assert!(
+            get(EDIT_005, &read_doc, "c1").has_preserved_content()
+                && written.matches(fragment.as_str()).count() == 1,
+            "{EDIT_005}: setup: {what}: c1 does not hold the fragment, written once as read, \
+             {fragment:?}, in\n{written}"
+        );
+        for policy in REFERENCE_POLICIES {
+            let context = format!("{what}: c2 under {policy:?}");
+            let mut doc = read_doc.clone();
+            let operation = Operation::from(DeleteElement::new("c2").with_reference_policy(policy));
+            let preview = match edit::preview(&doc, &operation) {
+                Ok(preview) => preview,
+                Err(error) => panic!("{EDIT_005}: {context}: the preview was refused: {error}"),
+            };
+            assert!(
+                preview.dangling_references().is_empty(),
+                "{EDIT_005}: {context}: the preview lists dangling references: {:?}",
+                preview.dangling_references()
+            );
+            let mutation = accepted(EDIT_005, &context, &mut doc, operation);
+            assert_eq!(
+                (strs(mutation.deleted_ids()), strs(mutation.changed_ids())),
+                (vec!["c2"], Vec::<&str>::new()),
+                "{EDIT_005}: {context}: c2 alone is deleted and no holder is changed"
+            );
+            let out = tolerant_write(EDIT_005, &context, &doc);
+            assert!(
+                get(EDIT_005, &doc, "c1").has_preserved_content()
+                    && out.matches(fragment.as_str()).count() == 1
+                    && !out.contains(r#"xmi:id="c2""#),
+                "{EDIT_005}: {context}: the tolerant write does not hold the fragment {fragment:?} \
+                 as read, once, without c2, in\n{out}"
+            );
+        }
+    }
 }
 
 /// A delete does not rewind the per-kind counter of generated ids (ADR

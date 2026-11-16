@@ -128,6 +128,16 @@ fn sacm23_xmi_005_each_id_of_a_repeated_reference_attribute_is_located_at_its_ow
             "abstractForm",
             format!(" abstractForm=\"{MARK}c\n  {MARK}d\r\n{MARK}c\" source=\"c\" target=\"d\""),
         ),
+        (
+            "abstractForm with a lone CR between the ids",
+            "abstractForm",
+            format!(" abstractForm=\"{MARK}c\r{MARK}d\" source=\"c\" target=\"d\""),
+        ),
+        (
+            "citedElement with a lone CR, then a CRLF, between the ids",
+            "citedElement",
+            format!(" citedElement=\"{MARK}c\r{MARK}d\r\n{MARK}c\" source=\"c\" target=\"d\""),
+        ),
     ];
     for (what, property, attributes) in &cases {
         let (input, marks) = marked(&inference(attributes));
@@ -150,9 +160,11 @@ fn sacm23_xmi_005_each_id_of_a_repeated_reference_attribute_is_located_at_its_ow
 
 #[test]
 fn sacm23_xmi_005_an_id_after_a_character_reference_separator_is_located_at_its_character() {
-    // XML 1.0 §3.3.3 normalizes `&#32;` and `&#x9;` to a space, so they
-    // separate ids, but the location is in the source text: the id after
-    // one is at its own character, past the reference as written.
+    // XML 1.0 §3.3.3 appends the character a character reference names, so
+    // `&#32;` is a space and `&#x9;` a tab, not a space. Both are XML white
+    // space, so they separate ids (XML Schema 1.0 Part 2 §3.3.10), but the
+    // location is in the source text: the id after one is at its own
+    // character, past the reference as written.
     let cases = [
         (
             "target=\"c&#32;d\"",

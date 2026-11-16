@@ -1552,7 +1552,8 @@ fn interface_attribute(kind: ElementKind, attribute: &Attribute<'_, '_>) -> Opti
 /// does not read yet (SACM23-XMI-019): `xmi:uuid`, `xmi:label`,
 /// `xmi:idref`, `href`, and `xsi:schemaLocation` or
 /// `xsi:noNamespaceSchemaLocation`. They conform, so they are refused, not
-/// preserved (ADR 0033).
+/// preserved (ADR 0033). A role element's `href` is its reference form
+/// instead ([`role_metadata`]).
 fn object_metadata(attribute: &Attribute<'_, '_>) -> Option<Unread> {
     let is_metadata = ["uuid", "label", "idref"]
         .iter()
@@ -1800,7 +1801,7 @@ fn child_start<'a>(
             element.key = Some(held);
             continue;
         }
-        let unread = object_metadata(&attribute).or_else(|| interface_attribute(kind, &attribute));
+        let unread = role_metadata(&attribute).or_else(|| interface_attribute(kind, &attribute));
         if let Some(unread) = unread {
             return Err(unread_attribute(text, &attribute, &element.written, unread));
         }
@@ -1809,6 +1810,22 @@ fn child_start<'a>(
     element.flags = start.flags;
     element.references = start.references;
     Ok(Some(element))
+}
+
+/// The entry of `attribute` of a role element of a composite, typed or
+/// under a concrete role, if this version does not read it yet: an
+/// unqualified `href` makes the element the reference form of a composite
+/// held in another document, a proxy (XMI 2.5.1 §7.10.1, §7.10.2), which
+/// SACM23-XMI-027 reads; anything else as on any object
+/// ([`object_metadata`]), so an `xmi:idref` names SACM23-XMI-019. A
+/// qualified `xlink:href` or `xmi:href` is not `href` (XMI.xsd
+/// `LinkAttribs`).
+fn role_metadata(attribute: &Attribute<'_, '_>) -> Option<Unread> {
+    if is_unqualified(attribute, "href") {
+        Some(Unread::CrossDocumentHref)
+    } else {
+        object_metadata(attribute)
+    }
 }
 
 /// The name that `attribute`, an unqualified `name` on the `ModelElement`
@@ -1945,7 +1962,9 @@ enum ChildKind {
 /// an ArgumentPackage (SACM23-XMI-009). Without a type under a role of an
 /// abstract type, it is `MissingType` (SACM-XMI-005, LIB-COMPAT-010),
 /// unless it carries an `xmi:idref` or an `href`, the reference form of a
-/// composite, which is refused by its entry ([`proxy_link`]). A
+/// composite, which is refused by its entry ([`proxy_link`]); a typed one,
+/// or one under a concrete role, is refused at that attribute
+/// ([`role_metadata`]). A
 /// conforming kind this release does not read is refused by its entry.
 /// Every refusal is at the child's start tag.
 fn child_kind(
@@ -2008,8 +2027,8 @@ fn child_kind(
                     at,
                     unread,
                     &format!(
-                        "the element {written:?} in {parent_what} is the reference form of a \
-                         {class}, which is not read in this release"
+                        "the element {written:?} in {parent_what} is in reference form, a proxy \
+                         of an element of the class {class}, which is not read in this release"
                     ),
                 ));
             }
@@ -3042,7 +3061,7 @@ mod tests {
             ),
             (
                 "<argumentationElement xmi:type=\"sacm:Claim\" xmi:id=\"c\"/>",
-                "the element \"argumentationElement\" in the root element \"sacm:ArgumentPackage\" is spelled as in the text of §11.4, and the role is argumentElement (a defect in the input; SACM23-XMI-009 is to read it in tolerant mode)",
+                "the element \"argumentationElement\" in the root element \"sacm:ArgumentPackage\" is spelled as in the text of §11.4, and the role is argumentElement (strict mode never reads it; SACM23-XMI-009 is to read it in tolerant mode)",
             ),
             (
                 "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\"><xmi:Extension/></argumentElement>",

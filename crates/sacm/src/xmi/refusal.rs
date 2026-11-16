@@ -3,10 +3,13 @@
 //!
 //! Content that does not conform is preserved, not refused
 //! (LIB-COMPAT-003). What is left is conforming input this version does not
-//! read yet, a limit of this version, and input that does not conform and
-//! has nowhere to be kept. Each refusal names which by one [`Unread`]
-//! entry, and its reason ends with that entry's label, so a caller can tell
-//! a gap of the library from a defect of the file.
+//! read yet, a limit of this version, input that only tolerant mode is to
+//! read (a tolerance, which strict mode never applies, ADR 0022), and input
+//! that does not conform and has nowhere to be kept. Each refusal names
+//! which by one [`Unread`] entry, and its reason ends with that entry's
+//! label, so a caller can tell a gap of the library from a defect of the
+//! file. A tolerance's input need not be defective: a document in another
+//! SACM namespace is not (D-NS-PIN).
 //!
 //! The xtask test `xtask/tests/interim_refusals.rs` keeps this list honest:
 //! no other file of the crate builds the refusal, every `Interim` row is
@@ -24,8 +27,9 @@ pub(super) enum Refusal {
     /// input, and XMI-namespace elements that XMI.xsd does not define
     /// (SACM23-XMI-019).
     Interim(&'static str),
-    /// Input that does not conform, which the row is to read in tolerant
-    /// mode.
+    /// Input strict mode never reads, which the row is to read in tolerant
+    /// mode. It need not be defective, such as a document in another SACM
+    /// namespace (D-NS-PIN).
     Tolerance(&'static str),
     /// A limit of this version.
     Limit,
@@ -39,7 +43,7 @@ impl Refusal {
         match self {
             Self::Interim(row) => format!("(a limit of this version; {row} reads it)"),
             Self::Tolerance(row) => {
-                format!("(a defect in the input; {row} is to read it in tolerant mode)")
+                format!("(strict mode never reads it; {row} is to read it in tolerant mode)")
             }
             Self::Limit => "(a limit of this version)".to_owned(),
             Self::Defect => "(a defect in the input)".to_owned(),
@@ -71,13 +75,14 @@ pub(super) enum Unread {
     /// An `ArgumentPackageBinding`.
     ArgumentPackageBinding,
     /// XMI document metadata: an XMI-namespace element, `xmi:uuid`,
-    /// `xmi:label`, `href` and `xmi:idref` on an object, the identity
-    /// attributes of a reference element or of the `xmi:XMI` element, and
-    /// `xsi:schemaLocation`.
+    /// `xmi:label` and `xmi:idref` on an object (on a role element, its
+    /// reference form), `href` on a root or on a `name`, `description` or
+    /// other text, the identity attributes of a reference element or of
+    /// the `xmi:XMI` element, and `xsi:schemaLocation`.
     XmiMetadata,
     /// An `href` that is not `#id`, or `XLink` attributes on a reference
-    /// element; or an `href` on an untyped role element of a composite,
-    /// its reference form.
+    /// element; or an unqualified `href` on a role element of a composite,
+    /// typed or untyped, its reference form.
     CrossDocumentHref,
     /// A root outside the SACM 2.3 namespace.
     OtherSacmNamespace,
@@ -185,7 +190,7 @@ mod tests {
         );
         assert_eq!(
             reason(Unread::TextSpelling),
-            "x (a defect in the input; SACM23-XMI-009 is to read it in tolerant mode)"
+            "x (strict mode never reads it; SACM23-XMI-009 is to read it in tolerant mode)"
         );
         assert_eq!(reason(Unread::Capacity), "x (a limit of this version)");
         assert_eq!(reason(Unread::WrapperContent), "x (a defect in the input)");

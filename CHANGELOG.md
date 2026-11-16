@@ -336,8 +336,8 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
   `WriteError::PreservedContent { elements }` (SACM-XMI-006,
   `Code::XMI_STRICT_SAVE_REFUSED`), before validation [SACM23-XMI-008].
 - Every `ReadError::Unsupported` reason ends with one label that says why it is refused:
-  `(a limit of this version; ROW reads it)`, `(a limit of this version)`, `(a defect in
-  the input; ROW is to read it in tolerant mode)` or `(a defect in the input)`, from one
+  `(a limit of this version; ROW reads it)`, `(a limit of this version)`, `(strict mode
+  never reads it; ROW is to read it in tolerant mode)` or `(a defect in the input)`, from one
   list that an xtask test gates [LIB-API-011].
 - `cargo xtask fetch-spec` also fetches the normative XMI.xsd of XMI 2.5.1, hash-pinned
   [LIB-TOOL-021].
@@ -347,13 +347,20 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
 - `ReadError::RepeatedValue` locates each id of a repeated reference attribute at its own
   character, and its `Display` names at most the first two locations and the count;
   `locations()` still lists every occurrence [SACM23-XMI-005].
-- A containment role element in reference form (`xmi:idref` or `href`, a proxy) is refused
-  as not read in this release (SACM23-XMI-019, SACM23-XMI-027) instead of `MissingType`
-  [LIB-COMPAT-010].
+- A containment role element in reference form (a proxy) is refused as not read in this
+  release: with `xmi:idref` under SACM23-XMI-019, with an unqualified `href` under
+  SACM23-XMI-027, typed or untyped, under an abstract or a concrete role. An untyped one
+  under an abstract role was `MissingType`, and a typed one, or one under a concrete role,
+  with `href` named SACM23-XMI-019 [LIB-COMPAT-010, LIB-API-011].
 - An empty CDATA section under `xsi:nil="true"` counts as no content [SACM23-XMI-026].
 - A root in another SACM revision's namespace is refused as a tolerance not built yet
   (LIB-COMPAT-004), not as conforming input not read yet [LIB-API-011].
-- Replacing a large `content` or `key` keeps its ids in linear time [LIB-EDIT-012].
+- Replacing a large `content` or `key` is no longer quadratic in the number of its ids: it
+  keeps them in n log n time [LIB-EDIT-012].
+- The label of a tolerance refusal, input that only tolerant mode is to read, is now
+  `(strict mode never reads it; ROW is to read it in tolerant mode)`, not `(a defect in the
+  input; ROW is to read it in tolerant mode)`: such input need not be defective, as a
+  document in another SACM namespace is not (D-NS-PIN) [LIB-API-011].
 - `xmi::read` keeps content that is not SACM 2.3 where it stands as preserved content,
   with SACM-XMI-003, which is an Error in strict mode, instead of refusing it as
   `Unsupported`: a strict read may report an Error where it refused before, and a strict

@@ -2403,7 +2403,7 @@ id = "LIB-EDIT-002"
 area = "EDIT"
 milestone = "M1"
 title = "Atomic mutations"
-requirement = "`edit::apply`, `edit::apply_preview`, `edit::batch` and `edit::apply_all`, the only public mutations, each either succeed and leave the document structurally valid, or fails with an error and leaves it unchanged. Structurally valid: ids are unique and `get` finds each; parent and child links agree; `roots()` lists exactly the elements with no parent, each a package; every child's kind is legal under its parent's kind (§8.6, §9.2, §10.4, §11.4, §12.2, §12.6; ADR 0014); every Assertion has a declaration. Content findings of `validate()` are not part of it (D-VAL-LAYER). Unchanged: the document is `==` to a clone taken before (ADR 0020), and a create with a generated id of each kind gives the same id on both."
+requirement = "`edit::apply`, `edit::apply_preview`, `edit::batch` and `edit::apply_all`, the only public mutations, each either succeed and leave the document structurally valid, or fail with an error and leaves it unchanged. Structurally valid: ids are unique and `get` finds each; parent and child links agree; `roots()` lists exactly the elements with no parent, each a package; every child's kind is legal under its parent's kind (§8.6, §9.2, §10.4, §11.4, §12.2, §12.6; ADR 0014); every Assertion has a declaration. Content findings of `validate()` are not part of it (D-VAL-LAYER). Unchanged: the document is `==` to a clone taken before (ADR 0020), and a create with a generated id of each kind gives the same id on both."
 source = "D-ATOMIC; D-VAL-LAYER; ADR 0019 and its amendment 1; ADR 0020"
 kind = "editing"
 status = "verified"
@@ -2413,6 +2413,7 @@ acceptance = [
   "Over a deterministic set of starting documents (empty, built with `edit::apply`, read from the XMI fixtures, and built with the test-support `insert`, including ArtifactPackage parents, Notes and missing names) and a fixed list of legal and illegal operations of every kind with caller and generated ids: after every `Ok`, the four structural checks hold through the public views, checked against a containment table written in the test from the standard, not the crate's.",
   "After every `Err`, the document `==` its clone taken before, and a create with a generated id of each kind gives the same id on both.",
   "No public `&mut Document` path other than `edit::apply`, `edit::apply_preview`, `edit::batch` and `edit::apply_all` exists outside the `test-support` feature (checked by review of the public API).",
+  "Items [0] and [1] exercise `edit::apply`; `edit::apply_preview`, `edit::batch` and `edit::apply_all` are held to the same rule by the LIB-EDIT-004 and LIB-EDIT-014 tests.",
 ]
 code = ["crates/sacm/src/edit.rs", "crates/sacm/src/edit/create.rs", "docs/adr/0019-edit-operations.md"]
 tests = [
@@ -2727,7 +2728,7 @@ acceptance = [
   "A forward reference, a reference into another root of the same `xmi:XMI`, and a self-reference each read, round-trip and give no SACM-REF-001.",
   "`citedElement=\"nope\"` reads in both modes and is held as `nope`; a tolerant write writes it back; `validate` gives SACM-REF-001; a strict write fails with `WriteError::Invalid` holding it.",
   "`\" c2 \"` and `\"&#9;c2&#10;\"` read as `c2` with no diagnostic, and write as `citedElement=\"c2\"`.",
-  "`citedElement=\"a b\"` is `RepeatedValue` in both modes at the attribute's name; `citedElement=\"\"` and `\"   \"`, and `sacm:citedElement`, are each kept as preserved content of the element, with one SACM-XMI-003 at the attribute's name in both modes, never read as absent (LIB-COMPAT-003).",
+  "`citedElement=\"a b\"` is `RepeatedValue` in both modes, with one location per id at its first character (a character reference counts as the character it names; LF, CRLF and a lone CR each end a line) and `location()` the second id; `citedElement=\"\"` and `\"   \"`, and `sacm:citedElement`, are each kept as preserved content of the element, with one SACM-XMI-003 at the attribute's name in both modes, never read as absent (LIB-COMPAT-003).",
   "`citedElement=\"#c2\"` is the id `#c2` (unresolved, SACM-REF-001); a token equal to a non-NCName element id held as written (ADR 0024) resolves to it.",
   "A target id holding `&`, `<` or `\"` is written escaped and reads back equal.",
   "An id-less element read beside `citedElement=\"claim_1\"` (a dangling target) gets a generated id other than `claim_1`; an edit's generated id also skips a referenced id.",
@@ -3565,6 +3566,7 @@ tests = [
   "crates/sacm/tests/preserved_edits.rs::lib_compat_003_scrub_references_frees_the_preserved_ids_for_with_id",
   "crates/sacm/tests/preserved_edits.rs::lib_compat_003_with_id_of_a_preserved_id_is_duplicate_id",
   "crates/sacm/tests/xmi_read_locations.rs::lib_compat_003_content_once_refused_at_a_site_of_the_table_is_preserved_at_that_construct",
+  "crates/sacm/tests/preserved_edits.rs::lib_compat_003_a_reference_to_a_name_id_stays_ref_001_after_a_delete",
 ]
 
 [[row]]
@@ -4087,6 +4089,7 @@ tests = [
   "crates/sacm/tests/serde.rs::lib_edit_005_an_unknown_null_or_misplaced_policy_and_a_missing_element_are_refused",
   "crates/sacm/tests/serde.rs::lib_edit_005_check_and_apply_answer_a_deserialized_delete_as_its_twin",
   "crates/sacm/tests/serde.rs::lib_edit_005_a_referenced_refusal_is_written_with_its_code_holder_end_and_id",
+  "crates/sacm/tests/delete.rs::lib_edit_005_an_id_named_only_inside_preserved_content_is_not_refused_listed_or_scrubbed",
 ]
 
 [[row]]
@@ -4761,7 +4764,7 @@ id = "LIB-COMPAT-014"
 area = "COMPAT"
 milestone = "M6"
 title = "Vendor content beside the roots"
-requirement = "An element of another namespace directly under `xmi:XMI`, beside the SACM roots (XMI 2.5.1 §2.3.1 encourages tools to write their extensions there), is kept as document-level preserved content with SACM-XMI-003 in both modes and written back by a tolerant save, instead of refusing the document as `InvalidRoot`; a strict save refuses it (SACM23-XMI-008)."
+requirement = "An element of another namespace directly under `xmi:XMI`, beside the SACM roots (XMI 2.5.1 §2.3.1 says tools should place extended information in elements outside the XMI namespace or in `xmi:Extension`; this row covers the first kind at the top level), is kept as document-level preserved content with SACM-XMI-003 in both modes and written back by a tolerant save, instead of refusing the document as `InvalidRoot`; a strict save refuses it (SACM23-XMI-008)."
 source = "XMI 2.5.1 §2.3.1 (p. 2); ADR 0033; Verification 0050 (docs/follow-ups.md); the maintainer, 2026-11-16 (a new M6 row)"
 kind = "xmi"
 status = "planned"
@@ -5311,7 +5314,7 @@ id = "LIB-API-011"
 area = "API"
 milestone = "M2"
 title = "Interim refusals are listed and gated"
-requirement = "Every `ReadError::Unsupported` comes from one crate-private list (`xmi/refusal.rs`), whose entries are `Interim(row)` (conforming input this version does not read; the row reads it), `Tolerance(row)` (non-conforming input a row is to read in tolerant mode), `Limit` (a limit of this version) or `Defect` (non-conforming input with nowhere to be kept). Each reason ends with exactly one label: `(a limit of this version; ROW reads it)`, `(a limit of this version)`, `(a defect in the input; ROW is to read it in tolerant mode)` or `(a defect in the input)`. An xtask test checks that `Unsupported` is built only there, that every `Interim` row exists, is not verified and is in the `depends_on` closure of each of SACM23-CP-001 to -004, and that every `Tolerance` row exists and is not verified. `Interim` covers conforming input this version does not read yet, and XMI-namespace elements that XMI.xsd does not define (SACM23-XMI-019)."
+requirement = "Every `ReadError::Unsupported` comes from one crate-private list (`xmi/refusal.rs`), whose entries are `Interim(row)` (conforming input this version does not read; the row reads it), `Tolerance(row)` (input that only tolerant mode is to read, under the row), `Limit` (a limit of this version) or `Defect` (non-conforming input with nowhere to be kept). Each reason ends with exactly one label: `(a limit of this version; ROW reads it)`, `(a limit of this version)`, `(strict mode never reads it; ROW is to read it in tolerant mode)` or `(a defect in the input)`. An xtask test checks that `Unsupported` is built only there, that every `Interim` row exists, is not verified and is in the `depends_on` closure of each of SACM23-CP-001 to -004, and that every `Tolerance` row exists and is not verified. `Interim` covers conforming input this version does not read yet, and XMI-namespace elements that XMI.xsd does not define (SACM23-XMI-019)."
 source = "D-PRESERVE; D-STRICT; ADR 0015 (and amendment 1); ADR 0016; ADR 0033; XMI 2.5.1 §7.6.1 `<xsd:attribute name=\"id\" type=\"xsd:ID\" use=\"optional\"/>`, §7.3.3 \"Tools that rely on XMI are expected to store the extension information and export it again\"; ADR review, 2026-11-13 (the maintainer: apply every recommendation)"
 kind = "api"
 status = "verified"
@@ -5359,6 +5362,8 @@ tests = [
   "xtask/tests/interim_refusals.rs::lib_api_011_unsupported_check_reports_a_construction_outside_the_list",
   "xtask/tests/interim_refusals.rs::lib_api_011_unsupported_check_reports_a_missing_list",
   "xtask/tests/interim_refusals.rs::lib_api_011_unsupported_is_named_only_in_xmi_rs_and_the_refusal_list",
+  "crates/sacm/tests/untyped_abstract_roles.rs::lib_api_011_a_role_element_with_xmi_idref_names_sacm23_xmi_019",
+  "crates/sacm/tests/untyped_abstract_roles.rs::lib_api_011_a_role_element_with_an_unqualified_href_names_sacm23_xmi_027",
 ]
 
 [[row]]
@@ -5643,7 +5648,7 @@ id = "LIB-API-013"
 area = "API"
 milestone = "M7"
 title = "API additions from docs reviews"
-requirement = "Additive public API that docs reviews asked for: `Operation::parent()`; `ReadOutput::has_errors()`; a way for `Diagnostic::clause()` to name its specification (SACM or XMI); a public `Document::is_id_in_use`; `MultiLangString` lookup by language; `PartialEq<str>` for `ElementId`. Each is additive and documented with an example. Also: whether `ReadError` variants that name an element (`RepeatedValue`, `InvalidLiteral`, `LegacyShape`) say when its id was generated (SACM23-XMI-020), so their `Display` can word it; an additive field, decided with its test."
+requirement = "Additive public API that docs reviews asked for: `Operation::parent()`; `ReadOutput::has_errors()`; a way for `Diagnostic::clause()` to name its specification (SACM or XMI); a public `Document::is_id_in_use`; `MultiLangString` lookup by language; `PartialEq<str>` for `ElementId`; lookup of a tagged value by a plain key; the value's position in `WriteAttribute`'s value errors. Each is additive and documented with an example. Also: whether `ReadError` variants that name an element (`RepeatedValue`, `InvalidLiteral`, `LegacyShape`) say when its id was generated (SACM23-XMI-020), so their `Display` can word it; an additive field, decided with its test."
 source = "Docs reviews 0034, 0035, 0043, 0045 (docs/follow-ups.md, cleared in slice 0051)"
 kind = "api"
 status = "planned"
@@ -5654,7 +5659,7 @@ id = "LIB-API-014"
 area = "API"
 milestone = "M3"
 title = "Who references an element"
-requirement = "`Document::referrers(id)` lists every typed reference that names `id`: the holder, the end and the position, in document pre-order of holders, then `ReferenceEnd::ALL` order, then position, so an application can answer \"what supports this claim?\" without walking every element. It reads the same reference counts the document keeps today and is linear in the number of referrers."
+requirement = "`Document::referrers(id)` lists every typed reference that names `id`: the holder, the end and the position, in document pre-order of holders, then `ReferenceEnd::ALL` order, then position, so an application can answer \"what supports this claim?\" without walking every element. Its cost is linear in the number of referrers, not in the size of the document, so the document keeps an index of referrers for it."
 source = "Docs review 0043 (docs/follow-ups.md); the maintainer, 2026-11-16 (needed by the GSN layer, moved to M3)"
 kind = "api"
 status = "planned"
@@ -5831,7 +5836,7 @@ id = "SACM23-XMI-019"
 area = "XMI"
 milestone = "M6"
 title = "XMI document metadata"
-requirement = "`xmi::read` reads, in both modes, and keeps the XMI document metadata (a tolerant `xmi::write` writes it back and `==` compares it), so that none is refused as `Unsupported` or dropped: `xmi:documentation`, `xmi:extension` and `xmi:Extension` (on the wrapper and inside any object), `xmi:difference`, `xmi:uuid`, `xmi:label`, `href` and `xmi:idref` on objects, identity attributes (`xmi:id`, `xmi:type`, `xmi:uuid`, `xmi:label`) on reference elements, XMI attributes on `name` and `value`, and `xsi:schemaLocation`. Any other XMI-namespace element inside an object (such as `<xmi:content>` or `<xmi:argumentElement>`) is handled the same way. SACM23-XMI-001 and LIB-API-011 refuse them as `Unsupported` (Interim) until then; the `XmiMetadata` entry of LIB-API-011 is removed when this row is verified. A role element in reference form (a composite role such as `argumentElement` carrying `xmi:idref`) is a proxy for an element held elsewhere and is refused as not read yet under this row until then; one carrying `href` is SACM23-XMI-027's (the maintainer, 2026-11-16)."
+requirement = "`xmi::read` reads, in both modes, and keeps the XMI document metadata (a tolerant `xmi::write` writes it back and `==` compares it), so that none is refused as `Unsupported` or dropped: `xmi:documentation`, `xmi:extension` and `xmi:Extension` (on the wrapper and inside any object), `xmi:difference`, `xmi:uuid`, `xmi:label`, `href` and `xmi:idref` on objects, identity attributes (`xmi:id`, `xmi:type`, `xmi:uuid`, `xmi:label`) on reference elements, XMI attributes on `name` and `value`, and `xsi:schemaLocation`. Any other XMI-namespace element inside an object (such as `<xmi:content>` or `<xmi:argumentElement>`) is handled the same way. SACM23-XMI-001 and LIB-API-011 refuse them as `Unsupported` (Interim) until then; the `XmiMetadata` entry of LIB-API-011 is removed when this row is verified. A role element in reference form (an element in a composite role such as `argumentElement` or `argumentPackage`, typed or untyped, carrying `xmi:idref`) is a proxy for an element held elsewhere and is refused as not read yet under this row until then; one carrying an unqualified `href` is SACM23-XMI-027's (the maintainer, 2026-11-16)."
 source = "XMI 2.5.1 formal/15-06-07 §7.3.3 (p. 7) \"Tools that rely on XMI are expected to store the extension information and export it again to enable round trip engineering\"; §7.6.1 (p. 14) \"The value of the label attribute is ignored on import.\"; XMI.xsd; assurance-forge xmi_reader.cpp:1543-1546 (ignores unknown XMI and XSI attributes)"
 kind = "xmi"
 status = "planned"
@@ -6078,7 +6083,7 @@ id = "SACM23-XMI-027"
 area = "XMI"
 milestone = "M6"
 title = "Cross-document references"
-requirement = "An `href=\"doc#id\"` reference (XMI 2.5.1 §7.10.2) is read in both modes and held as an external reference (the document and the fragment), written back and compared; it is never dropped. Until this row it is `Unsupported` (SACM23-XMI-015). SACM-XMI-007's catalog row is aligned to this. `href` values that name no element by a fragment (an empty `href`, `#` alone, an XPointer, white space in the fragment) are not cross-document references: this row reads them or keeps them as preserved content (ADR 0033; XMI 2.5.1 §7.10.2 `URI#id_value`), so that none is left without an owner when the `CrossDocumentHref` entry of LIB-API-011 is removed. A role element in reference form carrying `href` (a proxy of a contained element held in another document) is this row's; until then it is refused as not read yet (the maintainer, 2026-11-16)."
+requirement = "An `href=\"doc#id\"` reference (XMI 2.5.1 §7.10.2) is read in both modes and held as an external reference (the document and the fragment), written back and compared; it is never dropped. Until this row it is `Unsupported` (SACM23-XMI-015). SACM-XMI-007's catalog row is aligned to this. `href` values that name no element by a fragment (an empty `href`, `#` alone, an XPointer, white space in the fragment) are not cross-document references: this row reads them or keeps them as preserved content (ADR 0033; XMI 2.5.1 §7.10.2 `URI#id_value`), so that none is left without an owner when the `CrossDocumentHref` entry of LIB-API-011 is removed. A role element in reference form carrying an unqualified `href` (a proxy of a contained element held in another document), typed or untyped, under an abstract or a concrete role, is this row's; until then it is refused as not read yet (the maintainer, 2026-11-16)."
 source = "XMI 2.5.1 §7.10.2 (p. 23) \"The URI reference must be of the form URI#id_value\"; rules 2l, 2m, 2n (p. 64); D-PRESERVE; ADR 0026"
 kind = "xmi"
 status = "planned"
@@ -6101,7 +6106,7 @@ id = "LIB-COMPAT-010"
 area = "COMPAT"
 milestone = "M2"
 title = "An untyped child under an abstract role is refused"
-requirement = "An element under a role whose declared type is abstract, with no `xmi:type` or `xsi:type`, is refused in both modes with the coded refusal SACM-XMI-005 at its start tag: its local name is the role, so no class can be inferred, and none is guessed (ADR 0022)."
+requirement = "An element under a role whose declared type is abstract, with no `xmi:type` or `xsi:type` and not in reference form, is refused in both modes with the coded refusal SACM-XMI-005 at its start tag: its local name is the role, so no class can be inferred, and none is guessed (ADR 0022). An element in reference form (carrying `xmi:idref` or an unqualified `href`) is not one of these: it is a proxy for an element held elsewhere, refused as not read yet under SACM23-XMI-019 or SACM23-XMI-027 (the maintainer, 2026-11-16)."
 source = "XMI 2.5.1 §7.6.3 (p. 15) \"The type attribute is used to specify the type of object being serialized, when the type is not known from the model.\"; ADR 0022 (its codes table: an untyped child under an abstract role is SACM-XMI-005); the maintainer, 2026-11-15 (a refusal, not an inference); assurance-forge `xmi_reader.cpp:1103-1116` (tries the role name as a class name, then drops the child)"
 kind = "compliance"
 status = "verified"
@@ -6113,6 +6118,7 @@ acceptance = [
   "The same element with `xmi:type` or `xsi:type` naming a concrete admitted class reads as before.",
   "`<argumentPackage>` under an AssuranceCasePackage (a concrete declared type) still reads untyped.",
   "SACM-XMI-005's catalog row is live, Error, both modes; `Unsupported` is no longer returned for this input.",
+  "`<argumentElement xmi:idref=\"c1\"/>` under an ArgumentPackage is `Unsupported` naming SACM23-XMI-019, and `<argumentElement href=\"o.xmi#c1\"/>` is `Unsupported` naming SACM23-XMI-027, in both modes; neither is SACM-XMI-005.",
 ]
 code = ["crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi.rs"]
 tests = [

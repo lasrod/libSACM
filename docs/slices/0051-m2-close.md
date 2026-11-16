@@ -74,3 +74,11 @@ No new public API. Behaviour changes:
   tests and the red tests are written by two test engineers. The implementer has done the
   docs, the cleanup and the LIB-COMPAT-004 relabel; the code items are in progress.
 - 2026-11-16 implementation: the four code items are done (per-token RepeatedValue locations through character references, with a bounded Display; linear set_text; empty CDATA under xsi:nil; proxy role elements refused under XMI-019 or XMI-027). Full gate green.
+- 2026-11-16 verification round 1: FAIL. LIB-EDIT-012, SACM23-XMI-019, SACM23-XMI-026 and LIB-QA-018 pass. Still open:
+  - two missed mutants (`token_starts` lone CR; `Document::compact`);
+  - stale text in SACM23-XMI-005 [4] and LIB-COMPAT-010;
+  - typed and concrete-role `href` proxies named XMI-019 instead of XMI-027;
+  - LIB-COMPAT-004 not yet in decisions.md;
+  - an untested LIB-EDIT-005 sentence.
+  The lead amended D-STRICT and D-NS-PIN for the 2026-11-16 decision; the tolerance label no longer calls the input a defect. The matrix wording is fixed. Tests and the code fix are next.
+- 2026-11-16 fix round 1: done. New tests: a lone CR, a name id that stays REF-001 after a delete, ids inside preserved content that a delete leaves alone, the proxy routing (cited under LIB-API-011), the tolerance label, and a ratio-based timing control. Code: an `href` proxy names XMI-027, typed or untyped and in any role; the tolerance label is `(strict mode never reads it; …)`. The docs are aligned (CHANGELOG, diagnostics catalog, inventory, D-STRICT and D-NS-PIN). Gate green: 2,231 workspace tests, 1,721 without features, 431 xtask.

@@ -670,26 +670,30 @@ mod roots;
 ///   (LIB-API-011). Its reason ends with one label that says why: `(a limit
 ///   of this version; ROW reads it)` for input a row is to read (conforming
 ///   input, and XMI-namespace elements that XMI.xsd does not define),
-///   `(a limit of this version)` for a limit, `(a defect in the input; ROW
-///   is to read it in tolerant mode)` for input that does not conform and
-///   that a row is to read as a tolerance, and `(a defect in the input)` for
-///   input that does not conform and has nowhere to be kept. In this
+///   `(a limit of this version)` for a limit, `(strict mode never reads it;
+///   ROW is to read it in tolerant mode)` for input that only tolerant mode
+///   is to read, as a tolerance (which need not be defective: a document in
+///   another SACM namespace is not, D-NS-PIN), and `(a defect in the input)`
+///   for input that does not conform and has nowhere to be kept. In this
 ///   release they are:
 ///   - conforming input not read yet: the other ten package kinds, as roots
 ///     or children (such as an `ArgumentPackageInterface`); XMI metadata
 ///     (SACM23-XMI-019): an XMI-namespace element as the document element,
 ///     beside the roots or in an element (such as `xmi:Documentation` or
-///     `xmi:Extension`), `xmi:uuid`, `xmi:label`, `xmi:idref` and `href` on
-///     an element, a `name`, a `content`, a `key` or a `value`,
+///     `xmi:Extension`), `xmi:uuid`, `xmi:label` and `xmi:idref` on an
+///     element, a `name`, a `content`, a `key` or a `value`, `href` on a
+///     root, a `name`, a `content`, a `key` or a `value`,
 ///     `xsi:schemaLocation`, `xmi:id`, `xmi:type`, `xmi:uuid` and
 ///     `xmi:label` on the `xmi:XMI` element or on a reference element, and
-///     an `xmi:id` on the `value` of a `name`, and an untyped role element
-///     of a composite in reference form, with an `xmi:idref` (such as
-///     `<argumentElement xmi:idref="c1"/>` in an ArgumentPackage, at its
-///     start tag); a cross-document `href` or an `XLink` attribute on a
-///     reference element, and such a role element with an `href`
-///     (SACM23-XMI-027); and a `name`
-///     or `value` typed `sacm:ExpressionLangString` (SACM23-BASE-009);
+///     an `xmi:id` on the `value` of a `name`; a cross-document `href` or an
+///     `XLink` attribute on a reference element (SACM23-XMI-027); a role
+///     element of a composite in reference form, a proxy, typed or untyped,
+///     under an abstract or a concrete role, naming SACM23-XMI-019 for an
+///     `xmi:idref` (such as `<argumentElement xmi:idref="c1"/>` in an
+///     ArgumentPackage) and SACM23-XMI-027 for an unqualified `href`, at its
+///     start tag if it is untyped under an abstract role, else at the
+///     attribute; and a `name` or `value` typed `sacm:ExpressionLangString`
+///     (SACM23-BASE-009);
 ///   - limits: UTF-16 without a byte order mark, UTF-32 or UCS-4 input, a
 ///     declared encoding other than UTF-8 or ASCII in input without a UTF-16
 ///     mark, and more nodes, attributes or namespaces than the parser can
@@ -1174,11 +1178,13 @@ pub enum ReadError {
     ///
     /// The reason ends with exactly one label: `(a limit of this version;
     /// ROW reads it)` for conforming input the matrix row ROW is to read,
-    /// `(a limit of this version)` for a limit such as an encoding, `(a defect
-    /// in the input; ROW is to read it in tolerant mode)` for input that does
-    /// not conform and that ROW is to read as a tolerance, and `(a defect in
-    /// the input)` for input that does not conform and has nowhere to be
-    /// kept, such as an attribute on the `xmi:XMI` element. Content that does
+    /// `(a limit of this version)` for a limit such as an encoding, `(strict
+    /// mode never reads it; ROW is to read it in tolerant mode)` for input
+    /// strict mode never reads and that ROW is to read as a tolerance, which
+    /// need not be defective (such as a document in another SACM namespace,
+    /// D-NS-PIN), and `(a defect in the input)` for input that does not
+    /// conform and has nowhere to be kept, such as an attribute on the
+    /// `xmi:XMI` element. Content that does
     /// not conform and has a place to be kept is never refused: [`read`]
     /// preserves it.
     ///
