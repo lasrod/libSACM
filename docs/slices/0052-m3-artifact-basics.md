@@ -64,3 +64,9 @@ The architect's brief of 2026-11-15 is in `target/slice-0052-architect-brief.md`
 - 2026-11-16 tests: 58 `sacm23_art_*` tests and 7 tests of verified rows, all cited; red confirmed (the reader still refuses ArtifactPackage). The files that use the new API are gated by `cfg(slice_0052_api)` until the implementer removes the gates. The member check order follows SACM23-ARG-013.
 - 2026-11-16: after an independent review (Fable 5.2), the maintainer adopted a simplification plan that runs as the next slice. This slice is unaffected.
 - 2026-11-16 implementation: ArtifactPackage, Property, Technique, Participant and ArtifactGroup read, write and edit; the five creates; `ArtifactGroupMember`; `properties()`; `Difference::ArtifactGroupMembers`; nine new `Interim` kind entries and the `ModelSpelling` tolerance. SACM23-XMI-001 and -016 were reworded. Gate green: 2,308 workspace tests, 1,794 without features, 434 xtask.
+- 2026-11-16 verification round 1: FAIL. Behaviour is right and the PR-diff mutants show 0 missed. LIB-API-006, LIB-EDIT-003, SACM23-XMI-001 and -016 pass. Blocking items:
+  - the M07 test gap (an unknown type in `artifactElement` refused as the model spelling);
+  - stale rustdoc in `xmi.rs`;
+  - LIB-API-011's requirement text.
+  The verifier also found that the lead's prefix rule let CP-003 miss Terminology rows. An ArtifactPackage can hold every kind, so every Interim row now gates CP-001 and CP-003, plus its own package's point; CP-003 gains TERM-004/005/006.
+- 2026-11-16 fix round 1: done. New tests cover an unknown, abstract, foreign or wrongly-cased type in `artifactElement`, and the model spelling preserved where its kind is not admitted. The gate rule is now CP-001 and CP-003 plus the row's own package's point, with a test for a TERM row against CP-003. The rustdoc of `xmi.rs`, `document.rs` and `compare.rs`, the README and the catalog are brought up to date. Gate green: 2,311 workspace tests, 1,796 without features, 435 xtask.

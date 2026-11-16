@@ -9,10 +9,11 @@
 //! its `citedElement` and `abstractForm` hold (SACM 2.3 §8.2), the
 //! `isCounter` flag and the ids of the `metaClaim`, `reasoning`, `source`,
 //! `target`, `structure`, `referencedArtifactElement` and group
-//! `argumentElement` ends of the argumentation kinds (§11.2, §11.9, §11.10,
-//! §11.12, §11.13; the multi-valued `metaClaim`, `source`,
-//! `referencedArtifactElement` and `argumentElement` in order, with
-//! repeats), its name, the
+//! `argumentElement` ends of the argumentation kinds and the
+//! `artifactElement` end of an `ArtifactGroup` (§11.2, §11.9, §11.10,
+//! §11.12, §11.13, §12.3; the multi-valued `metaClaim`, `source`,
+//! `referencedArtifactElement`, `argumentElement` and `artifactElement` in
+//! order, with repeats), its name, the
 //! `xmi:id` of its name
 //! ([`SacmElement::name_id`](crate::model::SacmElement::name_id)), its
 //! `content` and `key` with their ids
@@ -914,8 +915,9 @@ impl fmt::Display for Declaration {
 /// Elements are matched by id across the whole document. For an element both
 /// documents hold, its kind, parent, `gid`, `isCitation`, `isAbstract`,
 /// `isCounter`, `citedElement`, `abstractForm`, `metaClaim`, `reasoning`,
-/// `source`, `target`, `structure`, `referencedArtifactElement`, a group's
-/// `argumentElement`, name, its name's `xmi:id`, its
+/// `source`, `target`, `structure`, `referencedArtifactElement`, an
+/// `ArgumentGroup`'s `argumentElement`, an `ArtifactGroup`'s
+/// `artifactElement`, name, its name's `xmi:id`, its
 /// `content` and `key` with their ids, `assertionDeclaration`, the
 /// relative order of its children and its preserved content, exactly
 /// (ADR 0033), are compared, even when its kind differs.

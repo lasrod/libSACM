@@ -14,9 +14,8 @@
 //! the existing edits. Properties are content: deleting an asset holding one
 //! is `NotEmpty` unless recursive.
 //!
-//! `SacmElement::properties()` and the creates use the API slice 0052 adds,
-//! so they are in `artifact_edits.rs`. This file uses only the API that
-//! exists, so it builds and runs now.
+//! `SacmElement::properties()` and the creates are tested in
+//! `artifact_edits.rs`, with the other edits of slice 0052.
 //!
 //! Expected locations are marked in the input with [`MARK`] (U+2038), which
 //! the test removes before reading. Inputs end lines with LF only.

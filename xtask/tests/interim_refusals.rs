@@ -11,13 +11,15 @@
 //!   in the declaration of `ReadError` (the variant) and in
 //!   `Self::Unsupported` match arms, so `xmi.rs` builds none;
 //! - (b) every `Interim("ROW")` names a matrix row that exists, is not
-//!   `verified`, and is in the `depends_on` closure of SACM23-CP-001 and of
-//!   the compliance point of the row's own package (the maintainer,
-//!   2026-11-16): SACM23-CP-002 for an `SACM23-ARG-` row, SACM23-CP-003 for
-//!   an `SACM23-ART-` row, SACM23-CP-004 for an `SACM23-TERM-` row, none
-//!   more for an `SACM23-AC-` row, and all four for any other row. So no
-//!   compliance point that interchanges the content can be verified while the
-//!   reader still refuses conforming content it is to read;
+//!   `verified`, and is in the `depends_on` closure of SACM23-CP-001 and
+//!   SACM23-CP-003, because an AssuranceCasePackage and an ArtifactPackage
+//!   can hold every kind, and of the compliance point of the row's own
+//!   package (the maintainer, 2026-11-16, as corrected by the lead):
+//!   SACM23-CP-002 for an `SACM23-ARG-` row, SACM23-CP-004 for an
+//!   `SACM23-TERM-` row, none more for an `SACM23-AC-` or `SACM23-ART-` row,
+//!   and all four for any other row. So no compliance point that interchanges
+//!   the content can be verified while the reader still refuses conforming
+//!   content it is to read;
 //! - (c) every `Tolerance("ROW")` names a row that exists and is not
 //!   `verified`.
 //!
@@ -491,20 +493,25 @@ fn closure(rows: &BTreeMap<String, (String, Vec<String>)>, id: &str) -> BTreeSet
 }
 
 /// The compliance points whose `depends_on` closure must hold the `Interim`
-/// row `row` (the maintainer, 2026-11-16): SACM23-CP-001, the mandatory
-/// point, and the point of the row's own package; every point for a row of
-/// no package (XMI, BASE, LIB and the rest).
+/// row `row` (the maintainer, 2026-11-16, as corrected by the lead):
+/// SACM23-CP-001, the mandatory point, and SACM23-CP-003, since an
+/// AssuranceCasePackage and an ArtifactPackage can hold every kind; and the
+/// point of the row's own package; every point for a row of no package (XMI,
+/// BASE, LIB and the rest).
 fn points_gated_by(row: &str) -> Vec<&'static str> {
     let own = [
         ("SACM23-AC-", None),
         ("SACM23-ARG-", Some("SACM23-CP-002")),
-        ("SACM23-ART-", Some("SACM23-CP-003")),
+        ("SACM23-ART-", None),
         ("SACM23-TERM-", Some("SACM23-CP-004")),
     ]
     .into_iter()
     .find(|(prefix, _)| row.starts_with(prefix));
     match own {
-        Some((_, point)) => std::iter::once("SACM23-CP-001").chain(point).collect(),
+        Some((_, point)) => ["SACM23-CP-001", "SACM23-CP-003"]
+            .into_iter()
+            .chain(point)
+            .collect(),
         None => COMPLIANCE_POINTS.to_vec(),
     }
 }
@@ -1034,11 +1041,12 @@ fn lib_api_011_interim_check_requires_an_art_row_in_cp_001_and_cp_003_but_not_cp
 }
 
 #[test]
-fn lib_api_011_interim_check_gates_each_package_s_rows_by_its_own_compliance_point() {
+fn lib_api_011_interim_check_gates_every_row_by_cp_001_and_cp_003_and_by_its_own_package_s_point() {
     // Each compliance point emptied in turn: which one-entry lists are
-    // reported. CP-001 gates every row; CP-002 the ARG rows and the rows of
-    // no package; CP-003 the ART rows and those; CP-004 the TERM rows and
-    // those; an AC row only CP-001.
+    // reported. CP-001 and CP-003 gate every row (an AssuranceCasePackage
+    // and an ArtifactPackage hold every kind); CP-002 the ARG rows and the
+    // rows of no package; CP-004 the TERM rows and those. So an AC or an ART
+    // row needs only CP-001 and CP-003.
     let rows = [
         "SACM23-AC-002",
         "SACM23-ARG-014",
@@ -1049,7 +1057,7 @@ fn lib_api_011_interim_check_gates_each_package_s_rows_by_its_own_compliance_poi
     let expected: [(&str, [bool; 5]); 4] = [
         ("SACM23-CP-001", [true, true, true, true, true]),
         ("SACM23-CP-002", [false, true, false, false, true]),
-        ("SACM23-CP-003", [false, false, true, false, true]),
+        ("SACM23-CP-003", [true, true, true, true, true]),
         ("SACM23-CP-004", [false, false, false, true, true]),
     ];
     for (point, reported) in expected {
@@ -1075,6 +1083,47 @@ fn lib_api_011_interim_check_gates_each_package_s_rows_by_its_own_compliance_poi
             }
         }
     }
+}
+
+#[test]
+fn lib_api_011_interim_check_requires_a_term_row_in_cp_003() {
+    // SACM23-TERM-004 (Term, an interim entry from slice 0052): an
+    // ArtifactPackage can hold a Term, so the row gates SACM23-CP-003 as well
+    // as SACM23-CP-001 and SACM23-CP-004, but not SACM23-CP-002.
+    let list = one_entry("SACM23-TERM-004");
+    let problems = interim_problems(&list, &matrix());
+    assert!(
+        problems.is_empty(),
+        "{ROW}: SACM23-TERM-004 with the real matrix: {problems:#?}"
+    );
+    let emptied = with_row_value(
+        &matrix(),
+        "SACM23-CP-003",
+        "depends_on",
+        toml::Value::Array(Vec::new()),
+    );
+    let problems = interim_problems(&list, &emptied);
+    assert_only(
+        "SACM23-TERM-004 with SACM23-CP-003 emptied",
+        &problems,
+        "interim-row-outside-compliance-point",
+        1,
+    );
+    assert!(
+        problems[0].ends_with("SACM23-CP-003"),
+        "{ROW}: the problem does not name SACM23-CP-003: {problems:#?}"
+    );
+    let emptied = with_row_value(
+        &matrix(),
+        "SACM23-CP-002",
+        "depends_on",
+        toml::Value::Array(Vec::new()),
+    );
+    let problems = interim_problems(&list, &emptied);
+    assert!(
+        problems.is_empty(),
+        "{ROW}: a TERM row is not checked against SACM23-CP-002: {problems:#?}"
+    );
 }
 
 #[test]

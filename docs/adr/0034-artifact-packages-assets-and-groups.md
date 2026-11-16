@@ -97,8 +97,9 @@ The maintainer's M3 decisions of 2026-11-15 apply:
 
 - A document holding only these classes, with no Artifact, Resource, Activity or Event,
   now reads, round-trips and edits.
-- The interim refusals become new compliance-point dependencies, so the matrix gate keeps
-  every compliance point open until those rows are verified.
+- The interim refusals gate the compliance points whose documents can hold them: SACM23-CP-001
+  and SACM23-CP-003 for every kind, plus CP-002 or CP-004 for their own package's kinds (the
+  maintainer, 2026-11-16).
 - `Document::referrers` (LIB-API-014) and the public end readers (LIB-API-015) must
   include the new end when they land.
 

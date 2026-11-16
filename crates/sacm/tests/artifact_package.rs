@@ -17,8 +17,12 @@
 //! exact location in both modes. An `artifactElement` attribute on a package
 //! is an attribute the class lacks: preserved content (ADR 0033).
 //!
-//! The creates are in `artifact_edits.rs`, which uses the API slice 0052
-//! adds. This file uses only the API that exists, so it builds and runs now.
+//! The type `ArtifactAssertedRelationship` is refused only where the role
+//! admits an `ArtifactAssetRelationship`; elsewhere, and any unknown, abstract,
+//! foreign or miscased type in `artifactElement`, is preserved content.
+//!
+//! `CreateArtifactPackage` is tested in `artifact_edits.rs`, with the other
+//! creates of slice 0052.
 //!
 //! Expected locations are marked in the input with [`MARK`] (U+2038), which
 //! the test removes before reading. Inputs end lines with LF only.
@@ -861,6 +865,109 @@ fn sacm23_art_001_the_type_artifact_asserted_relationship_is_a_tolerance_of_sacm
                 ),
             ),
             &label,
+        );
+    }
+}
+
+#[test]
+fn sacm23_art_001_an_unknown_abstract_or_foreign_type_in_artifact_element_is_preserved() {
+    // Only the SACM-namespace class `ArtifactAssertedRelationship`, spelled
+    // exactly so, is the model's spelling refused as a tolerance. A type
+    // naming an abstract class, no class, a class in another namespace, or
+    // the spelling in another case names no concrete class the role admits:
+    // the child is kept whole as preserved content of the package, with one
+    // SACM-XMI-003 at its start tag (ADR 0033).
+    for (context, wrap, _) in contexts() {
+        for type_value in [
+            "sacm:ArtifactAsset",
+            "sacm:Bogus",
+            "v:ArtifactAssertedRelationship",
+            "sacm:artifactAssertedRelationship",
+        ] {
+            let what = format!("an artifactElement typed {type_value} in {context}");
+            let doc = assert_preserved_at(
+                &what,
+                &wrap(
+                    "",
+                    &format!(
+                        "{}{MARK}<artifactElement xmi:type=\"{type_value}\" xmi:id=\"r\">\
+                         <name content=\"R\"/></artifactElement>",
+                        typed("Technique", "t1", "T1")
+                    ),
+                ),
+                "a",
+            );
+            assert_eq!(
+                (children(&doc, "a"), doc.get("r").is_none()),
+                (ids(&["t1"]), true),
+                "{ROW}: {what}: the preserved child was read as an element"
+            );
+        }
+    }
+}
+
+#[test]
+fn sacm23_art_001_the_model_spelling_is_preserved_where_the_role_admits_no_artifact_asset_relationship()
+ {
+    // The type `ArtifactAssertedRelationship` is refused only where the role
+    // admits an ArtifactAssetRelationship (an ArtifactPackage's
+    // `artifactElement`). Elsewhere it names no class the role admits, as
+    // `sacm:ArtifactAssetRelationship` would not either: preserved by the
+    // parent, with one SACM-XMI-003 at the child's start tag.
+    let child = |role: &str| {
+        format!(
+            "{MARK}<{role} xmi:type=\"sacm:ArtifactAssertedRelationship\" xmi:id=\"r\">\
+             <name content=\"R\"/></{role}>"
+        )
+    };
+    let cases = [
+        (
+            "in argumentElement of an ArgumentPackage root",
+            format!(
+                "<sacm:ArgumentPackage{NS} xmi:id=\"p\">\n  <name content=\"P\"/>\n  {}\n\
+                 </sacm:ArgumentPackage>",
+                child("argumentElement")
+            ),
+            "p",
+        ),
+        (
+            "in argumentElement of an ArgumentPackage in an AssuranceCasePackage",
+            format!(
+                "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name content=\"Case\"/>\n  \
+                 <argumentPackage xmi:id=\"p\"><name content=\"P\"/>{}</argumentPackage>\n\
+                 </sacm:AssuranceCasePackage>",
+                child("argumentElement")
+            ),
+            "p",
+        ),
+        (
+            "in artifactPackage of an AssuranceCasePackage",
+            format!(
+                "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name content=\"Case\"/>\n  {}\n\
+                 </sacm:AssuranceCasePackage>",
+                child("artifactPackage")
+            ),
+            "case",
+        ),
+        (
+            "in property of a Technique",
+            root_a(
+                "",
+                &format!(
+                    "<artifactElement xmi:type=\"sacm:Technique\" xmi:id=\"t1\">\
+                     <name content=\"T1\"/>{}</artifactElement>",
+                    child("property")
+                ),
+            ),
+            "t1",
+        ),
+    ];
+    for (what, template, holder) in &cases {
+        let what = format!("an ArtifactAssertedRelationship {what}");
+        let doc = assert_preserved_at(&what, template, holder);
+        assert!(
+            doc.get("r").is_none(),
+            "{ROW}: {what}: the preserved child was read as an element"
         );
     }
 }

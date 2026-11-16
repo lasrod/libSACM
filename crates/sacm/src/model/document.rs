@@ -38,14 +38,15 @@ use super::{
 /// [ADR 0014]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0014-artifact-package-admits-every-artifact-element.md
 ///
 /// In this release [`xmi::read`](crate::xmi::read) fills a document with
-/// `AssuranceCasePackage` and `ArgumentPackage` roots, the
-/// `AssuranceCasePackage`, `ArgumentPackage`, `Claim`, `ArgumentReasoning`,
-/// `ArtifactReference` and `ArgumentGroup` elements, the five asserted
+/// `AssuranceCasePackage`, `ArgumentPackage` and `ArtifactPackage` roots, the
+/// `AssuranceCasePackage`, `ArgumentPackage`, `ArtifactPackage`, `Claim`,
+/// `ArgumentReasoning`, `ArtifactReference`, `ArgumentGroup`, `Property`,
+/// `Technique`, `Participant` and `ArtifactGroup` elements, the five asserted
 /// relationships (`AssertedInference`, `AssertedEvidence`,
 /// `AssertedContext`, `AssertedArtifactSupport` and
 /// `AssertedArtifactContext`) in them, and the descriptions, implementation
 /// constraints, notes and tagged values of each of these.
-/// [`edit::apply`](crate::edit::apply) creates the same fifteen kinds, edits
+/// [`edit::apply`](crate::edit::apply) creates the same twenty kinds, edits
 /// the features and the order of elements of every kind, and deletes
 /// elements of every kind ([`DeleteElement`](crate::edit::DeleteElement)).
 /// Tests build documents with other kinds through the `test-support`
@@ -85,8 +86,9 @@ use super::{
 /// difference between them. Elements are matched by id; kinds, parents,
 /// `gid`s, the `isCitation`, `isAbstract` and `isCounter` flags, the ids
 /// each reference end holds (`citedElement`, `abstractForm`, `metaClaim`,
-/// `reasoning`, `source`, `target`, `structure`, `referencedArtifactElement`
-/// and a group's `argumentElement`, in order), names, the
+/// `reasoning`, `source`, `target`, `structure`, `referencedArtifactElement`,
+/// an `ArgumentGroup`'s `argumentElement` and an `ArtifactGroup`'s
+/// `artifactElement`, in order), names, the
 /// ids of names, `content`s and `key`s with their ids,
 /// `assertionDeclaration`s, the order of roots and children, and each
 /// element's preserved content are compared. Formatting, attribute order and

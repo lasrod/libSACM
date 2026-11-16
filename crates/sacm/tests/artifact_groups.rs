@@ -16,10 +16,9 @@
 //! for a repeat), written as an attribute after `abstractForm`, and handled
 //! by the delete policies; it has no lower bound, so a scrub keeps the group.
 //!
-//! `ReferenceEnd::ArtifactGroupMember`, `Difference::ArtifactGroupMembers` and
-//! `CreateArtifactGroup` are API slice 0052 adds, so their tests are in
-//! `artifact_edits.rs`. This file uses only the API that exists, so it builds
-//! and runs now.
+//! The edits through `ReferenceEnd::ArtifactGroupMember`,
+//! `Difference::ArtifactGroupMembers` and `CreateArtifactGroup` are tested in
+//! `artifact_edits.rs`, with the other edits of slice 0052.
 //!
 //! Expected locations are marked in the input with [`MARK`] (U+2038), which
 //! the test removes before reading. Inputs end lines with LF only.
