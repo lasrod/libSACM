@@ -383,8 +383,31 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   into the git-ignored `third_party/corpus/`. A test reads each in both modes, validates it
   and writes it back tolerantly, and `docs/compat/corpus.md` records the results and the
   row each gap belongs to [LIB-COMPAT-015].
+- `xmi::read` and `xmi::write` handle `Artifact` (with `version` and `date`), `Event`
+  (`date`), `Resource` (`location`) and `Activity` (`startTime`, `endTime`) in an
+  ArtifactPackage's `artifactElement`, with their `property` children [SACM23-ART-002,
+  SACM23-ART-004, SACM23-ART-005, SACM23-ART-006, SACM23-ART-007].
+- `SacmElement::version()`, `date()`, `start_time()`, `end_time()`, `location()`,
+  `location_id()` and `location_value_ids()`. A date-typed value is held exactly as
+  written: SACM 2.3 gives `date` no lexical form, and its XML Schema types it `xsd:string`
+  [SACM23-ART-002, SACM23-ART-005].
+- `edit::CreateArtifact`, `CreateEvent`, `CreateResource` and `CreateActivity`, and
+  `SetVersion`, `SetDate`, `SetLocation`, `SetStartTime` and `SetEndTime`
+  [SACM23-ART-002, SACM23-ART-004, SACM23-ART-005, SACM23-ART-006, SACM23-ART-007].
+- `Difference::Version`, `Date`, `Location`, `LocationId`, `LocationValueIds`,
+  `StartTime` and `EndTime`; `WriteAttribute::Version`, `Date`, `StartTime`, `EndTime`,
+  `LocationValueLang` and `LocationValueContent` [SACM23-ART-002, SACM23-ART-004,
+  SACM23-ART-005].
 
 ### Changed
+
+- `xmi::read` reads `Artifact`, `Event`, `Resource` and `Activity`, which a strict read
+  refused as `Unsupported` and a tolerant read kept with SACM-XMI-014. An Event's
+  `occurece` (the ptc/22-03-13 spelling of `date`) is refused by a strict read, and kept
+  by a tolerant read with SACM-XMI-014, until SACM23-XMI-009 [SACM23-ART-007].
+- `validation::validate` checks a Resource's `location` as it checks every
+  MultiLangString (SACM-MULT-001, SACM-ID-002) [SACM23-ART-005, SACM23-VAL-010,
+  SACM23-VAL-020].
 
 - `sacm validate` reads strictly by default: a file is `valid` only when a strict read
   accepts it and no diagnostic is an Error, and a file that a strict read refuses but a

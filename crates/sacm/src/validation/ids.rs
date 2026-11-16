@@ -6,7 +6,8 @@ use crate::model::{Document, ElementId, TextRole, is_ncname};
 /// SACM23-VAL-020: each element whose id is not an XML `NCName` is one
 /// SACM-ID-002 Error, because an `xmi:id` is an `xsd:ID`, whose lexical space
 /// is the `NCName`s, and so is each `xmi:id` of a name (ADR 0024), a
-/// `content`, a `key` or a `value` in one (ADR 0025) that is not one,
+/// `content`, a `key`, a `location` or a `value` in one (ADR 0025) that is
+/// not one,
 /// affecting the element that owns it. The reader holds such an id as
 /// written (D-ID), so a tolerant save writes it back unchanged.
 pub(super) fn invalid_id(document: &Document, found: &mut Vec<Diagnostic>) {
@@ -33,7 +34,7 @@ pub(super) fn invalid_id(document: &Document, found: &mut Vec<Diagnostic>) {
             );
             found.push(finding(message, id));
         }
-        for role in [TextRole::Content, TextRole::Key] {
+        for role in TextRole::ALL {
             let Some(text) = element.text(role) else {
                 continue;
             };

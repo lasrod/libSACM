@@ -66,6 +66,7 @@ Background for each is in [reference/specification-defects.md](reference/specifi
 | D-ENUM-EXACT | 11.8; XMI 2.5.1 §8.2.1 rule 8 | An enumeration value must be exactly one literal, after XML attribute-value normalisation, with no trimming or case folding ([ADR 0021](../adr/0021-xmi-reader-content.md)). A strict read refuses any other value; a tolerant read preserves it with SACM-ENUM-001 and holds the default (ADR 0035). |
 | D-DESC-MULT | 8.6 | `ModelElement.description` is stored as a list (the model says `0..*`) so files with several descriptions round-trip, and the text's `0..1` is enforced in validation as a warning. |
 | D-GID-EMPTY | 8.2 | An absent or empty (`""`) `gid` is not an identity and is not compared for uniqueness; every other value is compared exactly, letter case and white space included (the lead, slice 0041, following the catalog and C++). |
+| D-DATE | 4, 12.7, 12.9, 12.11; XMI 2.5.1 §8.2.1 rules 4d, 4j | The four `date`-typed attributes (Artifact and Event `date`, Activity `startTime` and `endTime`) are held as strings exactly as written. SACM 2.3 defines no lexical form, and the schema the XMI rules produce types them `xsd:string`, so no value is refused or diagnosed; an application that needs a calendar date parses it (the maintainer, 2026-11-16; slice 0055). A format check would be a project choice and can be added later as a Warning. |
 
 ## Open questions
 
@@ -75,5 +76,4 @@ maintainer when a slice needs them.
 | ID | Question | Needed by |
 |---|---|---|
 | Q-UNDO | Should undo be built on inverse operations or snapshots? | LIB-EDIT-011 |
-| Q-DATE | How should `date`-typed attributes be represented: validated `xs:date`/`xs:dateTime` lexical forms preserved as text, or parsed values? | SACM23-ART-013 |
 | Q-INTEROP | Which third-party corpus files may be committed (licence review)? assurance-forge carries EPL-2.0 and MIT samples under `libs/sacm/tests/data/interop-thirdparty/`. | LIB-COMPAT-005 |

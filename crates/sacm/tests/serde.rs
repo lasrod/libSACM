@@ -60,6 +60,11 @@ use sacm::edit::{
     ReferenceDeletePolicy, RemoveReference, ReorderElements, SetAssertionDeclaration, SetContent,
     SetFlag, SetGid, SetKey, SetName, SetReferences,
 };
+// The operations of slice 0055 (ADR 0034 amendment 1).
+use sacm::edit::{
+    CreateActivity, CreateArtifact, CreateEvent, CreateResource, SetDate, SetEndTime, SetLocation,
+    SetStartTime, SetVersion,
+};
 use sacm::model::{
     AssertionDeclaration, Document, ElementId, ElementKind, Flag, LangString, MultiLangString,
     ReferenceEnd,
@@ -80,7 +85,8 @@ const GOLDEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/golden/ser
 
 /// Every operation name of this release: the creates first, in the order of
 /// `operations.json`.
-const OPERATION_NAMES: [&str; 31] = [
+const OPERATION_NAME_COUNT: usize = 40;
+const OPERATION_NAMES: [&str; OPERATION_NAME_COUNT] = [
     "CreateAssuranceCasePackage",
     "CreateArgumentPackage",
     "CreateClaim",
@@ -101,12 +107,21 @@ const OPERATION_NAMES: [&str; 31] = [
     "CreateTechnique",
     "CreateParticipant",
     "CreateArtifactGroup",
+    "CreateArtifact",
+    "CreateEvent",
+    "CreateResource",
+    "CreateActivity",
     "SetName",
     "SetGid",
     "SetFlag",
     "SetAssertionDeclaration",
     "SetContent",
     "SetKey",
+    "SetVersion",
+    "SetDate",
+    "SetLocation",
+    "SetStartTime",
+    "SetEndTime",
     "SetReferences",
     "AddReference",
     "RemoveReference",
@@ -114,8 +129,8 @@ const OPERATION_NAMES: [&str; 31] = [
     "DeleteElement",
 ];
 
-/// The first 20 of [`OPERATION_NAMES`]: the creates.
-const CREATE_COUNT: usize = 20;
+/// The first 24 of [`OPERATION_NAMES`]: the creates.
+const CREATE_COUNT: usize = 24;
 
 /// Every `EditError` variant of this release, with its catalog code, in the
 /// order of `edit-errors.json`.
@@ -643,6 +658,30 @@ fn artifact_samples() -> Vec<Operation> {
             .with_id("ag1")
             .with_group_members(["t1", "pa1"])
             .into(),
+        // The creates of slice 0055 (SACM23-ART-004 to -007; ADR 0034
+        // amendment 1): each without and with its id and values.
+        CreateArtifact::new("evidence", en("Brake test report")).into(),
+        CreateArtifact::new("evidence", en("Brake test report"))
+            .with_id("report")
+            .with_version("1.2")
+            .with_date("2024-03-01")
+            .into(),
+        CreateEvent::new("evidence", en("Report released")).into(),
+        CreateEvent::new("evidence", en("Report released"))
+            .with_id("released")
+            .with_date("2024-03-05")
+            .into(),
+        CreateResource::new("evidence", en("Report PDF")).into(),
+        CreateResource::new("evidence", en("Report PDF"))
+            .with_id("report_pdf")
+            .with_location(en("https://example.org/r.pdf"))
+            .into(),
+        CreateActivity::new("evidence", en("Brake testing")).into(),
+        CreateActivity::new("evidence", en("Brake testing"))
+            .with_id("testing")
+            .with_start_time("2024-02-12")
+            .with_end_time("2024-02-29T17:30:00Z")
+            .into(),
     ]
 }
 
@@ -658,6 +697,17 @@ fn edit_samples() -> Vec<Operation> {
         SetContent::new("d1", two_values()).into(),
         SetContent::remove("d1").into(),
         SetKey::new("t1", en("SIL")).into(),
+        // The value edits of slice 0055, each set and removed.
+        SetVersion::new("report", "1.3").into(),
+        SetVersion::remove("report").into(),
+        SetDate::new("released", "2024-03-06").into(),
+        SetDate::remove("released").into(),
+        SetLocation::new("report_pdf", two_values()).into(),
+        SetLocation::remove("report_pdf").into(),
+        SetStartTime::new("testing", "2024-02-12").into(),
+        SetStartTime::remove("testing").into(),
+        SetEndTime::new("testing", "2024-02-29T17:30:00Z").into(),
+        SetEndTime::remove("testing").into(),
         SetReferences::new("i1", ReferenceEnd::Source, ["c2", "c3"]).into(),
         SetReferences::clear("c1", ReferenceEnd::MetaClaim).into(),
         AddReference::new("g1", ReferenceEnd::GroupMember, "c3").into(),
@@ -718,7 +768,28 @@ fn edit_error_samples() -> Vec<EditError> {
         refusal(&deletes, DeleteElement::new("r")),
         refusal(&deletes, DeleteElement::new("c4")),
     ]);
+    // A value edit of slice 0055 on a kind without the value (SACM23-ART-002).
+    samples.push(refusal(
+        &artifact_assets_start(),
+        SetDate::new("testing", "2024-03-06"),
+    ));
     samples
+}
+
+/// The worked fixture of slice 0055, read.
+fn artifact_assets_start() -> Document {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/data/sacm23/xmi/artifact-assets-valid.sacm.xmi"
+    );
+    let bytes = std::fs::read(path)
+        .unwrap_or_else(|error| panic!("{API_006}: setup: cannot read {path}: {error}"));
+    match xmi::read(&bytes, &ReadOptions::default()) {
+        Ok(output) => output.into_document(),
+        Err(error) => {
+            panic!("{API_006}: setup: the artifact assets fixture does not read: {error}")
+        }
+    }
 }
 
 /// The samples of [`edit_error_samples`] refused on [`ERROR_START`].
@@ -919,6 +990,17 @@ fn lib_api_006_every_listed_type_implements_serialize_and_deserialize() {
     assert_serde::<CreateTechnique>();
     assert_serde::<CreateParticipant>();
     assert_serde::<CreateArtifactGroup>();
+    {
+        assert_serde::<CreateArtifact>();
+        assert_serde::<CreateEvent>();
+        assert_serde::<CreateResource>();
+        assert_serde::<CreateActivity>();
+        assert_serde::<SetVersion>();
+        assert_serde::<SetDate>();
+        assert_serde::<SetLocation>();
+        assert_serde::<SetStartTime>();
+        assert_serde::<SetEndTime>();
+    }
     assert_serde::<SetName>();
     assert_serde::<SetGid>();
     assert_serde::<SetFlag>();
@@ -1030,6 +1112,17 @@ fn lib_api_006_an_operation_struct_serializes_as_its_operation_without_the_tag()
     assert_bare(&CreateTechnique::new("e", name()).with_id("t1"));
     assert_bare(&CreateParticipant::new("e", name()));
     assert_bare(&CreateArtifactGroup::new("e", name()).with_group_members(["t1"]));
+    {
+        assert_bare(&CreateArtifact::new("e", name()).with_version("1.2"));
+        assert_bare(&CreateEvent::new("e", name()).with_date(""));
+        assert_bare(&CreateResource::new("e", name()).with_location(two_values()));
+        assert_bare(&CreateActivity::new("e", name()).with_end_time("2024"));
+        assert_bare(&SetVersion::remove("r"));
+        assert_bare(&SetDate::new("e1", "2024-03-06"));
+        assert_bare(&SetLocation::remove("r"));
+        assert_bare(&SetStartTime::new("a1", "2024"));
+        assert_bare(&SetEndTime::remove("a1"));
+    }
     assert_bare(&SetName::new("c1", name()));
     assert_bare(&SetGid::remove("c1"));
     assert_bare(&SetFlag::new("c1", Flag::IsAbstract, true));
@@ -2221,6 +2314,11 @@ fn optional_keys(
             ("is_counter", Value::Bool(false)),
             ("referenced_artifact_elements", Value::Array(Vec::new())),
             ("group_members", Value::Array(Vec::new())),
+            ("version", Value::Null),
+            ("date", Value::Null),
+            ("location", Value::Null),
+            ("start_time", Value::Null),
+            ("end_time", Value::Null),
         ]
     } else if diagnostics && root {
         vec![

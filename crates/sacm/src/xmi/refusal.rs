@@ -99,14 +99,6 @@ pub(super) enum Unread {
     ArgumentPackageInterface,
     /// An `ArgumentPackageBinding`.
     ArgumentPackageBinding,
-    /// An `Artifact`.
-    Artifact,
-    /// A `Resource`.
-    Resource,
-    /// An `Activity`.
-    Activity,
-    /// An `Event`.
-    Event,
     /// An `ArtifactAssetRelationship`.
     ArtifactAssetRelationship,
     /// A `Category`.
@@ -136,7 +128,8 @@ pub(super) enum Unread {
     /// The §11.4 text spelling `argumentationElement`.
     TextSpelling,
     /// The machine-readable model's spelling `ArtifactAssertedRelationship`
-    /// of the type `ArtifactAssetRelationship` (D-TEXT-MODEL).
+    /// of the type `ArtifactAssetRelationship`, or `occurece` of Event's
+    /// `date` (D-TEXT-MODEL).
     ModelSpelling,
     /// An encoding other than UTF-8, ASCII and UTF-16 with a mark.
     Encoding,
@@ -167,10 +160,6 @@ impl Unread {
             ElementKind::AssuranceCasePackageBinding => Self::AssuranceCasePackageBinding,
             ElementKind::ArgumentPackageInterface => Self::ArgumentPackageInterface,
             ElementKind::ArgumentPackageBinding => Self::ArgumentPackageBinding,
-            ElementKind::Artifact => Self::Artifact,
-            ElementKind::Resource => Self::Resource,
-            ElementKind::Activity => Self::Activity,
-            ElementKind::Event => Self::Event,
             ElementKind::ArtifactAssetRelationship => Self::ArtifactAssetRelationship,
             ElementKind::Category => Self::Category,
             ElementKind::Term => Self::Term,
@@ -192,10 +181,6 @@ impl Unread {
             Self::AssuranceCasePackageBinding => Refusal::Interim("SACM23-AC-003"),
             Self::ArgumentPackageInterface => Refusal::Interim("SACM23-ARG-014"),
             Self::ArgumentPackageBinding => Refusal::Interim("SACM23-ARG-015"),
-            Self::Artifact => Refusal::Interim("SACM23-ART-004"),
-            Self::Resource => Refusal::Interim("SACM23-ART-005"),
-            Self::Activity => Refusal::Interim("SACM23-ART-006"),
-            Self::Event => Refusal::Interim("SACM23-ART-007"),
             Self::ArtifactAssetRelationship => Refusal::Interim("SACM23-ART-010"),
             Self::Category => Refusal::Interim("SACM23-TERM-002"),
             Self::Term => Refusal::Interim("SACM23-TERM-004"),
@@ -230,10 +215,6 @@ impl Unread {
             | Self::AssuranceCasePackageBinding
             | Self::ArgumentPackageInterface
             | Self::ArgumentPackageBinding
-            | Self::Artifact
-            | Self::Resource
-            | Self::Activity
-            | Self::Event
             | Self::ArtifactAssetRelationship
             | Self::Category
             | Self::Term
@@ -286,7 +267,7 @@ mod tests {
     use crate::xmi::ReadError;
 
     /// Every entry, in declaration order.
-    const ALL: [Unread; 30] = [
+    const ALL: [Unread; 26] = [
         Unread::ArtifactPackageInterface,
         Unread::ArtifactPackageBinding,
         Unread::TerminologyPackage,
@@ -296,10 +277,6 @@ mod tests {
         Unread::AssuranceCasePackageBinding,
         Unread::ArgumentPackageInterface,
         Unread::ArgumentPackageBinding,
-        Unread::Artifact,
-        Unread::Resource,
-        Unread::Activity,
-        Unread::Event,
         Unread::ArtifactAssetRelationship,
         Unread::Category,
         Unread::Term,
@@ -332,27 +309,23 @@ mod tests {
             Unread::AssuranceCasePackageBinding => 6,
             Unread::ArgumentPackageInterface => 7,
             Unread::ArgumentPackageBinding => 8,
-            Unread::Artifact => 9,
-            Unread::Resource => 10,
-            Unread::Activity => 11,
-            Unread::Event => 12,
-            Unread::ArtifactAssetRelationship => 13,
-            Unread::Category => 14,
-            Unread::Term => 15,
-            Unread::Expression => 16,
-            Unread::TerminologyGroup => 17,
-            Unread::XmiMetadata => 18,
-            Unread::CrossDocumentHref => 19,
-            Unread::OtherSacmNamespace => 20,
-            Unread::ExpressionLangString => 21,
-            Unread::OtherXmiNamespace => 22,
-            Unread::TextSpelling => 23,
-            Unread::ModelSpelling => 24,
-            Unread::Encoding => 25,
-            Unread::Capacity => 26,
-            Unread::Unheld => 27,
-            Unread::WrapperContent => 28,
-            Unread::UnwritablePrefix => 29,
+            Unread::ArtifactAssetRelationship => 9,
+            Unread::Category => 10,
+            Unread::Term => 11,
+            Unread::Expression => 12,
+            Unread::TerminologyGroup => 13,
+            Unread::XmiMetadata => 14,
+            Unread::CrossDocumentHref => 15,
+            Unread::OtherSacmNamespace => 16,
+            Unread::ExpressionLangString => 17,
+            Unread::OtherXmiNamespace => 18,
+            Unread::TextSpelling => 19,
+            Unread::ModelSpelling => 20,
+            Unread::Encoding => 21,
+            Unread::Capacity => 22,
+            Unread::Unheld => 23,
+            Unread::WrapperContent => 24,
+            Unread::UnwritablePrefix => 25,
         }
     }
 
@@ -421,19 +394,27 @@ mod tests {
     }
 
     #[test]
-    fn exactly_the_eighteen_unread_kinds_have_an_entry() {
+    fn exactly_the_fourteen_unread_kinds_have_an_entry() {
         let unread: Vec<ElementKind> = ElementKind::ALL
             .iter()
             .copied()
             .filter(|&kind| Unread::kind(kind).is_some())
             .collect();
-        assert_eq!(unread.len(), 18);
+        assert_eq!(unread.len(), 14);
         let packages = unread.iter().filter(|kind| kind.is_package()).count();
-        assert_eq!((packages, unread.len() - packages), (9, 9));
+        assert_eq!((packages, unread.len() - packages), (9, 5));
         assert_eq!(Unread::kind(ElementKind::ArtifactPackage), None);
+        for read in [
+            ElementKind::Artifact,
+            ElementKind::Resource,
+            ElementKind::Activity,
+            ElementKind::Event,
+        ] {
+            assert_eq!(Unread::kind(read), None, "{read}");
+        }
         assert_eq!(
-            Unread::kind(ElementKind::Artifact).map(Unread::refusal),
-            Some(Refusal::Interim("SACM23-ART-004"))
+            Unread::kind(ElementKind::ArtifactAssetRelationship).map(Unread::refusal),
+            Some(Refusal::Interim("SACM23-ART-010"))
         );
         assert_eq!(
             Unread::ModelSpelling.refusal(),

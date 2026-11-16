@@ -83,7 +83,8 @@ const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/x
 /// The golden files, under [`FIXTURES`].
 const GOLDEN_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/xmi/golden");
 /// The golden files the reader reads in this release.
-const READABLE_GOLDEN: [&str; 7] = [
+const READABLE_GOLDEN: [&str; 8] = [
+    "artifact-assets.golden.sacm.xmi",
     "artifact-package.golden.sacm.xmi",
     "artifact-relationships.golden.sacm.xmi",
     "asserted-relationships.golden.sacm.xmi",
@@ -93,9 +94,10 @@ const READABLE_GOLDEN: [&str; 7] = [
     "single-root.golden.sacm.xmi",
 ];
 /// The golden file the reader refuses, as `Unsupported`, in this release: it
-/// holds an `ArgumentPackageInterface`, refused first, and an ArtifactPackage
-/// holding an Artifact (SACM23-ART-004), which holds a Property (its Note and
-/// Description are read, SACM23-BASE-004).
+/// holds an `ArgumentPackageInterface` (SACM23-ARG-014), refused first, and an
+/// ArtifactPackage holding an Artifact, which holds a Property, both read since
+/// slice 0055 (SACM23-ART-004); its Note and Description are read
+/// (SACM23-BASE-004).
 const UNREADABLE_GOLDEN: &str = "nested.golden.sacm.xmi";
 
 // ---------------------------------------------------------------------------

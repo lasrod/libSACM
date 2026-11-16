@@ -6,25 +6,28 @@
 //!
 //! In this release `read` reads `AssuranceCasePackage`, `ArgumentPackage` and
 //! `ArtifactPackage` roots, bare or inside an `xmi:XMI` element, and what they
-//! hold of sixteen kinds: the three package kinds in an
+//! hold of twenty kinds: the three package kinds in an
 //! `AssuranceCasePackage`; `ArgumentPackage`, `Claim`, `ArgumentReasoning`,
 //! `ArtifactReference`, `ArgumentGroup`, `AssertedInference`,
 //! `AssertedEvidence`, `AssertedContext`, `AssertedArtifactSupport` and
 //! `AssertedArtifactContext` elements in an `ArgumentPackage`; every one of
-//! these kinds and `Technique`, `Participant`, `ArtifactGroup` and `Property`
-//! elements in an `ArtifactPackage`; and `Property` elements in the
-//! `property` role of a `Property`, `Technique` or `Participant`. Each is
+//! these kinds and `Technique`, `Participant`, `ArtifactGroup`, `Property`,
+//! `Artifact`, `Event`, `Resource` and `Activity` elements in an
+//! `ArtifactPackage`; and `Property` elements in the `property` role of
+//! each of the seven `ArtifactAsset` kinds among them. Each is
 //! read with its id (generated when it has no `xmi:id`), `gid`,
 //! `isCitation`, `isAbstract`, `citedElement`, `abstractForm` and name, an
 //! Assertion's `assertionDeclaration` and `metaClaim`, an asserted
 //! relationship's `isCounter`, `reasoning`, `source` and `target`, an
 //! `ArgumentReasoning`'s `structure`, an `ArtifactReference`'s
 //! `referencedArtifactElement`, an `ArgumentGroup`'s members
-//! (`argumentElement`), an `ArtifactGroup`'s members (`artifactElement`), and
-//! the descriptions, implementation constraints, notes and tagged values of
+//! (`argumentElement`), an `ArtifactGroup`'s members (`artifactElement`), an
+//! Artifact's `version` and `date`, an Event's `date`, a Resource's
+//! `location`, an Activity's `startTime` and `endTime`, and the
+//! descriptions, implementation constraints, notes and tagged values of
 //! each, with their `content` and `key` (SACM 2.3 §2.2, §2.4, §8.2-§8.12,
-//! §9.2, §11.2, §11.4, §11.9-§11.18, §12.2, §12.3, §12.6, §12.8, §12.12,
-//! §12.13). A reference is held as the id it names, and one that names no
+//! §9.2, §11.2, §11.4, §11.9-§11.18, §12.2, §12.3, §12.6-§12.13). The
+//! date-typed values are held exactly as written (D-DATE). A reference is held as the id it names, and one that names no
 //! element is kept (see [References](fn@read#references)). Content that is
 //! not SACM 2.3 where it stands, such as a vendor attribute or child
 //! element, is kept as written as preserved content of its element, with
@@ -172,8 +175,8 @@ mod roots;
 /// | AssuranceCasePackage (§9.2) | `argumentPackage` | an ArgumentPackage | no |
 /// | AssuranceCasePackage (§9.2) | `artifactPackage` | an ArtifactPackage | no |
 /// | ArgumentPackage (§11.4) | `argumentElement` | an ArgumentPackage, a Claim, an `ArgumentReasoning`, an `ArtifactReference`, an `ArgumentGroup`, an `AssertedInference`, an `AssertedEvidence`, an `AssertedContext`, an `AssertedArtifactSupport` or an `AssertedArtifactContext` | yes: the role's type, `ArgumentationElement`, is abstract (§11.3) |
-/// | ArtifactPackage (§12.2) | `artifactElement` | an AssuranceCasePackage, an ArgumentPackage, an ArtifactPackage, any of the nine argumentation kinds above, a `Property`, a `Technique`, a `Participant` or an `ArtifactGroup` | yes: the role's type, `ArtifactElement`, is abstract (§8.10) |
-/// | `Property`, `Technique` or `Participant` (§12.6) | `property` | a `Property` | no |
+/// | ArtifactPackage (§12.2) | `artifactElement` | an AssuranceCasePackage, an ArgumentPackage, an ArtifactPackage, any of the nine argumentation kinds above, a `Property`, a `Technique`, a `Participant`, an `ArtifactGroup`, an `Artifact`, an `Event`, a `Resource` or an `Activity` | yes: the role's type, `ArtifactElement`, is abstract (§8.10) |
+/// | `Property`, `Technique`, `Participant`, `Artifact`, `Event`, `Resource` or `Activity` (§12.6) | `property` | a `Property` | no |
 /// | each of the above (§8.6) | `description` | a `Description` | no |
 /// | each of the above (§8.6) | `implementationConstraint` | an `ImplementationConstraint` | no |
 /// | each of the above (§8.6) | `note` | a `Note` | no |
@@ -559,7 +562,7 @@ mod roots;
 ///   (space, TAB, LF or CR), such as `a b` or `a&#9;b`, since a tolerant
 ///   [`write()`] would give it back as two ids, or holding a child element
 ///   or text. So is an end or a reference element in a namespace, such as
-///   `sacm:citedElement`, a reference on a `name`, `content`, `key` or
+///   `sacm:citedElement`, a reference on a `name`, `content`, `key`, `location` or
 ///   `value`, which have none, and an end on a kind that lacks it, such as
 ///   `source` on a Claim or `metaClaim` on a Note (see
 ///   [Preserved content](#preserved-content)).
@@ -575,7 +578,7 @@ mod roots;
 ///   and the end holds nothing from it.
 /// - **Dangling references are kept.** A reference whose id names no
 ///   element, an id absent from the input or the `xmi:id` of a `name`,
-///   `content`, `key` or `value`, is read in both modes without a
+///   `content`, `key`, `location` or `value`, is read in both modes without a
 ///   diagnostic, held as written, and written back by a tolerant
 ///   [`write()`]. [`validation::validate`](crate::validation::validate)
 ///   reports it as SACM-REF-001, an Error (SACM23-VAL-003), and a strict
@@ -606,11 +609,11 @@ mod roots;
 ///   names the kind and the id, and is Info in both modes.
 /// - SACM-ID-004 ([`Code::ID_TRIMMED`]), clause 7.6.1, for each `xmi:id` read
 ///   without the white space around it (SACM23-XMI-025). It affects the
-///   trimmed id, or, for the id of a `name`, `content`, `key` or `value`, the
+///   trimmed id, or, for the id of a `name`, `content`, `key`, `location` or `value`, the
 ///   element that owns it, quotes the value as read, and is Info in both
 ///   modes.
 /// - SACM-XMI-010 ([`Code::XMI_XSI_TYPE`]), clause 9.5.2, for each `xsi:type`
-///   on a root, a child, a `name`, a `content`, a `key` or a `value`. It
+///   on a root, a child, a `name`, a `content`, a `key`, a `location` or a `value`. It
 ///   affects the element, or, for the others, the element that owns them. It
 ///   is an Error in [`Mode::Strict`] and
 ///   a Warning in [`Mode::Tolerant`]: XMI 2.5.1 §9.5.2 rule 2g allows
@@ -735,7 +738,7 @@ mod roots;
 ///   [Ids](#ids)). It names every element that carries the first id to
 ///   repeat.
 /// - [`ReadError::InvalidId`] (SACM-ID-002): the `xmi:id` of an element, of
-///   a `name`, `content`, `key` or `value`, or of an element of preserved
+///   a `name`, `content`, `key`, `location` or `value`, or of an element of preserved
 ///   content, is empty. Any other id is read by its `xsd:ID` value; one that
 ///   is still not an XML `NCName`, such as `1c` or `a b`, is reported by
 ///   [`validation::validate`](crate::validation::validate), and refused by a
@@ -783,10 +786,8 @@ mod roots;
 ///   and keeps the rest (SACM-XMI-014, SACM-XMI-007 or SACM-XMI-003). In
 ///   this release they are:
 ///   - conforming input not read yet: the other nine package kinds, as roots
-///     or children (such as an `ArgumentPackageInterface`); the nine other
-///     kinds not read yet, as children: `Artifact` (SACM23-ART-004),
-///     `Resource` (SACM23-ART-005), `Activity` (SACM23-ART-006), `Event`
-///     (SACM23-ART-007), `ArtifactAssetRelationship` (SACM23-ART-010),
+///     or children (such as an `ArgumentPackageInterface`); the five other
+///     kinds not read yet, as children: `ArtifactAssetRelationship` (SACM23-ART-010),
 ///     `Category` (SACM23-TERM-002), `Term` (SACM23-TERM-004), `Expression`
 ///     (SACM23-TERM-005) and `TerminologyGroup` (SACM23-TERM-006); a
 ///     package's `interface` end, as an attribute or an element, naming the
@@ -796,8 +797,8 @@ mod roots;
 ///     (SACM23-XMI-019): an XMI-namespace element as the document element,
 ///     beside the roots or in an element (such as `xmi:Documentation` or
 ///     `xmi:Extension`), `xmi:uuid`, `xmi:label` and `xmi:idref` on an
-///     element, a `name`, a `content`, a `key` or a `value`, `href` on a
-///     root, a `name`, a `content`, a `key` or a `value`,
+///     element, a `name`, a `content`, a `key`, a `location` or a `value`, `href` on a
+///     root, a `name`, a `content`, a `key`, a `location` or a `value`,
 ///     `xsi:schemaLocation`, `xmi:id`, `xmi:type`, `xmi:uuid` and
 ///     `xmi:label` on the `xmi:XMI` element or on a reference element,
 ///     `xsi:type` on a reference element, and
@@ -824,7 +825,11 @@ mod roots;
 ///     (§12.14), under a role that admits an `ArtifactAssetRelationship`,
 ///     such as an ArtifactPackage's `artifactElement` (SACM23-XMI-009).
 ///     Under any other role, such as an ArgumentPackage's `argumentElement`,
-///     it is a type that names no SACM class, and the child is preserved;
+///     it is a type that names no SACM class, and the child is preserved; and
+///     `occurece`, the machine-readable model's spelling of an Event's
+///     `date` (§12.9), as an attribute or a value element of an Event
+///     (SACM23-XMI-009); on any other kind it is an attribute or child the
+///     class lacks, and is preserved;
 ///   - defects with nowhere to be kept: any other attribute, or text, on the
 ///     `xmi:XMI` element, and an attribute that would be preserved but whose
 ///     prefix `sacm` or `xmi` is bound to another namespace (see
@@ -1994,7 +1999,7 @@ impl std::error::Error for ReadError {}
 /// `<value … />` per value, in order, written as a name is:
 /// `<content>`, `<value lang="en" content="…" />`, `</content>`. An empty
 /// one is `<content />`, and an absent one is not written. No type attribute
-/// is written on a `UtilityElement`, a `content`, a `key` or a `value`.
+/// is written on a `UtilityElement`, a `content`, a `key`, a `location` or a `value`.
 ///
 /// # Preserved content
 ///
@@ -2069,7 +2074,7 @@ impl std::error::Error for ReadError {}
 ///    [`WriteError::PreservedContent`], which lists each element that holds
 ///    some (SACM-XMI-006), and no element when only the document holds it;
 /// 3. in strict mode only, the schema check: one SACM-ID-002 per `xmi:id`,
-///    of an element, a `name`, a `content`, a `key` or a `value`, that is no
+///    of an element, a `name`, a `content`, a `key`, a `location` or a `value`, that is no
 ///    `NCName` (XML Schema 1.0 Part 2 §3.3.8), and one SACM-REF-001 per
 ///    distinct id of a reference end that is no `xmi:id` the output writes
 ///    (Part 1 §3.3.4; XMI 2.5.1 rule 4i), in [`Diagnostic`] order, make
@@ -2078,9 +2083,10 @@ impl std::error::Error for ReadError {}
 ///    element's checks run before the next element's: first its id, where a
 ///    character outside XML 1.0's `Char` is
 ///    [`WriteError::UnrepresentableCharacter`], naming the attribute and its
-///    first such character; then its gid, its name's `lang`, its name's
-///    `content`, and each value of its `content` and then of its `key`,
-///    `lang` before `content`, the same way. Preserved content is not
+///    first such character; then its gid, its `version`, `date`,
+///    `startTime` and `endTime`, its name's `lang`, its name's `content`,
+///    and each value of its `content`, then of its `key` and then of its
+///    `location`, `lang` before `content`, the same way. Preserved content is not
 ///    checked: [`read`] read it, so it is representable.
 ///
 /// Nothing else a document holds is refused.
@@ -2257,7 +2263,8 @@ pub enum WriteError {
     /// ```
     #[non_exhaustive]
     UnrepresentableCharacter {
-        /// The element whose id, gid, name, `content` or `key` holds the
+        /// The element whose id, gid, `version`, `date`, `startTime`,
+        /// `endTime`, name, `content`, `key` or `location` holds the
         /// character.
         element: ElementId,
         /// The first such character in the attribute.
@@ -2465,11 +2472,25 @@ pub enum WriteAttribute {
     KeyValueLang,
     /// The `content` of a value of the element's `key`.
     KeyValueContent,
+    /// The `version` of an `Artifact` (SACM 2.3 §12.7).
+    Version,
+    /// The `date` of an `Artifact` or an `Event` (SACM 2.3 §12.7, §12.9).
+    Date,
+    /// The `startTime` of an `Activity` (SACM 2.3 §12.11).
+    StartTime,
+    /// The `endTime` of an `Activity` (SACM 2.3 §12.11).
+    EndTime,
+    /// The `lang` of a value of a `Resource`'s `location` (SACM 2.3 §12.10).
+    LocationValueLang,
+    /// The `content` of a value of a `Resource`'s `location` (SACM 2.3
+    /// §12.10).
+    LocationValueContent,
 }
 
 impl fmt::Display for WriteAttribute {
     /// Writes `xmi:id`, `gid`, `name's lang`, `name's content`, `content
-    /// value's lang` and so on.
+    /// value's lang`, `version`, `startTime`, `location value's content`
+    /// and so on.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::Id => "xmi:id",
@@ -2480,6 +2501,12 @@ impl fmt::Display for WriteAttribute {
             Self::ContentValueContent => "content value's content",
             Self::KeyValueLang => "key value's lang",
             Self::KeyValueContent => "key value's content",
+            Self::Version => "version",
+            Self::Date => "date",
+            Self::StartTime => "startTime",
+            Self::EndTime => "endTime",
+            Self::LocationValueLang => "location value's lang",
+            Self::LocationValueContent => "location value's content",
         })
     }
 }

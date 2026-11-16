@@ -124,6 +124,11 @@ it is the entire content of a class.
 
 **Suggested resolution.** Add it to the machine-readable model.
 
+**Addendum (libSACM, slice 0055).** The text also gives `location` no multiplicity
+(§12.10), so its absence is not reported (D-SEV). **This crate** reads and writes
+`location` as a `Resource`'s MultiLangString role, and validates a present one as every
+MultiLangString (ADR 0034 amendment 1).
+
 ## D6 — Six further prose/model divergences
 
 Found by holding the text against `ptc/22-03-13` attribute by attribute. Listed
@@ -329,6 +334,51 @@ p. 104 omits the nil alternative altogether.
 **This crate** reads `xsi:nil` on a value element, as §9.4.1 says (SACM23-XMI-026).
 
 **Suggested resolution.** Write the alternative as `"<" //xmiName// " xsi:nil='true'/>"`.
+
+## D17 — The date attributes have no resolvable type, and Event's is misspelled
+
+*Found by libSACM (slice 0055).*
+
+formal/23-05-08 types four attributes `date`:
+
+> "date: date[0..1] - the date on which the artifact was created." (§12.7, p. 48)
+> "date: date[0..1] - the date on which the Event occurred." (§12.9, p. 48)
+> "startTime: date[0..1] - time when the activity started." / "endTime: date[0..1] - time
+> when the activity ended." (§12.11, p. 49)
+
+The specification defines no `date` type and no lexical form; §4 (p. 6) only lists
+"date" among the primitive types an attribute may have. ptc/22-03-13 types all four as
+
+```xml
+<type href="UML_Standard_Profile.mdzip#_be00301_1073305590699_364818_1"/>
+```
+
+a reference into a MagicDraw tool library, as for the Booleans (D14), and names Event's
+attribute `occurece`. The model has no `org.omg.xmi.schemaType` tag, so the SACM XML
+Schema the XMI rules produce types all four `xsd:string` (XMI 2.5.1 §8.2.1 rules 4d and
+4j, p. 50–51; §7.11.6, p. 35, gives exactly this case for a `Date` attribute).
+
+**This crate** holds each value as a string exactly as written and never diagnoses one
+(D-DATE), reads the text's `date` on an Event, and keeps the model's `occurece` for
+SACM23-XMI-009: a strict read refuses it, a tolerant read keeps it with SACM-XMI-014.
+
+**Suggested resolution.** Add a `Date` datatype to the model, tagged
+`org.omg.xmi.schemaType` `xsd:date` or `xsd:dateTime`, type the four attributes by it,
+and correct the spelling `occurece` to `date`.
+
+## D18 — Informative Semantics name classes SACM 2.3 does not define (editorial)
+
+*Found by libSACM (slice 0055).*
+
+§12.7 (Semantics) speaks of "counterevidence (AssertedCountedEvidence with isCounter =
+true)", and §12.11 (Semantics) of "ArtifactActivityRelationships" and
+"ActivityRelationships". SACM 2.3 defines none of these classes: clause 11 has
+`AssertedEvidence` (§11.15), and §12.14 defines only `ArtifactAssetRelationship`.
+
+**This crate** is not affected: the Semantics sections are informative.
+
+**Suggested resolution.** Use the defined class names: `AssertedEvidence` and
+`ArtifactAssetRelationship`.
 
 ## Related
 

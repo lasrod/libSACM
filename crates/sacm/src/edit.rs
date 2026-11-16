@@ -43,6 +43,10 @@
 //! | [`CreateTechnique`] | a `Technique` (§12.12) | no | [`new`](CreateTechnique::new) |
 //! | [`CreateParticipant`] | a `Participant` (§12.13) | no | [`new`](CreateParticipant::new) |
 //! | [`CreateArtifactGroup`] | an `ArtifactGroup` (§12.3), with its optional members (`artifactElement`) | no | [`new`](CreateArtifactGroup::new) |
+//! | [`CreateArtifact`] | an `Artifact` (§12.7), with an optional `version` and `date` | no | [`new`](CreateArtifact::new) |
+//! | [`CreateEvent`] | an `Event` (§12.9), with an optional `date` | no | [`new`](CreateEvent::new) |
+//! | [`CreateResource`] | a `Resource` (§12.10), with an optional `location` | no | [`new`](CreateResource::new) |
+//! | [`CreateActivity`] | an `Activity` (§12.11), with an optional `startTime` and `endTime` | no | [`new`](CreateActivity::new) |
 //!
 //! A root is added after the document's last root; a child after its parent's
 //! last child. A parent is legal exactly when SACM lets its class contain the
@@ -71,7 +75,7 @@
 //! repeats kept) and its target when it is created, as SACM requires
 //! (§11.13 `source:ArgumentAsset[1..*]`, `target:ArgumentAsset[1]`). Every
 //! id they reference must name an element of the document, so an edit never
-//! makes a dangling reference; the id of a name, `content`, `key` or `value`
+//! makes a dangling reference; the id of a name, `content`, `key`, `location` or `value`
 //! names no element. And each referenced element must have the type SACM
 //! declares for its end, so an edit never makes a wrongly typed reference
 //! either (D-VAL-LAYER): an `ArgumentAsset` for a source or the target, an
@@ -97,6 +101,11 @@
 //! | [`SetAssertionDeclaration`] | the `assertionDeclaration` of an Assertion (§11.10) | [`new`](SetAssertionDeclaration::new) |
 //! | [`SetContent`] | the `content` of a `UtilityElement` (§8.7) | [`new`](SetContent::new), [`remove`](SetContent::remove) |
 //! | [`SetKey`] | the `key` of a `TaggedValue` (§8.12) | [`new`](SetKey::new) |
+//! | [`SetVersion`] | the `version` of an `Artifact` (§12.7) | [`new`](SetVersion::new), [`remove`](SetVersion::remove) |
+//! | [`SetDate`] | the `date` of an `Artifact` or an `Event` (§12.7, §12.9) | [`new`](SetDate::new), [`remove`](SetDate::remove) |
+//! | [`SetLocation`] | the `location` of a `Resource` (§12.10) | [`new`](SetLocation::new), [`remove`](SetLocation::remove) |
+//! | [`SetStartTime`] | the `startTime` of an `Activity` (§12.11) | [`new`](SetStartTime::new), [`remove`](SetStartTime::remove) |
+//! | [`SetEndTime`] | the `endTime` of an `Activity` (§12.11) | [`new`](SetEndTime::new), [`remove`](SetEndTime::remove) |
 //! | [`SetReferences`] | the ids one [`ReferenceEnd`](crate::model::ReferenceEnd) holds, such as `source` or `metaClaim` | [`new`](SetReferences::new), [`clear`](SetReferences::clear) |
 //! | [`AddReference`] | one [`ReferenceEnd`](crate::model::ReferenceEnd), such as `source` or `metaClaim`, with one id appended | [`new`](AddReference::new) |
 //! | [`RemoveReference`] | one [`ReferenceEnd`](crate::model::ReferenceEnd), such as `source` or `metaClaim`, with every occurrence of one id removed | [`new`](RemoveReference::new) |
@@ -104,7 +113,8 @@
 //!
 //! Each names the element it changes by id, and replaces one feature
 //! exactly as given (ADR 0029). The value of a name, gid, flag, declaration,
-//! `content` or key is never refused: an empty name, a duplicate gid, an
+//! `content`, key, `version`, `date`, `location`, `startTime` or `endTime`
+//! is never refused (D-DATE): an empty name, a duplicate gid, an
 //! empty `content` or an `asCited` declaration on an element that cites
 //! nothing are content, which
 //! [`validation::validate`](crate::validation::validate) reports
@@ -116,7 +126,7 @@
 //! one, so an end read from a file can be repaired one id at a time.
 //!
 //! Ids are kept by position: a replaced name keeps its `xmi:id`, and a
-//! replaced `content` or `key` keeps the id of its element and, for each
+//! replaced `content`, `key` or `location` keeps the id of its element and, for each
 //! value, the id of the value at its position. The ids beyond the new
 //! length, every id of a removed `content`, and an id no reference holds
 //! any more are freed, so a later create may generate them.
@@ -194,10 +204,11 @@
 //! | Check | Refusal | Code |
 //! |---|---|---|
 //! | 1. the element (for a reorder, the parent) is in the document | [`EditError::ElementNotFound`] | SACM-CMD-001 |
-//! | 2. its kind has the feature: a `ModelElement` for a name, an `AssertedRelationship` for `isCounter`, an Assertion for a declaration, a `UtilityElement` for a `content`, a `TaggedValue` for a key, the end's class for a reference end | [`EditError::FeatureNotApplicable`] | SACM-CMD-008 |
+//! | 2. its kind has the feature: a `ModelElement` for a name, an `AssertedRelationship` for `isCounter`, an Assertion for a declaration, a `UtilityElement` for a `content`, a `TaggedValue` for a key, an `Artifact` for a `version`, an `Artifact` or an `Event` for a `date`, a `Resource` for a `location`, an `Activity` for a `startTime` or `endTime`, the end's class for a reference end | [`EditError::FeatureNotApplicable`] | SACM-CMD-008 |
 //!
 //! [`SetName`], [`SetGid`], [`SetFlag`], [`SetAssertionDeclaration`],
-//! [`SetContent`] and [`SetKey`] check nothing more. Every element has a
+//! [`SetContent`], [`SetKey`], [`SetVersion`], [`SetDate`],
+//! [`SetLocation`], [`SetStartTime`] and [`SetEndTime`] check nothing more. Every element has a
 //! gid, `isCitation` and `isAbstract`, so those skip the second check too.
 //!
 //! The reference operations then check, in this order:
@@ -305,7 +316,8 @@ pub use argumentation::{
     CreateAssertedEvidence, CreateAssertedInference,
 };
 pub use artifact::{
-    CreateArtifactGroup, CreateArtifactPackage, CreateParticipant, CreateProperty, CreateTechnique,
+    CreateActivity, CreateArtifact, CreateArtifactGroup, CreateArtifactPackage, CreateEvent,
+    CreateParticipant, CreateProperty, CreateResource, CreateTechnique,
 };
 pub use batch::{Batch, BatchError, BatchMutation};
 pub use create::{CreateArgumentPackage, CreateAssuranceCasePackage, CreateClaim};
@@ -315,7 +327,10 @@ pub use delete::{
 pub use preview::{DanglingReference, Preview};
 pub use references::{AddReference, RemoveReference, SetReferences};
 pub use reorder::ReorderElements;
-pub use set::{SetAssertionDeclaration, SetContent, SetFlag, SetGid, SetKey, SetName};
+pub use set::{
+    SetAssertionDeclaration, SetContent, SetDate, SetEndTime, SetFlag, SetGid, SetKey, SetLocation,
+    SetName, SetStartTime, SetVersion,
+};
 pub use utility::{
     CreateDescription, CreateImplementationConstraint, CreateNote, CreateTaggedValue,
 };
@@ -360,7 +375,7 @@ use plan::{Outcome, Plan};
 /// - the id given with `with_id` is not an XML `NCName`
 ///   ([`EditError::InvalidId`]);
 /// - the id given with `with_id` is already in the document, as an
-///   element's id or as the `xmi:id` of a name, a `content`, a `key` or a
+///   element's id or as the `xmi:id` of a name, a `content`, a `key`, a `location` or a
 ///   `value` ([`EditError::DuplicateId`]);
 /// - an asserted relationship is given no source
 ///   ([`EditError::TooFewReferences`]);
@@ -730,12 +745,21 @@ fn plan<'o>(document: &Document, operation: &'o Operation) -> Result<Plan<'o>, E
         Operation::CreateTechnique(create) => create.plan(document),
         Operation::CreateParticipant(create) => create.plan(document),
         Operation::CreateArtifactGroup(create) => create.plan(document),
+        Operation::CreateArtifact(create) => create.plan(document),
+        Operation::CreateEvent(create) => create.plan(document),
+        Operation::CreateResource(create) => create.plan(document),
+        Operation::CreateActivity(create) => create.plan(document),
         Operation::SetName(set) => set.plan(document),
         Operation::SetGid(set) => set.plan(document),
         Operation::SetFlag(set) => set.plan(document),
         Operation::SetAssertionDeclaration(set) => set.plan(document),
         Operation::SetContent(set) => set.plan(document),
         Operation::SetKey(set) => set.plan(document),
+        Operation::SetVersion(set) => set.plan(document),
+        Operation::SetDate(set) => set.plan(document),
+        Operation::SetLocation(set) => set.plan(document),
+        Operation::SetStartTime(set) => set.plan(document),
+        Operation::SetEndTime(set) => set.plan(document),
         Operation::SetReferences(set) => set.plan(document),
         Operation::AddReference(add) => add.plan(document),
         Operation::RemoveReference(remove) => remove.plan(document),
@@ -807,6 +831,14 @@ pub enum Operation {
     CreateParticipant(CreateParticipant),
     /// Creates an `ArtifactGroup`.
     CreateArtifactGroup(CreateArtifactGroup),
+    /// Creates an `Artifact`.
+    CreateArtifact(CreateArtifact),
+    /// Creates an `Event`.
+    CreateEvent(CreateEvent),
+    /// Creates a `Resource`.
+    CreateResource(CreateResource),
+    /// Creates an `Activity`.
+    CreateActivity(CreateActivity),
     /// Sets the name of a `ModelElement`.
     SetName(SetName),
     /// Sets or removes the `gid` of an element.
@@ -819,6 +851,16 @@ pub enum Operation {
     SetContent(SetContent),
     /// Sets the `key` of a `TaggedValue`.
     SetKey(SetKey),
+    /// Sets or removes the `version` of an `Artifact`.
+    SetVersion(SetVersion),
+    /// Sets or removes the `date` of an `Artifact` or an `Event`.
+    SetDate(SetDate),
+    /// Sets or removes the `location` of a `Resource`.
+    SetLocation(SetLocation),
+    /// Sets or removes the `startTime` of an `Activity`.
+    SetStartTime(SetStartTime),
+    /// Sets or removes the `endTime` of an `Activity`.
+    SetEndTime(SetEndTime),
     /// Replaces the ids a reference end of an element holds.
     SetReferences(SetReferences),
     /// Appends an id to a reference end of an element.
@@ -846,9 +888,11 @@ impl Operation {
     /// `"CreateImplementationConstraint"`, `"CreateNote"`,
     /// `"CreateTaggedValue"`, `"CreateArtifactPackage"`, `"CreateProperty"`,
     /// `"CreateTechnique"`, `"CreateParticipant"`, `"CreateArtifactGroup"`,
-    /// `"SetName"`, `"SetGid"`, `"SetFlag"`,
+    /// `"CreateArtifact"`, `"CreateEvent"`, `"CreateResource"`,
+    /// `"CreateActivity"`, `"SetName"`, `"SetGid"`, `"SetFlag"`,
     /// `"SetAssertionDeclaration"`, `"SetContent"`, `"SetKey"`,
-    /// `"SetReferences"`, `"AddReference"`, `"RemoveReference"`,
+    /// `"SetVersion"`, `"SetDate"`, `"SetLocation"`, `"SetStartTime"`,
+    /// `"SetEndTime"`, `"SetReferences"`, `"AddReference"`, `"RemoveReference"`,
     /// `"ReorderElements"` and `"DeleteElement"`. The two forms of one struct, such as
     /// [`SetGid::new`] and [`SetGid::remove`], share its name.
     ///
@@ -884,12 +928,21 @@ impl Operation {
             Self::CreateTechnique(_) => "CreateTechnique",
             Self::CreateParticipant(_) => "CreateParticipant",
             Self::CreateArtifactGroup(_) => "CreateArtifactGroup",
+            Self::CreateArtifact(_) => "CreateArtifact",
+            Self::CreateEvent(_) => "CreateEvent",
+            Self::CreateResource(_) => "CreateResource",
+            Self::CreateActivity(_) => "CreateActivity",
             Self::SetName(_) => "SetName",
             Self::SetGid(_) => "SetGid",
             Self::SetFlag(_) => "SetFlag",
             Self::SetAssertionDeclaration(_) => "SetAssertionDeclaration",
             Self::SetContent(_) => "SetContent",
             Self::SetKey(_) => "SetKey",
+            Self::SetVersion(_) => "SetVersion",
+            Self::SetDate(_) => "SetDate",
+            Self::SetLocation(_) => "SetLocation",
+            Self::SetStartTime(_) => "SetStartTime",
+            Self::SetEndTime(_) => "SetEndTime",
             Self::SetReferences(_) => "SetReferences",
             Self::AddReference(_) => "AddReference",
             Self::RemoveReference(_) => "RemoveReference",
@@ -920,6 +973,7 @@ operation_from!(
     SetAssertionDeclaration,
     SetContent,
     SetKey,
+    SetLocation,
     SetReferences,
     AddReference,
     RemoveReference,
@@ -1213,7 +1267,7 @@ pub enum EditError {
         id: ElementId,
     },
     /// The id given with `with_id` is already in the document, as an
-    /// element's id or as the `xmi:id` of a name, a `content`, a `key` or a
+    /// element's id or as the `xmi:id` of a name, a `content`, a `key`, a `location` or a
     /// `value`, which identify no element
     /// ([`SacmElement::name_id`](crate::model::SacmElement::name_id),
     /// [`SacmElement::content_id`](crate::model::SacmElement::content_id))
@@ -1333,7 +1387,7 @@ pub enum EditError {
     /// the `structure` of an `ArgumentReasoning`, a
     /// `referencedArtifactElement` of an `ArtifactReference` or a member of
     /// an `ArgumentGroup`. An edit never makes a dangling reference
-    /// (D-VAL-LAYER), and the `xmi:id` of a name, `content`, `key` or
+    /// (D-VAL-LAYER), and the `xmi:id` of a name, `content`, `key`, `location` or
     /// `value` names no element. The first such id is reported: the sources
     /// in order, then the target, the reasoning, the structure, the
     /// `referencedArtifactElement` ids in order and the group members in
@@ -1407,7 +1461,7 @@ pub enum EditError {
     /// The element to edit is not in the document (SACM-CMD-001): the
     /// element of a set or reference operation, or the parent of a
     /// [`ReorderElements::new`]. Ids are compared exactly, case included;
-    /// the `xmi:id` of a name, `content`, `key` or `value` names no element.
+    /// the `xmi:id` of a name, `content`, `key`, `location` or `value` names no element.
     /// Correct the id.
     ///
     /// ```

@@ -114,7 +114,7 @@ mod revision;
 
 pub use argumentation::{AssertionDeclaration, ParseAssertionDeclarationError};
 pub(crate) use containment::{DeclaredType, admits, role_named};
-pub(crate) use document::{Compared, IdGenerator, Text, TextRole};
+pub(crate) use document::{Compared, IdGenerator, StringAttribute, Text, TextRole};
 pub use document::{Document, SacmElement};
 #[cfg(feature = "test-support")]
 pub use document::{InsertError, SetAssertionDeclarationError};

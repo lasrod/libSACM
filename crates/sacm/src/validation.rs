@@ -9,9 +9,9 @@
 //! | Code | Row | Clause | Severity | Finding |
 //! |---|---|---|---|---|
 //! | SACM-MULT-001 | SACM23-VAL-018 | §8.6 | Error | a `ModelElement` has no name (`name:LangString[1]`) |
-//! | SACM-MULT-001 | SACM23-VAL-010 | §8.5 | Error | a `content` or `key` has no value (`value:LangString[1..*]`), or two or more of its values share a language (each `lang` "must be unique") |
+//! | SACM-MULT-001 | SACM23-VAL-010 | §8.5 | Error | a `content`, `key` or `location` (§12.10) has no value (`value:LangString[1..*]`), or two or more of its values share a language (each `lang` "must be unique") |
 //! | SACM-MULT-001 | SACM23-VAL-010 | §8.12 | Error | a `TaggedValue` has no `key` (`key:MultiLangString[1]`) |
-//! | SACM-ID-002 | SACM23-VAL-020 | XMI 2.5.1 §7.6.1 | Error | an element's id, or the `xmi:id` of its name, `content`, `key` or a `value`, is not an XML `NCName` (an `xmi:id` is an `xsd:ID`) |
+//! | SACM-ID-002 | SACM23-VAL-020 | XMI 2.5.1 §7.6.1 | Error | an element's id, or the `xmi:id` of its name, `content`, `key`, `location` or a `value`, is not an XML `NCName` (an `xmi:id` is an `xsd:ID`) |
 //! | SACM-MULT-001 | SACM23-VAL-011 | §8.6 | Warning | a `ModelElement` has two or more descriptions (`description:Description[0..1]`) |
 //! | SACM-ID-003 | SACM23-VAL-002 | §8.2 | Error | two or more elements hold the same non-empty `gid` ("unique within the scope of the model instance") |
 //! | SACM-PKG-001 | SACM23-VAL-012 | §11.4 | Error | an `ArgumentPackage` nests a plain `ArgumentPackage` and also holds another argumentation element ("only allowed to contain `ArgumentPackages`") |
@@ -40,10 +40,11 @@
 //! and no two of its values may share a `lang`. Languages are compared
 //! exactly: two absent ones are equal, an absent one and `""` differ, and so
 //! do `en` and `EN`. A `content` that is absent gives no finding, but a
-//! `TaggedValue` must have a `key`. Each finding affects the
-//! `UtilityElement`, and the message names the role and the language. To fix
-//! one, give the `content` or `key` one `<value lang="…" content="…"/>` per
-//! language.
+//! `TaggedValue` must have a `key`. A `Resource`'s `location` (§12.10) is
+//! checked the same way, and one that is absent gives no finding. Each
+//! finding affects the element that holds the role, and the message names
+//! the role and the language. To fix one, give the `content`, `key` or
+//! `location` one `<value lang="…" content="…"/>` per language.
 //!
 //! ```
 //! use sacm::diagnostic::Code;
@@ -82,7 +83,7 @@
 //! reads an `NCName` with XML white space around it, such as `" c1 "`,
 //! trimmed. [`edit::apply`](crate::edit::apply) never creates an id that is
 //! not an `NCName`. To fix a
-//! finding, give the element, or its name, `content`, `key` or `value`, an
+//! finding, give the element, or its name, `content`, `key`, `location` or `value`, an
 //! id that is an `NCName`.
 //!
 //! The §8.6 text gives `description:Description[0..1]`, while the model
@@ -112,7 +113,7 @@
 //! SACM-REF-001 finding per element and end, with the end's clause, affecting
 //! the element, then the id; an id a multi-valued end holds twice is one
 //! finding. An id absent from the document dangles, and so does
-//! the `xmi:id` of a `name`, `content`, `key` or `value`, which identifies no
+//! the `xmi:id` of a `name`, `content`, `key`, `location` or `value`, which identifies no
 //! element. A reference to any element, the element itself included,
 //! resolves. To fix one, point it at an element, or remove it. An id of an
 //! element of preserved content (ADR 0033) is in the file, merely not read:

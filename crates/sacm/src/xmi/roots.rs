@@ -149,8 +149,8 @@ use super::{Mode, ReadError};
 use crate::diagnostic::{Code, Diagnostic, Severity};
 use crate::model::{
     AbstractClass, AssertionDeclaration, Attr, DeclaredType, Document, ElementId, ElementKind,
-    Flag, IdGenerator, Item, LangString, Placed, Preserved, ReferenceEnd, Text, TextRole,
-    flag_named, is_ncname, reference_end_named, role_named,
+    Flag, IdGenerator, Item, LangString, Placed, Preserved, ReferenceEnd, StringAttribute, Text,
+    TextRole, flag_named, is_ncname, reference_end_named, role_named,
 };
 
 /// The machine-readable model's spelling of the class
@@ -162,6 +162,11 @@ const MODEL_SPELLING: &str = "ArtifactAssertedRelationship";
 /// read in tolerant mode, as the role of an ArgumentPackage and the
 /// reference end of an `ArgumentGroup`.
 const TEXT_SPELLING: &str = "argumentationElement";
+
+/// The machine-readable model's spelling of the attribute `date` of an
+/// `Event` (§12.9, D-TEXT-MODEL, spec defect D17), which SACM23-XMI-009 is
+/// to read in tolerant mode, as an attribute or a value element.
+const EVENT_SPELLING: &str = "occurece";
 
 /// The `XLink` namespace, whose attributes on a reference element are a
 /// cross-document link (SACM23-XMI-027).
@@ -1113,6 +1118,12 @@ struct Pending {
     shorthand: Shorthand,
     /// The `key` of a `TaggedValue`, with its ids.
     key: Option<Text>,
+    /// The `location` of a `Resource`, with its ids.
+    location: Option<Text>,
+    /// Each string-valued attribute given, as the attribute or as a value
+    /// element, with its value exactly as read, or `None` for a nil value
+    /// element, which counts as given (SACM23-XMI-026; D-DATE).
+    strings: Vec<(StringAttribute, Option<String>)>,
     /// The `assertionDeclaration` read, if it is written, as the attribute
     /// or as a value element.
     declaration: Option<AssertionDeclaration>,
@@ -1485,6 +1496,7 @@ impl Pending {
         match role {
             TextRole::Content => &mut self.content,
             TextRole::Key => &mut self.key,
+            TextRole::Location => &mut self.location,
         }
     }
 
@@ -1494,8 +1506,44 @@ impl Pending {
         let given = match role {
             TextRole::Content => self.content.is_some() || self.shorthand.is_given(),
             TextRole::Key => self.key.is_some(),
+            TextRole::Location => self.location.is_some(),
         };
         given || self.given.contains(&role.name())
+    }
+
+    /// Reads `node`, the value element of the string-valued `attribute` in
+    /// `holder`, this element's node, whose kind holds it (D-DATE): checked
+    /// whole first, then against an earlier occurrence, the attribute
+    /// included, as a `gid` is. A nil one reads as absent and counts as
+    /// given (SACM23-XMI-026).
+    fn read_string_element(
+        &mut self,
+        found: &Findings<'_, '_>,
+        holder: Node<'_, '_>,
+        node: Node<'_, '_>,
+        attribute: StringAttribute,
+    ) -> Result<(), Fault> {
+        let value = read_value(found, node, &self.id);
+        let counted = counts(&value);
+        let repeats = counted && self.strings.iter().any(|(given, _)| *given == attribute);
+        if counted && !repeats {
+            // Given, with no value until it is known: one kept in tolerant
+            // mode for an `xsi:nil` that is no literal stays absent.
+            self.strings.push((attribute, None));
+        }
+        let value = value?;
+        if repeats {
+            let name = attribute.name();
+            return Err(self.repeat(found, holder, node.range().start, name, name));
+        }
+        if let Some((_, held)) = self
+            .strings
+            .iter_mut()
+            .find(|(given, _)| *given == attribute)
+        {
+            *held = value;
+        }
+        Ok(())
     }
 
     /// Reads `node`, text in `holder`, this element's node, a
@@ -2003,9 +2051,11 @@ fn read_root<'a>(
     // its node and the rest of its content, and the elements read whole.
     // Content is, on a ModelElement, one `name` (SACM23-XMI-012) and on an
     // Assertion one `assertionDeclaration` value element (SACM23-XMI-014);
-    // on a UtilityElement one `content`, and on a TaggedValue one `key`
-    // (SACM23-BASE-004, SACM23-BASE-005); on every element one `gid` value
-    // element (SACM23-BASE-006), one value element per flag of its kind, one
+    // on a UtilityElement one `content`, on a TaggedValue one `key`
+    // (SACM23-BASE-004, SACM23-BASE-005), and on a Resource one `location`
+    // (SACM23-ART-005); on every element one `gid` value element
+    // (SACM23-BASE-006), one value element per string-valued attribute and
+    // one per flag of its kind, one
     // reference element per single-valued end of its kind and any number per
     // multi-valued end (ADR 0026, ADR 0027); readable children
     // (SACM23-XMI-016), white space, comments and processing instructions.
@@ -2072,7 +2122,10 @@ fn read_root<'a>(
 /// value element on an Assertion (SACM23-XMI-014), a `content` on a
 /// `UtilityElement` and a `key` on a `TaggedValue` (SACM23-BASE-004,
 /// SACM23-BASE-005), a `gid` value element on every element
-/// (SACM23-BASE-006), a value element per flag of its kind, and a
+/// (SACM23-BASE-006), a value element per string-valued attribute of its
+/// kind (`version`, `date`, `startTime`, `endTime`; SACM23-ART-002,
+/// SACM23-ART-004), a `location` on a `Resource` (SACM23-ART-005), a value
+/// element per flag of its kind, and a
 /// reference element per end of its kind, one per single-valued end and
 /// any number per multi-valued end (ADR 0026, ADR 0027). Each is checked
 /// whole first, then against the occurrences before it that were read, so a
@@ -2080,7 +2133,9 @@ fn read_root<'a>(
 ///
 /// A part that does not conform, and a `name` on a `UtilityElement`, is
 /// [`Fault::Defect`]: the caller keeps it whole as preserved content, and
-/// the property is not given (ADR 0033).
+/// the property is not given (ADR 0033). The model's spellings
+/// `argumentationElement` on an `ArgumentGroup` and `occurece` on an `Event`
+/// are refused, or kept in tolerant mode (SACM23-XMI-009).
 fn read_part<'a>(
     found: &mut Findings<'_, 'a>,
     element: &mut Pending,
@@ -2121,7 +2176,13 @@ fn read_part<'a>(
             return Err(element.repeat(found, holder, at, GID, GID));
         }
         element.gid = value;
-    } else if let Some(role) = [TextRole::Content, TextRole::Key]
+    } else if let Some(attribute) = string_attribute_named(element.kind, local)
+        .filter(|attribute| is_value_element(node, attribute.name()))
+    {
+        element.read_string_element(found, holder, node, attribute)?;
+    } else if element.kind == ElementKind::Event && is_value_element(node, EVENT_SPELLING) {
+        return Err(event_spelling(found, at, &element.written));
+    } else if let Some(role) = TextRole::ALL
         .into_iter()
         .find(|role| role.is_held_by(element.kind) && is_value_element(node, role.name()))
     {
@@ -2152,7 +2213,10 @@ fn read_part<'a>(
                         refusal,
                     ))
                 }
-                TextRole::Key => element.repeat(found, holder, at, "key", "key"),
+                TextRole::Key | TextRole::Location => {
+                    let name = role.name();
+                    element.repeat(found, holder, at, name, name)
+                }
             });
         }
         *element.text_mut(role) = Some(held);
@@ -2203,11 +2267,19 @@ fn hold(text: &str, document: &mut Document, mut read: Vec<Pending>) -> Result<(
             Some(gid) => document.set_gid(&id, Some(gid)),
             None => Ok(()),
         });
+        let valued = identified.and_then(|()| {
+            element
+                .strings
+                .into_iter()
+                .filter_map(|(attribute, value)| value.map(|value| (attribute, value)))
+                .try_for_each(|(attribute, value)| document.set_string(&id, attribute, Some(value)))
+        });
         let texts = [
             (TextRole::Content, element.content),
             (TextRole::Key, element.key),
+            (TextRole::Location, element.location),
         ];
-        let held = identified.and_then(|()| {
+        let held = valued.and_then(|()| {
             texts.into_iter().try_for_each(|(role, held)| match held {
                 Some(held) => document.set_text(&id, role, held),
                 None => Ok(()),
@@ -2318,6 +2390,8 @@ fn pending(
         content: None,
         shorthand: Shorthand::default(),
         key: None,
+        location: None,
+        strings: Vec::new(),
         declaration: None,
         flags: Vec::new(),
         references: Vec::new(),
@@ -2476,8 +2550,10 @@ fn child_start<'a>(
     let mut element = pending(found, node, Some(parent.id.clone()), kind, id, written);
     let id = element.id.clone();
     // Besides `xmi:id` and the type (ADR 0016 D4), only an unqualified
-    // `gid`, an Assertion's unqualified `assertionDeclaration`, and the
-    // SACMElement flags and references (ADR 0026), and the C++ shapes
+    // `gid`, an Assertion's unqualified `assertionDeclaration`, the
+    // SACMElement flags and references (ADR 0026), the unqualified
+    // string-valued attributes of the kind (`version`, `date`, `startTime`,
+    // `endTime`; D-DATE), and the C++ shapes
     // (LIB-COMPAT-008): `name` on a ModelElement, and `lang`, `content` and,
     // on a TaggedValue, `key` and `value` on a UtilityElement, in document
     // order, so a refusal after them lands on the later attribute. XMI
@@ -2526,6 +2602,21 @@ fn child_start<'a>(
                 element.keep_attribute(found, node, &attribute, fault)?;
                 continue;
             }
+        }
+        if let Some(string) = string_attribute_named(kind, attribute.name())
+            .filter(|string| is_unqualified(&attribute, string.name()))
+        {
+            // Held exactly as written (D-DATE); attributes are unique in a
+            // start tag (XML 1.0 §3.1), so this is its first occurrence.
+            element
+                .strings
+                .push((string, Some(attribute.value().to_owned())));
+            continue;
+        }
+        if kind == ElementKind::Event && is_unqualified(&attribute, EVENT_SPELLING) {
+            let fault = event_spelling(found, at, &element.written);
+            element.keep_attribute(found, node, &attribute, fault)?;
+            continue;
         }
         if kind == ElementKind::ArgumentGroup && is_unqualified(&attribute, TEXT_SPELLING) {
             let fault = text_spelling(found, at, &element.written);
@@ -2650,7 +2741,7 @@ fn read_id<'a>(
     Ok(ElementId::new(value))
 }
 
-/// The `xmi:id` of `node`, a `name`, `content`, `key` or `value` element
+/// The `xmi:id` of `node`, a `name`, `content`, `key`, `location` or `value` element
 /// that `subject` names, of the element `owner`, if it has one
 /// (SACM23-XMI-022; XMI 2.5.1 §7.8.3; ADR 0024, ADR 0025). It is in the
 /// elements' id space, under [`read_id`]'s rules, except that none is
@@ -3263,9 +3354,10 @@ fn read_name<'a>(
     read_lang_string(found, node, &subject, owner, "name")
 }
 
-/// The `MultiLangString` that the `content` or `key` element `node` holds,
-/// in `role`, with its ids (SACM23-BASE-004, SACM23-BASE-005; XMI 2.5.1
-/// §7.8.3, §7.8.6; ADR 0025). It belongs to the element `owner`, of `kind`.
+/// The `MultiLangString` that the `content`, `key` or `location` element
+/// `node` holds, in `role`, with its ids (SACM23-BASE-004, SACM23-BASE-005,
+/// SACM23-ART-005; XMI 2.5.1 §7.8.3, §7.8.6; ADR 0025, ADR 0034 amendment
+/// 1). It belongs to the element `owner`, of `kind`.
 ///
 /// It carries only `xmi:id` and a type naming `MultiLangString`, checked
 /// at the start tag first, and holds only `value` elements in no namespace,
@@ -3273,8 +3365,9 @@ fn read_name<'a>(
 /// as a `name` is ([`read_lang_string`]), so values are kept in order, with
 /// duplicates. With no `value`, it is an empty `MultiLangString`.
 ///
-/// Without a `value`, `lang` and `content` attributes on it, and text in
-/// it, are the C++ single-language shorthand (LIB-COMPAT-008): one value,
+/// Without a `value`, `lang` and `content` attributes on a `content` or a
+/// `key`, and text in it, are the C++ single-language shorthand
+/// (LIB-COMPAT-008), which a `location` has not: one value,
 /// whose content is the text, all of it, or the attribute, never both. It
 /// is reported at its first attribute, else at its text. An `xsi:type`, and
 /// an `xmi:id` read trimmed, are reported on the owner. XMI metadata on it,
@@ -3301,10 +3394,13 @@ fn read_text<'a>(
     let has_values = node
         .children()
         .any(|child| is_value_element(child, "value"));
+    // The single-language shorthand is the C++ shape of a `content` or a
+    // `key` (LIB-COMPAT-008); a `location` has none (ADR 0034 amendment 1).
+    let no_shorthand = has_values || role == TextRole::Location;
     let mut shorthand = Shorthand::default();
     for attribute in node.attributes() {
         if is_unqualified(&attribute, "lang") || is_unqualified(&attribute, "content") {
-            if has_values {
+            if no_shorthand {
                 return Err(Fault::Defect);
             }
             // Attributes are unique in a start tag (XML 1.0 §3.1), so the
@@ -3323,7 +3419,7 @@ fn read_text<'a>(
     let property = format!("{}.value", role.name());
     for child in node.children() {
         if !child.is_element() {
-            if has_values {
+            if no_shorthand {
                 if text_offset(text, child).is_some() {
                     return Err(Fault::Defect);
                 }
@@ -3358,7 +3454,7 @@ fn read_text<'a>(
     Ok(held)
 }
 
-/// What an element `child` that `element`, a `name`, `content`, `key` or
+/// What an element `child` that `element`, a `name`, `content`, `key`, `location` or
 /// `value`, does not read makes it: refused if it is in the XMI namespace,
 /// which is XMI metadata not read yet (SACM23-XMI-019), and otherwise
 /// [`Fault::Defect`] (ADR 0033).
@@ -3686,6 +3782,26 @@ fn text_spelling(found: &Findings<'_, '_>, offset: usize, group: &str) -> Fault 
          of an ArgumentGroup is argumentElement"
     );
     found.unread_fault(offset, Unread::TextSpelling, &reason)
+}
+
+/// The fault of the model's spelling `occurece` at byte `offset`, an
+/// attribute or value element of the `Event` written as `written`, whose
+/// attribute is spelled `date` in the text (§12.9; SACM23-XMI-009): a strict
+/// read refuses it, and a tolerant read keeps it (ADR 0034 amendment 1).
+fn event_spelling(found: &Findings<'_, '_>, offset: usize, written: &str) -> Fault {
+    let reason = format!(
+        "{EVENT_SPELLING:?} in the element {written:?} is the machine-readable model's spelling, \
+         and the attribute of an Event is date (§12.9)"
+    );
+    found.unread_fault(offset, Unread::ModelSpelling, &reason)
+}
+
+/// The string-valued attribute named `local` that an element of `kind`
+/// holds, if there is one (D-DATE).
+fn string_attribute_named(kind: ElementKind, local: &str) -> Option<StringAttribute> {
+    StringAttribute::ALL
+        .into_iter()
+        .find(|attribute| attribute.name() == local && attribute.is_held_by(kind))
 }
 
 /// The name of `attribute` as written: `prefix:local`, or `local`.

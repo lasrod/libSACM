@@ -44,9 +44,15 @@
 //!   [`structure`](model::SacmElement::structure), each artifact reference's
 //!   [`referenced_artifact_elements`](model::SacmElement::referenced_artifact_elements)
 //!   and each group's [`group_members`](model::SacmElement::group_members).
-//!   In an `ArtifactPackage` it reads `Technique`, `Participant`, `Property`
-//!   and `ArtifactGroup` elements, with each asset's
-//!   [`properties`](model::SacmElement::properties) and each group's members.
+//!   In an `ArtifactPackage` it reads `Technique`, `Participant`, `Property`,
+//!   `ArtifactGroup`, `Artifact`, `Event`, `Resource` and `Activity`
+//!   elements, with each asset's
+//!   [`properties`](model::SacmElement::properties), each group's members,
+//!   an Artifact's [`version`](model::SacmElement::version), the
+//!   [`date`](model::SacmElement::date) of an Artifact or an Event, an
+//!   Activity's [`start_time`](model::SacmElement::start_time) and
+//!   [`end_time`](model::SacmElement::end_time), each held exactly as
+//!   written, and a Resource's [`location`](model::SacmElement::location).
 //!   Content that is not SACM 2.3 where it stands, such as a vendor
 //!   attribute or element, is kept as written as preserved content, with
 //!   SACM-XMI-003 ([`has_preserved_content`](model::SacmElement::has_preserved_content);
@@ -62,7 +68,8 @@
 //!   schema-valid, and one that holds preserved content; it never validates,
 //!   so call [`validation::validate`] for model checks.
 //! - [`validation::validate`] reports each element that has no name, each
-//!   `content` or `key` text that is empty or gives one language twice, each
+//!   `content`, `key` or `location` text that is empty or gives one language
+//!   twice, each
 //!   tagged value without a key, each id that is not an XML `NCName`, each
 //!   `gid` two elements share, each element with more than one description,
 //!   each `ArgumentPackage` that nests one and also holds other
@@ -77,7 +84,8 @@
 //!   `Claim`, `ArgumentReasoning`, `ArtifactReference` and `ArgumentGroup`
 //!   elements and the five asserted relationships
 //!   ([`edit::CreateAssertedInference`] and the like), `ArtifactPackage`,
-//!   `Property`, `Technique`, `Participant` and `ArtifactGroup` elements
+//!   `Property`, `Technique`, `Participant`, `ArtifactGroup`, `Artifact`,
+//!   `Event`, `Resource` and `Activity` elements
 //!   ([`edit::CreateArtifactPackage`] and the like), and descriptions,
 //!   implementation constraints, notes and tagged values on them
 //!   ([`edit::CreateNote`], [`edit::CreateTaggedValue`] and the like); a
@@ -90,7 +98,11 @@
 //!   ([`edit::SetName`] and the like), the `content` and `key` of
 //!   descriptions, implementation constraints, notes and tagged values
 //!   ([`edit::SetContent`],
-//!   [`edit::SetKey`]), every reference end, within its bounds
+//!   [`edit::SetKey`]), an Artifact's `version`, the `date` of an Artifact
+//!   or an Event, a Resource's `location` and an Activity's `startTime` and
+//!   `endTime` ([`edit::SetVersion`], [`edit::SetDate`],
+//!   [`edit::SetLocation`], [`edit::SetStartTime`], [`edit::SetEndTime`]),
+//!   every reference end, within its bounds
 //!   ([`edit::SetReferences`], [`edit::AddReference`],
 //!   [`edit::RemoveReference`]), and the order of an element's children or
 //!   of the roots ([`edit::ReorderElements`]). [`edit::DeleteElement`]
@@ -289,12 +301,14 @@
 //!
 //! An `ArtifactPackage` (§12.2) holds what the argument's evidence is about.
 //! This release reads, writes and creates its `Technique`s (§12.12),
-//! `Participant`s (§12.13), `Property`s (§12.8) and `ArtifactGroup`s
-//! (§12.3). An artifact asset's characteristics are its
+//! `Participant`s (§12.13), `Property`s (§12.8), `ArtifactGroup`s (§12.3),
+//! `Artifact`s (§12.7), `Event`s (§12.9), `Resource`s (§12.10) and
+//! `Activity`s (§12.11). An artifact asset's characteristics are its
 //! [`properties`](model::SacmElement::properties), and a group's members are
-//! references, as an `ArgumentGroup`'s are. `Artifact`, `Resource`,
-//! `Activity`, `Event` and `ArtifactAssetRelationship` are refused on read
-//! until a later release reads them:
+//! references, as an `ArgumentGroup`'s are. The date-typed `date`,
+//! `startTime` and `endTime` are held as strings exactly as written: SACM 2.3
+//! defines no lexical form for them (D-DATE). `ArtifactAssetRelationship` is
+//! refused on read until a later release reads it:
 //!
 //! ```
 //! use sacm::edit::{self, CreateArtifactGroup, CreateArtifactPackage, CreateParticipant, CreateProperty, CreateTechnique};

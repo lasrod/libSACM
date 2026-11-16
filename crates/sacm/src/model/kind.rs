@@ -324,21 +324,24 @@ pub enum ElementKind {
     ArtifactPackageBinding,
     /// `ArtifactGroup`: a grouping of artifact elements.
     ArtifactGroup,
-    /// `Artifact`: a work product, such as a document, a test report or a model.
+    /// `Artifact` (§12.7): "the distinguishable units of data used in a structured
+    /// assurance case", such as a document, a test report or a model.
     Artifact,
     /// `ArtifactAssetRelationship`: a relationship between artifact assets
     /// (clause 12.14; the machine-readable model misnames it
     /// `ArtifactAssertedRelationship`).
     ArtifactAssetRelationship,
-    /// `Activity`: an activity that produces or uses artifacts.
+    /// `Activity` (§12.11): "units of work related to the management of
+    /// `ArtifactAssets`".
     Activity,
-    /// `Event`: an event in the life of an artifact.
+    /// `Event` (§12.9): one of "the events in the lifecycle of an Artifact".
     Event,
     /// `Participant`: a person or organisation taking part in an activity.
     Participant,
     /// `Technique`: a technique used in an activity.
     Technique,
-    /// `Resource`: a resource used in an activity.
+    /// `Resource` (§12.10): one of "the tangible objects representing an
+    /// Artifact".
     Resource,
     /// `Property`: a property of an artifact asset.
     Property,

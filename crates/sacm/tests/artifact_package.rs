@@ -670,9 +670,10 @@ fn sacm23_art_001_a_reference_form_artifact_element_under_a_package_is_a_proxy_n
 // =====================================================================================
 
 /// Every kind this release reads typed in `artifactElement` (ADR 0014,
-/// ADR 0034): the two readable packages of other kinds, the nine
-/// argumentation kinds, and the five artifact kinds of slice 0052.
-const READABLE: [ElementKind; 16] = [
+/// ADR 0034 and its amendment 1): the two readable packages of other kinds,
+/// the nine argumentation kinds, the five artifact kinds of slice 0052 and
+/// the four `ArtifactAsset` kinds of slice 0055.
+const READABLE: [ElementKind; 20] = [
     ElementKind::AssuranceCasePackage,
     ElementKind::ArgumentPackage,
     ElementKind::Claim,
@@ -689,6 +690,10 @@ const READABLE: [ElementKind; 16] = [
     ElementKind::Technique,
     ElementKind::Participant,
     ElementKind::ArtifactGroup,
+    ElementKind::Artifact,
+    ElementKind::Resource,
+    ElementKind::Activity,
+    ElementKind::Event,
 ];
 
 #[test]
@@ -758,8 +763,8 @@ fn sacm23_art_001_every_readable_kind_is_read_typed_inside_an_artifact_package()
 
 /// Every kind an `ArtifactPackage` can hold that this release does not read
 /// yet, with the row that reads it: nine package, interface and binding
-/// kinds, and nine others (ADR 0034).
-const UNREAD: [(&str, &str); 18] = [
+/// kinds, and five others (ADR 0034 and its amendment 1).
+const UNREAD: [(&str, &str); 14] = [
     ("ArtifactPackageInterface", "SACM23-ART-012"),
     ("ArtifactPackageBinding", "SACM23-ART-013"),
     ("TerminologyPackage", "SACM23-TERM-001"),
@@ -769,10 +774,6 @@ const UNREAD: [(&str, &str); 18] = [
     ("AssuranceCasePackageBinding", "SACM23-AC-003"),
     ("ArgumentPackageInterface", "SACM23-ARG-014"),
     ("ArgumentPackageBinding", "SACM23-ARG-015"),
-    ("Artifact", "SACM23-ART-004"),
-    ("Resource", "SACM23-ART-005"),
-    ("Activity", "SACM23-ART-006"),
-    ("Event", "SACM23-ART-007"),
     ("ArtifactAssetRelationship", "SACM23-ART-010"),
     ("Category", "SACM23-TERM-002"),
     ("Term", "SACM23-TERM-004"),
@@ -1164,16 +1165,19 @@ fn fixture_with(from: &str, to: &str) -> String {
 #[test]
 fn sacm23_art_001_fixture_variants_a_b_c_and_g_are_refused_at_their_construct() {
     let assessor = "      <artifactElement xmi:type=\"sacm:Participant\" xmi:id=\"assessor\">";
-    // (a) An Artifact in evidence: not read yet, SACM23-ART-004.
+    // (a) A kind not read yet in evidence: an ArtifactAssetRelationship,
+    // SACM23-ART-010. (Slice 0055 reads the Artifact this variant first used:
+    // see artifact_assets.rs.)
     assert_unsupported_with(
-        "variant (a): an Artifact in evidence",
+        "variant (a): an ArtifactAssetRelationship in evidence",
         &fixture_with(
             assessor,
             &format!(
-                "      {MARK}<artifactElement xmi:type=\"sacm:Artifact\" xmi:id=\"report\"/>\n{assessor}"
+                "      {MARK}<artifactElement xmi:type=\"sacm:ArtifactAssetRelationship\" \
+                 xmi:id=\"report\"/>\n{assessor}"
             ),
         ),
-        &interim("SACM23-ART-004"),
+        &interim("SACM23-ART-010"),
     );
     // (b) interface="i1" on evidence: SACM23-ART-012, at the attribute.
     assert_unsupported_with(

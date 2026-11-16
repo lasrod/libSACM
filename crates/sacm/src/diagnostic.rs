@@ -484,7 +484,7 @@ catalog! {
     pub const PACKAGE_CONTENT_INVALID: Code = Code::from_static("SACM-PKG-001");
 
     /// SACM-REF-001: a reference names no element of the document: an id
-    /// absent from it, or the `xmi:id` of a `name`, `content`, `key` or
+    /// absent from it, or the `xmi:id` of a `name`, `content`, `key`, `location` or
     /// `value`, which identifies no element.
     /// [`validation::validate`](crate::validation::validate) reports one
     /// Error per distinct missing id of each reference end of each element,

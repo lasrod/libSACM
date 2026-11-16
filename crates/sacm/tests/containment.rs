@@ -35,6 +35,8 @@ use sacm::edit::{
     CreateImplementationConstraint, CreateNote, CreateParticipant, CreateProperty,
     CreateTaggedValue, CreateTechnique, EditError, Operation,
 };
+// The creates of slice 0055 (ADR 0034 amendment 1).
+use sacm::edit::{CreateActivity, CreateArtifact, CreateEvent, CreateResource};
 
 use sacm::model::ElementKind::{
     Activity, ArgumentGroup, ArgumentPackage, ArgumentPackageBinding, ArgumentPackageInterface,
@@ -1373,8 +1375,11 @@ type MakeCreate = fn(&str) -> Operation;
 const SOURCE: &str = "source";
 const TARGET: &str = "target";
 
+/// The number of create operations of this release.
+const CREATE_COUNT: usize = 24;
+
 /// Every create operation of this release, with the kind it creates.
-fn create_operations() -> [(ElementKind, MakeCreate); 20] {
+fn create_operations() -> [(ElementKind, MakeCreate); CREATE_COUNT] {
     [
         (AssuranceCasePackage, |parent: &str| {
             CreateAssuranceCasePackage::new(parent, LangString::new("n")).into()
@@ -1441,22 +1446,35 @@ fn create_operations() -> [(ElementKind, MakeCreate); 20] {
                 .with_group_members([SOURCE])
                 .into()
         }),
+        // The creates of slice 0055.
+        (Artifact, |parent: &str| {
+            CreateArtifact::new(parent, LangString::new("n")).into()
+        }),
+        (Event, |parent: &str| {
+            CreateEvent::new(parent, LangString::new("n")).into()
+        }),
+        (Resource, |parent: &str| {
+            CreateResource::new(parent, LangString::new("n")).into()
+        }),
+        (Activity, |parent: &str| {
+            CreateActivity::new(parent, LangString::new("n")).into()
+        }),
     ]
 }
 
 #[test]
 fn lib_api_012_create_operations_refuse_invalid_parent_exactly_when_may_contain_is_false() {
     let operations = create_operations();
-    // Guards the list: 20 distinct operations, each named after the kind it
-    // creates.
+    // Guards the list: 24 distinct operations, each
+    // named after the kind it creates.
     let names: BTreeSet<&str> = operations
         .iter()
         .map(|(_, make)| make("parent").operation_name())
         .collect();
     assert_eq!(
         names.len(),
-        20,
-        "LIB-API-012: the create operations are not 20 distinct ones"
+        CREATE_COUNT,
+        "LIB-API-012: the create operations are not {CREATE_COUNT} distinct ones"
     );
     for (kind, make) in &operations {
         assert_eq!(

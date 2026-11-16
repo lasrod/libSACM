@@ -260,11 +260,9 @@ fn kept_entries() -> Vec<Kept> {
         "SACM23-TERM-001",
         Some("case"),
     ));
+    // Slice 0055 reads Artifact, Resource, Activity and Event (ADR 0034
+    // amendment 1): the kinds an ArtifactPackage holds that are still unread.
     for (kind, row) in [
-        ("Artifact", "SACM23-ART-004"),
-        ("Resource", "SACM23-ART-005"),
-        ("Activity", "SACM23-ART-006"),
-        ("Event", "SACM23-ART-007"),
         ("ArtifactAssetRelationship", "SACM23-ART-010"),
         ("Category", "SACM23-TERM-002"),
         ("Term", "SACM23-TERM-004"),

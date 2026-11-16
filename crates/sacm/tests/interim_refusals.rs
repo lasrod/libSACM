@@ -226,14 +226,11 @@ fn artifact_package(body: &str) -> String {
 
 #[test]
 fn lib_api_011_each_unread_artifact_element_kind_names_its_row() {
-    // The nine kinds that are not packages, interfaces or bindings, and that
-    // an ArtifactPackage can hold since slice 0052 reads it (ADR 0034): one
-    // entry each.
+    // The kinds that are not packages, interfaces or bindings, that an
+    // ArtifactPackage can hold since slice 0052 reads it (ADR 0034), and that
+    // are not read yet: one entry each. Slice 0055 reads Artifact, Resource,
+    // Activity and Event (ADR 0034 amendment 1), whose entries are gone.
     let kinds = [
-        ("Artifact", "SACM23-ART-004"),
-        ("Resource", "SACM23-ART-005"),
-        ("Activity", "SACM23-ART-006"),
-        ("Event", "SACM23-ART-007"),
         ("ArtifactAssetRelationship", "SACM23-ART-010"),
         ("Category", "SACM23-TERM-002"),
         ("Term", "SACM23-TERM-004"),

@@ -9,15 +9,17 @@ use crate::model::{Document, ElementId, ElementKind, LangString, SacmElement, Te
 const ROW: &str = "SACM23-VAL-010";
 
 /// SACM23-VAL-010: for each `content` and `key` a `UtilityElement` holds,
-/// one SACM-MULT-001 Error when it has no values (§8.5
+/// and each `location` a `Resource` holds (§12.10), one SACM-MULT-001 Error
+/// when it has no values (§8.5
 /// `value:LangString[1..*]`), and one for each language that two or more of
 /// its values share (§8.5 "their +lang must be unique"), compared exactly:
 /// two absent languages are equal, and absent and `""` differ (ADR 0012).
 /// A `TaggedValue` with no `key` is one more (§8.12 `key:MultiLangString[1]`).
-/// An absent `content` gives no finding (ADR 0025).
+/// An absent `content` gives no finding (ADR 0025), nor does an absent
+/// `location`, which the text gives no multiplicity (D-SEV).
 pub(super) fn multi_lang_strings(document: &Document, found: &mut Vec<Diagnostic>) {
     for element in document.elements() {
-        for role in [TextRole::Content, TextRole::Key] {
+        for role in TextRole::ALL {
             if let Some(text) = element.text(role) {
                 check(element, role, text.value().values(), found);
             }

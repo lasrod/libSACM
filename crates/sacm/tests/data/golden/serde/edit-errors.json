@@ -135,5 +135,12 @@
     "holder": "c3",
     "end": "metaClaim",
     "id": "c4"
+  },
+  {
+    "type": "FeatureNotApplicable",
+    "code": "SACM-CMD-008",
+    "element": "testing",
+    "kind": "Activity",
+    "feature": "date"
   }
 ]
