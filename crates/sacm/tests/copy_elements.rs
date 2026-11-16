@@ -12,8 +12,8 @@
 //!   target: no element, part (name, `content`, `key`, `location`, `value`)
 //!   or preserved content holds it, and no reference names it. Otherwise it
 //!   gets a generated `<kind>_<n>`, in pre-order, that avoids every id the
-//!   copy keeps or names. A part keeps its `xmi:id` when it is free, and is
-//!   copied without one otherwise. Preserved content is copied verbatim, so
+//!   copy keeps or names. A part keeps its `xmi:id` when it is an `NCName`
+//!   free in the target, and is copied without one otherwise. Preserved content is copied verbatim, so
 //!   its ids must be free and its references must not name an id the copy
 //!   changes (`DuplicateId`).
 //! - **References.** One to a copied element follows its copy; any other is
@@ -1600,6 +1600,103 @@ fn lib_edit_018_a_generated_id_avoids_a_part_id_and_a_preserved_id_the_copy_keep
     assert!(
         read("the write", &text) == after,
         "{ROW}: the copy does not read back =="
+    );
+}
+
+/// An ArgumentPackage `id` holding `body`, in a document of its own.
+fn package_of(id: &str, body: &str) -> String {
+    format!(
+        r#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="{id}"><name content="{id}"/>{body}</sacm:ArgumentPackage>"#
+    )
+}
+
+#[test]
+fn lib_edit_018_a_preserved_id_a_reference_names_is_refused_as_duplicate_id() {
+    // No element of the target has the id x1, but the dangling metaClaim of
+    // h names it, so x1 is not free: c9's preserved <v:extra xmi:id="x1"/>
+    // cannot be copied verbatim.
+    let target = read(
+        "the target",
+        &package_of(
+            "p",
+            r#"<argumentElement xmi:type="sacm:Claim" xmi:id="h" metaClaim="x1"><name content="H"/></argumentElement>"#,
+        ),
+    );
+    let source = read(
+        "the source",
+        &package_of(
+            "s",
+            r#"<argumentElement xmi:type="sacm:Claim" xmi:id="c9"><name content="C9"/><v:extra xmlns:v="urn:v" xmi:id="x1"/></argumentElement>"#,
+        ),
+    );
+    let error = refused(
+        "c9 into a target naming x1",
+        &target,
+        copy_of("c9", &source, &["c9"], "p"),
+    );
+    assert!(
+        matches!(&error, EditError::DuplicateId { id, .. } if id.as_str() == "x1"),
+        "{ROW}: a preserved id a reference of the target names is refused as {error:?}, not \
+         DuplicateId of x1"
+    );
+    assert_eq!(error.code(), Code::CMD_DUPLICATE_ID, "{ROW}: the code");
+}
+
+#[test]
+fn lib_edit_018_preserved_content_naming_a_dropped_part_id_is_refused_as_duplicate_id() {
+    // The target holds the Claim kn, so the copy of k's name drops its
+    // xmi:id kn; m's preserved <v:ref xmi:idref="kn"/> would then name the
+    // target's kn instead of the copied name.
+    let target = read(
+        "the target",
+        &package_of(
+            "p",
+            r#"<argumentElement xmi:type="sacm:Claim" xmi:id="kn"><name content="Taken"/></argumentElement>"#,
+        ),
+    );
+    let source = read(
+        "the source",
+        &package_of(
+            "s",
+            r#"<argumentElement xmi:type="sacm:Claim" xmi:id="k"><name xmi:id="kn" content="K"/></argumentElement><argumentElement xmi:type="sacm:Claim" xmi:id="m"><name content="M"/><v:ref xmlns:v="urn:v" xmi:idref="kn"/></argumentElement>"#,
+        ),
+    );
+    let error = refused(
+        "k and m into a target holding kn",
+        &target,
+        copy_of("k and m", &source, &["k", "m"], "p"),
+    );
+    assert!(
+        matches!(&error, EditError::DuplicateId { id, .. } if id.as_str() == "kn"),
+        "{ROW}: preserved content naming a dropped part id is refused as {error:?}, not \
+         DuplicateId of kn"
+    );
+    assert_eq!(error.code(), Code::CMD_DUPLICATE_ID, "{ROW}: the code");
+}
+
+#[test]
+fn lib_edit_018_a_copied_preserved_reference_is_avoided_by_later_generated_ids() {
+    // k's preserved <v:ref xmi:idref="claim_1"/> names claim_1 in the
+    // target once copied, so a later generated Claim id avoids it.
+    let mut target = read("the target", &package_of("p", ""));
+    let source = read(
+        "the source",
+        &package_of(
+            "s",
+            r#"<argumentElement xmi:type="sacm:Claim" xmi:id="k"><name content="K"/><v:ref xmlns:v="urn:v" xmi:idref="claim_1"/></argumentElement>"#,
+        ),
+    );
+    let copied = apply("k", &mut target, copy_of("k", &source, &["k"], "p"));
+    assert_eq!(copied.created_ids(), ids(&["k"]), "{ROW}: setup: k is free");
+    let created = apply(
+        "a Claim after the copy",
+        &mut target,
+        CreateClaim::new("p", en("Later")),
+    );
+    assert_eq!(
+        created.created_ids(),
+        ids(&["claim_2"]),
+        "{ROW}: a generated id does not avoid the id a copied preserved reference names"
     );
 }
 

@@ -187,7 +187,8 @@
 //! | 5. the position is at most the number of the others | [`EditError::PositionOutOfRange`] | SACM-CMD-009 |
 //!
 //! A copy captures its source elements when it is built: an id the source
-//! lacks is [`EditError::ElementNotFound`] from [`CopyElements::new`]. Each
+//! lacks is [`EditError::ElementNotFound`] from [`CopyElements::new`] or
+//! [`CopyElements::root`]. Each
 //! copy keeps its id when that is an `NCName` free in the target; otherwise
 //! it gets a generated id that avoids every id the copy keeps or names. A
 //! reference to a copied element names its copy, and every other reference
@@ -1346,6 +1347,11 @@ pub enum EditError {
     /// (SACM-CMD-004). Ids are unique across the whole document, not per
     /// parent. Choose another id, or leave out `with_id` to have one
     /// generated.
+    ///
+    /// A [`CopyElements`] also refuses with it when the preserved content it
+    /// copies holds an `xmi:id` that is not free in the target (in use, or
+    /// named by a reference), or names an id the copy changes or drops; `id`
+    /// is that id.
     #[non_exhaustive]
     DuplicateId {
         /// The id, as given.
@@ -1533,7 +1539,8 @@ pub enum EditError {
     /// The element to edit is not in the document (SACM-CMD-001): the
     /// element of a set or reference operation, the parent of a
     /// [`ReorderElements::new`], the element of a [`MoveElement`], or an
-    /// element [`CopyElements::new`] is given that the source lacks. Ids are
+    /// element [`CopyElements::new`] or [`CopyElements::root`] is given that
+    /// the source lacks. Ids are
     /// compared exactly, case included;
     /// the `xmi:id` of a name, `content`, `key`, `location` or `value` names no element.
     /// Correct the id.

@@ -78,3 +78,14 @@ No new diagnostic codes.
     - LIB-EDIT-014: the random sequences hold no moves or copies; targeted tests cover
       those.
     - LIB-EDIT-002, -003 and -013: notes only.
+- 2026-11-17 CI on 51f999d: PR-diff mutants missed the three the builder holds
+  equivalent. 56f0a18 excludes each by its exact name, with a triage row. CI on 56f0a18
+  is green (141 caught, 0 missed).
+- 2026-11-17 verify round 1, by `sacm-verifier`: LIB-API-015 PASS; FAIL on LIB-EDIT-017,
+  LIB-EDIT-018 and LIB-API-014.
+  - No behaviour was wrong. The fails are seven hand mutants (H20b, H21, H34, H44/H44b,
+    H51, H52/H53) that no test kills.
+  - The verifier agreed that the three excluded mutants are equivalent.
+  - Fix round: `sacm-builder` adds the seven named tests and fixes the rustdoc wording,
+    using the verifier's text. The lead rewords LIB-API-006, LIB-EDIT-018 and LIB-API-015
+    in the matrix, also with the verifier's text.

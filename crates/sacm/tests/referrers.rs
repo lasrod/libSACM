@@ -669,6 +669,78 @@ fn lib_api_014_referrers_follow_pre_order_across_a_copied_root_and_a_later_one()
     assert_referrers_are_the_full_scan("a copied root and a later one", &doc);
 }
 
+/// The holders of the referrers of `id` in `doc`, in order.
+fn holders_of(doc: &Document, id: &str) -> Vec<String> {
+    referrers(doc, id)
+        .into_iter()
+        .map(|(holder, _, _)| holder)
+        .collect()
+}
+
+#[test]
+fn lib_api_014_referrers_follow_pre_order_after_a_root_delete_and_a_later_create() {
+    // Three roots: r1; r2 holding the Claim x; r3 holding the Claims a and
+    // b, b naming x. r1 is deleted, then a root r4 is created with a Claim c
+    // naming x: c comes after b in pre-order.
+    let mut doc = read(
+        "three roots",
+        br#"<xmi:XMI xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001">
+  <sacm:ArgumentPackage xmi:id="r1"><name content="R1"/></sacm:ArgumentPackage>
+  <sacm:ArgumentPackage xmi:id="r2"><name content="R2"/><argumentElement xmi:type="sacm:Claim" xmi:id="x"><name content="X"/></argumentElement></sacm:ArgumentPackage>
+  <sacm:ArgumentPackage xmi:id="r3"><name content="R3"/><argumentElement xmi:type="sacm:Claim" xmi:id="a"><name content="A"/></argumentElement><argumentElement xmi:type="sacm:Claim" xmi:id="b" metaClaim="x"><name content="B"/></argumentElement></sacm:ArgumentPackage>
+</xmi:XMI>
+"#,
+    );
+    apply("r1 deleted", &mut doc, DeleteElement::new("r1"));
+    apply(
+        "the root r4",
+        &mut doc,
+        edit::CreateArgumentPackage::root(sacm::model::LangString::new("R4")).with_id("r4"),
+    );
+    apply(
+        "the Claim c in r4",
+        &mut doc,
+        edit::CreateClaim::new("r4", sacm::model::LangString::new("C")).with_id("c"),
+    );
+    apply(
+        "c names x",
+        &mut doc,
+        SetReferences::new("c", ReferenceEnd::MetaClaim, ["x"]),
+    );
+    assert_eq!(
+        holders_of(&doc, "x"),
+        ["b", "c"],
+        "{ROW}: after a root delete and a later create, the referrers of x are not in pre-order"
+    );
+    assert_referrers_are_the_full_scan("a root deleted and another created", &doc);
+}
+
+#[test]
+fn lib_api_014_referrers_follow_pre_order_into_a_root_copy() {
+    // The root p holds the Claims a and b, b naming a; the source's root s
+    // holds the Claim c naming a. s is copied as a root after p, and the
+    // copy of c, which keeps its id and its reference to a, comes after b.
+    let mut doc = read(
+        "the target",
+        br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="p"><name content="P"/><argumentElement xmi:type="sacm:Claim" xmi:id="a"><name content="A"/></argumentElement><argumentElement xmi:type="sacm:Claim" xmi:id="b" metaClaim="a"><name content="B"/></argumentElement></sacm:ArgumentPackage>"#,
+    );
+    let source = read(
+        "the source",
+        br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="s"><name content="S"/><argumentElement xmi:type="sacm:Claim" xmi:id="c" metaClaim="a"><name content="C"/></argumentElement></sacm:ArgumentPackage>"#,
+    );
+    let copy = match CopyElements::root(&source, ["s"]) {
+        Ok(copy) => copy,
+        Err(error) => panic!("{ROW}: setup: the copy was refused: {error}"),
+    };
+    apply("s copied as a root", &mut doc, copy);
+    assert_eq!(
+        holders_of(&doc, "a"),
+        ["b", "c"],
+        "{ROW}: after a root copy, the referrers of a are not in pre-order"
+    );
+    assert_referrers_are_the_full_scan("a root copied in", &doc);
+}
+
 // ---------------------------------------------------------------------------
 // Acceptance 4: the dangling references of a delete
 // ---------------------------------------------------------------------------

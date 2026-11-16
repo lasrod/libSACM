@@ -26,12 +26,13 @@ use crate::model::{
 /// `location`, `value` or preserved content holds it, and no reference
 /// names it); otherwise it gets a generated id, such as `claim_3`, that
 /// avoids every id the copy keeps or names. A part (a name, `content`,
-/// `key`, `location` or `value`) keeps its `xmi:id` when it is free, and is
-/// copied without one otherwise. A reference to a copied element names its
-/// copy; every other reference is kept as written. Everything else is
-/// copied exactly, preserved content included; a gid too, which
-/// [`validate`](crate::validation::validate) then reports as repeated
-/// (SACM-ID-003). The [`Mutation`](super::Mutation) lists the created ids in
+/// `key`, `location` or `value`) keeps its `xmi:id` when it is an `NCName`
+/// free in the target, and is copied without one otherwise. A reference to
+/// a copied element names its copy; every other reference is kept as
+/// written. Everything else is copied exactly, preserved content and the
+/// gid included; a copy within one document therefore repeats each gid,
+/// which [`validate`](crate::validation::validate) reports (SACM-ID-003).
+/// The [`Mutation`](super::Mutation) lists the created ids in
 /// [`source_ids`](Self::source_ids) order, and changes and deletes nothing.
 /// The refusals are in the
 /// [module docs](super#moving-and-copying-elements).

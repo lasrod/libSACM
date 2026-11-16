@@ -32,7 +32,7 @@ use sacm::compare::{Difference, semantic_compare};
 use sacm::diagnostic::{Code, Diagnostic};
 use sacm::edit::{
     self, CreateArgumentPackage, CreateArtifactPackage, CreateAssuranceCasePackage, CreateClaim,
-    CreateDescription, EditError, MoveElement, Mutation, Operation, ReorderElements,
+    CreateDescription, DeleteElement, EditError, MoveElement, Mutation, Operation, ReorderElements,
 };
 use sacm::model::{Document, ElementId, ElementKind, LangString, SacmElement};
 use sacm::validation;
@@ -1246,6 +1246,91 @@ fn lib_edit_017_a_move_to_the_place_it_holds_changes_nothing() {
                 "{ROW}: {what}: the written text changed"
             );
         }
+    }
+}
+
+#[test]
+fn lib_edit_017_a_move_to_the_place_it_holds_after_a_delete_changes_nothing() {
+    // p holds c1, c2 and c3; c1 is deleted, so c3 is last at 1, and a move
+    // of c3 to the end of p is the place it holds.
+    let mut doc = read(
+        "p holding three Claims",
+        r#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="p">
+  <name content="P"/>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c1"><name content="C1"/></argumentElement>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c2"><name content="C2"/></argumentElement>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c3"><name content="C3"/></argumentElement>
+</sacm:ArgumentPackage>
+"#,
+    );
+    apply("c1 deleted", &mut doc, DeleteElement::new("c1"));
+    let before = doc.clone();
+    let mutation = apply("c3 to the end of p", &mut doc, MoveElement::new("c3", "p"));
+    assert_eq!(
+        mutation.changed_ids(),
+        [] as [ElementId; 0],
+        "{ROW}: after a delete, a move to the place held reports a change"
+    );
+    assert_eq!(
+        children(&doc, "p"),
+        ["c2", "c3"],
+        "{ROW}: the order of p after the move"
+    );
+    assert!(doc == before, "{ROW}: the move changed the document");
+}
+
+/// Two roots with document content between them: the ArgumentPackage `a`,
+/// an `<xmi:Extension extender="t1"/>`, and the ArgumentPackage `b`, which
+/// holds the nested ArgumentPackage `bn`.
+const ROOTS_WITH_EXTENSION: &str = r#"<xmi:XMI xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001">
+  <sacm:ArgumentPackage xmi:id="a"><name content="A"/></sacm:ArgumentPackage>
+  <xmi:Extension extender="t1"/>
+  <sacm:ArgumentPackage xmi:id="b">
+    <name content="B"/>
+    <argumentElement xmi:type="sacm:ArgumentPackage" xmi:id="bn"><name content="Bn"/></argumentElement>
+  </sacm:ArgumentPackage>
+</xmi:XMI>
+"#;
+
+#[test]
+fn lib_edit_017_a_root_move_keeps_the_document_content_after_the_root_it_followed() {
+    let start = read("ROOTS_WITH_EXTENSION", ROOTS_WITH_EXTENSION);
+    let extension = "extender=\"t1\"";
+    let cases = [
+        // The extension followed a; a leaves the roots, so it stays before
+        // b, the root now first.
+        (
+            "a moved into bn",
+            MoveElement::new("a", "bn"),
+            vec![extension.to_owned(), id_attribute("b")],
+        ),
+        // bn becomes the first root, so the extension still follows a.
+        (
+            "bn moved to the roots first",
+            MoveElement::root("bn").with_position(0),
+            vec![
+                id_attribute("bn"),
+                id_attribute("a"),
+                extension.to_owned(),
+                id_attribute("b"),
+            ],
+        ),
+    ];
+    for (what, operation, written) in cases {
+        let mut doc = start.clone();
+        apply(what, &mut doc, operation);
+        let text = write(what, &doc);
+        assert_written_in_order(
+            what,
+            &text,
+            &written.iter().map(String::as_str).collect::<Vec<_>>(),
+        );
+        let back = read(what, &text);
+        assert!(
+            back == doc,
+            "{ROW}: {what}: the write does not read back ==: {:?}\n{text}",
+            semantic_compare(&doc, &back)
+        );
     }
 }
 
