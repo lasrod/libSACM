@@ -1,8 +1,8 @@
 ---
 slice: 0055
 name: m3-artifact-assets
-state: in-progress
-step: implementation
+state: done
+step: close
 rows: [SACM23-ART-002, SACM23-ART-004, SACM23-ART-005, SACM23-ART-006, SACM23-ART-007]
 mode: pr
 base: main
@@ -85,3 +85,5 @@ No new diagnostic codes.
   also gave wording fixes. The fix round adds four golden refusals (lead approved) and one
   order test, and applies the verifier's exact text. The lead fixed ART-003's and XMI-014's
   matrix phrases.
+- 2026-11-17 verify, round 2: PASS on all five rows. The record is
+  `docs/verification/0055-m3-artifact-assets.md`.
