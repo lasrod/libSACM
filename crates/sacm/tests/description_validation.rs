@@ -38,7 +38,7 @@ const MULTIPLICITY: &str = "description:Description[0..1]";
 /// The fixture of this row.
 const FIXTURE: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/tests/data/sacm23/validation/invalid/claim-descriptions-repeated.sacm.xmi"
+    "/tests/data/sacm23/validation/warning/claim-descriptions-repeated.sacm.xmi"
 );
 
 // --- Inputs and helpers ------------------------------------------------------------

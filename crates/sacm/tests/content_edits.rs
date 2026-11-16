@@ -18,6 +18,11 @@
 //! absent. The last part of item 6 (the operations join the LIB-EDIT-002
 //! set) is in `edit_atomic.rs`.
 
+use std::fmt::Write as _;
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::thread;
+use std::time::{Duration, Instant};
+
 use sacm::compare::{Difference, semantic_compare};
 use sacm::diagnostic::{Code, Severity};
 use sacm::edit::{
@@ -706,4 +711,131 @@ fn lib_edit_012_operations_hold_what_they_are_given_and_name_their_struct() {
     ] {
         assert_eq!(operation.operation_name(), name, "{ROW}: operation_name()");
     }
+}
+
+// --- Performance -----------------------------------------------------------------
+
+/// Runs `job` on a worker thread: its result, or `None` if it does not
+/// return within `deadline`. Fails if it panics.
+fn within<T: Send + 'static>(
+    what: &str,
+    deadline: Duration,
+    job: impl FnOnce() -> T + Send + 'static,
+) -> Option<T> {
+    let (sender, receiver) = mpsc::channel();
+    thread::spawn(move || {
+        let _ = sender.send(job());
+    });
+    match receiver.recv_timeout(deadline) {
+        Ok(result) => Some(result),
+        Err(RecvTimeoutError::Timeout) => None,
+        Err(RecvTimeoutError::Disconnected) => panic!("{ROW}: {what}: panicked"),
+    }
+}
+
+/// A root ArgumentPackage holding the Note `n`, whose content `c` holds
+/// `count` values with the ids `v0`, `v1`, ….
+fn note_of_values(count: usize) -> Document {
+    let values = (0..count).fold(String::new(), |mut values, n| {
+        let _ = write!(values, "<value xmi:id=\"v{n}\" content=\"old {n}\"/>");
+        values
+    });
+    read(&format!(
+        "<sacm:ArgumentPackage{NS} xmi:id=\"p\"><name content=\"P\"/>\
+         <note xmi:id=\"n\"><content xmi:id=\"c\">{values}</content></note>\
+         </sacm:ArgumentPackage>"
+    ))
+}
+
+/// `count` new values, without ids.
+fn new_values(count: usize) -> MultiLangString {
+    (0..count)
+        .map(|n| LangString::new(format!("new {n}")))
+        .collect()
+}
+
+/// How long `SetContent` of `count` new values takes on a clone of `doc`,
+/// which must accept it; the clone and the values are made untimed.
+fn time_set_content(doc: &Document, count: usize) -> Duration {
+    let mut doc = doc.clone();
+    let operation = SetContent::new("n", new_values(count));
+    let start = Instant::now();
+    let answer = edit::apply(&mut doc, operation);
+    let elapsed = start.elapsed();
+    if let Err(error) = answer {
+        panic!("{ROW}: setup: SetContent of {count} values was refused: {error}");
+    }
+    elapsed
+}
+
+#[test]
+fn lib_edit_012_replacing_a_large_content_keeps_ids_in_linear_time() {
+    // Checking each new value id against a list of the old ones is
+    // quadratic. The edit of LARGE values is timed against a baseline of
+    // SMALL values, measured in this test on this machine, so the speed of
+    // the machine and of the build cancels out. In a debug build, 3,125
+    // values took about 7 ms and 100,000 about 0.35 s (50 times, for 32
+    // times the values: n log n, and the cache); with the `BTreeSet` of old
+    // ids a `Vec`, they took about 33 ms and 37 s (about 1,100 times). The
+    // limit, RATIO times the baseline, is about 4 times the linear ratio and
+    // 5 times below the quadratic one; FLOOR only keeps a tiny baseline
+    // from making it unreasonably short. The baseline is the fastest of a
+    // few runs, and the large edit has ATTEMPTS tries, each after more
+    // baseline runs, so a stall of the machine does not fail the test.
+    const SMALL: usize = 3_125;
+    const LARGE: usize = 32 * SMALL;
+    const RATIO: u32 = 200;
+    const FLOOR: Duration = Duration::from_millis(500);
+    const ATTEMPTS: usize = 3;
+    const BASELINE_RUNS: usize = 3;
+    let small = note_of_values(SMALL);
+    let large = note_of_values(LARGE);
+    let what = format!("SetContent of {LARGE} values over {LARGE} with ids");
+    let mut baseline = Duration::MAX;
+    let mut limits = Vec::new();
+    let mut done = None;
+    for _ in 0..ATTEMPTS {
+        for _ in 0..BASELINE_RUNS {
+            baseline = baseline.min(time_set_content(&small, SMALL));
+        }
+        let limit = baseline.saturating_mul(RATIO).max(FLOOR);
+        let mut doc = large.clone();
+        let operation = SetContent::new("n", new_values(LARGE));
+        let answer = within(&what, limit, move || {
+            let answer = edit::apply(&mut doc, operation);
+            answer.map(|mutation| (doc, mutation.changed_ids().to_vec()))
+        });
+        if let Some(answer) = answer {
+            done = Some(answer);
+            break;
+        }
+        limits.push(limit);
+    }
+    let Some(answer) = done else {
+        panic!(
+            "{ROW}: {what}: took longer than {RATIO} times the edit of {SMALL} values in each of \
+             {ATTEMPTS} tries (limits {limits:?}, the fastest of {SMALL} {baseline:?}): the edit \
+             is not linear in the number of values"
+        );
+    };
+    let (doc, changed) = match answer {
+        Ok(done) => done,
+        Err(error) => panic!("{ROW}: {what}: refused: {error}"),
+    };
+    assert_eq!(changed, [id("n")], "{ROW}: {what}: changed_ids");
+    let n = element(&doc, "n");
+    let kept: Vec<Option<String>> = (0..LARGE).map(|k| Some(format!("v{k}"))).collect();
+    assert!(
+        n.content_id().map(ElementId::as_str) == Some("c")
+            && n.content_value_ids()
+                .iter()
+                .map(|value| value.as_ref().map(|v| v.as_str().to_owned()))
+                .eq(kept),
+        "{ROW}: {what}: the content does not keep c and every value id by position"
+    );
+    assert_eq!(
+        n.content().map(MultiLangString::len),
+        Some(LARGE),
+        "{ROW}: {what}: the content is not the {LARGE} new values"
+    );
 }

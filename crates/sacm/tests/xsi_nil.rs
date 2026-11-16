@@ -663,6 +663,57 @@ fn sacm23_xmi_026_a_nil_element_with_a_character_or_element_child_is_preserved_w
     }
 }
 
+#[test]
+fn sacm23_xmi_026_a_nil_element_holding_an_empty_cdata_is_omitted() {
+    // An empty CDATA section is no character (XML 1.0 §2.7: CData is
+    // `(Char* - ...)`, here zero of them), so a nil element holding only one,
+    // or one beside a comment, holds nothing and reads as omitted, in both
+    // modes and with no diagnostic.
+    for (what, body) in [
+        (
+            "an empty CDATA in a nil gid",
+            "<gid xsi:nil=\"true\"><![CDATA[]]></gid>",
+        ),
+        (
+            "two empty CDATA sections and a comment in a nil gid",
+            "<gid xsi:nil=\"1\"><![CDATA[]]><!--c--><![CDATA[]]></gid>",
+        ),
+        (
+            "an empty CDATA in a nil isAbstract",
+            "<isAbstract xsi:nil=\"true\"><![CDATA[]]></isAbstract>",
+        ),
+        (
+            "an empty CDATA in a nil assertionDeclaration",
+            "<assertionDeclaration xsi:nil=\"true\"><![CDATA[]]></assertionDeclaration>",
+        ),
+    ] {
+        let doc = read_ok(what, &claim(body));
+        let plain = read_ok(&format!("{what}: the control"), &claim(""));
+        assert!(
+            doc == plain,
+            "{ROW}: {what}: does not read as if the property were not written"
+        );
+        let c1 = element(what, &doc, "c1");
+        assert!(
+            c1.gid().is_none() && !c1.has_preserved_content(),
+            "{ROW}: {what}: c1 has a gid or preserved content"
+        );
+    }
+    // A CDATA section holding white space holds characters: preserved whole.
+    for (what, template) in [
+        (
+            "a CDATA section of one space in a nil gid",
+            claim(&format!("{MARK}<gid xsi:nil=\"true\"><![CDATA[ ]]></gid>")),
+        ),
+        (
+            "an empty CDATA then a space in a nil gid",
+            claim(&format!("{MARK}<gid xsi:nil=\"true\"><![CDATA[]]> </gid>")),
+        ),
+    ] {
+        assert_preserved_at_mark(what, &template);
+    }
+}
+
 // --- Acceptance item 6: xsi:nil elsewhere -------------------------------------------------------
 
 #[test]

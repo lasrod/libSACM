@@ -8,8 +8,9 @@
 //!
 //! - `(a limit of this version; ROW reads it)` for `Interim(ROW)`;
 //! - `(a limit of this version)` for `Limit`;
-//! - `(a defect in the input; ROW is to read it in tolerant mode)` for
-//!   `Tolerance(ROW)`;
+//! - `(strict mode never reads it; ROW is to read it in tolerant mode)`
+//!   for `Tolerance(ROW)`: input strict mode does not read, which need not
+//!   be defective, such as a document in another SACM namespace (D-NS-PIN);
 //! - `(a defect in the input)` for `Defect`.
 //!
 //! One input (or a few, where the entry covers several constructs) per entry
@@ -41,8 +42,12 @@ const NS: &str = concat!(
 /// The declaration of `xsi` alone.
 const XSI: &str = "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"";
 
-/// The two labels' openings; a reason holds exactly one label.
-const LABEL_OPENINGS: [&str; 2] = ["(a limit of this version", "(a defect in the input"];
+/// The labels' openings; a reason holds exactly one label.
+const LABEL_OPENINGS: [&str; 3] = [
+    "(a limit of this version",
+    "(strict mode never reads it",
+    "(a defect in the input",
+];
 
 /// The label of `Interim(row)`.
 fn interim(row: &str) -> String {
@@ -51,7 +56,7 @@ fn interim(row: &str) -> String {
 
 /// The label of `Tolerance(row)`.
 fn tolerance(row: &str) -> String {
-    format!("(a defect in the input; {row} is to read it in tolerant mode)")
+    format!("(strict mode never reads it; {row} is to read it in tolerant mode)")
 }
 
 /// The label of `Limit`.
@@ -226,12 +231,14 @@ fn lib_api_011_xmi_metadata_names_sacm23_xmi_019() {
             )),
         ),
         (
-            "href on an object",
-            package(&format!(
-                "{}{}",
-                claim("c1", " href=\"#c2\"", ""),
+            // On a root, which is no role element: a typed role element
+            // with an unqualified `href` is a proxy, which names
+            // SACM23-XMI-027 (untyped_abstract_roles.rs).
+            "href on an object (the root)",
+            format!(
+                "<sacm:ArgumentPackage{NS} xmi:id=\"p\" href=\"#c2\"><name content=\"p\"/>{}</sacm:ArgumentPackage>",
                 claim("c2", "", "")
-            )),
+            ),
         ),
         (
             "xmi:Extension in an object",
@@ -330,10 +337,14 @@ fn lib_api_011_a_cross_document_href_names_sacm23_xmi_027() {
     }
 }
 
-// --- Interim: other SACM namespaces (LIB-COMPAT-004) --------------------------------
+// --- Tolerance: other SACM namespaces (LIB-COMPAT-004) ------------------------------
 
 #[test]
 fn lib_api_011_a_root_outside_the_sacm_2_3_namespace_names_lib_compat_004() {
+    // Strict mode reads only the pinned SACM 2.3 namespace. A root in
+    // another one is not defective, but only tolerant mode is to read it:
+    // LIB-COMPAT-004 is a tolerance (D-NS-PIN; the maintainer, 2026-11-16),
+    // and its label says strict mode never reads it.
     let other = format!(
         "<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/2.2/argumentation\" \
          xmlns:xmi=\"{XMI_NS}\" xmi:id=\"p\"><name content=\"p\"/></sacm:ArgumentPackage>"
@@ -342,7 +353,7 @@ fn lib_api_011_a_root_outside_the_sacm_2_3_namespace_names_lib_compat_004() {
         "OtherSacmNamespace",
         "a root in a SACM 2.2 namespace",
         &other,
-        &interim("LIB-COMPAT-004"),
+        &tolerance("LIB-COMPAT-004"),
     );
 }
 
@@ -403,8 +414,8 @@ fn lib_api_011_the_text_spelling_argumentation_element_names_sacm23_xmi_009() {
     assert_eq!(
         reason,
         "the element \"argumentationElement\" in the root element \"sacm:ArgumentPackage\" is \
-         spelled as in the text of §11.4, and the role is argumentElement (a defect in the \
-         input; SACM23-XMI-009 is to read it in tolerant mode)",
+         spelled as in the text of §11.4, and the role is argumentElement (strict mode never \
+         reads it; SACM23-XMI-009 is to read it in tolerant mode)",
         "{ROW}: TextSpelling: the reason"
     );
 }
@@ -430,8 +441,8 @@ fn lib_api_011_the_text_spelling_in_an_argument_group_names_sacm23_xmi_009() {
     assert_eq!(
         reason,
         "\"argumentationElement\" in the element \"argumentElement\" is spelled as in the text \
-         of §11.4, and the end of an ArgumentGroup is argumentElement (a defect in the input; \
-         SACM23-XMI-009 is to read it in tolerant mode)",
+         of §11.4, and the end of an ArgumentGroup is argumentElement (strict mode never reads \
+         it; SACM23-XMI-009 is to read it in tolerant mode)",
         "{ROW}: TextSpelling in an ArgumentGroup: the reason"
     );
 }

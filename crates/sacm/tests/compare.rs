@@ -126,6 +126,19 @@ fn roots(names: &[&str]) -> Document {
 /// `difference` as `semantic_compare(right, left)` reports it: left and right
 /// swapped.
 fn swapped(difference: &Difference) -> Difference {
+    // The variants with an id and a left and right side, swapped.
+    macro_rules! sides {
+        ($other:expr, $($variant:ident),+ $(,)?) => {
+            match $other {
+                $(Difference::$variant { id, left, right } => Difference::$variant {
+                    id,
+                    left: right,
+                    right: left,
+                },)+
+                other => panic!("{ROW}: the test's `swapped` does not know {other:?}"),
+            }
+        };
+    }
     match difference.clone() {
         Difference::RootOrder { left, right } => Difference::RootOrder {
             left: right,
@@ -133,32 +146,35 @@ fn swapped(difference: &Difference) -> Difference {
         },
         Difference::LeftOnly { id, kind } => Difference::RightOnly { id, kind },
         Difference::RightOnly { id, kind } => Difference::LeftOnly { id, kind },
-        Difference::Kind { id, left, right } => Difference::Kind {
-            id,
-            left: right,
-            right: left,
-        },
-        Difference::Parent { id, left, right } => Difference::Parent {
-            id,
-            left: right,
-            right: left,
-        },
-        Difference::Name { id, left, right } => Difference::Name {
-            id,
-            left: right,
-            right: left,
-        },
-        Difference::AssertionDeclaration { id, left, right } => Difference::AssertionDeclaration {
-            id,
-            left: right,
-            right: left,
-        },
-        Difference::ChildOrder { id, left, right } => Difference::ChildOrder {
-            id,
-            left: right,
-            right: left,
-        },
-        other => panic!("{ROW}: the test's `swapped` does not know {other:?}"),
+        Difference::PreservedContent { id } => Difference::PreservedContent { id },
+        other => sides!(
+            other,
+            Kind,
+            Parent,
+            Gid,
+            IsCitation,
+            IsAbstract,
+            IsCounter,
+            CitedElement,
+            AbstractForm,
+            MetaClaims,
+            Reasoning,
+            Sources,
+            Target,
+            Structure,
+            ReferencedArtifactElements,
+            GroupMembers,
+            Name,
+            NameId,
+            Content,
+            ContentId,
+            ContentValueIds,
+            Key,
+            KeyId,
+            KeyValueIds,
+            AssertionDeclaration,
+            ChildOrder,
+        ),
     }
 }
 
@@ -380,6 +396,203 @@ fn many_differences_expected() -> Vec<Difference> {
             id: id("e1"),
             kind: ElementKind::Claim,
         },
+    ]
+}
+
+/// One side of a pair read from XMI whose elements differ in every feature
+/// after `Parent`, for the positions [`many_differences`] cannot build
+/// through the seam: in `p`, the Claims `a` and `b` (`b` holding the
+/// `TaggedValue` `t`), the `ArgumentReasoning`s `r` and `r2`, the
+/// `ArtifactReference` `ar`, the `ArgumentGroup` `g` and the
+/// `AssertedInference` `k` holding the Notes `n1` and `n2`. The right side changes `t`'s gid,
+/// key and content (values and ids) and adds a preserved attribute; `r`'s
+/// structure, `ar`'s and `g`'s ends; and on `k` its gid, the three flags,
+/// every end, its name and name id, its declaration, its child order and a
+/// preserved attribute.
+fn feature_side(right: bool) -> String {
+    let pick = |left: &'static str, right_side: &'static str| if right { right_side } else { left };
+    let tagged = format!(
+        "<taggedValue xmi:id=\"t\" gid=\"{}\"{}>\
+         <key xmi:id=\"{}\"><value xmi:id=\"{}\" content=\"{}\"/></key>\
+         <content xmi:id=\"{}\"><value xmi:id=\"{}\" content=\"{}\"/></content>\
+         </taggedValue>",
+        pick("tg1", "tg2"),
+        pick("", " v:extra=\"1\""),
+        pick("tk1", "tk2"),
+        pick("tkv1", "tkv2"),
+        pick("K", "K2"),
+        pick("tc1", "tc2"),
+        pick("tcv1", "tcv2"),
+        pick("V", "V2"),
+    );
+    let k_attributes = if right {
+        " gid=\"kg2\" isCitation=\"true\" isAbstract=\"true\" citedElement=\"b\" abstractForm=\"b\" \
+         assertionDeclaration=\"assumed\" metaClaim=\"b\" isCounter=\"true\" reasoning=\"r2\" \
+         source=\"b\" target=\"b\" v:extra=\"1\""
+    } else {
+        " gid=\"kg1\" citedElement=\"a\" abstractForm=\"a\" metaClaim=\"a\" reasoning=\"r\" \
+         source=\"a\" target=\"a\""
+    };
+    format!(
+        "<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\" \
+         xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmlns:v=\"urn:example:vendor\" \
+         xmi:id=\"p\"><name content=\"P\"/>\
+         <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"a\"><name content=\"A\"/></argumentElement>\
+         <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"b\"><name content=\"B\"/>{tagged}</argumentElement>\
+         <argumentElement xmi:type=\"sacm:ArgumentReasoning\" xmi:id=\"r\"{}><name content=\"R\"/></argumentElement>\
+         <argumentElement xmi:type=\"sacm:ArgumentReasoning\" xmi:id=\"r2\"><name content=\"R2\"/></argumentElement>\
+         <argumentElement xmi:type=\"sacm:ArtifactReference\" xmi:id=\"ar\" referencedArtifactElement=\"{}\"><name content=\"AR\"/></argumentElement>\
+         <argumentElement xmi:type=\"sacm:ArgumentGroup\" xmi:id=\"g\" argumentElement=\"{}\"><name content=\"G\"/></argumentElement>\
+         <argumentElement xmi:type=\"sacm:AssertedInference\" xmi:id=\"k\"{k_attributes}>{}{}</argumentElement>\
+         </sacm:ArgumentPackage>",
+        pick(" structure=\"p\"", ""),
+        pick("a", "b"),
+        pick("a", "b"),
+        pick(
+            "<name content=\"K\"/>",
+            "<name xmi:id=\"k_name\" content=\"K2\"/>"
+        ),
+        pick(
+            "<note xmi:id=\"n1\"/><note xmi:id=\"n2\"/>",
+            "<note xmi:id=\"n2\"/><note xmi:id=\"n1\"/>"
+        ),
+    )
+}
+
+/// The differences of [`feature_side`], in the ADR 0020 order: left's
+/// pre-order is p, a, b, t, r, r2, ar, g, k, n1, n2, and each element's
+/// differences come in the fixed feature order of `semantic_compare`, with
+/// `PreservedContent` last.
+#[expect(
+    clippy::too_many_lines,
+    reason = "one expected difference per feature reads best as one list"
+)]
+fn feature_differences_expected() -> Vec<Difference> {
+    let one = |value: &str| Some(id(value));
+    let text = |content: &str| Some(MultiLangString::from(LangString::new(content)));
+    vec![
+        Difference::Gid {
+            id: id("t"),
+            left: Some("tg1".to_owned()),
+            right: Some("tg2".to_owned()),
+        },
+        Difference::Content {
+            id: id("t"),
+            left: text("V"),
+            right: text("V2"),
+        },
+        Difference::ContentId {
+            id: id("t"),
+            left: one("tc1"),
+            right: one("tc2"),
+        },
+        Difference::ContentValueIds {
+            id: id("t"),
+            left: vec![one("tcv1")],
+            right: vec![one("tcv2")],
+        },
+        Difference::Key {
+            id: id("t"),
+            left: text("K"),
+            right: text("K2"),
+        },
+        Difference::KeyId {
+            id: id("t"),
+            left: one("tk1"),
+            right: one("tk2"),
+        },
+        Difference::KeyValueIds {
+            id: id("t"),
+            left: vec![one("tkv1")],
+            right: vec![one("tkv2")],
+        },
+        Difference::PreservedContent { id: id("t") },
+        Difference::Structure {
+            id: id("r"),
+            left: one("p"),
+            right: None,
+        },
+        Difference::ReferencedArtifactElements {
+            id: id("ar"),
+            left: ids(&["a"]),
+            right: ids(&["b"]),
+        },
+        Difference::GroupMembers {
+            id: id("g"),
+            left: ids(&["a"]),
+            right: ids(&["b"]),
+        },
+        Difference::Gid {
+            id: id("k"),
+            left: Some("kg1".to_owned()),
+            right: Some("kg2".to_owned()),
+        },
+        Difference::IsCitation {
+            id: id("k"),
+            left: false,
+            right: true,
+        },
+        Difference::IsAbstract {
+            id: id("k"),
+            left: false,
+            right: true,
+        },
+        Difference::IsCounter {
+            id: id("k"),
+            left: false,
+            right: true,
+        },
+        Difference::CitedElement {
+            id: id("k"),
+            left: one("a"),
+            right: one("b"),
+        },
+        Difference::AbstractForm {
+            id: id("k"),
+            left: one("a"),
+            right: one("b"),
+        },
+        Difference::MetaClaims {
+            id: id("k"),
+            left: ids(&["a"]),
+            right: ids(&["b"]),
+        },
+        Difference::Reasoning {
+            id: id("k"),
+            left: one("r"),
+            right: one("r2"),
+        },
+        Difference::Sources {
+            id: id("k"),
+            left: ids(&["a"]),
+            right: ids(&["b"]),
+        },
+        Difference::Target {
+            id: id("k"),
+            left: one("a"),
+            right: one("b"),
+        },
+        Difference::Name {
+            id: id("k"),
+            left: Some(LangString::new("K")),
+            right: Some(LangString::new("K2")),
+        },
+        Difference::NameId {
+            id: id("k"),
+            left: None,
+            right: one("k_name"),
+        },
+        Difference::AssertionDeclaration {
+            id: id("k"),
+            left: Some(AssertionDeclaration::Asserted),
+            right: Some(AssertionDeclaration::Assumed),
+        },
+        Difference::ChildOrder {
+            id: id("k"),
+            left: ids(&["n1", "n2"]),
+            right: ids(&["n2", "n1"]),
+        },
+        Difference::PreservedContent { id: id("k") },
     ]
 }
 
@@ -1185,6 +1398,17 @@ fn lib_rt_001_several_differences_come_in_the_adr_0020_order() {
         &left,
         &right,
         &many_differences_expected(),
+    );
+    // The positions after Parent: gid, the flags, the reference ends, the
+    // name and its id, content and key with their ids, the declaration,
+    // the child order and, last, the preserved content.
+    let left = read("the left feature side", &feature_side(false));
+    let right = read("the right feature side", &feature_side(true));
+    assert_differences(
+        "a pair differing in every feature after Parent",
+        &left,
+        &right,
+        &feature_differences_expected(),
     );
 }
 

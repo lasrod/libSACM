@@ -30,8 +30,8 @@
 //! The role and type expected for each child come from `expected_tag`, which is
 //! written from the containment roles in `docs/sacm/metamodel-inventory.md`,
 //! not taken from the crate. A name is not a child element of the model: it
-//! is checked apart, as a `name` child written first with `lang` then
-//! `content` (SACM23-XMI-012; ADR 0017). Its own tests are in
+//! is checked apart, as a `name` child written first with its `xmi:id`, then
+//! `lang`, then `content` (SACM23-XMI-012; ADR 0017, ADR 0024). Its own tests are in
 //! `xmi_names.rs`.
 //!
 //! "Document order" for the refusals is `Document::elements`' order: pre-order,
@@ -54,7 +54,8 @@ use std::collections::HashSet;
 use std::error::Error;
 use std::fmt::{Debug, Display};
 
-use sacm::diagnostic::Code;
+use sacm::compare::semantic_compare;
+use sacm::diagnostic::{Code, Severity};
 use sacm::edit::{self, CreateArgumentPackage, CreateClaim};
 use sacm::model::{
     AbstractClass, AssertionDeclaration, Document, ElementId, ElementKind, InsertError, LangString,
@@ -73,20 +74,44 @@ const DOCUMENT_ATTRIBUTES: &str = concat!(
     " xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
     " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"",
 );
-/// Every attribute the writer may write today, in the order it must write them:
-/// `assertionDeclaration` directly after `xmi:id` (ADR 0017). There
-/// is no `xmi:version` (SACM23-XMI-024).
-const ATTRIBUTE_ORDER: [&str; 5] = [
+/// Every attribute the writer may write for an element of the model, other
+/// than preserved ones, in the order it must write them (SACM23-XMI-007):
+/// the namespace declarations, `xmi:type`, `xmi:id`, `gid`, the
+/// `SACMElement` flags and ends, then the class's own features in the order
+/// of SACM23-ARG-007 (`Assertion` and `AssertedRelationship`), SACM23-ARG-005
+/// (`structure`), SACM23-ARG-006 (`referencedArtifactElement`) and
+/// SACM23-ARG-013 (the group's `argumentElement`). An element holds the
+/// features of one class only, so one list orders them all. Preserved
+/// attributes come after all of these, in input order (LIB-COMPAT-003);
+/// [`assert_attribute_order`] admits none. There is no `xmi:version`
+/// (SACM23-XMI-024).
+const ATTRIBUTE_ORDER: [&str; 18] = [
     "xmlns:sacm",
     "xmlns:xmi",
     "xmi:type",
     "xmi:id",
+    "gid",
+    "isCitation",
+    "isAbstract",
+    "citedElement",
+    "abstractForm",
     "assertionDeclaration",
+    "metaClaim",
+    "isCounter",
+    "reasoning",
+    "source",
+    "target",
+    "structure",
+    "referencedArtifactElement",
+    "argumentElement",
 ];
 /// The element a name is written as (SACM23-XMI-012; ADR 0017).
 const NAME_ELEMENT: &str = "name";
-/// The attributes a `name` child may carry, in the order it must carry them.
-const NAME_ATTRIBUTE_ORDER: [&str; 2] = ["lang", "content"];
+/// The element a value of a `content` or `key` is written as (ADR 0025).
+const VALUE_ELEMENT: &str = "value";
+/// The attributes a `name` or `value` may carry, in the order it must carry
+/// them: its `xmi:id` (ADR 0024, ADR 0025), then `lang`, then `content`.
+const NAME_ATTRIBUTE_ORDER: [&str; 3] = ["xmi:id", "lang", "content"];
 /// The golden files of SACM23-XMI-007.
 const GOLDEN_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/xmi/golden/");
 /// The reader's valid fixtures (SACM23-XMI-001).
@@ -924,11 +949,11 @@ fn assert_document_element_attributes(row: &str, doc: &Document, elements: &[Wri
 }
 
 /// Asserts that every element's attributes are a subsequence of
-/// [`ATTRIBUTE_ORDER`], or of [`NAME_ATTRIBUTE_ORDER`] for a `name` child:
-/// no other attribute, and none out of order.
+/// [`ATTRIBUTE_ORDER`], or of [`NAME_ATTRIBUTE_ORDER`] for a `name` or a
+/// `value`: no other attribute, and none out of order.
 fn assert_attribute_order(row: &str, elements: &[Written]) {
     for element in elements {
-        let order: &[&str] = if element.name == NAME_ELEMENT {
+        let order: &[&str] = if element.name == NAME_ELEMENT || element.name == VALUE_ELEMENT {
             &NAME_ATTRIBUTE_ORDER
         } else {
             &ATTRIBUTE_ORDER
@@ -1364,6 +1389,53 @@ fn sacm23_xmi_004_an_id_holding_u0001_is_refused_naming_the_element_and_the_char
         error.to_string(),
         "the element \"a\\u{1}\" cannot be written: its xmi:id holds U+0001, which XML 1.0 cannot represent",
         "{row}: the pinned message"
+    );
+}
+
+#[test]
+fn sacm23_xmi_004_a_strict_write_of_an_id_holding_u0001_is_invalid_with_sacm_id_002() {
+    // Strict validation (SACM23-VAL-020) comes before the writer's own
+    // UnrepresentableCharacter check.
+    let row = "SACM23-XMI-004";
+    let mut doc = Document::new();
+    insert_named(
+        row,
+        &mut doc,
+        (None, ElementKind::ArgumentPackage, "a\u{1}"),
+        LangString::new("Arguments").with_lang("en"),
+    );
+    let error = match xmi::write(&doc, &WriteOptions::default()) {
+        Ok(text) => panic!("{row}: a strict write returned output:\n{text}"),
+        Err(error) => error,
+    };
+    let WriteError::Invalid { diagnostics, .. } = &error else {
+        panic!("{row}: a strict write is not refused as Invalid: {error:?}");
+    };
+    let found: Vec<(&str, Severity, &str, Vec<&str>)> = diagnostics
+        .iter()
+        .map(|found| {
+            (
+                found.code().as_str(),
+                found.severity(),
+                found.requirement_id(),
+                found.affected().iter().map(ElementId::as_str).collect(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        found,
+        [(
+            "SACM-ID-002",
+            Severity::Error,
+            "SACM23-VAL-020",
+            vec!["a\u{1}"],
+        )],
+        "{row}: the refusal does not hold one SACM-ID-002 Error on the element"
+    );
+    assert_eq!(
+        diagnostics[0].code(),
+        Code::ID_INVALID,
+        "{row}: the code is not Code::ID_INVALID"
     );
 }
 
@@ -1846,6 +1918,54 @@ fn sacm23_xmi_007_lines_are_indented_two_spaces_per_depth_and_childless_elements
     write_checked(row, &every_kind_document(row));
 }
 
+/// An `ArgumentPackage` that holds, each attribute out of the pinned order
+/// in the input: a `gid`, both flags, `citedElement` and `abstractForm`, and
+/// two preserved attributes, `zeta` then `alpha` (LIB-COMPAT-003), on the
+/// package; a name with an `xmi:id`; a declared Claim with a `gid`, a
+/// `metaClaim` and a preserved `omega`, holding a Description and a
+/// `TaggedValue` whose `content` and `key` and their values have ids; an
+/// `AssertedInference` with every end and flag of its class; an
+/// `ArgumentReasoning` with a `structure`; an `ArtifactReference` that
+/// cites; and an `ArgumentGroup` with members.
+const FEATURES: &str = concat!(
+    "<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
+    " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"",
+    " zeta=\"1\" isAbstract=\"true\" gid=\"g-p\" xmi:id=\"p\" isCitation=\"true\"",
+    " abstractForm=\"c2\" citedElement=\"c1\" alpha=\"2\">\n",
+    "  <name content=\"P\" lang=\"en\" xmi:id=\"p-name\"/>\n",
+    "  <argumentElement omega=\"3\" metaClaim=\"c2\" assertionDeclaration=\"assumed\"",
+    " xmi:id=\"c1\" xmi:type=\"sacm:Claim\" gid=\"g-c1\">\n",
+    "    <name xmi:id=\"c1-name\" content=\"C1\" lang=\"en\"/>\n",
+    "    <description xmi:id=\"d1\"><content xmi:id=\"d1-content\">",
+    "<value content=\"D\" lang=\"en\" xmi:id=\"d1-value\"/></content></description>\n",
+    "    <taggedValue xmi:id=\"t1\"><key xmi:id=\"t1-key\">",
+    "<value xmi:id=\"t1-key-value\" content=\"k\"/></key>",
+    "<content xmi:id=\"t1-content\"><value xmi:id=\"t1-content-value\" content=\"v\"/></content>",
+    "</taggedValue>\n",
+    "  </argumentElement>\n",
+    "  <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c2\"><name content=\"C2\"/>",
+    "</argumentElement>\n",
+    "  <argumentElement target=\"c1\" source=\"c2 c1\" reasoning=\"r1\" isCounter=\"true\"",
+    " metaClaim=\"c2\" assertionDeclaration=\"axiomatic\" isAbstract=\"true\"",
+    " xmi:type=\"sacm:AssertedInference\" xmi:id=\"i1\"><name content=\"I1\"/></argumentElement>\n",
+    "  <argumentElement structure=\"p\" xmi:type=\"sacm:ArgumentReasoning\" xmi:id=\"r1\">",
+    "<name content=\"R1\"/></argumentElement>\n",
+    "  <argumentElement referencedArtifactElement=\"c1 c2\" citedElement=\"c2\" isCitation=\"true\"",
+    " xmi:type=\"sacm:ArtifactReference\" xmi:id=\"ar1\"><name content=\"AR1\"/></argumentElement>\n",
+    "  <argumentElement argumentElement=\"c1 c2\" gid=\"g-grp\" xmi:type=\"sacm:ArgumentGroup\"",
+    " xmi:id=\"grp\"><name content=\"G\"/></argumentElement>\n",
+    "</sacm:ArgumentPackage>\n",
+);
+
+/// [`FEATURES`], read tolerantly.
+fn features_document(row: &str) -> Document {
+    read_ok(row, "the features document", FEATURES.as_bytes())
+}
+
+/// The ids of the elements of [`FEATURES`]' output that carry preserved
+/// attributes, which [`assert_attribute_order`] does not admit.
+const FEATURES_PRESERVED: [&str; 2] = ["p", "c1"];
+
 #[test]
 fn sacm23_xmi_007_attributes_are_written_in_the_pinned_order() {
     let row = "SACM23-XMI-007";
@@ -1857,6 +1977,92 @@ fn sacm23_xmi_007_attributes_are_written_in_the_pinned_order() {
         let text = write_ok(row, &doc);
         assert_attribute_order(row, &parse_output(row, &text));
     }
+
+    // Every attribute the writer writes, from input that gives them out of
+    // order: the exact written order of each element.
+    let text = write_ok(row, &features_document(row));
+    let elements = parse_output(row, &text);
+    let expected: [(&str, &[&str]); 11] = [
+        (
+            "p",
+            &[
+                "xmlns:sacm",
+                "xmlns:xmi",
+                "xmi:id",
+                "gid",
+                "isCitation",
+                "isAbstract",
+                "citedElement",
+                "abstractForm",
+                "zeta",
+                "alpha",
+            ],
+        ),
+        ("p-name", &["xmi:id", "lang", "content"]),
+        (
+            "c1",
+            &[
+                "xmi:type",
+                "xmi:id",
+                "gid",
+                "assertionDeclaration",
+                "metaClaim",
+                "omega",
+            ],
+        ),
+        ("c1-name", &["xmi:id", "lang", "content"]),
+        ("d1-value", &["xmi:id", "lang", "content"]),
+        ("t1-key-value", &["xmi:id", "content"]),
+        (
+            "i1",
+            &[
+                "xmi:type",
+                "xmi:id",
+                "isAbstract",
+                "assertionDeclaration",
+                "metaClaim",
+                "isCounter",
+                "reasoning",
+                "source",
+                "target",
+            ],
+        ),
+        ("r1", &["xmi:type", "xmi:id", "structure"]),
+        (
+            "ar1",
+            &[
+                "xmi:type",
+                "xmi:id",
+                "isCitation",
+                "citedElement",
+                "referencedArtifactElement",
+            ],
+        ),
+        ("grp", &["xmi:type", "xmi:id", "gid", "argumentElement"]),
+        ("t1-content", &["xmi:id"]),
+    ];
+    for (id, order) in expected {
+        let written = by_id(row, &elements, id);
+        let names: Vec<&str> = written
+            .attributes
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .collect();
+        assert_eq!(
+            names, order,
+            "{row}: <{}> {id:?} on line {} is not written in the pinned attribute order\n{text}",
+            written.name, written.line
+        );
+    }
+    let without_preserved: Vec<Written> = elements
+        .into_iter()
+        .filter(|element| {
+            !element
+                .attribute("xmi:id")
+                .is_some_and(|id| FEATURES_PRESERVED.contains(&id))
+        })
+        .collect();
+    assert_attribute_order(row, &without_preserved);
 }
 
 #[test]
@@ -2314,6 +2520,98 @@ fn complete_document(row: &str) -> Document {
     doc
 }
 
+/// Asserts that what `insert` cannot build, read from [`FEATURES`], is
+/// written and reads back equal: a gid, every flag, every reference end,
+/// name ids, a `content` and a `key` with their ids and their values' ids,
+/// and preserved content.
+fn assert_features_written(row: &str) {
+    let features = features_document(row);
+    let element = |id: &str| match features.get(id) {
+        Some(element) => element,
+        None => panic!("{row}: setup: the features document has no {id:?}"),
+    };
+    let held = [
+        ("a gid", element("p").gid().is_some()),
+        ("isCitation", element("p").is_citation()),
+        ("isAbstract", element("p").is_abstract()),
+        ("isCounter", element("i1").is_counter()),
+        ("citedElement", element("p").cited_element().is_some()),
+        ("abstractForm", element("p").abstract_form().is_some()),
+        ("metaClaim", !element("i1").meta_claims().is_empty()),
+        ("reasoning", element("i1").reasoning().is_some()),
+        ("source", element("i1").sources().len() == 2),
+        ("target", element("i1").target().is_some()),
+        ("structure", element("r1").structure().is_some()),
+        (
+            "referencedArtifactElement",
+            !element("ar1").referenced_artifact_elements().is_empty(),
+        ),
+        (
+            "argumentElement",
+            !element("grp").group_members().is_empty(),
+        ),
+        ("a name id", element("p").name_id().is_some()),
+        ("a content id", element("d1").content_id().is_some()),
+        (
+            "a content value id",
+            element("d1")
+                .content_value_ids()
+                .iter()
+                .all(Option::is_some),
+        ),
+        ("a key", element("t1").key().is_some()),
+        ("a key id", element("t1").key_id().is_some()),
+        (
+            "a key value id",
+            element("t1").key_value_ids().iter().all(Option::is_some),
+        ),
+        ("preserved content", element("c1").has_preserved_content()),
+    ];
+    for (what, holds) in held {
+        assert!(holds, "{row}: setup: the features document holds no {what}");
+    }
+    let text = write_ok(row, &features);
+    let elements = parse_output(row, &text);
+    let written = [
+        ("p", "gid", "g-p"),
+        ("p", "isCitation", "true"),
+        ("p", "isAbstract", "true"),
+        ("p", "citedElement", "c1"),
+        ("p", "abstractForm", "c2"),
+        ("p", "zeta", "1"),
+        ("p", "alpha", "2"),
+        ("c1", "gid", "g-c1"),
+        ("c1", "omega", "3"),
+        ("i1", "isCounter", "true"),
+        ("i1", "metaClaim", "c2"),
+        ("i1", "reasoning", "r1"),
+        ("i1", "source", "c2 c1"),
+        ("i1", "target", "c1"),
+        ("r1", "structure", "p"),
+        ("ar1", "referencedArtifactElement", "c1 c2"),
+        ("grp", "argumentElement", "c1 c2"),
+        ("p-name", "content", "P"),
+        ("d1-content", "xmi:id", "d1-content"),
+        ("d1-value", "content", "D"),
+        ("t1-key", "xmi:id", "t1-key"),
+        ("t1-key-value", "content", "k"),
+        ("t1-content-value", "content", "v"),
+    ];
+    for (id, attribute, value) in written {
+        assert_eq!(
+            by_id(row, &elements, id).attribute(attribute),
+            Some(value),
+            "{row}: {id:?} is not written with {attribute}={value:?}\n{text}"
+        );
+    }
+    let back = read_ok(row, "the features output", text.as_bytes());
+    assert_eq!(
+        semantic_compare(&features, &back),
+        [],
+        "{row}: the features document does not read back equal\n{text}"
+    );
+}
+
 #[test]
 fn lib_api_010_every_feature_a_document_holds_is_written() {
     let row = "LIB-API-010";
@@ -2409,6 +2707,8 @@ fn lib_api_010_every_feature_a_document_holds_is_written() {
         &write_ok(row, &redeclared),
         write_ok(row, &plain).as_bytes(),
     );
+
+    assert_features_written(row);
 }
 
 /// Writes `doc` in strict mode, which the test expects to refuse it.
@@ -2426,18 +2726,55 @@ fn write_error_variant(error: &WriteError) -> Option<&'static str> {
         WriteError::NoRoot => Some("NoRoot"),
         WriteError::UnrepresentableCharacter { .. } => Some("UnrepresentableCharacter"),
         WriteError::Invalid { .. } => Some("Invalid"),
+        WriteError::PreservedContent { .. } => Some("PreservedContent"),
         _ => None,
     }
 }
 
+/// Asserts that, in strict mode, preserved content is refused before
+/// validation as `PreservedContent`, each holder once in document order
+/// (SACM23-XMI-008), with SACM-XMI-006, and that tolerant mode writes it.
+fn assert_preserved_content_refusal(row: &str) {
+    let features = features_document(row);
+    let preserved = strict_write_err(row, &features);
+    let WriteError::PreservedContent { elements, .. } = &preserved else {
+        panic!("{row}: preserved content written strictly is refused as {preserved:?}");
+    };
+    assert_eq!(
+        elements.iter().map(ElementId::as_str).collect::<Vec<_>>(),
+        FEATURES_PRESERVED,
+        "{row}: PreservedContent does not list each holder in document order"
+    );
+    assert_eq!(
+        write_error_variant(&preserved),
+        Some("PreservedContent"),
+        "{row}: the variant name"
+    );
+    assert_eq!(
+        preserved.element(),
+        None,
+        "{row}: PreservedContent names an element: {preserved:?}"
+    );
+    assert_eq!(
+        preserved.code(),
+        Some(Code::XMI_STRICT_SAVE_REFUSED),
+        "{row}: PreservedContent does not have the code SACM-XMI-006"
+    );
+    if let Err(error) = write(&features) {
+        panic!("{row}: the features document is refused in tolerant mode: {error:?} ({error})");
+    }
+}
+
 #[test]
-fn lib_api_010_write_error_has_exactly_the_variants_no_root_unrepresentable_character_and_invalid()
-{
+fn lib_api_010_write_error_refuses_only_no_root_unrepresentable_character_invalid_and_preserved_content()
+ {
     let row = "LIB-API-010";
     // Every refusal a document can cause in tolerant mode, which does not
     // validate: no root, and a character outside XML 1.0 `Char` in an id, a
-    // name's `lang` and a name's `content`. Strict mode adds `Invalid`, for
-    // a document `validate` reports an Error for; its rules are
+    // name's `lang` and a name's `content`. Strict mode adds
+    // `PreservedContent`, for a document that holds preserved content
+    // (SACM23-XMI-008, `strict_save_preserved.rs`), and `Invalid`, for a
+    // document `validate` reports an Error for; its rules are
     // LIB-COMPAT-007's, tested in `load_and_save_modes.rs`.
     let mut refused: Vec<(&str, Document, Option<&str>)> = vec![
         ("an empty document", Document::new(), None),
@@ -2499,6 +2836,8 @@ fn lib_api_010_write_error_has_exactly_the_variants_no_root_unrepresentable_char
     let code: Option<Code> = invalid.code();
     assert_eq!(code, None, "{row}: {invalid:?} has a catalog code");
 
+    assert_preserved_content_refusal(row);
+
     // Everything else a document can hold is written, so no other variant
     // can be returned: every Assertion kind with every literal, alone and in
     // the complete document.
@@ -2523,7 +2862,7 @@ fn lib_api_010_write_error_has_exactly_the_variants_no_root_unrepresentable_char
 }
 
 #[test]
-fn lib_api_010_write_error_is_a_send_sync_error_whose_variants_have_no_catalog_code() {
+fn lib_api_010_write_error_is_a_send_sync_error_and_only_preserved_content_has_a_code() {
     let row = "LIB-API-010";
     assert_error_type::<WriteError>();
 
@@ -2546,9 +2885,20 @@ fn lib_api_010_write_error_is_a_send_sync_error_whose_variants_have_no_catalog_c
         row,
         &build(row, &[(None, ElementKind::ArgumentPackage, "a")]),
     );
-    for error in [no_root, unrepresentable, unrepresentable_name, invalid] {
+    // Preserved content, written strictly (SACM23-XMI-008).
+    let preserved = strict_write_err(row, &features_document(row));
+    for (error, expected) in [
+        (no_root, None),
+        (unrepresentable, None),
+        (unrepresentable_name, None),
+        (invalid, None),
+        (preserved, Some(Code::XMI_STRICT_SAVE_REFUSED)),
+    ] {
         let code: Option<Code> = error.code();
-        assert_eq!(code, None, "{row}: {error:?} has a catalog code");
+        assert_eq!(
+            code, expected,
+            "{row}: {error:?} has the wrong catalog code"
+        );
         let message = error.to_string();
         assert!(
             !message.contains('\n'),

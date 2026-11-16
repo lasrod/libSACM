@@ -610,18 +610,30 @@ fn sacm23_xmi_005_white_space_around_a_token_is_not_part_of_the_id() {
 // --- Item 5: two tokens, no token, a namespace -------------------------------------------------
 
 #[test]
-fn sacm23_xmi_005_two_tokens_on_a_single_valued_end_are_repeated_value_at_the_attribute() {
+fn sacm23_xmi_005_two_tokens_on_a_single_valued_end_are_repeated_value_at_each_token() {
     let row = XMI_005;
     for (end, flag) in ENDS {
-        for (value, tokens) in [("a b", 2), ("c2 c2", 2), ("c2\tc1", 2), (" c1  c2 c1 ", 3)] {
-            let what = format!("{end}={value:?}");
+        // `^` marks the first character of each token.
+        for (value, tokens) in [
+            ("^a ^b", 2),
+            ("^c2 ^c2", 2),
+            ("^c2\t^c1", 2),
+            (" ^c1  ^c2 ^c1 ", 3),
+        ] {
+            let what = format!("{end}={:?}", value.replace('^', ""));
+            let value = value.replace('^', &MARK.to_string());
             let (input, marks) = marked(
                 row,
                 &in_ap(&format!(
                     "{}{}",
-                    claim("c1", &format!("{flag} {MARK}{end}=\"{value}\""), ""),
+                    claim("c1", &format!("{flag} {end}=\"{value}\""), ""),
                     claim("c2", "", "")
                 )),
+            );
+            assert_eq!(
+                marks.len(),
+                tokens,
+                "{row}: setup: {what} has one mark per token"
             );
             let error = refused(row, &what, &input);
             assert!(
@@ -634,13 +646,13 @@ fn sacm23_xmi_005_two_tokens_on_a_single_valued_end_are_repeated_value_at_the_at
             );
             assert_eq!(
                 (error.code(), error.location()),
-                (Some(Code::MULTIPLICITY_VIOLATION), Some(marks[0])),
-                "{row}: {what}: not SACM-MULT-001 at the attribute's name"
+                (Some(Code::MULTIPLICITY_VIOLATION), Some(marks[1])),
+                "{row}: {what}: not SACM-MULT-001 at the second token"
             );
             assert_eq!(
                 error.locations(),
-                vec![marks[0]; tokens].as_slice(),
-                "{row}: {what}: not one occurrence per token, each at the attribute's name"
+                marks.as_slice(),
+                "{row}: {what}: not one occurrence per token, each at its own column"
             );
         }
     }

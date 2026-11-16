@@ -67,15 +67,16 @@ use crate::model::{AbstractClass, Document, ElementId, Preserved, ReferenceEnd, 
 /// application that needs ids unique across its history gives its own.
 ///
 /// Apply it with [`edit::apply`](super::apply), or see what it would do
-/// first with [`edit::preview`](super::preview).
+/// first with [`edit::preview`](super::preview) and apply that preview with
+/// [`edit::apply_preview`](super::apply_preview).
 ///
 /// # Examples
 ///
 /// ```
 /// use sacm::diagnostic::Code;
 /// use sacm::edit::{self, CreateArgumentPackage, CreateAssertedInference, CreateClaim, DeleteElement};
-/// use sacm::edit::ReferenceDeletePolicy;
-/// use sacm::model::{Document, ElementId, LangString};
+/// use sacm::edit::{Operation, ReferenceDeletePolicy};
+/// use sacm::model::{Document, ElementId, LangString, ReferenceEnd};
 ///
 /// let mut doc = Document::new();
 /// let name = LangString::new;
@@ -88,10 +89,21 @@ use crate::model::{AbstractClass, Document, ElementId, Preserved, ReferenceEnd, 
 /// let refused = edit::apply(&mut doc, DeleteElement::new("sub")).unwrap_err();
 /// assert_eq!(refused.code(), Code::CMD_DELETE_REFERENCED);
 ///
-/// // Deleting the referencing relationships deletes `i` too.
-/// let delete = DeleteElement::new("sub")
-///     .with_reference_policy(ReferenceDeletePolicy::DeleteReferencingRelationships);
-/// let mutation = edit::apply(&mut doc, delete)?;
+/// // Deleting the referencing relationships deletes `i` too. Preview it first:
+/// // the preview lists the reference `i` holds to `sub`, and changes nothing.
+/// let delete = Operation::from(
+///     DeleteElement::new("sub")
+///         .with_reference_policy(ReferenceDeletePolicy::DeleteReferencingRelationships),
+/// );
+/// let preview = edit::preview(&doc, &delete)?;
+/// let dangling = &preview.dangling_references()[0];
+/// assert_eq!(dangling.holder().as_str(), "i");
+/// assert_eq!(dangling.end(), ReferenceEnd::Source);
+/// assert_eq!(dangling.id().as_str(), "sub");
+/// assert!(doc.contains("sub"));
+///
+/// // Apply what was previewed.
+/// let mutation = edit::apply_preview(&mut doc, &preview)?;
 /// assert_eq!(mutation.deleted_ids(), [ElementId::from("sub"), ElementId::from("i")]);
 /// assert!(!doc.contains("i"));
 /// # Ok::<(), sacm::edit::EditError>(())

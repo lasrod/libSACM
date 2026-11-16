@@ -873,11 +873,12 @@ fn reference_rows() -> Vec<Row> {
     use Variant::{RepeatedValue, Unsupported as U};
     let link = |element: &str| claim_x("", element);
     vec![
-        // Two ids on a single-valued end, at the attribute's name.
+        // Two ids on a single-valued end: at the second id, its own column
+        // in the value.
         row(
             "two tokens in citedElement",
             RepeatedValue,
-            claim_x(&format!(" {MARK}citedElement=\"c x\""), ""),
+            claim_x(&format!(" citedElement=\"c {MARK}x\""), ""),
         ),
         // At the second occurrence: the element after the attribute.
         row(
@@ -968,11 +969,12 @@ fn relationship_rows() -> Vec<Row> {
             InvalidLiteral,
             inference_x("", &format!("{MARK}<isCounter>t rue</isCounter>")),
         ),
-        // Two ids on a single-valued end: at the attribute's name.
+        // Two ids on a single-valued end: at the second id, its own column
+        // in the value.
         row(
             "two tokens in target",
             RepeatedValue,
-            inference_x(&format!(" source=\"c\" {MARK}target=\"c d\""), ""),
+            inference_x(&format!(" source=\"c\" target=\"c {MARK}d\""), ""),
         ),
         // At the second occurrence.
         row(

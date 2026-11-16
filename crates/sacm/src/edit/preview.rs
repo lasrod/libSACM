@@ -21,8 +21,9 @@ use crate::model::{ElementId, ReferenceEnd, Revision};
 /// # Examples
 ///
 /// ```
-/// use sacm::edit::{self, CreateArgumentPackage, Operation};
-/// use sacm::model::{Document, LangString};
+/// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, DeleteElement, Operation};
+/// use sacm::edit::{ReferenceDeletePolicy, SetReferences};
+/// use sacm::model::{Document, ElementId, LangString, ReferenceEnd};
 ///
 /// let mut doc = Document::new();
 /// let create = Operation::from(CreateArgumentPackage::root(LangString::new("Arguments")));
@@ -34,6 +35,24 @@ use crate::model::{ElementId, ReferenceEnd, Revision};
 /// assert_eq!(doc.element_count(), 0); // nothing was created
 ///
 /// assert_eq!(&edit::apply_preview(&mut doc, &preview)?, preview.mutation());
+///
+/// // A delete's preview lists the references it removes: `c2` names `c1`
+/// // as a metaClaim, so deleting `c1` scrubs the id from `c2`.
+/// let name = LangString::new;
+/// edit::apply(&mut doc, CreateClaim::new("argument_package_1", name("C1")).with_id("c1"))?;
+/// edit::apply(&mut doc, CreateClaim::new("argument_package_1", name("C2")).with_id("c2"))?;
+/// edit::apply(&mut doc, SetReferences::new("c2", ReferenceEnd::MetaClaim, ["c1"]))?;
+/// let delete = Operation::from(
+///     DeleteElement::new("c1").with_reference_policy(ReferenceDeletePolicy::ScrubReferences),
+/// );
+/// let preview = edit::preview(&doc, &delete)?;
+/// let dangling = &preview.dangling_references()[0];
+/// assert_eq!((dangling.holder().as_str(), dangling.id().as_str()), ("c2", "c1"));
+/// assert_eq!(dangling.end(), ReferenceEnd::MetaClaim);
+///
+/// let mutation = edit::apply_preview(&mut doc, &preview)?;
+/// assert_eq!(mutation.deleted_ids(), [ElementId::from("c1")]);
+/// assert!(doc.get("c2").is_some_and(|c2| c2.meta_claims().is_empty()));
 /// # Ok::<(), sacm::edit::EditError>(())
 /// ```
 #[cfg_attr(

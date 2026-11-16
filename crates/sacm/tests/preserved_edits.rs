@@ -582,6 +582,58 @@ fn lib_compat_003_references_inside_preserved_content_are_opaque_and_dangling_on
     );
 }
 
+/// The SACM-REF-* findings of `doc`, as (code, affected), sorted.
+fn reference_findings(doc: &Document) -> Vec<(Code, Vec<ElementId>)> {
+    let mut found: Vec<(Code, Vec<ElementId>)> = validation::validate(doc)
+        .iter()
+        .filter(|f| f.code().as_str().starts_with("SACM-REF-"))
+        .map(|f| (f.code(), f.affected().to_vec()))
+        .collect();
+    found.sort_by(|left, right| (left.0.as_str(), &left.1).cmp(&(right.0.as_str(), &right.1)));
+    found
+}
+
+#[test]
+fn lib_compat_003_a_reference_to_a_name_id_stays_ref_001_after_a_delete() {
+    // SACM-REF-003 is for an id held only in preserved content; the
+    // `xmi:id` of a name identifies no element, so a reference to it is
+    // SACM-REF-001 (SACM23-VAL-003). A delete elsewhere must not move an id
+    // from one class to the other: n1 stays a name's id, a1 a preserved one.
+    let input = package(
+        &[
+            "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\">\
+             <name xmi:id=\"n1\" content=\"c1\"/><v:note xmi:id=\"a1\"/></argumentElement>"
+                .to_owned(),
+            claim("c2", " isCitation=\"true\" citedElement=\"n1\"", ""),
+            claim("c3", "", ""),
+            claim("c4", " metaClaim=\"a1\"", ""),
+        ]
+        .concat(),
+    );
+    let mut doc = read("a reference to a name's id", &input);
+    let expected = [
+        (Code::REF_DANGLING, ids(&["c2", "n1"])),
+        (Code::REF_PRESERVED_TARGET, ids(&["c4", "a1"])),
+    ];
+    assert_eq!(
+        reference_findings(&doc),
+        expected,
+        "{ROW}: setup: c2's citedElement n1 is SACM-REF-001, c4's metaClaim a1 SACM-REF-003"
+    );
+    let mutation = apply("DeleteElement c3", &mut doc, DeleteElement::new("c3"));
+    assert_eq!(
+        (mutation.deleted_ids(), mutation.changed_ids()),
+        (&ids(&["c3"])[..], &[][..]),
+        "{ROW}: the delete of c3 deletes c3 alone and changes nothing else"
+    );
+    assert_eq!(
+        reference_findings(&doc),
+        expected,
+        "{ROW}: after deleting c3, a reference to the name's id n1 is still SACM-REF-001, not \
+         SACM-REF-003, and one to the preserved a1 still SACM-REF-003"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Delete
 // ---------------------------------------------------------------------------
@@ -1299,6 +1351,60 @@ fn lib_compat_003_removing_the_last_id_keeps_an_empty_preserved_end() {
     assert!(
         out.contains(" metaClaim=\"\"") && !out.contains("<metaClaim"),
         "{ROW}: {what}: only the preserved attribute is left\n{out}"
+    );
+    assert_reads_back(what, &doc, &out);
+}
+
+#[test]
+fn lib_compat_003_removing_one_of_two_ids_beside_an_empty_preserved_end_writes_the_end_once() {
+    // c1 holds metaClaim [c2, c3] as elements and metaClaim="" preserved.
+    // Removing c2 leaves c3 in the end, which replaces the preserved
+    // attribute, so the end is written once and c1 changes.
+    let what = "RemoveReference c1 metaClaim c2 of [c2, c3] beside metaClaim=\"\"";
+    let input = package(&format!(
+        "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" metaClaim=\"\">\
+         <name content=\"c1\"/><metaClaim xmi:idref=\"c2\"/><metaClaim xmi:idref=\"c3\"/>\
+         </argumentElement>{}{}",
+        claim("c2", "", ""),
+        claim("c3", "", "")
+    ));
+    let before = read(what, &input);
+    assert!(
+        holds_preserved(&before, "c1")
+            && before
+                .get("c1")
+                .is_some_and(|c1| c1.meta_claims() == ids(&["c2", "c3"]).as_slice()),
+        "{ROW}: {what}: setup: c1 holds [c2, c3] and the preserved metaClaim=\"\""
+    );
+    let (doc, mutation, out) = edited(
+        what,
+        &input,
+        RemoveReference::new("c1", ReferenceEnd::MetaClaim, "c2"),
+    );
+    assert_eq!(
+        mutation.changed_ids(),
+        ids(&["c1"]),
+        "{ROW}: {what}: the remove changes c1 only"
+    );
+    assert!(
+        doc.get("c1")
+            .is_some_and(|c1| c1.meta_claims() == ids(&["c3"]).as_slice()),
+        "{ROW}: {what}: c1's metaClaim is [c3]"
+    );
+    assert!(
+        !holds_preserved(&doc, "c1"),
+        "{ROW}: {what}: the end left with c3 replaces the preserved attribute, so c1 holds none"
+    );
+    let attributes = out.matches(" metaClaim=\"").count();
+    let elements = out.matches("<metaClaim").count();
+    assert_eq!(
+        attributes + elements,
+        1,
+        "{ROW}: {what}: the end is written once ({attributes} attributes, {elements} elements)\n{out}"
+    );
+    assert!(
+        !out.contains(" metaClaim=\"\""),
+        "{ROW}: {what}: the empty metaClaim is not written\n{out}"
     );
     assert_reads_back(what, &doc, &out);
 }

@@ -18,7 +18,7 @@ The normative machine-readable model is UML 2.5 XMI of the metamodel and declare
 - Strict export namespace: `http://www.omg.org/spec/SACM/20220301` (OMG version URI for SACM 2.3), prefix `sacm`.
 - XMI namespace: `http://www.omg.org/spec/XMI/20131001`, prefix `xmi`. Export writes no `xmi:version`: the namespace identifies the XMI version (XMI 2.5.1 §7.5.3; SACM23-XMI-024). Import ignores an `xmi:version` on the `xmi:XMI` wrapper and on a root.
 - Concrete type: export writes `xmi:type="sacm:<Class>"` where the class is not known from the role (XMI 2.5.1 §7.8.8, rule 2g; ADR 0017). No `xsi` namespace is declared. Import accepts `xmi:type` and `xsi:type`.
-- Import accepts (tolerant mode): any namespace URI containing `/spec/SACM/`, the `http://omg.sacm/` reference-implementation family, plus `http://example.org/sacm/2.3` (repo fixtures); other URIs load with a warning in tolerant mode and an error in strict mode.
+- Import: strict mode reads only the pinned namespace. Tolerant mode is to read, under LIB-COMPAT-004, any namespace URI containing `/spec/SACM/`, the `http://omg.sacm/` reference-implementation family and `http://example.org/sacm/2.3` (repo fixtures); that is not built yet, so today both modes refuse them as `Tolerance(LIB-COMPAT-004)`. No file is called non-conformant only for its namespace (D-NS-PIN).
 - Top interchange objects (Clause 2): `AssuranceCasePackage` (Assurance Case Model compliance point, mandatory), `ArgumentPackage` (Argumentation), `ArtifactPackage` (Artifact).
 
 ### The pinned export namespace is a choice, not a normative value

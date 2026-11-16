@@ -898,7 +898,9 @@ impl Document {
                 role.name()
             ));
         }
-        let old: Vec<ElementId> = self.nodes[node]
+        // A set, so that checking every new id against the old ones is not
+        // quadratic in the number of values.
+        let old: BTreeSet<ElementId> = self.nodes[node]
             .text(role)
             .map(|held| held.ids().cloned().collect())
             .unwrap_or_default();
@@ -1051,46 +1053,30 @@ impl Document {
         }
     }
 
-    /// Releases what the node `node` holds and owns: the references it
-    /// holds, the ids of its name, `content`, `key` and `value`s, and its own
-    /// id. The node stays in the arena until [`compact`](Self::compact).
+    /// Releases the references the node `node` holds, in its ends and its
+    /// preserved content, and its own id. The node stays in the arena until
+    /// [`compact`](Self::compact), which also frees the ids it owns.
     fn release_node(&mut self, node: usize) {
         let references = std::mem::take(&mut self.nodes[node].references);
-        for target in references.iter().flat_map(|(_, targets)| targets) {
+        let preserved = self.nodes[node].preserved.take();
+        let preserved_references = preserved.iter().flat_map(|held| &held.references);
+        for target in references
+            .iter()
+            .flat_map(|(_, targets)| targets)
+            .chain(preserved_references)
+        {
             self.release(target, |used| {
                 used.references = used.references.saturating_sub(1);
             });
         }
-        if let Some(preserved) = self.nodes[node].preserved.take() {
-            for target in &preserved.references {
-                self.release(target, |used| {
-                    used.references = used.references.saturating_sub(1);
-                });
-            }
-            for id in &preserved.ids {
-                self.release(id, |used| {
-                    used.owner = None;
-                    used.preserved = false;
-                });
-            }
-        }
-        let held = &self.nodes[node];
-        let owned: Vec<ElementId> = held
-            .name_id
-            .iter()
-            .chain(held.content.iter().flat_map(Text::ids))
-            .chain(held.key.iter().flat_map(Text::ids))
-            .cloned()
-            .collect();
-        let id = held.id.clone();
-        for owned in &owned {
-            self.release(owned, |used| used.owner = None);
-        }
+        let id = self.nodes[node].id.clone();
         self.index.remove(&id);
     }
 
     /// Removes the doomed nodes from the arena, where the survivors keep
-    /// their order, and remaps every handle.
+    /// their order, and remaps every handle. An id a doomed node owned, of
+    /// its name, `content`, `key`, `value`s or preserved content, loses its
+    /// owner, and is freed unless a reference still holds it.
     fn compact(&mut self, doomed: &[bool]) {
         let mut remap: Vec<Option<usize>> = Vec::with_capacity(doomed.len());
         let mut next = 0;
@@ -1138,9 +1124,11 @@ impl Document {
                 *node = moved;
             }
         }
-        for used in self.other_ids.values_mut() {
+        self.other_ids.retain(|_, used| {
             used.owner = used.owner.and_then(new);
-        }
+            used.preserved &= used.owner.is_some();
+            !used.is_unused()
+        });
     }
 
     /// Whether `id` is in use in the document's id space: by an element, or

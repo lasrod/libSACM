@@ -31,7 +31,8 @@ use sacm::edit::{
     self, CreateArgumentGroup, CreateArgumentPackage, CreateArgumentReasoning,
     CreateArtifactReference, CreateAssertedArtifactContext, CreateAssertedArtifactSupport,
     CreateAssertedContext, CreateAssertedEvidence, CreateAssertedInference,
-    CreateAssuranceCasePackage, CreateClaim, CreateNote, EditError, Operation,
+    CreateAssuranceCasePackage, CreateClaim, CreateImplementationConstraint, CreateNote, EditError,
+    Operation,
 };
 use sacm::model::{AbstractClass, Document, ElementId, ElementKind, LangString, SacmElement};
 use sacm::validation;
@@ -999,6 +1000,24 @@ fn sacm23_val_004_a_wrong_reference_type_refusal_displays_its_end_id_and_both_ty
     let row = VAL_004;
     let mut doc = built(row);
     let name = || named("New");
+    // Kinds whose names start with I and E, so that the article is checked
+    // beyond A: an ImplementationConstraint made by a create, and an Event
+    // (which no create makes) inserted through the test-support seam in an
+    // ArtifactPackage of the case.
+    create(
+        row,
+        &mut doc,
+        CreateImplementationConstraint::new("c1", named("IC")).with_id("ic1"),
+    );
+    for (parent, kind, id) in [
+        ("case", ElementKind::ArtifactPackage, "ap"),
+        ("ap", ElementKind::Event, "e1"),
+    ] {
+        let parent = ElementId::from(parent);
+        if let Err(error) = doc.insert(Some(&parent), kind, id.into(), Some(named("E"))) {
+            panic!("{row}: setup could not insert the {kind} {id:?}: {error}");
+        }
+    }
     let cases: Vec<(&str, Operation, &str)> = vec![
         (
             "a Claim as structure",
@@ -1029,6 +1048,22 @@ fn sacm23_val_004_a_wrong_reference_type_refusal_displays_its_end_id_and_both_ty
                 .with_reasoning("r1")
                 .into(),
             "the reasoning \"r1\" names an ArtifactReference, \
+             and the reasoning must be an ArgumentReasoning",
+        ),
+        (
+            "an ImplementationConstraint as structure",
+            CreateArgumentReasoning::new("p", name())
+                .with_structure("ic1")
+                .into(),
+            "the structure \"ic1\" names an ImplementationConstraint, \
+             and the structure must be an ArgumentPackage",
+        ),
+        (
+            "an Event as reasoning",
+            CreateAssertedContext::new("p", name(), ["c2"], "c1")
+                .with_reasoning("e1")
+                .into(),
+            "the reasoning \"e1\" names an Event, \
              and the reasoning must be an ArgumentReasoning",
         ),
     ];

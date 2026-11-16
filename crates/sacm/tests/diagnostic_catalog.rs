@@ -5,7 +5,10 @@
 //!
 //! Every code the crate can construct is a `pub const NAME: Code` of
 //! `src/diagnostic.rs`: the test scans `src/**/*.rs` and finds every
-//! `Code::from_static("...")` there and nowhere else. A catalog row
+//! `Code::from_static("...")` there and nowhere else. In `src/diagnostic.rs`
+//! it also reports each tuple construction, `Code(..)` or a `Self(..)` in an
+//! `impl` for `Code` other than the body of `from_static`, and each
+//! `pub const NAME: Code` that is not `Code::from_static("...")`. A catalog row
 //! `| SACM-<AREA>-<NNN> | <severity> | <meaning> |` is live when its meaning
 //! names `` `Code::NAME` `` for its own code, and reserved when it names none.
 //! The live rows are exactly the constants, one row per code.
@@ -60,12 +63,12 @@ const CONSTANTS: [(&str, Code); 32] = [
     ("ABSTRACT_FORM_INVALID", Code::ABSTRACT_FORM_INVALID),
 ];
 
-/// The live codes after slice 0045: the 16 of slice 0041, SACM-REF-001,
-/// SACM-CITE-001 and SACM-ABS-001 of slice 0042, SACM-REF-002
-/// (SACM23-VAL-004) of slice 0044, and SACM-CMD-008 and SACM-CMD-009
-/// (LIB-EDIT-008, LIB-EDIT-010); and SACM-CMD-002, SACM-CMD-003,
+/// The live codes, one per constant: the 16 of slice 0041; SACM-REF-001,
+/// SACM-CITE-001 and SACM-ABS-001 of slice 0042; SACM-REF-002
+/// (SACM23-VAL-004) of slice 0044; SACM-CMD-008 and SACM-CMD-009
+/// (LIB-EDIT-008, LIB-EDIT-010) of slice 0045; SACM-CMD-002, SACM-CMD-003,
 /// SACM-CMD-006 and SACM-CMD-007 of slice 0048 (LIB-EDIT-005, LIB-EDIT-006,
-/// LIB-EDIT-007); and SACM-CITE-002 (SACM23-VAL-019), SACM-XMI-005
+/// LIB-EDIT-007); SACM-CITE-002 (SACM23-VAL-019), SACM-XMI-005
 /// (LIB-COMPAT-010) and SACM-XMI-012 (LIB-COMPAT-008) of slice 0049; and
 /// SACM-XMI-003 (LIB-COMPAT-003), SACM-XMI-006 (SACM23-XMI-008) and
 /// SACM-REF-003 (LIB-COMPAT-003) of slice 0050 (ADR 0033).
@@ -138,6 +141,9 @@ enum Problem {
     /// A code is built in `file` other than as the value of a constant of
     /// [`CONSTANTS_FILE`]: `call` is what builds it.
     BuiltOutsideConstant { file: String, call: String },
+    /// A `pub const NAME: Code` of [`CONSTANTS_FILE`] is not
+    /// `Code::from_static("...")`, so the scan does not find its text.
+    ConstantNotScanned { name: String },
     /// Two constants have one text.
     SameText { code: String, names: Vec<String> },
     /// A line starting `| SACM-` is not `| <code> | <severity> | <meaning> |`.
@@ -176,6 +182,10 @@ impl fmt::Display for Problem {
                     "src/{file}: `{call}` builds a code outside a constant of src/{CONSTANTS_FILE}"
                 )
             }
+            Self::ConstantNotScanned { name } => write!(
+                f,
+                "src/{CONSTANTS_FILE}: `pub const {name}: Code` is not `Code::from_static(\"...\")`"
+            ),
             Self::SameText { code, names } => {
                 write!(f, "{code}: the constants {names:?} have the same text")
             }
@@ -289,6 +299,102 @@ fn is_constructor_context(before: &str, after: &str) -> bool {
         .any(|(head, tail)| before.ends_with(head) && after.starts_with(tail))
 }
 
+/// The body of `from_static`, the one place a tuple construction `Self(..)`
+/// may build a `Code`: (the code just before `Self(`, the code just after
+/// it), white space as [`code_of`] leaves it.
+const FROM_STATIC_BODY: (&str, &str) = (
+    "pub(crate) const fn from_static(code: &'static str) -> Self { ",
+    "code) }",
+);
+
+/// Whether `code[..at]` ends inside an identifier, or in `::`, so that a
+/// match at `at` is the tail of a longer path or name.
+fn continues_a_name(code: &str, at: usize) -> bool {
+    code[..at]
+        .chars()
+        .next_back()
+        .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_' || c == ':')
+}
+
+/// The byte ranges of the `impl` blocks for `Code` in `code`: `impl Code {`
+/// and `impl ... for Code {`, each to its matching `}`.
+fn code_impls(code: &str) -> Vec<(usize, usize)> {
+    let mut spans = Vec::new();
+    for pattern in ["impl Code {", " for Code {"] {
+        for (at, _) in code.match_indices(pattern) {
+            if pattern == "impl Code {" && continues_a_name(code, at) {
+                continue;
+            }
+            let open = at + pattern.len() - 1;
+            let mut depth = 0_usize;
+            let mut end = code.len();
+            for (offset, c) in code[open..].char_indices() {
+                match c {
+                    '{' => depth += 1,
+                    '}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            end = open + offset + 1;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            spans.push((at, end));
+        }
+    }
+    spans.sort_unstable();
+    spans
+}
+
+/// The tuple constructions of a `Code` in `code`, the text of
+/// [`CONSTANTS_FILE`]: each `Code(` that is not the struct's definition, and
+/// each `Self(` in an `impl` block for `Code` other than the body of
+/// `from_static` ([`FROM_STATIC_BODY`]). Another type's `Self(..)` is not one.
+fn tuple_constructions(code: &str) -> Vec<String> {
+    let mut found: Vec<(usize, String)> = Vec::new();
+    for (at, _) in code.match_indices("Code(") {
+        if continues_a_name(code, at) || code[..at].ends_with("struct ") {
+            continue;
+        }
+        found.push((at, snippet(&code[at..])));
+    }
+    for (start, end) in code_impls(code) {
+        for (offset, _) in code[start..end].match_indices("Self(") {
+            let at = start + offset;
+            let after = &code[at + "Self(".len()..];
+            if continues_a_name(code, at)
+                || (code[..at].ends_with(FROM_STATIC_BODY.0)
+                    && after.starts_with(FROM_STATIC_BODY.1))
+            {
+                continue;
+            }
+            found.push((at, snippet(&code[at..])));
+        }
+    }
+    found.sort();
+    found.dedup();
+    found.into_iter().map(|(_, call)| call).collect()
+}
+
+/// The `NAME` of each `pub const NAME: Code` in `code`, in order.
+fn declared_constants(code: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    for (at, _) in code.match_indices("pub const ") {
+        let rest = &code[at + "pub const ".len()..];
+        let end = rest.find(|c: char| !is_name_char(c)).unwrap_or(rest.len());
+        let (name, tail) = rest.split_at(end);
+        let typed = tail.strip_prefix(": Code").is_some_and(|after| {
+            !after.starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_')
+        });
+        if !name.is_empty() && typed {
+            names.push(name.to_owned());
+        }
+    }
+    names
+}
+
 /// The constants in `files`, each `(path relative to src, text)`, and every
 /// code built some other way.
 fn scan_sources(files: &[(String, String)]) -> (Vec<Constant>, Vec<Problem>) {
@@ -320,6 +426,19 @@ fn scan_sources(files: &[(String, String)]) -> (Vec<Constant>, Vec<Problem>) {
                 file: file.clone(),
                 call: snippet(&code[at..]),
             });
+        }
+        if in_constants_file {
+            for call in tuple_constructions(&code) {
+                problems.push(Problem::BuiltOutsideConstant {
+                    file: file.clone(),
+                    call,
+                });
+            }
+            for name in declared_constants(&code) {
+                if !constants.iter().any(|c: &Constant| c.name == name) {
+                    problems.push(Problem::ConstantNotScanned { name });
+                }
+            }
         }
     }
     let mut texts: Vec<&str> = constants.iter().map(|c| c.text.as_str()).collect();
@@ -576,7 +695,8 @@ fn lib_diag_002_the_catalog_and_the_crate_agree_in_both_directions() {
     assert_eq!(
         live_codes(&catalog),
         LIVE,
-        "{ROW}: the live catalog rows are not the 22 expected"
+        "{ROW}: the live catalog rows are not the {} expected",
+        LIVE.len()
     );
 }
 
@@ -963,6 +1083,108 @@ impl Code {
                 }]
             ),
             "{ROW}: {hidden:?} in src/{CONSTANTS_FILE} builds a code the scan does not report"
+        );
+    }
+}
+
+#[test]
+fn lib_diag_002_a_tuple_construction_of_code_in_diagnostic_rs_is_a_problem() {
+    let clean = "\
+pub struct Code(&'static str);
+impl Code {
+    pub const A: Code = Code::from_static(\"SACM-A-001\");
+    pub(crate) const fn from_static(code: &'static str) -> Self {
+        Self(code)
+    }
+    pub const fn new(code: &'static str) -> Self {
+        Self::from_static(code)
+    }
+}
+impl fmt::Display for Code {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.pad(self.0)
+    }
+}
+";
+    let (constants, problems) = scan_sources(&[(CONSTANTS_FILE.to_owned(), clean.to_owned())]);
+    assert_eq!(
+        (constants, problems),
+        (vec![constant("A", "SACM-A-001")], vec![]),
+        "{ROW}: the clean constants file, with the struct's definition and \
+         from_static's Self(code), has problems"
+    );
+
+    let built = |call: &str| Problem::BuiltOutsideConstant {
+        file: CONSTANTS_FILE.to_owned(),
+        call: call.to_owned(),
+    };
+    let not_scanned = |name: &str| Problem::ConstantNotScanned {
+        name: name.to_owned(),
+    };
+    // Each hidden construction, and the problems it must give.
+    let cases: [(&str, Vec<Problem>); 7] = [
+        (
+            "impl Code { pub const Z: Code = Code(\"SACM-Z-999\"); }",
+            vec![built("Code(\"SACM-Z-999\")"), not_scanned("Z")],
+        ),
+        (
+            "fn hidden() -> Code { Code(\"SACM-Z-999\") }",
+            vec![built("Code(\"SACM-Z-999\")")],
+        ),
+        (
+            "impl Code { fn hidden() -> Self { Self(\"SACM-Z-999\") } }",
+            vec![built("Self(\"SACM-Z-999\")")],
+        ),
+        (
+            "impl Code { pub const Z: Code = Self(\"SACM-Z-999\"); }",
+            vec![built("Self(\"SACM-Z-999\")"), not_scanned("Z")],
+        ),
+        (
+            "impl From<u8> for Code { fn from(_: u8) -> Self { Self(\"SACM-Z-999\") } }",
+            vec![built("Self(\"SACM-Z-999\")")],
+        ),
+        // `from_static`'s body is exempt only as written: another parameter
+        // is a construction.
+        (
+            "impl Code { pub(crate) const fn from_static(text: &'static str) -> Self { Self(text) } }",
+            vec![
+                built("from_static(text: &'static str)"),
+                built("Self(text)"),
+            ],
+        ),
+        // A constant that aliases another is not scanned.
+        (
+            "impl Code { pub const ALIAS: Code = Self::A; }",
+            vec![not_scanned("ALIAS")],
+        ),
+    ];
+    for (hidden, expected) in cases {
+        let file = format!("{clean}{hidden}\n");
+        let (constants, problems) = scan_sources(&[(CONSTANTS_FILE.to_owned(), file)]);
+        assert_eq!(
+            (constants, problems),
+            (vec![constant("A", "SACM-A-001")], expected),
+            "{ROW}: {hidden:?} in src/{CONSTANTS_FILE} is not reported as expected"
+        );
+    }
+    assert!(
+        not_scanned("Z").to_string().contains("pub const Z: Code"),
+        "{ROW}: {} does not name the constant",
+        not_scanned("Z")
+    );
+
+    // Another type's tuple constructions are not codes.
+    for other in [
+        "struct Other(u8); impl Other { fn f() -> Self { Self(1) } }",
+        "struct ErrorCode(u8); fn e() -> ErrorCode { ErrorCode(1) }",
+        "fn f() -> Option<u8> { std::option::Option::Some(1) } fn g() -> u8 { mycode::Code(1) }",
+    ] {
+        let file = format!("{clean}{other}\n");
+        let (constants, problems) = scan_sources(&[(CONSTANTS_FILE.to_owned(), file)]);
+        assert_eq!(
+            (constants, problems),
+            (vec![constant("A", "SACM-A-001")], vec![]),
+            "{ROW}: {other:?} in src/{CONSTANTS_FILE} is reported as building a code"
         );
     }
 }

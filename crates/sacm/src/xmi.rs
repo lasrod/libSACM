@@ -659,37 +659,48 @@ mod roots;
 ///   as an element, or the `xsi:nil` of a value element is not either. It
 ///   holds the value as read.
 /// - [`ReadError::MissingType`] (SACM-XMI-005): a child under a role whose
-///   declared type is abstract has no `xmi:type` or `xsi:type`.
+///   declared type is abstract has no `xmi:type` or `xsi:type`, and no
+///   `xmi:idref` or `href` (the reference form of a composite, refused as
+///   `Unsupported`).
 /// - [`ReadError::LegacyShape`] (SACM-XMI-012), in strict mode only: a C++
 ///   name or text shape (see
 ///   [The C++ name and text shapes](#the-c-name-and-text-shapes)).
 /// - [`ReadError::Unsupported`] (no code): well-formed input this version
 ///   does not read, and that a document cannot keep as preserved content
 ///   (LIB-API-011). Its reason ends with one label that says why: `(a limit
-///   of this version; ROW reads it)` for conforming input a row is to read,
-///   `(a limit of this version)` for a limit, `(a defect in the input; ROW
-///   is to read it in tolerant mode)` for input that does not conform and
-///   that a row is to read as a tolerance, and `(a defect in the input)` for
-///   input that does not conform and has nowhere to be kept. In this
+///   of this version; ROW reads it)` for input a row is to read (conforming
+///   input, and XMI-namespace elements that XMI.xsd does not define),
+///   `(a limit of this version)` for a limit, `(strict mode never reads it;
+///   ROW is to read it in tolerant mode)` for input that only tolerant mode
+///   is to read, as a tolerance (which need not be defective: a document in
+///   another SACM namespace is not, D-NS-PIN), and `(a defect in the input)`
+///   for input that does not conform and has nowhere to be kept. In this
 ///   release they are:
 ///   - conforming input not read yet: the other ten package kinds, as roots
-///     or children (such as an `ArgumentPackageInterface`); a root outside
-///     the SACM 2.3 namespace (LIB-COMPAT-004); XMI metadata
+///     or children (such as an `ArgumentPackageInterface`); XMI metadata
 ///     (SACM23-XMI-019): an XMI-namespace element as the document element,
 ///     beside the roots or in an element (such as `xmi:Documentation` or
-///     `xmi:Extension`), `xmi:uuid`, `xmi:label`, `xmi:idref` and `href` on
-///     an element, a `name`, a `content`, a `key` or a `value`,
+///     `xmi:Extension`), `xmi:uuid`, `xmi:label` and `xmi:idref` on an
+///     element, a `name`, a `content`, a `key` or a `value`, `href` on a
+///     root, a `name`, a `content`, a `key` or a `value`,
 ///     `xsi:schemaLocation`, `xmi:id`, `xmi:type`, `xmi:uuid` and
 ///     `xmi:label` on the `xmi:XMI` element or on a reference element, and
 ///     an `xmi:id` on the `value` of a `name`; a cross-document `href` or an
-///     `XLink` attribute on a reference element (SACM23-XMI-027); and a `name`
-///     or `value` typed `sacm:ExpressionLangString` (SACM23-BASE-009);
+///     `XLink` attribute on a reference element (SACM23-XMI-027); a role
+///     element of a composite in reference form, a proxy, typed or untyped,
+///     under an abstract or a concrete role, naming SACM23-XMI-019 for an
+///     `xmi:idref` (such as `<argumentElement xmi:idref="c1"/>` in an
+///     ArgumentPackage) and SACM23-XMI-027 for an unqualified `href`, at its
+///     start tag if it is untyped under an abstract role, else at the
+///     attribute; and a `name` or `value` typed `sacm:ExpressionLangString`
+///     (SACM23-BASE-009);
 ///   - limits: UTF-16 without a byte order mark, UTF-32 or UCS-4 input, a
 ///     declared encoding other than UTF-8 or ASCII in input without a UTF-16
 ///     mark, and more nodes, attributes or namespaces than the parser can
 ///     hold;
-///   - tolerances not read yet: an `XMI` element outside the XMI 2.5.1
-///     namespace, such as an older XMI revision's (LIB-COMPAT-002), and the
+///   - tolerances not read yet: a root outside the SACM 2.3 namespace, such
+///     as a SACM 2.2 one (LIB-COMPAT-004), an `XMI` element outside the XMI
+///     2.5.1 namespace, such as an older XMI revision's (LIB-COMPAT-002), and the
 ///     §11.4 text spelling `argumentationElement`, as the role of an
 ///     ArgumentPackage or the end of an `ArgumentGroup` (SACM23-XMI-009);
 ///   - defects with nowhere to be kept: any other attribute, or text, on the
@@ -1050,9 +1061,10 @@ const _: () = {
 ///
 /// `Display` writes one line that starts in lower case, without trailing
 /// punctuation. The location follows as ` at line L, column C` when it is
-/// known, and the reason after `: `; a [`DuplicateId`](Self::DuplicateId) or
-/// [`RepeatedValue`](Self::RepeatedValue) lists every location, separated by
-/// `; `. Names from the input are quoted with
+/// known, and the reason after `: `; a [`DuplicateId`](Self::DuplicateId)
+/// lists every location, separated by `; `, and a
+/// [`RepeatedValue`](Self::RepeatedValue) its first two, so the line stays
+/// short however many there are. Names from the input are quoted with
 /// `{:?}`, so line breaks in them never break the line. For example:
 ///
 /// ```
@@ -1166,11 +1178,13 @@ pub enum ReadError {
     ///
     /// The reason ends with exactly one label: `(a limit of this version;
     /// ROW reads it)` for conforming input the matrix row ROW is to read,
-    /// `(a limit of this version)` for a limit such as an encoding, `(a defect
-    /// in the input; ROW is to read it in tolerant mode)` for input that does
-    /// not conform and that ROW is to read as a tolerance, and `(a defect in
-    /// the input)` for input that does not conform and has nowhere to be
-    /// kept, such as an attribute on the `xmi:XMI` element. Content that does
+    /// `(a limit of this version)` for a limit such as an encoding, `(strict
+    /// mode never reads it; ROW is to read it in tolerant mode)` for input
+    /// strict mode never reads and that ROW is to read as a tolerance, which
+    /// need not be defective (such as a document in another SACM namespace,
+    /// D-NS-PIN), and `(a defect in the input)` for input that does not
+    /// conform and has nowhere to be kept, such as an attribute on the
+    /// `xmi:XMI` element. Content that does
     /// not conform and has a place to be kept is never refused: [`read`]
     /// preserves it.
     ///
@@ -1218,7 +1232,9 @@ pub enum ReadError {
     /// (§8.12 `[1]`), which are never merged.
     ///
     /// [`location`](Self::location) is the second occurrence, and
-    /// [`locations`](Self::locations) every occurrence.
+    /// [`locations`](Self::locations) every occurrence. `Display` names the
+    /// count and the first two: `at {first}; {second}` for two occurrences,
+    /// and `first at {first}; {second}` for more.
     ///
     /// ```
     /// use sacm::diagnostic::Code;
@@ -1257,6 +1273,19 @@ pub enum ReadError {
     ///      and as elements, which XMI 2.5.1 rule 2h forbids, at line 3, column 66; \
     ///      line 4, column 5"
     /// );
+    ///
+    /// // Three ids on the single-valued `target`: each at its own column.
+    /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+    ///   <argumentElement xmi:type="sacm:AssertedInference" xmi:id="i1" source="c1" target="c2 c3 c4"/>
+    /// </sacm:ArgumentPackage>"#;
+    /// let error = xmi::read(input, &ReadOptions::default()).unwrap_err();
+    /// assert_eq!(error.locations().len(), 3);
+    /// assert_eq!(
+    ///     error.to_string(),
+    ///     "the single-valued property \"target\" of the element \"i1\" is given 3 times, \
+    ///      first at line 3, column 86; line 3, column 89"
+    /// );
     /// ```
     #[non_exhaustive]
     RepeatedValue {
@@ -1275,7 +1304,8 @@ pub enum ReadError {
         /// Every occurrence, in document order: an attribute at the first
         /// character of its name, an element at its `<`. At least two. Two
         /// or more ids in one reference attribute give one location per id,
-        /// each at the attribute's name.
+        /// each at the id's first character as written in the value (past
+        /// any white space or character reference before it).
         locations: Vec<SourceLocation>,
     },
     /// A value is not one of its type's literals (SACM-ENUM-001). In this
@@ -1391,7 +1421,10 @@ pub enum ReadError {
     /// such as an `<argumentElement>` with none in an `ArgumentPackage`. Its
     /// element name is its role, so its class cannot be inferred (XMI 2.5.1
     /// §7.6.3), and none is guessed. Refused in both modes. Fix: give it an
-    /// `xmi:type` naming its class, such as `xmi:type="sacm:Claim"`.
+    /// `xmi:type` naming its class, such as `xmi:type="sacm:Claim"`. A
+    /// child with an `xmi:idref` or an `href` is not this refusal: it is the
+    /// reference form of a composite, which this release refuses as
+    /// [`Unsupported`](Self::Unsupported).
     ///
     /// ```
     /// use sacm::diagnostic::Code;
@@ -1540,6 +1573,39 @@ fn write_locations(f: &mut fmt::Formatter<'_>, locations: &[SourceLocation]) -> 
     Ok(())
 }
 
+/// Writes the `Display` of a [`ReadError::RepeatedValue`]: the count and the
+/// first two locations, so that the line stays bounded however many
+/// occurrences there are (SACM23-XMI-005).
+fn write_repeated(
+    f: &mut fmt::Formatter<'_>,
+    element: &ElementId,
+    property: &str,
+    locations: &[SourceLocation],
+) -> fmt::Result {
+    let is_many = ReferenceEnd::ALL
+        .iter()
+        .any(|end| end.is_many() && end.name() == property);
+    if is_many {
+        write!(
+            f,
+            "the property {property:?} of the element {:?} is given both as an \
+             attribute and as elements, which XMI 2.5.1 rule 2h forbids",
+            element.as_str()
+        )?;
+    } else {
+        write!(
+            f,
+            "the single-valued property {property:?} of the element {:?} is given {} times",
+            element.as_str(),
+            locations.len()
+        )?;
+    }
+    match locations {
+        [first, second, _, ..] => write!(f, ", first at {first}; {second}"),
+        _ => write_locations(f, locations),
+    }
+}
+
 impl fmt::Display for ReadError {
     /// Writes the refusal on one line, as described on [`ReadError`].
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1574,27 +1640,7 @@ impl fmt::Display for ReadError {
                 element,
                 property,
                 locations,
-            } => {
-                let is_many = ReferenceEnd::ALL
-                    .iter()
-                    .any(|end| end.is_many() && end.name() == property);
-                if is_many {
-                    write!(
-                        f,
-                        "the property {property:?} of the element {:?} is given both as an \
-                         attribute and as elements, which XMI 2.5.1 rule 2h forbids",
-                        element.as_str()
-                    )?;
-                } else {
-                    write!(
-                        f,
-                        "the single-valued property {property:?} of the element {:?} is given {} times",
-                        element.as_str(),
-                        locations.len()
-                    )?;
-                }
-                return write_locations(f, locations);
-            }
+            } => return write_repeated(f, element, property, locations),
             Self::InvalidId { id, .. } => {
                 write!(f, "the xmi:id {id:?} is not an NCName")?;
                 None

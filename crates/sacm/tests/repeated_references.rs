@@ -385,9 +385,9 @@ fn sacm23_val_022_a_strict_write_succeeds_and_a_create_with_a_repeated_source_th
 }
 
 #[test]
-fn sacm23_val_022_the_invalid_fixture_gives_one_warning_and_writes_strictly() {
+fn sacm23_val_022_the_warning_fixture_gives_one_warning_and_writes_strictly() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/data/sacm23/validation/invalid/meta-claim-repeated.sacm.xmi");
+        .join("tests/data/sacm23/validation/warning/meta-claim-repeated.sacm.xmi");
     let text = std::fs::read_to_string(&path)
         .unwrap_or_else(|error| panic!("{ROW}: cannot read {}: {error}", path.display()));
     let doc = read_ok("the fixture", &text);

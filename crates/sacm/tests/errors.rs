@@ -1,19 +1,23 @@
 //! Tests for the error convention and for panic freedom on hostile input
 //! (LIB-API-004, ADR 0011).
 //!
-//! Today the only public error type is `model::InsertError`, public under the
-//! `test-support` feature. The crate dev-depends on itself with that feature,
-//! so these tests always see it. Each later error enum (`xmi::ReadError`,
-//! `xmi::WriteError`) joins the checks here with its row. The contract of
-//! `edit::EditError` is checked in `edit_create.rs` (LIB-EDIT-001).
+//! Only `model::InsertError` is checked here; it is public under the
+//! `test-support` feature, which the crate dev-depends on itself with. Each
+//! other public error type is checked in the file of its own row (LIB-API-004
+//! item 0): `ReadError` (LIB-SEC-002, `xmi_read.rs`), `WriteError`
+//! (LIB-API-010, `xmi_write.rs`), `EditError` (LIB-EDIT-001,
+//! `edit_create.rs`), `BatchError` (LIB-EDIT-014, `batch.rs`),
+//! `SetAssertionDeclarationError` (SACM23-ARG-002, `claim.rs`) and
+//! `ParseAssertionDeclarationError` (SACM23-ARG-003,
+//! `assertion_declaration.rs`).
 //!
 //! Not checked here:
-//! - Item 1's `#[non_exhaustive]`: a test cannot show that an exhaustive match
+//! - Item 0's `#[non_exhaustive]`: a test cannot show that an exhaustive match
 //!   fails to compile. The verifier checks the attribute in the source and the
 //!   rustdoc.
-//! - Item 5 (`Document::insert` documents `# Errors` with each variant it
+//! - Item 4 (`Document::insert` documents `# Errors` with each variant it
 //!   returns; no public item has a `# Panics` section): a rustdoc review item.
-//! - Item 7 (ADR 0011 is accepted and names per-operation error enums; no
+//! - Item 6 (ADR 0011 is accepted and names per-operation error enums; no
 //!   crate-wide `Error` exists): a document and API review item.
 
 use std::error::Error;

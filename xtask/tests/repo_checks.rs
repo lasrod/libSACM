@@ -612,6 +612,165 @@ fn lib_qa_017_deny_and_allow_checks_report_a_removed_attribute_or_level() {
     }
 }
 
+/// The text of every `.rs` file under `crates/sacm/src`, by its path
+/// relative to the repository root.
+fn sacm_sources() -> BTreeMap<String, String> {
+    fn walk(dir: &Path, out: &mut BTreeMap<String, String>) {
+        let mut entries: Vec<PathBuf> = fs::read_dir(dir)
+            .unwrap_or_else(|e| panic!("read {}: {e}", dir.display()))
+            .map(|entry| entry.expect("a directory entry").path())
+            .collect();
+        entries.sort();
+        for path in entries {
+            if path.is_dir() {
+                walk(&path, out);
+            } else if path.extension().is_some_and(|ext| ext == "rs") {
+                let rel = path
+                    .strip_prefix(repository_root())
+                    .expect("under the repository root")
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                let text = fs::read_to_string(&path)
+                    .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+                out.insert(rel, text);
+            }
+        }
+    }
+    let mut out = BTreeMap::new();
+    walk(&repository_root().join("crates/sacm/src"), &mut out);
+    out
+}
+
+/// LIB-QA-017: every `allow(...)` or `expect(...)` in `sacm`'s source, an
+/// attribute or inside a `cfg_attr`, that names `clippy::disallowed_methods`
+/// or `clippy::disallowed_types`, which would undo the crate's deny for an
+/// item. Lines are read without `//` comments and white space, so an
+/// attribute over several lines is found.
+fn inner_allow_problems(files: &BTreeMap<String, String>) -> Vec<String> {
+    let mut problems = Vec::new();
+    for (path, text) in files {
+        let code: String = text
+            .lines()
+            .map(|line| line.find("//").map_or(line, |at| &line[..at]))
+            .flat_map(str::chars)
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        let bytes = code.as_bytes();
+        for level in ["allow(", "expect("] {
+            for (at, _) in code.match_indices(level) {
+                let preceded_by_ident = at
+                    .checked_sub(1)
+                    .is_some_and(|b| bytes[b].is_ascii_alphanumeric() || bytes[b] == b'_');
+                if preceded_by_ident {
+                    continue;
+                }
+                let open = at + level.len() - 1;
+                let mut depth = 0usize;
+                let close = bytes[open..]
+                    .iter()
+                    .position(|&byte| {
+                        match byte {
+                            b'(' => depth += 1,
+                            b')' => depth -= 1,
+                            _ => {}
+                        }
+                        depth == 0
+                    })
+                    .map_or(bytes.len(), |offset| open + offset);
+                let inside = &code[open..close];
+                for lint in ["clippy::disallowed_methods", "clippy::disallowed_types"] {
+                    let named = inside.match_indices(lint).any(|(i, _)| {
+                        !inside[i + lint.len()..]
+                            .starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_')
+                    });
+                    if named {
+                        problems.push(problem(
+                            "platform-lint-inner-allow",
+                            format!("{path} has `{level}{lint}...)`, which undoes the deny"),
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    problems
+}
+
+#[test]
+fn lib_qa_017_sacm_source_has_no_inner_allow_of_the_platform_lints() {
+    let files = sacm_sources();
+    assert!(
+        files.contains_key("crates/sacm/src/lib.rs") && files.len() > 10,
+        "LIB-QA-017: setup: the walk did not find sacm's source: {:?}",
+        files.keys().collect::<Vec<_>>()
+    );
+    let problems = inner_allow_problems(&files);
+    assert!(
+        problems.is_empty(),
+        "LIB-QA-017: sacm's source allows a platform lint the crate denies: {problems:#?}"
+    );
+    let with = |extra: &str| {
+        let mut mutated = files.clone();
+        mutated
+            .get_mut("crates/sacm/src/lib.rs")
+            .expect("LIB-QA-017: lib.rs")
+            .push_str(extra);
+        mutated
+    };
+    for (what, extra, count) in [
+        (
+            "an item allow",
+            "\n#[allow(clippy::disallowed_methods)]\nfn f() {}\n",
+            1,
+        ),
+        (
+            "an inner expect with a reason",
+            "\nmod m {\n    #![expect(clippy::disallowed_types, reason = \"x\")]\n}\n",
+            1,
+        ),
+        (
+            "an allow in a cfg_attr, over several lines, with another lint",
+            "\n#[cfg_attr(\n    target_arch = \"wasm32\",\n    allow(\n        dead_code,\n        \
+             clippy::disallowed_methods\n    )\n)]\nfn f() {}\n",
+            1,
+        ),
+        (
+            "both lints in one allow",
+            "\n#[allow(clippy::disallowed_types, clippy::disallowed_methods)]\nfn f() {}\n",
+            2,
+        ),
+    ] {
+        assert_eq!(
+            problem_codes(&inner_allow_problems(&with(extra))),
+            vec!["platform-lint-inner-allow".to_owned(); count],
+            "LIB-QA-017: {what} is not reported"
+        );
+    }
+    for (what, extra) in [
+        (
+            "a comment",
+            "\n// #[allow(clippy::disallowed_methods)]\nfn f() {}\n",
+        ),
+        (
+            "another lint",
+            "\n#[allow(clippy::disallowed_script_idents)]\nfn f() {}\n",
+        ),
+        (
+            "a deny",
+            "\n#[deny(clippy::disallowed_methods)]\nfn f() {}\n",
+        ),
+        (
+            "a longer lint name",
+            "\n#[allow(clippy::disallowed_methods_x)]\nfn f() {}\n",
+        ),
+    ] {
+        assert!(
+            inner_allow_problems(&with(extra)).is_empty(),
+            "LIB-QA-017: {what} is reported as an inner allow"
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // LIB-QA-018: documentation-only pushes skip the code-only CI jobs
 // ---------------------------------------------------------------------------
@@ -634,8 +793,13 @@ const CHANGES_WRITE: &str = "echo \"code=$code\" >> \"$GITHUB_OUTPUT\"";
 const CHANGES_ACTIONS_READ: &str = "actions: read";
 
 /// The `previous` step's query: the successful runs of this workflow on the
-/// previous commit.
-const PREVIOUS_QUERY: &str = "actions/workflows/ci.yml/runs?head_sha=$BEFORE&status=success";
+/// previous commit, from the same event type as this run, so that a
+/// successful run of another event does not count.
+const PREVIOUS_QUERY: &str =
+    "actions/workflows/ci.yml/runs?head_sha=$BEFORE&status=success&event=$EVENT";
+
+/// The `previous` step's input the event filter reads.
+const PREVIOUS_EVENT: &str = "EVENT: ${{ github.event_name }}";
 
 /// The `previous` step's fail-closed answer, and its output.
 const PREVIOUS_DEFAULT: &str = "ok=false";
@@ -879,13 +1043,17 @@ fn previous_commit_problems(
         previous
             .iter()
             .any(|line| step_line(line) == "BEFORE: ${{ github.event.before }}")
+            && previous
+                .iter()
+                .any(|line| step_line(line) == PREVIOUS_EVENT)
             && previous_script.contains(PREVIOUS_QUERY)
             && previous_lines.first() == Some(&PREVIOUS_DEFAULT)
             && previous_lines.contains(&PREVIOUS_WRITE),
         "changes-previous",
         &format!(
-            "the `changes` job must have a `previous` step that reads `BEFORE`, starts from \
-             `{PREVIOUS_DEFAULT}`, queries `{PREVIOUS_QUERY}` and writes `{PREVIOUS_WRITE}`"
+            "the `changes` job must have a `previous` step that reads `BEFORE` and \
+             `{PREVIOUS_EVENT}`, starts from `{PREVIOUS_DEFAULT}`, queries `{PREVIOUS_QUERY}` \
+             and writes `{PREVIOUS_WRITE}`"
         ),
     );
     require(
@@ -1151,6 +1319,21 @@ fn previous_commit_mutations(ci: &str) -> Vec<Mutation> {
         (
             "the `status=success` filter removed".to_owned(),
             replace_once(ci, "&status=success", ""),
+            "changes-previous",
+        ),
+        (
+            "the `event` filter removed, so a run of any event counts".to_owned(),
+            replace_once(ci, "&event=$EVENT", ""),
+            "changes-previous",
+        ),
+        (
+            "the `event` filter on a fixed event".to_owned(),
+            replace_once(ci, "&event=$EVENT", "&event=push"),
+            "changes-previous",
+        ),
+        (
+            "the `previous` step not reading the event name".to_owned(),
+            edit_nth_line(ci, PREVIOUS_EVENT, 0, None),
             "changes-previous",
         ),
         (
@@ -2010,6 +2193,7 @@ fn run_previous(
         .env("GH_TOKEN", "token")
         .env("REPO", "owner/repo")
         .env("BEFORE", before)
+        .env("EVENT", "pull_request")
         .output()
         .unwrap_or_else(|e| panic!("LIB-QA-018: run {}: {e}", bash.display()));
     assert!(
@@ -2058,14 +2242,15 @@ fn lib_qa_018_the_previous_step_says_ok_only_when_the_api_finds_a_successful_run
                 [
                     "api",
                     format!(
-                        "repos/owner/repo/actions/workflows/ci.yml/runs?head_sha={before}&status=success"
+                        "repos/owner/repo/actions/workflows/ci.yml/runs?head_sha={before}\
+                         &status=success&event=pull_request"
                     )
                     .as_str()
                 ]
                 .as_slice()
             ),
-            "LIB-QA-018: the `previous` step does not ask for the successful ci.yml runs on the \
-             previous commit ({what})"
+            "LIB-QA-018: the `previous` step does not ask for the successful ci.yml runs of \
+             this event type on the previous commit ({what})"
         );
     }
     // No previous commit (a new pull request): no lookup, and no answer.
