@@ -517,8 +517,10 @@ pub enum Difference {
         right: Vec<ElementId>,
     },
     /// The element's preserved content, what [`xmi::read`](crate::xmi::read)
-    /// kept as written because it is not SACM 2.3 where it stands, differs
-    /// on each side (LIB-COMPAT-003, ADR 0033), or one side holds none.
+    /// kept as written instead of read, because it is not SACM 2.3 where it
+    /// stands or, in tolerant mode, because a strict read refuses it, differs
+    /// on each side (LIB-COMPAT-003, ADR 0033, ADR 0035), or one side holds
+    /// none.
     ///
     /// It is compared exactly and in order: namespace URIs, prefixes, local
     /// names, attribute values and order, text, and where each child stands

@@ -3586,6 +3586,7 @@ tests = [
   "crates/sacm/tests/unread_content.rs::lib_compat_003_a_wrapper_id_is_in_the_id_space",
   "crates/sacm/tests/unread_content.rs::lib_compat_003_an_empty_wrapper_id_is_id_002",
   "crates/sacm/tests/unread_content.rs::lib_compat_003_a_document_level_id_stays_in_the_id_space_after_a_delete",
+  "crates/sacm/tests/preserved_edits.rs::lib_compat_003_two_rebound_prefixes_on_one_holder_take_ns1_and_ns2",
 ]
 
 [[row]]

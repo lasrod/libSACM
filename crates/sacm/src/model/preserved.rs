@@ -1,8 +1,12 @@
-//! Preserved content: what an element read from XMI holds that is not SACM
-//! 2.3 where it stands (LIB-COMPAT-003, ADR 0033).
+//! Preserved content: what an element read from XMI, or the document outside
+//! its elements, holds as written instead of read: content that is not SACM
+//! 2.3 where it stands (LIB-COMPAT-003, ADR 0033), or, in tolerant mode, a
+//! construct a strict read refuses, such as a value that is no literal or an
+//! element of a kind not read yet (ADR 0035).
 //!
 //! Only [`xmi::read`](crate::xmi::read) makes it; the public API sees it only
-//! as [`SacmElement::has_preserved_content`](super::SacmElement::has_preserved_content),
+//! as [`SacmElement::has_preserved_content`](super::SacmElement::has_preserved_content)
+//! and [`Document::has_preserved_content`](super::Document::has_preserved_content),
 //! a strict write's refusal and a comparison's difference. It is held parsed,
 //! not as XML text, so it compares exactly and can declare the namespaces it
 //! needs wherever it is written.
@@ -12,8 +16,10 @@
 
 use super::{ElementId, ReferenceEnd};
 
-/// The preserved content of one element, its holder: attributes after the
-/// typed ones, in input order, and children placed among its typed children.
+/// The preserved content of one element, its holder, or of the document
+/// outside its elements: attributes after the typed ones (for the document,
+/// on `xmi:XMI`), in input order, and children placed among its typed
+/// children (for the document, among the roots).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Preserved {
     /// The namespace bindings the holder's start tag declares for

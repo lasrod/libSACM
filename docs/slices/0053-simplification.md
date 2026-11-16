@@ -87,3 +87,12 @@ The design brief is `target/slice-0053-simplification-brief.md` (git-ignored).
     - the hook tests use the new roles;
     - this round's new tests were added.
     No step-1 assertion was weakened.
+- 2026-11-16 verification round 2: six rows PASS. LIB-COMPAT-003 FAILed on two test gaps in the fix round's own code, both found by hand mutation:
+  - `Kept::rename`'s kept bindings;
+  - `holds_root`'s text arm.
+  The `SacmElement::has_preserved_content` rustdoc was also stale. CI's PR-diff mutants run gave 0 missed and 0 timeouts (run 43827165583).
+- 2026-11-16 round 3, allowed by the maintainer for exactly these items:
+  - the new test `lib_compat_003_two_rebound_prefixes_on_one_holder_take_ns1_and_ns2`;
+  - the NoRoot test now covers wrapper text and a wrapper attribute;
+  - the stale preserved-content rustdoc is fixed.
+  Each hand mutation is now caught.

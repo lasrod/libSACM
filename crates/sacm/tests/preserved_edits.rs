@@ -1823,3 +1823,72 @@ fn lib_compat_003_a_rebound_sacm_prefix_is_kept_under_ns1() {
         );
     }
 }
+
+/// Two attributes whose prefixes `sacm` and `xmi` are rebound to two other
+/// namespaces on one holder take `ns1` and `ns2`: a prefix one of the
+/// holder's kept bindings already uses is taken (ADR 0035).
+#[test]
+fn lib_compat_003_two_rebound_prefixes_on_one_holder_take_ns1_and_ns2() {
+    let what = "sacm and xmi rebound to urn:a and urn:b on one Claim";
+    let input = package(&format!(
+        "<argumentElement xmlns:s=\"{SACM_NS}\" xmlns:x=\"{XMI_NS}\" xmlns:sacm=\"urn:a\" \
+         xmlns:xmi=\"urn:b\" x:type=\"s:Claim\" x:id=\"c1\" sacm:p=\"1\" xmi:q=\"2\">\
+         <name content=\"c1\"/></argumentElement>"
+    ));
+    let output = match xmi::read(input.as_bytes(), &ReadOptions::default()) {
+        Ok(output) => output,
+        Err(error) => panic!("{ROW}: {what}: a tolerant read refused it: {error:?}"),
+    };
+    let found: Vec<(Code, Severity, Vec<ElementId>, bool, bool)> = output
+        .diagnostics()
+        .iter()
+        .map(|found| {
+            (
+                found.code(),
+                found.severity(),
+                found.affected().to_vec(),
+                found.message().contains("\"ns1\""),
+                found.message().contains("\"ns2\""),
+            )
+        })
+        .collect();
+    assert_eq!(
+        found,
+        [
+            (
+                Code::XMI_UNKNOWN_CONTENT,
+                Severity::Warning,
+                ids(&["c1"]),
+                true,
+                false
+            ),
+            (
+                Code::XMI_UNKNOWN_CONTENT,
+                Severity::Warning,
+                ids(&["c1"]),
+                false,
+                true
+            ),
+        ],
+        "{ROW}: {what}: not two SACM-XMI-003 Warnings on c1 naming ns1, then ns2"
+    );
+    let doc = output.into_document();
+    let text = write(what, &doc);
+    for binding in ["xmlns:ns1=\"urn:a\"", "xmlns:ns2=\"urn:b\""] {
+        assert_eq!(
+            text.matches(binding).count(),
+            1,
+            "{ROW}: {what}: {binding} is not declared exactly once\n{text}"
+        );
+    }
+    let back = read(&format!("{what}, written"), &text);
+    assert!(
+        back == doc,
+        "{ROW}: {what}: the output does not read back equal\n{text}"
+    );
+    assert_eq!(
+        write(what, &back),
+        text,
+        "{ROW}: {what}: writing again is not byte-identical"
+    );
+}

@@ -28,8 +28,9 @@
 //! element is kept (see [References](fn@read#references)). Content that is
 //! not SACM 2.3 where it stands, such as a vendor attribute or child
 //! element, is kept as written as preserved content of its element, with
-//! SACM-XMI-003 (see [Preserved content](fn@read#preserved-content)).
-//! Nothing is dropped.
+//! SACM-XMI-003 (see [Preserved content](fn@read#preserved-content)), and a
+//! tolerant read keeps what a strict read refuses the same way, with a
+//! Warning (see [Modes](#modes)). Nothing is dropped.
 //!
 //! `write` writes every element of a document, with its `gid`, its flags and
 //! references, its name, its `content` and `key` and, on an Assertion, its
@@ -1154,9 +1155,9 @@ impl ReadOutput {
 
     /// The diagnostics found while reading, sorted by [`Diagnostic`]'s order.
     /// Empty for an input with no `xsi:type`, no `xmi:version`, no C++
-    /// shape and no content that is not SACM 2.3, in which every element has
-    /// an `xmi:id` and no `xmi:id`, of an element or a `name`, has white space
-    /// around it.
+    /// shape, no content that is not SACM 2.3 and nothing a strict read
+    /// refuses, in which every element has an `xmi:id` and no `xmi:id`, of an
+    /// element or a `name`, has white space around it.
     #[must_use]
     pub fn diagnostics(&self) -> &[Diagnostic] {
         &self.diagnostics
@@ -1961,9 +1962,9 @@ impl std::error::Error for ReadError {}
 /// # Preserved content
 ///
 /// What [`read`] kept as preserved content, because it is not SACM 2.3
-/// where it stands (see [Preserved content](fn@read#preserved-content)), a
-/// tolerant `write` writes back where it was read (LIB-COMPAT-003, ADR
-/// 0033): its attributes after the element's typed attributes, in input
+/// where it stands (see [Preserved content](fn@read#preserved-content)) or,
+/// in tolerant mode, because a strict read refuses it, a tolerant `write`
+/// writes back where it was read (LIB-COMPAT-003, ADR 0033, ADR 0035): its attributes after the element's typed attributes, in input
 /// order, after the namespace declarations they need; each of its children
 /// on its own line, before the typed child it preceded, after the element's
 /// `name`, `content` and `key`, and before the end tag when it followed the

@@ -257,8 +257,10 @@ struct Node {
     role: Option<Role>,
     /// The handles of the contained elements, in containment order.
     children: Vec<usize>,
-    /// What the element was read with that is not SACM 2.3 where it stands
-    /// (LIB-COMPAT-003, ADR 0033); `None` when it holds none. Boxed, so an
+    /// What the element was read with and kept as written instead of read:
+    /// content that is not SACM 2.3 where it stands (LIB-COMPAT-003, ADR
+    /// 0033), or, in tolerant mode, a construct a strict read refuses (ADR
+    /// 0035); `None` when it holds none. Boxed, so an
     /// element without it costs one word.
     preserved: Option<Box<Preserved>>,
 }
@@ -2401,12 +2403,16 @@ impl<'a> SacmElement<'a> {
     }
 
     /// Whether the element holds preserved content: something it was read
-    /// with from XMI that is not SACM 2.3 where it stands, such as a vendor
-    /// attribute or child element, kept exactly as written (LIB-COMPAT-003,
-    /// ADR 0033).
+    /// with from XMI and kept exactly as written instead of read, such as a
+    /// vendor attribute or child element that is not SACM 2.3 where it stands
+    /// (LIB-COMPAT-003, ADR 0033), or, in tolerant mode, a construct a strict
+    /// read refuses, such as a value that is no literal or an element of a
+    /// kind not read yet (ADR 0035).
     ///
-    /// [`xmi::read`](crate::xmi::read) keeps it, with one SACM-XMI-003 per
-    /// construct, rather than drop it. A tolerant
+    /// [`xmi::read`](crate::xmi::read) keeps it, with one diagnostic per
+    /// construct (SACM-XMI-003 for content that is not SACM 2.3 where it
+    /// stands; in tolerant mode, the Warning of the strict refusal), rather
+    /// than drop it. A tolerant
     /// [`xmi::write`](crate::xmi::write) writes it back where it stood, and a
     /// strict one refuses the document
     /// ([`WriteError::PreservedContent`](crate::xmi::WriteError::PreservedContent)).

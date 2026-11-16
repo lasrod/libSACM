@@ -988,26 +988,33 @@ fn lib_compat_003_document_preserved_content_is_one_difference() {
 /// written, wrapped.
 #[test]
 fn lib_compat_003_deleting_every_root_beside_document_level_content_is_no_root() {
-    let what = "xmi:Documentation beside the one root p, p deleted";
-    let input = format!(
-        "<xmi:XMI xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\"><xmi:Documentation/>\
-         <sacm:ArgumentPackage xmi:id=\"p\"><name content=\"p\"/></sacm:ArgumentPackage>\
-         </xmi:XMI>"
-    );
-    let mut doc = tolerant(COMPAT_003, what, &input).into_document();
-    if let Err(error) = edit::apply(&mut doc, DeleteElement::new("p")) {
-        panic!("{COMPAT_003}: {what}: setup: the delete was refused: {error:?}");
-    }
-    assert!(
-        doc.roots().next().is_none() && doc.has_preserved_content(),
-        "{COMPAT_003}: {what}: setup: no root is left and the metadata is"
-    );
-    for mode in [Mode::Strict, Mode::Tolerant] {
-        assert_eq!(
-            write(&doc, mode),
-            Err(WriteError::NoRoot),
-            "{COMPAT_003}: {what}: a {mode:?} write is not NoRoot"
+    // XMI metadata, text and an attribute of the wrapper each hold no root.
+    for (what, input) in [
+        (
+            "xmi:Documentation beside the one root p, p deleted",
+            wrapper("", "<xmi:Documentation/>"),
+        ),
+        ("text beside the one root p, p deleted", wrapper("", "note")),
+        (
+            "a vendor attribute on the wrapper of the one root p, p deleted",
+            wrapper(" v:w=\"1\"", ""),
+        ),
+    ] {
+        let mut doc = tolerant(COMPAT_003, what, &input).into_document();
+        if let Err(error) = edit::apply(&mut doc, DeleteElement::new("p")) {
+            panic!("{COMPAT_003}: {what}: setup: the delete was refused: {error:?}");
+        }
+        assert!(
+            doc.roots().next().is_none() && doc.has_preserved_content(),
+            "{COMPAT_003}: {what}: setup: no root is left and the wrapper's content is"
         );
+        for mode in [Mode::Strict, Mode::Tolerant] {
+            assert_eq!(
+                write(&doc, mode),
+                Err(WriteError::NoRoot),
+                "{COMPAT_003}: {what}: a {mode:?} write is not NoRoot"
+            );
+        }
     }
 
     // The control: a bare root of a kind not read yet is written, wrapped.
