@@ -13,7 +13,8 @@
 //!   `render`, `next`, `status`).
 //! - [`fetch`]: hash-pinned download of the OMG SACM 2.3 and XMI 2.5.1
 //!   reference artifacts and of the W3C XML Conformance Test Suite
-//!   (`cargo xtask fetch-spec`).
+//!   (`cargo xtask fetch-spec`), and of the SACM files written by other
+//!   tools (`cargo xtask fetch-corpus`).
 //!
 //! ```text
 //! cargo xtask matrix check        Gate: validate the functionality matrix against the repo
@@ -25,6 +26,8 @@
 //!                                 then the W3C XML Conformance Test Suite
 //! cargo xtask fetch-spec --only xmlconf
 //!                                 Download and extract only the W3C suite
+//! cargo xtask fetch-corpus        Download the pinned SACM files written by other tools
+//!                                 into third_party/corpus
 //! ```
 //!
 //! The binary works on the repository it was built in. Set the `XTASK_ROOT`
@@ -65,6 +68,8 @@ commands:
                           Conformance Test Suite into third_party/xmlconf
   fetch-spec --only xmlconf
                           download and extract only the W3C XML Conformance Test Suite
+  fetch-corpus            download the pinned SACM files written by other tools
+                          into third_party/corpus
 
 environment:
   XTASK_ROOT              repository to work on (default: the one xtask was built in);
@@ -123,7 +128,8 @@ pub fn run(args: &[&str], root: &Path, out: &mut dyn Write) -> Result<(), String
 /// standard error, and the problems `matrix check` finds are in its error.
 /// `fetch-spec` puts the W3C suite in `<root>/third_party/xmlconf` with or
 /// without `--dest`; `fetch-spec --only xmlconf` fetches only the suite, and
-/// `--only` takes no other value.
+/// `--only` takes no other value. `fetch-corpus` puts the corpus in
+/// `<root>/third_party/corpus` and takes no option.
 ///
 /// With [`RootSource::Environment`], `matrix check` names the root: the first
 /// line of its report, which is the OK line, the problem-count header or the
@@ -157,7 +163,8 @@ pub fn run(args: &[&str], root: &Path, out: &mut dyn Write) -> Result<(), String
 /// - the count given to `matrix next -n`/`--limit` is not a number:
 ///   `invalid row count: <count>`;
 /// - the command fails (see [`matrix::cmd_check`], [`matrix::cmd_render`],
-///   [`matrix::cmd_next`], [`matrix::cmd_status`] and [`fetch::cmd_fetch`]);
+///   [`matrix::cmd_next`], [`matrix::cmd_status`], [`fetch::cmd_fetch`] and
+///   [`fetch::cmd_fetch_corpus`]);
 ///   a matrix that cannot be read or parsed is one line, as [`matrix::load`]
 ///   describes;
 /// - writing to or flushing `out` fails.
@@ -199,6 +206,7 @@ fn dispatch(
         ["fetch-spec", "--only", "xmlconf"] => {
             fetch::cmd_fetch_suite(&root.join(fetch::XMLCONF_DEST), out)
         }
+        ["fetch-corpus"] => fetch::cmd_fetch_corpus(&root.join(fetch::CORPUS_DEST), out),
         ["help" | "--help" | "-h"] | [] => writeln!(out, "{USAGE}").map_err(output_error),
         _ => Err(format!(
             "unrecognized arguments: {}\n\n{USAGE}",

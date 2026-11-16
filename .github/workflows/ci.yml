@@ -145,6 +145,20 @@ jobs:
         if: needs.changes.outputs.code != 'false' || matrix.os == 'ubuntu-latest'
       - run: cargo test -p xtask
         if: needs.changes.outputs.code != 'false' || matrix.os == 'ubuntu-latest'
+      # LIB-COMPAT-015: real SACM files from other tools, fetched (never committed) and read.
+      - name: Cache the SACM corpus (LIB-COMPAT-015)
+        if: needs.changes.outputs.code != 'false' || matrix.os == 'ubuntu-latest'
+        uses: actions/cache@v6
+        with:
+          path: third_party/corpus
+          key: corpus-${{ hashFiles('xtask/src/fetch.rs') }}
+      - name: The SACM corpus (LIB-COMPAT-015)
+        if: needs.changes.outputs.code != 'false' || matrix.os == 'ubuntu-latest'
+        env:
+          SACM_CORPUS_DIR: ${{ github.workspace }}/third_party/corpus
+        run: |
+          cargo xtask fetch-corpus
+          cargo test -p xtask --test corpus
 
   msrv:
     name: MSRV

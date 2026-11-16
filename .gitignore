@@ -11,6 +11,8 @@ __pycache__/
 /third_party/sacm-2.3/
 # The W3C XML Conformance Test Suite is fetched the same way (LIB-SEC-006), never committed.
 /third_party/xmlconf/
+# Real SACM files from other tools are fetched (`cargo xtask fetch-corpus`, LIB-COMPAT-015), never committed.
+/third_party/corpus/
 
 # Local Claude Code state (project settings in .claude/settings.json are committed).
 /.claude/settings.local.json

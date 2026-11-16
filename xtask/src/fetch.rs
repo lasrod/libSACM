@@ -13,9 +13,16 @@
 //! into `third_party/xmlconf/` and extracted there, it is never committed,
 //! and no case file is copied into the repository (LIB-SEC-006).
 //!
+//! The corpus of SACM files written by other tools ([`CORPUS`]) is fetch-only
+//! too. Several of its files carry no licence, so `cargo xtask fetch-corpus`
+//! fetches them into the git-ignored `third_party/corpus/`, they are never
+//! committed, and nothing from them is copied into the repository
+//! (LIB-COMPAT-015).
+//!
 //! [`fetch_into`] and [`fetch_suite`] hold the policy and take the downloader
 //! (and the extractor) as parameters, so they can be exercised without the
-//! network; [`cmd_fetch`] and [`cmd_fetch_suite`] run them with
+//! network; [`fetch_each`] adds one line of output per artifact. [`cmd_fetch`],
+//! [`cmd_fetch_suite`] and [`cmd_fetch_corpus`] run them with
 //! [`curl_download`] and [`tar_extract`].
 
 use std::fs;
@@ -40,7 +47,7 @@ pub struct Artifact {
     pub url: &'static str,
     /// Expected SHA-256 of the file, as lowercase hex.
     pub sha256: &'static str,
-    /// Human-readable description, written by [`cmd_fetch`].
+    /// Human-readable description, written by [`fetch_each`].
     pub what: &'static str,
 }
 
@@ -89,6 +96,107 @@ pub const XMLCONF_DEST: &str = "third_party/xmlconf";
 /// The file whose presence under the suite's destination shows that the
 /// archive has been extracted: the suite's master catalog.
 const XMLCONF_MARKER: &str = "xmlconf/xmlconf.xml";
+
+/// Where `cargo xtask fetch-corpus` puts [`CORPUS`], relative to the
+/// repository root. The directory is git-ignored.
+pub const CORPUS_DEST: &str = "third_party/corpus";
+
+/// SACM files that tools other than this crate wrote, each at a URL pinned to
+/// a commit, which the LIB-COMPAT-015 test reads in both modes. They are
+/// fetched only; see the module docs. `docs/compat/corpus.md` lists their
+/// licences, writers and namespaces, and the report of the test.
+pub const CORPUS: &[Artifact] = &[
+    Artifact {
+        file_name: "af-examples-kitchen-blender.sacm",
+        url: "https://raw.githubusercontent.com/lasrod/assurance-forge-examples/7ec4add92d1892ace8c09509d5e7c92b7a65b903/projects/kitchen-blender/arguments/main.sacm",
+        sha256: "8be670f7ec47eccbb94ab3ec056f13bda769766ddf3799905d9eb3c49d528ee1",
+        what: "Assurance Forge example project kitchen-blender",
+    },
+    Artifact {
+        file_name: "af-examples-gsn-pattern-decorators.sacm",
+        url: "https://raw.githubusercontent.com/lasrod/assurance-forge-examples/7ec4add92d1892ace8c09509d5e7c92b7a65b903/projects/gsn-pattern-decorators/arguments/main.sacm",
+        sha256: "79e2781449a0cbe80bff89ca55a0db0e6e0a77088d479317213246f799fe2f4a",
+        what: "Assurance Forge example project gsn-pattern-decorators",
+    },
+    Artifact {
+        file_name: "af-testdata-sample.sacm.xml",
+        url: "https://raw.githubusercontent.com/lasrod/assurance-forge/c1f62854e5e78c1225315588868a693c67564c3a/testdata/sacm/sample.sacm.xml",
+        sha256: "bdd63b30cc19f31deedf2bb898010b322127fbefd2bff2ce5ec5bd99c0bf0711",
+        what: "Assurance Forge test data, legacy app dialect: sample",
+    },
+    Artifact {
+        file_name: "af-testdata-oasc-ja.xml",
+        url: "https://raw.githubusercontent.com/lasrod/assurance-forge/c1f62854e5e78c1225315588868a693c67564c3a/testdata/sacm/oasc-ja.xml",
+        sha256: "64890f19b4dbe6b18ec6535a009013c51e8953441df8cc78d32e3c9d6501964f",
+        what: "Assurance Forge test data, legacy app dialect: OASC in English and Japanese",
+    },
+    Artifact {
+        file_name: "af-testdata-safety-case-sanitized-strict.sacm.xml",
+        url: "https://raw.githubusercontent.com/lasrod/assurance-forge/c1f62854e5e78c1225315588868a693c67564c3a/testdata/sacm/safety-case-sanitized-strict.sacm.xml",
+        sha256: "8d1ca006fbee2758b4012a8abb08625d39e59a9f36ff8bcff76d9e02f5587645",
+        what: "Assurance Forge test data, legacy app dialect: a sanitized safety case",
+    },
+    Artifact {
+        file_name: "oasc-open-autonomy-safety-case.sacm.xml",
+        url: "https://raw.githubusercontent.com/EdgeCaseResearch/oasc/abf48ef74d07ff485ef759c5f6f5390953ca45c6/open-autonomy-safety-case.sacm.xml",
+        sha256: "6e4a4cd48a50986bddfb30a0dec2cf6929f05fd70ec0c39976f055096dcc0e8e",
+        what: "Edge Case Research Open Autonomy Safety Case, SACM 2.2 XML",
+    },
+    Artifact {
+        file_name: "aceditor-hbs-default.sacm2",
+        url: "https://raw.githubusercontent.com/LuisFelipeAN/aceditor-mbac-results/2bdad068b033f84b893400a9a7ce9fb040649554/HBS/default.sacm2",
+        sha256: "d3a9afd14b14d57adaf103428a7362e74dfce7cd55bfb7e59cd48cbe5c91e2dc",
+        what: "ACEditor MBAC output, HBS case study",
+    },
+    Artifact {
+        file_name: "epsilon-sacm-example.model",
+        url: "https://raw.githubusercontent.com/epsilonlabs/SACM-UML-Profile/f7222ed99140522f41be1426b39e0e1abab53618/gsn.metamodel/model/SACM_Example.model",
+        sha256: "7fa6931eeeee087ce98ce2e75c9a1b5cbfaee09442654a37706984dc98b7a516",
+        what: "Epsilon SACM 2.0 EMF example",
+    },
+    Artifact {
+        file_name: "epsilon-untitled.model",
+        url: "https://raw.githubusercontent.com/epsilonlabs/SACM-UML-Profile/f7222ed99140522f41be1426b39e0e1abab53618/sacm.emf/model/untitled.model",
+        sha256: "66570d374408655cc8c207d755e9cdbd0d4c1582049ae6a58bd07bcf0a209955",
+        what: "Epsilon SACM 2.0 EMF model with xmi:id",
+    },
+    Artifact {
+        file_name: "justification-factory-sample-sacm.xmi",
+        url: "https://raw.githubusercontent.com/JustificationFactory/JustificationDiagramModelToSACM/12abf127f6bea45fce56e8ee4154e7baecf17ae1/SACM-generated/sample-sacm.xmi",
+        sha256: "76e1a3d8fe7a352c884088e0fdfa87a74f736e17df331aa7c291db9e745c4571",
+        what: "JustificationFactory ATL output, sample",
+    },
+    Artifact {
+        file_name: "justification-factory-sacm-derivation.xmi",
+        url: "https://raw.githubusercontent.com/JustificationFactory/JustificationDiagramModelToSACM/12abf127f6bea45fce56e8ee4154e7baecf17ae1/SACM-generated/sacm-derivation.xmi",
+        sha256: "0d4b9f1155cac46594c0d8dfc93558cbad1974e49198d5005ca672ac43031222",
+        what: "JustificationFactory ATL output, derivation",
+    },
+    Artifact {
+        file_name: "sysmline-easy-example.assurancecase",
+        url: "https://raw.githubusercontent.com/Ruizhe-Yang/SysMLine/2658f087c5cd303019aa1df5a17b26bc4ded2346/dut.cs.sysmline/model/SACM/EasyExample.assurancecase",
+        sha256: "3286379e9e1d472bc634d7a79b2ded3bb9298455a330a3aadbaf1644e3898598",
+        what: "SysMLine EMF SACM 2.2 model with GSN types",
+    },
+    Artifact {
+        file_name: "sysmini-quan.assurancecase",
+        url: "https://raw.githubusercontent.com/Ruizhe-Yang/SysMini/313d44ed25b46e8c9af7f737359a87d87fbb7c10/org.omg.sysmini/model/SACM/quan.assurancecase",
+        sha256: "0aaeec3ff8b6833dfae68f8974472b41d4d69450843e31156b8d72a2d67921a7",
+        what: "SysMini EMF SACM 2.2 model with artifacts",
+    },
+    Artifact {
+        file_name: "mobstr-safetycase.integration",
+        url: "https://raw.githubusercontent.com/panorama-research/mobstr-dataset/14f86e018ee6c0ce2f0a36b9ff25ae776e2c12dd/org.panorama-research.mobstr.safetycase/mobstr-safetycase.integration",
+        sha256: "e2bb673a97fd0dc11dc3e8ecf19f18b288c1bcafb38ed2788d8eb36277d947c3",
+        what: "MobSTr ODE container with a SACM assurance case",
+    },
+    Artifact {
+        file_name: "deis-etcs.model",
+        url: "https://raw.githubusercontent.com/DEIS-Project-EU/DDI-Scripting-Tools/a234b7f25500080a421685d4692e8a5b20033b2e/Examples/ETCS/etcs.model",
+        sha256: "72d2f64261188c267b7617c71de8bcb46dcd989d39d4e33643e584e08457a6a9",
+        what: "DEIS ETCS ODE container with SACM argumentation",
+    },
+];
 
 /// What [`fetch_into`] did for one artifact, or [`fetch_suite`] for the suite.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -337,9 +445,57 @@ pub fn curl_download(url: &str, out: &Path) -> Result<(), String> {
 /// error when writing to `out` fails. The suite is not fetched when an OMG
 /// artifact fails.
 pub fn cmd_fetch(dest: &Path, suite_dest: &Path, out: &mut dyn Write) -> Result<(), String> {
+    fetch_each(dest, ARTIFACTS, &mut curl_download, out)?;
+    cmd_fetch_suite(suite_dest, out)
+}
+
+/// Make every artifact present in `dest` with its pinned hash, as
+/// [`fetch_into`] does, one artifact at a time, writing a line to `out` for
+/// each as soon as it is handled: `ok       <dest>/<file_name> (<what>)` for
+/// one already present with its pin, `fetched  <dest>/<file_name> (<what>)`
+/// for one just downloaded and verified.
+///
+/// With every artifact present with its pin, `download` is never called, so
+/// the call needs no network.
+///
+/// ```
+/// use std::path::Path;
+/// use xtask::fetch::{Artifact, fetch_each};
+///
+/// let dir = std::env::temp_dir().join(format!("fetch-each-doc-{}", std::process::id()));
+/// # let _ = std::fs::remove_dir_all(&dir);
+/// let abc = Artifact {
+///     file_name: "abc.txt",
+///     url: "https://example.org/abc.txt",
+///     sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+///     what: "three letters",
+/// };
+/// let mut download = |_url: &str, part: &Path| std::fs::write(part, b"abc").map_err(|e| e.to_string());
+/// let mut out = Vec::new();
+/// fetch_each(&dir, &[abc], &mut download, &mut out)?;
+/// fetch_each(&dir, &[abc], &mut download, &mut out)?;
+/// let text = String::from_utf8_lossy(&out).into_owned();
+/// let lines: Vec<&str> = text.lines().collect();
+/// assert!(lines[0].starts_with("fetched  ") && lines[0].ends_with("abc.txt (three letters)"));
+/// assert!(lines[1].starts_with("ok       "));
+/// # std::fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;
+/// # Ok::<(), String>(())
+/// ```
+///
+/// # Errors
+///
+/// Returns the first error of [`fetch_into`], after the lines of the
+/// artifacts handled before it, which stay in place, or an error when writing
+/// to `out` fails.
+pub fn fetch_each(
+    dest: &Path,
+    artifacts: &[Artifact],
+    download: &mut dyn FnMut(&str, &Path) -> Result<(), String>,
+    out: &mut dyn Write,
+) -> Result<(), String> {
     // One artifact at a time, so each line is written as soon as it is known.
-    for artifact in ARTIFACTS {
-        let outcomes = fetch_into(dest, std::slice::from_ref(artifact), &mut curl_download)?;
+    for artifact in artifacts {
+        let outcomes = fetch_into(dest, std::slice::from_ref(artifact), download)?;
         let label = match outcomes.first() {
             Some(Outcome::AlreadyPresent) => "ok      ",
             Some(Outcome::Fetched) => "fetched ",
@@ -353,7 +509,18 @@ pub fn cmd_fetch(dest: &Path, suite_dest: &Path, out: &mut dyn Write) -> Result<
         )
         .map_err(output_error)?;
     }
-    cmd_fetch_suite(suite_dest, out)
+    Ok(())
+}
+
+/// `cargo xtask fetch-corpus`: fetch [`CORPUS`] into `dest` with
+/// [`fetch_each`] and [`curl_download`], writing one line per file to `out`.
+///
+/// # Errors
+///
+/// As [`fetch_each`]: processing stops at the first file that cannot be
+/// fetched or does not match its pin.
+pub fn cmd_fetch_corpus(dest: &Path, out: &mut dyn Write) -> Result<(), String> {
+    fetch_each(dest, CORPUS, &mut curl_download, out)
 }
 
 /// `cargo xtask fetch-spec --only xmlconf`: fetch and extract [`XMLCONF`]

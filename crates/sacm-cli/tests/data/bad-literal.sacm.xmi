@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- LIB-CLI-002: the Claim c1 has assertionDeclaration="Assumed", which is no literal of AssertionDeclaration (the literal is "assumed"): a strict read refuses it with SACM-ENUM-001, and a tolerant read opens it with SACM-ENUM-001 as a Warning. Otherwise clean. Hand-written. -->
+<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+  <name lang="en" content="Arguments"/>
+  <argumentElement xmi:type="sacm:Claim" xmi:id="c1" assertionDeclaration="Assumed">
+    <name lang="en" content="The road is dry"/>
+  </argumentElement>
+</sacm:ArgumentPackage>

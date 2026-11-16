@@ -1579,6 +1579,108 @@ fn lib_compat_001_has_errors_is_true_only_for_xsi_type_read_strictly() {
 }
 
 // ===========================================================================
+// LIB-API-016. ReadOutput::has_errors
+// ===========================================================================
+
+const API_016: &str = "LIB-API-016";
+
+/// A named ArgumentPackage `a` with a Claim typed by `xsi:type`.
+fn api_016_xsi_typed() -> String {
+    format!(
+        "<sacm:ArgumentPackage{NS_XSI} xmi:id=\"a\"><name content=\"A\"/>\
+         <argumentElement xsi:type=\"sacm:Claim\" xmi:id=\"c1\"><name content=\"C\"/>\
+         </argumentElement></sacm:ArgumentPackage>"
+    )
+}
+
+/// A named ArgumentPackage `a`, clean in both modes.
+fn api_016_clean() -> String {
+    format!("<sacm:ArgumentPackage{NS} xmi:id=\"a\"><name content=\"A\"/></sacm:ArgumentPackage>")
+}
+
+#[test]
+fn lib_api_016_has_errors_is_true_only_for_a_strict_read_with_xsi_type() {
+    let typed = api_016_xsi_typed();
+    let strict = read_ok(API_016, "xsi:type", Mode::Strict, &typed);
+    assert!(
+        strict.has_errors(),
+        "{API_016}: a strict read with xsi:type does not report an Error: {:?}",
+        strict.diagnostics()
+    );
+    let tolerant = read_ok(API_016, "xsi:type", Mode::Tolerant, &typed);
+    assert!(
+        !tolerant.diagnostics().is_empty(),
+        "{API_016}: setup: a tolerant read with xsi:type reports nothing"
+    );
+    assert!(
+        !tolerant.has_errors(),
+        "{API_016}: a tolerant read with xsi:type, whose finding is a Warning, reports an \
+         Error: {:?}",
+        tolerant.diagnostics()
+    );
+    let clean = api_016_clean();
+    for mode in MODES {
+        let output = read_ok(API_016, "clean", mode, &clean);
+        assert!(
+            output.diagnostics().is_empty(),
+            "{API_016}: setup: the clean input has read diagnostics in {mode:?} mode: {:?}",
+            output.diagnostics()
+        );
+        assert!(
+            !output.has_errors(),
+            "{API_016}: a clean read in {mode:?} mode reports an Error"
+        );
+    }
+}
+
+#[test]
+fn lib_api_016_has_errors_agrees_with_diagnostic_has_errors() {
+    let versioned = format!(
+        "<xmi:XMI xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\" xmi:version=\"2.0\">\
+         <sacm:ArgumentPackage xmi:id=\"a\"><name content=\"A\"/></sacm:ArgumentPackage></xmi:XMI>"
+    );
+    let unknown = format!(
+        "<sacm:ArgumentPackage{NS} xmi:id=\"a\"><name content=\"A\"/><unknownChild/>\
+         </sacm:ArgumentPackage>"
+    );
+    // The SACM-XMI-003 input is an Error read strictly and a Warning read
+    // tolerantly, so the comparison below meets both answers.
+    for (mode, severity) in [
+        (Mode::Strict, Severity::Error),
+        (Mode::Tolerant, Severity::Warning),
+    ] {
+        let output = read_ok(API_016, "an element that is not SACM 2.3", mode, &unknown);
+        assert!(
+            output
+                .diagnostics()
+                .iter()
+                .any(|d| d.code() == Code::XMI_UNKNOWN_CONTENT && d.severity() == severity),
+            "{API_016}: setup: <unknownChild/> read in {mode:?} mode is not SACM-XMI-003 as \
+             {severity:?}: {:?}",
+            output.diagnostics()
+        );
+    }
+    let inputs = [
+        ("xsi:type", api_016_xsi_typed()),
+        ("xmi:version only", versioned),
+        ("an element that is not SACM 2.3", unknown),
+        ("clean", api_016_clean()),
+    ];
+    for (what, input) in &inputs {
+        for mode in MODES {
+            let output = read_ok(API_016, what, mode, input);
+            assert_eq!(
+                output.has_errors(),
+                diagnostic::has_errors(output.diagnostics()),
+                "{API_016}: {what}, read in {mode:?} mode: has_errors disagrees with \
+                 diagnostic::has_errors on {:?}",
+                output.diagnostics()
+            );
+        }
+    }
+}
+
+// ===========================================================================
 // LIB-COMPAT-007 1. Content Errors never refuse a strict write
 // ===========================================================================
 

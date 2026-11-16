@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- LIB-CLI-002: the xmi:XMI element carries the attribute "note", which is not SACM 2.3 or XMI 2.5.1: a strict read refuses the file, and a tolerant read opens it, keeping the attribute as preserved content with SACM-XMI-003 as a Warning. Otherwise clean. Hand-written. -->
+<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:sacm="http://www.omg.org/spec/SACM/20220301" note="kept">
+  <sacm:ArgumentPackage xmi:id="arguments">
+    <name lang="en" content="Arguments"/>
+  </sacm:ArgumentPackage>
+</xmi:XMI>

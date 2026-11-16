@@ -1,10 +1,18 @@
-//! End-to-end tests for `sacm validate` (LIB-CLI-002; ADR 0023).
+//! End-to-end tests for `sacm validate` (LIB-CLI-002; ADR 0023 and its
+//! amendment 1).
+//!
+//! `sacm validate` reads strictly by default; `--strict` names the default
+//! and `--tolerant` reads in tolerant mode, whose summary says `readable`,
+//! never `valid`. A file a strict read refuses but a tolerant read opens is
+//! `invalid` (exit 1, the refusal on stdout); a file neither mode opens is
+//! unreadable (exit 2, the refusal on stderr).
 //!
 //! The binary runs in `tests/data`, with the fixture's file name as its
 //! argument, so that the file name it prints is the same on every machine.
 //! The expected diagnostic lines are taken from the library (`xmi::read` and
-//! `validation::validate` on the same bytes), so these tests check what the
-//! command adds: the streams, the summary, the exit code and the JSON form.
+//! `validation::validate` on the same bytes, in the mode the case reads in),
+//! so these tests check what the command adds: the streams, the summary, the
+//! exit code and the JSON form.
 //!
 //! The JSON form is pinned by golden files in `tests/data/golden/`, one line
 //! each. ADR 0023 fixes the top-level keys and the diagnostic keys; the shape
@@ -92,12 +100,42 @@ fn findings(name: &str, mode: Mode) -> Vec<Diagnostic> {
     all
 }
 
-/// The library's refusal of an unreadable fixture.
-fn refusal(name: &str) -> ReadError {
-    match read_fixture(name, Mode::Tolerant) {
-        Ok(_) => panic!("{ROW}: setup: {name} is readable"),
+/// The library's refusal of a fixture that a read in `mode` refuses.
+fn refusal(name: &str, mode: Mode) -> ReadError {
+    match read_fixture(name, mode) {
+        Ok(_) => panic!("{ROW}: setup: {name} is readable in {mode:?} mode"),
         Err(error) => error,
     }
+}
+
+/// The library's strict refusal of a fixture that a tolerant read opens.
+fn strict_only_refusal(name: &str) -> ReadError {
+    let error = refusal(name, Mode::Strict);
+    if let Err(tolerant) = read_fixture(name, Mode::Tolerant) {
+        panic!("{ROW}: setup: a tolerant read refuses {name}: {tolerant}");
+    }
+    error
+}
+
+/// The JSON of a refusal: `{"code","location","locations","message"}`.
+fn json_refusal(error: &ReadError) -> String {
+    let locations: Vec<String> = error
+        .locations()
+        .iter()
+        .copied()
+        .map(json_location)
+        .collect();
+    format!(
+        "{{\"code\":{},\"location\":{},\"locations\":[{}],\"message\":{}}}",
+        error
+            .code()
+            .map_or_else(|| "null".to_owned(), |code| json_string(code.as_str())),
+        error
+            .location()
+            .map_or_else(|| "null".to_owned(), json_location),
+        locations.join(","),
+        json_string(&error.to_string())
+    )
 }
 
 /// The `Display` lines of `diagnostics`.
@@ -163,14 +201,41 @@ fn assert_unreadable(what: &str, run: &Run, file: &str, code: &str, error: &Read
 
 // --- Human format --------------------------------------------------------------
 
+/// Asserts that `run` is the human report of a readable file: exit `code`,
+/// stdout the library's diagnostic lines `expected` then `summary`, and
+/// stderr empty.
+fn assert_report(args: &[&str], run: &Run, code: i32, expected: &[String], summary: &str) {
+    assert_eq!(
+        run.code,
+        Some(code),
+        "{ROW}: {args:?}: exit code; stdout: {}; stderr: {}",
+        run.stdout,
+        run.stderr
+    );
+    let lines: Vec<&str> = run.stdout.lines().collect();
+    let Some((last, diagnostics)) = lines.split_last() else {
+        panic!("{ROW}: {args:?}: stdout is empty; stderr: {}", run.stderr);
+    };
+    assert_eq!(
+        diagnostics, expected,
+        "{ROW}: {args:?}: the diagnostic lines are not the library's, in order"
+    );
+    assert_eq!(
+        *last, summary,
+        "{ROW}: {args:?}: the last line is not the summary with its counts"
+    );
+    assert_eq!(run.stderr, "", "{ROW}: {args:?}: stderr is not empty");
+}
+
 #[test]
 fn lib_cli_002_a_clean_file_exits_0_and_prints_only_the_valid_summary() {
     assert!(
-        findings("clean.sacm.xmi", Mode::Tolerant).is_empty(),
-        "{ROW}: setup: the clean fixture has findings"
+        findings("clean.sacm.xmi", Mode::Strict).is_empty(),
+        "{ROW}: setup: the clean fixture has findings in strict mode"
     );
     for args in [
         &["clean.sacm.xmi"][..],
+        &["--strict", "clean.sacm.xmi"],
         &["--format", "human", "clean.sacm.xmi"],
     ] {
         let run = validate(args);
@@ -189,45 +254,85 @@ fn lib_cli_002_a_clean_file_exits_0_and_prints_only_the_valid_summary() {
 }
 
 #[test]
+fn lib_cli_002_with_tolerant_the_summary_says_readable_never_valid() {
+    let cases = [
+        (
+            "clean.sacm.xmi",
+            0,
+            None,
+            "clean.sacm.xmi: readable (0 errors, 0 warnings, 0 info)",
+        ),
+        (
+            "xsi-type.sacm.xmi",
+            0,
+            Some("warning SACM-XMI-010 "),
+            "xsi-type.sacm.xmi: readable (0 errors, 1 warning, 0 info)",
+        ),
+        (
+            "nameless-claim.sacm.xmi",
+            1,
+            Some("error SACM-MULT-001 "),
+            "nameless-claim.sacm.xmi: invalid (1 error, 0 warnings, 0 info)",
+        ),
+        (
+            "bad-literal.sacm.xmi",
+            0,
+            Some("warning SACM-ENUM-001 "),
+            "bad-literal.sacm.xmi: readable (0 errors, 1 warning, 0 info)",
+        ),
+    ];
+    for (file, code, line_start, summary) in cases {
+        let expected = lines_of(&findings(file, Mode::Tolerant));
+        match line_start {
+            None => assert!(
+                expected.is_empty(),
+                "{ROW}: setup: {file} has findings in tolerant mode: {expected:?}"
+            ),
+            Some(start) => assert!(
+                expected.iter().any(|line| line.starts_with(start)),
+                "{ROW}: setup: the library reports no {start:?} for {file} in tolerant mode: \
+                 {expected:?}"
+            ),
+        }
+        let args = ["--tolerant", file];
+        let run = validate(&args);
+        assert!(
+            !run.stdout.lines().any(|line| line.contains(": valid (")),
+            "{ROW}: {args:?}: a tolerant read is reported as valid: {:?}",
+            run.stdout
+        );
+        assert_report(&args, &run, code, &expected, summary);
+    }
+}
+
+#[test]
 fn lib_cli_002_a_nameless_claim_exits_1_with_the_mult_001_line_and_an_invalid_summary() {
-    let expected = lines_of(&findings("nameless-claim.sacm.xmi", Mode::Tolerant));
+    let expected = lines_of(&findings("nameless-claim.sacm.xmi", Mode::Strict));
     assert!(
         expected
             .iter()
             .any(|line| line.starts_with("error SACM-MULT-001 ")),
         "{ROW}: setup: the library reports no SACM-MULT-001: {expected:?}"
     );
-    let run = validate(&["nameless-claim.sacm.xmi"]);
-    assert_eq!(
-        run.code,
-        Some(1),
-        "{ROW}: exit code; stderr: {}",
-        run.stderr
+    let args = ["nameless-claim.sacm.xmi"];
+    assert_report(
+        &args,
+        &validate(&args),
+        1,
+        &expected,
+        "nameless-claim.sacm.xmi: invalid (1 error, 0 warnings, 0 info)",
     );
-    let lines: Vec<&str> = run.stdout.lines().collect();
-    let Some((summary, diagnostics)) = lines.split_last() else {
-        panic!("{ROW}: stdout is empty");
-    };
-    assert_eq!(
-        diagnostics, expected,
-        "{ROW}: the diagnostic lines are not the library's, in order"
-    );
-    assert_eq!(
-        *summary, "nameless-claim.sacm.xmi: invalid (1 error, 0 warnings, 0 info)",
-        "{ROW}: the last line is not the invalid summary with its counts"
-    );
-    assert_eq!(run.stderr, "", "{ROW}: stderr is not empty");
 }
 
 #[test]
-fn lib_cli_002_xsi_type_is_a_warning_by_default_and_an_error_with_strict() {
+fn lib_cli_002_xsi_type_is_an_error_by_default_and_a_warning_with_tolerant() {
     let cases = [
         (
             &["xsi-type.sacm.xmi"][..],
-            Mode::Tolerant,
-            0,
-            "warning SACM-XMI-010 ",
-            "xsi-type.sacm.xmi: valid (0 errors, 1 warning, 0 info)",
+            Mode::Strict,
+            1,
+            "error SACM-XMI-010 ",
+            "xsi-type.sacm.xmi: invalid (1 error, 0 warnings, 0 info)",
         ),
         (
             &["--strict", "xsi-type.sacm.xmi"],
@@ -236,6 +341,13 @@ fn lib_cli_002_xsi_type_is_a_warning_by_default_and_an_error_with_strict() {
             "error SACM-XMI-010 ",
             "xsi-type.sacm.xmi: invalid (1 error, 0 warnings, 0 info)",
         ),
+        (
+            &["--tolerant", "xsi-type.sacm.xmi"],
+            Mode::Tolerant,
+            0,
+            "warning SACM-XMI-010 ",
+            "xsi-type.sacm.xmi: readable (0 errors, 1 warning, 0 info)",
+        ),
     ];
     for (args, mode, code, line_start, wanted_summary) in cases {
         let expected = lines_of(&findings("xsi-type.sacm.xmi", mode));
@@ -243,72 +355,124 @@ fn lib_cli_002_xsi_type_is_a_warning_by_default_and_an_error_with_strict() {
             expected.iter().any(|line| line.starts_with(line_start)),
             "{ROW}: setup: the library reports no {line_start:?} in {mode:?} mode: {expected:?}"
         );
-        let run = validate(args);
+        assert_report(args, &validate(args), code, &expected, wanted_summary);
+    }
+}
+
+#[test]
+fn lib_cli_002_a_strict_refusal_of_a_file_a_tolerant_read_opens_exits_1_on_stdout() {
+    let cases = [
+        ("bad-literal.sacm.xmi", "SACM-ENUM-001"),
+        ("xmi-attribute.sacm.xmi", "error"),
+    ];
+    for (file, code) in cases {
+        let error = strict_only_refusal(file);
         assert_eq!(
-            run.code,
-            Some(code),
-            "{ROW}: {args:?}: exit code; stderr: {}",
-            run.stderr
+            error.code().map_or("error", |code| code.as_str()),
+            code,
+            "{ROW}: setup: the strict refusal of {file} has another code: {error:?}"
         );
-        let lines: Vec<&str> = run.stdout.lines().collect();
-        let Some((summary, diagnostics)) = lines.split_last() else {
-            panic!("{ROW}: {args:?}: stdout is empty");
-        };
-        assert_eq!(
-            diagnostics, expected,
-            "{ROW}: {args:?}: the diagnostic lines are not the library's"
+        let expected = format!(
+            "{file}: {code} {error}\n{file}: invalid (refused by a strict read; --tolerant opens it)\n"
         );
-        assert_eq!(
-            *summary, wanted_summary,
-            "{ROW}: {args:?}: the last line is not the summary with its counts"
-        );
-        assert_eq!(run.stderr, "", "{ROW}: {args:?}: stderr is not empty");
+        for args in [&[file][..], &["--strict", file]] {
+            let run = validate(args);
+            assert_eq!(
+                run.code,
+                Some(1),
+                "{ROW}: {args:?}: exit code; stdout: {}; stderr: {}",
+                run.stdout,
+                run.stderr
+            );
+            assert_eq!(
+                run.stdout, expected,
+                "{ROW}: {args:?}: stdout is not the strict refusal and the invalid summary"
+            );
+            assert_eq!(run.stderr, "", "{ROW}: {args:?}: stderr is not empty");
+        }
     }
 }
 
 #[test]
 fn lib_cli_002_a_missing_malformed_or_duplicate_id_file_exits_2_naming_the_file_and_code() {
-    let malformed = refusal("malformed.sacm.xmi");
-    assert_unreadable(
-        "malformed XML",
-        &validate(&["malformed.sacm.xmi"]),
-        "malformed.sacm.xmi",
-        "SACM-XML-001",
-        &malformed,
-    );
+    for (mode, flags) in [
+        (Mode::Strict, &[][..]),
+        (Mode::Strict, &["--strict"]),
+        (Mode::Tolerant, &["--tolerant"]),
+    ] {
+        let args = |file: &'static str| {
+            let mut all = flags.to_vec();
+            all.push(file);
+            all
+        };
+        let malformed = refusal("malformed.sacm.xmi", mode);
+        assert_unreadable(
+            &format!("malformed XML, {flags:?}"),
+            &validate(&args("malformed.sacm.xmi")),
+            "malformed.sacm.xmi",
+            "SACM-XML-001",
+            &malformed,
+        );
 
-    let run = validate(&["duplicate-id.sacm.xmi"]);
-    assert!(
-        run.stderr
-            .starts_with("sacm: duplicate-id.sacm.xmi: SACM-ID-001 "),
-        "{ROW}: a duplicate id does not name the file and SACM-ID-001 on stderr: {:?}",
-        run.stderr
-    );
-    assert_unreadable(
-        "a duplicate id",
-        &run,
-        "duplicate-id.sacm.xmi",
-        "SACM-ID-001",
-        &refusal("duplicate-id.sacm.xmi"),
-    );
+        let run = validate(&args("duplicate-id.sacm.xmi"));
+        assert!(
+            run.stderr
+                .starts_with("sacm: duplicate-id.sacm.xmi: SACM-ID-001 "),
+            "{ROW}: {flags:?}: a duplicate id does not name the file and SACM-ID-001 on stderr: \
+             {:?}",
+            run.stderr
+        );
+        assert_unreadable(
+            &format!("a duplicate id, {flags:?}"),
+            &run,
+            "duplicate-id.sacm.xmi",
+            "SACM-ID-001",
+            &refusal("duplicate-id.sacm.xmi", mode),
+        );
 
-    let missing = validate(&["missing.sacm.xmi"]);
-    assert_eq!(
-        missing.code,
-        Some(2),
-        "{ROW}: a missing file: exit code; stderr: {}",
-        missing.stderr
-    );
-    assert_eq!(
-        missing.stdout, "",
-        "{ROW}: a missing file: stdout is not empty"
-    );
-    assert!(
-        missing.stderr.starts_with("sacm: missing.sacm.xmi: ")
-            && missing.stderr.lines().count() == 1,
-        "{ROW}: a missing file is not one stderr line naming it: {:?}",
-        missing.stderr
-    );
+        let missing = validate(&args("missing.sacm.xmi"));
+        assert_eq!(
+            missing.code,
+            Some(2),
+            "{ROW}: {flags:?}: a missing file: exit code; stderr: {}",
+            missing.stderr
+        );
+        assert_eq!(
+            missing.stdout, "",
+            "{ROW}: {flags:?}: a missing file: stdout is not empty"
+        );
+        assert!(
+            missing.stderr.starts_with("sacm: missing.sacm.xmi: ")
+                && missing.stderr.lines().count() == 1,
+            "{ROW}: {flags:?}: a missing file is not one stderr line naming it: {:?}",
+            missing.stderr
+        );
+    }
+}
+
+#[test]
+fn lib_cli_002_a_file_neither_mode_opens_exits_2_even_without_a_code() {
+    for (mode, flags) in [
+        (Mode::Strict, &[][..]),
+        (Mode::Strict, &["--strict"]),
+        (Mode::Tolerant, &["--tolerant"]),
+    ] {
+        let error = refusal("latin-1.sacm.xmi", mode);
+        assert!(
+            matches!(error, ReadError::Unsupported { .. }) && error.code().is_none(),
+            "{ROW}: setup: latin-1.sacm.xmi is not refused as Unsupported without a code in \
+             {mode:?} mode: {error:?}"
+        );
+        let mut args = flags.to_vec();
+        args.push("latin-1.sacm.xmi");
+        assert_unreadable(
+            &format!("an ISO-8859-1 file, {flags:?}"),
+            &validate(&args),
+            "latin-1.sacm.xmi",
+            "error",
+            &error,
+        );
+    }
 }
 
 // --- JSON format -----------------------------------------------------------------
@@ -322,6 +486,11 @@ fn lib_cli_002_json_output_equals_the_golden_text_and_is_identical_across_runs()
             0,
         ),
         (
+            &["--tolerant", "--format", "json", "clean.sacm.xmi"],
+            "validate-clean-tolerant.json",
+            0,
+        ),
+        (
             &["--format", "json", "nameless-claim.sacm.xmi"],
             "validate-nameless-claim.json",
             1,
@@ -329,12 +498,27 @@ fn lib_cli_002_json_output_equals_the_golden_text_and_is_identical_across_runs()
         (
             &["--format", "json", "xsi-type.sacm.xmi"],
             "validate-xsi-type.json",
-            0,
+            1,
         ),
         (
             &["--strict", "--format", "json", "xsi-type.sacm.xmi"],
-            "validate-xsi-type-strict.json",
+            "validate-xsi-type.json",
             1,
+        ),
+        (
+            &["--tolerant", "--format", "json", "xsi-type.sacm.xmi"],
+            "validate-xsi-type-tolerant.json",
+            0,
+        ),
+        (
+            &["--format", "json", "bad-literal.sacm.xmi"],
+            "validate-bad-literal.json",
+            1,
+        ),
+        (
+            &["--tolerant", "--format", "json", "bad-literal.sacm.xmi"],
+            "validate-bad-literal-tolerant.json",
+            0,
         ),
         (
             &["--format", "json", "malformed.sacm.xmi"],
@@ -367,14 +551,115 @@ fn lib_cli_002_json_output_equals_the_golden_text_and_is_identical_across_runs()
 }
 
 #[test]
+fn lib_cli_002_json_for_a_strict_refusal_without_a_code_is_invalid_or_unreadable_by_what_a_tolerant_read_opens()
+ {
+    // A tolerant read opens xmi-attribute.sacm.xmi: the strict refusal is a
+    // failed check.
+    let error = strict_only_refusal("xmi-attribute.sacm.xmi");
+    assert!(
+        matches!(error, ReadError::Unsupported { .. })
+            && error.code().is_none()
+            && error.location().map(|at| (at.line(), at.column())) == Some((3, 110)),
+        "{ROW}: setup: xmi-attribute.sacm.xmi is not refused strictly as Unsupported without a \
+         code at line 3, column 110: {error:?}"
+    );
+    let expected = format!(
+        "{{\"format\":1,\"file\":\"xmi-attribute.sacm.xmi\",\"mode\":\"strict\",\"result\":\"invalid\",\
+         \"refusal\":{},\"diagnostics\":[]}}\n",
+        json_refusal(&error)
+    );
+    assert!(
+        expected.contains(r#""refusal":{"code":null,"location":{"line":3,"column":110},"locations":[{"line":3,"column":110}],"#),
+        "{ROW}: setup: the expected refusal is not code null at line 3, column 110: {expected}"
+    );
+    let run = validate(&["--format", "json", "xmi-attribute.sacm.xmi"]);
+    assert_eq!(
+        run.code,
+        Some(1),
+        "{ROW}: xmi-attribute: exit code; stdout: {}; stderr: {}",
+        run.stdout,
+        run.stderr
+    );
+    assert_eq!(run.stdout, expected, "{ROW}: the JSON of xmi-attribute");
+    assert_eq!(run.stderr, "", "{ROW}: xmi-attribute: stderr is not empty");
+
+    // Neither mode opens latin-1.sacm.xmi: it is unreadable.
+    let error = refusal("latin-1.sacm.xmi", Mode::Strict);
+    assert!(
+        read_fixture("latin-1.sacm.xmi", Mode::Tolerant).is_err() && error.code().is_none(),
+        "{ROW}: setup: latin-1.sacm.xmi is read tolerantly, or its strict refusal has a code: \
+         {error:?}"
+    );
+    let expected = format!(
+        "{{\"format\":1,\"file\":\"latin-1.sacm.xmi\",\"mode\":\"strict\",\"result\":\"unreadable\",\
+         \"refusal\":{},\"diagnostics\":[]}}\n",
+        json_refusal(&error)
+    );
+    let run = validate(&["--format", "json", "latin-1.sacm.xmi"]);
+    assert_eq!(
+        run.code,
+        Some(2),
+        "{ROW}: latin-1: exit code; stdout: {}; stderr: {}",
+        run.stdout,
+        run.stderr
+    );
+    assert_eq!(run.stdout, expected, "{ROW}: the JSON of latin-1");
+    assert_eq!(run.stderr, "", "{ROW}: latin-1: stderr is not empty");
+}
+
+#[test]
+fn lib_cli_002_json_for_a_file_a_tolerant_read_refuses_names_the_tolerant_mode() {
+    // The refusal reported is the one in the mode asked for, and `mode` says
+    // which: `tolerant` with `--tolerant`, for both a refusal and an I/O error.
+    let error = refusal("latin-1.sacm.xmi", Mode::Tolerant);
+    let expected = format!(
+        "{{\"format\":1,\"file\":\"latin-1.sacm.xmi\",\"mode\":\"tolerant\",\"result\":\"unreadable\",\
+         \"refusal\":{},\"diagnostics\":[]}}\n",
+        json_refusal(&error)
+    );
+    let run = validate(&["--tolerant", "--format", "json", "latin-1.sacm.xmi"]);
+    assert_eq!(
+        run.code,
+        Some(2),
+        "{ROW}: latin-1, --tolerant: exit code; stdout: {}; stderr: {}",
+        run.stdout,
+        run.stderr
+    );
+    assert_eq!(
+        run.stdout, expected,
+        "{ROW}: the JSON of latin-1 read with --tolerant"
+    );
+    assert_eq!(
+        run.stderr, "",
+        "{ROW}: latin-1, --tolerant: stderr is not empty"
+    );
+
+    let run = validate(&["--tolerant", "--format", "json", "missing.sacm.xmi"]);
+    assert_eq!(
+        run.code,
+        Some(2),
+        "{ROW}: a missing file, --tolerant: exit code; stderr: {}",
+        run.stderr
+    );
+    assert!(
+        run.stdout.starts_with(
+            "{\"format\":1,\"file\":\"missing.sacm.xmi\",\"mode\":\"tolerant\",\"result\":\"unreadable\",\"refusal\":{\"code\":null,"
+        ),
+        "{ROW}: a missing file read with --tolerant is not an unreadable result in tolerant mode: \
+         {:?}",
+        run.stdout
+    );
+}
+
+#[test]
 fn lib_cli_002_json_for_a_duplicate_id_has_the_refusal_with_its_code_and_every_location() {
-    let error = refusal("duplicate-id.sacm.xmi");
+    let error = refusal("duplicate-id.sacm.xmi", Mode::Strict);
     // The Claims carrying c1 start at line 5, column 3 and line 8, column 3;
     // the second is the first repeat.
     let first = r#"{"line":5,"column":3}"#;
     let repeat = r#"{"line":8,"column":3}"#;
     let expected = format!(
-        "{{\"format\":1,\"file\":\"duplicate-id.sacm.xmi\",\"mode\":\"tolerant\",\"result\":\"unreadable\",\
+        "{{\"format\":1,\"file\":\"duplicate-id.sacm.xmi\",\"mode\":\"strict\",\"result\":\"unreadable\",\
          \"refusal\":{{\"code\":\"SACM-ID-001\",\"location\":{repeat},\"locations\":[{first},{repeat}],\"message\":{}}},\
          \"diagnostics\":[]}}\n",
         json_string(&error.to_string()),
@@ -417,7 +702,7 @@ fn lib_cli_002_json_for_a_missing_file_is_unreadable_with_a_refusal() {
     wanted.sort_unstable();
     assert_eq!(keys, wanted, "{ROW}: the keys of the JSON object");
     assert!(
-        run.stdout.starts_with("{\"format\":1,\"file\":\"missing.sacm.xmi\",\"mode\":\"tolerant\",\"result\":\"unreadable\",\"refusal\":{"),
+        run.stdout.starts_with("{\"format\":1,\"file\":\"missing.sacm.xmi\",\"mode\":\"strict\",\"result\":\"unreadable\",\"refusal\":{"),
         "{ROW}: the JSON does not start as an unreadable result with a refusal: {:?}",
         run.stdout
     );
@@ -501,7 +786,7 @@ fn lib_cli_002_json_escapes_control_characters_in_the_file_name() {
     assert_eq!(
         run.stdout,
         concat!(
-            r#"{"format":1,"file":"q\"b\\s\r\n\u0001.sacm.xmi","mode":"tolerant","result":"valid","#,
+            r#"{"format":1,"file":"q\"b\\s\r\n\u0001.sacm.xmi","mode":"strict","result":"valid","#,
             r#""refusal":null,"diagnostics":[]}"#,
             "\n"
         ),
@@ -514,21 +799,27 @@ fn lib_cli_002_json_goldens_agree_with_the_library() {
     // A check on the golden files themselves: each value in them is the one
     // the library gives for the fixture.
     let readable = [
-        ("validate-clean.json", "clean.sacm.xmi", Mode::Tolerant),
+        ("validate-clean.json", "clean.sacm.xmi", Mode::Strict),
+        (
+            "validate-clean-tolerant.json",
+            "clean.sacm.xmi",
+            Mode::Tolerant,
+        ),
         (
             "validate-nameless-claim.json",
             "nameless-claim.sacm.xmi",
-            Mode::Tolerant,
-        ),
-        (
-            "validate-xsi-type.json",
-            "xsi-type.sacm.xmi",
-            Mode::Tolerant,
-        ),
-        (
-            "validate-xsi-type-strict.json",
-            "xsi-type.sacm.xmi",
             Mode::Strict,
+        ),
+        ("validate-xsi-type.json", "xsi-type.sacm.xmi", Mode::Strict),
+        (
+            "validate-xsi-type-tolerant.json",
+            "xsi-type.sacm.xmi",
+            Mode::Tolerant,
+        ),
+        (
+            "validate-bad-literal-tolerant.json",
+            "bad-literal.sacm.xmi",
+            Mode::Tolerant,
         ),
     ];
     for (name, file, mode) in readable {
@@ -557,7 +848,7 @@ fn lib_cli_002_json_goldens_agree_with_the_library() {
             "{ROW}: {name} does not hold the library's diagnostics:\n{expected}\n{text}"
         );
     }
-    let error = refusal("malformed.sacm.xmi");
+    let error = refusal("malformed.sacm.xmi", Mode::Strict);
     let location = error.location().expect("a located refusal");
     let refusal_text = format!(
         "\"refusal\":{{\"code\":\"SACM-XML-001\",\"location\":{},\"locations\":[{}],\"message\":{}}}",
@@ -570,6 +861,22 @@ fn lib_cli_002_json_goldens_agree_with_the_library() {
         text.contains(&refusal_text),
         "{ROW}: validate-malformed.json does not hold the library's refusal:\n{refusal_text}\n{text}"
     );
+
+    // The strict refusal of a file a tolerant read opens.
+    let error = strict_only_refusal("bad-literal.sacm.xmi");
+    let location = error.location().expect("a located refusal");
+    let refusal_text = format!(
+        "\"refusal\":{{\"code\":\"SACM-ENUM-001\",\"location\":{},\"locations\":[{}],\"message\":{}}},\"diagnostics\":[]}}\n",
+        json_location(location),
+        json_location(location),
+        json_string(&error.to_string())
+    );
+    let text = golden("validate-bad-literal.json");
+    assert!(
+        text.contains(&refusal_text),
+        "{ROW}: validate-bad-literal.json does not hold the library's strict refusal:\n\
+         {refusal_text}\n{text}"
+    );
 }
 
 // --- Arguments ---------------------------------------------------------------------
@@ -579,8 +886,19 @@ fn lib_cli_002_an_unknown_flag_a_bad_format_or_no_file_exits_2_with_usage() {
     let cases = [
         &["--no-such-flag", "clean.sacm.xmi"][..],
         &["--format", "xml", "clean.sacm.xmi"],
+        &["--strict", "--tolerant", "clean.sacm.xmi"],
         &[],
     ];
+    // Both flags are known, and they conflict: the error names the two, not
+    // an unknown argument.
+    let both = validate(&["--strict", "--tolerant", "clean.sacm.xmi"]);
+    assert!(
+        both.stderr.lines().any(|line| line.starts_with("error:")
+            && line.contains("--strict")
+            && line.contains("--tolerant")),
+        "{ROW}: --strict with --tolerant is not an error naming both flags: {}",
+        both.stderr
+    );
     for args in cases {
         let run = validate(args);
         assert_eq!(
