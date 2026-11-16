@@ -546,6 +546,11 @@ mod tests {
             }
             Operation::CreateNote(_) => sampled!(OPERATIONS, "CreateNote"),
             Operation::CreateTaggedValue(_) => sampled!(OPERATIONS, "CreateTaggedValue"),
+            Operation::CreateArtifactPackage(_) => sampled!(OPERATIONS, "CreateArtifactPackage"),
+            Operation::CreateProperty(_) => sampled!(OPERATIONS, "CreateProperty"),
+            Operation::CreateTechnique(_) => sampled!(OPERATIONS, "CreateTechnique"),
+            Operation::CreateParticipant(_) => sampled!(OPERATIONS, "CreateParticipant"),
+            Operation::CreateArtifactGroup(_) => sampled!(OPERATIONS, "CreateArtifactGroup"),
             Operation::SetName(_) => sampled!(OPERATIONS, "SetName"),
             Operation::SetGid(_) => sampled!(OPERATIONS, "SetGid"),
             Operation::SetFlag(_) => sampled!(OPERATIONS, "SetFlag"),

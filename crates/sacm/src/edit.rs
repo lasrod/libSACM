@@ -38,14 +38,19 @@
 //! | [`CreateImplementationConstraint`] | an `ImplementationConstraint` (§8.8) | no | [`new`](CreateImplementationConstraint::new) |
 //! | [`CreateNote`] | a `Note` (§8.11) | no | [`new`](CreateNote::new) |
 //! | [`CreateTaggedValue`] | a `TaggedValue` (§8.12) | no | [`new`](CreateTaggedValue::new) |
+//! | [`CreateArtifactPackage`] | an `ArtifactPackage` (§12.2) | [`root`](CreateArtifactPackage::root) | [`new`](CreateArtifactPackage::new) |
+//! | [`CreateProperty`] | a `Property` (§12.8) | no | [`new`](CreateProperty::new) |
+//! | [`CreateTechnique`] | a `Technique` (§12.12) | no | [`new`](CreateTechnique::new) |
+//! | [`CreateParticipant`] | a `Participant` (§12.13) | no | [`new`](CreateParticipant::new) |
+//! | [`CreateArtifactGroup`] | an `ArtifactGroup` (§12.3), with its optional members (`artifactElement`) | no | [`new`](CreateArtifactGroup::new) |
 //!
 //! A root is added after the document's last root; a child after its parent's
 //! last child. A parent is legal exactly when SACM lets its class contain the
 //! new element (it has a composite role for that kind), the same rules
 //! [`xmi::read`](crate::xmi::read) uses. So a Claim goes in an
-//! ArgumentPackage, not directly in an AssuranceCasePackage. An
-//! ArtifactPackage, a package interface or a package binding is also a legal
-//! parent, though this release cannot create or read those yet.
+//! ArgumentPackage, not directly in an AssuranceCasePackage, and a Technique
+//! in an ArtifactPackage. A package interface or a package binding is also a
+//! legal parent, though this release cannot create or read those yet.
 //!
 //! **The name is required**, because SACM gives every `ModelElement` exactly
 //! one name (§8.6 `name:LangString[1]`). Every operation that creates one
@@ -72,8 +77,9 @@
 //! either (D-VAL-LAYER): an `ArgumentAsset` for a source or the target, an
 //! `ArgumentReasoning` for the reasoning, an `ArgumentPackage` for the
 //! structure, an `ArtifactElement` (any element but a `UtilityElement`) for
-//! a `referencedArtifactElement`, and an `ArgumentationElement` for a group
-//! member. The narrower rules of §11.15, §11.17 and §11.18, that the ends of
+//! a `referencedArtifactElement`, an `ArgumentationElement` for a member of
+//! an `ArgumentGroup`, and an `ArtifactElement` for a member of an
+//! `ArtifactGroup`. The narrower rules of §11.15, §11.17 and §11.18, that the ends of
 //! an `AssertedEvidence`, `AssertedArtifactSupport` or
 //! `AssertedArtifactContext` be `ArtifactReference`s, are content: a create
 //! does not refuse them, and
@@ -176,7 +182,7 @@
 //! | 3. a caller id is an `NCName` | [`EditError::InvalidId`] | SACM-ID-002 | An `NCName` starts with a letter or `_` and continues with letters, digits, `-`, `.` or `_`; it has no spaces and no `:`. Or leave out `with_id` to have an id generated. |
 //! | 4. a caller id is not in use | [`EditError::DuplicateId`] | SACM-CMD-004 | Ids are unique across the whole document, not per parent. Choose another id, or leave out `with_id` to have one generated. |
 //! | 5. an asserted relationship has a source | [`EditError::TooFewReferences`] | SACM-MULT-001 | Give at least one source: SACM requires one (`source:ArgumentAsset[1..*]`). |
-//! | 6. no referenced id holds XML white space (space, TAB, LF, CR): each source in order, then the target, the `reasoning`, the `structure`, the `referencedArtifactElement` ids and the group members | [`EditError::InvalidReference`] | SACM-ID-002 | An id such as `a b`, read from a file as written, is not an `NCName` and would be written as two ids. Give the referenced element an `NCName` id in the file. |
+//! | 6. no referenced id holds XML white space (space, TAB, LF, CR): each source in order, then the target, the `reasoning`, the `structure`, the `referencedArtifactElement` ids and the group members (`argumentElement` or `artifactElement`) | [`EditError::InvalidReference`] | SACM-ID-002 | An id such as `a b`, read from a file as written, is not an `NCName` and would be written as two ids. Give the referenced element an `NCName` id in the file. |
 //! | 7. every referenced id names an element, in the same order | [`EditError::ReferenceNotFound`] | SACM-CMD-001 | Create the referenced element first, or correct its id. Ids are compared exactly, case included. |
 //! | 8. every referenced id names an element of a kind its end admits, in the same order | [`EditError::WrongReferenceType`] | SACM-REF-002 | Reference an element of the end's type: for example, an `ArgumentPackage` as a `structure`, and an `ArgumentAsset`, not a package, as a source. |
 //!
@@ -278,6 +284,7 @@
 //! ```
 
 mod argumentation;
+mod artifact;
 mod batch;
 mod create;
 mod delete;
@@ -296,6 +303,9 @@ pub use argumentation::{
     CreateArgumentGroup, CreateArgumentReasoning, CreateArtifactReference,
     CreateAssertedArtifactContext, CreateAssertedArtifactSupport, CreateAssertedContext,
     CreateAssertedEvidence, CreateAssertedInference,
+};
+pub use artifact::{
+    CreateArtifactGroup, CreateArtifactPackage, CreateParticipant, CreateProperty, CreateTechnique,
 };
 pub use batch::{Batch, BatchError, BatchMutation};
 pub use create::{CreateArgumentPackage, CreateAssuranceCasePackage, CreateClaim};
@@ -715,6 +725,11 @@ fn plan<'o>(document: &Document, operation: &'o Operation) -> Result<Plan<'o>, E
         Operation::CreateImplementationConstraint(create) => create.plan(document),
         Operation::CreateNote(create) => create.plan(document),
         Operation::CreateTaggedValue(create) => create.plan(document),
+        Operation::CreateArtifactPackage(create) => create.plan(document),
+        Operation::CreateProperty(create) => create.plan(document),
+        Operation::CreateTechnique(create) => create.plan(document),
+        Operation::CreateParticipant(create) => create.plan(document),
+        Operation::CreateArtifactGroup(create) => create.plan(document),
         Operation::SetName(set) => set.plan(document),
         Operation::SetGid(set) => set.plan(document),
         Operation::SetFlag(set) => set.plan(document),
@@ -782,6 +797,16 @@ pub enum Operation {
     CreateNote(CreateNote),
     /// Creates a `TaggedValue`.
     CreateTaggedValue(CreateTaggedValue),
+    /// Creates an `ArtifactPackage`.
+    CreateArtifactPackage(CreateArtifactPackage),
+    /// Creates a `Property`.
+    CreateProperty(CreateProperty),
+    /// Creates a `Technique`.
+    CreateTechnique(CreateTechnique),
+    /// Creates a `Participant`.
+    CreateParticipant(CreateParticipant),
+    /// Creates an `ArtifactGroup`.
+    CreateArtifactGroup(CreateArtifactGroup),
     /// Sets the name of a `ModelElement`.
     SetName(SetName),
     /// Sets or removes the `gid` of an element.
@@ -819,7 +844,9 @@ impl Operation {
     /// `"CreateAssertedEvidence"`, `"CreateAssertedArtifactSupport"`,
     /// `"CreateAssertedArtifactContext"`, `"CreateDescription"`,
     /// `"CreateImplementationConstraint"`, `"CreateNote"`,
-    /// `"CreateTaggedValue"`, `"SetName"`, `"SetGid"`, `"SetFlag"`,
+    /// `"CreateTaggedValue"`, `"CreateArtifactPackage"`, `"CreateProperty"`,
+    /// `"CreateTechnique"`, `"CreateParticipant"`, `"CreateArtifactGroup"`,
+    /// `"SetName"`, `"SetGid"`, `"SetFlag"`,
     /// `"SetAssertionDeclaration"`, `"SetContent"`, `"SetKey"`,
     /// `"SetReferences"`, `"AddReference"`, `"RemoveReference"`,
     /// `"ReorderElements"` and `"DeleteElement"`. The two forms of one struct, such as
@@ -852,6 +879,11 @@ impl Operation {
             Self::CreateImplementationConstraint(_) => "CreateImplementationConstraint",
             Self::CreateNote(_) => "CreateNote",
             Self::CreateTaggedValue(_) => "CreateTaggedValue",
+            Self::CreateArtifactPackage(_) => "CreateArtifactPackage",
+            Self::CreateProperty(_) => "CreateProperty",
+            Self::CreateTechnique(_) => "CreateTechnique",
+            Self::CreateParticipant(_) => "CreateParticipant",
+            Self::CreateArtifactGroup(_) => "CreateArtifactGroup",
             Self::SetName(_) => "SetName",
             Self::SetGid(_) => "SetGid",
             Self::SetFlag(_) => "SetFlag",

@@ -10,55 +10,23 @@ assurance cases as standard XMI.
 
 ## Status
 
-Milestone M1, a minimal editable vertical slice, is done: `sacm::model` provides a
-`Document`, read through borrowing views and changed with `sacm::edit::apply`,
-`ElementId`, the metamodel's element kinds, element names, each Assertion's
-`assertionDeclaration` and the first value types (`LangString`, `MultiLangString`,
-`AssertionDeclaration`), and `sacm::diagnostic` provides the `Diagnostic` type.
-`sacm::xmi::read` reads `AssuranceCasePackage` and `ArgumentPackage` roots, the
-AssuranceCasePackages, ArgumentPackages and Claims in them, their names and each
-Claim's `assertionDeclaration`. It refuses unsafe and malformed input and roots
-that are not SACM packages with a diagnostic code; it keeps content that is not SACM 2.3
-as preserved content, with SACM-XMI-003, and refuses conforming content it does not read
-yet as `Unsupported`; it reports a missing or padded `xmi:id`, an `xsi:type` or an
-`xmi:version` as a diagnostic. Reading and writing take a strict or tolerant `sacm::xmi::Mode`.
-`sacm::xmi::write` writes a document, its names, `gid`s, contents, keys and declarations
-deterministically, preserved content included; in strict mode, the default, it refuses a
-document that holds preserved content or that validation reports an Error for. A later release may add validation rules, so a strict write may
-then refuse a document it wrote before.
-`sacm::validation::validate` reports each `ModelElement` with no name and each id that is
-not an XML `NCName`.
-`sacm::edit::apply` creates AssuranceCasePackage, ArgumentPackage and Claim elements,
-each with a name and a given or generated id, or refuses and changes nothing; what it
-builds writes and reads back.
+Milestones M0 (foundation), M1 (a minimal editable vertical slice) and M2 (base model and
+argumentation) are done, and M3 (artifact model) has begun. Today `sacm::xmi::read` reads
+`AssuranceCasePackage`, `ArgumentPackage` and `ArtifactPackage` roots and, in them, nested
+packages, the argumentation elements (Claim, ArgumentReasoning, ArtifactReference,
+ArgumentGroup and the five asserted relationships) and the artifact elements Property,
+Technique, Participant and ArtifactGroup, each with its name, `gid`, flags, references,
+descriptions, notes, implementation constraints and tagged values. Content that is not
+SACM 2.3 is kept as preserved content (SACM-XMI-003); conforming content it does not read
+yet, such as an Artifact, a terminology element or an interface, is refused as
+`Unsupported`. Nothing is dropped.
 
-Milestone M2 has begun: every element's `gid`, its `isCitation` and `isAbstract` flags,
-its `citedElement` and `abstractForm` references (held as ids, kept even when they name no
-element), and the descriptions, notes, implementation constraints and tagged values of
-each readable element, are read, written and compared. So are ArgumentReasoning,
-ArtifactReference and ArgumentGroup elements and the five asserted relationships
-(AssertedInference, AssertedEvidence, AssertedContext, AssertedArtifactSupport and
-AssertedArtifactContext), with their sources, target, reasoning, `isCounter`,
-meta-claims, structure, referenced artifact elements and group members.
-`sacm::edit::apply` creates those eight kinds, and descriptions, notes, implementation
-constraints and tagged values, and refuses a reference that names no element or an
-element its end's declared type does not admit (the stricter §11.15, §11.17 and §11.18
-rules, that evidence and artifact relationships link ArtifactReferences, are left to
-validation), and edits the names, `gid`s, flags, declarations, contents, keys and
-references of existing elements and the order of children and roots; and
-`sacm::validation::validate` reports each `content` or `key` text that is empty or gives
-one language twice, each tagged value without a key, each `gid` two elements share, each
-element with more than one description, each ArgumentPackage that nests one and also holds
-other argumentation elements, each reference that names no element or an element of the
-wrong kind, each element with a `citedElement` whose `isCitation` is not true, each
-`abstractForm` that breaks a §8.2 rule, each asserted relationship without a source or a
-target, each evidence or artifact relationship whose ends are not artifact references,
-and each id a reference end repeats. The other element kinds in XMI, the other
-validation rules and undo are not built yet; editing covers creating, setting, reordering
-and deleting elements, previews and atomic batches. Milestone M0, the foundation, is done: the workspace, CI, the functionality matrix
-and its gate, and mutation testing.
-The [functionality matrix](docs/matrix/functionality-matrix.md) shows what is verified;
-nothing else is claimed.
+`sacm::xmi::write` writes the same kinds deterministically, `sacm::edit::apply` creates
+and edits them atomically, `sacm::validation::validate` checks names, ids, gids, contents,
+references and the argumentation rules, and `sacm::compare::semantic_compare` lists
+differences. The terminology package, interfaces and bindings, the other validation rules
+and undo are not built yet. The [functionality matrix](docs/matrix/functionality-matrix.md)
+shows what is verified; nothing else is claimed.
 
 ## What SACM is
 

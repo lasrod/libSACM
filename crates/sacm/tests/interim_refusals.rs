@@ -21,7 +21,8 @@
 //!
 //! The xtask test `xtask/tests/interim_refusals.rs` checks the list itself:
 //! that `Unsupported` is built nowhere else, and that each row it names is
-//! open and, for `Interim`, gates every compliance point.
+//! open and, for `Interim`, gates SACM23-CP-001 and the compliance point of
+//! the row's own package.
 
 use sacm::xmi::{self, Mode, ReadError, ReadOptions};
 
@@ -155,12 +156,12 @@ fn assert_text_refused_with(entry: &str, what: &str, input: &str, label: &str) {
     assert_refused_with(entry, what, input.as_bytes(), label);
 }
 
-// --- Interim: the ten package, interface and binding kinds --------------------------
+// --- Interim: the nine package, interface and binding kinds -------------------------
 
 #[test]
 fn lib_api_011_each_unread_package_interface_and_binding_kind_names_its_row() {
+    // An ArtifactPackage is read since slice 0052 (SACM23-ART-001).
     let kinds = [
-        ("ArtifactPackage", "SACM23-ART-001"),
         ("ArtifactPackageInterface", "SACM23-ART-012"),
         ("ArtifactPackageBinding", "SACM23-ART-013"),
         ("TerminologyPackage", "SACM23-TERM-001"),
@@ -179,7 +180,7 @@ fn lib_api_011_each_unread_package_interface_and_binding_kind_names_its_row() {
 #[test]
 fn lib_api_011_an_unread_kind_inside_a_package_names_its_row() {
     // The same kinds, as children: an ArgumentPackageInterface in an
-    // ArgumentPackage, an ArtifactPackage in an AssuranceCasePackage.
+    // ArgumentPackage, a TerminologyPackage in an AssuranceCasePackage.
     let interface = package(
         "<argumentElement xmi:type=\"sacm:ArgumentPackageInterface\" xmi:id=\"i\"><name content=\"i\"/></argumentElement>",
     );
@@ -189,16 +190,64 @@ fn lib_api_011_an_unread_kind_inside_a_package_names_its_row() {
         &interface,
         &interim("SACM23-ARG-014"),
     );
-    let artifacts = format!(
+    let terminology = format!(
         "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name content=\"case\"/>\
-         <artifactPackage xmi:id=\"a\"><name content=\"a\"/></artifactPackage>\
+         <terminologyPackage xmi:id=\"f\"><name content=\"f\"/></terminologyPackage>\
          </sacm:AssuranceCasePackage>"
     );
     assert_text_refused_with(
-        "ArtifactPackage",
+        "TerminologyPackage",
         "in an AssuranceCasePackage",
-        &artifacts,
-        &interim("SACM23-ART-001"),
+        &terminology,
+        &interim("SACM23-TERM-001"),
+    );
+}
+
+// --- Interim: the kinds an ArtifactPackage holds that are not read yet --------------
+
+/// A root ArtifactPackage `a` holding `body`.
+fn artifact_package(body: &str) -> String {
+    format!(
+        "<sacm:ArtifactPackage{NS} xmi:id=\"a\"><name content=\"a\"/>{body}</sacm:ArtifactPackage>"
+    )
+}
+
+#[test]
+fn lib_api_011_each_unread_artifact_element_kind_names_its_row() {
+    // The nine kinds that are not packages, interfaces or bindings, and that
+    // an ArtifactPackage can hold since slice 0052 reads it (ADR 0034): one
+    // entry each.
+    let kinds = [
+        ("Artifact", "SACM23-ART-004"),
+        ("Resource", "SACM23-ART-005"),
+        ("Activity", "SACM23-ART-006"),
+        ("Event", "SACM23-ART-007"),
+        ("ArtifactAssetRelationship", "SACM23-ART-010"),
+        ("Category", "SACM23-TERM-002"),
+        ("Term", "SACM23-TERM-004"),
+        ("Expression", "SACM23-TERM-005"),
+        ("TerminologyGroup", "SACM23-TERM-006"),
+    ];
+    for (kind, row) in kinds {
+        let input = artifact_package(&format!(
+            "<artifactElement xmi:type=\"sacm:{kind}\" xmi:id=\"x\"><name content=\"x\"/></artifactElement>"
+        ));
+        assert_text_refused_with(kind, "in an ArtifactPackage", &input, &interim(row));
+    }
+}
+
+#[test]
+fn lib_api_011_the_model_spelling_artifact_asserted_relationship_names_sacm23_xmi_009() {
+    // ptc/22-03-13 spells ArtifactAssetRelationship
+    // `ArtifactAssertedRelationship`: a tolerance (ADR 0034).
+    let input = artifact_package(
+        "<artifactElement xmi:type=\"sacm:ArtifactAssertedRelationship\" xmi:id=\"r\"><name content=\"r\"/></artifactElement>",
+    );
+    assert_text_refused_with(
+        "ModelSpelling",
+        "ArtifactAssertedRelationship in an ArtifactPackage",
+        &input,
+        &tolerance("SACM23-XMI-009"),
     );
 }
 

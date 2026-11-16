@@ -446,7 +446,8 @@ catalog! {
     /// with the end's clause (8.2 for `citedElement` and `abstractForm`,
     /// 11.2 for an `ArgumentGroup`'s `argumentElement`, 11.9 for
     /// `referencedArtifactElement`, 11.10 for `metaClaim`, 11.12 for
-    /// `structure`, 11.13 for `reasoning`, `source` and `target`); an id a multi-valued end holds twice is one
+    /// `structure`, 11.13 for `reasoning`, `source` and `target`, 12.3 for an
+    /// `ArtifactGroup`'s `artifactElement`); an id a multi-valued end holds twice is one
     /// finding. Each affects the referring element, then the missing id
     /// (SACM23-VAL-003). [`xmi::read`](crate::xmi::read) keeps such a
     /// reference in both modes, and a tolerant [`xmi::write`](crate::xmi::write)

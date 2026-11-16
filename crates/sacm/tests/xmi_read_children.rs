@@ -6,8 +6,12 @@
 //! `assuranceCasePackage`, an ArgumentPackage in `argumentPackage` and in
 //! `argumentElement`, and a Claim, an `ArgumentReasoning`, an
 //! `ArtifactReference`, an `ArgumentGroup` and the five asserted relationships in
-//! `argumentElement` (SACM23-ARG-005, -006 and -008 to -013 test those), and on
-//! each of them
+//! `argumentElement` (SACM23-ARG-005, -006 and -008 to -013 test those); an
+//! ArtifactPackage in `artifactPackage` and in `artifactElement`, holding in
+//! `artifactElement` every kind read in `argumentElement`, the
+//! AssuranceCasePackage, a Property, a Technique, a Participant and an
+//! `ArtifactGroup`, and a Property in `property` of the three assets read
+//! (SACM23-ART-001, -003, -008, -009 and -011 test those); and on each of them
 //! the four `UtilityElement`s in their roles (SACM23-BASE-004 and
 //! SACM23-BASE-005 test those). Conforming content this version does not
 //! read yet is refused as `ReadError::Unsupported` at an exact location, and
@@ -365,12 +369,33 @@ fn in_claim(body: &str) -> String {
     ))
 }
 
+/// `body` on line 2 of an ArtifactPackage root `artifacts` (SACM23-ART-001).
+fn in_artifact(body: &str) -> String {
+    format!("<sacm:ArtifactPackage{NS} xmi:id=\"artifacts\">\n  {body}\n</sacm:ArtifactPackage>")
+}
+
+/// `body` in an ArtifactPackage `ar`, in the role `artifactPackage` of the
+/// root `case`.
+fn in_artifact_in_acp(body: &str) -> String {
+    in_acp(&format!(
+        "<artifactPackage xmi:id=\"ar\">{body}</artifactPackage>"
+    ))
+}
+
+/// `body` in an ArtifactPackage `ar`, in the role `artifactElement` of the
+/// root `artifacts`.
+fn in_artifact_in_artifact(body: &str) -> String {
+    in_artifact(&format!(
+        "<artifactElement xmi:type=\"sacm:ArtifactPackage\" xmi:id=\"ar\">{body}</artifactElement>"
+    ))
+}
+
 /// A function that puts a body inside a parent element.
 type Wrap = fn(&str) -> String;
 
 /// The readable parent contexts: a label, the parent's kind, and the
 /// function that puts a body inside the parent.
-fn parent_contexts() -> [(&'static str, ElementKind, Wrap); 6] {
+fn parent_contexts() -> [(&'static str, ElementKind, Wrap); 9] {
     [
         (
             "an AssuranceCasePackage root",
@@ -398,6 +423,21 @@ fn parent_contexts() -> [(&'static str, ElementKind, Wrap); 6] {
             in_ap_in_ap,
         ),
         ("a Claim at depth 3", ElementKind::Claim, in_claim),
+        (
+            "an ArtifactPackage root",
+            ElementKind::ArtifactPackage,
+            in_artifact,
+        ),
+        (
+            "an ArtifactPackage in artifactPackage",
+            ElementKind::ArtifactPackage,
+            in_artifact_in_acp,
+        ),
+        (
+            "an ArtifactPackage in artifactElement",
+            ElementKind::ArtifactPackage,
+            in_artifact_in_artifact,
+        ),
     ]
 }
 
@@ -515,7 +555,11 @@ fn expected_role(parent: ElementKind, child: ElementKind) -> Option<&'static str
 /// every `ModelElement` (SACM23-BASE-004, SACM23-BASE-005). An
 /// `ArgumentReasoning`, an `ArtifactReference`, an `ArgumentGroup` and the five
 /// asserted relationships are read in `argumentElement` (SACM23-ARG-005, -006,
-/// -008 to -013).
+/// -008 to -013). An ArtifactPackage is read in `artifactPackage`, and holds
+/// in `artifactElement` every kind read in `argumentElement`, the
+/// AssuranceCasePackage, and the five artifact kinds of slice 0052; a
+/// Property is read in `property` of the three assets read (SACM23-ART-001,
+/// -003, -008, -009, -011; ADR 0034).
 fn is_readable(parent: ElementKind, role: &str, child: ElementKind) -> bool {
     use ElementKind as K;
     let utility = matches!(
@@ -549,6 +593,33 @@ fn is_readable(parent: ElementKind, role: &str, child: ElementKind) -> bool {
                     | K::AssertedContext
                     | K::AssertedArtifactSupport
                     | K::AssertedArtifactContext
+            ) | (
+                K::AssuranceCasePackage,
+                "artifactPackage",
+                K::ArtifactPackage
+            ) | (
+                K::ArtifactPackage,
+                "artifactElement",
+                K::AssuranceCasePackage
+                    | K::ArgumentPackage
+                    | K::Claim
+                    | K::ArgumentReasoning
+                    | K::ArtifactReference
+                    | K::ArgumentGroup
+                    | K::AssertedInference
+                    | K::AssertedEvidence
+                    | K::AssertedContext
+                    | K::AssertedArtifactSupport
+                    | K::AssertedArtifactContext
+                    | K::ArtifactPackage
+                    | K::Property
+                    | K::Technique
+                    | K::Participant
+                    | K::ArtifactGroup
+            ) | (
+                K::Property | K::Technique | K::Participant,
+                "property",
+                K::Property
             )
         )
 }
@@ -1162,14 +1233,16 @@ fn sacm23_xmi_016_every_conforming_kind_outside_the_readable_set_is_unsupported_
         }
     }
     // The 2 other ArgumentationElement kinds (the ArgumentPackage interface
-    // and binding) in the three ArgumentPackage contexts, and the 10 other
-    // package kinds in the two AssuranceCasePackage contexts. The utility
-    // roles are read on every context (SACM23-BASE-004, SACM23-BASE-005), so
-    // none of them is a case.
-    assert!(
-        cases.len() >= 2 * 10 + 3 * 2,
-        "{ROW}: setup: only {} cases",
-        cases.len()
+    // and binding) in the three ArgumentPackage contexts, the 9 other
+    // package kinds in the two AssuranceCasePackage contexts, and the 18
+    // ArtifactElement kinds not read yet (9 package, interface and binding
+    // kinds and 9 others, ADR 0034) in the three ArtifactPackage contexts.
+    // The utility roles are read on every context (SACM23-BASE-004,
+    // SACM23-BASE-005), so none of them is a case.
+    assert_eq!(
+        cases.len(),
+        2 * 9 + 3 * 2 + 3 * 18,
+        "{ROW}: setup: the case count"
     );
     assert_all_unsupported_at_mark("unreadable kind", &cases);
 }
@@ -1607,7 +1680,33 @@ fn sacm23_xmi_016_each_readable_child_is_preserved_under_every_other_role_name_o
             "argumentElement",
             K::AssertedArtifactContext,
         ),
+        (
+            K::AssuranceCasePackage,
+            "artifactPackage",
+            K::ArtifactPackage,
+        ),
     ];
+    // Every kind an ArtifactPackage reads in `artifactElement` (ADR 0034).
+    let in_artifact_element = [
+        K::AssuranceCasePackage,
+        K::ArgumentPackage,
+        K::Claim,
+        K::ArgumentReasoning,
+        K::ArtifactReference,
+        K::ArgumentGroup,
+        K::AssertedInference,
+        K::AssertedEvidence,
+        K::AssertedContext,
+        K::AssertedArtifactSupport,
+        K::AssertedArtifactContext,
+        K::ArtifactPackage,
+        K::Property,
+        K::Technique,
+        K::Participant,
+        K::ArtifactGroup,
+    ]
+    .map(|child| (K::ArtifactPackage, "artifactElement", child));
+    let readable: Vec<_> = readable.into_iter().chain(in_artifact_element).collect();
     for (context, parent, wrap) in parent_contexts() {
         for &(class, own_role, child) in &readable {
             if class != parent {
@@ -1628,9 +1727,14 @@ fn sacm23_xmi_016_each_readable_child_is_preserved_under_every_other_role_name_o
             }
         }
     }
-    // Two ACP contexts: 2 children x 7 other roles x 2 type attributes;
-    // three AP contexts: 10 children x 4 other roles x 2; a Claim holds none.
-    assert_eq!(cases.len(), 2 * 28 + 3 * 80, "{ROW}: setup: the case count");
+    // Two ACP contexts: 3 children x 7 other roles x 2 type attributes;
+    // three AP contexts: 10 children x 4 other roles x 2; a Claim holds none;
+    // three ArtifactPackage contexts: 16 children x 4 other roles x 2.
+    assert_eq!(
+        cases.len(),
+        2 * 42 + 3 * 80 + 3 * 128,
+        "{ROW}: setup: the case count"
+    );
     // A type the role does not admit: the child is kept whole as preserved
     // content of its parent (ADR 0033).
     assert_all_preserved_at_mark("other role", &cases);

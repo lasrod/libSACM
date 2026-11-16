@@ -40,6 +40,7 @@ decisions.md has a one-line entry pointing to it.
 | [0031](0031-delete-previews-and-revisions.md) | Delete, delete policies, previews and revisions | accepted |
 | [0032](0032-atomic-batches.md) | Atomic batches of operations | accepted |
 | [0033](0033-preserved-content.md) | Preserved content | accepted |
+| [0034](0034-artifact-packages-assets-and-groups.md) | Artifact packages, assets and groups | accepted |
 
 Statuses: `proposed` → `accepted` (maintainer approval) → optionally `superseded by NNNN`.
 Copy [template.md](template.md) for a new record.

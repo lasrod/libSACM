@@ -44,8 +44,8 @@ const EDIT_006: &str = "LIB-EDIT-006";
 /// The namespace declarations of every document.
 const NAMESPACES: &str = r#"xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001""#;
 
-/// The nine reference ends, in the order of `ReferenceEnd`.
-const ENDS: [ReferenceEnd; 9] = [
+/// The ten reference ends, in the order of `ReferenceEnd`.
+const ENDS: [ReferenceEnd; 10] = [
     ReferenceEnd::CitedElement,
     ReferenceEnd::AbstractForm,
     ReferenceEnd::MetaClaim,
@@ -55,6 +55,7 @@ const ENDS: [ReferenceEnd; 9] = [
     ReferenceEnd::Structure,
     ReferenceEnd::ReferencedArtifactElement,
     ReferenceEnd::GroupMember,
+    ReferenceEnd::ArtifactGroupMember,
 ];
 
 /// The three reference policies, from the strictest.
@@ -180,7 +181,15 @@ fn held(element: SacmElement<'_>, end: ReferenceEnd) -> Vec<ElementId> {
         ReferenceEnd::Target => one(element.target()),
         ReferenceEnd::Structure => one(element.structure()),
         ReferenceEnd::ReferencedArtifactElement => element.referenced_artifact_elements().to_vec(),
-        ReferenceEnd::GroupMember => element.group_members().to_vec(),
+        // `group_members()` answers for both group kinds (ADR 0034): each end
+        // is the members of its own group kind only.
+        ReferenceEnd::GroupMember if element.kind() == ElementKind::ArgumentGroup => {
+            element.group_members().to_vec()
+        }
+        ReferenceEnd::ArtifactGroupMember if element.kind() == ElementKind::ArtifactGroup => {
+            element.group_members().to_vec()
+        }
+        ReferenceEnd::GroupMember | ReferenceEnd::ArtifactGroupMember => Vec::new(),
         other => panic!("{EDIT_005}: an end this test does not know: {other:?}"),
     }
 }
@@ -365,6 +374,7 @@ fn assert_clean_delete(
                     | Difference::Structure { .. }
                     | Difference::ReferencedArtifactElements { .. }
                     | Difference::GroupMembers { .. }
+                    | Difference::ArtifactGroupMembers { .. }
             ),
             "{row}: {context}: the delete changed more than elements and reference ends: {difference}"
         );
@@ -565,6 +575,14 @@ fn holder_of(end: ReferenceEnd) -> String {
             "{t}{}",
             element("ArgumentGroup", "h", r#"argumentElement="t""#, "")
         ),
+        // An ArtifactGroup lives in an ArtifactPackage `p` (§12.3).
+        ReferenceEnd::ArtifactGroupMember => {
+            return case(&format!(
+                r#"<artifactPackage xmi:id="p"><name content="p"/>{}{}</artifactPackage>"#,
+                r#"<artifactElement xmi:type="sacm:Technique" xmi:id="t"><name content="t"/></artifactElement>"#,
+                r#"<artifactElement xmi:type="sacm:ArtifactGroup" xmi:id="h" artifactElement="t"><name content="h"/></artifactElement>"#,
+            ));
+        }
         other => panic!("{EDIT_005}: an end this test does not know: {other:?}"),
     };
     case(&package("p", &body))

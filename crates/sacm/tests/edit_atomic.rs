@@ -44,18 +44,18 @@
 //!
 //! The operations are, for every element of the starting document and for an
 //! id it does not hold ("nowhere"):
-//! - the creates: one of each of the 15 kinds under it with a generated id,
+//! - the creates: one of each of the 20 kinds under it with a generated id,
 //!   a fresh caller id, an id that is not an `NCName` and the parent's own
 //!   (duplicate) id, the referencing ones naming ids of the document; with a
 //!   generated id, each create with an end refused for no source, a
 //!   white-space id, a missing id or a wrongly typed id; and both root
-//!   creates with each id form;
+//!   creates with each id form (and the ArtifactPackage root create);
 //! - the attribute edits (LIB-EDIT-008): a name, the current name, a gid, the
 //!   current gid, gid removal, each flag true and false, a declaration and the
 //!   current declaration;
 //! - the content edits (LIB-EDIT-012): a two-value content, the current
 //!   content, content removal, a key and the current key;
-//! - the reference edits (LIB-EDIT-009), for each of the nine ends: `[]`, a
+//! - the reference edits (LIB-EDIT-009), for each of the ten ends: `[]`, a
 //!   missing id, `a b`, a well-typed id, two ids, a wrongly typed id, the ids
 //!   held and the id of a name, `content`, `key` or `value`; an add of each of
 //!   those and of a held id; a remove of a held id, of a well-typed id and of
@@ -142,12 +142,14 @@ use sacm::edit::ReferenceDeletePolicy::{
 };
 use sacm::edit::{
     self, AddReference, CreateArgumentGroup, CreateArgumentPackage, CreateArgumentReasoning,
-    CreateArtifactReference, CreateAssertedArtifactContext, CreateAssertedArtifactSupport,
-    CreateAssertedContext, CreateAssertedEvidence, CreateAssertedInference,
-    CreateAssuranceCasePackage, CreateClaim, CreateDescription, CreateImplementationConstraint,
-    CreateNote, CreateTaggedValue, CrossPackageReferencePolicy, DeleteElement, EditError, Mutation,
-    Operation, PackageDeletePolicy, ReferenceDeletePolicy, RemoveReference, ReorderElements,
-    SetAssertionDeclaration, SetContent, SetFlag, SetGid, SetKey, SetName, SetReferences,
+    CreateArtifactGroup, CreateArtifactPackage, CreateArtifactReference,
+    CreateAssertedArtifactContext, CreateAssertedArtifactSupport, CreateAssertedContext,
+    CreateAssertedEvidence, CreateAssertedInference, CreateAssuranceCasePackage, CreateClaim,
+    CreateDescription, CreateImplementationConstraint, CreateNote, CreateParticipant,
+    CreateProperty, CreateTaggedValue, CreateTechnique, CrossPackageReferencePolicy, DeleteElement,
+    EditError, Mutation, Operation, PackageDeletePolicy, ReferenceDeletePolicy, RemoveReference,
+    ReorderElements, SetAssertionDeclaration, SetContent, SetFlag, SetGid, SetKey, SetName,
+    SetReferences,
 };
 use sacm::model::ElementKind::{
     Activity, ArgumentGroup, ArgumentPackage, ArgumentPackageBinding, ArgumentPackageInterface,
@@ -182,11 +184,13 @@ const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/x
 /// The fixtures `xmi::read` reads in this release, relative to [`FIXTURES`].
 /// `golden/nested.golden.sacm.xmi` holds kinds the reader refuses, and the
 /// files under `invalid/` are refused by design.
-const READABLE_FIXTURES: [&str; 8] = [
+const READABLE_FIXTURES: [&str; 10] = [
     "argument-package-root-valid.sacm.xmi",
+    "artifact-package-valid.sacm.xmi",
     "assurance-case-package-root-valid.sacm.xmi",
     "name-third-party-form-valid.sacm.xmi",
     "wrapped-roots-valid.sacm.xmi",
+    "golden/artifact-package.golden.sacm.xmi",
     "golden/named.golden.sacm.xmi",
     "golden/needs-support-claim.golden.sacm.xmi",
     "golden/several-roots.golden.sacm.xmi",
@@ -560,9 +564,9 @@ struct EndRule {
     upper: Option<usize>,
 }
 
-/// The nine ends (ptc/22-03-13; formal/23-05-08 §8.2, §11.2, §11.9, §11.10,
-/// §11.12, §11.13).
-static END_RULES: [EndRule; 9] = [
+/// The ten ends (ptc/22-03-13; formal/23-05-08 §8.2, §11.2, §11.9, §11.10,
+/// §11.12, §11.13, §12.3).
+static END_RULES: [EndRule; 10] = [
     // §8.2 `citedElement:SACMElement[0..1]`.
     EndRule {
         end: ReferenceEnd::CitedElement,
@@ -636,6 +640,15 @@ static END_RULES: [EndRule; 9] = [
         lower: 0,
         upper: None,
     },
+    // §12.3 `artifactElement:ArtifactElement[0..*]` of an ArtifactGroup: every
+    // ModelElement (ADR 0014, ADR 0034).
+    EndRule {
+        end: ReferenceEnd::ArtifactGroupMember,
+        owners: &[ArtifactGroup],
+        declared: &MODEL_ELEMENTS,
+        lower: 0,
+        upper: None,
+    },
 ];
 
 /// The rule of `end`.
@@ -661,7 +674,15 @@ fn held(element: SacmElement<'_>, end: ReferenceEnd) -> Vec<ElementId> {
         ReferenceEnd::Target => one(element.target()),
         ReferenceEnd::Structure => one(element.structure()),
         ReferenceEnd::ReferencedArtifactElement => element.referenced_artifact_elements().to_vec(),
-        ReferenceEnd::GroupMember => element.group_members().to_vec(),
+        // `group_members()` answers for both group kinds (ADR 0034): each end
+        // is the members of its own group kind only.
+        ReferenceEnd::GroupMember if element.kind() == ArgumentGroup => {
+            element.group_members().to_vec()
+        }
+        ReferenceEnd::ArtifactGroupMember if element.kind() == ArtifactGroup => {
+            element.group_members().to_vec()
+        }
+        ReferenceEnd::GroupMember | ReferenceEnd::ArtifactGroupMember => Vec::new(),
         other => panic!("{EDIT_009}: an end this test does not know: {other:?}"),
     }
 }
@@ -1044,7 +1065,7 @@ fn insert(
     }
 }
 
-/// The ids the next generated element of each of the 15 kinds the edit API
+/// The ids the next generated element of each of the 20 kinds the edit API
 /// creates would get, observed on a clone so that `doc` is untouched: those
 /// of [`next_generated_ids_of_every_kind`].
 fn next_generated_ids(row: &str, doc: &Document) -> Vec<ElementId> {
@@ -1070,6 +1091,11 @@ fn probe_index(kind: ElementKind) -> usize {
         ImplementationConstraint,
         Note,
         TaggedValue,
+        ArtifactPackage,
+        Property,
+        Technique,
+        Participant,
+        ArtifactGroup,
     ];
     match ORDER.iter().position(|&created| created == kind) {
         Some(index) => index,
@@ -1123,6 +1149,15 @@ fn classify(operation: &Operation) -> Class<'_> {
         }
         Operation::CreateNote(create) => under!(create, Note),
         Operation::CreateTaggedValue(create) => under!(create, TaggedValue),
+        Operation::CreateProperty(create) => under!(create, Property),
+        Operation::CreateTechnique(create) => under!(create, Technique),
+        Operation::CreateParticipant(create) => under!(create, Participant),
+        Operation::CreateArtifactGroup(create) => under!(create, ArtifactGroup),
+        Operation::CreateArtifactPackage(create) => Class::Create {
+            kind: ArtifactPackage,
+            parent: create.parent(),
+            id: create.id(),
+        },
         Operation::CreateAssuranceCasePackage(create) => Class::Create {
             kind: AssuranceCasePackage,
             parent: create.parent(),
@@ -1360,6 +1395,10 @@ fn create_ends(operation: &Operation) -> Vec<(ReferenceEnd, Vec<&ElementId>)> {
         )],
         Operation::CreateArgumentGroup(create) => vec![(
             ReferenceEnd::GroupMember,
+            create.group_members().iter().collect(),
+        )],
+        Operation::CreateArtifactGroup(create) => vec![(
+            ReferenceEnd::ArtifactGroupMember,
             create.group_members().iter().collect(),
         )],
         Operation::CreateAssertedInference(create) => relationship!(create),
@@ -2004,7 +2043,7 @@ fn delete_operations_for(doc: &Document) -> Vec<Operation> {
 }
 
 /// Under every element (pre-order) and under [`NOWHERE`]: one create of each
-/// of the 15 kinds with each id form (the twelve of
+/// of the 20 kinds with each id form (the twelve of
 /// [`CreateEnds::other_creates`] referencing ids of `doc`), then, with a
 /// generated id, each reference refusal of [`reference_refusals`]; last both
 /// root creates with each id form. Fresh caller ids are `new_<n>`, one per
@@ -2049,6 +2088,7 @@ fn create_operations_for(doc: &Document) -> Vec<Operation> {
                 CreateClaim::new(parent, name(2)).into(),
             ];
             creates.extend(ends.other_creates(parent, &name, form));
+            creates.extend(ends.artifact_creates(parent, &name));
             operations.extend(
                 creates
                     .into_iter()
@@ -2066,14 +2106,17 @@ fn create_operations_for(doc: &Document) -> Vec<Operation> {
     for (form, caller_id) in root_ids.into_iter().enumerate() {
         let case = CreateAssuranceCasePackage::root(name(parents.len(), form, 0));
         let arguments = CreateArgumentPackage::root(name(parents.len(), form, 1));
+        let artifacts = CreateArtifactPackage::root(name(parents.len(), form, 2));
         match caller_id {
             None => {
                 operations.push(case.into());
                 operations.push(arguments.into());
+                operations.push(artifacts.into());
             }
             Some(value) => {
                 operations.push(case.with_id(&value).into());
                 operations.push(arguments.with_id(&value).into());
+                operations.push(artifacts.with_id(&value).into());
             }
         }
     }
@@ -2494,6 +2537,11 @@ fn lib_edit_002_the_set_has_legal_and_illegal_operations_of_every_kind_with_both
         ImplementationConstraint,
         Note,
         TaggedValue,
+        ArtifactPackage,
+        Property,
+        Technique,
+        Participant,
+        ArtifactGroup,
     ] {
         for caller in [false, true] {
             required.push((kind, caller, Ok(())));
@@ -2505,7 +2553,11 @@ fn lib_edit_002_the_set_has_legal_and_illegal_operations_of_every_kind_with_both
         // The checks of the ends (ADR 0027, ADR 0028), reached with a
         // generated id: a white-space id, and one naming a wrongly typed
         // element; a relationship with no source.
-        if !UTILITY_ELEMENTS.contains(&kind) && !PACKAGE_KINDS.contains(&kind) && kind != Claim {
+        // The artifact assets have no end of their own (§12.6).
+        if !UTILITY_ELEMENTS.contains(&kind)
+            && !PACKAGE_KINDS.contains(&kind)
+            && ![Claim, Property, Technique, Participant].contains(&kind)
+        {
             required.push((kind, false, Err(Code::ID_INVALID.as_str())));
             required.push((kind, false, Err(Code::REF_WRONG_TYPE.as_str())));
         }
@@ -2627,6 +2679,7 @@ fn oracle(context: &str, operation: &Operation, before: &Document, after: &Docum
             | Difference::Structure { id, .. }
             | Difference::ReferencedArtifactElements { id, .. }
             | Difference::GroupMembers { id, .. }
+            | Difference::ArtifactGroupMembers { id, .. }
             | Difference::Name { id, .. }
             | Difference::NameId { id, .. }
             | Difference::Content { id, .. }
@@ -2837,6 +2890,52 @@ fn lib_edit_003_operation_name_is_the_struct_name() {
         (
             SetReferences::new("c1", ReferenceEnd::GroupMember, Vec::<ElementId>::new()).into(),
             "SetReferences",
+        ),
+    ];
+    for (operation, expected) in &cases {
+        assert_eq!(
+            operation.operation_name(),
+            *expected,
+            "{EDIT_003}: operation_name() of {operation:?}"
+        );
+    }
+}
+
+#[test]
+fn lib_edit_003_operation_name_of_the_artifact_creates_is_the_struct_name() {
+    // The creates of slice 0052 and an edit of its end (ADR 0034).
+    let cases: [(Operation, &str); 7] = [
+        (
+            CreateArtifactPackage::root(named("A")).into(),
+            "CreateArtifactPackage",
+        ),
+        (
+            CreateArtifactPackage::new("case", named("A"))
+                .with_id("x")
+                .into(),
+            "CreateArtifactPackage",
+        ),
+        (
+            CreateProperty::new("t1", named("P")).into(),
+            "CreateProperty",
+        ),
+        (
+            CreateTechnique::new("a", named("T")).into(),
+            "CreateTechnique",
+        ),
+        (
+            CreateParticipant::new("a", named("P")).into(),
+            "CreateParticipant",
+        ),
+        (
+            CreateArtifactGroup::new("a", named("G"))
+                .with_group_members(["t1"])
+                .into(),
+            "CreateArtifactGroup",
+        ),
+        (
+            AddReference::new("g1", ReferenceEnd::ArtifactGroupMember, "t1").into(),
+            "AddReference",
         ),
     ];
     for (operation, expected) in &cases {
@@ -3078,7 +3177,7 @@ fn lib_edit_012_no_successful_operation_of_the_set_removes_a_key() {
 
 /// Every operation name of this release, in the declaration order of
 /// `Operation`: the set must reach each accepted and refused.
-const OPERATION_NAMES: [&str; 26] = [
+const OPERATION_NAMES: [&str; 31] = [
     "CreateAssuranceCasePackage",
     "CreateArgumentPackage",
     "CreateClaim",
@@ -3094,6 +3193,11 @@ const OPERATION_NAMES: [&str; 26] = [
     "CreateImplementationConstraint",
     "CreateNote",
     "CreateTaggedValue",
+    "CreateArtifactPackage",
+    "CreateProperty",
+    "CreateTechnique",
+    "CreateParticipant",
+    "CreateArtifactGroup",
     "SetName",
     "SetGid",
     "SetFlag",
@@ -3107,13 +3211,14 @@ const OPERATION_NAMES: [&str; 26] = [
     "DeleteElement",
 ];
 
-/// The first 15 of [`OPERATION_NAMES`]: the creates.
-const CREATE_COUNT: usize = 15;
+/// The first 20 of [`OPERATION_NAMES`]: the creates.
+const CREATE_COUNT: usize = 20;
 
 /// A document read from XMI for the check-order cases: a Claim `c1` with a
 /// Description `d1`, a Claim with the id `a b` (not an `NCName`, kept as
 /// read), an `ArgumentReasoning` `why` and an `AssertedInference` `i1` from `c1`
-/// to `c1`, in the ArgumentPackage `p` of the AssuranceCasePackage `case`.
+/// to `c1`, in the ArgumentPackage `p` of the AssuranceCasePackage `case`;
+/// and the empty ArtifactPackage `evidence` there, for the artifact creates.
 const CHECK_ORDER_START: &str = r#"<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="case">
   <name content="Case"/>
   <argumentPackage xmi:id="p">
@@ -3126,6 +3231,7 @@ const CHECK_ORDER_START: &str = r#"<sacm:AssuranceCasePackage xmlns:sacm="http:/
     <argumentElement xmi:type="sacm:ArgumentReasoning" xmi:id="why"><name content="Why"/></argumentElement>
     <argumentElement xmi:type="sacm:AssertedInference" xmi:id="i1" source="c1" target="c1"><name content="I1"/></argumentElement>
   </argumentPackage>
+  <artifactPackage xmi:id="evidence"><name content="Evidence"/></artifactPackage>
 </sacm:AssuranceCasePackage>
 "#;
 
@@ -3149,6 +3255,11 @@ fn has_caller_id(operation: &Operation) -> Option<bool> {
         Operation::CreateImplementationConstraint(create) => create.id(),
         Operation::CreateNote(create) => create.id(),
         Operation::CreateTaggedValue(create) => create.id(),
+        Operation::CreateArtifactPackage(create) => create.id(),
+        Operation::CreateProperty(create) => create.id(),
+        Operation::CreateTechnique(create) => create.id(),
+        Operation::CreateParticipant(create) => create.id(),
+        Operation::CreateArtifactGroup(create) => create.id(),
         _ => return None,
     };
     Some(id.is_some())
@@ -3175,6 +3286,11 @@ fn with_caller_id(operation: Operation, value: Option<&ElementId>) -> Operation 
         Operation::CreateImplementationConstraint(create) => create.with_id(value).into(),
         Operation::CreateNote(create) => create.with_id(value).into(),
         Operation::CreateTaggedValue(create) => create.with_id(value).into(),
+        Operation::CreateArtifactPackage(create) => create.with_id(value).into(),
+        Operation::CreateProperty(create) => create.with_id(value).into(),
+        Operation::CreateTechnique(create) => create.with_id(value).into(),
+        Operation::CreateParticipant(create) => create.with_id(value).into(),
+        Operation::CreateArtifactGroup(create) => create.with_id(value).into(),
         other => panic!("{EDIT_002}: setup: {other:?} is not a create"),
     }
 }
@@ -3222,6 +3338,7 @@ struct CreateEnds {
     structure: Option<ElementId>,
     artifact: Option<ElementId>,
     member: Option<ElementId>,
+    artifact_member: Option<ElementId>,
 }
 
 impl CreateEnds {
@@ -3232,7 +3349,29 @@ impl CreateEnds {
             structure: first_of(doc, &[ArgumentPackage]),
             artifact: first_of(doc, &MODEL_ELEMENTS),
             member: first_of(doc, &ARGUMENTATION_ELEMENTS),
+            artifact_member: first_of(doc, &MODEL_ELEMENTS),
         }
+    }
+
+    /// The five creates of slice 0052 under `parent`, with generated ids,
+    /// named by `name`: an `ArtifactPackage`, a Property, a Technique, a
+    /// Participant, and an `ArtifactGroup` with the member `artifact_member`.
+    fn artifact_creates(
+        &self,
+        parent: &ElementId,
+        name: &dyn Fn(usize) -> LangString,
+    ) -> Vec<Operation> {
+        let mut group = CreateArtifactGroup::new(parent, name(12));
+        if let Some(member) = &self.artifact_member {
+            group = group.with_group_members([member]);
+        }
+        vec![
+            CreateArtifactPackage::new(parent, name(8)).into(),
+            CreateProperty::new(parent, name(9)).into(),
+            CreateTechnique::new(parent, name(10)).into(),
+            CreateParticipant::new(parent, name(11)).into(),
+            group.into(),
+        ]
     }
 
     /// The twelve creates that are no package and no Claim under `parent`,
@@ -3281,8 +3420,8 @@ impl CreateEnds {
 /// reasoning that holds white space ([`WITH_SPACE`]), names no element
 /// ([`NOWHERE`]), or names the first element of a kind its end does not
 /// admit; and an `ArgumentReasoning` `structure`, an `ArtifactReference`
-/// `referencedArtifactElement` and an `ArgumentGroup` member of each of those
-/// three.
+/// `referencedArtifactElement`, an `ArgumentGroup` member and an
+/// `ArtifactGroup` member of each of those three.
 fn reference_refusals(doc: &Document, parent: &ElementId, name: &LangString) -> Vec<Operation> {
     let asset = first_of(doc, &ARGUMENT_ASSETS).unwrap_or_else(|| id(NOWHERE));
     let bad = |declared: &[ElementKind]| -> Vec<ElementId> {
@@ -3341,6 +3480,13 @@ fn reference_refusals(doc: &Document, parent: &ElementId, name: &LangString) -> 
                 .into(),
         );
     }
+    for value in bad(&MODEL_ELEMENTS) {
+        operations.push(
+            CreateArtifactGroup::new(parent, name.clone())
+                .with_group_members([value])
+                .into(),
+        );
+    }
     operations
 }
 
@@ -3351,11 +3497,43 @@ fn check_operations_for(doc: &Document) -> Vec<Operation> {
     operations_for(doc)
 }
 
-/// One create of each of the 15 kinds, with a generated id, in the order of
-/// [`OPERATION_NAMES`] after the first three: the packages under
-/// `package_parent`, the rest under `parent`, and the asserted relationships
-/// from and to `asset`.
-fn creates_of_every_kind(package_parent: &str, parent: &str, asset: &str) -> Vec<Operation> {
+/// One create of each of the 20 kinds, with a generated id, in the order of
+/// [`probe_index`]: the packages under `package_parent`, the argumentation
+/// and utility kinds under `parent`, the asserted relationships from and to
+/// `asset`, then [`artifact_creates_of_every_kind`] with `artifact_parent`.
+fn creates_of_every_kind(
+    package_parent: &str,
+    parent: &str,
+    asset: &str,
+    artifact_parent: &str,
+) -> Vec<Operation> {
+    let mut creates = argument_creates_of_every_kind(package_parent, parent, asset);
+    creates.extend(artifact_creates_of_every_kind(
+        package_parent,
+        artifact_parent,
+    ));
+    creates
+}
+
+/// The five creates of slice 0052, with a generated id: the `ArtifactPackage`
+/// under `package_parent`, then a Property, a Technique, a Participant and an
+/// `ArtifactGroup` under `artifact_parent`.
+fn artifact_creates_of_every_kind(package_parent: &str, artifact_parent: &str) -> Vec<Operation> {
+    vec![
+        CreateArtifactPackage::new(package_parent, named("Artifacts")).into(),
+        CreateProperty::new(artifact_parent, named("Property")).into(),
+        CreateTechnique::new(artifact_parent, named("Technique")).into(),
+        CreateParticipant::new(artifact_parent, named("Participant")).into(),
+        CreateArtifactGroup::new(artifact_parent, named("Artifact group")).into(),
+    ]
+}
+
+/// The first 15 of [`creates_of_every_kind`].
+fn argument_creates_of_every_kind(
+    package_parent: &str,
+    parent: &str,
+    asset: &str,
+) -> Vec<Operation> {
     let parent = id(parent);
     let asset = id(asset);
     let mut creates: Vec<Operation> = vec![
@@ -3381,10 +3559,12 @@ fn creates_of_every_kind(package_parent: &str, parent: &str, asset: &str) -> Vec
     creates
 }
 
-/// The ids the next generated element of each of the 15 kinds the edit API
+/// The ids the next generated element of each of the 20 kinds the edit API
 /// creates would get, observed on a clone so that `doc` is untouched: a root
 /// AssuranceCasePackage and ArgumentPackage, a Claim in that ArgumentPackage,
-/// and there one of each other kind, the relationships from and to the Claim.
+/// and there one of each other argumentation and utility kind, the
+/// relationships from and to the Claim; then an ArtifactPackage in the
+/// AssuranceCasePackage, and in it one of each other artifact kind.
 fn next_generated_ids_of_every_kind(row: &str, doc: &Document) -> Vec<ElementId> {
     let mut probe = doc.clone();
     let case = create(
@@ -3399,9 +3579,22 @@ fn next_generated_ids_of_every_kind(row: &str, doc: &Document) -> Vec<ElementId>
         CreateClaim::new(&arguments, named("probe")),
     );
     let mut ids = vec![case, arguments.clone(), claim.clone()];
-    for operation in creates_of_every_kind(arguments.as_str(), arguments.as_str(), claim.as_str())
+    for operation in
+        argument_creates_of_every_kind(arguments.as_str(), arguments.as_str(), claim.as_str())
+            .into_iter()
+            .skip(3)
+    {
+        ids.push(create(row, &mut probe, operation));
+    }
+    let mut artifact_creates = artifact_creates_of_every_kind(ids[0].as_str(), "").into_iter();
+    let Some(package) = artifact_creates.next() else {
+        panic!("{row}: setup: no ArtifactPackage create");
+    };
+    let artifacts = create(row, &mut probe, package);
+    ids.push(artifacts.clone());
+    for operation in artifact_creates_of_every_kind(ids[0].as_str(), artifacts.as_str())
         .into_iter()
-        .skip(3)
+        .skip(1)
     {
         ids.push(create(row, &mut probe, operation));
     }
@@ -3597,8 +3790,8 @@ fn lib_edit_013_check_leaves_the_document_equal_with_the_same_next_ids_of_every_
 #[test]
 fn lib_edit_013_a_checked_create_of_each_kind_gets_the_generated_id_an_unchecked_one_gets() {
     let mut doc = read_text("CHECK_ORDER_START", CHECK_ORDER_START.as_bytes());
-    let accepted = creates_of_every_kind("case", "p", "c1");
-    let refused = creates_of_every_kind(NOWHERE, NOWHERE, "c1");
+    let accepted = creates_of_every_kind("case", "p", "c1", "evidence");
+    let refused = creates_of_every_kind(NOWHERE, NOWHERE, "c1", NOWHERE);
     assert_eq!(
         accepted.len(),
         CREATE_COUNT,
@@ -4201,6 +4394,7 @@ fn lib_edit_005_after_every_successful_delete_of_the_set_each_surviving_end_lost
                         | Difference::Structure { .. }
                         | Difference::ReferencedArtifactElements { .. }
                         | Difference::GroupMembers { .. }
+                        | Difference::ArtifactGroupMembers { .. }
                 ),
                 "{EDIT_005}: {context}: the delete changed more than elements and reference ends: {difference}"
             );

@@ -82,7 +82,8 @@ const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/x
 /// The golden files, under [`FIXTURES`].
 const GOLDEN_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/xmi/golden");
 /// The golden files the reader reads in this release.
-const READABLE_GOLDEN: [&str; 6] = [
+const READABLE_GOLDEN: [&str; 7] = [
+    "artifact-package.golden.sacm.xmi",
     "artifact-relationships.golden.sacm.xmi",
     "asserted-relationships.golden.sacm.xmi",
     "named.golden.sacm.xmi",
@@ -91,8 +92,9 @@ const READABLE_GOLDEN: [&str; 6] = [
     "single-root.golden.sacm.xmi",
 ];
 /// The golden file the reader refuses, as `Unsupported`, in this release: it
-/// holds an `ArgumentPackageInterface`, an ArtifactPackage, an Artifact and a
-/// Property (its Note and Description are read, SACM23-BASE-004).
+/// holds an `ArgumentPackageInterface`, refused first, and an ArtifactPackage
+/// holding an Artifact (SACM23-ART-004), which holds a Property (its Note and
+/// Description are read, SACM23-BASE-004).
 const UNREADABLE_GOLDEN: &str = "nested.golden.sacm.xmi";
 
 // ---------------------------------------------------------------------------
@@ -777,13 +779,13 @@ fn table() -> Vec<(&'static str, Vec<u8>, Expect)> {
         ),
         // --- Interim refusals: conforming content this release cannot represent.
         text(
-            "an ArtifactPackage root",
-            format!("<sacm:ArtifactPackage{NS} xmi:id=\"f\"/>"),
+            "a TerminologyPackage root",
+            format!("<sacm:TerminologyPackage{NS} xmi:id=\"f\"/>"),
             Unsupported,
         ),
         text(
-            "an artifactPackage child of an AssuranceCasePackage",
-            acp("<artifactPackage xmi:id=\"f\"/>"),
+            "a terminologyPackage child of an AssuranceCasePackage",
+            acp("<terminologyPackage xmi:id=\"f\"/>"),
             Unsupported,
         ),
         text(

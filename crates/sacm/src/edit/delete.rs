@@ -146,7 +146,8 @@ pub enum ReferenceDeletePolicy {
     /// `reasoning` names a deleted element, with its contents, to a
     /// fixpoint; remove every other such id from its end (`citedElement`,
     /// `abstractForm`, `metaClaim`, `structure`, `referencedArtifactElement`
-    /// and a group's `argumentElement`, none of which has a lower bound).
+    /// and a group's `argumentElement` or `artifactElement`, none of which has
+    /// a lower bound).
     DeleteReferencingRelationships,
     /// Remove every such id from its end. An asserted relationship the
     /// delete leaves with no `source`, or with no `target`, is deleted, with

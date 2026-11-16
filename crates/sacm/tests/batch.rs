@@ -48,17 +48,18 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use sacm::compare::{Difference, semantic_compare};
 use sacm::edit::{
     self, AddReference, Batch, BatchError, BatchMutation, CreateArgumentGroup,
-    CreateArgumentPackage, CreateArgumentReasoning, CreateArtifactReference,
-    CreateAssertedArtifactContext, CreateAssertedArtifactSupport, CreateAssertedContext,
-    CreateAssertedEvidence, CreateAssertedInference, CreateAssuranceCasePackage, CreateClaim,
-    CreateDescription, CreateImplementationConstraint, CreateNote, CreateTaggedValue,
+    CreateArgumentPackage, CreateArgumentReasoning, CreateArtifactGroup, CreateArtifactPackage,
+    CreateArtifactReference, CreateAssertedArtifactContext, CreateAssertedArtifactSupport,
+    CreateAssertedContext, CreateAssertedEvidence, CreateAssertedInference,
+    CreateAssuranceCasePackage, CreateClaim, CreateDescription, CreateImplementationConstraint,
+    CreateNote, CreateParticipant, CreateProperty, CreateTaggedValue, CreateTechnique,
     CrossPackageReferencePolicy, DeleteElement, EditError, Mutation, Operation,
     PackageDeletePolicy, ReferenceDeletePolicy, RemoveReference, ReorderElements,
     SetAssertionDeclaration, SetContent, SetFlag, SetGid, SetKey, SetName, SetReferences,
 };
 use sacm::model::{
-    AssertionDeclaration, Document, ElementId, Flag, LangString, MultiLangString, ReferenceEnd,
-    SacmElement,
+    AssertionDeclaration, Document, ElementId, ElementKind, Flag, LangString, MultiLangString,
+    ReferenceEnd, SacmElement,
 };
 use sacm::xmi::{self, ReadOptions};
 
@@ -87,8 +88,8 @@ const SEEDS: [u64; 12] = [
     20_261_115,
 ];
 
-/// The nine reference ends.
-const ENDS: [ReferenceEnd; 9] = [
+/// The ten reference ends.
+const ENDS: [ReferenceEnd; 10] = [
     ReferenceEnd::CitedElement,
     ReferenceEnd::AbstractForm,
     ReferenceEnd::MetaClaim,
@@ -98,6 +99,7 @@ const ENDS: [ReferenceEnd; 9] = [
     ReferenceEnd::Structure,
     ReferenceEnd::ReferencedArtifactElement,
     ReferenceEnd::GroupMember,
+    ReferenceEnd::ArtifactGroupMember,
 ];
 
 /// The three flags.
@@ -217,18 +219,34 @@ fn gsn_start() -> Document {
     doc
 }
 
+/// The worked fixture of slice 0052: `ArtifactPackage`s, a Technique with a
+/// Property, Participants and an `ArtifactGroup` with members.
+const ARTIFACT_FIXTURE: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/data/sacm23/xmi/artifact-package-valid.sacm.xmi"
+);
+
+fn artifact_start() -> Document {
+    let bytes = std::fs::read(ARTIFACT_FIXTURE).unwrap_or_else(|error| {
+        panic!("{EDIT_014}: setup: cannot read {ARTIFACT_FIXTURE}: {error}")
+    });
+    read_text("the artifact fixture", &bytes)
+}
+
 /// The starting documents of the random sequences.
 fn starting_documents() -> Vec<(&'static str, Document)> {
     vec![
         ("an empty document", Document::new()),
         ("a document built with edit::apply", gsn_start()),
         ("the batch start document", batch_start()),
+        ("the artifact fixture", artifact_start()),
     ]
 }
 
-/// One create of each of the 15 kinds the edit API creates, with generated
-/// ids, under a fresh root ArgumentPackage and Claim, applied to a clone of
-/// `doc`: the ids show the next generated id of every kind.
+/// One create of each of the 20 kinds the edit API creates, with generated
+/// ids, under a fresh root ArgumentPackage and Claim, and a fresh root
+/// ArtifactPackage, applied to a clone of `doc`: the ids show the next
+/// generated id of every kind.
 fn next_generated_ids(doc: &Document) -> Vec<ElementId> {
     let mut probe = doc.clone();
     let name = || named("probe");
@@ -255,6 +273,18 @@ fn next_generated_ids(doc: &Document) -> Vec<ElementId> {
     ];
     let mut ids = vec![case, arguments.clone(), claim.clone()];
     for operation in rest {
+        ids.push(only_created(&applied(&mut probe, operation)));
+    }
+    let artifacts = only_created(&applied(&mut probe, CreateArtifactPackage::root(name())));
+    let a = &artifacts;
+    let artifact_rest: Vec<Operation> = vec![
+        CreateProperty::new(a, name()).into(),
+        CreateTechnique::new(a, name()).into(),
+        CreateParticipant::new(a, name()).into(),
+        CreateArtifactGroup::new(a, name()).into(),
+    ];
+    ids.push(artifacts.clone());
+    for operation in artifact_rest {
         ids.push(only_created(&applied(&mut probe, operation)));
     }
     ids
@@ -309,7 +339,15 @@ fn held(element: SacmElement<'_>, end: ReferenceEnd) -> Vec<ElementId> {
         ReferenceEnd::Target => one(element.target()),
         ReferenceEnd::Structure => one(element.structure()),
         ReferenceEnd::ReferencedArtifactElement => element.referenced_artifact_elements().to_vec(),
-        ReferenceEnd::GroupMember => element.group_members().to_vec(),
+        // `group_members()` answers for both group kinds (ADR 0034): each end
+        // is the members of its own group kind only.
+        ReferenceEnd::GroupMember if element.kind() == ElementKind::ArgumentGroup => {
+            element.group_members().to_vec()
+        }
+        ReferenceEnd::ArtifactGroupMember if element.kind() == ElementKind::ArtifactGroup => {
+            element.group_members().to_vec()
+        }
+        ReferenceEnd::GroupMember | ReferenceEnd::ArtifactGroupMember => Vec::new(),
         other => panic!("{EDIT_014}: an end this test does not know: {other:?}"),
     }
 }
@@ -362,6 +400,7 @@ fn net_ids<'m>(
             | Difference::Structure { id, .. }
             | Difference::ReferencedArtifactElements { id, .. }
             | Difference::GroupMembers { id, .. }
+            | Difference::ArtifactGroupMembers { id, .. }
             | Difference::Name { id, .. }
             | Difference::NameId { id, .. }
             | Difference::Content { id, .. }
@@ -655,11 +694,18 @@ fn random_operation(rng: &mut Rng, doc: &Document, history: &mut History) -> Ope
         ),
         8 => create!(CreateArgumentGroup::new(&target, name).with_group_members([&other])),
         9 | 10 => random_relationship(rng, &ids, &target, name, caller.as_ref()),
-        11 => match rng.below(4) {
+        11 => match rng.below(10) {
             0 => create!(CreateDescription::new(&target, two_values())),
             1 => create!(CreateImplementationConstraint::new(&target, name)),
             2 => create!(CreateNote::new(&target, name)),
-            _ => create!(CreateTaggedValue::new(&target, name, LangString::new("D"))),
+            3 => create!(CreateTaggedValue::new(&target, name, LangString::new("D"))),
+            // The creates of slice 0052 (ADR 0034).
+            4 => create!(CreateArtifactPackage::new(&target, name)),
+            5 => create!(CreateArtifactPackage::root(name)),
+            6 => create!(CreateProperty::new(&target, name)),
+            7 => create!(CreateTechnique::new(&target, name)),
+            8 => create!(CreateParticipant::new(&target, name)),
+            _ => create!(CreateArtifactGroup::new(&target, name).with_group_members([&other])),
         },
         12 => SetName::new(&target, name).into(),
         13 => {

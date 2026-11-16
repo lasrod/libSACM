@@ -924,10 +924,10 @@ fn lib_sec_005_character_reference_refusals_quote_the_reference_and_name_its_kin
 // `]]>`. A scan that ends one early reads its text as markup, refusing what
 // is not there or missing what is.
 
-/// An ArtifactPackage root: recognised but not read yet, so `Unsupported` at
+/// A TerminologyPackage root: recognised but not read yet, so `Unsupported` at
 /// its start tag (ADR 0016 D5).
-const ARTIFACT_ROOT: &str = concat!(
-    "<sacm:ArtifactPackage",
+const TERMINOLOGY_ROOT: &str = concat!(
+    "<sacm:TerminologyPackage",
     " xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
     " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"",
     " xmi:id=\"f\"/>",
@@ -953,8 +953,8 @@ fn lib_sec_005_a_comment_starting_with_gt_or_dash_gt_is_skipped_whole() {
         assert_ok_with_id(row, &root_holding(prolog), "p");
         // Before a root not read yet: refused at that root (line 2,
         // column 1), never for the comment's or PI's text.
-        let before_artifact = format!("{prolog}\n{ARTIFACT_ROOT}");
-        assert_unsupported_at(row, before_artifact.as_bytes(), 2, 1);
+        let before_terminology = format!("{prolog}\n{TERMINOLOGY_ROOT}");
+        assert_unsupported_at(row, before_terminology.as_bytes(), 2, 1);
     }
 }
 
@@ -1056,8 +1056,8 @@ fn lib_sec_005_a_pi_targeted_xml_and_followed_by_a_delimiter_is_malformed_at_its
         // Inside the root, at line 1, column 134.
         assert_malformed_exactly(row, &root_holding(pi), 1, 134, &reason);
         // Before a root not read yet: Malformed, not Unsupported.
-        let before_artifact = format!("{pi}\n{ARTIFACT_ROOT}");
-        assert_malformed_exactly(row, before_artifact.as_bytes(), 1, 1, &reason);
+        let before_terminology = format!("{pi}\n{TERMINOLOGY_ROOT}");
+        assert_malformed_exactly(row, before_terminology.as_bytes(), 1, 1, &reason);
     }
 }
 
@@ -1364,10 +1364,10 @@ fn lib_sec_005_a_pi_target_ends_at_each_edge_of_the_name_character_ranges() {
 // only its binding to that name (W3C XML Conformance Test Suite case
 // rmt-ns10-032).
 
-/// The start tag of an ArtifactPackage root (recognised, not read yet),
+/// The start tag of a TerminologyPackage root (recognised, not read yet),
 /// without its `xmi:id` and without its closing `>` or `/>`.
-const ARTIFACT_START: &str = concat!(
-    "<sacm:ArtifactPackage",
+const TERMINOLOGY_START: &str = concat!(
+    "<sacm:TerminologyPackage",
     " xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
     " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"",
 );
@@ -1389,13 +1389,13 @@ fn lib_sec_006_declaring_the_xmlns_prefix_is_malformed_at_the_attribute_name() {
         format!("{ROOT_START} xmi:id=\"p\"\n  xmlns:xmlns\n=\n'urn:x'/>"),
         // Before the root's own attributes.
         format!("{ROOT_START}\n  xmlns:xmlns=\"urn:x\" xmi:id=\"p\"/>"),
-        // On an ArtifactPackage root, which is not read yet: Malformed
+        // On a TerminologyPackage root, which is not read yet: Malformed
         // comes first, not Unsupported.
-        format!("{ARTIFACT_START} xmi:id=\"f\"\n  xmlns:xmlns=\"urn:x\"/>"),
-        // On an xmi:XMI wrapper that holds an ArtifactPackage root.
+        format!("{TERMINOLOGY_START} xmi:id=\"f\"\n  xmlns:xmlns=\"urn:x\"/>"),
+        // On an xmi:XMI wrapper that holds a TerminologyPackage root.
         format!(
             "<xmi:XMI xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"\n  \
-             xmlns:xmlns=\"urn:x\">{ARTIFACT_ROOT}</xmi:XMI>"
+             xmlns:xmlns=\"urn:x\">{TERMINOLOGY_ROOT}</xmi:XMI>"
         ),
         // With an empty value: this reason, not the undeclaring one.
         format!("{ROOT_START} xmi:id=\"p\"\n  xmlns:xmlns=\"\"/>"),
@@ -1412,11 +1412,11 @@ fn lib_sec_006_declaring_the_xmlns_prefix_is_malformed_at_the_attribute_name() {
     let on_grandchild =
         format!("{ROOT_START} xmi:id=\"p\"><c>\n<d a='1' xmlns:xmlns='urn:x'/></c>{ROOT_END}");
     assert_malformed_exactly(row, on_grandchild.as_bytes(), 2, 10, XMLNS_DECLARED);
-    // A child of an ArtifactPackage root.
-    let in_artifact = format!(
-        "{ARTIFACT_START} xmi:id=\"f\">\n<c xmlns:xmlns=\"urn:x\"/></sacm:ArtifactPackage>"
+    // A child of a TerminologyPackage root.
+    let in_terminology = format!(
+        "{TERMINOLOGY_START} xmi:id=\"f\">\n<c xmlns:xmlns=\"urn:x\"/></sacm:TerminologyPackage>"
     );
-    assert_malformed_exactly(row, in_artifact.as_bytes(), 2, 4, XMLNS_DECLARED);
+    assert_malformed_exactly(row, in_terminology.as_bytes(), 2, 4, XMLNS_DECLARED);
 }
 
 #[test]

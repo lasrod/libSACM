@@ -13,7 +13,9 @@
 //!
 //! The xtask test `xtask/tests/interim_refusals.rs` keeps this list honest:
 //! no other file of the crate builds the refusal, every `Interim` row is
-//! open and gates every compliance point, and every `Tolerance` row is open.
+//! open and gates SACM23-CP-001 and the compliance point of its own package
+//! (every point, for a row of no package), and every `Tolerance` row is
+//! open.
 
 use super::ReadError;
 use super::input::locate;
@@ -54,8 +56,6 @@ impl Refusal {
 /// What a refusal does not read: one entry per kind of input.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Unread {
-    /// An `ArtifactPackage`.
-    ArtifactPackage,
     /// An `ArtifactPackageInterface`.
     ArtifactPackageInterface,
     /// An `ArtifactPackageBinding`.
@@ -74,6 +74,24 @@ pub(super) enum Unread {
     ArgumentPackageInterface,
     /// An `ArgumentPackageBinding`.
     ArgumentPackageBinding,
+    /// An `Artifact`.
+    Artifact,
+    /// A `Resource`.
+    Resource,
+    /// An `Activity`.
+    Activity,
+    /// An `Event`.
+    Event,
+    /// An `ArtifactAssetRelationship`.
+    ArtifactAssetRelationship,
+    /// A `Category`.
+    Category,
+    /// A `Term`.
+    Term,
+    /// An `Expression`.
+    Expression,
+    /// A `TerminologyGroup`.
+    TerminologyGroup,
     /// XMI document metadata: an XMI-namespace element, `xmi:uuid`,
     /// `xmi:label` and `xmi:idref` on an object (on a role element, its
     /// reference form), `href` on a root or on a `name`, `description` or
@@ -92,6 +110,9 @@ pub(super) enum Unread {
     OtherXmiNamespace,
     /// The §11.4 text spelling `argumentationElement`.
     TextSpelling,
+    /// The machine-readable model's spelling `ArtifactAssertedRelationship`
+    /// of the type `ArtifactAssetRelationship` (D-TEXT-MODEL).
+    ModelSpelling,
     /// An encoding other than UTF-8, ASCII and UTF-16 with a mark.
     Encoding,
     /// More nodes, attributes or namespaces than the parser can hold.
@@ -109,11 +130,9 @@ pub(super) enum Unread {
 }
 
 impl Unread {
-    /// The entry of a package kind this version does not read, if `kind`
-    /// is one.
+    /// The entry of a kind this version does not read, if `kind` is one.
     pub(super) const fn kind(kind: ElementKind) -> Option<Self> {
         Some(match kind {
-            ElementKind::ArtifactPackage => Self::ArtifactPackage,
             ElementKind::ArtifactPackageInterface => Self::ArtifactPackageInterface,
             ElementKind::ArtifactPackageBinding => Self::ArtifactPackageBinding,
             ElementKind::TerminologyPackage => Self::TerminologyPackage,
@@ -123,6 +142,15 @@ impl Unread {
             ElementKind::AssuranceCasePackageBinding => Self::AssuranceCasePackageBinding,
             ElementKind::ArgumentPackageInterface => Self::ArgumentPackageInterface,
             ElementKind::ArgumentPackageBinding => Self::ArgumentPackageBinding,
+            ElementKind::Artifact => Self::Artifact,
+            ElementKind::Resource => Self::Resource,
+            ElementKind::Activity => Self::Activity,
+            ElementKind::Event => Self::Event,
+            ElementKind::ArtifactAssetRelationship => Self::ArtifactAssetRelationship,
+            ElementKind::Category => Self::Category,
+            ElementKind::Term => Self::Term,
+            ElementKind::Expression => Self::Expression,
+            ElementKind::TerminologyGroup => Self::TerminologyGroup,
             _ => return None,
         })
     }
@@ -130,7 +158,6 @@ impl Unread {
     /// Why it is refused, with the row that is to read it.
     pub(super) const fn refusal(self) -> Refusal {
         match self {
-            Self::ArtifactPackage => Refusal::Interim("SACM23-ART-001"),
             Self::ArtifactPackageInterface => Refusal::Interim("SACM23-ART-012"),
             Self::ArtifactPackageBinding => Refusal::Interim("SACM23-ART-013"),
             Self::TerminologyPackage => Refusal::Interim("SACM23-TERM-001"),
@@ -140,12 +167,21 @@ impl Unread {
             Self::AssuranceCasePackageBinding => Refusal::Interim("SACM23-AC-003"),
             Self::ArgumentPackageInterface => Refusal::Interim("SACM23-ARG-014"),
             Self::ArgumentPackageBinding => Refusal::Interim("SACM23-ARG-015"),
+            Self::Artifact => Refusal::Interim("SACM23-ART-004"),
+            Self::Resource => Refusal::Interim("SACM23-ART-005"),
+            Self::Activity => Refusal::Interim("SACM23-ART-006"),
+            Self::Event => Refusal::Interim("SACM23-ART-007"),
+            Self::ArtifactAssetRelationship => Refusal::Interim("SACM23-ART-010"),
+            Self::Category => Refusal::Interim("SACM23-TERM-002"),
+            Self::Term => Refusal::Interim("SACM23-TERM-004"),
+            Self::Expression => Refusal::Interim("SACM23-TERM-005"),
+            Self::TerminologyGroup => Refusal::Interim("SACM23-TERM-006"),
             Self::XmiMetadata => Refusal::Interim("SACM23-XMI-019"),
             Self::CrossDocumentHref => Refusal::Interim("SACM23-XMI-027"),
             Self::OtherSacmNamespace => Refusal::Tolerance("LIB-COMPAT-004"),
             Self::ExpressionLangString => Refusal::Interim("SACM23-BASE-009"),
             Self::OtherXmiNamespace => Refusal::Tolerance("LIB-COMPAT-002"),
-            Self::TextSpelling => Refusal::Tolerance("SACM23-XMI-009"),
+            Self::TextSpelling | Self::ModelSpelling => Refusal::Tolerance("SACM23-XMI-009"),
             Self::Encoding | Self::Capacity | Self::Unheld => Refusal::Limit,
             Self::WrapperContent | Self::UnwritablePrefix => Refusal::Defect,
         }
@@ -197,14 +233,24 @@ mod tests {
     }
 
     #[test]
-    fn exactly_the_ten_unread_package_kinds_have_an_entry() {
+    fn exactly_the_eighteen_unread_kinds_have_an_entry() {
         let unread: Vec<ElementKind> = ElementKind::ALL
             .iter()
             .copied()
             .filter(|&kind| Unread::kind(kind).is_some())
             .collect();
-        assert_eq!(unread.len(), 10);
-        assert!(unread.iter().all(|kind| kind.is_package()));
+        assert_eq!(unread.len(), 18);
+        let packages = unread.iter().filter(|kind| kind.is_package()).count();
+        assert_eq!((packages, unread.len() - packages), (9, 9));
+        assert_eq!(Unread::kind(ElementKind::ArtifactPackage), None);
+        assert_eq!(
+            Unread::kind(ElementKind::Artifact).map(Unread::refusal),
+            Some(Refusal::Interim("SACM23-ART-004"))
+        );
+        assert_eq!(
+            Unread::ModelSpelling.refusal(),
+            Refusal::Tolerance("SACM23-XMI-009")
+        );
         for kind in unread {
             let entry = Unread::kind(kind).map(Unread::refusal);
             assert!(matches!(entry, Some(Refusal::Interim(_))), "{kind}");

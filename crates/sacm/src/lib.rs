@@ -11,8 +11,8 @@
 //!
 //! # What works today
 //!
-//! - [`xmi::read`] reads `AssuranceCasePackage` and `ArgumentPackage` roots
-//!   and the packages and Claims in them, with their names, `gid`s and each
+//! - [`xmi::read`] reads `AssuranceCasePackage`, `ArgumentPackage` and
+//!   `ArtifactPackage` roots and the packages and Claims in them, with their names, `gid`s and each
 //!   Assertion's `assertionDeclaration`, and the descriptions, notes,
 //!   implementation constraints and tagged values of each
 //!   ([`descriptions`](model::SacmElement::descriptions),
@@ -43,6 +43,9 @@
 //!   [`structure`](model::SacmElement::structure), each artifact reference's
 //!   [`referenced_artifact_elements`](model::SacmElement::referenced_artifact_elements)
 //!   and each group's [`group_members`](model::SacmElement::group_members).
+//!   In an `ArtifactPackage` it reads `Technique`, `Participant`, `Property`
+//!   and `ArtifactGroup` elements, with each asset's
+//!   [`properties`](model::SacmElement::properties) and each group's members.
 //!   Content that is not SACM 2.3 where it stands, such as a vendor
 //!   attribute or element, is kept as written as preserved content, with
 //!   SACM-XMI-003 ([`has_preserved_content`](model::SacmElement::has_preserved_content);
@@ -68,7 +71,9 @@
 //! - [`edit::apply`] creates `AssuranceCasePackage`, `ArgumentPackage`,
 //!   `Claim`, `ArgumentReasoning`, `ArtifactReference` and `ArgumentGroup`
 //!   elements and the five asserted relationships
-//!   ([`edit::CreateAssertedInference`] and the like), and descriptions,
+//!   ([`edit::CreateAssertedInference`] and the like), `ArtifactPackage`,
+//!   `Property`, `Technique`, `Participant` and `ArtifactGroup` elements
+//!   ([`edit::CreateArtifactPackage`] and the like), and descriptions,
 //!   implementation constraints, notes and tagged values on them
 //!   ([`edit::CreateNote`], [`edit::CreateTaggedValue`] and the like); a
 //!   refused edit changes nothing, and an edit refuses a reference that
@@ -187,10 +192,10 @@
 //! infer its target, the conclusion. An `AssertedContext` (§11.16) gives its
 //! sources as the context of its target. An `AssertedEvidence` (§11.15)
 //! supports its target with evidence: its sources are `ArtifactReference`s
-//! (§11.9), which name the artifacts. Artifacts themselves (§12, the
-//! `ArtifactPackage`) are not supported yet, so for now an
-//! `ArtifactReference` can name only elements of argument and
-//! assurance-case packages, or nothing. Build them with [`edit`], and read
+//! (§11.9), which name the artifacts. Artifacts themselves (§12.7) are not
+//! supported yet, so for now an `ArtifactReference` can name only elements
+//! of argument, artifact and assurance-case packages, such as a `Technique`,
+//! or nothing. Build them with [`edit`], and read
 //! them back with [`sources`](model::SacmElement::sources) and
 //! [`target`](model::SacmElement::target):
 //!
@@ -265,6 +270,39 @@
 //! assert_eq!(order, ["c2", "c1", "a1", "a2", "a3", "e1", "e2"]);
 //! assert!(validation::validate(&doc).is_empty());
 //! # Ok::<(), sacm::edit::EditError>(())
+//! ```
+//!
+//! # Artifacts
+//!
+//! An `ArtifactPackage` (§12.2) holds what the argument's evidence is about.
+//! This release reads, writes and creates its `Technique`s (§12.12),
+//! `Participant`s (§12.13), `Property`s (§12.8) and `ArtifactGroup`s
+//! (§12.3). An artifact asset's characteristics are its
+//! [`properties`](model::SacmElement::properties), and a group's members are
+//! references, as an `ArgumentGroup`'s are. `Artifact`, `Resource`,
+//! `Activity`, `Event` and `ArtifactAssetRelationship` are refused on read
+//! until a later release reads them:
+//!
+//! ```
+//! use sacm::edit::{self, CreateArtifactGroup, CreateArtifactPackage, CreateParticipant, CreateProperty, CreateTechnique};
+//! use sacm::model::{Document, LangString};
+//! use sacm::xmi::{self, WriteOptions};
+//!
+//! let mut doc = Document::new();
+//! let en = |text: &str| LangString::new(text).with_lang("en");
+//! edit::apply(&mut doc, CreateArtifactPackage::root(en("Evidence")).with_id("evidence"))?;
+//! edit::apply(&mut doc, CreateTechnique::new("evidence", en("Fault tree analysis")).with_id("fta"))?;
+//! edit::apply(&mut doc, CreateProperty::new("fta", en("Qualified tool")))?;
+//! edit::apply(&mut doc, CreateParticipant::new("evidence", en("Independent assessor")).with_id("assessor"))?;
+//! let group = CreateArtifactGroup::new("evidence", en("Analysis")).with_group_members(["fta", "assessor"]);
+//! let created = edit::apply(&mut doc, group)?;
+//!
+//! let analysis = doc.get(&created.created_ids()[0]).expect("just created");
+//! assert_eq!(analysis.group_members().len(), 2);
+//! assert_eq!(doc.get("fta").expect("created").properties().count(), 1);
+//! let xml = xmi::write(&doc, &WriteOptions::default())?;
+//! assert!(xml.contains(r#"artifactElement="fta assessor""#));
+//! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
 //! # Features
