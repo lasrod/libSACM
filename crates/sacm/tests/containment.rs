@@ -28,11 +28,12 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 use sacm::edit::{
-    self, CreateArgumentGroup, CreateArgumentPackage, CreateArgumentReasoning,
-    CreateArtifactReference, CreateAssertedArtifactContext, CreateAssertedArtifactSupport,
-    CreateAssertedContext, CreateAssertedEvidence, CreateAssertedInference,
-    CreateAssuranceCasePackage, CreateClaim, CreateDescription, CreateImplementationConstraint,
-    CreateNote, CreateTaggedValue, EditError, Operation,
+    self, CreateArgumentGroup, CreateArgumentPackage, CreateArgumentReasoning, CreateArtifactGroup,
+    CreateArtifactPackage, CreateArtifactReference, CreateAssertedArtifactContext,
+    CreateAssertedArtifactSupport, CreateAssertedContext, CreateAssertedEvidence,
+    CreateAssertedInference, CreateAssuranceCasePackage, CreateClaim, CreateDescription,
+    CreateImplementationConstraint, CreateNote, CreateParticipant, CreateProperty,
+    CreateTaggedValue, CreateTechnique, EditError, Operation,
 };
 
 use sacm::model::ElementKind::{
@@ -1373,7 +1374,7 @@ const SOURCE: &str = "source";
 const TARGET: &str = "target";
 
 /// Every create operation of this release, with the kind it creates.
-fn create_operations() -> [(ElementKind, MakeCreate); 15] {
+fn create_operations() -> [(ElementKind, MakeCreate); 20] {
     [
         (AssuranceCasePackage, |parent: &str| {
             CreateAssuranceCasePackage::new(parent, LangString::new("n")).into()
@@ -1422,13 +1423,31 @@ fn create_operations() -> [(ElementKind, MakeCreate); 15] {
         (TaggedValue, |parent: &str| {
             CreateTaggedValue::new(parent, LangString::new("k"), LangString::new("c")).into()
         }),
+        // The creates of slice 0052 (ADR 0034).
+        (ArtifactPackage, |parent: &str| {
+            CreateArtifactPackage::new(parent, LangString::new("n")).into()
+        }),
+        (Property, |parent: &str| {
+            CreateProperty::new(parent, LangString::new("n")).into()
+        }),
+        (Technique, |parent: &str| {
+            CreateTechnique::new(parent, LangString::new("n")).into()
+        }),
+        (Participant, |parent: &str| {
+            CreateParticipant::new(parent, LangString::new("n")).into()
+        }),
+        (ArtifactGroup, |parent: &str| {
+            CreateArtifactGroup::new(parent, LangString::new("n"))
+                .with_group_members([SOURCE])
+                .into()
+        }),
     ]
 }
 
 #[test]
 fn lib_api_012_create_operations_refuse_invalid_parent_exactly_when_may_contain_is_false() {
     let operations = create_operations();
-    // Guards the list: 15 distinct operations, each named after the kind it
+    // Guards the list: 20 distinct operations, each named after the kind it
     // creates.
     let names: BTreeSet<&str> = operations
         .iter()
@@ -1436,8 +1455,8 @@ fn lib_api_012_create_operations_refuse_invalid_parent_exactly_when_may_contain_
         .collect();
     assert_eq!(
         names.len(),
-        15,
-        "LIB-API-012: the create operations are not 15 distinct ones"
+        20,
+        "LIB-API-012: the create operations are not 20 distinct ones"
     );
     for (kind, make) in &operations {
         assert_eq!(

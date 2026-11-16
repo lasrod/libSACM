@@ -1,10 +1,11 @@
 //! The interchange roots of an XMI document, their names and the package
 //! content under them (SACM23-XMI-001, SACM23-XMI-005, SACM23-XMI-012,
 //! SACM23-XMI-014, SACM23-XMI-015, SACM23-XMI-016, SACM23-XMI-017,
-//! SACM23-BASE-004, -005, -006, -007, -008, SACM23-ARG-004 to -013;
-//! formal/23-05-08 §2.2, §2.4, §8.2-§8.12, §11.2-§11.18; XMI 2.5.1 §7.5.3,
-//! §7.6.3, §7.8.4, §7.8.6, §7.10; ADR 0015, ADR 0016, ADR 0021, ADR 0025,
-//! ADR 0026, ADR 0027, ADR 0028).
+//! SACM23-BASE-004, -005, -006, -007, -008, SACM23-ARG-004 to -013,
+//! SACM23-ART-001, -003, -008, -009, -011; formal/23-05-08 §2.2, §2.4,
+//! §8.2-§8.12, §11.2-§11.18, §12.2, §12.3, §12.6, §12.8, §12.12, §12.13; XMI
+//! 2.5.1 §7.5.3, §7.6.3, §7.8.4, §7.8.6, §7.10; ADR 0015, ADR 0016, ADR 0021,
+//! ADR 0025, ADR 0026, ADR 0027, ADR 0028, ADR 0034).
 //!
 //! An interchange root is the document element or, when that is the XMI
 //! element, each of its element children outside the XMI namespace. The
@@ -84,13 +85,15 @@
 //! (SACM23-XMI-005), or from reference elements with one `xmi:idref` or
 //! `href="#id"` each (SACM23-XMI-015), and held as ids, resolved or not (ADR
 //! 0026). A multi-valued end (`metaClaim`, `source`,
-//! `referencedArtifactElement`, a group's `argumentElement`) holds every
-//! token of the attribute, or one id per element, in document order. A flag
-//! or end the kind lacks is not read. An `argumentElement` element is a
-//! reference element under an `ArgumentGroup` and a child under an
-//! `ArgumentPackage`: the parent's kind decides, and no class has both
-//! (ADR 0028), so an element nested in a group's `argumentElement` is
-//! refused as a reference element would be, never read as a child. The id pre-pass also collects every id a reference may name, so
+//! `referencedArtifactElement`, a group's `argumentElement` or
+//! `artifactElement`) holds every token of the attribute, or one id per
+//! element, in document order. A flag or end the kind lacks is not read. An
+//! `argumentElement` element is a reference element under an
+//! `ArgumentGroup` and a child under an `ArgumentPackage`, and an
+//! `artifactElement` element one under an `ArtifactGroup` and a child under
+//! an `ArtifactPackage`: the parent's kind decides, and no class has both
+//! (ADR 0028, ADR 0034), so an element nested in a group's end is refused as
+//! a reference element would be, never read as a child. The id pre-pass also collects every id a reference may name, so
 //! that no generated id makes a dangling reference resolve. A property given
 //! more than once, a second `name`, `content` or `key` included, is
 //! `RepeatedValue`
@@ -134,6 +137,11 @@ use crate::model::{
     Flag, IdGenerator, Item, LangString, Placed, Preserved, ReferenceEnd, Text, TextRole,
     flag_named, is_ncname, reference_end_named, role_named,
 };
+
+/// The machine-readable model's spelling of the class
+/// `ArtifactAssetRelationship` (§12.14, D-TEXT-MODEL), which SACM23-XMI-009
+/// is to read in tolerant mode as a type.
+const MODEL_SPELLING: &str = "ArtifactAssertedRelationship";
 
 /// The §11.4 text spelling of `argumentElement`, which SACM23-XMI-009 is to
 /// read in tolerant mode, as the role of an ArgumentPackage and the
@@ -1524,19 +1532,22 @@ fn hold(text: &str, document: &mut Document, mut read: Vec<Pending>) -> Result<(
 }
 
 /// The reference end `interface` of a package (ptc/22-03-13
-/// `AssuranceCasePackage::interface`, `ArgumentPackage::interface`), which
-/// conforms and is read with the package interfaces.
+/// `AssuranceCasePackage::interface`, `ArgumentPackage::interface`,
+/// `ArtifactPackage::interface`), which conforms and is read with the package
+/// interfaces.
 const INTERFACE: &str = "interface";
 
 /// The entry of the `interface` end of an element of `kind`, if its class
 /// has one this release reads elements of: an AssuranceCasePackage's names
-/// an `AssuranceCasePackageInterface` (SACM23-AC-002), and an
-/// ArgumentPackage's an `ArgumentPackageInterface` (SACM23-ARG-014). It
-/// conforms, so it is refused, not preserved (ADR 0033).
+/// an `AssuranceCasePackageInterface` (SACM23-AC-002), an ArgumentPackage's
+/// an `ArgumentPackageInterface` (SACM23-ARG-014), and an ArtifactPackage's
+/// an `ArtifactPackageInterface` (SACM23-ART-012). It conforms, so it is
+/// refused, not preserved (ADR 0033, ADR 0034).
 const fn interface_end(kind: ElementKind) -> Option<Unread> {
     match kind {
         ElementKind::AssuranceCasePackage => Some(Unread::AssuranceCasePackageInterface),
         ElementKind::ArgumentPackage => Some(Unread::ArgumentPackageInterface),
+        ElementKind::ArtifactPackage => Some(Unread::ArtifactPackageInterface),
         _ => None,
     }
 }
@@ -1614,8 +1625,8 @@ fn root_start<'a>(found: &mut Findings<'_, 'a>, root: Node<'a, '_>) -> Result<Pe
 
     // The namespace, then the kind (ADR 0016 D5, D6). Under `xmlns=""` the
     // parser reports the empty string, which is no namespace name
-    // (Namespaces 1.0 §2.2, §6.2). Every package kind but the two read has
-    // its entry; pass 1 has refused a root of any other name.
+    // (Namespaces 1.0 §2.2, §6.2). Every package kind but the three read
+    // has its entry; pass 1 has refused a root of any other name.
     let namespace = root.tag_name().namespace().filter(|uri| !uri.is_empty());
     let kind = match (namespace, package_kind(&root)) {
         (Some(SACM_NS), Some(kind)) => match Unread::kind(kind) {
@@ -1957,9 +1968,10 @@ enum ChildKind {
 /// name, which must agree; without one, it is the role's declared type, if
 /// that is concrete. The kind must conform to the role (ADR 0016 D5, D6).
 /// A child that is none of this is [`ChildKind::Preserve`] (ADR 0033),
-/// except two refusals: an element in the XMI namespace, XMI metadata
-/// (SACM23-XMI-019), and the §11.4 text spelling `argumentationElement` in
-/// an ArgumentPackage (SACM23-XMI-009). Without a type under a role of an
+/// except three refusals: an element in the XMI namespace, XMI metadata
+/// (SACM23-XMI-019), the §11.4 text spelling `argumentationElement` in an
+/// ArgumentPackage, and the type `ArtifactAssertedRelationship`, the model's
+/// spelling of a kind the role admits (both SACM23-XMI-009). Without a type under a role of an
 /// abstract type, it is `MissingType` (SACM-XMI-005, LIB-COMPAT-010),
 /// unless it carries an `xmi:idref` or an `href`, the reference form of a
 /// composite, which is refused by its entry ([`proxy_link`]); a typed one,
@@ -2007,6 +2019,21 @@ fn child_kind(
     let mut typed = None;
     for attribute in node.attributes().filter(is_type) {
         let Some(kind) = type_kind(node, attribute.value()) else {
+            // The model's spelling of a kind the role admits, which
+            // SACM23-XMI-009 is to read in tolerant mode (ADR 0034).
+            if names_class(node, attribute.value(), MODEL_SPELLING)
+                && role.declared.admits(ElementKind::ArtifactAssetRelationship)
+            {
+                return Err(unsupported(
+                    text,
+                    at,
+                    Unread::ModelSpelling,
+                    &format!(
+                        "the element {written:?} in {parent_what} is typed {MODEL_SPELLING}, the \
+                         machine-readable model's spelling of ArtifactAssetRelationship"
+                    ),
+                ));
+            }
             return Ok(ChildKind::Preserve);
         };
         match typed {
@@ -2043,7 +2070,7 @@ fn child_kind(
         return Ok(ChildKind::Preserve);
     }
     // The readable children: every kind a role of a readable class admits,
-    // but the package kinds this release does not read.
+    // but the kinds this release does not read.
     if let Some(unread) = Unread::kind(kind) {
         return Err(unsupported(
             text,
@@ -3074,6 +3101,38 @@ mod tests {
                 Some(reason),
                 "{content:?}"
             );
+        }
+    }
+
+    /// The model's spelling `ArtifactAssertedRelationship` is refused only
+    /// where a role admits the kind it spells, an `ArtifactPackage`'s
+    /// `artifactElement`; elsewhere it is a type the role does not admit,
+    /// preserved as the text's spelling would be (ADR 0033, ADR 0034).
+    #[test]
+    fn the_model_spelling_is_refused_only_where_its_kind_is_admitted() {
+        let typed =
+            "<argumentElement xmi:type=\"sacm:ArtifactAssertedRelationship\" xmi:id=\"r\"/>";
+        assert_eq!(refusal(typed), None, "in an ArgumentPackage");
+        assert_eq!(locations(typed).map(|found| found.len()), Some(1));
+
+        let input = concat!(
+            "<sacm:ArtifactPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
+            " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"p\">\n",
+            "<artifactElement xmi:type=\"sacm:ArtifactAssertedRelationship\" xmi:id=\"r\"/>",
+            "</sacm:ArtifactPackage>"
+        );
+        match read(input.as_bytes(), &ReadOptions::default()) {
+            Err(ReadError::Unsupported { location, reason }) => {
+                assert_eq!(location, SourceLocation::new(2, 1));
+                assert_eq!(
+                    reason,
+                    "the element \"artifactElement\" in the root element \"sacm:ArtifactPackage\" \
+                     is typed ArtifactAssertedRelationship, the machine-readable model's spelling \
+                     of ArtifactAssetRelationship (strict mode never reads it; SACM23-XMI-009 is \
+                     to read it in tolerant mode)"
+                );
+            }
+            other => panic!("{other:?}"),
         }
     }
 }

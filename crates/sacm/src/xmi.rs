@@ -4,22 +4,27 @@
 //! a [`ReadError`]. [`write`](fn@write) takes a [`Document`] and returns its XMI text or
 //! a [`WriteError`]. Neither does I/O: the caller reads and writes the file.
 //!
-//! In this release `read` reads `AssuranceCasePackage` and `ArgumentPackage`
-//! roots, bare or inside an `xmi:XMI` element, and what they hold of eleven
-//! kinds: `AssuranceCasePackage` and `ArgumentPackage` elements in an
-//! `AssuranceCasePackage`, and `ArgumentPackage`, `Claim`,
-//! `ArgumentReasoning`, `ArtifactReference`, `ArgumentGroup`,
-//! `AssertedInference`, `AssertedEvidence`, `AssertedContext`,
-//! `AssertedArtifactSupport` and `AssertedArtifactContext` elements in an
-//! `ArgumentPackage`, each with its id (generated when it has no `xmi:id`),
-//! `gid`, `isCitation`, `isAbstract`, `citedElement`, `abstractForm` and
-//! name, an Assertion's `assertionDeclaration` and `metaClaim`, an asserted
+//! In this release `read` reads `AssuranceCasePackage`, `ArgumentPackage` and
+//! `ArtifactPackage` roots, bare or inside an `xmi:XMI` element, and what they
+//! hold of sixteen kinds: the three package kinds in an
+//! `AssuranceCasePackage`; `ArgumentPackage`, `Claim`, `ArgumentReasoning`,
+//! `ArtifactReference`, `ArgumentGroup`, `AssertedInference`,
+//! `AssertedEvidence`, `AssertedContext`, `AssertedArtifactSupport` and
+//! `AssertedArtifactContext` elements in an `ArgumentPackage`; every one of
+//! these kinds and `Technique`, `Participant`, `ArtifactGroup` and `Property`
+//! elements in an `ArtifactPackage`; and `Property` elements in the
+//! `property` role of a `Property`, `Technique` or `Participant`. Each is
+//! read with its id (generated when it has no `xmi:id`), `gid`,
+//! `isCitation`, `isAbstract`, `citedElement`, `abstractForm` and name, an
+//! Assertion's `assertionDeclaration` and `metaClaim`, an asserted
 //! relationship's `isCounter`, `reasoning`, `source` and `target`, an
 //! `ArgumentReasoning`'s `structure`, an `ArtifactReference`'s
 //! `referencedArtifactElement`, an `ArgumentGroup`'s members
-//! (`argumentElement`), and the descriptions, implementation constraints,
-//! notes and tagged values of each, with their `content` and `key` (SACM 2.3
-//! §2.2, §2.4, §8.2-§8.12, §9.2, §11.2, §11.4, §11.9-§11.18). A reference is held as the id it names, and one that names no
+//! (`argumentElement`), an `ArtifactGroup`'s members (`artifactElement`), and
+//! the descriptions, implementation constraints, notes and tagged values of
+//! each, with their `content` and `key` (SACM 2.3 §2.2, §2.4, §8.2-§8.12,
+//! §9.2, §11.2, §11.4, §11.9-§11.18, §12.2, §12.3, §12.6, §12.8, §12.12,
+//! §12.13). A reference is held as the id it names, and one that names no
 //! element is kept (see [References](fn@read#references)). It refuses input that is unsafe
 //! ([`ReadError::Doctype`], SACM-SEC-001), not well-formed
 //! ([`ReadError::Malformed`], SACM-XML-001), not rooted in a SACM package

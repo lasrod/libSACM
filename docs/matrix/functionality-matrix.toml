@@ -1774,7 +1774,7 @@ id = "SACM23-XMI-001"
 area = "XMI"
 milestone = "M1"
 title = "Interchange roots"
-requirement = "`xmi::read` returns `Ok(ReadOutput)` with a `Document` (and its diagnostics, sorted per ADR 0011: SACM-XMI-010 for `xsi:type` and SACM-XMI-011 for `xmi:version` (LIB-COMPAT-001), the Infos SACM-XMI-004 for a missing `xmi:id` and SACM-ID-004 for a padded one (SACM23-XMI-020, SACM23-XMI-025), and SACM-XMI-003 for preserved content (LIB-COMPAT-003)) when every interchange root is an `AssuranceCasePackage` or `ArgumentPackage` element in the pinned SACM namespace `http://www.omg.org/spec/SACM/20220301` (D-NS-PIN). A root is the document element, or each element child outside the XMI namespace of an `XMI` element in the XMI 2.5.1 namespace `http://www.omg.org/spec/XMI/20131001`. Elements and attributes are matched by namespace URI and local name, never by prefix (any-prefix equivalence is SACM23-XMI-002). Each root becomes a parentless element of its kind, in document order, whose id is its `xmi:id`'s `xsd:ID` value (SACM23-XMI-025), or a generated id when it has none (SACM23-XMI-020). Its name is missing (ADR 0013) unless it has a `name` child, which SACM23-XMI-012 reads. A read root may carry only namespace declarations, `xmi:id`, `xmi:version` (reported as SACM-XMI-011 and otherwise ignored: XMI 2.5.1 identifies its version by namespace) and an `xmi:type` or `xsi:type` naming its own class; its content may be only white space, comments, processing instructions, one `name` child under SACM23-XMI-012's rules, and the children SACM23-XMI-016 reads; content that does not conform there is preserved (below). The wrapper may carry only namespace declarations and `xmi:version`. An empty root id is `ReadError::InvalidId` and a root id that repeats an earlier element's is `ReadError::DuplicateId` (SACM23-VAL-020, SACM23-VAL-001). Content of a root that does not conform where it stands (an attribute or child element its class lacks, a type attribute naming another class (D-ROOT-NAME), an `id` attribute in no namespace or another namespace, non-white-space text) is kept as preserved content of the root, with one SACM-XMI-003 at it (Warning tolerant, Error strict; LIB-COMPAT-003, ADR 0033). Anything else is refused as `ReadError::Unsupported` at its location, never dropped (LIB-API-009, LIB-API-011): conforming content not read yet (XMI metadata and `xsi:schemaLocation` on a root, SACM23-XMI-019; a conforming child SACM23-XMI-016 does not read), a preserved attribute whose prefix binds `sacm` or `xmi` to another URI (a defect, ADR 0033), any attribute other than namespace declarations and `xmi:version`, and any non-white-space text, on the wrapper, the other ten package kinds as roots (SACM23-ART-001, SACM23-TERM-001, AC-002/003, ARG-014/015), a package-kind name in another namespace or none (LIB-COMPAT-004), an `XMI` element in another namespace (LIB-COMPAT-002), and an XMI-namespace element as a root or wrapper child (SACM23-XMI-019). A root or wrapper child whose local name is none of the twelve package-kind names, and a wrapper with no root, are refused with a `ReadError` whose `code()` is SACM-XMI-001, at that element; among the refusals found while reading the roots this takes precedence over `Unsupported`, so which roots get SACM-XMI-001 does not depend on what a release can read (an `XMI` element outside the XMI namespace is `Unsupported` before its children are classified, ADR 0016 D1). No document is returned beside a refusal (ADR 0015). The XML checks of LIB-SEC-005 run before any root is classified."
+requirement = "`xmi::read` returns `Ok(ReadOutput)` with a `Document` (and its diagnostics, sorted per ADR 0011: SACM-XMI-010 for `xsi:type` and SACM-XMI-011 for `xmi:version` (LIB-COMPAT-001), the Infos SACM-XMI-004 for a missing `xmi:id` and SACM-ID-004 for a padded one (SACM23-XMI-020, SACM23-XMI-025), and SACM-XMI-003 for preserved content (LIB-COMPAT-003)) when every interchange root is an `AssuranceCasePackage`, `ArgumentPackage` or `ArtifactPackage` element in the pinned SACM namespace `http://www.omg.org/spec/SACM/20220301` (D-NS-PIN). A root is the document element, or each element child outside the XMI namespace of an `XMI` element in the XMI 2.5.1 namespace `http://www.omg.org/spec/XMI/20131001`. Elements and attributes are matched by namespace URI and local name, never by prefix (any-prefix equivalence is SACM23-XMI-002). Each root becomes a parentless element of its kind, in document order, whose id is its `xmi:id`'s `xsd:ID` value (SACM23-XMI-025), or a generated id when it has none (SACM23-XMI-020). Its name is missing (ADR 0013) unless it has a `name` child, which SACM23-XMI-012 reads. A read root may carry only namespace declarations, `xmi:id`, `xmi:version` (reported as SACM-XMI-011 and otherwise ignored: XMI 2.5.1 identifies its version by namespace) and an `xmi:type` or `xsi:type` naming its own class; its content may be only white space, comments, processing instructions, one `name` child under SACM23-XMI-012's rules, and the children SACM23-XMI-016 reads; content that does not conform there is preserved (below). The wrapper may carry only namespace declarations and `xmi:version`. An empty root id is `ReadError::InvalidId` and a root id that repeats an earlier element's is `ReadError::DuplicateId` (SACM23-VAL-020, SACM23-VAL-001). Content of a root that does not conform where it stands (an attribute or child element its class lacks, a type attribute naming another class (D-ROOT-NAME), an `id` attribute in no namespace or another namespace, non-white-space text) is kept as preserved content of the root, with one SACM-XMI-003 at it (Warning tolerant, Error strict; LIB-COMPAT-003, ADR 0033). Anything else is refused as `ReadError::Unsupported` at its location, never dropped (LIB-API-009, LIB-API-011): conforming content not read yet (XMI metadata and `xsi:schemaLocation` on a root, SACM23-XMI-019; a conforming child SACM23-XMI-016 does not read), a preserved attribute whose prefix binds `sacm` or `xmi` to another URI (a defect, ADR 0033), any attribute other than namespace declarations and `xmi:version`, and any non-white-space text, on the wrapper, the other nine package kinds as roots (each refused under its own package row, such as SACM23-TERM-001, SACM23-AC-002/003, SACM23-ARG-014/015 and SACM23-ART-012), a package-kind name in another namespace or none (LIB-COMPAT-004), an `XMI` element in another namespace (LIB-COMPAT-002), and an XMI-namespace element as a root or wrapper child (SACM23-XMI-019). A root or wrapper child whose local name is none of the twelve package-kind names, and a wrapper with no root, are refused with a `ReadError` whose `code()` is SACM-XMI-001, at that element; among the refusals found while reading the roots this takes precedence over `Unsupported`, so which roots get SACM-XMI-001 does not depend on what a release can read (an `XMI` element outside the XMI namespace is `Unsupported` before its children are classified, ADR 0016 D1). No document is returned beside a refusal (ADR 0015). The XML checks of LIB-SEC-005 run before any root is classified."
 source = "formal/23-05-08 §2.2 (p. 4) \"The top object of the Argumentation package as a unit of interchange shall be the Argumentation::ArgumentPackage element of the SACM.\"; §2.4 (p. 4) \"The top object of the Assurance Case package as a unit of interchange shall be the SACM::AssuranceCasePackage element.\"; §2.2/§2.4 \"import and export XMI documents that conform with the SACM XML Schema produced by applying XMI rules to the normative MOF metamodel\"; §9.2 (p. 23) \"When users exchange content, it is expected they use this as the top-level container.\"; XMI 2.5.1 formal/15-06-07 §7.5.3 (p. 10) \"it must be the XMI element if there are multiple elements\", \"the XMI element may not be present when there is only a single top-level object\", \"Each version of XMI is unambiguously identified by its unique namespace URI\"; §7.8.1 (p. 16) \"The XML element name for each model Class, and Association in a document is its short name.\"; §9.5.2 rule 2a (p. 63); §7.6.1 (p. 13) `<xsd:attribute name=\"id\" type=\"xsd:ID\" use=\"optional\"/>`; XMI.xsd targetNamespace `http://www.omg.org/spec/XMI/20131001` (no `version` attribute; specification defect D10); D-NS-PIN; D-PRESERVE; ADR 0013; ADR 0015; ADR 0016; docs/sacm/diagnostics.md SACM-XMI-001; assurance-forge libs/sacm src/io/xmi_reader.cpp:2097-2142, 2191-2285, 2433-2459 (empty wrapper is SACM-XMI-001 as in C++; deviations in ADR 0016)"
 kind = "xmi"
 status = "verified"
@@ -1788,9 +1788,9 @@ acceptance = [
   "Redundant type: `xmi:type=\"sacm:ArgumentPackage\"` or `xsi:type=\"sacm:ArgumentPackage\"` on an ArgumentPackage root gives the same document; `xsi:type=\"sacm:ArgumentPackageInterface\"`, `xsi:type=\"sacm:Claim\"` or `xmi:type=\"sacm:Claim\"`, `xsi:type=\"sacm:ArgumentPackage\"` on an AssuranceCasePackage, a type whose prefix is bound to another namespace, and an unprefixed type with no default namespace each read, in both modes, as the root's own kind, with the type attribute kept as preserved content of the root and one SACM-XMI-003 at the attribute's name (D-ROOT-NAME, LIB-COMPAT-003).",
   "Ids are kept exactly: `xmi:id=\"Ünï.c-1\"` and `xmi:id=\"a&#x42;\"` give ids `Ünï.c-1` and `aB`.",
   "SACM-XMI-001: each of these gives `ReadError::InvalidRoot` with `code() == Some(Code::XMI_INVALID_ROOT)` (SACM-XMI-001), located at the `<` of the element's start tag, and `element_name` the name as written (`<sacm:Claim …>` displays exactly `the root element \"sacm:Claim\" is not a SACM package at line 1, column 1`): `<sacm:Claim xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\" xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"c1\"/>` (the C++ fixture `invalid/root-invalid.sacm.xmi`), `<sacm:ArgumentGroup …>`, `<sacm:assuranceCasePackage …>`, `<sacm:Foo/>`, `<r/>`, `<html xmlns=\"http://www.w3.org/1999/xhtml\">`, `<uml:Model xmlns:uml=\"http://www.omg.org/spec/UML/20131001\">`; a wrapper holding a valid ArgumentPackage then a `sacm:Claim` (at the Claim; no document is returned); an empty `<xmi:XMI xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"/>` and a wrapper holding only `<xmi:documentation/>` give `ReadError::NoPackage`, with the same code, located at the wrapper and displaying `the XMI element holds no SACM package at line L, column C`.",
-  "SACM-XMI-001 takes precedence: a wrapper holding `<sacm:ArtifactPackage xmi:id=\"f\"/>` then `<sacm:Claim xmi:id=\"c\"/>` gives SACM-XMI-001 at the Claim, not `Unsupported`.",
-  "Not readable yet, so `Unsupported` (`code()` `None`) at the stated element: each of the other 10 package-kind roots in the pinned namespace; `<foo:ArgumentPackage xmlns:foo=\"urn:x\" …>`; `<ArgumentPackage xmlns:xmi=\"…20131001\" xmi:id=\"p\"/>` in no namespace; `<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/2.2/argumentation\" …>`; `<xmi:XMI xmlns:xmi=\"http://www.omg.org/XMI\">` and `<XMI>` wrappers holding a valid root; a root `<xmi:Extension>`; a wrapper child `<xmi:documentation>` or `<xmi:extension>` next to a valid root (at that child).",
-  "Unread content: on a valid root of either kind, each of `xmi:uuid`, `xmi:label`, `href`, `xmi:idref` and `xsi:schemaLocation`, a conforming child this version does not read (an `ArgumentPackageInterface` in `argumentElement` of an ArgumentPackage, an `artifactPackage` of an AssuranceCasePackage) and `<xmi:Extension/>` is `Unsupported` at that content (SACM23-XMI-019, LIB-API-011); non-white-space text in the wrapper is `Unsupported` at its first character. Content that does not conform is kept as preserved content of the root, with one SACM-XMI-003 at it in both modes (LIB-COMPAT-003): any one of `sacm:isCitation`, `sacm:isAbstract`, `ext:isCitation`, `xmi:isAbstract`, `sacm:citedElement`, `ext:abstractForm`, `xml:lang`, `foo=\"1\"`, `ext:a=\"1\"`; `interface=\"x\"` is the conforming `interface` end, refused as `Unsupported` with the package's own interface row (SACM23-AC-002, SACM23-ARG-014); a `<foo/>` child, a child under a role the root's class lacks, `<sacm:isCitation>` and `<sacm:citedElement>`; non-white-space text, also after a comment. (A `gid`, utility children and the unqualified flags and references are read: SACM23-BASE-004 to -008, SACM23-XMI-005.)",
+  "SACM-XMI-001 takes precedence: a wrapper holding `<sacm:TerminologyPackage xmi:id=\"f\"/>` then `<sacm:Claim xmi:id=\"c\"/>` gives SACM-XMI-001 at the Claim, not `Unsupported`.",
+  "Not readable yet, so `Unsupported` (`code()` `None`) at the stated element: each of the other 9 package-kind roots in the pinned namespace; `<foo:ArgumentPackage xmlns:foo=\"urn:x\" …>`; `<ArgumentPackage xmlns:xmi=\"…20131001\" xmi:id=\"p\"/>` in no namespace; `<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/2.2/argumentation\" …>`; `<xmi:XMI xmlns:xmi=\"http://www.omg.org/XMI\">` and `<XMI>` wrappers holding a valid root; a root `<xmi:Extension>`; a wrapper child `<xmi:documentation>` or `<xmi:extension>` next to a valid root (at that child).",
+  "Unread content: on a valid root of either kind, each of `xmi:uuid`, `xmi:label`, `href`, `xmi:idref` and `xsi:schemaLocation`, a conforming child this version does not read (an `ArgumentPackageInterface` in `argumentElement` of an ArgumentPackage, a `terminologyPackage` of an AssuranceCasePackage) and `<xmi:Extension/>` is `Unsupported` at that content (SACM23-XMI-019, LIB-API-011); non-white-space text in the wrapper is `Unsupported` at its first character. Content that does not conform is kept as preserved content of the root, with one SACM-XMI-003 at it in both modes (LIB-COMPAT-003): any one of `sacm:isCitation`, `sacm:isAbstract`, `ext:isCitation`, `xmi:isAbstract`, `sacm:citedElement`, `ext:abstractForm`, `xml:lang`, `foo=\"1\"`, `ext:a=\"1\"`; `interface=\"x\"` is the conforming `interface` end, refused as `Unsupported` with the package's own interface row (SACM23-AC-002, SACM23-ARG-014, SACM23-ART-012); a `<foo/>` child, a child under a role the root's class lacks, `<sacm:isCitation>` and `<sacm:citedElement>`; non-white-space text, also after a comment. (A `gid`, utility children and the unqualified flags and references are read: SACM23-BASE-004 to -008, SACM23-XMI-005.)",
   "Ids: an unprefixed `id=\"p\"` or an `id` attribute in another namespace is kept as preserved content of the root, with one SACM-XMI-003 at the attribute's name, and the root reads with a generated id; a root with no `xmi:id` reads with a generated id (SACM23-XMI-020), and a padded one reads trimmed (SACM23-XMI-025); an empty `xmi:id` is `ReadError::InvalidId` (SACM23-VAL-020); two wrapped roots with the same `xmi:id` are `ReadError::DuplicateId` at the second (SACM23-VAL-001).",
   "Order and determinism: the encoding refusals (LIB-API-009), DOCTYPE (LIB-SEC-001) and `Malformed` (LIB-SEC-002, LIB-SEC-005) come before any root classification; the same input always gives the same result.",
   "`ReadOutput` has `document()`, `diagnostics()` (empty unless the input carries `xsi:type` or `xmi:version`, LIB-COMPAT-001, a missing or padded `xmi:id`, SACM23-XMI-020 and SACM23-XMI-025, or preserved content, SACM-XMI-003 and LIB-COMPAT-003) and `into_document()`, and is `Send + Sync` (checked statically). The SACM-XMI-001 refusals follow ADR 0011: `InvalidRoot` and `NoPackage` are `#[non_exhaustive]` `ReadError` variants with a location (also returned by `location()`), its `Display` is one lowercase line without trailing punctuation that quotes names from the input, `source()` is `None`; `Code::XMI_INVALID_ROOT` is SACM-XMI-001 and appears in a table row of docs/sacm/diagnostics.md.",
@@ -1812,7 +1812,7 @@ tests = [
   "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_a_wrapped_claim_is_invalid_root_and_no_document_is_returned",
   "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_a_wrapper_with_no_package_is_no_package_at_the_wrapper",
   "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_invalid_root_takes_precedence_over_unsupported",
-  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_the_other_ten_package_kinds_are_unsupported_at_the_root",
+  "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_the_other_nine_package_kinds_are_unsupported_at_the_root",
   "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_a_package_name_outside_the_pinned_namespace_is_unsupported_at_the_root",
   "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_an_xmi_element_outside_the_xmi_namespace_is_unsupported_at_the_wrapper",
   "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_an_xmi_namespace_element_as_root_or_wrapper_child_is_unsupported_there",
@@ -2451,6 +2451,7 @@ tests = [
   "crates/sacm/tests/edit_atomic.rs::lib_edit_003_operation_name_is_the_name_of_the_operation_held_by_the_mutation",
   "crates/sacm/tests/edit_atomic.rs::lib_edit_003_mutation_and_operation_are_send_and_sync",
   "crates/sacm/tests/edit_atomic.rs::lib_edit_003_mutation_is_clone_debug_partial_eq_and_eq",
+  "crates/sacm/tests/edit_atomic.rs::lib_edit_003_operation_name_of_the_artifact_creates_is_the_struct_name",
 ]
 verification = "docs/verification/0034-m1-atomic-edits-and-results.md"
 
@@ -4369,12 +4370,42 @@ id = "SACM23-ART-001"
 area = "ART"
 milestone = "M3"
 title = "ArtifactPackage"
-requirement = "ArtifactPackage (§12.2) is represented as a root or contained in an AssuranceCasePackage (SACM23-AC-001) or another ArtifactPackage, and contains ArtifactElements (role `artifactElement`, which admits every ArtifactElement kind: LIB-API-008, ADR 0014) in document order."
-source = "formal/23-05-08 clause 12; ptc/22-03-13 Artifact::ArtifactPackage; clause 2"
+requirement = "ArtifactPackage (§12.2) is read and written as a root (bare or inside `xmi:XMI`), in an AssuranceCasePackage's `artifactPackage` role, and nested in another ArtifactPackage's `artifactElement` role with `xmi:type`; it holds its ArtifactElements in the composite role `artifactElement : ArtifactElement [0..*]` in document order (every ArtifactElement kind is admitted: LIB-API-008, ADR 0014), so the kinds already readable are also read inside it. An untyped `artifactElement` child is `MissingType` (SACM-XMI-005); one in reference form is a not-yet-read proxy (SACM23-XMI-019, SACM23-XMI-027). ArtifactElement kinds this release does not read yet (Artifact, Resource, Activity, Event, ArtifactAssetRelationship, and the Terminology kinds) are refused as `Interim` naming their rows (LIB-API-011), the type `ArtifactAssertedRelationship` as `Tolerance(SACM23-XMI-009)`, and its `interface` end as `Interim(SACM23-ART-012)`. `edit::CreateArtifactPackage` creates one as a root or a child (ADR 0034)."
+source = "formal/23-05-08 §12.2 (`artifactElement:Base::ArtifactElement[0..*] (composition)`; \"ArtifactPackages can also be nested\"); ptc/22-03-13 Artifact::ArtifactPackage (`artifactElement : ArtifactElement [0..*]`, composite; `interface : ArtifactPackageInterface [0..*]`); clause 2 (ArtifactPackage is a unit of interchange); ADR 0034"
 kind = "model"
-status = "planned"
+status = "implemented"
+code = ["crates/sacm/src/xmi/refusal.rs", "crates/sacm/src/xmi/roots.rs", "crates/sacm/src/edit/artifact.rs", "crates/sacm/src/edit.rs"]
 depends_on = ["SACM23-AC-001", "SACM23-XMI-005", "LIB-API-008"]
-notes = "Also reads `ArtifactPackage` as an interchange root: SACM23-XMI-001 refuses it as `Unsupported` until then."
+acceptance = [
+  "The three placements (root bare and in `xmi:XMI`; in an AssuranceCasePackage's `artifactPackage`, typed or untyped; nested typed in `artifactElement`, with `xsi:type` giving SACM-XMI-010 as elsewhere) read in both modes with kind, id, name, parent and document order.",
+  "An untyped `<artifactElement xmi:id=\"x\"/>` is `MissingType` (SACM-XMI-005) at its `<` in both modes.",
+  "Every kind already readable (AssuranceCasePackage, ArgumentPackage and the nine argumentation kinds) is read inside an ArtifactPackage; each kind not read yet, the `interface` end, and the type `sacm:ArtifactAssertedRelationship` are `Unsupported` with the exact label and row at the exact location in both modes.",
+  "Written as `sacm:ArtifactPackage` at the root, an untyped `<artifactPackage>` under an AssuranceCasePackage, and `artifactElement` children with `xmi:type`. The fixture `artifact-package-valid.sacm.xmi` reads with no diagnostic in either mode and writes exactly `golden/artifact-package.golden.sacm.xmi`; reading that back is `==` and writing it again is byte-identical.",
+  "`CreateArtifactPackage::root(name)` and `::new(parent, name)`: legal parents are none (a root), an AssuranceCasePackage and an ArtifactPackage; refusals in the order ParentNotFound, InvalidParent, InvalidId, DuplicateId; the generated id is `artifact_package_<n>`; `edit::check` and `edit::preview` agree with `edit::apply`.",
+  "Deleting a non-empty ArtifactPackage is `NotEmpty` (SACM-CMD-006) unless `DeleteRecursively`, which deletes its subtree.",
+]
+tests = [
+  "crates/sacm/tests/artifact_edits.rs::sacm23_art_001_create_artifact_package_creates_roots_in_document_order",
+  "crates/sacm/tests/artifact_edits.rs::sacm23_art_001_create_artifact_package_legal_parents_refusals_and_generated_id",
+  "crates/sacm/tests/artifact_edits.rs::sacm23_art_001_create_artifact_package_reports_what_it_was_given",
+  "crates/sacm/tests/artifact_edits.rs::sacm23_art_001_each_artifact_create_converts_into_its_operation_variant",
+  "crates/sacm/tests/artifact_edits.rs::sacm23_art_001_the_artifact_creates_are_send_sync_clone_debug_and_eq",
+  "crates/sacm/tests/artifact_package.rs::sacm23_art_001_a_bare_root_and_roots_in_an_xmi_wrapper_read_in_both_modes",
+  "crates/sacm/tests/artifact_package.rs::sacm23_art_001_a_reference_form_artifact_element_under_a_package_is_a_proxy_not_read_yet",
+  "crates/sacm/tests/artifact_package.rs::sacm23_art_001_an_artifact_element_attribute_on_a_package_is_preserved_at_the_attribute",
+  "crates/sacm/tests/artifact_package.rs::sacm23_art_001_an_artifact_package_reads_in_artifact_package_untyped_or_typed_and_nested_typed",
+  "crates/sacm/tests/artifact_package.rs::sacm23_art_001_an_untyped_artifact_element_child_is_missing_type_at_its_start_tag",
+  "crates/sacm/tests/artifact_package.rs::sacm23_art_001_children_and_packages_keep_document_order_at_every_depth",
+  "crates/sacm/tests/artifact_package.rs::sacm23_art_001_deleting_a_non_empty_artifact_package_is_not_empty_unless_recursive",
+  "crates/sacm/tests/artifact_package.rs::sacm23_art_001_each_kind_not_read_yet_is_unsupported_naming_its_row_at_its_start_tag",
+  "crates/sacm/tests/artifact_package.rs::sacm23_art_001_every_readable_kind_is_read_typed_inside_an_artifact_package",
+  "crates/sacm/tests/artifact_package.rs::sacm23_art_001_fixture_variants_a_b_c_and_g_are_refused_at_their_construct",
+  "crates/sacm/tests/artifact_package.rs::sacm23_art_001_the_fixture_reads_in_both_modes_with_no_diagnostic_and_validates",
+  "crates/sacm/tests/artifact_package.rs::sacm23_art_001_the_fixture_writes_exactly_the_golden_file_which_reads_back_equal",
+  "crates/sacm/tests/artifact_package.rs::sacm23_art_001_the_interface_end_of_an_artifact_package_is_unsupported_naming_sacm23_art_012",
+  "crates/sacm/tests/artifact_package.rs::sacm23_art_001_the_type_artifact_asserted_relationship_is_a_tolerance_of_sacm23_xmi_009",
+  "crates/sacm/tests/artifact_package.rs::sacm23_art_001_written_as_a_root_an_untyped_artifact_package_and_typed_artifact_elements",
+]
 
 [[row]]
 id = "SACM23-ART-002"
@@ -4392,11 +4423,28 @@ id = "SACM23-ART-003"
 area = "ART"
 milestone = "M3"
 title = "Property"
-requirement = "ArtifactAsset `property` containment (Property elements, themselves ArtifactAssets) is represented on every artifact asset, round-tripped and editable."
-source = "formal/23-05-08 clause 12; ptc/22-03-13 Artifact::ArtifactAsset.property, Artifact::Property"
+requirement = "Property (§12.8) is read and written in the composite role `property : Property [0..*]` of every ArtifactAsset this release reads (Property, Technique, Participant), untyped or typed `sacm:Property`, and typed in an ArtifactPackage's `artifactElement`. `SacmElement::properties()` lists an asset's `property` children in document order; a Property held directly in an ArtifactPackage is a child of the package, not a property of it. A `property` element typed as another class, or under an element that is not an ArtifactAsset, is preserved content (SACM-XMI-003). `edit::CreateProperty` creates one where the containment table admits it."
+source = "formal/23-05-08 §12.6 and §12.8 (\"Property enables the specification of the characteristics of an Artifact\"); ptc/22-03-13 Artifact::ArtifactAsset.property (`property : Property [0..*]`, composite), Artifact::Property; ADR 0034"
 kind = "model"
-status = "planned"
+status = "implemented"
+code = ["crates/sacm/src/model/document.rs", "crates/sacm/src/edit/artifact.rs", "crates/sacm/src/edit.rs"]
 depends_on = ["SACM23-ART-001"]
+acceptance = [
+  "`property` is read untyped or typed `sacm:Property` under a Property, a Technique and a Participant, nested three deep, and typed in `artifactElement`, in both modes; a `property` typed as another class, and a `property` under a non-asset, are each kept as preserved content with one SACM-XMI-003.",
+  "`property` children are written without `xmi:type`; `properties()` lists them in order, and is empty for a Property held directly in an ArtifactPackage's `artifactElement` and for every kind that is not an ArtifactAsset.",
+  "`CreateProperty::new(parent, name)`: legal parents are Property, Technique, Participant (role `property`) and ArtifactPackage (role `artifactElement`); a Claim, an ArtifactGroup, an AssuranceCasePackage or an ArgumentPackage parent is `InvalidParent`; the generated id is `property_<n>`.",
+  "Properties are content: deleting a Technique holding one Property is `NotEmpty { contained: 1 }`, and a Property holding a Property holding a Property gives 2.",
+]
+tests = [
+  "crates/sacm/tests/artifact_assets.rs::sacm23_art_003_a_property_typed_as_another_class_is_preserved_by_its_asset",
+  "crates/sacm/tests/artifact_assets.rs::sacm23_art_003_a_property_under_an_element_that_is_no_artifact_asset_is_preserved_by_it",
+  "crates/sacm/tests/artifact_assets.rs::sacm23_art_003_deleting_an_asset_holding_properties_is_not_empty_unless_recursive",
+  "crates/sacm/tests/artifact_assets.rs::sacm23_art_003_property_children_are_written_without_a_type_and_round_trip",
+  "crates/sacm/tests/artifact_assets.rs::sacm23_art_003_property_nests_three_deep_and_reads_typed_in_artifact_element",
+  "crates/sacm/tests/artifact_assets.rs::sacm23_art_003_property_reads_untyped_or_typed_under_each_readable_asset_in_both_modes",
+  "crates/sacm/tests/artifact_edits.rs::sacm23_art_003_create_property_legal_parents_refusals_and_generated_id",
+  "crates/sacm/tests/artifact_edits.rs::sacm23_art_003_properties_lists_an_asset_s_property_children_and_nothing_else",
+]
 
 [[row]]
 id = "SACM23-ART-004"
@@ -4447,22 +4495,44 @@ id = "SACM23-ART-008"
 area = "ART"
 milestone = "M3"
 title = "Technique"
-requirement = "Technique is represented, created, round-tripped and editable."
-source = "formal/23-05-08 clause 12; ptc/22-03-13 Artifact::Technique"
+requirement = "Technique (§12.12), an ArtifactAsset with no attributes of its own, is read and written typed in an ArtifactPackage's `artifactElement`, with its Base features (name, utility elements, gid, flags, `citedElement`, `abstractForm`) and its `property` children (SACM23-ART-003), and round-trips. `edit::CreateTechnique` creates one in an ArtifactPackage, and the existing edits (SetName, SetGid, SetFlag, SetReferences, ReorderElements, DeleteElement) apply to it."
+source = "formal/23-05-08 §12.12; ptc/22-03-13 Artifact::Technique (generalization ArtifactAsset); ADR 0034"
 kind = "model"
-status = "planned"
+status = "implemented"
+code = ["crates/sacm/src/edit/artifact.rs", "crates/sacm/src/edit.rs"]
 depends_on = ["SACM23-ART-003"]
+acceptance = [
+  "A Technique typed in `artifactElement`, with a description, a note, a tagged value, gid, `isCitation`/`isAbstract`, `citedElement` and a property, reads in both modes and writes back; reading the output gives `==`.",
+  "`CreateTechnique::new(parent, name)`: the only legal parent is an ArtifactPackage; an AssuranceCasePackage, an ArgumentPackage, a Technique or an ArtifactGroup parent is `InvalidParent`; refusals in the order ParentNotFound, InvalidParent, InvalidId, DuplicateId; the generated id is `technique_<n>`.",
+  "SetName, SetGid, SetFlag, SetReferences(CitedElement), ReorderElements and DeleteElement apply to a Technique as to any ArtifactElement.",
+]
+tests = [
+  "crates/sacm/tests/artifact_assets.rs::sacm23_art_008_a_technique_with_every_base_feature_reads_in_both_modes_and_writes_back",
+  "crates/sacm/tests/artifact_assets.rs::sacm23_art_008_set_name_gid_flag_references_reorder_and_delete_apply_to_a_technique",
+  "crates/sacm/tests/artifact_edits.rs::sacm23_art_008_create_technique_legal_parents_refusals_and_generated_id",
+]
 
 [[row]]
 id = "SACM23-ART-009"
 area = "ART"
 milestone = "M3"
 title = "Participant"
-requirement = "Participant is represented, created, round-tripped and editable."
-source = "formal/23-05-08 clause 12; ptc/22-03-13 Artifact::Participant"
+requirement = "Participant (§12.13), an ArtifactAsset with no attributes of its own, is read and written typed in an ArtifactPackage's `artifactElement`, with its Base features (name, utility elements, gid, flags, `citedElement`, `abstractForm`) and its `property` children (SACM23-ART-003), and round-trips. `edit::CreateParticipant` creates one in an ArtifactPackage, and the existing edits (SetName, SetGid, SetFlag, SetReferences, ReorderElements, DeleteElement) apply to it."
+source = "formal/23-05-08 §12.13; ptc/22-03-13 Artifact::Participant (generalization ArtifactAsset); ADR 0034"
 kind = "model"
-status = "planned"
+status = "implemented"
+code = ["crates/sacm/src/edit/artifact.rs", "crates/sacm/src/edit.rs"]
 depends_on = ["SACM23-ART-003"]
+acceptance = [
+  "A Participant typed in `artifactElement`, with a description, a note, a tagged value, gid, `isCitation`/`isAbstract`, `citedElement` and a property, reads in both modes and writes back; reading the output gives `==`.",
+  "`CreateParticipant::new(parent, name)`: the only legal parent is an ArtifactPackage; an AssuranceCasePackage, an ArgumentPackage, a Technique or an ArtifactGroup parent is `InvalidParent`; refusals in the order ParentNotFound, InvalidParent, InvalidId, DuplicateId; the generated id is `participant_<n>`.",
+  "SetName, SetGid, SetFlag, SetReferences(CitedElement), ReorderElements and DeleteElement apply to a Participant as to any ArtifactElement.",
+]
+tests = [
+  "crates/sacm/tests/artifact_assets.rs::sacm23_art_009_a_participant_with_every_base_feature_reads_in_both_modes_and_writes_back",
+  "crates/sacm/tests/artifact_assets.rs::sacm23_art_009_set_name_gid_flag_references_reorder_and_delete_apply_to_a_participant",
+  "crates/sacm/tests/artifact_edits.rs::sacm23_art_009_create_participant_legal_parents_refusals_and_generated_id",
+]
 
 [[row]]
 id = "SACM23-ART-010"
@@ -4480,11 +4550,47 @@ id = "SACM23-ART-011"
 area = "ART"
 milestone = "M3"
 title = "ArtifactGroup"
-requirement = "ArtifactGroup is represented with its `artifactElement` membership references, round-tripped and editable. Each reference end it adds follows SACM23-XMI-005/015 (serialization), SACM23-VAL-003/004/022 (dangling, typing, repeats), LIB-EDIT-009 (edits) and, for an end with a lower bound, LIB-EDIT-005's scrub rule."
-source = "formal/23-05-08 clause 12; ptc/22-03-13 Artifact::ArtifactGroup"
+requirement = "ArtifactGroup (§12.3) is read and written typed in an ArtifactPackage's `artifactElement`, with the reference end `artifactElement : ArtifactElement [0..*]` (ptc gives it no aggregation, so it is a reference, not a containment), held as `ReferenceEnd::ArtifactGroupMember` (ADR 0034, the maintainer's M3 decision 5). The parent's kind decides: under an ArtifactGroup `artifactElement` is the member end (an IDREFS attribute, or elements with `xmi:idref` or `href=\"#id\"`, read as SACM23-ARG-013 reads `argumentElement`); under an ArtifactPackage it is the composite role. `group_members()` answers for both group kinds; members stay children of their own package. The end follows SACM23-XMI-005/015 (serialization), SACM23-VAL-003/004/022 (dangling, typing to ArtifactElement, repeats) and LIB-EDIT-009 (edits); it has no lower bound, so a scrub leaves the group, even when empty. `edit::CreateArtifactGroup` takes its members."
+source = "formal/23-05-08 §12.3 (`artifactElement:ArtifactElement[0..*]`, no composition; ArtifactGroups \"serve no structural purpose\"); ptc/22-03-13 Artifact::ArtifactGroup (`artifactElement : ArtifactElement [0..*]`, no aggregation); ADR 0034"
 kind = "model"
-status = "planned"
+status = "implemented"
+code = ["crates/sacm/src/model/reference.rs", "crates/sacm/src/model/document.rs", "crates/sacm/src/compare.rs", "crates/sacm/src/edit/artifact.rs", "crates/sacm/src/edit/argumentation.rs", "crates/sacm/src/edit.rs"]
 depends_on = ["SACM23-ART-001", "SACM23-XMI-015", "SACM23-VAL-004", "LIB-EDIT-009", "LIB-EDIT-005"]
+acceptance = [
+  "`artifactElement=\"fta assessor\"` and the element form `<artifactElement xmi:idref=\"fta\"/><artifactElement href=\"#assessor\"/>` read equal in both modes; the attribute plus elements is `RepeatedValue`; an empty attribute is preserved content; a nested typed element is `Unsupported` (SACM23-XMI-019) and one with only a name is preserved, as for SACM23-ARG-013.",
+  "`group_members()` returns the members of an ArtifactGroup and of an ArgumentGroup, in order with repeats, and is empty for other kinds; the members stay children of their own package.",
+  "`SetReferences`, `AddReference` and `RemoveReference` work with `ReferenceEnd::ArtifactGroupMember` on an ArtifactGroup; `GroupMember` on an ArtifactGroup and `ArtifactGroupMember` on an ArgumentGroup are `FeatureNotApplicable` (SACM-CMD-008).",
+  "`validate`: a UtilityElement member is SACM-REF-002 (clause 12.3), an absent id is SACM-REF-001, a repeated id is one SACM-MULT-001 Warning; a strict write refuses the first two and accepts the third.",
+  "Written as an IDREFS attribute after `abstractForm`; an empty end is absent; repeats are kept. `semantic_compare` reports `Difference::ArtifactGroupMembers { id, left, right }` with a one-line Display.",
+  "`CreateArtifactGroup::new(parent, name).with_group_members(ids)`: the only legal parent is an ArtifactPackage; after the parent and id refusals, the members are checked for InvalidReference, then all for ReferenceNotFound, then all for WrongReferenceType (`expected: \"ArtifactElement\"`), each check in member order, as for SACM23-ARG-013; the generated id is `artifact_group_<n>`.",
+  "Deleting a member under `RejectIfReferenced` is `Referenced { holder, end: \"artifactElement\", id }` (SACM-CMD-002), or `CrossPackageReference` (SACM-CMD-007) across packages; `ScrubReferences` and `DeleteReferencingRelationships` remove the id from the group and keep the group, with `changed_ids == [group]`.",
+]
+tests = [
+  "crates/sacm/tests/artifact_edits.rs::sacm23_art_011_an_artifact_group_members_difference_displays_its_end_and_both_lists",
+  "crates/sacm/tests/artifact_edits.rs::sacm23_art_011_artifact_group_member_is_the_end_artifact_element",
+  "crates/sacm/tests/artifact_edits.rs::sacm23_art_011_create_artifact_group_checks_members_after_the_parent_and_id_in_order",
+  "crates/sacm/tests/artifact_edits.rs::sacm23_art_011_create_artifact_group_legal_parents_refusals_and_generated_id",
+  "crates/sacm/tests/artifact_edits.rs::sacm23_art_011_create_artifact_group_reports_what_it_was_given",
+  "crates/sacm/tests/artifact_edits.rs::sacm23_art_011_create_artifact_group_sets_its_members_in_order_and_they_stay_put",
+  "crates/sacm/tests/artifact_edits.rs::sacm23_art_011_each_group_end_on_the_other_group_kind_is_feature_not_applicable",
+  "crates/sacm/tests/artifact_edits.rs::sacm23_art_011_semantic_compare_reports_one_artifact_group_members_difference",
+  "crates/sacm/tests/artifact_edits.rs::sacm23_art_011_set_add_and_remove_reference_edit_an_artifact_group_s_members",
+  "crates/sacm/tests/artifact_edits.rs::sacm23_art_011_the_usage_example_builds_a_group_of_a_technique_and_a_participant",
+  "crates/sacm/tests/artifact_groups.rs::sacm23_art_011_a_nested_element_under_a_group_is_unsupported_or_preserved_at_that_construct",
+  "crates/sacm/tests/artifact_groups.rs::sacm23_art_011_an_absent_member_is_ref_001_and_a_repeat_is_one_mult_001_warning",
+  "crates/sacm/tests/artifact_groups.rs::sacm23_art_011_an_attribute_and_member_elements_are_repeated_value_at_both_occurrences",
+  "crates/sacm/tests/artifact_groups.rs::sacm23_art_011_an_empty_or_qualified_attribute_is_preserved_by_the_group",
+  "crates/sacm/tests/artifact_groups.rs::sacm23_art_011_deleting_a_member_is_referenced_or_cross_package_reference_by_default",
+  "crates/sacm/tests/artifact_groups.rs::sacm23_art_011_each_group_kind_keeps_the_other_group_s_end_as_preserved_content",
+  "crates/sacm/tests/artifact_groups.rs::sacm23_art_011_every_artifact_element_member_validates_and_a_utility_element_is_ref_002",
+  "crates/sacm/tests/artifact_groups.rs::sacm23_art_011_fixture_variants_d_e_and_f_validate_as_the_brief_gives",
+  "crates/sacm/tests/artifact_groups.rs::sacm23_art_011_group_members_answers_for_both_group_kinds_and_is_empty_for_others",
+  "crates/sacm/tests/artifact_groups.rs::sacm23_art_011_members_are_written_after_abstract_form_kept_when_repeated_and_absent_when_empty",
+  "crates/sacm/tests/artifact_groups.rs::sacm23_art_011_no_artifact_class_has_a_composite_role_and_a_reference_end_of_the_same_name",
+  "crates/sacm/tests/artifact_groups.rs::sacm23_art_011_scrub_and_delete_referencing_relationships_remove_the_member_and_keep_the_group",
+  "crates/sacm/tests/artifact_groups.rs::sacm23_art_011_set_references_with_group_member_on_an_artifact_group_is_feature_not_applicable",
+  "crates/sacm/tests/artifact_groups.rs::sacm23_art_011_the_attribute_and_the_element_forms_read_equal_and_members_stay_children",
+]
 
 [[row]]
 id = "SACM23-XMI-009"
@@ -5030,7 +5136,7 @@ id = "SACM23-XMI-016"
 area = "XMI"
 milestone = "M1"
 title = "Containment children conform to their role"
-requirement = "`xmi::read` reads each containment child under its role element: an element in no namespace whose local name is a composite role of the parent's class, as spelled in ptc/22-03-13. The child's class is the one its `xmi:type` or `xsi:type` names, resolved as for roots (SACM23-XMI-002); without a type attribute it is the role's declared type, if that type is concrete (XMI 2.5.1 §7.6.3). The child is read with its `xmi:id`, its name (SACM23-XMI-012) and its parent, in document order across roles (ADR 0010 D2). In this release the readable children are an AssuranceCasePackage in `assuranceCasePackage`, an ArgumentPackage in `argumentPackage` and in `argumentElement`, and every other concrete Argumentation kind except ArgumentPackageInterface and ArgumentPackageBinding in `argumentElement` (SACM23-ARG-002, SACM23-ARG-005 to -013); each may carry only namespace declarations, `xmi:id`, a type attribute, one `name`, one `gid` (SACM23-BASE-006), utility children (SACM23-BASE-004/005) the flags and references its class has (ADR 0026, ADR 0027) and, on an Assertion, one `assertionDeclaration` as an attribute or an element (SACM23-XMI-017, SACM23-XMI-014). A child is never re-roled, re-typed or dropped. A child whose type does not conform to its role, names an abstract or unknown class, or disagrees with its other type attribute, a child under a role the parent's class lacks or in a namespace other than XMI, and any other element are kept whole as preserved content of the parent, at the child's start tag; an attribute the child's class lacks (`xmi:version` included) and non-white-space text are kept as preserved content of the child, at the attribute's name or the text; each gives one SACM-XMI-003 (LIB-COMPAT-003, ADR 0033). Conforming content not read yet is refused as `ReadError::Unsupported` at the child's start tag, or at an attribute's name (LIB-API-011): a conforming kind outside the readable set in its role, `argumentationElement` (SACM23-XMI-009), and XMI-namespace content such as `xmi:Extension`, `xmi:uuid` or `xmi:label` (SACM23-XMI-019). A missing type under an abstract role is refused as `ReadError::MissingType` (SACM-XMI-005, LIB-COMPAT-010, slice 0049). `xmi::write` writes each child under the one role that admits it, for all 339 legal pairs, and what it writes for any document `edit::apply` builds reads back to the same ids, kinds, names, parents and order."
+requirement = "`xmi::read` reads each containment child under its role element: an element in no namespace whose local name is a composite role of the parent's class, as spelled in ptc/22-03-13. The child's class is the one its `xmi:type` or `xsi:type` names, resolved as for roots (SACM23-XMI-002); without a type attribute it is the role's declared type, if that type is concrete (XMI 2.5.1 §7.6.3). The child is read with its `xmi:id`, its name (SACM23-XMI-012) and its parent, in document order across roles (ADR 0010 D2). In this release the readable children are an AssuranceCasePackage in `assuranceCasePackage`, an ArgumentPackage in `argumentPackage` and in `argumentElement`, every other concrete Argumentation kind except ArgumentPackageInterface and ArgumentPackageBinding in `argumentElement` (SACM23-ARG-002, SACM23-ARG-005 to -013), an ArtifactPackage in `artifactPackage` and in `artifactElement`, a Technique, Participant, ArtifactGroup or Property in `artifactElement`, a Property in the `property` of a Property, Technique or Participant, and every readable kind in an ArtifactPackage's `artifactElement` (SACM23-ART-001, -003, -008, -009, -011); each may carry only namespace declarations, `xmi:id`, a type attribute, one `name`, one `gid` (SACM23-BASE-006), utility children (SACM23-BASE-004/005) the flags and references its class has (ADR 0026, ADR 0027) and, on an Assertion, one `assertionDeclaration` as an attribute or an element (SACM23-XMI-017, SACM23-XMI-014). A child is never re-roled, re-typed or dropped. A child whose type does not conform to its role, names an abstract or unknown class, or disagrees with its other type attribute, a child under a role the parent's class lacks or in a namespace other than XMI, and any other element are kept whole as preserved content of the parent, at the child's start tag; an attribute the child's class lacks (`xmi:version` included) and non-white-space text are kept as preserved content of the child, at the attribute's name or the text; each gives one SACM-XMI-003 (LIB-COMPAT-003, ADR 0033). Conforming content not read yet is refused as `ReadError::Unsupported` at the child's start tag, or at an attribute's name (LIB-API-011): a conforming kind outside the readable set in its role, `argumentationElement` and the type `sacm:ArtifactAssertedRelationship` (SACM23-XMI-009), and XMI-namespace content such as `xmi:Extension`, `xmi:uuid` or `xmi:label` (SACM23-XMI-019). A missing type under an abstract role is refused as `ReadError::MissingType` (SACM-XMI-005, LIB-COMPAT-010, slice 0049). `xmi::write` writes each child under the one role that admits it, for all 339 legal pairs, and what it writes for any document `edit::apply` builds reads back to the same ids, kinds, names, parents and order."
 source = "formal/23-05-08 §9.2 (pp. 23-24) \"assuranceCasePackage: AssuranceCasePackage [0..*] (composition)\", \"argumentPackage:Argument::ArgumentPackage[0..*] (composition)\"; §11.3 (p. 36) \"ArgumentationElement (abstract)\"; §11.4 (p. 36) \"argumentationElement:ArgumentationElement[0..*] (composition)\"; ptc/22-03-13 `ArgumentPackage::argumentElement` (composite); XMI 2.5.1 §7.6.3 (p. 15) \"The type attribute is used to specify the type of object being serialized, when the type is not known from the model.\", §7.8.6 (p. 19) \"Each property that is a composite is represented by an XML element, but not by an XML attribute.\", rule 2a (p. 63) \"the XMI name is the name of the Property\", rule 2g (p. 63) (D11); D-PRESERVE; ADR 0015; ADR 0016 D2, D5, D6; ADR 0017; assurance-forge `io/xmi_reader.cpp:914-967, 1993-2090` (which re-roles or drops)."
 kind = "xmi"
 status = "verified"
@@ -5321,7 +5427,7 @@ status = "verified"
 verification = "docs/verification/0051-m2-close.md"
 depends_on = ["LIB-API-009", "LIB-API-010", "LIB-COMPAT-003", "LIB-COMPAT-008", "LIB-COMPAT-010", "SACM23-XMI-026"]
 acceptance = [
-  "xtask/tests/interim_refusals.rs: (a) outside comments and `#[cfg(test)]`, the token `Unsupported` appears in `crates/sacm/src` only in `xmi.rs` and `xmi/refusal.rs`; (b) every `Interim(\"…\")` names a row that exists, is not `verified`, and is in the `depends_on` closure of each of SACM23-CP-001 to -004; (c) every `Tolerance` row exists and is not verified; each check reports an in-memory mutation of the source or matrix with its own code.",
+  "xtask/tests/interim_refusals.rs: (a) outside comments and `#[cfg(test)]`, the token `Unsupported` appears in `crates/sacm/src` only in `xmi.rs` and `xmi/refusal.rs`; (b) every `Interim(\"…\")` names a row that exists, is not `verified`, and is in the `depends_on` closure of SACM23-CP-001 and of the compliance point of the row's own package (an `SACM23-ARG-` row CP-002, an `SACM23-ART-` row CP-003, an `SACM23-TERM-` row CP-004, an `SACM23-AC-` row CP-001 alone, any other row all four; the maintainer, 2026-11-16); (c) every `Tolerance` row exists and is not verified; each check reports an in-memory mutation of the source or matrix with its own code.",
   "One input per `Unread` variant gives `Unsupported` whose reason ends with that variant's label and row.",
   "SACM23-XMI-027 is in the `depends_on` of SACM23-CP-001 to -004 (the maintainer, 2026-11-15); LIB-COMPAT-004 is not, being a `Tolerance` row (the maintainer, 2026-11-16).",
   "The stale \"ADR 0017 amendment 1/2\" citations in code and test comments are gone.",
@@ -5344,7 +5450,7 @@ tests = [
   "crates/sacm/tests/interim_refusals.rs::lib_api_011_the_text_spelling_argumentation_element_names_sacm23_xmi_009",
   "crates/sacm/tests/interim_refusals.rs::lib_api_011_xmi_metadata_names_sacm23_xmi_019",
   "xtask/tests/interim_refusals.rs::lib_api_011_each_compliance_point_depends_directly_on_xmi_027",
-  "xtask/tests/interim_refusals.rs::lib_api_011_every_interim_row_exists_is_open_and_gates_each_compliance_point",
+  "xtask/tests/interim_refusals.rs::lib_api_011_every_interim_row_exists_is_open_and_gates_its_compliance_points",
   "xtask/tests/interim_refusals.rs::lib_api_011_every_tolerance_row_exists_and_is_open",
   "xtask/tests/interim_refusals.rs::lib_api_011_interim_check_ignores_rows_in_comments_and_tests",
   "xtask/tests/interim_refusals.rs::lib_api_011_interim_check_reports_a_list_with_no_interim_rows",
@@ -5365,6 +5471,11 @@ tests = [
   "crates/sacm/tests/untyped_abstract_roles.rs::lib_api_011_a_role_element_with_xmi_idref_names_sacm23_xmi_019",
   "crates/sacm/tests/untyped_abstract_roles.rs::lib_api_011_a_role_element_with_an_unqualified_href_names_sacm23_xmi_027",
   "crates/sacm/tests/untyped_abstract_roles.rs::lib_api_011_a_role_element_with_a_qualified_href_is_preserved_not_refused",
+  "crates/sacm/tests/interim_refusals.rs::lib_api_011_each_unread_artifact_element_kind_names_its_row",
+  "crates/sacm/tests/interim_refusals.rs::lib_api_011_the_model_spelling_artifact_asserted_relationship_names_sacm23_xmi_009",
+  "xtask/tests/interim_refusals.rs::lib_api_011_interim_check_gates_each_package_s_rows_by_its_own_compliance_point",
+  "xtask/tests/interim_refusals.rs::lib_api_011_interim_check_requires_an_art_row_in_cp_001_and_cp_003_but_not_cp_002_or_cp_004",
+  "xtask/tests/interim_refusals.rs::lib_api_011_the_slice_0052_interim_rows_gate_their_compliance_points_in_the_matrix",
 ]
 
 [[row]]
@@ -5732,6 +5843,7 @@ tests = [
   "crates/sacm/tests/serde.rs::lib_api_006_a_feature_not_applicable_reads_back_for_every_feature_name",
   "crates/sacm/tests/serde.rs::lib_api_006_an_unknown_key_in_any_object_of_the_golden_files_is_refused",
   "crates/sacm/tests/serde.rs::lib_api_006_each_key_of_every_object_of_the_golden_files_is_required_or_has_its_default",
+  "crates/sacm/tests/serde.rs::lib_api_006_an_omitted_optional_key_of_an_artifact_create_reads_as_the_constructor_default",
 ]
 
 [[row]]

@@ -30,7 +30,8 @@ an API gap.
 ## Library modules
 
 Built at M2 (the Base and Argumentation packages); later milestones add the other
-packages' element kinds to the same modules.
+packages' element kinds to the same modules, as M3 does for the Artifact package
+(ADR 0034).
 
 ```text
 sacm
@@ -39,7 +40,7 @@ sacm
 │   ├── id           ElementId
 │   ├── kind         ElementKind, AbstractClass, MetamodelPackage
 │   ├── containment  the composite-role table: which role holds which child (crate-private)
-│   ├── reference    Flag and ReferenceEnd: the flags and non-containment ends (ADR 0026-0028)
+│   ├── reference    Flag and ReferenceEnd: the flags and non-containment ends (ADR 0026-0028, 0034)
 │   ├── lang_string  LangString, MultiLangString (ADR 0012)
 │   ├── argumentation AssertionDeclaration
 │   ├── revision     Revision, one state of a document (ADR 0031)
@@ -57,7 +58,7 @@ sacm
 │                  the NCName-id rule is ADR 0015 amendment 2 and ADR 0019 E6
 ├── diagnostic     Diagnostic, Severity, Code, SourceLocation, has_errors (ADR 0011)
 ├── edit           operations as values; check, preview, apply, apply_preview, batch (ADR 0019)
-│   ├── create, utility, argumentation   the create operations
+│   ├── create, utility, argumentation, artifact   the create operations
 │   ├── set, references, reorder         set a feature, edit reference ends, reorder (ADR 0029)
 │   ├── delete, preview                  DeleteElement and its policies, Preview (ADR 0031)
 │   ├── batch                            Batch, BatchMutation, BatchError (ADR 0032)

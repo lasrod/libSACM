@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-ART-001, SACM23-ART-003, SACM23-ART-008, SACM23-ART-009, SACM23-ART-011: the worked example of slice 0052 (ADR 0034). An xmi:XMI wrapper, declaring xmi before sacm, holds the AssuranceCasePackage case and then the ArtifactPackage root shared. case holds the ArtifactPackage evidence untyped in artifactPackage. evidence holds the Technique fta, whose Property fta_q is typed in its property role; the Participant assessor; the ArtifactGroup analysis, whose members fta and assessor are given as elements (xmi:idref and href) and stay children of evidence; and the nested ArtifactPackage library, holding the Property calibrated directly in artifactElement (a child of library, not a property of it). shared holds the Participant supplier. It reads with no diagnostic in either mode, validates without a finding, and writes golden/artifact-package.golden.sacm.xmi. Hand-written; no third-party content. -->
+<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:sacm="http://www.omg.org/spec/SACM/20220301">
+  <sacm:AssuranceCasePackage xmi:id="case">
+    <name lang="en" content="Brake case"/>
+    <artifactPackage xmi:id="evidence">
+      <name lang="en" content="Brake evidence"/>
+      <artifactElement xmi:type="sacm:Technique" xmi:id="fta">
+        <name lang="en" content="Fault tree analysis"/>
+        <property xmi:type="sacm:Property" xmi:id="fta_q">
+          <name lang="en" content="Qualified tool"/>
+        </property>
+      </artifactElement>
+      <artifactElement xmi:type="sacm:Participant" xmi:id="assessor">
+        <name lang="en" content="Independent assessor"/>
+      </artifactElement>
+      <artifactElement xmi:type="sacm:ArtifactGroup" xmi:id="analysis">
+        <name lang="en" content="Analysis"/>
+        <artifactElement xmi:idref="fta"/>
+        <artifactElement href="#assessor"/>
+      </artifactElement>
+      <artifactElement xmi:type="sacm:ArtifactPackage" xmi:id="library">
+        <name lang="en" content="Library"/>
+        <artifactElement xmi:type="sacm:Property" xmi:id="calibrated">
+          <name lang="en" content="Calibrated"/>
+        </artifactElement>
+      </artifactElement>
+    </artifactPackage>
+  </sacm:AssuranceCasePackage>
+  <sacm:ArtifactPackage xmi:id="shared">
+    <name lang="en" content="Shared evidence"/>
+    <artifactElement xmi:type="sacm:Participant" xmi:id="supplier">
+      <name lang="en" content="Supplier"/>
+    </artifactElement>
+  </sacm:ArtifactPackage>
+</xmi:XMI>

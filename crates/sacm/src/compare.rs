@@ -49,7 +49,8 @@
 //!     Difference::MetaClaims { left, right, .. }
 //!     | Difference::Sources { left, right, .. }
 //!     | Difference::ReferencedArtifactElements { left, right, .. }
-//!     | Difference::GroupMembers { left, right, .. } => {
+//!     | Difference::GroupMembers { left, right, .. }
+//!     | Difference::ArtifactGroupMembers { left, right, .. } => {
 //!         let (mut left, mut right) = (left.clone(), right.clone());
 //!         left.sort();
 //!         right.sort();
@@ -350,6 +351,35 @@ pub enum Difference {
         /// The member ids in the right document, in order.
         right: Vec<ElementId>,
     },
+    /// The `ArtifactGroup`'s members, its `artifactElement` ids (SACM 2.3
+    /// §12.3,
+    /// [`SacmElement::group_members`](crate::model::SacmElement::group_members)),
+    /// differ on each side. Compared in order and with repeats, as
+    /// [`MetaClaims`](Self::MetaClaims) are.
+    ///
+    /// ```
+    /// use sacm::compare::Difference;
+    /// use sacm::model::ElementId;
+    ///
+    /// let difference = Difference::ArtifactGroupMembers {
+    ///     id: ElementId::from("analysis"),
+    ///     left: vec![ElementId::from("fta")],
+    ///     right: vec![],
+    /// };
+    /// assert_eq!(
+    ///     difference.to_string(),
+    ///     r#"element "analysis" differs in artifactElement: ["fta"] on the left, [] on the right"#
+    /// );
+    /// ```
+    #[doc(alias = "artifactElement")]
+    ArtifactGroupMembers {
+        /// The group's id.
+        id: ElementId,
+        /// The member ids in the left document, in order.
+        left: Vec<ElementId>,
+        /// The member ids in the right document, in order.
+        right: Vec<ElementId>,
+    },
     /// The element has a different `name` (SACM 2.3 §8.6) on each side;
     /// `None` is a missing name.
     ///
@@ -535,6 +565,7 @@ impl Difference {
             | Self::Structure { id, .. }
             | Self::ReferencedArtifactElements { id, .. }
             | Self::GroupMembers { id, .. }
+            | Self::ArtifactGroupMembers { id, .. }
             | Self::Name { id, .. }
             | Self::NameId { id, .. }
             | Self::Content { id, .. }
@@ -584,6 +615,7 @@ impl Difference {
                 ReferenceEnd::ReferencedArtifactElement.name()
             }
             Self::GroupMembers { .. } => ReferenceEnd::GroupMember.name(),
+            Self::ArtifactGroupMembers { .. } => ReferenceEnd::ArtifactGroupMember.name(),
             _ => ReferenceEnd::CitedElement.name(),
         }
     }
@@ -655,7 +687,8 @@ impl fmt::Display for Difference {
             Self::MetaClaims { id, left, right }
             | Self::Sources { id, left, right }
             | Self::ReferencedArtifactElements { id, left, right }
-            | Self::GroupMembers { id, left, right } => write!(
+            | Self::GroupMembers { id, left, right }
+            | Self::ArtifactGroupMembers { id, left, right } => write!(
                 f,
                 "element {:?} differs in {}: {} on the left, {} on the right",
                 id.as_str(),
@@ -904,7 +937,8 @@ impl fmt::Display for Declaration {
 ///     Difference::MetaClaims { left, right, .. }
 ///     | Difference::Sources { left, right, .. }
 ///     | Difference::ReferencedArtifactElements { left, right, .. }
-///     | Difference::GroupMembers { left, right, .. } => {
+///     | Difference::GroupMembers { left, right, .. }
+///     | Difference::ArtifactGroupMembers { left, right, .. } => {
 ///         let (mut left, mut right) = (left.clone(), right.clone());
 ///         left.sort();
 ///         right.sort();
@@ -930,6 +964,7 @@ impl fmt::Display for Declaration {
 ///    [`Target`](Difference::Target), [`Structure`](Difference::Structure),
 ///    [`ReferencedArtifactElements`](Difference::ReferencedArtifactElements),
 ///    [`GroupMembers`](Difference::GroupMembers),
+///    [`ArtifactGroupMembers`](Difference::ArtifactGroupMembers),
 ///    [`Name`](Difference::Name),
 ///    [`NameId`](Difference::NameId), [`Content`](Difference::Content),
 ///    [`ContentId`](Difference::ContentId),
@@ -1148,6 +1183,11 @@ fn reference_difference(
             right: all_right.to_vec(),
         },
         ReferenceEnd::GroupMember => Difference::GroupMembers {
+            id,
+            left: all_left.to_vec(),
+            right: all_right.to_vec(),
+        },
+        ReferenceEnd::ArtifactGroupMember => Difference::ArtifactGroupMembers {
             id,
             left: all_left.to_vec(),
             right: all_right.to_vec(),

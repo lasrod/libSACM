@@ -1866,18 +1866,22 @@ impl<'a> SacmElement<'a> {
 
     /// The ids of the members of an `ArgumentGroup` (SACM 2.3 §11.2
     /// `argumentElement:ArgumentationElement[0..*]`, which the text spells
-    /// `argumentationElement`), in document order: empty when it has none or
-    /// the element is not an `ArgumentGroup`.
+    /// `argumentationElement`) or of an `ArtifactGroup` (§12.3
+    /// `artifactElement:ArtifactElement[0..*]`), in document order: empty
+    /// when it has none or the element is neither group.
     ///
-    /// In XMI the end is named `argumentElement`, like the composite role of
-    /// an `ArgumentPackage`, but it is a reference: a member stays where it
-    /// is contained, and `ArgumentGroups` "serve no structural purpose" (§11.2).
-    /// The ids are held unresolved and with repeats, as
-    /// [`meta_claims`](Self::meta_claims) are. A member that is no
-    /// `ArgumentationElement`, such as an `AssuranceCasePackage`, is a
-    /// SACM-REF-002 finding of
+    /// In XMI the end is named `argumentElement` on an `ArgumentGroup`, like
+    /// the composite role of an `ArgumentPackage`, and `artifactElement` on
+    /// an `ArtifactGroup`, like the composite role of an `ArtifactPackage`.
+    /// Each is a reference: a member stays where it is contained, and groups
+    /// "serve no structural purpose" (§11.2, §12.3). The ids are held
+    /// unresolved and with repeats, as [`meta_claims`](Self::meta_claims)
+    /// are. A member of a kind its end does not admit, such as an
+    /// `AssuranceCasePackage` in an `ArgumentGroup` or a `Note` in either, is
+    /// a SACM-REF-002 finding of
     /// [`validation::validate`](crate::validation::validate)
-    /// (SACM23-VAL-004).
+    /// (SACM23-VAL-004). The two ends are
+    /// [`ReferenceEnd::GroupMember`] and [`ReferenceEnd::ArtifactGroupMember`].
     ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentGroup, CreateArgumentPackage, CreateClaim};
@@ -1899,9 +1903,14 @@ impl<'a> SacmElement<'a> {
     /// ```
     #[doc(alias = "argumentElement")]
     #[doc(alias = "argumentationElement")]
+    #[doc(alias = "artifactElement")]
     #[must_use]
     pub fn group_members(self) -> &'a [ElementId] {
-        self.references(ReferenceEnd::GroupMember)
+        if self.kind() == ElementKind::ArtifactGroup {
+            self.references(ReferenceEnd::ArtifactGroupMember)
+        } else {
+            self.references(ReferenceEnd::GroupMember)
+        }
     }
 
     /// Whether an asserted relationship counters its declared purpose (SACM
@@ -2125,6 +2134,38 @@ impl<'a> SacmElement<'a> {
     #[must_use]
     pub fn key_value_ids(self) -> &'a [Option<ElementId>] {
         self.node().key.as_ref().map_or(&[], Text::value_ids)
+    }
+
+    /// The element's properties (SACM 2.3 §12.6 `property:Property[0..*]`):
+    /// its children in the `property` role, in document order.
+    ///
+    /// Every `ArtifactAsset` has the role, such as a `Property`, a `Technique`
+    /// or a `Participant`; for any other kind it is empty. A `Property` held
+    /// directly in an `ArtifactPackage`'s `artifactElement` is a child of the
+    /// package, not a property of it. The properties are among
+    /// [`children`](Self::children).
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArtifactPackage, CreateProperty, CreateTechnique};
+    /// use sacm::model::{Document, LangString};
+    ///
+    /// let mut doc = Document::new();
+    /// let name = |text: &str| LangString::new(text).with_lang("en");
+    /// edit::apply(&mut doc, CreateArtifactPackage::root(name("Evidence")).with_id("evidence"))?;
+    /// edit::apply(&mut doc, CreateTechnique::new("evidence", name("Fault tree analysis")).with_id("fta"))?;
+    /// edit::apply(&mut doc, CreateProperty::new("fta", name("Qualified tool")).with_id("q"))?;
+    /// edit::apply(&mut doc, CreateProperty::new("evidence", name("Calibrated")))?;
+    ///
+    /// let fta = doc.get("fta").expect("just created");
+    /// assert_eq!(fta.properties().map(|p| p.id().as_str()).collect::<Vec<_>>(), ["q"]);
+    /// // A Property directly in the package is no property of the package.
+    /// let evidence = doc.get("evidence").expect("just created");
+    /// assert_eq!(evidence.properties().count(), 0);
+    /// assert_eq!(evidence.children().count(), 2);
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    pub fn properties(self) -> impl Iterator<Item = SacmElement<'a>> {
+        self.children_in("property")
     }
 
     /// The element's children held in the role named `role`, in document

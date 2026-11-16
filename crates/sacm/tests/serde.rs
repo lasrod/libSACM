@@ -51,10 +51,11 @@ use std::path::Path;
 use sacm::diagnostic::{Code, Diagnostic, Severity, SourceLocation};
 use sacm::edit::{
     self, AddReference, BatchError, BatchMutation, CreateArgumentGroup, CreateArgumentPackage,
-    CreateArgumentReasoning, CreateArtifactReference, CreateAssertedArtifactContext,
-    CreateAssertedArtifactSupport, CreateAssertedContext, CreateAssertedEvidence,
-    CreateAssertedInference, CreateAssuranceCasePackage, CreateClaim, CreateDescription,
-    CreateImplementationConstraint, CreateNote, CreateTaggedValue, CrossPackageReferencePolicy,
+    CreateArgumentReasoning, CreateArtifactGroup, CreateArtifactPackage, CreateArtifactReference,
+    CreateAssertedArtifactContext, CreateAssertedArtifactSupport, CreateAssertedContext,
+    CreateAssertedEvidence, CreateAssertedInference, CreateAssuranceCasePackage, CreateClaim,
+    CreateDescription, CreateImplementationConstraint, CreateNote, CreateParticipant,
+    CreateProperty, CreateTaggedValue, CreateTechnique, CrossPackageReferencePolicy,
     DanglingReference, DeleteElement, EditError, Mutation, Operation, PackageDeletePolicy, Preview,
     ReferenceDeletePolicy, RemoveReference, ReorderElements, SetAssertionDeclaration, SetContent,
     SetFlag, SetGid, SetKey, SetName, SetReferences,
@@ -79,7 +80,7 @@ const GOLDEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/golden/ser
 
 /// Every operation name of this release: the creates first, in the order of
 /// `operations.json`.
-const OPERATION_NAMES: [&str; 26] = [
+const OPERATION_NAMES: [&str; 31] = [
     "CreateAssuranceCasePackage",
     "CreateArgumentPackage",
     "CreateClaim",
@@ -95,6 +96,11 @@ const OPERATION_NAMES: [&str; 26] = [
     "CreateImplementationConstraint",
     "CreateNote",
     "CreateTaggedValue",
+    "CreateArtifactPackage",
+    "CreateProperty",
+    "CreateTechnique",
+    "CreateParticipant",
+    "CreateArtifactGroup",
     "SetName",
     "SetGid",
     "SetFlag",
@@ -108,8 +114,8 @@ const OPERATION_NAMES: [&str; 26] = [
     "DeleteElement",
 ];
 
-/// The first 15 of [`OPERATION_NAMES`]: the creates.
-const CREATE_COUNT: usize = 15;
+/// The first 20 of [`OPERATION_NAMES`]: the creates.
+const CREATE_COUNT: usize = 20;
 
 /// Every `EditError` variant of this release, with its catalog code, in the
 /// order of `edit-errors.json`.
@@ -178,8 +184,8 @@ const FLAGS: [(Flag, &str); 3] = [
     (Flag::IsCounter, "isCounter"),
 ];
 
-/// The nine reference ends, with their names.
-const ENDS: [(ReferenceEnd, &str); 9] = [
+/// The ten reference ends, with their names.
+const ENDS: [(ReferenceEnd, &str); 10] = [
     (ReferenceEnd::CitedElement, "citedElement"),
     (ReferenceEnd::AbstractForm, "abstractForm"),
     (ReferenceEnd::MetaClaim, "metaClaim"),
@@ -192,6 +198,7 @@ const ENDS: [(ReferenceEnd, &str); 9] = [
         "referencedArtifactElement",
     ),
     (ReferenceEnd::GroupMember, "argumentElement"),
+    (ReferenceEnd::ArtifactGroupMember, "artifactElement"),
 ];
 
 /// The three severities, with their names.
@@ -498,6 +505,7 @@ fn operation_samples() -> Vec<Operation> {
     let mut samples = package_and_claim_samples();
     samples.extend(argumentation_samples());
     samples.extend(utility_samples());
+    samples.extend(artifact_samples());
     samples.extend(edit_samples());
     samples.extend(delete_samples());
     samples
@@ -602,6 +610,40 @@ fn utility_samples() -> Vec<Operation> {
     ]
 }
 
+/// The artifact creates of [`operation_samples`] (SACM23-ART-001, -003, -008,
+/// -009, -011; ADR 0034): each with a generated and a caller id, the
+/// `ArtifactPackage` as a root and under a parent, the `ArtifactGroup` without
+/// and with members.
+fn artifact_samples() -> Vec<Operation> {
+    vec![
+        CreateArtifactPackage::root(en("Evidence")).into(),
+        CreateArtifactPackage::root(en("Evidence"))
+            .with_id("evidence")
+            .into(),
+        CreateArtifactPackage::new("case", en("Evidence")).into(),
+        CreateArtifactPackage::new("evidence", en("Test evidence"))
+            .with_id("tests")
+            .into(),
+        CreateProperty::new("t1", en("Qualified")).into(),
+        CreateProperty::new("t1", en("Qualified"))
+            .with_id("pr1")
+            .into(),
+        CreateTechnique::new("evidence", en("Fault tree analysis")).into(),
+        CreateTechnique::new("evidence", en("Fault tree analysis"))
+            .with_id("t1")
+            .into(),
+        CreateParticipant::new("evidence", en("Safety assessor")).into(),
+        CreateParticipant::new("evidence", en("Safety assessor"))
+            .with_id("pa1")
+            .into(),
+        CreateArtifactGroup::new("evidence", en("Analysis")).into(),
+        CreateArtifactGroup::new("evidence", en("Analysis"))
+            .with_id("ag1")
+            .with_group_members(["t1", "pa1"])
+            .into(),
+    ]
+}
+
 /// The operations of [`operation_samples`] that change an element.
 fn edit_samples() -> Vec<Operation> {
     vec![
@@ -617,6 +659,7 @@ fn edit_samples() -> Vec<Operation> {
         SetReferences::new("i1", ReferenceEnd::Source, ["c2", "c3"]).into(),
         SetReferences::clear("c1", ReferenceEnd::MetaClaim).into(),
         AddReference::new("g1", ReferenceEnd::GroupMember, "c3").into(),
+        AddReference::new("ag1", ReferenceEnd::ArtifactGroupMember, "pa1").into(),
         RemoveReference::new("i1", ReferenceEnd::Source, "c3").into(),
         ReorderElements::new("arguments", ["c2", "c1"]).into(),
         ReorderElements::roots(["case", "arguments"]).into(),
@@ -869,6 +912,11 @@ fn lib_api_006_every_listed_type_implements_serialize_and_deserialize() {
     assert_serde::<CreateImplementationConstraint>();
     assert_serde::<CreateNote>();
     assert_serde::<CreateTaggedValue>();
+    assert_serde::<CreateArtifactPackage>();
+    assert_serde::<CreateProperty>();
+    assert_serde::<CreateTechnique>();
+    assert_serde::<CreateParticipant>();
+    assert_serde::<CreateArtifactGroup>();
     assert_serde::<SetName>();
     assert_serde::<SetGid>();
     assert_serde::<SetFlag>();
@@ -974,6 +1022,12 @@ fn lib_api_006_an_operation_struct_serializes_as_its_operation_without_the_tag()
     assert_bare(&CreateImplementationConstraint::new("c1", name()));
     assert_bare(&CreateNote::new("c1", name()));
     assert_bare(&CreateTaggedValue::new("c1", name(), name()));
+    assert_bare(&CreateArtifactPackage::root(name()));
+    assert_bare(&CreateArtifactPackage::new("case", name()).with_id("e"));
+    assert_bare(&CreateProperty::new("t1", name()));
+    assert_bare(&CreateTechnique::new("e", name()).with_id("t1"));
+    assert_bare(&CreateParticipant::new("e", name()));
+    assert_bare(&CreateArtifactGroup::new("e", name()).with_group_members(["t1"]));
     assert_bare(&SetName::new("c1", name()));
     assert_bare(&SetGid::remove("c1"));
     assert_bare(&SetFlag::new("c1", Flag::IsAbstract, true));
@@ -1218,6 +1272,15 @@ fn lib_api_006_an_unknown_key_is_refused() {
     for (what, valid) in operations {
         assert_refused::<Operation>(what, valid, "{", r#"{"nmae":null,"#);
     }
+    // SACM23-ART-011: an unknown key in a CreateArtifactGroup, such as a
+    // `members` for `group_members` (ADR 0034).
+    assert_refused_for::<Operation>(
+        "SACM23-ART-011",
+        "members in a CreateArtifactGroup",
+        r#"{"type":"CreateArtifactGroup","parent":"p","id":null,"name":{},"group_members":["t1"]}"#,
+        r#""group_members""#,
+        r#""members""#,
+    );
     // A misspelt optional key must not fall back to its default.
     assert_refused::<Operation>("a misspelt id", CLAIM_JSON, r#""id":null"#, r#""idd":"c1""#);
     assert_refused::<Operation>(
@@ -1376,6 +1439,15 @@ fn lib_api_006_a_package_create_without_parent_is_refused() {
     assert_refused::<Operation>(
         "an AssuranceCasePackage create without parent",
         case,
+        r#""parent":null,"#,
+        "",
+    );
+    // SACM23-ART-001: `parent` is required, `null` for a root (ADR 0034).
+    let artifacts = r#"{"type":"CreateArtifactPackage","parent":null,"name":{"content":"N"}}"#;
+    assert_refused_for::<Operation>(
+        "SACM23-ART-001",
+        "an ArtifactPackage create without parent",
+        artifacts,
         r#""parent":null,"#,
         "",
     );
@@ -1689,6 +1761,46 @@ fn lib_api_006_an_omitted_optional_key_reads_as_the_constructor_default() {
         diagnostic_samples()[1],
         "{API_006}: a Diagnostic without clause, affected and location is not the minimal one"
     );
+}
+
+#[test]
+fn lib_api_006_an_omitted_optional_key_of_an_artifact_create_reads_as_the_constructor_default() {
+    // The creates of slice 0052 (ADR 0034): `id` reads as none and
+    // `group_members` as empty; `parent` is required, `null` for a root.
+    let name = || LangString::new("N");
+    let cases: Vec<(&str, Operation)> = vec![
+        (
+            r#"{"type":"CreateArtifactPackage","parent":null,"name":{"content":"N"}}"#,
+            CreateArtifactPackage::root(name()).into(),
+        ),
+        (
+            r#"{"type":"CreateArtifactPackage","parent":"case","name":{"content":"N"}}"#,
+            CreateArtifactPackage::new("case", name()).into(),
+        ),
+        (
+            r#"{"type":"CreateProperty","parent":"p","name":{"content":"N"}}"#,
+            CreateProperty::new("p", name()).into(),
+        ),
+        (
+            r#"{"type":"CreateTechnique","parent":"p","name":{"content":"N"}}"#,
+            CreateTechnique::new("p", name()).into(),
+        ),
+        (
+            r#"{"type":"CreateParticipant","parent":"p","name":{"content":"N"}}"#,
+            CreateParticipant::new("p", name()).into(),
+        ),
+        (
+            r#"{"type":"CreateArtifactGroup","parent":"p","name":{"content":"N"}}"#,
+            CreateArtifactGroup::new("p", name()).into(),
+        ),
+    ];
+    for (text, expected) in cases {
+        let read: Operation = from_json(text);
+        assert_eq!(
+            read, expected,
+            "{API_006}: {text} does not read as its constructor default"
+        );
+    }
 }
 
 #[test]

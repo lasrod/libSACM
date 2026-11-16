@@ -341,6 +341,17 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
   list that an xtask test gates [LIB-API-011].
 - `cargo xtask fetch-spec` also fetches the normative XMI.xsd of XMI 2.5.1, hash-pinned
   [LIB-TOOL-021].
+- `xmi::read` and `xmi::write` handle `ArtifactPackage` (as a root, in an
+  AssuranceCasePackage's `artifactPackage` role and nested in `artifactElement`),
+  `Technique`, `Participant`, `ArtifactGroup` and `Property` (in `artifactElement`, and in
+  an asset's `property` role) [SACM23-ART-001, SACM23-ART-003, SACM23-ART-008,
+  SACM23-ART-009, SACM23-ART-011].
+- `edit::CreateArtifactPackage` (a root or a child), `CreateProperty`, `CreateTechnique`,
+  `CreateParticipant` and `CreateArtifactGroup` (with its members) [SACM23-ART-001,
+  SACM23-ART-003, SACM23-ART-008, SACM23-ART-009, SACM23-ART-011].
+- `ReferenceEnd::ArtifactGroupMember` (`artifactElement`), an ArtifactGroup's member end,
+  and `Difference::ArtifactGroupMembers` [SACM23-ART-011].
+- `SacmElement::properties()`: an artifact asset's `property` children [SACM23-ART-003].
 
 ### Changed
 
@@ -386,6 +397,13 @@ is an Error in strict mode, or a new coded read refusal, is listed the same way.
   a `metaClaim` naming an ArgumentReasoning, or an AssertedEvidence,
   AssertedArtifactSupport or AssertedArtifactContext whose ends break §11.15, §11.17 or
   §11.18. Write it as held in tolerant mode [SACM23-VAL-004, SACM23-VAL-016].
+- `SacmElement::group_members()` also answers for an ArtifactGroup, with its
+  `artifactElement` ids [SACM23-ART-011].
+- `xmi::read` reads an `ArtifactPackage` and its Techniques, Participants, Properties and
+  ArtifactGroups, which it refused as `Unsupported` before. The other kinds it can hold
+  are refused naming their own rows (SACM23-ART-004 to -007, -010, SACM23-TERM-002 and
+  -004 to -006), the type `ArtifactAssertedRelationship` names SACM23-XMI-009, and an
+  ArtifactPackage's `interface` names SACM23-ART-012 [SACM23-ART-001].
 - `xmi::read` reads `ArtifactReference`, `ArgumentGroup`, `AssertedEvidence`,
   `AssertedArtifactSupport` and `AssertedArtifactContext` in an `ArgumentPackage`, which
   it refused as `Unsupported` before [SACM23-ARG-006, SACM23-ARG-009, SACM23-ARG-011,

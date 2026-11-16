@@ -35,8 +35,8 @@ const NS: &str = concat!(
     " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"",
 );
 
-/// The nine ends, with their XMI names.
-const ENDS: [(ReferenceEnd, &str); 9] = [
+/// The ten ends, with their XMI names.
+const ENDS: [(ReferenceEnd, &str); 10] = [
     (ReferenceEnd::CitedElement, "citedElement"),
     (ReferenceEnd::AbstractForm, "abstractForm"),
     (ReferenceEnd::MetaClaim, "metaClaim"),
@@ -49,6 +49,7 @@ const ENDS: [(ReferenceEnd, &str); 9] = [
         "referencedArtifactElement",
     ),
     (ReferenceEnd::GroupMember, "argumentElement"),
+    (ReferenceEnd::ArtifactGroupMember, "artifactElement"),
 ];
 
 /// The asserted relationships of [`in_case`], each with its source and
@@ -180,7 +181,15 @@ fn held(element: SacmElement<'_>, end: ReferenceEnd) -> Vec<ElementId> {
         ReferenceEnd::Target => one(element.target()),
         ReferenceEnd::Structure => one(element.structure()),
         ReferenceEnd::ReferencedArtifactElement => element.referenced_artifact_elements().to_vec(),
-        ReferenceEnd::GroupMember => element.group_members().to_vec(),
+        // `group_members()` answers for both group kinds (ADR 0034): each end
+        // is the members of its own group kind only.
+        ReferenceEnd::GroupMember if element.kind() == ElementKind::ArgumentGroup => {
+            element.group_members().to_vec()
+        }
+        ReferenceEnd::ArtifactGroupMember if element.kind() == ElementKind::ArtifactGroup => {
+            element.group_members().to_vec()
+        }
+        ReferenceEnd::GroupMember | ReferenceEnd::ArtifactGroupMember => Vec::new(),
         other => panic!("{ROW}: an end this test does not know: {other:?}"),
     }
 }
@@ -231,6 +240,7 @@ fn end_difference(
             Difference::ReferencedArtifactElements { id, left, right }
         }
         ReferenceEnd::GroupMember => Difference::GroupMembers { id, left, right },
+        ReferenceEnd::ArtifactGroupMember => Difference::ArtifactGroupMembers { id, left, right },
         other => panic!("{ROW}: an end this test does not know: {other:?}"),
     }
 }

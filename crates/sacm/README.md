@@ -9,8 +9,8 @@ Read, edit, validate and write assurance cases in the
 
 ## What works today
 
-- `sacm::xmi::read` reads `AssuranceCasePackage` and `ArgumentPackage` roots and the
-  packages and Claims in them, with their names, `gid`s and each Assertion's
+- `sacm::xmi::read` reads `AssuranceCasePackage`, `ArgumentPackage` and `ArtifactPackage`
+  roots and the packages and Claims in them, with their names, `gid`s and each Assertion's
   `assertionDeclaration`, and the descriptions, notes, implementation constraints and
   tagged values of each (`SacmElement::descriptions`, `notes`, `tagged_values` and the
   like), with their `content` and, on a tagged value, `key` (`SacmElement::content`,
@@ -25,7 +25,9 @@ Read, edit, validate and write assurance cases in the
   `reasoning`, `is_counter`), each Assertion's meta-claims (`SacmElement::meta_claims`),
   each reasoning's `structure`, each artifact reference's referenced elements
   (`SacmElement::referenced_artifact_elements`) and each group's members
-  (`SacmElement::group_members`). Content that is not SACM 2.3 where it stands, such as
+  (`SacmElement::group_members`). In an `ArtifactPackage` it reads `Technique`,
+  `Participant`, `Property` and `ArtifactGroup` elements, with each asset's properties
+  (`SacmElement::properties`) and each group's members. Content that is not SACM 2.3 where it stands, such as
   a vendor attribute or element, is kept as written as preserved content, with
   SACM-XMI-003 (`SacmElement::has_preserved_content`); conforming content it does not
   read yet is refused, never dropped. An
@@ -46,7 +48,9 @@ Read, edit, validate and write assurance cases in the
   stable codes.
 - `sacm::edit::apply` creates AssuranceCasePackages, ArgumentPackages, Claims,
   ArgumentReasonings, ArtifactReferences, ArgumentGroups and the five asserted
-  relationships (`sacm::edit::CreateAssertedInference` and the like), and descriptions,
+  relationships (`sacm::edit::CreateAssertedInference` and the like), ArtifactPackages,
+  Properties, Techniques, Participants and ArtifactGroups
+  (`sacm::edit::CreateArtifactPackage` and the like), and descriptions,
   implementation constraints, notes and tagged values on them
   (`sacm::edit::CreateNote`, `sacm::edit::CreateTaggedValue` and the like); a refused
   edit changes nothing, and an edit refuses a reference that names no element or an

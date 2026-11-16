@@ -407,6 +407,119 @@
     ]
   },
   {
+    "type": "CreateArtifactPackage",
+    "parent": null,
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Evidence"
+    }
+  },
+  {
+    "type": "CreateArtifactPackage",
+    "parent": null,
+    "id": "evidence",
+    "name": {
+      "lang": "en",
+      "content": "Evidence"
+    }
+  },
+  {
+    "type": "CreateArtifactPackage",
+    "parent": "case",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Evidence"
+    }
+  },
+  {
+    "type": "CreateArtifactPackage",
+    "parent": "evidence",
+    "id": "tests",
+    "name": {
+      "lang": "en",
+      "content": "Test evidence"
+    }
+  },
+  {
+    "type": "CreateProperty",
+    "parent": "t1",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Qualified"
+    }
+  },
+  {
+    "type": "CreateProperty",
+    "parent": "t1",
+    "id": "pr1",
+    "name": {
+      "lang": "en",
+      "content": "Qualified"
+    }
+  },
+  {
+    "type": "CreateTechnique",
+    "parent": "evidence",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Fault tree analysis"
+    }
+  },
+  {
+    "type": "CreateTechnique",
+    "parent": "evidence",
+    "id": "t1",
+    "name": {
+      "lang": "en",
+      "content": "Fault tree analysis"
+    }
+  },
+  {
+    "type": "CreateParticipant",
+    "parent": "evidence",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Safety assessor"
+    }
+  },
+  {
+    "type": "CreateParticipant",
+    "parent": "evidence",
+    "id": "pa1",
+    "name": {
+      "lang": "en",
+      "content": "Safety assessor"
+    }
+  },
+  {
+    "type": "CreateArtifactGroup",
+    "parent": "evidence",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Analysis"
+    },
+    "group_members": []
+  },
+  {
+    "type": "CreateArtifactGroup",
+    "parent": "evidence",
+    "id": "ag1",
+    "name": {
+      "lang": "en",
+      "content": "Analysis"
+    },
+    "group_members": [
+      "t1",
+      "pa1"
+    ]
+  },
+  {
     "type": "SetName",
     "element": "c1",
     "name": {
@@ -490,6 +603,12 @@
     "element": "g1",
     "end": "argumentElement",
     "id": "c3"
+  },
+  {
+    "type": "AddReference",
+    "element": "ag1",
+    "end": "artifactElement",
+    "id": "pa1"
   },
   {
     "type": "RemoveReference",

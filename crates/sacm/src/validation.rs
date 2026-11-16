@@ -15,12 +15,12 @@
 //! | SACM-MULT-001 | SACM23-VAL-011 | §8.6 | Warning | a `ModelElement` has two or more descriptions (`description:Description[0..1]`) |
 //! | SACM-ID-003 | SACM23-VAL-002 | §8.2 | Error | two or more elements hold the same non-empty `gid` ("unique within the scope of the model instance") |
 //! | SACM-PKG-001 | SACM23-VAL-012 | §11.4 | Error | an `ArgumentPackage` nests a plain `ArgumentPackage` and also holds another argumentation element ("only allowed to contain `ArgumentPackages`") |
-//! | SACM-REF-001 | SACM23-VAL-003 | the end's: §8.2, §11.2, §11.9, §11.10, §11.12 or §11.13 | Error | an id a reference end holds (`citedElement`, `abstractForm`, `metaClaim`, `reasoning`, `source`, `target`, `structure`, `referencedArtifactElement` or a group's `argumentElement`) names no element of the document |
+//! | SACM-REF-001 | SACM23-VAL-003 | the end's: §8.2, §11.2, §11.9, §11.10, §11.12, §11.13 or §12.3 | Error | an id a reference end holds (`citedElement`, `abstractForm`, `metaClaim`, `reasoning`, `source`, `target`, `structure`, `referencedArtifactElement` or a group's `argumentElement` or `artifactElement`) names no element of the document |
 //! | SACM-REF-003 | LIB-COMPAT-003 | the end's | Warning | an id a reference end holds is the `xmi:id` of an element the document holds only as preserved content (ADR 0033), so its type cannot be checked |
 //! | SACM-REF-002 | SACM23-VAL-004 | the end's | Error | an id a reference end holds names an element of a kind the end's declared type does not admit, such as a `metaClaim` naming an `ArgumentReasoning` |
 //! | SACM-REF-002 | SACM23-VAL-016 | §11.15, §11.17 or §11.18 | Error | a source of an `AssertedEvidence`, or a source or target of an `AssertedArtifactSupport` or `AssertedArtifactContext`, is an `ArgumentAsset` but not an `ArtifactReference` |
 //! | SACM-MULT-001 | SACM23-VAL-005 | §11.13 | Error | an asserted relationship has no `source` (`source:ArgumentAsset[1..*]`), or no `target` (`target:ArgumentAsset[1]`): one finding per missing end |
-//! | SACM-MULT-001 | SACM23-VAL-022 | the end's: §11.2, §11.9, §11.10 or §11.13 | Warning | a multi-valued reference end of an element holds an id two or more times: one finding per repeated id |
+//! | SACM-MULT-001 | SACM23-VAL-022 | the end's: §11.2, §11.9, §11.10, §11.13 or §12.3 | Warning | a multi-valued reference end of an element holds an id two or more times: one finding per repeated id |
 //! | SACM-CITE-001 | SACM23-VAL-007 | §8.2 | Error | an element has a `citedElement` but its `isCitation` is not true (OCL `self.citedElement <> null implies self.isCitation = true`) |
 //! | SACM-ABS-001 | SACM23-VAL-008 | §8.2 | Error | an element with an `abstractForm` is itself abstract ("+isAbstract of the `SACMElement` is false") |
 //! | SACM-ABS-001 | SACM23-VAL-008 | §8.2 | Warning | the element the `abstractForm` references is not abstract, or is of another kind (both "should") |
@@ -125,8 +125,9 @@
 //! `metaClaim`, `ArgumentReasoning` for `reasoning`, `ArgumentAsset` for
 //! `source` and `target`, `ArgumentPackage` for `structure`,
 //! `ArtifactElement` for `referencedArtifactElement` (every kind but the
-//! `UtilityElement`s)
-//! and `ArgumentationElement` for a group's `argumentElement`. Each distinct
+//! `UtilityElement`s),
+//! `ArgumentationElement` for an `ArgumentGroup`'s `argumentElement`, and
+//! `ArtifactElement` for an `ArtifactGroup`'s `artifactElement`. Each distinct
 //! id an end holds that resolves to an element of a kind the type does not
 //! admit is one SACM-REF-002 Error per element and end (SACM23-VAL-004),
 //! with the end's clause, affecting the element, then the id. A dangling id
@@ -140,7 +141,7 @@
 //! of the right kind.
 //!
 //! A multi-valued end (`metaClaim`, `source`, `referencedArtifactElement`, a
-//! group's `argumentElement`) holds its ids in order, repeats included, as
+//! group's `argumentElement` or `artifactElement`) holds its ids in order, repeats included, as
 //! read (ADR 0027). SACM's ends hold each id once, so each id one end of one
 //! element holds two or more times is one SACM-MULT-001 Warning
 //! (SACM23-VAL-022), with the end's clause, affecting the element, then the

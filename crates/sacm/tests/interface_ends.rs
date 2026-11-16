@@ -10,7 +10,8 @@
 //! element at its start tag, the same in both modes. An `interface` in another
 //! namespace is not that end: it does not conform and is kept as preserved
 //! content of the package, with one SACM-XMI-003 at it. The ArtifactPackage's
-//! `interface` is left out: an ArtifactPackage is not read yet.
+//! `interface` (SACM23-ART-012) is tested with the ArtifactPackage, in
+//! `artifact_package.rs`.
 //!
 //! Expected locations are marked in the input with [`MARK`] (U+2038), which
 //! the test removes before reading.

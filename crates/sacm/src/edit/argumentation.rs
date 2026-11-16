@@ -162,9 +162,9 @@ impl CreateArgumentReasoning {
 /// an `AssertedEvidence` (§11.15), or either end of an
 /// `AssertedArtifactSupport` or `AssertedArtifactContext` (§11.17, §11.18).
 /// It is no Assertion: it has no `assertionDeclaration` and no `metaClaim`.
-/// Artifacts themselves (§12, the `ArtifactPackage`) are not supported yet,
-/// so for now an `ArtifactReference` can name only elements of argument and
-/// assurance-case packages, or nothing.
+/// Artifacts themselves (§12.7) are not supported yet, so for now an
+/// `ArtifactReference` can name only elements of argument, artifact and
+/// assurance-case packages, such as a `Technique`, or nothing.
 ///
 /// With
 /// [`with_referenced_artifact_elements`](Self::with_referenced_artifact_elements)
@@ -860,7 +860,7 @@ relationship_operation! {
 /// order a set operation checks them in too (ADR 0029). Changes nothing:
 /// the commit adds the element, and then advances the counter for a
 /// generated id.
-fn plan_referencing<'o>(
+pub(super) fn plan_referencing<'o>(
     document: &Document,
     kind: ElementKind,
     parent: &'o ElementId,

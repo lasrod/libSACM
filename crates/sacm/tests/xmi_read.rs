@@ -24,7 +24,7 @@
 //! Since SACM23-XMI-001 (slice 0021), AssuranceCasePackage and ArgumentPackage
 //! roots are read, and other roots are refused as SACM-XMI-001. The tests here
 //! that need a refusal at a known place therefore use input that is still
-//! `Unsupported` there: an ArtifactPackage root, a package name outside the
+//! `Unsupported` there: a TerminologyPackage root, a package name outside the
 //! SACM namespace, or a readable root with a child it cannot read. The roots
 //! themselves, and the SACM-XMI-001 locations, are tested in `xmi_roots.rs`.
 
@@ -84,11 +84,11 @@ const SACM_ROOT_CLOSE: &str = "</sacm:AssuranceCasePackage>";
 
 /// A root the reader recognises but cannot read yet (ADR 0016 D5): it is
 /// refused as `Unsupported` at its start tag.
-const ARTIFACT_ROOT: &str = concat!(
-    "<sacm:ArtifactPackage",
+const TERMINOLOGY_ROOT: &str = concat!(
+    "<sacm:TerminologyPackage",
     " xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
     " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"",
-    " xmi:id=\"artifacts_1\"/>",
+    " xmi:id=\"terms_1\"/>",
 );
 
 // --- Helpers --------------------------------------------------------------
@@ -925,7 +925,7 @@ fn lib_sec_002_unsupported_root_location_counts_lf_crlf_and_lone_cr_as_one_line_
         ("<!--p-->\r\n\r  ", 3, 3),
     ];
     for (prolog, line, column) in roots {
-        let input = format!("{prolog}{ARTIFACT_ROOT}");
+        let input = format!("{prolog}{TERMINOLOGY_ROOT}");
         let error = assert_unsupported(row, input.as_bytes());
         assert_eq!(
             error.location(),
@@ -943,7 +943,7 @@ fn lib_sec_002_unsupported_root_location_counts_lf_crlf_and_lone_cr_as_one_line_
         ("\n\r", 3, 1),
     ];
     for (before, line, column) in children {
-        let input = sacm_document("", &format!("{before}<artifactPackage xmi:id=\"f\"/>"));
+        let input = sacm_document("", &format!("{before}<terminologyPackage xmi:id=\"f\"/>"));
         let error = assert_unsupported(row, &input);
         assert_eq!(
             error.location(),
@@ -964,7 +964,7 @@ fn lib_sec_002_leading_utf8_bom_takes_no_column() {
         ("\u{FEFF}<!--p-->", 1, 9),
         ("\u{FEFF}<?xml version=\"1.0\"?>\n", 2, 1),
     ] {
-        let input = format!("{prolog}{ARTIFACT_ROOT}");
+        let input = format!("{prolog}{TERMINOLOGY_ROOT}");
         assert!(
             input.as_bytes().starts_with(b"\xEF\xBB\xBF"),
             "{row}: the test input does not start with a UTF-8 BOM"
@@ -1232,25 +1232,25 @@ fn lib_api_009_well_formed_sacm_document_is_unsupported_at_the_construct_it_cann
         Some(loc(row, 4, 9)),
         "{row}: the refusal is not located at the `xmi:uuid` of the name"
     );
-    // An AssuranceCasePackage root with an `artifactPackage` child, which no
+    // An AssuranceCasePackage root with a `terminologyPackage` child, which no
     // verified row reads: `Unsupported`, with no code and no document, at
-    // `<artifactPackage` (line 4, column 3).
+    // `<terminologyPackage` (line 4, column 3).
     let unread_child = sacm_document(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- LIB-API-009 -->\n",
-        "\n  <artifactPackage xmi:id=\"f\"/>\n",
+        "\n  <terminologyPackage xmi:id=\"f\"/>\n",
     );
     let error = assert_unsupported(row, &unread_child);
     assert_eq!(
         error.location(),
         Some(loc(row, 4, 3)),
-        "{row}: the refusal is not located at the start tag of the `artifactPackage` child"
+        "{row}: the refusal is not located at the start tag of the `terminologyPackage` child"
     );
     // A root that is recognised but not read yet: refused at its start tag,
     // on line 3.
-    let artifact_root = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- LIB-API-009 -->\n{ARTIFACT_ROOT}"
+    let terminology_root = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- LIB-API-009 -->\n{TERMINOLOGY_ROOT}"
     );
-    let error = assert_unsupported(row, artifact_root.as_bytes());
+    let error = assert_unsupported(row, terminology_root.as_bytes());
     assert_eq!(
         error.location(),
         Some(loc(row, 3, 1)),
@@ -1258,7 +1258,7 @@ fn lib_api_009_well_formed_sacm_document_is_unsupported_at_the_construct_it_cann
     );
     // `<?xml version="1.0"?>` is 21 characters and `<!-- é -->` 10: the
     // column counts characters, not bytes.
-    let after_comment = format!("<?xml version=\"1.0\"?><!-- é -->{ARTIFACT_ROOT}");
+    let after_comment = format!("<?xml version=\"1.0\"?><!-- é -->{TERMINOLOGY_ROOT}");
     let error = assert_unsupported(row, after_comment.as_bytes());
     assert_eq!(
         error.location(),
@@ -1488,7 +1488,7 @@ fn lib_api_009_utf8_and_ascii_declarations_in_any_case_are_refused_at_the_root_n
     for name in names {
         // The root start tag of a root that is not read yet is at line 2,
         // column 1; the encoding name at line 1, column 31.
-        let input = format!("<?xml version=\"1.0\" encoding=\"{name}\"?>\n{ARTIFACT_ROOT}");
+        let input = format!("<?xml version=\"1.0\" encoding=\"{name}\"?>\n{TERMINOLOGY_ROOT}");
         let error = assert_unsupported(row, input.as_bytes());
         assert_eq!(
             error.location(),
@@ -1670,10 +1670,10 @@ fn lib_api_009_unsupported_display_is_one_located_line_quoting_names() {
     assert_quoted_wherever_named(row, &text, "zqxroot");
 
     // A root that is recognised but not read yet.
-    let artifact = format!("<?xml version=\"1.0\"?>\n{ARTIFACT_ROOT}");
-    let error = assert_unsupported(row, artifact.as_bytes());
+    let terminology = format!("<?xml version=\"1.0\"?>\n{TERMINOLOGY_ROOT}");
+    let error = assert_unsupported(row, terminology.as_bytes());
     display_reason(row, &error, UNSUPPORTED_LEAD);
-    assert_quoted_wherever_named(row, &error.to_string(), "ArtifactPackage");
+    assert_quoted_wherever_named(row, &error.to_string(), "TerminologyPackage");
 
     // A child and an attribute that a readable root cannot read yet: XMI
     // metadata (SACM23-XMI-019) under a prefix that only they use.

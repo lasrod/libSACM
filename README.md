@@ -15,8 +15,8 @@ Milestone M1, a minimal editable vertical slice, is done: `sacm::model` provides
 `ElementId`, the metamodel's element kinds, element names, each Assertion's
 `assertionDeclaration` and the first value types (`LangString`, `MultiLangString`,
 `AssertionDeclaration`), and `sacm::diagnostic` provides the `Diagnostic` type.
-`sacm::xmi::read` reads `AssuranceCasePackage` and `ArgumentPackage` roots, the
-AssuranceCasePackages, ArgumentPackages and Claims in them, their names and each
+`sacm::xmi::read` reads `AssuranceCasePackage`, `ArgumentPackage` and `ArtifactPackage`
+roots, the AssuranceCasePackages, ArgumentPackages and Claims in them, their names and each
 Claim's `assertionDeclaration`. It refuses unsafe and malformed input and roots
 that are not SACM packages with a diagnostic code; it keeps content that is not SACM 2.3
 as preserved content, with SACM-XMI-003, and refuses conforming content it does not read

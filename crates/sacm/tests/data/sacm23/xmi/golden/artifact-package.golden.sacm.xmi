@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001">
+  <sacm:AssuranceCasePackage xmi:id="case">
+    <name lang="en" content="Brake case" />
+    <artifactPackage xmi:id="evidence">
+      <name lang="en" content="Brake evidence" />
+      <artifactElement xmi:type="sacm:Technique" xmi:id="fta">
+        <name lang="en" content="Fault tree analysis" />
+        <property xmi:id="fta_q">
+          <name lang="en" content="Qualified tool" />
+        </property>
+      </artifactElement>
+      <artifactElement xmi:type="sacm:Participant" xmi:id="assessor">
+        <name lang="en" content="Independent assessor" />
+      </artifactElement>
+      <artifactElement xmi:type="sacm:ArtifactGroup" xmi:id="analysis" artifactElement="fta assessor">
+        <name lang="en" content="Analysis" />
+      </artifactElement>
+      <artifactElement xmi:type="sacm:ArtifactPackage" xmi:id="library">
+        <name lang="en" content="Library" />
+        <artifactElement xmi:type="sacm:Property" xmi:id="calibrated">
+          <name lang="en" content="Calibrated" />
+        </artifactElement>
+      </artifactElement>
+    </artifactPackage>
+  </sacm:AssuranceCasePackage>
+  <sacm:ArtifactPackage xmi:id="shared">
+    <name lang="en" content="Shared evidence" />
+    <artifactElement xmi:type="sacm:Participant" xmi:id="supplier">
+      <name lang="en" content="Supplier" />
+    </artifactElement>
+  </sacm:ArtifactPackage>
+</xmi:XMI>
