@@ -1035,8 +1035,9 @@ pub fn read(input: &[u8], options: &ReadOptions) -> Result<ReadOutput, ReadError
 /// - [`Strict`](Self::Strict) aims at SACM 2.3 conformance. A strict read
 ///   reports each recognised variation it reads as an Error (in this release,
 ///   `xsi:type`, SACM-XMI-010), and each construct it keeps as preserved
-///   content as an Error (SACM-XMI-003), and refuses everything else it does
-///   not read: the C++ name and text shapes ([`ReadError::LegacyShape`],
+///   content as an Error (SACM-XMI-003, or SACM-XMI-013 for a name spelled
+///   as in the other of the text and the model, SACM23-XMI-009), and refuses
+///   everything else it does not read: the C++ name and text shapes ([`ReadError::LegacyShape`],
 ///   SACM-XMI-012), a value that is no literal, a value given twice, an
 ///   untyped child under an abstract role, an empty `xmi:id`, and conforming
 ///   content not read yet. Otherwise it returns the document, and does not
@@ -1146,11 +1147,14 @@ impl ReadOptions {
 /// SACM-XMI-003 for a construct that does not conform, SACM-XMI-004 for an
 /// element without an `xmi:id`, SACM-ID-004 for an `xmi:id` read trimmed,
 /// SACM-XMI-010 for an `xsi:type`, SACM-XMI-011 for an `xmi:version` and
-/// SACM-XMI-012 for a C++ shape; and, in tolerant mode, for what a strict
-/// read refuses, SACM-ENUM-001 for a value that is no literal, SACM-MULT-001
-/// for a repeat, SACM-XMI-005 for an untyped child, SACM-ID-002 for an
-/// empty `xmi:id`, SACM-XMI-014 for conforming content not read yet and
-/// SACM-XMI-007 for a cross-document `href`, each a Warning (see [`read`]).
+/// SACM-XMI-013 for a name formal/23-05-08 and ptc/22-03-13 spell
+/// differently (an Error in strict mode, a Warning in tolerant mode); and,
+/// in tolerant mode only, SACM-XMI-012 for a C++ shape and, for what a
+/// strict read refuses, SACM-ENUM-001 for a value that is no literal,
+/// SACM-MULT-001 for a repeat, SACM-XMI-005 for an untyped child,
+/// SACM-ID-002 for an empty `xmi:id`, SACM-XMI-014 for conforming content
+/// not read yet and SACM-XMI-007 for a cross-document `href`, each a
+/// Warning (see [`read`]).
 ///
 /// # Examples
 ///

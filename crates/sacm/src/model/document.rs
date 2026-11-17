@@ -2252,7 +2252,7 @@ impl<'a> Iterator for PreOrder<'a> {
 ///     package.children().filter(|child| child.kind() == ElementKind::Claim)
 /// }
 ///
-/// // Built with the unstable test-support feature, which inserts an element without a name.
+/// // Built with the unstable test-support feature (not shown on docs.rs; see the crate's Features), which inserts an element without a name.
 /// let mut doc = Document::new();
 /// let id = ElementId::from;
 /// doc.insert(None, ElementKind::ArgumentPackage, id("arguments"), None).unwrap();

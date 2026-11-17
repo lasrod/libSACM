@@ -63,3 +63,9 @@ Quality rows; acceptance by the lead. Maintainer decisions of 2026-11-17:
     ART-008 under CP-001, standing in for the second path ART-010 had through
     LIB-COMPAT-005. Setup only; no assertion changed.
   - The lead cleared docs/follow-ups.md.
+- 2026-11-17 verify round 1: FAIL, on wording only.
+  - Blocking: XMI-007's attribute order; SACM-XMI-013 missing from the `ReadOutput` and
+    `Mode::Strict` rustdoc (XMI-001, LIB-COMPAT-001); five false CHANGELOG claims.
+  - Fix round: the builder fixed the rustdoc, the CHANGELOG, releasing.md and two doc
+    comments; the lead fixed the matrix, the D-STRICT and CP-003 citations, and moved
+    D19. All use the verifier's text.

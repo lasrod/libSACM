@@ -384,12 +384,6 @@ true)", and §12.11 (Semantics) of "ArtifactActivityRelationships" and
 **Suggested resolution.** Use the defined class names: `AssertedEvidence` and
 `ArtifactAssetRelationship`.
 
-## Related
-
-- [GSN / SACM metamodel gaps](sacm-gsn-metamodel-gaps.md) — the GSN v3 side, for the SCSC ACWG.
-- [SACM 2.4 watch](sacm-2.4-watch.md) — the RTF issues that would change this.
-- [Decisions and questions](sacm-decisions-and-questions.md) — what the library does about each defect.
-
 ## D19 — The model names ArtifactAssetRelationship otherwise, with no superclass
 
 *Found by libSACM (slice 0057; recorded at M3's close).*
@@ -412,3 +406,9 @@ strict read keeps it as preserved content with a SACM-XMI-013 Error, D-STRICT's 
 
 **Suggested resolution.** Rename the class in the model to `ArtifactAssetRelationship` and
 give it the generalization ArtifactAsset, as the text states.
+
+## Related
+
+- [GSN / SACM metamodel gaps](sacm-gsn-metamodel-gaps.md) — the GSN v3 side, for the SCSC ACWG.
+- [SACM 2.4 watch](sacm-2.4-watch.md) — the RTF issues that would change this.
+- [Decisions and questions](sacm-decisions-and-questions.md) — what the library does about each defect.

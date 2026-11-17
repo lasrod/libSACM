@@ -32,32 +32,37 @@ data [LIB-QA-005].
   a strict read as `ReadError::MissingType` (SACM-XMI-005) [SACM23-XMI-002,
   SACM23-XMI-016, LIB-COMPAT-010].
 - Values are read exactly as XML gives them, from an attribute or a value element; given
-  twice, even equal, they are `ReadError::RepeatedValue` (SACM-MULT-001). `xsi:nil` is
-  read as an `xsd:boolean`. A literal other than the standard's, such as an unknown
-  `assertionDeclaration` or a flag that is not an `xsd:boolean`, is
-  `ReadError::InvalidLiteral` (SACM-ENUM-001) [SACM23-XMI-011, SACM23-XMI-012,
+  twice, even equal, a strict read refuses them as `ReadError::RepeatedValue`
+  (SACM-MULT-001). `xsi:nil` is read as an `xsd:boolean`. A literal other than the
+  standard's, such as an unknown `assertionDeclaration` or a flag that is not an
+  `xsd:boolean`, is refused by a strict read as `ReadError::InvalidLiteral`
+  (SACM-ENUM-001) [SACM23-XMI-011, SACM23-XMI-012,
   SACM23-XMI-014, SACM23-XMI-017, SACM23-XMI-021, SACM23-XMI-026, SACM23-VAL-006].
 - References are read from an attribute of white-space separated ids, or from elements
   with `xmi:idref` or `href="#id"`, and kept when they name no element [SACM23-XMI-005,
   SACM23-XMI-015].
 - Ids: an element without an `xmi:id` gets a generated one (SACM-XMI-004, Info); white
   space around an NCName is trimmed (SACM-ID-004, Info); a repeated `xmi:id` is
-  `ReadError::DuplicateId` (SACM-ID-001) and an empty one `ReadError::InvalidId`
+  `ReadError::DuplicateId` (SACM-ID-001) in both modes, and an empty one is refused by a
+  strict read as `ReadError::InvalidId` and given a generated id by a tolerant one
   (SACM-ID-002). The `xmi:id`s of a `name`, `content`, `key`, `location` and `value` are
   kept, in the document's id space [SACM23-XMI-020, SACM23-XMI-022, SACM23-XMI-025,
   SACM23-VAL-001, SACM23-VAL-020].
 - XML safety: a DOCTYPE is refused (`ReadError::Doctype`, SACM-SEC-001), and malformed or
   truncated XML and invalid UTF-8 are `ReadError::Malformed` (SACM-XML-001), including
-  what the parser lets through; every not-well-formed case of the W3C XML Conformance Test
-  Suite is refused. UTF-16 with a byte order mark is read [LIB-SEC-001, LIB-SEC-002,
+  what the parser lets through; every not-well-formed XML 1.0 (fifth edition) and
+  Namespaces 1.0 case of the W3C XML Conformance Test Suite 20130923 is refused. UTF-16 with a byte order mark is read [LIB-SEC-001, LIB-SEC-002,
   LIB-SEC-005, LIB-SEC-006, SACM23-XMI-018].
-- Every refusal carries the line and column of what it refuses, and
-  `ReadError::locations()` gives them all. A `ReadError::Unsupported` reason ends with a
-  label that says why: a limit of this version, input for a tolerance, or a defect
-  [SACM23-XMI-010, LIB-API-011].
+- Every refusal but one for the parser's capacity limits carries the line and column of
+  what it refuses, and `ReadError::locations()` gives them all; every read diagnostic
+  carries one too. A `ReadError::Unsupported` reason ends with a label that says why: a
+  limit of this version, input for a tolerance, or a defect [SACM23-XMI-010,
+  SACM23-XMI-023, LIB-API-011].
 - Two modes (`xmi::Mode`, `with_mode`). A strict read takes SACM 2.3 as specified. A
-  tolerant read, the default, opens every well-formed file with SACM 2.3 package roots:
-  it keeps what a strict read refuses as preserved content with one Warning, reads
+  tolerant read, the default, opens every well-formed file with SACM 2.3 package roots
+  except one with a DOCTYPE, a repeated `xmi:id`, an encoding it cannot decode or input
+  past the parser's limits: it keeps what else a strict read refuses as preserved content
+  with one Warning (an empty `xmi:id` instead gets a generated id, SACM-ID-002), reads
   `xsi:type` (SACM-XMI-010) and the assurance-forge C++ library's one-to-one name and text
   shapes (SACM-XMI-012; strictly `ReadError::LegacyShape`), and never reports an Error.
   `xmi:version` is ignored (SACM-XMI-011, Info). `ReadOutput::has_errors()` tells a read
@@ -170,7 +175,8 @@ data [LIB-QA-005].
 - `MoveElement` and `CopyElements` (from another document, with clashing ids renamed)
   [LIB-EDIT-017, LIB-EDIT-018].
 - `DeleteElement`, with policies for referenced elements, non-empty elements and
-  references across packages; a delete never leaves a dangling reference [LIB-EDIT-005,
+  references across packages; a delete never leaves a reference to an element it
+  deletes; references that dangled before are left as they were [LIB-EDIT-005,
   LIB-EDIT-006].
 - No edit makes a dangling or wrongly typed reference (`EditError::ReferenceNotFound`,
   `WrongReferenceType`), and every `EditError` has a code [SACM23-VAL-004].
@@ -212,5 +218,9 @@ data [LIB-QA-005].
   (LIB-COMPAT-002), is refused in both modes, and a foreign container root is
   `InvalidRoot` (LIB-COMPAT-009).
 - Encodings other than UTF-8, ASCII and UTF-16 with a byte order mark are refused.
+- No configurable limits on input size, nesting depth or element count yet (LIB-SEC-003):
+  only the parser's own capacity limits apply, refused as `ReadError::Unsupported` with
+  no location. Reading does not recurse, so deep nesting does not overflow the stack
+  [LIB-SEC-002].
 - The `test-support` feature (`Document::insert` and the diagnostic constructors) is for
   tests and is not part of the stable API.
