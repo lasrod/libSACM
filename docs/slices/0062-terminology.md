@@ -65,3 +65,11 @@ Left out:
     Note-only: LIB-API-011, LIB-COMPAT-001, -007, -015, XMI-002, -008, -018, VAL-001,
     LIB-RT-002 and LIB-SEC-002/005/006.
   - Hand mutations: 26 of 27 killed; the survivor was a dead bound check, now removed.
+- 2026-11-17 verify round 1:
+  - TERM-001 and TERM-006 PASS; TERM-003 to -005 pass on their content but are held by
+    TERM-002.
+  - FAIL on TERM-002 (no test of the SACM-REF-003 clause on a Category holder, M02) and
+    XMI-028 (no test of the spelling under the wrong package kind, M23).
+  - Fix round: the builder adds the two tests and fixes the wording; the lead fixes XMI-028
+    item 4, TERM-002 item 3, TERM-001's notes, the ADR alternative and D21, all with the
+    verifier's text.

@@ -384,8 +384,9 @@ impl ReferenceEnd {
     /// `citedElement` and `abstractForm` (§8.2), every Assertion has
     /// `metaClaim` (§11.10), every `AssertedRelationship` has `reasoning`,
     /// `source` and `target` (§11.13), an `ArtifactAssetRelationship` has
-    /// its own `source` and `target` (§12.14), and each other end belongs to
-    /// one kind, as its variant says.
+    /// its own `source` and `target` (§12.14), every `TerminologyAsset` (a
+    /// Category, a Term or an Expression) has `category` (§10.8, §10.9), and
+    /// each other end belongs to one kind, as its variant says.
     ///
     /// It is true exactly when a
     /// [`SetReferences::clear`](crate::edit::SetReferences::clear) of the

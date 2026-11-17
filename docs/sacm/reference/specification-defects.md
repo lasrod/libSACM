@@ -424,7 +424,7 @@ and its constraint reads "If expression is not empty, then +content should be em
 
 *Found by libSACM (M4 design, 2026-11-17).*
 
-ptc/22-03-13 gives Category an end `category : Category [0..*]`. formal/23-05-08 §10.8 (p. 29) has no Associations entry for it. It says only that "Terms, Categories, and ExpressionElements can be said to belong to Categories. … Categories can contain Categories." Nothing says whether a Category's `category` names the Categories it belongs to or those it contains. SACM 2.2 had neither sentence. SACM 2.4 Beta1 gives Category a `terminologyAsset` list of the members it contains.
+ptc/22-03-13 gives Category an end `category : Category [0..*]`. formal/23-05-08 §10.8 (p. 29) has no Associations entry for it. It says only that "Terms, Categories, and ExpressionElements can be said to belong to Categories. … Categories can contain Categories." Nothing says whether a Category's `category` names the Categories it belongs to or those it contains. SACM 2.2 (formal/21-11-01 §10.8) does not list Categories among the elements that belong to Categories, and does not say that Categories can contain Categories. SACM 2.4 Beta1 gives Category a `terminologyAsset` list of the members it contains.
 
 **This crate** holds the ids as written and documents no direction (SACM23-TERM-002, ADR 0034 amendment 3).
 

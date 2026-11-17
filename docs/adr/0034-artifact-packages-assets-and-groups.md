@@ -209,4 +209,4 @@ Their Interim entries in the refusal list go. TerminologyPackageInterface and Te
 
 **Alternatives considered:**
 - **Two `category` ends, one for Category and one for ExpressionElement.** Rejected: they have the same name, type and bounds.
-- **Documenting a direction for Category's `category`.** Rejected: the 2.3 text does not state one, and 2.4 Beta1 states the other.
+- **Documenting a direction for Category's `category`.** Rejected: the 2.3 text does not state one, and SACM 2.4 Beta1 instead gives a Category a list of the members it contains.

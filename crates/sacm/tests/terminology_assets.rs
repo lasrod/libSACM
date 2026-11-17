@@ -816,6 +816,10 @@ fn sacm23_term_002_reference_end_all_is_the_sixteen_ends_in_write_order() {
 // =====================================================================================
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the cases of one acceptance item read best as one list"
+)]
 fn sacm23_term_002_validate_checks_a_category_s_category_with_clause_10_8() {
     let row = TERM_002;
     // Naming a Term: SACM-REF-002.
@@ -853,6 +857,40 @@ fn sacm23_term_002_validate_checks_a_category_s_category_with_clause_10_8() {
             &["mechanical", "ghost"]
         )],
         "{row}: {what}: not one SACM-REF-001 Error with clause 10.8"
+    );
+    // Naming an element kept only as preserved content: SACM-REF-003, with
+    // the Category's clause too.
+    let what = "category=\"z\" on a Category, z a Claim kept as preserved content";
+    let input = in_terms(&format!(
+        "{}<terminologyElement xmi:type=\"sacm:Claim\" xmi:id=\"z\"><name content=\"Z\"/>\
+         </terminologyElement>",
+        category("k", " category=\"z\"", "")
+    ));
+    let doc = match read(Mode::Tolerant, &input) {
+        Ok(output) => {
+            assert_eq!(
+                output
+                    .diagnostics()
+                    .iter()
+                    .map(Diagnostic::code)
+                    .collect::<Vec<_>>(),
+                [Code::XMI_UNKNOWN_CONTENT],
+                "{row}: {what}: setup: z is not kept with one SACM-XMI-003"
+            );
+            output.into_document()
+        }
+        Err(error) => panic!("{row}: {what}: a tolerant read refused it: {error:?}"),
+    };
+    assert_eq!(
+        findings(&doc),
+        [expected(
+            Code::REF_PRESERVED_TARGET,
+            Severity::Warning,
+            "LIB-COMPAT-003",
+            "10.8",
+            &["k", "z"]
+        )],
+        "{row}: {what}: not one SACM-REF-003 Warning with clause 10.8"
     );
     // A repeat: one SACM23-VAL-022 Warning.
     let what = "category=\"hazards hazards\" on a Category";

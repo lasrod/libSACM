@@ -499,6 +499,26 @@ fn sacm23_xmi_028_terminology_element_elsewhere_is_unknown_content_with_no_spell
             )),
             "g",
         ),
+        // Each spelling belongs to its own package's role: `TerminologyElement`
+        // is no spelling in an ArgumentPackage, and `argumentationElement` is
+        // none in a TerminologyPackage.
+        (
+            "a TerminologyElement typed sacm:Claim in an ArgumentPackage",
+            format!(
+                "<sacm:ArgumentPackage{NS} xmi:id=\"p\">\n  <name content=\"P\"/>\n  \
+                 {MARK}<TerminologyElement xmi:type=\"sacm:Claim\" xmi:id=\"x\">\
+                 <name content=\"X\"/></TerminologyElement>\n</sacm:ArgumentPackage>"
+            ),
+            "p",
+        ),
+        (
+            "an argumentationElement typed sacm:Term in a TerminologyPackage",
+            terminology(&format!(
+                "{MARK}<argumentationElement xmi:type=\"sacm:Term\" xmi:id=\"x\" value=\"x\">\
+                 <name content=\"X\"/></argumentationElement>"
+            )),
+            "t",
+        ),
     ];
     for (what, template, holder) in cases {
         let (input, marks) = marked(&template);

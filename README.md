@@ -12,7 +12,7 @@ assurance cases as standard XMI.
 
 Milestones M0 (foundation), M1 (a minimal editable vertical slice) and M2 (base model and
 argumentation) are done, M3's artifact model is complete, and the first release, 0.1.0,
-is being prepared. Today `sacm::xmi::read` reads `AssuranceCasePackage`, `ArgumentPackage`,
+was published on 2026-11-17. Today `sacm::xmi::read` reads `AssuranceCasePackage`, `ArgumentPackage`,
 `ArtifactPackage` and `TerminologyPackage` roots and, in them, nested packages, the
 argumentation elements (Claim, ArgumentReasoning, ArtifactReference, ArgumentGroup and the
 five asserted relationships), the artifact elements Property, Technique, Participant,
