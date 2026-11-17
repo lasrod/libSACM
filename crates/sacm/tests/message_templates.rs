@@ -1304,6 +1304,59 @@ fn lib_api_017_each_refusal_template_input_gives_its_0_1_0_display() {
     }
 }
 
+/// Text in the `value` of a `name` is a C++ shape of its own: a tolerant
+/// read reports it, after the `name-value` shape of the `value` itself, with
+/// the English of `SACM-XMI-012/name-value-text`, the template no strict
+/// read refuses (LIB-API-017, acceptance 4).
+#[test]
+fn lib_api_017_text_in_the_value_of_a_name_is_reported_with_its_template_s_english() {
+    let input = named_package("<name><value>A</value></name>");
+    let output = match xmi::read(input.as_bytes(), &ReadOptions::default()) {
+        Ok(output) => output,
+        Err(error) => panic!("{ROW}: a tolerant read refuses {input}: {error}"),
+    };
+    let found: Vec<(Option<(u32, u32)>, &str)> = output
+        .diagnostics()
+        .iter()
+        .filter(|found| found.code() == sacm::diagnostic::Code::XMI_LEGACY_SHAPE)
+        .map(|found| {
+            (
+                found.location().map(|at| (at.line(), at.column())),
+                found.message(),
+            )
+        })
+        .collect();
+    let column = |what: &str| {
+        input
+            .find(what)
+            .and_then(|offset| u32::try_from(offset + 1).ok())
+            .unwrap_or_else(|| panic!("{ROW}: setup: no {what:?} in {input}"))
+    };
+    assert_eq!(
+        (column("<value"), column("A</value>")),
+        (140, 147),
+        "{ROW}: setup"
+    );
+    assert_eq!(
+        found,
+        [
+            (
+                Some((1, 140)),
+                "the name of the ArgumentPackage \"p\" holds a value, a shape of the \
+                 assurance-forge C++ library that XMI 2.5.1 does not define; it is read as its \
+                 standard form, which write writes",
+            ),
+            (
+                Some((1, 147)),
+                "the value in the name of the ArgumentPackage \"p\" has its content as text, a \
+                 shape of the assurance-forge C++ library that XMI 2.5.1 does not define; it is \
+                 read as its standard form, which write writes",
+            ),
+        ],
+        "{ROW}: the two SACM-XMI-012 Warnings of text in a name's value"
+    );
+}
+
 mod api {
     use super::{Case, ROW, Refusal, Value, cases, code_of, refusal};
     use sacm::diagnostic::{Argument, ArgumentValue};

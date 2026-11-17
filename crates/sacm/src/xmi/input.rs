@@ -1546,13 +1546,38 @@ mod tests {
             )
         );
         // Parser capacity limits are Unsupported, not Malformed (LIB-SEC-003).
-        for limit in [
-            E::NodesLimitReached,
-            E::AttributesLimitReached,
-            E::NamespacesLimitReached,
+        for (limit, template, english) in [
+            (
+                E::NodesLimitReached,
+                "SACM-SEC-002/nodes",
+                "the document has more nodes or nesting levels than the parser can hold",
+            ),
+            (
+                E::AttributesLimitReached,
+                "SACM-SEC-002/attributes",
+                "the document has more attributes than the parser can hold",
+            ),
+            (
+                E::NamespacesLimitReached,
+                "SACM-SEC-002/namespaces",
+                "the document declares more namespaces than the parser can hold",
+            ),
         ] {
             let error = refusal(text, &limit);
             assert!(matches!(error, ReadError::Unsupported { .. }), "{limit:?}");
+            // Each limit has its template (LIB-API-017, acceptance 4).
+            assert_eq!(
+                (error.code(), error.template(), error.arguments()),
+                (Code::PARSER_LIMIT, template, &[][..]),
+                "LIB-API-017: {limit:?}"
+            );
+            assert_eq!(
+                error.to_string(),
+                format!(
+                    "the reader cannot represent the input: {english} (a limit of this version)"
+                ),
+                "LIB-API-017: {limit:?}"
+            );
             assert_eq!(
                 located(&error),
                 (

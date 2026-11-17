@@ -1037,7 +1037,8 @@ mod tests {
     }
 
     /// The SACM-SEC-002 refusals, which no input of a test's size reaches,
-    /// built as the reader builds them (LIB-API-017, acceptance 4).
+    /// built from each template, as `unsupported_at` builds them (LIB-API-017,
+    /// acceptance 4).
     #[test]
     fn the_limit_refusals_have_their_code_template_and_arguments() {
         let cases = [

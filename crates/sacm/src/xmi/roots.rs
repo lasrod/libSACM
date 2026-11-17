@@ -2573,14 +2573,16 @@ fn read_spelled_part<'a>(
 /// the inserts succeed; a failure would still be a refusal, never a panic.
 fn hold(text: &str, document: &mut Document, mut read: Vec<Pending>) -> Result<(), ReadError> {
     read.sort_by_key(|element| element.order);
-    for element in read {
-        let id = element.id;
+    for mut element in read {
+        // What is held is taken out of `element`, which names the refusal
+        // if an insert fails.
+        let id = element.id.clone();
         let held = document
             .insert_node(
                 element.parent.as_ref(),
                 element.kind,
                 id.clone(),
-                element.name,
+                element.name.take(),
             )
             .map_err(|error| error.to_string());
         let declared = held.and_then(|()| match element.declaration {
@@ -2589,25 +2591,24 @@ fn hold(text: &str, document: &mut Document, mut read: Vec<Pending>) -> Result<(
                 .map_err(|error| error.to_string()),
             None => Ok(()),
         });
-        let named = declared.and_then(|()| match element.name_id {
+        let named = declared.and_then(|()| match element.name_id.take() {
             Some(name_id) => document.set_name_id(&id, name_id),
             None => Ok(()),
         });
-        let identified = named.and_then(|()| match element.gid {
+        let identified = named.and_then(|()| match element.gid.take() {
             Some(gid) => document.set_gid(&id, Some(gid)),
             None => Ok(()),
         });
         let valued = identified.and_then(|()| {
-            element
-                .strings
+            std::mem::take(&mut element.strings)
                 .into_iter()
                 .filter_map(|(attribute, value)| value.map(|value| (attribute, value)))
                 .try_for_each(|(attribute, value)| document.set_string(&id, attribute, Some(value)))
         });
         let texts = [
-            (TextRole::Content, element.content),
-            (TextRole::Key, element.key),
-            (TextRole::Location, element.location),
+            (TextRole::Content, element.content.take()),
+            (TextRole::Key, element.key.take()),
+            (TextRole::Location, element.location.take()),
         ];
         let held = valued.and_then(|()| {
             texts.into_iter().try_for_each(|(role, held)| match held {
@@ -2616,39 +2617,39 @@ fn hold(text: &str, document: &mut Document, mut read: Vec<Pending>) -> Result<(
             })
         });
         let flagged = held.and_then(|()| {
-            element
-                .flags
+            std::mem::take(&mut element.flags)
                 .into_iter()
                 .try_for_each(|(flag, value)| document.set_flag(&id, flag, value))
         });
         let referenced = flagged.and_then(|()| {
-            element
-                .references
+            std::mem::take(&mut element.references)
                 .into_iter()
                 .try_for_each(|(end, targets)| document.set_references(&id, end, targets))
         });
-        let held =
-            referenced.and_then(|()| document.set_preserved(&id, element.kept.into_preserved()));
+        let held = referenced.and_then(|()| {
+            let kept = std::mem::replace(&mut element.kept, Kept::new(Holder::Document));
+            document.set_preserved(&id, kept.into_preserved())
+        });
         held.map_err(|error| {
-            unsupported(
-                text,
-                element.at,
-                Unread::Unheld,
-                Details::new(
-                    if element.parent.is_none() {
-                        &template::SEC_002_UNHELD_ROOT
-                    } else {
-                        &template::SEC_002_UNHELD_ELEMENT
-                    },
-                    vec![
-                        Argument::text("element", element.written.as_str()),
-                        Argument::text("error", error.as_str()),
-                    ],
-                ),
-            )
+            unsupported(text, element.at, Unread::Unheld, unheld(&element, &error))
         })?;
     }
     Ok(())
+}
+
+/// The details of the refusal of `element`, which the document could not
+/// hold because of `error`: SACM-SEC-002, naming the root element or the
+/// element (LIB-API-017). Checked input never gives one.
+fn unheld(element: &Pending, error: &str) -> Details {
+    let template = if element.parent.is_none() {
+        &template::SEC_002_UNHELD_ROOT
+    } else {
+        &template::SEC_002_UNHELD_ELEMENT
+    };
+    text_details(
+        template,
+        &[("element", element.written.as_str()), ("error", error)],
+    )
 }
 
 /// The reference end `interface` of a package (ptc/22-03-13
@@ -4331,6 +4332,92 @@ mod tests {
     use crate::diagnostic::{SourceLocation, has_errors};
     use crate::model::{Document, ElementId, MultiLangString, SacmElement};
     use crate::xmi::{Mode, ReadError, ReadOptions, WriteOptions, read, write};
+
+    /// An element `id` of `kind`, written `written`, under `parent`, with
+    /// nothing read.
+    fn pending_of(
+        parent: Option<ElementId>,
+        kind: crate::model::ElementKind,
+        id: &str,
+        written: &str,
+    ) -> super::Pending {
+        super::Pending {
+            order: 0,
+            parent,
+            kind,
+            id: ElementId::new(id),
+            gid: None,
+            has_gid: false,
+            name: None,
+            name_id: None,
+            content: None,
+            shorthand: super::Shorthand::default(),
+            key: None,
+            location: None,
+            strings: Vec::new(),
+            declaration: None,
+            flags: Vec::new(),
+            references: Vec::new(),
+            given: Vec::new(),
+            written: written.to_owned(),
+            at: 0,
+            kept: super::Kept::new(super::Holder::Document),
+        }
+    }
+
+    /// The refusal of an element the document could not hold names a root
+    /// as the root element and a child as an element (LIB-API-017,
+    /// acceptance 4): the templates no input reaches.
+    #[test]
+    fn an_unheld_root_and_child_have_their_templates() {
+        use crate::diagnostic::{Argument, template};
+        use crate::model::ElementKind;
+
+        let arguments = |element: &str| {
+            vec![
+                Argument::text("element", element),
+                Argument::text("error", "e"),
+            ]
+        };
+        let root = pending_of(
+            None,
+            ElementKind::ArgumentPackage,
+            "p",
+            "sacm:ArgumentPackage",
+        );
+        let details = super::unheld(&root, "e");
+        assert_eq!(
+            (details.template(), details.arguments()),
+            (
+                template::SEC_002_UNHELD_ROOT.id,
+                arguments("sacm:ArgumentPackage").as_slice()
+            ),
+            "LIB-API-017: a root"
+        );
+        assert_eq!(
+            details.render(),
+            "the root element \"sacm:ArgumentPackage\" cannot be held in the document: e"
+        );
+        let child = pending_of(
+            Some(ElementId::new("p")),
+            ElementKind::Claim,
+            "c1",
+            "argumentElement",
+        );
+        let details = super::unheld(&child, "e");
+        assert_eq!(
+            (details.template(), details.arguments()),
+            (
+                template::SEC_002_UNHELD_ELEMENT.id,
+                arguments("argumentElement").as_slice()
+            ),
+            "LIB-API-017: a child"
+        );
+        assert_eq!(
+            details.render(),
+            "the element \"argumentElement\" cannot be held in the document: e"
+        );
+    }
 
     const OPEN: &str = concat!(
         "<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",

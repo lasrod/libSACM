@@ -64,3 +64,10 @@ The merge waits for the maintainer's approval.
   - Verified rows reworded with the design's text: XMI-001, VAL-001, -006, -020,
     XMI-021, -008, LIB-COMPAT-007, LIB-API-009 (also its requirement), LIB-API-010,
     LIB-CLI-002 and LIB-API-006. Notes on LIB-API-011 and LIB-DIAG-002.
+- 2026-11-18 verify round 1: FAIL.
+  - No wrong behaviour, and the messages are byte-identical.
+  - Blocking: 8 hand mutants and 12 CI mutants survive (templates chosen at sites, record
+    rendering, the `Details` traits, the accessors), and two doc claims are false.
+  - Fix round: the builder adds tests (and `fn unheld`) and fixes the docs wording; the lead
+    adds the LIB-API-006 comma, triages refusal.rs:243 as equivalent, and logs three
+    follow-ups.

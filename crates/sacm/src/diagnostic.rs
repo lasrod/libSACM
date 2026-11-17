@@ -848,6 +848,16 @@ impl fmt::Display for Argument {
 /// one; read it through [`template`](Self::template) and
 /// [`arguments`](Self::arguments), or through the accessors of the refusal
 /// that holds it.
+///
+/// ```
+/// use sacm::xmi::{self, ReadError, ReadOptions};
+///
+/// let error = xmi::read(b"<r></s>", &ReadOptions::default()).unwrap_err();
+/// if let ReadError::Malformed { details, .. } = &error {
+///     assert_eq!(details.template(), "SACM-XML-001/end-tag-mismatch");
+///     assert_eq!(details.arguments(), error.arguments());
+/// }
+/// ```
 #[derive(Clone)]
 pub struct Details {
     template: &'static Template,

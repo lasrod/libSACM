@@ -36,7 +36,6 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   `XMI_NAMESPACE_NOT_PINNED` [LIB-API-017].
 - With `serde`, `ReadError`, `WriteError` and `WriteAttribute` serialize and read back: a
   refusal is `{"type", "code", "template", "arguments", …its fields}` [LIB-API-017].
-
 - The Terminology package of SACM 2.3: TerminologyPackage, Category, Term, Expression and
   TerminologyGroup are read, written, created, edited, compared and validated. A
   TerminologyPackage is read as a root (the Terminology unit of interchange, §2.5), in an

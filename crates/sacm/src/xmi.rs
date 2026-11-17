@@ -1300,7 +1300,10 @@ const _: () = {
 /// (ADR 0030 amendment 3). The catalog lists each template's id, arguments
 /// and English. With the `serde` feature a refusal serializes as
 /// `{"type", "code", "template", "arguments", …its fields}` and reads back
-/// as a record: its `Display` renders its template and arguments.
+/// as a record: its `Display` renders its template and arguments, and its
+/// other fields are kept as given, unchecked against them, so what the
+/// fields promise (such as `reason` ending with its label, or `locations`
+/// holding at least two) holds for a refusal of [`read`], not for a record.
 ///
 /// The first five, and `Unsupported` for an encoding, a parser limit, a root
 /// outside SACM 2.3 or XMI 2.5.1, or an XMI-namespace document element, are
@@ -2495,7 +2498,9 @@ impl WriteOptions {
 /// SACM-XMI-016 for [`Invalid`](Self::Invalid) and SACM-XMI-006 for
 /// [`PreservedContent`](Self::PreservedContent) (LIB-API-017), and a
 /// message [`template`](Self::template) and its
-/// [`arguments`](Self::arguments), as [`ReadError`] has.
+/// [`arguments`](Self::arguments), as [`ReadError`] has. With the `serde`
+/// feature it reads back as a record, as a `ReadError` does: its fields are
+/// kept as given, so a record's `Invalid` may hold no diagnostics.
 /// [`element`](Self::element) names the element refused, where there is
 /// one, and [`diagnostics`](Self::diagnostics) gives the schema errors of
 /// [`Invalid`](Self::Invalid).

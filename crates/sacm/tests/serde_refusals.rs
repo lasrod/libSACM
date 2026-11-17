@@ -539,6 +539,97 @@ fn lib_api_017_a_character_that_is_not_one_character_is_refused() {
     );
 }
 
+/// A record keeps its fields as given, and its `Display` renders its
+/// template and arguments, not its `reason` (ADR 0030 amendment 3,
+/// "Records").
+#[test]
+fn lib_api_017_a_record_s_display_renders_its_template_not_its_reason() {
+    for (what, valid, reason, display_end) in [
+        (
+            "Malformed",
+            MALFORMED,
+            r#""reason":"the end tag \"s\" does not match the start tag \"r\"""#,
+            "the input is not well-formed XML at line 1, column 4: the end tag \"s\" does not \
+             match the start tag \"r\"",
+        ),
+        (
+            "Unsupported",
+            UNSUPPORTED,
+            r#""reason":"the root element \"sacm:ArgumentPackageInterface\" is not read in this release (a limit of this version; SACM23-ARG-014 reads it)""#,
+            "is not read in this release (a limit of this version; SACM23-ARG-014 reads it)",
+        ),
+    ] {
+        let other = valid.replacen(reason, r#""reason":"other""#, 1);
+        assert_ne!(
+            other, valid,
+            "{ROW}: setup: {what}: the reason is not in the twin"
+        );
+        let error = match serde_json::from_str::<ReadError>(&other) {
+            Ok(error) => error,
+            Err(error) => panic!("{ROW}: {what}: a record with another reason is refused: {error}"),
+        };
+        let kept = match &error {
+            ReadError::Malformed { reason, .. } | ReadError::Unsupported { reason, .. } => {
+                reason.as_str()
+            }
+            other => panic!("{ROW}: {what}: read as {other:?}"),
+        };
+        assert_eq!(
+            kept, "other",
+            "{ROW}: {what}: the reason is not kept as given"
+        );
+        assert!(
+            error.to_string().ends_with(display_end),
+            "{ROW}: {what}: the Display {:?} does not render the template",
+            error.to_string()
+        );
+        if what == "Malformed" {
+            assert_eq!(error.to_string(), display_end, "{ROW}: {what}: the Display");
+        }
+    }
+}
+
+/// The arguments of a sample display as `name=value`, a Text Debug-quoted,
+/// and the serde refusals of an argument value and of the arguments say
+/// what they expect.
+#[test]
+fn lib_api_017_arguments_display_by_name_and_serde_says_what_it_expects() {
+    let error: ReadError = match serde_json::from_str(DUPLICATE_ID) {
+        Ok(error) => error,
+        Err(error) => panic!("{ROW}: setup: {error}"),
+    };
+    let shown: Vec<String> = error.arguments().iter().map(ToString::to_string).collect();
+    assert_eq!(
+        shown,
+        [r#"id="c1""#, "count=2"],
+        "{ROW}: the arguments' Display"
+    );
+    for (what, from, to, expected) in [
+        (
+            "a Text given null",
+            r#""end_tag":"s""#,
+            r#""end_tag":null"#,
+            "a string or a non-negative integer",
+        ),
+        (
+            "arguments as an array",
+            r#""arguments":{"end_tag":"s","start_tag":"r"}"#,
+            r#""arguments":["s","r"]"#,
+            "an object of message arguments",
+        ),
+    ] {
+        let invalid = MALFORMED.replacen(from, to, 1);
+        assert_ne!(invalid, MALFORMED, "{ROW}: setup: {what}");
+        match serde_json::from_str::<ReadError>(&invalid) {
+            Ok(value) => panic!("{ROW}: {what}: read as {value:?}"),
+            Err(error) => assert!(
+                error.to_string().contains(expected),
+                "{ROW}: {what}: the refusal {error} does not say {expected:?}"
+            ),
+        }
+    }
+}
+
 #[test]
 fn lib_api_017_write_attribute_is_its_variant_name() {
     let all = [

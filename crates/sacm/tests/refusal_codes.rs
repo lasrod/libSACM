@@ -92,6 +92,71 @@ fn is_live(meaning: &str) -> bool {
     meaning.contains("`Code::")
 }
 
+/// The details of the `Malformed` refusal of `input`.
+fn malformed_details(input: &[u8]) -> sacm::diagnostic::Details {
+    match sacm::xmi::read(input, &sacm::xmi::ReadOptions::default()) {
+        Err(sacm::xmi::ReadError::Malformed { details, .. }) => details,
+        other => panic!("{ROW}: setup: {input:?} is not Malformed: {other:?}"),
+    }
+}
+
+/// The `DefaultHasher` hash of `value`.
+fn hash_of(value: &impl std::hash::Hash) -> u64 {
+    use std::hash::{DefaultHasher, Hasher};
+
+    let mut hasher = DefaultHasher::new();
+    value.hash(&mut hasher);
+    hasher.finish()
+}
+
+/// `Details` compare and hash by their template and arguments, and debug as
+/// both.
+#[test]
+fn lib_api_017_details_compare_hash_and_debug_by_template_and_arguments() {
+    let first = malformed_details(b"<r></s>");
+    let again = malformed_details(b"<r></s>");
+    let other = malformed_details(b"<a></b>");
+    assert!(
+        first == again,
+        "{ROW}: the same refusal's details are not equal"
+    );
+    assert_eq!(
+        hash_of(&first),
+        hash_of(&again),
+        "{ROW}: equal details hash apart"
+    );
+    assert!(first != other, "{ROW}: other arguments' details are equal");
+    assert_ne!(
+        hash_of(&first),
+        hash_of(&other),
+        "{ROW}: other details hash alike"
+    );
+    assert_eq!(
+        format!("{first:?}"),
+        r#"Details { template: "SACM-XML-001/end-tag-mismatch", arguments: [Argument { name: "end_tag", value: Text("s") }, Argument { name: "start_tag", value: Text("r") }] }"#,
+        "{ROW}: the Debug of Details"
+    );
+}
+
+/// An argument value says what it is, and displays as its text or count.
+#[test]
+fn lib_api_017_an_argument_value_is_text_or_a_count() {
+    use sacm::diagnostic::ArgumentValue;
+
+    let count = ArgumentValue::Count(2);
+    assert_eq!(
+        (count.as_count(), count.as_text(), count.to_string()),
+        (Some(2), None, "2".to_owned()),
+        "{ROW}: a Count"
+    );
+    let text = ArgumentValue::Text("x".to_owned());
+    assert_eq!(
+        (text.as_count(), text.as_text(), text.to_string()),
+        (None, Some("x"), "x".to_owned()),
+        "{ROW}: a Text"
+    );
+}
+
 #[test]
 fn lib_api_017_the_catalog_has_live_rows_for_the_refusal_codes_and_names_their_refusals() {
     let catalog = catalog();
