@@ -15,13 +15,15 @@ argumentation) are done, and M3 (artifact model) has begun. Today `sacm::xmi::re
 `AssuranceCasePackage`, `ArgumentPackage` and `ArtifactPackage` roots and, in them, nested
 packages, the argumentation elements (Claim, ArgumentReasoning, ArtifactReference,
 ArgumentGroup and the five asserted relationships) and the artifact elements Property,
-Technique, Participant, ArtifactGroup, Artifact, Event, Resource and Activity, each with its name, `gid`, flags, references,
+Technique, Participant, ArtifactGroup, Artifact, Event, Resource, Activity and ArtifactAssetRelationship, each with its name, `gid`, flags, references,
 descriptions, notes, implementation constraints and tagged values. Content that is not
 SACM 2.3 is kept as preserved content (SACM-XMI-003). A tolerant read, the default, opens
 every well-formed file with SACM 2.3 package roots: what a strict read refuses, such as a
-value that is no literal or conforming content not read yet (an
-ArtifactAssetRelationship, a terminology element, an interface), it keeps as preserved content with a Warning (SACM-XMI-014 for
-content not read yet). Nothing is dropped.
+value that is no literal or conforming content not read yet (a terminology element, an
+interface), it keeps as preserved content with a Warning (SACM-XMI-014 for content not read
+yet); and it reads the names formal/23-05-08 and ptc/22-03-13 spell differently
+(`ArtifactAssertedRelationship`, an Event's `occurece` and `argumentationElement`) as the
+names it writes, with a Warning (SACM-XMI-013). Nothing is dropped.
 
 `sacm::xmi::write` writes the same kinds deterministically; a strict save, the default,
 checks only that the output is schema-valid, so a draft saves, and an application calls

@@ -99,8 +99,6 @@ pub(super) enum Unread {
     ArgumentPackageInterface,
     /// An `ArgumentPackageBinding`.
     ArgumentPackageBinding,
-    /// An `ArtifactAssetRelationship`.
-    ArtifactAssetRelationship,
     /// A `Category`.
     Category,
     /// A `Term`.
@@ -125,12 +123,6 @@ pub(super) enum Unread {
     ExpressionLangString,
     /// An `XMI` element outside the XMI 2.5.1 namespace.
     OtherXmiNamespace,
-    /// The §11.4 text spelling `argumentationElement`.
-    TextSpelling,
-    /// The machine-readable model's spelling `ArtifactAssertedRelationship`
-    /// of the type `ArtifactAssetRelationship`, or `occurece` of Event's
-    /// `date` (D-TEXT-MODEL).
-    ModelSpelling,
     /// An encoding other than UTF-8, ASCII and UTF-16 with a mark.
     Encoding,
     /// More nodes, attributes or namespaces than the parser can hold.
@@ -160,7 +152,6 @@ impl Unread {
             ElementKind::AssuranceCasePackageBinding => Self::AssuranceCasePackageBinding,
             ElementKind::ArgumentPackageInterface => Self::ArgumentPackageInterface,
             ElementKind::ArgumentPackageBinding => Self::ArgumentPackageBinding,
-            ElementKind::ArtifactAssetRelationship => Self::ArtifactAssetRelationship,
             ElementKind::Category => Self::Category,
             ElementKind::Term => Self::Term,
             ElementKind::Expression => Self::Expression,
@@ -181,7 +172,6 @@ impl Unread {
             Self::AssuranceCasePackageBinding => Refusal::Interim("SACM23-AC-003"),
             Self::ArgumentPackageInterface => Refusal::Interim("SACM23-ARG-014"),
             Self::ArgumentPackageBinding => Refusal::Interim("SACM23-ARG-015"),
-            Self::ArtifactAssetRelationship => Refusal::Interim("SACM23-ART-010"),
             Self::Category => Refusal::Interim("SACM23-TERM-002"),
             Self::Term => Refusal::Interim("SACM23-TERM-004"),
             Self::Expression => Refusal::Interim("SACM23-TERM-005"),
@@ -191,7 +181,6 @@ impl Unread {
             Self::OtherSacmNamespace => Refusal::Tolerance("LIB-COMPAT-004"),
             Self::ExpressionLangString => Refusal::Interim("SACM23-BASE-009"),
             Self::OtherXmiNamespace => Refusal::Tolerance("LIB-COMPAT-002"),
-            Self::TextSpelling | Self::ModelSpelling => Refusal::Tolerance("SACM23-XMI-009"),
             Self::Encoding | Self::Capacity | Self::Unheld => Refusal::Limit,
             Self::WrapperContent | Self::UnwritablePrefix => Refusal::Defect,
         }
@@ -215,17 +204,12 @@ impl Unread {
             | Self::AssuranceCasePackageBinding
             | Self::ArgumentPackageInterface
             | Self::ArgumentPackageBinding
-            | Self::ArtifactAssetRelationship
             | Self::Category
             | Self::Term
             | Self::Expression
             | Self::TerminologyGroup
             | Self::XmiMetadata
-            | Self::ExpressionLangString
-            // Until SACM23-XMI-009 reads the spellings, which SACM-XMI-013
-            // is reserved for (M3 decision 3; the lead, 2026-11-16).
-            | Self::TextSpelling
-            | Self::ModelSpelling => Tolerant::Kept(Code::XMI_UNREAD_CONTENT),
+            | Self::ExpressionLangString => Tolerant::Kept(Code::XMI_UNREAD_CONTENT),
             Self::CrossDocumentHref => Tolerant::Kept(Code::XMI_EXTERNAL_HREF),
             Self::WrapperContent | Self::UnwritablePrefix => {
                 Tolerant::Kept(Code::XMI_UNKNOWN_CONTENT)
@@ -267,7 +251,7 @@ mod tests {
     use crate::xmi::ReadError;
 
     /// Every entry, in declaration order.
-    const ALL: [Unread; 26] = [
+    const ALL: [Unread; 23] = [
         Unread::ArtifactPackageInterface,
         Unread::ArtifactPackageBinding,
         Unread::TerminologyPackage,
@@ -277,7 +261,6 @@ mod tests {
         Unread::AssuranceCasePackageBinding,
         Unread::ArgumentPackageInterface,
         Unread::ArgumentPackageBinding,
-        Unread::ArtifactAssetRelationship,
         Unread::Category,
         Unread::Term,
         Unread::Expression,
@@ -287,8 +270,6 @@ mod tests {
         Unread::OtherSacmNamespace,
         Unread::ExpressionLangString,
         Unread::OtherXmiNamespace,
-        Unread::TextSpelling,
-        Unread::ModelSpelling,
         Unread::Encoding,
         Unread::Capacity,
         Unread::Unheld,
@@ -309,23 +290,20 @@ mod tests {
             Unread::AssuranceCasePackageBinding => 6,
             Unread::ArgumentPackageInterface => 7,
             Unread::ArgumentPackageBinding => 8,
-            Unread::ArtifactAssetRelationship => 9,
-            Unread::Category => 10,
-            Unread::Term => 11,
-            Unread::Expression => 12,
-            Unread::TerminologyGroup => 13,
-            Unread::XmiMetadata => 14,
-            Unread::CrossDocumentHref => 15,
-            Unread::OtherSacmNamespace => 16,
-            Unread::ExpressionLangString => 17,
-            Unread::OtherXmiNamespace => 18,
-            Unread::TextSpelling => 19,
-            Unread::ModelSpelling => 20,
-            Unread::Encoding => 21,
-            Unread::Capacity => 22,
-            Unread::Unheld => 23,
-            Unread::WrapperContent => 24,
-            Unread::UnwritablePrefix => 25,
+            Unread::Category => 9,
+            Unread::Term => 10,
+            Unread::Expression => 11,
+            Unread::TerminologyGroup => 12,
+            Unread::XmiMetadata => 13,
+            Unread::CrossDocumentHref => 14,
+            Unread::OtherSacmNamespace => 15,
+            Unread::ExpressionLangString => 16,
+            Unread::OtherXmiNamespace => 17,
+            Unread::Encoding => 18,
+            Unread::Capacity => 19,
+            Unread::Unheld => 20,
+            Unread::WrapperContent => 21,
+            Unread::UnwritablePrefix => 22,
         }
     }
 
@@ -360,9 +338,7 @@ mod tests {
         for entry in ALL {
             let expected = match entry.refusal() {
                 _ if entry == Unread::CrossDocumentHref => Tolerant::Kept(Code::XMI_EXTERNAL_HREF),
-                Refusal::Interim(_) | Refusal::Tolerance("SACM23-XMI-009") => {
-                    Tolerant::Kept(Code::XMI_UNREAD_CONTENT)
-                }
+                Refusal::Interim(_) => Tolerant::Kept(Code::XMI_UNREAD_CONTENT),
                 Refusal::Defect => Tolerant::Kept(Code::XMI_UNKNOWN_CONTENT),
                 Refusal::Tolerance(_) | Refusal::Limit => Tolerant::Refused,
             };
@@ -386,40 +362,38 @@ mod tests {
             "x (a limit of this version; SACM23-XMI-019 reads it)"
         );
         assert_eq!(
-            reason(Unread::TextSpelling),
-            "x (strict mode never reads it; SACM23-XMI-009 is to read it in tolerant mode)"
+            reason(Unread::OtherSacmNamespace),
+            "x (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)"
         );
         assert_eq!(reason(Unread::Capacity), "x (a limit of this version)");
         assert_eq!(reason(Unread::WrapperContent), "x (a defect in the input)");
     }
 
     #[test]
-    fn exactly_the_fourteen_unread_kinds_have_an_entry() {
+    fn exactly_the_thirteen_unread_kinds_have_an_entry() {
         let unread: Vec<ElementKind> = ElementKind::ALL
             .iter()
             .copied()
             .filter(|&kind| Unread::kind(kind).is_some())
             .collect();
-        assert_eq!(unread.len(), 14);
+        assert_eq!(unread.len(), 13);
         let packages = unread.iter().filter(|kind| kind.is_package()).count();
-        assert_eq!((packages, unread.len() - packages), (9, 5));
+        assert_eq!((packages, unread.len() - packages), (9, 4));
         assert_eq!(Unread::kind(ElementKind::ArtifactPackage), None);
         for read in [
             ElementKind::Artifact,
             ElementKind::Resource,
             ElementKind::Activity,
             ElementKind::Event,
+            ElementKind::ArtifactAssetRelationship,
         ] {
             assert_eq!(Unread::kind(read), None, "{read}");
         }
-        assert_eq!(
-            Unread::kind(ElementKind::ArtifactAssetRelationship).map(Unread::refusal),
-            Some(Refusal::Interim("SACM23-ART-010"))
-        );
-        assert_eq!(
-            Unread::ModelSpelling.refusal(),
-            Refusal::Tolerance("SACM23-XMI-009")
-        );
+        // The spellings are read, not refused (SACM23-XMI-009): no entry
+        // names that row.
+        for entry in ALL {
+            assert_ne!(entry.refusal().row(), Some("SACM23-XMI-009"), "{entry:?}");
+        }
         for kind in unread {
             let entry = Unread::kind(kind).map(Unread::refusal);
             assert!(matches!(entry, Some(Refusal::Interim(_))), "{kind}");

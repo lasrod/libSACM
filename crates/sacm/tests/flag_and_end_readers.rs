@@ -20,9 +20,9 @@
 
 use sacm::edit::{self, EditError, Operation, SetFlag, SetReferences};
 use sacm::model::ElementKind::{
-    ArgumentGroup, ArgumentReasoning, ArtifactGroup, ArtifactPackage, ArtifactReference,
-    AssertedArtifactContext, AssertedArtifactSupport, AssertedContext, AssertedEvidence,
-    AssertedInference, Claim,
+    ArgumentGroup, ArgumentReasoning, ArtifactAssetRelationship, ArtifactGroup, ArtifactPackage,
+    ArtifactReference, AssertedArtifactContext, AssertedArtifactSupport, AssertedContext,
+    AssertedEvidence, AssertedInference, Claim,
 };
 use sacm::model::{Document, ElementId, ElementKind, Flag, ReferenceEnd, SacmElement};
 use sacm::xmi::{self, Mode, ReadOptions, WriteOptions};
@@ -49,7 +49,7 @@ const ASSERTIONS: [ElementKind; 6] = [
 ];
 
 /// Whether an element of `kind` has `end`, by the classes that own the ends
-/// (§8.2, §11.2, §11.9, §11.10, §11.12, §11.13, §12.3).
+/// (§8.2, §11.2, §11.9, §11.10, §11.12, §11.13, §12.3, §12.14).
 fn owns(end: ReferenceEnd, kind: ElementKind) -> bool {
     match end {
         ReferenceEnd::CitedElement | ReferenceEnd::AbstractForm => true,
@@ -61,6 +61,9 @@ fn owns(end: ReferenceEnd, kind: ElementKind) -> bool {
         ReferenceEnd::ReferencedArtifactElement => kind == ArtifactReference,
         ReferenceEnd::GroupMember => kind == ArgumentGroup,
         ReferenceEnd::ArtifactGroupMember => kind == ArtifactGroup,
+        ReferenceEnd::ArtifactSource | ReferenceEnd::ArtifactTarget => {
+            kind == ArtifactAssetRelationship
+        }
         other => panic!("{ROW}: an end this test does not know: {other:?}"),
     }
 }
@@ -75,11 +78,14 @@ fn has_flag(flag: Flag, kind: ElementKind) -> bool {
 }
 
 /// The bounds of `end` on its owners, from the standard: `source` `[1..*]`
-/// and `target` `[1]` (§11.13), the many-valued ends `[0..*]`, the others
+/// and `target` `[1]` (§11.13), an `ArtifactAssetRelationship`'s `source` and
+/// `target` `[1..*]` (§12.14), the many-valued ends `[0..*]`, the others
 /// `[0..1]`.
 fn standard_bounds(end: ReferenceEnd) -> (usize, Option<usize>) {
     match end {
-        ReferenceEnd::Source => (1, None),
+        ReferenceEnd::Source | ReferenceEnd::ArtifactSource | ReferenceEnd::ArtifactTarget => {
+            (1, None)
+        }
         ReferenceEnd::Target => (1, Some(1)),
         ReferenceEnd::MetaClaim
         | ReferenceEnd::ReferencedArtifactElement
@@ -134,7 +140,21 @@ fn named_accessor(element: SacmElement<'_>, end: ReferenceEnd) -> Vec<ElementId>
         ReferenceEnd::AbstractForm => one(element.abstract_form()),
         ReferenceEnd::MetaClaim => element.meta_claims().to_vec(),
         ReferenceEnd::Reasoning => one(element.reasoning()),
-        ReferenceEnd::Source => element.sources().to_vec(),
+        // `sources()` and `targets()` answer for both relationship kinds
+        // (ADR 0034 amendment 2): each end is the sources or targets of its
+        // own kind only; `target()` is an asserted relationship's.
+        ReferenceEnd::Source if element.kind() != ArtifactAssetRelationship => {
+            element.sources().to_vec()
+        }
+        ReferenceEnd::ArtifactSource if element.kind() == ArtifactAssetRelationship => {
+            element.sources().to_vec()
+        }
+        ReferenceEnd::ArtifactTarget if element.kind() == ArtifactAssetRelationship => {
+            element.targets().to_vec()
+        }
+        ReferenceEnd::Source | ReferenceEnd::ArtifactSource | ReferenceEnd::ArtifactTarget => {
+            Vec::new()
+        }
         ReferenceEnd::Target => one(element.target()),
         ReferenceEnd::Structure => one(element.structure()),
         ReferenceEnd::ReferencedArtifactElement => element.referenced_artifact_elements().to_vec(),
@@ -153,7 +173,8 @@ fn named_accessor(element: SacmElement<'_>, end: ReferenceEnd) -> Vec<ElementId>
 
 /// A document in which every end and flag is set somewhere: the edit start
 /// document of `edit_atomic.rs`, with an ArtifactPackage holding an
-/// `ArtifactGroup` with members, and a counter relationship.
+/// `ArtifactGroup` with members and an `ArtifactAssetRelationship` with
+/// sources and targets, and a counter relationship.
 const READERS_START: &str = r#"<xmi:XMI xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001">
   <sacm:AssuranceCasePackage xmi:id="case">
     <name content="Case"/>
@@ -171,6 +192,8 @@ const READERS_START: &str = r#"<xmi:XMI xmlns:sacm="http://www.omg.org/spec/SACM
       <name content="Arts"/>
       <artifactElement xmi:type="sacm:Technique" xmi:id="t1"><name content="T1"/></artifactElement>
       <artifactElement xmi:type="sacm:ArtifactGroup" xmi:id="ag1" artifactElement="t1 c1"><name content="Ag1"/></artifactElement>
+      <artifactElement xmi:type="sacm:Activity" xmi:id="act1"><name content="Act1"/></artifactElement>
+      <artifactElement xmi:type="sacm:ArtifactAssetRelationship" xmi:id="rel1" source="t1" target="act1 t1"><name content="Rel1"/></artifactElement>
     </artifactPackage>
   </sacm:AssuranceCasePackage>
 </xmi:XMI>
@@ -408,6 +431,42 @@ fn lib_api_015_references_and_flag_equal_the_named_accessors() {
         get("i1").flag(Flag::IsCounter) && !get("c1").flag(Flag::IsCounter),
         "{ROW}: isCounter of i1 and of the Claim c1"
     );
+    assert_relationship_ends(&doc);
+}
+
+/// An `ArtifactAssetRelationship`'s ends are its own, not an asserted
+/// relationship's, and the other way round (ADR 0034 amendment 2): in
+/// [`READERS_START`], `rel1` and `i1`.
+fn assert_relationship_ends(doc: &Document) {
+    let get = |value: &str| match doc.get(value) {
+        Some(found) => found,
+        None => panic!("{ROW}: setup: no {value:?}"),
+    };
+    let link = get("rel1");
+    assert_eq!(
+        (
+            link.references(ReferenceEnd::ArtifactSource),
+            link.references(ReferenceEnd::ArtifactTarget),
+            link.references(ReferenceEnd::Source),
+            link.references(ReferenceEnd::Target),
+        ),
+        (
+            [ElementId::from("t1")].as_slice(),
+            [ElementId::from("act1"), ElementId::from("t1")].as_slice(),
+            [].as_slice(),
+            [].as_slice(),
+        ),
+        "{ROW}: the ends of rel1"
+    );
+    assert!(
+        get("i1")
+            .references(ReferenceEnd::ArtifactSource)
+            .is_empty()
+            && get("i1")
+                .references(ReferenceEnd::ArtifactTarget)
+                .is_empty(),
+        "{ROW}: ArtifactSource or ArtifactTarget on an AssertedInference holds ids"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -436,6 +495,8 @@ fn lib_api_015_all_lists_every_flag_and_end_in_order() {
             ReferenceEnd::ReferencedArtifactElement,
             ReferenceEnd::GroupMember,
             ReferenceEnd::ArtifactGroupMember,
+            ReferenceEnd::ArtifactSource,
+            ReferenceEnd::ArtifactTarget,
         ],
         "{ROW}: ReferenceEnd::ALL"
     );
@@ -450,19 +511,25 @@ fn lib_api_015_all_lists_every_flag_and_end_in_order() {
         Ok(text) => text,
         Err(error) => panic!("{ROW}: setup: the write was refused: {error}"),
     };
-    for holder in ["c1", "i1"] {
+    // The ends of the holder's kind: no kind has two ends of one name (ADR
+    // 0034 amendment 2), so each is found by its name.
+    for (holder, least) in [("c1", 3), ("i1", 3), ("rel1", 2)] {
         let Some(line) = text
             .lines()
             .find(|line| line.contains(&format!("xmi:id=\"{holder}\"")))
         else {
             panic!("{ROW}: {holder:?} is not written:\n{text}");
         };
+        let Some(kind) = doc.get(holder).map(SacmElement::kind) else {
+            panic!("{ROW}: setup: no {holder:?}");
+        };
         let written: Vec<usize> = ReferenceEnd::ALL
             .iter()
+            .filter(|end| end.applies_to(kind))
             .filter_map(|end| line.find(&format!(" {}=\"", end.name())))
             .collect();
         assert!(
-            written.len() >= 3 && written.windows(2).all(|pair| pair[0] < pair[1]),
+            written.len() >= least && written.windows(2).all(|pair| pair[0] < pair[1]),
             "{ROW}: the ends of {holder:?} are not written in ReferenceEnd::ALL order: {line}"
         );
     }

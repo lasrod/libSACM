@@ -95,8 +95,8 @@ const SEEDS: [u64; 12] = [
     20_261_115,
 ];
 
-/// The ten reference ends.
-const ENDS: [ReferenceEnd; 10] = [
+/// The twelve reference ends.
+const ENDS: [ReferenceEnd; 12] = [
     ReferenceEnd::CitedElement,
     ReferenceEnd::AbstractForm,
     ReferenceEnd::MetaClaim,
@@ -107,6 +107,8 @@ const ENDS: [ReferenceEnd; 10] = [
     ReferenceEnd::ReferencedArtifactElement,
     ReferenceEnd::GroupMember,
     ReferenceEnd::ArtifactGroupMember,
+    ReferenceEnd::ArtifactSource,
+    ReferenceEnd::ArtifactTarget,
 ];
 
 /// The three flags.
@@ -346,7 +348,24 @@ fn held(element: SacmElement<'_>, end: ReferenceEnd) -> Vec<ElementId> {
         ReferenceEnd::AbstractForm => one(element.abstract_form()),
         ReferenceEnd::MetaClaim => element.meta_claims().to_vec(),
         ReferenceEnd::Reasoning => one(element.reasoning()),
-        ReferenceEnd::Source => element.sources().to_vec(),
+        // `sources()` and `targets()` answer for both relationship kinds
+        // (ADR 0034 amendment 2): each end is its own kind's only.
+        ReferenceEnd::Source if element.kind() != ElementKind::ArtifactAssetRelationship => {
+            element.sources().to_vec()
+        }
+        ReferenceEnd::ArtifactSource
+            if element.kind() == ElementKind::ArtifactAssetRelationship =>
+        {
+            element.sources().to_vec()
+        }
+        ReferenceEnd::ArtifactTarget
+            if element.kind() == ElementKind::ArtifactAssetRelationship =>
+        {
+            element.targets().to_vec()
+        }
+        ReferenceEnd::Source | ReferenceEnd::ArtifactSource | ReferenceEnd::ArtifactTarget => {
+            Vec::new()
+        }
         ReferenceEnd::Target => one(element.target()),
         ReferenceEnd::Structure => one(element.structure()),
         ReferenceEnd::ReferencedArtifactElement => element.referenced_artifact_elements().to_vec(),
@@ -412,6 +431,8 @@ fn net_ids<'m>(
             | Difference::ReferencedArtifactElements { id, .. }
             | Difference::GroupMembers { id, .. }
             | Difference::ArtifactGroupMembers { id, .. }
+            | Difference::ArtifactSources { id, .. }
+            | Difference::ArtifactTargets { id, .. }
             | Difference::Name { id, .. }
             | Difference::NameId { id, .. }
             | Difference::Content { id, .. }

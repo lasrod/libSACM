@@ -617,6 +617,9 @@ mod tests {
             Operation::CreateEvent(_) => sampled!(OPERATIONS, "CreateEvent"),
             Operation::CreateResource(_) => sampled!(OPERATIONS, "CreateResource"),
             Operation::CreateActivity(_) => sampled!(OPERATIONS, "CreateActivity"),
+            Operation::CreateArtifactAssetRelationship(_) => {
+                sampled!(OPERATIONS, "CreateArtifactAssetRelationship")
+            }
             Operation::SetName(_) => sampled!(OPERATIONS, "SetName"),
             Operation::SetGid(_) => sampled!(OPERATIONS, "SetGid"),
             Operation::SetFlag(_) => sampled!(OPERATIONS, "SetFlag"),

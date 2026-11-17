@@ -47,6 +47,7 @@
 //! | [`CreateEvent`] | an `Event` (§12.9), with an optional `date` | no | [`new`](CreateEvent::new) |
 //! | [`CreateResource`] | a `Resource` (§12.10), with an optional `location` | no | [`new`](CreateResource::new) |
 //! | [`CreateActivity`] | an `Activity` (§12.11), with an optional `startTime` and `endTime` | no | [`new`](CreateActivity::new) |
+//! | [`CreateArtifactAssetRelationship`] | an `ArtifactAssetRelationship` (§12.14), with its sources and targets | no | [`new`](CreateArtifactAssetRelationship::new) |
 //!
 //! A root is added after the document's last root; a child after its parent's
 //! last child. A parent is legal exactly when SACM lets its class contain the
@@ -69,11 +70,13 @@
 //! exactly as given; a `LangString` converts into one with one value. A
 //! `UtilityElement` contains no elements, so it is never a parent.
 //!
-//! An `ArgumentReasoning`, an `ArtifactReference`, an `ArgumentGroup` and
-//! the asserted relationships reference other elements (ADR 0027, ADR 0028).
-//! An asserted relationship takes its sources (at least one, in order,
-//! repeats kept) and its target when it is created, as SACM requires
-//! (§11.13 `source:ArgumentAsset[1..*]`, `target:ArgumentAsset[1]`). Every
+//! An `ArgumentReasoning`, an `ArtifactReference`, an `ArgumentGroup`, an
+//! `ArtifactGroup` and the relationships reference other elements (ADR 0027,
+//! ADR 0028). An asserted relationship takes its sources (at least one, in
+//! order, repeats kept) and its target when it is created, as SACM requires
+//! (§11.13 `source:ArgumentAsset[1..*]`, `target:ArgumentAsset[1]`), and an
+//! `ArtifactAssetRelationship` its sources and targets (at least one each,
+//! §12.14 `source:ArtifactAsset[1..*]`, `target:ArtifactAsset[1..*]`). Every
 //! id they reference must name an element of the document, so an edit never
 //! makes a dangling reference; the id of a name, `content`, `key`, `location` or `value`
 //! names no element. And each referenced element must have the type SACM
@@ -82,8 +85,9 @@
 //! `ArgumentReasoning` for the reasoning, an `ArgumentPackage` for the
 //! structure, an `ArtifactElement` (any element but a `UtilityElement`) for
 //! a `referencedArtifactElement`, an `ArgumentationElement` for a member of
-//! an `ArgumentGroup`, and an `ArtifactElement` for a member of an
-//! `ArtifactGroup`. The narrower rules of §11.15, §11.17 and §11.18, that the ends of
+//! an `ArgumentGroup`, an `ArtifactElement` for a member of an
+//! `ArtifactGroup`, and an `ArtifactAsset` for a source or target of an
+//! `ArtifactAssetRelationship`. The narrower rules of §11.15, §11.17 and §11.18, that the ends of
 //! an `AssertedEvidence`, `AssertedArtifactSupport` or
 //! `AssertedArtifactContext` be `ArtifactReference`s, are content: a create
 //! does not refuse them, and
@@ -120,8 +124,9 @@
 //! [`validation::validate`](crate::validation::validate) reports
 //! (D-VAL-LAYER). A flag and its reference are set independently, such as
 //! `isCitation` and `citedElement`. A reference end stays within its bounds
-//! (`source` `[1..*]`, `target` `[1]`, the other single-valued ends
-//! `[0..1]`), and every id it newly holds names an element of a kind it
+//! (`source` `[1..*]`, an asserted relationship's `target` `[1]`, an
+//! `ArtifactAssetRelationship`'s `target` `[1..*]`, the other single-valued
+//! ends `[0..1]`), and every id it newly holds names an element of a kind it
 //! admits; an id it already holds is kept, even a dangling or wrongly typed
 //! one, so an end read from a file can be repaired one id at a time.
 //!
@@ -145,8 +150,8 @@
 //!
 //! | Policy | Refuses (default) | Allows | What it does |
 //! |---|---|---|---|
-//! | [`ReferenceDeletePolicy`]: a reference to a deleted element, held outside its subtree | [`RejectIfReferenced`](ReferenceDeletePolicy::RejectIfReferenced) | [`DeleteReferencingRelationships`](ReferenceDeletePolicy::DeleteReferencingRelationships) | deletes each relationship whose `source`, `target` or `reasoning` names a deleted element |
-//! | | | [`ScrubReferences`](ReferenceDeletePolicy::ScrubReferences) | removes the id; a relationship left with no `source` or `target` is deleted |
+//! | [`ReferenceDeletePolicy`]: a reference to a deleted element, held outside its subtree | [`RejectIfReferenced`](ReferenceDeletePolicy::RejectIfReferenced) | [`DeleteReferencingRelationships`](ReferenceDeletePolicy::DeleteReferencingRelationships) | deletes each asserted relationship whose `source`, `target` or `reasoning`, and each `ArtifactAssetRelationship` whose `source` or `target`, names a deleted element |
+//! | | | [`ScrubReferences`](ReferenceDeletePolicy::ScrubReferences) | removes the id; a relationship of either class left with no `source` or no `target` is deleted |
 //! | [`PackageDeletePolicy`]: an element that contains elements other than `UtilityElement`s | [`RejectIfNonEmpty`](PackageDeletePolicy::RejectIfNonEmpty) | [`DeleteRecursively`](PackageDeletePolicy::DeleteRecursively) | deletes the element and everything it contains |
 //! | [`CrossPackageReferencePolicy`]: a reference like that, whose holder's nearest package is not that of the element it names | [`RejectIfExternalReferencesExist`](CrossPackageReferencePolicy::RejectIfExternalReferencesExist) | [`ApplyReferencePolicy`](CrossPackageReferencePolicy::ApplyReferencePolicy) | leaves the reference to the reference policy |
 //!
@@ -241,8 +246,8 @@
 //! | 2. the parent can contain the new kind | [`EditError::InvalidParent`] | SACM-CMD-005 | Choose a parent whose class can hold the new kind. For example, a Claim goes in an ArgumentPackage, and an ArgumentPackage in an AssuranceCasePackage or another ArgumentPackage. |
 //! | 3. a caller id is an `NCName` | [`EditError::InvalidId`] | SACM-ID-002 | An `NCName` starts with a letter or `_` and continues with letters, digits, `-`, `.` or `_`; it has no spaces and no `:`. Or leave out `with_id` to have an id generated. |
 //! | 4. a caller id is not in use | [`EditError::DuplicateId`] | SACM-CMD-004 | Ids are unique across the whole document, not per parent. Choose another id, or leave out `with_id` to have one generated. |
-//! | 5. an asserted relationship has a source | [`EditError::TooFewReferences`] | SACM-MULT-001 | Give at least one source: SACM requires one (`source:ArgumentAsset[1..*]`). |
-//! | 6. no referenced id holds XML white space (space, TAB, LF, CR): each source in order, then the target, the `reasoning`, the `structure`, the `referencedArtifactElement` ids and the group members (`argumentElement` or `artifactElement`) | [`EditError::InvalidReference`] | SACM-ID-002 | An id such as `a b`, read from a file as written, is not an `NCName` and would be written as two ids. Give the referenced element an `NCName` id in the file. |
+//! | 5. a relationship has a source, and an `ArtifactAssetRelationship` a target: the sources first, then the targets | [`EditError::TooFewReferences`] | SACM-MULT-001 | Give at least one source, and at least one target of an `ArtifactAssetRelationship`: SACM requires them (`source:ArgumentAsset[1..*]`, §12.14 `source:ArtifactAsset[1..*]` and `target:ArtifactAsset[1..*]`). |
+//! | 6. no referenced id holds XML white space (space, TAB, LF, CR): each source in order, then the target or targets, the `reasoning`, the `structure`, the `referencedArtifactElement` ids and the group members (`argumentElement` or `artifactElement`) | [`EditError::InvalidReference`] | SACM-ID-002 | An id such as `a b`, read from a file as written, is not an `NCName` and would be written as two ids. Give the referenced element an `NCName` id in the file. |
 //! | 7. every referenced id names an element, in the same order | [`EditError::ReferenceNotFound`] | SACM-CMD-001 | Create the referenced element first, or correct its id. Ids are compared exactly, case included. |
 //! | 8. every referenced id names an element of a kind its end admits, in the same order | [`EditError::WrongReferenceType`] | SACM-REF-002 | Reference an element of the end's type: for example, an `ArgumentPackage` as a `structure`, and an `ArgumentAsset`, not a package, as a source. |
 //!
@@ -266,7 +271,7 @@
 //! | Check | Refusal | Code |
 //! |---|---|---|
 //! | 3. for [`RemoveReference`] only: the end holds the id | [`EditError::ReferenceNotHeld`] | SACM-CMD-001 |
-//! | 4. the end would hold at least the ids it needs: one `source`, one `target` | [`EditError::TooFewReferences`] | SACM-MULT-001 |
+//! | 4. the end would hold at least the ids it needs: one `source`, one `target`, of either relationship class | [`EditError::TooFewReferences`] | SACM-MULT-001 |
 //! | 5. the end would hold at most the ids it allows: one for a single-valued end | [`EditError::TooManyReferences`] | SACM-MULT-001 |
 //! | 6. no new id holds XML white space | [`EditError::InvalidReference`] | SACM-ID-002 |
 //! | 7. every new id names an element | [`EditError::ReferenceNotFound`] | SACM-CMD-001 |
@@ -368,8 +373,9 @@ pub use argumentation::{
     CreateAssertedEvidence, CreateAssertedInference,
 };
 pub use artifact::{
-    CreateActivity, CreateArtifact, CreateArtifactGroup, CreateArtifactPackage, CreateEvent,
-    CreateParticipant, CreateProperty, CreateResource, CreateTechnique,
+    CreateActivity, CreateArtifact, CreateArtifactAssetRelationship, CreateArtifactGroup,
+    CreateArtifactPackage, CreateEvent, CreateParticipant, CreateProperty, CreateResource,
+    CreateTechnique,
 };
 pub use batch::{Batch, BatchError, BatchMutation};
 pub use copy::CopyElements;
@@ -806,6 +812,7 @@ fn plan<'o>(document: &Document, operation: &'o Operation) -> Result<Plan<'o>, E
         Operation::CreateEvent(create) => create.plan(document),
         Operation::CreateResource(create) => create.plan(document),
         Operation::CreateActivity(create) => create.plan(document),
+        Operation::CreateArtifactAssetRelationship(create) => create.plan(document),
         Operation::SetName(set) => set.plan(document),
         Operation::SetGid(set) => set.plan(document),
         Operation::SetFlag(set) => set.plan(document),
@@ -898,6 +905,8 @@ pub enum Operation {
     CreateResource(CreateResource),
     /// Creates an `Activity`.
     CreateActivity(CreateActivity),
+    /// Creates an `ArtifactAssetRelationship`.
+    CreateArtifactAssetRelationship(CreateArtifactAssetRelationship),
     /// Sets the name of a `ModelElement`.
     SetName(SetName),
     /// Sets or removes the `gid` of an element.
@@ -955,7 +964,7 @@ impl Operation {
     /// `"CreateTaggedValue"`, `"CreateArtifactPackage"`, `"CreateProperty"`,
     /// `"CreateTechnique"`, `"CreateParticipant"`, `"CreateArtifactGroup"`,
     /// `"CreateArtifact"`, `"CreateEvent"`, `"CreateResource"`,
-    /// `"CreateActivity"`, `"SetName"`, `"SetGid"`, `"SetFlag"`,
+    /// `"CreateActivity"`, `"CreateArtifactAssetRelationship"`, `"SetName"`, `"SetGid"`, `"SetFlag"`,
     /// `"SetAssertionDeclaration"`, `"SetContent"`, `"SetKey"`,
     /// `"SetVersion"`, `"SetDate"`, `"SetLocation"`, `"SetStartTime"`,
     /// `"SetEndTime"`, `"SetReferences"`, `"AddReference"`, `"RemoveReference"`,
@@ -998,6 +1007,7 @@ impl Operation {
             Self::CreateEvent(_) => "CreateEvent",
             Self::CreateResource(_) => "CreateResource",
             Self::CreateActivity(_) => "CreateActivity",
+            Self::CreateArtifactAssetRelationship(_) => "CreateArtifactAssetRelationship",
             Self::SetName(_) => "SetName",
             Self::SetGid(_) => "SetGid",
             Self::SetFlag(_) => "SetFlag",
@@ -1569,6 +1579,15 @@ pub enum EditError {
     /// `isCitation`, `isAbstract`, `citedElement` and `abstractForm`, so
     /// those never fail here. Edit an element whose kind has the feature.
     ///
+    /// When the element has an end of the same name, the Display names the
+    /// class whose end it lacks: `source` on an `ArtifactAssetRelationship`
+    /// reads `the ArtifactAssetRelationship "rel" has no source of an
+    /// AssertedRelationship`, and
+    /// [`ArtifactTarget`](crate::model::ReferenceEnd::ArtifactTarget) on an
+    /// `AssertedInference` reads `the AssertedInference "i1" has no target of
+    /// an ArtifactAssetRelationship` (ADR 0034 amendment 2). The `feature` is
+    /// the XMI name all the same.
+    ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, EditError, SetFlag};
     /// use sacm::model::{Document, ElementKind, Flag, LangString};
@@ -1899,6 +1918,25 @@ impl EditError {
     }
 }
 
+/// The class that owns the reference end named `feature` that an element of
+/// `kind` lacks, when the kind has another end of that name: the
+/// `FeatureNotApplicable` Display names it, so that `the AssertedInference
+/// "i1" has no target` does not read as if the inference had no target
+/// (ADR 0034 amendment 2). `None` when the kind has no end of that name.
+fn other_class_of_end(kind: ElementKind, feature: &str) -> Option<&'static str> {
+    let named = || {
+        crate::model::ReferenceEnd::ALL
+            .iter()
+            .filter(move |end| end.name() == feature)
+    };
+    if !named().any(|end| end.applies_to(kind)) {
+        return None;
+    }
+    named()
+        .find(|end| !end.applies_to(kind))
+        .map(|end| end.owner().name())
+}
+
 impl fmt::Display for EditError {
     /// Writes the refusal on one line, as described on [`EditError`].
     #[expect(clippy::too_many_lines, reason = "one arm per EditError variant")]
@@ -1951,7 +1989,13 @@ impl fmt::Display for EditError {
                 element,
                 kind,
                 feature,
-            } => write!(f, "the {kind} {:?} has no {feature}", element.as_str()),
+            } => {
+                write!(f, "the {kind} {:?} has no {feature}", element.as_str())?;
+                match other_class_of_end(*kind, feature) {
+                    Some(owner) => write!(f, " of {} {owner}", article(owner)),
+                    None => Ok(()),
+                }
+            }
             Self::ReferenceNotHeld { end, id } => {
                 write!(f, "the {end} holds no id {:?} to remove", id.as_str())
             }

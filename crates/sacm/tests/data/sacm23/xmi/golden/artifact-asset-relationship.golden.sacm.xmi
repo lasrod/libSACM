@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sacm:ArtifactPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="evidence">
+  <name lang="en" content="Brake evidence" />
+  <artifactElement xmi:type="sacm:Artifact" xmi:id="report">
+    <name lang="en" content="Brake test report" />
+  </artifactElement>
+  <artifactElement xmi:type="sacm:Activity" xmi:id="testing">
+    <name lang="en" content="Brake testing" />
+  </artifactElement>
+  <artifactElement xmi:type="sacm:Participant" xmi:id="tester">
+    <name lang="en" content="Test engineer" />
+  </artifactElement>
+  <artifactElement xmi:type="sacm:ArtifactAssetRelationship" xmi:id="produced_by" source="report" target="testing tester">
+    <name lang="en" content="Produced by" />
+    <property xmi:id="produced_by_reviewed">
+      <name lang="en" content="Reviewed by the safety team" />
+    </property>
+  </artifactElement>
+  <artifactElement xmi:type="sacm:ArtifactAssetRelationship" xmi:id="derived" gid="REL-2" source="produced_by" target="report">
+    <name lang="en" content="Recorded in the report" />
+  </artifactElement>
+</sacm:ArtifactPackage>

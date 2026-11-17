@@ -67,6 +67,8 @@ use sacm::edit::{
 };
 // The operations of slice 0056 (ADR 0036, ADR 0030 amendment 2).
 use sacm::edit::{CopyElements, MoveElement};
+// The create of slice 0057 (SACM23-ART-010, ADR 0034 amendment 2).
+use sacm::edit::CreateArtifactAssetRelationship;
 use sacm::model::{
     AssertionDeclaration, Document, ElementId, ElementKind, Flag, LangString, MultiLangString,
     ReferenceEnd,
@@ -83,6 +85,7 @@ const EDIT_007: &str = "LIB-EDIT-007";
 const EDIT_014: &str = "LIB-EDIT-014";
 const EDIT_017: &str = "LIB-EDIT-017";
 const EDIT_018: &str = "LIB-EDIT-018";
+const ART_010: &str = "SACM23-ART-010";
 
 /// The directory of the golden JSON files.
 const GOLDEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/golden/serde");
@@ -90,7 +93,7 @@ const GOLDEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/golden/ser
 /// Every operation name of this release: the creates first, in the order of
 /// `operations.json`. `CopyElements` has no sample: it is not serialized
 /// (ADR 0030 amendment 2).
-const OPERATION_NAME_COUNT: usize = 41;
+const OPERATION_NAME_COUNT: usize = 42;
 const OPERATION_NAMES: [&str; OPERATION_NAME_COUNT] = [
     "CreateAssuranceCasePackage",
     "CreateArgumentPackage",
@@ -116,6 +119,8 @@ const OPERATION_NAMES: [&str; OPERATION_NAME_COUNT] = [
     "CreateEvent",
     "CreateResource",
     "CreateActivity",
+    // The create of slice 0057 (SACM23-ART-010).
+    "CreateArtifactAssetRelationship",
     "SetName",
     "SetGid",
     "SetFlag",
@@ -135,8 +140,9 @@ const OPERATION_NAMES: [&str; OPERATION_NAME_COUNT] = [
     "DeleteElement",
 ];
 
-/// The first 24 of [`OPERATION_NAMES`]: the creates.
-const CREATE_COUNT: usize = 24;
+/// The first 24 of [`OPERATION_NAMES`]: the creates; 25 with the create of
+/// slice 0057.
+const CREATE_COUNT: usize = 25;
 
 /// Every `EditError` variant of this release, with its catalog code, in the
 /// order of `edit-errors.json`.
@@ -168,7 +174,7 @@ const EDIT_ERRORS: [(&str, &str); EDIT_ERROR_COUNT] = [
 
 /// Every catalog `Code` constant of this release. The catalog cross-check
 /// keeps it in step with `docs/sacm/diagnostics.md`.
-const CODES: [Code; 34] = [
+const CODES: &[Code] = &[
     Code::XML_MALFORMED,
     Code::XML_DOCTYPE_REJECTED,
     Code::XMI_INVALID_ROOT,
@@ -177,6 +183,8 @@ const CODES: [Code; 34] = [
     Code::XMI_XSI_TYPE,
     Code::XMI_VERSION_IGNORED,
     Code::XMI_LEGACY_SHAPE,
+    // The code of slice 0057 (SACM23-XMI-009).
+    Code::XMI_SPELLING_VARIANT,
     Code::XMI_UNKNOWN_CONTENT,
     Code::XMI_STRICT_SAVE_REFUSED,
     Code::XMI_EXTERNAL_HREF,
@@ -212,21 +220,36 @@ const FLAGS: [(Flag, &str); 3] = [
     (Flag::IsCounter, "isCounter"),
 ];
 
-/// The ten reference ends, with their names.
-const ENDS: [(ReferenceEnd, &str); 10] = [
-    (ReferenceEnd::CitedElement, "citedElement"),
-    (ReferenceEnd::AbstractForm, "abstractForm"),
-    (ReferenceEnd::MetaClaim, "metaClaim"),
-    (ReferenceEnd::Reasoning, "reasoning"),
-    (ReferenceEnd::Source, "source"),
-    (ReferenceEnd::Target, "target"),
-    (ReferenceEnd::Structure, "structure"),
+/// The reference ends, with their XMI names and their serde names: the ten
+/// of slice 0056, whose serde name is the XMI name, and the two of slice
+/// 0057, which share their XMI names with an `AssertedRelationship`'s ends and
+/// are serialized as `artifactSource` and `artifactTarget` (ADR 0034
+/// amendment 2).
+const ENDS: &[(ReferenceEnd, &str, &str)] = &[
+    (ReferenceEnd::CitedElement, "citedElement", "citedElement"),
+    (ReferenceEnd::AbstractForm, "abstractForm", "abstractForm"),
+    (ReferenceEnd::MetaClaim, "metaClaim", "metaClaim"),
+    (ReferenceEnd::Reasoning, "reasoning", "reasoning"),
+    (ReferenceEnd::Source, "source", "source"),
+    (ReferenceEnd::Target, "target", "target"),
+    (ReferenceEnd::Structure, "structure", "structure"),
     (
         ReferenceEnd::ReferencedArtifactElement,
         "referencedArtifactElement",
+        "referencedArtifactElement",
     ),
-    (ReferenceEnd::GroupMember, "argumentElement"),
-    (ReferenceEnd::ArtifactGroupMember, "artifactElement"),
+    (
+        ReferenceEnd::GroupMember,
+        "argumentElement",
+        "argumentElement",
+    ),
+    (
+        ReferenceEnd::ArtifactGroupMember,
+        "artifactElement",
+        "artifactElement",
+    ),
+    (ReferenceEnd::ArtifactSource, "source", "artifactSource"),
+    (ReferenceEnd::ArtifactTarget, "target", "artifactTarget"),
 ];
 
 /// The three severities, with their names.
@@ -643,7 +666,7 @@ fn utility_samples() -> Vec<Operation> {
 /// `ArtifactPackage` as a root and under a parent, the `ArtifactGroup` without
 /// and with members.
 fn artifact_samples() -> Vec<Operation> {
-    vec![
+    let mut samples: Vec<Operation> = vec![
         CreateArtifactPackage::root(en("Evidence")).into(),
         CreateArtifactPackage::root(en("Evidence"))
             .with_id("evidence")
@@ -693,7 +716,26 @@ fn artifact_samples() -> Vec<Operation> {
             .with_start_time("2024-02-12")
             .with_end_time("2024-02-29T17:30:00Z")
             .into(),
-    ]
+    ];
+    // The create of slice 0057 (SACM23-ART-010; ADR 0034 amendment 2):
+    // without and with its id, the second with two sources and two targets.
+    samples.extend([
+        Operation::from(CreateArtifactAssetRelationship::new(
+            "evidence",
+            en("Produced by"),
+            ["report"],
+            ["testing"],
+        )),
+        CreateArtifactAssetRelationship::new(
+            "evidence",
+            en("Produced by"),
+            ["report", "report_pdf"],
+            ["testing", "tester"],
+        )
+        .with_id("rel1")
+        .into(),
+    ]);
+    samples
 }
 
 /// The operations of [`operation_samples`] that change an element.
@@ -721,12 +763,22 @@ fn edit_samples() -> Vec<Operation> {
         SetEndTime::remove("testing").into(),
         SetReferences::new("i1", ReferenceEnd::Source, ["c2", "c3"]).into(),
         SetReferences::clear("c1", ReferenceEnd::MetaClaim).into(),
-        AddReference::new("g1", ReferenceEnd::GroupMember, "c3").into(),
+    ];
+    // The ends of slice 0057 (SACM23-ART-010), after the last sample of each
+    // operation.
+    samples.push(
+        SetReferences::new("rel1", ReferenceEnd::ArtifactTarget, ["testing", "tester"]).into(),
+    );
+    samples.extend([
+        Operation::from(AddReference::new("g1", ReferenceEnd::GroupMember, "c3")),
         AddReference::new("ag1", ReferenceEnd::ArtifactGroupMember, "pa1").into(),
-        RemoveReference::new("i1", ReferenceEnd::Source, "c3").into(),
+    ]);
+    samples.push(AddReference::new("rel1", ReferenceEnd::ArtifactSource, "report_pdf").into());
+    samples.extend([
+        Operation::from(RemoveReference::new("i1", ReferenceEnd::Source, "c3")),
         ReorderElements::new("arguments", ["c2", "c1"]).into(),
         ReorderElements::roots(["case", "arguments"]).into(),
-    ];
+    ]);
     // The moves of slice 0056 (LIB-EDIT-017): appended, at a position, and
     // to the roots at a position.
     samples.extend(move_samples());
@@ -819,6 +871,12 @@ fn edit_error_samples() -> Vec<EditError> {
         refusal(&assets, SetStartTime::new("report", "t")),
         refusal(&assets, SetEndTime::new("report", "t")),
     ]);
+    // An AssertedRelationship's end on an ArtifactAssetRelationship (slice
+    // 0057, SACM23-ART-010): the JSON names the feature by its XMI name.
+    samples.push(refusal(
+        &artifact_relationship_start(),
+        SetReferences::new("rel1", ReferenceEnd::Source, ["report"]),
+    ));
     // The refusals of slice 0056 (LIB-EDIT-017), on ERROR_START.
     {
         let doc = error_start();
@@ -852,7 +910,10 @@ fn artifact_assets_start() -> Document {
 fn edit_refusal_samples() -> Vec<EditError> {
     let doc = error_start();
     let name = || LangString::new("N");
-    vec![
+    // The refusals of slice 0057 (SACM23-ART-010), each after the last sample
+    // of its variant.
+    let relationships = artifact_relationship_start();
+    let mut samples = vec![
         refusal(&doc, CreateClaim::new("nowhere", name())),
         refusal(&doc, CreateClaim::new("case", name())),
         refusal(&doc, CreateClaim::new("p", name()).with_id("1bad")),
@@ -861,6 +922,17 @@ fn edit_refusal_samples() -> Vec<EditError> {
             &doc,
             CreateAssertedInference::new("p", name(), Vec::<ElementId>::new(), "c1"),
         ),
+    ];
+    samples.push(refusal(
+        &relationships,
+        CreateArtifactAssetRelationship::new(
+            "evidence",
+            name(),
+            ["report"],
+            Vec::<ElementId>::new(),
+        ),
+    ));
+    samples.extend([
         refusal(
             &doc,
             SetReferences::new("c1", ReferenceEnd::CitedElement, ["c1", "c1"]),
@@ -878,6 +950,12 @@ fn edit_refusal_samples() -> Vec<EditError> {
             CreateArgumentReasoning::new("p", name()).with_structure("c1"),
         ),
         refusal(&doc, CreateAssertedInference::new("p", name(), ["p"], "c1")),
+    ]);
+    samples.push(refusal(
+        &relationships,
+        CreateArtifactAssetRelationship::new("evidence", name(), ["report"], ["c1"]),
+    ));
+    samples.extend([
         refusal(&doc, SetName::new("nowhere", name())),
         refusal(&doc, SetFlag::new("c1", Flag::IsCounter, true)),
         refusal(&doc, SetReferences::new("c1", ReferenceEnd::Source, ["c1"])),
@@ -889,7 +967,36 @@ fn edit_refusal_samples() -> Vec<EditError> {
         refusal(&doc, ReorderElements::roots(["c1"])),
         refusal(&doc, ReorderElements::new("p", Vec::<ElementId>::new())),
         refusal(&doc, ReorderElements::new("p", ["c1", "c1"])),
-    ]
+    ]);
+    samples
+}
+
+/// [`ERROR_START`] with the `ArtifactPackage` `evidence` under `case`, holding
+/// the Artifact `report`, the Activity `testing` and the
+/// `ArtifactAssetRelationship` `rel1` from `report` to `testing`
+/// (SACM23-ART-010).
+fn artifact_relationship_start() -> Document {
+    let mut doc = error_start();
+    for operation in [
+        Operation::from(CreateArtifactPackage::new("case", en("Evidence")).with_id("evidence")),
+        CreateArtifact::new("evidence", en("Brake test report"))
+            .with_id("report")
+            .into(),
+        CreateActivity::new("evidence", en("Brake testing"))
+            .with_id("testing")
+            .into(),
+        CreateArtifactAssetRelationship::new(
+            "evidence",
+            en("Produced by"),
+            ["report"],
+            ["testing"],
+        )
+        .with_id("rel1")
+        .into(),
+    ] {
+        applied(&mut doc, operation);
+    }
+    doc
 }
 
 /// A full diagnostic (clause, two affected ids, location) and a minimal one
@@ -1267,9 +1374,19 @@ fn lib_api_006_every_flag_round_trips_as_its_name() {
 
 #[test]
 fn lib_api_006_every_reference_end_round_trips_as_its_name() {
-    for (end, name) in ENDS {
-        assert_eq!(end.name(), name, "{API_006}: setup: the name of {end:?}");
-        assert_name_round_trips(end, name);
+    // Every end, in `ReferenceEnd::ALL` order.
+    assert_eq!(
+        ENDS.iter().map(|&(end, _, _)| end).collect::<Vec<_>>(),
+        ReferenceEnd::ALL,
+        "{API_006}: setup: the ends listed here are not ReferenceEnd::ALL"
+    );
+    for &(end, xmi_name, serde_name) in ENDS {
+        assert_eq!(
+            end.name(),
+            xmi_name,
+            "{API_006}: setup: the name of {end:?}"
+        );
+        assert_name_round_trips(end, serde_name);
     }
 }
 
@@ -1320,12 +1437,12 @@ fn lib_api_006_every_catalog_code_round_trips_as_its_code_and_a_reserved_one_is_
         .filter(|(_, live)| *live)
         .map(|(code, _)| code.as_str())
         .collect();
-    let constants: BTreeSet<&str> = CODES.into_iter().map(Code::as_str).collect();
+    let constants: BTreeSet<&str> = CODES.iter().copied().map(Code::as_str).collect();
     assert_eq!(
         constants, live,
         "{API_006}: setup: the codes listed here are not the live codes of the catalog"
     );
-    for code in CODES {
+    for &code in CODES {
         assert_name_round_trips(code, code.as_str());
     }
     let reserved: Vec<&str> = catalog
@@ -3353,4 +3470,85 @@ fn lib_edit_018_copy_elements_is_neither_serialized_nor_deserialized() {
     );
     // Control: a valid twin of the tag reads.
     let _: Operation = from_json(MOVE_JSON[0]);
+}
+
+// ---------------------------------------------------------------------------
+// SACM23-ART-010: the ends and the create of slice 0057
+// ---------------------------------------------------------------------------
+
+#[test]
+fn sacm23_art_010_the_two_ends_round_trip_as_artifact_source_and_artifact_target() {
+    for (end, serde_name) in [
+        (ReferenceEnd::ArtifactSource, "artifactSource"),
+        (ReferenceEnd::ArtifactTarget, "artifactTarget"),
+    ] {
+        let written = to_json(&end);
+        assert_eq!(
+            written,
+            format!("\"{serde_name}\""),
+            "{ART_010}: {end:?} is not serialized as {serde_name}"
+        );
+        let read: ReferenceEnd = from_json(&written);
+        assert_eq!(read, end, "{ART_010}: {serde_name} does not read back");
+    }
+    // The XMI names stay the AssertedRelationship's ends.
+    let source: ReferenceEnd = from_json("\"source\"");
+    let target: ReferenceEnd = from_json("\"target\"");
+    assert_eq!(
+        (source, target),
+        (ReferenceEnd::Source, ReferenceEnd::Target),
+        "{ART_010}: \"source\" and \"target\" do not read as an AssertedRelationship's ends"
+    );
+    let set =
+        r#"{"type":"SetReferences","element":"rel1","end":"artifactTarget","ids":["testing"]}"#;
+    let read: Operation = from_json(set);
+    assert_eq!(
+        read,
+        Operation::from(SetReferences::new(
+            "rel1",
+            ReferenceEnd::ArtifactTarget,
+            ["testing"]
+        )),
+        "{ART_010}: {set} does not read as its twin"
+    );
+    assert_refused_for::<Operation>(
+        ART_010,
+        "the end by its Rust name",
+        set,
+        "artifactTarget",
+        "ArtifactTarget",
+    );
+}
+
+#[test]
+fn sacm23_art_010_a_create_artifact_asset_relationship_reads_with_its_default_id_and_requires_its_ends()
+ {
+    let minimal = r#"{"type":"CreateArtifactAssetRelationship","parent":"evidence","name":{"content":"N"},"sources":["report"],"targets":["testing"]}"#;
+    let read: Operation = from_json(minimal);
+    assert_eq!(
+        read,
+        Operation::from(CreateArtifactAssetRelationship::new(
+            "evidence",
+            LangString::new("N"),
+            ["report"],
+            ["testing"]
+        )),
+        "{ART_010}: {minimal} does not read as its constructor default"
+    );
+    for key in ["\"sources\":[\"report\"],", ",\"targets\":[\"testing\"]"] {
+        assert_refused_for::<Operation>(
+            ART_010,
+            &format!("a create without {key}"),
+            minimal,
+            key,
+            "",
+        );
+    }
+    assert_refused_for::<Operation>(
+        ART_010,
+        "a create with an AssertedRelationship's target",
+        minimal,
+        "\"targets\":[\"testing\"]",
+        "\"target\":\"testing\"",
+    );
 }

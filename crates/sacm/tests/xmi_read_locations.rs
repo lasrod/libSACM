@@ -140,6 +140,10 @@ enum Variant {
     /// preserved content (LIB-COMPAT-003, ADR 0033). Only in
     /// [`preserved_rows`].
     Preserved,
+    /// Not refused since slice 0057: a spelling a strict read keeps as
+    /// preserved content with one SACM-XMI-013 Error there (SACM23-XMI-009).
+    /// Only in [`spelling_rows`].
+    Spelled,
 }
 
 /// One refusal site.
@@ -521,13 +525,6 @@ fn child_role_rows() -> Vec<Row> {
     use Variant::Unsupported as U;
     let element = |attributes: &str| in_ap(&format!("{MARK}<argumentElement{attributes}/>"));
     vec![
-        row(
-            "argumentationElement",
-            U,
-            in_ap(&format!(
-                "{MARK}<argumentationElement xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"
-            )),
-        ),
         row(
             "an untyped argumentElement",
             Variant::MissingType,
@@ -1063,19 +1060,6 @@ fn artifact_rows() -> Vec<Row> {
             ),
         ),
         row(
-            "argumentationElement on a group",
-            U,
-            group(&format!(" {MARK}argumentationElement=\"c\""), ""),
-        ),
-        row(
-            "an argumentationElement element in a group",
-            U,
-            group(
-                "",
-                &format!("{MARK}<argumentationElement xmi:idref=\"c\"/>"),
-            ),
-        ),
-        row(
             "a group's argumentElement as an attribute and an element",
             RepeatedValue,
             group(
@@ -1220,6 +1204,73 @@ fn variant(error: &ReadError) -> Option<Variant> {
         _ if error.code() == Some(Code::XMI_MISSING_TYPE) => Some(Variant::MissingType),
         _ => None,
     }
+}
+
+/// The spellings that were refusal sites of [`child_role_rows`] and
+/// [`artifact_rows`] until slice 0057 (SACM23-XMI-009): the text's
+/// `argumentationElement` as an ArgumentPackage's role, and as an
+/// `ArgumentGroup`'s end in both forms. A strict read keeps each with one
+/// SACM-XMI-013 Error at the same location: the role first, then the two
+/// ends.
+fn spelling_rows() -> Vec<Row> {
+    use Variant::Spelled as S;
+    let group = |attributes: &str, content: &str| typed_x("ArgumentGroup", attributes, content);
+    vec![
+        row(
+            "argumentationElement",
+            S,
+            in_ap(&format!(
+                "{MARK}<argumentationElement xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"
+            )),
+        ),
+        row(
+            "argumentationElement on a group",
+            S,
+            group(&format!(" {MARK}argumentationElement=\"c\""), ""),
+        ),
+        row(
+            "an argumentationElement element in a group",
+            S,
+            group(
+                "",
+                &format!("{MARK}<argumentationElement xmi:idref=\"c\"/>"),
+            ),
+        ),
+    ]
+}
+
+/// Reads every row of `rows`, each a spelling (SACM23-XMI-009), and fails,
+/// listing each that a strict read does not keep with exactly one
+/// SACM-XMI-013 Error at its location.
+fn assert_spelling_located(group: &str, rows: &[Row]) {
+    let mut failures = Vec::new();
+    for row in rows {
+        let (input, expected) = input_of(row);
+        check_lead(row, expected);
+        match read(&input, row.mode) {
+            Ok(output) => {
+                let found: Vec<_> = output
+                    .diagnostics()
+                    .iter()
+                    .map(|found| (found.code(), found.severity(), found.location()))
+                    .collect();
+                if found != [(Code::XMI_SPELLING_VARIANT, Severity::Error, Some(expected))] {
+                    failures.push(format!(
+                        "{}: expected one SACM-XMI-013 Error at {expected}, got {found:?}",
+                        row.what
+                    ));
+                }
+            }
+            Err(error) => failures.push(format!("{}: refused: {error:?}", row.what)),
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{ROW}: {} of {} {group} spelling rows are not located as expected:\n{}",
+        failures.len(),
+        rows.len(),
+        failures.join("\n")
+    );
 }
 
 /// Reads every row and fails, listing each row that is not refused with its
@@ -2089,6 +2140,8 @@ fn sacm23_xmi_010_name_refusals_are_located() {
 #[test]
 fn sacm23_xmi_010_child_role_and_type_refusals_are_located() {
     assert_located("child role", &child_role_rows());
+    // The role's spelling is kept since slice 0057, at the same location.
+    assert_spelling_located("child role", &spelling_rows()[..1]);
 }
 
 #[test]
@@ -2139,6 +2192,9 @@ fn sacm23_xmi_010_relationship_meta_claim_and_structure_refusals_are_located() {
 #[test]
 fn sacm23_xmi_010_artifact_reference_and_argument_group_refusals_are_located() {
     assert_located("artifact reference and group", &artifact_rows());
+    // The group end's spelling is kept since slice 0057, at the same
+    // location, in both forms.
+    assert_spelling_located("artifact reference and group", &spelling_rows()[1..]);
 }
 
 #[test]

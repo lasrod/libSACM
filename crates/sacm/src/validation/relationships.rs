@@ -1,5 +1,6 @@
-//! Rules about asserted relationships (formal/23-05-08 §11.13, §11.15,
-//! §11.17, §11.18; ADR 0027, ADR 0028).
+//! Rules about relationships: asserted relationships (formal/23-05-08 §11.13,
+//! §11.15, §11.17, §11.18) and `ArtifactAssetRelationship`s (§12.14; ADR 0027,
+//! ADR 0028, ADR 0034 amendment 2).
 
 use std::collections::HashSet;
 
@@ -13,23 +14,57 @@ use crate::model::{AbstractClass, Document, ElementKind, ReferenceEnd, SacmEleme
 /// ignores multiplicities (§7.8.2), so such a relationship reads and is
 /// kept as read. A second target cannot be held: the reader refuses it as
 /// `RepeatedValue`.
+///
+/// SACM23-ART-010: likewise each `ArtifactAssetRelationship` with no `source`,
+/// and each with no `target`, is one SACM-MULT-001 Error, with clause 12.14,
+/// because §12.14 and ptc/22-03-13 agree on `source:ArtifactAsset[1..*]` and
+/// `target:ArtifactAsset[1..*]` (D-SEV).
 pub(super) fn relationship_ends(document: &Document, found: &mut Vec<Diagnostic>) {
-    for element in document
-        .elements()
-        .filter(|element| element.kind().is_a(AbstractClass::AssertedRelationship))
-    {
+    for element in document.elements() {
+        let ends = if element.kind().is_a(AbstractClass::AssertedRelationship) {
+            ASSERTED
+        } else if element.kind() == ElementKind::ArtifactAssetRelationship {
+            ARTIFACT
+        } else {
+            continue;
+        };
         if element.sources().is_empty() {
-            found.push(missing_end(element, "source", "source:ArgumentAsset[1..*]"));
+            found.push(missing_end(element, &ends, "source", ends.source));
         }
-        if element.target().is_none() {
-            found.push(missing_end(element, "target", "target:ArgumentAsset[1]"));
+        if element.targets().is_empty() {
+            found.push(missing_end(element, &ends, "target", ends.target));
         }
     }
 }
 
-/// The SACM23-VAL-005 finding of `element`, which has no `end`, declared as
-/// `declared`.
-fn missing_end(element: SacmElement<'_>, end: &str, declared: &str) -> Diagnostic {
+/// What a missing end of one relationship class is reported with: the row,
+/// the clause, and each end as the clause declares it.
+struct Ends {
+    requirement: &'static str,
+    clause: &'static str,
+    source: &'static str,
+    target: &'static str,
+}
+
+/// The ends of an asserted relationship (§11.13, SACM23-VAL-005).
+const ASSERTED: Ends = Ends {
+    requirement: "SACM23-VAL-005",
+    clause: "11.13",
+    source: "source:ArgumentAsset[1..*]",
+    target: "target:ArgumentAsset[1]",
+};
+
+/// The ends of an `ArtifactAssetRelationship` (§12.14, SACM23-ART-010).
+const ARTIFACT: Ends = Ends {
+    requirement: "SACM23-ART-010",
+    clause: "12.14",
+    source: "source:ArtifactAsset[1..*]",
+    target: "target:ArtifactAsset[1..*]",
+};
+
+/// The finding of `element`, of the relationship class `ends` describes,
+/// which has no `end`, declared as `declared`.
+fn missing_end(element: SacmElement<'_>, ends: &Ends, end: &str, declared: &str) -> Diagnostic {
     let message = format!(
         "{} {:?} has no {end} ({declared})",
         element.kind().name(),
@@ -38,10 +73,10 @@ fn missing_end(element: SacmElement<'_>, end: &str, declared: &str) -> Diagnosti
     Diagnostic::create(
         Code::MULTIPLICITY_VIOLATION,
         Severity::Error,
-        "SACM23-VAL-005",
+        ends.requirement,
         message,
     )
-    .set_clause("11.13")
+    .set_clause(ends.clause)
     .set_affected([element.id().clone()])
 }
 

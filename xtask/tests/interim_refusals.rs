@@ -982,13 +982,23 @@ fn one_entry(row: &str) -> String {
 
 #[test]
 fn lib_api_011_interim_check_requires_an_art_row_in_cp_001_and_cp_003_but_not_cp_002_or_cp_004() {
-    // SACM23-ART-010 (ArtifactAssetRelationship, an interim entry since slice
-    // 0052) is in the closures of SACM23-CP-001 and SACM23-CP-003 and in
-    // neither of the two others: it is not argumentation or terminology
-    // content. (Slice 0055 reads the Artifact, SACM23-ART-004, this test
-    // first used.)
+    // SACM23-ART-010 (ArtifactAssetRelationship, an interim entry from slice
+    // 0052 until slice 0057 read it) is in the closures of SACM23-CP-001 and
+    // SACM23-CP-003 and in neither of the two others: it is not argumentation
+    // or terminology content. The row is verified since slice 0057, so the
+    // test sets its status to `planned`: only its place in the closures
+    // counts. The list here is written by the test too, and no ART row still
+    // refused has that place: SACM23-ART-012 and SACM23-ART-013 are in all
+    // four closures. (Slice 0055 reads the Artifact, SACM23-ART-004, this
+    // test first used.)
+    let matrix = with_row_value(
+        &matrix(),
+        "SACM23-ART-010",
+        "status",
+        toml::Value::String("planned".into()),
+    );
     let list = one_entry("SACM23-ART-010");
-    let rows = matrix_rows(&matrix());
+    let rows = matrix_rows(&matrix);
     for (point, inside) in [
         ("SACM23-CP-001", true),
         ("SACM23-CP-002", false),
@@ -1001,19 +1011,14 @@ fn lib_api_011_interim_check_requires_an_art_row_in_cp_001_and_cp_003_but_not_cp
             "{ROW}: setup: SACM23-ART-010 in the closure of {point} is not {inside}"
         );
     }
-    let problems = interim_problems(&list, &matrix());
+    let problems = interim_problems(&list, &matrix);
     assert!(
         problems.is_empty(),
         "{ROW}: an ART row outside SACM23-CP-002 and SACM23-CP-004 is allowed: {problems:#?}"
     );
     // Missing from its own package's point: caught, for that point alone.
     for point in ["SACM23-CP-003", "SACM23-CP-001"] {
-        let emptied = with_row_value(
-            &matrix(),
-            point,
-            "depends_on",
-            toml::Value::Array(Vec::new()),
-        );
+        let emptied = with_row_value(&matrix, point, "depends_on", toml::Value::Array(Vec::new()));
         let problems = interim_problems(&list, &emptied);
         assert_only(
             &format!("SACM23-ART-010 with {point} emptied"),
@@ -1028,12 +1033,7 @@ fn lib_api_011_interim_check_requires_an_art_row_in_cp_001_and_cp_003_but_not_cp
     }
     // Missing from another package's point: allowed.
     for point in ["SACM23-CP-002", "SACM23-CP-004"] {
-        let emptied = with_row_value(
-            &matrix(),
-            point,
-            "depends_on",
-            toml::Value::Array(Vec::new()),
-        );
+        let emptied = with_row_value(&matrix, point, "depends_on", toml::Value::Array(Vec::new()));
         let problems = interim_problems(&list, &emptied);
         assert!(
             problems.is_empty(),
@@ -1131,10 +1131,12 @@ fn lib_api_011_interim_check_requires_a_term_row_in_cp_003() {
 #[test]
 fn lib_api_011_the_slice_0052_interim_rows_gate_their_compliance_points_in_the_matrix() {
     // The kinds an ArtifactPackage exposes that slice 0052 does not read
-    // (ADR 0034), less the four slice 0055 reads (ADR 0034 amendment 1): each
-    // must pass check (b) with the matrix as it is.
+    // (ADR 0034), less the four slice 0055 reads (ADR 0034 amendment 1) and
+    // the ArtifactAssetRelationship slice 0057 reads (amendment 2), with the
+    // ArtifactPackageInterface: each must pass check (b) with the matrix as it
+    // is.
     for row in [
-        "SACM23-ART-010",
+        "SACM23-ART-012",
         "SACM23-TERM-002",
         "SACM23-TERM-004",
         "SACM23-TERM-005",

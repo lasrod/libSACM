@@ -154,19 +154,73 @@ use crate::model::{
 };
 
 /// The machine-readable model's spelling of the class
-/// `ArtifactAssetRelationship` (§12.14, D-TEXT-MODEL), which SACM23-XMI-009
-/// is to read in tolerant mode as a type.
+/// `ArtifactAssetRelationship` (§12.14, D-TEXT-MODEL), which a tolerant read
+/// reads as a type (SACM23-XMI-009).
 const MODEL_SPELLING: &str = "ArtifactAssertedRelationship";
 
-/// The §11.4 text spelling of `argumentElement`, which SACM23-XMI-009 is to
-/// read in tolerant mode, as the role of an ArgumentPackage and the
-/// reference end of an `ArgumentGroup`.
+/// The §11.2 and §11.4 text spelling of `argumentElement`, which a tolerant
+/// read reads as the role of an ArgumentPackage and the reference end of an
+/// `ArgumentGroup` (SACM23-XMI-009).
 const TEXT_SPELLING: &str = "argumentationElement";
 
+/// The name `TEXT_SPELLING` stands for: the model's `argumentElement`.
+const TEXT_RESOLVED: &str = "argumentElement";
+
 /// The machine-readable model's spelling of the attribute `date` of an
-/// `Event` (§12.9, D-TEXT-MODEL, spec defect D17), which SACM23-XMI-009 is
-/// to read in tolerant mode, as an attribute or a value element.
+/// `Event` (§12.9, D-TEXT-MODEL, spec defect D17), which a tolerant read
+/// reads as an attribute or a value element (SACM23-XMI-009).
 const EVENT_SPELLING: &str = "occurece";
+
+/// The requirement of the diagnostics for a spelling (SACM-XMI-013).
+const SPELLING_ROW: &str = "SACM23-XMI-009";
+
+/// A spelling where formal/23-05-08 and ptc/22-03-13 disagree and the crate
+/// follows the other (D-TEXT-MODEL): what a tolerant read reads as the
+/// resolved name, and a strict read keeps as preserved content, each with one
+/// SACM-XMI-013 (SACM23-XMI-009, ADR 0034 amendment 2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Spelling {
+    /// The type `ArtifactAssertedRelationship` (§12.14).
+    Type,
+    /// An Event's `occurece` (§12.9 `date`).
+    Date,
+    /// `argumentationElement` as an ArgumentPackage's role (§11.4).
+    Role,
+    /// `argumentationElement` as an `ArgumentGroup`'s end (§11.2).
+    End,
+}
+
+impl Spelling {
+    /// The name it is read as, which `xmi::write` writes.
+    const fn resolved(self) -> &'static str {
+        match self {
+            Self::Type => "ArtifactAssetRelationship",
+            Self::Date => "date",
+            Self::Role | Self::End => TEXT_RESOLVED,
+        }
+    }
+
+    /// The clause of the text that names it.
+    const fn clause(self) -> &'static str {
+        match self {
+            Self::Type => "12.14",
+            Self::Date => "12.9",
+            Self::Role => "11.4",
+            Self::End => "11.2",
+        }
+    }
+
+    /// The end of the message of its diagnostic in `mode`.
+    fn tail(self, mode: Mode) -> String {
+        match mode {
+            Mode::Tolerant => format!("; it is read as {}, which write writes", self.resolved()),
+            Mode::Strict => format!(
+                "; it is kept as preserved content, and a tolerant read reads it as {}",
+                self.resolved()
+            ),
+        }
+    }
+}
 
 /// The `XLink` namespace, whose attributes on a reference element are a
 /// cross-document link (SACM23-XMI-027).
@@ -205,11 +259,14 @@ impl From<ReadError> for Fault {
 
 /// The Warning a tolerant read gives for a construct it keeps as preserved
 /// content where a strict read refuses it (ADR 0035 D1, D2): at the strict
-/// refusal's byte offset, with its code.
+/// refusal's byte offset, with its code. Or the Error a strict read gives
+/// for a spelling it keeps (SACM-XMI-013, SACM23-XMI-009).
 struct Keep {
     /// Where the strict refusal is.
     offset: usize,
     code: Code,
+    /// A Warning, but an Error for a spelling a strict read keeps.
+    severity: Severity,
     /// The matrix row the Warning enforces.
     requirement: &'static str,
     clause: Option<&'static str>,
@@ -221,6 +278,9 @@ struct Keep {
     /// Whether the construct is a value that is no literal, which counts as
     /// an occurrence of its property (ADR 0035, SACM23-VAL-006).
     is_literal: bool,
+    /// Whether `reason` and `tail` are the whole message, which then does
+    /// not name the holder: a spelling's (SACM23-XMI-009).
+    whole: bool,
 }
 
 impl Keep {
@@ -240,11 +300,13 @@ impl Keep {
         Self {
             offset,
             code,
+            severity: Severity::Warning,
             requirement,
             clause,
             reason: reason.to_owned(),
             tail,
             is_literal: false,
+            whole: false,
         }
     }
 
@@ -254,6 +316,7 @@ impl Keep {
         Self {
             offset,
             code: Code::ENUM_INVALID_LITERAL,
+            severity: Severity::Warning,
             requirement: "SACM23-VAL-006",
             clause: None,
             reason: format!(
@@ -262,6 +325,7 @@ impl Keep {
             ),
             tail: ", and the property is read as not written".to_owned(),
             is_literal: true,
+            whole: false,
         }
     }
 
@@ -272,6 +336,7 @@ impl Keep {
         Self {
             offset,
             code: Code::MULTIPLICITY_VIOLATION,
+            severity: Severity::Warning,
             requirement: TOLERANT_ROW,
             clause: Some("9.5.2"),
             reason: format!(
@@ -281,6 +346,24 @@ impl Keep {
             ),
             tail: "; the first occurrence is read".to_owned(),
             is_literal: false,
+            whole: false,
+        }
+    }
+
+    /// The Error of a strict read for `spelling` at byte `offset`, which it
+    /// keeps as preserved content, whose message begins with `reason`
+    /// (SACM-XMI-013, SACM23-XMI-009; ADR 0034 amendment 2).
+    fn spelling(offset: usize, spelling: Spelling, reason: String) -> Self {
+        Self {
+            offset,
+            code: Code::XMI_SPELLING_VARIANT,
+            severity: Severity::Error,
+            requirement: SPELLING_ROW,
+            clause: Some(spelling.clause()),
+            reason,
+            tail: spelling.tail(Mode::Strict),
+            is_literal: false,
+            whole: true,
         }
     }
 
@@ -290,18 +373,24 @@ impl Keep {
         let Self {
             offset,
             code,
+            severity,
             requirement,
             clause,
             reason,
             tail,
             is_literal: _,
+            whole,
         } = self;
-        let message = format!(
-            "{reason}, so it is kept as preserved content of {}, which a tolerant write writes \
-             back and a strict write refuses{tail}",
-            holder.subject()
-        );
-        let mut diagnostic = Diagnostic::create(code, Severity::Warning, requirement, message)
+        let message = if whole {
+            format!("{reason}{tail}")
+        } else {
+            format!(
+                "{reason}, so it is kept as preserved content of {}, which a tolerant write \
+                 writes back and a strict write refuses{tail}",
+                holder.subject()
+            )
+        };
+        let mut diagnostic = Diagnostic::create(code, severity, requirement, message)
             .set_affected(holder.affected());
         if let Some(clause) = clause {
             diagnostic = diagnostic.set_clause(clause);
@@ -651,6 +740,43 @@ impl Findings<'_, '_> {
         self.push_at(diagnostic, offset);
     }
 
+    /// Reports `spelling`, which a tolerant read read at byte `offset` as
+    /// its resolved name: one SACM-XMI-013 Warning affecting `affected`, the
+    /// element the spelling belongs to, whose message begins with `reason`
+    /// (SACM23-XMI-009; ADR 0034 amendment 2).
+    fn spelled(&mut self, offset: usize, spelling: Spelling, reason: &str, affected: &ElementId) {
+        let message = format!("{reason}{}", spelling.tail(Mode::Tolerant));
+        let diagnostic = Diagnostic::create(
+            Code::XMI_SPELLING_VARIANT,
+            Severity::Warning,
+            SPELLING_ROW,
+            message,
+        )
+        .set_clause(spelling.clause())
+        .set_affected([affected.clone()]);
+        self.push_at(diagnostic, offset);
+    }
+
+    /// Reports the role or type `spelling` of the child `node`, the element
+    /// `child` of `parent`, which a tolerant read read, at its start tag, as
+    /// [`spelled`](Self::spelled) does: a role belongs to the parent, a type
+    /// to the child (SACM23-XMI-009).
+    fn spelled_child(
+        &mut self,
+        node: Node<'_, '_>,
+        spelling: Spelling,
+        reason: &str,
+        parent: &ElementId,
+        child: &ElementId,
+    ) {
+        let affected = if spelling == Spelling::Role {
+            parent
+        } else {
+            child
+        };
+        self.spelled(node.range().start, spelling, reason, affected);
+    }
+
     /// Reports the empty `xmi:id` of `node`, which `subject` names, read as
     /// `read_as` says, affecting `affected`: one SACM-ID-002 Warning at the
     /// start tag of `node` in a tolerant read, which reads on (ADR 0035 D1).
@@ -831,8 +957,9 @@ fn reserved_ids<'a>(element: Node<'a, '_>) -> BTreeSet<&'a str> {
 
 /// The ids `attribute` may name as a reference (ADR 0026, ADR 0033): its
 /// value, trimmed, for an `xmi:idref`; the fragment of an `href`, trimmed;
-/// and each token of an attribute in no namespace named as a reference end.
-/// None for any other attribute.
+/// and each token of an attribute in no namespace named as a reference end,
+/// or as the spelling `argumentationElement` of one (SACM23-XMI-009). None
+/// for any other attribute.
 fn reference_tokens<'a>(attribute: &Attribute<'a, '_>) -> Vec<&'a str> {
     let value = attribute.value();
     if is_xmi(attribute, "idref") {
@@ -844,9 +971,10 @@ fn reference_tokens<'a>(attribute: &Attribute<'a, '_>) -> Vec<&'a str> {
             .into_iter()
             .collect()
     } else if attribute.namespace().is_none()
-        && ReferenceEnd::ALL
-            .iter()
-            .any(|end| end.name() == attribute.name())
+        && (attribute.name() == TEXT_SPELLING
+            || ReferenceEnd::ALL
+                .iter()
+                .any(|end| end.name() == attribute.name()))
     {
         id_tokens(value).collect()
     } else {
@@ -1565,12 +1693,19 @@ impl Pending {
         };
         let keep = if self.content.is_some() {
             repeat_or_refuse(found.mode, first, &self.id, "content", || {
-                repeated_content(text, holder, &self.id, &self.shorthand, &self.kept)
+                repeated_content(
+                    text,
+                    holder,
+                    &self.id,
+                    self.kind,
+                    &self.shorthand,
+                    &self.kept,
+                )
             })?
         } else if let Some(attribute) = self.shorthand.content_at {
             let property = "content.value.content";
             repeat_or_refuse(found.mode, first, &self.id, property, || {
-                repeated(text, &self.id, property, [attribute, first])
+                repeated(text, &self.id, self.kind, property, [attribute, first])
             })?
         } else {
             return Ok(());
@@ -1731,8 +1866,13 @@ impl Pending {
             return Ok(());
         };
         let property = end.name();
+        // The attribute of the end, or a spelling of it a tolerant read read
+        // (SACM23-XMI-009); one kept as preserved content is none.
         let in_attribute = holder.attributes().any(|attribute| {
-            is_unqualified(&attribute, property) && !self.kept.holds(attribute.range_qname().start)
+            (is_unqualified(&attribute, property)
+                || (attribute.namespace().is_none()
+                    && spelled_end(self.kind, attribute.name()) == Some(end)))
+                && !self.kept.holds(attribute.range_qname().start)
         });
         if !end.is_many() || in_attribute {
             let at = node.range().start;
@@ -1756,7 +1896,11 @@ impl Pending {
         local: &str,
         property: &str,
     ) -> Fault {
-        let refusal = || repeated_value(found.text, holder, local, &self.id, property, &self.kept);
+        let refusal = || {
+            repeated_value(
+                found.text, holder, local, &self.id, self.kind, property, &self.kept,
+            )
+        };
         fault(repeat_or_refuse(
             found.mode, at, &self.id, property, refusal,
         ))
@@ -1781,9 +1925,9 @@ impl Pending {
         };
         let at = attribute.range_qname().start;
         let property = "content.value.content";
-        let id = &self.id;
+        let (id, kind) = (&self.id, self.kind);
         let mut kept = fault(repeat_or_refuse(found.mode, at, id, property, || {
-            repeated(text, id, property, [earlier, at])
+            repeated(text, id, kind, property, [earlier, at])
         }));
         if let Fault::Keep(keep) = &mut kept {
             "; the attribute that gave it first is kept with it, and the element has no \
@@ -1836,6 +1980,74 @@ impl Pending {
             }
         }
     }
+
+    /// Reads `attribute` of `node`, this element's node, if it is a spelling
+    /// of SACM23-XMI-009 on its kind (an Event's `occurece`, an
+    /// `ArgumentGroup`'s `argumentationElement`), and returns whether it was
+    /// one. A tolerant read reads it as the resolved name, with one
+    /// SACM-XMI-013 Warning at its name, under every rule of that name (an
+    /// end into `start`), unless that name is given too, as an attribute or
+    /// an element, which is read instead: the spelling is then the repeat
+    /// (SACM-MULT-001). A strict read keeps it as preserved content with one
+    /// SACM-XMI-013 Error (ADR 0034 amendment 2).
+    fn read_spelled_attribute<'a>(
+        &mut self,
+        found: &mut Findings<'_, 'a>,
+        node: Node<'a, '_>,
+        attribute: &Attribute<'a, '_>,
+        start: &mut StartTag,
+    ) -> Result<bool, ReadError> {
+        if attribute.namespace().is_some() {
+            return Ok(false);
+        }
+        let at = attribute.range_qname().start;
+        let (spelling, resolved, reason) = if spelled_string(self.kind, attribute.name()).is_some()
+        {
+            let resolved = StringAttribute::Date.name();
+            (
+                Spelling::Date,
+                resolved,
+                date_spelling_reason(&self.written),
+            )
+        } else if spelled_end(self.kind, attribute.name()).is_some() {
+            (
+                Spelling::End,
+                TEXT_RESOLVED,
+                end_spelling_reason(&self.written),
+            )
+        } else {
+            return Ok(false);
+        };
+        let fault = if found.mode == Mode::Strict {
+            Fault::Keep(Keep::spelling(at, spelling, reason))
+        } else if gives(node, resolved) {
+            self.repeat(found, node, at, resolved, resolved)
+        } else {
+            let read = if spelling == Spelling::Date {
+                let value = attribute.value().to_owned();
+                self.strings.push((StringAttribute::Date, Some(value)));
+                Ok(Given::Read)
+            } else {
+                start.read_end(
+                    found,
+                    attribute,
+                    self.kind,
+                    ReferenceEnd::GroupMember,
+                    &self.id,
+                )
+            };
+            match read {
+                Ok(Given::Read) => {
+                    found.spelled(at, spelling, &reason, &self.id);
+                    return Ok(true);
+                }
+                Ok(Given::NoId | Given::Other) => Fault::Defect,
+                Err(fault) => fault,
+            }
+        };
+        self.keep_attribute(found, node, attribute, fault)?;
+        Ok(true)
+    }
 }
 
 /// What the start tag of an element gives for its `SACMElement` flags and
@@ -1886,7 +2098,6 @@ impl StartTag {
         kind: ElementKind,
         id: &ElementId,
     ) -> Result<Given, Fault> {
-        let text = found.text;
         if attribute.namespace().is_some() {
             return Ok(Given::Other);
         }
@@ -1901,6 +2112,24 @@ impl StartTag {
         let Some(end) = reference_end_named(kind, local) else {
             return Ok(Given::Other);
         };
+        self.read_end(found, attribute, kind, end, id)
+    }
+
+    /// Reads `attribute` of the element `id` as its reference end `end`, as
+    /// [`read`](Self::read) does: the end `attribute` names, or, for a
+    /// spelling a tolerant read reads, the end it stands for
+    /// (SACM23-XMI-009).
+    fn read_end(
+        &mut self,
+        found: &Findings<'_, '_>,
+        attribute: &Attribute<'_, '_>,
+        kind: ElementKind,
+        end: ReferenceEnd,
+        id: &ElementId,
+    ) -> Result<Given, Fault> {
+        let text = found.text;
+        let at = attribute.range_qname().start;
+        let local = attribute.name();
         let value = attribute.value();
         let count = id_tokens(value).count();
         if count == 0 {
@@ -1920,6 +2149,7 @@ impl StartTag {
                     let mut locator = Locator::new(text);
                     ReadError::RepeatedValue {
                         element: id.clone(),
+                        kind,
                         property: local.to_owned(),
                         locations: starts
                             .into_iter()
@@ -2133,9 +2363,12 @@ fn read_root<'a>(
 ///
 /// A part that does not conform, and a `name` on a `UtilityElement`, is
 /// [`Fault::Defect`]: the caller keeps it whole as preserved content, and
-/// the property is not given (ADR 0033). The model's spellings
+/// the property is not given (ADR 0033). The spellings
 /// `argumentationElement` on an `ArgumentGroup` and `occurece` on an `Event`
-/// are refused, or kept in tolerant mode (SACM23-XMI-009).
+/// are read in tolerant mode as `argumentElement` and `date`, with one
+/// SACM-XMI-013 Warning each, under every rule of those names; `occurece`
+/// beside a `date` is the repeat. A strict read keeps them with an Error
+/// (SACM23-XMI-009).
 fn read_part<'a>(
     found: &mut Findings<'_, 'a>,
     element: &mut Pending,
@@ -2145,8 +2378,8 @@ fn read_part<'a>(
     let text = found.text;
     let local = node.tag_name().name();
     let at = node.range().start;
-    if element.kind == ElementKind::ArgumentGroup && is_value_element(node, TEXT_SPELLING) {
-        return Err(text_spelling(found, at, &element.written));
+    if read_spelled_part(found, element, holder, node)? {
+        return Ok(true);
     }
     if let Some(unread) = interface_end(element.kind).filter(|_| is_value_element(node, INTERFACE))
     {
@@ -2180,8 +2413,6 @@ fn read_part<'a>(
         .filter(|attribute| is_value_element(node, attribute.name()))
     {
         element.read_string_element(found, holder, node, attribute)?;
-    } else if element.kind == ElementKind::Event && is_value_element(node, EVENT_SPELLING) {
-        return Err(event_spelling(found, at, &element.written));
     } else if let Some(role) = TextRole::ALL
         .into_iter()
         .find(|role| role.is_held_by(element.kind) && is_value_element(node, role.name()))
@@ -2201,6 +2432,7 @@ fn read_part<'a>(
                             text,
                             holder,
                             &element.id,
+                            element.kind,
                             &element.shorthand,
                             &element.kept,
                         )
@@ -2233,6 +2465,50 @@ fn read_part<'a>(
     } else {
         return Ok(false);
     }
+    Ok(true)
+}
+
+/// Reads `node`, an element in `holder`, the node of `element`, if it is a
+/// spelling of SACM23-XMI-009 on the element's kind, and returns whether it
+/// was one: an `ArgumentGroup`'s end `argumentationElement` (§11.2), read as a
+/// reference element of `argumentElement`, or an Event's `occurece`, read as
+/// its `date` value element (§12.9), unless `date` is given too, as an
+/// attribute or an element, which is read instead: the spelling is then the
+/// repeat (SACM-MULT-001). Each is read under every rule of the resolved
+/// name, with one SACM-XMI-013 Warning at its start tag once it is read. A
+/// strict read keeps it as preserved content with one SACM-XMI-013 Error
+/// (ADR 0034 amendment 2).
+fn read_spelled_part<'a>(
+    found: &mut Findings<'_, 'a>,
+    element: &mut Pending,
+    holder: Node<'a, '_>,
+    node: Node<'a, '_>,
+) -> Result<bool, Fault> {
+    let local = node.tag_name().name();
+    if !is_value_element(node, local) {
+        return Ok(false);
+    }
+    let at = node.range().start;
+    let (spelling, reason) = if spelled_end(element.kind, local).is_some() {
+        (Spelling::End, end_spelling_reason(&element.written))
+    } else if spelled_string(element.kind, local).is_some() {
+        (Spelling::Date, date_spelling_reason(&element.written))
+    } else {
+        return Ok(false);
+    };
+    if found.mode == Mode::Strict {
+        return Err(Fault::Keep(Keep::spelling(at, spelling, reason)));
+    }
+    if spelling == Spelling::End {
+        element.read_reference_element(found, holder, node, ReferenceEnd::GroupMember)?;
+    } else {
+        let date = StringAttribute::Date.name();
+        if gives(holder, date) {
+            return Err(element.repeat(found, holder, at, date, date));
+        }
+        element.read_string_element(found, holder, node, StringAttribute::Date)?;
+    }
+    found.spelled(at, spelling, &reason, &element.id);
     Ok(true)
 }
 
@@ -2535,20 +2811,27 @@ fn root_start<'a>(
 /// tolerant read keeps it whole where a strict read refuses it: a child
 /// [`child_kind`] keeps, and a role element in reference form, with an
 /// `xmi:idref` or an `href` (ADR 0035 D1). An attribute a strict read
-/// refuses, a tolerant read keeps as preserved content of the child.
+/// refuses, a tolerant read keeps as preserved content of the child. A role
+/// or type spelling a tolerant read reads (SACM23-XMI-009) is one
+/// SACM-XMI-013 Warning at the start tag, affecting the parent for the role
+/// and the child for the type.
 fn child_start<'a>(
     found: &mut Findings<'_, 'a>,
     node: Node<'a, '_>,
     parent: &Pending,
 ) -> Result<Option<Pending>, Fault> {
     let text = found.text;
-    let ChildKind::Read(kind) = child_kind(found, node, parent.kind, &parent.what())? else {
+    let ChildKind::Read { kind, spelled } = child_kind(found, node, parent.kind, &parent.what())?
+    else {
         return Ok(None);
     };
     let written = written_name(text, node);
     let id = read_id(found, node, kind)?;
     let mut element = pending(found, node, Some(parent.id.clone()), kind, id, written);
     let id = element.id.clone();
+    if let Some((spelling, reason)) = spelled {
+        found.spelled_child(node, spelling, &reason, &parent.id, &id);
+    }
     // Besides `xmi:id` and the type (ADR 0016 D4), only an unqualified
     // `gid`, an Assertion's unqualified `assertionDeclaration`, the
     // SACMElement flags and references (ADR 0026), the unqualified
@@ -2613,14 +2896,7 @@ fn child_start<'a>(
                 .push((string, Some(attribute.value().to_owned())));
             continue;
         }
-        if kind == ElementKind::Event && is_unqualified(&attribute, EVENT_SPELLING) {
-            let fault = event_spelling(found, at, &element.written);
-            element.keep_attribute(found, node, &attribute, fault)?;
-            continue;
-        }
-        if kind == ElementKind::ArgumentGroup && is_unqualified(&attribute, TEXT_SPELLING) {
-            let fault = text_spelling(found, at, &element.written);
-            element.keep_attribute(found, node, &attribute, fault)?;
+        if element.read_spelled_attribute(found, node, &attribute, &mut start)? {
             continue;
         }
         if !is_utility && is_unqualified(&attribute, "name") {
@@ -2814,8 +3090,13 @@ fn duplicate_id(text: &str, node: Node<'_, '_>, id: &str) -> ReadError {
 
 /// What [`child_kind`] makes of a child element.
 enum ChildKind {
-    /// It is read, as an element of this kind.
-    Read(ElementKind),
+    /// It is read, as an element of `kind`, and `spelled` is the spelling a
+    /// tolerant read read in its role or type, with the reason its
+    /// SACM-XMI-013 Warning begins with (SACM23-XMI-009).
+    Read {
+        kind: ElementKind,
+        spelled: Option<(Spelling, String)>,
+    },
     /// It does not conform as a whole, by its namespace, role or type: the
     /// caller keeps it as preserved content (ADR 0033).
     Preserve,
@@ -2829,10 +3110,13 @@ enum ChildKind {
 /// name, which must agree; without one, it is the role's declared type, if
 /// that is concrete. The kind must conform to the role (ADR 0016 D5, D6).
 /// A child that is none of this is [`ChildKind::Preserve`] (ADR 0033),
-/// except three refusals: an element in the XMI namespace, XMI metadata
-/// (SACM23-XMI-019), the §11.4 text spelling `argumentationElement` in an
-/// ArgumentPackage, and the type `ArtifactAssertedRelationship`, the model's
-/// spelling of a kind the role admits (both SACM23-XMI-009). Without a type under a role of an
+/// except an element in the XMI namespace, which is XMI metadata
+/// (SACM23-XMI-019), and two spellings (SACM23-XMI-009): the §11.4 text
+/// spelling `argumentationElement` of the role `argumentElement`, and the
+/// type `ArtifactAssertedRelationship`, the model's spelling of a kind the
+/// role admits. A tolerant read reads each as the resolved name, and
+/// returns it to be reported; a strict read keeps the child whole with a
+/// SACM-XMI-013 Error. Without a type under a role of an
 /// abstract type, it is `MissingType` (SACM-XMI-005, LIB-COMPAT-010),
 /// unless it carries an `xmi:idref` or an `href`, the reference form of a
 /// composite, which is refused by its entry ([`proxy_link`]); a typed one,
@@ -2861,31 +3145,39 @@ fn child_kind(
         None => {}
     }
     let local = node.tag_name().name();
-    let Some(role) = role_named(parent, local) else {
-        if parent == ElementKind::ArgumentPackage && local == TEXT_SPELLING {
-            let reason = format!(
-                "the element {written:?} in {parent_what} is spelled as in the text of §11.4, and \
-                 the role is argumentElement"
-            );
-            return Err(found.unread_fault(at, Unread::TextSpelling, &reason));
-        }
-        return Ok(ChildKind::Preserve);
+    let mut spelled = None;
+    let role = match role_named(parent, local) {
+        Some(role) => role,
+        // The text's spelling of the role `argumentElement` (§11.4): read as
+        // that role in tolerant mode, kept whole in strict mode
+        // (SACM23-XMI-009).
+        None => match role_named(parent, TEXT_RESOLVED).filter(|_| local == TEXT_SPELLING) {
+            Some(role) => {
+                let reason = format!(
+                    "the element {written:?} in {parent_what} is spelled as in the text of \
+                     §11.4, and the role is {TEXT_RESOLVED}"
+                );
+                spelled = Some(child_spelling(found, at, Spelling::Role, reason)?);
+                role
+            }
+            None => return Ok(ChildKind::Preserve),
+        },
     };
     let mut typed = None;
+    let mut type_spelled = false;
     for attribute in node.attributes().filter(is_type) {
-        let Some(kind) = type_kind(node, attribute.value()) else {
-            // The model's spelling of a kind the role admits, which
-            // SACM23-XMI-009 is to read in tolerant mode (ADR 0034).
-            if names_class(node, attribute.value(), MODEL_SPELLING)
-                && role.declared.admits(ElementKind::ArtifactAssetRelationship)
-            {
-                let reason = format!(
-                    "the element {written:?} in {parent_what} is typed {MODEL_SPELLING}, the \
-                     machine-readable model's spelling of ArtifactAssetRelationship"
-                );
-                return Err(found.unread_fault(at, Unread::ModelSpelling, &reason));
+        let kind = match type_kind(node, attribute.value()) {
+            Some(kind) => kind,
+            // The model's spelling of ArtifactAssetRelationship, read as that
+            // kind (SACM23-XMI-009, ADR 0034 amendment 2). Under a role that
+            // does not admit the kind, the check below preserves the child,
+            // as for any type the role does not admit, and it is no
+            // spelling.
+            None if names_class(node, attribute.value(), MODEL_SPELLING) => {
+                type_spelled = true;
+                ElementKind::ArtifactAssetRelationship
             }
-            return Ok(ChildKind::Preserve);
+            None => return Ok(ChildKind::Preserve),
         };
         match typed {
             Some(earlier) if earlier != kind => return Ok(ChildKind::Preserve),
@@ -2915,6 +3207,7 @@ fn child_kind(
                 Mode::Tolerant => Fault::Keep(Keep {
                     offset: at,
                     code: Code::XMI_MISSING_TYPE,
+                    severity: Severity::Warning,
                     requirement: TOLERANT_ROW,
                     clause: Some("7.6.3"),
                     reason: format!(
@@ -2925,6 +3218,7 @@ fn child_kind(
                     ),
                     tail: String::new(),
                     is_literal: false,
+                    whole: false,
                 }),
             });
         }
@@ -2938,7 +3232,32 @@ fn child_kind(
         let reason = format!("the {kind} {written:?} in {parent_what} is not read in this release");
         return Err(found.unread_fault(at, unread, &reason));
     }
-    Ok(ChildKind::Read(kind))
+    if type_spelled {
+        let reason = format!(
+            "the element {written:?} in {parent_what} is typed {MODEL_SPELLING}, the \
+             machine-readable model's spelling of {}",
+            Spelling::Type.resolved()
+        );
+        spelled = Some(child_spelling(found, at, Spelling::Type, reason)?);
+    }
+    Ok(ChildKind::Read { kind, spelled })
+}
+
+/// What a read does with a child whose role or type is `spelling`, at byte
+/// `at`, whose SACM-XMI-013 message begins with `reason` (SACM23-XMI-009): a
+/// tolerant read reads it, and returns the two for the caller to report once
+/// the child's id is known; a strict read keeps the child whole with the
+/// Error ([`Fault::Keep`]).
+fn child_spelling(
+    found: &Findings<'_, '_>,
+    at: usize,
+    spelling: Spelling,
+    reason: String,
+) -> Result<(Spelling, String), Fault> {
+    match found.mode {
+        Mode::Strict => Err(Fault::Keep(Keep::spelling(at, spelling, reason))),
+        Mode::Tolerant => Ok((spelling, reason)),
+    }
 }
 
 /// The entry of the role element `node` if it is in the reference form of a
@@ -3200,17 +3519,19 @@ fn parse_nil(
 }
 
 /// The `RepeatedValue` refusal of the property `property` of the element
-/// `owner`, given at the byte `offsets` of `text`, in document order,
-/// located in one pass (SACM-MULT-001; XMI 2.5.1 §9.5.2 rule 2h).
+/// `owner`, of `kind`, given at the byte `offsets` of `text`, in document
+/// order, located in one pass (SACM-MULT-001; XMI 2.5.1 §9.5.2 rule 2h).
 fn repeated(
     text: &str,
     owner: &ElementId,
+    kind: ElementKind,
     property: &str,
     offsets: impl IntoIterator<Item = usize>,
 ) -> ReadError {
     let mut locator = Locator::new(text);
     ReadError::RepeatedValue {
         element: owner.clone(),
+        kind,
         property: property.to_owned(),
         locations: offsets
             .into_iter()
@@ -3231,6 +3552,7 @@ fn repeated_value(
     holder: Node<'_, '_>,
     local: &str,
     owner: &ElementId,
+    kind: ElementKind,
     property: &str,
     kept: &Kept,
 ) -> ReadError {
@@ -3244,7 +3566,13 @@ fn repeated_value(
         .filter(|child| is_value_element(*child, local))
         .map(|child| child.range().start)
         .filter(|&at| !kept.holds(at));
-    repeated(text, owner, property, attribute.into_iter().chain(elements))
+    repeated(
+        text,
+        owner,
+        kind,
+        property,
+        attribute.into_iter().chain(elements),
+    )
 }
 
 /// The `RepeatedValue` refusal of the `content` of the `UtilityElement`
@@ -3256,6 +3584,7 @@ fn repeated_content(
     text: &str,
     holder: Node<'_, '_>,
     owner: &ElementId,
+    kind: ElementKind,
     shorthand: &Shorthand,
     kept: &Kept,
 ) -> ReadError {
@@ -3266,7 +3595,7 @@ fn repeated_content(
         .filter(|&at| !kept.holds(at));
     let mut offsets: Vec<usize> = shorthand.at().into_iter().chain(elements).collect();
     offsets.sort_unstable();
-    repeated(text, owner, TextRole::Content.name(), offsets)
+    repeated(text, owner, kind, TextRole::Content.name(), offsets)
 }
 
 /// The `RepeatedValue` refusal of the field `field`, `lang` or `content`, of
@@ -3285,6 +3614,7 @@ fn repeated_field(
     holder: Node<'_, '_>,
     field: &str,
     owner: &ElementId,
+    kind: ElementKind,
     property: &str,
 ) -> Fault {
     let is_name = property == "name";
@@ -3324,7 +3654,7 @@ fn repeated_field(
         .copied()
         .unwrap_or_else(|| holder.range().start);
     fault(repeat_or_refuse(mode, second, owner, &property, || {
-        repeated(text, owner, &property, offsets)
+        repeated(text, owner, kind, &property, offsets)
     }))
 }
 
@@ -3351,7 +3681,7 @@ fn read_name<'a>(
     owner: &ElementId,
 ) -> Result<(LangString, Option<ElementId>), Fault> {
     let subject = format!("the name of {}", subject(kind, owner.as_str()));
-    read_lang_string(found, node, &subject, owner, "name")
+    read_lang_string(found, node, &subject, owner, kind, "name")
 }
 
 /// The `MultiLangString` that the `content`, `key` or `location` element
@@ -3431,12 +3761,13 @@ fn read_text<'a>(
                         first,
                         owner,
                         &property,
-                        || repeated(text, owner, &property, [attribute, first]),
+                        || repeated(text, owner, kind, &property, [attribute, first]),
                     )));
                 }
             }
         } else if is_value_element(child, "value") {
-            let (value, id) = read_lang_string(found, child, &value_subject, owner, &property)?;
+            let (value, id) =
+                read_lang_string(found, child, &value_subject, owner, kind, &property)?;
             held.push(value, id);
         } else {
             return Err(xmi_element_in(found, child, &element));
@@ -3498,6 +3829,7 @@ fn read_lang_string<'a>(
     node: Node<'a, '_>,
     subject: &str,
     owner: &ElementId,
+    kind: ElementKind,
     property: &str,
 ) -> Result<(LangString, Option<ElementId>), Fault> {
     let text = found.text;
@@ -3506,7 +3838,7 @@ fn read_lang_string<'a>(
     let is_name = property == "name";
     check_lang_string_tag(found, node, &element)?;
     let name_id = read_owned_id(found, node, subject, owner)?;
-    let repeated = |field: &str| repeated_field(text, mode, node, field, owner, property);
+    let repeated = |field: &str| repeated_field(text, mode, node, field, owner, kind, property);
     let mut fields = Fields::default();
     for attribute in node.attributes() {
         let value = || Some(attribute.value().to_owned());
@@ -3574,7 +3906,7 @@ fn read_lang_string<'a>(
             if holds_beside(text, node, child) {
                 return Err(Fault::Defect);
             }
-            let value = read_name_value(found, child, subject, owner)?;
+            let value = read_name_value(found, child, subject, owner, kind)?;
             has_entry = true;
             let shape = format!("{subject} holds a value");
             found.legacy_shape(child.range().start, owner, shape);
@@ -3671,6 +4003,7 @@ fn read_name_value<'a>(
     node: Node<'a, '_>,
     subject: &str,
     owner: &ElementId,
+    kind: ElementKind,
 ) -> Result<LangString, Fault> {
     let text = found.text;
     if let Some(attribute) = node.attributes().find(|attribute| is_xmi(attribute, "id")) {
@@ -3680,7 +4013,7 @@ fn read_name_value<'a>(
         return Err(found.unread_fault(at, Unread::XmiMetadata, &reason));
     }
     let subject = format!("the value in {subject}");
-    read_lang_string(found, node, &subject, owner, "name.value").map(|(value, _)| value)
+    read_lang_string(found, node, &subject, owner, kind, "name.value").map(|(value, _)| value)
 }
 
 /// Whether `name`, a `name` element, holds a field besides its `value`
@@ -3772,28 +4105,53 @@ fn sacm_class<'v>(node: Node<'_, '_>, value: &'v str) -> Option<&'v str> {
     (node.lookup_namespace_uri(prefix) == Some(SACM_NS)).then_some(local)
 }
 
-/// The fault of the §11.4 text spelling `argumentationElement` at byte
-/// `offset`, an attribute or element of the `ArgumentGroup` written as
-/// `group`, whose end is spelled `argumentElement` (SACM23-XMI-009): a
-/// strict read refuses it, and a tolerant read keeps it (ADR 0035 D2).
-fn text_spelling(found: &Findings<'_, '_>, offset: usize, group: &str) -> Fault {
-    let reason = format!(
-        "{TEXT_SPELLING:?} in the element {group:?} is spelled as in the text of §11.4, and the end \
-         of an ArgumentGroup is argumentElement"
-    );
-    found.unread_fault(offset, Unread::TextSpelling, &reason)
+/// The reference end that `local`, the §11.2 text spelling
+/// `argumentationElement`, stands for on an element of `kind`: an
+/// `ArgumentGroup`'s `argumentElement` (SACM23-XMI-009). `None` for any
+/// other name, and on a kind without that end, where the spelling is
+/// ordinary content.
+fn spelled_end(kind: ElementKind, local: &str) -> Option<ReferenceEnd> {
+    Some(ReferenceEnd::GroupMember).filter(|end| local == TEXT_SPELLING && end.applies_to(kind))
 }
 
-/// The fault of the model's spelling `occurece` at byte `offset`, an
-/// attribute or value element of the `Event` written as `written`, whose
-/// attribute is spelled `date` in the text (§12.9; SACM23-XMI-009): a strict
-/// read refuses it, and a tolerant read keeps it (ADR 0034 amendment 1).
-fn event_spelling(found: &Findings<'_, '_>, offset: usize, written: &str) -> Fault {
-    let reason = format!(
+/// The string-valued attribute that `local`, the model's spelling
+/// `occurece`, stands for on an element of `kind`: an Event's `date` (§12.9,
+/// spec defect D17; SACM23-XMI-009). `None` for any other name, and on
+/// another kind, an Artifact included, where it is ordinary content.
+fn spelled_string(kind: ElementKind, local: &str) -> Option<StringAttribute> {
+    (local == EVENT_SPELLING && kind == ElementKind::Event).then_some(StringAttribute::Date)
+}
+
+/// Whether `holder` gives the property `local` under that name: as an
+/// unqualified attribute or as an element in no namespace. A spelling of it
+/// is then the repeat, and the name is read instead (SACM23-XMI-009).
+fn gives(holder: Node<'_, '_>, local: &str) -> bool {
+    holder
+        .attributes()
+        .any(|attribute| is_unqualified(&attribute, local))
+        || holder
+            .children()
+            .any(|child| is_value_element(child, local))
+}
+
+/// The reason, the start of its SACM-XMI-013 message, of the §11.2 text
+/// spelling `argumentationElement` on the `ArgumentGroup` written as `group`,
+/// whose end is `argumentElement` (SACM23-XMI-009).
+fn end_spelling_reason(group: &str) -> String {
+    format!(
+        "{TEXT_SPELLING:?} in the element {group:?} is spelled as in the text of §11.2, and the end \
+         of an ArgumentGroup is {TEXT_RESOLVED}"
+    )
+}
+
+/// The reason, the start of its SACM-XMI-013 message, of the model's
+/// spelling `occurece` on the `Event` written as `written`, whose attribute
+/// the text spells `date` (§12.9; SACM23-XMI-009).
+fn date_spelling_reason(written: &str) -> String {
+    format!(
         "{EVENT_SPELLING:?} in the element {written:?} is the machine-readable model's spelling, \
          and the attribute of an Event is date (§12.9)"
-    );
-    found.unread_fault(offset, Unread::ModelSpelling, &reason)
+    )
 }
 
 /// The string-valued attribute named `local` that an element of `kind`
@@ -3999,10 +4357,6 @@ mod tests {
                 "the ArgumentPackageInterface \"argumentElement\" in the root element \"sacm:ArgumentPackage\" is not read in this release (a limit of this version; SACM23-ARG-014 reads it)",
             ),
             (
-                "<argumentationElement xmi:type=\"sacm:Claim\" xmi:id=\"c\"/>",
-                "the element \"argumentationElement\" in the root element \"sacm:ArgumentPackage\" is spelled as in the text of §11.4, and the role is argumentElement (strict mode never reads it; SACM23-XMI-009 is to read it in tolerant mode)",
-            ),
-            (
                 "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\"><xmi:Extension/></argumentElement>",
                 "the XMI element \"xmi:Extension\" in the element \"argumentElement\" is not read in this release (a limit of this version; SACM23-XMI-019 reads it)",
             ),
@@ -4014,18 +4368,33 @@ mod tests {
                 "{content:?}"
             );
         }
+        // The text's spelling of the role is kept, not refused
+        // (SACM23-XMI-009).
+        let spelled = "<argumentationElement xmi:type=\"sacm:Claim\" xmi:id=\"c\"/>";
+        assert_eq!(refusal(spelled), None, "{spelled:?}");
     }
 
-    /// The model's spelling `ArtifactAssertedRelationship` is refused only
+    /// The model's spelling `ArtifactAssertedRelationship` is a spelling only
     /// where a role admits the kind it spells, an `ArtifactPackage`'s
-    /// `artifactElement`; elsewhere it is a type the role does not admit,
-    /// preserved as the text's spelling would be (ADR 0033, ADR 0034).
+    /// `artifactElement`: kept with a SACM-XMI-013 Error by a strict read and
+    /// read by a tolerant one. Elsewhere it is a type the role does not
+    /// admit, preserved as any such type is (ADR 0033, ADR 0034 amendment 2).
     #[test]
-    fn the_model_spelling_is_refused_only_where_its_kind_is_admitted() {
+    fn the_model_spelling_is_a_spelling_only_where_its_kind_is_admitted() {
         let typed =
             "<argumentElement xmi:type=\"sacm:ArtifactAssertedRelationship\" xmi:id=\"r\"/>";
         assert_eq!(refusal(typed), None, "in an ArgumentPackage");
         assert_eq!(locations(typed).map(|found| found.len()), Some(1));
+        let input = format!("{OPEN}{typed}</sacm:ArgumentPackage>");
+        let output = read(input.as_bytes(), &strict()).unwrap_or_else(|error| panic!("{error:?}"));
+        assert_eq!(
+            output
+                .diagnostics()
+                .iter()
+                .map(|found| found.code().as_str())
+                .collect::<Vec<_>>(),
+            ["SACM-XMI-003"]
+        );
 
         let input = concat!(
             "<sacm:ArtifactPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
@@ -4033,18 +4402,53 @@ mod tests {
             "<artifactElement xmi:type=\"sacm:ArtifactAssertedRelationship\" xmi:id=\"r\"/>",
             "</sacm:ArtifactPackage>"
         );
-        match read(input.as_bytes(), &strict()) {
-            Err(ReadError::Unsupported { location, reason }) => {
-                assert_eq!(location, SourceLocation::new(2, 1));
-                assert_eq!(
-                    reason,
-                    "the element \"artifactElement\" in the root element \"sacm:ArtifactPackage\" \
-                     is typed ArtifactAssertedRelationship, the machine-readable model's spelling \
-                     of ArtifactAssetRelationship (strict mode never reads it; SACM23-XMI-009 is \
-                     to read it in tolerant mode)"
-                );
-            }
-            other => panic!("{other:?}"),
+        let reason = "the element \"artifactElement\" in the root element \
+                      \"sacm:ArtifactPackage\" is typed ArtifactAssertedRelationship, the \
+                      machine-readable model's spelling of ArtifactAssetRelationship";
+        for (mode, affected, ending, read_as) in [
+            (
+                Mode::Strict,
+                "p",
+                "; it is kept as preserved content, and a tolerant read reads it as \
+                 ArtifactAssetRelationship",
+                None,
+            ),
+            (
+                Mode::Tolerant,
+                "r",
+                "; it is read as ArtifactAssetRelationship, which write writes",
+                Some(crate::model::ElementKind::ArtifactAssetRelationship),
+            ),
+        ] {
+            let output = read(input.as_bytes(), &ReadOptions::default().with_mode(mode))
+                .unwrap_or_else(|error| panic!("{mode:?}: {error:?}"));
+            let found: Vec<_> = output
+                .diagnostics()
+                .iter()
+                .map(|found| {
+                    (
+                        found.code().as_str(),
+                        found.message().to_owned(),
+                        found.affected()[0].as_str(),
+                        found.location(),
+                    )
+                })
+                .collect();
+            assert_eq!(
+                found,
+                [(
+                    "SACM-XMI-013",
+                    format!("{reason}{ending}"),
+                    affected,
+                    SourceLocation::new(2, 1)
+                )],
+                "{mode:?}"
+            );
+            assert_eq!(
+                output.document().get("r").map(SacmElement::kind),
+                read_as,
+                "{mode:?}"
+            );
         }
     }
 
@@ -4372,10 +4776,11 @@ mod tests {
         assert!(document.get("n").is_some_and(|n| n.content().is_none()));
     }
 
-    /// The §11.4 spelling as an attribute is kept on an `ArgumentGroup` with
-    /// SACM-XMI-014; on any other kind it is an attribute the class lacks.
+    /// The §11.2 spelling as an attribute is read on an `ArgumentGroup` as
+    /// its members, with SACM-XMI-013; on any other kind it is an attribute
+    /// the class lacks (SACM23-XMI-009).
     #[test]
-    fn the_text_spelling_attribute_is_kept_on_a_group_only() {
+    fn the_text_spelling_attribute_is_read_on_a_group_only() {
         let (found, document) = kept(&in_p(
             "<argumentElement xmi:type=\"sacm:ArgumentGroup\" xmi:id=\"g\" \
              argumentationElement=\"g\"/>\
@@ -4389,15 +4794,23 @@ mod tests {
         assert_eq!(
             codes,
             [
-                ("SACM-XMI-014", "g"),
+                ("SACM-XMI-013", "g"),
                 ("SACM-XMI-003", "c"),
                 ("SACM-XMI-003", "h")
             ]
         );
+        assert_eq!(
+            document.get("g").map(|g| g
+                .group_members()
+                .iter()
+                .map(ElementId::as_str)
+                .collect::<Vec<_>>()),
+            Some(vec!["g"])
+        );
         assert!(
             document
-                .get("g")
-                .is_some_and(|g| g.group_members().is_empty())
+                .get("c")
+                .is_some_and(|c| c.group_members().is_empty())
         );
     }
 

@@ -261,9 +261,10 @@ fn kept_entries() -> Vec<Kept> {
         Some("case"),
     ));
     // Slice 0055 reads Artifact, Resource, Activity and Event (ADR 0034
-    // amendment 1): the kinds an ArtifactPackage holds that are still unread.
+    // amendment 1), and slice 0057 ArtifactAssetRelationship (amendment 2):
+    // the kinds an ArtifactPackage holds that are still unread.
     for (kind, row) in [
-        ("ArtifactAssetRelationship", "SACM23-ART-010"),
+        ("ArtifactPackageInterface", "SACM23-ART-012"),
         ("Category", "SACM23-TERM-002"),
         ("Term", "SACM23-TERM-004"),
         ("Expression", "SACM23-TERM-005"),
@@ -404,39 +405,21 @@ fn kept_entries() -> Vec<Kept> {
         "SACM23-BASE-009",
         Some("n"),
     ));
-    // The spellings SACM23-XMI-009 is to read: SACM-XMI-014 until it is
-    // built (lead correction, 2026-11-16).
+    // The spellings SACM23-XMI-009 reads are no kept entry since slice
+    // 0057: see `spelled_entries`.
+    // A typed child of an ArtifactPackage nested in artifactElement, which
+    // the model's spelling ArtifactAssertedRelationship sampled until slice
+    // 0057 read it (SACM23-XMI-009).
     cases.push(kept(
-        "TextSpelling",
-        "argumentationElement in an ArgumentPackage",
-        package(
-            "<argumentationElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\"><name content=\"c1\"/>\
-             </argumentationElement>",
-        ),
-        "SACM23-XMI-009",
-        Some("p"),
-    ));
-    cases.push(kept(
-        "TextSpelling",
-        "argumentationElement in an ArgumentGroup",
-        package(
-            "<argumentElement xmi:type=\"sacm:ArgumentGroup\" xmi:id=\"g\"><name content=\"g\"/>\
-             <argumentationElement xmi:idref=\"c1\"/></argumentElement>\
-             <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\"><name content=\"c1\"/>\
-             </argumentElement>",
-        ),
-        "SACM23-XMI-009",
-        Some("g"),
-    ));
-    cases.push(kept(
-        "ModelSpelling",
-        "ArtifactAssertedRelationship in an ArtifactPackage",
+        "ArtifactPackageInterface",
+        "in an ArtifactPackage nested in an ArtifactPackage",
         artifact_package(
-            "<artifactElement xmi:type=\"sacm:ArtifactAssertedRelationship\" xmi:id=\"r\">\
-             <name content=\"r\"/></artifactElement>",
+            "<artifactElement xmi:type=\"sacm:ArtifactPackage\" xmi:id=\"n\"><name content=\"n\"/>\
+             <artifactElement xmi:type=\"sacm:ArtifactPackageInterface\" xmi:id=\"r\">\
+             <name content=\"r\"/></artifactElement></artifactElement>",
         ),
-        "SACM23-XMI-009",
-        Some("a"),
+        "SACM23-ART-012",
+        Some("n"),
     ));
     // A cross-document href: SACM-XMI-007 (SACM23-XMI-027).
     cases.push(Kept {
@@ -571,6 +554,114 @@ fn lib_api_011_each_kept_entry_reads_tolerantly_with_its_code_and_row() {
         failures.len(),
         failures.join("\n")
     );
+    assert_spelled_entries_are_read();
+}
+
+/// The spellings that were the entry `TextSpelling` until slice 0057 are read
+/// now (SACM23-XMI-009): a strict read returns the document, keeping the
+/// construct with one SACM-XMI-013 Error at the same location, affecting the
+/// same holder, and a tolerant read reads it with one SACM-XMI-013 Warning
+/// there, keeping nothing.
+fn assert_spelled_entries_are_read() {
+    for (what, input, holder, was_read) in spelled_entries() {
+        let at = position_of(API_011, &input, "<argumentationElement");
+        let strict = match read(Mode::Strict, &input) {
+            Ok(output) => output,
+            Err(error) => panic!("{API_011}: {what}: a strict read refused it: {error:?}"),
+        };
+        assert_eq!(
+            reported(&strict),
+            [(
+                Code::XMI_SPELLING_VARIANT,
+                Severity::Error,
+                Some(at),
+                ids(&[holder])
+            )],
+            "{API_011}: {what}: a strict read does not keep it with one SACM-XMI-013 Error"
+        );
+        let doc = strict.into_document();
+        assert_eq!(
+            holders(&doc),
+            [holder.to_owned()],
+            "{API_011}: {what}: a strict read does not keep it in {holder}"
+        );
+        assert!(
+            matches!(
+                write(&doc, Mode::Strict),
+                Err(WriteError::PreservedContent { .. })
+            ),
+            "{API_011}: {what}: a strict write of the strict read is not PreservedContent"
+        );
+        let output = tolerant(API_011, what, &input);
+        assert_eq!(
+            reported(&output),
+            [(
+                Code::XMI_SPELLING_VARIANT,
+                Severity::Warning,
+                Some(at),
+                ids(&[holder])
+            )],
+            "{API_011}: {what}: a tolerant read does not read it with one SACM-XMI-013 Warning"
+        );
+        let doc = output.into_document();
+        assert!(
+            !doc.has_preserved_content() && was_read(&doc),
+            "{API_011}: {what}: a tolerant read keeps it, or does not read it"
+        );
+        assert_round_trips(API_011, what, &doc);
+    }
+}
+
+/// `(code, severity, location, affected)` of each diagnostic of `output`.
+type Reported = Vec<(Code, Severity, Option<SourceLocation>, Vec<ElementId>)>;
+
+fn reported(output: &ReadOutput) -> Reported {
+    output
+        .diagnostics()
+        .iter()
+        .map(|found| {
+            (
+                found.code(),
+                found.severity(),
+                found.location(),
+                found.affected().to_vec(),
+            )
+        })
+        .collect()
+}
+
+/// A spelling: what it is, the input, the element that holds the spelling,
+/// and what a tolerant read must have read from it.
+type Spelled = (&'static str, String, &'static str, fn(&Document) -> bool);
+
+/// What the entry `TextSpelling` sampled until slice 0057, which
+/// SACM23-XMI-009 reads now.
+fn spelled_entries() -> [Spelled; 2] {
+    [
+        (
+            "argumentationElement in an ArgumentPackage",
+            package(
+                "<argumentationElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\"><name content=\"c1\"/>\
+                 </argumentationElement>",
+            ),
+            "p",
+            |doc| doc.get("c1").is_some_and(|c1| c1.parent().is_some()),
+        ),
+        (
+            "argumentationElement in an ArgumentGroup",
+            package(
+                "<argumentElement xmi:type=\"sacm:ArgumentGroup\" xmi:id=\"g\"><name content=\"g\"/>\
+                 <argumentationElement xmi:idref=\"c1\"/></argumentElement>\
+                 <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\"><name content=\"c1\"/>\
+                 </argumentElement>",
+            ),
+            "g",
+            |doc| {
+                doc.get("g")
+                    .is_some_and(|g| g.group_members() == [ElementId::from("c1")])
+            },
+        ),
+    ]
 }
 
 /// A cross-document `href`, and the reference form of a composite, are kept

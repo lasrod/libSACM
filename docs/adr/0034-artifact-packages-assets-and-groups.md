@@ -141,3 +141,46 @@ Their Interim entries in the refusal list go.
   each of these attributes belongs to one kind (`date` to two).
 - **Parsed date types.** Rejected under D-DATE: they would lose how a value was written and
   refuse values the schema accepts.
+
+## Amendment 2 (accepted by the maintainer, 2026-11-17; slice 0057)
+
+ArtifactAssetRelationship (§12.14) is read, written, created, edited, compared and
+validated like the other ArtifactAssets (SACM23-ART-010). Its Interim entry in the refusal
+list goes. The spellings ptc/22-03-13 and the text use instead are read tolerantly
+(SACM23-XMI-009). This applies the maintainer's M3 decisions 3, 5 and 7 (2026-11-15).
+
+- **Ends (decision 5):**
+  - `ReferenceEnd::ArtifactSource` and `ReferenceEnd::ArtifactTarget`;
+  - XMI names `source` and `target`; serde names `artifactSource` and `artifactTarget`,
+    because `Source` and `Target` already hold the XMI names for an AssertedRelationship;
+  - `[1..*]`, typed ArtifactAsset, clause 12.14. A missing end is a SACM-MULT-001 Error,
+    because the text and the model agree on the bound (D-SEV).
+
+  No kind has two ends of one name, so the reader resolves an end by the element's kind.
+- **Accessors:** `SacmElement::sources()` and the new `targets()` answer for both
+  relationship kinds; `target()` stays the AssertedRelationship's.
+- **Delete (decision 7):** as for asserted relationships. `DeleteReferencingRelationships`
+  deletes a relationship whose source or target is deleted. `ScrubReferences` removes the id
+  and deletes the relationship only when an end is left empty.
+- **`EditError::FeatureNotApplicable`** names the other class when the element has an end
+  of the same name, e.g. `the AssertedInference "i1" has no target of an
+  ArtifactAssetRelationship`. Its JSON is unchanged.
+- **Spellings (decision 3):** `ArtifactAssertedRelationship`, an Event's `occurece`, and
+  `argumentationElement` as an ArgumentPackage role or an ArgumentGroup end.
+  - A tolerant read reads each as the resolved name, with a SACM-XMI-013 Warning.
+  - A strict read keeps it as preserved content with a SACM-XMI-013 Error, so a strict save
+    refuses the document.
+  - The resolved name wins over a spelled repeat.
+  - The C++ library's `occurence` is not read.
+  - This replaces the last sentence of the "Not read yet" bullet above, and Amendment 1's
+    `occurece` bullet.
+- **Not here:** the §10.4 spelling `TerminologyElement` is SACM23-XMI-028 (M4), for when a
+  TerminologyPackage is read.
+
+**Alternatives considered:**
+- **Reuse `Source` and `Target`, with bounds that depend on the kind.** Rejected: `target`
+  would hold several ids on one kind, and code that assumes one target would quietly handle
+  artifact links wrongly.
+- **Keep the strict refusal of the spellings.** Rejected: it contradicts decision 3.
+- **Map the spellings in strict mode too.** Rejected: a strict save would quietly rewrite
+  the names.

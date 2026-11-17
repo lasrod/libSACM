@@ -17,8 +17,9 @@ use crate::model::{AbstractClass, Document, ElementId, Preserved, ReferenceEnd, 
 /// - [`with_reference_policy`](Self::with_reference_policy): what happens to
 ///   a reference to a deleted element held outside the element's subtree
 ///   ([`ReferenceDeletePolicy`]): refused (SACM-CMD-002), handled by deleting
-///   each asserted relationship whose `source`, `target` or `reasoning` names
-///   a deleted element, or scrubbed out of its end.
+///   each asserted relationship whose `source`, `target` or `reasoning`, and
+///   each `ArtifactAssetRelationship` whose `source` or `target`, names a
+///   deleted element, or scrubbed out of its end.
 /// - [`with_package_policy`](Self::with_package_policy): whether an element
 ///   that contains other elements is refused (SACM-CMD-006) or deleted with
 ///   them ([`PackageDeletePolicy`]). Descriptions, implementation
@@ -35,11 +36,12 @@ use crate::model::{AbstractClass, Document, ElementId, Preserved, ReferenceEnd, 
 /// by the policies; its package is that of the element that held it.
 ///
 /// **What is deleted** is the element and everything it contains, plus each
-/// asserted relationship the reference policy deletes, with its contents, to
-/// a fixpoint: a relationship can be the source or target of another.
-/// Every surviving end loses the deleted ids and keeps the rest, in order; a
-/// relationship is deleted rather than left without a `source` or `target`
-/// (§11.13), and an `ArgumentGroup` that loses its members stays. A
+/// relationship the reference policy deletes, an asserted relationship or an
+/// `ArtifactAssetRelationship`, with its contents, to a fixpoint: a
+/// relationship can be the source or target of another. Every surviving end
+/// loses the deleted ids and keeps the rest, in order; a relationship is
+/// deleted rather than left without a `source` or `target` (§11.13, §12.14),
+/// and an `ArgumentGroup` or `ArtifactGroup` that loses its members stays. A
 /// reference that named no element before the delete is not touched.
 ///
 /// **The checks**, in order: the element is in the document
@@ -143,16 +145,19 @@ pub enum ReferenceDeletePolicy {
     #[default]
     RejectIfReferenced,
     /// Delete each asserted relationship whose `source`, `target` or
-    /// `reasoning` names a deleted element, with its contents, to a
-    /// fixpoint; remove every other such id from its end (`citedElement`,
-    /// `abstractForm`, `metaClaim`, `structure`, `referencedArtifactElement`
-    /// and a group's `argumentElement` or `artifactElement`, none of which has
-    /// a lower bound).
+    /// `reasoning` names a deleted element, and each
+    /// `ArtifactAssetRelationship` whose `source` or `target` does, with its
+    /// contents, to a fixpoint; remove every other such id from its end
+    /// (`citedElement`, `abstractForm`, `metaClaim`, `structure`,
+    /// `referencedArtifactElement` and a group's `argumentElement` or
+    /// `artifactElement`, none of which has a lower bound).
     DeleteReferencingRelationships,
-    /// Remove every such id from its end. An asserted relationship the
-    /// delete leaves with no `source`, or with no `target`, is deleted, with
-    /// its contents, since §11.13 requires both (`source:ArgumentAsset[1..*]`,
-    /// `target:ArgumentAsset[1]`).
+    /// Remove every such id from its end. A relationship the delete leaves
+    /// with no `source`, or with no `target`, is deleted, with its contents,
+    /// since SACM requires both: §11.13 for an asserted relationship
+    /// (`source:ArgumentAsset[1..*]`, `target:ArgumentAsset[1]`) and §12.14
+    /// for an `ArtifactAssetRelationship` (`source:ArtifactAsset[1..*]`,
+    /// `target:ArtifactAsset[1..*]`). One that keeps an id in each end stays.
     ScrubReferences,
 }
 
@@ -477,8 +482,7 @@ impl<'d> Tree<'d> {
     }
 
     /// The elements to delete, by position: the subtree `subtree`, plus each
-    /// asserted relationship `policy` deletes, with its subtree, to a
-    /// fixpoint.
+    /// relationship `policy` deletes, with its subtree, to a fixpoint.
     fn deleted(&self, subtree: std::ops::Range<usize>, policy: ReferenceDeletePolicy) -> Vec<bool> {
         let mut deleted = vec![false; self.elements.len()];
         let mut pending: Vec<usize> = Vec::new();
@@ -490,24 +494,31 @@ impl<'d> Tree<'d> {
             return deleted;
         }
         // The ends through which a delete cascades: each occurrence of an id
-        // in the `source` or `target` of an asserted relationship, and under
-        // `DeleteReferencingRelationships` in its `reasoning` too. `remaining`
-        // counts each relationship's source occurrences not yet deleted, so
-        // each reference is looked at once and the fixpoint is linear in the
-        // number of references.
-        let mut ends = vec![ReferenceEnd::Source, ReferenceEnd::Target];
+        // in the `source` or `target` of a relationship, an asserted one
+        // (§11.13) or an ArtifactAssetRelationship (§12.14), and under
+        // `DeleteReferencingRelationships` in an asserted one's `reasoning`
+        // too (ADR 0034 amendment 2). Each end applies to one class, so a
+        // relationship cascades through its own. `remaining` counts, for each
+        // relationship and each of these ends, the occurrences not yet
+        // deleted, so each reference is looked at once and the fixpoint is
+        // linear in the number of references; only a scrub reads it, and
+        // every end a scrub cascades through has the lower bound 1.
+        let mut ends = vec![
+            ReferenceEnd::Source,
+            ReferenceEnd::Target,
+            ReferenceEnd::ArtifactSource,
+            ReferenceEnd::ArtifactTarget,
+        ];
         if policy == ReferenceDeletePolicy::DeleteReferencingRelationships {
             ends.push(ReferenceEnd::Reasoning);
         }
         let mut triggers: HashMap<&ElementId, Vec<(usize, ReferenceEnd)>> = HashMap::new();
-        let mut remaining = vec![0_usize; self.elements.len()];
+        let mut remaining: HashMap<(usize, ReferenceEnd), usize> = HashMap::new();
         for (position, element) in self.elements.iter().enumerate() {
-            if !element.kind().is_a(AbstractClass::AssertedRelationship) {
-                continue;
-            }
-            remaining[position] = element.sources().len();
-            for &end in &ends {
-                for id in element.references(end) {
+            for &end in ends.iter().filter(|end| end.applies_to(element.kind())) {
+                let held = element.references(end);
+                remaining.insert((position, end), held.len());
+                for id in held {
                     triggers.entry(id).or_default().push((position, end));
                 }
             }
@@ -529,14 +540,15 @@ impl<'d> Tree<'d> {
                 if deleted[relationship] {
                     continue;
                 }
-                let goes = match (policy, end) {
-                    // A `source` that had ids loses its last one.
-                    (ReferenceDeletePolicy::ScrubReferences, ReferenceEnd::Source) => {
-                        remaining[relationship] = remaining[relationship].saturating_sub(1);
-                        remaining[relationship] == 0
+                let goes = match remaining.get_mut(&(relationship, end)) {
+                    // A scrub deletes the relationship once an end loses its
+                    // last id: each end keeps its own count.
+                    Some(left) if policy == ReferenceDeletePolicy::ScrubReferences => {
+                        *left = left.saturating_sub(1);
+                        *left == 0
                     }
                     // Any cascading end of the relationship names a deleted
-                    // element, or the scrub removes its `target`.
+                    // element.
                     _ => true,
                 };
                 if !goes {

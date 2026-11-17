@@ -1,8 +1,9 @@
 //! The Boolean flags and the non-containment reference ends of the classes
 //! the model holds (formal/23-05-08 §8.2, §11.2, §11.9, §11.10, §11.12,
-//! §11.13, §12.3; SACM23-BASE-007, SACM23-BASE-008, SACM23-XMI-005,
+//! §11.13, §12.3, §12.14; SACM23-BASE-007, SACM23-BASE-008, SACM23-XMI-005,
 //! SACM23-ARG-004, SACM23-ARG-005, SACM23-ARG-006, SACM23-ARG-007,
-//! SACM23-ARG-013, SACM23-ART-011; ADR 0026, ADR 0027, ADR 0028, ADR 0034).
+//! SACM23-ARG-013, SACM23-ART-010, SACM23-ART-011; ADR 0026, ADR 0027,
+//! ADR 0028, ADR 0034).
 //!
 //! [`Flag`] and [`ReferenceEnd`] are public, so that an edit can name the
 //! flag or end it sets (ADR 0029), and so are their readers for a generic
@@ -16,9 +17,11 @@
 //! writes their features in. A later end adds one entry here, one accessor
 //! and one `Difference` variant. A multi-valued end ([`ReferenceEnd::is_many`])
 //! holds every id of its attribute, and each reference element appends one;
-//! a single-valued one holds at most one. The owners, the declared types
-//! and the bounds by end alone are crate-private, as the role tables of
-//! [`containment`](super::containment) are.
+//! a single-valued one holds at most one. No kind has two ends of one name,
+//! so the reader resolves an end by the element's kind (ADR 0034 amendment
+//! 2). The owners, the declared types and the bounds by end alone are
+//! crate-private, as the role tables of [`containment`](super::containment)
+//! are.
 
 use super::{AbstractClass, DeclaredType, ElementKind};
 
@@ -26,7 +29,7 @@ use super::{AbstractClass, DeclaredType, ElementKind};
 /// end, superclass first: the order in which `xmi::write` writes each one's
 /// features (XMI 2.5.1 Annex B.5.2; ADR 0027, ADR 0028). Within a class it
 /// writes the flags, then, on `Assertion`, the declaration, then the ends.
-pub(crate) const OWNERS: [DeclaredType; 7] = [
+pub(crate) const OWNERS: [DeclaredType; 8] = [
     DeclaredType::Abstract(AbstractClass::SACMElement),
     DeclaredType::Abstract(AbstractClass::Assertion),
     DeclaredType::Abstract(AbstractClass::AssertedRelationship),
@@ -34,6 +37,7 @@ pub(crate) const OWNERS: [DeclaredType; 7] = [
     DeclaredType::Kind(ElementKind::ArtifactReference),
     DeclaredType::Kind(ElementKind::ArgumentGroup),
     DeclaredType::Kind(ElementKind::ArtifactGroup),
+    DeclaredType::Kind(ElementKind::ArtifactAssetRelationship),
 ];
 
 /// A Boolean property of an element, `false` by default: the flag a
@@ -149,9 +153,15 @@ pub(crate) fn flag_named(kind: ElementKind, local: &str) -> Option<Flag> {
 /// Each end belongs to a class, and only the elements of that class have it:
 /// every element has `citedElement` and `abstractForm`, every Assertion has
 /// `metaClaim`, and so on, as each variant says. An end holds at most one id
-/// (`[0..1]`, or exactly one for `target`), or any number in order, repeats
-/// included (`[0..*]`, or at least one for `source`). Later releases may add
-/// ends, so a `match` on `ReferenceEnd` needs a wildcard arm.
+/// (`[0..1]`, or exactly one for an `AssertedRelationship`'s `target`), or
+/// any number in order, repeats included (`[0..*]`, or at least one for
+/// `source` and for an `ArtifactAssetRelationship`'s `target`). No kind has
+/// two ends of one name: an `ArtifactAssetRelationship`'s `source` and
+/// `target` are [`ArtifactSource`](Self::ArtifactSource) and
+/// [`ArtifactTarget`](Self::ArtifactTarget), apart from an
+/// `AssertedRelationship`'s [`Source`](Self::Source) and
+/// [`Target`](Self::Target). Later releases may add ends, so a `match` on
+/// `ReferenceEnd` needs a wildcard arm.
 ///
 /// # Examples
 ///
@@ -163,6 +173,9 @@ pub(crate) fn flag_named(kind: ElementKind, local: &str) -> Option<Flag> {
 /// // ArtifactGroup's its `artifactElement` references.
 /// assert_eq!(ReferenceEnd::GroupMember.name(), "argumentElement");
 /// assert_eq!(ReferenceEnd::ArtifactGroupMember.name(), "artifactElement");
+/// // An ArtifactAssetRelationship's ends have the names of an
+/// // AssertedRelationship's.
+/// assert_eq!(ReferenceEnd::ArtifactTarget.name(), "target");
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(
@@ -205,6 +218,16 @@ pub enum ReferenceEnd {
     #[doc(alias = "artifactElement")]
     #[cfg_attr(feature = "serde", serde(rename = "artifactElement"))]
     ArtifactGroupMember,
+    /// `source:ArtifactAsset[1..*]` of an `ArtifactAssetRelationship` (§12.14). Named for the
+    /// Artifact package, because `source` is also the end of every `AssertedRelationship`
+    /// (ADR 0034 amendment 2); with `serde` it is `artifactSource`.
+    #[doc(alias = "source")]
+    ArtifactSource,
+    /// `target:ArtifactAsset[1..*]` of an `ArtifactAssetRelationship` (§12.14): one or more
+    /// ids, where an `AssertedRelationship`'s `target` holds exactly one. With `serde` it is
+    /// `artifactTarget`.
+    #[doc(alias = "target")]
+    ArtifactTarget,
 }
 
 impl ReferenceEnd {
@@ -212,8 +235,9 @@ impl ReferenceEnd {
     /// reports them (ptc/22-03-13 order within each class, superclass
     /// first): `citedElement`, `abstractForm`, `metaClaim`, `reasoning`,
     /// `source`, `target`, `structure`, `referencedArtifactElement`, an
-    /// `ArgumentGroup`'s `argumentElement` and an `ArtifactGroup`'s
-    /// `artifactElement`.
+    /// `ArgumentGroup`'s `argumentElement`, an `ArtifactGroup`'s
+    /// `artifactElement`, and an `ArtifactAssetRelationship`'s `source` and
+    /// `target`.
     ///
     /// A slice, so that a later end is an additive change. It is also the
     /// order of [`Document::referrers`](crate::model::Document::referrers)
@@ -240,14 +264,18 @@ impl ReferenceEnd {
         ReferenceEnd::ReferencedArtifactElement,
         ReferenceEnd::GroupMember,
         ReferenceEnd::ArtifactGroupMember,
+        ReferenceEnd::ArtifactSource,
+        ReferenceEnd::ArtifactTarget,
     ];
 
     /// The end's name, spelled as in the machine-readable model and in XMI:
     /// `citedElement`, `abstractForm`, `metaClaim`, `reasoning`, `source`,
     /// `target`, `structure`, `referencedArtifactElement` or, for
-    /// [`GroupMember`](Self::GroupMember), `argumentElement` and, for
-    /// [`ArtifactGroupMember`](Self::ArtifactGroupMember), `artifactElement`.
-    /// It is the `end` an [`EditError`](crate::edit::EditError) names.
+    /// [`GroupMember`](Self::GroupMember), `argumentElement`, for
+    /// [`ArtifactGroupMember`](Self::ArtifactGroupMember), `artifactElement`,
+    /// and, for [`ArtifactSource`](Self::ArtifactSource) and
+    /// [`ArtifactTarget`](Self::ArtifactTarget), `source` and `target`. It is
+    /// the `end` an [`EditError`](crate::edit::EditError) names.
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
@@ -255,8 +283,10 @@ impl ReferenceEnd {
             Self::AbstractForm => "abstractForm",
             Self::MetaClaim => "metaClaim",
             Self::Reasoning => "reasoning",
-            Self::Source => "source",
-            Self::Target => "target",
+            // The two relationship classes name their ends alike (ADR 0034
+            // amendment 2).
+            Self::Source | Self::ArtifactSource => "source",
+            Self::Target | Self::ArtifactTarget => "target",
             Self::Structure => "structure",
             Self::ReferencedArtifactElement => "referencedArtifactElement",
             Self::GroupMember => "argumentElement",
@@ -274,6 +304,7 @@ impl ReferenceEnd {
             Self::Structure => "11.12",
             Self::Reasoning | Self::Source | Self::Target => "11.13",
             Self::ArtifactGroupMember => "12.3",
+            Self::ArtifactSource | Self::ArtifactTarget => "12.14",
         }
     }
 
@@ -287,14 +318,17 @@ impl ReferenceEnd {
                 | Self::ReferencedArtifactElement
                 | Self::GroupMember
                 | Self::ArtifactGroupMember
+                | Self::ArtifactSource
+                | Self::ArtifactTarget
         )
     }
 
     /// Whether an element of `kind` has the end: every element has
     /// `citedElement` and `abstractForm` (§8.2), every Assertion has
     /// `metaClaim` (§11.10), every `AssertedRelationship` has `reasoning`,
-    /// `source` and `target` (§11.13), and each other end belongs to one
-    /// kind, as its variant says.
+    /// `source` and `target` (§11.13), an `ArtifactAssetRelationship` has
+    /// its own `source` and `target` (§12.14), and each other end belongs to
+    /// one kind, as its variant says.
     ///
     /// It is true exactly when a
     /// [`SetReferences::clear`](crate::edit::SetReferences::clear) of the
@@ -322,7 +356,10 @@ impl ReferenceEnd {
     ///
     /// The bounds depend on the owner: §11.13 (p. 40) gives an
     /// `AssertedRelationship` `source:ArgumentAsset[1..*]` and
-    /// `target:ArgumentAsset[1]`, and the other ends are `[0..1]` or `[0..*]`.
+    /// `target:ArgumentAsset[1]`, §12.14 (p. 50) gives an
+    /// `ArtifactAssetRelationship` `source:ArtifactAsset[1..*]` and
+    /// `target:ArtifactAsset[1..*]`, and the other ends are `[0..1]` or
+    /// `[0..*]`.
     /// They are the bounds [`SetReferences`](crate::edit::SetReferences),
     /// [`AddReference`](crate::edit::AddReference) and
     /// [`RemoveReference`](crate::edit::RemoveReference) keep an end within
@@ -336,6 +373,9 @@ impl ReferenceEnd {
     /// assert_eq!(ReferenceEnd::Target.bounds(ElementKind::AssertedInference), Some((1, Some(1))));
     /// assert_eq!(ReferenceEnd::MetaClaim.bounds(ElementKind::Claim), Some((0, None)));
     /// assert_eq!(ReferenceEnd::Source.bounds(ElementKind::Claim), None);
+    /// let link = ElementKind::ArtifactAssetRelationship;
+    /// assert_eq!(ReferenceEnd::ArtifactTarget.bounds(link), Some((1, None)));
+    /// assert_eq!(ReferenceEnd::Target.bounds(link), None);
     /// ```
     #[must_use]
     pub const fn bounds(self, kind: ElementKind) -> Option<(usize, Option<usize>)> {
@@ -346,11 +386,13 @@ impl ReferenceEnd {
         }
     }
 
-    /// The fewest ids the end holds: 1 for `source` (`[1..*]`) and `target`
-    /// (`[1]`), 0 for every other end.
+    /// The fewest ids the end holds: 1 for an `AssertedRelationship`'s
+    /// `source` (`[1..*]`) and `target` (`[1]`) and for an
+    /// `ArtifactAssetRelationship`'s `source` and `target` (`[1..*]`), 0 for
+    /// every other end.
     pub(crate) const fn lower_bound(self) -> usize {
         match self {
-            Self::Source | Self::Target => 1,
+            Self::Source | Self::Target | Self::ArtifactSource | Self::ArtifactTarget => 1,
             _ => 0,
         }
     }
@@ -375,6 +417,9 @@ impl ReferenceEnd {
             Self::ReferencedArtifactElement => DeclaredType::Kind(ElementKind::ArtifactReference),
             Self::GroupMember => DeclaredType::Kind(ElementKind::ArgumentGroup),
             Self::ArtifactGroupMember => DeclaredType::Kind(ElementKind::ArtifactGroup),
+            Self::ArtifactSource | Self::ArtifactTarget => {
+                DeclaredType::Kind(ElementKind::ArtifactAssetRelationship)
+            }
         }
     }
 
@@ -392,6 +437,9 @@ impl ReferenceEnd {
                 DeclaredType::Abstract(AbstractClass::ArtifactElement)
             }
             Self::GroupMember => DeclaredType::Abstract(AbstractClass::ArgumentationElement),
+            Self::ArtifactSource | Self::ArtifactTarget => {
+                DeclaredType::Abstract(AbstractClass::ArtifactAsset)
+            }
         }
     }
 }
@@ -413,8 +461,16 @@ mod tests {
     fn every_kind_has_its_classes_ends_and_flags_by_name_and_no_other() {
         for &kind in ElementKind::ALL {
             for &end in ReferenceEnd::ALL {
-                let expected = end.owner().admits(kind).then_some(end);
+                // The end of that name whose owner admits the kind: no kind
+                // has two ends of one name (ADR 0034 amendment 2).
+                let expected = ReferenceEnd::ALL
+                    .iter()
+                    .copied()
+                    .find(|other| other.name() == end.name() && other.owner().admits(kind));
                 assert_eq!(reference_end_named(kind, end.name()), expected, "{kind}");
+                if end.owner().admits(kind) {
+                    assert_eq!(expected, Some(end), "{kind}");
+                }
             }
             for &flag in Flag::ALL {
                 let expected = flag.owner().admits(kind).then_some(flag);
@@ -444,6 +500,24 @@ mod tests {
             reference_end_named(ElementKind::ArgumentReasoning, "metaClaim"),
             None
         );
+        // The ends of the two relationship classes share their names.
+        let link = ElementKind::ArtifactAssetRelationship;
+        assert_eq!(
+            (
+                reference_end_named(link, "source"),
+                reference_end_named(link, "target"),
+                reference_end_named(link, "reasoning"),
+            ),
+            (
+                Some(ReferenceEnd::ArtifactSource),
+                Some(ReferenceEnd::ArtifactTarget),
+                None
+            )
+        );
+        assert_eq!(
+            reference_end_named(relationship, "target"),
+            Some(ReferenceEnd::Target)
+        );
     }
 
     #[test]
@@ -472,7 +546,9 @@ mod tests {
                 "structure",
                 "referencedArtifactElement",
                 "argumentElement",
-                "artifactElement"
+                "artifactElement",
+                "source",
+                "target"
             ]
         );
         assert_eq!(
@@ -482,7 +558,8 @@ mod tests {
                 .map(ReferenceEnd::clause)
                 .collect::<Vec<_>>(),
             [
-                "8.2", "8.2", "11.10", "11.13", "11.13", "11.13", "11.12", "11.9", "11.2", "12.3"
+                "8.2", "8.2", "11.10", "11.13", "11.13", "11.13", "11.12", "11.9", "11.2", "12.3",
+                "12.14", "12.14"
             ]
         );
         assert_eq!(
@@ -492,7 +569,7 @@ mod tests {
                 .map(ReferenceEnd::is_many)
                 .collect::<Vec<_>>(),
             [
-                false, false, true, false, true, false, false, true, true, true
+                false, false, true, false, true, false, false, true, true, true, true, true
             ]
         );
         assert_eq!(
@@ -501,7 +578,7 @@ mod tests {
                 .copied()
                 .map(ReferenceEnd::lower_bound)
                 .collect::<Vec<_>>(),
-            [0, 0, 0, 0, 1, 1, 0, 0, 0, 0]
+            [0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1]
         );
         assert_eq!(
             ReferenceEnd::ALL
@@ -517,6 +594,8 @@ mod tests {
                 None,
                 Some(1),
                 Some(1),
+                None,
+                None,
                 None,
                 None,
                 None
@@ -551,7 +630,9 @@ mod tests {
                 "ArgumentPackage",
                 "ArtifactElement",
                 "ArgumentationElement",
-                "ArtifactElement"
+                "ArtifactElement",
+                "ArtifactAsset",
+                "ArtifactAsset"
             ]
         );
     }
@@ -612,7 +693,8 @@ mod tests {
                 "ArgumentReasoning",
                 "ArtifactReference",
                 "ArgumentGroup",
-                "ArtifactGroup"
+                "ArtifactGroup",
+                "ArtifactAssetRelationship"
             ]
         );
     }

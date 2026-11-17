@@ -143,7 +143,7 @@
 use std::fmt;
 
 use crate::diagnostic::{Code, Diagnostic, SourceLocation};
-use crate::model::{Document, ElementId, ReferenceEnd};
+use crate::model::{Document, ElementId, ElementKind, ReferenceEnd};
 
 mod input;
 mod namespaces;
@@ -190,9 +190,10 @@ mod roots;
 /// can be inferred (XMI 2.5.1 §7.6.3), and none is guessed. A tolerant read
 /// keeps it whole as preserved content of its parent, with SACM-XMI-005 as a
 /// Warning (see [Modes](self#modes)). §11.4's text spells the
-/// ArgumentPackage role `argumentationElement`; a strict read refuses that
-/// spelling as [`ReadError::Unsupported`], and a tolerant read keeps it with
-/// SACM-XMI-014 until SACM23-XMI-009 reads it.
+/// ArgumentPackage role `argumentationElement`; a tolerant read reads that
+/// spelling as `argumentElement`, with one SACM-XMI-013 Warning, and a strict
+/// read keeps the child whole as preserved content of the package, with
+/// SACM-XMI-013 as an Error (see [Spellings](#spellings)).
 ///
 /// The four `UtilityElement`s are children in the same document order as the
 /// rest ([`SacmElement::descriptions`](crate::model::SacmElement::descriptions)
@@ -347,6 +348,31 @@ mod roots;
 /// [`ReadError::Unsupported`] and kept by a tolerant one with SACM-XMI-014,
 /// or content that does not conform, kept as preserved content (below),
 /// except the C++ shapes below.
+///
+/// # Spellings
+///
+/// Where formal/23-05-08 and ptc/22-03-13 spell a name differently and the
+/// crate follows the other (D-TEXT-MODEL), a tolerant read reads three
+/// spellings as the resolved name, each with one SACM-XMI-013 Warning
+/// ([`Code::XMI_SPELLING_VARIANT`]) at its start tag or attribute name,
+/// affecting the element the spelling belongs to (SACM23-XMI-009, ADR 0034
+/// amendment 2):
+/// - the type `ArtifactAssertedRelationship`, in `xmi:type` or `xsi:type`,
+///   under a role that admits an `ArtifactAssetRelationship` (§12.14), read
+///   as that class;
+/// - an Event's `occurece`, as an attribute or a value element, read as its
+///   `date` (§12.9);
+/// - `argumentationElement` as an ArgumentPackage's role (§11.4) or an
+///   `ArgumentGroup`'s end (§11.2), read as `argumentElement`.
+///
+/// Each is read under every rule of the resolved name, except that a value
+/// given under both names is read from the resolved name, and the spelled
+/// one is a repeat (SACM-MULT-001), kept as preserved content. A strict read
+/// never maps a spelling: it keeps the construct as preserved content of the
+/// element it sits in, with one SACM-XMI-013 Error, so a strict
+/// [`write`](fn@write) refuses the document. Elsewhere a spelling is ordinary
+/// content (SACM-XMI-003), and the C++ library's `occurence` is not read.
+/// [`write`](fn@write) writes the resolved names.
 ///
 /// # Preserved content
 ///
@@ -633,6 +659,13 @@ mod roots;
 ///   shape's first attribute, else its first text character that is not
 ///   literal white space, else the `<` of a `value` in a `name`, affecting
 ///   the element whose name or text it gives.
+/// - SACM-XMI-013 ([`Code::XMI_SPELLING_VARIANT`]), with the clause of the
+///   text that names the construct (12.14, 12.9, 11.4 or 11.2), for each
+///   spelling of SACM23-XMI-009 (see [Spellings](#spellings)): a Warning in
+///   [`Mode::Tolerant`], which reads it as the resolved name, affecting the
+///   element the spelling belongs to, and an Error in [`Mode::Strict`],
+///   which keeps the construct as preserved content of the element it sits
+///   in, affecting that element.
 ///
 /// A tolerant read also reports, as a Warning, each construct it keeps where
 /// a strict read refuses it (ADR 0035 D1, see [Modes](self#modes)), at the
@@ -788,8 +821,8 @@ mod roots;
 ///   and keeps the rest (SACM-XMI-014, SACM-XMI-007 or SACM-XMI-003). In
 ///   this release they are:
 ///   - conforming input not read yet: the other nine package kinds, as roots
-///     or children (such as an `ArgumentPackageInterface`); the five other
-///     kinds not read yet, as children: `ArtifactAssetRelationship` (SACM23-ART-010),
+///     or children (such as an `ArgumentPackageInterface`); the four other
+///     kinds not read yet, as children:
 ///     `Category` (SACM23-TERM-002), `Term` (SACM23-TERM-004), `Expression`
 ///     (SACM23-TERM-005) and `TerminologyGroup` (SACM23-TERM-006); a
 ///     package's `interface` end, as an attribute or an element, naming the
@@ -818,20 +851,11 @@ mod roots;
 ///     mark, and more nodes, attributes or namespaces than the parser can
 ///     hold;
 ///   - tolerances not read yet: a root outside the SACM 2.3 namespace, such
-///     as a SACM 2.2 one (LIB-COMPAT-004), an `XMI` element outside the XMI
-///     2.5.1 namespace, such as an older XMI revision's (LIB-COMPAT-002), the
-///     §11.4 text spelling `argumentationElement`, as the role of an
-///     ArgumentPackage or the end of an `ArgumentGroup` (SACM23-XMI-009), and
-///     a child typed `sacm:ArtifactAssertedRelationship`, the
-///     machine-readable model's spelling of `ArtifactAssetRelationship`
-///     (§12.14), under a role that admits an `ArtifactAssetRelationship`,
-///     such as an ArtifactPackage's `artifactElement` (SACM23-XMI-009).
-///     Under any other role, such as an ArgumentPackage's `argumentElement`,
-///     it is a type that names no SACM class, and the child is preserved; and
-///     `occurece`, the machine-readable model's spelling of an Event's
-///     `date` (§12.9), as an attribute or a value element of an Event
-///     (SACM23-XMI-009); on any other kind it is an attribute or child the
-///     class lacks, and is preserved;
+///     as a SACM 2.2 one (LIB-COMPAT-004), and an `XMI` element outside the
+///     XMI 2.5.1 namespace, such as an older XMI revision's (LIB-COMPAT-002).
+///     The spellings of SACM23-XMI-009 are no refusal: a strict read keeps
+///     each as preserved content with a SACM-XMI-013 Error (see
+///     [Spellings](crate::xmi::read#spellings));
 ///   - defects with nowhere to be kept: any other attribute, or text, on the
 ///     `xmi:XMI` element, and an attribute that would be preserved but whose
 ///     prefix `sacm` or `xmi` is bound to another namespace (see
@@ -1437,7 +1461,12 @@ pub enum ReadError {
     /// `referencedArtifactElement`, an `ArgumentGroup`'s `argumentElement` or
     /// an `ArtifactGroup`'s `artifactElement` (ADR 0027, ADR 0028, ADR 0034),
     /// takes any number of ids, in one attribute or in one element each,
-    /// but not both: an attribute and an element for one is refused too.
+    /// but not both: an attribute and an element for one is refused too. So
+    /// is an `ArtifactAssetRelationship`'s `source` or `target` (§12.14,
+    /// SACM23-ART-010): `Display` calls a property single-valued only when
+    /// the end of that name that an element of the variant's `kind` has is,
+    /// so an `AssertedRelationship`'s `target` is single-valued and an
+    /// `ArtifactAssetRelationship`'s is not.
     /// Fix: give every id in the attribute, or each in its own element.
     ///
     /// A `ModelElement`'s `name` (`name:LangString[1]`, formal/23-05-08 §8.6)
@@ -1467,7 +1496,8 @@ pub enum ReadError {
     /// let error = xmi::read(input, &strict).unwrap_err();
     /// assert!(matches!(
     ///     &error,
-    ///     ReadError::RepeatedValue { property, .. } if property == "name.content"
+    ///     ReadError::RepeatedValue { property, kind: sacm::model::ElementKind::ArgumentPackage, .. }
+    ///         if property == "name.content"
     /// ));
     /// assert_eq!(error.code(), Some(Code::MULTIPLICITY_VIOLATION));
     /// assert_eq!(error.location().map(|at| (at.line(), at.column())), Some((4, 5)));
@@ -1512,6 +1542,8 @@ pub enum ReadError {
         /// value belongs to. An element without an `xmi:id` is named by its
         /// generated id.
         element: ElementId,
+        /// The kind of `element`.
+        kind: ElementKind,
         /// The property: `gid`, `isCitation`, `isAbstract`, `isCounter`,
         /// `citedElement`, `abstractForm`, `metaClaim`, `reasoning`,
         /// `source`, `target`, `structure`, `name`, `name.lang`,
@@ -1799,16 +1831,20 @@ fn write_locations(f: &mut fmt::Formatter<'_>, locations: &[SourceLocation]) -> 
 
 /// Writes the `Display` of a [`ReadError::RepeatedValue`]: the count and the
 /// first two locations, so that the line stays bounded however many
-/// occurrences there are (SACM23-XMI-005).
+/// occurrences there are (SACM23-XMI-005). A property is multi-valued when
+/// the end of that name that an element of `kind` has is: `target` is an
+/// asserted relationship's single-valued end and an
+/// `ArtifactAssetRelationship`'s multi-valued one (SACM23-ART-010).
 fn write_repeated(
     f: &mut fmt::Formatter<'_>,
     element: &ElementId,
+    kind: ElementKind,
     property: &str,
     locations: &[SourceLocation],
 ) -> fmt::Result {
     let is_many = ReferenceEnd::ALL
         .iter()
-        .any(|end| end.is_many() && end.name() == property);
+        .any(|end| end.name() == property && end.applies_to(kind) && end.is_many());
     if is_many {
         write!(
             f,
@@ -1862,9 +1898,10 @@ impl fmt::Display for ReadError {
             }
             Self::RepeatedValue {
                 element,
+                kind,
                 property,
                 locations,
-            } => return write_repeated(f, element, property, locations),
+            } => return write_repeated(f, element, *kind, property, locations),
             Self::InvalidId { id, .. } => {
                 write!(f, "the xmi:id {id:?} is not an NCName")?;
                 None
@@ -1941,7 +1978,11 @@ impl std::error::Error for ReadError {}
 /// of the role that holds it in its parent's class, with no prefix, and with
 /// its children in document order. Role names are spelled as in the
 /// machine-readable model ptc/22-03-13 (`argumentElement`), which differs
-/// from §11.4's text (`argumentationElement`). A child carries
+/// from §11.4's text (`argumentationElement`); class names and attributes as
+/// in the text where the two disagree (`sacm:ArtifactAssetRelationship`, an
+/// Event's `date`; D-TEXT-MODEL), so the spellings
+/// [`read`](crate::xmi::read#spellings) reads are written by their resolved
+/// names. A child carries
 /// `xmi:type="sacm:<Kind>"` exactly when the role's declared type is not its
 /// kind: an abstract class, as for `argumentElement`, or a package role
 /// holding an Interface or Binding, such as an `ArgumentPackageInterface` in
@@ -2531,7 +2572,7 @@ const _: () = {
 mod tests {
     use super::ReadError;
     use crate::diagnostic::SourceLocation;
-    use crate::model::ElementId;
+    use crate::model::{ElementId, ElementKind};
 
     /// A multi-valued end given as an attribute and as elements is not
     /// called single-valued (ADR 0027); every other property is.
@@ -2539,6 +2580,7 @@ mod tests {
     fn a_repeated_value_names_a_multi_valued_end_by_rule_2h() {
         let repeated = |property: &str| ReadError::RepeatedValue {
             element: ElementId::new("i1"),
+            kind: ElementKind::AssertedInference,
             property: property.to_owned(),
             locations: [SourceLocation::at(1, 2), SourceLocation::at(3, 4)]
                 .into_iter()

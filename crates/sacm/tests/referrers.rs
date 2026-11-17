@@ -130,8 +130,8 @@ const DELETE_START: &str = r#"<xmi:XMI xmlns:sacm="http://www.omg.org/spec/SACM/
 /// The directory of the XMI fixtures.
 const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/xmi");
 
-/// The ten ends, in the order `ReferenceEnd::ALL` documents: write order.
-const ENDS: [ReferenceEnd; 10] = [
+/// The twelve ends, in the order `ReferenceEnd::ALL` documents: write order.
+const ENDS: [ReferenceEnd; 12] = [
     ReferenceEnd::CitedElement,
     ReferenceEnd::AbstractForm,
     ReferenceEnd::MetaClaim,
@@ -142,6 +142,8 @@ const ENDS: [ReferenceEnd; 10] = [
     ReferenceEnd::ReferencedArtifactElement,
     ReferenceEnd::GroupMember,
     ReferenceEnd::ArtifactGroupMember,
+    ReferenceEnd::ArtifactSource,
+    ReferenceEnd::ArtifactTarget,
 ];
 
 // ---------------------------------------------------------------------------
