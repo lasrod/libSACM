@@ -47,6 +47,9 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      # Known limit (verification 0051, accepted at M3's close): the runs API does not
+      # filter by base, so on a pull_request run a success against an older base still
+      # counts. Only docs-only pushes skip jobs on it, and every merge to main runs in full.
       - id: previous
         name: Whether CI succeeded on the previous commit
         env:

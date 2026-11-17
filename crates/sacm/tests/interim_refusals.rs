@@ -32,6 +32,11 @@ use sacm::xmi::{self, Mode, ReadError, ReadOptions};
 
 const ROW: &str = "LIB-API-011";
 
+/// The row the spelling tests trace to: a strict read keeps the text
+/// spelling `argumentationElement` as preserved content with one
+/// SACM-XMI-013 Error (slice 0057).
+const XMI_009: &str = "SACM23-XMI-009";
+
 const MODES: [Mode; 2] = [Mode::Strict, Mode::Tolerant];
 
 const SACM_NS: &str = "http://www.omg.org/spec/SACM/20220301";
@@ -469,10 +474,10 @@ fn lib_api_011_an_xmi_element_outside_the_xmi_2_5_1_namespace_names_lib_compat_0
 fn assert_spelling_kept(what: &str, input: &str, reason: &str) {
     let output = match xmi::read(input.as_bytes(), &strict()) {
         Ok(output) => output,
-        Err(error) => panic!("{ROW}: {what}: a strict read refused it: {error:?}"),
+        Err(error) => panic!("{XMI_009}: {what}: a strict read refused it: {error:?}"),
     };
     let Some(offset) = input.find("<argumentationElement") else {
-        panic!("{ROW}: {what}: setup: no spelling in the input");
+        panic!("{XMI_009}: {what}: setup: no spelling in the input");
     };
     let column = u32::try_from(offset + 1).unwrap_or(u32::MAX);
     let found: Vec<_> = output
@@ -493,23 +498,23 @@ fn assert_spelling_kept(what: &str, input: &str, reason: &str) {
         [(
             Code::XMI_SPELLING_VARIANT,
             Severity::Error,
-            "SACM23-XMI-009".to_owned(),
+            XMI_009.to_owned(),
             SourceLocation::new(1, column),
             reason.to_owned(),
         )],
-        "{ROW}: {what}: not one SACM-XMI-013 Error with the reason"
+        "{XMI_009}: {what}: not one SACM-XMI-013 Error with the reason"
     );
     assert!(
         !reason.contains("  ")
             && !LABEL_OPENINGS
                 .iter()
                 .any(|opening| reason.contains(opening)),
-        "{ROW}: {what}: the message holds a run of spaces or a refusal label"
+        "{XMI_009}: {what}: the message holds a run of spaces or a refusal label"
     );
 }
 
 #[test]
-fn lib_api_011_the_text_spelling_argumentation_element_names_sacm23_xmi_009() {
+fn sacm23_xmi_009_a_strict_read_keeps_argumentation_element_in_a_package_with_one_error() {
     let input = package(
         "<argumentationElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\"><name content=\"c1\"/></argumentationElement>",
     );
@@ -518,12 +523,12 @@ fn lib_api_011_the_text_spelling_argumentation_element_names_sacm23_xmi_009() {
         &input,
         "the element \"argumentationElement\" in the root element \"sacm:ArgumentPackage\" is \
          spelled as in the text of §11.4, and the role is argumentElement; it is kept as \
-         preserved content, and a tolerant read reads it as argumentElement",
+         preserved content, and a tolerant read reads the name as argumentElement",
     );
 }
 
 #[test]
-fn lib_api_011_the_text_spelling_in_an_argument_group_names_sacm23_xmi_009() {
+fn sacm23_xmi_009_a_strict_read_keeps_argumentation_element_in_a_group_with_one_error() {
     let input = package(
         "<argumentElement xmi:type=\"sacm:ArgumentGroup\" xmi:id=\"g\"><name content=\"g\"/>\
          <argumentationElement xmi:idref=\"c1\"/></argumentElement>\
@@ -535,7 +540,7 @@ fn lib_api_011_the_text_spelling_in_an_argument_group_names_sacm23_xmi_009() {
         &input,
         "\"argumentationElement\" in the element \"argumentElement\" is spelled as in the text \
          of §11.2, and the end of an ArgumentGroup is argumentElement; it is kept as preserved \
-         content, and a tolerant read reads it as argumentElement",
+         content, and a tolerant read reads the name as argumentElement",
     );
 }
 

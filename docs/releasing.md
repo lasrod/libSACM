@@ -36,7 +36,9 @@ date. Above it, open a new empty section:
 ```
 
 **Check:** the `X.Y.Z` section lists every user-visible change since the last release, with
-breaking changes under **Breaking**.
+breaking changes under **Breaking**, and the `[Unreleased]` section reads as the release's
+notes: no entry says something is refused or missing "until" a row that is verified, and
+nothing lists a change between unreleased states.
 
 ### 3. Run the gate and the dry run
 
@@ -49,8 +51,10 @@ cargo publish --dry-run --workspace --locked
 **Check:** every command passes. The dry run packages each crate and builds it from its
 packaged sources alone. `cargo package --list -p sacm` and `cargo package --list -p sacm-cli`
 show only `Cargo.toml`, `README.md`, `LICENSE`, the files under `src/` and the files cargo
-adds itself. There must be nothing from `tests/` and no test data. The unit tests in
-`src/` ship, but they run only from the repository. The dry run warns `ignoring test … as
+adds itself. There must be nothing from `tests/` and no test data. The unit tests and
+doctests in `src/` ship, but they run only from the repository: the published manifest
+drops the `test-support` dev-dependency that three doctests use, and the unit tests read
+test data that is not packaged. The dry run warns `ignoring test … as
 … is not included in the published package` once for each integration test. That is
 expected: the tests stay in the repository.
 

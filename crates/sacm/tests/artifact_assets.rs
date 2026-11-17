@@ -6,8 +6,8 @@
 //! `Artifact::Technique`, `Artifact::Participant`; ADR 0033, ADR 0034).
 //!
 //! A `property` child is read untyped or typed `sacm:Property` under every
-//! `ArtifactAsset` this release reads (Property, Technique, Participant), at
-//! any depth, and is written without a type. A `property` typed as another
+//! `ArtifactAsset` this release reads (the eight of [`ASSETS`], since slices
+//! 0055 and 0057), at any depth, and is written without a type. A `property` typed as another
 //! class, or under an element that is no `ArtifactAsset`, is preserved content
 //! of its parent (SACM-XMI-003). A Technique and a Participant are read typed
 //! in `artifactElement` with every Base feature, write back to `==`, and take
@@ -89,8 +89,49 @@ fn property(id: &str, attributes: &str, content: &str) -> String {
     format!("<property{attributes} xmi:id=\"{id}\"><name content=\"{id}\"/>{content}</property>")
 }
 
-/// The three `ArtifactAsset`s this release reads.
-const ASSETS: [&str; 3] = ["Property", "Technique", "Participant"];
+/// The eight `ArtifactAsset` kinds this release reads (SACM23-ART-003 to
+/// -010; an `ArtifactAssetRelationship` is an `ArtifactAsset` by the text of
+/// §12.14, D-TEXT-MODEL).
+const ASSETS: [&str; 8] = [
+    "Property",
+    "Technique",
+    "Participant",
+    "Artifact",
+    "Resource",
+    "Activity",
+    "Event",
+    "ArtifactAssetRelationship",
+];
+
+/// The start-tag attributes the asset `h` of class `class` needs in
+/// [`asset_host`]: an `ArtifactAssetRelationship`'s `source` and `target`
+/// (§12.14 `source:ArtifactAsset[1..*]`, `target:ArtifactAsset[1..*]`),
+/// naming the Artifact `x` placed before it; nothing for the other kinds.
+fn ends(class: &str) -> &'static str {
+    if class == "ArtifactAssetRelationship" {
+        " source=\"x\" target=\"x\""
+    } else {
+        ""
+    }
+}
+
+/// The asset `h` of class `class`, typed in `artifactElement` of [`in_a`],
+/// named "H", with the attributes [`ends`] gives, holding `content` after
+/// its name; an `ArtifactAssetRelationship` is preceded by the Artifact `x`
+/// its ends name, so that each kind is a valid asset.
+fn asset_host(class: &str, content: &str) -> String {
+    let before = if ends(class).is_empty() {
+        ""
+    } else {
+        "<artifactElement xmi:type=\"sacm:Artifact\" xmi:id=\"x\"><name content=\"X\"/>\
+         </artifactElement>"
+    };
+    in_a(&format!(
+        "{before}<artifactElement xmi:type=\"sacm:{class}\" xmi:id=\"h\"{}>\
+         <name content=\"H\"/>{content}</artifactElement>",
+        ends(class)
+    ))
+}
 
 fn loc(row: &str, line: u32, column: u32) -> SourceLocation {
     let Some(location) = SourceLocation::new(line, column) else {
@@ -337,7 +378,7 @@ fn sacm23_art_003_property_reads_untyped_or_typed_under_each_readable_asset_in_b
             let doc = read_ok(
                 ART_003,
                 &what,
-                &host(class, &property("p1", attributes, "")),
+                &asset_host(class, &property("p1", attributes, "")),
             );
             assert_eq!(
                 (
@@ -366,7 +407,7 @@ fn sacm23_art_003_property_reads_untyped_or_typed_under_each_readable_asset_in_b
         let doc = read_reporting(
             ART_003,
             &what,
-            &host(class, &property("p1", " xsi:type=\"sacm:Property\"", "")),
+            &asset_host(class, &property("p1", " xsi:type=\"sacm:Property\"", "")),
             Some(Code::XMI_XSI_TYPE),
         );
         assert_eq!(
@@ -379,7 +420,7 @@ fn sacm23_art_003_property_reads_untyped_or_typed_under_each_readable_asset_in_b
         let doc = read_ok(
             ART_003,
             &what,
-            &host(
+            &asset_host(
                 class,
                 &format!(
                     "{}<note xmi:id=\"n\"><content><value content=\"N\"/></content></note>{}",
@@ -398,14 +439,14 @@ fn sacm23_art_003_property_reads_untyped_or_typed_under_each_readable_asset_in_b
 
 #[test]
 fn sacm23_art_003_property_nests_three_deep_and_reads_typed_in_artifact_element() {
-    for class in ["Technique", "Participant", "Property"] {
+    for class in ASSETS {
         let what = format!("properties three deep under a {class}");
         let deep = property(
             "p1",
             "",
             &property("p2", " xmi:type=\"sacm:Property\"", &property("p3", "", "")),
         );
-        let doc = read_ok(ART_003, &what, &host(class, &deep));
+        let doc = read_ok(ART_003, &what, &asset_host(class, &deep));
         assert_eq!(
             (
                 placed(ART_003, &doc, "p1"),
@@ -456,7 +497,7 @@ fn sacm23_art_003_a_property_typed_as_another_class_is_preserved_by_its_asset() 
             assert_preserved_at(
                 ART_003,
                 &what,
-                &host(
+                &asset_host(
                     class,
                     &format!("{MARK}<property xmi:type=\"sacm:{other}\" xmi:id=\"p1\"/>"),
                 ),
@@ -551,7 +592,7 @@ fn sacm23_art_003_property_children_are_written_without_a_type_and_round_trip() 
         let doc = read_ok(
             ART_003,
             &what,
-            &host(
+            &asset_host(
                 class,
                 &format!(
                     "{}{}",
@@ -570,7 +611,11 @@ fn sacm23_art_003_property_children_are_written_without_a_type_and_round_trip() 
                     line_with(ART_003, &text, "p3")
                 ),
                 (
-                    format!("<artifactElement xmi:type=\"sacm:{class}\" xmi:id=\"h\">").as_str(),
+                    format!(
+                        "<artifactElement xmi:type=\"sacm:{class}\" xmi:id=\"h\"{}>",
+                        ends(class)
+                    )
+                    .as_str(),
                     "<property xmi:id=\"p1\">",
                     "<property xmi:id=\"p2\">",
                     "<property xmi:id=\"p3\">"
@@ -1972,4 +2017,81 @@ fn sacm23_art_006_set_name_gid_flag_references_reorder_and_delete_apply_to_an_ac
 #[test]
 fn sacm23_art_007_set_name_gid_flag_references_reorder_and_delete_apply_to_an_event() {
     assert_the_existing_edits_apply(ART_007, "Event");
+}
+
+// --- SACM23-ART-005 item 11: a reference to a location id dangles -------------------
+
+#[test]
+fn sacm23_art_005_a_reference_to_a_location_id_dangles_and_is_written() {
+    // The `xmi:id` of a `location` and of its `value` identify no element
+    // (SACM23-VAL-003), but are written (LIB-COMPAT-007).
+    for id in ["l", "l_en"] {
+        let what = format!("citedElement naming the location id {id:?}");
+        let input = in_a(&format!(
+            "<artifactElement xmi:type=\"sacm:Resource\" xmi:id=\"h\"><name content=\"H\"/>\
+             {LOCATION}</artifactElement><artifactElement xmi:type=\"sacm:Technique\" \
+             xmi:id=\"t\" isCitation=\"true\" citedElement=\"{id}\"><name content=\"T\"/>\
+             </artifactElement>"
+        ));
+        let mut doc = read_ok(ART_005, &what, &input);
+        // validate: one SACM-REF-001 Error, affecting the citing element,
+        // then the id.
+        let found = validation::validate(&doc);
+        assert_eq!(
+            found
+                .iter()
+                .map(|found| (
+                    found.code(),
+                    found.severity(),
+                    found.requirement_id().to_owned(),
+                    found.clause().map(str::to_owned),
+                    found.affected().to_vec()
+                ))
+                .collect::<Vec<_>>(),
+            [(
+                Code::REF_DANGLING,
+                Severity::Error,
+                "SACM23-VAL-003".to_owned(),
+                Some("8.2".to_owned()),
+                list(&["t", id])
+            )],
+            "{ART_005}: {what}: validate does not give one SACM-REF-001 Error on [t, {id}]: \
+             {found:?}"
+        );
+        // A strict save writes it, and what it writes reads back `==`.
+        let text = write_in(ART_005, &what, &doc, Mode::Strict);
+        assert!(
+            line_with(ART_005, &text, "t").contains(&format!(" citedElement=\"{id}\"")),
+            "{ART_005}: {what}: a strict save does not write the reference\n{text}"
+        );
+        assert!(
+            text.contains(&format!("xmi:id=\"{id}\"")),
+            "{ART_005}: {what}: a strict save does not write the id it names\n{text}"
+        );
+        let back = read_ok(ART_005, &format!("{what}, written"), &text);
+        assert!(
+            back == doc,
+            "{ART_005}: {what}: the strict output reads back !=\n{text}"
+        );
+        // SetReferences to it is ReferenceNotFound, and changes nothing.
+        let error = refused_edit(
+            ART_005,
+            &mut doc,
+            SetReferences::new("h", ReferenceEnd::CitedElement, [id]),
+        );
+        assert!(
+            matches!(
+                &error,
+                EditError::ReferenceNotFound { end, id: named, .. }
+                    if *end == "citedElement" && named.as_str() == id
+            ),
+            "{ART_005}: {what}: SetReferences to it is not ReferenceNotFound {{ citedElement, \
+             {id} }}: {error:?}"
+        );
+        assert_eq!(
+            error.code(),
+            Code::CMD_TARGET_NOT_FOUND,
+            "{ART_005}: {what}: SetReferences to it is not SACM-CMD-001"
+        );
+    }
 }

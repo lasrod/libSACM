@@ -953,13 +953,15 @@ fn sacm23_xmi_009_a_generated_id_is_none_that_a_spelled_end_names() {
 // =====================================================================================
 
 /// One construct of items 1 to 3: what it is, the input with one mark at
-/// the construct, the element it sits in, and what the tolerant write must
-/// write back.
+/// the construct, the element it sits in, what the tolerant write must
+/// write back, and, for a spelling that names an element, the start of the
+/// kept element's start tag as written, so that its name shows.
 struct Spelled {
     what: &'static str,
     template: String,
     holder: &'static str,
     written: &'static str,
+    tag: Option<&'static str>,
 }
 
 fn spelled_constructs() -> Vec<Spelled> {
@@ -972,24 +974,28 @@ fn spelled_constructs() -> Vec<Spelled> {
             )),
             holder: "pkg",
             written: "xmi:type=\"sacm:ArtifactAssertedRelationship\"",
+            tag: None,
         },
         Spelled {
             what: "occurece as an attribute",
             template: event(&format!(" {MARK}occurece=\"2024-03-05\""), ""),
             holder: "ev",
             written: "occurece=\"2024-03-05\"",
+            tag: None,
         },
         Spelled {
             what: "occurece as an element",
             template: event("", &format!("{MARK}<occurece>2024-03-05</occurece>")),
             holder: "ev",
             written: ">2024-03-05</occurece>",
+            tag: Some("<occurece "),
         },
         Spelled {
             what: "occurece as a nil element",
             template: event("", &format!("{MARK}<occurece xsi:nil=\"true\"/>")),
             holder: "ev",
             written: "xsi:nil=\"true\" />",
+            tag: Some("<occurece "),
         },
         Spelled {
             what: "argumentationElement as a role",
@@ -999,12 +1005,14 @@ fn spelled_constructs() -> Vec<Spelled> {
             )),
             holder: "p",
             written: "xmi:type=\"sacm:Claim\" xmi:id=\"c5\">",
+            tag: Some("<argumentationElement "),
         },
         Spelled {
             what: "argumentationElement as the group's attribute",
             template: group(&format!(" {MARK}argumentationElement=\"c1 c2\""), ""),
             holder: "g",
             written: "argumentationElement=\"c1 c2\"",
+            tag: None,
         },
         Spelled {
             what: "argumentationElement as the group's element",
@@ -1014,6 +1022,7 @@ fn spelled_constructs() -> Vec<Spelled> {
             ),
             holder: "g",
             written: "xmi:idref=\"c1\" />",
+            tag: Some("<argumentationElement "),
         },
     ]
 }
@@ -1072,8 +1081,9 @@ fn sacm23_xmi_009_a_strict_read_keeps_each_spelling_as_preserved_content_with_on
             Err(error) => panic!("{ROW}: {what}: a tolerant write refused it: {error:?}"),
         };
         assert!(
-            text.contains(case.written),
-            "{ROW}: {what}: a tolerant write does not write it back as read\n{text}"
+            text.contains(case.written) && case.tag.is_none_or(|tag| text.contains(tag)),
+            "{ROW}: {what}: a tolerant write does not write it back as read, named {:?}\n{text}",
+            case.tag
         );
     }
     // The ids inside a kept construct join the id space.
@@ -1197,7 +1207,8 @@ fn sacm23_xmi_009_the_messages_name_the_spelling_the_resolved_name_the_row_and_t
             (
                 Mode::Strict,
                 format!(
-                    "; it is kept as preserved content, and a tolerant read reads it as {resolved}"
+                    "; it is kept as preserved content, and a tolerant read reads the name as \
+                     {resolved}"
                 ),
             ),
         ] {

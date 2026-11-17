@@ -109,8 +109,8 @@ pub(super) enum Unread {
     TerminologyGroup,
     /// XMI document metadata: an XMI-namespace element, `xmi:uuid`,
     /// `xmi:label` and `xmi:idref` on an object (on a role element, its
-    /// reference form), `href` on a root or on a `name`, `description` or
-    /// other text, the identity attributes of a reference element or of
+    /// reference form), `href` on a root or on a `name` or other text, the
+    /// identity attributes of a reference element or of
     /// the `xmi:XMI` element, and `xsi:schemaLocation`.
     XmiMetadata,
     /// An `href` that is not `#id`, or `XLink` attributes on a reference

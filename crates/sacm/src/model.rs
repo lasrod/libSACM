@@ -51,7 +51,7 @@
 //! ```
 //! use sacm::model::{Document, ElementId, ElementKind, LangString};
 //!
-//! // Built with the unstable test-support feature: edit::apply does not create a missing name.
+//! // Built with the unstable test-support feature (not shown on docs.rs; see the crate's Features): edit::apply does not create a missing name.
 //! let mut doc = Document::new();
 //! let arguments = ElementId::from("arguments");
 //! let name = |content: &str| Some(LangString::new(content).with_lang("en"));

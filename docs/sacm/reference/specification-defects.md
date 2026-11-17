@@ -384,6 +384,29 @@ true)", and §12.11 (Semantics) of "ArtifactActivityRelationships" and
 **Suggested resolution.** Use the defined class names: `AssertedEvidence` and
 `ArtifactAssetRelationship`.
 
+## D19 — The model names ArtifactAssetRelationship otherwise, with no superclass
+
+*Found by libSACM (slice 0057; recorded at M3's close).*
+
+formal/23-05-08 §12.14 (pp. 49–50) defines
+
+> "ArtifactAssetRelationship enables the ArtifactAssets of a structured assurance case to be
+> linked together." … "Superclass ArtifactAsset"
+
+with `source:ArtifactAsset[1..*]` and `target:ArtifactAsset[1..*]`. ptc/22-03-13 names the
+class `ArtifactAssertedRelationship`, gives it no generalization, and types the same two
+ends by ArtifactAsset. A schema generated from the model would therefore spell the type
+`ArtifactAssertedRelationship`, and the class would inherit nothing from ArtifactAsset: no
+`property`, and none of the SACMElement and ModelElement features.
+
+**This crate** follows the text (D-TEXT-MODEL): the class is `ArtifactAssetRelationship`, an
+ArtifactAsset. A tolerant read reads the model's type name with a SACM-XMI-013 Warning. A
+strict read keeps it as preserved content with a SACM-XMI-013 Error, D-STRICT's one exception
+(SACM23-XMI-009). `xmi::write` writes the text's name.
+
+**Suggested resolution.** Rename the class in the model to `ArtifactAssetRelationship` and
+give it the generalization ArtifactAsset, as the text states.
+
 ## Related
 
 - [GSN / SACM metamodel gaps](sacm-gsn-metamodel-gaps.md) — the GSN v3 side, for the SCSC ACWG.

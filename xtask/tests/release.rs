@@ -1,6 +1,6 @@
 //! Repository checks for the release process (LIB-QA-005, slice 0059).
 //!
-//! Three checks keep the published packages and the version bookkeeping fit
+//! Four checks keep the published packages and the version bookkeeping fit
 //! for a release:
 //!
 //! - each package that is published (`sacm`, `sacm-cli`) holds its
@@ -9,7 +9,9 @@
 //! - each package's `LICENSE` is the repository's, byte for byte, and each
 //!   manifest's `license` is `MIT`;
 //! - the workspace version, the version of its `sacm` dependency and the
-//!   first section of `CHANGELOG.md` agree.
+//!   first section of `CHANGELOG.md` agree;
+//! - docs.rs builds `sacm` with the `serde` feature only, not `test-support`
+//!   (slice 0060).
 //!
 //! The checks read the real files and run the cargo the tests run under;
 //! nothing on disk is changed.
@@ -199,7 +201,38 @@ fn lib_qa_005_each_package_license_is_the_repository_license() {
     );
 }
 
-/// Whether `date` is an ISO 8601 calendar date `YYYY-MM-DD`.
+#[test]
+fn lib_qa_005_docs_rs_builds_without_test_support() {
+    // docs.rs builds `sacm` with the `serde` feature only, so the unstable
+    // `test-support` API does not appear there (the maintainer, 2026-11-17).
+    let manifest = toml_table("crates/sacm/Cargo.toml");
+    let Some(docs_rs) = lookup(&manifest, &["package", "metadata", "docs", "rs"]) else {
+        panic!("LIB-QA-005: `crates/sacm/Cargo.toml` has no `[package.metadata.docs.rs]`");
+    };
+    let features: Option<Vec<&str>> = docs_rs
+        .get("features")
+        .and_then(toml::Value::as_array)
+        .map(|features| features.iter().filter_map(toml::Value::as_str).collect());
+    assert_eq!(
+        features,
+        Some(vec!["serde"]),
+        "LIB-QA-005: `[package.metadata.docs.rs] features` is not [\"serde\"]"
+    );
+    assert_ne!(
+        docs_rs.get("all-features").and_then(toml::Value::as_bool),
+        Some(true),
+        "LIB-QA-005: `[package.metadata.docs.rs]` sets `all-features = true`, which builds \
+         `test-support`"
+    );
+    let text = docs_rs.to_string();
+    assert!(
+        !text.contains("test-support"),
+        "LIB-QA-005: `[package.metadata.docs.rs]` names `test-support`:\n{text}"
+    );
+}
+
+/// Whether `date` is an ISO 8601 calendar date `YYYY-MM-DD`, a day that
+/// exists in the Gregorian calendar.
 fn is_iso_date(date: &str) -> bool {
     let parts: Vec<&str> = date.split('-').collect();
     let [year, month, day] = parts.as_slice() else {
@@ -209,10 +242,22 @@ fn is_iso_date(date: &str) -> bool {
     if !(digits(year, 4) && digits(month, 2) && digits(day, 2)) {
         return false;
     }
-    let (Ok(month), Ok(day)) = (month.parse::<u8>(), day.parse::<u8>()) else {
+    let (Ok(year), Ok(month), Ok(day)) =
+        (year.parse::<u16>(), month.parse::<u8>(), day.parse::<u8>())
+    else {
         return false;
     };
-    (1..=12).contains(&month) && (1..=31).contains(&day)
+    // The Gregorian calendar of ISO 8601: February has 29 days in a year
+    // divisible by 4, except a century not divisible by 400.
+    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let days = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if leap => 29,
+        2 => 28,
+        _ => return false,
+    };
+    (1..=days).contains(&day)
 }
 
 #[test]
@@ -277,10 +322,22 @@ fn lib_qa_005_the_versions_and_the_changelog_agree() {
 
 #[test]
 fn lib_qa_005_the_changelog_date_check_accepts_only_iso_dates() {
-    for good in ["2026-11-17", "2027-01-01", "2026-12-31"] {
+    for good in [
+        "2026-11-17",
+        "2027-01-01",
+        "2026-12-31",
+        "2028-02-29",
+        "2000-02-29",
+        "2026-04-30",
+    ] {
         assert!(is_iso_date(good), "LIB-QA-005: {good} is an ISO date");
     }
     for bad in [
+        "2026-02-31",
+        "2026-04-31",
+        "2027-02-29",
+        "2100-02-29",
+        "2026-02-00",
         "",
         "2026-11",
         "2026-13-01",

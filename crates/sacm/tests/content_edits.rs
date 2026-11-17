@@ -769,7 +769,7 @@ fn time_set_content(doc: &Document, count: usize) -> Duration {
 }
 
 #[test]
-fn lib_edit_012_replacing_a_large_content_keeps_ids_in_linear_time() {
+fn lib_edit_012_replacing_a_large_content_keeps_ids_in_n_log_n_time() {
     // Checking each new value id against a list of the old ones is
     // quadratic. The edit of LARGE values is timed against a baseline of
     // SMALL values, measured in this test on this machine, so the speed of
@@ -777,9 +777,9 @@ fn lib_edit_012_replacing_a_large_content_keeps_ids_in_linear_time() {
     // values took about 7 ms and 100,000 about 0.35 s (50 times, for 32
     // times the values: n log n, and the cache); with the `BTreeSet` of old
     // ids a `Vec`, they took about 33 ms and 37 s (about 1,100 times). The
-    // limit, RATIO times the baseline, is about 4 times the linear ratio and
-    // 5 times below the quadratic one; FLOOR only keeps a tiny baseline
-    // from making it unreasonably short. The baseline is the fastest of a
+    // limit, RATIO times the baseline, is about 4 times the n log n ratio
+    // (about 46) and 5 times below the quadratic one (1,024); FLOOR only
+    // keeps a tiny baseline from making it unreasonably short. The baseline is the fastest of a
     // few runs, and the large edit has ATTEMPTS tries, each after more
     // baseline runs, so a stall of the machine does not fail the test.
     const SMALL: usize = 3_125;
@@ -815,7 +815,7 @@ fn lib_edit_012_replacing_a_large_content_keeps_ids_in_linear_time() {
         panic!(
             "{ROW}: {what}: took longer than {RATIO} times the edit of {SMALL} values in each of \
              {ATTEMPTS} tries (limits {limits:?}, the fastest of {SMALL} {baseline:?}): the edit \
-             is not linear in the number of values"
+             is not n log n in the number of values"
         );
     };
     let (doc, changed) = match answer {
