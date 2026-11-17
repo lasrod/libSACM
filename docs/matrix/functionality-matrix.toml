@@ -5985,12 +5985,30 @@ id = "LIB-EDIT-011"
 area = "EDIT"
 milestone = "M3"
 title = "Undo: the decided approach"
-requirement = "The approach to undo and redo (Q-UNDO) is decided with the maintainer before M4: either the crate offers snapshot-based undo (a document is cheap to clone: 1.4 ms at 5,000 elements) or the docs state that undo is the application's job, with an example built on `Document::clone` and `BatchMutation`. Inverse operations are not built. The chosen approach is implemented or documented, and tested."
-source = "D-RESULT; Q-UNDO"
+requirement = "Undo and redo are the application's: the `edit` module docs show a history of whole documents, a `Document::clone` taken before each successful `edit::apply`, `edit::apply_preview`, `edit::batch` or `edit::apply_all` and restored with `std::mem::replace`, so one operation, one batch or an accepted draft (`CopyElements` in a batch) is one step. A restored clone is `==` to the document before the change and writes the same XMI, preserved content included; it has the revision and the generated-id counters it had, so the next create generates the id an undone create had (D-ID; an application that needs ids unique across its history gives its own, ADR 0031), and a preview taken before an undone change applies again after the undo. The docs say a step costs one clone, in time and memory proportional to the document, and leave the depth to the application. The crate has no history type and no inverse operations (ADR 0037, D-UNDO)."
+source = "Q-UNDO and D-RESULT; D-UNDO; GitHub issue #61; ADR 0037 (accepted by the maintainer, 2026-11-17)"
 kind = "editing"
-status = "planned"
-depends_on = ["LIB-EDIT-005", "LIB-EDIT-009", "LIB-EDIT-014"]
+status = "implemented"
+depends_on = ["LIB-EDIT-005", "LIB-EDIT-009", "LIB-EDIT-014", "LIB-EDIT-018"]
 notes = "Requirements from Assurance Forge (GitHub issue #61, 2026-11-14), input to Q-UNDO: one user action, even a batch (LIB-EDIT-014), is one undo step; accepting a draft `Document` into the main one is one step; the generated ids after an undo are specified (reused or not); history is per document and in memory; memory use is bounded for cases of thousands of elements. The web client sends changes as operations, which favours inverse operations over snapshots. Measured 2026-11-15 (release build, flat package of claims): `Document::clone` 0.26 ms at 1,000 elements, 1.4 ms at 5,000, 7.8 ms at 20,000; `==` and `semantic_compare` 0.8 ms at 5,000 but 12-16 ms at 20,000 (super-linear)."
+code = ["crates/sacm/src/edit.rs", "crates/sacm/tests/undo.rs", "docs/adr/0037-undo-is-the-applications.md"]
+tests = [
+  "crates/sacm/tests/undo.rs::lib_edit_011_undoing_a_batch_restores_an_equal_document_that_writes_the_same_xmi_and_generates_the_same_next_id",
+  "crates/sacm/tests/undo.rs::lib_edit_011_undoing_a_delete_restores_preserved_content_and_file_ids",
+  "crates/sacm/tests/undo.rs::lib_edit_011_accepting_a_draft_is_one_step",
+  "crates/sacm/tests/undo.rs::lib_edit_011_undo_and_redo_restore_the_revision",
+  "crates/sacm/tests/undo.rs::lib_edit_011_a_preview_taken_before_an_undone_change_applies_after_the_undo",
+  "crates/sacm/tests/undo.rs::lib_edit_011_a_refused_change_records_no_step",
+]
+acceptance = [
+  "`lib_edit_011_undoing_a_batch_restores_an_equal_document_that_writes_the_same_xmi_and_generates_the_same_next_id`: a batch of two `CreateClaim` with generated ids and one `SetName`, then undo by the recipe: the document is `==` to before, `xmi::write` gives the same bytes as before, and the next generated claim id is `claim_1` again.",
+  "`lib_edit_011_undoing_a_delete_restores_preserved_content_and_file_ids`: a tolerant read of a file with a vendor attribute, a vendor child element and the `xmi:id`s of names and contents under a package; `DeleteElement` of the package with `DeleteRecursively`, then undo: the document is `==` to the one read, and its tolerant write gives the same bytes as before the delete.",
+  "`lib_edit_011_accepting_a_draft_is_one_step`: `CopyElements` from a draft document plus a `SetName` of a copy in one `edit::batch` is one step: one undo gives `==` the document before the batch, and one redo gives `==` the document after it.",
+  "`lib_edit_011_undo_and_redo_restore_the_revision`: after an undo `revision()` equals the revision before the change, and after a redo the revision after it.",
+  "`lib_edit_011_a_preview_taken_before_an_undone_change_applies_after_the_undo`: a preview taken before a change is `PreviewExpired` (SACM-CMD-003) after the change, and applies with `Ok` after that change is undone.",
+  "`lib_edit_011_a_refused_change_records_no_step`: a refused operation leaves the document `==` and its revision unchanged, and the recipe, which pushes only on `Ok`, records no step: a following undo restores the state before the last successful change.",
+  "A new section \"# Undo and redo\" in the `edit` module docs, after \"# Moving and copying elements\", holds the recipe as a doctest that compiles and runs: a `History` with `undo` and `redo` stacks and a size limit, the rule \"clone first, then exactly one atomic call, then push on `Ok`\", the cost per step, and the id rule. `edit/batch.rs`'s \"Undo itself is not provided yet (LIB-EDIT-011)\" becomes a link to that section. The tests live in `crates/sacm/tests/undo.rs` and use the recipe's `History` as written in the docs.",
+]
 
 [[row]]
 id = "LIB-COMPAT-016"
