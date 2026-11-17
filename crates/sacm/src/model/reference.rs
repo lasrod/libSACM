@@ -5,17 +5,19 @@
 //! SACM23-ARG-013, SACM23-ART-011; ADR 0026, ADR 0027, ADR 0028, ADR 0034).
 //!
 //! [`Flag`] and [`ReferenceEnd`] are public, so that an edit can name the
-//! flag or end it sets (ADR 0029); only their `name` is. Their tables stay
-//! crate-private: [`Flag::ALL`] and [`ReferenceEnd::ALL`], which
-//! the XMI reader, the writer, the id pre-pass, comparison and validation
-//! iterate, so that the name read, the name written and the order written
-//! cannot drift apart. Each entry names the class that owns it, and
+//! flag or end it sets (ADR 0029), and so are their readers for a generic
+//! property panel (ADR 0029 amendment 1): [`Flag::ALL`] and
+//! [`ReferenceEnd::ALL`], `applies_to(kind)` and [`ReferenceEnd::bounds`].
+//! `ALL` is the one table the XMI reader, the writer, the id pre-pass,
+//! comparison, validation and the edits iterate, so that the name read, the
+//! name written and the order written cannot drift apart. Each entry names
+//! the class that owns it, and
 //! [`OWNERS`] orders those classes superclass first, the order `xmi::write`
 //! writes their features in. A later end adds one entry here, one accessor
 //! and one `Difference` variant. A multi-valued end ([`ReferenceEnd::is_many`])
 //! holds every id of its attribute, and each reference element appends one;
-//! a single-valued one holds at most one. The owners, declared types and
-//! bounds are crate-private, as the role tables of
+//! a single-valued one holds at most one. The owners, the declared types
+//! and the bounds by end alone are crate-private, as the role tables of
 //! [`containment`](super::containment) are.
 
 use super::{AbstractClass, DeclaredType, ElementKind};
@@ -68,8 +70,46 @@ pub enum Flag {
 }
 
 impl Flag {
-    /// Every flag, in the order `compare` reports them.
-    pub(crate) const ALL: [Flag; 3] = [Flag::IsCitation, Flag::IsAbstract, Flag::IsCounter];
+    /// Every flag, in the order `compare` reports them and `xmi::write`
+    /// writes them: `isCitation`, `isAbstract`, `isCounter`.
+    ///
+    /// A slice, so that a later flag is an additive change. A generic
+    /// property panel lists an element's flags with it and
+    /// [`applies_to`](Self::applies_to); see
+    /// [`SacmElement::references`](crate::model::SacmElement::references).
+    ///
+    /// ```
+    /// use sacm::model::{ElementKind, Flag};
+    ///
+    /// let claim: Vec<&str> = Flag::ALL
+    ///     .iter()
+    ///     .filter(|flag| flag.applies_to(ElementKind::Claim))
+    ///     .map(|flag| flag.name())
+    ///     .collect();
+    /// assert_eq!(claim, ["isCitation", "isAbstract"]);
+    /// ```
+    pub const ALL: &'static [Flag] = &[Flag::IsCitation, Flag::IsAbstract, Flag::IsCounter];
+
+    /// Whether an element of `kind` has the flag: every element has
+    /// `isCitation` and `isAbstract` (§8.2), and only an
+    /// `AssertedRelationship` has `isCounter` (§11.13).
+    ///
+    /// It is true exactly when a [`SetFlag`](crate::edit::SetFlag) of the
+    /// flag on such an element is not
+    /// [`FeatureNotApplicable`](crate::edit::EditError::FeatureNotApplicable),
+    /// and [`SacmElement::flag`](crate::model::SacmElement::flag) of a flag
+    /// the kind lacks is `false`.
+    ///
+    /// ```
+    /// use sacm::model::{ElementKind, Flag};
+    ///
+    /// assert!(Flag::IsCounter.applies_to(ElementKind::AssertedInference));
+    /// assert!(!Flag::IsCounter.applies_to(ElementKind::Claim));
+    /// ```
+    #[must_use]
+    pub const fn applies_to(self, kind: ElementKind) -> bool {
+        self.owner().admits(kind)
+    }
 
     /// The flag's name, spelled as in the machine-readable model and in
     /// XMI: `isCitation`, `isAbstract` or `isCounter`.
@@ -96,7 +136,8 @@ impl Flag {
 /// The flag named `local` that an element of `kind` has, if any.
 pub(crate) fn flag_named(kind: ElementKind, local: &str) -> Option<Flag> {
     Flag::ALL
-        .into_iter()
+        .iter()
+        .copied()
         .find(|flag| flag.name() == local && flag.owner().admits(kind))
 }
 
@@ -167,9 +208,28 @@ pub enum ReferenceEnd {
 }
 
 impl ReferenceEnd {
-    /// Every end, in the order `xmi::write` writes the ends of one class and
-    /// `compare` reports them (ptc/22-03-13 order within each class).
-    pub(crate) const ALL: [ReferenceEnd; 10] = [
+    /// Every end, in the order `xmi::write` writes them and `compare`
+    /// reports them (ptc/22-03-13 order within each class, superclass
+    /// first): `citedElement`, `abstractForm`, `metaClaim`, `reasoning`,
+    /// `source`, `target`, `structure`, `referencedArtifactElement`, an
+    /// `ArgumentGroup`'s `argumentElement` and an `ArtifactGroup`'s
+    /// `artifactElement`.
+    ///
+    /// A slice, so that a later end is an additive change. It is also the
+    /// order of [`Document::referrers`](crate::model::Document::referrers)
+    /// within one holder.
+    ///
+    /// ```
+    /// use sacm::model::{ElementKind, ReferenceEnd};
+    ///
+    /// let ends: Vec<&str> = ReferenceEnd::ALL
+    ///     .iter()
+    ///     .filter(|end| end.applies_to(ElementKind::AssertedInference))
+    ///     .map(|end| end.name())
+    ///     .collect();
+    /// assert_eq!(ends, ["citedElement", "abstractForm", "metaClaim", "reasoning", "source", "target"]);
+    /// ```
+    pub const ALL: &'static [ReferenceEnd] = &[
         ReferenceEnd::CitedElement,
         ReferenceEnd::AbstractForm,
         ReferenceEnd::MetaClaim,
@@ -230,6 +290,62 @@ impl ReferenceEnd {
         )
     }
 
+    /// Whether an element of `kind` has the end: every element has
+    /// `citedElement` and `abstractForm` (§8.2), every Assertion has
+    /// `metaClaim` (§11.10), every `AssertedRelationship` has `reasoning`,
+    /// `source` and `target` (§11.13), and each other end belongs to one
+    /// kind, as its variant says.
+    ///
+    /// It is true exactly when a
+    /// [`SetReferences::clear`](crate::edit::SetReferences::clear) of the
+    /// end on such an element is not
+    /// [`FeatureNotApplicable`](crate::edit::EditError::FeatureNotApplicable),
+    /// and [`SacmElement::references`](crate::model::SacmElement::references)
+    /// of an end the kind lacks holds no id.
+    ///
+    /// ```
+    /// use sacm::model::{ElementKind, ReferenceEnd};
+    ///
+    /// assert!(ReferenceEnd::MetaClaim.applies_to(ElementKind::Claim));
+    /// assert!(!ReferenceEnd::Source.applies_to(ElementKind::Claim));
+    /// // An ArtifactGroup's members are its artifactElement, not its argumentElement.
+    /// assert!(!ReferenceEnd::GroupMember.applies_to(ElementKind::ArtifactGroup));
+    /// ```
+    #[must_use]
+    pub const fn applies_to(self, kind: ElementKind) -> bool {
+        self.owner().admits(kind)
+    }
+
+    /// The fewest and the most ids the end holds on an element of `kind`, as
+    /// `(lower, upper)` with `None` for no upper bound; `None` when the kind
+    /// has no such end ([`applies_to`](Self::applies_to)).
+    ///
+    /// The bounds depend on the owner: §11.13 (p. 40) gives an
+    /// `AssertedRelationship` `source:ArgumentAsset[1..*]` and
+    /// `target:ArgumentAsset[1]`, and the other ends are `[0..1]` or `[0..*]`.
+    /// They are the bounds [`SetReferences`](crate::edit::SetReferences),
+    /// [`AddReference`](crate::edit::AddReference) and
+    /// [`RemoveReference`](crate::edit::RemoveReference) keep an end within
+    /// ([`TooFewReferences`](crate::edit::EditError::TooFewReferences),
+    /// [`TooManyReferences`](crate::edit::EditError::TooManyReferences)).
+    ///
+    /// ```
+    /// use sacm::model::{ElementKind, ReferenceEnd};
+    ///
+    /// assert_eq!(ReferenceEnd::Source.bounds(ElementKind::AssertedInference), Some((1, None)));
+    /// assert_eq!(ReferenceEnd::Target.bounds(ElementKind::AssertedInference), Some((1, Some(1))));
+    /// assert_eq!(ReferenceEnd::MetaClaim.bounds(ElementKind::Claim), Some((0, None)));
+    /// assert_eq!(ReferenceEnd::Source.bounds(ElementKind::Claim), None);
+    /// ```
+    #[must_use]
+    pub const fn bounds(self, kind: ElementKind) -> Option<(usize, Option<usize>)> {
+        if self.applies_to(kind) {
+            Some((self.lower_bound(), self.upper_bound()))
+        } else {
+            None
+        }
+    }
+
     /// The fewest ids the end holds: 1 for `source` (`[1..*]`) and `target`
     /// (`[1]`), 0 for every other end.
     pub(crate) const fn lower_bound(self) -> usize {
@@ -283,7 +399,8 @@ impl ReferenceEnd {
 /// The reference end named `local` that an element of `kind` has, if any.
 pub(crate) fn reference_end_named(kind: ElementKind, local: &str) -> Option<ReferenceEnd> {
     ReferenceEnd::ALL
-        .into_iter()
+        .iter()
+        .copied()
         .find(|end| end.name() == local && end.owner().admits(kind))
 }
 
@@ -295,11 +412,11 @@ mod tests {
     #[test]
     fn every_kind_has_its_classes_ends_and_flags_by_name_and_no_other() {
         for &kind in ElementKind::ALL {
-            for end in ReferenceEnd::ALL {
+            for &end in ReferenceEnd::ALL {
                 let expected = end.owner().admits(kind).then_some(end);
                 assert_eq!(reference_end_named(kind, end.name()), expected, "{kind}");
             }
-            for flag in Flag::ALL {
+            for &flag in Flag::ALL {
                 let expected = flag.owner().admits(kind).then_some(flag);
                 assert_eq!(flag_named(kind, flag.name()), expected, "{kind}");
             }
@@ -332,11 +449,19 @@ mod tests {
     #[test]
     fn names_are_the_models_spelling_in_write_order() {
         assert_eq!(
-            Flag::ALL.map(Flag::name),
+            Flag::ALL
+                .iter()
+                .copied()
+                .map(Flag::name)
+                .collect::<Vec<_>>(),
             ["isCitation", "isAbstract", "isCounter"]
         );
         assert_eq!(
-            ReferenceEnd::ALL.map(ReferenceEnd::name),
+            ReferenceEnd::ALL
+                .iter()
+                .copied()
+                .map(ReferenceEnd::name)
+                .collect::<Vec<_>>(),
             [
                 "citedElement",
                 "abstractForm",
@@ -351,23 +476,39 @@ mod tests {
             ]
         );
         assert_eq!(
-            ReferenceEnd::ALL.map(ReferenceEnd::clause),
+            ReferenceEnd::ALL
+                .iter()
+                .copied()
+                .map(ReferenceEnd::clause)
+                .collect::<Vec<_>>(),
             [
                 "8.2", "8.2", "11.10", "11.13", "11.13", "11.13", "11.12", "11.9", "11.2", "12.3"
             ]
         );
         assert_eq!(
-            ReferenceEnd::ALL.map(ReferenceEnd::is_many),
+            ReferenceEnd::ALL
+                .iter()
+                .copied()
+                .map(ReferenceEnd::is_many)
+                .collect::<Vec<_>>(),
             [
                 false, false, true, false, true, false, false, true, true, true
             ]
         );
         assert_eq!(
-            ReferenceEnd::ALL.map(ReferenceEnd::lower_bound),
+            ReferenceEnd::ALL
+                .iter()
+                .copied()
+                .map(ReferenceEnd::lower_bound)
+                .collect::<Vec<_>>(),
             [0, 0, 0, 0, 1, 1, 0, 0, 0, 0]
         );
         assert_eq!(
-            ReferenceEnd::ALL.map(ReferenceEnd::upper_bound),
+            ReferenceEnd::ALL
+                .iter()
+                .copied()
+                .map(ReferenceEnd::upper_bound)
+                .collect::<Vec<_>>(),
             [
                 Some(1),
                 Some(1),
@@ -383,9 +524,10 @@ mod tests {
         );
         // Every owner is in OWNERS, so the writer writes every feature.
         for owner in ReferenceEnd::ALL
+            .iter()
+            .copied()
             .map(ReferenceEnd::owner)
-            .into_iter()
-            .chain(Flag::ALL.map(Flag::owner))
+            .chain(Flag::ALL.iter().copied().map(Flag::owner))
         {
             assert!(OWNERS.contains(&owner), "{}", owner.name());
         }
@@ -394,7 +536,11 @@ mod tests {
     #[test]
     fn targets_are_typed_as_the_model_declares() {
         assert_eq!(
-            ReferenceEnd::ALL.map(|end| end.target().name()),
+            ReferenceEnd::ALL
+                .iter()
+                .copied()
+                .map(|end| end.target().name())
+                .collect::<Vec<_>>(),
             [
                 "SACMElement",
                 "SACMElement",
@@ -415,7 +561,7 @@ mod tests {
     #[test]
     fn no_class_has_a_role_and_an_end_of_the_same_name() {
         for &kind in ElementKind::ALL {
-            for end in ReferenceEnd::ALL {
+            for &end in ReferenceEnd::ALL {
                 if end.owner().admits(kind) {
                     assert_eq!(role_named(kind, end.name()), None, "{kind} {}", end.name());
                 }

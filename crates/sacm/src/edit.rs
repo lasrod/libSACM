@@ -159,6 +159,56 @@
 //! with `with_id`, and a freed id the caller gave may be generated later. An
 //! application that needs ids unique across its history gives its own.
 //!
+//! # Moving and copying elements
+//!
+//! [`MoveElement`] moves an element, with everything it contains and its
+//! preserved content, under another parent or to the roots; [`CopyElements`]
+//! copies elements of a source document, each with everything it contains,
+//! under a parent or as roots (LIB-EDIT-017, LIB-EDIT-018, ADR 0036). The
+//! containment table decides the legal parents, as for a create, and a root
+//! must be a package.
+//!
+//! A move keeps every id, reference and feature, and the ids generated
+//! next; it changes the element's parent, its role and the order. A
+//! preserved child of either parent keeps its place after the typed child
+//! it followed. Its [`Mutation::changed_ids`] are what `semantic_compare`
+//! reports: the element when its parent changes, and a parent whose child
+//! order or preserved placement changes, in pre-order after. A move to the
+//! place the element holds changes nothing.
+//!
+//! [`MoveElement`] checks, in this order:
+//!
+//! | Check | Refusal | Code |
+//! |---|---|---|
+//! | 1. the element is in the document | [`EditError::ElementNotFound`] | SACM-CMD-001 |
+//! | 2. under a parent: the parent is in the document | [`EditError::ParentNotFound`] | SACM-CMD-001 |
+//! | 3. the parent's class can hold the element's kind; for the roots, the element is a package | [`EditError::InvalidParent`], [`EditError::InvalidRoot`] | SACM-CMD-005 |
+//! | 4. the parent is not the element and not inside it | [`EditError::ParentInSubtree`] | SACM-CMD-005 |
+//! | 5. the position is at most the number of the others | [`EditError::PositionOutOfRange`] | SACM-CMD-009 |
+//!
+//! A copy captures its source elements when it is built: an id the source
+//! lacks is [`EditError::ElementNotFound`] from [`CopyElements::new`] or
+//! [`CopyElements::root`]. Each
+//! copy keeps its id when that is an `NCName` free in the target; otherwise
+//! it gets a generated id that avoids every id the copy keeps or names. A
+//! reference to a copied element names its copy, and every other reference
+//! is kept as written, so it must resolve in the target. The
+//! [`Mutation::created_ids`] pair with [`CopyElements::source_ids`], and a
+//! copy changes and deletes nothing. [`CopyElements`] checks, in this
+//! order:
+//!
+//! | Check | Refusal | Code |
+//! |---|---|---|
+//! | 1. under a parent: the parent is in the target | [`EditError::ParentNotFound`] | SACM-CMD-001 |
+//! | 2. each top, in list order: the parent's class can hold it; for the roots, it is a package | [`EditError::InvalidParent`], [`EditError::InvalidRoot`] (the source id) | SACM-CMD-005 |
+//! | 3. each copied element, in pre-order: its preserved content's ids are free, and that content names no id the copy changes or drops | [`EditError::DuplicateId`] | SACM-CMD-004 |
+//! | 4. each copied element, in pre-order, each end in [`ReferenceEnd::ALL`](crate::model::ReferenceEnd::ALL) order: it holds the ids it needs | [`EditError::TooFewReferences`] | SACM-MULT-001 |
+//! | 5. every reference, in the same order: it names an element of the target or a copy | [`EditError::ReferenceNotFound`] | SACM-CMD-001 |
+//! | 6. every reference, in the same order: it names an element of a kind its end admits | [`EditError::WrongReferenceType`] | SACM-REF-002 |
+//!
+//! An empty list copies nothing, once the parent is found. A typed end never
+//! holds an id with white space, so a copy is never refused for one.
+//!
 //! # Ids
 //!
 //! - **Given by the caller** with `with_id`: it must be an XML `NCName` (an
@@ -297,8 +347,10 @@
 mod argumentation;
 mod artifact;
 mod batch;
+mod copy;
 mod create;
 mod delete;
+mod move_element;
 mod plan;
 mod preview;
 #[cfg(feature = "serde")]
@@ -320,10 +372,12 @@ pub use artifact::{
     CreateParticipant, CreateProperty, CreateResource, CreateTechnique,
 };
 pub use batch::{Batch, BatchError, BatchMutation};
+pub use copy::CopyElements;
 pub use create::{CreateArgumentPackage, CreateAssuranceCasePackage, CreateClaim};
 pub use delete::{
     CrossPackageReferencePolicy, DeleteElement, PackageDeletePolicy, ReferenceDeletePolicy,
 };
+pub use move_element::MoveElement;
 pub use preview::{DanglingReference, Preview};
 pub use references::{AddReference, RemoveReference, SetReferences};
 pub use reorder::ReorderElements;
@@ -406,6 +460,9 @@ use plan::{Outcome, Plan};
 /// empty and the package policy refuses that ([`EditError::NotEmpty`]), or
 /// when the delete would leave a reference dangling that a policy refuses
 /// ([`EditError::CrossPackageReference`], [`EditError::Referenced`]).
+///
+/// Refuses a [`MoveElement`] or a [`CopyElements`] as the module docs'
+/// [tables](self#moving-and-copying-elements) say.
 ///
 /// # Examples
 ///
@@ -764,6 +821,8 @@ fn plan<'o>(document: &Document, operation: &'o Operation) -> Result<Plan<'o>, E
         Operation::AddReference(add) => add.plan(document),
         Operation::RemoveReference(remove) => remove.plan(document),
         Operation::ReorderElements(reorder) => reorder.plan(document),
+        Operation::MoveElement(moved) => moved.plan(document),
+        Operation::CopyElements(copy) => copy.plan(document),
         Operation::DeleteElement(delete) => delete.plan(document),
     }
 }
@@ -869,6 +928,13 @@ pub enum Operation {
     RemoveReference(RemoveReference),
     /// Reorders the children of an element, or the roots.
     ReorderElements(ReorderElements),
+    /// Moves an element under another parent, or to the roots.
+    MoveElement(MoveElement),
+    /// Copies elements of another document. Not serialized: with the
+    /// `serde` feature, serializing it is an error, and its tag does not
+    /// deserialize (ADR 0030 amendment 2).
+    #[cfg_attr(feature = "serde", serde(skip))]
+    CopyElements(CopyElements),
     /// Deletes an element under explicit policies.
     DeleteElement(DeleteElement),
 }
@@ -947,6 +1013,8 @@ impl Operation {
             Self::AddReference(_) => "AddReference",
             Self::RemoveReference(_) => "RemoveReference",
             Self::ReorderElements(_) => "ReorderElements",
+            Self::MoveElement(_) => "MoveElement",
+            Self::CopyElements(_) => "CopyElements",
             Self::DeleteElement(_) => "DeleteElement",
         }
     }
@@ -978,6 +1046,8 @@ operation_from!(
     AddReference,
     RemoveReference,
     ReorderElements,
+    MoveElement,
+    CopyElements,
     DeleteElement,
 );
 
@@ -1162,7 +1232,8 @@ impl Mutation {
     ///
     /// They are the ids `semantic_compare(before, after)` reports as only in
     /// after. A create creates exactly its own element; its parent is not
-    /// changed.
+    /// changed. A [`CopyElements`] creates its copies in pre-order, the i-th
+    /// being the copy of [`CopyElements::source_ids`]`[i]`.
     #[must_use]
     pub fn created_ids(&self) -> &[ElementId] {
         &self.created
@@ -1179,7 +1250,9 @@ impl Mutation {
     /// [`ReorderElements::new`] gives the parent, and a
     /// [`ReorderElements::roots`] none. A [`DeleteElement`] gives each
     /// surviving element that lost an id of a deleted element, and each whose
-    /// preserved child moved to a lower index (ADR 0033).
+    /// preserved child moved to a lower index (ADR 0033). A [`MoveElement`]
+    /// gives the element when its parent changes, and each parent whose child
+    /// order or preserved placement changes; a [`CopyElements`] gives none.
     ///
     /// # Examples
     ///
@@ -1274,6 +1347,11 @@ pub enum EditError {
     /// (SACM-CMD-004). Ids are unique across the whole document, not per
     /// parent. Choose another id, or leave out `with_id` to have one
     /// generated.
+    ///
+    /// A [`CopyElements`] also refuses with it when the preserved content it
+    /// copies holds an `xmi:id` that is not free in the target (in use, or
+    /// named by a reference), or names an id the copy changes or drops; `id`
+    /// is that id.
     #[non_exhaustive]
     DuplicateId {
         /// The id, as given.
@@ -1459,8 +1537,11 @@ pub enum EditError {
         expected: &'static str,
     },
     /// The element to edit is not in the document (SACM-CMD-001): the
-    /// element of a set or reference operation, or the parent of a
-    /// [`ReorderElements::new`]. Ids are compared exactly, case included;
+    /// element of a set or reference operation, the parent of a
+    /// [`ReorderElements::new`], the element of a [`MoveElement`], or an
+    /// element [`CopyElements::new`] or [`CopyElements::root`] is given that
+    /// the source lacks. Ids are
+    /// compared exactly, case included;
     /// the `xmi:id` of a name, `content`, `key`, `location` or `value` names no element.
     /// Correct the id.
     ///
@@ -1684,6 +1765,88 @@ pub enum EditError {
         /// The id the reference names: an element the delete would remove.
         id: ElementId,
     },
+    /// A [`MoveElement::root`] or a [`CopyElements::root`] would make a root
+    /// of an element that is no package (SACM-CMD-005). Every root of a
+    /// document is a package
+    /// ([`ElementKind::is_package`](crate::model::ElementKind::is_package)).
+    /// Move or copy the element under a package instead.
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, EditError, MoveElement};
+    /// use sacm::model::{Document, ElementKind, LangString};
+    ///
+    /// let mut doc = Document::new();
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+    /// edit::apply(&mut doc, CreateClaim::new("p", LangString::new("C1")).with_id("c1"))?;
+    /// let error = edit::apply(&mut doc, MoveElement::root("c1")).unwrap_err();
+    /// assert!(matches!(error, EditError::InvalidRoot { kind: ElementKind::Claim, .. }));
+    /// assert_eq!(
+    ///     error.to_string(),
+    ///     "element \"c1\" of kind Claim cannot be a root, which must be a package"
+    /// );
+    /// # Ok::<(), EditError>(())
+    /// ```
+    #[non_exhaustive]
+    InvalidRoot {
+        /// The element's id; for a copy, its id in the source.
+        element: ElementId,
+        /// The element's kind.
+        kind: ElementKind,
+    },
+    /// A [`MoveElement`] would move an element into itself or into an
+    /// element it contains (SACM-CMD-005). Choose a parent outside the
+    /// element's subtree.
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, EditError, MoveElement};
+    /// use sacm::model::{Document, LangString};
+    ///
+    /// let mut doc = Document::new();
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("P")).with_id("p"))?;
+    /// edit::apply(&mut doc, CreateArgumentPackage::new("p", LangString::new("Q")).with_id("q"))?;
+    /// let error = edit::apply(&mut doc, MoveElement::new("p", "q")).unwrap_err();
+    /// assert!(matches!(error, EditError::ParentInSubtree { .. }));
+    /// assert_eq!(
+    ///     error.to_string(),
+    ///     "element \"p\" cannot be moved into \"q\", which is the element itself or inside it"
+    /// );
+    /// # Ok::<(), EditError>(())
+    /// ```
+    #[non_exhaustive]
+    ParentInSubtree {
+        /// The id of the element to move.
+        element: ElementId,
+        /// The parent given: the element or an element inside it.
+        parent: ElementId,
+    },
+    /// A [`MoveElement::with_position`] is past the end (SACM-CMD-009): the
+    /// position is the element's index after the move, from 0 to the number
+    /// of the parent's other children (or the other roots). Give at most
+    /// `children`, or leave the position out to move after the last.
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, EditError, MoveElement};
+    /// use sacm::model::{Document, LangString};
+    ///
+    /// let mut doc = Document::new();
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+    /// edit::apply(&mut doc, CreateClaim::new("p", LangString::new("C1")).with_id("c1"))?;
+    /// edit::apply(&mut doc, CreateClaim::new("p", LangString::new("C2")).with_id("c2"))?;
+    /// let error = edit::apply(&mut doc, MoveElement::new("c1", "p").with_position(2)).unwrap_err();
+    /// assert!(matches!(error, EditError::PositionOutOfRange { position: 2, children: 1, .. }));
+    /// assert_eq!(error.to_string(), "the position 2 is past the end: \"p\" has 1 other child");
+    /// # Ok::<(), EditError>(())
+    /// ```
+    #[non_exhaustive]
+    PositionOutOfRange {
+        /// The parent's id, or `None` for the roots.
+        parent: Option<ElementId>,
+        /// The position given.
+        position: usize,
+        /// How many children the parent has besides the element (or how
+        /// many other roots): the largest position allowed.
+        children: usize,
+    },
 }
 
 impl EditError {
@@ -1704,8 +1867,11 @@ impl EditError {
     /// for [`InvalidOrder`](Self::InvalidOrder), SACM-CMD-002 for
     /// [`Referenced`](Self::Referenced), SACM-CMD-003 for
     /// [`PreviewExpired`](Self::PreviewExpired), SACM-CMD-006 for
-    /// [`NotEmpty`](Self::NotEmpty) and SACM-CMD-007 for
-    /// [`CrossPackageReference`](Self::CrossPackageReference).
+    /// [`NotEmpty`](Self::NotEmpty), SACM-CMD-007 for
+    /// [`CrossPackageReference`](Self::CrossPackageReference), SACM-CMD-005
+    /// for [`InvalidRoot`](Self::InvalidRoot) and
+    /// [`ParentInSubtree`](Self::ParentInSubtree), and SACM-CMD-009 for
+    /// [`PositionOutOfRange`](Self::PositionOutOfRange).
     #[must_use]
     pub fn code(&self) -> Code {
         match self {
@@ -1714,7 +1880,9 @@ impl EditError {
             | Self::ElementNotFound { .. }
             | Self::ReferenceNotHeld { .. }
             | Self::ChildNotFound { .. } => Code::CMD_TARGET_NOT_FOUND,
-            Self::InvalidParent { .. } => Code::CMD_INVALID_PARENT,
+            Self::InvalidParent { .. }
+            | Self::InvalidRoot { .. }
+            | Self::ParentInSubtree { .. } => Code::CMD_INVALID_PARENT,
             Self::InvalidId { .. } | Self::InvalidReference { .. } => Code::ID_INVALID,
             Self::DuplicateId { .. } => Code::CMD_DUPLICATE_ID,
             Self::TooFewReferences { .. } | Self::TooManyReferences { .. } => {
@@ -1722,7 +1890,7 @@ impl EditError {
             }
             Self::WrongReferenceType { .. } => Code::REF_WRONG_TYPE,
             Self::FeatureNotApplicable { .. } => Code::CMD_FEATURE_NOT_APPLICABLE,
-            Self::InvalidOrder { .. } => Code::CMD_INVALID_ORDER,
+            Self::InvalidOrder { .. } | Self::PositionOutOfRange { .. } => Code::CMD_INVALID_ORDER,
             Self::Referenced { .. } => Code::CMD_DELETE_REFERENCED,
             Self::PreviewExpired { .. } => Code::CMD_PREVIEW_EXPIRED,
             Self::NotEmpty { .. } => Code::CMD_PACKAGE_NOT_EMPTY,
@@ -1858,6 +2026,33 @@ impl fmt::Display for EditError {
                 holder.as_str(),
                 id.as_str()
             ),
+            Self::InvalidRoot { element, kind } => write!(
+                f,
+                "element {:?} of kind {kind} cannot be a root, which must be a package",
+                element.as_str()
+            ),
+            Self::ParentInSubtree { element, parent } => write!(
+                f,
+                "element {:?} cannot be moved into {:?}, which is the element itself or inside it",
+                element.as_str(),
+                parent.as_str()
+            ),
+            Self::PositionOutOfRange {
+                parent,
+                position,
+                children,
+            } => {
+                write!(f, "the position {position} is past the end: ")?;
+                let (noun, plural) = if let Some(parent) = parent {
+                    write!(f, "{:?} has", parent.as_str())?;
+                    ("child", "children")
+                } else {
+                    f.write_str("the document has")?;
+                    ("root", "roots")
+                };
+                let noun = if *children == 1 { noun } else { plural };
+                write!(f, " {children} other {noun}")
+            }
         }
     }
 }

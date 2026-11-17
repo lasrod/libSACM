@@ -781,6 +781,24 @@
     ]
   },
   {
+    "type": "MoveElement",
+    "element": "c1",
+    "parent": "evidence",
+    "position": null
+  },
+  {
+    "type": "MoveElement",
+    "element": "c2",
+    "parent": "arguments",
+    "position": 0
+  },
+  {
+    "type": "MoveElement",
+    "element": "sub",
+    "parent": null,
+    "position": 1
+  },
+  {
     "type": "DeleteElement",
     "element": "c1",
     "reference_policy": "RejectIfReferenced",

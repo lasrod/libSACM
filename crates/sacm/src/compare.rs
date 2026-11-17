@@ -1456,12 +1456,12 @@ fn compare_element<'a>(
     if ours.gid != theirs.gid {
         sink(Found::Gid(ours, theirs))?;
     }
-    for flag in Flag::ALL {
+    for &flag in Flag::ALL {
         if ours.flag(flag) != theirs.flag(flag) {
             sink(Found::Flag(flag, ours, theirs))?;
         }
     }
-    for end in ReferenceEnd::ALL {
+    for &end in ReferenceEnd::ALL {
         if ours.references(end) != theirs.references(end) {
             sink(Found::Reference(end, ours, theirs))?;
         }

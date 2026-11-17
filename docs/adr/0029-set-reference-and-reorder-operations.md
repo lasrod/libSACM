@@ -114,3 +114,16 @@ one command per feature: `SetName`, `SetGid`, `SetCitation`, `SetMetaClaims`,
 - LIB-EDIT-002's set and LIB-EDIT-003's oracle grow to cover set operations and `RootOrder`.
 - Typed before-values are LIB-EDIT-011's (ADR 0019 amendment 2).
 - ExpressionLangString names (SACM23-BASE-009) will widen `SetName` together with the creates.
+
+## Amendment 1 (accepted by the maintainer with ADR 0036, 2026-11-17; slice 0056)
+
+The flag and reference-end tables become public, so a generic property panel can list an
+element's flags and ends:
+- the readers `SacmElement::flag(Flag)` and `SacmElement::references(ReferenceEnd)`;
+- `Flag::ALL` and `ReferenceEnd::ALL`, as `&'static` slices so that a later variant is
+  additive;
+- `Flag::applies_to(kind)` and `ReferenceEnd::applies_to(kind)`;
+- `ReferenceEnd::bounds(kind)`. The bounds depend on the owner: formal/23-05-08 §11.13
+  (p. 40) "target:ArgumentAsset[1]" and §12.14 (p. 50) "target:ArtifactAsset[1..*]".
+
+*Amendment 1 status: accepted (the maintainer, 2026-11-17, with ADR 0036).*

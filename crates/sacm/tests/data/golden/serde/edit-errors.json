@@ -170,5 +170,31 @@
     "element": "report",
     "kind": "Artifact",
     "feature": "endTime"
+  },
+  {
+    "type": "InvalidRoot",
+    "code": "SACM-CMD-005",
+    "element": "c1",
+    "kind": "Claim"
+  },
+  {
+    "type": "ParentInSubtree",
+    "code": "SACM-CMD-005",
+    "element": "p",
+    "parent": "p"
+  },
+  {
+    "type": "PositionOutOfRange",
+    "code": "SACM-CMD-009",
+    "parent": "p",
+    "position": 2,
+    "children": 1
+  },
+  {
+    "type": "PositionOutOfRange",
+    "code": "SACM-CMD-009",
+    "parent": null,
+    "position": 1,
+    "children": 0
   }
 ]

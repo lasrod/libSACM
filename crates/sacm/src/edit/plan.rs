@@ -13,9 +13,11 @@
 
 use super::DanglingReference;
 use super::set::ASSERTION_DECLARATION;
+use std::collections::BTreeSet;
+
 use crate::model::{
     AssertionDeclaration, Document, ElementId, ElementKind, Flag, LangString, MultiLangString,
-    ReferenceEnd, StringAttribute, Text, TextRole,
+    ReferenceEnd, Snapshot, StringAttribute, Text, TextRole,
 };
 
 /// The ids a change creates, changes and deletes, in the order a
@@ -59,6 +61,35 @@ pub(super) enum Plan<'o> {
     },
     /// A delete (ADR 0031).
     Delete(Removal),
+    /// A move to another place (ADR 0036 D1).
+    Move {
+        /// The element to move.
+        element: &'o ElementId,
+        /// The new parent, or `None` for the roots.
+        parent: Option<&'o ElementId>,
+        /// Its index among the parent's children (or the roots) after the
+        /// move.
+        position: usize,
+        /// The ids the move changes, in pre-order after it.
+        changed: Vec<ElementId>,
+    },
+    /// A copy (ADR 0036 D2).
+    Copy(Copied<'o>),
+}
+
+/// What a copy adds, once its checks have passed (ADR 0036 D2).
+#[derive(Debug)]
+pub(super) struct Copied<'o> {
+    /// The parent of the tops, or `None` for the roots.
+    pub(super) parent: Option<&'o ElementId>,
+    /// The captured elements.
+    pub(super) snapshot: &'o Snapshot,
+    /// The id of each copy, in the snapshot's order.
+    pub(super) ids: Vec<ElementId>,
+    /// The part ids the copies keep.
+    pub(super) kept: BTreeSet<ElementId>,
+    /// The last `n` generated for each kind that had one generated.
+    pub(super) generated: Vec<(ElementKind, u64)>,
 }
 
 impl Plan<'_> {
@@ -85,6 +116,14 @@ impl Plan<'_> {
             Self::Delete(removal) => Outcome {
                 changed: removal.changed.clone(),
                 deleted: removal.deleted.clone(),
+                ..Outcome::default()
+            },
+            Self::Move { changed, .. } => Outcome {
+                changed: changed.clone(),
+                ..Outcome::default()
+            },
+            Self::Copy(copied) => Outcome {
+                created: copied.ids.clone(),
                 ..Outcome::default()
             },
         }
@@ -121,6 +160,18 @@ impl Plan<'_> {
                 );
             }
             Self::Delete(removal) => document.remove_elements(&removal.deleted, &removal.changed),
+            Self::Move {
+                element,
+                parent,
+                position,
+                ..
+            } => document.move_element(element, parent, position),
+            Self::Copy(copied) => {
+                document.insert_copy(copied.parent, copied.snapshot, &copied.ids, &copied.kept);
+                for (kind, n) in copied.generated {
+                    document.commit_generated_id(kind, n);
+                }
+            }
         }
     }
 }

@@ -105,7 +105,11 @@
 //!   every reference end, within its bounds
 //!   ([`edit::SetReferences`], [`edit::AddReference`],
 //!   [`edit::RemoveReference`]), and the order of an element's children or
-//!   of the roots ([`edit::ReorderElements`]). [`edit::DeleteElement`]
+//!   of the roots ([`edit::ReorderElements`]). [`edit::MoveElement`] moves
+//!   an element, with everything it contains, under another parent or to
+//!   the roots, and [`edit::CopyElements`] copies elements of another
+//!   document, such as a draft, with fresh ids where theirs clash.
+//!   [`edit::DeleteElement`]
 //!   deletes an element of any kind under explicit policies, and never
 //!   leaves a reference dangling. [`edit::check`] answers whether `apply`
 //!   would accept an operation, and [`edit::preview`] what it would do,
@@ -114,6 +118,13 @@
 //!   has changed since ([`Document::revision`](model::Document::revision)).
 //!   [`edit::batch`] and [`edit::apply_all`] apply several operations as one
 //!   atomic change.
+//! - [`Document::referrers`](model::Document::referrers) lists the typed
+//!   references that name an id, and
+//!   [`SacmElement::flag`](model::SacmElement::flag) and
+//!   [`SacmElement::references`](model::SacmElement::references), with
+//!   [`Flag::ALL`](model::Flag::ALL) and
+//!   [`ReferenceEnd::ALL`](model::ReferenceEnd::ALL), read an element's flags
+//!   and ends without naming each one.
 //! - [`compare::semantic_compare`] lists every difference in SACM content
 //!   between two documents, and `==` on a [`Document`](model::Document) is
 //!   true when there is none.

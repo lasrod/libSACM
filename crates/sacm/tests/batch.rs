@@ -62,6 +62,8 @@ use sacm::edit::{
     CreateActivity, CreateArtifact, CreateEvent, CreateResource, SetDate, SetEndTime, SetLocation,
     SetStartTime, SetVersion,
 };
+// The operations of slice 0056 (ADR 0036).
+use sacm::edit::{CopyElements, MoveElement};
 use sacm::model::{
     AssertionDeclaration, Document, ElementId, ElementKind, Flag, LangString, MultiLangString,
     ReferenceEnd, SacmElement,
@@ -1799,6 +1801,185 @@ fn lib_edit_014_an_element_deleted_and_created_again_with_its_id_is_neither_crea
         batch_net_ids(&batch),
         net_ids("delete then create again", &before, &doc, batch.mutations()),
         "{EDIT_014}: the net ids are not the semantic comparison"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Moves and copies in a batch (LIB-EDIT-017, LIB-EDIT-018; ADR 0036 D4)
+// ---------------------------------------------------------------------------
+
+/// The worked document of slice 0056, as in `move_element.rs`: the
+/// AssuranceCasePackage root `case` holding the ArgumentPackage `p` (the
+/// Claims `c1`, `c2` with the `metaClaim` `c1`, and `c3`), the
+/// ArgumentPackage `q` (the Claim `d1`) and the ArtifactPackage `e`.
+const MOVE_START: &str = r#"<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="case">
+  <name content="Case"/>
+  <argumentPackage xmi:id="p">
+    <name content="P"/>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c1"><name content="C1"/></argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c2" metaClaim="c1"><name content="C2"/></argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c3"><name content="C3"/></argumentElement>
+  </argumentPackage>
+  <argumentPackage xmi:id="q">
+    <name content="Q"/>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="d1"><name content="D1"/></argumentElement>
+  </argumentPackage>
+  <artifactPackage xmi:id="e"><name content="E"/></artifactPackage>
+</sacm:AssuranceCasePackage>
+"#;
+
+#[test]
+fn lib_edit_017_a_batch_that_moves_an_element_away_and_back_reports_the_parent_whose_order_changed()
+{
+    const EDIT_017: &str = "LIB-EDIT-017";
+    let mut doc = read_text("MOVE_START", MOVE_START.as_bytes());
+    let before = doc.clone();
+    let result = edit::batch(&mut doc, |tx| -> Result<(), BatchError> {
+        let away = tx.apply(MoveElement::new("c1", "q"))?;
+        assert_eq!(
+            away.changed_ids(),
+            [id("c1")],
+            "{EDIT_017}: setup: the move away changes c1"
+        );
+        let back = tx.apply(MoveElement::new("c1", "p").with_position(2))?;
+        assert_eq!(
+            back.changed_ids(),
+            [id("c1")],
+            "{EDIT_017}: setup: the move back changes c1"
+        );
+        Ok(())
+    });
+    let batch = match result {
+        Ok(batch) => batch,
+        Err(error) => panic!("{EDIT_017}: the batch was refused: {error}"),
+    };
+    let children: Vec<&str> = doc
+        .get("p")
+        .map(|p| p.children().map(|child| child.id().as_str()).collect())
+        .unwrap_or_default();
+    assert_eq!(
+        children,
+        ["c2", "c3", "c1"],
+        "{EDIT_017}: c1 is back in p, last"
+    );
+    // c1 has its old parent, so it is not changed; p's child order is.
+    assert_eq!(
+        batch_net_ids(&batch),
+        NetIds {
+            created: Vec::new(),
+            changed: vec![id("p")],
+            deleted: Vec::new(),
+        },
+        "{EDIT_017}: the net ids of a move away and back are not the parent whose order changed"
+    );
+    assert_eq!(
+        batch_net_ids(&batch),
+        net_ids("a move away and back", &before, &doc, batch.mutations()),
+        "{EDIT_017}: the net ids are not the semantic comparison"
+    );
+    // Control: away and back to its old place changes nothing.
+    let mut same = before.clone();
+    let operations: [Operation; 2] = [
+        MoveElement::new("c1", "q").into(),
+        MoveElement::new("c1", "p").with_position(0).into(),
+    ];
+    let batch = match edit::apply_all(&mut same, operations) {
+        Ok(batch) => batch,
+        Err(error) => panic!("{EDIT_017}: the batch was refused: {error}"),
+    };
+    assert_eq!(
+        batch_net_ids(&batch),
+        NetIds {
+            created: Vec::new(),
+            changed: Vec::new(),
+            deleted: Vec::new(),
+        },
+        "{EDIT_017}: a move away and back to the old place reports a change"
+    );
+    assert!(same == before, "{EDIT_017}: the document is not as before");
+}
+
+#[test]
+fn lib_edit_018_a_copy_and_an_edit_of_its_copy_commit_as_one_batch() {
+    const EDIT_018: &str = "LIB-EDIT-018";
+    let start = read_text("MOVE_START", MOVE_START.as_bytes());
+
+    // p copied into case within one document, then a rename of the copy of
+    // c1 by the id the copy generated, and a rename of the original c3.
+    let mut doc = start.clone();
+    let mut renamed = None;
+    let result = edit::batch(&mut doc, |tx| -> Result<(), BatchError> {
+        let copy = match CopyElements::new(tx.document(), ["p"], "case") {
+            Ok(copy) => copy,
+            Err(error) => panic!("{EDIT_018}: setup: the copy was refused: {error}"),
+        };
+        let copied = tx.apply(copy)?;
+        let copy_of_c1 = copied.created_ids()[1].clone();
+        tx.apply(SetName::new(&copy_of_c1, named("The copy, renamed")))?;
+        tx.apply(SetName::new("c3", named("The original, renamed")))?;
+        renamed = Some(copy_of_c1);
+        Ok(())
+    });
+    let batch = match result {
+        Ok(batch) => batch,
+        Err(error) => panic!("{EDIT_018}: the batch was refused: {error}"),
+    };
+    let Some(renamed) = renamed else {
+        panic!("{EDIT_018}: setup: the closure did not run");
+    };
+    assert_eq!(renamed, id("claim_1"), "{EDIT_018}: the copy of c1");
+    assert_eq!(
+        doc.get("claim_1").and_then(SacmElement::name),
+        Some(&named("The copy, renamed")),
+        "{EDIT_018}: the copy is renamed"
+    );
+    assert_eq!(
+        doc.get("c1").and_then(SacmElement::name),
+        Some(&LangString::new("C1")),
+        "{EDIT_018}: the original is not renamed"
+    );
+    assert_eq!(
+        batch_net_ids(&batch),
+        NetIds {
+            created: vec![
+                id("argument_package_1"),
+                id("claim_1"),
+                id("claim_2"),
+                id("claim_3")
+            ],
+            changed: vec![id("c3")],
+            deleted: Vec::new(),
+        },
+        "{EDIT_018}: a renamed copy is created, not changed; the renamed original is changed"
+    );
+    assert_eq!(
+        batch_net_ids(&batch),
+        net_ids("a copy and a rename", &start, &doc, batch.mutations()),
+        "{EDIT_018}: the net ids are not the semantic comparison"
+    );
+
+    // A refusal after the copy rolls the copy back.
+    let mut rolled = start.clone();
+    let revision = rolled.revision();
+    let copy = match CopyElements::new(&start, ["c1"], "q") {
+        Ok(copy) => copy,
+        Err(error) => panic!("{EDIT_018}: setup: the copy was refused: {error}"),
+    };
+    let operations: [Operation; 2] = [
+        copy.into(),
+        SetName::new("nowhere", named("Refused")).into(),
+    ];
+    let refused = edit::apply_all(&mut rolled, operations);
+    assert!(
+        matches!(&refused, Err(error) if error.index() == 1),
+        "{EDIT_018}: the batch is {refused:?}, not refused at its second operation"
+    );
+    assert_as_before(
+        "a copy rolled back",
+        &rolled,
+        &start,
+        &revision,
+        &rolled.revision(),
     );
 }
 
