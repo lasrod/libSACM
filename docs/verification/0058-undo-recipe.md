@@ -7,8 +7,10 @@
   - 428f224, round 1: FAIL on one test gap. CI run
     [44027589623](https://github.com/lasrod/libSACM/actions/runs/44027589623) was green. The
     PR-diff mutants job had nothing to mutate, because only docs changed.
-  - 34b8437, round 2: PASS. CI run
-    [44030212469](https://github.com/lasrod/libSACM/actions/runs/44030212469).
+  - 34b8437, round 2: PASS. Its CI run 44030212469 was cancelled by the push of the close
+    commit abecaff, whose run
+    [44031049912](https://github.com/lasrod/libSACM/actions/runs/44031049912) is green on all
+    jobs.
 - Slice brief: [docs/slices/0058-undo-recipe.md](../slices/0058-undo-recipe.md)
 - Decisions: ADR 0037 and D-UNDO, accepted by the maintainer on 2026-11-17.
 
