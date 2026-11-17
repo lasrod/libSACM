@@ -40,8 +40,7 @@ breaking changes under **Breaking**.
 
 ### 3. Run the gate and the dry run
 
-Run the full gate in [CLAUDE.md](../CLAUDE.md#gate-run-before-claiming-anything-is-done),
-then:
+Run the full gate in [CONTRIBUTING.md](../CONTRIBUTING.md#the-gate), then:
 
 ```sh
 cargo publish --dry-run --workspace --locked
@@ -50,7 +49,8 @@ cargo publish --dry-run --workspace --locked
 **Check:** every command passes. The dry run packages each crate and builds it from its
 packaged sources alone. `cargo package --list -p sacm` and `cargo package --list -p sacm-cli`
 show only `Cargo.toml`, `README.md`, `LICENSE`, the files under `src/` and the files cargo
-adds itself. There must be no tests or test data. The dry run warns `ignoring test … as
+adds itself. There must be nothing from `tests/` and no test data. The unit tests in
+`src/` ship, but they run only from the repository. The dry run warns `ignoring test … as
 … is not included in the published package` once for each integration test. That is
 expected: the tests stay in the repository.
 
@@ -63,7 +63,8 @@ pull request, as usual.
 
 ### 5. Tag the release
 
-On the release commit on `main`:
+On `main`, once `git log -1` shows the merge of the release pull request (if anything was
+merged after it, stop and start again from step 1):
 
 ```sh
 git switch main && git pull
@@ -75,7 +76,8 @@ git push origin vX.Y.Z
 
 ### 6. Publish
 
-Publish `sacm` first, because `sacm-cli` depends on it:
+If the go comes on a later day than the step 4 merge, re-date the CHANGELOG section in a
+new release PR first. Publish `sacm` first, because `sacm-cli` depends on it:
 
 ```sh
 cargo publish -p sacm
@@ -95,7 +97,7 @@ Save the `## [X.Y.Z]` section of `CHANGELOG.md`, without its heading, to a file 
 `notes.md`, then:
 
 ```sh
-gh release create vX.Y.Z --title "sacm X.Y.Z" --notes-file notes.md
+gh release create vX.Y.Z --verify-tag --title "sacm X.Y.Z" --notes-file notes.md
 ```
 
 **Check:** the release appears at <https://github.com/lasrod/libSACM/releases>, on tag
@@ -106,8 +108,9 @@ gh release create vX.Y.Z --title "sacm X.Y.Z" --notes-file notes.md
 - **Before the publish (steps 1 to 5):** fix the problem and start again from the failed
   step. To move a pushed tag that no one has published from, delete it with
   `git push --delete origin vX.Y.Z` and `git tag -d vX.Y.Z`.
-- **A mistake in a published version:** never re-publish it, and never yank it to fix
-  the mistake. Fix it on `main` and release the next patch version.
+- **A mistake in a published version:** never re-publish it. Fix it on `main` and
+  release the next patch version. Yanking does not fix a version; yank one only if new
+  builds must not pick it (for example, it loses data), and only after the fix is out.
 - **`sacm` is published but `sacm-cli` fails:** fix the problem and publish `sacm-cli`
   alone at the same version, if its sources are unchanged. If they had to change,
   release the next patch version of both crates.

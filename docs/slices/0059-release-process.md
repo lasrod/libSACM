@@ -1,8 +1,8 @@
 ---
 slice: 0059
 name: release-process
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [LIB-QA-005]
 mode: pr
 base: main
@@ -45,3 +45,7 @@ release and the dry run, then stop and ask.
   The maintainer chose that the lead writes them, and the lead did. The dry run
   (`cargo publish --dry-run --workspace --locked`) succeeds, and packages `sacm` and
   `sacm-cli` with LICENSE and without tests.
+- 2026-11-17 verify: PASS in one round. The post-PASS round brought in the verifier's
+  wording and the approved CHANGELOG check, which kills M5b and M5c; the lead checked it.
+  Three items are in docs/follow-ups.md. The record is
+  `docs/verification/0059-release-process.md`. M3 is at 20/20.

@@ -260,6 +260,19 @@ fn lib_qa_005_the_versions_and_the_changelog_agree() {
         "LIB-QA-005: CHANGELOG.md's first section is {first:?}, neither `## [Unreleased]` \
          nor `## [{version}] - YYYY-MM-DD`"
     );
+    let latest = changelog
+        .lines()
+        .filter(|line| line.starts_with("## "))
+        .find(|line| *line != "## [Unreleased]");
+    if let Some(latest) = latest {
+        assert!(
+            latest
+                .strip_prefix(&format!("## [{version}] - "))
+                .is_some_and(is_iso_date),
+            "LIB-QA-005: CHANGELOG.md's latest release section is {latest:?}, not \
+             `## [{version}] - YYYY-MM-DD`"
+        );
+    }
 }
 
 #[test]
