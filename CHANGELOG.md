@@ -563,3 +563,5 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 - The crate root and README show a load, inspect, edit, validate and save example
   [LIB-DOC-001].
 - Simplified the harness: removed CI YAML pin tests and the mutation-exclusions command.
+- The `sacm` and `sacm-cli` packages ship the MIT `LICENSE` and no tests or test data
+  [LIB-QA-005].
