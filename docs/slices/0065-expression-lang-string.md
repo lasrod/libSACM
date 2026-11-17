@@ -1,8 +1,8 @@
 ---
 slice: 0065
 name: expression-lang-string
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [SACM23-BASE-009, SACM23-VAL-009, SACM23-VAL-017]
 mode: pr
 base: slice/0063-refusal-codes
@@ -71,3 +71,6 @@ The merge waits for the maintainer's approval. D-EXPR-CONTENT records Q7.
     -008, -012, XMI-006, -007, LIB-RT-001, the VAL-017 A3 wording and two BASE-009
     requirement phrases, and completes the code lists; two follow-ups logged. All with the
     verifier's text.
+- 2026-11-18 verify round 2 (e53c69a): PASS on all three rows. Record
+  docs/verification/0065-expression-lang-string.md. Merge waits for the maintainer's approval
+  of ADR 0038 and ADR 0030 amendment 4, and for #84.
