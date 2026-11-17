@@ -1,8 +1,13 @@
 # Verification 0062 — The Terminology model
 
 - Date: 2026-11-18
-- Row verdicts, all PASS: SACM23-TERM-001, SACM23-TERM-002, SACM23-TERM-003,
-  SACM23-TERM-004, SACM23-TERM-005, SACM23-TERM-006, SACM23-XMI-028.
+- Row verdict: SACM23-TERM-001: PASS
+- Row verdict: SACM23-TERM-002: PASS
+- Row verdict: SACM23-TERM-003: PASS
+- Row verdict: SACM23-TERM-004: PASS
+- Row verdict: SACM23-TERM-005: PASS
+- Row verdict: SACM23-TERM-006: PASS
+- Row verdict: SACM23-XMI-028: PASS
 - Verifier: `sacm-verifier` (independent; read-only), two rounds
 - Commits:
   - 684d874, round 1:
