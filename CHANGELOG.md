@@ -9,6 +9,8 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-17
+
 The first release: `sacm` 0.1.0, a library that reads, validates, edits and writes
 OMG SACM 2.3 assurance cases as XMI 2.5.1, and `sacm-cli` 0.1.0, the `sacm` command. It
 covers the Assurance Case, Argumentation and Artifact packages of SACM 2.3 and the Base
