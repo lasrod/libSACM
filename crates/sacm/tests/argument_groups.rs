@@ -626,16 +626,27 @@ fn sacm23_arg_013_an_attribute_and_member_elements_are_repeated_value_and_an_emp
 // Item 3: the text's spelling, and the attribute on a package
 // =====================================================================================
 
-/// The text's spelling stays a tolerance this version does not read
-/// (SACM23-XMI-009). An `argumentElement` attribute on a kind with no such
-/// reference end is an attribute its class lacks: preserved (ADR 0033).
-#[test]
-fn sacm23_arg_013_argumentation_element_on_a_group_is_unsupported_and_argument_element_on_a_package_is_preserved()
- {
+/// The text's spelling of the group's end, `argumentationElement` (§11.2),
+/// is read since slice 0057 under the rules of `argumentElement`
+/// (SACM23-XMI-009): a strict read keeps it as preserved content of the
+/// group with one SACM-XMI-013 Error at it, reading no member; a tolerant
+/// read reads the members with one SACM-XMI-013 Warning there, and a nested
+/// element is kept as one in `argumentElement` is (SACM23-XMI-019). An
+/// `argumentElement` attribute on a kind with no such reference end is an
+/// attribute its class lacks: preserved (ADR 0033).
+/// The spellings of a group's end (§11.2) of
+/// [`sacm23_arg_013_argumentation_element_on_a_group_is_a_spelling_and_argument_element_on_a_package_is_preserved`],
+/// in both modes.
+fn assert_group_end_spellings() {
+    // (what, input, the tolerant Warning's code, how many characters after
+    // the construct it is, the members it reads)
     let cases = [
         (
             "an argumentationElement attribute on a group",
             g_in_ap(&format!(" {MARK}argumentationElement=\"c1\""), ""),
+            Code::XMI_SPELLING_VARIANT,
+            0,
+            vec!["c1"],
         ),
         (
             "an argumentationElement reference element in a group",
@@ -643,6 +654,9 @@ fn sacm23_arg_013_argumentation_element_on_a_group_is_unsupported_and_argument_e
                 "",
                 &format!("{MARK}<argumentationElement xmi:idref=\"c1\"/>"),
             ),
+            Code::XMI_SPELLING_VARIANT,
+            0,
+            vec!["c1"],
         ),
         (
             "an argumentationElement nested element in a group",
@@ -650,14 +664,82 @@ fn sacm23_arg_013_argumentation_element_on_a_group_is_unsupported_and_argument_e
                 "",
                 &format!("{MARK}<argumentationElement xmi:type=\"sacm:Claim\" xmi:id=\"c9\"/>"),
             ),
+            // At its xmi:type, as in a nested argumentElement.
+            Code::XMI_UNREAD_CONTENT,
+            "<argumentationElement ".len(),
+            vec![],
         ),
     ];
-    for (what, template) in &cases {
+    for (what, template, tolerant_code, shift, members) in &cases {
         let (input, marks) = marked(template);
         assert_eq!(marks.len(), 1, "{ROW}: setup: {what} has not one mark");
-        let error = refused(what, &input);
-        assert_unsupported_at(what, &error, marks[0]);
+        let reports =
+            |output: &ReadOutput| -> Vec<(Code, Severity, Option<SourceLocation>, Vec<ElementId>)> {
+                output
+                    .diagnostics()
+                    .iter()
+                    .map(|found| {
+                        (
+                            found.code(),
+                            found.severity(),
+                            found.location(),
+                            found.affected().to_vec(),
+                        )
+                    })
+                    .collect()
+            };
+        let shifted = u32::try_from(*shift)
+            .ok()
+            .and_then(|shift| SourceLocation::new(marks[0].line(), marks[0].column() + shift));
+        for (mode, code, severity, at, read_members) in [
+            (
+                Mode::Strict,
+                Code::XMI_SPELLING_VARIANT,
+                Severity::Error,
+                Some(marks[0]),
+                Vec::new(),
+            ),
+            (
+                Mode::Tolerant,
+                *tolerant_code,
+                Severity::Warning,
+                shifted,
+                members.clone(),
+            ),
+        ] {
+            let output = match read(mode, &input) {
+                Ok(output) => output,
+                Err(error) => panic!("{ROW}: {what}: a {mode:?} read refused it: {error:?}"),
+            };
+            assert_eq!(
+                reports(&output),
+                [(code, severity, at, list(&["g"]))],
+                "{ROW}: {what}: not one {code} {severity:?} at the construct affecting g in \
+                 {mode:?} mode"
+            );
+            let doc = output.into_document();
+            let group = element(&doc, "g");
+            assert_eq!(
+                (
+                    group
+                        .group_members()
+                        .iter()
+                        .map(ElementId::as_str)
+                        .collect::<Vec<_>>(),
+                    group.has_preserved_content(),
+                    doc.get("c9").is_some()
+                ),
+                (read_members.clone(), read_members.is_empty(), false),
+                "{ROW}: {what}: the members read, or what is kept, in {mode:?} mode"
+            );
+        }
     }
+}
+
+#[test]
+fn sacm23_arg_013_argumentation_element_on_a_group_is_a_spelling_and_argument_element_on_a_package_is_preserved()
+ {
+    assert_group_end_spellings();
     let preserved = [
         (
             "an argumentElement attribute on an ArgumentPackage root",

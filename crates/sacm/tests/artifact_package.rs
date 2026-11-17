@@ -250,11 +250,6 @@ fn interim(row: &str) -> String {
     format!("(a limit of this version; {row} reads it)")
 }
 
-/// The label of `Tolerance(row)`.
-fn tolerance(row: &str) -> String {
-    format!("(strict mode never reads it; {row} is to read it in tolerant mode)")
-}
-
 /// Asserts that `template`, without its one mark, is `Unsupported` in both
 /// modes, with no code, at the mark, its one-line reason ending with `label`
 /// and holding no other label.
@@ -670,10 +665,11 @@ fn sacm23_art_001_a_reference_form_artifact_element_under_a_package_is_a_proxy_n
 // =====================================================================================
 
 /// Every kind this release reads typed in `artifactElement` (ADR 0014,
-/// ADR 0034 and its amendment 1): the two readable packages of other kinds,
-/// the nine argumentation kinds, the five artifact kinds of slice 0052 and
-/// the four `ArtifactAsset` kinds of slice 0055.
-const READABLE: [ElementKind; 20] = [
+/// ADR 0034 and its amendments 1 and 2): the two readable packages of other
+/// kinds, the nine argumentation kinds, the five artifact kinds of slice
+/// 0052, the four `ArtifactAsset` kinds of slice 0055 and the
+/// `ArtifactAssetRelationship` of slice 0057.
+const READABLE: [ElementKind; 21] = [
     ElementKind::AssuranceCasePackage,
     ElementKind::ArgumentPackage,
     ElementKind::Claim,
@@ -694,6 +690,7 @@ const READABLE: [ElementKind; 20] = [
     ElementKind::Resource,
     ElementKind::Activity,
     ElementKind::Event,
+    ElementKind::ArtifactAssetRelationship,
 ];
 
 #[test]
@@ -763,8 +760,8 @@ fn sacm23_art_001_every_readable_kind_is_read_typed_inside_an_artifact_package()
 
 /// Every kind an `ArtifactPackage` can hold that this release does not read
 /// yet, with the row that reads it: nine package, interface and binding
-/// kinds, and five others (ADR 0034 and its amendment 1).
-const UNREAD: [(&str, &str); 14] = [
+/// kinds, and four others (ADR 0034 and its amendments 1 and 2).
+const UNREAD: [(&str, &str); 13] = [
     ("ArtifactPackageInterface", "SACM23-ART-012"),
     ("ArtifactPackageBinding", "SACM23-ART-013"),
     ("TerminologyPackage", "SACM23-TERM-001"),
@@ -774,7 +771,6 @@ const UNREAD: [(&str, &str); 14] = [
     ("AssuranceCasePackageBinding", "SACM23-AC-003"),
     ("ArgumentPackageInterface", "SACM23-ARG-014"),
     ("ArgumentPackageBinding", "SACM23-ARG-015"),
-    ("ArtifactAssetRelationship", "SACM23-ART-010"),
     ("Category", "SACM23-TERM-002"),
     ("Term", "SACM23-TERM-004"),
     ("Expression", "SACM23-TERM-005"),
@@ -841,15 +837,17 @@ fn sacm23_art_001_the_interface_end_of_an_artifact_package_is_unsupported_naming
 }
 
 #[test]
-fn sacm23_art_001_the_type_artifact_asserted_relationship_is_a_tolerance_of_sacm23_xmi_009() {
+fn sacm23_art_001_the_type_artifact_asserted_relationship_is_a_spelling_of_sacm23_xmi_009() {
     // ptc/22-03-13 spells ArtifactAssetRelationship
-    // `ArtifactAssertedRelationship` (D-TEXT-MODEL): a tolerance only
-    // tolerant mode is to read, refused in both modes at the child's start
-    // tag until SACM23-XMI-009 reads it (ADR 0034).
-    let label = tolerance("SACM23-XMI-009");
+    // `ArtifactAssertedRelationship` (D-TEXT-MODEL). Since slice 0057
+    // (SACM23-XMI-009, ADR 0034 amendment 2) a strict read keeps the child
+    // whole as preserved content of the package, with one SACM-XMI-013 Error
+    // at its start tag, where it was refused; a tolerant read reads it as an
+    // ArtifactAssetRelationship, with one SACM-XMI-013 Warning there
+    // affecting the child.
     for (context, wrap, _) in contexts() {
         let what = format!("an ArtifactAssertedRelationship in artifactElement of {context}");
-        assert_unsupported_with(
+        let (input, at) = one_mark(
             &what,
             &wrap(
                 "",
@@ -858,8 +856,53 @@ fn sacm23_art_001_the_type_artifact_asserted_relationship_is_a_tolerance_of_sacm
                      xmi:id=\"r\"><name content=\"R\"/></artifactElement>"
                 ),
             ),
-            &label,
         );
+        for (mode, severity, affected, kind) in [
+            (Mode::Strict, Severity::Error, "a", None),
+            (
+                Mode::Tolerant,
+                Severity::Warning,
+                "r",
+                Some(ElementKind::ArtifactAssetRelationship),
+            ),
+        ] {
+            let output = match read(mode, &input) {
+                Ok(output) => output,
+                Err(error) => panic!("{ROW}: {what}: a {mode:?} read refused it: {error:?}"),
+            };
+            let found: Vec<_> = output
+                .diagnostics()
+                .iter()
+                .map(|found| {
+                    (
+                        found.code(),
+                        found.severity(),
+                        found.location(),
+                        found.affected().to_vec(),
+                    )
+                })
+                .collect();
+            assert_eq!(
+                found,
+                [(
+                    Code::XMI_SPELLING_VARIANT,
+                    severity,
+                    Some(at),
+                    vec![ElementId::from(affected)]
+                )],
+                "{ROW}: {what}: not one SACM-XMI-013 at the start tag affecting {affected} in \
+                 {mode:?} mode"
+            );
+            let doc = output.into_document();
+            assert_eq!(
+                (
+                    doc.get("r").map(SacmElement::kind),
+                    element(&doc, "a").has_preserved_content()
+                ),
+                (kind, kind.is_none()),
+                "{ROW}: {what}: read as the kind, or kept, in {mode:?} mode"
+            );
+        }
     }
 }
 
@@ -1165,19 +1208,20 @@ fn fixture_with(from: &str, to: &str) -> String {
 #[test]
 fn sacm23_art_001_fixture_variants_a_b_c_and_g_are_refused_at_their_construct() {
     let assessor = "      <artifactElement xmi:type=\"sacm:Participant\" xmi:id=\"assessor\">";
-    // (a) A kind not read yet in evidence: an ArtifactAssetRelationship,
-    // SACM23-ART-010. (Slice 0055 reads the Artifact this variant first used:
-    // see artifact_assets.rs.)
+    // (a) A kind not read yet in evidence: an ArtifactPackageInterface,
+    // SACM23-ART-012. (Slice 0055 reads the Artifact this variant first used,
+    // and slice 0057 the ArtifactAssetRelationship it used next: see
+    // artifact_assets.rs and artifact_asset_relationships.rs.)
     assert_unsupported_with(
-        "variant (a): an ArtifactAssetRelationship in evidence",
+        "variant (a): an ArtifactPackageInterface in evidence",
         &fixture_with(
             assessor,
             &format!(
-                "      {MARK}<artifactElement xmi:type=\"sacm:ArtifactAssetRelationship\" \
+                "      {MARK}<artifactElement xmi:type=\"sacm:ArtifactPackageInterface\" \
                  xmi:id=\"report\"/>\n{assessor}"
             ),
         ),
-        &interim("SACM23-ART-010"),
+        &interim("SACM23-ART-012"),
     );
     // (b) interface="i1" on evidence: SACM23-ART-012, at the attribute.
     assert_unsupported_with(
@@ -1188,17 +1232,20 @@ fn sacm23_art_001_fixture_variants_a_b_c_and_g_are_refused_at_their_construct() 
         ),
         &interim("SACM23-ART-012"),
     );
-    // (c) The model's spelling: SACM23-XMI-009, a tolerance.
+    // (c) Another kind not read yet in evidence: an ArtifactPackageBinding,
+    // SACM23-ART-013. (This variant first used the model's spelling
+    // ArtifactAssertedRelationship, which slice 0057 reads in tolerant mode
+    // and keeps as preserved content in strict mode: see model_spellings.rs.)
     assert_unsupported_with(
-        "variant (c): an ArtifactAssertedRelationship in evidence",
+        "variant (c): an ArtifactPackageBinding in evidence",
         &fixture_with(
             assessor,
             &format!(
-                "      {MARK}<artifactElement xmi:type=\"sacm:ArtifactAssertedRelationship\" \
+                "      {MARK}<artifactElement xmi:type=\"sacm:ArtifactPackageBinding\" \
                  xmi:id=\"r\"/>\n{assessor}"
             ),
         ),
-        &tolerance("SACM23-XMI-009"),
+        &interim("SACM23-ART-013"),
     );
     // (g) An untyped artifactElement: SACM-XMI-005.
     let what = "variant (g): an untyped artifactElement in evidence";

@@ -3432,6 +3432,8 @@ fn oracle(context: &str, operation: &Operation, before: &Document, after: &Docum
             | Difference::ReferencedArtifactElements { id, .. }
             | Difference::GroupMembers { id, .. }
             | Difference::ArtifactGroupMembers { id, .. }
+            | Difference::ArtifactSources { id, .. }
+            | Difference::ArtifactTargets { id, .. }
             | Difference::Name { id, .. }
             | Difference::NameId { id, .. }
             | Difference::Content { id, .. }
@@ -5205,6 +5207,8 @@ fn lib_edit_005_after_every_successful_delete_of_the_set_each_surviving_end_lost
                         | Difference::ReferencedArtifactElements { .. }
                         | Difference::GroupMembers { .. }
                         | Difference::ArtifactGroupMembers { .. }
+                        | Difference::ArtifactSources { .. }
+                        | Difference::ArtifactTargets { .. }
                 ),
                 "{EDIT_005}: {context}: the delete changed more than elements and reference ends: {difference}"
             );

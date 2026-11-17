@@ -313,13 +313,18 @@
 //! An `ArtifactPackage` (§12.2) holds what the argument's evidence is about.
 //! This release reads, writes and creates its `Technique`s (§12.12),
 //! `Participant`s (§12.13), `Property`s (§12.8), `ArtifactGroup`s (§12.3),
-//! `Artifact`s (§12.7), `Event`s (§12.9), `Resource`s (§12.10) and
-//! `Activity`s (§12.11). An artifact asset's characteristics are its
+//! `Artifact`s (§12.7), `Event`s (§12.9), `Resource`s (§12.10),
+//! `Activity`s (§12.11) and `ArtifactAssetRelationship`s (§12.14). An
+//! artifact asset's characteristics are its
 //! [`properties`](model::SacmElement::properties), and a group's members are
-//! references, as an `ArgumentGroup`'s are. The date-typed `date`,
-//! `startTime` and `endTime` are held as strings exactly as written: SACM 2.3
-//! defines no lexical form for them (D-DATE). `ArtifactAssetRelationship` is
-//! refused on read until a later release reads it:
+//! references, as an `ArgumentGroup`'s are. An `ArtifactAssetRelationship`
+//! links assets through its [`sources`](model::SacmElement::sources) and
+//! [`targets`](model::SacmElement::targets), one or more each, which a
+//! delete handles as it handles an asserted relationship's. The date-typed
+//! `date`, `startTime` and `endTime` are held as strings exactly as written:
+//! SACM 2.3 defines no lexical form for them (D-DATE). A tolerant read also
+//! reads the machine-readable model's spellings `ArtifactAssertedRelationship`
+//! and an Event's `occurece` (see [`xmi::read`](xmi::read#spellings)):
 //!
 //! ```
 //! use sacm::edit::{self, CreateArtifactGroup, CreateArtifactPackage, CreateParticipant, CreateProperty, CreateTechnique};

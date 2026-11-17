@@ -27,6 +27,7 @@
 //! open and, for `Interim`, gates SACM23-CP-001 and the compliance point of
 //! the row's own package.
 
+use sacm::diagnostic::{Code, Severity, SourceLocation};
 use sacm::xmi::{self, Mode, ReadError, ReadOptions};
 
 const ROW: &str = "LIB-API-011";
@@ -226,12 +227,14 @@ fn artifact_package(body: &str) -> String {
 
 #[test]
 fn lib_api_011_each_unread_artifact_element_kind_names_its_row() {
-    // The kinds that are not packages, interfaces or bindings, that an
-    // ArtifactPackage can hold since slice 0052 reads it (ADR 0034), and that
-    // are not read yet: one entry each. Slice 0055 reads Artifact, Resource,
-    // Activity and Event (ADR 0034 amendment 1), whose entries are gone.
+    // The kinds that an ArtifactPackage can hold since slice 0052 reads it
+    // (ADR 0034), and that are not read yet, in its artifactElement: one
+    // entry each. Slice 0055 reads Artifact, Resource, Activity and Event
+    // (ADR 0034 amendment 1), and slice 0057 ArtifactAssetRelationship
+    // (amendment 2), whose entries are gone; the ArtifactPackageInterface,
+    // refused as a root above, is sampled here as a child.
     let kinds = [
-        ("ArtifactAssetRelationship", "SACM23-ART-010"),
+        ("ArtifactPackageInterface", "SACM23-ART-012"),
         ("Category", "SACM23-TERM-002"),
         ("Term", "SACM23-TERM-004"),
         ("Expression", "SACM23-TERM-005"),
@@ -246,17 +249,22 @@ fn lib_api_011_each_unread_artifact_element_kind_names_its_row() {
 }
 
 #[test]
-fn lib_api_011_the_model_spelling_artifact_asserted_relationship_names_sacm23_xmi_009() {
-    // ptc/22-03-13 spells ArtifactAssetRelationship
-    // `ArtifactAssertedRelationship`: a tolerance (ADR 0034).
+fn lib_api_011_an_unread_kind_in_a_nested_artifact_package_names_its_row() {
+    // The typed child this test first used was the model's spelling
+    // `ArtifactAssertedRelationship`, which slice 0057 reads in tolerant mode
+    // and keeps as preserved content in strict mode (SACM23-XMI-009,
+    // model_spellings.rs). An unread kind one package deeper is refused the
+    // same way.
     let input = artifact_package(
-        "<artifactElement xmi:type=\"sacm:ArtifactAssertedRelationship\" xmi:id=\"r\"><name content=\"r\"/></artifactElement>",
+        "<artifactElement xmi:type=\"sacm:ArtifactPackage\" xmi:id=\"n\"><name content=\"n\"/>\
+         <artifactElement xmi:type=\"sacm:ArtifactPackageInterface\" xmi:id=\"r\"><name content=\"r\"/>\
+         </artifactElement></artifactElement>",
     );
     assert_text_refused_with(
-        "ModelSpelling",
-        "ArtifactAssertedRelationship in an ArtifactPackage",
+        "ArtifactPackageInterface",
+        "in an ArtifactPackage nested in an ArtifactPackage",
         &input,
-        &tolerance("SACM23-XMI-009"),
+        &interim("SACM23-ART-012"),
     );
 }
 
@@ -437,7 +445,7 @@ fn lib_api_011_an_expression_lang_string_names_sacm23_base_009() {
     );
 }
 
-// --- Tolerance: LIB-COMPAT-002 and SACM23-XMI-009 -----------------------------------
+// --- Tolerance: LIB-COMPAT-002; the spellings SACM23-XMI-009 reads -----------------
 
 #[test]
 fn lib_api_011_an_xmi_element_outside_the_xmi_2_5_1_namespace_names_lib_compat_002() {
@@ -453,28 +461,64 @@ fn lib_api_011_an_xmi_element_outside_the_xmi_2_5_1_namespace_names_lib_compat_0
     );
 }
 
+/// Asserts that `input`, which holds the spelling `argumentationElement`
+/// (described by `what`), is no longer refused (SACM23-XMI-009, slice 0057):
+/// a strict read returns the document with one SACM-XMI-013 Error at the
+/// spelling's start tag, where the refusal was, naming SACM23-XMI-009, whose
+/// message is `reason` pinned whole, one sentence with single spaces.
+fn assert_spelling_kept(what: &str, input: &str, reason: &str) {
+    let output = match xmi::read(input.as_bytes(), &strict()) {
+        Ok(output) => output,
+        Err(error) => panic!("{ROW}: {what}: a strict read refused it: {error:?}"),
+    };
+    let Some(offset) = input.find("<argumentationElement") else {
+        panic!("{ROW}: {what}: setup: no spelling in the input");
+    };
+    let column = u32::try_from(offset + 1).unwrap_or(u32::MAX);
+    let found: Vec<_> = output
+        .diagnostics()
+        .iter()
+        .map(|found| {
+            (
+                found.code(),
+                found.severity(),
+                found.requirement_id().to_owned(),
+                found.location(),
+                found.message().to_owned(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        found,
+        [(
+            Code::XMI_SPELLING_VARIANT,
+            Severity::Error,
+            "SACM23-XMI-009".to_owned(),
+            SourceLocation::new(1, column),
+            reason.to_owned(),
+        )],
+        "{ROW}: {what}: not one SACM-XMI-013 Error with the reason"
+    );
+    assert!(
+        !reason.contains("  ")
+            && !LABEL_OPENINGS
+                .iter()
+                .any(|opening| reason.contains(opening)),
+        "{ROW}: {what}: the message holds a run of spaces or a refusal label"
+    );
+}
+
 #[test]
 fn lib_api_011_the_text_spelling_argumentation_element_names_sacm23_xmi_009() {
     let input = package(
         "<argumentationElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\"><name content=\"c1\"/></argumentationElement>",
     );
-    assert_text_refused_with(
-        "TextSpelling",
+    assert_spelling_kept(
         "argumentationElement in an ArgumentPackage",
         &input,
-        &tolerance("SACM23-XMI-009"),
-    );
-    // The reason, pinned whole: one sentence, single spaces.
-    let error = xmi::read(input.as_bytes(), &strict()).unwrap_err();
-    let ReadError::Unsupported { reason, .. } = &error else {
-        panic!("{ROW}: TextSpelling: not Unsupported: {error:?}");
-    };
-    assert_eq!(
-        reason,
         "the element \"argumentationElement\" in the root element \"sacm:ArgumentPackage\" is \
-         spelled as in the text of §11.4, and the role is argumentElement (strict mode never \
-         reads it; SACM23-XMI-009 is to read it in tolerant mode)",
-        "{ROW}: TextSpelling: the reason"
+         spelled as in the text of §11.4, and the role is argumentElement; it is kept as \
+         preserved content, and a tolerant read reads it as argumentElement",
     );
 }
 
@@ -485,23 +529,13 @@ fn lib_api_011_the_text_spelling_in_an_argument_group_names_sacm23_xmi_009() {
          <argumentationElement xmi:idref=\"c1\"/></argumentElement>\
          <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\"><name content=\"c1\"/></argumentElement>",
     );
-    assert_text_refused_with(
-        "TextSpelling",
+    // The group's end is §11.2's, where the refusal named §11.4.
+    assert_spelling_kept(
         "argumentationElement in an ArgumentGroup",
         &input,
-        &tolerance("SACM23-XMI-009"),
-    );
-    // The reason, pinned whole: one sentence, single spaces.
-    let error = xmi::read(input.as_bytes(), &strict()).unwrap_err();
-    let ReadError::Unsupported { reason, .. } = &error else {
-        panic!("{ROW}: TextSpelling: not Unsupported: {error:?}");
-    };
-    assert_eq!(
-        reason,
         "\"argumentationElement\" in the element \"argumentElement\" is spelled as in the text \
-         of §11.4, and the end of an ArgumentGroup is argumentElement (strict mode never reads \
-         it; SACM23-XMI-009 is to read it in tolerant mode)",
-        "{ROW}: TextSpelling in an ArgumentGroup: the reason"
+         of §11.2, and the end of an ArgumentGroup is argumentElement; it is kept as preserved \
+         content, and a tolerant read reads it as argumentElement",
     );
 }
 

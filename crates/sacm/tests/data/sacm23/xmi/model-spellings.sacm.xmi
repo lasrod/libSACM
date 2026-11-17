@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-XMI-009: the four spellings a tolerant read maps: argumentationElement as a role (c1, g1) and as a group end (g1), occurece on an Event, and the type ArtifactAssertedRelationship. Hand-written; no third-party content. -->
+<xmi:XMI xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001">
+  <sacm:ArgumentPackage xmi:id="arguments">
+    <name lang="en" content="Brake arguments"/>
+    <argumentationElement xmi:type="sacm:Claim" xmi:id="c1">
+      <name lang="en" content="The brakes are safe"/>
+    </argumentationElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c2">
+      <name lang="en" content="The brakes were tested"/>
+    </argumentElement>
+    <argumentationElement xmi:type="sacm:ArgumentGroup" xmi:id="g1" argumentationElement="c1 c2">
+      <name lang="en" content="Braking"/>
+    </argumentationElement>
+  </sacm:ArgumentPackage>
+  <sacm:ArtifactPackage xmi:id="evidence">
+    <name lang="en" content="Brake evidence"/>
+    <artifactElement xmi:type="sacm:Artifact" xmi:id="report">
+      <name lang="en" content="Brake test report"/>
+    </artifactElement>
+    <artifactElement xmi:type="sacm:Event" xmi:id="released" occurece="2024-03-05">
+      <name lang="en" content="Report released"/>
+    </artifactElement>
+    <artifactElement xmi:type="sacm:ArtifactAssertedRelationship" xmi:id="release_of" source="released" target="report">
+      <name lang="en" content="Release of the report"/>
+    </artifactElement>
+  </sacm:ArtifactPackage>
+</xmi:XMI>

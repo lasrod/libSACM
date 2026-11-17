@@ -44,8 +44,8 @@ const EDIT_006: &str = "LIB-EDIT-006";
 /// The namespace declarations of every document.
 const NAMESPACES: &str = r#"xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001""#;
 
-/// The ten reference ends, in the order of `ReferenceEnd`.
-const ENDS: [ReferenceEnd; 10] = [
+/// The twelve reference ends, in the order of `ReferenceEnd`.
+const ENDS: [ReferenceEnd; 12] = [
     ReferenceEnd::CitedElement,
     ReferenceEnd::AbstractForm,
     ReferenceEnd::MetaClaim,
@@ -56,6 +56,8 @@ const ENDS: [ReferenceEnd; 10] = [
     ReferenceEnd::ReferencedArtifactElement,
     ReferenceEnd::GroupMember,
     ReferenceEnd::ArtifactGroupMember,
+    ReferenceEnd::ArtifactSource,
+    ReferenceEnd::ArtifactTarget,
 ];
 
 /// The three reference policies, from the strictest.
@@ -177,7 +179,24 @@ fn held(element: SacmElement<'_>, end: ReferenceEnd) -> Vec<ElementId> {
         ReferenceEnd::AbstractForm => one(element.abstract_form()),
         ReferenceEnd::MetaClaim => element.meta_claims().to_vec(),
         ReferenceEnd::Reasoning => one(element.reasoning()),
-        ReferenceEnd::Source => element.sources().to_vec(),
+        // `sources()` and `targets()` answer for both relationship kinds
+        // (ADR 0034 amendment 2): each end is its own kind's only.
+        ReferenceEnd::Source if element.kind() != ElementKind::ArtifactAssetRelationship => {
+            element.sources().to_vec()
+        }
+        ReferenceEnd::ArtifactSource
+            if element.kind() == ElementKind::ArtifactAssetRelationship =>
+        {
+            element.sources().to_vec()
+        }
+        ReferenceEnd::ArtifactTarget
+            if element.kind() == ElementKind::ArtifactAssetRelationship =>
+        {
+            element.targets().to_vec()
+        }
+        ReferenceEnd::Source | ReferenceEnd::ArtifactSource | ReferenceEnd::ArtifactTarget => {
+            Vec::new()
+        }
         ReferenceEnd::Target => one(element.target()),
         ReferenceEnd::Structure => one(element.structure()),
         ReferenceEnd::ReferencedArtifactElement => element.referenced_artifact_elements().to_vec(),
@@ -375,6 +394,8 @@ fn assert_clean_delete(
                     | Difference::ReferencedArtifactElements { .. }
                     | Difference::GroupMembers { .. }
                     | Difference::ArtifactGroupMembers { .. }
+                    | Difference::ArtifactSources { .. }
+                    | Difference::ArtifactTargets { .. }
             ),
             "{row}: {context}: the delete changed more than elements and reference ends: {difference}"
         );
@@ -581,6 +602,20 @@ fn holder_of(end: ReferenceEnd) -> String {
                 r#"<artifactPackage xmi:id="p"><name content="p"/>{}{}</artifactPackage>"#,
                 r#"<artifactElement xmi:type="sacm:Technique" xmi:id="t"><name content="t"/></artifactElement>"#,
                 r#"<artifactElement xmi:type="sacm:ArtifactGroup" xmi:id="h" artifactElement="t"><name content="h"/></artifactElement>"#,
+            ));
+        }
+        // An ArtifactAssetRelationship lives in an ArtifactPackage `p`, and
+        // links ArtifactAssets (§12.14).
+        ReferenceEnd::ArtifactSource | ReferenceEnd::ArtifactTarget => {
+            let ends = if end == ReferenceEnd::ArtifactSource {
+                r#"source="t" target="a""#
+            } else {
+                r#"source="a" target="t""#
+            };
+            return case(&format!(
+                r#"<artifactPackage xmi:id="p"><name content="p"/>{}{}<artifactElement xmi:type="sacm:ArtifactAssetRelationship" xmi:id="h" {ends}><name content="h"/></artifactElement></artifactPackage>"#,
+                r#"<artifactElement xmi:type="sacm:Technique" xmi:id="t"><name content="t"/></artifactElement>"#,
+                r#"<artifactElement xmi:type="sacm:Activity" xmi:id="a"><name content="a"/></artifactElement>"#,
             ));
         }
         other => panic!("{EDIT_005}: an end this test does not know: {other:?}"),

@@ -53,7 +53,9 @@
 //!     | Difference::Sources { left, right, .. }
 //!     | Difference::ReferencedArtifactElements { left, right, .. }
 //!     | Difference::GroupMembers { left, right, .. }
-//!     | Difference::ArtifactGroupMembers { left, right, .. } => {
+//!     | Difference::ArtifactGroupMembers { left, right, .. }
+//!     | Difference::ArtifactSources { left, right, .. }
+//!     | Difference::ArtifactTargets { left, right, .. } => {
 //!         let (mut left, mut right) = (left.clone(), right.clone());
 //!         left.sort();
 //!         right.sort();
@@ -383,6 +385,49 @@ pub enum Difference {
         /// The member ids in the right document, in order.
         right: Vec<ElementId>,
     },
+    /// The `ArtifactAssetRelationship`'s sources, its `source` ids (SACM 2.3
+    /// §12.14, [`SacmElement::sources`](crate::model::SacmElement::sources)),
+    /// differ on each side. Compared in order and with repeats, as
+    /// [`MetaClaims`](Self::MetaClaims) are; an asserted relationship's are
+    /// [`Sources`](Self::Sources).
+    #[doc(alias = "source")]
+    ArtifactSources {
+        /// The relationship's id.
+        id: ElementId,
+        /// The source ids in the left document, in order.
+        left: Vec<ElementId>,
+        /// The source ids in the right document, in order.
+        right: Vec<ElementId>,
+    },
+    /// The `ArtifactAssetRelationship`'s targets, its `target` ids (SACM 2.3
+    /// §12.14, [`SacmElement::targets`](crate::model::SacmElement::targets)),
+    /// differ on each side. Compared in order and with repeats, as
+    /// [`MetaClaims`](Self::MetaClaims) are; an asserted relationship's one
+    /// target is [`Target`](Self::Target).
+    ///
+    /// ```
+    /// use sacm::compare::Difference;
+    /// use sacm::model::ElementId;
+    ///
+    /// let difference = Difference::ArtifactTargets {
+    ///     id: ElementId::from("rel"),
+    ///     left: vec![ElementId::from("testing")],
+    ///     right: vec![ElementId::from("testing"), ElementId::from("tester")],
+    /// };
+    /// assert_eq!(
+    ///     difference.to_string(),
+    ///     r#"element "rel" differs in target: ["testing"] on the left, ["testing", "tester"] on the right"#
+    /// );
+    /// ```
+    #[doc(alias = "target")]
+    ArtifactTargets {
+        /// The relationship's id.
+        id: ElementId,
+        /// The target ids in the left document, in order.
+        left: Vec<ElementId>,
+        /// The target ids in the right document, in order.
+        right: Vec<ElementId>,
+    },
     /// The element has a different `name` (SACM 2.3 §8.6) on each side;
     /// `None` is a missing name.
     ///
@@ -667,6 +712,8 @@ impl Difference {
             | Self::ReferencedArtifactElements { id, .. }
             | Self::GroupMembers { id, .. }
             | Self::ArtifactGroupMembers { id, .. }
+            | Self::ArtifactSources { id, .. }
+            | Self::ArtifactTargets { id, .. }
             | Self::Name { id, .. }
             | Self::NameId { id, .. }
             | Self::Content { id, .. }
@@ -742,6 +789,8 @@ impl Difference {
             }
             Self::GroupMembers { .. } => ReferenceEnd::GroupMember.name(),
             Self::ArtifactGroupMembers { .. } => ReferenceEnd::ArtifactGroupMember.name(),
+            Self::ArtifactSources { .. } => ReferenceEnd::ArtifactSource.name(),
+            Self::ArtifactTargets { .. } => ReferenceEnd::ArtifactTarget.name(),
             _ => ReferenceEnd::CitedElement.name(),
         }
     }
@@ -814,7 +863,9 @@ impl fmt::Display for Difference {
             | Self::Sources { id, left, right }
             | Self::ReferencedArtifactElements { id, left, right }
             | Self::GroupMembers { id, left, right }
-            | Self::ArtifactGroupMembers { id, left, right } => write!(
+            | Self::ArtifactGroupMembers { id, left, right }
+            | Self::ArtifactSources { id, left, right }
+            | Self::ArtifactTargets { id, left, right } => write!(
                 f,
                 "element {:?} differs in {}: {} on the left, {} on the right",
                 id.as_str(),
@@ -1101,7 +1152,9 @@ impl fmt::Display for Declaration {
 ///     | Difference::Sources { left, right, .. }
 ///     | Difference::ReferencedArtifactElements { left, right, .. }
 ///     | Difference::GroupMembers { left, right, .. }
-///     | Difference::ArtifactGroupMembers { left, right, .. } => {
+///     | Difference::ArtifactGroupMembers { left, right, .. }
+///     | Difference::ArtifactSources { left, right, .. }
+///     | Difference::ArtifactTargets { left, right, .. } => {
 ///         let (mut left, mut right) = (left.clone(), right.clone());
 ///         left.sort();
 ///         right.sort();
@@ -1129,6 +1182,8 @@ impl fmt::Display for Declaration {
 ///    [`ReferencedArtifactElements`](Difference::ReferencedArtifactElements),
 ///    [`GroupMembers`](Difference::GroupMembers),
 ///    [`ArtifactGroupMembers`](Difference::ArtifactGroupMembers),
+///    [`ArtifactSources`](Difference::ArtifactSources),
+///    [`ArtifactTargets`](Difference::ArtifactTargets),
 ///    [`Name`](Difference::Name),
 ///    [`NameId`](Difference::NameId), [`Content`](Difference::Content),
 ///    [`ContentId`](Difference::ContentId),
@@ -1384,6 +1439,16 @@ fn reference_difference(
             right: all_right.to_vec(),
         },
         ReferenceEnd::ArtifactGroupMember => Difference::ArtifactGroupMembers {
+            id,
+            left: all_left.to_vec(),
+            right: all_right.to_vec(),
+        },
+        ReferenceEnd::ArtifactSource => Difference::ArtifactSources {
+            id,
+            left: all_left.to_vec(),
+            right: all_right.to_vec(),
+        },
+        ReferenceEnd::ArtifactTarget => Difference::ArtifactTargets {
             id,
             left: all_left.to_vec(),
             right: all_right.to_vec(),

@@ -35,8 +35,8 @@ const NS: &str = concat!(
     " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"",
 );
 
-/// The ten ends, with their XMI names.
-const ENDS: [(ReferenceEnd, &str); 10] = [
+/// The twelve ends, with their XMI names.
+const ENDS: [(ReferenceEnd, &str); 12] = [
     (ReferenceEnd::CitedElement, "citedElement"),
     (ReferenceEnd::AbstractForm, "abstractForm"),
     (ReferenceEnd::MetaClaim, "metaClaim"),
@@ -50,6 +50,8 @@ const ENDS: [(ReferenceEnd, &str); 10] = [
     ),
     (ReferenceEnd::GroupMember, "argumentElement"),
     (ReferenceEnd::ArtifactGroupMember, "artifactElement"),
+    (ReferenceEnd::ArtifactSource, "source"),
+    (ReferenceEnd::ArtifactTarget, "target"),
 ];
 
 /// The asserted relationships of [`in_case`], each with its source and
@@ -241,6 +243,8 @@ fn end_difference(
         }
         ReferenceEnd::GroupMember => Difference::GroupMembers { id, left, right },
         ReferenceEnd::ArtifactGroupMember => Difference::ArtifactGroupMembers { id, left, right },
+        ReferenceEnd::ArtifactSource => Difference::ArtifactSources { id, left, right },
+        ReferenceEnd::ArtifactTarget => Difference::ArtifactTargets { id, left, right },
         other => panic!("{ROW}: an end this test does not know: {other:?}"),
     }
 }

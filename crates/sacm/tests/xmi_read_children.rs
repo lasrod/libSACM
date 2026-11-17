@@ -568,9 +568,10 @@ fn expected_role(parent: ElementKind, child: ElementKind) -> Option<&'static str
 /// asserted relationships are read in `argumentElement` (SACM23-ARG-005, -006,
 /// -008 to -013). An ArtifactPackage is read in `artifactPackage`, and holds
 /// in `artifactElement` every kind read in `argumentElement`, the
-/// AssuranceCasePackage, the five artifact kinds of slice 0052 and the four
-/// of slice 0055; a Property is read in `property` of the seven assets read
-/// (SACM23-ART-001, -003 to -009, -011; ADR 0034 and its amendment 1).
+/// AssuranceCasePackage, the five artifact kinds of slice 0052, the four of
+/// slice 0055 and the `ArtifactAssetRelationship` of slice 0057; a Property is
+/// read in `property` of the eight assets read (SACM23-ART-001, -003 to
+/// -011; ADR 0034 and its amendments 1 and 2).
 fn is_readable(parent: ElementKind, role: &str, child: ElementKind) -> bool {
     use ElementKind as K;
     let utility = matches!(
@@ -631,6 +632,7 @@ fn is_readable(parent: ElementKind, role: &str, child: ElementKind) -> bool {
                     | K::Resource
                     | K::Activity
                     | K::Event
+                    | K::ArtifactAssetRelationship
             ) | (
                 K::Property
                     | K::Technique
@@ -638,7 +640,8 @@ fn is_readable(parent: ElementKind, role: &str, child: ElementKind) -> bool {
                     | K::Artifact
                     | K::Resource
                     | K::Activity
-                    | K::Event,
+                    | K::Event
+                    | K::ArtifactAssetRelationship,
                 "property",
                 K::Property
             )
@@ -1206,30 +1209,86 @@ fn sacm23_xmi_016_a_role_the_parent_class_lacks_or_a_qualified_role_element_is_p
     // Not conforming: kept whole as preserved content of the parent
     // (ADR 0033).
     assert_all_preserved_at_mark("role", &cases);
-    // The text's spelling `argumentationElement` is a tolerance not read yet
-    // (SACM23-XMI-009), and an XMI-namespace element is XMI metadata not read
-    // yet (SACM23-XMI-019): still refused.
-    let refusals = [
-        refused(
+    // An XMI-namespace element is XMI metadata not read yet
+    // (SACM23-XMI-019): still refused.
+    let refusals = [refused(
+        "a role element in an XMI-namespace",
+        in_ap(&format!(
+            "{MARK}<xmi:argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"
+        )),
+    )];
+    assert_all_unsupported_at_mark("role", &refusals);
+    assert_role_spellings_are_read();
+}
+
+/// The text's spelling `argumentationElement` of the role
+/// `argumentElement`, which the role test refused until slice 0057
+/// (SACM23-XMI-009).
+fn assert_role_spellings_are_read() {
+    // The text's spelling `argumentationElement`, which this test refused
+    // until slice 0057, is read since then (SACM23-XMI-009): a strict read
+    // keeps the child whole with one SACM-XMI-013 Error at its start tag
+    // affecting the package, and a tolerant read reads it in the role
+    // `argumentElement`, with one SACM-XMI-013 Warning there.
+    for (what, template, package) in [
+        (
             "argumentationElement in an AP",
             in_ap(&format!(
                 "{MARK}<argumentationElement xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"
             )),
+            "arguments",
         ),
-        refused(
+        (
             "argumentationElement in a nested AP",
             in_ap_in_acp(&format!(
                 "{MARK}<argumentationElement xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"
             )),
+            "ap",
         ),
-        refused(
-            "a role element in an XMI-namespace",
-            in_ap(&format!(
-                "{MARK}<xmi:argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"x\"/>"
-            )),
-        ),
-    ];
-    assert_all_unsupported_at_mark("role", &refusals);
+    ] {
+        let (input, at) = marked(&template);
+        for (mode, severity, read_x) in [
+            (Mode::Strict, Severity::Error, false),
+            (Mode::Tolerant, Severity::Warning, true),
+        ] {
+            let output = match read_with(input.as_bytes(), ReadOptions::default().with_mode(mode)) {
+                Ok(output) => output,
+                Err(error) => panic!("{ROW}: {what}: a {mode:?} read refused it: {error:?}"),
+            };
+            let found: Vec<_> = output
+                .diagnostics()
+                .iter()
+                .map(|found| {
+                    (
+                        found.code(),
+                        found.severity(),
+                        found.location(),
+                        found.affected().to_vec(),
+                    )
+                })
+                .collect();
+            assert_eq!(
+                found,
+                [(
+                    Code::XMI_SPELLING_VARIANT,
+                    severity,
+                    Some(at),
+                    vec![ElementId::from(package)]
+                )],
+                "{ROW}: {what}: not one SACM-XMI-013 at the start tag in {mode:?} mode"
+            );
+            let parent = output
+                .document()
+                .get("x")
+                .and_then(|x| x.parent().map(|parent| parent.id().as_str().to_owned()));
+            assert_eq!(
+                parent,
+                read_x.then(|| package.to_owned()),
+                "{ROW}: {what}: the child is not read in {package} in {mode:?} mode, or read in \
+                 strict mode"
+            );
+        }
+    }
 }
 
 #[test]
@@ -1255,14 +1314,14 @@ fn sacm23_xmi_016_every_conforming_kind_outside_the_readable_set_is_unsupported_
     }
     // The 2 other ArgumentationElement kinds (the ArgumentPackage interface
     // and binding) in the three ArgumentPackage contexts, the 9 other
-    // package kinds in the two AssuranceCasePackage contexts, and the 14
+    // package kinds in the two AssuranceCasePackage contexts, and the 13
     // ArtifactElement kinds not read yet (9 package, interface and binding
-    // kinds and 5 others, ADR 0034 and its amendment 1) in the three
+    // kinds and 4 others, ADR 0034 and its amendments 1 and 2) in the three
     // ArtifactPackage contexts. The utility roles are read on every context
     // (SACM23-BASE-004, SACM23-BASE-005), so none of them is a case.
     assert_eq!(
         cases.len(),
-        2 * 9 + 3 * 2 + 3 * 14,
+        2 * 9 + 3 * 2 + 3 * 13,
         "{ROW}: setup: the case count"
     );
     assert_all_unsupported_at_mark("unreadable kind", &cases);

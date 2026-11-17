@@ -29,6 +29,13 @@
     "required": 1
   },
   {
+    "type": "TooFewReferences",
+    "code": "SACM-MULT-001",
+    "end": "target",
+    "given": 0,
+    "required": 1
+  },
+  {
     "type": "TooManyReferences",
     "code": "SACM-MULT-001",
     "end": "citedElement",
@@ -62,6 +69,14 @@
     "id": "p",
     "kind": "ArgumentPackage",
     "expected": "ArgumentAsset"
+  },
+  {
+    "type": "WrongReferenceType",
+    "code": "SACM-REF-002",
+    "end": "target",
+    "id": "c1",
+    "kind": "Claim",
+    "expected": "ArtifactAsset"
   },
   {
     "type": "ElementNotFound",
@@ -170,6 +185,13 @@
     "element": "report",
     "kind": "Artifact",
     "feature": "endTime"
+  },
+  {
+    "type": "FeatureNotApplicable",
+    "code": "SACM-CMD-008",
+    "element": "rel1",
+    "kind": "ArtifactAssetRelationship",
+    "feature": "source"
   },
   {
     "type": "InvalidRoot",

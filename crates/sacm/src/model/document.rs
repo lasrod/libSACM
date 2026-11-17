@@ -2560,9 +2560,14 @@ impl<'a> SacmElement<'a> {
     }
 
     /// The ids of the sources of an asserted relationship (SACM 2.3 §11.13
-    /// `source:ArgumentAsset[1..*]`), its starting points, in document
-    /// order: empty when it has none or its kind is not an
-    /// `AssertedRelationship`.
+    /// `source:ArgumentAsset[1..*]`), its starting points, or of an
+    /// `ArtifactAssetRelationship` (§12.14 `source:ArtifactAsset[1..*]`), in
+    /// document order: empty when it has none or its kind is neither.
+    ///
+    /// On an `ArtifactAssetRelationship` they are its
+    /// [`ArtifactSource`](ReferenceEnd::ArtifactSource) end, on an asserted
+    /// relationship its [`Source`](ReferenceEnd::Source) end (ADR 0034
+    /// amendment 2).
     ///
     /// For an `AssertedInference` they are the premises; for an
     /// `AssertedContext`, the context; for an `AssertedEvidence`, the
@@ -2601,12 +2606,61 @@ impl<'a> SacmElement<'a> {
     /// ```
     #[must_use]
     pub fn sources(self) -> &'a [ElementId] {
-        self.references(ReferenceEnd::Source)
+        if self.kind() == ElementKind::ArtifactAssetRelationship {
+            self.references(ReferenceEnd::ArtifactSource)
+        } else {
+            self.references(ReferenceEnd::Source)
+        }
+    }
+
+    /// The ids of the targets of an `ArtifactAssetRelationship` (§12.14
+    /// `target:ArtifactAsset[1..*]`), or the one `target` of an asserted
+    /// relationship (§11.13), in order with repeats; empty when it has none
+    /// or the kind is neither.
+    ///
+    /// On an `ArtifactAssetRelationship` they are its
+    /// [`ArtifactTarget`](ReferenceEnd::ArtifactTarget) end, which holds one
+    /// or more ids; on an asserted relationship its
+    /// [`Target`](ReferenceEnd::Target) end, which [`target`](Self::target)
+    /// also reads. A relationship needs at least one:
+    /// [`validation::validate`](crate::validation::validate) reports an
+    /// `ArtifactAssetRelationship` with none as SACM-MULT-001
+    /// (SACM23-ART-010).
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateActivity, CreateArtifact, CreateArtifactAssetRelationship, CreateArtifactPackage};
+    /// use sacm::model::{Document, LangString};
+    ///
+    /// let mut doc = Document::new();
+    /// let en = |text: &str| LangString::new(text).with_lang("en");
+    /// edit::apply(&mut doc, CreateArtifactPackage::root(en("Evidence")).with_id("evidence"))?;
+    /// edit::apply(&mut doc, CreateArtifact::new("evidence", en("Brake test report")).with_id("report"))?;
+    /// edit::apply(&mut doc, CreateActivity::new("evidence", en("Brake testing")).with_id("testing"))?;
+    /// let link = CreateArtifactAssetRelationship::new("evidence", en("Produced by"), ["report"], ["testing"]);
+    /// edit::apply(&mut doc, link.with_id("rel"))?;
+    ///
+    /// let rel = doc.get("rel").expect("just created");
+    /// assert_eq!(rel.sources().iter().map(|id| id.as_str()).collect::<Vec<_>>(), ["report"]);
+    /// assert_eq!(rel.targets().iter().map(|id| id.as_str()).collect::<Vec<_>>(), ["testing"]);
+    /// // `target()` is an asserted relationship's.
+    /// assert_eq!(rel.target(), None);
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    #[doc(alias = "target")]
+    #[must_use]
+    pub fn targets(self) -> &'a [ElementId] {
+        if self.kind() == ElementKind::ArtifactAssetRelationship {
+            self.references(ReferenceEnd::ArtifactTarget)
+        } else {
+            self.references(ReferenceEnd::Target)
+        }
     }
 
     /// The id of the target of an asserted relationship (SACM 2.3 §11.13
     /// `target:ArgumentAsset[1]`), its ending point, or `None` when it has
-    /// none or its kind is not an `AssertedRelationship`.
+    /// none or its kind is not an `AssertedRelationship`: `None` for an
+    /// `ArtifactAssetRelationship`, whose targets are
+    /// [`targets`](Self::targets).
     ///
     /// For an `AssertedInference` it is the conclusion; for an
     /// `AssertedContext`, the element the context is for, such as a Claim

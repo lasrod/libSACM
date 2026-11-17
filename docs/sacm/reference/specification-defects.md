@@ -213,7 +213,9 @@ containment is public. No consequence for XMI is known.
 
 **This crate** follows the model. It admits TerminologyGroup (LIB-API-008), as the C++
 library does. Its XMI writer will write `terminologyElement`, and tolerant import will
-also accept the capitalised spelling (SACM23-XMI-009, planned), which C++ does not.
+also accept the capitalised spelling, under the rules SACM23-XMI-009 applies to the other
+spellings, once a TerminologyPackage is read (SACM23-XMI-028, planned), which C++ does
+not.
 
 **Suggested resolution.** Use the model's spelling, and either list TerminologyGroup in
 the prose or drop the list.
@@ -359,8 +361,10 @@ Schema the XMI rules produce types all four `xsd:string` (XMI 2.5.1 §8.2.1 rule
 4j, p. 50–51; §7.11.6, p. 35, gives exactly this case for a `Date` attribute).
 
 **This crate** holds each value as a string exactly as written and never diagnoses one
-(D-DATE), reads the text's `date` on an Event, and keeps the model's `occurece` for
-SACM23-XMI-009: a strict read refuses it, a tolerant read keeps it with SACM-XMI-014.
+(D-DATE), reads and writes the text's `date` on an Event, and reads the model's
+`occurece` as that `date` in tolerant mode, with a SACM-XMI-013 Warning; a `date` given
+beside it is read instead, and the `occurece` is the repeat. A strict read keeps
+`occurece` as preserved content with a SACM-XMI-013 Error (SACM23-XMI-009).
 
 **Suggested resolution.** Add a `Date` datatype to the model, tagged
 `org.omg.xmi.schemaType` `xsd:date` or `xsd:dateTime`, type the four attributes by it,

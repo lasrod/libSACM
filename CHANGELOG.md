@@ -413,8 +413,35 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 - `SacmElement::flag` and `SacmElement::references` are public. Also new: `Flag::ALL`,
   `Flag::applies_to`, `ReferenceEnd::ALL`, `ReferenceEnd::applies_to` and
   `ReferenceEnd::bounds` [LIB-API-015].
+- `xmi::read` and `xmi::write` handle `ArtifactAssetRelationship` in an
+  ArtifactPackage's `artifactElement`, with its `source` and `target` ends and
+  `property` children; `validate` reports one with no `source` or no `target`
+  (SACM-MULT-001, clause 12.14) [SACM23-ART-010].
+- `ReferenceEnd::ArtifactSource` and `ArtifactTarget` (XMI `source` and `target`; serde
+  `artifactSource` and `artifactTarget`), `SacmElement::targets()`,
+  `edit::CreateArtifactAssetRelationship`, and `Difference::ArtifactSources` and
+  `ArtifactTargets` [SACM23-ART-010].
+- `Code::XMI_SPELLING_VARIANT` (SACM-XMI-013): a tolerant `xmi::read` reads
+  `ArtifactAssertedRelationship`, an Event's `occurece` and `argumentationElement` as
+  `ArtifactAssetRelationship`, `date` and `argumentElement`, with one Warning each;
+  `xmi::write` writes the resolved names [SACM23-XMI-009].
 
 ### Changed
+
+- `xmi::read` reads `ArtifactAssetRelationship`, which a strict read refused as
+  `Unsupported` and a tolerant read kept with SACM-XMI-014 [SACM23-ART-010].
+- `SacmElement::sources()` also answers for an ArtifactAssetRelationship, and
+  `DeleteReferencingRelationships` and `ScrubReferences` delete ArtifactAssetRelationships
+  as they delete asserted relationships [SACM23-ART-010].
+- `ReadError::RepeatedValue` gains `kind`, and its message calls a property single-valued
+  only when the end that applies to the element's kind is [SACM23-ART-010].
+- `EditError::FeatureNotApplicable` names the other class when the element has an end of
+  the same name, such as `the AssertedInference "i1" has no source of an
+  ArtifactAssetRelationship` [SACM23-ART-010].
+- A strict `xmi::read` keeps `ArtifactAssertedRelationship`, `occurece` and
+  `argumentationElement` as preserved content with a SACM-XMI-013 Error, where it refused
+  them as `Unsupported`; a tolerant read reads them, where it kept them with SACM-XMI-014
+  [SACM23-XMI-009].
 
 - `xmi::read` reads `Artifact`, `Event`, `Resource` and `Activity`, which a strict read
   refused as `Unsupported` and a tolerant read kept with SACM-XMI-014. An Event's

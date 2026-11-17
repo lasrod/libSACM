@@ -31,7 +31,7 @@
 
 use sacm::compare::Difference;
 use sacm::compare::semantic_compare;
-use sacm::diagnostic::{Code, Severity, SourceLocation};
+use sacm::diagnostic::{Code, Diagnostic, Severity, SourceLocation};
 use sacm::edit::CreateTechnique;
 use sacm::edit::{
     self, DeleteElement, EditError, Mutation, Operation, PackageDeletePolicy, ReorderElements,
@@ -960,10 +960,6 @@ const ASSETS_GOLDEN: &str = concat!(
 const LOCATION: &str = "<location xmi:id=\"l\"><value xmi:id=\"l_en\" lang=\"en\" \
                         content=\"https://example.org/r.pdf\"/></location>";
 
-/// The label of `Tolerance(SACM23-XMI-009)`.
-const XMI_009_LABEL: &str =
-    "(strict mode never reads it; SACM23-XMI-009 is to read it in tolerant mode)";
-
 /// `template` without its marks, and the location of each mark in order:
 /// lines end at LF, and columns count characters.
 fn marked(row: &str, template: &str) -> (String, Vec<SourceLocation>) {
@@ -1781,13 +1777,32 @@ fn sacm23_art_006_an_end_time_before_its_start_time_is_held_without_a_finding() 
 
 // --- SACM23-ART-007: occurece ---------------------------------------------------------
 
+/// The code, severity, location and affected ids of each diagnostic.
+fn reported(found: &[Diagnostic]) -> Vec<(Code, Severity, Option<SourceLocation>, Vec<ElementId>)> {
+    found
+        .iter()
+        .map(|found| {
+            (
+                found.code(),
+                found.severity(),
+                found.location(),
+                found.affected().to_vec(),
+            )
+        })
+        .collect()
+}
+
 #[test]
 #[expect(
     clippy::too_many_lines,
-    reason = "the strict refusal, the tolerant keep and the other kinds read best together"
+    reason = "the strict keep, the tolerant read and the other kinds read best together"
 )]
-fn sacm23_art_007_occurece_on_an_event_is_kept_for_sacm23_xmi_009_and_refused_strictly() {
-    for (what, attributes, content, date) in [
+fn sacm23_art_007_occurece_on_an_event_is_read_tolerantly_and_kept_strictly_by_sacm23_xmi_009() {
+    // Since slice 0057 (SACM23-XMI-009, ADR 0034 amendment 2) the model's
+    // spelling of an Event's `date` is read by a tolerant read, unless a
+    // `date` is given, which is read instead; a strict read keeps it.
+    // (what, attributes, content, the date beside it)
+    for (what, attributes, content, beside) in [
         (
             "occurece as an attribute",
             format!(" {MARK}occurece=\"2024-03-05\""),
@@ -1814,73 +1829,87 @@ fn sacm23_art_007_occurece_on_an_event_is_kept_for_sacm23_xmi_009_and_refused_st
         ),
     ] {
         let (input, at) = one_mark(ART_007, &host_with("Event", &attributes, &content));
-        // Strict: refused at it as the model's spelling, a tolerance of
-        // SACM23-XMI-009.
-        let Err(error) = read(Mode::Strict, &input) else {
-            panic!("{ART_007}: {what}: read strictly");
-        };
-        let ReadError::Unsupported { reason, .. } = &error else {
-            panic!("{ART_007}: {what}: not Unsupported: {error:?} ({error})");
-        };
-        assert_eq!(
-            (error.location(), error.code()),
-            (Some(at), None),
-            "{ART_007}: {what}: not refused at it with no code: {error}"
-        );
-        assert!(
-            reason.ends_with(XMI_009_LABEL)
-                && reason.contains("occurece")
-                && !reason.contains('\n'),
-            "{ART_007}: {what}: the reason {reason:?} does not name occurece and end with the \
-             SACM23-XMI-009 tolerance"
-        );
-        // Tolerant: kept as preserved content of the Event, with one
-        // SACM-XMI-014 Warning there.
-        let output = match read(Mode::Tolerant, &input) {
+        // Strict: kept at it as preserved content of the Event, with one
+        // SACM-XMI-013 Error there naming SACM23-XMI-009, and never taken for
+        // the date.
+        let output = match read(Mode::Strict, &input) {
             Ok(output) => output,
-            Err(error) => panic!("{ART_007}: {what}: a tolerant read refused it: {error:?}"),
+            Err(error) => panic!("{ART_007}: {what}: a strict read refused it: {error:?}"),
         };
-        let found: Vec<_> = output
-            .diagnostics()
-            .iter()
-            .map(|found| {
-                (
-                    found.code(),
-                    found.severity(),
-                    found.location(),
-                    found.affected().to_vec(),
-                )
-            })
-            .collect();
         assert_eq!(
-            found,
+            reported(output.diagnostics()),
             [(
-                Code::XMI_UNREAD_CONTENT,
-                Severity::Warning,
+                Code::XMI_SPELLING_VARIANT,
+                Severity::Error,
                 Some(at),
                 list(&["h"])
             )],
-            "{ART_007}: {what}: not one SACM-XMI-014 Warning at it affecting the Event"
+            "{ART_007}: {what}: not one SACM-XMI-013 Error at it affecting the Event"
         );
+        let message = output.diagnostics()[0].message();
         assert!(
-            output.diagnostics()[0].message().contains("SACM23-XMI-009"),
-            "{ART_007}: {what}: the message does not name SACM23-XMI-009: {:?}",
-            output.diagnostics()[0].message()
+            output.diagnostics()[0].requirement_id() == "SACM23-XMI-009"
+                && message.contains("occurece")
+                && !message.contains('\n'),
+            "{ART_007}: {what}: the Error does not name occurece and SACM23-XMI-009: {message:?}"
         );
         let doc = output.into_document();
         assert_eq!(
             (
                 element(ART_007, &doc, "h").kind(),
-                element(ART_007, &doc, "h").has_preserved_content()
+                element(ART_007, &doc, "h").has_preserved_content(),
+                element(ART_007, &doc, "h").date()
             ),
-            (ElementKind::Event, true),
-            "{ART_007}: {what}: not an Event holding it as preserved content"
+            (ElementKind::Event, true, beside),
+            "{ART_007}: {what}: not an Event holding it as preserved content, or it is taken \
+             for the date"
         );
         let text = write_in(ART_007, what, &doc, Mode::Tolerant);
         assert!(
             text.contains("occurece") && text.contains("2024-03-05"),
             "{ART_007}: {what}: a tolerant write does not write it back\n{text}"
         );
+        let back = match read(Mode::Strict, &text) {
+            Ok(output) => output.into_document(),
+            Err(error) => panic!("{ART_007}: {what}: the tolerant output does not read: {error}"),
+        };
+        assert!(
+            back == doc,
+            "{ART_007}: {what}: the tolerant output reads back strictly !=: {:?}",
+            semantic_compare(&doc, &back)
+        );
+        match xmi::write(&doc, &WriteOptions::default().with_mode(Mode::Strict)) {
+            Err(WriteError::PreservedContent { elements, .. }) if elements == list(&["h"]) => {}
+            other => {
+                panic!("{ART_007}: {what}: a strict write is not PreservedContent [h]: {other:?}")
+            }
+        }
+        // Tolerant: read as the date with one SACM-XMI-013 Warning at it; or,
+        // beside a date, kept as the repeat with one SACM-MULT-001 Warning.
+        let output = match read(Mode::Tolerant, &input) {
+            Ok(output) => output,
+            Err(error) => panic!("{ART_007}: {what}: a tolerant read refused it: {error:?}"),
+        };
+        let code = if beside.is_some() {
+            Code::MULTIPLICITY_VIOLATION
+        } else {
+            Code::XMI_SPELLING_VARIANT
+        };
+        assert_eq!(
+            reported(output.diagnostics()),
+            [(code, Severity::Warning, Some(at), list(&["h"]))],
+            "{ART_007}: {what}: not one {code} Warning at it affecting the Event"
+        );
+        let doc = output.into_document();
+        assert_eq!(
+            (
+                element(ART_007, &doc, "h").has_preserved_content(),
+                element(ART_007, &doc, "h").date()
+            ),
+            (beside.is_some(), beside.or(Some("2024-03-05"))),
+            "{ART_007}: {what}: the date read, or what is kept"
+        );
+        let text = write_in(ART_007, what, &doc, Mode::Tolerant);
         let back = match read(Mode::Tolerant, &text) {
             Ok(output) => output.into_document(),
             Err(error) => panic!("{ART_007}: {what}: the tolerant output does not read: {error}"),
@@ -1890,18 +1919,13 @@ fn sacm23_art_007_occurece_on_an_event_is_kept_for_sacm23_xmi_009_and_refused_st
             "{ART_007}: {what}: the tolerant output reads back !=: {:?}",
             semantic_compare(&doc, &back)
         );
-        match xmi::write(&doc, &WriteOptions::default().with_mode(Mode::Strict)) {
-            Err(WriteError::PreservedContent { elements, .. }) if elements == list(&["h"]) => {}
-            other => {
-                panic!("{ART_007}: {what}: a strict write is not PreservedContent [h]: {other:?}")
-            }
+        if beside.is_none() {
+            let text = write_in(ART_007, what, &doc, Mode::Strict);
+            assert!(
+                text.contains(" date=\"2024-03-05\"") && !text.contains("occurece"),
+                "{ART_007}: {what}: a strict write does not write the date\n{text}"
+            );
         }
-        assert_eq!(
-            element(ART_007, &doc, "h").date(),
-            date,
-            "{ART_007}: {what}: occurece is taken for the date"
-        );
-        let _ = date;
     }
     // On another kind, `occurece` is an ordinary unknown attribute or child.
     for class in ["Artifact", "Technique", "Activity"] {

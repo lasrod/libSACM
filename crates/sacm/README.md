@@ -26,16 +26,19 @@ Read, edit, validate and write assurance cases in the
   each reasoning's `structure`, each artifact reference's referenced elements
   (`SacmElement::referenced_artifact_elements`) and each group's members
   (`SacmElement::group_members`). In an `ArtifactPackage` it reads `Technique`,
-  `Participant`, `Property`, `ArtifactGroup`, `Artifact`, `Event`, `Resource` and
-  `Activity` elements, with each asset's properties (`SacmElement::properties`), each
-  group's members, an Artifact's `version`, the `date` of an Artifact or an Event, an
+  `Participant`, `Property`, `ArtifactGroup`, `Artifact`, `Event`, `Resource`, `Activity`
+  and `ArtifactAssetRelationship` elements, with each asset's properties
+  (`SacmElement::properties`), each group's members, each relationship's sources and
+  targets (`SacmElement::sources`, `targets`), an Artifact's `version`, the `date` of an Artifact or an Event, an
   Activity's `startTime` and `endTime`, each held exactly as written, and a Resource's
   `location` (`SacmElement::version`, `date`, `start_time`, `end_time`, `location`). Content that is not SACM 2.3 where it stands, such as
   a vendor attribute or element, is kept as written as preserved content, with
   SACM-XMI-003 (`SacmElement::has_preserved_content`). A tolerant read, the default,
   opens every well-formed file with SACM 2.3 package roots: what a strict read refuses,
   such as a value that is no literal or conforming content not read yet, it keeps as
-  preserved content with a Warning, never dropped (`Document::has_preserved_content`).
+  preserved content with a Warning, never dropped (`Document::has_preserved_content`),
+  and it reads the names ptc/22-03-13 spells otherwise than the text, such as an Event's
+  `occurece`, as the text's, with a SACM-XMI-013 Warning.
   An element without an `xmi:id` gets a generated one, such as `claim_1`, which `write`
   saves; see the Ids section of the `sacm::xmi::read` docs.
 - `sacm::xmi::write` writes a document deterministically, preserved content included.

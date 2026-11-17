@@ -1,13 +1,14 @@
 //! The create operations of the Artifact package: `ArtifactPackage`,
 //! `Property`, `Technique`, `Participant`, `ArtifactGroup`, `Artifact`,
-//! `Event`, `Resource` and `Activity` (SACM23-ART-001, SACM23-ART-003,
-//! SACM23-ART-004 to SACM23-ART-009, SACM23-ART-011; LIB-EDIT-001, ADR 0019,
-//! ADR 0028, ADR 0034 and its amendment 1).
+//! `Event`, `Resource`, `Activity` and `ArtifactAssetRelationship`
+//! (SACM23-ART-001, SACM23-ART-003, SACM23-ART-004 to SACM23-ART-011;
+//! LIB-EDIT-001, ADR 0019, ADR 0028, ADR 0034 and its amendments 1 and 2).
 //!
 //! There is one create per class (ADR 0034). Each runs ADR 0019's four
 //! checks through the containment table, so a parent is legal exactly when a
-//! composite role of its class admits the new kind; the group's members then
-//! get ADR 0028's reference checks. The values of an Artifact, an Event, a
+//! composite role of its class admits the new kind; the group's members and
+//! the relationship's sources and targets then get ADR 0028's reference
+//! checks. The values of an Artifact, an Event, a
 //! Resource and an Activity are held as given and never refused (D-DATE).
 
 use super::EditError;
@@ -1022,6 +1023,163 @@ impl CreateActivity {
                 location: None,
             },
         )
+    }
+}
+
+/// Creates an `ArtifactAssetRelationship` (SACM 2.3 §12.14) as the last
+/// child of an element whose class can hold one: an `ArtifactPackage`. An
+/// `ArtifactAssetRelationship` is never a root.
+///
+/// An `ArtifactAssetRelationship` "enables the `ArtifactAssets` of a structured
+/// assurance case to be linked together" (§12.14): its `source` and `target`
+/// (`source:ArtifactAsset[1..*]`, `target:ArtifactAsset[1..*]`) name the
+/// linked assets, such as a test report and the activity that produced it.
+/// It is an `ArtifactAsset` itself, so it can hold
+/// [`properties`](crate::model::SacmElement::properties) and be the source
+/// or target of another. The ends are
+/// [`ReferenceEnd::ArtifactSource`](crate::model::ReferenceEnd::ArtifactSource)
+/// and
+/// [`ReferenceEnd::ArtifactTarget`](crate::model::ReferenceEnd::ArtifactTarget),
+/// read with [`sources`](crate::model::SacmElement::sources) and
+/// [`targets`](crate::model::SacmElement::targets).
+///
+/// The sources and the targets are kept in the order given, repeats
+/// included. Apply it with [`edit::apply`](super::apply). After [ADR 0019]'s
+/// four checks, an empty `source`, then an empty `target`, is
+/// [`EditError::TooFewReferences`]; then an id that holds XML white space is
+/// [`EditError::InvalidReference`], then one that names no element is
+/// [`EditError::ReferenceNotFound`], then one that names no `ArtifactAsset`
+/// is [`EditError::WrongReferenceType`] (SACM-REF-002); each check runs over
+/// the sources, then the targets, in order, before the next. Without
+/// [`with_id`](Self::with_id), the id is generated:
+/// `artifact_asset_relationship_<n>`.
+///
+/// [ADR 0019]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0019-edit-operations.md
+///
+/// # Examples
+///
+/// ```
+/// use sacm::edit::{self, CreateActivity, CreateArtifact, CreateArtifactAssetRelationship, CreateArtifactPackage};
+/// use sacm::model::{Document, LangString, ReferenceEnd};
+///
+/// let mut doc = Document::new();
+/// let en = |text: &str| LangString::new(text).with_lang("en");
+/// edit::apply(&mut doc, CreateArtifactPackage::root(en("Evidence")).with_id("evidence"))?;
+/// edit::apply(&mut doc, CreateArtifact::new("evidence", en("Brake test report")).with_id("report"))?;
+/// edit::apply(&mut doc, CreateActivity::new("evidence", en("Brake testing")).with_id("testing"))?;
+/// let link = CreateArtifactAssetRelationship::new("evidence", en("Produced by"), ["report"], ["testing"]);
+/// let created = edit::apply(&mut doc, link)?;
+///
+/// let rel = doc.get(&created.created_ids()[0]).expect("just created");
+/// assert_eq!(rel.id().as_str(), "artifact_asset_relationship_1");
+/// assert_eq!(rel.targets().iter().map(|id| id.as_str()).collect::<Vec<_>>(), ["testing"]);
+/// assert_eq!(ReferenceEnd::ArtifactTarget.name(), "target");
+/// # Ok::<(), sacm::edit::EditError>(())
+/// ```
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
+pub struct CreateArtifactAssetRelationship {
+    parent: ElementId,
+    #[cfg_attr(feature = "serde", serde(default))]
+    id: Option<ElementId>,
+    name: LangString,
+    sources: Vec<ElementId>,
+    targets: Vec<ElementId>,
+}
+
+impl CreateArtifactAssetRelationship {
+    /// Creates an `ArtifactAssetRelationship` named `name` as the last child
+    /// of `parent`, from the `ArtifactAsset`s `sources` to the
+    /// `ArtifactAsset`s `targets`, each in the order given, repeats
+    /// included. Each end needs at least one id
+    /// (§12.14 `[1..*]`); otherwise [`apply`](super::apply) refuses with
+    /// [`EditError::TooFewReferences`](super::EditError::TooFewReferences).
+    #[must_use]
+    pub fn new(
+        parent: impl Into<ElementId>,
+        name: LangString,
+        sources: impl IntoIterator<Item = impl Into<ElementId>>,
+        targets: impl IntoIterator<Item = impl Into<ElementId>>,
+    ) -> Self {
+        Self {
+            parent: parent.into(),
+            id: None,
+            name,
+            sources: sources.into_iter().map(Into::into).collect(),
+            targets: targets.into_iter().map(Into::into).collect(),
+        }
+    }
+
+    /// Gives the new element the id `id` instead of a generated one. It must
+    /// be an XML `NCName` and not already in the document. Otherwise
+    /// [`apply`](super::apply) refuses with
+    /// [`EditError::InvalidId`](super::EditError::InvalidId) or
+    /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
+    #[must_use]
+    pub fn with_id(self, id: impl Into<ElementId>) -> Self {
+        Self {
+            id: Some(id.into()),
+            ..self
+        }
+    }
+
+    /// The parent's id.
+    #[must_use]
+    pub fn parent(&self) -> &ElementId {
+        &self.parent
+    }
+
+    /// The id given with [`with_id`](Self::with_id), or `None` when the id
+    /// is to be generated.
+    #[must_use]
+    pub fn id(&self) -> Option<&ElementId> {
+        self.id.as_ref()
+    }
+
+    /// The new element's name.
+    #[must_use]
+    pub fn name(&self) -> &LangString {
+        &self.name
+    }
+
+    /// The source ids given, its `source` end, in the order given.
+    #[doc(alias = "source")]
+    #[must_use]
+    pub fn sources(&self) -> &[ElementId] {
+        &self.sources
+    }
+
+    /// The target ids given, its `target` end, in the order given.
+    #[doc(alias = "target")]
+    #[must_use]
+    pub fn targets(&self) -> &[ElementId] {
+        &self.targets
+    }
+
+    /// Runs every check of the operation, and returns what it creates.
+    pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
+        plan_referencing(
+            document,
+            ElementKind::ArtifactAssetRelationship,
+            &self.parent,
+            self.id.as_ref(),
+            &self.name,
+            &[],
+            &[
+                (ReferenceEnd::ArtifactSource, &self.sources),
+                (ReferenceEnd::ArtifactTarget, &self.targets),
+            ],
+        )
+    }
+}
+
+impl From<CreateArtifactAssetRelationship> for super::Operation {
+    fn from(operation: CreateArtifactAssetRelationship) -> Self {
+        Self::CreateArtifactAssetRelationship(operation)
     }
 }
 

@@ -254,14 +254,32 @@ catalog! {
     /// form. Fix: read the file in tolerant mode and save it again.
     pub const XMI_LEGACY_SHAPE: Code = Code::from_static("SACM-XMI-012");
 
+    /// SACM-XMI-013: a name spelled where formal/23-05-08 and ptc/22-03-13
+    /// disagree and the crate follows the other (D-TEXT-MODEL): the type
+    /// `ArtifactAssertedRelationship` under a role that admits an
+    /// `ArtifactAssetRelationship`, an Event's `occurece`, and
+    /// `argumentationElement` as an ArgumentPackage's role or an
+    /// `ArgumentGroup`'s end.
+    ///
+    /// A tolerant [`xmi::read`](crate::xmi::read) reads it as the resolved
+    /// name, with one Warning per construct read, at its start tag or
+    /// attribute name, affecting the element the spelling belongs to; a value
+    /// given under both names is read from the resolved name, and the spelled
+    /// one is a repeat (SACM-MULT-001). A strict read keeps the construct as
+    /// preserved content of the element it sits in, with one Error, so a
+    /// strict write refuses the document (SACM-XMI-006).
+    /// [`xmi::write`](crate::xmi::write) writes the resolved names. Fix: read
+    /// the file in tolerant mode and save it again (SACM23-XMI-009, ADR 0034
+    /// amendment 2).
+    pub const XMI_SPELLING_VARIANT: Code = Code::from_static("SACM-XMI-013");
+
     /// SACM-XMI-014: conforming content this release does not read yet,
     /// which a tolerant [`xmi::read`](crate::xmi::read) keeps as preserved
     /// content with one Warning: an element of a kind not read yet (such as
-    /// an `ArtifactAssetRelationship` or a `TerminologyPackage`), a package's `interface`
-    /// end, an `ExpressionLangString`, XMI metadata (such as `xmi:uuid`,
-    /// `xsi:schemaLocation` or `xmi:Documentation`), or a spelling
-    /// SACM23-XMI-009 reads. It is not a defect: the message ends naming the
-    /// row that reads it. A strict read refuses it as
+    /// a `TerminologyPackage` or an `ArtifactPackageInterface`), a package's
+    /// `interface` end, an `ExpressionLangString`, or XMI metadata (such as
+    /// `xmi:uuid`, `xsi:schemaLocation` or `xmi:Documentation`). It is not a
+    /// defect: the message ends naming the row that reads it. A strict read refuses it as
     /// [`ReadError::Unsupported`](crate::xmi::ReadError::Unsupported), and a
     /// strict write refuses a document that holds it (SACM-XMI-006)
     /// (LIB-API-011, ADR 0035).

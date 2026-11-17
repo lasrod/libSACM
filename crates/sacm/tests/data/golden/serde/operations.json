@@ -609,6 +609,38 @@
     "end_time": "2024-02-29T17:30:00Z"
   },
   {
+    "type": "CreateArtifactAssetRelationship",
+    "parent": "evidence",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Produced by"
+    },
+    "sources": [
+      "report"
+    ],
+    "targets": [
+      "testing"
+    ]
+  },
+  {
+    "type": "CreateArtifactAssetRelationship",
+    "parent": "evidence",
+    "id": "rel1",
+    "name": {
+      "lang": "en",
+      "content": "Produced by"
+    },
+    "sources": [
+      "report",
+      "report_pdf"
+    ],
+    "targets": [
+      "testing",
+      "tester"
+    ]
+  },
+  {
     "type": "SetName",
     "element": "c1",
     "name": {
@@ -747,6 +779,15 @@
     "ids": []
   },
   {
+    "type": "SetReferences",
+    "element": "rel1",
+    "end": "artifactTarget",
+    "ids": [
+      "testing",
+      "tester"
+    ]
+  },
+  {
     "type": "AddReference",
     "element": "g1",
     "end": "argumentElement",
@@ -757,6 +798,12 @@
     "element": "ag1",
     "end": "artifactElement",
     "id": "pa1"
+  },
+  {
+    "type": "AddReference",
+    "element": "rel1",
+    "end": "artifactSource",
+    "id": "report_pdf"
   },
   {
     "type": "RemoveReference",

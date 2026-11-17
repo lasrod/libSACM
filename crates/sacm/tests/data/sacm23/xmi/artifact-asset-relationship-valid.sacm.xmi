@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-ART-010: the worked example of slice 0057. The ArtifactPackage evidence holds the Artifact report, the Activity testing, the Participant tester and two ArtifactAssetRelationships: produced_by, whose source is a reference element, whose targets are testing and tester, and which holds the Property produced_by_reviewed; and derived, with a gid, whose source is the relationship produced_by and whose target is report. It reads with no diagnostic in either mode, validates without a finding, and writes golden/artifact-asset-relationship.golden.sacm.xmi, where the source is an attribute. Hand-written; no third-party content. -->
+<sacm:ArtifactPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="evidence">
+  <name lang="en" content="Brake evidence"/>
+  <artifactElement xmi:type="sacm:Artifact" xmi:id="report">
+    <name lang="en" content="Brake test report"/>
+  </artifactElement>
+  <artifactElement xmi:type="sacm:Activity" xmi:id="testing">
+    <name lang="en" content="Brake testing"/>
+  </artifactElement>
+  <artifactElement xmi:type="sacm:Participant" xmi:id="tester">
+    <name lang="en" content="Test engineer"/>
+  </artifactElement>
+  <artifactElement xmi:type="sacm:ArtifactAssetRelationship" xmi:id="produced_by" target="testing tester">
+    <name lang="en" content="Produced by"/>
+    <source xmi:idref="report"/>
+    <property xmi:id="produced_by_reviewed">
+      <name lang="en" content="Reviewed by the safety team"/>
+    </property>
+  </artifactElement>
+  <artifactElement xmi:type="sacm:ArtifactAssetRelationship" xmi:id="derived" gid="REL-2" source="produced_by" target="report">
+    <name lang="en" content="Recorded in the report"/>
+  </artifactElement>
+</sacm:ArtifactPackage>
