@@ -1,6 +1,7 @@
 //! Tests for the public flag and reference-end readers (LIB-API-015; ADR
 //! 0029 amendment 1; formal/23-05-08 §11.13 (p. 40) "target:ArgumentAsset[1]",
-//! §12.14 (p. 50) "target:ArtifactAsset[1..*]").
+//! §12.14 (p. 50) "target:ArtifactAsset[1..*]"; §10.3, §10.8 to §10.11 for
+//! the Terminology ends of slice 0062).
 //!
 //! - `SacmElement::flag(Flag)` and `SacmElement::references(ReferenceEnd)`:
 //!   a flag the kind lacks is `false`, an end it lacks holds no id, and
@@ -22,7 +23,7 @@ use sacm::edit::{self, EditError, Operation, SetFlag, SetReferences};
 use sacm::model::ElementKind::{
     ArgumentGroup, ArgumentReasoning, ArtifactAssetRelationship, ArtifactGroup, ArtifactPackage,
     ArtifactReference, AssertedArtifactContext, AssertedArtifactSupport, AssertedContext,
-    AssertedEvidence, AssertedInference, Claim,
+    AssertedEvidence, AssertedInference, Category, Claim, Expression, Term, TerminologyGroup,
 };
 use sacm::model::{Document, ElementId, ElementKind, Flag, ReferenceEnd, SacmElement};
 use sacm::xmi::{self, Mode, ReadOptions, WriteOptions};
@@ -49,7 +50,8 @@ const ASSERTIONS: [ElementKind; 6] = [
 ];
 
 /// Whether an element of `kind` has `end`, by the classes that own the ends
-/// (§8.2, §11.2, §11.9, §11.10, §11.12, §11.13, §12.3, §12.14).
+/// (§8.2, §10.3, §10.8 to §10.11, §11.2, §11.9, §11.10, §11.12, §11.13,
+/// §12.3, §12.14).
 fn owns(end: ReferenceEnd, kind: ElementKind) -> bool {
     match end {
         ReferenceEnd::CitedElement | ReferenceEnd::AbstractForm => true,
@@ -64,6 +66,11 @@ fn owns(end: ReferenceEnd, kind: ElementKind) -> bool {
         ReferenceEnd::ArtifactSource | ReferenceEnd::ArtifactTarget => {
             kind == ArtifactAssetRelationship
         }
+        // Every TerminologyAsset: a Category and both ExpressionElements.
+        ReferenceEnd::Category => [Category, Term, Expression].contains(&kind),
+        ReferenceEnd::Element => kind == Expression,
+        ReferenceEnd::Origin => kind == Term,
+        ReferenceEnd::TerminologyGroupMember => kind == TerminologyGroup,
         other => panic!("{ROW}: an end this test does not know: {other:?}"),
     }
 }
@@ -79,8 +86,10 @@ fn has_flag(flag: Flag, kind: ElementKind) -> bool {
 
 /// The bounds of `end` on its owners, from the standard: `source` `[1..*]`
 /// and `target` `[1]` (§11.13), an `ArtifactAssetRelationship`'s `source` and
-/// `target` `[1..*]` (§12.14), the many-valued ends `[0..*]`, the others
-/// `[0..1]`.
+/// `target` `[1..*]` (§12.14), the many-valued ends `[0..*]` (with
+/// `category`, an Expression's `element` and a `TerminologyGroup`'s
+/// `terminologyElement`, §10.3, §10.8 to §10.10), the others `[0..1]` (with
+/// a Term's `origin`, §10.11).
 fn standard_bounds(end: ReferenceEnd) -> (usize, Option<usize>) {
     match end {
         ReferenceEnd::Source | ReferenceEnd::ArtifactSource | ReferenceEnd::ArtifactTarget => {
@@ -90,7 +99,10 @@ fn standard_bounds(end: ReferenceEnd) -> (usize, Option<usize>) {
         ReferenceEnd::MetaClaim
         | ReferenceEnd::ReferencedArtifactElement
         | ReferenceEnd::GroupMember
-        | ReferenceEnd::ArtifactGroupMember => (0, None),
+        | ReferenceEnd::ArtifactGroupMember
+        | ReferenceEnd::Category
+        | ReferenceEnd::Element
+        | ReferenceEnd::TerminologyGroupMember => (0, None),
         _ => (0, Some(1)),
     }
 }
@@ -166,7 +178,15 @@ fn named_accessor(element: SacmElement<'_>, end: ReferenceEnd) -> Vec<ElementId>
         ReferenceEnd::ArtifactGroupMember if element.kind() == ArtifactGroup => {
             element.group_members().to_vec()
         }
-        ReferenceEnd::GroupMember | ReferenceEnd::ArtifactGroupMember => Vec::new(),
+        ReferenceEnd::TerminologyGroupMember if element.kind() == TerminologyGroup => {
+            element.group_members().to_vec()
+        }
+        ReferenceEnd::GroupMember
+        | ReferenceEnd::ArtifactGroupMember
+        | ReferenceEnd::TerminologyGroupMember => Vec::new(),
+        ReferenceEnd::Category => element.categories().to_vec(),
+        ReferenceEnd::Element => element.expression_elements().to_vec(),
+        ReferenceEnd::Origin => one(element.origin()),
         other => panic!("{ROW}: an end this test does not know: {other:?}"),
     }
 }
@@ -174,7 +194,9 @@ fn named_accessor(element: SacmElement<'_>, end: ReferenceEnd) -> Vec<ElementId>
 /// A document in which every end and flag is set somewhere: the edit start
 /// document of `edit_atomic.rs`, with an ArtifactPackage holding an
 /// `ArtifactGroup` with members and an `ArtifactAssetRelationship` with
-/// sources and targets, and a counter relationship.
+/// sources and targets, a counter relationship, and a TerminologyPackage
+/// whose Category, Term, Expression and `TerminologyGroup` hold the
+/// Terminology ends (slice 0062).
 const READERS_START: &str = r#"<xmi:XMI xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001">
   <sacm:AssuranceCasePackage xmi:id="case">
     <name content="Case"/>
@@ -195,6 +217,13 @@ const READERS_START: &str = r#"<xmi:XMI xmlns:sacm="http://www.omg.org/spec/SACM
       <artifactElement xmi:type="sacm:Activity" xmi:id="act1"><name content="Act1"/></artifactElement>
       <artifactElement xmi:type="sacm:ArtifactAssetRelationship" xmi:id="rel1" source="t1" target="act1 t1"><name content="Rel1"/></artifactElement>
     </artifactPackage>
+    <terminologyPackage xmi:id="terms">
+      <name content="Terms"/>
+      <terminologyElement xmi:type="sacm:Category" xmi:id="k1" category="k1"><name content="K1"/></terminologyElement>
+      <terminologyElement xmi:type="sacm:Term" xmi:id="x1" value="x" origin="c1" category="k1"><name content="X1"/></terminologyElement>
+      <terminologyElement xmi:type="sacm:Expression" xmi:id="e1" value="e" element="x1 x1" category="k1"><name content="E1"/></terminologyElement>
+      <terminologyElement xmi:type="sacm:TerminologyGroup" xmi:id="tg1" terminologyElement="x1 e1"><name content="TG1"/></terminologyElement>
+    </terminologyPackage>
   </sacm:AssuranceCasePackage>
 </xmi:XMI>
 "#;
@@ -497,6 +526,10 @@ fn lib_api_015_all_lists_every_flag_and_end_in_order() {
             ReferenceEnd::ArtifactGroupMember,
             ReferenceEnd::ArtifactSource,
             ReferenceEnd::ArtifactTarget,
+            ReferenceEnd::Category,
+            ReferenceEnd::Element,
+            ReferenceEnd::Origin,
+            ReferenceEnd::TerminologyGroupMember,
         ],
         "{ROW}: ReferenceEnd::ALL"
     );
@@ -513,7 +546,7 @@ fn lib_api_015_all_lists_every_flag_and_end_in_order() {
     };
     // The ends of the holder's kind: no kind has two ends of one name (ADR
     // 0034 amendment 2), so each is found by its name.
-    for (holder, least) in [("c1", 3), ("i1", 3), ("rel1", 2)] {
+    for (holder, least) in [("c1", 3), ("i1", 3), ("rel1", 2), ("x1", 2), ("e1", 2)] {
         let Some(line) = text
             .lines()
             .find(|line| line.contains(&format!("xmi:id=\"{holder}\"")))

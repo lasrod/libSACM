@@ -212,10 +212,9 @@ containment is public. No consequence for XMI is known.
   "Superclass TerminologyElement", so the declared type admits it.
 
 **This crate** follows the model. It admits TerminologyGroup (LIB-API-008), as the C++
-library does. Its XMI writer will write `terminologyElement`, and tolerant import will
-also accept the capitalised spelling, under the rules SACM23-XMI-009 applies to the other
-spellings, once a TerminologyPackage is read (SACM23-XMI-028, planned), which C++ does
-not.
+library does. Its XMI writer writes `terminologyElement`, and tolerant import also accepts
+the capitalised spelling, under the rules SACM23-XMI-009 applies to the other spellings
+(SACM23-XMI-028), which C++ does not.
 
 **Suggested resolution.** Use the model's spelling, and either list TerminologyGroup in
 the prose or drop the list.
@@ -406,6 +405,30 @@ strict read keeps it as preserved content with a SACM-XMI-013 Error, D-STRICT's 
 
 **Suggested resolution.** Rename the class in the model to `ArtifactAssetRelationship` and
 give it the generalization ArtifactAsset, as the text states.
+
+## D20 — ExpressionLangString's `expression` is required and optional at once
+
+*Found by libSACM (M4 design, 2026-11-17).*
+
+formal/23-05-08 §8.4 (pp. 18–19) says ExpressionLangString "contains a description (LangString) and it also (optionally) points to an ExpressionElement". It also says:
+
+> "expression:Terminology::ExpressionElement[1] (composition)"
+
+and its constraint reads "If expression is not empty, then +content should be empty". ptc/22-03-13 gives the property no bounds, so it is `[1..1]`, which agrees with the association. The prose and the constraint assume that the expression can be absent. SACM 2.4 Beta1 makes it `[0..1]`.
+
+**This crate** holds the expression as optional. Because the text and the model agree on `[1]`, `validate` reports an ExpressionLangString without one as a SACM-MULT-001 Error (D-SEV; the maintainer, 2026-11-17; SACM23-BASE-009).
+
+**Suggested resolution.** Make the multiplicity `[0..1]`, as the prose and SACM 2.4 Beta1 do.
+
+## D21 — The direction of Category's `category` end is not stated
+
+*Found by libSACM (M4 design, 2026-11-17).*
+
+ptc/22-03-13 gives Category an end `category : Category [0..*]`. formal/23-05-08 §10.8 (p. 29) has no Associations entry for it. It says only that "Terms, Categories, and ExpressionElements can be said to belong to Categories. … Categories can contain Categories." Nothing says whether a Category's `category` names the Categories it belongs to or those it contains. SACM 2.2 had neither sentence. SACM 2.4 Beta1 gives Category a `terminologyAsset` list of the members it contains.
+
+**This crate** holds the ids as written and documents no direction (SACM23-TERM-002, ADR 0034 amendment 3).
+
+**Suggested resolution.** State the end in §10.8's Associations, with its direction.
 
 ## Related
 

@@ -665,11 +665,12 @@ fn sacm23_art_001_a_reference_form_artifact_element_under_a_package_is_a_proxy_n
 // =====================================================================================
 
 /// Every kind this release reads typed in `artifactElement` (ADR 0014,
-/// ADR 0034 and its amendments 1 and 2): the two readable packages of other
+/// ADR 0034 and its amendments 1 to 3): the two readable packages of other
 /// kinds, the nine argumentation kinds, the five artifact kinds of slice
-/// 0052, the four `ArtifactAsset` kinds of slice 0055 and the
-/// `ArtifactAssetRelationship` of slice 0057.
-const READABLE: [ElementKind; 21] = [
+/// 0052, the four `ArtifactAsset` kinds of slice 0055, the
+/// `ArtifactAssetRelationship` of slice 0057 and the five terminology kinds
+/// of slice 0062.
+const READABLE: [ElementKind; 26] = [
     ElementKind::AssuranceCasePackage,
     ElementKind::ArgumentPackage,
     ElementKind::Claim,
@@ -691,6 +692,11 @@ const READABLE: [ElementKind; 21] = [
     ElementKind::Activity,
     ElementKind::Event,
     ElementKind::ArtifactAssetRelationship,
+    ElementKind::TerminologyPackage,
+    ElementKind::Category,
+    ElementKind::Term,
+    ElementKind::Expression,
+    ElementKind::TerminologyGroup,
 ];
 
 #[test]
@@ -759,22 +765,17 @@ fn sacm23_art_001_every_readable_kind_is_read_typed_inside_an_artifact_package()
 }
 
 /// Every kind an `ArtifactPackage` can hold that this release does not read
-/// yet, with the row that reads it: nine package, interface and binding
-/// kinds, and four others (ADR 0034 and its amendments 1 and 2).
-const UNREAD: [(&str, &str); 13] = [
+/// yet, with the row that reads it: the eight interface and binding kinds
+/// (ADR 0034 and its amendments 1 to 3).
+const UNREAD: [(&str, &str); 8] = [
     ("ArtifactPackageInterface", "SACM23-ART-012"),
     ("ArtifactPackageBinding", "SACM23-ART-013"),
-    ("TerminologyPackage", "SACM23-TERM-001"),
     ("TerminologyPackageInterface", "SACM23-TERM-007"),
     ("TerminologyPackageBinding", "SACM23-TERM-008"),
     ("AssuranceCasePackageInterface", "SACM23-AC-002"),
     ("AssuranceCasePackageBinding", "SACM23-AC-003"),
     ("ArgumentPackageInterface", "SACM23-ARG-014"),
     ("ArgumentPackageBinding", "SACM23-ARG-015"),
-    ("Category", "SACM23-TERM-002"),
-    ("Term", "SACM23-TERM-004"),
-    ("Expression", "SACM23-TERM-005"),
-    ("TerminologyGroup", "SACM23-TERM-006"),
 ];
 
 #[test]

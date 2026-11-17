@@ -11,8 +11,9 @@
 //!
 //! # What works today
 //!
-//! - [`xmi::read`] reads `AssuranceCasePackage`, `ArgumentPackage` and
-//!   `ArtifactPackage` roots and the packages and Claims in them, with their names, `gid`s and each
+//! - [`xmi::read`] reads `AssuranceCasePackage`, `ArgumentPackage`,
+//!   `ArtifactPackage` and `TerminologyPackage` roots and the packages and
+//!   Claims in them, with their names, `gid`s and each
 //!   Assertion's `assertionDeclaration`, and the descriptions, notes,
 //!   implementation constraints and tagged values of each
 //!   ([`descriptions`](model::SacmElement::descriptions),
@@ -53,6 +54,9 @@
 //!   Activity's [`start_time`](model::SacmElement::start_time) and
 //!   [`end_time`](model::SacmElement::end_time), each held exactly as
 //!   written, and a Resource's [`location`](model::SacmElement::location).
+//!   In a `TerminologyPackage` it reads `Category`, `Term`, `Expression`,
+//!   `TerminologyGroup` and nested `TerminologyPackage` elements (see
+//!   [Terminology](#terminology)).
 //!   Content that is not SACM 2.3 where it stands, such as a vendor
 //!   attribute or element, is kept as written as preserved content, with
 //!   SACM-XMI-003 ([`has_preserved_content`](model::SacmElement::has_preserved_content);
@@ -86,7 +90,9 @@
 //!   ([`edit::CreateAssertedInference`] and the like), `ArtifactPackage`,
 //!   `Property`, `Technique`, `Participant`, `ArtifactGroup`, `Artifact`,
 //!   `Event`, `Resource` and `Activity` elements
-//!   ([`edit::CreateArtifactPackage`] and the like), and descriptions,
+//!   ([`edit::CreateArtifactPackage`] and the like), `TerminologyPackage`,
+//!   `Category`, `Term`, `Expression` and `TerminologyGroup` elements
+//!   ([`edit::CreateTerminologyPackage`] and the like), and descriptions,
 //!   implementation constraints, notes and tagged values on them
 //!   ([`edit::CreateNote`], [`edit::CreateTaggedValue`] and the like); a
 //!   refused edit changes nothing, and an edit refuses a reference that
@@ -102,6 +108,8 @@
 //!   or an Event, a Resource's `location` and an Activity's `startTime` and
 //!   `endTime` ([`edit::SetVersion`], [`edit::SetDate`],
 //!   [`edit::SetLocation`], [`edit::SetStartTime`], [`edit::SetEndTime`]),
+//!   a Term's or an Expression's `value` and a Term's `externalReference`
+//!   ([`edit::SetValue`], [`edit::SetExternalReference`]),
 //!   every reference end, within its bounds
 //!   ([`edit::SetReferences`], [`edit::AddReference`],
 //!   [`edit::RemoveReference`]), and the order of an element's children or
@@ -350,6 +358,43 @@
 //! let xml = xmi::write(&doc, &WriteOptions::default())?;
 //! assert!(xml.contains(r#"artifactElement="fta assessor""#));
 //! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
+//!
+//! # Terminology
+//!
+//! A `TerminologyPackage` (§10.4) holds the vocabulary of an assurance case:
+//! `Category`s (§10.8), `Term`s (§10.11), `Expression`s (§10.10) and
+//! `TerminologyGroup`s (§10.3), and nested `TerminologyPackages`. This release
+//! reads, writes and creates them; a TerminologyPackage is read as a root
+//! (the Terminology unit of interchange, §2.5), in an AssuranceCasePackage,
+//! nested, and in an ArtifactPackage. A Term or an Expression has a
+//! [`value`](model::SacmElement::value) (`value:String[1]`, held exactly as
+//! written; [`validation::validate`] reports one without it) and the
+//! [`categories`](model::SacmElement::categories) it belongs to; a Term has
+//! an [`origin`](model::SacmElement::origin) and an
+//! [`external_reference`](model::SacmElement::external_reference), and an
+//! Expression the
+//! [`expression_elements`](model::SacmElement::expression_elements) it is
+//! formed from. A `TerminologyGroup`'s members are references, as an
+//! `ArgumentGroup`'s are. A tolerant read also reads the text's spelling
+//! `TerminologyElement` of a TerminologyPackage's role, with a SACM-XMI-013
+//! Warning.
+//!
+//! ```
+//! use sacm::edit::{self, CreateExpression, CreateTerm, CreateTerminologyPackage};
+//! use sacm::model::{Document, LangString};
+//!
+//! let en = |text: &str| LangString::new(text).with_lang("en");
+//! let mut doc = Document::new();
+//! edit::apply(&mut doc, CreateTerminologyPackage::root(en("Blender terms")).with_id("terms"))?;
+//! edit::apply(&mut doc, CreateTerm::new("terms", en("Blade"), "blade").with_id("blade"))?;
+//! edit::apply(&mut doc, CreateTerm::new("terms", en("Lid"), "lid").with_id("lid"))?;
+//! let guarded = CreateExpression::new("terms", en("Blade guarded"), "$Blade$ is covered by the $Lid$")
+//!     .with_expression_elements(["blade", "lid"]);
+//! edit::apply(&mut doc, guarded.with_id("guarded"))?;
+//! let parts: Vec<&str> = doc.get("guarded").expect("created").expression_elements().iter().map(|id| id.as_str()).collect();
+//! assert_eq!(parts, ["blade", "lid"]);
+//! # Ok::<(), sacm::edit::EditError>(())
 //! ```
 //!
 //! # Features

@@ -930,10 +930,11 @@ fn lib_sec_005_character_reference_refusals_quote_the_reference_and_name_its_kin
 // `]]>`. A scan that ends one early reads its text as markup, refusing what
 // is not there or missing what is.
 
-/// A TerminologyPackage root: recognised but not read yet, so a strict read
-/// refuses it as `Unsupported` at its start tag (ADR 0016 D5, ADR 0035).
+/// A `TerminologyPackageInterface` root: recognised but not read yet, so a
+/// strict read refuses it as `Unsupported` at its start tag (ADR 0016 D5,
+/// ADR 0035; SACM23-TERM-007). A TerminologyPackage is read since slice 0062.
 const TERMINOLOGY_ROOT: &str = concat!(
-    "<sacm:TerminologyPackage",
+    "<sacm:TerminologyPackageInterface",
     " xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
     " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"",
     " xmi:id=\"f\"/>",
@@ -1370,10 +1371,10 @@ fn lib_sec_005_a_pi_target_ends_at_each_edge_of_the_name_character_ranges() {
 // only its binding to that name (W3C XML Conformance Test Suite case
 // rmt-ns10-032).
 
-/// The start tag of a TerminologyPackage root (recognised, not read yet),
-/// without its `xmi:id` and without its closing `>` or `/>`.
+/// The start tag of a `TerminologyPackageInterface` root (recognised, not read
+/// yet), without its `xmi:id` and without its closing `>` or `/>`.
 const TERMINOLOGY_START: &str = concat!(
-    "<sacm:TerminologyPackage",
+    "<sacm:TerminologyPackageInterface",
     " xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
     " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"",
 );
@@ -1395,10 +1396,10 @@ fn lib_sec_006_declaring_the_xmlns_prefix_is_malformed_at_the_attribute_name() {
         format!("{ROOT_START} xmi:id=\"p\"\n  xmlns:xmlns\n=\n'urn:x'/>"),
         // Before the root's own attributes.
         format!("{ROOT_START}\n  xmlns:xmlns=\"urn:x\" xmi:id=\"p\"/>"),
-        // On a TerminologyPackage root, which is not read yet: Malformed
-        // comes first, not Unsupported.
+        // On a TerminologyPackageInterface root, which is not read yet:
+        // Malformed comes first, not Unsupported.
         format!("{TERMINOLOGY_START} xmi:id=\"f\"\n  xmlns:xmlns=\"urn:x\"/>"),
-        // On an xmi:XMI wrapper that holds a TerminologyPackage root.
+        // On an xmi:XMI wrapper that holds a TerminologyPackageInterface root.
         format!(
             "<xmi:XMI xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"\n  \
              xmlns:xmlns=\"urn:x\">{TERMINOLOGY_ROOT}</xmi:XMI>"
@@ -1418,9 +1419,10 @@ fn lib_sec_006_declaring_the_xmlns_prefix_is_malformed_at_the_attribute_name() {
     let on_grandchild =
         format!("{ROOT_START} xmi:id=\"p\"><c>\n<d a='1' xmlns:xmlns='urn:x'/></c>{ROOT_END}");
     assert_malformed_exactly(row, on_grandchild.as_bytes(), 2, 10, XMLNS_DECLARED);
-    // A child of a TerminologyPackage root.
+    // A child of a TerminologyPackageInterface root.
     let in_terminology = format!(
-        "{TERMINOLOGY_START} xmi:id=\"f\">\n<c xmlns:xmlns=\"urn:x\"/></sacm:TerminologyPackage>"
+        "{TERMINOLOGY_START} xmi:id=\"f\">\n<c xmlns:xmlns=\"urn:x\"/>\
+         </sacm:TerminologyPackageInterface>"
     );
     assert_malformed_exactly(row, in_terminology.as_bytes(), 2, 4, XMLNS_DECLARED);
 }

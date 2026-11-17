@@ -9,6 +9,43 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 
 ## [Unreleased]
 
+### Added
+
+- The Terminology package of SACM 2.3: TerminologyPackage, Category, Term, Expression and
+  TerminologyGroup are read, written, created, edited, compared and validated. A
+  TerminologyPackage is read as a root (the Terminology unit of interchange, §2.5), in an
+  AssuranceCasePackage, nested, and in an ArtifactPackage [SACM23-TERM-001 to
+  SACM23-TERM-006].
+- `ReferenceEnd::Category`, `Element`, `Origin` and `TerminologyGroupMember`
+  (`terminologyElement`); `SacmElement::categories()`, `expression_elements()`, `origin()`,
+  `value()` and `external_reference()`; `group_members()` answers for a TerminologyGroup
+  [SACM23-TERM-002 to SACM23-TERM-006].
+- `edit::CreateTerminologyPackage`, `CreateCategory`, `CreateTerm`, `CreateExpression`,
+  `CreateTerminologyGroup`, `SetValue` and `SetExternalReference`; `Difference::Categories`,
+  `ExpressionElements`, `Origin`, `TerminologyGroupMembers`, `Value` and
+  `ExternalReference`; `WriteAttribute::Value` and `ExternalReference` [SACM23-TERM-001 to
+  SACM23-TERM-006].
+- `validate` reports a Term or Expression with no `value` as SACM-MULT-001
+  [SACM23-TERM-003].
+- A tolerant read reads the §10.4 spelling `TerminologyElement` of a TerminologyPackage's
+  role, with a SACM-XMI-013 Warning; a strict read keeps it as preserved content with an
+  Error [SACM23-XMI-028].
+
+### Changed
+
+- A strict read no longer refuses a TerminologyPackage, Category, Term, Expression or
+  TerminologyGroup as `Unsupported`, and a tolerant read no longer keeps them as preserved
+  content with SACM-XMI-014; references to them are type-checked (no SACM-REF-003)
+  [LIB-API-011, SACM23-TERM-001].
+
+### Known limits
+
+- Not read yet: `ExpressionLangString` (M4); the interface and binding kinds of the four
+  packages, and a package's `interface` end (M5); cross-document references, role
+  elements in reference form, and XMI metadata (SACM23-XMI-019, SACM23-XMI-027). A strict
+  read refuses them as `ReadError::Unsupported` naming the row that reads them; a tolerant
+  read keeps them as preserved content.
+
 ## [0.1.0] - 2026-11-17
 
 The first release: `sacm` 0.1.0, a library that reads, validates, edits and writes

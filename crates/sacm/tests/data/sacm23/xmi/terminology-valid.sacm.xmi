@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-TERM-001 to -006: the worked example of slice 0062. The AssuranceCasePackage case holds the TerminologyPackage terms (gid TP-1), the ArgumentPackage arguments and the ArtifactPackage evidence. terms holds the Categories hazards and mechanical (in hazards), the Terms blade (in mechanical, origin manual, with an externalReference), lid (its value and its category as elements) and guard (abstract), the Expression blade_guarded over blade and lid (as reference elements), the nested TerminologyPackage iec holding the Term appliance, and the TerminologyGroup reviewed. The ArtifactReference blade_ref names the Term blade, and evidence holds the Artifact manual and the Term jar. It reads with no diagnostic in either mode, validates without a finding, and writes golden/terminology.golden.sacm.xmi. Hand-written; no third-party content. -->
+<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="case">
+  <name lang="en" content="Blender case"/>
+  <terminologyPackage xmi:id="terms" gid="TP-1">
+    <name lang="en" content="Blender terminology"/>
+    <terminologyElement xmi:type="sacm:Category" xmi:id="hazards">
+      <name lang="en" content="Hazards"/>
+    </terminologyElement>
+    <terminologyElement xmi:type="sacm:Category" xmi:id="mechanical" category="hazards">
+      <name lang="en" content="Mechanical hazards"/>
+    </terminologyElement>
+    <terminologyElement xmi:type="sacm:Term" xmi:id="blade" category="mechanical" origin="manual" value="blade" externalReference="https://example.org/terms/blade">
+      <name lang="en" content="Blade"/>
+    </terminologyElement>
+    <terminologyElement xmi:type="sacm:Term" xmi:id="lid">
+      <name lang="en" content="Lid"/>
+      <value>lid</value>
+      <category xmi:idref="mechanical"/>
+    </terminologyElement>
+    <terminologyElement xmi:type="sacm:Term" xmi:id="guard" isAbstract="true" value="{guard}">
+      <name lang="en" content="Guard (placeholder)"/>
+    </terminologyElement>
+    <terminologyElement xmi:type="sacm:Expression" xmi:id="blade_guarded" value="$Blade$ is covered by the $Lid$">
+      <name lang="en" content="Blade guarded by lid"/>
+      <element xmi:idref="blade"/>
+      <element href="#lid"/>
+    </terminologyElement>
+    <terminologyElement xmi:type="sacm:TerminologyPackage" xmi:id="iec">
+      <name lang="en" content="Appliance standard terms"/>
+      <terminologyElement xmi:type="sacm:Term" xmi:id="appliance" value="household appliance">
+        <name lang="en" content="Appliance"/>
+      </terminologyElement>
+    </terminologyElement>
+    <terminologyElement xmi:type="sacm:TerminologyGroup" xmi:id="reviewed" terminologyElement="blade lid appliance">
+      <name lang="en" content="Reviewed by the safety team"/>
+    </terminologyElement>
+  </terminologyPackage>
+  <argumentPackage xmi:id="arguments">
+    <name lang="en" content="Blender argument"/>
+    <argumentElement xmi:type="sacm:ArtifactReference" xmi:id="blade_ref" referencedArtifactElement="blade">
+      <name lang="en" content="The blade term"/>
+    </argumentElement>
+  </argumentPackage>
+  <artifactPackage xmi:id="evidence">
+    <name lang="en" content="Blender evidence"/>
+    <artifactElement xmi:type="sacm:Artifact" xmi:id="manual">
+      <name lang="en" content="User manual"/>
+    </artifactElement>
+    <artifactElement xmi:type="sacm:Term" xmi:id="jar" value="jar">
+      <name lang="en" content="Jar"/>
+    </artifactElement>
+  </artifactPackage>
+</sacm:AssuranceCasePackage>

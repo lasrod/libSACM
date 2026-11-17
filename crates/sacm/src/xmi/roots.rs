@@ -149,8 +149,8 @@ use super::{Mode, ReadError};
 use crate::diagnostic::{Code, Diagnostic, Severity};
 use crate::model::{
     AbstractClass, AssertionDeclaration, Attr, DeclaredType, Document, ElementId, ElementKind,
-    Flag, IdGenerator, Item, LangString, Placed, Preserved, ReferenceEnd, StringAttribute, Text,
-    TextRole, flag_named, is_ncname, reference_end_named, role_named,
+    Flag, IdGenerator, Item, LangString, Placed, Preserved, ReferenceEnd, Role, StringAttribute,
+    Text, TextRole, flag_named, is_ncname, reference_end_named, role_named,
 };
 
 /// The machine-readable model's spelling of the class
@@ -171,13 +171,20 @@ const TEXT_RESOLVED: &str = "argumentElement";
 /// reads as an attribute or a value element (SACM23-XMI-009).
 const EVENT_SPELLING: &str = "occurece";
 
-/// The requirement of the diagnostics for a spelling (SACM-XMI-013).
-const SPELLING_ROW: &str = "SACM23-XMI-009";
+/// The §10.4 text spelling of `terminologyElement`, which a tolerant read
+/// reads as the role of a TerminologyPackage (SACM23-XMI-028, spec defect
+/// D9).
+const TERMINOLOGY_SPELLING: &str = "TerminologyElement";
+
+/// The name `TERMINOLOGY_SPELLING` stands for: the model's
+/// `terminologyElement`.
+const TERMINOLOGY_RESOLVED: &str = "terminologyElement";
 
 /// A spelling where formal/23-05-08 and ptc/22-03-13 disagree and the crate
 /// follows the other (D-TEXT-MODEL): what a tolerant read reads as the
 /// resolved name, and a strict read keeps as preserved content, each with one
-/// SACM-XMI-013 (SACM23-XMI-009, ADR 0034 amendment 2).
+/// SACM-XMI-013 (SACM23-XMI-009, ADR 0034 amendment 2; SACM23-XMI-028,
+/// amendment 3).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Spelling {
     /// The type `ArtifactAssertedRelationship` (§12.14).
@@ -188,6 +195,8 @@ enum Spelling {
     Role,
     /// `argumentationElement` as an `ArgumentGroup`'s end (§11.2).
     End,
+    /// `TerminologyElement` as a TerminologyPackage's role (§10.4).
+    TerminologyRole,
 }
 
 impl Spelling {
@@ -197,7 +206,32 @@ impl Spelling {
             Self::Type => "ArtifactAssetRelationship",
             Self::Date => "date",
             Self::Role | Self::End => TEXT_RESOLVED,
+            Self::TerminologyRole => TERMINOLOGY_RESOLVED,
         }
+    }
+
+    /// The name as written: the text's or the model's spelling.
+    const fn written(self) -> &'static str {
+        match self {
+            Self::Type => MODEL_SPELLING,
+            Self::Date => EVENT_SPELLING,
+            Self::Role | Self::End => TEXT_SPELLING,
+            Self::TerminologyRole => TERMINOLOGY_SPELLING,
+        }
+    }
+
+    /// The requirement of its diagnostics (SACM-XMI-013).
+    const fn row(self) -> &'static str {
+        match self {
+            Self::TerminologyRole => "SACM23-XMI-028",
+            Self::Type | Self::Date | Self::Role | Self::End => "SACM23-XMI-009",
+        }
+    }
+
+    /// Whether it names a role of the parent, so that its diagnostic affects
+    /// the parent rather than the child.
+    const fn is_role(self) -> bool {
+        matches!(self, Self::Role | Self::TerminologyRole)
     }
 
     /// The clause of the text that names it.
@@ -207,6 +241,7 @@ impl Spelling {
             Self::Date => "12.9",
             Self::Role => "11.4",
             Self::End => "11.2",
+            Self::TerminologyRole => "10.4",
         }
     }
 
@@ -358,7 +393,7 @@ impl Keep {
             offset,
             code: Code::XMI_SPELLING_VARIANT,
             severity: Severity::Error,
-            requirement: SPELLING_ROW,
+            requirement: spelling.row(),
             clause: Some(spelling.clause()),
             reason,
             tail: spelling.tail(Mode::Strict),
@@ -749,7 +784,7 @@ impl Findings<'_, '_> {
         let diagnostic = Diagnostic::create(
             Code::XMI_SPELLING_VARIANT,
             Severity::Warning,
-            SPELLING_ROW,
+            spelling.row(),
             message,
         )
         .set_clause(spelling.clause())
@@ -769,11 +804,7 @@ impl Findings<'_, '_> {
         parent: &ElementId,
         child: &ElementId,
     ) {
-        let affected = if spelling == Spelling::Role {
-            parent
-        } else {
-            child
-        };
+        let affected = if spelling.is_role() { parent } else { child };
         self.spelled(node.range().start, spelling, reason, affected);
     }
 
@@ -2596,14 +2627,16 @@ const INTERFACE: &str = "interface";
 /// The entry of the `interface` end of an element of `kind`, if its class
 /// has one this release reads elements of: an AssuranceCasePackage's names
 /// an `AssuranceCasePackageInterface` (SACM23-AC-002), an ArgumentPackage's
-/// an `ArgumentPackageInterface` (SACM23-ARG-014), and an ArtifactPackage's
-/// an `ArtifactPackageInterface` (SACM23-ART-012). It conforms, so it is
-/// refused, not preserved (ADR 0033, ADR 0034).
+/// an `ArgumentPackageInterface` (SACM23-ARG-014), an ArtifactPackage's an
+/// `ArtifactPackageInterface` (SACM23-ART-012), and a TerminologyPackage's a
+/// `TerminologyPackageInterface` (SACM23-TERM-007). It conforms, so it is
+/// refused, not preserved (ADR 0033, ADR 0034 and its amendment 3).
 const fn interface_end(kind: ElementKind) -> Option<Unread> {
     match kind {
         ElementKind::AssuranceCasePackage => Some(Unread::AssuranceCasePackageInterface),
         ElementKind::ArgumentPackage => Some(Unread::ArgumentPackageInterface),
         ElementKind::ArtifactPackage => Some(Unread::ArtifactPackageInterface),
+        ElementKind::TerminologyPackage => Some(Unread::TerminologyPackageInterface),
         _ => None,
     }
 }
@@ -3146,22 +3179,23 @@ fn child_kind(
     }
     let local = node.tag_name().name();
     let mut spelled = None;
-    let role = match role_named(parent, local) {
-        Some(role) => role,
-        // The text's spelling of the role `argumentElement` (§11.4): read as
-        // that role in tolerant mode, kept whole in strict mode
-        // (SACM23-XMI-009).
-        None => match role_named(parent, TEXT_RESOLVED).filter(|_| local == TEXT_SPELLING) {
-            Some(role) => {
-                let reason = format!(
-                    "the element {written:?} in {parent_what} is spelled as in the text of \
-                     §11.4, and the role is {TEXT_RESOLVED}"
-                );
-                spelled = Some(child_spelling(found, at, Spelling::Role, reason)?);
-                role
-            }
-            None => return Ok(ChildKind::Preserve),
-        },
+    let role = if let Some(role) = role_named(parent, local) {
+        role
+    } else {
+        // The text's spelling of the role `argumentElement` (§11.4) or
+        // `terminologyElement` (§10.4): read as that role in tolerant mode,
+        // kept whole in strict mode (SACM23-XMI-009, SACM23-XMI-028).
+        let Some((spelling, role)) = spelled_role(parent, local) else {
+            return Ok(ChildKind::Preserve);
+        };
+        let reason = format!(
+            "the element {written:?} in {parent_what} is spelled as in the text of §{}, and the \
+             role is {}",
+            spelling.clause(),
+            spelling.resolved()
+        );
+        spelled = Some(child_spelling(found, at, spelling, reason)?);
+        role
     };
     let mut typed = None;
     let mut type_spelled = false;
@@ -3241,6 +3275,18 @@ fn child_kind(
         spelled = Some(child_spelling(found, at, Spelling::Type, reason)?);
     }
     Ok(ChildKind::Read { kind, spelled })
+}
+
+/// The role of a `parent` element that the text spells `local`, with the
+/// spelling: `argumentationElement` for an ArgumentPackage's
+/// `argumentElement` (§11.4, SACM23-XMI-009) and `TerminologyElement` for a
+/// TerminologyPackage's `terminologyElement` (§10.4, SACM23-XMI-028); `None`
+/// when `local` is neither, or `parent` has no such role.
+fn spelled_role(parent: ElementKind, local: &str) -> Option<(Spelling, Role)> {
+    [Spelling::Role, Spelling::TerminologyRole]
+        .into_iter()
+        .find(|spelling| spelling.written() == local)
+        .and_then(|spelling| role_named(parent, spelling.resolved()).map(|role| (spelling, role)))
 }
 
 /// What a read does with a child whose role or type is `spelling`, at byte

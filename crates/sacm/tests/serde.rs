@@ -69,6 +69,11 @@ use sacm::edit::{
 use sacm::edit::{CopyElements, MoveElement};
 // The create of slice 0057 (SACM23-ART-010, ADR 0034 amendment 2).
 use sacm::edit::CreateArtifactAssetRelationship;
+// The operations of slice 0062 (SACM23-TERM-001 to -006, ADR 0034 amendment 3).
+use sacm::edit::{
+    CreateCategory, CreateExpression, CreateTerm, CreateTerminologyGroup, CreateTerminologyPackage,
+    SetExternalReference, SetValue,
+};
 use sacm::model::{
     AssertionDeclaration, Document, ElementId, ElementKind, Flag, LangString, MultiLangString,
     ReferenceEnd,
@@ -86,14 +91,19 @@ const EDIT_014: &str = "LIB-EDIT-014";
 const EDIT_017: &str = "LIB-EDIT-017";
 const EDIT_018: &str = "LIB-EDIT-018";
 const ART_010: &str = "SACM23-ART-010";
+const TERM_001: &str = "SACM23-TERM-001";
+const TERM_004: &str = "SACM23-TERM-004";
+const TERM_006: &str = "SACM23-TERM-006";
 
 /// The directory of the golden JSON files.
 const GOLDEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/golden/serde");
 
 /// Every operation name of this release: the creates first, in the order of
 /// `operations.json`. `CopyElements` has no sample: it is not serialized
-/// (ADR 0030 amendment 2).
-const OPERATION_NAME_COUNT: usize = 42;
+/// (ADR 0030 amendment 2). Slice 0062 adds five creates after
+/// `CreateArtifactAssetRelationship`, and `SetValue` and
+/// `SetExternalReference` after `SetEndTime` (ADR 0034 amendment 3).
+const OPERATION_NAME_COUNT: usize = 49;
 const OPERATION_NAMES: [&str; OPERATION_NAME_COUNT] = [
     "CreateAssuranceCasePackage",
     "CreateArgumentPackage",
@@ -119,8 +129,13 @@ const OPERATION_NAMES: [&str; OPERATION_NAME_COUNT] = [
     "CreateEvent",
     "CreateResource",
     "CreateActivity",
-    // The create of slice 0057 (SACM23-ART-010).
     "CreateArtifactAssetRelationship",
+    // The creates of slice 0062 (SACM23-TERM-001 to -006).
+    "CreateTerminologyPackage",
+    "CreateCategory",
+    "CreateTerm",
+    "CreateExpression",
+    "CreateTerminologyGroup",
     "SetName",
     "SetGid",
     "SetFlag",
@@ -132,6 +147,9 @@ const OPERATION_NAMES: [&str; OPERATION_NAME_COUNT] = [
     "SetLocation",
     "SetStartTime",
     "SetEndTime",
+    // The value edits of slice 0062 (SACM23-TERM-003, -004).
+    "SetValue",
+    "SetExternalReference",
     "SetReferences",
     "AddReference",
     "RemoveReference",
@@ -140,9 +158,8 @@ const OPERATION_NAMES: [&str; OPERATION_NAME_COUNT] = [
     "DeleteElement",
 ];
 
-/// The first 24 of [`OPERATION_NAMES`]: the creates; 25 with the create of
-/// slice 0057.
-const CREATE_COUNT: usize = 25;
+/// The creates of [`OPERATION_NAMES`]: 30 with the five of slice 0062.
+const CREATE_COUNT: usize = 30;
 
 /// Every `EditError` variant of this release, with its catalog code, in the
 /// order of `edit-errors.json`.
@@ -221,10 +238,11 @@ const FLAGS: [(Flag, &str); 3] = [
 ];
 
 /// The reference ends, with their XMI names and their serde names: the ten
-/// of slice 0056, whose serde name is the XMI name, and the two of slice
-/// 0057, which share their XMI names with an `AssertedRelationship`'s ends and
-/// are serialized as `artifactSource` and `artifactTarget` (ADR 0034
-/// amendment 2).
+/// of slice 0056, whose serde name is the XMI name, the two of slice 0057,
+/// which share their XMI names with an `AssertedRelationship`'s ends and are
+/// serialized as `artifactSource` and `artifactTarget` (ADR 0034 amendment
+/// 2), and the four of slice 0062, whose serde name is the XMI name (ADR 0034
+/// amendment 3).
 const ENDS: &[(ReferenceEnd, &str, &str)] = &[
     (ReferenceEnd::CitedElement, "citedElement", "citedElement"),
     (ReferenceEnd::AbstractForm, "abstractForm", "abstractForm"),
@@ -250,6 +268,14 @@ const ENDS: &[(ReferenceEnd, &str, &str)] = &[
     ),
     (ReferenceEnd::ArtifactSource, "source", "artifactSource"),
     (ReferenceEnd::ArtifactTarget, "target", "artifactTarget"),
+    (ReferenceEnd::Category, "category", "category"),
+    (ReferenceEnd::Element, "element", "element"),
+    (ReferenceEnd::Origin, "origin", "origin"),
+    (
+        ReferenceEnd::TerminologyGroupMember,
+        "terminologyElement",
+        "terminologyElement",
+    ),
 ];
 
 /// The three severities, with their names.
@@ -735,7 +761,53 @@ fn artifact_samples() -> Vec<Operation> {
         .with_id("rel1")
         .into(),
     ]);
+    samples.extend(terminology_samples());
     samples
+}
+
+/// The creates of slice 0062 (SACM23-TERM-001 to -006; ADR 0034 amendment
+/// 3), each without and with its id and values: a TerminologyPackage as a
+/// root and in `case`, then a Category, a Term, an Expression and a
+/// `TerminologyGroup` in `terms`.
+fn terminology_samples() -> Vec<Operation> {
+    vec![
+        CreateTerminologyPackage::root(en("Blender terminology")).into(),
+        CreateTerminologyPackage::new("case", en("Blender terminology"))
+            .with_id("terms")
+            .into(),
+        CreateCategory::new("terms", en("Hazards")).into(),
+        CreateCategory::new("terms", en("Mechanical hazards"))
+            .with_id("mechanical")
+            .with_categories(["hazards"])
+            .into(),
+        CreateTerm::new("terms", en("Blade"), "blade").into(),
+        CreateTerm::new("terms", en("Blade"), "blade")
+            .with_id("blade")
+            .with_categories(["mechanical"])
+            .with_origin("manual")
+            .with_external_reference("https://example.org/terms/blade")
+            .into(),
+        CreateExpression::new(
+            "terms",
+            en("Blade guarded by lid"),
+            "$Blade$ is covered by the $Lid$",
+        )
+        .into(),
+        CreateExpression::new(
+            "terms",
+            en("Blade guarded by lid"),
+            "$Blade$ is covered by the $Lid$",
+        )
+        .with_id("blade_guarded")
+        .with_categories(["mechanical"])
+        .with_expression_elements(["blade", "lid"])
+        .into(),
+        CreateTerminologyGroup::new("terms", en("Reviewed by the safety team")).into(),
+        CreateTerminologyGroup::new("terms", en("Reviewed by the safety team"))
+            .with_id("reviewed")
+            .with_group_members(["blade", "lid"])
+            .into(),
+    ]
 }
 
 /// The operations of [`operation_samples`] that change an element.
@@ -761,17 +833,43 @@ fn edit_samples() -> Vec<Operation> {
         SetStartTime::remove("testing").into(),
         SetEndTime::new("testing", "2024-02-29T17:30:00Z").into(),
         SetEndTime::remove("testing").into(),
-        SetReferences::new("i1", ReferenceEnd::Source, ["c2", "c3"]).into(),
-        SetReferences::clear("c1", ReferenceEnd::MetaClaim).into(),
     ];
+    // The value edits of slice 0062 (SACM23-TERM-003, -004), after SetEndTime.
+    samples.extend([
+        Operation::from(SetValue::new("blade", "blade")),
+        SetExternalReference::new("blade", "https://example.org/terms/blade").into(),
+        SetExternalReference::remove("blade").into(),
+    ]);
+    samples.extend([
+        Operation::from(SetReferences::new("i1", ReferenceEnd::Source, ["c2", "c3"])),
+        SetReferences::clear("c1", ReferenceEnd::MetaClaim).into(),
+    ]);
     // The ends of slice 0057 (SACM23-ART-010), after the last sample of each
     // operation.
     samples.push(
         SetReferences::new("rel1", ReferenceEnd::ArtifactTarget, ["testing", "tester"]).into(),
     );
+    // The ends of slice 0062 (SACM23-TERM-004, -005), after the rel1 sample.
+    samples.extend([
+        Operation::from(SetReferences::new(
+            "blade_guarded",
+            ReferenceEnd::Element,
+            ["blade", "lid"],
+        )),
+        SetReferences::new("blade", ReferenceEnd::Origin, ["manual"]).into(),
+    ]);
     samples.extend([
         Operation::from(AddReference::new("g1", ReferenceEnd::GroupMember, "c3")),
         AddReference::new("ag1", ReferenceEnd::ArtifactGroupMember, "pa1").into(),
+    ]);
+    // The ends of slice 0062 (SACM23-TERM-002, -006), after the ag1 sample.
+    samples.extend([
+        Operation::from(AddReference::new(
+            "reviewed",
+            ReferenceEnd::TerminologyGroupMember,
+            "appliance",
+        )),
+        AddReference::new("lid", ReferenceEnd::Category, "hazards").into(),
     ]);
     samples.push(AddReference::new("rel1", ReferenceEnd::ArtifactSource, "report_pdf").into());
     samples.extend([
@@ -877,6 +975,31 @@ fn edit_error_samples() -> Vec<EditError> {
         &artifact_relationship_start(),
         SetReferences::new("rel1", ReferenceEnd::Source, ["report"]),
     ));
+    // A feature of slice 0062 on a kind without it, one per feature name
+    // (SACM23-TERM-002 to -006), after the rel1 source sample.
+    {
+        let terms = terminology_start();
+        samples.extend([
+            refusal(&terms, SetValue::new("hazards", "x")),
+            refusal(&terms, SetExternalReference::new("blade_guarded", "u")),
+            refusal(
+                &terms,
+                SetReferences::new("c1", ReferenceEnd::Category, ["hazards"]),
+            ),
+            refusal(
+                &terms,
+                SetReferences::new("blade", ReferenceEnd::Element, ["lid"]),
+            ),
+            refusal(
+                &terms,
+                SetReferences::new("blade_guarded", ReferenceEnd::Origin, ["c1"]),
+            ),
+            refusal(
+                &terms,
+                SetReferences::new("ag1", ReferenceEnd::TerminologyGroupMember, ["blade"]),
+            ),
+        ]);
+    }
     // The refusals of slice 0056 (LIB-EDIT-017), on ERROR_START.
     {
         let doc = error_start();
@@ -888,6 +1011,38 @@ fn edit_error_samples() -> Vec<EditError> {
         ]);
     }
     samples
+}
+
+/// [`ERROR_START`] with the TerminologyPackage `terms` under `case`, holding
+/// the Category `hazards`, the Terms `blade` and `lid` and the Expression
+/// `blade_guarded`, and the ArtifactPackage `evidence` holding the
+/// `ArtifactGroup` `ag1` (slice 0062).
+fn terminology_start() -> Document {
+    let mut doc = error_start();
+    for operation in [
+        Operation::from(CreateTerminologyPackage::new("case", en("Terms")).with_id("terms")),
+        CreateCategory::new("terms", en("Hazards"))
+            .with_id("hazards")
+            .into(),
+        CreateTerm::new("terms", en("Blade"), "blade")
+            .with_id("blade")
+            .into(),
+        CreateTerm::new("terms", en("Lid"), "lid")
+            .with_id("lid")
+            .into(),
+        CreateExpression::new("terms", en("Blade guarded"), "$Blade$ guarded")
+            .with_id("blade_guarded")
+            .into(),
+        CreateArtifactPackage::new("case", en("Evidence"))
+            .with_id("evidence")
+            .into(),
+        CreateArtifactGroup::new("evidence", en("Analysis"))
+            .with_id("ag1")
+            .into(),
+    ] {
+        applied(&mut doc, operation);
+    }
+    doc
 }
 
 /// The worked fixture of slice 0055, read.
@@ -1187,6 +1342,17 @@ fn lib_api_006_every_listed_type_implements_serialize_and_deserialize() {
     assert_serde::<Code>();
     assert_serde::<Severity>();
     assert_serde::<SourceLocation>();
+}
+
+#[test]
+fn sacm23_term_001_the_terminology_operations_implement_serialize_and_deserialize() {
+    assert_serde::<CreateTerminologyPackage>();
+    assert_serde::<CreateCategory>();
+    assert_serde::<CreateTerm>();
+    assert_serde::<CreateExpression>();
+    assert_serde::<CreateTerminologyGroup>();
+    assert_serde::<SetValue>();
+    assert_serde::<SetExternalReference>();
 }
 
 // ---------------------------------------------------------------------------
@@ -2484,7 +2650,7 @@ fn optional_keys(
             .map(|(key, default, _)| (*key, Value::String((*default).to_owned())))
             .collect()
     } else if is_create {
-        vec![
+        let mut keys = vec![
             ("id", Value::Null),
             ("structure", Value::Null),
             ("reasoning", Value::Null),
@@ -2496,7 +2662,16 @@ fn optional_keys(
             ("location", Value::Null),
             ("start_time", Value::Null),
             ("end_time", Value::Null),
-        ]
+        ];
+        // The builder-set keys of the creates of slice 0062; `value` is
+        // required (ADR 0034 amendment 3).
+        keys.extend([
+            ("categories", Value::Array(Vec::new())),
+            ("origin", Value::Null),
+            ("external_reference", Value::Null),
+            ("expression_elements", Value::Array(Vec::new())),
+        ]);
+        keys
     } else if diagnostics && root {
         vec![
             ("clause", Value::Null),
@@ -3551,4 +3726,120 @@ fn sacm23_art_010_a_create_artifact_asset_relationship_reads_with_its_default_id
         "\"targets\":[\"testing\"]",
         "\"target\":\"testing\"",
     );
+}
+
+// ---------------------------------------------------------------------------
+// Slice 0062: the Terminology operations (ADR 0034 amendment 3)
+// ---------------------------------------------------------------------------
+
+/// `end` is written as `name`, `name` reads as `end`, and a `SetReferences`
+/// naming it reads as its twin.
+fn assert_end_json(row: &str, end: ReferenceEnd, name: &str) {
+    let written = to_json(&end);
+    assert_eq!(
+        written,
+        format!("\"{name}\""),
+        "{row}: {end:?} is not serialized as {name}"
+    );
+    let read: ReferenceEnd = from_json(&written);
+    assert_eq!(read, end, "{row}: {name} does not read back");
+    let set = format!(r#"{{"type":"SetReferences","element":"x","end":"{name}","ids":["y"]}}"#);
+    let read: Operation = from_json(&set);
+    assert_eq!(
+        read,
+        Operation::from(SetReferences::new("x", end, ["y"])),
+        "{row}: {set} does not read as its twin"
+    );
+}
+
+#[test]
+fn sacm23_term_002_the_category_end_round_trips_as_category() {
+    assert_end_json("SACM23-TERM-002", ReferenceEnd::Category, "category");
+}
+
+#[test]
+fn sacm23_term_004_the_origin_end_round_trips_as_origin() {
+    assert_end_json(TERM_004, ReferenceEnd::Origin, "origin");
+}
+
+#[test]
+fn sacm23_term_005_the_element_end_round_trips_as_element() {
+    assert_end_json("SACM23-TERM-005", ReferenceEnd::Element, "element");
+}
+
+#[test]
+fn sacm23_term_006_the_member_end_round_trips_as_terminology_element() {
+    assert_end_json(
+        TERM_006,
+        ReferenceEnd::TerminologyGroupMember,
+        "terminologyElement",
+    );
+    // The Rust name is no serde name.
+    assert_refused_for::<ReferenceEnd>(
+        TERM_006,
+        "the end by its Rust name",
+        "\"terminologyElement\"",
+        "terminologyElement",
+        "TerminologyGroupMember",
+    );
+}
+
+#[test]
+fn sacm23_term_001_a_create_terminology_package_without_parent_is_refused() {
+    let root = r#"{"type":"CreateTerminologyPackage","parent":null,"name":{"content":"N"}}"#;
+    let read: Operation = from_json(root);
+    assert_eq!(
+        read,
+        Operation::from(CreateTerminologyPackage::root(LangString::new("N"))),
+        "{TERM_001}: {root} does not read as root(name)"
+    );
+    assert_refused_for::<Operation>(
+        TERM_001,
+        "a TerminologyPackage create without parent",
+        root,
+        r#""parent":null,"#,
+        "",
+    );
+}
+
+#[test]
+fn sacm23_term_004_a_create_term_reads_with_its_defaults_and_requires_its_value() {
+    let minimal = r#"{"type":"CreateTerm","parent":"terms","name":{"content":"N"},"value":"v"}"#;
+    let read: Operation = from_json(minimal);
+    assert_eq!(
+        read,
+        Operation::from(CreateTerm::new("terms", LangString::new("N"), "v")),
+        "{TERM_004}: {minimal} does not read as its constructor default"
+    );
+    assert_refused_for::<Operation>(
+        TERM_004,
+        "a CreateTerm without value",
+        minimal,
+        r#","value":"v""#,
+        "",
+    );
+    let expression =
+        r#"{"type":"CreateExpression","parent":"terms","name":{"content":"N"},"value":"v"}"#;
+    let read: Operation = from_json(expression);
+    assert_eq!(
+        read,
+        Operation::from(CreateExpression::new("terms", LangString::new("N"), "v")),
+        "{TERM_004}: {expression} does not read as its constructor default"
+    );
+    assert_refused_for::<Operation>(
+        TERM_004,
+        "a CreateExpression without value",
+        expression,
+        r#","value":"v""#,
+        "",
+    );
+    // SetValue has no removal: a null value is refused.
+    let set = r#"{"type":"SetValue","element":"t1","value":"v"}"#;
+    let read: Operation = from_json(set);
+    assert_eq!(
+        read,
+        Operation::from(SetValue::new("t1", "v")),
+        "{TERM_004}: {set} does not read as its twin"
+    );
+    assert_refused_for::<Operation>(TERM_004, "a null value", set, r#""v""#, "null");
 }

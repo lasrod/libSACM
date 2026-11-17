@@ -1108,14 +1108,15 @@ fn lib_api_011_interim_check_gates_every_row_by_cp_001_and_cp_003_and_by_its_own
 
 #[test]
 fn lib_api_011_interim_check_requires_a_term_row_in_cp_003() {
-    // SACM23-TERM-004 (Term, an interim entry from slice 0052): an
-    // ArtifactPackage can hold a Term, so the row gates SACM23-CP-003 as well
-    // as SACM23-CP-001 and SACM23-CP-004, but not SACM23-CP-002.
-    let list = one_entry("SACM23-TERM-004");
+    // SACM23-TERM-007 (TerminologyPackageInterface, an interim entry still
+    // open after slice 0062 reads the Terminology kinds): an ArtifactPackage
+    // can hold one, so the row gates SACM23-CP-003 as well as SACM23-CP-001
+    // and SACM23-CP-004, but not SACM23-CP-002.
+    let list = one_entry("SACM23-TERM-007");
     let problems = interim_problems(&list, &matrix());
     assert!(
         problems.is_empty(),
-        "{ROW}: SACM23-TERM-004 with the real matrix: {problems:#?}"
+        "{ROW}: SACM23-TERM-007 with the real matrix: {problems:#?}"
     );
     let emptied = with_row_value(
         &matrix(),
@@ -1125,7 +1126,7 @@ fn lib_api_011_interim_check_requires_a_term_row_in_cp_003() {
     );
     let problems = interim_problems(&list, &emptied);
     assert_only(
-        "SACM23-TERM-004 with SACM23-CP-003 emptied",
+        "SACM23-TERM-007 with SACM23-CP-003 emptied",
         &problems,
         "interim-row-outside-compliance-point",
         1,
@@ -1150,17 +1151,12 @@ fn lib_api_011_interim_check_requires_a_term_row_in_cp_003() {
 #[test]
 fn lib_api_011_the_slice_0052_interim_rows_gate_their_compliance_points_in_the_matrix() {
     // The kinds an ArtifactPackage exposes that slice 0052 does not read
-    // (ADR 0034), less the four slice 0055 reads (ADR 0034 amendment 1) and
-    // the ArtifactAssetRelationship slice 0057 reads (amendment 2), with the
+    // (ADR 0034), less the four slice 0055 reads (ADR 0034 amendment 1), the
+    // ArtifactAssetRelationship slice 0057 reads (amendment 2) and the
+    // Terminology kinds slice 0062 reads (amendment 3), with the
     // ArtifactPackageInterface: each must pass check (b) with the matrix as it
     // is.
-    for row in [
-        "SACM23-ART-012",
-        "SACM23-TERM-002",
-        "SACM23-TERM-004",
-        "SACM23-TERM-005",
-        "SACM23-TERM-006",
-    ] {
+    for row in ["SACM23-ART-012", "SACM23-TERM-007", "SACM23-TERM-008"] {
         let problems = interim_problems(&one_entry(row), &matrix());
         assert!(
             problems.is_empty(),

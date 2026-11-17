@@ -664,7 +664,7 @@ fn sacm23_val_001_locations_of_every_other_refusal_is_its_one_location_or_none()
     let unsupported = refusal(
         VAL_001,
         Mode::Strict,
-        &format!("<sacm:TerminologyPackage{NS} xmi:id=\"a\"/>"),
+        &format!("<sacm:TerminologyPackageInterface{NS} xmi:id=\"a\"/>"),
     );
     assert_eq!(
         unsupported.locations(),

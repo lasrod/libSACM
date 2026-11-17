@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sacm:TerminologyPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="terms">
+  <name lang="en" content="Terms" />
+  <terminologyElement xmi:type="sacm:Term" xmi:id="blade" value="blade">
+    <name lang="en" content="Blade" />
+  </terminologyElement>
+  <terminologyElement xmi:type="sacm:Category" xmi:id="parts">
+    <name lang="en" content="Parts" />
+  </terminologyElement>
+  <terminologyElement xmi:type="sacm:Expression" xmi:id="blade_part" category="parts" element="blade" value="$Blade$">
+    <name lang="en" content="Blade part" />
+  </terminologyElement>
+</sacm:TerminologyPackage>

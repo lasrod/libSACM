@@ -9,8 +9,8 @@ Read, edit, validate and write assurance cases in the
 
 ## What works today
 
-- `sacm::xmi::read` reads `AssuranceCasePackage`, `ArgumentPackage` and `ArtifactPackage`
-  roots and the packages and Claims in them, with their names, `gid`s and each Assertion's
+- `sacm::xmi::read` reads `AssuranceCasePackage`, `ArgumentPackage`, `ArtifactPackage` and
+  `TerminologyPackage` roots and the packages and Claims in them, with their names, `gid`s and each Assertion's
   `assertionDeclaration`, and the descriptions, notes, implementation constraints and
   tagged values of each (`SacmElement::descriptions`, `notes`, `tagged_values` and the
   like), with their `content` and, on a tagged value, `key` (`SacmElement::content`,
@@ -31,14 +31,19 @@ Read, edit, validate and write assurance cases in the
   (`SacmElement::properties`), each group's members, each relationship's sources and
   targets (`SacmElement::sources`, `targets`), an Artifact's `version`, the `date` of an Artifact or an Event, an
   Activity's `startTime` and `endTime`, each held exactly as written, and a Resource's
-  `location` (`SacmElement::version`, `date`, `start_time`, `end_time`, `location`). Content that is not SACM 2.3 where it stands, such as
+  `location` (`SacmElement::version`, `date`, `start_time`, `end_time`, `location`). In a
+  `TerminologyPackage` it reads `Category`, `Term`, `Expression` and `TerminologyGroup`
+  elements, with each Term's or Expression's `value` and categories, a Term's `origin` and
+  `externalReference`, and an Expression's elements (`SacmElement::value`, `categories`,
+  `origin`, `external_reference`, `expression_elements`). Content that is not SACM 2.3 where it stands, such as
   a vendor attribute or element, is kept as written as preserved content, with
   SACM-XMI-003 (`SacmElement::has_preserved_content`). A tolerant read, the default,
   opens every well-formed file with SACM 2.3 package roots: what a strict read refuses,
   such as a value that is no literal or conforming content not read yet, it keeps as
   preserved content with a Warning, never dropped (`Document::has_preserved_content`),
-  and it reads the three names formal/23-05-08 and ptc/22-03-13 spell differently,
-  `ArtifactAssertedRelationship`, an Event's `occurece` and `argumentationElement`, as the
+  and it reads the four names formal/23-05-08 and ptc/22-03-13 spell differently,
+  `ArtifactAssertedRelationship`, an Event's `occurece`, `argumentationElement` and
+  `TerminologyElement`, as the
   names `write` writes, with a SACM-XMI-013 Warning; a strict read keeps them as preserved
   content with an Error.
   An element without an `xmi:id` gets a generated one, such as `claim_1`, which `write`
@@ -54,14 +59,17 @@ Read, edit, validate and write assurance cases in the
   wrong kind, each element with a `citedElement` whose `isCitation` is not true, each
   `abstractForm` that breaks a §8.2 rule, each asserted relationship without a source or
   a target, each evidence or artifact relationship whose ends are not artifact references
-  (§11.15, §11.17, §11.18), and each id a reference end repeats, as diagnostics with
+  (§11.15, §11.17, §11.18), each Term or Expression without a value, and each id a
+  reference end repeats, as diagnostics with
   stable codes.
 - `sacm::edit::apply` creates AssuranceCasePackages, ArgumentPackages, Claims,
   ArgumentReasonings, ArtifactReferences, ArgumentGroups and the five asserted
   relationships (`sacm::edit::CreateAssertedInference` and the like), ArtifactPackages,
   Properties, Techniques, Participants, ArtifactGroups, Artifacts, Events, Resources,
   Activities and ArtifactAssetRelationships (`sacm::edit::CreateArtifactPackage`,
-  `sacm::edit::CreateArtifactAssetRelationship` and the like), and descriptions,
+  `sacm::edit::CreateArtifactAssetRelationship` and the like), TerminologyPackages,
+  Categories, Terms, Expressions and TerminologyGroups (`sacm::edit::CreateTerm` and the
+  like), and descriptions,
   implementation constraints, notes and tagged values on them
   (`sacm::edit::CreateNote`, `sacm::edit::CreateTaggedValue` and the like); a refused
   edit changes nothing, and an edit refuses a reference that names no element or an
@@ -73,7 +81,8 @@ Read, edit, validate and write assurance cases in the
   and tagged values (`sacm::edit::SetContent`, `sacm::edit::SetKey`), an Artifact's
   `version`, the `date` of an Artifact or an Event, a Resource's `location` and an
   Activity's `startTime` and `endTime` (`sacm::edit::SetVersion`, `SetDate`,
-  `SetLocation`, `SetStartTime`, `SetEndTime`), every reference
+  `SetLocation`, `SetStartTime`, `SetEndTime`), a Term's or an Expression's `value` and a
+  Term's `externalReference` (`SetValue`, `SetExternalReference`), every reference
   end, within its bounds (`sacm::edit::SetReferences`, `AddReference`, `RemoveReference`), and the
   order of an element's children or of the roots (`sacm::edit::ReorderElements`).
   `sacm::edit::MoveElement` moves an element, with everything it contains, under another
@@ -90,8 +99,7 @@ tracks every requirement: what is built, what is planned, and the tests behind e
 
 Planned:
 
-- A typed model of the full SACM 2.3 metamodel: assurance case, argumentation,
-  artifact and terminology packages, with their interfaces and bindings.
+- The interfaces and bindings of the four packages, and `ExpressionLangString`.
 - Tolerant reading of third-party dialects and legacy revisions, reporting exactly what
   was accepted.
 - More validation rules against the specification's constraints.

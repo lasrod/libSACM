@@ -1000,7 +1000,7 @@ fn sacm23_xmi_001_invalid_root_takes_precedence_over_unsupported() {
     // line 3.
     let before_claim = [
         // The row's case: a package kind not read yet.
-        "<sacm:TerminologyPackage xmi:id=\"f\"/>",
+        "<sacm:TerminologyPackageInterface xmi:id=\"f\"/>",
         // An XMI-namespace child.
         "<xmi:documentation/>",
         // A readable root with content it cannot read yet (XMI metadata,
@@ -1031,7 +1031,7 @@ fn sacm23_xmi_001_invalid_root_takes_precedence_over_unsupported() {
 // --- SACM23-XMI-001 10. Roots not readable yet -------------------------------
 
 #[test]
-fn sacm23_xmi_001_the_other_nine_package_kinds_are_unsupported_at_the_root() {
+fn sacm23_xmi_001_the_other_eight_package_kinds_are_unsupported_at_the_root() {
     let row = "SACM23-XMI-001";
     let others: Vec<ElementKind> = ElementKind::ALL
         .iter()
@@ -1043,13 +1043,16 @@ fn sacm23_xmi_001_the_other_nine_package_kinds_are_unsupported_at_the_root() {
                 ElementKind::AssuranceCasePackage
                     | ElementKind::ArgumentPackage
                     | ElementKind::ArtifactPackage
+                    | ElementKind::TerminologyPackage
             )
         })
         .collect();
+    // The interface and binding kinds; a TerminologyPackage is read since
+    // slice 0062 (SACM23-TERM-001).
     assert_eq!(
         others.len(),
-        9,
-        "{row}: expected 9 other package kinds, found {others:?}"
+        8,
+        "{row}: expected 8 other package kinds, found {others:?}"
     );
     for kind in others {
         let input = format!("<sacm:{}{NS} xmi:id=\"p\"/>", kind.name());
@@ -1211,7 +1214,8 @@ fn sacm23_xmi_001_unread_content_of_a_root_is_unsupported_or_preserved_at_that_c
     // no namespace (SACM23-BASE-007/008, SACM23-XMI-015), so they are not
     // among these; in the SACM namespace they are not read.
     let artifact_package = "<artifactPackage xmi:id=\"x\"/>";
-    let terminology_package = "<terminologyPackage xmi:id=\"x\"/>";
+    let terminology_package =
+        "<terminologyPackage xmi:type=\"sacm:TerminologyPackageInterface\" xmi:id=\"x\"/>";
     let interface = "<argumentElement xsi:type=\"sacm:ArgumentPackageInterface\" xmi:id=\"x\"/>";
     let artifact_interface =
         "<artifactElement xmi:type=\"sacm:ArtifactPackageInterface\" xmi:id=\"x\"/>";
@@ -1219,8 +1223,10 @@ fn sacm23_xmi_001_unread_content_of_a_root_is_unsupported_or_preserved_at_that_c
         // The interface is an ArgumentPackage's conforming child (SACM23-ARG-014);
         // `artifactPackage` is a role an ArgumentPackage lacks.
         ("ArgumentPackage", interface, artifact_package),
-        // A TerminologyPackage is an AssuranceCasePackage's conforming child
-        // (SACM23-TERM-001); `argumentElement` is a role it lacks.
+        // A TerminologyPackageInterface is an AssuranceCasePackage's
+        // conforming child in `terminologyPackage` (SACM23-TERM-007; a
+        // TerminologyPackage is read since slice 0062); `argumentElement` is a
+        // role it lacks.
         ("AssuranceCasePackage", terminology_package, interface),
         // An ArtifactPackageInterface is an ArtifactPackage's conforming child
         // (SACM23-ART-012); `argumentElement` is a role it lacks.

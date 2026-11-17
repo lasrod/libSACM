@@ -194,6 +194,48 @@
     "feature": "source"
   },
   {
+    "type": "FeatureNotApplicable",
+    "code": "SACM-CMD-008",
+    "element": "hazards",
+    "kind": "Category",
+    "feature": "value"
+  },
+  {
+    "type": "FeatureNotApplicable",
+    "code": "SACM-CMD-008",
+    "element": "blade_guarded",
+    "kind": "Expression",
+    "feature": "externalReference"
+  },
+  {
+    "type": "FeatureNotApplicable",
+    "code": "SACM-CMD-008",
+    "element": "c1",
+    "kind": "Claim",
+    "feature": "category"
+  },
+  {
+    "type": "FeatureNotApplicable",
+    "code": "SACM-CMD-008",
+    "element": "blade",
+    "kind": "Term",
+    "feature": "element"
+  },
+  {
+    "type": "FeatureNotApplicable",
+    "code": "SACM-CMD-008",
+    "element": "blade_guarded",
+    "kind": "Expression",
+    "feature": "origin"
+  },
+  {
+    "type": "FeatureNotApplicable",
+    "code": "SACM-CMD-008",
+    "element": "ag1",
+    "kind": "ArtifactGroup",
+    "feature": "terminologyElement"
+  },
+  {
     "type": "InvalidRoot",
     "code": "SACM-CMD-005",
     "element": "c1",

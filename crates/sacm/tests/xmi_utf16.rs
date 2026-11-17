@@ -556,8 +556,8 @@ fn sacm23_xmi_018_inputs_from_the_read_and_root_tests_give_the_utf8_result() {
             format!("<!-- c -->\n{}", wrapper("")),
         ),
         (
-            "a TerminologyPackage root",
-            format!("<sacm:TerminologyPackage{NS} xmi:id=\"terms_1\"/>"),
+            "a TerminologyPackageInterface root",
+            format!("<sacm:TerminologyPackageInterface{NS} xmi:id=\"terms_1\"/>"),
         ),
         (
             "an unread attribute",
