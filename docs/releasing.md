@@ -36,7 +36,9 @@ date. Above it, open a new empty section:
 ```
 
 **Check:** the `X.Y.Z` section lists every user-visible change since the last release, with
-breaking changes under **Breaking**.
+breaking changes under **Breaking**, and the `[Unreleased]` section reads as the release's
+notes: no entry says something is refused or missing "until" a row that is verified, and
+nothing lists a change between unreleased states.
 
 ### 3. Run the gate and the dry run
 

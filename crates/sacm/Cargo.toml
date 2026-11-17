@@ -47,5 +47,5 @@ serde_json = "1.0.128"
 workspace = true
 
 [package.metadata.docs.rs]
-all-features = true
+features = ["serde"]
 rustdoc-args = ["--cfg", "docsrs"]

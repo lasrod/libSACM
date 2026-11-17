@@ -1546,10 +1546,16 @@ pub enum ReadError {
         kind: ElementKind,
         /// The property: `gid`, `isCitation`, `isAbstract`, `isCounter`,
         /// `citedElement`, `abstractForm`, `metaClaim`, `reasoning`,
-        /// `source`, `target`, `structure`, `name`, `name.lang`,
-        /// `name.content`, `content`, `content.value.lang`,
-        /// `content.value.content`, `key`, `key.value.lang`,
-        /// `key.value.content` or `assertionDeclaration`.
+        /// `source`, `target` (an asserted relationship's, or an
+        /// `ArtifactAssetRelationship`'s), `structure`,
+        /// `referencedArtifactElement`, `argumentElement` (an
+        /// `ArgumentGroup`'s end), `artifactElement` (an `ArtifactGroup`'s
+        /// end),
+        /// `name`, `name.lang`, `name.content`, `content`,
+        /// `content.value.lang`, `content.value.content`, `key`,
+        /// `key.value.lang`, `key.value.content`, `assertionDeclaration`,
+        /// `version`, `date`, `startTime`, `endTime`, `location`,
+        /// `location.value.lang` or `location.value.content`.
         property: String,
         /// Every occurrence, in document order: an attribute at the first
         /// character of its name, an element at its `<`. At least two. Two
@@ -1678,9 +1684,11 @@ pub enum ReadError {
     /// keeps the child whole as preserved content of its parent, with
     /// SACM-XMI-005 as a Warning (ADR 0035). Fix: give it an
     /// `xmi:type` naming its class, such as `xmi:type="sacm:Claim"`. A
-    /// child with an `xmi:idref` or an `href` is not this refusal: it is the
-    /// reference form of a composite, which this release refuses as
-    /// [`Unsupported`](Self::Unsupported).
+    /// child with an `xmi:idref` or an unqualified `href` is not this
+    /// refusal: it is the reference form of a composite, which this release
+    /// refuses as [`Unsupported`](Self::Unsupported). A child with only an
+    /// `xlink:href` or an `xmi:href` is rightly this refusal, because only an
+    /// unqualified `href` is a reference form (XMI.xsd `LinkAttribs`).
     ///
     /// ```
     /// use sacm::diagnostic::Code;

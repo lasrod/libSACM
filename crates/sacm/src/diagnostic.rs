@@ -179,7 +179,9 @@ catalog! {
     /// child whole as preserved content of its parent, its `xmi:id`s in the
     /// id space, with one Warning at its start tag affecting the parent
     /// (LIB-COMPAT-001, ADR 0035). Fix: give the child an `xmi:type` naming
-    /// its class, such as `xmi:type="sacm:Claim"`.
+    /// its class, such as `xmi:type="sacm:Claim"`. An untyped role element
+    /// with `xlink:href` or `xmi:href` is rightly this code, because only an
+    /// unqualified `href` is a reference form (XMI.xsd `LinkAttribs`).
     pub const XMI_MISSING_TYPE: Code = Code::from_static("SACM-XMI-005");
 
     /// SACM-XMI-003: content that neither the SACM XML Schema nor the XMI

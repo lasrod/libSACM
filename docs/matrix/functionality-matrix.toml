@@ -1774,7 +1774,7 @@ id = "SACM23-XMI-001"
 area = "XMI"
 milestone = "M1"
 title = "Interchange roots"
-requirement = "`xmi::read` returns `Ok(ReadOutput)` with a `Document` (and its diagnostics, sorted per ADR 0011: SACM-XMI-010 for `xsi:type` and SACM-XMI-011 for `xmi:version` (LIB-COMPAT-001), the Infos SACM-XMI-004 for a missing `xmi:id` and SACM-ID-004 for a padded one (SACM23-XMI-020, SACM23-XMI-025), and SACM-XMI-003 for preserved content (LIB-COMPAT-003)) when every interchange root is an `AssuranceCasePackage`, `ArgumentPackage` or `ArtifactPackage` element in the pinned SACM namespace `http://www.omg.org/spec/SACM/20220301` (D-NS-PIN). A root is the document element, or each element child outside the XMI namespace of an `XMI` element in the XMI 2.5.1 namespace `http://www.omg.org/spec/XMI/20131001`. Elements and attributes are matched by namespace URI and local name, never by prefix (any-prefix equivalence is SACM23-XMI-002). Each root becomes a parentless element of its kind, in document order, whose id is its `xmi:id`'s `xsd:ID` value (SACM23-XMI-025), or a generated id when it has none (SACM23-XMI-020). Its name is missing (ADR 0013) unless it has a `name` child, which SACM23-XMI-012 reads. A read root may carry only namespace declarations, `xmi:id`, `xmi:version` (reported as SACM-XMI-011 and otherwise ignored: XMI 2.5.1 identifies its version by namespace) and an `xmi:type` or `xsi:type` naming its own class; its content may be only white space, comments, processing instructions, one `name` child under SACM23-XMI-012's rules, and the children SACM23-XMI-016 reads; content that does not conform there is preserved (below). The wrapper may carry only namespace declarations and `xmi:version`. An empty root id is `ReadError::InvalidId` and a root id that repeats an earlier element's is `ReadError::DuplicateId` (SACM23-VAL-020, SACM23-VAL-001). Content of a root that does not conform where it stands (an attribute or child element its class lacks, a type attribute naming another class (D-ROOT-NAME), an `id` attribute in no namespace or another namespace, non-white-space text) is kept as preserved content of the root, with one SACM-XMI-003 at it (Warning tolerant, Error strict; LIB-COMPAT-003, ADR 0033). Anything else is refused as `ReadError::Unsupported` at its location, never dropped (LIB-API-009, LIB-API-011): conforming content not read yet (XMI metadata and `xsi:schemaLocation` on a root, SACM23-XMI-019; a conforming child SACM23-XMI-016 does not read), a preserved attribute whose prefix binds `sacm` or `xmi` to another URI (a defect, ADR 0033), any attribute other than namespace declarations and `xmi:version`, and any non-white-space text, on the wrapper, the other nine package kinds as roots (each refused under its own package row, such as SACM23-TERM-001, SACM23-AC-002/003, SACM23-ARG-014/015 and SACM23-ART-012), a package-kind name in another namespace or none (LIB-COMPAT-004), an `XMI` element in another namespace (LIB-COMPAT-002), and an XMI-namespace element as a root or wrapper child (SACM23-XMI-019). A root or wrapper child whose local name is none of the twelve package-kind names, and a wrapper with no root, are refused with a `ReadError` whose `code()` is SACM-XMI-001, at that element; among the refusals found while reading the roots this takes precedence over `Unsupported`, so which roots get SACM-XMI-001 does not depend on what a release can read (an `XMI` element outside the XMI namespace is `Unsupported` before its children are classified, ADR 0016 D1). No document is returned beside a refusal (ADR 0015). The XML checks of LIB-SEC-005 run before any root is classified."
+requirement = "`xmi::read` returns `Ok(ReadOutput)` with a `Document` (and its diagnostics, sorted per ADR 0011: SACM-XMI-010 for `xsi:type` and SACM-XMI-011 for `xmi:version` (LIB-COMPAT-001), the Infos SACM-XMI-004 for a missing `xmi:id` and SACM-ID-004 for a padded one (SACM23-XMI-020, SACM23-XMI-025), and SACM-XMI-003 for preserved content (LIB-COMPAT-003), SACM-XMI-012 and SACM-XMI-013 for shapes and spellings a tolerant read reads (LIB-COMPAT-008, SACM23-XMI-009)) when every interchange root is an `AssuranceCasePackage`, `ArgumentPackage` or `ArtifactPackage` element in the pinned SACM namespace `http://www.omg.org/spec/SACM/20220301` (D-NS-PIN). A root is the document element, or each element child outside the XMI namespace of an `XMI` element in the XMI 2.5.1 namespace `http://www.omg.org/spec/XMI/20131001`. Elements and attributes are matched by namespace URI and local name, never by prefix (any-prefix equivalence is SACM23-XMI-002). Each root becomes a parentless element of its kind, in document order, whose id is its `xmi:id`'s `xsd:ID` value (SACM23-XMI-025), or a generated id when it has none (SACM23-XMI-020). Its name is missing (ADR 0013) unless it has a `name` child, which SACM23-XMI-012 reads. A read root may carry only namespace declarations, `xmi:id`, `xmi:version` (reported as SACM-XMI-011 and otherwise ignored: XMI 2.5.1 identifies its version by namespace) and an `xmi:type` or `xsi:type` naming its own class; its content may be only white space, comments, processing instructions, one `name` child under SACM23-XMI-012's rules, and the children SACM23-XMI-016 reads; content that does not conform there is preserved (below). The wrapper may carry only namespace declarations and `xmi:version`. An empty root id is `ReadError::InvalidId` and a root id that repeats an earlier element's is `ReadError::DuplicateId` (SACM23-VAL-020, SACM23-VAL-001). Content of a root that does not conform where it stands (an attribute or child element its class lacks, a type attribute naming another class (D-ROOT-NAME), an `id` attribute in no namespace or another namespace, non-white-space text) is kept as preserved content of the root, with one SACM-XMI-003 at it (Warning tolerant, Error strict; LIB-COMPAT-003, ADR 0033). Anything else is refused as `ReadError::Unsupported` at its location, never dropped (LIB-API-009, LIB-API-011): conforming content not read yet (XMI metadata and `xsi:schemaLocation` on a root, SACM23-XMI-019; a conforming child SACM23-XMI-016 does not read), a preserved attribute whose prefix binds `sacm` or `xmi` to another URI (a defect, ADR 0033), any attribute other than namespace declarations and `xmi:version`, and any non-white-space text, on the wrapper, the other nine package kinds as roots (each refused under its own package row, such as SACM23-TERM-001, SACM23-AC-002/003, SACM23-ARG-014/015 and SACM23-ART-012), a package-kind name in another namespace or none (LIB-COMPAT-004), an `XMI` element in another namespace (LIB-COMPAT-002), and an XMI-namespace element as a root or wrapper child (SACM23-XMI-019). A root or wrapper child whose local name is none of the twelve package-kind names, and a wrapper with no root, are refused with a `ReadError` whose `code()` is SACM-XMI-001, at that element; among the refusals found while reading the roots this takes precedence over `Unsupported`, so which roots get SACM-XMI-001 does not depend on what a release can read (an `XMI` element outside the XMI namespace is `Unsupported` before its children are classified, ADR 0016 D1). No document is returned beside a refusal (ADR 0015). The XML checks of LIB-SEC-005 run before any root is classified."
 source = "formal/23-05-08 §2.2 (p. 4) \"The top object of the Argumentation package as a unit of interchange shall be the Argumentation::ArgumentPackage element of the SACM.\"; §2.4 (p. 4) \"The top object of the Assurance Case package as a unit of interchange shall be the SACM::AssuranceCasePackage element.\"; §2.2/§2.4 \"import and export XMI documents that conform with the SACM XML Schema produced by applying XMI rules to the normative MOF metamodel\"; §9.2 (p. 23) \"When users exchange content, it is expected they use this as the top-level container.\"; XMI 2.5.1 formal/15-06-07 §7.5.3 (p. 10) \"it must be the XMI element if there are multiple elements\", \"the XMI element may not be present when there is only a single top-level object\", \"Each version of XMI is unambiguously identified by its unique namespace URI\"; §7.8.1 (p. 16) \"The XML element name for each model Class, and Association in a document is its short name.\"; §9.5.2 rule 2a (p. 63); §7.6.1 (p. 13) `<xsd:attribute name=\"id\" type=\"xsd:ID\" use=\"optional\"/>`; XMI.xsd targetNamespace `http://www.omg.org/spec/XMI/20131001` (no `version` attribute; specification defect D10); D-NS-PIN; D-PRESERVE; ADR 0013; ADR 0015; ADR 0016; docs/sacm/diagnostics.md SACM-XMI-001; assurance-forge libs/sacm src/io/xmi_reader.cpp:2097-2142, 2191-2285, 2433-2459 (empty wrapper is SACM-XMI-001 as in C++; deviations in ADR 0016)"
 kind = "xmi"
 status = "verified"
@@ -1793,7 +1793,7 @@ acceptance = [
   "Unread content: on a valid root of either kind, each of `xmi:uuid`, `xmi:label`, `href`, `xmi:idref` and `xsi:schemaLocation`, a conforming child this version does not read (an `ArgumentPackageInterface` in `argumentElement` of an ArgumentPackage, a `terminologyPackage` of an AssuranceCasePackage) and `<xmi:Extension/>` is `Unsupported` at that content (SACM23-XMI-019, LIB-API-011); non-white-space text in the wrapper is `Unsupported` at its first character. Content that does not conform is kept as preserved content of the root, with one SACM-XMI-003 at it in both modes (LIB-COMPAT-003): any one of `sacm:isCitation`, `sacm:isAbstract`, `ext:isCitation`, `xmi:isAbstract`, `sacm:citedElement`, `ext:abstractForm`, `xml:lang`, `foo=\"1\"`, `ext:a=\"1\"`; `interface=\"x\"` is the conforming `interface` end, refused as `Unsupported` with the package's own interface row (SACM23-AC-002, SACM23-ARG-014, SACM23-ART-012); a `<foo/>` child, a child under a role the root's class lacks, `<sacm:isCitation>` and `<sacm:citedElement>`; non-white-space text, also after a comment. (A `gid`, utility children and the unqualified flags and references are read: SACM23-BASE-004 to -008, SACM23-XMI-005.)",
   "Ids: an unprefixed `id=\"p\"` or an `id` attribute in another namespace is kept as preserved content of the root, with one SACM-XMI-003 at the attribute's name, and the root reads with a generated id; a root with no `xmi:id` reads with a generated id (SACM23-XMI-020), and a padded one reads trimmed (SACM23-XMI-025); an empty `xmi:id` is `ReadError::InvalidId` (SACM23-VAL-020); two wrapped roots with the same `xmi:id` are `ReadError::DuplicateId` at the second (SACM23-VAL-001).",
   "Order and determinism: the encoding refusals (LIB-API-009), DOCTYPE (LIB-SEC-001) and `Malformed` (LIB-SEC-002, LIB-SEC-005) come before any root classification; the same input always gives the same result.",
-  "`ReadOutput` has `document()`, `diagnostics()` (empty unless the input carries `xsi:type` or `xmi:version`, LIB-COMPAT-001, a missing or padded `xmi:id`, SACM23-XMI-020 and SACM23-XMI-025, or preserved content, SACM-XMI-003 and LIB-COMPAT-003) and `into_document()`, and is `Send + Sync` (checked statically). The SACM-XMI-001 refusals follow ADR 0011: `InvalidRoot` and `NoPackage` are `#[non_exhaustive]` `ReadError` variants with a location (also returned by `location()`), its `Display` is one lowercase line without trailing punctuation that quotes names from the input, `source()` is `None`; `Code::XMI_INVALID_ROOT` is SACM-XMI-001 and appears in a table row of docs/sacm/diagnostics.md.",
+  "`ReadOutput` has `document()`, `diagnostics()` (empty unless the input carries `xsi:type` or `xmi:version`, LIB-COMPAT-001, a missing or padded `xmi:id`, SACM23-XMI-020 and SACM23-XMI-025, or preserved content, SACM-XMI-003 and LIB-COMPAT-003, a C++ shape or a spelling read tolerantly, SACM-XMI-012 and SACM-XMI-013) and `into_document()`, and is `Send + Sync` (checked statically). The SACM-XMI-001 refusals follow ADR 0011: `InvalidRoot` and `NoPackage` are `#[non_exhaustive]` `ReadError` variants with a location (also returned by `location()`), its `Display` is one lowercase line without trailing punctuation that quotes names from the input, `source()` is `None`; `Code::XMI_INVALID_ROOT` is SACM-XMI-001 and appears in a table row of docs/sacm/diagnostics.md.",
   "A root whose `xmi:id` repeats an earlier element's (an earlier root's or its child's) is `ReadError::DuplicateId` at the root's `<`, before its attributes and content: a second wrapped `<sacm:ArgumentPackage xmi:id=\"a\" isAbstract=\"true\"/>` is refused at its `<`, not at `isAbstract`.",
 ]
 code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/roots.rs", "crates/sacm/src/diagnostic.rs", "docs/sacm/diagnostics.md"]
@@ -1833,7 +1833,7 @@ tests = [
   "crates/sacm/tests/xmi_roots.rs::sacm23_xmi_001_a_repeated_root_id_is_duplicate_id_at_the_second_root",
 ]
 verification = "docs/verification/0052-m3-artifact-basics.md"
-notes = "Parser leniencies beyond LIB-SEC-005's list were left to LIB-SEC-006 (W3C conformance suite), by the maintainer's decision of 2026-11-11 (slice 0021, verification round 3); LIB-SEC-006 closes the list within the suite (slice 0022). Slice 0026: the unread-content example `<name/>` became `<note/>`, because SACM23-XMI-012 reads names; re-checked there. Slice 0029: a duplicate root id is now refused at its id check, as \"an earlier element\"; re-checked there. Slice 0035: read diagnostics exist now (SACM-XMI-010, SACM-XMI-011), so `diagnostics()` is no longer always empty; re-checked there. Slice 0036: an empty or duplicate `xmi:id` is now a coded refusal (`ReadError::InvalidId`, `ReadError::DuplicateId`; ADR 0015 amendment 2), and a padded id is `Unsupported`; reworded and re-checked there. Slice 0039: reworded for SACM23-XMI-020/-021/-022/-025 and SACM23-VAL-006 (ADR 0024, ADR 0021 amendment 2); re-check there. Slice 0040: reworded, because utility children and `gid` are read now (SACM23-BASE-004/005/006); its tests use `isCitation`, `isAbstract`, `<foo/>` and `<isCitation>` as unread samples; re-check there. Slice 0042: `isCitation`, `isAbstract`, `citedElement` and `abstractForm` are read now (SACM23-BASE-007/008); its tests need other unread samples; re-check there. Slice 0043: a test sample or list changed because ArgumentReasoning, AssertedInference and AssertedContext are read now (ADR 0027); re-check there."
+notes = "Parser leniencies beyond LIB-SEC-005's list were left to LIB-SEC-006 (W3C conformance suite), by the maintainer's decision of 2026-11-11 (slice 0021, verification round 3); LIB-SEC-006 closes the list within the suite (slice 0022). Slice 0026: the unread-content example `<name/>` became `<note/>`, because SACM23-XMI-012 reads names; re-checked there. Slice 0029: a duplicate root id is now refused at its id check, as \"an earlier element\"; re-checked there. Slice 0035: read diagnostics exist now (SACM-XMI-010, SACM-XMI-011), so `diagnostics()` is no longer always empty; re-checked there. Slice 0036: an empty or duplicate `xmi:id` is now a coded refusal (`ReadError::InvalidId`, `ReadError::DuplicateId`; ADR 0015 amendment 2), and a padded id is `Unsupported`; reworded and re-checked there. Slice 0039: reworded for SACM23-XMI-020/-021/-022/-025 and SACM23-VAL-006 (ADR 0024, ADR 0021 amendment 2); re-check there. Slice 0040: reworded, because utility children and `gid` are read now (SACM23-BASE-004/005/006); its tests use `isCitation`, `isAbstract`, `<foo/>` and `<isCitation>` as unread samples; re-check there. Slice 0042: `isCitation`, `isAbstract`, `citedElement` and `abstractForm` are read now (SACM23-BASE-007/008); its tests need other unread samples; re-check there. Slice 0043: a test sample or list changed because ArgumentReasoning, AssertedInference and AssertedContext are read now (ADR 0027); re-check there. Slice 0060 (M3 close audit): reworded; re-check there."
 
 [[row]]
 id = "SACM23-XMI-002"
@@ -1983,12 +1983,12 @@ id = "SACM23-XMI-007"
 area = "XMI"
 milestone = "M1"
 title = "Deterministic export"
-requirement = "Writing the same document always produces identical bytes: UTF-8 without a BOM; the declaration `<?xml version=\"1.0\" encoding=\"UTF-8\"?>`; LF line endings; two spaces of indentation per depth; `<x … />` for an element with no children; a final LF. Attributes are in double quotes, in the order namespace declarations, `xmi:type`, `xmi:id`, `gid`, `isCitation`, `isAbstract`, `citedElement`, `abstractForm`, then the class's own features in the order SACM23-ARG-005, -006, -007 and -013 state, then `version`, `date`, `startTime` and `endTime` (SACM23-ART-002, -004, -006, -007), then preserved attributes in input order (LIB-COMPAT-003). Children are written in model order (ADR 0010 D2), each preserved child at its index among them, not grouped by role as C++ does. Nothing depends on hash iteration order. The output is checked against golden files."
+requirement = "Writing the same document always produces identical bytes: UTF-8 without a BOM; the declaration `<?xml version=\"1.0\" encoding=\"UTF-8\"?>`; LF line endings; two spaces of indentation per depth; `<x … />` for an element with no children; a final LF. Attributes are in double quotes, in the order namespace declarations, `xmi:type`, `xmi:id`, `gid`, `isCitation`, `isAbstract`, `citedElement`, `abstractForm`, then the class's own reference ends in `ReferenceEnd::ALL` order (SACM23-ARG-005, -006, -007, -013, SACM23-ART-011 and -010), then `version`, `date`, `startTime` and `endTime` (SACM23-ART-002, -004, -006, -007), then preserved attributes in input order (LIB-COMPAT-003). Children are written in model order (ADR 0010 D2), each preserved child at its index among them, not grouped by role as C++ does. Nothing depends on hash iteration order. The output is checked against golden files."
 source = "D-RT; XMI 2.5.1 §9.5 (p. 60) \"the XML attributes may be serialized in any order\", rule 2a (p. 63); ADR 0010 D2; ADR 0017; assurance-forge `io/xmi.h:18-21`, `tests/test_roundtrip.cpp:892-925`"
 kind = "xmi"
 status = "verified"
 depends_on = ["SACM23-XMI-003", "SACM23-XMI-004", "SACM23-XMI-006"]
-notes = "Slice 0036: a test's ids or expectations changed for the new id rules (ADR 0015 amendment 2, SACM23-VAL-020); re-checked there. Slice 0055: reworded because Artifact, Resource, Activity and Event are read now (ADR 0034 amendment 1); re-check there."
+notes = "Slice 0036: a test's ids or expectations changed for the new id rules (ADR 0015 amendment 2, SACM23-VAL-020); re-checked there. Slice 0055: reworded because Artifact, Resource, Activity and Event are read now (ADR 0034 amendment 1); re-check there. Slice 0060 (M3 close audit): reworded; re-check there."
 acceptance = [
   "Writing one document twice gives identical bytes, and so does writing a document and its clone.",
   "Two documents built by the same `insert` sequence, with at least 50 elements, write identical bytes.",
@@ -2139,7 +2139,7 @@ id = "LIB-COMPAT-001"
 area = "COMPAT"
 milestone = "M1"
 title = "Strict and tolerant load modes"
-requirement = "`ReadOptions` carries a load mode (`xmi::Mode`), tolerant by default, and `ReadOutput::mode()` reports the mode used (ADR 0022). A **strict** read refuses what it cannot read conformantly, as each read row states; a refusal a read row states without naming a mode is a strict read's. A **tolerant** read returns a document for every well-formed input whose roots are SACM 2.3 packages (ADR 0035 D1): it refuses only a DOCTYPE, malformed XML, `InvalidRoot`, `NoPackage`, `DuplicateId`, and `Unsupported` for an encoding, a parser limit, a root outside SACM 2.3 (LIB-COMPAT-004), an `XMI` element outside XMI 2.5.1 (LIB-COMPAT-002) or an XMI-namespace document element; every other strict refusal is kept as preserved content at its construct (LIB-COMPAT-003), with one Warning at the strict refusal's location: SACM-ENUM-001 for a bad literal (the model holds the default), SACM-MULT-001 for each repeat of a single-valued property (the first occurrence is read), SACM-XMI-005 for an untyped child under an abstract role, SACM-ID-002 for an empty `xmi:id` (the element gets a generated id), and SACM-XMI-014 (SACM-XMI-007 for a cross-document `href`) for conforming content not read yet (LIB-API-011). A tolerant read reports no Error. Two read diagnostics are reported, one per attribute, located at its name, neither refusing or changing the document: an `xsi:type` attribute is SACM-XMI-010 (XMI 2.5.1 rule 2g), an Error in strict mode and a Warning in tolerant mode; an `xmi:version` attribute on the `xmi:XMI` element or a root is SACM-XMI-011 (§7.5.3), Info in both modes. LIB-COMPAT-008's C++ shapes read tolerantly with SACM-XMI-012 and are refused strictly as `LegacyShape` (ADR 0022 amendment 1)."
+requirement = "`ReadOptions` carries a load mode (`xmi::Mode`), tolerant by default, and `ReadOutput::mode()` reports the mode used (ADR 0022). A **strict** read refuses what it cannot read conformantly, as each read row states; a refusal a read row states without naming a mode is a strict read's. A **tolerant** read returns a document for every well-formed input whose roots are SACM 2.3 packages (ADR 0035 D1): it refuses only a DOCTYPE, malformed XML, `InvalidRoot`, `NoPackage`, `DuplicateId`, and `Unsupported` for an encoding, a parser limit, a root outside SACM 2.3 (LIB-COMPAT-004), an `XMI` element outside XMI 2.5.1 (LIB-COMPAT-002) or an XMI-namespace document element; every other strict refusal is kept as preserved content at its construct (LIB-COMPAT-003), with one Warning at the strict refusal's location: SACM-ENUM-001 for a bad literal (the model holds the default), SACM-MULT-001 for each repeat of a single-valued property (the first occurrence is read), SACM-XMI-005 for an untyped child under an abstract role, SACM-ID-002 for an empty `xmi:id` (the element gets a generated id), and SACM-XMI-014 (SACM-XMI-007 for a cross-document `href`) for conforming content not read yet (LIB-API-011). A tolerant read reports no Error. Two read diagnostics are reported, one per attribute, located at its name, neither refusing or changing the document: an `xsi:type` attribute is SACM-XMI-010 (XMI 2.5.1 rule 2g), an Error in strict mode and a Warning in tolerant mode; an `xmi:version` attribute on the `xmi:XMI` element or a root is SACM-XMI-011 (§7.5.3), Info in both modes. LIB-COMPAT-008's C++ shapes read tolerantly with SACM-XMI-012 and are refused strictly as `LegacyShape` (ADR 0022 amendment 1). SACM23-XMI-009's spellings read tolerantly with SACM-XMI-013 and are kept strictly as preserved content with SACM-XMI-013 as an Error."
 source = "D-STRICT; D-SEV; formal/23-05-08 §2.2, §2.4 (p. 4) \"shall be able to import and export XMI documents that conform with the SACM XML Schema produced by applying XMI rules to the normative MOF metamodel\"; XMI 2.5.1 §2.2.2 (p. 1) \"The XMI document must be equivalent to those generated by the XMI Document production rules\"; §9.5.2 rule 2g (p. 63) \"You may only use the XML schema instance type attribute if org.omg.xmi.useSchemaExtensions is true\"; §7.8.8 (p. 21) \"uses xmi:type instead of xsi:type\"; §7.5.3 (p. 10) \"identification of the XMI version is indicated by the presence of the XMI namespace declaration\"; ptc/22-03-13 (no `org.omg.xmi` tags); ADR 0015, 0016, 0021, 0022; assurance-forge `io/options.h:17-43`, `io/xmi_reader.cpp:320-323`"
 kind = "api"
 status = "verified"
@@ -2184,7 +2184,7 @@ tests = [
   "crates/sacm/tests/tolerant_read.rs::lib_compat_001_a_repeated_value_keeps_the_first_and_preserves_the_rest",
   "crates/sacm/tests/tolerant_read.rs::lib_compat_001_the_fatal_refusals_are_the_same_in_both_modes",
 ]
-notes = "Slice 0035: designed in ADR 0022 (accepted by the maintainer, 2026-11-13, with SACM-XMI-011 as Info). The C++ `SaveOptions::namespace_uri` moves to LIB-COMPAT-011. Slice 0036: tests updated for the coded id refusals (ADR 0015 amendment 2); re-checked there. Slice 0042: its tests replaced `isCitation`/`isAbstract` unread samples (now read, ADR 0026) with other unread ones, locations unchanged; re-check there. Slice 0043: a test sample or list changed because ArgumentReasoning, AssertedInference and AssertedContext are read now (ADR 0027); re-check there. Slice 0044: the golden list gains `artifact-relationships.golden.sacm.xmi` (ADR 0028); re-check there."
+notes = "Slice 0035: designed in ADR 0022 (accepted by the maintainer, 2026-11-13, with SACM-XMI-011 as Info). The C++ `SaveOptions::namespace_uri` moves to LIB-COMPAT-011. Slice 0036: tests updated for the coded id refusals (ADR 0015 amendment 2); re-checked there. Slice 0042: its tests replaced `isCitation`/`isAbstract` unread samples (now read, ADR 0026) with other unread ones, locations unchanged; re-check there. Slice 0043: a test sample or list changed because ArgumentReasoning, AssertedInference and AssertedContext are read now (ADR 0027); re-check there. Slice 0044: the golden list gains `artifact-relationships.golden.sacm.xmi` (ADR 0028); re-check there. Slice 0060 (M3 close audit): reworded; re-check there."
 
 [[row]]
 id = "SACM23-VAL-001"
@@ -2740,13 +2740,13 @@ id = "SACM23-XMI-005"
 area = "XMI"
 milestone = "M2"
 title = "Reference serialization"
-requirement = "A non-containment reference is read from, and written as, an XML attribute in no namespace named by the reference end, whose value is the targets' ids separated by XML white space (xsd:IDREFS; XMI 2.5.1 rules 2h, 2j, 4i) (ADR 0026). In this release the ends are `citedElement` and `abstractForm` (SACM23-BASE-007/008), `metaClaim` (SACM23-ARG-004), `structure` (SACM23-ARG-005), `referencedArtifactElement` (SACM23-ARG-006), `source`, `target` and `reasoning` (SACM23-ARG-007), an ArgumentGroup's `argumentElement` (SACM23-ARG-013), an ArtifactGroup's `artifactElement` (SACM23-ART-011) and an ArtifactAssetRelationship's `source` and `target` (SACM23-ART-010); each later end's row inherits the rule. A reference is held as the target id, each token exactly as read (no `#` stripped), and resolves by id across the whole input whatever the order (a later element, another root, the element itself). A reference naming no element (an id absent from the file, or a `name`, `content`, `key` or `value` id) is kept, written back and reported by `validate` (SACM23-VAL-003); it is never dropped. Two or more ids on a single-valued end is `RepeatedValue` (SACM-MULT-001); an empty or all-white-space value, and `sacm:citedElement`, are kept as preserved content of the element, with SACM-XMI-003 at the attribute's name, never read as absent (LIB-COMPAT-003). Generated ids, in the reader and in edits, skip every referenced id. `xmi::write` writes the ids separated by one space, after the SACMElement flags."
+requirement = "A non-containment reference is read from, and written as, an XML attribute in no namespace named by the reference end, whose value is the targets' ids separated by XML white space (xsd:IDREFS; XMI 2.5.1 rules 2h, 2j, 4i) (ADR 0026). In this release the ends are `citedElement` and `abstractForm` (SACM23-BASE-007/008), `metaClaim` (SACM23-ARG-004), `structure` (SACM23-ARG-005), `referencedArtifactElement` (SACM23-ARG-006), `source`, `target` and `reasoning` (SACM23-ARG-007), an ArgumentGroup's `argumentElement` (SACM23-ARG-013), an ArtifactGroup's `artifactElement` (SACM23-ART-011) and an ArtifactAssetRelationship's `source` and `target` (SACM23-ART-010); each later end's row inherits the rule. A reference is held as the target id, each token exactly as read (no `#` stripped), and resolves by id across the whole input whatever the order (a later element, another root, the element itself). A reference naming no element (an id absent from the file, or a `name`, `content`, `key`, `location` or `value` id) is kept, written back and reported by `validate` (SACM23-VAL-003); it is never dropped. Two or more ids on a single-valued end is `RepeatedValue` (SACM-MULT-001); an empty or all-white-space value, and `sacm:citedElement`, are kept as preserved content of the element, with SACM-XMI-003 at the attribute's name, never read as absent (LIB-COMPAT-003). Generated ids, in the reader and in edits, skip every referenced id. `xmi::write` writes the ids separated by one space, after the SACMElement flags."
 source = "XMI 2.5.1 rule 2h (p. 63) \"either as an XML attribute or as XML elements but not both\"; rule 2j (p. 64) \"The value of the XML attribute contains the XMI ID of each referenced object, separated by a space\"; rule 4i (p. 51); §7.8.5 (p. 19) `type=\"xsd:IDREFS\"`; §7.10.2 (p. 23); XML Schema 1.0 Part 2 §3.3.10, §4.1.2.2 (list types collapse white space); D-PRESERVE; D-ID; ADR 0024; ADR 0026; assurance-forge io/xmi_reader.cpp:877-908, io/xmi_writer.cpp:29-38, 86-91"
 kind = "xmi"
 status = "verified"
 verification = "docs/verification/0051-m2-close.md"
 depends_on = ["SACM23-XMI-004", "SACM23-XMI-014", "SACM23-XMI-025", "SACM23-BASE-004"]
-notes = "Slice 0057: reworded for ArtifactAssetRelationship and the SACM23-XMI-009 spellings; re-check there."
+notes = "Slice 0057: reworded for ArtifactAssetRelationship and the SACM23-XMI-009 spellings; re-check there. Slice 0060 (M3 close audit): reworded; re-check there."
 acceptance = [
   "`citedElement=\"c2\"` on a Claim and `abstractForm=\"p2\"` on a package read with those targets; `write` emits the same attributes, read-write-read is equal and the second write gives the same bytes.",
   "A forward reference, a reference into another root of the same `xmi:XMI`, and a self-reference each read, round-trip and give no SACM-REF-001.",
@@ -3678,7 +3678,7 @@ id = "SACM23-VAL-003"
 area = "VAL"
 milestone = "M2"
 title = "Dangling references"
-requirement = "`validation::validate` reports each reference whose target id names no element of the document (an id absent from it, or a `name`, `content`, `key` or `value` id; an id held in preserved content is SACM-REF-003, LIB-COMPAT-003) as one SACM-REF-001 Error (`Code::REF_DANGLING`) per distinct missing id per end, with requirement SACM23-VAL-003, the end's clause (`8.2` for `citedElement` and `abstractForm`), no location, `affected = [referrer, missing id]`, and a message naming the referrer's kind and id, the end and the target. A strict save refuses it by its schema check (an IDREF must name an `xmi:id` the output writes; LIB-COMPAT-007, ADR 0035 D4), except a reference to a `name`, `content`, `key` or `value` id, which is schema-valid and written; a tolerant save writes the reference as held (ADR 0026)."
+requirement = "`validation::validate` reports each reference whose target id names no element of the document (an id absent from it, or a `name`, `content`, `key`, `location` or `value` id; an id held in preserved content is SACM-REF-003, LIB-COMPAT-003) as one SACM-REF-001 Error (`Code::REF_DANGLING`) per distinct missing id per end, with requirement SACM23-VAL-003, the end's clause (`8.2` for `citedElement` and `abstractForm`), no location, `affected = [referrer, missing id]`, and a message naming the referrer's kind and id, the end and the target. A strict save refuses it by its schema check (an IDREF must name an `xmi:id` the output writes; LIB-COMPAT-007, ADR 0035 D4), except a reference to a `name`, `content`, `key`, `location` or `value` id, which is schema-valid and written; a tolerant save writes the reference as held (ADR 0026)."
 source = "XMI 2.5.1 rule 2j (p. 64) \"Class-typed Properties whose values are objects that are serialized in the same document\"; XML Schema 1.0 Part 1 §3.3.4 (ID/IDREF table: no unbound IDREF); D-SEV (indicative); D-VAL-LAYER; D-PRESERVE; ADR 0026; SACM-REF-001; assurance-forge validation/validate.cpp:344-353"
 kind = "validation"
 status = "verified"
@@ -3687,7 +3687,7 @@ depends_on = ["SACM23-XMI-005", "LIB-DIAG-001", "SACM23-BASE-007", "SACM23-BASE-
 acceptance = [
   "A Claim with `citedElement=\"nope\"` gives exactly one SACM-REF-001: Error, SACM23-VAL-003, clause `8.2`, no location, affected `[claim, nope]`, the message naming Claim, the claim id, `citedElement` and `nope`; the same for `abstractForm`.",
   "A forward, cross-root or self reference gives no finding.",
-  "A reference to a `name`, `content`, `key` or `value` id gives SACM-REF-001.",
+  "A reference to a `name`, `content`, `key`, `location` or `value` id gives SACM-REF-001.",
   "An element with both a dangling `citedElement` and a dangling `abstractForm` gives two findings; two elements citing the same missing id give two.",
   "A strict write refuses with `WriteError::Invalid` holding the finding; a tolerant write keeps the reference.",
   "`Code::REF_DANGLING` is SACM-REF-001, and the catalog row names it and SACM23-VAL-003.",
@@ -3705,7 +3705,7 @@ tests = [
   "crates/sacm/tests/reference_validation.rs::sacm23_val_003_the_message_names_the_end_s_declared_type",
 ]
 code = ["crates/sacm/src/validation/references.rs"]
-notes = "Slice 0044: SACM-REF-001 clauses gain 11.9 and 11.2 for the new ends; re-check there."
+notes = "Slice 0044: SACM-REF-001 clauses gain 11.9 and 11.2 for the new ends; re-check there. Slice 0060 (M3 close audit): reworded; re-check there."
 
 [[row]]
 id = "SACM23-VAL-004"
@@ -4262,12 +4262,12 @@ kind = "editing"
 status = "verified"
 verification = "docs/verification/0045-m2-set-operations.md"
 depends_on = ["LIB-EDIT-002", "LIB-EDIT-003", "SACM23-ARG-004", "SACM23-ARG-005", "SACM23-ARG-006", "SACM23-ARG-007", "SACM23-ARG-013", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-022"]
-notes = "Slice 0042: when an edit can replace a reference, kill the `IdUse::is_unused -> false` mutant excluded for this row in docs/quality/mutants-triage.md, and remove its exclusion. Maintainer decisions of 2026-11-15 (slice 0045): a kind without the feature is the new SACM-CMD-008 and a bad order list the new SACM-CMD-009; `citedElement` and `isCitation` are set independently (unlike C++ `SetCitation`); reorder applies to the children of any element and to the roots; typed before-values move to LIB-EDIT-011 (ADR 0019 E10 amended). Lead decisions: a replaced name or content keeps its role element's `xmi:id` and its value ids by position (D-PRESERVE); removing an id removes every occurrence, and an id the end does not hold is refused. Slice 0045: the `IdUse::is_unused -> false` mutant is equivalent (both readers look at the entry's fields), so its exclusion stays with a new reason in docs/quality/mutants-triage.md; the opposite mutant is killed. Slice 0057: reworded for ArtifactAssetRelationship and the SACM23-XMI-009 spellings; re-check there."
+notes = "Slice 0042: when an edit can replace a reference, kill the `IdUse::is_unused -> false` mutant excluded for this row in docs/quality/mutants-triage.md, and remove its exclusion. Maintainer decisions of 2026-11-15 (slice 0045): a kind without the feature is the new SACM-CMD-008 and a bad order list the new SACM-CMD-009; `citedElement` and `isCitation` are set independently (unlike C++ `SetCitation`); reorder applies to the children of any element and to the roots; typed before-values move to LIB-EDIT-011 (ADR 0019 E10 amended). Lead decisions: a replaced name or content keeps its role element's `xmi:id` and its value ids by position (D-PRESERVE); removing an id removes every occurrence, and an id the end does not hold is refused. Slice 0045: the `IdUse::is_unused -> false` mutant is equivalent (both readers look at the entry's fields), so its exclusion stays with a new reason in docs/quality/mutants-triage.md; the opposite mutant is killed. Slice 0057: reworded for ArtifactAssetRelationship and the SACM23-XMI-009 spellings; re-check there. Slice 0060 (M3 close audit): reworded; re-check there."
 acceptance = [
   "For each end on each kind that owns it, setting it makes the accessor return exactly the ids given; a round trip is equal; `semantic_compare` reports only that end's variant on the owner.",
   "Add appends; an id already held is kept and `validate` gives a SACM23-VAL-022 Warning; remove drops every occurrence, and an id not held is SACM-CMD-001.",
   "Empty sources or removing the last source is `TooFewReferences` (`source`, given 0, required 1); `target` cannot be cleared; two ids on a single-valued end, or adding to an asserted relationship's held `target`, is `TooManyReferences` (`target`, given 2, allowed 1).",
-  "`ReferenceNotFound` for an absent id and a `name`/`content`/`key`/`value` id; `InvalidReference` for `a b`; `WrongReferenceType` for a metaClaim naming an ArgumentReasoning, a source naming an ArgumentPackage, a reasoning or structure naming a Claim, a referencedArtifactElement naming a Description and a member naming a Note; a citedElement or abstractForm naming a Description is accepted.",
+  "`ReferenceNotFound` for an absent id and a `name`/`content`/`key`/`location`/`value` id; `InvalidReference` for `a b`; `WrongReferenceType` for a metaClaim naming an ArgumentReasoning, a source naming an ArgumentPackage, a reasoning or structure naming a Claim, a referencedArtifactElement naming a Description and a member naming a Note; a citedElement or abstractForm naming a Description is accepted.",
   "An end on a kind that lacks it (a `source` on a Claim) is SACM-CMD-008; an operation failing two checks pins their order.",
   "With a dangling source `x` read from a file: sources `[x, c2]` succeed; `[y]` with `y` dangling is `ReferenceNotFound`; target `x` is `ReferenceNotFound`; removing `x` succeeds and its SACM-REF-001 goes; likewise for a held wrongly typed id and `WrongReferenceType`.",
   "Editing one end succeeds while another end of the same element dangles; an AssertedEvidence source set to a Claim succeeds and `validate` gives the §11.15 finding; self-references are accepted.",
@@ -4369,7 +4369,7 @@ acceptance = [
   "`changed_ids` is `[utility id]`; an unknown element is SACM-CMD-001 and the document is unchanged; the operations join the LIB-EDIT-002 set.",
 ]
 tests = [
-  "crates/sacm/tests/content_edits.rs::lib_edit_012_replacing_a_large_content_keeps_ids_in_linear_time",
+  "crates/sacm/tests/content_edits.rs::lib_edit_012_replacing_a_large_content_keeps_ids_in_n_log_n_time",
   "crates/sacm/tests/content_edits.rs::lib_edit_012_each_content_form_is_set_exactly_on_each_utility_kind",
   "crates/sacm/tests/content_edits.rs::lib_edit_012_a_set_content_round_trips_with_absent_and_empty_kept_apart",
   "crates/sacm/tests/content_edits.rs::lib_edit_012_an_empty_content_or_a_repeated_language_is_reported_by_validate_not_refused",
@@ -4479,7 +4479,7 @@ id = "SACM23-ART-003"
 area = "ART"
 milestone = "M3"
 title = "Property"
-requirement = "Property (§12.8) is read and written in the composite role `property : Property [0..*]` of every ArtifactAsset this release reads (Property, Technique, Participant, and Artifact, Resource, Activity and Event: SACM23-ART-004 to -007), untyped or typed `sacm:Property`, and typed in an ArtifactPackage's `artifactElement`. `SacmElement::properties()` lists an asset's `property` children in document order; a Property held directly in an ArtifactPackage is a child of the package, not a property of it. A `property` element typed as another class, or under an element that is not an ArtifactAsset, is preserved content (SACM-XMI-003). `edit::CreateProperty` creates one where the containment table admits it."
+requirement = "Property (§12.8) is read and written in the composite role `property : Property [0..*]` of every ArtifactAsset this release reads (Property, Technique, Participant, Artifact, Resource, Activity, Event and ArtifactAssetRelationship: SACM23-ART-004 to -010), untyped or typed `sacm:Property`, and typed in an ArtifactPackage's `artifactElement`. `SacmElement::properties()` lists an asset's `property` children in document order; a Property held directly in an ArtifactPackage is a child of the package, not a property of it. A `property` element typed as another class, or under an element that is not an ArtifactAsset, is preserved content (SACM-XMI-003). `edit::CreateProperty` creates one where the containment table admits it."
 source = "formal/23-05-08 §12.6 and §12.8 (\"Property enables the specification of the characteristics of an Artifact\"); ptc/22-03-13 Artifact::ArtifactAsset.property (`property : Property [0..*]`, composite), Artifact::Property; ADR 0034"
 kind = "model"
 status = "verified"
@@ -4487,7 +4487,7 @@ verification = "docs/verification/0052-m3-artifact-basics.md"
 code = ["crates/sacm/src/model/document.rs", "crates/sacm/src/edit/artifact.rs", "crates/sacm/src/edit.rs"]
 depends_on = ["SACM23-ART-001"]
 acceptance = [
-  "`property` is read untyped or typed `sacm:Property` under a Property, a Technique and a Participant, nested three deep, and typed in `artifactElement`, in both modes; a `property` typed as another class, and a `property` under a non-asset, are each kept as preserved content with one SACM-XMI-003.",
+  "`property` is read untyped or typed `sacm:Property` under each of the eight ArtifactAsset kinds, nested three deep, and typed in `artifactElement`, in both modes; a `property` typed as another class, and a `property` under a non-asset, are each kept as preserved content with one SACM-XMI-003.",
   "`property` children are written without `xmi:type`; `properties()` lists them in order, and is empty for a Property held directly in an ArtifactPackage's `artifactElement` and for every kind that is not an ArtifactAsset.",
   "`CreateProperty::new(parent, name)`: legal parents are Property, Technique, Participant, Artifact, Resource, Activity, Event and ArtifactAssetRelationship (role `property`; under an Artifact tested under SACM23-ART-004, under an ArtifactAssetRelationship under SACM23-ART-010, and under each of the four by LIB-API-012's create-parent test) and ArtifactPackage (role `artifactElement`); a Claim, an ArtifactGroup, an AssuranceCasePackage or an ArgumentPackage parent is `InvalidParent`; the generated id is `property_<n>`.",
   "Properties are content: deleting a Technique holding one Property is `NotEmpty { contained: 1 }`, and a Property holding a Property holding a Property gives 2.",
@@ -4502,7 +4502,7 @@ tests = [
   "crates/sacm/tests/artifact_edits.rs::sacm23_art_003_create_property_legal_parents_refusals_and_generated_id",
   "crates/sacm/tests/artifact_edits.rs::sacm23_art_003_properties_lists_an_asset_s_property_children_and_nothing_else",
 ]
-notes = "Slice 0055: reworded because Artifact, Resource, Activity and Event are read now (ADR 0034 amendment 1); re-check there. Slice 0057: reworded for ArtifactAssetRelationship and the SACM23-XMI-009 spellings; re-check there."
+notes = "Slice 0055: reworded because Artifact, Resource, Activity and Event are read now (ADR 0034 amendment 1); re-check there. Slice 0057: reworded for ArtifactAssetRelationship and the SACM23-XMI-009 spellings; re-check there. Slice 0060 (M3 close audit): reworded; re-check there."
 
 [[row]]
 id = "SACM23-ART-004"
@@ -4551,6 +4551,7 @@ status = "verified"
 verification = "docs/verification/0055-m3-artifact-assets.md"
 code = ["crates/sacm/src/model/document.rs", "crates/sacm/src/model/kind.rs", "crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi/output.rs", "crates/sacm/src/xmi/refusal.rs", "crates/sacm/src/compare.rs", "crates/sacm/src/edit/artifact.rs", "crates/sacm/src/edit/set.rs", "crates/sacm/src/edit.rs", "crates/sacm/src/validation/multi_lang.rs", "crates/sacm/src/validation/ids.rs"]
 depends_on = ["SACM23-ART-003", "SACM23-BASE-004", "SACM23-VAL-010", "SACM23-VAL-020"]
+notes = "Slice 0060 (M3 close audit): reworded; re-check there."
 tests = [
   "crates/sacm/tests/artifact_assets.rs::sacm23_art_005_a_resource_with_every_feature_reads_in_both_modes_and_writes_back",
   "crates/sacm/tests/artifact_assets.rs::sacm23_art_005_location_keeps_order_duplicates_and_absent_apart_from_empty",
@@ -4563,6 +4564,7 @@ tests = [
   "crates/sacm/tests/artifact_edits.rs::sacm23_art_005_semantic_compare_and_write_refusals_cover_the_location",
   "crates/sacm/tests/artifact_edits.rs::sacm23_art_005_set_location_replaces_keeps_ids_by_position_and_removes",
   "crates/sacm/tests/artifact_dates.rs::sacm23_art_005_location_differences_come_after_date_and_before_start_time",
+  "crates/sacm/tests/artifact_assets.rs::sacm23_art_005_a_reference_to_a_location_id_dangles_and_is_written",
 ]
 acceptance = [
   "A Resource with every Base feature, a property and `<location xmi:id=\"l\"><value xmi:id=\"l_en\" lang=\"en\" content=\"https://example.org/r.pdf\"/></location>` reads in both modes with no diagnostic and writes back with `location` directly after `name`; reading the output gives `==`.",
@@ -4575,6 +4577,7 @@ acceptance = [
   "`validate`: `<location/>` is one SACM-MULT-001 Error, requirement SACM23-VAL-010, clause `8.5`, affected `[resource]`; `[en:a, en:b]` is one Error naming `en`; a `location` or `value` `xmi:id` that is not an NCName is SACM-ID-002 (SACM23-VAL-020) with the Resource affected; a Resource with no `location` gives no finding.",
   "`semantic_compare` reports `Location` (`element \"r\" differs in location: no location on the left, [] on the right`), `LocationId` and `LocationValueIds`, after `Date` and before `StartTime`; U+0001 in a value is refused on write as `WriteAttribute::LocationValueContent` (`LocationValueLang` for `lang`).",
   "SetName, SetGid, SetFlag, SetReferences(CitedElement), ReorderElements and DeleteElement apply to a Resource.",
+  "A `citedElement` naming the `location` id or a location `value` id gives one SACM-REF-001 from `validate` (SACM23-VAL-003), is written by a strict save (it names an `xmi:id` the output writes, LIB-COMPAT-007), and `SetReferences` to it is `ReferenceNotFound`.",
 ]
 
 [[row]]
@@ -4793,6 +4796,7 @@ kind = "xmi"
 status = "verified"
 verification = "docs/verification/0057-artifact-relationships.md"
 depends_on = ["SACM23-ART-010", "SACM23-ART-007", "SACM23-ARG-013", "SACM23-XMI-016", "LIB-COMPAT-001", "LIB-COMPAT-003"]
+notes = "Slice 0060: the strict message tail now says \"reads the name as R\" (verification 0057's follow-up); re-check there."
 code = ["crates/sacm/src/xmi/roots.rs", "crates/sacm/src/xmi/refusal.rs", "crates/sacm/src/diagnostic.rs", "docs/adr/0034-artifact-packages-assets-and-groups.md"]
 tests = [
   "crates/sacm/tests/model_spellings.rs::sacm23_xmi_009_the_type_spelling_reads_as_an_artifact_asset_relationship_with_one_warning",
@@ -4809,13 +4813,15 @@ tests = [
   "crates/sacm/tests/model_spellings.rs::sacm23_xmi_009_the_fixture_reads_with_five_warnings_and_writes_exactly_the_golden_file",
   "crates/sacm/tests/model_spellings.rs::sacm23_xmi_009_a_spelled_end_attribute_read_and_an_end_element_are_an_attribute_and_elements",
   "crates/sacm/tests/model_spellings.rs::sacm23_xmi_009_a_generated_id_is_none_that_a_spelled_end_names",
+  "crates/sacm/tests/interim_refusals.rs::sacm23_xmi_009_a_strict_read_keeps_argumentation_element_in_a_package_with_one_error",
+  "crates/sacm/tests/interim_refusals.rs::sacm23_xmi_009_a_strict_read_keeps_argumentation_element_in_a_group_with_one_error",
 ]
 acceptance = [
   "Tolerant: `<artifactElement xmi:type=\"sacm:ArtifactAssertedRelationship\" xmi:id=\"r\" source=\"a\" target=\"b\">` in an ArtifactPackage reads `==` to the same element typed `sacm:ArtifactAssetRelationship`, with one SACM-XMI-013 Warning at its start tag affecting `r`; so do `xsi:type` (with SACM-XMI-010 too), another prefix bound to the SACM namespace, and `xmi:type=\"sacm:ArtifactAssertedRelationship\"` with `xsi:type=\"sacm:ArtifactAssetRelationship\"` (one SACM-XMI-013). In both modes `v:ArtifactAssertedRelationship` in another namespace, and the type under an ArgumentPackage's `argumentElement`, keep the child whole as preserved content of its parent with SACM-XMI-003, and `<sacm:ArtifactAssertedRelationship>` as the document element is `InvalidRoot`.",
   "Tolerant: `occurece=\"2024-03-05\"`, `<occurece>2024-03-05</occurece>` and `<occurece xsi:nil=\"true\"/>` on an Event read as its `date` (exactly as written; nil is absent), with one SACM-XMI-013 Warning at the attribute's name or the element's start tag affecting the Event. With `date` beside it in either form, `date()` is the `date` value and the `occurece` is preserved content of the Event with one SACM-MULT-001 Warning and no SACM-XMI-013; `occurece` as an attribute and an element reads the attribute and keeps the element as the repeat. `occurece` on an Artifact and `occurence` on an Event are SACM-XMI-003 in both modes.",
   "Tolerant: `<argumentationElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\">` in an ArgumentPackage reads as a child in role `argumentElement`, in document order among its siblings, with one SACM-XMI-013 Warning at its start tag affecting the package. On an ArgumentGroup, `argumentationElement=\"c1 c2\"` and `<argumentationElement xmi:idref=\"c1\"/>` read as members, with one Warning per attribute or element affecting the group; member elements under both names accumulate in document order; `argumentElement=\"c1\" argumentationElement=\"c2\"` reads `[c1]` and keeps the spelled attribute as preserved content with one SACM-MULT-001 Warning. `argumentationElement` on a Claim, an ArtifactGroup or an AssuranceCasePackage is SACM-XMI-003 in both modes.",
   "Strict: each construct of items 1 to 3 is kept as preserved content of the element it sits in (the typed child and the role element whole, of their parent; the end's attribute or element, of the group; `occurece`, of the Event), with one SACM-XMI-013 Error at the same location affecting that element and no SACM-XMI-003, and nothing is read from it: no element or member is added and `date()` stays unset (a `date` beside it reads). The ids inside it join the id space; `has_errors()` is true; a strict write is `WriteError::PreservedContent`, and a tolerant write writes it back as read. No `ReadError::Unsupported` names SACM23-XMI-009.",
-  "Messages begin as today's strict refusal reasons (the group end's naming §11.2) and end, tolerant, `; it is read as R, which write writes`, and strict, `; it is kept as preserved content, and a tolerant read reads it as R`, with R `ArtifactAssetRelationship`, `date` or `argumentElement`; requirement SACM23-XMI-009; clause `12.14`, `12.9`, `11.4` (role) or `11.2` (end). `Code::XMI_SPELLING_VARIANT` is SACM-XMI-013, and its catalog row names both severities and SACM23-XMI-009.",
+  "Messages begin as today's strict refusal reasons (the group end's naming §11.2) and end, tolerant, `; it is read as R, which write writes`, and strict, `; it is kept as preserved content, and a tolerant read reads the name as R`, with R `ArtifactAssetRelationship`, `date` or `argumentElement`; requirement SACM23-XMI-009; clause `12.14`, `12.9`, `11.4` (role) or `11.2` (end). `Code::XMI_SPELLING_VARIANT` is SACM-XMI-013, and its catalog row names both severities and SACM23-XMI-009.",
   "`model-spellings.sacm.xmi` reads tolerantly with exactly five SACM-XMI-013 Warnings, at 6:5, 12:5, 12:69, 21:62 and 24:5, and no other diagnostic; it validates with no finding, and a strict `xmi::write` of it gives exactly `golden/model-spellings.golden.sacm.xmi`, which reads strictly with no diagnostic and `==` to the tolerant read. A strict read of the input gives exactly four SACM-XMI-013 Errors, at 6:5, 12:5, 21:62 and 24:5.",
 ]
 
@@ -4843,7 +4849,7 @@ requirement = "TerminologyPackage (§10.4) is represented as a root or contained
 source = "formal/23-05-08 clause 10; ptc/22-03-13 Terminology::TerminologyPackage; clause 2"
 kind = "model"
 status = "planned"
-depends_on = ["SACM23-AC-001", "SACM23-XMI-005", "LIB-API-008"]
+depends_on = ["SACM23-AC-001", "SACM23-XMI-005", "LIB-API-008", "SACM23-ART-001"]
 notes = "Also reads `TerminologyPackage` as an interchange root: a strict SACM23-XMI-001 read refuses it as `Unsupported` until then, and a tolerant one keeps it with SACM-XMI-014."
 
 [[row]]
@@ -4851,7 +4857,7 @@ id = "SACM23-TERM-002"
 area = "TERM"
 milestone = "M4"
 title = "Category"
-requirement = "Category is represented with its `category` references to other Categories, created, round-tripped and editable. Each reference end it adds follows SACM23-XMI-005/015 (serialization), SACM23-VAL-003/004/022 (dangling, typing, repeats), LIB-EDIT-009 (edits) and, for an end with a lower bound, LIB-EDIT-005's scrub rule."
+requirement = "Category is represented with its `category` references to other Categories, created, round-tripped and editable. It is read and written typed in a TerminologyPackage's `terminologyElement` and in an ArtifactPackage's `artifactElement`; SACM23-ART-001 refuses it in an ArtifactPackage as `Interim` naming this row until then. Each reference end it adds follows SACM23-XMI-005/015 (serialization), SACM23-VAL-003/004/022 (dangling, typing, repeats), LIB-EDIT-009 (edits), LIB-API-015 (a `ReferenceEnd` in `ALL`, with `applies_to` and `bounds`; LIB-API-014 lists its referrers) and, for an end with a lower bound, LIB-EDIT-005's scrub rule, rewording SACM23-ART-010 and LIB-API-015 where they count the ends."
 source = "formal/23-05-08 clause 10; ptc/22-03-13 Terminology::Category"
 kind = "model"
 status = "planned"
@@ -4862,7 +4868,7 @@ id = "SACM23-TERM-003"
 area = "TERM"
 milestone = "M4"
 title = "ExpressionElement value and categories"
-requirement = "The shared ExpressionElement features — required `value` and `category` references — are represented once for Term and Expression. Each reference end it adds follows SACM23-XMI-005/015 (serialization), SACM23-VAL-003/004/022 (dangling, typing, repeats), LIB-EDIT-009 (edits) and, for an end with a lower bound, LIB-EDIT-005's scrub rule."
+requirement = "The shared ExpressionElement features — required `value` and `category` references — are represented once for Term and Expression. Each reference end it adds follows SACM23-XMI-005/015 (serialization), SACM23-VAL-003/004/022 (dangling, typing, repeats), LIB-EDIT-009 (edits), LIB-API-015 (a `ReferenceEnd` in `ALL`, with `applies_to` and `bounds`; LIB-API-014 lists its referrers) and, for an end with a lower bound, LIB-EDIT-005's scrub rule, rewording SACM23-ART-010 and LIB-API-015 where they count the ends."
 source = "formal/23-05-08 clause 10; ptc/22-03-13 Terminology::ExpressionElement"
 kind = "model"
 status = "planned"
@@ -4873,7 +4879,7 @@ id = "SACM23-TERM-004"
 area = "TERM"
 milestone = "M4"
 title = "Term"
-requirement = "Term is represented with `externalReference` and `origin` (reference to a ModelElement), created, round-tripped and editable. Each reference end it adds follows SACM23-XMI-005/015 (serialization), SACM23-VAL-003/004/022 (dangling, typing, repeats), LIB-EDIT-009 (edits) and, for an end with a lower bound, LIB-EDIT-005's scrub rule."
+requirement = "Term is represented with `externalReference` and `origin` (reference to a ModelElement), created, round-tripped and editable. It is read and written typed in a TerminologyPackage's `terminologyElement` and in an ArtifactPackage's `artifactElement`; SACM23-ART-001 refuses it in an ArtifactPackage as `Interim` naming this row until then. Each reference end it adds follows SACM23-XMI-005/015 (serialization), SACM23-VAL-003/004/022 (dangling, typing, repeats), LIB-EDIT-009 (edits), LIB-API-015 (a `ReferenceEnd` in `ALL`, with `applies_to` and `bounds`; LIB-API-014 lists its referrers) and, for an end with a lower bound, LIB-EDIT-005's scrub rule, rewording SACM23-ART-010 and LIB-API-015 where they count the ends."
 source = "formal/23-05-08 clause 10; ptc/22-03-13 Terminology::Term"
 kind = "model"
 status = "planned"
@@ -4884,7 +4890,7 @@ id = "SACM23-TERM-005"
 area = "TERM"
 milestone = "M4"
 title = "Expression"
-requirement = "Expression is represented with its `element` references to ExpressionElements, created, round-tripped and editable. Each reference end it adds follows SACM23-XMI-005/015 (serialization), SACM23-VAL-003/004/022 (dangling, typing, repeats), LIB-EDIT-009 (edits) and, for an end with a lower bound, LIB-EDIT-005's scrub rule."
+requirement = "Expression is represented with its `element` references to ExpressionElements, created, round-tripped and editable. It is read and written typed in a TerminologyPackage's `terminologyElement` and in an ArtifactPackage's `artifactElement`; SACM23-ART-001 refuses it in an ArtifactPackage as `Interim` naming this row until then. Each reference end it adds follows SACM23-XMI-005/015 (serialization), SACM23-VAL-003/004/022 (dangling, typing, repeats), LIB-EDIT-009 (edits), LIB-API-015 (a `ReferenceEnd` in `ALL`, with `applies_to` and `bounds`; LIB-API-014 lists its referrers) and, for an end with a lower bound, LIB-EDIT-005's scrub rule, rewording SACM23-ART-010 and LIB-API-015 where they count the ends."
 source = "formal/23-05-08 §10.10; ptc/22-03-13 Terminology::Expression"
 kind = "model"
 status = "planned"
@@ -4895,7 +4901,7 @@ id = "SACM23-TERM-006"
 area = "TERM"
 milestone = "M4"
 title = "TerminologyGroup"
-requirement = "TerminologyGroup is represented with its `terminologyElement` membership references, round-tripped and editable. Each reference end it adds follows SACM23-XMI-005/015 (serialization), SACM23-VAL-003/004/022 (dangling, typing, repeats), LIB-EDIT-009 (edits) and, for an end with a lower bound, LIB-EDIT-005's scrub rule."
+requirement = "TerminologyGroup is represented with its `terminologyElement` membership references, round-tripped and editable. It is read and written typed in a TerminologyPackage's `terminologyElement` and in an ArtifactPackage's `artifactElement`; SACM23-ART-001 refuses it in an ArtifactPackage as `Interim` naming this row until then. Each reference end it adds follows SACM23-XMI-005/015 (serialization), SACM23-VAL-003/004/022 (dangling, typing, repeats), LIB-EDIT-009 (edits), LIB-API-015 (a `ReferenceEnd` in `ALL`, with `applies_to` and `bounds`; LIB-API-014 lists its referrers) and, for an end with a lower bound, LIB-EDIT-005's scrub rule, rewording SACM23-ART-010 and LIB-API-015 where they count the ends."
 source = "formal/23-05-08 clause 10; ptc/22-03-13 Terminology::TerminologyGroup"
 kind = "model"
 status = "planned"
@@ -4943,7 +4949,7 @@ id = "SACM23-AC-002"
 area = "AC"
 milestone = "M5"
 title = "AssuranceCasePackageInterface"
-requirement = "AssuranceCasePackageInterface is represented with its `implements` reference (1) and a package's `interface` references, created, round-tripped and editable. Each reference end it adds follows SACM23-XMI-005/015 (serialization), SACM23-VAL-003/004/022 (dangling, typing, repeats), LIB-EDIT-009 (edits) and, for an end with a lower bound, LIB-EDIT-005's scrub rule."
+requirement = "AssuranceCasePackageInterface is represented with its `implements` reference (1) and a package's `interface` references, created, round-tripped and editable. Each reference end it adds follows SACM23-XMI-005/015 (serialization), SACM23-VAL-003/004/022 (dangling, typing, repeats), LIB-EDIT-009 (edits), LIB-API-015 (a `ReferenceEnd` in `ALL`, with `applies_to` and `bounds`; LIB-API-014 lists its referrers) and, for an end with a lower bound, LIB-EDIT-005's scrub rule, rewording SACM23-ART-010 and LIB-API-015 where they count the ends."
 source = "formal/23-05-08 §9.3; ptc/22-03-13 AssuranceCase::AssuranceCasePackageInterface"
 kind = "model"
 status = "planned"
@@ -4955,7 +4961,7 @@ id = "SACM23-AC-003"
 area = "AC"
 milestone = "M5"
 title = "AssuranceCasePackageBinding"
-requirement = "AssuranceCasePackageBinding is represented with its `participantPackage` references (2..*), created, round-tripped and editable. Each reference end it adds follows SACM23-XMI-005/015 (serialization), SACM23-VAL-003/004/022 (dangling, typing, repeats), LIB-EDIT-009 (edits) and, for an end with a lower bound, LIB-EDIT-005's scrub rule."
+requirement = "AssuranceCasePackageBinding is represented with its `participantPackage` references (2..*), created, round-tripped and editable. Each reference end it adds follows SACM23-XMI-005/015 (serialization), SACM23-VAL-003/004/022 (dangling, typing, repeats), LIB-EDIT-009 (edits), LIB-API-015 (a `ReferenceEnd` in `ALL`, with `applies_to` and `bounds`; LIB-API-014 lists its referrers) and, for an end with a lower bound, LIB-EDIT-005's scrub rule, rewording SACM23-ART-010 and LIB-API-015 where they count the ends."
 source = "formal/23-05-08 §9.4; ptc/22-03-13 AssuranceCase::AssuranceCasePackageBinding"
 kind = "model"
 status = "planned"
@@ -4967,7 +4973,7 @@ id = "SACM23-ARG-014"
 area = "ARG"
 milestone = "M5"
 title = "ArgumentPackageInterface"
-requirement = "ArgumentPackageInterface is represented with `implements` (1), resides inside the package it describes, and is created, round-tripped and editable; it does not trigger the homogeneity rule (D-PKG-HOMOG). An ArgumentPackage's `interface` references (0..*) are owned here: the model declares them, the text of the package's clause omits them (metamodel inventory, model followed). Each reference end it adds follows SACM23-XMI-005/015 (serialization), SACM23-VAL-003/004/022 (dangling, typing, repeats), LIB-EDIT-009 (edits) and, for an end with a lower bound, LIB-EDIT-005's scrub rule. As an owner it is exempt from SACM23-VAL-012 (D-PKG-HOMOG, following C++), though it is an ArgumentPackage by inheritance (§11.6); this row re-examines the exemption."
+requirement = "ArgumentPackageInterface is represented with `implements` (1), resides inside the package it describes, and is created, round-tripped and editable; it does not trigger the homogeneity rule (D-PKG-HOMOG). An ArgumentPackage's `interface` references (0..*) are owned here: the model declares them, the text of the package's clause omits them (metamodel inventory, model followed). Each reference end it adds follows SACM23-XMI-005/015 (serialization), SACM23-VAL-003/004/022 (dangling, typing, repeats), LIB-EDIT-009 (edits), LIB-API-015 (a `ReferenceEnd` in `ALL`, with `applies_to` and `bounds`; LIB-API-014 lists its referrers) and, for an end with a lower bound, LIB-EDIT-005's scrub rule, rewording SACM23-ART-010 and LIB-API-015 where they count the ends. As an owner it is exempt from SACM23-VAL-012 (D-PKG-HOMOG, following C++), though it is an ArgumentPackage by inheritance (§11.6); this row re-examines the exemption."
 source = "formal/23-05-08 §11.6; ptc/22-03-13 Argumentation::ArgumentPackageInterface"
 kind = "model"
 status = "planned"
@@ -4979,7 +4985,7 @@ id = "SACM23-ARG-015"
 area = "ARG"
 milestone = "M5"
 title = "ArgumentPackageBinding"
-requirement = "ArgumentPackageBinding is represented with `participantPackage` (2..*), created, round-tripped and editable; it does not trigger the homogeneity rule (D-PKG-HOMOG). Each reference end it adds follows SACM23-XMI-005/015 (serialization), SACM23-VAL-003/004/022 (dangling, typing, repeats), LIB-EDIT-009 (edits) and, for an end with a lower bound, LIB-EDIT-005's scrub rule. As an owner it is exempt from SACM23-VAL-012 (D-PKG-HOMOG, following C++), though it is an ArgumentPackage by inheritance (§11.6); this row re-examines the exemption."
+requirement = "ArgumentPackageBinding is represented with `participantPackage` (2..*), created, round-tripped and editable; it does not trigger the homogeneity rule (D-PKG-HOMOG). Each reference end it adds follows SACM23-XMI-005/015 (serialization), SACM23-VAL-003/004/022 (dangling, typing, repeats), LIB-EDIT-009 (edits), LIB-API-015 (a `ReferenceEnd` in `ALL`, with `applies_to` and `bounds`; LIB-API-014 lists its referrers) and, for an end with a lower bound, LIB-EDIT-005's scrub rule, rewording SACM23-ART-010 and LIB-API-015 where they count the ends. As an owner it is exempt from SACM23-VAL-012 (D-PKG-HOMOG, following C++), though it is an ArgumentPackage by inheritance (§11.6); this row re-examines the exemption."
 source = "formal/23-05-08 §11.5; ptc/22-03-13 Argumentation::ArgumentPackageBinding"
 kind = "model"
 status = "planned"
@@ -4991,44 +4997,48 @@ id = "SACM23-ART-012"
 area = "ART"
 milestone = "M5"
 title = "ArtifactPackageInterface"
-requirement = "ArtifactPackageInterface is represented with `implements` (1), created, round-tripped and editable. An ArtifactPackage's `interface` references (0..*) are owned here: the model declares them, the text of the package's clause omits them (metamodel inventory, model followed). Each reference end it adds follows SACM23-XMI-005/015 (serialization), SACM23-VAL-003/004/022 (dangling, typing, repeats), LIB-EDIT-009 (edits) and, for an end with a lower bound, LIB-EDIT-005's scrub rule."
+requirement = "ArtifactPackageInterface is represented with `implements` (1), created, round-tripped and editable. An ArtifactPackage's `interface` references (0..*) are owned here: the model declares them, the text of the package's clause omits them (metamodel inventory, model followed). Each reference end it adds follows SACM23-XMI-005/015 (serialization), SACM23-VAL-003/004/022 (dangling, typing, repeats), LIB-EDIT-009 (edits), LIB-API-015 (a `ReferenceEnd` in `ALL`, with `applies_to` and `bounds`; LIB-API-014 lists its referrers) and, for an end with a lower bound, LIB-EDIT-005's scrub rule, rewording SACM23-ART-010 and LIB-API-015 where they count the ends."
 source = "formal/23-05-08 §12.5; ptc/22-03-13 Artifact::ArtifactPackageInterface"
 kind = "model"
 status = "planned"
 depends_on = ["SACM23-ART-001", "SACM23-BASE-007", "SACM23-XMI-015", "SACM23-VAL-004", "LIB-EDIT-009", "LIB-EDIT-005"]
+notes = "Also reads this kind as an interchange root: a strict SACM23-XMI-001 read refuses it as `Unsupported` until then, and a tolerant one keeps it with SACM-XMI-014."
 
 [[row]]
 id = "SACM23-ART-013"
 area = "ART"
 milestone = "M5"
 title = "ArtifactPackageBinding"
-requirement = "ArtifactPackageBinding is represented with `participantPackage` (2..*), created, round-tripped and editable. Each reference end it adds follows SACM23-XMI-005/015 (serialization), SACM23-VAL-003/004/022 (dangling, typing, repeats), LIB-EDIT-009 (edits) and, for an end with a lower bound, LIB-EDIT-005's scrub rule."
+requirement = "ArtifactPackageBinding is represented with `participantPackage` (2..*), created, round-tripped and editable. Each reference end it adds follows SACM23-XMI-005/015 (serialization), SACM23-VAL-003/004/022 (dangling, typing, repeats), LIB-EDIT-009 (edits), LIB-API-015 (a `ReferenceEnd` in `ALL`, with `applies_to` and `bounds`; LIB-API-014 lists its referrers) and, for an end with a lower bound, LIB-EDIT-005's scrub rule, rewording SACM23-ART-010 and LIB-API-015 where they count the ends."
 source = "formal/23-05-08 §12.4; ptc/22-03-13 Artifact::ArtifactPackageBinding"
 kind = "model"
 status = "planned"
 depends_on = ["SACM23-ART-001", "SACM23-BASE-007", "SACM23-XMI-015", "SACM23-VAL-004", "LIB-EDIT-009", "LIB-EDIT-005"]
+notes = "Also reads this kind as an interchange root: a strict SACM23-XMI-001 read refuses it as `Unsupported` until then, and a tolerant one keeps it with SACM-XMI-014."
 
 [[row]]
 id = "SACM23-TERM-007"
 area = "TERM"
 milestone = "M5"
 title = "TerminologyPackageInterface"
-requirement = "TerminologyPackageInterface (a TerminologyPackage, D-TEXT-MODEL) is represented with `implements` (1), created, round-tripped and editable. A TerminologyPackage's `interface` references (0..*) are owned here: the model declares them, the text of the package's clause omits them (metamodel inventory, model followed). Each reference end it adds follows SACM23-XMI-005/015 (serialization), SACM23-VAL-003/004/022 (dangling, typing, repeats), LIB-EDIT-009 (edits) and, for an end with a lower bound, LIB-EDIT-005's scrub rule."
+requirement = "TerminologyPackageInterface (a TerminologyPackage, D-TEXT-MODEL) is represented with `implements` (1), created, round-tripped and editable. A TerminologyPackage's `interface` references (0..*) are owned here: the model declares them, the text of the package's clause omits them (metamodel inventory, model followed). Each reference end it adds follows SACM23-XMI-005/015 (serialization), SACM23-VAL-003/004/022 (dangling, typing, repeats), LIB-EDIT-009 (edits), LIB-API-015 (a `ReferenceEnd` in `ALL`, with `applies_to` and `bounds`; LIB-API-014 lists its referrers) and, for an end with a lower bound, LIB-EDIT-005's scrub rule, rewording SACM23-ART-010 and LIB-API-015 where they count the ends."
 source = "formal/23-05-08 §10.5; ptc/22-03-13 Terminology::TerminologyPackageInterface"
 kind = "model"
 status = "planned"
 depends_on = ["SACM23-TERM-001", "SACM23-BASE-007", "SACM23-XMI-015", "SACM23-VAL-004", "LIB-EDIT-009", "LIB-EDIT-005"]
+notes = "Also reads this kind as an interchange root: a strict SACM23-XMI-001 read refuses it as `Unsupported` until then, and a tolerant one keeps it with SACM-XMI-014."
 
 [[row]]
 id = "SACM23-TERM-008"
 area = "TERM"
 milestone = "M5"
 title = "TerminologyPackageBinding"
-requirement = "TerminologyPackageBinding is represented with `participantPackage` (2..*), created, round-tripped and editable. Each reference end it adds follows SACM23-XMI-005/015 (serialization), SACM23-VAL-003/004/022 (dangling, typing, repeats), LIB-EDIT-009 (edits) and, for an end with a lower bound, LIB-EDIT-005's scrub rule."
+requirement = "TerminologyPackageBinding is represented with `participantPackage` (2..*), created, round-tripped and editable. Each reference end it adds follows SACM23-XMI-005/015 (serialization), SACM23-VAL-003/004/022 (dangling, typing, repeats), LIB-EDIT-009 (edits), LIB-API-015 (a `ReferenceEnd` in `ALL`, with `applies_to` and `bounds`; LIB-API-014 lists its referrers) and, for an end with a lower bound, LIB-EDIT-005's scrub rule, rewording SACM23-ART-010 and LIB-API-015 where they count the ends."
 source = "formal/23-05-08 §10.6; ptc/22-03-13 Terminology::TerminologyPackageBinding"
 kind = "model"
 status = "planned"
 depends_on = ["SACM23-TERM-001", "SACM23-BASE-007", "SACM23-XMI-015", "SACM23-VAL-004", "LIB-EDIT-009", "LIB-EDIT-005"]
+notes = "Also reads this kind as an interchange root: a strict SACM23-XMI-001 read refuses it as `Unsupported` until then, and a tolerant one keeps it with SACM-XMI-014."
 
 [[row]]
 id = "SACM23-VAL-013"
@@ -5144,6 +5154,7 @@ source = "D-VERSION; SACM-XMI-002, SACM-XMI-008"
 kind = "xmi"
 status = "planned"
 depends_on = ["LIB-COMPAT-001"]
+notes = "From verification 0051 (moved here at M3's close): `xmi/refusal.rs` `OtherSacmNamespace` labels any root in a non-SACM namespace, even a non-SACM document, as this row's tolerance; only a SACM-like namespace should be (SACM-XMI-002 for the others). Settle it when this row is built."
 
 [[row]]
 id = "LIB-COMPAT-011"
@@ -5209,18 +5220,18 @@ requirement = "Import and export XMI documents whose unit of interchange is Argu
 source = "formal/23-05-08 clause 2"
 kind = "compliance"
 status = "planned"
-depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-ARG-001", "SACM23-ARG-002", "SACM23-ARG-003", "SACM23-ARG-004", "SACM23-ARG-005", "SACM23-ARG-006", "SACM23-ARG-007", "SACM23-ARG-008", "SACM23-ARG-009", "SACM23-ARG-010", "SACM23-ARG-011", "SACM23-ARG-012", "SACM23-ARG-013", "SACM23-ARG-014", "SACM23-ARG-015", "SACM23-XMI-001", "SACM23-XMI-002", "SACM23-XMI-003", "SACM23-XMI-004", "SACM23-XMI-005", "SACM23-XMI-006", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-005", "SACM23-VAL-006", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-009", "SACM23-VAL-010", "SACM23-VAL-011", "SACM23-VAL-012", "SACM23-VAL-013", "SACM23-VAL-014", "SACM23-VAL-016", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008", "SACM23-XMI-017", "SACM23-VAL-019", "SACM23-XMI-018", "SACM23-XMI-019", "SACM23-XMI-020", "SACM23-XMI-021", "SACM23-XMI-022", "LIB-API-011", "SACM23-XMI-024", "SACM23-VAL-020", "SACM23-XMI-025", "SACM23-XMI-026", "SACM23-XMI-027", "SACM23-VAL-021", "SACM23-VAL-022"]
+depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-ARG-001", "SACM23-ARG-002", "SACM23-ARG-003", "SACM23-ARG-004", "SACM23-ARG-005", "SACM23-ARG-006", "SACM23-ARG-007", "SACM23-ARG-008", "SACM23-ARG-009", "SACM23-ARG-010", "SACM23-ARG-011", "SACM23-ARG-012", "SACM23-ARG-013", "SACM23-ARG-014", "SACM23-ARG-015", "SACM23-XMI-001", "SACM23-XMI-002", "SACM23-XMI-003", "SACM23-XMI-004", "SACM23-XMI-005", "SACM23-XMI-006", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-005", "SACM23-VAL-006", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-009", "SACM23-VAL-010", "SACM23-VAL-011", "SACM23-VAL-012", "SACM23-VAL-013", "SACM23-VAL-014", "SACM23-VAL-016", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008", "SACM23-XMI-017", "SACM23-VAL-019", "SACM23-XMI-018", "SACM23-XMI-019", "SACM23-XMI-020", "SACM23-XMI-021", "SACM23-XMI-022", "LIB-API-011", "SACM23-XMI-024", "SACM23-VAL-020", "SACM23-XMI-025", "SACM23-XMI-026", "SACM23-XMI-027", "SACM23-VAL-021", "SACM23-VAL-022", "SACM23-XMI-009"]
 
 [[row]]
 id = "SACM23-CP-003"
 area = "CP"
 milestone = "M6"
 title = "Artifact Model compliance point"
-requirement = "Import and export XMI documents whose unit of interchange is Artifact::ArtifactPackage, covering every Artifact and Base feature, with constraints validated and lossless round trip."
+requirement = "Import and export XMI documents whose unit of interchange is Artifact::ArtifactPackage, covering every Artifact and Base feature, with constraints validated and lossless round trip. A file using the ptc/22-03-13 spellings `ArtifactAssertedRelationship` and `occurece` is read tolerantly as SACM23-XMI-009 states; a strict read keeps them with SACM-XMI-013 Errors (the maintainer's M3 decision 3; D-STRICT's one exception, spec defect D19)."
 source = "formal/23-05-08 clause 2"
 kind = "compliance"
 status = "planned"
-depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-ART-001", "SACM23-ART-002", "SACM23-ART-003", "SACM23-ART-004", "SACM23-ART-005", "SACM23-ART-006", "SACM23-ART-007", "SACM23-ART-008", "SACM23-ART-009", "SACM23-ART-010", "SACM23-ART-011", "SACM23-ART-012", "SACM23-ART-013", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-013", "SACM23-VAL-014", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008", "SACM23-XMI-018", "SACM23-XMI-019", "SACM23-XMI-020", "SACM23-XMI-021", "SACM23-XMI-022", "LIB-API-011", "SACM23-XMI-024", "SACM23-VAL-020", "SACM23-XMI-025", "SACM23-XMI-026", "SACM23-XMI-027", "SACM23-VAL-009", "SACM23-VAL-010", "SACM23-VAL-011", "SACM23-VAL-021", "SACM23-TERM-004", "SACM23-TERM-005", "SACM23-TERM-006"]
+depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-ART-001", "SACM23-ART-002", "SACM23-ART-003", "SACM23-ART-004", "SACM23-ART-005", "SACM23-ART-006", "SACM23-ART-007", "SACM23-ART-008", "SACM23-ART-009", "SACM23-ART-010", "SACM23-ART-011", "SACM23-ART-012", "SACM23-ART-013", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-013", "SACM23-VAL-014", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008", "SACM23-XMI-018", "SACM23-XMI-019", "SACM23-XMI-020", "SACM23-XMI-021", "SACM23-XMI-022", "LIB-API-011", "SACM23-XMI-024", "SACM23-VAL-020", "SACM23-XMI-025", "SACM23-XMI-026", "SACM23-XMI-027", "SACM23-VAL-009", "SACM23-VAL-010", "SACM23-VAL-011", "SACM23-VAL-021", "SACM23-TERM-004", "SACM23-TERM-005", "SACM23-TERM-006", "SACM23-XMI-009"]
 
 [[row]]
 id = "SACM23-CP-004"
@@ -5231,7 +5242,7 @@ requirement = "Import and export XMI documents whose unit of interchange is Term
 source = "formal/23-05-08 clause 2"
 kind = "compliance"
 status = "planned"
-depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-TERM-001", "SACM23-TERM-002", "SACM23-TERM-003", "SACM23-TERM-004", "SACM23-TERM-005", "SACM23-TERM-006", "SACM23-TERM-007", "SACM23-TERM-008", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-009", "SACM23-VAL-013", "SACM23-VAL-014", "SACM23-VAL-017", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008", "SACM23-XMI-018", "SACM23-XMI-019", "SACM23-XMI-020", "SACM23-XMI-021", "SACM23-XMI-022", "LIB-API-011", "SACM23-XMI-024", "SACM23-VAL-020", "SACM23-XMI-025", "SACM23-XMI-026", "SACM23-XMI-027", "SACM23-VAL-010", "SACM23-VAL-011", "SACM23-VAL-021"]
+depends_on = ["SACM23-BASE-001", "SACM23-BASE-002", "SACM23-BASE-003", "SACM23-BASE-004", "SACM23-BASE-005", "SACM23-BASE-006", "SACM23-BASE-007", "SACM23-BASE-008", "SACM23-BASE-009", "SACM23-TERM-001", "SACM23-TERM-002", "SACM23-TERM-003", "SACM23-TERM-004", "SACM23-TERM-005", "SACM23-TERM-006", "SACM23-TERM-007", "SACM23-TERM-008", "SACM23-XMI-007", "SACM23-XMI-008", "SACM23-VAL-001", "SACM23-VAL-002", "SACM23-VAL-003", "SACM23-VAL-004", "SACM23-VAL-007", "SACM23-VAL-008", "SACM23-VAL-009", "SACM23-VAL-013", "SACM23-VAL-014", "SACM23-VAL-017", "LIB-RT-002", "LIB-TOOL-004", "SACM23-XMI-012", "SACM23-XMI-013", "SACM23-XMI-014", "SACM23-XMI-015", "SACM23-VAL-018", "LIB-COMPAT-007", "SACM23-XMI-016", "LIB-API-008", "SACM23-XMI-018", "SACM23-XMI-019", "SACM23-XMI-020", "SACM23-XMI-021", "SACM23-XMI-022", "LIB-API-011", "SACM23-XMI-024", "SACM23-VAL-020", "SACM23-XMI-025", "SACM23-XMI-026", "SACM23-XMI-027", "SACM23-VAL-010", "SACM23-VAL-011", "SACM23-VAL-021", "SACM23-XMI-028"]
 
 [[row]]
 id = "SACM23-CP-001"
@@ -5293,11 +5304,22 @@ status = "planned"
 depends_on = ["LIB-QA-001"]
 
 [[row]]
+id = "LIB-QA-019"
+area = "QA"
+milestone = "M3"
+title = "First release published"
+requirement = "`sacm` and `sacm-cli` 0.1.0 are published to crates.io by the LIB-QA-005 process, with the annotated tag `v0.1.0` on `main` and the GitHub release `v0.1.0` whose notes are the CHANGELOG's `## [0.1.0]` section. It is done only on the maintainer's explicit go."
+source = "the maintainer, 2026-11-16 (a first crates.io release in M3) and 2026-11-17 (a row of its own, after the go)"
+kind = "quality"
+status = "planned"
+depends_on = ["LIB-QA-005"]
+
+[[row]]
 id = "LIB-QA-005"
 area = "QA"
 milestone = "M3"
 title = "Release process"
-requirement = "Every release, the first (0.1.0) included, is cut from the documented, repeatable process in `docs/releasing.md`: bump the version in the workspace's `[workspace.package]` and its `sacm` dependency; turn `## [Unreleased]` into `## [X.Y.Z] - YYYY-MM-DD` and open a new empty `[Unreleased]`; run the full gate and `cargo publish --dry-run --workspace --locked`; tag `vX.Y.Z` (annotated) on the release commit on `main`; publish `sacm`, then `sacm-cli`; create the GitHub release `vX.Y.Z` with that version's CHANGELOG section as its notes. Each published package holds its `Cargo.toml`, `README.md`, the MIT `LICENSE` (the repository's, byte for byte) and its `src/`, and no tests, benches or test data. The publish, the tag and the GitHub release are done only on the maintainer's explicit go for that version (the maintainer, 2026-11-17)."
+requirement = "Every release, the first (0.1.0) included, is cut from the documented, repeatable process in `docs/releasing.md`: bump the version in the workspace's `[workspace.package]` and its `sacm` dependency; turn `## [Unreleased]` into `## [X.Y.Z] - YYYY-MM-DD` and open a new empty `[Unreleased]`; run the full gate and `cargo publish --dry-run --workspace --locked`; tag `vX.Y.Z` (annotated) on the release commit on `main`; publish `sacm`, then `sacm-cli`; create the GitHub release `vX.Y.Z` with that version's CHANGELOG section as its notes. Each published package holds its `Cargo.toml`, `README.md`, the MIT `LICENSE` (the repository's, byte for byte) and its `src/`, and no tests, benches or test data. docs.rs builds `sacm` with the `serde` feature only, so the unstable `test-support` API does not appear there (the maintainer, 2026-11-17). The publish, the tag and the GitHub release are done only on the maintainer's explicit go for that version (the maintainer, 2026-11-17)."
 source = "Project policy; the maintainer, 2026-11-17 (prepare the release and the dry run, then stop and ask before the publish, the tag and the GitHub release)"
 kind = "quality"
 status = "verified"
@@ -5311,6 +5333,7 @@ tests = [
   "xtask/tests/release.rs::lib_qa_005_the_versions_and_the_changelog_agree",
   "xtask/tests/release.rs::lib_qa_005_the_package_check_reports_each_offending_path",
   "xtask/tests/release.rs::lib_qa_005_the_changelog_date_check_accepts_only_iso_dates",
+  "xtask/tests/release.rs::lib_qa_005_docs_rs_builds_without_test_support",
 ]
 acceptance = [
   "`docs/releasing.md` gives the steps of the requirement in order, each with its exact command (`cargo publish --dry-run --workspace --locked`, `git tag -a vX.Y.Z -m \"sacm X.Y.Z\"`, `cargo publish -p sacm`, `cargo publish -p sacm-cli`, `gh release create vX.Y.Z --notes-file …`), what to check after each, and what to do when a publish fails half-way (a published version is never re-published; fix and release the next patch version). It says the publish, tag and release wait for the maintainer's go. `CONTRIBUTING.md` links it.",
@@ -5318,6 +5341,7 @@ acceptance = [
   "`lib_qa_005_each_package_license_is_the_repository_license`: `crates/sacm/LICENSE` and `crates/sacm-cli/LICENSE` are byte-equal to the root `LICENSE`, and each manifest's `license` is `MIT`.",
   "`lib_qa_005_the_versions_and_the_changelog_agree`: `[workspace.package] version` equals the version of `[workspace.dependencies] sacm`, and `CHANGELOG.md`'s first `## ` section is `## [Unreleased]` or `## [<that version>] - <date>`, and its first section other than `## [Unreleased]`, if there is one, is `## [<that version>] - <date>` with an ISO date.",
   "`cargo publish --dry-run --workspace --locked` succeeds on the slice's head; its output is recorded in the verification record (not a test: it builds every package from its packaged sources).",
+  "`lib_qa_005_docs_rs_builds_without_test_support`: `crates/sacm/Cargo.toml` has `[package.metadata.docs.rs]` with `features = [\"serde\"]` and neither `all-features = true` nor `test-support`.",
 ]
 
 [[row]]
@@ -5642,7 +5666,7 @@ id = "LIB-API-010"
 area = "API"
 milestone = "M1"
 title = "The writer never drops content"
-requirement = "`xmi::write` never returns output that is missing content the `Document` holds (D-PRESERVE). It writes every feature a `Document` can hold: kind, id, name and name id, `gid`, the flags, the reference ends, a non-default `assertionDeclaration`, utility elements with their `content` and `key` and their ids, and preserved content; its only refusals are `WriteError::NoRoot`, `WriteError::UnrepresentableCharacter` and, in strict mode only, `WriteError::PreservedContent` for a document holding preserved content (SACM23-XMI-008) and `WriteError::Invalid` for output that would not be schema-valid (LIB-COMPAT-007); a tolerant write writes everything a `Document` holds. A later row that lets a `Document` hold content before a row writes it must, in the same slice, make `write` refuse that content with an error naming the element (`WriteError::Unsupported`, reserved by ADR 0017 amendment 2), and never drop it. This is the write-side twin of ADR 0015's interim rule."
+requirement = "`xmi::write` never returns output that is missing content the `Document` holds (D-PRESERVE). It writes every feature a `Document` can hold: kind, id, name and name id, `gid`, the flags, the reference ends, a non-default `assertionDeclaration`, utility elements with their `content` and `key` and their ids, an Artifact's `version`, the `date` of an Artifact or an Event, an Activity's `startTime` and `endTime`, a Resource's `location` with its ids, and preserved content; its only refusals are `WriteError::NoRoot`, `WriteError::UnrepresentableCharacter` and, in strict mode only, `WriteError::PreservedContent` for a document holding preserved content (SACM23-XMI-008) and `WriteError::Invalid` for output that would not be schema-valid (LIB-COMPAT-007); a tolerant write writes everything a `Document` holds. A later row that lets a `Document` hold content before a row writes it must, in the same slice, make `write` refuse that content with an error naming the element (`WriteError::Unsupported`, reserved by ADR 0017 amendment 2), and never drop it. This is the write-side twin of ADR 0015's interim rule."
 source = "D-PRESERVE \"Never drop conforming SACM data. Preserve with a diagnostic, or refuse\"; ADR 0015; ADR 0017 and its amendments 1 and 2"
 kind = "api"
 status = "verified"
@@ -5661,7 +5685,7 @@ tests = [
   "crates/sacm/tests/xmi_write.rs::lib_api_010_write_error_is_a_send_sync_error_and_only_preserved_content_has_a_code",
 ]
 verification = "docs/verification/0037-m1-element-form-values.md"
-notes = "Reworded and re-checked in slice 0026: names are no longer refused. Reworded in slice 0030: declarations are written (SACM23-XMI-017), so nothing a `Document` holds is refused and `WriteError::Unsupported` is removed until a row needs it; re-checked there. Slice 0035: strict write also refuses invalid documents (`WriteError::Invalid`, LIB-COMPAT-007), so the refusal set is stated per mode; re-checked there. Slice 0037: its error-type test was renamed for the three `WriteError` variants and now asserts `Invalid` too (a follow-up); re-checked there. Slice 0053: `WriteError::Invalid` is the schema check only and never runs `validate` (ADR 0035 D4)."
+notes = "Reworded and re-checked in slice 0026: names are no longer refused. Reworded in slice 0030: declarations are written (SACM23-XMI-017), so nothing a `Document` holds is refused and `WriteError::Unsupported` is removed until a row needs it; re-checked there. Slice 0035: strict write also refuses invalid documents (`WriteError::Invalid`, LIB-COMPAT-007), so the refusal set is stated per mode; re-checked there. Slice 0037: its error-type test was renamed for the three `WriteError` variants and now asserts `Invalid` too (a follow-up); re-checked there. Slice 0053: `WriteError::Invalid` is the schema check only and never runs `validate` (ADR 0035 D4). Slice 0060 (M3 close audit): reworded; re-check there."
 
 [[row]]
 id = "LIB-API-011"
@@ -5684,7 +5708,6 @@ acceptance = [
 code = ["crates/sacm/src/xmi/refusal.rs", "crates/sacm/src/xmi/roots.rs"]
 tests = [
   "xtask/tests/interim_refusals.rs::lib_api_011_unsupported_check_reports_a_construction_in_xmi_rs",
-  "crates/sacm/tests/interim_refusals.rs::lib_api_011_the_text_spelling_in_an_argument_group_names_sacm23_xmi_009",
   "crates/sacm/tests/interface_ends.rs::lib_api_011_the_interface_end_of_a_package_is_unsupported_with_its_row_in_strict_mode",
   "crates/sacm/tests/interface_ends.rs::lib_api_011_an_interface_in_another_namespace_is_preserved_not_refused",
   "crates/sacm/tests/interim_refusals.rs::lib_api_011_a_cross_document_href_names_sacm23_xmi_027",
@@ -5696,7 +5719,6 @@ tests = [
   "crates/sacm/tests/interim_refusals.rs::lib_api_011_an_xmi_element_outside_the_xmi_2_5_1_namespace_names_lib_compat_002",
   "crates/sacm/tests/interim_refusals.rs::lib_api_011_content_on_the_xmi_wrapper_is_a_defect_in_the_input",
   "crates/sacm/tests/interim_refusals.rs::lib_api_011_each_unread_package_interface_and_binding_kind_names_its_row",
-  "crates/sacm/tests/interim_refusals.rs::lib_api_011_the_text_spelling_argumentation_element_names_sacm23_xmi_009",
   "crates/sacm/tests/interim_refusals.rs::lib_api_011_xmi_metadata_names_sacm23_xmi_019",
   "xtask/tests/interim_refusals.rs::lib_api_011_each_compliance_point_depends_directly_on_xmi_027",
   "xtask/tests/interim_refusals.rs::lib_api_011_every_interim_row_exists_is_open_and_gates_its_compliance_points",
@@ -5805,13 +5827,13 @@ kind = "editing"
 status = "verified"
 verification = "docs/verification/0048-m2-batches-and-delete.md"
 depends_on = ["LIB-EDIT-003", "LIB-EDIT-013"]
-notes = "Needs an ADR for the API shape: a list of operations, or a closure that applies operations one at a time and sees each `Mutation` (which gives later operations the generated ids without a new id API). Slice 0056: net changed ids also take the parents of moved elements (ADR 0036 D4); re-check there."
+notes = "Needs an ADR for the API shape: a list of operations, or a closure that applies operations one at a time and sees each `Mutation` (which gives later operations the generated ids without a new id API). Slice 0056: net changed ids also take the parents of moved elements (ADR 0036 D4); re-check there. Slice 0060 (M3 close audit): reworded; re-check there."
 acceptance = [
   "`edit::batch(&mut doc, |tx| ...)`: on `Ok` every operation applied through `tx.apply` is committed and each returned `Mutation` equals what applying the operations one by one gives; a later operation can use an id an earlier one generated.",
   "On an `Err` from the closure, the closure's error is returned unchanged and the document is `==` to before with the same next ids and revision; a panic in the closure (`catch_unwind`) leaves it as before too. A refusal the closure catches and ignores changes nothing, and the rest commits.",
   "`edit::apply_all(&mut doc, ops)` equals `batch` over the same list; on the first refusal at index k the document is unchanged and `BatchError` gives `index() == k`, the operation, its `EditError` and `code()`.",
   "`BatchMutation::mutations()` holds every accepted `Mutation` in order; its net `created_ids`, `changed_ids` and `deleted_ids` are the right-only ids of `semantic_compare(before, after)` in creation order, its per-element ids in document pre-order after, and its left-only ids in pre-order before (an element created and deleted in the batch is in neither), over random sequences of creates, sets, reorders and deletes; moves and copies in a batch are held to it by targeted tests (LIB-EDIT-017, LIB-EDIT-018; ADR 0036 D4).",
-  "`BatchMutation` and `BatchError` round-trip in the ADR 0030 shape, with golden samples; the rustdoc example builds an ArgumentReasoning and an AssertedInference that names it in one batch.",
+  "`BatchMutation` and `BatchError` round-trip in the ADR 0030 shape, with golden samples (except one holding a `CopyElements`, which does not serialize: LIB-API-006); the rustdoc example builds an ArgumentReasoning and an AssertedInference that names it in one batch.",
 ]
 code = ["crates/sacm/src/edit/batch.rs", "crates/sacm/src/compare.rs", "docs/adr/0032-atomic-batches.md"]
 tests = [
@@ -6081,7 +6103,7 @@ source = "the maintainer, 2026-11-16 (independent review; consumer needs before 
 kind = "api"
 status = "verified"
 verification = "docs/verification/0056-edit-move-copy.md"
-depends_on = ["LIB-EDIT-010", "LIB-API-012", "LIB-COMPAT-003"]
+depends_on = ["LIB-EDIT-010", "LIB-API-012", "LIB-COMPAT-003", "LIB-EDIT-014", "LIB-API-006"]
 code = ["crates/sacm/src/edit/move_element.rs", "crates/sacm/src/model/document.rs", "crates/sacm/src/edit/batch.rs", "docs/adr/0036-moving-and-copying-elements.md"]
 tests = [
   "crates/sacm/tests/batch.rs::lib_edit_017_a_batch_that_moves_an_element_away_and_back_reports_the_parent_whose_order_changed",
@@ -6121,7 +6143,7 @@ source = "the maintainer, 2026-11-16 (independent review; consumer needs before 
 kind = "api"
 status = "verified"
 verification = "docs/verification/0056-edit-move-copy.md"
-depends_on = ["LIB-EDIT-001", "LIB-EDIT-009", "LIB-EDIT-014", "LIB-API-012", "LIB-COMPAT-003"]
+depends_on = ["LIB-EDIT-001", "LIB-EDIT-009", "LIB-EDIT-014", "LIB-API-012", "LIB-COMPAT-003", "LIB-API-006"]
 code = ["crates/sacm/src/edit/copy.rs", "crates/sacm/src/model/document.rs", "docs/adr/0036-moving-and-copying-elements.md"]
 tests = [
   "crates/sacm/tests/batch.rs::lib_edit_018_a_copy_and_an_edit_of_its_copy_commit_as_one_batch",
@@ -6160,12 +6182,13 @@ id = "LIB-API-016"
 area = "API"
 milestone = "M3"
 title = "ReadOutput::has_errors"
-requirement = "`ReadOutput::has_errors()` says whether the read reported any Error, so an application can tell a strict read's Errors (SACM-XMI-003, SACM-XMI-010) from a clean or warnings-only read without scanning the diagnostics. It equals `diagnostic::has_errors(output.diagnostics())`, which stays the function for any other list."
+requirement = "`ReadOutput::has_errors()` says whether the read reported any Error, so an application can tell a strict read's Errors (SACM-XMI-003, SACM-XMI-010, SACM-XMI-013) from a clean or warnings-only read without scanning the diagnostics. It equals `diagnostic::has_errors(output.diagnostics())`, which stays the function for any other list."
 source = "the maintainer, 2026-11-16 (independent review; consumer needs before M4 and M5); docs review 0045 (moved from LIB-API-013)"
 kind = "api"
 status = "verified"
 verification = "docs/verification/0054-real-files.md"
 depends_on = ["LIB-COMPAT-001"]
+notes = "Slice 0060 (M3 close audit): reworded; re-check there."
 code = ["crates/sacm/src/xmi.rs", "crates/sacm/src/lib.rs"]
 tests = [
   "crates/sacm/tests/load_and_save_modes.rs::lib_api_016_has_errors_is_true_only_for_a_strict_read_with_xsi_type",
@@ -6198,7 +6221,7 @@ source = "Docs review 0043 (docs/follow-ups.md); the maintainer, 2026-11-16 (nee
 kind = "api"
 status = "verified"
 verification = "docs/verification/0056-edit-move-copy.md"
-depends_on = ["LIB-EDIT-009", "SACM23-ARG-013", "LIB-API-015"]
+depends_on = ["LIB-EDIT-009", "SACM23-ARG-013", "LIB-API-015", "LIB-EDIT-017", "LIB-EDIT-018", "LIB-EDIT-004"]
 code = ["crates/sacm/src/model/document.rs", "docs/adr/0036-moving-and-copying-elements.md"]
 tests = [
   "crates/sacm/tests/edit_atomic.rs::lib_api_014_referrers_equal_a_full_scan_after_every_operation_of_the_set",
@@ -6662,7 +6685,7 @@ source = "XMI 2.5.1 §7.10.2 (p. 23) \"The URI reference must be of the form URI
 kind = "xmi"
 status = "planned"
 depends_on = ["SACM23-XMI-015"]
-notes = "Found in slice 0042 research. C++ drops cross-document hrefs with a Warning."
+notes = "Found in slice 0042 research. C++ drops cross-document hrefs with a Warning. From verification 0051 (moved here at M3's close): a role element with both `href` and `xmi:idref` takes the first in document order when typed (`role_metadata`) but prefers `xmi:idref` when untyped under an abstract role (`proxy_link`). Both refuse and nothing is lost; pick one rule when this row is built."
 
 [[row]]
 id = "LIB-COMPAT-009"

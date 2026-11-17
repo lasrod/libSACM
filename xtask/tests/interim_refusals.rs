@@ -982,22 +982,41 @@ fn one_entry(row: &str) -> String {
 
 #[test]
 fn lib_api_011_interim_check_requires_an_art_row_in_cp_001_and_cp_003_but_not_cp_002_or_cp_004() {
-    // SACM23-ART-010 (ArtifactAssetRelationship, an interim entry from slice
-    // 0052 until slice 0057 read it) is in the closures of SACM23-CP-001 and
+    // SACM23-ART-008 (Technique) is in the closures of SACM23-CP-001 and
     // SACM23-CP-003 and in neither of the two others: it is not argumentation
-    // or terminology content. The row is verified since slice 0057, so the
-    // test sets its status to `planned`: only its place in the closures
-    // counts. The list here is written by the test too, and no ART row still
-    // refused has that place: SACM23-ART-012 and SACM23-ART-013 are in all
-    // four closures. (Slice 0055 reads the Artifact, SACM23-ART-004, this
-    // test first used.)
+    // or terminology content. The row is verified, so the test sets its
+    // status to `planned` in its own copy of the matrix: only its place in
+    // the closures counts. The list here is written by the test too, and no
+    // ART row still refused has that place: SACM23-ART-012 and SACM23-ART-013
+    // are in all four closures. (The test first used the Artifact,
+    // SACM23-ART-004, which slice 0055 reads, then SACM23-ART-010, which is
+    // in all four closures since slice 0060 made SACM23-CP-002 and
+    // SACM23-CP-004 depend on SACM23-XMI-009.) SACM23-CP-001 reaches
+    // SACM23-ART-008 only through SACM23-CP-003, so the copy also lists it
+    // in SACM23-CP-001's own `depends_on`, as the real matrix reached
+    // SACM23-ART-010 through LIB-COMPAT-005: emptying one point then leaves
+    // it in the other.
     let matrix = with_row_value(
         &matrix(),
-        "SACM23-ART-010",
+        "SACM23-ART-008",
         "status",
         toml::Value::String("planned".into()),
     );
-    let list = one_entry("SACM23-ART-010");
+    let mut cp_001: Vec<toml::Value> = matrix_rows(&matrix)
+        .remove("SACM23-CP-001")
+        .map(|(_, depends_on)| depends_on)
+        .unwrap_or_default()
+        .into_iter()
+        .map(toml::Value::String)
+        .collect();
+    cp_001.push(toml::Value::String("SACM23-ART-008".into()));
+    let matrix = with_row_value(
+        &matrix,
+        "SACM23-CP-001",
+        "depends_on",
+        toml::Value::Array(cp_001),
+    );
+    let list = one_entry("SACM23-ART-008");
     let rows = matrix_rows(&matrix);
     for (point, inside) in [
         ("SACM23-CP-001", true),
@@ -1006,9 +1025,9 @@ fn lib_api_011_interim_check_requires_an_art_row_in_cp_001_and_cp_003_but_not_cp
         ("SACM23-CP-004", false),
     ] {
         assert_eq!(
-            closure(&rows, point).contains("SACM23-ART-010"),
+            closure(&rows, point).contains("SACM23-ART-008"),
             inside,
-            "{ROW}: setup: SACM23-ART-010 in the closure of {point} is not {inside}"
+            "{ROW}: setup: SACM23-ART-008 in the closure of {point} is not {inside}"
         );
     }
     let problems = interim_problems(&list, &matrix);
@@ -1021,7 +1040,7 @@ fn lib_api_011_interim_check_requires_an_art_row_in_cp_001_and_cp_003_but_not_cp
         let emptied = with_row_value(&matrix, point, "depends_on", toml::Value::Array(Vec::new()));
         let problems = interim_problems(&list, &emptied);
         assert_only(
-            &format!("SACM23-ART-010 with {point} emptied"),
+            &format!("SACM23-ART-008 with {point} emptied"),
             &problems,
             "interim-row-outside-compliance-point",
             1,
@@ -1300,7 +1319,7 @@ fn lib_api_011_tolerance_rows_are_not_checked_against_the_compliance_points() {
 // ---------------------------------------------------------------------------
 // The compliance points name the row the maintainer added (2026-11-15).
 // LIB-COMPAT-004, added with it, is a Tolerance since 2026-11-16 and no
-// longer gates them.
+// longer gates them: it is in no compliance point's depends_on closure.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -1313,6 +1332,11 @@ fn lib_api_011_each_compliance_point_depends_directly_on_xmi_027() {
         assert!(
             depends_on.iter().any(|d| d == "SACM23-XMI-027"),
             "{ROW}: {point} lists SACM23-XMI-027 in its depends_on (the maintainer, 2026-11-15)"
+        );
+        assert!(
+            !closure(&rows, point).contains("LIB-COMPAT-004"),
+            "{ROW}: the Tolerance row LIB-COMPAT-004 is in the depends_on closure of {point} \
+             (the maintainer, 2026-11-16)"
         );
     }
 }

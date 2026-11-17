@@ -59,8 +59,9 @@ Read, edit, validate and write assurance cases in the
 - `sacm::edit::apply` creates AssuranceCasePackages, ArgumentPackages, Claims,
   ArgumentReasonings, ArtifactReferences, ArgumentGroups and the five asserted
   relationships (`sacm::edit::CreateAssertedInference` and the like), ArtifactPackages,
-  Properties, Techniques, Participants, ArtifactGroups, Artifacts, Events, Resources and
-  Activities (`sacm::edit::CreateArtifactPackage` and the like), and descriptions,
+  Properties, Techniques, Participants, ArtifactGroups, Artifacts, Events, Resources,
+  Activities and ArtifactAssetRelationships (`sacm::edit::CreateArtifactPackage`,
+  `sacm::edit::CreateArtifactAssetRelationship` and the like), and descriptions,
   implementation constraints, notes and tagged values on them
   (`sacm::edit::CreateNote`, `sacm::edit::CreateTaggedValue` and the like); a refused
   edit changes nothing, and an edit refuses a reference that names no element or an

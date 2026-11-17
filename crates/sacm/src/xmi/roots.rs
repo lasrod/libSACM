@@ -215,7 +215,7 @@ impl Spelling {
         match mode {
             Mode::Tolerant => format!("; it is read as {}, which write writes", self.resolved()),
             Mode::Strict => format!(
-                "; it is kept as preserved content, and a tolerant read reads it as {}",
+                "; it is kept as preserved content, and a tolerant read reads the name as {}",
                 self.resolved()
             ),
         }
@@ -4409,7 +4409,7 @@ mod tests {
             (
                 Mode::Strict,
                 "p",
-                "; it is kept as preserved content, and a tolerant read reads it as \
+                "; it is kept as preserved content, and a tolerant read reads the name as \
                  ArtifactAssetRelationship",
                 None,
             ),
