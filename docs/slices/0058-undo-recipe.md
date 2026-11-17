@@ -1,8 +1,8 @@
 ---
 slice: 0058
 name: undo-recipe
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [LIB-EDIT-011]
 mode: pr
 base: main
@@ -48,3 +48,5 @@ Library row: the standard is silent. ADR 0037 and D-UNDO, decided by the maintai
   wording. Fix round: `sacm-builder` adds the counter part to test 1 and the redo-clear
   checks, and fixes the cost wording. The lead extends acceptance 1 and rewords ADR 0037
   items 2 and D2, all with the verifier's text.
+- 2026-11-17 verify round 2: PASS. M1 and R3 are now killed. The record is
+  `docs/verification/0058-undo-recipe.md`; the row is verified, and M3 is at 19/20.

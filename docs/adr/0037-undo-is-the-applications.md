@@ -54,8 +54,8 @@ per 10 claims):
    - It is `==` to the document before the change, and it writes the same XMI, preserved
      content included.
    - It has the revision and the generated-id counters it had. So the next create of the
-     same kind generates the id an undone create had (D-ID). An application that needs ids unique across its
-     history gives its own (ADR 0031).
+     same kind generates the id an undone create had (D-ID). An application that needs
+     ids unique across its history gives its own (ADR 0031).
    - A preview taken before an undone change applies again after the undo.
 3. **Cost:** a step costs one clone, in time and memory in proportion to the document. The
    application chooses the depth.
