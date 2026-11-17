@@ -6001,7 +6001,7 @@ tests = [
   "crates/sacm/tests/undo.rs::lib_edit_011_a_refused_change_records_no_step",
 ]
 acceptance = [
-  "`lib_edit_011_undoing_a_batch_restores_an_equal_document_that_writes_the_same_xmi_and_generates_the_same_next_id`: a batch of two `CreateClaim` with generated ids and one `SetName`, then undo by the recipe: the document is `==` to before, `xmi::write` gives the same bytes as before, and the next generated claim id is `claim_1` again.",
+  "`lib_edit_011_undoing_a_batch_restores_an_equal_document_that_writes_the_same_xmi_and_generates_the_same_next_id`: a batch of two `CreateClaim` with generated ids and one `SetName`, then undo by the recipe: the document is `==` to before, `xmi::write` gives the same bytes as before, and the next generated claim id is `claim_1` again; and on a document whose generated `claim_1` was deleted before the step, an undone create of `claim_2` is followed by a create that generates `claim_2` again, not `claim_1`.",
   "`lib_edit_011_undoing_a_delete_restores_preserved_content_and_file_ids`: a tolerant read of a file with a vendor attribute, a vendor child element and the `xmi:id`s of names and contents under a package; `DeleteElement` of the package with `DeleteRecursively`, then undo: the document is `==` to the one read, and its tolerant write gives the same bytes as before the delete.",
   "`lib_edit_011_accepting_a_draft_is_one_step`: `CopyElements` from a draft document plus a `SetName` of a copy in one `edit::batch` is one step: one undo gives `==` the document before the batch, and one redo gives `==` the document after it.",
   "`lib_edit_011_undo_and_redo_restore_the_revision`: after an undo `revision()` equals the revision before the change, and after a redo the revision after it.",

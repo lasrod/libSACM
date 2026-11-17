@@ -233,7 +233,7 @@
 //! undo.
 //!
 //! A step costs one clone, in time and memory proportional to the document:
-//! about 1.4 ms and 3.3 MiB at 5,000 elements in a release build. The
+//! about 1.4 to 2.3 ms and 3.3 MiB at 5,500 elements in a release build. The
 //! application chooses the limit.
 //!
 //! ```
@@ -297,6 +297,13 @@
 //! assert!(doc == unchanged);
 //! assert!(history.redo(&mut doc));
 //! assert!(doc == changed);
+//!
+//! // A new change after an undo clears the redo stack.
+//! assert!(history.undo(&mut doc));
+//! let before = doc.clone();
+//! edit::apply(&mut doc, SetName::new("p", LangString::new("Brakes")))?;
+//! history.push(before);
+//! assert!(!history.redo(&mut doc));
 //!
 //! // A limit of 2 keeps only the last two steps.
 //! let mut doc = Document::new();

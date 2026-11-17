@@ -205,6 +205,32 @@ fn lib_edit_011_undoing_a_batch_restores_an_equal_document_that_writes_the_same_
         id("claim_1"),
         "{ROW}: after the undo the next generated Claim id is claim_1 again (D-ID)"
     );
+
+    // The counters, not only the ids in use: after a delete, the counter is
+    // at 1 and claim_1 is free, so only a restored counter gives claim_2.
+    let mut doc = read("START", START);
+    let mut steps = crate::history();
+    assert_eq!(
+        created_claim("the first create", &mut doc, "p"),
+        id("claim_1"),
+        "{ROW}: setup: the first generated Claim id is claim_1"
+    );
+    if let Err(error) = edit::apply(&mut doc, DeleteElement::new("claim_1")) {
+        panic!("{ROW}: setup: the delete of claim_1 was refused: {error}");
+    }
+    let before = doc.clone();
+    assert_eq!(
+        created_claim("the create to undo", &mut doc, "p"),
+        id("claim_2"),
+        "{ROW}: setup: after the delete the next generated Claim id is claim_2"
+    );
+    steps.push(before);
+    assert!(steps.undo(&mut doc), "{ROW}: there is a step to undo");
+    assert_eq!(
+        created_claim("after the undo of the create", &mut doc, "p"),
+        id("claim_2"),
+        "{ROW}: after the undo the next generated Claim id is the undone create's claim_2: the counters were restored (D-ID)"
+    );
 }
 
 #[test]
@@ -347,6 +373,18 @@ fn lib_edit_011_accepting_a_draft_is_one_step() {
     assert!(
         !history.redo(&mut doc),
         "{ROW}: accepting the draft was one step: there is no second step to redo"
+    );
+
+    // A new change after an undo clears the redo stack.
+    assert!(history.undo(&mut doc), "{ROW}: there is a step to undo");
+    let before = doc.clone();
+    if let Err(error) = edit::apply(&mut doc, SetName::new("c1", en("Renamed"))) {
+        panic!("{ROW}: the change after the undo was refused: {error}");
+    }
+    history.push(before);
+    assert!(
+        !history.redo(&mut doc),
+        "{ROW}: a new change after an undo clears the redo stack"
     );
 }
 

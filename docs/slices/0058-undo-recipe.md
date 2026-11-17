@@ -43,3 +43,8 @@ Library row: the standard is silent. ADR 0037 and D-UNDO, decided by the maintai
 - 2026-11-17 implementation: `sacm-builder` step 2 wrote the "# Undo and redo" section with
   its doctest, the `batch.rs` link, the README sentence and the CHANGELOG line, and changed
   the `History` in `undo.rs` (the approved change). There is no library code.
+- 2026-11-17 verify round 1: FAIL. Blocking: no test showed that a restored copy keeps its
+  id counters (the verifier's mutant M1). Non-blocking: redo clearing was untested (R3);
+  wording. Fix round: `sacm-builder` adds the counter part to test 1 and the redo-clear
+  checks, and fixes the cost wording. The lead extends acceptance 1 and rewords ADR 0037
+  items 2 and D2, all with the verifier's text.
