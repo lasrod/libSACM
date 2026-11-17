@@ -1030,10 +1030,10 @@ fn assert_unrepresentable(row: &str, error: &WriteError, id: &str, character: ch
         Some(id),
         "{row}: element() names the wrong element"
     );
-    let code: Option<Code> = error.code();
     assert_eq!(
-        code, None,
-        "{row}: an unrepresentable character has no catalog code"
+        error.code(),
+        Code::XML_UNREPRESENTABLE_CHARACTER,
+        "{row}: an unrepresentable character is not SACM-XML-003"
     );
     assert_eq!(
         error.to_string(),
@@ -2241,8 +2241,11 @@ fn sacm23_xmi_013_an_empty_document_is_refused_with_no_root() {
         "{row}: an empty document is refused as {error:?}"
     );
     assert_eq!(error.element(), None, "{row}: NoRoot names no element");
-    let code: Option<Code> = error.code();
-    assert_eq!(code, None, "{row}: NoRoot has no catalog code");
+    assert_eq!(
+        error.code(),
+        Code::XMI_INVALID_ROOT,
+        "{row}: NoRoot is not SACM-XMI-001"
+    );
     assert_eq!(
         error.to_string(),
         "the document has no root to write",
@@ -2770,7 +2773,7 @@ fn assert_preserved_content_refusal(row: &str) {
     );
     assert_eq!(
         preserved.code(),
-        Some(Code::XMI_STRICT_SAVE_REFUSED),
+        Code::XMI_STRICT_SAVE_REFUSED,
         "{row}: PreservedContent does not have the code SACM-XMI-006"
     );
     if let Err(error) = write(&features) {
@@ -2828,8 +2831,15 @@ fn lib_api_010_write_error_refuses_only_no_root_unrepresentable_character_invali
             *element,
             "{row}: {what}: element() names the wrong element"
         );
-        let code: Option<Code> = error.code();
-        assert_eq!(code, None, "{row}: {what}: {error:?} has a catalog code");
+        assert_eq!(
+            error.code(),
+            if element.is_some() {
+                Code::XML_UNREPRESENTABLE_CHARACTER
+            } else {
+                Code::XMI_INVALID_ROOT
+            },
+            "{row}: {what}: {error:?} does not have the code of its variant"
+        );
     }
     // In strict mode, an id that is not an NCName is a schema error
     // (SACM-ID-002); a nameless root, a validation Error only, is not.
@@ -2850,8 +2860,11 @@ fn lib_api_010_write_error_refuses_only_no_root_unrepresentable_character_invali
         None,
         "{row}: Invalid names an element: {invalid:?}"
     );
-    let code: Option<Code> = invalid.code();
-    assert_eq!(code, None, "{row}: {invalid:?} has a catalog code");
+    assert_eq!(
+        invalid.code(),
+        Code::XMI_STRICT_SAVE_INVALID,
+        "{row}: not SACM-XMI-016"
+    );
 
     assert_preserved_content_refusal(row);
 
@@ -2901,14 +2914,16 @@ fn lib_api_010_write_error_is_a_send_sync_error_and_only_preserved_content_has_a
     let invalid = strict_write_err(row, &non_ncname_root(row));
     // Preserved content, written strictly (SACM23-XMI-008).
     let preserved = strict_write_err(row, &features_document(row));
-    for (error, expected) in [
-        (no_root, None),
-        (unrepresentable, None),
-        (unrepresentable_name, None),
-        (invalid, None),
-        (preserved, Some(Code::XMI_STRICT_SAVE_REFUSED)),
-    ] {
-        let code: Option<Code> = error.code();
+    // Every refusal has a code since slice 0063 (LIB-API-017).
+    let cases = [
+        (no_root, Code::XMI_INVALID_ROOT),
+        (unrepresentable, Code::XML_UNREPRESENTABLE_CHARACTER),
+        (unrepresentable_name, Code::XML_UNREPRESENTABLE_CHARACTER),
+        (invalid, Code::XMI_STRICT_SAVE_INVALID),
+        (preserved, Code::XMI_STRICT_SAVE_REFUSED),
+    ];
+    for (error, expected) in cases {
+        let code: Code = error.code();
         assert_eq!(
             code, expected,
             "{row}: {error:?} has the wrong catalog code"

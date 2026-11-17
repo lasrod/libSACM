@@ -422,10 +422,15 @@
 //!
 //! With `serde`, every operation ([`edit::Operation`] and each operation
 //! struct), [`edit::Mutation`], [`edit::EditError`],
-//! [`diagnostic::Diagnostic`] and the values they carry (ids, kinds, names,
-//! flags, reference ends, codes, severities and locations) implement
-//! `Serialize` and `Deserialize`. So an edit can cross a process boundary,
-//! travel between users or be kept as an audit log. A
+//! [`diagnostic::Diagnostic`], the read and write refusals
+//! [`xmi::ReadError`] and [`xmi::WriteError`], and the values they carry
+//! (ids, kinds, names, flags, reference ends, codes, severities, locations
+//! and [`xmi::WriteAttribute`]) implement `Serialize` and `Deserialize`. So
+//! an edit can cross a process boundary, travel between users or be kept as
+//! an audit log. A refusal is
+//! `{"type", "code", "template", "arguments", …its fields}`, every key
+//! required, and reads back only with a code and a template of its variant
+//! and exactly the template's arguments (ADR 0030 amendment 3). A
 //! [`Document`](model::Document) does not: XMI is its only serialization.
 //!
 //! The JSON shape is documented in [ADR 0030][adr-0030] and follows the

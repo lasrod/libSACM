@@ -284,10 +284,11 @@ fn assert_unsupported_with(
     else {
         panic!("{ROW}: {what}: not Unsupported: {error:?} ({error})");
     };
+    // The strict refusal has the code of the tolerant Warning (LIB-API-017).
     assert_eq!(
         (*location, error.code()),
-        (Some(at), None),
-        "{ROW}: {what}: not refused with no code at {at}: {error}"
+        (Some(at), tolerant_code),
+        "{ROW}: {what}: not refused with the tolerant read's code at {at}: {error}"
     );
     assert!(
         reason.ends_with(label) && !reason.contains('\n'),
@@ -759,7 +760,7 @@ fn sacm23_term_001_an_untyped_terminology_element_child_is_missing_type_or_kept_
             );
             assert_eq!(
                 (error.code(), error.location(), error.locations()),
-                (Some(Code::XMI_MISSING_TYPE), Some(at), [at].as_slice()),
+                (Code::XMI_MISSING_TYPE, Some(at), [at].as_slice()),
                 "{ROW}: {what}: not SACM-XMI-005 at the start tag: {error:?} ({error})"
             );
             // A tolerant read keeps it whole, as preserved content of t.

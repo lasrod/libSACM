@@ -100,7 +100,7 @@ fn assert_repeated_at(
     assert_eq!(
         (error.code(), error.locations(), error.location()),
         (
-            Some(Code::MULTIPLICITY_VIOLATION),
+            Code::MULTIPLICITY_VIOLATION,
             locations,
             locations.get(1).copied()
         ),
@@ -245,7 +245,7 @@ fn sacm23_xmi_005_a_300000_token_single_valued_end_has_a_bounded_display() {
                 &error,
                 ReadError::RepeatedValue { element, property, .. }
                     if element.as_str() == "x" && property == "target"
-            ) && error.code() == Some(Code::MULTIPLICITY_VIOLATION),
+            ) && error.code() == Code::MULTIPLICITY_VIOLATION,
             "{ROW}: {mode:?}: not RepeatedValue {{ x, target }}: {:?}",
             error.code()
         );

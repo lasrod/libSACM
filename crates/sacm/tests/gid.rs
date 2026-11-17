@@ -458,7 +458,7 @@ fn sacm23_base_006_a_gid_given_twice_is_repeated_value_with_every_location() {
             assert_eq!(
                 (error.code(), error.locations(), error.location()),
                 (
-                    Some(Code::MULTIPLICITY_VIOLATION),
+                    Code::MULTIPLICITY_VIOLATION,
                     marks.as_slice(),
                     marks.get(1).copied()
                 ),

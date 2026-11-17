@@ -26,6 +26,8 @@ use sacm::diagnostic::{Code, Severity, SourceLocation};
 use sacm::model::{Document, ElementId, ElementKind, SacmElement};
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteOptions};
 
+mod common;
+
 const ROW: &str = "LIB-COMPAT-010";
 
 /// Both modes, strict first.
@@ -132,11 +134,7 @@ fn assert_missing_type_at_mark(what: &str, template: &str) {
     );
     assert_eq!(
         (error.code(), error.location(), error.locations()),
-        (
-            Some(Code::XMI_MISSING_TYPE),
-            Some(marks[0]),
-            marks.as_slice()
-        ),
+        (Code::XMI_MISSING_TYPE, Some(marks[0]), marks.as_slice()),
         "{ROW}: {what}: not SACM-XMI-005 at the start tag: {error:?} ({error})"
     );
     let shown = error.to_string();
@@ -282,7 +280,7 @@ fn assert_unsupported_at_mark(row: &str, what: &str, template: &str, label: &str
             panic!("{row}: {what}: {mode:?}: not Unsupported: {error:?} ({error})");
         };
         assert!(
-            error.code().is_none()
+            error.code().as_str() == crate::common::unsupported_code(&error.to_string())
                 && *location == Some(marks[0])
                 && reason.ends_with(label)
                 && !reason.contains('\n'),

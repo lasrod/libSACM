@@ -161,12 +161,12 @@ fn assert_duplicate(
     );
     assert_eq!(
         error.code(),
-        Some(Code::ID_DUPLICATE),
+        Code::ID_DUPLICATE,
         "{row}: {what}: the refusal does not carry Code::ID_DUPLICATE"
     );
     assert_eq!(
-        error.code().map(Code::as_str),
-        Some("SACM-ID-001"),
+        error.code().as_str(),
+        "SACM-ID-001",
         "{row}: {what}: the refusal's code is not SACM-ID-001"
     );
     let shown = error.to_string();
@@ -442,7 +442,7 @@ fn sacm23_val_020_an_empty_id_is_invalid_id_at_the_element_in_strict_mode() {
             );
             assert_eq!(
                 error.code(),
-                Some(Code::ID_INVALID),
+                Code::ID_INVALID,
                 "{VAL_020}: {what}: not SACM-ID-002"
             );
             let shown = error.to_string();

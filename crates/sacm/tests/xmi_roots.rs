@@ -36,6 +36,8 @@ use sacm::diagnostic::{Code, Severity, SourceLocation};
 use sacm::model::{Document, ElementId, ElementKind, LangString, SacmElement};
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput};
 
+mod common;
+
 /// The pinned SACM 2.3 namespace (D-NS-PIN).
 const SACM_NS: &str = "http://www.omg.org/spec/SACM/20220301";
 /// The XMI 2.5.1 namespace.
@@ -357,7 +359,7 @@ fn assert_invalid_root_at(
     );
     assert_eq!(
         error.code(),
-        Some(Code::XMI_INVALID_ROOT),
+        Code::XMI_INVALID_ROOT,
         "{row}: the InvalidRoot of {} does not carry SACM-XMI-001",
         preview(input)
     );
@@ -397,7 +399,7 @@ fn assert_no_package_at(row: &str, input: &[u8], location: SourceLocation) -> Re
     );
     assert_eq!(
         error.code(),
-        Some(Code::XMI_INVALID_ROOT),
+        Code::XMI_INVALID_ROOT,
         "{row}: the NoPackage of {} does not carry SACM-XMI-001",
         preview(input)
     );
@@ -485,9 +487,9 @@ fn assert_unsupported_at(row: &str, input: &[u8], location: SourceLocation) -> R
         preview(input)
     );
     assert_eq!(
-        error.code(),
-        None,
-        "{row}: the Unsupported refusal of {} carries a code",
+        error.code().as_str(),
+        crate::common::unsupported_code(&error.to_string()),
+        "{row}: the Unsupported refusal of {} does not carry the code of its label",
         preview(input)
     );
     assert_eq!(
@@ -1301,7 +1303,7 @@ fn assert_duplicate_id_at(row: &str, input: &[u8], id: &str, locations: &[Source
     );
     assert_eq!(
         error.code(),
-        Some(Code::ID_DUPLICATE),
+        Code::ID_DUPLICATE,
         "{row}: the DuplicateId of {} does not carry SACM-ID-001",
         preview(input)
     );
@@ -1318,7 +1320,7 @@ fn assert_empty_id_at(row: &str, input: &[u8], location: SourceLocation) {
     );
     assert_eq!(
         (error.code(), error.location()),
-        (Some(Code::ID_INVALID), Some(location)),
+        (Code::ID_INVALID, Some(location)),
         "{row}: the empty id of {} is not SACM-ID-002 at {location}: {error}",
         preview(input)
     );
@@ -1522,7 +1524,7 @@ fn sacm23_xmi_001_input_checks_come_before_root_classification() {
         );
         assert_eq!(
             error.code(),
-            Some(Code::XML_MALFORMED),
+            Code::XML_MALFORMED,
             "{row}: {what}: the refusal does not carry SACM-XML-001"
         );
     }
@@ -1627,7 +1629,7 @@ fn sacm23_xmi_001_refusals_are_one_located_line_quoting_names_without_source() {
         );
         assert_eq!(
             error.code(),
-            Some(Code::XMI_INVALID_ROOT),
+            Code::XMI_INVALID_ROOT,
             "{row}: the refusal of {} does not carry SACM-XMI-001",
             preview(input.as_bytes())
         );

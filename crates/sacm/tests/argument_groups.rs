@@ -39,6 +39,8 @@ use sacm::model::{AbstractClass, Document, ElementId, ElementKind, LangString, S
 use sacm::validation;
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteOptions};
 
+mod common;
+
 const ROW: &str = "SACM23-ARG-013";
 
 const MODES: [Mode; 2] = [Mode::Strict, Mode::Tolerant];
@@ -320,7 +322,8 @@ fn assert_preserved_at(what: &str, input: &str, at: SourceLocation, holder: &str
 /// Asserts that `error` is `Unsupported`, with no code, at `at`.
 fn assert_unsupported_at(what: &str, error: &ReadError, at: SourceLocation) {
     assert!(
-        matches!(error, ReadError::Unsupported { .. }) && error.code().is_none(),
+        matches!(error, ReadError::Unsupported { .. })
+            && error.code().as_str() == crate::common::unsupported_code(&error.to_string()),
         "{ROW}: {what}: not Unsupported: {error:?}"
     );
     assert_eq!(
@@ -604,7 +607,7 @@ fn sacm23_arg_013_an_attribute_and_member_elements_are_repeated_value_and_an_emp
     assert_eq!(
         (error.code(), error.locations(), error.location()),
         (
-            Some(Code::MULTIPLICITY_VIOLATION),
+            Code::MULTIPLICITY_VIOLATION,
             marks.as_slice(),
             marks.get(1).copied()
         ),

@@ -33,6 +33,8 @@ use sacm::model::{Document, ElementId, ElementKind, ReferenceEnd, SacmElement};
 use sacm::validation;
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteError, WriteOptions};
 
+mod common;
+
 const ROW: &str = "SACM23-ART-011";
 
 /// Both modes, strict first.
@@ -437,7 +439,7 @@ fn sacm23_art_011_an_attribute_and_member_elements_are_repeated_value_at_both_oc
     assert_eq!(
         (error.code(), error.locations(), error.location()),
         (
-            Some(Code::MULTIPLICITY_VIOLATION),
+            Code::MULTIPLICITY_VIOLATION,
             marks.as_slice(),
             marks.get(1).copied()
         ),
@@ -518,7 +520,7 @@ fn sacm23_art_011_a_nested_element_under_a_group_is_unsupported_or_preserved_at_
                 &error,
                 ReadError::Unsupported { location, reason, .. }
                     if *location == Some(marks[0]) && reason.ends_with(label)
-            ) && error.code().is_none(),
+            ) && error.code().as_str() == crate::common::unsupported_code(&error.to_string()),
             "{ROW}: {what}: not Unsupported at {} naming SACM23-XMI-019: {error:?}",
             marks[0]
         );

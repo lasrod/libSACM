@@ -49,9 +49,14 @@
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::num::NonZeroU32;
 
 use crate::model::ElementId;
+
+pub(crate) mod template;
+
+use template::Template;
 
 /// How serious a diagnostic is: `Info < Warning < Error`.
 ///
@@ -151,6 +156,29 @@ catalog! {
     /// Named after the C++ library's `kXmlDoctypeRejected`.
     pub const XML_DOCTYPE_REJECTED: Code = Code::from_static("SACM-SEC-001");
 
+    /// SACM-XML-002: the input is in an encoding this version does not read:
+    /// one other than UTF-8, ASCII and UTF-16 with a byte order mark, by its
+    /// mark, its first bytes or its declaration. Both modes refuse it as
+    /// [`ReadError::Unsupported`](crate::xmi::ReadError::Unsupported), with
+    /// the label `(a limit of this version)` (LIB-API-009, LIB-API-017).
+    /// Fix: convert the file to UTF-8.
+    pub const XML_ENCODING_NOT_READ: Code = Code::from_static("SACM-XML-002");
+
+    /// SACM-XML-003: an element's id, name or other text holds a character
+    /// that XML 1.0 cannot represent, such as U+0001, so the element cannot
+    /// be written. The code of
+    /// [`WriteError::UnrepresentableCharacter`](crate::xmi::WriteError::UnrepresentableCharacter)
+    /// (SACM23-XMI-011, LIB-API-017). Fix: remove the character with an
+    /// edit.
+    pub const XML_UNREPRESENTABLE_CHARACTER: Code = Code::from_static("SACM-XML-003");
+
+    /// SACM-SEC-002: the input has more nodes, attributes or namespaces than
+    /// the parser can hold, or an element the document could not hold, which
+    /// checked input never gives. Both modes refuse it as
+    /// [`ReadError::Unsupported`](crate::xmi::ReadError::Unsupported), with
+    /// the label `(a limit of this version)` (LIB-API-011, LIB-API-017).
+    pub const PARSER_LIMIT: Code = Code::from_static("SACM-SEC-002");
+
     /// SACM-XMI-001: an interchange root (the document element, or each
     /// element child outside the XMI namespace of an `xmi:XMI` element in the
     /// XMI 2.5.1 namespace `http://www.omg.org/spec/XMI/20131001`) is not
@@ -158,8 +186,19 @@ catalog! {
     /// code of
     /// [`ReadError::InvalidRoot`](crate::xmi::ReadError::InvalidRoot) and
     /// [`ReadError::NoPackage`](crate::xmi::ReadError::NoPackage)
-    /// (SACM23-XMI-001). Named after the C++ library's `kXmiInvalidRoot`.
+    /// (SACM23-XMI-001), and of
+    /// [`WriteError::NoRoot`](crate::xmi::WriteError::NoRoot), a document
+    /// with no package to write (LIB-API-017). Named after the C++ library's
+    /// `kXmiInvalidRoot`.
     pub const XMI_INVALID_ROOT: Code = Code::from_static("SACM-XMI-001");
+
+    /// SACM-XMI-002: a root is in a namespace that is not the pinned SACM 2.3
+    /// namespace `http://www.omg.org/spec/SACM/20220301`, or in none. In this
+    /// release both modes refuse it as
+    /// [`ReadError::Unsupported`](crate::xmi::ReadError::Unsupported), with
+    /// this code; the Warning of a tolerant read is reserved for
+    /// LIB-COMPAT-004, which is to read it (D-NS-PIN, LIB-API-017).
+    pub const XMI_NAMESPACE_NOT_PINNED: Code = Code::from_static("SACM-XMI-002");
 
     /// SACM-XMI-004: an element has no `xmi:id`, which XMI 2.5.1 §7.6.1
     /// makes optional. [`xmi::read`](crate::xmi::read) reads the element
@@ -194,9 +233,12 @@ catalog! {
     /// document for content on `xmi:XMI`, and reports one per construct,
     /// affecting that element: a Warning in tolerant mode and an Error in
     /// strict mode (LIB-COMPAT-003, ADR 0033). A preserved attribute whose
-    /// prefix `sacm` or `xmi` is bound to another namespace is refused by a
-    /// strict read; a tolerant read keeps it under the first prefix `nsN`
-    /// unbound at its element, which the message names (ADR 0035).
+    /// prefix `sacm` or `xmi` is bound to another namespace, and an attribute
+    /// or text on the `xmi:XMI` element, are refused by a strict read as
+    /// [`ReadError::Unsupported`](crate::xmi::ReadError::Unsupported) with
+    /// this code (LIB-API-017); a tolerant read keeps the first under the
+    /// first prefix `nsN` unbound at its element, which the message names,
+    /// and the second as the document's preserved content (ADR 0035).
     /// A tolerant [`xmi::write`](crate::xmi::write) writes it back; a strict
     /// one refuses it (SACM-XMI-006). Named after the C++ library's
     /// `kXmiUnknownElement`; it covers attributes and text too. Fix: remove
@@ -221,8 +263,9 @@ catalog! {
     /// [`xmi::read`](crate::xmi::read) keeps the reference element, or the
     /// role element in reference form, whole as preserved content, with one
     /// Warning; the reference end stays empty. A strict read refuses it as
-    /// [`ReadError::Unsupported`](crate::xmi::ReadError::Unsupported)
-    /// (LIB-API-011, ADR 0035; SACM23-XMI-027 reads it). It is never
+    /// [`ReadError::Unsupported`](crate::xmi::ReadError::Unsupported) with
+    /// this code (LIB-API-011, LIB-API-017, ADR 0035; SACM23-XMI-027 reads
+    /// it). It is never
     /// SACM-XMI-003: such a reference conforms.
     pub const XMI_EXTERNAL_HREF: Code = Code::from_static("SACM-XMI-007");
 
@@ -282,10 +325,26 @@ catalog! {
     /// `interface` end, an `ExpressionLangString`, or XMI metadata (such as
     /// `xmi:uuid`, `xsi:schemaLocation` or `xmi:Documentation`). It is not a
     /// defect: the message ends naming the row that reads it. A strict read refuses it as
-    /// [`ReadError::Unsupported`](crate::xmi::ReadError::Unsupported), and a
-    /// strict write refuses a document that holds it (SACM-XMI-006)
-    /// (LIB-API-011, ADR 0035).
+    /// [`ReadError::Unsupported`](crate::xmi::ReadError::Unsupported) with
+    /// this code, and a strict write refuses a document that holds it
+    /// (SACM-XMI-006) (LIB-API-011, LIB-API-017, ADR 0035).
     pub const XMI_UNREAD_CONTENT: Code = Code::from_static("SACM-XMI-014");
+
+    /// SACM-XMI-015: an element named `XMI` is not in the XMI 2.5.1
+    /// namespace `http://www.omg.org/spec/XMI/20131001`, so it is not read as
+    /// the XMI element. Both modes refuse it as
+    /// [`ReadError::Unsupported`](crate::xmi::ReadError::Unsupported); a
+    /// tolerant read is to read it under LIB-COMPAT-002 (LIB-API-017).
+    pub const XMI_WRAPPER_NAMESPACE: Code = Code::from_static("SACM-XMI-015");
+
+    /// SACM-XMI-016: a strict [`xmi::write`](crate::xmi::write) refuses a
+    /// document whose output would not be schema-valid: an `xmi:id` that is
+    /// no `NCName`, or a reference to no `xmi:id` the output writes. The code
+    /// of [`WriteError::Invalid`](crate::xmi::WriteError::Invalid), whose
+    /// diagnostics carry the codes of the schema errors (LIB-COMPAT-007,
+    /// LIB-API-017). Fix: correct the ids and references, or write in
+    /// tolerant mode.
+    pub const XMI_STRICT_SAVE_INVALID: Code = Code::from_static("SACM-XMI-016");
 
     /// SACM-MULT-001: a property has more or fewer values than its
     /// multiplicity allows. [`validation::validate`](crate::validation::validate)
@@ -662,6 +721,377 @@ impl<'de> serde::Deserialize<'de> for Code {
                 )
             })
     }
+}
+
+/// The value of one message argument: text, or a count.
+///
+/// Values order Text before Count, then by value. Later releases may add
+/// kinds, so match it with a fallback arm.
+///
+/// ```
+/// use sacm::diagnostic::ArgumentValue;
+///
+/// let value = ArgumentValue::Text("Claim".to_owned());
+/// assert_eq!((value.as_text(), value.as_count()), (Some("Claim"), None));
+/// assert_eq!(ArgumentValue::Count(2).to_string(), "2");
+/// ```
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
+pub enum ArgumentValue {
+    /// Text, unquoted: a class name, an id, a name or value as written, a row
+    /// id.
+    Text(String),
+    /// A count or a number, such as how often a value is given, or a code
+    /// point.
+    Count(u64),
+}
+
+impl ArgumentValue {
+    /// The text, if this is `Text`.
+    #[must_use]
+    pub fn as_text(&self) -> Option<&str> {
+        match self {
+            Self::Text(text) => Some(text),
+            Self::Count(_) => None,
+        }
+    }
+
+    /// The count, if this is `Count`.
+    #[must_use]
+    pub fn as_count(&self) -> Option<u64> {
+        match self {
+            Self::Count(count) => Some(*count),
+            Self::Text(_) => None,
+        }
+    }
+}
+
+impl fmt::Display for ArgumentValue {
+    /// Writes Text unchanged and a Count in decimal.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Text(text) => f.write_str(text),
+            Self::Count(count) => write!(f, "{count}"),
+        }
+    }
+}
+
+/// One named value that a message is made from, such as `class` = `Claim`.
+///
+/// The arguments of a refusal are in
+/// [`ReadError::arguments`](crate::xmi::ReadError::arguments) and
+/// [`WriteError::arguments`](crate::xmi::WriteError::arguments), in the
+/// order they first appear in its English sentence; the catalog lists each
+/// template's argument names and kinds (ADR 0030 amendment 3).
+///
+/// ```
+/// use sacm::diagnostic::ArgumentValue;
+/// use sacm::xmi::{self, ReadOptions};
+///
+/// let error = xmi::read(b"<r></s>", &ReadOptions::default()).unwrap_err();
+/// let first = &error.arguments()[0];
+/// assert_eq!((first.name(), first.value()), ("end_tag", &ArgumentValue::Text("s".into())));
+/// assert_eq!(first.to_string(), r#"end_tag="s""#);
+/// ```
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Argument {
+    name: &'static str,
+    value: ArgumentValue,
+}
+
+impl Argument {
+    /// The argument's name, stable within its template.
+    #[must_use]
+    pub fn name(&self) -> &'static str {
+        self.name
+    }
+
+    /// The argument's value.
+    #[must_use]
+    pub fn value(&self) -> &ArgumentValue {
+        &self.value
+    }
+
+    /// The Text argument `name`.
+    pub(crate) fn text(name: &'static str, value: impl Into<String>) -> Self {
+        Self {
+            name,
+            value: ArgumentValue::Text(value.into()),
+        }
+    }
+
+    /// The Count argument `name`.
+    pub(crate) fn count(name: &'static str, value: u64) -> Self {
+        Self {
+            name,
+            value: ArgumentValue::Count(value),
+        }
+    }
+
+    /// The Count argument `name` of a length, saturating at `u64::MAX`.
+    pub(crate) fn count_of(name: &'static str, value: usize) -> Self {
+        Self::count(name, u64::try_from(value).unwrap_or(u64::MAX))
+    }
+}
+
+impl fmt::Display for Argument {
+    /// Writes `name="text"`, the text Debug-quoted, or `name=count`.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.value {
+            ArgumentValue::Text(text) => write!(f, "{}={text:?}", self.name),
+            ArgumentValue::Count(count) => write!(f, "{}={count}", self.name),
+        }
+    }
+}
+
+/// A message as data: its template and its arguments. Only the crate builds
+/// one; read it through [`template`](Self::template) and
+/// [`arguments`](Self::arguments), or through the accessors of the refusal
+/// that holds it.
+#[derive(Clone)]
+pub struct Details {
+    template: &'static Template,
+    arguments: Vec<Argument>,
+}
+
+impl Details {
+    /// The details of a message of `template`, made from `arguments`.
+    pub(crate) fn new(template: &'static Template, arguments: Vec<Argument>) -> Self {
+        Self {
+            template,
+            arguments,
+        }
+    }
+
+    /// The template id, `<CODE>/<form>`, such as
+    /// `SACM-XMI-014/unread-kind`: a stable name for the sentence form
+    /// (ADR 0030 amendment 3).
+    #[must_use]
+    pub fn template(&self) -> &'static str {
+        self.template.id
+    }
+
+    /// The arguments, in the order they first appear in the sentence.
+    #[must_use]
+    pub fn arguments(&self) -> &[Argument] {
+        &self.arguments
+    }
+
+    /// The catalog code of the template.
+    pub(crate) fn code(&self) -> Code {
+        self.template.code
+    }
+
+    /// The text argument `name`, if the details have one.
+    pub(crate) fn text(&self, name: &str) -> Option<&str> {
+        self.arguments
+            .iter()
+            .find(|argument| argument.name == name)
+            .and_then(|argument| argument.value.as_text())
+    }
+
+    /// The details with `argument` added last.
+    #[must_use]
+    pub(crate) fn with(mut self, argument: Argument) -> Self {
+        self.arguments.push(argument);
+        self
+    }
+
+    /// The variable part of the message, rendered from the template and the
+    /// arguments.
+    pub(crate) fn render(&self) -> String {
+        template::render(self.template, &self.arguments)
+    }
+}
+
+impl PartialEq for Details {
+    fn eq(&self, other: &Self) -> bool {
+        self.template.id == other.template.id && self.arguments == other.arguments
+    }
+}
+
+impl Eq for Details {}
+
+impl Hash for Details {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.template.id.hash(state);
+        self.arguments.hash(state);
+    }
+}
+
+impl fmt::Debug for Details {
+    /// Writes `Details { template: "…", arguments: [...] }`.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Details")
+            .field("template", &self.template.id)
+            .field("arguments", &self.arguments)
+            .finish()
+    }
+}
+
+/// The arguments of a message as serialized: a JSON object whose keys are
+/// the argument names in the template's order, each Text a string and each
+/// Count a non-negative integer (ADR 0030 amendment 3, R8).
+#[cfg(feature = "serde")]
+pub(crate) struct ArgumentsRecord(Vec<(String, ArgumentValue)>);
+
+#[cfg(feature = "serde")]
+impl ArgumentsRecord {
+    /// The record of `arguments`.
+    pub(crate) fn of(arguments: &[Argument]) -> Self {
+        Self(
+            arguments
+                .iter()
+                .map(|argument| (argument.name.to_owned(), argument.value.clone()))
+                .collect(),
+        )
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for ArgumentsRecord {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+
+        let mut map = serializer.serialize_map(Some(self.0.len()))?;
+        for (name, value) in &self.0 {
+            match value {
+                ArgumentValue::Text(text) => map.serialize_entry(name, text)?,
+                ArgumentValue::Count(count) => map.serialize_entry(name, count)?,
+            }
+        }
+        map.end()
+    }
+}
+
+/// One argument value as read: a string is Text, a non-negative integer a
+/// Count, and anything else is refused.
+#[cfg(feature = "serde")]
+struct ArgumentValueRecord(ArgumentValue);
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for ArgumentValueRecord {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct Visitor;
+
+        impl serde::de::Visitor<'_> for Visitor {
+            type Value = ArgumentValueRecord;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("a string or a non-negative integer")
+            }
+
+            fn visit_str<E: serde::de::Error>(self, value: &str) -> Result<Self::Value, E> {
+                Ok(ArgumentValueRecord(ArgumentValue::Text(value.to_owned())))
+            }
+
+            fn visit_u64<E: serde::de::Error>(self, value: u64) -> Result<Self::Value, E> {
+                Ok(ArgumentValueRecord(ArgumentValue::Count(value)))
+            }
+
+            fn visit_i64<E: serde::de::Error>(self, value: i64) -> Result<Self::Value, E> {
+                u64::try_from(value)
+                    .map(|count| ArgumentValueRecord(ArgumentValue::Count(count)))
+                    .map_err(|_| E::invalid_value(serde::de::Unexpected::Signed(value), &self))
+            }
+        }
+
+        deserializer.deserialize_any(Visitor)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for ArgumentsRecord {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct Visitor;
+
+        impl<'de> serde::de::Visitor<'de> for Visitor {
+            type Value = ArgumentsRecord;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("an object of message arguments")
+            }
+
+            fn visit_map<A: serde::de::MapAccess<'de>>(
+                self,
+                mut map: A,
+            ) -> Result<Self::Value, A::Error> {
+                let mut arguments = Vec::new();
+                while let Some((name, ArgumentValueRecord(value))) = map.next_entry()? {
+                    arguments.push((name, value));
+                }
+                Ok(ArgumentsRecord(arguments))
+            }
+        }
+
+        deserializer.deserialize_map(Visitor)
+    }
+}
+
+/// The details a record of a refusal reads back to: `template` must be a
+/// template of `carrier`, `code` its code, and `arguments` exactly its
+/// arguments, by name and kind, in its order (ADR 0030 amendment 3, R11).
+/// Checked in that order: the code against the carrier's codes first.
+///
+/// # Errors
+///
+/// The reason, if any check fails.
+#[cfg(feature = "serde")]
+pub(crate) fn details_from_record(
+    carrier: template::Carrier,
+    code: Code,
+    template_id: &str,
+    arguments: ArgumentsRecord,
+) -> Result<Details, String> {
+    let mut of_carrier = template::TEMPLATES
+        .iter()
+        .copied()
+        .filter(|template| template.carrier == carrier);
+    if !of_carrier.clone().any(|template| template.code == code) {
+        return Err(format!(
+            "the code {code} is not one of this refusal's codes"
+        ));
+    }
+    let Some(template) = of_carrier.find(|template| template.id == template_id) else {
+        return Err(match template::find(template_id) {
+            Some(_) => format!("the template {template_id:?} is another refusal's"),
+            None => format!("the template {template_id:?} is unknown"),
+        });
+    };
+    if template.code != code {
+        return Err(format!(
+            "the code {code} is not the code of the template {template_id:?}"
+        ));
+    }
+    let ArgumentsRecord(given) = arguments;
+    if given.len() != template.arguments.len() {
+        return Err(format!(
+            "the template {template_id:?} takes {} arguments, not {}",
+            template.arguments.len(),
+            given.len()
+        ));
+    }
+    let mut read = Vec::with_capacity(given.len());
+    for ((name, value), &(declared, kind)) in given.into_iter().zip(template.arguments) {
+        if name != declared {
+            return Err(format!(
+                "the argument {name:?} is not {declared:?}, the next argument of {template_id:?}"
+            ));
+        }
+        let fits = matches!(
+            (&value, kind),
+            (ArgumentValue::Text(_), template::Kind::Text)
+                | (ArgumentValue::Count(_), template::Kind::Count)
+        );
+        if !fits {
+            return Err(format!("the argument {name:?} is not of the kind {kind:?}"));
+        }
+        read.push(Argument {
+            name: declared,
+            value,
+        });
+    }
+    Ok(Details::new(template, read))
 }
 
 /// Whether any of `diagnostics` has [`Severity::Error`].

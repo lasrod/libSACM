@@ -148,7 +148,8 @@
 
 use std::fmt;
 
-use crate::diagnostic::{Code, Diagnostic, SourceLocation};
+use crate::diagnostic::template;
+use crate::diagnostic::{Argument, Code, Details, Diagnostic, SourceLocation};
 use crate::model::{Document, ElementId, ElementKind, ReferenceEnd};
 
 mod input;
@@ -830,7 +831,10 @@ mod roots;
 /// - [`ReadError::LegacyShape`] (SACM-XMI-012), in strict mode only: a C++
 ///   name or text shape (see
 ///   [The C++ name and text shapes](#the-c-name-and-text-shapes)).
-/// - [`ReadError::Unsupported`] (no code): well-formed input a strict read
+/// - [`ReadError::Unsupported`] (the code a tolerant read keeps the input
+///   with: SACM-XMI-014, SACM-XMI-007 or SACM-XMI-003; or SACM-XMI-002,
+///   SACM-XMI-015, SACM-XML-002 or SACM-SEC-002 for what both modes refuse;
+///   LIB-API-017): well-formed input a strict read
 ///   does not read, and that it does not keep as preserved content
 ///   (LIB-API-011). Its reason ends with one label that says why: `(a limit
 ///   of this version; ROW reads it)` for input a row is to read (conforming
@@ -968,7 +972,7 @@ mod roots;
 /// let strict_options = ReadOptions::default().with_mode(Mode::Strict);
 /// let error = xmi::read(misspelt, &strict_options).unwrap_err();
 /// assert!(matches!(&error, ReadError::InvalidLiteral { value, .. } if value == "Assumed"));
-/// assert_eq!(error.code(), Some(Code::ENUM_INVALID_LITERAL));
+/// assert_eq!(error.code(), Code::ENUM_INVALID_LITERAL);
 /// assert_eq!(error.location().map(|at| (at.line(), at.column())), Some((3, 54)));
 /// let output = xmi::read(misspelt, &options)?;
 /// let found = &output.diagnostics()[0];
@@ -1015,7 +1019,7 @@ mod roots;
 /// // A root that is not a SACM package.
 /// let error = xmi::read(b"<r/>", &options).unwrap_err();
 /// assert!(matches!(error, ReadError::InvalidRoot { .. }));
-/// assert_eq!(error.code(), Some(Code::XMI_INVALID_ROOT));
+/// assert_eq!(error.code(), Code::XMI_INVALID_ROOT);
 /// assert_eq!(
 ///     error.to_string(),
 ///     "the root element \"r\" is not a SACM package at line 1, column 1"
@@ -1026,7 +1030,7 @@ mod roots;
 ///     <!DOCTYPE r [ <!ENTITY xxe SYSTEM \"file:///etc/passwd\"> ]>\n\
 ///     <r>&xxe;</r>";
 /// let error = xmi::read(xxe, &options).unwrap_err();
-/// assert_eq!(error.code(), Some(Code::XML_DOCTYPE_REJECTED));
+/// assert_eq!(error.code(), Code::XML_DOCTYPE_REJECTED);
 ///
 /// // UTF-16 with a byte order mark (U+FEFF) reads as the same text in UTF-8.
 /// let text = "\u{FEFF}<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"
@@ -1285,9 +1289,18 @@ const _: () = {
 /// [`RepeatedValue`](Self::RepeatedValue),
 /// [`InvalidLiteral`](Self::InvalidLiteral),
 /// [`LegacyShape`](Self::LegacyShape) and
-/// [`MissingType`](Self::MissingType). [`Unsupported`](Self::Unsupported),
-/// with no code, is well-formed input this version does not read; its
-/// reason says why with a label (see [`read`]'s refusals).
+/// [`MissingType`](Self::MissingType). [`Unsupported`](Self::Unsupported)
+/// is well-formed input this version does not read; its reason says why
+/// with a label (see [`read`]'s refusals), and its code is the one a
+/// tolerant read gives the same input (LIB-API-017).
+///
+/// Every refusal has a catalog [`code`](Self::code), a message
+/// [`template`](Self::template) and the [`arguments`](Self::arguments) its
+/// message is made from, so that an application can word it in any language
+/// (ADR 0030 amendment 3). The catalog lists each template's id, arguments
+/// and English. With the `serde` feature a refusal serializes as
+/// `{"type", "code", "template", "arguments", …its fields}` and reads back
+/// as a record: its `Display` renders its template and arguments.
 ///
 /// The first five, and `Unsupported` for an encoding, a parser limit, a root
 /// outside SACM 2.3 or XMI 2.5.1, or an XMI-namespace document element, are
@@ -1324,6 +1337,17 @@ const _: () = {
 ///     "the input is not well-formed XML at line 1, column 4: the end tag \"s\" does not match the start tag \"r\""
 /// );
 /// ```
+///
+/// # Templates and arguments
+///
+/// ```
+/// use sacm::diagnostic::{ArgumentValue, Code};
+/// use sacm::xmi::{self, ReadOptions};
+///
+/// let error = xmi::read(b"<r></s>", &ReadOptions::default()).unwrap_err();
+/// assert_eq!((error.code(), error.template()), (Code::XML_MALFORMED, "SACM-XML-001/end-tag-mismatch"));
+/// assert_eq!(error.arguments()[0].value(), &ArgumentValue::Text("s".into()));
+/// ```
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum ReadError {
@@ -1343,6 +1367,9 @@ pub enum ReadError {
         location: Option<SourceLocation>,
         /// What is wrong, without a position.
         reason: String,
+        /// The template and arguments of the refusal's message: see
+        /// [`template`](Self::template) and [`arguments`](Self::arguments).
+        details: Details,
     },
     /// An interchange root (the document element, or each element child
     /// outside the XMI namespace of an `xmi:XMI` element in the XMI 2.5.1
@@ -1356,6 +1383,9 @@ pub enum ReadError {
         /// The root's name as written: `prefix:Local`, or `Local` without a
         /// prefix.
         element_name: String,
+        /// The template and arguments of the refusal's message: see
+        /// [`template`](Self::template) and [`arguments`](Self::arguments).
+        details: Details,
     },
     /// The `xmi:XMI` element holds no root: no element child outside the XMI
     /// namespace (SACM-XMI-001). The location is the `<` of its start tag.
@@ -1389,7 +1419,7 @@ pub enum ReadError {
     /// </sacm:ArgumentPackage>"#;
     /// let error = xmi::read(input, &ReadOptions::default()).unwrap_err();
     /// assert!(matches!(&error, ReadError::DuplicateId { id, .. } if id.as_str() == "c1"));
-    /// assert_eq!(error.code(), Some(Code::ID_DUPLICATE));
+    /// assert_eq!(error.code(), Code::ID_DUPLICATE);
     /// assert_eq!(error.location().map(|at| (at.line(), at.column())), Some((4, 3)));
     /// assert_eq!(error.locations().len(), 2);
     /// assert_eq!(
@@ -1405,6 +1435,9 @@ pub enum ReadError {
         /// included, whose `xmi:id` has the value, in document order: at
         /// least two.
         locations: Vec<SourceLocation>,
+        /// The template and arguments of the refusal's message: see
+        /// [`template`](Self::template) and [`arguments`](Self::arguments).
+        details: Details,
     },
     /// In strict mode, the `xmi:id` of an element or of a `name` is empty,
     /// which is not an XML `NCName` and which a [`Document`] cannot hold
@@ -1421,13 +1454,25 @@ pub enum ReadError {
         id: String,
         /// Where the element's start tag starts.
         location: Option<SourceLocation>,
+        /// The template and arguments of the refusal's message: see
+        /// [`template`](Self::template) and [`arguments`](Self::arguments).
+        details: Details,
     },
     /// Well-formed input this version does not read, which a strict read
     /// refuses rather than keep as preserved content (LIB-API-011, ADR
-    /// 0033). It has no catalog code. A tolerant read refuses only an
+    /// 0033). A tolerant read refuses only an
     /// encoding, a parser limit, a root outside SACM 2.3 or XMI 2.5.1 and an
     /// XMI-namespace document element, and keeps the rest with SACM-XMI-014,
     /// SACM-XMI-007 or SACM-XMI-003 (ADR 0035 D1, D2).
+    ///
+    /// Its [`code`](ReadError::code) is the code a tolerant read gives the
+    /// same input (LIB-API-017): SACM-XMI-014 for conforming content not
+    /// read yet, SACM-XMI-007 for a cross-document reference, SACM-XMI-003
+    /// for a defect; and, for what both modes refuse, SACM-XMI-002 for a
+    /// root outside the SACM 2.3 namespace, SACM-XMI-015 for an `XMI`
+    /// element outside XMI 2.5.1, SACM-XML-002 for an encoding and
+    /// SACM-SEC-002 for a parser limit. An XMI-namespace document element is
+    /// SACM-XMI-014 in both modes.
     ///
     /// The reason ends with exactly one label: `(a limit of this version;
     /// ROW reads it)` for conforming input the matrix row ROW is to read,
@@ -1453,8 +1498,11 @@ pub enum ReadError {
     ///     ReadError::Unsupported { reason, .. }
     ///         if reason.ends_with("(a limit of this version; SACM23-ARG-014 reads it)")
     /// ));
+    /// assert_eq!(error.code(), Code::XMI_UNREAD_CONTENT);
+    /// assert_eq!(error.template(), "SACM-XMI-014/unread-root");
     ///
-    /// // A tolerant read keeps the root as the document's preserved content.
+    /// // A tolerant read keeps the root as the document's preserved content,
+    /// // with a Warning of the same code.
     /// let output = xmi::read(input, &ReadOptions::default())?;
     /// assert_eq!(output.diagnostics()[0].code(), Code::XMI_UNREAD_CONTENT);
     /// assert!(output.diagnostics()[0].message().ends_with("; SACM23-ARG-014 reads it"));
@@ -1468,6 +1516,9 @@ pub enum ReadError {
         /// What is not read, and why, ending with its label, without a
         /// position.
         reason: String,
+        /// The template and arguments of the refusal's message: see
+        /// [`template`](Self::template) and [`arguments`](Self::arguments).
+        details: Details,
     },
     /// A property is given more than XMI allows (SACM-MULT-001): a
     /// single-valued one more than once, as an attribute and an element or as
@@ -1524,7 +1575,7 @@ pub enum ReadError {
     ///     ReadError::RepeatedValue { property, kind: sacm::model::ElementKind::ArgumentPackage, .. }
     ///         if property == "name.content"
     /// ));
-    /// assert_eq!(error.code(), Some(Code::MULTIPLICITY_VIOLATION));
+    /// assert_eq!(error.code(), Code::MULTIPLICITY_VIOLATION);
     /// assert_eq!(error.location().map(|at| (at.line(), at.column())), Some((4, 5)));
     /// assert_eq!(
     ///     error.to_string(),
@@ -1590,6 +1641,9 @@ pub enum ReadError {
         /// each at the id's first character as written in the value (past
         /// any white space or character reference before it).
         locations: Vec<SourceLocation>,
+        /// The template and arguments of the refusal's message: see
+        /// [`template`](Self::template) and [`arguments`](Self::arguments).
+        details: Details,
     },
     /// A value is not one of its type's literals (SACM-ENUM-001). In this
     /// release, either:
@@ -1628,7 +1682,7 @@ pub enum ReadError {
     /// </sacm:ArgumentPackage>"#;
     /// let error = xmi::read(input, &strict).unwrap_err();
     /// assert!(matches!(&error, ReadError::InvalidLiteral { value, .. } if value == "Assumed"));
-    /// assert_eq!(error.code(), Some(Code::ENUM_INVALID_LITERAL));
+    /// assert_eq!(error.code(), Code::ENUM_INVALID_LITERAL);
     /// assert_eq!(
     ///     error.to_string(),
     ///     "the value \"Assumed\" of the property \"assertionDeclaration\" of the element \"c1\" \
@@ -1660,6 +1714,9 @@ pub enum ReadError {
         /// The first character of the attribute's name, or the `<` of the
         /// value element's start tag.
         location: Option<SourceLocation>,
+        /// The template and arguments of the refusal's message: see
+        /// [`template`](Self::template) and [`arguments`](Self::arguments).
+        details: Details,
     },
     /// A strict read met a name or a text written in a shape of the
     /// assurance-forge C++ library (SACM-XMI-012, LIB-COMPAT-008), such as
@@ -1679,7 +1736,7 @@ pub enum ReadError {
     /// let strict = ReadOptions::default().with_mode(Mode::Strict);
     /// let error = xmi::read(input, &strict).unwrap_err();
     /// assert!(matches!(&error, ReadError::LegacyShape { element, .. } if element.as_str() == "arguments"));
-    /// assert_eq!(error.code(), Some(Code::XMI_LEGACY_SHAPE));
+    /// assert_eq!(error.code(), Code::XMI_LEGACY_SHAPE);
     /// assert_eq!(error.location().map(|at| (at.line(), at.column())), Some((2, 73)));
     ///
     /// // A tolerant read reads it as `<name content="Arguments"/>`, with a Warning.
@@ -1702,6 +1759,9 @@ pub enum ReadError {
         /// or reference at its start), else, for a `value` in a `name`, the
         /// `<` of the `value`.
         location: Option<SourceLocation>,
+        /// The template and arguments of the refusal's message: see
+        /// [`template`](Self::template) and [`arguments`](Self::arguments).
+        details: Details,
     },
     /// A child under a containment role whose declared type is abstract
     /// carries no `xmi:type` or `xsi:type` (SACM-XMI-005, LIB-COMPAT-010),
@@ -1727,7 +1787,7 @@ pub enum ReadError {
     /// </sacm:ArgumentPackage>"#;
     /// let error = xmi::read(input, &ReadOptions::default().with_mode(Mode::Strict)).unwrap_err();
     /// assert!(matches!(&error, ReadError::MissingType { role, .. } if role == "argumentElement"));
-    /// assert_eq!(error.code(), Some(Code::XMI_MISSING_TYPE));
+    /// assert_eq!(error.code(), Code::XMI_MISSING_TYPE);
     /// assert_eq!(
     ///     error.to_string(),
     ///     "the element \"argumentElement\" has no xmi:type, and its role has the abstract \
@@ -1744,6 +1804,9 @@ pub enum ReadError {
         declared_type: String,
         /// The `<` of the element's start tag.
         location: Option<SourceLocation>,
+        /// The template and arguments of the refusal's message: see
+        /// [`template`](Self::template) and [`arguments`](Self::arguments).
+        details: Details,
     },
 }
 
@@ -1757,21 +1820,210 @@ impl ReadError {
     /// [`RepeatedValue`](Self::RepeatedValue), SACM-ENUM-001 for
     /// [`InvalidLiteral`](Self::InvalidLiteral), SACM-XMI-012 for
     /// [`LegacyShape`](Self::LegacyShape), SACM-XMI-005 for
-    /// [`MissingType`](Self::MissingType), and `None` for
-    /// [`Unsupported`](Self::Unsupported).
+    /// [`MissingType`](Self::MissingType), and for
+    /// [`Unsupported`](Self::Unsupported) the code a tolerant read gives the
+    /// same input (see the variant; LIB-API-017).
+    ///
+    /// ```
+    /// use sacm::diagnostic::Code;
+    /// use sacm::xmi::{self, ReadOptions};
+    ///
+    /// let latin_1 = b"<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><r/>";
+    /// let error = xmi::read(latin_1, &ReadOptions::default()).unwrap_err();
+    /// assert_eq!(error.code(), Code::XML_ENCODING_NOT_READ);
+    /// ```
     #[must_use]
-    pub fn code(&self) -> Option<Code> {
+    pub fn code(&self) -> Code {
+        match self.details() {
+            Some(details) => details.code(),
+            None => match self {
+                Self::Doctype { .. } => Code::XML_DOCTYPE_REJECTED,
+                _ => Code::XMI_INVALID_ROOT,
+            },
+        }
+    }
+
+    /// The id of the refusal's message template, `<CODE>/<form>`, such as
+    /// `SACM-XMI-014/unread-kind`: a stable name for its English sentence
+    /// form, under which an application keeps its own wording (ADR 0030
+    /// amendment 3). [`Doctype`](Self::Doctype) is `SACM-SEC-001/doctype`
+    /// and [`NoPackage`](Self::NoPackage) `SACM-XMI-001/no-package`.
+    #[must_use]
+    pub fn template(&self) -> &'static str {
+        match self.details() {
+            Some(details) => details.template(),
+            None => match self {
+                Self::Doctype { .. } => template::SEC_001_DOCTYPE.id,
+                _ => template::XMI_001_NO_PACKAGE.id,
+            },
+        }
+    }
+
+    /// The values the refusal's message is made from, in the order they
+    /// first appear in it: empty for [`Doctype`](Self::Doctype) and
+    /// [`NoPackage`](Self::NoPackage).
+    #[must_use]
+    pub fn arguments(&self) -> &[Argument] {
+        self.details().map_or(&[], Details::arguments)
+    }
+
+    /// The details of the refusal's message, if its variant has them.
+    fn details(&self) -> Option<&Details> {
         match self {
-            Self::Doctype { .. } => Some(Code::XML_DOCTYPE_REJECTED),
-            Self::Malformed { .. } => Some(Code::XML_MALFORMED),
-            Self::InvalidRoot { .. } | Self::NoPackage { .. } => Some(Code::XMI_INVALID_ROOT),
-            Self::DuplicateId { .. } => Some(Code::ID_DUPLICATE),
-            Self::InvalidId { .. } => Some(Code::ID_INVALID),
-            Self::RepeatedValue { .. } => Some(Code::MULTIPLICITY_VIOLATION),
-            Self::InvalidLiteral { .. } => Some(Code::ENUM_INVALID_LITERAL),
-            Self::LegacyShape { .. } => Some(Code::XMI_LEGACY_SHAPE),
-            Self::MissingType { .. } => Some(Code::XMI_MISSING_TYPE),
-            Self::Unsupported { .. } => None,
+            Self::Doctype { .. } | Self::NoPackage { .. } => None,
+            Self::Malformed { details, .. }
+            | Self::InvalidRoot { details, .. }
+            | Self::DuplicateId { details, .. }
+            | Self::InvalidId { details, .. }
+            | Self::Unsupported { details, .. }
+            | Self::RepeatedValue { details, .. }
+            | Self::InvalidLiteral { details, .. }
+            | Self::LegacyShape { details, .. }
+            | Self::MissingType { details, .. } => Some(details),
+        }
+    }
+
+    /// The `Malformed` refusal at `location` whose reason `details` give.
+    pub(crate) fn malformed(location: Option<SourceLocation>, details: Details) -> Self {
+        Self::Malformed {
+            location,
+            reason: details.render(),
+            details,
+        }
+    }
+
+    /// The `InvalidRoot` refusal of the root written `element_name`.
+    pub(crate) fn invalid_root(location: Option<SourceLocation>, element_name: String) -> Self {
+        let details = Details::new(
+            &template::XMI_001_NOT_A_PACKAGE,
+            vec![Argument::text("element", element_name.as_str())],
+        );
+        Self::InvalidRoot {
+            location,
+            element_name,
+            details,
+        }
+    }
+
+    /// The `DuplicateId` refusal of `id`, carried at `locations`.
+    pub(crate) fn duplicate_id(id: ElementId, locations: Vec<SourceLocation>) -> Self {
+        let details = Details::new(
+            &template::ID_001_DUPLICATE_ID,
+            vec![
+                Argument::text("id", id.as_str()),
+                Argument::count_of("count", locations.len()),
+            ],
+        );
+        Self::DuplicateId {
+            id,
+            locations,
+            details,
+        }
+    }
+
+    /// The `InvalidId` refusal of the id written `id`.
+    pub(crate) fn invalid_id(id: String, location: Option<SourceLocation>) -> Self {
+        let details = Details::new(
+            &template::ID_002_READ_ID_NOT_AN_NCNAME,
+            vec![Argument::text("id", id.as_str())],
+        );
+        Self::InvalidId {
+            id,
+            location,
+            details,
+        }
+    }
+
+    /// The `RepeatedValue` refusal of `property` of `element`, of `kind`,
+    /// given at `locations`. A property is given in both forms when the end
+    /// of that name that an element of `kind` has is multi-valued: `target`
+    /// is an asserted relationship's single-valued end and an
+    /// `ArtifactAssetRelationship`'s multi-valued one (SACM23-ART-010).
+    pub(crate) fn repeated_value(
+        element: ElementId,
+        kind: ElementKind,
+        property: String,
+        locations: Vec<SourceLocation>,
+    ) -> Self {
+        let is_many = ReferenceEnd::ALL
+            .iter()
+            .any(|end| end.name() == property && end.applies_to(kind) && end.is_many());
+        let mut arguments = vec![
+            Argument::text("property", property.as_str()),
+            Argument::text("element", element.as_str()),
+        ];
+        let template = if is_many {
+            &template::MULT_001_BOTH_FORMS
+        } else {
+            arguments.push(Argument::count_of("count", locations.len()));
+            &template::MULT_001_REPEATED_VALUE
+        };
+        Self::RepeatedValue {
+            element,
+            kind,
+            property,
+            locations,
+            details: Details::new(template, arguments),
+        }
+    }
+
+    /// The `InvalidLiteral` refusal of `value` of `property` of `element`.
+    pub(crate) fn invalid_literal(
+        element: ElementId,
+        property: String,
+        value: String,
+        location: Option<SourceLocation>,
+    ) -> Self {
+        let details = Details::new(
+            &template::ENUM_001_NOT_A_LITERAL,
+            vec![
+                Argument::text("value", value.as_str()),
+                Argument::text("property", property.as_str()),
+                Argument::text("element", element.as_str()),
+            ],
+        );
+        Self::InvalidLiteral {
+            element,
+            property,
+            value,
+            location,
+            details,
+        }
+    }
+
+    /// The `LegacyShape` refusal of the shape `shape` gives, of `element`.
+    pub(crate) fn legacy_shape(
+        element: ElementId,
+        shape: Details,
+        location: Option<SourceLocation>,
+    ) -> Self {
+        Self::LegacyShape {
+            element,
+            shape: shape.render(),
+            location,
+            details: shape,
+        }
+    }
+
+    /// The `MissingType` refusal of a child of the role `role`, of the
+    /// abstract type `declared_type`.
+    pub(crate) fn missing_type(
+        role: String,
+        declared_type: String,
+        location: Option<SourceLocation>,
+    ) -> Self {
+        let details = Details::new(
+            &template::XMI_005_MISSING_TYPE,
+            vec![
+                Argument::text("role", role.as_str()),
+                Argument::text("type", declared_type.as_str()),
+            ],
+        );
+        Self::MissingType {
+            role,
+            declared_type,
+            location,
+            details,
         }
     }
 
@@ -1864,118 +2116,71 @@ fn write_locations(f: &mut fmt::Formatter<'_>, locations: &[SourceLocation]) -> 
     Ok(())
 }
 
-/// Writes the `Display` of a [`ReadError::RepeatedValue`]: the count and the
-/// first two locations, so that the line stays bounded however many
-/// occurrences there are (SACM23-XMI-005). A property is multi-valued when
-/// the end of that name that an element of `kind` has is: `target` is an
-/// asserted relationship's single-valued end and an
-/// `ArtifactAssetRelationship`'s multi-valued one (SACM23-ART-010).
-fn write_repeated(
-    f: &mut fmt::Formatter<'_>,
-    element: &ElementId,
-    kind: ElementKind,
-    property: &str,
-    locations: &[SourceLocation],
-) -> fmt::Result {
-    let is_many = ReferenceEnd::ALL
-        .iter()
-        .any(|end| end.name() == property && end.applies_to(kind) && end.is_many());
-    if is_many {
-        write!(
-            f,
-            "the property {property:?} of the element {:?} is given both as an \
-             attribute and as elements, which XMI 2.5.1 rule 2h forbids",
-            element.as_str()
-        )?;
-    } else {
-        write!(
-            f,
-            "the single-valued property {property:?} of the element {:?} is given {} times",
-            element.as_str(),
-            locations.len()
-        )?;
-    }
-    match locations {
-        [first, second, _, ..] => write!(f, ", first at {first}; {second}"),
-        _ => write_locations(f, locations),
-    }
-}
-
 impl fmt::Display for ReadError {
-    /// Writes the refusal on one line, as described on [`ReadError`].
+    /// Writes the refusal on one line, as described on [`ReadError`]: each
+    /// variant's fixed frame around the variable part, which its template
+    /// and arguments render.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let reason = match self {
             Self::Doctype { .. } => {
-                f.write_str("the input has a DOCTYPE, which is refused")?;
+                f.write_str(&template::render(&template::SEC_001_DOCTYPE, &[]))?;
                 None
             }
-            Self::Malformed { reason, .. } => {
+            Self::Malformed { details, .. } => {
                 f.write_str("the input is not well-formed XML")?;
-                Some(reason.as_str())
-            }
-            Self::InvalidRoot { element_name, .. } => {
-                write!(f, "the root element {element_name:?} is not a SACM package")?;
-                None
+                Some(details.render())
             }
             Self::NoPackage { .. } => {
-                f.write_str("the XMI element holds no SACM package")?;
+                f.write_str(&template::render(&template::XMI_001_NO_PACKAGE, &[]))?;
+                None
+            }
+            Self::InvalidRoot { details, .. } | Self::InvalidId { details, .. } => {
+                f.write_str(&details.render())?;
                 None
             }
             // Every location, not only the first repeat.
-            Self::DuplicateId { id, locations } => {
-                write!(
-                    f,
-                    "the xmi:id {:?} is carried by {} elements",
-                    id.as_str(),
-                    locations.len()
-                )?;
+            Self::DuplicateId {
+                locations, details, ..
+            } => {
+                f.write_str(&details.render())?;
                 return write_locations(f, locations);
             }
+            // The count and the first two locations, so that the line stays
+            // bounded however many occurrences there are (SACM23-XMI-005).
             Self::RepeatedValue {
-                element,
-                kind,
-                property,
-                locations,
-            } => return write_repeated(f, element, *kind, property, locations),
-            Self::InvalidId { id, .. } => {
-                write!(f, "the xmi:id {id:?} is not an NCName")?;
-                None
+                locations, details, ..
+            } => {
+                f.write_str(&details.render())?;
+                return match locations.as_slice() {
+                    [first, second, _, ..] => write!(f, ", first at {first}; {second}"),
+                    _ => write_locations(f, locations),
+                };
             }
             Self::InvalidLiteral {
-                element,
-                property,
-                value,
-                ..
+                property, details, ..
             } => {
+                f.write_str(&details.render())?;
+                Some(literals_reason(property).to_owned())
+            }
+            Self::LegacyShape { details, .. } => {
                 write!(
                     f,
-                    "the value {value:?} of the property {property:?} of the element {:?} is not a literal",
-                    element.as_str()
+                    "{}, a shape of the assurance-forge C++ library",
+                    details.render()
                 )?;
-                Some(literals_reason(property))
-            }
-            Self::LegacyShape { shape, .. } => {
-                write!(f, "{shape}, a shape of the assurance-forge C++ library")?;
                 Some(
                     "a strict read refuses it; a tolerant read reads it as its standard form, \
-                     which write writes",
+                     which write writes"
+                        .to_owned(),
                 )
             }
-            Self::MissingType {
-                role,
-                declared_type,
-                ..
-            } => {
-                write!(
-                    f,
-                    "the element {role:?} has no xmi:type, and its role has the abstract type \
-                     {declared_type}"
-                )?;
-                Some("give it an xmi:type that names its class")
+            Self::MissingType { details, .. } => {
+                f.write_str(&details.render())?;
+                Some("give it an xmi:type that names its class".to_owned())
             }
-            Self::Unsupported { reason, .. } => {
+            Self::Unsupported { details, .. } => {
                 f.write_str("the reader cannot represent the input")?;
-                Some(reason.as_str())
+                Some(refusal::reason(details))
             }
         };
         if let Some(location) = self.location() {
@@ -2283,9 +2488,14 @@ impl WriteOptions {
 /// The writer writes everything a [`Document`] holds, so it refuses only a
 /// document with no root, a character XML 1.0 cannot represent, and, in
 /// strict mode, a document that holds preserved content or whose output
-/// would not be schema-valid (ADR 0035 D4). Only
-/// [`PreservedContent`](Self::PreservedContent) has a catalog code,
-/// SACM-XMI-006; [`code`](Self::code) is `None` for the others.
+/// would not be schema-valid (ADR 0035 D4). Every refusal has a catalog
+/// [`code`](Self::code): SACM-XMI-001 for [`NoRoot`](Self::NoRoot),
+/// SACM-XML-003 for
+/// [`UnrepresentableCharacter`](Self::UnrepresentableCharacter),
+/// SACM-XMI-016 for [`Invalid`](Self::Invalid) and SACM-XMI-006 for
+/// [`PreservedContent`](Self::PreservedContent) (LIB-API-017), and a
+/// message [`template`](Self::template) and its
+/// [`arguments`](Self::arguments), as [`ReadError`] has.
 /// [`element`](Self::element) names the element refused, where there is
 /// one, and [`diagnostics`](Self::diagnostics) gives the schema errors of
 /// [`Invalid`](Self::Invalid).
@@ -2357,6 +2567,9 @@ pub enum WriteError {
         character: char,
         /// The attribute that holds it.
         attribute: WriteAttribute,
+        /// The template and arguments of the refusal's message: see
+        /// [`template`](Self::template) and [`arguments`](Self::arguments).
+        details: Details,
     },
     /// In strict mode, the output would not be schema-valid (LIB-COMPAT-007,
     /// ADR 0035 D4): an `xmi:id`, of an element, a `name`, a `content`, a
@@ -2400,6 +2613,9 @@ pub enum WriteError {
     Invalid {
         /// Every schema error, in [`Diagnostic`] order. Never empty.
         diagnostics: Vec<Diagnostic>,
+        /// The template and arguments of the refusal's message: see
+        /// [`template`](Self::template) and [`arguments`](Self::arguments).
+        details: Details,
     },
     /// In strict mode, the document holds preserved content: what [`read`]
     /// kept, as written, because it does not conform where it stands or is
@@ -2422,7 +2638,7 @@ pub enum WriteError {
     /// let document = xmi::read(input, &ReadOptions::default())?.into_document();
     /// let error = xmi::write(&document, &WriteOptions::default()).unwrap_err();
     /// assert!(matches!(&error, WriteError::PreservedContent { elements, .. } if elements[0].as_str() == "p"));
-    /// assert_eq!(error.code(), Some(Code::XMI_STRICT_SAVE_REFUSED));
+    /// assert_eq!(error.code(), Code::XMI_STRICT_SAVE_REFUSED);
     /// assert_eq!(
     ///     error.to_string(),
     ///     "the document cannot be written in strict mode: the element \"p\" holds preserved \
@@ -2441,6 +2657,9 @@ pub enum WriteError {
         /// holds it, outside its elements
         /// ([`Document::has_preserved_content`]).
         elements: Vec<ElementId>,
+        /// The template and arguments of the refusal's message: see
+        /// [`template`](Self::template) and [`arguments`](Self::arguments).
+        details: Details,
     },
 }
 
@@ -2459,17 +2678,117 @@ impl WriteError {
         }
     }
 
-    /// The catalog code of the refusal: SACM-XMI-006
-    /// ([`Code::XMI_STRICT_SAVE_REFUSED`]) for
-    /// [`PreservedContent`](Self::PreservedContent), and `None` for every
-    /// other variant. The diagnostics of [`Invalid`](Self::Invalid) carry
-    /// their own codes.
+    /// The catalog code of the refusal: SACM-XMI-001
+    /// ([`Code::XMI_INVALID_ROOT`]) for [`NoRoot`](Self::NoRoot),
+    /// SACM-XML-003 ([`Code::XML_UNREPRESENTABLE_CHARACTER`]) for
+    /// [`UnrepresentableCharacter`](Self::UnrepresentableCharacter),
+    /// SACM-XMI-016 ([`Code::XMI_STRICT_SAVE_INVALID`]) for
+    /// [`Invalid`](Self::Invalid), whose diagnostics carry the codes of the
+    /// schema errors, and SACM-XMI-006 ([`Code::XMI_STRICT_SAVE_REFUSED`])
+    /// for [`PreservedContent`](Self::PreservedContent) (LIB-API-017).
     #[must_use]
-    pub fn code(&self) -> Option<Code> {
+    pub fn code(&self) -> Code {
+        self.details().map_or(Code::XMI_INVALID_ROOT, Details::code)
+    }
+
+    /// The id of the refusal's message template, `<CODE>/<form>`, such as
+    /// `SACM-XMI-006/one-holder` (ADR 0030 amendment 3).
+    /// [`NoRoot`](Self::NoRoot) is `SACM-XMI-001/no-root-to-write`.
+    #[must_use]
+    pub fn template(&self) -> &'static str {
+        self.details()
+            .map_or(template::XMI_001_NO_ROOT_TO_WRITE.id, Details::template)
+    }
+
+    /// The values the refusal's message is made from, in the order they
+    /// first appear in it: empty for [`NoRoot`](Self::NoRoot).
+    #[must_use]
+    pub fn arguments(&self) -> &[Argument] {
+        self.details().map_or(&[], Details::arguments)
+    }
+
+    /// The details of the refusal's message, if its variant has them.
+    fn details(&self) -> Option<&Details> {
         match self {
-            Self::NoRoot | Self::UnrepresentableCharacter { .. } | Self::Invalid { .. } => None,
-            Self::PreservedContent { .. } => Some(Code::XMI_STRICT_SAVE_REFUSED),
+            Self::NoRoot => None,
+            Self::UnrepresentableCharacter { details, .. }
+            | Self::Invalid { details, .. }
+            | Self::PreservedContent { details, .. } => Some(details),
         }
+    }
+
+    /// The `UnrepresentableCharacter` refusal of `character` in `attribute`
+    /// of `element`.
+    pub(crate) fn unrepresentable_character(
+        element: ElementId,
+        character: char,
+        attribute: WriteAttribute,
+    ) -> Self {
+        let details = Details::new(
+            &template::XML_003_UNREPRESENTABLE_CHARACTER,
+            vec![
+                Argument::text("element", element.as_str()),
+                Argument::text("attribute", attribute.to_string()),
+                Argument::count("code_point", u64::from(u32::from(character))),
+            ],
+        );
+        Self::UnrepresentableCharacter {
+            element,
+            character,
+            attribute,
+            details,
+        }
+    }
+
+    /// The `Invalid` refusal of the schema errors `diagnostics`.
+    pub(crate) fn invalid(diagnostics: Vec<Diagnostic>) -> Self {
+        let first = diagnostics.first();
+        let first_code = Argument::text(
+            "first_code",
+            first.map_or("", |first| first.code().as_str()),
+        );
+        let first_id = Argument::text(
+            "first_id",
+            first
+                .and_then(|first| first.affected().first())
+                .map_or("", ElementId::as_str),
+        );
+        let details = if diagnostics.len() == 1 {
+            Details::new(&template::XMI_016_SCHEMA_ERROR, vec![first_code, first_id])
+        } else {
+            Details::new(
+                &template::XMI_016_SCHEMA_ERRORS,
+                vec![
+                    Argument::count_of("count", diagnostics.len()),
+                    first_code,
+                    first_id,
+                ],
+            )
+        };
+        Self::Invalid {
+            diagnostics,
+            details,
+        }
+    }
+
+    /// The `PreservedContent` refusal of the elements `elements` that hold
+    /// preserved content, or of the document alone when it is empty.
+    pub(crate) fn preserved_content(elements: Vec<ElementId>) -> Self {
+        let details = match elements.as_slice() {
+            [one] => Details::new(
+                &template::XMI_006_ONE_HOLDER,
+                vec![Argument::text("id", one.as_str())],
+            ),
+            [first, ..] => Details::new(
+                &template::XMI_006_HOLDERS,
+                vec![
+                    Argument::count_of("count", elements.len()),
+                    Argument::text("id", first.as_str()),
+                ],
+            ),
+            [] => Details::new(&template::XMI_006_OUTSIDE_ELEMENTS, Vec::new()),
+        };
+        Self::PreservedContent { elements, details }
     }
 
     /// The schema errors of [`Invalid`](Self::Invalid), in [`Diagnostic`]
@@ -2477,7 +2796,7 @@ impl WriteError {
     #[must_use]
     pub fn diagnostics(&self) -> &[Diagnostic] {
         match self {
-            Self::Invalid { diagnostics } => diagnostics,
+            Self::Invalid { diagnostics, .. } => diagnostics,
             Self::NoRoot
             | Self::UnrepresentableCharacter { .. }
             | Self::PreservedContent { .. } => &[],
@@ -2486,49 +2805,12 @@ impl WriteError {
 }
 
 impl fmt::Display for WriteError {
-    /// Writes the refusal on one line, as described on [`WriteError`].
+    /// Writes the refusal on one line, as described on [`WriteError`]: the
+    /// message its template and arguments render.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::NoRoot => f.write_str("the document has no root to write"),
-            Self::UnrepresentableCharacter {
-                element,
-                character,
-                attribute,
-            } => write!(
-                f,
-                "the element {:?} cannot be written: its {attribute} holds U+{:04X}, which XML 1.0 cannot represent",
-                element.as_str(),
-                u32::from(*character)
-            ),
-            Self::Invalid { diagnostics } => {
-                let count = diagnostics.len();
-                let errors = if count == 1 { "error" } else { "errors" };
-                write!(
-                    f,
-                    "the document cannot be written in strict mode: {count} schema {errors}"
-                )?;
-                if let Some(first) = diagnostics.first() {
-                    let lead = if count == 1 { "" } else { "the first is " };
-                    write!(f, ", {lead}{}", first.code())?;
-                    if let Some(id) = first.affected().first() {
-                        write!(f, " on {:?}", id.as_str())?;
-                    }
-                }
-                Ok(())
-            }
-            Self::PreservedContent { elements } => {
-                f.write_str("the document cannot be written in strict mode: ")?;
-                match elements.as_slice() {
-                    [one] => write!(f, "the element {:?} holds preserved content", one.as_str()),
-                    [first, ..] => write!(
-                        f,
-                        "{} elements hold preserved content, the first is {:?}",
-                        elements.len(),
-                        first.as_str()
-                    ),
-                    [] => f.write_str("the document holds preserved content outside its elements"),
-                }
-            }
+        match self.details() {
+            Some(details) => f.write_str(&details.render()),
+            None => f.write_str(&template::render(&template::XMI_001_NO_ROOT_TO_WRITE, &[])),
         }
     }
 }
@@ -2540,6 +2822,7 @@ impl std::error::Error for WriteError {}
 /// Later releases add variants as they write more attributes, so match it
 /// with a fallback arm.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub enum WriteAttribute {
     /// The element's `xmi:id`.
@@ -2612,21 +2895,55 @@ const _: () = {
 #[cfg(test)]
 mod tests {
     use super::ReadError;
-    use crate::diagnostic::SourceLocation;
+    use crate::diagnostic::{Argument, Code, Details, SourceLocation, template};
     use crate::model::{ElementId, ElementKind};
+
+    /// The C++ shape no strict read refuses, since the `name-value` shape of
+    /// the same `value` comes first, built as the reader builds it
+    /// (LIB-API-017, acceptance 4).
+    #[test]
+    fn the_shape_of_text_in_a_name_value_has_its_template() {
+        let arguments = vec![
+            Argument::text("class", "ArgumentPackage"),
+            Argument::text("id", "p"),
+        ];
+        let error = ReadError::legacy_shape(
+            ElementId::new("p"),
+            Details::new(&template::XMI_012_NAME_VALUE_TEXT, arguments.clone()),
+            SourceLocation::at(1, 2),
+        );
+        assert_eq!(
+            (error.code(), error.template(), error.arguments()),
+            (
+                Code::XMI_LEGACY_SHAPE,
+                "SACM-XMI-012/name-value-text",
+                arguments.as_slice()
+            ),
+            "LIB-API-017"
+        );
+        assert_eq!(
+            error.to_string(),
+            "the value in the name of the ArgumentPackage \"p\" has its content as text, a \
+             shape of the assurance-forge C++ library at line 1, column 2: a strict read \
+             refuses it; a tolerant read reads it as its standard form, which write writes",
+            "LIB-API-017"
+        );
+    }
 
     /// A multi-valued end given as an attribute and as elements is not
     /// called single-valued (ADR 0027); every other property is.
     #[test]
     fn a_repeated_value_names_a_multi_valued_end_by_rule_2h() {
-        let repeated = |property: &str| ReadError::RepeatedValue {
-            element: ElementId::new("i1"),
-            kind: ElementKind::AssertedInference,
-            property: property.to_owned(),
-            locations: [SourceLocation::at(1, 2), SourceLocation::at(3, 4)]
-                .into_iter()
-                .flatten()
-                .collect(),
+        let repeated = |property: &str| {
+            ReadError::repeated_value(
+                ElementId::new("i1"),
+                ElementKind::AssertedInference,
+                property.to_owned(),
+                [SourceLocation::at(1, 2), SourceLocation::at(3, 4)]
+                    .into_iter()
+                    .flatten()
+                    .collect(),
+            )
         };
         for property in ["metaClaim", "source"] {
             assert_eq!(

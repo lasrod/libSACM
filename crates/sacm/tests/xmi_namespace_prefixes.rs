@@ -31,6 +31,8 @@ use sacm::diagnostic::{Code, Diagnostic, Severity, SourceLocation};
 use sacm::model::{Document, ElementId, ElementKind, LangString, SacmElement};
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput};
 
+mod common;
+
 const ROW: &str = "SACM23-XMI-002";
 
 /// The pinned SACM 2.3 namespace (D-NS-PIN).
@@ -444,9 +446,9 @@ fn assert_unsupported_at(what: &str, input: &str, location: SourceLocation) -> S
         );
     };
     assert_eq!(
-        error.code(),
-        None,
-        "{ROW}: {what}: the Unsupported refusal of {} carries a code",
+        error.code().as_str(),
+        crate::common::unsupported_code(&error.to_string()),
+        "{ROW}: {what}: the Unsupported refusal of {} does not carry the code of its label",
         preview(input.as_bytes())
     );
     assert_eq!(
@@ -469,7 +471,7 @@ fn assert_malformed_at(what: &str, input: &str, location: SourceLocation) {
     );
     assert_eq!(
         error.code(),
-        Some(Code::XML_MALFORMED),
+        Code::XML_MALFORMED,
         "{ROW}: {what}: the Malformed refusal of {} does not carry SACM-XML-001",
         preview(input.as_bytes())
     );
@@ -510,7 +512,7 @@ fn assert_invalid_root_at(input: &str, location: SourceLocation, name: &str) {
     );
     assert_eq!(
         error.code(),
-        Some(Code::XMI_INVALID_ROOT),
+        Code::XMI_INVALID_ROOT,
         "{ROW}: the InvalidRoot of {} does not carry SACM-XMI-001",
         preview(input.as_bytes())
     );
@@ -543,7 +545,7 @@ fn assert_no_package_at(input: &str, location: SourceLocation) {
     );
     assert_eq!(
         error.code(),
-        Some(Code::XMI_INVALID_ROOT),
+        Code::XMI_INVALID_ROOT,
         "{ROW}: the NoPackage of {} does not carry SACM-XMI-001",
         preview(input.as_bytes())
     );
@@ -1335,7 +1337,7 @@ fn sacm23_xmi_002_a_repeated_id_is_the_same_duplicate_id_under_any_prefix() {
     );
     assert_eq!(
         (expected.code(), expected.locations()),
-        (Some(Code::ID_DUPLICATE), [loc(2, 3), loc(3, 3)].as_slice()),
+        (Code::ID_DUPLICATE, [loc(2, 3), loc(3, 3)].as_slice()),
         "{ROW}: the reference is not SACM-ID-001 at both roots: {expected}"
     );
     for (s, x) in [("s", "x"), ("ü", "ns0"), ("SACM", "XMI"), ("xmi", "sacm")] {

@@ -594,7 +594,7 @@ fn sacm23_xmi_026_an_xsi_nil_that_is_not_a_boolean_literal_is_invalid_literal_at
         );
         assert_eq!(
             error.code(),
-            Some(Code::ENUM_INVALID_LITERAL),
+            Code::ENUM_INVALID_LITERAL,
             "{ROW}: {what}: not SACM-ENUM-001"
         );
     }
@@ -851,7 +851,7 @@ fn sacm23_xmi_026_a_nil_occurrence_counts_for_repeated_value() {
         );
         assert_eq!(
             (error.code(), error.locations()),
-            (Some(Code::MULTIPLICITY_VIOLATION), marks.as_slice()),
+            (Code::MULTIPLICITY_VIOLATION, marks.as_slice()),
             "{ROW}: {what}: not SACM-MULT-001 at every occurrence"
         );
     }

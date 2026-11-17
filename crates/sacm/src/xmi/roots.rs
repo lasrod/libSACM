@@ -146,7 +146,8 @@ use super::namespaces::{SACM_NS, SACM_PREFIX, XMI_NS, XMI_PREFIX};
 use super::preserve;
 use super::refusal::{Tolerant, Unread, unsupported};
 use super::{Mode, ReadError};
-use crate::diagnostic::{Code, Diagnostic, Severity};
+use crate::diagnostic::template::{self, Template};
+use crate::diagnostic::{Argument, Code, Details, Diagnostic, Severity};
 use crate::model::{
     AbstractClass, AssertionDeclaration, Attr, DeclaredType, Document, ElementId, ElementKind,
     Flag, IdGenerator, Item, LangString, Placed, Preserved, ReferenceEnd, Role, StringAttribute,
@@ -290,6 +291,27 @@ impl From<ReadError> for Fault {
     fn from(error: ReadError) -> Self {
         Self::Refused(error)
     }
+}
+
+/// The details of a message of `template` whose arguments are all Text:
+/// `arguments`, by name and value, in the template's order.
+fn text_details(template: &'static Template, arguments: &[(&'static str, &str)]) -> Details {
+    Details::new(
+        template,
+        arguments
+            .iter()
+            .map(|&(name, value)| Argument::text(name, value))
+            .collect(),
+    )
+}
+
+/// The details of the C++ shape `template` names, of the element `id` of
+/// `kind` (SACM-XMI-012).
+fn shape_of(template: &'static Template, kind: ElementKind, id: &ElementId) -> Details {
+    text_details(
+        template,
+        &[("class", &kind.to_string()), ("id", id.as_str())],
+    )
 }
 
 /// The Warning a tolerant read gives for a construct it keeps as preserved
@@ -486,7 +508,7 @@ fn fault(kept: Result<Keep, ReadError>) -> Fault {
 /// `reason` says, in strict mode and when a tolerant read refuses it too;
 /// otherwise the Warning a tolerant read keeps it with ([`Unread::tolerant`],
 /// ADR 0035 D1, D2).
-fn unread_fault(text: &str, mode: Mode, offset: usize, unread: Unread, reason: &str) -> Fault {
+fn unread_fault(text: &str, mode: Mode, offset: usize, unread: Unread, reason: Details) -> Fault {
     fault(keep_or_refuse(text, mode, offset, unread, reason))
 }
 
@@ -498,10 +520,12 @@ fn keep_or_refuse(
     mode: Mode,
     offset: usize,
     unread: Unread,
-    reason: &str,
+    reason: Details,
 ) -> Result<Keep, ReadError> {
     match (mode, unread.tolerant()) {
-        (Mode::Tolerant, Tolerant::Kept(code)) => Ok(Keep::unread(offset, unread, code, reason)),
+        (Mode::Tolerant, Tolerant::Kept(code)) => {
+            Ok(Keep::unread(offset, unread, code, &reason.render()))
+        }
         _ => Err(unsupported(text, offset, unread, reason)),
     }
 }
@@ -518,12 +542,12 @@ fn literal_fault(
     value: &str,
 ) -> Fault {
     match mode {
-        Mode::Strict => Fault::Refused(ReadError::InvalidLiteral {
-            element: element.clone(),
-            property: property.to_owned(),
-            value: value.to_owned(),
-            location: locate(text, offset),
-        }),
+        Mode::Strict => Fault::Refused(ReadError::invalid_literal(
+            element.clone(),
+            property.to_owned(),
+            value.to_owned(),
+            locate(text, offset),
+        )),
         Mode::Tolerant => Fault::Keep(Keep::literal(offset, property, value)),
     }
 }
@@ -606,8 +630,9 @@ pub(super) fn read(
                 text,
                 element.range().start,
                 Unread::Unheld,
-                &format!(
-                    "the content outside every element cannot be held in the document: {error}"
+                Details::new(
+                    &template::SEC_002_UNHELD_OUTSIDE,
+                    vec![Argument::text("error", error)],
                 ),
             )
         })?;
@@ -619,11 +644,11 @@ pub(super) fn read(
     } = found;
     // A strict read never applies a tolerance (ADR 0022 amendment 1).
     if let Some((offset, element, shape)) = legacy {
-        return Err(ReadError::LegacyShape {
+        return Err(ReadError::legacy_shape(
             element,
             shape,
-            location: locate(text, offset),
-        });
+            locate(text, offset),
+        ));
     }
     // An edit generates above every id generated here (ADR 0024).
     generator.commit(&mut document);
@@ -683,7 +708,7 @@ struct Findings<'t, 'a> {
     /// In strict mode, the first C++ shape read, by offset: its byte
     /// offset, the element it belongs to and what it is, which [`read`]
     /// refuses once the input has read whole (LIB-COMPAT-008).
-    legacy: Option<(usize, ElementId, String)>,
+    legacy: Option<(usize, ElementId, Details)>,
 }
 
 /// What [`Findings`] holds before a part is read, so that a part that turns
@@ -692,7 +717,7 @@ struct Checkpoint {
     /// The number of diagnostics found.
     diagnostics: usize,
     /// The first C++ shape found in strict mode.
-    legacy: Option<(usize, ElementId, String)>,
+    legacy: Option<(usize, ElementId, Details)>,
     /// The number of ids read.
     ids: usize,
 }
@@ -757,13 +782,13 @@ impl Findings<'_, '_> {
         &self,
         offset: usize,
         unread: Unread,
-        reason: &str,
+        reason: Details,
     ) -> Result<Keep, ReadError> {
         keep_or_refuse(self.text, self.mode, offset, unread, reason)
     }
 
     /// [`refuse_or_keep`](Self::refuse_or_keep) as a [`Fault`].
-    fn unread_fault(&self, offset: usize, unread: Unread, reason: &str) -> Fault {
+    fn unread_fault(&self, offset: usize, unread: Unread, reason: Details) -> Fault {
         unread_fault(self.text, self.mode, offset, unread, reason)
     }
 
@@ -933,10 +958,11 @@ impl Findings<'_, '_> {
     /// Warning, and in strict mode the refusal [`read`] returns if this is
     /// the first shape (LIB-COMPAT-008; XMI 2.5.1 §7.8.6; ADR 0022
     /// amendment 1).
-    fn legacy_shape(&mut self, offset: usize, owner: &ElementId, shape: String) {
+    fn legacy_shape(&mut self, offset: usize, owner: &ElementId, shape: Details) {
         let message = format!(
-            "{shape}, a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; \
-             it is read as its standard form, which write writes"
+            "{}, a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; \
+             it is read as its standard form, which write writes",
+            shape.render()
         );
         let diagnostic = Diagnostic::create(
             Code::XMI_LEGACY_SHAPE,
@@ -1126,9 +1152,9 @@ fn classify(text: &str, element: Node<'_, '_>) -> Result<bool, ReadError> {
             text,
             element.range().start,
             Unread::XmiMetadata,
-            &format!(
-                "the XMI element {:?} is not read as a root in this release",
-                written_name(text, element)
+            text_details(
+                &template::XMI_014_XMI_ROOT,
+                &[("element", &written_name(text, element))],
             ),
         )),
         // An XMI element outside the XMI namespace (ADR 0016 D1), which
@@ -1137,9 +1163,9 @@ fn classify(text: &str, element: Node<'_, '_>) -> Result<bool, ReadError> {
             text,
             element.range().start,
             Unread::OtherXmiNamespace,
-            &format!(
-                "the element {:?} is not in the XMI namespace {XMI_NS:?}, so it is not read as the XMI element",
-                written_name(text, element)
+            text_details(
+                &template::XMI_015_NOT_XMI_NAMESPACE,
+                &[("element", &written_name(text, element))],
             ),
         )),
         _ => match package_kind(&element) {
@@ -1160,10 +1186,7 @@ fn package_kind(node: &Node<'_, '_>) -> Option<ElementKind> {
 
 /// The `InvalidRoot` refusal of `root`.
 fn invalid_root(text: &str, root: Node<'_, '_>) -> ReadError {
-    ReadError::InvalidRoot {
-        location: locate(text, root.range().start),
-        element_name: written_name(text, root),
-    }
+    ReadError::invalid_root(locate(text, root.range().start), written_name(text, root))
 }
 
 /// Pass 2 for the XMI element: checks its attributes, then reads its roots
@@ -1195,8 +1218,8 @@ fn read_wrapper<'a>(
             Unread::WrapperContent
         };
         let at = attribute.range_qname().start;
-        let reason = unread_attribute_reason(text, &attribute, &name);
-        let mut keep = found.refuse_or_keep(at, unread, &reason)?;
+        let reason = unread_attribute_reason(text, &attribute, &name, unread);
+        let mut keep = found.refuse_or_keep(at, unread, reason)?;
         if !is_metadata {
             keep.reason = format!(
                 "the attribute {:?} of the element {name:?} is not SACM 2.3 where it stands",
@@ -1223,7 +1246,7 @@ fn read_wrapper<'a>(
                 let mut keep = found.refuse_or_keep(
                     first,
                     Unread::WrapperContent,
-                    &format!("the element {name:?} holds text, which has no element to be kept in"),
+                    text_details(&template::XMI_003_WRAPPER_TEXT, &[("element", &name)]),
                 )?;
                 keep.reason =
                     format!("text in the element {name:?} is not SACM 2.3 where it stands");
@@ -1234,9 +1257,12 @@ fn read_wrapper<'a>(
             let keep = found.refuse_or_keep(
                 child.range().start,
                 Unread::XmiMetadata,
-                &format!(
-                    "the XMI element {:?} in {name:?} is not read in this release",
-                    written_name(text, child)
+                text_details(
+                    &template::XMI_014_NESTED_XMI_ELEMENT,
+                    &[
+                        ("element", &written_name(text, child)),
+                        ("container", &name),
+                    ],
                 ),
             )?;
             outside.keep_element(found, child, keep)?;
@@ -1384,15 +1410,18 @@ impl Kept {
             };
             match pinned {
                 Some(pinned) if pinned != uri => {
-                    let reason = format!(
-                        "the attribute {:?} of the element {:?} is not SACM 2.3, and cannot be \
-                         kept: its prefix {prefix:?} is bound to {uri:?}, and the written \
-                         element binds it to {pinned:?}",
-                        attr.name.written(),
-                        written_name(text, node)
+                    let reason = text_details(
+                        &template::XMI_003_UNWRITABLE_PREFIX,
+                        &[
+                            ("attribute", &attr.name.written()),
+                            ("element", &written_name(text, node)),
+                            ("prefix", &prefix),
+                            ("namespace", uri),
+                            ("pinned_namespace", pinned),
+                        ],
                     );
                     let mut keep =
-                        found.refuse_or_keep(refuse_at, Unread::UnwritablePrefix, &reason)?;
+                        found.refuse_or_keep(refuse_at, Unread::UnwritablePrefix, reason)?;
                     let new = self.rename(node, uri);
                     keep.reason = format!(
                         "the attribute {:?} of the element {:?} is not SACM 2.3 where it stands, \
@@ -1771,10 +1800,7 @@ impl Pending {
                 return;
             }
         };
-        let shape = format!(
-            "the content of {} is given on the element itself",
-            subject(self.kind, self.id.as_str())
-        );
+        let shape = shape_of(&template::XMI_012_CONTENT_ON_ELEMENT, self.kind, &self.id);
         found.legacy_shape(at, &self.id, shape);
         let mut held = Text::default();
         held.push(value, None);
@@ -1979,10 +2005,7 @@ impl Pending {
     /// Reads `attribute`, the C++ `key="…"` of this element, a `TaggedValue`,
     /// as its `key`: one value with no `lang`, reported (LIB-COMPAT-008).
     fn read_key_attribute(&mut self, found: &mut Findings<'_, '_>, attribute: &Attribute<'_, '_>) {
-        let shape = format!(
-            "the key of {} is given as the attribute \"key\"",
-            subject(self.kind, self.id.as_str())
-        );
+        let shape = shape_of(&template::XMI_012_KEY_ATTRIBUTE, self.kind, &self.id);
         found.legacy_shape(attribute.range_qname().start, &self.id, shape);
         let mut value = LangString::default();
         value.set_content(Some(attribute.value().to_owned()));
@@ -2178,15 +2201,15 @@ impl StartTag {
                 local,
                 || {
                     let mut locator = Locator::new(text);
-                    ReadError::RepeatedValue {
-                        element: id.clone(),
+                    ReadError::repeated_value(
+                        id.clone(),
                         kind,
-                        property: local.to_owned(),
-                        locations: starts
+                        local.to_owned(),
+                        starts
                             .into_iter()
                             .filter_map(|start| locator.locate(start))
                             .collect(),
-                    }
+                    )
                 },
             )));
         }
@@ -2414,14 +2437,15 @@ fn read_part<'a>(
     }
     if let Some(unread) = interface_end(element.kind).filter(|_| is_value_element(node, INTERFACE))
     {
-        let reason = format!(
-            "the reference element {:?} in the element {:?} is the {} end {INTERFACE:?}, which \
-             is not read in this release",
-            written_name(text, node),
-            element.written,
-            element.kind
+        let reason = text_details(
+            &template::XMI_014_INTERFACE_ELEMENT,
+            &[
+                ("element", &written_name(text, node)),
+                ("container", &element.written),
+                ("class", &element.kind.to_string()),
+            ],
         );
-        return Err(found.unread_fault(at, unread, &reason));
+        return Err(found.unread_fault(at, unread, reason));
     }
     // Each part is checked whole first, then against the occurrences before
     // it; one kept in tolerant mode for a value that is no literal counts
@@ -2550,7 +2574,6 @@ fn read_spelled_part<'a>(
 fn hold(text: &str, document: &mut Document, mut read: Vec<Pending>) -> Result<(), ReadError> {
     read.sort_by_key(|element| element.order);
     for element in read {
-        let what = element.what();
         let id = element.id;
         let held = document
             .insert_node(
@@ -2611,7 +2634,17 @@ fn hold(text: &str, document: &mut Document, mut read: Vec<Pending>) -> Result<(
                 text,
                 element.at,
                 Unread::Unheld,
-                &format!("{what} cannot be held in the document: {error}"),
+                Details::new(
+                    if element.parent.is_none() {
+                        &template::SEC_002_UNHELD_ROOT
+                    } else {
+                        &template::SEC_002_UNHELD_ELEMENT
+                    },
+                    vec![
+                        Argument::text("element", element.written.as_str()),
+                        Argument::text("error", error.as_str()),
+                    ],
+                ),
             )
         })?;
     }
@@ -2734,8 +2767,8 @@ fn root_start<'a>(
         (Some(SACM_NS), Some(kind)) => match Unread::kind(kind) {
             None => kind,
             Some(unread) => {
-                let reason = format!("the root element {name:?} is not read in this release");
-                let keep = found.refuse_or_keep(at_root, unread, &reason)?;
+                let reason = text_details(&template::XMI_014_UNREAD_ROOT, &[("element", &name)]);
+                let keep = found.refuse_or_keep(at_root, unread, reason)?;
                 outside.keep_element(found, root, keep)?;
                 return Ok(None);
             }
@@ -2746,8 +2779,9 @@ fn root_start<'a>(
                 text,
                 at_root,
                 Unread::OtherSacmNamespace,
-                &format!(
-                    "the root element {name:?} is in the namespace {namespace:?}, not the SACM 2.3 namespace {SACM_NS:?}"
+                text_details(
+                    &template::XMI_002_OTHER_NAMESPACE,
+                    &[("element", &name), ("namespace", namespace)],
                 ),
             ));
         }
@@ -2756,9 +2790,7 @@ fn root_start<'a>(
                 text,
                 at_root,
                 Unread::OtherSacmNamespace,
-                &format!(
-                    "the root element {name:?} is in no namespace, not the SACM 2.3 namespace {SACM_NS:?}"
-                ),
+                text_details(&template::XMI_002_NO_NAMESPACE, &[("element", &name)]),
             ));
         }
     };
@@ -2816,8 +2848,9 @@ fn root_start<'a>(
                     object_metadata(&attribute).or_else(|| interface_attribute(kind, &attribute));
                 if let Some(unread) = unread {
                     let at = attribute.range_qname().start;
-                    let reason = unread_attribute_reason(text, &attribute, &element.written);
-                    let keep = found.refuse_or_keep(at, unread, &reason)?;
+                    let reason =
+                        unread_attribute_reason(text, &attribute, &element.written, unread);
+                    let keep = found.refuse_or_keep(at, unread, reason)?;
                     element.kept.keep_attribute(found, root, &attribute, keep)?;
                     continue;
                 }
@@ -2854,8 +2887,7 @@ fn child_start<'a>(
     parent: &Pending,
 ) -> Result<Option<Pending>, Fault> {
     let text = found.text;
-    let ChildKind::Read { kind, spelled } = child_kind(found, node, parent.kind, &parent.what())?
-    else {
+    let ChildKind::Read { kind, spelled } = child_kind(found, node, parent)? else {
         return Ok(None);
     };
     let written = written_name(text, node);
@@ -2951,8 +2983,8 @@ fn child_start<'a>(
         }
         let unread = role_metadata(&attribute).or_else(|| interface_attribute(kind, &attribute));
         if let Some(unread) = unread {
-            let reason = unread_attribute_reason(text, &attribute, &element.written);
-            let fault = found.unread_fault(at, unread, &reason);
+            let reason = unread_attribute_reason(text, &attribute, &element.written, unread);
+            let fault = found.unread_fault(at, unread, reason);
             // In reference form, the role element is no object but a
             // reference to one: it is kept whole (ADR 0035 D1).
             if is_reference_form(&attribute) {
@@ -3002,10 +3034,7 @@ fn read_name_attribute(
     kind: ElementKind,
     id: &ElementId,
 ) -> LangString {
-    let shape = format!(
-        "the name of {} is given as the attribute \"name\"",
-        subject(kind, id.as_str())
-    );
+    let shape = shape_of(&template::XMI_012_NAME_ATTRIBUTE, kind, id);
     found.legacy_shape(attribute.range_qname().start, id, shape);
     let mut name = LangString::default();
     name.set_content(Some(attribute.value().to_owned()));
@@ -3086,10 +3115,10 @@ fn checked_id<'a>(
 ) -> Result<&'a str, ReadError> {
     let raw = attribute.value();
     if raw.is_empty() {
-        return Err(ReadError::InvalidId {
-            id: String::new(),
-            location: locate(found.text, node.range().start),
-        });
+        return Err(ReadError::invalid_id(
+            String::new(),
+            locate(found.text, node.range().start),
+        ));
     }
     let value = id_value(raw);
     if !found.insert_id(value) {
@@ -3115,10 +3144,7 @@ fn duplicate_id(text: &str, node: Node<'_, '_>, id: &str) -> ReadError {
         })
         .filter_map(|element| locator.locate(element.range().start))
         .collect();
-    ReadError::DuplicateId {
-        id: ElementId::new(id),
-        locations,
-    }
+    ReadError::duplicate_id(ElementId::new(id), locations)
 }
 
 /// What [`child_kind`] makes of a child element.
@@ -3159,20 +3185,33 @@ enum ChildKind {
 /// Every refusal is at the child's start tag. A tolerant read keeps each of
 /// these children whole instead, with its Warning: [`Fault::Keep`] (ADR 0035
 /// D1).
+#[expect(
+    clippy::too_many_lines,
+    reason = "one walk through a child's namespace, role, type and kind, each with its refusal"
+)]
 fn child_kind(
     found: &Findings<'_, '_>,
     node: Node<'_, '_>,
-    parent: ElementKind,
-    parent_what: &str,
+    parent_element: &Pending,
 ) -> Result<ChildKind, Fault> {
     let text = found.text;
     let written = written_name(text, node);
     let at = node.range().start;
+    let parent = parent_element.kind;
+    let parent_what = parent_element.what();
+    // Which of a pair of templates names the parent: the root element's, or
+    // an element's.
+    let in_root = parent_element.parent.is_none();
+    let container = parent_element.written.as_str();
     match node.tag_name().namespace().filter(|uri| !uri.is_empty()) {
         Some(XMI_NS) => {
-            let reason =
-                format!("the XMI element {written:?} in {parent_what} is not read in this release");
-            return Err(found.unread_fault(at, Unread::XmiMetadata, &reason));
+            let template = if in_root {
+                &template::XMI_014_XMI_CHILD_OF_ROOT
+            } else {
+                &template::XMI_014_XMI_CHILD
+            };
+            let reason = text_details(template, &[("element", &written), ("container", container)]);
+            return Err(found.unread_fault(at, Unread::XmiMetadata, reason));
         }
         Some(_) => return Ok(ChildKind::Preserve),
         None => {}
@@ -3226,18 +3265,28 @@ fn child_kind(
         // §7.10.1): not read yet.
         (None, DeclaredType::Abstract(class)) => {
             if let Some(unread) = proxy_link(node) {
-                let reason = format!(
-                    "the element {written:?} in {parent_what} is in reference form, a proxy of an \
-                     element of the class {class}, which is not read in this release"
+                let template = match (unread.code() == Code::XMI_EXTERNAL_HREF, in_root) {
+                    (true, true) => &template::XMI_007_PROXY_CHILD_OF_ROOT,
+                    (true, false) => &template::XMI_007_PROXY_CHILD,
+                    (false, true) => &template::XMI_014_PROXY_CHILD_OF_ROOT,
+                    (false, false) => &template::XMI_014_PROXY_CHILD,
+                };
+                let reason = text_details(
+                    template,
+                    &[
+                        ("element", &written),
+                        ("container", container),
+                        ("class", class.name()),
+                    ],
                 );
-                return Err(found.unread_fault(at, unread, &reason));
+                return Err(found.unread_fault(at, unread, reason));
             }
             return Err(match found.mode {
-                Mode::Strict => Fault::Refused(ReadError::MissingType {
-                    role: role.name.to_owned(),
-                    declared_type: class.name().to_owned(),
-                    location: locate(text, at),
-                }),
+                Mode::Strict => Fault::Refused(ReadError::missing_type(
+                    role.name.to_owned(),
+                    class.name().to_owned(),
+                    locate(text, at),
+                )),
                 Mode::Tolerant => Fault::Keep(Keep {
                     offset: at,
                     code: Code::XMI_MISSING_TYPE,
@@ -3263,8 +3312,20 @@ fn child_kind(
     // The readable children: every kind a role of a readable class admits,
     // but the kinds this release does not read.
     if let Some(unread) = Unread::kind(kind) {
-        let reason = format!("the {kind} {written:?} in {parent_what} is not read in this release");
-        return Err(found.unread_fault(at, unread, &reason));
+        let template = if in_root {
+            &template::XMI_014_UNREAD_KIND_IN_ROOT
+        } else {
+            &template::XMI_014_UNREAD_KIND
+        };
+        let reason = text_details(
+            template,
+            &[
+                ("class", &kind.to_string()),
+                ("element", &written),
+                ("container", container),
+            ],
+        );
+        return Err(found.unread_fault(at, unread, reason));
     }
     if type_spelled {
         let reason = format!(
@@ -3409,8 +3470,8 @@ fn read_reference(found: &Findings<'_, '_>, node: Node<'_, '_>) -> Result<Elemen
             } else {
                 return Err(Fault::Defect);
             };
-            let reason = unread_attribute_reason(text, &attribute, &element);
-            return Err(found.unread_fault(at, unread, &reason));
+            let reason = unread_attribute_reason(text, &attribute, &element, unread);
+            return Err(found.unread_fault(at, unread, reason));
         }
         if link.is_some() {
             return Err(Fault::Defect);
@@ -3420,12 +3481,11 @@ fn read_reference(found: &Findings<'_, '_>, node: Node<'_, '_>) -> Result<Elemen
             value
         } else {
             let Some(fragment) = same_document_fragment(value) else {
-                let reason = format!(
-                    "the href {:?} of the reference element {element:?} names no element of this \
-                     document by its id; only href=\"#id\" is read in this release",
-                    attribute.value()
+                let reason = text_details(
+                    &template::XMI_007_HREF,
+                    &[("href", attribute.value()), ("element", &element)],
                 );
-                return Err(found.unread_fault(at, Unread::CrossDocumentHref, &reason));
+                return Err(found.unread_fault(at, Unread::CrossDocumentHref, reason));
             };
             fragment
         };
@@ -3575,15 +3635,15 @@ fn repeated(
     offsets: impl IntoIterator<Item = usize>,
 ) -> ReadError {
     let mut locator = Locator::new(text);
-    ReadError::RepeatedValue {
-        element: owner.clone(),
+    ReadError::repeated_value(
+        owner.clone(),
         kind,
-        property: property.to_owned(),
-        locations: offsets
+        property.to_owned(),
+        offsets
             .into_iter()
             .filter_map(|offset| locator.locate(offset))
             .collect(),
-    }
+    )
 }
 
 /// The `RepeatedValue` refusal of the property `property` of the element
@@ -3785,8 +3845,8 @@ fn read_text<'a>(
         } else if is_xsi_type(&attribute) {
             found.xsi_type(&attribute, &subject, owner.as_str());
         } else if let Some(unread) = object_metadata(&attribute) {
-            let reason = unread_attribute_reason(text, &attribute, &element);
-            return Err(found.unread_fault(attribute.range_qname().start, unread, &reason));
+            let reason = unread_attribute_reason(text, &attribute, &element, unread);
+            return Err(found.unread_fault(attribute.range_qname().start, unread, reason));
         } else if !(is_type(&attribute) || is_xmi(&attribute, "id")) {
             return Err(Fault::Defect);
         }
@@ -3821,7 +3881,14 @@ fn read_text<'a>(
     }
     match shorthand.into_lang_string() {
         Ok(Some((value, at))) => {
-            let shape = format!("{subject} is given in the single-language shorthand");
+            let shape = text_details(
+                &template::XMI_012_SHORTHAND,
+                &[
+                    ("role", role.name()),
+                    ("class", &kind.to_string()),
+                    ("id", owner.as_str()),
+                ],
+            );
             found.legacy_shape(at, owner, shape);
             held.push(value, None);
         }
@@ -3839,11 +3906,14 @@ fn xmi_element_in(found: &Findings<'_, '_>, child: Node<'_, '_>, element: &str) 
     if child.tag_name().namespace() != Some(XMI_NS) {
         return Fault::Defect;
     }
-    let reason = format!(
-        "the XMI element {:?} in {element:?} is not read in this release",
-        written_name(found.text, child)
+    let reason = text_details(
+        &template::XMI_014_NESTED_XMI_ELEMENT,
+        &[
+            ("element", &written_name(found.text, child)),
+            ("container", element),
+        ],
     );
-    found.unread_fault(child.range().start, Unread::XmiMetadata, &reason)
+    found.unread_fault(child.range().start, Unread::XmiMetadata, reason)
 }
 
 /// The `LangString` that `node`, a `name` or a `value` of a `content` or
@@ -3899,8 +3969,8 @@ fn read_lang_string<'a>(
             _ => {
                 return Err(match object_metadata(&attribute) {
                     Some(unread) => {
-                        let reason = unread_attribute_reason(text, &attribute, &element);
-                        found.unread_fault(attribute.range_qname().start, unread, &reason)
+                        let reason = unread_attribute_reason(text, &attribute, &element, unread);
+                        found.unread_fault(attribute.range_qname().start, unread, reason)
                     }
                     None => Fault::Defect,
                 });
@@ -3924,7 +3994,18 @@ fn read_lang_string<'a>(
                 if let Some(first) = text_offset(text, child) {
                     fields.content(None).map_err(repeated)?;
                     text_at = Some(first);
-                    let shape = format!("{subject} has its content as text");
+                    let shape = match property {
+                        "name" => shape_of(&template::XMI_012_NAME_TEXT, kind, owner),
+                        "name.value" => shape_of(&template::XMI_012_NAME_VALUE_TEXT, kind, owner),
+                        value => text_details(
+                            &template::XMI_012_VALUE_TEXT,
+                            &[
+                                ("role", value.strip_suffix(".value").unwrap_or(value)),
+                                ("class", &kind.to_string()),
+                                ("id", owner.as_str()),
+                            ],
+                        ),
+                    };
                     found.legacy_shape(first, owner, shape);
                 }
             }
@@ -3943,7 +4024,7 @@ fn read_lang_string<'a>(
                     return Err(Fault::Defect);
                 }
                 fields.lang(Some(lang)).map_err(repeated)?;
-                let shape = format!("{subject} holds a content carrying lang");
+                let shape = shape_of(&template::XMI_012_NAME_CONTENT_LANG, kind, owner);
                 found.legacy_shape(at, owner, shape);
             }
             fields.content(value).map_err(repeated)?;
@@ -3954,7 +4035,7 @@ fn read_lang_string<'a>(
             }
             let value = read_name_value(found, child, subject, owner, kind)?;
             has_entry = true;
-            let shape = format!("{subject} holds a value");
+            let shape = shape_of(&template::XMI_012_NAME_VALUE, kind, owner);
             found.legacy_shape(child.range().start, owner, shape);
             if let Some(lang) = value.lang() {
                 fields.lang(Some(lang.to_owned())).map_err(repeated)?;
@@ -3994,14 +4075,14 @@ fn check_lang_string_tag(
         match sacm_class(node, attribute.value()) {
             Some("LangString") => {}
             Some("ExpressionLangString") => {
-                let reason = format!(
-                    "the element {element:?} has the type {:?}, which is not read in this release",
-                    attribute.value()
+                let reason = text_details(
+                    &template::XMI_014_EXPRESSION_LANG_STRING,
+                    &[("element", element), ("type", attribute.value())],
                 );
                 return Err(found.unread_fault(
                     node.range().start,
                     Unread::ExpressionLangString,
-                    &reason,
+                    reason,
                 ));
             }
             _ => return Err(Fault::Defect),
@@ -4054,9 +4135,9 @@ fn read_name_value<'a>(
     let text = found.text;
     if let Some(attribute) = node.attributes().find(|attribute| is_xmi(attribute, "id")) {
         let element = written_name(text, node);
-        let reason = unread_attribute_reason(text, &attribute, &element);
+        let reason = unread_attribute_reason(text, &attribute, &element, Unread::XmiMetadata);
         let at = attribute.range_qname().start;
-        return Err(found.unread_fault(at, Unread::XmiMetadata, &reason));
+        return Err(found.unread_fault(at, Unread::XmiMetadata, reason));
     }
     let subject = format!("the value in {subject}");
     read_lang_string(found, node, &subject, owner, kind, "name.value").map(|(value, _)| value)
@@ -4216,12 +4297,21 @@ fn attribute_written<'t>(text: &'t str, attribute: &Attribute<'t, '_>) -> &'t st
 
 /// The reason of the refusal of `attribute` of the element written as
 /// `element`, which this release does not read.
-fn unread_attribute_reason(text: &str, attribute: &Attribute<'_, '_>, element: &str) -> String {
-    format!(
-        "the attribute {:?} of the element {element:?} is not read in this release",
-        text.get(attribute.range_qname())
-            .unwrap_or(attribute.name())
-    )
+fn unread_attribute_reason(
+    text: &str,
+    attribute: &Attribute<'_, '_>,
+    element: &str,
+    unread: Unread,
+) -> Details {
+    let template = match unread.code() {
+        code if code == Code::XMI_EXTERNAL_HREF => &template::XMI_007_UNREAD_ATTRIBUTE,
+        code if code == Code::XMI_UNKNOWN_CONTENT => &template::XMI_003_UNREAD_ATTRIBUTE,
+        _ => &template::XMI_014_UNREAD_ATTRIBUTE,
+    };
+    let written = text
+        .get(attribute.range_qname())
+        .unwrap_or(attribute.name());
+    text_details(template, &[("attribute", written), ("element", element)])
 }
 
 /// The name of `element` as written in its start tag: `prefix:Local`, or
@@ -4251,7 +4341,9 @@ mod tests {
     fn refusal(content: &str) -> Option<(Option<SourceLocation>, String)> {
         let input = format!("{OPEN}{content}</sacm:ArgumentPackage>");
         match read(input.as_bytes(), &strict()) {
-            Err(ReadError::Unsupported { location, reason }) => Some((location, reason)),
+            Err(ReadError::Unsupported {
+                location, reason, ..
+            }) => Some((location, reason)),
             _ => None,
         }
     }

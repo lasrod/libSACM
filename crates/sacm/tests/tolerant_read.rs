@@ -424,7 +424,7 @@ fn lib_compat_001_tolerant_keeps_each_strict_refusal_with_its_warning_at_the_sam
         let strict = strict_refusal(ROW, what, &case.input);
         assert_eq!(
             strict.code(),
-            Some(case.code),
+            case.code,
             "{ROW}: {what}: setup: the strict refusal is not {}: {strict:?}",
             case.code
         );
@@ -627,7 +627,7 @@ fn lib_compat_001_the_fatal_refusals_are_the_same_in_both_modes() {
             failures.push(format!("{what}: setup: a strict read returned a document"));
         }
         match read(Mode::Tolerant, &input) {
-            Err(error) if error.code() == Some(Code::ID_DUPLICATE) => {}
+            Err(error) if error.code() == Code::ID_DUPLICATE => {}
             other => failures.push(format!(
                 "{what}: a tolerant read is not DuplicateId: {:?}",
                 other.map(|output| output.diagnostics().to_vec())
@@ -639,7 +639,8 @@ fn lib_compat_001_the_fatal_refusals_are_the_same_in_both_modes() {
             MODES.iter().map(|&mode| read(mode, input)).collect();
         match (&refusals[0], &refusals[1]) {
             (Err(strict), Err(tolerant)) => {
-                if strict.code() != Some(*code) {
+                let is_other_code = strict.code() != *code;
+                if is_other_code {
                     failures.push(format!(
                         "{what}: the strict refusal is not {code}: {strict:?}"
                     ));
@@ -1286,7 +1287,7 @@ fn sacm23_val_006_a_tolerant_write_never_emits_a_property_attribute_twice() {
     let strict = strict_refusal(VAL_006, what, &input);
     assert_eq!(
         strict.code(),
-        Some(Code::ENUM_INVALID_LITERAL),
+        Code::ENUM_INVALID_LITERAL,
         "{VAL_006}: {what}: setup: the strict refusal is not the literal first"
     );
     let output = tolerant(VAL_006, what, &input);
@@ -1338,7 +1339,7 @@ fn sacm23_val_006_a_bad_declaration_attribute_counts_as_the_first_occurrence() {
     let strict = strict_refusal(VAL_006, what, &input);
     assert_eq!(
         strict.code(),
-        Some(Code::ENUM_INVALID_LITERAL),
+        Code::ENUM_INVALID_LITERAL,
         "{VAL_006}: {what}: setup: the strict refusal is not the literal"
     );
     let output = tolerant(VAL_006, what, &input);

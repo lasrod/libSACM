@@ -47,6 +47,8 @@ use sacm::diagnostic::{Code, Severity, SourceLocation};
 use sacm::model::{AssertionDeclaration, Document, ElementId, LangString, SacmElement};
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteOptions};
 
+mod common;
+
 const ROW: &str = "SACM23-XMI-014";
 
 /// Both read modes. A value element is read, and refused, the same in each.
@@ -320,9 +322,9 @@ fn assert_unsupported_at_mark(what: &str, template: &str) -> ReadError {
         "{ROW}: {what}: expected Unsupported, got {error:?}"
     );
     assert_eq!(
-        error.code(),
-        None,
-        "{ROW}: {what}: an Unsupported refusal has no catalog code"
+        error.code().as_str(),
+        crate::common::unsupported_code(&error.to_string()),
+        "{ROW}: {what}: an Unsupported refusal does not have the code of its label"
     );
     assert_eq!(
         error.location(),
@@ -363,7 +365,7 @@ fn assert_invalid_literal_at_mark(what: &str, template: &str, value: &str) -> Re
     }
     assert_eq!(
         error.code(),
-        Some(Code::ENUM_INVALID_LITERAL),
+        Code::ENUM_INVALID_LITERAL,
         "{ROW}: {what}: the refusal is not SACM-ENUM-001"
     );
     assert_eq!(
@@ -1201,12 +1203,12 @@ fn assert_repeated(what: &str, template: &str, element: &str, property: &str) ->
     }
     assert_eq!(
         error.code(),
-        Some(Code::MULTIPLICITY_VIOLATION),
+        Code::MULTIPLICITY_VIOLATION,
         "{ROW}: {what}: the code"
     );
     assert_eq!(
-        error.code().map(Code::as_str),
-        Some("SACM-MULT-001"),
+        error.code().as_str(),
+        "SACM-MULT-001",
         "{ROW}: {what}: the code's text"
     );
     assert_eq!(

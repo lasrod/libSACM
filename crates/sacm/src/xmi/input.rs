@@ -48,10 +48,22 @@
 
 use std::borrow::Cow;
 
-use crate::diagnostic::SourceLocation;
+use crate::diagnostic::template::{self, Template};
+use crate::diagnostic::{Argument, Details, SourceLocation};
 
 use super::ReadError;
 use super::refusal::{Unread, unsupported, unsupported_at};
+
+/// The details of a message of `template`, made from `arguments`.
+fn details(template: &'static Template, arguments: Vec<Argument>) -> Details {
+    Details::new(template, arguments)
+}
+
+/// The details of a message of `template`, whose one argument `name` is
+/// `value`.
+fn details_of(template: &'static Template, name: &'static str, value: &str) -> Details {
+    Details::new(template, vec![Argument::text(name, value)])
+}
 
 /// The text of `input`, if it is UTF-8 (or ASCII, if declared so) or UTF-16
 /// with a byte order mark, its XML declaration is well-formed, and it
@@ -67,9 +79,7 @@ pub(super) fn decode(input: &[u8]) -> Result<Cow<'_, str>, ReadError> {
             return Err(unsupported_at(
                 SourceLocation::at(1, 1),
                 Unread::Encoding,
-                &format!(
-                    "the input starts with a {encoding} byte order mark, and only UTF-8, ASCII and UTF-16 are read"
-                ),
+                details_of(&template::XML_002_BYTE_ORDER_MARK, "encoding", encoding),
             ));
         }
         None => {
@@ -77,9 +87,7 @@ pub(super) fn decode(input: &[u8]) -> Result<Cow<'_, str>, ReadError> {
                 return Err(unsupported_at(
                     SourceLocation::at(1, 1),
                     Unread::Encoding,
-                    &format!(
-                        "the input is encoded in {encoding}, and only UTF-8, ASCII and UTF-16 starting with U+FEFF are read"
-                    ),
+                    details_of(&template::XML_002_DETECTED_ENCODING, "encoding", encoding),
                 ));
             }
             let (text, error) = decode_utf8(input);
@@ -142,9 +150,12 @@ fn decode_utf16(input: &[u8], big_endian: bool) -> (String, Option<ReadError>) {
         match c {
             Ok(c) => text.push(c),
             Err(error) => {
-                let reason = format!(
-                    "the UTF-16 code unit {:04X} is an unpaired surrogate",
-                    error.unpaired_surrogate()
+                let reason = details(
+                    &template::XML_001_UNPAIRED_SURROGATE,
+                    vec![Argument::count(
+                        "unit",
+                        u64::from(error.unpaired_surrogate()),
+                    )],
                 );
                 let error = malformed(&text, text.len(), reason);
                 return (text, Some(error));
@@ -155,7 +166,7 @@ fn decode_utf16(input: &[u8], big_endian: bool) -> (String, Option<ReadError>) {
         malformed(
             &text,
             text.len(),
-            "the UTF-16 input ends with a byte that is not a whole code unit".to_owned(),
+            details(&template::XML_001_ODD_UTF16_BYTE, Vec::new()),
         )
     });
     (text, error)
@@ -175,18 +186,17 @@ pub(super) fn parse(text: &str) -> Result<roxmltree::Document<'_>, ReadError> {
 
 /// The refusal of invalid UTF-8 after `text`, the longest valid prefix.
 fn invalid_utf8(text: &str) -> ReadError {
-    ReadError::Malformed {
-        location: locate(text, text.len()),
-        reason: "a byte sequence is not valid UTF-8".to_owned(),
-    }
+    malformed(
+        text,
+        text.len(),
+        details(&template::XML_001_INVALID_UTF8, Vec::new()),
+    )
 }
 
-/// A `Malformed` refusal at byte `offset` of `text`.
-fn malformed(text: &str, offset: usize, reason: String) -> ReadError {
-    ReadError::Malformed {
-        location: locate(text, offset),
-        reason,
-    }
+/// A `Malformed` refusal at byte `offset` of `text`, whose reason `reason`
+/// gives.
+fn malformed(text: &str, offset: usize, reason: Details) -> ReadError {
+    ReadError::malformed(locate(text, offset), reason)
 }
 
 /// A UTF-16 or UCS-4 byte order mark.
@@ -262,14 +272,16 @@ fn check_supported(
             text,
             declared.offset,
             Unread::Encoding,
-            &format!(
-                "the declared encoding {name:?} is not supported: without a UTF-16 byte order mark, only UTF-8 and ASCII are read"
-            ),
+            details_of(&template::XML_002_DECLARED_ENCODING, "encoding", name),
         )),
         Encoding::Utf16 => Err(malformed(
             text,
             declared.offset,
-            format!("the declared encoding {name:?} contradicts the UTF-16 byte order mark"),
+            details_of(
+                &template::XML_001_ENCODING_CONTRADICTS_BOM,
+                "encoding",
+                name,
+            ),
         )),
     }
 }
@@ -288,9 +300,12 @@ fn check_ascii(text: &str, declared: &Declared<'_>) -> Result<(), ReadError> {
         Some((offset, c)) => Err(malformed(
             text,
             offset,
-            format!(
-                "the declared encoding is {name:?}, but the input holds the non-ASCII character U+{:04X}",
-                u32::from(c)
+            details(
+                &template::XML_001_NON_ASCII_CHARACTER,
+                vec![
+                    Argument::text("encoding", name),
+                    Argument::count("code_point", u64::from(u32::from(c))),
+                ],
             ),
         )),
         None => Ok(()),
@@ -356,7 +371,7 @@ fn check_declaration<'a>(
         return Err(malformed(
             text,
             offset,
-            format!("the XML version {version:?} is not \"1.\" followed by digits"),
+            details_of(&template::XML_001_XML_VERSION, "version", version),
         ));
     }
     // EncodingDecl [80], then the supported-encoding check.
@@ -369,7 +384,7 @@ fn check_declaration<'a>(
             return Err(malformed(
                 text,
                 offset,
-                format!("the encoding name {name:?} is not a valid encoding name"),
+                details_of(&template::XML_001_ENCODING_NAME, "encoding", name),
             ));
         }
         let declared = Declared { name, offset };
@@ -385,7 +400,7 @@ fn check_declaration<'a>(
             return Err(malformed(
                 text,
                 offset,
-                format!("the standalone value {standalone:?} is not \"yes\" or \"no\""),
+                details_of(&template::XML_001_STANDALONE, "value", standalone),
             ));
         }
         spaced = cursor.skip_space();
@@ -492,13 +507,11 @@ impl<'a> Cursor<'a, '_> {
         } else if self.truncated.is_some() && offset + name.len() == self.text.len() {
             return self.ended();
         } else if !PSEUDO_ATTRIBUTES.contains(&name) {
-            format!("the XML declaration has the unknown pseudo-attribute {name:?}")
+            details_of(&template::XML_001_UNKNOWN_PSEUDO_ATTRIBUTE, "name", name)
         } else if spaced {
-            format!("the pseudo-attribute {name:?} is out of order in the XML declaration")
+            details_of(&template::XML_001_PSEUDO_ATTRIBUTE_ORDER, "name", name)
         } else {
-            format!(
-                "the pseudo-attribute {name:?} does not follow white space in the XML declaration"
-            )
+            details_of(&template::XML_001_PSEUDO_ATTRIBUTE_SPACE, "name", name)
         };
         malformed(self.text, offset, reason)
     }
@@ -512,7 +525,11 @@ impl<'a> Cursor<'a, '_> {
         malformed(
             self.text,
             self.offset,
-            format!("an unexpected character in the XML declaration where {expected} was expected"),
+            details_of(
+                &template::XML_001_DECLARATION_CHARACTER,
+                "expected",
+                expected,
+            ),
         )
     }
 
@@ -523,7 +540,7 @@ impl<'a> Cursor<'a, '_> {
             None => malformed(
                 self.text,
                 self.text.len(),
-                "the input ends inside the XML declaration".to_owned(),
+                details(&template::XML_001_DECLARATION_END, Vec::new()),
             ),
         }
     }
@@ -610,14 +627,14 @@ fn check_pi_target(text: &str, offset: usize, body: &str) -> Result<(), ReadErro
         return Err(malformed(
             text,
             offset,
-            format!("a processing instruction has the reserved target {target:?}"),
+            details_of(&template::XML_001_RESERVED_PI_TARGET, "target", target),
         ));
     }
     if target.contains(':') {
         return Err(malformed(
             text,
             offset,
-            format!("the processing instruction target {target:?} contains a colon"),
+            details_of(&template::XML_001_PI_TARGET_COLON, "target", target),
         ));
     }
     let after = body.get(length..).unwrap_or_default();
@@ -625,9 +642,7 @@ fn check_pi_target(text: &str, offset: usize, body: &str) -> Result<(), ReadErro
         return Err(malformed(
             text,
             offset + "<?".len() + length,
-            format!(
-                "the processing instruction target {target:?} is not followed by white space or \"?>\""
-            ),
+            details_of(&template::XML_001_PI_TARGET_END, "target", target),
         ));
     }
     Ok(())
@@ -668,7 +683,7 @@ fn check_name(text: &str, offset: usize, name: &str) -> Result<(), ReadError> {
         return Err(malformed(
             text,
             offset,
-            format!("the name {name:?} has an empty namespace prefix"),
+            details_of(&template::XML_001_EMPTY_PREFIX, "name", name),
         ));
     }
     Ok(())
@@ -710,7 +725,7 @@ fn start_tag(text: &str, offset: usize) -> Result<Option<usize>, ReadError> {
             return Err(malformed(
                 text,
                 offset + index,
-                "the namespace prefix \"xmlns\" is declared, and it cannot be declared".to_owned(),
+                details(&template::XML_001_XMLNS_PREFIX_DECLARED, Vec::new()),
             ));
         }
         let Some(open) = trimmed.find(['"', '\'']) else {
@@ -726,9 +741,7 @@ fn start_tag(text: &str, offset: usize) -> Result<Option<usize>, ReadError> {
             return Err(malformed(
                 text,
                 offset + index,
-                format!(
-                    "the namespace prefix {prefix:?} is declared with an empty value, and a prefix cannot be undeclared"
-                ),
+                details_of(&template::XML_001_PREFIX_UNDECLARED, "prefix", prefix),
             ));
         }
         check_references(text, offset + value_start, value_length)?;
@@ -765,8 +778,8 @@ fn check_references(text: &str, offset: usize, length: usize) -> Result<(), Read
             continue;
         }
         let what = match value {
-            Some(value) if value <= 0x10_FFFF => "a surrogate",
-            _ => "a code point above U+10FFFF",
+            Some(value) if value <= 0x10_FFFF => &template::XML_001_REFERENCE_TO_SURROGATE,
+            _ => &template::XML_001_REFERENCE_ABOVE_MAX,
         };
         let reference = after
             .get(..after.len() - digits.len() + end + 1)
@@ -775,9 +788,7 @@ fn check_references(text: &str, offset: usize, length: usize) -> Result<(), Read
         return Err(malformed(
             text,
             offset + index,
-            format!(
-                "the character reference {reference:?} refers to {what}, which is not a character"
-            ),
+            details_of(what, "reference", &reference),
         ));
     }
     Ok(())
@@ -934,98 +945,89 @@ fn refusal(text: &str, error: &roxmltree::Error) -> ReadError {
             location: doctype_offset(text).and_then(|offset| locate(text, offset)),
         },
         E::NodesLimitReached | E::AttributesLimitReached | E::NamespacesLimitReached => {
-            unsupported_at(None, Unread::Capacity, &reason(error))
+            unsupported_at(None, Unread::Capacity, reason(error))
         }
-        E::NoRootNode | E::UnclosedRootNode | E::UnexpectedEndOfStream => ReadError::Malformed {
-            location: locate(text, text.len()),
-            reason: reason(error),
-        },
-        _ => ReadError::Malformed {
-            location: offset_of(text, error.pos()).and_then(|offset| locate(text, offset)),
-            reason: reason(error),
-        },
+        E::NoRootNode | E::UnclosedRootNode | E::UnexpectedEndOfStream => {
+            ReadError::malformed(locate(text, text.len()), reason(error))
+        }
+        _ => ReadError::malformed(
+            offset_of(text, error.pos()).and_then(|offset| locate(text, offset)),
+            reason(error),
+        ),
     }
 }
 
-/// Our own reason for a roxmltree error. It states no position, and it
-/// quotes names from the input with `{:?}`, so it stays on one line.
-/// roxmltree's `Display` does neither.
-fn reason(error: &roxmltree::Error) -> String {
+/// Our own reason for a roxmltree error: its template and arguments. It
+/// states no position, and it quotes names from the input with `{:?}`, so it
+/// stays on one line. roxmltree's `Display` does neither. A DOCTYPE is
+/// refused as `ReadError::Doctype` before its reason is asked for.
+fn reason(error: &roxmltree::Error) -> Details {
     use roxmltree::Error as E;
 
+    let none = |template| details(template, Vec::new());
     match error {
-        E::DtdDetected => "the input has a DOCTYPE".to_owned(),
-        E::NodesLimitReached => {
-            "the document has more nodes or nesting levels than the parser can hold".to_owned()
-        }
-        E::AttributesLimitReached => {
-            "the document has more attributes than the parser can hold".to_owned()
-        }
-        E::NamespacesLimitReached => {
-            "the document declares more namespaces than the parser can hold".to_owned()
-        }
-        E::NoRootNode => "the document has no root element".to_owned(),
-        E::UnclosedRootNode => "the root element is not closed".to_owned(),
-        E::UnexpectedEndOfStream => "the input ends before the document is complete".to_owned(),
-        E::InvalidXmlPrefixUri(_) => {
-            "the \"xml\" prefix is bound to a namespace other than the XML namespace".to_owned()
-        }
-        E::UnexpectedXmlUri(_) => {
-            "the XML namespace is bound to a prefix other than \"xml\"".to_owned()
-        }
-        E::UnexpectedXmlnsUri(_) => {
-            "the \"xmlns\" namespace is declared, which is not allowed".to_owned()
-        }
-        E::InvalidElementNamePrefix(_) => "an element name has the prefix \"xmlns\"".to_owned(),
+        E::NodesLimitReached => none(&template::SEC_002_NODES),
+        E::AttributesLimitReached => none(&template::SEC_002_ATTRIBUTES),
+        E::NamespacesLimitReached => none(&template::SEC_002_NAMESPACES),
+        E::NoRootNode => none(&template::XML_001_NO_ROOT),
+        E::UnclosedRootNode => none(&template::XML_001_UNCLOSED_ROOT),
+        E::DtdDetected => none(&template::SEC_001_DOCTYPE),
+        E::UnexpectedEndOfStream => none(&template::XML_001_UNEXPECTED_END),
+        E::InvalidXmlPrefixUri(_) => none(&template::XML_001_XML_PREFIX_URI),
+        E::UnexpectedXmlUri(_) => none(&template::XML_001_XML_URI_PREFIX),
+        E::UnexpectedXmlnsUri(_) => none(&template::XML_001_XMLNS_URI),
+        E::InvalidElementNamePrefix(_) => none(&template::XML_001_XMLNS_ELEMENT_PREFIX),
         E::DuplicatedNamespace(prefix, _) => {
-            format!("the namespace prefix {prefix:?} is declared twice on one element")
+            details_of(&template::XML_001_DUPLICATE_PREFIX, "prefix", prefix)
         }
         E::UnknownNamespace(prefix, _) => {
-            format!("the namespace prefix {prefix:?} is not declared")
+            details_of(&template::XML_001_UNKNOWN_PREFIX, "prefix", prefix)
         }
-        E::UnexpectedCloseTag(expected, actual, _) => {
-            format!("the end tag {actual:?} does not match the start tag {expected:?}")
+        E::UnexpectedCloseTag(expected, actual, _) => details(
+            &template::XML_001_END_TAG_MISMATCH,
+            vec![
+                Argument::text("end_tag", actual.as_str()),
+                Argument::text("start_tag", expected.as_str()),
+            ],
+        ),
+        E::UnexpectedEntityCloseTag(_) => none(&template::XML_001_ENTITY_CLOSES_ELEMENT),
+        E::UnknownEntityReference(name, _) => {
+            details_of(&template::XML_001_UNKNOWN_ENTITY, "entity", name)
         }
-        E::UnexpectedEntityCloseTag(_) => {
-            "an entity's replacement text closes an element".to_owned()
-        }
-        E::UnknownEntityReference(name, _) => format!("the entity {name:?} is not declared"),
-        E::MalformedEntityReference(_) => {
-            "a \"&\" does not start an entity or character reference".to_owned()
-        }
-        E::EntityReferenceLoop(_) => "entity references nest too deeply".to_owned(),
-        E::InvalidAttributeValue(_) => "an attribute value holds an unescaped \"<\"".to_owned(),
+        E::MalformedEntityReference(_) => none(&template::XML_001_MALFORMED_REFERENCE),
+        E::EntityReferenceLoop(_) => none(&template::XML_001_ENTITY_LOOP),
+        E::InvalidAttributeValue(_) => none(&template::XML_001_LT_IN_ATTRIBUTE_VALUE),
         E::DuplicatedAttribute(name, _) => {
-            format!("an element has the attribute {name:?} more than once")
+            details_of(&template::XML_001_DUPLICATE_ATTRIBUTE, "attribute", name)
         }
-        E::UnexpectedDeclaration(_) => {
-            "an XML declaration is not at the start of the document".to_owned()
-        }
-        E::InvalidName(_) => "a name is not valid".to_owned(),
-        E::NonXmlChar(c, _) => {
-            format!(
-                "the character U+{:04X} is not allowed in XML",
-                u32::from(*c)
-            )
-        }
-        E::InvalidChar(expected, _, _) => format!(
-            "an unexpected character where {:?} was expected",
-            char::from(*expected).to_string()
+        E::UnexpectedDeclaration(_) => none(&template::XML_001_MISPLACED_DECLARATION),
+        E::InvalidName(_) => none(&template::XML_001_INVALID_NAME),
+        E::NonXmlChar(c, _) => details(
+            &template::XML_001_NON_XML_CHARACTER,
+            vec![Argument::count("code_point", u64::from(u32::from(*c)))],
+        ),
+        E::InvalidChar(expected, _, _) => details_of(
+            &template::XML_001_UNEXPECTED_CHARACTER,
+            "expected",
+            &format!("{:?}", char::from(*expected).to_string()),
         ),
         // roxmltree's descriptions are fixed English phrases that
         // single-quote characters, as in "'>'".
-        E::InvalidChar2(expected, _, _) => format!(
-            "an unexpected character where {} was expected",
-            expected
+        E::InvalidChar2(expected, _, _) => details_of(
+            &template::XML_001_UNEXPECTED_CHARACTER,
+            "expected",
+            &expected
                 .replace("a whitespace", "white space")
-                .replace('\'', "\"")
+                .replace('\'', "\""),
         ),
-        E::InvalidString(expected, _) => format!("{expected:?} was expected"),
-        E::InvalidExternalID(_) => "an external identifier is not valid".to_owned(),
-        E::EntityResolver(..) => "an external entity could not be resolved".to_owned(),
-        E::InvalidComment(_) => "a comment holds \"--\" or ends with \"-\"".to_owned(),
-        E::InvalidCharacterData(_) => "character data holds \"]]>\"".to_owned(),
-        E::UnknownToken(_) => "the input has markup or text that is not allowed here".to_owned(),
+        E::InvalidString(expected, _) => {
+            details_of(&template::XML_001_EXPECTED_STRING, "expected", expected)
+        }
+        E::InvalidExternalID(_) => none(&template::XML_001_INVALID_EXTERNAL_ID),
+        E::EntityResolver(..) => none(&template::XML_001_UNRESOLVED_ENTITY),
+        E::InvalidComment(_) => none(&template::XML_001_INVALID_COMMENT),
+        E::InvalidCharacterData(_) => none(&template::XML_001_CDATA_END_IN_TEXT),
+        E::UnknownToken(_) => none(&template::XML_001_UNKNOWN_TOKEN),
     }
 }
 
@@ -1151,13 +1153,13 @@ mod tests {
             assert_eq!(encoding_by_bom(input), None, "{input:?}");
             assert_eq!(encoding_by_first_bytes(input), Some(encoding), "{input:?}");
             assert_eq!(
-                decode(input),
-                Err(ReadError::Unsupported {
-                    location: SourceLocation::at(1, 1),
-                    reason: format!(
+                decode(input).map_err(|error| located(&error)),
+                Err((
+                    SourceLocation::at(1, 1),
+                    format!(
                         "the input is encoded in {encoding}, and only UTF-8, ASCII and UTF-16 starting with U+FEFF are read (a limit of this version)"
                     ),
-                }),
+                )),
             );
         }
         for input in [&b"<?xml"[..], b"\xEF\xBB\xBF<", b"<\x00", b""] {
@@ -1171,7 +1173,7 @@ mod tests {
         let declared = |text| {
             check_declaration(text, Encoding::Utf8, None)
                 .map(|declared| declared.map(|d| (d.name, d.offset)))
-                .map_err(|error| (error.code().is_some(), error.location()))
+                .map_err(|error| (error.code() == Code::XML_MALFORMED, error.location()))
         };
         assert_eq!(
             declared("<?xml version=\"1.0\" encoding = 'utf-8'?>"),
@@ -1184,7 +1186,7 @@ mod tests {
         assert_eq!(declared("<?xml version=\"1.0\"?>"), Ok(None));
         assert_eq!(declared("<?xml-model encoding=\"x\"?>"), Ok(None));
         assert_eq!(declared("<r/>"), Ok(None));
-        // An unsupported encoding is Unsupported (no code) at its name.
+        // An unsupported encoding is Unsupported (SACM-XML-002) at its name.
         assert_eq!(
             declared("<?xml version=\"1.0\" encoding=\"x\" junk"),
             Err((false, SourceLocation::at(1, 31)))
@@ -1455,12 +1457,12 @@ mod tests {
     fn decode_refuses_a_declared_encoding_before_invalid_utf8() {
         let latin1 = b"<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n<r>caf\xE9</r>";
         assert_eq!(
-            decode(latin1),
-            Err(ReadError::Unsupported {
-                location: SourceLocation::at(1, 31),
-                reason: "the declared encoding \"ISO-8859-1\" is not supported: without a UTF-16 byte order mark, only UTF-8 and ASCII are read (a limit of this version)"
+            decode(latin1).map_err(|error| located(&error)),
+            Err((
+                SourceLocation::at(1, 31),
+                "the declared encoding \"ISO-8859-1\" is not supported: without a UTF-16 byte order mark, only UTF-8 and ASCII are read (a limit of this version)"
                     .to_owned(),
-            })
+            ))
         );
         let ascii = "<?xml version='1.0' encoding='ascii'?>\n<r>é\u{FFFD}</r>";
         assert_eq!(
@@ -1517,7 +1519,7 @@ mod tests {
             assert_eq!(declared(name), Ok(()), "{name:?}");
         }
         for name in ["UTF-8", "ascii", "UTF-32"] {
-            assert_eq!(declared(name), Err(Some(Code::XML_MALFORMED)), "{name:?}");
+            assert_eq!(declared(name), Err(Code::XML_MALFORMED), "{name:?}");
         }
     }
 
@@ -1527,21 +1529,21 @@ mod tests {
 
         let text = "<r>\n<c/>";
         assert_eq!(
-            refusal(text, &E::UnclosedRootNode),
-            ReadError::Malformed {
-                location: SourceLocation::at(2, 5),
-                reason: "the root element is not closed".to_owned(),
-            }
+            located(&refusal(text, &E::UnclosedRootNode)),
+            (
+                SourceLocation::at(2, 5),
+                "the root element is not closed".to_owned()
+            )
         );
         assert_eq!(
-            refusal(
+            located(&refusal(
                 text,
                 &E::UnknownNamespace("p\nq".to_owned(), TextPos::new(2, 2))
-            ),
-            ReadError::Malformed {
-                location: SourceLocation::at(2, 2),
-                reason: "the namespace prefix \"p\\nq\" is not declared".to_owned(),
-            }
+            )),
+            (
+                SourceLocation::at(2, 2),
+                "the namespace prefix \"p\\nq\" is not declared".to_owned()
+            )
         );
         // Parser capacity limits are Unsupported, not Malformed (LIB-SEC-003).
         for limit in [
@@ -1549,16 +1551,20 @@ mod tests {
             E::AttributesLimitReached,
             E::NamespacesLimitReached,
         ] {
+            let error = refusal(text, &limit);
+            assert!(matches!(error, ReadError::Unsupported { .. }), "{limit:?}");
             assert_eq!(
-                refusal(text, &limit),
-                ReadError::Unsupported {
-                    location: None,
-                    reason: format!("{} (a limit of this version)", reason(&limit)),
-                },
+                located(&error),
+                (
+                    None,
+                    format!("{} (a limit of this version)", reason(&limit).render())
+                ),
                 "{limit:?}"
             );
             assert!(
-                reason(&limit).ends_with("than the parser can hold"),
+                reason(&limit)
+                    .render()
+                    .ends_with("than the parser can hold"),
                 "{limit:?}"
             );
         }
@@ -1572,8 +1578,74 @@ mod tests {
             SourceLocation::at(1, 4)
         );
         assert_eq!(
-            reason(&E::InvalidChar2("'[' or '>'", b'x', TextPos::new(1, 1))),
+            reason(&E::InvalidChar2("'[' or '>'", b'x', TextPos::new(1, 1))).render(),
             "an unexpected character where \"[\" or \">\" was expected"
         );
+    }
+
+    /// The parser errors no input reaches: those of a DTD's entity
+    /// declarations, which every read refuses first as a DOCTYPE, each with
+    /// its template (LIB-API-017, acceptance 4).
+    #[test]
+    fn the_parser_errors_of_a_dtd_have_their_templates() {
+        use roxmltree::{Error as E, TextPos};
+
+        let at = TextPos::new(1, 1);
+        let cases = [
+            (
+                E::UnexpectedEntityCloseTag(at),
+                &template::XML_001_ENTITY_CLOSES_ELEMENT,
+                "an entity's replacement text closes an element",
+            ),
+            (
+                E::EntityReferenceLoop(at),
+                &template::XML_001_ENTITY_LOOP,
+                "entity references nest too deeply",
+            ),
+            (
+                E::InvalidAttributeValue(at),
+                &template::XML_001_LT_IN_ATTRIBUTE_VALUE,
+                "an attribute value holds an unescaped \"<\"",
+            ),
+            (
+                E::InvalidExternalID(at),
+                &template::XML_001_INVALID_EXTERNAL_ID,
+                "an external identifier is not valid",
+            ),
+            (
+                E::EntityResolver(at, "no".to_owned()),
+                &template::XML_001_UNRESOLVED_ENTITY,
+                "an external entity could not be resolved",
+            ),
+        ];
+        for (error, template, english) in cases {
+            let refused = refusal("<r/>", &error);
+            assert_eq!(
+                (refused.code(), refused.template(), refused.arguments()),
+                (Code::XML_MALFORMED, template.id, &[][..]),
+                "LIB-API-017: {error:?}"
+            );
+            assert_eq!(
+                refused.to_string(),
+                format!("the input is not well-formed XML at line 1, column 1: {english}"),
+                "LIB-API-017: {error:?}"
+            );
+        }
+        // A DOCTYPE is refused as itself before a reason is asked for.
+        assert_eq!(reason(&E::DtdDetected).template(), "SACM-SEC-001/doctype");
+    }
+
+    /// The location and the reason of a `Malformed` or `Unsupported`
+    /// refusal.
+    fn located(error: &ReadError) -> (Option<SourceLocation>, String) {
+        match error {
+            ReadError::Malformed {
+                location, reason, ..
+            }
+            | ReadError::Unsupported {
+                location, reason, ..
+            } => (*location, reason.clone()),
+            other => panic!("{other:?}"),
+        }
     }
 }

@@ -228,6 +228,13 @@ const CODES: &[Code] = &[
     Code::CITATION_INVALID,
     Code::AS_CITED_INVALID,
     Code::ABSTRACT_FORM_INVALID,
+    // The codes of slice 0063 (LIB-API-017).
+    Code::XML_ENCODING_NOT_READ,
+    Code::XML_UNREPRESENTABLE_CHARACTER,
+    Code::PARSER_LIMIT,
+    Code::XMI_NAMESPACE_NOT_PINNED,
+    Code::XMI_WRAPPER_NAMESPACE,
+    Code::XMI_STRICT_SAVE_INVALID,
 ];
 
 /// The three flags, with their names.

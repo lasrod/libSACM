@@ -50,48 +50,48 @@ af-examples-gsn-pattern-decorators.sacm
   tolerant write: reads back equal
 
 af-testdata-sample.sacm.xml
-  tolerant read: refused Unsupported at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
-  strict read: refused Unsupported at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
+  tolerant read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
+  strict read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
 
 af-testdata-oasc-ja.xml
-  tolerant read: refused Unsupported at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
-  strict read: refused Unsupported at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
+  tolerant read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
+  strict read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
 
 af-testdata-safety-case-sanitized-strict.sacm.xml
-  tolerant read: refused Unsupported at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
-  strict read: refused Unsupported at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
+  tolerant read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
+  strict read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
 
 oasc-open-autonomy-safety-case.sacm.xml
-  tolerant read: refused Unsupported at line 15, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
-  strict read: refused Unsupported at line 15, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
+  tolerant read: refused Unsupported SACM-XMI-002 at line 15, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
+  strict read: refused Unsupported SACM-XMI-002 at line 15, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
 
 aceditor-hbs-default.sacm2
-  tolerant read: refused Unsupported at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
-  strict read: refused Unsupported at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
+  tolerant read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
+  strict read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
 
 epsilon-sacm-example.model
-  tolerant read: refused Unsupported at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
-  strict read: refused Unsupported at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
+  tolerant read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
+  strict read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
 
 epsilon-untitled.model
-  tolerant read: refused Unsupported at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
-  strict read: refused Unsupported at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
+  tolerant read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
+  strict read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
 
 justification-factory-sample-sacm.xmi
-  tolerant read: refused Unsupported at line 1, column 31 (a limit of this version)
-  strict read: refused Unsupported at line 1, column 31 (a limit of this version)
+  tolerant read: refused Unsupported SACM-XML-002 at line 1, column 31 (a limit of this version)
+  strict read: refused Unsupported SACM-XML-002 at line 1, column 31 (a limit of this version)
 
 justification-factory-sacm-derivation.xmi
-  tolerant read: refused Unsupported at line 1, column 31 (a limit of this version)
-  strict read: refused Unsupported at line 1, column 31 (a limit of this version)
+  tolerant read: refused Unsupported SACM-XML-002 at line 1, column 31 (a limit of this version)
+  strict read: refused Unsupported SACM-XML-002 at line 1, column 31 (a limit of this version)
 
 sysmline-easy-example.assurancecase
-  tolerant read: refused Unsupported at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
-  strict read: refused Unsupported at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
+  tolerant read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
+  strict read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
 
 sysmini-quan.assurancecase
-  tolerant read: refused Unsupported at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
-  strict read: refused Unsupported at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
+  tolerant read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
+  strict read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
 
 mobstr-safetycase.integration
   tolerant read: refused InvalidRoot SACM-XMI-001 at line 2, column 1

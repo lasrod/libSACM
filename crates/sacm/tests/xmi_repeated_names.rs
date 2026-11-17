@@ -154,7 +154,7 @@ fn assert_repeated_name(what: &str, template: &str, owner: &str) -> ReadError {
     );
     assert_eq!(
         error.code(),
-        Some(Code::MULTIPLICITY_VIOLATION),
+        Code::MULTIPLICITY_VIOLATION,
         "{ROW}: {what}: the code is not SACM-MULT-001"
     );
     error

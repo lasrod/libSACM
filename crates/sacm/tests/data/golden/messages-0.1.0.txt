@@ -1,0 +1,249 @@
+# The messages of sacm 0.1.0 for every XMI fixture (LIB-API-017, acceptance 3).
+# Recorded before slice 0063 changed the code; never re-recorded.
+# Line: <fixture> <step>: <message>
+# fixture: the path from the repository root, with / separators, sorted.
+# step: strict-read, strict-validate, tolerant-read, tolerant-validate, in that order;
+#   a validate step is left out when its read refused the input.
+# message: 'refusal ' and the ReadError Display; or one Diagnostic Display per line,
+#   in the order the step returns them; or '(none)' when the step gives none.
+crates/sacm-cli/tests/data/bad-literal.sacm.xmi strict-read: refusal the value "Assumed" of the property "assertionDeclaration" of the element "c1" is not a literal at line 5, column 54: the literals are asserted, needsSupport, assumed, axiomatic, defeated and asCited
+crates/sacm-cli/tests/data/bad-literal.sacm.xmi tolerant-read: warning SACM-ENUM-001 [SACM23-VAL-006] at line 5, column 54: the assertionDeclaration "Assumed" is no literal: the literals are asserted, needsSupport, assumed, axiomatic, defeated and asCited, so it is kept as preserved content of the Claim "c1", which a tolerant write writes back and a strict write refuses, and the property is read as not written
+crates/sacm-cli/tests/data/bad-literal.sacm.xmi tolerant-validate: (none)
+crates/sacm-cli/tests/data/clean.sacm.xmi strict-read: (none)
+crates/sacm-cli/tests/data/clean.sacm.xmi strict-validate: (none)
+crates/sacm-cli/tests/data/clean.sacm.xmi tolerant-read: (none)
+crates/sacm-cli/tests/data/clean.sacm.xmi tolerant-validate: (none)
+crates/sacm-cli/tests/data/dangling-reference.sacm.xmi strict-read: (none)
+crates/sacm-cli/tests/data/dangling-reference.sacm.xmi strict-validate: error SACM-REF-001 [SACM23-VAL-003, clause 8.2]: Claim "c1" has the citedElement "nope", which names no element of the document (the end's type is SACMElement)
+crates/sacm-cli/tests/data/dangling-reference.sacm.xmi tolerant-read: (none)
+crates/sacm-cli/tests/data/dangling-reference.sacm.xmi tolerant-validate: error SACM-REF-001 [SACM23-VAL-003, clause 8.2]: Claim "c1" has the citedElement "nope", which names no element of the document (the end's type is SACMElement)
+crates/sacm-cli/tests/data/duplicate-id.sacm.xmi strict-read: refusal the xmi:id "c1" is carried by 2 elements, at line 5, column 3; line 8, column 3
+crates/sacm-cli/tests/data/duplicate-id.sacm.xmi tolerant-read: refusal the xmi:id "c1" is carried by 2 elements, at line 5, column 3; line 8, column 3
+crates/sacm-cli/tests/data/escaped-ids.sacm.xmi strict-read: (none)
+crates/sacm-cli/tests/data/escaped-ids.sacm.xmi strict-validate: error SACM-ID-002 [SACM23-VAL-020, clause 7.6.1]: Claim "a\r\nb" has an id that is not an NCName (XMI 2.5.1 §7.6.1: xmi:id is an xsd:ID)
+crates/sacm-cli/tests/data/escaped-ids.sacm.xmi strict-validate: error SACM-ID-002 [SACM23-VAL-020, clause 7.6.1]: Claim "a\\b" has an id that is not an NCName (XMI 2.5.1 §7.6.1: xmi:id is an xsd:ID)
+crates/sacm-cli/tests/data/escaped-ids.sacm.xmi tolerant-read: (none)
+crates/sacm-cli/tests/data/escaped-ids.sacm.xmi tolerant-validate: error SACM-ID-002 [SACM23-VAL-020, clause 7.6.1]: Claim "a\r\nb" has an id that is not an NCName (XMI 2.5.1 §7.6.1: xmi:id is an xsd:ID)
+crates/sacm-cli/tests/data/escaped-ids.sacm.xmi tolerant-validate: error SACM-ID-002 [SACM23-VAL-020, clause 7.6.1]: Claim "a\\b" has an id that is not an NCName (XMI 2.5.1 §7.6.1: xmi:id is an xsd:ID)
+crates/sacm-cli/tests/data/latin-1.sacm.xmi strict-read: refusal the reader cannot represent the input at line 1, column 31: the declared encoding "ISO-8859-1" is not supported: without a UTF-16 byte order mark, only UTF-8 and ASCII are read (a limit of this version)
+crates/sacm-cli/tests/data/latin-1.sacm.xmi tolerant-read: refusal the reader cannot represent the input at line 1, column 31: the declared encoding "ISO-8859-1" is not supported: without a UTF-16 byte order mark, only UTF-8 and ASCII are read (a limit of this version)
+crates/sacm-cli/tests/data/malformed.sacm.xmi strict-read: refusal the input is not well-formed XML at line 3, column 4: the end tag "s" does not match the start tag "r"
+crates/sacm-cli/tests/data/malformed.sacm.xmi tolerant-read: refusal the input is not well-formed XML at line 3, column 4: the end tag "s" does not match the start tag "r"
+crates/sacm-cli/tests/data/nameless-claim.sacm.xmi strict-read: (none)
+crates/sacm-cli/tests/data/nameless-claim.sacm.xmi strict-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: Claim "c1" has no name (name:LangString[1])
+crates/sacm-cli/tests/data/nameless-claim.sacm.xmi tolerant-read: (none)
+crates/sacm-cli/tests/data/nameless-claim.sacm.xmi tolerant-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: Claim "c1" has no name (name:LangString[1])
+crates/sacm-cli/tests/data/xmi-attribute.sacm.xmi strict-read: refusal the reader cannot represent the input at line 3, column 110: the attribute "note" of the element "xmi:XMI" is not read in this release (a defect in the input)
+crates/sacm-cli/tests/data/xmi-attribute.sacm.xmi tolerant-read: warning SACM-XMI-003 [LIB-COMPAT-003, clause 7.3.3] at line 3, column 110: the attribute "note" of the element "xmi:XMI" is not SACM 2.3 where it stands, so it is kept as preserved content of the document, which a tolerant write writes back and a strict write refuses
+crates/sacm-cli/tests/data/xmi-attribute.sacm.xmi tolerant-validate: (none)
+crates/sacm-cli/tests/data/xsi-type.sacm.xmi strict-read: error SACM-XMI-010 [LIB-COMPAT-001, clause 9.5.2] at line 5, column 20: the Claim "c1" is typed with xsi:type, which XMI 2.5.1 allows only when org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as xmi:type
+crates/sacm-cli/tests/data/xsi-type.sacm.xmi strict-validate: (none)
+crates/sacm-cli/tests/data/xsi-type.sacm.xmi tolerant-read: warning SACM-XMI-010 [LIB-COMPAT-001, clause 9.5.2] at line 5, column 20: the Claim "c1" is typed with xsi:type, which XMI 2.5.1 allows only when org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as xmi:type
+crates/sacm-cli/tests/data/xsi-type.sacm.xmi tolerant-validate: (none)
+crates/sacm/tests/data/sacm23/validation/invalid/argument-package-not-homogeneous.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/validation/invalid/argument-package-not-homogeneous.sacm.xmi strict-validate: error SACM-PKG-001 [SACM23-VAL-012, clause 11.4]: ArgumentPackage "arguments" nests the ArgumentPackage "braking", so it may contain only ArgumentPackages, but it also contains Claim "c1"
+crates/sacm/tests/data/sacm23/validation/invalid/argument-package-not-homogeneous.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/validation/invalid/argument-package-not-homogeneous.sacm.xmi tolerant-validate: error SACM-PKG-001 [SACM23-VAL-012, clause 11.4]: ArgumentPackage "arguments" nests the ArgumentPackage "braking", so it may contain only ArgumentPackages, but it also contains Claim "c1"
+crates/sacm/tests/data/sacm23/validation/invalid/asserted-evidence-claim-source.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/validation/invalid/asserted-evidence-claim-source.sacm.xmi strict-validate: error SACM-REF-002 [SACM23-VAL-016, clause 11.15]: AssertedEvidence "e1" has the source "c2", of the kind Claim, but §11.15 requires each source of the AssertedEvidence to be an ArtifactReference
+crates/sacm/tests/data/sacm23/validation/invalid/asserted-evidence-claim-source.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/validation/invalid/asserted-evidence-claim-source.sacm.xmi tolerant-validate: error SACM-REF-002 [SACM23-VAL-016, clause 11.15]: AssertedEvidence "e1" has the source "c2", of the kind Claim, but §11.15 requires each source of the AssertedEvidence to be an ArtifactReference
+crates/sacm/tests/data/sacm23/validation/invalid/asserted-inference-no-source-no-target.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/validation/invalid/asserted-inference-no-source-no-target.sacm.xmi strict-validate: error SACM-MULT-001 [SACM23-VAL-005, clause 11.13]: AssertedInference "i1" has no source (source:ArgumentAsset[1..*])
+crates/sacm/tests/data/sacm23/validation/invalid/asserted-inference-no-source-no-target.sacm.xmi strict-validate: error SACM-MULT-001 [SACM23-VAL-005, clause 11.13]: AssertedInference "i1" has no target (target:ArgumentAsset[1])
+crates/sacm/tests/data/sacm23/validation/invalid/asserted-inference-no-source-no-target.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/validation/invalid/asserted-inference-no-source-no-target.sacm.xmi tolerant-validate: error SACM-MULT-001 [SACM23-VAL-005, clause 11.13]: AssertedInference "i1" has no source (source:ArgumentAsset[1..*])
+crates/sacm/tests/data/sacm23/validation/invalid/asserted-inference-no-source-no-target.sacm.xmi tolerant-validate: error SACM-MULT-001 [SACM23-VAL-005, clause 11.13]: AssertedInference "i1" has no target (target:ArgumentAsset[1])
+crates/sacm/tests/data/sacm23/validation/invalid/claim-abstract-with-abstract-form.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/validation/invalid/claim-abstract-with-abstract-form.sacm.xmi strict-validate: error SACM-ABS-001 [SACM23-VAL-008, clause 8.2]: Claim "c1" has the abstractForm "a" but is itself abstract (isAbstract is true); §8.2 gives abstractForm to a concrete element
+crates/sacm/tests/data/sacm23/validation/invalid/claim-abstract-with-abstract-form.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/validation/invalid/claim-abstract-with-abstract-form.sacm.xmi tolerant-validate: error SACM-ABS-001 [SACM23-VAL-008, clause 8.2]: Claim "c1" has the abstractForm "a" but is itself abstract (isAbstract is true); §8.2 gives abstractForm to a concrete element
+crates/sacm/tests/data/sacm23/validation/invalid/claim-cited-element-dangling.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/validation/invalid/claim-cited-element-dangling.sacm.xmi strict-validate: error SACM-REF-001 [SACM23-VAL-003, clause 8.2]: Claim "c1" has the citedElement "c9", which names no element of the document (the end's type is SACMElement)
+crates/sacm/tests/data/sacm23/validation/invalid/claim-cited-element-dangling.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/validation/invalid/claim-cited-element-dangling.sacm.xmi tolerant-validate: error SACM-REF-001 [SACM23-VAL-003, clause 8.2]: Claim "c1" has the citedElement "c9", which names no element of the document (the end's type is SACMElement)
+crates/sacm/tests/data/sacm23/validation/invalid/claim-cited-without-is-citation.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/validation/invalid/claim-cited-without-is-citation.sacm.xmi strict-validate: error SACM-CITE-001 [SACM23-VAL-007, clause 8.2]: Claim "c2" has the citedElement "c1" but isCitation is not true (§8.2: citedElement <> null implies isCitation = true)
+crates/sacm/tests/data/sacm23/validation/invalid/claim-cited-without-is-citation.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/validation/invalid/claim-cited-without-is-citation.sacm.xmi tolerant-validate: error SACM-CITE-001 [SACM23-VAL-007, clause 8.2]: Claim "c2" has the citedElement "c1" but isCitation is not true (§8.2: citedElement <> null implies isCitation = true)
+crates/sacm/tests/data/sacm23/validation/invalid/claims-gid-duplicate.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/validation/invalid/claims-gid-duplicate.sacm.xmi strict-validate: error SACM-ID-003 [SACM23-VAL-002, clause 8.2]: 2 elements hold the gid "urn:example:g", which must be unique within the model instance: Claim "c1", Claim "c2"
+crates/sacm/tests/data/sacm23/validation/invalid/claims-gid-duplicate.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/validation/invalid/claims-gid-duplicate.sacm.xmi tolerant-validate: error SACM-ID-003 [SACM23-VAL-002, clause 8.2]: 2 elements hold the gid "urn:example:g", which must be unique within the model instance: Claim "c1", Claim "c2"
+crates/sacm/tests/data/sacm23/validation/invalid/meta-claim-wrong-type.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/validation/invalid/meta-claim-wrong-type.sacm.xmi strict-validate: error SACM-REF-002 [SACM23-VAL-004, clause 11.10]: Claim "c2" has the metaClaim "r1", whose kind ArgumentReasoning does not conform to the end's type Claim
+crates/sacm/tests/data/sacm23/validation/invalid/meta-claim-wrong-type.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/validation/invalid/meta-claim-wrong-type.sacm.xmi tolerant-validate: error SACM-REF-002 [SACM23-VAL-004, clause 11.10]: Claim "c2" has the metaClaim "r1", whose kind ArgumentReasoning does not conform to the end's type Claim
+crates/sacm/tests/data/sacm23/validation/warning/claim-descriptions-repeated.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/validation/warning/claim-descriptions-repeated.sacm.xmi strict-validate: warning SACM-MULT-001 [SACM23-VAL-011, clause 8.6]: Claim "c1" has 2 descriptions (description:Description[0..1])
+crates/sacm/tests/data/sacm23/validation/warning/claim-descriptions-repeated.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/validation/warning/claim-descriptions-repeated.sacm.xmi tolerant-validate: warning SACM-MULT-001 [SACM23-VAL-011, clause 8.6]: Claim "c1" has 2 descriptions (description:Description[0..1])
+crates/sacm/tests/data/sacm23/validation/warning/meta-claim-repeated.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/validation/warning/meta-claim-repeated.sacm.xmi strict-validate: warning SACM-MULT-001 [SACM23-VAL-022, clause 11.10]: Claim "c2" holds "m1" 2 times in its metaClaim, whose ids are unique in SACM 2.3 (the repeat is kept)
+crates/sacm/tests/data/sacm23/validation/warning/meta-claim-repeated.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/validation/warning/meta-claim-repeated.sacm.xmi tolerant-validate: warning SACM-MULT-001 [SACM23-VAL-022, clause 11.10]: Claim "c2" holds "m1" 2 times in its metaClaim, whose ids are unique in SACM 2.3 (the repeat is kept)
+crates/sacm/tests/data/sacm23/xmi/argument-package-root-valid.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/argument-package-root-valid.sacm.xmi strict-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: ArgumentPackage "arg_1" has no name (name:LangString[1])
+crates/sacm/tests/data/sacm23/xmi/argument-package-root-valid.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/argument-package-root-valid.sacm.xmi tolerant-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: ArgumentPackage "arg_1" has no name (name:LangString[1])
+crates/sacm/tests/data/sacm23/xmi/artifact-asset-relationship-valid.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/artifact-asset-relationship-valid.sacm.xmi strict-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/artifact-asset-relationship-valid.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/artifact-asset-relationship-valid.sacm.xmi tolerant-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/artifact-assets-valid.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/artifact-assets-valid.sacm.xmi strict-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/artifact-assets-valid.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/artifact-assets-valid.sacm.xmi tolerant-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/artifact-package-valid.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/artifact-package-valid.sacm.xmi strict-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/artifact-package-valid.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/artifact-package-valid.sacm.xmi tolerant-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/artifact-relationships-valid.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/artifact-relationships-valid.sacm.xmi strict-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/artifact-relationships-valid.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/artifact-relationships-valid.sacm.xmi tolerant-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/asserted-relationships-valid.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/asserted-relationships-valid.sacm.xmi strict-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/asserted-relationships-valid.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/asserted-relationships-valid.sacm.xmi tolerant-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/assurance-case-package-root-valid.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/assurance-case-package-root-valid.sacm.xmi strict-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: AssuranceCasePackage "acp_1" has no name (name:LangString[1])
+crates/sacm/tests/data/sacm23/xmi/assurance-case-package-root-valid.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/assurance-case-package-root-valid.sacm.xmi tolerant-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: AssuranceCasePackage "acp_1" has no name (name:LangString[1])
+crates/sacm/tests/data/sacm23/xmi/citations-and-abstract-forms-valid.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/citations-and-abstract-forms-valid.sacm.xmi strict-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/citations-and-abstract-forms-valid.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/citations-and-abstract-forms-valid.sacm.xmi tolerant-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/gid-valid.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/gid-valid.sacm.xmi strict-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/gid-valid.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/gid-valid.sacm.xmi tolerant-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/artifact-asset-relationship.golden.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/artifact-asset-relationship.golden.sacm.xmi strict-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/artifact-asset-relationship.golden.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/artifact-asset-relationship.golden.sacm.xmi tolerant-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/artifact-assets.golden.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/artifact-assets.golden.sacm.xmi strict-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/artifact-assets.golden.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/artifact-assets.golden.sacm.xmi tolerant-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/artifact-package.golden.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/artifact-package.golden.sacm.xmi strict-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/artifact-package.golden.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/artifact-package.golden.sacm.xmi tolerant-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/artifact-relationships.golden.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/artifact-relationships.golden.sacm.xmi strict-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/artifact-relationships.golden.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/artifact-relationships.golden.sacm.xmi tolerant-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/asserted-relationships.golden.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/asserted-relationships.golden.sacm.xmi strict-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/asserted-relationships.golden.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/asserted-relationships.golden.sacm.xmi tolerant-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/model-spellings.golden.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/model-spellings.golden.sacm.xmi strict-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/model-spellings.golden.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/model-spellings.golden.sacm.xmi tolerant-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/named.golden.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/named.golden.sacm.xmi strict-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/named.golden.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/named.golden.sacm.xmi tolerant-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/needs-support-claim.golden.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/needs-support-claim.golden.sacm.xmi strict-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/needs-support-claim.golden.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/needs-support-claim.golden.sacm.xmi tolerant-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/nested.golden.sacm.xmi strict-read: refusal the reader cannot represent the input at line 9, column 3: the ArgumentPackageInterface "argumentPackage" in the root element "sacm:AssuranceCasePackage" is not read in this release (a limit of this version; SACM23-ARG-014 reads it)
+crates/sacm/tests/data/sacm23/xmi/golden/nested.golden.sacm.xmi tolerant-read: warning SACM-XMI-014 [LIB-API-011] at line 9, column 3: the ArgumentPackageInterface "argumentPackage" in the root element "sacm:AssuranceCasePackage" is not read in this release, so it is kept as preserved content of the AssuranceCasePackage "case", which a tolerant write writes back and a strict write refuses; SACM23-ARG-014 reads it
+crates/sacm/tests/data/sacm23/xmi/golden/nested.golden.sacm.xmi tolerant-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: ArgumentPackage "arguments" has no name (name:LangString[1])
+crates/sacm/tests/data/sacm23/xmi/golden/nested.golden.sacm.xmi tolerant-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: Artifact "artifact_1" has no name (name:LangString[1])
+crates/sacm/tests/data/sacm23/xmi/golden/nested.golden.sacm.xmi tolerant-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: ArtifactPackage "artifacts" has no name (name:LangString[1])
+crates/sacm/tests/data/sacm23/xmi/golden/nested.golden.sacm.xmi tolerant-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: AssuranceCasePackage "case" has no name (name:LangString[1])
+crates/sacm/tests/data/sacm23/xmi/golden/nested.golden.sacm.xmi tolerant-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: Claim "claim_1" has no name (name:LangString[1])
+crates/sacm/tests/data/sacm23/xmi/golden/nested.golden.sacm.xmi tolerant-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: Property "property_1" has no name (name:LangString[1])
+crates/sacm/tests/data/sacm23/xmi/golden/several-roots.golden.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/several-roots.golden.sacm.xmi strict-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: ArgumentPackage "arguments_1" has no name (name:LangString[1])
+crates/sacm/tests/data/sacm23/xmi/golden/several-roots.golden.sacm.xmi strict-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: ArgumentPackage "arguments_2" has no name (name:LangString[1])
+crates/sacm/tests/data/sacm23/xmi/golden/several-roots.golden.sacm.xmi strict-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: AssuranceCasePackage "case" has no name (name:LangString[1])
+crates/sacm/tests/data/sacm23/xmi/golden/several-roots.golden.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/several-roots.golden.sacm.xmi tolerant-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: ArgumentPackage "arguments_1" has no name (name:LangString[1])
+crates/sacm/tests/data/sacm23/xmi/golden/several-roots.golden.sacm.xmi tolerant-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: ArgumentPackage "arguments_2" has no name (name:LangString[1])
+crates/sacm/tests/data/sacm23/xmi/golden/several-roots.golden.sacm.xmi tolerant-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: AssuranceCasePackage "case" has no name (name:LangString[1])
+crates/sacm/tests/data/sacm23/xmi/golden/single-root.golden.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/single-root.golden.sacm.xmi strict-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: ArgumentPackage "arguments" has no name (name:LangString[1])
+crates/sacm/tests/data/sacm23/xmi/golden/single-root.golden.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/single-root.golden.sacm.xmi tolerant-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: ArgumentPackage "arguments" has no name (name:LangString[1])
+crates/sacm/tests/data/sacm23/xmi/golden/terminology-element-spelling.golden.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/terminology-element-spelling.golden.sacm.xmi strict-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/terminology-element-spelling.golden.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/terminology-element-spelling.golden.sacm.xmi tolerant-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/terminology.golden.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/terminology.golden.sacm.xmi strict-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/terminology.golden.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/terminology.golden.sacm.xmi tolerant-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/invalid/argument-package-unknown-content.sacm.xmi strict-read: error SACM-XMI-003 [LIB-COMPAT-003, clause 7.3.3] at line 4, column 54: the attribute "v:w" is not SACM 2.3 where it stands, so it is kept as written as preserved content of the Claim "c1", which a tolerant write writes back and a strict write refuses
+crates/sacm/tests/data/sacm23/xmi/invalid/argument-package-unknown-content.sacm.xmi strict-read: error SACM-XMI-003 [LIB-COMPAT-003, clause 7.3.3] at line 4, column 62: the attribute "isCounter" is not SACM 2.3 where it stands, so it is kept as written as preserved content of the Claim "c1", which a tolerant write writes back and a strict write refuses
+crates/sacm/tests/data/sacm23/xmi/invalid/argument-package-unknown-content.sacm.xmi strict-read: error SACM-XMI-003 [LIB-COMPAT-003, clause 7.3.3] at line 6, column 5: the element "v:note" is not SACM 2.3 where it stands, so it is kept as written as preserved content of the Claim "c1", which a tolerant write writes back and a strict write refuses
+crates/sacm/tests/data/sacm23/xmi/invalid/argument-package-unknown-content.sacm.xmi strict-read: error SACM-XMI-003 [LIB-COMPAT-003, clause 7.3.3] at line 8, column 3: the element "argumentElement" is not SACM 2.3 where it stands, so it is kept as written as preserved content of the ArgumentPackage "p", which a tolerant write writes back and a strict write refuses
+crates/sacm/tests/data/sacm23/xmi/invalid/argument-package-unknown-content.sacm.xmi strict-read: error SACM-XMI-003 [LIB-COMPAT-003, clause 7.3.3] at line 9, column 54: the attribute "citedElement" is not SACM 2.3 where it stands, so it is kept as written as preserved content of the Claim "c2", which a tolerant write writes back and a strict write refuses
+crates/sacm/tests/data/sacm23/xmi/invalid/argument-package-unknown-content.sacm.xmi strict-read: error SACM-XMI-003 [LIB-COMPAT-003, clause 7.3.3] at line 10, column 5: the element "name" is not SACM 2.3 where it stands, so it is kept as written as preserved content of the Claim "c2", which a tolerant write writes back and a strict write refuses
+crates/sacm/tests/data/sacm23/xmi/invalid/argument-package-unknown-content.sacm.xmi strict-read: error SACM-XMI-003 [LIB-COMPAT-003, clause 7.3.3] at line 11, column 5: the element "abstractForm" is not SACM 2.3 where it stands, so it is kept as written as preserved content of the Claim "c2", which a tolerant write writes back and a strict write refuses
+crates/sacm/tests/data/sacm23/xmi/invalid/argument-package-unknown-content.sacm.xmi strict-read: error SACM-XMI-003 [LIB-COMPAT-003, clause 7.3.3] at line 14, column 5: text is not SACM 2.3 where it stands, so it is kept as written as preserved content of the Claim "c3", which a tolerant write writes back and a strict write refuses
+crates/sacm/tests/data/sacm23/xmi/invalid/argument-package-unknown-content.sacm.xmi strict-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: Claim "c2" has no name (name:LangString[1])
+crates/sacm/tests/data/sacm23/xmi/invalid/argument-package-unknown-content.sacm.xmi strict-validate: warning SACM-REF-003 [LIB-COMPAT-003, clause 8.2]: Claim "c3" has the citedElement "a1", which names an element the document holds only as preserved content, so its type is not checked (the end's type is SACMElement)
+crates/sacm/tests/data/sacm23/xmi/invalid/argument-package-unknown-content.sacm.xmi tolerant-read: warning SACM-XMI-003 [LIB-COMPAT-003, clause 7.3.3] at line 4, column 54: the attribute "v:w" is not SACM 2.3 where it stands, so it is kept as written as preserved content of the Claim "c1", which a tolerant write writes back and a strict write refuses
+crates/sacm/tests/data/sacm23/xmi/invalid/argument-package-unknown-content.sacm.xmi tolerant-read: warning SACM-XMI-003 [LIB-COMPAT-003, clause 7.3.3] at line 4, column 62: the attribute "isCounter" is not SACM 2.3 where it stands, so it is kept as written as preserved content of the Claim "c1", which a tolerant write writes back and a strict write refuses
+crates/sacm/tests/data/sacm23/xmi/invalid/argument-package-unknown-content.sacm.xmi tolerant-read: warning SACM-XMI-003 [LIB-COMPAT-003, clause 7.3.3] at line 6, column 5: the element "v:note" is not SACM 2.3 where it stands, so it is kept as written as preserved content of the Claim "c1", which a tolerant write writes back and a strict write refuses
+crates/sacm/tests/data/sacm23/xmi/invalid/argument-package-unknown-content.sacm.xmi tolerant-read: warning SACM-XMI-003 [LIB-COMPAT-003, clause 7.3.3] at line 8, column 3: the element "argumentElement" is not SACM 2.3 where it stands, so it is kept as written as preserved content of the ArgumentPackage "p", which a tolerant write writes back and a strict write refuses
+crates/sacm/tests/data/sacm23/xmi/invalid/argument-package-unknown-content.sacm.xmi tolerant-read: warning SACM-XMI-003 [LIB-COMPAT-003, clause 7.3.3] at line 9, column 54: the attribute "citedElement" is not SACM 2.3 where it stands, so it is kept as written as preserved content of the Claim "c2", which a tolerant write writes back and a strict write refuses
+crates/sacm/tests/data/sacm23/xmi/invalid/argument-package-unknown-content.sacm.xmi tolerant-read: warning SACM-XMI-003 [LIB-COMPAT-003, clause 7.3.3] at line 10, column 5: the element "name" is not SACM 2.3 where it stands, so it is kept as written as preserved content of the Claim "c2", which a tolerant write writes back and a strict write refuses
+crates/sacm/tests/data/sacm23/xmi/invalid/argument-package-unknown-content.sacm.xmi tolerant-read: warning SACM-XMI-003 [LIB-COMPAT-003, clause 7.3.3] at line 11, column 5: the element "abstractForm" is not SACM 2.3 where it stands, so it is kept as written as preserved content of the Claim "c2", which a tolerant write writes back and a strict write refuses
+crates/sacm/tests/data/sacm23/xmi/invalid/argument-package-unknown-content.sacm.xmi tolerant-read: warning SACM-XMI-003 [LIB-COMPAT-003, clause 7.3.3] at line 14, column 5: text is not SACM 2.3 where it stands, so it is kept as written as preserved content of the Claim "c3", which a tolerant write writes back and a strict write refuses
+crates/sacm/tests/data/sacm23/xmi/invalid/argument-package-unknown-content.sacm.xmi tolerant-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: Claim "c2" has no name (name:LangString[1])
+crates/sacm/tests/data/sacm23/xmi/invalid/argument-package-unknown-content.sacm.xmi tolerant-validate: warning SACM-REF-003 [LIB-COMPAT-003, clause 8.2]: Claim "c3" has the citedElement "a1", which names an element the document holds only as preserved content, so its type is not checked (the end's type is SACMElement)
+crates/sacm/tests/data/sacm23/xmi/invalid/reference-cross-document-href.sacm.xmi strict-read: refusal the reader cannot represent the input at line 7, column 19: the href "other.sacm.xmi#c9" of the reference element "citedElement" names no element of this document by its id; only href="#id" is read in this release (a limit of this version; SACM23-XMI-027 reads it)
+crates/sacm/tests/data/sacm23/xmi/invalid/reference-cross-document-href.sacm.xmi tolerant-read: warning SACM-XMI-007 [LIB-API-011] at line 7, column 19: the href "other.sacm.xmi#c9" of the reference element "citedElement" names no element of this document by its id; only href="#id" is read in this release, so it is kept as preserved content of the Claim "c1", which a tolerant write writes back and a strict write refuses; SACM23-XMI-027 reads it
+crates/sacm/tests/data/sacm23/xmi/invalid/reference-cross-document-href.sacm.xmi tolerant-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/invalid/root-claim-invalid-root.sacm.xmi strict-read: refusal the root element "sacm:Claim" is not a SACM package at line 2, column 1
+crates/sacm/tests/data/sacm23/xmi/invalid/root-claim-invalid-root.sacm.xmi tolerant-read: refusal the root element "sacm:Claim" is not a SACM package at line 2, column 1
+crates/sacm/tests/data/sacm23/xmi/invalid/wrapper-empty-no-package.sacm.xmi strict-read: refusal the XMI element holds no SACM package at line 2, column 1
+crates/sacm/tests/data/sacm23/xmi/invalid/wrapper-empty-no-package.sacm.xmi tolerant-read: refusal the XMI element holds no SACM package at line 2, column 1
+crates/sacm/tests/data/sacm23/xmi/model-spellings.sacm.xmi strict-read: error SACM-XMI-013 [SACM23-XMI-009, clause 11.4] at line 6, column 5: the element "argumentationElement" in the root element "sacm:ArgumentPackage" is spelled as in the text of §11.4, and the role is argumentElement; it is kept as preserved content, and a tolerant read reads the name as argumentElement
+crates/sacm/tests/data/sacm23/xmi/model-spellings.sacm.xmi strict-read: error SACM-XMI-013 [SACM23-XMI-009, clause 11.4] at line 12, column 5: the element "argumentationElement" in the root element "sacm:ArgumentPackage" is spelled as in the text of §11.4, and the role is argumentElement; it is kept as preserved content, and a tolerant read reads the name as argumentElement
+crates/sacm/tests/data/sacm23/xmi/model-spellings.sacm.xmi strict-read: error SACM-XMI-013 [SACM23-XMI-009, clause 12.9] at line 21, column 62: "occurece" in the element "artifactElement" is the machine-readable model's spelling, and the attribute of an Event is date (§12.9); it is kept as preserved content, and a tolerant read reads the name as date
+crates/sacm/tests/data/sacm23/xmi/model-spellings.sacm.xmi strict-read: error SACM-XMI-013 [SACM23-XMI-009, clause 12.14] at line 24, column 5: the element "artifactElement" in the root element "sacm:ArtifactPackage" is typed ArtifactAssertedRelationship, the machine-readable model's spelling of ArtifactAssetRelationship; it is kept as preserved content, and a tolerant read reads the name as ArtifactAssetRelationship
+crates/sacm/tests/data/sacm23/xmi/model-spellings.sacm.xmi strict-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/model-spellings.sacm.xmi tolerant-read: warning SACM-XMI-013 [SACM23-XMI-009, clause 11.4] at line 6, column 5: the element "argumentationElement" in the root element "sacm:ArgumentPackage" is spelled as in the text of §11.4, and the role is argumentElement; it is read as argumentElement, which write writes
+crates/sacm/tests/data/sacm23/xmi/model-spellings.sacm.xmi tolerant-read: warning SACM-XMI-013 [SACM23-XMI-009, clause 11.4] at line 12, column 5: the element "argumentationElement" in the root element "sacm:ArgumentPackage" is spelled as in the text of §11.4, and the role is argumentElement; it is read as argumentElement, which write writes
+crates/sacm/tests/data/sacm23/xmi/model-spellings.sacm.xmi tolerant-read: warning SACM-XMI-013 [SACM23-XMI-009, clause 11.2] at line 12, column 69: "argumentationElement" in the element "argumentationElement" is spelled as in the text of §11.2, and the end of an ArgumentGroup is argumentElement; it is read as argumentElement, which write writes
+crates/sacm/tests/data/sacm23/xmi/model-spellings.sacm.xmi tolerant-read: warning SACM-XMI-013 [SACM23-XMI-009, clause 12.9] at line 21, column 62: "occurece" in the element "artifactElement" is the machine-readable model's spelling, and the attribute of an Event is date (§12.9); it is read as date, which write writes
+crates/sacm/tests/data/sacm23/xmi/model-spellings.sacm.xmi tolerant-read: warning SACM-XMI-013 [SACM23-XMI-009, clause 12.14] at line 24, column 5: the element "artifactElement" in the root element "sacm:ArtifactPackage" is typed ArtifactAssertedRelationship, the machine-readable model's spelling of ArtifactAssetRelationship; it is read as ArtifactAssetRelationship, which write writes
+crates/sacm/tests/data/sacm23/xmi/model-spellings.sacm.xmi tolerant-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/name-third-party-form-valid.sacm.xmi strict-read: info SACM-XMI-011 [LIB-COMPAT-001, clause 7.5.3] at line 3, column 23: the xmi:version "2.0" of the ArgumentPackage "_hX3kQK1sEe6xAbCdEfGhIj" is ignored: the XMI namespace identifies the version (XMI 2.5.1 §7.5.3), and write does not write it
+crates/sacm/tests/data/sacm23/xmi/name-third-party-form-valid.sacm.xmi strict-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/name-third-party-form-valid.sacm.xmi tolerant-read: info SACM-XMI-011 [LIB-COMPAT-001, clause 7.5.3] at line 3, column 23: the xmi:version "2.0" of the ArgumentPackage "_hX3kQK1sEe6xAbCdEfGhIj" is ignored: the XMI namespace identifies the version (XMI 2.5.1 §7.5.3), and write does not write it
+crates/sacm/tests/data/sacm23/xmi/name-third-party-form-valid.sacm.xmi tolerant-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/references-valid.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/references-valid.sacm.xmi strict-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/references-valid.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/references-valid.sacm.xmi tolerant-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/terminology-element-spelling.sacm.xmi strict-read: error SACM-XMI-013 [SACM23-XMI-028, clause 10.4] at line 5, column 3: the element "TerminologyElement" in the root element "sacm:TerminologyPackage" is spelled as in the text of §10.4, and the role is terminologyElement; it is kept as preserved content, and a tolerant read reads the name as terminologyElement
+crates/sacm/tests/data/sacm23/xmi/terminology-element-spelling.sacm.xmi strict-read: error SACM-XMI-013 [SACM23-XMI-028, clause 10.4] at line 8, column 3: the element "TerminologyElement" in the root element "sacm:TerminologyPackage" is spelled as in the text of §10.4, and the role is terminologyElement; it is kept as preserved content, and a tolerant read reads the name as terminologyElement
+crates/sacm/tests/data/sacm23/xmi/terminology-element-spelling.sacm.xmi strict-validate: warning SACM-REF-003 [LIB-COMPAT-003, clause 10.10]: Expression "blade_part" has the element "blade", which names an element the document holds only as preserved content, so its type is not checked (the end's type is ExpressionElement)
+crates/sacm/tests/data/sacm23/xmi/terminology-element-spelling.sacm.xmi strict-validate: warning SACM-REF-003 [LIB-COMPAT-003, clause 10.9]: Expression "blade_part" has the category "parts", which names an element the document holds only as preserved content, so its type is not checked (the end's type is Category)
+crates/sacm/tests/data/sacm23/xmi/terminology-element-spelling.sacm.xmi tolerant-read: warning SACM-XMI-013 [SACM23-XMI-028, clause 10.4] at line 5, column 3: the element "TerminologyElement" in the root element "sacm:TerminologyPackage" is spelled as in the text of §10.4, and the role is terminologyElement; it is read as terminologyElement, which write writes
+crates/sacm/tests/data/sacm23/xmi/terminology-element-spelling.sacm.xmi tolerant-read: warning SACM-XMI-013 [SACM23-XMI-028, clause 10.4] at line 8, column 3: the element "TerminologyElement" in the root element "sacm:TerminologyPackage" is spelled as in the text of §10.4, and the role is terminologyElement; it is read as terminologyElement, which write writes
+crates/sacm/tests/data/sacm23/xmi/terminology-element-spelling.sacm.xmi tolerant-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/terminology-valid.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/terminology-valid.sacm.xmi strict-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/terminology-valid.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/terminology-valid.sacm.xmi tolerant-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/utility-elements-valid.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/utility-elements-valid.sacm.xmi strict-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/utility-elements-valid.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/utility-elements-valid.sacm.xmi tolerant-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/wrapped-roots-valid.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/wrapped-roots-valid.sacm.xmi strict-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: ArgumentPackage "a1" has no name (name:LangString[1])
+crates/sacm/tests/data/sacm23/xmi/wrapped-roots-valid.sacm.xmi strict-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: AssuranceCasePackage "n1" has no name (name:LangString[1])
+crates/sacm/tests/data/sacm23/xmi/wrapped-roots-valid.sacm.xmi strict-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: AssuranceCasePackage "n2" has no name (name:LangString[1])
+crates/sacm/tests/data/sacm23/xmi/wrapped-roots-valid.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/wrapped-roots-valid.sacm.xmi tolerant-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: ArgumentPackage "a1" has no name (name:LangString[1])
+crates/sacm/tests/data/sacm23/xmi/wrapped-roots-valid.sacm.xmi tolerant-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: AssuranceCasePackage "n1" has no name (name:LangString[1])
+crates/sacm/tests/data/sacm23/xmi/wrapped-roots-valid.sacm.xmi tolerant-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: AssuranceCasePackage "n2" has no name (name:LangString[1])

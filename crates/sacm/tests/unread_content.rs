@@ -1151,7 +1151,7 @@ fn lib_compat_003_a_wrapper_id_is_in_the_id_space() {
     match read(Mode::Tolerant, &wrapper(" xmi:id=\"p\"", "")) {
         Err(error) => assert_eq!(
             error.code(),
-            Some(Code::ID_DUPLICATE),
+            Code::ID_DUPLICATE,
             "{COMPAT_003}: {what}: not DuplicateId: {error:?}"
         ),
         Ok(output) => panic!(

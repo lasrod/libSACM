@@ -203,12 +203,12 @@ fn assert_invalid_literal(what: &str, error: &ReadError, value: &str, at: Source
     );
     assert_eq!(
         error.code(),
-        Some(Code::ENUM_INVALID_LITERAL),
+        Code::ENUM_INVALID_LITERAL,
         "{ROW}: {what}: the code"
     );
     assert_eq!(
-        error.code().map(Code::as_str),
-        Some("SACM-ENUM-001"),
+        error.code().as_str(),
+        "SACM-ENUM-001",
         "{ROW}: {what}: the code is not SACM-ENUM-001"
     );
 }

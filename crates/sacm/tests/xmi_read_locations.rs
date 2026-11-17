@@ -1200,8 +1200,8 @@ fn variant(error: &ReadError) -> Option<Variant> {
         ReadError::InvalidId { .. } => Some(Variant::InvalidId),
         ReadError::RepeatedValue { .. } => Some(Variant::RepeatedValue),
         ReadError::InvalidLiteral { .. } => Some(Variant::InvalidLiteral),
-        _ if error.code() == Some(Code::XMI_LEGACY_SHAPE) => Some(Variant::LegacyShape),
-        _ if error.code() == Some(Code::XMI_MISSING_TYPE) => Some(Variant::MissingType),
+        _ if error.code() == Code::XMI_LEGACY_SHAPE => Some(Variant::LegacyShape),
+        _ if error.code() == Code::XMI_MISSING_TYPE => Some(Variant::MissingType),
         _ => None,
     }
 }

@@ -30,6 +30,8 @@
 use sacm::diagnostic::{Code, Severity, SourceLocation};
 use sacm::xmi::{self, Mode, ReadError, ReadOptions};
 
+mod common;
+
 const ROW: &str = "LIB-API-011";
 
 /// The row the spelling tests trace to: a strict read keeps the text
@@ -153,9 +155,9 @@ fn assert_refused_with(entry: &str, what: &str, input: &[u8], label: &str) {
             "{ROW}: {entry}: {what}: in {mode:?} mode the refusal has no location"
         );
         assert_eq!(
-            error.code(),
-            None,
-            "{ROW}: {entry}: {what}: Unsupported has no catalog code"
+            error.code().as_str(),
+            crate::common::unsupported_code(&error.to_string()),
+            "{ROW}: {entry}: {what}: Unsupported does not have the code of its label"
         );
         assert!(
             error.to_string().ends_with(label),

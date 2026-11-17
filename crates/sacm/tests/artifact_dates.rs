@@ -620,7 +620,7 @@ fn sacm23_art_002_a_date_given_twice_is_a_repeated_value_and_tolerant_keeps_the_
             );
             assert_eq!(
                 (error.code(), error.location()),
-                (Some(Code::MULTIPLICITY_VIOLATION), Some(marks[1])),
+                (Code::MULTIPLICITY_VIOLATION, Some(marks[1])),
                 "{ROW}: {what}: not SACM-MULT-001 with location() the second"
             );
             // Tolerant: the first is kept, the later one preserved, with one

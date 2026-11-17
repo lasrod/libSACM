@@ -1,0 +1,55 @@
+[
+  {
+    "type": "NoRoot",
+    "code": "SACM-XMI-001",
+    "template": "SACM-XMI-001/no-root-to-write",
+    "arguments": {}
+  },
+  {
+    "type": "UnrepresentableCharacter",
+    "code": "SACM-XML-003",
+    "template": "SACM-XML-003/unrepresentable-character",
+    "arguments": {
+      "element": "arguments",
+      "attribute": "name's content",
+      "code_point": 1
+    },
+    "element": "arguments",
+    "character": "\u0001",
+    "attribute": "NameContent"
+  },
+  {
+    "type": "Invalid",
+    "code": "SACM-XMI-016",
+    "template": "SACM-XMI-016/schema-error",
+    "arguments": {
+      "first_code": "SACM-REF-001",
+      "first_id": "c1"
+    },
+    "diagnostics": [
+      {
+        "code": "SACM-REF-001",
+        "severity": "error",
+        "requirement_id": "SACM23-VAL-003",
+        "clause": "8.2",
+        "affected": [
+          "c1",
+          "nope"
+        ],
+        "location": null,
+        "message": "Claim \"c1\" has the citedElement \"nope\", which names no element of the document (the end's type is SACMElement)"
+      }
+    ]
+  },
+  {
+    "type": "PreservedContent",
+    "code": "SACM-XMI-006",
+    "template": "SACM-XMI-006/one-holder",
+    "arguments": {
+      "id": "p"
+    },
+    "elements": [
+      "p"
+    ]
+  }
+]

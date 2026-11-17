@@ -687,7 +687,7 @@ fn sacm23_art_010_other_placements_and_the_features_of_other_classes_are_preserv
     let error = refused("an untyped artifactElement", &input);
     assert_eq!(
         (error.code(), error.location()),
-        (Some(Code::XMI_MISSING_TYPE), marks.first().copied()),
+        (Code::XMI_MISSING_TYPE, marks.first().copied()),
         "{ROW}: an untyped artifactElement is not SACM-XMI-005 at its start tag: {error:?}"
     );
     // Under an ArgumentPackage's argumentElement, which admits no
@@ -814,7 +814,7 @@ fn sacm23_art_010_an_attribute_and_elements_for_one_end_are_repeated_value() {
         assert_eq!(
             (error.code(), error.locations(), error.location()),
             (
-                Some(Code::MULTIPLICITY_VIOLATION),
+                Code::MULTIPLICITY_VIOLATION,
                 marks.as_slice(),
                 marks.get(1).copied()
             ),

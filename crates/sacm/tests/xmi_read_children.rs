@@ -46,6 +46,8 @@ use sacm::edit::{self, CreateArgumentPackage, CreateAssuranceCasePackage, Create
 use sacm::model::{AbstractClass, Document, ElementId, ElementKind, LangString, SacmElement};
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteOptions};
 
+mod common;
+
 const ROW: &str = "SACM23-XMI-016";
 
 /// Marks, in a test input, where the refusal is expected. Removed before
@@ -151,7 +153,8 @@ fn refused(what: impl Into<String>, template: impl Into<String>) -> Refused {
 /// refused as `Unsupported` at its mark, with no document.
 fn assert_all_unsupported_at_mark(what: &str, cases: &[Refused]) {
     assert_all_refused_at_mark(what, cases, "Unsupported", |error| {
-        matches!(error, ReadError::Unsupported { .. }) && error.code().is_none()
+        matches!(error, ReadError::Unsupported { .. })
+            && error.code().as_str() == crate::common::unsupported_code(&error.to_string())
     });
 }
 
@@ -325,13 +328,14 @@ fn assert_all_preserved_at_mark(what: &str, cases: &[Preserved]) {
 
 /// A `DuplicateId` refusal with SACM-ID-001 (ADR 0015 amendment 2).
 fn is_duplicate_id(error: &ReadError) -> bool {
-    matches!(error, ReadError::DuplicateId { .. }) && error.code() == Some(Code::ID_DUPLICATE)
+    let has_code = error.code() == Code::ID_DUPLICATE;
+    matches!(error, ReadError::DuplicateId { .. }) && has_code
 }
 
 /// An `InvalidId` refusal of the empty id, with SACM-ID-002.
 fn is_empty_invalid_id(error: &ReadError) -> bool {
-    matches!(error, ReadError::InvalidId { id, .. } if id.is_empty())
-        && error.code() == Some(Code::ID_INVALID)
+    let has_code = error.code() == Code::ID_INVALID;
+    matches!(error, ReadError::InvalidId { id, .. } if id.is_empty()) && has_code
 }
 
 // --- Documents ------------------------------------------------------------
@@ -1094,8 +1098,7 @@ fn sacm23_xmi_016_a_type_that_does_not_conform_to_the_role_is_preserved_at_the_c
     // kept whole as preserved content of its parent (ADR 0033).
     assert_all_preserved_at_mark("non-conforming type", &cases);
     assert_all_refused_at_mark("untyped", &untyped, "SACM-XMI-005", |error| {
-        !matches!(error, ReadError::Unsupported { .. })
-            && error.code() == Some(Code::XMI_MISSING_TYPE)
+        !matches!(error, ReadError::Unsupported { .. }) && error.code() == Code::XMI_MISSING_TYPE
     });
 }
 

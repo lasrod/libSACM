@@ -47,6 +47,8 @@ use sacm::xmi::{
     self, Mode, ReadError, ReadOptions, ReadOutput, WriteAttribute, WriteError, WriteOptions,
 };
 
+mod common;
+
 const ROW: &str = "SACM23-BASE-004";
 const VAL_020: &str = "SACM23-VAL-020";
 const XMI_004: &str = "SACM23-XMI-004";
@@ -395,8 +397,8 @@ fn assert_unsupported_at_mark(row: &str, what: &str, template: &str) -> String {
         panic!("{row}: {what}: not Unsupported: {error:?} ({error})");
     };
     assert!(
-        error.code().is_none(),
-        "{row}: {what}: an Unsupported refusal has a code: {error:?}"
+        error.code().as_str() == crate::common::unsupported_code(&error.to_string()),
+        "{row}: {what}: an Unsupported refusal does not have the code of its label: {error:?}"
     );
     assert_eq!(
         error.location(),
@@ -427,7 +429,7 @@ fn assert_repeated(row: &str, what: &str, template: &str, element: &str, propert
     );
     assert_eq!(
         error.code(),
-        Some(Code::MULTIPLICITY_VIOLATION),
+        Code::MULTIPLICITY_VIOLATION,
         "{row}: {what}: the code is not SACM-MULT-001"
     );
     assert_eq!(
@@ -981,7 +983,7 @@ fn sacm23_base_004_a_value_field_given_as_an_attribute_and_an_element_is_repeate
         );
         assert_eq!(
             (error.code(), error.locations()),
-            (Some(Code::MULTIPLICITY_VIOLATION), marks.as_slice()),
+            (Code::MULTIPLICITY_VIOLATION, marks.as_slice()),
             "{ROW}: {what}: not SACM-MULT-001 at both occurrences"
         );
     }
@@ -1210,7 +1212,7 @@ fn sacm23_base_004_a_padded_utility_id_is_trimmed_an_empty_one_is_invalid_and_a_
         );
         assert_eq!(
             (error.code(), error.locations()),
-            (Some(Code::ID_DUPLICATE), marks.as_slice()),
+            (Code::ID_DUPLICATE, marks.as_slice()),
             "{ROW}: {what}: not SACM-ID-001 at both start tags"
         );
     }
@@ -1331,7 +1333,7 @@ fn sacm23_base_004_a_content_or_value_id_repeating_any_id_is_duplicate_id_at_bot
         );
         assert_eq!(
             (error.code(), error.locations()),
-            (Some(Code::ID_DUPLICATE), marks.as_slice()),
+            (Code::ID_DUPLICATE, marks.as_slice()),
             "{ROW}: {what}: not SACM-ID-001 at both start tags"
         );
     }
@@ -1358,7 +1360,7 @@ fn sacm23_base_004_an_empty_content_or_value_id_is_invalid_id_and_a_padded_one_i
         );
         assert_eq!(
             (error.code(), error.location()),
-            (Some(Code::ID_INVALID), Some(marks[0])),
+            (Code::ID_INVALID, Some(marks[0])),
             "{ROW}: {what}: not SACM-ID-002 at the start tag"
         );
     }

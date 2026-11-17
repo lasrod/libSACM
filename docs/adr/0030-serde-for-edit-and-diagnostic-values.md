@@ -114,3 +114,33 @@ which has no JSON form, since this ADR rejects serializing `Document`:
 A JSON client builds a draft with create operations instead.
 
 *Amendment 2 status: accepted (the maintainer, 2026-11-17, with ADR 0036).*
+
+## Amendment 3 (2026-11-17): message templates and arguments; ReadError and WriteError
+Issue #82. This amendment adds message templates and arguments, and serde for `ReadError` and `WriteError`.
+- **Templates.** Every `Diagnostic`, `ReadError` and `WriteError` has `template()` and `arguments()`.
+  - `template()` is a `&'static str` id `<CODE>/<form>` that names its English sentence form.
+  - `arguments()` holds the values the sentence is made from: `Argument { name, value }`, with `ArgumentValue::Text(String)` or `Count(u64)`, in the order they first appear.
+  - One crate-private renderer builds each message from them. docs/sacm/diagnostics.md lists every template with its arguments and English.
+- **Stability (amendment 1's rule).**
+  - Renaming or removing a template id or an argument name, or changing its kind or meaning, is Breaking.
+  - Adding a template, or an argument to a template, is not.
+  - The English wording is not promised.
+- **Codes.**
+  - `ReadError::code()` and `WriteError::code()` return `Code` (Breaking, 0.2.0).
+  - `Unsupported` takes the code a tolerant read gives the same input: Interim SACM-XMI-014; CrossDocumentHref SACM-XMI-007; Defect SACM-XMI-003; OtherSacmNamespace SACM-XMI-002; OtherXmiNamespace SACM-XMI-015; Encoding SACM-XML-002; Capacity and Unheld SACM-SEC-002.
+  - `NoRoot` is SACM-XMI-001, `UnrepresentableCharacter` SACM-XML-003 and `Invalid` SACM-XMI-016.
+- **Types.** `ReadError`, `WriteError` and `WriteAttribute` implement `Serialize` and `Deserialize`; this replaces their exclusion in the Types list. `Argument`, `ArgumentValue` and `Details` serialize only inside them.
+- **R8.** `arguments` is a JSON object with keys in the template's order: Text is a string, Count a non-negative integer.
+- **R9.** A `Diagnostic` writes `template` and `arguments` after `message`. On input both may be left out together. The template is then the code's text and there are no arguments; this is the form of 0.1.0 JSON and of a `test-support` diagnostic.
+- **R10.** A `ReadError` or `WriteError` is tagged with `type` (the variant name), then `code`, `template`, `arguments`, then its fields in declaration order (R2, R3).
+  - `kind` is an `ElementKind` name, `character` a one-character string, `attribute` a `WriteAttribute` variant name, and `diagnostics` holds Diagnostic objects.
+  - Every key is required.
+- **R11.** On input:
+  - `template` must be one of the variant's templates, or, for a Diagnostic, one of that code's diagnostic templates or the code's text;
+  - `code` must be the template's;
+  - `arguments` must hold exactly its names, in order, with their kinds;
+  - anything else is refused (R4, R7).
+- **Records.** A deserialized `ReadError` or `WriteError` is a record, as a `Diagnostic` is. Its `Display` renders its template and arguments; its other fields are kept as given.
+- **Order.** ADR 0011's diagnostic order gains two last keys: 8, the template id; 9, the arguments.
+
+*Amendment 3 status: proposed. It implements the maintainer's decisions Q8 to Q11 of 2026-11-17; its API details (the codes of the write errors, `Details`, the default template, the table) await the maintainer's approval.*

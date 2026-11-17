@@ -34,6 +34,8 @@ use sacm::model::{Document, ElementId, ElementKind, SacmElement};
 use sacm::validation;
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteOptions};
 
+mod common;
+
 const ROW: &str = "SACM23-ART-001";
 
 /// Both modes, strict first.
@@ -263,9 +265,9 @@ fn assert_unsupported_with(what: &str, template: &str, label: &str) {
         panic!("{ROW}: {what}: not Unsupported: {error:?} ({error})");
     };
     assert_eq!(
-        (*location, error.code()),
-        (Some(at), None),
-        "{ROW}: {what}: not refused with no code at {at}: {error}"
+        (*location, error.code().as_str()),
+        (Some(at), crate::common::unsupported_code(label)),
+        "{ROW}: {what}: not refused with the code of its label at {at}: {error}"
     );
     let labels = [
         "(a limit of this version",
@@ -611,7 +613,7 @@ fn sacm23_art_001_an_untyped_artifact_element_child_is_missing_type_at_its_start
             );
             assert_eq!(
                 (error.code(), error.location(), error.locations()),
-                (Some(Code::XMI_MISSING_TYPE), Some(at), [at].as_slice()),
+                (Code::XMI_MISSING_TYPE, Some(at), [at].as_slice()),
                 "{ROW}: {what}: not SACM-XMI-005 at the start tag: {error:?} ({error})"
             );
         }
@@ -1260,7 +1262,7 @@ fn sacm23_art_001_fixture_variants_a_b_c_and_g_are_refused_at_their_construct() 
     let error = refused(what, &input);
     assert_eq!(
         (error.code(), error.location()),
-        (Some(Code::XMI_MISSING_TYPE), Some(at)),
+        (Code::XMI_MISSING_TYPE, Some(at)),
         "{ROW}: {what}: not SACM-XMI-005 at the start tag: {error:?}"
     );
 }

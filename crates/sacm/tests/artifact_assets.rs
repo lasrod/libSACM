@@ -1607,7 +1607,7 @@ fn sacm23_art_005_location_ids_are_kept_by_position_written_first_and_compared()
             );
             assert_eq!(
                 (error.code(), error.locations()),
-                (Some(Code::ID_DUPLICATE), marks.as_slice()),
+                (Code::ID_DUPLICATE, marks.as_slice()),
                 "{ART_005}: {what}: not SACM-ID-001 at both start tags in {mode:?} mode"
             );
         }
@@ -1667,7 +1667,7 @@ fn sacm23_art_005_a_second_location_is_a_repeated_value() {
     );
     assert_eq!(
         (error.code(), error.location()),
-        (Some(Code::MULTIPLICITY_VIOLATION), Some(marks[1])),
+        (Code::MULTIPLICITY_VIOLATION, Some(marks[1])),
         "{ART_005}: two locations: not SACM-MULT-001 with location() the second"
     );
     let output = match read(Mode::Tolerant, &input) {

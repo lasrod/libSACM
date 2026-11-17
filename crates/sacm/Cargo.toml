@@ -23,9 +23,9 @@ include = ["src/**", "README.md", "LICENSE", "Cargo.toml"]
 # `Diagnostic` public, so tests can build diagnostics.
 # Not part of the stable API: it may change or disappear in any release.
 test-support = []
-# `Serialize` and `Deserialize` for operations, mutations, edit errors, diagnostics and
-# the value types they carry, in the JSON shape of ADR 0030, which follows the crate's
-# semver until 1.0. Not for `Document`.
+# `Serialize` and `Deserialize` for operations, mutations, edit errors, diagnostics, read
+# and write refusals and the value types they carry, in the JSON shape of ADR 0030 (and its
+# amendment 3), which follows the crate's semver until 1.0. Not for `Document`.
 # Use a self-describing format such as JSON; the `"type"` tags do not work with bincode
 # or postcard.
 serde = ["dep:serde"]
