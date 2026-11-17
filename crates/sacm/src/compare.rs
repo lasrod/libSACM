@@ -1201,7 +1201,9 @@ impl fmt::Display for ValueIds<'_> {
 }
 
 /// A `LangString` for `Display`: both fields, each quoted or written as
-/// absent, so absent and empty read differently.
+/// absent, so absent and empty read differently; and for an
+/// `ExpressionLangString` its `expression`, quoted, or `no expression`
+/// (SACM23-BASE-009).
 struct Value<'a>(&'a LangString);
 
 impl fmt::Display for Value<'_> {
@@ -1212,8 +1214,13 @@ impl fmt::Display for Value<'_> {
             None => f.write_str("[no lang, ")?,
         }
         match name.content() {
-            Some(content) => write!(f, "content {content:?}]"),
-            None => f.write_str("no content]"),
+            Some(content) => write!(f, "content {content:?}")?,
+            None => f.write_str("no content")?,
+        }
+        match name.expression() {
+            Some(expression) => write!(f, ", expression {:?}]", expression.as_str()),
+            None if name.is_expression_lang_string() => f.write_str(", no expression]"),
+            None => f.write_str("]"),
         }
     }
 }
@@ -1308,7 +1315,7 @@ impl fmt::Display for Declaration {
 ///    [`ArtifactSources`](Difference::ArtifactSources),
 ///    [`ArtifactTargets`](Difference::ArtifactTargets),
 ///    [`Categories`](Difference::Categories),
-///    [`ExpressionElements`](Difference::ExpressionElements),
+///    [`ExpressionElements`](Difference::`ExpressionElements`),
 ///    [`Origin`](Difference::Origin),
 ///    [`TerminologyGroupMembers`](Difference::TerminologyGroupMembers),
 ///    [`Name`](Difference::Name),
@@ -1600,6 +1607,14 @@ fn reference_difference(
             left: all_left.to_vec(),
             right: all_right.to_vec(),
         },
+        // The derived end is compared through the name and the texts, which
+        // hold it (SACM23-BASE-009): the walk never asks for it, and its ids
+        // differ only when a name or a text does.
+        ReferenceEnd::Expression => Difference::Name {
+            id,
+            left: ours.name.cloned(),
+            right: theirs.name.cloned(),
+        },
     }
 }
 
@@ -1673,7 +1688,7 @@ fn compare_element<'a>(
             sink(Found::Flag(flag, ours, theirs))?;
         }
     }
-    for &end in ReferenceEnd::ALL {
+    for &end in ReferenceEnd::ALL.iter().filter(|end| !end.is_derived()) {
         if ours.references(end) != theirs.references(end) {
             sink(Found::Reference(end, ours, theirs))?;
         }

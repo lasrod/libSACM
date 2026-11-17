@@ -54,7 +54,9 @@ const ASSERTIONS: [ElementKind; 6] = [
 /// §12.3, §12.14).
 fn owns(end: ReferenceEnd, kind: ElementKind) -> bool {
     match end {
-        ReferenceEnd::CitedElement | ReferenceEnd::AbstractForm => true,
+        // Every element has the SACMElement ends, and holds the expressions
+        // of its names and texts (§8.4).
+        ReferenceEnd::CitedElement | ReferenceEnd::AbstractForm | ReferenceEnd::Expression => true,
         ReferenceEnd::MetaClaim => ASSERTIONS.contains(&kind),
         ReferenceEnd::Reasoning | ReferenceEnd::Source | ReferenceEnd::Target => {
             RELATIONSHIPS.contains(&kind)
@@ -102,7 +104,9 @@ fn standard_bounds(end: ReferenceEnd) -> (usize, Option<usize>) {
         | ReferenceEnd::ArtifactGroupMember
         | ReferenceEnd::Category
         | ReferenceEnd::Element
-        | ReferenceEnd::TerminologyGroupMember => (0, None),
+        | ReferenceEnd::TerminologyGroupMember
+        // One per ExpressionLangString the element holds (§8.4).
+        | ReferenceEnd::Expression => (0, None),
         _ => (0, Some(1)),
     }
 }
@@ -187,6 +191,7 @@ fn named_accessor(element: SacmElement<'_>, end: ReferenceEnd) -> Vec<ElementId>
         ReferenceEnd::Category => element.categories().to_vec(),
         ReferenceEnd::Element => element.expression_elements().to_vec(),
         ReferenceEnd::Origin => one(element.origin()),
+        ReferenceEnd::Expression => element.expressions().to_vec(),
         other => panic!("{ROW}: an end this test does not know: {other:?}"),
     }
 }
@@ -196,14 +201,15 @@ fn named_accessor(element: SacmElement<'_>, end: ReferenceEnd) -> Vec<ElementId>
 /// `ArtifactGroup` with members and an `ArtifactAssetRelationship` with
 /// sources and targets, a counter relationship, and a TerminologyPackage
 /// whose Category, Term, Expression and `TerminologyGroup` hold the
-/// Terminology ends (slice 0062).
+/// Terminology ends (slice 0062); `c2`'s name is an `ExpressionLangString`
+/// naming the Term `x1`, which the derived `expression` holds (slice 0065).
 const READERS_START: &str = r#"<xmi:XMI xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001">
   <sacm:AssuranceCasePackage xmi:id="case">
     <name content="Case"/>
     <argumentPackage xmi:id="p">
       <name content="P"/>
       <argumentElement xmi:type="sacm:Claim" xmi:id="c1" isCitation="true" citedElement="c2" isAbstract="true" abstractForm="m1" metaClaim="m1 x m1"><name content="C1"/></argumentElement>
-      <argumentElement xmi:type="sacm:Claim" xmi:id="c2"><name content="C2"/></argumentElement>
+      <argumentElement xmi:type="sacm:Claim" xmi:id="c2"><name xmi:type="sacm:ExpressionLangString" content="C2" expression="x1"/></argumentElement>
       <argumentElement xmi:type="sacm:Claim" xmi:id="m1"><name content="M1"/></argumentElement>
       <argumentElement xmi:type="sacm:ArgumentReasoning" xmi:id="why" structure="p"><name content="Why"/></argumentElement>
       <argumentElement xmi:type="sacm:ArtifactReference" xmi:id="r1" referencedArtifactElement="c1 t1"><name content="R1"/></argumentElement>
@@ -328,6 +334,15 @@ fn lib_api_015_bounds_agree_with_the_reference_edit_refusals_for_every_kind() {
                 standard_bounds(end),
                 "{ROW}: {end:?}.bounds({kind}) disagrees with the standard"
             );
+            // The derived end is refused whatever its ids (SACM23-BASE-009).
+            if end == ReferenceEnd::Expression {
+                let refusal = answer(&doc, SetReferences::new(element, end, ["nowhere"]));
+                assert!(
+                    matches!(refusal, Err(EditError::DerivedEnd { .. })),
+                    "{ROW}: Expression on a {kind} is {refusal:?}, not DerivedEnd"
+                );
+                continue;
+            }
             // Ids that name nothing: the bounds are checked first (checks 4
             // and 5), so any other answer is no multiplicity refusal.
             for given in 0..=3 {
@@ -530,6 +545,7 @@ fn lib_api_015_all_lists_every_flag_and_end_in_order() {
             ReferenceEnd::Element,
             ReferenceEnd::Origin,
             ReferenceEnd::TerminologyGroupMember,
+            ReferenceEnd::Expression,
         ],
         "{ROW}: ReferenceEnd::ALL"
     );

@@ -1,5 +1,10 @@
 //! The `LangString` and `MultiLangString` value types (formal/23-05-08 §8.3,
-//! §8.5).
+//! §8.4, §8.5), and the `ExpressionLangString` form of a `LangString`
+//! (SACM23-BASE-009, ADR 0038).
+
+use std::fmt;
+
+use super::ElementId;
 
 /// Text with an optional language tag, where the text may also be absent:
 /// SACM's `LangString` (SACM 2.3 §8.3).
@@ -28,7 +33,32 @@
 /// name, as [`SacmElement::name_id`](crate::model::SacmElement::name_id), not
 /// on the value.
 ///
-/// [`Ord`] compares `lang` first, then `content`, with absent before present.
+/// [`Ord`] compares `lang` first, then `content`, with absent before present,
+/// then the form: plain before an `ExpressionLangString`.
+///
+/// # `ExpressionLangString`
+///
+/// A `LangString` may also be an `ExpressionLangString` (§8.4: "it contains a
+/// description (`LangString`) and it also (optionally) points to an
+/// `ExpressionElement` in the Terminology Package"): its
+/// [`expression`](Self::expression) is the id of that `Term` or
+/// `Expression`. [`with_expression`](Self::with_expression) makes one and
+/// [`without_expression`](Self::without_expression) makes it plain again,
+/// keeping `lang` and `content` (ADR 0038). §8.4 gives `expression[1]`, but
+/// a file may hold one without, which reads with `expression() == None` and
+/// which [`validate`](crate::validation::validate) reports (SACM-MULT-001).
+/// The ids an element's name and texts link are its
+/// [`expressions`](crate::model::SacmElement::expressions).
+///
+/// ```
+/// use sacm::model::{ElementId, LangString};
+///
+/// let name = LangString::default().with_lang("en").with_expression("blade_guarded");
+/// assert!(name.is_expression_lang_string());
+/// assert_eq!(name.expression(), Some(&ElementId::from("blade_guarded")));
+/// assert_eq!(name.clone().without_expression(), LangString::default().with_lang("en"));
+/// assert!(LangString::default().with_lang("en") < name);
+/// ```
 ///
 /// # Examples
 ///
@@ -48,18 +78,21 @@
 /// let lang_only = LangString::default().with_lang("en");
 /// assert_eq!(lang_only.content(), None);
 /// ```
-#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(
-    feature = "serde",
-    derive(serde::Serialize, serde::Deserialize),
-    serde(deny_unknown_fields)
-)]
+#[derive(Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct LangString {
-    // Field order is the `Ord` order: `lang`, then `content`.
-    #[cfg_attr(feature = "serde", serde(default))]
+    // Field order is the `Ord` order: `lang`, then `content`, then the form.
     lang: Option<String>,
-    #[cfg_attr(feature = "serde", serde(default))]
     content: Option<String>,
+    form: Form,
+}
+
+/// Whether a [`LangString`] is plain or an `ExpressionLangString` (§8.4),
+/// with the id of its `expression` if it has one. Plain sorts first.
+#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum Form {
+    #[default]
+    Plain,
+    Expression(Option<ElementId>),
 }
 
 impl LangString {
@@ -77,6 +110,7 @@ impl LangString {
         Self {
             lang: None,
             content: Some(content.into()),
+            form: Form::Plain,
         }
     }
 
@@ -134,6 +168,216 @@ impl LangString {
     /// ```
     pub fn set_content(&mut self, content: Option<String>) {
         self.content = content;
+    }
+
+    /// The `expression` of an `ExpressionLangString` (SACM 2.3 §8.4): the id of
+    /// the `ExpressionElement` it links to. `None` for a plain `LangString`, and
+    /// for an `ExpressionLangString` read without one.
+    ///
+    /// ```
+    /// use sacm::model::{ElementId, LangString};
+    ///
+    /// assert_eq!(LangString::new("x").expression(), None);
+    /// let linked = LangString::new("x").with_expression("blade");
+    /// assert_eq!(linked.expression(), Some(&ElementId::from("blade")));
+    /// ```
+    #[must_use]
+    pub fn expression(&self) -> Option<&ElementId> {
+        match &self.form {
+            Form::Expression(expression) => expression.as_ref(),
+            Form::Plain => None,
+        }
+    }
+
+    /// Whether this is an `ExpressionLangString` (§8.4), with or without an
+    /// `expression`.
+    ///
+    /// ```
+    /// use sacm::model::LangString;
+    ///
+    /// assert!(!LangString::new("x").is_expression_lang_string());
+    /// assert!(LangString::new("x").with_expression("blade").is_expression_lang_string());
+    /// ```
+    #[must_use]
+    pub fn is_expression_lang_string(&self) -> bool {
+        matches!(self.form, Form::Expression(_))
+    }
+
+    /// This value as an `ExpressionLangString` whose `expression` is
+    /// `expression`, keeping `lang` and `content` and replacing any earlier
+    /// expression.
+    ///
+    /// An edit that sets it checks the id as a reference: it must name a
+    /// `Term` or an `Expression` of the document
+    /// ([`EditError::ReferenceNotFound`](crate::edit::EditError::ReferenceNotFound),
+    /// [`EditError::WrongReferenceType`](crate::edit::EditError::WrongReferenceType)).
+    ///
+    /// ```
+    /// use sacm::model::{ElementId, LangString};
+    ///
+    /// let name = LangString::new("x").with_expression("blade").with_expression("lid");
+    /// assert_eq!(name.expression(), Some(&ElementId::from("lid")));
+    /// assert_eq!(name.content(), Some("x"));
+    /// ```
+    #[must_use]
+    pub fn with_expression(mut self, expression: impl Into<ElementId>) -> Self {
+        self.form = Form::Expression(Some(expression.into()));
+        self
+    }
+
+    /// This value as a plain `LangString`, keeping `lang` and `content`.
+    ///
+    /// ```
+    /// use sacm::model::LangString;
+    ///
+    /// let name = LangString::new("x").with_lang("en").with_expression("blade");
+    /// assert_eq!(name.without_expression(), LangString::new("x").with_lang("en"));
+    /// ```
+    #[must_use]
+    pub fn without_expression(mut self) -> Self {
+        self.form = Form::Plain;
+        self
+    }
+
+    /// This value as an `ExpressionLangString` with no `expression`, as a file
+    /// may give one.
+    pub(crate) fn with_no_expression(mut self) -> Self {
+        self.form = Form::Expression(None);
+        self
+    }
+
+    /// This value with its `expression` replaced by `map(expression)`, if it
+    /// has one: a copy's link to a copied element.
+    pub(crate) fn map_expression(&self, map: impl FnOnce(&ElementId) -> Option<ElementId>) -> Self {
+        let mut value = self.clone();
+        if let Form::Expression(Some(expression)) = &self.form {
+            if let Some(mapped) = map(expression) {
+                value.form = Form::Expression(Some(mapped));
+            }
+        }
+        value
+    }
+}
+
+impl fmt::Debug for LangString {
+    /// A plain value as `LangString { lang, content }`; an
+    /// `ExpressionLangString` as `ExpressionLangString { lang, content,
+    /// expression }`.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.form {
+            Form::Plain => f
+                .debug_struct("LangString")
+                .field("lang", &self.lang)
+                .field("content", &self.content)
+                .finish(),
+            Form::Expression(expression) => f
+                .debug_struct("ExpressionLangString")
+                .field("lang", &self.lang)
+                .field("content", &self.content)
+                .field("expression", expression)
+                .finish(),
+        }
+    }
+}
+
+/// The class name a JSON `ExpressionLangString` is tagged with (ADR 0030
+/// amendment 4).
+#[cfg(feature = "serde")]
+const EXPRESSION_LANG_STRING: &str = "ExpressionLangString";
+
+/// The JSON of a `LangString` (ADR 0030 R6 and amendment 4): a plain one is
+/// `{"lang", "content"}`; an `ExpressionLangString` is
+/// `{"type": "ExpressionLangString", "lang", "content", "expression"}`, keys
+/// in that order, `expression` `null` when it has none.
+#[cfg(feature = "serde")]
+impl serde::Serialize for LangString {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        match &self.form {
+            Form::Plain => {
+                let mut out = serializer.serialize_struct("LangString", 2)?;
+                out.serialize_field("lang", &self.lang)?;
+                out.serialize_field("content", &self.content)?;
+                out.end()
+            }
+            Form::Expression(expression) => {
+                let mut out = serializer.serialize_struct("LangString", 4)?;
+                out.serialize_field("type", EXPRESSION_LANG_STRING)?;
+                out.serialize_field("lang", &self.lang)?;
+                out.serialize_field("content", &self.content)?;
+                out.serialize_field("expression", expression)?;
+                out.end()
+            }
+        }
+    }
+}
+
+/// Reads either JSON form (ADR 0030 amendment 4): `type`, when given, must
+/// be `"ExpressionLangString"`, and `expression` is required with it and
+/// refused without it; `lang` and `content` may be left out (R3); unknown
+/// and repeated keys are refused (R4).
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for LangString {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_struct("LangString", JSON_FIELDS, LangStringVisitor)
+    }
+}
+
+/// The keys of a JSON `LangString`.
+#[cfg(feature = "serde")]
+const JSON_FIELDS: &[&str] = &["type", "lang", "content", "expression"];
+
+/// The visitor of [`LangString`]'s `Deserialize`.
+#[cfg(feature = "serde")]
+struct LangStringVisitor;
+
+#[cfg(feature = "serde")]
+impl<'de> serde::de::Visitor<'de> for LangStringVisitor {
+    type Value = LangString;
+
+    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("a LangString or an ExpressionLangString")
+    }
+
+    fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<LangString, A::Error> {
+        use serde::de::Error;
+        let mut tag: Option<String> = None;
+        let mut lang: Option<Option<String>> = None;
+        let mut content: Option<Option<String>> = None;
+        let mut expression: Option<Option<ElementId>> = None;
+        while let Some(key) = map.next_key::<String>()? {
+            let repeated = match key.as_str() {
+                "type" => tag.replace(map.next_value()?).is_some(),
+                "lang" => lang.replace(map.next_value()?).is_some(),
+                "content" => content.replace(map.next_value()?).is_some(),
+                "expression" => expression.replace(map.next_value()?).is_some(),
+                other => return Err(A::Error::unknown_field(other, JSON_FIELDS)),
+            };
+            if repeated {
+                return Err(A::Error::custom(format_args!("duplicate field `{key}`")));
+            }
+        }
+        let form = match (tag, expression) {
+            (None, None) => Form::Plain,
+            (Some(tag), _) if tag != EXPRESSION_LANG_STRING => {
+                return Err(A::Error::invalid_value(
+                    serde::de::Unexpected::Str(&tag),
+                    &"\"ExpressionLangString\"",
+                ));
+            }
+            (Some(_), Some(expression)) => Form::Expression(expression),
+            (Some(_), None) => return Err(A::Error::missing_field("expression")),
+            (None, Some(_)) => {
+                return Err(A::Error::custom(
+                    "`expression` is given without `type`: only an ExpressionLangString has one",
+                ));
+            }
+        };
+        Ok(LangString {
+            lang: lang.unwrap_or_default(),
+            content: content.unwrap_or_default(),
+            form,
+        })
     }
 }
 

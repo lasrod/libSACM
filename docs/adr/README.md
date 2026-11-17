@@ -44,6 +44,7 @@ decisions.md has a one-line entry pointing to it.
 | [0035](0035-tolerant-read-and-schema-only-save.md) | Tolerant read opens any file; strict save is schema only | accepted |
 | [0036](0036-moving-and-copying-elements.md) | Moving and copying elements, and finding referrers | accepted |
 | [0037](0037-undo-is-the-applications.md) | Undo is the application's, on whole-document copies | accepted |
+| [0038](0038-expression-lang-string.md) | ExpressionLangString | proposed |
 
 Statuses: `proposed` → `accepted` (maintainer approval) → optionally `superseded by NNNN`.
 Copy [template.md](template.md) for a new record.

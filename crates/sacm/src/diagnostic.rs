@@ -322,7 +322,7 @@ catalog! {
     /// which a tolerant [`xmi::read`](crate::xmi::read) keeps as preserved
     /// content with one Warning: an element of a kind not read yet (such as
     /// a `TerminologyPackage` or an `ArtifactPackageInterface`), a package's
-    /// `interface` end, an `ExpressionLangString`, or XMI metadata (such as
+    /// `interface` end, or XMI metadata (such as
     /// `xmi:uuid`, `xsi:schemaLocation` or `xmi:Documentation`). It is not a
     /// defect: the message ends naming the row that reads it. A strict read refuses it as
     /// [`ReadError::Unsupported`](crate::xmi::ReadError::Unsupported) with
@@ -594,8 +594,8 @@ catalog! {
     /// `AssertedArtifactSupport` (§11.17) or `AssertedArtifactContext`
     /// (§11.18), that is an `ArgumentAsset` but not an `ArtifactReference`
     /// (SACM23-VAL-016). [`xmi::read`](crate::xmi::read) keeps such a
-    /// reference in both modes and a tolerant [`xmi::write`](crate::xmi::write)
-    /// writes it back; a strict write refuses the document. A create, and
+    /// reference in both modes and both modes of
+    /// [`xmi::write`](crate::xmi::write) write it (ADR 0035 D4). A create, and
     /// [`SetReferences`](crate::edit::SetReferences) or
     /// [`AddReference`](crate::edit::AddReference) for an id the end does
     /// not already hold, refuses an id its end's declared type does not
@@ -661,7 +661,29 @@ catalog! {
     /// or with [`SetFlag`](crate::edit::SetFlag) and
     /// [`SetReferences`](crate::edit::SetReferences); an edit refuses
     /// neither (ADR 0029).
+    ///
+    /// It also reports, for each `Expression` whose `isAbstract` is not true,
+    /// each distinct id of its `element` end that names an abstract `Term` or
+    /// `Expression` of the document, as one Error with clause 10.10,
+    /// affecting the Expression, then the element, because §10.10 gives the
+    /// OCL `self.isAbstract = false implies
+    /// self.element->forall(expr|expr.isAbstract = false)` (SACM23-VAL-017).
+    /// An id that names no element, or an element of another kind, is only
+    /// SACM-REF-001 or SACM-REF-002. Reading, editing and both saves never
+    /// refuse it. Fix: make the Expression abstract, or its elements
+    /// concrete, with [`SetFlag`](crate::edit::SetFlag).
     pub const ABSTRACT_FORM_INVALID: Code = Code::from_static("SACM-ABS-001");
+
+    /// SACM-EXPR-001: an `ExpressionLangString` has an `expression` and a
+    /// content that is not empty, against §8.4 "If expression is not empty,
+    /// then +content should be empty."
+    /// [`validate`](crate::validation::validate) reports one Warning per such
+    /// name or value, with clause 8.4, affecting the element that holds it
+    /// (SACM23-VAL-009); an absent content and `""` are empty. Reading,
+    /// editing and saving never refuse it. Fix: remove the content, or make
+    /// the text plain with
+    /// [`LangString::without_expression`](crate::model::`LangString`::without_expression).
+    pub const EXPRESSION_WITH_CONTENT: Code = Code::from_static("SACM-EXPR-001");
 }
 
 impl Code {
@@ -1471,7 +1493,7 @@ mod tests {
         distinct.dedup();
         assert_eq!(distinct.len(), texts.len(), "a code is in the table twice");
         assert_eq!(texts.first(), Some(&Code::XML_MALFORMED.as_str()));
-        assert_eq!(texts.last(), Some(&Code::ABSTRACT_FORM_INVALID.as_str()));
+        assert_eq!(texts.last(), Some(&Code::EXPRESSION_WITH_CONTENT.as_str()));
         assert!(Code::CATALOG.contains(&Code::REF_DANGLING));
     }
 }

@@ -55,6 +55,25 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 - A tolerant read reads the §10.4 spelling `TerminologyElement` of a TerminologyPackage's
   role, with a SACM-XMI-013 Warning; a strict read keeps it as preserved content with an
   Error [SACM23-XMI-028].
+- `ExpressionLangString` (§8.4): a name, or a value of a `content`, `key` or `location`,
+  may link an ExpressionElement. `LangString::expression()`, `is_expression_lang_string()`,
+  `with_expression(id)` and `without_expression()`; `xmi::read` and `xmi::write` read and
+  write it as `xmi:type="sacm:ExpressionLangString"` with an `expression` reference
+  [SACM23-BASE-009].
+- `ReferenceEnd::Expression` and `SacmElement::expressions()`: the ids an element's names
+  and texts link, listed by `Document::referrers` and delete previews. A delete that
+  scrubs references makes the text plain and keeps its `lang` and `content`
+  [SACM23-BASE-009].
+- `EditError::DerivedEnd` (SACM-CMD-008): the reference edits refuse
+  `ReferenceEnd::Expression`, which is set through the name or text [SACM23-BASE-009].
+- `validate` reports an ExpressionLangString with no `expression` (SACM-MULT-001), one
+  with an `expression` and a non-empty `content` (SACM-EXPR-001,
+  `Code::EXPRESSION_WITH_CONTENT`, a Warning), and a concrete Expression whose `element`
+  names an abstract Term or Expression (SACM-ABS-001) [SACM23-BASE-009, SACM23-VAL-009,
+  SACM23-VAL-017].
+- With `serde`, an ExpressionLangString is
+  `{"type":"ExpressionLangString","lang","content","expression"}`; a plain LangString is
+  unchanged [SACM23-BASE-009].
 
 ### Changed
 
@@ -65,10 +84,13 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   TerminologyGroup as `Unsupported`, and a tolerant read no longer keeps them as preserved
   content with SACM-XMI-014; references to them are type-checked (no SACM-REF-003)
   [LIB-API-011, SACM23-TERM-001].
+- A strict read no longer refuses a `name` or `value` typed `sacm:ExpressionLangString` as
+  `Unsupported`, and a tolerant read no longer keeps it as preserved content with
+  SACM-XMI-014 [SACM23-BASE-009, LIB-API-011].
 
 ### Known limits
 
-- Not read yet: `ExpressionLangString` (M4); the interface and binding kinds of the four
+- Not read yet: the interface and binding kinds of the four
   packages, and a package's `interface` end (M5); cross-document references, role
   elements in reference form, and XMI metadata (SACM23-XMI-019, SACM23-XMI-027). A strict
   read refuses them as `ReadError::Unsupported` naming the row that reads them; a tolerant

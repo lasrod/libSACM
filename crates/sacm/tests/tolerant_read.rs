@@ -962,11 +962,13 @@ fn lib_compat_001_a_tolerant_read_reports_no_error() {
             "a cross-document href",
             package(&claim("c1", "", "<metaClaim href=\"other.sacm.xmi#c\"/>")),
         ),
+        // XMI metadata in a name: the sample an ExpressionLangString name gave
+        // until slice 0065 read it (SACM23-BASE-009).
         (
-            "an ExpressionLangString name",
+            "xmi:uuid on a name",
             format!(
                 "<sacm:ArgumentPackage{NS} xmi:id=\"p\">\
-                 <name xmi:type=\"sacm:ExpressionLangString\" content=\"p\"/></sacm:ArgumentPackage>"
+                 <name xmi:uuid=\"u\" content=\"p\"/></sacm:ArgumentPackage>"
             ),
         ),
         (

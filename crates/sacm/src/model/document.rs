@@ -616,6 +616,7 @@ impl Document {
         let node = self.insert_handle(parent, kind, id, Some(name), None, None)?;
         self.nodes[node].strings = strings;
         self.nodes[node].location = location.map(Text::new);
+        self.refresh_expressions(node);
         Ok(())
     }
 
@@ -732,6 +733,7 @@ impl Document {
             children: Vec::new(),
             preserved: None,
         });
+        self.refresh_expressions(node);
         Ok(node)
     }
 
@@ -1005,6 +1007,18 @@ impl Document {
         }
     }
 
+    /// Derives the node's `expression` end from its name and texts again
+    /// (SACM23-BASE-009): called whenever one of them is set, so that the
+    /// end, and the referrer index with it, stays in step.
+    fn refresh_expressions(&mut self, node: usize) {
+        let expressions = self.nodes[node].expressions();
+        if expressions.as_slice()
+            != targets_of(&self.nodes[node].references, ReferenceEnd::Expression)
+        {
+            self.hold_references(node, ReferenceEnd::Expression, expressions);
+        }
+    }
+
     /// Applies `release` to the use of `id` in `other_ids`, and drops the
     /// entry once nothing uses the id.
     fn release(&mut self, id: &ElementId, release: impl FnOnce(&mut IdUse)) {
@@ -1065,6 +1079,7 @@ impl Document {
             self.other_ids.entry(id.clone()).or_default().owner = Some(node);
         }
         *self.nodes[node].text_mut(role) = Some(text);
+        self.refresh_expressions(node);
         Ok(())
     }
 
@@ -1079,6 +1094,7 @@ impl Document {
                 self.release(id, |used| used.owner = None);
             }
         }
+        self.refresh_expressions(node);
     }
 
     /// Replaces the name of the element `id` with `name`, keeping the name's
@@ -1092,6 +1108,7 @@ impl Document {
                 "only a ModelElement has a name"
             );
             self.nodes[node].name = Some(name);
+            self.refresh_expressions(node);
         }
     }
 
@@ -1183,6 +1200,17 @@ impl Document {
         };
         if is_doomed(self, holder) {
             return;
+        }
+        // The derived end: each ExpressionLangString whose expression is
+        // deleted is made plain (ADR 0038 D4), and the end follows.
+        let gone: BTreeSet<ElementId> =
+            targets_of(&self.nodes[node].references, ReferenceEnd::Expression)
+                .iter()
+                .filter(|target| is_doomed(self, target))
+                .cloned()
+                .collect();
+        if !gone.is_empty() && self.nodes[node].plain_expressions(|id| gone.contains(id)) {
+            self.refresh_expressions(node);
         }
         let kept: Vec<(ReferenceEnd, Vec<ElementId>)> = self.nodes[node]
             .references
@@ -1905,6 +1933,10 @@ impl Document {
     /// each top, `ids` and the kept part ids and preserved ids are free and
     /// distinct, and every reference resolves. Changes nothing when the
     /// document has no element `parent`.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "one copy step per feature of a node, in the order the node declares them"
+    )]
     pub(crate) fn insert_copy(
         &mut self,
         parent: Option<&ElementId>,
@@ -1921,9 +1953,14 @@ impl Document {
         };
         let mapped: BTreeMap<&ElementId, &ElementId> = snapshot.ids.iter().zip(ids).collect();
         let keep = |id: &Option<ElementId>| id.clone().filter(|id| kept.contains(id));
+        // An ExpressionLangString's expression names the copy of a copied
+        // element, as every other reference does (SACM23-BASE-009).
+        let remap = |value: &LangString| {
+            value.map_expression(|expression| mapped.get(expression).map(|&copy| copy.clone()))
+        };
         let keep_text = |text: &Option<Text>| {
             text.as_ref().map(|text| Text {
-                value: text.value.clone(),
+                value: text.value.values().iter().map(remap).collect(),
                 id: keep(&text.id),
                 value_ids: text.value_ids.iter().map(keep).collect(),
             })
@@ -1948,7 +1985,7 @@ impl Document {
                 id: id.clone(),
                 kind: captured.kind,
                 gid: captured.gid.clone(),
-                name: captured.name.clone(),
+                name: captured.name.as_ref().map(remap),
                 name_id: keep(&captured.name_id),
                 content: keep_text(&captured.content),
                 key: keep_text(&captured.key),
@@ -1982,7 +2019,11 @@ impl Document {
             for part in parts {
                 self.other_ids.entry(part).or_default().owner = Some(node);
             }
-            for (end, targets) in &captured.references {
+            for (end, targets) in captured
+                .references
+                .iter()
+                .filter(|(end, _)| !end.is_derived())
+            {
                 let targets = targets
                     .iter()
                     .map(|target| {
@@ -1993,6 +2034,7 @@ impl Document {
                     .collect();
                 self.hold_references(node, *end, targets);
             }
+            self.refresh_expressions(node);
             if let Some(preserved) = &captured.preserved {
                 for id in &preserved.ids {
                     let used = self.other_ids.entry(id.clone()).or_default();
@@ -2085,6 +2127,22 @@ impl<'s> CapturedElement<'s> {
     /// The ids its end `end` holds, in order.
     pub(crate) fn references(self, end: ReferenceEnd) -> &'s [ElementId] {
         targets_of(&self.captured.references, end)
+    }
+
+    /// Whether its name or a value of its texts is an `ExpressionLangString`
+    /// with no `expression` (§8.4 `expression[1]`), which a copy refuses.
+    pub(crate) fn has_missing_expression(self) -> bool {
+        let captured = self.captured;
+        captured
+            .name
+            .iter()
+            .chain(
+                [&captured.content, &captured.key, &captured.location]
+                    .into_iter()
+                    .flatten()
+                    .flat_map(|text| text.value.values()),
+            )
+            .any(|value| value.is_expression_lang_string() && value.expression().is_none())
     }
 
     /// The ids of its name, `content`, `key`, `location` and their values.
@@ -2959,6 +3017,7 @@ impl<'a> SacmElement<'a> {
     ///         "citedElement [0..1] = []",
     ///         "abstractForm [0..1] = []",
     ///         "metaClaim [0..*] = [\"c1\"]",
+    ///         "expression [0..*] = []",
     ///     ]
     /// );
     /// # Ok::<(), sacm::edit::EditError>(())
@@ -2966,6 +3025,31 @@ impl<'a> SacmElement<'a> {
     #[must_use]
     pub fn references(self, end: ReferenceEnd) -> &'a [ElementId] {
         targets_of(&self.node().references, end)
+    }
+
+    /// The ids the element's `ExpressionLangStrings` (§8.4) name: its name's, then each
+    /// value's of its `content`, `key` and `location`, in order. An `ExpressionLangString`
+    /// with no `expression` adds none. It is `references(ReferenceEnd::Expression)`.
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, CreateTerm, CreateTerminologyPackage};
+    /// use sacm::model::{Document, ElementId, LangString, ReferenceEnd};
+    ///
+    /// let mut doc = Document::new();
+    /// edit::apply(&mut doc, CreateTerminologyPackage::root(LangString::new("Terms")).with_id("terms"))?;
+    /// edit::apply(&mut doc, CreateTerm::new("terms", LangString::new("Blade"), "blade").with_id("blade"))?;
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+    /// let name = LangString::default().with_lang("en").with_expression("blade");
+    /// edit::apply(&mut doc, CreateClaim::new("p", name).with_id("c1"))?;
+    ///
+    /// let c1 = doc.get("c1").expect("just created");
+    /// assert_eq!(c1.expressions(), [ElementId::from("blade")]);
+    /// assert_eq!(c1.references(ReferenceEnd::Expression), c1.expressions());
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    #[must_use]
+    pub fn expressions(self) -> &'a [ElementId] {
+        self.references(ReferenceEnd::Expression)
     }
 
     /// The element's descriptions (SACM 2.3 §8.6, §8.9): its children in the
@@ -3834,6 +3918,58 @@ impl Node {
             TextRole::Key => self.key.as_ref(),
             TextRole::Location => self.location.as_ref(),
         }
+    }
+
+    /// The ids the node's `ExpressionLangStrings` name (§8.4): its name's, then
+    /// each value's of its `content`, `key` and `location`, in order; one
+    /// with no `expression` adds none (SACM23-BASE-009).
+    fn expressions(&self) -> Vec<ElementId> {
+        self.lang_strings()
+            .filter_map(LangString::expression)
+            .cloned()
+            .collect()
+    }
+
+    /// The node's `LangString`s in write order: its name, then each value of
+    /// its `content`, `key` and `location`.
+    fn lang_strings(&self) -> impl Iterator<Item = &LangString> {
+        self.name.iter().chain(
+            TextRole::ALL
+                .iter()
+                .filter_map(|&role| self.text(role))
+                .flat_map(|text| text.value.values()),
+        )
+    }
+
+    /// Makes plain each `ExpressionLangString` of the node whose `expression`
+    /// `is_gone`, keeping its `lang`, `content` and id: a delete's scrub
+    /// (ADR 0038 D4). Returns whether one changed.
+    fn plain_expressions(&mut self, is_gone: impl Fn(&ElementId) -> bool) -> bool {
+        let mut changed = false;
+        let mut scrub = |value: &mut LangString| {
+            if value.expression().is_some_and(&is_gone) {
+                *value = value.clone().without_expression();
+                changed = true;
+            }
+        };
+        if let Some(name) = self.name.as_mut() {
+            scrub(name);
+        }
+        for role in TextRole::ALL {
+            if let Some(text) = self.text_mut(role).as_mut() {
+                text.value = text
+                    .value
+                    .values()
+                    .iter()
+                    .cloned()
+                    .map(|mut value| {
+                        scrub(&mut value);
+                        value
+                    })
+                    .collect();
+            }
+        }
+        changed
     }
 
     /// The place of the text the node holds in `role`.

@@ -17,7 +17,7 @@ use super::EditError;
 use super::argumentation::plan_referencing;
 use super::create::{checked_place, plan_create};
 use super::plan::{Features, NewElement, Plan};
-use super::references::check_targets;
+use super::references::{check_targets, expression_ids};
 use crate::model::{Document, ElementId, ElementKind, LangString, ReferenceEnd, StringAttribute};
 
 /// Creates a `TerminologyPackage` (SACM 2.3 §10.4): a root, or a child of an
@@ -792,10 +792,14 @@ fn plan_expression_element<'o>(
             .all(|&(end, targets)| end.upper_bound().is_none_or(|upper| targets.len() <= upper)),
         "the ends of an ExpressionElement create are within their bounds"
     );
-    let checked: Vec<(ReferenceEnd, &[ElementId], &[ElementId])> = references
+    // The name's expression comes after the element's own ends, in each
+    // check (SACM23-BASE-009).
+    let expressions = expression_ids([name])?;
+    let mut checked: Vec<(ReferenceEnd, &[ElementId], &[ElementId])> = references
         .iter()
         .map(|&(end, targets)| (end, targets, [].as_slice()))
         .collect();
+    checked.push((ReferenceEnd::Expression, &expressions, &[]));
     check_targets(document, &checked)?;
     Ok(Plan::Create(NewElement {
         kind,

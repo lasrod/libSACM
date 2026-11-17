@@ -113,7 +113,7 @@ one command per feature: `SetName`, `SetGid`, `SetCitation`, `SetMetaClaims`,
   so validate after editing.
 - LIB-EDIT-002's set and LIB-EDIT-003's oracle grow to cover set operations and `RootOrder`.
 - Typed before-values are LIB-EDIT-011's (ADR 0019 amendment 2).
-- ExpressionLangString names (SACM23-BASE-009) will widen `SetName` together with the creates.
+- ExpressionLangString names (SACM23-BASE-009) widened `SetName` together with the creates in slice 0065 (ADR 0038).
 
 ## Amendment 1 (accepted by the maintainer with ADR 0036, 2026-11-17; slice 0056)
 

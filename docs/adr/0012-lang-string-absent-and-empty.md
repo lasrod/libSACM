@@ -39,8 +39,9 @@ change to conforming data, which this crate's first rule forbids.
 - Round trips keep the distinction, and semantic comparison can see it.
 - Rust callers handle `Option` where C++ callers compare against `""`.
 - The XMI rows must test both states for both attributes.
-- How ExpressionLangString (SACM23-BASE-009) relates to LangString is still open. That row
-  must say whether "content should be empty" means absent or `""`.
+- How ExpressionLangString (SACM23-BASE-009) relates to LangString is resolved by ADR 0038
+  (proposed): it is a form of LangString, and "content should be empty" is checked against a
+  present, non-empty content only (D-EXPR-CONTENT).
 
 ## Alternatives considered
 

@@ -75,6 +75,8 @@ const CONSTANTS: &[(&str, Code)] = &[
     ("XMI_NAMESPACE_NOT_PINNED", Code::XMI_NAMESPACE_NOT_PINNED),
     ("XMI_WRAPPER_NAMESPACE", Code::XMI_WRAPPER_NAMESPACE),
     ("XMI_STRICT_SAVE_INVALID", Code::XMI_STRICT_SAVE_INVALID),
+    // The code of slice 0065 (SACM23-VAL-009).
+    ("EXPRESSION_WITH_CONTENT", Code::EXPRESSION_WITH_CONTENT),
 ];
 
 /// Every live code, [`LIVE`], sorted.
@@ -111,6 +113,7 @@ const LIVE: &[&str] = &[
     "SACM-CMD-008",
     "SACM-CMD-009",
     "SACM-ENUM-001",
+    "SACM-EXPR-001",
     "SACM-ID-001",
     "SACM-ID-002",
     "SACM-ID-003",

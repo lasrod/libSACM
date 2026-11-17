@@ -9,7 +9,7 @@ use std::slice;
 use super::EditError;
 use super::create::checked_place;
 use super::plan::{Features, NewElement, Plan};
-use super::references::{check_bounds, check_targets};
+use super::references::{check_bounds, check_targets, expression_ids};
 use crate::model::{Document, ElementId, ElementKind, Flag, LangString, ReferenceEnd};
 
 /// Creates an `ArgumentReasoning` (SACM 2.3 §11.12) as the last child of an
@@ -873,10 +873,14 @@ pub(super) fn plan_referencing<'o>(
     for &(end, targets) in references {
         check_bounds(end, targets.len())?;
     }
-    let checked: Vec<(ReferenceEnd, &[ElementId], &[ElementId])> = references
+    // The name's expression comes after the element's own ends, in each
+    // check (SACM23-BASE-009).
+    let expressions = expression_ids([name])?;
+    let mut checked: Vec<(ReferenceEnd, &[ElementId], &[ElementId])> = references
         .iter()
         .map(|&(end, targets)| (end, targets, [].as_slice()))
         .collect();
+    checked.push((ReferenceEnd::Expression, &expressions, &[]));
     check_targets(document, &checked)?;
     Ok(Plan::Create(NewElement {
         kind,

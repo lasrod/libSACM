@@ -6,6 +6,7 @@
 
 use super::EditError;
 use super::plan::{Plan, Value};
+use super::references::check_expressions;
 use crate::model::{
     AbstractClass, AssertionDeclaration, Document, ElementId, ElementKind, Flag, LangString,
     MultiLangString, SacmElement, StringAttribute, Text, TextRole,
@@ -30,7 +31,14 @@ pub(super) const ASSERTION_DECLARATION: &str = "assertionDeclaration";
 /// [`xmi::write`](crate::xmi::write) refuses it. Apply it with
 /// [`edit::apply`](super::apply). It refuses an unknown element as
 /// [`EditError::ElementNotFound`], then a `UtilityElement`, which has no
-/// name, as [`EditError::FeatureNotApplicable`]. The element is in
+/// name, as [`EditError::FeatureNotApplicable`]. A name that is an
+/// `ExpressionLangString` (§8.4) must have an `expression`
+/// ([`EditError::TooFewReferences`]), and an `expression` the element does
+/// not already hold must name a `Term` or an `Expression` of the document
+/// ([`EditError::InvalidReference`], [`EditError::ReferenceNotFound`],
+/// [`EditError::WrongReferenceType`], end `expression`; SACM23-BASE-009);
+/// [`SetContent`], [`SetKey`] and [`SetLocation`] check their values the
+/// same way. The element is in
 /// [`changed_ids`](super::Mutation::changed_ids) when its name changes.
 ///
 /// # Examples
@@ -91,6 +99,7 @@ impl SetName {
         let target = edited(document, &self.element, NAME, |kind| {
             kind.is_a(AbstractClass::ModelElement)
         })?;
+        check_expressions(document, [&self.name], target.expressions())?;
         Ok(changing(
             &self.element,
             target.name() != Some(&self.name),
@@ -963,6 +972,9 @@ fn plan_text<'o>(
     value: Option<&MultiLangString>,
 ) -> Result<Plan<'o>, EditError> {
     let target = edited(document, element, role.name(), |kind| role.is_held_by(kind))?;
+    if let Some(value) = value {
+        check_expressions(document, value.values(), target.expressions())?;
+    }
     let held = target.text(role);
     let text = value.map(|value| Text::keeping_ids(value.clone(), held));
     let changes = held != text.as_ref();

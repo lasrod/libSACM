@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-VAL-017: the concrete Expression guarded has the elements blade, guard (twice) and pattern; guard (a Term) and pattern (an Expression) are abstract, so each gives one SACM-ABS-001 Error with clause 10.10 on [guarded, id], and the repeated guard one SACM23-VAL-022 Warning. The abstract Expression pattern gives none. It reads in both modes with no diagnostic, and a strict write writes it. Hand-written; no third-party content. -->
+<sacm:TerminologyPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="terms">
+  <name lang="en" content="Terms"/>
+  <terminologyElement xmi:type="sacm:Term" xmi:id="blade" value="blade">
+    <name lang="en" content="Blade"/>
+  </terminologyElement>
+  <terminologyElement xmi:type="sacm:Term" xmi:id="guard" isAbstract="true" value="{guard}">
+    <name lang="en" content="Guard (placeholder)"/>
+  </terminologyElement>
+  <terminologyElement xmi:type="sacm:Expression" xmi:id="pattern" isAbstract="true" element="blade guard" value="$Blade$ is covered by $Guard$">
+    <name lang="en" content="Guarding pattern"/>
+  </terminologyElement>
+  <terminologyElement xmi:type="sacm:Expression" xmi:id="guarded" element="blade guard guard pattern" value="$Blade$ is covered by $Guard$">
+    <name lang="en" content="Blade guarded"/>
+  </terminologyElement>
+</sacm:TerminologyPackage>

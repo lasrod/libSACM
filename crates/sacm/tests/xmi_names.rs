@@ -1197,22 +1197,19 @@ fn sacm23_xmi_012_an_attribute_other_than_lang_and_content_on_name_is_unsupporte
 }
 
 #[test]
-fn sacm23_xmi_012_a_type_naming_another_class_on_name_is_unsupported_or_preserved_at_the_name() {
+fn sacm23_xmi_012_a_type_naming_another_class_on_name_is_preserved_at_the_name() {
     let row = "SACM23-XMI-012";
-    // An ExpressionLangString is conforming and not read yet
-    // (SACM23-BASE-009).
+    // An ExpressionLangString is read since slice 0065 (SACM23-BASE-009,
+    // `expression_lang_string.rs`). A type the role does not admit: the
+    // whole name is preserved (ADR 0033), whichever type attribute names it.
     for attribute in [
-        "xmi:type=\"sacm:ExpressionLangString\"",
-        "xsi:type=\"sacm:ExpressionLangString\"",
+        "xmi:type=\"sacm:MultiLangString\"",
+        "xsi:type=\"sacm:MultiLangString\"",
+        "xmi:type=\"sacm:Claim\"",
     ] {
         let input = root_holding(&format!("  <name content=\"A\"\n    {attribute}/>"));
-        assert_unsupported_at(row, attribute, &input, 2, 3);
+        assert_preserved_at(row, attribute, &input, 2, 3, "a");
     }
-    // A type the role does not admit: the whole name is preserved
-    // (ADR 0033).
-    let attribute = "xmi:type=\"sacm:MultiLangString\"";
-    let input = root_holding(&format!("  <name content=\"A\"\n    {attribute}/>"));
-    assert_preserved_at(row, attribute, &input, 2, 3, "a");
 }
 
 #[test]

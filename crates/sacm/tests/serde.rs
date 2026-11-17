@@ -163,7 +163,7 @@ const CREATE_COUNT: usize = 30;
 
 /// Every `EditError` variant of this release, with its catalog code, in the
 /// order of `edit-errors.json`.
-const EDIT_ERROR_COUNT: usize = 21;
+const EDIT_ERROR_COUNT: usize = 22;
 const EDIT_ERRORS: [(&str, &str); EDIT_ERROR_COUNT] = [
     ("ParentNotFound", "SACM-CMD-001"),
     ("InvalidParent", "SACM-CMD-005"),
@@ -176,6 +176,8 @@ const EDIT_ERRORS: [(&str, &str); EDIT_ERROR_COUNT] = [
     ("WrongReferenceType", "SACM-REF-002"),
     ("ElementNotFound", "SACM-CMD-001"),
     ("FeatureNotApplicable", "SACM-CMD-008"),
+    // The refusal of slice 0065 (SACM23-BASE-009).
+    ("DerivedEnd", "SACM-CMD-008"),
     ("ReferenceNotHeld", "SACM-CMD-001"),
     ("ChildNotFound", "SACM-CMD-001"),
     ("InvalidOrder", "SACM-CMD-009"),
@@ -235,6 +237,8 @@ const CODES: &[Code] = &[
     Code::XMI_NAMESPACE_NOT_PINNED,
     Code::XMI_WRAPPER_NAMESPACE,
     Code::XMI_STRICT_SAVE_INVALID,
+    // The code of slice 0065 (SACM23-VAL-009).
+    Code::EXPRESSION_WITH_CONTENT,
 ];
 
 /// The three flags, with their names.
@@ -283,6 +287,8 @@ const ENDS: &[(ReferenceEnd, &str, &str)] = &[
         "terminologyElement",
         "terminologyElement",
     ),
+    // The derived end of slice 0065 (SACM23-BASE-009).
+    (ReferenceEnd::Expression, "expression", "expression"),
 ];
 
 /// The three severities, with their names.
@@ -1121,6 +1127,12 @@ fn edit_refusal_samples() -> Vec<EditError> {
         refusal(&doc, SetName::new("nowhere", name())),
         refusal(&doc, SetFlag::new("c1", Flag::IsCounter, true)),
         refusal(&doc, SetReferences::new("c1", ReferenceEnd::Source, ["c1"])),
+        // The refusal of slice 0065, after FeatureNotApplicable
+        // (SACM23-BASE-009, ADR 0038 D3).
+        refusal(
+            &doc,
+            SetReferences::new("c1", ReferenceEnd::Expression, ["blade"]),
+        ),
         refusal(
             &doc,
             RemoveReference::new("c1", ReferenceEnd::MetaClaim, "m1"),
@@ -1186,7 +1198,9 @@ fn diagnostic_samples() -> Vec<Diagnostic> {
 /// The values of `values.json`: a `LangString` absent, with empty content,
 /// lang-only, full, and with non-ASCII and quoted content; a
 /// `MultiLangString` of two values, empty, and of one absent value; a
-/// `SourceLocation`; and an `ElementId`.
+/// `SourceLocation`; an `ElementId`; and, of slice 0065, an
+/// `ExpressionLangString` and a `MultiLangString` holding one (ADR 0030
+/// amendment 4).
 type Values = (
     LangString,
     LangString,
@@ -1198,6 +1212,8 @@ type Values = (
     MultiLangString,
     SourceLocation,
     ElementId,
+    LangString,
+    MultiLangString,
 );
 
 fn value_samples() -> Values {
@@ -1212,6 +1228,15 @@ fn value_samples() -> Values {
         MultiLangString::from(LangString::default()),
         location(4, 20),
         id("c1"),
+        LangString::default()
+            .with_lang("en")
+            .with_expression("blade"),
+        [
+            LangString::new("Kontrollerad mot manualen").with_lang("sv"),
+            LangString::new("").with_lang("en").with_expression("blade"),
+        ]
+        .into_iter()
+        .collect(),
     )
 }
 
@@ -2686,6 +2711,11 @@ fn optional_keys(
             ("location", Value::Null),
         ]
     } else if object.len() == 2 && object.contains_key("lang") && object.contains_key("content") {
+        vec![("lang", Value::Null), ("content", Value::Null)]
+    } else if object.get("type").and_then(Value::as_str) == Some("ExpressionLangString") {
+        // An ExpressionLangString's `lang` and `content` may be left out, as
+        // a plain one's; `type` and `expression` are required (ADR 0030
+        // amendment 4).
         vec![("lang", Value::Null), ("content", Value::Null)]
     } else {
         Vec::new()

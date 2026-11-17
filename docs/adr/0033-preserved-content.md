@@ -38,8 +38,8 @@ preserved.
     `DuplicateId`.
 - **What stays refused.** Conforming content this version does not read yet is still
   `ReadError::Unsupported`. Examples are the artifact and terminology kinds, interfaces,
-  bindings, `xmi:Extension`, `xmi:uuid`, cross-document `href` and ExpressionLangString
-  names.
+  bindings, `xmi:Extension`, `xmi:uuid` and cross-document `href`. (ExpressionLangString names
+  were among them until slice 0065, SACM23-BASE-009.)
   - Each refusal comes from one crate-private list (LIB-API-011) and names its row
     (`Interim`), or is labelled `Tolerance(row)`, `Limit` or `Defect`.
   - Content on the `xmi:XMI` wrapper, and a preserved attribute that binds `sacm` or `xmi`

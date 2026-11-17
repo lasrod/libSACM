@@ -15,7 +15,7 @@
 //!   come in the order the pattern first names them, `row` last and only on
 //!   the `Unsupported` templates of SACM-XMI-014, -007, -002 and -015, whose
 //!   `Display` ends with the label of their code; and the inputs and the
-//!   templates no input reaches together are the 103 refusal templates,
+//!   templates no input reaches together are the 102 refusal templates,
 //!   once each.
 //! - `lib_api_017_each_refusal_template_has_its_code_template_and_arguments`
 //!   checks that `code()`, `template()` and `arguments()` are the
@@ -30,6 +30,9 @@
 //! `SACM-XMI-012/name-value-text`, whose shape always follows the
 //! `name-value` shape of the same `value`, so a strict read, which refuses
 //! the first shape, never refuses it.
+//!
+//! Slice 0065 reads `ExpressionLangString` (SACM23-BASE-009) and removes the
+//! template `SACM-XMI-014/expression-lang-string`, which leaves 102.
 
 use std::fmt::Write as _;
 
@@ -48,8 +51,9 @@ const NS: &str = concat!(
     " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"",
 );
 
-/// The number of refusal templates (acceptance 4).
-const REFUSAL_TEMPLATES: usize = 103;
+/// The number of refusal templates (acceptance 4): 102 once slice 0065
+/// removes `SACM-XMI-014/expression-lang-string` (SACM23-BASE-009).
+const REFUSAL_TEMPLATES: usize = 102;
 
 /// The refusal templates no input reaches through the public API, and why.
 /// A unit test of their crate-private constructors builds each.
@@ -665,17 +669,6 @@ fn cases() -> Vec<Case> {
             "the {class} {element:?} in the root element {container:?} is not read in this release",
             "the reader cannot represent the input at line 3, column 3: the TerminologyPackageInterface \"terminologyPackage\" in the root element \"sacm:AssuranceCasePackage\" is not read in this release (a limit of this version; SACM23-TERM-007 reads it)",
         ),
-        read(
-            "SACM-XMI-014/expression-lang-string",
-            named_package("<name xmi:type=\"sacm:ExpressionLangString\" content=\"p\"/>"),
-            &[
-                ("element", t("name")),
-                ("type", t("sacm:ExpressionLangString")),
-                ("row", t("SACM23-BASE-009")),
-            ],
-            "the element {element:?} has the type {type:?}, which is not read in this release",
-            "the reader cannot represent the input at line 1, column 134: the element \"name\" has the type \"sacm:ExpressionLangString\", which is not read in this release (a limit of this version; SACM23-BASE-009 reads it)",
-        ),
         // --- ReadError::Unsupported, SACM-XMI-015 --------------------------------------
         read(
             "SACM-XMI-015/not-xmi-namespace",
@@ -1258,7 +1251,7 @@ fn check_row(case: &Case) {
 #[test]
 fn lib_api_017_each_refusal_template_input_gives_its_0_1_0_display() {
     let cases = cases();
-    // The inputs and the templates without one are the 103, once each.
+    // The inputs and the templates without one are the 102, once each.
     let mut ids: Vec<&str> = cases.iter().map(|case| case.template).collect();
     ids.extend(NO_INPUT.iter().map(|(template, _)| *template));
     let count = ids.len();

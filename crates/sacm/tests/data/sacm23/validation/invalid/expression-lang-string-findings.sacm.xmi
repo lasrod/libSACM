@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-BASE-009: the Claim c1's name is an ExpressionLangString with content and no expression, and so is value 2 of its sibling c3's Note n1 (both SACM-MULT-001, clause 8.4); c2's name expression names nothing (SACM-REF-001), and c3's names the Claim c1 (SACM-REF-002), both with clause 8.4. It reads in both modes with no diagnostic; a strict write refuses the dangling id. Hand-written; no third-party content. -->
+<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="case">
+  <name lang="en" content="Case"/>
+  <terminologyPackage xmi:id="terms">
+    <name lang="en" content="Terms"/>
+    <terminologyElement xmi:type="sacm:Term" xmi:id="blade" value="blade">
+      <name lang="en" content="Blade"/>
+    </terminologyElement>
+  </terminologyPackage>
+  <argumentPackage xmi:id="arguments">
+    <name lang="en" content="Arguments"/>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+      <name xmi:type="sacm:ExpressionLangString" lang="en" content="The blade is guarded"/>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c2">
+      <name xmi:type="sacm:ExpressionLangString" lang="en" expression="nowhere"/>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c3">
+      <name xmi:type="sacm:ExpressionLangString" lang="en" expression="c1"/>
+      <note xmi:id="n1">
+        <content>
+          <value lang="en" content="Draft"/>
+          <value xmi:type="sacm:ExpressionLangString" lang="sv"/>
+        </content>
+      </note>
+    </argumentElement>
+  </argumentPackage>
+</sacm:AssuranceCasePackage>

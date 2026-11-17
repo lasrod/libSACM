@@ -382,27 +382,28 @@ fn kept_entries() -> Vec<Kept> {
     ] {
         cases.push(kept("XmiMetadata", what, input, metadata, holder));
     }
-    // ExpressionLangString (SACM23-BASE-009): the whole part is kept.
+    // XMI metadata in a name and in a value of a content: the whole part is
+    // kept, held by the name's owner and by the UtilityElement (the samples
+    // ExpressionLangString gave until slice 0065 read it, SACM23-BASE-009).
     cases.push(kept(
-        "ExpressionLangString",
-        "as a name",
+        "XmiMetadata",
+        "xmi:uuid on a name",
         format!(
             "<sacm:ArgumentPackage{NS} xmi:id=\"p\">\
-             <name xmi:type=\"sacm:ExpressionLangString\" content=\"p\"/></sacm:ArgumentPackage>"
+             <name xmi:uuid=\"u\" content=\"p\"/></sacm:ArgumentPackage>"
         ),
-        "SACM23-BASE-009",
+        metadata,
         Some("p"),
     ));
     cases.push(kept(
-        "ExpressionLangString",
-        "as a value of a content",
+        "XmiMetadata",
+        "xmi:uuid on a value of a content",
         package(&claim(
             "c1",
             "",
-            "<note xmi:id=\"n\"><content><value xmi:type=\"sacm:ExpressionLangString\" \
-             content=\"v\"/></content></note>",
+            "<note xmi:id=\"n\"><content><value xmi:uuid=\"u\" content=\"v\"/></content></note>",
         )),
-        "SACM23-BASE-009",
+        metadata,
         Some("n"),
     ));
     // The spellings SACM23-XMI-009 reads are no kept entry since slice

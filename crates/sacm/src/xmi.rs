@@ -213,7 +213,7 @@ mod roots;
 /// has no name and holds no element: its `content` (§8.7) and, on a
 /// `TaggedValue`, its `key` (§8.12), in either order, are each one role element
 /// holding a `MultiLangString` (ADR 0025): `<content>` with one `<value>` per
-/// [`LangString`](crate::model::LangString), in order and with duplicates.
+/// [`LangString`](crate::model::`LangString`), in order and with duplicates.
 /// Each `value` is read as a `name` is, below. No `content` is `None`;
 /// `<content/>`, or one holding only white space, comments and processing
 /// instructions, is an empty `MultiLangString`. A `content` or `key` may carry
@@ -869,8 +869,7 @@ mod roots;
 ///     `xmi:idref` (such as `<argumentElement xmi:idref="c1"/>` in an
 ///     ArgumentPackage) and SACM23-XMI-027 for an unqualified `href`, at its
 ///     start tag if it is untyped under an abstract role, else at the
-///     attribute; and a `name` or `value` typed `sacm:ExpressionLangString`
-///     (SACM23-BASE-009);
+///     attribute;
 ///   - limits: UTF-16 without a byte order mark, UTF-32 or UCS-4 input, a
 ///     declared encoding other than UTF-8 or ASCII in input without a UTF-16
 ///     mark, and more nodes, attributes or namespaces than the parser can

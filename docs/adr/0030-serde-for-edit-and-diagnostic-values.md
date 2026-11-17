@@ -144,3 +144,13 @@ Issue #82. This amendment adds message templates and arguments, and serde for `R
 - **Order.** ADR 0011's diagnostic order gains two last keys: 8, the template id; 9, the arguments.
 
 *Amendment 3 status: proposed. It implements the maintainer's decisions Q8 to Q11 of 2026-11-17; its API details (the codes of the write errors, `Details`, the default template, the table) await the maintainer's approval.*
+
+## Amendment 4 (2026-11-18): ExpressionLangString
+SACM23-BASE-009; the maintainer's decision Q5 of 2026-11-17. It extends R6.
+- A plain `LangString` is unchanged: `{"lang": …, "content": …}`.
+- An ExpressionLangString (§8.4) is `{"type": "ExpressionLangString", "lang": …, "content": …, "expression": …}`, with keys in that order. `expression` is the ExpressionElement's id, or `null` when it has none. This is R1's tag rule for LangString's one subclass.
+- On input: `type`, when given, must be `"ExpressionLangString"`. `expression` is required with it and refused without it. `lang` and `content` may be left out, as for a plain one (R3). Unknown keys are refused (R4).
+- A `MultiLangString` value may take either form.
+- This is additive: all 0.1 LangString JSON reads as before, and a plain LangString writes as before.
+
+*Amendment 4 status: proposed. It implements the maintainer's decision Q5 (2026-11-17); awaits approval with ADR 0038.*

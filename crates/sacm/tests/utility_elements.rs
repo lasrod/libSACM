@@ -1061,7 +1061,7 @@ fn sacm23_base_004_type_attributes_naming_the_classes_are_accepted_and_none_is_w
 }
 
 #[test]
-fn sacm23_base_004_a_type_naming_another_class_is_preserved_and_an_expression_lang_string_is_unsupported_at_its_element()
+fn sacm23_base_004_a_type_naming_another_class_is_preserved_and_an_expression_lang_string_value_is_read()
  {
     let cases = [
         (
@@ -1092,14 +1092,33 @@ fn sacm23_base_004_a_type_naming_another_class_is_preserved_and_an_expression_la
     for (what, template) in &cases {
         assert_preserved_at_mark(ROW, what, template);
     }
-    // An ExpressionLangString is conforming, and not read yet
-    // (SACM23-BASE-009).
-    assert_unsupported_at_mark(
+    // An ExpressionLangString on a value is read since slice 0065
+    // (SACM23-BASE-009, `expression_lang_string.rs`), in both modes and with
+    // no diagnostic.
+    let doc = read_ok(
         ROW,
         "sacm:ExpressionLangString on value",
-        &description_with(&format!(
-            "{MARK}<value xmi:type=\"sacm:ExpressionLangString\" content=\"x\"/>"
-        )),
+        &description_with("<value xmi:type=\"sacm:ExpressionLangString\" content=\"x\"/>"),
+    );
+    let values = element(ROW, &doc, "d")
+        .content()
+        .map(|content| content.values().to_vec())
+        .unwrap_or_default();
+    assert!(
+        matches!(values.as_slice(), [value] if value.is_expression_lang_string()
+            && value.content() == Some("x")),
+        "{ROW}: sacm:ExpressionLangString on value is not read as one: {values:?}"
+    );
+    // What is conforming and not read yet on a value is XMI metadata
+    // (SACM23-XMI-019), refused at the attribute.
+    let reason = assert_unsupported_at_mark(
+        ROW,
+        "xmi:uuid on value",
+        &description_with(&format!("<value {MARK}xmi:uuid=\"u\" content=\"x\"/>")),
+    );
+    assert!(
+        reason.ends_with("(a limit of this version; SACM23-XMI-019 reads it)"),
+        "{ROW}: xmi:uuid on value is not refused naming SACM23-XMI-019: {reason}"
     );
 }
 

@@ -70,6 +70,24 @@ crates/sacm/tests/data/sacm23/validation/invalid/claims-gid-duplicate.sacm.xmi s
 crates/sacm/tests/data/sacm23/validation/invalid/claims-gid-duplicate.sacm.xmi strict-validate: error SACM-ID-003 [SACM23-VAL-002, clause 8.2]: 2 elements hold the gid "urn:example:g", which must be unique within the model instance: Claim "c1", Claim "c2"
 crates/sacm/tests/data/sacm23/validation/invalid/claims-gid-duplicate.sacm.xmi tolerant-read: (none)
 crates/sacm/tests/data/sacm23/validation/invalid/claims-gid-duplicate.sacm.xmi tolerant-validate: error SACM-ID-003 [SACM23-VAL-002, clause 8.2]: 2 elements hold the gid "urn:example:g", which must be unique within the model instance: Claim "c1", Claim "c2"
+crates/sacm/tests/data/sacm23/validation/invalid/expression-abstract-element.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/validation/invalid/expression-abstract-element.sacm.xmi strict-validate: error SACM-ABS-001 [SACM23-VAL-017, clause 10.10]: Expression "guarded" is concrete but has the element "guard", an abstract Term: a concrete Expression references only concrete ExpressionElements (§10.10)
+crates/sacm/tests/data/sacm23/validation/invalid/expression-abstract-element.sacm.xmi strict-validate: error SACM-ABS-001 [SACM23-VAL-017, clause 10.10]: Expression "guarded" is concrete but has the element "pattern", an abstract Expression: a concrete Expression references only concrete ExpressionElements (§10.10)
+crates/sacm/tests/data/sacm23/validation/invalid/expression-abstract-element.sacm.xmi strict-validate: warning SACM-MULT-001 [SACM23-VAL-022, clause 10.10]: Expression "guarded" holds "guard" 2 times in its element, whose ids are unique in SACM 2.3 (the repeat is kept)
+crates/sacm/tests/data/sacm23/validation/invalid/expression-abstract-element.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/validation/invalid/expression-abstract-element.sacm.xmi tolerant-validate: error SACM-ABS-001 [SACM23-VAL-017, clause 10.10]: Expression "guarded" is concrete but has the element "guard", an abstract Term: a concrete Expression references only concrete ExpressionElements (§10.10)
+crates/sacm/tests/data/sacm23/validation/invalid/expression-abstract-element.sacm.xmi tolerant-validate: error SACM-ABS-001 [SACM23-VAL-017, clause 10.10]: Expression "guarded" is concrete but has the element "pattern", an abstract Expression: a concrete Expression references only concrete ExpressionElements (§10.10)
+crates/sacm/tests/data/sacm23/validation/invalid/expression-abstract-element.sacm.xmi tolerant-validate: warning SACM-MULT-001 [SACM23-VAL-022, clause 10.10]: Expression "guarded" holds "guard" 2 times in its element, whose ids are unique in SACM 2.3 (the repeat is kept)
+crates/sacm/tests/data/sacm23/validation/invalid/expression-lang-string-findings.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/validation/invalid/expression-lang-string-findings.sacm.xmi strict-validate: error SACM-MULT-001 [SACM23-BASE-009, clause 8.4]: the name of Claim "c1" is an ExpressionLangString with no expression (expression:ExpressionElement[1])
+crates/sacm/tests/data/sacm23/validation/invalid/expression-lang-string-findings.sacm.xmi strict-validate: error SACM-MULT-001 [SACM23-BASE-009, clause 8.4]: value 2 of the content of Note "n1" is an ExpressionLangString with no expression (expression:ExpressionElement[1])
+crates/sacm/tests/data/sacm23/validation/invalid/expression-lang-string-findings.sacm.xmi strict-validate: error SACM-REF-001 [SACM23-VAL-003, clause 8.4]: Claim "c2" has the expression "nowhere", which names no element of the document (the end's type is ExpressionElement)
+crates/sacm/tests/data/sacm23/validation/invalid/expression-lang-string-findings.sacm.xmi strict-validate: error SACM-REF-002 [SACM23-VAL-004, clause 8.4]: Claim "c3" has the expression "c1", whose kind Claim does not conform to the end's type ExpressionElement
+crates/sacm/tests/data/sacm23/validation/invalid/expression-lang-string-findings.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/validation/invalid/expression-lang-string-findings.sacm.xmi tolerant-validate: error SACM-MULT-001 [SACM23-BASE-009, clause 8.4]: the name of Claim "c1" is an ExpressionLangString with no expression (expression:ExpressionElement[1])
+crates/sacm/tests/data/sacm23/validation/invalid/expression-lang-string-findings.sacm.xmi tolerant-validate: error SACM-MULT-001 [SACM23-BASE-009, clause 8.4]: value 2 of the content of Note "n1" is an ExpressionLangString with no expression (expression:ExpressionElement[1])
+crates/sacm/tests/data/sacm23/validation/invalid/expression-lang-string-findings.sacm.xmi tolerant-validate: error SACM-REF-001 [SACM23-VAL-003, clause 8.4]: Claim "c2" has the expression "nowhere", which names no element of the document (the end's type is ExpressionElement)
+crates/sacm/tests/data/sacm23/validation/invalid/expression-lang-string-findings.sacm.xmi tolerant-validate: error SACM-REF-002 [SACM23-VAL-004, clause 8.4]: Claim "c3" has the expression "c1", whose kind Claim does not conform to the end's type ExpressionElement
 crates/sacm/tests/data/sacm23/validation/invalid/meta-claim-wrong-type.sacm.xmi strict-read: (none)
 crates/sacm/tests/data/sacm23/validation/invalid/meta-claim-wrong-type.sacm.xmi strict-validate: error SACM-REF-002 [SACM23-VAL-004, clause 11.10]: Claim "c2" has the metaClaim "r1", whose kind ArgumentReasoning does not conform to the end's type Claim
 crates/sacm/tests/data/sacm23/validation/invalid/meta-claim-wrong-type.sacm.xmi tolerant-read: (none)
@@ -78,6 +96,12 @@ crates/sacm/tests/data/sacm23/validation/warning/claim-descriptions-repeated.sac
 crates/sacm/tests/data/sacm23/validation/warning/claim-descriptions-repeated.sacm.xmi strict-validate: warning SACM-MULT-001 [SACM23-VAL-011, clause 8.6]: Claim "c1" has 2 descriptions (description:Description[0..1])
 crates/sacm/tests/data/sacm23/validation/warning/claim-descriptions-repeated.sacm.xmi tolerant-read: (none)
 crates/sacm/tests/data/sacm23/validation/warning/claim-descriptions-repeated.sacm.xmi tolerant-validate: warning SACM-MULT-001 [SACM23-VAL-011, clause 8.6]: Claim "c1" has 2 descriptions (description:Description[0..1])
+crates/sacm/tests/data/sacm23/validation/warning/expression-lang-string-with-content.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/validation/warning/expression-lang-string-with-content.sacm.xmi strict-validate: warning SACM-EXPR-001 [SACM23-VAL-009, clause 8.4]: the name of Claim "c1" has the expression "blade" and a content that is not empty, and §8.4 says that if expression is not empty, then content should be empty
+crates/sacm/tests/data/sacm23/validation/warning/expression-lang-string-with-content.sacm.xmi strict-validate: warning SACM-EXPR-001 [SACM23-VAL-009, clause 8.4]: value 1 of the content of Note "n1" has the expression "blade" and a content that is not empty, and §8.4 says that if expression is not empty, then content should be empty
+crates/sacm/tests/data/sacm23/validation/warning/expression-lang-string-with-content.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/validation/warning/expression-lang-string-with-content.sacm.xmi tolerant-validate: warning SACM-EXPR-001 [SACM23-VAL-009, clause 8.4]: the name of Claim "c1" has the expression "blade" and a content that is not empty, and §8.4 says that if expression is not empty, then content should be empty
+crates/sacm/tests/data/sacm23/validation/warning/expression-lang-string-with-content.sacm.xmi tolerant-validate: warning SACM-EXPR-001 [SACM23-VAL-009, clause 8.4]: value 1 of the content of Note "n1" has the expression "blade" and a content that is not empty, and §8.4 says that if expression is not empty, then content should be empty
 crates/sacm/tests/data/sacm23/validation/warning/meta-claim-repeated.sacm.xmi strict-read: (none)
 crates/sacm/tests/data/sacm23/validation/warning/meta-claim-repeated.sacm.xmi strict-validate: warning SACM-MULT-001 [SACM23-VAL-022, clause 11.10]: Claim "c2" holds "m1" 2 times in its metaClaim, whose ids are unique in SACM 2.3 (the repeat is kept)
 crates/sacm/tests/data/sacm23/validation/warning/meta-claim-repeated.sacm.xmi tolerant-read: (none)
@@ -114,6 +138,10 @@ crates/sacm/tests/data/sacm23/xmi/citations-and-abstract-forms-valid.sacm.xmi st
 crates/sacm/tests/data/sacm23/xmi/citations-and-abstract-forms-valid.sacm.xmi strict-validate: (none)
 crates/sacm/tests/data/sacm23/xmi/citations-and-abstract-forms-valid.sacm.xmi tolerant-read: (none)
 crates/sacm/tests/data/sacm23/xmi/citations-and-abstract-forms-valid.sacm.xmi tolerant-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/expression-lang-string-valid.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/expression-lang-string-valid.sacm.xmi strict-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/expression-lang-string-valid.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/expression-lang-string-valid.sacm.xmi tolerant-validate: (none)
 crates/sacm/tests/data/sacm23/xmi/gid-valid.sacm.xmi strict-read: (none)
 crates/sacm/tests/data/sacm23/xmi/gid-valid.sacm.xmi strict-validate: (none)
 crates/sacm/tests/data/sacm23/xmi/gid-valid.sacm.xmi tolerant-read: (none)
@@ -138,6 +166,10 @@ crates/sacm/tests/data/sacm23/xmi/golden/asserted-relationships.golden.sacm.xmi 
 crates/sacm/tests/data/sacm23/xmi/golden/asserted-relationships.golden.sacm.xmi strict-validate: (none)
 crates/sacm/tests/data/sacm23/xmi/golden/asserted-relationships.golden.sacm.xmi tolerant-read: (none)
 crates/sacm/tests/data/sacm23/xmi/golden/asserted-relationships.golden.sacm.xmi tolerant-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/expression-lang-string.golden.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/expression-lang-string.golden.sacm.xmi strict-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/expression-lang-string.golden.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/expression-lang-string.golden.sacm.xmi tolerant-validate: (none)
 crates/sacm/tests/data/sacm23/xmi/golden/model-spellings.golden.sacm.xmi strict-read: (none)
 crates/sacm/tests/data/sacm23/xmi/golden/model-spellings.golden.sacm.xmi strict-validate: (none)
 crates/sacm/tests/data/sacm23/xmi/golden/model-spellings.golden.sacm.xmi tolerant-read: (none)

@@ -240,6 +240,15 @@ impl CopyElements {
                     }
                 }
             }
+            // §8.4 `expression[1]`: an ExpressionLangString with no
+            // expression is not copied (SACM23-BASE-009, ADR 0038 D3).
+            if element.has_missing_expression() {
+                return Err(EditError::TooFewReferences {
+                    end: ReferenceEnd::Expression.name(),
+                    given: 0,
+                    required: 1,
+                });
+            }
         }
         // 5 and 6, each over every reference in turn, as a create's: every id
         // names an element of the target or a copied one, then every id

@@ -12,11 +12,13 @@
 //! | SACM-MULT-001 | SACM23-VAL-010 | §8.5 | Error | a `content`, `key` or `location` (§12.10) has no value (`value:LangString[1..*]`), or two or more of its values share a language (each `lang` "must be unique") |
 //! | SACM-MULT-001 | SACM23-VAL-010 | §8.12 | Error | a `TaggedValue` has no `key` (`key:MultiLangString[1]`) |
 //! | SACM-MULT-001 | SACM23-TERM-003 | §10.9 | Error | a `Term` or an `Expression` has no `value` (`value:String[1]`) |
+//! | SACM-MULT-001 | SACM23-BASE-009 | §8.4 | Error | an `ExpressionLangString`, a name or a value of a `content`, `key` or `location`, has no `expression` (`expression:ExpressionElement[1]`) |
+//! | SACM-EXPR-001 | SACM23-VAL-009 | §8.4 | Warning | an `ExpressionLangString` has an `expression` and a content that is not empty ("If expression is not empty, then +content should be empty"); an absent content and `""` are empty |
 //! | SACM-ID-002 | SACM23-VAL-020 | XMI 2.5.1 §7.6.1 | Error | an element's id, or the `xmi:id` of its name, `content`, `key`, `location` or a `value`, is not an XML `NCName` (an `xmi:id` is an `xsd:ID`) |
 //! | SACM-MULT-001 | SACM23-VAL-011 | §8.6 | Warning | a `ModelElement` has two or more descriptions (`description:Description[0..1]`) |
 //! | SACM-ID-003 | SACM23-VAL-002 | §8.2 | Error | two or more elements hold the same non-empty `gid` ("unique within the scope of the model instance") |
 //! | SACM-PKG-001 | SACM23-VAL-012 | §11.4 | Error | an `ArgumentPackage` nests a plain `ArgumentPackage` and also holds another argumentation element ("only allowed to contain `ArgumentPackages`") |
-//! | SACM-REF-001 | SACM23-VAL-003 | the end's: §8.2, §10.3, §10.8 (a Category's `category`), §10.9, §10.10, §10.11, §11.2, §11.9, §11.10, §11.12, §11.13, §12.3 or §12.14 | Error | an id a reference end holds (`citedElement`, `abstractForm`, `metaClaim`, `reasoning`, `source`, `target`, `structure`, `referencedArtifactElement`, a group's `argumentElement`, `artifactElement` or `terminologyElement`, an `ArtifactAssetRelationship`'s `source` or `target`, `category`, an Expression's `element`, or a Term's `origin`) names no element of the document |
+//! | SACM-REF-001 | SACM23-VAL-003 | the end's: §8.2, §8.4 (an `ExpressionLangString`'s `expression`), §10.3, §10.8 (a Category's `category`), §10.9, §10.10, §10.11, §11.2, §11.9, §11.10, §11.12, §11.13, §12.3 or §12.14 | Error | an id a reference end holds (`citedElement`, `abstractForm`, `metaClaim`, `reasoning`, `source`, `target`, `structure`, `referencedArtifactElement`, a group's `argumentElement`, `artifactElement` or `terminologyElement`, an `ArtifactAssetRelationship`'s `source` or `target`, `category`, an Expression's `element`, a Term's `origin`, or the `expression` of a name or text) names no element of the document |
 //! | SACM-REF-003 | LIB-COMPAT-003 | the end's | Warning | an id a reference end holds is the `xmi:id` of an element the document holds only as preserved content (ADR 0033), so its type cannot be checked |
 //! | SACM-REF-002 | SACM23-VAL-004 | the end's | Error | an id a reference end holds names an element of a kind the end's declared type does not admit, such as a `metaClaim` naming an `ArgumentReasoning` |
 //! | SACM-REF-002 | SACM23-VAL-016 | §11.15, §11.17 or §11.18 | Error | a source of an `AssertedEvidence`, or a source or target of an `AssertedArtifactSupport` or `AssertedArtifactContext`, is an `ArgumentAsset` but not an `ArtifactReference` |
@@ -27,6 +29,7 @@
 //! | SACM-ABS-001 | SACM23-VAL-008 | §8.2 | Error | an element with an `abstractForm` is itself abstract ("+isAbstract of the `SACMElement` is false") |
 //! | SACM-ABS-001 | SACM23-VAL-008 | §8.2 | Warning | the element the `abstractForm` references is not abstract, or is of another kind (both "should") |
 //! | SACM-ABS-001 | SACM23-VAL-021 | §8.6 | Error | a `ModelElement` with one or more `implementationConstraint`s is not abstract (OCL `implementationConstraint->size() > 0 implies isAbstract = true`) |
+//! | SACM-ABS-001 | SACM23-VAL-017 | §10.10 | Error | a concrete `Expression`'s `element` names an abstract `Term` or `Expression` (OCL `self.isAbstract = false implies self.element->forall(...)`): one finding per distinct id |
 //! | SACM-CITE-002 | SACM23-VAL-019 | §11.8 | Warning | an Assertion declared `asCited` is not a citation (`isCitation` not true), has no `citedElement`, or cites an element that is no Assertion: one finding each |
 //!
 //! A `ModelElement`
@@ -255,6 +258,7 @@
 
 mod constraints;
 mod descriptions;
+mod expressions;
 mod gid;
 mod homogeneity;
 mod ids;
@@ -275,6 +279,7 @@ type Rule = fn(&Document, &mut Vec<Diagnostic>);
 const RULES: &[Rule] = &[
     names::missing_name,
     multi_lang::multi_lang_strings,
+    expressions::expression_lang_strings,
     ids::invalid_id,
     gid::duplicate_gid,
     descriptions::repeated_description,
@@ -289,6 +294,7 @@ const RULES: &[Rule] = &[
     relationships::artifact_reference_kinds,
     repeats::repeated_references,
     terminology::missing_values,
+    terminology::concrete_expressions,
 ];
 
 /// Checks `document` against the SACM rules this release knows and returns

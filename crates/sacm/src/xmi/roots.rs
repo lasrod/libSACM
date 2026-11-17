@@ -3937,10 +3937,22 @@ fn xmi_element_in(found: &Findings<'_, '_>, child: Node<'_, '_>, element: &str) 
 /// white space; and in a `name`, one `value` (at its `<`) or one `content`
 /// carrying `lang` (at that attribute), as the name's fields.
 ///
-/// XMI metadata on it, an XMI element in it, and an `ExpressionLangString`
-/// type are conforming and not read yet, so refused. Anything else does
-/// not conform, such as a second `value` or `content` carrying `lang` in a
-/// `name`, which holds one `LangString`: [`Fault::Defect`] (ADR 0033).
+/// Typed `ExpressionLangString` (SACM23-BASE-009, ADR 0038 D2), it may
+/// also carry an `expression` attribute in no namespace, one IDREF, or hold
+/// one `expression` reference element (SACM23-XMI-015); two ids, or the
+/// attribute and the element, are `RepeatedValue` of
+/// `<property>.expression`. With neither, it reads with no expression.
+///
+/// XMI metadata on it, and an XMI element in it, are conforming and not
+/// read yet, so refused. Anything else does not conform, such as a second
+/// `value` or `content` carrying `lang` in a `name`, which holds one
+/// `LangString`, an `expression` on a plain `LangString`, an empty
+/// `expression`, and a `value` typed `ExpressionLangString` in a `name`:
+/// [`Fault::Defect`] (ADR 0033).
+#[expect(
+    clippy::too_many_lines,
+    reason = "one pass over the attributes and one over the children, each field in turn"
+)]
 fn read_lang_string<'a>(
     found: &mut Findings<'_, 'a>,
     node: Node<'a, '_>,
@@ -3953,15 +3965,29 @@ fn read_lang_string<'a>(
     let mode = found.mode;
     let element = written_name(text, node);
     let is_name = property == "name";
-    check_lang_string_tag(found, node, &element)?;
+    let is_expression = check_lang_string_tag(node)?;
+    // A `value` in a `name` is the C++ shape of the name's one plain
+    // LangString (LIB-COMPAT-008): typed ExpressionLangString, it does not
+    // conform (SACM23-BASE-009).
+    if is_expression && property == "name.value" {
+        return Err(Fault::Defect);
+    }
     let name_id = read_owned_id(found, node, subject, owner)?;
     let repeated = |field: &str| repeated_field(text, mode, node, field, owner, kind, property);
     let mut fields = Fields::default();
+    // The `expression` of an ExpressionLangString (§8.4), once it is given.
+    let mut expression: Option<ElementId> = None;
     for attribute in node.attributes() {
         let value = || Some(attribute.value().to_owned());
         let given = match (attribute.namespace(), attribute.name()) {
             (None, "lang") => fields.lang(value()),
             (None, "content") => fields.content(value()),
+            (None, "expression") if is_expression => {
+                expression = Some(read_expression_attribute(
+                    found, node, &attribute, owner, kind, property,
+                )?);
+                Ok(())
+            }
             _ if is_xsi_type(&attribute) => {
                 found.xsi_type(&attribute, subject, owner.as_str());
                 Ok(())
@@ -4029,9 +4055,20 @@ fn read_lang_string<'a>(
                 found.legacy_shape(at, owner, shape);
             }
             fields.content(value).map_err(repeated)?;
+        } else if is_expression && is_value_element(child, "expression") {
+            // One reference element (SACM23-XMI-015), checked whole first,
+            // then against an earlier occurrence (XMI 2.5.1 rule 2h).
+            let target = read_reference(found, child)?;
+            if expression.is_some() {
+                return Err(repeated_expression(
+                    found, node, child, owner, kind, property,
+                ));
+            }
+            expression = Some(target);
         } else if is_name && is_value_element(child, "value") {
-            // The name's one LangString: the name holds nothing else.
-            if holds_beside(text, node, child) {
+            // The name's one LangString: the name holds nothing else, and
+            // an ExpressionLangString name holds no such shape.
+            if is_expression || holds_beside(text, node, child) {
                 return Err(Fault::Defect);
             }
             let value = read_name_value(found, child, subject, owner, kind)?;
@@ -4052,19 +4089,117 @@ fn read_lang_string<'a>(
     if text_at.is_some() {
         name.set_content(Some(characters));
     }
+    if is_expression {
+        name = match expression {
+            Some(expression) => name.with_expression(expression),
+            None => name.with_no_expression(),
+        };
+    }
     Ok((name, name_id))
 }
 
-/// Checks the start tag of `node`, a `name` or `value` written as
-/// `element`: an `ExpressionLangString` type is not read yet
-/// (SACM23-BASE-009), and refused at the start tag; a namespace or a type
-/// naming another class than `LangString` does not conform:
-/// [`Fault::Defect`] (ADR 0033).
-fn check_lang_string_tag(
+/// The one id of the `expression` attribute `attribute` of `node`, an
+/// `ExpressionLangString` `name` or `value` of the element `owner`
+/// (SACM23-BASE-009, ADR 0038 D2): an IDREF (XMI 2.5.1 rule 4i), so one
+/// token. With none, the empty value or white space, it does not conform
+/// ([`Fault::Defect`]); two or more are a repeat of the single-valued
+/// `<property>.expression` (SACM-MULT-001), at the second token in tolerant
+/// mode.
+fn read_expression_attribute(
     found: &Findings<'_, '_>,
     node: Node<'_, '_>,
-    element: &str,
-) -> Result<(), Fault> {
+    attribute: &Attribute<'_, '_>,
+    owner: &ElementId,
+    kind: ElementKind,
+    property: &str,
+) -> Result<ElementId, Fault> {
+    let mut tokens = id_tokens(attribute.value());
+    let Some(first) = tokens.next() else {
+        return Err(Fault::Defect);
+    };
+    if tokens.next().is_none() {
+        return Ok(ElementId::new(first));
+    }
+    let offsets = expression_occurrences(found.text, node);
+    let second = offsets
+        .get(1)
+        .copied()
+        .unwrap_or_else(|| attribute.range_qname().start);
+    let property = format!("{property}.expression");
+    Err(fault(repeat_or_refuse(
+        found.mode,
+        second,
+        owner,
+        &property,
+        || repeated(found.text, owner, kind, &property, offsets),
+    )))
+}
+
+/// The repeat of the `expression` of `node`, an `ExpressionLangString`
+/// `name` or `value` of the element `owner`, given again by the reference
+/// element `again` (SACM-MULT-001; XMI 2.5.1 rule 2h): every occurrence in
+/// strict mode, the Warning at `again` in tolerant mode, with which the
+/// whole of `node` is kept (ADR 0035 D1).
+fn repeated_expression(
+    found: &Findings<'_, '_>,
+    node: Node<'_, '_>,
+    again: Node<'_, '_>,
+    owner: &ElementId,
+    kind: ElementKind,
+    property: &str,
+) -> Fault {
+    let property = format!("{property}.expression");
+    fault(repeat_or_refuse(
+        found.mode,
+        again.range().start,
+        owner,
+        &property,
+        || {
+            repeated(
+                found.text,
+                owner,
+                kind,
+                &property,
+                expression_occurrences(found.text, node),
+            )
+        },
+    ))
+}
+
+/// Every occurrence of the `expression` of `node`, in document order: each
+/// token of its `expression` attribute (its name when it holds one token),
+/// then each `expression` reference element.
+fn expression_occurrences(text: &str, node: Node<'_, '_>) -> Vec<usize> {
+    let mut offsets = Vec::new();
+    if let Some(attribute) = node
+        .attributes()
+        .find(|attribute| is_unqualified(attribute, "expression"))
+    {
+        let at = attribute.range_qname().start;
+        let count = id_tokens(attribute.value()).count();
+        if count > 1 {
+            offsets.extend(
+                token_starts(text, &attribute)
+                    .unwrap_or_else(|| std::iter::repeat_n(at, count).collect()),
+            );
+        } else {
+            offsets.push(at);
+        }
+    }
+    offsets.extend(
+        node.children()
+            .filter(|child| is_value_element(*child, "expression"))
+            .map(|child| child.range().start),
+    );
+    offsets
+}
+
+/// Checks the start tag of `node`, a `name` or `value`, and returns whether
+/// it is an `ExpressionLangString` (SACM23-BASE-009): a type, `xmi:type` or
+/// `xsi:type`, naming `LangString` or `ExpressionLangString`. A namespace, a
+/// type naming another class, and two type attributes naming different
+/// classes do not conform: [`Fault::Defect`] (ADR 0033).
+fn check_lang_string_tag(node: Node<'_, '_>) -> Result<bool, Fault> {
     if node
         .tag_name()
         .namespace()
@@ -4072,24 +4207,19 @@ fn check_lang_string_tag(
     {
         return Err(Fault::Defect);
     }
+    let mut named = None;
     for attribute in node.attributes().filter(is_type) {
-        match sacm_class(node, attribute.value()) {
-            Some("LangString") => {}
-            Some("ExpressionLangString") => {
-                let reason = text_details(
-                    &template::XMI_014_EXPRESSION_LANG_STRING,
-                    &[("element", element), ("type", attribute.value())],
-                );
-                return Err(found.unread_fault(
-                    node.range().start,
-                    Unread::ExpressionLangString,
-                    reason,
-                ));
-            }
-            _ => return Err(Fault::Defect),
+        let Some(class @ ("LangString" | "ExpressionLangString")) =
+            sacm_class(node, attribute.value())
+        else {
+            return Err(Fault::Defect);
+        };
+        if named.is_some_and(|earlier| earlier != class) {
+            return Err(Fault::Defect);
         }
+        named = Some(class);
     }
-    Ok(())
+    Ok(named == Some("ExpressionLangString"))
 }
 
 /// The fields of a `LangString` as they are read, each with whether it is
@@ -4830,7 +4960,7 @@ mod tests {
 
         let input = in_p(
             "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\">\
-             <name xmi:type=\"sacm:ExpressionLangString\" content=\"A\"/><name content=\"B\"/>\
+             <name xmi:uuid=\"u\" content=\"A\"/><name content=\"B\"/>\
              </argumentElement>",
         );
         let (found, document) = kept(&input);

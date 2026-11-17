@@ -8,7 +8,7 @@ use std::slice;
 use super::EditError;
 use super::plan::{Plan, Value};
 use super::set::{changing, edited};
-use crate::model::{Document, ElementId, ReferenceEnd, SacmElement};
+use crate::model::{Document, ElementId, LangString, ReferenceEnd, SacmElement};
 
 /// Replaces the ids one reference end of an element holds (SACM 2.3 §8.2,
 /// §11.2, §11.9, §11.10, §11.12, §11.13), in the order given, repeats
@@ -24,11 +24,13 @@ use crate::model::{Document, ElementId, ReferenceEnd, SacmElement};
 /// 0029). Apply it with [`edit::apply`](super::apply). It refuses, in
 /// order:
 /// 1. an unknown element, as [`EditError::ElementNotFound`];
-/// 2. a kind that does not own the end, as
+/// 2. the derived [`ReferenceEnd::Expression`], whose ids the element's
+///    name and texts hold, as [`EditError::DerivedEnd`] (SACM23-BASE-009);
+/// 3. a kind that does not own the end, as
 ///    [`EditError::FeatureNotApplicable`];
-/// 3. fewer ids than the end needs, as [`EditError::TooFewReferences`];
-/// 4. more ids than it allows, as [`EditError::TooManyReferences`];
-/// 5. then, over the ids the end does not hold, an id holding XML white
+/// 4. fewer ids than the end needs, as [`EditError::TooFewReferences`];
+/// 5. more ids than it allows, as [`EditError::TooManyReferences`];
+/// 6. then, over the ids the end does not hold, an id holding XML white
 ///    space ([`EditError::InvalidReference`]), then one that names no
 ///    element ([`EditError::ReferenceNotFound`]), then one of a kind the end
 ///    does not admit ([`EditError::WrongReferenceType`]), each in list
@@ -149,8 +151,9 @@ impl SetReferences {
 /// Appends one id to a reference end of an element.
 ///
 /// It follows the rules of [`SetReferences`] for the end with the id added:
-/// it refuses an unknown element ([`EditError::ElementNotFound`]), a kind
-/// that does not own the end ([`EditError::FeatureNotApplicable`]), an end
+/// it refuses an unknown element ([`EditError::ElementNotFound`]), the
+/// derived `expression` ([`EditError::DerivedEnd`]), a kind that does not
+/// own the end ([`EditError::FeatureNotApplicable`]), an end
 /// that would hold more ids than it allows, such as a second `target`
 /// ([`EditError::TooManyReferences`]), and then an id the end does not hold
 /// already that holds white space, names no element or names an element of
@@ -238,7 +241,8 @@ impl AddReference {
 /// Removes every occurrence of one id from a reference end of an element.
 ///
 /// It refuses, in order: an unknown element
-/// ([`EditError::ElementNotFound`]), a kind that does not own the end
+/// ([`EditError::ElementNotFound`]), the derived `expression`
+/// ([`EditError::DerivedEnd`]), a kind that does not own the end
 /// ([`EditError::FeatureNotApplicable`]), an id the end does not hold
 /// ([`EditError::ReferenceNotHeld`]), and an end that would hold fewer ids
 /// than it needs, such as an asserted relationship's last source or its
@@ -332,16 +336,65 @@ impl RemoveReference {
     }
 }
 
-/// The element `element` of `document`, once it is known and its kind owns
-/// `end`: the first two checks of a reference edit.
+/// The element `element` of `document`, once it is known, the end is not
+/// the derived `expression` and its kind owns `end`: the first checks of a
+/// reference edit.
 fn owner<'d>(
     document: &'d Document,
     element: &ElementId,
     end: ReferenceEnd,
 ) -> Result<SacmElement<'d>, EditError> {
-    edited(document, element, end.name(), |kind| {
+    let found = edited(document, element, end.name(), |kind| {
         end.owner().admits(kind)
-    })
+    })?;
+    if end.is_derived() {
+        // Its ids are the name's and texts' (SACM23-BASE-009, ADR 0038 D3).
+        return Err(EditError::DerivedEnd {
+            element: element.clone(),
+            kind: found.kind(),
+            end: end.name(),
+        });
+    }
+    Ok(found)
+}
+
+/// The `expression`s of the `ExpressionLangStrings` `values` hold, in order,
+/// once each has one: an `ExpressionLangString` with no `expression` is
+/// [`EditError::TooFewReferences`] of the end `expression`, since §8.4 gives
+/// `expression[1]` and a required end is structural (D-VAL-LAYER, ADR 0038
+/// D3).
+pub(super) fn expression_ids<'v>(
+    values: impl IntoIterator<Item = &'v LangString>,
+) -> Result<Vec<ElementId>, EditError> {
+    let mut ids = Vec::new();
+    for value in values {
+        if !value.is_expression_lang_string() {
+            continue;
+        }
+        let Some(expression) = value.expression() else {
+            return Err(EditError::TooFewReferences {
+                end: ReferenceEnd::Expression.name(),
+                given: 0,
+                required: 1,
+            });
+        };
+        ids.push(expression.clone());
+    }
+    Ok(ids)
+}
+
+/// Checks the `ExpressionLangStrings` `values` hold, as an operation that
+/// creates or sets them does (SACM23-BASE-009): [`expression_ids`], then
+/// each `expression` not in `held`, as [`check_targets`] checks a new id of
+/// the end `expression`. `held` is the element's `expression` end for a set,
+/// and empty for a create.
+pub(super) fn check_expressions<'v>(
+    document: &Document,
+    values: impl IntoIterator<Item = &'v LangString>,
+    held: &[ElementId],
+) -> Result<(), EditError> {
+    let ids = expression_ids(values)?;
+    check_targets(document, &[(ReferenceEnd::Expression, &ids, held)])
 }
 
 /// Refuses `given` ids on `end` when they are fewer

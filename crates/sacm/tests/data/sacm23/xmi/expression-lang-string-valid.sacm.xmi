@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-BASE-009: ExpressionLangStrings in every LangString place. The AssuranceCasePackage case holds the TerminologyPackage terms (the Terms blade and lid, and the Expression blade_guarded over them), the ArgumentPackage arguments and the ArtifactPackage evidence. The Claim c1's name links blade_guarded (attribute form, no content), and the second value of its Note n1's content links blade (content ""). The Claim c2's name (xmi:id c2_name) links lid by an xmi:idref element, and the key value of its TaggedValue tv1 links blade by an href element. The location value of the Resource manual_pdf links blade. It reads with no diagnostic in either mode, validates without a finding, and writes golden/expression-lang-string.golden.sacm.xmi. Hand-written; no third-party content. -->
+<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="case">
+  <name lang="en" content="Blender case"/>
+  <terminologyPackage xmi:id="terms">
+    <name lang="en" content="Blender terminology"/>
+    <terminologyElement xmi:type="sacm:Term" xmi:id="blade" value="blade">
+      <name lang="en" content="Blade"/>
+    </terminologyElement>
+    <terminologyElement xmi:type="sacm:Term" xmi:id="lid" value="lid">
+      <name lang="en" content="Lid"/>
+    </terminologyElement>
+    <terminologyElement xmi:type="sacm:Expression" xmi:id="blade_guarded" element="blade lid" value="$Blade$ is covered by the $Lid$">
+      <name lang="en" content="Blade guarded by lid"/>
+    </terminologyElement>
+  </terminologyPackage>
+  <argumentPackage xmi:id="arguments">
+    <name lang="en" content="Blender argument"/>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+      <name xmi:type="sacm:ExpressionLangString" lang="en" expression="blade_guarded"/>
+      <note xmi:id="n1">
+        <content>
+          <value lang="sv" content="Kontrollerad mot manualen"/>
+          <value xmi:type="sacm:ExpressionLangString" lang="en" content="" expression="blade"/>
+        </content>
+      </note>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c2">
+      <name xmi:type="sacm:ExpressionLangString" xmi:id="c2_name" lang="sv">
+        <expression xmi:idref="lid"/>
+      </name>
+      <taggedValue xmi:id="tv1">
+        <content>
+          <value lang="en" content="covered"/>
+        </content>
+        <key>
+          <value xmi:type="sacm:ExpressionLangString" lang="en">
+            <expression href="#blade"/>
+          </value>
+        </key>
+      </taggedValue>
+    </argumentElement>
+  </argumentPackage>
+  <artifactPackage xmi:id="evidence">
+    <name lang="en" content="Blender evidence"/>
+    <artifactElement xmi:type="sacm:Resource" xmi:id="manual_pdf">
+      <name lang="en" content="Manual PDF"/>
+      <location>
+        <value xmi:type="sacm:ExpressionLangString" expression="blade"/>
+      </location>
+    </artifactElement>
+  </artifactPackage>
+</sacm:AssuranceCasePackage>

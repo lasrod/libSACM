@@ -431,28 +431,6 @@ fn lib_api_011_a_root_outside_the_sacm_2_3_namespace_names_lib_compat_004() {
     );
 }
 
-// --- Interim: ExpressionLangString (SACM23-BASE-009) --------------------------------
-
-#[test]
-fn lib_api_011_an_expression_lang_string_names_sacm23_base_009() {
-    let label = interim("SACM23-BASE-009");
-    let on_name = format!(
-        "<sacm:ArgumentPackage{NS} xmi:id=\"p\"><name xmi:type=\"sacm:ExpressionLangString\" content=\"p\"/></sacm:ArgumentPackage>"
-    );
-    assert_text_refused_with("ExpressionLangString", "as a name", &on_name, &label);
-    let on_value = package(&claim(
-        "c1",
-        "",
-        "<note xmi:id=\"n\"><content><value xmi:type=\"sacm:ExpressionLangString\" content=\"v\"/></content></note>",
-    ));
-    assert_text_refused_with(
-        "ExpressionLangString",
-        "as a value of a content",
-        &on_value,
-        &label,
-    );
-}
-
 // --- Tolerance: LIB-COMPAT-002; the spellings SACM23-XMI-009 reads -----------------
 
 #[test]

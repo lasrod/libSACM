@@ -40,5 +40,23 @@
     "line": 4,
     "column": 20
   },
-  "c1"
+  "c1",
+  {
+    "type": "ExpressionLangString",
+    "lang": "en",
+    "content": null,
+    "expression": "blade"
+  },
+  [
+    {
+      "lang": "sv",
+      "content": "Kontrollerad mot manualen"
+    },
+    {
+      "type": "ExpressionLangString",
+      "lang": "en",
+      "content": "",
+      "expression": "blade"
+    }
+  ]
 ]

@@ -64,14 +64,14 @@
 //!
 //! **The name is required**, because SACM gives every `ModelElement` exactly
 //! one name (§8.6 `name:LangString[1]`). Every operation that creates one
-//! takes it as a [`LangString`](crate::model::LangString), stored exactly as
+//! takes it as a [`LangString`](crate::model::`LangString`), stored exactly as
 //! given. Any value is accepted, `LangString::default()` included; an empty
 //! name is still a name.
 //!
 //! The four `UtilityElement`s (descriptions, implementation constraints,
 //! notes and tagged values) have no name. They go in any `ModelElement`, in
 //! the role of their kind, and take their `content` (and a `TaggedValue` its
-//! `key`) as a [`MultiLangString`](crate::model::MultiLangString), stored
+//! `key`) as a [`MultiLangString`](crate::model::`MultiLangString`), stored
 //! exactly as given; a `LangString` converts into one with one value. A
 //! `UtilityElement` contains no elements, so it is never a parent.
 //!
@@ -366,9 +366,14 @@
 //! | 3. a caller id is an `NCName` | [`EditError::InvalidId`] | SACM-ID-002 | An `NCName` starts with a letter or `_` and continues with letters, digits, `-`, `.` or `_`; it has no spaces and no `:`. Or leave out `with_id` to have an id generated. |
 //! | 4. a caller id is not in use | [`EditError::DuplicateId`] | SACM-CMD-004 | Ids are unique across the whole document, not per parent. Choose another id, or leave out `with_id` to have one generated. |
 //! | 5. a relationship has a source, and an `ArtifactAssetRelationship` a target: the sources first, then the targets | [`EditError::TooFewReferences`] | SACM-MULT-001 | Give at least one source, and at least one target of an `ArtifactAssetRelationship`: SACM requires them (`source:ArgumentAsset[1..*]`, §12.14 `source:ArtifactAsset[1..*]` and `target:ArtifactAsset[1..*]`). |
+//! | 5a. every `ExpressionLangString` of the name and texts has an `expression` | [`EditError::TooFewReferences`] of the end `expression` | SACM-MULT-001 | Give it an expression with [`LangString::with_expression`](crate::model::`LangString`::with_expression), or make it plain with [`without_expression`](crate::model::`LangString`::without_expression) (§8.4 `expression[1]`; SACM23-BASE-009). |
 //! | 6. no referenced id holds XML white space (space, TAB, LF, CR): each source in order, then the target or targets, the `reasoning`, the `structure`, the `referencedArtifactElement` ids and the group members (`argumentElement` or `artifactElement`) | [`EditError::InvalidReference`] | SACM-ID-002 | An id such as `a b`, read from a file as written, is not an `NCName` and would be written as two ids. Give the referenced element an `NCName` id in the file. |
 //! | 7. every referenced id names an element, in the same order | [`EditError::ReferenceNotFound`] | SACM-CMD-001 | Create the referenced element first, or correct its id. Ids are compared exactly, case included. |
 //! | 8. every referenced id names an element of a kind its end admits, in the same order | [`EditError::WrongReferenceType`] | SACM-REF-002 | Reference an element of the end's type: for example, an `ArgumentPackage` as a `structure`, and an `ArgumentAsset`, not a package, as a source. |
+//!
+//! In checks 6 to 8, the `expression`s of the name's and texts'
+//! `ExpressionLangStrings` come last, as the end `expression`, which must
+//! name a `Term` or an `Expression` (SACM23-BASE-009).
 //!
 //! ## Operations that change an element
 //!
@@ -380,15 +385,20 @@
 //! | 1. the element (for a reorder, the parent) is in the document | [`EditError::ElementNotFound`] | SACM-CMD-001 |
 //! | 2. its kind has the feature: a `ModelElement` for a name, an `AssertedRelationship` for `isCounter`, an Assertion for a declaration, a `UtilityElement` for a `content`, a `TaggedValue` for a key, an `Artifact` for a `version`, an `Artifact` or an `Event` for a `date`, a `Resource` for a `location`, an `Activity` for a `startTime` or `endTime`, the end's class for a reference end | [`EditError::FeatureNotApplicable`] | SACM-CMD-008 |
 //!
-//! [`SetName`], [`SetGid`], [`SetFlag`], [`SetAssertionDeclaration`],
-//! [`SetContent`], [`SetKey`], [`SetVersion`], [`SetDate`],
-//! [`SetLocation`], [`SetStartTime`] and [`SetEndTime`] check nothing more. Every element has a
-//! gid, `isCitation` and `isAbstract`, so those skip the second check too.
+//! [`SetGid`], [`SetFlag`], [`SetAssertionDeclaration`], [`SetVersion`],
+//! [`SetDate`], [`SetStartTime`] and [`SetEndTime`] check nothing more. Every
+//! element has a gid, `isCitation` and `isAbstract`, so those skip the second
+//! check too. [`SetName`], [`SetContent`], [`SetKey`] and [`SetLocation`]
+//! then check the `ExpressionLangStrings` they set (SACM23-BASE-009): one with
+//! no `expression` is [`EditError::TooFewReferences`] of the end
+//! `expression`, and each `expression` the element does not hold already is
+//! checked as checks 6 to 8 check a new id, for the end `expression`.
 //!
 //! The reference operations then check, in this order:
 //!
 //! | Check | Refusal | Code |
 //! |---|---|---|
+//! | 2a. the end is not the derived `expression` ([`ReferenceEnd::Expression`](crate::model::ReferenceEnd::Expression)), which the name and texts hold | [`EditError::DerivedEnd`] | SACM-CMD-008 |
 //! | 3. for [`RemoveReference`] only: the end holds the id | [`EditError::ReferenceNotHeld`] | SACM-CMD-001 |
 //! | 4. the end would hold at least the ids it needs: one `source`, one `target`, of either relationship class | [`EditError::TooFewReferences`] | SACM-MULT-001 |
 //! | 5. the end would hold at most the ids it allows: one for a single-valued end | [`EditError::TooManyReferences`] | SACM-MULT-001 |
@@ -520,7 +530,7 @@ pub use utility::{
 
 use crate::diagnostic::Code;
 use crate::model::{Document, ElementId, ElementKind, Revision};
-use plan::{Outcome, Plan};
+use plan::{Features, Outcome, Plan};
 
 /// Checks `operation` against `document` and applies it, or refuses it and
 /// leaves `document` unchanged.
@@ -910,6 +920,42 @@ pub fn apply_all(
 /// change needs: the one code path of [`check`] and [`apply`]. Every refusal
 /// is built here; [`Plan::commit`] builds none.
 fn plan<'o>(document: &Document, operation: &'o Operation) -> Result<Plan<'o>, EditError> {
+    let plan = plan_operation(document, operation)?;
+    if let Plan::Create(new) = &plan {
+        check_new_expressions(document, &new.features)?;
+    }
+    Ok(plan)
+}
+
+/// The last checks of a create with no reference end of its own: each
+/// `ExpressionLangString` of its name and texts has an `expression`, which
+/// names a `Term` or an `Expression` (SACM23-BASE-009). A create with ends
+/// checks them with its ends, after them in each check.
+fn check_new_expressions(document: &Document, features: &Features<'_>) -> Result<(), EditError> {
+    match features {
+        Features::Name(name) => references::check_expressions(document, [*name], &[]),
+        Features::Texts { content, key } => references::check_expressions(
+            document,
+            content
+                .values()
+                .iter()
+                .chain(key.iter().flat_map(|key| key.values())),
+            &[],
+        ),
+        Features::Asset { name, location, .. } => references::check_expressions(
+            document,
+            std::iter::once(*name).chain(location.iter().flat_map(|location| location.values())),
+            &[],
+        ),
+        Features::Referencing { .. } | Features::Terminology { .. } => Ok(()),
+    }
+}
+
+/// The plan of `operation` itself, as [`plan`] runs it.
+fn plan_operation<'o>(
+    document: &Document,
+    operation: &'o Operation,
+) -> Result<Plan<'o>, EditError> {
     match operation {
         Operation::CreateAssuranceCasePackage(create) => create.plan(document),
         Operation::CreateArgumentPackage(create) => create.plan(document),
@@ -1769,6 +1815,45 @@ pub enum EditError {
         /// reference end, such as `source`.
         feature: &'static str,
     },
+    /// A reference edit names a derived end (SACM-CMD-008): `ReferenceEnd::Expression`,
+    /// which the element's `ExpressionLangStrings` hold. Set the name or text instead.
+    ///
+    /// [`SetReferences`], [`AddReference`] and [`RemoveReference`] refuse
+    /// the end after an unknown element ([`ElementNotFound`](Self::`ElementNotFound`)),
+    /// on every kind (SACM23-BASE-009, ADR 0038 D3): its ids are the
+    /// `expression`s of the element's name and texts, set with
+    /// [`LangString::with_expression`](crate::model::`LangString`::with_expression)
+    /// and [`SetName`], [`SetContent`], [`SetKey`] or [`SetLocation`].
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArgumentPackage, CreateClaim, EditError, SetReferences};
+    /// use sacm::model::{Document, ElementKind, LangString, ReferenceEnd};
+    ///
+    /// let mut doc = Document::new();
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+    /// edit::apply(&mut doc, CreateClaim::new("p", LangString::new("C1")).with_id("c1"))?;
+    /// let set = SetReferences::new("c1", ReferenceEnd::Expression, ["blade"]);
+    /// let error = edit::apply(&mut doc, set).unwrap_err();
+    /// assert!(matches!(
+    ///     error,
+    ///     EditError::DerivedEnd { kind: ElementKind::Claim, end: "expression", .. }
+    /// ));
+    /// assert_eq!(
+    ///     error.to_string(),
+    ///     "the expression of the Claim \"c1\" is derived from its name and texts: set it with \
+    ///      SetName, SetContent, SetKey or SetLocation"
+    /// );
+    /// # Ok::<(), EditError>(())
+    /// ```
+    #[non_exhaustive]
+    DerivedEnd {
+        /// The element's id.
+        element: ElementId,
+        /// The element's kind.
+        kind: ElementKind,
+        /// The end, by its XMI name: `expression`.
+        end: &'static str,
+    },
     /// [`RemoveReference`] names an id the end does not hold (SACM-CMD-001).
     /// Ids are compared exactly, case included. Remove an id the end holds.
     ///
@@ -2034,10 +2119,11 @@ impl EditError {
     /// [`InvalidReference`](Self::InvalidReference), SACM-CMD-001 for
     /// [`ReferenceNotFound`](Self::ReferenceNotFound), SACM-REF-002 for
     /// [`WrongReferenceType`](Self::WrongReferenceType), SACM-CMD-001 for
-    /// [`ElementNotFound`](Self::ElementNotFound),
+    /// [`ElementNotFound`](Self::`ElementNotFound`),
     /// [`ReferenceNotHeld`](Self::ReferenceNotHeld) and
     /// [`ChildNotFound`](Self::ChildNotFound), SACM-CMD-008 for
-    /// [`FeatureNotApplicable`](Self::FeatureNotApplicable), SACM-CMD-009
+    /// [`FeatureNotApplicable`](Self::FeatureNotApplicable) and
+    /// [`DerivedEnd`](Self::DerivedEnd), SACM-CMD-009
     /// for [`InvalidOrder`](Self::InvalidOrder), SACM-CMD-002 for
     /// [`Referenced`](Self::Referenced), SACM-CMD-003 for
     /// [`PreviewExpired`](Self::PreviewExpired), SACM-CMD-006 for
@@ -2063,7 +2149,9 @@ impl EditError {
                 Code::MULTIPLICITY_VIOLATION
             }
             Self::WrongReferenceType { .. } => Code::REF_WRONG_TYPE,
-            Self::FeatureNotApplicable { .. } => Code::CMD_FEATURE_NOT_APPLICABLE,
+            Self::FeatureNotApplicable { .. } | Self::DerivedEnd { .. } => {
+                Code::CMD_FEATURE_NOT_APPLICABLE
+            }
             Self::InvalidOrder { .. } | Self::PositionOutOfRange { .. } => Code::CMD_INVALID_ORDER,
             Self::Referenced { .. } => Code::CMD_DELETE_REFERENCED,
             Self::PreviewExpired { .. } => Code::CMD_PREVIEW_EXPIRED,
@@ -2151,6 +2239,12 @@ impl fmt::Display for EditError {
                     None => Ok(()),
                 }
             }
+            Self::DerivedEnd { element, kind, end } => write!(
+                f,
+                "the {end} of the {kind} {:?} is derived from its name and texts: set it with \
+                 SetName, SetContent, SetKey or SetLocation",
+                element.as_str()
+            ),
             Self::ReferenceNotHeld { end, id } => {
                 write!(f, "the {end} holds no id {:?} to remove", id.as_str())
             }
