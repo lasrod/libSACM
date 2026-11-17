@@ -34,13 +34,14 @@ jobs:
     concurrency:
       group: mutants-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}-${{ matrix.shard }}
       cancel-in-progress: true
-    # Eight shards of up to 90 minutes: at 2,000+ tests, four 60-minute shards no longer
-    # finished (slice 0049; run 43693981251 timed out on every shard).
+    # Sixteen shards of up to 90 minutes: at 2,000+ tests, four 60-minute shards no longer
+    # finished (slice 0049; run 43693981251), and at 2,500+ tests five of eight 90-minute
+    # shards timed out (M3 close; run 44043002416).
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
@@ -55,7 +56,7 @@ jobs:
       - run: cargo xtask fetch-spec --only xmlconf
       - run: cargo install cargo-mutants --locked --version 27.1.0
       - run: cargo install cargo-nextest --locked --version 0.9.151
-      - run: cargo mutants --workspace --shard ${{ matrix.shard }}/8 --sharding round-robin
+      - run: cargo mutants --workspace --shard ${{ matrix.shard }}/16 --sharding round-robin
       - uses: actions/upload-artifact@v7
         if: always()
         with:
