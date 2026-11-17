@@ -132,7 +132,8 @@ pub(super) fn run<E>(
 ///
 /// One `BatchMutation` is one change in an undo history. It records ids, not
 /// the old content, so to undo it keep the document from before
-/// ([`Document::clone`]). Undo itself is not provided yet (LIB-EDIT-011).
+/// ([`Document::clone`]). For undo and redo, see
+/// [the `edit` docs](crate::edit#undo-and-redo) (LIB-EDIT-011).
 ///
 /// # Examples
 ///

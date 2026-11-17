@@ -36,7 +36,7 @@ implementation. Their original discussion is linked where it exists.
 | D-ATOMIC | Every public mutation either succeeds and leaves the document structurally valid, or fails and leaves it unchanged. |
 | D-PREVIEW | Destructive operations (delete, replace) can be previewed: the preview lists every element and relationship affected before anything changes. A preview taken before the document changed is rejected when applied. Every operation can be previewed (`edit::preview`) and a preview applied (`edit::apply_preview`); a preview is guarded by the document's revision (ADR 0031). An operation may also be applied without a preview. |
 | D-POLICY | Cascading deletion never happens implicitly. The caller chooses a policy (e.g. reject if referenced / delete referencing relationships; reject if non-empty / delete recursively). |
-| D-RESULT | Mutation results report created, changed and deleted ids, enough for audit logs. What undo/redo needs (typed before-values, inverse operations or snapshots) is LIB-EDIT-011's, under Q-UNDO (ADR 0019 amendment 2, the maintainer, 2026-11-15). |
+| D-RESULT | Mutation results report created, changed and deleted ids, enough for audit logs. What undo/redo needs (typed before-values, inverse operations or snapshots) is LIB-EDIT-011's, decided by D-UNDO (ADR 0019 amendment 2, the maintainer, 2026-11-15). |
 | D-VAL-LAYER | Two validation layers. **Structural** invariants (ids unique, containment legal, multiplicities of required ends, and no edit creates a dangling or wrongly typed reference) hold after every successful mutation. A dangling or wrongly typed reference read from a file is a content finding (SACM-REF-001, SACM-REF-002) that stays until fixed (ADR 0026, ADR 0028, the maintainer, 2026-11-14). **Content** constraints (the clause-level rules below) are checked by `validate()`, because a loaded document may legitimately violate them and must still be loadable, inspectable and fixable. Edit operations do not refuse a change for a content-level finding. |
 
 ## Diagnostics
@@ -67,6 +67,7 @@ Background for each is in [reference/specification-defects.md](reference/specifi
 | D-DESC-MULT | 8.6 | `ModelElement.description` is stored as a list (the model says `0..*`) so files with several descriptions round-trip, and the text's `0..1` is enforced in validation as a warning. |
 | D-GID-EMPTY | 8.2 | An absent or empty (`""`) `gid` is not an identity and is not compared for uniqueness; every other value is compared exactly, letter case and white space included (the lead, slice 0041, following the catalog and C++). |
 | D-DATE | 4, 12.7, 12.9, 12.11; XMI 2.5.1 §8.2.1 rules 4d, 4j | The four `date`-typed attributes (Artifact and Event `date`, Activity `startTime` and `endTime`) are held as strings exactly as written. SACM 2.3 defines no lexical form, and the schema the XMI rules produce types them `xsd:string`, so no value is refused or diagnosed; an application that needs a calendar date parses it (the maintainer, 2026-11-16; slice 0055). A format check would be a project choice and can be added later as a Warning. |
+| D-UNDO | — | Undo and redo are the application's, on `Document::clone` (ADR 0037). A restored clone is equal, writes the same XMI, and has its revision and id counters, so an undone create's id may be generated again. The crate has no history type and no inverse operations; either may be added later without a break (the maintainer, 2026-11-17, after a survey of EMF, ProseMirror, Slate, Lexical, Yjs and others). |
 
 ## Open questions
 
@@ -75,5 +76,4 @@ maintainer when a slice needs them.
 
 | ID | Question | Needed by |
 |---|---|---|
-| Q-UNDO | Should undo be built on inverse operations or snapshots? | LIB-EDIT-011 |
 | Q-INTEROP | Which third-party corpus files may be committed (licence review)? assurance-forge carries EPL-2.0 and MIT samples under `libs/sacm/tests/data/interop-thirdparty/`. | LIB-COMPAT-005 |

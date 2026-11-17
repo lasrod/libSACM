@@ -425,6 +425,8 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   `ArtifactAssertedRelationship`, an Event's `occurece` and `argumentationElement` as
   `ArtifactAssetRelationship`, `date` and `argumentElement`, with one Warning each;
   `xmi::write` writes the resolved names [SACM23-XMI-009].
+- The `edit` docs show undo and redo by whole-document copies, with a tested recipe; a
+  restored copy is equal and keeps its revision and id counters (ADR 0037) [LIB-EDIT-011].
 
 ### Changed
 

@@ -214,6 +214,118 @@
 //! An empty list copies nothing, once the parent is found. A typed end never
 //! holds an id with white space, so a copy is never refused for one.
 //!
+//! # Undo and redo
+//!
+//! Undo and redo are the application's, on whole-document copies (ADR 0037,
+//! LIB-EDIT-011). The crate has no history type and no inverse operations.
+//!
+//! The rule: clone the document first, then make exactly one atomic call
+//! ([`apply`], [`apply_preview`], [`batch`] or [`apply_all`]), then push the
+//! clone only on `Ok`. Several `apply` calls in one step are not atomic, so
+//! use [`batch`] for that. One batch, or an accepted draft ([`CopyElements`]
+//! in a batch), is one step.
+//!
+//! A restored copy is `==` to the document before the change, and it writes
+//! the same XMI, preserved content included. It has its revision and its
+//! generated-id counters, so the next create may generate the id an undone
+//! create had. An application that needs ids unique across its history gives
+//! its own. A preview taken before an undone change applies again after the
+//! undo.
+//!
+//! A step costs one clone, in time and memory proportional to the document:
+//! about 1.4 to 2.3 ms and 3.3 MiB at 5,500 elements in a release build. The
+//! application chooses the limit.
+//!
+//! ```
+//! use std::collections::VecDeque;
+//!
+//! use sacm::edit::{self, BatchError, CreateArgumentPackage, CreateClaim, SetName};
+//! use sacm::model::{Document, LangString};
+//!
+//! /// Undo and redo as an application keeps them: whole documents.
+//! struct History {
+//!     undo: VecDeque<Document>,
+//!     redo: Vec<Document>,
+//!     limit: usize,
+//! }
+//!
+//! impl History {
+//!     /// Records `before`, the document as it was before a change that
+//!     /// succeeded. A limit of 0 records nothing.
+//!     fn push(&mut self, before: Document) {
+//!         if self.limit == 0 {
+//!             return;
+//!         }
+//!         if self.undo.len() == self.limit {
+//!             self.undo.pop_front();
+//!         }
+//!         self.undo.push_back(before);
+//!         self.redo.clear();
+//!     }
+//!     fn undo(&mut self, doc: &mut Document) -> bool {
+//!         let Some(before) = self.undo.pop_back() else {
+//!             return false;
+//!         };
+//!         self.redo.push(std::mem::replace(doc, before));
+//!         true
+//!     }
+//!     fn redo(&mut self, doc: &mut Document) -> bool {
+//!         let Some(after) = self.redo.pop() else {
+//!             return false;
+//!         };
+//!         self.undo.push_back(std::mem::replace(doc, after));
+//!         true
+//!     }
+//! }
+//!
+//! let mut doc = Document::new();
+//! edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new("Arguments")).with_id("p"))?;
+//! let mut history = History { undo: VecDeque::new(), redo: Vec::new(), limit: 100 };
+//!
+//! // Clone first, then one atomic call, then push the clone only on Ok.
+//! let before = doc.clone();
+//! edit::batch(&mut doc, |tx| {
+//!     tx.apply(CreateClaim::new("p", LangString::new("The brake is safe")))?;
+//!     tx.apply(SetName::new("p", LangString::new("Brake")))?;
+//!     Ok::<(), BatchError>(())
+//! })?;
+//! let unchanged = before.clone(); // only to check the undo below
+//! history.push(before);
+//! let changed = doc.clone();
+//!
+//! assert!(history.undo(&mut doc));
+//! assert!(doc == unchanged);
+//! assert!(history.redo(&mut doc));
+//! assert!(doc == changed);
+//!
+//! // A new change after an undo clears the redo stack.
+//! assert!(history.undo(&mut doc));
+//! let before = doc.clone();
+//! edit::apply(&mut doc, SetName::new("p", LangString::new("Brakes")))?;
+//! history.push(before);
+//! assert!(!history.redo(&mut doc));
+//!
+//! // A limit of 2 keeps only the last two steps.
+//! let mut doc = Document::new();
+//! let mut two = History { undo: VecDeque::new(), redo: Vec::new(), limit: 2 };
+//! let mut states = Vec::new();
+//! for name in ["A", "B", "C"] {
+//!     let before = doc.clone();
+//!     edit::apply(&mut doc, CreateArgumentPackage::root(LangString::new(name)))?;
+//!     states.push(before.clone());
+//!     two.push(before);
+//! }
+//! assert!(two.undo(&mut doc) && two.undo(&mut doc));
+//! assert!(doc == states[1]); // the first step can no longer be undone
+//! assert!(!two.undo(&mut doc));
+//!
+//! // A limit of 0 records nothing.
+//! let mut none = History { undo: VecDeque::new(), redo: Vec::new(), limit: 0 };
+//! none.push(doc.clone());
+//! assert!(!none.undo(&mut doc));
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
+//!
 //! # Ids
 //!
 //! - **Given by the caller** with `with_id`: it must be an XML `NCName` (an
