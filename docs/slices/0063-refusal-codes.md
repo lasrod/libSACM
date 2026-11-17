@@ -2,7 +2,7 @@
 slice: 0063
 name: refusal-codes
 state: in-progress
-step: verification
+step: close (merge waits for the maintainer's ADR approval)
 rows: [LIB-API-017]
 mode: pr
 base: main
@@ -71,3 +71,5 @@ The merge waits for the maintainer's approval.
   - Fix round: the builder adds tests (and `fn unheld`) and fixes the docs wording; the lead
     adds the LIB-API-006 comma, triages refusal.rs:243 as equivalent, and logs three
     follow-ups.
+- 2026-11-18 verify round 2: PASS; LIB-API-017 is verified (record 0063). The merge waits
+  for the maintainer to approve ADR 0030 amendment 3.
