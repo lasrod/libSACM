@@ -42,6 +42,11 @@ nothing lists a change between unreleased states.
 
 ### 3. Run the gate and the dry run
 
+From the release after 0.1.0 on, first run the full mutation run on the release candidate
+(`gh workflow run mutants.yml --ref main`), and kill or triage every survivor in
+`docs/quality/mutants-triage.md` before going on (ADR 0006 amendment 6). 0.1.0 is
+published without it, on CI's per-PR evidence (the maintainer, 2026-11-17).
+
 Run the full gate in [CONTRIBUTING.md](../CONTRIBUTING.md#the-gate), then:
 
 ```sh

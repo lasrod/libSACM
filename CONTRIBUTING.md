@@ -38,8 +38,10 @@ python -m unittest discover -s .claude/hooks -p "test_*.py"
 
 ## Mutation testing
 
-CI runs [cargo-mutants](https://mutants.rs) on each pull request's diff. A weekly full run
-covers the whole workspace. A mutant that no test catches fails the build.
+CI runs [cargo-mutants](https://mutants.rs) on each pull request's diff, in parallel and
+without blocking the merge: a mutant that no test catches becomes follow-up work. A weekly
+full run covers the whole workspace as a report. Before a release, the full run must be
+clean, every survivor killed or triaged (ADR 0006 amendment 6).
 
 To run it locally, install both tools:
 

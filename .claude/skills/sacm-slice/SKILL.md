@@ -102,7 +102,8 @@ single actor both builds and judges.
 ## 4. Implementation → `implemented` (builder, step 2)
 
 - **Run sacm-builder for step 2** with a new brief: the confirmed red, and that no step-1
-  test may be weakened.
+  test may be weakened. The builder runs no cargo-mutants; it hand-mutates the new decision
+  logic (ADR 0006 amendment 6).
 - **Run the local gate yourself.**
 - **A disputed test:** decide who is wrong. If the test is, brief the builder to change
   exactly that test, and log the change in the slice brief so the verifier sees it.
@@ -115,10 +116,12 @@ single actor both builds and judges.
      `gh pr list --head <branch>` already lists one.
    - **Stacked:** when the base is not `main`, start the PR body with
      "Stacked on #N: merge #N first."
-2. **Wait for CI.** Download the PR-diff shards' reports (`mutants-diff-shard-N` in the
-   CI run). The PR-diff job is the per-slice mutation evidence. The full `mutants.yml` run
-   happens only at a milestone's close (step 7) or weekly, unless the slice changes the
-   mutation config or removes tests.
+2. **Do not wait for the mutation job.** Start the verifier as soon as the PR is open.
+   CI's PR-diff mutation job runs in parallel, is not a required check, and does not block
+   the merge (ADR 0006 amendment 6). Give the verifier its run id, so it can use the shards'
+   reports (`mutants-diff-shard-N`) if they are ready. A survivor reported after the merge
+   becomes a follow-up: kill or triage it in a following slice. The full `mutants.yml` run
+   is a release gate (step 7) and a weekly report.
    - If the slice removes or weakens tests, dispatch `mutants.yml` on the head
      (`gh workflow run mutants.yml --ref <branch>`), because a test-only diff gives the
      PR-diff job nothing to mutate.
@@ -162,8 +165,10 @@ cannot PASS. Stop and ask the user.
 
 ## 7. Stop and report when
 
-- a milestone's last row is verified (dispatch the full `mutants.yml` run on `main` and
-  triage it, run **matrix-steward**, clear `docs/follow-ups.md`, and present the summary);
+- a milestone's last row is verified (run **matrix-steward**, clear `docs/follow-ups.md`,
+  and present the summary). The full `mutants.yml` run on `main`, with every survivor
+  killed or triaged, is due before a release, not at each milestone's close (ADR 0006
+  amendment 6);
 - an ADR or open question blocks the work;
 - a row still fails after its fix round;
 - the gate fails for a reason outside the slice;
