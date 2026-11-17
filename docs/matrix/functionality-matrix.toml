@@ -5297,11 +5297,28 @@ id = "LIB-QA-005"
 area = "QA"
 milestone = "M3"
 title = "Release process"
-requirement = "The first crates.io release (0.1) is cut in M3, and every release after it from a documented, repeatable process: version bump, CHANGELOG section, tag, crates.io publish of sacm and sacm-cli, GitHub release with notes."
-source = "Project policy"
+requirement = "Every release, the first (0.1.0) included, is cut from the documented, repeatable process in `docs/releasing.md`: bump the version in the workspace's `[workspace.package]` and its `sacm` dependency; turn `## [Unreleased]` into `## [X.Y.Z] - YYYY-MM-DD` and open a new empty `[Unreleased]`; run the full gate and `cargo publish --dry-run --workspace --locked`; tag `vX.Y.Z` (annotated) on the release commit on `main`; publish `sacm`, then `sacm-cli`; create the GitHub release `vX.Y.Z` with that version's CHANGELOG section as its notes. Each published package holds its `Cargo.toml`, `README.md`, the MIT `LICENSE` (the repository's, byte for byte) and its `src/`, and no tests, benches or test data. The publish, the tag and the GitHub release are done only on the maintainer's explicit go for that version (the maintainer, 2026-11-17)."
+source = "Project policy; the maintainer, 2026-11-17 (prepare the release and the dry run, then stop and ask before the publish, the tag and the GitHub release)"
 kind = "quality"
-status = "planned"
+status = "verified"
+verification = "docs/verification/0059-release-process.md"
 depends_on = ["LIB-QA-001", "LIB-COMPAT-001", "LIB-COMPAT-007"]
+notes = "Slice 0059 builds the process and the packaging; the first publish (0.1.0) waits for the maintainer's go."
+code = ["docs/releasing.md", "crates/sacm/Cargo.toml", "crates/sacm-cli/Cargo.toml", "crates/sacm/LICENSE", "crates/sacm-cli/LICENSE"]
+tests = [
+  "xtask/tests/release.rs::lib_qa_005_each_package_holds_its_sources_readme_and_license_only",
+  "xtask/tests/release.rs::lib_qa_005_each_package_license_is_the_repository_license",
+  "xtask/tests/release.rs::lib_qa_005_the_versions_and_the_changelog_agree",
+  "xtask/tests/release.rs::lib_qa_005_the_package_check_reports_each_offending_path",
+  "xtask/tests/release.rs::lib_qa_005_the_changelog_date_check_accepts_only_iso_dates",
+]
+acceptance = [
+  "`docs/releasing.md` gives the steps of the requirement in order, each with its exact command (`cargo publish --dry-run --workspace --locked`, `git tag -a vX.Y.Z -m \"sacm X.Y.Z\"`, `cargo publish -p sacm`, `cargo publish -p sacm-cli`, `gh release create vX.Y.Z --notes-file …`), what to check after each, and what to do when a publish fails half-way (a published version is never re-published; fix and release the next patch version). It says the publish, tag and release wait for the maintainer's go. `CONTRIBUTING.md` links it.",
+  "`lib_qa_005_each_package_holds_its_sources_readme_and_license_only`: `cargo package --list` for `sacm` and for `sacm-cli` lists `Cargo.toml`, `README.md`, `LICENSE` and files under `src/` (plus the files cargo adds: `Cargo.toml.orig`, `Cargo.lock`, `.cargo_vcs_info.json`) and nothing under `tests/`, `benches/` or `examples/`.",
+  "`lib_qa_005_each_package_license_is_the_repository_license`: `crates/sacm/LICENSE` and `crates/sacm-cli/LICENSE` are byte-equal to the root `LICENSE`, and each manifest's `license` is `MIT`.",
+  "`lib_qa_005_the_versions_and_the_changelog_agree`: `[workspace.package] version` equals the version of `[workspace.dependencies] sacm`, and `CHANGELOG.md`'s first `## ` section is `## [Unreleased]` or `## [<that version>] - <date>`, and its first section other than `## [Unreleased]`, if there is one, is `## [<that version>] - <date>` with an ISO date.",
+  "`cargo publish --dry-run --workspace --locked` succeeds on the slice's head; its output is recorded in the verification record (not a test: it builds every package from its packaged sources).",
+]
 
 [[row]]
 id = "LIB-QA-006"

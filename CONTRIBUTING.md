@@ -78,7 +78,8 @@ cargo mutants --workspace --in-diff mutants.diff
   row IDs: `feat(arg): asserted relationships [SACM23-ARG-007]`.
 - **Third-party GitHub Actions** are pinned by commit SHA with a `# <ref>` comment. To
   bump one, read its `action.yml` at the new SHA first.
-- **CHANGELOG:** user-visible changes go under `[Unreleased]`.
+- **CHANGELOG:** user-visible changes go under `[Unreleased]`. Releases follow
+  [docs/releasing.md](docs/releasing.md).
 
 ## Minimum supported Rust version
 
