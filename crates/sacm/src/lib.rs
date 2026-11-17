@@ -324,7 +324,11 @@
 //! `date`, `startTime` and `endTime` are held as strings exactly as written:
 //! SACM 2.3 defines no lexical form for them (D-DATE). A tolerant read also
 //! reads the machine-readable model's spellings `ArtifactAssertedRelationship`
-//! and an Event's `occurece` (see [`xmi::read`](xmi::read#spellings)):
+//! and an Event's `occurece`, and the text's `argumentationElement`, each with
+//! a SACM-XMI-013 Warning; a strict read keeps them as preserved content with
+//! an Error (see [`xmi::read`](xmi::read#spellings)). This example creates a
+//! `Technique` with a `Property`, a `Participant` and an `ArtifactGroup` of the
+//! two:
 //!
 //! ```
 //! use sacm::edit::{self, CreateArtifactGroup, CreateArtifactPackage, CreateParticipant, CreateProperty, CreateTechnique};

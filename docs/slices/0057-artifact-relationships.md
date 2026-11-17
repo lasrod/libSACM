@@ -1,8 +1,8 @@
 ---
 slice: 0057
 name: artifact-relationships
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [SACM23-ART-010, SACM23-XMI-009]
 mode: pr
 base: main
@@ -75,3 +75,7 @@ New public API:
   - Reworded verified rows: ART-001, ART-003, ART-007, ARG-013, XMI-016, XMI-005, VAL-022,
     LIB-EDIT-005, LIB-EDIT-009, LIB-API-006 and LIB-API-015.
   - Equivalent mutants: none are left; the builder removed the two redundant conditions.
+- 2026-11-17 verify: PASS on both rows in one round, with no blocking findings.
+  - Seven wording findings were fixed with the verifier's text; the lead checked the text.
+  - Three items are logged in docs/follow-ups.md.
+  - The record is `docs/verification/0057-artifact-relationships.md`, and M3 is at 18/20.

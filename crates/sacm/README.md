@@ -37,8 +37,10 @@ Read, edit, validate and write assurance cases in the
   opens every well-formed file with SACM 2.3 package roots: what a strict read refuses,
   such as a value that is no literal or conforming content not read yet, it keeps as
   preserved content with a Warning, never dropped (`Document::has_preserved_content`),
-  and it reads the names ptc/22-03-13 spells otherwise than the text, such as an Event's
-  `occurece`, as the text's, with a SACM-XMI-013 Warning.
+  and it reads the three names formal/23-05-08 and ptc/22-03-13 spell differently,
+  `ArtifactAssertedRelationship`, an Event's `occurece` and `argumentationElement`, as the
+  names `write` writes, with a SACM-XMI-013 Warning; a strict read keeps them as preserved
+  content with an Error.
   An element without an `xmi:id` gets a generated one, such as `claim_1`, which `write`
   saves; see the Ids section of the `sacm::xmi::read` docs.
 - `sacm::xmi::write` writes a document deterministically, preserved content included.

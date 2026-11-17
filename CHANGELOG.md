@@ -442,7 +442,6 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   `argumentationElement` as preserved content with a SACM-XMI-013 Error, where it refused
   them as `Unsupported`; a tolerant read reads them, where it kept them with SACM-XMI-014
   [SACM23-XMI-009].
-
 - `xmi::read` reads `Artifact`, `Event`, `Resource` and `Activity`, which a strict read
   refused as `Unsupported` and a tolerant read kept with SACM-XMI-014. An Event's
   `occurece` (the ptc/22-03-13 spelling of `date`) is refused by a strict read, and kept

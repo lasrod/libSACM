@@ -21,8 +21,9 @@ SACM 2.3 is kept as preserved content (SACM-XMI-003). A tolerant read, the defau
 every well-formed file with SACM 2.3 package roots: what a strict read refuses, such as a
 value that is no literal or conforming content not read yet (a terminology element, an
 interface), it keeps as preserved content with a Warning (SACM-XMI-014 for content not read
-yet); and it reads the names ptc/22-03-13 spells otherwise than the text, such as
-`ArtifactAssertedRelationship`, with a Warning (SACM-XMI-013). Nothing is dropped.
+yet); and it reads the names formal/23-05-08 and ptc/22-03-13 spell differently
+(`ArtifactAssertedRelationship`, an Event's `occurece` and `argumentationElement`) as the
+names it writes, with a Warning (SACM-XMI-013). Nothing is dropped.
 
 `sacm::xmi::write` writes the same kinds deterministically; a strict save, the default,
 checks only that the output is schema-valid, so a draft saves, and an application calls
