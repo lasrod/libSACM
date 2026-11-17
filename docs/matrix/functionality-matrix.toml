@@ -5311,8 +5311,19 @@ title = "First release published"
 requirement = "`sacm` and `sacm-cli` 0.1.0 are published to crates.io by the LIB-QA-005 process, with the annotated tag `v0.1.0` on `main` and the GitHub release `v0.1.0` whose notes are the CHANGELOG's `## [0.1.0]` section. It is done only on the maintainer's explicit go."
 source = "the maintainer, 2026-11-16 (a first crates.io release in M3) and 2026-11-17 (a row of its own, after the go)"
 kind = "quality"
-status = "planned"
+status = "verified"
+verification = "docs/verification/0061-first-release.md"
 depends_on = ["LIB-QA-005"]
+code = ["docs/releasing.md", "CHANGELOG.md"]
+tests = [
+  "xtask/tests/release.rs::lib_qa_019_the_changelog_keeps_the_dated_0_1_0_section",
+  "xtask/tests/release.rs::lib_qa_019_the_version_triple_compares_numerically",
+]
+acceptance = [
+  "`sacm` 0.1.0 and `sacm-cli` 0.1.0 are on crates.io, not yanked, published in that order after the annotated tag `v0.1.0` on the release commit on `main`, and the published `sacm-cli` depends on `sacm ^0.1.0` (checked once, in docs/verification/0061-first-release.md).",
+  "The GitHub release `v0.1.0` is titled \"sacm 0.1.0\", is not a draft, and its body is the CHANGELOG's `## [0.1.0] - 2026-11-17` section without its heading; docs.rs builds `sacm` 0.1.0 without the `test-support` items.",
+  "`lib_qa_019_the_changelog_keeps_the_dated_0_1_0_section`: CHANGELOG.md keeps exactly one `## [0.1.0] - 2026-11-17` line, after `## [Unreleased]`, and the workspace version is 0.1.0 or later.",
+]
 
 [[row]]
 id = "LIB-QA-005"

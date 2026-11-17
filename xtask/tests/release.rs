@@ -405,3 +405,88 @@ fn lib_qa_005_the_package_check_reports_each_offending_path() {
         "LIB-QA-005: one problem per offending path: {problems:#?}"
     );
 }
+
+/// The `major.minor.patch` triple of the version `version`; a pre-release or
+/// build suffix after the patch number is ignored.
+fn version_triple(version: &str) -> Option<(u64, u64, u64)> {
+    let core = version.split(['-', '+']).next()?;
+    let mut parts = core.split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    let patch = parts.next()?.parse().ok()?;
+    parts.next().is_none().then_some((major, minor, patch))
+}
+
+#[test]
+fn lib_qa_019_the_changelog_keeps_the_dated_0_1_0_section() {
+    const SECTION: &str = "## [0.1.0] - 2026-11-17";
+    let changelog = read("CHANGELOG.md");
+    let lines: Vec<&str> = changelog.lines().collect();
+
+    let sections: Vec<usize> = lines
+        .iter()
+        .enumerate()
+        .filter(|(_, line)| **line == SECTION)
+        .map(|(index, _)| index)
+        .collect();
+    assert_eq!(
+        sections.len(),
+        1,
+        "LIB-QA-019: CHANGELOG.md must hold the line {SECTION:?} exactly once, as published; \
+         it holds it on lines {:?}",
+        sections.iter().map(|index| index + 1).collect::<Vec<_>>()
+    );
+
+    let unreleased = lines.iter().position(|line| *line == "## [Unreleased]");
+    assert!(
+        unreleased.is_some_and(|unreleased| unreleased < sections[0]),
+        "LIB-QA-019: {SECTION:?} (line {}) must come after the first `## [Unreleased]` \
+         (line {:?})",
+        sections[0] + 1,
+        unreleased.map(|index| index + 1)
+    );
+
+    let workspace = toml_table("Cargo.toml");
+    let version = lookup(&workspace, &["workspace", "package", "version"])
+        .and_then(toml::Value::as_str)
+        .unwrap_or_else(|| {
+            panic!("LIB-QA-019: Cargo.toml has no string `[workspace.package] version`")
+        });
+    let triple = version_triple(version).unwrap_or_else(|| {
+        panic!("LIB-QA-019: `[workspace.package] version` {version:?} is not `major.minor.patch`")
+    });
+    assert!(
+        triple >= (0, 1, 0),
+        "LIB-QA-019: `[workspace.package] version` {version:?} is older than the published 0.1.0"
+    );
+}
+
+#[test]
+fn lib_qa_019_the_version_triple_compares_numerically() {
+    assert_eq!(
+        version_triple("0.1.0"),
+        Some((0, 1, 0)),
+        "LIB-QA-019: 0.1.0"
+    );
+    assert_eq!(
+        version_triple("0.10.2"),
+        Some((0, 10, 2)),
+        "LIB-QA-019: 0.10.2"
+    );
+    assert_eq!(
+        version_triple("1.0.0-rc.1"),
+        Some((1, 0, 0)),
+        "LIB-QA-019: 1.0.0-rc.1"
+    );
+    assert!(
+        version_triple("0.10.0") > version_triple("0.9.9"),
+        "LIB-QA-019: 0.10.0 is later than 0.9.9, which a string comparison gets wrong"
+    );
+    for bad in ["", "0.1", "0.1.0.0", "0.x.0", "v0.1.0"] {
+        assert_eq!(
+            version_triple(bad),
+            None,
+            "LIB-QA-019: {bad:?} is not a version"
+        );
+    }
+}
