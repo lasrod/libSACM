@@ -1,8 +1,8 @@
 ---
 slice: 0062
 name: terminology
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [SACM23-TERM-001, SACM23-TERM-002, SACM23-TERM-003, SACM23-TERM-004, SACM23-TERM-005, SACM23-TERM-006, SACM23-XMI-028]
 mode: pr
 base: main
@@ -73,3 +73,5 @@ Left out:
   - Fix round: the builder adds the two tests and fixes the wording; the lead fixes XMI-028
     item 4, TERM-002 item 3, TERM-001's notes, the ADR alternative and D21, all with the
     verifier's text.
+- 2026-11-18 verify round 2: PASS. M02, M23 and its mirror are killed. All seven rows are
+  verified; the record is `docs/verification/0062-terminology.md`.
