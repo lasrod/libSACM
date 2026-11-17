@@ -1,8 +1,8 @@
 ---
 slice: 0060
 name: m3-close
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [LIB-QA-005, SACM23-ART-003, SACM23-ART-005]
 mode: pr
 base: main
@@ -69,3 +69,6 @@ Quality rows; acceptance by the lead. Maintainer decisions of 2026-11-17:
   - Fix round: the builder fixed the rustdoc, the CHANGELOG, releasing.md and two doc
     comments; the lead fixed the matrix, the D-STRICT and CP-003 citations, and moved
     D19. All use the verifier's text.
+- 2026-11-17 verify round 2: PASS. Wording after the PASS: the two remaining doc comments,
+  with the verifier's text, checked by the lead. The record is
+  `docs/verification/0060-m3-close.md`. docs/follow-ups.md is cleared.

@@ -2307,7 +2307,7 @@ impl<'a> SacmElement<'a> {
     /// ```
     /// use sacm::model::{AbstractClass, Document, ElementId, ElementKind, LangString};
     ///
-    /// // Built with the unstable test-support feature: edit::apply does not create a missing name.
+    /// // Built with the unstable test-support feature (not shown on docs.rs; see the crate's Features): edit::apply does not create a missing name.
     /// let mut doc = Document::new();
     /// let id = ElementId::from;
     /// let name = LangString::new("Top claim").with_lang("en");
@@ -3270,7 +3270,7 @@ impl<'a> SacmElement<'a> {
     /// ```
     /// use sacm::model::{AssertionDeclaration, Document, ElementId, ElementKind};
     ///
-    /// // Built with the unstable test-support feature, which inserts an element without a name.
+    /// // Built with the unstable test-support feature (not shown on docs.rs; see the crate's Features), which inserts an element without a name.
     /// let mut doc = Document::new();
     /// let id = ElementId::from;
     /// doc.insert(None, ElementKind::ArgumentPackage, id("arguments"), None).unwrap();
