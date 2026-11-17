@@ -620,6 +620,15 @@ mod tests {
             Operation::CreateArtifactAssetRelationship(_) => {
                 sampled!(OPERATIONS, "CreateArtifactAssetRelationship")
             }
+            Operation::CreateTerminologyPackage(_) => {
+                sampled!(OPERATIONS, "CreateTerminologyPackage")
+            }
+            Operation::CreateCategory(_) => sampled!(OPERATIONS, "CreateCategory"),
+            Operation::CreateTerm(_) => sampled!(OPERATIONS, "CreateTerm"),
+            Operation::CreateExpression(_) => sampled!(OPERATIONS, "CreateExpression"),
+            Operation::CreateTerminologyGroup(_) => {
+                sampled!(OPERATIONS, "CreateTerminologyGroup")
+            }
             Operation::SetName(_) => sampled!(OPERATIONS, "SetName"),
             Operation::SetGid(_) => sampled!(OPERATIONS, "SetGid"),
             Operation::SetFlag(_) => sampled!(OPERATIONS, "SetFlag"),
@@ -633,6 +642,8 @@ mod tests {
             Operation::SetLocation(_) => sampled!(OPERATIONS, "SetLocation"),
             Operation::SetStartTime(_) => sampled!(OPERATIONS, "SetStartTime"),
             Operation::SetEndTime(_) => sampled!(OPERATIONS, "SetEndTime"),
+            Operation::SetValue(_) => sampled!(OPERATIONS, "SetValue"),
+            Operation::SetExternalReference(_) => sampled!(OPERATIONS, "SetExternalReference"),
             Operation::SetReferences(_) => sampled!(OPERATIONS, "SetReferences"),
             Operation::AddReference(_) => sampled!(OPERATIONS, "AddReference"),
             Operation::RemoveReference(_) => sampled!(OPERATIONS, "RemoveReference"),

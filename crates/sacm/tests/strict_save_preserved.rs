@@ -261,12 +261,12 @@ fn sacm23_xmi_008_only_document_level_content_is_refused_with_no_elements() {
             wrapper("", &format!("<xmi:Documentation/>{root}")),
         ),
         (
-            "a TerminologyPackage root beside the root",
+            "a TerminologyPackageInterface root beside the root",
             wrapper(
                 "",
                 &format!(
-                    "{root}<sacm:TerminologyPackage xmi:id=\"t\"><name content=\"T\"/>\
-                     </sacm:TerminologyPackage>"
+                    "{root}<sacm:TerminologyPackageInterface xmi:id=\"t\"><name content=\"T\"/>\
+                     </sacm:TerminologyPackageInterface>"
                 ),
             ),
         ),

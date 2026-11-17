@@ -1253,7 +1253,7 @@ const REFUSALS: [(&str, Template, (u32, u32)); 6] = [
         "a package kind not read yet",
         |s, x| {
             format!(
-                "<{s}:TerminologyPackage xmlns:{s}=\"{SACM_NS}\" xmlns:{x}=\"{XMI_NS}\" {x}:id=\"f\"/>"
+                "<{s}:TerminologyPackageInterface xmlns:{s}=\"{SACM_NS}\" xmlns:{x}=\"{XMI_NS}\" {x}:id=\"f\"/>"
             )
         },
         (1, 1),

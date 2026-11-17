@@ -285,9 +285,11 @@ pub enum ElementKind {
     TerminologyGroup,
     /// `Category`: a label that classifies terms and expressions.
     Category,
-    /// `Expression`: an expression built from terms.
+    /// `Expression` (§10.10): a phrase, or a production rule over other
+    /// expression elements (Terms and Expressions).
     Expression,
-    /// `Term`: a defined word or phrase, from which expressions are built.
+    /// `Term` (§10.11): an abstract or concrete term, with a `value` and an
+    /// optional `externalReference`.
     Term,
     // Argumentation (clause 11)
     /// `ArgumentPackage`: a container of claims, reasoning and asserted relationships.

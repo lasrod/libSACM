@@ -613,10 +613,11 @@ fn lib_compat_001_the_fatal_refusals_are_the_same_in_both_modes() {
             )),
         ),
         (
-            "a repeat after a TerminologyPackage child",
+            "a repeat after a TerminologyPackageInterface child",
             format!(
                 "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name content=\"C\"/>\
-                 <terminologyPackage xmi:id=\"t\"><name content=\"T\"/></terminologyPackage>\
+                 <terminologyPackage xmi:type=\"sacm:TerminologyPackageInterface\" xmi:id=\"t\">\
+                 <name content=\"T\"/></terminologyPackage>\
                  <argumentPackage xmi:id=\"t\"><name content=\"A\"/></argumentPackage>\
                  </sacm:AssuranceCasePackage>"
             ),
@@ -918,9 +919,10 @@ fn lib_compat_001_a_tolerant_read_reports_no_error() {
     };
     for (what, input) in [
         (
-            "a TerminologyPackage root",
+            "a TerminologyPackageInterface root",
             format!(
-                "<sacm:TerminologyPackage{NS} xmi:id=\"t\"><name content=\"T\"/></sacm:TerminologyPackage>"
+                "<sacm:TerminologyPackageInterface{NS} xmi:id=\"t\"><name content=\"T\"/>\
+                 </sacm:TerminologyPackageInterface>"
             ),
         ),
         (

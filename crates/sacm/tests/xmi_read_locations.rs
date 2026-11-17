@@ -408,7 +408,7 @@ fn root_rows() -> Vec<Row> {
             "a package root this release does not read",
             Unsupported,
             led(&format!(
-                "{MARK}<sacm:TerminologyPackage{NS} xmi:id=\"a\"/>"
+                "{MARK}<sacm:TerminologyPackageInterface{NS} xmi:id=\"a\"/>"
             )),
         ),
         row(

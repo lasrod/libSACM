@@ -113,7 +113,7 @@ mod reference;
 mod revision;
 
 pub use argumentation::{AssertionDeclaration, ParseAssertionDeclarationError};
-pub(crate) use containment::{DeclaredType, admits, role_named};
+pub(crate) use containment::{DeclaredType, Role, admits, role_named};
 pub(crate) use document::{
     CapturedElement, Compared, IdGenerator, Snapshot, StringAttribute, Text, TextRole,
 };

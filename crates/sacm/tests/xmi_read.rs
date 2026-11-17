@@ -24,7 +24,7 @@
 //! Since SACM23-XMI-001 (slice 0021), AssuranceCasePackage and ArgumentPackage
 //! roots are read, and other roots are refused as SACM-XMI-001. The tests here
 //! that need a refusal at a known place therefore use input that is still
-//! `Unsupported` there: a TerminologyPackage root, a package name outside the
+//! `Unsupported` there: a `TerminologyPackageInterface` root, a package name outside the
 //! SACM namespace, or a readable root with a child it cannot read. The roots
 //! themselves, and the SACM-XMI-001 locations, are tested in `xmi_roots.rs`.
 
@@ -83,9 +83,11 @@ const SACM_ROOT_OPEN: &str = concat!(
 const SACM_ROOT_CLOSE: &str = "</sacm:AssuranceCasePackage>";
 
 /// A root the reader recognises but cannot read yet (ADR 0016 D5): it is
-/// refused as `Unsupported` at its start tag.
+/// refused as `Unsupported` at its start tag. A TerminologyPackage is read
+/// since slice 0062 (SACM23-TERM-001); its interface kind is not
+/// (SACM23-TERM-007).
 const TERMINOLOGY_ROOT: &str = concat!(
-    "<sacm:TerminologyPackage",
+    "<sacm:TerminologyPackageInterface",
     " xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
     " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"",
     " xmi:id=\"terms_1\"/>",
@@ -951,7 +953,13 @@ fn lib_sec_002_unsupported_root_location_counts_lf_crlf_and_lone_cr_as_one_line_
         ("\n\r", 3, 1),
     ];
     for (before, line, column) in children {
-        let input = sacm_document("", &format!("{before}<terminologyPackage xmi:id=\"f\"/>"));
+        let input = sacm_document(
+            "",
+            &format!(
+                "{before}<terminologyPackage xmi:type=\"sacm:TerminologyPackageInterface\" \
+                 xmi:id=\"f\"/>"
+            ),
+        );
         let error = assert_unsupported(row, &input);
         assert_eq!(
             error.location(),
@@ -1240,12 +1248,13 @@ fn lib_api_009_well_formed_sacm_document_is_unsupported_at_the_construct_it_cann
         Some(loc(row, 4, 9)),
         "{row}: the refusal is not located at the `xmi:uuid` of the name"
     );
-    // An AssuranceCasePackage root with a `terminologyPackage` child, which no
-    // verified row reads: `Unsupported`, with no code and no document, at
-    // `<terminologyPackage` (line 4, column 3).
+    // An AssuranceCasePackage root with a `terminologyPackage` child typed
+    // `sacm:TerminologyPackageInterface`, which no verified row reads:
+    // `Unsupported`, with no code and no document, at `<terminologyPackage`
+    // (line 4, column 3).
     let unread_child = sacm_document(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- LIB-API-009 -->\n",
-        "\n  <terminologyPackage xmi:id=\"f\"/>\n",
+        "\n  <terminologyPackage xmi:type=\"sacm:TerminologyPackageInterface\" xmi:id=\"f\"/>\n",
     );
     let error = assert_unsupported(row, &unread_child);
     assert_eq!(
@@ -1681,7 +1690,7 @@ fn lib_api_009_unsupported_display_is_one_located_line_quoting_names() {
     let terminology = format!("<?xml version=\"1.0\"?>\n{TERMINOLOGY_ROOT}");
     let error = assert_unsupported(row, terminology.as_bytes());
     display_reason(row, &error, UNSUPPORTED_LEAD);
-    assert_quoted_wherever_named(row, &error.to_string(), "TerminologyPackage");
+    assert_quoted_wherever_named(row, &error.to_string(), "TerminologyPackageInterface");
 
     // A child and an attribute that a readable root cannot read yet: XMI
     // metadata (SACM23-XMI-019) under a prefix that only they use.

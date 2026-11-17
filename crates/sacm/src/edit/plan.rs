@@ -248,6 +248,24 @@ impl NewElement<'_> {
                     .collect();
                 document.insert_asset(parent, kind, id, name.clone(), strings, location.cloned())
             }
+            Features::Terminology {
+                name,
+                strings,
+                references,
+            } => {
+                let strings = strings
+                    .into_iter()
+                    .filter_map(|(attribute, value)| {
+                        value.map(|value| (attribute, value.to_owned()))
+                    })
+                    .collect();
+                let held = references
+                    .into_iter()
+                    .filter(|(_, targets)| !targets.is_empty())
+                    .map(|(end, targets)| (end, targets.to_vec()))
+                    .collect();
+                document.insert_expression_element(parent, kind, id, name.clone(), strings, held)
+            }
         };
         inserted.expect(
             "invariant: the plan found the parent, whose class holds the kind, or made a root of a \
@@ -293,6 +311,18 @@ pub(super) enum Features<'o> {
         strings: Vec<(StringAttribute, Option<&'o str>)>,
         /// The `location`, given only for a `Resource`.
         location: Option<&'o MultiLangString>,
+    },
+    /// The name, string-valued attributes and reference ends of an
+    /// `ExpressionElement` kind (ADR 0034 amendment 3).
+    Terminology {
+        /// The name.
+        name: &'o LangString,
+        /// Each attribute, one the kind holds, each once, with its value
+        /// held exactly, or `None` when it is not given.
+        strings: Vec<(StringAttribute, Option<&'o str>)>,
+        /// Each end, one the kind owns, with the ids it holds, within its
+        /// bounds; an end with none holds nothing.
+        references: Vec<(ReferenceEnd, &'o [ElementId])>,
     },
 }
 

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-XMI-028: the §10.4 text spelling TerminologyElement of a TerminologyPackage's role. A tolerant read reads both spelled children with one SACM-XMI-013 Warning each, at 5:3 and 8:3; a strict read keeps each as preserved content of the package, with one SACM-XMI-013 Error at the same places. Hand-written; no third-party content. -->
+<sacm:TerminologyPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="terms">
+  <name lang="en" content="Terms"/>
+  <TerminologyElement xmi:type="sacm:Term" xmi:id="blade" value="blade">
+    <name lang="en" content="Blade"/>
+  </TerminologyElement>
+  <TerminologyElement xmi:type="sacm:Category" xmi:id="parts">
+    <name lang="en" content="Parts"/>
+  </TerminologyElement>
+  <terminologyElement xmi:type="sacm:Expression" xmi:id="blade_part" value="$Blade$" element="blade" category="parts">
+    <name lang="en" content="Blade part"/>
+  </terminologyElement>
+</sacm:TerminologyPackage>

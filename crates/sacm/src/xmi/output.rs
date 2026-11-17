@@ -166,8 +166,8 @@ fn push_start_tag(out: &mut String, depth: usize, planned: &Planned<'_>) -> Vec<
     let as_elements = ends_as_elements(planned.element);
     push_flags_and_references(out, planned.element, planned.declaration, &as_elements);
     // Then the kind's string-valued attributes, `version`, `date`,
-    // `startTime` and `endTime`, each exactly as held and escaped (ADR 0034
-    // amendment 1, D-DATE).
+    // `startTime`, `endTime`, `value` and `externalReference`, each exactly
+    // as held and escaped (ADR 0034 amendments 1 and 3, D-DATE).
     for attribute in StringAttribute::ALL {
         if let Some(value) = planned.element.string(attribute) {
             out.push(' ');
@@ -463,8 +463,8 @@ fn plan(document: &Document, mode: Mode) -> Result<Vec<Planned<'_>>, WriteError>
 
 /// The first value `element` holds that XML 1.0 cannot represent, as the
 /// attribute that holds it and its first such character, checked in this
-/// order: its id, its gid, its `version`, `date`, `startTime` and
-/// `endTime`, its name's `lang` and `content`, then each value of its
+/// order: its id, its gid, its `version`, `date`, `startTime`, `endTime`,
+/// `value` and `externalReference`, its name's `lang` and `content`, then each value of its
 /// `content`, then of its `key` and then of its `location`, `lang` before
 /// `content`. The ids of a name, `content`, `key`, `location` or `value`
 /// are not checked: only
@@ -481,6 +481,11 @@ fn unrepresentable(element: SacmElement<'_>) -> Option<(WriteAttribute, char)> {
         (WriteAttribute::Date, element.date()),
         (WriteAttribute::StartTime, element.start_time()),
         (WriteAttribute::EndTime, element.end_time()),
+        (WriteAttribute::Value, element.value()),
+        (
+            WriteAttribute::ExternalReference,
+            element.external_reference(),
+        ),
         (WriteAttribute::NameLang, name.and_then(LangString::lang)),
         (
             WriteAttribute::NameContent,

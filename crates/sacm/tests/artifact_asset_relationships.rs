@@ -1305,7 +1305,9 @@ fn sacm23_art_010_artifact_source_and_target_are_named_owned_and_bounded_for_the
 }
 
 #[test]
-fn sacm23_art_010_reference_end_all_is_the_twelve_ends_with_these_two_last() {
+fn sacm23_art_010_reference_end_all_lists_these_two_directly_after_artifact_group_member() {
+    // The ends of slice 0057 follow ArtifactGroupMember, and the Terminology
+    // ends of slice 0062 follow them (ADR 0034 amendments 2 and 3).
     assert_eq!(
         ReferenceEnd::ALL,
         [
@@ -1321,8 +1323,21 @@ fn sacm23_art_010_reference_end_all_is_the_twelve_ends_with_these_two_last() {
             ReferenceEnd::ArtifactGroupMember,
             ReferenceEnd::ArtifactSource,
             ReferenceEnd::ArtifactTarget,
+            ReferenceEnd::Category,
+            ReferenceEnd::Element,
+            ReferenceEnd::Origin,
+            ReferenceEnd::TerminologyGroupMember,
         ],
         "{ROW}: ReferenceEnd::ALL"
+    );
+    let after = ReferenceEnd::ALL
+        .iter()
+        .position(|&end| end == ReferenceEnd::ArtifactGroupMember)
+        .map(|index| &ReferenceEnd::ALL[index + 1..index + 3]);
+    assert_eq!(
+        after,
+        Some([ReferenceEnd::ArtifactSource, ReferenceEnd::ArtifactTarget].as_slice()),
+        "{ROW}: ArtifactSource and ArtifactTarget do not follow ArtifactGroupMember"
     );
 }
 

@@ -619,6 +619,40 @@ impl Document {
         Ok(())
     }
 
+    /// [`insert_node`](Self::insert_node), with the element's string-valued
+    /// attributes and reference ends set as given, held exactly (ADR 0034
+    /// amendment 3): on an error the document is unchanged.
+    ///
+    /// The creates of a Term and an Expression use it, so that a create is
+    /// one change. Each attribute is one the kind holds, given once, and each
+    /// end one the kind owns, within its bounds.
+    pub(crate) fn insert_expression_element(
+        &mut self,
+        parent: Option<&ElementId>,
+        kind: ElementKind,
+        id: ElementId,
+        name: LangString,
+        strings: Vec<(StringAttribute, String)>,
+        references: Vec<(ReferenceEnd, Vec<ElementId>)>,
+    ) -> Result<(), InsertError> {
+        debug_assert!(
+            strings
+                .iter()
+                .all(|(attribute, _)| attribute.is_held_by(kind)),
+            "the kind holds each attribute"
+        );
+        let node = self.insert_handle(parent, kind, id, Some(name), None, None)?;
+        self.nodes[node].strings = strings;
+        for (end, targets) in references {
+            debug_assert!(
+                reference_problem(kind, end, &targets).is_none(),
+                "the kind has the end, and the end can hold the targets"
+            );
+            self.hold_references(node, end, targets);
+        }
+        Ok(())
+    }
+
     /// [`insert_element`](Self::insert_element), returning the new node's
     /// handle.
     fn insert_handle(
@@ -2756,22 +2790,26 @@ impl<'a> SacmElement<'a> {
 
     /// The ids of the members of an `ArgumentGroup` (SACM 2.3 §11.2
     /// `argumentElement:ArgumentationElement[0..*]`, which the text spells
-    /// `argumentationElement`) or of an `ArtifactGroup` (§12.3
-    /// `artifactElement:ArtifactElement[0..*]`), in document order: empty
-    /// when it has none or the element is neither group.
+    /// `argumentationElement`), of an `ArtifactGroup` (§12.3
+    /// `artifactElement:ArtifactElement[0..*]`) or of a `TerminologyGroup`
+    /// (§10.3 `terminologyElement:TerminologyElement[0..*]`), in document
+    /// order: empty when it has none or the element is no group.
     ///
     /// In XMI the end is named `argumentElement` on an `ArgumentGroup`, like
-    /// the composite role of an `ArgumentPackage`, and `artifactElement` on
-    /// an `ArtifactGroup`, like the composite role of an `ArtifactPackage`.
-    /// Each is a reference: a member stays where it is contained, and groups
-    /// "serve no structural purpose" (§11.2, §12.3). The ids are held
+    /// the composite role of an `ArgumentPackage`, `artifactElement` on an
+    /// `ArtifactGroup`, like the composite role of an `ArtifactPackage`, and
+    /// `terminologyElement` on a `TerminologyGroup`, like the composite role
+    /// of a `TerminologyPackage`. Each is a reference: a member stays where
+    /// it is contained, and groups "serve no structural purpose" (§11.2,
+    /// §12.3, §10.3). The ids are held
     /// unresolved and with repeats, as [`meta_claims`](Self::meta_claims)
     /// are. A member of a kind its end does not admit, such as an
     /// `AssuranceCasePackage` in an `ArgumentGroup` or a `Note` in either, is
     /// a SACM-REF-002 finding of
     /// [`validation::validate`](crate::validation::validate)
-    /// (SACM23-VAL-004). The two ends are
-    /// [`ReferenceEnd::GroupMember`] and [`ReferenceEnd::ArtifactGroupMember`].
+    /// (SACM23-VAL-004). The three ends are [`ReferenceEnd::GroupMember`],
+    /// [`ReferenceEnd::ArtifactGroupMember`] and
+    /// [`ReferenceEnd::TerminologyGroupMember`].
     ///
     /// ```
     /// use sacm::edit::{self, CreateArgumentGroup, CreateArgumentPackage, CreateClaim};
@@ -2794,13 +2832,63 @@ impl<'a> SacmElement<'a> {
     #[doc(alias = "argumentElement")]
     #[doc(alias = "argumentationElement")]
     #[doc(alias = "artifactElement")]
+    #[doc(alias = "terminologyElement")]
     #[must_use]
     pub fn group_members(self) -> &'a [ElementId] {
-        if self.kind() == ElementKind::ArtifactGroup {
-            self.references(ReferenceEnd::ArtifactGroupMember)
-        } else {
-            self.references(ReferenceEnd::GroupMember)
+        match self.kind() {
+            ElementKind::ArtifactGroup => self.references(ReferenceEnd::ArtifactGroupMember),
+            ElementKind::TerminologyGroup => self.references(ReferenceEnd::TerminologyGroupMember),
+            _ => self.references(ReferenceEnd::GroupMember),
         }
+    }
+
+    /// The ids of a Category's, Term's or Expression's `category` end, in
+    /// document order, repeats included (SACM 2.3 §10.8, §10.9
+    /// `category:Category[0..*]`); empty for every other kind.
+    ///
+    /// On a Term or an Expression they are the Categories it belongs to. On a
+    /// Category, formal/23-05-08 does not say which way the end points (spec
+    /// defect D21), so they are held as written. It is
+    /// [`references`](Self::references) of
+    /// [`ReferenceEnd::Category`].
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateCategory, CreateTerm, CreateTerminologyPackage};
+    /// use sacm::model::{Document, LangString};
+    ///
+    /// let mut doc = Document::new();
+    /// let en = |text: &str| LangString::new(text).with_lang("en");
+    /// edit::apply(&mut doc, CreateTerminologyPackage::root(en("Terms")).with_id("terms"))?;
+    /// edit::apply(&mut doc, CreateCategory::new("terms", en("Hazards")).with_id("hazards"))?;
+    /// let blade = CreateTerm::new("terms", en("Blade"), "blade").with_categories(["hazards"]);
+    /// edit::apply(&mut doc, blade.with_id("blade"))?;
+    ///
+    /// let blade = doc.get("blade").expect("just created");
+    /// assert_eq!(blade.categories().iter().map(|id| id.as_str()).collect::<Vec<_>>(), ["hazards"]);
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    #[must_use]
+    pub fn categories(self) -> &'a [ElementId] {
+        self.references(ReferenceEnd::Category)
+    }
+
+    /// The `ExpressionElements` an Expression is formed from (SACM 2.3 §10.10
+    /// `element:ExpressionElement[0..*]`), in document order, repeats
+    /// included; empty for every other kind. It is
+    /// [`references`](Self::references) of [`ReferenceEnd::Element`].
+    #[doc(alias = "element")]
+    #[must_use]
+    pub fn expression_elements(self) -> &'a [ElementId] {
+        self.references(ReferenceEnd::Element)
+    }
+
+    /// The origin of a Term (SACM 2.3 §10.11
+    /// `origin:Base::ModelElement[0..1]`, "a reference which points to the
+    /// origin of the Term"), or `None` when it has none or the element is no
+    /// Term.
+    #[must_use]
+    pub fn origin(self) -> Option<&'a ElementId> {
+        self.references(ReferenceEnd::Origin).first()
     }
 
     /// Whether an asserted relationship counters its declared purpose (SACM
@@ -3158,6 +3246,44 @@ impl<'a> SacmElement<'a> {
     #[must_use]
     pub fn end_time(self) -> Option<&'a str> {
         self.string(StringAttribute::EndTime)
+    }
+
+    /// The `value` of a Term or an Expression (SACM 2.3 §10.9
+    /// `value:String[1]`, "the value of the expression"), exactly as written,
+    /// or `None` when it has none, which
+    /// [`validate`](crate::validation::validate) reports, or the element is
+    /// no `ExpressionElement`.
+    ///
+    /// ```
+    /// use sacm::xmi::{self, ReadOptions};
+    ///
+    /// let input = br#"<sacm:TerminologyPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="terms">
+    ///   <name content="Terms"/>
+    ///   <terminologyElement xmi:type="sacm:Term" xmi:id="blade" value="blade"
+    ///       externalReference="https://example.org/terms/blade">
+    ///     <name content="Blade"/>
+    ///   </terminologyElement>
+    /// </sacm:TerminologyPackage>"#;
+    /// let document = xmi::read(input, &ReadOptions::default())?.into_document();
+    /// let blade = document.get("blade").expect("the Term was read");
+    /// assert_eq!(blade.value(), Some("blade"));
+    /// assert_eq!(blade.external_reference(), Some("https://example.org/terms/blade"));
+    /// # Ok::<(), sacm::xmi::ReadError>(())
+    /// ```
+    #[must_use]
+    pub fn value(self) -> Option<&'a str> {
+        self.string(StringAttribute::Value)
+    }
+
+    /// A Term's `externalReference` (SACM 2.3 §10.11
+    /// `externalReference:String[0..1]`, "an external reference (e.g., URI) to
+    /// the object referred to by the Term"), exactly as written, or `None`
+    /// when it has none or the element is no Term. See
+    /// [`value`](Self::value) for an example.
+    #[must_use]
+    pub fn external_reference(self) -> Option<&'a str> {
+        self.string(StringAttribute::ExternalReference)
     }
 
     /// The `location` of a `Resource` (§12.10 `location:Base::MultiLangString`,
@@ -3554,11 +3680,12 @@ impl TextRole {
     }
 }
 
-/// An attribute of an `ArtifactAsset` kind that holds a string exactly as
-/// written (D-DATE; ADR 0034 amendment 1): an Artifact's `version` (SACM 2.3
-/// §12.7), and the `date`-typed `date` of an Artifact or an Event (§12.7,
-/// §12.9) and `startTime` and `endTime` of an Activity (§12.11), which the
-/// XMI rules type `xsd:string`.
+/// An attribute that holds a string exactly as written (D-DATE; ADR 0034
+/// amendments 1 and 3): an Artifact's `version` (SACM 2.3 §12.7), the
+/// `date`-typed `date` of an Artifact or an Event (§12.7, §12.9) and
+/// `startTime` and `endTime` of an Activity (§12.11), which the XMI rules
+/// type `xsd:string`, the `value` of an `ExpressionElement` (§10.9) and a
+/// Term's `externalReference` (§10.11).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum StringAttribute {
     /// `version`.
@@ -3569,11 +3696,22 @@ pub(crate) enum StringAttribute {
     StartTime,
     /// `endTime`.
     EndTime,
+    /// `value`.
+    Value,
+    /// `externalReference`.
+    ExternalReference,
 }
 
 impl StringAttribute {
     /// Every attribute, in the order they are written.
-    pub(crate) const ALL: [Self; 4] = [Self::Version, Self::Date, Self::StartTime, Self::EndTime];
+    pub(crate) const ALL: [Self; 6] = [
+        Self::Version,
+        Self::Date,
+        Self::StartTime,
+        Self::EndTime,
+        Self::Value,
+        Self::ExternalReference,
+    ];
 
     /// The attribute's name, as written in XMI.
     pub(crate) const fn name(self) -> &'static str {
@@ -3582,6 +3720,8 @@ impl StringAttribute {
             Self::Date => "date",
             Self::StartTime => "startTime",
             Self::EndTime => "endTime",
+            Self::Value => "value",
+            Self::ExternalReference => "externalReference",
         }
     }
 
@@ -3593,6 +3733,8 @@ impl StringAttribute {
                 kind.is_kind_of(ElementKind::Artifact) || kind.is_kind_of(ElementKind::Event)
             }
             Self::StartTime | Self::EndTime => kind.is_kind_of(ElementKind::Activity),
+            Self::Value => kind.is_a(AbstractClass::ExpressionElement),
+            Self::ExternalReference => kind.is_kind_of(ElementKind::Term),
         }
     }
 }

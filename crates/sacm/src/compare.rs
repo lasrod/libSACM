@@ -428,6 +428,73 @@ pub enum Difference {
         /// The target ids in the right document, in order.
         right: Vec<ElementId>,
     },
+    /// The `category` ids of a Category, a Term or an Expression (SACM 2.3
+    /// §10.8, §10.9,
+    /// [`SacmElement::categories`](crate::model::SacmElement::categories))
+    /// differ on each side. Compared in order and with repeats, as
+    /// [`MetaClaims`](Self::MetaClaims) are.
+    ///
+    /// ```
+    /// use sacm::compare::Difference;
+    /// use sacm::model::ElementId;
+    ///
+    /// let difference = Difference::Categories {
+    ///     id: ElementId::from("mechanical"),
+    ///     left: vec![ElementId::from("hazards")],
+    ///     right: vec![],
+    /// };
+    /// assert_eq!(
+    ///     difference.to_string(),
+    ///     r#"element "mechanical" differs in category: ["hazards"] on the left, [] on the right"#
+    /// );
+    /// ```
+    #[doc(alias = "category")]
+    Categories {
+        /// The element's id.
+        id: ElementId,
+        /// The category ids in the left document, in order.
+        left: Vec<ElementId>,
+        /// The category ids in the right document, in order.
+        right: Vec<ElementId>,
+    },
+    /// The `ExpressionElements` an Expression is formed from, its `element`
+    /// ids (SACM 2.3 §10.10,
+    /// [`SacmElement::expression_elements`](crate::model::SacmElement::expression_elements)),
+    /// differ on each side. Compared in order and with repeats.
+    #[doc(alias = "element")]
+    ExpressionElements {
+        /// The Expression's id.
+        id: ElementId,
+        /// The element ids in the left document, in order.
+        left: Vec<ElementId>,
+        /// The element ids in the right document, in order.
+        right: Vec<ElementId>,
+    },
+    /// A Term's `origin` (SACM 2.3 §10.11,
+    /// [`SacmElement::origin`](crate::model::SacmElement::origin)) differs on
+    /// each side; `None` is no origin.
+    Origin {
+        /// The Term's id.
+        id: ElementId,
+        /// The origin's id in the left document, or `None`.
+        left: Option<ElementId>,
+        /// The origin's id in the right document, or `None`.
+        right: Option<ElementId>,
+    },
+    /// The `TerminologyGroup`'s members, its `terminologyElement` ids (SACM
+    /// 2.3 §10.3,
+    /// [`SacmElement::group_members`](crate::model::SacmElement::group_members)),
+    /// differ on each side. Compared in order and with repeats; an
+    /// `ArgumentGroup`'s are [`GroupMembers`](Self::GroupMembers).
+    #[doc(alias = "terminologyElement")]
+    TerminologyGroupMembers {
+        /// The group's id.
+        id: ElementId,
+        /// The member ids in the left document, in order.
+        left: Vec<ElementId>,
+        /// The member ids in the right document, in order.
+        right: Vec<ElementId>,
+    },
     /// The element has a different `name` (SACM 2.3 §8.6) on each side;
     /// `None` is a missing name.
     ///
@@ -616,6 +683,44 @@ pub enum Difference {
         /// The end time in the right document, or `None` when it has none.
         right: Option<String>,
     },
+    /// The `value` of a Term or an Expression (SACM 2.3 §10.9,
+    /// [`SacmElement::value`](crate::model::SacmElement::value)) differs on
+    /// each side; `None` is no value. Compared exactly, as
+    /// [`Version`](Self::Version) is.
+    ///
+    /// ```
+    /// use sacm::compare::Difference;
+    /// use sacm::model::ElementId;
+    ///
+    /// let difference = Difference::Value {
+    ///     id: ElementId::from("blade"),
+    ///     left: Some("blade".to_owned()),
+    ///     right: None,
+    /// };
+    /// assert_eq!(
+    ///     difference.to_string(),
+    ///     r#"element "blade" differs in value: "blade" on the left, no value on the right"#
+    /// );
+    /// ```
+    Value {
+        /// The element's id.
+        id: ElementId,
+        /// The value in the left document, or `None` when it has none.
+        left: Option<String>,
+        /// The value in the right document, or `None` when it has none.
+        right: Option<String>,
+    },
+    /// A Term's `externalReference` (SACM 2.3 §10.11,
+    /// [`SacmElement::external_reference`](crate::model::SacmElement::external_reference))
+    /// differs on each side; `None` is none. Compared exactly.
+    ExternalReference {
+        /// The Term's id.
+        id: ElementId,
+        /// The external reference in the left document, or `None`.
+        left: Option<String>,
+        /// The external reference in the right document, or `None`.
+        right: Option<String>,
+    },
     /// The element has a different `assertionDeclaration` (SACM 2.3 §11.10)
     /// on each side.
     ///
@@ -714,6 +819,10 @@ impl Difference {
             | Self::ArtifactGroupMembers { id, .. }
             | Self::ArtifactSources { id, .. }
             | Self::ArtifactTargets { id, .. }
+            | Self::Categories { id, .. }
+            | Self::ExpressionElements { id, .. }
+            | Self::Origin { id, .. }
+            | Self::TerminologyGroupMembers { id, .. }
             | Self::Name { id, .. }
             | Self::NameId { id, .. }
             | Self::Content { id, .. }
@@ -729,6 +838,8 @@ impl Difference {
             | Self::LocationValueIds { id, .. }
             | Self::StartTime { id, .. }
             | Self::EndTime { id, .. }
+            | Self::Value { id, .. }
+            | Self::ExternalReference { id, .. }
             | Self::AssertionDeclaration { id, .. }
             | Self::ChildOrder { id, .. }
             | Self::PreservedContent { id } => Some(id),
@@ -760,6 +871,8 @@ impl Difference {
             Self::Date { .. } => StringAttribute::Date.name(),
             Self::StartTime { .. } => StringAttribute::StartTime.name(),
             Self::EndTime { .. } => StringAttribute::EndTime.name(),
+            Self::Value { .. } => StringAttribute::Value.name(),
+            Self::ExternalReference { .. } => StringAttribute::ExternalReference.name(),
             _ => StringAttribute::Version.name(),
         }
     }
@@ -791,6 +904,10 @@ impl Difference {
             Self::ArtifactGroupMembers { .. } => ReferenceEnd::ArtifactGroupMember.name(),
             Self::ArtifactSources { .. } => ReferenceEnd::ArtifactSource.name(),
             Self::ArtifactTargets { .. } => ReferenceEnd::ArtifactTarget.name(),
+            Self::Categories { .. } => ReferenceEnd::Category.name(),
+            Self::ExpressionElements { .. } => ReferenceEnd::Element.name(),
+            Self::Origin { .. } => ReferenceEnd::Origin.name(),
+            Self::TerminologyGroupMembers { .. } => ReferenceEnd::TerminologyGroupMember.name(),
             _ => ReferenceEnd::CitedElement.name(),
         }
     }
@@ -849,7 +966,8 @@ impl fmt::Display for Difference {
             | Self::AbstractForm { id, left, right }
             | Self::Reasoning { id, left, right }
             | Self::Target { id, left, right }
-            | Self::Structure { id, left, right } => {
+            | Self::Structure { id, left, right }
+            | Self::Origin { id, left, right } => {
                 let end = self.end();
                 write!(
                     f,
@@ -865,7 +983,10 @@ impl fmt::Display for Difference {
             | Self::GroupMembers { id, left, right }
             | Self::ArtifactGroupMembers { id, left, right }
             | Self::ArtifactSources { id, left, right }
-            | Self::ArtifactTargets { id, left, right } => write!(
+            | Self::ArtifactTargets { id, left, right }
+            | Self::Categories { id, left, right }
+            | Self::ExpressionElements { id, left, right }
+            | Self::TerminologyGroupMembers { id, left, right } => write!(
                 f,
                 "element {:?} differs in {}: {} on the left, {} on the right",
                 id.as_str(),
@@ -914,7 +1035,9 @@ impl fmt::Display for Difference {
             Self::Version { id, left, right }
             | Self::Date { id, left, right }
             | Self::StartTime { id, left, right }
-            | Self::EndTime { id, left, right } => {
+            | Self::EndTime { id, left, right }
+            | Self::Value { id, left, right }
+            | Self::ExternalReference { id, left, right } => {
                 let attribute = self.string();
                 write!(
                     f,
@@ -1184,6 +1307,10 @@ impl fmt::Display for Declaration {
 ///    [`ArtifactGroupMembers`](Difference::ArtifactGroupMembers),
 ///    [`ArtifactSources`](Difference::ArtifactSources),
 ///    [`ArtifactTargets`](Difference::ArtifactTargets),
+///    [`Categories`](Difference::Categories),
+///    [`ExpressionElements`](Difference::ExpressionElements),
+///    [`Origin`](Difference::Origin),
+///    [`TerminologyGroupMembers`](Difference::TerminologyGroupMembers),
 ///    [`Name`](Difference::Name),
 ///    [`NameId`](Difference::NameId), [`Content`](Difference::Content),
 ///    [`ContentId`](Difference::ContentId),
@@ -1195,6 +1322,8 @@ impl fmt::Display for Declaration {
 ///    [`LocationId`](Difference::LocationId),
 ///    [`LocationValueIds`](Difference::LocationValueIds),
 ///    [`StartTime`](Difference::StartTime), [`EndTime`](Difference::EndTime),
+///    [`Value`](Difference::Value),
+///    [`ExternalReference`](Difference::ExternalReference),
 ///    [`AssertionDeclaration`](Difference::AssertionDeclaration),
 ///    [`ChildOrder`](Difference::ChildOrder) and
 ///    [`PreservedContent`](Difference::PreservedContent), in that order;
@@ -1396,6 +1525,8 @@ fn string_difference(
         StringAttribute::Date => Difference::Date { id, left, right },
         StringAttribute::StartTime => Difference::StartTime { id, left, right },
         StringAttribute::EndTime => Difference::EndTime { id, left, right },
+        StringAttribute::Value => Difference::Value { id, left, right },
+        StringAttribute::ExternalReference => Difference::ExternalReference { id, left, right },
     }
 }
 
@@ -1449,6 +1580,22 @@ fn reference_difference(
             right: all_right.to_vec(),
         },
         ReferenceEnd::ArtifactTarget => Difference::ArtifactTargets {
+            id,
+            left: all_left.to_vec(),
+            right: all_right.to_vec(),
+        },
+        ReferenceEnd::Category => Difference::Categories {
+            id,
+            left: all_left.to_vec(),
+            right: all_right.to_vec(),
+        },
+        ReferenceEnd::Element => Difference::ExpressionElements {
+            id,
+            left: all_left.to_vec(),
+            right: all_right.to_vec(),
+        },
+        ReferenceEnd::Origin => Difference::Origin { id, left, right },
+        ReferenceEnd::TerminologyGroupMember => Difference::TerminologyGroupMembers {
             id,
             left: all_left.to_vec(),
             right: all_right.to_vec(),
@@ -1581,9 +1728,10 @@ enum Valued {
 
 /// The features with a value, in the order [`semantic_compare`] reports
 /// them: `content` and `key`, then `version` and `date`, then `location`,
-/// then `startTime` and `endTime`. A test of the crate keeps it total over
-/// [`TextRole::ALL`] and [`StringAttribute::ALL`].
-const COMPARED_VALUES: [Valued; 7] = [
+/// then `startTime` and `endTime`, then `value` and `externalReference`. A
+/// test of the crate keeps it total over [`TextRole::ALL`] and
+/// [`StringAttribute::ALL`].
+const COMPARED_VALUES: [Valued; 9] = [
     Valued::Text(TextRole::Content),
     Valued::Text(TextRole::Key),
     Valued::String(StringAttribute::Version),
@@ -1591,6 +1739,8 @@ const COMPARED_VALUES: [Valued; 7] = [
     Valued::Text(TextRole::Location),
     Valued::String(StringAttribute::StartTime),
     Valued::String(StringAttribute::EndTime),
+    Valued::String(StringAttribute::Value),
+    Valued::String(StringAttribute::ExternalReference),
 ];
 
 /// The text `element` holds in `role`.

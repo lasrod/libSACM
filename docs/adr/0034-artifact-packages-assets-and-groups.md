@@ -184,3 +184,29 @@ list goes. The spellings ptc/22-03-13 and the text use instead are read tolerant
 - **Keep the strict refusal of the spellings.** Rejected: it contradicts decision 3.
 - **Map the spellings in strict mode too.** Rejected: a strict save would quietly rewrite
   the names.
+
+## Amendment 3 (accepted by the maintainer, 2026-11-17; slice 0062)
+
+The Terminology kinds of formal/23-05-08 clause 10 are read, written, created, edited, compared and validated in the pattern of the artifact kinds (SACM23-TERM-001 to -006):
+- TerminologyPackage;
+- Category, Term and Expression;
+- TerminologyGroup.
+
+Their Interim entries in the refusal list go. TerminologyPackageInterface and TerminologyPackageBinding stay `Interim` (SACM23-TERM-007, -008, M5).
+
+- **Placements.** Each kind is read where the containment table admits it: a TerminologyPackage as a root, in an AssuranceCasePackage's `terminologyPackage`, nested in a TerminologyPackage's `terminologyElement`, and in an ArtifactPackage's `artifactElement`; the other kinds in a TerminologyPackage's `terminologyElement` and in an ArtifactPackage's `artifactElement`.
+- **`value` is required.** ExpressionElement's `value : String [1]` is required in the create operations. `SetValue` has no removal. A file without a `value` still reads, and `validate` reports SACM-MULT-001 (the precedent of TaggedValue `key`; D-SEV).
+- **The new ends:**
+  - `ReferenceEnd::Category`: one entry for the `category : Category [0..*]` of Category (ptc/22-03-13) and of every ExpressionElement (§10.9).
+    - On a Term or an Expression it holds the Categories the element belongs to.
+    - On a Category, formal/23-05-08 does not say which way the end points (spec defect D21; SACM 2.4 Beta1 makes the Category list its members). The crate holds the ids as written and states no direction.
+  - `ReferenceEnd::Element`: Expression's `element`, read by `SacmElement::expression_elements()`.
+  - `ReferenceEnd::Origin`: Term's `origin`.
+  - `ReferenceEnd::TerminologyGroupMember`: TerminologyGroup's `terminologyElement` (XMI and serde name `terminologyElement`). Under a TerminologyPackage the same name is the composite role; the parent's kind decides which.
+  - None of the new ends has a lower bound, so a scrub keeps the holder. An Expression is not a relationship, so no delete cascades to it.
+- **Not checked.** §10.10's two "should" sentences about naming elements in `value` (D-EXPR-NAMES).
+- **The spelling `TerminologyElement`** (§10.4; spec defect D9) is read under the M3 decision 3 rule: a tolerant read reads it with a SACM-XMI-013 Warning, and a strict read keeps it as preserved content with a SACM-XMI-013 Error (SACM23-XMI-028).
+
+**Alternatives considered:**
+- **Two `category` ends, one for Category and one for ExpressionElement.** Rejected: they have the same name, type and bounds.
+- **Documenting a direction for Category's `category`.** Rejected: the 2.3 text does not state one, and SACM 2.4 Beta1 instead gives a Category a list of the members it contains.

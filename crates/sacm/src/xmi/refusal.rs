@@ -85,8 +85,6 @@ pub(super) enum Unread {
     ArtifactPackageInterface,
     /// An `ArtifactPackageBinding`.
     ArtifactPackageBinding,
-    /// A `TerminologyPackage`.
-    TerminologyPackage,
     /// A `TerminologyPackageInterface`.
     TerminologyPackageInterface,
     /// A `TerminologyPackageBinding`.
@@ -99,14 +97,6 @@ pub(super) enum Unread {
     ArgumentPackageInterface,
     /// An `ArgumentPackageBinding`.
     ArgumentPackageBinding,
-    /// A `Category`.
-    Category,
-    /// A `Term`.
-    Term,
-    /// An `Expression`.
-    Expression,
-    /// A `TerminologyGroup`.
-    TerminologyGroup,
     /// XMI document metadata: an XMI-namespace element, `xmi:uuid`,
     /// `xmi:label` and `xmi:idref` on an object (on a role element, its
     /// reference form), `href` on a root or on a `name` or other text, the
@@ -145,17 +135,12 @@ impl Unread {
         Some(match kind {
             ElementKind::ArtifactPackageInterface => Self::ArtifactPackageInterface,
             ElementKind::ArtifactPackageBinding => Self::ArtifactPackageBinding,
-            ElementKind::TerminologyPackage => Self::TerminologyPackage,
             ElementKind::TerminologyPackageInterface => Self::TerminologyPackageInterface,
             ElementKind::TerminologyPackageBinding => Self::TerminologyPackageBinding,
             ElementKind::AssuranceCasePackageInterface => Self::AssuranceCasePackageInterface,
             ElementKind::AssuranceCasePackageBinding => Self::AssuranceCasePackageBinding,
             ElementKind::ArgumentPackageInterface => Self::ArgumentPackageInterface,
             ElementKind::ArgumentPackageBinding => Self::ArgumentPackageBinding,
-            ElementKind::Category => Self::Category,
-            ElementKind::Term => Self::Term,
-            ElementKind::Expression => Self::Expression,
-            ElementKind::TerminologyGroup => Self::TerminologyGroup,
             _ => return None,
         })
     }
@@ -165,17 +150,12 @@ impl Unread {
         match self {
             Self::ArtifactPackageInterface => Refusal::Interim("SACM23-ART-012"),
             Self::ArtifactPackageBinding => Refusal::Interim("SACM23-ART-013"),
-            Self::TerminologyPackage => Refusal::Interim("SACM23-TERM-001"),
             Self::TerminologyPackageInterface => Refusal::Interim("SACM23-TERM-007"),
             Self::TerminologyPackageBinding => Refusal::Interim("SACM23-TERM-008"),
             Self::AssuranceCasePackageInterface => Refusal::Interim("SACM23-AC-002"),
             Self::AssuranceCasePackageBinding => Refusal::Interim("SACM23-AC-003"),
             Self::ArgumentPackageInterface => Refusal::Interim("SACM23-ARG-014"),
             Self::ArgumentPackageBinding => Refusal::Interim("SACM23-ARG-015"),
-            Self::Category => Refusal::Interim("SACM23-TERM-002"),
-            Self::Term => Refusal::Interim("SACM23-TERM-004"),
-            Self::Expression => Refusal::Interim("SACM23-TERM-005"),
-            Self::TerminologyGroup => Refusal::Interim("SACM23-TERM-006"),
             Self::XmiMetadata => Refusal::Interim("SACM23-XMI-019"),
             Self::CrossDocumentHref => Refusal::Interim("SACM23-XMI-027"),
             Self::OtherSacmNamespace => Refusal::Tolerance("LIB-COMPAT-004"),
@@ -197,17 +177,12 @@ impl Unread {
         match self {
             Self::ArtifactPackageInterface
             | Self::ArtifactPackageBinding
-            | Self::TerminologyPackage
             | Self::TerminologyPackageInterface
             | Self::TerminologyPackageBinding
             | Self::AssuranceCasePackageInterface
             | Self::AssuranceCasePackageBinding
             | Self::ArgumentPackageInterface
             | Self::ArgumentPackageBinding
-            | Self::Category
-            | Self::Term
-            | Self::Expression
-            | Self::TerminologyGroup
             | Self::XmiMetadata
             | Self::ExpressionLangString => Tolerant::Kept(Code::XMI_UNREAD_CONTENT),
             Self::CrossDocumentHref => Tolerant::Kept(Code::XMI_EXTERNAL_HREF),
@@ -251,20 +226,15 @@ mod tests {
     use crate::xmi::ReadError;
 
     /// Every entry, in declaration order.
-    const ALL: [Unread; 23] = [
+    const ALL: [Unread; 18] = [
         Unread::ArtifactPackageInterface,
         Unread::ArtifactPackageBinding,
-        Unread::TerminologyPackage,
         Unread::TerminologyPackageInterface,
         Unread::TerminologyPackageBinding,
         Unread::AssuranceCasePackageInterface,
         Unread::AssuranceCasePackageBinding,
         Unread::ArgumentPackageInterface,
         Unread::ArgumentPackageBinding,
-        Unread::Category,
-        Unread::Term,
-        Unread::Expression,
-        Unread::TerminologyGroup,
         Unread::XmiMetadata,
         Unread::CrossDocumentHref,
         Unread::OtherSacmNamespace,
@@ -283,27 +253,22 @@ mod tests {
         match entry {
             Unread::ArtifactPackageInterface => 0,
             Unread::ArtifactPackageBinding => 1,
-            Unread::TerminologyPackage => 2,
-            Unread::TerminologyPackageInterface => 3,
-            Unread::TerminologyPackageBinding => 4,
-            Unread::AssuranceCasePackageInterface => 5,
-            Unread::AssuranceCasePackageBinding => 6,
-            Unread::ArgumentPackageInterface => 7,
-            Unread::ArgumentPackageBinding => 8,
-            Unread::Category => 9,
-            Unread::Term => 10,
-            Unread::Expression => 11,
-            Unread::TerminologyGroup => 12,
-            Unread::XmiMetadata => 13,
-            Unread::CrossDocumentHref => 14,
-            Unread::OtherSacmNamespace => 15,
-            Unread::ExpressionLangString => 16,
-            Unread::OtherXmiNamespace => 17,
-            Unread::Encoding => 18,
-            Unread::Capacity => 19,
-            Unread::Unheld => 20,
-            Unread::WrapperContent => 21,
-            Unread::UnwritablePrefix => 22,
+            Unread::TerminologyPackageInterface => 2,
+            Unread::TerminologyPackageBinding => 3,
+            Unread::AssuranceCasePackageInterface => 4,
+            Unread::AssuranceCasePackageBinding => 5,
+            Unread::ArgumentPackageInterface => 6,
+            Unread::ArgumentPackageBinding => 7,
+            Unread::XmiMetadata => 8,
+            Unread::CrossDocumentHref => 9,
+            Unread::OtherSacmNamespace => 10,
+            Unread::ExpressionLangString => 11,
+            Unread::OtherXmiNamespace => 12,
+            Unread::Encoding => 13,
+            Unread::Capacity => 14,
+            Unread::Unheld => 15,
+            Unread::WrapperContent => 16,
+            Unread::UnwritablePrefix => 17,
         }
     }
 
@@ -370,22 +335,28 @@ mod tests {
     }
 
     #[test]
-    fn exactly_the_thirteen_unread_kinds_have_an_entry() {
+    fn exactly_the_eight_unread_kinds_have_an_entry() {
         let unread: Vec<ElementKind> = ElementKind::ALL
             .iter()
             .copied()
             .filter(|&kind| Unread::kind(kind).is_some())
             .collect();
-        assert_eq!(unread.len(), 13);
+        assert_eq!(unread.len(), 8);
         let packages = unread.iter().filter(|kind| kind.is_package()).count();
-        assert_eq!((packages, unread.len() - packages), (9, 4));
+        assert_eq!((packages, unread.len() - packages), (8, 0));
         assert_eq!(Unread::kind(ElementKind::ArtifactPackage), None);
+        // Read since slice 0055, 0057 and 0062 (ADR 0034 amendments 1 to 3).
         for read in [
             ElementKind::Artifact,
             ElementKind::Resource,
             ElementKind::Activity,
             ElementKind::Event,
             ElementKind::ArtifactAssetRelationship,
+            ElementKind::TerminologyPackage,
+            ElementKind::Category,
+            ElementKind::Term,
+            ElementKind::Expression,
+            ElementKind::TerminologyGroup,
         ] {
             assert_eq!(Unread::kind(read), None, "{read}");
         }

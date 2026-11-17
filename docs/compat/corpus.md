@@ -38,9 +38,9 @@ not Assurance Forge's. No public file from another tool uses the SACM 2.3 namesp
 corpus: 15 files
 
 af-examples-kitchen-blender.sacm
-  tolerant read: read; SACM-XMI-010 warning 105, SACM-XMI-011 info 1, SACM-XMI-014 warning 1
-  strict read: refused Unsupported at line 845, column 3 (a limit of this version; SACM23-TERM-001 reads it)
-  validate: SACM-MULT-001 warning 40, SACM-REF-003 warning 2
+  tolerant read: read; SACM-XMI-010 warning 112, SACM-XMI-011 info 1
+  strict read: read; SACM-XMI-010 error 112, SACM-XMI-011 info 1
+  validate: SACM-MULT-001 warning 40
   tolerant write: reads back equal
 
 af-examples-gsn-pattern-decorators.sacm
@@ -101,7 +101,7 @@ deis-etcs.model
   tolerant read: refused InvalidRoot SACM-XMI-001 at line 2, column 1
   strict read: refused InvalidRoot SACM-XMI-001 at line 2, column 1
 
-read tolerantly: 2 of 15; read strictly: 1 of 15; tolerant write reads back equal: 2 of 2
+read tolerantly: 2 of 15; read strictly: 2 of 15; tolerant write reads back equal: 2 of 2
 ```
 <!-- corpus-report:end -->
 
@@ -109,9 +109,8 @@ read tolerantly: 2 of 15; read strictly: 1 of 15; tolerant write reads back equa
 
 | Finding | Files | Row or note |
 |---|---|---|
-| A TerminologyPackage inside an AssuranceCasePackage, not read yet: a strict read refuses it, a tolerant read keeps it as preserved content (SACM-XMI-014, Warning), and so a strict save of the tolerant document is refused (SACM-XMI-006) | 1 | SACM23-TERM-001 (M4) |
-| 2 ArtifactReferences name Terms held only as preserved content (SACM-REF-003). A Term is an ArtifactElement, so this clears with SACM23-TERM-001 | 1 | SACM23-TERM-001 |
-| 105 + 2 `xsi:type` (SACM-XMI-010; an Error when strict) | 1, 2 | By design (LIB-COMPAT-001). Assurance Forge writer issue: write `xmi:type` |
+| A TerminologyPackage inside an AssuranceCasePackage, with a Category and six Terms: read since slice 0062, with each Term's `value`, `category` and `externalReference` as written; the two ArtifactReferences that name Terms validate | 1 | SACM23-TERM-001 to SACM23-TERM-004 |
+| 112 + 2 `xsi:type` (SACM-XMI-010; an Error when strict) | 1, 2 | By design (LIB-COMPAT-001). Assurance Forge writer issue: write `xmi:type` |
 | `xmi:version="2.0"` (SACM-XMI-011, Info) | 1, 2 | By design. Assurance Forge writer issue |
 | 40 Claims with two `description`s (SACM-MULT-001, Warning) | 1 | SACM23-VAL-011. Assurance Forge writer issue |
 | A root in another SACM revision's namespace, or a SACM-like one | 3–9, 12, 13 | LIB-COMPAT-004 (M6) |

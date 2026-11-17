@@ -83,7 +83,7 @@ const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/x
 /// The golden files, under [`FIXTURES`].
 const GOLDEN_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/xmi/golden");
 /// The golden files the reader reads in this release.
-const READABLE_GOLDEN: [&str; 10] = [
+const READABLE_GOLDEN: [&str; 12] = [
     // The golden files of slice 0057 (SACM23-ART-010, SACM23-XMI-009).
     "artifact-asset-relationship.golden.sacm.xmi",
     "artifact-assets.golden.sacm.xmi",
@@ -95,6 +95,9 @@ const READABLE_GOLDEN: [&str; 10] = [
     "needs-support-claim.golden.sacm.xmi",
     "several-roots.golden.sacm.xmi",
     "single-root.golden.sacm.xmi",
+    // The golden files of slice 0062 (SACM23-TERM-001, SACM23-XMI-028).
+    "terminology-element-spelling.golden.sacm.xmi",
+    "terminology.golden.sacm.xmi",
 ];
 /// The golden file the reader refuses, as `Unsupported`, in this release: it
 /// holds an `ArgumentPackageInterface` (SACM23-ARG-014), refused first, and an

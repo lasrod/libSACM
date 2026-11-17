@@ -45,7 +45,7 @@ pub(super) fn dangling_references(document: &Document, found: &mut Vec<Diagnosti
                             "LIB-COMPAT-003",
                             message,
                         )
-                        .set_clause(end.clause())
+                        .set_clause(end.clause_on(element.kind()))
                         .set_affected([element.id().clone(), target.clone()]),
                     );
                     continue;
@@ -97,7 +97,7 @@ fn dangling(element: SacmElement<'_>, end: ReferenceEnd, target: &ElementId) -> 
         "SACM23-VAL-003",
         message,
     )
-    .set_clause(end.clause())
+    .set_clause(end.clause_on(element.kind()))
     .set_affected([element.id().clone(), target.clone()])
 }
 
@@ -137,7 +137,7 @@ pub(super) fn wrongly_typed_references(document: &Document, found: &mut Vec<Diag
                         "SACM23-VAL-004",
                         message,
                     )
-                    .set_clause(end.clause())
+                    .set_clause(end.clause_on(element.kind()))
                     .set_affected([element.id().clone(), id.clone()]),
                 );
             }

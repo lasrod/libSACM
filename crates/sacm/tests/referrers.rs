@@ -130,8 +130,8 @@ const DELETE_START: &str = r#"<xmi:XMI xmlns:sacm="http://www.omg.org/spec/SACM/
 /// The directory of the XMI fixtures.
 const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/xmi");
 
-/// The twelve ends, in the order `ReferenceEnd::ALL` documents: write order.
-const ENDS: [ReferenceEnd; 12] = [
+/// The sixteen ends, in the order `ReferenceEnd::ALL` documents: write order.
+const ENDS: [ReferenceEnd; 16] = [
     ReferenceEnd::CitedElement,
     ReferenceEnd::AbstractForm,
     ReferenceEnd::MetaClaim,
@@ -144,6 +144,10 @@ const ENDS: [ReferenceEnd; 12] = [
     ReferenceEnd::ArtifactGroupMember,
     ReferenceEnd::ArtifactSource,
     ReferenceEnd::ArtifactTarget,
+    ReferenceEnd::Category,
+    ReferenceEnd::Element,
+    ReferenceEnd::Origin,
+    ReferenceEnd::TerminologyGroupMember,
 ];
 
 // ---------------------------------------------------------------------------
@@ -497,6 +501,12 @@ fn lib_api_014_a_dangling_id_and_a_preserved_id_give_their_referrers() {
 
 #[test]
 fn lib_api_014_referrers_of_a_read_document_equal_a_full_scan() {
+    // The full scan walks every end: ENDS is ReferenceEnd::ALL.
+    assert_eq!(
+        ENDS.as_slice(),
+        ReferenceEnd::ALL,
+        "{ROW}: setup: ENDS is not every end of ReferenceEnd::ALL"
+    );
     let mut referenced = 0;
     for (what, text) in [
         ("TOP_START", TOP_START),

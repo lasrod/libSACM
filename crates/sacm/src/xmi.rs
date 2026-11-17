@@ -4,17 +4,19 @@
 //! a [`ReadError`]. [`write`](fn@write) takes a [`Document`] and returns its XMI text or
 //! a [`WriteError`]. Neither does I/O: the caller reads and writes the file.
 //!
-//! In this release `read` reads `AssuranceCasePackage`, `ArgumentPackage` and
-//! `ArtifactPackage` roots, bare or inside an `xmi:XMI` element, and what they
-//! hold of twenty kinds: the three package kinds in an
-//! `AssuranceCasePackage`; `ArgumentPackage`, `Claim`, `ArgumentReasoning`,
+//! In this release `read` reads `AssuranceCasePackage`, `ArgumentPackage`,
+//! `ArtifactPackage` and `TerminologyPackage` roots, bare or inside an
+//! `xmi:XMI` element, and what they hold of twenty-five kinds: the four
+//! package kinds in an `AssuranceCasePackage`; `ArgumentPackage`, `Claim`, `ArgumentReasoning`,
 //! `ArtifactReference`, `ArgumentGroup`, `AssertedInference`,
 //! `AssertedEvidence`, `AssertedContext`, `AssertedArtifactSupport` and
 //! `AssertedArtifactContext` elements in an `ArgumentPackage`; every one of
 //! these kinds and `Technique`, `Participant`, `ArtifactGroup`, `Property`,
 //! `Artifact`, `Event`, `Resource` and `Activity` elements in an
-//! `ArtifactPackage`; and `Property` elements in the `property` role of
-//! each of the seven `ArtifactAsset` kinds among them. Each is
+//! `ArtifactPackage`; `Property` elements in the `property` role of
+//! each of the seven `ArtifactAsset` kinds among them; and `TerminologyPackage`,
+//! `Category`, `Term`, `Expression` and `TerminologyGroup` elements in a
+//! `TerminologyPackage` and in an `ArtifactPackage`. Each is
 //! read with its id (generated when it has no `xmi:id`), `gid`,
 //! `isCitation`, `isAbstract`, `citedElement`, `abstractForm` and name, an
 //! Assertion's `assertionDeclaration` and `metaClaim`, an asserted
@@ -23,10 +25,14 @@
 //! `referencedArtifactElement`, an `ArgumentGroup`'s members
 //! (`argumentElement`), an `ArtifactGroup`'s members (`artifactElement`), an
 //! Artifact's `version` and `date`, an Event's `date`, a Resource's
-//! `location`, an Activity's `startTime` and `endTime`, and the
+//! `location`, an Activity's `startTime` and `endTime`, a Term's or an
+//! Expression's `value` and `category`, a Category's `category`, a Term's
+//! `origin` and `externalReference`, an Expression's `element`, a
+//! `TerminologyGroup`'s members (`terminologyElement`), and the
 //! descriptions, implementation constraints, notes and tagged values of
 //! each, with their `content` and `key` (SACM 2.3 §2.2, §2.4, §8.2-§8.12,
-//! §9.2, §11.2, §11.4, §11.9-§11.18, §12.2, §12.3, §12.6-§12.13). The
+//! §9.2, §10.3, §10.4, §10.8-§10.11, §11.2, §11.4, §11.9-§11.18, §12.2, §12.3,
+//! §12.6-§12.13). The
 //! date-typed values are held exactly as written (D-DATE). A reference is held as the id it names, and one that names no
 //! element is kept (see [References](fn@read#references)). Content that is
 //! not SACM 2.3 where it stands, such as a vendor attribute or child
@@ -154,8 +160,9 @@ mod roots;
 
 /// Reads an XMI document from its bytes.
 ///
-/// In this release `read` reads `AssuranceCasePackage`, `ArgumentPackage` and
-/// `ArtifactPackage` roots (formal/23-05-08 §2.2, §2.4): the document element, or each element
+/// In this release `read` reads `AssuranceCasePackage`, `ArgumentPackage`,
+/// `ArtifactPackage` and `TerminologyPackage` roots (formal/23-05-08 §2.2,
+/// §2.4, §2.5): the document element, or each element
 /// child outside the XMI namespace of an `xmi:XMI` element in the XMI 2.5.1
 /// namespace `http://www.omg.org/spec/XMI/20131001`. Each root becomes
 /// a parentless element of its kind, in document order, whose id is its
@@ -174,8 +181,10 @@ mod roots;
 /// | AssuranceCasePackage (§9.2) | `assuranceCasePackage` | an AssuranceCasePackage | no |
 /// | AssuranceCasePackage (§9.2) | `argumentPackage` | an ArgumentPackage | no |
 /// | AssuranceCasePackage (§9.2) | `artifactPackage` | an ArtifactPackage | no |
+/// | AssuranceCasePackage (§9.2) | `terminologyPackage` | a TerminologyPackage | no |
+/// | TerminologyPackage (§10.4) | `terminologyElement` | a TerminologyPackage, a `Category`, a `Term`, an `Expression` or a `TerminologyGroup` | yes: the role's type, `TerminologyElement`, is abstract (§10.2) |
 /// | ArgumentPackage (§11.4) | `argumentElement` | an ArgumentPackage, a Claim, an `ArgumentReasoning`, an `ArtifactReference`, an `ArgumentGroup`, an `AssertedInference`, an `AssertedEvidence`, an `AssertedContext`, an `AssertedArtifactSupport` or an `AssertedArtifactContext` | yes: the role's type, `ArgumentationElement`, is abstract (§11.3) |
-/// | ArtifactPackage (§12.2) | `artifactElement` | an AssuranceCasePackage, an ArgumentPackage, an ArtifactPackage, any of the nine argumentation kinds above, a `Property`, a `Technique`, a `Participant`, an `ArtifactGroup`, an `Artifact`, an `Event`, a `Resource` or an `Activity` | yes: the role's type, `ArtifactElement`, is abstract (§8.10) |
+/// | ArtifactPackage (§12.2) | `artifactElement` | an AssuranceCasePackage, an ArgumentPackage, an ArtifactPackage, any of the nine argumentation kinds above, a `Property`, a `Technique`, a `Participant`, an `ArtifactGroup`, an `Artifact`, an `Event`, a `Resource`, an `Activity`, an `ArtifactAssetRelationship`, or any of the five Terminology kinds above | yes: the role's type, `ArtifactElement`, is abstract (§8.10) |
 /// | `Property`, `Technique`, `Participant`, `Artifact`, `Event`, `Resource` or `Activity` (§12.6) | `property` | a `Property` | no |
 /// | each of the above (§8.6) | `description` | a `Description` | no |
 /// | each of the above (§8.6) | `implementationConstraint` | an `ImplementationConstraint` | no |
@@ -193,7 +202,9 @@ mod roots;
 /// ArgumentPackage role `argumentationElement`; a tolerant read reads that
 /// spelling as `argumentElement`, with one SACM-XMI-013 Warning, and a strict
 /// read keeps the child whole as preserved content of the package, with
-/// SACM-XMI-013 as an Error (see [Spellings](#spellings)).
+/// SACM-XMI-013 as an Error (see [Spellings](#spellings)). §10.4's text
+/// spells the TerminologyPackage role `TerminologyElement`, read the same
+/// way (SACM23-XMI-028).
 ///
 /// The four `UtilityElement`s are children in the same document order as the
 /// rest ([`SacmElement::descriptions`](crate::model::SacmElement::descriptions)
@@ -237,7 +248,16 @@ mod roots;
 /// `ArgumentReasoning` may carry `structure` (§11.12 `[0..1]`), an
 /// `ArtifactReference` `referencedArtifactElement` (§11.9 `[0..*]`), an
 /// `ArgumentGroup` its members, `argumentElement` (§11.2 `[0..*]`), and an
-/// `ArtifactGroup` its members, `artifactElement` (§12.3 `[0..*]`). An
+/// `ArtifactGroup` its members, `artifactElement` (§12.3 `[0..*]`). Every
+/// `TerminologyAsset` (a Category, a Term or an Expression) may carry
+/// `category` (§10.8, §10.9 `[0..*]`), an Expression `element` (§10.10
+/// `[0..*]`), a Term `origin` (§10.11 `[0..1]`), and a `TerminologyGroup`
+/// its members, `terminologyElement` (§10.3 `[0..*]`). A Term or an
+/// Expression may carry `value` (§10.9 `String[1]`) and a Term
+/// `externalReference` (§10.11 `String[0..1]`), in no namespace, as an
+/// attribute or a value element, each held exactly as written; one read
+/// without a `value` is kept, and
+/// [`validation::validate`](crate::validation::validate) reports it. An
 /// `ArtifactReference` is no Assertion, so it has no `assertionDeclaration`
 /// or `metaClaim`. A relationship read without a `source` or a `target` is
 /// kept as read, and nothing is added;
@@ -248,7 +268,8 @@ mod roots;
 ///
 /// A group's member end is a reference, though it shares its name with a
 /// package's composite role: `argumentElement` with an ArgumentPackage's,
-/// `artifactElement` with an ArtifactPackage's. The parent's kind decides:
+/// `artifactElement` with an ArtifactPackage's, `terminologyElement` with a
+/// TerminologyPackage's. The parent's kind decides:
 /// under a group, such an element is a reference element, never read as a
 /// child. One with `xmi:type`, `xsi:type` or `xmi:id`, such as
 /// `<argumentElement xmi:type="sacm:Claim" xmi:id="c9"/>`, is
@@ -352,18 +373,21 @@ mod roots;
 /// # Spellings
 ///
 /// Where formal/23-05-08 and ptc/22-03-13 spell a name differently and the
-/// crate follows the other (D-TEXT-MODEL), a tolerant read reads three
+/// crate follows the other (D-TEXT-MODEL), a tolerant read reads four
 /// spellings as the resolved name, each with one SACM-XMI-013 Warning
 /// ([`Code::XMI_SPELLING_VARIANT`]) at its start tag or attribute name,
 /// affecting the element the spelling belongs to (SACM23-XMI-009, ADR 0034
-/// amendment 2):
+/// amendment 2; SACM23-XMI-028, amendment 3):
 /// - the type `ArtifactAssertedRelationship`, in `xmi:type` or `xsi:type`,
 ///   under a role that admits an `ArtifactAssetRelationship` (§12.14), read
 ///   as that class;
 /// - an Event's `occurece`, as an attribute or a value element, read as its
 ///   `date` (§12.9);
 /// - `argumentationElement` as an ArgumentPackage's role (§11.4) or an
-///   `ArgumentGroup`'s end (§11.2), read as `argumentElement`.
+///   `ArgumentGroup`'s end (§11.2), read as `argumentElement`;
+/// - `TerminologyElement` as a TerminologyPackage's role (§10.4, spec defect
+///   D9), read as `terminologyElement`. As a `TerminologyGroup`'s end it is
+///   no spelling: §10.3 spells that end `terminologyElement`.
 ///
 /// Each is read under every rule of the resolved name, except that a value
 /// given under both names is read from the resolved name, and the spelled
@@ -820,15 +844,12 @@ mod roots;
 ///   `XMI` element outside XMI 2.5.1 and an XMI-namespace document element,
 ///   and keeps the rest (SACM-XMI-014, SACM-XMI-007 or SACM-XMI-003). In
 ///   this release they are:
-///   - conforming input not read yet: the other nine package kinds, as roots
-///     or children (such as an `ArgumentPackageInterface`); the four other
-///     kinds not read yet, as children:
-///     `Category` (SACM23-TERM-002), `Term` (SACM23-TERM-004), `Expression`
-///     (SACM23-TERM-005) and `TerminologyGroup` (SACM23-TERM-006); a
+///   - conforming input not read yet: the eight interface and binding kinds,
+///     as roots or children (such as an `ArgumentPackageInterface`); a
 ///     package's `interface` end, as an attribute or an element, naming the
 ///     row of its interface kind (SACM23-AC-002 on an AssuranceCasePackage,
 ///     SACM23-ARG-014 on an ArgumentPackage, SACM23-ART-012 on an
-///     ArtifactPackage); XMI metadata
+///     ArtifactPackage, SACM23-TERM-007 on a TerminologyPackage); XMI metadata
 ///     (SACM23-XMI-019): an XMI-namespace element as the document element,
 ///     beside the roots or in an element (such as `xmi:Documentation` or
 ///     `xmi:Extension`), `xmi:uuid`, `xmi:label` and `xmi:idref` on an
@@ -1554,12 +1575,14 @@ pub enum ReadError {
         /// `ArtifactAssetRelationship`'s), `structure`,
         /// `referencedArtifactElement`, `argumentElement` (an
         /// `ArgumentGroup`'s end), `artifactElement` (an `ArtifactGroup`'s
-        /// end),
+        /// end), `category`, `element`, `origin`, `terminologyElement` (a
+        /// `TerminologyGroup`'s end),
         /// `name`, `name.lang`, `name.content`, `content`,
         /// `content.value.lang`, `content.value.content`, `key`,
         /// `key.value.lang`, `key.value.content`, `assertionDeclaration`,
-        /// `version`, `date`, `startTime`, `endTime`, `location`,
-        /// `location.value.lang` or `location.value.content`.
+        /// `version`, `date`, `startTime`, `endTime`, `value`,
+        /// `externalReference`, `location`, `location.value.lang` or
+        /// `location.value.content`.
         property: String,
         /// Every occurrence, in document order: an attribute at the first
         /// character of its name, an element at its `<`. At least two. Two
@@ -2543,6 +2566,10 @@ pub enum WriteAttribute {
     StartTime,
     /// The `endTime` of an `Activity` (SACM 2.3 §12.11).
     EndTime,
+    /// The `value` of a `Term` or an `Expression` (SACM 2.3 §10.9).
+    Value,
+    /// The `externalReference` of a `Term` (SACM 2.3 §10.11).
+    ExternalReference,
     /// The `lang` of a value of a `Resource`'s `location` (SACM 2.3 §12.10).
     LocationValueLang,
     /// The `content` of a value of a `Resource`'s `location` (SACM 2.3
@@ -2568,6 +2595,8 @@ impl fmt::Display for WriteAttribute {
             Self::Date => "date",
             Self::StartTime => "startTime",
             Self::EndTime => "endTime",
+            Self::Value => "value",
+            Self::ExternalReference => "externalReference",
             Self::LocationValueLang => "location value's lang",
             Self::LocationValueContent => "location value's content",
         })

@@ -641,6 +641,126 @@
     ]
   },
   {
+    "type": "CreateTerminologyPackage",
+    "parent": null,
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Blender terminology"
+    }
+  },
+  {
+    "type": "CreateTerminologyPackage",
+    "parent": "case",
+    "id": "terms",
+    "name": {
+      "lang": "en",
+      "content": "Blender terminology"
+    }
+  },
+  {
+    "type": "CreateCategory",
+    "parent": "terms",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Hazards"
+    },
+    "categories": []
+  },
+  {
+    "type": "CreateCategory",
+    "parent": "terms",
+    "id": "mechanical",
+    "name": {
+      "lang": "en",
+      "content": "Mechanical hazards"
+    },
+    "categories": [
+      "hazards"
+    ]
+  },
+  {
+    "type": "CreateTerm",
+    "parent": "terms",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Blade"
+    },
+    "value": "blade",
+    "categories": [],
+    "origin": null,
+    "external_reference": null
+  },
+  {
+    "type": "CreateTerm",
+    "parent": "terms",
+    "id": "blade",
+    "name": {
+      "lang": "en",
+      "content": "Blade"
+    },
+    "value": "blade",
+    "categories": [
+      "mechanical"
+    ],
+    "origin": "manual",
+    "external_reference": "https://example.org/terms/blade"
+  },
+  {
+    "type": "CreateExpression",
+    "parent": "terms",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Blade guarded by lid"
+    },
+    "value": "$Blade$ is covered by the $Lid$",
+    "categories": [],
+    "expression_elements": []
+  },
+  {
+    "type": "CreateExpression",
+    "parent": "terms",
+    "id": "blade_guarded",
+    "name": {
+      "lang": "en",
+      "content": "Blade guarded by lid"
+    },
+    "value": "$Blade$ is covered by the $Lid$",
+    "categories": [
+      "mechanical"
+    ],
+    "expression_elements": [
+      "blade",
+      "lid"
+    ]
+  },
+  {
+    "type": "CreateTerminologyGroup",
+    "parent": "terms",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Reviewed by the safety team"
+    },
+    "group_members": []
+  },
+  {
+    "type": "CreateTerminologyGroup",
+    "parent": "terms",
+    "id": "reviewed",
+    "name": {
+      "lang": "en",
+      "content": "Reviewed by the safety team"
+    },
+    "group_members": [
+      "blade",
+      "lid"
+    ]
+  },
+  {
     "type": "SetName",
     "element": "c1",
     "name": {
@@ -764,6 +884,21 @@
     "end_time": null
   },
   {
+    "type": "SetValue",
+    "element": "blade",
+    "value": "blade"
+  },
+  {
+    "type": "SetExternalReference",
+    "element": "blade",
+    "external_reference": "https://example.org/terms/blade"
+  },
+  {
+    "type": "SetExternalReference",
+    "element": "blade",
+    "external_reference": null
+  },
+  {
     "type": "SetReferences",
     "element": "i1",
     "end": "source",
@@ -788,6 +923,23 @@
     ]
   },
   {
+    "type": "SetReferences",
+    "element": "blade_guarded",
+    "end": "element",
+    "ids": [
+      "blade",
+      "lid"
+    ]
+  },
+  {
+    "type": "SetReferences",
+    "element": "blade",
+    "end": "origin",
+    "ids": [
+      "manual"
+    ]
+  },
+  {
     "type": "AddReference",
     "element": "g1",
     "end": "argumentElement",
@@ -798,6 +950,18 @@
     "element": "ag1",
     "end": "artifactElement",
     "id": "pa1"
+  },
+  {
+    "type": "AddReference",
+    "element": "reviewed",
+    "end": "terminologyElement",
+    "id": "appliance"
+  },
+  {
+    "type": "AddReference",
+    "element": "lid",
+    "end": "category",
+    "id": "hazards"
   },
   {
     "type": "AddReference",

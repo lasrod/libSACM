@@ -12,28 +12,29 @@ assurance cases as standard XMI.
 
 Milestones M0 (foundation), M1 (a minimal editable vertical slice) and M2 (base model and
 argumentation) are done, M3's artifact model is complete, and the first release, 0.1.0,
-is being prepared. Today `sacm::xmi::read` reads `AssuranceCasePackage`, `ArgumentPackage`
-and `ArtifactPackage` roots and, in them, nested packages, the argumentation elements
-(Claim, ArgumentReasoning, ArtifactReference, ArgumentGroup and the five asserted
-relationships) and the artifact elements Property, Technique, Participant, ArtifactGroup,
-Artifact, Event, Resource, Activity and ArtifactAssetRelationship, each with its name,
+was published on 2026-11-17. Today `sacm::xmi::read` reads `AssuranceCasePackage`, `ArgumentPackage`,
+`ArtifactPackage` and `TerminologyPackage` roots and, in them, nested packages, the
+argumentation elements (Claim, ArgumentReasoning, ArtifactReference, ArgumentGroup and the
+five asserted relationships), the artifact elements Property, Technique, Participant,
+ArtifactGroup, Artifact, Event, Resource, Activity and ArtifactAssetRelationship, and the
+terminology elements Category, Term, Expression and TerminologyGroup, each with its name,
 `gid`, flags, references, descriptions, notes, implementation constraints and tagged
 values. Content that is not SACM 2.3 is kept as preserved content (SACM-XMI-003). A
 tolerant read, the default, opens
 every well-formed file with SACM 2.3 package roots: what a strict read refuses, such as a
-value that is no literal or conforming content not read yet (a terminology element, an
-interface), it keeps as preserved content with a Warning (SACM-XMI-014 for content not read
+value that is no literal or conforming content not read yet (an interface or a binding),
+it keeps as preserved content with a Warning (SACM-XMI-014 for content not read
 yet); and it reads the names formal/23-05-08 and ptc/22-03-13 spell differently
-(`ArtifactAssertedRelationship`, an Event's `occurece` and `argumentationElement`) as the
-names it writes, with a Warning (SACM-XMI-013). Nothing is dropped.
+(`ArtifactAssertedRelationship`, an Event's `occurece`, `argumentationElement` and
+`TerminologyElement`) as the names it writes, with a Warning (SACM-XMI-013). Nothing is dropped.
 
 `sacm::xmi::write` writes the same kinds deterministically; a strict save, the default,
 checks only that the output is schema-valid, so a draft saves, and an application calls
 `validate` for model checks. `sacm::edit::apply` creates, edits, moves, copies and
 deletes them atomically, `sacm::validation::validate` checks names, ids, gids, contents,
-references and the argumentation and artifact rules, and
+references, terms' values and the argumentation and artifact rules, and
 `sacm::compare::semantic_compare` lists differences. Undo and redo are the application's, by whole-document copies, as the `edit`
-docs show. The terminology package, interfaces and bindings and the other validation rules
+docs show. `ExpressionLangString`, interfaces and bindings and the other validation rules
 are not built yet. The [functionality matrix](docs/matrix/functionality-matrix.md) shows
 what is verified; nothing else is claimed.
 

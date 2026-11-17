@@ -174,15 +174,15 @@ fn assert_text_refused_with(entry: &str, what: &str, input: &str, label: &str) {
     assert_refused_with(entry, what, input.as_bytes(), label);
 }
 
-// --- Interim: the nine package, interface and binding kinds -------------------------
+// --- Interim: the eight package, interface and binding kinds ------------------------
 
 #[test]
 fn lib_api_011_each_unread_package_interface_and_binding_kind_names_its_row() {
-    // An ArtifactPackage is read since slice 0052 (SACM23-ART-001).
+    // An ArtifactPackage is read since slice 0052 (SACM23-ART-001), and a
+    // TerminologyPackage since slice 0062 (SACM23-TERM-001): eight kinds.
     let kinds = [
         ("ArtifactPackageInterface", "SACM23-ART-012"),
         ("ArtifactPackageBinding", "SACM23-ART-013"),
-        ("TerminologyPackage", "SACM23-TERM-001"),
         ("TerminologyPackageInterface", "SACM23-TERM-007"),
         ("TerminologyPackageBinding", "SACM23-TERM-008"),
         ("AssuranceCasePackageInterface", "SACM23-AC-002"),
@@ -198,7 +198,9 @@ fn lib_api_011_each_unread_package_interface_and_binding_kind_names_its_row() {
 #[test]
 fn lib_api_011_an_unread_kind_inside_a_package_names_its_row() {
     // The same kinds, as children: an ArgumentPackageInterface in an
-    // ArgumentPackage, a TerminologyPackage in an AssuranceCasePackage.
+    // ArgumentPackage, a TerminologyPackageInterface typed in the
+    // terminologyPackage role of an AssuranceCasePackage (a TerminologyPackage
+    // is read since slice 0062).
     let interface = package(
         "<argumentElement xmi:type=\"sacm:ArgumentPackageInterface\" xmi:id=\"i\"><name content=\"i\"/></argumentElement>",
     );
@@ -210,14 +212,14 @@ fn lib_api_011_an_unread_kind_inside_a_package_names_its_row() {
     );
     let terminology = format!(
         "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name content=\"case\"/>\
-         <terminologyPackage xmi:id=\"f\"><name content=\"f\"/></terminologyPackage>\
-         </sacm:AssuranceCasePackage>"
+         <terminologyPackage xmi:type=\"sacm:TerminologyPackageInterface\" xmi:id=\"f\">\
+         <name content=\"f\"/></terminologyPackage></sacm:AssuranceCasePackage>"
     );
     assert_text_refused_with(
-        "TerminologyPackage",
+        "TerminologyPackageInterface",
         "in an AssuranceCasePackage",
         &terminology,
-        &interim("SACM23-TERM-001"),
+        &interim("SACM23-TERM-007"),
     );
 }
 
@@ -236,14 +238,13 @@ fn lib_api_011_each_unread_artifact_element_kind_names_its_row() {
     // (ADR 0034), and that are not read yet, in its artifactElement: one
     // entry each. Slice 0055 reads Artifact, Resource, Activity and Event
     // (ADR 0034 amendment 1), and slice 0057 ArtifactAssetRelationship
-    // (amendment 2), whose entries are gone; the ArtifactPackageInterface,
-    // refused as a root above, is sampled here as a child.
+    // (amendment 2), and slice 0062 the Terminology kinds (amendment 3), whose
+    // entries are gone; the interface and binding kinds, refused as roots
+    // above, are sampled here as children.
     let kinds = [
         ("ArtifactPackageInterface", "SACM23-ART-012"),
-        ("Category", "SACM23-TERM-002"),
-        ("Term", "SACM23-TERM-004"),
-        ("Expression", "SACM23-TERM-005"),
-        ("TerminologyGroup", "SACM23-TERM-006"),
+        ("TerminologyPackageInterface", "SACM23-TERM-007"),
+        ("TerminologyPackageBinding", "SACM23-TERM-008"),
     ];
     for (kind, row) in kinds {
         let input = artifact_package(&format!(

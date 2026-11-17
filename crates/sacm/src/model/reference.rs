@@ -1,9 +1,10 @@
 //! The Boolean flags and the non-containment reference ends of the classes
 //! the model holds (formal/23-05-08 §8.2, §11.2, §11.9, §11.10, §11.12,
-//! §11.13, §12.3, §12.14; SACM23-BASE-007, SACM23-BASE-008, SACM23-XMI-005,
-//! SACM23-ARG-004, SACM23-ARG-005, SACM23-ARG-006, SACM23-ARG-007,
-//! SACM23-ARG-013, SACM23-ART-010, SACM23-ART-011; ADR 0026, ADR 0027,
-//! ADR 0028, ADR 0034).
+//! §11.13, §12.3, §12.14, §10.3, §10.8 to §10.11; SACM23-BASE-007,
+//! SACM23-BASE-008, SACM23-XMI-005, SACM23-ARG-004, SACM23-ARG-005,
+//! SACM23-ARG-006, SACM23-ARG-007, SACM23-ARG-013, SACM23-ART-010,
+//! SACM23-ART-011, SACM23-TERM-002 to SACM23-TERM-006; ADR 0026, ADR 0027,
+//! ADR 0028, ADR 0034 and its amendments).
 //!
 //! [`Flag`] and [`ReferenceEnd`] are public, so that an edit can name the
 //! flag or end it sets (ADR 0029), and so are their readers for a generic
@@ -29,7 +30,7 @@ use super::{AbstractClass, DeclaredType, ElementKind};
 /// end, superclass first: the order in which `xmi::write` writes each one's
 /// features (XMI 2.5.1 Annex B.5.2; ADR 0027, ADR 0028). Within a class it
 /// writes the flags, then, on `Assertion`, the declaration, then the ends.
-pub(crate) const OWNERS: [DeclaredType; 8] = [
+pub(crate) const OWNERS: [DeclaredType; 12] = [
     DeclaredType::Abstract(AbstractClass::SACMElement),
     DeclaredType::Abstract(AbstractClass::Assertion),
     DeclaredType::Abstract(AbstractClass::AssertedRelationship),
@@ -38,6 +39,10 @@ pub(crate) const OWNERS: [DeclaredType; 8] = [
     DeclaredType::Kind(ElementKind::ArgumentGroup),
     DeclaredType::Kind(ElementKind::ArtifactGroup),
     DeclaredType::Kind(ElementKind::ArtifactAssetRelationship),
+    DeclaredType::Abstract(AbstractClass::TerminologyAsset),
+    DeclaredType::Kind(ElementKind::Expression),
+    DeclaredType::Kind(ElementKind::Term),
+    DeclaredType::Kind(ElementKind::TerminologyGroup),
 ];
 
 /// A Boolean property of an element, `false` by default: the flag a
@@ -228,6 +233,27 @@ pub enum ReferenceEnd {
     /// `artifactTarget`.
     #[doc(alias = "target")]
     ArtifactTarget,
+    /// `category:Category[0..*]` of a `Category` (ptc/22-03-13; §10.8
+    /// Semantics) and of every `ExpressionElement` (§10.9): one end, held by
+    /// every `TerminologyAsset`. On a `Term` or an `Expression` it holds the
+    /// Categories the element belongs to. On a `Category` it holds the ids as
+    /// written: formal/23-05-08 does not say which way the end points (spec
+    /// defect D21).
+    Category,
+    /// `element:ExpressionElement[0..*]` of an `Expression` (§10.10): the
+    /// expression elements it is formed from.
+    Element,
+    /// `origin:Base::ModelElement[0..1]` of a `Term` (§10.11): the element
+    /// the Term originates from.
+    Origin,
+    /// `terminologyElement:TerminologyElement[0..*]` of a `TerminologyGroup`
+    /// (§10.3; ptc/22-03-13 gives no aggregation, so it is a reference, not a
+    /// composition). Named for the group, because `terminologyElement` is
+    /// also the composite role of a `TerminologyPackage` (ADR 0034 amendment
+    /// 3).
+    #[doc(alias = "terminologyElement")]
+    #[cfg_attr(feature = "serde", serde(rename = "terminologyElement"))]
+    TerminologyGroupMember,
 }
 
 impl ReferenceEnd {
@@ -237,7 +263,9 @@ impl ReferenceEnd {
     /// `source`, `target`, `structure`, `referencedArtifactElement`, an
     /// `ArgumentGroup`'s `argumentElement`, an `ArtifactGroup`'s
     /// `artifactElement`, and an `ArtifactAssetRelationship`'s `source` and
-    /// `target`.
+    /// `target`, then the Terminology ends: the `category` of every
+    /// `TerminologyAsset`, an `Expression`'s `element`, a `Term`'s `origin`
+    /// and a `TerminologyGroup`'s `terminologyElement`.
     ///
     /// A slice, so that a later end is an additive change. It is also the
     /// order of [`Document::referrers`](crate::model::Document::referrers)
@@ -266,6 +294,10 @@ impl ReferenceEnd {
         ReferenceEnd::ArtifactGroupMember,
         ReferenceEnd::ArtifactSource,
         ReferenceEnd::ArtifactTarget,
+        ReferenceEnd::Category,
+        ReferenceEnd::Element,
+        ReferenceEnd::Origin,
+        ReferenceEnd::TerminologyGroupMember,
     ];
 
     /// The end's name, spelled as in the machine-readable model and in XMI:
@@ -273,9 +305,12 @@ impl ReferenceEnd {
     /// `target`, `structure`, `referencedArtifactElement` or, for
     /// [`GroupMember`](Self::GroupMember), `argumentElement`, for
     /// [`ArtifactGroupMember`](Self::ArtifactGroupMember), `artifactElement`,
-    /// and, for [`ArtifactSource`](Self::ArtifactSource) and
-    /// [`ArtifactTarget`](Self::ArtifactTarget), `source` and `target`. It is
-    /// the `end` an [`EditError`](crate::edit::EditError) names.
+    /// for [`ArtifactSource`](Self::ArtifactSource) and
+    /// [`ArtifactTarget`](Self::ArtifactTarget), `source` and `target`,
+    /// `category`, `element`, `origin`, and, for
+    /// [`TerminologyGroupMember`](Self::TerminologyGroupMember),
+    /// `terminologyElement`. It is the `end` an
+    /// [`EditError`](crate::edit::EditError) names.
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
@@ -291,6 +326,21 @@ impl ReferenceEnd {
             Self::ReferencedArtifactElement => "referencedArtifactElement",
             Self::GroupMember => "argumentElement",
             Self::ArtifactGroupMember => "artifactElement",
+            Self::Category => "category",
+            Self::Element => "element",
+            Self::Origin => "origin",
+            Self::TerminologyGroupMember => "terminologyElement",
+        }
+    }
+
+    /// The clause that defines the end on an element of `kind`: the
+    /// [`clause`](Self::clause), but §10.8 for the `category` of a
+    /// `Category`, whose class declares it apart from an
+    /// `ExpressionElement`'s (§10.9).
+    pub(crate) const fn clause_on(self, kind: ElementKind) -> &'static str {
+        match (self, kind) {
+            (Self::Category, ElementKind::Category) => "10.8",
+            _ => self.clause(),
         }
     }
 
@@ -305,6 +355,10 @@ impl ReferenceEnd {
             Self::Reasoning | Self::Source | Self::Target => "11.13",
             Self::ArtifactGroupMember => "12.3",
             Self::ArtifactSource | Self::ArtifactTarget => "12.14",
+            Self::TerminologyGroupMember => "10.3",
+            Self::Category => "10.9",
+            Self::Element => "10.10",
+            Self::Origin => "10.11",
         }
     }
 
@@ -320,6 +374,9 @@ impl ReferenceEnd {
                 | Self::ArtifactGroupMember
                 | Self::ArtifactSource
                 | Self::ArtifactTarget
+                | Self::Category
+                | Self::Element
+                | Self::TerminologyGroupMember
         )
     }
 
@@ -327,8 +384,9 @@ impl ReferenceEnd {
     /// `citedElement` and `abstractForm` (§8.2), every Assertion has
     /// `metaClaim` (§11.10), every `AssertedRelationship` has `reasoning`,
     /// `source` and `target` (§11.13), an `ArtifactAssetRelationship` has
-    /// its own `source` and `target` (§12.14), and each other end belongs to
-    /// one kind, as its variant says.
+    /// its own `source` and `target` (§12.14), every `TerminologyAsset` (a
+    /// Category, a Term or an Expression) has `category` (§10.8, §10.9), and
+    /// each other end belongs to one kind, as its variant says.
     ///
     /// It is true exactly when a
     /// [`SetReferences::clear`](crate::edit::SetReferences::clear) of the
@@ -420,6 +478,10 @@ impl ReferenceEnd {
             Self::ArtifactSource | Self::ArtifactTarget => {
                 DeclaredType::Kind(ElementKind::ArtifactAssetRelationship)
             }
+            Self::Category => DeclaredType::Abstract(AbstractClass::TerminologyAsset),
+            Self::Element => DeclaredType::Kind(ElementKind::Expression),
+            Self::Origin => DeclaredType::Kind(ElementKind::Term),
+            Self::TerminologyGroupMember => DeclaredType::Kind(ElementKind::TerminologyGroup),
         }
     }
 
@@ -439,6 +501,12 @@ impl ReferenceEnd {
             Self::GroupMember => DeclaredType::Abstract(AbstractClass::ArgumentationElement),
             Self::ArtifactSource | Self::ArtifactTarget => {
                 DeclaredType::Abstract(AbstractClass::ArtifactAsset)
+            }
+            Self::Category => DeclaredType::Kind(ElementKind::Category),
+            Self::Element => DeclaredType::Abstract(AbstractClass::ExpressionElement),
+            Self::Origin => DeclaredType::Abstract(AbstractClass::ModelElement),
+            Self::TerminologyGroupMember => {
+                DeclaredType::Abstract(AbstractClass::TerminologyElement)
             }
         }
     }
@@ -521,6 +589,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "one table per property of the ends reads best together"
+    )]
     fn names_are_the_models_spelling_in_write_order() {
         assert_eq!(
             Flag::ALL
@@ -548,7 +620,11 @@ mod tests {
                 "argumentElement",
                 "artifactElement",
                 "source",
-                "target"
+                "target",
+                "category",
+                "element",
+                "origin",
+                "terminologyElement"
             ]
         );
         assert_eq!(
@@ -559,9 +635,21 @@ mod tests {
                 .collect::<Vec<_>>(),
             [
                 "8.2", "8.2", "11.10", "11.13", "11.13", "11.13", "11.12", "11.9", "11.2", "12.3",
-                "12.14", "12.14"
+                "12.14", "12.14", "10.9", "10.10", "10.11", "10.3"
             ]
         );
+        // A Category's category is declared by §10.8, an ExpressionElement's
+        // by §10.9.
+        assert_eq!(
+            [
+                ElementKind::Category,
+                ElementKind::Term,
+                ElementKind::Expression
+            ]
+            .map(|kind| ReferenceEnd::Category.clause_on(kind)),
+            ["10.8", "10.9", "10.9"]
+        );
+        assert_eq!(ReferenceEnd::Origin.clause_on(ElementKind::Term), "10.11");
         assert_eq!(
             ReferenceEnd::ALL
                 .iter()
@@ -569,7 +657,8 @@ mod tests {
                 .map(ReferenceEnd::is_many)
                 .collect::<Vec<_>>(),
             [
-                false, false, true, false, true, false, false, true, true, true, true, true
+                false, false, true, false, true, false, false, true, true, true, true, true, true,
+                true, false, true
             ]
         );
         assert_eq!(
@@ -578,7 +667,7 @@ mod tests {
                 .copied()
                 .map(ReferenceEnd::lower_bound)
                 .collect::<Vec<_>>(),
-            [0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1]
+            [0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0]
         );
         assert_eq!(
             ReferenceEnd::ALL
@@ -598,6 +687,10 @@ mod tests {
                 None,
                 None,
                 None,
+                None,
+                None,
+                None,
+                Some(1),
                 None
             ]
         );
@@ -632,7 +725,11 @@ mod tests {
                 "ArgumentationElement",
                 "ArtifactElement",
                 "ArtifactAsset",
-                "ArtifactAsset"
+                "ArtifactAsset",
+                "Category",
+                "ExpressionElement",
+                "ModelElement",
+                "TerminologyElement"
             ]
         );
     }
@@ -680,6 +777,20 @@ mod tests {
             reference_end_named(ElementKind::ArgumentGroup, "artifactElement"),
             None
         );
+        // And for `terminologyElement` (ADR 0034 amendment 3).
+        assert_eq!(
+            reference_end_named(ElementKind::TerminologyGroup, "terminologyElement"),
+            Some(ReferenceEnd::TerminologyGroupMember)
+        );
+        assert_eq!(
+            role_named(ElementKind::TerminologyGroup, "terminologyElement"),
+            None
+        );
+        assert_eq!(
+            reference_end_named(ElementKind::TerminologyPackage, "terminologyElement"),
+            None
+        );
+        assert!(role_named(ElementKind::TerminologyPackage, "terminologyElement").is_some());
     }
 
     #[test]
@@ -694,7 +805,11 @@ mod tests {
                 "ArtifactReference",
                 "ArgumentGroup",
                 "ArtifactGroup",
-                "ArtifactAssetRelationship"
+                "ArtifactAssetRelationship",
+                "TerminologyAsset",
+                "Expression",
+                "Term",
+                "TerminologyGroup"
             ]
         );
     }

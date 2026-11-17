@@ -56,7 +56,7 @@ pub(super) fn repeated_references(document: &Document, found: &mut Vec<Diagnosti
                         "SACM23-VAL-022",
                         message,
                     )
-                    .set_clause(end.clause())
+                    .set_clause(end.clause_on(element.kind()))
                     .set_affected([element.id().clone(), id.clone()]),
                 );
             }

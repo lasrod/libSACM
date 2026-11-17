@@ -229,7 +229,6 @@ fn kept_entries() -> Vec<Kept> {
     for (kind, row) in [
         ("ArtifactPackageInterface", "SACM23-ART-012"),
         ("ArtifactPackageBinding", "SACM23-ART-013"),
-        ("TerminologyPackage", "SACM23-TERM-001"),
         ("TerminologyPackageInterface", "SACM23-TERM-007"),
         ("TerminologyPackageBinding", "SACM23-TERM-008"),
         ("AssuranceCasePackageInterface", "SACM23-AC-002"),
@@ -249,26 +248,27 @@ fn kept_entries() -> Vec<Kept> {
         "SACM23-ARG-014",
         Some("p"),
     ));
+    // A TerminologyPackage is read since slice 0062 (SACM23-TERM-001); the
+    // interface kind in the same role is not.
     cases.push(kept(
-        "TerminologyPackage",
+        "TerminologyPackageInterface",
         "in an AssuranceCasePackage",
         format!(
             "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name content=\"case\"/>\
-             <terminologyPackage xmi:id=\"f\"><name content=\"f\"/></terminologyPackage>\
-             </sacm:AssuranceCasePackage>"
+             <terminologyPackage xmi:type=\"sacm:TerminologyPackageInterface\" xmi:id=\"f\">\
+             <name content=\"f\"/></terminologyPackage></sacm:AssuranceCasePackage>"
         ),
-        "SACM23-TERM-001",
+        "SACM23-TERM-007",
         Some("case"),
     ));
     // Slice 0055 reads Artifact, Resource, Activity and Event (ADR 0034
-    // amendment 1), and slice 0057 ArtifactAssetRelationship (amendment 2):
-    // the kinds an ArtifactPackage holds that are still unread.
+    // amendment 1), slice 0057 ArtifactAssetRelationship (amendment 2) and
+    // slice 0062 the Terminology kinds (amendment 3): the kinds an
+    // ArtifactPackage holds that are still unread.
     for (kind, row) in [
         ("ArtifactPackageInterface", "SACM23-ART-012"),
-        ("Category", "SACM23-TERM-002"),
-        ("Term", "SACM23-TERM-004"),
-        ("Expression", "SACM23-TERM-005"),
-        ("TerminologyGroup", "SACM23-TERM-006"),
+        ("TerminologyPackageInterface", "SACM23-TERM-007"),
+        ("TerminologyPackageBinding", "SACM23-TERM-008"),
     ] {
         cases.push(kept(
             kind,
@@ -849,9 +849,10 @@ fn lib_compat_003_wrapper_content_is_document_level_preserved_content_in_place()
 /// `PreservedContent`, not `NoRoot`.
 #[test]
 fn lib_compat_003_a_bare_unread_root_loads_empty_and_writes_wrapped() {
-    let what = "a bare TerminologyPackage root";
+    let what = "a bare TerminologyPackageInterface root";
     let input = format!(
-        "<sacm:TerminologyPackage{NS} xmi:id=\"t\"><name content=\"T\"/></sacm:TerminologyPackage>"
+        "<sacm:TerminologyPackageInterface{NS} xmi:id=\"t\"><name content=\"T\"/>\
+         </sacm:TerminologyPackageInterface>"
     );
     let strict = strict_refusal(COMPAT_003, what, &input);
     let output = tolerant(COMPAT_003, what, &input);
@@ -873,7 +874,7 @@ fn lib_compat_003_a_bare_unread_root_loads_empty_and_writes_wrapped() {
     let text = assert_round_trips(COMPAT_003, what, &doc);
     assert!(
         text.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<xmi:XMI ")
-            && text.contains("<sacm:TerminologyPackage"),
+            && text.contains("<sacm:TerminologyPackageInterface"),
         "{COMPAT_003}: {what}: the output is not wrapped\n{text}"
     );
     assert!(
@@ -903,7 +904,7 @@ fn lib_compat_003_a_bare_unread_root_loads_empty_and_writes_wrapped() {
         COMPAT_003,
         what,
         &text,
-        &["<sacm:TerminologyPackage", "xmi:id=\"p\""],
+        &["<sacm:TerminologyPackageInterface", "xmi:id=\"p\""],
     );
 }
 
@@ -1108,11 +1109,11 @@ fn lib_compat_003_deleting_every_root_beside_document_level_content_is_no_root()
     }
 
     // The control: a bare root of a kind not read yet is written, wrapped.
-    let what = "a bare TerminologyPackage root";
-    let doc = tolerant(COMPAT_003, what, &root_of("TerminologyPackage")).into_document();
+    let what = "a bare TerminologyPackageInterface root";
+    let doc = tolerant(COMPAT_003, what, &root_of("TerminologyPackageInterface")).into_document();
     let text = write_tolerant(COMPAT_003, what, &doc);
     assert!(
-        text.contains("<xmi:XMI ") && text.contains("<sacm:TerminologyPackage"),
+        text.contains("<xmi:XMI ") && text.contains("<sacm:TerminologyPackageInterface"),
         "{COMPAT_003}: {what}: not written wrapped\n{text}"
     );
     assert!(

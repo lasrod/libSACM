@@ -719,6 +719,122 @@ string_set! {
     SetEndTime, end_time, EndTime, "endTime"
 }
 
+/// Sets the `value` (SACM 2.3 §10.9 `value:String[1]`, "the value of the
+/// expression") of a `Term` or an `Expression`.
+///
+/// It sets it exactly as given: `""` is a value, and nothing is trimmed. A
+/// value is required, so there is no form that removes it, as for
+/// [`SetKey`]; a file without one still reads, and
+/// [`validation::validate`](crate::validation::validate) reports it. A value
+/// holding a character XML cannot represent is held, and
+/// [`xmi::write`](crate::xmi::write) refuses it
+/// ([`WriteAttribute::Value`](crate::xmi::WriteAttribute::Value)). Apply it
+/// with [`edit::apply`](super::apply). It refuses an unknown element as
+/// [`EditError::ElementNotFound`], then a kind that is no `ExpressionElement`
+/// as [`EditError::FeatureNotApplicable`], naming `value`. The element is in
+/// [`changed_ids`](super::Mutation::changed_ids) exactly when its value
+/// changes.
+///
+/// # Examples
+///
+/// ```
+/// use sacm::edit::{self, CreateTerm, CreateTerminologyPackage, SetValue};
+/// use sacm::model::{Document, LangString};
+///
+/// let mut doc = Document::new();
+/// let en = |text: &str| LangString::new(text).with_lang("en");
+/// edit::apply(&mut doc, CreateTerminologyPackage::root(en("Terms")).with_id("terms"))?;
+/// edit::apply(&mut doc, CreateTerm::new("terms", en("Blade"), "blade").with_id("blade"))?;
+/// edit::apply(&mut doc, SetValue::new("blade", "rotor blade"))?;
+/// assert_eq!(doc.get("blade").and_then(|blade| blade.value()), Some("rotor blade"));
+/// # Ok::<(), sacm::edit::EditError>(())
+/// ```
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
+pub struct SetValue {
+    element: ElementId,
+    value: String,
+}
+
+impl SetValue {
+    /// Sets the value of `element` to `value`, exactly as given.
+    #[must_use]
+    pub fn new(element: impl Into<ElementId>, value: impl Into<String>) -> Self {
+        Self {
+            element: element.into(),
+            value: value.into(),
+        }
+    }
+
+    /// The id of the element to edit.
+    #[must_use]
+    pub fn element(&self) -> &ElementId {
+        &self.element
+    }
+
+    /// The value to set.
+    #[must_use]
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+
+    /// Runs every check of the operation, and returns what it changes.
+    pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
+        plan_string(
+            document,
+            &self.element,
+            StringAttribute::Value,
+            Some(&self.value),
+        )
+    }
+}
+
+impl From<SetValue> for super::Operation {
+    fn from(operation: SetValue) -> Self {
+        Self::SetValue(operation)
+    }
+}
+
+string_set! {
+    /// Sets or removes the `externalReference` (SACM 2.3 §10.11
+    /// `externalReference:String[0..1]`, "an external reference (e.g., URI)
+    /// to the object referred to by the Term") of a `Term`.
+    ///
+    /// [`new`](Self::new) sets it exactly as given: `""` is a value, not a
+    /// removal, and nothing is trimmed or checked as a URI.
+    /// [`remove`](Self::remove) removes it. One holding a character XML
+    /// cannot represent is held, and [`xmi::write`](crate::xmi::write)
+    /// refuses it
+    /// ([`WriteAttribute::ExternalReference`](crate::xmi::WriteAttribute::ExternalReference)).
+    /// Apply it with [`edit::apply`](super::apply). It refuses an unknown
+    /// element as [`EditError::ElementNotFound`], then a kind that is no
+    /// `Term` as [`EditError::FeatureNotApplicable`], naming
+    /// `externalReference`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateTerm, CreateTerminologyPackage, SetExternalReference};
+    /// use sacm::model::{Document, LangString};
+    ///
+    /// let mut doc = Document::new();
+    /// let en = |text: &str| LangString::new(text).with_lang("en");
+    /// edit::apply(&mut doc, CreateTerminologyPackage::root(en("Terms")).with_id("terms"))?;
+    /// edit::apply(&mut doc, CreateTerm::new("terms", en("Blade"), "blade").with_id("blade"))?;
+    /// edit::apply(&mut doc, SetExternalReference::new("blade", "https://example.org/terms/blade"))?;
+    /// let reference = doc.get("blade").and_then(|blade| blade.external_reference());
+    /// assert_eq!(reference, Some("https://example.org/terms/blade"));
+    /// edit::apply(&mut doc, SetExternalReference::remove("blade"))?;
+    /// assert_eq!(doc.get("blade").and_then(|blade| blade.external_reference()), None);
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    SetExternalReference, external_reference, ExternalReference, "externalReference"
+}
+
 /// Sets or removes the `location` (SACM 2.3 §12.10
 /// `location:Base::MultiLangString`, "the path or URL specifying the location
 /// of the Resource, can be in multiple languages") of a `Resource`.

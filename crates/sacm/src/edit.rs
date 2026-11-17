@@ -48,6 +48,11 @@
 //! | [`CreateResource`] | a `Resource` (§12.10), with an optional `location` | no | [`new`](CreateResource::new) |
 //! | [`CreateActivity`] | an `Activity` (§12.11), with an optional `startTime` and `endTime` | no | [`new`](CreateActivity::new) |
 //! | [`CreateArtifactAssetRelationship`] | an `ArtifactAssetRelationship` (§12.14), with its sources and targets | no | [`new`](CreateArtifactAssetRelationship::new) |
+//! | [`CreateTerminologyPackage`] | a `TerminologyPackage` (§10.4) | [`root`](CreateTerminologyPackage::root) | [`new`](CreateTerminologyPackage::new) |
+//! | [`CreateCategory`] | a `Category` (§10.8), with its optional `category` ids | no | [`new`](CreateCategory::new) |
+//! | [`CreateTerm`] | a `Term` (§10.11), with its `value` and its optional categories, `origin` and `externalReference` | no | [`new`](CreateTerm::new) |
+//! | [`CreateExpression`] | an `Expression` (§10.10), with its `value` and its optional categories and `element` ids | no | [`new`](CreateExpression::new) |
+//! | [`CreateTerminologyGroup`] | a `TerminologyGroup` (§10.3), with its optional members (`terminologyElement`) | no | [`new`](CreateTerminologyGroup::new) |
 //!
 //! A root is added after the document's last root; a child after its parent's
 //! last child. A parent is legal exactly when SACM lets its class contain the
@@ -110,6 +115,8 @@
 //! | [`SetLocation`] | the `location` of a `Resource` (§12.10) | [`new`](SetLocation::new), [`remove`](SetLocation::remove) |
 //! | [`SetStartTime`] | the `startTime` of an `Activity` (§12.11) | [`new`](SetStartTime::new), [`remove`](SetStartTime::remove) |
 //! | [`SetEndTime`] | the `endTime` of an `Activity` (§12.11) | [`new`](SetEndTime::new), [`remove`](SetEndTime::remove) |
+//! | [`SetValue`] | the `value` of a `Term` or an `Expression` (§10.9) | [`new`](SetValue::new) |
+//! | [`SetExternalReference`] | the `externalReference` of a `Term` (§10.11) | [`new`](SetExternalReference::new), [`remove`](SetExternalReference::remove) |
 //! | [`SetReferences`] | the ids one [`ReferenceEnd`](crate::model::ReferenceEnd) holds, such as `source` or `metaClaim` | [`new`](SetReferences::new), [`clear`](SetReferences::clear) |
 //! | [`AddReference`] | one [`ReferenceEnd`](crate::model::ReferenceEnd), such as `source` or `metaClaim`, with one id appended | [`new`](AddReference::new) |
 //! | [`RemoveReference`] | one [`ReferenceEnd`](crate::model::ReferenceEnd), such as `source` or `metaClaim`, with every occurrence of one id removed | [`new`](RemoveReference::new) |
@@ -475,6 +482,7 @@ mod record;
 mod references;
 mod reorder;
 mod set;
+mod terminology;
 mod utility;
 
 use std::fmt;
@@ -500,8 +508,11 @@ pub use preview::{DanglingReference, Preview};
 pub use references::{AddReference, RemoveReference, SetReferences};
 pub use reorder::ReorderElements;
 pub use set::{
-    SetAssertionDeclaration, SetContent, SetDate, SetEndTime, SetFlag, SetGid, SetKey, SetLocation,
-    SetName, SetStartTime, SetVersion,
+    SetAssertionDeclaration, SetContent, SetDate, SetEndTime, SetExternalReference, SetFlag,
+    SetGid, SetKey, SetLocation, SetName, SetStartTime, SetValue, SetVersion,
+};
+pub use terminology::{
+    CreateCategory, CreateExpression, CreateTerm, CreateTerminologyGroup, CreateTerminologyPackage,
 };
 pub use utility::{
     CreateDescription, CreateImplementationConstraint, CreateNote, CreateTaggedValue,
@@ -925,6 +936,11 @@ fn plan<'o>(document: &Document, operation: &'o Operation) -> Result<Plan<'o>, E
         Operation::CreateResource(create) => create.plan(document),
         Operation::CreateActivity(create) => create.plan(document),
         Operation::CreateArtifactAssetRelationship(create) => create.plan(document),
+        Operation::CreateTerminologyPackage(create) => create.plan(document),
+        Operation::CreateCategory(create) => create.plan(document),
+        Operation::CreateTerm(create) => create.plan(document),
+        Operation::CreateExpression(create) => create.plan(document),
+        Operation::CreateTerminologyGroup(create) => create.plan(document),
         Operation::SetName(set) => set.plan(document),
         Operation::SetGid(set) => set.plan(document),
         Operation::SetFlag(set) => set.plan(document),
@@ -936,6 +952,8 @@ fn plan<'o>(document: &Document, operation: &'o Operation) -> Result<Plan<'o>, E
         Operation::SetLocation(set) => set.plan(document),
         Operation::SetStartTime(set) => set.plan(document),
         Operation::SetEndTime(set) => set.plan(document),
+        Operation::SetValue(set) => set.plan(document),
+        Operation::SetExternalReference(set) => set.plan(document),
         Operation::SetReferences(set) => set.plan(document),
         Operation::AddReference(add) => add.plan(document),
         Operation::RemoveReference(remove) => remove.plan(document),
@@ -1019,6 +1037,16 @@ pub enum Operation {
     CreateActivity(CreateActivity),
     /// Creates an `ArtifactAssetRelationship`.
     CreateArtifactAssetRelationship(CreateArtifactAssetRelationship),
+    /// Creates a `TerminologyPackage`.
+    CreateTerminologyPackage(CreateTerminologyPackage),
+    /// Creates a `Category`.
+    CreateCategory(CreateCategory),
+    /// Creates a `Term`.
+    CreateTerm(CreateTerm),
+    /// Creates an `Expression`.
+    CreateExpression(CreateExpression),
+    /// Creates a `TerminologyGroup`.
+    CreateTerminologyGroup(CreateTerminologyGroup),
     /// Sets the name of a `ModelElement`.
     SetName(SetName),
     /// Sets or removes the `gid` of an element.
@@ -1041,6 +1069,10 @@ pub enum Operation {
     SetStartTime(SetStartTime),
     /// Sets or removes the `endTime` of an `Activity`.
     SetEndTime(SetEndTime),
+    /// Sets the `value` of a `Term` or an `Expression`.
+    SetValue(SetValue),
+    /// Sets or removes the `externalReference` of a `Term`.
+    SetExternalReference(SetExternalReference),
     /// Replaces the ids a reference end of an element holds.
     SetReferences(SetReferences),
     /// Appends an id to a reference end of an element.
@@ -1076,11 +1108,15 @@ impl Operation {
     /// `"CreateTaggedValue"`, `"CreateArtifactPackage"`, `"CreateProperty"`,
     /// `"CreateTechnique"`, `"CreateParticipant"`, `"CreateArtifactGroup"`,
     /// `"CreateArtifact"`, `"CreateEvent"`, `"CreateResource"`,
-    /// `"CreateActivity"`, `"CreateArtifactAssetRelationship"`, `"SetName"`, `"SetGid"`, `"SetFlag"`,
-    /// `"SetAssertionDeclaration"`, `"SetContent"`, `"SetKey"`,
-    /// `"SetVersion"`, `"SetDate"`, `"SetLocation"`, `"SetStartTime"`,
-    /// `"SetEndTime"`, `"SetReferences"`, `"AddReference"`, `"RemoveReference"`,
-    /// `"ReorderElements"` and `"DeleteElement"`. The two forms of one struct, such as
+    /// `"CreateActivity"`, `"CreateArtifactAssetRelationship"`,
+    /// `"CreateTerminologyPackage"`, `"CreateCategory"`, `"CreateTerm"`,
+    /// `"CreateExpression"`, `"CreateTerminologyGroup"`, `"SetName"`,
+    /// `"SetGid"`, `"SetFlag"`, `"SetAssertionDeclaration"`, `"SetContent"`,
+    /// `"SetKey"`, `"SetVersion"`, `"SetDate"`, `"SetLocation"`,
+    /// `"SetStartTime"`, `"SetEndTime"`, `"SetValue"`,
+    /// `"SetExternalReference"`, `"SetReferences"`, `"AddReference"`,
+    /// `"RemoveReference"`, `"ReorderElements"`, `"MoveElement"`,
+    /// `"CopyElements"` and `"DeleteElement"`. The two forms of one struct, such as
     /// [`SetGid::new`] and [`SetGid::remove`], share its name.
     ///
     /// # Examples
@@ -1120,6 +1156,11 @@ impl Operation {
             Self::CreateResource(_) => "CreateResource",
             Self::CreateActivity(_) => "CreateActivity",
             Self::CreateArtifactAssetRelationship(_) => "CreateArtifactAssetRelationship",
+            Self::CreateTerminologyPackage(_) => "CreateTerminologyPackage",
+            Self::CreateCategory(_) => "CreateCategory",
+            Self::CreateTerm(_) => "CreateTerm",
+            Self::CreateExpression(_) => "CreateExpression",
+            Self::CreateTerminologyGroup(_) => "CreateTerminologyGroup",
             Self::SetName(_) => "SetName",
             Self::SetGid(_) => "SetGid",
             Self::SetFlag(_) => "SetFlag",
@@ -1131,6 +1172,8 @@ impl Operation {
             Self::SetLocation(_) => "SetLocation",
             Self::SetStartTime(_) => "SetStartTime",
             Self::SetEndTime(_) => "SetEndTime",
+            Self::SetValue(_) => "SetValue",
+            Self::SetExternalReference(_) => "SetExternalReference",
             Self::SetReferences(_) => "SetReferences",
             Self::AddReference(_) => "AddReference",
             Self::RemoveReference(_) => "RemoveReference",
