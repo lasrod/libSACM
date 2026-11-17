@@ -1933,10 +1933,6 @@ impl Document {
     /// each top, `ids` and the kept part ids and preserved ids are free and
     /// distinct, and every reference resolves. Changes nothing when the
     /// document has no element `parent`.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "one copy step per feature of a node, in the order the node declares them"
-    )]
     pub(crate) fn insert_copy(
         &mut self,
         parent: Option<&ElementId>,
@@ -2019,11 +2015,7 @@ impl Document {
             for part in parts {
                 self.other_ids.entry(part).or_default().owner = Some(node);
             }
-            for (end, targets) in captured
-                .references
-                .iter()
-                .filter(|(end, _)| !end.is_derived())
-            {
+            for (end, targets) in &captured.references {
                 let targets = targets
                     .iter()
                     .map(|target| {

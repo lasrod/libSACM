@@ -1315,7 +1315,7 @@ impl fmt::Display for Declaration {
 ///    [`ArtifactSources`](Difference::ArtifactSources),
 ///    [`ArtifactTargets`](Difference::ArtifactTargets),
 ///    [`Categories`](Difference::Categories),
-///    [`ExpressionElements`](Difference::`ExpressionElements`),
+///    [`ExpressionElements`](Difference::ExpressionElements),
 ///    [`Origin`](Difference::Origin),
 ///    [`TerminologyGroupMembers`](Difference::TerminologyGroupMembers),
 ///    [`Name`](Difference::Name),

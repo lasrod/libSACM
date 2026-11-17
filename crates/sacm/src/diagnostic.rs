@@ -682,7 +682,7 @@ catalog! {
     /// (SACM23-VAL-009); an absent content and `""` are empty. Reading,
     /// editing and saving never refuse it. Fix: remove the content, or make
     /// the text plain with
-    /// [`LangString::without_expression`](crate::model::`LangString`::without_expression).
+    /// [`LangString::without_expression`](crate::model::LangString::without_expression).
     pub const EXPRESSION_WITH_CONTENT: Code = Code::from_static("SACM-EXPR-001");
 }
 

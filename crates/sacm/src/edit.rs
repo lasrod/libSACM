@@ -64,14 +64,16 @@
 //!
 //! **The name is required**, because SACM gives every `ModelElement` exactly
 //! one name (§8.6 `name:LangString[1]`). Every operation that creates one
-//! takes it as a [`LangString`](crate::model::`LangString`), stored exactly as
-//! given. Any value is accepted, `LangString::default()` included; an empty
-//! name is still a name.
+//! takes it as a [`LangString`](crate::model::LangString), stored exactly as
+//! given. Any plain value is accepted, `LangString::default()` included; an
+//! empty name is still a name. An `ExpressionLangString` name must have an
+//! `expression` that names a `Term` or an `Expression` (checks 5a to 8
+//! below).
 //!
 //! The four `UtilityElement`s (descriptions, implementation constraints,
 //! notes and tagged values) have no name. They go in any `ModelElement`, in
 //! the role of their kind, and take their `content` (and a `TaggedValue` its
-//! `key`) as a [`MultiLangString`](crate::model::`MultiLangString`), stored
+//! `key`) as a [`MultiLangString`](crate::model::MultiLangString), stored
 //! exactly as given; a `LangString` converts into one with one value. A
 //! `UtilityElement` contains no elements, so it is never a parent.
 //!
@@ -366,7 +368,7 @@
 //! | 3. a caller id is an `NCName` | [`EditError::InvalidId`] | SACM-ID-002 | An `NCName` starts with a letter or `_` and continues with letters, digits, `-`, `.` or `_`; it has no spaces and no `:`. Or leave out `with_id` to have an id generated. |
 //! | 4. a caller id is not in use | [`EditError::DuplicateId`] | SACM-CMD-004 | Ids are unique across the whole document, not per parent. Choose another id, or leave out `with_id` to have one generated. |
 //! | 5. a relationship has a source, and an `ArtifactAssetRelationship` a target: the sources first, then the targets | [`EditError::TooFewReferences`] | SACM-MULT-001 | Give at least one source, and at least one target of an `ArtifactAssetRelationship`: SACM requires them (`source:ArgumentAsset[1..*]`, §12.14 `source:ArtifactAsset[1..*]` and `target:ArtifactAsset[1..*]`). |
-//! | 5a. every `ExpressionLangString` of the name and texts has an `expression` | [`EditError::TooFewReferences`] of the end `expression` | SACM-MULT-001 | Give it an expression with [`LangString::with_expression`](crate::model::`LangString`::with_expression), or make it plain with [`without_expression`](crate::model::`LangString`::without_expression) (§8.4 `expression[1]`; SACM23-BASE-009). |
+//! | 5a. every `ExpressionLangString` of the name and texts has an `expression` | [`EditError::TooFewReferences`] of the end `expression` | SACM-MULT-001 | Give it an expression with [`LangString::with_expression`](crate::model::LangString::with_expression), or make it plain with [`without_expression`](crate::model::LangString::without_expression) (§8.4 `expression[1]`; SACM23-BASE-009). |
 //! | 6. no referenced id holds XML white space (space, TAB, LF, CR): each source in order, then the target or targets, the `reasoning`, the `structure`, the `referencedArtifactElement` ids and the group members (`argumentElement` or `artifactElement`) | [`EditError::InvalidReference`] | SACM-ID-002 | An id such as `a b`, read from a file as written, is not an `NCName` and would be written as two ids. Give the referenced element an `NCName` id in the file. |
 //! | 7. every referenced id names an element, in the same order | [`EditError::ReferenceNotFound`] | SACM-CMD-001 | Create the referenced element first, or correct its id. Ids are compared exactly, case included. |
 //! | 8. every referenced id names an element of a kind its end admits, in the same order | [`EditError::WrongReferenceType`] | SACM-REF-002 | Reference an element of the end's type: for example, an `ArgumentPackage` as a `structure`, and an `ArgumentAsset`, not a package, as a source. |
@@ -1819,10 +1821,10 @@ pub enum EditError {
     /// which the element's `ExpressionLangStrings` hold. Set the name or text instead.
     ///
     /// [`SetReferences`], [`AddReference`] and [`RemoveReference`] refuse
-    /// the end after an unknown element ([`ElementNotFound`](Self::`ElementNotFound`)),
+    /// the end after an unknown element ([`ElementNotFound`](Self::ElementNotFound)),
     /// on every kind (SACM23-BASE-009, ADR 0038 D3): its ids are the
     /// `expression`s of the element's name and texts, set with
-    /// [`LangString::with_expression`](crate::model::`LangString`::with_expression)
+    /// [`LangString::with_expression`](crate::model::LangString::with_expression)
     /// and [`SetName`], [`SetContent`], [`SetKey`] or [`SetLocation`].
     ///
     /// ```
@@ -2119,7 +2121,7 @@ impl EditError {
     /// [`InvalidReference`](Self::InvalidReference), SACM-CMD-001 for
     /// [`ReferenceNotFound`](Self::ReferenceNotFound), SACM-REF-002 for
     /// [`WrongReferenceType`](Self::WrongReferenceType), SACM-CMD-001 for
-    /// [`ElementNotFound`](Self::`ElementNotFound`),
+    /// [`ElementNotFound`](Self::ElementNotFound),
     /// [`ReferenceNotHeld`](Self::ReferenceNotHeld) and
     /// [`ChildNotFound`](Self::ChildNotFound), SACM-CMD-008 for
     /// [`FeatureNotApplicable`](Self::FeatureNotApplicable) and

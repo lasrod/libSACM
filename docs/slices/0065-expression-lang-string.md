@@ -63,3 +63,11 @@ The merge waits for the maintainer's approval. D-EXPR-CONTENT records Q7.
   - Lead edits: citations (four renames and four new tests; LIB-API-011 tests[7] dropped);
     the nine verified rows made false, reworded with the design's text; ADR 0012, 0021,
     0029 and 0033 lines updated.
+- 2026-11-18 verify round 1:
+  - VAL-017 PASS; VAL-009 passes on its content but is held by BASE-009.
+  - BASE-009 FAIL: 13 surviving mutants of the new logic, and false public docs. No wrong
+    behaviour was found.
+  - Fix round: the builder adds tests and fixes the rustdoc; the lead rewords LIB-EDIT-001,
+    -008, -012, XMI-006, -007, LIB-RT-001, the VAL-017 A3 wording and two BASE-009
+    requirement phrases, and completes the code lists; two follow-ups logged. All with the
+    verifier's text.

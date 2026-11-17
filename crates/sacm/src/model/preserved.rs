@@ -132,9 +132,7 @@ impl Preserved {
     /// c3"`), or a flag or `assertionDeclaration` whose value is no literal
     /// (ADR 0033, ADR 0035).
     pub(crate) fn remove_unqualified(&mut self, local: &str) -> Vec<ElementId> {
-        let is_end = ReferenceEnd::ALL
-            .iter()
-            .any(|end| !end.is_derived() && end.name() == local);
+        let is_end = ReferenceEnd::ALL.iter().any(|end| end.name() == local);
         let mut tokens = Vec::new();
         self.attributes.retain(|attr| {
             let removed = attr.name.namespace.is_none() && attr.name.local == local;

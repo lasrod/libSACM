@@ -259,7 +259,7 @@ pub enum ReferenceEnd {
     /// `location`: their ids in that order, one per `ExpressionLangString` that has one.
     /// Derived from the name and texts: the reference edits refuse it
     /// ([`EditError::DerivedEnd`](crate::edit::EditError::DerivedEnd)); set it with
-    /// [`LangString::with_expression`](super::`LangString`::with_expression).
+    /// [`LangString::with_expression`](super::LangString::with_expression).
     Expression,
 }
 
@@ -447,7 +447,9 @@ impl ReferenceEnd {
     /// [`AddReference`](crate::edit::AddReference) and
     /// [`RemoveReference`](crate::edit::RemoveReference) keep an end within
     /// ([`TooFewReferences`](crate::edit::EditError::TooFewReferences),
-    /// [`TooManyReferences`](crate::edit::EditError::TooManyReferences)).
+    /// [`TooManyReferences`](crate::edit::EditError::TooManyReferences)),
+    /// except the derived [`Expression`](Self::Expression), which they refuse
+    /// as [`DerivedEnd`](crate::edit::EditError::DerivedEnd).
     ///
     /// ```
     /// use sacm::model::{ElementKind, ReferenceEnd};

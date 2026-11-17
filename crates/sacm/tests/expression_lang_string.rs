@@ -417,6 +417,27 @@ fn sacm23_base_009_lang_string_reads_sets_and_orders_its_expression() {
             );
         }
     }
+    // The form is compared last: lang, then content, decide first.
+    for (left, right) in [
+        (
+            LangString::new("a").with_expression("z"),
+            LangString::new("b"),
+        ),
+        (
+            LangString::default().with_lang("a").with_expression("z"),
+            LangString::default().with_lang("b"),
+        ),
+        (
+            LangString::new("a").with_lang("en").with_expression("z"),
+            LangString::new("b").with_lang("en"),
+        ),
+    ] {
+        assert!(
+            left < right,
+            "{BASE_009}: {left:?} is not before {right:?}: the form is compared after lang \
+             and content"
+        );
+    }
     assert_eq!(
         hash_of(&plain.clone().with_expression("a")),
         hash_of(&LangString::new("x").with_lang("en").with_expression("a")),
@@ -975,6 +996,53 @@ fn nonconforming() -> Vec<(&'static str, String, &'static str, Part, &'static st
             "<location",
         ),
     ]);
+    // An `expression` reference element in a plain name or value, and a
+    // `value` inside an ExpressionLangString name.
+    let in_name = |name: &str| case(&claim("c1", name, ""), "");
+    cases.extend([
+        (
+            "an expression element in an untyped name",
+            in_name("<name content=\"x\"><expression xmi:idref=\"t1\"/></name>"),
+            "c1",
+            Part::Name,
+            "<name",
+        ),
+        (
+            "an expression element in a name typed sacm:LangString",
+            in_name(
+                "<name xmi:type=\"sacm:LangString\" content=\"x\"><expression xmi:idref=\"t1\"/></name>",
+            ),
+            "c1",
+            Part::Name,
+            "<name",
+        ),
+        (
+            "an expression element in an untyped content value",
+            case(
+                &claim(
+                    "c1",
+                    &plain_name("C1"),
+                    &note(
+                        "n1",
+                        "<value content=\"x\"><expression xmi:idref=\"t1\"/></value>",
+                    ),
+                ),
+                "",
+            ),
+            "n1",
+            Part::Content,
+            "<content",
+        ),
+        (
+            "a value inside an ExpressionLangString name",
+            in_name(&format!(
+                "<name {ELS} expression=\"t1\"><value content=\"x\"/></name>"
+            )),
+            "c1",
+            Part::Name,
+            "<name",
+        ),
+    ]);
     cases
 }
 
@@ -1146,6 +1214,33 @@ fn sacm23_base_009_an_expression_attribute_on_a_claim_is_a_preserved_attribute()
             "{BASE_009}: an expression attribute on a Claim is read as an end ({mode:?})"
         );
     }
+    // With an ExpressionLangString name too: the derived end holds the
+    // name's id once, and a write never writes it as an element beside the
+    // preserved attribute.
+    let both = case(
+        &format!(
+            "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\" expression=\"t1\">\
+             <name {ELS} expression=\"t1\"/></argumentElement>"
+        ),
+        "",
+    );
+    let doc = read_ok(BASE_009, "both", Mode::Tolerant, &both).into_document();
+    assert_eq!(
+        element(BASE_009, &doc, "c1").expressions(),
+        ids(&["t1"]),
+        "{BASE_009}: the derived end of a Claim with both"
+    );
+    let text = written(BASE_009, "both", &doc, Mode::Tolerant);
+    assert!(
+        !text.contains("<expression"),
+        "{BASE_009}: the derived end is written as an element:\n{text}"
+    );
+    let reread = read_ok(BASE_009, "both written", Mode::Tolerant, &text).into_document();
+    assert!(
+        reread == doc,
+        "{BASE_009}: the write of a Claim with both does not read back equal: {:?}",
+        semantic_compare(&doc, &reread)
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1435,6 +1530,21 @@ fn sacm23_base_009_referrers_equal_a_full_scan_after_each_operation() {
             "SetLocation",
             SetLocation::new("manual_pdf", lid.clone()).into(),
         ),
+        ("SetContent::remove", SetContent::remove("n1").into()),
+        (
+            "SetLocation::remove",
+            SetLocation::remove("manual_pdf").into(),
+        ),
+        (
+            "CreateResource::with_location",
+            CreateResource::new("evidence", LangString::new("R"))
+                .with_location(LangString::default().with_expression("blade"))
+                .into(),
+        ),
+        (
+            "CreateArtifact",
+            edit::CreateArtifact::new("evidence", lid.clone()).into(),
+        ),
         (
             "CreateClaim",
             CreateClaim::new("arguments", lid.clone())
@@ -1452,9 +1562,38 @@ fn sacm23_base_009_referrers_equal_a_full_scan_after_each_operation() {
     ];
     let mut doc = start;
     assert_referrers_are_the_full_scan("as read", &doc);
+    assert_expressions_are_the_texts("as read", &doc);
     for (what, operation) in operations {
         apply(BASE_009, what, &mut doc, operation);
         assert_referrers_are_the_full_scan(what, &doc);
+        assert_expressions_are_the_texts(what, &doc);
+    }
+}
+
+/// An oracle independent of the derived end: for each element, the
+/// `expression()` of its name, then of each value of its `content`, `key`
+/// and `location`, in order, is `expressions()`.
+fn assert_expressions_are_the_texts(what: &str, doc: &Document) {
+    for found in doc.elements() {
+        let texts = [found.content(), found.key(), found.location()];
+        let expected: Vec<ElementId> = found
+            .name()
+            .into_iter()
+            .chain(
+                texts
+                    .into_iter()
+                    .flatten()
+                    .flat_map(MultiLangString::values),
+            )
+            .filter_map(LangString::expression)
+            .cloned()
+            .collect();
+        assert_eq!(
+            found.expressions(),
+            expected.as_slice(),
+            "{BASE_009}: {what}: the expressions of {:?} are not those of its name and texts",
+            found.id()
+        );
     }
 }
 
@@ -1766,6 +1905,36 @@ fn sacm23_base_009_expression_ids_are_checked_after_the_operation_s_own_ends() {
             "{BASE_009}: {what}: the expression is checked before the source: {error:?}"
         );
     }
+    // The same on an Expression create: its `element` end comes first.
+    for (what, element, expression) in [
+        ("invalid ids", "a b", "c d"),
+        ("dangling ids", "ghost_e", "ghost_n"),
+        ("wrongly typed ids", "c1", "c2"),
+    ] {
+        let error = refused(
+            BASE_009,
+            what,
+            &doc,
+            CreateExpression::new("terms", named(expression), "v")
+                .with_expression_elements([element]),
+        );
+        let first = match &error {
+            EditError::InvalidReference { end, .. }
+            | EditError::ReferenceNotFound { end, .. }
+            | EditError::WrongReferenceType { end, .. } => *end,
+            other => panic!("{BASE_009}: {what}: not a reference refusal: {other:?}"),
+        };
+        let phase = match what {
+            "invalid ids" => matches!(error, EditError::InvalidReference { .. }),
+            "dangling ids" => matches!(error, EditError::ReferenceNotFound { .. }),
+            _ => matches!(error, EditError::WrongReferenceType { .. }),
+        };
+        assert!(
+            first == "element" && phase,
+            "{BASE_009}: {what}: an Expression create does not refuse its element first: \
+             {error:?}"
+        );
+    }
     // The multiplicity: no source before no expression.
     let error = refused(
         BASE_009,
@@ -1899,6 +2068,23 @@ fn sacm23_base_009_every_set_and_create_of_a_text_checks_its_expression_ids() {
         (
             "CreateExpression name",
             Box::new(|name| CreateExpression::new("terms", name, "e").into()),
+        ),
+        // The asset creates check their name (SACM23-BASE-009).
+        (
+            "CreateArtifact name",
+            Box::new(|name| edit::CreateArtifact::new("a", name).into()),
+        ),
+        (
+            "CreateResource name",
+            Box::new(|name| CreateResource::new("a", name).into()),
+        ),
+        (
+            "CreateActivity name",
+            Box::new(|name| edit::CreateActivity::new("a", name).into()),
+        ),
+        (
+            "CreateEvent name",
+            Box::new(|name| edit::CreateEvent::new("a", name).into()),
         ),
     ];
     for (what, build) in &operations {
@@ -2527,6 +2713,10 @@ fn sacm23_base_009_json_of_an_expression_lang_string() {
         r#"{"type":"MultiLangString","lang":null,"content":null,"expression":null}"#,
         r#"{"lang":"en","content":"x","expression":"t1"}"#,
         r#"{"type":"ExpressionLangString","lang":"en","content":"x"}"#,
+        // A key given twice (R4).
+        r#"{"lang":"en","lang":"sv"}"#,
+        r#"{"type":"ExpressionLangString","type":"ExpressionLangString","expression":null}"#,
+        r#"{"type":"ExpressionLangString","expression":"a","expression":"b"}"#,
     ] {
         match serde_json::from_str::<LangString>(refused) {
             Ok(read) => panic!("{BASE_009}: {refused} is read as {read:?}"),
@@ -2541,6 +2731,15 @@ fn sacm23_base_009_json_of_an_expression_lang_string() {
         Some(LangString::default()),
         "{BASE_009}: {{}} is not LangString::default()"
     );
+    match serde_json::from_str::<LangString>("[]") {
+        Ok(read) => panic!("{BASE_009}: [] is read as {read:?}"),
+        Err(error) => assert!(
+            error
+                .to_string()
+                .contains("a LangString or an ExpressionLangString"),
+            "{BASE_009}: [] is not refused as no LangString: {error}"
+        ),
+    }
     {
         let sample = LangString::default()
             .with_lang("en")

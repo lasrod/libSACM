@@ -213,7 +213,7 @@ mod roots;
 /// has no name and holds no element: its `content` (§8.7) and, on a
 /// `TaggedValue`, its `key` (§8.12), in either order, are each one role element
 /// holding a `MultiLangString` (ADR 0025): `<content>` with one `<value>` per
-/// [`LangString`](crate::model::`LangString`), in order and with duplicates.
+/// [`LangString`](crate::model::LangString), in order and with duplicates.
 /// Each `value` is read as a `name` is, below. No `content` is `None`;
 /// `<content/>`, or one holding only white space, comments and processing
 /// instructions, is an empty `MultiLangString`. A `content` or `key` may carry
@@ -361,9 +361,11 @@ mod roots;
 /// (XMI 2.5.1 §7.5.3), so [`write()`] does not write it back. It is reported
 /// as SACM-XMI-011 (see [Diagnostics](#diagnostics)).
 /// The `name`, and each `value`, must be in no namespace, carry only
-/// `xmi:id`, `lang`, `content` and an `xmi:type` or `xsi:type` naming
-/// `sacm:LangString`, and hold only the value elements `lang` and `content`,
-/// white space, comments and processing instructions. A value element may
+/// `xmi:id`, `lang`, `content`, an `xmi:type` or `xsi:type` naming
+/// `sacm:LangString` or `sacm:ExpressionLangString` and, on an
+/// `ExpressionLangString` (§8.4), its `expression` as one IDREF, and hold
+/// only the value elements `lang` and `content`, an `ExpressionLangString`'s
+/// one `expression` reference element, white space, comments and processing instructions. A value element may
 /// carry only namespace declarations and `xsi:nil`, and may hold no element.
 /// What else an element carries or holds is either conforming content this
 /// release does not read yet, refused by a strict read as
@@ -2276,7 +2278,12 @@ impl std::error::Error for ReadError {}
 /// absent one is no attribute; an element with no name has no `name` child.
 /// A name read with an `xmi:id`
 /// ([`SacmElement::name_id`](crate::model::SacmElement::name_id)) carries it
-/// first: `<name xmi:id="…" lang="…" content="…" />`. An id is written
+/// first: `<name xmi:id="…" lang="…" content="…" />`. An
+/// `ExpressionLangString` name or value (§8.4) starts with
+/// `xmi:type="sacm:ExpressionLangString"`, and its `expression`, if it has
+/// one, follows `content`: `<name xmi:type="sacm:ExpressionLangString"
+/// xmi:id="…" lang="…" content="…" expression="…" />`. The derived
+/// `expression` end is written only there, never on the element. An id is written
 /// as it is, escaped, and so are a name's fields. An id that is not an XML
 /// `NCName`, such as `1 2`, is not an `xsd:ID`, so a strict write refuses it
 /// (SACM-ID-002); a tolerant write writes it as it is, and the output then
@@ -2291,7 +2298,8 @@ impl std::error::Error for ReadError {}
 /// `<value … />` per value, in order, written as a name is:
 /// `<content>`, `<value lang="en" content="…" />`, `</content>`. An empty
 /// one is `<content />`, and an absent one is not written. No type attribute
-/// is written on a `UtilityElement`, a `content`, a `key`, a `location` or a `value`.
+/// is written on a `UtilityElement`, a `content`, a `key` or a `location`,
+/// nor on a `value` that holds a plain `LangString`.
 ///
 /// # Preserved content
 ///

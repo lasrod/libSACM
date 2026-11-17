@@ -60,7 +60,7 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   `with_expression(id)` and `without_expression()`; `xmi::read` and `xmi::write` read and
   write it as `xmi:type="sacm:ExpressionLangString"` with an `expression` reference
   [SACM23-BASE-009].
-- `ReferenceEnd::Expression` and `SacmElement::expressions()`: the ids an element's names
+- `ReferenceEnd::Expression` and `SacmElement::expressions()`: the ids an element's name
   and texts link, listed by `Document::referrers` and delete previews. A delete that
   scrubs references makes the text plain and keeps its `lang` and `content`
   [SACM23-BASE-009].
