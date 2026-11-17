@@ -145,3 +145,33 @@ with one main consumer. The maintainer adopted:
 Mutation testing stays on the PR path.
 
 *Amendment 5 status: accepted (the maintainer, 2026-11-16).*
+
+## Amendment 6 (2026-11-17): mutation testing no longer blocks development
+
+**Evidence.** Mutation testing so far found gaps in tests, never wrong behaviour:
+- Across slices 0040 to 0060, every final record shows 0 missed mutants in CI's PR-diff job.
+- In slices 0055 to 0060, that job found 3 survivors, all equivalent.
+- The real gaps came from the verifier's hand mutations: 7 in slice 0056 and 2 in slice
+  0058.
+
+Meanwhile it cost about an hour of the builder's time per code slice, and a 20-minute merge
+gate. The full run, 8 shards of 90 minutes, no longer finished.
+
+**Changes:**
+- **The builder runs no cargo-mutants.** It keeps targeted hand mutations of the new
+  decision logic: match arms, check order, guards.
+- **CI's PR-diff mutation job runs in parallel and does not block the merge.** It is not a
+  required check.
+  - The verifier judges on the tests, its hand mutations and whatever report is ready; a
+    row no longer needs the report to PASS.
+  - A survivor found later becomes follow-up work, fixed or triaged in a following slice.
+- **The full `mutants.yml` run is a release gate,** no longer due at each milestone's close.
+  - Before a release, every survivor is killed or triaged, and the publish waits for that.
+  - The weekly run stays, as a report.
+  - 0.1.0 is published without it, on CI's per-PR evidence (the maintainer, 2026-11-17); the
+    gate applies from the next release.
+- **More overlap.** While slice N is with the verifier, the next slice's tests may start,
+  stacked on N's branch.
+
+*Amendment 6 status: accepted (the maintainer, 2026-11-17).*
+

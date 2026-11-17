@@ -45,9 +45,10 @@ maintainer. Make the first round complete.
    quotations against the PDFs in `third_party/sacm-2.3/` (SACM and XMI 2.5.1). Each criterion has a test
    named for its row, and that test asserts it.
 3. **Test adequacy.**
-   - The primary evidence is the Linux cargo-mutants report for the commit under
-     verification. The lead gives you the run URLs and the downloaded `mutants.out`.
-     Without it, a row whose code is mutated cannot PASS.
+   - Judge test adequacy on the tests and on your own hand mutations of the new decision
+     logic. CI's PR-diff cargo-mutants job runs in parallel and does not block (ADR 0006
+     amendment 6). Use its report if the lead gives you one that is ready; a row does not
+     need it to PASS.
    - Every missed or timed-out mutant in the slice's code is a finding, unless
      `docs/quality/mutants-triage.md` gives it a valid disposition. Read the unviable list
      too.

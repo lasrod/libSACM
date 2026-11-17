@@ -88,8 +88,9 @@ Inputs: the step-1 tests, as the lead confirmed them, and the design brief.
 - **Hand mutations** only in a fresh scratch copy of the working tree under `target/`,
   built in its own target directory:
   `rm -rf target/scratch && mkdir -p target/scratch && git ls-files -z --cached --others --exclude-standard | tar --null -T - -cf - | tar -xf - -C target/scratch`.
-  Never share a `CARGO_TARGET_DIR` with another tree. The authoritative check is the Linux
-  cargo-mutants run on the draft PR.
+  Never share a `CARGO_TARGET_DIR` with another tree. Hand-mutate the new decision logic
+  only (match arms, check order, guards). Do not run cargo-mutants: CI's PR-diff job does,
+  in parallel and without blocking (ADR 0006 amendment 6).
 
 ## Local gate (step 2)
 
