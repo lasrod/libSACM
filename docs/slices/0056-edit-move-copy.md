@@ -1,8 +1,8 @@
 ---
 slice: 0056
 name: edit-move-copy
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [LIB-EDIT-017, LIB-EDIT-018, LIB-API-014, LIB-API-015]
 mode: pr
 base: main
@@ -89,3 +89,6 @@ No new diagnostic codes.
   - Fix round: `sacm-builder` adds the seven named tests and fixes the rustdoc wording,
     using the verifier's text. The lead rewords LIB-API-006, LIB-EDIT-018 and LIB-API-015
     in the matrix, also with the verifier's text.
+- 2026-11-17 verify round 2: PASS on all four rows. Each of the seven new tests kills its
+  mutant, and CI on f2dd5aa is green. The record is
+  `docs/verification/0056-edit-move-copy.md`; the rows are verified, and M3 is at 16/20.
