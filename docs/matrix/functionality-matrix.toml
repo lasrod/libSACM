@@ -5292,9 +5292,9 @@ acceptance = [
   "`sacm23_arg_014_repeated_empty_and_qualified_implements_follow_the_reference_rules`: `implements=\"a b\"` and attribute plus element are `RepeatedValue` in strict mode. In tolerant mode they follow today's single-valued end rule (as `target`): `implements=\"a b\"` is kept with SACM-MULT-001 `repeat-kept` and the end holds none; attribute plus element keeps the attribute's id as the first occurrence, and the element is kept with `repeat-kept`. `implements=\"\"` and `sacm:implements=\"p\"` are preserved content of the element, with one SACM-XMI-003 in both modes. `interface=\"i i\"` is held twice and gives one SACM23-VAL-022 Warning with clause `11.4`.",
   "`sacm23_arg_014_missing_implements_reads_and_writes_back_unchanged`: no `implements` reads in both modes, both saves write it with nothing added, and `validate` gives no finding for it in this slice.",
   "`sacm23_arg_014_dangling_and_wrongly_typed_ends_report_their_clause_and_type`: `implements=\"gone\"` gives SACM-REF-001, clause `11.6`, message `ArgumentPackageInterface \"i\" has the implements \"gone\", which names no element of the document (the end's type is ArgumentPackage)`. A strict write refuses it; a tolerant write writes it. `implements` naming a Claim gives SACM-REF-002, clause `11.6`, type `ArgumentPackage`. Naming an ArgumentPackage, an ArgumentPackageInterface or an ArgumentPackageBinding gives none; naming an ArtifactPackage gives REF-002. `interface` naming a Claim, an ArgumentPackageBinding, an ArgumentPackage or an ArtifactPackageInterface gives REF-002, clause `11.4`, type `ArgumentPackageInterface`.",
-  "`sacm23_arg_014_writes_attribute_order_and_the_golden_file`: Attribute order is `xmi:type, xmi:id, gid, isCitation, isAbstract, citedElement, abstractForm, interface, implements`. The ArgumentPackage writes `… abstractForm, interface`. The golden test is in the golden samples section below.",
+  "`sacm23_arg_014_writes_attribute_order_and_the_golden_file`: Attribute order is `xmi:type, xmi:id, gid, isCitation, isAbstract, citedElement, abstractForm, interface, implements`. The ArgumentPackage writes `… abstractForm, interface`. `sacm23_arg_014_the_fixture_reads_validates_and_writes_exactly_the_golden_file` (shared with SACM23-ARG-015): `argument-package-interfaces-valid.sacm.xmi`, with `implements` and `participantPackage` in element form, reads in both modes with no diagnostic and no `validate` finding; a strict write gives exactly `golden/argument-package-interfaces.golden.sacm.xmi`, which reads back `==` and writes the same bytes again.",
   "`sacm23_arg_014_reference_end_tables_bounds_and_serde`: `Interface.name()==\"interface\"` and `Implements.name()==\"implements\"`. Bounds: `Implements.bounds(ArgumentPackageInterface)==Some((1,Some(1)))`; `Interface.bounds(ArgumentPackage|ArgumentPackageInterface|ArgumentPackageBinding)==Some((0,None))`; `Implements.bounds(ArgumentPackage)==None`; `Interface.bounds(TerminologyPackage)==None` and `Interface.bounds(AssuranceCasePackage)==None` in this slice. The serde names are `\"interface\"` and `\"implements\"`.",
-  "`sacm23_arg_014_create_reports_what_it_holds_and_checks_in_order`: the create section below, with the generated id `argument_package_interface_<n>`.",
+  "`sacm23_arg_014_create_reports_what_it_holds_and_checks_in_order`: `root` and `new` hold the parent, id, name and `implements` given; the create reports the interface in `created_ids` only and leaves the package's `interface` end unchanged. An AssuranceCasePackage, an ArgumentPackage or an ArtifactPackage, their interfaces and bindings included, is a legal parent, and so is no parent (a root); a Claim, a TerminologyPackage or an Artifact is `InvalidParent`. The checks run `ParentNotFound`, `InvalidParent`, `InvalidId`, `DuplicateId`, the name's expression (5a), then `InvalidReference`, `ReferenceNotFound` and `WrongReferenceType` (`expected: \"ArgumentPackage\"`), each over `implements` before the name's expression. The generated id is `argument_package_interface_<n>`, and a refusal does not advance it.",
   "`sacm23_arg_014_reference_edits_keep_implements_at_exactly_one`: `SetReferences::clear(i, Implements)` and `RemoveReference` are `TooFewReferences{end:\"implements\",given:0,required:1}`. `[p,q]` and `AddReference` onto a held id are `TooManyReferences{given:2,allowed:1}`. `Implements` on an ArgumentPackage is `FeatureNotApplicable`, Display `the ArgumentPackage \"p\" has no implements`. `Interface` on a Claim is `FeatureNotApplicable`.",
   "`sacm23_arg_014_interface_and_implements_are_never_synced` (Q1): Creating `i` with `implements=p` leaves `p.interfaces()` empty. `AddReference(p, Interface, i)` leaves `i.implements()` as it was. Changing either end never changes the other. `doc.referrers(\"p\")` lists `(i, Implements, 0)`, and `doc.referrers(\"i\")` lists `(p, Interface, 0)`.",
   "`sacm23_arg_014_compare_reports_interfaces_and_implements`: `Difference::Interfaces` and `Difference::Implements`, after `TerminologyGroupMembers`. Display: `element \"p\" differs in interface: [\"i\"] on the left, [] on the right` and `element \"i\" differs in implements: \"p\" on the left, no implements on the right`.",
@@ -5304,7 +5304,7 @@ acceptance = [
 ]
 status = "implemented"
 depends_on = ["SACM23-ARG-001", "SACM23-BASE-007", "SACM23-VAL-012", "SACM23-XMI-015", "SACM23-VAL-004", "LIB-EDIT-009", "LIB-EDIT-005"]
-notes = "Also reads this kind as an interchange root: a strict SACM23-XMI-001 read refuses it as `Unsupported` until then, and a tolerant one keeps it with SACM-XMI-014 (C++ accepts it, element_kind.cpp:87-105)."
+notes = "Also read as an interchange root, bare or inside `xmi:XMI`, in both modes, since slice 0066 (SACM23-XMI-001); C++ accepts it too (element_kind.cpp:87-105).cpp:87-105)."
 
 [[row]]
 id = "SACM23-ARG-015"
@@ -5338,15 +5338,15 @@ acceptance = [
   "`sacm23_arg_015_href_participants_stay_as_today` (Q8): `<participantPackage href=\"other.xmi#p\"/>` is `Unsupported` (SACM23-XMI-027) in strict mode and kept with SACM-XMI-007 in tolerant mode.",
   "`sacm23_arg_015_writes_attribute_order_and_the_golden_file`: `… abstractForm, interface, participantPackage`.",
   "`sacm23_arg_015_reference_end_tables_bounds_and_serde`: `ParticipantPackage.name()==\"participantPackage\"`, `bounds(ArgumentPackageBinding)==Some((2,None))`, `bounds(ArgumentPackageInterface)==None`, serde `\"participantPackage\"`.",
-  "`sacm23_arg_015_create_reports_what_it_holds_and_checks_in_order`, with the generated id `argument_package_binding_<n>`.",
+  "`sacm23_arg_015_create_reports_what_it_holds_and_checks_in_order`: as SACM23-ARG-014's create, with the participants held in order with repeats; after `DuplicateId`, fewer than two distinct participants is `TooFewReferences{end:\"participantPackage\", given: <distinct count>, required: 2}`, before 5a; checks 6 to 8 then run over the participants in order, then the name's expression; the generated id is `argument_package_binding_<n>`.",
   "`sacm23_arg_015_reference_edits_count_distinct_participants`: `SetReferences(b, ParticipantPackage, [\"a\"])` and `[\"a\",\"a\"]` are `TooFewReferences{end:\"participantPackage\",given:1,required:2}`. Removing one of two is `TooFewReferences{given:1}`. `AddReference(b, ParticipantPackage, \"a\")` onto `[a,c]` succeeds, and VAL-022 warns. `AddReference` onto a held `[a]` (read from a file) with `a` is `TooFewReferences{given:1}`; with `c` it succeeds.",
   "`sacm23_arg_015_compare_reports_participant_packages`: Display `element \"b\" differs in participantPackage: [\"i\", \"j\"] on the left, [\"j\", \"i\"] on the right`.",
   "`sacm23_arg_015_homogeneity_exemption_on_the_read_path`: `p{b, c}` gives none, `p{q, b, c}` gives `[p, c]`, and a binding owner gives none.",
-  "`sacm23_arg_015_move_copy_and_the_element_edits_apply`.",
+  "`sacm23_arg_015_move_copy_and_the_element_edits_apply`: SetName, SetGid, SetFlag and ReorderElements apply to a binding; it moves to the roots, into an ArtifactPackage, into an ArgumentPackage and back with its participants and the `validate` findings unchanged; into a TerminologyPackage is `InvalidParent`; a copy keeps its participants as written.",
 ]
 status = "implemented"
 depends_on = ["SACM23-ARG-001", "SACM23-BASE-007", "SACM23-VAL-012", "SACM23-XMI-015", "SACM23-VAL-004", "LIB-EDIT-009", "LIB-EDIT-005"]
-notes = "Also reads this kind as an interchange root: a strict SACM23-XMI-001 read refuses it as `Unsupported` until then, and a tolerant one keeps it with SACM-XMI-014 (C++ accepts it, element_kind.cpp:87-105)."
+notes = "Also read as an interchange root, bare or inside `xmi:XMI`, in both modes, since slice 0066 (SACM23-XMI-001); C++ accepts it too (element_kind.cpp:87-105).cpp:87-105)."
 
 [[row]]
 id = "SACM23-ART-012"
@@ -5379,7 +5379,7 @@ acceptance = [
 ]
 status = "implemented"
 depends_on = ["SACM23-ART-001", "SACM23-BASE-007", "SACM23-XMI-015", "SACM23-VAL-004", "LIB-EDIT-009", "LIB-EDIT-005"]
-notes = "Also reads this kind as an interchange root: a strict SACM23-XMI-001 read refuses it as `Unsupported` until then, and a tolerant one keeps it with SACM-XMI-014."
+notes = "Also read as an interchange root, bare or inside `xmi:XMI`, in both modes, since slice 0066 (SACM23-XMI-001)."
 
 [[row]]
 id = "SACM23-ART-013"
@@ -5409,7 +5409,7 @@ acceptance = [
 ]
 status = "implemented"
 depends_on = ["SACM23-ART-001", "SACM23-BASE-007", "SACM23-XMI-015", "SACM23-VAL-004", "LIB-EDIT-009", "LIB-EDIT-005"]
-notes = "Also reads this kind as an interchange root: a strict SACM23-XMI-001 read refuses it as `Unsupported` until then, and a tolerant one keeps it with SACM-XMI-014."
+notes = "Also read as an interchange root, bare or inside `xmi:XMI`, in both modes, since slice 0066 (SACM23-XMI-001)."
 
 [[row]]
 id = "LIB-EDIT-019"
@@ -5437,6 +5437,8 @@ tests = [
   "crates/sacm/tests/delete.rs::lib_edit_019_preview_and_apply_agree_and_join_the_atomic_set",
   "crates/sacm/tests/delete.rs::lib_edit_019_deleting_an_interface_with_a_package_interface_end_is_cross_package_by_default",
   "crates/sacm/tests/delete.rs::lib_edit_019_serde_unchanged",
+  "crates/sacm/tests/delete.rs::lib_edit_019_check_4_guards_only_interfaces_and_bindings",
+  "crates/sacm/tests/delete.rs::lib_edit_019_check_4_counts_a_preserved_child",
 ]
 acceptance = [
   "`lib_edit_019_deleting_an_implemented_package_is_cross_package_reference_by_default`: delete `r` gives `CrossPackageReference{holder:\"k\",end:\"implements\",id:\"r\"}`.",

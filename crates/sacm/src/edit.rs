@@ -408,7 +408,7 @@
 //! |---|---|---|
 //! | 2a. the end is not the derived `expression` ([`ReferenceEnd::Expression`](crate::model::ReferenceEnd::Expression)), which the name and texts hold | [`EditError::DerivedEnd`] | SACM-CMD-008 |
 //! | 3. for [`RemoveReference`] only: the end holds the id | [`EditError::ReferenceNotHeld`] | SACM-CMD-001 |
-//! | 4. the end would hold at least the ids it needs: one `source`, one `target`, of either relationship class | [`EditError::TooFewReferences`] | SACM-MULT-001 |
+//! | 4. the end would hold at least the distinct ids it needs: one `source` and one `target`, of either relationship class, an interface's `implements`, and two distinct participants of a binding (`participantPackage`; ADR 0039 D3) | [`EditError::TooFewReferences`] | SACM-MULT-001 |
 //! | 5. the end would hold at most the ids it allows: one for a single-valued end | [`EditError::TooManyReferences`] | SACM-MULT-001 |
 //! | 6. no new id holds XML white space | [`EditError::InvalidReference`] | SACM-ID-002 |
 //! | 7. every new id names an element | [`EditError::ReferenceNotFound`] | SACM-CMD-001 |

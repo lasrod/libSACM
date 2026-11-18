@@ -5404,6 +5404,26 @@ mod tests {
                 "{content:?}"
             );
         }
+        // A child kind not read yet, in an AssuranceCasePackage.
+        let input = concat!(
+            "<sacm:AssuranceCasePackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
+            " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"a\">\n",
+            "<terminologyPackage xmi:type=\"sacm:TerminologyPackageInterface\" xmi:id=\"t\"/>",
+            "</sacm:AssuranceCasePackage>"
+        );
+        let reason = match read(input.as_bytes(), &strict()) {
+            Err(ReadError::Unsupported { reason, .. }) => Some(reason),
+            _ => None,
+        };
+        assert_eq!(
+            reason.as_deref(),
+            Some(
+                "the TerminologyPackageInterface \"terminologyPackage\" in the root element \
+                 \"sacm:AssuranceCasePackage\" is not read in this release (a limit of this \
+                 version; SACM23-TERM-007 reads it)"
+            ),
+            "{input:?}"
+        );
         // The text's spelling of the role is kept, not refused
         // (SACM23-XMI-009).
         let spelled = "<argumentationElement xmi:type=\"sacm:Claim\" xmi:id=\"c\"/>";

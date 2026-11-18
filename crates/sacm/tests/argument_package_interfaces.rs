@@ -898,7 +898,6 @@ fn sacm23_arg_014_repeated_empty_and_qualified_implements_follow_the_reference_r
             first,
             "{row}: {what}: what the end holds after a tolerant read"
         );
-        let _ = first;
     }
     for (what, attribute) in [
         ("implements=\"\"", format!(" {MARK}implements=\"\"")),
@@ -910,7 +909,6 @@ fn sacm23_arg_014_repeated_empty_and_qualified_implements_follow_the_reference_r
             element(row, &doc, "i").implements().is_none(),
             "{row}: {what}: read as the end"
         );
-        let _ = doc;
     }
     // A repeated interface is held twice: one SACM23-VAL-022 Warning.
     let what = "interface=\"i i\"";
@@ -1897,7 +1895,6 @@ fn sacm23_arg_014_move_copy_and_the_element_edits_apply() {
             "",
         ),
     );
-    let findings_before = findings(&doc);
     applied(row, &mut doc, SetName::new("i", named("Renamed")));
     applied(row, &mut doc, SetGid::new("i", "I-1"));
     applied(row, &mut doc, SetFlag::new("i", Flag::IsAbstract, true));
@@ -1954,7 +1951,6 @@ fn sacm23_arg_014_move_copy_and_the_element_edits_apply() {
             "{row}: a move {what} changed a reference or a finding"
         );
     }
-    let _ = findings_before;
     for (what, operation, parent, parent_kind, kind) in [
         (
             "an interface into a TerminologyPackage",

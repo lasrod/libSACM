@@ -83,8 +83,10 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   without them, as 0.1.0 wrote, still reads [LIB-API-018].
 - ArgumentPackageInterface, ArgumentPackageBinding, ArtifactPackageInterface and
   ArtifactPackageBinding are read (as children and as roots, in both modes), written,
-  created, edited, compared, copied, moved and validated [SACM23-ARG-014, SACM23-ARG-015,
-  SACM23-ART-012, SACM23-ART-013].
+  created, edited, compared, copied and moved; `validate` checks their references
+  (SACM-REF-001, SACM-REF-002, SACM23-VAL-022) but not yet a missing `implements`, too few
+  participants or their contents (SACM23-VAL-013, SACM23-VAL-014) [SACM23-ARG-014,
+  SACM23-ARG-015, SACM23-ART-012, SACM23-ART-013].
 - `ReferenceEnd::Interface` (a package's `interface`), `Implements` (an interface's
   `implements`) and `ParticipantPackage` (a binding's `participantPackage`), each typed to
   the holder's family and kept as written: `interface` and `implements` are never synced;

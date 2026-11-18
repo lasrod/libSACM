@@ -64,3 +64,14 @@ The brief gives the API, the XMI shape, the check order, the delete algorithm an
     checks four kinds; its name is kept, because slice 0067 removes the last four;
   - the lead reworded 11 verified rows (incl. XMI-001 "eight" → "four"), each with a slice 0066
     note.
+- 2026-11-18 verify round 1:
+  - FAIL on LIB-EDIT-019: three delete rules untested (M20, the `RejectIfReferenced` early return;
+    M14, check 4's holder guard; M35, check 4 counting preserved children);
+  - FAIL on the four kinds' rows: the CHANGELOG said "validated";
+  - no wrong behaviour; the 11 reworded rows are true.
+  - Two step-1 test changes the log did not name: `delete.rs` `holder_of` covering the three new ends
+    (for `lib_edit_005_reject_if_referenced_refuses_a_reference_through_every_end`), and the
+    `xmi_read_children.rs` readable and unread sets (2×4 + 3×4 cases). Both keep their intent.
+  - Fix round: the builder adds the three cases and fixes the CHANGELOG, the `edit.rs` table and
+    two test clean-ups; the lead fixes ADR 0039 Consequences 3, four stale notes and four
+    acceptance items (verifier's text).

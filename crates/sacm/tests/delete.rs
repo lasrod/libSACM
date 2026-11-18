@@ -2459,6 +2459,97 @@ fn lib_edit_019_reject_if_referenced_names_the_first_holder() {
         Some(("Referenced", "p", "interface", "i")),
         "{EDIT_019}: i under RejectIfReferenced: p's interface end comes first: {error:?}"
     );
+    // RejectIfReferenced cascades nothing: with the citation `z` of `kc` in
+    // `p`, before `k` in pre-order, deleting r still names k's `implements`,
+    // not z's `citedElement` of a cascaded `kc`.
+    let mut doc = fixture_m(&["i", "j"]);
+    setup_claim(&mut doc, "p", "z", Some("kc"));
+    let error = refused(
+        EDIT_019,
+        "r recursively, crossing applied, z citing kc",
+        &mut doc,
+        cascading("r", RejectIfReferenced),
+    );
+    assert_eq!(
+        (named_reference(&error), error.code()),
+        (
+            Some(("Referenced", "k", "implements", "r")),
+            Code::CMD_DELETE_REFERENCED
+        ),
+        "{EDIT_019}: r under RejectIfReferenced cascades nothing: {error:?}"
+    );
+}
+
+/// Reads `text` in tolerant mode, which keeps unread content.
+fn read_tolerant(row: &str, text: &str) -> Document {
+    match xmi::read(
+        text.as_bytes(),
+        &ReadOptions::default().with_mode(Mode::Tolerant),
+    ) {
+        Ok(output) => output.into_document(),
+        Err(error) => panic!("{row}: setup: the document does not read: {error}\n{text}"),
+    }
+}
+
+/// A preserved child element: content of a namespace SACM does not define.
+const PRESERVED_CHILD: &str = r#"<foo:bar xmlns:foo="urn:foo"/>"#;
+
+#[test]
+fn lib_edit_019_check_4_guards_only_interfaces_and_bindings() {
+    // A relationship the scrub deletes for its bound is not guarded by the
+    // package policy, even with a preserved child element.
+    let mut doc = read_tolerant(
+        EDIT_019,
+        &format!(
+            r#"<sacm:ArgumentPackage {NAMESPACES} xmi:id="p"><name content="p"/>{c}{x}{r1}</sacm:ArgumentPackage>"#,
+            c = claim("c", ""),
+            x = claim("x", ""),
+            r1 = element(
+                "AssertedInference",
+                "r1",
+                r#"source="x" target="c""#,
+                PRESERVED_CHILD
+            ),
+        ),
+    );
+    let mutation = accepted(
+        EDIT_019,
+        "x scrubbed, not recursive",
+        &mut doc,
+        delete("x", ScrubReferences, RejectIfNonEmpty, ApplyReferencePolicy),
+    );
+    assert_eq!(
+        strs(mutation.deleted_ids()),
+        ["x", "r1"],
+        "{EDIT_019}: r1, left without a source, goes with x though it holds a preserved child"
+    );
+}
+
+#[test]
+fn lib_edit_019_check_4_counts_a_preserved_child() {
+    let mut doc = read_tolerant(
+        EDIT_019,
+        &format!(
+            r#"<xmi:XMI {NAMESPACES}>
+<sacm:ArgumentPackage xmi:id="r"><name content="r"/></sacm:ArgumentPackage>
+<sacm:ArgumentPackageInterface xmi:id="e" implements="r"><name content="e"/>{PRESERVED_CHILD}</sacm:ArgumentPackageInterface>
+</xmi:XMI>"#
+        ),
+    );
+    let error = refused(
+        EDIT_019,
+        "r scrubbed, not recursive",
+        &mut doc,
+        delete("r", ScrubReferences, RejectIfNonEmpty, ApplyReferencePolicy),
+    );
+    assert!(
+        matches!(
+            &error,
+            EditError::NotEmpty { element, contained: 1, .. } if element.as_str() == "e"
+        ),
+        "{EDIT_019}: e holds only a preserved child element, which the package policy \
+         counts: not NotEmpty {{ e, 1 }}: {error:?}"
+    );
 }
 
 #[test]

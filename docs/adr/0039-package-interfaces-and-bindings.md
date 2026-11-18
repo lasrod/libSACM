@@ -38,7 +38,7 @@
 
 - An end can apply to several unrelated classes, so crate code asks `owner_on(kind)` and `target_on(kind)`, never a kind-free owner.
 - A delete may remove an interface or binding the caller did not name; a preview lists it.
-- `AddReference` cannot bring a binding read with one participant to two one step at a time; `SetReferences` with two ids repairs it.
+- `AddReference` cannot bring a binding read with no participant to two one step at a time, and adding a participant that a binding read with one already holds is refused; `SetReferences` with two distinct ids repairs either.
 
 ## Alternatives considered
 
