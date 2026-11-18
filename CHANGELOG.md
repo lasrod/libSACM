@@ -9,6 +9,8 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-18
+
 ### Breaking
 
 - `ReadError::code()` and `WriteError::code()` return `Code`, not `Option<Code>`: every
@@ -81,30 +83,27 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   `docs/sacm/diagnostics.md` lists every template [LIB-API-018].
 - With `serde`, a `Diagnostic` writes `template` and `arguments` after `message`; JSON
   without them, as 0.1.0 wrote, still reads [LIB-API-018].
-- ArgumentPackageInterface, ArgumentPackageBinding, ArtifactPackageInterface and
-  ArtifactPackageBinding are read (as children and as roots, in both modes), written,
-  created, edited, compared, copied and moved; `validate` checks their references
-  (SACM-REF-001, SACM-REF-002, and SACM-MULT-001 for a repeated id) but not yet a missing `implements`, too few
-  participants or their contents (SACM23-VAL-013, SACM23-VAL-014) [SACM23-ARG-014,
-  SACM23-ARG-015, SACM23-ART-012, SACM23-ART-013].
+- The package interfaces and bindings of all four families (§9.3, §9.4, §10.5, §10.6, §11.5,
+  §11.6, §12.4, §12.5) are read (as children and as roots, in both modes), written, created,
+  edited, compared, copied and moved; `validate` checks their references (SACM-REF-001,
+  SACM-REF-002, and SACM-MULT-001 for a repeated id) but not yet a missing `implements`, too
+  few participants or their contents (SACM23-VAL-013 to SACM23-VAL-015)
+  [SACM23-ARG-014, SACM23-ARG-015, SACM23-ART-012, SACM23-ART-013, SACM23-TERM-007,
+  SACM23-TERM-008, SACM23-AC-002, SACM23-AC-003].
 - `ReferenceEnd::Interface` (a package's `interface`), `Implements` (an interface's
   `implements`) and `ParticipantPackage` (a binding's `participantPackage`), each typed to
   the holder's family and kept as written: `interface` and `implements` are never synced;
   `SacmElement::interfaces()`, `implements()` and `participant_packages()`;
-  `Difference::Interfaces`, `Implements` and `ParticipantPackages` [SACM23-ARG-014,
-  SACM23-ARG-015, SACM23-ART-012, SACM23-ART-013].
-- `edit::CreateArgumentPackageInterface`, `CreateArgumentPackageBinding`,
-  `CreateArtifactPackageInterface` and `CreateArtifactPackageBinding`, as a root or under
-  a parent; with `serde`, their JSON fields are `implements` and `participant_packages`
-  [SACM23-ARG-014, SACM23-ARG-015, SACM23-ART-012, SACM23-ART-013].
+  `Difference::Interfaces`, `Implements` and `ParticipantPackages`
+  [SACM23-ARG-014, SACM23-ARG-015, SACM23-ART-012, SACM23-ART-013, SACM23-TERM-007,
+  SACM23-TERM-008, SACM23-AC-002, SACM23-AC-003].
 - `edit::CreateAssuranceCasePackageInterface`, `CreateAssuranceCasePackageBinding`,
+  `CreateArgumentPackageInterface`, `CreateArgumentPackageBinding`,
+  `CreateArtifactPackageInterface`, `CreateArtifactPackageBinding`,
   `CreateTerminologyPackageInterface` and `CreateTerminologyPackageBinding`, as a root or
   under a parent; with `serde`, their JSON fields are `implements` and
-  `participant_packages`. The `interface`, `implements` and `participantPackage` ends
-  apply to the AssuranceCase and Terminology kinds too, typed to the holder's family;
-  `validate` checks their references (SACM-REF-001, SACM-REF-002, and SACM-MULT-001 for a repeated id) but not
-  yet a missing `implements`, too few participants or their contents (SACM23-VAL-013 to
-  SACM23-VAL-015) [SACM23-TERM-007, SACM23-TERM-008, SACM23-AC-002, SACM23-AC-003].
+  `participant_packages` [SACM23-ARG-014, SACM23-ARG-015, SACM23-ART-012, SACM23-ART-013,
+  SACM23-TERM-007, SACM23-TERM-008, SACM23-AC-002, SACM23-AC-003].
 
 ### Changed
 
@@ -122,10 +121,11 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   diagnostic built with `test-support`'s `Diagnostic::new` has its code's text as its
   template, so it is no longer `==` to one the crate emits. `Debug` of a `Diagnostic`
   shows its template and arguments [LIB-API-018].
-- A strict read no longer refuses the Argumentation and Artifact interface and binding
-  kinds, or an ArgumentPackage's or ArtifactPackage's `interface` end, as `Unsupported`,
-  and a tolerant read no longer keeps them as preserved content with SACM-XMI-014
-  [SACM23-ARG-014, SACM23-ARG-015, SACM23-ART-012, SACM23-ART-013, LIB-API-011].
+- A strict read no longer refuses any package interface or binding kind, or a package's
+  `interface` end, as `Unsupported`, and a tolerant read no longer keeps them as preserved
+  content with SACM-XMI-014: no element kind is refused as not read yet
+  [SACM23-ARG-014, SACM23-ARG-015, SACM23-ART-012, SACM23-ART-013, SACM23-TERM-007,
+  SACM23-TERM-008, SACM23-AC-002, SACM23-AC-003, LIB-API-011].
 - `ScrubReferences` and `DeleteReferencingRelationships` delete an interface left with no
   `implements`, or a binding left with fewer than two distinct participants, with its
   contents; under `RejectIfNonEmpty` such a holder that contains elements refuses the
@@ -133,10 +133,6 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 - `EditError::TooFewReferences.given` counts distinct ids: a lower bound counts distinct
   ids, an upper bound every id. Nothing changes for an end of 0.1.0 [SACM23-ARG-015,
   SACM23-ART-013].
-- `xmi::read` reads the Terminology and Assurance Case interfaces and bindings, as roots
-  and children, and every package's `interface` end, in both modes. No element kind is
-  refused as not read yet [SACM23-TERM-007, SACM23-TERM-008, SACM23-AC-002,
-  SACM23-AC-003].
 
 ### Known limits
 
