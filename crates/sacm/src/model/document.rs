@@ -38,22 +38,15 @@ use super::{
 /// [ADR 0014]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0014-artifact-package-admits-every-artifact-element.md
 ///
 /// In this release [`xmi::read`](crate::xmi::read) fills a document with
-/// `AssuranceCasePackage`, `ArgumentPackage` and `ArtifactPackage` roots, the
-/// `AssuranceCasePackage`, `ArgumentPackage`, `ArtifactPackage`, `Claim`,
-/// `ArgumentReasoning`, `ArtifactReference`, `ArgumentGroup`, `Property`,
-/// `Technique`, `Participant`, `ArtifactGroup`, `Artifact`, `Event`, `Resource`
-/// and `Activity` elements, the five asserted
-/// relationships (`AssertedInference`, `AssertedEvidence`,
-/// `AssertedContext`, `AssertedArtifactSupport` and
-/// `AssertedArtifactContext`) in them, and the descriptions, implementation
-/// constraints, notes and tagged values of each of these.
-/// [`edit::apply`](crate::edit::apply) creates the same twenty-four kinds, edits
+/// `AssuranceCasePackage`, `ArgumentPackage`, `ArtifactPackage` and
+/// `TerminologyPackage` roots and with elements of every [`ElementKind`]
+/// except the eight package interface and binding kinds, which M5 reads.
+/// [`edit::apply`](crate::edit::apply) creates the same thirty kinds, edits
 /// the features and the order of elements of every kind, moves and copies
 /// them ([`MoveElement`](crate::edit::MoveElement),
 /// [`CopyElements`](crate::edit::CopyElements)), and deletes
 /// elements of every kind ([`DeleteElement`](crate::edit::DeleteElement)).
-/// Tests build documents with other kinds through the `test-support`
-/// feature's `Document::insert`. [`Document::new`] is empty.
+/// [`Document::new`] is empty.
 ///
 /// **References** between elements, such as
 /// [`SacmElement::cited_element`] and [`SacmElement::sources`], are held as

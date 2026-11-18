@@ -38,7 +38,7 @@ goal = "The Artifact package (packages, assets, properties, relationships and gr
 [[milestone]]
 id = "M4"
 title = "Terminology model"
-goal = "The Terminology package and ExpressionLangString, so claim text can be tied to controlled vocabulary."
+goal = "The Terminology package and ExpressionLangString, so claim text can be tied to controlled vocabulary; and a code, a template and arguments on every refusal and diagnostic, so applications can word them."
 
 [[milestone]]
 id = "M5"
@@ -3993,7 +3993,7 @@ acceptance = [
   "Crate to catalog: every constant's text has a row, and that row names `` `Code::NAME` `` for it.",
   "Catalog to crate: every `` `Code::NAME` `` named in a row is a crate constant whose text equals that row's code; a row naming none is reserved and its code is not a constant.",
   "The check fails, naming the code and the row, for a constant with no row or a row not naming it, a row naming an unknown constant, a row naming another code's constant, and two rows for one code (shown by a pure helper on small synthetic catalogs).",
-  "After slice 0050 it passes with the 32 live codes listed in its test.",
+  "It passes with the live codes listed in its test: 42 after slice 0065.",
 ]
 tests = [
   "crates/sacm/tests/diagnostic_catalog.rs::lib_diag_002_a_tuple_construction_of_code_in_diagnostic_rs_is_a_problem",
@@ -5164,7 +5164,7 @@ acceptance = [
   "A strict and a tolerant write of that document give `golden/expression-lang-string.golden.sacm.xmi` byte for byte, and reading the golden in both modes gives an equal document. `<expression xmi:idref=\"t\"/>`, `<expression href=\"#t\"/>` and `expression=\"t\"` read equal, and so do the element forms of `lang` and `content` beside an `expression` element.",
   "`xsi:type=\"sacm:ExpressionLangString\"` reads as `xmi:type` does, with the SACM-XMI-010 Warning a LangString `name` gives. A `name` typed ExpressionLangString with no `expression` reads with `expression() == None` and is written back with its type and no `expression`. A `sacm` prefix bound to the pinned URI under another name reads the same.",
   "Strict: `<name xmi:type=\"sacm:ExpressionLangString\" expression=\"a b\"/>` in `named_package` (message_templates.rs) is `RepeatedValue` with Display `the single-valued property \"name.expression\" of the element \"p\" is given 2 times, at line 1, column 189; line 1, column 191`. `expression=\"t1\"><expression xmi:idref=\"t1\"/>` is `... given 2 times, at line 1, column 177; line 1, column 193`, and two reference elements are refused likewise. In a value, the property is `content.value.expression`, `key.value.expression` or `location.value.expression`. Tolerant: the whole `name` (or `content`, `key`, `location`) is kept as preserved content, with one SACM-MULT-001 Warning at the second occurrence, and the owner has no name (or no such text).",
-  "These keep the whole `name`, or the whole `content`, `key` or `location`, as preserved content of the owner, with one SACM-XMI-003 at its start tag, in both modes, and a strict write then refuses with SACM-XMI-006: `expression=\"t1\"` on an untyped `name` and on one typed `sacm:LangString`; `expression=\"\"`; `expression=\" \"`; `sacm:expression=\"t1\"`; an `<expression/>` with no link attribute, with both, or holding text; `xmi:type` naming ExpressionLangString beside `xsi:type` naming LangString; `<name><value xmi:type=\"sacm:ExpressionLangString\" expression=\"t1\"/></name>`; `xmi:type=\"sacm:ExpressionLangString\"` on a `content` element. An `expression=\"t1\"` attribute on a Claim element is not read as an end: it is kept as a preserved attribute, as any unknown attribute is.",
+  "These keep the whole `name`, or the whole `content`, `key` or `location`, as preserved content of the owner, with one SACM-XMI-003 at its start tag, in both modes, and a strict write then refuses with SACM-XMI-006: `expression=\"t1\"` on an untyped `name` and on one typed `sacm:LangString`; `expression=\"\"`; `expression=\" \"`; `sacm:expression=\"t1\"`; an `<expression/>` with no link attribute, with both, or holding text; `xmi:type` naming ExpressionLangString beside `xsi:type` naming LangString; `<name><value xmi:type=\"sacm:ExpressionLangString\" expression=\"t1\"/></name>`; `xmi:type=\"sacm:ExpressionLangString\"` on a `content` element. An `expression=\"t1\"` attribute on a Claim element is not read as an end: it is kept as a preserved attribute with one SACM-XMI-003, as any unknown attribute is; like any preserved attribute named after a reference end, its ids are not generated.",
   "`<expression xmi:idref=\"t1\" xmi:id=\"e\"/>` is `Unsupported` naming SACM23-XMI-019. `<expression href=\"other.xmi#t1\"/>` is `Unsupported` naming SACM23-XMI-027, and a tolerant read keeps it with SACM-XMI-007. No input gives `Unsupported` naming SACM23-BASE-009: the refusal-list entry and the template `SACM-XMI-014/expression-lang-string` are gone.",
   "`ReferenceEnd::Expression.name() == \"expression\"`; it is the last of the 17 entries of `ReferenceEnd::ALL`. It applies to every `ElementKind`, `bounds(kind) == Some((0, None))` for every kind, it serializes as `\"expression\"`, and `references(ReferenceEnd::Expression) == expressions()` for every element.",
   "In the valid fixture, `referrers(\"blade\")` is `[(blade_guarded, Element, 0), (n1, Expression, 0), (tv1, Expression, 0), (manual_pdf, Expression, 0)]` and `referrers(\"lid\")` is `[(blade_guarded, Element, 1), (c2, Expression, 0)]`. LIB-API-014 acceptance 3 (index equals a full scan) holds with the new end after every operation of the LIB-EDIT-002 set. With a dangling name expression `claim_1` read from a file, `CreateClaim` without an id does not generate `claim_1`.",
@@ -6626,7 +6626,24 @@ acceptance = [
 ]
 status = "verified"
 verification = "docs/verification/0064-diagnostic-templates.md"
-depends_on = ["LIB-API-017", "LIB-DIAG-001", "LIB-API-006"]
+depends_on = ["LIB-API-017", "LIB-DIAG-001", "LIB-API-006", "SACM23-BASE-009", "SACM23-VAL-009", "SACM23-VAL-017", "SACM23-TERM-003", "SACM23-XMI-028"]
+notes = "Library only: `sacm validate --format json` keeps its ADR 0023 shape and writes no `template` or `arguments` (LIB-CLI-002)."
+
+[[row]]
+id = "LIB-API-019"
+area = "API"
+milestone = "M5"
+title = "Record arguments read in any key order"
+requirement = "With `serde`, a refusal or diagnostic record whose `arguments` object gives its template's arguments in any key order reads as if given in the template's order; missing, extra or wrongly typed arguments are still refused, and serialization still writes the template's order (ADR 0030 amendment 5, which relaxes R11)."
+source = "The maintainer's decision, 2026-11-18 (M4 close): JSON passed through `serde_json::Value` without `preserve_order` must read, as an application such as Assurance Forge may store it; ADR 0030 amendment 5"
+kind = "api"
+status = "planned"
+depends_on = ["LIB-API-017", "LIB-API-018"]
+acceptance = [
+  "Every value of read-errors.json, write-errors.json and diagnostics.json, passed through `serde_json::Value` with its keys sorted, reads `==` to the original.",
+  "A record with an argument missing, extra, repeated or of the wrong kind is refused as before.",
+  "Serialization writes the arguments in the template's order.",
+]
 
 [[row]]
 id = "LIB-API-013"
