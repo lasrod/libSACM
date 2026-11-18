@@ -2,8 +2,10 @@
 //! amendment 3, sections Templates, R8, R9, R11, Records and Order).
 //!
 //! One input per diagnostic template of `docs/sacm/diagnostics.md`'s
-//! `## Message templates` table, 102 in all: 30 that `validate` gives and 72
-//! that a tolerant or a strict read gives. Each input is a document read,
+//! `## Message templates` table, 98 in all: 30 that `validate` gives and 68
+//! that a tolerant or a strict read gives (slice 0067 removes the four kept
+//! forms of unread kinds and ends: `SACM-XMI-014/interface-element-kept`,
+//! `/unread-kind-kept`, `/unread-kind-in-root-kept` and `/unread-root-kept`). Each input is a document read,
 //! written or validated through the public API. For each, the table states
 //! the template id, the step that gives the diagnostic, its severity, row and
 //! clause, its arguments by name, kind and value, the English pattern (as the
@@ -17,7 +19,7 @@
 //!   with the arguments is the message; every placeholder names an argument
 //!   of the right kind; the arguments are exactly those the pattern names, in
 //!   the order it first names them, so `row` is declared only where the
-//!   pattern names it, and then last; and the inputs are the 102 templates,
+//!   pattern names it, and then last; and the inputs are the 98 templates,
 //!   once each. [`sites`] adds an input for the other sites of the templates
 //!   that more than one site gives, checked the same way.
 //! - `lib_api_018_each_diagnostic_template_input_has_its_code_template_and_arguments`
@@ -48,8 +50,9 @@ const NS: &str = concat!(
 );
 
 /// The number of diagnostic templates (acceptance 1): 30 from validation and
-/// 72 from the reader.
-const DIAGNOSTIC_TEMPLATES: usize = 102;
+/// 68 from the reader, once slice 0067 removes the four kept forms of unread
+/// kinds and ends (ADR 0035 amendment 1).
+const DIAGNOSTIC_TEMPLATES: usize = 98;
 
 /// The number of them that `validate` gives.
 const VALIDATION_TEMPLATES: usize = 30;
@@ -822,7 +825,7 @@ fn validation_cases() -> Vec<Case> {
     ]
 }
 
-/// The 72 templates a read gives, in the design's order.
+/// The 68 templates a read gives, in the design's order.
 fn reader_cases() -> Vec<Case> {
     let mut cases = plain_reader_cases();
     cases.extend(preserved_cases());
@@ -1609,49 +1612,6 @@ fn kept_cases() -> Vec<Case> {
             ),
             "the XMI element \"xmi:Documentation\" in \"xmi:XMI\" is not read in this release, so it is kept as preserved content of the document, which a tolerant write writes back and a strict write refuses; SACM23-XMI-019 reads it",
         ),
-        // A TerminologyPackage's interface end, a TerminologyPackageInterface
-        // root and one in a nested AssuranceCasePackage: slice 0066 reads the
-        // ArgumentPackage kinds these three cases sampled (SACM23-ARG-014).
-        case(
-            "SACM-XMI-014/interface-element-kept",
-            tolerant(format!(
-                "<sacm:TerminologyPackage{NS} xmi:id=\"t\"><name content=\"t\"/>\
-                 <interface xmi:idref=\"p\"/></sacm:TerminologyPackage>"
-            )),
-            (WARNING, "LIB-API-011", None),
-            &[
-                ("element", t("interface")),
-                ("container", t("sacm:TerminologyPackage")),
-                ("class", t("TerminologyPackage")),
-                ("holder_class", t("TerminologyPackage")),
-                ("holder_id", t("t")),
-                ("row", t("SACM23-TERM-007")),
-            ],
-            concat!(
-                "the reference element {element:?} in the element {container:?} is the {class} end \"interface\", which is not read in this release",
-                ke!(),
-                reads!()
-            ),
-            "the reference element \"interface\" in the element \"sacm:TerminologyPackage\" is the TerminologyPackage end \"interface\", which is not read in this release, so it is kept as preserved content of the TerminologyPackage \"t\", which a tolerant write writes back and a strict write refuses; SACM23-TERM-007 reads it",
-        ),
-        case(
-            "SACM-XMI-014/unread-root-kept",
-            tolerant(wrapper(
-                "",
-                "<sacm:TerminologyPackageInterface xmi:id=\"i\"/>",
-            )),
-            (WARNING, "LIB-API-011", None),
-            &[
-                ("element", t("sacm:TerminologyPackageInterface")),
-                ("row", t("SACM23-TERM-007")),
-            ],
-            concat!(
-                "the root element {element:?} is not read in this release",
-                kd!(),
-                reads!()
-            ),
-            "the root element \"sacm:TerminologyPackageInterface\" is not read in this release, so it is kept as preserved content of the document, which a tolerant write writes back and a strict write refuses; SACM23-TERM-007 reads it",
-        ),
         case(
             "SACM-XMI-014/xmi-child-kept",
             tolerant(package(&claim("c1", "", "<xmi:Extension extender=\"v\"/>"))),
@@ -1725,53 +1685,6 @@ fn kept_cases() -> Vec<Case> {
                 reads!()
             ),
             "the element \"argumentElement\" in the root element \"sacm:ArgumentPackage\" is in reference form, a proxy of an element of the class ArgumentationElement, which is not read in this release, so it is kept as preserved content of the ArgumentPackage \"p\", which a tolerant write writes back and a strict write refuses; SACM23-XMI-019 reads it",
-        ),
-        case(
-            "SACM-XMI-014/unread-kind-kept",
-            tolerant(format!(
-                "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name content=\"case\"/>\
-                 <assuranceCasePackage xmi:id=\"sub\"><name content=\"sub\"/>\
-                 <terminologyPackage xmi:type=\"sacm:TerminologyPackageInterface\" xmi:id=\"i\"/>\
-                 </assuranceCasePackage></sacm:AssuranceCasePackage>"
-            )),
-            (WARNING, "LIB-API-011", None),
-            &[
-                ("class", t("TerminologyPackageInterface")),
-                ("element", t("terminologyPackage")),
-                ("container", t("assuranceCasePackage")),
-                ("holder_class", t("AssuranceCasePackage")),
-                ("holder_id", t("sub")),
-                ("row", t("SACM23-TERM-007")),
-            ],
-            concat!(
-                "the {class} {element:?} in the element {container:?} is not read in this release",
-                ke!(),
-                reads!()
-            ),
-            "the TerminologyPackageInterface \"terminologyPackage\" in the element \"assuranceCasePackage\" is not read in this release, so it is kept as preserved content of the AssuranceCasePackage \"sub\", which a tolerant write writes back and a strict write refuses; SACM23-TERM-007 reads it",
-        ),
-        case(
-            "SACM-XMI-014/unread-kind-in-root-kept",
-            tolerant(format!(
-                "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name content=\"case\"/>\
-                 <terminologyPackage xmi:type=\"sacm:TerminologyPackageInterface\" xmi:id=\"ti\"/>\
-                 </sacm:AssuranceCasePackage>"
-            )),
-            (WARNING, "LIB-API-011", None),
-            &[
-                ("class", t("TerminologyPackageInterface")),
-                ("element", t("terminologyPackage")),
-                ("container", t("sacm:AssuranceCasePackage")),
-                ("holder_class", t("AssuranceCasePackage")),
-                ("holder_id", t("case")),
-                ("row", t("SACM23-TERM-007")),
-            ],
-            concat!(
-                "the {class} {element:?} in the root element {container:?} is not read in this release",
-                ke!(),
-                reads!()
-            ),
-            "the TerminologyPackageInterface \"terminologyPackage\" in the root element \"sacm:AssuranceCasePackage\" is not read in this release, so it is kept as preserved content of the AssuranceCasePackage \"case\", which a tolerant write writes back and a strict write refuses; SACM23-TERM-007 reads it",
         ),
         // --- SACM-XMI-007 --------------------------------------------------------------
         case(
@@ -1978,7 +1891,7 @@ fn kept_cases() -> Vec<Case> {
 }
 
 /// More sites of the templates that more than one site gives, each checked
-/// as a case of the table is, but not counted among the 102.
+/// as a case of the table is, but not counted among the 98.
 #[expect(
     clippy::too_many_lines,
     reason = "one table, one row per site, reads best whole"
@@ -2368,7 +2281,7 @@ fn lib_api_018_each_diagnostic_template_input_gives_its_message() {
     );
     let mut cases = validation;
     cases.extend(reader_cases());
-    // The inputs are the 102 templates, once each.
+    // The inputs are the 98 templates, once each.
     let mut ids: Vec<&str> = cases.iter().map(|case| case.template).collect();
     let count = ids.len();
     ids.sort_unstable();

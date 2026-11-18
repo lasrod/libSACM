@@ -612,12 +612,14 @@ fn lib_compat_001_the_fatal_refusals_are_the_same_in_both_modes() {
                 claim("c1", "", "")
             )),
         ),
+        // An xmi:Extension child of the root: a TerminologyPackageInterface
+        // child until slice 0067 read it (SACM23-TERM-007).
         (
-            "a repeat after a TerminologyPackageInterface child",
+            "a repeat after an xmi:Extension child",
             format!(
                 "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name content=\"C\"/>\
-                 <terminologyPackage xmi:type=\"sacm:TerminologyPackageInterface\" xmi:id=\"t\">\
-                 <name content=\"T\"/></terminologyPackage>\
+                 <xmi:Extension/>\
+                 <terminologyPackage xmi:id=\"t\"><name content=\"T\"/></terminologyPackage>\
                  <argumentPackage xmi:id=\"t\"><name content=\"A\"/></argumentPackage>\
                  </sacm:AssuranceCasePackage>"
             ),
@@ -918,22 +920,20 @@ fn lib_compat_001_a_tolerant_read_reports_no_error() {
              </xmi:XMI>"
         )
     };
+    // Until slice 0067 this list began with a TerminologyPackageInterface
+    // root, kept by the document: "xmi:Documentation in the wrapper" below is
+    // that case now, as no root is kept as document content (ADR 0035
+    // amendment 1).
     for (what, input) in [
+        // An xmi:Extension child of an ArtifactPackage root: slice 0066 reads
+        // the ArtifactPackageInterface this case first sampled
+        // (SACM23-ART-012), and slice 0067 the TerminologyPackageBinding it
+        // then sampled (SACM23-TERM-008).
         (
-            "a TerminologyPackageInterface root",
-            format!(
-                "<sacm:TerminologyPackageInterface{NS} xmi:id=\"t\"><name content=\"T\"/>\
-                 </sacm:TerminologyPackageInterface>"
-            ),
-        ),
-        // A TerminologyPackageBinding: slice 0066 reads the
-        // ArtifactPackageInterface this case first sampled (SACM23-ART-012).
-        (
-            "a TerminologyPackageBinding in an ArtifactPackage",
+            "an xmi:Extension in an ArtifactPackage",
             format!(
                 "<sacm:ArtifactPackage{NS} xmi:id=\"a\"><name content=\"A\"/>\
-                 <artifactElement xmi:type=\"sacm:TerminologyPackageBinding\" xmi:id=\"x\">\
-                 <name content=\"X\"/></artifactElement></sacm:ArtifactPackage>"
+                 <xmi:Extension/></sacm:ArtifactPackage>"
             ),
         ),
         (

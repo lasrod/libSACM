@@ -1,8 +1,8 @@
 //! Preserved content: what an element read from XMI, or the document outside
 //! its elements, holds as written instead of read: content that is not SACM
 //! 2.3 where it stands (LIB-COMPAT-003, ADR 0033), or, in tolerant mode, a
-//! construct a strict read refuses, such as a value that is no literal or an
-//! element of a kind not read yet (ADR 0035).
+//! construct a strict read refuses, such as a value that is no literal or XMI
+//! metadata not read yet, such as `xmi:uuid` (ADR 0035).
 //!
 //! Only [`xmi::read`](crate::xmi::read) makes it; the public API sees it only
 //! as [`SacmElement::has_preserved_content`](super::SacmElement::has_preserved_content)

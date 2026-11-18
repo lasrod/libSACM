@@ -2,7 +2,7 @@
 
 - Status: accepted (the maintainer, 2026-11-18).
 - Date: 2026-11-18
-- Rows: SACM23-ARG-014, SACM23-ARG-015, SACM23-ART-012, SACM23-ART-013, LIB-EDIT-019
+- Rows: SACM23-ARG-014, SACM23-ARG-015, SACM23-ART-012, SACM23-ART-013, LIB-EDIT-019; SACM23-TERM-007, SACM23-TERM-008, SACM23-AC-002, SACM23-AC-003 (slice 0067)
 - Related: ADR 0026, ADR 0029 amendment 1, ADR 0031, ADR 0034 amendment 2, ADR 0036; the M5 decisions Q1, Q6, Q7 and Q9 (the maintainer, 2026-11-18)
 
 ## Context

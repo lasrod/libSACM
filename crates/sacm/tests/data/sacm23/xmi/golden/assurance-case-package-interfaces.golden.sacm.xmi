@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="system">
+  <name lang="en" content="Vehicle system case" />
+  <assuranceCasePackage xmi:id="braking_case" interface="braking_case_api">
+    <name lang="en" content="Braking case" />
+    <argumentPackage xmi:id="braking" interface="braking_api">
+      <name lang="en" content="Braking argument" />
+      <argumentElement xmi:type="sacm:Claim" xmi:id="braking_safe">
+        <name lang="en" content="Braking is acceptably safe" />
+      </argumentElement>
+      <argumentElement xmi:type="sacm:ArgumentPackageInterface" xmi:id="braking_api" implements="braking">
+        <name lang="en" content="Braking interface" />
+        <argumentElement xmi:type="sacm:Claim" xmi:id="braking_safe_cited" isCitation="true" citedElement="braking_safe" assertionDeclaration="asCited">
+          <name lang="en" content="Braking is acceptably safe" />
+        </argumentElement>
+      </argumentElement>
+    </argumentPackage>
+    <assuranceCasePackage xmi:type="sacm:AssuranceCasePackageInterface" xmi:id="braking_case_api" implements="braking_case">
+      <name lang="en" content="Braking case interface" />
+      <argumentPackage xmi:type="sacm:ArgumentPackageInterface" xmi:id="braking_api_cited" isCitation="true" citedElement="braking_api" implements="braking">
+        <name lang="en" content="Braking interface" />
+      </argumentPackage>
+    </assuranceCasePackage>
+  </assuranceCasePackage>
+  <assuranceCasePackage xmi:id="vehicle_case" interface="vehicle_case_api">
+    <name lang="en" content="Vehicle case" />
+    <assuranceCasePackage xmi:type="sacm:AssuranceCasePackageInterface" xmi:id="vehicle_case_api" implements="vehicle_case">
+      <name lang="en" content="Vehicle case interface" />
+    </assuranceCasePackage>
+  </assuranceCasePackage>
+  <assuranceCasePackage xmi:type="sacm:AssuranceCasePackageBinding" xmi:id="binding" participantPackage="braking_case_api vehicle_case_api">
+    <name lang="en" content="The braking case supports the vehicle case" />
+  </assuranceCasePackage>
+</sacm:AssuranceCasePackage>

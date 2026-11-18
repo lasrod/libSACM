@@ -13,8 +13,8 @@ assurance cases as standard XMI.
 Milestones M0 (foundation), M1 (a minimal editable vertical slice) and M2 (base model and
 argumentation) are done, M3's artifact model is complete, and the first release, 0.1.0,
 was published on 2026-11-17. Today `sacm::xmi::read` reads `AssuranceCasePackage`, `ArgumentPackage`,
-`ArtifactPackage` and `TerminologyPackage` roots, the interfaces and bindings of the
-argument and artifact packages, and, in them, nested packages, the
+`ArtifactPackage` and `TerminologyPackage` roots, the interfaces and bindings of every
+package, as roots and children, and, in them, nested packages, the
 argumentation elements (Claim, ArgumentReasoning, ArtifactReference, ArgumentGroup and the
 five asserted relationships), the artifact elements Property, Technique, Participant,
 ArtifactGroup, Artifact, Event, Resource, Activity and ArtifactAssetRelationship, and the
@@ -24,8 +24,7 @@ values. A name, or a value of a content, key or location, may be an
 `ExpressionLangString` (§8.4) that links an ExpressionElement. Content that is not SACM 2.3 is kept as preserved content (SACM-XMI-003). A
 tolerant read, the default, opens
 every well-formed file with SACM 2.3 package roots: what a strict read refuses, such as a
-value that is no literal or conforming content not read yet (a Terminology or Assurance
-Case interface or binding),
+value that is no literal or conforming content not read yet (such as XMI metadata),
 it keeps as preserved content with a Warning (SACM-XMI-014 for content not read
 yet); and it reads the names formal/23-05-08 and ptc/22-03-13 spell differently
 (`ArtifactAssertedRelationship`, an Event's `occurece`, `argumentationElement` and
@@ -38,9 +37,8 @@ deletes them atomically, `sacm::validation::validate` checks names, ids, gids, c
 references, terms' values, ExpressionLangStrings, concrete Expressions and the
 argumentation and artifact rules, and
 `sacm::compare::semantic_compare` lists differences. Undo and redo are the application's, by whole-document copies, as the `edit`
-docs show. The Argumentation and Artifact interfaces and bindings are read, written and
-edited; those of the Terminology and Assurance Case packages, and the other validation
-rules, are not built yet. The [functionality matrix](docs/matrix/functionality-matrix.md) shows
+docs show. The interfaces and bindings of every package are read, written and edited;
+their validation rules are not built yet. The [functionality matrix](docs/matrix/functionality-matrix.md) shows
 what is verified; nothing else is claimed.
 
 ## What SACM is

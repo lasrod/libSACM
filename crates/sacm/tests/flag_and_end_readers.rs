@@ -73,27 +73,37 @@ fn owns(end: ReferenceEnd, kind: ElementKind) -> bool {
         ReferenceEnd::Element => kind == Expression,
         ReferenceEnd::Origin => kind == Term,
         ReferenceEnd::TerminologyGroupMember => kind == TerminologyGroup,
-        // The ends of slice 0066 (ptc/22-03-13; §11.5, §11.6, §12.4, §12.5):
-        // a package's interface, an interface's implements, a binding's
-        // participants, on the Argumentation and Artifact kinds only (the
-        // Terminology and AssuranceCase pairs are slice 0067's).
+        // The ends of slices 0066 and 0067 (ptc/22-03-13; §9.2 to §9.4,
+        // §10.5, §10.6, §11.5, §11.6, §12.4, §12.5): a package's interface, an
+        // interface's implements, a binding's participants, on the 12 package
+        // kinds, the 4 interface kinds and the 4 binding kinds.
         ReferenceEnd::Interface => [
+            ElementKind::AssuranceCasePackage,
+            ElementKind::AssuranceCasePackageInterface,
+            ElementKind::AssuranceCasePackageBinding,
             ElementKind::ArgumentPackage,
             ElementKind::ArgumentPackageInterface,
             ElementKind::ArgumentPackageBinding,
             ElementKind::ArtifactPackage,
             ElementKind::ArtifactPackageInterface,
             ElementKind::ArtifactPackageBinding,
+            ElementKind::TerminologyPackage,
+            ElementKind::TerminologyPackageInterface,
+            ElementKind::TerminologyPackageBinding,
         ]
         .contains(&kind),
         ReferenceEnd::Implements => [
+            ElementKind::AssuranceCasePackageInterface,
             ElementKind::ArgumentPackageInterface,
             ElementKind::ArtifactPackageInterface,
+            ElementKind::TerminologyPackageInterface,
         ]
         .contains(&kind),
         ReferenceEnd::ParticipantPackage => [
+            ElementKind::AssuranceCasePackageBinding,
             ElementKind::ArgumentPackageBinding,
             ElementKind::ArtifactPackageBinding,
+            ElementKind::TerminologyPackageBinding,
         ]
         .contains(&kind),
         other => panic!("{ROW}: an end this test does not know: {other:?}"),
@@ -120,11 +130,12 @@ fn standard_bounds(end: ReferenceEnd) -> (usize, Option<usize>) {
         ReferenceEnd::Source | ReferenceEnd::ArtifactSource | ReferenceEnd::ArtifactTarget => {
             (1, None)
         }
-        // §11.6, §12.5 `implements[1]` (slice 0066).
+        // §9.3, §10.5, §11.6, §12.5 `implements[1]` (slices 0066, 0067).
         ReferenceEnd::Target | ReferenceEnd::Implements => (1, Some(1)),
-        // §11.5, §12.4 `participantPackage[2..*]` (slice 0066).
+        // §9.4, §11.5, §12.4 and ptc/22-03-13 (§10.6) `participantPackage[2..*]`
+        // (slices 0066, 0067).
         ReferenceEnd::ParticipantPackage => (2, None),
-        // ptc/22-03-13 `interface[0..*]` (slice 0066).
+        // §9.2 and ptc/22-03-13 `interface[0..*]` (slices 0066, 0067).
         ReferenceEnd::Interface
         | ReferenceEnd::MetaClaim
         | ReferenceEnd::ReferencedArtifactElement

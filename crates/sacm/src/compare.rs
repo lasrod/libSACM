@@ -499,7 +499,9 @@ pub enum Difference {
         /// The member ids in the right document, in order.
         right: Vec<ElementId>,
     },
-    /// A package's interfaces, its `interface` ids (ptc/22-03-13,
+    /// A package's interfaces, its `interface` ids, on a package of any
+    /// family: Assurance Case (§9.2), Terminology, Argumentation or Artifact
+    /// (ptc/22-03-13,
     /// [`SacmElement::interfaces`](crate::model::SacmElement::interfaces)),
     /// differ on each side. Compared in order and with repeats.
     #[doc(alias = "interface")]
@@ -511,7 +513,8 @@ pub enum Difference {
         /// The interface ids in the right document, in order.
         right: Vec<ElementId>,
     },
-    /// An interface's `implements` (SACM 2.3 §11.6, §12.5,
+    /// An interface's `implements`, on an interface of any package family
+    /// (SACM 2.3 §9.3, §10.5, §11.6, §12.5,
     /// [`SacmElement::implements`](crate::model::SacmElement::implements))
     /// differs on each side; `None` is no `implements`.
     Implements {
@@ -522,8 +525,9 @@ pub enum Difference {
         /// The package's id in the right document, or `None`.
         right: Option<ElementId>,
     },
-    /// A binding's participants, its `participantPackage` ids (SACM 2.3
-    /// §11.5, §12.4,
+    /// A binding's participants, its `participantPackage` ids, on a binding
+    /// of any package family (SACM 2.3 §9.4, §11.5, §12.4; ptc/22-03-13 for
+    /// a `TerminologyPackageBinding`,
     /// [`SacmElement::participant_packages`](crate::model::SacmElement::participant_packages)),
     /// differ on each side. Compared in order and with repeats.
     #[doc(alias = "participantPackage")]
@@ -812,7 +816,7 @@ pub enum Difference {
     /// The preserved content outside every element differs on each side, or
     /// one side holds none (ADR 0035 D3): what [`xmi::read`](crate::xmi::read)
     /// kept of the `xmi:XMI` element besides its roots, such as its
-    /// attributes, an `xmi:Documentation` or a root of a kind not read yet.
+    /// attributes or an `xmi:Documentation`.
     ///
     /// It is compared as [`PreservedContent`](Self::PreservedContent) is,
     /// with where each child stands among the roots.

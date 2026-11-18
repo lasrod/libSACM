@@ -79,6 +79,11 @@ use sacm::edit::{
     CreateArgumentPackageBinding, CreateArgumentPackageInterface, CreateArtifactPackageBinding,
     CreateArtifactPackageInterface,
 };
+// The creates of slice 0067 (SACM23-AC-002, -003, SACM23-TERM-007, -008; ADR 0039).
+use sacm::edit::{
+    CreateAssuranceCasePackageBinding, CreateAssuranceCasePackageInterface,
+    CreateTerminologyPackageBinding, CreateTerminologyPackageInterface,
+};
 use sacm::model::{
     AssertionDeclaration, Document, ElementId, ElementKind, Flag, LangString, MultiLangString,
     ReferenceEnd,
@@ -104,6 +109,10 @@ const ARG_014: &str = "SACM23-ARG-014";
 const ARG_015: &str = "SACM23-ARG-015";
 const ART_012: &str = "SACM23-ART-012";
 const ART_013: &str = "SACM23-ART-013";
+const AC_002: &str = "SACM23-AC-002";
+const AC_003: &str = "SACM23-AC-003";
+const TERM_007: &str = "SACM23-TERM-007";
+const TERM_008: &str = "SACM23-TERM-008";
 
 /// The directory of the golden JSON files.
 const GOLDEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/golden/serde");
@@ -114,10 +123,15 @@ const GOLDEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/golden/ser
 /// `CreateArtifactAssetRelationship`, and `SetValue` and
 /// `SetExternalReference` after `SetEndTime` (ADR 0034 amendment 3). Slice
 /// 0066 adds the interface and binding creates after `CreateArgumentPackage`
-/// and `CreateArtifactPackage` (ADR 0039).
-const OPERATION_NAME_COUNT: usize = 53;
+/// and `CreateArtifactPackage` (ADR 0039), and slice 0067 those of the
+/// Assurance Case and Terminology packages after `CreateAssuranceCasePackage`
+/// and `CreateTerminologyGroup`, after each package's existing samples.
+const OPERATION_NAME_COUNT: usize = 57;
 const OPERATION_NAMES: [&str; OPERATION_NAME_COUNT] = [
     "CreateAssuranceCasePackage",
+    // The creates of slice 0067 (SACM23-AC-002, -003).
+    "CreateAssuranceCasePackageInterface",
+    "CreateAssuranceCasePackageBinding",
     "CreateArgumentPackage",
     // The creates of slice 0066 (SACM23-ARG-014, -015).
     "CreateArgumentPackageInterface",
@@ -154,6 +168,9 @@ const OPERATION_NAMES: [&str; OPERATION_NAME_COUNT] = [
     "CreateTerm",
     "CreateExpression",
     "CreateTerminologyGroup",
+    // The creates of slice 0067 (SACM23-TERM-007, -008).
+    "CreateTerminologyPackageInterface",
+    "CreateTerminologyPackageBinding",
     "SetName",
     "SetGid",
     "SetFlag",
@@ -176,9 +193,9 @@ const OPERATION_NAMES: [&str; OPERATION_NAME_COUNT] = [
     "DeleteElement",
 ];
 
-/// The creates of [`OPERATION_NAMES`]: 34 with the five of slice 0062 and
-/// the four of slice 0066.
-const CREATE_COUNT: usize = 34;
+/// The creates of [`OPERATION_NAMES`]: 38 with the five of slice 0062, the
+/// four of slice 0066 and the four of slice 0067.
+const CREATE_COUNT: usize = 38;
 
 /// Every `EditError` variant of this release, with its catalog code, in the
 /// order of `edit-errors.json`.
@@ -630,7 +647,7 @@ fn operation_samples() -> Vec<Operation> {
 
 /// The package and Claim creates of [`operation_samples`].
 fn package_and_claim_samples() -> Vec<Operation> {
-    vec![
+    let mut samples: Vec<Operation> = vec![
         CreateAssuranceCasePackage::root(en("Safety case")).into(),
         CreateAssuranceCasePackage::root(en("Safety case"))
             .with_id("case")
@@ -639,6 +656,9 @@ fn package_and_claim_samples() -> Vec<Operation> {
         CreateAssuranceCasePackage::new("case", en("Subsystem"))
             .with_id("sub")
             .into(),
+    ];
+    samples.extend(assurance_case_interface_samples());
+    let rest: Vec<Operation> = vec![
         CreateArgumentPackage::root(en("Arguments")).into(),
         CreateArgumentPackage::root(en("Arguments"))
             .with_id("arguments")
@@ -651,6 +671,64 @@ fn package_and_claim_samples() -> Vec<Operation> {
         CreateClaim::new("arguments", LangString::default())
             .with_id("c1")
             .into(),
+    ];
+    samples.extend(rest);
+    samples
+}
+
+/// The Assurance Case creates of slice 0067 (SACM23-AC-002, -003; ADR 0039
+/// D4), in the shapes of [`argument_interface_samples`].
+fn assurance_case_interface_samples() -> Vec<Operation> {
+    vec![
+        CreateAssuranceCasePackageInterface::root(en("Braking case interface"), "braking_case")
+            .with_id("braking_case_api")
+            .into(),
+        CreateAssuranceCasePackageInterface::new(
+            "braking_case",
+            en("Braking case interface"),
+            "braking_case",
+        )
+        .into(),
+        CreateAssuranceCasePackageBinding::root(
+            en("The braking case supports the vehicle case"),
+            ["braking_case_api", "vehicle_case_api"],
+        )
+        .with_id("binding")
+        .into(),
+        CreateAssuranceCasePackageBinding::new(
+            "system",
+            en("The braking case supports the vehicle case"),
+            ["braking_case_api", "vehicle_case_api"],
+        )
+        .into(),
+    ]
+}
+
+/// The Terminology creates of slice 0067 (SACM23-TERM-007, -008; ADR 0039
+/// D4), in the shapes of [`argument_interface_samples`].
+fn terminology_interface_samples() -> Vec<Operation> {
+    vec![
+        CreateTerminologyPackageInterface::root(en("Hazard terminology interface"), "hazard_terms")
+            .with_id("hazard_terms_api")
+            .into(),
+        CreateTerminologyPackageInterface::new(
+            "hazard_terms",
+            en("Hazard terminology interface"),
+            "hazard_terms",
+        )
+        .into(),
+        CreateTerminologyPackageBinding::root(
+            en("Hazard terms map to design terms"),
+            ["hazard_terms_api", "design_terms_api"],
+        )
+        .with_id("binding")
+        .into(),
+        CreateTerminologyPackageBinding::new(
+            "case",
+            en("Hazard terms map to design terms"),
+            ["hazard_terms_api", "design_terms_api"],
+        )
+        .into(),
     ]
 }
 
@@ -858,9 +936,10 @@ fn artifact_samples() -> Vec<Operation> {
 /// The creates of slice 0062 (SACM23-TERM-001 to -006; ADR 0034 amendment
 /// 3), each without and with its id and values: a TerminologyPackage as a
 /// root and in `case`, then a Category, a Term, an Expression and a
-/// `TerminologyGroup` in `terms`.
+/// `TerminologyGroup` in `terms`; then the interface and binding creates of
+/// slice 0067.
 fn terminology_samples() -> Vec<Operation> {
-    vec![
+    let mut samples: Vec<Operation> = vec![
         CreateTerminologyPackage::root(en("Blender terminology")).into(),
         CreateTerminologyPackage::new("case", en("Blender terminology"))
             .with_id("terms")
@@ -897,7 +976,9 @@ fn terminology_samples() -> Vec<Operation> {
             .with_id("reviewed")
             .with_group_members(["blade", "lid"])
             .into(),
-    ]
+    ];
+    samples.extend(terminology_interface_samples());
+    samples
 }
 
 /// The operations of [`operation_samples`] that change an element.
@@ -4278,5 +4359,89 @@ fn sacm23_art_013_create_binding_serializes_to_the_golden_json() {
             ),
         ],
         r#","participant_packages":["tests_api","requirements_api"]"#,
+    );
+}
+
+#[test]
+fn sacm23_ac_002_create_interface_serializes_to_the_golden_json() {
+    assert_serde::<CreateAssuranceCasePackageInterface>();
+    let name = || en("Braking case interface");
+    assert_create_json(
+        AC_002,
+        &[
+            (
+                CreateAssuranceCasePackageInterface::root(name(), "braking_case")
+                    .with_id("braking_case_api"),
+                r#"{"type":"CreateAssuranceCasePackageInterface","parent":null,"id":"braking_case_api","name":{"lang":"en","content":"Braking case interface"},"implements":"braking_case"}"#,
+            ),
+            (
+                CreateAssuranceCasePackageInterface::new("braking_case", name(), "braking_case"),
+                r#"{"type":"CreateAssuranceCasePackageInterface","parent":"braking_case","id":null,"name":{"lang":"en","content":"Braking case interface"},"implements":"braking_case"}"#,
+            ),
+        ],
+        r#","implements":"braking_case""#,
+    );
+}
+
+#[test]
+fn sacm23_ac_003_create_binding_serializes_to_the_golden_json() {
+    assert_serde::<CreateAssuranceCasePackageBinding>();
+    let name = || en("The braking case supports the vehicle case");
+    let participants = ["braking_case_api", "vehicle_case_api"];
+    assert_create_json(
+        AC_003,
+        &[
+            (
+                CreateAssuranceCasePackageBinding::root(name(), participants).with_id("binding"),
+                r#"{"type":"CreateAssuranceCasePackageBinding","parent":null,"id":"binding","name":{"lang":"en","content":"The braking case supports the vehicle case"},"participant_packages":["braking_case_api","vehicle_case_api"]}"#,
+            ),
+            (
+                CreateAssuranceCasePackageBinding::new("system", name(), participants),
+                r#"{"type":"CreateAssuranceCasePackageBinding","parent":"system","id":null,"name":{"lang":"en","content":"The braking case supports the vehicle case"},"participant_packages":["braking_case_api","vehicle_case_api"]}"#,
+            ),
+        ],
+        r#","participant_packages":["braking_case_api","vehicle_case_api"]"#,
+    );
+}
+
+#[test]
+fn sacm23_term_007_create_interface_serializes_to_the_golden_json() {
+    assert_serde::<CreateTerminologyPackageInterface>();
+    let name = || en("Hazard terminology interface");
+    assert_create_json(
+        TERM_007,
+        &[
+            (
+                CreateTerminologyPackageInterface::root(name(), "hazard_terms")
+                    .with_id("hazard_terms_api"),
+                r#"{"type":"CreateTerminologyPackageInterface","parent":null,"id":"hazard_terms_api","name":{"lang":"en","content":"Hazard terminology interface"},"implements":"hazard_terms"}"#,
+            ),
+            (
+                CreateTerminologyPackageInterface::new("hazard_terms", name(), "hazard_terms"),
+                r#"{"type":"CreateTerminologyPackageInterface","parent":"hazard_terms","id":null,"name":{"lang":"en","content":"Hazard terminology interface"},"implements":"hazard_terms"}"#,
+            ),
+        ],
+        r#","implements":"hazard_terms""#,
+    );
+}
+
+#[test]
+fn sacm23_term_008_create_binding_serializes_to_the_golden_json() {
+    assert_serde::<CreateTerminologyPackageBinding>();
+    let name = || en("Hazard terms map to design terms");
+    let participants = ["hazard_terms_api", "design_terms_api"];
+    assert_create_json(
+        TERM_008,
+        &[
+            (
+                CreateTerminologyPackageBinding::root(name(), participants).with_id("binding"),
+                r#"{"type":"CreateTerminologyPackageBinding","parent":null,"id":"binding","name":{"lang":"en","content":"Hazard terms map to design terms"},"participant_packages":["hazard_terms_api","design_terms_api"]}"#,
+            ),
+            (
+                CreateTerminologyPackageBinding::new("case", name(), participants),
+                r#"{"type":"CreateTerminologyPackageBinding","parent":"case","id":null,"name":{"lang":"en","content":"Hazard terms map to design terms"},"participant_packages":["hazard_terms_api","design_terms_api"]}"#,
+            ),
+        ],
+        r#","participant_packages":["hazard_terms_api","design_terms_api"]"#,
     );
 }

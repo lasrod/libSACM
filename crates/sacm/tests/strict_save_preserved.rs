@@ -260,15 +260,11 @@ fn sacm23_xmi_008_only_document_level_content_is_refused_with_no_elements() {
             "an xmi:Documentation beside the root",
             wrapper("", &format!("<xmi:Documentation/>{root}")),
         ),
+        // After the root: a TerminologyPackageInterface root there until
+        // slice 0067 read it (SACM23-TERM-007; ADR 0035 amendment 1).
         (
-            "a TerminologyPackageInterface root beside the root",
-            wrapper(
-                "",
-                &format!(
-                    "{root}<sacm:TerminologyPackageInterface xmi:id=\"t\"><name content=\"T\"/>\
-                     </sacm:TerminologyPackageInterface>"
-                ),
-            ),
+            "an xmi:Documentation after the root",
+            wrapper("", &format!("{root}<xmi:Documentation/>")),
         ),
     ] {
         let doc = read_in(what, Mode::Tolerant, input.as_bytes());

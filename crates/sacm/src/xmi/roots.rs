@@ -51,8 +51,9 @@
 //! kept because it is no literal counts as its property's occurrence, so a
 //! later one is a repeat. An empty `xmi:id` is read as none, with a
 //! generated id for an element. What `xmi:XMI` carries and holds besides its
-//! roots, and a root of a kind not read, is kept as the document's own
-//! preserved content, placed among the roots (ADR 0035 D3).
+//! roots is kept as the document's own preserved content, placed among the
+//! roots (ADR 0035 D3); every package kind is read as a root (ADR 0035
+//! amendment 1).
 //!
 //! Before pass 2, every `xmi:id` value in the input is collected, so that the
 //! id generated for an element without one is no id written anywhere in the
@@ -461,8 +462,6 @@ enum ElementReason {
     UnreadAttribute,
     /// SACM-XMI-014/nested-xmi-element.
     NestedXmiElement,
-    /// SACM-XMI-014/interface-element.
-    InterfaceElement,
     /// SACM-XMI-014/xmi-child.
     XmiChild,
     /// SACM-XMI-014/xmi-child-of-root.
@@ -471,10 +470,6 @@ enum ElementReason {
     ProxyChild,
     /// SACM-XMI-014/proxy-child-of-root.
     ProxyChildOfRoot,
-    /// SACM-XMI-014/unread-kind.
-    UnreadKind,
-    /// SACM-XMI-014/unread-kind-in-root.
-    UnreadKindInRoot,
     /// SACM-XMI-007/unread-attribute.
     ExternalAttribute,
     /// SACM-XMI-007/proxy-child.
@@ -488,16 +483,13 @@ enum ElementReason {
 impl ElementReason {
     /// Every reason.
     #[cfg(test)]
-    const ALL: [Self; 13] = [
+    const ALL: [Self; 10] = [
         Self::UnreadAttribute,
         Self::NestedXmiElement,
-        Self::InterfaceElement,
         Self::XmiChild,
         Self::XmiChildOfRoot,
         Self::ProxyChild,
         Self::ProxyChildOfRoot,
-        Self::UnreadKind,
-        Self::UnreadKindInRoot,
         Self::ExternalAttribute,
         Self::ExternalProxyChild,
         Self::ExternalProxyChildOfRoot,
@@ -509,13 +501,10 @@ impl ElementReason {
         match self {
             Self::UnreadAttribute => &template::XMI_014_UNREAD_ATTRIBUTE,
             Self::NestedXmiElement => &template::XMI_014_NESTED_XMI_ELEMENT,
-            Self::InterfaceElement => &template::XMI_014_INTERFACE_ELEMENT,
             Self::XmiChild => &template::XMI_014_XMI_CHILD,
             Self::XmiChildOfRoot => &template::XMI_014_XMI_CHILD_OF_ROOT,
             Self::ProxyChild => &template::XMI_014_PROXY_CHILD,
             Self::ProxyChildOfRoot => &template::XMI_014_PROXY_CHILD_OF_ROOT,
-            Self::UnreadKind => &template::XMI_014_UNREAD_KIND,
-            Self::UnreadKindInRoot => &template::XMI_014_UNREAD_KIND_IN_ROOT,
             Self::ExternalAttribute => &template::XMI_007_UNREAD_ATTRIBUTE,
             Self::ExternalProxyChild => &template::XMI_007_PROXY_CHILD,
             Self::ExternalProxyChildOfRoot => &template::XMI_007_PROXY_CHILD_OF_ROOT,
@@ -529,13 +518,10 @@ impl ElementReason {
         match self {
             Self::UnreadAttribute => &template::XMI_014_UNREAD_ATTRIBUTE_KEPT,
             Self::NestedXmiElement => &template::XMI_014_NESTED_XMI_ELEMENT_KEPT,
-            Self::InterfaceElement => &template::XMI_014_INTERFACE_ELEMENT_KEPT,
             Self::XmiChild => &template::XMI_014_XMI_CHILD_KEPT,
             Self::XmiChildOfRoot => &template::XMI_014_XMI_CHILD_OF_ROOT_KEPT,
             Self::ProxyChild => &template::XMI_014_PROXY_CHILD_KEPT,
             Self::ProxyChildOfRoot => &template::XMI_014_PROXY_CHILD_OF_ROOT_KEPT,
-            Self::UnreadKind => &template::XMI_014_UNREAD_KIND_KEPT,
-            Self::UnreadKindInRoot => &template::XMI_014_UNREAD_KIND_IN_ROOT_KEPT,
             Self::ExternalAttribute => &template::XMI_007_UNREAD_ATTRIBUTE_KEPT,
             Self::ExternalProxyChild => &template::XMI_007_PROXY_CHILD_KEPT,
             Self::ExternalProxyChildOfRoot => &template::XMI_007_PROXY_CHILD_OF_ROOT_KEPT,
@@ -553,8 +539,6 @@ enum DocumentReason {
     UnreadAttribute,
     /// SACM-XMI-014/nested-xmi-element, in the XMI element.
     NestedXmiElement,
-    /// SACM-XMI-014/unread-root.
-    UnreadRoot,
     /// SACM-XMI-003/unread-attribute, on the XMI element.
     WrapperAttribute,
     /// SACM-XMI-003/wrapper-text.
@@ -564,10 +548,9 @@ enum DocumentReason {
 impl DocumentReason {
     /// Every reason.
     #[cfg(test)]
-    const ALL: [Self; 5] = [
+    const ALL: [Self; 4] = [
         Self::UnreadAttribute,
         Self::NestedXmiElement,
-        Self::UnreadRoot,
         Self::WrapperAttribute,
         Self::WrapperText,
     ];
@@ -577,7 +560,6 @@ impl DocumentReason {
         match self {
             Self::UnreadAttribute => &template::XMI_014_UNREAD_ATTRIBUTE,
             Self::NestedXmiElement => &template::XMI_014_NESTED_XMI_ELEMENT,
-            Self::UnreadRoot => &template::XMI_014_UNREAD_ROOT,
             Self::WrapperAttribute => &template::XMI_003_UNREAD_ATTRIBUTE,
             Self::WrapperText => &template::XMI_003_WRAPPER_TEXT,
         }
@@ -589,7 +571,6 @@ impl DocumentReason {
         match self {
             Self::UnreadAttribute => &template::XMI_014_UNREAD_ATTRIBUTE_KEPT_BY_DOCUMENT,
             Self::NestedXmiElement => &template::XMI_014_NESTED_XMI_ELEMENT_KEPT_BY_DOCUMENT,
-            Self::UnreadRoot => &template::XMI_014_UNREAD_ROOT_KEPT,
             Self::WrapperAttribute => &template::XMI_003_WRAPPER_ATTRIBUTE_KEPT,
             Self::WrapperText => &template::XMI_003_WRAPPER_TEXT_KEPT,
         }
@@ -2791,9 +2772,8 @@ impl Shorthand {
 
 /// Pass 2 for one root: checks it and its tree in document order, then adds
 /// it to `document` as a parentless element, with its tree under it in
-/// document order (ADR 0010 D2). A root of a kind this release does not
-/// read, a tolerant read keeps whole in `outside`, the document's preserved
-/// content (ADR 0035 D3). The tree is walked with a stack, not by recursion,
+/// document order (ADR 0010 D2); `outside`, the document's preserved
+/// content, counts it among the roots (ADR 0035 D3). The tree is walked with a stack, not by recursion,
 /// so a deep document cannot exhaust the call stack.
 fn read_root<'a>(
     found: &mut Findings<'_, 'a>,
@@ -2802,9 +2782,7 @@ fn read_root<'a>(
     outside: &mut Kept<DocumentHolder>,
 ) -> Result<(), ReadError> {
     let text = found.text;
-    let Some(first) = root_start(found, root, outside)? else {
-        return Ok(());
-    };
+    let first = root_start(found, root)?;
     // The elements whose content is being read, innermost last, each with
     // its node and the rest of its content, and the elements read whole.
     // Content is, on a ModelElement, one `name` (SACM23-XMI-012) and on an
@@ -2908,15 +2886,6 @@ fn read_part<'a>(
     let at = node.range().start;
     if read_spelled_part(found, element, holder, node)? {
         return Ok(true);
-    }
-    if let Some(unread) = interface_end(element.kind).filter(|_| is_value_element(node, INTERFACE))
-    {
-        let arguments = text_arguments(&[
-            ("element", &written_name(text, node)),
-            ("container", &element.written),
-            ("class", element.kind.name()),
-        ]);
-        return Err(found.unread_fault(at, unread, ElementReason::InterfaceElement, arguments));
     }
     // Each part is checked whole first, then against the occurrences before
     // it; one kept in tolerant mode for a value that is no literal counts
@@ -3130,32 +3099,6 @@ fn unheld(element: &Pending, error: &str) -> Details {
     )
 }
 
-/// The reference end `interface` of a package (ptc/22-03-13
-/// `AssuranceCasePackage::interface`, `TerminologyPackage::interface`),
-/// which conforms and is read with the package interfaces.
-const INTERFACE: &str = "interface";
-
-/// The entry of the `interface` end of an element of `kind`, if its class
-/// has one this release does not read yet: an AssuranceCasePackage's names
-/// an `AssuranceCasePackageInterface` (SACM23-AC-002), and a
-/// TerminologyPackage's a `TerminologyPackageInterface` (SACM23-TERM-007).
-/// It conforms, so it is refused, not preserved (ADR 0033, ADR 0034 and its
-/// amendment 3). An ArgumentPackage's and an ArtifactPackage's are read
-/// since slice 0066 (`ReferenceEnd::Interface`, ADR 0039).
-const fn interface_end(kind: ElementKind) -> Option<Unread> {
-    match kind {
-        ElementKind::AssuranceCasePackage => Some(Unread::AssuranceCasePackageInterface),
-        ElementKind::TerminologyPackage => Some(Unread::TerminologyPackageInterface),
-        _ => None,
-    }
-}
-
-/// The entry of `attribute` of an element of `kind` if it is the
-/// unqualified `interface` end of its class ([`interface_end`]).
-fn interface_attribute(kind: ElementKind, attribute: &Attribute<'_, '_>) -> Option<Unread> {
-    interface_end(kind).filter(|_| is_unqualified(attribute, INTERFACE))
-}
-
 /// The entry of `attribute` of an object (a root, a child, a `name`, a
 /// `content`, a `key` or a `value`) if it is XMI metadata this version
 /// does not read yet (SACM23-XMI-019): `xmi:uuid`, `xmi:label`,
@@ -3221,35 +3164,21 @@ fn pending(
 }
 
 /// Checks the start tag of `root`: its namespace, kind, id, type and other
-/// attributes, in that order. `None` if a tolerant read keeps the root whole
-/// in `outside`, the document's preserved content, as a root of a kind this
-/// release does not read (ADR 0035 D3).
-fn root_start<'a>(
-    found: &mut Findings<'_, 'a>,
-    root: Node<'a, '_>,
-    outside: &mut Kept<DocumentHolder>,
-) -> Result<Option<Pending>, ReadError> {
+/// attributes, in that order. Every package kind is read as a root (ADR 0035
+/// amendment 1).
+fn root_start<'a>(found: &mut Findings<'_, 'a>, root: Node<'a, '_>) -> Result<Pending, ReadError> {
     let text = found.text;
     let at_root = root.range().start;
     let name = written_name(text, root);
 
     // The namespace, then the kind (ADR 0016 D5, D6). Under `xmlns=""` the
     // parser reports the empty string, which is no namespace name
-    // (Namespaces 1.0 §2.2, §6.2). Every package kind but the three read
-    // has its entry; pass 1 has refused a root of any other name. A root
-    // outside SACM 2.3 is refused in both modes (ADR 0035 D1).
+    // (Namespaces 1.0 §2.2, §6.2). Every package kind is read; pass 1 has
+    // refused a root of any other name. A root outside SACM 2.3 is refused
+    // in both modes (ADR 0035 D1).
     let namespace = root.tag_name().namespace().filter(|uri| !uri.is_empty());
     let kind = match (namespace, package_kind(&root)) {
-        (Some(SACM_NS), Some(kind)) => match Unread::kind(kind) {
-            None => kind,
-            Some(unread) => {
-                let arguments = vec![Argument::text("element", name.as_str())];
-                let reason = DocumentReason::UnreadRoot;
-                let keep = found.refuse_or_keep_in_document(at_root, unread, reason, arguments)?;
-                outside.keep_element(found, root, keep)?;
-                return Ok(None);
-            }
-        },
+        (Some(SACM_NS), Some(kind)) => kind,
         (Some(SACM_NS), None) => return Err(invalid_root(text, root)),
         (Some(namespace), _) => {
             return Err(unsupported(
@@ -3323,9 +3252,7 @@ fn root_start<'a>(
             Ok(Given::Read) => continue,
             Ok(Given::NoId) => {}
             Ok(Given::Other) => {
-                let unread =
-                    object_metadata(&attribute).or_else(|| interface_attribute(kind, &attribute));
-                if let Some(unread) = unread {
+                if let Some(unread) = object_metadata(&attribute) {
                     let at = attribute.range_qname().start;
                     let arguments = attribute_arguments(text, &attribute, &element.written);
                     let reason = attribute_reason(unread);
@@ -3345,7 +3272,7 @@ fn root_start<'a>(
     }
     element.flags = start.flags;
     element.references = start.references;
-    Ok(Some(element))
+    Ok(element)
 }
 
 /// Checks the start tag of `node`, a child element of `parent`: its role,
@@ -3461,8 +3388,7 @@ fn child_start<'a>(
             element.read_key_attribute(found, &attribute);
             continue;
         }
-        let unread = role_metadata(&attribute).or_else(|| interface_attribute(kind, &attribute));
-        if let Some(unread) = unread {
+        if let Some(unread) = role_metadata(&attribute) {
             let arguments = attribute_arguments(text, &attribute, &element.written);
             let fault = found.unread_fault(at, unread, attribute_reason(unread), arguments);
             // In reference form, the role element is no object but a
@@ -3840,21 +3766,7 @@ fn child_kind(
     if !role.declared.admits(kind) {
         return Ok(ChildKind::Preserve);
     }
-    // The readable children: every kind a role of a readable class admits,
-    // but the kinds this release does not read.
-    if let Some(unread) = Unread::kind(kind) {
-        let reason = if in_root {
-            ElementReason::UnreadKindInRoot
-        } else {
-            ElementReason::UnreadKind
-        };
-        let arguments = text_arguments(&[
-            ("class", kind.name()),
-            ("element", &written),
-            ("container", container),
-        ]);
-        return Err(found.unread_fault(at, unread, reason, arguments));
-    }
+    // The readable children: every kind a role of a readable class admits.
     if type_spelled {
         let reason = Spelled::of_child(Spelling::Type, &written, container, in_root);
         spelled = Some(child_spelling(found, at, reason)?);
@@ -4992,8 +4904,8 @@ fn attribute_arguments(text: &str, attribute: &Attribute<'_, '_>, element: &str)
 }
 
 /// Why an element keeps an attribute that `unread` names: a link to
-/// another document (SACM-XMI-007), or XMI metadata or a package's
-/// `interface` end, not read yet (SACM-XMI-014).
+/// another document (SACM-XMI-007), or XMI metadata not read yet
+/// (SACM-XMI-014).
 fn attribute_reason(unread: Unread) -> ElementReason {
     if unread.code() == Code::XMI_EXTERNAL_HREF {
         ElementReason::ExternalAttribute
@@ -5081,10 +4993,6 @@ mod tests {
                     "SACM-XMI-014/nested-xmi-element",
                     "SACM-XMI-014/nested-xmi-element-kept"
                 ),
-                (
-                    "SACM-XMI-014/interface-element",
-                    "SACM-XMI-014/interface-element-kept"
-                ),
                 ("SACM-XMI-014/xmi-child", "SACM-XMI-014/xmi-child-kept"),
                 (
                     "SACM-XMI-014/xmi-child-of-root",
@@ -5094,11 +5002,6 @@ mod tests {
                 (
                     "SACM-XMI-014/proxy-child-of-root",
                     "SACM-XMI-014/proxy-child-of-root-kept"
-                ),
-                ("SACM-XMI-014/unread-kind", "SACM-XMI-014/unread-kind-kept"),
-                (
-                    "SACM-XMI-014/unread-kind-in-root",
-                    "SACM-XMI-014/unread-kind-in-root-kept"
                 ),
                 (
                     "SACM-XMI-007/unread-attribute",
@@ -5128,7 +5031,6 @@ mod tests {
                     "SACM-XMI-014/nested-xmi-element",
                     "SACM-XMI-014/nested-xmi-element-kept-by-document"
                 ),
-                ("SACM-XMI-014/unread-root", "SACM-XMI-014/unread-root-kept"),
                 (
                     "SACM-XMI-003/unread-attribute",
                     "SACM-XMI-003/wrapper-attribute-kept"
@@ -5404,26 +5306,16 @@ mod tests {
                 "{content:?}"
             );
         }
-        // A child kind not read yet, in an AssuranceCasePackage.
+        // Every child kind its role admits is read: a
+        // TerminologyPackageInterface in an AssuranceCasePackage, refused
+        // until slice 0067 (SACM23-TERM-007).
         let input = concat!(
             "<sacm:AssuranceCasePackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
             " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"a\">\n",
             "<terminologyPackage xmi:type=\"sacm:TerminologyPackageInterface\" xmi:id=\"t\"/>",
             "</sacm:AssuranceCasePackage>"
         );
-        let reason = match read(input.as_bytes(), &strict()) {
-            Err(ReadError::Unsupported { reason, .. }) => Some(reason),
-            _ => None,
-        };
-        assert_eq!(
-            reason.as_deref(),
-            Some(
-                "the TerminologyPackageInterface \"terminologyPackage\" in the root element \
-                 \"sacm:AssuranceCasePackage\" is not read in this release (a limit of this \
-                 version; SACM23-TERM-007 reads it)"
-            ),
-            "{input:?}"
-        );
+        assert!(read(input.as_bytes(), &strict()).is_ok(), "{input:?}");
         // The text's spelling of the role is kept, not refused
         // (SACM23-XMI-009).
         let spelled = "<argumentationElement xmi:type=\"sacm:Claim\" xmi:id=\"c\"/>";

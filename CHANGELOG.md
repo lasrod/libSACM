@@ -29,7 +29,7 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 
 - `diagnostic::Argument`, `ArgumentValue` and `Details`, and `template()` and `arguments()`
   on `ReadError` and `WriteError`: each refusal's sentence form as a stable id such as
-  `SACM-XMI-014/unread-kind`, and its values as named arguments, so an application can word
+  `SACM-XMI-014/unread-attribute`, and its values as named arguments, so an application can word
   it in any language. `docs/sacm/diagnostics.md` lists every template with its arguments
   and English [LIB-API-017].
 - Codes SACM-XMI-015, SACM-XMI-016, SACM-XML-002, SACM-XML-003 and SACM-SEC-002, and the
@@ -97,6 +97,14 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   `CreateArtifactPackageInterface` and `CreateArtifactPackageBinding`, as a root or under
   a parent; with `serde`, their JSON fields are `implements` and `participant_packages`
   [SACM23-ARG-014, SACM23-ARG-015, SACM23-ART-012, SACM23-ART-013].
+- `edit::CreateAssuranceCasePackageInterface`, `CreateAssuranceCasePackageBinding`,
+  `CreateTerminologyPackageInterface` and `CreateTerminologyPackageBinding`, as a root or
+  under a parent; with `serde`, their JSON fields are `implements` and
+  `participant_packages`. The `interface`, `implements` and `participantPackage` ends
+  apply to the AssuranceCase and Terminology kinds too, typed to the holder's family;
+  `validate` checks their references (SACM-REF-001, SACM-REF-002, SACM23-VAL-022) but not
+  yet a missing `implements`, too few participants or their contents (SACM23-VAL-013 to
+  SACM23-VAL-015) [SACM23-TERM-007, SACM23-TERM-008, SACM23-AC-002, SACM23-AC-003].
 
 ### Changed
 
@@ -125,12 +133,15 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 - `EditError::TooFewReferences.given` counts distinct ids: a lower bound counts distinct
   ids, an upper bound every id. Nothing changes for an end of 0.1.0 [SACM23-ARG-015,
   SACM23-ART-013].
+- `xmi::read` reads the Terminology and Assurance Case interfaces and bindings, as roots
+  and children, and every package's `interface` end, in both modes. No element kind is
+  refused as not read yet [SACM23-TERM-007, SACM23-TERM-008, SACM23-AC-002,
+  SACM23-AC-003].
 
 ### Known limits
 
-- Not read yet: the interface and binding kinds of the Terminology and Assurance Case
-  packages, and an AssuranceCasePackage's or TerminologyPackage's `interface` end (M5); cross-document references, role
-  elements in reference form, and XMI metadata (SACM23-XMI-019, SACM23-XMI-027). A strict
+- Not read yet: cross-document references, role elements in reference form, and XMI
+  metadata (SACM23-XMI-019, SACM23-XMI-027). A strict
   read refuses them as `ReadError::Unsupported` naming the row that reads them; a tolerant
   read keeps them as preserved content.
 

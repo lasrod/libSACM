@@ -1,8 +1,11 @@
 //! The create operations (LIB-EDIT-001, ADR 0019).
 
 use super::EditError;
+use super::argumentation::{binding_operation, interface_operation, plan_referencing};
 use super::plan::{Features, NewElement, Plan};
-use crate::model::{Document, ElementId, ElementKind, LangString, SacmElement, admits, is_ncname};
+use crate::model::{
+    Document, ElementId, ElementKind, LangString, ReferenceEnd, SacmElement, admits, is_ncname,
+};
 
 /// Creates an `AssuranceCasePackage` (SACM 2.3 §9.2): a root, or a child of
 /// an element whose class can hold one, such as another
@@ -108,6 +111,66 @@ impl CreateAssuranceCasePackage {
             Features::Name(&self.name),
         )
     }
+}
+
+interface_operation! {
+    /// Creates an `AssuranceCasePackageInterface` (SACM 2.3 §9.3) declaring
+    /// the AssuranceCasePackage `implements` names: a root, or a child of an
+    /// AssuranceCasePackage or an ArtifactPackage (or one of their interfaces
+    /// and bindings). The package's `interface` end is not changed (ADR 0039).
+    ///
+    /// `implements` is required (`implements:AssuranceCasePackage[1]`). After
+    /// [ADR 0019]'s four checks, and the name's expression, an id that holds
+    /// XML white space is [`EditError::InvalidReference`], one that names no
+    /// element is [`EditError::ReferenceNotFound`], and one that names an
+    /// element of no AssuranceCasePackage kind is
+    /// [`EditError::WrongReferenceType`] (SACM-REF-002). Without
+    /// [`with_id`](Self::with_id), the id is generated:
+    /// `assurance_case_package_interface_<n>`.
+    ///
+    /// [ADR 0019]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0019-edit-operations.md
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateAssuranceCasePackage, CreateAssuranceCasePackageBinding, CreateAssuranceCasePackageInterface};
+    /// use sacm::model::{Document, LangString};
+    ///
+    /// let en = |t: &str| LangString::new(t).with_lang("en");
+    /// let mut doc = Document::new();
+    /// edit::apply(&mut doc, CreateAssuranceCasePackage::root(en("Vehicle system case")).with_id("system"))?;
+    /// for (id, api) in [("braking_case", "braking_case_api"), ("vehicle_case", "vehicle_case_api")] {
+    ///     edit::apply(&mut doc, CreateAssuranceCasePackage::new("system", en(id)).with_id(id))?;
+    ///     edit::apply(&mut doc, CreateAssuranceCasePackageInterface::new(id, en(api), id).with_id(api))?;
+    /// }
+    /// let bind = CreateAssuranceCasePackageBinding::new("system", en("Braking supports the vehicle"), ["braking_case_api", "vehicle_case_api"]);
+    /// edit::apply(&mut doc, bind.with_id("binding"))?;
+    /// assert_eq!(doc.get("braking_case_api").and_then(|i| i.implements()).map(|id| id.as_str()), Some("braking_case"));
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    CreateAssuranceCasePackageInterface, AssuranceCasePackageInterface, "AssuranceCasePackage"
+}
+
+binding_operation! {
+    /// Creates an `AssuranceCasePackageBinding` (SACM 2.3 §9.4) binding the
+    /// packages `participant_packages` names, each of an
+    /// `AssuranceCasePackage` kind: a root, or a child of an
+    /// AssuranceCasePackage or an ArtifactPackage (or one of their interfaces
+    /// and bindings).
+    ///
+    /// `participantPackage:AssuranceCasePackage[2..*]`: after [ADR 0019]'s
+    /// four checks, fewer than two distinct ids is
+    /// [`EditError::TooFewReferences`] (ADR 0039 D3); then the name's
+    /// expression; then an id that holds XML white space is
+    /// [`EditError::InvalidReference`], one that names no element
+    /// [`EditError::ReferenceNotFound`], and one that names an element of no
+    /// AssuranceCasePackage kind [`EditError::WrongReferenceType`], each over
+    /// the ids in order. Without [`with_id`](Self::with_id), the id is
+    /// generated: `assurance_case_package_binding_<n>`. See
+    /// [`CreateAssuranceCasePackageInterface`] for an example.
+    ///
+    /// [ADR 0019]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0019-edit-operations.md
+    CreateAssuranceCasePackageBinding, AssuranceCasePackageBinding, "AssuranceCasePackage"
 }
 
 /// Creates an `ArgumentPackage` (SACM 2.3 §11.4): a root, or a child of an

@@ -874,47 +874,46 @@ fn sacm23_term_001_every_terminology_kind_is_read_typed_inside_a_terminology_pac
 }
 
 #[test]
-fn sacm23_term_001_the_interface_and_binding_kinds_and_the_interface_end_are_interim() {
+fn sacm23_term_001_the_interface_and_binding_kinds_and_the_interface_end_are_read() {
+    // Until slice 0067 these were Interim (SACM23-TERM-007, -008): refused
+    // as Unsupported in strict mode and kept with SACM-XMI-014 in tolerant
+    // mode. They are read now, in every context of t.
     for (context, wrap, _) in contexts() {
-        for (class, row) in [
-            ("TerminologyPackageInterface", "SACM23-TERM-007"),
-            ("TerminologyPackageBinding", "SACM23-TERM-008"),
+        for kind in [
+            ElementKind::TerminologyPackageInterface,
+            ElementKind::TerminologyPackageBinding,
         ] {
-            let what = format!("the {class} x in terminologyElement of {context}");
-            let child = format!(
-                "{}{MARK}<terminologyElement xmi:type=\"sacm:{class}\" xmi:id=\"x\">\
-                 <name content=\"X\"/></terminologyElement>",
-                typed("Category", "k")
-            );
-            assert_unsupported_with(
-                &what,
-                &wrap("", &child),
-                &interim(row),
-                Code::XMI_UNREAD_CONTENT,
-                Some(row),
-                "t",
+            let what = format!("the {kind} x in terminologyElement of {context}");
+            let child = format!("{}{}", typed("Category", "k"), typed(kind.name(), "x"));
+            let doc = read_ok(&what, &wrap("", &child));
+            assert_eq!(
+                (placed(&doc, "x"), children(&doc, "t")),
+                (
+                    (kind, Some("t".to_owned()), Some("x".to_owned())),
+                    ids(&["k", "x"])
+                ),
+                "{ROW}: {what}: not a {kind} x named x in t, after k"
             );
         }
         // ptc/22-03-13 gives TerminologyPackage `interface :
-        // TerminologyPackageInterface [0..*]`, refused at the attribute's
-        // name or the element's start tag.
-        let label = interim("SACM23-TERM-007");
-        assert_unsupported_with(
-            &format!("interface=\"i\" on {context}"),
-            &wrap(&format!(" {MARK}interface=\"i\""), ""),
-            &label,
-            Code::XMI_UNREAD_CONTENT,
-            Some("SACM23-TERM-007"),
-            "t",
-        );
-        assert_unsupported_with(
-            &format!("an interface element in {context}"),
-            &wrap("", &format!("{MARK}<interface xmi:idref=\"i\"/>")),
-            &label,
-            Code::XMI_UNREAD_CONTENT,
-            Some("SACM23-TERM-007"),
-            "t",
-        );
+        // TerminologyPackageInterface [0..*]`, read as an attribute and as a
+        // reference element.
+        for (form, attributes, body) in [
+            ("interface=\"i\"", " interface=\"i\"", String::new()),
+            (
+                "an interface element",
+                "",
+                "<interface xmi:idref=\"i\"/>".to_owned(),
+            ),
+        ] {
+            let what = format!("{form} on {context}");
+            let doc = read_ok(&what, &wrap(attributes, &body));
+            assert_eq!(
+                element(&doc, "t").interfaces(),
+                list(&["i"]).as_slice(),
+                "{ROW}: {what}: t's interface end"
+            );
+        }
         // In another namespace it is not that end: preserved.
         assert_preserved_at(
             &format!("v:interface=\"i\" on {context}"),

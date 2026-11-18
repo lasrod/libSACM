@@ -1,4 +1,5 @@
-//! The create operations of the Terminology package: `TerminologyPackage`,
+//! The create operations of the Terminology package: `TerminologyPackage`, its
+//! interface and binding (SACM23-TERM-007, SACM23-TERM-008; ADR 0039),
 //! `Category`, `Term`, `Expression` and `TerminologyGroup` (SACM23-TERM-001
 //! to SACM23-TERM-006; LIB-EDIT-001, ADR 0019, ADR 0028, ADR 0034 amendment
 //! 3).
@@ -14,7 +15,7 @@
 //! given.
 
 use super::EditError;
-use super::argumentation::plan_referencing;
+use super::argumentation::{binding_operation, interface_operation, plan_referencing};
 use super::create::{checked_place, plan_create};
 use super::plan::{Features, NewElement, Plan};
 use super::references::{check_targets, expression_ids};
@@ -136,6 +137,68 @@ impl From<CreateTerminologyPackage> for super::Operation {
     fn from(operation: CreateTerminologyPackage) -> Self {
         Self::CreateTerminologyPackage(operation)
     }
+}
+
+interface_operation! {
+    /// Creates a `TerminologyPackageInterface` (SACM 2.3 §10.5) declaring the
+    /// TerminologyPackage `implements` names: a root, or a child of an
+    /// AssuranceCasePackage, a TerminologyPackage or an ArtifactPackage (or
+    /// one of their interfaces and bindings). The package's `interface` end
+    /// is not changed (ADR 0039).
+    ///
+    /// `implements` is required (`implements:TerminologyPackage[1]`). After
+    /// [ADR 0019]'s four checks, and the name's expression, an id that holds
+    /// XML white space is [`EditError::InvalidReference`], one that names no
+    /// element is [`EditError::ReferenceNotFound`], and one that names an
+    /// element of no TerminologyPackage kind is
+    /// [`EditError::WrongReferenceType`] (SACM-REF-002). Without
+    /// [`with_id`](Self::with_id), the id is generated:
+    /// `terminology_package_interface_<n>`.
+    ///
+    /// [ADR 0019]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0019-edit-operations.md
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::edit::{self, AddReference, CreateTerminologyPackage, CreateTerminologyPackageBinding, CreateTerminologyPackageInterface};
+    /// use sacm::model::{Document, LangString, ReferenceEnd};
+    ///
+    /// let en = |t: &str| LangString::new(t).with_lang("en");
+    /// let mut doc = Document::new();
+    /// for (id, api) in [("hazard_terms", "hazard_terms_api"), ("design_terms", "design_terms_api")] {
+    ///     edit::apply(&mut doc, CreateTerminologyPackage::root(en(id)).with_id(id))?;
+    ///     edit::apply(&mut doc, CreateTerminologyPackageInterface::new(id, en(api), id).with_id(api))?;
+    ///     // The package's `interface` end is never synced: declare it yourself.
+    ///     edit::apply(&mut doc, AddReference::new(id, ReferenceEnd::Interface, api))?;
+    /// }
+    /// let bind = CreateTerminologyPackageBinding::root(en("Hazard terms map to design terms"), ["hazard_terms_api", "design_terms_api"]);
+    /// edit::apply(&mut doc, bind.with_id("binding"))?;
+    /// assert_eq!(doc.get("hazard_terms").map(|t| t.interfaces().len()), Some(1));
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    CreateTerminologyPackageInterface, TerminologyPackageInterface, "TerminologyPackage"
+}
+
+binding_operation! {
+    /// Creates a `TerminologyPackageBinding` (SACM 2.3 §10.6;
+    /// `participantPackage:TerminologyPackage[2..*]` in ptc/22-03-13) binding
+    /// the packages `participant_packages` names, each of a
+    /// `TerminologyPackage` kind: a root, or a child of an
+    /// AssuranceCasePackage, a TerminologyPackage or an ArtifactPackage (or
+    /// one of their interfaces and bindings).
+    ///
+    /// After [ADR 0019]'s four checks, fewer than two distinct ids is
+    /// [`EditError::TooFewReferences`] (ADR 0039 D3); then the name's
+    /// expression; then an id that holds XML white space is
+    /// [`EditError::InvalidReference`], one that names no element
+    /// [`EditError::ReferenceNotFound`], and one that names an element of no
+    /// TerminologyPackage kind [`EditError::WrongReferenceType`], each over
+    /// the ids in order. Without [`with_id`](Self::with_id), the id is
+    /// generated: `terminology_package_binding_<n>`. See
+    /// [`CreateTerminologyPackageInterface`] for an example.
+    ///
+    /// [ADR 0019]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0019-edit-operations.md
+    CreateTerminologyPackageBinding, TerminologyPackageBinding, "TerminologyPackage"
 }
 
 /// Creates a `Category` (SACM 2.3 §10.8) as the last child of an element

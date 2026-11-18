@@ -76,3 +76,12 @@ The maintainer wants a library that is simply usable.
   most real files hold Artifacts, so most would stay unreadable until M5.
 - **Keep save-time validation.** Rejected: it makes the default save fail on drafts, and the
   standard asks only for schema conformance.
+
+## Amendment 1 (2026-11-18): no root is kept as document content
+
+SACM23-TERM-007, SACM23-TERM-008, SACM23-AC-002, SACM23-AC-003 (slice 0067).
+- **Unread roots no longer arise.** Since slice 0067 every SACM 2.3 package kind is read as a root, so D3's "unread roots" do not occur. The document's own preserved content is the wrapper's attributes, its XMI-namespace children and text.
+- **`WriteError::NoRoot`** is a document with no root element; the writer no longer looks for a preserved root.
+- **D2's Interim rows:** "the kinds, ends … `Interim` rows name" now covers no kind or end; XMI metadata and cross-document `href`s remain.
+
+*Amendment 1 status: accepted (the maintainer, 2026-11-18).*

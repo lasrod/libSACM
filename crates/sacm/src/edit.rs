@@ -24,6 +24,8 @@
 //! | Operation | Creates | Root | Under a parent |
 //! |---|---|---|---|
 //! | [`CreateAssuranceCasePackage`] | an `AssuranceCasePackage` (§9.2) | [`root`](CreateAssuranceCasePackage::root) | [`new`](CreateAssuranceCasePackage::new) |
+//! | [`CreateAssuranceCasePackageInterface`] | an `AssuranceCasePackageInterface` (§9.3), with its `implements` | [`root`](CreateAssuranceCasePackageInterface::root) | [`new`](CreateAssuranceCasePackageInterface::new) |
+//! | [`CreateAssuranceCasePackageBinding`] | an `AssuranceCasePackageBinding` (§9.4), with its participants (`participantPackage`) | [`root`](CreateAssuranceCasePackageBinding::root) | [`new`](CreateAssuranceCasePackageBinding::new) |
 //! | [`CreateArgumentPackage`] | an `ArgumentPackage` (§11.4) | [`root`](CreateArgumentPackage::root) | [`new`](CreateArgumentPackage::new) |
 //! | [`CreateArgumentPackageInterface`] | an `ArgumentPackageInterface` (§11.6), with its `implements` | [`root`](CreateArgumentPackageInterface::root) | [`new`](CreateArgumentPackageInterface::new) |
 //! | [`CreateArgumentPackageBinding`] | an `ArgumentPackageBinding` (§11.5), with its participants (`participantPackage`) | [`root`](CreateArgumentPackageBinding::root) | [`new`](CreateArgumentPackageBinding::new) |
@@ -53,6 +55,8 @@
 //! | [`CreateActivity`] | an `Activity` (§12.11), with an optional `startTime` and `endTime` | no | [`new`](CreateActivity::new) |
 //! | [`CreateArtifactAssetRelationship`] | an `ArtifactAssetRelationship` (§12.14), with its sources and targets | no | [`new`](CreateArtifactAssetRelationship::new) |
 //! | [`CreateTerminologyPackage`] | a `TerminologyPackage` (§10.4) | [`root`](CreateTerminologyPackage::root) | [`new`](CreateTerminologyPackage::new) |
+//! | [`CreateTerminologyPackageInterface`] | a `TerminologyPackageInterface` (§10.5), with its `implements` | [`root`](CreateTerminologyPackageInterface::root) | [`new`](CreateTerminologyPackageInterface::new) |
+//! | [`CreateTerminologyPackageBinding`] | a `TerminologyPackageBinding` (§10.6), with its participants (`participantPackage`) | [`root`](CreateTerminologyPackageBinding::root) | [`new`](CreateTerminologyPackageBinding::new) |
 //! | [`CreateCategory`] | a `Category` (§10.8), with its optional `category` ids | no | [`new`](CreateCategory::new) |
 //! | [`CreateTerm`] | a `Term` (§10.11), with its `value` and its optional categories, `origin` and `externalReference` | no | [`new`](CreateTerm::new) |
 //! | [`CreateExpression`] | an `Expression` (§10.10), with its `value` and its optional categories and `element` ids | no | [`new`](CreateExpression::new) |
@@ -63,10 +67,8 @@
 //! new element (it has a composite role for that kind), the same rules
 //! [`xmi::read`](crate::xmi::read) uses. So a Claim goes in an
 //! ArgumentPackage, not directly in an AssuranceCasePackage, and a Technique
-//! in an ArtifactPackage. A TerminologyPackage's or AssuranceCasePackage's
-//! interface or binding is also a legal parent, though this release cannot
-//! create or read those yet (SACM23-TERM-007, SACM23-TERM-008, SACM23-AC-002,
-//! SACM23-AC-003).
+//! in an ArtifactPackage. A package's interface or binding is a legal parent
+//! wherever its package is: it holds its package's roles.
 //!
 //! **The name is required**, because SACM gives every `ModelElement` exactly
 //! one name (§8.6 `name:LangString[1]`). Every operation that creates one
@@ -373,7 +375,7 @@
 //! | 2. the parent can contain the new kind | [`EditError::InvalidParent`] | SACM-CMD-005 | Choose a parent whose class can hold the new kind. For example, a Claim goes in an ArgumentPackage, and an ArgumentPackage in an AssuranceCasePackage or another ArgumentPackage. |
 //! | 3. a caller id is an `NCName` | [`EditError::InvalidId`] | SACM-ID-002 | An `NCName` starts with a letter or `_` and continues with letters, digits, `-`, `.` or `_`; it has no spaces and no `:`. Or leave out `with_id` to have an id generated. |
 //! | 4. a caller id is not in use | [`EditError::DuplicateId`] | SACM-CMD-004 | Ids are unique across the whole document, not per parent. Choose another id, or leave out `with_id` to have one generated. |
-//! | 5. a relationship has a source, and an `ArtifactAssetRelationship` a target: the sources first, then the targets; a binding has two distinct participants | [`EditError::TooFewReferences`] | SACM-MULT-001 | Give at least one source, and at least one target of an `ArtifactAssetRelationship`: SACM requires them (`source:ArgumentAsset[1..*]`, §12.14 `source:ArtifactAsset[1..*]` and `target:ArtifactAsset[1..*]`). Give a binding two different packages (§11.5, §12.4 `participantPackage[2..*]`; a repeated id counts once, ADR 0039 D3). |
+//! | 5. a relationship has a source, and an `ArtifactAssetRelationship` a target: the sources first, then the targets; a binding has two distinct participants | [`EditError::TooFewReferences`] | SACM-MULT-001 | Give at least one source, and at least one target of an `ArtifactAssetRelationship`: SACM requires them (`source:ArgumentAsset[1..*]`, §12.14 `source:ArtifactAsset[1..*]` and `target:ArtifactAsset[1..*]`). Give a binding two different packages (§9.4, §10.6, §11.5, §12.4 `participantPackage[2..*]`; a repeated id counts once, ADR 0039 D3). |
 //! | 5a. every `ExpressionLangString` of the name and texts has an `expression` | [`EditError::TooFewReferences`] of the end `expression` | SACM-MULT-001 | Give it an expression with [`LangString::with_expression`](crate::model::LangString::with_expression), or make it plain with [`without_expression`](crate::model::LangString::without_expression) (§8.4 `expression[1]`; SACM23-BASE-009). |
 //! | 6. no referenced id holds XML white space (space, TAB, LF, CR): each source in order, then the target or targets, the `reasoning`, the `structure`, the `referencedArtifactElement` ids, the group members (`argumentElement` or `artifactElement`), an interface's `implements` and a binding's participants (`participantPackage`) | [`EditError::InvalidReference`] | SACM-ID-002 | An id such as `a b`, read from a file as written, is not an `NCName` and would be written as two ids. Give the referenced element an `NCName` id in the file. |
 //! | 7. every referenced id names an element, in the same order | [`EditError::ReferenceNotFound`] | SACM-CMD-001 | Create the referenced element first, or correct its id. Ids are compared exactly, case included. |
@@ -519,7 +521,10 @@ pub use artifact::{
 };
 pub use batch::{Batch, BatchError, BatchMutation};
 pub use copy::CopyElements;
-pub use create::{CreateArgumentPackage, CreateAssuranceCasePackage, CreateClaim};
+pub use create::{
+    CreateArgumentPackage, CreateAssuranceCasePackage, CreateAssuranceCasePackageBinding,
+    CreateAssuranceCasePackageInterface, CreateClaim,
+};
 pub use delete::{
     CrossPackageReferencePolicy, DeleteElement, PackageDeletePolicy, ReferenceDeletePolicy,
 };
@@ -533,6 +538,7 @@ pub use set::{
 };
 pub use terminology::{
     CreateCategory, CreateExpression, CreateTerm, CreateTerminologyGroup, CreateTerminologyPackage,
+    CreateTerminologyPackageBinding, CreateTerminologyPackageInterface,
 };
 pub use utility::{
     CreateDescription, CreateImplementationConstraint, CreateNote, CreateTaggedValue,
@@ -968,6 +974,8 @@ fn plan_operation<'o>(
 ) -> Result<Plan<'o>, EditError> {
     match operation {
         Operation::CreateAssuranceCasePackage(create) => create.plan(document),
+        Operation::CreateAssuranceCasePackageInterface(create) => create.plan(document),
+        Operation::CreateAssuranceCasePackageBinding(create) => create.plan(document),
         Operation::CreateArgumentPackage(create) => create.plan(document),
         Operation::CreateArgumentPackageInterface(create) => create.plan(document),
         Operation::CreateArgumentPackageBinding(create) => create.plan(document),
@@ -997,6 +1005,8 @@ fn plan_operation<'o>(
         Operation::CreateActivity(create) => create.plan(document),
         Operation::CreateArtifactAssetRelationship(create) => create.plan(document),
         Operation::CreateTerminologyPackage(create) => create.plan(document),
+        Operation::CreateTerminologyPackageInterface(create) => create.plan(document),
+        Operation::CreateTerminologyPackageBinding(create) => create.plan(document),
         Operation::CreateCategory(create) => create.plan(document),
         Operation::CreateTerm(create) => create.plan(document),
         Operation::CreateExpression(create) => create.plan(document),
@@ -1049,6 +1059,10 @@ fn plan_operation<'o>(
 pub enum Operation {
     /// Creates an `AssuranceCasePackage`.
     CreateAssuranceCasePackage(CreateAssuranceCasePackage),
+    /// Creates an `AssuranceCasePackageInterface`.
+    CreateAssuranceCasePackageInterface(CreateAssuranceCasePackageInterface),
+    /// Creates an `AssuranceCasePackageBinding`.
+    CreateAssuranceCasePackageBinding(CreateAssuranceCasePackageBinding),
     /// Creates an `ArgumentPackage`.
     CreateArgumentPackage(CreateArgumentPackage),
     /// Creates an `ArgumentPackageInterface`.
@@ -1107,6 +1121,10 @@ pub enum Operation {
     CreateArtifactAssetRelationship(CreateArtifactAssetRelationship),
     /// Creates a `TerminologyPackage`.
     CreateTerminologyPackage(CreateTerminologyPackage),
+    /// Creates a `TerminologyPackageInterface`.
+    CreateTerminologyPackageInterface(CreateTerminologyPackageInterface),
+    /// Creates a `TerminologyPackageBinding`.
+    CreateTerminologyPackageBinding(CreateTerminologyPackageBinding),
     /// Creates a `Category`.
     CreateCategory(CreateCategory),
     /// Creates a `Term`.
@@ -1166,7 +1184,8 @@ impl Operation {
     ///
     /// The names are stable, like a diagnostic [`Code`]: a name never changes
     /// and is never given to another operation. This release has
-    /// `"CreateAssuranceCasePackage"`, `"CreateArgumentPackage"`,
+    /// `"CreateAssuranceCasePackage"`, `"CreateAssuranceCasePackageInterface"`,
+    /// `"CreateAssuranceCasePackageBinding"`, `"CreateArgumentPackage"`,
     /// `"CreateArgumentPackageInterface"`, `"CreateArgumentPackageBinding"`,
     /// `"CreateClaim"`, `"CreateArgumentReasoning"`,
     /// `"CreateAssertedInference"`, `"CreateAssertedContext"`,
@@ -1180,7 +1199,8 @@ impl Operation {
     /// `"CreateTechnique"`, `"CreateParticipant"`, `"CreateArtifactGroup"`,
     /// `"CreateArtifact"`, `"CreateEvent"`, `"CreateResource"`,
     /// `"CreateActivity"`, `"CreateArtifactAssetRelationship"`,
-    /// `"CreateTerminologyPackage"`, `"CreateCategory"`, `"CreateTerm"`,
+    /// `"CreateTerminologyPackage"`, `"CreateTerminologyPackageInterface"`,
+    /// `"CreateTerminologyPackageBinding"`, `"CreateCategory"`, `"CreateTerm"`,
     /// `"CreateExpression"`, `"CreateTerminologyGroup"`, `"SetName"`,
     /// `"SetGid"`, `"SetFlag"`, `"SetAssertionDeclaration"`, `"SetContent"`,
     /// `"SetKey"`, `"SetVersion"`, `"SetDate"`, `"SetLocation"`,
@@ -1203,6 +1223,8 @@ impl Operation {
     pub fn operation_name(&self) -> &'static str {
         match self {
             Self::CreateAssuranceCasePackage(_) => "CreateAssuranceCasePackage",
+            Self::CreateAssuranceCasePackageInterface(_) => "CreateAssuranceCasePackageInterface",
+            Self::CreateAssuranceCasePackageBinding(_) => "CreateAssuranceCasePackageBinding",
             Self::CreateArgumentPackage(_) => "CreateArgumentPackage",
             Self::CreateArgumentPackageInterface(_) => "CreateArgumentPackageInterface",
             Self::CreateArgumentPackageBinding(_) => "CreateArgumentPackageBinding",
@@ -1232,6 +1254,8 @@ impl Operation {
             Self::CreateActivity(_) => "CreateActivity",
             Self::CreateArtifactAssetRelationship(_) => "CreateArtifactAssetRelationship",
             Self::CreateTerminologyPackage(_) => "CreateTerminologyPackage",
+            Self::CreateTerminologyPackageInterface(_) => "CreateTerminologyPackageInterface",
+            Self::CreateTerminologyPackageBinding(_) => "CreateTerminologyPackageBinding",
             Self::CreateCategory(_) => "CreateCategory",
             Self::CreateTerm(_) => "CreateTerm",
             Self::CreateExpression(_) => "CreateExpression",
@@ -1602,8 +1626,9 @@ pub enum EditError {
     /// (`source:ArgumentAsset[1..*]`, §11.13) or no target
     /// (`target:ArgumentAsset[1]`), which [`SetReferences::clear`] of either
     /// end, or [`RemoveReference`] of the last source or of the target, would
-    /// leave, an interface with no `implements` (§11.6, §12.5), or a binding
-    /// with fewer than two distinct participants (§11.5, §12.4). `given` is
+    /// leave, an interface with no `implements` (§9.3, §10.5, §11.6, §12.5),
+    /// or a binding with fewer than two distinct participants (§9.4, §10.6,
+    /// §11.5, §12.4). `given` is
     /// how many distinct ids the end would hold (ADR 0039 D3). Give at least
     /// `required` ids.
     ///

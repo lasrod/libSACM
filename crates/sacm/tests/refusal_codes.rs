@@ -10,8 +10,9 @@
 //!   `Capacity` and `Unheld` have no input of a test's size; a unit test of
 //!   the list checks their code (`Unread::code()`, design brief).
 //! - Each `WriteError` variant has its code.
-//! - Acceptance 2's `TerminologyPackageInterface` in an `AssuranceCasePackage`
-//!   has its code, template, arguments and `Display`.
+//! - Acceptance 2's `xmi:Extension` in an `AssuranceCasePackage` has its
+//!   code, template, arguments and `Display` (a `TerminologyPackageInterface`
+//!   there until slice 0067 read it).
 //! - `docs/sacm/diagnostics.md` has live rows for the six codes the slice
 //!   adds, and names the refusal uses of SACM-XMI-001, -003, -007 and -014;
 //!   42 codes are live: 41 once slice 0063 adds its six, and SACM-EXPR-001
@@ -215,10 +216,6 @@ mod api {
         )
     }
 
-    fn root_of(kind: &str) -> String {
-        format!("<sacm:{kind}{NS} xmi:id=\"x\"><name content=\"x\"/></sacm:{kind}>")
-    }
-
     fn wrapper(attributes: &str) -> String {
         format!(
             "<xmi:XMI xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\"{attributes}>\
@@ -240,18 +237,10 @@ mod api {
 
     /// One input per entry a tolerant read keeps, with its code.
     fn kept_entries() -> Vec<(&'static str, String, Code)> {
-        // The four kinds still refused; slice 0066 reads the Argumentation
-        // and Artifact interfaces and bindings (ADR 0039).
-        let mut entries: Vec<(&'static str, String, Code)> = [
-            "TerminologyPackageInterface",
-            "TerminologyPackageBinding",
-            "AssuranceCasePackageInterface",
-            "AssuranceCasePackageBinding",
-        ]
-        .into_iter()
-        .map(|kind| (kind, root_of(kind), Code::XMI_UNREAD_CONTENT))
-        .collect();
-        entries.extend([
+        // No element kind is refused as not read yet since slice 0067, which
+        // reads the last four interface and binding kinds (ADR 0035
+        // amendment 1).
+        vec![
             (
                 "XmiMetadata",
                 package(&claim("c1", " xmi:uuid=\"u1\"", "")),
@@ -285,8 +274,7 @@ mod api {
                 )),
                 Code::XMI_UNKNOWN_CONTENT,
             ),
-        ]);
-        entries
+        ]
     }
 
     #[test]
@@ -444,14 +432,14 @@ mod api {
     }
 
     #[test]
-    fn lib_api_017_a_terminology_package_interface_in_a_case_is_unsupported_with_its_template_and_arguments()
-     {
+    fn lib_api_017_an_xmi_extension_in_a_case_is_unsupported_with_its_template_and_arguments() {
+        // Until slice 0067 this sampled a TerminologyPackageInterface in the
+        // case, which that slice reads (SACM23-TERM-007).
         let input = format!(
             "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\">\n  <name content=\"case\"/>\n  \
-             <terminologyPackage xmi:type=\"sacm:TerminologyPackageInterface\" xmi:id=\"ti\"/>\n\
-             </sacm:AssuranceCasePackage>"
+             <xmi:Extension/>\n</sacm:AssuranceCasePackage>"
         );
-        let error = strict_unsupported("TerminologyPackageInterface", input.as_bytes());
+        let error = strict_unsupported("xmi:Extension", input.as_bytes());
         assert_eq!(
             error.location().map(|at| (at.line(), at.column())),
             Some((3, 3)),
@@ -460,7 +448,7 @@ mod api {
         assert_eq!(error.code(), Code::XMI_UNREAD_CONTENT, "{ROW}: code()");
         assert_eq!(
             error.template(),
-            "SACM-XMI-014/unread-kind-in-root",
+            "SACM-XMI-014/xmi-child-of-root",
             "{ROW}: template()"
         );
         let arguments: Vec<(&str, ArgumentValue)> = error
@@ -472,19 +460,17 @@ mod api {
         assert_eq!(
             arguments,
             [
-                ("class", text("TerminologyPackageInterface")),
-                ("element", text("terminologyPackage")),
+                ("element", text("xmi:Extension")),
                 ("container", text("sacm:AssuranceCasePackage")),
-                ("row", text("SACM23-TERM-007")),
+                ("row", text("SACM23-XMI-019")),
             ],
             "{ROW}: arguments()"
         );
         assert_eq!(
             error.to_string(),
-            "the reader cannot represent the input at line 3, column 3: the \
-             TerminologyPackageInterface \"terminologyPackage\" in the root element \
-             \"sacm:AssuranceCasePackage\" is not read in this release (a limit of this version; \
-             SACM23-TERM-007 reads it)",
+            "the reader cannot represent the input at line 3, column 3: the XMI element \
+             \"xmi:Extension\" in the root element \"sacm:AssuranceCasePackage\" is not read in \
+             this release (a limit of this version; SACM23-XMI-019 reads it)",
             "{ROW}: Display"
         );
     }

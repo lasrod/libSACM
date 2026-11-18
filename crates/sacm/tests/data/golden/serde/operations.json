@@ -36,6 +36,52 @@
     }
   },
   {
+    "type": "CreateAssuranceCasePackageInterface",
+    "parent": null,
+    "id": "braking_case_api",
+    "name": {
+      "lang": "en",
+      "content": "Braking case interface"
+    },
+    "implements": "braking_case"
+  },
+  {
+    "type": "CreateAssuranceCasePackageInterface",
+    "parent": "braking_case",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Braking case interface"
+    },
+    "implements": "braking_case"
+  },
+  {
+    "type": "CreateAssuranceCasePackageBinding",
+    "parent": null,
+    "id": "binding",
+    "name": {
+      "lang": "en",
+      "content": "The braking case supports the vehicle case"
+    },
+    "participant_packages": [
+      "braking_case_api",
+      "vehicle_case_api"
+    ]
+  },
+  {
+    "type": "CreateAssuranceCasePackageBinding",
+    "parent": "system",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "The braking case supports the vehicle case"
+    },
+    "participant_packages": [
+      "braking_case_api",
+      "vehicle_case_api"
+    ]
+  },
+  {
     "type": "CreateArgumentPackage",
     "parent": null,
     "id": null,
@@ -850,6 +896,52 @@
     "group_members": [
       "blade",
       "lid"
+    ]
+  },
+  {
+    "type": "CreateTerminologyPackageInterface",
+    "parent": null,
+    "id": "hazard_terms_api",
+    "name": {
+      "lang": "en",
+      "content": "Hazard terminology interface"
+    },
+    "implements": "hazard_terms"
+  },
+  {
+    "type": "CreateTerminologyPackageInterface",
+    "parent": "hazard_terms",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Hazard terminology interface"
+    },
+    "implements": "hazard_terms"
+  },
+  {
+    "type": "CreateTerminologyPackageBinding",
+    "parent": null,
+    "id": "binding",
+    "name": {
+      "lang": "en",
+      "content": "Hazard terms map to design terms"
+    },
+    "participant_packages": [
+      "hazard_terms_api",
+      "design_terms_api"
+    ]
+  },
+  {
+    "type": "CreateTerminologyPackageBinding",
+    "parent": "case",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Hazard terms map to design terms"
+    },
+    "participant_packages": [
+      "hazard_terms_api",
+      "design_terms_api"
     ]
   },
   {

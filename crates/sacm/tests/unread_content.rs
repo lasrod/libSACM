@@ -9,8 +9,9 @@
 //! SACM-XMI-014 for conforming content a later row reads, its message naming
 //! that row; SACM-XMI-007 for a cross-document `href`; SACM-XMI-003 for
 //! content on `xmi:XMI` and for a preserved attribute whose `sacm` or `xmi`
-//! prefix is bound elsewhere. Content on or under `xmi:XMI`, and a root of an
-//! unread kind, is held by the document outside its elements:
+//! prefix is bound elsewhere. Content on or under `xmi:XMI` is held by the
+//! document outside its elements (since slice 0067 every package kind is read
+//! as a root, so no root is kept there; ADR 0035 amendment 1):
 //! `Document::has_preserved_content` and
 //! `Difference::DocumentPreservedContent` expose it.
 
@@ -49,13 +50,6 @@ fn package(body: &str) -> String {
     )
 }
 
-/// A root ArtifactPackage `a` holding `body`.
-fn artifact_package(body: &str) -> String {
-    format!(
-        "<sacm:ArtifactPackage{NS} xmi:id=\"a\"><name content=\"a\"/>{body}</sacm:ArtifactPackage>"
-    )
-}
-
 /// A Claim `id` with the extra attributes `attributes`, holding `body` after
 /// its name.
 fn claim(id: &str, attributes: &str, body: &str) -> String {
@@ -63,11 +57,6 @@ fn claim(id: &str, attributes: &str, body: &str) -> String {
         "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"{id}\"{attributes}>\
          <name content=\"{id}\"/>{body}</argumentElement>"
     )
-}
-
-/// A root of the class `kind`, `x`, named.
-fn root_of(kind: &str) -> String {
-    format!("<sacm:{kind}{NS} xmi:id=\"x\"><name content=\"x\"/></sacm:{kind}>")
 }
 
 /// The `xmi:XMI` wrapper with `attributes`, holding `body` and then the root
@@ -226,106 +215,6 @@ fn kept(
 )]
 fn kept_entries() -> Vec<Kept> {
     let mut cases = Vec::new();
-    // The four kinds still unread; slice 0066 reads the Argumentation and
-    // Artifact interfaces and bindings (ADR 0039).
-    for (kind, row) in [
-        ("TerminologyPackageInterface", "SACM23-TERM-007"),
-        ("TerminologyPackageBinding", "SACM23-TERM-008"),
-        ("AssuranceCasePackageInterface", "SACM23-AC-002"),
-        ("AssuranceCasePackageBinding", "SACM23-AC-003"),
-    ] {
-        cases.push(kept(kind, "as the root", root_of(kind), row, None));
-    }
-    // This case first sampled an ArgumentPackageInterface in an
-    // ArgumentPackage, which slice 0066 reads (SACM23-ARG-014).
-    cases.push(kept(
-        "AssuranceCasePackageInterface",
-        "in an AssuranceCasePackage",
-        format!(
-            "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name content=\"case\"/>\
-             <assuranceCasePackage xmi:type=\"sacm:AssuranceCasePackageInterface\" xmi:id=\"i\">\
-             <name content=\"i\"/></assuranceCasePackage></sacm:AssuranceCasePackage>"
-        ),
-        "SACM23-AC-002",
-        Some("case"),
-    ));
-    // A TerminologyPackage is read since slice 0062 (SACM23-TERM-001); the
-    // interface kind in the same role is not.
-    cases.push(kept(
-        "TerminologyPackageInterface",
-        "in an AssuranceCasePackage",
-        format!(
-            "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name content=\"case\"/>\
-             <terminologyPackage xmi:type=\"sacm:TerminologyPackageInterface\" xmi:id=\"f\">\
-             <name content=\"f\"/></terminologyPackage></sacm:AssuranceCasePackage>"
-        ),
-        "SACM23-TERM-007",
-        Some("case"),
-    ));
-    // Slice 0055 reads Artifact, Resource, Activity and Event (ADR 0034
-    // amendment 1), slice 0057 ArtifactAssetRelationship (amendment 2) and
-    // slice 0062 the Terminology kinds (amendment 3): the kinds an
-    // ArtifactPackage holds that are still unread (slice 0066 reads the
-    // ArtifactPackageInterface this list also held, SACM23-ART-012).
-    for (kind, row) in [
-        ("TerminologyPackageInterface", "SACM23-TERM-007"),
-        ("TerminologyPackageBinding", "SACM23-TERM-008"),
-    ] {
-        cases.push(kept(
-            kind,
-            "in an ArtifactPackage",
-            artifact_package(&format!(
-                "<artifactElement xmi:type=\"sacm:{kind}\" xmi:id=\"x\"><name content=\"x\"/>\
-                 </artifactElement>"
-            )),
-            row,
-            Some("a"),
-        ));
-    }
-    // A package's interface end not read yet (SACM23-AC-002,
-    // SACM23-TERM-007). Until slice 0066 these cases sampled the
-    // ArgumentPackage's and the ArtifactPackage's, which it reads
-    // (SACM23-ARG-014, SACM23-ART-012).
-    let terminology = |attribute: &str, content: &str| {
-        format!(
-            "<sacm:TerminologyPackage{NS} xmi:id=\"t\"{attribute}><name content=\"t\"/>{content}\
-             </sacm:TerminologyPackage>"
-        )
-    };
-    cases.push(kept(
-        "interface",
-        "the attribute on a TerminologyPackage",
-        terminology(" interface=\"i\"", ""),
-        "SACM23-TERM-007",
-        Some("t"),
-    ));
-    cases.push(kept(
-        "interface",
-        "the element on a TerminologyPackage",
-        terminology("", "<interface xmi:idref=\"i\"/>"),
-        "SACM23-TERM-007",
-        Some("t"),
-    ));
-    cases.push(kept(
-        "interface",
-        "the attribute on an AssuranceCasePackage",
-        format!(
-            "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\" interface=\"i\">\
-             <name content=\"case\"/></sacm:AssuranceCasePackage>"
-        ),
-        "SACM23-AC-002",
-        Some("case"),
-    ));
-    cases.push(kept(
-        "interface",
-        "the element on an AssuranceCasePackage",
-        format!(
-            "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name content=\"case\"/>\
-             <interface xmi:idref=\"i\"/></sacm:AssuranceCasePackage>"
-        ),
-        "SACM23-AC-002",
-        Some("case"),
-    ));
     // XMI document metadata (SACM23-XMI-019).
     let metadata = "SACM23-XMI-019";
     for (what, input, holder) in [
@@ -420,21 +309,6 @@ fn kept_entries() -> Vec<Kept> {
     ));
     // The spellings SACM23-XMI-009 reads are no kept entry since slice
     // 0057: see `spelled_entries`.
-    // A typed child of an ArtifactPackage nested in artifactElement, which
-    // the model's spelling ArtifactAssertedRelationship sampled until slice
-    // 0057 read it (SACM23-XMI-009), and then the ArtifactPackageInterface
-    // that slice 0066 reads (SACM23-ART-012).
-    cases.push(kept(
-        "TerminologyPackageInterface",
-        "in an ArtifactPackage nested in an ArtifactPackage",
-        artifact_package(
-            "<artifactElement xmi:type=\"sacm:ArtifactPackage\" xmi:id=\"n\"><name content=\"n\"/>\
-             <artifactElement xmi:type=\"sacm:TerminologyPackageInterface\" xmi:id=\"r\">\
-             <name content=\"r\"/></artifactElement></artifactElement>",
-        ),
-        "SACM23-TERM-007",
-        Some("n"),
-    ));
     // A cross-document href: SACM-XMI-007 (SACM23-XMI-027).
     cases.push(Kept {
         entry: "CrossDocumentHref",
@@ -858,70 +732,6 @@ fn lib_compat_003_wrapper_content_is_document_level_preserved_content_in_place()
     );
 }
 
-/// A root of a kind not read yet loads as a document with no elements, its
-/// ids in the id space; a tolerant write wraps it, and a strict write is
-/// `PreservedContent`, not `NoRoot`.
-#[test]
-fn lib_compat_003_a_bare_unread_root_loads_empty_and_writes_wrapped() {
-    let what = "a bare TerminologyPackageInterface root";
-    let input = format!(
-        "<sacm:TerminologyPackageInterface{NS} xmi:id=\"t\"><name content=\"T\"/>\
-         </sacm:TerminologyPackageInterface>"
-    );
-    let strict = strict_refusal(COMPAT_003, what, &input);
-    let output = tolerant(COMPAT_003, what, &input);
-    let found: Vec<(Code, Option<SourceLocation>)> = output
-        .diagnostics()
-        .iter()
-        .map(|found| (found.code(), found.location()))
-        .collect();
-    assert_eq!(
-        found,
-        [(Code::XMI_UNREAD_CONTENT, strict.location())],
-        "{COMPAT_003}: {what}: not one SACM-XMI-014 at the root"
-    );
-    let mut doc = output.into_document();
-    assert!(
-        doc.element_count() == 0 && doc.roots().next().is_none() && doc.has_preserved_content(),
-        "{COMPAT_003}: {what}: not an empty document holding the root"
-    );
-    let text = assert_round_trips(COMPAT_003, what, &doc);
-    assert!(
-        text.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<xmi:XMI ")
-            && text.contains("<sacm:TerminologyPackageInterface"),
-        "{COMPAT_003}: {what}: the output is not wrapped\n{text}"
-    );
-    assert!(
-        matches!(
-            write(&doc, Mode::Strict),
-            Err(WriteError::PreservedContent { elements, .. }) if elements.is_empty()
-        ),
-        "{COMPAT_003}: {what}: the strict write is not PreservedContent with no element"
-    );
-    // Its id is in the id space.
-    let answer = edit::apply(
-        &mut doc,
-        CreateArgumentPackage::root(LangString::new("P")).with_id("t"),
-    );
-    assert!(
-        matches!(&answer, Err(EditError::DuplicateId { id, .. }) if id.as_str() == "t"),
-        "{COMPAT_003}: {what}: with_id(\"t\") is not DuplicateId: {answer:?}"
-    );
-    // A created root is written after it.
-    edit::apply(
-        &mut doc,
-        CreateArgumentPackage::root(LangString::new("P")).with_id("p"),
-    )
-    .unwrap_or_else(|error| panic!("{COMPAT_003}: {what}: CreateArgumentPackage: {error:?}"));
-    let text = assert_round_trips(COMPAT_003, what, &doc);
-    assert_written_in_order(
-        COMPAT_003,
-        what,
-        &text,
-        &["<sacm:TerminologyPackageInterface", "xmi:id=\"p\""],
-    );
-}
-
 /// Root create, delete and reorder move document-level content as ADR 0033
 /// moves a preserved child: it keeps its index among the roots.
 #[test]
@@ -1088,9 +898,9 @@ fn lib_compat_003_document_preserved_content_is_one_difference() {
 /// With every root deleted, a document whose preserved content outside its
 /// elements is only XMI metadata, text or attributes of `xmi:XMI` holds no
 /// SACM package, so both writes are
-/// `NoRoot` (an `xmi:XMI` holding no package is `NoPackage` on read). A
-/// root of a kind not read yet that the document holds is a root: it is
-/// written, wrapped.
+/// `NoRoot` (an `xmi:XMI` holding no package is `NoPackage` on read). Since
+/// slice 0067 every package kind is read as a root, so no root is kept as
+/// document content (ADR 0035 amendment 1).
 #[test]
 fn lib_compat_003_deleting_every_root_beside_document_level_content_is_no_root() {
     // XMI metadata, text and an attribute of the wrapper each hold no root.
@@ -1121,22 +931,6 @@ fn lib_compat_003_deleting_every_root_beside_document_level_content_is_no_root()
             );
         }
     }
-
-    // The control: a bare root of a kind not read yet is written, wrapped.
-    let what = "a bare TerminologyPackageInterface root";
-    let doc = tolerant(COMPAT_003, what, &root_of("TerminologyPackageInterface")).into_document();
-    let text = write_tolerant(COMPAT_003, what, &doc);
-    assert!(
-        text.contains("<xmi:XMI ") && text.contains("<sacm:TerminologyPackageInterface"),
-        "{COMPAT_003}: {what}: not written wrapped\n{text}"
-    );
-    assert!(
-        matches!(
-            write(&doc, Mode::Strict),
-            Err(WriteError::PreservedContent { .. })
-        ),
-        "{COMPAT_003}: {what}: a strict write is not PreservedContent"
-    );
 }
 
 /// A kept `xmi:id` of `xmi:XMI` is in the document's id space: a root that

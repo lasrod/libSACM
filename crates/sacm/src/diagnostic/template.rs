@@ -214,12 +214,6 @@ templates! {
     XMI_014_NESTED_XMI_ELEMENT = XMI_UNREAD_CONTENT, Unread, "SACM-XMI-014/nested-xmi-element",
         [Text("element"), Text("container"), Text("row")],
         "the XMI element {element:?} in {container:?} is not read in this release";
-    XMI_014_INTERFACE_ELEMENT = XMI_UNREAD_CONTENT, Unread, "SACM-XMI-014/interface-element",
-        [Text("element"), Text("container"), Text("class"), Text("row")],
-        "the reference element {element:?} in the element {container:?} is the {class} end \"interface\", which is not read in this release";
-    XMI_014_UNREAD_ROOT = XMI_UNREAD_CONTENT, Unread, "SACM-XMI-014/unread-root",
-        [Text("element"), Text("row")],
-        "the root element {element:?} is not read in this release";
     XMI_014_XMI_CHILD = XMI_UNREAD_CONTENT, Unread, "SACM-XMI-014/xmi-child",
         [Text("element"), Text("container"), Text("row")],
         "the XMI element {element:?} in the element {container:?} is not read in this release";
@@ -232,12 +226,6 @@ templates! {
     XMI_014_PROXY_CHILD_OF_ROOT = XMI_UNREAD_CONTENT, Unread, "SACM-XMI-014/proxy-child-of-root",
         [Text("element"), Text("container"), Text("class"), Text("row")],
         "the element {element:?} in the root element {container:?} is in reference form, a proxy of an element of the class {class}, which is not read in this release";
-    XMI_014_UNREAD_KIND = XMI_UNREAD_CONTENT, Unread, "SACM-XMI-014/unread-kind",
-        [Text("class"), Text("element"), Text("container"), Text("row")],
-        "the {class} {element:?} in the element {container:?} is not read in this release";
-    XMI_014_UNREAD_KIND_IN_ROOT = XMI_UNREAD_CONTENT, Unread, "SACM-XMI-014/unread-kind-in-root",
-        [Text("class"), Text("element"), Text("container"), Text("row")],
-        "the {class} {element:?} in the root element {container:?} is not read in this release";
     XMI_015_NOT_XMI_NAMESPACE = XMI_WRAPPER_NAMESPACE, Unread, "SACM-XMI-015/not-xmi-namespace",
         [Text("element"), Text("row")],
         "the element {element:?} is not in the XMI namespace \"http://www.omg.org/spec/XMI/20131001\", so it is not read as the XMI element";
@@ -657,12 +645,6 @@ templates! {
     XMI_014_NESTED_XMI_ELEMENT_KEPT_BY_DOCUMENT = XMI_UNREAD_CONTENT, Diagnostic, "SACM-XMI-014/nested-xmi-element-kept-by-document",
         [Text("element"), Text("container"), Text("row")],
         "the XMI element {element:?} in {container:?} is not read in this release, so it is kept as preserved content of the document, which a tolerant write writes back and a strict write refuses; {row} reads it";
-    XMI_014_INTERFACE_ELEMENT_KEPT = XMI_UNREAD_CONTENT, Diagnostic, "SACM-XMI-014/interface-element-kept",
-        [Text("element"), Text("container"), Text("class"), Text("holder_class"), Text("holder_id"), Text("row")],
-        "the reference element {element:?} in the element {container:?} is the {class} end \"interface\", which is not read in this release, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses; {row} reads it";
-    XMI_014_UNREAD_ROOT_KEPT = XMI_UNREAD_CONTENT, Diagnostic, "SACM-XMI-014/unread-root-kept",
-        [Text("element"), Text("row")],
-        "the root element {element:?} is not read in this release, so it is kept as preserved content of the document, which a tolerant write writes back and a strict write refuses; {row} reads it";
     XMI_014_XMI_CHILD_KEPT = XMI_UNREAD_CONTENT, Diagnostic, "SACM-XMI-014/xmi-child-kept",
         [Text("element"), Text("container"), Text("holder_class"), Text("holder_id"), Text("row")],
         "the XMI element {element:?} in the element {container:?} is not read in this release, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses; {row} reads it";
@@ -675,12 +657,6 @@ templates! {
     XMI_014_PROXY_CHILD_OF_ROOT_KEPT = XMI_UNREAD_CONTENT, Diagnostic, "SACM-XMI-014/proxy-child-of-root-kept",
         [Text("element"), Text("container"), Text("class"), Text("holder_class"), Text("holder_id"), Text("row")],
         "the element {element:?} in the root element {container:?} is in reference form, a proxy of an element of the class {class}, which is not read in this release, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses; {row} reads it";
-    XMI_014_UNREAD_KIND_KEPT = XMI_UNREAD_CONTENT, Diagnostic, "SACM-XMI-014/unread-kind-kept",
-        [Text("class"), Text("element"), Text("container"), Text("holder_class"), Text("holder_id"), Text("row")],
-        "the {class} {element:?} in the element {container:?} is not read in this release, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses; {row} reads it";
-    XMI_014_UNREAD_KIND_IN_ROOT_KEPT = XMI_UNREAD_CONTENT, Diagnostic, "SACM-XMI-014/unread-kind-in-root-kept",
-        [Text("class"), Text("element"), Text("container"), Text("holder_class"), Text("holder_id"), Text("row")],
-        "the {class} {element:?} in the root element {container:?} is not read in this release, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses; {row} reads it";
     XMI_007_UNREAD_ATTRIBUTE_KEPT = XMI_EXTERNAL_HREF, Diagnostic, "SACM-XMI-007/unread-attribute-kept",
         [Text("attribute"), Text("element"), Text("holder_class"), Text("holder_id"), Text("row")],
         "the attribute {attribute:?} of the element {element:?} is not read in this release, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses; {row} reads it";
@@ -843,13 +819,15 @@ mod tests {
         assert!(find("SACM-XML-001").is_none() && find("SACM-XML-001/none").is_none());
         // Slice 0063 added 103 refusal templates; slice 0065 removed
         // SACM-XMI-014/expression-lang-string (SACM23-BASE-009); slice 0064
-        // added 102 diagnostic templates (LIB-API-018).
-        assert_eq!(count, 204, "LIB-API-017: the number of templates");
+        // added 102 diagnostic templates (LIB-API-018); slice 0067 removed
+        // the four refusals of unread kinds and ends and their four kept
+        // forms (ADR 0035 amendment 1).
+        assert_eq!(count, 196, "LIB-API-017: the number of templates");
         let diagnostics = TEMPLATES
             .iter()
             .filter(|template| template.carrier == Carrier::Diagnostic)
             .count();
-        assert_eq!(diagnostics, 102, "LIB-API-018: the diagnostic templates");
+        assert_eq!(diagnostics, 98, "LIB-API-018: the diagnostic templates");
         assert!(!is_template_id("SACM-XML-001"));
         assert!(!is_template_id("SACM-xml-001/a"));
         assert!(!is_template_id("SACM-XML-01/a"));

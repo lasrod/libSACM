@@ -557,16 +557,19 @@ fn sacm23_xmi_018_inputs_from_the_read_and_root_tests_give_the_utf8_result() {
             "a wrapper with no package, on line 2",
             format!("<!-- c -->\n{}", wrapper("")),
         ),
+        // An xmi:Extension document element: a TerminologyPackageInterface
+        // root until slice 0067 read it (SACM23-TERM-007).
         (
-            "a TerminologyPackageInterface root",
-            format!("<sacm:TerminologyPackageInterface{NS} xmi:id=\"terms_1\"/>"),
+            "an xmi:Extension document element",
+            "<xmi:Extension xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"/>".to_owned(),
         ),
         (
             "an unread attribute",
             format!("<sacm:ArgumentPackage{NS} xmi:id=\"a\" xmi:uuid=\"u\"/>"),
         ),
-        // A tolerant read keeps the two inputs above (ADR 0035); a root in
-        // another SACM namespace stays Unsupported in both modes.
+        // A tolerant read keeps the unread attribute above (ADR 0035); an
+        // xmi:Extension document element and a root in another SACM namespace
+        // stay Unsupported in both modes.
         (
             "a root in a SACM 2.2 namespace",
             "<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/2.2/argumentation\" \

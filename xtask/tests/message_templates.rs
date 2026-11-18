@@ -64,15 +64,17 @@ const HEADING: &str = "## Message templates";
 
 /// The number of refusal templates: the 103 of slice 0063 (acceptance 4),
 /// less `SACM-XMI-014/expression-lang-string`, which slice 0065 removes
-/// (SACM23-BASE-009).
-const REFUSAL_TEMPLATES: usize = 102;
+/// (SACM23-BASE-009), and the four of unread kinds and ends, which slice
+/// 0067 removes (ADR 0035 amendment 1).
+const REFUSAL_TEMPLATES: usize = 98;
 
 /// The row of the diagnostic templates (slice 0064).
 const ROW_018: &str = "LIB-API-018";
 
 /// The number of diagnostic templates (LIB-API-018, acceptance 7): 30 from
-/// validation and 72 from the reader.
-const DIAGNOSTIC_TEMPLATES: usize = 102;
+/// validation and 68 from the reader (slice 0067 removes the four kept forms
+/// of unread kinds and ends).
+const DIAGNOSTIC_TEMPLATES: usize = 98;
 
 /// The file of `Diagnostic` itself, relative to [`SACM_SRC`], where a
 /// diagnostic is built without a template only by `test-support`'s `new`.
@@ -892,7 +894,7 @@ fn lib_api_017_every_template_const_is_named_in_another_file_of_the_crate() {
 }
 
 #[test]
-fn lib_api_017_template_rs_declares_the_102_refusal_templates() {
+fn lib_api_017_template_rs_declares_the_98_refusal_templates() {
     let files = sacm_sources();
     let Some(source) = files.get(TEMPLATES) else {
         panic!("{ROW}: {SACM_SRC}/{TEMPLATES} does not exist");
@@ -912,7 +914,7 @@ fn lib_api_017_template_rs_declares_the_102_refusal_templates() {
 }
 
 #[test]
-fn lib_api_018_template_rs_declares_the_102_diagnostic_templates() {
+fn lib_api_018_template_rs_declares_the_98_diagnostic_templates() {
     let files = sacm_sources();
     let Some(source) = files.get(TEMPLATES) else {
         panic!("{ROW_018}: {SACM_SRC}/{TEMPLATES} does not exist");

@@ -1251,28 +1251,21 @@ type Template = fn(&str, &str) -> String;
 /// later line after a fixed indent, so its location does not depend on the
 /// prefix length.
 const REFUSALS: [(&str, Template, (u32, u32)); 6] = [
+    // Conforming content this version does not read yet: an XMI element as
+    // the document element, and XMI metadata on a root (SACM23-XMI-019).
+    // Until slice 0067 the first two samples were a TerminologyPackageInterface
+    // and an AssuranceCasePackageInterface root (an ArgumentPackageInterface
+    // until slice 0066), which are read now (SACM23-TERM-007, SACM23-AC-002).
+    // Content that does not conform is preserved (ADR 0033), so it is no
+    // sample here.
     (
-        "a package kind not read yet",
-        |s, x| {
-            format!(
-                "<{s}:TerminologyPackageInterface xmlns:{s}=\"{SACM_NS}\" xmlns:{x}=\"{XMI_NS}\" {x}:id=\"f\"/>"
-            )
-        },
+        "an xmi:Extension as the document element",
+        |s, x| format!("<{x}:Extension xmlns:{s}=\"{SACM_NS}\" xmlns:{x}=\"{XMI_NS}\"/>"),
         (1, 1),
     ),
-    // Conforming content this version does not read yet: an interface as
-    // the root (SACM23-AC-002; this sample was an ArgumentPackageInterface
-    // until slice 0066 read it, SACM23-ARG-014), XMI metadata on a root
-    // (SACM23-XMI-019). Content that does not conform is preserved (ADR
-    // 0033), so it is no sample here.
     (
-        "an interface as the root",
-        |s, x| {
-            format!(
-                "<{s}:AssuranceCasePackageInterface xmlns:{s}=\"{SACM_NS}\" xmlns:{x}=\"{XMI_NS}\" \
-                     {x}:id=\"a\"/>"
-            )
-        },
+        "an xmi:Documentation as the document element",
+        |s, x| format!("<{x}:Documentation xmlns:{s}=\"{SACM_NS}\" xmlns:{x}=\"{XMI_NS}\"/>"),
         (1, 1),
     ),
     (
