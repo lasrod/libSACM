@@ -58,3 +58,6 @@ There are no SACM clauses: this is library API. Its basis:
   (the order of checks 6 and 7) survived too, non-blocking. No wrong behaviour was found. In the fix round
   the builder adds the two cases and the lib.rs, catalog and CHANGELOG wording; the lead adds
   ADR 0011's pointer to keys 8 and 9 and one follow-up (the construction check misses qualified paths).
+- 2026-11-18 verify round 2: round 1 fixed (D1 and D2 killed). FAIL on one new item: CI mutant
+  `details_from_record` guard → `true` survives (a false reason for another refusal's template).
+  The maintainer approved a second fix round: one test case, the verifier's text.

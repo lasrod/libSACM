@@ -548,6 +548,13 @@ fn lib_api_018_a_refusal_record_naming_a_diagnostic_template_is_refused() {
         r#""template":"SACM-ID-002/not-an-ncname","arguments":{"class":"Claim","id":"1c"}"#,
         "the template \"SACM-ID-002/not-an-ncname\" is a diagnostic's, not a refusal's",
     );
+    assert_refused::<ReadError>(
+        "an InvalidId record naming another refusal's template",
+        invalid_id,
+        r#""template":"SACM-ID-002/read-id-not-an-ncname","arguments":{"id":""}"#,
+        r#""template":"SACM-MULT-001/repeated-value","arguments":{"property":"name","element":"c1","count":2}"#,
+        "the template \"SACM-MULT-001/repeated-value\" is another refusal's",
+    );
 }
 
 #[test]
