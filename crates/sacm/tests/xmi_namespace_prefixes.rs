@@ -1261,14 +1261,15 @@ const REFUSALS: [(&str, Template, (u32, u32)); 6] = [
         (1, 1),
     ),
     // Conforming content this version does not read yet: an interface as
-    // the root (SACM23-ARG-014), XMI metadata on a root (SACM23-XMI-019).
-    // Content that does not conform is preserved (ADR 0033), so it is no
-    // sample here.
+    // the root (SACM23-AC-002; this sample was an ArgumentPackageInterface
+    // until slice 0066 read it, SACM23-ARG-014), XMI metadata on a root
+    // (SACM23-XMI-019). Content that does not conform is preserved (ADR
+    // 0033), so it is no sample here.
     (
         "an interface as the root",
         |s, x| {
             format!(
-                "<{s}:ArgumentPackageInterface xmlns:{s}=\"{SACM_NS}\" xmlns:{x}=\"{XMI_NS}\" \
+                "<{s}:AssuranceCasePackageInterface xmlns:{s}=\"{SACM_NS}\" xmlns:{x}=\"{XMI_NS}\" \
                      {x}:id=\"a\"/>"
             )
         },

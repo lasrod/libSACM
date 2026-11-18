@@ -73,6 +73,29 @@ fn owns(end: ReferenceEnd, kind: ElementKind) -> bool {
         ReferenceEnd::Element => kind == Expression,
         ReferenceEnd::Origin => kind == Term,
         ReferenceEnd::TerminologyGroupMember => kind == TerminologyGroup,
+        // The ends of slice 0066 (ptc/22-03-13; §11.5, §11.6, §12.4, §12.5):
+        // a package's interface, an interface's implements, a binding's
+        // participants, on the Argumentation and Artifact kinds only (the
+        // Terminology and AssuranceCase pairs are slice 0067's).
+        ReferenceEnd::Interface => [
+            ElementKind::ArgumentPackage,
+            ElementKind::ArgumentPackageInterface,
+            ElementKind::ArgumentPackageBinding,
+            ElementKind::ArtifactPackage,
+            ElementKind::ArtifactPackageInterface,
+            ElementKind::ArtifactPackageBinding,
+        ]
+        .contains(&kind),
+        ReferenceEnd::Implements => [
+            ElementKind::ArgumentPackageInterface,
+            ElementKind::ArtifactPackageInterface,
+        ]
+        .contains(&kind),
+        ReferenceEnd::ParticipantPackage => [
+            ElementKind::ArgumentPackageBinding,
+            ElementKind::ArtifactPackageBinding,
+        ]
+        .contains(&kind),
         other => panic!("{ROW}: an end this test does not know: {other:?}"),
     }
 }
@@ -97,8 +120,13 @@ fn standard_bounds(end: ReferenceEnd) -> (usize, Option<usize>) {
         ReferenceEnd::Source | ReferenceEnd::ArtifactSource | ReferenceEnd::ArtifactTarget => {
             (1, None)
         }
-        ReferenceEnd::Target => (1, Some(1)),
-        ReferenceEnd::MetaClaim
+        // §11.6, §12.5 `implements[1]` (slice 0066).
+        ReferenceEnd::Target | ReferenceEnd::Implements => (1, Some(1)),
+        // §11.5, §12.4 `participantPackage[2..*]` (slice 0066).
+        ReferenceEnd::ParticipantPackage => (2, None),
+        // ptc/22-03-13 `interface[0..*]` (slice 0066).
+        ReferenceEnd::Interface
+        | ReferenceEnd::MetaClaim
         | ReferenceEnd::ReferencedArtifactElement
         | ReferenceEnd::GroupMember
         | ReferenceEnd::ArtifactGroupMember
@@ -192,6 +220,9 @@ fn named_accessor(element: SacmElement<'_>, end: ReferenceEnd) -> Vec<ElementId>
         ReferenceEnd::Element => element.expression_elements().to_vec(),
         ReferenceEnd::Origin => one(element.origin()),
         ReferenceEnd::Expression => element.expressions().to_vec(),
+        ReferenceEnd::Interface => element.interfaces().to_vec(),
+        ReferenceEnd::Implements => one(element.implements()),
+        ReferenceEnd::ParticipantPackage => element.participant_packages().to_vec(),
         other => panic!("{ROW}: an end this test does not know: {other:?}"),
     }
 }
@@ -233,6 +264,27 @@ const READERS_START: &str = r#"<xmi:XMI xmlns:sacm="http://www.omg.org/spec/SACM
   </sacm:AssuranceCasePackage>
 </xmi:XMI>
 "#;
+
+/// [`READERS_START`] with the ends slice 0066 adds: `p`'s `interface` names
+/// its `ArgumentPackageInterface` `pi`, which implements `p`, and the
+/// `ArgumentPackageBinding` `pb` in `case` binds `p` and `pi`
+/// (SACM23-ARG-014, SACM23-ARG-015).
+fn readers_start() -> String {
+    READERS_START
+        .replacen(
+            "<argumentPackage xmi:id=\"p\">",
+            "<argumentPackage xmi:id=\"p\" interface=\"pi\">",
+            1,
+        )
+        .replacen(
+            "    </argumentPackage>\n",
+            "      <argumentElement xmi:type=\"sacm:ArgumentPackageInterface\" xmi:id=\"pi\" \
+         implements=\"p\"><name content=\"PI\"/></argumentElement>\n    </argumentPackage>\n    \
+         <argumentPackage xmi:type=\"sacm:ArgumentPackageBinding\" xmi:id=\"pb\" \
+         participantPackage=\"p pi\"><name content=\"PB\"/></argumentPackage>\n",
+            1,
+        )
+}
 
 // ---------------------------------------------------------------------------
 // Acceptance 1: applies_to agrees with the edits
@@ -343,10 +395,16 @@ fn lib_api_015_bounds_agree_with_the_reference_edit_refusals_for_every_kind() {
                 );
                 continue;
             }
-            // Ids that name nothing: the bounds are checked first (checks 4
-            // and 5), so any other answer is no multiplicity refusal.
+            // Distinct ids that name nothing: the bounds are checked first
+            // (checks 4 and 5), so any other answer is no multiplicity
+            // refusal. They are distinct because a lower bound counts
+            // distinct ids (ADR 0039 D3); before slice 0066 this test gave
+            // one id `given` times, which no end with a lower bound above 1
+            // told apart.
             for given in 0..=3 {
-                let list = vec![ElementId::from("nowhere"); given];
+                let list: Vec<ElementId> = (0..given)
+                    .map(|n| ElementId::from(format!("nowhere_{n}")))
+                    .collect();
                 let refusal = answer(&doc, SetReferences::new(element, end, list));
                 let too_few = matches!(
                     &refusal,
@@ -388,7 +446,7 @@ fn lib_api_015_bounds_agree_with_the_reference_edit_refusals_for_every_kind() {
 
 #[test]
 fn lib_api_015_references_and_flag_equal_the_named_accessors() {
-    let doc = match xmi::read(READERS_START.as_bytes(), &ReadOptions::default()) {
+    let doc = match xmi::read(readers_start().as_bytes(), &ReadOptions::default()) {
         Ok(output) => output.into_document(),
         Err(error) => panic!("{ROW}: setup: READERS_START does not read: {error}"),
     };
@@ -545,13 +603,17 @@ fn lib_api_015_all_lists_every_flag_and_end_in_order() {
             ReferenceEnd::Element,
             ReferenceEnd::Origin,
             ReferenceEnd::TerminologyGroupMember,
+            // The ends of slice 0066 (ADR 0039 D1).
+            ReferenceEnd::Interface,
+            ReferenceEnd::Implements,
+            ReferenceEnd::ParticipantPackage,
             ReferenceEnd::Expression,
         ],
         "{ROW}: ReferenceEnd::ALL"
     );
     // Write order: an element's ends are written in ALL order. i1 of
     // READERS_START is read with its ends in another order.
-    let doc = match xmi::read(READERS_START.as_bytes(), &ReadOptions::default()) {
+    let doc = match xmi::read(readers_start().as_bytes(), &ReadOptions::default()) {
         Ok(output) => output.into_document(),
         Err(error) => panic!("{ROW}: setup: READERS_START does not read: {error}"),
     };

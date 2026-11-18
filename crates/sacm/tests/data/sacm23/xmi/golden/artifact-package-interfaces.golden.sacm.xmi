@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="case">
+  <name lang="en" content="Vehicle case" />
+  <artifactPackage xmi:id="tests" interface="tests_api">
+    <name lang="en" content="Brake tests" />
+    <artifactElement xmi:type="sacm:Artifact" xmi:id="report">
+      <name lang="en" content="Brake test report" />
+    </artifactElement>
+    <artifactElement xmi:type="sacm:ArtifactPackageInterface" xmi:id="tests_api" implements="tests">
+      <name lang="en" content="Brake tests interface" />
+      <artifactElement xmi:type="sacm:Artifact" xmi:id="report_cited" isCitation="true" citedElement="report">
+        <name lang="en" content="Brake test report" />
+      </artifactElement>
+    </artifactElement>
+  </artifactPackage>
+  <artifactPackage xmi:id="requirements" interface="requirements_api">
+    <name lang="en" content="Braking requirements" />
+    <artifactElement xmi:type="sacm:Artifact" xmi:id="spec">
+      <name lang="en" content="Braking requirement" />
+    </artifactElement>
+    <artifactElement xmi:type="sacm:ArtifactPackageInterface" xmi:id="requirements_api" implements="requirements">
+      <name lang="en" content="Requirements interface" />
+      <artifactElement xmi:type="sacm:Artifact" xmi:id="spec_cited" isCitation="true" citedElement="spec">
+        <name lang="en" content="Braking requirement" />
+      </artifactElement>
+    </artifactElement>
+  </artifactPackage>
+  <artifactPackage xmi:type="sacm:ArtifactPackageBinding" xmi:id="binding" participantPackage="tests_api requirements_api">
+    <name lang="en" content="The tests verify the requirement" />
+    <artifactElement xmi:type="sacm:Artifact" xmi:id="binding_report" isCitation="true" citedElement="report_cited">
+      <name lang="en" content="Brake test report" />
+    </artifactElement>
+    <artifactElement xmi:type="sacm:Artifact" xmi:id="binding_spec" isCitation="true" citedElement="spec_cited">
+      <name lang="en" content="Braking requirement" />
+    </artifactElement>
+    <artifactElement xmi:type="sacm:ArtifactAssetRelationship" xmi:id="binding_verifies" source="binding_report" target="binding_spec">
+      <name lang="en" content="verifies" />
+    </artifactElement>
+  </artifactPackage>
+</sacm:AssuranceCasePackage>

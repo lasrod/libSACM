@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="case">
+  <name lang="en" content="Vehicle case" />
+  <argumentPackage xmi:id="braking" interface="braking_api">
+    <name lang="en" content="Braking argument" />
+    <argumentElement xmi:type="sacm:Claim" xmi:id="braking_safe">
+      <name lang="en" content="Braking is acceptably safe" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:ArgumentPackageInterface" xmi:id="braking_api" implements="braking">
+      <name lang="en" content="Braking interface" />
+      <argumentElement xmi:type="sacm:Claim" xmi:id="braking_safe_cited" isCitation="true" citedElement="braking_safe" assertionDeclaration="asCited">
+        <name lang="en" content="Braking is acceptably safe" />
+      </argumentElement>
+    </argumentElement>
+  </argumentPackage>
+  <argumentPackage xmi:id="vehicle" interface="vehicle_api">
+    <name lang="en" content="Vehicle argument" />
+    <argumentElement xmi:type="sacm:Claim" xmi:id="vehicle_safe" assertionDeclaration="needsSupport">
+      <name lang="en" content="The vehicle stops safely" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:ArgumentPackageInterface" xmi:id="vehicle_api" implements="vehicle">
+      <name lang="en" content="Vehicle interface" />
+      <argumentElement xmi:type="sacm:Claim" xmi:id="vehicle_safe_cited" isCitation="true" citedElement="vehicle_safe" assertionDeclaration="asCited">
+        <name lang="en" content="The vehicle stops safely" />
+      </argumentElement>
+    </argumentElement>
+  </argumentPackage>
+  <argumentPackage xmi:type="sacm:ArgumentPackageBinding" xmi:id="binding" participantPackage="braking_api vehicle_api">
+    <name lang="en" content="Braking supports the vehicle" />
+    <argumentElement xmi:type="sacm:Claim" xmi:id="binding_braking" isCitation="true" citedElement="braking_safe_cited" assertionDeclaration="asCited">
+      <name lang="en" content="Braking is acceptably safe" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="binding_vehicle" isCitation="true" citedElement="vehicle_safe_cited" assertionDeclaration="asCited">
+      <name lang="en" content="The vehicle stops safely" />
+    </argumentElement>
+    <argumentElement xmi:type="sacm:AssertedInference" xmi:id="binding_link" source="binding_braking" target="binding_vehicle">
+      <name lang="en" content="Braking supports stopping" />
+    </argumentElement>
+  </argumentPackage>
+</sacm:AssuranceCasePackage>

@@ -103,7 +103,8 @@ tracks every requirement: what is built, what is planned, and the tests behind e
 
 Planned:
 
-- The interfaces and bindings of the four packages.
+- The interfaces and bindings of the Terminology and Assurance Case packages, and the
+  validation of every package's interfaces and bindings.
 - Tolerant reading of third-party dialects and legacy revisions, reporting exactly what
   was accepted.
 - More validation rules against the specification's constraints.

@@ -143,7 +143,7 @@ impl CreateArgumentReasoning {
         plan_referencing(
             document,
             ElementKind::ArgumentReasoning,
-            &self.parent,
+            Some(&self.parent),
             self.id.as_ref(),
             &self.name,
             &[],
@@ -301,7 +301,7 @@ impl CreateArtifactReference {
         plan_referencing(
             document,
             ElementKind::ArtifactReference,
-            &self.parent,
+            Some(&self.parent),
             self.id.as_ref(),
             &self.name,
             &[],
@@ -442,7 +442,7 @@ impl CreateArgumentGroup {
         plan_referencing(
             document,
             ElementKind::ArgumentGroup,
-            &self.parent,
+            Some(&self.parent),
             self.id.as_ref(),
             &self.name,
             &[],
@@ -502,7 +502,7 @@ impl Relationship {
         plan_referencing(
             document,
             kind,
-            &self.parent,
+            Some(&self.parent),
             self.id.as_ref(),
             &self.name,
             &[(Flag::IsCounter, self.is_counter)],
@@ -513,6 +513,328 @@ impl Relationship {
             ],
         )
     }
+}
+
+/// Defines the create operation of one package interface kind (ADR 0039 D4):
+/// the struct `$name`, given a parent or none, a name and the package the
+/// interface `implements`, and its methods.
+macro_rules! interface_operation {
+    (
+        $(#[$meta:meta])*
+        $name:ident, $kind:ident, $package:literal
+    ) => {
+        $(#[$meta])*
+        #[derive(Clone, Debug, PartialEq, Eq)]
+        #[cfg_attr(
+            feature = "serde",
+            derive(serde::Serialize, serde::Deserialize),
+            serde(deny_unknown_fields)
+        )]
+        pub struct $name {
+            #[cfg_attr(
+                feature = "serde",
+                serde(deserialize_with = "serde::Deserialize::deserialize")
+            )]
+            parent: Option<ElementId>,
+            #[cfg_attr(feature = "serde", serde(default))]
+            id: Option<ElementId>,
+            name: LangString,
+            implements: ElementId,
+        }
+
+        impl $name {
+            #[doc = concat!(
+                "Creates a root `", stringify!($kind), "` named `name`, after the document's ",
+                "last root, declaring the `", $package, "` `implements` names."
+            )]
+            #[must_use]
+            pub fn root(name: LangString, implements: impl Into<ElementId>) -> Self {
+                Self {
+                    parent: None,
+                    id: None,
+                    name,
+                    implements: implements.into(),
+                }
+            }
+
+            #[doc = concat!(
+                "Creates a `", stringify!($kind), "` named `name` as the last child of ",
+                "`parent`, declaring the `", $package, "` `implements` names."
+            )]
+            #[must_use]
+            pub fn new(
+                parent: impl Into<ElementId>,
+                name: LangString,
+                implements: impl Into<ElementId>,
+            ) -> Self {
+                Self {
+                    parent: Some(parent.into()),
+                    id: None,
+                    name,
+                    implements: implements.into(),
+                }
+            }
+
+            /// Gives the new element the id `id` instead of a generated one.
+            /// It must be an XML `NCName` and not already in the document.
+            /// Otherwise [`apply`](super::apply) refuses with
+            /// [`EditError::InvalidId`](super::EditError::InvalidId) or
+            /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
+            #[must_use]
+            pub fn with_id(self, id: impl Into<ElementId>) -> Self {
+                Self {
+                    id: Some(id.into()),
+                    ..self
+                }
+            }
+
+            /// The parent's id, or `None` for a root.
+            #[must_use]
+            pub fn parent(&self) -> Option<&ElementId> {
+                self.parent.as_ref()
+            }
+
+            /// The id given with [`with_id`](Self::with_id), or `None` when
+            /// the id is to be generated.
+            #[must_use]
+            pub fn id(&self) -> Option<&ElementId> {
+                self.id.as_ref()
+            }
+
+            /// The new element's name.
+            #[must_use]
+            pub fn name(&self) -> &LangString {
+                &self.name
+            }
+
+            /// The id of the package the interface declares, its
+            /// `implements`.
+            #[must_use]
+            pub fn implements(&self) -> &ElementId {
+                &self.implements
+            }
+
+            /// Runs every check of the operation, and returns what it
+            /// creates.
+            pub(super) fn plan<'o>(
+                &'o self,
+                document: &Document,
+            ) -> Result<Plan<'o>, EditError> {
+                plan_referencing(
+                    document,
+                    ElementKind::$kind,
+                    self.parent.as_ref(),
+                    self.id.as_ref(),
+                    &self.name,
+                    &[],
+                    &[(
+                        ReferenceEnd::Implements,
+                        std::slice::from_ref(&self.implements),
+                    )],
+                )
+            }
+        }
+
+        impl From<$name> for super::Operation {
+            fn from(operation: $name) -> Self {
+                Self::$name(operation)
+            }
+        }
+    };
+}
+
+/// Defines the create operation of one package binding kind (ADR 0039 D4):
+/// the struct `$name`, given a parent or none, a name and the packages the
+/// binding binds, and its methods.
+macro_rules! binding_operation {
+    (
+        $(#[$meta:meta])*
+        $name:ident, $kind:ident, $package:literal
+    ) => {
+        $(#[$meta])*
+        #[derive(Clone, Debug, PartialEq, Eq)]
+        #[cfg_attr(
+            feature = "serde",
+            derive(serde::Serialize, serde::Deserialize),
+            serde(deny_unknown_fields)
+        )]
+        pub struct $name {
+            #[cfg_attr(
+                feature = "serde",
+                serde(deserialize_with = "serde::Deserialize::deserialize")
+            )]
+            parent: Option<ElementId>,
+            #[cfg_attr(feature = "serde", serde(default))]
+            id: Option<ElementId>,
+            name: LangString,
+            participant_packages: Vec<ElementId>,
+        }
+
+        impl $name {
+            #[doc = concat!(
+                "Creates a root `", stringify!($kind), "` named `name`, after the document's ",
+                "last root, binding the packages `participant_packages` names (each an `", $package, "`), in the ",
+                "order given, repeats included."
+            )]
+            #[must_use]
+            pub fn root(
+                name: LangString,
+                participant_packages: impl IntoIterator<Item = impl Into<ElementId>>,
+            ) -> Self {
+                Self {
+                    parent: None,
+                    id: None,
+                    name,
+                    participant_packages: participant_packages.into_iter().map(Into::into).collect(),
+                }
+            }
+
+            #[doc = concat!(
+                "Creates a `", stringify!($kind), "` named `name` as the last child of ",
+                "`parent`, binding the packages `participant_packages` names (each an `", $package, "`), in the ",
+                "order given, repeats included."
+            )]
+            #[must_use]
+            pub fn new(
+                parent: impl Into<ElementId>,
+                name: LangString,
+                participant_packages: impl IntoIterator<Item = impl Into<ElementId>>,
+            ) -> Self {
+                Self {
+                    parent: Some(parent.into()),
+                    id: None,
+                    name,
+                    participant_packages: participant_packages.into_iter().map(Into::into).collect(),
+                }
+            }
+
+            /// Gives the new element the id `id` instead of a generated one.
+            /// It must be an XML `NCName` and not already in the document.
+            /// Otherwise [`apply`](super::apply) refuses with
+            /// [`EditError::InvalidId`](super::EditError::InvalidId) or
+            /// [`EditError::DuplicateId`](super::EditError::DuplicateId).
+            #[must_use]
+            pub fn with_id(self, id: impl Into<ElementId>) -> Self {
+                Self {
+                    id: Some(id.into()),
+                    ..self
+                }
+            }
+
+            /// The parent's id, or `None` for a root.
+            #[must_use]
+            pub fn parent(&self) -> Option<&ElementId> {
+                self.parent.as_ref()
+            }
+
+            /// The id given with [`with_id`](Self::with_id), or `None` when
+            /// the id is to be generated.
+            #[must_use]
+            pub fn id(&self) -> Option<&ElementId> {
+                self.id.as_ref()
+            }
+
+            /// The new element's name.
+            #[must_use]
+            pub fn name(&self) -> &LangString {
+                &self.name
+            }
+
+            /// The ids of the packages the binding binds, its
+            /// `participantPackage`, in the order given, repeats included.
+            #[doc(alias = "participantPackage")]
+            #[must_use]
+            pub fn participant_packages(&self) -> &[ElementId] {
+                &self.participant_packages
+            }
+
+            /// Runs every check of the operation, and returns what it
+            /// creates.
+            pub(super) fn plan<'o>(
+                &'o self,
+                document: &Document,
+            ) -> Result<Plan<'o>, EditError> {
+                plan_referencing(
+                    document,
+                    ElementKind::$kind,
+                    self.parent.as_ref(),
+                    self.id.as_ref(),
+                    &self.name,
+                    &[],
+                    &[(ReferenceEnd::ParticipantPackage, &self.participant_packages)],
+                )
+            }
+        }
+
+        impl From<$name> for super::Operation {
+            fn from(operation: $name) -> Self {
+                Self::$name(operation)
+            }
+        }
+    };
+}
+
+pub(super) use {binding_operation, interface_operation};
+
+interface_operation! {
+    /// Creates an `ArgumentPackageInterface` (SACM 2.3 §11.6) declaring the
+    /// ArgumentPackage `implements` names: a root, or a child of an
+    /// AssuranceCasePackage, an ArgumentPackage or an ArtifactPackage (or one
+    /// of their interfaces and bindings). The package's `interface` end is
+    /// not changed (ADR 0039).
+    ///
+    /// `implements` is required (`implements:ArgumentPackage[1]`). After
+    /// [ADR 0019]'s four checks, and the name's expression, an id that holds
+    /// XML white space is [`EditError::InvalidReference`], one that names no
+    /// element is [`EditError::ReferenceNotFound`], and one that names an
+    /// element of no ArgumentPackage kind is [`EditError::WrongReferenceType`]
+    /// (SACM-REF-002). Without [`with_id`](Self::with_id), the id is
+    /// generated: `argument_package_interface_<n>`.
+    ///
+    /// [ADR 0019]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0019-edit-operations.md
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::edit::{self, AddReference, CreateArgumentPackage, CreateArgumentPackageBinding, CreateArgumentPackageInterface};
+    /// use sacm::model::{Document, LangString, ReferenceEnd};
+    ///
+    /// let en = |t: &str| LangString::new(t).with_lang("en");
+    /// let mut doc = Document::new();
+    /// for (id, api) in [("braking", "braking_api"), ("vehicle", "vehicle_api")] {
+    ///     edit::apply(&mut doc, CreateArgumentPackage::root(en(id)).with_id(id))?;
+    ///     edit::apply(&mut doc, CreateArgumentPackageInterface::new(id, en(api), id).with_id(api))?;
+    ///     // The package's `interface` end is never synced: declare it yourself.
+    ///     edit::apply(&mut doc, AddReference::new(id, ReferenceEnd::Interface, api))?;
+    /// }
+    /// let bind = CreateArgumentPackageBinding::root(en("Braking supports the vehicle"), ["braking_api", "vehicle_api"]);
+    /// edit::apply(&mut doc, bind.with_id("binding"))?;
+    /// assert_eq!(doc.get("braking_api").and_then(|i| i.implements()).map(|id| id.as_str()), Some("braking"));
+    /// assert_eq!(doc.get("binding").map(|b| b.participant_packages().len()), Some(2));
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    CreateArgumentPackageInterface, ArgumentPackageInterface, "ArgumentPackage"
+}
+
+binding_operation! {
+    /// Creates an `ArgumentPackageBinding` (SACM 2.3 §11.5) binding the
+    /// packages `participant_packages` names, each of an `ArgumentPackage`
+    /// kind: a root, or a child of
+    /// an AssuranceCasePackage, an ArgumentPackage or an ArtifactPackage (or
+    /// one of their interfaces and bindings).
+    ///
+    /// `participantPackage:ArgumentPackage[2..*]`: after [ADR 0019]'s four
+    /// checks, fewer than two distinct ids is [`EditError::TooFewReferences`]
+    /// (ADR 0039 D3); then the name's expression; then an id that holds XML
+    /// white space is [`EditError::InvalidReference`], one that names no
+    /// element [`EditError::ReferenceNotFound`], and one that names an
+    /// element of no ArgumentPackage kind [`EditError::WrongReferenceType`],
+    /// each over the ids in order. Without [`with_id`](Self::with_id), the id
+    /// is generated: `argument_package_binding_<n>`. See
+    /// [`CreateArgumentPackageInterface`] for an example.
+    ///
+    /// [ADR 0019]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0019-edit-operations.md
+    CreateArgumentPackageBinding, ArgumentPackageBinding, "ArgumentPackage"
 }
 
 /// Defines the create operation of one asserted-relationship kind: the
@@ -850,11 +1172,14 @@ relationship_operation! {
     "giving the artifacts the `ArtifactReference`s `sources` name as context for the one `target` names."
 }
 
-/// The plan of an element of `kind` named `name` under `parent`, with
-/// `flags` set and each reference end of `references` holding its ids.
+/// The plan of an element of `kind` named `name` under `parent`, or as a
+/// root for `None`, with `flags` set and each reference end of `references`
+/// holding its ids.
 ///
 /// The checks, in order: [`checked_place`]'s four (ADR 0019); every end
-/// holds at least the ids it needs ([`EditError::TooFewReferences`]); then
+/// holds at least the distinct ids it needs and at most the ids it may
+/// ([`EditError::TooFewReferences`], ADR 0039 D3); then the name's
+/// expression (check 5a); then
 /// the referenced ids, by [`check_targets`]: white space, then existence,
 /// then type, each over every end and its ids in order (ADR 0028), the
 /// order a set operation checks them in too (ADR 0029). Changes nothing:
@@ -863,15 +1188,15 @@ relationship_operation! {
 pub(super) fn plan_referencing<'o>(
     document: &Document,
     kind: ElementKind,
-    parent: &'o ElementId,
+    parent: Option<&'o ElementId>,
     id: Option<&ElementId>,
     name: &'o LangString,
     flags: &[(Flag, bool)],
     references: &[(ReferenceEnd, &'o [ElementId])],
 ) -> Result<Plan<'o>, EditError> {
-    let (id, generated) = checked_place(document, kind, Some(parent), id)?;
+    let (id, generated) = checked_place(document, kind, parent, id)?;
     for &(end, targets) in references {
-        check_bounds(end, targets.len())?;
+        check_bounds(end, targets)?;
     }
     // The name's expression comes after the element's own ends, in each
     // check (SACM23-BASE-009).
@@ -881,10 +1206,10 @@ pub(super) fn plan_referencing<'o>(
         .map(|&(end, targets)| (end, targets, [].as_slice()))
         .collect();
     checked.push((ReferenceEnd::Expression, &expressions, &[]));
-    check_targets(document, &checked)?;
+    check_targets(document, kind, &checked)?;
     Ok(Plan::Create(NewElement {
         kind,
-        parent: Some(parent),
+        parent,
         id,
         generated,
         features: Features::Referencing {

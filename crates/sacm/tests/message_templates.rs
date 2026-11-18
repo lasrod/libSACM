@@ -577,27 +577,34 @@ fn cases() -> Vec<Case> {
             "the XMI element {element:?} in {container:?} is not read in this release",
             "the reader cannot represent the input at line 1, column 110: the XMI element \"xmi:Documentation\" in \"xmi:XMI\" is not read in this release (a limit of this version; SACM23-XMI-019 reads it)",
         ),
+        // A TerminologyPackage's interface end: slice 0066 reads the
+        // ArgumentPackage's this case sampled (SACM23-ARG-014).
         read(
             "SACM-XMI-014/interface-element",
-            package("<interface xmi:idref=\"p\"/>"),
+            format!(
+                "<sacm:TerminologyPackage{NS} xmi:id=\"t\"><name content=\"t\"/>\
+                 <interface xmi:idref=\"p\"/></sacm:TerminologyPackage>"
+            ),
             &[
                 ("element", t("interface")),
-                ("container", t("sacm:ArgumentPackage")),
-                ("class", t("ArgumentPackage")),
-                ("row", t("SACM23-ARG-014")),
+                ("container", t("sacm:TerminologyPackage")),
+                ("class", t("TerminologyPackage")),
+                ("row", t("SACM23-TERM-007")),
             ],
             "the reference element {element:?} in the element {container:?} is the {class} end \"interface\", which is not read in this release",
-            "the reader cannot represent the input at line 1, column 153: the reference element \"interface\" in the element \"sacm:ArgumentPackage\" is the ArgumentPackage end \"interface\", which is not read in this release (a limit of this version; SACM23-ARG-014 reads it)",
+            "the reader cannot represent the input at line 1, column 156: the reference element \"interface\" in the element \"sacm:TerminologyPackage\" is the TerminologyPackage end \"interface\", which is not read in this release (a limit of this version; SACM23-TERM-007 reads it)",
         ),
+        // A TerminologyPackageInterface root: slice 0066 reads the
+        // ArgumentPackageInterface root this case sampled (SACM23-ARG-014).
         read(
             "SACM-XMI-014/unread-root",
-            format!("<sacm:ArgumentPackageInterface{NS} xmi:id=\"i\"/>"),
+            format!("<sacm:TerminologyPackageInterface{NS} xmi:id=\"i\"/>"),
             &[
-                ("element", t("sacm:ArgumentPackageInterface")),
-                ("row", t("SACM23-ARG-014")),
+                ("element", t("sacm:TerminologyPackageInterface")),
+                ("row", t("SACM23-TERM-007")),
             ],
             "the root element {element:?} is not read in this release",
-            "the reader cannot represent the input at line 1, column 1: the root element \"sacm:ArgumentPackageInterface\" is not read in this release (a limit of this version; SACM23-ARG-014 reads it)",
+            "the reader cannot represent the input at line 1, column 1: the root element \"sacm:TerminologyPackageInterface\" is not read in this release (a limit of this version; SACM23-TERM-007 reads it)",
         ),
         read(
             "SACM-XMI-014/xmi-child",
@@ -645,17 +652,25 @@ fn cases() -> Vec<Case> {
             "the element {element:?} in the root element {container:?} is in reference form, a proxy of an element of the class {class}, which is not read in this release",
             "the reader cannot represent the input at line 1, column 153: the element \"argumentElement\" in the root element \"sacm:ArgumentPackage\" is in reference form, a proxy of an element of the class ArgumentationElement, which is not read in this release (a limit of this version; SACM23-XMI-019 reads it)",
         ),
+        // A TerminologyPackageInterface in a nested AssuranceCasePackage:
+        // slice 0066 reads the ArgumentPackageInterface in an
+        // ArgumentPackage this case sampled (SACM23-ARG-014).
         read(
             "SACM-XMI-014/unread-kind",
-            nested("<argumentElement xmi:type=\"sacm:ArgumentPackageInterface\" xmi:id=\"i\"/>"),
+            format!(
+                "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name content=\"case\"/>\
+                 <assuranceCasePackage xmi:id=\"sub\"><name content=\"sub\"/>\
+                 <terminologyPackage xmi:type=\"sacm:TerminologyPackageInterface\" xmi:id=\"i\"/>\
+                 </assuranceCasePackage></sacm:AssuranceCasePackage>"
+            ),
             &[
-                ("class", t("ArgumentPackageInterface")),
-                ("element", t("argumentElement")),
-                ("container", t("argumentPackage")),
-                ("row", t("SACM23-ARG-014")),
+                ("class", t("TerminologyPackageInterface")),
+                ("element", t("terminologyPackage")),
+                ("container", t("assuranceCasePackage")),
+                ("row", t("SACM23-TERM-007")),
             ],
             "the {class} {element:?} in the element {container:?} is not read in this release",
-            "the reader cannot represent the input at line 1, column 245: the ArgumentPackageInterface \"argumentElement\" in the element \"argumentPackage\" is not read in this release (a limit of this version; SACM23-ARG-014 reads it)",
+            "the reader cannot represent the input at line 1, column 220: the TerminologyPackageInterface \"terminologyPackage\" in the element \"assuranceCasePackage\" is not read in this release (a limit of this version; SACM23-TERM-007 reads it)",
         ),
         read(
             "SACM-XMI-014/unread-kind-in-root",

@@ -308,6 +308,52 @@
     ]
   },
   {
+    "type": "CreateArgumentPackageInterface",
+    "parent": null,
+    "id": "braking_api",
+    "name": {
+      "lang": "en",
+      "content": "Braking interface"
+    },
+    "implements": "braking"
+  },
+  {
+    "type": "CreateArgumentPackageInterface",
+    "parent": "braking",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Braking interface"
+    },
+    "implements": "braking"
+  },
+  {
+    "type": "CreateArgumentPackageBinding",
+    "parent": null,
+    "id": "binding",
+    "name": {
+      "lang": "en",
+      "content": "Braking supports the vehicle"
+    },
+    "participant_packages": [
+      "braking_api",
+      "vehicle_api"
+    ]
+  },
+  {
+    "type": "CreateArgumentPackageBinding",
+    "parent": "case",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Braking supports the vehicle"
+    },
+    "participant_packages": [
+      "braking_api",
+      "vehicle_api"
+    ]
+  },
+  {
     "type": "CreateDescription",
     "parent": "c1",
     "id": null,
@@ -641,6 +687,52 @@
     ]
   },
   {
+    "type": "CreateArtifactPackageInterface",
+    "parent": null,
+    "id": "tests_api",
+    "name": {
+      "lang": "en",
+      "content": "Brake tests interface"
+    },
+    "implements": "tests"
+  },
+  {
+    "type": "CreateArtifactPackageInterface",
+    "parent": "tests",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "Brake tests interface"
+    },
+    "implements": "tests"
+  },
+  {
+    "type": "CreateArtifactPackageBinding",
+    "parent": null,
+    "id": "binding",
+    "name": {
+      "lang": "en",
+      "content": "The tests verify the requirement"
+    },
+    "participant_packages": [
+      "tests_api",
+      "requirements_api"
+    ]
+  },
+  {
+    "type": "CreateArtifactPackageBinding",
+    "parent": "case",
+    "id": null,
+    "name": {
+      "lang": "en",
+      "content": "The tests verify the requirement"
+    },
+    "participant_packages": [
+      "tests_api",
+      "requirements_api"
+    ]
+  },
+  {
     "type": "CreateTerminologyPackage",
     "parent": null,
     "id": null,
@@ -968,6 +1060,12 @@
     "element": "rel1",
     "end": "artifactSource",
     "id": "report_pdf"
+  },
+  {
+    "type": "AddReference",
+    "element": "binding",
+    "end": "participantPackage",
+    "id": "vehicle_api"
   },
   {
     "type": "RemoveReference",

@@ -1609,39 +1609,48 @@ fn kept_cases() -> Vec<Case> {
             ),
             "the XMI element \"xmi:Documentation\" in \"xmi:XMI\" is not read in this release, so it is kept as preserved content of the document, which a tolerant write writes back and a strict write refuses; SACM23-XMI-019 reads it",
         ),
+        // A TerminologyPackage's interface end, a TerminologyPackageInterface
+        // root and one in a nested AssuranceCasePackage: slice 0066 reads the
+        // ArgumentPackage kinds these three cases sampled (SACM23-ARG-014).
         case(
             "SACM-XMI-014/interface-element-kept",
-            tolerant(package("<interface xmi:idref=\"p\"/>")),
+            tolerant(format!(
+                "<sacm:TerminologyPackage{NS} xmi:id=\"t\"><name content=\"t\"/>\
+                 <interface xmi:idref=\"p\"/></sacm:TerminologyPackage>"
+            )),
             (WARNING, "LIB-API-011", None),
             &[
                 ("element", t("interface")),
-                ("container", t("sacm:ArgumentPackage")),
-                ("class", t("ArgumentPackage")),
-                ("holder_class", t("ArgumentPackage")),
-                ("holder_id", t("p")),
-                ("row", t("SACM23-ARG-014")),
+                ("container", t("sacm:TerminologyPackage")),
+                ("class", t("TerminologyPackage")),
+                ("holder_class", t("TerminologyPackage")),
+                ("holder_id", t("t")),
+                ("row", t("SACM23-TERM-007")),
             ],
             concat!(
                 "the reference element {element:?} in the element {container:?} is the {class} end \"interface\", which is not read in this release",
                 ke!(),
                 reads!()
             ),
-            "the reference element \"interface\" in the element \"sacm:ArgumentPackage\" is the ArgumentPackage end \"interface\", which is not read in this release, so it is kept as preserved content of the ArgumentPackage \"p\", which a tolerant write writes back and a strict write refuses; SACM23-ARG-014 reads it",
+            "the reference element \"interface\" in the element \"sacm:TerminologyPackage\" is the TerminologyPackage end \"interface\", which is not read in this release, so it is kept as preserved content of the TerminologyPackage \"t\", which a tolerant write writes back and a strict write refuses; SACM23-TERM-007 reads it",
         ),
         case(
             "SACM-XMI-014/unread-root-kept",
-            tolerant(wrapper("", "<sacm:ArgumentPackageInterface xmi:id=\"i\"/>")),
+            tolerant(wrapper(
+                "",
+                "<sacm:TerminologyPackageInterface xmi:id=\"i\"/>",
+            )),
             (WARNING, "LIB-API-011", None),
             &[
-                ("element", t("sacm:ArgumentPackageInterface")),
-                ("row", t("SACM23-ARG-014")),
+                ("element", t("sacm:TerminologyPackageInterface")),
+                ("row", t("SACM23-TERM-007")),
             ],
             concat!(
                 "the root element {element:?} is not read in this release",
                 kd!(),
                 reads!()
             ),
-            "the root element \"sacm:ArgumentPackageInterface\" is not read in this release, so it is kept as preserved content of the document, which a tolerant write writes back and a strict write refuses; SACM23-ARG-014 reads it",
+            "the root element \"sacm:TerminologyPackageInterface\" is not read in this release, so it is kept as preserved content of the document, which a tolerant write writes back and a strict write refuses; SACM23-TERM-007 reads it",
         ),
         case(
             "SACM-XMI-014/xmi-child-kept",
@@ -1719,24 +1728,27 @@ fn kept_cases() -> Vec<Case> {
         ),
         case(
             "SACM-XMI-014/unread-kind-kept",
-            tolerant(nested(
-                "<argumentElement xmi:type=\"sacm:ArgumentPackageInterface\" xmi:id=\"i\"/>",
+            tolerant(format!(
+                "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name content=\"case\"/>\
+                 <assuranceCasePackage xmi:id=\"sub\"><name content=\"sub\"/>\
+                 <terminologyPackage xmi:type=\"sacm:TerminologyPackageInterface\" xmi:id=\"i\"/>\
+                 </assuranceCasePackage></sacm:AssuranceCasePackage>"
             )),
             (WARNING, "LIB-API-011", None),
             &[
-                ("class", t("ArgumentPackageInterface")),
-                ("element", t("argumentElement")),
-                ("container", t("argumentPackage")),
-                ("holder_class", t("ArgumentPackage")),
-                ("holder_id", t("ap")),
-                ("row", t("SACM23-ARG-014")),
+                ("class", t("TerminologyPackageInterface")),
+                ("element", t("terminologyPackage")),
+                ("container", t("assuranceCasePackage")),
+                ("holder_class", t("AssuranceCasePackage")),
+                ("holder_id", t("sub")),
+                ("row", t("SACM23-TERM-007")),
             ],
             concat!(
                 "the {class} {element:?} in the element {container:?} is not read in this release",
                 ke!(),
                 reads!()
             ),
-            "the ArgumentPackageInterface \"argumentElement\" in the element \"argumentPackage\" is not read in this release, so it is kept as preserved content of the ArgumentPackage \"ap\", which a tolerant write writes back and a strict write refuses; SACM23-ARG-014 reads it",
+            "the TerminologyPackageInterface \"terminologyPackage\" in the element \"assuranceCasePackage\" is not read in this release, so it is kept as preserved content of the AssuranceCasePackage \"sub\", which a tolerant write writes back and a strict write refuses; SACM23-TERM-007 reads it",
         ),
         case(
             "SACM-XMI-014/unread-kind-in-root-kept",

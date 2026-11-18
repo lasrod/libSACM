@@ -176,21 +176,19 @@ fn assert_text_refused_with(entry: &str, what: &str, input: &str, label: &str) {
     assert_refused_with(entry, what, input.as_bytes(), label);
 }
 
-// --- Interim: the eight package, interface and binding kinds ------------------------
+// --- Interim: the four package, interface and binding kinds -------------------------
 
 #[test]
 fn lib_api_011_each_unread_package_interface_and_binding_kind_names_its_row() {
-    // An ArtifactPackage is read since slice 0052 (SACM23-ART-001), and a
-    // TerminologyPackage since slice 0062 (SACM23-TERM-001): eight kinds.
+    // An ArtifactPackage is read since slice 0052 (SACM23-ART-001), a
+    // TerminologyPackage since slice 0062 (SACM23-TERM-001), and the
+    // Argumentation and Artifact interfaces and bindings since slice 0066
+    // (SACM23-ARG-014, -015, SACM23-ART-012, -013): four kinds.
     let kinds = [
-        ("ArtifactPackageInterface", "SACM23-ART-012"),
-        ("ArtifactPackageBinding", "SACM23-ART-013"),
         ("TerminologyPackageInterface", "SACM23-TERM-007"),
         ("TerminologyPackageBinding", "SACM23-TERM-008"),
         ("AssuranceCasePackageInterface", "SACM23-AC-002"),
         ("AssuranceCasePackageBinding", "SACM23-AC-003"),
-        ("ArgumentPackageInterface", "SACM23-ARG-014"),
-        ("ArgumentPackageBinding", "SACM23-ARG-015"),
     ];
     for (kind, row) in kinds {
         assert_text_refused_with(kind, "as the root", &root_of(kind), &interim(row));
@@ -199,18 +197,22 @@ fn lib_api_011_each_unread_package_interface_and_binding_kind_names_its_row() {
 
 #[test]
 fn lib_api_011_an_unread_kind_inside_a_package_names_its_row() {
-    // The same kinds, as children: an ArgumentPackageInterface in an
-    // ArgumentPackage, a TerminologyPackageInterface typed in the
+    // The same kinds, as children: an AssuranceCasePackageInterface typed in
+    // the assuranceCasePackage role of an AssuranceCasePackage (this test
+    // first used an ArgumentPackageInterface in an ArgumentPackage, which
+    // slice 0066 reads), a TerminologyPackageInterface typed in the
     // terminologyPackage role of an AssuranceCasePackage (a TerminologyPackage
     // is read since slice 0062).
-    let interface = package(
-        "<argumentElement xmi:type=\"sacm:ArgumentPackageInterface\" xmi:id=\"i\"><name content=\"i\"/></argumentElement>",
+    let interface = format!(
+        "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name content=\"case\"/>\
+         <assuranceCasePackage xmi:type=\"sacm:AssuranceCasePackageInterface\" xmi:id=\"i\">\
+         <name content=\"i\"/></assuranceCasePackage></sacm:AssuranceCasePackage>"
     );
     assert_text_refused_with(
-        "ArgumentPackageInterface",
-        "in an ArgumentPackage",
+        "AssuranceCasePackageInterface",
+        "in an AssuranceCasePackage",
         &interface,
-        &interim("SACM23-ARG-014"),
+        &interim("SACM23-AC-002"),
     );
     let terminology = format!(
         "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name content=\"case\"/>\
@@ -242,9 +244,9 @@ fn lib_api_011_each_unread_artifact_element_kind_names_its_row() {
     // (ADR 0034 amendment 1), and slice 0057 ArtifactAssetRelationship
     // (amendment 2), and slice 0062 the Terminology kinds (amendment 3), whose
     // entries are gone; the interface and binding kinds, refused as roots
-    // above, are sampled here as children.
+    // above, are sampled here as children. Slice 0066 reads the
+    // ArtifactPackageInterface this list first held (SACM23-ART-012).
     let kinds = [
-        ("ArtifactPackageInterface", "SACM23-ART-012"),
         ("TerminologyPackageInterface", "SACM23-TERM-007"),
         ("TerminologyPackageBinding", "SACM23-TERM-008"),
     ];
@@ -262,17 +264,18 @@ fn lib_api_011_an_unread_kind_in_a_nested_artifact_package_names_its_row() {
     // `ArtifactAssertedRelationship`, which slice 0057 reads in tolerant mode
     // and keeps as preserved content in strict mode (SACM23-XMI-009,
     // model_spellings.rs). An unread kind one package deeper is refused the
-    // same way.
+    // same way: a TerminologyPackageInterface, since slice 0066 reads the
+    // ArtifactPackageInterface this test then used (SACM23-ART-012).
     let input = artifact_package(
         "<artifactElement xmi:type=\"sacm:ArtifactPackage\" xmi:id=\"n\"><name content=\"n\"/>\
-         <artifactElement xmi:type=\"sacm:ArtifactPackageInterface\" xmi:id=\"r\"><name content=\"r\"/>\
+         <artifactElement xmi:type=\"sacm:TerminologyPackageInterface\" xmi:id=\"r\"><name content=\"r\"/>\
          </artifactElement></artifactElement>",
     );
     assert_text_refused_with(
-        "ArtifactPackageInterface",
+        "TerminologyPackageInterface",
         "in an ArtifactPackage nested in an ArtifactPackage",
         &input,
-        &interim("SACM23-ART-012"),
+        &interim("SACM23-TERM-007"),
     );
 }
 

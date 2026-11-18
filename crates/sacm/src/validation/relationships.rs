@@ -129,7 +129,9 @@ pub(super) fn artifact_reference_kinds(document: &Document, found: &mut Vec<Diag
                 };
                 let kind = target.kind();
                 if kind == ElementKind::ArtifactReference
-                    || !end.target().admits(kind)
+                    || !end
+                        .target_on(element.kind())
+                        .is_some_and(|declared| declared.admits(kind))
                     || !reported.insert(id.as_str())
                 {
                     continue;

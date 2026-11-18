@@ -629,7 +629,8 @@ fn lib_edit_004_crosses_package_is_true_exactly_when_the_nearest_packages_differ
 
 #[test]
 fn lib_edit_004_crosses_package_counts_interfaces_and_bindings_as_packages() {
-    // Inserted: the reader does not read interfaces and bindings yet.
+    // Inserted: an interface with no implements and a binding with no
+    // participant, which no create makes (SACM23-ARG-014, SACM23-ARG-015).
     let mut doc = Document::new();
     for (parent, kind, value) in [
         (None, ElementKind::AssuranceCasePackage, "case"),

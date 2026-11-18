@@ -322,7 +322,7 @@ catalog! {
     /// SACM-XMI-014: conforming content this release does not read yet,
     /// which a tolerant [`xmi::read`](crate::xmi::read) keeps as preserved
     /// content with one Warning: an element of a kind not read yet (such as
-    /// a `TerminologyPackage` or an `ArtifactPackageInterface`), a package's
+    /// a `TerminologyPackageInterface`), a package's
     /// `interface` end, or XMI metadata (such as
     /// `xmi:uuid`, `xsi:schemaLocation` or `xmi:Documentation`). It is not a
     /// defect: the message ends naming the row that reads it. A strict read refuses it as

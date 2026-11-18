@@ -45,6 +45,7 @@ decisions.md has a one-line entry pointing to it.
 | [0036](0036-moving-and-copying-elements.md) | Moving and copying elements, and finding referrers | accepted |
 | [0037](0037-undo-is-the-applications.md) | Undo is the application's, on whole-document copies | accepted |
 | [0038](0038-expression-lang-string.md) | ExpressionLangString | accepted |
+| [0039](0039-package-interfaces-and-bindings.md) | Package interfaces and bindings: ends, creates and deletes | accepted |
 
 Statuses: `proposed` → `accepted` (maintainer approval) → optionally `superseded by NNNN`.
 Copy [template.md](template.md) for a new record.

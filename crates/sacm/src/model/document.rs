@@ -2181,7 +2181,7 @@ fn reference_problem(
     end: ReferenceEnd,
     targets: &[ElementId],
 ) -> Option<String> {
-    if !end.owner().admits(kind) {
+    if !end.applies_to(kind) {
         return Some(format!("is a {kind}, which has no {}", end.name()));
     }
     if targets.iter().any(|target| target.as_str().is_empty()) {
@@ -2932,6 +2932,52 @@ impl<'a> SacmElement<'a> {
     #[must_use]
     pub fn origin(self) -> Option<&'a ElementId> {
         self.references(ReferenceEnd::Origin).first()
+    }
+
+    /// The interfaces a package declares (`interface`, ptc/22-03-13), in
+    /// document order, repeats included; empty for a kind without the end.
+    /// It is [`references`](Self::references) of [`ReferenceEnd::Interface`].
+    /// The end is held as written: it is never synced with the interfaces'
+    /// [`implements`](Self::implements) (ADR 0039 D2).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::edit::{self, AddReference, CreateArgumentPackage, CreateArgumentPackageInterface};
+    /// use sacm::model::{Document, LangString, ReferenceEnd};
+    ///
+    /// let en = |text: &str| LangString::new(text).with_lang("en");
+    /// let mut doc = Document::new();
+    /// edit::apply(&mut doc, CreateArgumentPackage::root(en("Braking")).with_id("braking"))?;
+    /// let api = CreateArgumentPackageInterface::new("braking", en("Braking interface"), "braking");
+    /// edit::apply(&mut doc, api.with_id("braking_api"))?;
+    /// // Creating the interface does not declare it in the package's end.
+    /// assert!(doc.get("braking").expect("just created").interfaces().is_empty());
+    /// edit::apply(&mut doc, AddReference::new("braking", ReferenceEnd::Interface, "braking_api"))?;
+    /// assert_eq!(doc.get("braking").expect("just created").interfaces()[0].as_str(), "braking_api");
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    #[doc(alias = "interface")]
+    #[must_use]
+    pub fn interfaces(self) -> &'a [ElementId] {
+        self.references(ReferenceEnd::Interface)
+    }
+
+    /// The package an interface declares (SACM 2.3 §11.6, §12.5
+    /// `implements:<package>[1]`), or `None` when it holds none or the
+    /// element is no interface.
+    #[must_use]
+    pub fn implements(self) -> Option<&'a ElementId> {
+        self.references(ReferenceEnd::Implements).first()
+    }
+
+    /// The packages a binding binds (SACM 2.3 §11.5, §12.4
+    /// `participantPackage:<package>[2..*]`), in order, repeats included;
+    /// empty for a kind without the end.
+    #[doc(alias = "participantPackage")]
+    #[must_use]
+    pub fn participant_packages(self) -> &'a [ElementId] {
+        self.references(ReferenceEnd::ParticipantPackage)
     }
 
     /// Whether an asserted relationship counters its declared purpose (SACM

@@ -44,12 +44,10 @@ const INVALID: &str = "invalid";
 const GOLDEN: &str = "golden";
 /// The fixtures out of the round trip until the reader reads their kinds,
 /// relative to [`FIXTURES`], each with why it is pending (LIB-RT-002).
-const PENDING: [(&str, &str); 1] = [(
-    // A SACM23-XMI-007 writer golden; `xmi::read` refuses it as Unsupported.
-    "golden/nested.golden.sacm.xmi",
-    "holds an ArgumentPackageInterface, which no verified row reads yet (its Artifact, with \
-     a Property, is read since slice 0055)",
-)];
+/// None in this release: slice 0066 reads the `ArgumentPackageInterface` of
+/// `golden/nested.golden.sacm.xmi`, the last file on the list
+/// (SACM23-ARG-014).
+const PENDING: [(&str, &str); 0] = [];
 
 /// The three states of one `LangString` field: absent, empty and non-empty
 /// (non-ASCII).

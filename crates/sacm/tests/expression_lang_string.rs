@@ -1369,10 +1369,12 @@ fn sacm23_base_009_no_input_is_unsupported_naming_sacm23_base_009() {
 fn sacm23_base_009_reference_end_expression_is_derived_on_every_kind() {
     let end = ReferenceEnd::Expression;
     assert_eq!(end.name(), "expression", "{BASE_009}: the end's name");
+    // Twenty ends: slice 0066 adds three (ADR 0039 D1).
+    let count = 20;
     assert_eq!(
         (ReferenceEnd::ALL.len(), ReferenceEnd::ALL.last()),
-        (17, Some(&ReferenceEnd::Expression)),
-        "{BASE_009}: Expression is the last of the 17 ends of ALL"
+        (count, Some(&ReferenceEnd::Expression)),
+        "{BASE_009}: Expression is the last of the {count} ends of ALL"
     );
     for &kind in ElementKind::ALL {
         assert_eq!(

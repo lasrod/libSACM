@@ -226,27 +226,28 @@ fn kept(
 )]
 fn kept_entries() -> Vec<Kept> {
     let mut cases = Vec::new();
+    // The four kinds still unread; slice 0066 reads the Argumentation and
+    // Artifact interfaces and bindings (ADR 0039).
     for (kind, row) in [
-        ("ArtifactPackageInterface", "SACM23-ART-012"),
-        ("ArtifactPackageBinding", "SACM23-ART-013"),
         ("TerminologyPackageInterface", "SACM23-TERM-007"),
         ("TerminologyPackageBinding", "SACM23-TERM-008"),
         ("AssuranceCasePackageInterface", "SACM23-AC-002"),
         ("AssuranceCasePackageBinding", "SACM23-AC-003"),
-        ("ArgumentPackageInterface", "SACM23-ARG-014"),
-        ("ArgumentPackageBinding", "SACM23-ARG-015"),
     ] {
         cases.push(kept(kind, "as the root", root_of(kind), row, None));
     }
+    // This case first sampled an ArgumentPackageInterface in an
+    // ArgumentPackage, which slice 0066 reads (SACM23-ARG-014).
     cases.push(kept(
-        "ArgumentPackageInterface",
-        "in an ArgumentPackage",
-        package(
-            "<argumentElement xmi:type=\"sacm:ArgumentPackageInterface\" xmi:id=\"i\">\
-             <name content=\"i\"/></argumentElement>",
+        "AssuranceCasePackageInterface",
+        "in an AssuranceCasePackage",
+        format!(
+            "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name content=\"case\"/>\
+             <assuranceCasePackage xmi:type=\"sacm:AssuranceCasePackageInterface\" xmi:id=\"i\">\
+             <name content=\"i\"/></assuranceCasePackage></sacm:AssuranceCasePackage>"
         ),
-        "SACM23-ARG-014",
-        Some("p"),
+        "SACM23-AC-002",
+        Some("case"),
     ));
     // A TerminologyPackage is read since slice 0062 (SACM23-TERM-001); the
     // interface kind in the same role is not.
@@ -264,9 +265,9 @@ fn kept_entries() -> Vec<Kept> {
     // Slice 0055 reads Artifact, Resource, Activity and Event (ADR 0034
     // amendment 1), slice 0057 ArtifactAssetRelationship (amendment 2) and
     // slice 0062 the Terminology kinds (amendment 3): the kinds an
-    // ArtifactPackage holds that are still unread.
+    // ArtifactPackage holds that are still unread (slice 0066 reads the
+    // ArtifactPackageInterface this list also held, SACM23-ART-012).
     for (kind, row) in [
-        ("ArtifactPackageInterface", "SACM23-ART-012"),
         ("TerminologyPackageInterface", "SACM23-TERM-007"),
         ("TerminologyPackageBinding", "SACM23-TERM-008"),
     ] {
@@ -281,21 +282,29 @@ fn kept_entries() -> Vec<Kept> {
             Some("a"),
         ));
     }
-    // A package's interface end (SACM23-AC-002, SACM23-ARG-014,
-    // SACM23-ART-012).
+    // A package's interface end not read yet (SACM23-AC-002,
+    // SACM23-TERM-007). Until slice 0066 these cases sampled the
+    // ArgumentPackage's and the ArtifactPackage's, which it reads
+    // (SACM23-ARG-014, SACM23-ART-012).
+    let terminology = |attribute: &str, content: &str| {
+        format!(
+            "<sacm:TerminologyPackage{NS} xmi:id=\"t\"{attribute}><name content=\"t\"/>{content}\
+             </sacm:TerminologyPackage>"
+        )
+    };
     cases.push(kept(
         "interface",
-        "the attribute on an ArgumentPackage",
-        package("").replace("xmi:id=\"p\">", "xmi:id=\"p\" interface=\"i\">"),
-        "SACM23-ARG-014",
-        Some("p"),
+        "the attribute on a TerminologyPackage",
+        terminology(" interface=\"i\"", ""),
+        "SACM23-TERM-007",
+        Some("t"),
     ));
     cases.push(kept(
         "interface",
-        "the element on an ArgumentPackage",
-        package("<interface xmi:idref=\"i\"/>"),
-        "SACM23-ARG-014",
-        Some("p"),
+        "the element on a TerminologyPackage",
+        terminology("", "<interface xmi:idref=\"i\"/>"),
+        "SACM23-TERM-007",
+        Some("t"),
     ));
     cases.push(kept(
         "interface",
@@ -309,10 +318,13 @@ fn kept_entries() -> Vec<Kept> {
     ));
     cases.push(kept(
         "interface",
-        "the attribute on an ArtifactPackage",
-        artifact_package("").replace("xmi:id=\"a\">", "xmi:id=\"a\" interface=\"i\">"),
-        "SACM23-ART-012",
-        Some("a"),
+        "the element on an AssuranceCasePackage",
+        format!(
+            "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name content=\"case\"/>\
+             <interface xmi:idref=\"i\"/></sacm:AssuranceCasePackage>"
+        ),
+        "SACM23-AC-002",
+        Some("case"),
     ));
     // XMI document metadata (SACM23-XMI-019).
     let metadata = "SACM23-XMI-019";
@@ -410,16 +422,17 @@ fn kept_entries() -> Vec<Kept> {
     // 0057: see `spelled_entries`.
     // A typed child of an ArtifactPackage nested in artifactElement, which
     // the model's spelling ArtifactAssertedRelationship sampled until slice
-    // 0057 read it (SACM23-XMI-009).
+    // 0057 read it (SACM23-XMI-009), and then the ArtifactPackageInterface
+    // that slice 0066 reads (SACM23-ART-012).
     cases.push(kept(
-        "ArtifactPackageInterface",
+        "TerminologyPackageInterface",
         "in an ArtifactPackage nested in an ArtifactPackage",
         artifact_package(
             "<artifactElement xmi:type=\"sacm:ArtifactPackage\" xmi:id=\"n\"><name content=\"n\"/>\
-             <artifactElement xmi:type=\"sacm:ArtifactPackageInterface\" xmi:id=\"r\">\
+             <artifactElement xmi:type=\"sacm:TerminologyPackageInterface\" xmi:id=\"r\">\
              <name content=\"r\"/></artifactElement></artifactElement>",
         ),
-        "SACM23-ART-012",
+        "SACM23-TERM-007",
         Some("n"),
     ));
     // A cross-document href: SACM-XMI-007 (SACM23-XMI-027).

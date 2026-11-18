@@ -130,9 +130,7 @@ const DELETE_START: &str = r#"<xmi:XMI xmlns:sacm="http://www.omg.org/spec/SACM/
 /// The directory of the XMI fixtures.
 const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/xmi");
 
-/// The number of ends: sixteen written ends, and the derived `expression`
-/// (SACM23-BASE-009).
-const END_COUNT: usize = 17;
+const END_COUNT: usize = 20;
 
 /// Every end, in the order `ReferenceEnd::ALL` documents: write order, then
 /// the derived `expression`.
@@ -153,6 +151,10 @@ const ENDS: [ReferenceEnd; END_COUNT] = [
     ReferenceEnd::Element,
     ReferenceEnd::Origin,
     ReferenceEnd::TerminologyGroupMember,
+    // The ends of slice 0066 (ADR 0039 D1).
+    ReferenceEnd::Interface,
+    ReferenceEnd::Implements,
+    ReferenceEnd::ParticipantPackage,
     ReferenceEnd::Expression,
 ];
 

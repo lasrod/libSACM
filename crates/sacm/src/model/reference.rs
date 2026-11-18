@@ -24,13 +24,13 @@
 //! crate-private, as the role tables of [`containment`](super::containment)
 //! are.
 
-use super::{AbstractClass, DeclaredType, ElementKind};
+use super::{AbstractClass, DeclaredType, ElementKind, MetamodelPackage};
 
 /// The classes that own a flag, the `assertionDeclaration` or a reference
 /// end, superclass first: the order in which `xmi::write` writes each one's
 /// features (XMI 2.5.1 Annex B.5.2; ADR 0027, ADR 0028). Within a class it
 /// writes the flags, then, on `Assertion`, the declaration, then the ends.
-pub(crate) const OWNERS: [DeclaredType; 12] = [
+pub(crate) const OWNERS: [DeclaredType; 18] = [
     DeclaredType::Abstract(AbstractClass::SACMElement),
     DeclaredType::Abstract(AbstractClass::Assertion),
     DeclaredType::Abstract(AbstractClass::AssertedRelationship),
@@ -43,6 +43,15 @@ pub(crate) const OWNERS: [DeclaredType; 12] = [
     DeclaredType::Kind(ElementKind::Expression),
     DeclaredType::Kind(ElementKind::Term),
     DeclaredType::Kind(ElementKind::TerminologyGroup),
+    // The classes that declare `interface`, `implements` and
+    // `participantPackage` (ptc/22-03-13; ADR 0039 D1), each package before
+    // its interface and binding.
+    DeclaredType::Kind(ElementKind::ArgumentPackage),
+    DeclaredType::Kind(ElementKind::ArgumentPackageInterface),
+    DeclaredType::Kind(ElementKind::ArgumentPackageBinding),
+    DeclaredType::Kind(ElementKind::ArtifactPackage),
+    DeclaredType::Kind(ElementKind::ArtifactPackageInterface),
+    DeclaredType::Kind(ElementKind::ArtifactPackageBinding),
 ];
 
 /// A Boolean property of an element, `false` by default: the flag a
@@ -254,6 +263,19 @@ pub enum ReferenceEnd {
     #[doc(alias = "terminologyElement")]
     #[cfg_attr(feature = "serde", serde(rename = "terminologyElement"))]
     TerminologyGroupMember,
+    /// `interface:<package>Interface[0..*]` of an `ArgumentPackage` or an `ArtifactPackage`,
+    /// their interfaces and bindings included (ptc/22-03-13; the text of §11.4 and §12.2 omits it):
+    /// the interfaces the package declares. Its targets are the holder's family's interface class.
+    /// Held as written, never synced with `implements` (ADR 0039).
+    Interface,
+    /// `implements:<package>[1]` of an `ArgumentPackageInterface` (§11.6) or an
+    /// `ArtifactPackageInterface` (§12.5): the package the interface declares.
+    Implements,
+    /// `participantPackage:<package>[2..*]` of an `ArgumentPackageBinding` (§11.5) or an
+    /// `ArtifactPackageBinding` (§12.4): the packages the binding binds. Its lower bound counts
+    /// distinct ids.
+    #[doc(alias = "participantPackage")]
+    ParticipantPackage,
     /// The `expression:Terminology::ExpressionElement[1]` of each `ExpressionLangString`
     /// (§8.4) the element holds, as its name or a value of its `content`, `key` or
     /// `location`: their ids in that order, one per `ExpressionLangString` that has one.
@@ -272,7 +294,9 @@ impl ReferenceEnd {
     /// `artifactElement`, and an `ArtifactAssetRelationship`'s `source` and
     /// `target`, then the Terminology ends: the `category` of every
     /// `TerminologyAsset`, an `Expression`'s `element`, a `Term`'s `origin`
-    /// and a `TerminologyGroup`'s `terminologyElement`; and last the derived
+    /// and a `TerminologyGroup`'s `terminologyElement`; then a package's
+    /// `interface`, an interface's `implements` and a binding's
+    /// `participantPackage` (ADR 0039); and last the derived
     /// `expression` of every element (SACM23-BASE-009), which `xmi::write`
     /// writes with the name and texts that hold it, not as an end.
     ///
@@ -292,6 +316,15 @@ impl ReferenceEnd {
     ///     ends,
     ///     ["citedElement", "abstractForm", "metaClaim", "reasoning", "source", "target", "expression"]
     /// );
+    /// let interface: Vec<&str> = ReferenceEnd::ALL
+    ///     .iter()
+    ///     .filter(|end| end.applies_to(ElementKind::ArgumentPackageInterface))
+    ///     .map(|end| end.name())
+    ///     .collect();
+    /// assert_eq!(
+    ///     interface,
+    ///     ["citedElement", "abstractForm", "interface", "implements", "expression"]
+    /// );
     /// ```
     pub const ALL: &'static [ReferenceEnd] = &[
         ReferenceEnd::CitedElement,
@@ -310,6 +343,9 @@ impl ReferenceEnd {
         ReferenceEnd::Element,
         ReferenceEnd::Origin,
         ReferenceEnd::TerminologyGroupMember,
+        ReferenceEnd::Interface,
+        ReferenceEnd::Implements,
+        ReferenceEnd::ParticipantPackage,
         ReferenceEnd::Expression,
     ];
 
@@ -322,7 +358,8 @@ impl ReferenceEnd {
     /// [`ArtifactTarget`](Self::ArtifactTarget), `source` and `target`,
     /// `category`, `element`, `origin`, for
     /// [`TerminologyGroupMember`](Self::TerminologyGroupMember),
-    /// `terminologyElement`, and `expression`. It is the `end` an
+    /// `terminologyElement`, `interface`, `implements`, `participantPackage`
+    /// and `expression`. It is the `end` an
     /// [`EditError`](crate::edit::EditError) names.
     #[must_use]
     pub const fn name(self) -> &'static str {
@@ -343,17 +380,26 @@ impl ReferenceEnd {
             Self::Element => "element",
             Self::Origin => "origin",
             Self::TerminologyGroupMember => "terminologyElement",
+            Self::Interface => "interface",
+            Self::Implements => "implements",
+            Self::ParticipantPackage => "participantPackage",
             Self::Expression => "expression",
         }
     }
 
-    /// The clause that defines the end on an element of `kind`: the
-    /// [`clause`](Self::clause), but §10.8 for the `category` of a
-    /// `Category`, whose class declares it apart from an
-    /// `ExpressionElement`'s (§10.9).
+    /// The clause that defines the end on an element of `kind`, the clause
+    /// of the class that declares it there: the [`clause`](Self::clause), but
+    /// §10.8 for the `category` of a `Category`, whose class declares it
+    /// apart from an `ExpressionElement`'s (§10.9), and the Artifact clauses
+    /// of an Artifact kind's `interface` (§12.2), `implements` (§12.5) and
+    /// `participantPackage` (§12.4).
     pub(crate) const fn clause_on(self, kind: ElementKind) -> &'static str {
-        match (self, kind) {
-            (Self::Category, ElementKind::Category) => "10.8",
+        let artifact = matches!(kind.package(), MetamodelPackage::Artifact);
+        match self {
+            Self::Category if matches!(kind, ElementKind::Category) => "10.8",
+            Self::Interface if artifact => "12.2",
+            Self::Implements if artifact => "12.5",
+            Self::ParticipantPackage if artifact => "12.4",
             _ => self.clause(),
         }
     }
@@ -373,6 +419,10 @@ impl ReferenceEnd {
             Self::Category => "10.9",
             Self::Element => "10.10",
             Self::Origin => "10.11",
+            // The Argumentation clauses; `clause_on` gives the Artifact ones.
+            Self::Interface => "11.4",
+            Self::Implements => "11.6",
+            Self::ParticipantPackage => "11.5",
             Self::Expression => "8.4",
         }
     }
@@ -392,6 +442,8 @@ impl ReferenceEnd {
                 | Self::Category
                 | Self::Element
                 | Self::TerminologyGroupMember
+                | Self::Interface
+                | Self::ParticipantPackage
                 | Self::Expression
         )
     }
@@ -427,10 +479,12 @@ impl ReferenceEnd {
     /// assert!(!ReferenceEnd::Source.applies_to(ElementKind::Claim));
     /// // An ArtifactGroup's members are its artifactElement, not its argumentElement.
     /// assert!(!ReferenceEnd::GroupMember.applies_to(ElementKind::ArtifactGroup));
+    /// // Both families declare interface, typed to the family.
+    /// assert!(ReferenceEnd::Interface.applies_to(ElementKind::ArtifactPackageBinding));
     /// ```
     #[must_use]
     pub const fn applies_to(self, kind: ElementKind) -> bool {
-        self.owner().admits(kind)
+        self.owner_on(kind).is_some()
     }
 
     /// The fewest and the most ids the end holds on an element of `kind`, as
@@ -442,7 +496,9 @@ impl ReferenceEnd {
     /// `target:ArgumentAsset[1]`, §12.14 (p. 50) gives an
     /// `ArtifactAssetRelationship` `source:ArtifactAsset[1..*]` and
     /// `target:ArtifactAsset[1..*]`, and the other ends are `[0..1]` or
-    /// `[0..*]`.
+    /// `[0..*]`. An interface's `implements` is `[1]` (§11.6, §12.5) and a
+    /// binding's `participantPackage` `[2..*]` (§11.5, §12.4); a lower bound
+    /// counts distinct ids (ADR 0039 D3).
     /// They are the bounds [`SetReferences`](crate::edit::SetReferences),
     /// [`AddReference`](crate::edit::AddReference) and
     /// [`RemoveReference`](crate::edit::RemoveReference) keep an end within
@@ -461,6 +517,8 @@ impl ReferenceEnd {
     /// let link = ElementKind::ArtifactAssetRelationship;
     /// assert_eq!(ReferenceEnd::ArtifactTarget.bounds(link), Some((1, None)));
     /// assert_eq!(ReferenceEnd::Target.bounds(link), None);
+    /// assert_eq!(ReferenceEnd::ParticipantPackage.bounds(ElementKind::ArtifactPackageBinding), Some((2, None)));
+    /// assert_eq!(ReferenceEnd::Implements.bounds(ElementKind::ArgumentPackage), None);
     /// ```
     #[must_use]
     pub const fn bounds(self, kind: ElementKind) -> Option<(usize, Option<usize>)> {
@@ -471,13 +529,19 @@ impl ReferenceEnd {
         }
     }
 
-    /// The fewest ids the end holds: 1 for an `AssertedRelationship`'s
-    /// `source` (`[1..*]`) and `target` (`[1]`) and for an
-    /// `ArtifactAssetRelationship`'s `source` and `target` (`[1..*]`), 0 for
-    /// every other end.
+    /// The fewest distinct ids the end holds: 1 for an
+    /// `AssertedRelationship`'s `source` (`[1..*]`) and `target` (`[1]`), for
+    /// an `ArtifactAssetRelationship`'s `source` and `target` (`[1..*]`) and
+    /// for an interface's `implements` (`[1]`), 2 for a binding's
+    /// `participantPackage` (`[2..*]`), and 0 for every other end.
     pub(crate) const fn lower_bound(self) -> usize {
         match self {
-            Self::Source | Self::Target | Self::ArtifactSource | Self::ArtifactTarget => 1,
+            Self::Source
+            | Self::Target
+            | Self::ArtifactSource
+            | Self::ArtifactTarget
+            | Self::Implements => 1,
+            Self::ParticipantPackage => 2,
             _ => 0,
         }
     }
@@ -488,56 +552,97 @@ impl ReferenceEnd {
         if self.is_many() { None } else { Some(1) }
     }
 
-    /// The class that owns the end: an element of a kind it admits has it.
-    pub(crate) const fn owner(self) -> DeclaredType {
+    /// The classes that declare the end, each with the declared type of its
+    /// targets there, in the order [`owner_on`](Self::owner_on) tries them.
+    /// Most ends have one declaring class; `interface`, `implements` and
+    /// `participantPackage` are declared by an Argumentation and an Artifact
+    /// class, each typed to its own family (ADR 0039 D1).
+    pub(crate) const fn declarations(self) -> &'static [(DeclaredType, DeclaredType)] {
+        use AbstractClass as A;
+        use DeclaredType::{Abstract, Kind};
+        use ElementKind as K;
         match self {
-            Self::CitedElement | Self::AbstractForm | Self::Expression => {
-                DeclaredType::Abstract(AbstractClass::SACMElement)
+            Self::CitedElement | Self::AbstractForm => {
+                &[(Abstract(A::SACMElement), Abstract(A::SACMElement))]
             }
-            Self::MetaClaim => DeclaredType::Abstract(AbstractClass::Assertion),
-            Self::Reasoning | Self::Source | Self::Target => {
-                DeclaredType::Abstract(AbstractClass::AssertedRelationship)
+            Self::Expression => &[(Abstract(A::SACMElement), Abstract(A::ExpressionElement))],
+            Self::MetaClaim => &[(Abstract(A::Assertion), Kind(K::Claim))],
+            Self::Reasoning => &[(
+                Abstract(A::AssertedRelationship),
+                Kind(K::ArgumentReasoning),
+            )],
+            Self::Source | Self::Target => &[(
+                Abstract(A::AssertedRelationship),
+                Abstract(A::ArgumentAsset),
+            )],
+            Self::Structure => &[(Kind(K::ArgumentReasoning), Kind(K::ArgumentPackage))],
+            Self::ReferencedArtifactElement => {
+                &[(Kind(K::ArtifactReference), Abstract(A::ArtifactElement))]
             }
-            Self::Structure => DeclaredType::Kind(ElementKind::ArgumentReasoning),
-            Self::ReferencedArtifactElement => DeclaredType::Kind(ElementKind::ArtifactReference),
-            Self::GroupMember => DeclaredType::Kind(ElementKind::ArgumentGroup),
-            Self::ArtifactGroupMember => DeclaredType::Kind(ElementKind::ArtifactGroup),
-            Self::ArtifactSource | Self::ArtifactTarget => {
-                DeclaredType::Kind(ElementKind::ArtifactAssetRelationship)
+            Self::GroupMember => &[(Kind(K::ArgumentGroup), Abstract(A::ArgumentationElement))],
+            Self::ArtifactGroupMember => &[(Kind(K::ArtifactGroup), Abstract(A::ArtifactElement))],
+            Self::ArtifactSource | Self::ArtifactTarget => &[(
+                Kind(K::ArtifactAssetRelationship),
+                Abstract(A::ArtifactAsset),
+            )],
+            Self::Category => &[(Abstract(A::TerminologyAsset), Kind(K::Category))],
+            Self::Element => &[(Kind(K::Expression), Abstract(A::ExpressionElement))],
+            Self::Origin => &[(Kind(K::Term), Abstract(A::ModelElement))],
+            Self::TerminologyGroupMember => {
+                &[(Kind(K::TerminologyGroup), Abstract(A::TerminologyElement))]
             }
-            Self::Category => DeclaredType::Abstract(AbstractClass::TerminologyAsset),
-            Self::Element => DeclaredType::Kind(ElementKind::Expression),
-            Self::Origin => DeclaredType::Kind(ElementKind::Term),
-            Self::TerminologyGroupMember => DeclaredType::Kind(ElementKind::TerminologyGroup),
+            Self::Interface => &[
+                (Kind(K::ArgumentPackage), Kind(K::ArgumentPackageInterface)),
+                (Kind(K::ArtifactPackage), Kind(K::ArtifactPackageInterface)),
+            ],
+            Self::Implements => &[
+                (Kind(K::ArgumentPackageInterface), Kind(K::ArgumentPackage)),
+                (Kind(K::ArtifactPackageInterface), Kind(K::ArtifactPackage)),
+            ],
+            Self::ParticipantPackage => &[
+                (Kind(K::ArgumentPackageBinding), Kind(K::ArgumentPackage)),
+                (Kind(K::ArtifactPackageBinding), Kind(K::ArtifactPackage)),
+            ],
         }
     }
 
-    /// The declared type of the end's targets.
-    pub(crate) const fn target(self) -> DeclaredType {
-        match self {
-            Self::CitedElement | Self::AbstractForm => {
-                DeclaredType::Abstract(AbstractClass::SACMElement)
+    /// The first declaration whose class admits `kind`, if any.
+    const fn declaration_on(self, kind: ElementKind) -> Option<(DeclaredType, DeclaredType)> {
+        let declarations = self.declarations();
+        let mut index = 0;
+        while index < declarations.len() {
+            if declarations[index].0.admits(kind) {
+                return Some(declarations[index]);
             }
-            Self::MetaClaim => DeclaredType::Kind(ElementKind::Claim),
-            Self::Reasoning => DeclaredType::Kind(ElementKind::ArgumentReasoning),
-            Self::Source | Self::Target => DeclaredType::Abstract(AbstractClass::ArgumentAsset),
-            Self::Structure => DeclaredType::Kind(ElementKind::ArgumentPackage),
-            Self::ReferencedArtifactElement | Self::ArtifactGroupMember => {
-                DeclaredType::Abstract(AbstractClass::ArtifactElement)
-            }
-            Self::GroupMember => DeclaredType::Abstract(AbstractClass::ArgumentationElement),
-            Self::ArtifactSource | Self::ArtifactTarget => {
-                DeclaredType::Abstract(AbstractClass::ArtifactAsset)
-            }
-            Self::Category => DeclaredType::Kind(ElementKind::Category),
-            Self::Element | Self::Expression => {
-                DeclaredType::Abstract(AbstractClass::ExpressionElement)
-            }
-            Self::Origin => DeclaredType::Abstract(AbstractClass::ModelElement),
-            Self::TerminologyGroupMember => {
-                DeclaredType::Abstract(AbstractClass::TerminologyElement)
-            }
+            index += 1;
         }
+        None
+    }
+
+    /// The class that declares the end on an element of `kind`, or `None`
+    /// when the kind has no such end: the class with whose features
+    /// `xmi::write` writes it.
+    pub(crate) const fn owner_on(self, kind: ElementKind) -> Option<DeclaredType> {
+        match self.declaration_on(kind) {
+            Some((owner, _)) => Some(owner),
+            None => None,
+        }
+    }
+
+    /// The declared type of the end's targets on an element of `kind`, or
+    /// `None` exactly when the kind has no such end
+    /// ([`applies_to`](Self::applies_to)).
+    pub(crate) const fn target_on(self, kind: ElementKind) -> Option<DeclaredType> {
+        match self.declaration_on(kind) {
+            Some((_, target)) => Some(target),
+            None => None,
+        }
+    }
+
+    /// The first class that declares the end: the class a message names for
+    /// an end another kind has (ADR 0034 amendment 2).
+    pub(crate) const fn first_owner(self) -> DeclaredType {
+        self.declarations()[0].0
     }
 }
 
@@ -548,7 +653,7 @@ pub(crate) fn reference_end_named(kind: ElementKind, local: &str) -> Option<Refe
     ReferenceEnd::ALL
         .iter()
         .copied()
-        .find(|end| !end.is_derived() && end.name() == local && end.owner().admits(kind))
+        .find(|end| !end.is_derived() && end.name() == local && end.applies_to(kind))
 }
 
 #[cfg(test)]
@@ -564,10 +669,10 @@ mod tests {
                 // has two ends of one name (ADR 0034 amendment 2).
                 // The derived end is never read as an attribute.
                 let expected = ReferenceEnd::ALL.iter().copied().find(|other| {
-                    !other.is_derived() && other.name() == end.name() && other.owner().admits(kind)
+                    !other.is_derived() && other.name() == end.name() && other.applies_to(kind)
                 });
                 assert_eq!(reference_end_named(kind, end.name()), expected, "{kind}");
-                if end.owner().admits(kind) && !end.is_derived() {
+                if end.applies_to(kind) && !end.is_derived() {
                     assert_eq!(expected, Some(end), "{kind}");
                 }
             }
@@ -658,6 +763,9 @@ mod tests {
                 "element",
                 "origin",
                 "terminologyElement",
+                "interface",
+                "implements",
+                "participantPackage",
                 "expression"
             ]
         );
@@ -669,7 +777,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             [
                 "8.2", "8.2", "11.10", "11.13", "11.13", "11.13", "11.12", "11.9", "11.2", "12.3",
-                "12.14", "12.14", "10.9", "10.10", "10.11", "10.3", "8.4"
+                "12.14", "12.14", "10.9", "10.10", "10.11", "10.3", "11.4", "11.6", "11.5", "8.4"
             ]
         );
         // A Category's category is declared by §10.8, an ExpressionElement's
@@ -692,7 +800,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             [
                 false, false, true, false, true, false, false, true, true, true, true, true, true,
-                true, false, true, true
+                true, false, true, true, false, true, true
             ]
         );
         assert_eq!(
@@ -701,7 +809,7 @@ mod tests {
                 .copied()
                 .map(ReferenceEnd::lower_bound)
                 .collect::<Vec<_>>(),
-            [0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0]
+            [0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 2, 0]
         );
         assert_eq!(
             ReferenceEnd::ALL
@@ -726,6 +834,9 @@ mod tests {
                 None,
                 Some(1),
                 None,
+                None,
+                Some(1),
+                None,
                 None
             ]
         );
@@ -741,11 +852,32 @@ mod tests {
             ReferenceEnd::Expression.clause_on(ElementKind::Claim),
             "8.4"
         );
+        // The ends of slice 0066 take the clause of the class that declares
+        // them on the holder (ADR 0039 D1).
+        assert_eq!(
+            [
+                ReferenceEnd::Interface,
+                ReferenceEnd::Implements,
+                ReferenceEnd::ParticipantPackage
+            ]
+            .map(|end| {
+                [
+                    ElementKind::ArgumentPackageInterface,
+                    ElementKind::ArtifactPackageInterface,
+                    ElementKind::ArtifactPackageBinding,
+                ]
+                .map(|kind| end.clause_on(kind))
+            }),
+            [
+                ["11.4", "12.2", "12.2"],
+                ["11.6", "12.5", "12.5"],
+                ["11.5", "12.4", "12.4"]
+            ]
+        );
         // Every owner is in OWNERS, so the writer writes every feature.
         for owner in ReferenceEnd::ALL
             .iter()
-            .copied()
-            .map(ReferenceEnd::owner)
+            .flat_map(|end| end.declarations().iter().map(|(owner, _)| *owner))
             .chain(Flag::ALL.iter().copied().map(Flag::owner))
         {
             assert!(OWNERS.contains(&owner), "{}", owner.name());
@@ -758,7 +890,7 @@ mod tests {
             ReferenceEnd::ALL
                 .iter()
                 .copied()
-                .map(|end| end.target().name())
+                .map(|end| end.declarations()[0].1.name())
                 .collect::<Vec<_>>(),
             [
                 "SACMElement",
@@ -777,6 +909,9 @@ mod tests {
                 "ExpressionElement",
                 "ModelElement",
                 "TerminologyElement",
+                "ArgumentPackageInterface",
+                "ArgumentPackage",
+                "ArgumentPackage",
                 "ExpressionElement"
             ]
         );
@@ -788,7 +923,7 @@ mod tests {
     fn no_class_has_a_role_and_an_end_of_the_same_name() {
         for &kind in ElementKind::ALL {
             for &end in ReferenceEnd::ALL {
-                if end.owner().admits(kind) {
+                if end.applies_to(kind) {
                     assert_eq!(role_named(kind, end.name()), None, "{kind} {}", end.name());
                 }
             }
@@ -857,8 +992,64 @@ mod tests {
                 "TerminologyAsset",
                 "Expression",
                 "Term",
-                "TerminologyGroup"
+                "TerminologyGroup",
+                "ArgumentPackage",
+                "ArgumentPackageInterface",
+                "ArgumentPackageBinding",
+                "ArtifactPackage",
+                "ArtifactPackageInterface",
+                "ArtifactPackageBinding"
             ]
         );
+    }
+
+    /// `owner_on` and `target_on` take the first declaration whose class
+    /// admits the kind: the family's (ADR 0039 D1).
+    #[test]
+    fn the_ends_of_two_families_are_typed_to_the_holder_s_family() {
+        use DeclaredType::Kind;
+        use ElementKind as K;
+        let interface = ReferenceEnd::Interface;
+        assert_eq!(
+            (
+                interface.owner_on(K::ArgumentPackageBinding),
+                interface.target_on(K::ArgumentPackageBinding),
+                interface.owner_on(K::ArtifactPackageInterface),
+                interface.target_on(K::ArtifactPackageInterface),
+                interface.owner_on(K::TerminologyPackage),
+                interface.target_on(K::Claim),
+            ),
+            (
+                Some(Kind(K::ArgumentPackage)),
+                Some(Kind(K::ArgumentPackageInterface)),
+                Some(Kind(K::ArtifactPackage)),
+                Some(Kind(K::ArtifactPackageInterface)),
+                None,
+                None
+            )
+        );
+        assert_eq!(
+            (
+                ReferenceEnd::Implements.target_on(K::ArtifactPackageInterface),
+                ReferenceEnd::ParticipantPackage.target_on(K::ArgumentPackageBinding),
+                ReferenceEnd::ParticipantPackage.owner_on(K::ArgumentPackageInterface),
+                ReferenceEnd::Implements.first_owner(),
+            ),
+            (
+                Some(Kind(K::ArtifactPackage)),
+                Some(Kind(K::ArgumentPackage)),
+                None,
+                Kind(K::ArgumentPackageInterface)
+            )
+        );
+        for &end in ReferenceEnd::ALL {
+            for &kind in ElementKind::ALL {
+                assert_eq!(
+                    end.owner_on(kind).is_some(),
+                    end.target_on(kind).is_some(),
+                    "{kind}"
+                );
+            }
+        }
     }
 }

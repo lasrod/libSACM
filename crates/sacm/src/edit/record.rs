@@ -609,6 +609,12 @@ mod tests {
                 sampled!(OPERATIONS, "CreateAssuranceCasePackage")
             }
             Operation::CreateArgumentPackage(_) => sampled!(OPERATIONS, "CreateArgumentPackage"),
+            Operation::CreateArgumentPackageInterface(_) => {
+                sampled!(OPERATIONS, "CreateArgumentPackageInterface")
+            }
+            Operation::CreateArgumentPackageBinding(_) => {
+                sampled!(OPERATIONS, "CreateArgumentPackageBinding")
+            }
             Operation::CreateClaim(_) => sampled!(OPERATIONS, "CreateClaim"),
             Operation::CreateArgumentReasoning(_) => {
                 sampled!(OPERATIONS, "CreateArgumentReasoning")
@@ -635,6 +641,12 @@ mod tests {
             Operation::CreateNote(_) => sampled!(OPERATIONS, "CreateNote"),
             Operation::CreateTaggedValue(_) => sampled!(OPERATIONS, "CreateTaggedValue"),
             Operation::CreateArtifactPackage(_) => sampled!(OPERATIONS, "CreateArtifactPackage"),
+            Operation::CreateArtifactPackageInterface(_) => {
+                sampled!(OPERATIONS, "CreateArtifactPackageInterface")
+            }
+            Operation::CreateArtifactPackageBinding(_) => {
+                sampled!(OPERATIONS, "CreateArtifactPackageBinding")
+            }
             Operation::CreateProperty(_) => sampled!(OPERATIONS, "CreateProperty"),
             Operation::CreateTechnique(_) => sampled!(OPERATIONS, "CreateTechnique"),
             Operation::CreateParticipant(_) => sampled!(OPERATIONS, "CreateParticipant"),

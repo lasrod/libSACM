@@ -1327,6 +1327,10 @@ fn sacm23_art_010_reference_end_all_lists_these_two_directly_after_artifact_grou
             ReferenceEnd::Element,
             ReferenceEnd::Origin,
             ReferenceEnd::TerminologyGroupMember,
+            // The ends of slice 0066 (ADR 0039 D1).
+            ReferenceEnd::Interface,
+            ReferenceEnd::Implements,
+            ReferenceEnd::ParticipantPackage,
             // The derived end of slice 0065 (SACM23-BASE-009).
             ReferenceEnd::Expression,
         ],

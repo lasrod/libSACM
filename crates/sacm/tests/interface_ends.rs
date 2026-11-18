@@ -1,18 +1,17 @@
-//! Tests that the `interface` reference end of an AssuranceCasePackage and an
-//! ArgumentPackage is refused as conforming content this version does not
-//! read yet, with its package's row, by a strict read (LIB-API-011;
-//! ADR 0033; ptc/22-03-13 `AssuranceCasePackage::interface`,
-//! `ArgumentPackage::interface`).
+//! Tests that the `interface` reference end of an AssuranceCasePackage and a
+//! TerminologyPackage is refused as conforming content this version does not
+//! read yet, with its package's row, by a strict read (LIB-API-011; ADR 0033;
+//! ptc/22-03-13 `AssuranceCasePackage::interface`, `TerminologyPackage::interface`).
 //!
-//! The end is conforming SACM, read by SACM23-AC-002 and SACM23-ARG-014, so
-//! ADR 0033 refuses it as `Unsupported` with the label
-//! `(a limit of this version; ROW reads it)`: an attribute at its name, an
-//! element at its start tag, in strict mode; a tolerant read keeps it as
-//! preserved content (ADR 0035). An `interface` in another
-//! namespace is not that end: it does not conform and is kept as preserved
-//! content of the package, with one SACM-XMI-003 at it. The ArtifactPackage's
-//! `interface` (SACM23-ART-012) is tested with the ArtifactPackage, in
-//! `artifact_package.rs`.
+//! The end is conforming SACM, read by SACM23-AC-002 and SACM23-TERM-007, so ADR 0033 refuses it
+//! as `Unsupported` with the label `(a limit of this version; ROW reads it)`:
+//! an attribute at its name, an element at its start tag, in strict mode; a
+//! tolerant read keeps it as preserved content (ADR 0035). An `interface` in
+//! another namespace is not that end: it does not conform and is kept as
+//! preserved content of the package, with one SACM-XMI-003 at it. The
+//! ArgumentPackage's and the ArtifactPackage's `interface` are read since
+//! slice 0066 (SACM23-ARG-014, SACM23-ART-012; `argument_package_interfaces.rs`
+//! and `artifact_package_interfaces.rs`), so this file no longer samples them.
 //!
 //! Expected locations are marked in the input with [`MARK`] (U+2038), which
 //! the test removes before reading.
@@ -45,7 +44,7 @@ struct Package {
 }
 
 /// The packages: each kind as a root and nested.
-fn packages() -> [Package; 5] {
+fn packages() -> [Package; 4] {
     [
         Package {
             what: "an AssuranceCasePackage root",
@@ -70,40 +69,30 @@ fn packages() -> [Package; 5] {
             },
             id: "sub",
         },
+        // A TerminologyPackage's interface end stays refused until slice
+        // 0067 (the lead's ruling 3 on slice 0066).
         Package {
-            what: "an ArgumentPackage root",
-            row: "SACM23-ARG-014",
+            what: "a TerminologyPackage root",
+            row: "SACM23-TERM-007",
             wrap: |attribute, content| {
                 format!(
-                    "<sacm:ArgumentPackage{NS} xmi:id=\"p\"{attribute}>\n  \
-                     <name content=\"P\"/>{content}\n</sacm:ArgumentPackage>"
+                    "<sacm:TerminologyPackage{NS} xmi:id=\"terms\"{attribute}>\n  \
+                     <name content=\"Terms\"/>{content}\n</sacm:TerminologyPackage>"
                 )
             },
-            id: "p",
+            id: "terms",
         },
         Package {
-            what: "an ArgumentPackage in argumentPackage",
-            row: "SACM23-ARG-014",
+            what: "a TerminologyPackage in terminologyPackage",
+            row: "SACM23-TERM-007",
             wrap: |attribute, content| {
                 format!(
                     "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\">\n  <name content=\"Case\"/>\n  \
-                     <argumentPackage xmi:id=\"ap\"{attribute}><name content=\"A\"/>\
-                     {content}</argumentPackage>\n</sacm:AssuranceCasePackage>"
+                     <terminologyPackage xmi:id=\"terms\"{attribute}><name content=\"Terms\"/>\
+                     {content}</terminologyPackage>\n</sacm:AssuranceCasePackage>"
                 )
             },
-            id: "ap",
-        },
-        Package {
-            what: "an ArgumentPackage in argumentElement",
-            row: "SACM23-ARG-014",
-            wrap: |attribute, content| {
-                format!(
-                    "<sacm:ArgumentPackage{NS} xmi:id=\"p\">\n  <name content=\"P\"/>\n  \
-                     <argumentElement xmi:type=\"sacm:ArgumentPackage\" xmi:id=\"inner\"{attribute}>\
-                     <name content=\"I\"/>{content}</argumentElement>\n</sacm:ArgumentPackage>"
-                )
-            },
-            id: "inner",
+            id: "terms",
         },
     ]
 }

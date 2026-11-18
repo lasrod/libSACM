@@ -303,7 +303,7 @@ const NO_PACKAGE: &str = r#"{"type":"NoPackage","code":"SACM-XMI-001","template"
 
 const DUPLICATE_ID: &str = r#"{"type":"DuplicateId","code":"SACM-ID-001","template":"SACM-ID-001/duplicate-id","arguments":{"id":"c1","count":2},"id":"c1","locations":[{"line":2,"column":3},{"line":3,"column":3}]}"#;
 
-const UNSUPPORTED: &str = r#"{"type":"Unsupported","code":"SACM-XMI-014","template":"SACM-XMI-014/unread-root","arguments":{"element":"sacm:ArgumentPackageInterface","row":"SACM23-ARG-014"},"location":{"line":1,"column":1},"reason":"the root element \"sacm:ArgumentPackageInterface\" is not read in this release (a limit of this version; SACM23-ARG-014 reads it)"}"#;
+const UNSUPPORTED: &str = r#"{"type":"Unsupported","code":"SACM-XMI-014","template":"SACM-XMI-014/unread-root","arguments":{"element":"sacm:TerminologyPackageInterface","row":"SACM23-TERM-007"},"location":{"line":1,"column":1},"reason":"the root element \"sacm:TerminologyPackageInterface\" is not read in this release (a limit of this version; SACM23-TERM-007 reads it)"}"#;
 
 const NO_ROOT: &str = r#"{"type":"NoRoot","code":"SACM-XMI-001","template":"SACM-XMI-001/no-root-to-write","arguments":{}}"#;
 
@@ -505,7 +505,7 @@ fn lib_api_017_arguments_missing_extra_out_of_order_or_of_the_wrong_kind_are_ref
     assert_refused::<ReadError>(
         "an Unsupported template without its row",
         UNSUPPORTED,
-        r#","row":"SACM23-ARG-014""#,
+        r#","row":"SACM23-TERM-007""#,
         "",
     );
     assert_refused::<WriteError>(
@@ -555,8 +555,8 @@ fn lib_api_017_a_record_s_display_renders_its_template_not_its_reason() {
         (
             "Unsupported",
             UNSUPPORTED,
-            r#""reason":"the root element \"sacm:ArgumentPackageInterface\" is not read in this release (a limit of this version; SACM23-ARG-014 reads it)""#,
-            "is not read in this release (a limit of this version; SACM23-ARG-014 reads it)",
+            r#""reason":"the root element \"sacm:TerminologyPackageInterface\" is not read in this release (a limit of this version; SACM23-TERM-007 reads it)""#,
+            "is not read in this release (a limit of this version; SACM23-TERM-007 reads it)",
         ),
     ] {
         let other = valid.replacen(reason, r#""reason":"other""#, 1);

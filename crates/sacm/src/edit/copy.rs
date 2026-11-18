@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use super::EditError;
 use super::plan::{Copied, Plan};
+use super::references::distinct_count;
 use crate::model::{
     CapturedElement, Document, ElementId, ElementKind, ReferenceEnd, SacmElement, Snapshot, admits,
     is_ncname,
@@ -230,7 +231,8 @@ impl CopyElements {
         for element in snapshot.elements() {
             for &end in ReferenceEnd::ALL {
                 if let Some((required, _)) = end.bounds(element.kind()) {
-                    let given = element.references(end).len();
+                    // A lower bound counts distinct ids (ADR 0039 D3).
+                    let given = distinct_count(element.references(end));
                     if given < required {
                         return Err(EditError::TooFewReferences {
                             end: end.name(),
@@ -256,12 +258,15 @@ impl CopyElements {
         // an id with white space, so no id is refused for it.
         let references = || {
             snapshot.elements().flat_map(|element| {
-                ReferenceEnd::ALL
-                    .iter()
-                    .flat_map(move |&end| element.references(end).iter().map(move |id| (end, id)))
+                ReferenceEnd::ALL.iter().flat_map(move |&end| {
+                    element
+                        .references(end)
+                        .iter()
+                        .map(move |id| (element.kind(), end, id))
+                })
             })
         };
-        for (end, id) in references() {
+        for (_, end, id) in references() {
             if !copied.contains_key(id) && !document.contains(id) {
                 return Err(EditError::ReferenceNotFound {
                     end: end.name(),
@@ -269,12 +274,15 @@ impl CopyElements {
                 });
             }
         }
-        for (end, id) in references() {
+        for (holder, end, id) in references() {
             let kind = match copied.get(id) {
                 Some(&kind) => Some(kind),
                 None => document.get(id).map(SacmElement::kind),
             };
-            let declared = end.target();
+            // The type the end declares on the holder's kind (ADR 0039 D1).
+            let Some(declared) = end.target_on(holder) else {
+                continue;
+            };
             if let Some(kind) = kind.filter(|&kind| !declared.admits(kind)) {
                 return Err(EditError::WrongReferenceType {
                     end: end.name(),

@@ -1,5 +1,6 @@
 //! The operation that deletes an element, under explicit policies
-//! (LIB-EDIT-004 to LIB-EDIT-006, D-POLICY, ADR 0031).
+//! (LIB-EDIT-004 to LIB-EDIT-006, LIB-EDIT-019, D-POLICY, ADR 0031, ADR
+//! 0039).
 
 use std::collections::{BTreeSet, HashMap};
 
@@ -37,12 +38,15 @@ use crate::model::{AbstractClass, Document, ElementId, Preserved, ReferenceEnd, 
 ///
 /// **What is deleted** is the element and everything it contains, plus each
 /// relationship the reference policy deletes, an asserted relationship or an
-/// `ArtifactAssetRelationship`, with its contents, to a fixpoint: a
-/// relationship can be the source or target of another. Every surviving end
-/// loses the deleted ids and keeps the rest, in order; a relationship is
-/// deleted rather than left without a `source` or `target` (§11.13, §12.14),
-/// and an `ArgumentGroup` or `ArtifactGroup` that loses its members stays. A
-/// reference that named no element before the delete is not touched.
+/// `ArtifactAssetRelationship`, and each interface or binding it leaves
+/// below the bound of its `implements` or `participantPackage`, with its
+/// contents, to a fixpoint: a relationship can be the source or target of
+/// another, and a binding can bind an interface the delete removes
+/// (LIB-EDIT-019). Every surviving end loses the deleted ids and keeps the
+/// rest, in order; a relationship is deleted rather than left without a
+/// `source` or `target` (§11.13, §12.14), and an `ArgumentGroup` or
+/// `ArtifactGroup` that loses its members stays. A reference that named no
+/// element before the delete is not touched.
 ///
 /// **The checks**, in order: the element is in the document
 /// ([`EditError::ElementNotFound`]); it contains nothing but
@@ -53,7 +57,11 @@ use crate::model::{AbstractClass, Document, ElementId, Preserved, ReferenceEnd, 
 /// the first a policy refuses is the answer, as
 /// [`EditError::CrossPackageReference`] if it crosses a package boundary and
 /// the cross-package policy refuses it, and otherwise as
-/// [`EditError::Referenced`].
+/// [`EditError::Referenced`]; last, unless
+/// [`PackageDeletePolicy::DeleteRecursively`], the first interface or
+/// binding in pre-order that the delete removes for its bound and that
+/// contains more than `UtilityElement`s ([`EditError::NotEmpty`] naming it;
+/// LIB-EDIT-019).
 ///
 /// The [`Mutation`](super::Mutation) lists every deleted element, and no
 /// preserved id, in pre-order before the delete, and, in pre-order after,
@@ -149,15 +157,19 @@ pub enum ReferenceDeletePolicy {
     /// `ArtifactAssetRelationship` whose `source` or `target` does, with its
     /// contents, to a fixpoint; remove every other such id from its end
     /// (`citedElement`, `abstractForm`, `metaClaim`, `structure`,
-    /// `referencedArtifactElement` and a group's `argumentElement` or
-    /// `artifactElement`, none of which has a lower bound).
+    /// `referencedArtifactElement`, a group's `argumentElement` or
+    /// `artifactElement` and a package's `interface`, none of which has a
+    /// lower bound). An interface left with no `implements`, or a binding
+    /// left with fewer than two distinct `participantPackage` ids, is deleted
+    /// with its contents, as under `ScrubReferences` (LIB-EDIT-019).
     DeleteReferencingRelationships,
-    /// Remove every such id from its end. A relationship the delete leaves
-    /// with no `source`, or with no `target`, is deleted, with its contents,
-    /// since SACM requires both: §11.13 for an asserted relationship
-    /// (`source:ArgumentAsset[1..*]`, `target:ArgumentAsset[1]`) and §12.14
-    /// for an `ArtifactAssetRelationship` (`source:ArtifactAsset[1..*]`,
-    /// `target:ArtifactAsset[1..*]`). One that keeps an id in each end stays.
+    /// Remove every such id from its end. An element left below an end's
+    /// lower bound is deleted, with its contents: a relationship left with no
+    /// `source` or no `target` (§11.13, §12.14), an interface left with no
+    /// `implements` (§11.6, §12.5), or a binding left with fewer than two
+    /// distinct participants (§11.5, §12.4). Under `RejectIfNonEmpty`, such an
+    /// interface or binding that contains elements refuses the delete as
+    /// `NotEmpty`. One that loses no id stays, even below its bound.
     ScrubReferences,
 }
 
@@ -294,24 +306,9 @@ impl DeleteElement {
             });
         };
         let subtree = tree.subtree(start);
-        if self.package_policy == PackageDeletePolicy::RejectIfNonEmpty {
-            // Each preserved child element anywhere in the subtree is content
-            // too (ADR 0033); preserved attributes and text are not.
-            let preserved: usize = subtree
-                .clone()
-                .filter_map(|position| tree.elements[position].preserved())
-                .map(Preserved::element_count)
-                .sum();
-            let contained = subtree
-                .clone()
-                .skip(1)
-                .filter(|&position| {
-                    !tree.elements[position]
-                        .kind()
-                        .is_a(AbstractClass::UtilityElement)
-                })
-                .count()
-                .saturating_add(preserved);
+        let rejects_non_empty = self.package_policy == PackageDeletePolicy::RejectIfNonEmpty;
+        if rejects_non_empty {
+            let contained = tree.contained(start);
             if contained > 0 {
                 return Err(EditError::NotEmpty {
                     element: self.element.clone(),
@@ -320,7 +317,7 @@ impl DeleteElement {
             }
         }
 
-        let deleted = tree.deleted(subtree.clone(), self.reference_policy);
+        let (deleted, mut holders) = tree.deleted(subtree.clone(), self.reference_policy);
         let dangling = tree.dangling(&subtree, &deleted);
         for reference in &dangling {
             if reference.crosses_package()
@@ -338,6 +335,22 @@ impl DeleteElement {
                     holder: reference.holder().clone(),
                     end: reference.end().name(),
                     id: reference.id().clone(),
+                });
+            }
+        }
+        // Check 4 (LIB-EDIT-019, ADR 0039 D5): the package policy guards each
+        // interface or binding the delete removes for its bound: the first in
+        // pre-order that contains more than `UtilityElement`s refuses.
+        if rejects_non_empty {
+            holders.sort_unstable();
+            if let Some((holder, contained)) = holders
+                .iter()
+                .map(|&holder| (holder, tree.contained(holder)))
+                .find(|&(_, contained)| contained > 0)
+            {
+                return Err(EditError::NotEmpty {
+                    element: tree.elements[holder].id().clone(),
+                    contained,
                 });
             }
         }
@@ -376,6 +389,16 @@ impl DeleteElement {
             dangling,
         }))
     }
+}
+
+/// Whether `end` deletes its holder by the bound rule under both non-reject
+/// reference policies: an interface's `implements` and a binding's
+/// `participantPackage` (LIB-EDIT-019, ADR 0039 D5).
+const fn is_bound_end(end: ReferenceEnd) -> bool {
+    matches!(
+        end,
+        ReferenceEnd::Implements | ReferenceEnd::ParticipantPackage
+    )
 }
 
 /// The document in pre-order, with what a delete needs to know of each
@@ -482,27 +505,42 @@ impl<'d> Tree<'d> {
     }
 
     /// The elements to delete, by position: the subtree `subtree`, plus each
-    /// relationship `policy` deletes, with its subtree, to a fixpoint.
-    fn deleted(&self, subtree: std::ops::Range<usize>, policy: ReferenceDeletePolicy) -> Vec<bool> {
+    /// relationship, interface and binding `policy` deletes, with its
+    /// subtree, to a fixpoint; and the positions of the interfaces and
+    /// bindings it deletes for their bound, which the package policy guards
+    /// (LIB-EDIT-019, ADR 0039 D5).
+    fn deleted(
+        &self,
+        subtree: std::ops::Range<usize>,
+        policy: ReferenceDeletePolicy,
+    ) -> (Vec<bool>, Vec<usize>) {
         let mut deleted = vec![false; self.elements.len()];
         let mut pending: Vec<usize> = Vec::new();
+        let mut holders: Vec<usize> = Vec::new();
         for position in subtree {
             deleted[position] = true;
             pending.push(position);
         }
         if policy == ReferenceDeletePolicy::RejectIfReferenced {
-            return deleted;
+            return (deleted, holders);
         }
-        // The ends through which a delete cascades: each occurrence of an id
-        // in the `source` or `target` of a relationship, an asserted one
-        // (§11.13) or an ArtifactAssetRelationship (§12.14), and under
-        // `DeleteReferencingRelationships` in an asserted one's `reasoning`
-        // too (ADR 0034 amendment 2). Each end applies to one class, so a
-        // relationship cascades through its own. `remaining` counts, for each
-        // relationship and each of these ends, the occurrences not yet
-        // deleted, so each reference is looked at once and the fixpoint is
-        // linear in the number of references; only a scrub reads it, and
-        // every end a scrub cascades through has the lower bound 1.
+        // The ends through which a delete cascades, each with its rule. Under
+        // `DeleteReferencingRelationships` a relationship goes on any id of a
+        // deleted element in its `source` or `target`, an asserted one's
+        // (§11.13) or an ArtifactAssetRelationship's (§12.14), or in an
+        // asserted one's `reasoning` (ADR 0034 amendment 2). Under
+        // `ScrubReferences` those `source` and `target` ends follow the bound
+        // rule, and so, under either, do an interface's `implements` and a
+        // binding's `participantPackage` (ADR 0039 D5): a holder goes when it
+        // loses an id there and is left below the end's lower bound, counting
+        // distinct ids, so one already below it that loses no id stays. Each
+        // end applies to its own classes. `remaining` counts, for each holder
+        // and each of these ends, the distinct ids not yet deleted, and each
+        // distinct id is one trigger, so each reference is looked at once and
+        // the fixpoint is linear in the number of references.
+        let by_bound = |end: ReferenceEnd| {
+            policy == ReferenceDeletePolicy::ScrubReferences || is_bound_end(end)
+        };
         let mut ends = vec![
             ReferenceEnd::Source,
             ReferenceEnd::Target,
@@ -512,13 +550,14 @@ impl<'d> Tree<'d> {
         if policy == ReferenceDeletePolicy::DeleteReferencingRelationships {
             ends.push(ReferenceEnd::Reasoning);
         }
+        ends.extend([ReferenceEnd::Implements, ReferenceEnd::ParticipantPackage]);
         let mut triggers: HashMap<&ElementId, Vec<(usize, ReferenceEnd)>> = HashMap::new();
         let mut remaining: HashMap<(usize, ReferenceEnd), usize> = HashMap::new();
         for (position, element) in self.elements.iter().enumerate() {
             for &end in ends.iter().filter(|end| end.applies_to(element.kind())) {
-                let held = element.references(end);
-                remaining.insert((position, end), held.len());
-                for id in held {
+                let distinct: BTreeSet<&ElementId> = element.references(end).iter().collect();
+                remaining.insert((position, end), distinct.len());
+                for id in distinct {
                     triggers.entry(id).or_default().push((position, end));
                 }
             }
@@ -536,25 +575,27 @@ impl<'d> Tree<'d> {
                 .flatten()
                 .copied()
                 .collect::<Vec<_>>();
-            for (relationship, end) in held {
-                if deleted[relationship] {
+            for (holder, end) in held {
+                if deleted[holder] {
                     continue;
                 }
-                let goes = match remaining.get_mut(&(relationship, end)) {
-                    // A scrub deletes the relationship once an end loses its
-                    // last id: each end keeps its own count.
-                    Some(left) if policy == ReferenceDeletePolicy::ScrubReferences => {
+                let goes = match remaining.get_mut(&(holder, end)) {
+                    // The bound rule: the holder goes once the end is left
+                    // below its lower bound. Each end keeps its own count.
+                    Some(left) if by_bound(end) => {
                         *left = left.saturating_sub(1);
-                        *left == 0
+                        *left < end.lower_bound()
                     }
-                    // Any cascading end of the relationship names a deleted
-                    // element.
+                    // Any id of a deleted element in a cascading end.
                     _ => true,
                 };
                 if !goes {
                     continue;
                 }
-                for inner in self.subtree(relationship) {
+                if is_bound_end(end) {
+                    holders.push(holder);
+                }
+                for inner in self.subtree(holder) {
                     if !deleted[inner] {
                         deleted[inner] = true;
                         pending.push(inner);
@@ -562,7 +603,30 @@ impl<'d> Tree<'d> {
                 }
             }
         }
-        deleted
+        (deleted, holders)
+    }
+
+    /// How many elements deleting the element at `position` removes that
+    /// [`PackageDeletePolicy::RejectIfNonEmpty`] refuses: each element of its
+    /// subtree but itself that is no `UtilityElement`, and each preserved
+    /// child element anywhere in its subtree (ADR 0033; preserved attributes
+    /// and text do not count).
+    fn contained(&self, position: usize) -> usize {
+        let subtree = self.subtree(position);
+        let preserved: usize = subtree
+            .clone()
+            .filter_map(|inner| self.elements[inner].preserved())
+            .map(Preserved::element_count)
+            .sum();
+        subtree
+            .skip(1)
+            .filter(|&inner| {
+                !self.elements[inner]
+                    .kind()
+                    .is_a(AbstractClass::UtilityElement)
+            })
+            .count()
+            .saturating_add(preserved)
     }
 
     /// Every reference held by an element outside `subtree` that names an

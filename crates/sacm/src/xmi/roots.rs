@@ -3131,23 +3131,20 @@ fn unheld(element: &Pending, error: &str) -> Details {
 }
 
 /// The reference end `interface` of a package (ptc/22-03-13
-/// `AssuranceCasePackage::interface`, `ArgumentPackage::interface`,
-/// `ArtifactPackage::interface`), which conforms and is read with the package
-/// interfaces.
+/// `AssuranceCasePackage::interface`, `TerminologyPackage::interface`),
+/// which conforms and is read with the package interfaces.
 const INTERFACE: &str = "interface";
 
 /// The entry of the `interface` end of an element of `kind`, if its class
-/// has one this release reads elements of: an AssuranceCasePackage's names
-/// an `AssuranceCasePackageInterface` (SACM23-AC-002), an ArgumentPackage's
-/// an `ArgumentPackageInterface` (SACM23-ARG-014), an ArtifactPackage's an
-/// `ArtifactPackageInterface` (SACM23-ART-012), and a TerminologyPackage's a
-/// `TerminologyPackageInterface` (SACM23-TERM-007). It conforms, so it is
-/// refused, not preserved (ADR 0033, ADR 0034 and its amendment 3).
+/// has one this release does not read yet: an AssuranceCasePackage's names
+/// an `AssuranceCasePackageInterface` (SACM23-AC-002), and a
+/// TerminologyPackage's a `TerminologyPackageInterface` (SACM23-TERM-007).
+/// It conforms, so it is refused, not preserved (ADR 0033, ADR 0034 and its
+/// amendment 3). An ArgumentPackage's and an ArtifactPackage's are read
+/// since slice 0066 (`ReferenceEnd::Interface`, ADR 0039).
 const fn interface_end(kind: ElementKind) -> Option<Unread> {
     match kind {
         ElementKind::AssuranceCasePackage => Some(Unread::AssuranceCasePackageInterface),
-        ElementKind::ArgumentPackage => Some(Unread::ArgumentPackageInterface),
-        ElementKind::ArtifactPackage => Some(Unread::ArtifactPackageInterface),
         ElementKind::TerminologyPackage => Some(Unread::TerminologyPackageInterface),
         _ => None,
     }
@@ -5396,16 +5393,10 @@ mod tests {
 
     #[test]
     fn refusals_name_the_child_element_and_its_entry() {
-        let cases = [
-            (
-                "<argumentElement xmi:type=\"sacm:ArgumentPackageInterface\" xmi:id=\"c\"/>",
-                "the ArgumentPackageInterface \"argumentElement\" in the root element \"sacm:ArgumentPackage\" is not read in this release (a limit of this version; SACM23-ARG-014 reads it)",
-            ),
-            (
-                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\"><xmi:Extension/></argumentElement>",
-                "the XMI element \"xmi:Extension\" in the element \"argumentElement\" is not read in this release (a limit of this version; SACM23-XMI-019 reads it)",
-            ),
-        ];
+        let cases = [(
+            "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c\"><xmi:Extension/></argumentElement>",
+            "the XMI element \"xmi:Extension\" in the element \"argumentElement\" is not read in this release (a limit of this version; SACM23-XMI-019 reads it)",
+        )];
         for (content, reason) in cases {
             assert_eq!(
                 refusal(content).map(|(_, reason)| reason).as_deref(),
@@ -5413,6 +5404,26 @@ mod tests {
                 "{content:?}"
             );
         }
+        // A child kind not read yet, in an AssuranceCasePackage.
+        let input = concat!(
+            "<sacm:AssuranceCasePackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
+            " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"a\">\n",
+            "<terminologyPackage xmi:type=\"sacm:TerminologyPackageInterface\" xmi:id=\"t\"/>",
+            "</sacm:AssuranceCasePackage>"
+        );
+        let reason = match read(input.as_bytes(), &strict()) {
+            Err(ReadError::Unsupported { reason, .. }) => Some(reason),
+            _ => None,
+        };
+        assert_eq!(
+            reason.as_deref(),
+            Some(
+                "the TerminologyPackageInterface \"terminologyPackage\" in the root element \
+                 \"sacm:AssuranceCasePackage\" is not read in this release (a limit of this \
+                 version; SACM23-TERM-007 reads it)"
+            ),
+            "{input:?}"
+        );
         // The text's spelling of the role is kept, not refused
         // (SACM23-XMI-009).
         let spelled = "<argumentationElement xmi:type=\"sacm:Claim\" xmi:id=\"c\"/>";

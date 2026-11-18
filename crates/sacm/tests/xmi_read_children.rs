@@ -577,7 +577,9 @@ fn expected_role(parent: ElementKind, child: ElementKind) -> Option<&'static str
 /// Terminology kinds of slice 0062; a Property is read in `property` of the
 /// eight assets read (SACM23-ART-001, -003 to -011; ADR 0034 and its
 /// amendments 1 and 2). A TerminologyPackage is read in `terminologyPackage`
-/// (SACM23-TERM-001; ADR 0034 amendment 3).
+/// (SACM23-TERM-001; ADR 0034 amendment 3). The Argumentation and Artifact
+/// interfaces and bindings are read wherever their package is (SACM23-ARG-014,
+/// -015, SACM23-ART-012, -013; ADR 0039).
 fn is_readable(parent: ElementKind, role: &str, child: ElementKind) -> bool {
     use ElementKind as K;
     let utility = matches!(
@@ -597,11 +599,13 @@ fn is_readable(parent: ElementKind, role: &str, child: ElementKind) -> bool {
             ) | (
                 K::AssuranceCasePackage,
                 "argumentPackage",
-                K::ArgumentPackage
+                K::ArgumentPackage | K::ArgumentPackageInterface | K::ArgumentPackageBinding
             ) | (
                 K::ArgumentPackage,
                 "argumentElement",
                 K::ArgumentPackage
+                    | K::ArgumentPackageInterface
+                    | K::ArgumentPackageBinding
                     | K::Claim
                     | K::ArgumentReasoning
                     | K::ArtifactReference
@@ -614,7 +618,7 @@ fn is_readable(parent: ElementKind, role: &str, child: ElementKind) -> bool {
             ) | (
                 K::AssuranceCasePackage,
                 "artifactPackage",
-                K::ArtifactPackage
+                K::ArtifactPackage | K::ArtifactPackageInterface | K::ArtifactPackageBinding
             ) | (
                 K::AssuranceCasePackage,
                 "terminologyPackage",
@@ -624,6 +628,10 @@ fn is_readable(parent: ElementKind, role: &str, child: ElementKind) -> bool {
                 "artifactElement",
                 K::AssuranceCasePackage
                     | K::ArgumentPackage
+                    | K::ArgumentPackageInterface
+                    | K::ArgumentPackageBinding
+                    | K::ArtifactPackageInterface
+                    | K::ArtifactPackageBinding
                     | K::Claim
                     | K::ArgumentReasoning
                     | K::ArtifactReference
@@ -1326,18 +1334,14 @@ fn sacm23_xmi_016_every_conforming_kind_outside_the_readable_set_is_unsupported_
             }
         }
     }
-    // The 2 other ArgumentationElement kinds (the ArgumentPackage interface
-    // and binding) in the three ArgumentPackage contexts, the 8 other
-    // package kinds (the interfaces and bindings) in the two
-    // AssuranceCasePackage contexts, and the 8 ArtifactElement kinds not read
-    // yet (the interface and binding kinds; ADR 0034 and its amendments 1 to
-    // 3) in the three ArtifactPackage contexts. The utility roles are read on every context
+    // The 4 package kinds not read yet (the Terminology and AssuranceCase
+    // interfaces and bindings) in the two AssuranceCasePackage contexts, and
+    // the same 4 ArtifactElement kinds in the three ArtifactPackage contexts
+    // (ADR 0034 and its amendments 1 to 3). Every ArgumentationElement kind
+    // is read since slice 0066 (ADR 0039), so the ArgumentPackage contexts
+    // have no case. The utility roles are read on every context
     // (SACM23-BASE-004, SACM23-BASE-005), so none of them is a case.
-    assert_eq!(
-        cases.len(),
-        2 * 8 + 3 * 2 + 3 * 8,
-        "{ROW}: setup: the case count"
-    );
+    assert_eq!(cases.len(), 2 * 4 + 3 * 4, "{ROW}: setup: the case count");
     assert_all_unsupported_at_mark("unreadable kind", &cases);
 }
 

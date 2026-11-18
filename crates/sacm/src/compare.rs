@@ -11,7 +11,9 @@
 //! `target`, `structure`, `referencedArtifactElement` and group
 //! `argumentElement` ends of the argumentation kinds and the
 //! `artifactElement` end of an `ArtifactGroup` (§11.2, §11.9, §11.10,
-//! §11.12, §11.13, §12.3; the multi-valued `metaClaim`, `source`,
+//! §11.12, §11.13, §12.3), a package's `interface`, an interface's
+//! `implements` and a binding's `participantPackage` (§11.5, §11.6, §12.4,
+//! §12.5; ptc/22-03-13; the multi-valued `metaClaim`, `source`,
 //! `referencedArtifactElement`, `argumentElement` and `artifactElement` in
 //! order, with repeats), its name, the
 //! `xmi:id` of its name
@@ -55,7 +57,9 @@
 //!     | Difference::GroupMembers { left, right, .. }
 //!     | Difference::ArtifactGroupMembers { left, right, .. }
 //!     | Difference::ArtifactSources { left, right, .. }
-//!     | Difference::ArtifactTargets { left, right, .. } => {
+//!     | Difference::ArtifactTargets { left, right, .. }
+//!     | Difference::Interfaces { left, right, .. }
+//!     | Difference::ParticipantPackages { left, right, .. } => {
 //!         let (mut left, mut right) = (left.clone(), right.clone());
 //!         left.sort();
 //!         right.sort();
@@ -495,6 +499,42 @@ pub enum Difference {
         /// The member ids in the right document, in order.
         right: Vec<ElementId>,
     },
+    /// A package's interfaces, its `interface` ids (ptc/22-03-13,
+    /// [`SacmElement::interfaces`](crate::model::SacmElement::interfaces)),
+    /// differ on each side. Compared in order and with repeats.
+    #[doc(alias = "interface")]
+    Interfaces {
+        /// The package's id.
+        id: ElementId,
+        /// The interface ids in the left document, in order.
+        left: Vec<ElementId>,
+        /// The interface ids in the right document, in order.
+        right: Vec<ElementId>,
+    },
+    /// An interface's `implements` (SACM 2.3 §11.6, §12.5,
+    /// [`SacmElement::implements`](crate::model::SacmElement::implements))
+    /// differs on each side; `None` is no `implements`.
+    Implements {
+        /// The interface's id.
+        id: ElementId,
+        /// The package's id in the left document, or `None`.
+        left: Option<ElementId>,
+        /// The package's id in the right document, or `None`.
+        right: Option<ElementId>,
+    },
+    /// A binding's participants, its `participantPackage` ids (SACM 2.3
+    /// §11.5, §12.4,
+    /// [`SacmElement::participant_packages`](crate::model::SacmElement::participant_packages)),
+    /// differ on each side. Compared in order and with repeats.
+    #[doc(alias = "participantPackage")]
+    ParticipantPackages {
+        /// The binding's id.
+        id: ElementId,
+        /// The participant ids in the left document, in order.
+        left: Vec<ElementId>,
+        /// The participant ids in the right document, in order.
+        right: Vec<ElementId>,
+    },
     /// The element has a different `name` (SACM 2.3 §8.6) on each side;
     /// `None` is a missing name.
     ///
@@ -823,6 +863,9 @@ impl Difference {
             | Self::ExpressionElements { id, .. }
             | Self::Origin { id, .. }
             | Self::TerminologyGroupMembers { id, .. }
+            | Self::Interfaces { id, .. }
+            | Self::Implements { id, .. }
+            | Self::ParticipantPackages { id, .. }
             | Self::Name { id, .. }
             | Self::NameId { id, .. }
             | Self::Content { id, .. }
@@ -908,6 +951,9 @@ impl Difference {
             Self::ExpressionElements { .. } => ReferenceEnd::Element.name(),
             Self::Origin { .. } => ReferenceEnd::Origin.name(),
             Self::TerminologyGroupMembers { .. } => ReferenceEnd::TerminologyGroupMember.name(),
+            Self::Interfaces { .. } => ReferenceEnd::Interface.name(),
+            Self::Implements { .. } => ReferenceEnd::Implements.name(),
+            Self::ParticipantPackages { .. } => ReferenceEnd::ParticipantPackage.name(),
             _ => ReferenceEnd::CitedElement.name(),
         }
     }
@@ -967,7 +1013,8 @@ impl fmt::Display for Difference {
             | Self::Reasoning { id, left, right }
             | Self::Target { id, left, right }
             | Self::Structure { id, left, right }
-            | Self::Origin { id, left, right } => {
+            | Self::Origin { id, left, right }
+            | Self::Implements { id, left, right } => {
                 let end = self.end();
                 write!(
                     f,
@@ -986,7 +1033,9 @@ impl fmt::Display for Difference {
             | Self::ArtifactTargets { id, left, right }
             | Self::Categories { id, left, right }
             | Self::ExpressionElements { id, left, right }
-            | Self::TerminologyGroupMembers { id, left, right } => write!(
+            | Self::TerminologyGroupMembers { id, left, right }
+            | Self::Interfaces { id, left, right }
+            | Self::ParticipantPackages { id, left, right } => write!(
                 f,
                 "element {:?} differs in {}: {} on the left, {} on the right",
                 id.as_str(),
@@ -1318,6 +1367,9 @@ impl fmt::Display for Declaration {
 ///    [`ExpressionElements`](Difference::ExpressionElements),
 ///    [`Origin`](Difference::Origin),
 ///    [`TerminologyGroupMembers`](Difference::TerminologyGroupMembers),
+///    [`Interfaces`](Difference::Interfaces),
+///    [`Implements`](Difference::Implements),
+///    [`ParticipantPackages`](Difference::ParticipantPackages),
 ///    [`Name`](Difference::Name),
 ///    [`NameId`](Difference::NameId), [`Content`](Difference::Content),
 ///    [`ContentId`](Difference::ContentId),
@@ -1603,6 +1655,17 @@ fn reference_difference(
         },
         ReferenceEnd::Origin => Difference::Origin { id, left, right },
         ReferenceEnd::TerminologyGroupMember => Difference::TerminologyGroupMembers {
+            id,
+            left: all_left.to_vec(),
+            right: all_right.to_vec(),
+        },
+        ReferenceEnd::Interface => Difference::Interfaces {
+            id,
+            left: all_left.to_vec(),
+            right: all_right.to_vec(),
+        },
+        ReferenceEnd::Implements => Difference::Implements { id, left, right },
+        ReferenceEnd::ParticipantPackage => Difference::ParticipantPackages {
             id,
             left: all_left.to_vec(),
             right: all_right.to_vec(),
