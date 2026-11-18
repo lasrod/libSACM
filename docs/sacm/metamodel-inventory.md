@@ -64,8 +64,8 @@ The rule above -- "where they disagree, follow the text" -- was applied unevenly
 
 Two further defects in the specification TEXT, recorded because they affect what can be enforced rather than what is represented:
 
-- Clause 10.5 (`TerminologyPackageInterface`) prints the Constraints section of 10.6 (`TerminologyPackageBinding`) -- participant-package typing -- so the interface's own content constraint, which its siblings 11.6 and 12.5 both state, is missing from the published text.
-- Clauses 9.4, 10.5/10.6 and 11.5 give three different participant-typing rules for the same concept: `oclIsTypeOf(Package) or oclIsTypeOf(PackageInterface)`, `oclIsKindOf(Package)`, and `oclIsTypeOf(PackageInterface)` respectively -- while 11.5's own Associations block declares the general package type. The library's resolution is recorded in `sacm-decisions-and-questions.md`.
+- Clause 10.5 (`TerminologyPackageInterface`) has no Constraints section, so the content rule its siblings 11.6 and 12.5 state is missing from the text. Clause 10.6 (`TerminologyPackageBinding`) has no Associations block: `participantPackage : TerminologyPackage [2..*]` is in the model only (model followed, SACM23-TERM-008).
+- Clauses 9.4, 10.6 and 11.5 give three different participant-typing rules for the same concept: `oclIsTypeOf(Package) or oclIsTypeOf(PackageInterface)`, `oclIsKindOf(Package)`, and `oclIsTypeOf(PackageInterface)` respectively -- while 11.5's own Associations block declares the general package type. The library's resolution is recorded in `sacm-decisions-and-questions.md`.
 
 ## Package summary
 

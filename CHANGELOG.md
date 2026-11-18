@@ -84,7 +84,7 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 - ArgumentPackageInterface, ArgumentPackageBinding, ArtifactPackageInterface and
   ArtifactPackageBinding are read (as children and as roots, in both modes), written,
   created, edited, compared, copied and moved; `validate` checks their references
-  (SACM-REF-001, SACM-REF-002, SACM23-VAL-022) but not yet a missing `implements`, too few
+  (SACM-REF-001, SACM-REF-002, and SACM-MULT-001 for a repeated id) but not yet a missing `implements`, too few
   participants or their contents (SACM23-VAL-013, SACM23-VAL-014) [SACM23-ARG-014,
   SACM23-ARG-015, SACM23-ART-012, SACM23-ART-013].
 - `ReferenceEnd::Interface` (a package's `interface`), `Implements` (an interface's
@@ -102,7 +102,7 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   under a parent; with `serde`, their JSON fields are `implements` and
   `participant_packages`. The `interface`, `implements` and `participantPackage` ends
   apply to the AssuranceCase and Terminology kinds too, typed to the holder's family;
-  `validate` checks their references (SACM-REF-001, SACM-REF-002, SACM23-VAL-022) but not
+  `validate` checks their references (SACM-REF-001, SACM-REF-002, and SACM-MULT-001 for a repeated id) but not
   yet a missing `implements`, too few participants or their contents (SACM23-VAL-013 to
   SACM23-VAL-015) [SACM23-TERM-007, SACM23-TERM-008, SACM23-AC-002, SACM23-AC-003].
 

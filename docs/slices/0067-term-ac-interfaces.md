@@ -1,8 +1,8 @@
 ---
 slice: 0067
 name: term-ac-interfaces
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [SACM23-TERM-007, SACM23-TERM-008, SACM23-AC-002, SACM23-AC-003]
 mode: pr
 base: main (2aa2f37)
@@ -44,3 +44,5 @@ base: main (2aa2f37)
      `WrongReferenceType` (not `FeatureNotApplicable`) for `interface` on a TerminologyPackage or AssuranceCasePackage,
      which this slice makes true; the Claim case is unchanged.
   The lead reworded the design's verified rows (plus SACM23-BASE-009 and LIB-API-018's counts), each with a slice 0067 note.
+- 2026-11-18 verify (0bd2a7f): PASS on all four rows; the wording W1–W5 and the CHANGELOG item were fixed by the lead with
+  the verifier's text. Record docs/verification/0067-term-ac-interfaces.md.
