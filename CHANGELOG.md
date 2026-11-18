@@ -94,7 +94,8 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   SACM-XMI-014 [SACM23-BASE-009, LIB-API-011].
 - Diagnostics equal in the seven other keys order by template, then by arguments. A
   diagnostic built with `test-support`'s `Diagnostic::new` has its code's text as its
-  template, so it is no longer `==` to one the crate emits [LIB-API-018].
+  template, so it is no longer `==` to one the crate emits. `Debug` of a `Diagnostic`
+  shows its template and arguments [LIB-API-018].
 
 ### Known limits
 

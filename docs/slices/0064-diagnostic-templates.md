@@ -54,3 +54,7 @@ There are no SACM clauses: this is library API. Its basis:
   `lib_api_018_diagnostics_0_1_0_json_reads_…` and `lib_api_018_the_invalid_write_error_s_…`.
 - 2026-11-18 implemented: the builder's 26 hand mutants are all killed; the three tests were fixed under
   ruling (b), mechanics only; the full gate is green, and messages-0.1.0.txt is unchanged.
+- 2026-11-18 verify round 1: FAIL on one test gap. Mutant D1 (`null` read as not given) survived; D2
+  (the order of checks 6 and 7) survived too, non-blocking. No wrong behaviour was found. In the fix round
+  the builder adds the two cases and the lib.rs, catalog and CHANGELOG wording; the lead adds
+  ADR 0011's pointer to keys 8 and 9 and one follow-up (the construction check misses qualified paths).

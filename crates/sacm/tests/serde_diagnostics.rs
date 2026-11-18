@@ -353,14 +353,21 @@ fn lib_api_018_template_and_arguments_are_given_together_and_never_null() {
         TOO_MANY,
         r#""template":"SACM-MULT-001/too-many""#,
         r#""template":null"#,
-        "",
+        "invalid type: null",
     );
     assert_refused::<Diagnostic>(
         "null arguments",
         TOO_MANY,
         TOO_MANY_ARGUMENTS,
         r#""arguments":null"#,
-        "",
+        "invalid type: null",
+    );
+    assert_refused::<Diagnostic>(
+        "a null template and null arguments",
+        TOO_MANY,
+        &format!(r#""template":"SACM-MULT-001/too-many",{TOO_MANY_ARGUMENTS}"#),
+        r#""template":null,"arguments":null"#,
+        "invalid type: null",
     );
     // The code's text as template takes `{}`, never `null`.
     let bare = BARE.replacen(
@@ -373,7 +380,7 @@ fn lib_api_018_template_and_arguments_are_given_together_and_never_null() {
         &bare,
         r#""arguments":{}"#,
         r#""arguments":null"#,
-        "",
+        "invalid type: null",
     );
     assert_refused::<Diagnostic>(
         "the code's text without arguments",
@@ -422,6 +429,13 @@ fn lib_api_018_an_unknown_template_a_refusal_s_or_another_code_s_is_refused() {
         &format!(r#""template":"SACM-MULT-001/too-many",{TOO_MANY_ARGUMENTS}"#),
         r#""template":"SACM-REF-001/dangling","arguments":{"class":"Claim","id":"c1","end":"citedElement","target":"nope","type":"SACMElement"}"#,
         "the code SACM-MULT-001 is not the code of the template \"SACM-REF-001/dangling\"",
+    );
+    assert_refused::<Diagnostic>(
+        "another code's refusal template",
+        TOO_MANY,
+        &format!(r#""template":"SACM-MULT-001/too-many",{TOO_MANY_ARGUMENTS}"#),
+        r#""template":"SACM-XMI-014/unread-root","arguments":{"element":"sacm:ArgumentPackageInterface","row":"SACM23-ARG-014"}"#,
+        "the template \"SACM-XMI-014/unread-root\" is a refusal's, not a diagnostic's",
     );
 }
 

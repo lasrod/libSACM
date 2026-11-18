@@ -3,11 +3,12 @@
 Machine-readable diagnostic codes emitted by the `sacm` crate. **Codes are stable API**:
 once released, a code's meaning never changes and a retired code is never reused.
 
-Every diagnostic carries: `code`, `severity` (info / warning / error), the matrix row
-and clause it enforces, affected element ids, an optional source location
-(line/column), a human-readable message, and the template and arguments the message is
-made from (LIB-API-018). See decision D-DIAG. Every read and write refusal (`ReadError`, `WriteError`) carries a code too, and its message's template and
-arguments (LIB-API-017): see [Message templates](#message-templates).
+Every diagnostic carries: `code`, `severity` (info / warning / error), the matrix row and
+clause it enforces, affected element ids, an optional source location (line/column), a
+human-readable message, and the template and arguments the message is made from
+(LIB-API-018). See decision D-DIAG. Every read and write refusal (`ReadError`,
+`WriteError`) carries a code too, and its message's template and arguments (LIB-API-017):
+see [Message templates](#message-templates).
 
 > **Status.** The codes below are adopted from the assurance-forge C++ SACM library (same
 > author), so that the two implementations report the same finding with the same code.
