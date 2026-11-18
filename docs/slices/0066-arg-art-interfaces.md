@@ -1,8 +1,8 @@
 ---
 slice: 0066
 name: arg-art-interfaces
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [SACM23-ARG-014, SACM23-ARG-015, SACM23-ART-012, SACM23-ART-013, LIB-EDIT-019]
 mode: pr
 base: main (fc59b20)
@@ -69,9 +69,11 @@ The brief gives the API, the XMI shape, the check order, the delete algorithm an
     M14, check 4's holder guard; M35, check 4 counting preserved children);
   - FAIL on the four kinds' rows: the CHANGELOG said "validated";
   - no wrong behaviour; the 11 reworded rows are true.
-  - Two step-1 test changes the log did not name: `delete.rs` `holder_of` covering the three new ends
+  - Two test changes made after the red snapshot that the log did not name: `delete.rs` `holder_of` covering the three new ends
     (for `lib_edit_005_reject_if_referenced_refuses_a_reference_through_every_end`), and the
     `xmi_read_children.rs` readable and unread sets (2×4 + 3×4 cases). Both keep their intent.
   - Fix round: the builder adds the three cases and fixes the CHANGELOG, the `edit.rs` table and
     two test clean-ups; the lead fixes ADR 0039 Consequences 3, four stale notes and four
     acceptance items (verifier's text).
+- 2026-11-18 verify round 2 (16986d5): PASS on all five rows. The lead fixed the wording and triaged the CI
+  timeout. Record docs/verification/0066-arg-art-interfaces.md.

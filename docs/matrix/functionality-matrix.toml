@@ -5302,9 +5302,10 @@ acceptance = [
   "`sacm23_arg_014_move_copy_and_the_element_edits_apply`: SetName, SetGid, SetFlag, ReorderElements, MoveElement and CopyElements, as described in the Copy and move section. Creates and deletes of interfaces join LIB-EDIT-002's set in `edit_atomic.rs`.",
   "Copy and move (ADR 0036, Q6): `…_copy_follows_copied_ids`: copying `p` gives `p'` with `interface=[i']`, `i'.implements=p'` and `ci'.citedElement=c'`. Assert through `source_ids()` and `created_ids()`. Copying `i` alone under `q` keeps `implements=p`, and `q.interfaces()` is unchanged. Copying `b` into an empty document gives `ReferenceNotFound{end:\"participantPackage\",id:\"i\"}`. An interface read with no `implements` gives `TooFewReferences{end:\"implements\",given:0,required:1}` when copied; a binding read with `[i,i]` gives `TooFewReferences{given:1,required:2}`. Move: an interface moves to the roots, into an ArtifactPackage and back. The references and the `validate` findings are unchanged. Into a TerminologyPackage is `InvalidParent`, and so is an ArtifactPackageInterface into an ArgumentPackage.",
 ]
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0066-arg-art-interfaces.md"
 depends_on = ["SACM23-ARG-001", "SACM23-BASE-007", "SACM23-VAL-012", "SACM23-XMI-015", "SACM23-VAL-004", "LIB-EDIT-009", "LIB-EDIT-005"]
-notes = "Also read as an interchange root, bare or inside `xmi:XMI`, in both modes, since slice 0066 (SACM23-XMI-001); C++ accepts it too (element_kind.cpp:87-105).cpp:87-105)."
+notes = "Also read as an interchange root, bare or inside `xmi:XMI`, in both modes, since slice 0066 (SACM23-XMI-001); C++ accepts it too (element_kind.cpp:87-105)."
 
 [[row]]
 id = "SACM23-ARG-015"
@@ -5344,9 +5345,10 @@ acceptance = [
   "`sacm23_arg_015_homogeneity_exemption_on_the_read_path`: `p{b, c}` gives none, `p{q, b, c}` gives `[p, c]`, and a binding owner gives none.",
   "`sacm23_arg_015_move_copy_and_the_element_edits_apply`: SetName, SetGid, SetFlag and ReorderElements apply to a binding; it moves to the roots, into an ArtifactPackage, into an ArgumentPackage and back with its participants and the `validate` findings unchanged; into a TerminologyPackage is `InvalidParent`; a copy keeps its participants as written.",
 ]
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0066-arg-art-interfaces.md"
 depends_on = ["SACM23-ARG-001", "SACM23-BASE-007", "SACM23-VAL-012", "SACM23-XMI-015", "SACM23-VAL-004", "LIB-EDIT-009", "LIB-EDIT-005"]
-notes = "Also read as an interchange root, bare or inside `xmi:XMI`, in both modes, since slice 0066 (SACM23-XMI-001); C++ accepts it too (element_kind.cpp:87-105).cpp:87-105)."
+notes = "Also read as an interchange root, bare or inside `xmi:XMI`, in both modes, since slice 0066 (SACM23-XMI-001); C++ accepts it too (element_kind.cpp:87-105)."
 
 [[row]]
 id = "SACM23-ART-012"
@@ -5377,7 +5379,8 @@ tests = [
 acceptance = [
   "In `crates/sacm/tests/artifact_package_interfaces.rs`, tests `sacm23_art_012_…` mirror ARG-014 #1–#11 and #13, with these differences: Roles: `<artifactPackage xmi:type=\"sacm:ArtifactPackageInterface\">` in an AssuranceCasePackage, `<artifactElement xmi:type=…>` in an ArtifactPackage, and as a root. `<argumentElement xmi:type=\"sacm:ArtifactPackageInterface\">` in an ArgumentPackage is kept whole as preserved content of the package, with one SACM-XMI-003 in both modes. Clauses are `12.5` (implements) and `12.2` (interface); types are `ArtifactPackage` and `ArtifactPackageInterface`. An `implements` naming an ArgumentPackage is REF-002. The generated id is `artifact_package_interface_<n>`. There is no homogeneity test, because §11.4 does not apply.",
 ]
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0066-arg-art-interfaces.md"
 depends_on = ["SACM23-ART-001", "SACM23-BASE-007", "SACM23-XMI-015", "SACM23-VAL-004", "LIB-EDIT-009", "LIB-EDIT-005"]
 notes = "Also read as an interchange root, bare or inside `xmi:XMI`, in both modes, since slice 0066 (SACM23-XMI-001)."
 
@@ -5407,7 +5410,8 @@ tests = [
 acceptance = [
   "Tests `sacm23_art_013_…` mirror ARG-015 #1–#10 and #12, with clause `12.4`, type `ArtifactPackage`, a participant naming an ArgumentPackage as REF-002, and the generated id `artifact_package_binding_<n>`.",
 ]
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0066-arg-art-interfaces.md"
 depends_on = ["SACM23-ART-001", "SACM23-BASE-007", "SACM23-XMI-015", "SACM23-VAL-004", "LIB-EDIT-009", "LIB-EDIT-005"]
 notes = "Also read as an interchange root, bare or inside `xmi:XMI`, in both modes, since slice 0066 (SACM23-XMI-001)."
 
@@ -5419,7 +5423,8 @@ title = "Deleting a package an interface implements or a binding binds"
 requirement = "Under `DeleteReferencingRelationships` and `ScrubReferences`, a dangling id in an interface's `implements` or a binding's `participantPackage` is scrubbed. An interface or binding that loses an id there and is left below the end's lower bound (no `implements`; fewer than two distinct participants) is deleted with its contents, and the fixpoint continues from it. The package policy guards that holder: under `RejectIfNonEmpty` one that contains an element other than a UtilityElement, or a preserved child element, refuses the delete as `EditError::NotEmpty` naming it (SACM-CMD-006), checked after the dangling references. A holder below its bound that loses no id is untouched. A package's `interface` end has no lower bound and is scrubbed. `RejectIfReferenced` and `RejectIfExternalReferencesExist` refuse as for any end."
 source = "M5 decisions Q6 (the maintainer, 2026-11-18); D-POLICY; ADR 0031; ADR 0039 D5"
 kind = "editing"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0066-arg-art-interfaces.md"
 depends_on = ["LIB-EDIT-005", "LIB-EDIT-006", "SACM23-ARG-014", "SACM23-ARG-015", "SACM23-ART-012", "SACM23-ART-013"]
 code = ["crates/sacm/src/edit/delete.rs", "crates/sacm/src/edit.rs", "docs/adr/0039-package-interfaces-and-bindings.md"]
 tests = [
@@ -5442,7 +5447,7 @@ tests = [
 ]
 acceptance = [
   "`lib_edit_019_deleting_an_implemented_package_is_cross_package_reference_by_default`: delete `r` gives `CrossPackageReference{holder:\"k\",end:\"implements\",id:\"r\"}`.",
-  "`lib_edit_019_reject_if_referenced_names_the_first_holder`: `ApplyReferencePolicy` with default references gives `Referenced{holder:\"k\",end:\"implements\",id:\"r\"}`. Delete `i` gives `Referenced{holder:\"p\",end:\"interface\",id:\"i\"}`.",
+  "`lib_edit_019_reject_if_referenced_names_the_first_holder`: `ApplyReferencePolicy` with default references gives `Referenced{holder:\"k\",end:\"implements\",id:\"r\"}`. Delete `i` gives `Referenced{holder:\"p\",end:\"interface\",id:\"i\"}`. With a citation `z` of `kc` in `p`, deleting `r` under `RejectIfReferenced` still gives `Referenced{holder:\"k\",end:\"implements\",id:\"r\"}`: the policy cascades nothing.",
   "`lib_edit_019_scrub_deletes_an_interface_left_without_implements`: delete `r`, Apply, Scrub gives `deleted_ids [r,k,kc,e]`, empty `changed_ids`, and dangling `[(k,implements,r,crosses),(e,implements,r,crosses)]`.",
   "`lib_edit_019_delete_referencing_relationships_does_the_same`: the same as 3.",
   "`lib_edit_019_the_package_policy_guards_the_holder`: the same as 3 with `RejectIfNonEmpty` gives `NotEmpty{element:\"k\",contained:1}` and Display `the element \"k\" contains 1 element that is no UtilityElement, and the delete is not recursive`. The document is `==` before and after. Deleting `r` when `k` is removed first succeeds, with `e` cascaded and no NotEmpty (`e` holds only a Note).",
@@ -5455,6 +5460,8 @@ acceptance = [
   "`lib_edit_019_preview_and_apply_agree_and_join_the_atomic_set`: the cases join `edit_atomic.rs`.",
   "`lib_edit_019_deleting_an_interface_with_a_package_interface_end_is_cross_package_by_default`: SACM-CMD-007, as Q6 states.",
   "`lib_edit_019_serde_unchanged`: the existing JSON of `DeleteElement` reads the same.",
+  "`lib_edit_019_check_4_guards_only_interfaces_and_bindings`: a relationship deleted for its bound is not guarded by the package policy: in `p{c, x, r1}`, with `r1` an AssertedInference (`source=x`, `target=c`) holding a preserved child element, deleting `x` under `ScrubReferences`, `RejectIfNonEmpty` and `ApplyReferencePolicy` is accepted with `deleted_ids [x, r1]`.",
+  "`lib_edit_019_check_4_counts_a_preserved_child`: an interface `e` (`implements=r`) whose only child is a preserved child element makes deleting `r` under `ScrubReferences`, `RejectIfNonEmpty` and `ApplyReferencePolicy` `NotEmpty{element:\"e\", contained:1}`.",
 ]
 
 [[row]]
