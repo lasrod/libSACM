@@ -10,8 +10,7 @@
     the PR-diff mutation job does not block (ADR 0006 amendment 6).
   - 7f21d45, round 2: PASS. The CI run is cited in the PR.
 - Slice brief: [docs/slices/0063-refusal-codes.md](../slices/0063-refusal-codes.md)
-- Decision: ADR 0030 amendment 3, **proposed**. The row is verified against the ADR as
-  written. If the maintainer changes its API details, the row is reworded and re-verified.
+- Decision: ADR 0030 amendment 3, accepted by the maintainer on 2026-11-18 as written.
 
 ## Result
 
