@@ -44,6 +44,8 @@ use sacm::diagnostic::{Code, Diagnostic, Severity, SourceLocation};
 use sacm::model::{Document, ElementId, LangString, MultiLangString, SacmElement};
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteOptions};
 
+mod common;
+
 const ROW: &str = "LIB-COMPAT-008";
 
 /// Both modes, strict first.
@@ -1006,7 +1008,7 @@ fn lib_compat_008_a_value_given_by_a_shorthand_and_the_standard_form_is_repeated
         assert_eq!(
             (error.code(), error.locations(), error.location()),
             (
-                Some(Code::MULTIPLICITY_VIOLATION),
+                Code::MULTIPLICITY_VIOLATION,
                 marks.as_slice(),
                 Some(marks[1])
             ),
@@ -1388,8 +1390,9 @@ fn lib_compat_008_a_strict_read_refuses_each_shape_with_sacm_xmi_012_at_the_cons
             )),
             Err(error) => {
                 let is_unsupported = matches!(error, ReadError::Unsupported { .. });
+                let is_other_code = error.code() != Code::XMI_LEGACY_SHAPE;
                 if is_unsupported
-                    || error.code() != Some(Code::XMI_LEGACY_SHAPE)
+                    || is_other_code
                     || error.location() != marks.first().copied()
                     || error.locations() != &marks[..1]
                 {
@@ -1418,7 +1421,7 @@ fn lib_compat_008_the_strict_refusal_of_a_shape_shows_its_location() {
     };
     assert_eq!(
         error.code(),
-        Some(Code::XMI_LEGACY_SHAPE),
+        Code::XMI_LEGACY_SHAPE,
         "{ROW}: the strict refusal of name= is not SACM-XMI-012: {error:?}"
     );
     let shown = error.to_string();
@@ -1533,7 +1536,7 @@ fn assert_shape_in_both_modes(shape: &Shape) {
     };
     assert_eq!(
         (error.code(), error.location()),
-        (Some(Code::XMI_LEGACY_SHAPE), marks.first().copied()),
+        (Code::XMI_LEGACY_SHAPE, marks.first().copied()),
         "{ROW}: {}: not refused in strict mode with SACM-XMI-012 at the shape: {error:?}",
         shape.what
     );
@@ -1754,7 +1757,8 @@ fn assert_unsupported_at_mark(what: &str, template: &str) {
     assert_eq!(marks.len(), 1, "{ROW}: setup: {what} has not one mark");
     let error = refused(what, &input);
     assert!(
-        matches!(error, ReadError::Unsupported { .. }) && error.code().is_none(),
+        matches!(error, ReadError::Unsupported { .. })
+            && error.code().as_str() == crate::common::unsupported_code(&error.to_string()),
         "{ROW}: {what}: not Unsupported: {error:?} ({error})"
     );
     assert_eq!(

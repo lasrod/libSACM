@@ -20,7 +20,8 @@ use sacm::diagnostic::{Diagnostic, SourceLocation};
 /// Why a file could not be checked: a refusal by `xmi::read`, or an I/O
 /// error, which has no code and no location.
 pub(crate) struct Refusal {
-    /// The catalog code, if the refusal has one.
+    /// The catalog code: every read refusal has one (LIB-API-017); an I/O
+    /// error has none.
     pub(crate) code: Option<&'static str>,
     /// Where the refusal is, if it is located.
     pub(crate) location: Option<SourceLocation>,

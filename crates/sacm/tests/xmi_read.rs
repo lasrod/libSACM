@@ -39,6 +39,8 @@ use std::time::Duration;
 use sacm::diagnostic::{Code, SourceLocation};
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput};
 
+mod common;
+
 /// One mebibyte.
 const MIB: usize = 1 << 20;
 
@@ -184,7 +186,7 @@ fn assert_doctype_at(row: &str, input: &[u8], line: u32, column: u32) -> ReadErr
     );
     assert_eq!(
         error.code(),
-        Some(Code::XML_DOCTYPE_REJECTED),
+        Code::XML_DOCTYPE_REJECTED,
         "{row}: the Doctype refusal of {} does not carry SACM-SEC-001",
         preview(input)
     );
@@ -208,7 +210,7 @@ fn assert_malformed(row: &str, input: &[u8]) -> ReadError {
     );
     assert_eq!(
         error.code(),
-        Some(Code::XML_MALFORMED),
+        Code::XML_MALFORMED,
         "{row}: the Malformed refusal of {} does not carry SACM-XML-001",
         preview(input)
     );
@@ -225,9 +227,9 @@ fn assert_unsupported(row: &str, input: &[u8]) -> ReadError {
         preview(input)
     );
     assert_eq!(
-        error.code(),
-        None,
-        "{row}: the Unsupported refusal of {} carries a code; Unsupported has none",
+        error.code().as_str(),
+        crate::common::unsupported_code(&error.to_string()),
+        "{row}: the Unsupported refusal of {} does not carry the code of its label",
         preview(input)
     );
     error
@@ -342,7 +344,7 @@ fn assert_refusal_invariants(row: &str, input: &[u8], error: &ReadError) {
         ReadError::Doctype { .. } => {
             assert_eq!(
                 error.code(),
-                Some(Code::XML_DOCTYPE_REJECTED),
+                Code::XML_DOCTYPE_REJECTED,
                 "{row}: a Doctype refusal of {} does not carry SACM-SEC-001",
                 preview(input)
             );
@@ -357,7 +359,7 @@ fn assert_refusal_invariants(row: &str, input: &[u8], error: &ReadError) {
         ReadError::Malformed { .. } => {
             assert_eq!(
                 error.code(),
-                Some(Code::XML_MALFORMED),
+                Code::XML_MALFORMED,
                 "{row}: a Malformed refusal of {} does not carry SACM-XML-001",
                 preview(input)
             );
@@ -369,9 +371,9 @@ fn assert_refusal_invariants(row: &str, input: &[u8], error: &ReadError) {
         }
         ReadError::Unsupported { .. } => {
             assert_eq!(
-                error.code(),
-                None,
-                "{row}: an Unsupported refusal of {} carries a code",
+                error.code().as_str(),
+                crate::common::unsupported_code(&error.to_string()),
+                "{row}: an Unsupported refusal of {} does not carry the code of its label",
                 preview(input)
             );
             display_reason(row, error, UNSUPPORTED_LEAD);
@@ -1338,8 +1340,8 @@ fn lib_api_009_utf32_input_with_a_bom_is_unsupported() {
     for (what, input) in inputs {
         let error = assert_unsupported(row, &input);
         assert!(
-            error.code().is_none(),
-            "{row}: the {what} refusal carries a code"
+            error.code().as_str() == crate::common::unsupported_code(&error.to_string()),
+            "{row}: the {what} refusal does not carry the code of its label"
         );
         assert_refusal_invariants(row, &input, &error);
     }

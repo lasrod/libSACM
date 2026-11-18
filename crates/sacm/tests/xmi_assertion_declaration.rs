@@ -276,7 +276,7 @@ fn assert_invalid_literal_at_mark(what: &str, template: &str, value: &str) -> Re
     }
     assert_eq!(
         error.code(),
-        Some(Code::ENUM_INVALID_LITERAL),
+        Code::ENUM_INVALID_LITERAL,
         "{ROW}: {what}: the refusal is not SACM-ENUM-001"
     );
     assert_eq!(
@@ -725,7 +725,8 @@ fn sacm23_xmi_017_every_other_value_is_invalid_literal_at_the_attribute_name_hol
                 "{written:?}: the refusal names {element:?} and {property:?}"
             ));
         }
-        if error.code() != Some(Code::ENUM_INVALID_LITERAL) {
+        let is_other_code = error.code() != Code::ENUM_INVALID_LITERAL;
+        if is_other_code {
             failures.push(format!(
                 "{written:?}: the refusal's code is {:?}, not SACM-ENUM-001",
                 error.code()
@@ -941,7 +942,7 @@ fn sacm23_xmi_017_the_element_form_in_a_claim_reads_and_beside_the_attribute_is_
         }
         assert_eq!(
             error.code(),
-            Some(Code::MULTIPLICITY_VIOLATION),
+            Code::MULTIPLICITY_VIOLATION,
             "{ROW}: {what}: the code"
         );
         assert_eq!(

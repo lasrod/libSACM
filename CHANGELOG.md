@@ -9,8 +9,33 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 
 ## [Unreleased]
 
+### Breaking
+
+- `ReadError::code()` and `WriteError::code()` return `Code`, not `Option<Code>`: every
+  refusal has a catalog code [LIB-API-017]. To migrate:
+
+  | 0.1 | 0.2 |
+  | --- | --- |
+  | `error.code() == Some(Code::ID_DUPLICATE)` | `error.code() == Code::ID_DUPLICATE` |
+  | `if let Some(code) = error.code() { … }` | `let code = error.code();` |
+  | `error.code().map(Code::as_str)` | `error.code().as_str()` |
+
+  `Unsupported`, and every `WriteError` but `PreservedContent`, now have a code where 0.1
+  gave `None`.
+
 ### Added
 
+- `diagnostic::Argument`, `ArgumentValue` and `Details`, and `template()` and `arguments()`
+  on `ReadError` and `WriteError`: each refusal's sentence form as a stable id such as
+  `SACM-XMI-014/unread-kind`, and its values as named arguments, so an application can word
+  it in any language. `docs/sacm/diagnostics.md` lists every template with its arguments
+  and English [LIB-API-017].
+- Codes SACM-XMI-015, SACM-XMI-016, SACM-XML-002, SACM-XML-003 and SACM-SEC-002, and the
+  SACM-XMI-002 constant: `Code::XMI_WRAPPER_NAMESPACE`, `XMI_STRICT_SAVE_INVALID`,
+  `XML_ENCODING_NOT_READ`, `XML_UNREPRESENTABLE_CHARACTER`, `PARSER_LIMIT` and
+  `XMI_NAMESPACE_NOT_PINNED` [LIB-API-017].
+- With `serde`, `ReadError`, `WriteError` and `WriteAttribute` serialize and read back: a
+  refusal is `{"type", "code", "template", "arguments", …its fields}` [LIB-API-017].
 - The Terminology package of SACM 2.3: TerminologyPackage, Category, Term, Expression and
   TerminologyGroup are read, written, created, edited, compared and validated. A
   TerminologyPackage is read as a root (the Terminology unit of interchange, §2.5), in an
@@ -33,6 +58,9 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 
 ### Changed
 
+- `ReadError::Unsupported` and `WriteError::NoRoot`, `UnrepresentableCharacter` and
+  `Invalid` have a code; `sacm validate` prints and writes it where 0.1.0 printed `error`
+  and wrote `null` [LIB-API-017, LIB-CLI-002].
 - A strict read no longer refuses a TerminologyPackage, Category, Term, Expression or
   TerminologyGroup as `Unsupported`, and a tolerant read no longer keeps them as preserved
   content with SACM-XMI-014; references to them are type-checked (no SACM-REF-003)

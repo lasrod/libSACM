@@ -650,7 +650,7 @@ fn sacm23_arg_004_an_attribute_and_an_element_are_repeated_value_with_every_loca
             assert_eq!(
                 (error.code(), error.locations(), error.location()),
                 (
-                    Some(Code::MULTIPLICITY_VIOLATION),
+                    Code::MULTIPLICITY_VIOLATION,
                     marks.as_slice(),
                     marks.get(1).copied()
                 ),

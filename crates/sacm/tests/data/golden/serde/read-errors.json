@@ -1,0 +1,239 @@
+[
+  {
+    "type": "Doctype",
+    "code": "SACM-SEC-001",
+    "template": "SACM-SEC-001/doctype",
+    "arguments": {},
+    "location": {
+      "line": 1,
+      "column": 1
+    }
+  },
+  {
+    "type": "Malformed",
+    "code": "SACM-XML-001",
+    "template": "SACM-XML-001/end-tag-mismatch",
+    "arguments": {
+      "end_tag": "s",
+      "start_tag": "r"
+    },
+    "location": {
+      "line": 1,
+      "column": 4
+    },
+    "reason": "the end tag \"s\" does not match the start tag \"r\""
+  },
+  {
+    "type": "InvalidRoot",
+    "code": "SACM-XMI-001",
+    "template": "SACM-XMI-001/not-a-package",
+    "arguments": {
+      "element": "r"
+    },
+    "location": {
+      "line": 1,
+      "column": 1
+    },
+    "element_name": "r"
+  },
+  {
+    "type": "NoPackage",
+    "code": "SACM-XMI-001",
+    "template": "SACM-XMI-001/no-package",
+    "arguments": {},
+    "location": {
+      "line": 1,
+      "column": 1
+    }
+  },
+  {
+    "type": "DuplicateId",
+    "code": "SACM-ID-001",
+    "template": "SACM-ID-001/duplicate-id",
+    "arguments": {
+      "id": "c1",
+      "count": 2
+    },
+    "id": "c1",
+    "locations": [
+      {
+        "line": 2,
+        "column": 3
+      },
+      {
+        "line": 3,
+        "column": 3
+      }
+    ]
+  },
+  {
+    "type": "InvalidId",
+    "code": "SACM-ID-002",
+    "template": "SACM-ID-002/read-id-not-an-ncname",
+    "arguments": {
+      "id": ""
+    },
+    "id": "",
+    "location": {
+      "line": 2,
+      "column": 3
+    }
+  },
+  {
+    "type": "Unsupported",
+    "code": "SACM-XMI-014",
+    "template": "SACM-XMI-014/unread-kind-in-root",
+    "arguments": {
+      "class": "TerminologyPackageInterface",
+      "element": "terminologyPackage",
+      "container": "sacm:AssuranceCasePackage",
+      "row": "SACM23-TERM-007"
+    },
+    "location": {
+      "line": 3,
+      "column": 3
+    },
+    "reason": "the TerminologyPackageInterface \"terminologyPackage\" in the root element \"sacm:AssuranceCasePackage\" is not read in this release (a limit of this version; SACM23-TERM-007 reads it)"
+  },
+  {
+    "type": "Unsupported",
+    "code": "SACM-XMI-007",
+    "template": "SACM-XMI-007/href",
+    "arguments": {
+      "href": "other.sacm.xmi#c",
+      "element": "metaClaim",
+      "row": "SACM23-XMI-027"
+    },
+    "location": {
+      "line": 3,
+      "column": 16
+    },
+    "reason": "the href \"other.sacm.xmi#c\" of the reference element \"metaClaim\" names no element of this document by its id; only href=\"#id\" is read in this release (a limit of this version; SACM23-XMI-027 reads it)"
+  },
+  {
+    "type": "Unsupported",
+    "code": "SACM-XMI-003",
+    "template": "SACM-XMI-003/unread-attribute",
+    "arguments": {
+      "attribute": "foo",
+      "element": "xmi:XMI"
+    },
+    "location": {
+      "line": 1,
+      "column": 110
+    },
+    "reason": "the attribute \"foo\" of the element \"xmi:XMI\" is not read in this release (a defect in the input)"
+  },
+  {
+    "type": "Unsupported",
+    "code": "SACM-XMI-002",
+    "template": "SACM-XMI-002/other-namespace",
+    "arguments": {
+      "element": "sacm:ArgumentPackage",
+      "namespace": "http://www.omg.org/spec/SACM/2.2/argumentation",
+      "row": "LIB-COMPAT-004"
+    },
+    "location": {
+      "line": 1,
+      "column": 1
+    },
+    "reason": "the root element \"sacm:ArgumentPackage\" is in the namespace \"http://www.omg.org/spec/SACM/2.2/argumentation\", not the SACM 2.3 namespace \"http://www.omg.org/spec/SACM/20220301\" (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)"
+  },
+  {
+    "type": "Unsupported",
+    "code": "SACM-XMI-015",
+    "template": "SACM-XMI-015/not-xmi-namespace",
+    "arguments": {
+      "element": "xmi:XMI",
+      "row": "LIB-COMPAT-002"
+    },
+    "location": {
+      "line": 1,
+      "column": 1
+    },
+    "reason": "the element \"xmi:XMI\" is not in the XMI namespace \"http://www.omg.org/spec/XMI/20131001\", so it is not read as the XMI element (strict mode never reads it; LIB-COMPAT-002 is to read it in tolerant mode)"
+  },
+  {
+    "type": "Unsupported",
+    "code": "SACM-XML-002",
+    "template": "SACM-XML-002/declared-encoding",
+    "arguments": {
+      "encoding": "ISO-8859-1"
+    },
+    "location": {
+      "line": 1,
+      "column": 31
+    },
+    "reason": "the declared encoding \"ISO-8859-1\" is not supported: without a UTF-16 byte order mark, only UTF-8 and ASCII are read (a limit of this version)"
+  },
+  {
+    "type": "RepeatedValue",
+    "code": "SACM-MULT-001",
+    "template": "SACM-MULT-001/repeated-value",
+    "arguments": {
+      "property": "name.content",
+      "element": "arguments",
+      "count": 2
+    },
+    "element": "arguments",
+    "kind": "ArgumentPackage",
+    "property": "name.content",
+    "locations": [
+      {
+        "line": 2,
+        "column": 9
+      },
+      {
+        "line": 3,
+        "column": 5
+      }
+    ]
+  },
+  {
+    "type": "InvalidLiteral",
+    "code": "SACM-ENUM-001",
+    "template": "SACM-ENUM-001/not-a-literal",
+    "arguments": {
+      "value": "Assumed",
+      "property": "assertionDeclaration",
+      "element": "c1"
+    },
+    "element": "c1",
+    "property": "assertionDeclaration",
+    "value": "Assumed",
+    "location": {
+      "line": 2,
+      "column": 54
+    }
+  },
+  {
+    "type": "LegacyShape",
+    "code": "SACM-XMI-012",
+    "template": "SACM-XMI-012/name-attribute",
+    "arguments": {
+      "class": "ArgumentPackage",
+      "id": "arguments"
+    },
+    "element": "arguments",
+    "shape": "the name of the ArgumentPackage \"arguments\" is given as the attribute \"name\"",
+    "location": {
+      "line": 1,
+      "column": 142
+    }
+  },
+  {
+    "type": "MissingType",
+    "code": "SACM-XMI-005",
+    "template": "SACM-XMI-005/missing-type",
+    "arguments": {
+      "role": "argumentElement",
+      "type": "ArgumentationElement"
+    },
+    "role": "argumentElement",
+    "declared_type": "ArgumentationElement",
+    "location": {
+      "line": 2,
+      "column": 3
+    }
+  }
+]

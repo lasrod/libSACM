@@ -619,7 +619,7 @@ fn bad_values_are_invalid_literal(feature: Feature) {
             );
             assert_eq!(
                 (error.code(), error.location()),
-                (Some(Code::ENUM_INVALID_LITERAL), marks.first().copied()),
+                (Code::ENUM_INVALID_LITERAL, marks.first().copied()),
                 "{row}: {what}: not SACM-ENUM-001 at the value"
             );
             let shown = error.to_string();
@@ -760,7 +760,7 @@ fn the_element_form_reads_is_preserved_where_malformed_and_refused_when_repeated
             assert_eq!(
                 (error.code(), error.locations(), error.location()),
                 (
-                    Some(Code::MULTIPLICITY_VIOLATION),
+                    Code::MULTIPLICITY_VIOLATION,
                     marks.as_slice(),
                     marks.get(1).copied()
                 ),

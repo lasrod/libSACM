@@ -599,7 +599,7 @@ fn sacm23_arg_006_an_attribute_and_elements_are_repeated_value_and_an_empty_attr
     assert_eq!(
         (error.code(), error.locations(), error.location()),
         (
-            Some(Code::MULTIPLICITY_VIOLATION),
+            Code::MULTIPLICITY_VIOLATION,
             marks.as_slice(),
             marks.get(1).copied()
         ),

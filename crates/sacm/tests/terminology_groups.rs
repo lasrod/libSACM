@@ -36,6 +36,8 @@ use sacm::compare::Difference;
 use sacm::edit::{AddReference, CreateTerminologyGroup, RemoveReference};
 use sacm::model::LangString;
 
+mod common;
+
 const ROW: &str = "SACM23-TERM-006";
 
 /// Both modes, strict first.
@@ -528,7 +530,7 @@ fn sacm23_term_006_an_attribute_and_member_elements_are_repeated_value_at_both_o
     assert_eq!(
         (error.code(), error.locations(), error.location()),
         (
-            Some(Code::MULTIPLICITY_VIOLATION),
+            Code::MULTIPLICITY_VIOLATION,
             marks.as_slice(),
             marks.get(1).copied()
         ),
@@ -623,7 +625,7 @@ fn sacm23_term_006_a_nested_element_under_a_group_is_unsupported_or_preserved_at
                 &error,
                 ReadError::Unsupported { location, reason, .. }
                     if *location == Some(marks[0]) && reason.ends_with(label)
-            ) && error.code().is_none(),
+            ) && error.code().as_str() == crate::common::unsupported_code(&error.to_string()),
             "{ROW}: {what}: not Unsupported at {} naming SACM23-XMI-019: {error:?}",
             marks[0]
         );

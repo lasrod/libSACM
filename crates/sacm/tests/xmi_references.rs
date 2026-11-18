@@ -31,6 +31,8 @@ use sacm::model::{Document, ElementId, LangString, SacmElement};
 use sacm::validation;
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput, WriteError, WriteOptions};
 
+mod common;
+
 const XMI_005: &str = "SACM23-XMI-005";
 const XMI_015: &str = "SACM23-XMI-015";
 
@@ -311,7 +313,8 @@ fn assert_preserved_at(row: &str, what: &str, input: &str, at: SourceLocation, h
 /// Asserts that `error` is `Unsupported`, with no code, at `at`.
 fn assert_unsupported_at(row: &str, what: &str, error: &ReadError, at: SourceLocation) {
     assert!(
-        matches!(error, ReadError::Unsupported { .. }) && error.code().is_none(),
+        matches!(error, ReadError::Unsupported { .. })
+            && error.code().as_str() == crate::common::unsupported_code(&error.to_string()),
         "{row}: {what}: not Unsupported: {error:?}"
     );
     assert_eq!(
@@ -342,7 +345,7 @@ fn assert_repeated(
     assert_eq!(
         (error.code(), error.locations(), error.location()),
         (
-            Some(Code::MULTIPLICITY_VIOLATION),
+            Code::MULTIPLICITY_VIOLATION,
             locations,
             locations.get(1).copied()
         ),
@@ -639,7 +642,7 @@ fn sacm23_xmi_005_two_tokens_on_a_single_valued_end_are_repeated_value_at_each_t
             );
             assert_eq!(
                 (error.code(), error.location()),
-                (Some(Code::MULTIPLICITY_VIOLATION), Some(marks[1])),
+                (Code::MULTIPLICITY_VIOLATION, Some(marks[1])),
                 "{row}: {what}: not SACM-MULT-001 at the second token"
             );
             assert_eq!(

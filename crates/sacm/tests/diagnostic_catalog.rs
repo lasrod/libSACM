@@ -65,6 +65,16 @@ const CONSTANTS: &[(&str, Code)] = &[
     ("CITATION_INVALID", Code::CITATION_INVALID),
     ("AS_CITED_INVALID", Code::AS_CITED_INVALID),
     ("ABSTRACT_FORM_INVALID", Code::ABSTRACT_FORM_INVALID),
+    // The codes of slice 0063 (LIB-API-017).
+    ("XML_ENCODING_NOT_READ", Code::XML_ENCODING_NOT_READ),
+    (
+        "XML_UNREPRESENTABLE_CHARACTER",
+        Code::XML_UNREPRESENTABLE_CHARACTER,
+    ),
+    ("PARSER_LIMIT", Code::PARSER_LIMIT),
+    ("XMI_NAMESPACE_NOT_PINNED", Code::XMI_NAMESPACE_NOT_PINNED),
+    ("XMI_WRAPPER_NAMESPACE", Code::XMI_WRAPPER_NAMESPACE),
+    ("XMI_STRICT_SAVE_INVALID", Code::XMI_STRICT_SAVE_INVALID),
 ];
 
 /// Every live code, [`LIVE`], sorted.
@@ -84,7 +94,9 @@ fn all_live() -> Vec<String> {
 /// SACM-XMI-003 (LIB-COMPAT-003), SACM-XMI-006 (SACM23-XMI-008) and
 /// SACM-REF-003 (LIB-COMPAT-003) of slice 0050 (ADR 0033); and SACM-XMI-007
 /// and SACM-XMI-014 (LIB-API-011) of slice 0053 (ADR 0035); and SACM-XMI-013
-/// (SACM23-XMI-009) of slice 0057.
+/// (SACM23-XMI-009) of slice 0057; and SACM-XMI-002, SACM-XMI-015,
+/// SACM-XMI-016, SACM-XML-002, SACM-XML-003 and SACM-SEC-002 of slice 0063
+/// (LIB-API-017).
 const LIVE: &[&str] = &[
     "SACM-ABS-001",
     "SACM-CITE-001",
@@ -109,7 +121,9 @@ const LIVE: &[&str] = &[
     "SACM-REF-002",
     "SACM-REF-003",
     "SACM-SEC-001",
+    "SACM-SEC-002",
     "SACM-XMI-001",
+    "SACM-XMI-002",
     "SACM-XMI-003",
     "SACM-XMI-004",
     "SACM-XMI-005",
@@ -120,7 +134,11 @@ const LIVE: &[&str] = &[
     "SACM-XMI-012",
     "SACM-XMI-013",
     "SACM-XMI-014",
+    "SACM-XMI-015",
+    "SACM-XMI-016",
     "SACM-XML-001",
+    "SACM-XML-002",
+    "SACM-XML-003",
 ];
 
 /// The file that holds the constants, relative to `src`.

@@ -345,11 +345,7 @@ fn sacm23_xmi_022_a_name_id_repeating_any_id_is_duplicate_id_at_both_start_tags(
             matches!(&error, ReadError::DuplicateId { id: found, .. } if found.as_str() == *id),
             "{ROW}: {what}: not DuplicateId for {id:?}: {error:?}"
         );
-        assert_eq!(
-            error.code(),
-            Some(Code::ID_DUPLICATE),
-            "{ROW}: {what}: the code"
-        );
+        assert_eq!(error.code(), Code::ID_DUPLICATE, "{ROW}: {what}: the code");
         assert_eq!(
             error.locations(),
             marks.as_slice(),

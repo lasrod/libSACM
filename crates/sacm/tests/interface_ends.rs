@@ -187,9 +187,9 @@ fn lib_api_011_the_interface_end_of_a_package_is_unsupported_with_its_row_in_str
                     );
                     assert_eq!(
                         (error.code(), error.location()),
-                        (None, Some(at)),
-                        "{ROW}: {what}: not refused with no code at the construct in strict \
-                         mode: {error}"
+                        (Code::XMI_UNREAD_CONTENT, Some(at)),
+                        "{ROW}: {what}: not refused with SACM-XMI-014 at the construct in \
+                         strict mode: {error}"
                     );
                 }
             }

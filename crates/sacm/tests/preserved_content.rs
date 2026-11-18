@@ -1873,7 +1873,7 @@ fn lib_compat_003_a_preserved_id_repeating_a_typed_one_is_a_duplicate_id_naming_
             );
             assert_eq!(
                 error.code(),
-                Some(Code::ID_DUPLICATE),
+                Code::ID_DUPLICATE,
                 "{ROW}: {what}, {mode:?}: the refusal is not SACM-ID-001"
             );
             assert_eq!(
@@ -1912,7 +1912,7 @@ fn lib_compat_003_an_empty_preserved_id_is_an_invalid_id() {
             );
             assert_eq!(
                 (error.code(), error.location()),
-                (Some(Code::ID_INVALID), Some(expected)),
+                (Code::ID_INVALID, Some(expected)),
                 "{ROW}: {what}, {mode:?}: the refusal is not SACM-ID-002 at the element"
             );
         }

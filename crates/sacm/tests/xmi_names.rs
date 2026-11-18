@@ -41,6 +41,8 @@ use sacm::xmi::{
     self, Mode, ReadError, ReadOptions, ReadOutput, WriteAttribute, WriteError, WriteOptions,
 };
 
+mod common;
+
 /// Line 1 of every output.
 const DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>";
 /// The attributes the document element carries before any `xmi:id`, as written.
@@ -424,8 +426,8 @@ fn assert_unsupported_at(row: &str, what: &str, input: &str, line: u32, column: 
         "{row}: {what}: expected Unsupported for {input:?}, got {error:?}"
     );
     assert!(
-        error.code().is_none(),
-        "{row}: {what}: the Unsupported refusal carries a code"
+        error.code().as_str() == crate::common::unsupported_code(&error.to_string()),
+        "{row}: {what}: the Unsupported refusal does not carry the code of its label"
     );
     assert_eq!(
         error.location(),
@@ -472,9 +474,12 @@ fn assert_unrepresentable(
         Some(id),
         "{row}: {what}: element() names the wrong element"
     );
-    assert!(
-        error.code().is_none(),
-        "{row}: {what}: an unrepresentable character has no catalog code"
+    // An unrepresentable character is SACM-XML-003 since slice 0063
+    // (LIB-API-017).
+    assert_eq!(
+        error.code(),
+        sacm::diagnostic::Code::XML_UNREPRESENTABLE_CHARACTER,
+        "{row}: {what}: an unrepresentable character is not SACM-XML-003"
     );
     // Written out here, not taken from `WriteAttribute`'s `Display`.
     let place = match attribute {

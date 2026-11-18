@@ -418,23 +418,23 @@ fn plan(document: &Document, mode: Mode) -> Result<Vec<Planned<'_>>, WriteError>
             .map(|element| element.id().clone())
             .collect();
         if !elements.is_empty() || document.document_preserved().is_some() {
-            return Err(WriteError::PreservedContent { elements });
+            return Err(WriteError::preserved_content(elements));
         }
         // Every schema error, in `Diagnostic` order; never `validate` (ADR
         // 0035 D4).
         let diagnostics = validation::schema_errors(document);
         if !diagnostics.is_empty() {
-            return Err(WriteError::Invalid { diagnostics });
+            return Err(WriteError::invalid(diagnostics));
         }
     }
     let mut plan = Vec::new();
     for element in document.elements() {
         if let Some((attribute, character)) = unrepresentable(element) {
-            return Err(WriteError::UnrepresentableCharacter {
-                element: element.id().clone(),
+            return Err(WriteError::unrepresentable_character(
+                element.id().clone(),
                 character,
                 attribute,
-            });
+            ));
         }
         let kind = element.kind();
         // A child keeps the role it was added in; a root has none.

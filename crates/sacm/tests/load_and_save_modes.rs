@@ -2215,10 +2215,11 @@ fn lib_compat_007_the_invalid_display_counts_schema_errors() {
         )),
     );
     let error = write_err(COMPAT_007, what, Mode::Strict, &one);
+    // Invalid is SACM-XMI-016 since slice 0063 (LIB-API-017).
     assert_eq!(
         (error.code(), error.element()),
-        (None, None),
-        "{COMPAT_007}: {what}: Invalid has a code or an element"
+        (Code::XMI_STRICT_SAVE_INVALID, None),
+        "{COMPAT_007}: {what}: Invalid is not SACM-XMI-016 or has an element"
     );
     assert_eq!(
         error.to_string(),

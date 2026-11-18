@@ -143,7 +143,7 @@ fn assert_refused_for(what: &str, error: &WriteError, expected: &[&str]) {
     );
     assert_eq!(
         error.code(),
-        Some(Code::XMI_STRICT_SAVE_REFUSED),
+        Code::XMI_STRICT_SAVE_REFUSED,
         "{ROW}: {what}: the refusal's code is not SACM-XMI-006"
     );
     assert_eq!(
@@ -284,7 +284,7 @@ fn sacm23_xmi_008_only_document_level_content_is_refused_with_no_elements() {
         );
         assert_eq!(
             (error.code(), error.element(), error.diagnostics()),
-            (Some(Code::XMI_STRICT_SAVE_REFUSED), None, &[][..]),
+            (Code::XMI_STRICT_SAVE_REFUSED, None, &[][..]),
             "{ROW}: {what}: not SACM-XMI-006 with no element and no diagnostics"
         );
         assert_eq!(

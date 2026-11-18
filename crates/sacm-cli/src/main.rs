@@ -209,7 +209,7 @@ fn io_refusal(error: &io::Error) -> Refusal {
 /// The refusal of a file that `xmi::read` refuses.
 fn read_refusal(error: &ReadError) -> Refusal {
     Refusal {
-        code: error.code().map(sacm::diagnostic::Code::as_str),
+        code: Some(error.code().as_str()),
         location: error.location(),
         locations: error.locations().to_vec(),
         message: error.to_string(),

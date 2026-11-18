@@ -316,7 +316,7 @@ fn assert_repeated(what: &str, error: &ReadError, id: &str, locations: &[SourceL
     assert_eq!(
         (error.code(), error.locations(), error.location()),
         (
-            Some(Code::MULTIPLICITY_VIOLATION),
+            Code::MULTIPLICITY_VIOLATION,
             locations,
             locations.get(1).copied()
         ),

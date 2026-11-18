@@ -172,9 +172,9 @@ fn variant(error: &ReadError) -> &'static str {
 /// label, for `Unsupported` only, is the reason's suffix from its last ` (`.
 fn refused(error: &ReadError) -> String {
     let mut text = format!("refused {}", variant(error));
-    if let Some(code) = error.code() {
-        let _ = write!(text, " {code}");
-    }
+    // Every refusal has a code since slice 0063 (LIB-API-017), so the
+    // report's `refused Unsupported` lines gain theirs.
+    let _ = write!(text, " {}", error.code());
     if let Some(at) = error.location() {
         let _ = write!(text, " at line {}, column {}", at.line(), at.column());
     }

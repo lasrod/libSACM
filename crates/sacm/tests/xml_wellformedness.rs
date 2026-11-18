@@ -29,6 +29,8 @@ use sacm::diagnostic::{Code, SourceLocation};
 use sacm::model::{ElementId, SacmElement};
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput};
 
+mod common;
+
 /// The lead of the `Malformed` `Display`, before the location and reason.
 const MALFORMED_LEAD: &str = "the input is not well-formed XML";
 
@@ -129,7 +131,7 @@ fn assert_malformed_at(row: &str, input: &[u8], line: u32, column: u32) -> ReadE
     );
     assert_eq!(
         error.code(),
-        Some(Code::XML_MALFORMED),
+        Code::XML_MALFORMED,
         "{row}: the refusal of {} does not carry SACM-XML-001",
         preview(input)
     );
@@ -159,9 +161,9 @@ fn assert_unsupported_at(row: &str, input: &[u8], line: u32, column: u32) -> Rea
         preview(input)
     );
     assert_eq!(
-        error.code(),
-        None,
-        "{row}: the Unsupported refusal of {} carries a code",
+        error.code().as_str(),
+        crate::common::unsupported_code(&error.to_string()),
+        "{row}: the Unsupported refusal of {} does not carry the code of its label",
         preview(input)
     );
     assert_eq!(
@@ -769,7 +771,7 @@ fn lib_sec_005_the_checks_never_panic_and_every_malformed_refusal_has_its_form()
         if let Err(error @ ReadError::Malformed { .. }) = read(row, &input) {
             assert_eq!(
                 error.code(),
-                Some(Code::XML_MALFORMED),
+                Code::XML_MALFORMED,
                 "{row}: a Malformed refusal of {} does not carry SACM-XML-001",
                 preview(&input)
             );

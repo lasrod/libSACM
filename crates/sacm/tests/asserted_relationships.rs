@@ -414,7 +414,7 @@ fn assert_repeated(
     assert_eq!(
         (error.code(), error.locations(), error.location()),
         (
-            Some(Code::MULTIPLICITY_VIOLATION),
+            Code::MULTIPLICITY_VIOLATION,
             locations,
             locations.get(1).copied()
         ),
@@ -875,7 +875,7 @@ fn sacm23_arg_007_a_value_that_is_no_boolean_literal_is_invalid_literal_naming_i
             );
             assert_eq!(
                 (error.code(), error.location()),
-                (Some(Code::ENUM_INVALID_LITERAL), marks.first().copied()),
+                (Code::ENUM_INVALID_LITERAL, marks.first().copied()),
                 "{row}: {what}: not SACM-ENUM-001 at the value"
             );
             let shown = error.to_string();
@@ -1396,7 +1396,7 @@ fn sacm23_arg_007_all_six_declarations_round_trip_on_both_kinds_and_a_bad_litera
         );
         assert_eq!(
             (error.code(), error.location()),
-            (Some(Code::ENUM_INVALID_LITERAL), marks.first().copied()),
+            (Code::ENUM_INVALID_LITERAL, marks.first().copied()),
             "{row}: {what}: not SACM-ENUM-001 at the attribute"
         );
     }
@@ -1500,7 +1500,7 @@ fn sacm23_arg_007_the_element_form_of_assertion_declaration_reads_on_both_relati
         );
         assert_eq!(
             (error.code(), error.location()),
-            (Some(Code::ENUM_INVALID_LITERAL), marks.first().copied()),
+            (Code::ENUM_INVALID_LITERAL, marks.first().copied()),
             "{row}: {what}: not SACM-ENUM-001 at the start tag"
         );
     }
@@ -1758,7 +1758,7 @@ fn reads_by_either_type_and_is_refused_untyped_and_preserved_in_a_case_package(
     let error = refused(row, what, &input);
     assert_eq!(
         (error.code(), error.location()),
-        (Some(Code::XMI_MISSING_TYPE), Some(marks[0])),
+        (Code::XMI_MISSING_TYPE, Some(marks[0])),
         "{row}: {what}: not SACM-XMI-005 at its start tag: {error:?}"
     );
 }

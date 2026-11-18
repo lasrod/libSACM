@@ -24,6 +24,8 @@ use sacm::diagnostic::{Code, Diagnostic, SourceLocation};
 use sacm::model::{Document, ElementKind};
 use sacm::xmi::{self, ReadError, ReadOptions, ReadOutput};
 
+mod common;
+
 const ROW: &str = "SACM23-XMI-018";
 
 /// The namespace declarations of a bare root: `sacm` and `xmi`.
@@ -209,7 +211,7 @@ fn assert_malformed_at(what: &str, input: &[u8], location: SourceLocation) -> Re
     };
     assert_eq!(
         error.code(),
-        Some(Code::XML_MALFORMED),
+        Code::XML_MALFORMED,
         "{ROW}: {what}: the Malformed refusal does not carry SACM-XML-001"
     );
     assert_eq!(
@@ -232,9 +234,9 @@ fn assert_unsupported_at(what: &str, input: &[u8], location: SourceLocation) {
         );
     };
     assert_eq!(
-        error.code(),
-        None,
-        "{ROW}: {what}: the Unsupported refusal carries a code"
+        error.code().as_str(),
+        crate::common::unsupported_code(&error.to_string()),
+        "{ROW}: {what}: the Unsupported refusal does not carry the code of its label"
     );
     assert_eq!(
         error.location(),
@@ -663,7 +665,7 @@ fn sacm23_xmi_018_a_doctype_in_utf16_is_refused_at_its_start_and_not_expanded() 
             };
             assert_eq!(
                 error.code(),
-                Some(Code::XML_DOCTYPE_REJECTED),
+                Code::XML_DOCTYPE_REJECTED,
                 "{ROW}: {what}, {name}: the Doctype refusal does not carry SACM-SEC-001"
             );
             assert_eq!(

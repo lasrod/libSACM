@@ -301,7 +301,7 @@ fn assert_repeated(
     assert_eq!(
         (error.code(), error.locations(), error.location()),
         (
-            Some(Code::MULTIPLICITY_VIOLATION),
+            Code::MULTIPLICITY_VIOLATION,
             marks.as_slice(),
             Some(marks[1])
         ),
@@ -2581,7 +2581,7 @@ fn sacm23_term_004_two_origins_are_repeated_value() {
     );
     assert_eq!(
         (error.code(), error.locations()),
-        (Some(Code::MULTIPLICITY_VIOLATION), marks.as_slice()),
+        (Code::MULTIPLICITY_VIOLATION, marks.as_slice()),
         "{row}: {what}: not SACM-MULT-001 at each id"
     );
     // An attribute and an element.

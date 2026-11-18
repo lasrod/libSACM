@@ -602,7 +602,7 @@ fn sacm23_base_005_a_second_key_or_content_is_repeated_value_in_strict_mode() {
         );
         assert_eq!(
             (error.code(), error.locations()),
-            (Some(Code::MULTIPLICITY_VIOLATION), marks.as_slice()),
+            (Code::MULTIPLICITY_VIOLATION, marks.as_slice()),
             "{ROW}: {what}: not SACM-MULT-001 at both occurrences"
         );
     }
@@ -652,7 +652,7 @@ fn sacm23_base_005_a_key_value_field_given_twice_is_repeated_value_naming_key_va
         );
         assert_eq!(
             (error.code(), error.locations()),
-            (Some(Code::MULTIPLICITY_VIOLATION), marks.as_slice()),
+            (Code::MULTIPLICITY_VIOLATION, marks.as_slice()),
             "{ROW}: {what}: not SACM-MULT-001 at both occurrences"
         );
     }
