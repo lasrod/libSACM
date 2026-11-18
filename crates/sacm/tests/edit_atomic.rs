@@ -158,6 +158,11 @@ use sacm::edit::{
 };
 // The operations of slice 0056 (ADR 0036).
 use sacm::edit::{CopyElements, MoveElement};
+// The creates of slice 0066 (SACM23-ARG-014, -015, SACM23-ART-012, -013; ADR 0039).
+use sacm::edit::{
+    CreateArgumentPackageBinding, CreateArgumentPackageInterface, CreateArtifactPackageBinding,
+    CreateArtifactPackageInterface,
+};
 use sacm::model::ElementKind::{
     Activity, ArgumentGroup, ArgumentPackage, ArgumentPackageBinding, ArgumentPackageInterface,
     ArgumentReasoning, Artifact, ArtifactAssetRelationship, ArtifactGroup, ArtifactPackage,
@@ -191,10 +196,15 @@ const API_014: &str = "LIB-API-014";
 /// The directory of the XMI fixtures.
 const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/xmi");
 
-/// The fixtures `xmi::read` reads in this release, relative to [`FIXTURES`].
-/// `golden/nested.golden.sacm.xmi` holds kinds the reader refuses, and the
-/// files under `invalid/` are refused by design.
-const READABLE_FIXTURES: [&str; 11] = [
+/// The fixtures `xmi::read` reads in this release, relative to [`FIXTURES`],
+/// with the three of slice 0066: its two worked examples and
+/// `golden/nested.golden.sacm.xmi`, whose `ArgumentPackageInterface` it
+/// reads (SACM23-ARG-014, SACM23-ART-012; LIB-EDIT-019). The files under
+/// `invalid/` are refused by design.
+const READABLE_FIXTURES: [&str; 14] = [
+    "argument-package-interfaces-valid.sacm.xmi",
+    "artifact-package-interfaces-valid.sacm.xmi",
+    "golden/nested.golden.sacm.xmi",
     "argument-package-root-valid.sacm.xmi",
     "artifact-assets-valid.sacm.xmi",
     "artifact-package-valid.sacm.xmi",
@@ -662,12 +672,119 @@ static END_RULES: [EndRule; 10] = [
     },
 ];
 
-/// The rule of `end`.
-fn rule_of(end: ReferenceEnd) -> &'static EndRule {
-    match END_RULES.iter().find(|rule| rule.end == end) {
-        Some(rule) => rule,
-        None => panic!("{EDIT_009}: an end this test does not know: {end:?}"),
+/// The ends slice 0066's documents hold beyond [`END_RULES`], one rule per
+/// (end, declaring family), in the order of `ReferenceEnd`: an
+/// `ArtifactAssetRelationship`'s `source` and `target` (§12.14
+/// `[1..*]`, slice 0057; its artifact fixture holds one), and a package's
+/// `interface` (ptc/22-03-13 `[0..*]`), an interface's `implements` (§11.6,
+/// §12.5 `[1]`) and a binding's `participantPackage` (§11.5, §12.4
+/// `[2..*]`), each typed to the holder's family (ADR 0039 D1).
+static SLICE_0066_RULES: [EndRule; 8] = [
+    EndRule {
+        end: ReferenceEnd::ArtifactSource,
+        owners: &[ArtifactAssetRelationship],
+        declared: &PROPERTY_HOLDERS,
+        lower: 1,
+        upper: None,
+    },
+    EndRule {
+        end: ReferenceEnd::ArtifactTarget,
+        owners: &[ArtifactAssetRelationship],
+        declared: &PROPERTY_HOLDERS,
+        lower: 1,
+        upper: None,
+    },
+    EndRule {
+        end: ReferenceEnd::Interface,
+        owners: &ARGUMENT_PACKAGES,
+        declared: &[ArgumentPackageInterface],
+        lower: 0,
+        upper: None,
+    },
+    EndRule {
+        end: ReferenceEnd::Interface,
+        owners: &ARTIFACT_PACKAGES,
+        declared: &[ArtifactPackageInterface],
+        lower: 0,
+        upper: None,
+    },
+    EndRule {
+        end: ReferenceEnd::Implements,
+        owners: &[ArgumentPackageInterface],
+        declared: &ARGUMENT_PACKAGES,
+        lower: 1,
+        upper: Some(1),
+    },
+    EndRule {
+        end: ReferenceEnd::Implements,
+        owners: &[ArtifactPackageInterface],
+        declared: &ARTIFACT_PACKAGES,
+        lower: 1,
+        upper: Some(1),
+    },
+    EndRule {
+        end: ReferenceEnd::ParticipantPackage,
+        owners: &[ArgumentPackageBinding],
+        declared: &ARGUMENT_PACKAGES,
+        lower: 2,
+        upper: None,
+    },
+    EndRule {
+        end: ReferenceEnd::ParticipantPackage,
+        owners: &[ArtifactPackageBinding],
+        declared: &ARTIFACT_PACKAGES,
+        lower: 2,
+        upper: None,
+    },
+];
+
+/// Every rule of the set, in the order of `ReferenceEnd`.
+fn end_rules() -> impl Iterator<Item = &'static EndRule> {
+    END_RULES.iter().chain(SLICE_0066_RULES.iter())
+}
+
+/// The distinct ends of [`end_rules`], in order.
+fn ends_in_order() -> Vec<ReferenceEnd> {
+    let mut ends: Vec<ReferenceEnd> = Vec::new();
+    for rule in end_rules() {
+        if !ends.contains(&rule.end) {
+            ends.push(rule.end);
+        }
     }
+    ends
+}
+
+/// The rule of `end` on an element of `kind`, if the kind has the end.
+fn rule_for(end: ReferenceEnd, kind: ElementKind) -> Option<&'static EndRule> {
+    assert!(
+        end_rules().any(|rule| rule.end == end),
+        "{EDIT_009}: an end this test does not know: {end:?}"
+    );
+    end_rules().find(|rule| rule.end == end && rule.owners.contains(&kind))
+}
+
+/// The rule of `end` on `kind`, which the test expects the kind to own.
+fn owned_rule(end: ReferenceEnd, kind: ElementKind) -> &'static EndRule {
+    match rule_for(end, kind) {
+        Some(rule) => rule,
+        None => panic!("{EDIT_009}: setup: a {kind} has no {}", end.name()),
+    }
+}
+
+/// The ids `element` holds in `rule`'s end: none when its kind does not own
+/// the end by `rule`.
+fn held_by(element: SacmElement<'_>, rule: &EndRule) -> Vec<ElementId> {
+    if rule.owners.contains(&element.kind()) {
+        held(element, rule.end)
+    } else {
+        Vec::new()
+    }
+}
+
+/// The number of distinct ids of `ids`: a lower bound counts them (ADR
+/// 0039 D3).
+fn distinct(ids: &[ElementId]) -> usize {
+    ids.iter().collect::<BTreeSet<_>>().len()
 }
 
 /// The ids `element` holds in `end`, in order, read through the public
@@ -681,6 +798,9 @@ fn held(element: SacmElement<'_>, end: ReferenceEnd) -> Vec<ElementId> {
         ReferenceEnd::AbstractForm => one(element.abstract_form()),
         ReferenceEnd::MetaClaim => element.meta_claims().to_vec(),
         ReferenceEnd::Reasoning => one(element.reasoning()),
+        // An ArtifactAssetRelationship's sources are its ArtifactSource
+        // (slice 0066's artifact fixture holds one).
+        ReferenceEnd::Source if element.kind() == ArtifactAssetRelationship => Vec::new(),
         ReferenceEnd::Source => element.sources().to_vec(),
         ReferenceEnd::Target => one(element.target()),
         ReferenceEnd::Structure => one(element.structure()),
@@ -693,7 +813,22 @@ fn held(element: SacmElement<'_>, end: ReferenceEnd) -> Vec<ElementId> {
         ReferenceEnd::ArtifactGroupMember if element.kind() == ArtifactGroup => {
             element.group_members().to_vec()
         }
-        ReferenceEnd::GroupMember | ReferenceEnd::ArtifactGroupMember => Vec::new(),
+        // The ends of slice 0066's documents: `sources()` and `targets()`
+        // answer for both relationship kinds (ADR 0034 amendment 2), so each
+        // end is its own kind's only.
+        ReferenceEnd::ArtifactSource if element.kind() == ArtifactAssetRelationship => {
+            element.sources().to_vec()
+        }
+        ReferenceEnd::ArtifactTarget if element.kind() == ArtifactAssetRelationship => {
+            element.targets().to_vec()
+        }
+        ReferenceEnd::GroupMember
+        | ReferenceEnd::ArtifactGroupMember
+        | ReferenceEnd::ArtifactSource
+        | ReferenceEnd::ArtifactTarget => Vec::new(),
+        ReferenceEnd::Interface => element.interfaces().to_vec(),
+        ReferenceEnd::Implements => one(element.implements()),
+        ReferenceEnd::ParticipantPackage => element.participant_packages().to_vec(),
         other => panic!("{EDIT_009}: an end this test does not know: {other:?}"),
     }
 }
@@ -954,8 +1089,8 @@ fn assert_keys_kept(row: &str, context: &str, before: &Document, after: &Documen
 fn bad_references(doc: &Document) -> BTreeSet<(ElementId, &'static str, ElementId)> {
     let mut bad = BTreeSet::new();
     for element in doc.elements() {
-        for rule in &END_RULES {
-            for target in held(element, rule.end) {
+        for rule in end_rules() {
+            for target in held_by(element, rule) {
                 let admitted = doc
                     .get(&target)
                     .is_some_and(|found| rule.declared.contains(&found.kind()));
@@ -1114,6 +1249,11 @@ fn probe_index(kind: ElementKind) -> usize {
         Event,
         Resource,
         Activity,
+        // The creates of slice 0066, probed last.
+        ArgumentPackageInterface,
+        ArgumentPackageBinding,
+        ArtifactPackageInterface,
+        ArtifactPackageBinding,
     ];
     match ORDER.iter().position(|&created| created == kind) {
         Some(index) => index,
@@ -1136,6 +1276,7 @@ enum Class<'a> {
 }
 
 /// Classifies `operation`.
+#[expect(clippy::too_many_lines, reason = "one arm per operation")]
 fn classify(operation: &Operation) -> Class<'_> {
     let edit_of = |label| Class::Edit { label };
     // A create with a parent.
@@ -1193,6 +1334,27 @@ fn classify(operation: &Operation) -> Class<'_> {
         Operation::CreateClaim(create) => Class::Create {
             kind: Claim,
             parent: Some(create.parent()),
+            id: create.id(),
+        },
+        // The creates of slice 0066, each a root or under a parent.
+        Operation::CreateArgumentPackageInterface(create) => Class::Create {
+            kind: ArgumentPackageInterface,
+            parent: create.parent(),
+            id: create.id(),
+        },
+        Operation::CreateArgumentPackageBinding(create) => Class::Create {
+            kind: ArgumentPackageBinding,
+            parent: create.parent(),
+            id: create.id(),
+        },
+        Operation::CreateArtifactPackageInterface(create) => Class::Create {
+            kind: ArtifactPackageInterface,
+            parent: create.parent(),
+            id: create.id(),
+        },
+        Operation::CreateArtifactPackageBinding(create) => Class::Create {
+            kind: ArtifactPackageBinding,
+            parent: create.parent(),
             id: create.id(),
         },
         Operation::SetName(_) => edit_of("SetName"),
@@ -1459,6 +1621,14 @@ fn create_answer(doc: &Document, operation: &Operation) -> Result<(), Code> {
     {
         return Err(Code::MULTIPLICITY_VIOLATION);
     }
+    // A binding has two distinct participants (ADR 0039 D3); an interface's
+    // one `implements` is always given.
+    for (end, ids) in &ends {
+        let rule = owned_rule(*end, kind);
+        if ids.iter().collect::<BTreeSet<_>>().len() < rule.lower {
+            return Err(Code::MULTIPLICITY_VIOLATION);
+        }
+    }
     let all_ids = || ends.iter().flat_map(|(_, ids)| ids.iter().copied());
     if all_ids().any(|value| holds_white_space(value.as_str())) {
         return Err(Code::ID_INVALID);
@@ -1467,7 +1637,7 @@ fn create_answer(doc: &Document, operation: &Operation) -> Result<(), Code> {
         return Err(Code::CMD_TARGET_NOT_FOUND);
     }
     for (end, ids) in &ends {
-        let declared = rule_of(*end).declared;
+        let declared = owned_rule(*end, kind).declared;
         if ids.iter().any(|value| {
             doc.get(value)
                 .is_some_and(|found| !declared.contains(&found.kind()))
@@ -1514,6 +1684,21 @@ fn create_ends(operation: &Operation) -> Vec<(ReferenceEnd, Vec<&ElementId>)> {
         Operation::CreateAssertedEvidence(create) => relationship!(create),
         Operation::CreateAssertedArtifactSupport(create) => relationship!(create),
         Operation::CreateAssertedArtifactContext(create) => relationship!(create),
+        // The creates of slice 0066 (ADR 0039 D4).
+        Operation::CreateArgumentPackageInterface(create) => {
+            vec![(ReferenceEnd::Implements, vec![create.implements()])]
+        }
+        Operation::CreateArtifactPackageInterface(create) => {
+            vec![(ReferenceEnd::Implements, vec![create.implements()])]
+        }
+        Operation::CreateArgumentPackageBinding(create) => vec![(
+            ReferenceEnd::ParticipantPackage,
+            create.participant_packages().iter().collect(),
+        )],
+        Operation::CreateArtifactPackageBinding(create) => vec![(
+            ReferenceEnd::ParticipantPackage,
+            create.participant_packages().iter().collect(),
+        )],
         _ => Vec::new(),
     }
 }
@@ -1541,14 +1726,15 @@ fn owner_of<'d>(
     element: &ElementId,
     end: ReferenceEnd,
 ) -> Result<(SacmElement<'d>, &'static EndRule), Code> {
-    let rule = rule_of(end);
     let Some(found) = doc.get(element) else {
+        // The end must be one this test knows, whatever the element.
+        let _ = rule_for(end, Claim);
         return Err(Code::CMD_TARGET_NOT_FOUND);
     };
-    if !rule.owners.contains(&found.kind()) {
-        return Err(Code::CMD_FEATURE_NOT_APPLICABLE);
+    match rule_for(end, found.kind()) {
+        Some(rule) => Ok((found, rule)),
+        None => Err(Code::CMD_FEATURE_NOT_APPLICABLE),
     }
-    Ok((found, rule))
 }
 
 /// The checks of the ids an end does not hold yet, as the creates run them:
@@ -1578,7 +1764,9 @@ fn set_references_answer(
     ids: &[ElementId],
 ) -> Result<(), Code> {
     let (found, rule) = owner_of(doc, element, end)?;
-    if ids.len() < rule.lower {
+    // A lower bound counts distinct ids, an upper bound every id (ADR 0039
+    // D3); the two counts differ only for an end whose lower bound is above 1.
+    if distinct(ids) < rule.lower {
         return Err(Code::MULTIPLICITY_VIOLATION);
     }
     if rule.upper.is_some_and(|upper| ids.len() > upper) {
@@ -1600,6 +1788,14 @@ fn add_reference_answer(
     if rule.upper.is_some_and(|upper| held.len() + 1 > upper) {
         return Err(Code::MULTIPLICITY_VIOLATION);
     }
+    // The end after the add must hold its lower bound of distinct ids: a
+    // binding read with one participant is not repaired by adding it again
+    // (ADR 0039 Consequences).
+    let mut after = held.clone();
+    after.push(added.clone());
+    if distinct(&after) < rule.lower {
+        return Err(Code::MULTIPLICITY_VIOLATION);
+    }
     if held.contains(added) {
         return Ok(());
     }
@@ -1617,8 +1813,8 @@ fn remove_reference_answer(
     if !held.contains(removed) {
         return Err(Code::CMD_TARGET_NOT_FOUND);
     }
-    let remaining = held.iter().filter(|id| *id != removed).count();
-    if remaining < rule.lower {
+    let remaining: Vec<ElementId> = held.iter().filter(|id| *id != removed).cloned().collect();
+    if distinct(&remaining) < rule.lower {
         return Err(Code::MULTIPLICITY_VIOLATION);
     }
     Ok(())
@@ -1807,12 +2003,20 @@ fn copy_answer(doc: &Document, copy: &CopyElements) -> Result<(), Code> {
         {
             return Err(Code::MULTIPLICITY_VIOLATION);
         }
+        // Every end holds its lower bound of distinct ids: an interface its
+        // implements, a binding two participants (ADR 0039 D3, D6).
+        let below_bound = end_rules().any(|rule| {
+            rule.owners.contains(&element.kind()) && distinct(&held_by(*element, rule)) < rule.lower
+        });
+        if below_bound {
+            return Err(Code::MULTIPLICITY_VIOLATION);
+        }
     }
     // (declared kinds, the id as held, the kind it names after mapping)
     let mut references: Vec<(&[ElementKind], ElementId, Option<ElementKind>)> = Vec::new();
     for element in &copied {
-        for rule in &END_RULES {
-            for value in held(*element, rule.end) {
+        for rule in end_rules() {
+            for value in held_by(*element, rule) {
                 let named = if is_copied(&value) {
                     source.get(&value).map(SacmElement::kind)
                 } else {
@@ -1905,9 +2109,8 @@ fn assert_copy_made(
     let referenced: BTreeSet<ElementId> = before
         .elements()
         .flat_map(|element| {
-            END_RULES
-                .iter()
-                .flat_map(|rule| held(element, rule.end))
+            end_rules()
+                .flat_map(|rule| held_by(element, rule))
                 .collect::<Vec<_>>()
         })
         .collect();
@@ -1917,9 +2120,8 @@ fn assert_copy_made(
     let named: BTreeSet<ElementId> = copied
         .iter()
         .flat_map(|element| {
-            END_RULES
-                .iter()
-                .flat_map(|rule| held(*element, rule.end))
+            end_rules()
+                .flat_map(|rule| held_by(*element, rule))
                 .collect::<Vec<_>>()
         })
         .collect();
@@ -2033,10 +2235,10 @@ fn assert_copy_made(
             expected_parent,
             "{EDIT_018}: {context}: the parent of {to:?}"
         );
-        for rule in &END_RULES {
-            let expected: Vec<ElementId> = held(*original, rule.end).iter().map(mapped).collect();
+        for rule in end_rules() {
+            let expected: Vec<ElementId> = held_by(*original, rule).iter().map(mapped).collect();
             assert_eq!(
-                held(made, rule.end),
+                held_by(made, rule),
                 expected,
                 "{EDIT_018}: {context}: the {} of {to:?}: a copied id maps to its copy, any \
                  other is kept",
@@ -2146,6 +2348,38 @@ fn policy_deletes(
     }
 }
 
+/// Whether the reference policy `policy` deletes `holder`, an
+/// `ArtifactAssetRelationship`, an interface or a binding, once `deleted` are
+/// deleted (ADR 0039 D5): under `DeleteReferencingRelationships` an
+/// `ArtifactAssetRelationship` naming a deleted element in `source` or
+/// `target`; under either non-reject policy a holder that loses an id from
+/// an end with a lower bound and is left below it, counting distinct ids
+/// (`source` and `target` [1..*], `implements` [1], `participantPackage`
+/// [2..*]). A holder already below its bound that loses no id stays.
+fn bound_deletes(
+    policy: ReferenceDeletePolicy,
+    holder: SacmElement<'_>,
+    deleted: &BTreeSet<ElementId>,
+) -> bool {
+    if policy == RejectIfReferenced {
+        return false;
+    }
+    let relationship_ends = [ReferenceEnd::ArtifactSource, ReferenceEnd::ArtifactTarget];
+    end_rules()
+        .filter(|rule| rule.lower > 0 && rule.owners.contains(&holder.kind()))
+        .filter(|rule| !RELATIONSHIPS.iter().any(|kind| rule.owners.contains(kind)))
+        .any(|rule| {
+            let ids = held_by(holder, rule);
+            let lost = ids.iter().any(|id| deleted.contains(id));
+            if policy == DeleteReferencingRelationships && relationship_ends.contains(&rule.end) {
+                return lost;
+            }
+            let remaining: Vec<ElementId> =
+                ids.into_iter().filter(|id| !deleted.contains(id)).collect();
+            lost && distinct(&remaining) < rule.lower
+        })
+}
+
 /// What `delete` must answer on `doc`, and what it deletes, changes and
 /// leaves dangling when accepted (ADR 0031): `ElementNotFound`; then
 /// `NotEmpty` when `RejectIfNonEmpty` meets a contained element that is no
@@ -2166,14 +2400,23 @@ fn delete_plan(doc: &Document, delete: &DeleteElement) -> Result<DeletePlan, Cod
     }
     let policy = delete.reference_policy();
     let mut deleted = subtree.clone();
+    // The interfaces and bindings deleted for their bound (LIB-EDIT-019),
+    // which the package policy guards.
+    let mut cascade_holders: BTreeSet<ElementId> = BTreeSet::new();
     loop {
         let mut grew = false;
         for element in doc.elements() {
-            if deleted.contains(element.id())
-                || !RELATIONSHIPS.contains(&element.kind())
-                || !policy_deletes(policy, element, &deleted)
-            {
+            if deleted.contains(element.id()) {
                 continue;
+            }
+            let relationship = RELATIONSHIPS.contains(&element.kind())
+                && policy_deletes(policy, element, &deleted);
+            let bound = !relationship && bound_deletes(policy, element, &deleted);
+            if !relationship && !bound {
+                continue;
+            }
+            if bound && element.kind() != ArtifactAssetRelationship {
+                cascade_holders.insert(element.id().clone());
             }
             deleted.extend(subtree_of(element));
             grew = true;
@@ -2191,12 +2434,29 @@ fn delete_plan(doc: &Document, delete: &DeleteElement) -> Result<DeletePlan, Cod
             return Err(Code::CMD_DELETE_REFERENCED);
         }
     }
+    // Check 4 (ADR 0039 D5): under RejectIfNonEmpty, a cascaded interface or
+    // binding that contains an element other than a UtilityElement refuses.
+    if delete.package_policy() == RejectIfNonEmpty {
+        let guarded = doc
+            .elements()
+            .filter(|element| cascade_holders.contains(element.id()))
+            .any(|holder| {
+                subtree_of(holder)
+                    .iter()
+                    .filter(|id| *id != holder.id())
+                    .filter_map(|id| doc.get(id))
+                    .any(|element| !UTILITY_ELEMENTS.contains(&element.kind()))
+            });
+        if guarded {
+            return Err(Code::CMD_PACKAGE_NOT_EMPTY);
+        }
+    }
     let changed = doc
         .elements()
         .filter(|element| !deleted.contains(element.id()))
         .filter(|element| {
-            END_RULES.iter().any(|rule| {
-                held(*element, rule.end)
+            end_rules().any(|rule| {
+                held_by(*element, rule)
                     .iter()
                     .any(|id| deleted.contains(id))
             })
@@ -2229,9 +2489,9 @@ fn dangling_references(
         if subtree.contains(holder.id()) {
             continue;
         }
-        for rule in &END_RULES {
+        for rule in end_rules() {
             let mut seen = BTreeSet::new();
-            for id in held(holder, rule.end) {
+            for id in held_by(holder, rule) {
                 if !deleted.contains(&id) || !seen.insert(id.clone()) {
                     continue;
                 }
@@ -2770,6 +3030,7 @@ fn create_operations_for(doc: &Document) -> Vec<Operation> {
     };
     let first_id = doc.elements().next().map(|element| element.id().clone());
     let ends = CreateEnds::of(doc);
+    let interface_ends = InterfaceEnds::of(doc);
 
     let mut parents: Vec<ElementId> = doc.elements().map(|element| element.id().clone()).collect();
     parents.push(id(NOWHERE));
@@ -2796,6 +3057,7 @@ fn create_operations_for(doc: &Document) -> Vec<Operation> {
             ];
             creates.extend(ends.other_creates(parent, &name, form));
             creates.extend(ends.artifact_creates(parent, &name));
+            creates.extend(interface_ends.creates(parent, &name));
             operations.extend(
                 creates
                     .into_iter()
@@ -2804,6 +3066,7 @@ fn create_operations_for(doc: &Document) -> Vec<Operation> {
         }
         let name = names[parent_index % names.len()].clone();
         operations.extend(reference_refusals(doc, parent, &name));
+        operations.extend(interface_ends.refusals(doc, parent, &name));
     }
     let mut root_ids: Vec<Option<ElementId>> =
         vec![None, Some(id(&next_fresh())), Some(id(NOT_AN_NCNAME))];
@@ -2814,6 +3077,10 @@ fn create_operations_for(doc: &Document) -> Vec<Operation> {
         let case = CreateAssuranceCasePackage::root(name(parents.len(), form, 0));
         let arguments = CreateArgumentPackage::root(name(parents.len(), form, 1));
         let artifacts = CreateArtifactPackage::root(name(parents.len(), form, 2));
+        // The interface and binding roots of slice 0066, built before the
+        // caller id is moved.
+        let interface_roots =
+            interface_ends.roots(&|kind| name(parents.len(), form, kind), caller_id.as_ref());
         match caller_id {
             None => {
                 operations.push(case.into());
@@ -2826,6 +3093,7 @@ fn create_operations_for(doc: &Document) -> Vec<Operation> {
                 operations.push(artifacts.with_id(&value).into());
             }
         }
+        operations.extend(interface_roots);
     }
     operations
 }
@@ -2900,7 +3168,7 @@ fn edit_operations_for(doc: &Document) -> Vec<Operation> {
         // and removed.
         push_asset_value_edits(&mut operations, found, element, index);
         // LIB-EDIT-009: every end.
-        for rule in &END_RULES {
+        for rule in end_rules() {
             push_reference_edits(&mut operations, doc, element, rule, no_element.as_ref());
         }
         // LIB-EDIT-010: the children.
@@ -3293,6 +3561,11 @@ fn lib_edit_002_the_set_has_legal_and_illegal_operations_of_every_kind_with_both
         Event,
         Resource,
         Activity,
+        // The creates of slice 0066 (ADR 0039 D4).
+        ArgumentPackageInterface,
+        ArgumentPackageBinding,
+        ArtifactPackageInterface,
+        ArtifactPackageBinding,
     ] {
         for caller in [false, true] {
             required.push((kind, caller, Ok(())));
@@ -3304,15 +3577,28 @@ fn lib_edit_002_the_set_has_legal_and_illegal_operations_of_every_kind_with_both
         // The checks of the ends (ADR 0027, ADR 0028), reached with a
         // generated id: a white-space id, and one naming a wrongly typed
         // element; a relationship with no source.
-        // The artifact assets have no end of their own (§12.6).
-        if !UTILITY_ELEMENTS.contains(&kind)
+        // The artifact assets have no end of their own (§12.6). The
+        // interfaces and bindings are packages with ends (ADR 0039).
+        let interface_or_binding = [
+            ArgumentPackageInterface,
+            ArgumentPackageBinding,
+            ArtifactPackageInterface,
+            ArtifactPackageBinding,
+        ]
+        .contains(&kind);
+        if (!UTILITY_ELEMENTS.contains(&kind)
             && !PACKAGE_KINDS.contains(&kind)
-            && !CREATES_WITHOUT_ENDS.contains(&kind)
+            && !CREATES_WITHOUT_ENDS.contains(&kind))
+            || interface_or_binding
         {
             required.push((kind, false, Err(Code::ID_INVALID.as_str())));
             required.push((kind, false, Err(Code::REF_WRONG_TYPE.as_str())));
         }
-        if RELATIONSHIPS.contains(&kind) {
+        // A relationship with no source; a binding with fewer than two
+        // distinct participants.
+        if RELATIONSHIPS.contains(&kind)
+            || [ArgumentPackageBinding, ArtifactPackageBinding].contains(&kind)
+        {
             required.push((kind, false, Err(Code::MULTIPLICITY_VIOLATION.as_str())));
         }
     }
@@ -3451,7 +3737,11 @@ fn oracle(context: &str, operation: &Operation, before: &Document, after: &Docum
             | Difference::LocationId { id, .. }
             | Difference::LocationValueIds { id, .. }
             | Difference::StartTime { id, .. }
-            | Difference::EndTime { id, .. } => {
+            | Difference::EndTime { id, .. }
+            // The ends of slice 0066 (ADR 0039 D1).
+            | Difference::Interfaces { id, .. }
+            | Difference::Implements { id, .. }
+            | Difference::ParticipantPackages { id, .. } => {
                 changed.insert(id.clone());
             }
             Difference::RootOrder { .. } => assert!(
@@ -3947,9 +4237,7 @@ fn lib_edit_012_no_successful_operation_of_the_set_removes_a_key() {
 // LIB-EDIT-013: check an operation without applying it
 // ---------------------------------------------------------------------------
 
-/// Every operation name of this release, in the declaration order of
-/// `Operation`: the set must reach each accepted and refused.
-const OPERATION_NAME_COUNT: usize = 42;
+const OPERATION_NAME_COUNT: usize = 46;
 const OPERATION_NAMES: [&str; OPERATION_NAME_COUNT] = [
     "CreateAssuranceCasePackage",
     "CreateArgumentPackage",
@@ -3975,6 +4263,11 @@ const OPERATION_NAMES: [&str; OPERATION_NAME_COUNT] = [
     "CreateEvent",
     "CreateResource",
     "CreateActivity",
+    // The creates of slice 0066 (SACM23-ARG-014, -015, SACM23-ART-012, -013).
+    "CreateArgumentPackageInterface",
+    "CreateArgumentPackageBinding",
+    "CreateArtifactPackageInterface",
+    "CreateArtifactPackageBinding",
     "SetName",
     "SetGid",
     "SetFlag",
@@ -3995,8 +4288,7 @@ const OPERATION_NAMES: [&str; OPERATION_NAME_COUNT] = [
     "DeleteElement",
 ];
 
-/// The first 24 of [`OPERATION_NAMES`]: the creates.
-const CREATE_COUNT: usize = 24;
+const CREATE_COUNT: usize = 28;
 
 /// A document read from XMI for the check-order cases: a Claim `c1` with a
 /// Description `d1`, a Claim with the id `a b` (not an `NCName`, kept as
@@ -4018,6 +4310,19 @@ const CHECK_ORDER_START: &str = r#"<sacm:AssuranceCasePackage xmlns:sacm="http:/
   <artifactPackage xmi:id="evidence"><name content="Evidence"/></artifactPackage>
 </sacm:AssuranceCasePackage>
 "#;
+
+/// [`CHECK_ORDER_START`] with a second ArgumentPackage `q` and a second
+/// ArtifactPackage `evidence2` at the end of `case`, which the bindings of
+/// [`interface_creates_of_every_kind`] bind (slice 0066).
+fn check_order_start() -> String {
+    CHECK_ORDER_START.replacen(
+        "</sacm:AssuranceCasePackage>",
+        "  <argumentPackage xmi:id=\"q\"><name content=\"Q\"/></argumentPackage>\n  \
+         <artifactPackage xmi:id=\"evidence2\"><name content=\"Evidence 2\"/></artifactPackage>\n\
+         </sacm:AssuranceCasePackage>",
+        1,
+    )
+}
 
 /// Whether a create has a caller id: `Some(true)` for a caller id,
 /// `Some(false)` for a generated one, and `None` for an operation that is
@@ -4048,6 +4353,10 @@ fn has_caller_id(operation: &Operation) -> Option<bool> {
         Operation::CreateEvent(create) => create.id(),
         Operation::CreateResource(create) => create.id(),
         Operation::CreateActivity(create) => create.id(),
+        Operation::CreateArgumentPackageInterface(create) => create.id(),
+        Operation::CreateArgumentPackageBinding(create) => create.id(),
+        Operation::CreateArtifactPackageInterface(create) => create.id(),
+        Operation::CreateArtifactPackageBinding(create) => create.id(),
         _ => return None,
     };
     Some(id.is_some())
@@ -4083,6 +4392,10 @@ fn with_caller_id(operation: Operation, value: Option<&ElementId>) -> Operation 
         Operation::CreateEvent(create) => create.with_id(value).into(),
         Operation::CreateResource(create) => create.with_id(value).into(),
         Operation::CreateActivity(create) => create.with_id(value).into(),
+        Operation::CreateArgumentPackageInterface(create) => create.with_id(value).into(),
+        Operation::CreateArgumentPackageBinding(create) => create.with_id(value).into(),
+        Operation::CreateArtifactPackageInterface(create) => create.with_id(value).into(),
+        Operation::CreateArtifactPackageBinding(create) => create.with_id(value).into(),
         other => panic!("{EDIT_002}: setup: {other:?} is not a create"),
     }
 }
@@ -4124,6 +4437,95 @@ fn first_of(doc: &Document, kinds: &[ElementKind]) -> Option<ElementId> {
 /// The ids the twelve creates that are no package and no Claim reference in
 /// `doc`: the first element of each end's declared type where the document
 /// has one, and [`NOWHERE`] for a source or target where it has none.
+/// The ids the four creates of slice 0066 reference in `doc` (ADR 0039 D4):
+/// the first `ArgumentPackage` of any kind (or [`NOWHERE`]) as `implements`,
+/// and the first and last as participants (one id twice when the document
+/// has one, which a binding refuses); the same for the `ArtifactPackage`s.
+struct InterfaceEnds {
+    argument: (ElementId, ElementId),
+    artifact: (ElementId, ElementId),
+}
+
+impl InterfaceEnds {
+    fn of(doc: &Document) -> Self {
+        let pair = |kinds: &[ElementKind]| {
+            first_and_last_of(doc, kinds).unwrap_or_else(|| (id(NOWHERE), id(NOWHERE)))
+        };
+        Self {
+            argument: pair(&ARGUMENT_PACKAGES),
+            artifact: pair(&ARTIFACT_PACKAGES),
+        }
+    }
+
+    /// The four creates under `parent`, with generated ids.
+    fn creates(&self, parent: &ElementId, name: &dyn Fn(usize) -> LangString) -> Vec<Operation> {
+        let (argument, last_argument) = &self.argument;
+        let (artifact, last_artifact) = &self.artifact;
+        vec![
+            CreateArgumentPackageInterface::new(parent, name(17), argument).into(),
+            CreateArgumentPackageBinding::new(parent, name(18), [argument, last_argument]).into(),
+            CreateArtifactPackageInterface::new(parent, name(19), artifact).into(),
+            CreateArtifactPackageBinding::new(parent, name(20), [artifact, last_artifact]).into(),
+        ]
+    }
+
+    /// The four creates as roots, with the caller id `caller_id` if given.
+    fn roots(
+        &self,
+        name: &dyn Fn(usize) -> LangString,
+        caller_id: Option<&ElementId>,
+    ) -> Vec<Operation> {
+        let (argument, last_argument) = &self.argument;
+        let (artifact, last_artifact) = &self.artifact;
+        let creates: Vec<Operation> = vec![
+            CreateArgumentPackageInterface::root(name(3), argument).into(),
+            CreateArgumentPackageBinding::root(name(4), [argument, last_argument]).into(),
+            CreateArtifactPackageInterface::root(name(5), artifact).into(),
+            CreateArtifactPackageBinding::root(name(6), [artifact, last_artifact]).into(),
+        ];
+        creates
+            .into_iter()
+            .map(|create| with_caller_id(create, caller_id))
+            .collect()
+    }
+
+    /// The reference refusals of the four creates under `parent`, with
+    /// generated ids: an `implements` or a participant that holds white
+    /// space, names no element, or names the first element of a kind its end
+    /// does not admit, each participant with a second, distinct one; and a
+    /// binding with no participant.
+    fn refusals(&self, doc: &Document, parent: &ElementId, name: &LangString) -> Vec<Operation> {
+        let bad = |declared: &[ElementKind]| -> Vec<ElementId> {
+            let mut ids = vec![id(WITH_SPACE), id(NOWHERE)];
+            ids.extend(first_not_of(doc, declared));
+            ids
+        };
+        let mut operations: Vec<Operation> = vec![
+            CreateArgumentPackageBinding::new(parent, name.clone(), Vec::<ElementId>::new()).into(),
+            CreateArtifactPackageBinding::new(parent, name.clone(), Vec::<ElementId>::new()).into(),
+        ];
+        for value in bad(&ARGUMENT_PACKAGES) {
+            operations.push(
+                CreateArgumentPackageInterface::new(parent, name.clone(), value.clone()).into(),
+            );
+            operations.push(
+                CreateArgumentPackageBinding::new(parent, name.clone(), [&value, &self.argument.0])
+                    .into(),
+            );
+        }
+        for value in bad(&ARTIFACT_PACKAGES) {
+            operations.push(
+                CreateArtifactPackageInterface::new(parent, name.clone(), value.clone()).into(),
+            );
+            operations.push(
+                CreateArtifactPackageBinding::new(parent, name.clone(), [&value, &self.artifact.0])
+                    .into(),
+            );
+        }
+        operations
+    }
+}
+
 struct CreateEnds {
     asset: ElementId,
     reasoning: Option<ElementId>,
@@ -4319,6 +4721,11 @@ fn creates_of_every_kind(
         package_parent,
         artifact_parent,
     ));
+    creates.extend(interface_creates_of_every_kind(
+        package_parent,
+        parent,
+        artifact_parent,
+    ));
     creates
 }
 
@@ -4410,7 +4817,66 @@ fn next_generated_ids_of_every_kind(row: &str, doc: &Document) -> Vec<ElementId>
     {
         ids.push(create(row, &mut probe, operation));
     }
+    // The creates of slice 0066: an interface of each package, and a binding
+    // of the package and its interface.
+    {
+        let interface = create(
+            row,
+            &mut probe,
+            CreateArgumentPackageInterface::new(&arguments, named("probe"), &arguments),
+        );
+        let binding = create(
+            row,
+            &mut probe,
+            CreateArgumentPackageBinding::root(named("probe"), [&arguments, &interface]),
+        );
+        let artifact_interface = create(
+            row,
+            &mut probe,
+            CreateArtifactPackageInterface::new(&artifacts, named("probe"), &artifacts),
+        );
+        let artifact_binding = create(
+            row,
+            &mut probe,
+            CreateArtifactPackageBinding::root(named("probe"), [&artifacts, &artifact_interface]),
+        );
+        ids.extend([interface, binding, artifact_interface, artifact_binding]);
+    }
     ids
+}
+
+/// The four creates of slice 0066 with a generated id, after the others of
+/// [`creates_of_every_kind`]: under `package_parent`, an interface of each
+/// of `argument_package` and `artifact_package`, and a binding of each with
+/// the second package of its family in [`check_order_start`], `q` and
+/// `evidence2`.
+fn interface_creates_of_every_kind(
+    package_parent: &str,
+    argument_package: &str,
+    artifact_package: &str,
+) -> Vec<Operation> {
+    vec![
+        CreateArgumentPackageInterface::new(package_parent, named("Interface"), argument_package)
+            .into(),
+        CreateArgumentPackageBinding::new(
+            package_parent,
+            named("Binding"),
+            [argument_package, "q"],
+        )
+        .into(),
+        CreateArtifactPackageInterface::new(
+            package_parent,
+            named("Artifact interface"),
+            artifact_package,
+        )
+        .into(),
+        CreateArtifactPackageBinding::new(
+            package_parent,
+            named("Artifact binding"),
+            [artifact_package, "evidence2"],
+        )
+        .into(),
+    ]
 }
 
 /// One check of one operation: the document `check` was given, a clone taken
@@ -4601,7 +5067,7 @@ fn lib_edit_013_check_leaves_the_document_equal_with_the_same_next_ids_of_every_
 
 #[test]
 fn lib_edit_013_a_checked_create_of_each_kind_gets_the_generated_id_an_unchecked_one_gets() {
-    let mut doc = read_text("CHECK_ORDER_START", CHECK_ORDER_START.as_bytes());
+    let mut doc = read_text("CHECK_ORDER_START", check_order_start().as_bytes());
     let accepted = creates_of_every_kind("case", "p", "c1", "evidence");
     let refused = creates_of_every_kind(NOWHERE, NOWHERE, "c1", NOWHERE);
     assert_eq!(
@@ -4642,7 +5108,7 @@ fn lib_edit_013_a_checked_create_of_each_kind_gets_the_generated_id_an_unchecked
     reason = "one case per pair of checks reads best as one list"
 )]
 fn lib_edit_013_a_create_failing_two_checks_gets_the_first_from_check_and_apply() {
-    let doc = read_text("CHECK_ORDER_START", CHECK_ORDER_START.as_bytes());
+    let doc = read_text("CHECK_ORDER_START", check_order_start().as_bytes());
     let name = || named("N");
     let none = Vec::<ElementId>::new;
 
@@ -4864,7 +5330,7 @@ fn lib_edit_013_a_create_failing_two_checks_gets_the_first_from_check_and_apply(
     reason = "one case per pair of checks reads best as one list"
 )]
 fn lib_edit_013_an_edit_failing_two_checks_gets_the_first_from_check_and_apply() {
-    let doc = read_text("CHECK_ORDER_START", CHECK_ORDER_START.as_bytes());
+    let doc = read_text("CHECK_ORDER_START", check_order_start().as_bytes());
     let none = Vec::<ElementId>::new;
 
     // The check orders of the module docs of `edit`, "Operations that change
@@ -5168,13 +5634,13 @@ fn lib_edit_005_after_every_successful_delete_of_the_set_each_surviving_end_lost
             let Some(old) = before.get(element.id()) else {
                 panic!("{EDIT_005}: {context}: {:?} is new", element.id());
             };
-            for rule in &END_RULES {
-                let expected: Vec<ElementId> = held(old, rule.end)
+            for rule in end_rules() {
+                let expected: Vec<ElementId> = held_by(old, rule)
                     .into_iter()
                     .filter(|id| !deleted.contains(id))
                     .collect();
                 assert_eq!(
-                    held(element, rule.end),
+                    held_by(element, rule),
                     expected,
                     "{EDIT_005}: {context}: the {} of {:?} is not its old list minus the deleted ids",
                     rule.end.name(),
@@ -5193,23 +5659,32 @@ fn lib_edit_005_after_every_successful_delete_of_the_set_each_surviving_end_lost
             }
         }
         for difference in semantic_compare(before, after) {
-            assert!(
-                matches!(
+            let allowed = matches!(
+                difference,
+                Difference::LeftOnly { .. }
+                    | Difference::CitedElement { .. }
+                    | Difference::AbstractForm { .. }
+                    | Difference::MetaClaims { .. }
+                    | Difference::Reasoning { .. }
+                    | Difference::Sources { .. }
+                    | Difference::Target { .. }
+                    | Difference::Structure { .. }
+                    | Difference::ReferencedArtifactElements { .. }
+                    | Difference::GroupMembers { .. }
+                    | Difference::ArtifactGroupMembers { .. }
+                    | Difference::ArtifactSources { .. }
+                    | Difference::ArtifactTargets { .. }
+            );
+            // The ends of slice 0066 (LIB-EDIT-019).
+            let allowed = allowed
+                || matches!(
                     difference,
-                    Difference::LeftOnly { .. }
-                        | Difference::CitedElement { .. }
-                        | Difference::AbstractForm { .. }
-                        | Difference::MetaClaims { .. }
-                        | Difference::Reasoning { .. }
-                        | Difference::Sources { .. }
-                        | Difference::Target { .. }
-                        | Difference::Structure { .. }
-                        | Difference::ReferencedArtifactElements { .. }
-                        | Difference::GroupMembers { .. }
-                        | Difference::ArtifactGroupMembers { .. }
-                        | Difference::ArtifactSources { .. }
-                        | Difference::ArtifactTargets { .. }
-                ),
+                    Difference::Interfaces { .. }
+                        | Difference::Implements { .. }
+                        | Difference::ParticipantPackages { .. }
+                );
+            assert!(
+                allowed,
                 "{EDIT_005}: {context}: the delete changed more than elements and reference ends: {difference}"
             );
         }
@@ -5533,10 +6008,10 @@ fn lib_edit_017_move_joins_the_set_with_every_answer() {
             let Some(now) = after.get(holder.id()) else {
                 panic!("{EDIT_017}: {context}: {:?} is gone", holder.id());
             };
-            for rule in &END_RULES {
+            for rule in end_rules() {
                 assert_eq!(
-                    held(now, rule.end),
-                    held(holder, rule.end),
+                    held_by(now, rule),
+                    held_by(holder, rule),
                     "{EDIT_017}: {context}: the {} of {:?} changed",
                     rule.end.name(),
                     holder.id()
@@ -5630,11 +6105,11 @@ fn lib_edit_018_copy_joins_the_set_with_every_answer() {
 fn assert_referrers_are_a_full_scan(context: &str, doc: &Document) {
     let mut scan: BTreeMap<ElementId, Vec<(ElementId, &'static str, usize)>> = BTreeMap::new();
     for holder in doc.elements() {
-        for rule in &END_RULES {
-            for (position, value) in holder.references(rule.end).iter().enumerate() {
+        for end in ends_in_order() {
+            for (position, value) in holder.references(end).iter().enumerate() {
                 scan.entry(value.clone()).or_default().push((
                     holder.id().clone(),
-                    rule.end.name(),
+                    end.name(),
                     position,
                 ));
             }

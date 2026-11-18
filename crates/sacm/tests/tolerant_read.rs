@@ -926,11 +926,13 @@ fn lib_compat_001_a_tolerant_read_reports_no_error() {
                  </sacm:TerminologyPackageInterface>"
             ),
         ),
+        // A TerminologyPackageBinding: slice 0066 reads the
+        // ArtifactPackageInterface this case first sampled (SACM23-ART-012).
         (
-            "an ArtifactPackageInterface in an ArtifactPackage",
+            "a TerminologyPackageBinding in an ArtifactPackage",
             format!(
                 "<sacm:ArtifactPackage{NS} xmi:id=\"a\"><name content=\"A\"/>\
-                 <artifactElement xmi:type=\"sacm:ArtifactPackageInterface\" xmi:id=\"x\">\
+                 <artifactElement xmi:type=\"sacm:TerminologyPackageBinding\" xmi:id=\"x\">\
                  <name content=\"X\"/></artifactElement></sacm:ArtifactPackage>"
             ),
         ),

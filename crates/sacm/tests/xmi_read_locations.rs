@@ -529,10 +529,16 @@ fn child_role_rows() -> Vec<Row> {
             Variant::MissingType,
             element(" xmi:id=\"x\""),
         ),
+        // A TerminologyPackageInterface in an AssuranceCasePackage's
+        // terminologyPackage: this row sampled an ArgumentPackageInterface in
+        // an ArgumentPackage until slice 0066 read it (SACM23-ARG-014).
         row(
             "a conforming kind outside the readable set",
             U,
-            element(" xmi:type=\"sacm:ArgumentPackageInterface\" xmi:id=\"x\""),
+            in_acp(&format!(
+                "{MARK}<terminologyPackage xmi:type=\"sacm:TerminologyPackageInterface\" \
+                 xmi:id=\"x\"/>"
+            )),
         ),
     ]
 }

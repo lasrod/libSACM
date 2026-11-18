@@ -36,6 +36,13 @@
     "required": 1
   },
   {
+    "type": "TooFewReferences",
+    "code": "SACM-MULT-001",
+    "end": "participantPackage",
+    "given": 1,
+    "required": 2
+  },
+  {
     "type": "TooManyReferences",
     "code": "SACM-MULT-001",
     "end": "citedElement",

@@ -850,12 +850,12 @@ mod roots;
 ///   `XMI` element outside XMI 2.5.1 and an XMI-namespace document element,
 ///   and keeps the rest (SACM-XMI-014, SACM-XMI-007 or SACM-XMI-003). In
 ///   this release they are:
-///   - conforming input not read yet: the eight interface and binding kinds,
-///     as roots or children (such as an `ArgumentPackageInterface`); a
-///     package's `interface` end, as an attribute or an element, naming the
-///     row of its interface kind (SACM23-AC-002 on an AssuranceCasePackage,
-///     SACM23-ARG-014 on an ArgumentPackage, SACM23-ART-012 on an
-///     ArtifactPackage, SACM23-TERM-007 on a TerminologyPackage); XMI metadata
+///   - conforming input not read yet: the four Terminology and
+///     Assurance Case interface and binding kinds, as roots or children (such
+///     as a `TerminologyPackageInterface`); a package's `interface` end, as
+///     an attribute or an element, naming the row of its interface kind
+///     (SACM23-AC-002 on an AssuranceCasePackage, SACM23-TERM-007 on a
+///     TerminologyPackage); XMI metadata
 ///     (SACM23-XMI-019): an XMI-namespace element as the document element,
 ///     beside the roots or in an element (such as `xmi:Documentation` or
 ///     `xmi:Extension`), `xmi:uuid`, `xmi:label` and `xmi:idref` on an
@@ -1493,14 +1493,14 @@ pub enum ReadError {
     /// use sacm::diagnostic::Code;
     /// use sacm::xmi::{self, Mode, ReadError, ReadOptions};
     ///
-    /// let input = br#"<sacm:ArgumentPackageInterface xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    /// let input = br#"<sacm:TerminologyPackageInterface xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
     ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="i"/>"#;
     /// let strict = ReadOptions::default().with_mode(Mode::Strict);
     /// let error = xmi::read(input, &strict).unwrap_err();
     /// assert!(matches!(
     ///     &error,
     ///     ReadError::Unsupported { reason, .. }
-    ///         if reason.ends_with("(a limit of this version; SACM23-ARG-014 reads it)")
+    ///         if reason.ends_with("(a limit of this version; SACM23-TERM-007 reads it)")
     /// ));
     /// assert_eq!(error.code(), Code::XMI_UNREAD_CONTENT);
     /// assert_eq!(error.template(), "SACM-XMI-014/unread-root");
@@ -1509,7 +1509,7 @@ pub enum ReadError {
     /// // with a Warning of the same code.
     /// let output = xmi::read(input, &ReadOptions::default())?;
     /// assert_eq!(output.diagnostics()[0].code(), Code::XMI_UNREAD_CONTENT);
-    /// assert!(output.diagnostics()[0].message().ends_with("; SACM23-ARG-014 reads it"));
+    /// assert!(output.diagnostics()[0].message().ends_with("; SACM23-TERM-007 reads it"));
     /// assert!(output.document().has_preserved_content());
     /// # Ok::<(), ReadError>(())
     /// ```

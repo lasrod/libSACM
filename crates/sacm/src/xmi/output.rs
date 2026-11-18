@@ -579,7 +579,7 @@ fn push_flags_and_references(
         for end in ReferenceEnd::ALL
             .iter()
             .copied()
-            .filter(|end| end.owner() == owner && !end.is_derived())
+            .filter(|end| end.owner_on(kind) == Some(owner) && !end.is_derived())
         {
             let targets = element.references(end);
             if targets.is_empty() || as_elements.contains(&end) {

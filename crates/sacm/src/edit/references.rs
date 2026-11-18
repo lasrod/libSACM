@@ -8,15 +8,17 @@ use std::slice;
 use super::EditError;
 use super::plan::{Plan, Value};
 use super::set::{changing, edited};
-use crate::model::{Document, ElementId, LangString, ReferenceEnd, SacmElement};
+use crate::model::{Document, ElementId, ElementKind, LangString, ReferenceEnd, SacmElement};
 
 /// Replaces the ids one reference end of an element holds (SACM 2.3 §8.2,
 /// §11.2, §11.9, §11.10, §11.12, §11.13), in the order given, repeats
 /// included; [`clear`](Self::clear) empties the end.
 ///
 /// The ids must fit the end's bounds: `source` needs at least one, `target`
-/// exactly one, and the other single-valued ends (`citedElement`,
-/// `abstractForm`, `reasoning`, `structure`) hold at most one. Every id the
+/// and an interface's `implements` exactly one, a binding's
+/// `participantPackage` at least two distinct ids (ADR 0039 D3), and the
+/// other single-valued ends (`citedElement`, `abstractForm`, `reasoning`,
+/// `structure`, `origin`) hold at most one. Every id the
 /// end does not already hold must name an element of the document, of a
 /// kind its end admits, so an edit never makes a dangling or wrongly typed
 /// reference; an id the end holds is kept as it is, even if it is dangling
@@ -133,9 +135,10 @@ impl SetReferences {
 
     /// Runs every check of the operation, and returns what it changes.
     pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
-        let held = owner(document, &self.element, self.end)?.references(self.end);
-        check_bounds(self.end, self.ids.len())?;
-        check_targets(document, &[(self.end, &self.ids, held)])?;
+        let found = owner(document, &self.element, self.end)?;
+        let held = found.references(self.end);
+        check_bounds(self.end, &self.ids)?;
+        check_targets(document, found.kind(), &[(self.end, &self.ids, held)])?;
         // Setting the ids held still changes the element if it holds the end
         // as a preserved attribute too, which the set replaces (ADR 0033).
         let replaces = !self.ids.is_empty()
@@ -154,7 +157,10 @@ impl SetReferences {
 /// it refuses an unknown element ([`EditError::ElementNotFound`]), the
 /// derived `expression` ([`EditError::DerivedEnd`]), a kind that does not
 /// own the end ([`EditError::FeatureNotApplicable`]), an end
-/// that would hold more ids than it allows, such as a second `target`
+/// that would hold fewer distinct ids than it needs, such as a binding read
+/// with one participant that is given it again
+/// ([`EditError::TooFewReferences`]; give it two with [`SetReferences`]), or
+/// more ids than it allows, such as a second `target`
 /// ([`EditError::TooManyReferences`]), and then an id the end does not hold
 /// already that holds white space, names no element or names an element of
 /// a kind the end does not admit. An id the end holds is appended again,
@@ -226,11 +232,16 @@ impl AddReference {
 
     /// Runs every check of the operation, and returns what it changes.
     pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
-        let held = owner(document, &self.element, self.end)?.references(self.end);
-        check_bounds(self.end, held.len().saturating_add(1))?;
-        check_targets(document, &[(self.end, slice::from_ref(&self.id), held)])?;
+        let found = owner(document, &self.element, self.end)?;
+        let held = found.references(self.end);
         let mut ids = held.to_vec();
         ids.push(self.id.clone());
+        check_bounds(self.end, &ids)?;
+        check_targets(
+            document,
+            found.kind(),
+            &[(self.end, slice::from_ref(&self.id), held)],
+        )?;
         Ok(Plan::Set {
             element: &self.element,
             value: Value::References(self.end, ids),
@@ -328,7 +339,7 @@ impl RemoveReference {
             });
         }
         let ids: Vec<ElementId> = held.iter().filter(|id| **id != self.id).cloned().collect();
-        check_bounds(self.end, ids.len())?;
+        check_bounds(self.end, &ids)?;
         Ok(Plan::Set {
             element: &self.element,
             value: Value::References(self.end, ids),
@@ -344,9 +355,7 @@ fn owner<'d>(
     element: &ElementId,
     end: ReferenceEnd,
 ) -> Result<SacmElement<'d>, EditError> {
-    let found = edited(document, element, end.name(), |kind| {
-        end.owner().admits(kind)
-    })?;
+    let found = edited(document, element, end.name(), |kind| end.applies_to(kind))?;
     if end.is_derived() {
         // Its ids are the name's and texts' (SACM23-BASE-009, ADR 0038 D3).
         return Err(EditError::DerivedEnd {
@@ -394,25 +403,39 @@ pub(super) fn check_expressions<'v>(
     held: &[ElementId],
 ) -> Result<(), EditError> {
     let ids = expression_ids(values)?;
-    check_targets(document, &[(ReferenceEnd::Expression, &ids, held)])
+    // Every element holds the derived end, typed alike whatever its kind.
+    check_targets(
+        document,
+        ElementKind::Claim,
+        &[(ReferenceEnd::Expression, &ids, held)],
+    )
 }
 
-/// Refuses `given` ids on `end` when they are fewer
+/// The number of distinct ids of `ids`: what a lower bound counts (ADR 0039
+/// D3), so that `["a", "a"]` is one participant package.
+pub(super) fn distinct_count(ids: &[ElementId]) -> usize {
+    ids.iter().collect::<BTreeSet<_>>().len()
+}
+
+/// Refuses the ids `ids` on `end` when they are fewer
 /// ([`EditError::TooFewReferences`]) or more
-/// ([`EditError::TooManyReferences`]) than its bounds allow.
-pub(super) fn check_bounds(end: ReferenceEnd, given: usize) -> Result<(), EditError> {
+/// ([`EditError::TooManyReferences`]) than its bounds allow. The lower bound
+/// counts the distinct ids and the upper bound every id (ADR 0039 D3); the
+/// two counts differ only for an end whose lower bound is above 1.
+pub(super) fn check_bounds(end: ReferenceEnd, ids: &[ElementId]) -> Result<(), EditError> {
     let required = end.lower_bound();
-    if given < required {
+    let distinct = distinct_count(ids);
+    if distinct < required {
         return Err(EditError::TooFewReferences {
             end: end.name(),
-            given,
+            given: distinct,
             required,
         });
     }
     match end.upper_bound() {
-        Some(allowed) if given > allowed => Err(EditError::TooManyReferences {
+        Some(allowed) if ids.len() > allowed => Err(EditError::TooManyReferences {
             end: end.name(),
-            given,
+            given: ids.len(),
             allowed,
         }),
         _ => Ok(()),
@@ -430,9 +453,12 @@ pub(super) fn check_bounds(end: ReferenceEnd, given: usize) -> Result<(), EditEr
 /// ([`EditError::ReferenceNotFound`]); then one that names an element of a
 /// kind the end's declared type does not admit
 /// ([`EditError::WrongReferenceType`], ADR 0028). So every id is checked for
-/// existence before any is checked for type. Changes nothing.
+/// existence before any is checked for type: the type the end declares on
+/// `holder`, the kind of the element that holds or is to hold the ends (ADR
+/// 0039 D1). Changes nothing.
 pub(super) fn check_targets(
     document: &Document,
+    holder: ElementKind,
     ends: &[(ReferenceEnd, &[ElementId], &[ElementId])],
 ) -> Result<(), EditError> {
     let new: Vec<(ReferenceEnd, Vec<&ElementId>)> = ends
@@ -462,7 +488,9 @@ pub(super) fn check_targets(
         }
     }
     for (end, ids) in &new {
-        let declared = end.target();
+        let Some(declared) = end.target_on(holder) else {
+            continue;
+        };
         let wrong = ids.iter().find_map(|id| {
             let kind = document.get(*id)?.kind();
             (!declared.admits(kind)).then_some((*id, kind))

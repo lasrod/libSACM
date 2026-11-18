@@ -6,11 +6,17 @@
 //!   and a successful delete never leaves a dangling reference.
 //! - LIB-EDIT-006: a non-empty element needs `DeleteRecursively`, and a
 //!   reference across a package boundary needs `ApplyReferencePolicy`.
+//! - LIB-EDIT-019 (ADR 0039 D5): under `DeleteReferencingRelationships` and
+//!   `ScrubReferences`, an interface left with no `implements`, or a binding
+//!   left with fewer than two distinct participants, is deleted with its
+//!   contents, to a fixpoint; under `RejectIfNonEmpty` such a holder that
+//!   contains a model element refuses the delete as `NotEmpty` naming it.
+//!   Its documents are fixture M, built with the edits of slice 0066, and
+//!   fixture M read from XMI.
 //!
-//! Every document here is read from XMI written in this file, or built with
-//! the `test-support` `Document::insert` where the reader cannot read the
-//! kind yet (an ArtifactPackage, an interface, a binding). Every element is
-//! named after its id.
+//! Every document here is read from XMI written in this file, built with
+//! edits, or built with the `test-support` `Document::insert`. Every element
+//! is named after its id.
 //!
 //! Every accepted delete is checked by [`assert_clean_delete`] against
 //! `semantic_compare(before, after)`, and every refusal by [`refused`]: the
@@ -38,14 +44,24 @@ use sacm::edit::{
 use sacm::model::{Document, ElementId, ElementKind, LangString, ReferenceEnd, SacmElement};
 use sacm::xmi::{self, Mode, ReadOptions, WriteOptions};
 
+// The creates of slice 0066 (SACM23-ARG-014, SACM23-ARG-015), for fixture M.
+use sacm::edit::{
+    AddReference, CreateArgumentPackageBinding, CreateArgumentPackageInterface,
+    CreateAssertedInference, CreateNote, SetFlag,
+};
+use sacm::model::Flag;
+
 const EDIT_005: &str = "LIB-EDIT-005";
 const EDIT_006: &str = "LIB-EDIT-006";
+const EDIT_019: &str = "LIB-EDIT-019";
 
 /// The namespace declarations of every document.
 const NAMESPACES: &str = r#"xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001""#;
 
-/// The twelve reference ends, in the order of `ReferenceEnd`.
-const ENDS: [ReferenceEnd; 12] = [
+/// The reference ends these tests hold, in the order of `ReferenceEnd`:
+/// the twelve, then the three ends of slice 0066 (SACM23-ARG-014,
+/// SACM23-ARG-015, SACM23-ART-012, SACM23-ART-013; LIB-EDIT-019).
+const ENDS: [ReferenceEnd; 15] = [
     ReferenceEnd::CitedElement,
     ReferenceEnd::AbstractForm,
     ReferenceEnd::MetaClaim,
@@ -58,6 +74,9 @@ const ENDS: [ReferenceEnd; 12] = [
     ReferenceEnd::ArtifactGroupMember,
     ReferenceEnd::ArtifactSource,
     ReferenceEnd::ArtifactTarget,
+    ReferenceEnd::Interface,
+    ReferenceEnd::Implements,
+    ReferenceEnd::ParticipantPackage,
 ];
 
 /// The three reference policies, from the strictest.
@@ -209,6 +228,9 @@ fn held(element: SacmElement<'_>, end: ReferenceEnd) -> Vec<ElementId> {
             element.group_members().to_vec()
         }
         ReferenceEnd::GroupMember | ReferenceEnd::ArtifactGroupMember => Vec::new(),
+        ReferenceEnd::Interface => element.interfaces().to_vec(),
+        ReferenceEnd::Implements => one(element.implements()),
+        ReferenceEnd::ParticipantPackage => element.participant_packages().to_vec(),
         other => panic!("{EDIT_005}: an end this test does not know: {other:?}"),
     }
 }
@@ -380,23 +402,32 @@ fn assert_clean_delete(
         "{row}: {context}: deleted_ids() is not the left-only ids of semantic_compare"
     );
     for difference in &differences {
-        assert!(
-            matches!(
+        let allowed = matches!(
+            difference,
+            Difference::LeftOnly { .. }
+                | Difference::CitedElement { .. }
+                | Difference::AbstractForm { .. }
+                | Difference::MetaClaims { .. }
+                | Difference::Reasoning { .. }
+                | Difference::Sources { .. }
+                | Difference::Target { .. }
+                | Difference::Structure { .. }
+                | Difference::ReferencedArtifactElements { .. }
+                | Difference::GroupMembers { .. }
+                | Difference::ArtifactGroupMembers { .. }
+                | Difference::ArtifactSources { .. }
+                | Difference::ArtifactTargets { .. }
+        );
+        // The ends of slice 0066 (LIB-EDIT-019).
+        let allowed = allowed
+            || matches!(
                 difference,
-                Difference::LeftOnly { .. }
-                    | Difference::CitedElement { .. }
-                    | Difference::AbstractForm { .. }
-                    | Difference::MetaClaims { .. }
-                    | Difference::Reasoning { .. }
-                    | Difference::Sources { .. }
-                    | Difference::Target { .. }
-                    | Difference::Structure { .. }
-                    | Difference::ReferencedArtifactElements { .. }
-                    | Difference::GroupMembers { .. }
-                    | Difference::ArtifactGroupMembers { .. }
-                    | Difference::ArtifactSources { .. }
-                    | Difference::ArtifactTargets { .. }
-            ),
+                Difference::Interfaces { .. }
+                    | Difference::Implements { .. }
+                    | Difference::ParticipantPackages { .. }
+            );
+        assert!(
+            allowed,
             "{row}: {context}: the delete changed more than elements and reference ends: {difference}"
         );
     }
@@ -618,6 +649,30 @@ fn holder_of(end: ReferenceEnd) -> String {
                 r#"<artifactElement xmi:type="sacm:Activity" xmi:id="a"><name content="a"/></artifactElement>"#,
             ));
         }
+        // The ends of slice 0066 (LIB-EDIT-019): `t` is a package, an
+        // interface or a binding of its own, so the reference crosses.
+        ReferenceEnd::Interface => element(
+            "ArgumentPackage",
+            "h",
+            r#"interface="t""#,
+            &element("ArgumentPackageInterface", "t", r#"implements="h""#, ""),
+        ),
+        ReferenceEnd::Implements => format!(
+            "{}{}",
+            nested("t", ""),
+            element("ArgumentPackageInterface", "h", r#"implements="t""#, "")
+        ),
+        ReferenceEnd::ParticipantPackage => format!(
+            "{}{}{}",
+            nested("t", ""),
+            nested("t2", ""),
+            element(
+                "ArgumentPackageBinding",
+                "h",
+                r#"participantPackage="t t2""#,
+                ""
+            )
+        ),
         other => panic!("{EDIT_005}: an end this test does not know: {other:?}"),
     };
     case(&package("p", &body))
@@ -651,12 +706,20 @@ fn lib_edit_005_reject_if_referenced_refuses_a_reference_through_every_end() {
             "SACM-CMD-002",
             "{EDIT_005}: {context}: the code's text"
         );
-        // Under the defaults too, except for a `structure`: the
-        // ArgumentPackage `t` is its own nearest package, so the reference
-        // from `p` crosses a package boundary (LIB-EDIT-006).
+        // Under the defaults too, except for a `structure` and the ends of
+        // slice 0066: the ArgumentPackage, interface or binding `t` is its
+        // own nearest package, so the reference crosses a package boundary
+        // (LIB-EDIT-006).
         let context = format!("t referenced through {}, the defaults", end.name());
         let error = refused(EDIT_005, &context, &mut doc, DeleteElement::new("t"));
-        let variant = if end == ReferenceEnd::Structure {
+        let crosses = matches!(
+            end,
+            ReferenceEnd::Structure
+                | ReferenceEnd::Interface
+                | ReferenceEnd::Implements
+                | ReferenceEnd::ParticipantPackage
+        );
+        let variant = if crosses {
             "CrossPackageReference"
         } else {
             "Referenced"
@@ -1953,7 +2016,8 @@ fn lib_edit_006_a_nested_package_is_a_different_package() {
     );
 }
 
-/// Inserted (the reader does not read interfaces and bindings yet): the
+/// Inserted (an interface with no implements and a binding with no
+/// participant, which no create makes): the
 /// root `case` holds the `ArgumentPackage` `ap` (holding `c_ap`), the
 /// `ArgumentPackageInterface` `iface` (holding `c_if` and `c_if2`) and the
 /// `ArgumentPackageBinding` `bind` (holding `c_b`). With `edit::apply`:
@@ -2177,4 +2241,764 @@ fn lib_edit_006_the_check_order_is_element_not_found_then_not_empty_then_referen
         ),
         "{EDIT_006}: the ids"
     );
+}
+
+// ---------------------------------------------------------------------------
+// LIB-EDIT-019: deleting what an interface implements or a binding binds
+// ---------------------------------------------------------------------------
+
+/// Applies the setup edit `operation` to `doc`, which must succeed.
+fn setup(doc: &mut Document, operation: impl Into<Operation>) {
+    let operation = operation.into();
+    if let Err(error) = edit::apply(doc, operation.clone()) {
+        panic!("{EDIT_019}: setup: {operation:?} was refused: {error}");
+    }
+}
+
+/// Creates the Claim `id` under `parent`, a citation of `cited` if given.
+fn setup_claim(doc: &mut Document, parent: &str, id: &str, cited: Option<&str>) {
+    setup(doc, CreateClaim::new(parent, named(id)).with_id(id));
+    if let Some(cited) = cited {
+        setup(doc, SetFlag::new(id, Flag::IsCitation, true));
+        setup(
+            doc,
+            SetReferences::new(id, ReferenceEnd::CitedElement, [cited]),
+        );
+    }
+}
+
+/// Fixture M, built with edits, in pre-order `p, c, i, ci, q, d, j, dj, r,
+/// k, kc, e, b, bi, bj, bl`:
+/// - the root ArgumentPackage `p`, `interface` `[i]`, holding the Claim `c`
+///   and the interface `i` (`implements` `p`), which holds the citation `ci`
+///   of `c`;
+/// - the root ArgumentPackage `q`, `interface` `[j]`, holding the Claim `d`
+///   and the interface `j` (`implements` `q`), which holds the citation `dj`
+///   of `d`;
+/// - the empty root ArgumentPackage `r`;
+/// - the root interface `k` (`implements` `r`), holding the citation `kc` of
+///   `c`;
+/// - the empty root interface `e` (`implements` `r`);
+/// - the root binding `b` with the participants `participants`, holding the
+///   citations `bi` of `ci` and `bj` of `dj`, and the `AssertedInference`
+///   `bl` from `bi` to `bj`.
+fn fixture_m(participants: &[&str]) -> Document {
+    let mut doc = Document::new();
+    for (package, claim, interface, citation) in [("p", "c", "i", "ci"), ("q", "d", "j", "dj")] {
+        setup(
+            &mut doc,
+            CreateArgumentPackage::root(named(package)).with_id(package),
+        );
+        setup_claim(&mut doc, package, claim, None);
+        setup(
+            &mut doc,
+            CreateArgumentPackageInterface::new(package, named(interface), package)
+                .with_id(interface),
+        );
+        setup_claim(&mut doc, interface, citation, Some(claim));
+        setup(
+            &mut doc,
+            AddReference::new(package, ReferenceEnd::Interface, interface),
+        );
+    }
+    setup(
+        &mut doc,
+        CreateArgumentPackage::root(named("r")).with_id("r"),
+    );
+    setup(
+        &mut doc,
+        CreateArgumentPackageInterface::root(named("k"), "r").with_id("k"),
+    );
+    setup_claim(&mut doc, "k", "kc", Some("c"));
+    setup(
+        &mut doc,
+        CreateArgumentPackageInterface::root(named("e"), "r").with_id("e"),
+    );
+    setup(
+        &mut doc,
+        CreateArgumentPackageBinding::root(named("b"), participants.iter().copied()).with_id("b"),
+    );
+    setup_claim(&mut doc, "b", "bi", Some("ci"));
+    setup_claim(&mut doc, "b", "bj", Some("dj"));
+    setup(
+        &mut doc,
+        CreateAssertedInference::new("b", named("bl"), ["bi"], "bj").with_id("bl"),
+    );
+    let order: Vec<&str> = doc
+        .elements()
+        .map(|element| element.id().as_str())
+        .collect();
+    assert_eq!(
+        order,
+        [
+            "p", "c", "i", "ci", "q", "d", "j", "dj", "r", "k", "kc", "e", "b", "bi", "bj", "bl"
+        ],
+        "{EDIT_019}: setup: fixture M is not in the pre-order of the design"
+    );
+    doc
+}
+
+/// Fixture M read from XMI, the binding `b` with `participantPackage`
+/// `participants` (written as read, so it may hold fewer than two).
+fn fixture_m_xmi(participants: &str) -> String {
+    let citation =
+        |id: &str, cited: &str| claim(id, &format!(r#"isCitation="true" citedElement="{cited}""#));
+    format!(
+        r#"<xmi:XMI {NAMESPACES}>
+<sacm:ArgumentPackage xmi:id="p" interface="i"><name content="p"/>{c}{i}</sacm:ArgumentPackage>
+<sacm:ArgumentPackage xmi:id="q" interface="j"><name content="q"/>{d}{j}</sacm:ArgumentPackage>
+<sacm:ArgumentPackage xmi:id="r"><name content="r"/></sacm:ArgumentPackage>
+<sacm:ArgumentPackageInterface xmi:id="k" implements="r"><name content="k"/>{kc}</sacm:ArgumentPackageInterface>
+<sacm:ArgumentPackageInterface xmi:id="e" implements="r"><name content="e"/></sacm:ArgumentPackageInterface>
+<sacm:ArgumentPackageBinding xmi:id="b" participantPackage="{participants}"><name content="b"/>{bi}{bj}{bl}</sacm:ArgumentPackageBinding>
+</xmi:XMI>"#,
+        c = claim("c", ""),
+        i = element(
+            "ArgumentPackageInterface",
+            "i",
+            r#"implements="p""#,
+            &citation("ci", "c")
+        ),
+        d = claim("d", ""),
+        j = element(
+            "ArgumentPackageInterface",
+            "j",
+            r#"implements="q""#,
+            &citation("dj", "d")
+        ),
+        kc = citation("kc", "c"),
+        bi = citation("bi", "ci"),
+        bj = citation("bj", "dj"),
+        bl = element("AssertedInference", "bl", r#"source="bi" target="bj""#, ""),
+    )
+}
+
+/// The (holder, end, id, crosses) of each dangling reference the preview of
+/// `operation` on `doc` lists.
+fn dangling(
+    doc: &Document,
+    operation: impl Into<Operation>,
+) -> Vec<(String, &'static str, String, bool)> {
+    let operation = operation.into();
+    match edit::preview(doc, &operation) {
+        Ok(preview) => preview
+            .dangling_references()
+            .iter()
+            .map(|reference| {
+                (
+                    reference.holder().as_str().to_owned(),
+                    reference.end().name(),
+                    reference.id().as_str().to_owned(),
+                    reference.crosses_package(),
+                )
+            })
+            .collect(),
+        Err(error) => panic!("{EDIT_019}: the preview of {operation:?} was refused: {error}"),
+    }
+}
+
+/// A dangling reference as plain values.
+fn dangles(
+    holder: &str,
+    end: &'static str,
+    id: &str,
+    crosses: bool,
+) -> (String, &'static str, String, bool) {
+    (holder.to_owned(), end, id.to_owned(), crosses)
+}
+
+/// The cascading delete of `element`: `DeleteRecursively` and
+/// `ApplyReferencePolicy` under the reference policy `reference`.
+fn cascading(element: &str, reference: ReferenceDeletePolicy) -> DeleteElement {
+    delete(element, reference, DeleteRecursively, ApplyReferencePolicy)
+}
+
+/// The two reference policies that scrub and cascade.
+const CASCADING_POLICIES: [ReferenceDeletePolicy; 2] =
+    [ScrubReferences, DeleteReferencingRelationships];
+
+#[test]
+fn lib_edit_019_deleting_an_implemented_package_is_cross_package_reference_by_default() {
+    let mut doc = fixture_m(&["i", "j"]);
+    let error = refused(EDIT_019, "r by default", &mut doc, DeleteElement::new("r"));
+    assert_eq!(
+        (named_reference(&error), error.code()),
+        (
+            Some(("CrossPackageReference", "k", "implements", "r")),
+            Code::CMD_EXTERNAL_REFERENCES
+        ),
+        "{EDIT_019}: deleting r, which k and e implement: {error:?}"
+    );
+}
+
+#[test]
+fn lib_edit_019_reject_if_referenced_names_the_first_holder() {
+    let mut doc = fixture_m(&["i", "j"]);
+    let error = refused(
+        EDIT_019,
+        "r, crossing applied",
+        &mut doc,
+        DeleteElement::new("r").with_cross_package_policy(ApplyReferencePolicy),
+    );
+    assert_eq!(
+        (named_reference(&error), error.code()),
+        (
+            Some(("Referenced", "k", "implements", "r")),
+            Code::CMD_DELETE_REFERENCED
+        ),
+        "{EDIT_019}: r under RejectIfReferenced: {error:?}"
+    );
+    let error = refused(
+        EDIT_019,
+        "i recursively, crossing applied",
+        &mut doc,
+        cascading("i", RejectIfReferenced),
+    );
+    assert_eq!(
+        named_reference(&error),
+        Some(("Referenced", "p", "interface", "i")),
+        "{EDIT_019}: i under RejectIfReferenced: p's interface end comes first: {error:?}"
+    );
+}
+
+#[test]
+fn lib_edit_019_scrub_deletes_an_interface_left_without_implements() {
+    let mut doc = fixture_m(&["i", "j"]);
+    let operation = cascading("r", ScrubReferences);
+    assert_eq!(
+        dangling(&doc, operation.clone()),
+        [
+            dangles("k", "implements", "r", true),
+            dangles("e", "implements", "r", true)
+        ],
+        "{EDIT_019}: the dangling references of deleting r"
+    );
+    let mutation = accepted(EDIT_019, "r, scrubbed", &mut doc, operation);
+    assert_eq!(
+        (strs(mutation.deleted_ids()), strs(mutation.changed_ids())),
+        (vec!["r", "k", "kc", "e"], Vec::<&str>::new()),
+        "{EDIT_019}: k and e lose their implements and go, with kc"
+    );
+}
+
+#[test]
+fn lib_edit_019_delete_referencing_relationships_does_the_same() {
+    let mut doc = fixture_m(&["i", "j"]);
+    let operation = cascading("r", DeleteReferencingRelationships);
+    assert_eq!(
+        dangling(&doc, operation.clone()),
+        [
+            dangles("k", "implements", "r", true),
+            dangles("e", "implements", "r", true)
+        ],
+        "{EDIT_019}: the dangling references of deleting r"
+    );
+    let mutation = accepted(EDIT_019, "r, cascading", &mut doc, operation);
+    assert_eq!(
+        (strs(mutation.deleted_ids()), strs(mutation.changed_ids())),
+        (vec!["r", "k", "kc", "e"], Vec::<&str>::new()),
+        "{EDIT_019}: k and e lose their implements and go, with kc"
+    );
+}
+
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the cases of one acceptance item read best as one list"
+)]
+fn lib_edit_019_the_package_policy_guards_the_holder() {
+    for policy in CASCADING_POLICIES {
+        let mut doc = fixture_m(&["i", "j"]);
+        let context = format!("r under {policy:?} and RejectIfNonEmpty");
+        let error = refused(
+            EDIT_019,
+            &context,
+            &mut doc,
+            delete("r", policy, RejectIfNonEmpty, ApplyReferencePolicy),
+        );
+        assert!(
+            matches!(
+                &error,
+                EditError::NotEmpty { element, contained: 1, .. } if element.as_str() == "k"
+            ),
+            "{EDIT_019}: {context}: not NotEmpty {{ k, 1 }}: {error:?}"
+        );
+        assert_eq!(
+            (error.code(), error.to_string()),
+            (
+                Code::CMD_PACKAGE_NOT_EMPTY,
+                "the element \"k\" contains 1 element that is no UtilityElement, and the delete \
+                 is not recursive"
+                    .to_owned()
+            ),
+            "{EDIT_019}: {context}: the code and the Display"
+        );
+        // With k gone, and e holding only a Note, r is deleted with e.
+        accepted(
+            EDIT_019,
+            "k",
+            &mut doc,
+            delete(
+                "k",
+                RejectIfReferenced,
+                DeleteRecursively,
+                RejectIfExternalReferencesExist,
+            ),
+        );
+        setup(
+            &mut doc,
+            CreateNote::new("e", LangString::new("Only a note")).with_id("e_note"),
+        );
+        let mutation = accepted(
+            EDIT_019,
+            &format!("{context}, k removed first"),
+            &mut doc,
+            delete("r", policy, RejectIfNonEmpty, ApplyReferencePolicy),
+        );
+        assert_eq!(
+            (strs(mutation.deleted_ids()), strs(mutation.changed_ids())),
+            (vec!["r", "e", "e_note"], Vec::<&str>::new()),
+            "{EDIT_019}: {context}: e, holding only a Note, is cascaded"
+        );
+        // Check 4 comes after the dangling references: under
+        // RejectIfExternalReferencesExist, k's `implements` crossing to r
+        // refuses first.
+        let mut doc = fixture_m(&["i", "j"]);
+        let error = refused(
+            EDIT_019,
+            &format!("{context}, crossing refused"),
+            &mut doc,
+            delete(
+                "r",
+                policy,
+                RejectIfNonEmpty,
+                RejectIfExternalReferencesExist,
+            ),
+        );
+        assert!(
+            matches!(
+                &error,
+                EditError::CrossPackageReference { holder, end: "implements", id, .. }
+                    if holder.as_str() == "k" && id.as_str() == "r"
+            ),
+            "{EDIT_019}: {context}: the dangling refusal is not first: {error:?}"
+        );
+        // With two non-empty holders, the first in pre-order is named: k,
+        // not e.
+        let mut doc = fixture_m(&["i", "j"]);
+        setup(
+            &mut doc,
+            CreateClaim::new("e", named("e_claim")).with_id("e_claim"),
+        );
+        let error = refused(
+            EDIT_019,
+            &format!("{context}, two holders"),
+            &mut doc,
+            delete("r", policy, RejectIfNonEmpty, ApplyReferencePolicy),
+        );
+        assert!(
+            matches!(
+                &error,
+                EditError::NotEmpty { element, contained: 1, .. } if element.as_str() == "k"
+            ),
+            "{EDIT_019}: {context}, two holders: not NotEmpty {{ k, 1 }}: {error:?}"
+        );
+        // And so when the cascade reaches the earlier holder last: deleting
+        // x removes l (implements x), whose package y is what h implements;
+        // h comes first in pre-order.
+        let mut doc = read(
+            EDIT_019,
+            &format!(
+                r#"<xmi:XMI {NAMESPACES}>
+<sacm:ArgumentPackageInterface xmi:id="h" implements="y"><name content="h"/>{hc}</sacm:ArgumentPackageInterface>
+<sacm:ArgumentPackage xmi:id="x"><name content="x"/></sacm:ArgumentPackage>
+<sacm:ArgumentPackageInterface xmi:id="l" implements="x"><name content="l"/>{y}{lc}</sacm:ArgumentPackageInterface>
+</xmi:XMI>"#,
+                hc = claim("hc", ""),
+                y = element("ArgumentPackage", "y", "", ""),
+                lc = claim("lc", ""),
+            ),
+        );
+        let error = refused(
+            EDIT_019,
+            &format!("{context}, two levels"),
+            &mut doc,
+            delete("x", policy, RejectIfNonEmpty, ApplyReferencePolicy),
+        );
+        assert!(
+            matches!(
+                &error,
+                EditError::NotEmpty { element, contained: 1, .. } if element.as_str() == "h"
+            ),
+            "{EDIT_019}: {context}, two levels: not NotEmpty {{ h, 1 }}: {error:?}"
+        );
+    }
+}
+
+#[test]
+fn lib_edit_019_a_binding_left_with_one_participant_is_deleted_to_a_fixpoint() {
+    for policy in CASCADING_POLICIES {
+        let mut doc = fixture_m(&["i", "j"]);
+        let operation = cascading("i", policy);
+        assert_eq!(
+            dangling(&doc, operation.clone()),
+            [
+                dangles("p", "interface", "i", true),
+                dangles("b", "participantPackage", "i", true),
+                dangles("bi", "citedElement", "ci", true),
+                dangles("bl", "source", "bi", false),
+                dangles("bl", "target", "bj", false),
+            ],
+            "{EDIT_019}: {policy:?}: the dangling references of deleting i"
+        );
+        let j_before = get(EDIT_019, &doc, "j").implements().cloned();
+        let mutation = accepted(
+            EDIT_019,
+            &format!("i under {policy:?}"),
+            &mut doc,
+            operation,
+        );
+        assert_eq!(
+            (strs(mutation.deleted_ids()), strs(mutation.changed_ids())),
+            (vec!["i", "ci", "b", "bi", "bj", "bl"], vec!["p"]),
+            "{EDIT_019}: {policy:?}: b is left with j alone and goes, with its contents"
+        );
+        assert_eq!(
+            (
+                get(EDIT_019, &doc, "j").implements().cloned(),
+                get(EDIT_019, &doc, "q").interfaces().to_vec(),
+                get(EDIT_019, &doc, "p").interfaces().to_vec()
+            ),
+            (j_before, vec![id("j")], Vec::new()),
+            "{EDIT_019}: {policy:?}: j survives unchanged and p loses i"
+        );
+    }
+}
+
+#[test]
+fn lib_edit_019_a_binding_keeping_two_distinct_participants_survives() {
+    for policy in CASCADING_POLICIES {
+        let mut doc = fixture_m(&["i", "j", "q"]);
+        let mutation = accepted(
+            EDIT_019,
+            &format!("i under {policy:?}"),
+            &mut doc,
+            cascading("i", policy),
+        );
+        assert_eq!(
+            (strs(mutation.deleted_ids()), strs(mutation.changed_ids())),
+            (vec!["i", "ci"], vec!["p", "b", "bi"]),
+            "{EDIT_019}: {policy:?}: b keeps j and q"
+        );
+        assert_eq!(
+            get(EDIT_019, &doc, "b").participant_packages(),
+            [id("j"), id("q")],
+            "{EDIT_019}: {policy:?}: b's participants"
+        );
+    }
+}
+
+#[test]
+fn lib_edit_019_participants_count_as_distinct_ids() {
+    for policy in CASCADING_POLICIES {
+        let mut doc = fixture_m(&["i", "i", "j"]);
+        let mutation = accepted(
+            EDIT_019,
+            &format!("j under {policy:?}"),
+            &mut doc,
+            cascading("j", policy),
+        );
+        assert_eq!(
+            (strs(mutation.deleted_ids()), strs(mutation.changed_ids())),
+            (vec!["j", "dj", "b", "bi", "bj", "bl"], vec!["q"]),
+            "{EDIT_019}: {policy:?}: [i, i] is one distinct participant, so b goes"
+        );
+    }
+}
+
+#[test]
+fn lib_edit_019_a_holder_below_its_bound_that_loses_no_id_is_untouched() {
+    for policy in CASCADING_POLICIES {
+        // b binds only i, as read.
+        let read_doc = read(EDIT_019, &fixture_m_xmi("i"));
+        let mut doc = read_doc.clone();
+        let mutation = accepted(
+            EDIT_019,
+            &format!("r under {policy:?}"),
+            &mut doc,
+            cascading("r", policy),
+        );
+        assert_eq!(
+            (strs(mutation.deleted_ids()), strs(mutation.changed_ids())),
+            (vec!["r", "k", "kc", "e"], Vec::<&str>::new()),
+            "{EDIT_019}: {policy:?}: b, below its bound, loses no id and is untouched"
+        );
+        assert!(doc.contains("b"), "{EDIT_019}: {policy:?}: b was deleted");
+        let mut doc = read_doc.clone();
+        let mutation = accepted(
+            EDIT_019,
+            &format!("i under {policy:?}"),
+            &mut doc,
+            cascading("i", policy),
+        );
+        assert_eq!(
+            (strs(mutation.deleted_ids()), strs(mutation.changed_ids())),
+            (vec!["i", "ci", "b", "bi", "bj", "bl"], vec!["p"]),
+            "{EDIT_019}: {policy:?}: b loses i and goes"
+        );
+        // b binds i and the dangling zz: losing i leaves one distinct id.
+        let mut doc = read(EDIT_019, &fixture_m_xmi("i zz"));
+        let mutation = accepted(
+            EDIT_019,
+            &format!("i under {policy:?}, zz dangling"),
+            &mut doc,
+            cascading("i", policy),
+        );
+        assert_eq!(
+            (strs(mutation.deleted_ids()), strs(mutation.changed_ids())),
+            (vec!["i", "ci", "b", "bi", "bj", "bl"], vec!["p"]),
+            "{EDIT_019}: {policy:?}: b is left with the dangling zz alone and goes"
+        );
+    }
+}
+
+/// Read from XMI: the root ArtifactPackage `tests` (the Artifact `report`),
+/// the root ArtifactPackage `requirements` (the Artifact `spec` and the
+/// interface `requirements_api` implementing it), the empty root
+/// `ArtifactPackageInterface` `tests_api` implementing `tests`, and the root
+/// `ArtifactPackageBinding` `binding` of `tests_api` and `requirements_api`,
+/// holding the Artifact `binding_report`.
+fn artifact_holders() -> String {
+    let artifact = |id: &str| {
+        format!(
+            r#"<artifactElement xmi:type="sacm:Artifact" xmi:id="{id}"><name content="{id}"/></artifactElement>"#
+        )
+    };
+    format!(
+        r#"<xmi:XMI {NAMESPACES}>
+<sacm:ArtifactPackage xmi:id="tests"><name content="tests"/>{report}</sacm:ArtifactPackage>
+<sacm:ArtifactPackage xmi:id="requirements"><name content="requirements"/>{spec}<artifactElement xmi:type="sacm:ArtifactPackageInterface" xmi:id="requirements_api" implements="requirements"><name content="requirements_api"/></artifactElement></sacm:ArtifactPackage>
+<sacm:ArtifactPackageInterface xmi:id="tests_api" implements="tests"><name content="tests_api"/></sacm:ArtifactPackageInterface>
+<sacm:ArtifactPackageBinding xmi:id="binding" participantPackage="tests_api requirements_api"><name content="binding"/>{binding_report}</sacm:ArtifactPackageBinding>
+</xmi:XMI>"#,
+        report = artifact("report"),
+        spec = artifact("spec"),
+        binding_report = artifact("binding_report"),
+    )
+}
+
+#[test]
+fn lib_edit_019_artifact_holders_cascade_across_two_levels() {
+    for policy in CASCADING_POLICIES {
+        let mut doc = read(EDIT_019, &artifact_holders());
+        let mutation = accepted(
+            EDIT_019,
+            &format!("tests under {policy:?}"),
+            &mut doc,
+            cascading("tests", policy),
+        );
+        assert_eq!(
+            (strs(mutation.deleted_ids()), strs(mutation.changed_ids())),
+            (
+                vec!["tests", "report", "tests_api", "binding", "binding_report"],
+                Vec::<&str>::new()
+            ),
+            "{EDIT_019}: {policy:?}: tests_api loses its implements, then binding its second \
+             participant"
+        );
+        assert!(
+            doc.contains("requirements_api"),
+            "{EDIT_019}: {policy:?}: requirements_api was deleted"
+        );
+    }
+}
+
+/// The deletes of the LIB-EDIT-019 cases on fixture M and its variants.
+fn cases_019() -> Vec<(String, Document, DeleteElement)> {
+    let mut cases = Vec::new();
+    for participants in [&["i", "j"][..], &["i", "j", "q"], &["i", "i", "j"]] {
+        let doc = fixture_m(participants);
+        for target in ["r", "i", "j", "k", "e", "b", "p", "q", "c", "ci", "bi"] {
+            for operation in every_policy(target) {
+                cases.push((
+                    format!("{target} of fixture M with b = {participants:?}, {operation:?}"),
+                    doc.clone(),
+                    operation,
+                ));
+            }
+        }
+    }
+    cases
+}
+
+/// Asserts what every successful delete of LIB-EDIT-019 keeps: no survivor
+/// holds a deleted id, a deleted id has no referrer, and each survivor's
+/// referrers are its holders in the document (LIB-EDIT-005, LIB-API-014).
+fn assert_after_conditions(
+    context: &str,
+    before: &Document,
+    after: &Document,
+    mutation: &Mutation,
+) {
+    let deleted: BTreeSet<&ElementId> = mutation.deleted_ids().iter().collect();
+    for gone in &deleted {
+        assert!(
+            after.referrers(gone.as_str()).is_empty(),
+            "{EDIT_019}: {context}: the deleted {gone:?} has referrers"
+        );
+        assert!(
+            before.contains(gone.as_str()) && !after.contains(gone.as_str()),
+            "{EDIT_019}: {context}: {gone:?} is listed as deleted but was not"
+        );
+    }
+    for element in after.elements() {
+        for end in ENDS {
+            for held_id in held(element, end) {
+                assert!(
+                    !deleted.contains(&held_id),
+                    "{EDIT_019}: {context}: {:?} still holds the deleted {held_id:?} in {}",
+                    element.id(),
+                    end.name()
+                );
+                let named = after
+                    .referrers(held_id.as_str())
+                    .into_iter()
+                    .any(|referrer| {
+                        referrer.holder().id() == element.id() && referrer.end() == end
+                    });
+                assert!(
+                    named,
+                    "{EDIT_019}: {context}: referrers({held_id:?}) does not list {:?} in {}",
+                    element.id(),
+                    end.name()
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn lib_edit_019_after_conditions_hold() {
+    let mut accepted_count = 0;
+    for (context, before, operation) in cases_019() {
+        let mut doc = before.clone();
+        if let Ok(mutation) = edit::apply(&mut doc, operation.clone()) {
+            assert_clean_delete(EDIT_019, &context, &before, &doc, &mutation);
+            assert_after_conditions(&context, &before, &doc, &mutation);
+            accepted_count += 1;
+        }
+    }
+    assert!(
+        accepted_count > 0,
+        "{EDIT_019}: setup: no case of fixture M was accepted"
+    );
+}
+
+#[test]
+fn lib_edit_019_preview_and_apply_agree_and_join_the_atomic_set() {
+    for (context, before, operation) in cases_019() {
+        let operation = Operation::from(operation);
+        let mut doc = before.clone();
+        let checked = edit::check(&doc, &operation);
+        let previewed = edit::preview(&doc, &operation);
+        let applied = edit::apply(&mut doc, operation.clone());
+        match (&previewed, &applied) {
+            (Ok(preview), Ok(mutation)) => {
+                assert_eq!(
+                    (preview.mutation(), &checked),
+                    (mutation, &Ok(())),
+                    "{EDIT_019}: {context}: the preview or check disagrees with apply"
+                );
+                // Every dangling reference names a deleted id, held outside
+                // the element's subtree by an element of the document before.
+                let deleted: BTreeSet<&ElementId> = mutation.deleted_ids().iter().collect();
+                for reference in preview.dangling_references() {
+                    assert!(
+                        deleted.contains(reference.id())
+                            && before.contains(reference.holder().as_str()),
+                        "{EDIT_019}: {context}: the dangling reference {reference:?} names no \
+                         deleted id"
+                    );
+                }
+            }
+            (Err(preview_error), Err(error)) => {
+                assert_eq!(
+                    (preview_error, &checked),
+                    (error, &Err(error.clone())),
+                    "{EDIT_019}: {context}: the preview or check refuses otherwise than apply"
+                );
+                assert!(
+                    doc == before,
+                    "{EDIT_019}: {context}: the refusal {error:?} changed the document"
+                );
+            }
+            _ => panic!(
+                "{EDIT_019}: {context}: preview {previewed:?} and apply {applied:?} disagree"
+            ),
+        }
+    }
+}
+
+#[test]
+fn lib_edit_019_deleting_an_interface_with_a_package_interface_end_is_cross_package_by_default() {
+    let mut doc = read(EDIT_019, &fixture_m_xmi("i j"));
+    for reference in REFERENCE_POLICIES {
+        let context = format!("i under {reference:?}, recursively");
+        let error = refused(
+            EDIT_019,
+            &context,
+            &mut doc,
+            delete(
+                "i",
+                reference,
+                DeleteRecursively,
+                RejectIfExternalReferencesExist,
+            ),
+        );
+        assert_eq!(
+            (named_reference(&error), error.code()),
+            (
+                Some(("CrossPackageReference", "p", "interface", "i")),
+                Code::CMD_EXTERNAL_REFERENCES
+            ),
+            "{EDIT_019}: {context}: p's interface end crosses from p into the interface i: {error:?}"
+        );
+    }
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn lib_edit_019_serde_unchanged() {
+    // The JSON of a DeleteElement is the one of slice 0048 (ADR 0030): the
+    // new behaviour adds no key and no policy.
+    for (json, expected) in [
+        (
+            r#"{"type":"DeleteElement","element":"r","reference_policy":"RejectIfReferenced","package_policy":"RejectIfNonEmpty","cross_package_policy":"RejectIfExternalReferencesExist"}"#,
+            DeleteElement::new("r"),
+        ),
+        (
+            r#"{"type":"DeleteElement","element":"i","reference_policy":"ScrubReferences","package_policy":"DeleteRecursively","cross_package_policy":"ApplyReferencePolicy"}"#,
+            cascading("i", ScrubReferences),
+        ),
+        (
+            r#"{"type":"DeleteElement","element":"i","reference_policy":"DeleteReferencingRelationships","package_policy":"RejectIfNonEmpty","cross_package_policy":"ApplyReferencePolicy"}"#,
+            delete(
+                "i",
+                DeleteReferencingRelationships,
+                RejectIfNonEmpty,
+                ApplyReferencePolicy,
+            ),
+        ),
+    ] {
+        let read_back: Operation = serde_json::from_str(json)
+            .unwrap_or_else(|error| panic!("{EDIT_019}: {json} does not read: {error}"));
+        assert_eq!(
+            read_back,
+            Operation::from(expected.clone()),
+            "{EDIT_019}: {json} reads otherwise"
+        );
+        let written = serde_json::to_string(&Operation::from(expected))
+            .unwrap_or_else(|error| panic!("{EDIT_019}: the delete does not write: {error}"));
+        assert_eq!(written, json, "{EDIT_019}: the delete writes otherwise");
+    }
 }

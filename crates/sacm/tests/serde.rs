@@ -74,6 +74,11 @@ use sacm::edit::{
     CreateCategory, CreateExpression, CreateTerm, CreateTerminologyGroup, CreateTerminologyPackage,
     SetExternalReference, SetValue,
 };
+// The creates of slice 0066 (SACM23-ARG-014, -015, SACM23-ART-012, -013; ADR 0039).
+use sacm::edit::{
+    CreateArgumentPackageBinding, CreateArgumentPackageInterface, CreateArtifactPackageBinding,
+    CreateArtifactPackageInterface,
+};
 use sacm::model::{
     AssertionDeclaration, Document, ElementId, ElementKind, Flag, LangString, MultiLangString,
     ReferenceEnd,
@@ -95,6 +100,10 @@ const ART_010: &str = "SACM23-ART-010";
 const TERM_001: &str = "SACM23-TERM-001";
 const TERM_004: &str = "SACM23-TERM-004";
 const TERM_006: &str = "SACM23-TERM-006";
+const ARG_014: &str = "SACM23-ARG-014";
+const ARG_015: &str = "SACM23-ARG-015";
+const ART_012: &str = "SACM23-ART-012";
+const ART_013: &str = "SACM23-ART-013";
 
 /// The directory of the golden JSON files.
 const GOLDEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/golden/serde");
@@ -103,11 +112,16 @@ const GOLDEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/golden/ser
 /// `operations.json`. `CopyElements` has no sample: it is not serialized
 /// (ADR 0030 amendment 2). Slice 0062 adds five creates after
 /// `CreateArtifactAssetRelationship`, and `SetValue` and
-/// `SetExternalReference` after `SetEndTime` (ADR 0034 amendment 3).
-const OPERATION_NAME_COUNT: usize = 49;
+/// `SetExternalReference` after `SetEndTime` (ADR 0034 amendment 3). Slice
+/// 0066 adds the interface and binding creates after `CreateArgumentPackage`
+/// and `CreateArtifactPackage` (ADR 0039).
+const OPERATION_NAME_COUNT: usize = 53;
 const OPERATION_NAMES: [&str; OPERATION_NAME_COUNT] = [
     "CreateAssuranceCasePackage",
     "CreateArgumentPackage",
+    // The creates of slice 0066 (SACM23-ARG-014, -015).
+    "CreateArgumentPackageInterface",
+    "CreateArgumentPackageBinding",
     "CreateClaim",
     "CreateArgumentReasoning",
     "CreateAssertedInference",
@@ -122,6 +136,9 @@ const OPERATION_NAMES: [&str; OPERATION_NAME_COUNT] = [
     "CreateNote",
     "CreateTaggedValue",
     "CreateArtifactPackage",
+    // The creates of slice 0066 (SACM23-ART-012, -013).
+    "CreateArtifactPackageInterface",
+    "CreateArtifactPackageBinding",
     "CreateProperty",
     "CreateTechnique",
     "CreateParticipant",
@@ -159,8 +176,9 @@ const OPERATION_NAMES: [&str; OPERATION_NAME_COUNT] = [
     "DeleteElement",
 ];
 
-/// The creates of [`OPERATION_NAMES`]: 30 with the five of slice 0062.
-const CREATE_COUNT: usize = 30;
+/// The creates of [`OPERATION_NAMES`]: 34 with the five of slice 0062 and
+/// the four of slice 0066.
+const CREATE_COUNT: usize = 34;
 
 /// Every `EditError` variant of this release, with its catalog code, in the
 /// order of `edit-errors.json`.
@@ -287,6 +305,14 @@ const ENDS: &[(ReferenceEnd, &str, &str)] = &[
         ReferenceEnd::TerminologyGroupMember,
         "terminologyElement",
         "terminologyElement",
+    ),
+    // The ends of slice 0066 (ADR 0039 D1), whose serde name is the XMI name.
+    (ReferenceEnd::Interface, "interface", "interface"),
+    (ReferenceEnd::Implements, "implements", "implements"),
+    (
+        ReferenceEnd::ParticipantPackage,
+        "participantPackage",
+        "participantPackage",
     ),
     // The derived end of slice 0065 (SACM23-BASE-009).
     (ReferenceEnd::Expression, "expression", "expression"),
@@ -631,7 +657,7 @@ fn package_and_claim_samples() -> Vec<Operation> {
 /// The creates of [`operation_samples`] that reference other elements.
 fn argumentation_samples() -> Vec<Operation> {
     let sources = ["c2", "c3"];
-    vec![
+    let mut samples: Vec<Operation> = vec![
         CreateArgumentReasoning::new("arguments", en("Why")).into(),
         CreateArgumentReasoning::new("arguments", en("Why"))
             .with_id("r1")
@@ -678,6 +704,55 @@ fn argumentation_samples() -> Vec<Operation> {
             .with_id("g1")
             .with_group_members(["c1", "c2"])
             .into(),
+    ];
+    samples.extend(argument_interface_samples());
+    samples
+}
+
+/// The Argumentation creates of slice 0066 (SACM23-ARG-014, -015; ADR 0039
+/// D4): an interface and a binding, each as a root with an id and under a
+/// parent without one.
+fn argument_interface_samples() -> Vec<Operation> {
+    vec![
+        CreateArgumentPackageInterface::root(en("Braking interface"), "braking")
+            .with_id("braking_api")
+            .into(),
+        CreateArgumentPackageInterface::new("braking", en("Braking interface"), "braking").into(),
+        CreateArgumentPackageBinding::root(
+            en("Braking supports the vehicle"),
+            ["braking_api", "vehicle_api"],
+        )
+        .with_id("binding")
+        .into(),
+        CreateArgumentPackageBinding::new(
+            "case",
+            en("Braking supports the vehicle"),
+            ["braking_api", "vehicle_api"],
+        )
+        .into(),
+    ]
+}
+
+/// The Artifact creates of slice 0066 (SACM23-ART-012, -013; ADR 0039 D4),
+/// in the shapes of [`argument_interface_samples`].
+fn artifact_interface_samples() -> Vec<Operation> {
+    vec![
+        CreateArtifactPackageInterface::root(en("Brake tests interface"), "tests")
+            .with_id("tests_api")
+            .into(),
+        CreateArtifactPackageInterface::new("tests", en("Brake tests interface"), "tests").into(),
+        CreateArtifactPackageBinding::root(
+            en("The tests verify the requirement"),
+            ["tests_api", "requirements_api"],
+        )
+        .with_id("binding")
+        .into(),
+        CreateArtifactPackageBinding::new(
+            "case",
+            en("The tests verify the requirement"),
+            ["tests_api", "requirements_api"],
+        )
+        .into(),
     ]
 }
 
@@ -775,6 +850,7 @@ fn artifact_samples() -> Vec<Operation> {
         .with_id("rel1")
         .into(),
     ]);
+    samples.extend(artifact_interface_samples());
     samples.extend(terminology_samples());
     samples
 }
@@ -886,6 +962,9 @@ fn edit_samples() -> Vec<Operation> {
         AddReference::new("lid", ReferenceEnd::Category, "hazards").into(),
     ]);
     samples.push(AddReference::new("rel1", ReferenceEnd::ArtifactSource, "report_pdf").into());
+    // The end of slice 0066 (SACM23-ARG-015), after the rel1 sample.
+    samples
+        .push(AddReference::new("binding", ReferenceEnd::ParticipantPackage, "vehicle_api").into());
     samples.extend([
         Operation::from(RemoveReference::new("i1", ReferenceEnd::Source, "c3")),
         ReorderElements::new("arguments", ["c2", "c1"]).into(),
@@ -1100,6 +1179,11 @@ fn edit_refusal_samples() -> Vec<EditError> {
             ["report"],
             Vec::<ElementId>::new(),
         ),
+    ));
+    // The refusal of slice 0066 (SACM23-ARG-015): one distinct participant.
+    samples.push(refusal(
+        &doc,
+        CreateArgumentPackageBinding::new("case", name(), ["p", "p"]),
     ));
     samples.extend([
         refusal(
@@ -4034,4 +4118,165 @@ fn sacm23_term_004_a_create_term_reads_with_its_defaults_and_requires_its_value(
         "{TERM_004}: {set} does not read as its twin"
     );
     assert_refused_for::<Operation>(TERM_004, "a null value", set, r#""v""#, "null");
+}
+
+// ---------------------------------------------------------------------------
+// The creates of slice 0066 (SACM23-ARG-014, -015, SACM23-ART-012, -013)
+// ---------------------------------------------------------------------------
+
+/// Each of `samples` (a constructed create and its compact JSON) is written
+/// as that JSON, reads back as its twin, is in `operations.json`, and its
+/// bare struct is the operation without `"type"`; and the JSON without
+/// `required` (a key and its value, with the comma before it) is refused.
+fn assert_create_json<T>(row: &str, samples: &[(T, &str)], required: &str)
+where
+    T: Serialize + DeserializeOwned + Into<Operation> + Clone + PartialEq + Debug,
+{
+    let in_golden: Vec<Operation> = from_json(&golden("operations.json"));
+    for (create, json) in samples {
+        let operation: Operation = create.clone().into();
+        assert_eq!(
+            to_json(&operation),
+            *json,
+            "{row}: {operation:?} is not written as {json}"
+        );
+        let read: Operation = from_json(json);
+        assert_eq!(read, operation, "{row}: {json} does not read as its twin");
+        assert!(
+            in_golden.contains(&operation),
+            "{row}: operations.json does not hold {json}"
+        );
+        assert_bare_for(row, create);
+        assert_refused_for::<Operation>(row, "the end's key left out", json, required, "");
+        assert_refused_for::<Operation>(
+            row,
+            "an unknown key",
+            json,
+            r#""name":"#,
+            r#""unknown":1,"name":"#,
+        );
+    }
+    // The parent key is required: null is a root.
+    let (_, json) = &samples[0];
+    assert_refused_for::<Operation>(
+        row,
+        "the parent key left out",
+        json,
+        r#""parent":null,"#,
+        "",
+    );
+}
+
+#[test]
+fn sacm23_arg_014_create_interface_serializes_to_the_golden_json() {
+    let name = || en("Braking interface");
+    assert_create_json(
+        ARG_014,
+        &[
+            (
+                CreateArgumentPackageInterface::root(name(), "braking").with_id("braking_api"),
+                r#"{"type":"CreateArgumentPackageInterface","parent":null,"id":"braking_api","name":{"lang":"en","content":"Braking interface"},"implements":"braking"}"#,
+            ),
+            (
+                CreateArgumentPackageInterface::new("braking", name(), "braking"),
+                r#"{"type":"CreateArgumentPackageInterface","parent":"braking","id":null,"name":{"lang":"en","content":"Braking interface"},"implements":"braking"}"#,
+            ),
+        ],
+        r#","implements":"braking""#,
+    );
+    // The id may be left out; it reads as a generated one.
+    let read: Operation = from_json(
+        r#"{"type":"CreateArgumentPackageInterface","parent":"braking","name":{"lang":"en","content":"Braking interface"},"implements":"braking"}"#,
+    );
+    assert_eq!(
+        read,
+        Operation::from(CreateArgumentPackageInterface::new(
+            "braking",
+            name(),
+            "braking"
+        )),
+        "{ARG_014}: a create without id does not read as new()"
+    );
+}
+
+#[test]
+fn sacm23_arg_015_create_binding_serializes_to_the_golden_json() {
+    let name = || en("Braking supports the vehicle");
+    let participants = ["braking_api", "vehicle_api"];
+    assert_create_json(
+        ARG_015,
+        &[
+            (
+                CreateArgumentPackageBinding::root(name(), participants).with_id("binding"),
+                r#"{"type":"CreateArgumentPackageBinding","parent":null,"id":"binding","name":{"lang":"en","content":"Braking supports the vehicle"},"participant_packages":["braking_api","vehicle_api"]}"#,
+            ),
+            (
+                CreateArgumentPackageBinding::new("case", name(), participants),
+                r#"{"type":"CreateArgumentPackageBinding","parent":"case","id":null,"name":{"lang":"en","content":"Braking supports the vehicle"},"participant_packages":["braking_api","vehicle_api"]}"#,
+            ),
+        ],
+        r#","participant_packages":["braking_api","vehicle_api"]"#,
+    );
+    let add = r#"{"type":"AddReference","element":"binding","end":"participantPackage","id":"vehicle_api"}"#;
+    assert_eq!(
+        from_json::<Operation>(add),
+        Operation::from(AddReference::new(
+            "binding",
+            ReferenceEnd::ParticipantPackage,
+            "vehicle_api"
+        )),
+        "{ARG_015}: {add} does not read as its twin"
+    );
+    let errors: Vec<EditError> = from_json(&golden("edit-errors.json"));
+    assert!(
+        errors.iter().any(|error| matches!(
+            error,
+            EditError::TooFewReferences {
+                end: "participantPackage",
+                given: 1,
+                required: 2,
+                ..
+            }
+        )),
+        "{ARG_015}: edit-errors.json holds no TooFewReferences of participantPackage"
+    );
+}
+
+#[test]
+fn sacm23_art_012_create_interface_serializes_to_the_golden_json() {
+    let name = || en("Brake tests interface");
+    assert_create_json(
+        ART_012,
+        &[
+            (
+                CreateArtifactPackageInterface::root(name(), "tests").with_id("tests_api"),
+                r#"{"type":"CreateArtifactPackageInterface","parent":null,"id":"tests_api","name":{"lang":"en","content":"Brake tests interface"},"implements":"tests"}"#,
+            ),
+            (
+                CreateArtifactPackageInterface::new("tests", name(), "tests"),
+                r#"{"type":"CreateArtifactPackageInterface","parent":"tests","id":null,"name":{"lang":"en","content":"Brake tests interface"},"implements":"tests"}"#,
+            ),
+        ],
+        r#","implements":"tests""#,
+    );
+}
+
+#[test]
+fn sacm23_art_013_create_binding_serializes_to_the_golden_json() {
+    let name = || en("The tests verify the requirement");
+    let participants = ["tests_api", "requirements_api"];
+    assert_create_json(
+        ART_013,
+        &[
+            (
+                CreateArtifactPackageBinding::root(name(), participants).with_id("binding"),
+                r#"{"type":"CreateArtifactPackageBinding","parent":null,"id":"binding","name":{"lang":"en","content":"The tests verify the requirement"},"participant_packages":["tests_api","requirements_api"]}"#,
+            ),
+            (
+                CreateArtifactPackageBinding::new("case", name(), participants),
+                r#"{"type":"CreateArtifactPackageBinding","parent":"case","id":null,"name":{"lang":"en","content":"The tests verify the requirement"},"participant_packages":["tests_api","requirements_api"]}"#,
+            ),
+        ],
+        r#","participant_packages":["tests_api","requirements_api"]"#,
+    );
 }

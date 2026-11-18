@@ -12,7 +12,7 @@
 //! SACM-XMI-005; one in reference form is a proxy, not read yet (SACM23-XMI-019
 //! for `xmi:idref`, SACM23-XMI-027 for `href`). Every kind it can hold that
 //! this release does not read yet is refused as `Interim(row)`, its
-//! `interface` end as `Interim(SACM23-ART-012)`, and the model's spelling
+//! `interface` end is read (SACM23-ART-012, slice 0066), and the model's spelling
 //! `ArtifactAssertedRelationship` as `Tolerance(SACM23-XMI-009)`, each at an
 //! exact location in both modes. An `artifactElement` attribute on a package
 //! is an attribute the class lacks: preserved content (ADR 0033).
@@ -670,9 +670,10 @@ fn sacm23_art_001_a_reference_form_artifact_element_under_a_package_is_a_proxy_n
 /// ADR 0034 and its amendments 1 to 3): the two readable packages of other
 /// kinds, the nine argumentation kinds, the five artifact kinds of slice
 /// 0052, the four `ArtifactAsset` kinds of slice 0055, the
-/// `ArtifactAssetRelationship` of slice 0057 and the five terminology kinds
-/// of slice 0062.
-const READABLE: [ElementKind; 26] = [
+/// `ArtifactAssetRelationship` of slice 0057, the five terminology kinds
+/// of slice 0062 and the four Argumentation and Artifact interface and
+/// binding kinds of slice 0066 (SACM23-ARG-014, -015, SACM23-ART-012, -013).
+const READABLE: [ElementKind; 30] = [
     ElementKind::AssuranceCasePackage,
     ElementKind::ArgumentPackage,
     ElementKind::Claim,
@@ -699,6 +700,10 @@ const READABLE: [ElementKind; 26] = [
     ElementKind::Term,
     ElementKind::Expression,
     ElementKind::TerminologyGroup,
+    ElementKind::ArgumentPackageInterface,
+    ElementKind::ArgumentPackageBinding,
+    ElementKind::ArtifactPackageInterface,
+    ElementKind::ArtifactPackageBinding,
 ];
 
 #[test]
@@ -767,17 +772,14 @@ fn sacm23_art_001_every_readable_kind_is_read_typed_inside_an_artifact_package()
 }
 
 /// Every kind an `ArtifactPackage` can hold that this release does not read
-/// yet, with the row that reads it: the eight interface and binding kinds
-/// (ADR 0034 and its amendments 1 to 3).
-const UNREAD: [(&str, &str); 8] = [
-    ("ArtifactPackageInterface", "SACM23-ART-012"),
-    ("ArtifactPackageBinding", "SACM23-ART-013"),
+/// yet, with the row that reads it: the four Terminology and
+/// `AssuranceCase` interface and binding kinds (ADR 0034 and its amendments 1
+/// to 3; slice 0066 reads the other four, ADR 0039).
+const UNREAD: [(&str, &str); 4] = [
     ("TerminologyPackageInterface", "SACM23-TERM-007"),
     ("TerminologyPackageBinding", "SACM23-TERM-008"),
     ("AssuranceCasePackageInterface", "SACM23-AC-002"),
     ("AssuranceCasePackageBinding", "SACM23-AC-003"),
-    ("ArgumentPackageInterface", "SACM23-ARG-014"),
-    ("ArgumentPackageBinding", "SACM23-ARG-015"),
 ];
 
 #[test]
@@ -808,24 +810,25 @@ fn sacm23_art_001_each_kind_not_read_yet_is_unsupported_naming_its_row_at_its_st
 }
 
 #[test]
-fn sacm23_art_001_the_interface_end_of_an_artifact_package_is_unsupported_naming_sacm23_art_012() {
+fn sacm23_art_012_the_interface_end_of_an_artifact_package_is_read_in_every_context() {
     // ptc/22-03-13 gives ArtifactPackage `interface : ArtifactPackageInterface
-    // [0..*]`: conforming SACM this version does not read yet, refused at the
-    // attribute's name or the element's start tag (ADR 0033), as the
-    // AssuranceCasePackage's and the ArgumentPackage's are (interface_ends.rs).
-    let label = interim("SACM23-ART-012");
+    // [0..*]`. This test refused it as `Interim(SACM23-ART-012)` until slice
+    // 0066 read it: the attribute and the element forms now read equal with
+    // no diagnostic, and a dangling id is held as read (SACM23-VAL-003
+    // reports it).
     for (context, wrap, _) in contexts() {
         let attribute = format!("interface=\"x\" on {context}");
-        assert_unsupported_with(
-            &attribute,
-            &wrap(&format!(" {MARK}interface=\"x\""), ""),
-            &label,
+        let read_attribute = read_ok(&attribute, &wrap(" interface=\"x\"", ""));
+        let element_form = format!("an interface element in {context}");
+        let read_element = read_ok(&element_form, &wrap("", "<interface xmi:idref=\"x\"/>"));
+        assert!(
+            read_attribute == read_element,
+            "SACM23-ART-012: {element_form} does not read == to {attribute}"
         );
-        let element = format!("an interface element in {context}");
-        assert_unsupported_with(
-            &element,
-            &wrap("", &format!("{MARK}<interface xmi:idref=\"x\"/>")),
-            &label,
+        assert_eq!(
+            element(&read_attribute, "a").interfaces(),
+            [sacm::model::ElementId::from("x")],
+            "SACM23-ART-012: {attribute}: interfaces()"
         );
         // In another namespace it is not that end: preserved.
         let what = format!("v:interface=\"x\" on {context}");
@@ -1211,44 +1214,48 @@ fn fixture_with(from: &str, to: &str) -> String {
 #[test]
 fn sacm23_art_001_fixture_variants_a_b_c_and_g_are_refused_at_their_construct() {
     let assessor = "      <artifactElement xmi:type=\"sacm:Participant\" xmi:id=\"assessor\">";
-    // (a) A kind not read yet in evidence: an ArtifactPackageInterface,
-    // SACM23-ART-012. (Slice 0055 reads the Artifact this variant first used,
-    // and slice 0057 the ArtifactAssetRelationship it used next: see
-    // artifact_assets.rs and artifact_asset_relationships.rs.)
+    // (a) A kind not read yet in evidence: a TerminologyPackageInterface,
+    // SACM23-TERM-007. (Slice 0055 reads the Artifact this variant first used,
+    // slice 0057 the ArtifactAssetRelationship it used next, and slice 0066
+    // the ArtifactPackageInterface it used then: see artifact_assets.rs,
+    // artifact_asset_relationships.rs and artifact_package_interfaces.rs.)
     assert_unsupported_with(
-        "variant (a): an ArtifactPackageInterface in evidence",
+        "variant (a): a TerminologyPackageInterface in evidence",
         &fixture_with(
             assessor,
             &format!(
-                "      {MARK}<artifactElement xmi:type=\"sacm:ArtifactPackageInterface\" \
+                "      {MARK}<artifactElement xmi:type=\"sacm:TerminologyPackageInterface\" \
                  xmi:id=\"report\"/>\n{assessor}"
             ),
         ),
-        &interim("SACM23-ART-012"),
+        &interim("SACM23-TERM-007"),
     );
-    // (b) interface="i1" on evidence: SACM23-ART-012, at the attribute.
+    // (b) interface="i1" on the AssuranceCasePackage case: SACM23-AC-002, at
+    // the attribute. (This variant first put it on evidence, whose interface
+    // end slice 0066 reads, SACM23-ART-012.)
     assert_unsupported_with(
-        "variant (b): interface on evidence",
+        "variant (b): interface on case",
         &fixture_with(
-            "<artifactPackage xmi:id=\"evidence\">",
-            &format!("<artifactPackage xmi:id=\"evidence\" {MARK}interface=\"i1\">"),
+            "<sacm:AssuranceCasePackage xmi:id=\"case\">",
+            &format!("<sacm:AssuranceCasePackage xmi:id=\"case\" {MARK}interface=\"i1\">"),
         ),
-        &interim("SACM23-ART-012"),
+        &interim("SACM23-AC-002"),
     );
-    // (c) Another kind not read yet in evidence: an ArtifactPackageBinding,
-    // SACM23-ART-013. (This variant first used the model's spelling
+    // (c) Another kind not read yet in evidence: a TerminologyPackageBinding,
+    // SACM23-TERM-008. (This variant first used the model's spelling
     // ArtifactAssertedRelationship, which slice 0057 reads in tolerant mode
-    // and keeps as preserved content in strict mode: see model_spellings.rs.)
+    // and keeps as preserved content in strict mode, model_spellings.rs, then
+    // the ArtifactPackageBinding that slice 0066 reads.)
     assert_unsupported_with(
-        "variant (c): an ArtifactPackageBinding in evidence",
+        "variant (c): a TerminologyPackageBinding in evidence",
         &fixture_with(
             assessor,
             &format!(
-                "      {MARK}<artifactElement xmi:type=\"sacm:ArtifactPackageBinding\" \
+                "      {MARK}<artifactElement xmi:type=\"sacm:TerminologyPackageBinding\" \
                  xmi:id=\"r\"/>\n{assessor}"
             ),
         ),
-        &interim("SACM23-ART-013"),
+        &interim("SACM23-TERM-008"),
     );
     // (g) An untyped artifactElement: SACM-XMI-005.
     let what = "variant (g): an untyped artifactElement in evidence";

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-ART-012, SACM23-ART-013: the artifact example of slice 0066. The AssuranceCasePackage case holds the ArtifactPackages tests and requirements, each declaring its ArtifactPackageInterface (tests_api, requirements_api) in its interface end; each interface implements its package and holds a citation of the package's Artifact. tests_api gives implements as a reference element by xmi:idref. The ArtifactPackageBinding binding binds the two interfaces, by xmi:idref and by href="#id", and holds two citations of the interfaces' citations and an ArtifactAssetRelationship between them. It reads with no diagnostic in either mode, validates without a finding, and writes golden/artifact-package-interfaces.golden.sacm.xmi, where every end is an attribute. Hand-written; no third-party content. -->
+<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="case">
+  <name lang="en" content="Vehicle case"/>
+  <artifactPackage xmi:id="tests" interface="tests_api">
+    <name lang="en" content="Brake tests"/>
+    <artifactElement xmi:type="sacm:Artifact" xmi:id="report">
+      <name lang="en" content="Brake test report"/>
+    </artifactElement>
+    <artifactElement xmi:type="sacm:ArtifactPackageInterface" xmi:id="tests_api">
+      <implements xmi:idref="tests"/>
+      <name lang="en" content="Brake tests interface"/>
+      <artifactElement xmi:type="sacm:Artifact" xmi:id="report_cited" isCitation="true" citedElement="report">
+        <name lang="en" content="Brake test report"/>
+      </artifactElement>
+    </artifactElement>
+  </artifactPackage>
+  <artifactPackage xmi:id="requirements" interface="requirements_api">
+    <name lang="en" content="Braking requirements"/>
+    <artifactElement xmi:type="sacm:Artifact" xmi:id="spec">
+      <name lang="en" content="Braking requirement"/>
+    </artifactElement>
+    <artifactElement xmi:type="sacm:ArtifactPackageInterface" xmi:id="requirements_api" implements="requirements">
+      <name lang="en" content="Requirements interface"/>
+      <artifactElement xmi:type="sacm:Artifact" xmi:id="spec_cited" isCitation="true" citedElement="spec">
+        <name lang="en" content="Braking requirement"/>
+      </artifactElement>
+    </artifactElement>
+  </artifactPackage>
+  <artifactPackage xmi:type="sacm:ArtifactPackageBinding" xmi:id="binding">
+    <participantPackage xmi:idref="tests_api"/><participantPackage href="#requirements_api"/>
+    <name lang="en" content="The tests verify the requirement"/>
+    <artifactElement xmi:type="sacm:Artifact" xmi:id="binding_report" isCitation="true" citedElement="report_cited">
+      <name lang="en" content="Brake test report"/>
+    </artifactElement>
+    <artifactElement xmi:type="sacm:Artifact" xmi:id="binding_spec" isCitation="true" citedElement="spec_cited">
+      <name lang="en" content="Braking requirement"/>
+    </artifactElement>
+    <artifactElement xmi:type="sacm:ArtifactAssetRelationship" xmi:id="binding_verifies" source="binding_report" target="binding_spec">
+      <name lang="en" content="verifies"/>
+    </artifactElement>
+  </artifactPackage>
+</sacm:AssuranceCasePackage>

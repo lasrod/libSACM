@@ -1,8 +1,9 @@
 //! The create operations of the Artifact package: `ArtifactPackage`,
 //! `Property`, `Technique`, `Participant`, `ArtifactGroup`, `Artifact`,
-//! `Event`, `Resource`, `Activity` and `ArtifactAssetRelationship`
-//! (SACM23-ART-001, SACM23-ART-003, SACM23-ART-004 to SACM23-ART-011;
-//! LIB-EDIT-001, ADR 0019, ADR 0028, ADR 0034 and its amendments 1 and 2).
+//! `Event`, `Resource`, `Activity`, `ArtifactAssetRelationship`,
+//! `ArtifactPackageInterface` and `ArtifactPackageBinding` (SACM23-ART-001,
+//! SACM23-ART-003, SACM23-ART-004 to SACM23-ART-013; LIB-EDIT-001, ADR 0019,
+//! ADR 0028, ADR 0034 and its amendments 1 and 2, ADR 0039).
 //!
 //! There is one create per class (ADR 0034). Each runs ADR 0019's four
 //! checks through the containment table, so a parent is legal exactly when a
@@ -12,7 +13,7 @@
 //! Resource and an Activity are held as given and never refused (D-DATE).
 
 use super::EditError;
-use super::argumentation::plan_referencing;
+use super::argumentation::{binding_operation, interface_operation, plan_referencing};
 use super::create::plan_create;
 use super::plan::{Features, Plan};
 use crate::model::{
@@ -129,6 +130,50 @@ impl CreateArtifactPackage {
             Features::Name(&self.name),
         )
     }
+}
+
+interface_operation! {
+    /// Creates an `ArtifactPackageInterface` (SACM 2.3 §12.5) declaring the
+    /// ArtifactPackage `implements` names: a root, or a child of an
+    /// AssuranceCasePackage or an ArtifactPackage (or one of their interfaces
+    /// and bindings). The package's `interface` end is not changed (ADR 0039).
+    ///
+    /// `implements` is required (`implements:ArtifactPackage[1]`); its id is
+    /// checked as [`CreateArgumentPackageInterface`](super::CreateArgumentPackageInterface)'s
+    /// is, against the ArtifactPackage kinds. Without
+    /// [`with_id`](Self::with_id), the id is generated:
+    /// `artifact_package_interface_<n>`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sacm::edit::{self, CreateArtifactPackage, CreateArtifactPackageInterface};
+    /// use sacm::model::{Document, LangString};
+    ///
+    /// let en = |t: &str| LangString::new(t).with_lang("en");
+    /// let mut doc = Document::new();
+    /// edit::apply(&mut doc, CreateArtifactPackage::root(en("Brake tests")).with_id("tests"))?;
+    /// edit::apply(&mut doc, CreateArtifactPackageInterface::new("tests", en("Brake tests interface"), "tests"))?;
+    /// let api = doc.get("artifact_package_interface_1").expect("just created");
+    /// assert_eq!(api.implements().map(|id| id.as_str()), Some("tests"));
+    /// # Ok::<(), sacm::edit::EditError>(())
+    /// ```
+    CreateArtifactPackageInterface, ArtifactPackageInterface, "ArtifactPackage"
+}
+
+binding_operation! {
+    /// Creates an `ArtifactPackageBinding` (SACM 2.3 §12.4) binding the
+    /// packages `participant_packages` names, each of an `ArtifactPackage`
+    /// kind: a root, or a child of
+    /// an AssuranceCasePackage or an ArtifactPackage (or one of their
+    /// interfaces and bindings).
+    ///
+    /// `participantPackage:ArtifactPackage[2..*]`: its ids are checked as
+    /// [`CreateArgumentPackageBinding`](super::CreateArgumentPackageBinding)'s
+    /// are, against the ArtifactPackage kinds, after two distinct ids
+    /// (ADR 0039 D3). Without [`with_id`](Self::with_id), the id is
+    /// generated: `artifact_package_binding_<n>`.
+    CreateArtifactPackageBinding, ArtifactPackageBinding, "ArtifactPackage"
 }
 
 /// Defines the create operation of one artifact kind that is given only a
@@ -454,7 +499,7 @@ impl CreateArtifactGroup {
         plan_referencing(
             document,
             ElementKind::ArtifactGroup,
-            &self.parent,
+            Some(&self.parent),
             self.id.as_ref(),
             &self.name,
             &[],
@@ -1165,7 +1210,7 @@ impl CreateArtifactAssetRelationship {
         plan_referencing(
             document,
             ElementKind::ArtifactAssetRelationship,
-            &self.parent,
+            Some(&self.parent),
             self.id.as_ref(),
             &self.name,
             &[],

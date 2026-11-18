@@ -255,7 +255,7 @@ impl CreateCategory {
         plan_referencing(
             document,
             ElementKind::Category,
-            &self.parent,
+            Some(&self.parent),
             self.id.as_ref(),
             &self.name,
             &[],
@@ -755,7 +755,7 @@ impl CreateTerminologyGroup {
         plan_referencing(
             document,
             ElementKind::TerminologyGroup,
-            &self.parent,
+            Some(&self.parent),
             self.id.as_ref(),
             &self.name,
             &[],
@@ -800,7 +800,7 @@ fn plan_expression_element<'o>(
         .map(|&(end, targets)| (end, targets, [].as_slice()))
         .collect();
     checked.push((ReferenceEnd::Expression, &expressions, &[]));
-    check_targets(document, &checked)?;
+    check_targets(document, kind, &checked)?;
     Ok(Plan::Create(NewElement {
         kind,
         parent: Some(parent),

@@ -11,7 +11,8 @@ use crate::diagnostic::template::{
 };
 use crate::diagnostic::{Argument, Diagnostic, Severity};
 use crate::model::{
-    AbstractClass, AssertionDeclaration, Document, ElementId, ReferenceEnd, SacmElement,
+    AbstractClass, AssertionDeclaration, DeclaredType, Document, ElementId, ReferenceEnd,
+    SacmElement,
 };
 
 /// The arguments that name `element`: its class and id.
@@ -53,7 +54,7 @@ pub(super) fn dangling_references(document: &Document, found: &mut Vec<Diagnosti
                 }
                 if document.is_preserved_id(target.as_str()) {
                     let mut arguments = end_of(element, end, target);
-                    arguments.push(Argument::text("type", end.target().name()));
+                    arguments.push(Argument::text("type", declared_type(element, end).name()));
                     found.push(
                         Diagnostic::emit(
                             &REF_003_PRESERVED_TARGET,
@@ -94,12 +95,20 @@ pub(super) fn unwritten_references(document: &Document, found: &mut Vec<Diagnost
     }
 }
 
+/// The declared type of the targets of `element`'s end `end`: the type its
+/// kind's declaring class gives (ADR 0039 D1). An element holds ids only in
+/// the ends its kind has, so the first declaration is only a fallback.
+fn declared_type(element: SacmElement<'_>, end: ReferenceEnd) -> DeclaredType {
+    end.target_on(element.kind())
+        .unwrap_or(end.declarations()[0].1)
+}
+
 /// The SACM-REF-001 Error for the id `target` of the end `end` of
 /// `element`, which names no element: with the end's clause, affecting the
 /// element, then the id.
 fn dangling(element: SacmElement<'_>, end: ReferenceEnd, target: &ElementId) -> Diagnostic {
     let mut arguments = end_of(element, end, target);
-    arguments.push(Argument::text("type", end.target().name()));
+    arguments.push(Argument::text("type", declared_type(element, end).name()));
     Diagnostic::emit(
         &REF_001_DANGLING,
         Severity::Error,
@@ -119,7 +128,7 @@ fn dangling(element: SacmElement<'_>, end: ReferenceEnd, target: &ElementId) -> 
 pub(super) fn wrongly_typed_references(document: &Document, found: &mut Vec<Diagnostic>) {
     for element in document.elements() {
         for &end in ReferenceEnd::ALL {
-            let declared = end.target();
+            let declared = declared_type(element, end);
             // As in `dangling_references`: once per distinct id, linear in
             // the end's ids, never iterated.
             let mut reported = HashSet::new();

@@ -240,15 +240,13 @@ mod api {
 
     /// One input per entry a tolerant read keeps, with its code.
     fn kept_entries() -> Vec<(&'static str, String, Code)> {
+        // The four kinds still refused; slice 0066 reads the Argumentation
+        // and Artifact interfaces and bindings (ADR 0039).
         let mut entries: Vec<(&'static str, String, Code)> = [
-            "ArtifactPackageInterface",
-            "ArtifactPackageBinding",
             "TerminologyPackageInterface",
             "TerminologyPackageBinding",
             "AssuranceCasePackageInterface",
             "AssuranceCasePackageBinding",
-            "ArgumentPackageInterface",
-            "ArgumentPackageBinding",
         ]
         .into_iter()
         .map(|kind| (kind, root_of(kind), Code::XMI_UNREAD_CONTENT))

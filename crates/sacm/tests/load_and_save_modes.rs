@@ -83,7 +83,12 @@ const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/x
 /// The golden files, under [`FIXTURES`].
 const GOLDEN_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/xmi/golden");
 /// The golden files the reader reads in this release.
-const READABLE_GOLDEN: [&str; 13] = [
+const READABLE_GOLDEN: [&str; 16] = [
+    // The golden files of slice 0066 (SACM23-ARG-014, SACM23-ART-012), and
+    // the nested golden file whose ArgumentPackageInterface slice 0066 reads.
+    "argument-package-interfaces.golden.sacm.xmi",
+    "artifact-package-interfaces.golden.sacm.xmi",
+    "nested.golden.sacm.xmi",
     // The golden file of slice 0065 (SACM23-BASE-009).
     "expression-lang-string.golden.sacm.xmi",
     // The golden files of slice 0057 (SACM23-ART-010, SACM23-XMI-009).
@@ -101,12 +106,17 @@ const READABLE_GOLDEN: [&str; 13] = [
     "terminology-element-spelling.golden.sacm.xmi",
     "terminology.golden.sacm.xmi",
 ];
-/// The golden file the reader refuses, as `Unsupported`, in this release: it
-/// holds an `ArgumentPackageInterface` (SACM23-ARG-014), refused first, and an
-/// ArtifactPackage holding an Artifact, which holds a Property, both read since
-/// slice 0055 (SACM23-ART-004); its Note and Description are read
-/// (SACM23-BASE-004).
-const UNREADABLE_GOLDEN: &str = "nested.golden.sacm.xmi";
+/// A document the reader refuses, as `Unsupported`, in this release: a root
+/// of a kind it does not read yet, a `TerminologyPackageInterface`
+/// (SACM23-TERM-007). Until slice 0066 this was the golden file
+/// `nested.golden.sacm.xmi`, whose `ArgumentPackageInterface`
+/// (SACM23-ARG-014) slice 0066 reads; no golden file is refused now.
+const UNREADABLE_ROOT: &str = concat!(
+    "<sacm:TerminologyPackageInterface",
+    " xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
+    " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"",
+    " xmi:id=\"x\"><name content=\"x\"/></sacm:TerminologyPackageInterface>",
+);
 
 // ---------------------------------------------------------------------------
 // Reading
@@ -1019,7 +1029,6 @@ fn lib_compat_001_both_modes_give_the_same_document_or_the_same_refusal_for_each
 fn lib_compat_001_every_golden_file_reads_with_no_diagnostic_in_either_mode() {
     let mut expected: Vec<String> = READABLE_GOLDEN
         .iter()
-        .chain([&UNREADABLE_GOLDEN])
         .map(|&name| name.to_owned())
         .collect();
     expected.sort();
@@ -1039,13 +1048,18 @@ fn lib_compat_001_every_golden_file_reads_with_no_diagnostic_in_either_mode() {
             );
         }
     }
-    // The nested golden file holds kinds this release does not read: a
-    // strict read refuses it, and a tolerant read keeps them (ADR 0035).
-    let text = golden(COMPAT_001, UNREADABLE_GOLDEN);
-    let strict = read_err(COMPAT_001, UNREADABLE_GOLDEN, Mode::Strict, &text);
+    // A kind this release does not read: a strict read refuses it, and a
+    // tolerant read keeps it (ADR 0035).
+    let what = "a TerminologyPackageInterface root";
+    let strict = read_err(COMPAT_001, what, Mode::Strict, UNREADABLE_ROOT);
     assert!(
         matches!(strict, ReadError::Unsupported { .. }),
-        "{COMPAT_001}: {UNREADABLE_GOLDEN} is not refused as Unsupported in strict mode: {strict:?}"
+        "{COMPAT_001}: {what} is not refused as Unsupported in strict mode: {strict:?}"
+    );
+    let tolerant = read_ok(COMPAT_001, what, Mode::Tolerant, UNREADABLE_ROOT);
+    assert!(
+        tolerant.document().has_preserved_content(),
+        "{COMPAT_001}: {what} is not kept by a tolerant read"
     );
 }
 

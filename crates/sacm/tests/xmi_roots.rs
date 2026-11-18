@@ -1046,15 +1046,22 @@ fn sacm23_xmi_001_the_other_eight_package_kinds_are_unsupported_at_the_root() {
                     | ElementKind::ArgumentPackage
                     | ElementKind::ArtifactPackage
                     | ElementKind::TerminologyPackage
+                    | ElementKind::ArgumentPackageInterface
+                    | ElementKind::ArgumentPackageBinding
+                    | ElementKind::ArtifactPackageInterface
+                    | ElementKind::ArtifactPackageBinding
             )
         })
         .collect();
-    // The interface and binding kinds; a TerminologyPackage is read since
-    // slice 0062 (SACM23-TERM-001).
+    // The Terminology and AssuranceCase interface and binding kinds: a
+    // TerminologyPackage is read since slice 0062 (SACM23-TERM-001), and the
+    // Argumentation and Artifact interfaces and bindings since slice 0066
+    // (SACM23-ARG-014, -015, SACM23-ART-012, -013), so four of the eight
+    // this test first sampled remain.
     assert_eq!(
         others.len(),
-        8,
-        "{row}: expected 8 other package kinds, found {others:?}"
+        4,
+        "{row}: expected 4 other package kinds, found {others:?}"
     );
     for kind in others {
         let input = format!("<sacm:{}{NS} xmi:id=\"p\"/>", kind.name());
@@ -1177,20 +1184,31 @@ fn sacm23_xmi_001_an_unread_attribute_of_a_root_is_unsupported_or_preserved_at_t
             assert_preserved_at(row, input.as_bytes(), loc(row, 2, 3), Some("p"));
         }
         // `interface` is a conforming reference end of the three packages
-        // (ptc/22-03-13) that this version does not read yet: refused with
-        // the label of the package's interface row (LIB-API-011).
-        let interface_row = match kind {
-            "ArgumentPackage" => "SACM23-ARG-014",
-            "ArtifactPackage" => "SACM23-ART-012",
-            _ => "SACM23-AC-002",
-        };
+        // (ptc/22-03-13). Slice 0066 reads an ArgumentPackage's and an
+        // ArtifactPackage's (SACM23-ARG-014, SACM23-ART-012); an
+        // AssuranceCasePackage's is not read yet: refused with the label of
+        // its interface row (LIB-API-011).
         let input = format!("{}\n  interface=\"x\"/>", root_start(kind));
-        let error = assert_unsupported_at(row, input.as_bytes(), loc(row, 2, 3));
-        let label = format!("(a limit of this version; {interface_row} reads it)");
-        assert!(
-            matches!(&error, ReadError::Unsupported { reason, .. } if reason.ends_with(&label)),
-            "{row}: interface on an {kind} root is not labelled {label:?}: {error:?}"
-        );
+        if kind == "AssuranceCasePackage" {
+            let error = assert_unsupported_at(row, input.as_bytes(), loc(row, 2, 3));
+            let label = "(a limit of this version; SACM23-AC-002 reads it)";
+            assert!(
+                matches!(&error, ReadError::Unsupported { reason, .. } if reason.ends_with(label)),
+                "{row}: interface on an {kind} root is not labelled {label:?}: {error:?}"
+            );
+        } else {
+            let strict = ReadOptions::default().with_mode(Mode::Strict);
+            match xmi::read(input.as_bytes(), &strict) {
+                Ok(output) => assert!(
+                    output.diagnostics().is_empty(),
+                    "{row}: interface on an {kind} root is not read with no diagnostic: {:?}",
+                    output.diagnostics()
+                ),
+                Err(error) => panic!(
+                    "{row}: interface on an {kind} root is refused by a strict read: {error:?}"
+                ),
+            }
+        }
     }
 }
 
@@ -1219,23 +1237,36 @@ fn sacm23_xmi_001_unread_content_of_a_root_is_unsupported_or_preserved_at_that_c
     let terminology_package =
         "<terminologyPackage xmi:type=\"sacm:TerminologyPackageInterface\" xmi:id=\"x\"/>";
     let interface = "<argumentElement xsi:type=\"sacm:ArgumentPackageInterface\" xmi:id=\"x\"/>";
-    let artifact_interface =
-        "<artifactElement xmi:type=\"sacm:ArtifactPackageInterface\" xmi:id=\"x\"/>";
+    let artifact_terminology_interface =
+        "<artifactElement xmi:type=\"sacm:TerminologyPackageInterface\" xmi:id=\"x\"/>";
+    let none: &[&str] = &[];
     for (kind, conforming_unread, not_conforming) in [
-        // The interface is an ArgumentPackage's conforming child (SACM23-ARG-014);
-        // `artifactPackage` is a role an ArgumentPackage lacks.
-        ("ArgumentPackage", interface, artifact_package),
+        // An ArgumentPackage holds no conforming child kind that is unread
+        // since slice 0066 read the interface this case sampled
+        // (SACM23-ARG-014); `artifactPackage` is a role an ArgumentPackage
+        // lacks.
+        ("ArgumentPackage", none, artifact_package),
         // A TerminologyPackageInterface is an AssuranceCasePackage's
         // conforming child in `terminologyPackage` (SACM23-TERM-007; a
         // TerminologyPackage is read since slice 0062); `argumentElement` is a
         // role it lacks.
-        ("AssuranceCasePackage", terminology_package, interface),
-        // An ArtifactPackageInterface is an ArtifactPackage's conforming child
-        // (SACM23-ART-012); `argumentElement` is a role it lacks.
-        ("ArtifactPackage", artifact_interface, interface),
+        (
+            "AssuranceCasePackage",
+            &[terminology_package][..],
+            interface,
+        ),
+        // A TerminologyPackageInterface is an ArtifactPackage's conforming
+        // child (SACM23-TERM-007; this case sampled the
+        // ArtifactPackageInterface that slice 0066 reads, SACM23-ART-012);
+        // `argumentElement` is a role it lacks.
+        (
+            "ArtifactPackage",
+            &[artifact_terminology_interface][..],
+            interface,
+        ),
     ] {
         // Conforming content this version does not read yet: refused at it.
-        for child in [conforming_unread, "<xmi:Extension/>"] {
+        for &child in conforming_unread.iter().chain(&["<xmi:Extension/>"]) {
             // The child starts line 2, after two spaces.
             let input = format!("{}>\n  {child}\n</sacm:{kind}>", root_start(kind));
             assert_unsupported_at(row, input.as_bytes(), loc(row, 2, 3));

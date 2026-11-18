@@ -789,8 +789,12 @@ fn sacm23_term_002_reference_end_all_is_the_sixteen_written_ends_then_expression
             ReferenceEnd::Element,
             ReferenceEnd::Origin,
             ReferenceEnd::TerminologyGroupMember,
+            // The ends of slice 0066 (ADR 0039 D1).
+            ReferenceEnd::Interface,
+            ReferenceEnd::Implements,
+            ReferenceEnd::ParticipantPackage,
             // The derived end of slice 0065 (SACM23-BASE-009), after the
-            // sixteen written ends.
+            // written ends.
             ReferenceEnd::Expression,
         ],
         "{row}: ReferenceEnd::ALL"
