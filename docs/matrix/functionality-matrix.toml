@@ -5018,6 +5018,7 @@ tests = [
   "crates/sacm/tests/terminology_assets.rs::sacm23_term_004_deleting_an_origin_is_referenced_and_a_scrub_clears_it_and_keeps_the_term",
   "crates/sacm/tests/terminology_assets.rs::sacm23_term_004_a_term_named_by_an_artifact_reference_validates_and_is_cross_package",
   "crates/sacm/tests/terminology_assets.rs::sacm23_term_004_the_existing_edits_apply_to_a_term",
+  "crates/sacm/tests/terminology_assets.rs::sacm23_term_004_an_external_reference_difference_displays_both_references",
 ]
 acceptance = [
   "Term `blade` of `terminology-valid.sacm.xmi` reads in both modes with no diagnostic: `categories()` `[mechanical]`, `origin()` `manual`, `value()` `blade`, `external_reference()` `https://example.org/terms/blade`. `<origin xmi:idref=\"manual\"/>`, `<origin href=\"#manual\"/>` and `<externalReference>…</externalReference>` read equal. The attribute order written is `xmi:type`, `xmi:id`, `gid`, `isCitation`, `isAbstract`, `citedElement`, `abstractForm`, `category`, `origin`, `value`, `externalReference`.",

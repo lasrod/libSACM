@@ -3133,6 +3133,47 @@ fn sacm23_term_004_origin_value_and_external_reference_differences_come_in_order
     );
 }
 
+#[test]
+fn sacm23_term_004_an_external_reference_difference_displays_both_references() {
+    let row = TERM_004;
+    let with = read_ok(
+        row,
+        "a Term with an externalReference",
+        &in_terms(&term("x", " value=\"a\" externalReference=\"urn:x\"", "")),
+    );
+    let without = read_ok(
+        row,
+        "the Term without it",
+        &in_terms(&term("x", " value=\"a\"", "")),
+    );
+    for (left, right, english) in [
+        (
+            &with,
+            &without,
+            "element \"x\" differs in externalReference: \"urn:x\" on the left, no externalReference on the right",
+        ),
+        (
+            &without,
+            &with,
+            "element \"x\" differs in externalReference: no externalReference on the left, \"urn:x\" on the right",
+        ),
+    ] {
+        let found = semantic_compare(left, right);
+        let [difference] = found.as_slice() else {
+            panic!("{row}: not one difference: {found:?}");
+        };
+        assert!(
+            matches!(difference, Difference::ExternalReference { .. }),
+            "{row}: not an ExternalReference difference: {difference:?}"
+        );
+        assert_eq!(
+            (difference.to_string(), difference.element_id()),
+            (english.to_owned(), Some(&ElementId::from("x"))),
+            "{row}: the Display of the externalReference difference names externalReference"
+        );
+    }
+}
+
 // =====================================================================================
 // SACM23-TERM-004 item 7: deleting an origin, and a Term named by an ArtifactReference
 // =====================================================================================
