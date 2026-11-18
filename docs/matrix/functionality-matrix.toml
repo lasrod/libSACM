@@ -1350,10 +1350,11 @@ id = "LIB-DIAG-001"
 area = "DIAG"
 milestone = "M1"
 title = "Structured diagnostics"
-requirement = "A `Diagnostic` carries a stable code, a severity (info, warning, error), the matrix row and clause it enforces, the affected element ids, an optional source location (line, column) and a message. Diagnostics have one total, documented order, every function returning them returns them sorted, and they implement `Display` (ADR 0011)."
+requirement = "A `Diagnostic` carries a stable code, a severity (info, warning, error), the matrix row and clause it enforces, the affected element ids, an optional source location (line, column) and a message, with the template and arguments it is made from (LIB-API-018). Diagnostics have one total, documented order, every function returning them returns them sorted, and they implement `Display` (ADR 0011)."
 source = "D-DIAG; D-SEV; docs/sacm/diagnostics.md; ADR 0011; assurance-forge libs/sacm validation/diagnostic.h, validation/codes.h"
 kind = "api"
 status = "verified"
+notes = "Slice 0064: the order gains the template and arguments as keys 8 and 9 (ADR 0030 amendment 3); re-check there."
 verification = "docs/verification/0014-m1-errors-diagnostics-round2.md"
 acceptance = [
   "Each accessor returns exactly what the diagnostic was built with: `code`, `severity`, `requirement_id`, `clause` (Some and None), `affected`, `location` (Some and None), `message`.",
@@ -6536,6 +6537,7 @@ kind = "api"
 status = "verified"
 verification = "docs/verification/0063-refusal-codes.md"
 depends_on = ["LIB-API-009", "LIB-API-010", "LIB-API-011", "LIB-API-006", "LIB-DIAG-001", "LIB-DIAG-002"]
+notes = "Slice 0064: the template table gains the diagnostic templates (LIB-API-018); re-check there."
 code = ["crates/sacm/src/diagnostic/template.rs", "crates/sacm/src/diagnostic.rs", "crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/refusal.rs", "crates/sacm-cli/src/main.rs", "docs/adr/0030-serde-for-edit-and-diagnostic-values.md"]
 tests = [
   "crates/sacm/tests/message_templates.rs::lib_api_017_each_refusal_template_input_gives_its_0_1_0_display",
@@ -6577,7 +6579,7 @@ acceptance = [
   "A strict read of an AssuranceCasePackage `case` that holds `<terminologyPackage xmi:type=\"sacm:TerminologyPackageInterface\" xmi:id=\"ti\"/>` at line 3 is `Unsupported`. It has `code()` SACM-XMI-014, `template()` `SACM-XMI-014/unread-kind-in-root` and `arguments()` `[class: \"TerminologyPackageInterface\", element: \"terminologyPackage\", container: \"sacm:AssuranceCasePackage\", row: \"SACM23-TERM-007\"]`. Its `Display` is `the reader cannot represent the input at line 3, column 3: the TerminologyPackageInterface \"terminologyPackage\" in the root element \"sacm:AssuranceCasePackage\" is not read in this release (a limit of this version; SACM23-TERM-007 reads it)`.",
   "Before any code changes, the slice records `tests/data/golden/messages-0.1.0.txt`: for every fixture under `crates/sacm/tests/data` and `crates/sacm-cli/tests/data`, the `Display` of the refusal, or of each diagnostic, from a strict read, a tolerant read and `validate`. Afterwards every line is unchanged.",
   "A table-driven test (`crates/sacm/tests/message_templates.rs`) gives one input for each of the 102 refusal templates and checks `code()`, `template()`, every argument by name, kind and value, and `Display`. The three `SACM-SEC-002` capacity templates and the three `SACM-SEC-002/unheld-*` templates, which no input reaches through the public API, are built instead by a unit test of their crate-private constructors.",
-  "A crate unit test checks the template table: ids are unique, match `SACM-[A-Z]+-[0-9]{3}/[a-z0-9]+(-[a-z0-9]+)*`, and each id's prefix is its code's text; each const is named after its id; every placeholder names a declared argument: `{n}` and `{n:?}` take Text, `{n:04X}` takes Count; arguments are declared in the order they first appear in the pattern, and every declared argument appears, except `row`; `row` is declared last, exactly on the `Unsupported` templates of SACM-XMI-014, -007, -002 and -015; the renderer writes Text unchanged for `{n}`, Debug-quoted for `{n:?}`, and Count as decimal or as at least 4 uppercase hex digits.",
+  "A crate unit test checks the template table: ids are unique, match `SACM-[A-Z]+-[0-9]{3}/[a-z0-9]+(-[a-z0-9]+)*`, and each id's prefix is its code's text; each const is named after its id; every placeholder names a declared argument: `{n}` and `{n:?}` take Text, `{n:04X}` takes Count; arguments are declared in the order they first appear in the pattern, and every declared argument appears, except `row`; among the refusal templates, `row` is declared last exactly on the `Unsupported` templates of SACM-XMI-014, -007, -002 and -015, whose label names it; a diagnostic template declares `row` only where its pattern names it (LIB-API-018); the renderer writes Text unchanged for `{n}`, Debug-quoted for `{n:?}`, and Count as decimal or as at least 4 uppercase hex digits.",
   "`xtask/tests/message_templates.rs` checks two things. First, the `## Message templates` table of docs/sacm/diagnostics.md lists exactly the templates of `crates/sacm/src/diagnostic/template.rs`: id, carrier, argument names and kinds, and English. Second, every template const is named, outside comments, literals and tests, in another file of `crates/sacm/src`. Pure-helper tests on synthetic inputs report a missing, extra or reordered argument, a different English, a missing row, and an unused const.",
   "With `serde`, the golden files `read-errors.json` and `write-errors.json` hold one value per variant (`Unsupported` once per code) and read back `==`. These inputs are refused: an unknown `type` or key, or a missing key; a `code` that is not the variant's and its template's; a template of another variant, or an unknown template; arguments that are missing, extra, out of order, or of the wrong kind; a `character` that is not one character.",
   "`sacm validate` prints `xmi-attribute.sacm.xmi`'s refusal as `SACM-XMI-003` and `latin-1.sacm.xmi`'s as `SACM-XML-002`, where 0.1.0 printed `error`. JSON writes those codes for the strict refusal, not `\"code\":null`.",
@@ -6592,7 +6594,37 @@ title = "Every diagnostic carries its template and arguments"
 requirement = "Every `Diagnostic` the crate emits has `template()` and `arguments()`, as LIB-API-017 defines them. Its `message` is rendered from them by the same crate-private renderer, so the two cannot drift, and is byte-identical to the 0.1.0 message for the same input. A diagnostic built with `test-support`'s `Diagnostic::new`, or read from JSON that has no template, has its code's text as its template and no arguments. Diagnostics order by the seven ADR 0011 keys, then by template, then by arguments. With `serde`, a `Diagnostic` writes `template` and `arguments` after `message` (ADR 0030 amendment 3), and 0.1.0 JSON still reads, with those defaults."
 source = "GitHub issue #82; the maintainer's decisions Q8, Q9 and Q11, 2026-11-17; D-DIAG; ADR 0011; ADR 0030 amendment 3"
 kind = "api"
-status = "planned"
+code = ["crates/sacm/src/diagnostic.rs", "crates/sacm/src/diagnostic/template.rs", "crates/sacm/src/xmi/roots.rs", "crates/sacm/src/validation/names.rs", "crates/sacm/src/validation/descriptions.rs", "crates/sacm/src/validation/multi_lang.rs", "crates/sacm/src/validation/repeats.rs", "crates/sacm/src/validation/terminology.rs", "crates/sacm/src/validation/expressions.rs", "crates/sacm/src/validation/constraints.rs", "crates/sacm/src/validation/references.rs", "crates/sacm/src/validation/relationships.rs", "crates/sacm/src/validation/gid.rs", "crates/sacm/src/validation/homogeneity.rs", "crates/sacm/src/validation/ids.rs", "docs/sacm/diagnostics.md"]
+tests = [
+  "crates/sacm/tests/diagnostic_templates.rs::lib_api_018_each_diagnostic_template_input_gives_its_message",
+  "crates/sacm/tests/diagnostic_templates.rs::lib_api_018_a_claim_with_two_descriptions_has_the_too_many_template_and_its_arguments",
+  "crates/sacm/tests/diagnostic_templates.rs::lib_api_018_the_argument_types_and_details_have_their_traits",
+  "crates/sacm/tests/diagnostic_templates.rs::lib_api_018_each_diagnostic_template_input_has_its_code_template_and_arguments",
+  "crates/sacm/tests/diagnostic_templates.rs::lib_api_018_a_diagnostic_built_with_new_has_its_code_as_template_and_no_arguments",
+  "crates/sacm/tests/diagnostic_templates.rs::lib_api_018_diagnostics_equal_in_the_seven_keys_order_by_template_then_arguments",
+  "crates/sacm/tests/messages_0_1_0.rs::lib_api_018_every_diagnostic_line_of_the_messages_golden_is_unchanged",
+  "crates/sacm/tests/serde_diagnostics.rs::lib_api_018_diagnostics_json_holds_templates_and_arguments_and_reads_back",
+  "crates/sacm/tests/serde_diagnostics.rs::lib_api_018_diagnostics_0_1_0_json_reads_with_the_code_as_template_and_no_arguments",
+  "crates/sacm/tests/serde_diagnostics.rs::lib_api_018_template_and_arguments_are_given_together_and_never_null",
+  "crates/sacm/tests/serde_diagnostics.rs::lib_api_018_an_unknown_template_a_refusal_s_or_another_code_s_is_refused",
+  "crates/sacm/tests/serde_diagnostics.rs::lib_api_018_the_code_s_text_takes_no_arguments",
+  "crates/sacm/tests/serde_diagnostics.rs::lib_api_018_arguments_that_do_not_match_the_template_are_refused",
+  "crates/sacm/tests/serde_diagnostics.rs::lib_api_018_a_refusal_record_naming_a_diagnostic_template_is_refused",
+  "crates/sacm/tests/serde_diagnostics.rs::lib_api_018_the_invalid_write_error_s_diagnostics_carry_their_templates",
+  "xtask/tests/message_templates.rs::lib_api_018_template_rs_declares_the_102_diagnostic_templates",
+  "xtask/tests/message_templates.rs::lib_api_018_the_crate_builds_diagnostics_only_from_templates",
+  "xtask/tests/message_templates.rs::lib_api_018_construction_check_reports_a_diagnostic_built_without_a_template",
+]
+acceptance = [
+  "A table-driven test (`crates/sacm/tests/diagnostic_templates.rs`) gives one input for each of the 102 diagnostic templates: a tolerant or strict read, or `validate`, of a document built through the public API. It checks `code()`, `severity()`, `requirement_id()`, `clause()`, `template()`, every argument by name, kind and value, and `message()`. It also checks the table against itself: the pattern rendered with the arguments is the message, and the inputs cover the 102 templates once each. The message half runs green on the code before the slice changes it.",
+  "With two descriptions, a Claim `CLM_132` gives a SACM-MULT-001 Warning (SACM23-VAL-011, clause 8.6). Its message is `Claim \"CLM_132\" has 2 descriptions (description:Description[0..1])`, its template `SACM-MULT-001/too-many`, and its arguments `[class: \"Claim\", id: \"CLM_132\", count: 2, property: \"description\", type: \"Description\", multiplicity: \"0..1\"]`. Its `affected()` is `[CLM_132]`.",
+  "Every line of `tests/data/golden/messages-0.1.0.txt` is unchanged.",
+  "A diagnostic built with `test-support`'s `Diagnostic::new` has its code's text as `template()` and no `arguments()`. In `crates/sacm/src`, no file but `diagnostic.rs` builds a `Diagnostic` other than through a template, and `Diagnostic::create` no longer exists.",
+  "With `serde`, every value of `diagnostics.json` writes `template` and `arguments` after `message`, and one of them comes from a real `validate` (acceptance 2). `diagnostics-0.1.0.json`, the 0.1.0 golden file byte for byte, reads with each template equal to its code's text and no arguments, and serializes again as the first two values of `diagnostics.json`. The `Invalid` value of `write-errors.json` carries its diagnostic's template and arguments. These inputs are refused: `template` without `arguments`, `arguments` without `template`, or either as `null`; an unknown template, a refusal's template, or another code's template; the code's text as template with arguments; arguments that are missing, extra, out of order or of the wrong kind; and a refusal record that names a diagnostic template.",
+  "Two diagnostics equal in the seven ADR 0011 keys order by template id, then by arguments. `cmp` is `Equal` exactly when the diagnostics are `==`. `Argument`, `ArgumentValue` and `Details` are `Clone + Debug + Eq + Hash + Send + Sync + 'static`, and `Argument` and `ArgumentValue` are also `Ord`.",
+  "`template.rs` declares 102 templates whose carrier is `Diagnostic`. The catalog's `## Message templates` table lists all 204 templates (LIB-API-017 acceptance 6 checks it).",
+]
+status = "implemented"
 depends_on = ["LIB-API-017", "LIB-DIAG-001", "LIB-API-006"]
 
 [[row]]
@@ -6678,7 +6710,7 @@ kind = "api"
 status = "verified"
 verification = "docs/verification/0053-simplification.md"
 depends_on = ["LIB-EDIT-003", "LIB-EDIT-008", "LIB-EDIT-009", "LIB-EDIT-010"]
-notes = "Narrowed 2026-11-15 from \"serializes the model and diagnostics\": leaving `Document` out removes the concern that serde freezes a second serialization of the model. The maintainer decided on 2026-11-15 that the serialized form is a stability promise, like `operation_name()`: changing it is a breaking change. Needs an ADR for the serde dependency (optional, with `derive`) and the JSON shape. LIB-QA-017 builds the wasm target with this feature too. Slice 0056: `CopyElements` is not serialized (ADR 0030 amendment 2); `MoveElement` and the three new `EditError` variants have goldens; re-check there. Slice 0057: reworded for ArtifactAssetRelationship and the SACM23-XMI-009 spellings; re-check there. Slice 0063: refusals carry codes, templates and arguments (LIB-API-017); re-check there."
+notes = "Narrowed 2026-11-15 from \"serializes the model and diagnostics\": leaving `Document` out removes the concern that serde freezes a second serialization of the model. The maintainer decided on 2026-11-15 that the serialized form is a stability promise, like `operation_name()`: changing it is a breaking change. Needs an ADR for the serde dependency (optional, with `derive`) and the JSON shape. LIB-QA-017 builds the wasm target with this feature too. Slice 0056: `CopyElements` is not serialized (ADR 0030 amendment 2); `MoveElement` and the three new `EditError` variants have goldens; re-check there. Slice 0057: reworded for ArtifactAssetRelationship and the SACM23-XMI-009 spellings; re-check there. Slice 0063: refusals carry codes, templates and arguments (LIB-API-017); re-check there. Slice 0064: Diagnostic JSON gains `template` and `arguments`; `diagnostics-0.1.0.json` still reads (LIB-API-018); re-check there."
 acceptance = [
   "With the `serde` feature, every type ADR 0030 lists implements `Serialize` and `Deserialize`; `Document` does not (a `compile_fail` doctest). Without the feature, `sacm` has no serde dependency.",
   "Golden JSON files fix the shape of every operation struct but `CopyElements` (each constructor form: root and parent, with and without id, set and remove), a `Mutation`, every `EditError` variant, a full and a minimal `Diagnostic`, and LangString and MultiLangString values. Serializing gives the file's bytes, and deserializing the file gives values `==` to the originals. A test with an exhaustive `match` fails to compile when an `Operation` or `EditError` variant has no sample.",

@@ -9,7 +9,8 @@
 //! Each diagnostic carries a stable [`Code`] from the
 //! [diagnostics catalog][catalog], a [`Severity`], the matrix row and clause
 //! it enforces, the ids of the affected elements, an optional
-//! [`SourceLocation`] and a message.
+//! [`SourceLocation`], a message, and the
+//! [template and arguments](Diagnostic::template) the message is made from.
 //!
 //! [`validation::validate`](crate::validation::validate) and
 //! [`xmi::read`](crate::xmi::read) return diagnostics, and a strict
@@ -800,7 +801,8 @@ impl fmt::Display for ArgumentValue {
 
 /// One named value that a message is made from, such as `class` = `Claim`.
 ///
-/// The arguments of a refusal are in
+/// The arguments of a diagnostic, or of a refusal, are in
+/// [`Diagnostic::arguments`],
 /// [`ReadError::arguments`](crate::xmi::ReadError::arguments) and
 /// [`WriteError::arguments`](crate::xmi::WriteError::arguments), in the
 /// order they first appear in its English sentence; the catalog lists each
@@ -1086,6 +1088,9 @@ pub(crate) fn details_from_record(
     }
     let Some(template) = of_carrier.find(|template| template.id == template_id) else {
         return Err(match template::find(template_id) {
+            Some(found) if found.carrier == template::Carrier::Diagnostic => {
+                format!("the template {template_id:?} is a diagnostic's, not a refusal's")
+            }
             Some(_) => format!("the template {template_id:?} is another refusal's"),
             None => format!("the template {template_id:?} is unknown"),
         });
@@ -1095,6 +1100,24 @@ pub(crate) fn details_from_record(
             "the code {code} is not the code of the template {template_id:?}"
         ));
     }
+    Ok(Details::new(
+        template,
+        arguments_from_record(template, arguments)?,
+    ))
+}
+
+/// The arguments `arguments` of a record of `template`: exactly its
+/// arguments, by name and kind, in its order (ADR 0030 amendment 3, R11).
+///
+/// # Errors
+///
+/// The reason, if they are not.
+#[cfg(feature = "serde")]
+fn arguments_from_record(
+    template: &'static Template,
+    arguments: ArgumentsRecord,
+) -> Result<Vec<Argument>, String> {
+    let template_id = template.id;
     let ArgumentsRecord(given) = arguments;
     if given.len() != template.arguments.len() {
         return Err(format!(
@@ -1123,7 +1146,59 @@ pub(crate) fn details_from_record(
             value,
         });
     }
-    Ok(Details::new(template, read))
+    Ok(read)
+}
+
+/// The details a record of a diagnostic of `code` reads back to, from its
+/// `template` and `arguments` (ADR 0030 amendment 3, R9 and R11), checked in
+/// this order: both or neither are given; with neither, or with the code's
+/// text as template and no arguments, there are none; otherwise the template
+/// is one of the crate's, a diagnostic's, of `code`, and the arguments are
+/// exactly its arguments.
+///
+/// # Errors
+///
+/// The reason, if any check fails.
+#[cfg(feature = "serde")]
+fn diagnostic_details_from_record(
+    code: Code,
+    template: Option<String>,
+    arguments: Option<ArgumentsRecord>,
+) -> Result<Option<Details>, String> {
+    let (template_id, arguments) = match (template, arguments) {
+        (None, None) => return Ok(None),
+        (Some(template_id), Some(arguments)) => (template_id, arguments),
+        (Some(_), None) | (None, Some(_)) => {
+            return Err(
+                "a diagnostic gives template and arguments together, or neither".to_owned(),
+            );
+        }
+    };
+    if template_id == code.as_str() {
+        return match arguments.0.len() {
+            0 => Ok(None),
+            n => Err(format!(
+                "the template {template_id:?} takes 0 arguments, not {n}"
+            )),
+        };
+    }
+    let Some(template) = template::find(&template_id) else {
+        return Err(format!("the template {template_id:?} is unknown"));
+    };
+    if template.carrier != template::Carrier::Diagnostic {
+        return Err(format!(
+            "the template {template_id:?} is a refusal's, not a diagnostic's"
+        ));
+    }
+    if template.code != code {
+        return Err(format!(
+            "the code {code} is not the code of the template {template_id:?}"
+        ));
+    }
+    Ok(Some(Details::new(
+        template,
+        arguments_from_record(template, arguments)?,
+    )))
 }
 
 /// Whether any of `diagnostics` has [`Severity::Error`].
@@ -1242,36 +1317,39 @@ impl fmt::Display for SourceLocation {
 /// 4. requirement id;
 /// 5. clause, with no clause first;
 /// 6. severity, `Info < Warning < Error`;
-/// 7. message.
+/// 7. message;
+/// 8. template id;
+/// 9. arguments, argument by argument (by name, then value; Text before
+///    Count), a shorter list that is a prefix sorting first.
 ///
-/// Text keys (code, requirement id, clause, message, and each affected id)
-/// compare as `str`: byte-wise lexicographic, so clause `"10"` sorts before
-/// `"2"`.
+/// Text keys (code, requirement id, clause, message, template, and each
+/// affected id) compare as `str`: byte-wise lexicographic, so clause `"10"`
+/// sorts before `"2"`.
 ///
 /// Two diagnostics compare `Equal` exactly when they are equal.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(
-    feature = "serde",
-    derive(serde::Serialize, serde::Deserialize),
-    serde(deny_unknown_fields)
-)]
 pub struct Diagnostic {
     code: Code,
     severity: Severity,
     // `Cow`, so that a diagnostic read back with serde holds its own text;
     // the crate's own diagnostics borrow static text.
     requirement_id: Cow<'static, str>,
-    #[cfg_attr(feature = "serde", serde(default))]
     clause: Option<Cow<'static, str>>,
-    #[cfg_attr(feature = "serde", serde(default))]
     affected: Vec<ElementId>,
-    #[cfg_attr(feature = "serde", serde(default))]
     location: Option<SourceLocation>,
     message: String,
+    // The template and arguments the message is made from; `None` for a
+    // diagnostic built with `test-support`'s `new` and for a record that
+    // gives neither. Invariant: `Some(details)` has the code `code`. With
+    // `None` against `Some`, the derived `Eq` agrees with comparing
+    // `(template(), arguments())`, because template ids contain `/` and code
+    // texts do not.
+    details: Option<Details>,
 }
 
 impl Diagnostic {
-    /// A diagnostic with no clause, no affected ids and no location.
+    /// A diagnostic with no clause, no affected ids and no location. Its
+    /// template is its code's text, and it has no arguments.
     ///
     /// **Not part of the stable API**: public only under the `test-support`
     /// feature.
@@ -1284,7 +1362,16 @@ impl Diagnostic {
         requirement_id: &'static str,
         message: impl Into<String>,
     ) -> Self {
-        Self::create(code, severity, requirement_id, message)
+        Self {
+            code,
+            severity,
+            requirement_id: Cow::Borrowed(requirement_id),
+            clause: None,
+            affected: Vec::new(),
+            location: None,
+            message: message.into(),
+            details: None,
+        }
     }
 
     /// Sets the clause of the specification the diagnostic enforces.
@@ -1320,21 +1407,25 @@ impl Diagnostic {
         self.set_location(location)
     }
 
-    /// The crate-internal form of `new`.
-    pub(crate) fn create(
-        code: Code,
+    /// The diagnostic of `template`, made from `arguments`: its code is the
+    /// template's, its message the template rendered with them, and it has
+    /// no clause, affected ids or location.
+    pub(crate) fn emit(
+        template: &'static Template,
         severity: Severity,
         requirement_id: &'static str,
-        message: impl Into<String>,
+        arguments: Vec<Argument>,
     ) -> Self {
+        let details = Details::new(template, arguments);
         Self {
-            code,
+            code: details.code(),
             severity,
             requirement_id: Cow::Borrowed(requirement_id),
             clause: None,
             affected: Vec::new(),
             location: None,
-            message: message.into(),
+            message: details.render(),
+            details: Some(details),
         }
     }
 
@@ -1400,11 +1491,140 @@ impl Diagnostic {
         self.location
     }
 
-    /// The human-readable message, exactly as given. See [`Diagnostic`] for
-    /// how `Display` writes it.
+    /// The English message: its template rendered with its arguments; as
+    /// given for a diagnostic built with `test-support` or read with serde.
+    /// See [`Diagnostic`] for how `Display` writes it.
     #[must_use]
     pub fn message(&self) -> &str {
         &self.message
+    }
+
+    /// The id of the template the message is made from, `<CODE>/<form>`,
+    /// such as `SACM-MULT-001/too-many`: a stable name for its sentence form,
+    /// under which an application can keep its own wording (ADR 0030
+    /// amendment 3). The catalog lists every template with its arguments and
+    /// English. A diagnostic built with `test-support`'s `new`, or read from
+    /// JSON that gives no template, as 0.1.0 wrote, has its code's text, such
+    /// as `SACM-MULT-001`, and no arguments.
+    ///
+    /// ```
+    /// use sacm::diagnostic::ArgumentValue;
+    /// use sacm::{validation, xmi::{self, ReadOptions}};
+    ///
+    /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="p"><name content="P"/>
+    ///   <argumentElement xmi:type="sacm:Claim" xmi:id="c1" citedElement="c1"><name content="C"/></argumentElement>
+    /// </sacm:ArgumentPackage>"#;
+    /// let document = xmi::read(input, &ReadOptions::default())?.into_document();
+    /// let found = validation::validate(&document);
+    /// assert_eq!(found[0].template(), "SACM-CITE-001/not-a-citation");
+    /// let words: Vec<String> = found[0].arguments().iter().map(ToString::to_string).collect();
+    /// assert_eq!(words, [r#"class="Claim""#, r#"id="c1""#, r#"target="c1""#]);
+    /// assert_eq!(found[0].arguments()[1].value(), &ArgumentValue::Text("c1".into()));
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    #[must_use]
+    pub fn template(&self) -> &'static str {
+        self.details
+            .as_ref()
+            .map_or(self.code.as_str(), Details::template)
+    }
+
+    /// The values the message is made from, in the order they first appear
+    /// in it, such as `class="Claim"`, `id="CLM_132"`, `count=2`. Empty when
+    /// [`template`](Self::template) is the code's text. The affected ids are
+    /// in [`affected`](Self::affected) too.
+    #[must_use]
+    pub fn arguments(&self) -> &[Argument] {
+        self.details.as_ref().map_or(&[], Details::arguments)
+    }
+}
+
+/// A diagnostic serializes as its nine keys, `template` and `arguments` after
+/// `message`: `template` always a string, and `arguments` always an object,
+/// `{}` when there are none (ADR 0030 amendment 3, R8 and R9).
+#[cfg(feature = "serde")]
+impl serde::Serialize for Diagnostic {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+
+        let mut record = serializer.serialize_struct("Diagnostic", 9)?;
+        record.serialize_field("code", &self.code)?;
+        record.serialize_field("severity", &self.severity)?;
+        record.serialize_field("requirement_id", &self.requirement_id)?;
+        record.serialize_field("clause", &self.clause)?;
+        record.serialize_field("affected", &self.affected)?;
+        record.serialize_field("location", &self.location)?;
+        record.serialize_field("message", &self.message)?;
+        record.serialize_field("template", self.template())?;
+        record.serialize_field("arguments", &ArgumentsRecord::of(self.arguments()))?;
+        record.end()
+    }
+}
+
+/// A diagnostic as read: every key but `code`, `severity`,
+/// `requirement_id` and `message` may be left out, and an unknown one is
+/// refused. `template` and `arguments` left out are `None`; `null` for
+/// either is refused.
+#[cfg(feature = "serde")]
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DiagnosticRecord {
+    code: Code,
+    severity: Severity,
+    requirement_id: Cow<'static, str>,
+    #[serde(default)]
+    clause: Option<Cow<'static, str>>,
+    #[serde(default)]
+    affected: Vec<ElementId>,
+    #[serde(default)]
+    location: Option<SourceLocation>,
+    message: String,
+    #[serde(default, deserialize_with = "given")]
+    template: Option<String>,
+    #[serde(default, deserialize_with = "given")]
+    arguments: Option<ArgumentsRecord>,
+}
+
+/// A key that, when given, holds a value: `null` is refused.
+#[cfg(feature = "serde")]
+fn given<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::Deserialize<'de>,
+{
+    T::deserialize(deserializer).map(Some)
+}
+
+/// A diagnostic reads back from its record, which keeps its message as
+/// given: never rendered again or checked against the template (ADR 0030
+/// amendment 3, R9, R11 and Records).
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Diagnostic {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let DiagnosticRecord {
+            code,
+            severity,
+            requirement_id,
+            clause,
+            affected,
+            location,
+            message,
+            template,
+            arguments,
+        } = DiagnosticRecord::deserialize(deserializer)?;
+        let details = diagnostic_details_from_record(code, template, arguments)
+            .map_err(serde::de::Error::custom)?;
+        Ok(Self {
+            code,
+            severity,
+            requirement_id,
+            clause,
+            affected,
+            location,
+            message,
+            details,
+        })
     }
 }
 
@@ -1461,6 +1681,7 @@ impl Ord for Diagnostic {
             affected,
             location,
             message,
+            details: _,
         } = self;
         location
             .is_none()
@@ -1472,6 +1693,10 @@ impl Ord for Diagnostic {
             .then_with(|| clause.cmp(&other.clause))
             .then_with(|| severity.cmp(&other.severity))
             .then_with(|| message.cmp(&other.message))
+            // The details through their accessors: a diagnostic without
+            // details has its code's text as template and no arguments.
+            .then_with(|| self.template().cmp(other.template()))
+            .then_with(|| self.arguments().cmp(other.arguments()))
     }
 }
 

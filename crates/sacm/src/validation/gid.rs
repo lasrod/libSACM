@@ -2,7 +2,8 @@
 
 use std::collections::BTreeMap;
 
-use crate::diagnostic::{Code, Diagnostic, Severity};
+use crate::diagnostic::template::ID_003_DUPLICATE_GID;
+use crate::diagnostic::{Argument, Diagnostic, Severity};
 use crate::model::{Document, SacmElement};
 
 /// SACM23-VAL-002: each non-empty `gid` that two or more elements hold, of
@@ -27,18 +28,17 @@ pub(super) fn duplicate_gid(document: &Document, found: &mut Vec<Diagnostic>) {
             .iter()
             .map(|element| format!("{} {:?}", element.kind().name(), element.id().as_str()))
             .collect();
-        let message = format!(
-            "{} elements hold the gid {gid:?}, which must be unique within the model \
-             instance: {}",
-            elements.len(),
-            listed.join(", ")
-        );
+        let arguments = vec![
+            Argument::count_of("count", elements.len()),
+            Argument::text("gid", gid),
+            Argument::text("elements", listed.join(", ")),
+        ];
         found.push(
-            Diagnostic::create(
-                Code::GID_DUPLICATE,
+            Diagnostic::emit(
+                &ID_003_DUPLICATE_GID,
                 Severity::Error,
                 "SACM23-VAL-002",
-                message,
+                arguments,
             )
             .set_clause("8.2")
             .set_affected(elements.iter().map(|element| element.id().clone())),

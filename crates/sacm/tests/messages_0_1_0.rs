@@ -1,5 +1,5 @@
-//! The messages of 0.1.0 stay byte for byte (LIB-API-017, acceptance 3; ADR
-//! 0030 amendment 3).
+//! The messages of 0.1.0 stay byte for byte (LIB-API-017 and LIB-API-018,
+//! acceptance 3 of each; ADR 0030 amendment 3).
 //!
 //! Slice 0063 gives every refusal a template and arguments, and slice 0064
 //! every diagnostic, and renders each message from them. Neither may change
@@ -47,6 +47,9 @@ use sacm::validation;
 use sacm::xmi::{self, Mode, ReadOptions};
 
 const ROW: &str = "LIB-API-017";
+
+/// The row of the diagnostics' lines (slice 0064).
+const ROW_018: &str = "LIB-API-018";
 
 /// The golden file, relative to this crate's directory.
 const GOLDEN: &str = "tests/data/golden/messages-0.1.0.txt";
@@ -198,5 +201,57 @@ fn lib_api_017_every_message_of_0_1_0_for_every_fixture_is_unchanged() {
         first + 1,
         expected_lines.get(first),
         actual_lines.get(first),
+    );
+}
+
+/// The lines of `text` that hold a diagnostic: neither a `#` comment nor a
+/// refusal, each with its line number in `text`.
+fn diagnostic_lines(text: &str) -> Vec<(usize, &str)> {
+    text.lines()
+        .enumerate()
+        .filter(|(_, line)| !line.starts_with('#'))
+        .filter(|(_, line)| {
+            line.split_once(": ")
+                .is_none_or(|(_, message)| !message.starts_with("refusal "))
+        })
+        .map(|(index, line)| (index + 1, line))
+        .collect()
+}
+
+/// Every line of the golden file that is not a refusal's, the `Display` of a
+/// diagnostic or `(none)`, is rendered unchanged, by the renderer of the
+/// LIB-API-017 test (LIB-API-018, acceptance 3).
+#[test]
+fn lib_api_018_every_diagnostic_line_of_the_messages_golden_is_unchanged() {
+    let root = repository_root();
+    let actual = rendered(&root);
+    let golden_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(GOLDEN);
+    let expected = fs::read_to_string(&golden_path)
+        .unwrap_or_else(|error| panic!("{ROW_018}: setup: read {GOLDEN}: {error}"));
+    let golden = diagnostic_lines(&expected);
+    let now = diagnostic_lines(&actual);
+    assert!(
+        golden.iter().any(|(_, line)| line.contains(" error SACM-")
+            || line.contains(" warning SACM-")
+            || line.contains(" info SACM-")),
+        "{ROW_018}: setup: {GOLDEN} holds no diagnostic line"
+    );
+    let first = golden
+        .iter()
+        .zip(&now)
+        .position(|((_, golden), (_, now))| golden != now);
+    if let Some(first) = first {
+        panic!(
+            "{ROW_018}: the diagnostic lines differ from {GOLDEN}, first at its line {}:\n  \
+             golden:   {:?}\n  rendered: {:?}",
+            golden[first].0, golden[first].1, now[first].1,
+        );
+    }
+    assert_eq!(
+        golden.len(),
+        now.len(),
+        "{ROW_018}: {GOLDEN} holds {} diagnostic lines, the code renders {}",
+        golden.len(),
+        now.len()
     );
 }

@@ -4,7 +4,8 @@
 
 use std::collections::HashSet;
 
-use crate::diagnostic::{Code, Diagnostic, Severity};
+use crate::diagnostic::template::{MULT_001_MISSING, REF_002_NOT_AN_ARTIFACT_REFERENCE};
+use crate::diagnostic::{Argument, Diagnostic, Severity};
 use crate::model::{AbstractClass, Document, ElementKind, ReferenceEnd, SacmElement};
 
 /// SACM23-VAL-005: each asserted relationship with no `source` is one
@@ -38,43 +39,52 @@ pub(super) fn relationship_ends(document: &Document, found: &mut Vec<Diagnostic>
 }
 
 /// What a missing end of one relationship class is reported with: the row,
-/// the clause, and each end as the clause declares it.
+/// the clause, and each end's type and multiplicity as the clause declares
+/// them.
 struct Ends {
     requirement: &'static str,
     clause: &'static str,
-    source: &'static str,
-    target: &'static str,
+    source: (&'static str, &'static str),
+    target: (&'static str, &'static str),
 }
 
 /// The ends of an asserted relationship (§11.13, SACM23-VAL-005).
 const ASSERTED: Ends = Ends {
     requirement: "SACM23-VAL-005",
     clause: "11.13",
-    source: "source:ArgumentAsset[1..*]",
-    target: "target:ArgumentAsset[1]",
+    source: ("ArgumentAsset", "1..*"),
+    target: ("ArgumentAsset", "1"),
 };
 
 /// The ends of an `ArtifactAssetRelationship` (§12.14, SACM23-ART-010).
 const ARTIFACT: Ends = Ends {
     requirement: "SACM23-ART-010",
     clause: "12.14",
-    source: "source:ArtifactAsset[1..*]",
-    target: "target:ArtifactAsset[1..*]",
+    source: ("ArtifactAsset", "1..*"),
+    target: ("ArtifactAsset", "1..*"),
 };
 
 /// The finding of `element`, of the relationship class `ends` describes,
-/// which has no `end`, declared as `declared`.
-fn missing_end(element: SacmElement<'_>, ends: &Ends, end: &str, declared: &str) -> Diagnostic {
-    let message = format!(
-        "{} {:?} has no {end} ({declared})",
-        element.kind().name(),
-        element.id().as_str()
-    );
-    Diagnostic::create(
-        Code::MULTIPLICITY_VIOLATION,
+/// which has no `end`, whose type and multiplicity are `declared`.
+fn missing_end(
+    element: SacmElement<'_>,
+    ends: &Ends,
+    end: &str,
+    declared: (&str, &str),
+) -> Diagnostic {
+    let (type_name, multiplicity) = declared;
+    let arguments = vec![
+        Argument::text("class", element.kind().name()),
+        Argument::text("id", element.id().as_str()),
+        Argument::text("property", end),
+        Argument::text("type", type_name),
+        Argument::text("multiplicity", multiplicity),
+    ];
+    Diagnostic::emit(
+        &MULT_001_MISSING,
         Severity::Error,
         ends.requirement,
-        message,
+        arguments,
     )
     .set_clause(ends.clause)
     .set_affected([element.id().clone()])
@@ -124,23 +134,20 @@ pub(super) fn artifact_reference_kinds(document: &Document, found: &mut Vec<Diag
                 {
                     continue;
                 }
-                let message = format!(
-                    "{} {:?} has the {} {:?}, of the kind {}, but §{clause} requires each {} \
-                     of the {} to be an ArtifactReference",
-                    element.kind().name(),
-                    element.id().as_str(),
-                    end.name(),
-                    id.as_str(),
-                    kind.name(),
-                    end.name(),
-                    element.kind().name()
-                );
+                let arguments = vec![
+                    Argument::text("class", element.kind().name()),
+                    Argument::text("id", element.id().as_str()),
+                    Argument::text("end", end.name()),
+                    Argument::text("target", id.as_str()),
+                    Argument::text("target_class", kind.name()),
+                    Argument::text("clause", clause),
+                ];
                 found.push(
-                    Diagnostic::create(
-                        Code::REF_WRONG_TYPE,
+                    Diagnostic::emit(
+                        &REF_002_NOT_AN_ARTIFACT_REFERENCE,
                         Severity::Error,
                         "SACM23-VAL-016",
-                        message,
+                        arguments,
                     )
                     .set_clause(clause)
                     .set_affected([element.id().clone(), id.clone()]),

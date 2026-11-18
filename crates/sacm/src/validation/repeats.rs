@@ -3,7 +3,8 @@
 
 use std::collections::HashMap;
 
-use crate::diagnostic::{Code, Diagnostic, Severity};
+use crate::diagnostic::template::MULT_001_REPEATED_REFERENCE;
+use crate::diagnostic::{Argument, Diagnostic, Severity};
 use crate::model::{Document, ReferenceEnd};
 
 /// SACM23-VAL-022: each id that one multi-valued end of one element holds
@@ -43,20 +44,19 @@ pub(super) fn repeated_references(document: &Document, found: &mut Vec<Diagnosti
                 if count < 2 {
                     continue;
                 }
-                let message = format!(
-                    "{} {:?} holds {:?} {count} times in its {}, whose ids are unique in \
-                     SACM 2.3 (the repeat is kept)",
-                    element.kind().name(),
-                    element.id().as_str(),
-                    id.as_str(),
-                    end.name()
-                );
+                let arguments = vec![
+                    Argument::text("class", element.kind().name()),
+                    Argument::text("id", element.id().as_str()),
+                    Argument::text("target", id.as_str()),
+                    Argument::count_of("count", count),
+                    Argument::text("end", end.name()),
+                ];
                 found.push(
-                    Diagnostic::create(
-                        Code::MULTIPLICITY_VIOLATION,
+                    Diagnostic::emit(
+                        &MULT_001_REPEATED_REFERENCE,
                         Severity::Warning,
                         "SACM23-VAL-022",
-                        message,
+                        arguments,
                     )
                     .set_clause(end.clause_on(element.kind()))
                     .set_affected([element.id().clone(), id.clone()]),

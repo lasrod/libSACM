@@ -13,7 +13,7 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use sacm::diagnostic::{self, Code, Diagnostic, Severity};
+use sacm::diagnostic::{self, Code, Diagnostic, Severity, SourceLocation};
 use sacm::edit::{self, CreateTaggedValue, SetFlag};
 use sacm::model::{AbstractClass, Document, ElementId, ElementKind, Flag, LangString};
 use sacm::validation;
@@ -106,6 +106,38 @@ fn missing_name(kind: ElementKind, id: &str) -> Diagnostic {
     .with_affected([ElementId::from(id)])
 }
 
+/// The seven keys of ADR 0011 of a diagnostic: its code, severity, row,
+/// clause, affected ids, location and message, but not its template and
+/// arguments (LIB-API-018), which a diagnostic built with `test-support`'s
+/// `new` does not have.
+type Keys = (
+    Code,
+    Severity,
+    String,
+    Option<String>,
+    Vec<ElementId>,
+    Option<SourceLocation>,
+    String,
+);
+
+/// The [`Keys`] of each of `found`, in order.
+fn keys(found: &[Diagnostic]) -> Vec<Keys> {
+    found
+        .iter()
+        .map(|diagnostic| {
+            (
+                diagnostic.code(),
+                diagnostic.severity(),
+                diagnostic.requirement_id().to_owned(),
+                diagnostic.clause().map(str::to_owned),
+                diagnostic.affected().to_vec(),
+                diagnostic.location(),
+                diagnostic.message().to_owned(),
+            )
+        })
+        .collect()
+}
+
 /// `findings` sorted, as `validate` must return them.
 fn sorted(mut findings: Vec<Diagnostic>) -> Vec<Diagnostic> {
     findings.sort();
@@ -116,7 +148,8 @@ fn sorted(mut findings: Vec<Diagnostic>) -> Vec<Diagnostic> {
 fn assert_findings(doc: &Document, expected: &[Diagnostic], what: &str) {
     let found = validation::validate(doc);
     assert_eq!(
-        found, expected,
+        keys(&found),
+        keys(expected),
         "{ROW}: validate on {what} gave the wrong findings"
     );
 }
@@ -202,8 +235,8 @@ fn sacm23_val_018_each_nameless_model_element_kind_in_a_named_package_gives_one_
         );
         add(&mut doc, Some("pkg"), kind, "e", None);
         assert_eq!(
-            this_rows_findings(&doc),
-            [missing_name(kind, "e")],
+            keys(&this_rows_findings(&doc)),
+            keys(&[missing_name(kind, "e")]),
             "{ROW}: validate on a nameless {kind} in a named ArtifactPackage gave the wrong findings"
         );
     }
@@ -270,8 +303,8 @@ fn sacm23_val_018_all_34_nameless_kinds_give_34_diagnostics_one_per_id() {
         "{ROW}: 34 nameless elements did not give one finding per id"
     );
     assert_eq!(
-        found,
-        sorted(expected),
+        keys(&found),
+        keys(&sorted(expected)),
         "{ROW}: 34 nameless elements gave the wrong findings"
     );
 }
@@ -534,8 +567,8 @@ fn sacm23_val_018_validate_keeps_the_nameless_element_and_the_written_output() {
 
     let found = validation::validate(&doc);
     assert_eq!(
-        found,
-        [missing_name(ElementKind::Claim, "c1")],
+        keys(&found),
+        keys(&[missing_name(ElementKind::Claim, "c1")]),
         "{ROW}: the nameless Claim was not reported"
     );
 
@@ -645,7 +678,8 @@ fn sacm23_val_018_findings_are_sorted_by_affected_id_whatever_the_insertion_orde
     for doc in &documents {
         let first = validation::validate(doc);
         assert_eq!(
-            first, expected,
+            keys(&first),
+            keys(&expected),
             "{ROW}: the findings are not sorted by affected id (a10, a2, b) for {doc:?}"
         );
         assert_eq!(

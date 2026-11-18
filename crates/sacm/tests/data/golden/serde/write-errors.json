@@ -37,7 +37,15 @@
           "nope"
         ],
         "location": null,
-        "message": "Claim \"c1\" has the citedElement \"nope\", which names no element of the document (the end's type is SACMElement)"
+        "message": "Claim \"c1\" has the citedElement \"nope\", which names no element of the document (the end's type is SACMElement)",
+        "template": "SACM-REF-001/dangling",
+        "arguments": {
+          "class": "Claim",
+          "id": "c1",
+          "end": "citedElement",
+          "target": "nope",
+          "type": "SACMElement"
+        }
       }
     ]
   },

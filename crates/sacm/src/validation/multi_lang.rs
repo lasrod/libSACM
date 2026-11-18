@@ -2,7 +2,11 @@
 
 use std::collections::BTreeMap;
 
-use crate::diagnostic::{Code, Diagnostic, Severity};
+use crate::diagnostic::template::{
+    self, MULT_001_MISSING, MULT_001_NO_VALUE, MULT_001_REPEATED_ABSENT_LANG,
+    MULT_001_REPEATED_LANG,
+};
+use crate::diagnostic::{Argument, Diagnostic, Severity};
 use crate::model::{Document, ElementId, ElementKind, LangString, SacmElement, TextRole};
 
 /// The requirement these rules enforce.
@@ -25,12 +29,14 @@ pub(super) fn multi_lang_strings(document: &Document, found: &mut Vec<Diagnostic
             }
         }
         if element.kind() == ElementKind::TaggedValue && element.key().is_none() {
-            let message = format!(
-                "{} {:?} has no key (key:MultiLangString[1])",
-                element.kind().name(),
-                element.id().as_str()
-            );
-            found.push(finding(message, "8.12", element.id()));
+            let arguments = vec![
+                Argument::text("class", element.kind().name()),
+                Argument::text("id", element.id().as_str()),
+                Argument::text("property", "key"),
+                Argument::text("type", "MultiLangString"),
+                Argument::text("multiplicity", "1"),
+            ];
+            found.push(finding(&MULT_001_MISSING, arguments, "8.12", element.id()));
         }
     }
 }
@@ -42,15 +48,16 @@ fn check(
     values: &[LangString],
     found: &mut Vec<Diagnostic>,
 ) {
-    let owner = format!(
-        "the {} of {} {:?}",
-        role.name(),
-        element.kind().name(),
-        element.id().as_str()
-    );
+    // The role, class and id the message names first.
+    let owner = || {
+        vec![
+            Argument::text("role", role.name()),
+            Argument::text("class", element.kind().name()),
+            Argument::text("id", element.id().as_str()),
+        ]
+    };
     if values.is_empty() {
-        let message = format!("{owner} has no value (value:LangString[1..*])");
-        found.push(finding(message, "8.5", element.id()));
+        found.push(finding(&MULT_001_NO_VALUE, owner(), "8.5", element.id()));
         return;
     }
     // Ordered by language, so the findings come out the same every time.
@@ -62,21 +69,28 @@ fn check(
         if count < 2 {
             continue;
         }
-        let language = match lang {
-            Some(lang) => format!("the language {lang:?}"),
-            None => "no language (lang absent)".to_owned(),
+        let mut arguments = owner();
+        arguments.push(Argument::count_of("count", count));
+        let template = match lang {
+            Some(lang) => {
+                arguments.push(Argument::text("lang", lang));
+                &MULT_001_REPEATED_LANG
+            }
+            None => &MULT_001_REPEATED_ABSENT_LANG,
         };
-        let message = format!(
-            "{owner} has {count} values in {language}, and each value's lang must be unique"
-        );
-        found.push(finding(message, "8.5", element.id()));
+        found.push(finding(template, arguments, "8.5", element.id()));
     }
 }
 
-/// The SACM-MULT-001 Error `message`, citing `clause` and affecting the
-/// element `id`.
-fn finding(message: String, clause: &'static str, id: &ElementId) -> Diagnostic {
-    Diagnostic::create(Code::MULTIPLICITY_VIOLATION, Severity::Error, ROW, message)
+/// The SACM-MULT-001 Error of `template`, made from `arguments`, citing
+/// `clause` and affecting the element `id`.
+fn finding(
+    template: &'static template::Template,
+    arguments: Vec<Argument>,
+    clause: &'static str,
+    id: &ElementId,
+) -> Diagnostic {
+    Diagnostic::emit(template, Severity::Error, ROW, arguments)
         .set_clause(clause)
         .set_affected([id.clone()])
 }

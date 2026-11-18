@@ -1,6 +1,6 @@
-//! The message templates: each English sentence form a refusal's message is
-//! made from, under a stable id, with the arguments it takes (LIB-API-017;
-//! ADR 0030 amendment 3).
+//! The message templates: each English sentence form a diagnostic's or a
+//! refusal's message is made from, under a stable id, with the arguments it
+//! takes (LIB-API-017, LIB-API-018; ADR 0030 amendment 3).
 //!
 //! One entry per template, in the fixed syntax that
 //! `xtask/tests/message_templates.rs` parses and checks against the
@@ -12,7 +12,8 @@
 //!     "the English pattern, with {name}, {name:?} and {name:04X}";
 //! ```
 //!
-//! The carrier is `Read("<Variant>")` for a `ReadError` variant,
+//! The carrier is `Diagnostic` for a [`Diagnostic`](super::Diagnostic)'s
+//! message, `Read("<Variant>")` for a `ReadError` variant,
 //! `Write("<Variant>")` for a `WriteError` variant, or `Unread` for the
 //! refusal `xmi/refusal.rs` builds from its list of what this version does
 //! not read. A const is named after its id: without `SACM-`, in upper case,
@@ -37,7 +38,8 @@ pub(crate) struct Template {
     )]
     pub(crate) carrier: Carrier,
     /// The arguments, by name and kind, in the order the pattern first names
-    /// them; an `Unread` refusal's `row`, which the label names, comes last.
+    /// them; an `Unread` refusal's `row`, which the label names, comes last,
+    /// and so does a diagnostic's, which its pattern names last.
     #[cfg_attr(
         not(any(feature = "serde", test)),
         expect(dead_code, reason = "serde and the tests check a template's arguments")
@@ -50,6 +52,8 @@ pub(crate) struct Template {
 /// What carries a template's message.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Carrier {
+    /// A [`Diagnostic`](super::Diagnostic)'s message.
+    Diagnostic,
     /// The `ReadError` variant of this name.
     Read(&'static str),
     /// The `WriteError` variant of this name.
@@ -399,6 +403,314 @@ templates! {
     XML_001_UNKNOWN_TOKEN = XML_MALFORMED, Read("Malformed"), "SACM-XML-001/unknown-token",
         [],
         "the input has markup or text that is not allowed here";
+    // The diagnostic templates (LIB-API-018): those of validation, then those
+    // of the reader.
+    MULT_001_MISSING = MULTIPLICITY_VIOLATION, Diagnostic, "SACM-MULT-001/missing",
+        [Text("class"), Text("id"), Text("property"), Text("type"), Text("multiplicity")],
+        "{class} {id:?} has no {property} ({property}:{type}[{multiplicity}])";
+    MULT_001_TOO_MANY = MULTIPLICITY_VIOLATION, Diagnostic, "SACM-MULT-001/too-many",
+        [Text("class"), Text("id"), Count("count"), Text("property"), Text("type"), Text("multiplicity")],
+        "{class} {id:?} has {count} {property}s ({property}:{type}[{multiplicity}])";
+    MULT_001_NO_VALUE = MULTIPLICITY_VIOLATION, Diagnostic, "SACM-MULT-001/no-value",
+        [Text("role"), Text("class"), Text("id")],
+        "the {role} of {class} {id:?} has no value (value:LangString[1..*])";
+    MULT_001_REPEATED_LANG = MULTIPLICITY_VIOLATION, Diagnostic, "SACM-MULT-001/repeated-lang",
+        [Text("role"), Text("class"), Text("id"), Count("count"), Text("lang")],
+        "the {role} of {class} {id:?} has {count} values in the language {lang:?}, and each value's lang must be unique";
+    MULT_001_REPEATED_ABSENT_LANG = MULTIPLICITY_VIOLATION, Diagnostic, "SACM-MULT-001/repeated-absent-lang",
+        [Text("role"), Text("class"), Text("id"), Count("count")],
+        "the {role} of {class} {id:?} has {count} values in no language (lang absent), and each value's lang must be unique";
+    MULT_001_REPEATED_REFERENCE = MULTIPLICITY_VIOLATION, Diagnostic, "SACM-MULT-001/repeated-reference",
+        [Text("class"), Text("id"), Text("target"), Count("count"), Text("end")],
+        "{class} {id:?} holds {target:?} {count} times in its {end}, whose ids are unique in SACM 2.3 (the repeat is kept)";
+    MULT_001_NAME_WITHOUT_EXPRESSION = MULTIPLICITY_VIOLATION, Diagnostic, "SACM-MULT-001/name-without-expression",
+        [Text("class"), Text("id")],
+        "the name of {class} {id:?} is an ExpressionLangString with no expression (expression:ExpressionElement[1])";
+    MULT_001_VALUE_WITHOUT_EXPRESSION = MULTIPLICITY_VIOLATION, Diagnostic, "SACM-MULT-001/value-without-expression",
+        [Count("position"), Text("role"), Text("class"), Text("id")],
+        "value {position} of the {role} of {class} {id:?} is an ExpressionLangString with no expression (expression:ExpressionElement[1])";
+    EXPR_001_NAME_WITH_CONTENT = EXPRESSION_WITH_CONTENT, Diagnostic, "SACM-EXPR-001/name-with-content",
+        [Text("class"), Text("id"), Text("expression")],
+        "the name of {class} {id:?} has the expression {expression:?} and a content that is not empty, and §8.4 says that if expression is not empty, then content should be empty";
+    EXPR_001_VALUE_WITH_CONTENT = EXPRESSION_WITH_CONTENT, Diagnostic, "SACM-EXPR-001/value-with-content",
+        [Count("position"), Text("role"), Text("class"), Text("id"), Text("expression")],
+        "value {position} of the {role} of {class} {id:?} has the expression {expression:?} and a content that is not empty, and §8.4 says that if expression is not empty, then content should be empty";
+    ABS_001_IMPLEMENTATION_CONSTRAINT = ABSTRACT_FORM_INVALID, Diagnostic, "SACM-ABS-001/implementation-constraint",
+        [Text("class"), Text("id")],
+        "{class} {id:?} has an implementationConstraint but isAbstract is not true: implementation constraints are only specified on an abstract element (§8.6)";
+    ABS_001_IMPLEMENTATION_CONSTRAINTS = ABSTRACT_FORM_INVALID, Diagnostic, "SACM-ABS-001/implementation-constraints",
+        [Text("class"), Text("id"), Count("count")],
+        "{class} {id:?} has {count} implementationConstraints but isAbstract is not true: implementation constraints are only specified on an abstract element (§8.6)";
+    ABS_001_ABSTRACT_HOLDER = ABSTRACT_FORM_INVALID, Diagnostic, "SACM-ABS-001/abstract-holder",
+        [Text("class"), Text("id"), Text("target")],
+        "{class} {id:?} has the abstractForm {target:?} but is itself abstract (isAbstract is true); §8.2 gives abstractForm to a concrete element";
+    ABS_001_FORM_NOT_ABSTRACT = ABSTRACT_FORM_INVALID, Diagnostic, "SACM-ABS-001/form-not-abstract",
+        [Text("target"), Text("class"), Text("id")],
+        "the abstractForm {target:?} of {class} {id:?} is not abstract: its isAbstract should be true (§8.2)";
+    ABS_001_FORM_OF_ANOTHER_KIND = ABSTRACT_FORM_INVALID, Diagnostic, "SACM-ABS-001/form-of-another-kind",
+        [Text("target"), Text("class"), Text("id"), Text("target_class")],
+        "the abstractForm {target:?} of {class} {id:?} is of the kind {target_class}, not {class}: it should be of the same type (§8.2)";
+    ABS_001_ABSTRACT_ELEMENT = ABSTRACT_FORM_INVALID, Diagnostic, "SACM-ABS-001/abstract-element",
+        [Text("class"), Text("id"), Text("target"), Text("target_class")],
+        "{class} {id:?} is concrete but has the element {target:?}, an abstract {target_class}: a concrete Expression references only concrete ExpressionElements (§10.10)";
+    ID_003_DUPLICATE_GID = GID_DUPLICATE, Diagnostic, "SACM-ID-003/duplicate-gid",
+        [Count("count"), Text("gid"), Text("elements")],
+        "{count} elements hold the gid {gid:?}, which must be unique within the model instance: {elements}";
+    PKG_001_MIXED_CONTENT = PACKAGE_CONTENT_INVALID, Diagnostic, "SACM-PKG-001/mixed-content",
+        [Text("class"), Text("id"), Text("nested_class"), Text("nested_id"), Text("child_class"), Text("child_id")],
+        "{class} {id:?} nests the {nested_class} {nested_id:?}, so it may contain only ArgumentPackages, but it also contains {child_class} {child_id:?}";
+    ID_002_NOT_AN_NCNAME = ID_INVALID, Diagnostic, "SACM-ID-002/not-an-ncname",
+        [Text("class"), Text("id")],
+        "{class} {id:?} has an id that is not an NCName (XMI 2.5.1 §7.6.1: xmi:id is an xsd:ID)";
+    ID_002_NAME_ID_NOT_AN_NCNAME = ID_INVALID, Diagnostic, "SACM-ID-002/name-id-not-an-ncname",
+        [Text("class"), Text("id"), Text("xmi_id")],
+        "the name of {class} {id:?} has the xmi:id {xmi_id:?}, which is not an NCName (XMI 2.5.1 §7.6.1: xmi:id is an xsd:ID)";
+    ID_002_TEXT_ID_NOT_AN_NCNAME = ID_INVALID, Diagnostic, "SACM-ID-002/text-id-not-an-ncname",
+        [Text("role"), Text("class"), Text("id"), Text("xmi_id")],
+        "the {role} of {class} {id:?} has the xmi:id {xmi_id:?}, which is not an NCName (XMI 2.5.1 §7.6.1: xmi:id is an xsd:ID)";
+    ID_002_VALUE_ID_NOT_AN_NCNAME = ID_INVALID, Diagnostic, "SACM-ID-002/value-id-not-an-ncname",
+        [Count("position"), Text("role"), Text("class"), Text("id"), Text("xmi_id")],
+        "value {position} of the {role} of {class} {id:?} has the xmi:id {xmi_id:?}, which is not an NCName (XMI 2.5.1 §7.6.1: xmi:id is an xsd:ID)";
+    REF_001_DANGLING = REF_DANGLING, Diagnostic, "SACM-REF-001/dangling",
+        [Text("class"), Text("id"), Text("end"), Text("target"), Text("type")],
+        "{class} {id:?} has the {end} {target:?}, which names no element of the document (the end's type is {type})";
+    REF_002_WRONG_TYPE = REF_WRONG_TYPE, Diagnostic, "SACM-REF-002/wrong-type",
+        [Text("class"), Text("id"), Text("end"), Text("target"), Text("target_class"), Text("type")],
+        "{class} {id:?} has the {end} {target:?}, whose kind {target_class} does not conform to the end's type {type}";
+    REF_002_NOT_AN_ARTIFACT_REFERENCE = REF_WRONG_TYPE, Diagnostic, "SACM-REF-002/not-an-artifact-reference",
+        [Text("class"), Text("id"), Text("end"), Text("target"), Text("target_class"), Text("clause")],
+        "{class} {id:?} has the {end} {target:?}, of the kind {target_class}, but §{clause} requires each {end} of the {class} to be an ArtifactReference";
+    REF_003_PRESERVED_TARGET = REF_PRESERVED_TARGET, Diagnostic, "SACM-REF-003/preserved-target",
+        [Text("class"), Text("id"), Text("end"), Text("target"), Text("type")],
+        "{class} {id:?} has the {end} {target:?}, which names an element the document holds only as preserved content, so its type is not checked (the end's type is {type})";
+    CITE_001_NOT_A_CITATION = CITATION_INVALID, Diagnostic, "SACM-CITE-001/not-a-citation",
+        [Text("class"), Text("id"), Text("target")],
+        "{class} {id:?} has the citedElement {target:?} but isCitation is not true (§8.2: citedElement <> null implies isCitation = true)";
+    CITE_002_NOT_A_CITATION = AS_CITED_INVALID, Diagnostic, "SACM-CITE-002/not-a-citation",
+        [Text("class"), Text("id")],
+        "{class} {id:?} is declared asCited but isCitation is not true: an asCited Assertion takes its declaration from the Assertion it cites (§11.8)";
+    CITE_002_NO_CITED_ELEMENT = AS_CITED_INVALID, Diagnostic, "SACM-CITE-002/no-cited-element",
+        [Text("class"), Text("id")],
+        "{class} {id:?} is declared asCited but has no citedElement: an asCited Assertion takes its declaration from the Assertion it cites (§11.8)";
+    CITE_002_CITED_NOT_AN_ASSERTION = AS_CITED_INVALID, Diagnostic, "SACM-CITE-002/cited-not-an-assertion",
+        [Text("class"), Text("id"), Text("target"), Text("target_class")],
+        "{class} {id:?} is declared asCited but its citedElement {target:?} is of the kind {target_class}, which is no Assertion: an asCited Assertion takes its declaration from the Assertion it cites (§11.8)";
+    XMI_004_GENERATED_ID = XMI_MISSING_ID, Diagnostic, "SACM-XMI-004/generated-id",
+        [Text("class"), Text("id")],
+        "the {class} has no xmi:id, which XMI 2.5.1 §7.6.1 makes optional, so it is read with the generated id {id:?}, which write writes";
+    ID_004_TRIMMED_ID = ID_TRIMMED, Diagnostic, "SACM-ID-004/trimmed-id",
+        [Text("written"), Text("class"), Text("id")],
+        "the xmi:id {written:?} of the {class} {id:?} is read as {id:?}: an xmi:id is an xsd:ID, whose white space is collapsed (XMI 2.5.1 §7.6.1), and write writes it trimmed";
+    ID_004_TRIMMED_ID_OF_NAME = ID_TRIMMED, Diagnostic, "SACM-ID-004/trimmed-id-of-name",
+        [Text("written"), Text("class"), Text("id"), Text("value")],
+        "the xmi:id {written:?} of the name of the {class} {id:?} is read as {value:?}: an xmi:id is an xsd:ID, whose white space is collapsed (XMI 2.5.1 §7.6.1), and write writes it trimmed";
+    ID_004_TRIMMED_ID_OF_TEXT = ID_TRIMMED, Diagnostic, "SACM-ID-004/trimmed-id-of-text",
+        [Text("written"), Text("role"), Text("class"), Text("id"), Text("value")],
+        "the xmi:id {written:?} of the {role} of the {class} {id:?} is read as {value:?}: an xmi:id is an xsd:ID, whose white space is collapsed (XMI 2.5.1 §7.6.1), and write writes it trimmed";
+    ID_004_TRIMMED_ID_OF_TEXT_VALUE = ID_TRIMMED, Diagnostic, "SACM-ID-004/trimmed-id-of-text-value",
+        [Text("written"), Text("role"), Text("class"), Text("id"), Text("value")],
+        "the xmi:id {written:?} of a value of the {role} of the {class} {id:?} is read as {value:?}: an xmi:id is an xsd:ID, whose white space is collapsed (XMI 2.5.1 §7.6.1), and write writes it trimmed";
+    XMI_010_XSI_TYPE = XMI_XSI_TYPE, Diagnostic, "SACM-XMI-010/xsi-type",
+        [Text("class"), Text("id")],
+        "the {class} {id:?} is typed with xsi:type, which XMI 2.5.1 allows only when org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as xmi:type";
+    XMI_010_XSI_TYPE_ON_NAME = XMI_XSI_TYPE, Diagnostic, "SACM-XMI-010/xsi-type-on-name",
+        [Text("class"), Text("id")],
+        "the name of the {class} {id:?} is typed with xsi:type, which XMI 2.5.1 allows only when org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as xmi:type";
+    XMI_010_XSI_TYPE_ON_TEXT = XMI_XSI_TYPE, Diagnostic, "SACM-XMI-010/xsi-type-on-text",
+        [Text("role"), Text("class"), Text("id")],
+        "the {role} of the {class} {id:?} is typed with xsi:type, which XMI 2.5.1 allows only when org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as xmi:type";
+    XMI_010_XSI_TYPE_ON_TEXT_VALUE = XMI_XSI_TYPE, Diagnostic, "SACM-XMI-010/xsi-type-on-text-value",
+        [Text("role"), Text("class"), Text("id")],
+        "a value of the {role} of the {class} {id:?} is typed with xsi:type, which XMI 2.5.1 allows only when org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as xmi:type";
+    XMI_010_XSI_TYPE_ON_NAME_VALUE = XMI_XSI_TYPE, Diagnostic, "SACM-XMI-010/xsi-type-on-name-value",
+        [Text("class"), Text("id")],
+        "the value in the name of the {class} {id:?} is typed with xsi:type, which XMI 2.5.1 allows only when org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as xmi:type";
+    XMI_011_VERSION_ON_XMI_ELEMENT = XMI_VERSION_IGNORED, Diagnostic, "SACM-XMI-011/version-on-xmi-element",
+        [Text("value")],
+        "the xmi:version {value:?} of the XMI element is ignored: the XMI namespace identifies the version (XMI 2.5.1 §7.5.3), and write does not write it";
+    XMI_011_VERSION_ON_ROOT = XMI_VERSION_IGNORED, Diagnostic, "SACM-XMI-011/version-on-root",
+        [Text("value"), Text("class"), Text("id")],
+        "the xmi:version {value:?} of the {class} {id:?} is ignored: the XMI namespace identifies the version (XMI 2.5.1 §7.5.3), and write does not write it";
+    ID_002_EMPTY_ID = ID_INVALID, Diagnostic, "SACM-ID-002/empty-id",
+        [Text("class"), Text("id")],
+        "the xmi:id of the {class} is empty, which is no xsd:ID (XMI 2.5.1 §7.6.1), so it is read with the generated id {id:?}, which write writes";
+    ID_002_EMPTY_ID_OF_NAME = ID_INVALID, Diagnostic, "SACM-ID-002/empty-id-of-name",
+        [Text("class"), Text("id")],
+        "the xmi:id of the name of the {class} {id:?} is empty, which is no xsd:ID (XMI 2.5.1 §7.6.1), so it is read without one";
+    ID_002_EMPTY_ID_OF_TEXT = ID_INVALID, Diagnostic, "SACM-ID-002/empty-id-of-text",
+        [Text("role"), Text("class"), Text("id")],
+        "the xmi:id of the {role} of the {class} {id:?} is empty, which is no xsd:ID (XMI 2.5.1 §7.6.1), so it is read without one";
+    ID_002_EMPTY_ID_OF_TEXT_VALUE = ID_INVALID, Diagnostic, "SACM-ID-002/empty-id-of-text-value",
+        [Text("role"), Text("class"), Text("id")],
+        "the xmi:id of a value of the {role} of the {class} {id:?} is empty, which is no xsd:ID (XMI 2.5.1 §7.6.1), so it is read without one";
+    ID_002_EMPTY_ID_OF_XMI_ELEMENT = ID_INVALID, Diagnostic, "SACM-ID-002/empty-id-of-xmi-element",
+        [],
+        "the xmi:id of the XMI element is empty, which is no xsd:ID (XMI 2.5.1 §7.6.1), so it is kept as written, outside the id space";
+    ID_002_EMPTY_ID_OF_KEPT_ELEMENT = ID_INVALID, Diagnostic, "SACM-ID-002/empty-id-of-kept-element",
+        [Text("element"), Text("holder_class"), Text("holder_id")],
+        "the xmi:id of the element {element:?} kept in the {holder_class} {holder_id:?} is empty, which is no xsd:ID (XMI 2.5.1 §7.6.1), so it is kept as written, outside the id space";
+    ID_002_EMPTY_ID_OF_KEPT_ELEMENT_BY_DOCUMENT = ID_INVALID, Diagnostic, "SACM-ID-002/empty-id-of-kept-element-by-document",
+        [Text("element")],
+        "the xmi:id of the element {element:?} kept in the document is empty, which is no xsd:ID (XMI 2.5.1 §7.6.1), so it is kept as written, outside the id space";
+    XMI_003_ATTRIBUTE_KEPT = XMI_UNKNOWN_CONTENT, Diagnostic, "SACM-XMI-003/attribute-kept",
+        [Text("attribute"), Text("holder_class"), Text("holder_id")],
+        "the attribute {attribute:?} is not SACM 2.3 where it stands, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses";
+    XMI_003_ELEMENT_KEPT = XMI_UNKNOWN_CONTENT, Diagnostic, "SACM-XMI-003/element-kept",
+        [Text("element"), Text("holder_class"), Text("holder_id")],
+        "the element {element:?} is not SACM 2.3 where it stands, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses";
+    XMI_003_TEXT_KEPT = XMI_UNKNOWN_CONTENT, Diagnostic, "SACM-XMI-003/text-kept",
+        [Text("holder_class"), Text("holder_id")],
+        "text is not SACM 2.3 where it stands, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses";
+    XMI_003_WRAPPER_ATTRIBUTE_KEPT = XMI_UNKNOWN_CONTENT, Diagnostic, "SACM-XMI-003/wrapper-attribute-kept",
+        [Text("attribute"), Text("element")],
+        "the attribute {attribute:?} of the element {element:?} is not SACM 2.3 where it stands, so it is kept as preserved content of the document, which a tolerant write writes back and a strict write refuses";
+    XMI_003_WRAPPER_TEXT_KEPT = XMI_UNKNOWN_CONTENT, Diagnostic, "SACM-XMI-003/wrapper-text-kept",
+        [Text("element")],
+        "text in the element {element:?} is not SACM 2.3 where it stands, so it is kept as preserved content of the document, which a tolerant write writes back and a strict write refuses";
+    XMI_003_PREFIX_RENAMED = XMI_UNKNOWN_CONTENT, Diagnostic, "SACM-XMI-003/prefix-renamed",
+        [Text("attribute"), Text("element"), Text("prefix"), Text("namespace"), Text("pinned_namespace"), Text("renamed_prefix"), Text("holder_class"), Text("holder_id")],
+        "the attribute {attribute:?} of the element {element:?} is not SACM 2.3 where it stands, and its prefix {prefix:?} is bound to {namespace:?}, which the written element binds to {pinned_namespace:?}, so it is written with the prefix {renamed_prefix:?}, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses";
+    XMI_012_NAME_ATTRIBUTE_READ = XMI_LEGACY_SHAPE, Diagnostic, "SACM-XMI-012/name-attribute-read",
+        [Text("class"), Text("id")],
+        "the name of the {class} {id:?} is given as the attribute \"name\", a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; it is read as its standard form, which write writes";
+    XMI_012_CONTENT_ON_ELEMENT_READ = XMI_LEGACY_SHAPE, Diagnostic, "SACM-XMI-012/content-on-element-read",
+        [Text("class"), Text("id")],
+        "the content of the {class} {id:?} is given on the element itself, a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; it is read as its standard form, which write writes";
+    XMI_012_KEY_ATTRIBUTE_READ = XMI_LEGACY_SHAPE, Diagnostic, "SACM-XMI-012/key-attribute-read",
+        [Text("class"), Text("id")],
+        "the key of the {class} {id:?} is given as the attribute \"key\", a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; it is read as its standard form, which write writes";
+    XMI_012_SHORTHAND_READ = XMI_LEGACY_SHAPE, Diagnostic, "SACM-XMI-012/shorthand-read",
+        [Text("role"), Text("class"), Text("id")],
+        "the {role} of the {class} {id:?} is given in the single-language shorthand, a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; it is read as its standard form, which write writes";
+    XMI_012_NAME_TEXT_READ = XMI_LEGACY_SHAPE, Diagnostic, "SACM-XMI-012/name-text-read",
+        [Text("class"), Text("id")],
+        "the name of the {class} {id:?} has its content as text, a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; it is read as its standard form, which write writes";
+    XMI_012_VALUE_TEXT_READ = XMI_LEGACY_SHAPE, Diagnostic, "SACM-XMI-012/value-text-read",
+        [Text("role"), Text("class"), Text("id")],
+        "a value of the {role} of the {class} {id:?} has its content as text, a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; it is read as its standard form, which write writes";
+    XMI_012_NAME_VALUE_TEXT_READ = XMI_LEGACY_SHAPE, Diagnostic, "SACM-XMI-012/name-value-text-read",
+        [Text("class"), Text("id")],
+        "the value in the name of the {class} {id:?} has its content as text, a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; it is read as its standard form, which write writes";
+    XMI_012_NAME_CONTENT_LANG_READ = XMI_LEGACY_SHAPE, Diagnostic, "SACM-XMI-012/name-content-lang-read",
+        [Text("class"), Text("id")],
+        "the name of the {class} {id:?} holds a content carrying lang, a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; it is read as its standard form, which write writes";
+    XMI_012_NAME_VALUE_READ = XMI_LEGACY_SHAPE, Diagnostic, "SACM-XMI-012/name-value-read",
+        [Text("class"), Text("id")],
+        "the name of the {class} {id:?} holds a value, a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; it is read as its standard form, which write writes";
+    XMI_013_GROUP_END_READ = XMI_SPELLING_VARIANT, Diagnostic, "SACM-XMI-013/group-end-read",
+        [Text("element")],
+        "\"argumentationElement\" in the element {element:?} is spelled as in the text of §11.2, and the end of an ArgumentGroup is argumentElement; it is read as argumentElement, which write writes";
+    XMI_013_GROUP_END_KEPT = XMI_SPELLING_VARIANT, Diagnostic, "SACM-XMI-013/group-end-kept",
+        [Text("element")],
+        "\"argumentationElement\" in the element {element:?} is spelled as in the text of §11.2, and the end of an ArgumentGroup is argumentElement; it is kept as preserved content, and a tolerant read reads the name as argumentElement";
+    XMI_013_EVENT_DATE_READ = XMI_SPELLING_VARIANT, Diagnostic, "SACM-XMI-013/event-date-read",
+        [Text("element")],
+        "\"occurece\" in the element {element:?} is the machine-readable model's spelling, and the attribute of an Event is date (§12.9); it is read as date, which write writes";
+    XMI_013_EVENT_DATE_KEPT = XMI_SPELLING_VARIANT, Diagnostic, "SACM-XMI-013/event-date-kept",
+        [Text("element")],
+        "\"occurece\" in the element {element:?} is the machine-readable model's spelling, and the attribute of an Event is date (§12.9); it is kept as preserved content, and a tolerant read reads the name as date";
+    XMI_013_PACKAGE_ROLE_READ = XMI_SPELLING_VARIANT, Diagnostic, "SACM-XMI-013/package-role-read",
+        [Text("element"), Text("container")],
+        "the element {element:?} in the element {container:?} is spelled as in the text of §11.4, and the role is argumentElement; it is read as argumentElement, which write writes";
+    XMI_013_PACKAGE_ROLE_KEPT = XMI_SPELLING_VARIANT, Diagnostic, "SACM-XMI-013/package-role-kept",
+        [Text("element"), Text("container")],
+        "the element {element:?} in the element {container:?} is spelled as in the text of §11.4, and the role is argumentElement; it is kept as preserved content, and a tolerant read reads the name as argumentElement";
+    XMI_013_PACKAGE_ROLE_IN_ROOT_READ = XMI_SPELLING_VARIANT, Diagnostic, "SACM-XMI-013/package-role-in-root-read",
+        [Text("element"), Text("container")],
+        "the element {element:?} in the root element {container:?} is spelled as in the text of §11.4, and the role is argumentElement; it is read as argumentElement, which write writes";
+    XMI_013_PACKAGE_ROLE_IN_ROOT_KEPT = XMI_SPELLING_VARIANT, Diagnostic, "SACM-XMI-013/package-role-in-root-kept",
+        [Text("element"), Text("container")],
+        "the element {element:?} in the root element {container:?} is spelled as in the text of §11.4, and the role is argumentElement; it is kept as preserved content, and a tolerant read reads the name as argumentElement";
+    XMI_013_TERMINOLOGY_ROLE_READ = XMI_SPELLING_VARIANT, Diagnostic, "SACM-XMI-013/terminology-role-read",
+        [Text("element"), Text("container")],
+        "the element {element:?} in the element {container:?} is spelled as in the text of §10.4, and the role is terminologyElement; it is read as terminologyElement, which write writes";
+    XMI_013_TERMINOLOGY_ROLE_KEPT = XMI_SPELLING_VARIANT, Diagnostic, "SACM-XMI-013/terminology-role-kept",
+        [Text("element"), Text("container")],
+        "the element {element:?} in the element {container:?} is spelled as in the text of §10.4, and the role is terminologyElement; it is kept as preserved content, and a tolerant read reads the name as terminologyElement";
+    XMI_013_TERMINOLOGY_ROLE_IN_ROOT_READ = XMI_SPELLING_VARIANT, Diagnostic, "SACM-XMI-013/terminology-role-in-root-read",
+        [Text("element"), Text("container")],
+        "the element {element:?} in the root element {container:?} is spelled as in the text of §10.4, and the role is terminologyElement; it is read as terminologyElement, which write writes";
+    XMI_013_TERMINOLOGY_ROLE_IN_ROOT_KEPT = XMI_SPELLING_VARIANT, Diagnostic, "SACM-XMI-013/terminology-role-in-root-kept",
+        [Text("element"), Text("container")],
+        "the element {element:?} in the root element {container:?} is spelled as in the text of §10.4, and the role is terminologyElement; it is kept as preserved content, and a tolerant read reads the name as terminologyElement";
+    XMI_013_MODEL_TYPE_READ = XMI_SPELLING_VARIANT, Diagnostic, "SACM-XMI-013/model-type-read",
+        [Text("element"), Text("container")],
+        "the element {element:?} in the element {container:?} is typed ArtifactAssertedRelationship, the machine-readable model's spelling of ArtifactAssetRelationship; it is read as ArtifactAssetRelationship, which write writes";
+    XMI_013_MODEL_TYPE_KEPT = XMI_SPELLING_VARIANT, Diagnostic, "SACM-XMI-013/model-type-kept",
+        [Text("element"), Text("container")],
+        "the element {element:?} in the element {container:?} is typed ArtifactAssertedRelationship, the machine-readable model's spelling of ArtifactAssetRelationship; it is kept as preserved content, and a tolerant read reads the name as ArtifactAssetRelationship";
+    XMI_013_MODEL_TYPE_IN_ROOT_READ = XMI_SPELLING_VARIANT, Diagnostic, "SACM-XMI-013/model-type-in-root-read",
+        [Text("element"), Text("container")],
+        "the element {element:?} in the root element {container:?} is typed ArtifactAssertedRelationship, the machine-readable model's spelling of ArtifactAssetRelationship; it is read as ArtifactAssetRelationship, which write writes";
+    XMI_013_MODEL_TYPE_IN_ROOT_KEPT = XMI_SPELLING_VARIANT, Diagnostic, "SACM-XMI-013/model-type-in-root-kept",
+        [Text("element"), Text("container")],
+        "the element {element:?} in the root element {container:?} is typed ArtifactAssertedRelationship, the machine-readable model's spelling of ArtifactAssetRelationship; it is kept as preserved content, and a tolerant read reads the name as ArtifactAssetRelationship";
+    XMI_014_UNREAD_ATTRIBUTE_KEPT = XMI_UNREAD_CONTENT, Diagnostic, "SACM-XMI-014/unread-attribute-kept",
+        [Text("attribute"), Text("element"), Text("holder_class"), Text("holder_id"), Text("row")],
+        "the attribute {attribute:?} of the element {element:?} is not read in this release, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses; {row} reads it";
+    XMI_014_UNREAD_ATTRIBUTE_KEPT_BY_DOCUMENT = XMI_UNREAD_CONTENT, Diagnostic, "SACM-XMI-014/unread-attribute-kept-by-document",
+        [Text("attribute"), Text("element"), Text("row")],
+        "the attribute {attribute:?} of the element {element:?} is not read in this release, so it is kept as preserved content of the document, which a tolerant write writes back and a strict write refuses; {row} reads it";
+    XMI_014_NESTED_XMI_ELEMENT_KEPT = XMI_UNREAD_CONTENT, Diagnostic, "SACM-XMI-014/nested-xmi-element-kept",
+        [Text("element"), Text("container"), Text("holder_class"), Text("holder_id"), Text("row")],
+        "the XMI element {element:?} in {container:?} is not read in this release, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses; {row} reads it";
+    XMI_014_NESTED_XMI_ELEMENT_KEPT_BY_DOCUMENT = XMI_UNREAD_CONTENT, Diagnostic, "SACM-XMI-014/nested-xmi-element-kept-by-document",
+        [Text("element"), Text("container"), Text("row")],
+        "the XMI element {element:?} in {container:?} is not read in this release, so it is kept as preserved content of the document, which a tolerant write writes back and a strict write refuses; {row} reads it";
+    XMI_014_INTERFACE_ELEMENT_KEPT = XMI_UNREAD_CONTENT, Diagnostic, "SACM-XMI-014/interface-element-kept",
+        [Text("element"), Text("container"), Text("class"), Text("holder_class"), Text("holder_id"), Text("row")],
+        "the reference element {element:?} in the element {container:?} is the {class} end \"interface\", which is not read in this release, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses; {row} reads it";
+    XMI_014_UNREAD_ROOT_KEPT = XMI_UNREAD_CONTENT, Diagnostic, "SACM-XMI-014/unread-root-kept",
+        [Text("element"), Text("row")],
+        "the root element {element:?} is not read in this release, so it is kept as preserved content of the document, which a tolerant write writes back and a strict write refuses; {row} reads it";
+    XMI_014_XMI_CHILD_KEPT = XMI_UNREAD_CONTENT, Diagnostic, "SACM-XMI-014/xmi-child-kept",
+        [Text("element"), Text("container"), Text("holder_class"), Text("holder_id"), Text("row")],
+        "the XMI element {element:?} in the element {container:?} is not read in this release, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses; {row} reads it";
+    XMI_014_XMI_CHILD_OF_ROOT_KEPT = XMI_UNREAD_CONTENT, Diagnostic, "SACM-XMI-014/xmi-child-of-root-kept",
+        [Text("element"), Text("container"), Text("holder_class"), Text("holder_id"), Text("row")],
+        "the XMI element {element:?} in the root element {container:?} is not read in this release, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses; {row} reads it";
+    XMI_014_PROXY_CHILD_KEPT = XMI_UNREAD_CONTENT, Diagnostic, "SACM-XMI-014/proxy-child-kept",
+        [Text("element"), Text("container"), Text("class"), Text("holder_class"), Text("holder_id"), Text("row")],
+        "the element {element:?} in the element {container:?} is in reference form, a proxy of an element of the class {class}, which is not read in this release, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses; {row} reads it";
+    XMI_014_PROXY_CHILD_OF_ROOT_KEPT = XMI_UNREAD_CONTENT, Diagnostic, "SACM-XMI-014/proxy-child-of-root-kept",
+        [Text("element"), Text("container"), Text("class"), Text("holder_class"), Text("holder_id"), Text("row")],
+        "the element {element:?} in the root element {container:?} is in reference form, a proxy of an element of the class {class}, which is not read in this release, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses; {row} reads it";
+    XMI_014_UNREAD_KIND_KEPT = XMI_UNREAD_CONTENT, Diagnostic, "SACM-XMI-014/unread-kind-kept",
+        [Text("class"), Text("element"), Text("container"), Text("holder_class"), Text("holder_id"), Text("row")],
+        "the {class} {element:?} in the element {container:?} is not read in this release, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses; {row} reads it";
+    XMI_014_UNREAD_KIND_IN_ROOT_KEPT = XMI_UNREAD_CONTENT, Diagnostic, "SACM-XMI-014/unread-kind-in-root-kept",
+        [Text("class"), Text("element"), Text("container"), Text("holder_class"), Text("holder_id"), Text("row")],
+        "the {class} {element:?} in the root element {container:?} is not read in this release, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses; {row} reads it";
+    XMI_007_UNREAD_ATTRIBUTE_KEPT = XMI_EXTERNAL_HREF, Diagnostic, "SACM-XMI-007/unread-attribute-kept",
+        [Text("attribute"), Text("element"), Text("holder_class"), Text("holder_id"), Text("row")],
+        "the attribute {attribute:?} of the element {element:?} is not read in this release, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses; {row} reads it";
+    XMI_007_PROXY_CHILD_KEPT = XMI_EXTERNAL_HREF, Diagnostic, "SACM-XMI-007/proxy-child-kept",
+        [Text("element"), Text("container"), Text("class"), Text("holder_class"), Text("holder_id"), Text("row")],
+        "the element {element:?} in the element {container:?} is in reference form, a proxy of an element of the class {class}, which is not read in this release, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses; {row} reads it";
+    XMI_007_PROXY_CHILD_OF_ROOT_KEPT = XMI_EXTERNAL_HREF, Diagnostic, "SACM-XMI-007/proxy-child-of-root-kept",
+        [Text("element"), Text("container"), Text("class"), Text("holder_class"), Text("holder_id"), Text("row")],
+        "the element {element:?} in the root element {container:?} is in reference form, a proxy of an element of the class {class}, which is not read in this release, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses; {row} reads it";
+    XMI_007_HREF_KEPT = XMI_EXTERNAL_HREF, Diagnostic, "SACM-XMI-007/href-kept",
+        [Text("href"), Text("element"), Text("holder_class"), Text("holder_id"), Text("row")],
+        "the href {href:?} of the reference element {element:?} names no element of this document by its id; only href=\"#id\" is read in this release, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses; {row} reads it";
+    XMI_005_MISSING_TYPE_KEPT = XMI_MISSING_TYPE, Diagnostic, "SACM-XMI-005/missing-type-kept",
+        [Text("element"), Text("container"), Text("role"), Text("type"), Text("holder_class"), Text("holder_id")],
+        "the element {element:?} in the element {container:?} has no type, and its role {role} has the abstract type {type}, so its class is not known (XMI 2.5.1 §7.6.3), so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses";
+    XMI_005_MISSING_TYPE_IN_ROOT_KEPT = XMI_MISSING_TYPE, Diagnostic, "SACM-XMI-005/missing-type-in-root-kept",
+        [Text("element"), Text("container"), Text("role"), Text("type"), Text("holder_class"), Text("holder_id")],
+        "the element {element:?} in the root element {container:?} has no type, and its role {role} has the abstract type {type}, so its class is not known (XMI 2.5.1 §7.6.3), so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses";
+    ENUM_001_DECLARATION_KEPT = ENUM_INVALID_LITERAL, Diagnostic, "SACM-ENUM-001/declaration-kept",
+        [Text("value"), Text("holder_class"), Text("holder_id")],
+        "the assertionDeclaration {value:?} is no literal: the literals are asserted, needsSupport, assumed, axiomatic, defeated and asCited, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses, and the property is read as not written";
+    ENUM_001_BOOLEAN_KEPT = ENUM_INVALID_LITERAL, Diagnostic, "SACM-ENUM-001/boolean-kept",
+        [Text("property"), Text("value"), Text("holder_class"), Text("holder_id")],
+        "the {property} {value:?} is no literal: the literals are true, false, 1 and 0, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses, and the property is read as not written";
+    MULT_001_REPEAT_KEPT = MULTIPLICITY_VIOLATION, Diagnostic, "SACM-MULT-001/repeat-kept",
+        [Text("property"), Text("element"), Text("holder_class"), Text("holder_id")],
+        "the {property} of the element {element:?} is given more than once, which XMI 2.5.1 §9.5.2 rule 2h does not allow, and this is not its first occurrence, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses; the first occurrence is read";
+    MULT_001_REPEAT_ATTRIBUTE_KEPT = MULTIPLICITY_VIOLATION, Diagnostic, "SACM-MULT-001/repeat-attribute-kept",
+        [Text("property"), Text("element"), Text("holder_class"), Text("holder_id")],
+        "the {property} of the element {element:?} is given more than once, which XMI 2.5.1 §9.5.2 rule 2h does not allow, and this is not its first occurrence, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses; the attribute that gave it first is kept with it, and the element has no content from them";
 }
 
 /// The template whose id is `id`, if the crate has one.
@@ -530,8 +842,14 @@ mod tests {
         }
         assert!(find("SACM-XML-001").is_none() && find("SACM-XML-001/none").is_none());
         // Slice 0063 added 103 refusal templates; slice 0065 removed
-        // SACM-XMI-014/expression-lang-string (SACM23-BASE-009).
-        assert_eq!(count, 102, "LIB-API-017: the number of templates");
+        // SACM-XMI-014/expression-lang-string (SACM23-BASE-009); slice 0064
+        // added 102 diagnostic templates (LIB-API-018).
+        assert_eq!(count, 204, "LIB-API-017: the number of templates");
+        let diagnostics = TEMPLATES
+            .iter()
+            .filter(|template| template.carrier == Carrier::Diagnostic)
+            .count();
+        assert_eq!(diagnostics, 102, "LIB-API-018: the diagnostic templates");
         assert!(!is_template_id("SACM-XML-001"));
         assert!(!is_template_id("SACM-xml-001/a"));
         assert!(!is_template_id("SACM-XML-01/a"));
@@ -600,29 +918,54 @@ mod tests {
                 }
             }
             let declared: Vec<&str> = template.arguments.iter().map(|(name, _)| *name).collect();
-            let without_row: Vec<&str> = declared
-                .iter()
-                .copied()
-                .filter(|name| *name != "row")
-                .collect();
-            assert_eq!(
-                without_row, first_seen,
-                "LIB-API-017: {id}: the arguments other than row are not those the pattern \
-                 names, in the order it first names them"
-            );
-            if takes_row(template) {
+            let rows = declared.iter().filter(|name| **name == "row").count();
+            if template.carrier == Carrier::Unread {
+                // An `Unread` template's `row` is named by its label, not its
+                // pattern.
+                let without_row: Vec<&str> = declared
+                    .iter()
+                    .copied()
+                    .filter(|name| *name != "row")
+                    .collect();
                 assert_eq!(
-                    template.arguments.last(),
-                    Some(&("row", Kind::Text)),
-                    "LIB-API-017: {id}: row is not the last argument"
+                    without_row, first_seen,
+                    "LIB-API-017: {id}: the arguments other than row are not those the pattern names, in the order it first names them"
                 );
-                assert_eq!(declared.iter().filter(|name| **name == "row").count(), 1);
-            } else {
-                assert!(
-                    !declared.contains(&"row"),
-                    "LIB-API-017: {id}: only the Unsupported templates of SACM-XMI-014, -007, \
-                     -002 and -015 take row"
-                );
+                if takes_row(template) {
+                    assert_eq!(
+                        template.arguments.last(),
+                        Some(&("row", Kind::Text)),
+                        "LIB-API-017: {id}: row is not the last argument"
+                    );
+                    assert_eq!(rows, 1, "LIB-API-017: {id}: row is declared more than once");
+                } else {
+                    assert_eq!(
+                        rows, 0,
+                        "LIB-API-017: {id}: only the Unsupported templates of SACM-XMI-014, -007, -002 and -015 take row"
+                    );
+                }
+                continue;
+            }
+            assert_eq!(
+                declared, first_seen,
+                "LIB-API-017: {id}: the arguments are not those the pattern names, in the order it first names them"
+            );
+            match template.carrier {
+                Carrier::Diagnostic => {
+                    // A diagnostic's `row` only where its pattern names it,
+                    // and then last (LIB-API-018).
+                    if rows > 0 {
+                        assert_eq!(
+                            (template.arguments.last(), rows),
+                            (Some(&("row", Kind::Text)), 1),
+                            "LIB-API-018: {id}: row is not declared once, last"
+                        );
+                    }
+                }
+                Carrier::Read(_) | Carrier::Write(_) | Carrier::Unread => assert_eq!(
+                    rows, 0,
+                    "LIB-API-017: {id}: a ReadError or WriteError template takes no row"
+                ),
             }
         }
     }

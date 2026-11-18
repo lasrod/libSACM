@@ -2,7 +2,8 @@
 
 use std::collections::BTreeSet;
 
-use crate::diagnostic::{Code, Diagnostic, Severity};
+use crate::diagnostic::template::{ABS_001_ABSTRACT_ELEMENT, MULT_001_MISSING};
+use crate::diagnostic::{Argument, Diagnostic, Severity};
 use crate::model::{AbstractClass, Document, ElementKind};
 
 /// SACM23-TERM-003: each Term or Expression with no `value` is one
@@ -12,17 +13,19 @@ pub(super) fn missing_values(document: &Document, found: &mut Vec<Diagnostic>) {
     for element in document.elements() {
         if element.kind().is_a(AbstractClass::ExpressionElement) && element.value().is_none() {
             let id = element.id();
-            let message = format!(
-                "{} {:?} has no value (value:String[1])",
-                element.kind().name(),
-                id.as_str()
-            );
+            let arguments = vec![
+                Argument::text("class", element.kind().name()),
+                Argument::text("id", id.as_str()),
+                Argument::text("property", "value"),
+                Argument::text("type", "String"),
+                Argument::text("multiplicity", "1"),
+            ];
             found.push(
-                Diagnostic::create(
-                    Code::MULTIPLICITY_VIOLATION,
+                Diagnostic::emit(
+                    &MULT_001_MISSING,
                     Severity::Error,
                     "SACM23-TERM-003",
-                    message,
+                    arguments,
                 )
                 .set_clause("10.9")
                 .set_affected([id.clone()]),
@@ -54,20 +57,18 @@ pub(super) fn concrete_expressions(document: &Document, found: &mut Vec<Diagnost
             if !is_abstract_element || !reported.insert(id.as_str()) {
                 continue;
             }
-            let message = format!(
-                "{} {:?} is concrete but has the element {:?}, an abstract {}: a concrete \
-                 Expression references only concrete ExpressionElements (§10.10)",
-                expression.kind().name(),
-                expression.id().as_str(),
-                id.as_str(),
-                target.kind().name()
-            );
+            let arguments = vec![
+                Argument::text("class", expression.kind().name()),
+                Argument::text("id", expression.id().as_str()),
+                Argument::text("target", id.as_str()),
+                Argument::text("target_class", target.kind().name()),
+            ];
             found.push(
-                Diagnostic::create(
-                    Code::ABSTRACT_FORM_INVALID,
+                Diagnostic::emit(
+                    &ABS_001_ABSTRACT_ELEMENT,
                     Severity::Error,
                     "SACM23-VAL-017",
-                    message,
+                    arguments,
                 )
                 .set_clause("10.10")
                 .set_affected([expression.id().clone(), id.clone()]),

@@ -1,5 +1,5 @@
 //! Repository checks for the message templates (LIB-API-017, acceptance 6;
-//! ADR 0030 amendment 3).
+//! LIB-API-018, acceptances 4 and 7; ADR 0030 amendment 3).
 //!
 //! The crate's templates are the entries of the `templates!` table in
 //! `crates/sacm/src/diagnostic/template.rs`, one per entry, each on its own
@@ -20,7 +20,7 @@
 //! `xmi/refusal.rs` and the declaration in `xmi.rs`, a string literal
 //! included, so the table cannot name that variant by its name.
 //!
-//! Two checks:
+//! Three checks:
 //!
 //! - (a) The `## Message templates` table of `docs/sacm/diagnostics.md`,
 //!   `| Template | Carrier | Arguments | English |`, lists exactly the
@@ -32,6 +32,11 @@
 //! - (b) Every template const is named, outside comments, literals and
 //!   `#[cfg(test)]` items, in another file of `crates/sacm/src`: no template
 //!   is left unused.
+//! - (c) The crate builds every `Diagnostic` from a template (LIB-API-018,
+//!   acceptance 4): outside comments, literals and `#[cfg(test)]` items, no
+//!   file of `crates/sacm/src` but `diagnostic.rs` names `Diagnostic::new(`
+//!   or `Diagnostic::create(`, and `diagnostic.rs` has no `fn create(`. Each
+//!   occurrence is one `[built-without-template]` problem.
 //!
 //! As in `interim_refusals.rs`, each check is a function that returns the
 //! problems it finds, each starting with a stable code in brackets. The
@@ -61,6 +66,17 @@ const HEADING: &str = "## Message templates";
 /// less `SACM-XMI-014/expression-lang-string`, which slice 0065 removes
 /// (SACM23-BASE-009).
 const REFUSAL_TEMPLATES: usize = 102;
+
+/// The row of the diagnostic templates (slice 0064).
+const ROW_018: &str = "LIB-API-018";
+
+/// The number of diagnostic templates (LIB-API-018, acceptance 7): 30 from
+/// validation and 72 from the reader.
+const DIAGNOSTIC_TEMPLATES: usize = 102;
+
+/// The file of `Diagnostic` itself, relative to [`SACM_SRC`], where a
+/// diagnostic is built without a template only by `test-support`'s `new`.
+const DIAGNOSTIC_SOURCE: &str = "diagnostic.rs";
 
 fn repository_root() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -809,6 +825,49 @@ fn unused_problems(files: &BTreeMap<String, String>) -> Vec<String> {
     problems
 }
 
+/// Whether the byte before `at` in `code` ends an identifier or a path, so
+/// that a token found at `at` is part of a longer name.
+fn follows_a_name(code: &[u8], at: usize) -> bool {
+    at.checked_sub(1)
+        .map(|before| code[before])
+        .is_some_and(|byte| is_ident_byte(byte) || byte == b':')
+}
+
+/// Check (c): every `Diagnostic` of `files` is built from a template. In
+/// each file but [`DIAGNOSTIC_SOURCE`], outside comments, literals and
+/// `#[cfg(test)]` items, each `Diagnostic::new(` and `Diagnostic::create(`
+/// is a problem; in [`DIAGNOSTIC_SOURCE`], each `fn create(`.
+fn construction_problems(files: &BTreeMap<String, String>) -> Vec<String> {
+    let mut problems = Vec::new();
+    for (path, text) in files {
+        let code = code_outside_tests(text);
+        let (_, skeleton) = masks(&code);
+        let tokens: &[&str] = if path == DIAGNOSTIC_SOURCE {
+            &["fn create("]
+        } else {
+            &["Diagnostic::new(", "Diagnostic::create("]
+        };
+        for token in tokens {
+            let found = skeleton
+                .windows(token.len())
+                .enumerate()
+                .filter(|(at, window)| {
+                    *window == token.as_bytes() && !follows_a_name(&skeleton, *at)
+                })
+                .count();
+            for _ in 0..found {
+                problems.push(problem(
+                    "built-without-template",
+                    format!(
+                        "{SACM_SRC}/{path} has `{token}`: build a diagnostic from its template"
+                    ),
+                ));
+            }
+        }
+    }
+    problems
+}
+
 // ---------------------------------------------------------------------------
 // The real files
 // ---------------------------------------------------------------------------
@@ -852,9 +911,167 @@ fn lib_api_017_template_rs_declares_the_102_refusal_templates() {
     );
 }
 
+#[test]
+fn lib_api_018_template_rs_declares_the_102_diagnostic_templates() {
+    let files = sacm_sources();
+    let Some(source) = files.get(TEMPLATES) else {
+        panic!("{ROW_018}: {SACM_SRC}/{TEMPLATES} does not exist");
+    };
+    let (declared, problems) = source_templates(source);
+    assert!(problems.is_empty(), "{ROW_018}: {problems:#?}");
+    let diagnostics: Vec<&Template> = declared
+        .iter()
+        .filter(|template| template.carrier == "Diagnostic")
+        .collect();
+    assert_eq!(
+        diagnostics.len(),
+        DIAGNOSTIC_TEMPLATES,
+        "{ROW_018}: {SACM_SRC}/{TEMPLATES} declares {} diagnostic templates, not \
+         {DIAGNOSTIC_TEMPLATES}",
+        diagnostics.len()
+    );
+    assert_eq!(
+        declared.len(),
+        REFUSAL_TEMPLATES + DIAGNOSTIC_TEMPLATES,
+        "{ROW_018}: {SACM_SRC}/{TEMPLATES} declares {} templates in all",
+        declared.len()
+    );
+}
+
+#[test]
+fn lib_api_018_the_crate_builds_diagnostics_only_from_templates() {
+    let files = sacm_sources();
+    assert!(
+        files.contains_key(DIAGNOSTIC_SOURCE),
+        "{ROW_018}: setup: {SACM_SRC}/{DIAGNOSTIC_SOURCE} does not exist"
+    );
+    let problems = construction_problems(&files);
+    assert!(
+        problems.is_empty(),
+        "{ROW_018}: diagnostics built without a template: {problems:#?}"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Synthetic inputs
 // ---------------------------------------------------------------------------
+
+/// `files` holding `diagnostic` as [`DIAGNOSTIC_SOURCE`] and `user` as one
+/// other file.
+fn construction_files(diagnostic: &str, user: &str) -> BTreeMap<String, String> {
+    let mut files = BTreeMap::new();
+    files.insert(DIAGNOSTIC_SOURCE.to_owned(), diagnostic.to_owned());
+    files.insert("validation/names.rs".to_owned(), user.to_owned());
+    files
+}
+
+/// A `diagnostic.rs` whose only constructors are `test-support`'s `new` and
+/// the crate-private `emit`.
+const DIAGNOSTIC_RS: &str = concat!(
+    "impl Diagnostic {\n",
+    "    pub fn new(code: Code, message: String) -> Self { Self { code, message, details: None } }\n",
+    "    pub(crate) fn emit(template: &'static Template, arguments: Vec<Argument>) -> Self { todo() }\n",
+    "}\n",
+);
+
+/// A file that builds its diagnostic from a template.
+const EMITS: &str = "fn f() -> Diagnostic { Diagnostic::emit(&template::MULT_001_MISSING, Severity::Error, ROW, vec![]) }\n";
+
+#[test]
+fn lib_api_018_construction_check_reports_a_diagnostic_built_without_a_template() {
+    let check =
+        |diagnostic: &str, user: &str| construction_problems(&construction_files(diagnostic, user));
+    assert_codes(
+        "diagnostics built from templates",
+        &check(DIAGNOSTIC_RS, EMITS),
+        &[],
+    );
+    for (what, user) in [
+        (
+            "Diagnostic::create",
+            "fn f() -> Diagnostic { Diagnostic::create(Code::REF_DANGLING, Severity::Error, ROW, m) }\n",
+        ),
+        (
+            "Diagnostic::new",
+            "fn f() -> Diagnostic { Diagnostic::new(Code::REF_DANGLING, Severity::Error, ROW, m) }\n",
+        ),
+        (
+            "Diagnostic::create on lines of its own",
+            "fn f() -> Diagnostic {\n    let d =\n        Diagnostic::create(\n            code, severity, ROW, m,\n        );\n    d\n}\n",
+        ),
+    ] {
+        assert_codes(
+            what,
+            &check(DIAGNOSTIC_RS, &format!("{EMITS}{user}")),
+            &["built-without-template"],
+        );
+    }
+    assert_codes(
+        "two in one file",
+        &check(
+            DIAGNOSTIC_RS,
+            "fn f() { Diagnostic::new(a); Diagnostic::create(b); }\n",
+        ),
+        &["built-without-template", "built-without-template"],
+    );
+    for (what, user) in [
+        (
+            "in a comment",
+            "// Diagnostic::create(code, severity, ROW, m)\n/* Diagnostic::new( */\n",
+        ),
+        (
+            "in a literal",
+            "fn f() -> &'static str { \"Diagnostic::create(\" }\n",
+        ),
+        (
+            "in a test",
+            "#[cfg(test)]\nmod tests { fn f() { let _ = Diagnostic::new(a); } }\n",
+        ),
+        (
+            "as part of another name",
+            "fn f() { MyDiagnostic::new(a); Diagnostic::newer(b); }\n",
+        ),
+    ] {
+        assert_codes(
+            &format!("named only {what}"),
+            &check(DIAGNOSTIC_RS, &format!("{EMITS}{user}")),
+            &[],
+        );
+    }
+    // In diagnostic.rs, `fn create` is reported, and `Diagnostic::new` is not.
+    let with_create = format!(
+        "{DIAGNOSTIC_RS}impl Diagnostic {{\n    pub(crate) fn create(code: Code) -> Self {{ todo() }}\n}}\n"
+    );
+    assert_codes(
+        "fn create in diagnostic.rs",
+        &check(&with_create, EMITS),
+        &["built-without-template"],
+    );
+    assert_codes(
+        "Diagnostic::new in diagnostic.rs",
+        &check(
+            &format!("{DIAGNOSTIC_RS}fn g() {{ let _ = Diagnostic::new(c, m); }}\n"),
+            EMITS,
+        ),
+        &[],
+    );
+    assert_codes(
+        "fn create in a test of diagnostic.rs",
+        &check(
+            &format!("{DIAGNOSTIC_RS}#[cfg(test)]\nmod tests {{ fn create(x: u8) {{}} }}\n"),
+            EMITS,
+        ),
+        &[],
+    );
+    assert_codes(
+        "fn create in another file",
+        &check(
+            DIAGNOSTIC_RS,
+            &format!("{EMITS}fn create(code: Code) -> Plan {{ todo() }}\n"),
+        ),
+        &[],
+    );
+}
 
 /// A template table of three templates, in the fixed entry syntax.
 const SOURCE: &str = concat!(

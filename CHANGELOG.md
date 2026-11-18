@@ -74,6 +74,11 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 - With `serde`, an ExpressionLangString is
   `{"type":"ExpressionLangString","lang","content","expression"}`; a plain LangString is
   unchanged [SACM23-BASE-009].
+- `Diagnostic::template()` and `Diagnostic::arguments()`: every diagnostic's sentence form
+  as a stable id such as `SACM-MULT-001/too-many`, and its values as named arguments;
+  `docs/sacm/diagnostics.md` lists every template [LIB-API-018].
+- With `serde`, a `Diagnostic` writes `template` and `arguments` after `message`; JSON
+  without them, as 0.1.0 wrote, still reads [LIB-API-018].
 
 ### Changed
 
@@ -87,6 +92,9 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 - A strict read no longer refuses a `name` or `value` typed `sacm:ExpressionLangString` as
   `Unsupported`, and a tolerant read no longer keeps it as preserved content with
   SACM-XMI-014 [SACM23-BASE-009, LIB-API-011].
+- Diagnostics equal in the seven other keys order by template, then by arguments. A
+  diagnostic built with `test-support`'s `Diagnostic::new` has its code's text as its
+  template, so it is no longer `==` to one the crate emits [LIB-API-018].
 
 ### Known limits
 

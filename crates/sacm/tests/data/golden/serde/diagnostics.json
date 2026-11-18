@@ -12,7 +12,9 @@
       "line": 4,
       "column": 20
     },
-    "message": "Claim \"c1\" has the metaClaim \"x\", which names no element of the document"
+    "message": "Claim \"c1\" has the metaClaim \"x\", which names no element of the document",
+    "template": "SACM-REF-001",
+    "arguments": {}
   },
   {
     "code": "SACM-XMI-004",
@@ -21,6 +23,28 @@
     "clause": null,
     "affected": [],
     "location": null,
-    "message": "a Claim has no xmi:id; it is read as claim_1"
+    "message": "a Claim has no xmi:id; it is read as claim_1",
+    "template": "SACM-XMI-004",
+    "arguments": {}
+  },
+  {
+    "code": "SACM-MULT-001",
+    "severity": "warning",
+    "requirement_id": "SACM23-VAL-011",
+    "clause": "8.6",
+    "affected": [
+      "CLM_132"
+    ],
+    "location": null,
+    "message": "Claim \"CLM_132\" has 2 descriptions (description:Description[0..1])",
+    "template": "SACM-MULT-001/too-many",
+    "arguments": {
+      "class": "Claim",
+      "id": "CLM_132",
+      "count": 2,
+      "property": "description",
+      "type": "Description",
+      "multiplicity": "0..1"
+    }
   }
 ]

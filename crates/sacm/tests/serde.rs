@@ -78,6 +78,7 @@ use sacm::model::{
     AssertionDeclaration, Document, ElementId, ElementKind, Flag, LangString, MultiLangString,
     ReferenceEnd,
 };
+use sacm::validation;
 use sacm::xmi::{self, ReadOptions};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -1174,7 +1175,11 @@ fn artifact_relationship_start() -> Document {
 }
 
 /// A full diagnostic (clause, two affected ids, location) and a minimal one
-/// (none of them). In the order of `diagnostics.json`.
+/// (none of them), both built with `test-support`'s `new`, so with their
+/// code's text as their template and no arguments; and, of slice 0064, the
+/// one finding of a real `validate`, which carries its template and
+/// arguments (LIB-API-018, acceptances 2 and 5). In the order of
+/// `diagnostics.json`.
 fn diagnostic_samples() -> Vec<Diagnostic> {
     vec![
         Diagnostic::new(
@@ -1192,7 +1197,32 @@ fn diagnostic_samples() -> Vec<Diagnostic> {
             "SACM23-XMI-020",
             "a Claim has no xmi:id; it is read as claim_1",
         ),
+        two_descriptions_finding(),
     ]
+}
+
+/// The one finding of `validate` for the Claim `CLM_132` with two
+/// descriptions: a SACM-MULT-001 Warning of the template
+/// `SACM-MULT-001/too-many` (LIB-API-018, acceptance 2).
+fn two_descriptions_finding() -> Diagnostic {
+    const INPUT: &str = concat!(
+        "<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\" ",
+        "xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"p\"><name content=\"P\"/>\n",
+        "  <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"CLM_132\"><name content=\"C\"/>",
+        "<description xmi:id=\"d1\"/><description xmi:id=\"d2\"/></argumentElement>\n",
+        "</sacm:ArgumentPackage>",
+    );
+    let document = match xmi::read(INPUT.as_bytes(), &ReadOptions::default()) {
+        Ok(output) => output.into_document(),
+        Err(error) => panic!("{API_006}: setup: {INPUT} does not read: {error}"),
+    };
+    let mut found = validation::validate(&document);
+    assert_eq!(
+        found.len(),
+        1,
+        "LIB-API-018: setup: CLM_132 gives one finding: {found:?}"
+    );
+    found.remove(0)
 }
 
 /// The values of `values.json`: a `LangString` absent, with empty content,
@@ -2576,6 +2606,127 @@ fn golden_value(name: &str) -> serde_json::Value {
     }
 }
 
+/// The key order of a golden JSON value: each object's keys as written,
+/// with the order of the values under them.
+enum KeyOrder {
+    Object(Vec<(String, KeyOrder)>),
+    Array(Vec<KeyOrder>),
+    Scalar,
+}
+
+impl<'de> serde::Deserialize<'de> for KeyOrder {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct Visitor;
+
+        impl<'de> serde::de::Visitor<'de> for Visitor {
+            type Value = KeyOrder;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("JSON")
+            }
+
+            fn visit_bool<E>(self, _: bool) -> Result<KeyOrder, E> {
+                Ok(KeyOrder::Scalar)
+            }
+
+            fn visit_i64<E>(self, _: i64) -> Result<KeyOrder, E> {
+                Ok(KeyOrder::Scalar)
+            }
+
+            fn visit_u64<E>(self, _: u64) -> Result<KeyOrder, E> {
+                Ok(KeyOrder::Scalar)
+            }
+
+            fn visit_f64<E>(self, _: f64) -> Result<KeyOrder, E> {
+                Ok(KeyOrder::Scalar)
+            }
+
+            fn visit_str<E>(self, _: &str) -> Result<KeyOrder, E> {
+                Ok(KeyOrder::Scalar)
+            }
+
+            fn visit_unit<E>(self) -> Result<KeyOrder, E> {
+                Ok(KeyOrder::Scalar)
+            }
+
+            fn visit_seq<A: serde::de::SeqAccess<'de>>(
+                self,
+                mut seq: A,
+            ) -> Result<KeyOrder, A::Error> {
+                let mut items = Vec::new();
+                while let Some(item) = seq.next_element()? {
+                    items.push(item);
+                }
+                Ok(KeyOrder::Array(items))
+            }
+
+            fn visit_map<A: serde::de::MapAccess<'de>>(
+                self,
+                mut map: A,
+            ) -> Result<KeyOrder, A::Error> {
+                let mut keys = Vec::new();
+                while let Some(entry) = map.next_entry()? {
+                    keys.push(entry);
+                }
+                Ok(KeyOrder::Object(keys))
+            }
+        }
+
+        deserializer.deserialize_any(Visitor)
+    }
+}
+
+/// `value` as compact JSON, each object's keys in the order `order` gives
+/// for the object at the same place: the keys it lists, as listed, then any
+/// other key, such as one a change added, in `value`'s order.
+fn in_golden_order(value: &serde_json::Value, order: &KeyOrder) -> String {
+    let none = KeyOrder::Scalar;
+    match (value, order) {
+        (serde_json::Value::Object(object), _) => {
+            let listed: &[(String, KeyOrder)] = match order {
+                KeyOrder::Object(keys) => keys,
+                _ => &[],
+            };
+            let mut keys: Vec<(&String, &KeyOrder)> = listed
+                .iter()
+                .filter(|(key, _)| object.contains_key(key))
+                .map(|(key, inner)| (key, inner))
+                .collect();
+            keys.extend(
+                object
+                    .keys()
+                    .filter(|key| !listed.iter().any(|(listed, _)| listed == *key))
+                    .map(|key| (key, &none)),
+            );
+            let entries: Vec<String> = keys
+                .into_iter()
+                .map(|(key, inner)| {
+                    let child = object.get(key).unwrap_or(&serde_json::Value::Null);
+                    format!(
+                        "{}:{}",
+                        serde_json::Value::String(key.clone()),
+                        in_golden_order(child, inner)
+                    )
+                })
+                .collect();
+            format!("{{{}}}", entries.join(","))
+        }
+        (serde_json::Value::Array(items), _) => {
+            let orders: &[KeyOrder] = match order {
+                KeyOrder::Array(orders) => orders,
+                _ => &[],
+            };
+            let entries: Vec<String> = items
+                .iter()
+                .enumerate()
+                .map(|(index, item)| in_golden_order(item, orders.get(index).unwrap_or(&none)))
+                .collect();
+            format!("[{}]", entries.join(","))
+        }
+        (scalar, _) => scalar.to_string(),
+    }
+}
+
 /// Each copy of the golden file `name` that `change` makes reads as a `T`
 /// `==` to its `reads_as`, or is refused as data. Returns the number of
 /// copies.
@@ -2584,12 +2735,16 @@ where
     T: DeserializeOwned + PartialEq + Debug,
 {
     let copies = changed_copies(&golden_value(name), true, change);
+    // `serde_json::Value` sorts an object's keys; each copy is written back
+    // with the golden file's key order, which a message's `arguments`
+    // object must keep (ADR 0030 amendment 3, R11).
+    let order: KeyOrder = from_json(&golden(name));
     for copy in &copies {
-        let text = copy.value.to_string();
+        let text = in_golden_order(&copy.value, &order);
         let label = &copy.label;
         match (serde_json::from_str::<T>(&text), &copy.reads_as) {
             (Ok(read), Some(reads_as)) => {
-                let expected: T = from_json(&reads_as.to_string());
+                let expected: T = from_json(&in_golden_order(reads_as, &order));
                 assert_eq!(
                     read, expected,
                     "{API_006}: {name} {label}: the value does not read as its default"
