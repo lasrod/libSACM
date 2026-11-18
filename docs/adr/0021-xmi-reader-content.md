@@ -77,7 +77,7 @@ matrix notes and the writer's ADR (0017). This ADR collects them in one place.
 - Of two names, C++ keeps the last (`:1182-1218`); here the second is refused.
 - C++ reads a name's text as its content (`:805-808`); here it is refused.
 - C++ drops a LangString `xmi:id` with an Info diagnostic (`:793-803`); here it is refused.
-- C++ reads an ExpressionLangString type on `name`; here it is refused (SACM23-BASE-009).
+- C++ reads an ExpressionLangString type on `name`; so does this crate since slice 0065 (SACM23-BASE-009, ADR 0038).
 - C++ reports an unknown declaration literal as SACM-ENUM-001 and keeps `asserted`, losing the
   value (`:1786-1794`); here it is refused until SACM23-VAL-006.
 - C++ maps the legacy `justification` to `axiomatic` with a TaggedValue (`:1765-1785`); here it

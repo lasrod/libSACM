@@ -194,7 +194,11 @@ fn ends_as_elements(element: SacmElement<'_>) -> Vec<ReferenceEnd> {
     ReferenceEnd::ALL
         .iter()
         .copied()
-        .filter(|end| !element.references(*end).is_empty() && preserved.has_unqualified(end.name()))
+        .filter(|end| {
+            !end.is_derived()
+                && !element.references(*end).is_empty()
+                && preserved.has_unqualified(end.name())
+        })
         .collect()
 }
 
@@ -570,10 +574,12 @@ fn push_flags_and_references(
                 out.push('"');
             }
         }
+        // The derived `expression` is written with the name and the texts
+        // that hold it (SACM23-BASE-009).
         for end in ReferenceEnd::ALL
             .iter()
             .copied()
-            .filter(|end| end.owner() == owner)
+            .filter(|end| end.owner() == owner && !end.is_derived())
         {
             let targets = element.references(end);
             if targets.is_empty() || as_elements.contains(&end) {
@@ -593,9 +599,12 @@ fn push_flags_and_references(
     }
 }
 
-/// Writes `value` as a `tag` element on its own line at `depth`: its `id`,
-/// as `xmi:id`, then `lang`, then `content`, each only if present (ADR 0017,
-/// ADR 0024): a `name`, or a `value` of a `content` or `key`.
+/// Writes `value` as a `tag` element on its own line at `depth`: for an
+/// `ExpressionLangString`, `xmi:type="sacm:ExpressionLangString"` first
+/// (SACM23-BASE-009, ADR 0038 D2); then its `id`, as `xmi:id`, then `lang`,
+/// then `content`, then an `ExpressionLangString`'s `expression`, each only if
+/// present (ADR 0017, ADR 0024): a `name`, or a `value` of a `content`,
+/// `key` or `location`.
 fn push_lang_string(
     out: &mut String,
     depth: usize,
@@ -606,8 +615,18 @@ fn push_lang_string(
     indent(out, depth);
     out.push('<');
     out.push_str(tag);
+    if value.is_expression_lang_string() {
+        out.push_str(" xmi:type=\"");
+        out.push_str(SACM_PREFIX);
+        out.push_str(":ExpressionLangString\"");
+    }
     push_id(out, id);
-    for (attribute, value) in [("lang", value.lang()), ("content", value.content())] {
+    let expression = value.expression().map(ElementId::as_str);
+    for (attribute, value) in [
+        ("lang", value.lang()),
+        ("content", value.content()),
+        ("expression", expression),
+    ] {
         if let Some(value) = value {
             out.push(' ');
             out.push_str(attribute);

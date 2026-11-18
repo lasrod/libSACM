@@ -14,7 +14,8 @@
 //!   has its code, template, arguments and `Display`.
 //! - `docs/sacm/diagnostics.md` has live rows for the six codes the slice
 //!   adds, and names the refusal uses of SACM-XMI-001, -003, -007 and -014;
-//!   41 codes are live.
+//!   42 codes are live: 41 once slice 0063 adds its six, and SACM-EXPR-001
+//!   of slice 0065 (SACM23-VAL-009).
 
 use std::fs;
 use std::path::Path;
@@ -24,8 +25,9 @@ const ROW: &str = "LIB-API-017";
 /// The catalog, relative to the repository root.
 const CATALOG: &str = "docs/sacm/diagnostics.md";
 
-/// The number of live codes once slice 0063 adds its six (acceptance 9).
-const LIVE_CODES: usize = 41;
+/// The number of live codes once slice 0063 adds its six (acceptance 9),
+/// and slice 0065 SACM-EXPR-001 (SACM23-VAL-009).
+const LIVE_CODES: usize = 42;
 
 /// The codes slice 0063 makes live, with the constant each row names.
 const NEW_LIVE: [(&str, &str); 6] = [
@@ -262,10 +264,12 @@ mod api {
                 package(&claim("c1", "", "<metaClaim href=\"other.sacm.xmi#c\"/>")),
                 Code::XMI_EXTERNAL_HREF,
             ),
+            // XMI metadata in a name: the sample ExpressionLangString gave
+            // until slice 0065 read it (SACM23-BASE-009).
             (
-                "ExpressionLangString",
+                "XmiMetadata in a name",
                 format!(
-                    "<sacm:ArgumentPackage{NS} xmi:id=\"p\"><name xmi:type=\"sacm:ExpressionLangString\" \
+                    "<sacm:ArgumentPackage{NS} xmi:id=\"p\"><name xmi:uuid=\"u\" \
                      content=\"p\"/></sacm:ArgumentPackage>"
                 ),
                 Code::XMI_UNREAD_CONTENT,

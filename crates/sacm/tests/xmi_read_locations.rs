@@ -489,13 +489,12 @@ fn name_rows() -> Vec<Row> {
             DuplicateId,
             in_ap(&format!("{MARK}<name xmi:id=\"p\"/>")),
         ),
-        // An ExpressionLangString is not read yet (SACM23-BASE-009).
+        // A name typed ExpressionLangString is read since slice 0065
+        // (SACM23-BASE-009); XMI metadata on a name is not read yet.
         row(
-            "a name typed as an ExpressionLangString",
+            "an xmi:label on a name",
             Unsupported,
-            in_ap(&format!(
-                "{MARK}<name xmi:type=\"sacm:ExpressionLangString\" content=\"N\"/>"
-            )),
+            in_ap(&format!("<name content=\"N\" {MARK}xmi:label=\"n\"/>")),
         ),
         row(
             "an xmi:uuid on a name",

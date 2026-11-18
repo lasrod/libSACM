@@ -111,8 +111,6 @@ pub(super) enum Unread {
     CrossDocumentHref,
     /// A root outside the SACM 2.3 namespace.
     OtherSacmNamespace,
-    /// A name or value typed `ExpressionLangString`.
-    ExpressionLangString,
     /// An `XMI` element outside the XMI 2.5.1 namespace.
     OtherXmiNamespace,
     /// An encoding other than UTF-8, ASCII and UTF-16 with a mark.
@@ -161,7 +159,6 @@ impl Unread {
             Self::XmiMetadata => Refusal::Interim("SACM23-XMI-019"),
             Self::CrossDocumentHref => Refusal::Interim("SACM23-XMI-027"),
             Self::OtherSacmNamespace => Refusal::Tolerance("LIB-COMPAT-004"),
-            Self::ExpressionLangString => Refusal::Interim("SACM23-BASE-009"),
             Self::OtherXmiNamespace => Refusal::Tolerance("LIB-COMPAT-002"),
             Self::Encoding | Self::Capacity | Self::Unheld => Refusal::Limit,
             Self::WrapperContent | Self::UnwritablePrefix => Refusal::Defect,
@@ -185,8 +182,7 @@ impl Unread {
             | Self::AssuranceCasePackageBinding
             | Self::ArgumentPackageInterface
             | Self::ArgumentPackageBinding
-            | Self::XmiMetadata
-            | Self::ExpressionLangString => Tolerant::Kept(Code::XMI_UNREAD_CONTENT),
+            | Self::XmiMetadata => Tolerant::Kept(Code::XMI_UNREAD_CONTENT),
             Self::CrossDocumentHref => Tolerant::Kept(Code::XMI_EXTERNAL_HREF),
             Self::WrapperContent | Self::UnwritablePrefix => {
                 Tolerant::Kept(Code::XMI_UNKNOWN_CONTENT)
@@ -215,8 +211,7 @@ impl Unread {
             | Self::AssuranceCasePackageBinding
             | Self::ArgumentPackageInterface
             | Self::ArgumentPackageBinding
-            | Self::XmiMetadata
-            | Self::ExpressionLangString => Code::XMI_UNREAD_CONTENT,
+            | Self::XmiMetadata => Code::XMI_UNREAD_CONTENT,
             Self::CrossDocumentHref => Code::XMI_EXTERNAL_HREF,
             Self::WrapperContent | Self::UnwritablePrefix => Code::XMI_UNKNOWN_CONTENT,
             Self::OtherSacmNamespace => Code::XMI_NAMESPACE_NOT_PINNED,
@@ -860,7 +855,7 @@ mod tests {
     use crate::xmi::ReadError;
 
     /// Every entry, in declaration order.
-    const ALL: [Unread; 18] = [
+    const ALL: [Unread; 17] = [
         Unread::ArtifactPackageInterface,
         Unread::ArtifactPackageBinding,
         Unread::TerminologyPackageInterface,
@@ -872,7 +867,6 @@ mod tests {
         Unread::XmiMetadata,
         Unread::CrossDocumentHref,
         Unread::OtherSacmNamespace,
-        Unread::ExpressionLangString,
         Unread::OtherXmiNamespace,
         Unread::Encoding,
         Unread::Capacity,
@@ -896,13 +890,12 @@ mod tests {
             Unread::XmiMetadata => 8,
             Unread::CrossDocumentHref => 9,
             Unread::OtherSacmNamespace => 10,
-            Unread::ExpressionLangString => 11,
-            Unread::OtherXmiNamespace => 12,
-            Unread::Encoding => 13,
-            Unread::Capacity => 14,
-            Unread::Unheld => 15,
-            Unread::WrapperContent => 16,
-            Unread::UnwritablePrefix => 17,
+            Unread::OtherXmiNamespace => 11,
+            Unread::Encoding => 12,
+            Unread::Capacity => 13,
+            Unread::Unheld => 14,
+            Unread::WrapperContent => 15,
+            Unread::UnwritablePrefix => 16,
         }
     }
 

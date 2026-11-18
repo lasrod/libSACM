@@ -234,9 +234,6 @@ templates! {
     XMI_014_UNREAD_KIND_IN_ROOT = XMI_UNREAD_CONTENT, Unread, "SACM-XMI-014/unread-kind-in-root",
         [Text("class"), Text("element"), Text("container"), Text("row")],
         "the {class} {element:?} in the root element {container:?} is not read in this release";
-    XMI_014_EXPRESSION_LANG_STRING = XMI_UNREAD_CONTENT, Unread, "SACM-XMI-014/expression-lang-string",
-        [Text("element"), Text("type"), Text("row")],
-        "the element {element:?} has the type {type:?}, which is not read in this release";
     XMI_015_NOT_XMI_NAMESPACE = XMI_WRAPPER_NAMESPACE, Unread, "SACM-XMI-015/not-xmi-namespace",
         [Text("element"), Text("row")],
         "the element {element:?} is not in the XMI namespace \"http://www.omg.org/spec/XMI/20131001\", so it is not read as the XMI element";
@@ -532,8 +529,9 @@ mod tests {
             assert_eq!(find(template.id).map(|found| found.id), Some(template.id));
         }
         assert!(find("SACM-XML-001").is_none() && find("SACM-XML-001/none").is_none());
-        // Slice 0063's refusal templates.
-        assert_eq!(count, 103, "LIB-API-017: the number of templates");
+        // Slice 0063 added 103 refusal templates; slice 0065 removed
+        // SACM-XMI-014/expression-lang-string (SACM23-BASE-009).
+        assert_eq!(count, 102, "LIB-API-017: the number of templates");
         assert!(!is_template_id("SACM-XML-001"));
         assert!(!is_template_id("SACM-xml-001/a"));
         assert!(!is_template_id("SACM-XML-01/a"));

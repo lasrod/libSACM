@@ -18,7 +18,9 @@ pub(super) fn repeated_references(document: &Document, found: &mut Vec<Diagnosti
         for end in ReferenceEnd::ALL
             .iter()
             .copied()
-            .filter(|end| end.is_many())
+            // The derived `expression` repeats an id when two texts link
+            // one ExpressionElement, which is no repeat (SACM23-BASE-009).
+            .filter(|end| end.is_many() && !end.is_derived())
         {
             let targets = element.references(end);
             if targets.len() < 2 {

@@ -254,6 +254,13 @@ pub enum ReferenceEnd {
     #[doc(alias = "terminologyElement")]
     #[cfg_attr(feature = "serde", serde(rename = "terminologyElement"))]
     TerminologyGroupMember,
+    /// The `expression:Terminology::ExpressionElement[1]` of each `ExpressionLangString`
+    /// (§8.4) the element holds, as its name or a value of its `content`, `key` or
+    /// `location`: their ids in that order, one per `ExpressionLangString` that has one.
+    /// Derived from the name and texts: the reference edits refuse it
+    /// ([`EditError::DerivedEnd`](crate::edit::EditError::DerivedEnd)); set it with
+    /// [`LangString::with_expression`](super::LangString::with_expression).
+    Expression,
 }
 
 impl ReferenceEnd {
@@ -265,7 +272,9 @@ impl ReferenceEnd {
     /// `artifactElement`, and an `ArtifactAssetRelationship`'s `source` and
     /// `target`, then the Terminology ends: the `category` of every
     /// `TerminologyAsset`, an `Expression`'s `element`, a `Term`'s `origin`
-    /// and a `TerminologyGroup`'s `terminologyElement`.
+    /// and a `TerminologyGroup`'s `terminologyElement`; and last the derived
+    /// `expression` of every element (SACM23-BASE-009), which `xmi::write`
+    /// writes with the name and texts that hold it, not as an end.
     ///
     /// A slice, so that a later end is an additive change. It is also the
     /// order of [`Document::referrers`](crate::model::Document::referrers)
@@ -279,7 +288,10 @@ impl ReferenceEnd {
     ///     .filter(|end| end.applies_to(ElementKind::AssertedInference))
     ///     .map(|end| end.name())
     ///     .collect();
-    /// assert_eq!(ends, ["citedElement", "abstractForm", "metaClaim", "reasoning", "source", "target"]);
+    /// assert_eq!(
+    ///     ends,
+    ///     ["citedElement", "abstractForm", "metaClaim", "reasoning", "source", "target", "expression"]
+    /// );
     /// ```
     pub const ALL: &'static [ReferenceEnd] = &[
         ReferenceEnd::CitedElement,
@@ -298,6 +310,7 @@ impl ReferenceEnd {
         ReferenceEnd::Element,
         ReferenceEnd::Origin,
         ReferenceEnd::TerminologyGroupMember,
+        ReferenceEnd::Expression,
     ];
 
     /// The end's name, spelled as in the machine-readable model and in XMI:
@@ -307,9 +320,9 @@ impl ReferenceEnd {
     /// [`ArtifactGroupMember`](Self::ArtifactGroupMember), `artifactElement`,
     /// for [`ArtifactSource`](Self::ArtifactSource) and
     /// [`ArtifactTarget`](Self::ArtifactTarget), `source` and `target`,
-    /// `category`, `element`, `origin`, and, for
+    /// `category`, `element`, `origin`, for
     /// [`TerminologyGroupMember`](Self::TerminologyGroupMember),
-    /// `terminologyElement`. It is the `end` an
+    /// `terminologyElement`, and `expression`. It is the `end` an
     /// [`EditError`](crate::edit::EditError) names.
     #[must_use]
     pub const fn name(self) -> &'static str {
@@ -330,6 +343,7 @@ impl ReferenceEnd {
             Self::Element => "element",
             Self::Origin => "origin",
             Self::TerminologyGroupMember => "terminologyElement",
+            Self::Expression => "expression",
         }
     }
 
@@ -359,6 +373,7 @@ impl ReferenceEnd {
             Self::Category => "10.9",
             Self::Element => "10.10",
             Self::Origin => "10.11",
+            Self::Expression => "8.4",
         }
     }
 
@@ -377,11 +392,21 @@ impl ReferenceEnd {
                 | Self::Category
                 | Self::Element
                 | Self::TerminologyGroupMember
+                | Self::Expression
         )
     }
 
+    /// Whether the end is derived from the element's name and texts rather
+    /// than held as written: only [`Expression`](Self::Expression). The
+    /// writer, the element reader, the comparison of ends, the repeat rule
+    /// and the reference edits leave it out (SACM23-BASE-009, ADR 0038 D3).
+    pub(crate) const fn is_derived(self) -> bool {
+        matches!(self, Self::Expression)
+    }
+
     /// Whether an element of `kind` has the end: every element has
-    /// `citedElement` and `abstractForm` (§8.2), every Assertion has
+    /// `citedElement` and `abstractForm` (§8.2) and the derived `expression`
+    /// (§8.4), every Assertion has
     /// `metaClaim` (§11.10), every `AssertedRelationship` has `reasoning`,
     /// `source` and `target` (§11.13), an `ArtifactAssetRelationship` has
     /// its own `source` and `target` (§12.14), every `TerminologyAsset` (a
@@ -422,7 +447,9 @@ impl ReferenceEnd {
     /// [`AddReference`](crate::edit::AddReference) and
     /// [`RemoveReference`](crate::edit::RemoveReference) keep an end within
     /// ([`TooFewReferences`](crate::edit::EditError::TooFewReferences),
-    /// [`TooManyReferences`](crate::edit::EditError::TooManyReferences)).
+    /// [`TooManyReferences`](crate::edit::EditError::TooManyReferences)),
+    /// except the derived [`Expression`](Self::Expression), which they refuse
+    /// as [`DerivedEnd`](crate::edit::EditError::DerivedEnd).
     ///
     /// ```
     /// use sacm::model::{ElementKind, ReferenceEnd};
@@ -464,7 +491,7 @@ impl ReferenceEnd {
     /// The class that owns the end: an element of a kind it admits has it.
     pub(crate) const fn owner(self) -> DeclaredType {
         match self {
-            Self::CitedElement | Self::AbstractForm => {
+            Self::CitedElement | Self::AbstractForm | Self::Expression => {
                 DeclaredType::Abstract(AbstractClass::SACMElement)
             }
             Self::MetaClaim => DeclaredType::Abstract(AbstractClass::Assertion),
@@ -503,7 +530,9 @@ impl ReferenceEnd {
                 DeclaredType::Abstract(AbstractClass::ArtifactAsset)
             }
             Self::Category => DeclaredType::Kind(ElementKind::Category),
-            Self::Element => DeclaredType::Abstract(AbstractClass::ExpressionElement),
+            Self::Element | Self::Expression => {
+                DeclaredType::Abstract(AbstractClass::ExpressionElement)
+            }
             Self::Origin => DeclaredType::Abstract(AbstractClass::ModelElement),
             Self::TerminologyGroupMember => {
                 DeclaredType::Abstract(AbstractClass::TerminologyElement)
@@ -512,12 +541,14 @@ impl ReferenceEnd {
     }
 }
 
-/// The reference end named `local` that an element of `kind` has, if any.
+/// The reference end named `local` that an element of `kind` has, if any:
+/// never the derived `expression`, which is no attribute of the element
+/// (SACM23-BASE-009).
 pub(crate) fn reference_end_named(kind: ElementKind, local: &str) -> Option<ReferenceEnd> {
     ReferenceEnd::ALL
         .iter()
         .copied()
-        .find(|end| end.name() == local && end.owner().admits(kind))
+        .find(|end| !end.is_derived() && end.name() == local && end.owner().admits(kind))
 }
 
 #[cfg(test)]
@@ -531,12 +562,12 @@ mod tests {
             for &end in ReferenceEnd::ALL {
                 // The end of that name whose owner admits the kind: no kind
                 // has two ends of one name (ADR 0034 amendment 2).
-                let expected = ReferenceEnd::ALL
-                    .iter()
-                    .copied()
-                    .find(|other| other.name() == end.name() && other.owner().admits(kind));
+                // The derived end is never read as an attribute.
+                let expected = ReferenceEnd::ALL.iter().copied().find(|other| {
+                    !other.is_derived() && other.name() == end.name() && other.owner().admits(kind)
+                });
                 assert_eq!(reference_end_named(kind, end.name()), expected, "{kind}");
-                if end.owner().admits(kind) {
+                if end.owner().admits(kind) && !end.is_derived() {
                     assert_eq!(expected, Some(end), "{kind}");
                 }
             }
@@ -549,6 +580,8 @@ mod tests {
             assert!(flag_named(kind, "isAbstract").is_some());
             assert_eq!(reference_end_named(kind, "isCitation"), None);
             assert_eq!(reference_end_named(kind, "citedelement"), None);
+            assert_eq!(reference_end_named(kind, "expression"), None);
+            assert!(ReferenceEnd::Expression.applies_to(kind));
             assert_eq!(flag_named(kind, "citedElement"), None);
         }
         let relationship = ElementKind::AssertedInference;
@@ -624,7 +657,8 @@ mod tests {
                 "category",
                 "element",
                 "origin",
-                "terminologyElement"
+                "terminologyElement",
+                "expression"
             ]
         );
         assert_eq!(
@@ -635,7 +669,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             [
                 "8.2", "8.2", "11.10", "11.13", "11.13", "11.13", "11.12", "11.9", "11.2", "12.3",
-                "12.14", "12.14", "10.9", "10.10", "10.11", "10.3"
+                "12.14", "12.14", "10.9", "10.10", "10.11", "10.3", "8.4"
             ]
         );
         // A Category's category is declared by §10.8, an ExpressionElement's
@@ -658,7 +692,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             [
                 false, false, true, false, true, false, false, true, true, true, true, true, true,
-                true, false, true
+                true, false, true, true
             ]
         );
         assert_eq!(
@@ -667,7 +701,7 @@ mod tests {
                 .copied()
                 .map(ReferenceEnd::lower_bound)
                 .collect::<Vec<_>>(),
-            [0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0]
+            [0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0]
         );
         assert_eq!(
             ReferenceEnd::ALL
@@ -691,8 +725,21 @@ mod tests {
                 None,
                 None,
                 Some(1),
+                None,
                 None
             ]
+        );
+        assert_eq!(
+            ReferenceEnd::ALL
+                .iter()
+                .copied()
+                .filter(|end| end.is_derived())
+                .collect::<Vec<_>>(),
+            [ReferenceEnd::Expression]
+        );
+        assert_eq!(
+            ReferenceEnd::Expression.clause_on(ElementKind::Claim),
+            "8.4"
         );
         // Every owner is in OWNERS, so the writer writes every feature.
         for owner in ReferenceEnd::ALL
@@ -729,7 +776,8 @@ mod tests {
                 "Category",
                 "ExpressionElement",
                 "ModelElement",
-                "TerminologyElement"
+                "TerminologyElement",
+                "ExpressionElement"
             ]
         );
     }

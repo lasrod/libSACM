@@ -6,6 +6,7 @@
 
 use super::EditError;
 use super::plan::{Plan, Value};
+use super::references::check_expressions;
 use crate::model::{
     AbstractClass, AssertionDeclaration, Document, ElementId, ElementKind, Flag, LangString,
     MultiLangString, SacmElement, StringAttribute, Text, TextRole,
@@ -30,7 +31,14 @@ pub(super) const ASSERTION_DECLARATION: &str = "assertionDeclaration";
 /// [`xmi::write`](crate::xmi::write) refuses it. Apply it with
 /// [`edit::apply`](super::apply). It refuses an unknown element as
 /// [`EditError::ElementNotFound`], then a `UtilityElement`, which has no
-/// name, as [`EditError::FeatureNotApplicable`]. The element is in
+/// name, as [`EditError::FeatureNotApplicable`]. A name that is an
+/// `ExpressionLangString` (§8.4) must have an `expression`
+/// ([`EditError::TooFewReferences`]), and an `expression` the element does
+/// not already hold must name a `Term` or an `Expression` of the document
+/// ([`EditError::InvalidReference`], [`EditError::ReferenceNotFound`],
+/// [`EditError::WrongReferenceType`], end `expression`; SACM23-BASE-009);
+/// [`SetContent`], [`SetKey`] and [`SetLocation`] check their values the
+/// same way. The element is in
 /// [`changed_ids`](super::Mutation::changed_ids) when its name changes.
 ///
 /// # Examples
@@ -91,6 +99,7 @@ impl SetName {
         let target = edited(document, &self.element, NAME, |kind| {
             kind.is_a(AbstractClass::ModelElement)
         })?;
+        check_expressions(document, [&self.name], target.expressions())?;
         Ok(changing(
             &self.element,
             target.name() != Some(&self.name),
@@ -347,7 +356,8 @@ impl SetAssertionDeclaration {
 /// `ImplementationConstraint`, Note or `TaggedValue`.
 ///
 /// [`new`](Self::new) replaces the whole content with any
-/// `MultiLangString`, held exactly: an empty one, or one with a repeated
+/// `MultiLangString` it does not refuse below, held exactly: an empty one,
+/// or one with a repeated
 /// language, is accepted, and
 /// [`validation::validate`](crate::validation::validate) reports it
 /// (SACM23-VAL-010). [`remove`](Self::remove) removes it. A replaced content
@@ -358,7 +368,13 @@ impl SetAssertionDeclaration {
 /// [`xmi::write`](crate::xmi::write) refuses it. Apply it with
 /// [`edit::apply`](super::apply). It refuses an unknown element as
 /// [`EditError::ElementNotFound`], then a kind that is no `UtilityElement`
-/// as [`EditError::FeatureNotApplicable`]. The `UtilityElement`, not its
+/// as [`EditError::FeatureNotApplicable`]. Then it refuses an
+/// `ExpressionLangString` value with no `expression` as
+/// [`EditError::TooFewReferences`], and an `expression` the element does not
+/// already hold that holds white space, names no element, or names an
+/// element that is no `Term` or `Expression` ([`EditError::InvalidReference`],
+/// [`EditError::ReferenceNotFound`], [`EditError::WrongReferenceType`], end
+/// `expression`; SACM23-BASE-009). The `UtilityElement`, not its
 /// owner, is in [`changed_ids`](super::Mutation::changed_ids).
 ///
 /// # Examples
@@ -444,13 +460,14 @@ impl SetContent {
 /// Sets the `key` (SACM 2.3 §8.12 `key:MultiLangString[1]`) of a
 /// `TaggedValue`.
 ///
-/// It replaces the whole key with any `MultiLangString`, held exactly, under
+/// It replaces the whole key with a `MultiLangString`, held exactly, under
 /// the rules of [`SetContent::new`]: an empty key is accepted and reported
 /// by [`validation::validate`](crate::validation::validate), and ids are
 /// kept by position. A key is required, so there is no form that removes
 /// it. Apply it with [`edit::apply`](super::apply). It refuses an unknown
 /// element as [`EditError::ElementNotFound`], then a kind that is no
-/// `TaggedValue` as [`EditError::FeatureNotApplicable`].
+/// `TaggedValue` as [`EditError::FeatureNotApplicable`]. Then it checks its
+/// `ExpressionLangString` values as [`SetContent`] does (SACM23-BASE-009).
 ///
 /// # Examples
 ///
@@ -840,7 +857,7 @@ string_set! {
 /// of the Resource, can be in multiple languages") of a `Resource`.
 ///
 /// It follows the rules of [`SetContent`]: [`new`](Self::new) replaces the
-/// whole location with any `MultiLangString`, held exactly, an empty one or
+/// whole location with a `MultiLangString`, held exactly, an empty one or
 /// one with a repeated language included, which
 /// [`validation::validate`](crate::validation::validate) reports
 /// (SACM23-VAL-010); [`remove`](Self::remove) removes it. A replaced
@@ -851,7 +868,8 @@ string_set! {
 /// [`xmi::write`](crate::xmi::write) refuses it. Apply it with
 /// [`edit::apply`](super::apply). It refuses an unknown element as
 /// [`EditError::ElementNotFound`], then a kind that is no `Resource` as
-/// [`EditError::FeatureNotApplicable`], naming `location`.
+/// [`EditError::FeatureNotApplicable`], naming `location`. Then it checks
+/// its `ExpressionLangString` values as [`SetContent`] does (SACM23-BASE-009).
 ///
 /// # Examples
 ///
@@ -963,6 +981,9 @@ fn plan_text<'o>(
     value: Option<&MultiLangString>,
 ) -> Result<Plan<'o>, EditError> {
     let target = edited(document, element, role.name(), |kind| role.is_held_by(kind))?;
+    if let Some(value) = value {
+        check_expressions(document, value.values(), target.expressions())?;
+    }
     let held = target.text(role);
     let text = value.map(|value| Text::keeping_ids(value.clone(), held));
     let changes = held != text.as_ref();

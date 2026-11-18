@@ -34,8 +34,7 @@ checks only that the output is schema-valid, so a draft saves, and an applicatio
 deletes them atomically, `sacm::validation::validate` checks names, ids, gids, contents,
 references, terms' values and the argumentation and artifact rules, and
 `sacm::compare::semantic_compare` lists differences. Undo and redo are the application's, by whole-document copies, as the `edit`
-docs show. `ExpressionLangString`, interfaces and bindings and the other validation rules
-are not built yet. The [functionality matrix](docs/matrix/functionality-matrix.md) shows
+docs show. Interfaces and bindings and the other validation rules are not built yet. The [functionality matrix](docs/matrix/functionality-matrix.md) shows
 what is verified; nothing else is claimed.
 
 ## What SACM is

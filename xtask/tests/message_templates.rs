@@ -57,8 +57,10 @@ const CATALOG: &str = "docs/sacm/diagnostics.md";
 /// The heading of the catalog's template table.
 const HEADING: &str = "## Message templates";
 
-/// The number of refusal templates of slice 0063 (acceptance 4).
-const REFUSAL_TEMPLATES: usize = 103;
+/// The number of refusal templates: the 103 of slice 0063 (acceptance 4),
+/// less `SACM-XMI-014/expression-lang-string`, which slice 0065 removes
+/// (SACM23-BASE-009).
+const REFUSAL_TEMPLATES: usize = 102;
 
 fn repository_root() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -831,7 +833,7 @@ fn lib_api_017_every_template_const_is_named_in_another_file_of_the_crate() {
 }
 
 #[test]
-fn lib_api_017_template_rs_declares_the_103_refusal_templates() {
+fn lib_api_017_template_rs_declares_the_102_refusal_templates() {
     let files = sacm_sources();
     let Some(source) = files.get(TEMPLATES) else {
         panic!("{ROW}: {SACM_SRC}/{TEMPLATES} does not exist");

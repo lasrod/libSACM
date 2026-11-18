@@ -768,7 +768,7 @@ fn sacm23_term_002_reference_end_category_applies_to_the_terminology_assets() {
 }
 
 #[test]
-fn sacm23_term_002_reference_end_all_is_the_sixteen_ends_in_write_order() {
+fn sacm23_term_002_reference_end_all_is_the_sixteen_written_ends_then_expression() {
     let row = TERM_002;
     assert_eq!(
         ReferenceEnd::ALL,
@@ -789,6 +789,9 @@ fn sacm23_term_002_reference_end_all_is_the_sixteen_ends_in_write_order() {
             ReferenceEnd::Element,
             ReferenceEnd::Origin,
             ReferenceEnd::TerminologyGroupMember,
+            // The derived end of slice 0065 (SACM23-BASE-009), after the
+            // sixteen written ends.
+            ReferenceEnd::Expression,
         ],
         "{row}: ReferenceEnd::ALL"
     );

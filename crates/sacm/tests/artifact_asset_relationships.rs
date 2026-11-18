@@ -1327,6 +1327,8 @@ fn sacm23_art_010_reference_end_all_lists_these_two_directly_after_artifact_grou
             ReferenceEnd::Element,
             ReferenceEnd::Origin,
             ReferenceEnd::TerminologyGroupMember,
+            // The derived end of slice 0065 (SACM23-BASE-009).
+            ReferenceEnd::Expression,
         ],
         "{ROW}: ReferenceEnd::ALL"
     );
@@ -1366,7 +1368,14 @@ fn sacm23_art_010_no_kind_has_two_ends_of_the_same_name() {
         .collect();
     assert_eq!(
         names,
-        ["citedElement", "abstractForm", "source", "target"],
+        [
+            "citedElement",
+            "abstractForm",
+            "source",
+            "target",
+            // Every kind has the derived end of slice 0065 (SACM23-BASE-009).
+            "expression",
+        ],
         "{ROW}: the ends of an ArtifactAssetRelationship"
     );
 }

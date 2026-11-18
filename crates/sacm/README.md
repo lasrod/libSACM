@@ -99,7 +99,7 @@ tracks every requirement: what is built, what is planned, and the tests behind e
 
 Planned:
 
-- The interfaces and bindings of the four packages, and `ExpressionLangString`.
+- The interfaces and bindings of the four packages.
 - Tolerant reading of third-party dialects and legacy revisions, reporting exactly what
   was accepted.
 - More validation rules against the specification's constraints.

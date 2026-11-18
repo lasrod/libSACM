@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-VAL-009: the Claim c1's name and value 1 of the Note n1's content each have an expression and a content that is not empty (one SACM-EXPR-001 Warning each, clause 8.4); c2's name has content "" and gives none. It reads in both modes with no diagnostic, and a strict write writes it. Hand-written; no third-party content. -->
+<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="case">
+  <name lang="en" content="Case"/>
+  <terminologyPackage xmi:id="terms">
+    <name lang="en" content="Terms"/>
+    <terminologyElement xmi:type="sacm:Term" xmi:id="blade" value="blade">
+      <name lang="en" content="Blade"/>
+    </terminologyElement>
+  </terminologyPackage>
+  <argumentPackage xmi:id="arguments">
+    <name lang="en" content="Arguments"/>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c1">
+      <name xmi:type="sacm:ExpressionLangString" lang="en" content="The blade is guarded" expression="blade"/>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c2">
+      <name xmi:type="sacm:ExpressionLangString" lang="en" content="" expression="blade"/>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c3">
+      <name lang="en" content="The lid is closed"/>
+      <note xmi:id="n1">
+        <content>
+          <value xmi:type="sacm:ExpressionLangString" lang="en" content="Blade" expression="blade"/>
+        </content>
+      </note>
+    </argumentElement>
+  </argumentPackage>
+</sacm:AssuranceCasePackage>
