@@ -6624,7 +6624,8 @@ acceptance = [
   "Two diagnostics equal in the seven ADR 0011 keys order by template id, then by arguments. `cmp` is `Equal` exactly when the diagnostics are `==`. `Argument`, `ArgumentValue` and `Details` are `Clone + Debug + Eq + Hash + Send + Sync + 'static`, and `Argument` and `ArgumentValue` are also `Ord`.",
   "`template.rs` declares 102 templates whose carrier is `Diagnostic`. The catalog's `## Message templates` table lists all 204 templates (LIB-API-017 acceptance 6 checks it).",
 ]
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0064-diagnostic-templates.md"
 depends_on = ["LIB-API-017", "LIB-DIAG-001", "LIB-API-006"]
 
 [[row]]

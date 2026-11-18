@@ -1,8 +1,8 @@
 ---
 slice: 0064
 name: diagnostic-templates
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [LIB-API-018]
 mode: pr
 base: main (3025637)
@@ -61,3 +61,4 @@ There are no SACM clauses: this is library API. Its basis:
 - 2026-11-18 verify round 2: round 1 fixed (D1 and D2 killed). FAIL on one new item: CI mutant
   `details_from_record` guard → `true` survives (a false reason for another refusal's template).
   The maintainer approved a second fix round: one test case, the verifier's text.
+- 2026-11-18 verify round 3 (4f4a281): PASS. Record docs/verification/0064-diagnostic-templates.md.
