@@ -3,10 +3,33 @@
 
 use std::collections::HashSet;
 
-use crate::diagnostic::{Code, Diagnostic, Severity};
+use crate::diagnostic::template::{
+    ABS_001_ABSTRACT_HOLDER, ABS_001_FORM_NOT_ABSTRACT, ABS_001_FORM_OF_ANOTHER_KIND,
+    CITE_001_NOT_A_CITATION, CITE_002_CITED_NOT_AN_ASSERTION, CITE_002_NO_CITED_ELEMENT,
+    CITE_002_NOT_A_CITATION, REF_001_DANGLING, REF_002_WRONG_TYPE, REF_003_PRESERVED_TARGET,
+    Template,
+};
+use crate::diagnostic::{Argument, Diagnostic, Severity};
 use crate::model::{
     AbstractClass, AssertionDeclaration, Document, ElementId, ReferenceEnd, SacmElement,
 };
+
+/// The arguments that name `element`: its class and id.
+fn named(element: SacmElement<'_>) -> [Argument; 2] {
+    [
+        Argument::text("class", element.kind().name()),
+        Argument::text("id", element.id().as_str()),
+    ]
+}
+
+/// The arguments of a finding about the id `target` of the end `end` of
+/// `element`: its class, id, the end and the target.
+fn end_of(element: SacmElement<'_>, end: ReferenceEnd, target: &ElementId) -> Vec<Argument> {
+    let mut arguments = named(element).to_vec();
+    arguments.push(Argument::text("end", end.name()));
+    arguments.push(Argument::text("target", target.as_str()));
+    arguments
+}
 
 /// SACM23-VAL-003: each distinct id that a reference end of an element holds
 /// and that names no element of the document is one SACM-REF-001 Error,
@@ -29,21 +52,14 @@ pub(super) fn dangling_references(document: &Document, found: &mut Vec<Diagnosti
                     continue;
                 }
                 if document.is_preserved_id(target.as_str()) {
-                    let message = format!(
-                        "{} {:?} has the {} {:?}, which names an element the document holds only \
-                         as preserved content, so its type is not checked (the end's type is {})",
-                        element.kind().name(),
-                        element.id().as_str(),
-                        end.name(),
-                        target.as_str(),
-                        end.target().name()
-                    );
+                    let mut arguments = end_of(element, end, target);
+                    arguments.push(Argument::text("type", end.target().name()));
                     found.push(
-                        Diagnostic::create(
-                            Code::REF_PRESERVED_TARGET,
+                        Diagnostic::emit(
+                            &REF_003_PRESERVED_TARGET,
                             Severity::Warning,
                             "LIB-COMPAT-003",
-                            message,
+                            arguments,
                         )
                         .set_clause(end.clause_on(element.kind()))
                         .set_affected([element.id().clone(), target.clone()]),
@@ -82,20 +98,13 @@ pub(super) fn unwritten_references(document: &Document, found: &mut Vec<Diagnost
 /// `element`, which names no element: with the end's clause, affecting the
 /// element, then the id.
 fn dangling(element: SacmElement<'_>, end: ReferenceEnd, target: &ElementId) -> Diagnostic {
-    let message = format!(
-        "{} {:?} has the {} {:?}, which names no element of the document \
-         (the end's type is {})",
-        element.kind().name(),
-        element.id().as_str(),
-        end.name(),
-        target.as_str(),
-        end.target().name()
-    );
-    Diagnostic::create(
-        Code::REF_DANGLING,
+    let mut arguments = end_of(element, end, target);
+    arguments.push(Argument::text("type", end.target().name()));
+    Diagnostic::emit(
+        &REF_001_DANGLING,
         Severity::Error,
         "SACM23-VAL-003",
-        message,
+        arguments,
     )
     .set_clause(end.clause_on(element.kind()))
     .set_affected([element.id().clone(), target.clone()])
@@ -121,21 +130,15 @@ pub(super) fn wrongly_typed_references(document: &Document, found: &mut Vec<Diag
                 if declared.admits(target.kind()) || !reported.insert(id.as_str()) {
                     continue;
                 }
-                let message = format!(
-                    "{} {:?} has the {} {:?}, whose kind {} does not conform to the end's type {}",
-                    element.kind().name(),
-                    element.id().as_str(),
-                    end.name(),
-                    id.as_str(),
-                    target.kind().name(),
-                    declared.name()
-                );
+                let mut arguments = end_of(element, end, id);
+                arguments.push(Argument::text("target_class", target.kind().name()));
+                arguments.push(Argument::text("type", declared.name()));
                 found.push(
-                    Diagnostic::create(
-                        Code::REF_WRONG_TYPE,
+                    Diagnostic::emit(
+                        &REF_002_WRONG_TYPE,
                         Severity::Error,
                         "SACM23-VAL-004",
-                        message,
+                        arguments,
                     )
                     .set_clause(end.clause_on(element.kind()))
                     .set_affected([element.id().clone(), id.clone()]),
@@ -158,19 +161,14 @@ pub(super) fn citation(document: &Document, found: &mut Vec<Diagnostic>) {
         if element.is_citation() {
             continue;
         }
-        let message = format!(
-            "{} {:?} has the citedElement {:?} but isCitation is not true (§8.2: \
-             citedElement <> null implies isCitation = true)",
-            element.kind().name(),
-            element.id().as_str(),
-            cited.as_str()
-        );
+        let mut arguments = named(element).to_vec();
+        arguments.push(Argument::text("target", cited.as_str()));
         found.push(
-            Diagnostic::create(
-                Code::CITATION_INVALID,
+            Diagnostic::emit(
+                &CITE_001_NOT_A_CITATION,
                 Severity::Error,
                 "SACM23-VAL-007",
-                message,
+                arguments,
             )
             .set_clause("8.2")
             .set_affected([element.id().clone()]),
@@ -191,48 +189,47 @@ pub(super) fn as_cited(document: &Document, found: &mut Vec<Diagnostic>) {
         if element.assertion_declaration() != Some(AssertionDeclaration::AsCited) {
             continue;
         }
-        let (kind, id) = (element.kind().name(), element.id().as_str());
         if !element.is_citation() {
-            let message = format!(
-                "{kind} {id:?} is declared asCited but isCitation is not true: an asCited \
-                 Assertion takes its declaration from the Assertion it cites (§11.8)"
-            );
-            found.push(as_cited_finding(message, [element.id().clone()]));
+            found.push(as_cited_finding(
+                &CITE_002_NOT_A_CITATION,
+                named(element).to_vec(),
+                [element.id().clone()],
+            ));
         }
         let Some(cited) = element.cited_element() else {
-            let message = format!(
-                "{kind} {id:?} is declared asCited but has no citedElement: an asCited \
-                 Assertion takes its declaration from the Assertion it cites (§11.8)"
-            );
-            found.push(as_cited_finding(message, [element.id().clone()]));
+            found.push(as_cited_finding(
+                &CITE_002_NO_CITED_ELEMENT,
+                named(element).to_vec(),
+                [element.id().clone()],
+            ));
             continue;
         };
         let Some(target) = document.get(cited) else {
             continue;
         };
         if !target.kind().is_a(AbstractClass::Assertion) {
-            let message = format!(
-                "{kind} {id:?} is declared asCited but its citedElement {:?} is of the kind \
-                 {}, which is no Assertion: an asCited Assertion takes its declaration from the Assertion it \
-                 cites (§11.8)",
-                cited.as_str(),
-                target.kind().name()
-            );
-            found.push(as_cited_finding(message, pair(element, cited)));
+            let mut arguments = named(element).to_vec();
+            arguments.push(Argument::text("target", cited.as_str()));
+            arguments.push(Argument::text("target_class", target.kind().name()));
+            found.push(as_cited_finding(
+                &CITE_002_CITED_NOT_AN_ASSERTION,
+                arguments,
+                pair(element, cited),
+            ));
         }
     }
 }
 
-/// A SACM-CITE-002 Warning of SACM23-VAL-019.
-fn as_cited_finding(message: String, affected: impl IntoIterator<Item = ElementId>) -> Diagnostic {
-    Diagnostic::create(
-        Code::AS_CITED_INVALID,
-        Severity::Warning,
-        "SACM23-VAL-019",
-        message,
-    )
-    .set_clause("11.8")
-    .set_affected(affected)
+/// A SACM-CITE-002 Warning of SACM23-VAL-019, of `template`, made from
+/// `arguments`.
+fn as_cited_finding(
+    template: &'static Template,
+    arguments: Vec<Argument>,
+    affected: impl IntoIterator<Item = ElementId>,
+) -> Diagnostic {
+    Diagnostic::emit(template, Severity::Warning, "SACM23-VAL-019", arguments)
+        .set_clause("11.8")
+        .set_affected(affected)
 }
 
 /// SACM23-VAL-008: for each element with an `abstractForm`, §8.2 says "the
@@ -251,52 +248,57 @@ pub(super) fn abstract_form(document: &Document, found: &mut Vec<Diagnostic>) {
         let Some(form) = element.abstract_form() else {
             continue;
         };
-        let (kind, id) = (element.kind().name(), element.id().as_str());
+        let [class, id] = named(element);
+        let target_text = || Argument::text("target", form.as_str());
         if element.is_abstract() {
-            let message = format!(
-                "{kind} {id:?} has the abstractForm {:?} but is itself abstract (isAbstract is \
-                 true); §8.2 gives abstractForm to a concrete element",
-                form.as_str()
-            );
-            found.push(finding(Severity::Error, message, [element.id().clone()]));
+            let arguments = vec![class.clone(), id.clone(), target_text()];
+            found.push(finding(
+                &ABS_001_ABSTRACT_HOLDER,
+                Severity::Error,
+                arguments,
+                [element.id().clone()],
+            ));
         }
         let Some(target) = document.get(form) else {
             continue;
         };
         if !target.is_abstract() {
-            let message = format!(
-                "the abstractForm {:?} of {kind} {id:?} is not abstract: its isAbstract should \
-                 be true (§8.2)",
-                form.as_str()
-            );
-            found.push(finding(Severity::Warning, message, pair(element, form)));
+            let arguments = vec![target_text(), class.clone(), id.clone()];
+            found.push(finding(
+                &ABS_001_FORM_NOT_ABSTRACT,
+                Severity::Warning,
+                arguments,
+                pair(element, form),
+            ));
         }
         if target.kind() != element.kind() {
-            let message = format!(
-                "the abstractForm {:?} of {kind} {id:?} is of the kind {}, not {kind}: it should be of \
-                 the same type (§8.2)",
-                form.as_str(),
-                target.kind().name()
-            );
-            found.push(finding(Severity::Warning, message, pair(element, form)));
+            let arguments = vec![
+                target_text(),
+                class,
+                id,
+                Argument::text("target_class", target.kind().name()),
+            ];
+            found.push(finding(
+                &ABS_001_FORM_OF_ANOTHER_KIND,
+                Severity::Warning,
+                arguments,
+                pair(element, form),
+            ));
         }
     }
 }
 
-/// A SACM-ABS-001 finding of SACM23-VAL-008.
+/// A SACM-ABS-001 finding of SACM23-VAL-008, of `template`, made from
+/// `arguments`.
 fn finding(
+    template: &'static Template,
     severity: Severity,
-    message: String,
+    arguments: Vec<Argument>,
     affected: impl IntoIterator<Item = ElementId>,
 ) -> Diagnostic {
-    Diagnostic::create(
-        Code::ABSTRACT_FORM_INVALID,
-        severity,
-        "SACM23-VAL-008",
-        message,
-    )
-    .set_clause("8.2")
-    .set_affected(affected)
+    Diagnostic::emit(template, severity, "SACM23-VAL-008", arguments)
+        .set_clause("8.2")
+        .set_affected(affected)
 }
 
 /// The ids of `element` and of its target `target`, in that order.

@@ -41,7 +41,7 @@ findings are `Diagnostic` values. The assurance-forge C++ library is the design 
   6. severity;
   7. message.
 
-  `cmp` is `Equal` exactly when the diagnostics are equal.
+  ADR 0030 amendment 3 adds 8, the template id, and 9, the arguments. `cmp` is `Equal` exactly when the diagnostics are equal.
 - **Errors.** There is one error enum per operation, in that operation's module:
   `xmi::ReadError`, `xmi::WriteError` and `edit::EditError`. Each arrives with its row, and
   there is no crate-wide `Error`. Every error enum:

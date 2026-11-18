@@ -1,6 +1,7 @@
 //! Rules about what an `ArgumentPackage` holds (formal/23-05-08 §11.4).
 
-use crate::diagnostic::{Code, Diagnostic, Severity};
+use crate::diagnostic::template::PKG_001_MIXED_CONTENT;
+use crate::diagnostic::{Argument, Diagnostic, Severity};
 use crate::model::{Document, ElementKind, SacmElement};
 
 /// SACM23-VAL-012: for each plain `ArgumentPackage` with a plain
@@ -24,22 +25,20 @@ pub(super) fn argument_package_homogeneity(document: &Document, found: &mut Vec<
         for child in
             content(package).filter(|child| !child.kind().is_kind_of(ElementKind::ArgumentPackage))
         {
-            let message = format!(
-                "{} {:?} nests the {} {:?}, so it may contain only ArgumentPackages, \
-                 but it also contains {} {:?}",
-                package.kind().name(),
-                package.id().as_str(),
-                nested.kind().name(),
-                nested.id().as_str(),
-                child.kind().name(),
-                child.id().as_str()
-            );
+            let arguments = vec![
+                Argument::text("class", package.kind().name()),
+                Argument::text("id", package.id().as_str()),
+                Argument::text("nested_class", nested.kind().name()),
+                Argument::text("nested_id", nested.id().as_str()),
+                Argument::text("child_class", child.kind().name()),
+                Argument::text("child_id", child.id().as_str()),
+            ];
             found.push(
-                Diagnostic::create(
-                    Code::PACKAGE_CONTENT_INVALID,
+                Diagnostic::emit(
+                    &PKG_001_MIXED_CONTENT,
                     Severity::Error,
                     "SACM23-VAL-012",
-                    message,
+                    arguments,
                 )
                 .set_clause("11.4")
                 .set_affected([package.id().clone(), child.id().clone()]),

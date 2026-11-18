@@ -1,6 +1,9 @@
 //! Rules about implementation constraints (formal/23-05-08 §8.6).
 
-use crate::diagnostic::{Code, Diagnostic, Severity};
+use crate::diagnostic::template::{
+    ABS_001_IMPLEMENTATION_CONSTRAINT, ABS_001_IMPLEMENTATION_CONSTRAINTS,
+};
+use crate::diagnostic::{Argument, Diagnostic, Severity};
 use crate::model::{AbstractClass, Document};
 
 /// SACM23-VAL-021: each `ModelElement` with one or more
@@ -17,26 +20,20 @@ pub(super) fn implementation_constraints(document: &Document, found: &mut Vec<Di
         if count == 0 {
             continue;
         }
-        let constraints = if count == 1 {
-            "an implementationConstraint".to_owned()
+        let mut arguments = vec![
+            Argument::text("class", element.kind().name()),
+            Argument::text("id", element.id().as_str()),
+        ];
+        let template = if count == 1 {
+            &ABS_001_IMPLEMENTATION_CONSTRAINT
         } else {
-            format!("{count} implementationConstraints")
+            arguments.push(Argument::count_of("count", count));
+            &ABS_001_IMPLEMENTATION_CONSTRAINTS
         };
-        let message = format!(
-            "{} {:?} has {constraints} but isAbstract is not true: implementation \
-             constraints are only specified on an abstract element (§8.6)",
-            element.kind().name(),
-            element.id().as_str()
-        );
         found.push(
-            Diagnostic::create(
-                Code::ABSTRACT_FORM_INVALID,
-                Severity::Error,
-                "SACM23-VAL-021",
-                message,
-            )
-            .set_clause("8.6")
-            .set_affected([element.id().clone()]),
+            Diagnostic::emit(template, Severity::Error, "SACM23-VAL-021", arguments)
+                .set_clause("8.6")
+                .set_affected([element.id().clone()]),
         );
     }
 }

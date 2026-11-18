@@ -1,7 +1,11 @@
 //! The rules about `ExpressionLangStrings` (formal/23-05-08 §8.4;
 //! SACM23-BASE-009, SACM23-VAL-009; ADR 0038 D5).
 
-use crate::diagnostic::{Code, Diagnostic, Severity};
+use crate::diagnostic::template::{
+    EXPR_001_NAME_WITH_CONTENT, EXPR_001_VALUE_WITH_CONTENT, MULT_001_NAME_WITHOUT_EXPRESSION,
+    MULT_001_VALUE_WITHOUT_EXPRESSION,
+};
+use crate::diagnostic::{Argument, Diagnostic, Severity};
 use crate::model::{Document, LangString, SacmElement, TextRole};
 
 /// The requirement of a missing `expression` (§8.4 `expression[1]`; spec
@@ -50,40 +54,33 @@ fn check(
     if !value.is_expression_lang_string() {
         return;
     }
-    let subject = match place {
-        None => format!(
-            "the name of {} {:?}",
-            element.kind().name(),
-            element.id().as_str()
-        ),
-        Some((position, role)) => format!(
-            "value {position} of the {} of {} {:?}",
-            role.name(),
-            element.kind().name(),
-            element.id().as_str()
-        ),
-    };
+    // What the message names first: the name, or the value by its position
+    // in its text; then the element.
+    let mut arguments = Vec::new();
+    if let Some((position, role)) = place {
+        arguments.push(Argument::count_of("position", position));
+        arguments.push(Argument::text("role", role.name()));
+    }
+    arguments.push(Argument::text("class", element.kind().name()));
+    arguments.push(Argument::text("id", element.id().as_str()));
+    let is_name = place.is_none();
     let diagnostic = match value.expression() {
-        None => Diagnostic::create(
-            Code::MULTIPLICITY_VIOLATION,
-            Severity::Error,
-            MISSING_ROW,
-            format!(
-                "{subject} is an ExpressionLangString with no expression \
-                 (expression:ExpressionElement[1])"
-            ),
-        ),
+        None => {
+            let template = if is_name {
+                &MULT_001_NAME_WITHOUT_EXPRESSION
+            } else {
+                &MULT_001_VALUE_WITHOUT_EXPRESSION
+            };
+            Diagnostic::emit(template, Severity::Error, MISSING_ROW, arguments)
+        }
         Some(expression) if value.content().is_some_and(|content| !content.is_empty()) => {
-            Diagnostic::create(
-                Code::EXPRESSION_WITH_CONTENT,
-                Severity::Warning,
-                CONTENT_ROW,
-                format!(
-                    "{subject} has the expression {:?} and a content that is not empty, and \
-                     §8.4 says that if expression is not empty, then content should be empty",
-                    expression.as_str()
-                ),
-            )
+            let template = if is_name {
+                &EXPR_001_NAME_WITH_CONTENT
+            } else {
+                &EXPR_001_VALUE_WITH_CONTENT
+            };
+            arguments.push(Argument::text("expression", expression.as_str()));
+            Diagnostic::emit(template, Severity::Warning, CONTENT_ROW, arguments)
         }
         Some(_) => return,
     };

@@ -1,0 +1,26 @@
+[
+  {
+    "code": "SACM-REF-001",
+    "severity": "error",
+    "requirement_id": "SACM23-VAL-003",
+    "clause": "11.10",
+    "affected": [
+      "c1",
+      "x"
+    ],
+    "location": {
+      "line": 4,
+      "column": 20
+    },
+    "message": "Claim \"c1\" has the metaClaim \"x\", which names no element of the document"
+  },
+  {
+    "code": "SACM-XMI-004",
+    "severity": "info",
+    "requirement_id": "SACM23-XMI-020",
+    "clause": null,
+    "affected": [],
+    "location": null,
+    "message": "a Claim has no xmi:id; it is read as claim_1"
+  }
+]

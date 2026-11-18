@@ -1,0 +1,2700 @@
+//! Every diagnostic carries its template and arguments (LIB-API-018; ADR 0030
+//! amendment 3, sections Templates, R8, R9, R11, Records and Order).
+//!
+//! One input per diagnostic template of `docs/sacm/diagnostics.md`'s
+//! `## Message templates` table, 102 in all: 30 that `validate` gives and 72
+//! that a tolerant or a strict read gives. Each input is a document read,
+//! written or validated through the public API. For each, the table states
+//! the template id, the step that gives the diagnostic, its severity, row and
+//! clause, its arguments by name, kind and value, the English pattern (as the
+//! catalog lists it, the markers of the design expanded), and the message.
+//!
+//! - `lib_api_018_each_diagnostic_template_input_gives_its_message` runs on
+//!   today's API. The step of each input gives exactly one diagnostic of the
+//!   template's code with the message, whose severity, row and clause are the
+//!   table's; the message is pinned byte for byte as the code before slice
+//!   0064 wrote it. The table is checked against itself: the pattern rendered
+//!   with the arguments is the message; every placeholder names an argument
+//!   of the right kind; the arguments are exactly those the pattern names, in
+//!   the order it first names them, so `row` is declared only where the
+//!   pattern names it, and then last; and the inputs are the 102 templates,
+//!   once each. [`sites`] adds an input for the other sites of the templates
+//!   that more than one site gives, checked the same way.
+//! - `lib_api_018_each_diagnostic_template_input_has_its_code_template_and_arguments`
+//!   checks that `code()`, `template()` and `arguments()` are the table's.
+//!
+//! No template is without an input: the design expects none, so there is no
+//! `NO_INPUT` list here.
+
+use std::fmt::Write as _;
+
+use sacm::diagnostic::{Code, Diagnostic, Severity};
+use sacm::model::{Document, ElementId};
+use sacm::validation;
+use sacm::xmi::{self, Mode, ReadOptions, WriteOptions};
+
+const ROW: &str = "LIB-API-018";
+
+const SACM_NS: &str = "http://www.omg.org/spec/SACM/20220301";
+const XMI_NS: &str = "http://www.omg.org/spec/XMI/20131001";
+
+/// The namespace declarations of a root: `sacm`, `xmi`, `xsi` and a vendor
+/// namespace `v`.
+const NS: &str = concat!(
+    " xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
+    " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"",
+    " xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"",
+    " xmlns:v=\"urn:vendor\"",
+);
+
+/// The number of diagnostic templates (acceptance 1): 30 from validation and
+/// 72 from the reader.
+const DIAGNOSTIC_TEMPLATES: usize = 102;
+
+/// The number of them that `validate` gives.
+const VALIDATION_TEMPLATES: usize = 30;
+
+// --- The markers of the design, expanded --------------------------------------------
+
+/// ‹KE›: kept as preserved content of an element; adds `holder_class` and
+/// `holder_id`.
+macro_rules! ke {
+    () => {
+        ", so it is kept as preserved content of the {holder_class} {holder_id:?}, which a \
+         tolerant write writes back and a strict write refuses"
+    };
+}
+
+/// ‹KD›: kept as preserved content of the document; adds no argument.
+macro_rules! kd {
+    () => {
+        ", so it is kept as preserved content of the document, which a tolerant write writes \
+         back and a strict write refuses"
+    };
+}
+
+/// ‹R›: the row that reads it; `row` comes last.
+macro_rules! reads {
+    () => {
+        "; {row} reads it"
+    };
+}
+
+/// ‹L›: a C++ shape, read as its standard form.
+macro_rules! legacy {
+    () => {
+        ", a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; it is \
+         read as its standard form, which write writes"
+    };
+}
+
+/// ‹ID›: an id that is no `NCName`.
+macro_rules! not_ncname {
+    () => {
+        ", which is not an NCName (XMI 2.5.1 §7.6.1: xmi:id is an xsd:ID)"
+    };
+}
+
+/// ‹XSI›: typed with `xsi:type`.
+macro_rules! xsi {
+    () => {
+        " is typed with xsi:type, which XMI 2.5.1 allows only when \
+         org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as \
+         xmi:type"
+    };
+}
+
+/// ‹TRIM›: an id read trimmed.
+macro_rules! trim {
+    () => {
+        ": an xmi:id is an xsd:ID, whose white space is collapsed (XMI 2.5.1 §7.6.1), and write \
+         writes it trimmed"
+    };
+}
+
+/// ‹EMPTY›: an empty id.
+macro_rules! empty {
+    () => {
+        " is empty, which is no xsd:ID (XMI 2.5.1 §7.6.1), so "
+    };
+}
+
+/// ‹T:x›: a spelling a tolerant read reads as `x`.
+macro_rules! read_as {
+    ($x:literal) => {
+        concat!("; it is read as ", $x, ", which write writes")
+    };
+}
+
+/// ‹S:x›: a spelling a strict read keeps.
+macro_rules! kept_as {
+    ($x:literal) => {
+        concat!(
+            "; it is kept as preserved content, and a tolerant read reads the name as ",
+            $x
+        )
+    };
+}
+
+// --- The table ----------------------------------------------------------------------
+
+/// An argument's expected value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Value {
+    Text(&'static str),
+    Count(u64),
+}
+
+fn t(text: &'static str) -> Value {
+    Value::Text(text)
+}
+
+fn n(count: u64) -> Value {
+    Value::Count(count)
+}
+
+/// The step whose diagnostics hold the case's.
+enum Step {
+    /// A tolerant read of the input.
+    Tolerant(String),
+    /// A strict read of the input, which reads it.
+    Strict(String),
+    /// `validate` of the document a tolerant read of the input returns.
+    Validate(String),
+    /// The `Invalid` refusal of a strict write of the document a tolerant read
+    /// of the input returns.
+    Write(String),
+}
+
+fn tolerant(input: impl Into<String>) -> Step {
+    Step::Tolerant(input.into())
+}
+
+fn strict(input: impl Into<String>) -> Step {
+    Step::Strict(input.into())
+}
+
+fn validate(input: impl Into<String>) -> Step {
+    Step::Validate(input.into())
+}
+
+fn write(input: impl Into<String>) -> Step {
+    Step::Write(input.into())
+}
+
+/// One diagnostic template and its input.
+struct Case {
+    /// The template id, `<CODE>/<form>`.
+    template: &'static str,
+    step: Step,
+    severity: Severity,
+    row: &'static str,
+    clause: Option<&'static str>,
+    /// The arguments, in the template's order.
+    arguments: Vec<(&'static str, Value)>,
+    /// The template's English pattern.
+    pattern: &'static str,
+    /// The message, byte for byte as the code before slice 0064 wrote it.
+    message: &'static str,
+}
+
+/// The case of `template`, whose diagnostic `step` gives with `found`'s
+/// severity, row and clause.
+fn case(
+    template: &'static str,
+    step: Step,
+    found: (Severity, &'static str, Option<&'static str>),
+    arguments: &[(&'static str, Value)],
+    pattern: &'static str,
+    message: &'static str,
+) -> Case {
+    let (severity, row, clause) = found;
+    Case {
+        template,
+        step,
+        severity,
+        row,
+        clause,
+        arguments: arguments.to_vec(),
+        pattern,
+        message,
+    }
+}
+
+const ERROR: Severity = Severity::Error;
+const WARNING: Severity = Severity::Warning;
+const INFO: Severity = Severity::Info;
+
+/// A root ArgumentPackage `p` holding `body`.
+fn package(body: &str) -> String {
+    format!(
+        "<sacm:ArgumentPackage{NS} xmi:id=\"p\"><name content=\"p\"/>{body}</sacm:ArgumentPackage>"
+    )
+}
+
+/// A Claim `id` with the extra attributes `attributes`, holding `body` after
+/// its name.
+fn claim(id: &str, attributes: &str, body: &str) -> String {
+    format!(
+        "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"{id}\"{attributes}><name content=\"{id}\"/>{body}</argumentElement>"
+    )
+}
+
+/// A Claim `id`, as [`claim`], with no name: `body` is all it holds.
+fn bare_claim(id: &str, attributes: &str, body: &str) -> String {
+    format!(
+        "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"{id}\"{attributes}>{body}</argumentElement>"
+    )
+}
+
+/// An element of `kind` under the role `argumentElement`, with the id `id`,
+/// the extra attributes `attributes` and a name.
+fn argument(kind: &str, id: &str, attributes: &str) -> String {
+    format!(
+        "<argumentElement xmi:type=\"sacm:{kind}\" xmi:id=\"{id}\"{attributes}><name content=\"{id}\"/></argumentElement>"
+    )
+}
+
+/// The Claim `c1` holding the Note `n`, whose content element is `content`.
+fn note_in_claim(content: &str) -> String {
+    package(&claim(
+        "c1",
+        "",
+        &format!("<note xmi:id=\"n\">{content}</note>"),
+    ))
+}
+
+/// A root AssuranceCasePackage `case` holding the ArgumentPackage `ap`,
+/// which holds `body`: an element that is not a root.
+fn nested(body: &str) -> String {
+    format!(
+        "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name content=\"case\"/>\
+         <argumentPackage xmi:type=\"sacm:ArgumentPackage\" xmi:id=\"ap\"><name content=\"ap\"/>{body}\
+         </argumentPackage></sacm:AssuranceCasePackage>"
+    )
+}
+
+/// A root TerminologyPackage `terms` holding `body`.
+fn terminology(body: &str) -> String {
+    format!(
+        "<sacm:TerminologyPackage{NS} xmi:id=\"terms\"><name content=\"terms\"/>{body}</sacm:TerminologyPackage>"
+    )
+}
+
+/// A root AssuranceCasePackage `case` holding the TerminologyPackage
+/// `tp`, which holds `body`.
+fn nested_terminology(body: &str) -> String {
+    format!(
+        "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name content=\"case\"/>\
+         <terminologyPackage xmi:id=\"tp\"><name content=\"tp\"/>{body}\
+         </terminologyPackage></sacm:AssuranceCasePackage>"
+    )
+}
+
+/// A root ArtifactPackage `arts` holding `body`.
+fn artifacts(body: &str) -> String {
+    format!(
+        "<sacm:ArtifactPackage{NS} xmi:id=\"arts\"><name content=\"arts\"/>{body}</sacm:ArtifactPackage>"
+    )
+}
+
+/// A root AssuranceCasePackage `case` holding the ArtifactPackage `ap`,
+/// which holds `body`.
+fn nested_artifacts(body: &str) -> String {
+    format!(
+        "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name content=\"case\"/>\
+         <artifactPackage xmi:id=\"ap\"><name content=\"ap\"/>{body}\
+         </artifactPackage></sacm:AssuranceCasePackage>"
+    )
+}
+
+/// The `xmi:XMI` wrapper with `attributes` and `body` before its one root.
+fn wrapper(attributes: &str, body: &str) -> String {
+    format!(
+        "<xmi:XMI xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\"{attributes}>{body}\
+         <sacm:ArgumentPackage xmi:id=\"p\"><name content=\"p\"/></sacm:ArgumentPackage></xmi:XMI>"
+    )
+}
+
+/// An Event of an ArtifactPackage, with the extra attributes `attributes`.
+fn event(attributes: &str) -> String {
+    artifacts(&format!(
+        "<artifactElement xmi:type=\"sacm:Event\" xmi:id=\"e1\"{attributes}><name content=\"e1\"/></artifactElement>"
+    ))
+}
+
+/// An `ArgumentGroup` `g` whose end is written `argumentationElement`, as the
+/// attribute, beside the Claim `c1` it names.
+fn spelled_group() -> String {
+    package(&format!(
+        "{}<argumentElement xmi:type=\"sacm:ArgumentGroup\" xmi:id=\"g\" argumentationElement=\"c1\"><name content=\"g\"/></argumentElement>",
+        claim("c1", "", "")
+    ))
+}
+
+/// The child written `argumentationElement`, a Claim `c1`.
+const SPELLED_ROLE: &str = "<argumentationElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\"><name content=\"c1\"/></argumentationElement>";
+
+/// The child written `TerminologyElement`, a Term `t1`.
+const SPELLED_TERM: &str = "<TerminologyElement xmi:type=\"sacm:Term\" xmi:id=\"t1\" value=\"t\"><name content=\"t1\"/></TerminologyElement>";
+
+/// The child typed `ArtifactAssertedRelationship`, between the Artifacts `a1`
+/// and `a2`.
+const SPELLED_TYPE: &str = "<artifactElement xmi:type=\"sacm:Artifact\" xmi:id=\"a1\"><name content=\"a1\"/></artifactElement>\
+     <artifactElement xmi:type=\"sacm:Artifact\" xmi:id=\"a2\"><name content=\"a2\"/></artifactElement>\
+     <artifactElement xmi:type=\"sacm:ArtifactAssertedRelationship\" xmi:id=\"r1\" source=\"a1\" target=\"a2\"><name content=\"r1\"/></artifactElement>";
+
+/// A Claim with two descriptions (acceptance 2): exactly one finding.
+const CLM_132: &str = "<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\" xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"p\"><name content=\"P\"/>\n  <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"CLM_132\"><name content=\"C\"/><description xmi:id=\"d1\"/><description xmi:id=\"d2\"/></argumentElement>\n</sacm:ArgumentPackage>";
+
+/// The 30 templates `validate` gives, in the design's order.
+#[expect(
+    clippy::too_many_lines,
+    reason = "one table, one row per template, reads best whole"
+)]
+fn validation_cases() -> Vec<Case> {
+    vec![
+        // --- SACM-MULT-001 -------------------------------------------------------------
+        case(
+            "SACM-MULT-001/missing",
+            validate(package(&bare_claim("c1", "", ""))),
+            (ERROR, "SACM23-VAL-018", Some("8.6")),
+            &[
+                ("class", t("Claim")),
+                ("id", t("c1")),
+                ("property", t("name")),
+                ("type", t("LangString")),
+                ("multiplicity", t("1")),
+            ],
+            "{class} {id:?} has no {property} ({property}:{type}[{multiplicity}])",
+            "Claim \"c1\" has no name (name:LangString[1])",
+        ),
+        case(
+            "SACM-MULT-001/too-many",
+            validate(CLM_132),
+            (WARNING, "SACM23-VAL-011", Some("8.6")),
+            &[
+                ("class", t("Claim")),
+                ("id", t("CLM_132")),
+                ("count", n(2)),
+                ("property", t("description")),
+                ("type", t("Description")),
+                ("multiplicity", t("0..1")),
+            ],
+            "{class} {id:?} has {count} {property}s ({property}:{type}[{multiplicity}])",
+            "Claim \"CLM_132\" has 2 descriptions (description:Description[0..1])",
+        ),
+        case(
+            "SACM-MULT-001/no-value",
+            validate(note_in_claim("<content/>")),
+            (ERROR, "SACM23-VAL-010", Some("8.5")),
+            &[("role", t("content")), ("class", t("Note")), ("id", t("n"))],
+            "the {role} of {class} {id:?} has no value (value:LangString[1..*])",
+            "the content of Note \"n\" has no value (value:LangString[1..*])",
+        ),
+        case(
+            "SACM-MULT-001/repeated-lang",
+            validate(note_in_claim(
+                "<content><value lang=\"en\" content=\"a\"/><value lang=\"en\" content=\"b\"/></content>",
+            )),
+            (ERROR, "SACM23-VAL-010", Some("8.5")),
+            &[
+                ("role", t("content")),
+                ("class", t("Note")),
+                ("id", t("n")),
+                ("count", n(2)),
+                ("lang", t("en")),
+            ],
+            "the {role} of {class} {id:?} has {count} values in the language {lang:?}, and each value's lang must be unique",
+            "the content of Note \"n\" has 2 values in the language \"en\", and each value's lang must be unique",
+        ),
+        case(
+            "SACM-MULT-001/repeated-absent-lang",
+            validate(note_in_claim(
+                "<content><value content=\"a\"/><value content=\"b\"/></content>",
+            )),
+            (ERROR, "SACM23-VAL-010", Some("8.5")),
+            &[
+                ("role", t("content")),
+                ("class", t("Note")),
+                ("id", t("n")),
+                ("count", n(2)),
+            ],
+            "the {role} of {class} {id:?} has {count} values in no language (lang absent), and each value's lang must be unique",
+            "the content of Note \"n\" has 2 values in no language (lang absent), and each value's lang must be unique",
+        ),
+        case(
+            "SACM-MULT-001/repeated-reference",
+            validate(package(&format!(
+                "{}{}",
+                claim("c1", " metaClaim=\"c2 c2\"", ""),
+                claim("c2", "", "")
+            ))),
+            (WARNING, "SACM23-VAL-022", Some("11.10")),
+            &[
+                ("class", t("Claim")),
+                ("id", t("c1")),
+                ("target", t("c2")),
+                ("count", n(2)),
+                ("end", t("metaClaim")),
+            ],
+            "{class} {id:?} holds {target:?} {count} times in its {end}, whose ids are unique in SACM 2.3 (the repeat is kept)",
+            "Claim \"c1\" holds \"c2\" 2 times in its metaClaim, whose ids are unique in SACM 2.3 (the repeat is kept)",
+        ),
+        case(
+            "SACM-MULT-001/name-without-expression",
+            validate(package(&bare_claim(
+                "c1",
+                "",
+                "<name xmi:type=\"sacm:ExpressionLangString\" content=\"c1\"/>",
+            ))),
+            (ERROR, "SACM23-BASE-009", Some("8.4")),
+            &[("class", t("Claim")), ("id", t("c1"))],
+            "the name of {class} {id:?} is an ExpressionLangString with no expression (expression:ExpressionElement[1])",
+            "the name of Claim \"c1\" is an ExpressionLangString with no expression (expression:ExpressionElement[1])",
+        ),
+        case(
+            "SACM-MULT-001/value-without-expression",
+            validate(note_in_claim(
+                "<content><value content=\"a\"/><value xmi:type=\"sacm:ExpressionLangString\" lang=\"sv\"/></content>",
+            )),
+            (ERROR, "SACM23-BASE-009", Some("8.4")),
+            &[
+                ("position", n(2)),
+                ("role", t("content")),
+                ("class", t("Note")),
+                ("id", t("n")),
+            ],
+            "value {position} of the {role} of {class} {id:?} is an ExpressionLangString with no expression (expression:ExpressionElement[1])",
+            "value 2 of the content of Note \"n\" is an ExpressionLangString with no expression (expression:ExpressionElement[1])",
+        ),
+        // --- SACM-EXPR-001 -------------------------------------------------------------
+        case(
+            "SACM-EXPR-001/name-with-content",
+            validate(terminology(
+                "<terminologyElement xmi:type=\"sacm:Term\" xmi:id=\"blade\" value=\"blade\"><name content=\"blade\"/></terminologyElement>\
+                 <terminologyElement xmi:type=\"sacm:Term\" xmi:id=\"t2\" value=\"t2\"><name xmi:type=\"sacm:ExpressionLangString\" expression=\"blade\" content=\"x\"/></terminologyElement>",
+            )),
+            (WARNING, "SACM23-VAL-009", Some("8.4")),
+            &[
+                ("class", t("Term")),
+                ("id", t("t2")),
+                ("expression", t("blade")),
+            ],
+            "the name of {class} {id:?} has the expression {expression:?} and a content that is not empty, and §8.4 says that if expression is not empty, then content should be empty",
+            "the name of Term \"t2\" has the expression \"blade\" and a content that is not empty, and §8.4 says that if expression is not empty, then content should be empty",
+        ),
+        case(
+            "SACM-EXPR-001/value-with-content",
+            validate(terminology(
+                "<terminologyElement xmi:type=\"sacm:Term\" xmi:id=\"blade\" value=\"blade\"><name content=\"blade\"/>\
+                 <note xmi:id=\"n\"><content><value xmi:type=\"sacm:ExpressionLangString\" expression=\"blade\" content=\"x\"/></content></note>\
+                 </terminologyElement>",
+            )),
+            (WARNING, "SACM23-VAL-009", Some("8.4")),
+            &[
+                ("position", n(1)),
+                ("role", t("content")),
+                ("class", t("Note")),
+                ("id", t("n")),
+                ("expression", t("blade")),
+            ],
+            "value {position} of the {role} of {class} {id:?} has the expression {expression:?} and a content that is not empty, and §8.4 says that if expression is not empty, then content should be empty",
+            "value 1 of the content of Note \"n\" has the expression \"blade\" and a content that is not empty, and §8.4 says that if expression is not empty, then content should be empty",
+        ),
+        // --- SACM-ABS-001 --------------------------------------------------------------
+        case(
+            "SACM-ABS-001/implementation-constraint",
+            validate(package(&claim(
+                "c1",
+                "",
+                "<implementationConstraint xmi:id=\"k1\"/>",
+            ))),
+            (ERROR, "SACM23-VAL-021", Some("8.6")),
+            &[("class", t("Claim")), ("id", t("c1"))],
+            "{class} {id:?} has an implementationConstraint but isAbstract is not true: implementation constraints are only specified on an abstract element (§8.6)",
+            "Claim \"c1\" has an implementationConstraint but isAbstract is not true: implementation constraints are only specified on an abstract element (§8.6)",
+        ),
+        case(
+            "SACM-ABS-001/implementation-constraints",
+            validate(package(&claim(
+                "c1",
+                "",
+                "<implementationConstraint xmi:id=\"k1\"/><implementationConstraint xmi:id=\"k2\"/>",
+            ))),
+            (ERROR, "SACM23-VAL-021", Some("8.6")),
+            &[("class", t("Claim")), ("id", t("c1")), ("count", n(2))],
+            "{class} {id:?} has {count} implementationConstraints but isAbstract is not true: implementation constraints are only specified on an abstract element (§8.6)",
+            "Claim \"c1\" has 2 implementationConstraints but isAbstract is not true: implementation constraints are only specified on an abstract element (§8.6)",
+        ),
+        case(
+            "SACM-ABS-001/abstract-holder",
+            validate(package(&format!(
+                "{}{}",
+                claim("c1", " isAbstract=\"true\" abstractForm=\"c2\"", ""),
+                claim("c2", " isAbstract=\"true\"", "")
+            ))),
+            (ERROR, "SACM23-VAL-008", Some("8.2")),
+            &[("class", t("Claim")), ("id", t("c1")), ("target", t("c2"))],
+            "{class} {id:?} has the abstractForm {target:?} but is itself abstract (isAbstract is true); §8.2 gives abstractForm to a concrete element",
+            "Claim \"c1\" has the abstractForm \"c2\" but is itself abstract (isAbstract is true); §8.2 gives abstractForm to a concrete element",
+        ),
+        case(
+            "SACM-ABS-001/form-not-abstract",
+            validate(package(&format!(
+                "{}{}",
+                claim("c1", " abstractForm=\"c2\"", ""),
+                claim("c2", "", "")
+            ))),
+            (WARNING, "SACM23-VAL-008", Some("8.2")),
+            &[("target", t("c2")), ("class", t("Claim")), ("id", t("c1"))],
+            "the abstractForm {target:?} of {class} {id:?} is not abstract: its isAbstract should be true (§8.2)",
+            "the abstractForm \"c2\" of Claim \"c1\" is not abstract: its isAbstract should be true (§8.2)",
+        ),
+        case(
+            "SACM-ABS-001/form-of-another-kind",
+            validate(package(&format!(
+                "{}{}",
+                claim("c1", " abstractForm=\"r1\"", ""),
+                argument("ArgumentReasoning", "r1", " isAbstract=\"true\"")
+            ))),
+            (WARNING, "SACM23-VAL-008", Some("8.2")),
+            &[
+                ("target", t("r1")),
+                ("class", t("Claim")),
+                ("id", t("c1")),
+                ("target_class", t("ArgumentReasoning")),
+            ],
+            "the abstractForm {target:?} of {class} {id:?} is of the kind {target_class}, not {class}: it should be of the same type (§8.2)",
+            "the abstractForm \"r1\" of Claim \"c1\" is of the kind ArgumentReasoning, not Claim: it should be of the same type (§8.2)",
+        ),
+        case(
+            "SACM-ABS-001/abstract-element",
+            validate(terminology(
+                "<terminologyElement xmi:type=\"sacm:Term\" xmi:id=\"guard\" isAbstract=\"true\" value=\"g\"><name content=\"guard\"/></terminologyElement>\
+                 <terminologyElement xmi:type=\"sacm:Expression\" xmi:id=\"e1\" element=\"guard\" value=\"e\"><name content=\"e1\"/></terminologyElement>",
+            )),
+            (ERROR, "SACM23-VAL-017", Some("10.10")),
+            &[
+                ("class", t("Expression")),
+                ("id", t("e1")),
+                ("target", t("guard")),
+                ("target_class", t("Term")),
+            ],
+            "{class} {id:?} is concrete but has the element {target:?}, an abstract {target_class}: a concrete Expression references only concrete ExpressionElements (§10.10)",
+            "Expression \"e1\" is concrete but has the element \"guard\", an abstract Term: a concrete Expression references only concrete ExpressionElements (§10.10)",
+        ),
+        // --- SACM-ID-003 ---------------------------------------------------------------
+        case(
+            "SACM-ID-003/duplicate-gid",
+            validate(package(&format!(
+                "{}{}",
+                claim("c1", " gid=\"g\"", ""),
+                claim("c2", " gid=\"g\"", "")
+            ))),
+            (ERROR, "SACM23-VAL-002", Some("8.2")),
+            &[
+                ("count", n(2)),
+                ("gid", t("g")),
+                ("elements", t("Claim \"c1\", Claim \"c2\"")),
+            ],
+            "{count} elements hold the gid {gid:?}, which must be unique within the model instance: {elements}",
+            "2 elements hold the gid \"g\", which must be unique within the model instance: Claim \"c1\", Claim \"c2\"",
+        ),
+        // --- SACM-PKG-001 --------------------------------------------------------------
+        case(
+            "SACM-PKG-001/mixed-content",
+            validate(package(&format!(
+                "{}{}",
+                argument("ArgumentPackage", "ap", ""),
+                claim("c1", "", "")
+            ))),
+            (ERROR, "SACM23-VAL-012", Some("11.4")),
+            &[
+                ("class", t("ArgumentPackage")),
+                ("id", t("p")),
+                ("nested_class", t("ArgumentPackage")),
+                ("nested_id", t("ap")),
+                ("child_class", t("Claim")),
+                ("child_id", t("c1")),
+            ],
+            "{class} {id:?} nests the {nested_class} {nested_id:?}, so it may contain only ArgumentPackages, but it also contains {child_class} {child_id:?}",
+            "ArgumentPackage \"p\" nests the ArgumentPackage \"ap\", so it may contain only ArgumentPackages, but it also contains Claim \"c1\"",
+        ),
+        // --- SACM-ID-002 ---------------------------------------------------------------
+        case(
+            "SACM-ID-002/not-an-ncname",
+            validate(package(&claim("1c", "", ""))),
+            (ERROR, "SACM23-VAL-020", Some("7.6.1")),
+            &[("class", t("Claim")), ("id", t("1c"))],
+            "{class} {id:?} has an id that is not an NCName (XMI 2.5.1 §7.6.1: xmi:id is an xsd:ID)",
+            "Claim \"1c\" has an id that is not an NCName (XMI 2.5.1 §7.6.1: xmi:id is an xsd:ID)",
+        ),
+        case(
+            "SACM-ID-002/name-id-not-an-ncname",
+            validate(package(&bare_claim(
+                "c1",
+                "",
+                "<name xmi:id=\"1n\" content=\"c1\"/>",
+            ))),
+            (ERROR, "SACM23-VAL-020", Some("7.6.1")),
+            &[("class", t("Claim")), ("id", t("c1")), ("xmi_id", t("1n"))],
+            concat!(
+                "the name of {class} {id:?} has the xmi:id {xmi_id:?}",
+                not_ncname!()
+            ),
+            "the name of Claim \"c1\" has the xmi:id \"1n\", which is not an NCName (XMI 2.5.1 §7.6.1: xmi:id is an xsd:ID)",
+        ),
+        case(
+            "SACM-ID-002/text-id-not-an-ncname",
+            validate(note_in_claim(
+                "<content xmi:id=\"1t\"><value content=\"a\"/></content>",
+            )),
+            (ERROR, "SACM23-VAL-020", Some("7.6.1")),
+            &[
+                ("role", t("content")),
+                ("class", t("Note")),
+                ("id", t("n")),
+                ("xmi_id", t("1t")),
+            ],
+            concat!(
+                "the {role} of {class} {id:?} has the xmi:id {xmi_id:?}",
+                not_ncname!()
+            ),
+            "the content of Note \"n\" has the xmi:id \"1t\", which is not an NCName (XMI 2.5.1 §7.6.1: xmi:id is an xsd:ID)",
+        ),
+        case(
+            "SACM-ID-002/value-id-not-an-ncname",
+            validate(note_in_claim(
+                "<content><value xmi:id=\"1v\" content=\"a\"/></content>",
+            )),
+            (ERROR, "SACM23-VAL-020", Some("7.6.1")),
+            &[
+                ("position", n(1)),
+                ("role", t("content")),
+                ("class", t("Note")),
+                ("id", t("n")),
+                ("xmi_id", t("1v")),
+            ],
+            concat!(
+                "value {position} of the {role} of {class} {id:?} has the xmi:id {xmi_id:?}",
+                not_ncname!()
+            ),
+            "value 1 of the content of Note \"n\" has the xmi:id \"1v\", which is not an NCName (XMI 2.5.1 §7.6.1: xmi:id is an xsd:ID)",
+        ),
+        // --- SACM-REF-001, -002, -003 --------------------------------------------------
+        case(
+            "SACM-REF-001/dangling",
+            validate(package(&claim(
+                "c1",
+                " isCitation=\"true\" citedElement=\"nope\"",
+                "",
+            ))),
+            (ERROR, "SACM23-VAL-003", Some("8.2")),
+            &[
+                ("class", t("Claim")),
+                ("id", t("c1")),
+                ("end", t("citedElement")),
+                ("target", t("nope")),
+                ("type", t("SACMElement")),
+            ],
+            "{class} {id:?} has the {end} {target:?}, which names no element of the document (the end's type is {type})",
+            "Claim \"c1\" has the citedElement \"nope\", which names no element of the document (the end's type is SACMElement)",
+        ),
+        case(
+            "SACM-REF-002/wrong-type",
+            validate(package(&format!(
+                "{}{}",
+                claim("c1", " metaClaim=\"r1\"", ""),
+                argument("ArgumentReasoning", "r1", "")
+            ))),
+            (ERROR, "SACM23-VAL-004", Some("11.10")),
+            &[
+                ("class", t("Claim")),
+                ("id", t("c1")),
+                ("end", t("metaClaim")),
+                ("target", t("r1")),
+                ("target_class", t("ArgumentReasoning")),
+                ("type", t("Claim")),
+            ],
+            "{class} {id:?} has the {end} {target:?}, whose kind {target_class} does not conform to the end's type {type}",
+            "Claim \"c1\" has the metaClaim \"r1\", whose kind ArgumentReasoning does not conform to the end's type Claim",
+        ),
+        case(
+            "SACM-REF-002/not-an-artifact-reference",
+            validate(package(&format!(
+                "{}{}{}",
+                claim("c1", "", ""),
+                claim("c2", "", ""),
+                argument("AssertedEvidence", "e1", " source=\"c1\" target=\"c2\"")
+            ))),
+            (ERROR, "SACM23-VAL-016", Some("11.15")),
+            &[
+                ("class", t("AssertedEvidence")),
+                ("id", t("e1")),
+                ("end", t("source")),
+                ("target", t("c1")),
+                ("target_class", t("Claim")),
+                ("clause", t("11.15")),
+            ],
+            "{class} {id:?} has the {end} {target:?}, of the kind {target_class}, but §{clause} requires each {end} of the {class} to be an ArtifactReference",
+            "AssertedEvidence \"e1\" has the source \"c1\", of the kind Claim, but §11.15 requires each source of the AssertedEvidence to be an ArtifactReference",
+        ),
+        case(
+            "SACM-REF-003/preserved-target",
+            validate(package(&format!(
+                "<v:thing xmi:id=\"x\"/>{}",
+                claim("c1", " isCitation=\"true\" citedElement=\"x\"", "")
+            ))),
+            (WARNING, "LIB-COMPAT-003", Some("8.2")),
+            &[
+                ("class", t("Claim")),
+                ("id", t("c1")),
+                ("end", t("citedElement")),
+                ("target", t("x")),
+                ("type", t("SACMElement")),
+            ],
+            "{class} {id:?} has the {end} {target:?}, which names an element the document holds only as preserved content, so its type is not checked (the end's type is {type})",
+            "Claim \"c1\" has the citedElement \"x\", which names an element the document holds only as preserved content, so its type is not checked (the end's type is SACMElement)",
+        ),
+        // --- SACM-CITE-001, -002 -------------------------------------------------------
+        case(
+            "SACM-CITE-001/not-a-citation",
+            validate(package(&format!(
+                "{}{}",
+                claim("c1", " citedElement=\"c2\"", ""),
+                claim("c2", "", "")
+            ))),
+            (ERROR, "SACM23-VAL-007", Some("8.2")),
+            &[("class", t("Claim")), ("id", t("c1")), ("target", t("c2"))],
+            "{class} {id:?} has the citedElement {target:?} but isCitation is not true (§8.2: citedElement <> null implies isCitation = true)",
+            "Claim \"c1\" has the citedElement \"c2\" but isCitation is not true (§8.2: citedElement <> null implies isCitation = true)",
+        ),
+        case(
+            "SACM-CITE-002/not-a-citation",
+            validate(package(&format!(
+                "{}{}",
+                claim(
+                    "c1",
+                    " assertionDeclaration=\"asCited\" citedElement=\"c2\"",
+                    ""
+                ),
+                claim("c2", "", "")
+            ))),
+            (WARNING, "SACM23-VAL-019", Some("11.8")),
+            &[("class", t("Claim")), ("id", t("c1"))],
+            "{class} {id:?} is declared asCited but isCitation is not true: an asCited Assertion takes its declaration from the Assertion it cites (§11.8)",
+            "Claim \"c1\" is declared asCited but isCitation is not true: an asCited Assertion takes its declaration from the Assertion it cites (§11.8)",
+        ),
+        case(
+            "SACM-CITE-002/no-cited-element",
+            validate(package(&claim(
+                "c1",
+                " assertionDeclaration=\"asCited\" isCitation=\"true\"",
+                "",
+            ))),
+            (WARNING, "SACM23-VAL-019", Some("11.8")),
+            &[("class", t("Claim")), ("id", t("c1"))],
+            "{class} {id:?} is declared asCited but has no citedElement: an asCited Assertion takes its declaration from the Assertion it cites (§11.8)",
+            "Claim \"c1\" is declared asCited but has no citedElement: an asCited Assertion takes its declaration from the Assertion it cites (§11.8)",
+        ),
+        case(
+            "SACM-CITE-002/cited-not-an-assertion",
+            validate(package(&format!(
+                "{}{}",
+                claim(
+                    "c1",
+                    " assertionDeclaration=\"asCited\" isCitation=\"true\" citedElement=\"r1\"",
+                    ""
+                ),
+                argument("ArgumentReasoning", "r1", "")
+            ))),
+            (WARNING, "SACM23-VAL-019", Some("11.8")),
+            &[
+                ("class", t("Claim")),
+                ("id", t("c1")),
+                ("target", t("r1")),
+                ("target_class", t("ArgumentReasoning")),
+            ],
+            "{class} {id:?} is declared asCited but its citedElement {target:?} is of the kind {target_class}, which is no Assertion: an asCited Assertion takes its declaration from the Assertion it cites (§11.8)",
+            "Claim \"c1\" is declared asCited but its citedElement \"r1\" is of the kind ArgumentReasoning, which is no Assertion: an asCited Assertion takes its declaration from the Assertion it cites (§11.8)",
+        ),
+    ]
+}
+
+/// The 72 templates a read gives, in the design's order.
+fn reader_cases() -> Vec<Case> {
+    let mut cases = plain_reader_cases();
+    cases.extend(preserved_cases());
+    cases.extend(legacy_cases());
+    cases.extend(spelling_cases());
+    cases.extend(kept_cases());
+    cases
+}
+
+/// The 19 plain reports of a read.
+#[expect(
+    clippy::too_many_lines,
+    reason = "one table, one row per template, reads best whole"
+)]
+fn plain_reader_cases() -> Vec<Case> {
+    vec![
+        case(
+            "SACM-XMI-004/generated-id",
+            tolerant(package(
+                "<argumentElement xmi:type=\"sacm:Claim\"><name content=\"c\"/></argumentElement>",
+            )),
+            (INFO, "SACM23-XMI-020", Some("7.6.1")),
+            &[("class", t("Claim")), ("id", t("claim_1"))],
+            "the {class} has no xmi:id, which XMI 2.5.1 §7.6.1 makes optional, so it is read with the generated id {id:?}, which write writes",
+            "the Claim has no xmi:id, which XMI 2.5.1 §7.6.1 makes optional, so it is read with the generated id \"claim_1\", which write writes",
+        ),
+        case(
+            "SACM-ID-004/trimmed-id",
+            tolerant(package(
+                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\" c1 \"><name content=\"c1\"/></argumentElement>",
+            )),
+            (INFO, "SACM23-XMI-025", Some("7.6.1")),
+            &[
+                ("written", t(" c1 ")),
+                ("class", t("Claim")),
+                ("id", t("c1")),
+            ],
+            concat!(
+                "the xmi:id {written:?} of the {class} {id:?} is read as {id:?}",
+                trim!()
+            ),
+            "the xmi:id \" c1 \" of the Claim \"c1\" is read as \"c1\": an xmi:id is an xsd:ID, whose white space is collapsed (XMI 2.5.1 §7.6.1), and write writes it trimmed",
+        ),
+        case(
+            "SACM-ID-004/trimmed-id-of-name",
+            tolerant(package(&bare_claim(
+                "c1",
+                "",
+                "<name xmi:id=\" n1 \" content=\"c1\"/>",
+            ))),
+            (INFO, "SACM23-XMI-025", Some("7.6.1")),
+            &[
+                ("written", t(" n1 ")),
+                ("class", t("Claim")),
+                ("id", t("c1")),
+                ("value", t("n1")),
+            ],
+            concat!(
+                "the xmi:id {written:?} of the name of the {class} {id:?} is read as {value:?}",
+                trim!()
+            ),
+            "the xmi:id \" n1 \" of the name of the Claim \"c1\" is read as \"n1\": an xmi:id is an xsd:ID, whose white space is collapsed (XMI 2.5.1 §7.6.1), and write writes it trimmed",
+        ),
+        case(
+            "SACM-ID-004/trimmed-id-of-text",
+            tolerant(note_in_claim(
+                "<content xmi:id=\" t1 \"><value content=\"a\"/></content>",
+            )),
+            (INFO, "SACM23-XMI-025", Some("7.6.1")),
+            &[
+                ("written", t(" t1 ")),
+                ("role", t("content")),
+                ("class", t("Note")),
+                ("id", t("n")),
+                ("value", t("t1")),
+            ],
+            concat!(
+                "the xmi:id {written:?} of the {role} of the {class} {id:?} is read as {value:?}",
+                trim!()
+            ),
+            "the xmi:id \" t1 \" of the content of the Note \"n\" is read as \"t1\": an xmi:id is an xsd:ID, whose white space is collapsed (XMI 2.5.1 §7.6.1), and write writes it trimmed",
+        ),
+        case(
+            "SACM-ID-004/trimmed-id-of-text-value",
+            tolerant(note_in_claim(
+                "<content><value xmi:id=\" v1 \" content=\"a\"/></content>",
+            )),
+            (INFO, "SACM23-XMI-025", Some("7.6.1")),
+            &[
+                ("written", t(" v1 ")),
+                ("role", t("content")),
+                ("class", t("Note")),
+                ("id", t("n")),
+                ("value", t("v1")),
+            ],
+            concat!(
+                "the xmi:id {written:?} of a value of the {role} of the {class} {id:?} is read as {value:?}",
+                trim!()
+            ),
+            "the xmi:id \" v1 \" of a value of the content of the Note \"n\" is read as \"v1\": an xmi:id is an xsd:ID, whose white space is collapsed (XMI 2.5.1 §7.6.1), and write writes it trimmed",
+        ),
+        case(
+            "SACM-XMI-010/xsi-type",
+            tolerant(package(
+                "<argumentElement xsi:type=\"sacm:Claim\" xmi:id=\"c1\"><name content=\"c1\"/></argumentElement>",
+            )),
+            (WARNING, "LIB-COMPAT-001", Some("9.5.2")),
+            &[("class", t("Claim")), ("id", t("c1"))],
+            concat!("the {class} {id:?}", xsi!()),
+            "the Claim \"c1\" is typed with xsi:type, which XMI 2.5.1 allows only when org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as xmi:type",
+        ),
+        case(
+            "SACM-XMI-010/xsi-type-on-name",
+            tolerant(package(&bare_claim(
+                "c1",
+                "",
+                "<name xsi:type=\"sacm:LangString\" content=\"c1\"/>",
+            ))),
+            (WARNING, "LIB-COMPAT-001", Some("9.5.2")),
+            &[("class", t("Claim")), ("id", t("c1"))],
+            concat!("the name of the {class} {id:?}", xsi!()),
+            "the name of the Claim \"c1\" is typed with xsi:type, which XMI 2.5.1 allows only when org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as xmi:type",
+        ),
+        case(
+            "SACM-XMI-010/xsi-type-on-text",
+            tolerant(note_in_claim(
+                "<content xsi:type=\"sacm:MultiLangString\"><value content=\"a\"/></content>",
+            )),
+            (WARNING, "LIB-COMPAT-001", Some("9.5.2")),
+            &[("role", t("content")), ("class", t("Note")), ("id", t("n"))],
+            concat!("the {role} of the {class} {id:?}", xsi!()),
+            "the content of the Note \"n\" is typed with xsi:type, which XMI 2.5.1 allows only when org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as xmi:type",
+        ),
+        case(
+            "SACM-XMI-010/xsi-type-on-text-value",
+            tolerant(note_in_claim(
+                "<content><value xsi:type=\"sacm:LangString\" content=\"a\"/></content>",
+            )),
+            (WARNING, "LIB-COMPAT-001", Some("9.5.2")),
+            &[("role", t("content")), ("class", t("Note")), ("id", t("n"))],
+            concat!("a value of the {role} of the {class} {id:?}", xsi!()),
+            "a value of the content of the Note \"n\" is typed with xsi:type, which XMI 2.5.1 allows only when org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as xmi:type",
+        ),
+        case(
+            "SACM-XMI-010/xsi-type-on-name-value",
+            tolerant(package(&bare_claim(
+                "c1",
+                "",
+                "<name><value xsi:type=\"sacm:LangString\" content=\"c1\"/></name>",
+            ))),
+            (WARNING, "LIB-COMPAT-001", Some("9.5.2")),
+            &[("class", t("Claim")), ("id", t("c1"))],
+            concat!("the value in the name of the {class} {id:?}", xsi!()),
+            "the value in the name of the Claim \"c1\" is typed with xsi:type, which XMI 2.5.1 allows only when org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as xmi:type",
+        ),
+        case(
+            "SACM-XMI-011/version-on-xmi-element",
+            tolerant(wrapper(" xmi:version=\"2.5.1\"", "")),
+            (INFO, "LIB-COMPAT-001", Some("7.5.3")),
+            &[("value", t("2.5.1"))],
+            "the xmi:version {value:?} of the XMI element is ignored: the XMI namespace identifies the version (XMI 2.5.1 §7.5.3), and write does not write it",
+            "the xmi:version \"2.5.1\" of the XMI element is ignored: the XMI namespace identifies the version (XMI 2.5.1 §7.5.3), and write does not write it",
+        ),
+        case(
+            "SACM-XMI-011/version-on-root",
+            tolerant(format!(
+                "<sacm:ArgumentPackage{NS} xmi:id=\"p\" xmi:version=\"2.5.1\"><name content=\"p\"/></sacm:ArgumentPackage>"
+            )),
+            (INFO, "LIB-COMPAT-001", Some("7.5.3")),
+            &[
+                ("value", t("2.5.1")),
+                ("class", t("ArgumentPackage")),
+                ("id", t("p")),
+            ],
+            "the xmi:version {value:?} of the {class} {id:?} is ignored: the XMI namespace identifies the version (XMI 2.5.1 §7.5.3), and write does not write it",
+            "the xmi:version \"2.5.1\" of the ArgumentPackage \"p\" is ignored: the XMI namespace identifies the version (XMI 2.5.1 §7.5.3), and write does not write it",
+        ),
+        case(
+            "SACM-ID-002/empty-id",
+            tolerant(package(
+                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"\"><name content=\"c\"/></argumentElement>",
+            )),
+            (WARNING, "LIB-COMPAT-001", Some("7.6.1")),
+            &[("class", t("Claim")), ("id", t("claim_1"))],
+            concat!(
+                "the xmi:id of the {class}",
+                empty!(),
+                "it is read with the generated id {id:?}, which write writes"
+            ),
+            "the xmi:id of the Claim is empty, which is no xsd:ID (XMI 2.5.1 §7.6.1), so it is read with the generated id \"claim_1\", which write writes",
+        ),
+        case(
+            "SACM-ID-002/empty-id-of-name",
+            tolerant(package(&bare_claim(
+                "c1",
+                "",
+                "<name xmi:id=\"\" content=\"c1\"/>",
+            ))),
+            (WARNING, "LIB-COMPAT-001", Some("7.6.1")),
+            &[("class", t("Claim")), ("id", t("c1"))],
+            concat!(
+                "the xmi:id of the name of the {class} {id:?}",
+                empty!(),
+                "it is read without one"
+            ),
+            "the xmi:id of the name of the Claim \"c1\" is empty, which is no xsd:ID (XMI 2.5.1 §7.6.1), so it is read without one",
+        ),
+        case(
+            "SACM-ID-002/empty-id-of-text",
+            tolerant(note_in_claim(
+                "<content xmi:id=\"\"><value content=\"a\"/></content>",
+            )),
+            (WARNING, "LIB-COMPAT-001", Some("7.6.1")),
+            &[("role", t("content")), ("class", t("Note")), ("id", t("n"))],
+            concat!(
+                "the xmi:id of the {role} of the {class} {id:?}",
+                empty!(),
+                "it is read without one"
+            ),
+            "the xmi:id of the content of the Note \"n\" is empty, which is no xsd:ID (XMI 2.5.1 §7.6.1), so it is read without one",
+        ),
+        case(
+            "SACM-ID-002/empty-id-of-text-value",
+            tolerant(note_in_claim(
+                "<content><value xmi:id=\"\" content=\"a\"/></content>",
+            )),
+            (WARNING, "LIB-COMPAT-001", Some("7.6.1")),
+            &[("role", t("content")), ("class", t("Note")), ("id", t("n"))],
+            concat!(
+                "the xmi:id of a value of the {role} of the {class} {id:?}",
+                empty!(),
+                "it is read without one"
+            ),
+            "the xmi:id of a value of the content of the Note \"n\" is empty, which is no xsd:ID (XMI 2.5.1 §7.6.1), so it is read without one",
+        ),
+        case(
+            "SACM-ID-002/empty-id-of-xmi-element",
+            tolerant(wrapper(" xmi:id=\"\"", "")),
+            (WARNING, "LIB-COMPAT-001", Some("7.6.1")),
+            &[],
+            concat!(
+                "the xmi:id of the XMI element",
+                empty!(),
+                "it is kept as written, outside the id space"
+            ),
+            "the xmi:id of the XMI element is empty, which is no xsd:ID (XMI 2.5.1 §7.6.1), so it is kept as written, outside the id space",
+        ),
+        case(
+            "SACM-ID-002/empty-id-of-kept-element",
+            tolerant(package(&claim("c1", "", "<v:thing xmi:id=\"\"/>"))),
+            (WARNING, "LIB-COMPAT-001", Some("7.6.1")),
+            &[
+                ("element", t("v:thing")),
+                ("holder_class", t("Claim")),
+                ("holder_id", t("c1")),
+            ],
+            concat!(
+                "the xmi:id of the element {element:?} kept in the {holder_class} {holder_id:?}",
+                empty!(),
+                "it is kept as written, outside the id space"
+            ),
+            "the xmi:id of the element \"v:thing\" kept in the Claim \"c1\" is empty, which is no xsd:ID (XMI 2.5.1 §7.6.1), so it is kept as written, outside the id space",
+        ),
+        case(
+            "SACM-ID-002/empty-id-of-kept-element-by-document",
+            tolerant(wrapper("", "<xmi:Documentation xmi:id=\"\"/>")),
+            (WARNING, "LIB-COMPAT-001", Some("7.6.1")),
+            &[("element", t("xmi:Documentation"))],
+            concat!(
+                "the xmi:id of the element {element:?} kept in the document",
+                empty!(),
+                "it is kept as written, outside the id space"
+            ),
+            "the xmi:id of the element \"xmi:Documentation\" kept in the document is empty, which is no xsd:ID (XMI 2.5.1 §7.6.1), so it is kept as written, outside the id space",
+        ),
+    ]
+}
+
+/// The 6 SACM-XMI-003 forms of preserved content.
+fn preserved_cases() -> Vec<Case> {
+    vec![
+        case(
+            "SACM-XMI-003/attribute-kept",
+            tolerant(package(&claim("c1", " v:colour=\"red\"", ""))),
+            (WARNING, "LIB-COMPAT-003", Some("7.3.3")),
+            &[
+                ("attribute", t("v:colour")),
+                ("holder_class", t("Claim")),
+                ("holder_id", t("c1")),
+            ],
+            "the attribute {attribute:?} is not SACM 2.3 where it stands, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses",
+            "the attribute \"v:colour\" is not SACM 2.3 where it stands, so it is kept as written as preserved content of the Claim \"c1\", which a tolerant write writes back and a strict write refuses",
+        ),
+        case(
+            "SACM-XMI-003/element-kept",
+            tolerant(package(&claim("c1", "", "<v:thing/>"))),
+            (WARNING, "LIB-COMPAT-003", Some("7.3.3")),
+            &[
+                ("element", t("v:thing")),
+                ("holder_class", t("Claim")),
+                ("holder_id", t("c1")),
+            ],
+            "the element {element:?} is not SACM 2.3 where it stands, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses",
+            "the element \"v:thing\" is not SACM 2.3 where it stands, so it is kept as written as preserved content of the Claim \"c1\", which a tolerant write writes back and a strict write refuses",
+        ),
+        case(
+            "SACM-XMI-003/text-kept",
+            tolerant(package(&claim("c1", "", "stray"))),
+            (WARNING, "LIB-COMPAT-003", Some("7.3.3")),
+            &[("holder_class", t("Claim")), ("holder_id", t("c1"))],
+            "text is not SACM 2.3 where it stands, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses",
+            "text is not SACM 2.3 where it stands, so it is kept as written as preserved content of the Claim \"c1\", which a tolerant write writes back and a strict write refuses",
+        ),
+        case(
+            "SACM-XMI-003/wrapper-attribute-kept",
+            tolerant(wrapper(" foo=\"bar\"", "")),
+            (WARNING, "LIB-COMPAT-003", Some("7.3.3")),
+            &[("attribute", t("foo")), ("element", t("xmi:XMI"))],
+            concat!(
+                "the attribute {attribute:?} of the element {element:?} is not SACM 2.3 where it stands",
+                kd!()
+            ),
+            "the attribute \"foo\" of the element \"xmi:XMI\" is not SACM 2.3 where it stands, so it is kept as preserved content of the document, which a tolerant write writes back and a strict write refuses",
+        ),
+        case(
+            "SACM-XMI-003/wrapper-text-kept",
+            tolerant(wrapper("", "stray")),
+            (WARNING, "LIB-COMPAT-003", Some("7.3.3")),
+            &[("element", t("xmi:XMI"))],
+            concat!(
+                "text in the element {element:?} is not SACM 2.3 where it stands",
+                kd!()
+            ),
+            "text in the element \"xmi:XMI\" is not SACM 2.3 where it stands, so it is kept as preserved content of the document, which a tolerant write writes back and a strict write refuses",
+        ),
+        case(
+            "SACM-XMI-003/prefix-renamed",
+            tolerant(package(&format!(
+                "<argumentElement xmlns:s=\"{SACM_NS}\" xmlns:sacm=\"urn:example:other\" \
+                 xmi:type=\"s:Claim\" xmi:id=\"c1\" sacm:extra=\"1\"><name content=\"c1\"/></argumentElement>"
+            ))),
+            (WARNING, "LIB-COMPAT-003", Some("7.3.3")),
+            &[
+                ("attribute", t("sacm:extra")),
+                ("element", t("argumentElement")),
+                ("prefix", t("sacm")),
+                ("namespace", t("urn:example:other")),
+                ("pinned_namespace", t(SACM_NS)),
+                ("renamed_prefix", t("ns1")),
+                ("holder_class", t("Claim")),
+                ("holder_id", t("c1")),
+            ],
+            concat!(
+                "the attribute {attribute:?} of the element {element:?} is not SACM 2.3 where it stands, and its prefix {prefix:?} is bound to {namespace:?}, which the written element binds to {pinned_namespace:?}, so it is written with the prefix {renamed_prefix:?}",
+                ke!()
+            ),
+            "the attribute \"sacm:extra\" of the element \"argumentElement\" is not SACM 2.3 where it stands, and its prefix \"sacm\" is bound to \"urn:example:other\", which the written element binds to \"http://www.omg.org/spec/SACM/20220301\", so it is written with the prefix \"ns1\", so it is kept as preserved content of the Claim \"c1\", which a tolerant write writes back and a strict write refuses",
+        ),
+    ]
+}
+
+/// The 9 SACM-XMI-012 shapes a tolerant read reads.
+#[expect(
+    clippy::too_many_lines,
+    reason = "one table, one row per template, reads best whole"
+)]
+fn legacy_cases() -> Vec<Case> {
+    let named = |name: &str| {
+        format!("<sacm:ArgumentPackage{NS} xmi:id=\"p\">{name}</sacm:ArgumentPackage>")
+    };
+    vec![
+        case(
+            "SACM-XMI-012/name-attribute-read",
+            tolerant(format!(
+                "<sacm:ArgumentPackage{NS} xmi:id=\"arguments\" name=\"Arguments\"/>"
+            )),
+            (WARNING, "LIB-COMPAT-008", Some("7.8.6")),
+            &[("class", t("ArgumentPackage")), ("id", t("arguments"))],
+            concat!(
+                "the name of the {class} {id:?} is given as the attribute \"name\"",
+                legacy!()
+            ),
+            "the name of the ArgumentPackage \"arguments\" is given as the attribute \"name\", a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; it is read as its standard form, which write writes",
+        ),
+        case(
+            "SACM-XMI-012/content-on-element-read",
+            tolerant(package(&claim(
+                "c1",
+                "",
+                "<note xmi:id=\"n\" content=\"x\"/>",
+            ))),
+            (WARNING, "LIB-COMPAT-008", Some("7.8.6")),
+            &[("class", t("Note")), ("id", t("n"))],
+            concat!(
+                "the content of the {class} {id:?} is given on the element itself",
+                legacy!()
+            ),
+            "the content of the Note \"n\" is given on the element itself, a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; it is read as its standard form, which write writes",
+        ),
+        case(
+            "SACM-XMI-012/key-attribute-read",
+            tolerant(package(&claim(
+                "c1",
+                "",
+                "<taggedValue xmi:id=\"t\" key=\"k\"/>",
+            ))),
+            (WARNING, "LIB-COMPAT-008", Some("7.8.6")),
+            &[("class", t("TaggedValue")), ("id", t("t"))],
+            concat!(
+                "the key of the {class} {id:?} is given as the attribute \"key\"",
+                legacy!()
+            ),
+            "the key of the TaggedValue \"t\" is given as the attribute \"key\", a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; it is read as its standard form, which write writes",
+        ),
+        case(
+            "SACM-XMI-012/shorthand-read",
+            tolerant(note_in_claim("<content content=\"x\" lang=\"en\"/>")),
+            (WARNING, "LIB-COMPAT-008", Some("7.8.6")),
+            &[("role", t("content")), ("class", t("Note")), ("id", t("n"))],
+            concat!(
+                "the {role} of the {class} {id:?} is given in the single-language shorthand",
+                legacy!()
+            ),
+            "the content of the Note \"n\" is given in the single-language shorthand, a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; it is read as its standard form, which write writes",
+        ),
+        case(
+            "SACM-XMI-012/name-text-read",
+            tolerant(named("<name>p</name>")),
+            (WARNING, "LIB-COMPAT-008", Some("7.8.6")),
+            &[("class", t("ArgumentPackage")), ("id", t("p"))],
+            concat!(
+                "the name of the {class} {id:?} has its content as text",
+                legacy!()
+            ),
+            "the name of the ArgumentPackage \"p\" has its content as text, a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; it is read as its standard form, which write writes",
+        ),
+        case(
+            "SACM-XMI-012/value-text-read",
+            tolerant(note_in_claim("<content><value>x</value></content>")),
+            (WARNING, "LIB-COMPAT-008", Some("7.8.6")),
+            &[("role", t("content")), ("class", t("Note")), ("id", t("n"))],
+            concat!(
+                "a value of the {role} of the {class} {id:?} has its content as text",
+                legacy!()
+            ),
+            "a value of the content of the Note \"n\" has its content as text, a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; it is read as its standard form, which write writes",
+        ),
+        case(
+            "SACM-XMI-012/name-value-text-read",
+            tolerant(named("<name><value>A</value></name>")),
+            (WARNING, "LIB-COMPAT-008", Some("7.8.6")),
+            &[("class", t("ArgumentPackage")), ("id", t("p"))],
+            concat!(
+                "the value in the name of the {class} {id:?} has its content as text",
+                legacy!()
+            ),
+            "the value in the name of the ArgumentPackage \"p\" has its content as text, a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; it is read as its standard form, which write writes",
+        ),
+        case(
+            "SACM-XMI-012/name-content-lang-read",
+            tolerant(named("<name><content lang=\"en\">p</content></name>")),
+            (WARNING, "LIB-COMPAT-008", Some("7.8.6")),
+            &[("class", t("ArgumentPackage")), ("id", t("p"))],
+            concat!(
+                "the name of the {class} {id:?} holds a content carrying lang",
+                legacy!()
+            ),
+            "the name of the ArgumentPackage \"p\" holds a content carrying lang, a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; it is read as its standard form, which write writes",
+        ),
+        case(
+            "SACM-XMI-012/name-value-read",
+            tolerant(named("<name><value content=\"p\"/></name>")),
+            (WARNING, "LIB-COMPAT-008", Some("7.8.6")),
+            &[("class", t("ArgumentPackage")), ("id", t("p"))],
+            concat!("the name of the {class} {id:?} holds a value", legacy!()),
+            "the name of the ArgumentPackage \"p\" holds a value, a shape of the assurance-forge C++ library that XMI 2.5.1 does not define; it is read as its standard form, which write writes",
+        ),
+    ]
+}
+
+/// The 16 SACM-XMI-013 spellings: `-read` from a tolerant read, `-kept` from
+/// a strict one.
+#[expect(
+    clippy::too_many_lines,
+    reason = "one table, one row per template, reads best whole"
+)]
+fn spelling_cases() -> Vec<Case> {
+    vec![
+        case(
+            "SACM-XMI-013/group-end-read",
+            tolerant(spelled_group()),
+            (WARNING, "SACM23-XMI-009", Some("11.2")),
+            &[("element", t("argumentElement"))],
+            concat!(
+                "\"argumentationElement\" in the element {element:?} is spelled as in the text of §11.2, and the end of an ArgumentGroup is argumentElement",
+                read_as!("argumentElement")
+            ),
+            "\"argumentationElement\" in the element \"argumentElement\" is spelled as in the text of §11.2, and the end of an ArgumentGroup is argumentElement; it is read as argumentElement, which write writes",
+        ),
+        case(
+            "SACM-XMI-013/group-end-kept",
+            strict(spelled_group()),
+            (ERROR, "SACM23-XMI-009", Some("11.2")),
+            &[("element", t("argumentElement"))],
+            concat!(
+                "\"argumentationElement\" in the element {element:?} is spelled as in the text of §11.2, and the end of an ArgumentGroup is argumentElement",
+                kept_as!("argumentElement")
+            ),
+            "\"argumentationElement\" in the element \"argumentElement\" is spelled as in the text of §11.2, and the end of an ArgumentGroup is argumentElement; it is kept as preserved content, and a tolerant read reads the name as argumentElement",
+        ),
+        case(
+            "SACM-XMI-013/event-date-read",
+            tolerant(event(" occurece=\"2024-01-01\"")),
+            (WARNING, "SACM23-XMI-009", Some("12.9")),
+            &[("element", t("artifactElement"))],
+            concat!(
+                "\"occurece\" in the element {element:?} is the machine-readable model's spelling, and the attribute of an Event is date (§12.9)",
+                read_as!("date")
+            ),
+            "\"occurece\" in the element \"artifactElement\" is the machine-readable model's spelling, and the attribute of an Event is date (§12.9); it is read as date, which write writes",
+        ),
+        case(
+            "SACM-XMI-013/event-date-kept",
+            strict(event(" occurece=\"2024-01-01\"")),
+            (ERROR, "SACM23-XMI-009", Some("12.9")),
+            &[("element", t("artifactElement"))],
+            concat!(
+                "\"occurece\" in the element {element:?} is the machine-readable model's spelling, and the attribute of an Event is date (§12.9)",
+                kept_as!("date")
+            ),
+            "\"occurece\" in the element \"artifactElement\" is the machine-readable model's spelling, and the attribute of an Event is date (§12.9); it is kept as preserved content, and a tolerant read reads the name as date",
+        ),
+        case(
+            "SACM-XMI-013/package-role-read",
+            tolerant(nested(SPELLED_ROLE)),
+            (WARNING, "SACM23-XMI-009", Some("11.4")),
+            &[
+                ("element", t("argumentationElement")),
+                ("container", t("argumentPackage")),
+            ],
+            concat!(
+                "the element {element:?} in the element {container:?} is spelled as in the text of §11.4, and the role is argumentElement",
+                read_as!("argumentElement")
+            ),
+            "the element \"argumentationElement\" in the element \"argumentPackage\" is spelled as in the text of §11.4, and the role is argumentElement; it is read as argumentElement, which write writes",
+        ),
+        case(
+            "SACM-XMI-013/package-role-kept",
+            strict(nested(SPELLED_ROLE)),
+            (ERROR, "SACM23-XMI-009", Some("11.4")),
+            &[
+                ("element", t("argumentationElement")),
+                ("container", t("argumentPackage")),
+            ],
+            concat!(
+                "the element {element:?} in the element {container:?} is spelled as in the text of §11.4, and the role is argumentElement",
+                kept_as!("argumentElement")
+            ),
+            "the element \"argumentationElement\" in the element \"argumentPackage\" is spelled as in the text of §11.4, and the role is argumentElement; it is kept as preserved content, and a tolerant read reads the name as argumentElement",
+        ),
+        case(
+            "SACM-XMI-013/package-role-in-root-read",
+            tolerant(package(SPELLED_ROLE)),
+            (WARNING, "SACM23-XMI-009", Some("11.4")),
+            &[
+                ("element", t("argumentationElement")),
+                ("container", t("sacm:ArgumentPackage")),
+            ],
+            concat!(
+                "the element {element:?} in the root element {container:?} is spelled as in the text of §11.4, and the role is argumentElement",
+                read_as!("argumentElement")
+            ),
+            "the element \"argumentationElement\" in the root element \"sacm:ArgumentPackage\" is spelled as in the text of §11.4, and the role is argumentElement; it is read as argumentElement, which write writes",
+        ),
+        case(
+            "SACM-XMI-013/package-role-in-root-kept",
+            strict(package(SPELLED_ROLE)),
+            (ERROR, "SACM23-XMI-009", Some("11.4")),
+            &[
+                ("element", t("argumentationElement")),
+                ("container", t("sacm:ArgumentPackage")),
+            ],
+            concat!(
+                "the element {element:?} in the root element {container:?} is spelled as in the text of §11.4, and the role is argumentElement",
+                kept_as!("argumentElement")
+            ),
+            "the element \"argumentationElement\" in the root element \"sacm:ArgumentPackage\" is spelled as in the text of §11.4, and the role is argumentElement; it is kept as preserved content, and a tolerant read reads the name as argumentElement",
+        ),
+        case(
+            "SACM-XMI-013/terminology-role-read",
+            tolerant(nested_terminology(SPELLED_TERM)),
+            (WARNING, "SACM23-XMI-028", Some("10.4")),
+            &[
+                ("element", t("TerminologyElement")),
+                ("container", t("terminologyPackage")),
+            ],
+            concat!(
+                "the element {element:?} in the element {container:?} is spelled as in the text of §10.4, and the role is terminologyElement",
+                read_as!("terminologyElement")
+            ),
+            "the element \"TerminologyElement\" in the element \"terminologyPackage\" is spelled as in the text of §10.4, and the role is terminologyElement; it is read as terminologyElement, which write writes",
+        ),
+        case(
+            "SACM-XMI-013/terminology-role-kept",
+            strict(nested_terminology(SPELLED_TERM)),
+            (ERROR, "SACM23-XMI-028", Some("10.4")),
+            &[
+                ("element", t("TerminologyElement")),
+                ("container", t("terminologyPackage")),
+            ],
+            concat!(
+                "the element {element:?} in the element {container:?} is spelled as in the text of §10.4, and the role is terminologyElement",
+                kept_as!("terminologyElement")
+            ),
+            "the element \"TerminologyElement\" in the element \"terminologyPackage\" is spelled as in the text of §10.4, and the role is terminologyElement; it is kept as preserved content, and a tolerant read reads the name as terminologyElement",
+        ),
+        case(
+            "SACM-XMI-013/terminology-role-in-root-read",
+            tolerant(terminology(SPELLED_TERM)),
+            (WARNING, "SACM23-XMI-028", Some("10.4")),
+            &[
+                ("element", t("TerminologyElement")),
+                ("container", t("sacm:TerminologyPackage")),
+            ],
+            concat!(
+                "the element {element:?} in the root element {container:?} is spelled as in the text of §10.4, and the role is terminologyElement",
+                read_as!("terminologyElement")
+            ),
+            "the element \"TerminologyElement\" in the root element \"sacm:TerminologyPackage\" is spelled as in the text of §10.4, and the role is terminologyElement; it is read as terminologyElement, which write writes",
+        ),
+        case(
+            "SACM-XMI-013/terminology-role-in-root-kept",
+            strict(terminology(SPELLED_TERM)),
+            (ERROR, "SACM23-XMI-028", Some("10.4")),
+            &[
+                ("element", t("TerminologyElement")),
+                ("container", t("sacm:TerminologyPackage")),
+            ],
+            concat!(
+                "the element {element:?} in the root element {container:?} is spelled as in the text of §10.4, and the role is terminologyElement",
+                kept_as!("terminologyElement")
+            ),
+            "the element \"TerminologyElement\" in the root element \"sacm:TerminologyPackage\" is spelled as in the text of §10.4, and the role is terminologyElement; it is kept as preserved content, and a tolerant read reads the name as terminologyElement",
+        ),
+        case(
+            "SACM-XMI-013/model-type-read",
+            tolerant(nested_artifacts(SPELLED_TYPE)),
+            (WARNING, "SACM23-XMI-009", Some("12.14")),
+            &[
+                ("element", t("artifactElement")),
+                ("container", t("artifactPackage")),
+            ],
+            concat!(
+                "the element {element:?} in the element {container:?} is typed ArtifactAssertedRelationship, the machine-readable model's spelling of ArtifactAssetRelationship",
+                read_as!("ArtifactAssetRelationship")
+            ),
+            "the element \"artifactElement\" in the element \"artifactPackage\" is typed ArtifactAssertedRelationship, the machine-readable model's spelling of ArtifactAssetRelationship; it is read as ArtifactAssetRelationship, which write writes",
+        ),
+        case(
+            "SACM-XMI-013/model-type-kept",
+            strict(nested_artifacts(SPELLED_TYPE)),
+            (ERROR, "SACM23-XMI-009", Some("12.14")),
+            &[
+                ("element", t("artifactElement")),
+                ("container", t("artifactPackage")),
+            ],
+            concat!(
+                "the element {element:?} in the element {container:?} is typed ArtifactAssertedRelationship, the machine-readable model's spelling of ArtifactAssetRelationship",
+                kept_as!("ArtifactAssetRelationship")
+            ),
+            "the element \"artifactElement\" in the element \"artifactPackage\" is typed ArtifactAssertedRelationship, the machine-readable model's spelling of ArtifactAssetRelationship; it is kept as preserved content, and a tolerant read reads the name as ArtifactAssetRelationship",
+        ),
+        case(
+            "SACM-XMI-013/model-type-in-root-read",
+            tolerant(artifacts(SPELLED_TYPE)),
+            (WARNING, "SACM23-XMI-009", Some("12.14")),
+            &[
+                ("element", t("artifactElement")),
+                ("container", t("sacm:ArtifactPackage")),
+            ],
+            concat!(
+                "the element {element:?} in the root element {container:?} is typed ArtifactAssertedRelationship, the machine-readable model's spelling of ArtifactAssetRelationship",
+                read_as!("ArtifactAssetRelationship")
+            ),
+            "the element \"artifactElement\" in the root element \"sacm:ArtifactPackage\" is typed ArtifactAssertedRelationship, the machine-readable model's spelling of ArtifactAssetRelationship; it is read as ArtifactAssetRelationship, which write writes",
+        ),
+        case(
+            "SACM-XMI-013/model-type-in-root-kept",
+            strict(artifacts(SPELLED_TYPE)),
+            (ERROR, "SACM23-XMI-009", Some("12.14")),
+            &[
+                ("element", t("artifactElement")),
+                ("container", t("sacm:ArtifactPackage")),
+            ],
+            concat!(
+                "the element {element:?} in the root element {container:?} is typed ArtifactAssertedRelationship, the machine-readable model's spelling of ArtifactAssetRelationship",
+                kept_as!("ArtifactAssetRelationship")
+            ),
+            "the element \"artifactElement\" in the root element \"sacm:ArtifactPackage\" is typed ArtifactAssertedRelationship, the machine-readable model's spelling of ArtifactAssetRelationship; it is kept as preserved content, and a tolerant read reads the name as ArtifactAssetRelationship",
+        ),
+    ]
+}
+
+/// The 22 forms of content a tolerant read keeps where a strict read
+/// refuses it, but the three of SACM-XMI-003 above: 12 of SACM-XMI-014, 4 of
+/// SACM-XMI-007, and the kept forms of SACM-XMI-005, SACM-ENUM-001 and
+/// SACM-MULT-001.
+#[expect(
+    clippy::too_many_lines,
+    reason = "one table, one row per template, reads best whole"
+)]
+fn kept_cases() -> Vec<Case> {
+    vec![
+        // --- SACM-XMI-014 --------------------------------------------------------------
+        case(
+            "SACM-XMI-014/unread-attribute-kept",
+            tolerant(package(&claim("c1", " xmi:uuid=\"u1\"", ""))),
+            (WARNING, "LIB-API-011", None),
+            &[
+                ("attribute", t("xmi:uuid")),
+                ("element", t("argumentElement")),
+                ("holder_class", t("Claim")),
+                ("holder_id", t("c1")),
+                ("row", t("SACM23-XMI-019")),
+            ],
+            concat!(
+                "the attribute {attribute:?} of the element {element:?} is not read in this release",
+                ke!(),
+                reads!()
+            ),
+            "the attribute \"xmi:uuid\" of the element \"argumentElement\" is not read in this release, so it is kept as preserved content of the Claim \"c1\", which a tolerant write writes back and a strict write refuses; SACM23-XMI-019 reads it",
+        ),
+        case(
+            "SACM-XMI-014/unread-attribute-kept-by-document",
+            tolerant(wrapper(" xmi:uuid=\"u1\"", "")),
+            (WARNING, "LIB-API-011", None),
+            &[
+                ("attribute", t("xmi:uuid")),
+                ("element", t("xmi:XMI")),
+                ("row", t("SACM23-XMI-019")),
+            ],
+            concat!(
+                "the attribute {attribute:?} of the element {element:?} is not read in this release",
+                kd!(),
+                reads!()
+            ),
+            "the attribute \"xmi:uuid\" of the element \"xmi:XMI\" is not read in this release, so it is kept as preserved content of the document, which a tolerant write writes back and a strict write refuses; SACM23-XMI-019 reads it",
+        ),
+        case(
+            "SACM-XMI-014/nested-xmi-element-kept",
+            tolerant(package(&bare_claim(
+                "c1",
+                "",
+                "<name content=\"c1\"><xmi:Extension extender=\"v\"/></name>",
+            ))),
+            (WARNING, "LIB-API-011", None),
+            &[
+                ("element", t("xmi:Extension")),
+                ("container", t("name")),
+                ("holder_class", t("Claim")),
+                ("holder_id", t("c1")),
+                ("row", t("SACM23-XMI-019")),
+            ],
+            concat!(
+                "the XMI element {element:?} in {container:?} is not read in this release",
+                ke!(),
+                reads!()
+            ),
+            "the XMI element \"xmi:Extension\" in \"name\" is not read in this release, so it is kept as preserved content of the Claim \"c1\", which a tolerant write writes back and a strict write refuses; SACM23-XMI-019 reads it",
+        ),
+        case(
+            "SACM-XMI-014/nested-xmi-element-kept-by-document",
+            tolerant(wrapper("", "<xmi:Documentation/>")),
+            (WARNING, "LIB-API-011", None),
+            &[
+                ("element", t("xmi:Documentation")),
+                ("container", t("xmi:XMI")),
+                ("row", t("SACM23-XMI-019")),
+            ],
+            concat!(
+                "the XMI element {element:?} in {container:?} is not read in this release",
+                kd!(),
+                reads!()
+            ),
+            "the XMI element \"xmi:Documentation\" in \"xmi:XMI\" is not read in this release, so it is kept as preserved content of the document, which a tolerant write writes back and a strict write refuses; SACM23-XMI-019 reads it",
+        ),
+        case(
+            "SACM-XMI-014/interface-element-kept",
+            tolerant(package("<interface xmi:idref=\"p\"/>")),
+            (WARNING, "LIB-API-011", None),
+            &[
+                ("element", t("interface")),
+                ("container", t("sacm:ArgumentPackage")),
+                ("class", t("ArgumentPackage")),
+                ("holder_class", t("ArgumentPackage")),
+                ("holder_id", t("p")),
+                ("row", t("SACM23-ARG-014")),
+            ],
+            concat!(
+                "the reference element {element:?} in the element {container:?} is the {class} end \"interface\", which is not read in this release",
+                ke!(),
+                reads!()
+            ),
+            "the reference element \"interface\" in the element \"sacm:ArgumentPackage\" is the ArgumentPackage end \"interface\", which is not read in this release, so it is kept as preserved content of the ArgumentPackage \"p\", which a tolerant write writes back and a strict write refuses; SACM23-ARG-014 reads it",
+        ),
+        case(
+            "SACM-XMI-014/unread-root-kept",
+            tolerant(wrapper("", "<sacm:ArgumentPackageInterface xmi:id=\"i\"/>")),
+            (WARNING, "LIB-API-011", None),
+            &[
+                ("element", t("sacm:ArgumentPackageInterface")),
+                ("row", t("SACM23-ARG-014")),
+            ],
+            concat!(
+                "the root element {element:?} is not read in this release",
+                kd!(),
+                reads!()
+            ),
+            "the root element \"sacm:ArgumentPackageInterface\" is not read in this release, so it is kept as preserved content of the document, which a tolerant write writes back and a strict write refuses; SACM23-ARG-014 reads it",
+        ),
+        case(
+            "SACM-XMI-014/xmi-child-kept",
+            tolerant(package(&claim("c1", "", "<xmi:Extension extender=\"v\"/>"))),
+            (WARNING, "LIB-API-011", None),
+            &[
+                ("element", t("xmi:Extension")),
+                ("container", t("argumentElement")),
+                ("holder_class", t("Claim")),
+                ("holder_id", t("c1")),
+                ("row", t("SACM23-XMI-019")),
+            ],
+            concat!(
+                "the XMI element {element:?} in the element {container:?} is not read in this release",
+                ke!(),
+                reads!()
+            ),
+            "the XMI element \"xmi:Extension\" in the element \"argumentElement\" is not read in this release, so it is kept as preserved content of the Claim \"c1\", which a tolerant write writes back and a strict write refuses; SACM23-XMI-019 reads it",
+        ),
+        case(
+            "SACM-XMI-014/xmi-child-of-root-kept",
+            tolerant(package("<xmi:Extension extender=\"v\"/>")),
+            (WARNING, "LIB-API-011", None),
+            &[
+                ("element", t("xmi:Extension")),
+                ("container", t("sacm:ArgumentPackage")),
+                ("holder_class", t("ArgumentPackage")),
+                ("holder_id", t("p")),
+                ("row", t("SACM23-XMI-019")),
+            ],
+            concat!(
+                "the XMI element {element:?} in the root element {container:?} is not read in this release",
+                ke!(),
+                reads!()
+            ),
+            "the XMI element \"xmi:Extension\" in the root element \"sacm:ArgumentPackage\" is not read in this release, so it is kept as preserved content of the ArgumentPackage \"p\", which a tolerant write writes back and a strict write refuses; SACM23-XMI-019 reads it",
+        ),
+        case(
+            "SACM-XMI-014/proxy-child-kept",
+            tolerant(nested("<argumentElement xmi:idref=\"ap\"/>")),
+            (WARNING, "LIB-API-011", None),
+            &[
+                ("element", t("argumentElement")),
+                ("container", t("argumentPackage")),
+                ("class", t("ArgumentationElement")),
+                ("holder_class", t("ArgumentPackage")),
+                ("holder_id", t("ap")),
+                ("row", t("SACM23-XMI-019")),
+            ],
+            concat!(
+                "the element {element:?} in the element {container:?} is in reference form, a proxy of an element of the class {class}, which is not read in this release",
+                ke!(),
+                reads!()
+            ),
+            "the element \"argumentElement\" in the element \"argumentPackage\" is in reference form, a proxy of an element of the class ArgumentationElement, which is not read in this release, so it is kept as preserved content of the ArgumentPackage \"ap\", which a tolerant write writes back and a strict write refuses; SACM23-XMI-019 reads it",
+        ),
+        case(
+            "SACM-XMI-014/proxy-child-of-root-kept",
+            tolerant(package("<argumentElement xmi:idref=\"p\"/>")),
+            (WARNING, "LIB-API-011", None),
+            &[
+                ("element", t("argumentElement")),
+                ("container", t("sacm:ArgumentPackage")),
+                ("class", t("ArgumentationElement")),
+                ("holder_class", t("ArgumentPackage")),
+                ("holder_id", t("p")),
+                ("row", t("SACM23-XMI-019")),
+            ],
+            concat!(
+                "the element {element:?} in the root element {container:?} is in reference form, a proxy of an element of the class {class}, which is not read in this release",
+                ke!(),
+                reads!()
+            ),
+            "the element \"argumentElement\" in the root element \"sacm:ArgumentPackage\" is in reference form, a proxy of an element of the class ArgumentationElement, which is not read in this release, so it is kept as preserved content of the ArgumentPackage \"p\", which a tolerant write writes back and a strict write refuses; SACM23-XMI-019 reads it",
+        ),
+        case(
+            "SACM-XMI-014/unread-kind-kept",
+            tolerant(nested(
+                "<argumentElement xmi:type=\"sacm:ArgumentPackageInterface\" xmi:id=\"i\"/>",
+            )),
+            (WARNING, "LIB-API-011", None),
+            &[
+                ("class", t("ArgumentPackageInterface")),
+                ("element", t("argumentElement")),
+                ("container", t("argumentPackage")),
+                ("holder_class", t("ArgumentPackage")),
+                ("holder_id", t("ap")),
+                ("row", t("SACM23-ARG-014")),
+            ],
+            concat!(
+                "the {class} {element:?} in the element {container:?} is not read in this release",
+                ke!(),
+                reads!()
+            ),
+            "the ArgumentPackageInterface \"argumentElement\" in the element \"argumentPackage\" is not read in this release, so it is kept as preserved content of the ArgumentPackage \"ap\", which a tolerant write writes back and a strict write refuses; SACM23-ARG-014 reads it",
+        ),
+        case(
+            "SACM-XMI-014/unread-kind-in-root-kept",
+            tolerant(format!(
+                "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name content=\"case\"/>\
+                 <terminologyPackage xmi:type=\"sacm:TerminologyPackageInterface\" xmi:id=\"ti\"/>\
+                 </sacm:AssuranceCasePackage>"
+            )),
+            (WARNING, "LIB-API-011", None),
+            &[
+                ("class", t("TerminologyPackageInterface")),
+                ("element", t("terminologyPackage")),
+                ("container", t("sacm:AssuranceCasePackage")),
+                ("holder_class", t("AssuranceCasePackage")),
+                ("holder_id", t("case")),
+                ("row", t("SACM23-TERM-007")),
+            ],
+            concat!(
+                "the {class} {element:?} in the root element {container:?} is not read in this release",
+                ke!(),
+                reads!()
+            ),
+            "the TerminologyPackageInterface \"terminologyPackage\" in the root element \"sacm:AssuranceCasePackage\" is not read in this release, so it is kept as preserved content of the AssuranceCasePackage \"case\", which a tolerant write writes back and a strict write refuses; SACM23-TERM-007 reads it",
+        ),
+        // --- SACM-XMI-007 --------------------------------------------------------------
+        case(
+            "SACM-XMI-007/unread-attribute-kept",
+            tolerant(package(&format!(
+                "{}{}",
+                claim(
+                    "c1",
+                    "",
+                    "<metaClaim href=\"#c2\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" xlink:type=\"simple\"/>"
+                ),
+                claim("c2", "", "")
+            ))),
+            (WARNING, "LIB-API-011", None),
+            &[
+                ("attribute", t("xlink:type")),
+                ("element", t("metaClaim")),
+                ("holder_class", t("Claim")),
+                ("holder_id", t("c1")),
+                ("row", t("SACM23-XMI-027")),
+            ],
+            concat!(
+                "the attribute {attribute:?} of the element {element:?} is not read in this release",
+                ke!(),
+                reads!()
+            ),
+            "the attribute \"xlink:type\" of the element \"metaClaim\" is not read in this release, so it is kept as preserved content of the Claim \"c1\", which a tolerant write writes back and a strict write refuses; SACM23-XMI-027 reads it",
+        ),
+        case(
+            "SACM-XMI-007/proxy-child-kept",
+            tolerant(nested("<argumentElement href=\"other.sacm.xmi#c\"/>")),
+            (WARNING, "LIB-API-011", None),
+            &[
+                ("element", t("argumentElement")),
+                ("container", t("argumentPackage")),
+                ("class", t("ArgumentationElement")),
+                ("holder_class", t("ArgumentPackage")),
+                ("holder_id", t("ap")),
+                ("row", t("SACM23-XMI-027")),
+            ],
+            concat!(
+                "the element {element:?} in the element {container:?} is in reference form, a proxy of an element of the class {class}, which is not read in this release",
+                ke!(),
+                reads!()
+            ),
+            "the element \"argumentElement\" in the element \"argumentPackage\" is in reference form, a proxy of an element of the class ArgumentationElement, which is not read in this release, so it is kept as preserved content of the ArgumentPackage \"ap\", which a tolerant write writes back and a strict write refuses; SACM23-XMI-027 reads it",
+        ),
+        case(
+            "SACM-XMI-007/proxy-child-of-root-kept",
+            tolerant(package("<argumentElement href=\"other.sacm.xmi#c\"/>")),
+            (WARNING, "LIB-API-011", None),
+            &[
+                ("element", t("argumentElement")),
+                ("container", t("sacm:ArgumentPackage")),
+                ("class", t("ArgumentationElement")),
+                ("holder_class", t("ArgumentPackage")),
+                ("holder_id", t("p")),
+                ("row", t("SACM23-XMI-027")),
+            ],
+            concat!(
+                "the element {element:?} in the root element {container:?} is in reference form, a proxy of an element of the class {class}, which is not read in this release",
+                ke!(),
+                reads!()
+            ),
+            "the element \"argumentElement\" in the root element \"sacm:ArgumentPackage\" is in reference form, a proxy of an element of the class ArgumentationElement, which is not read in this release, so it is kept as preserved content of the ArgumentPackage \"p\", which a tolerant write writes back and a strict write refuses; SACM23-XMI-027 reads it",
+        ),
+        case(
+            "SACM-XMI-007/href-kept",
+            tolerant(package(&claim(
+                "c1",
+                "",
+                "<metaClaim href=\"other.sacm.xmi#c\"/>",
+            ))),
+            (WARNING, "LIB-API-011", None),
+            &[
+                ("href", t("other.sacm.xmi#c")),
+                ("element", t("metaClaim")),
+                ("holder_class", t("Claim")),
+                ("holder_id", t("c1")),
+                ("row", t("SACM23-XMI-027")),
+            ],
+            concat!(
+                "the href {href:?} of the reference element {element:?} names no element of this document by its id; only href=\"#id\" is read in this release",
+                ke!(),
+                reads!()
+            ),
+            "the href \"other.sacm.xmi#c\" of the reference element \"metaClaim\" names no element of this document by its id; only href=\"#id\" is read in this release, so it is kept as preserved content of the Claim \"c1\", which a tolerant write writes back and a strict write refuses; SACM23-XMI-027 reads it",
+        ),
+        // --- SACM-XMI-005 --------------------------------------------------------------
+        case(
+            "SACM-XMI-005/missing-type-kept",
+            tolerant(nested("<argumentElement xmi:id=\"c1\"/>")),
+            (WARNING, "LIB-COMPAT-001", Some("7.6.3")),
+            &[
+                ("element", t("argumentElement")),
+                ("container", t("argumentPackage")),
+                ("role", t("argumentElement")),
+                ("type", t("ArgumentationElement")),
+                ("holder_class", t("ArgumentPackage")),
+                ("holder_id", t("ap")),
+            ],
+            concat!(
+                "the element {element:?} in the element {container:?} has no type, and its role {role} has the abstract type {type}, so its class is not known (XMI 2.5.1 §7.6.3)",
+                ke!()
+            ),
+            "the element \"argumentElement\" in the element \"argumentPackage\" has no type, and its role argumentElement has the abstract type ArgumentationElement, so its class is not known (XMI 2.5.1 §7.6.3), so it is kept as preserved content of the ArgumentPackage \"ap\", which a tolerant write writes back and a strict write refuses",
+        ),
+        case(
+            "SACM-XMI-005/missing-type-in-root-kept",
+            tolerant(package("<argumentElement xmi:id=\"c1\"/>")),
+            (WARNING, "LIB-COMPAT-001", Some("7.6.3")),
+            &[
+                ("element", t("argumentElement")),
+                ("container", t("sacm:ArgumentPackage")),
+                ("role", t("argumentElement")),
+                ("type", t("ArgumentationElement")),
+                ("holder_class", t("ArgumentPackage")),
+                ("holder_id", t("p")),
+            ],
+            concat!(
+                "the element {element:?} in the root element {container:?} has no type, and its role {role} has the abstract type {type}, so its class is not known (XMI 2.5.1 §7.6.3)",
+                ke!()
+            ),
+            "the element \"argumentElement\" in the root element \"sacm:ArgumentPackage\" has no type, and its role argumentElement has the abstract type ArgumentationElement, so its class is not known (XMI 2.5.1 §7.6.3), so it is kept as preserved content of the ArgumentPackage \"p\", which a tolerant write writes back and a strict write refuses",
+        ),
+        // --- SACM-ENUM-001 -------------------------------------------------------------
+        case(
+            "SACM-ENUM-001/declaration-kept",
+            tolerant(package(&claim(
+                "c1",
+                " assertionDeclaration=\"Assumed\"",
+                "",
+            ))),
+            (WARNING, "SACM23-VAL-006", None),
+            &[
+                ("value", t("Assumed")),
+                ("holder_class", t("Claim")),
+                ("holder_id", t("c1")),
+            ],
+            concat!(
+                "the assertionDeclaration {value:?} is no literal: the literals are asserted, needsSupport, assumed, axiomatic, defeated and asCited",
+                ke!(),
+                ", and the property is read as not written"
+            ),
+            "the assertionDeclaration \"Assumed\" is no literal: the literals are asserted, needsSupport, assumed, axiomatic, defeated and asCited, so it is kept as preserved content of the Claim \"c1\", which a tolerant write writes back and a strict write refuses, and the property is read as not written",
+        ),
+        case(
+            "SACM-ENUM-001/boolean-kept",
+            tolerant(package(&claim("c1", " isCitation=\"yes\"", ""))),
+            (WARNING, "SACM23-VAL-006", None),
+            &[
+                ("property", t("isCitation")),
+                ("value", t("yes")),
+                ("holder_class", t("Claim")),
+                ("holder_id", t("c1")),
+            ],
+            concat!(
+                "the {property} {value:?} is no literal: the literals are true, false, 1 and 0",
+                ke!(),
+                ", and the property is read as not written"
+            ),
+            "the isCitation \"yes\" is no literal: the literals are true, false, 1 and 0, so it is kept as preserved content of the Claim \"c1\", which a tolerant write writes back and a strict write refuses, and the property is read as not written",
+        ),
+        // --- SACM-MULT-001 -------------------------------------------------------------
+        case(
+            "SACM-MULT-001/repeat-kept",
+            tolerant(package(&claim("c1", "", "<name content=\"again\"/>"))),
+            (WARNING, "LIB-COMPAT-001", Some("9.5.2")),
+            &[
+                ("property", t("name")),
+                ("element", t("c1")),
+                ("holder_class", t("Claim")),
+                ("holder_id", t("c1")),
+            ],
+            concat!(
+                "the {property} of the element {element:?} is given more than once, which XMI 2.5.1 §9.5.2 rule 2h does not allow, and this is not its first occurrence",
+                ke!(),
+                "; the first occurrence is read"
+            ),
+            "the name of the element \"c1\" is given more than once, which XMI 2.5.1 §9.5.2 rule 2h does not allow, and this is not its first occurrence, so it is kept as preserved content of the Claim \"c1\", which a tolerant write writes back and a strict write refuses; the first occurrence is read",
+        ),
+        case(
+            "SACM-MULT-001/repeat-attribute-kept",
+            tolerant(package(&claim(
+                "c1",
+                "",
+                "<taggedValue xmi:id=\"t\" key=\"k\" content=\"a\" value=\"b\"/>",
+            ))),
+            (WARNING, "LIB-COMPAT-001", Some("9.5.2")),
+            &[
+                ("property", t("content.value.content")),
+                ("element", t("t")),
+                ("holder_class", t("TaggedValue")),
+                ("holder_id", t("t")),
+            ],
+            concat!(
+                "the {property} of the element {element:?} is given more than once, which XMI 2.5.1 §9.5.2 rule 2h does not allow, and this is not its first occurrence",
+                ke!(),
+                "; the attribute that gave it first is kept with it, and the element has no content from them"
+            ),
+            "the content.value.content of the element \"t\" is given more than once, which XMI 2.5.1 §9.5.2 rule 2h does not allow, and this is not its first occurrence, so it is kept as preserved content of the TaggedValue \"t\", which a tolerant write writes back and a strict write refuses; the attribute that gave it first is kept with it, and the element has no content from them",
+        ),
+    ]
+}
+
+/// More sites of the templates that more than one site gives, each checked
+/// as a case of the table is, but not counted among the 102.
+#[expect(
+    clippy::too_many_lines,
+    reason = "one table, one row per site, reads best whole"
+)]
+fn sites() -> Vec<Case> {
+    vec![
+        // SACM-MULT-001/missing: a key, a value, and the ends of relationships.
+        case(
+            "SACM-MULT-001/missing",
+            validate(package(&claim("c1", "", "<taggedValue xmi:id=\"t\"/>"))),
+            (ERROR, "SACM23-VAL-010", Some("8.12")),
+            &[
+                ("class", t("TaggedValue")),
+                ("id", t("t")),
+                ("property", t("key")),
+                ("type", t("MultiLangString")),
+                ("multiplicity", t("1")),
+            ],
+            "{class} {id:?} has no {property} ({property}:{type}[{multiplicity}])",
+            "TaggedValue \"t\" has no key (key:MultiLangString[1])",
+        ),
+        case(
+            "SACM-MULT-001/missing",
+            validate(terminology(
+                "<terminologyElement xmi:type=\"sacm:Term\" xmi:id=\"t1\"><name content=\"t1\"/></terminologyElement>",
+            )),
+            (ERROR, "SACM23-TERM-003", Some("10.9")),
+            &[
+                ("class", t("Term")),
+                ("id", t("t1")),
+                ("property", t("value")),
+                ("type", t("String")),
+                ("multiplicity", t("1")),
+            ],
+            "{class} {id:?} has no {property} ({property}:{type}[{multiplicity}])",
+            "Term \"t1\" has no value (value:String[1])",
+        ),
+        case(
+            "SACM-MULT-001/missing",
+            validate(package(&argument(
+                "AssertedInference",
+                "i1",
+                " target=\"p\"",
+            ))),
+            (ERROR, "SACM23-VAL-005", Some("11.13")),
+            &[
+                ("class", t("AssertedInference")),
+                ("id", t("i1")),
+                ("property", t("source")),
+                ("type", t("ArgumentAsset")),
+                ("multiplicity", t("1..*")),
+            ],
+            "{class} {id:?} has no {property} ({property}:{type}[{multiplicity}])",
+            "AssertedInference \"i1\" has no source (source:ArgumentAsset[1..*])",
+        ),
+        case(
+            "SACM-MULT-001/missing",
+            validate(package(&format!(
+                "{}{}",
+                claim("c1", "", ""),
+                argument("AssertedInference", "i1", " source=\"c1\"")
+            ))),
+            (ERROR, "SACM23-VAL-005", Some("11.13")),
+            &[
+                ("class", t("AssertedInference")),
+                ("id", t("i1")),
+                ("property", t("target")),
+                ("type", t("ArgumentAsset")),
+                ("multiplicity", t("1")),
+            ],
+            "{class} {id:?} has no {property} ({property}:{type}[{multiplicity}])",
+            "AssertedInference \"i1\" has no target (target:ArgumentAsset[1])",
+        ),
+        case(
+            "SACM-MULT-001/missing",
+            validate(artifacts(
+                "<artifactElement xmi:type=\"sacm:Artifact\" xmi:id=\"a1\"><name content=\"a1\"/></artifactElement>\
+                 <artifactElement xmi:type=\"sacm:ArtifactAssetRelationship\" xmi:id=\"r1\" source=\"a1\"><name content=\"r1\"/></artifactElement>",
+            )),
+            (ERROR, "SACM23-ART-010", Some("12.14")),
+            &[
+                ("class", t("ArtifactAssetRelationship")),
+                ("id", t("r1")),
+                ("property", t("target")),
+                ("type", t("ArtifactAsset")),
+                ("multiplicity", t("1..*")),
+            ],
+            "{class} {id:?} has no {property} ({property}:{type}[{multiplicity}])",
+            "ArtifactAssetRelationship \"r1\" has no target (target:ArtifactAsset[1..*])",
+        ),
+        // SACM-REF-001/dangling: a strict write's schema check (LIB-COMPAT-007).
+        case(
+            "SACM-REF-001/dangling",
+            write(package(&claim(
+                "c1",
+                " isCitation=\"true\" citedElement=\"nope\"",
+                "",
+            ))),
+            (ERROR, "SACM23-VAL-003", Some("8.2")),
+            &[
+                ("class", t("Claim")),
+                ("id", t("c1")),
+                ("end", t("citedElement")),
+                ("target", t("nope")),
+                ("type", t("SACMElement")),
+            ],
+            "{class} {id:?} has the {end} {target:?}, which names no element of the document (the end's type is {type})",
+            "Claim \"c1\" has the citedElement \"nope\", which names no element of the document (the end's type is SACMElement)",
+        ),
+        // SACM-XMI-010/xsi-type: on a root.
+        case(
+            "SACM-XMI-010/xsi-type",
+            tolerant(format!(
+                "<sacm:ArgumentPackage{NS} xsi:type=\"sacm:ArgumentPackage\" xmi:id=\"p\"><name content=\"p\"/></sacm:ArgumentPackage>"
+            )),
+            (WARNING, "LIB-COMPAT-001", Some("9.5.2")),
+            &[("class", t("ArgumentPackage")), ("id", t("p"))],
+            concat!("the {class} {id:?}", xsi!()),
+            "the ArgumentPackage \"p\" is typed with xsi:type, which XMI 2.5.1 allows only when org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as xmi:type",
+        ),
+        // SACM-XMI-010/xsi-type, a strict read: an Error.
+        case(
+            "SACM-XMI-010/xsi-type",
+            strict(package(
+                "<argumentElement xsi:type=\"sacm:Claim\" xmi:id=\"c1\"><name content=\"c1\"/></argumentElement>",
+            )),
+            (ERROR, "LIB-COMPAT-001", Some("9.5.2")),
+            &[("class", t("Claim")), ("id", t("c1"))],
+            concat!("the {class} {id:?}", xsi!()),
+            "the Claim \"c1\" is typed with xsi:type, which XMI 2.5.1 allows only when org.omg.xmi.useSchemaExtensions is true, and SACM 2.3 does not set it; it is read as xmi:type",
+        ),
+        // SACM-XMI-003/attribute-kept: a lang that gives no content (`finish`).
+        case(
+            "SACM-XMI-003/attribute-kept",
+            tolerant(package(&claim(
+                "c1",
+                "",
+                "<note xmi:id=\"n\" lang=\"en\"/>",
+            ))),
+            (WARNING, "LIB-COMPAT-003", Some("7.3.3")),
+            &[
+                ("attribute", t("lang")),
+                ("holder_class", t("Note")),
+                ("holder_id", t("n")),
+            ],
+            "the attribute {attribute:?} is not SACM 2.3 where it stands, so it is kept as written as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses",
+            "the attribute \"lang\" is not SACM 2.3 where it stands, so it is kept as written as preserved content of the Note \"n\", which a tolerant write writes back and a strict write refuses",
+        ),
+        // SACM-XMI-013/group-end-read: the end as an element.
+        case(
+            "SACM-XMI-013/group-end-read",
+            tolerant(package(&format!(
+                "{}<argumentElement xmi:type=\"sacm:ArgumentGroup\" xmi:id=\"g\"><name content=\"g\"/><argumentationElement xmi:idref=\"c1\"/></argumentElement>",
+                claim("c1", "", "")
+            ))),
+            (WARNING, "SACM23-XMI-009", Some("11.2")),
+            &[("element", t("argumentElement"))],
+            concat!(
+                "\"argumentationElement\" in the element {element:?} is spelled as in the text of §11.2, and the end of an ArgumentGroup is argumentElement",
+                read_as!("argumentElement")
+            ),
+            "\"argumentationElement\" in the element \"argumentElement\" is spelled as in the text of §11.2, and the end of an ArgumentGroup is argumentElement; it is read as argumentElement, which write writes",
+        ),
+        // SACM-XMI-013/event-date-kept: the date as a value element.
+        case(
+            "SACM-XMI-013/event-date-kept",
+            strict(artifacts(
+                "<artifactElement xmi:type=\"sacm:Event\" xmi:id=\"e1\"><name content=\"e1\"/><occurece>2024-01-01</occurece></artifactElement>",
+            )),
+            (ERROR, "SACM23-XMI-009", Some("12.9")),
+            &[("element", t("artifactElement"))],
+            concat!(
+                "\"occurece\" in the element {element:?} is the machine-readable model's spelling, and the attribute of an Event is date (§12.9)",
+                kept_as!("date")
+            ),
+            "\"occurece\" in the element \"artifactElement\" is the machine-readable model's spelling, and the attribute of an Event is date (§12.9); it is kept as preserved content, and a tolerant read reads the name as date",
+        ),
+        // SACM-MULT-001/repeat-kept: a repeated expression (slice 0065).
+        case(
+            "SACM-MULT-001/repeat-kept",
+            tolerant(terminology(
+                "<terminologyElement xmi:type=\"sacm:Term\" xmi:id=\"blade\" value=\"blade\"><name content=\"blade\"/></terminologyElement>\
+                 <terminologyElement xmi:type=\"sacm:Term\" xmi:id=\"t2\" value=\"t2\"><name xmi:type=\"sacm:ExpressionLangString\" expression=\"blade\"><expression xmi:idref=\"blade\"/></name></terminologyElement>",
+            )),
+            (WARNING, "LIB-COMPAT-001", Some("9.5.2")),
+            &[
+                ("property", t("name.expression")),
+                ("element", t("t2")),
+                ("holder_class", t("Term")),
+                ("holder_id", t("t2")),
+            ],
+            concat!(
+                "the {property} of the element {element:?} is given more than once, which XMI 2.5.1 §9.5.2 rule 2h does not allow, and this is not its first occurrence",
+                ke!(),
+                "; the first occurrence is read"
+            ),
+            "the name.expression of the element \"t2\" is given more than once, which XMI 2.5.1 §9.5.2 rule 2h does not allow, and this is not its first occurrence, so it is kept as preserved content of the Term \"t2\", which a tolerant write writes back and a strict write refuses; the first occurrence is read",
+        ),
+    ]
+}
+
+// --- Running a case -----------------------------------------------------------------
+
+/// The document a tolerant read of `input` returns.
+fn tolerant_document(template: &str, input: &str) -> Document {
+    match xmi::read(input.as_bytes(), &ReadOptions::default()) {
+        Ok(output) => output.into_document(),
+        Err(error) => panic!("{ROW}: {template}: setup: a tolerant read refuses {input}: {error}"),
+    }
+}
+
+/// The diagnostics of `case`'s step.
+fn diagnostics(case: &Case) -> Vec<Diagnostic> {
+    let template = case.template;
+    let read = |input: &str, mode: Mode| match xmi::read(
+        input.as_bytes(),
+        &ReadOptions::default().with_mode(mode),
+    ) {
+        Ok(output) => output.diagnostics().to_vec(),
+        Err(error) => panic!("{ROW}: {template}: a {mode:?} read refuses {input}: {error}"),
+    };
+    match &case.step {
+        Step::Tolerant(input) => read(input, Mode::Tolerant),
+        Step::Strict(input) => read(input, Mode::Strict),
+        Step::Validate(input) => validation::validate(&tolerant_document(template, input)),
+        Step::Write(input) => {
+            let document = tolerant_document(template, input);
+            match xmi::write(&document, &WriteOptions::default()) {
+                Ok(text) => panic!("{ROW}: {template}: a strict write writes {text}"),
+                Err(error) => error.diagnostics().to_vec(),
+            }
+        }
+    }
+}
+
+/// The one diagnostic of `case`'s step with its template's code and its
+/// message.
+fn found(case: &Case) -> Diagnostic {
+    let template = case.template;
+    let all = diagnostics(case);
+    let mut matching = all
+        .iter()
+        .filter(|diagnostic| {
+            diagnostic.code().as_str() == code_of(template) && diagnostic.message() == case.message
+        })
+        .cloned();
+    let (Some(first), None) = (matching.next(), matching.next()) else {
+        let of_code: Vec<&str> = all
+            .iter()
+            .filter(|diagnostic| diagnostic.code().as_str() == code_of(template))
+            .map(Diagnostic::message)
+            .collect();
+        panic!(
+            "{ROW}: {template}: the step does not give exactly one {} diagnostic with the \
+             message {:?}; it gives {of_code:#?}",
+            code_of(template),
+            case.message
+        );
+    };
+    first
+}
+
+/// The code text of `template`: the part before the `/`.
+fn code_of(template: &str) -> &str {
+    template.split_once('/').map_or(template, |(code, _)| code)
+}
+
+/// The placeholders of `pattern` in order, with their format: `""` or `":?"`.
+fn placeholders(pattern: &str) -> Vec<(&str, &str)> {
+    let mut out = Vec::new();
+    let mut rest = pattern;
+    while let Some(open) = rest.find('{') {
+        let after = &rest[open + 1..];
+        let Some(close) = after.find('}') else {
+            break;
+        };
+        let inner = &after[..close];
+        let (name, format) = inner.find(':').map_or((inner, ""), |at| inner.split_at(at));
+        out.push((name, format));
+        rest = &after[close + 1..];
+    }
+    out
+}
+
+/// `pattern` with each placeholder replaced by its argument: Text as it is
+/// for `{n}` and Debug-quoted for `{n:?}`, a Count in decimal for `{n}`.
+fn render(template: &str, pattern: &str, arguments: &[(&str, Value)]) -> String {
+    let mut out = String::new();
+    let mut rest = pattern;
+    while let Some(open) = rest.find('{') {
+        out.push_str(&rest[..open]);
+        let after = &rest[open + 1..];
+        let Some(close) = after.find('}') else {
+            panic!("{ROW}: {template}: an unclosed placeholder in {pattern:?}");
+        };
+        let inner = &after[..close];
+        let (name, format) = inner.find(':').map_or((inner, ""), |at| inner.split_at(at));
+        let Some(&(_, value)) = arguments.iter().find(|(given, _)| *given == name) else {
+            panic!("{ROW}: {template}: the placeholder {name:?} names no argument");
+        };
+        match (format, value) {
+            ("", Value::Text(text)) => out.push_str(text),
+            (":?", Value::Text(text)) => {
+                let _ = write!(out, "{text:?}");
+            }
+            ("", Value::Count(count)) => out.push_str(&count.to_string()),
+            _ => panic!("{ROW}: {template}: {{{inner}}} does not take {value:?}"),
+        }
+        rest = &after[close + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Checks the table row of `case` against itself: the placeholders and the
+/// arguments agree in names, kinds and order, `row` is declared only where
+/// the pattern names it, and then last, and the pattern rendered with the
+/// arguments is the message.
+fn check_row(case: &Case) {
+    let template = case.template;
+    let mut first_seen: Vec<&str> = Vec::new();
+    for (name, format) in placeholders(case.pattern) {
+        let Some(&(_, value)) = case.arguments.iter().find(|(given, _)| *given == name) else {
+            panic!("{ROW}: {template}: the placeholder {name:?} names no argument");
+        };
+        let fits = matches!(
+            (format, value),
+            ("" | ":?", Value::Text(_)) | ("", Value::Count(_))
+        );
+        assert!(
+            fits,
+            "{ROW}: {template}: {{{name}{format}}} does not take {value:?}"
+        );
+        if !first_seen.contains(&name) {
+            first_seen.push(name);
+        }
+    }
+    let declared: Vec<&str> = case.arguments.iter().map(|(name, _)| *name).collect();
+    assert_eq!(
+        declared, first_seen,
+        "{ROW}: {template}: the arguments are not those the pattern names, in the order it \
+         first names them"
+    );
+    if declared.contains(&"row") {
+        assert_eq!(
+            declared.last(),
+            Some(&"row"),
+            "{ROW}: {template}: row is not the last argument"
+        );
+    }
+    assert_eq!(
+        render(template, case.pattern, &case.arguments),
+        case.message,
+        "{ROW}: {template}: the pattern rendered with the arguments is not the message"
+    );
+}
+
+/// Checks that `case`'s step gives its message with its code, severity, row
+/// and clause.
+fn check_message(case: &Case) {
+    let template = case.template;
+    let diagnostic = found(case);
+    assert_eq!(
+        (
+            diagnostic.severity(),
+            diagnostic.requirement_id(),
+            diagnostic.clause()
+        ),
+        (case.severity, case.row, case.clause),
+        "{ROW}: {template}: the severity, row and clause"
+    );
+}
+
+#[test]
+fn lib_api_018_each_diagnostic_template_input_gives_its_message() {
+    let validation = validation_cases();
+    assert_eq!(
+        validation.len(),
+        VALIDATION_TEMPLATES,
+        "{ROW}: the validation inputs"
+    );
+    assert!(
+        validation
+            .iter()
+            .all(|case| matches!(case.step, Step::Validate(_))),
+        "{ROW}: every validation template's input is a validate"
+    );
+    let mut cases = validation;
+    cases.extend(reader_cases());
+    // The inputs are the 102 templates, once each.
+    let mut ids: Vec<&str> = cases.iter().map(|case| case.template).collect();
+    let count = ids.len();
+    ids.sort_unstable();
+    ids.dedup();
+    assert_eq!(
+        (count, ids.len()),
+        (DIAGNOSTIC_TEMPLATES, DIAGNOSTIC_TEMPLATES),
+        "{ROW}: the table does not hold the {DIAGNOSTIC_TEMPLATES} diagnostic templates once \
+         each"
+    );
+    let sites = sites();
+    for site in &sites {
+        assert!(
+            ids.contains(&site.template),
+            "{ROW}: {}: a site of a template the table does not hold",
+            site.template
+        );
+    }
+    for case in cases.iter().chain(&sites) {
+        check_row(case);
+        check_message(case);
+    }
+}
+
+/// Acceptance 2: with two descriptions, the Claim `CLM_132` gives one
+/// SACM-MULT-001 Warning, with its template and arguments.
+#[test]
+fn lib_api_018_a_claim_with_two_descriptions_has_the_too_many_template_and_its_arguments() {
+    let document = tolerant_document("SACM-MULT-001/too-many", CLM_132);
+    let found = validation::validate(&document);
+    assert_eq!(
+        found.len(),
+        1,
+        "{ROW}: CLM_132 gives one finding: {found:?}"
+    );
+    let diagnostic = &found[0];
+    assert_eq!(
+        (
+            diagnostic.code(),
+            diagnostic.severity(),
+            diagnostic.requirement_id(),
+            diagnostic.clause(),
+            diagnostic.message(),
+            diagnostic.affected(),
+        ),
+        (
+            Code::MULTIPLICITY_VIOLATION,
+            Severity::Warning,
+            "SACM23-VAL-011",
+            Some("8.6"),
+            "Claim \"CLM_132\" has 2 descriptions (description:Description[0..1])",
+            &[ElementId::from("CLM_132")][..],
+        ),
+        "{ROW}: the finding of CLM_132"
+    );
+    {
+        use sacm::diagnostic::ArgumentValue;
+
+        assert_eq!(
+            diagnostic.template(),
+            "SACM-MULT-001/too-many",
+            "{ROW}: the template of CLM_132's finding"
+        );
+        let arguments: Vec<(&str, ArgumentValue)> = diagnostic
+            .arguments()
+            .iter()
+            .map(|argument| (argument.name(), argument.value().clone()))
+            .collect();
+        let text = |value: &str| ArgumentValue::Text(value.to_owned());
+        assert_eq!(
+            arguments,
+            [
+                ("class", text("Claim")),
+                ("id", text("CLM_132")),
+                ("count", ArgumentValue::Count(2)),
+                ("property", text("description")),
+                ("type", text("Description")),
+                ("multiplicity", text("0..1")),
+            ],
+            "{ROW}: the arguments of CLM_132's finding"
+        );
+    }
+}
+
+/// Acceptance 6: the argument types and the details are plain values.
+#[test]
+fn lib_api_018_the_argument_types_and_details_have_their_traits() {
+    fn value<T: Clone + std::fmt::Debug + Eq + std::hash::Hash + Send + Sync + 'static>() {}
+    fn ordered<T: Ord>() {}
+    value::<sacm::diagnostic::Argument>();
+    value::<sacm::diagnostic::ArgumentValue>();
+    value::<sacm::diagnostic::Details>();
+    value::<Diagnostic>();
+    ordered::<sacm::diagnostic::Argument>();
+    ordered::<sacm::diagnostic::ArgumentValue>();
+    ordered::<Diagnostic>();
+}
+
+mod api {
+    use super::{
+        CLM_132, Case, ROW, Value, code_of, found, reader_cases, sites, tolerant_document,
+        validation_cases,
+    };
+    use sacm::diagnostic::{Argument, ArgumentValue, Code, Diagnostic, Severity, SourceLocation};
+    use sacm::model::ElementId;
+    use sacm::validation;
+
+    /// The seven keys of ADR 0011: code, severity, row, clause, affected
+    /// ids, location and message.
+    type Keys = (
+        Code,
+        Severity,
+        String,
+        Option<String>,
+        Vec<ElementId>,
+        Option<SourceLocation>,
+        String,
+    );
+
+    fn keys(diagnostic: &Diagnostic) -> Keys {
+        (
+            diagnostic.code(),
+            diagnostic.severity(),
+            diagnostic.requirement_id().to_owned(),
+            diagnostic.clause().map(str::to_owned),
+            diagnostic.affected().to_vec(),
+            diagnostic.location(),
+            diagnostic.message().to_owned(),
+        )
+    }
+
+    /// The one finding of `validate` for [`CLM_132`].
+    fn two_descriptions_finding() -> Diagnostic {
+        let mut found = validation::validate(&tolerant_document("SACM-MULT-001/too-many", CLM_132));
+        assert_eq!(found.len(), 1, "{ROW}: setup: CLM_132 gives {found:?}");
+        found.remove(0)
+    }
+
+    /// The expected arguments of `case`, as the API states them.
+    fn expected(case: &Case) -> Vec<(&'static str, ArgumentValue)> {
+        case.arguments
+            .iter()
+            .map(|&(name, value)| {
+                let value = match value {
+                    Value::Text(text) => ArgumentValue::Text(text.to_owned()),
+                    Value::Count(count) => ArgumentValue::Count(count),
+                };
+                (name, value)
+            })
+            .collect()
+    }
+
+    fn named(arguments: &[Argument]) -> Vec<(&'static str, ArgumentValue)> {
+        arguments
+            .iter()
+            .map(|argument| (argument.name(), argument.value().clone()))
+            .collect()
+    }
+
+    #[test]
+    fn lib_api_018_each_diagnostic_template_input_has_its_code_template_and_arguments() {
+        let mut cases = validation_cases();
+        cases.extend(reader_cases());
+        cases.extend(sites());
+        for case in &cases {
+            let template = case.template;
+            let diagnostic = found(case);
+            assert_eq!(
+                diagnostic.code().as_str(),
+                code_of(template),
+                "{ROW}: {template}: code()"
+            );
+            assert_eq!(
+                diagnostic.template(),
+                template,
+                "{ROW}: {template}: template()"
+            );
+            assert_eq!(
+                named(diagnostic.arguments()),
+                expected(case),
+                "{ROW}: {template}: arguments() by name, kind and value"
+            );
+        }
+    }
+
+    /// Acceptance 4: a diagnostic built with `test-support`'s `new` has its
+    /// code's text as its template and no arguments.
+    #[test]
+    fn lib_api_018_a_diagnostic_built_with_new_has_its_code_as_template_and_no_arguments() {
+        for code in [
+            Code::MULTIPLICITY_VIOLATION,
+            Code::REF_DANGLING,
+            Code::XMI_MISSING_ID,
+        ] {
+            let built = Diagnostic::new(code, Severity::Error, "SACM23-VAL-018", "a message")
+                .with_clause("8.6");
+            assert_eq!(
+                built.template(),
+                code.as_str(),
+                "{ROW}: {code}: the template of a diagnostic built with new"
+            );
+            assert!(
+                built.arguments().is_empty(),
+                "{ROW}: {code}: a diagnostic built with new has arguments: {:?}",
+                built.arguments()
+            );
+            assert_eq!(
+                built.message(),
+                "a message",
+                "{ROW}: {code}: the message is kept as given"
+            );
+        }
+        // Built with the seven keys of a finding the crate emits, it is not
+        // `==` to it: the emitted one has its template and arguments.
+        let emitted = two_descriptions_finding();
+        let built = Diagnostic::new(
+            emitted.code(),
+            emitted.severity(),
+            "SACM23-VAL-011",
+            emitted.message().to_owned(),
+        )
+        .with_clause("8.6")
+        .with_affected(emitted.affected().to_vec());
+        assert_eq!(
+            keys(&built),
+            keys(&emitted),
+            "{ROW}: setup: the built twin has the seven keys of the emitted finding"
+        );
+        assert_ne!(
+            built, emitted,
+            "{ROW}: a diagnostic built with new is == to an emitted one"
+        );
+        assert_eq!(
+            (built.template(), emitted.template()),
+            ("SACM-MULT-001", "SACM-MULT-001/too-many"),
+            "{ROW}: the templates of the built twin and of the emitted finding"
+        );
+    }
+
+    /// Acceptance 6: diagnostics equal in the seven keys of ADR 0011 order
+    /// by template id, then by arguments, argument by argument; `cmp` is
+    /// `Equal` exactly when they are `==`. Built from records, which keep
+    /// every field as given.
+    #[cfg(feature = "serde")]
+    #[test]
+    fn lib_api_018_diagnostics_equal_in_the_seven_keys_order_by_template_then_arguments() {
+        use std::cmp::Ordering;
+
+        let record = |details: &str| -> Diagnostic {
+            let text = format!(
+                r#"{{"code":"SACM-MULT-001","severity":"error","requirement_id":"R","clause":null,"affected":[],"location":null,"message":"m"{details}}}"#
+            );
+            serde_json::from_str(&text)
+                .unwrap_or_else(|error| panic!("{ROW}: setup: {text} does not read: {error}"))
+        };
+        let missing = |class: &str, id: &str| {
+            record(&format!(
+                r#","template":"SACM-MULT-001/missing","arguments":{{"class":"{class}","id":"{id}","property":"name","type":"LangString","multiplicity":"1"}}"#
+            ))
+        };
+        let too_many = |count: u64| {
+            record(&format!(
+                r#","template":"SACM-MULT-001/too-many","arguments":{{"class":"Claim","id":"a","count":{count},"property":"description","type":"Description","multiplicity":"0..1"}}"#
+            ))
+        };
+        // In order: the code's text first, as a prefix of every id of its
+        // code; then by template id; then argument by argument, by value.
+        let ordered = [
+            record(""),
+            missing("Claim", "a"),
+            missing("Claim", "b"),
+            missing("Note", "a"),
+            too_many(2),
+            too_many(10),
+        ];
+        let built = Diagnostic::new(Code::MULTIPLICITY_VIOLATION, Severity::Error, "R", "m");
+        let keys: Vec<_> = ordered.iter().map(keys).collect();
+        assert!(
+            keys.iter().all(|key| *key == keys[0]),
+            "{ROW}: setup: the records are not equal in the seven keys"
+        );
+        assert_eq!(
+            ordered.iter().map(Diagnostic::template).collect::<Vec<_>>(),
+            [
+                "SACM-MULT-001",
+                "SACM-MULT-001/missing",
+                "SACM-MULT-001/missing",
+                "SACM-MULT-001/missing",
+                "SACM-MULT-001/too-many",
+                "SACM-MULT-001/too-many",
+            ],
+            "{ROW}: setup: the templates read"
+        );
+        for (i, a) in ordered.iter().enumerate() {
+            for (j, b) in ordered.iter().enumerate() {
+                assert_eq!(
+                    a.cmp(b),
+                    i.cmp(&j),
+                    "{ROW}: diagnostic {i} against {j}: {a:?} and {b:?}"
+                );
+                assert_eq!(
+                    a.cmp(b) == Ordering::Equal,
+                    a == b,
+                    "{ROW}: cmp is Equal exactly when == ({i}, {j})"
+                );
+                assert_eq!(a.partial_cmp(b), Some(a.cmp(b)), "{ROW}: partial_cmp");
+            }
+        }
+        // A diagnostic built with `new` is the record with neither.
+        assert_eq!(built, ordered[0], "{ROW}: new and the 0.1.0 record");
+        assert_eq!(
+            built.cmp(&ordered[0]),
+            Ordering::Equal,
+            "{ROW}: new's order"
+        );
+        assert_eq!(
+            built.cmp(&ordered[1]),
+            Ordering::Less,
+            "{ROW}: the code's text sorts before the code's templates"
+        );
+        let mut shuffled = vec![
+            ordered[4].clone(),
+            ordered[1].clone(),
+            ordered[5].clone(),
+            ordered[0].clone(),
+            ordered[3].clone(),
+            ordered[2].clone(),
+        ];
+        shuffled.sort();
+        assert_eq!(shuffled, ordered, "{ROW}: sorting by the order");
+        // The seven keys still come first: another message sorts by it,
+        // whatever the template.
+        let earlier_message =
+            Diagnostic::new(Code::MULTIPLICITY_VIOLATION, Severity::Error, "R", "a");
+        assert_eq!(
+            earlier_message.cmp(&too_many(10)),
+            Ordering::Less,
+            "{ROW}: the message is compared before the template"
+        );
+    }
+}
