@@ -434,8 +434,8 @@ fn lib_api_018_an_unknown_template_a_refusal_s_or_another_code_s_is_refused() {
         "another code's refusal template",
         TOO_MANY,
         &format!(r#""template":"SACM-MULT-001/too-many",{TOO_MANY_ARGUMENTS}"#),
-        r#""template":"SACM-XMI-014/unread-root","arguments":{"element":"sacm:TerminologyPackageInterface","row":"SACM23-TERM-007"}"#,
-        "the template \"SACM-XMI-014/unread-root\" is a refusal's, not a diagnostic's",
+        r#""template":"SACM-XMI-014/xmi-root","arguments":{"element":"xmi:Extension","row":"SACM23-XMI-019"}"#,
+        "the template \"SACM-XMI-014/xmi-root\" is a refusal's, not a diagnostic's",
     );
 }
 
@@ -524,13 +524,15 @@ fn lib_api_018_arguments_that_do_not_match_the_template_are_refused() {
 
 #[test]
 fn lib_api_018_a_refusal_record_naming_a_diagnostic_template_is_refused() {
-    let unsupported = r#"{"type":"Unsupported","code":"SACM-XMI-014","template":"SACM-XMI-014/unread-root","arguments":{"element":"sacm:TerminologyPackageInterface","row":"SACM23-TERM-007"},"location":{"line":1,"column":1},"reason":"the root element \"sacm:TerminologyPackageInterface\" is not read in this release (a limit of this version; SACM23-TERM-007 reads it)"}"#;
+    // An unread root and its kept form until slice 0067 read the last
+    // package kinds (ADR 0035 amendment 1).
+    let unsupported = r#"{"type":"Unsupported","code":"SACM-XMI-014","template":"SACM-XMI-014/nested-xmi-element","arguments":{"element":"xmi:Documentation","container":"xmi:XMI","row":"SACM23-XMI-019"},"location":{"line":1,"column":1},"reason":"the XMI element \"xmi:Documentation\" in \"xmi:XMI\" is not read in this release (a limit of this version; SACM23-XMI-019 reads it)"}"#;
     assert_refused::<ReadError>(
         "an Unsupported record naming a kept form",
         unsupported,
-        r#""template":"SACM-XMI-014/unread-root","arguments":{"element":"sacm:TerminologyPackageInterface","row":"SACM23-TERM-007"}"#,
-        r#""template":"SACM-XMI-014/unread-root-kept","arguments":{"element":"sacm:TerminologyPackageInterface","row":"SACM23-TERM-007"}"#,
-        "the template \"SACM-XMI-014/unread-root-kept\" is a diagnostic's, not a refusal's",
+        r#""template":"SACM-XMI-014/nested-xmi-element","arguments":{"element":"xmi:Documentation","container":"xmi:XMI","row":"SACM23-XMI-019"}"#,
+        r#""template":"SACM-XMI-014/nested-xmi-element-kept-by-document","arguments":{"element":"xmi:Documentation","container":"xmi:XMI","row":"SACM23-XMI-019"}"#,
+        "the template \"SACM-XMI-014/nested-xmi-element-kept-by-document\" is a diagnostic's, not a refusal's",
     );
     let legacy = r#"{"type":"LegacyShape","code":"SACM-XMI-012","template":"SACM-XMI-012/name-attribute","arguments":{"class":"ArgumentPackage","id":"arguments"},"element":"arguments","shape":"the name of the ArgumentPackage \"arguments\" is given as the attribute \"name\"","location":{"line":1,"column":142}}"#;
     assert_refused::<ReadError>(

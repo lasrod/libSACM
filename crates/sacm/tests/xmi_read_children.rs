@@ -2,20 +2,12 @@
 //! formal/23-05-08 §9.2, §11.3, §11.4; ptc/22-03-13; XMI 2.5.1 §7.6.3,
 //! §7.8.6; ADR 0010 D2, ADR 0015, ADR 0016 D5 and D6, ADR 0017).
 //!
-//! In this release the readable children are an AssuranceCasePackage in
-//! `assuranceCasePackage`, an ArgumentPackage in `argumentPackage` and in
-//! `argumentElement`, and a Claim, an `ArgumentReasoning`, an
-//! `ArtifactReference`, an `ArgumentGroup` and the five asserted relationships in
-//! `argumentElement` (SACM23-ARG-005, -006 and -008 to -013 test those); an
-//! ArtifactPackage in `artifactPackage` and in `artifactElement`, holding in
-//! `artifactElement` every kind read in `argumentElement`, the
-//! AssuranceCasePackage, a Property, a Technique, a Participant and an
-//! `ArtifactGroup`, and a Property in `property` of the three assets read
-//! (SACM23-ART-001, -003, -008, -009 and -011 test those); and on each of them
-//! the four `UtilityElement`s in their roles (SACM23-BASE-004 and
-//! SACM23-BASE-005 test those). Conforming content this version does not
-//! read yet is refused as `ReadError::Unsupported` at an exact location, and
-//! no document is returned; content that does not conform is kept as
+//! Every child kind a role of the parent's class admits is read in that role
+//! (LIB-API-008): since slice 0067 reads the last interface and binding kinds
+//! (SACM23-AC-002, -003, SACM23-TERM-007, -008), no conforming kind is refused
+//! in its role. XMI-namespace content this version does not read yet is
+//! refused as `ReadError::Unsupported` at an exact location, and no document
+//! is returned; content that does not conform is kept as
 //! preserved content of its element, with one SACM-XMI-003 at that location
 //! (ADR 0033); an empty or a duplicate `xmi:id` is refused with its own coded
 //! variant, `InvalidId` or `DuplicateId` (ADR 0015 amendment 2).
@@ -563,112 +555,6 @@ fn expected_role(parent: ElementKind, child: ElementKind) -> Option<&'static str
         admitting.len()
     );
     admitting.first().map(|(role, _)| *role)
-}
-
-/// Whether this release reads a `child` under `role` of a `parent`: the
-/// package children, and the four `UtilityElement`s in their own roles on
-/// every `ModelElement` (SACM23-BASE-004, SACM23-BASE-005). An
-/// `ArgumentReasoning`, an `ArtifactReference`, an `ArgumentGroup` and the five
-/// asserted relationships are read in `argumentElement` (SACM23-ARG-005, -006,
-/// -008 to -013). An ArtifactPackage is read in `artifactPackage`, and holds
-/// in `artifactElement` every kind read in `argumentElement`, the
-/// AssuranceCasePackage, the five artifact kinds of slice 0052, the four of
-/// slice 0055, the `ArtifactAssetRelationship` of slice 0057 and the five
-/// Terminology kinds of slice 0062; a Property is read in `property` of the
-/// eight assets read (SACM23-ART-001, -003 to -011; ADR 0034 and its
-/// amendments 1 and 2). A TerminologyPackage is read in `terminologyPackage`
-/// (SACM23-TERM-001; ADR 0034 amendment 3). The Argumentation and Artifact
-/// interfaces and bindings are read wherever their package is (SACM23-ARG-014,
-/// -015, SACM23-ART-012, -013; ADR 0039).
-fn is_readable(parent: ElementKind, role: &str, child: ElementKind) -> bool {
-    use ElementKind as K;
-    let utility = matches!(
-        (role, child),
-        ("description", K::Description)
-            | ("implementationConstraint", K::ImplementationConstraint)
-            | ("note", K::Note)
-            | ("taggedValue", K::TaggedValue)
-    );
-    (utility && parent.is_a(AbstractClass::ModelElement))
-        || matches!(
-            (parent, role, child),
-            (
-                K::AssuranceCasePackage,
-                "assuranceCasePackage",
-                K::AssuranceCasePackage
-            ) | (
-                K::AssuranceCasePackage,
-                "argumentPackage",
-                K::ArgumentPackage | K::ArgumentPackageInterface | K::ArgumentPackageBinding
-            ) | (
-                K::ArgumentPackage,
-                "argumentElement",
-                K::ArgumentPackage
-                    | K::ArgumentPackageInterface
-                    | K::ArgumentPackageBinding
-                    | K::Claim
-                    | K::ArgumentReasoning
-                    | K::ArtifactReference
-                    | K::ArgumentGroup
-                    | K::AssertedInference
-                    | K::AssertedEvidence
-                    | K::AssertedContext
-                    | K::AssertedArtifactSupport
-                    | K::AssertedArtifactContext
-            ) | (
-                K::AssuranceCasePackage,
-                "artifactPackage",
-                K::ArtifactPackage | K::ArtifactPackageInterface | K::ArtifactPackageBinding
-            ) | (
-                K::AssuranceCasePackage,
-                "terminologyPackage",
-                K::TerminologyPackage
-            ) | (
-                K::ArtifactPackage,
-                "artifactElement",
-                K::AssuranceCasePackage
-                    | K::ArgumentPackage
-                    | K::ArgumentPackageInterface
-                    | K::ArgumentPackageBinding
-                    | K::ArtifactPackageInterface
-                    | K::ArtifactPackageBinding
-                    | K::Claim
-                    | K::ArgumentReasoning
-                    | K::ArtifactReference
-                    | K::ArgumentGroup
-                    | K::AssertedInference
-                    | K::AssertedEvidence
-                    | K::AssertedContext
-                    | K::AssertedArtifactSupport
-                    | K::AssertedArtifactContext
-                    | K::ArtifactPackage
-                    | K::Property
-                    | K::Technique
-                    | K::Participant
-                    | K::ArtifactGroup
-                    | K::Artifact
-                    | K::Resource
-                    | K::Activity
-                    | K::Event
-                    | K::ArtifactAssetRelationship
-                    | K::TerminologyPackage
-                    | K::Category
-                    | K::Term
-                    | K::Expression
-                    | K::TerminologyGroup
-            ) | (
-                K::Property
-                    | K::Technique
-                    | K::Participant
-                    | K::Artifact
-                    | K::Resource
-                    | K::Activity
-                    | K::Event
-                    | K::ArtifactAssetRelationship,
-                "property",
-                K::Property
-            )
-        )
 }
 
 // --- Shapes ---------------------------------------------------------------
@@ -1314,35 +1200,63 @@ fn assert_role_spellings_are_read() {
 }
 
 #[test]
-fn sacm23_xmi_016_every_conforming_kind_outside_the_readable_set_is_unsupported_in_its_role() {
-    let mut cases = Vec::new();
+fn sacm23_xmi_016_every_kind_a_role_admits_reads_in_that_role() {
+    // Until slice 0067 the Terminology and AssuranceCase interfaces and
+    // bindings were refused in the roles that admit them; every admitted kind
+    // is read since (SACM23-AC-002, -003, SACM23-TERM-007, -008).
+    let mut failures = Vec::new();
+    let mut count = 0_usize;
     for (context, parent, wrap) in parent_contexts() {
+        // The parent is the last element of the context in pre-order.
+        let parent_id = read_ok(&wrap(""))
+            .elements()
+            .last()
+            .map(|element| element.id().as_str().to_owned());
         for (role, declared) in roles_of(parent) {
             for &child in ElementKind::ALL {
-                if !declared.admits(child) || is_readable(parent, role, child) {
+                if !declared.admits(child) {
                     continue;
                 }
+                count += 1;
                 let type_attribute = if declared.types(child) {
                     format!(" xmi:type=\"sacm:{child}\"")
                 } else {
                     String::new()
                 };
-                cases.push(refused(
-                    format!("{child} in {role} of {context}"),
-                    wrap(&format!("{MARK}<{role}{type_attribute} xmi:id=\"x\"/>")),
-                ));
+                let input = wrap(&format!("<{role}{type_attribute} xmi:id=\"x\"/>"));
+                for mode in [Mode::Strict, Mode::Tolerant] {
+                    let what = format!("{child} in {role} of {context}, {mode:?} mode");
+                    match read_with(input.as_bytes(), ReadOptions::default().with_mode(mode)) {
+                        Ok(output) => {
+                            let x = output.document().get("x");
+                            let found = (
+                                x.map(SacmElement::kind),
+                                x.and_then(SacmElement::parent)
+                                    .map(|parent| parent.id().as_str().to_owned()),
+                            );
+                            if !output.diagnostics().is_empty()
+                                || found != (Some(child), parent_id.clone())
+                            {
+                                failures.push(format!(
+                                    "{what}: read as {found:?}, not ({child}, {parent_id:?}), \
+                                     with {:?}",
+                                    output.diagnostics()
+                                ));
+                            }
+                        }
+                        Err(error) => failures.push(format!("{what}: refused: {error}")),
+                    }
+                }
             }
         }
     }
-    // The 4 package kinds not read yet (the Terminology and AssuranceCase
-    // interfaces and bindings) in the two AssuranceCasePackage contexts, and
-    // the same 4 ArtifactElement kinds in the three ArtifactPackage contexts
-    // (ADR 0034 and its amendments 1 to 3). Every ArgumentationElement kind
-    // is read since slice 0066 (ADR 0039), so the ArgumentPackage contexts
-    // have no case. The utility roles are read on every context
-    // (SACM23-BASE-004, SACM23-BASE-005), so none of them is a case.
-    assert_eq!(cases.len(), 2 * 4 + 3 * 4, "{ROW}: setup: the case count");
-    assert_all_unsupported_at_mark("unreadable kind", &cases);
+    assert!(count > 0, "{ROW}: setup: no admitted kind");
+    assert!(
+        failures.is_empty(),
+        "{ROW}: {} of {count} admitted kinds are not read in their role:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
 }
 
 #[test]

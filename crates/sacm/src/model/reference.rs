@@ -1,10 +1,11 @@
 //! The Boolean flags and the non-containment reference ends of the classes
-//! the model holds (formal/23-05-08 §8.2, §11.2, §11.9, §11.10, §11.12,
-//! §11.13, §12.3, §12.14, §10.3, §10.8 to §10.11; SACM23-BASE-007,
-//! SACM23-BASE-008, SACM23-XMI-005, SACM23-ARG-004, SACM23-ARG-005,
-//! SACM23-ARG-006, SACM23-ARG-007, SACM23-ARG-013, SACM23-ART-010,
-//! SACM23-ART-011, SACM23-TERM-002 to SACM23-TERM-006; ADR 0026, ADR 0027,
-//! ADR 0028, ADR 0034 and its amendments).
+//! the model holds (formal/23-05-08 §8.2, §9.2 to §9.4, §10.3 to §10.6,
+//! §10.8 to §10.11, §11.2, §11.4 to §11.6, §11.9, §11.10, §11.12, §11.13,
+//! §12.2 to §12.5, §12.14; SACM23-BASE-007, SACM23-BASE-008, SACM23-XMI-005,
+//! SACM23-ARG-004 to SACM23-ARG-007, SACM23-ARG-013 to SACM23-ARG-015,
+//! SACM23-ART-010 to SACM23-ART-013, SACM23-TERM-002 to SACM23-TERM-008,
+//! SACM23-AC-002, SACM23-AC-003; ADR 0026, ADR 0027, ADR 0028, ADR 0034 and
+//! its amendments, ADR 0039).
 //!
 //! [`Flag`] and [`ReferenceEnd`] are public, so that an edit can name the
 //! flag or end it sets (ADR 0029), and so are their readers for a generic
@@ -30,7 +31,7 @@ use super::{AbstractClass, DeclaredType, ElementKind, MetamodelPackage};
 /// end, superclass first: the order in which `xmi::write` writes each one's
 /// features (XMI 2.5.1 Annex B.5.2; ADR 0027, ADR 0028). Within a class it
 /// writes the flags, then, on `Assertion`, the declaration, then the ends.
-pub(crate) const OWNERS: [DeclaredType; 18] = [
+pub(crate) const OWNERS: [DeclaredType; 24] = [
     DeclaredType::Abstract(AbstractClass::SACMElement),
     DeclaredType::Abstract(AbstractClass::Assertion),
     DeclaredType::Abstract(AbstractClass::AssertedRelationship),
@@ -52,6 +53,12 @@ pub(crate) const OWNERS: [DeclaredType; 18] = [
     DeclaredType::Kind(ElementKind::ArtifactPackage),
     DeclaredType::Kind(ElementKind::ArtifactPackageInterface),
     DeclaredType::Kind(ElementKind::ArtifactPackageBinding),
+    DeclaredType::Kind(ElementKind::AssuranceCasePackage),
+    DeclaredType::Kind(ElementKind::AssuranceCasePackageInterface),
+    DeclaredType::Kind(ElementKind::AssuranceCasePackageBinding),
+    DeclaredType::Kind(ElementKind::TerminologyPackage),
+    DeclaredType::Kind(ElementKind::TerminologyPackageInterface),
+    DeclaredType::Kind(ElementKind::TerminologyPackageBinding),
 ];
 
 /// A Boolean property of an element, `false` by default: the flag a
@@ -263,17 +270,20 @@ pub enum ReferenceEnd {
     #[doc(alias = "terminologyElement")]
     #[cfg_attr(feature = "serde", serde(rename = "terminologyElement"))]
     TerminologyGroupMember,
-    /// `interface:<package>Interface[0..*]` of an `ArgumentPackage` or an `ArtifactPackage`,
-    /// their interfaces and bindings included (ptc/22-03-13; the text of §11.4 and §12.2 omits it):
-    /// the interfaces the package declares. Its targets are the holder's family's interface class.
+    /// `interface:<package>Interface[0..*]` of every package kind, interfaces and bindings included:
+    /// an `AssuranceCasePackage` (§9.2), a `TerminologyPackage`, an `ArgumentPackage` or an
+    /// `ArtifactPackage` (ptc/22-03-13; the text of §10.4, §11.4 and §12.2 omits it): the
+    /// interfaces the package declares. Its targets are the holder's family's interface class.
     /// Held as written, never synced with `implements` (ADR 0039).
     Interface,
-    /// `implements:<package>[1]` of an `ArgumentPackageInterface` (§11.6) or an
+    /// `implements:<package>[1]` of a package interface: an `AssuranceCasePackageInterface`
+    /// (§9.3), a `TerminologyPackageInterface` (§10.5), an `ArgumentPackageInterface` (§11.6) or an
     /// `ArtifactPackageInterface` (§12.5): the package the interface declares.
     Implements,
-    /// `participantPackage:<package>[2..*]` of an `ArgumentPackageBinding` (§11.5) or an
-    /// `ArtifactPackageBinding` (§12.4): the packages the binding binds. Its lower bound counts
-    /// distinct ids.
+    /// `participantPackage:<package>[2..*]` of a package binding: an `AssuranceCasePackageBinding`
+    /// (§9.4), a `TerminologyPackageBinding` (ptc/22-03-13; §10.6 has no Associations block), an
+    /// `ArgumentPackageBinding` (§11.5) or an `ArtifactPackageBinding` (§12.4): the packages the
+    /// binding binds. Its lower bound counts distinct ids.
     #[doc(alias = "participantPackage")]
     ParticipantPackage,
     /// The `expression:Terminology::ExpressionElement[1]` of each `ExpressionLangString`
@@ -390,16 +400,23 @@ impl ReferenceEnd {
     /// The clause that defines the end on an element of `kind`, the clause
     /// of the class that declares it there: the [`clause`](Self::clause), but
     /// §10.8 for the `category` of a `Category`, whose class declares it
-    /// apart from an `ExpressionElement`'s (§10.9), and the Artifact clauses
-    /// of an Artifact kind's `interface` (§12.2), `implements` (§12.5) and
-    /// `participantPackage` (§12.4).
+    /// apart from an `ExpressionElement`'s (§10.9), and the clauses of the
+    /// Assurance Case, Terminology and Artifact families for their kinds'
+    /// `interface` (§9.2, §10.4, §12.2), `implements` (§9.3, §10.5, §12.5)
+    /// and `participantPackage` (§9.4, §10.6, §12.4).
     pub(crate) const fn clause_on(self, kind: ElementKind) -> &'static str {
-        let artifact = matches!(kind.package(), MetamodelPackage::Artifact);
-        match self {
-            Self::Category if matches!(kind, ElementKind::Category) => "10.8",
-            Self::Interface if artifact => "12.2",
-            Self::Implements if artifact => "12.5",
-            Self::ParticipantPackage if artifact => "12.4",
+        use MetamodelPackage as P;
+        match (self, kind.package()) {
+            (Self::Category, _) if matches!(kind, ElementKind::Category) => "10.8",
+            (Self::Interface, P::AssuranceCase) => "9.2",
+            (Self::Implements, P::AssuranceCase) => "9.3",
+            (Self::ParticipantPackage, P::AssuranceCase) => "9.4",
+            (Self::Interface, P::Terminology) => "10.4",
+            (Self::Implements, P::Terminology) => "10.5",
+            (Self::ParticipantPackage, P::Terminology) => "10.6",
+            (Self::Interface, P::Artifact) => "12.2",
+            (Self::Implements, P::Artifact) => "12.5",
+            (Self::ParticipantPackage, P::Artifact) => "12.4",
             _ => self.clause(),
         }
     }
@@ -479,8 +496,9 @@ impl ReferenceEnd {
     /// assert!(!ReferenceEnd::Source.applies_to(ElementKind::Claim));
     /// // An ArtifactGroup's members are its artifactElement, not its argumentElement.
     /// assert!(!ReferenceEnd::GroupMember.applies_to(ElementKind::ArtifactGroup));
-    /// // Both families declare interface, typed to the family.
+    /// // Every package family declares interface, typed to the family.
     /// assert!(ReferenceEnd::Interface.applies_to(ElementKind::ArtifactPackageBinding));
+    /// assert!(ReferenceEnd::Implements.applies_to(ElementKind::TerminologyPackageInterface));
     /// ```
     #[must_use]
     pub const fn applies_to(self, kind: ElementKind) -> bool {
@@ -496,8 +514,9 @@ impl ReferenceEnd {
     /// `target:ArgumentAsset[1]`, §12.14 (p. 50) gives an
     /// `ArtifactAssetRelationship` `source:ArtifactAsset[1..*]` and
     /// `target:ArtifactAsset[1..*]`, and the other ends are `[0..1]` or
-    /// `[0..*]`. An interface's `implements` is `[1]` (§11.6, §12.5) and a
-    /// binding's `participantPackage` `[2..*]` (§11.5, §12.4); a lower bound
+    /// `[0..*]`. An interface's `implements` is `[1]` (§9.3, §10.5, §11.6,
+    /// §12.5) and a binding's `participantPackage` `[2..*]` (§9.4, §11.5,
+    /// §12.4; ptc/22-03-13 for a `TerminologyPackageBinding`); a lower bound
     /// counts distinct ids (ADR 0039 D3).
     /// They are the bounds [`SetReferences`](crate::edit::SetReferences),
     /// [`AddReference`](crate::edit::AddReference) and
@@ -519,6 +538,7 @@ impl ReferenceEnd {
     /// assert_eq!(ReferenceEnd::Target.bounds(link), None);
     /// assert_eq!(ReferenceEnd::ParticipantPackage.bounds(ElementKind::ArtifactPackageBinding), Some((2, None)));
     /// assert_eq!(ReferenceEnd::Implements.bounds(ElementKind::ArgumentPackage), None);
+    /// assert_eq!(ReferenceEnd::ParticipantPackage.bounds(ElementKind::AssuranceCasePackageBinding), Some((2, None)));
     /// ```
     #[must_use]
     pub const fn bounds(self, kind: ElementKind) -> Option<(usize, Option<usize>)> {
@@ -555,8 +575,8 @@ impl ReferenceEnd {
     /// The classes that declare the end, each with the declared type of its
     /// targets there, in the order [`owner_on`](Self::owner_on) tries them.
     /// Most ends have one declaring class; `interface`, `implements` and
-    /// `participantPackage` are declared by an Argumentation and an Artifact
-    /// class, each typed to its own family (ADR 0039 D1).
+    /// `participantPackage` are declared by one class of each package family,
+    /// each typed to its own family (ADR 0039 D1).
     pub(crate) const fn declarations(self) -> &'static [(DeclaredType, DeclaredType)] {
         use AbstractClass as A;
         use DeclaredType::{Abstract, Kind};
@@ -594,14 +614,38 @@ impl ReferenceEnd {
             Self::Interface => &[
                 (Kind(K::ArgumentPackage), Kind(K::ArgumentPackageInterface)),
                 (Kind(K::ArtifactPackage), Kind(K::ArtifactPackageInterface)),
+                (
+                    Kind(K::AssuranceCasePackage),
+                    Kind(K::AssuranceCasePackageInterface),
+                ),
+                (
+                    Kind(K::TerminologyPackage),
+                    Kind(K::TerminologyPackageInterface),
+                ),
             ],
             Self::Implements => &[
                 (Kind(K::ArgumentPackageInterface), Kind(K::ArgumentPackage)),
                 (Kind(K::ArtifactPackageInterface), Kind(K::ArtifactPackage)),
+                (
+                    Kind(K::AssuranceCasePackageInterface),
+                    Kind(K::AssuranceCasePackage),
+                ),
+                (
+                    Kind(K::TerminologyPackageInterface),
+                    Kind(K::TerminologyPackage),
+                ),
             ],
             Self::ParticipantPackage => &[
                 (Kind(K::ArgumentPackageBinding), Kind(K::ArgumentPackage)),
                 (Kind(K::ArtifactPackageBinding), Kind(K::ArtifactPackage)),
+                (
+                    Kind(K::AssuranceCasePackageBinding),
+                    Kind(K::AssuranceCasePackage),
+                ),
+                (
+                    Kind(K::TerminologyPackageBinding),
+                    Kind(K::TerminologyPackage),
+                ),
             ],
         }
     }
@@ -865,13 +909,15 @@ mod tests {
                     ElementKind::ArgumentPackageInterface,
                     ElementKind::ArtifactPackageInterface,
                     ElementKind::ArtifactPackageBinding,
+                    ElementKind::AssuranceCasePackageBinding,
+                    ElementKind::TerminologyPackage,
                 ]
                 .map(|kind| end.clause_on(kind))
             }),
             [
-                ["11.4", "12.2", "12.2"],
-                ["11.6", "12.5", "12.5"],
-                ["11.5", "12.4", "12.4"]
+                ["11.4", "12.2", "12.2", "9.2", "10.4"],
+                ["11.6", "12.5", "12.5", "9.3", "10.5"],
+                ["11.5", "12.4", "12.4", "9.4", "10.6"]
             ]
         );
         // Every owner is in OWNERS, so the writer writes every feature.
@@ -998,7 +1044,13 @@ mod tests {
                 "ArgumentPackageBinding",
                 "ArtifactPackage",
                 "ArtifactPackageInterface",
-                "ArtifactPackageBinding"
+                "ArtifactPackageBinding",
+                "AssuranceCasePackage",
+                "AssuranceCasePackageInterface",
+                "AssuranceCasePackageBinding",
+                "TerminologyPackage",
+                "TerminologyPackageInterface",
+                "TerminologyPackageBinding"
             ]
         );
     }
@@ -1016,7 +1068,8 @@ mod tests {
                 interface.target_on(K::ArgumentPackageBinding),
                 interface.owner_on(K::ArtifactPackageInterface),
                 interface.target_on(K::ArtifactPackageInterface),
-                interface.owner_on(K::TerminologyPackage),
+                interface.owner_on(K::TerminologyPackageBinding),
+                interface.target_on(K::AssuranceCasePackageInterface),
                 interface.target_on(K::Claim),
             ),
             (
@@ -1024,7 +1077,8 @@ mod tests {
                 Some(Kind(K::ArgumentPackageInterface)),
                 Some(Kind(K::ArtifactPackage)),
                 Some(Kind(K::ArtifactPackageInterface)),
-                None,
+                Some(Kind(K::TerminologyPackage)),
+                Some(Kind(K::AssuranceCasePackageInterface)),
                 None
             )
         );

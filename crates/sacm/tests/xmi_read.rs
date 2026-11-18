@@ -24,8 +24,10 @@
 //! Since SACM23-XMI-001 (slice 0021), AssuranceCasePackage and ArgumentPackage
 //! roots are read, and other roots are refused as SACM-XMI-001. The tests here
 //! that need a refusal at a known place therefore use input that is still
-//! `Unsupported` there: a `TerminologyPackageInterface` root, a package name outside the
-//! SACM namespace, or a readable root with a child it cannot read. The roots
+//! `Unsupported` there: an `xmi:Extension` document element (a
+//! `TerminologyPackageInterface` root until slice 0067 read it), a package
+//! name outside the SACM namespace, or a readable root with a child it cannot
+//! read. The roots
 //! themselves, and the SACM-XMI-001 locations, are tested in `xmi_roots.rs`.
 
 use std::error::Error;
@@ -84,15 +86,15 @@ const SACM_ROOT_OPEN: &str = concat!(
 /// The SACM root end tag that closes [`SACM_ROOT_OPEN`].
 const SACM_ROOT_CLOSE: &str = "</sacm:AssuranceCasePackage>";
 
-/// A root the reader recognises but cannot read yet (ADR 0016 D5): it is
-/// refused as `Unsupported` at its start tag. A TerminologyPackage is read
-/// since slice 0062 (SACM23-TERM-001); its interface kind is not
+/// A document element the reader recognises but cannot read yet: an
+/// `xmi:Extension` (SACM23-XMI-019), refused as `Unsupported` at its start
+/// tag in both modes. Until slice 0067 this was a
+/// `TerminologyPackageInterface` root, which that slice reads
 /// (SACM23-TERM-007).
-const TERMINOLOGY_ROOT: &str = concat!(
-    "<sacm:TerminologyPackageInterface",
+const XMI_ROOT: &str = concat!(
+    "<xmi:Extension",
     " xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\"",
-    " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"",
-    " xmi:id=\"terms_1\"/>",
+    " xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"/>",
 );
 
 // --- Helpers --------------------------------------------------------------
@@ -937,7 +939,7 @@ fn lib_sec_002_unsupported_root_location_counts_lf_crlf_and_lone_cr_as_one_line_
         ("<!--p-->\r\n\r  ", 3, 3),
     ];
     for (prolog, line, column) in roots {
-        let input = format!("{prolog}{TERMINOLOGY_ROOT}");
+        let input = format!("{prolog}{XMI_ROOT}");
         let error = assert_unsupported(row, input.as_bytes());
         assert_eq!(
             error.location(),
@@ -957,10 +959,9 @@ fn lib_sec_002_unsupported_root_location_counts_lf_crlf_and_lone_cr_as_one_line_
     for (before, line, column) in children {
         let input = sacm_document(
             "",
-            &format!(
-                "{before}<terminologyPackage xmi:type=\"sacm:TerminologyPackageInterface\" \
-                 xmi:id=\"f\"/>"
-            ),
+            // An xmi:Extension: a TerminologyPackageInterface until slice
+            // 0067 read it (SACM23-TERM-007).
+            &format!("{before}<xmi:Extension/>"),
         );
         let error = assert_unsupported(row, &input);
         assert_eq!(
@@ -982,7 +983,7 @@ fn lib_sec_002_leading_utf8_bom_takes_no_column() {
         ("\u{FEFF}<!--p-->", 1, 9),
         ("\u{FEFF}<?xml version=\"1.0\"?>\n", 2, 1),
     ] {
-        let input = format!("{prolog}{TERMINOLOGY_ROOT}");
+        let input = format!("{prolog}{XMI_ROOT}");
         assert!(
             input.as_bytes().starts_with(b"\xEF\xBB\xBF"),
             "{row}: the test input does not start with a UTF-8 BOM"
@@ -1250,25 +1251,24 @@ fn lib_api_009_well_formed_sacm_document_is_unsupported_at_the_construct_it_cann
         Some(loc(row, 4, 9)),
         "{row}: the refusal is not located at the `xmi:uuid` of the name"
     );
-    // An AssuranceCasePackage root with a `terminologyPackage` child typed
-    // `sacm:TerminologyPackageInterface`, which no verified row reads:
-    // `Unsupported`, with no code and no document, at `<terminologyPackage`
-    // (line 4, column 3).
+    // An AssuranceCasePackage root with an `xmi:Extension` child, which no
+    // verified row reads (a `terminologyPackage` child typed
+    // `sacm:TerminologyPackageInterface` until slice 0067 read it):
+    // `Unsupported`, with no document, at `<xmi:Extension` (line 4, column 3).
     let unread_child = sacm_document(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- LIB-API-009 -->\n",
-        "\n  <terminologyPackage xmi:type=\"sacm:TerminologyPackageInterface\" xmi:id=\"f\"/>\n",
+        "\n  <xmi:Extension/>\n",
     );
     let error = assert_unsupported(row, &unread_child);
     assert_eq!(
         error.location(),
         Some(loc(row, 4, 3)),
-        "{row}: the refusal is not located at the start tag of the `terminologyPackage` child"
+        "{row}: the refusal is not located at the start tag of the `xmi:Extension` child"
     );
-    // A root that is recognised but not read yet: refused at its start tag,
-    // on line 3.
-    let terminology_root = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- LIB-API-009 -->\n{TERMINOLOGY_ROOT}"
-    );
+    // A document element that is recognised but not read yet: refused at its
+    // start tag, on line 3.
+    let terminology_root =
+        format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- LIB-API-009 -->\n{XMI_ROOT}");
     let error = assert_unsupported(row, terminology_root.as_bytes());
     assert_eq!(
         error.location(),
@@ -1277,7 +1277,7 @@ fn lib_api_009_well_formed_sacm_document_is_unsupported_at_the_construct_it_cann
     );
     // `<?xml version="1.0"?>` is 21 characters and `<!-- é -->` 10: the
     // column counts characters, not bytes.
-    let after_comment = format!("<?xml version=\"1.0\"?><!-- é -->{TERMINOLOGY_ROOT}");
+    let after_comment = format!("<?xml version=\"1.0\"?><!-- é -->{XMI_ROOT}");
     let error = assert_unsupported(row, after_comment.as_bytes());
     assert_eq!(
         error.location(),
@@ -1507,7 +1507,7 @@ fn lib_api_009_utf8_and_ascii_declarations_in_any_case_are_refused_at_the_root_n
     for name in names {
         // The root start tag of a root that is not read yet is at line 2,
         // column 1; the encoding name at line 1, column 31.
-        let input = format!("<?xml version=\"1.0\" encoding=\"{name}\"?>\n{TERMINOLOGY_ROOT}");
+        let input = format!("<?xml version=\"1.0\" encoding=\"{name}\"?>\n{XMI_ROOT}");
         let error = assert_unsupported(row, input.as_bytes());
         assert_eq!(
             error.location(),
@@ -1689,10 +1689,10 @@ fn lib_api_009_unsupported_display_is_one_located_line_quoting_names() {
     assert_quoted_wherever_named(row, &text, "zqxroot");
 
     // A root that is recognised but not read yet.
-    let terminology = format!("<?xml version=\"1.0\"?>\n{TERMINOLOGY_ROOT}");
-    let error = assert_unsupported(row, terminology.as_bytes());
+    let xmi_root = format!("<?xml version=\"1.0\"?>\n{XMI_ROOT}");
+    let error = assert_unsupported(row, xmi_root.as_bytes());
     display_reason(row, &error, UNSUPPORTED_LEAD);
-    assert_quoted_wherever_named(row, &error.to_string(), "TerminologyPackageInterface");
+    assert_quoted_wherever_named(row, &error.to_string(), "xmi:Extension");
 
     // A child and an attribute that a readable root cannot read yet: XMI
     // metadata (SACM23-XMI-019) under a prefix that only they use.

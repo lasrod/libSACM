@@ -134,10 +134,11 @@ fn read_samples() -> Vec<ReadError> {
              <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"\"/>\n</sacm:ArgumentPackage>"
         ),
         // Unsupported: SACM-XMI-014, -007, -003, -002, -015, SACM-XML-002.
+        // A TerminologyPackageInterface in the case until slice 0067 read it
+        // (SACM23-TERM-007).
         format!(
             "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\">\n  <name content=\"case\"/>\n  \
-             <terminologyPackage xmi:type=\"sacm:TerminologyPackageInterface\" xmi:id=\"ti\"/>\n\
-             </sacm:AssuranceCasePackage>"
+             <xmi:Extension/>\n</sacm:AssuranceCasePackage>"
         ),
         format!(
             "<sacm:ArgumentPackage{NS} xmi:id=\"arguments\">\n  \
@@ -303,7 +304,9 @@ const NO_PACKAGE: &str = r#"{"type":"NoPackage","code":"SACM-XMI-001","template"
 
 const DUPLICATE_ID: &str = r#"{"type":"DuplicateId","code":"SACM-ID-001","template":"SACM-ID-001/duplicate-id","arguments":{"id":"c1","count":2},"id":"c1","locations":[{"line":2,"column":3},{"line":3,"column":3}]}"#;
 
-const UNSUPPORTED: &str = r#"{"type":"Unsupported","code":"SACM-XMI-014","template":"SACM-XMI-014/unread-root","arguments":{"element":"sacm:TerminologyPackageInterface","row":"SACM23-TERM-007"},"location":{"line":1,"column":1},"reason":"the root element \"sacm:TerminologyPackageInterface\" is not read in this release (a limit of this version; SACM23-TERM-007 reads it)"}"#;
+/// An `xmi:Extension` document element (a `TerminologyPackageInterface` root
+/// until slice 0067 read it, SACM23-TERM-007).
+const UNSUPPORTED: &str = r#"{"type":"Unsupported","code":"SACM-XMI-014","template":"SACM-XMI-014/xmi-root","arguments":{"element":"xmi:Extension","row":"SACM23-XMI-019"},"location":{"line":1,"column":1},"reason":"the XMI element \"xmi:Extension\" is not read as a root in this release (a limit of this version; SACM23-XMI-019 reads it)"}"#;
 
 const NO_ROOT: &str = r#"{"type":"NoRoot","code":"SACM-XMI-001","template":"SACM-XMI-001/no-root-to-write","arguments":{}}"#;
 
@@ -505,7 +508,7 @@ fn lib_api_017_arguments_missing_extra_out_of_order_or_of_the_wrong_kind_are_ref
     assert_refused::<ReadError>(
         "an Unsupported template without its row",
         UNSUPPORTED,
-        r#","row":"SACM23-TERM-007""#,
+        r#","row":"SACM23-XMI-019""#,
         "",
     );
     assert_refused::<WriteError>(
@@ -555,8 +558,8 @@ fn lib_api_017_a_record_s_display_renders_its_template_not_its_reason() {
         (
             "Unsupported",
             UNSUPPORTED,
-            r#""reason":"the root element \"sacm:TerminologyPackageInterface\" is not read in this release (a limit of this version; SACM23-TERM-007 reads it)""#,
-            "is not read in this release (a limit of this version; SACM23-TERM-007 reads it)",
+            r#""reason":"the XMI element \"xmi:Extension\" is not read as a root in this release (a limit of this version; SACM23-XMI-019 reads it)""#,
+            "is not read as a root in this release (a limit of this version; SACM23-XMI-019 reads it)",
         ),
     ] {
         let other = valid.replacen(reason, r#""reason":"other""#, 1);

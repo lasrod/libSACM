@@ -27,7 +27,6 @@
 use super::ReadError;
 use super::input::locate;
 use crate::diagnostic::{Argument, Code, Details, SourceLocation};
-use crate::model::ElementKind;
 
 /// Why input is refused rather than read or preserved.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -83,14 +82,6 @@ pub(super) enum Tolerant {
 /// What a refusal does not read: one entry per kind of input.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Unread {
-    /// A `TerminologyPackageInterface`.
-    TerminologyPackageInterface,
-    /// A `TerminologyPackageBinding`.
-    TerminologyPackageBinding,
-    /// An `AssuranceCasePackageInterface`.
-    AssuranceCasePackageInterface,
-    /// An `AssuranceCasePackageBinding`.
-    AssuranceCasePackageBinding,
     /// XMI document metadata: an XMI-namespace element, `xmi:uuid`,
     /// `xmi:label` and `xmi:idref` on an object (on a role element, its
     /// reference form), `href` on a root or on a `name` or other text, the
@@ -122,24 +113,9 @@ pub(super) enum Unread {
 }
 
 impl Unread {
-    /// The entry of a kind this version does not read, if `kind` is one.
-    pub(super) const fn kind(kind: ElementKind) -> Option<Self> {
-        Some(match kind {
-            ElementKind::TerminologyPackageInterface => Self::TerminologyPackageInterface,
-            ElementKind::TerminologyPackageBinding => Self::TerminologyPackageBinding,
-            ElementKind::AssuranceCasePackageInterface => Self::AssuranceCasePackageInterface,
-            ElementKind::AssuranceCasePackageBinding => Self::AssuranceCasePackageBinding,
-            _ => return None,
-        })
-    }
-
     /// Why it is refused, with the row that is to read it.
     pub(super) const fn refusal(self) -> Refusal {
         match self {
-            Self::TerminologyPackageInterface => Refusal::Interim("SACM23-TERM-007"),
-            Self::TerminologyPackageBinding => Refusal::Interim("SACM23-TERM-008"),
-            Self::AssuranceCasePackageInterface => Refusal::Interim("SACM23-AC-002"),
-            Self::AssuranceCasePackageBinding => Refusal::Interim("SACM23-AC-003"),
             Self::XmiMetadata => Refusal::Interim("SACM23-XMI-019"),
             Self::CrossDocumentHref => Refusal::Interim("SACM23-XMI-027"),
             Self::OtherSacmNamespace => Refusal::Tolerance("LIB-COMPAT-004"),
@@ -158,11 +134,7 @@ impl Unread {
     /// so the reader refuses it without asking.
     pub(super) const fn tolerant(self) -> Tolerant {
         match self {
-            Self::TerminologyPackageInterface
-            | Self::TerminologyPackageBinding
-            | Self::AssuranceCasePackageInterface
-            | Self::AssuranceCasePackageBinding
-            | Self::XmiMetadata => Tolerant::Kept(Code::XMI_UNREAD_CONTENT),
+            Self::XmiMetadata => Tolerant::Kept(Code::XMI_UNREAD_CONTENT),
             Self::CrossDocumentHref => Tolerant::Kept(Code::XMI_EXTERNAL_HREF),
             Self::WrapperContent | Self::UnwritablePrefix => {
                 Tolerant::Kept(Code::XMI_UNKNOWN_CONTENT)
@@ -183,11 +155,7 @@ impl Unread {
     /// ADR 0030 amendment 3).
     pub(super) const fn code(self) -> Code {
         match self {
-            Self::TerminologyPackageInterface
-            | Self::TerminologyPackageBinding
-            | Self::AssuranceCasePackageInterface
-            | Self::AssuranceCasePackageBinding
-            | Self::XmiMetadata => Code::XMI_UNREAD_CONTENT,
+            Self::XmiMetadata => Code::XMI_UNREAD_CONTENT,
             Self::CrossDocumentHref => Code::XMI_EXTERNAL_HREF,
             Self::WrapperContent | Self::UnwritablePrefix => Code::XMI_UNKNOWN_CONTENT,
             Self::OtherSacmNamespace => Code::XMI_NAMESPACE_NOT_PINNED,
@@ -827,15 +795,10 @@ mod record {
 mod tests {
     use super::{Refusal, Tolerant, Unread, label, unsupported_at};
     use crate::diagnostic::{Argument, Code, Details, template};
-    use crate::model::ElementKind;
     use crate::xmi::ReadError;
 
     /// Every entry, in declaration order.
-    const ALL: [Unread; 13] = [
-        Unread::TerminologyPackageInterface,
-        Unread::TerminologyPackageBinding,
-        Unread::AssuranceCasePackageInterface,
-        Unread::AssuranceCasePackageBinding,
+    const ALL: [Unread; 9] = [
         Unread::XmiMetadata,
         Unread::CrossDocumentHref,
         Unread::OtherSacmNamespace,
@@ -851,19 +814,15 @@ mod tests {
     /// entry added to [`Unread`] does not compile here until it is listed.
     const fn position(entry: Unread) -> usize {
         match entry {
-            Unread::TerminologyPackageInterface => 0,
-            Unread::TerminologyPackageBinding => 1,
-            Unread::AssuranceCasePackageInterface => 2,
-            Unread::AssuranceCasePackageBinding => 3,
-            Unread::XmiMetadata => 4,
-            Unread::CrossDocumentHref => 5,
-            Unread::OtherSacmNamespace => 6,
-            Unread::OtherXmiNamespace => 7,
-            Unread::Encoding => 8,
-            Unread::Capacity => 9,
-            Unread::Unheld => 10,
-            Unread::WrapperContent => 11,
-            Unread::UnwritablePrefix => 12,
+            Unread::XmiMetadata => 0,
+            Unread::CrossDocumentHref => 1,
+            Unread::OtherSacmNamespace => 2,
+            Unread::OtherXmiNamespace => 3,
+            Unread::Encoding => 4,
+            Unread::Capacity => 5,
+            Unread::Unheld => 6,
+            Unread::WrapperContent => 7,
+            Unread::UnwritablePrefix => 8,
         }
     }
 
@@ -1067,48 +1026,11 @@ mod tests {
     }
 
     #[test]
-    fn exactly_the_four_unread_kinds_have_an_entry() {
-        let unread: Vec<ElementKind> = ElementKind::ALL
-            .iter()
-            .copied()
-            .filter(|&kind| Unread::kind(kind).is_some())
-            .collect();
-        assert_eq!(unread.len(), 4);
-        let packages = unread.iter().filter(|kind| kind.is_package()).count();
-        assert_eq!((packages, unread.len() - packages), (4, 0));
-        assert_eq!(Unread::kind(ElementKind::ArtifactPackage), None);
-        // Read since slice 0066 (ADR 0039).
-        for read in [
-            ElementKind::ArgumentPackageInterface,
-            ElementKind::ArgumentPackageBinding,
-            ElementKind::ArtifactPackageInterface,
-            ElementKind::ArtifactPackageBinding,
-        ] {
-            assert_eq!(Unread::kind(read), None, "{read}");
-        }
-        // Read since slice 0055, 0057 and 0062 (ADR 0034 amendments 1 to 3).
-        for read in [
-            ElementKind::Artifact,
-            ElementKind::Resource,
-            ElementKind::Activity,
-            ElementKind::Event,
-            ElementKind::ArtifactAssetRelationship,
-            ElementKind::TerminologyPackage,
-            ElementKind::Category,
-            ElementKind::Term,
-            ElementKind::Expression,
-            ElementKind::TerminologyGroup,
-        ] {
-            assert_eq!(Unread::kind(read), None, "{read}");
-        }
+    fn no_entry_names_the_spelling_row() {
         // The spellings are read, not refused (SACM23-XMI-009): no entry
         // names that row.
         for entry in ALL {
             assert_ne!(entry.refusal().row(), Some("SACM23-XMI-009"), "{entry:?}");
-        }
-        for kind in unread {
-            let entry = Unread::kind(kind).map(Unread::refusal);
-            assert!(matches!(entry, Some(Refusal::Interim(_))), "{kind}");
         }
     }
 }

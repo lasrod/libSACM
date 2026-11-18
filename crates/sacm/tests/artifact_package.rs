@@ -671,9 +671,11 @@ fn sacm23_art_001_a_reference_form_artifact_element_under_a_package_is_a_proxy_n
 /// kinds, the nine argumentation kinds, the five artifact kinds of slice
 /// 0052, the four `ArtifactAsset` kinds of slice 0055, the
 /// `ArtifactAssetRelationship` of slice 0057, the five terminology kinds
-/// of slice 0062 and the four Argumentation and Artifact interface and
-/// binding kinds of slice 0066 (SACM23-ARG-014, -015, SACM23-ART-012, -013).
-const READABLE: [ElementKind; 30] = [
+/// of slice 0062, the four Argumentation and Artifact interface and binding
+/// kinds of slice 0066 (SACM23-ARG-014, -015, SACM23-ART-012, -013) and the
+/// four Terminology and Assurance Case ones of slice 0067 (SACM23-TERM-007,
+/// -008, SACM23-AC-002, -003): every `ArtifactElement` kind.
+const READABLE: [ElementKind; 34] = [
     ElementKind::AssuranceCasePackage,
     ElementKind::ArgumentPackage,
     ElementKind::Claim,
@@ -704,10 +706,26 @@ const READABLE: [ElementKind; 30] = [
     ElementKind::ArgumentPackageBinding,
     ElementKind::ArtifactPackageInterface,
     ElementKind::ArtifactPackageBinding,
+    ElementKind::TerminologyPackageInterface,
+    ElementKind::TerminologyPackageBinding,
+    ElementKind::AssuranceCasePackageInterface,
+    ElementKind::AssuranceCasePackageBinding,
 ];
 
 #[test]
 fn sacm23_art_001_every_readable_kind_is_read_typed_inside_an_artifact_package() {
+    // The setup covers every ArtifactElement kind: since slice 0067 none is
+    // left unread (this check was the unread-kinds test's until then).
+    let artifact_elements = ElementKind::ALL
+        .iter()
+        .filter(|kind| kind.is_a(sacm::model::AbstractClass::ArtifactElement))
+        .count();
+    assert_eq!(
+        READABLE.len(),
+        artifact_elements,
+        "{ROW}: setup: {} kinds listed, but {artifact_elements} are ArtifactElements",
+        READABLE.len()
+    );
     for (context, wrap, _) in contexts() {
         for kind in READABLE {
             let what = format!("the {kind} x in artifactElement of {context}");
@@ -769,44 +787,6 @@ fn sacm23_art_001_every_readable_kind_is_read_typed_inside_an_artifact_package()
         ),
         "{ROW}: {what}: not read"
     );
-}
-
-/// Every kind an `ArtifactPackage` can hold that this release does not read
-/// yet, with the row that reads it: the four Terminology and
-/// `AssuranceCase` interface and binding kinds (ADR 0034 and its amendments 1
-/// to 3; slice 0066 reads the other four, ADR 0039).
-const UNREAD: [(&str, &str); 4] = [
-    ("TerminologyPackageInterface", "SACM23-TERM-007"),
-    ("TerminologyPackageBinding", "SACM23-TERM-008"),
-    ("AssuranceCasePackageInterface", "SACM23-AC-002"),
-    ("AssuranceCasePackageBinding", "SACM23-AC-003"),
-];
-
-#[test]
-fn sacm23_art_001_each_kind_not_read_yet_is_unsupported_naming_its_row_at_its_start_tag() {
-    // The setup covers every ArtifactElement kind: what is readable plus what
-    // is not read yet.
-    let covered = READABLE.len() + UNREAD.len();
-    let artifact_elements = ElementKind::ALL
-        .iter()
-        .filter(|kind| kind.is_a(sacm::model::AbstractClass::ArtifactElement))
-        .count();
-    assert_eq!(
-        covered, artifact_elements,
-        "{ROW}: setup: {covered} kinds listed, but {artifact_elements} are ArtifactElements"
-    );
-    for (context, wrap, _) in contexts() {
-        for (class, row) in UNREAD {
-            let what = format!("the {class} x in artifactElement of {context}");
-            // After a readable sibling, and with content of its own.
-            let child = format!(
-                "{}{MARK}<artifactElement xmi:type=\"sacm:{class}\" xmi:id=\"x\">\
-                 <name content=\"X\"/></artifactElement>",
-                typed("Technique", "t1", "T1")
-            );
-            assert_unsupported_with(&what, &wrap("", &child), &interim(row));
-        }
-    }
 }
 
 #[test]
@@ -1212,51 +1192,11 @@ fn fixture_with(from: &str, to: &str) -> String {
 }
 
 #[test]
-fn sacm23_art_001_fixture_variants_a_b_c_and_g_are_refused_at_their_construct() {
+fn sacm23_art_001_fixture_variant_g_an_untyped_artifact_element_is_missing_type() {
     let assessor = "      <artifactElement xmi:type=\"sacm:Participant\" xmi:id=\"assessor\">";
-    // (a) A kind not read yet in evidence: a TerminologyPackageInterface,
-    // SACM23-TERM-007. (Slice 0055 reads the Artifact this variant first used,
-    // slice 0057 the ArtifactAssetRelationship it used next, and slice 0066
-    // the ArtifactPackageInterface it used then: see artifact_assets.rs,
-    // artifact_asset_relationships.rs and artifact_package_interfaces.rs.)
-    assert_unsupported_with(
-        "variant (a): a TerminologyPackageInterface in evidence",
-        &fixture_with(
-            assessor,
-            &format!(
-                "      {MARK}<artifactElement xmi:type=\"sacm:TerminologyPackageInterface\" \
-                 xmi:id=\"report\"/>\n{assessor}"
-            ),
-        ),
-        &interim("SACM23-TERM-007"),
-    );
-    // (b) interface="i1" on the AssuranceCasePackage case: SACM23-AC-002, at
-    // the attribute. (This variant first put it on evidence, whose interface
-    // end slice 0066 reads, SACM23-ART-012.)
-    assert_unsupported_with(
-        "variant (b): interface on case",
-        &fixture_with(
-            "<sacm:AssuranceCasePackage xmi:id=\"case\">",
-            &format!("<sacm:AssuranceCasePackage xmi:id=\"case\" {MARK}interface=\"i1\">"),
-        ),
-        &interim("SACM23-AC-002"),
-    );
-    // (c) Another kind not read yet in evidence: a TerminologyPackageBinding,
-    // SACM23-TERM-008. (This variant first used the model's spelling
-    // ArtifactAssertedRelationship, which slice 0057 reads in tolerant mode
-    // and keeps as preserved content in strict mode, model_spellings.rs, then
-    // the ArtifactPackageBinding that slice 0066 reads.)
-    assert_unsupported_with(
-        "variant (c): a TerminologyPackageBinding in evidence",
-        &fixture_with(
-            assessor,
-            &format!(
-                "      {MARK}<artifactElement xmi:type=\"sacm:TerminologyPackageBinding\" \
-                 xmi:id=\"r\"/>\n{assessor}"
-            ),
-        ),
-        &interim("SACM23-TERM-008"),
-    );
+    // Variants (a) to (c) sampled kinds and ends not read yet, the last of
+    // which slice 0067 reads (SACM23-TERM-007, -008, SACM23-AC-002): only
+    // (g) is left.
     // (g) An untyped artifactElement: SACM-XMI-005.
     let what = "variant (g): an untyped artifactElement in evidence";
     let (input, at) = one_mark(

@@ -35,7 +35,10 @@ Read, edit, validate and write assurance cases in the
   `TerminologyPackage` it reads `Category`, `Term`, `Expression` and `TerminologyGroup`
   elements, with each Term's or Expression's `value` and categories, a Term's `origin` and
   `externalReference`, and an Expression's elements (`SacmElement::value`, `categories`,
-  `origin`, `external_reference`, `expression_elements`). A `name`, or a value of a
+  `origin`, `external_reference`, `expression_elements`). The interfaces and bindings of
+  every package are read as roots and as children, with each interface's `implements`,
+  each binding's participants and each package's `interface` (`SacmElement::implements`,
+  `participant_packages`, `interfaces`). A `name`, or a value of a
   `content`, `key` or `location`, may be an `ExpressionLangString` (§8.4) that links an
   ExpressionElement (`LangString::expression`, `SacmElement::expressions`). Content that
   is not SACM 2.3 where it stands, such as
@@ -73,7 +76,8 @@ Read, edit, validate and write assurance cases in the
   Activities and ArtifactAssetRelationships (`sacm::edit::CreateArtifactPackage`,
   `sacm::edit::CreateArtifactAssetRelationship` and the like), TerminologyPackages,
   Categories, Terms, Expressions and TerminologyGroups (`sacm::edit::CreateTerm` and the
-  like), and descriptions,
+  like), the interfaces and bindings of every package
+  (`sacm::edit::CreateTerminologyPackageInterface` and the like), and descriptions,
   implementation constraints, notes and tagged values on them
   (`sacm::edit::CreateNote`, `sacm::edit::CreateTaggedValue` and the like); a refused
   edit changes nothing, and an edit refuses a reference that names no element or an
@@ -103,8 +107,7 @@ tracks every requirement: what is built, what is planned, and the tests behind e
 
 Planned:
 
-- The interfaces and bindings of the Terminology and Assurance Case packages, and the
-  validation of every package's interfaces and bindings.
+- The validation of every package's interfaces and bindings.
 - Tolerant reading of third-party dialects and legacy revisions, reporting exactly what
   was accepted.
 - More validation rules against the specification's constraints.

@@ -1266,28 +1266,36 @@ fn sacm23_arg_014_reference_end_tables_bounds_and_serde() {
             "{row}: interface on a {kind} is [0..*]"
         );
     }
+    // Since slice 0067 the Terminology and AssuranceCase kinds have the
+    // ends too (SACM23-TERM-007, SACM23-AC-002).
     assert_eq!(
         (
             implements.bounds(ElementKind::ArgumentPackage),
             implements.bounds(ElementKind::ArgumentPackageBinding),
-            interface.bounds(ElementKind::TerminologyPackage),
-            interface.bounds(ElementKind::AssuranceCasePackage),
             interface.bounds(ElementKind::Claim),
         ),
-        (None, None, None, None, None),
-        "{row}: the kinds without the ends in this slice"
+        (None, None, None),
+        "{row}: the kinds without the ends"
     );
     let interface_owners = [
+        ElementKind::AssuranceCasePackage,
+        ElementKind::AssuranceCasePackageInterface,
+        ElementKind::AssuranceCasePackageBinding,
         ElementKind::ArgumentPackage,
         ElementKind::ArgumentPackageInterface,
         ElementKind::ArgumentPackageBinding,
         ElementKind::ArtifactPackage,
         ElementKind::ArtifactPackageInterface,
         ElementKind::ArtifactPackageBinding,
+        ElementKind::TerminologyPackage,
+        ElementKind::TerminologyPackageInterface,
+        ElementKind::TerminologyPackageBinding,
     ];
     let implements_owners = [
+        ElementKind::AssuranceCasePackageInterface,
         ElementKind::ArgumentPackageInterface,
         ElementKind::ArtifactPackageInterface,
+        ElementKind::TerminologyPackageInterface,
     ];
     for &kind in ElementKind::ALL {
         assert_eq!(
@@ -1685,10 +1693,25 @@ fn sacm23_arg_014_reference_edits_keep_implements_at_exactly_one() {
         ),
         "{row}: the Display of implements on an ArgumentPackage"
     );
-    for (target, kind) in [
-        ("c", ElementKind::Claim),
-        ("terms", ElementKind::TerminologyPackage),
-        ("case", ElementKind::AssuranceCasePackage),
+    let error = refuse(
+        row,
+        &mut doc,
+        AddReference::new("c", ReferenceEnd::Interface, "i"),
+    );
+    assert!(
+        matches!(
+            &error,
+            EditError::FeatureNotApplicable { element, kind: ElementKind::Claim, feature: "interface", .. }
+                if element.as_str() == "c"
+        ),
+        "{row}: interface on the Claim c: {error:?}"
+    );
+    // Since slice 0067 a TerminologyPackage and an AssuranceCasePackage have
+    // the end too, typed to their own family (SACM23-TERM-007,
+    // SACM23-AC-002): an ArgumentPackageInterface is the wrong type there.
+    for (target, expected) in [
+        ("terms", "TerminologyPackageInterface"),
+        ("case", "AssuranceCasePackageInterface"),
     ] {
         let error = refuse(
             row,
@@ -1698,10 +1721,10 @@ fn sacm23_arg_014_reference_edits_keep_implements_at_exactly_one() {
         assert!(
             matches!(
                 &error,
-                EditError::FeatureNotApplicable { element, kind: found, feature: "interface", .. }
-                    if element.as_str() == target && *found == kind
+                EditError::WrongReferenceType { end: "interface", id, expected: found, .. }
+                    if id.as_str() == "i" && *found == expected
             ),
-            "{row}: interface on the {kind} {target}: {error:?}"
+            "{row}: interface i on {target}: {error:?}"
         );
     }
 }
@@ -2568,24 +2591,26 @@ fn sacm23_arg_015_reference_end_tables_bounds_and_serde() {
     let row = ARG_015;
     let end = ReferenceEnd::ParticipantPackage;
     assert_eq!(end.name(), "participantPackage", "{row}: the name");
+    // Since slice 0067 the Terminology and AssuranceCase bindings have the
+    // end too (SACM23-TERM-008, SACM23-AC-003).
     assert_eq!(
         (
             end.bounds(ElementKind::ArgumentPackageBinding),
             end.bounds(ElementKind::ArtifactPackageBinding),
             end.bounds(ElementKind::ArgumentPackageInterface),
             end.bounds(ElementKind::ArgumentPackage),
-            end.bounds(ElementKind::TerminologyPackageBinding),
-            end.bounds(ElementKind::AssuranceCasePackageBinding),
         ),
-        (Some((2, None)), Some((2, None)), None, None, None, None),
+        (Some((2, None)), Some((2, None)), None, None),
         "{row}: the bounds"
     );
     for &kind in ElementKind::ALL {
         assert_eq!(
             end.applies_to(kind),
             [
+                ElementKind::AssuranceCasePackageBinding,
                 ElementKind::ArgumentPackageBinding,
-                ElementKind::ArtifactPackageBinding
+                ElementKind::ArtifactPackageBinding,
+                ElementKind::TerminologyPackageBinding,
             ]
             .contains(&kind),
             "{row}: applies_to on a {kind}"

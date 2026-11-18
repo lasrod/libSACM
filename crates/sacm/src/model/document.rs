@@ -38,10 +38,9 @@ use super::{
 /// [ADR 0014]: https://github.com/lasrod/libSACM/blob/main/docs/adr/0014-artifact-package-admits-every-artifact-element.md
 ///
 /// In this release [`xmi::read`](crate::xmi::read) fills a document with
-/// `AssuranceCasePackage`, `ArgumentPackage`, `ArtifactPackage` and
-/// `TerminologyPackage` roots and with elements of every [`ElementKind`]
-/// except the eight package interface and binding kinds, which M5 reads.
-/// [`edit::apply`](crate::edit::apply) creates the same thirty kinds, edits
+/// roots of the twelve package kinds (the four packages, their interfaces
+/// and their bindings) and with elements of every [`ElementKind`].
+/// [`edit::apply`](crate::edit::apply) creates every kind, edits
 /// the features and the order of elements of every kind, moves and copies
 /// them ([`MoveElement`](crate::edit::MoveElement),
 /// [`CopyElements`](crate::edit::CopyElements)), and deletes
@@ -64,8 +63,8 @@ use super::{
 /// **Preserved content** is what [`xmi::read`](crate::xmi::read) kept, as
 /// written, because it is not SACM 2.3 where it stands, such as a vendor
 /// attribute or child element (ADR 0033), or, in tolerant mode, because a
-/// strict read refuses it, such as a value that is no literal or an element
-/// of a kind not read yet (ADR 0035): each element that holds some says so
+/// strict read refuses it, such as a value that is no literal or XMI
+/// metadata not read yet, such as `xmi:uuid` (ADR 0035): each element that holds some says so
 /// ([`SacmElement::has_preserved_content`]), and the document holds what
 /// is on or under `xmi:XMI` outside its elements, placed among the roots
 /// ([`has_preserved_content`](Self::has_preserved_content) tells both). It
@@ -168,8 +167,8 @@ pub struct Document {
     revision: Revision,
     /// The preserved content outside every element (ADR 0035 D3): the
     /// attributes of the `xmi:XMI` element, and its children that are no
-    /// root read, such as `xmi:Documentation` or a root of a kind not read
-    /// yet, placed among the roots. `None` when it holds none.
+    /// root, such as `xmi:Documentation`, placed among the roots. `None` when
+    /// it holds none.
     preserved: Option<Box<Preserved>>,
 }
 
@@ -1389,9 +1388,8 @@ impl Document {
 
     /// Whether the document holds preserved content anywhere: in an element
     /// ([`SacmElement::has_preserved_content`]), or outside every element,
-    /// on or under the `xmi:XMI` element, such as `xsi:schemaLocation`, an
-    /// `xmi:Documentation` or a root of a kind this release does not read
-    /// yet (ADR 0035 D3). A strict [`xmi::write`](crate::xmi::write)
+    /// on or under the `xmi:XMI` element, such as `xsi:schemaLocation` or an
+    /// `xmi:Documentation` (ADR 0035 D3). A strict [`xmi::write`](crate::xmi::write)
     /// refuses a document that holds some
     /// ([`WriteError::PreservedContent`](crate::xmi::WriteError::PreservedContent)).
     ///
@@ -2963,15 +2961,15 @@ impl<'a> SacmElement<'a> {
         self.references(ReferenceEnd::Interface)
     }
 
-    /// The package an interface declares (SACM 2.3 §11.6, §12.5
-    /// `implements:<package>[1]`), or `None` when it holds none or the
+    /// The package an interface declares (SACM 2.3 §9.3, §10.5, §11.6,
+    /// §12.5 `implements:<package>[1]`), or `None` when it holds none or the
     /// element is no interface.
     #[must_use]
     pub fn implements(self) -> Option<&'a ElementId> {
         self.references(ReferenceEnd::Implements).first()
     }
 
-    /// The packages a binding binds (SACM 2.3 §11.5, §12.4
+    /// The packages a binding binds (SACM 2.3 §9.4, §10.6, §11.5, §12.4
     /// `participantPackage:<package>[2..*]`), in order, repeats included;
     /// empty for a kind without the end.
     #[doc(alias = "participantPackage")]
@@ -3637,8 +3635,8 @@ impl<'a> SacmElement<'a> {
     /// with from XMI and kept exactly as written instead of read, such as a
     /// vendor attribute or child element that is not SACM 2.3 where it stands
     /// (LIB-COMPAT-003, ADR 0033), or, in tolerant mode, a construct a strict
-    /// read refuses, such as a value that is no literal or an element of a
-    /// kind not read yet (ADR 0035).
+    /// read refuses, such as a value that is no literal or XMI metadata not
+    /// read yet, such as `xmi:uuid` (ADR 0035).
     ///
     /// [`xmi::read`](crate::xmi::read) keeps it, with one diagnostic per
     /// construct (SACM-XMI-003 for content that is not SACM 2.3 where it

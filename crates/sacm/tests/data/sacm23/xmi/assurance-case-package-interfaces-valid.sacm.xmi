@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-AC-002, SACM23-AC-003: the assurance case example of slice 0067. The AssuranceCasePackage system holds the AssuranceCasePackages braking_case and vehicle_case, each declaring its AssuranceCasePackageInterface (braking_case_api, vehicle_case_api) in its interface end; each interface implements its package. braking_case holds the ArgumentPackage braking with its ArgumentPackageInterface braking_api, and braking_case_api holds only a citation of braking_api (the §9.3 OCL). vehicle_case gives interface as a reference element by xmi:idref, and braking_case_api gives implements as a reference element by xmi:idref. The AssuranceCasePackageBinding binding binds the two interfaces, by xmi:idref and by href="#id". It reads with no diagnostic in either mode, validates without a finding, and writes golden/assurance-case-package-interfaces.golden.sacm.xmi, where every end is an attribute. Hand-written; no third-party content. -->
+<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="system">
+  <name lang="en" content="Vehicle system case"/>
+  <assuranceCasePackage xmi:id="braking_case" interface="braking_case_api">
+    <name lang="en" content="Braking case"/>
+    <argumentPackage xmi:id="braking" interface="braking_api">
+      <name lang="en" content="Braking argument"/>
+      <argumentElement xmi:type="sacm:Claim" xmi:id="braking_safe">
+        <name lang="en" content="Braking is acceptably safe"/>
+      </argumentElement>
+      <argumentElement xmi:type="sacm:ArgumentPackageInterface" xmi:id="braking_api" implements="braking">
+        <name lang="en" content="Braking interface"/>
+        <argumentElement xmi:type="sacm:Claim" xmi:id="braking_safe_cited" isCitation="true" citedElement="braking_safe" assertionDeclaration="asCited">
+          <name lang="en" content="Braking is acceptably safe"/>
+        </argumentElement>
+      </argumentElement>
+    </argumentPackage>
+    <assuranceCasePackage xmi:type="sacm:AssuranceCasePackageInterface" xmi:id="braking_case_api">
+      <implements xmi:idref="braking_case"/>
+      <name lang="en" content="Braking case interface"/>
+      <argumentPackage xmi:type="sacm:ArgumentPackageInterface" xmi:id="braking_api_cited" isCitation="true" citedElement="braking_api" implements="braking">
+        <name lang="en" content="Braking interface"/>
+      </argumentPackage>
+    </assuranceCasePackage>
+  </assuranceCasePackage>
+  <assuranceCasePackage xmi:id="vehicle_case">
+    <interface xmi:idref="vehicle_case_api"/>
+    <name lang="en" content="Vehicle case"/>
+    <assuranceCasePackage xmi:type="sacm:AssuranceCasePackageInterface" xmi:id="vehicle_case_api" implements="vehicle_case">
+      <name lang="en" content="Vehicle case interface"/>
+    </assuranceCasePackage>
+  </assuranceCasePackage>
+  <assuranceCasePackage xmi:type="sacm:AssuranceCasePackageBinding" xmi:id="binding">
+    <participantPackage xmi:idref="braking_case_api"/><participantPackage href="#vehicle_case_api"/>
+    <name lang="en" content="The braking case supports the vehicle case"/>
+  </assuranceCasePackage>
+</sacm:AssuranceCasePackage>

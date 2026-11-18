@@ -608,6 +608,12 @@ mod tests {
             Operation::CreateAssuranceCasePackage(_) => {
                 sampled!(OPERATIONS, "CreateAssuranceCasePackage")
             }
+            Operation::CreateAssuranceCasePackageInterface(_) => {
+                sampled!(OPERATIONS, "CreateAssuranceCasePackageInterface")
+            }
+            Operation::CreateAssuranceCasePackageBinding(_) => {
+                sampled!(OPERATIONS, "CreateAssuranceCasePackageBinding")
+            }
             Operation::CreateArgumentPackage(_) => sampled!(OPERATIONS, "CreateArgumentPackage"),
             Operation::CreateArgumentPackageInterface(_) => {
                 sampled!(OPERATIONS, "CreateArgumentPackageInterface")
@@ -660,6 +666,12 @@ mod tests {
             }
             Operation::CreateTerminologyPackage(_) => {
                 sampled!(OPERATIONS, "CreateTerminologyPackage")
+            }
+            Operation::CreateTerminologyPackageInterface(_) => {
+                sampled!(OPERATIONS, "CreateTerminologyPackageInterface")
+            }
+            Operation::CreateTerminologyPackageBinding(_) => {
+                sampled!(OPERATIONS, "CreateTerminologyPackageBinding")
             }
             Operation::CreateCategory(_) => sampled!(OPERATIONS, "CreateCategory"),
             Operation::CreateTerm(_) => sampled!(OPERATIONS, "CreateTerm"),

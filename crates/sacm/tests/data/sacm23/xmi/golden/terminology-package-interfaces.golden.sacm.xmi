@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="case">
+  <name lang="en" content="Blender case" />
+  <terminologyPackage xmi:id="hazard_terms" interface="hazard_terms_api">
+    <name lang="en" content="Hazard terminology" />
+    <terminologyElement xmi:type="sacm:Term" xmi:id="blade" value="blade">
+      <name lang="en" content="Blade" />
+    </terminologyElement>
+    <terminologyElement xmi:type="sacm:TerminologyPackageInterface" xmi:id="hazard_terms_api" implements="hazard_terms">
+      <name lang="en" content="Hazard terminology interface" />
+      <terminologyElement xmi:type="sacm:Term" xmi:id="blade_cited" isCitation="true" citedElement="blade" value="blade">
+        <name lang="en" content="Blade" />
+      </terminologyElement>
+    </terminologyElement>
+  </terminologyPackage>
+  <terminologyPackage xmi:id="design_terms" interface="design_terms_api">
+    <name lang="en" content="Design terminology" />
+    <terminologyElement xmi:type="sacm:Term" xmi:id="cutter" value="cutter">
+      <name lang="en" content="Cutter" />
+    </terminologyElement>
+    <terminologyElement xmi:type="sacm:TerminologyPackageInterface" xmi:id="design_terms_api" implements="design_terms">
+      <name lang="en" content="Design terminology interface" />
+      <terminologyElement xmi:type="sacm:Term" xmi:id="cutter_cited" isCitation="true" citedElement="cutter" value="cutter">
+        <name lang="en" content="Cutter" />
+      </terminologyElement>
+    </terminologyElement>
+  </terminologyPackage>
+  <terminologyPackage xmi:type="sacm:TerminologyPackageBinding" xmi:id="binding" participantPackage="hazard_terms_api design_terms_api">
+    <name lang="en" content="Hazard terms map to design terms" />
+    <terminologyElement xmi:type="sacm:Term" xmi:id="binding_blade" isCitation="true" citedElement="blade_cited" value="blade">
+      <name lang="en" content="Blade" />
+    </terminologyElement>
+    <terminologyElement xmi:type="sacm:Term" xmi:id="binding_cutter" isCitation="true" citedElement="cutter_cited" value="cutter">
+      <name lang="en" content="Cutter" />
+    </terminologyElement>
+  </terminologyPackage>
+</sacm:AssuranceCasePackage>

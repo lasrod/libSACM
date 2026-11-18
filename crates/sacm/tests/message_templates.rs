@@ -15,7 +15,7 @@
 //!   come in the order the pattern first names them, `row` last and only on
 //!   the `Unsupported` templates of SACM-XMI-014, -007, -002 and -015, whose
 //!   `Display` ends with the label of their code; and the inputs and the
-//!   templates no input reaches together are the 102 refusal templates,
+//!   templates no input reaches together are the 98 refusal templates,
 //!   once each.
 //! - `lib_api_017_each_refusal_template_has_its_code_template_and_arguments`
 //!   checks that `code()`, `template()` and `arguments()` are the
@@ -32,7 +32,11 @@
 //! the first shape, never refuses it.
 //!
 //! Slice 0065 reads `ExpressionLangString` (SACM23-BASE-009) and removes the
-//! template `SACM-XMI-014/expression-lang-string`, which leaves 102.
+//! template `SACM-XMI-014/expression-lang-string`, which leaves 102. Slice
+//! 0067 reads the last package kinds and every package's `interface` end
+//! and removes the four templates no input reaches any more
+//! (`SACM-XMI-014/interface-element`, `/unread-kind`, `/unread-kind-in-root`
+//! and `/unread-root`; ADR 0035 amendment 1), which leaves 98.
 
 use std::fmt::Write as _;
 
@@ -52,8 +56,9 @@ const NS: &str = concat!(
 );
 
 /// The number of refusal templates (acceptance 4): 102 once slice 0065
-/// removes `SACM-XMI-014/expression-lang-string` (SACM23-BASE-009).
-const REFUSAL_TEMPLATES: usize = 102;
+/// removes `SACM-XMI-014/expression-lang-string` (SACM23-BASE-009), 98 once
+/// slice 0067 removes the four of unread kinds and ends.
+const REFUSAL_TEMPLATES: usize = 98;
 
 /// The refusal templates no input reaches through the public API, and why.
 /// A unit test of their crate-private constructors builds each.
@@ -577,35 +582,6 @@ fn cases() -> Vec<Case> {
             "the XMI element {element:?} in {container:?} is not read in this release",
             "the reader cannot represent the input at line 1, column 110: the XMI element \"xmi:Documentation\" in \"xmi:XMI\" is not read in this release (a limit of this version; SACM23-XMI-019 reads it)",
         ),
-        // A TerminologyPackage's interface end: slice 0066 reads the
-        // ArgumentPackage's this case sampled (SACM23-ARG-014).
-        read(
-            "SACM-XMI-014/interface-element",
-            format!(
-                "<sacm:TerminologyPackage{NS} xmi:id=\"t\"><name content=\"t\"/>\
-                 <interface xmi:idref=\"p\"/></sacm:TerminologyPackage>"
-            ),
-            &[
-                ("element", t("interface")),
-                ("container", t("sacm:TerminologyPackage")),
-                ("class", t("TerminologyPackage")),
-                ("row", t("SACM23-TERM-007")),
-            ],
-            "the reference element {element:?} in the element {container:?} is the {class} end \"interface\", which is not read in this release",
-            "the reader cannot represent the input at line 1, column 156: the reference element \"interface\" in the element \"sacm:TerminologyPackage\" is the TerminologyPackage end \"interface\", which is not read in this release (a limit of this version; SACM23-TERM-007 reads it)",
-        ),
-        // A TerminologyPackageInterface root: slice 0066 reads the
-        // ArgumentPackageInterface root this case sampled (SACM23-ARG-014).
-        read(
-            "SACM-XMI-014/unread-root",
-            format!("<sacm:TerminologyPackageInterface{NS} xmi:id=\"i\"/>"),
-            &[
-                ("element", t("sacm:TerminologyPackageInterface")),
-                ("row", t("SACM23-TERM-007")),
-            ],
-            "the root element {element:?} is not read in this release",
-            "the reader cannot represent the input at line 1, column 1: the root element \"sacm:TerminologyPackageInterface\" is not read in this release (a limit of this version; SACM23-TERM-007 reads it)",
-        ),
         read(
             "SACM-XMI-014/xmi-child",
             package(&claim("c1", "", "<xmi:Extension extender=\"v\"/>")),
@@ -651,38 +627,6 @@ fn cases() -> Vec<Case> {
             ],
             "the element {element:?} in the root element {container:?} is in reference form, a proxy of an element of the class {class}, which is not read in this release",
             "the reader cannot represent the input at line 1, column 153: the element \"argumentElement\" in the root element \"sacm:ArgumentPackage\" is in reference form, a proxy of an element of the class ArgumentationElement, which is not read in this release (a limit of this version; SACM23-XMI-019 reads it)",
-        ),
-        // A TerminologyPackageInterface in a nested AssuranceCasePackage:
-        // slice 0066 reads the ArgumentPackageInterface in an
-        // ArgumentPackage this case sampled (SACM23-ARG-014).
-        read(
-            "SACM-XMI-014/unread-kind",
-            format!(
-                "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name content=\"case\"/>\
-                 <assuranceCasePackage xmi:id=\"sub\"><name content=\"sub\"/>\
-                 <terminologyPackage xmi:type=\"sacm:TerminologyPackageInterface\" xmi:id=\"i\"/>\
-                 </assuranceCasePackage></sacm:AssuranceCasePackage>"
-            ),
-            &[
-                ("class", t("TerminologyPackageInterface")),
-                ("element", t("terminologyPackage")),
-                ("container", t("assuranceCasePackage")),
-                ("row", t("SACM23-TERM-007")),
-            ],
-            "the {class} {element:?} in the element {container:?} is not read in this release",
-            "the reader cannot represent the input at line 1, column 220: the TerminologyPackageInterface \"terminologyPackage\" in the element \"assuranceCasePackage\" is not read in this release (a limit of this version; SACM23-TERM-007 reads it)",
-        ),
-        read(
-            "SACM-XMI-014/unread-kind-in-root",
-            terminology_interface_in_a_case(),
-            &[
-                ("class", t("TerminologyPackageInterface")),
-                ("element", t("terminologyPackage")),
-                ("container", t("sacm:AssuranceCasePackage")),
-                ("row", t("SACM23-TERM-007")),
-            ],
-            "the {class} {element:?} in the root element {container:?} is not read in this release",
-            "the reader cannot represent the input at line 3, column 3: the TerminologyPackageInterface \"terminologyPackage\" in the root element \"sacm:AssuranceCasePackage\" is not read in this release (a limit of this version; SACM23-TERM-007 reads it)",
         ),
         // --- ReadError::Unsupported, SACM-XMI-015 --------------------------------------
         read(
@@ -1071,16 +1015,6 @@ fn cases() -> Vec<Case> {
     ]
 }
 
-/// The `AssuranceCasePackage` `case` of acceptance 2, holding a
-/// `TerminologyPackageInterface` at line 3, column 3.
-fn terminology_interface_in_a_case() -> String {
-    format!(
-        "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\">\n  <name content=\"case\"/>\n  \
-         <terminologyPackage xmi:type=\"sacm:TerminologyPackageInterface\" xmi:id=\"ti\"/>\n\
-         </sacm:AssuranceCasePackage>"
-    )
-}
-
 // --- Running a case ------------------------------------------------------------------
 
 /// A refusal of either kind.
@@ -1266,7 +1200,7 @@ fn check_row(case: &Case) {
 #[test]
 fn lib_api_017_each_refusal_template_input_gives_its_0_1_0_display() {
     let cases = cases();
-    // The inputs and the templates without one are the 102, once each.
+    // The inputs and the templates without one are the 98, once each.
     let mut ids: Vec<&str> = cases.iter().map(|case| case.template).collect();
     ids.extend(NO_INPUT.iter().map(|(template, _)| *template));
     let count = ids.len();

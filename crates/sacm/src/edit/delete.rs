@@ -166,8 +166,8 @@ pub enum ReferenceDeletePolicy {
     /// Remove every such id from its end. An element left below an end's
     /// lower bound is deleted, with its contents: a relationship left with no
     /// `source` or no `target` (§11.13, §12.14), an interface left with no
-    /// `implements` (§11.6, §12.5), or a binding left with fewer than two
-    /// distinct participants (§11.5, §12.4). Under `RejectIfNonEmpty`, such an
+    /// `implements` (§9.3, §10.5, §11.6, §12.5), or a binding left with
+    /// fewer than two distinct participants (§9.4, §10.6, §11.5, §12.4). Under `RejectIfNonEmpty`, such an
     /// interface or binding that contains elements refuses the delete as
     /// `NotEmpty`. One that loses no id stays, even below its bound.
     ScrubReferences,

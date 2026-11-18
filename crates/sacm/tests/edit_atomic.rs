@@ -199,11 +199,14 @@ const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/x
 /// The fixtures `xmi::read` reads in this release, relative to [`FIXTURES`],
 /// with the three of slice 0066: its two worked examples and
 /// `golden/nested.golden.sacm.xmi`, whose `ArgumentPackageInterface` it
-/// reads (SACM23-ARG-014, SACM23-ART-012; LIB-EDIT-019). The files under
-/// `invalid/` are refused by design.
-const READABLE_FIXTURES: [&str; 14] = [
+/// reads (SACM23-ARG-014, SACM23-ART-012; LIB-EDIT-019); and the two worked
+/// examples of slice 0067 (SACM23-AC-002, -003, SACM23-TERM-007, -008). The
+/// files under `invalid/` are refused by design.
+const READABLE_FIXTURES: [&str; 16] = [
     "argument-package-interfaces-valid.sacm.xmi",
     "artifact-package-interfaces-valid.sacm.xmi",
+    "assurance-case-package-interfaces-valid.sacm.xmi",
+    "terminology-package-interfaces-valid.sacm.xmi",
     "golden/nested.golden.sacm.xmi",
     "argument-package-root-valid.sacm.xmi",
     "artifact-assets-valid.sacm.xmi",
@@ -738,9 +741,62 @@ static SLICE_0066_RULES: [EndRule; 8] = [
     },
 ];
 
+/// The rules slice 0067 adds (ADR 0039 D1): the Assurance Case family's
+/// `interface` (§9.2 `[0..*]`), `implements` (§9.3 `[1]`) and
+/// `participantPackage` (§9.4 `[2..*]`), and the Terminology family's
+/// (ptc/22-03-13 `[0..*]`, §10.5 `[1]`, ptc/22-03-13 `[2..*]`), each typed
+/// to the holder's family.
+static SLICE_0067_RULES: [EndRule; 6] = [
+    EndRule {
+        end: ReferenceEnd::Interface,
+        owners: &ASSURANCE_CASE_PACKAGES,
+        declared: &[AssuranceCasePackageInterface],
+        lower: 0,
+        upper: None,
+    },
+    EndRule {
+        end: ReferenceEnd::Interface,
+        owners: &TERMINOLOGY_PACKAGES,
+        declared: &[TerminologyPackageInterface],
+        lower: 0,
+        upper: None,
+    },
+    EndRule {
+        end: ReferenceEnd::Implements,
+        owners: &[AssuranceCasePackageInterface],
+        declared: &ASSURANCE_CASE_PACKAGES,
+        lower: 1,
+        upper: Some(1),
+    },
+    EndRule {
+        end: ReferenceEnd::Implements,
+        owners: &[TerminologyPackageInterface],
+        declared: &TERMINOLOGY_PACKAGES,
+        lower: 1,
+        upper: Some(1),
+    },
+    EndRule {
+        end: ReferenceEnd::ParticipantPackage,
+        owners: &[AssuranceCasePackageBinding],
+        declared: &ASSURANCE_CASE_PACKAGES,
+        lower: 2,
+        upper: None,
+    },
+    EndRule {
+        end: ReferenceEnd::ParticipantPackage,
+        owners: &[TerminologyPackageBinding],
+        declared: &TERMINOLOGY_PACKAGES,
+        lower: 2,
+        upper: None,
+    },
+];
+
 /// Every rule of the set, in the order of `ReferenceEnd`.
 fn end_rules() -> impl Iterator<Item = &'static EndRule> {
-    END_RULES.iter().chain(SLICE_0066_RULES.iter())
+    END_RULES
+        .iter()
+        .chain(SLICE_0066_RULES.iter())
+        .chain(SLICE_0067_RULES.iter())
 }
 
 /// The distinct ends of [`end_rules`], in order.
@@ -1696,6 +1752,21 @@ fn create_ends(operation: &Operation) -> Vec<(ReferenceEnd, Vec<&ElementId>)> {
             create.participant_packages().iter().collect(),
         )],
         Operation::CreateArtifactPackageBinding(create) => vec![(
+            ReferenceEnd::ParticipantPackage,
+            create.participant_packages().iter().collect(),
+        )],
+        // The creates of slice 0067 (ADR 0039 D4).
+        Operation::CreateAssuranceCasePackageInterface(create) => {
+            vec![(ReferenceEnd::Implements, vec![create.implements()])]
+        }
+        Operation::CreateTerminologyPackageInterface(create) => {
+            vec![(ReferenceEnd::Implements, vec![create.implements()])]
+        }
+        Operation::CreateAssuranceCasePackageBinding(create) => vec![(
+            ReferenceEnd::ParticipantPackage,
+            create.participant_packages().iter().collect(),
+        )],
+        Operation::CreateTerminologyPackageBinding(create) => vec![(
             ReferenceEnd::ParticipantPackage,
             create.participant_packages().iter().collect(),
         )],

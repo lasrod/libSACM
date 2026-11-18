@@ -45,6 +45,8 @@ conforming tools can disagree about whether one may contain non-citations.
 **Suggested resolution.** Replace 10.5's Constraints with the terminology
 analogue of 11.6.
 
+**Correction (libSACM, 2026-11-18).** In formal/23-05-08, §10.5 has no Constraints section (p. 28); the sentence and OCL quoted above are §10.6's Constraints (p. 29). The consequence stands: the text states no content rule for a TerminologyPackageInterface beyond its Semantics, 'It refers to TerminologyElements using isCitation=True that reside within the same TerminologyPackage as itself.'
+
 ## D2 — Three clauses state the participant rule four ways
 
 The same concept — what may be a participant of a package binding — is specified

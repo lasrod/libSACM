@@ -321,10 +321,8 @@ catalog! {
 
     /// SACM-XMI-014: conforming content this release does not read yet,
     /// which a tolerant [`xmi::read`](crate::xmi::read) keeps as preserved
-    /// content with one Warning: an element of a kind not read yet (such as
-    /// a `TerminologyPackageInterface`), a package's
-    /// `interface` end, or XMI metadata (such as
-    /// `xmi:uuid`, `xsi:schemaLocation` or `xmi:Documentation`). It is not a
+    /// content with one Warning: XMI metadata not read yet, such as
+    /// `xmi:uuid`, `xsi:schemaLocation` or `xmi:Documentation`. It is not a
     /// defect: the message ends naming the row that reads it. A strict read refuses it as
     /// [`ReadError::Unsupported`](crate::xmi::ReadError::Unsupported) with
     /// this code, and a strict write refuses a document that holds it
@@ -898,7 +896,7 @@ impl Details {
     }
 
     /// The template id, `<CODE>/<form>`, such as
-    /// `SACM-XMI-014/unread-kind`: a stable name for the sentence form
+    /// `SACM-XMI-014/unread-attribute`: a stable name for the sentence form
     /// (ADR 0030 amendment 3).
     #[must_use]
     pub fn template(&self) -> &'static str {

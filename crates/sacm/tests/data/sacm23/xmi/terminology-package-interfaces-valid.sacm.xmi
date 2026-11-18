@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-TERM-007, SACM23-TERM-008: the terminology example of slice 0067. The AssuranceCasePackage case holds the TerminologyPackages hazard_terms and design_terms, each declaring its TerminologyPackageInterface (hazard_terms_api, design_terms_api) in its interface end; each interface implements its package and holds a citation of the package's Term. design_terms gives interface as a reference element by href="#id", and hazard_terms_api gives implements as a reference element by xmi:idref. The TerminologyPackageBinding binding binds the two interfaces, by xmi:idref and by href="#id", and holds only citations of the interfaces' citations. Every Term has a value. It reads with no diagnostic in either mode, validates without a finding, and writes golden/terminology-package-interfaces.golden.sacm.xmi, where every end is an attribute. Hand-written; no third-party content. -->
+<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="case">
+  <name lang="en" content="Blender case"/>
+  <terminologyPackage xmi:id="hazard_terms" interface="hazard_terms_api">
+    <name lang="en" content="Hazard terminology"/>
+    <terminologyElement xmi:type="sacm:Term" xmi:id="blade" value="blade">
+      <name lang="en" content="Blade"/>
+    </terminologyElement>
+    <terminologyElement xmi:type="sacm:TerminologyPackageInterface" xmi:id="hazard_terms_api">
+      <implements xmi:idref="hazard_terms"/>
+      <name lang="en" content="Hazard terminology interface"/>
+      <terminologyElement xmi:type="sacm:Term" xmi:id="blade_cited" isCitation="true" citedElement="blade" value="blade">
+        <name lang="en" content="Blade"/>
+      </terminologyElement>
+    </terminologyElement>
+  </terminologyPackage>
+  <terminologyPackage xmi:id="design_terms">
+    <interface href="#design_terms_api"/>
+    <name lang="en" content="Design terminology"/>
+    <terminologyElement xmi:type="sacm:Term" xmi:id="cutter" value="cutter">
+      <name lang="en" content="Cutter"/>
+    </terminologyElement>
+    <terminologyElement xmi:type="sacm:TerminologyPackageInterface" xmi:id="design_terms_api" implements="design_terms">
+      <name lang="en" content="Design terminology interface"/>
+      <terminologyElement xmi:type="sacm:Term" xmi:id="cutter_cited" isCitation="true" citedElement="cutter" value="cutter">
+        <name lang="en" content="Cutter"/>
+      </terminologyElement>
+    </terminologyElement>
+  </terminologyPackage>
+  <terminologyPackage xmi:type="sacm:TerminologyPackageBinding" xmi:id="binding">
+    <participantPackage xmi:idref="hazard_terms_api"/><participantPackage href="#design_terms_api"/>
+    <name lang="en" content="Hazard terms map to design terms"/>
+    <terminologyElement xmi:type="sacm:Term" xmi:id="binding_blade" isCitation="true" citedElement="blade_cited" value="blade">
+      <name lang="en" content="Blade"/>
+    </terminologyElement>
+    <terminologyElement xmi:type="sacm:Term" xmi:id="binding_cutter" isCitation="true" citedElement="cutter_cited" value="cutter">
+      <name lang="en" content="Cutter"/>
+    </terminologyElement>
+  </terminologyPackage>
+</sacm:AssuranceCasePackage>

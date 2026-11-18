@@ -1,8 +1,10 @@
 //! Tests that every `ReadError::Unsupported` names why it is refused
 //! (LIB-API-011; ADR 0033; D-PRESERVE; D-STRICT).
 //!
-//! Conforming content this version does not read yet, and input with
-//! nowhere to be kept, stays `Unsupported`. Each refusal comes from one
+//! Conforming content this version does not read yet (XMI metadata and
+//! cross-document references since slice 0067, which reads the last
+//! interface and binding kinds and every package's `interface` end), and
+//! input with nowhere to be kept, stays `Unsupported`. Each refusal comes from one
 //! crate-private list whose entries are `Interim(row)`, `Tolerance(row)`,
 //! `Limit` or `Defect`, and its reason ends with exactly one label:
 //!
@@ -92,11 +94,6 @@ fn claim(id: &str, attributes: &str, body: &str) -> String {
     )
 }
 
-/// A root of the class `kind`, `x`, named.
-fn root_of(kind: &str) -> String {
-    format!("<sacm:{kind}{NS} xmi:id=\"x\"><name content=\"x\"/></sacm:{kind}>")
-}
-
 /// `text` encoded as UTF-16 LE without a byte order mark.
 fn utf16le_without_bom(text: &str) -> Vec<u8> {
     text.encode_utf16().flat_map(u16::to_le_bytes).collect()
@@ -174,109 +171,6 @@ fn strict() -> ReadOptions {
 
 fn assert_text_refused_with(entry: &str, what: &str, input: &str, label: &str) {
     assert_refused_with(entry, what, input.as_bytes(), label);
-}
-
-// --- Interim: the four package, interface and binding kinds -------------------------
-
-#[test]
-fn lib_api_011_each_unread_package_interface_and_binding_kind_names_its_row() {
-    // An ArtifactPackage is read since slice 0052 (SACM23-ART-001), a
-    // TerminologyPackage since slice 0062 (SACM23-TERM-001), and the
-    // Argumentation and Artifact interfaces and bindings since slice 0066
-    // (SACM23-ARG-014, -015, SACM23-ART-012, -013): four kinds.
-    let kinds = [
-        ("TerminologyPackageInterface", "SACM23-TERM-007"),
-        ("TerminologyPackageBinding", "SACM23-TERM-008"),
-        ("AssuranceCasePackageInterface", "SACM23-AC-002"),
-        ("AssuranceCasePackageBinding", "SACM23-AC-003"),
-    ];
-    for (kind, row) in kinds {
-        assert_text_refused_with(kind, "as the root", &root_of(kind), &interim(row));
-    }
-}
-
-#[test]
-fn lib_api_011_an_unread_kind_inside_a_package_names_its_row() {
-    // The same kinds, as children: an AssuranceCasePackageInterface typed in
-    // the assuranceCasePackage role of an AssuranceCasePackage (this test
-    // first used an ArgumentPackageInterface in an ArgumentPackage, which
-    // slice 0066 reads), a TerminologyPackageInterface typed in the
-    // terminologyPackage role of an AssuranceCasePackage (a TerminologyPackage
-    // is read since slice 0062).
-    let interface = format!(
-        "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name content=\"case\"/>\
-         <assuranceCasePackage xmi:type=\"sacm:AssuranceCasePackageInterface\" xmi:id=\"i\">\
-         <name content=\"i\"/></assuranceCasePackage></sacm:AssuranceCasePackage>"
-    );
-    assert_text_refused_with(
-        "AssuranceCasePackageInterface",
-        "in an AssuranceCasePackage",
-        &interface,
-        &interim("SACM23-AC-002"),
-    );
-    let terminology = format!(
-        "<sacm:AssuranceCasePackage{NS} xmi:id=\"case\"><name content=\"case\"/>\
-         <terminologyPackage xmi:type=\"sacm:TerminologyPackageInterface\" xmi:id=\"f\">\
-         <name content=\"f\"/></terminologyPackage></sacm:AssuranceCasePackage>"
-    );
-    assert_text_refused_with(
-        "TerminologyPackageInterface",
-        "in an AssuranceCasePackage",
-        &terminology,
-        &interim("SACM23-TERM-007"),
-    );
-}
-
-// --- Interim: the kinds an ArtifactPackage holds that are not read yet --------------
-
-/// A root ArtifactPackage `a` holding `body`.
-fn artifact_package(body: &str) -> String {
-    format!(
-        "<sacm:ArtifactPackage{NS} xmi:id=\"a\"><name content=\"a\"/>{body}</sacm:ArtifactPackage>"
-    )
-}
-
-#[test]
-fn lib_api_011_each_unread_artifact_element_kind_names_its_row() {
-    // The kinds that an ArtifactPackage can hold since slice 0052 reads it
-    // (ADR 0034), and that are not read yet, in its artifactElement: one
-    // entry each. Slice 0055 reads Artifact, Resource, Activity and Event
-    // (ADR 0034 amendment 1), and slice 0057 ArtifactAssetRelationship
-    // (amendment 2), and slice 0062 the Terminology kinds (amendment 3), whose
-    // entries are gone; the interface and binding kinds, refused as roots
-    // above, are sampled here as children. Slice 0066 reads the
-    // ArtifactPackageInterface this list first held (SACM23-ART-012).
-    let kinds = [
-        ("TerminologyPackageInterface", "SACM23-TERM-007"),
-        ("TerminologyPackageBinding", "SACM23-TERM-008"),
-    ];
-    for (kind, row) in kinds {
-        let input = artifact_package(&format!(
-            "<artifactElement xmi:type=\"sacm:{kind}\" xmi:id=\"x\"><name content=\"x\"/></artifactElement>"
-        ));
-        assert_text_refused_with(kind, "in an ArtifactPackage", &input, &interim(row));
-    }
-}
-
-#[test]
-fn lib_api_011_an_unread_kind_in_a_nested_artifact_package_names_its_row() {
-    // The typed child this test first used was the model's spelling
-    // `ArtifactAssertedRelationship`, which slice 0057 reads in tolerant mode
-    // and keeps as preserved content in strict mode (SACM23-XMI-009,
-    // model_spellings.rs). An unread kind one package deeper is refused the
-    // same way: a TerminologyPackageInterface, since slice 0066 reads the
-    // ArtifactPackageInterface this test then used (SACM23-ART-012).
-    let input = artifact_package(
-        "<artifactElement xmi:type=\"sacm:ArtifactPackage\" xmi:id=\"n\"><name content=\"n\"/>\
-         <artifactElement xmi:type=\"sacm:TerminologyPackageInterface\" xmi:id=\"r\"><name content=\"r\"/>\
-         </artifactElement></artifactElement>",
-    );
-    assert_text_refused_with(
-        "TerminologyPackageInterface",
-        "in an ArtifactPackage nested in an ArtifactPackage",
-        &input,
-        &interim("SACM23-TERM-007"),
-    );
 }
 
 // --- Interim: XMI document metadata (SACM23-XMI-019) --------------------------------

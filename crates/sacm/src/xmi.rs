@@ -457,9 +457,8 @@ mod roots;
 /// element, written back on and in `xmi:XMI` in place among the roots; and
 /// the second under the first prefix `nsN` not bound at its element, which
 /// the SACM-XMI-003 message names (ADR 0035). The document holds the
-/// `xmi:XMI` element's children that are no root read, such as
-/// `xmi:Documentation` or a root of a kind not read yet, the same way, with
-/// SACM-XMI-014.
+/// `xmi:XMI` element's children that are no root, such as
+/// `xmi:Documentation`, the same way, with SACM-XMI-014.
 ///
 /// ```
 /// use sacm::diagnostic::{Code, Severity};
@@ -850,12 +849,7 @@ mod roots;
 ///   `XMI` element outside XMI 2.5.1 and an XMI-namespace document element,
 ///   and keeps the rest (SACM-XMI-014, SACM-XMI-007 or SACM-XMI-003). In
 ///   this release they are:
-///   - conforming input not read yet: the four Terminology and
-///     Assurance Case interface and binding kinds, as roots or children (such
-///     as a `TerminologyPackageInterface`); a package's `interface` end, as
-///     an attribute or an element, naming the row of its interface kind
-///     (SACM23-AC-002 on an AssuranceCasePackage, SACM23-TERM-007 on a
-///     TerminologyPackage); XMI metadata
+///   - conforming input not read yet: XMI metadata
 ///     (SACM23-XMI-019): an XMI-namespace element as the document element,
 ///     beside the roots or in an element (such as `xmi:Documentation` or
 ///     `xmi:Extension`), `xmi:uuid`, `xmi:label` and `xmi:idref` on an
@@ -1493,24 +1487,24 @@ pub enum ReadError {
     /// use sacm::diagnostic::Code;
     /// use sacm::xmi::{self, Mode, ReadError, ReadOptions};
     ///
-    /// let input = br#"<sacm:TerminologyPackageInterface xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
-    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="i"/>"#;
+    /// let input = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="a" xmi:uuid="u"/>"#;
     /// let strict = ReadOptions::default().with_mode(Mode::Strict);
     /// let error = xmi::read(input, &strict).unwrap_err();
     /// assert!(matches!(
     ///     &error,
     ///     ReadError::Unsupported { reason, .. }
-    ///         if reason.ends_with("(a limit of this version; SACM23-TERM-007 reads it)")
+    ///         if reason.ends_with("(a limit of this version; SACM23-XMI-019 reads it)")
     /// ));
     /// assert_eq!(error.code(), Code::XMI_UNREAD_CONTENT);
-    /// assert_eq!(error.template(), "SACM-XMI-014/unread-root");
+    /// assert_eq!(error.template(), "SACM-XMI-014/unread-attribute");
     ///
-    /// // A tolerant read keeps the root as the document's preserved content,
-    /// // with a Warning of the same code.
+    /// // A tolerant read keeps the attribute as preserved content of the
+    /// // root, with a Warning of the same code.
     /// let output = xmi::read(input, &ReadOptions::default())?;
     /// assert_eq!(output.diagnostics()[0].code(), Code::XMI_UNREAD_CONTENT);
-    /// assert!(output.diagnostics()[0].message().ends_with("; SACM23-TERM-007 reads it"));
-    /// assert!(output.document().has_preserved_content());
+    /// assert!(output.diagnostics()[0].message().ends_with("; SACM23-XMI-019 reads it"));
+    /// assert!(output.document().get("a").is_some_and(|root| root.has_preserved_content()));
     /// # Ok::<(), ReadError>(())
     /// ```
     #[non_exhaustive]
@@ -1848,7 +1842,7 @@ impl ReadError {
     }
 
     /// The id of the refusal's message template, `<CODE>/<form>`, such as
-    /// `SACM-XMI-014/unread-kind`: a stable name for its English sentence
+    /// `SACM-XMI-014/unread-attribute`: a stable name for its English sentence
     /// form, under which an application keeps its own wording (ADR 0030
     /// amendment 3). [`Doctype`](Self::Doctype) is `SACM-SEC-001/doctype`
     /// and [`NoPackage`](Self::NoPackage) `SACM-XMI-001/no-package`.
@@ -2367,9 +2361,9 @@ impl std::error::Error for ReadError {}
 /// The document is checked before anything is written, and the first failure
 /// is returned:
 ///
-/// 1. a document with no root, neither an element nor a root of a kind not
-///    read yet that it holds as preserved content, is [`WriteError::NoRoot`],
-///    in both modes: an `xmi:XMI` holding only XMI metadata holds no package;
+/// 1. the document has no root element, so there is no SACM package to
+///    write: [`WriteError::NoRoot`], in both modes (an `xmi:XMI` holding only
+///    XMI metadata holds no package);
 /// 2. in strict mode only, preserved content: a document that holds any is
 ///    [`WriteError::PreservedContent`], which lists each element that holds
 ///    some (SACM-XMI-006), and no element when only the document holds it;
@@ -2533,9 +2527,8 @@ impl WriteOptions {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum WriteError {
-    /// The document has no root, neither an element nor a root of a kind
-    /// not read yet that it holds as preserved content, so there is no SACM
-    /// package to write. Add a package as a root. This variant has no fields
+    /// The document has no root element, so there is no SACM package to
+    /// write. Add a package as a root. This variant has no fields
     /// and will not gain any.
     NoRoot,
     /// An element's id, gid, `version`, `date`, `startTime` or `endTime`,

@@ -399,14 +399,14 @@ enum Tag {
     Role(&'static str),
 }
 
-/// Checks `document` in ADR 0035 D4's order: a root, an element or one of a
-/// kind not read yet that the document holds as preserved content, first;
+/// Checks `document` in ADR 0035 D4's order: a root first (ADR 0035
+/// amendment 1);
 /// then, in strict `mode`, preserved content and the schema check; then each
 /// element in document order (see [`unrepresentable`]); and returns every
 /// element in that order with what it is written as. Everything a document
 /// holds is written, so these are the only refusals.
 fn plan(document: &Document, mode: Mode) -> Result<Vec<Planned<'_>>, WriteError> {
-    if document.roots().next().is_none() && !document.document_preserved().is_some_and(holds_root) {
+    if document.roots().next().is_none() {
         // An `xmi:XMI` holding only XMI metadata holds no package, which a
         // reader refuses (`ReadError::NoPackage`), so it is not written.
         return Err(WriteError::NoRoot);
@@ -688,20 +688,6 @@ fn push_end_tag(out: &mut String, depth: usize, tag: &Tag) {
     out.push_str("</");
     push_tag(out, tag);
     out.push_str(">\n");
-}
-
-/// Whether `outside`, the document's preserved content, holds a root: an
-/// element outside the XMI namespace, which the reader kept as a root of a
-/// kind it does not read yet (ADR 0035 D3). Its other children are XMI
-/// metadata and text.
-fn holds_root(outside: &Preserved) -> bool {
-    outside.children.iter().any(|placed| match &placed.item {
-        Item::Element(fragment) => match fragment.events.first() {
-            Some(Event::Start { name, .. }) => name.namespace.as_deref() != Some(XMI_NS),
-            Some(Event::Text(_) | Event::End) | None => false,
-        },
-        Item::Text(_) => false,
-    })
 }
 
 /// Writes the start tag of `xmi:XMI` on its own line: its namespace

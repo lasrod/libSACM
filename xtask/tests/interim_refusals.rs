@@ -1081,12 +1081,18 @@ fn lib_api_011_interim_check_gates_every_row_by_cp_001_and_cp_003_and_by_its_own
         ("SACM23-CP-003", [true, true, true, true, true]),
         ("SACM23-CP-004", [false, false, false, true, true]),
     ];
-    // SACM23-ARG-014 and SACM23-ART-012 are the last ARG and ART rows to be
-    // Interim, and slice 0066 verifies them: the test sets them `planned` in
-    // its own copy of the matrix, as the SACM23-ART-008 test does, so that
-    // only their place in the closures counts.
+    // SACM23-ARG-014 and SACM23-ART-012 were the last ARG and ART rows to be
+    // Interim, and slice 0066 verifies them; SACM23-AC-002 and SACM23-TERM-007
+    // were the last AC and TERM rows, and slice 0067 verifies them: the test
+    // sets them `planned` in its own copy of the matrix, as the SACM23-ART-008
+    // test does, so that only their place in the closures counts.
     let mut open = matrix();
-    for row in ["SACM23-ARG-014", "SACM23-ART-012"] {
+    for row in [
+        "SACM23-AC-002",
+        "SACM23-ARG-014",
+        "SACM23-ART-012",
+        "SACM23-TERM-007",
+    ] {
         open = with_row_value(&open, row, "status", toml::Value::String("planned".into()));
     }
     for (point, reported) in expected {
@@ -1111,18 +1117,25 @@ fn lib_api_011_interim_check_gates_every_row_by_cp_001_and_cp_003_and_by_its_own
 
 #[test]
 fn lib_api_011_interim_check_requires_a_term_row_in_cp_003() {
-    // SACM23-TERM-007 (TerminologyPackageInterface, an interim entry still
-    // open after slice 0062 reads the Terminology kinds): an ArtifactPackage
-    // can hold one, so the row gates SACM23-CP-003 as well as SACM23-CP-001
-    // and SACM23-CP-004, but not SACM23-CP-002.
+    // SACM23-TERM-007 (TerminologyPackageInterface, the last TERM row to be
+    // Interim, which slice 0067 verifies): an ArtifactPackage can hold one, so
+    // the row gates SACM23-CP-003 as well as SACM23-CP-001 and SACM23-CP-004,
+    // but not SACM23-CP-002. The test sets it `planned` in its own copy of
+    // the matrix, so that only its place in the closures counts.
     let list = one_entry("SACM23-TERM-007");
-    let problems = interim_problems(&list, &matrix());
+    let open = with_row_value(
+        &matrix(),
+        "SACM23-TERM-007",
+        "status",
+        toml::Value::String("planned".into()),
+    );
+    let problems = interim_problems(&list, &open);
     assert!(
         problems.is_empty(),
-        "{ROW}: SACM23-TERM-007 with the real matrix: {problems:#?}"
+        "{ROW}: SACM23-TERM-007 with the real matrix, the row open: {problems:#?}"
     );
     let emptied = with_row_value(
-        &matrix(),
+        &open,
         "SACM23-CP-003",
         "depends_on",
         toml::Value::Array(Vec::new()),
@@ -1139,7 +1152,7 @@ fn lib_api_011_interim_check_requires_a_term_row_in_cp_003() {
         "{ROW}: the problem does not name SACM23-CP-003: {problems:#?}"
     );
     let emptied = with_row_value(
-        &matrix(),
+        &open,
         "SACM23-CP-002",
         "depends_on",
         toml::Value::Array(Vec::new()),
@@ -1149,24 +1162,6 @@ fn lib_api_011_interim_check_requires_a_term_row_in_cp_003() {
         problems.is_empty(),
         "{ROW}: a TERM row is not checked against SACM23-CP-002: {problems:#?}"
     );
-}
-
-#[test]
-fn lib_api_011_the_slice_0052_interim_rows_gate_their_compliance_points_in_the_matrix() {
-    // The kinds an ArtifactPackage exposes that slice 0052 does not read
-    // (ADR 0034), less the four slice 0055 reads (ADR 0034 amendment 1), the
-    // ArtifactAssetRelationship slice 0057 reads (amendment 2), the
-    // Terminology kinds slice 0062 reads (amendment 3) and the
-    // ArtifactPackageInterface slice 0066 reads (SACM23-ART-012, ADR 0039),
-    // whose row a verified status would fail check (b): each must pass check
-    // (b) with the matrix as it is.
-    for row in ["SACM23-TERM-007", "SACM23-TERM-008"] {
-        let problems = interim_problems(&one_entry(row), &matrix());
-        assert!(
-            problems.is_empty(),
-            "{ROW}: Interim({row:?}) does not pass check (b): {problems:#?}"
-        );
-    }
 }
 
 #[test]

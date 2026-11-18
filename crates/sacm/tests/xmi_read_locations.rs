@@ -404,13 +404,9 @@ fn root_rows() -> Vec<Row> {
         ))
     };
     vec![
-        row(
-            "a package root this release does not read",
-            Unsupported,
-            led(&format!(
-                "{MARK}<sacm:TerminologyPackageInterface{NS} xmi:id=\"a\"/>"
-            )),
-        ),
+        // "a package root this release does not read" was the first row until
+        // slice 0067, which reads every package kind as a root
+        // (SACM23-TERM-007; ADR 0035 amendment 1).
         row(
             "a package root in a foreign namespace",
             Unsupported,
@@ -521,7 +517,6 @@ fn name_rows() -> Vec<Row> {
 
 /// The refusals of children's roles and types (SACM23-XMI-016).
 fn child_role_rows() -> Vec<Row> {
-    use Variant::Unsupported as U;
     let element = |attributes: &str| in_ap(&format!("{MARK}<argumentElement{attributes}/>"));
     vec![
         row(
@@ -529,17 +524,9 @@ fn child_role_rows() -> Vec<Row> {
             Variant::MissingType,
             element(" xmi:id=\"x\""),
         ),
-        // A TerminologyPackageInterface in an AssuranceCasePackage's
-        // terminologyPackage: this row sampled an ArgumentPackageInterface in
-        // an ArgumentPackage until slice 0066 read it (SACM23-ARG-014).
-        row(
-            "a conforming kind outside the readable set",
-            U,
-            in_acp(&format!(
-                "{MARK}<terminologyPackage xmi:type=\"sacm:TerminologyPackageInterface\" \
-                 xmi:id=\"x\"/>"
-            )),
-        ),
+        // "a conforming kind outside the readable set" was the second row
+        // until slice 0067 read the last kind it sampled (SACM23-TERM-007):
+        // every conforming kind is read in its role.
     ]
 }
 

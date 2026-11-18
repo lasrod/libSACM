@@ -660,11 +660,13 @@ fn sacm23_val_001_locations_of_every_other_refusal_is_its_one_location_or_none()
         [loc(VAL_001, 1, 4)],
         "{VAL_001}: locations() of a Malformed refusal is not [location()]"
     );
-    // A tolerant read keeps an unread root (LIB-COMPAT-003, ADR 0035).
+    // An xmi:Extension document element is refused in both modes (a
+    // TerminologyPackageInterface root, refused strictly, until slice 0067
+    // read it; ADR 0035 amendment 1).
     let unsupported = refusal(
         VAL_001,
         Mode::Strict,
-        &format!("<sacm:TerminologyPackageInterface{NS} xmi:id=\"a\"/>"),
+        "<xmi:Extension xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\"/>",
     );
     assert_eq!(
         unsupported.locations(),
