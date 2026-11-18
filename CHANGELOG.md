@@ -9,7 +9,7 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 
 ## [Unreleased]
 
-## [0.2.0] - 2026-11-18
+## [0.2.0] - 2026-11-19
 
 ### Breaking
 
