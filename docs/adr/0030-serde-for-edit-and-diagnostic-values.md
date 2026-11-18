@@ -143,4 +143,4 @@ Issue #82. This amendment adds message templates and arguments, and serde for `R
 - **Records.** A deserialized `ReadError` or `WriteError` is a record, as a `Diagnostic` is. Its `Display` renders its template and arguments; its other fields are kept as given.
 - **Order.** ADR 0011's diagnostic order gains two last keys: 8, the template id; 9, the arguments.
 
-*Amendment 3 status: proposed. It implements the maintainer's decisions Q8 to Q11 of 2026-11-17; its API details (the codes of the write errors, `Details`, the default template, the table) await the maintainer's approval.*
+*Amendment 3 status: accepted (the maintainer, 2026-11-18). It implements the maintainer's decisions Q8 to Q11 of 2026-11-17 and its API details: the codes of the write errors, `Details`, the default template and the table.*
