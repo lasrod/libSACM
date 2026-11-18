@@ -19,7 +19,8 @@ five asserted relationships), the artifact elements Property, Technique, Partici
 ArtifactGroup, Artifact, Event, Resource, Activity and ArtifactAssetRelationship, and the
 terminology elements Category, Term, Expression and TerminologyGroup, each with its name,
 `gid`, flags, references, descriptions, notes, implementation constraints and tagged
-values. Content that is not SACM 2.3 is kept as preserved content (SACM-XMI-003). A
+values. A name, or a value of a content, key or location, may be an
+`ExpressionLangString` (§8.4) that links an ExpressionElement. Content that is not SACM 2.3 is kept as preserved content (SACM-XMI-003). A
 tolerant read, the default, opens
 every well-formed file with SACM 2.3 package roots: what a strict read refuses, such as a
 value that is no literal or conforming content not read yet (an interface or a binding),
@@ -32,7 +33,8 @@ yet); and it reads the names formal/23-05-08 and ptc/22-03-13 spell differently
 checks only that the output is schema-valid, so a draft saves, and an application calls
 `validate` for model checks. `sacm::edit::apply` creates, edits, moves, copies and
 deletes them atomically, `sacm::validation::validate` checks names, ids, gids, contents,
-references, terms' values and the argumentation and artifact rules, and
+references, terms' values, ExpressionLangStrings, concrete Expressions and the
+argumentation and artifact rules, and
 `sacm::compare::semantic_compare` lists differences. Undo and redo are the application's, by whole-document copies, as the `edit`
 docs show. Interfaces and bindings and the other validation rules are not built yet. The [functionality matrix](docs/matrix/functionality-matrix.md) shows
 what is verified; nothing else is claimed.

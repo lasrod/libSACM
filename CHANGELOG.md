@@ -22,6 +22,8 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 
   `Unsupported`, and every `WriteError` but `PreservedContent`, now have a code where 0.1
   gave `None`.
+- With `serde`, a `LangString` given as a JSON array (`["en","x"]`), which 0.1's derived
+  reader accepted, is refused; the documented object form reads as before [SACM23-BASE-009].
 
 ### Added
 

@@ -140,7 +140,7 @@ Issue #82. This amendment adds message templates and arguments, and serde for `R
   - `code` must be the template's;
   - `arguments` must hold exactly its names, in order, with their kinds;
   - anything else is refused (R4, R7).
-- **Records.** A deserialized `ReadError` or `WriteError` is a record, as a `Diagnostic` is. Its `Display` renders its template and arguments; its other fields are kept as given.
+- **Records.** A deserialized `ReadError` or `WriteError` is a record, as a `Diagnostic` is. Its `Display` renders its template and arguments; its other fields are kept as given. Its `reason`, `shape` and `element_name` are not checked against what the template and arguments render (the maintainer, 2026-11-18).
 - **Order.** ADR 0011's diagnostic order gains two last keys: 8, the template id; 9, the arguments.
 
 *Amendment 3 status: accepted (the maintainer, 2026-11-18). It implements the maintainer's decisions Q8 to Q11 of 2026-11-17 and its API details: the codes of the write errors, `Details`, the default template and the table.*
@@ -154,3 +154,12 @@ SACM23-BASE-009; the maintainer's decision Q5 of 2026-11-17. It extends R6.
 - This is additive: all 0.1 LangString JSON reads as before, and a plain LangString writes as before.
 
 *Amendment 4 status: accepted (the maintainer, 2026-11-18). It implements the maintainer's decision Q5 (2026-11-17).*
+
+## Amendment 5 (2026-11-18): arguments in any key order
+LIB-API-019; the maintainer's decision at M4's close. It relaxes R11.
+- On input, a record's `arguments` may give its template's arguments in any key order; they are matched by name and held in the template's order. A missing, extra, repeated or wrongly typed argument is still refused.
+- On output, arguments are written in the template's order, as before.
+- Reason: JSON that passed through `serde_json::Value` without serde_json's `preserve_order` feature has sorted keys, and an application may store records that way.
+- This is additive: every record that read before reads the same.
+
+*Amendment 5 status: accepted (the maintainer, 2026-11-18). Built by LIB-API-019; until then R11's order rule holds.*

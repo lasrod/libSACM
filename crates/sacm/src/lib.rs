@@ -57,6 +57,10 @@
 //!   In a `TerminologyPackage` it reads `Category`, `Term`, `Expression`,
 //!   `TerminologyGroup` and nested `TerminologyPackage` elements (see
 //!   [Terminology](#terminology)).
+//!   A `name`, or a value of a `content`, `key` or `location`, may be an
+//!   `ExpressionLangString` (§8.4) that links an `ExpressionElement`
+//!   ([`LangString::expression`](model::LangString::expression),
+//!   [`expressions`](model::SacmElement::expressions)).
 //!   Content that is not SACM 2.3 where it stands, such as a vendor
 //!   attribute or element, is kept as written as preserved content, with
 //!   SACM-XMI-003 ([`has_preserved_content`](model::SacmElement::has_preserved_content);
@@ -73,16 +77,18 @@
 //!   so call [`validation::validate`] for model checks.
 //! - [`validation::validate`] reports each element that has no name, each
 //!   `content`, `key` or `location` text that is empty or gives one language
-//!   twice, each
-//!   tagged value without a key, each id that is not an XML `NCName`, each
-//!   `gid` two elements share, each element with more than one description,
-//!   each `ArgumentPackage` that nests one and also holds other
+//!   twice, each tagged value without a key, each id that is not an XML
+//!   `NCName`, each `gid` two elements share, each element with more than one
+//!   description, each `ArgumentPackage` that nests one and also holds other
 //!   argumentation elements, each reference that names no element or an
 //!   element of the wrong kind, each element with a `citedElement` whose
 //!   `isCitation` is not true, each `abstractForm` that breaks a §8.2 rule,
 //!   each asserted relationship without a source or a target, each evidence
 //!   or artifact relationship whose ends are not artifact references (§11.15,
-//!   §11.17, §11.18), and each id a reference end repeats, as
+//!   §11.17, §11.18), each Term or Expression without a `value`, each
+//!   `ExpressionLangString` without an `expression` or with both an
+//!   `expression` and a non-empty content, each concrete Expression whose
+//!   elements are abstract, and each id a reference end repeats, as
 //!   [`Diagnostic`](diagnostic::Diagnostic)s with stable codes.
 //! - [`edit::apply`] creates `AssuranceCasePackage`, `ArgumentPackage`,
 //!   `Claim`, `ArgumentReasoning`, `ArtifactReference` and `ArgumentGroup`

@@ -35,7 +35,10 @@ Read, edit, validate and write assurance cases in the
   `TerminologyPackage` it reads `Category`, `Term`, `Expression` and `TerminologyGroup`
   elements, with each Term's or Expression's `value` and categories, a Term's `origin` and
   `externalReference`, and an Expression's elements (`SacmElement::value`, `categories`,
-  `origin`, `external_reference`, `expression_elements`). Content that is not SACM 2.3 where it stands, such as
+  `origin`, `external_reference`, `expression_elements`). A `name`, or a value of a
+  `content`, `key` or `location`, may be an `ExpressionLangString` (§8.4) that links an
+  ExpressionElement (`LangString::expression`, `SacmElement::expressions`). Content that
+  is not SACM 2.3 where it stands, such as
   a vendor attribute or element, is kept as written as preserved content, with
   SACM-XMI-003 (`SacmElement::has_preserved_content`). A tolerant read, the default,
   opens every well-formed file with SACM 2.3 package roots: what a strict read refuses,
@@ -59,9 +62,10 @@ Read, edit, validate and write assurance cases in the
   wrong kind, each element with a `citedElement` whose `isCitation` is not true, each
   `abstractForm` that breaks a §8.2 rule, each asserted relationship without a source or
   a target, each evidence or artifact relationship whose ends are not artifact references
-  (§11.15, §11.17, §11.18), each Term or Expression without a value, and each id a
-  reference end repeats, as diagnostics with
-  stable codes.
+  (§11.15, §11.17, §11.18), each Term or Expression without a value, each
+  ExpressionLangString without an `expression` or with both an `expression` and a
+  non-empty content, each concrete Expression whose elements are abstract, and each id a
+  reference end repeats, as diagnostics with stable codes.
 - `sacm::edit::apply` creates AssuranceCasePackages, ArgumentPackages, Claims,
   ArgumentReasonings, ArtifactReferences, ArgumentGroups and the five asserted
   relationships (`sacm::edit::CreateAssertedInference` and the like), ArtifactPackages,
