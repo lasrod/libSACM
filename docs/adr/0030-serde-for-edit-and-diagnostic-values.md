@@ -153,4 +153,4 @@ SACM23-BASE-009; the maintainer's decision Q5 of 2026-11-17. It extends R6.
 - A `MultiLangString` value may take either form.
 - This is additive: all 0.1 LangString JSON reads as before, and a plain LangString writes as before.
 
-*Amendment 4 status: proposed. It implements the maintainer's decision Q5 (2026-11-17); awaits approval with ADR 0038.*
+*Amendment 4 status: accepted (the maintainer, 2026-11-18). It implements the maintainer's decision Q5 (2026-11-17).*

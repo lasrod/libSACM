@@ -13,9 +13,8 @@
     [44191859776](https://github.com/lasrod/libSACM/actions/runs/44191859776). The PR-diff
     mutation job does not block (ADR 0006 amendment 6).
 - Slice brief: [docs/slices/0065-expression-lang-string.md](../slices/0065-expression-lang-string.md)
-- Decision: ADR 0038 and ADR 0030 amendment 4, **proposed**. The rows are verified against
-  the ADRs as written. If the maintainer changes them, the rows are reworded and
-  re-verified.
+- Decision: ADR 0038 and ADR 0030 amendment 4, accepted by the maintainer on 2026-11-18
+  as written.
 
 ## Result
 

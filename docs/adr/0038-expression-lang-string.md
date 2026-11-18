@@ -1,6 +1,6 @@
 # ADR 0038 — ExpressionLangString
 
-- Status: proposed. It records the maintainer's M4 decisions Q4 to Q7 (2026-11-17); its further details (the XMI shape, `DerivedEnd`, refusing an ExpressionLangString with no expression in an edit) await approval.
+- Status: accepted (the maintainer, 2026-11-18). It records the maintainer's M4 decisions Q4 to Q7 (2026-11-17) and its further details: the XMI shape, `DerivedEnd`, and refusing an ExpressionLangString with no expression in an edit.
 - Row: SACM23-BASE-009, SACM23-VAL-009
 - Related: ADR 0012, ADR 0030 amendment 4, spec defects D6 and D20
 
