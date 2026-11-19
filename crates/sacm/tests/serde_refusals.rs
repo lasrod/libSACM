@@ -14,8 +14,9 @@
 //!   so that it fails for the reason named: an unknown `type` or key, or a
 //!   missing key; a `code` that is not the variant's and its template's; a
 //!   template of another variant, or an unknown one; arguments missing,
-//!   extra, out of order or of the wrong kind (R8, R11); a `character` that
-//!   is not one character.
+//!   extra or of the wrong kind (R8, R11); a `character` that is not one
+//!   character. Arguments out of order read as in the template's order
+//!   (LIB-API-019; ADR 0030 amendment 5, which relaxes R11).
 //! - `WriteAttribute` is its variant name.
 
 #![cfg(feature = "serde")]
@@ -474,17 +475,13 @@ fn lib_api_017_a_template_of_another_variant_or_an_unknown_template_is_refused()
 }
 
 #[test]
-fn lib_api_017_arguments_missing_extra_out_of_order_or_of_the_wrong_kind_are_refused() {
+fn lib_api_017_arguments_missing_extra_or_of_the_wrong_kind_are_refused() {
     let arguments = r#""arguments":{"end_tag":"s","start_tag":"r"}"#;
     for (what, to) in [
         ("a missing argument", r#""arguments":{"end_tag":"s"}"#),
         (
             "an extra argument",
             r#""arguments":{"end_tag":"s","start_tag":"r","extra":"x"}"#,
-        ),
-        (
-            "arguments out of order",
-            r#""arguments":{"start_tag":"r","end_tag":"s"}"#,
         ),
         (
             "a Text given a number",
@@ -523,6 +520,29 @@ fn lib_api_017_arguments_missing_extra_out_of_order_or_of_the_wrong_kind_are_ref
         r#""code_point":1"#,
         r#""code_point":"1""#,
     );
+}
+
+/// The case "arguments out of order" of the test above, refused by R11 until
+/// ADR 0030 amendment 5: the record reads, `==` to its twin.
+#[test]
+fn lib_api_019_a_malformed_record_with_its_arguments_swapped_reads_as_its_twin() {
+    let swapped = MALFORMED.replacen(
+        r#""arguments":{"end_tag":"s","start_tag":"r"}"#,
+        r#""arguments":{"start_tag":"r","end_tag":"s"}"#,
+        1,
+    );
+    assert_ne!(swapped, MALFORMED, "LIB-API-019: setup: nothing swapped");
+    let twin: ReadError = match serde_json::from_str(MALFORMED) {
+        Ok(twin) => twin,
+        Err(error) => panic!("LIB-API-019: setup: the twin does not read: {error}"),
+    };
+    match serde_json::from_str::<ReadError>(&swapped) {
+        Ok(read) => assert_eq!(
+            read, twin,
+            "LIB-API-019: the record with its arguments swapped reads as another value"
+        ),
+        Err(error) => panic!("LIB-API-019: {swapped} is refused: {error}"),
+    }
 }
 
 #[test]

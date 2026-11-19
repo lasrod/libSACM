@@ -16,8 +16,9 @@
 //!   reason named, with the reason the design gives: `template` without
 //!   `arguments` or the reverse, or either `null`; an unknown template, a
 //!   refusal's, or another code's; the code's text with arguments; arguments
-//!   missing, extra, out of order or of the wrong kind (R8, R11); and a
-//!   refusal record that names a diagnostic template.
+//!   missing, extra or of the wrong kind (R8, R11); and a refusal record that
+//!   names a diagnostic template. Arguments out of order read as in the
+//!   template's order (LIB-API-019; ADR 0030 amendment 5, which relaxes R11).
 //! - The `Invalid` value of `write-errors.json` carries its diagnostic's
 //!   template and arguments.
 //!
@@ -477,20 +478,17 @@ fn lib_api_018_the_code_s_text_takes_no_arguments() {
 fn lib_api_018_arguments_that_do_not_match_the_template_are_refused() {
     let template = "\"SACM-MULT-001/too-many\"";
     for (what, to, reason) in [
+        // The missing and extra argument named (LIB-API-019, ADR 0030
+        // amendment 5).
         (
             "a missing argument",
             r#""arguments":{"class":"Claim","id":"CLM_132","count":2,"property":"description","type":"Description"}"#,
-            format!("the template {template} takes 6 arguments, not 5"),
+            format!("the template {template} needs the argument \"multiplicity\""),
         ),
         (
             "an extra argument",
             r#""arguments":{"class":"Claim","id":"CLM_132","count":2,"property":"description","type":"Description","multiplicity":"0..1","extra":"x"}"#,
-            format!("the template {template} takes 6 arguments, not 7"),
-        ),
-        (
-            "arguments out of order",
-            r#""arguments":{"id":"CLM_132","class":"Claim","count":2,"property":"description","type":"Description","multiplicity":"0..1"}"#,
-            format!("the argument \"id\" is not \"class\", the next argument of {template}"),
+            format!("the template {template} has no argument \"extra\""),
         ),
         (
             "a Count given as text",
@@ -519,6 +517,26 @@ fn lib_api_018_arguments_that_do_not_match_the_template_are_refused() {
         ),
     ] {
         assert_refused::<Diagnostic>(what, TOO_MANY, TOO_MANY_ARGUMENTS, to, &reason);
+    }
+}
+
+/// The case "arguments out of order" of the test above, refused by R11 until
+/// ADR 0030 amendment 5: the record reads, `==` to its twin.
+#[test]
+fn lib_api_019_a_diagnostic_with_two_arguments_swapped_reads_as_its_twin() {
+    let swapped = TOO_MANY.replacen(
+        TOO_MANY_ARGUMENTS,
+        r#""arguments":{"id":"CLM_132","class":"Claim","count":2,"property":"description","type":"Description","multiplicity":"0..1"}"#,
+        1,
+    );
+    assert_ne!(swapped, TOO_MANY, "LIB-API-019: setup: nothing swapped");
+    let twin: Diagnostic = from_json("the twin", TOO_MANY);
+    match serde_json::from_str::<Diagnostic>(&swapped) {
+        Ok(read) => assert_eq!(
+            read, twin,
+            "LIB-API-019: the record with two arguments swapped reads as another value"
+        ),
+        Err(error) => panic!("LIB-API-019: {swapped} is refused: {error}"),
     }
 }
 

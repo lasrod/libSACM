@@ -962,8 +962,9 @@ impl fmt::Debug for Details {
 }
 
 /// The arguments of a message as serialized: a JSON object whose keys are
-/// the argument names in the template's order, each Text a string and each
-/// Count a non-negative integer (ADR 0030 amendment 3, R8).
+/// the argument names, each Text a string and each Count a non-negative
+/// integer (ADR 0030 amendment 3, R8). It is written in the template's order
+/// and read in any order, each name once (amendment 5).
 #[cfg(feature = "serde")]
 pub(crate) struct ArgumentsRecord(Vec<(String, ArgumentValue)>);
 
@@ -1048,8 +1049,18 @@ impl<'de> serde::Deserialize<'de> for ArgumentsRecord {
                 self,
                 mut map: A,
             ) -> Result<Self::Value, A::Error> {
-                let mut arguments = Vec::new();
-                while let Some((name, ArgumentValueRecord(value))) = map.next_entry()? {
+                let mut arguments: Vec<(String, ArgumentValue)> = Vec::new();
+                // The names read so far: a set, so that a large object is
+                // checked in O(n log n).
+                let mut names = std::collections::BTreeSet::new();
+                while let Some((name, ArgumentValueRecord(value))) =
+                    map.next_entry::<String, ArgumentValueRecord>()?
+                {
+                    if !names.insert(name.clone()) {
+                        return Err(serde::de::Error::custom(format!(
+                            "the argument {name:?} is given twice"
+                        )));
+                    }
                     arguments.push((name, value));
                 }
                 Ok(ArgumentsRecord(arguments))
@@ -1062,7 +1073,8 @@ impl<'de> serde::Deserialize<'de> for ArgumentsRecord {
 
 /// The details a record of a refusal reads back to: `template` must be a
 /// template of `carrier`, `code` its code, and `arguments` exactly its
-/// arguments, by name and kind, in its order (ADR 0030 amendment 3, R11).
+/// arguments, by name and kind, in any order (ADR 0030 amendment 3, R11, and
+/// amendment 5).
 /// Checked in that order: the code against the carrier's codes first.
 ///
 /// # Errors
@@ -1105,39 +1117,49 @@ pub(crate) fn details_from_record(
 }
 
 /// The arguments `arguments` of a record of `template`: exactly its
-/// arguments, by name and kind, in its order (ADR 0030 amendment 3, R11).
+/// arguments, by name and kind, given in any order and held in its order
+/// (ADR 0030 amendment 3, R11, and amendment 5). A repeated name is refused
+/// as the arguments are read.
 ///
 /// # Errors
 ///
-/// The reason, if they are not.
+/// The reason, if they are not: first a name the template does not have,
+/// then, in the template's order, an argument that is missing or of the
+/// wrong kind.
 #[cfg(feature = "serde")]
 fn arguments_from_record(
     template: &'static Template,
     arguments: ArgumentsRecord,
 ) -> Result<Vec<Argument>, String> {
     let template_id = template.id;
-    let ArgumentsRecord(given) = arguments;
-    if given.len() != template.arguments.len() {
+    let ArgumentsRecord(mut given) = arguments;
+    if let Some((name, _)) = given.iter().find(|(name, _)| {
+        !template
+            .arguments
+            .iter()
+            .any(|(declared, _)| declared == name)
+    }) {
         return Err(format!(
-            "the template {template_id:?} takes {} arguments, not {}",
-            template.arguments.len(),
-            given.len()
+            "the template {template_id:?} has no argument {name:?}"
         ));
     }
-    let mut read = Vec::with_capacity(given.len());
-    for ((name, value), &(declared, kind)) in given.into_iter().zip(template.arguments) {
-        if name != declared {
+    let mut read = Vec::with_capacity(template.arguments.len());
+    for &(declared, kind) in template.arguments {
+        let Some(position) = given.iter().position(|(name, _)| name == declared) else {
             return Err(format!(
-                "the argument {name:?} is not {declared:?}, the next argument of {template_id:?}"
+                "the template {template_id:?} needs the argument {declared:?}"
             ));
-        }
+        };
+        let (_, value) = given.swap_remove(position);
         let fits = matches!(
             (&value, kind),
             (ArgumentValue::Text(_), template::Kind::Text)
                 | (ArgumentValue::Count(_), template::Kind::Count)
         );
         if !fits {
-            return Err(format!("the argument {name:?} is not of the kind {kind:?}"));
+            return Err(format!(
+                "the argument {declared:?} is not of the kind {kind:?}"
+            ));
         }
         read.push(Argument {
             name: declared,

@@ -131,10 +131,12 @@ named arguments, so that an application can word the message in any language
   JSON that gives no template, as 0.1.0 wrote, has its code's text, such as
   `SACM-MULT-001`, as its template, and no arguments.
 - **Records.** A refusal read back with serde must name one of its variant's templates,
-  with that template's code and exactly its arguments, by name, kind and order; its
-  `Display` renders them. A diagnostic read back gives `template` and `arguments`
-  together or neither: one of its code's diagnostic templates with exactly its arguments,
-  or its code's text with none. Its `message` is kept as given.
+  with that template's code and exactly its arguments, by name and kind; its `Display`
+  renders them. A diagnostic read back gives `template` and `arguments` together or
+  neither: one of its code's diagnostic templates with exactly its arguments, or its
+  code's text with none. Its `message` is kept as given. `arguments` may give its keys in
+  any order; they are read by name, held and written in the template's order. A missing,
+  extra, repeated or wrongly typed argument is refused.
 
 | Template | Carrier | Arguments | English |
 | --- | --- | --- | --- |

@@ -44,12 +44,15 @@
 //!
 //! The operations are, for every element of the starting document and for an
 //! id it does not hold ("nowhere"):
-//! - the creates: one of each of the 20 kinds under it with a generated id,
-//!   a fresh caller id, an id that is not an `NCName` and the parent's own
-//!   (duplicate) id, the referencing ones naming ids of the document; with a
-//!   generated id, each create with an end refused for no source, a
-//!   white-space id, a missing id or a wrongly typed id; and both root
-//!   creates with each id form (and the ArtifactPackage root create);
+//! - the creates: one of each of the 38 kinds the edit API creates
+//!   ([`CREATE_COUNT`]) under it with a generated id, a fresh caller id, an
+//!   id that is not an `NCName` and the parent's own (duplicate) id, the
+//!   referencing ones naming ids of the document (a Category, a Term, an
+//!   Expression and a `TerminologyGroup` with no reference ids); with a
+//!   generated id, each create with an end refused for no source (or
+//!   target, or too few participants), a white-space id, a missing id or a
+//!   wrongly typed id; and the root create of each of the 12 package kinds
+//!   with each id form;
 //! - the attribute edits (LIB-EDIT-008): a name, the current name, a gid, the
 //!   current gid, gid removal, each flag true and false, a declaration and the
 //!   current declaration;
@@ -162,6 +165,15 @@ use sacm::edit::{CopyElements, MoveElement};
 use sacm::edit::{
     CreateArgumentPackageBinding, CreateArgumentPackageInterface, CreateArtifactPackageBinding,
     CreateArtifactPackageInterface,
+};
+// The create of slice 0057 (SACM23-ART-010; ADR 0034 amendment 2).
+use sacm::edit::CreateArtifactAssetRelationship;
+// The creates of the Terminology package (SACM23-TERM-001 to -006) and of
+// slice 0067 (SACM23-AC-002, -003, SACM23-TERM-007, -008; ADR 0039).
+use sacm::edit::{
+    CreateAssuranceCasePackageBinding, CreateAssuranceCasePackageInterface, CreateCategory,
+    CreateExpression, CreateTerm, CreateTerminologyGroup, CreateTerminologyPackage,
+    CreateTerminologyPackageBinding, CreateTerminologyPackageInterface,
 };
 use sacm::model::ElementKind::{
     Activity, ArgumentGroup, ArgumentPackage, ArgumentPackageBinding, ArgumentPackageInterface,
@@ -1270,48 +1282,63 @@ fn insert(
     }
 }
 
-/// The ids the next generated element of each of the 20 kinds the edit API
+/// The ids the next generated element of each of the 38 kinds the edit API
 /// creates would get, observed on a clone so that `doc` is untouched: those
 /// of [`next_generated_ids_of_every_kind`].
 fn next_generated_ids(row: &str, doc: &Document) -> Vec<ElementId> {
     next_generated_ids_of_every_kind(row, doc)
 }
 
+/// The kinds the edit API creates, one per create operation, in the order of
+/// [`creates_of_every_kind`] and [`next_generated_ids`].
+const CREATED_KINDS: [ElementKind; CREATE_COUNT] = [
+    AssuranceCasePackage,
+    ArgumentPackage,
+    Claim,
+    ArgumentReasoning,
+    ArtifactReference,
+    ArgumentGroup,
+    AssertedInference,
+    AssertedContext,
+    AssertedEvidence,
+    AssertedArtifactSupport,
+    AssertedArtifactContext,
+    Description,
+    ImplementationConstraint,
+    Note,
+    TaggedValue,
+    ArtifactPackage,
+    Property,
+    Technique,
+    Participant,
+    ArtifactGroup,
+    Artifact,
+    Event,
+    Resource,
+    Activity,
+    // The creates of slice 0066.
+    ArgumentPackageInterface,
+    ArgumentPackageBinding,
+    ArtifactPackageInterface,
+    ArtifactPackageBinding,
+    // The create of slice 0057, the Terminology creates, and those of
+    // slice 0067, probed last.
+    ArtifactAssetRelationship,
+    TerminologyPackage,
+    Category,
+    Term,
+    Expression,
+    TerminologyGroup,
+    AssuranceCasePackageInterface,
+    AssuranceCasePackageBinding,
+    TerminologyPackageInterface,
+    TerminologyPackageBinding,
+];
+
 /// The position of `kind` in [`next_generated_ids`]: the order of
 /// [`creates_of_every_kind`].
 fn probe_index(kind: ElementKind) -> usize {
-    const ORDER: [ElementKind; CREATE_COUNT] = [
-        AssuranceCasePackage,
-        ArgumentPackage,
-        Claim,
-        ArgumentReasoning,
-        ArtifactReference,
-        ArgumentGroup,
-        AssertedInference,
-        AssertedContext,
-        AssertedEvidence,
-        AssertedArtifactSupport,
-        AssertedArtifactContext,
-        Description,
-        ImplementationConstraint,
-        Note,
-        TaggedValue,
-        ArtifactPackage,
-        Property,
-        Technique,
-        Participant,
-        ArtifactGroup,
-        Artifact,
-        Event,
-        Resource,
-        Activity,
-        // The creates of slice 0066, probed last.
-        ArgumentPackageInterface,
-        ArgumentPackageBinding,
-        ArtifactPackageInterface,
-        ArtifactPackageBinding,
-    ];
-    match ORDER.iter().position(|&created| created == kind) {
+    match CREATED_KINDS.iter().position(|&created| created == kind) {
         Some(index) => index,
         None => panic!("{EDIT_003}: the edit API does not create a {kind}"),
     }
@@ -1413,6 +1440,42 @@ fn classify(operation: &Operation) -> Class<'_> {
             parent: create.parent(),
             id: create.id(),
         },
+        // The create of slice 0057.
+        Operation::CreateArtifactAssetRelationship(create) => {
+            under!(create, ArtifactAssetRelationship)
+        }
+        // The Terminology creates: a TerminologyPackage is a root or under a
+        // parent, the other kinds always under one.
+        Operation::CreateTerminologyPackage(create) => Class::Create {
+            kind: TerminologyPackage,
+            parent: create.parent(),
+            id: create.id(),
+        },
+        Operation::CreateCategory(create) => under!(create, Category),
+        Operation::CreateTerm(create) => under!(create, Term),
+        Operation::CreateExpression(create) => under!(create, Expression),
+        Operation::CreateTerminologyGroup(create) => under!(create, TerminologyGroup),
+        // The creates of slice 0067, each a root or under a parent.
+        Operation::CreateAssuranceCasePackageInterface(create) => Class::Create {
+            kind: AssuranceCasePackageInterface,
+            parent: create.parent(),
+            id: create.id(),
+        },
+        Operation::CreateAssuranceCasePackageBinding(create) => Class::Create {
+            kind: AssuranceCasePackageBinding,
+            parent: create.parent(),
+            id: create.id(),
+        },
+        Operation::CreateTerminologyPackageInterface(create) => Class::Create {
+            kind: TerminologyPackageInterface,
+            parent: create.parent(),
+            id: create.id(),
+        },
+        Operation::CreateTerminologyPackageBinding(create) => Class::Create {
+            kind: TerminologyPackageBinding,
+            parent: create.parent(),
+            id: create.id(),
+        },
         Operation::SetName(_) => edit_of("SetName"),
         Operation::SetGid(set) if set.gid().is_some() => edit_of("SetGid"),
         Operation::SetGid(_) => edit_of("SetGid::remove"),
@@ -1489,6 +1552,14 @@ const CREATES_WITHOUT_ENDS: &[ElementKind] = &[
     Resource,
     Activity,
 ];
+
+/// The Terminology kinds the set creates with no reference end given: a
+/// Category, a Term, an Expression and a `TerminologyGroup`, each without
+/// its optional `category`, `origin`, `element` or `terminologyElement` ids.
+/// Those ends are not in this file's end tables; `terminology_assets.rs` and
+/// `terminology_groups.rs` check their creates' reference checks.
+const TERMINOLOGY_CREATES_WITHOUT_ENDS: &[ElementKind] =
+    &[Category, Term, Expression, TerminologyGroup];
 
 /// The coverage labels of the value edits of slice 0055 (SACM23-ART-002,
 /// -004, -005; ADR 0034 amendment 1), which join the LIB-EDIT-002 set.
@@ -1755,6 +1826,18 @@ fn create_ends(operation: &Operation) -> Vec<(ReferenceEnd, Vec<&ElementId>)> {
             ReferenceEnd::ParticipantPackage,
             create.participant_packages().iter().collect(),
         )],
+        // The create of slice 0057 (ADR 0034 amendment 2): its sources, then
+        // its targets.
+        Operation::CreateArtifactAssetRelationship(create) => vec![
+            (
+                ReferenceEnd::ArtifactSource,
+                create.sources().iter().collect(),
+            ),
+            (
+                ReferenceEnd::ArtifactTarget,
+                create.targets().iter().collect(),
+            ),
+        ],
         // The creates of slice 0067 (ADR 0039 D4).
         Operation::CreateAssuranceCasePackageInterface(create) => {
             vec![(ReferenceEnd::Implements, vec![create.implements()])]
@@ -3081,11 +3164,12 @@ fn delete_operations_for(doc: &Document) -> Vec<Operation> {
 }
 
 /// Under every element (pre-order) and under [`NOWHERE`]: one create of each
-/// of the 20 kinds with each id form (the twelve of
-/// [`CreateEnds::other_creates`] referencing ids of `doc`), then, with a
-/// generated id, each reference refusal of [`reference_refusals`]; last both
-/// root creates with each id form. Fresh caller ids are `new_<n>`, one per
-/// parent, so that in sequence the second create given one is a duplicate.
+/// of the 38 kinds with each id form (those of [`CreateEnds`] and
+/// [`InterfaceEnds`] referencing ids of `doc`), then, with a generated id,
+/// each reference refusal of [`reference_refusals`] and
+/// [`InterfaceEnds::refusals`]; last the root creates of the 12 package
+/// kinds with each id form. Fresh caller ids are `new_<n>`, one per parent,
+/// so that in sequence the second create given one is a duplicate.
 fn create_operations_for(doc: &Document) -> Vec<Operation> {
     let names = names();
     // The name of the create of kind `kind` with id form `form` under the
@@ -3129,6 +3213,8 @@ fn create_operations_for(doc: &Document) -> Vec<Operation> {
             creates.extend(ends.other_creates(parent, &name, form));
             creates.extend(ends.artifact_creates(parent, &name));
             creates.extend(interface_ends.creates(parent, &name));
+            creates.push(ends.artifact_relationship_create(parent, &name));
+            creates.extend(terminology_creates(parent, &name));
             operations.extend(
                 creates
                     .into_iter()
@@ -3148,8 +3234,9 @@ fn create_operations_for(doc: &Document) -> Vec<Operation> {
         let case = CreateAssuranceCasePackage::root(name(parents.len(), form, 0));
         let arguments = CreateArgumentPackage::root(name(parents.len(), form, 1));
         let artifacts = CreateArtifactPackage::root(name(parents.len(), form, 2));
-        // The interface and binding roots of slice 0066, built before the
-        // caller id is moved.
+        let terms = CreateTerminologyPackage::root(name(parents.len(), form, 7));
+        // The interface and binding roots of slices 0066 and 0067, built
+        // before the caller id is moved.
         let interface_roots =
             interface_ends.roots(&|kind| name(parents.len(), form, kind), caller_id.as_ref());
         match caller_id {
@@ -3157,11 +3244,13 @@ fn create_operations_for(doc: &Document) -> Vec<Operation> {
                 operations.push(case.into());
                 operations.push(arguments.into());
                 operations.push(artifacts.into());
+                operations.push(terms.into());
             }
             Some(value) => {
                 operations.push(case.with_id(&value).into());
                 operations.push(arguments.with_id(&value).into());
                 operations.push(artifacts.with_id(&value).into());
+                operations.push(terms.with_id(&value).into());
             }
         }
         operations.extend(interface_roots);
@@ -3607,37 +3696,8 @@ fn lib_edit_002_the_set_has_legal_and_illegal_operations_of_every_kind_with_both
     });
     assert!(total > 0, "{EDIT_002}: the set is empty");
     let mut required: Vec<(ElementKind, bool, Result<(), &'static str>)> = Vec::new();
-    for kind in [
-        AssuranceCasePackage,
-        ArgumentPackage,
-        Claim,
-        ArgumentReasoning,
-        ArtifactReference,
-        ArgumentGroup,
-        AssertedInference,
-        AssertedContext,
-        AssertedEvidence,
-        AssertedArtifactSupport,
-        AssertedArtifactContext,
-        Description,
-        ImplementationConstraint,
-        Note,
-        TaggedValue,
-        ArtifactPackage,
-        Property,
-        Technique,
-        Participant,
-        ArtifactGroup,
-        Artifact,
-        Event,
-        Resource,
-        Activity,
-        // The creates of slice 0066 (ADR 0039 D4).
-        ArgumentPackageInterface,
-        ArgumentPackageBinding,
-        ArtifactPackageInterface,
-        ArtifactPackageBinding,
-    ] {
+    // Every kind the edit API creates.
+    for kind in CREATED_KINDS {
         for caller in [false, true] {
             required.push((kind, caller, Ok(())));
             required.push((kind, caller, Err(Code::CMD_TARGET_NOT_FOUND.as_str())));
@@ -3655,20 +3715,33 @@ fn lib_edit_002_the_set_has_legal_and_illegal_operations_of_every_kind_with_both
             ArgumentPackageBinding,
             ArtifactPackageInterface,
             ArtifactPackageBinding,
+            AssuranceCasePackageInterface,
+            AssuranceCasePackageBinding,
+            TerminologyPackageInterface,
+            TerminologyPackageBinding,
         ]
         .contains(&kind);
         if (!UTILITY_ELEMENTS.contains(&kind)
             && !PACKAGE_KINDS.contains(&kind)
-            && !CREATES_WITHOUT_ENDS.contains(&kind))
+            && !CREATES_WITHOUT_ENDS.contains(&kind)
+            && !TERMINOLOGY_CREATES_WITHOUT_ENDS.contains(&kind))
             || interface_or_binding
         {
             required.push((kind, false, Err(Code::ID_INVALID.as_str())));
             required.push((kind, false, Err(Code::REF_WRONG_TYPE.as_str())));
         }
-        // A relationship with no source; a binding with fewer than two
-        // distinct participants.
+        // A relationship with no source; an ArtifactAssetRelationship with
+        // no source or no target; a binding with fewer than two distinct
+        // participants.
         if RELATIONSHIPS.contains(&kind)
-            || [ArgumentPackageBinding, ArtifactPackageBinding].contains(&kind)
+            || [
+                ArtifactAssetRelationship,
+                ArgumentPackageBinding,
+                ArtifactPackageBinding,
+                AssuranceCasePackageBinding,
+                TerminologyPackageBinding,
+            ]
+            .contains(&kind)
         {
             required.push((kind, false, Err(Code::MULTIPLICITY_VIOLATION.as_str())));
         }
@@ -4308,7 +4381,7 @@ fn lib_edit_012_no_successful_operation_of_the_set_removes_a_key() {
 // LIB-EDIT-013: check an operation without applying it
 // ---------------------------------------------------------------------------
 
-const OPERATION_NAME_COUNT: usize = 46;
+const OPERATION_NAME_COUNT: usize = 56;
 const OPERATION_NAMES: [&str; OPERATION_NAME_COUNT] = [
     "CreateAssuranceCasePackage",
     "CreateArgumentPackage",
@@ -4339,6 +4412,19 @@ const OPERATION_NAMES: [&str; OPERATION_NAME_COUNT] = [
     "CreateArgumentPackageBinding",
     "CreateArtifactPackageInterface",
     "CreateArtifactPackageBinding",
+    // The create of slice 0057 (SACM23-ART-010), the Terminology creates
+    // (SACM23-TERM-001 to -006) and those of slice 0067 (SACM23-AC-002, -003,
+    // SACM23-TERM-007, -008).
+    "CreateArtifactAssetRelationship",
+    "CreateTerminologyPackage",
+    "CreateCategory",
+    "CreateTerm",
+    "CreateExpression",
+    "CreateTerminologyGroup",
+    "CreateAssuranceCasePackageInterface",
+    "CreateAssuranceCasePackageBinding",
+    "CreateTerminologyPackageInterface",
+    "CreateTerminologyPackageBinding",
     "SetName",
     "SetGid",
     "SetFlag",
@@ -4359,7 +4445,7 @@ const OPERATION_NAMES: [&str; OPERATION_NAME_COUNT] = [
     "DeleteElement",
 ];
 
-const CREATE_COUNT: usize = 28;
+const CREATE_COUNT: usize = 38;
 
 /// A document read from XMI for the check-order cases: a Claim `c1` with a
 /// Description `d1`, a Claim with the id `a b` (not an `NCName`, kept as
@@ -4384,12 +4470,22 @@ const CHECK_ORDER_START: &str = r#"<sacm:AssuranceCasePackage xmlns:sacm="http:/
 
 /// [`CHECK_ORDER_START`] with a second ArgumentPackage `q` and a second
 /// ArtifactPackage `evidence2` at the end of `case`, which the bindings of
-/// [`interface_creates_of_every_kind`] bind (slice 0066).
+/// [`interface_creates_of_every_kind`] bind (slice 0066); in `evidence2`, the
+/// Artifact `report`, which the `ArtifactAssetRelationship` of
+/// [`last_creates_of_every_kind`] relates (slice 0057); and the nested
+/// AssuranceCasePackage `case2` and the `TerminologyPackage`s `terms` and
+/// `terms2`, which its Terminology creates go in and its bindings of slice
+/// 0067 bind.
 fn check_order_start() -> String {
     CHECK_ORDER_START.replacen(
         "</sacm:AssuranceCasePackage>",
         "  <argumentPackage xmi:id=\"q\"><name content=\"Q\"/></argumentPackage>\n  \
-         <artifactPackage xmi:id=\"evidence2\"><name content=\"Evidence 2\"/></artifactPackage>\n\
+         <artifactPackage xmi:id=\"evidence2\"><name content=\"Evidence 2\"/>\
+         <artifactElement xmi:type=\"sacm:Artifact\" xmi:id=\"report\"><name content=\"Report\"/></artifactElement>\
+         </artifactPackage>\n  \
+         <assuranceCasePackage xmi:id=\"case2\"><name content=\"Case 2\"/></assuranceCasePackage>\n  \
+         <terminologyPackage xmi:id=\"terms\"><name content=\"Terms\"/></terminologyPackage>\n  \
+         <terminologyPackage xmi:id=\"terms2\"><name content=\"Terms 2\"/></terminologyPackage>\n\
          </sacm:AssuranceCasePackage>",
         1,
     )
@@ -4428,6 +4524,16 @@ fn has_caller_id(operation: &Operation) -> Option<bool> {
         Operation::CreateArgumentPackageBinding(create) => create.id(),
         Operation::CreateArtifactPackageInterface(create) => create.id(),
         Operation::CreateArtifactPackageBinding(create) => create.id(),
+        Operation::CreateArtifactAssetRelationship(create) => create.id(),
+        Operation::CreateTerminologyPackage(create) => create.id(),
+        Operation::CreateCategory(create) => create.id(),
+        Operation::CreateTerm(create) => create.id(),
+        Operation::CreateExpression(create) => create.id(),
+        Operation::CreateTerminologyGroup(create) => create.id(),
+        Operation::CreateAssuranceCasePackageInterface(create) => create.id(),
+        Operation::CreateAssuranceCasePackageBinding(create) => create.id(),
+        Operation::CreateTerminologyPackageInterface(create) => create.id(),
+        Operation::CreateTerminologyPackageBinding(create) => create.id(),
         _ => return None,
     };
     Some(id.is_some())
@@ -4467,6 +4573,16 @@ fn with_caller_id(operation: Operation, value: Option<&ElementId>) -> Operation 
         Operation::CreateArgumentPackageBinding(create) => create.with_id(value).into(),
         Operation::CreateArtifactPackageInterface(create) => create.with_id(value).into(),
         Operation::CreateArtifactPackageBinding(create) => create.with_id(value).into(),
+        Operation::CreateArtifactAssetRelationship(create) => create.with_id(value).into(),
+        Operation::CreateTerminologyPackage(create) => create.with_id(value).into(),
+        Operation::CreateCategory(create) => create.with_id(value).into(),
+        Operation::CreateTerm(create) => create.with_id(value).into(),
+        Operation::CreateExpression(create) => create.with_id(value).into(),
+        Operation::CreateTerminologyGroup(create) => create.with_id(value).into(),
+        Operation::CreateAssuranceCasePackageInterface(create) => create.with_id(value).into(),
+        Operation::CreateAssuranceCasePackageBinding(create) => create.with_id(value).into(),
+        Operation::CreateTerminologyPackageInterface(create) => create.with_id(value).into(),
+        Operation::CreateTerminologyPackageBinding(create) => create.with_id(value).into(),
         other => panic!("{EDIT_002}: setup: {other:?} is not a create"),
     }
 }
@@ -4505,16 +4621,17 @@ fn first_of(doc: &Document, kinds: &[ElementKind]) -> Option<ElementId> {
     first_and_last_of(doc, kinds).map(|(first, _)| first)
 }
 
-/// The ids the twelve creates that are no package and no Claim reference in
-/// `doc`: the first element of each end's declared type where the document
-/// has one, and [`NOWHERE`] for a source or target where it has none.
 /// The ids the four creates of slice 0066 reference in `doc` (ADR 0039 D4):
 /// the first `ArgumentPackage` of any kind (or [`NOWHERE`]) as `implements`,
 /// and the first and last as participants (one id twice when the document
 /// has one, which a binding refuses); the same for the `ArtifactPackage`s.
+/// The same for the four creates of slice 0067 (ADR 0039 D4): the
+/// `AssuranceCasePackage`s and the `TerminologyPackage`s.
 struct InterfaceEnds {
     argument: (ElementId, ElementId),
     artifact: (ElementId, ElementId),
+    case: (ElementId, ElementId),
+    terminology: (ElementId, ElementId),
 }
 
 impl InterfaceEnds {
@@ -4525,22 +4642,32 @@ impl InterfaceEnds {
         Self {
             argument: pair(&ARGUMENT_PACKAGES),
             artifact: pair(&ARTIFACT_PACKAGES),
+            case: pair(&ASSURANCE_CASE_PACKAGES),
+            terminology: pair(&TERMINOLOGY_PACKAGES),
         }
     }
 
-    /// The four creates under `parent`, with generated ids.
+    /// The eight creates under `parent`, with generated ids.
     fn creates(&self, parent: &ElementId, name: &dyn Fn(usize) -> LangString) -> Vec<Operation> {
         let (argument, last_argument) = &self.argument;
         let (artifact, last_artifact) = &self.artifact;
+        let (case, last_case) = &self.case;
+        let (terminology, last_terminology) = &self.terminology;
         vec![
             CreateArgumentPackageInterface::new(parent, name(17), argument).into(),
             CreateArgumentPackageBinding::new(parent, name(18), [argument, last_argument]).into(),
             CreateArtifactPackageInterface::new(parent, name(19), artifact).into(),
             CreateArtifactPackageBinding::new(parent, name(20), [artifact, last_artifact]).into(),
+            // The creates of slice 0067.
+            CreateAssuranceCasePackageInterface::new(parent, name(26), case).into(),
+            CreateAssuranceCasePackageBinding::new(parent, name(27), [case, last_case]).into(),
+            CreateTerminologyPackageInterface::new(parent, name(28), terminology).into(),
+            CreateTerminologyPackageBinding::new(parent, name(29), [terminology, last_terminology])
+                .into(),
         ]
     }
 
-    /// The four creates as roots, with the caller id `caller_id` if given.
+    /// The eight creates as roots, with the caller id `caller_id` if given.
     fn roots(
         &self,
         name: &dyn Fn(usize) -> LangString,
@@ -4548,11 +4675,18 @@ impl InterfaceEnds {
     ) -> Vec<Operation> {
         let (argument, last_argument) = &self.argument;
         let (artifact, last_artifact) = &self.artifact;
+        let (case, last_case) = &self.case;
+        let (terminology, last_terminology) = &self.terminology;
         let creates: Vec<Operation> = vec![
             CreateArgumentPackageInterface::root(name(3), argument).into(),
             CreateArgumentPackageBinding::root(name(4), [argument, last_argument]).into(),
             CreateArtifactPackageInterface::root(name(5), artifact).into(),
             CreateArtifactPackageBinding::root(name(6), [artifact, last_artifact]).into(),
+            // The creates of slice 0067.
+            CreateAssuranceCasePackageInterface::root(name(8), case).into(),
+            CreateAssuranceCasePackageBinding::root(name(9), [case, last_case]).into(),
+            CreateTerminologyPackageInterface::root(name(10), terminology).into(),
+            CreateTerminologyPackageBinding::root(name(11), [terminology, last_terminology]).into(),
         ];
         creates
             .into_iter()
@@ -4560,7 +4694,7 @@ impl InterfaceEnds {
             .collect()
     }
 
-    /// The reference refusals of the four creates under `parent`, with
+    /// The reference refusals of the eight creates under `parent`, with
     /// generated ids: an `implements` or a participant that holds white
     /// space, names no element, or names the first element of a kind its end
     /// does not admit, each participant with a second, distinct one; and a
@@ -4574,7 +4708,38 @@ impl InterfaceEnds {
         let mut operations: Vec<Operation> = vec![
             CreateArgumentPackageBinding::new(parent, name.clone(), Vec::<ElementId>::new()).into(),
             CreateArtifactPackageBinding::new(parent, name.clone(), Vec::<ElementId>::new()).into(),
+            CreateAssuranceCasePackageBinding::new(parent, name.clone(), Vec::<ElementId>::new())
+                .into(),
+            CreateTerminologyPackageBinding::new(parent, name.clone(), Vec::<ElementId>::new())
+                .into(),
         ];
+        for value in bad(&ASSURANCE_CASE_PACKAGES) {
+            operations.push(
+                CreateAssuranceCasePackageInterface::new(parent, name.clone(), value.clone())
+                    .into(),
+            );
+            operations.push(
+                CreateAssuranceCasePackageBinding::new(
+                    parent,
+                    name.clone(),
+                    [&value, &self.case.0],
+                )
+                .into(),
+            );
+        }
+        for value in bad(&TERMINOLOGY_PACKAGES) {
+            operations.push(
+                CreateTerminologyPackageInterface::new(parent, name.clone(), value.clone()).into(),
+            );
+            operations.push(
+                CreateTerminologyPackageBinding::new(
+                    parent,
+                    name.clone(),
+                    [&value, &self.terminology.0],
+                )
+                .into(),
+            );
+        }
         for value in bad(&ARGUMENT_PACKAGES) {
             operations.push(
                 CreateArgumentPackageInterface::new(parent, name.clone(), value.clone()).into(),
@@ -4597,6 +4762,9 @@ impl InterfaceEnds {
     }
 }
 
+/// The ids the creates that are no package and no Claim reference in `doc`:
+/// the first element of each end's declared type where the document has one,
+/// and [`NOWHERE`] for a required end where it has none.
 struct CreateEnds {
     asset: ElementId,
     reasoning: Option<ElementId>,
@@ -4604,6 +4772,9 @@ struct CreateEnds {
     artifact: Option<ElementId>,
     member: Option<ElementId>,
     artifact_member: Option<ElementId>,
+    /// The source and target of an `ArtifactAssetRelationship` (slice 0057):
+    /// the first `ArtifactAsset`.
+    artifact_asset: ElementId,
 }
 
 impl CreateEnds {
@@ -4615,7 +4786,24 @@ impl CreateEnds {
             artifact: first_of(doc, &MODEL_ELEMENTS),
             member: first_of(doc, &ARGUMENTATION_ELEMENTS),
             artifact_member: first_of(doc, &MODEL_ELEMENTS),
+            artifact_asset: first_of(doc, &PROPERTY_HOLDERS).unwrap_or_else(|| id(NOWHERE)),
         }
+    }
+
+    /// The create of slice 0057 under `parent`, with a generated id: an
+    /// `ArtifactAssetRelationship` from and to `artifact_asset`.
+    fn artifact_relationship_create(
+        &self,
+        parent: &ElementId,
+        name: &dyn Fn(usize) -> LangString,
+    ) -> Operation {
+        CreateArtifactAssetRelationship::new(
+            parent,
+            name(21),
+            [&self.artifact_asset],
+            [&self.artifact_asset],
+        )
+        .into()
     }
 
     /// The five creates of slice 0052 under `parent`, with generated ids,
@@ -4767,7 +4955,42 @@ fn reference_refusals(doc: &Document, parent: &ElementId, name: &LangString) -> 
                 .into(),
         );
     }
+    // The create of slice 0057: no source, no target, and a source or a
+    // target of each of those three, the other end the first ArtifactAsset.
+    let artifact_asset = first_of(doc, &PROPERTY_HOLDERS).unwrap_or_else(|| id(NOWHERE));
+    let none = Vec::<ElementId>::new;
+    operations.push(
+        CreateArtifactAssetRelationship::new(parent, name.clone(), none(), [&artifact_asset])
+            .into(),
+    );
+    operations.push(
+        CreateArtifactAssetRelationship::new(parent, name.clone(), [&artifact_asset], none())
+            .into(),
+    );
+    for value in bad(&PROPERTY_HOLDERS) {
+        operations.push(
+            CreateArtifactAssetRelationship::new(parent, name.clone(), [&value], [&artifact_asset])
+                .into(),
+        );
+        operations.push(
+            CreateArtifactAssetRelationship::new(parent, name.clone(), [&artifact_asset], [&value])
+                .into(),
+        );
+    }
     operations
+}
+
+/// The Terminology creates under `parent`, with generated ids, named by
+/// `name`: a `TerminologyPackage`, and a Category, a Term, an Expression and
+/// a `TerminologyGroup` with no reference ids (SACM23-TERM-001 to -006).
+fn terminology_creates(parent: &ElementId, name: &dyn Fn(usize) -> LangString) -> Vec<Operation> {
+    vec![
+        CreateTerminologyPackage::new(parent, name(22)).into(),
+        CreateCategory::new(parent, name(23)).into(),
+        CreateTerm::new(parent, name(24), "blade").into(),
+        CreateExpression::new(parent, name(25), "$Blade$ is guarded").into(),
+        CreateTerminologyGroup::new(parent, name(30)).into(),
+    ]
 }
 
 /// The LIB-EDIT-013 set for `doc`: the operations of [`operations_for`],
@@ -4777,15 +5000,18 @@ fn check_operations_for(doc: &Document) -> Vec<Operation> {
     operations_for(doc)
 }
 
-/// One create of each of the 20 kinds, with a generated id, in the order of
+/// One create of each of the 38 kinds, with a generated id, in the order of
 /// [`probe_index`]: the packages under `package_parent`, the argumentation
 /// and utility kinds under `parent`, the asserted relationships from and to
-/// `asset`, then [`artifact_creates_of_every_kind`] with `artifact_parent`.
+/// `asset`, then [`artifact_creates_of_every_kind`] with `artifact_parent`,
+/// [`interface_creates_of_every_kind`], and [`last_creates_of_every_kind`]
+/// with `terminology_parent`.
 fn creates_of_every_kind(
     package_parent: &str,
     parent: &str,
     asset: &str,
     artifact_parent: &str,
+    terminology_parent: &str,
 ) -> Vec<Operation> {
     let mut creates = argument_creates_of_every_kind(package_parent, parent, asset);
     creates.extend(artifact_creates_of_every_kind(
@@ -4797,7 +5023,70 @@ fn creates_of_every_kind(
         parent,
         artifact_parent,
     ));
+    creates.extend(last_creates_of_every_kind(
+        package_parent,
+        artifact_parent,
+        terminology_parent,
+    ));
     creates
+}
+
+/// The last ten of [`creates_of_every_kind`], with a generated id: an
+/// `ArtifactAssetRelationship` from and to the Artifact `report` under
+/// `artifact_parent` (slice 0057); a `TerminologyPackage` under
+/// `package_parent`, and a Category, a Term, an Expression and a
+/// `TerminologyGroup` under `terminology_parent`; and the four creates of
+/// slice 0067 under `package_parent`: an interface of `package_parent` and of
+/// `terminology_parent`, and a binding of each with the second package of
+/// its family in [`check_order_start`], `case2` and `terms2`.
+fn last_creates_of_every_kind(
+    package_parent: &str,
+    artifact_parent: &str,
+    terminology_parent: &str,
+) -> Vec<Operation> {
+    vec![
+        CreateArtifactAssetRelationship::new(
+            artifact_parent,
+            named("Produced by"),
+            ["report"],
+            ["report"],
+        )
+        .into(),
+        CreateTerminologyPackage::new(package_parent, named("Terms")).into(),
+        CreateCategory::new(terminology_parent, named("Category")).into(),
+        CreateTerm::new(terminology_parent, named("Term"), "blade").into(),
+        CreateExpression::new(
+            terminology_parent,
+            named("Expression"),
+            "$Blade$ is guarded",
+        )
+        .into(),
+        CreateTerminologyGroup::new(terminology_parent, named("Terminology group")).into(),
+        CreateAssuranceCasePackageInterface::new(
+            package_parent,
+            named("Case interface"),
+            package_parent,
+        )
+        .into(),
+        CreateAssuranceCasePackageBinding::new(
+            package_parent,
+            named("Case binding"),
+            [package_parent, "case2"],
+        )
+        .into(),
+        CreateTerminologyPackageInterface::new(
+            package_parent,
+            named("Terminology interface"),
+            terminology_parent,
+        )
+        .into(),
+        CreateTerminologyPackageBinding::new(
+            package_parent,
+            named("Terminology binding"),
+            [terminology_parent, "terms2"],
+        )
+        .into(),
+    ]
 }
 
 /// The five creates of slice 0052, with a generated id: the `ArtifactPackage`
@@ -4849,12 +5138,14 @@ fn argument_creates_of_every_kind(
     creates
 }
 
-/// The ids the next generated element of each of the 20 kinds the edit API
+/// The ids the next generated element of each of the 38 kinds the edit API
 /// creates would get, observed on a clone so that `doc` is untouched: a root
 /// AssuranceCasePackage and ArgumentPackage, a Claim in that ArgumentPackage,
 /// and there one of each other argumentation and utility kind, the
 /// relationships from and to the Claim; then an ArtifactPackage in the
-/// AssuranceCasePackage, and in it one of each other artifact kind.
+/// AssuranceCasePackage, and in it one of each other artifact kind; then the
+/// interfaces and bindings, the `ArtifactAssetRelationship` and the
+/// Terminology kinds, in the order of [`probe_index`].
 fn next_generated_ids_of_every_kind(row: &str, doc: &Document) -> Vec<ElementId> {
     let mut probe = doc.clone();
     let case = create(
@@ -4913,6 +5204,64 @@ fn next_generated_ids_of_every_kind(row: &str, doc: &Document) -> Vec<ElementId>
         );
         ids.extend([interface, binding, artifact_interface, artifact_binding]);
     }
+    let case = ids[0].clone();
+    let property = ids[probe_index(Property)].clone();
+    ids.extend(next_generated_ids_of_the_last_kinds(
+        row, &mut probe, &case, &artifacts, &property,
+    ));
+    ids
+}
+
+/// The ids [`next_generated_ids_of_every_kind`] observes for the last ten
+/// kinds of [`CREATED_KINDS`], created in `probe`: an
+/// `ArtifactAssetRelationship` in `artifacts`, from and to `property`; a root
+/// `TerminologyPackage` and in it one of each other Terminology kind; and the
+/// creates of slice 0067: an interface of `case` and of the
+/// `TerminologyPackage`, and a binding of each package and its interface.
+fn next_generated_ids_of_the_last_kinds(
+    row: &str,
+    probe: &mut Document,
+    case: &ElementId,
+    artifacts: &ElementId,
+    property: &ElementId,
+) -> Vec<ElementId> {
+    let mut ids = vec![create(
+        row,
+        probe,
+        CreateArtifactAssetRelationship::new(artifacts, named("probe"), [property], [property]),
+    )];
+    let terms = create(row, probe, CreateTerminologyPackage::root(named("probe")));
+    ids.push(terms.clone());
+    let terminology_creates: [Operation; 4] = [
+        CreateCategory::new(&terms, named("probe")).into(),
+        CreateTerm::new(&terms, named("probe"), "probe").into(),
+        CreateExpression::new(&terms, named("probe"), "probe").into(),
+        CreateTerminologyGroup::new(&terms, named("probe")).into(),
+    ];
+    for operation in terminology_creates {
+        ids.push(create(row, probe, operation));
+    }
+    let case_interface = create(
+        row,
+        probe,
+        CreateAssuranceCasePackageInterface::new(case, named("probe"), case),
+    );
+    let case_binding = create(
+        row,
+        probe,
+        CreateAssuranceCasePackageBinding::root(named("probe"), [case, &case_interface]),
+    );
+    let terms_interface = create(
+        row,
+        probe,
+        CreateTerminologyPackageInterface::new(&terms, named("probe"), &terms),
+    );
+    let terms_binding = create(
+        row,
+        probe,
+        CreateTerminologyPackageBinding::root(named("probe"), [&terms, &terms_interface]),
+    );
+    ids.extend([case_interface, case_binding, terms_interface, terms_binding]);
     ids
 }
 
@@ -5139,8 +5488,8 @@ fn lib_edit_013_check_leaves_the_document_equal_with_the_same_next_ids_of_every_
 #[test]
 fn lib_edit_013_a_checked_create_of_each_kind_gets_the_generated_id_an_unchecked_one_gets() {
     let mut doc = read_text("CHECK_ORDER_START", check_order_start().as_bytes());
-    let accepted = creates_of_every_kind("case", "p", "c1", "evidence");
-    let refused = creates_of_every_kind(NOWHERE, NOWHERE, "c1", NOWHERE);
+    let accepted = creates_of_every_kind("case", "p", "c1", "evidence", "terms");
+    let refused = creates_of_every_kind(NOWHERE, NOWHERE, "c1", NOWHERE, NOWHERE);
     assert_eq!(
         accepted.len(),
         CREATE_COUNT,
