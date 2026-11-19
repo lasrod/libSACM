@@ -888,6 +888,8 @@ fn sacm23_xmi_027_an_href_that_names_no_element_is_preserved_with_xmi_003() {
         "#a b",
         "other.xmi#a b",
         "other.xmi#a#b",
+        "a b.xmi#c",
+        "a&#9;b.xmi#c",
     ] {
         let what = format!("href={value:?} on citedElement");
         let (input, marks) = marked(&in_p_without_xlink(&claim(

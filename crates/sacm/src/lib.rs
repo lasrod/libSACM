@@ -56,7 +56,15 @@
 //!   written, and a Resource's [`location`](model::SacmElement::location).
 //!   In a `TerminologyPackage` it reads `Category`, `Term`, `Expression`,
 //!   `TerminologyGroup` and nested `TerminologyPackage` elements (see
-//!   [Terminology](#terminology)).
+//!   [Terminology](#terminology)). The interfaces and bindings of every
+//!   package are read as roots and as children, with each interface's
+//!   [`implements`](model::SacmElement::implements), each binding's
+//!   [`participant_packages`](model::SacmElement::participant_packages) and
+//!   each package's [`interfaces`](model::SacmElement::interfaces). A
+//!   reference element whose `href` names an element of another document,
+//!   such as `other.sacm.xmi#c1`, is held as a [`model::Href`] in the end's
+//!   [`hrefs`](model::SacmElement::hrefs), written back and counted toward
+//!   the end's bounds, but never resolved; no edit creates one yet.
 //!   A `name`, or a value of a `content`, `key` or `location`, may be an
 //!   `ExpressionLangString` (§8.4) that links an `ExpressionElement`
 //!   ([`LangString::expression`](model::LangString::expression),
@@ -88,7 +96,12 @@
 //!   §11.17, §11.18), each Term or Expression without a `value`, each
 //!   `ExpressionLangString` without an `expression` or with both an
 //!   `expression` and a non-empty content, each concrete Expression whose
-//!   elements are abstract, and each id a reference end repeats, as
+//!   elements are abstract, each id a reference end repeats, each child of a
+//!   package interface or binding that its clause does not allow (§9.3,
+//!   §10.5, §10.6, §11.5, §11.6, §12.4, §12.5), each interface with no
+//!   `implements` and each binding with fewer than two distinct
+//!   participants, each binding named as a participant, and each interface
+//!   outside the package it implements, as
 //!   [`Diagnostic`](diagnostic::Diagnostic)s with stable codes.
 //! - [`edit::apply`] creates `AssuranceCasePackage`, `ArgumentPackage`,
 //!   `Claim`, `ArgumentReasoning`, `ArtifactReference` and `ArgumentGroup`
@@ -98,14 +111,15 @@
 //!   `Event`, `Resource` and `Activity` elements
 //!   ([`edit::CreateArtifactPackage`] and the like), `TerminologyPackage`,
 //!   `Category`, `Term`, `Expression` and `TerminologyGroup` elements
-//!   ([`edit::CreateTerminologyPackage`] and the like), and descriptions,
-//!   implementation constraints, notes and tagged values on them
-//!   ([`edit::CreateNote`], [`edit::CreateTaggedValue`] and the like); a
-//!   refused edit changes nothing, and an edit refuses a reference that
-//!   names no element or an element its end's declared type does not admit.
-//!   The stricter §11.15, §11.17 and §11.18 rules, that evidence and
-//!   artifact relationships link `ArtifactReference`s, are left to
-//!   [`validation::validate`]. It also changes existing elements of every
+//!   ([`edit::CreateTerminologyPackage`] and the like), the interfaces and
+//!   bindings of every package ([`edit::CreateArgumentPackageInterface`] and
+//!   the like), and descriptions, implementation constraints, notes and
+//!   tagged values on them ([`edit::CreateNote`], [`edit::CreateTaggedValue`]
+//!   and the like); a refused edit changes nothing, and an edit refuses a
+//!   reference that names no element or an element its end's declared type
+//!   does not admit. The stricter §11.15, §11.17 and §11.18 rules, that
+//!   evidence and artifact relationships link `ArtifactReference`s, are left
+//!   to [`validation::validate`]. It also changes existing elements of every
 //!   kind: their names, `gid`s, flags and `assertionDeclaration`s
 //!   ([`edit::SetName`] and the like), the `content` and `key` of
 //!   descriptions, implementation constraints, notes and tagged values
@@ -242,11 +256,10 @@
 //! infer its target, the conclusion. An `AssertedContext` (§11.16) gives its
 //! sources as the context of its target. An `AssertedEvidence` (§11.15)
 //! supports its target with evidence: its sources are `ArtifactReference`s
-//! (§11.9), which name the artifacts. Artifacts themselves (§12.7) are not
-//! supported yet, so for now an `ArtifactReference` can name only elements
-//! of argument, artifact and assurance-case packages, such as a `Technique`,
-//! or nothing. Build them with [`edit`], and read
-//! them back with [`sources`](model::SacmElement::sources) and
+//! (§11.9), which name the artifacts. An `ArtifactReference` names its
+//! artifacts, such as an `Artifact` (§12.7), in
+//! `referencedArtifactElement`. Build them with [`edit`], and read them back
+//! with [`sources`](model::SacmElement::sources) and
 //! [`target`](model::SacmElement::target):
 //!
 //! ```

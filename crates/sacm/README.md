@@ -38,7 +38,10 @@ Read, edit, validate and write assurance cases in the
   `origin`, `external_reference`, `expression_elements`). The interfaces and bindings of
   every package are read as roots and as children, with each interface's `implements`,
   each binding's participants and each package's `interface` (`SacmElement::implements`,
-  `participant_packages`, `interfaces`). A `name`, or a value of a
+  `participant_packages`, `interfaces`). A reference element whose `href` names an
+  element of another document, such as `other.sacm.xmi#c1`, is held as a `model::Href`
+  in the end's hrefs (`SacmElement::hrefs`), written back and counted toward the end's
+  bounds, but never resolved; no edit creates one yet. A `name`, or a value of a
   `content`, `key` or `location`, may be an `ExpressionLangString` (§8.4) that links an
   ExpressionElement (`LangString::expression`, `SacmElement::expressions`). Content that
   is not SACM 2.3 where it stands, such as
@@ -67,8 +70,12 @@ Read, edit, validate and write assurance cases in the
   a target, each evidence or artifact relationship whose ends are not artifact references
   (§11.15, §11.17, §11.18), each Term or Expression without a value, each
   ExpressionLangString without an `expression` or with both an `expression` and a
-  non-empty content, each concrete Expression whose elements are abstract, and each id a
-  reference end repeats, as diagnostics with stable codes.
+  non-empty content, each concrete Expression whose elements are abstract, each id a
+  reference end repeats, each child of a package interface or binding that its clause
+  does not allow (§9.3, §10.5, §10.6, §11.5, §11.6, §12.4, §12.5), each interface with no
+  `implements` and each binding with fewer than two distinct participants, each binding
+  named as a participant, and each interface outside the package it implements, as
+  diagnostics with stable codes.
 - `sacm::edit::apply` creates AssuranceCasePackages, ArgumentPackages, Claims,
   ArgumentReasonings, ArtifactReferences, ArgumentGroups and the five asserted
   relationships (`sacm::edit::CreateAssertedInference` and the like), ArtifactPackages,
@@ -110,13 +117,12 @@ Planned:
 - Tolerant reading of third-party dialects and legacy revisions, reporting exactly what
   was accepted.
 - More validation rules against the specification's constraints.
-- SACM-native editing for every element kind, with previews of destructive edits.
 
 ## Usage
 
 ```toml
 [dependencies]
-sacm = "0.1"
+sacm = "0.2"
 ```
 
 Load a document, inspect it, edit it, validate it and save it:

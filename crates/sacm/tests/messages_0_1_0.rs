@@ -35,8 +35,10 @@
 //! refusal quotes the input's names with `{:?}`. The test refuses a message
 //! with a line break rather than write an ambiguous line.
 //!
-//! The file is never re-recorded: a line that changes is a change of the
-//! 0.1.0 English, which LIB-API-017 and LIB-API-018 forbid. When the lines
+//! The file is never re-recorded, except the lines of a fixture whose
+//! behaviour a later verified row changes, which that slice replaces: any
+//! other line that changes is a change of the 0.1.0 English, which
+//! LIB-API-017 and LIB-API-018 forbid. When the lines
 //! differ, the test writes what it rendered to
 //! `<CARGO_TARGET_TMPDIR>/messages-0.1.0.actual.txt` for a diff, and fails.
 
@@ -60,7 +62,8 @@ const FIXTURE_DIRS: [&str; 2] = ["crates/sacm/tests/data", "crates/sacm-cli/test
 /// The comment lines the file starts with: the format above.
 const HEADER: &str = "\
 # The messages of sacm 0.1.0 for every XMI fixture (LIB-API-017, acceptance 3).
-# Recorded before slice 0063 changed the code; never re-recorded.
+# Recorded before slice 0063 changed the code; never re-recorded, except the lines of a
+#   fixture whose behaviour a later verified row changes, which that slice replaces.
 # Line: <fixture> <step>: <message>
 # fixture: the path from the repository root, with / separators, sorted.
 # step: strict-read, strict-validate, tolerant-read, tolerant-validate, in that order;

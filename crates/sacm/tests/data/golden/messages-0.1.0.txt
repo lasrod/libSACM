@@ -1,5 +1,6 @@
 # The messages of sacm 0.1.0 for every XMI fixture (LIB-API-017, acceptance 3).
-# Recorded before slice 0063 changed the code; never re-recorded.
+# Recorded before slice 0063 changed the code; never re-recorded, except the lines of a
+#   fixture whose behaviour a later verified row changes, which that slice replaces.
 # Line: <fixture> <step>: <message>
 # fixture: the path from the repository root, with / separators, sorted.
 # step: strict-read, strict-validate, tolerant-read, tolerant-validate, in that order;
@@ -296,10 +297,6 @@ crates/sacm/tests/data/sacm23/xmi/invalid/modularity-findings.sacm.xmi tolerant-
 crates/sacm/tests/data/sacm23/xmi/invalid/modularity-findings.sacm.xmi tolerant-validate: warning SACM-PKG-001 [SACM23-VAL-013, clause 11.6]: ArgumentPackageInterface "i" contains Claim "i_far", which cites "d", but §11.6 has an interface cite only elements within the package it implements, "p"
 crates/sacm/tests/data/sacm23/xmi/invalid/modularity-findings.sacm.xmi tolerant-validate: error SACM-PKG-001 [SACM23-VAL-013, clause 11.6]: ArgumentPackageInterface "i" contains Claim "i_plain", which is no citation (isCitation true and a citedElement), but §11.6 allows only citations in it
 crates/sacm/tests/data/sacm23/xmi/invalid/modularity-findings.sacm.xmi tolerant-validate: warning SACM-PKG-002 [SACM23-VAL-023, clause 11.6]: ArgumentPackageInterface "j" implements the ArgumentPackage "q" but does not reside inside it, as §11.6 says an interface does
-crates/sacm/tests/data/sacm23/xmi/invalid/reference-cross-document-href.sacm.xmi strict-read: (none)
-crates/sacm/tests/data/sacm23/xmi/invalid/reference-cross-document-href.sacm.xmi strict-validate: (none)
-crates/sacm/tests/data/sacm23/xmi/invalid/reference-cross-document-href.sacm.xmi tolerant-read: (none)
-crates/sacm/tests/data/sacm23/xmi/invalid/reference-cross-document-href.sacm.xmi tolerant-validate: (none)
 crates/sacm/tests/data/sacm23/xmi/invalid/root-claim-invalid-root.sacm.xmi strict-read: refusal the root element "sacm:Claim" is not a SACM package at line 2, column 1
 crates/sacm/tests/data/sacm23/xmi/invalid/root-claim-invalid-root.sacm.xmi tolerant-read: refusal the root element "sacm:Claim" is not a SACM package at line 2, column 1
 crates/sacm/tests/data/sacm23/xmi/invalid/wrapper-empty-no-package.sacm.xmi strict-read: refusal the XMI element holds no SACM package at line 2, column 1
@@ -319,6 +316,10 @@ crates/sacm/tests/data/sacm23/xmi/name-third-party-form-valid.sacm.xmi strict-re
 crates/sacm/tests/data/sacm23/xmi/name-third-party-form-valid.sacm.xmi strict-validate: (none)
 crates/sacm/tests/data/sacm23/xmi/name-third-party-form-valid.sacm.xmi tolerant-read: info SACM-XMI-011 [LIB-COMPAT-001, clause 7.5.3] at line 3, column 23: the xmi:version "2.0" of the ArgumentPackage "_hX3kQK1sEe6xAbCdEfGhIj" is ignored: the XMI namespace identifies the version (XMI 2.5.1 §7.5.3), and write does not write it
 crates/sacm/tests/data/sacm23/xmi/name-third-party-form-valid.sacm.xmi tolerant-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/reference-cross-document-href-valid.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/reference-cross-document-href-valid.sacm.xmi strict-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/reference-cross-document-href-valid.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/reference-cross-document-href-valid.sacm.xmi tolerant-validate: (none)
 crates/sacm/tests/data/sacm23/xmi/references-valid.sacm.xmi strict-read: (none)
 crates/sacm/tests/data/sacm23/xmi/references-valid.sacm.xmi strict-validate: (none)
 crates/sacm/tests/data/sacm23/xmi/references-valid.sacm.xmi tolerant-read: (none)
