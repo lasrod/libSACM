@@ -15,7 +15,7 @@ against the clause, which is a different exercise from reading it.
 
 This page is **input to the OMG submission**, not a description of Assurance
 Forge. What the library does about each one is recorded in
-[decisions and questions](sacm-decisions-and-questions.md); what it validates is
+[decisions and questions](decisions.md); what it validates is
 in the [conformance matrix](sacm-conformance-matrix.md). Prepared for
 [#200](https://github.com/lasrod/assurance-forge/issues/200).
 
@@ -496,4 +496,4 @@ formal/23-05-08 §9.3 (p. 24) says an AssuranceCasePackageInterface is "only all
 
 - [GSN / SACM metamodel gaps](sacm-gsn-metamodel-gaps.md) — the GSN v3 side, for the SCSC ACWG.
 - [SACM 2.4 watch](sacm-2.4-watch.md) — the RTF issues that would change this.
-- [Decisions and questions](sacm-decisions-and-questions.md) — what the library does about each defect.
+- [Decisions and questions](decisions.md) — what the library does about each defect.

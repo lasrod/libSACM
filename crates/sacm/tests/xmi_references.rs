@@ -56,11 +56,10 @@ const FIXTURE: &str = concat!(
 );
 
 /// The fixture of SACM23-XMI-015 with a cross-document `href`, which
-/// SACM23-XMI-027 reads since slice 0068; it keeps its path under
-/// `invalid/`.
+/// SACM23-XMI-027 reads since slice 0068.
 const CROSS_DOCUMENT_FIXTURE: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/tests/data/sacm23/xmi/invalid/reference-cross-document-href.sacm.xmi"
+    "/tests/data/sacm23/xmi/reference-cross-document-href-valid.sacm.xmi"
 );
 
 /// The two reference ends of this release, each with the flag that makes a

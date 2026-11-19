@@ -28,6 +28,7 @@ CI runs this on every pull request, and `main` requires it:
 ```sh
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo +1.85 check -p sacm --all-features --all-targets
 cargo test --workspace --all-features
 cargo test -p xtask
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features

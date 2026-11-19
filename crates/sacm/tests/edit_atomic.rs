@@ -213,12 +213,12 @@ const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/x
 /// `golden/nested.golden.sacm.xmi`, whose `ArgumentPackageInterface` it
 /// reads (SACM23-ARG-014, SACM23-ART-012; LIB-EDIT-019); and the two worked
 /// examples of slice 0067 (SACM23-AC-002, -003, SACM23-TERM-007, -008); and
-/// the cross-document fixture of slice 0068 and its golden file
+/// the cross-document fixtures of slice 0068 and its golden file
 /// (SACM23-XMI-027). Most files under `invalid/` are refused by design;
-/// `modularity-findings` and `reference-cross-document-href` read, with
-/// `validate` findings only (slice 0068).
-const READABLE_FIXTURES: [&str; 18] = [
+/// `modularity-findings` reads, with `validate` findings only (slice 0068).
+const READABLE_FIXTURES: [&str; 19] = [
     "cross-document-references-valid.sacm.xmi",
+    "reference-cross-document-href-valid.sacm.xmi",
     "golden/cross-document-references.golden.sacm.xmi",
     "argument-package-interfaces-valid.sacm.xmi",
     "artifact-package-interfaces-valid.sacm.xmi",

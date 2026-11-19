@@ -14,7 +14,7 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 - `model::Href` and `SacmElement::hrefs(end)`: a reference element's `href` that names an
   element of another document (`document#fragment`, XMI 2.5.1 §7.10.2) is read on every
   element reference end, held as written in a list of the end's own beside its ids, and
-  never resolved; `document()` and `fragment()` give its parts [SACM23-XMI-027].
+  never resolved; `document()` and `fragment()` give its parts [SACM23-XMI-027]. No edit operation creates an `href` yet; code that needs every value of an end must also read `hrefs()`.
 - `compare::Difference::Hrefs`, after `ParticipantPackages`, one per end whose `href`s
   differ [SACM23-XMI-027].
 - `Code::INTERFACE_PLACEMENT` (SACM-PKG-002), and eight diagnostic templates:
