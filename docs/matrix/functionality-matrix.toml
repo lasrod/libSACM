@@ -5679,7 +5679,8 @@ acceptance = [
   "`sacm23_val_013_the_modularity_fixture_gives_exactly_its_nine_findings_and_writes`: `invalid/modularity-findings.sacm.xmi` reads in both modes with no diagnostic; `validate` gives exactly nine findings in order, with no location: VAL-014 `too-few` `[b]`, VAL-022 `[b, i]`, VAL-014 `missing` `[k]`, VAL-015 `[ai, ap]`, VAL-013 `not-a-citation-or-relationship` `[b, b_plain]`, VAL-014 `binding-participant` `[b2, b]`, VAL-013 `cited-outside` `[i, i_far, d]`, VAL-013 `not-a-citation` `[i, i_plain]`, VAL-023 `[j, q]`; both saves write it.",
   "`sacm23_val_013_the_catalog_pkg_001_row_names_the_row_and_its_templates`.",
 ]
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0068-modularity-rules.md"
 depends_on = ["SACM23-AC-002", "SACM23-AC-003", "SACM23-ARG-014", "SACM23-ARG-015", "SACM23-ART-012", "SACM23-ART-013", "SACM23-TERM-007", "SACM23-TERM-008", "SACM23-VAL-007", "SACM23-XMI-027"]
 
 [[row]]
@@ -5711,7 +5712,8 @@ acceptance = [
   "`sacm23_val_014_the_findings_do_not_refuse_a_strict_write`.",
   "`sacm23_val_014_the_catalog_names_the_row`: the SACM-MULT-001 row has no reserved part left for it; the SACM-PKG-001 row names the Warning.",
 ]
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0068-modularity-rules.md"
 depends_on = ["SACM23-AC-003", "SACM23-ARG-015", "SACM23-ART-013", "SACM23-TERM-008", "SACM23-XMI-027", "SACM23-VAL-022"]
 
 [[row]]
@@ -5737,7 +5739,8 @@ acceptance = [
   "`sacm23_val_015_an_assurance_case_package_or_binding_owner_is_out_of_scope`.",
   "`sacm23_val_015_the_findings_do_not_refuse_a_strict_write`.",
 ]
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0068-modularity-rules.md"
 depends_on = ["SACM23-AC-002"]
 
 # ===========================================================================
@@ -6312,7 +6315,8 @@ title = "An interface resides inside the package it implements"
 requirement = "`validation::validate` reports each ArgumentPackageInterface (§11.6), ArtifactPackageInterface (§12.5) and TerminologyPackageInterface (§10.5) whose `isCitation` is not true and whose `implements` id names an element of the document of a kind the end admits, when that element is not one of its ancestors at any depth, as one SACM-PKG-002 Warning (`Code::INTERFACE_PLACEMENT`), with requirement SACM23-VAL-023, the clause, no location and affected `[interface, package]`; an interface that implements itself is reported. Not checked: a citation (Annex E cites an interface inside an AssuranceCasePackageInterface); an `implements` that is missing, dangling, an `href`, preserved content or of the wrong kind (SACM23-VAL-014, SACM-REF-001, SACM-REF-002 and SACM-REF-003 report those); an AssuranceCasePackageInterface (§9.3 states no placement); and where a binding or a participant resides (§9.4, §10.6, §11.5, §12.4; D-SEV). Reading, editing and both saves do not refuse it; `MoveElement` may cause or clear it (D-VAL-LAYER)."
 source = "formal/23-05-08 §11.6 (p. 38) \"An ArgumentPackageInterface resides insided the ArgumentPackage to which it refers.\"; §12.5 (p. 47) \"An ArtifactPackageInterface resides inside the ArtifactPackage to which it refers.\"; §10.5 (p. 28) \"A TerminologyPackageInterface resides inside the TerminologyPackage to which it refers.\"; Annex E (informative, p. 77) \"The ArgumentPackageInterface for Engine is also cited within the AssuranceCasePackageInterface for Engine.\"; M5 decisions Q3 (the maintainer, 2026-11-18); D-SEV"
 kind = "validation"
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0068-modularity-rules.md"
 depends_on = ["SACM23-ARG-014", "SACM23-ART-012", "SACM23-TERM-007", "SACM23-VAL-014", "SACM23-XMI-027"]
 code = ["crates/sacm/src/validation/modularity.rs", "crates/sacm/src/validation.rs", "crates/sacm/src/diagnostic/template.rs", "crates/sacm/src/diagnostic.rs"]
 tests = [
@@ -7584,7 +7588,8 @@ acceptance = [
   "`sacm23_xmi_027_links_not_read_yet_name_sacm23_xmi_029`: Inputs: `<argumentElement href=\"o.xmi#c\"/>`, typed and untyped; `<expression href=\"o.xmi#t\"/>` in a name; `#xpointer(id('c'))` and `o.xmi#xpointer(id('c'))` on `citedElement`; an `xlink:href` on a reference element. Each is `Unsupported` with SACM-XMI-007, Display ending `(a limit of this version; SACM23-XMI-029 reads it)`, and is kept with SACM-XMI-007 in tolerant mode.",
   "`sacm23_xmi_027_the_catalog_rows_describe_hrefs`: SACM-XMI-007, SACM-REF-001, SACM-REF-002, SACM-REF-003 and SACM-MULT-001.",
 ]
-status = "implemented"
+status = "verified"
+verification = "docs/verification/0068-modularity-rules.md"
 depends_on = [
   "SACM23-XMI-015",
   "SACM23-VAL-022",

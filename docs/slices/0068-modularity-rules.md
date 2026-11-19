@@ -1,8 +1,8 @@
 ---
 slice: 0068
 name: modularity-rules
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [SACM23-VAL-013, SACM23-VAL-014, SACM23-VAL-015, SACM23-VAL-023, SACM23-XMI-027]
 mode: pr
 base: main (2a7dcbf)
@@ -53,3 +53,4 @@ M5's last slice.
     exemption; the `Hrefs` Display; `repeated_hrefs`; `set_hrefs`'s guards).
   - The fix round: the builder fixes B1–B7, N2, N3, N4 and N10; the lead fixes N1, N5–N9 (matrix wording, with the
     verifier's text), adds B2/B3 to XMI-027 acceptance 15, and updates the follow-ups.
+- 2026-11-19 verify round 2 (babc873): PASS on all five rows. Record docs/verification/0068-modularity-rules.md.
