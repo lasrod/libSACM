@@ -122,7 +122,7 @@ Planned:
 
 ```toml
 [dependencies]
-sacm = "0.2"
+sacm = "0.3"
 ```
 
 Load a document, inspect it, edit it, validate it and save it:
