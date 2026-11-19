@@ -13,10 +13,10 @@ What libSACM implements, requirement by requirement. The canonical source is [`f
 | M2 — Base model and argumentation | 58 | 58 |  |  |  |  |  |  |  |
 | M3 — Artifact model and a first release | 21 | 21 |  |  |  |  |  |  |  |
 | M4 — Terminology model | 12 | 12 |  |  |  |  |  |  |  |
-| M5 — Modularity: interfaces and bindings | 13 | 9 | 1 |  |  | 3 |  |  |  |
+| M5 — Modularity: interfaces and bindings | 13 | 10 |  |  |  | 3 |  |  |  |
 | M6 — Interoperability and compliance claims | 23 |  |  |  |  | 16 | 2 | 4 | 1 |
 | M7 — 1.0 readiness | 16 |  |  |  |  | 13 | 2 |  | 1 |
-| **Total** | **225** | **170** | **1** |  |  | **32** | **4** | **4** | **14** |
+| **Total** | **225** | **171** |  |  |  | **32** | **4** | **4** | **14** |
 
 ## Areas
 
@@ -267,7 +267,7 @@ Package interfaces and bindings for all four package families, with the citation
 | SACM23-VAL-013 | **Interface and binding contents are citations.** Non-citation content in any package interface or binding is a SACM-PKG-001 error; an interface citation pointing outside the package it implements is a warning; binding citation locality is not checked (D-IFACE-CITE). | validation | formal/23-05-08 §9.3, §11.5, §11.6, §12.4, §12.5; D-IFACE-CITE | `planned` | SACM23-AC-002, SACM23-AC-003, SACM23-ARG-014, SACM23-ARG-015, SACM23-ART-012, SACM23-ART-013, SACM23-TERM-007, SACM23-TERM-008, SACM23-VAL-007 |  |
 | SACM23-VAL-014 | **Binding participants.** A binding with fewer than two participants is a SACM-MULT-001 error; a binding named as a participant of a binding is a SACM-PKG-001 warning, uniformly across the four families (D-BIND-PART). | validation | formal/23-05-08 §9.4, §10.5/10.6, §11.5; D-BIND-PART | `planned` | SACM23-AC-003, SACM23-ARG-015, SACM23-ART-013, SACM23-TERM-008 |  |
 | SACM23-VAL-015 | **AssuranceCasePackageInterface content.** An AssuranceCasePackageInterface holding a sub-package that is not an interface is a SACM-PKG-001 error per the clause 9.3 OCL. | validation | formal/23-05-08 §9.3 (OCL) | `planned` | SACM23-AC-002 |  |
-| LIB-API-019 | **Record arguments read in any key order.** With `serde`, a refusal or diagnostic record whose `arguments` object gives its template's arguments in any key order reads as if given in the template's order; missing, extra or wrongly typed arguments are still refused, and serialization still writes the template's order (ADR 0030 amendment 5, which relaxes R11). | api | The maintainer's decision, 2026-11-18 (M4 close): JSON passed through `serde_json::Value` without `preserve_order` must read, as an application such as Assurance Forge may store it; ADR 0030 amendment 5 | `implemented` | LIB-API-017, LIB-API-018 | `lib_api_019_every_golden_record_reads_with_its_arguments_in_sorted_key_order`<br>`lib_api_019_arguments_in_reverse_order_read_as_the_template_order`<br>`lib_api_019_missing_extra_repeated_or_mistyped_arguments_are_still_refused`<br>`lib_api_019_serialization_writes_the_template_order`<br>`lib_api_019_a_diagnostic_with_two_arguments_swapped_reads_as_its_twin`<br>`lib_api_019_a_malformed_record_with_its_arguments_swapped_reads_as_its_twin` |
+| LIB-API-019 | **Record arguments read in any key order.** With `serde`, a refusal or diagnostic record whose `arguments` object gives its template's arguments in any key order reads as if given in the template's order; missing, extra or wrongly typed arguments are still refused, and serialization still writes the template's order (ADR 0030 amendment 5, which relaxes R11). | api | The maintainer's decision, 2026-11-18 (M4 close): JSON passed through `serde_json::Value` without `preserve_order` must read, as an application such as Assurance Forge may store it; ADR 0030 amendment 5 | `verified` | LIB-API-017, LIB-API-018 | `lib_api_019_every_golden_record_reads_with_its_arguments_in_sorted_key_order`<br>`lib_api_019_arguments_in_reverse_order_read_as_the_template_order`<br>`lib_api_019_missing_extra_repeated_or_mistyped_arguments_are_still_refused`<br>`lib_api_019_serialization_writes_the_template_order`<br>`lib_api_019_a_diagnostic_with_two_arguments_swapped_reads_as_its_twin`<br>`lib_api_019_a_malformed_record_with_its_arguments_swapped_reads_as_its_twin` |
 
 ## M6 — Interoperability and compliance claims
 

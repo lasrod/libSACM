@@ -449,9 +449,9 @@
 //! `LangString`'s `lang` and `content`; and a `Diagnostic`'s `clause`,
 //! `affected` and `location`, and its `template` and `arguments` together,
 //! as 0.1.0 wrote it. A diagnostic writes `template` and `arguments` after
-//! `message`; `arguments` is an object written in the template's order. On
-//! input, `arguments` may give its keys in any order; they are read by name.
-//! A package create's `"parent": null` means a root; leaving out
+//! `message`. A refusal's or diagnostic's `arguments` is an object written in
+//! the template's order; on input it may give its keys in any order, each name
+//! once. A package create's `"parent": null` means a root; leaving out
 //! `parent` is refused. Unknown keys, names and codes are refused. A
 //! deserialized operation proves nothing: [`edit::check`] and
 //! [`edit::apply`] check it as they check one built in Rust.

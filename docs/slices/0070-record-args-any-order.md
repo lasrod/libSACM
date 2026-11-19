@@ -1,8 +1,8 @@
 ---
 slice: 0070
 name: record-args-any-order
-state: in-progress
-step: verification
+state: done
+step: close
 rows: [LIB-API-019]
 mode: pr
 base: main (74ae779, the 0.2.0 release)
@@ -33,3 +33,5 @@ ADR 0030 amendment 5, accepted by the maintainer on 2026-11-18, relaxes R11. Lib
 - 2026-11-19 implementation: the builder implemented by-name argument reading with the named messages; its report did not
   arrive (hand-back refused), so the lead checked the tree and runs the gate; the verifier checks the mutation adequacy.
   `lib_api_017_arguments_missing_extra_out_of_order_…` is renamed `…_missing_extra_or_of_the_wrong_kind_are_refused`.
+- 2026-11-19 verify (abb4755): PASS. Two doc wordings and one test case were added with the verifier's text. Record
+  docs/verification/0070-record-args-any-order.md.

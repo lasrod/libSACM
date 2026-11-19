@@ -241,7 +241,8 @@ pub(super) fn unsupported(
 /// A refusal serializes as `{"type", "code", "template", "arguments", …its
 /// fields}`, every key required, and reads back only when its code is one of
 /// its variant's, its template one of its variant's with that code, and its
-/// arguments exactly the template's, by name, kind and order.
+/// arguments exactly the template's, by name and kind, in any key order (ADR
+/// 0030 amendment 5).
 #[cfg(feature = "serde")]
 mod record {
     use serde::{Deserialize, Serialize};

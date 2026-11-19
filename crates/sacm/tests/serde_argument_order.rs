@@ -406,6 +406,25 @@ fn lib_api_019_missing_extra_repeated_or_mistyped_arguments_are_still_refused() 
         "class",
         "count",
     );
+    // A renamed argument: `attribute` left out and `atribute` given; the
+    // unknown name is reported.
+    let renamed: Vec<(&str, &str)> = UNREPRESENTABLE_ARGUMENTS
+        .iter()
+        .map(|&(name, value)| {
+            if name == "attribute" {
+                ("atribute", value)
+            } else {
+                (name, value)
+            }
+        })
+        .collect();
+    assert_refused_with::<WriteError>(
+        "a refusal record with \"attribute\" renamed \"atribute\"",
+        UNREPRESENTABLE,
+        &UNREPRESENTABLE_ARGUMENTS,
+        &renamed,
+        &format!("the template {UNREPRESENTABLE_TEMPLATE:?} has no argument \"atribute\""),
+    );
 }
 
 // --- Written in the template's order -----------------------------------------------------
