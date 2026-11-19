@@ -7,7 +7,9 @@
 //! (`interim_refusals.rs`, unchanged). A tolerant read keeps it at its
 //! construct, with one Warning at the strict refusal's location:
 //! SACM-XMI-014 for conforming content a later row reads, its message naming
-//! that row; SACM-XMI-007 for a cross-document `href`; SACM-XMI-003 for
+//! that row; SACM-XMI-007 for a cross-document link SACM23-XMI-029 is to
+//! read (slice 0068 reads an `href` with a document part on a reference
+//! element, SACM23-XMI-027); SACM-XMI-003 for
 //! content on `xmi:XMI` and for a preserved attribute whose `sacm` or `xmi`
 //! prefix is bound elsewhere. Content on or under `xmi:XMI` is held by the
 //! document outside its elements (since slice 0067 every package kind is read
@@ -309,11 +311,15 @@ fn kept_entries() -> Vec<Kept> {
     ));
     // The spellings SACM23-XMI-009 reads are no kept entry since slice
     // 0057: see `spelled_entries`.
-    // A cross-document href: SACM-XMI-007 (SACM23-XMI-027).
+    // A cross-document link not read yet: SACM-XMI-007 (SACM23-XMI-029).
     cases.push(Kept {
         entry: "CrossDocumentHref",
-        what: "href to another document",
-        input: package(&claim("c1", "", "<metaClaim href=\"other.sacm.xmi#c\"/>")),
+        what: "an XPointer href to another document",
+        input: package(&claim(
+            "c1",
+            "",
+            "<metaClaim href=\"other.sacm.xmi#xpointer(id('c'))\"/>",
+        )),
         code: Code::XMI_EXTERNAL_HREF,
         row: None,
         holder: Some("c1"),
@@ -552,14 +558,21 @@ fn spelled_entries() -> [Spelled; 2] {
     ]
 }
 
-/// A cross-document `href`, and the reference form of a composite, are kept
-/// with SACM-XMI-007, never SACM-XMI-003; the reference end stays empty.
+/// A cross-document `href` SACM23-XMI-029 is to read (an `expression`'s,
+/// `XLink`), and the reference form of a composite, are kept with
+/// SACM-XMI-007, never SACM-XMI-003; the reference end stays empty. Since
+/// slice 0068 an `href` with a document part on a reference element is read
+/// (SACM23-XMI-027), so the first input is the `expression` of a name.
 #[test]
 fn lib_api_011_a_cross_document_href_is_xmi_007_and_never_xmi_003() {
     let cases = [
         (
-            "metaClaim href to another document",
-            package(&claim("c1", "", "<metaClaim href=\"other.sacm.xmi#c\"/>")),
+            "an expression href to another document in a name",
+            package(
+                "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\">\
+                 <name xmi:type=\"sacm:ExpressionLangString\" lang=\"en\">\
+                 <expression href=\"other.sacm.xmi#t\"/></name></argumentElement>",
+            ),
             "c1",
         ),
         (

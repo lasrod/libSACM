@@ -10,7 +10,8 @@
 //! A role element in reference form, carrying `xmi:idref` or an unqualified
 //! `href`, is a proxy, not an untyped object: typed or untyped, under an
 //! abstract or a concrete role, it is refused as not read yet, naming
-//! SACM23-XMI-019 for `xmi:idref` and SACM23-XMI-027 for `href`.
+//! SACM23-XMI-019 for `xmi:idref` and SACM23-XMI-029 for `href` (slice 0068
+//! splits it from SACM23-XMI-027, ADR 0040).
 //!
 //! Assumptions this file makes about the design, which the lead confirms:
 //! - The code is `Code::XMI_MISSING_TYPE` (SACM-XMI-005), named like
@@ -221,9 +222,9 @@ fn lib_compat_010_a_reference_form_element_under_an_abstract_role_is_not_missing
     // class is missing, so it is no SACM-XMI-005. This version does not read
     // it yet (the maintainer's decision): `Unsupported`, at its start tag,
     // in both modes, naming the row that reads it, SACM23-XMI-019 for
-    // `xmi:idref` and SACM23-XMI-027 for `href`.
+    // `xmi:idref` and SACM23-XMI-029 for `href` (ADR 0040).
     const IDREF: &str = "(a limit of this version; SACM23-XMI-019 reads it)";
-    const HREF: &str = "(a limit of this version; SACM23-XMI-027 reads it)";
+    const HREF: &str = "(a limit of this version; SACM23-XMI-029 reads it)";
     let claim = "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\"/>\n  ";
     let cases = [
         (
@@ -296,12 +297,13 @@ fn interim(row: &str) -> String {
 }
 
 #[test]
-fn lib_api_011_a_role_element_with_an_unqualified_href_names_sacm23_xmi_027() {
+fn lib_api_011_a_role_element_with_an_unqualified_href_names_sacm23_xmi_029() {
     // A role element carrying an unqualified `href` is the reference form of
     // a composite held in another document (XMI 2.5.1 §7.10.1, §7.10.2), a
     // proxy, whether it is typed or untyped and whether its role's declared
-    // type is abstract or concrete: SACM23-XMI-027 reads it, so until then
-    // it names that row, not SACM23-XMI-019 (the maintainer, 2026-11-16).
+    // type is abstract or concrete: SACM23-XMI-029 reads it, so until then
+    // it names that row, not SACM23-XMI-019 (the maintainer, 2026-11-16;
+    // split from SACM23-XMI-027 by slice 0068, ADR 0040).
     // A typed element, and one under a concrete role, is refused at the
     // attribute's name, as an object's XMI attribute is today; an untyped
     // one under an abstract role at its start tag, as LIB-COMPAT-010 pins.
@@ -310,8 +312,8 @@ fn lib_api_011_a_role_element_with_an_unqualified_href_names_sacm23_xmi_027() {
     // preserved, and the one after it that an untyped element carrying it
     // under an abstract role is still SACM-XMI-005.
     const API_011: &str = "LIB-API-011";
-    const XMI_027: &str = "SACM23-XMI-027";
-    let label = interim(XMI_027);
+    const XMI_029: &str = "SACM23-XMI-029";
+    let label = interim(XMI_029);
     let cases = [
         (
             "a typed argumentElement href to another document in an ArgumentPackage",
@@ -366,7 +368,7 @@ fn with_xlink(root: &str) -> String {
 fn lib_api_011_a_role_element_with_a_qualified_href_is_preserved_not_refused() {
     // XMI 2.5.1 LinkAttribs (XMI.xsd) give a role element only an
     // unqualified `href`; a qualified `xlink:href` or `xmi:href` does not
-    // make it a proxy, so it is not refused naming SACM23-XMI-027. On a
+    // make it a proxy, so it is not refused naming SACM23-XMI-029. On a
     // typed element, or one under a concrete role, it is an attribute this
     // release does not read: preserved on its element with one SACM-XMI-003
     // at its name, a Warning in tolerant mode and an Error in strict mode,

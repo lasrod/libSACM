@@ -36,7 +36,11 @@
 //! 0067 reads the last package kinds and every package's `interface` end
 //! and removes the four templates no input reaches any more
 //! (`SACM-XMI-014/interface-element`, `/unread-kind`, `/unread-kind-in-root`
-//! and `/unread-root`; ADR 0035 amendment 1), which leaves 98.
+//! and `/unread-root`; ADR 0035 amendment 1), which leaves 98. Slice 0068
+//! reads an `href` with a document part (SACM23-XMI-027, ADR 0040): the four
+//! SACM-XMI-007 inputs name SACM23-XMI-029, which reads the links left, and
+//! `SACM-XMI-007/href` has new English (its id and arguments unchanged) and
+//! an `XPointer` as its input.
 
 use std::fmt::Write as _;
 
@@ -444,10 +448,10 @@ fn cases() -> Vec<Case> {
             &[
                 ("attribute", t("xlink:type")),
                 ("element", t("metaClaim")),
-                ("row", t("SACM23-XMI-027")),
+                ("row", t("SACM23-XMI-029")),
             ],
             "the attribute {attribute:?} of the element {element:?} is not read in this release",
-            "the reader cannot represent the input at line 1, column 289: the attribute \"xlink:type\" of the element \"metaClaim\" is not read in this release (a limit of this version; SACM23-XMI-027 reads it)",
+            "the reader cannot represent the input at line 1, column 289: the attribute \"xlink:type\" of the element \"metaClaim\" is not read in this release (a limit of this version; SACM23-XMI-029 reads it)",
         ),
         read(
             "SACM-XMI-007/proxy-child",
@@ -456,10 +460,10 @@ fn cases() -> Vec<Case> {
                 ("element", t("argumentElement")),
                 ("container", t("argumentPackage")),
                 ("class", t("ArgumentationElement")),
-                ("row", t("SACM23-XMI-027")),
+                ("row", t("SACM23-XMI-029")),
             ],
             "the element {element:?} in the element {container:?} is in reference form, a proxy of an element of the class {class}, which is not read in this release",
-            "the reader cannot represent the input at line 1, column 245: the element \"argumentElement\" in the element \"argumentPackage\" is in reference form, a proxy of an element of the class ArgumentationElement, which is not read in this release (a limit of this version; SACM23-XMI-027 reads it)",
+            "the reader cannot represent the input at line 1, column 245: the element \"argumentElement\" in the element \"argumentPackage\" is in reference form, a proxy of an element of the class ArgumentationElement, which is not read in this release (a limit of this version; SACM23-XMI-029 reads it)",
         ),
         read(
             "SACM-XMI-007/proxy-child-of-root",
@@ -468,21 +472,25 @@ fn cases() -> Vec<Case> {
                 ("element", t("argumentElement")),
                 ("container", t("sacm:ArgumentPackage")),
                 ("class", t("ArgumentationElement")),
-                ("row", t("SACM23-XMI-027")),
+                ("row", t("SACM23-XMI-029")),
             ],
             "the element {element:?} in the root element {container:?} is in reference form, a proxy of an element of the class {class}, which is not read in this release",
-            "the reader cannot represent the input at line 1, column 153: the element \"argumentElement\" in the root element \"sacm:ArgumentPackage\" is in reference form, a proxy of an element of the class ArgumentationElement, which is not read in this release (a limit of this version; SACM23-XMI-027 reads it)",
+            "the reader cannot represent the input at line 1, column 153: the element \"argumentElement\" in the root element \"sacm:ArgumentPackage\" is in reference form, a proxy of an element of the class ArgumentationElement, which is not read in this release (a limit of this version; SACM23-XMI-029 reads it)",
         ),
         read(
             "SACM-XMI-007/href",
-            package(&claim("c1", "", "<metaClaim href=\"other.sacm.xmi#c\"/>")),
+            package(&claim(
+                "c1",
+                "",
+                "<metaClaim href=\"other.sacm.xmi#xpointer(id('c'))\"/>",
+            )),
             &[
-                ("href", t("other.sacm.xmi#c")),
+                ("href", t("other.sacm.xmi#xpointer(id('c'))")),
                 ("element", t("metaClaim")),
-                ("row", t("SACM23-XMI-027")),
+                ("row", t("SACM23-XMI-029")),
             ],
-            "the href {href:?} of the reference element {element:?} names no element of this document by its id; only href=\"#id\" is read in this release",
-            "the reader cannot represent the input at line 1, column 235: the href \"other.sacm.xmi#c\" of the reference element \"metaClaim\" names no element of this document by its id; only href=\"#id\" is read in this release (a limit of this version; SACM23-XMI-027 reads it)",
+            "the href {href:?} of the reference element {element:?} is not read in this release",
+            "the reader cannot represent the input at line 1, column 235: the href \"other.sacm.xmi#xpointer(id('c'))\" of the reference element \"metaClaim\" is not read in this release (a limit of this version; SACM23-XMI-029 reads it)",
         ),
         // --- ReadError::LegacyShape, SACM-XMI-012 --------------------------------------
         read(

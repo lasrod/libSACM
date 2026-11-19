@@ -816,7 +816,7 @@ fn sacm23_term_001_a_reference_form_terminology_element_under_a_package_is_a_pro
             (
                 "an untyped href=\"#k\"",
                 format!("{MARK}<terminologyElement href=\"#k\"/>"),
-                "SACM23-XMI-027",
+                "SACM23-XMI-029",
                 Code::XMI_EXTERNAL_HREF,
             ),
         ] {

@@ -260,6 +260,8 @@ const CODES: &[Code] = &[
     Code::GID_DUPLICATE,
     Code::ID_TRIMMED,
     Code::PACKAGE_CONTENT_INVALID,
+    // The code of slice 0068 (SACM23-VAL-023).
+    Code::INTERFACE_PLACEMENT,
     Code::REF_DANGLING,
     Code::REF_WRONG_TYPE,
     Code::REF_PRESERVED_TARGET,

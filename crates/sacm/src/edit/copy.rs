@@ -231,8 +231,9 @@ impl CopyElements {
         for element in snapshot.elements() {
             for &end in ReferenceEnd::ALL {
                 if let Some((required, _)) = end.bounds(element.kind()) {
-                    // A lower bound counts distinct ids (ADR 0039 D3).
-                    let given = distinct_count(element.references(end));
+                    // A lower bound counts distinct values, ids and
+                    // cross-document references (ADR 0039 D3, ADR 0040 D5).
+                    let given = distinct_count(element.references(end), element.hrefs(end));
                     if given < required {
                         return Err(EditError::TooFewReferences {
                             end: end.name(),

@@ -257,12 +257,52 @@ fn sacm23_val_018_each_nameless_package_root_gives_one_diagnostic() {
     for kind in packages {
         let mut doc = Document::new();
         add(&mut doc, None, kind, "r", None);
-        assert_findings(
-            &doc,
-            &[missing_name(kind, "r")],
-            &format!("a nameless {kind} root"),
-        );
+        // An interface without `implements` and a binding without
+        // participants are also one SACM23-VAL-014 Error each (slice 0068):
+        // the root's one diagnostic of this row comes beside it, in order.
+        let mut expected = vec![missing_name(kind, "r")];
+        if let Some(bound) = missing_end(kind, "r") {
+            expected.insert(0, bound);
+        }
+        assert_findings(&doc, &expected, &format!("a nameless {kind} root"));
     }
+}
+
+/// The SACM23-VAL-014 Error of the root `id` of `kind` inserted with no
+/// reference: an interface's missing `implements`, or a binding's missing
+/// `participantPackage`; `None` for a plain package.
+fn missing_end(kind: ElementKind, id: &str) -> Option<Diagnostic> {
+    let family = kind.name().split("Package").next().unwrap_or_default();
+    let (property, type_name, multiplicity) = if kind.name().ends_with("PackageInterface") {
+        ("implements", format!("{family}Package"), "1")
+    } else if kind.name().ends_with("PackageBinding") {
+        ("participantPackage", format!("{family}Package"), "2..*")
+    } else {
+        return None;
+    };
+    let clause = match (family, property) {
+        ("AssuranceCase", "implements") => "9.3",
+        ("AssuranceCase", _) => "9.4",
+        ("Terminology", "implements") => "10.5",
+        ("Terminology", _) => "10.6",
+        ("Argument", "implements") => "11.6",
+        ("Argument", _) => "11.5",
+        ("Artifact", "implements") => "12.5",
+        _ => "12.4",
+    };
+    Some(
+        Diagnostic::new(
+            Code::MULTIPLICITY_VIOLATION,
+            Severity::Error,
+            "SACM23-VAL-014",
+            format!(
+                "{} {id:?} has no {property} ({property}:{type_name}[{multiplicity}])",
+                kind.name()
+            ),
+        )
+        .with_clause(clause)
+        .with_affected([ElementId::from(id)]),
+    )
 }
 
 // ---------------------------------------------------------------------------

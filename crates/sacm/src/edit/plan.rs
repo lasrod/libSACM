@@ -344,8 +344,13 @@ pub(super) enum Value<'o> {
     /// A role the element's kind holds, with the ids it keeps, or `None` to
     /// remove it.
     Text(TextRole, Option<Text>),
-    /// The ids an end the element's kind owns is to hold, within its bounds.
+    /// The ids an end the element's kind owns is to hold, within its bounds;
+    /// its cross-document references are kept.
     References(ReferenceEnd, Vec<ElementId>),
+    /// The ids an end the element's kind owns is to hold, within its bounds,
+    /// and no cross-document reference: what
+    /// [`SetReferences`](super::SetReferences) sets (ADR 0040 D7).
+    Replaced(ReferenceEnd, Vec<ElementId>),
 }
 
 impl Value<'_> {
@@ -379,6 +384,13 @@ impl Value<'_> {
                  keeps only the role's own ids",
             ),
             Self::Text(role, None) => document.remove_text(element, role),
+            Self::Replaced(end, ids) => {
+                document.set_hrefs(element, end, Vec::new()).expect(
+                    "invariant: the plan found the element, and its kind owns the end, which \
+                     is not derived",
+                );
+                Self::References(end, ids).commit(document, element);
+            }
             Self::References(end, ids) => {
                 let sets = !ids.is_empty();
                 document.set_references(element, end, ids).expect(

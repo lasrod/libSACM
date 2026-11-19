@@ -83,7 +83,9 @@ const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/x
 /// The golden files, under [`FIXTURES`].
 const GOLDEN_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/xmi/golden");
 /// The golden files the reader reads in this release.
-const READABLE_GOLDEN: [&str; 18] = [
+const READABLE_GOLDEN: [&str; 19] = [
+    // The golden file of slice 0068 (SACM23-XMI-027).
+    "cross-document-references.golden.sacm.xmi",
     // The golden files of slice 0067 (SACM23-AC-002, SACM23-TERM-007).
     "assurance-case-package-interfaces.golden.sacm.xmi",
     "terminology-package-interfaces.golden.sacm.xmi",

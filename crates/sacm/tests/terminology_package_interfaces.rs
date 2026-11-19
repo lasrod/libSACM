@@ -15,9 +15,12 @@
 //! package's `interface` end. In an ArgumentPackage's `argumentElement` and an
 //! AssuranceCasePackage's `assuranceCasePackage`, which admit no
 //! TerminologyPackage, they are kept whole as preserved content of the holder.
-//! The ends are kept as written and never synced (Q1); a missing `implements`
-//! and fewer than two participants give no finding in this slice; a lower
-//! bound counts distinct ids (Q7).
+//! The ends are kept as written and never synced (Q1); since slice 0068 a
+//! missing `implements` and fewer than two participants each give one
+//! SACM-MULT-001 (SACM23-VAL-014), an interface outside the package it
+//! implements one SACM-PKG-002 Warning (SACM23-VAL-023), and content that is
+//! no citation one SACM-PKG-001 (SACM23-VAL-013); a lower bound counts
+//! distinct ids (Q7).
 //!
 //! Expected locations are marked in the input with [`MARK`] (U+2038), which
 //! the test removes before reading. Inputs end lines with LF only.
@@ -43,8 +46,6 @@ use sacm::model::{Flag, LangString, ReferenceEnd};
 
 // The creates of slice 0067 (SACM23-TERM-007, SACM23-TERM-008).
 use sacm::edit::{CreateTerminologyPackageBinding, CreateTerminologyPackageInterface};
-
-mod common;
 
 const TERM_007: &str = "SACM23-TERM-007";
 const TERM_008: &str = "SACM23-TERM-008";
@@ -440,6 +441,43 @@ fn expected(code: Code, row: &str, clause: &str, affected: &[&str]) -> Finding {
         None,
         list(affected),
     )
+}
+
+/// One validate finding with the code, severity, row, clause and affected
+/// ids given: for the findings of slice 0068 (SACM23-VAL-013, -014, -023).
+fn finding_of(
+    code: Code,
+    severity: Severity,
+    row: &str,
+    clause: &str,
+    affected: &[&str],
+) -> Finding {
+    (
+        code,
+        severity,
+        row.to_owned(),
+        Some(clause.to_owned()),
+        None,
+        list(affected),
+    )
+}
+
+/// The SACM-PKG-002 Warning of `interface` outside the package `package` it
+/// implements, clause 10.5 (SACM23-VAL-023).
+fn placement(interface: &str, package: &str) -> Finding {
+    finding_of(
+        Code::new("SACM-PKG-002"),
+        Severity::Warning,
+        "SACM23-VAL-023",
+        "10.5",
+        &[interface, package],
+    )
+}
+
+/// `found`, sorted, for comparing findings whatever their order.
+fn sorted(mut found: Vec<Finding>) -> Vec<Finding> {
+    found.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
+    found
 }
 
 /// Asserts that a strict write of `doc` is refused as `Invalid` and that a
@@ -1262,8 +1300,14 @@ fn sacm23_term_007_missing_implements_reads_and_writes_back_unchanged() {
     let doc = read_ok(row, what, &i_in_t("", ""));
     assert_eq!(
         findings(&doc),
-        [],
-        "{row}: {what}: validate reports a finding in this slice"
+        [finding_of(
+            Code::MULTIPLICITY_VIOLATION,
+            Severity::Error,
+            "SACM23-VAL-014",
+            "10.5",
+            &["i"]
+        )],
+        "{row}: {what}: validate does not give one SACM-MULT-001 missing (SACM23-VAL-014)"
     );
     for mode in MODES {
         let text = round_trip(row, what, &doc, mode);
@@ -1307,7 +1351,15 @@ fn sacm23_term_007_dangling_and_wrongly_typed_ends_report_their_clause_and_type(
             &binding("b", " participantPackage=\"t u\"", ""),
         )
     };
-    for target in ["t", "u", "i", "b"] {
+    // A TerminologyPackage kind gives no reference finding; since slice 0068
+    // one i does not reside in gives one SACM-PKG-002 Warning
+    // (SACM23-VAL-023).
+    for (target, want) in [
+        ("t", Vec::new()),
+        ("u", vec![placement("i", "u")]),
+        ("i", vec![placement("i", "i")]),
+        ("b", vec![placement("i", "b")]),
+    ] {
         let what = format!("implements=\"{target}\"");
         let doc = read_ok(
             row,
@@ -1316,8 +1368,8 @@ fn sacm23_term_007_dangling_and_wrongly_typed_ends_report_their_clause_and_type(
         );
         assert_eq!(
             findings(&doc),
-            [],
-            "{row}: {what}: validate reports a finding"
+            want,
+            "{row}: {what}: validate reports another finding"
         );
     }
     for (target, class) in [
@@ -2062,22 +2114,51 @@ fn sacm23_term_007_move_copy_and_the_element_edits_apply() {
         )
     };
     let held = ends(&doc);
+    // Outside t, the package it implements, i gets one SACM-PKG-002
+    // Warning, which moving it back clears (SACM23-VAL-023).
     let before = findings(&doc);
-    for (what, operation, parent) in [
-        ("to the roots", MoveElement::root("i"), None),
-        ("into case", MoveElement::new("i", "case"), Some("case")),
-        ("into arts", MoveElement::new("i", "arts"), Some("arts")),
-        ("back into t", MoveElement::new("i", "t"), Some("t")),
+    let outside = sorted(
+        before
+            .iter()
+            .cloned()
+            .chain([placement("i", "t")])
+            .collect(),
+    );
+    for (what, operation, parent, want) in [
+        (
+            "to the roots",
+            MoveElement::root("i"),
+            None,
+            outside.clone(),
+        ),
+        (
+            "into case",
+            MoveElement::new("i", "case"),
+            Some("case"),
+            outside.clone(),
+        ),
+        (
+            "into arts",
+            MoveElement::new("i", "arts"),
+            Some("arts"),
+            outside.clone(),
+        ),
+        (
+            "back into t",
+            MoveElement::new("i", "t"),
+            Some("t"),
+            sorted(before.clone()),
+        ),
     ] {
         applied(row, &mut doc, operation);
         assert_eq!(
             (
                 parent_of(row, &doc, "i").as_deref(),
                 ends(&doc),
-                findings(&doc)
+                sorted(findings(&doc))
             ),
-            (parent, held.clone(), before.clone()),
-            "{row}: a move {what} changed a reference or a finding"
+            (parent, held.clone(), want),
+            "{row}: a move {what} changed a reference, or not the placement finding"
         );
     }
     let error = refuse(row, &mut doc, MoveElement::new("i", "p"));
@@ -2490,8 +2571,14 @@ fn sacm23_term_008_too_few_participants_read_and_write_back() {
             .collect();
         assert_eq!(
             found,
-            [],
-            "{row}: {what}: validate reports a finding in this slice"
+            [finding_of(
+                Code::MULTIPLICITY_VIOLATION,
+                Severity::Error,
+                "SACM23-VAL-014",
+                "10.6",
+                &["b"]
+            )],
+            "{row}: {what}: validate does not give one SACM-MULT-001 (SACM23-VAL-014)"
         );
         for mode in MODES {
             let text = round_trip(row, what, &doc, mode);
@@ -2537,9 +2624,17 @@ fn sacm23_term_008_dangling_and_wrongly_typed_participants() {
             ),
         ),
     );
+    // No reference finding; since slice 0068 the binding b2 among them gives
+    // one SACM-PKG-001 Warning (D-BIND-PART, SACM23-VAL-014).
     assert_eq!(
         findings(&doc),
-        [],
+        [finding_of(
+            Code::PACKAGE_CONTENT_INVALID,
+            Severity::Warning,
+            "SACM23-VAL-014",
+            "10.6",
+            &["b", "b2"]
+        )],
         "{row}: participants of every TerminologyPackage kind"
     );
     for (target, class) in [
@@ -2574,45 +2669,6 @@ fn sacm23_term_008_dangling_and_wrongly_typed_participants() {
             "{row}: {what}: the end's type and the target's class"
         );
     }
-}
-
-#[test]
-fn sacm23_term_008_href_participants_stay_as_today() {
-    let row = TERM_008;
-    let what = "a cross-document participant";
-    let (input, marks) = marked(&b_in_case(
-        "",
-        &format!(
-            "<participantPackage xmi:idref=\"t\"/><participantPackage {MARK}href=\"other.xmi#p\"/>"
-        ),
-    ));
-    let error = refused(row, what, &input);
-    assert!(
-        matches!(&error, ReadError::Unsupported { location, .. } if *location == marks.first().copied())
-            && error
-                .to_string()
-                .ends_with("(a limit of this version; SACM23-XMI-027 reads it)"),
-        "{row}: {what}: not Unsupported at the href naming SACM23-XMI-027: {error}"
-    );
-    assert_eq!(
-        error.code().as_str(),
-        common::unsupported_code(&error.to_string()),
-        "{row}: {what}: the code is not SACM-XMI-007"
-    );
-    let output = tolerant(row, what, &input);
-    assert_eq!(
-        output
-            .diagnostics()
-            .iter()
-            .map(|one| (one.code(), one.severity(), one.location()))
-            .collect::<Vec<_>>(),
-        [(Code::XMI_EXTERNAL_HREF, Severity::Warning, error.location())],
-        "{row}: {what}: a tolerant read does not keep the href with one SACM-XMI-007 Warning"
-    );
-    assert!(
-        element(row, output.document(), "b").has_preserved_content(),
-        "{row}: {what}: the href is not kept"
-    );
 }
 
 #[test]

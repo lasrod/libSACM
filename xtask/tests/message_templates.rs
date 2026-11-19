@@ -71,10 +71,11 @@ const REFUSAL_TEMPLATES: usize = 98;
 /// The row of the diagnostic templates (slice 0064).
 const ROW_018: &str = "LIB-API-018";
 
-/// The number of diagnostic templates (LIB-API-018, acceptance 7): 30 from
+/// The number of diagnostic templates (LIB-API-018, acceptance 7): 38 from
 /// validation and 68 from the reader (slice 0067 removes the four kept forms
-/// of unread kinds and ends).
-const DIAGNOSTIC_TEMPLATES: usize = 98;
+/// of unread kinds and ends; slice 0068 adds eight to validation,
+/// SACM23-VAL-013, -014, -015 and -023).
+const DIAGNOSTIC_TEMPLATES: usize = 106;
 
 /// The file of `Diagnostic` itself, relative to [`SACM_SRC`], where a
 /// diagnostic is built without a template only by `test-support`'s `new`.
@@ -914,7 +915,7 @@ fn lib_api_017_template_rs_declares_the_98_refusal_templates() {
 }
 
 #[test]
-fn lib_api_018_template_rs_declares_the_98_diagnostic_templates() {
+fn lib_api_018_template_rs_declares_the_106_diagnostic_templates() {
     let files = sacm_sources();
     let Some(source) = files.get(TEMPLATES) else {
         panic!("{ROW_018}: {SACM_SRC}/{TEMPLATES} does not exist");

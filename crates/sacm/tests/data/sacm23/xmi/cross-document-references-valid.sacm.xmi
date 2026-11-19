@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-XMI-027: cross-document references (XMI 2.5.1 §7.10.2 "URI#id_value"). The AssuranceCasePackage vehicle_case holds the ArgumentPackage vehicle with its ArgumentPackageInterface vehicle_api, and the ArgumentPackageBinding binding, which binds vehicle_api and the interface braking_api of another document, braking.sacm.xmi. The binding gives the remote participant first, as an href padded with white space, and vehicle_api second, as href="#id"; binding_braking cites a Claim of the other document by href; binding_vehicle gives its citedElement as a reference element by xmi:idref. No file is opened. It reads with no diagnostic in either mode, validates without a finding, and writes golden/cross-document-references.golden.sacm.xmi, where the ids of an end come first, then its hrefs. Hand-written; no third-party content. -->
+<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="vehicle_case">
+  <name lang="en" content="Vehicle case"/>
+  <argumentPackage xmi:id="vehicle" interface="vehicle_api">
+    <name lang="en" content="Vehicle argument"/>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="vehicle_safe" assertionDeclaration="needsSupport">
+      <name lang="en" content="The vehicle stops safely"/>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:ArgumentPackageInterface" xmi:id="vehicle_api" implements="vehicle">
+      <name lang="en" content="Vehicle interface"/>
+      <argumentElement xmi:type="sacm:Claim" xmi:id="vehicle_safe_cited" isCitation="true" citedElement="vehicle_safe" assertionDeclaration="asCited">
+        <name lang="en" content="The vehicle stops safely"/>
+      </argumentElement>
+    </argumentElement>
+  </argumentPackage>
+  <argumentPackage xmi:type="sacm:ArgumentPackageBinding" xmi:id="binding">
+    <name lang="en" content="Braking supports the vehicle"/>
+    <participantPackage href=" braking.sacm.xmi#braking_api "/>
+    <participantPackage href="#vehicle_api"/>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="binding_braking" isCitation="true" assertionDeclaration="asCited">
+      <name lang="en" content="Braking is acceptably safe"/>
+      <citedElement href="braking.sacm.xmi#braking_safe_cited"/>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="binding_vehicle" isCitation="true" assertionDeclaration="asCited">
+      <name lang="en" content="The vehicle stops safely"/>
+      <citedElement xmi:idref="vehicle_safe_cited"/>
+    </argumentElement>
+    <argumentElement xmi:type="sacm:AssertedInference" xmi:id="binding_link" source="binding_braking" target="binding_vehicle">
+      <name lang="en" content="Braking supports stopping"/>
+    </argumentElement>
+  </argumentPackage>
+</sacm:AssuranceCasePackage>

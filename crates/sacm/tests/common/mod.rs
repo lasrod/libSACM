@@ -5,17 +5,17 @@
 /// The catalog code of a `ReadError::Unsupported` refusal, from the label its
 /// reason and its `Display` end with (LIB-API-017; ADR 0030 amendment 3):
 /// SACM-XMI-014 for `(a limit of this version; ROW reads it)`, except
-/// SACM-XMI-007 when ROW is SACM23-XMI-027, which reads cross-document
-/// references; SACM-XMI-002 and SACM-XMI-015 for the tolerances of
-/// LIB-COMPAT-004 and LIB-COMPAT-002; SACM-XMI-003 for `(a defect in the
-/// input)`; and, for `(a limit of this version)`, SACM-SEC-002 for a parser
+/// SACM-XMI-007 when ROW is SACM23-XMI-029, which reads the cross-document
+/// links SACM23-XMI-027 does not (slice 0068, ADR 0040); SACM-XMI-002 and
+/// SACM-XMI-015 for the tolerances of LIB-COMPAT-004 and LIB-COMPAT-002;
+/// SACM-XMI-003 for `(a defect in the input)`; and, for `(a limit of this version)`, SACM-SEC-002 for a parser
 /// capacity limit and SACM-XML-002 for an encoding.
 ///
 /// # Panics
 ///
 /// If `text` ends with no label: a test of an `Unsupported` refusal then fails.
 pub(crate) fn unsupported_code(text: &str) -> &'static str {
-    if text.ends_with("(a limit of this version; SACM23-XMI-027 reads it)") {
+    if text.ends_with("(a limit of this version; SACM23-XMI-029 reads it)") {
         "SACM-XMI-007"
     } else if text.ends_with(" reads it)") && text.contains("(a limit of this version; ") {
         "SACM-XMI-014"

@@ -1275,9 +1275,9 @@ fn sacm23_base_009_xmi_metadata_and_a_cross_document_href_on_expression_are_unsu
         matches!(error, ReadError::Unsupported { .. })
             && error
                 .to_string()
-                .ends_with("(a limit of this version; SACM23-XMI-027 reads it)"),
+                .ends_with("(a limit of this version; SACM23-XMI-029 reads it)"),
         "{BASE_009}: a cross-document href on an expression element is not Unsupported naming \
-         SACM23-XMI-027: {error}"
+         SACM23-XMI-029 (ADR 0040): {error}"
     );
     let output = read_ok(BASE_009, "a cross-document href", Mode::Tolerant, &href);
     assert_eq!(

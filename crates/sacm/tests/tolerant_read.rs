@@ -960,9 +960,15 @@ fn lib_compat_001_a_tolerant_read_reports_no_error() {
             wrapper(" v:w=\"1\"", ""),
         ),
         ("text in the wrapper", wrapper("", "stray")),
+        // A cross-document link not read yet (SACM23-XMI-029): an XPointer,
+        // since slice 0068 reads an href with a document part (SACM23-XMI-027).
         (
-            "a cross-document href",
-            package(&claim("c1", "", "<metaClaim href=\"other.sacm.xmi#c\"/>")),
+            "a cross-document XPointer href",
+            package(&claim(
+                "c1",
+                "",
+                "<metaClaim href=\"other.sacm.xmi#xpointer(id('c'))\"/>",
+            )),
         ),
         // XMI metadata in a name: the sample an ExpressionLangString name gave
         // until slice 0065 read it (SACM23-BASE-009).

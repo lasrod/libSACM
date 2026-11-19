@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use crate::diagnostic::template::MULT_001_REPEATED_REFERENCE;
 use crate::diagnostic::{Argument, Diagnostic, Severity};
-use crate::model::{Document, ReferenceEnd};
+use crate::model::{Document, ReferenceEnd, SacmElement};
 
 /// SACM23-VAL-022: each id that one multi-valued end of one element holds
 /// two or more times is one SACM-MULT-001 Warning, with the end's clause,
@@ -23,6 +23,7 @@ pub(super) fn repeated_references(document: &Document, found: &mut Vec<Diagnosti
             // one ExpressionElement, which is no repeat (SACM23-BASE-009).
             .filter(|end| end.is_many() && !end.is_derived())
         {
+            repeated_hrefs(element, end, found);
             let targets = element.references(end);
             if targets.len() < 2 {
                 continue;
@@ -63,5 +64,47 @@ pub(super) fn repeated_references(document: &Document, found: &mut Vec<Diagnosti
                 );
             }
         }
+    }
+}
+
+/// The SACM23-VAL-022 Warnings of the cross-document references `end` of
+/// `element` holds: one per `href` held two or more times, compared as
+/// strings, in the end's order, with `target` the `href` and affecting the
+/// element only, since an `href` names no element of the document (ADR
+/// 0040 D6).
+fn repeated_hrefs(element: SacmElement<'_>, end: ReferenceEnd, found: &mut Vec<Diagnostic>) {
+    let hrefs = element.hrefs(end);
+    if hrefs.len() < 2 {
+        return;
+    }
+    let mut counts: HashMap<&str, usize> = HashMap::new();
+    for href in hrefs {
+        let count = counts.entry(href.as_str()).or_insert(0);
+        *count = count.saturating_add(1);
+    }
+    for href in hrefs {
+        let Some(count) = counts.remove(href.as_str()) else {
+            continue;
+        };
+        if count < 2 {
+            continue;
+        }
+        let arguments = vec![
+            Argument::text("class", element.kind().name()),
+            Argument::text("id", element.id().as_str()),
+            Argument::text("target", href.as_str()),
+            Argument::count_of("count", count),
+            Argument::text("end", end.name()),
+        ];
+        found.push(
+            Diagnostic::emit(
+                &MULT_001_REPEATED_REFERENCE,
+                Severity::Warning,
+                "SACM23-VAL-022",
+                arguments,
+            )
+            .set_clause(end.clause_on(element.kind()))
+            .set_affected([element.id().clone()]),
+        );
     }
 }

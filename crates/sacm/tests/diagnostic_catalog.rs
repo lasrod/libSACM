@@ -77,6 +77,8 @@ const CONSTANTS: &[(&str, Code)] = &[
     ("XMI_STRICT_SAVE_INVALID", Code::XMI_STRICT_SAVE_INVALID),
     // The code of slice 0065 (SACM23-VAL-009).
     ("EXPRESSION_WITH_CONTENT", Code::EXPRESSION_WITH_CONTENT),
+    // The code of slice 0068 (SACM23-VAL-023).
+    ("INTERFACE_PLACEMENT", Code::INTERFACE_PLACEMENT),
 ];
 
 /// Every live code, [`LIVE`], sorted.
@@ -98,7 +100,7 @@ fn all_live() -> Vec<String> {
 /// and SACM-XMI-014 (LIB-API-011) of slice 0053 (ADR 0035); and SACM-XMI-013
 /// (SACM23-XMI-009) of slice 0057; and SACM-XMI-002, SACM-XMI-015,
 /// SACM-XMI-016, SACM-XML-002, SACM-XML-003 and SACM-SEC-002 of slice 0063
-/// (LIB-API-017).
+/// (LIB-API-017); and SACM-PKG-002 (SACM23-VAL-023) of slice 0068.
 const LIVE: &[&str] = &[
     "SACM-ABS-001",
     "SACM-CITE-001",
@@ -120,6 +122,7 @@ const LIVE: &[&str] = &[
     "SACM-ID-004",
     "SACM-MULT-001",
     "SACM-PKG-001",
+    "SACM-PKG-002",
     "SACM-REF-001",
     "SACM-REF-002",
     "SACM-REF-003",

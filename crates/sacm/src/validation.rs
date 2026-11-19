@@ -31,6 +31,13 @@
 //! | SACM-ABS-001 | SACM23-VAL-021 | §8.6 | Error | a `ModelElement` with one or more `implementationConstraint`s is not abstract (OCL `implementationConstraint->size() > 0 implies isAbstract = true`) |
 //! | SACM-ABS-001 | SACM23-VAL-017 | §10.10 | Error | a concrete `Expression`'s `element` names an abstract `Term` or `Expression` (OCL `self.isAbstract = false implies self.element->forall(...)`): one finding per distinct id |
 //! | SACM-CITE-002 | SACM23-VAL-019 | §11.8 | Warning | an Assertion declared `asCited` is not a citation (`isCitation` not true), has no `citedElement`, or cites an element that is no Assertion: one finding each |
+//! | SACM-PKG-001 | SACM23-VAL-013 | §10.5, §10.6, §11.5, §11.6, §12.4 or §12.5 | Error | a child in the family role of a package interface or binding is no citation (`isCitation` true and a `citedElement`), an `AssertedRelationship` in an `ArgumentPackageBinding` and an `ArtifactAssetRelationship` in an `ArtifactPackageBinding` excepted |
+//! | SACM-PKG-001 | SACM23-VAL-013 | §10.5, §11.6 or §12.5 | Warning | an interface's citation cites an element of the document that is not of the kind the clause names, or that is not inside the package the interface implements: one finding each |
+//! | SACM-PKG-001 | SACM23-VAL-015 | §9.3 | Error | a child of an `AssuranceCasePackageInterface` is not exactly the interface class of its role (the §9.3 OCL) |
+//! | SACM-MULT-001 | SACM23-VAL-014 | §9.3, §10.5, §11.6 or §12.5 | Error | a package interface has no `implements` (`implements:<Package>[1]`) |
+//! | SACM-MULT-001 | SACM23-VAL-014 | §9.4, §10.6, §11.5 or §12.4 | Error | a package binding has fewer than two distinct participants, ids and `href`s counted (`participantPackage:<Package>[2..*]`) |
+//! | SACM-PKG-001 | SACM23-VAL-014 | §9.4, §10.6, §11.5 or §12.4 | Warning | a binding names a binding of its own kind as a participant (D-BIND-PART) |
+//! | SACM-PKG-002 | SACM23-VAL-023 | §10.5, §11.6 or §12.5 | Warning | an interface whose `isCitation` is not true does not reside inside the package its `implements` names |
 //!
 //! A `ModelElement`
 //! ([`AbstractClass::ModelElement`](crate::model::AbstractClass::ModelElement))
@@ -217,9 +224,14 @@
 //! Later releases add rules, so a document with no findings today may have
 //! findings later. A code's meaning never changes.
 //!
-//! A strict [`xmi::write`](crate::xmi::write), the default, runs `validate`
-//! and refuses a document it reports an Error for, as
-//! [`WriteError::Invalid`](crate::xmi::WriteError::Invalid) (ADR 0022).
+//! Package interfaces and bindings (§9.3, §9.4, §10.5, §10.6, §11.5, §11.6,
+//! §12.4, §12.5) are checked for what they hold and what they reference
+//! (D-IFACE-CITE, D-BIND-PART, D-SEV): a citation is an element with
+//! `isCitation` true and a `citedElement`, an id or an `href`. A
+//! cross-document reference (`href`, SACM23-XMI-027) counts as a value of its
+//! end wherever a rule asks whether the end holds one, and is never checked
+//! for its target's kind or place: it is never SACM-REF-001, -002 or -003
+//! (ADR 0040 D6).
 //!
 //! To report reading and validation together, copy
 //! [`ReadOutput::diagnostics`](crate::xmi::ReadOutput::diagnostics) into a
@@ -262,6 +274,7 @@ mod expressions;
 mod gid;
 mod homogeneity;
 mod ids;
+mod modularity;
 mod multi_lang;
 mod names;
 mod references;
@@ -284,6 +297,10 @@ const RULES: &[Rule] = &[
     gid::duplicate_gid,
     descriptions::repeated_description,
     homogeneity::argument_package_homogeneity,
+    modularity::interface_and_binding_content,
+    modularity::assurance_case_interface_content,
+    modularity::implements_and_participants,
+    modularity::interface_placement,
     references::dangling_references,
     references::wrongly_typed_references,
     references::citation,

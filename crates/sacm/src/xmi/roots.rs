@@ -151,8 +151,8 @@ use crate::diagnostic::template::{self, Template};
 use crate::diagnostic::{Argument, Code, Details, Diagnostic, Severity};
 use crate::model::{
     AbstractClass, AssertionDeclaration, Attr, DeclaredType, Document, ElementId, ElementKind,
-    Flag, IdGenerator, Item, LangString, Placed, Preserved, ReferenceEnd, Role, StringAttribute,
-    Text, TextRole, flag_named, is_ncname, reference_end_named, role_named,
+    Flag, Href, IdGenerator, Item, LangString, Placed, Preserved, ReferenceEnd, Role,
+    StringAttribute, Text, TextRole, flag_named, is_ncname, reference_end_named, role_named,
 };
 
 /// The machine-readable model's spelling of the class
@@ -334,7 +334,7 @@ impl Spelled {
 }
 
 /// The `XLink` namespace, whose attributes on a reference element are a
-/// cross-document link (SACM23-XMI-027).
+/// cross-document link not read yet (SACM23-XMI-029).
 const XLINK_NS: &str = "http://www.w3.org/1999/xlink";
 
 /// The requirement of the diagnostics for preserved content.
@@ -1724,6 +1724,9 @@ struct Pending {
     /// Each reference end given, in the attribute or the element form, with
     /// its targets in document order (SACM23-XMI-005, SACM23-XMI-015).
     references: Vec<(ReferenceEnd, Vec<ElementId>)>,
+    /// Each reference end given an `href` with a document part, with its
+    /// `href`s in document order (SACM23-XMI-027, ADR 0040 D2).
+    hrefs: Vec<(ReferenceEnd, Vec<Href>)>,
     /// The `name`, `content` and `key` a tolerant read kept as preserved
     /// content for a value in it that is no literal: each counts as given
     /// (ADR 0035, SACM23-VAL-006).
@@ -2377,25 +2380,29 @@ impl Pending {
         node: Node<'_, '_>,
         end: ReferenceEnd,
     ) -> Result<(), Fault> {
-        let target = read_reference(found, node)?;
-        let Some(position) = self.references.iter().position(|(given, _)| *given == end) else {
-            self.references.push((end, vec![target]));
-            return Ok(());
-        };
-        let property = end.name();
-        // The attribute of the end, or a spelling of it a tolerant read read
-        // (SACM23-XMI-009); one kept as preserved content is none.
-        let in_attribute = holder.attributes().any(|attribute| {
-            (is_unqualified(&attribute, property)
-                || (attribute.namespace().is_none()
-                    && spelled_end(self.kind, attribute.name()) == Some(end)))
-                && !self.kept.holds(attribute.range_qname().start)
-        });
-        if !end.is_many() || in_attribute {
-            let at = node.range().start;
-            return Err(self.repeat(found, holder, at, property, property));
+        let link = read_reference(found, node, true)?;
+        // An occurrence of the end is an id or an `href` (ADR 0040 D5).
+        let given = self.references.iter().any(|(held, _)| *held == end)
+            || self.hrefs.iter().any(|(held, _)| *held == end);
+        if given {
+            let property = end.name();
+            // The attribute of the end, or a spelling of it a tolerant read
+            // read (SACM23-XMI-009); one kept as preserved content is none.
+            let in_attribute = holder.attributes().any(|attribute| {
+                (is_unqualified(&attribute, property)
+                    || (attribute.namespace().is_none()
+                        && spelled_end(self.kind, attribute.name()) == Some(end)))
+                    && !self.kept.holds(attribute.range_qname().start)
+            });
+            if !end.is_many() || in_attribute {
+                let at = node.range().start;
+                return Err(self.repeat(found, holder, at, property, property));
+            }
         }
-        self.references[position].1.push(target);
+        match link {
+            Link::Id(target) => push_value(&mut self.references, end, target),
+            Link::Href(href) => push_value(&mut self.hrefs, end, href),
+        }
         Ok(())
     }
 
@@ -3067,6 +3074,11 @@ fn hold(text: &str, document: &mut Document, mut read: Vec<Pending>) -> Result<(
                 .into_iter()
                 .try_for_each(|(end, targets)| document.set_references(&id, end, targets))
         });
+        let referenced = referenced.and_then(|()| {
+            std::mem::take(&mut element.hrefs)
+                .into_iter()
+                .try_for_each(|(end, hrefs)| document.set_hrefs(&id, end, hrefs))
+        });
         let held = referenced.and_then(|()| {
             let kept = std::mem::replace(
                 &mut element.kept,
@@ -3156,6 +3168,7 @@ fn pending(
         declaration: None,
         flags: Vec::new(),
         references: Vec::new(),
+        hrefs: Vec::new(),
         given: Vec::new(),
         written,
         at: node.range().start,
@@ -3418,7 +3431,7 @@ fn is_reference_form(attribute: &Attribute<'_, '_>) -> bool {
 /// under a concrete role, if this version does not read it yet: an
 /// unqualified `href` makes the element the reference form of a composite
 /// held in another document, a proxy (XMI 2.5.1 §7.10.1, §7.10.2), which
-/// SACM23-XMI-027 reads; anything else as on any object
+/// SACM23-XMI-029 reads; anything else as on any object
 /// ([`object_metadata`]), so an `xmi:idref` names SACM23-XMI-019. A
 /// qualified `xlink:href` or `xmi:href` is not `href` (XMI.xsd
 /// `LinkAttribs`).
@@ -3799,7 +3812,7 @@ fn child_spelling(found: &Findings<'_, '_>, at: usize, spelled: Spelled) -> Resu
 
 /// The entry of the role element `node` if it is in the reference form of a
 /// composite (XMI 2.5.1 §7.10.1): an `xmi:idref` (SACM23-XMI-019), else an
-/// unqualified `href` (SACM23-XMI-027) (LIB-COMPAT-010).
+/// unqualified `href` (SACM23-XMI-029) (LIB-COMPAT-010).
 fn proxy_link(node: Node<'_, '_>) -> Option<Unread> {
     let attributes = || node.attributes();
     if attributes().any(|attribute| is_xmi(&attribute, "idref")) {
@@ -3873,15 +3886,27 @@ fn parse_flag(
 /// Each attribute is checked in document order, then the link, then the
 /// content. The identity attributes `xmi:id`, `xmi:type` (or `xsi:type`),
 /// `xmi:uuid` and `xmi:label` are XMI metadata not read yet
-/// (SACM23-XMI-019), and an `XLink` attribute or an `href` that is not `#id`
-/// a cross-document link not read yet (SACM23-XMI-027): each is refused at
+/// (SACM23-XMI-019), and an `XLink` attribute or an `XPointer` `href` a
+/// cross-document link not read yet (SACM23-XMI-029): each is refused at
 /// the attribute. Anything else that does not conform is
 /// [`Fault::Defect`]: a second link attribute, any other attribute, an
-/// `xmi:idref` that is empty or holds white space, no link, a child
+/// `xmi:idref` that is empty or holds white space, an `href` that names no
+/// element, no link, a child
 /// element, or text. The caller then keeps the whole element as preserved
 /// content (ADR 0033). A tolerant read keeps the whole element, with the
 /// Warning of a refusal's entry (ADR 0035 D1).
-fn read_reference(found: &Findings<'_, '_>, node: Node<'_, '_>) -> Result<ElementId, Fault> {
+///
+/// An `href` is classified by [`classify_href`]: `#id` names the id `id` of
+/// this document; `document#fragment` is a cross-document reference
+/// (SACM23-XMI-027, ADR 0040 D1), read where `cross_document` is true (every
+/// element end) and refused as not read yet where it is false (the derived
+/// `expression`, SACM23-XMI-029); an `XPointer` fragment is refused as not
+/// read yet; and an `href` that names no element is a defect.
+fn read_reference(
+    found: &Findings<'_, '_>,
+    node: Node<'_, '_>,
+    cross_document: bool,
+) -> Result<Link, Fault> {
     let text = found.text;
     let element = written_name(text, node);
     let mut link = None;
@@ -3907,27 +3932,31 @@ fn read_reference(found: &Findings<'_, '_>, node: Node<'_, '_>) -> Result<Elemen
             return Err(Fault::Defect);
         }
         let value = attribute.value().trim_matches(is_xml_space);
-        let target = if is_idref {
-            value
-        } else {
-            let Some(fragment) = same_document_fragment(value) else {
-                let arguments =
-                    text_arguments(&[("href", attribute.value()), ("element", &element)]);
-                return Err(found.unread_fault(
-                    at,
-                    Unread::CrossDocumentHref,
-                    ElementReason::Href,
-                    arguments,
-                ));
-            };
-            fragment
-        };
-        // An `xsd:IDREF` is one token: white space inside it would be read
-        // as one id here but written as an IDREFS attribute of several.
-        if target.is_empty() || target.contains(is_xml_space) {
-            return Err(Fault::Defect);
+        if is_idref {
+            // An `xsd:IDREF` is one token: white space inside it would be
+            // read as one id here but written as an IDREFS attribute of
+            // several.
+            if value.is_empty() || value.contains(is_xml_space) {
+                return Err(Fault::Defect);
+            }
+            link = Some(Link::Id(ElementId::new(value)));
+            continue;
         }
-        link = Some(ElementId::new(target));
+        let not_read = || {
+            let arguments = text_arguments(&[("href", attribute.value()), ("element", &element)]);
+            found.unread_fault(
+                at,
+                Unread::CrossDocumentHref,
+                ElementReason::Href,
+                arguments,
+            )
+        };
+        link = Some(match classify_href(value) {
+            HrefForm::Id(id) => Link::Id(ElementId::new(id)),
+            HrefForm::Other if cross_document => Link::Href(Href::new_unchecked(value)),
+            HrefForm::Other | HrefForm::Pointer => return Err(not_read()),
+            HrefForm::NoElement => return Err(Fault::Defect),
+        });
     }
     let Some(target) = link else {
         return Err(Fault::Defect);
@@ -3941,17 +3970,61 @@ fn read_reference(found: &Findings<'_, '_>, node: Node<'_, '_>) -> Result<Elemen
     Ok(target)
 }
 
-/// The id that the trimmed `href` value `value` names in the same document,
-/// if it is `#id`: a bare fragment, not empty and not a pointer (XMI 2.5.1
-/// rule 2n). `None` for a value with a document part, such as `other.xmi#c`
-/// or `c`, the empty value, `#` and a fragment holding `#`, `(`, `)` or white
-/// space, such as `#xpointer(id('c'))`. The fragment is held exactly, with no
-/// percent-decoding.
-fn same_document_fragment(value: &str) -> Option<&str> {
-    let fragment = value.strip_prefix('#')?;
-    let is_bare = !fragment.is_empty()
-        && !fragment.contains(|c: char| matches!(c, '#' | '(' | ')') || is_xml_space(c));
-    is_bare.then_some(fragment)
+/// What a reference element names: an id of this document, or an element of
+/// another document by its `href` (ADR 0040 D2).
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Link {
+    /// An `xmi:idref`, or an `href="#id"`: the id.
+    Id(ElementId),
+    /// An `href` with a document part, as trimmed.
+    Href(Href),
+}
+
+/// Appends `value` to the list of `end` in `ends`, a sparse list of ends in
+/// the order they are first given.
+fn push_value<T>(ends: &mut Vec<(ReferenceEnd, Vec<T>)>, end: ReferenceEnd, value: T) {
+    match ends.iter_mut().find(|(held, _)| *held == end) {
+        Some((_, values)) => values.push(value),
+        None => ends.push((end, vec![value])),
+    }
+}
+
+/// The form of a trimmed `href` value (XMI 2.5.1 §7.10.2 `URI#id_value`,
+/// rule 2n; ADR 0040 D1).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HrefForm<'v> {
+    /// `#id`: the id of an element of this document.
+    Id(&'v str),
+    /// `document#fragment`: an element of another document by its id.
+    Other,
+    /// A fragment holding `(` or `)`: an `XPointer`, which SACM23-XMI-029 is to
+    /// read.
+    Pointer,
+    /// No `#`, an empty fragment, a `#` in the fragment, or XML white space
+    /// anywhere: it names no element.
+    NoElement,
+}
+
+/// The form of the trimmed `href` value `value`, held exactly, with no
+/// percent-decoding. The checks run in this order: XML white space, no `#`,
+/// an empty fragment or a `#` in it name no element; then `(` or `)` in the
+/// fragment is an `XPointer`; then an empty document part is `#id`, and any
+/// other is a cross-document reference.
+fn classify_href(value: &str) -> HrefForm<'_> {
+    let Some((document, fragment)) = value.split_once('#') else {
+        return HrefForm::NoElement;
+    };
+    if value.contains(is_xml_space) || fragment.is_empty() || fragment.contains('#') {
+        return HrefForm::NoElement;
+    }
+    if fragment.contains(['(', ')']) {
+        return HrefForm::Pointer;
+    }
+    if document.is_empty() {
+        HrefForm::Id(fragment)
+    } else {
+        HrefForm::Other
+    }
 }
 
 /// Whether `node` is the value element of the property `local`: an element
@@ -4541,7 +4614,11 @@ fn read_lang_string<'a>(
         } else if is_expression && is_value_element(child, "expression") {
             // One reference element (SACM23-XMI-015), checked whole first,
             // then against an earlier occurrence (XMI 2.5.1 rule 2h).
-            let target = read_reference(found, child)?;
+            // An `href` with a document part is SACM23-XMI-029's here
+            // (ADR 0040 D1): the end is derived from the name.
+            let Link::Id(target) = read_reference(found, child, false)? else {
+                return Err(Fault::Defect);
+            };
             if expression.is_some() {
                 return Err(repeated_expression(
                     found, node, child, owner, kind, property,
@@ -4957,6 +5034,7 @@ mod tests {
             declaration: None,
             flags: Vec::new(),
             references: Vec::new(),
+            hrefs: Vec::new(),
             given: Vec::new(),
             written: written.to_owned(),
             at: 0,
@@ -5173,23 +5251,32 @@ mod tests {
     }
 
     #[test]
-    fn only_a_bare_fragment_is_a_same_document_href() {
+    fn an_href_is_an_id_a_cross_document_reference_a_pointer_or_names_no_element() {
+        use super::HrefForm::{Id, NoElement, Other, Pointer};
         for (value, expected) in [
-            ("#c2", Some("c2")),
-            ("#1c", Some("1c")),
-            ("#a%20b", Some("a%20b")),
-            ("", None),
-            ("#", None),
-            ("c2", None),
-            ("other.xmi#c2", None),
-            ("#xpointer(id('c2'))", None),
-            ("#a#b", None),
-            ("#a b", None),
-            ("#a\tb", None),
-            ("#a\nb", None),
-            ("#a\rb", None),
+            ("#c2", Id("c2")),
+            ("#1c", Id("1c")),
+            ("#a%20b", Id("a%20b")),
+            ("other.xmi#c2", Other),
+            ("a%20b.xmi#//@argumentElement.0", Other),
+            ("#xpointer(id('c2'))", Pointer),
+            ("o.xmi#xpointer(id('c2'))", Pointer),
+            ("o.xmi#a)", Pointer),
+            ("", NoElement),
+            ("#", NoElement),
+            ("o.xmi#", NoElement),
+            ("c2", NoElement),
+            ("#a#b", NoElement),
+            ("o.xmi#a#b", NoElement),
+            ("#a b", NoElement),
+            ("o.xmi#a b", NoElement),
+            ("o xmi#a", NoElement),
+            ("#a\tb", NoElement),
+            ("#a\nb", NoElement),
+            ("#a\rb", NoElement),
+            ("#x(a b)", NoElement),
         ] {
-            assert_eq!(super::same_document_fragment(value), expected, "{value:?}");
+            assert_eq!(super::classify_href(value), expected, "{value:?}");
         }
     }
 

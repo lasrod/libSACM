@@ -14,8 +14,8 @@
 //!
 //! A tolerant read keeps most entries as preserved content, with one Warning
 //! ([`Unread::tolerant`], ADR 0035 D1, D2): conforming content not read yet
-//! with SACM-XMI-014 (SACM-XMI-007 for a cross-document `href`), and the
-//! defects with SACM-XMI-003. It refuses only the limits, a root outside
+//! with SACM-XMI-014 (SACM-XMI-007 for a cross-document link SACM23-XMI-029
+//! is to read), and the defects with SACM-XMI-003. It refuses only the limits, a root outside
 //! SACM 2.3 or XMI 2.5.1, and an XMI-namespace document element.
 //!
 //! The xtask test `xtask/tests/interim_refusals.rs` keeps this list honest:
@@ -88,9 +88,11 @@ pub(super) enum Unread {
     /// identity attributes of a reference element or of
     /// the `xmi:XMI` element, and `xsi:schemaLocation`.
     XmiMetadata,
-    /// An `href` that is not `#id`, or `XLink` attributes on a reference
+    /// A cross-document link SACM23-XMI-029 is to read (ADR 0040 D1): an
+    /// `href` whose fragment holds `(` or `)` (an `XPointer`), an `href` with a
+    /// document part as an `expression`, or `XLink` attributes on a reference
     /// element; or an unqualified `href` on a role element of a composite,
-    /// typed or untyped, its reference form.
+    /// typed or untyped, its reference form (a proxy).
     CrossDocumentHref,
     /// A root outside the SACM 2.3 namespace.
     OtherSacmNamespace,
@@ -117,7 +119,7 @@ impl Unread {
     pub(super) const fn refusal(self) -> Refusal {
         match self {
             Self::XmiMetadata => Refusal::Interim("SACM23-XMI-019"),
-            Self::CrossDocumentHref => Refusal::Interim("SACM23-XMI-027"),
+            Self::CrossDocumentHref => Refusal::Interim("SACM23-XMI-029"),
             Self::OtherSacmNamespace => Refusal::Tolerance("LIB-COMPAT-004"),
             Self::OtherXmiNamespace => Refusal::Tolerance("LIB-COMPAT-002"),
             Self::Encoding | Self::Capacity | Self::Unheld => Refusal::Limit,
@@ -127,7 +129,7 @@ impl Unread {
 
     /// What a tolerant read does with it: the one table of ADR 0035 D1 and
     /// D2. Conforming content a later row reads is kept with SACM-XMI-014, a
-    /// cross-document `href` with SACM-XMI-007, and a defect with
+    /// cross-document link not read yet with SACM-XMI-007, and a defect with
     /// SACM-XMI-003; a root outside SACM 2.3, an `XMI` element outside XMI
     /// 2.5.1, and the limits are refused. An XMI-namespace document element,
     /// [`XmiMetadata`](Self::XmiMetadata) though it is, leaves no SACM root,
@@ -940,7 +942,7 @@ mod tests {
                 }
             }
         }
-        // Each Interim entry is SACM-XMI-014 but the cross-document href,
+        // Each Interim entry is SACM-XMI-014 but the cross-document link,
         // SACM-XMI-007; each Defect is SACM-XMI-003.
         for entry in ALL {
             let expected = match entry.refusal() {

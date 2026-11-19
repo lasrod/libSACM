@@ -29,10 +29,12 @@ pub(super) fn relationship_ends(document: &Document, found: &mut Vec<Diagnostic>
         } else {
             continue;
         };
-        if element.sources().is_empty() {
+        // An end is missing when it holds neither an id nor a cross-document
+        // reference (ADR 0040 D6).
+        if element.sources().is_empty() && element.hrefs(ends.pair.0).is_empty() {
             found.push(missing_end(element, &ends, "source", ends.source));
         }
-        if element.targets().is_empty() {
+        if element.targets().is_empty() && element.hrefs(ends.pair.1).is_empty() {
             found.push(missing_end(element, &ends, "target", ends.target));
         }
     }
@@ -46,6 +48,8 @@ struct Ends {
     clause: &'static str,
     source: (&'static str, &'static str),
     target: (&'static str, &'static str),
+    /// The source and target ends.
+    pair: (ReferenceEnd, ReferenceEnd),
 }
 
 /// The ends of an asserted relationship (§11.13, SACM23-VAL-005).
@@ -54,6 +58,7 @@ const ASSERTED: Ends = Ends {
     clause: "11.13",
     source: ("ArgumentAsset", "1..*"),
     target: ("ArgumentAsset", "1"),
+    pair: (ReferenceEnd::Source, ReferenceEnd::Target),
 };
 
 /// The ends of an `ArtifactAssetRelationship` (§12.14, SACM23-ART-010).
@@ -62,6 +67,7 @@ const ARTIFACT: Ends = Ends {
     clause: "12.14",
     source: ("ArtifactAsset", "1..*"),
     target: ("ArtifactAsset", "1..*"),
+    pair: (ReferenceEnd::ArtifactSource, ReferenceEnd::ArtifactTarget),
 };
 
 /// The finding of `element`, of the relationship class `ends` describes,

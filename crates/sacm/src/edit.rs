@@ -1653,7 +1653,8 @@ pub enum EditError {
     TooFewReferences {
         /// The end, by its XMI name, such as `source`.
         end: &'static str,
-        /// How many distinct ids it would hold.
+        /// How many distinct values it would hold: ids, and cross-document
+        /// references (ADR 0039 D3, ADR 0040).
         given: usize,
         /// How many it needs at least.
         required: usize,
@@ -1684,7 +1685,7 @@ pub enum EditError {
     TooManyReferences {
         /// The end, by its XMI name, such as `target`.
         end: &'static str,
-        /// How many ids it would hold.
+        /// How many values it would hold, cross-document references included.
         given: usize,
         /// How many it holds at most.
         allowed: usize,

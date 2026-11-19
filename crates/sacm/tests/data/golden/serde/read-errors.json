@@ -99,15 +99,15 @@
     "code": "SACM-XMI-007",
     "template": "SACM-XMI-007/href",
     "arguments": {
-      "href": "other.sacm.xmi#c",
+      "href": "other.sacm.xmi#xpointer(id('c'))",
       "element": "metaClaim",
-      "row": "SACM23-XMI-027"
+      "row": "SACM23-XMI-029"
     },
     "location": {
       "line": 3,
       "column": 16
     },
-    "reason": "the href \"other.sacm.xmi#c\" of the reference element \"metaClaim\" names no element of this document by its id; only href=\"#id\" is read in this release (a limit of this version; SACM23-XMI-027 reads it)"
+    "reason": "the href \"other.sacm.xmi#xpointer(id('c'))\" of the reference element \"metaClaim\" is not read in this release (a limit of this version; SACM23-XMI-029 reads it)"
   },
   {
     "type": "Unsupported",

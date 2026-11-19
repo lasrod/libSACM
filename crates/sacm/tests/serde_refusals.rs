@@ -144,7 +144,8 @@ fn read_samples() -> Vec<ReadError> {
         format!(
             "<sacm:ArgumentPackage{NS} xmi:id=\"arguments\">\n  \
              <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c1\">\n    \
-             <metaClaim href=\"other.sacm.xmi#c\"/>\n  </argumentElement>\n</sacm:ArgumentPackage>"
+             <metaClaim href=\"other.sacm.xmi#xpointer(id('c'))\"/>\n  </argumentElement>\n\
+             </sacm:ArgumentPackage>"
         ),
         format!(
             "<xmi:XMI xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\" foo=\"bar\">\n  \

@@ -258,16 +258,19 @@ catalog! {
     /// in tolerant mode in this release.
     pub const XMI_STRICT_SAVE_REFUSED: Code = Code::from_static("SACM-XMI-006");
 
-    /// SACM-XMI-007: a reference to an element of another document, an
-    /// `href` with a document part such as `other.xmi#c9`, or `XLink`
-    /// attributes, which this release does not read yet. A tolerant
-    /// [`xmi::read`](crate::xmi::read) keeps the reference element, or the
-    /// role element in reference form, whole as preserved content, with one
-    /// Warning; the reference end stays empty. A strict read refuses it as
+    /// SACM-XMI-007: a cross-document link this release does not read: a
+    /// role element in reference form with an `href` (a proxy), an `href`
+    /// with a document part as an `expression`, an `href` whose fragment holds
+    /// `(` or `)` (an `XPointer`), or `XLink` attributes on a reference element.
+    /// A tolerant [`xmi::read`](crate::xmi::read) keeps the reference
+    /// element, or the role element in reference form, whole as preserved
+    /// content, with one Warning; the reference end stays empty. A strict
+    /// read refuses it as
     /// [`ReadError::Unsupported`](crate::xmi::ReadError::Unsupported) with
-    /// this code (LIB-API-011, LIB-API-017, ADR 0035; SACM23-XMI-027 reads
-    /// it). It is never
-    /// SACM-XMI-003: such a reference conforms.
+    /// this code (LIB-API-011, LIB-API-017, ADR 0035, ADR 0040; SACM23-XMI-029
+    /// reads it). It is never SACM-XMI-003: such a link conforms. An `href`
+    /// with a document part on any other reference end is read
+    /// (SACM23-XMI-027).
     pub const XMI_EXTERNAL_HREF: Code = Code::from_static("SACM-XMI-007");
 
     /// SACM-XMI-010: an `xsi:type` attribute is used. XMI 2.5.1 §9.5.2 rule
@@ -559,7 +562,30 @@ catalog! {
     /// `ArgumentPackageInterface` or `ArgumentPackageBinding` neither
     /// triggers nor is reported, and `UtilityElement`s are not counted
     /// (D-PKG-HOMOG). Fix: move the other elements into a nested package.
+    ///
+    /// It also reports what a package interface or binding holds (SACM 2.3
+    /// §10.5, §10.6, §11.5, §11.6, §12.4, §12.5; D-IFACE-CITE): as an Error,
+    /// each child in its family role that is no citation (`isCitation` true
+    /// and a `citedElement`), an `AssertedRelationship` in an
+    /// `ArgumentPackageBinding` and an `ArtifactAssetRelationship` in an
+    /// `ArtifactPackageBinding` excepted (SACM23-VAL-013), and each child of
+    /// an `AssuranceCasePackageInterface` that is not exactly the interface
+    /// class of its role (the §9.3 OCL, SACM23-VAL-015); as a Warning, an
+    /// interface's citation of an element of the wrong kind or outside the
+    /// package it implements (SACM23-VAL-013), and a binding of the holder's
+    /// family named as a participant (D-BIND-PART, SACM23-VAL-014). Fix: cite
+    /// instead, or move the element out.
     pub const PACKAGE_CONTENT_INVALID: Code = Code::from_static("SACM-PKG-001");
+
+    /// SACM-PKG-002: an interface does not reside inside the package it
+    /// implements (SACM 2.3 §10.5, §11.6, §12.5): a Warning (SACM23-VAL-023).
+    /// [`validation::validate`](crate::validation::validate) reports each
+    /// `ArgumentPackageInterface`, `ArtifactPackageInterface` and
+    /// `TerminologyPackageInterface` whose `isCitation` is not true and whose
+    /// `implements` names a package of the document that is not one of its
+    /// ancestors, affecting the interface, then the package. Fix: move the
+    /// interface into the package, or make it a citation.
+    pub const INTERFACE_PLACEMENT: Code = Code::from_static("SACM-PKG-002");
 
     /// SACM-REF-001: a reference names no element of the document: an id
     /// absent from it, or the `xmi:id` of a `name`, `content`, `key`, `location` or

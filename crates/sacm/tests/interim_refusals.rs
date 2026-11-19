@@ -1,9 +1,10 @@
 //! Tests that every `ReadError::Unsupported` names why it is refused
 //! (LIB-API-011; ADR 0033; D-PRESERVE; D-STRICT).
 //!
-//! Conforming content this version does not read yet (XMI metadata and
-//! cross-document references since slice 0067, which reads the last
-//! interface and binding kinds and every package's `interface` end), and
+//! Conforming content this version does not read yet (XMI metadata since
+//! slice 0067, which reads the last interface and binding kinds and every
+//! package's `interface` end, and the cross-document links SACM23-XMI-029
+//! reads since slice 0068, which reads an `href` with a document part), and
 //! input with nowhere to be kept, stays `Unsupported`. Each refusal comes from one
 //! crate-private list whose entries are `Interim(row)`, `Tolerance(row)`,
 //! `Limit` or `Defect`, and its reason ends with exactly one label:
@@ -204,7 +205,7 @@ fn lib_api_011_xmi_metadata_names_sacm23_xmi_019() {
         (
             // On a root, which is no role element: a typed role element
             // with an unqualified `href` is a proxy, which names
-            // SACM23-XMI-027 (untyped_abstract_roles.rs).
+            // SACM23-XMI-029 (untyped_abstract_roles.rs).
             "href on an object (the root)",
             format!(
                 "<sacm:ArgumentPackage{NS} xmi:id=\"p\" href=\"#c2\"><name content=\"p\"/>{}</sacm:ArgumentPackage>",
@@ -280,15 +281,22 @@ fn lib_api_011_xmi_metadata_names_sacm23_xmi_019() {
     }
 }
 
-// --- Interim: cross-document references (SACM23-XMI-027) ----------------------------
+// --- Interim: cross-document links not read yet (SACM23-XMI-029) -------------------
 
 #[test]
-fn lib_api_011_a_cross_document_href_names_sacm23_xmi_027() {
-    let label = interim("SACM23-XMI-027");
+fn lib_api_011_a_cross_document_link_not_read_yet_names_sacm23_xmi_029() {
+    // SACM23-XMI-027 reads an `href` with a document part on a reference
+    // element (slice 0068); an XPointer fragment and XLink attributes stay
+    // SACM23-XMI-029's (ADR 0040).
+    let label = interim("SACM23-XMI-029");
     let cases = [
         (
-            "href to another document",
-            package(&claim("c1", "", "<metaClaim href=\"other.sacm.xmi#c\"/>")),
+            "an XPointer href to another document",
+            package(&claim(
+                "c1",
+                "",
+                "<metaClaim href=\"other.sacm.xmi#xpointer(id('c'))\"/>",
+            )),
         ),
         (
             "XLink attributes on a reference element",

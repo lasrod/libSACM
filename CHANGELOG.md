@@ -9,11 +9,46 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 
 ## [Unreleased]
 
+### Added
+
+- `model::Href` and `SacmElement::hrefs(end)`: a reference element's `href` that names an
+  element of another document (`document#fragment`, XMI 2.5.1 §7.10.2) is read on every
+  element reference end, held as written in a list of the end's own beside its ids, and
+  never resolved; `document()` and `fragment()` give its parts [SACM23-XMI-027].
+- `compare::Difference::Hrefs`, after `ParticipantPackages`, one per end whose `href`s
+  differ [SACM23-XMI-027].
+- `Code::INTERFACE_PLACEMENT` (SACM-PKG-002), and eight diagnostic templates:
+  `SACM-MULT-001/too-few`, `SACM-PKG-001/binding-participant`, `/cited-kind`,
+  `/cited-outside`, `/not-a-citation`, `/not-a-citation-or-relationship`,
+  `/not-an-interface` and `SACM-PKG-002/outside-implemented-package`
+  [SACM23-VAL-013, SACM23-VAL-014, SACM23-VAL-015, SACM23-VAL-023].
+
 ### Changed
 
 - With `serde`, a refusal or diagnostic record reads its `arguments` in any key order, as
   JSON that passed through `serde_json::Value` has them; missing, extra, repeated or
   wrongly typed arguments are still refused [LIB-API-019].
+- A strict read accepts an `href` with a document part on a reference element, which it
+  refused as `Unsupported`; both saves write an end that holds one in element form, its
+  ids first, then its `href`s. An `href` counts toward its end's bounds and as an
+  occurrence of a single-valued end, and is never SACM-REF-001, -002 or -003
+  [SACM23-XMI-027].
+- An `href` that names no element (no `#`, an empty fragment, a `#` in the fragment or XML
+  white space inside it) keeps its reference element as preserved content with
+  SACM-XMI-003 in both modes, where a strict read refused it as `Unsupported`. An XPointer
+  `href`, an `href` with a document part as an `expression`, a proxy and `XLink`
+  attributes stay `Unsupported` with SACM-XMI-007, now naming SACM23-XMI-029; the English of
+  `SACM-XMI-007/href` and `/href-kept` changes, their ids and arguments do not
+  [SACM23-XMI-027].
+- `SetReferences` and `SetReferences::clear` remove the end's `href`s; `AddReference`,
+  `RemoveReference`, `CopyElements` and the delete of a binding left below two
+  participants count them [SACM23-XMI-027].
+- `validation::validate` reports the content of package interfaces and bindings
+  (SACM-PKG-001), a missing `implements` and fewer than two distinct participants
+  (SACM-MULT-001), a binding named as a participant (SACM-PKG-001 Warning), the
+  sub-packages of an `AssuranceCasePackageInterface` (SACM-PKG-001), and an interface
+  outside the package it implements (SACM-PKG-002 Warning) [SACM23-VAL-013, SACM23-VAL-014,
+  SACM23-VAL-015, SACM23-VAL-023].
 
 ## [0.2.0] - 2026-11-19
 

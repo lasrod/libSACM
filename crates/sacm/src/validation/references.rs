@@ -11,7 +11,7 @@ use crate::diagnostic::template::{
 };
 use crate::diagnostic::{Argument, Diagnostic, Severity};
 use crate::model::{
-    AbstractClass, AssertionDeclaration, DeclaredType, Document, ElementId, ReferenceEnd,
+    AbstractClass, AssertionDeclaration, DeclaredType, Document, ElementId, Href, ReferenceEnd,
     SacmElement,
 };
 
@@ -161,17 +161,18 @@ pub(super) fn wrongly_typed_references(document: &Document, found: &mut Vec<Diag
 /// not true is one SACM-CITE-001 Error, affecting the element, because §8.2
 /// gives the OCL `self.citedElement <> null implies self.isCitation = true`.
 /// `isCitation` true alone is no finding: §8.2 states only that direction
-/// (ADR 0026). The target need not resolve.
+/// (ADR 0026). The target need not resolve: an id or a cross-document
+/// `href` is a `citedElement` (ADR 0040 D6).
 pub(super) fn citation(document: &Document, found: &mut Vec<Diagnostic>) {
     for element in document.elements() {
-        let Some(cited) = element.cited_element() else {
+        let Some(cited) = value_of(element, ReferenceEnd::CitedElement) else {
             continue;
         };
         if element.is_citation() {
             continue;
         }
         let mut arguments = named(element).to_vec();
-        arguments.push(Argument::text("target", cited.as_str()));
+        arguments.push(Argument::text("target", cited));
         found.push(
             Diagnostic::emit(
                 &CITE_001_NOT_A_CITATION,
@@ -192,7 +193,9 @@ pub(super) fn citation(document: &Document, found: &mut Vec<Diagnostic>) {
 /// true, affecting the element; it has no `citedElement`, affecting the
 /// element; its `citedElement` names an element of the document that is
 /// not of an Assertion kind, affecting the element, then that element. A
-/// `citedElement` that names no element is left to SACM-REF-001.
+/// `citedElement` that names no element is left to SACM-REF-001, and one
+/// given as a cross-document `href` is present, its target not checked (ADR
+/// 0040 D6).
 pub(super) fn as_cited(document: &Document, found: &mut Vec<Diagnostic>) {
     for element in document.elements() {
         if element.assertion_declaration() != Some(AssertionDeclaration::AsCited) {
@@ -205,12 +208,16 @@ pub(super) fn as_cited(document: &Document, found: &mut Vec<Diagnostic>) {
                 [element.id().clone()],
             ));
         }
-        let Some(cited) = element.cited_element() else {
+        if element.cited_element().is_none() && element.hrefs(ReferenceEnd::CitedElement).is_empty()
+        {
             found.push(as_cited_finding(
                 &CITE_002_NO_CITED_ELEMENT,
                 named(element).to_vec(),
                 [element.id().clone()],
             ));
+            continue;
+        }
+        let Some(cited) = element.cited_element() else {
             continue;
         };
         let Some(target) = document.get(cited) else {
@@ -251,16 +258,16 @@ fn as_cited_finding(
 /// - A target that is an element of the document and is not abstract is one
 ///   Warning, and one of another kind is another, each affecting the
 ///   element, then the target. A target that names no element gives neither
-///   (SACM-REF-001 reports it).
+///   (SACM-REF-001 reports it), and so does a cross-document `href`, though
+///   it is an `abstractForm` for the Error (ADR 0040 D6).
 pub(super) fn abstract_form(document: &Document, found: &mut Vec<Diagnostic>) {
     for element in document.elements() {
-        let Some(form) = element.abstract_form() else {
+        let Some(given) = value_of(element, ReferenceEnd::AbstractForm) else {
             continue;
         };
         let [class, id] = named(element);
-        let target_text = || Argument::text("target", form.as_str());
         if element.is_abstract() {
-            let arguments = vec![class.clone(), id.clone(), target_text()];
+            let arguments = vec![class.clone(), id.clone(), Argument::text("target", given)];
             found.push(finding(
                 &ABS_001_ABSTRACT_HOLDER,
                 Severity::Error,
@@ -268,6 +275,10 @@ pub(super) fn abstract_form(document: &Document, found: &mut Vec<Diagnostic>) {
                 [element.id().clone()],
             ));
         }
+        let Some(form) = element.abstract_form() else {
+            continue;
+        };
+        let target_text = || Argument::text("target", form.as_str());
         let Some(target) = document.get(form) else {
             continue;
         };
@@ -308,6 +319,16 @@ fn finding(
     Diagnostic::emit(template, severity, "SACM23-VAL-008", arguments)
         .set_clause("8.2")
         .set_affected(affected)
+}
+
+/// The value the single-valued `end` of `element` holds: its id, or else its
+/// cross-document `href` (ADR 0040 D6); `None` when it holds neither.
+fn value_of(element: SacmElement<'_>, end: ReferenceEnd) -> Option<&str> {
+    element
+        .references(end)
+        .first()
+        .map(ElementId::as_str)
+        .or_else(|| element.hrefs(end).first().map(Href::as_str))
 }
 
 /// The ids of `element` and of its target `target`, in that order.
