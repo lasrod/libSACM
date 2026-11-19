@@ -138,16 +138,16 @@
 //! message names the element by its kind and id, never by the name or prefix
 //! written, so the choice of prefix does not change it (SACM23-XMI-002).
 
-use std::cell::Cell;
 use std::collections::BTreeSet;
 
 use roxmltree::{Attribute, Node};
 
 use super::input::{Locator, is_xml_space, locate};
+use super::limits::Budget;
 use super::namespaces::{self, Family, RootNamespace, SACM_NS, SACM_PREFIX, XMI_NS, XMI_PREFIX};
 use super::preserve;
 use super::refusal::{Tolerant, Unread, unsupported};
-use super::{Limit, Limits, Mode, ReadError, limits};
+use super::{Limits, Mode, ReadError};
 use crate::diagnostic::template::{self, Template};
 use crate::diagnostic::{Argument, Code, Details, Diagnostic, Severity};
 use crate::model::{
@@ -1013,16 +1013,22 @@ pub(super) fn read(
         legacy: None,
         family: namespaces::PINNED,
         revision: None,
-        limits: *limits,
-        kept: Cell::new(0),
+        budget: Budget::new(text, limits),
+        passed: None,
     };
     // What the document holds outside every element (ADR 0035 D3).
     let mut outside = Kept::new(DocumentHolder);
-    if is_wrapper {
-        read_wrapper(&mut found, element, &mut document, &mut outside)?;
+    let outcome = if is_wrapper {
+        read_wrapper(&mut found, element, &mut document, &mut outside)
     } else {
-        read_root(&mut found, element, &mut document, &mut outside)?;
+        read_root(&mut found, element, &mut document, &mut outside)
+    };
+    // The first diagnostic whose text passed the size limit refuses the read
+    // there; whatever the read met after it comes later (LIB-SEC-003).
+    if let Some(error) = found.passed.take() {
+        return Err(error);
     }
+    outcome?;
     document
         .set_document_preserved(outside.into_preserved())
         .map_err(|error| {
@@ -1115,11 +1121,13 @@ struct Findings<'t, 'a> {
     /// The SACM revision of the root being read, if it is an older one's
     /// (LIB-COMPAT-004).
     revision: Option<&'static str>,
-    /// The limits read under (LIB-SEC-003).
-    limits: Limits,
-    /// The namespace text preserved content has kept so far, which counts
-    /// against the size limit and never decreases (ADR 0041 D2).
-    kept: Cell<u64>,
+    /// What the read keeps besides the parsed tree, counted against the
+    /// size limit: the namespace text of preserved content and the text of
+    /// each diagnostic (LIB-SEC-003; ADR 0041 D2, amendment 1).
+    budget: Budget<'t>,
+    /// The refusal at the first diagnostic whose text passed the size
+    /// limit, which [`read`] returns. No diagnostic is kept after it.
+    passed: Option<ReadError>,
 }
 
 /// What [`Findings`] holds before a part is read, so that a part that turns
@@ -1424,9 +1432,18 @@ impl Findings<'_, '_> {
         self.push_at(diagnostic, attribute.range_qname().start);
     }
 
-    /// Adds `diagnostic`, to be located at byte `offset` of the text.
+    /// Adds `diagnostic`, to be located at byte `offset` of the text, after
+    /// counting its text against the size limit there. The first one that
+    /// passes the limit is the refusal [`read`] returns, and neither it nor
+    /// any later one is kept (LIB-SEC-003, ADR 0041 amendment 1).
     fn push_at(&mut self, diagnostic: Diagnostic, offset: usize) {
-        self.diagnostics.push((offset, diagnostic));
+        if self.passed.is_some() {
+            return;
+        }
+        match self.budget.keep_diagnostic(&diagnostic, offset) {
+            Ok(()) => self.diagnostics.push((offset, diagnostic)),
+            Err(error) => self.passed = Some(error),
+        }
     }
 
     /// Reports the root `id` of `kind`, whose start tag is at byte `offset`,
@@ -1475,23 +1492,12 @@ impl Findings<'_, '_> {
     }
 
     /// Counts `bytes` of namespace text that preserved content keeps at byte
-    /// `offset` against the size limit, and refuses it there once the count
-    /// passes the limit (LIB-SEC-003, ADR 0041 D2). The count never
-    /// decreases, a part read and then preserved included.
+    /// `offset` against the size limit, in the budget the diagnostics share,
+    /// and refuses it there once the budget passes the limit (LIB-SEC-003,
+    /// ADR 0041 D2). The count never decreases, a part read and then
+    /// preserved included.
     fn keep_namespace_text(&self, bytes: u64, offset: usize) -> Result<(), ReadError> {
-        let kept = self.kept.get().saturating_add(bytes);
-        self.kept.set(kept);
-        let max = self.limits.max_input_bytes();
-        if kept > max {
-            return Err(limits::exceeded(
-                Limit::InputBytes,
-                max,
-                locate(self.text, offset),
-                &template::SEC_003_KEPT_NAMESPACES,
-                None,
-            ));
-        }
-        Ok(())
+        self.budget.keep_namespace_text(bytes, offset)
     }
 }
 
@@ -2106,8 +2112,7 @@ impl<H: Holder> Kept<H> {
             }
         }
         let at = node.range().start;
-        let (fragment, kept) = preserve::fragment(text, node);
-        found.keep_namespace_text(kept, at)?;
+        let fragment = preserve::fragment(text, node, &found.budget)?;
         self.offsets.insert(at);
         self.children.push(Placed {
             index: self.typed,

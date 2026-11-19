@@ -15,6 +15,9 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
   than 256, with more than 1,000,000 XML nodes, or with more than 256 namespace bindings
   in scope at an element, as `ReadError::LimitExceeded`; read a trusted file with higher
   `Limits` [LIB-SEC-003].
+- A strict read's refusal of a root in a SACM-like namespace (`SACM-XMI-002/other-namespace`)
+  now ends `(strict mode never reads it; LIB-COMPAT-004 reads it in tolerant mode)`, where it
+  ended `(… is to read it in tolerant mode)` [LIB-COMPAT-004].
 - A package-kind root in no namespace, or in one whose URI does not contain `sacm`, is
   `ReadError::InvalidRoot` (SACM-XMI-001, templates `SACM-XMI-001/no-namespace` and
   `/not-a-sacm-namespace`) in both modes, where it was `Unsupported` with SACM-XMI-002
@@ -30,12 +33,15 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 ### Added
 
 - `xmi::Limits` and `xmi::Limit`, `ReadOptions::with_limits` and `ReadOptions::limits`,
-  `ReadError::LimitExceeded` and `Code::LIMIT_EXCEEDED` (SACM-SEC-003), with the six
-  templates `SACM-SEC-003/input-bytes`, `/kept-namespaces`, `/depth`, `/nodes`,
-  `/namespace-copies` and `/namespace-bindings`. The size is checked first, on the bytes;
-  the depth and the bindings in scope by a scan before parsing, which also counts the
-  bindings the parser copies against the node limit; the node limit by the parser; and
-  the namespace text preserved content keeps against the size limit [LIB-SEC-003].
+  `ReadError::LimitExceeded` and `Code::LIMIT_EXCEEDED` (SACM-SEC-003), with the seven
+  templates `SACM-SEC-003/input-bytes`, `/kept-namespaces`, `/kept-text`, `/depth`,
+  `/nodes`, `/namespace-copies` and `/namespace-bindings`. The size is checked first, on
+  the bytes; the depth and the bindings in scope by a scan before parsing, which also
+  counts the bindings the parser copies against the node limit; and the node limit by the
+  parser. Everything else a read keeps besides the parsed tree counts against the size
+  limit, in one budget: the namespace text preserved content keeps, as each element or
+  attribute is kept (`/kept-namespaces`), and the text of each diagnostic, the bytes of its
+  text arguments and affected ids, where it is emitted (`/kept-text`) [LIB-SEC-003].
 - A tolerant read reads a root in the namespace of SACM 2.0, 2.1 or 2.2 that it
   recognises as SACM 2.3, with one SACM-XMI-008 Warning (`Code::XMI_OTHER_REVISION`,
   template `SACM-XMI-008/other-revision`), and an Event's `occurence` as its date
@@ -56,6 +62,8 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 
 - A strict read refuses a root in an older SACM revision's namespace with SACM-XMI-008,
   where it was SACM-XMI-002 [LIB-COMPAT-004].
+- A root in the SACM 2.4 namespace (`…/20260504` or `…/2.4`) is refused in both modes with
+  SACM-XMI-008 (`SACM-XMI-008/sacm-2-4`), where it was SACM-XMI-002 [LIB-COMPAT-004].
 - A root's type, and each child's type, names a SACM class in any namespace of the root's
   family: for a recognised revision the base and the base with a package name
   [LIB-COMPAT-004].

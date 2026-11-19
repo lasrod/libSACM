@@ -65,10 +65,10 @@ const HEADING: &str = "## Message templates";
 /// The number of refusal templates: the 103 of slice 0063 (acceptance 4),
 /// less `SACM-XMI-014/expression-lang-string`, which slice 0065 removes
 /// (SACM23-BASE-009), and the four of unread kinds and ends, which slice
-/// 0067 removes (ADR 0035 amendment 1); and the ten slice 0072 adds, less
+/// 0067 removes (ADR 0035 amendment 1); and the eleven slice 0072 adds, less
 /// `SACM-XMI-002/no-namespace`, which it removes (LIB-SEC-003,
-/// LIB-COMPAT-004, LIB-COMPAT-016; ADR 0041): Read 74, Unread 27, Write 7.
-const REFUSAL_TEMPLATES: usize = 108;
+/// LIB-COMPAT-004, LIB-COMPAT-016; ADR 0041): Read 75, Unread 27, Write 7.
+const REFUSAL_TEMPLATES: usize = 109;
 
 /// The row of the diagnostic templates (slice 0064).
 const ROW_018: &str = "LIB-API-018";

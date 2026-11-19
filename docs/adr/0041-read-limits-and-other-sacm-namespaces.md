@@ -81,3 +81,15 @@ copies, so that the limits really bound memory.
 - Declaring only the bindings a fragment uses: this changes verified output, which is
   LIB-COMPAT-013's ground.
 - Accepting the ISO-8859-1 aliases: rejected (Q10).
+
+## Amendment 1 (2026-11-20)
+
+Verification 0072 found that the diagnostics a read emits copy ids and namespace text without
+limit: a 169 KB input built 200 MB of Warning text. The maintainer decided on 2026-11-20 that
+**everything a read keeps besides the parsed tree counts against the size limit, in one
+budget.** That is D2's kept namespace text, counted as each element or attribute is kept
+rather than after a subtree is built, and the text arguments and affected ids of every
+diagnostic, counted where it is emitted. A breach is `LimitExceeded`, template
+`SACM-SEC-003/kept-text`, or `kept-namespaces` when namespace text passes the limit. The
+memory a read takes is then bounded by the limits.
+

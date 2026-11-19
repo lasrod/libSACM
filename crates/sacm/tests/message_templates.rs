@@ -16,7 +16,7 @@
 //!   the `Unsupported` templates of SACM-XMI-014, -007, -002 and -015 and on
 //!   `SACM-XMI-008/other-revision-root`, whose `Display` ends with the label
 //!   of their code; and the inputs and the templates no input reaches
-//!   together are the 108 refusal templates, once each.
+//!   together are the 109 refusal templates, once each.
 //! - `lib_api_017_each_refusal_template_has_its_code_template_and_arguments`
 //!   checks that `code()`, `template()` and `arguments()` are the
 //!   table's.
@@ -45,8 +45,8 @@
 //! an `XPointer` as its input.
 //!
 //! Slice 0072 (LIB-SEC-003, LIB-COMPAT-004, LIB-COMPAT-016; ADR 0041) adds
-//! ten and removes one, which gives 108:
-//! - the six `SACM-SEC-003` templates of `ReadError::LimitExceeded`, whose
+//! eleven and removes one, which gives 109:
+//! - the seven `SACM-SEC-003` templates of `ReadError::LimitExceeded`, whose
 //!   inputs are read under `Limits` set for the case, and whose `Display`
 //!   is the rendered template and its location, when known;
 //! - `SACM-XML-001/encoding-contradicts-utf8-bom`;
@@ -81,9 +81,9 @@ const NS: &str = concat!(
 
 /// The number of refusal templates (acceptance 4): 102 once slice 0065
 /// removes `SACM-XMI-014/expression-lang-string` (SACM23-BASE-009), 98 once
-/// slice 0067 removes the four of unread kinds and ends, and 108 once slice
-/// 0072 adds ten and removes `SACM-XMI-002/no-namespace`.
-const REFUSAL_TEMPLATES: usize = 108;
+/// slice 0067 removes the four of unread kinds and ends, and 109 once slice
+/// 0072 adds eleven and removes `SACM-XMI-002/no-namespace`.
+const REFUSAL_TEMPLATES: usize = 109;
 
 /// The refusal templates no input reaches through the public API, and why.
 /// A unit test of their crate-private constructors builds each.
@@ -1135,7 +1135,23 @@ fn kept_namespaces() -> Vec<u8> {
     input.into_bytes()
 }
 
-/// The six `SACM-SEC-003` templates of `ReadError::LimitExceeded` (slice
+/// A root ArgumentPackage whose `xmi:id` is 200 `p`, holding one preserved
+/// `<x/>` at line 1, column 333: 359 bytes. The `x` keeps no namespace text,
+/// and its SACM-XMI-003 Error keeps 416 bytes of text: `x` (1),
+/// `ArgumentPackage` (15), the id (200) and the affected id (200) (ADR 0041
+/// amendment 1).
+fn kept_text() -> Vec<u8> {
+    let id = "p".repeat(200);
+    let input = format!("<sacm:ArgumentPackage{NS} xmi:id=\"{id}\"><x/></sacm:ArgumentPackage>");
+    assert_eq!(
+        (input.len(), input.find("<x").map(|at| at + 1)),
+        (359, Some(333)),
+        "LIB-SEC-003: setup: the kept-text input"
+    );
+    input.into_bytes()
+}
+
+/// The seven `SACM-SEC-003` templates of `ReadError::LimitExceeded` (slice
 /// 0072, LIB-SEC-003), each read strictly under the limits set for it.
 fn limit_cases() -> Vec<Case> {
     use sacm::xmi::Limits;
@@ -1168,6 +1184,14 @@ fn limit_cases() -> Vec<Case> {
             &[("max", n(373))],
             "the namespace names and bindings that preserved content keeps come to more than the size limit of {max} bytes",
             "the namespace names and bindings that preserved content keeps come to more than the size limit of 373 bytes at line 1, column 345",
+        ),
+        under(
+            "SACM-SEC-003/kept-text",
+            &kept_text(),
+            Limits::default().with_max_input_bytes(359),
+            &[("max", n(359))],
+            "the namespace text and diagnostics that the read keeps come to more than the size limit of {max} bytes",
+            "the namespace text and diagnostics that the read keeps come to more than the size limit of 359 bytes at line 1, column 333",
         ),
         under(
             "SACM-SEC-003/depth",
@@ -1411,7 +1435,7 @@ fn check_row(case: &Case) {
 #[test]
 fn lib_api_017_each_refusal_template_input_gives_its_0_1_0_display() {
     let cases = cases();
-    // The inputs and the templates without one are the 108, once each.
+    // The inputs and the templates without one are the 109, once each.
     let mut ids: Vec<&str> = cases.iter().map(|case| case.template).collect();
     ids.extend(NO_INPUT.iter().map(|(template, _)| *template));
     let count = ids.len();

@@ -744,20 +744,30 @@ pub use limits::{Limit, Limits};
 /// breach is [`ReadError::LimitExceeded`] (SACM-SEC-003). The size is checked
 /// first, on the bytes; the depth, the bindings in scope and the bindings in
 /// scope at the elements that declare one (which count against the node
-/// limit) by one linear scan before parsing; the nodes by the parser; and the
-/// namespace text preserved content keeps (which counts against the size
-/// limit) as it is kept. So the memory a read takes is bounded by the limits,
-/// not by the input's shape.
+/// limit) by one linear scan before parsing; and the nodes by the parser.
+/// Everything else a read keeps besides the parsed tree counts against the
+/// size limit, in one budget (ADR 0041 amendment 1): the namespace text that
+/// preserved content keeps, each namespace URI of a kept name and
+/// `prefix + URI + 10` for each binding it keeps, counted as each element or
+/// attribute is kept (`SACM-SEC-003/kept-namespaces`); and the text of each
+/// diagnostic the read emits, the bytes of its text arguments and of its
+/// affected ids, counted where it is emitted (`SACM-SEC-003/kept-text`). A
+/// diagnostic's message and template are fixed text and do not count. The
+/// read is refused at the element, attribute or diagnostic where the budget
+/// passes the limit. So the memory a read takes is bounded by the limits, not
+/// by the input's shape.
 ///
-/// The peak memory of a read at the defaults was measured once (slice 0072:
-/// a release build, rustc 1.100, Windows 11 on an AMD Ryzen 9 8945HS with
-/// 31 GiB; the peak working set of the process, the input included). A flat
+/// The peak memory of a read at the defaults was measured (slice 0072: a
+/// release build, rustc 1.100, Windows 11 on an AMD Ryzen 9 8945HS with 31
+/// GiB; the peak working set of the process, the input included). A flat
 /// ArgumentPackage of 341,176 Claims just under 32 MiB peaks at 811 MiB, in
-/// 1.9 s; 1,000,000 nodes of preserved `<x/>` (4 MB) at 1.25 GiB, in 1.8 s,
-/// most of it the SACM-XMI-003 Warning each preserved element gets; and a
-/// root with 255 bindings whose 3,905 Claims declare one more each, up to the
-/// namespace-copy limit (281 KB), at 15 MiB, in 0.24 s. An application that
-/// reads untrusted files with less memory than that sets lower limits.
+/// 1.9 s; 999,998 preserved `<x/>`, the most the node limit lets through (4
+/// MB, whose diagnostics keep 18 MB of text, within the size limit), at 1.25
+/// GiB, in 1.7 to 2.3 s, measured again with the one budget, most of it the
+/// SACM-XMI-003 Warning each preserved element gets; and a root with 255 bindings whose 3,905 Claims declare one
+/// more each, up to the namespace-copy limit (281 KB), at 15 MiB, in 0.24 s.
+/// An application that reads untrusted files with less memory than that sets
+/// lower limits.
 ///
 /// # Other SACM namespaces
 ///
@@ -865,7 +875,8 @@ pub use limits::{Limit, Limits};
 ///     listed in `RepeatedValue`'s [`locations`](ReadError::locations) even
 ///     if it does not conform itself, because each occurrence is checked
 ///     against those before it. The namespace text preserved content keeps
-///     counts against the size limit as it is kept (`LimitExceeded`);
+///     counts against the size limit as it is kept, and the text of each
+///     diagnostic where it is emitted, in one budget (`LimitExceeded`);
 /// 11. in strict mode, the first C++ shape in the input (`LegacyShape`).
 ///
 /// A tolerant read refuses only `Doctype`, `Malformed`, `InvalidRoot`,
@@ -1977,8 +1988,9 @@ pub enum ReadError {
         max: u64,
         /// The `<` of the element whose depth, bindings in scope or namespace
         /// copies pass the limit, or of the preserved element or the name of
-        /// the preserved attribute whose kept namespace text passes it; `None`
-        /// for the input's size and the node count.
+        /// the preserved attribute whose kept namespace text passes it, or
+        /// where the diagnostic whose text passes it is located; `None` for
+        /// the input's size and the node count.
         location: Option<SourceLocation>,
         /// The template and arguments of the refusal's message.
         details: Details,

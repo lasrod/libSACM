@@ -98,15 +98,21 @@ const GOLDEN_1_OUTPUT: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>
 ";
 
 /// Golden 2, input: an ArtifactPackage in SACM 2.2's `…/20210218`, with an
-/// Event's `occurence`.
+/// Event's `occurence`; an Artifact's `occurence`, which only an Event reads
+/// as its date; and an Event's `v:occurence`, which is in another namespace.
 const GOLDEN_2: &str = "<sacm:ArtifactPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20210218\" xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"arts\">
   <artifactElement xmi:type=\"sacm:Event\" xmi:id=\"e1\" occurence=\"2021-02-18\"/>
+  <artifactElement xmi:type=\"sacm:Artifact\" xmi:id=\"a1\" occurence=\"2021\"/>
+  <artifactElement xmi:type=\"sacm:Event\" xmi:id=\"e2\" xmlns:v=\"urn:v\" v:occurence=\"2021\"/>
 </sacm:ArtifactPackage>";
 
-/// Golden 2, output, in both write modes.
+/// Golden 2, output, in a tolerant write; a strict write refuses the
+/// preserved content of `a1` and `e2`.
 const GOLDEN_2_OUTPUT: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>
 <sacm:ArtifactPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\" xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"arts\">
   <artifactElement xmi:type=\"sacm:Event\" xmi:id=\"e1\" date=\"2021-02-18\" />
+  <artifactElement xmi:type=\"sacm:Artifact\" xmi:id=\"a1\" occurence=\"2021\" />
+  <artifactElement xmi:type=\"sacm:Event\" xmi:id=\"e2\" xmlns:v=\"urn:v\" v:occurence=\"2021\" />
 </sacm:ArtifactPackage>
 ";
 
@@ -584,6 +590,17 @@ fn lib_compat_004_one_family_counts_as_one_namespace() {
 fn lib_compat_004_an_older_events_occurence_reads_as_its_date() {
     let output = read_ok("Golden 2", GOLDEN_2, Mode::Tolerant);
     let found: Vec<Seen> = output.diagnostics().iter().map(seen).collect();
+    // The SACM-XMI-003 Warning of the attribute at `needle`, kept by `id`.
+    let kept_at = |needle: &str, id: &str| -> Seen {
+        (
+            "SACM-XMI-003".to_owned(),
+            Severity::Warning,
+            "LIB-COMPAT-003".to_owned(),
+            Some(position_of(GOLDEN_2, needle)),
+            vec![ElementId::from(id)],
+            "SACM-XMI-003/attribute-kept",
+        )
+    };
     assert_eq!(
         found,
         [
@@ -603,9 +620,30 @@ fn lib_compat_004_an_older_events_occurence_reads_as_its_date() {
                 vec![ElementId::from("e1")],
                 "SACM-XMI-008/occurence",
             ),
+            kept_at("occurence=\"2021\"", "a1"),
+            kept_at("v:occurence", "e2"),
         ],
-        "{ROW}: Golden 2 does not give its two SACM-XMI-008 Warnings"
+        "{ROW}: Golden 2 does not give its two SACM-XMI-008 Warnings, and one SACM-XMI-003 \
+         each for the Artifact's occurence and the qualified v:occurence"
     );
+    // Only an Event's unqualified `occurence` is read as its date: not an
+    // Artifact's, and not one in another namespace.
+    assert!(
+        !output.diagnostics().iter().any(|found| {
+            found.template() == "SACM-XMI-008/occurence"
+                && found.affected().iter().any(|id| id.as_str() != "e1")
+        }),
+        "{ROW}: Golden 2 gives an occurence Warning for a1 or e2"
+    );
+    for id in ["a1", "e2"] {
+        assert!(
+            output
+                .document()
+                .get(id)
+                .is_some_and(|kept| kept.date().is_none() && kept.has_preserved_content()),
+            "{ROW}: Golden 2: the occurence of {id} is read as its date, or not kept"
+        );
+    }
     let Some(occurence) = output.diagnostics().get(1) else {
         panic!("{ROW}: Golden 2: no second diagnostic");
     };
@@ -641,7 +679,8 @@ fn lib_compat_004_an_older_events_occurence_reads_as_its_date() {
             .map(|found| found.code().as_str())
             .collect();
         let mut expected = before.to_vec();
-        expected.push("SACM-XMI-003");
+        // e1's occurence, and a1's and e2's as in Golden 2.
+        expected.extend(["SACM-XMI-003"; 3]);
         assert_eq!(
             codes, expected,
             "{ROW}: {uri}: occurence is not preserved with one SACM-XMI-003"
@@ -658,25 +697,53 @@ fn lib_compat_004_an_older_events_occurence_reads_as_its_date() {
 
 #[test]
 fn lib_compat_004_a_write_writes_sacm_2_3_and_reads_back_strictly() {
-    for (what, input, expected) in [
-        ("Golden 1", GOLDEN_1, GOLDEN_1_OUTPUT),
-        ("Golden 2", GOLDEN_2, GOLDEN_2_OUTPUT),
+    // Golden 2 holds preserved content, which a strict write refuses and a
+    // strict read of the output reports, one SACM-XMI-003 Error per
+    // attribute kept.
+    for (what, input, expected, kept) in [
+        ("Golden 1", GOLDEN_1, GOLDEN_1_OUTPUT, &[][..]),
+        ("Golden 2", GOLDEN_2, GOLDEN_2_OUTPUT, &["a1", "e2"][..]),
     ] {
         let document: Document = read_ok(what, input, Mode::Tolerant).into_document();
         for mode in MODES {
             let written = match xmi::write(&document, &WriteOptions::default().with_mode(mode)) {
                 Ok(written) => written,
+                Err(error) if mode == Mode::Strict && !kept.is_empty() => {
+                    assert!(
+                        matches!(error, sacm::xmi::WriteError::PreservedContent { .. }),
+                        "{ROW}: {what}: a strict write refuses it otherwise: {error:?}"
+                    );
+                    continue;
+                }
                 Err(error) => panic!("{ROW}: {what}: a {mode:?} write refuses it: {error}"),
             };
+            assert!(
+                mode == Mode::Tolerant || kept.is_empty(),
+                "{ROW}: {what}: a strict write writes preserved content"
+            );
             assert_eq!(
                 written, expected,
                 "{ROW}: {what}: a {mode:?} write does not write SACM 2.3 in the pinned namespace"
             );
             let back = read_ok(what, &written, Mode::Strict);
-            assert!(
-                back.diagnostics().is_empty(),
-                "{ROW}: {what}: the strict read of the output reports {:?}",
-                back.diagnostics()
+            let reported: Vec<(&str, Severity, Vec<&str>)> = back
+                .diagnostics()
+                .iter()
+                .map(|found| {
+                    (
+                        found.template(),
+                        found.severity(),
+                        found.affected().iter().map(ElementId::as_str).collect(),
+                    )
+                })
+                .collect();
+            let expected_reports: Vec<(&str, Severity, Vec<&str>)> = kept
+                .iter()
+                .map(|id| ("SACM-XMI-003/attribute-kept", Severity::Error, vec![*id]))
+                .collect();
+            assert_eq!(
+                reported, expected_reports,
+                "{ROW}: {what}: the strict read of the output reports otherwise"
             );
             assert!(
                 back.into_document() == document,

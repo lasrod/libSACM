@@ -1,6 +1,7 @@
-//! The read limits (LIB-SEC-003; ADR 0041 D1, D2): [`Limits`], [`Limit`],
-//! and the pre-parse scan that checks the nesting depth, the namespace
-//! bindings in scope and the namespace copies before roxmltree parses.
+//! The read limits (LIB-SEC-003; ADR 0041 D1, D2 and amendment 1):
+//! [`Limits`], [`Limit`], the pre-parse scan that checks the nesting depth,
+//! the namespace bindings in scope and the namespace copies before roxmltree
+//! parses, and the [`Budget`] of what a read keeps besides the parsed tree.
 //!
 //! The scan is one linear pass in document order. It skips comments, CDATA
 //! sections, processing instructions (the XML declaration included), quoted
@@ -13,13 +14,14 @@
 //! at a construct that is not closed, and at an end tag with nothing open:
 //! the parser refuses what is left.
 
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::fmt;
 
 use super::ReadError;
 use super::input::{is_xml_space, locate};
 use crate::diagnostic::template::{self, Template};
-use crate::diagnostic::{Argument, Details, SourceLocation};
+use crate::diagnostic::{Argument, Details, Diagnostic, SourceLocation};
 
 /// Bounds on what [`read`](super::read) accepts, so that a hostile or broken
 /// file is refused with [`ReadError::LimitExceeded`] (SACM-SEC-003) instead
@@ -27,16 +29,29 @@ use crate::diagnostic::{Argument, Details, SourceLocation};
 ///
 /// | Limit | Default | Checked |
 /// |---|---|---|
-/// | [`max_input_bytes`](Self::max_input_bytes) | 33,554,432 (32 MiB) | on the input's bytes, first; and on the namespace text preserved content keeps, as it is kept |
+/// | [`max_input_bytes`](Self::max_input_bytes) | 33,554,432 (32 MiB) | on the input's bytes, first; and, in one budget, on what the read keeps besides the parsed tree: the namespace text preserved content keeps, as each element or attribute is kept, and the text of each diagnostic, where it is emitted |
 /// | [`max_depth`](Self::max_depth) | 256 | by a scan before parsing, at each start tag; the document element is depth 1 |
 /// | [`max_nodes`](Self::max_nodes) | 1,000,000 | by the parser, for its nodes; by the scan, for the bindings in scope at the elements that declare one |
 /// | [`max_namespace_bindings`](Self::max_namespace_bindings) | 256 | by the scan, at each start tag: one per prefix in scope, the default namespace counted, `xml` not |
 ///
-/// The size, depth, binding and node limits bound what a read allocates: the
-/// bindings in scope that the parser copies count against the node limit,
-/// and the namespace URIs and bindings that preserved content keeps against
-/// the size limit, so neither grows with elements times bindings unchecked
-/// (ADR 0041 D2).
+/// The size, depth, binding and node limits bound what a read allocates. The
+/// bindings in scope that the parser copies count against the node limit.
+/// Everything else the read keeps besides the parsed tree counts against the
+/// size limit, in one budget separate from the input's own size (ADR 0041 D2,
+/// amendment 1):
+///
+/// - the namespace text that preserved content keeps: the bytes of each
+///   namespace URI a kept name holds, and `prefix + URI + 10` for each
+///   binding it keeps, counted as each element or attribute is kept
+///   (`SACM-SEC-003/kept-namespaces`);
+/// - the text of each diagnostic the read emits: the bytes of its text
+///   arguments and of its affected ids, counted where it is emitted
+///   (`SACM-SEC-003/kept-text`). Its message and template are fixed text
+///   and do not count.
+///
+/// The read is refused, in both modes, at the element, attribute or
+/// diagnostic where the budget passes the limit. So neither grows with
+/// elements times bindings, or with ids times diagnostics, unchecked.
 ///
 /// # Memory
 ///
@@ -69,7 +84,8 @@ use crate::diagnostic::{Argument, Details, SourceLocation};
     reason = "each field is a maximum, named as its getter and setter are"
 )]
 pub struct Limits {
-    /// The most bytes of input, and of kept namespace text.
+    /// The most bytes of input, and of what a read keeps besides the parsed
+    /// tree.
     max_input_bytes: u64,
     /// The deepest element.
     max_depth: u64,
@@ -94,8 +110,10 @@ impl Default for Limits {
 }
 
 impl Limits {
-    /// These limits, refusing input of more than `bytes` bytes; the namespace
-    /// text that preserved content keeps is counted against the same limit.
+    /// These limits, refusing input of more than `bytes` bytes; what the read
+    /// keeps besides the parsed tree, the namespace text of preserved content
+    /// and the text of its diagnostics, is counted against the same limit, in
+    /// one budget.
     #[must_use]
     pub fn with_max_input_bytes(mut self, bytes: u64) -> Self {
         self.max_input_bytes = bytes;
@@ -129,8 +147,9 @@ impl Limits {
         self
     }
 
-    /// The most bytes of input, and of namespace text kept by preserved
-    /// content.
+    /// The most bytes of input, and of what a read keeps besides the parsed
+    /// tree: the namespace text of preserved content and the text of its
+    /// diagnostics.
     #[must_use]
     pub fn max_input_bytes(&self) -> u64 {
         self.max_input_bytes
@@ -168,7 +187,8 @@ impl Limits {
     }
 }
 
-/// Which of the [`Limits`] a read passed.
+/// Which of the [`Limits`] an input went over, as [`ReadError::LimitExceeded`]
+/// reports it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(
     feature = "serde",
@@ -177,8 +197,9 @@ impl Limits {
 )]
 #[non_exhaustive]
 pub enum Limit {
-    /// [`Limits::max_input_bytes`]: the input's size, and the namespace text
-    /// preserved content keeps.
+    /// [`Limits::max_input_bytes`]: the input's size, and what the read keeps
+    /// besides the parsed tree, the namespace text of preserved content and
+    /// the text of its diagnostics.
     InputBytes,
     /// [`Limits::max_depth`].
     Depth,
@@ -237,6 +258,93 @@ pub(super) fn check_size(input: &[u8], limits: &Limits) -> Result<(), ReadError>
         ));
     }
     Ok(())
+}
+
+/// What a read keeps besides the parsed tree, counted in one budget against
+/// the size limit (LIB-SEC-003; ADR 0041 D2, amendment 1): the namespace
+/// text that preserved content keeps, each URI and binding as it is kept,
+/// and the text of every diagnostic as it is emitted, which is the bytes of
+/// its text arguments and of its affected ids. A diagnostic's message and
+/// template are fixed text and do not count. The count never decreases.
+pub(super) struct Budget<'t> {
+    /// The text the read is of, which a refusal is located in.
+    text: &'t str,
+    /// The size limit.
+    max: u64,
+    /// The bytes kept so far.
+    kept: Cell<u64>,
+}
+
+impl<'t> Budget<'t> {
+    /// Nothing kept yet, in a read of `text` under `limits`.
+    pub(super) fn new(text: &'t str, limits: &Limits) -> Self {
+        Self {
+            text,
+            max: limits.max_input_bytes,
+            kept: Cell::new(0),
+        }
+    }
+
+    /// Counts `bytes` of namespace text that preserved content keeps at byte
+    /// `offset`, and refuses it there (`SACM-SEC-003/kept-namespaces`) once
+    /// the budget passes the limit.
+    pub(super) fn keep_namespace_text(&self, bytes: u64, offset: usize) -> Result<(), ReadError> {
+        self.keep(bytes, offset, &template::SEC_003_KEPT_NAMESPACES)
+    }
+
+    /// Counts the text of `diagnostic`, emitted at byte `offset`, and
+    /// refuses it there (`SACM-SEC-003/kept-text`) once the budget passes the
+    /// limit.
+    pub(super) fn keep_diagnostic(
+        &self,
+        diagnostic: &Diagnostic,
+        offset: usize,
+    ) -> Result<(), ReadError> {
+        self.keep(text_bytes(diagnostic), offset, &template::SEC_003_KEPT_TEXT)
+    }
+
+    /// Adds `bytes` at byte `offset`, refusing with `template` once the
+    /// budget passes the limit.
+    fn keep(
+        &self,
+        bytes: u64,
+        offset: usize,
+        template: &'static Template,
+    ) -> Result<(), ReadError> {
+        let kept = self.kept.get().saturating_add(bytes);
+        self.kept.set(kept);
+        if kept > self.max {
+            return Err(exceeded(
+                Limit::InputBytes,
+                self.max,
+                locate(self.text, offset),
+                template,
+                None,
+            ));
+        }
+        Ok(())
+    }
+
+    /// The bytes kept so far.
+    #[cfg(test)]
+    pub(super) fn kept(&self) -> u64 {
+        self.kept.get()
+    }
+}
+
+/// The text of `diagnostic` that counts against the budget: the bytes of its
+/// text arguments and of its affected ids.
+fn text_bytes(diagnostic: &Diagnostic) -> u64 {
+    let arguments = diagnostic
+        .arguments()
+        .iter()
+        .filter_map(|argument| argument.value().as_text())
+        .map(str::len);
+    let affected = diagnostic.affected().iter().map(|id| id.as_str().len());
+    let length = arguments
+        .chain(affected)
+        .fold(0_usize, usize::saturating_add);
+    u64::try_from(length).unwrap_or(u64::MAX)
 }
 
 /// The namespace bindings in scope during the scan: how many declarations of
@@ -519,6 +627,39 @@ mod tests {
             ),
             Some("SACM-SEC-003/namespace-copies")
         );
+    }
+
+    #[test]
+    fn a_diagnostics_text_is_its_text_arguments_and_affected_ids() {
+        use crate::diagnostic::template;
+        use crate::diagnostic::{Argument, Diagnostic, Severity};
+        use crate::model::ElementId;
+        let diagnostic = Diagnostic::emit(
+            &template::XMI_003_ELEMENT_KEPT,
+            Severity::Warning,
+            "LIB-COMPAT-003",
+            vec![
+                Argument::text("element", "v:x"),
+                Argument::text("holder_class", "Claim"),
+                Argument::text("holder_id", "c1"),
+            ],
+        )
+        .set_affected([ElementId::new("c1")]);
+        assert_eq!(super::text_bytes(&diagnostic), 3 + 5 + 2 + 2);
+        // A count argument is no text.
+        let counted = Diagnostic::emit(
+            &template::SEC_003_KEPT_TEXT,
+            Severity::Error,
+            "LIB-SEC-003",
+            vec![Argument::count("max", 123_456)],
+        );
+        assert_eq!(super::text_bytes(&counted), 0);
+        // The budget refuses at the first count that passes the limit.
+        let text = "<a/>";
+        let budget = super::Budget::new(text, &Limits::default().with_max_input_bytes(12));
+        assert!(budget.keep_diagnostic(&diagnostic, 0).is_ok());
+        assert!(budget.keep_namespace_text(1, 0).is_err());
+        assert_eq!(budget.kept(), 13);
     }
 
     #[test]

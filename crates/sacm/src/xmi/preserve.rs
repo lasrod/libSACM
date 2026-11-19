@@ -7,13 +7,17 @@
 //! the `xmi:id`s inside it. The walk uses a stack, not recursion, so a deep
 //! subtree cannot exhaust the call stack.
 //!
-//! Each also gives the namespace text it keeps, which a read counts against
-//! its size limit (LIB-SEC-003, ADR 0041 D2): the bytes of each namespace URI
-//! a kept name holds, and `prefix + URI + 10` for each binding a kept start
-//! tag declares, about what a written declaration ` xmlns:p="u"` takes.
+//! The namespace text each keeps counts against a read's size limit
+//! (LIB-SEC-003, ADR 0041 D2 and amendment 1): the bytes of each namespace
+//! URI a kept name holds, and `prefix + URI + 10` for each binding a kept
+//! start tag declares, about what a written declaration ` xmlns:p="u"`
+//! takes. A fragment counts it into the read's budget element by element, as
+//! it is built; an attribute gives it to the caller.
 
 use roxmltree::{Attribute, Node};
 
+use super::ReadError;
+use super::limits::Budget;
 use super::namespaces::{SACM_NS, SACM_PREFIX, XMI_NS, XMI_PREFIX};
 use crate::model::{Attr, Event, Fragment, QName};
 
@@ -23,12 +27,20 @@ use crate::model::{Attr, Event, Fragment, QName};
 /// to SACM 2.3 and XMI 2.5.1), and each element inside declares the
 /// bindings it declares itself. Character data is kept exactly, adjacent
 /// pieces joined, CDATA sections and references giving their characters;
-/// comments and processing instructions are dropped. Returns it with the
-/// namespace text it keeps.
-pub(super) fn fragment(text: &str, node: Node<'_, '_>) -> (Fragment, u64) {
+/// comments and processing instructions are dropped. The namespace text of
+/// each element is counted into `budget` at its start tag as it is kept.
+///
+/// # Errors
+///
+/// `LimitExceeded` at the start tag of the first element whose namespace
+/// text passes the size limit.
+pub(super) fn fragment(
+    text: &str,
+    node: Node<'_, '_>,
+    budget: &Budget<'_>,
+) -> Result<Fragment, ReadError> {
     let mut events = Vec::new();
-    let mut kept = 0;
-    events.push(start(text, node, in_scope(node), &mut kept));
+    events.push(start(text, node, in_scope(node), budget)?);
     // The children still to visit of each open element, innermost last.
     let mut open = vec![node.children()];
     while let Some(children) = open.last_mut() {
@@ -38,7 +50,7 @@ pub(super) fn fragment(text: &str, node: Node<'_, '_>) -> (Fragment, u64) {
             continue;
         };
         if child.is_element() {
-            events.push(start(text, child, declared(child), &mut kept));
+            events.push(start(text, child, declared(child), budget)?);
             open.push(child.children());
         } else if child.is_text() {
             let piece = child.text().unwrap_or_default();
@@ -48,7 +60,7 @@ pub(super) fn fragment(text: &str, node: Node<'_, '_>) -> (Fragment, u64) {
             }
         }
     }
-    (Fragment { events }, kept)
+    Ok(Fragment { events })
 }
 
 /// The bytes a binding of `prefix` to `uri` keeps: `prefix + URI + 10`.
@@ -64,14 +76,14 @@ fn name_bytes(name: &QName) -> u64 {
         .map_or(0, |uri| u64::try_from(uri.len()).unwrap_or(u64::MAX))
 }
 
-/// The start event of the element `node`, declaring `namespaces`, adding
-/// the namespace text it keeps to `kept`.
+/// The start event of the element `node`, declaring `namespaces`, after
+/// counting the namespace text it keeps into `budget` at its start tag.
 fn start(
     text: &str,
     node: Node<'_, '_>,
     namespaces: Vec<(Option<String>, String)>,
-    kept: &mut u64,
-) -> Event {
+    budget: &Budget<'_>,
+) -> Result<Event, ReadError> {
     let name = element_name(text, node);
     let mut bytes = name_bytes(&name);
     for (prefix, uri) in &namespaces {
@@ -85,12 +97,12 @@ fn start(
             attr
         })
         .collect();
-    *kept = kept.saturating_add(bytes);
-    Event::Start {
+    budget.keep_namespace_text(bytes, node.range().start)?;
+    Ok(Event::Start {
         name,
         namespaces,
         attributes,
-    }
+    })
 }
 
 /// The bindings in scope at `node` that a written document may lack where
@@ -187,6 +199,8 @@ fn qname(namespace: Option<&str>, written: &str, local: &str) -> QName {
 mod tests {
     use super::fragment;
     use crate::model::{Event, QName};
+    use crate::xmi::Limits;
+    use crate::xmi::limits::Budget;
 
     #[test]
     fn a_fragment_is_its_events_in_document_order_with_text_joined() {
@@ -197,10 +211,13 @@ mod tests {
         let Some(a) = tree.root_element().first_element_child() else {
             panic!("the test input has a child");
         };
-        let (fragment, kept) = fragment(text, a);
+        let budget = Budget::new(text, &Limits::default());
+        let Ok(fragment) = fragment(text, a, &budget) else {
+            panic!("the test input keeps less than the default size limit");
+        };
         // `v` bound (1 + 5 + 10), the names `v:a` and `v:b` (5 + 5), and the
         // default binding of `c` (0 + 5 + 10) and its name (5).
-        assert_eq!(kept, 16 + 10 + 15 + 5);
+        assert_eq!(budget.kept(), 16 + 10 + 15 + 5);
         let events = fragment.events;
         let name = |prefix: Option<&str>, namespace: &str, local: &str| QName {
             namespace: Some(namespace.to_owned()),

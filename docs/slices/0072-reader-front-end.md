@@ -45,3 +45,11 @@ M6's first slice:
     - LIB-COMPAT-003's round-trip claim is scoped: four corpus files with EMF's XMI namespace are renamed on write until LIB-COMPAT-002 reads that namespace, and nothing is lost.
   - The verified rows are reworded with the design's text and the builder's additions; each carries a slice 0072 note.
   - D-STRICT is updated, and ADR 0016 D6 is closed by ADR 0041.
+- 2026-11-20 verify round 1 (b68250b): FAIL for LIB-SEC-003 and LIB-COMPAT-004; PASS for LIB-COMPAT-016 and LIB-TOOL-022.
+  - B1 and B2: the diagnostics copy ids and namespace text without limit (169 KB input, 200 MB of Warning text). The maintainer decided on 2026-11-20 that everything a read keeps besides the parsed tree counts against the size limit; this is ADR 0041 amendment 1.
+  - B3: the kept text was counted after a preserved subtree was built.
+  - B4–B6: untested branches (preserved attributes; `occurence` only on an Event, and only unqualified).
+  - The fix round:
+    - the builder: the rule (new template `SACM-SEC-003/kept-text`), B3–B6 and the code-doc and README wording;
+    - the lead: the ADR amendment, the matrix acceptance for the new tests, and the verifier's matrix and D-STRICT wording.
+- 2026-11-20 fix round 1: the builder implemented the one budget (`Findings::push_at` counts every diagnostic, and the first breach becomes the refusal), B3–B6 and the wording. Its 7 named mutants are all killed. With the new counting, 1M preserved nodes still read, with a peak of 1.25 GiB. The lead accepted the existing-test changes the rule implies (`kept_namespace_text…` now totals 1,150; Golden 2 now holds preserved content, so a strict write refuses it), cited the 4 new tests, and updated the template counts (109 refusal, 218 in all).

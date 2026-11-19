@@ -189,8 +189,9 @@ catalog! {
     /// size, the nesting depth of its elements, the XML nodes the parser
     /// builds, or the namespace bindings in scope at an element; the
     /// bindings the elements declaring namespaces hold in scope count against
-    /// the node limit, and the namespace text preserved content keeps
-    /// against the size limit. Both modes refuse it as
+    /// the node limit, and what the read keeps besides the parsed tree, the
+    /// namespace text of preserved content and the text of its diagnostics,
+    /// against the size limit, in one budget. Both modes refuse it as
     /// [`ReadError::LimitExceeded`](crate::xmi::ReadError::LimitExceeded)
     /// (LIB-SEC-003). Fix: if the file is trusted, read it with higher limits.
     pub const LIMIT_EXCEEDED: Code = Code::from_static("SACM-SEC-003");
@@ -224,8 +225,8 @@ catalog! {
     /// SACM 2.3 with one Warning per root, and an Event's `occurence` as its
     /// date with one Warning each; a strict read refuses it as
     /// [`ReadError::Unsupported`](crate::xmi::ReadError::Unsupported). Both
-    /// modes refuse a SACM 2.4 root with this code (LIB-COMPAT-018).
-    /// (LIB-COMPAT-004.)
+    /// modes refuse a SACM 2.4 root with this code, until LIB-COMPAT-018
+    /// decides how it is read (LIB-COMPAT-004).
     pub const XMI_OTHER_REVISION: Code = Code::from_static("SACM-XMI-008");
 
     /// SACM-XMI-004: an element has no `xmi:id`, which XMI 2.5.1 §7.6.1

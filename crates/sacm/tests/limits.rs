@@ -8,11 +8,15 @@
 //! `ReadError::LimitExceeded` (SACM-SEC-003), which names the limit, its value
 //! and, where known, its location. Two counts need no setter (D2): the
 //! bindings in scope at every element that declares one count against the
-//! node limit, because roxmltree 0.21 copies them, and the namespace text
-//! that preserved content keeps counts against the size limit: for each
-//! preserved name the bytes of its namespace URI, and for each binding it
-//! keeps `prefix + URI + 10` (the design brief of slice 0072, D2). The
-//! parser's capacities that no limit covers stay `Unsupported` with
+//! node limit, because roxmltree 0.21 copies them, and everything else a read
+//! keeps besides the parsed tree counts against the size limit, in one budget
+//! (ADR 0041 amendment 1, the maintainer, 2026-11-20): the namespace text
+//! that preserved content keeps, for each preserved name the bytes of its
+//! namespace URI and for each binding it keeps `prefix + URI + 10`, counted
+//! as each element or attribute is kept (`SACM-SEC-003/kept-namespaces`);
+//! and the text of each diagnostic, the bytes of its text arguments and of
+//! its affected ids, counted where it is emitted (`SACM-SEC-003/kept-text`).
+//! The parser's capacities that no limit covers stay `Unsupported` with
 //! SACM-SEC-002 and no location.
 //!
 //! The default edges and 65,536 prefixes compare codes and templates by
@@ -21,7 +25,7 @@
 
 use std::fmt::Write as _;
 
-use sacm::diagnostic::SourceLocation;
+use sacm::diagnostic::{Severity, SourceLocation};
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput};
 use sacm::xmi::{Limit, Limits, WriteOptions};
 
@@ -207,19 +211,29 @@ fn root_with_bindings(extra: usize) -> String {
     input
 }
 
+/// The 42-character URI the kept-namespaces inputs bind `v` to.
+const V_URI: &str = "urn:a-namespace-of-forty-characters-long-x";
+
+/// The start tag of a root ArgumentPackage `p` that binds `v` to [`V_URI`].
+fn v_root_start() -> String {
+    format!("<sacm:ArgumentPackage{NS} xmlns:v=\"{V_URI}\" xmi:id=\"p\">")
+}
+
 /// The design brief's kept-namespaces input: a pinned ArgumentPackage that
 /// binds `v` to a 42-character URI and holds ten preserved `<v:x/>`. Each
 /// keeps the binding (1 + 42 + 10) and the name's URI (42): 95 bytes.
 fn ten_preserved() -> String {
-    format!(
-        "<sacm:ArgumentPackage{NS} xmlns:v=\"urn:a-namespace-of-forty-characters-long-x\" \
-         xmi:id=\"p\">{}{ROOT_END}",
-        "<v:x/>".repeat(10)
-    )
+    format!("{}{}{ROOT_END}", v_root_start(), "<v:x/>".repeat(10))
 }
 
 /// The namespace text each `<v:x/>` of [`ten_preserved`] keeps.
 const KEPT_PER_CHILD: usize = 1 + 42 + 10 + 42;
+
+/// The text of the SACM-XMI-003 diagnostic each `<v:x/>` of
+/// [`ten_preserved`] gets, at its `<` after its namespace text: its text
+/// arguments `element` (`v:x`), `holder_class` (`ArgumentPackage`) and
+/// `holder_id` (`p`), and its affected id `p`.
+const TEXT_PER_CHILD: usize = 3 + 15 + 1 + 1;
 
 // --- 1. The type and its defaults ------------------------------------------------------
 
@@ -547,10 +561,17 @@ fn lib_sec_003_kept_namespace_text_counts_against_the_size_limit() {
     let input = ten_preserved();
     let len = input.len();
     assert_eq!(len, 269, "{ROW}: setup: the input's size");
-    // Under a limit of its own size the count passes it at the third child:
-    // 3 x 95 = 285 > 269.
+    // Each child keeps 95 bytes of namespace text and then 20 of diagnostic
+    // text, in the one budget (ADR 0041 amendment 1). Under a limit of the
+    // input's size the namespace text of the third child passes it:
+    // 2 x 115 = 230 <= 269, and 230 + 95 = 325 > 269.
     let max = u64::try_from(len).unwrap_or(u64::MAX);
-    let passing = len / KEPT_PER_CHILD;
+    let per_child = KEPT_PER_CHILD + TEXT_PER_CHILD;
+    let passing = 2;
+    assert!(
+        passing * per_child <= len && passing * per_child + KEPT_PER_CHILD > len,
+        "{ROW}: setup: the third child is where the count passes"
+    );
     assert_exceeded(
         "ten preserved children under a limit of the input's size",
         input.as_bytes(),
@@ -562,9 +583,10 @@ fn lib_sec_003_kept_namespace_text_counts_against_the_size_limit() {
         ),
         "SACM-SEC-003/kept-namespaces",
     );
-    // The count is 950 in all: a limit of 950 reads it, and 949 passes it at
-    // the tenth child.
-    let total = 10 * KEPT_PER_CHILD;
+    // The count is 1,150 in all: a limit of 1,150 reads it, and 1,149 passes
+    // it at the tenth child's diagnostic, which is located at its `<`.
+    let total = 10 * per_child;
+    assert_eq!(total, 1150, "{ROW}: setup: what the ten children keep");
     let total_max = u64::try_from(total).unwrap_or(u64::MAX);
     assert_reads_under(
         "ten preserved children under a limit of what they keep",
@@ -580,7 +602,321 @@ fn lib_sec_003_kept_namespace_text_counts_against_the_size_limit() {
             total_max - 1,
             Some(nth_position_of(&input, "<v:x", 9)),
         ),
+        "SACM-SEC-003/kept-text",
+    );
+    // One byte less than the namespace text up to the tenth child's: it
+    // passes there, as namespace text.
+    let namespaces_max = u64::try_from(9 * per_child + KEPT_PER_CHILD - 1).unwrap_or(u64::MAX);
+    assert_exceeded(
+        "ten preserved children under one byte less than the tenth child's namespace text",
+        input.as_bytes(),
+        Limits::default().with_max_input_bytes(namespaces_max),
+        (
+            Limit::InputBytes,
+            namespaces_max,
+            Some(nth_position_of(&input, "<v:x", 9)),
+        ),
         "SACM-SEC-003/kept-namespaces",
+    );
+}
+
+#[test]
+fn lib_sec_003_a_preserved_subtree_is_counted_as_it_is_kept() {
+    // One preserved `<v:x>` holding ten `<v:y/>`. The `v:x` keeps the
+    // binding of `v` (1 + 42 + 10) and its name's URI (42), 95 bytes; each
+    // `v:y` declares nothing and keeps its name's URI, 42 bytes. Each is
+    // counted at its `<` as the subtree is built.
+    let input = format!(
+        "{}<v:x>{}</v:x>{ROOT_END}",
+        v_root_start(),
+        "<v:y/>".repeat(10)
+    );
+    let len = input.len();
+    assert_eq!(len, 280, "{ROW}: setup: the input's size");
+    // Under a limit of 280: 95 + 4 x 42 = 263 <= 280, and 263 + 42 = 305 >
+    // 280, so the count passes at the fifth `v:y`, not at `v:x`.
+    let max = u64::try_from(len).unwrap_or(u64::MAX);
+    assert_exceeded(
+        "a preserved subtree under a limit of the input's size",
+        input.as_bytes(),
+        Limits::default().with_max_input_bytes(max),
+        (
+            Limit::InputBytes,
+            max,
+            Some(nth_position_of(&input, "<v:y", 4)),
+        ),
+        "SACM-SEC-003/kept-namespaces",
+    );
+    // The subtree keeps 95 + 10 x 42 = 515 bytes of namespace text, and its
+    // SACM-XMI-003 diagnostic at `<v:x` 20 more: `v:x` (3), `ArgumentPackage`
+    // (15), `p` (1) and the affected `p` (1). 535 reads; 534 passes at the
+    // diagnostic; 514 passes at the tenth `v:y`.
+    let namespace_text = 95 + 10 * 42;
+    let total = u64::try_from(namespace_text + 20).unwrap_or(u64::MAX);
+    assert_reads_under(
+        "a preserved subtree under a limit of what it keeps",
+        input.as_bytes(),
+        Limits::default().with_max_input_bytes(total),
+    );
+    assert_exceeded(
+        "a preserved subtree under one byte less than what it keeps",
+        input.as_bytes(),
+        Limits::default().with_max_input_bytes(total - 1),
+        (
+            Limit::InputBytes,
+            total - 1,
+            Some(position_of(&input, "<v:x")),
+        ),
+        "SACM-SEC-003/kept-text",
+    );
+    let namespaces_max = u64::try_from(namespace_text - 1).unwrap_or(u64::MAX);
+    assert_exceeded(
+        "a preserved subtree under one byte less than its namespace text",
+        input.as_bytes(),
+        Limits::default().with_max_input_bytes(namespaces_max),
+        (
+            Limit::InputBytes,
+            namespaces_max,
+            Some(nth_position_of(&input, "<v:y", 9)),
+        ),
+        "SACM-SEC-003/kept-namespaces",
+    );
+}
+
+#[test]
+fn lib_sec_003_kept_namespace_text_counts_preserved_attributes() {
+    // Ten Claims, each with the attribute `v:a="1"`, which is preserved. Each
+    // attribute keeps its name's URI (42) and the binding of `v` on its
+    // holder, the Claim (1 + 42 + 10): 95 bytes of namespace text. Then its
+    // SACM-XMI-003 diagnostic, at the attribute's name, keeps its text
+    // arguments `attribute` (`v:a`, 3), `holder_class` (`Claim`, 5) and
+    // `holder_id` (`cN`, 2) and its affected id (`cN`, 2): 12 bytes. The
+    // design brief's 950 is the namespace text alone; the rule as
+    // implemented adds the diagnostics' 120 (ADR 0041 amendment 1).
+    let mut body = String::new();
+    for n in 0..10 {
+        let _ = write!(
+            body,
+            "<argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"c{n}\" v:a=\"1\"/>"
+        );
+    }
+    let input = format!("{}{body}{ROOT_END}", v_root_start());
+    let namespace_text = 42 + (1 + 42 + 10);
+    let diagnostic_text = 3 + 5 + 2 + 2;
+    let per_claim = namespace_text + diagnostic_text;
+    let total = 10 * per_claim;
+    assert_eq!(total, 1070, "{ROW}: setup: what the ten attributes keep");
+    assert!(
+        input.len() < 9 * per_claim,
+        "{ROW}: setup: the input is smaller than the limits below"
+    );
+    let tenth = nth_position_of(&input, "v:a=", 9);
+    // The exact total reads, in both modes.
+    let total_max = u64::try_from(total).unwrap_or(u64::MAX);
+    assert_reads_under(
+        "ten preserved attributes under a limit of what they keep",
+        input.as_bytes(),
+        Limits::default().with_max_input_bytes(total_max),
+    );
+    // One byte less passes at the tenth attribute's diagnostic, at its name.
+    assert_exceeded(
+        "ten preserved attributes under one byte less than they keep",
+        input.as_bytes(),
+        Limits::default().with_max_input_bytes(total_max - 1),
+        (Limit::InputBytes, total_max - 1, Some(tenth)),
+        "SACM-SEC-003/kept-text",
+    );
+    // One byte less than the namespace text up to the tenth attribute's
+    // passes at its name, as namespace text.
+    let namespaces_max = u64::try_from(9 * per_claim + namespace_text - 1).unwrap_or(u64::MAX);
+    assert_exceeded(
+        "ten preserved attributes under one byte less than the tenth one's namespace text",
+        input.as_bytes(),
+        Limits::default().with_max_input_bytes(namespaces_max),
+        (Limit::InputBytes, namespaces_max, Some(tenth)),
+        "SACM-SEC-003/kept-namespaces",
+    );
+}
+
+// --- 7b. Diagnostic text ---------------------------------------------------------------
+
+/// The URI of [`sacm_like_roots`]: `urn:example:sacm:` and 1,000 `a`, 1,017
+/// bytes, a SACM-like namespace.
+fn long_sacm_like_uri() -> String {
+    format!("urn:example:sacm:{}", "a".repeat(1000))
+}
+
+/// An `xmi:XMI` that binds `p` to [`long_sacm_like_uri`] and holds the 100
+/// roots `<p:ArgumentPackage xmi:id="aN"/>`, N from 1 to 100.
+fn sacm_like_roots() -> String {
+    let mut input = format!(
+        "<xmi:XMI xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmlns:p=\"{}\">",
+        long_sacm_like_uri()
+    );
+    for n in 1..=100 {
+        let _ = write!(input, "<p:ArgumentPackage xmi:id=\"a{n}\"/>");
+    }
+    input.push_str("</xmi:XMI>");
+    input
+}
+
+/// The text the SACM-XMI-002 Warning of the root `aN` keeps: its text
+/// arguments `class` (`ArgumentPackage`, 15), `id` (`aN`) and `namespace`
+/// (1,017), and its affected id `aN`.
+fn root_warning_text(n: usize) -> usize {
+    let id = format!("a{n}").len();
+    15 + id + 1017 + id
+}
+
+#[test]
+fn lib_sec_003_root_namespace_warnings_count_against_the_size_limit() {
+    let input = sacm_like_roots();
+    let len = input.len();
+    assert_eq!(
+        (long_sacm_like_uri().len(), len),
+        (1017, 4388),
+        "{ROW}: setup: the URI's and the input's size"
+    );
+    let tolerant = |max: usize| {
+        under(
+            Limits::default().with_max_input_bytes(u64::try_from(max).unwrap_or(u64::MAX)),
+            Mode::Tolerant,
+        )
+    };
+    // Each of a1 to a9 keeps 15 + 2 + 1017 + 2 = 1,036 bytes. Under a limit of
+    // the input's size, 4 x 1,036 = 4,144 <= 4,388 and 5 x 1,036 = 5,180 >
+    // 4,388: the count passes at the fifth root, a5.
+    let mut kept = 0;
+    let passing = (1..=100)
+        .position(|n| {
+            kept += root_warning_text(n);
+            kept > len
+        })
+        .unwrap_or_else(|| panic!("{ROW}: setup: the count never passes the input's size"));
+    assert_eq!(passing, 4, "{ROW}: setup: the root where the count passes");
+    let max = u64::try_from(len).unwrap_or(u64::MAX);
+    let error = refusal(
+        "100 SACM-like roots under the input's size",
+        input.as_bytes(),
+        &tolerant(len),
+    );
+    assert!(
+        matches!(
+            error,
+            ReadError::LimitExceeded { limit: Limit::InputBytes, max: m, .. } if m == max
+        ),
+        "{ROW}: 100 SACM-like roots: not LimitExceeded {{ InputBytes, {max} }}: {error:?}"
+    );
+    assert_eq!(
+        (error.code().as_str(), error.template(), error.location()),
+        (
+            "SACM-SEC-003",
+            "SACM-SEC-003/kept-text",
+            Some(nth_position_of(&input, "<p:ArgumentPackage", passing))
+        ),
+        "{ROW}: 100 SACM-like roots: the code, template and location"
+    );
+    assert_eq!(
+        counts_of(&error),
+        [("max", Some(max))],
+        "{ROW}: 100 SACM-like roots: the argument max"
+    );
+    // In all they keep 100 x 1,032 + 2 x (9 x 2 + 90 x 3 + 4) = 103,784
+    // bytes: that limit reads, with 100 Warnings, and one byte less passes at
+    // the hundredth root.
+    let total: usize = (1..=100).map(root_warning_text).sum();
+    assert_eq!(total, 103_784, "{ROW}: setup: what the 100 Warnings keep");
+    let output = read_ok(
+        "100 SACM-like roots under what they keep",
+        input.as_bytes(),
+        &tolerant(total),
+    );
+    let warnings: Vec<(&str, Severity)> = output
+        .diagnostics()
+        .iter()
+        .map(|found| (found.template(), found.severity()))
+        .collect();
+    assert_eq!(
+        warnings,
+        vec![("SACM-XMI-002/sacm-like", Severity::Warning); 100],
+        "{ROW}: 100 SACM-like roots do not read with 100 SACM-XMI-002 Warnings"
+    );
+    let error = refusal(
+        "100 SACM-like roots under one byte less than what they keep",
+        input.as_bytes(),
+        &tolerant(total - 1),
+    );
+    assert_eq!(
+        (error.template(), error.location()),
+        (
+            "SACM-SEC-003/kept-text",
+            Some(nth_position_of(&input, "<p:ArgumentPackage", 99))
+        ),
+        "{ROW}: 100 SACM-like roots under one byte less: the template and location"
+    );
+}
+
+#[test]
+fn lib_sec_003_diagnostic_text_counts_against_the_size_limit() {
+    // A root whose `xmi:id` is 10,000 characters, holding 100 preserved
+    // `<x/>`. Each `x` keeps no namespace text (it is in no namespace, and
+    // the root binds only `sacm` and `xmi`, to SACM 2.3 and XMI 2.5.1), and
+    // its SACM-XMI-003 diagnostic keeps its text arguments `element` (`x`,
+    // 1), `holder_class` (`ArgumentPackage`, 15) and `holder_id` (10,000),
+    // and its affected id (10,000): 20,016 bytes.
+    let id = "a".repeat(10_000);
+    let input = format!(
+        "<sacm:ArgumentPackage{NS} xmi:id=\"{id}\">{}{ROOT_END}",
+        "<x/>".repeat(100)
+    );
+    let len = input.len();
+    assert_eq!(len, 10_555, "{ROW}: setup: the input's size");
+    let per_child = 1 + 15 + 10_000 + 10_000;
+    // Under a limit of the input's size, the first `x` passes it: 20,016 >
+    // 10,555.
+    assert!(
+        per_child > len,
+        "{ROW}: setup: the first child passes the limit"
+    );
+    let max = u64::try_from(len).unwrap_or(u64::MAX);
+    let error = assert_exceeded(
+        "100 preserved children of a long id under the input's size",
+        input.as_bytes(),
+        Limits::default().with_max_input_bytes(max),
+        (Limit::InputBytes, max, Some(position_of(&input, "<x"))),
+        "SACM-SEC-003/kept-text",
+    );
+    assert_eq!(
+        error.to_string(),
+        format!(
+            "the namespace text and diagnostics that the read keeps come to more than the size \
+             limit of {max} bytes at line 1, column {}",
+            input.find("<x").map_or(0, |at| at + 1)
+        ),
+        "{ROW}: the Display of the kept-text refusal"
+    );
+    // 100 x 20,016 = 2,001,600 reads; one byte less passes at the hundredth
+    // `x`.
+    let total = u64::try_from(100 * per_child).unwrap_or(u64::MAX);
+    assert_eq!(
+        total, 2_001_600,
+        "{ROW}: setup: what the 100 diagnostics keep"
+    );
+    assert_reads_under(
+        "100 preserved children of a long id under what they keep",
+        input.as_bytes(),
+        Limits::default().with_max_input_bytes(total),
+    );
+    assert_exceeded(
+        "100 preserved children of a long id under one byte less than they keep",
+        input.as_bytes(),
+        Limits::default().with_max_input_bytes(total - 1),
+        (
+            Limit::InputBytes,
+            total - 1,
+            Some(nth_position_of(&input, "<x", 99)),
+        ),
+        "SACM-SEC-003/kept-text",
     );
 }
 
@@ -766,9 +1102,11 @@ fn escaped_names() -> String {
     package(&body)
 }
 
-/// 1,000 preserved `<v0:x/>` under 200 bindings in scope, and the namespace
-/// text they keep: each keeps the 198 bindings that are not `sacm` and `xmi`
-/// (`prefix + URI + 10` each) and its name's URI.
+/// 1,000 preserved `<v0:x/>` under 200 bindings in scope, and what they keep
+/// against the size limit: each keeps the 198 bindings that are not `sacm`
+/// and `xmi` (`prefix + URI + 10` each) and its name's URI, and the text of
+/// its SACM-XMI-003 diagnostic: `v0:x`, `ArgumentPackage`, `p` and the
+/// affected `p`.
 fn preserved_under_bindings() -> (String, usize) {
     let mut start = format!("<sacm:ArgumentPackage{NS}");
     let mut per_child = 0;
@@ -779,6 +1117,7 @@ fn preserved_under_bindings() -> (String, usize) {
         let _ = write!(start, " xmlns:{prefix}=\"{uri}\"");
     }
     per_child += "urn:v0".len();
+    per_child += "v0:x".len() + "ArgumentPackage".len() + 2 * "p".len();
     start.push_str(" xmi:id=\"p\">");
     let input = format!("{start}{}{ROOT_END}", "<v0:x/>".repeat(1000));
     (input, 1000 * per_child)

@@ -115,6 +115,9 @@ templates! {
     SEC_003_KEPT_NAMESPACES = LIMIT_EXCEEDED, Read("LimitExceeded"), "SACM-SEC-003/kept-namespaces",
         [Count("max")],
         "the namespace names and bindings that preserved content keeps come to more than the size limit of {max} bytes";
+    SEC_003_KEPT_TEXT = LIMIT_EXCEEDED, Read("LimitExceeded"), "SACM-SEC-003/kept-text",
+        [Count("max")],
+        "the namespace text and diagnostics that the read keeps come to more than the size limit of {max} bytes";
     SEC_003_DEPTH = LIMIT_EXCEEDED, Read("LimitExceeded"), "SACM-SEC-003/depth",
         [Count("max")],
         "an element is nested deeper than the depth limit of {max}";
@@ -887,10 +890,10 @@ mod tests {
         // the four refusals of unread kinds and ends and their four kept
         // forms (ADR 0035 amendment 1); slice 0068 added eight diagnostic
         // templates (SACM23-VAL-013, -014, -015, -023); slice 0072 added
-        // ten refusal and three diagnostic templates and removed
+        // eleven refusal and three diagnostic templates and removed
         // SACM-XMI-002/no-namespace (LIB-SEC-003, LIB-COMPAT-004,
         // LIB-COMPAT-016).
-        assert_eq!(count, 217, "LIB-API-017: the number of templates");
+        assert_eq!(count, 218, "LIB-API-017: the number of templates");
         let diagnostics = TEMPLATES
             .iter()
             .filter(|template| template.carrier == Carrier::Diagnostic)

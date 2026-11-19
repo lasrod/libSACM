@@ -132,7 +132,7 @@ read tolerantly: 11 of 15; read strictly: 2 of 15; tolerant write reads back equ
 | `xmi:version="2.0"` (SACM-XMI-011, Info) | 1, 2 | By design. Assurance Forge writer issue |
 | 40 Claims with two `description`s (SACM-MULT-001, Warning) | 1 | SACM23-VAL-011. Assurance Forge writer issue |
 | A root in another SACM revision's namespace, or a SACM-like one: read since slice 0072, with one SACM-XMI-008 (3, 4, 6–9, 12, 13) or SACM-XMI-002 (5) Warning; a strict read refuses it | 3–9, 12, 13 | LIB-COMPAT-004 |
-| The Assurance Forge legacy app dialect (`id=`, `name=`, class-named children) | 3–6 | LIB-COMPAT-012 (M6, after LIB-COMPAT-004) |
+| The Assurance Forge legacy app dialect (`id=`, `name=`, class-named children) | 3–6 | LIB-COMPAT-012 (deferred: only SACM and GSN are read, the maintainer, 2026-11-19) |
 | EMF dialects (XMI `http://www.omg.org/XMI`, per-package namespaces, `//@role.N` paths, gid identity) | 7–13 | LIB-COMPAT-002 (M6) |
 | The declared encoding ISO-8859-1: read since slice 0072; the files are refused next for their XMI 2.0 `xmi:XMI` element (SACM-XMI-015) | 10, 11 | LIB-COMPAT-016; LIB-COMPAT-002 (M6) |
 | An ODE `DDIPackage` container root (SACM-XMI-001) | 14, 15 | LIB-COMPAT-009 (M6) |
