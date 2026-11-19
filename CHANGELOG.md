@@ -9,6 +9,12 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 
 ## [Unreleased]
 
+### Changed
+
+- With `serde`, a refusal or diagnostic record reads its `arguments` in any key order, as
+  JSON that passed through `serde_json::Value` has them; missing, extra, repeated or
+  wrongly typed arguments are still refused [LIB-API-019].
+
 ## [0.2.0] - 2026-11-19
 
 ### Breaking

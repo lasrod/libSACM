@@ -449,10 +449,9 @@
 //! `LangString`'s `lang` and `content`; and a `Diagnostic`'s `clause`,
 //! `affected` and `location`, and its `template` and `arguments` together,
 //! as 0.1.0 wrote it. A diagnostic writes `template` and `arguments` after
-//! `message`; `arguments` is an object whose keys keep the template's order,
-//! and a record whose keys are reordered is refused, as one that went
-//! through a `serde_json::Value` without `serde_json`'s `preserve_order`
-//! feature is. A package create's `"parent": null` means a root; leaving out
+//! `message`; `arguments` is an object written in the template's order. On
+//! input, `arguments` may give its keys in any order; they are read by name.
+//! A package create's `"parent": null` means a root; leaving out
 //! `parent` is refused. Unknown keys, names and codes are refused. A
 //! deserialized operation proves nothing: [`edit::check`] and
 //! [`edit::apply`] check it as they check one built in Rust.

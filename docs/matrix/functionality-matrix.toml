@@ -6821,7 +6821,7 @@ kind = "api"
 status = "verified"
 verification = "docs/verification/0063-refusal-codes.md"
 depends_on = ["LIB-API-009", "LIB-API-010", "LIB-API-011", "LIB-API-006", "LIB-DIAG-001", "LIB-DIAG-002"]
-notes = "Slice 0064: the template table gains the diagnostic templates (LIB-API-018); re-check there. Slice 0066: messages-0.1.0.txt changes for golden/nested.golden.sacm.xmi (it now reads; behaviour, not English) and gains `(none)` lines for the four new interface and binding fixtures; no existing message's English changes. Slice 0067: every SACM 2.3 kind and end is read; the unread-kind refusals and their templates are removed (SACM23-TERM-007, -008, SACM23-AC-002, -003); re-check there."
+notes = "Slice 0064: the template table gains the diagnostic templates (LIB-API-018); re-check there. Slice 0066: messages-0.1.0.txt changes for golden/nested.golden.sacm.xmi (it now reads; behaviour, not English) and gains `(none)` lines for the four new interface and binding fixtures; no existing message's English changes. Slice 0067: every SACM 2.3 kind and end is read; the unread-kind refusals and their templates are removed (SACM23-TERM-007, -008, SACM23-AC-002, -003); re-check there. Slice 0070: arguments read in any key order (LIB-API-019); re-check there."
 code = ["crates/sacm/src/diagnostic/template.rs", "crates/sacm/src/diagnostic.rs", "crates/sacm/src/xmi.rs", "crates/sacm/src/xmi/refusal.rs", "crates/sacm-cli/src/main.rs", "docs/adr/0030-serde-for-edit-and-diagnostic-values.md"]
 tests = [
   "crates/sacm/tests/message_templates.rs::lib_api_017_each_refusal_template_input_gives_its_0_1_0_display",
@@ -6836,7 +6836,7 @@ tests = [
   "crates/sacm/tests/serde_refusals.rs::lib_api_017_a_refusal_with_an_unknown_type_or_key_or_a_missing_key_is_refused",
   "crates/sacm/tests/serde_refusals.rs::lib_api_017_a_refusal_whose_code_is_not_its_variant_s_and_its_template_s_is_refused",
   "crates/sacm/tests/serde_refusals.rs::lib_api_017_a_template_of_another_variant_or_an_unknown_template_is_refused",
-  "crates/sacm/tests/serde_refusals.rs::lib_api_017_arguments_missing_extra_out_of_order_or_of_the_wrong_kind_are_refused",
+  "crates/sacm/tests/serde_refusals.rs::lib_api_017_arguments_missing_extra_or_of_the_wrong_kind_are_refused",
   "crates/sacm/tests/serde_refusals.rs::lib_api_017_a_character_that_is_not_one_character_is_refused",
   "crates/sacm/tests/serde_refusals.rs::lib_api_017_write_attribute_is_its_variant_name",
   "crates/sacm-cli/tests/validate.rs::lib_api_017_sacm_validate_prints_the_codes_of_unsupported_refusals",
@@ -6865,7 +6865,7 @@ acceptance = [
   "A table-driven test (`crates/sacm/tests/message_templates.rs`) gives one input for each of the 98 refusal templates and checks `code()`, `template()`, every argument by name, kind and value, and `Display`. The three `SACM-SEC-002` capacity templates and the three `SACM-SEC-002/unheld-*` templates, which no input reaches through the public API, are built instead by a unit test of their crate-private constructors.",
   "A crate unit test checks the template table: ids are unique, match `SACM-[A-Z]+-[0-9]{3}/[a-z0-9]+(-[a-z0-9]+)*`, and each id's prefix is its code's text; each const is named after its id; every placeholder names a declared argument: `{n}` and `{n:?}` take Text, `{n:04X}` takes Count; arguments are declared in the order they first appear in the pattern, and every declared argument appears, except `row`; among the refusal templates, `row` is declared last exactly on the `Unsupported` templates of SACM-XMI-014, -007, -002 and -015, whose label names it; a diagnostic template declares `row` only where its pattern names it (LIB-API-018); the renderer writes Text unchanged for `{n}`, Debug-quoted for `{n:?}`, and Count as decimal or as at least 4 uppercase hex digits.",
   "`xtask/tests/message_templates.rs` checks two things. First, the `## Message templates` table of docs/sacm/diagnostics.md lists exactly the templates of `crates/sacm/src/diagnostic/template.rs`: id, carrier, argument names and kinds, and English. Second, every template const is named, outside comments, literals and tests, in another file of `crates/sacm/src`. Pure-helper tests on synthetic inputs report a missing, extra or reordered argument, a different English, a missing row, and an unused const.",
-  "With `serde`, the golden files `read-errors.json` and `write-errors.json` hold one value per variant (`Unsupported` once per code) and read back `==`. These inputs are refused: an unknown `type` or key, or a missing key; a `code` that is not the variant's and its template's; a template of another variant, or an unknown template; arguments that are missing, extra, out of order, or of the wrong kind; a `character` that is not one character.",
+  "With `serde`, the golden files `read-errors.json` and `write-errors.json` hold one value per variant (`Unsupported` once per code) and read back `==`. These inputs are refused: an unknown `type` or key, or a missing key; a `code` that is not the variant's and its template's; a template of another variant, or an unknown template; arguments that are missing, extra, repeated, or of the wrong kind (since LIB-API-019 arguments may come in any key order); a `character` that is not one character.",
   "`sacm validate` prints `xmi-attribute.sacm.xmi`'s refusal as `SACM-XMI-003` and `latin-1.sacm.xmi`'s as `SACM-XML-002`, where 0.1.0 printed `error`. JSON writes those codes for the strict refusal, not `\"code\":null`.",
   "The catalog gains: live rows for SACM-XMI-002 (`Code::XMI_NAMESPACE_NOT_PINNED`), SACM-XMI-015 (`XMI_WRAPPER_NAMESPACE`), SACM-XMI-016 (`XMI_STRICT_SAVE_INVALID`), SACM-XML-002 (`XML_ENCODING_NOT_READ`), SACM-XML-003 (`XML_UNREPRESENTABLE_CHARACTER`) and SACM-SEC-002 (`PARSER_LIMIT`); rows for SACM-XMI-001, -003, -007 and -014 that name their refusal uses. LIB-DIAG-002 passes with 42 live codes (41 before SACM23-VAL-009 made SACM-EXPR-001 live).",
 ]
@@ -6904,14 +6904,14 @@ acceptance = [
   "With two descriptions, a Claim `CLM_132` gives a SACM-MULT-001 Warning (SACM23-VAL-011, clause 8.6). Its message is `Claim \"CLM_132\" has 2 descriptions (description:Description[0..1])`, its template `SACM-MULT-001/too-many`, and its arguments `[class: \"Claim\", id: \"CLM_132\", count: 2, property: \"description\", type: \"Description\", multiplicity: \"0..1\"]`. Its `affected()` is `[CLM_132]`.",
   "Every line of `tests/data/golden/messages-0.1.0.txt` is unchanged.",
   "A diagnostic built with `test-support`'s `Diagnostic::new` has its code's text as `template()` and no `arguments()`. In `crates/sacm/src`, no file but `diagnostic.rs` builds a `Diagnostic` other than through a template, and `Diagnostic::create` no longer exists.",
-  "With `serde`, every value of `diagnostics.json` writes `template` and `arguments` after `message`, and one of them comes from a real `validate` (acceptance 2). `diagnostics-0.1.0.json`, the 0.1.0 golden file byte for byte, reads with each template equal to its code's text and no arguments, and serializes again as the first two values of `diagnostics.json`. The `Invalid` value of `write-errors.json` carries its diagnostic's template and arguments. These inputs are refused: `template` without `arguments`, `arguments` without `template`, or either as `null`; an unknown template, a refusal's template, or another code's template; the code's text as template with arguments; arguments that are missing, extra, out of order or of the wrong kind; and a refusal record that names a diagnostic template.",
+  "With `serde`, every value of `diagnostics.json` writes `template` and `arguments` after `message`, and one of them comes from a real `validate` (acceptance 2). `diagnostics-0.1.0.json`, the 0.1.0 golden file byte for byte, reads with each template equal to its code's text and no arguments, and serializes again as the first two values of `diagnostics.json`. The `Invalid` value of `write-errors.json` carries its diagnostic's template and arguments. These inputs are refused: `template` without `arguments`, `arguments` without `template`, or either as `null`; an unknown template, a refusal's template, or another code's template; the code's text as template with arguments; arguments that are missing, extra, repeated or of the wrong kind (since LIB-API-019 arguments may come in any key order); and a refusal record that names a diagnostic template.",
   "Two diagnostics equal in the seven ADR 0011 keys order by template id, then by arguments. `cmp` is `Equal` exactly when the diagnostics are `==`. `Argument`, `ArgumentValue` and `Details` are `Clone + Debug + Eq + Hash + Send + Sync + 'static`, and `Argument` and `ArgumentValue` are also `Ord`.",
   "`template.rs` declares 98 templates whose carrier is `Diagnostic`. The catalog's `## Message templates` table lists all 196 templates (LIB-API-017 acceptance 6 checks it).",
 ]
 status = "verified"
 verification = "docs/verification/0064-diagnostic-templates.md"
 depends_on = ["LIB-API-017", "LIB-DIAG-001", "LIB-API-006", "SACM23-BASE-009", "SACM23-VAL-009", "SACM23-VAL-017", "SACM23-TERM-003", "SACM23-XMI-028"]
-notes = "Library only: `sacm validate --format json` keeps its ADR 0023 shape and writes no `template` or `arguments` (LIB-CLI-002). Slice 0067: every SACM 2.3 kind and end is read; the unread-kind refusals and their templates are removed (SACM23-TERM-007, -008, SACM23-AC-002, -003); re-check there."
+notes = "Library only: `sacm validate --format json` keeps its ADR 0023 shape and writes no `template` or `arguments` (LIB-CLI-002). Slice 0067: every SACM 2.3 kind and end is read; the unread-kind refusals and their templates are removed (SACM23-TERM-007, -008, SACM23-AC-002, -003); re-check there. Slice 0070: arguments read in any key order (LIB-API-019); re-check there."
 
 [[row]]
 id = "LIB-API-019"
@@ -6921,8 +6921,17 @@ title = "Record arguments read in any key order"
 requirement = "With `serde`, a refusal or diagnostic record whose `arguments` object gives its template's arguments in any key order reads as if given in the template's order; missing, extra or wrongly typed arguments are still refused, and serialization still writes the template's order (ADR 0030 amendment 5, which relaxes R11)."
 source = "The maintainer's decision, 2026-11-18 (M4 close): JSON passed through `serde_json::Value` without `preserve_order` must read, as an application such as Assurance Forge may store it; ADR 0030 amendment 5"
 kind = "api"
-status = "planned"
+status = "implemented"
 depends_on = ["LIB-API-017", "LIB-API-018"]
+code = ["crates/sacm/src/diagnostic.rs", "crates/sacm/src/lib.rs", "docs/sacm/diagnostics.md", "docs/adr/0030-serde-for-edit-and-diagnostic-values.md"]
+tests = [
+  "crates/sacm/tests/serde_argument_order.rs::lib_api_019_every_golden_record_reads_with_its_arguments_in_sorted_key_order",
+  "crates/sacm/tests/serde_argument_order.rs::lib_api_019_arguments_in_reverse_order_read_as_the_template_order",
+  "crates/sacm/tests/serde_argument_order.rs::lib_api_019_missing_extra_repeated_or_mistyped_arguments_are_still_refused",
+  "crates/sacm/tests/serde_argument_order.rs::lib_api_019_serialization_writes_the_template_order",
+  "crates/sacm/tests/serde_diagnostics.rs::lib_api_019_a_diagnostic_with_two_arguments_swapped_reads_as_its_twin",
+  "crates/sacm/tests/serde_refusals.rs::lib_api_019_a_malformed_record_with_its_arguments_swapped_reads_as_its_twin",
+]
 acceptance = [
   "Every value of read-errors.json, write-errors.json and diagnostics.json, passed through `serde_json::Value` with its keys sorted, reads `==` to the original.",
   "A record with an argument missing, extra, repeated or of the wrong kind is refused as before.",
