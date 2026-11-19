@@ -581,7 +581,7 @@ catalog! {
     /// implements (SACM 2.3 §10.5, §11.6, §12.5): a Warning (SACM23-VAL-023).
     /// [`validation::validate`](crate::validation::validate) reports each
     /// `ArgumentPackageInterface`, `ArtifactPackageInterface` and
-    /// `TerminologyPackageInterface` that is no citation and whose
+    /// `TerminologyPackageInterface` whose `isCitation` is not true and whose
     /// `implements` names a package of the document that is not one of its
     /// ancestors, affecting the interface, then the package. Fix: move the
     /// interface into the package, or make it a citation.

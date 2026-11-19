@@ -107,7 +107,6 @@ tracks every requirement: what is built, what is planned, and the tests behind e
 
 Planned:
 
-- The validation of every package's interfaces and bindings.
 - Tolerant reading of third-party dialects and legacy revisions, reporting exactly what
   was accepted.
 - More validation rules against the specification's constraints.

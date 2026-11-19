@@ -229,9 +229,7 @@ pub(super) fn interface_and_binding_content(document: &Document, found: &mut Vec
                     [holder, child, cited],
                 ));
             }
-            if let Some(package) = implemented
-                && !is_within(cited, package.id())
-            {
+            if let Some(package) = implemented.filter(|package| !is_within(cited, package.id())) {
                 let [class, id] = named(holder, "class", "id");
                 let [child_class, child_id] = named(child, "child_class", "child_id");
                 let arguments = vec![

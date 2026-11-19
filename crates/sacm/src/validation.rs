@@ -37,7 +37,7 @@
 //! | SACM-MULT-001 | SACM23-VAL-014 | §9.3, §10.5, §11.6 or §12.5 | Error | a package interface has no `implements` (`implements:<Package>[1]`) |
 //! | SACM-MULT-001 | SACM23-VAL-014 | §9.4, §10.6, §11.5 or §12.4 | Error | a package binding has fewer than two distinct participants, ids and `href`s counted (`participantPackage:<Package>[2..*]`) |
 //! | SACM-PKG-001 | SACM23-VAL-014 | §9.4, §10.6, §11.5 or §12.4 | Warning | a binding names a binding of its own kind as a participant (D-BIND-PART) |
-//! | SACM-PKG-002 | SACM23-VAL-023 | §10.5, §11.6 or §12.5 | Warning | an interface that is no citation does not reside inside the package its `implements` names |
+//! | SACM-PKG-002 | SACM23-VAL-023 | §10.5, §11.6 or §12.5 | Warning | an interface whose `isCitation` is not true does not reside inside the package its `implements` names |
 //!
 //! A `ModelElement`
 //! ([`AbstractClass::ModelElement`](crate::model::AbstractClass::ModelElement))

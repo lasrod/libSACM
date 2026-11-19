@@ -2460,6 +2460,22 @@ fn sacm23_val_023_citations_and_unresolved_implements_are_not_checked() {
             [],
             "{row}: {what}: validate reports a finding"
         );
+        // An interface whose isCitation is true is not checked, with or
+        // without a citedElement.
+        let what = format!(
+            "an {} outside q whose isCitation is true, with no citedElement",
+            family.interface
+        );
+        let doc = read_ok(
+            row,
+            &what,
+            &input(" isCitation=\"true\" implements=\"q\"", "", ""),
+        );
+        assert_eq!(
+            of_row(&doc, row),
+            [],
+            "{row}: {what}: validate reports a SACM23-VAL-023 finding"
+        );
         // A Term in an ArgumentPackage is preserved content (SACM-REF-003).
         let preserved =
             ARGUMENT.package_in_case("w", &el("argumentElement", "Term", "z", " value=\"z\"", ""));

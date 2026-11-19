@@ -1441,6 +1441,39 @@ fn sacm23_xmi_027_a_repeated_href_is_one_val_022_warning() {
         Some("o.xmi#p"),
         "{ROW}: {what}: the target is not the href"
     );
+    // Three hrefs, one of them repeated: one Warning, for the repeat only.
+    let what = "ids [i] and hrefs [o.xmi#p, o.xmi#q, o.xmi#p]";
+    let doc = read_ok(
+        what,
+        &with_b(
+            "",
+            &participants(&["i"], &["o.xmi#p", "o.xmi#q", "o.xmi#p"]),
+        ),
+    );
+    let found = of_code(&doc, Code::MULTIPLICITY_VIOLATION);
+    assert_eq!(
+        found
+            .iter()
+            .map(|one| (
+                one.severity(),
+                one.requirement_id(),
+                strs(one.affected()),
+                argument_of(one, "target"),
+                one.arguments()
+                    .iter()
+                    .find(|argument| argument.name() == "count")
+                    .and_then(|argument| argument.value().as_count())
+            ))
+            .collect::<Vec<_>>(),
+        [(
+            Severity::Warning,
+            "SACM23-VAL-022",
+            vec!["b"],
+            Some("o.xmi#p"),
+            Some(2)
+        )],
+        "{ROW}: {what}: not one SACM23-VAL-022 Warning affecting b, for o.xmi#p held 2 times"
+    );
 }
 
 // =================================================================================
@@ -1524,6 +1557,12 @@ fn sacm23_xmi_027_compare_reports_hrefs() {
         matches!(found.as_slice(), [Difference::Hrefs { .. }]) && ab != ba,
         "{ROW}: hrefs in another order are not one Hrefs difference: {found:?}"
     );
+    assert_eq!(
+        found[0].to_string(),
+        "element \"b\" differs in the hrefs of participantPackage: [\"a.xmi#p\", \"b.xmi#q\"] on \
+         the left, [\"b.xmi#q\", \"a.xmi#p\"] on the right",
+        "{ROW}: the Display of hrefs in another order"
+    );
     // `==` holds exactly when there is no difference.
     let again = read_ok(
         "ab again",
@@ -1606,6 +1645,10 @@ fn edit_case() -> Document {
     )
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "the cases of one acceptance item read best as one list"
+)]
 #[test]
 fn sacm23_xmi_027_reference_edits_count_hrefs_and_set_references_replaces_them() {
     let mut doc = edit_case();
@@ -1643,6 +1686,27 @@ fn sacm23_xmi_027_reference_edits_count_hrefs_and_set_references_replaces_them()
             }
         ),
         "{ROW}: RemoveReference of i, leaving the href: {error:?}"
+    );
+    // A repeated href is one value (ADR 0040 D5).
+    let mut repeated = read_ok(
+        "ids [i] and hrefs [o.xmi#p, o.xmi#p]",
+        &with_b("", &participants(&["i"], &["o.xmi#p", "o.xmi#p"])),
+    );
+    let error = refuse(
+        &mut repeated,
+        RemoveReference::new("b", ReferenceEnd::ParticipantPackage, "i"),
+    );
+    assert!(
+        matches!(
+            error,
+            EditError::TooFewReferences {
+                end: "participantPackage",
+                given: 1,
+                required: 2,
+                ..
+            }
+        ),
+        "{ROW}: RemoveReference of i, leaving one href held twice: {error:?}"
     );
     let error = refuse(
         &mut doc,
@@ -1697,6 +1761,10 @@ fn sacm23_xmi_027_reference_edits_count_hrefs_and_set_references_replaces_them()
     );
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "the cases of one acceptance item read best as one list"
+)]
 #[test]
 fn sacm23_xmi_027_delete_copy_and_move_keep_hrefs() {
     // Scrubbing i from ids [i, j] and the href: b keeps [j] and the href.
@@ -1728,6 +1796,37 @@ fn sacm23_xmi_027_delete_copy_and_move_keep_hrefs() {
         strs(mutation.deleted_ids()),
         ["i", "b"],
         "{ROW}: b, left with the href alone, does not go with i"
+    );
+    // A repeated href is one value: from ids [i] and hrefs [o.xmi#p,
+    // o.xmi#p], b is left with one, so it goes.
+    let mut doc = read_ok(
+        "ids [i] and hrefs [o.xmi#p, o.xmi#p]",
+        &with_b("", &participants(&["i"], &["o.xmi#p", "o.xmi#p"])),
+    );
+    let mutation = applied(&mut doc, scrubbing("i"));
+    assert_eq!(
+        strs(mutation.deleted_ids()),
+        ["i", "b"],
+        "{ROW}: b, left with one href held twice, does not go with i"
+    );
+    // The control: two distinct hrefs are two values, so b stays.
+    let mut doc = read_ok(
+        "ids [i] and hrefs [o.xmi#p, o.xmi#q]",
+        &with_b("", &participants(&["i"], &["o.xmi#p", "o.xmi#q"])),
+    );
+    let mutation = applied(&mut doc, scrubbing("i"));
+    assert_eq!(
+        (
+            strs(mutation.deleted_ids()),
+            strs(element(&doc, "b").participant_packages())
+        ),
+        (vec!["i"], Vec::<&str>::new()),
+        "{ROW}: b, left with two distinct hrefs, does not stay with no ids"
+    );
+    assert_eq!(
+        hrefs(&doc, "b", ReferenceEnd::ParticipantPackage),
+        ["o.xmi#p", "o.xmi#q"],
+        "{ROW}: scrubbing i changes the two hrefs of b"
     );
     // CopyElements keeps the hrefs.
     let mut doc = read_ok(
@@ -1773,6 +1872,26 @@ fn sacm23_xmi_027_delete_copy_and_move_keep_hrefs() {
             }
         ),
         "{ROW}: the copy of a binding of one href: {error:?}"
+    );
+    // Nor is a binding of one href held twice.
+    let mut twice = read_ok(
+        "one href held twice",
+        &with_b("", &participants(&[], &["o.xmi#p", "o.xmi#p"])),
+    );
+    let copy = CopyElements::new(&twice, ["b"], "case")
+        .unwrap_or_else(|error| panic!("{ROW}: setup: the copy of b: {error}"));
+    let error = refuse(&mut twice, copy);
+    assert!(
+        matches!(
+            error,
+            EditError::TooFewReferences {
+                end: "participantPackage",
+                given: 1,
+                required: 2,
+                ..
+            }
+        ),
+        "{ROW}: the copy of a binding of one href held twice: {error:?}"
     );
     // MoveElement changes none.
     let mut doc = read_ok(

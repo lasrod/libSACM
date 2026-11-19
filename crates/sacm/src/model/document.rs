@@ -4356,7 +4356,7 @@ impl std::error::Error for SetAssertionDeclarationError {}
 #[cfg(test)]
 mod tests {
     use super::{Document, IdGenerator, SacmElement, Text, TextRole, snake_case};
-    use crate::model::{ElementId, ElementKind, LangString};
+    use crate::model::{ElementId, ElementKind, Href, LangString};
     use crate::model::{Flag, ReferenceEnd};
 
     #[test]
@@ -4554,6 +4554,65 @@ mod tests {
         }
         assert_eq!(document.get("p").and_then(SacmElement::cited_element), None);
         assert!(!document.is_referenced("q"));
+    }
+
+    #[test]
+    fn set_hrefs_refuses_an_end_the_kind_lacks_the_derived_end_and_a_second_value() {
+        let mut document = two_roots();
+        let p = ElementId::new("p");
+        for (kind, id) in [
+            (ElementKind::Claim, "c"),
+            (ElementKind::ArgumentPackageInterface, "i"),
+            (ElementKind::ArgumentPackageInterface, "j"),
+        ] {
+            let inserted = document.insert_node(Some(&p), kind, ElementId::new(id), None);
+            assert_eq!(inserted, Ok(()), "{id}");
+        }
+        let i = ElementId::new("i");
+        assert_eq!(
+            document.set_references(&i, ReferenceEnd::Implements, vec![p.clone()]),
+            Ok(())
+        );
+        let hrefs = |values: &[&str]| {
+            values
+                .iter()
+                .map(|value| Href::new_unchecked(value))
+                .collect::<Vec<_>>()
+        };
+        let before = document.clone();
+        for (owner, end, values) in [
+            // A Claim has no implements.
+            ("c", ReferenceEnd::Implements, hrefs(&["o.xmi#p"])),
+            // The derived expression holds no href, on any element.
+            ("j", ReferenceEnd::Expression, hrefs(&["o.xmi#e"])),
+            // implements is single-valued: two hrefs, or an href beside an id.
+            (
+                "j",
+                ReferenceEnd::Implements,
+                hrefs(&["o.xmi#p", "o.xmi#q"]),
+            ),
+            ("i", ReferenceEnd::Implements, hrefs(&["o.xmi#p"])),
+        ] {
+            let refused = document.set_hrefs(&ElementId::new(owner), end, values.clone());
+            assert!(refused.is_err(), "{owner} {end:?} {values:?}");
+            assert!(document == before, "{owner} {end:?} {values:?}");
+            assert!(
+                document
+                    .get(owner)
+                    .is_some_and(|element| element.hrefs(end).is_empty()),
+                "{owner} {end:?} {values:?}"
+            );
+        }
+        // The control: one href on an implements that holds no id.
+        let j = ElementId::new("j");
+        assert_eq!(
+            document.set_hrefs(&j, ReferenceEnd::Implements, hrefs(&["o.xmi#p"])),
+            Ok(())
+        );
+        assert_eq!(
+            document.get("j").map(|j| j.hrefs(ReferenceEnd::Implements)),
+            Some(hrefs(&["o.xmi#p"]).as_slice())
+        );
     }
 
     #[test]

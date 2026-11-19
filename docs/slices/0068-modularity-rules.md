@@ -47,3 +47,9 @@ M5's last slice.
   counts and oracles moved (edit_atomic counts `href`s; LIVE_CODES 43; VAL-018 expects the VAL-014 Error of a nameless
   interface or binding root). The lead reworded the design's verified rows plus VAL-018, LIB-API-017/-018, LIB-DIAG-002,
   LIB-API-006 and LIB-EDIT-*, each with a slice 0068 note.
+- 2026-11-19 verify round 1 (903c05a): FAIL.
+  - B1 (all rows): a let-chain breaks MSRV 1.85; CI's MSRV job is red.
+  - B2–B7: untested branches in XMI-027 and VAL-023 (href de-duplication in delete and bounds; the VAL-023 citation
+    exemption; the `Hrefs` Display; `repeated_hrefs`; `set_hrefs`'s guards).
+  - The fix round: the builder fixes B1–B7, N2, N3, N4 and N10; the lead fixes N1, N5–N9 (matrix wording, with the
+    verifier's text), adds B2/B3 to XMI-027 acceptance 15, and updates the follow-ups.
