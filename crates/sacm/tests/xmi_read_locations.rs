@@ -907,17 +907,9 @@ fn reference_rows() -> Vec<Row> {
                 "<abstractForm xmi:idref=\"c\" {MARK}xmi:type=\"sacm:Claim\"/>"
             )),
         ),
-        // An href that is not `#id` (SACM23-XMI-027): at the attribute's name.
-        row(
-            "a cross-document href",
-            U,
-            link(&format!("<citedElement {MARK}href=\"other.xmi#c\"/>")),
-        ),
-        row(
-            "an href without a fragment",
-            U,
-            link(&format!("<abstractForm {MARK}href=\"c\"/>")),
-        ),
+        // An XPointer href (SACM23-XMI-029): at the attribute's name. Since
+        // slice 0068 an href with a document part is read (SACM23-XMI-027),
+        // and one that names no element is preserved content (SACM-XMI-003).
         row(
             "an XPointer href",
             U,
@@ -926,14 +918,11 @@ fn reference_rows() -> Vec<Row> {
             )),
         ),
         row(
-            "an empty fragment href",
+            "a cross-document XPointer href",
             U,
-            link(&format!("<citedElement {MARK}href=\"#\"/>")),
-        ),
-        row(
-            "an empty href",
-            U,
-            link(&format!("<abstractForm {MARK}href=\"\"/>")),
+            link(&format!(
+                "<abstractForm {MARK}href=\"other.xmi#xpointer(id('c'))\"/>"
+            )),
         ),
     ]
 }

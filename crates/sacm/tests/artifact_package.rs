@@ -10,7 +10,7 @@
 //! It holds every `ArtifactElement` kind this release reads in
 //! `artifactElement`, in document order. An untyped `artifactElement` child is
 //! SACM-XMI-005; one in reference form is a proxy, not read yet (SACM23-XMI-019
-//! for `xmi:idref`, SACM23-XMI-027 for `href`). Every kind it can hold that
+//! for `xmi:idref`, SACM23-XMI-029 for `href`). Every kind it can hold that
 //! this release does not read yet is refused as `Interim(row)`, its
 //! `interface` end is read (SACM23-ART-012, slice 0066), and the model's spelling
 //! `ArtifactAssertedRelationship` as `Tolerance(SACM23-XMI-009)`, each at an
@@ -625,7 +625,7 @@ fn sacm23_art_001_a_reference_form_artifact_element_under_a_package_is_a_proxy_n
     // Under an ArtifactPackage, `artifactElement` is the composite role, so a
     // role element in reference form is a proxy (XMI 2.5.1 §7.10.1), not a
     // group member and not SACM-XMI-005: refused as not read yet, naming
-    // SACM23-XMI-019 for `xmi:idref` and SACM23-XMI-027 for `href`; untyped
+    // SACM23-XMI-019 for `xmi:idref` and SACM23-XMI-029 for `href`; untyped
     // at its start tag, typed at the attribute (as LIB-COMPAT-010 and
     // LIB-API-011 pin for argumentElement).
     let sibling = typed("Technique", "t1", "T1");
@@ -639,7 +639,7 @@ fn sacm23_art_001_a_reference_form_artifact_element_under_a_package_is_a_proxy_n
             (
                 "an untyped href=\"#t1\"",
                 format!("{MARK}<artifactElement href=\"#t1\"/>"),
-                "SACM23-XMI-027",
+                "SACM23-XMI-029",
             ),
             (
                 "a typed xmi:idref",
@@ -649,7 +649,7 @@ fn sacm23_art_001_a_reference_form_artifact_element_under_a_package_is_a_proxy_n
             (
                 "a typed href=\"#t1\"",
                 format!("<artifactElement xmi:type=\"sacm:Technique\" {MARK}href=\"#t1\"/>"),
-                "SACM23-XMI-027",
+                "SACM23-XMI-029",
             ),
         ] {
             let what = format!("{form} artifactElement in {context}");

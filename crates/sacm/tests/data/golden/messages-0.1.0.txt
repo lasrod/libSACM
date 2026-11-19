@@ -150,6 +150,10 @@ crates/sacm/tests/data/sacm23/xmi/citations-and-abstract-forms-valid.sacm.xmi st
 crates/sacm/tests/data/sacm23/xmi/citations-and-abstract-forms-valid.sacm.xmi strict-validate: (none)
 crates/sacm/tests/data/sacm23/xmi/citations-and-abstract-forms-valid.sacm.xmi tolerant-read: (none)
 crates/sacm/tests/data/sacm23/xmi/citations-and-abstract-forms-valid.sacm.xmi tolerant-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/cross-document-references-valid.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/cross-document-references-valid.sacm.xmi strict-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/cross-document-references-valid.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/cross-document-references-valid.sacm.xmi tolerant-validate: (none)
 crates/sacm/tests/data/sacm23/xmi/expression-lang-string-valid.sacm.xmi strict-read: (none)
 crates/sacm/tests/data/sacm23/xmi/expression-lang-string-valid.sacm.xmi strict-validate: (none)
 crates/sacm/tests/data/sacm23/xmi/expression-lang-string-valid.sacm.xmi tolerant-read: (none)
@@ -190,6 +194,10 @@ crates/sacm/tests/data/sacm23/xmi/golden/assurance-case-package-interfaces.golde
 crates/sacm/tests/data/sacm23/xmi/golden/assurance-case-package-interfaces.golden.sacm.xmi strict-validate: (none)
 crates/sacm/tests/data/sacm23/xmi/golden/assurance-case-package-interfaces.golden.sacm.xmi tolerant-read: (none)
 crates/sacm/tests/data/sacm23/xmi/golden/assurance-case-package-interfaces.golden.sacm.xmi tolerant-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/cross-document-references.golden.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/cross-document-references.golden.sacm.xmi strict-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/cross-document-references.golden.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/golden/cross-document-references.golden.sacm.xmi tolerant-validate: (none)
 crates/sacm/tests/data/sacm23/xmi/golden/expression-lang-string.golden.sacm.xmi strict-read: (none)
 crates/sacm/tests/data/sacm23/xmi/golden/expression-lang-string.golden.sacm.xmi strict-validate: (none)
 crates/sacm/tests/data/sacm23/xmi/golden/expression-lang-string.golden.sacm.xmi tolerant-read: (none)
@@ -212,6 +220,7 @@ crates/sacm/tests/data/sacm23/xmi/golden/nested.golden.sacm.xmi strict-validate:
 crates/sacm/tests/data/sacm23/xmi/golden/nested.golden.sacm.xmi strict-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: ArtifactPackage "artifacts" has no name (name:LangString[1])
 crates/sacm/tests/data/sacm23/xmi/golden/nested.golden.sacm.xmi strict-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: AssuranceCasePackage "case" has no name (name:LangString[1])
 crates/sacm/tests/data/sacm23/xmi/golden/nested.golden.sacm.xmi strict-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: Claim "claim_1" has no name (name:LangString[1])
+crates/sacm/tests/data/sacm23/xmi/golden/nested.golden.sacm.xmi strict-validate: error SACM-MULT-001 [SACM23-VAL-014, clause 11.6]: ArgumentPackageInterface "interface_1" has no implements (implements:ArgumentPackage[1])
 crates/sacm/tests/data/sacm23/xmi/golden/nested.golden.sacm.xmi strict-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: ArgumentPackageInterface "interface_1" has no name (name:LangString[1])
 crates/sacm/tests/data/sacm23/xmi/golden/nested.golden.sacm.xmi strict-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: Property "property_1" has no name (name:LangString[1])
 crates/sacm/tests/data/sacm23/xmi/golden/nested.golden.sacm.xmi tolerant-read: (none)
@@ -220,6 +229,7 @@ crates/sacm/tests/data/sacm23/xmi/golden/nested.golden.sacm.xmi tolerant-validat
 crates/sacm/tests/data/sacm23/xmi/golden/nested.golden.sacm.xmi tolerant-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: ArtifactPackage "artifacts" has no name (name:LangString[1])
 crates/sacm/tests/data/sacm23/xmi/golden/nested.golden.sacm.xmi tolerant-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: AssuranceCasePackage "case" has no name (name:LangString[1])
 crates/sacm/tests/data/sacm23/xmi/golden/nested.golden.sacm.xmi tolerant-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: Claim "claim_1" has no name (name:LangString[1])
+crates/sacm/tests/data/sacm23/xmi/golden/nested.golden.sacm.xmi tolerant-validate: error SACM-MULT-001 [SACM23-VAL-014, clause 11.6]: ArgumentPackageInterface "interface_1" has no implements (implements:ArgumentPackage[1])
 crates/sacm/tests/data/sacm23/xmi/golden/nested.golden.sacm.xmi tolerant-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: ArgumentPackageInterface "interface_1" has no name (name:LangString[1])
 crates/sacm/tests/data/sacm23/xmi/golden/nested.golden.sacm.xmi tolerant-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: Property "property_1" has no name (name:LangString[1])
 crates/sacm/tests/data/sacm23/xmi/golden/several-roots.golden.sacm.xmi strict-read: (none)
@@ -266,8 +276,29 @@ crates/sacm/tests/data/sacm23/xmi/invalid/argument-package-unknown-content.sacm.
 crates/sacm/tests/data/sacm23/xmi/invalid/argument-package-unknown-content.sacm.xmi tolerant-read: warning SACM-XMI-003 [LIB-COMPAT-003, clause 7.3.3] at line 14, column 5: text is not SACM 2.3 where it stands, so it is kept as written as preserved content of the Claim "c3", which a tolerant write writes back and a strict write refuses
 crates/sacm/tests/data/sacm23/xmi/invalid/argument-package-unknown-content.sacm.xmi tolerant-validate: error SACM-MULT-001 [SACM23-VAL-018, clause 8.6]: Claim "c2" has no name (name:LangString[1])
 crates/sacm/tests/data/sacm23/xmi/invalid/argument-package-unknown-content.sacm.xmi tolerant-validate: warning SACM-REF-003 [LIB-COMPAT-003, clause 8.2]: Claim "c3" has the citedElement "a1", which names an element the document holds only as preserved content, so its type is not checked (the end's type is SACMElement)
-crates/sacm/tests/data/sacm23/xmi/invalid/reference-cross-document-href.sacm.xmi strict-read: refusal the reader cannot represent the input at line 7, column 19: the href "other.sacm.xmi#c9" of the reference element "citedElement" names no element of this document by its id; only href="#id" is read in this release (a limit of this version; SACM23-XMI-027 reads it)
-crates/sacm/tests/data/sacm23/xmi/invalid/reference-cross-document-href.sacm.xmi tolerant-read: warning SACM-XMI-007 [LIB-API-011] at line 7, column 19: the href "other.sacm.xmi#c9" of the reference element "citedElement" names no element of this document by its id; only href="#id" is read in this release, so it is kept as preserved content of the Claim "c1", which a tolerant write writes back and a strict write refuses; SACM23-XMI-027 reads it
+crates/sacm/tests/data/sacm23/xmi/invalid/modularity-findings.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/invalid/modularity-findings.sacm.xmi strict-validate: error SACM-MULT-001 [SACM23-VAL-014, clause 11.5]: ArgumentPackageBinding "b" has 1 distinct participantPackage (participantPackage:ArgumentPackage[2..*])
+crates/sacm/tests/data/sacm23/xmi/invalid/modularity-findings.sacm.xmi strict-validate: warning SACM-MULT-001 [SACM23-VAL-022, clause 11.5]: ArgumentPackageBinding "b" holds "i" 2 times in its participantPackage, whose ids are unique in SACM 2.3 (the repeat is kept)
+crates/sacm/tests/data/sacm23/xmi/invalid/modularity-findings.sacm.xmi strict-validate: error SACM-MULT-001 [SACM23-VAL-014, clause 11.6]: ArgumentPackageInterface "k" has no implements (implements:ArgumentPackage[1])
+crates/sacm/tests/data/sacm23/xmi/invalid/modularity-findings.sacm.xmi strict-validate: error SACM-PKG-001 [SACM23-VAL-015, clause 9.3]: AssuranceCasePackageInterface "ai" contains ArgumentPackage "ap" in its argumentPackage, but §9.3 allows only ArgumentPackageInterfaces there
+crates/sacm/tests/data/sacm23/xmi/invalid/modularity-findings.sacm.xmi strict-validate: error SACM-PKG-001 [SACM23-VAL-013, clause 11.5]: ArgumentPackageBinding "b" contains Claim "b_plain", which is no citation (isCitation true and a citedElement), but §11.5 allows only citations and AssertedRelationships in it
+crates/sacm/tests/data/sacm23/xmi/invalid/modularity-findings.sacm.xmi strict-validate: warning SACM-PKG-001 [SACM23-VAL-014, clause 11.5]: ArgumentPackageBinding "b2" has the participantPackage "b", of the kind ArgumentPackageBinding: a binding binds packages, not bindings
+crates/sacm/tests/data/sacm23/xmi/invalid/modularity-findings.sacm.xmi strict-validate: warning SACM-PKG-001 [SACM23-VAL-013, clause 11.6]: ArgumentPackageInterface "i" contains Claim "i_far", which cites "d", but §11.6 has an interface cite only elements within the package it implements, "p"
+crates/sacm/tests/data/sacm23/xmi/invalid/modularity-findings.sacm.xmi strict-validate: error SACM-PKG-001 [SACM23-VAL-013, clause 11.6]: ArgumentPackageInterface "i" contains Claim "i_plain", which is no citation (isCitation true and a citedElement), but §11.6 allows only citations in it
+crates/sacm/tests/data/sacm23/xmi/invalid/modularity-findings.sacm.xmi strict-validate: warning SACM-PKG-002 [SACM23-VAL-023, clause 11.6]: ArgumentPackageInterface "j" implements the ArgumentPackage "q" but does not reside inside it, as §11.6 says an interface does
+crates/sacm/tests/data/sacm23/xmi/invalid/modularity-findings.sacm.xmi tolerant-read: (none)
+crates/sacm/tests/data/sacm23/xmi/invalid/modularity-findings.sacm.xmi tolerant-validate: error SACM-MULT-001 [SACM23-VAL-014, clause 11.5]: ArgumentPackageBinding "b" has 1 distinct participantPackage (participantPackage:ArgumentPackage[2..*])
+crates/sacm/tests/data/sacm23/xmi/invalid/modularity-findings.sacm.xmi tolerant-validate: warning SACM-MULT-001 [SACM23-VAL-022, clause 11.5]: ArgumentPackageBinding "b" holds "i" 2 times in its participantPackage, whose ids are unique in SACM 2.3 (the repeat is kept)
+crates/sacm/tests/data/sacm23/xmi/invalid/modularity-findings.sacm.xmi tolerant-validate: error SACM-MULT-001 [SACM23-VAL-014, clause 11.6]: ArgumentPackageInterface "k" has no implements (implements:ArgumentPackage[1])
+crates/sacm/tests/data/sacm23/xmi/invalid/modularity-findings.sacm.xmi tolerant-validate: error SACM-PKG-001 [SACM23-VAL-015, clause 9.3]: AssuranceCasePackageInterface "ai" contains ArgumentPackage "ap" in its argumentPackage, but §9.3 allows only ArgumentPackageInterfaces there
+crates/sacm/tests/data/sacm23/xmi/invalid/modularity-findings.sacm.xmi tolerant-validate: error SACM-PKG-001 [SACM23-VAL-013, clause 11.5]: ArgumentPackageBinding "b" contains Claim "b_plain", which is no citation (isCitation true and a citedElement), but §11.5 allows only citations and AssertedRelationships in it
+crates/sacm/tests/data/sacm23/xmi/invalid/modularity-findings.sacm.xmi tolerant-validate: warning SACM-PKG-001 [SACM23-VAL-014, clause 11.5]: ArgumentPackageBinding "b2" has the participantPackage "b", of the kind ArgumentPackageBinding: a binding binds packages, not bindings
+crates/sacm/tests/data/sacm23/xmi/invalid/modularity-findings.sacm.xmi tolerant-validate: warning SACM-PKG-001 [SACM23-VAL-013, clause 11.6]: ArgumentPackageInterface "i" contains Claim "i_far", which cites "d", but §11.6 has an interface cite only elements within the package it implements, "p"
+crates/sacm/tests/data/sacm23/xmi/invalid/modularity-findings.sacm.xmi tolerant-validate: error SACM-PKG-001 [SACM23-VAL-013, clause 11.6]: ArgumentPackageInterface "i" contains Claim "i_plain", which is no citation (isCitation true and a citedElement), but §11.6 allows only citations in it
+crates/sacm/tests/data/sacm23/xmi/invalid/modularity-findings.sacm.xmi tolerant-validate: warning SACM-PKG-002 [SACM23-VAL-023, clause 11.6]: ArgumentPackageInterface "j" implements the ArgumentPackage "q" but does not reside inside it, as §11.6 says an interface does
+crates/sacm/tests/data/sacm23/xmi/invalid/reference-cross-document-href.sacm.xmi strict-read: (none)
+crates/sacm/tests/data/sacm23/xmi/invalid/reference-cross-document-href.sacm.xmi strict-validate: (none)
+crates/sacm/tests/data/sacm23/xmi/invalid/reference-cross-document-href.sacm.xmi tolerant-read: (none)
 crates/sacm/tests/data/sacm23/xmi/invalid/reference-cross-document-href.sacm.xmi tolerant-validate: (none)
 crates/sacm/tests/data/sacm23/xmi/invalid/root-claim-invalid-root.sacm.xmi strict-read: refusal the root element "sacm:Claim" is not a SACM package at line 2, column 1
 crates/sacm/tests/data/sacm23/xmi/invalid/root-claim-invalid-root.sacm.xmi tolerant-read: refusal the root element "sacm:Claim" is not a SACM package at line 2, column 1

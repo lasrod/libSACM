@@ -8,11 +8,13 @@ use std::slice;
 use super::EditError;
 use super::plan::{Plan, Value};
 use super::set::{changing, edited};
-use crate::model::{Document, ElementId, ElementKind, LangString, ReferenceEnd, SacmElement};
+use crate::model::{Document, ElementId, ElementKind, Href, LangString, ReferenceEnd, SacmElement};
 
 /// Replaces the ids one reference end of an element holds (SACM 2.3 §8.2,
 /// §11.2, §11.9, §11.10, §11.12, §11.13), in the order given, repeats
-/// included; [`clear`](Self::clear) empties the end.
+/// included; [`clear`](Self::clear) empties the end. The end then holds
+/// exactly these ids and no cross-document reference
+/// ([`SacmElement::hrefs`](crate::model::SacmElement::hrefs), ADR 0040 D7).
 ///
 /// The ids must fit the end's bounds: `source` needs at least one, `target`
 /// and an interface's `implements` exactly one, a binding's
@@ -105,7 +107,7 @@ impl SetReferences {
     }
 
     /// Empties the end `end` of `element`: the same as [`new`](Self::new)
-    /// with no ids.
+    /// with no ids: it removes the cross-document references too.
     #[must_use]
     pub fn clear(element: impl Into<ElementId>, end: ReferenceEnd) -> Self {
         Self {
@@ -137,16 +139,19 @@ impl SetReferences {
     pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
         let found = owner(document, &self.element, self.end)?;
         let held = found.references(self.end);
-        check_bounds(self.end, &self.ids)?;
+        // The end then holds these ids and no `href` (ADR 0040 D7).
+        check_bounds(self.end, &self.ids, &[])?;
         check_targets(document, found.kind(), &[(self.end, &self.ids, held)])?;
         // Setting the ids held still changes the element if it holds the end
-        // as a preserved attribute too, which the set replaces (ADR 0033).
+        // as a preserved attribute too, which the set replaces (ADR 0033),
+        // or `href`s, which the set removes.
         let replaces = !self.ids.is_empty()
             && document.has_preserved_attribute(&self.element, self.end.name());
+        let removes = !found.hrefs(self.end).is_empty();
         Ok(changing(
             &self.element,
-            held != self.ids.as_slice() || replaces,
-            Value::References(self.end, self.ids.clone()),
+            held != self.ids.as_slice() || replaces || removes,
+            Value::Replaced(self.end, self.ids.clone()),
         ))
     }
 }
@@ -236,7 +241,7 @@ impl AddReference {
         let held = found.references(self.end);
         let mut ids = held.to_vec();
         ids.push(self.id.clone());
-        check_bounds(self.end, &ids)?;
+        check_bounds(self.end, &ids, found.hrefs(self.end))?;
         check_targets(
             document,
             found.kind(),
@@ -331,7 +336,8 @@ impl RemoveReference {
 
     /// Runs every check of the operation, and returns what it changes.
     pub(super) fn plan<'o>(&'o self, document: &Document) -> Result<Plan<'o>, EditError> {
-        let held = owner(document, &self.element, self.end)?.references(self.end);
+        let found = owner(document, &self.element, self.end)?;
+        let held = found.references(self.end);
         if !held.contains(&self.id) {
             return Err(EditError::ReferenceNotHeld {
                 end: self.end.name(),
@@ -339,7 +345,7 @@ impl RemoveReference {
             });
         }
         let ids: Vec<ElementId> = held.iter().filter(|id| **id != self.id).cloned().collect();
-        check_bounds(self.end, &ids)?;
+        check_bounds(self.end, &ids, found.hrefs(self.end))?;
         Ok(Plan::Set {
             element: &self.element,
             value: Value::References(self.end, ids),
@@ -411,20 +417,28 @@ pub(super) fn check_expressions<'v>(
     )
 }
 
-/// The number of distinct ids of `ids`: what a lower bound counts (ADR 0039
-/// D3), so that `["a", "a"]` is one participant package.
-pub(super) fn distinct_count(ids: &[ElementId]) -> usize {
-    ids.iter().collect::<BTreeSet<_>>().len()
+/// The number of distinct values an end holding `ids` and `hrefs` holds:
+/// what a lower bound counts (ADR 0039 D3, ADR 0040 D5), so that
+/// `["a", "a"]` is one participant package. An id and an `href` are never
+/// the same value, and `href`s are compared as strings.
+pub(super) fn distinct_count(ids: &[ElementId], hrefs: &[Href]) -> usize {
+    ids.iter().collect::<BTreeSet<_>>().len() + hrefs.iter().collect::<BTreeSet<_>>().len()
 }
 
-/// Refuses the ids `ids` on `end` when they are fewer
+/// Refuses the ids `ids`, beside the cross-document references `hrefs` the
+/// end keeps, on `end` when they are fewer
 /// ([`EditError::TooFewReferences`]) or more
 /// ([`EditError::TooManyReferences`]) than its bounds allow. The lower bound
-/// counts the distinct ids and the upper bound every id (ADR 0039 D3); the
-/// two counts differ only for an end whose lower bound is above 1.
-pub(super) fn check_bounds(end: ReferenceEnd, ids: &[ElementId]) -> Result<(), EditError> {
+/// counts the distinct values and the upper bound every value, ids and
+/// `href`s alike (ADR 0039 D3, ADR 0040 D5); the two counts differ only for
+/// an end whose lower bound is above 1.
+pub(super) fn check_bounds(
+    end: ReferenceEnd,
+    ids: &[ElementId],
+    hrefs: &[Href],
+) -> Result<(), EditError> {
     let required = end.lower_bound();
-    let distinct = distinct_count(ids);
+    let distinct = distinct_count(ids, hrefs);
     if distinct < required {
         return Err(EditError::TooFewReferences {
             end: end.name(),
@@ -432,10 +446,11 @@ pub(super) fn check_bounds(end: ReferenceEnd, ids: &[ElementId]) -> Result<(), E
             required,
         });
     }
+    let given = ids.len() + hrefs.len();
     match end.upper_bound() {
-        Some(allowed) if ids.len() > allowed => Err(EditError::TooManyReferences {
+        Some(allowed) if given > allowed => Err(EditError::TooManyReferences {
             end: end.name(),
-            given: ids.len(),
+            given,
             allowed,
         }),
         _ => Ok(()),
@@ -505,4 +520,58 @@ pub(super) fn check_targets(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SetReferences;
+    use crate::edit;
+    use crate::model::{ElementId, ReferenceEnd};
+    use crate::xmi::{self, ReadOptions};
+
+    /// Setting the ids an end holds still changes the element when the end
+    /// also holds hrefs, which the set removes (ADR 0040 D7).
+    #[test]
+    fn setting_the_held_ids_removes_the_hrefs_and_changes_the_element() {
+        let input =
+            br#"<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="case">
+  <name content="case"/>
+  <argumentPackage xmi:id="p"><name content="p"/></argumentPackage>
+  <argumentPackage xmi:id="q"><name content="q"/></argumentPackage>
+  <argumentPackage xmi:type="sacm:ArgumentPackageBinding" xmi:id="b" participantPackage="p q">
+    <name content="b"/>
+  </argumentPackage>
+</sacm:AssuranceCasePackage>"#;
+        let mut doc = match xmi::read(input, &ReadOptions::default()) {
+            Ok(output) => output.into_document(),
+            Err(error) => panic!("the input does not read: {error}"),
+        };
+        let end = ReferenceEnd::ParticipantPackage;
+        let unchanged = edit::apply(&mut doc, SetReferences::new("b", end, ["p", "q"]));
+        assert!(
+            unchanged.is_ok_and(|mutation| mutation.changed_ids().is_empty()),
+            "setting the held ids with no href changed the element"
+        );
+        let with_href = String::from_utf8_lossy(input).replacen(
+            "<name content=\"b\"/>",
+            "<name content=\"b\"/><participantPackage href=\"o.xmi#x\"/>",
+            1,
+        );
+        let with_href = with_href.replacen(" participantPackage=\"p q\"", "", 1).replacen(
+            "<participantPackage href",
+            "<participantPackage xmi:idref=\"p\"/><participantPackage xmi:idref=\"q\"/><participantPackage href",
+            1,
+        );
+        let mut doc = match xmi::read(with_href.as_bytes(), &ReadOptions::default()) {
+            Ok(output) => output.into_document(),
+            Err(error) => panic!("the input with an href does not read: {error}"),
+        };
+        let mutation = match edit::apply(&mut doc, SetReferences::new("b", end, ["p", "q"])) {
+            Ok(mutation) => mutation,
+            Err(error) => panic!("the set was refused: {error}"),
+        };
+        assert_eq!(mutation.changed_ids(), [ElementId::from("b")]);
+        assert!(doc.get("b").is_some_and(|b| b.hrefs(end).is_empty()));
+    }
 }

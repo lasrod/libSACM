@@ -432,6 +432,66 @@ ptc/22-03-13 gives Category an end `category : Category [0..*]`. formal/23-05-08
 
 **Suggested resolution.** State the end in §10.8's Associations, with its direction.
 
+## D22 — §9.3's Constraints sentence and its OCL name different terminology sub-packages
+
+*Found by libSACM (M5 design, 2026-11-18).*
+
+formal/23-05-08 §9.3 (p. 24) says an AssuranceCasePackageInterface is "only allowed to contain the following: AssuranceCasePackageInterface, ArgumentPackageInterfaces, ArtifactPackageInterfaces, and TerminologyPackages", but its OCL reads `tp.oclIsTypeOf(Terminology::TerminologyPackageInterface)`. The clause's description agrees with the OCL. The same clause also says, editorially, "An AssuranceCasePackage may declare one or more ArtifactPackageInterfaces", where its siblings name their own interface class.
+
+**This crate** follows the OCL (SACM23-VAL-015; the maintainer, 2026-11-18).
+
+**Suggested resolution.** Write "TerminologyPackageInterfaces" in the sentence, and "AssuranceCasePackageInterfaces" in the editorial one.
+
+## D23 — The binding content rules contradict the bindings' Semantics
+
+*Found by libSACM (M5 design, 2026-11-18).*
+
+§11.5's OCL (`self.argumentationElement->forAll(e|e.isCitation = true and e.citedElement <> null`, malformed, D3) and §12.4's Constraint ("ArtifactPackageBindings must only contain ArtifactAssetRelationships with source and target Artifacts, with isCitation = true …") admit only citations, or only relationships. §11.1 ("it may contain additional argument structures to provide the rationale of the binding"), the Semantics of §11.5 and §12.4, §9.4 and Annex E Figure E6 (informative) give a binding links of its own and cited assets.
+
+**This crate** allows a binding's relationships and requires its other content to be citations (D-IFACE-CITE, SACM23-VAL-013).
+
+**Suggested resolution.** State one content rule per binding class that admits citations and the family's relationships.
+
+## D24 — §12.5's Constraint names Artifacts where its Semantics name ArtifactAssets
+
+*Found by libSACM (M5 design, 2026-11-18).*
+
+§12.5 (p. 47) says an ArtifactPackageInterface is "only allowed to contain Artifacts with +isCitation=true citing ArtifactAssets", while its Semantics say it "refers to ArtifactAssets". §11.6's Constraint ("ArgumentPackageInterfaces are only allowed with isCitation=true …") makes the interface itself the subject, where its content is meant.
+
+**This crate** reads both as rules on the interface's content (SACM23-VAL-013).
+
+**Suggested resolution.** Write "ArtifactAssets", and make the content the subject in §11.6.
+
+## D25 — §9.2 and §9.3 state the interface association in opposite directions
+
+*Found by libSACM (M5 design, 2026-11-18).*
+
+§9.2 (p. 23) describes `interface` as "a number of optional assurance case package interfaces that the current package may implement", while §9.3 (p. 24) says `implements` is "the AssuranceCasePackage that the AssuranceCasePackageInterface declares". ptc/22-03-13 models two separate associations.
+
+**This crate** keeps both ends as written and never syncs them (ADR 0039 D2).
+
+**Suggested resolution.** State one direction, and say whether the two ends are one association.
+
+## D26 — §10.6 has no Associations block
+
+*Found by libSACM (M5 design, 2026-11-18).*
+
+§10.6 (p. 29) uses `participantPackage` in its Constraint and OCL, but declares no association. The end is in ptc/22-03-13 only (`TerminologyPackageBinding::participantPackage`, l. 1148, `[2..*]`); the metamodel inventory records it.
+
+**This crate** follows the model (SACM23-TERM-008).
+
+**Suggested resolution.** Add the Associations block.
+
+## D27 — §9.4's participant sentence is garbled (editorial)
+
+*Found by libSACM (M5 design, 2026-11-18).*
+
+§9.4 (p. 25) says participants are those "that are external to Packages to the AssuranceCasePackage that contains this AssuranceCasePackageBinding".
+
+**This crate** does not check where participants reside (D-SEV).
+
+**Suggested resolution.** Rewrite the sentence.
+
 ## Related
 
 - [GSN / SACM metamodel gaps](sacm-gsn-metamodel-gaps.md) — the GSN v3 side, for the SCSC ACWG.

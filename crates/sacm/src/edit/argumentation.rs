@@ -1196,7 +1196,7 @@ pub(super) fn plan_referencing<'o>(
 ) -> Result<Plan<'o>, EditError> {
     let (id, generated) = checked_place(document, kind, parent, id)?;
     for &(end, targets) in references {
-        check_bounds(end, targets)?;
+        check_bounds(end, targets, &[])?;
     }
     // The name's expression comes after the element's own ends, in each
     // check (SACM23-BASE-009).

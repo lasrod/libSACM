@@ -177,7 +177,7 @@ templates! {
         "the element {element:?} in the root element {container:?} is in reference form, a proxy of an element of the class {class}, which is not read in this release";
     XMI_007_HREF = XMI_EXTERNAL_HREF, Unread, "SACM-XMI-007/href",
         [Text("href"), Text("element"), Text("row")],
-        "the href {href:?} of the reference element {element:?} names no element of this document by its id; only href=\"#id\" is read in this release";
+        "the href {href:?} of the reference element {element:?} is not read in this release";
     XMI_012_NAME_ATTRIBUTE = XMI_LEGACY_SHAPE, Read("LegacyShape"), "SACM-XMI-012/name-attribute",
         [Text("class"), Text("id")],
         "the name of the {class} {id:?} is given as the attribute \"name\"";
@@ -396,6 +396,9 @@ templates! {
     MULT_001_MISSING = MULTIPLICITY_VIOLATION, Diagnostic, "SACM-MULT-001/missing",
         [Text("class"), Text("id"), Text("property"), Text("type"), Text("multiplicity")],
         "{class} {id:?} has no {property} ({property}:{type}[{multiplicity}])";
+    MULT_001_TOO_FEW = MULTIPLICITY_VIOLATION, Diagnostic, "SACM-MULT-001/too-few",
+        [Text("class"), Text("id"), Count("count"), Text("property"), Text("type"), Text("multiplicity")],
+        "{class} {id:?} has {count} distinct {property} ({property}:{type}[{multiplicity}])";
     MULT_001_TOO_MANY = MULTIPLICITY_VIOLATION, Diagnostic, "SACM-MULT-001/too-many",
         [Text("class"), Text("id"), Count("count"), Text("property"), Text("type"), Text("multiplicity")],
         "{class} {id:?} has {count} {property}s ({property}:{type}[{multiplicity}])";
@@ -447,6 +450,27 @@ templates! {
     PKG_001_MIXED_CONTENT = PACKAGE_CONTENT_INVALID, Diagnostic, "SACM-PKG-001/mixed-content",
         [Text("class"), Text("id"), Text("nested_class"), Text("nested_id"), Text("child_class"), Text("child_id")],
         "{class} {id:?} nests the {nested_class} {nested_id:?}, so it may contain only ArgumentPackages, but it also contains {child_class} {child_id:?}";
+    PKG_001_NOT_A_CITATION = PACKAGE_CONTENT_INVALID, Diagnostic, "SACM-PKG-001/not-a-citation",
+        [Text("class"), Text("id"), Text("child_class"), Text("child_id"), Text("clause")],
+        "{class} {id:?} contains {child_class} {child_id:?}, which is no citation (isCitation true and a citedElement), but §{clause} allows only citations in it";
+    PKG_001_NOT_A_CITATION_OR_RELATIONSHIP = PACKAGE_CONTENT_INVALID, Diagnostic, "SACM-PKG-001/not-a-citation-or-relationship",
+        [Text("class"), Text("id"), Text("child_class"), Text("child_id"), Text("clause"), Text("relationship")],
+        "{class} {id:?} contains {child_class} {child_id:?}, which is no citation (isCitation true and a citedElement), but §{clause} allows only citations and {relationship}s in it";
+    PKG_001_CITED_KIND = PACKAGE_CONTENT_INVALID, Diagnostic, "SACM-PKG-001/cited-kind",
+        [Text("class"), Text("id"), Text("child_class"), Text("child_id"), Text("target"), Text("target_class"), Text("clause"), Text("expected")],
+        "{class} {id:?} contains {child_class} {child_id:?}, which cites {target:?} of the kind {target_class}, but §{clause} has an interface cite only {expected}s";
+    PKG_001_CITED_OUTSIDE = PACKAGE_CONTENT_INVALID, Diagnostic, "SACM-PKG-001/cited-outside",
+        [Text("class"), Text("id"), Text("child_class"), Text("child_id"), Text("target"), Text("clause"), Text("package")],
+        "{class} {id:?} contains {child_class} {child_id:?}, which cites {target:?}, but §{clause} has an interface cite only elements within the package it implements, {package:?}";
+    PKG_001_NOT_AN_INTERFACE = PACKAGE_CONTENT_INVALID, Diagnostic, "SACM-PKG-001/not-an-interface",
+        [Text("class"), Text("id"), Text("child_class"), Text("child_id"), Text("role"), Text("expected")],
+        "{class} {id:?} contains {child_class} {child_id:?} in its {role}, but §9.3 allows only {expected}s there";
+    PKG_001_BINDING_PARTICIPANT = PACKAGE_CONTENT_INVALID, Diagnostic, "SACM-PKG-001/binding-participant",
+        [Text("class"), Text("id"), Text("target"), Text("target_class")],
+        "{class} {id:?} has the participantPackage {target:?}, of the kind {target_class}: a binding binds packages, not bindings";
+    PKG_002_OUTSIDE_IMPLEMENTED_PACKAGE = INTERFACE_PLACEMENT, Diagnostic, "SACM-PKG-002/outside-implemented-package",
+        [Text("class"), Text("id"), Text("package_class"), Text("package"), Text("clause")],
+        "{class} {id:?} implements the {package_class} {package:?} but does not reside inside it, as §{clause} says an interface does";
     ID_002_NOT_AN_NCNAME = ID_INVALID, Diagnostic, "SACM-ID-002/not-an-ncname",
         [Text("class"), Text("id")],
         "{class} {id:?} has an id that is not an NCName (XMI 2.5.1 §7.6.1: xmi:id is an xsd:ID)";
@@ -668,7 +692,7 @@ templates! {
         "the element {element:?} in the root element {container:?} is in reference form, a proxy of an element of the class {class}, which is not read in this release, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses; {row} reads it";
     XMI_007_HREF_KEPT = XMI_EXTERNAL_HREF, Diagnostic, "SACM-XMI-007/href-kept",
         [Text("href"), Text("element"), Text("holder_class"), Text("holder_id"), Text("row")],
-        "the href {href:?} of the reference element {element:?} names no element of this document by its id; only href=\"#id\" is read in this release, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses; {row} reads it";
+        "the href {href:?} of the reference element {element:?} is not read in this release, so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses; {row} reads it";
     XMI_005_MISSING_TYPE_KEPT = XMI_MISSING_TYPE, Diagnostic, "SACM-XMI-005/missing-type-kept",
         [Text("element"), Text("container"), Text("role"), Text("type"), Text("holder_class"), Text("holder_id")],
         "the element {element:?} in the element {container:?} has no type, and its role {role} has the abstract type {type}, so its class is not known (XMI 2.5.1 §7.6.3), so it is kept as preserved content of the {holder_class} {holder_id:?}, which a tolerant write writes back and a strict write refuses";
@@ -821,13 +845,14 @@ mod tests {
         // SACM-XMI-014/expression-lang-string (SACM23-BASE-009); slice 0064
         // added 102 diagnostic templates (LIB-API-018); slice 0067 removed
         // the four refusals of unread kinds and ends and their four kept
-        // forms (ADR 0035 amendment 1).
-        assert_eq!(count, 196, "LIB-API-017: the number of templates");
+        // forms (ADR 0035 amendment 1); slice 0068 added eight diagnostic
+        // templates (SACM23-VAL-013, -014, -015, -023).
+        assert_eq!(count, 204, "LIB-API-017: the number of templates");
         let diagnostics = TEMPLATES
             .iter()
             .filter(|template| template.carrier == Carrier::Diagnostic)
             .count();
-        assert_eq!(diagnostics, 98, "LIB-API-018: the diagnostic templates");
+        assert_eq!(diagnostics, 106, "LIB-API-018: the diagnostic templates");
         assert!(!is_template_id("SACM-XML-001"));
         assert!(!is_template_id("SACM-xml-001/a"));
         assert!(!is_template_id("SACM-XML-01/a"));

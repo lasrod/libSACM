@@ -16,9 +16,11 @@
 //! TerminologyPackage's `terminologyElement` and an AssuranceCasePackage's
 //! `argumentPackage`, which admit no AssuranceCasePackage, they are kept whole
 //! as preserved content of the holder. The ends are kept as written and never
-//! synced (Q1); a missing `implements`, fewer than two participants and the
-//! §9.3 content rule (SACM23-VAL-015, slice 0068) give no finding in this
-//! slice; a lower bound counts distinct ids (Q7).
+//! synced (Q1); since slice 0068 a missing `implements` and fewer than two
+//! participants each give one SACM-MULT-001 (SACM23-VAL-014), and a
+//! sub-package of an interface that is not an interface one SACM-PKG-001
+//! (the §9.3 OCL, SACM23-VAL-015); an `AssuranceCasePackageInterface` has no
+//! placement rule (SACM23-VAL-023); a lower bound counts distinct ids (Q7).
 //!
 //! Expected locations are marked in the input with [`MARK`] (U+2038), which
 //! the test removes before reading. Inputs end lines with LF only.
@@ -44,8 +46,6 @@ use sacm::model::{Flag, LangString, ReferenceEnd};
 
 // The creates of slice 0067 (SACM23-AC-002, SACM23-AC-003).
 use sacm::edit::{CreateAssuranceCasePackageBinding, CreateAssuranceCasePackageInterface};
-
-mod common;
 
 const AC_002: &str = "SACM23-AC-002";
 const AC_003: &str = "SACM23-AC-003";
@@ -425,6 +425,31 @@ fn expected(code: Code, row: &str, clause: &str, affected: &[&str]) -> Finding {
         None,
         list(affected),
     )
+}
+
+/// One validate finding with the code, severity, row, clause and affected
+/// ids given: for the findings of slice 0068 (SACM23-VAL-014, -015, -023).
+fn finding_of(
+    code: Code,
+    severity: Severity,
+    row: &str,
+    clause: &str,
+    affected: &[&str],
+) -> Finding {
+    (
+        code,
+        severity,
+        row.to_owned(),
+        Some(clause.to_owned()),
+        None,
+        list(affected),
+    )
+}
+
+/// `found`, sorted, for comparing findings whatever their order.
+fn sorted(mut found: Vec<Finding>) -> Vec<Finding> {
+    found.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
+    found
 }
 
 /// Asserts that a strict write of `doc` is refused as `Invalid` and that a
@@ -823,7 +848,11 @@ fn four_roles() -> String {
 }
 
 /// Asserts that `holder` in `doc` holds the children of [`four_roles`],
-/// each of its kind, and that `validate` gives no finding.
+/// each of its kind, and that `validate` gives the findings of slice 0068
+/// only: the SACM-PKG-002 Warning of each of `iap`, `iar` and `itp`, which
+/// reside outside the package they implement (SACM23-VAL-023), and, when
+/// `holder` is an `AssuranceCasePackageInterface`, the SACM-PKG-001 Error
+/// of its plain ArgumentPackage `iplain` (the §9.3 OCL, SACM23-VAL-015).
 fn assert_holds_four_roles(row: &str, what: &str, doc: &Document, holder: &str) {
     assert_eq!(
         children(row, doc, holder)
@@ -840,10 +869,33 @@ fn assert_holds_four_roles(row: &str, what: &str, doc: &Document, holder: &str) 
         .map(|(id, kind)| (id.to_owned(), kind)),
         "{row}: {what}: the children in the four roles"
     );
+    let placement = |interface: &str, package: &str, clause: &str| {
+        finding_of(
+            Code::new("SACM-PKG-002"),
+            Severity::Warning,
+            "SACM23-VAL-023",
+            clause,
+            &[interface, package],
+        )
+    };
+    let mut want = vec![
+        placement("iap", "p", "11.6"),
+        placement("iar", "arts", "12.5"),
+        placement("itp", "terms", "10.5"),
+    ];
+    if element(row, doc, holder).kind() == ElementKind::AssuranceCasePackageInterface {
+        want.push(finding_of(
+            Code::PACKAGE_CONTENT_INVALID,
+            Severity::Error,
+            "SACM23-VAL-015",
+            "9.3",
+            &[holder, "iplain"],
+        ));
+    }
     assert_eq!(
-        findings(doc),
-        [],
-        "{row}: {what}: validate reports a finding in this slice"
+        sorted(findings(doc)),
+        sorted(want),
+        "{row}: {what}: validate does not give the findings of slice 0068 alone"
     );
 }
 
@@ -928,8 +980,8 @@ fn sacm23_ac_002_reads_typed_in_every_role_and_as_a_root() {
         kind.is_kind_of(ElementKind::AssuranceCasePackage),
         "{row}: an AssuranceCasePackageInterface is no AssuranceCasePackage"
     );
-    // Its children in all four roles; a plain ArgumentPackage child reads
-    // with no finding in this slice (SACM23-VAL-015 is slice 0068).
+    // Its children in all four roles; a plain ArgumentPackage child reads,
+    // and `validate` reports it (SACM23-VAL-015, slice 0068).
     let what = "an interface holding a child in each role";
     let doc = read_ok(row, what, &i_in_a(implementing, &four_roles()));
     assert_holds_four_roles(row, what, &doc, "i");
@@ -1308,8 +1360,14 @@ fn sacm23_ac_002_missing_implements_reads_and_writes_back_unchanged() {
     let doc = read_ok(row, what, &i_in_a("", ""));
     assert_eq!(
         findings(&doc),
-        [],
-        "{row}: {what}: validate reports a finding in this slice"
+        [finding_of(
+            Code::MULTIPLICITY_VIOLATION,
+            Severity::Error,
+            "SACM23-VAL-014",
+            "9.3",
+            &["i"]
+        )],
+        "{row}: {what}: validate does not give one SACM-MULT-001 missing (SACM23-VAL-014)"
     );
     for mode in MODES {
         let text = round_trip(row, what, &doc, mode);
@@ -2494,8 +2552,14 @@ fn sacm23_ac_003_too_few_participants_read_and_write_back() {
             .collect();
         assert_eq!(
             found,
-            [],
-            "{row}: {what}: validate reports a finding in this slice"
+            [finding_of(
+                Code::MULTIPLICITY_VIOLATION,
+                Severity::Error,
+                "SACM23-VAL-014",
+                "9.4",
+                &["b"]
+            )],
+            "{row}: {what}: validate does not give one SACM-MULT-001 (SACM23-VAL-014)"
         );
         for mode in MODES {
             let text = round_trip(row, what, &doc, mode);
@@ -2541,9 +2605,17 @@ fn sacm23_ac_003_dangling_and_wrongly_typed_participants() {
             ),
         ),
     );
+    // No reference finding; since slice 0068 the binding b2 among them gives
+    // one SACM-PKG-001 Warning (D-BIND-PART, SACM23-VAL-014).
     assert_eq!(
         findings(&doc),
-        [],
+        [finding_of(
+            Code::PACKAGE_CONTENT_INVALID,
+            Severity::Warning,
+            "SACM23-VAL-014",
+            "9.4",
+            &["b", "b2"]
+        )],
         "{row}: participants of every AssuranceCasePackage kind"
     );
     for (target, class) in [
@@ -2578,45 +2650,6 @@ fn sacm23_ac_003_dangling_and_wrongly_typed_participants() {
             "{row}: {what}: the end's type and the target's class"
         );
     }
-}
-
-#[test]
-fn sacm23_ac_003_href_participants_stay_as_today() {
-    let row = AC_003;
-    let what = "a cross-document participant";
-    let (input, marks) = marked(&b_in_case(
-        "",
-        &format!(
-            "<participantPackage xmi:idref=\"a\"/><participantPackage {MARK}href=\"other.xmi#c\"/>"
-        ),
-    ));
-    let error = refused(row, what, &input);
-    assert!(
-        matches!(&error, ReadError::Unsupported { location, .. } if *location == marks.first().copied())
-            && error
-                .to_string()
-                .ends_with("(a limit of this version; SACM23-XMI-027 reads it)"),
-        "{row}: {what}: not Unsupported at the href naming SACM23-XMI-027: {error}"
-    );
-    assert_eq!(
-        error.code().as_str(),
-        common::unsupported_code(&error.to_string()),
-        "{row}: {what}: the code is not SACM-XMI-007"
-    );
-    let output = tolerant(row, what, &input);
-    assert_eq!(
-        output
-            .diagnostics()
-            .iter()
-            .map(|one| (one.code(), one.severity(), one.location()))
-            .collect::<Vec<_>>(),
-        [(Code::XMI_EXTERNAL_HREF, Severity::Warning, error.location())],
-        "{row}: {what}: a tolerant read does not keep the href with one SACM-XMI-007 Warning"
-    );
-    assert!(
-        element(row, output.document(), "b").has_preserved_content(),
-        "{row}: {what}: the href is not kept"
-    );
 }
 
 #[test]

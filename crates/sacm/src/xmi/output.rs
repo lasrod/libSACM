@@ -183,21 +183,22 @@ fn push_start_tag(out: &mut String, depth: usize, planned: &Planned<'_>) -> Vec<
     as_elements
 }
 
-/// The ends of `element` that hold an id and that it also holds, as
-/// preserved content, as an attribute of the same name, which held no id:
-/// written in the element form, so that no start tag carries one attribute
-/// twice (ADR 0033).
+/// The ends of `element` written in the element form, in
+/// [`ReferenceEnd::ALL`] order: each that holds a cross-document reference,
+/// which only an element can carry (ADR 0040 D4), and each that holds an id
+/// and that the element also holds, as preserved content, as an attribute of
+/// the same name, which held no id, so that no start tag carries one
+/// attribute twice (ADR 0033).
 fn ends_as_elements(element: SacmElement<'_>) -> Vec<ReferenceEnd> {
-    let Some(preserved) = element.preserved() else {
-        return Vec::new();
-    };
+    let preserved = element.preserved();
     ReferenceEnd::ALL
         .iter()
         .copied()
         .filter(|end| {
             !end.is_derived()
-                && !element.references(*end).is_empty()
-                && preserved.has_unqualified(end.name())
+                && (!element.hrefs(*end).is_empty()
+                    || (!element.references(*end).is_empty()
+                        && preserved.is_some_and(|held| held.has_unqualified(end.name()))))
         })
         .collect()
 }
@@ -218,8 +219,9 @@ fn push_preserved_attributes(out: &mut String, preserved: Option<&Preserved>) {
 }
 
 /// Writes each id that an end of `ends` of `element` holds as a reference
-/// element `<end xmi:idref="…" />` on its own line at `depth` (XMI 2.5.1
-/// rule 2l), in order.
+/// element `<end xmi:idref="…" />`, then each cross-document reference as
+/// `<end href="…" />`, each on its own line at `depth` (XMI 2.5.1 rule 2l;
+/// ADR 0040 D4), in order.
 fn push_reference_elements(
     out: &mut String,
     depth: usize,
@@ -227,12 +229,22 @@ fn push_reference_elements(
     ends: &[ReferenceEnd],
 ) {
     for &end in ends {
+        // The ids first, then the `href`s: how a file interleaved them is
+        // not kept (ADR 0040 D3, D-ORDER).
         for target in element.references(end) {
             indent(out, depth);
             out.push('<');
             out.push_str(end.name());
             push_attribute_name(out, "idref");
             escape_into(out, target.as_str());
+            out.push_str("\" />\n");
+        }
+        for href in element.hrefs(end) {
+            indent(out, depth);
+            out.push('<');
+            out.push_str(end.name());
+            out.push_str(" href=\"");
+            escape_into(out, href.as_str());
             out.push_str("\" />\n");
         }
     }

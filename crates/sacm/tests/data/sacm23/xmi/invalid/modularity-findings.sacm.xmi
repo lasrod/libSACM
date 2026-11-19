@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SACM23-VAL-013, SACM23-VAL-014, SACM23-VAL-015 and SACM23-VAL-023: each finding of the package interface and binding rules. Hand-written; no third-party content. -->
+<sacm:AssuranceCasePackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="case">
+  <name lang="en" content="Findings"/>
+  <argumentPackage xmi:id="p" interface="i">
+    <name lang="en" content="P"/>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="c"><name lang="en" content="C"/></argumentElement>
+    <argumentElement xmi:type="sacm:ArgumentPackageInterface" xmi:id="i" implements="p">
+      <name lang="en" content="I"/>
+      <argumentElement xmi:type="sacm:Claim" xmi:id="i_cited" isCitation="true" citedElement="c"><name lang="en" content="C"/></argumentElement>
+      <argumentElement xmi:type="sacm:Claim" xmi:id="i_plain"><name lang="en" content="Plain"/></argumentElement>
+      <argumentElement xmi:type="sacm:Claim" xmi:id="i_far" isCitation="true" citedElement="d"><name lang="en" content="D"/></argumentElement>
+    </argumentElement>
+  </argumentPackage>
+  <argumentPackage xmi:id="q">
+    <name lang="en" content="Q"/>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="d"><name lang="en" content="D"/></argumentElement>
+  </argumentPackage>
+  <argumentPackage xmi:type="sacm:ArgumentPackageInterface" xmi:id="j" implements="q"><name lang="en" content="J"/></argumentPackage>
+  <argumentPackage xmi:type="sacm:ArgumentPackageInterface" xmi:id="k"><name lang="en" content="K"/></argumentPackage>
+  <argumentPackage xmi:type="sacm:ArgumentPackageBinding" xmi:id="b" participantPackage="i i">
+    <name lang="en" content="B"/>
+    <argumentElement xmi:type="sacm:Claim" xmi:id="b_plain"><name lang="en" content="Plain"/></argumentElement>
+  </argumentPackage>
+  <argumentPackage xmi:type="sacm:ArgumentPackageBinding" xmi:id="b2" participantPackage="i b"><name lang="en" content="B2"/></argumentPackage>
+  <assuranceCasePackage xmi:type="sacm:AssuranceCasePackageInterface" xmi:id="ai" implements="case">
+    <name lang="en" content="AI"/>
+    <argumentPackage xmi:id="ap"><name lang="en" content="AP"/></argumentPackage>
+  </assuranceCasePackage>
+</sacm:AssuranceCasePackage>

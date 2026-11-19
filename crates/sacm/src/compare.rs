@@ -13,7 +13,8 @@
 //! `artifactElement` end of an `ArtifactGroup` (§11.2, §11.9, §11.10,
 //! §11.12, §11.13, §12.3), a package's `interface`, an interface's
 //! `implements` and a binding's `participantPackage` (§11.5, §11.6, §12.4,
-//! §12.5; ptc/22-03-13; the multi-valued `metaClaim`, `source`,
+//! §12.5; ptc/22-03-13), the cross-document references (`href`s) of each end
+//! ([`Difference::Hrefs`], ADR 0040; the multi-valued `metaClaim`, `source`,
 //! `referencedArtifactElement`, `argumentElement` and `artifactElement` in
 //! order, with repeats), its name, the
 //! `xmi:id` of its name
@@ -60,6 +61,13 @@
 //!     | Difference::ArtifactTargets { left, right, .. }
 //!     | Difference::Interfaces { left, right, .. }
 //!     | Difference::ParticipantPackages { left, right, .. } => {
+//!         let (mut left, mut right) = (left.clone(), right.clone());
+//!         left.sort();
+//!         right.sort();
+//!         left != right
+//!     }
+//!     // And the cross-document references (ADR 0040).
+//!     Difference::Hrefs { left, right, .. } => {
 //!         let (mut left, mut right) = (left.clone(), right.clone());
 //!         left.sort();
 //!         right.sort();
@@ -114,7 +122,7 @@ use std::fmt;
 use std::ops::ControlFlow;
 
 use crate::model::{
-    AssertionDeclaration, Compared, Document, ElementId, ElementKind, Flag, LangString,
+    AssertionDeclaration, Compared, Document, ElementId, ElementKind, Flag, Href, LangString,
     MultiLangString, ReferenceEnd, SacmElement, StringAttribute, Text, TextRole,
 };
 
@@ -539,6 +547,21 @@ pub enum Difference {
         /// The participant ids in the right document, in order.
         right: Vec<ElementId>,
     },
+    /// The cross-document references (`href`s) of one end of an element
+    /// differ, in order (SACM23-XMI-027, ADR 0040 D8;
+    /// [`SacmElement::hrefs`](crate::model::SacmElement::hrefs)). One per end
+    /// that differs, in [`ReferenceEnd::ALL`] order.
+    #[doc(alias = "href")]
+    Hrefs {
+        /// The element's id.
+        id: ElementId,
+        /// The end.
+        end: ReferenceEnd,
+        /// The `href`s in the left document, in order.
+        left: Vec<Href>,
+        /// The `href`s in the right document, in order.
+        right: Vec<Href>,
+    },
     /// The element has a different `name` (SACM 2.3 §8.6) on each side;
     /// `None` is a missing name.
     ///
@@ -870,6 +893,7 @@ impl Difference {
             | Self::Interfaces { id, .. }
             | Self::Implements { id, .. }
             | Self::ParticipantPackages { id, .. }
+            | Self::Hrefs { id, .. }
             | Self::Name { id, .. }
             | Self::NameId { id, .. }
             | Self::Content { id, .. }
@@ -1047,6 +1071,19 @@ impl fmt::Display for Difference {
                 Ids(left),
                 Ids(right)
             ),
+            Self::Hrefs {
+                id,
+                end,
+                left,
+                right,
+            } => write!(
+                f,
+                "element {:?} differs in the hrefs of {}: {} on the left, {} on the right",
+                id.as_str(),
+                end.name(),
+                Hrefs(left),
+                Hrefs(right)
+            ),
             Self::Name { id, left, right } => write!(
                 f,
                 "element {:?} differs in name: {} on the left, {} on the right",
@@ -1149,6 +1186,22 @@ impl fmt::Display for Ids<'_> {
                 f.write_str(", ")?;
             }
             write!(f, "{:?}", id.as_str())?;
+        }
+        f.write_str("]")
+    }
+}
+
+/// A list of `href`s for `Display`: each quoted, as [`Ids`] writes ids.
+struct Hrefs<'a>(&'a [Href]);
+
+impl fmt::Display for Hrefs<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("[")?;
+        for (position, href) in self.0.iter().enumerate() {
+            if position > 0 {
+                f.write_str(", ")?;
+            }
+            write!(f, "{:?}", href.as_str())?;
         }
         f.write_str("]")
     }
@@ -1374,7 +1427,8 @@ impl fmt::Display for Declaration {
 ///    [`Interfaces`](Difference::Interfaces),
 ///    [`Implements`](Difference::Implements),
 ///    [`ParticipantPackages`](Difference::ParticipantPackages),
-///    [`Name`](Difference::Name),
+///    [`Hrefs`](Difference::Hrefs), one per end in [`ReferenceEnd::ALL`]
+///    order, [`Name`](Difference::Name),
 ///    [`NameId`](Difference::NameId), [`Content`](Difference::Content),
 ///    [`ContentId`](Difference::ContentId),
 ///    [`ContentValueIds`](Difference::ContentValueIds),
@@ -1450,6 +1504,8 @@ enum Found<'a> {
     Flag(Flag, Compared<'a>, Compared<'a>),
     /// The targets of one of the element's reference ends differ.
     Reference(ReferenceEnd, Compared<'a>, Compared<'a>),
+    /// The `href`s of one of the element's reference ends differ.
+    Hrefs(ReferenceEnd, Compared<'a>, Compared<'a>),
     /// The element's name differs.
     Name(Compared<'a>, Compared<'a>),
     /// The `xmi:id` of the element's name differs.
@@ -1511,6 +1567,12 @@ impl Found<'_> {
                 }
             }
             Self::Reference(end, ours, theirs) => reference_difference(end, &ours, &theirs),
+            Self::Hrefs(end, ours, theirs) => Difference::Hrefs {
+                id: ours.id.clone(),
+                end,
+                left: ours.hrefs(end).to_vec(),
+                right: theirs.hrefs(end).to_vec(),
+            },
             Self::Name(ours, theirs) => Difference::Name {
                 id: ours.id.clone(),
                 left: ours.name.cloned(),
@@ -1758,6 +1820,12 @@ fn compare_element<'a>(
     for &end in ReferenceEnd::ALL.iter().filter(|end| !end.is_derived()) {
         if ours.references(end) != theirs.references(end) {
             sink(Found::Reference(end, ours, theirs))?;
+        }
+    }
+    // The cross-document references, after every end's ids (ADR 0040 D8).
+    for &end in ReferenceEnd::ALL {
+        if ours.hrefs(end) != theirs.hrefs(end) {
+            sink(Found::Hrefs(end, ours, theirs))?;
         }
     }
     if ours.name != theirs.name {

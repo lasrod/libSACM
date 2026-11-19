@@ -5,8 +5,8 @@ use std::fmt;
 
 use super::containment::{Role, role};
 use super::{
-    AbstractClass, AssertionDeclaration, ElementId, ElementKind, Flag, LangString, MultiLangString,
-    Preserved, ReferenceEnd, Revision,
+    AbstractClass, AssertionDeclaration, ElementId, ElementKind, Flag, Href, LangString,
+    MultiLangString, Preserved, ReferenceEnd, Revision,
 };
 
 /// A SACM 2.3 document: one interchange unit (what one SACM XMI file holds),
@@ -259,6 +259,12 @@ struct Node {
     /// document order (ADR 0026): only the ends that hold one, each once, in
     /// no particular order (readers look an end up), and never an empty list.
     references: Vec<(ReferenceEnd, Vec<ElementId>)>,
+    /// The cross-document references (`href`s) each reference end of the
+    /// element holds, as read and in document order (ADR 0040 D2): only the
+    /// ends that hold one, each once, in no particular order, and never an
+    /// empty list. They name no element of this document, so no id use
+    /// counts them.
+    hrefs: Vec<(ReferenceEnd, Vec<Href>)>,
     /// The handle of the containing element; `None` for a root.
     parent: Option<usize>,
     /// The element's index among its parent's children, or among the
@@ -719,6 +725,7 @@ impl Document {
             is_abstract: false,
             is_counter: false,
             references: Vec::new(),
+            hrefs: Vec::new(),
             parent,
             slot,
             role,
@@ -997,6 +1004,48 @@ impl Document {
                 release_holder(&mut used.holders, node);
             });
         }
+    }
+
+    /// Sets the cross-document references (`href`s) of the end `end` of the
+    /// element `owner` to `hrefs`, in order, repeats included, replacing what
+    /// it held; none removes them (ADR 0040 D2). The XMI reader sets them,
+    /// and [`SetReferences`](crate::edit::SetReferences) removes them.
+    /// Refuses, with the reason, an unknown owner, an owner whose kind has no
+    /// such end or the derived `expression`, and more than one value, ids and
+    /// `href`s together, on a single-valued end; on an error the document is
+    /// unchanged.
+    pub(crate) fn set_hrefs(
+        &mut self,
+        owner: &ElementId,
+        end: ReferenceEnd,
+        hrefs: Vec<Href>,
+    ) -> Result<(), String> {
+        let Some(&node) = self.index.get(owner) else {
+            return Err(format!("the document has no element {:?}", owner.as_str()));
+        };
+        let held = &self.nodes[node];
+        if end.is_derived() || !end.applies_to(held.kind) {
+            return Err(format!(
+                "the {} {:?} holds no href in {}",
+                held.kind,
+                owner.as_str(),
+                end.name()
+            ));
+        }
+        let ids = targets_of(&held.references, end).len();
+        if end.upper_bound() == Some(1) && ids + hrefs.len() > 1 {
+            return Err(format!(
+                "the element {:?} holds more than one value in its {}",
+                owner.as_str(),
+                end.name()
+            ));
+        }
+        let ends = &mut self.nodes[node].hrefs;
+        ends.retain(|(end_held, _)| *end_held != end);
+        if !hrefs.is_empty() {
+            ends.push((end, hrefs));
+        }
+        Ok(())
     }
 
     /// Derives the node's `expression` end from its name and texts again
@@ -1852,6 +1901,7 @@ impl Document {
             is_abstract,
             is_counter,
             references,
+            hrefs,
             // Replaced by the place in the capture.
             parent: _,
             // Set where the copy is added.
@@ -1877,6 +1927,7 @@ impl Document {
             is_abstract: *is_abstract,
             is_counter: *is_counter,
             references: references.clone(),
+            hrefs: hrefs.clone(),
             preserved: preserved.clone(),
             parent,
         }
@@ -1983,6 +2034,9 @@ impl Document {
                 is_abstract: captured.is_abstract,
                 is_counter: captured.is_counter,
                 references: Vec::new(),
+                // An href names an element of another document, which a copy
+                // never copies, so it is kept as it is (ADR 0040 D7).
+                hrefs: captured.hrefs.clone(),
                 parent: holder,
                 slot,
                 role,
@@ -2065,6 +2119,7 @@ struct Captured {
     is_abstract: bool,
     is_counter: bool,
     references: Vec<(ReferenceEnd, Vec<ElementId>)>,
+    hrefs: Vec<(ReferenceEnd, Vec<Href>)>,
     preserved: Option<Box<Preserved>>,
     /// The index of the captured element that contains it; `None` for a
     /// top.
@@ -2110,6 +2165,11 @@ impl<'s> CapturedElement<'s> {
     /// The ids its end `end` holds, in order.
     pub(crate) fn references(self, end: ReferenceEnd) -> &'s [ElementId] {
         targets_of(&self.captured.references, end)
+    }
+
+    /// The cross-document references its end `end` holds, in order.
+    pub(crate) fn hrefs(self, end: ReferenceEnd) -> &'s [Href] {
+        hrefs_of(&self.captured.hrefs, end)
     }
 
     /// Whether its name or a value of its texts is an `ExpressionLangString`
@@ -2533,6 +2593,8 @@ impl<'a> SacmElement<'a> {
     /// [`SetReferences`](crate::edit::SetReferences) sets it to an id that
     /// names an element (ADR 0029). See [`is_citation`](Self::is_citation)
     /// for an example.
+    ///
+    /// An `href` to another document is not here: see [`hrefs`](Self::hrefs).
     #[must_use]
     pub fn cited_element(self) -> Option<&'a ElementId> {
         self.references(ReferenceEnd::CitedElement).first()
@@ -2584,6 +2646,8 @@ impl<'a> SacmElement<'a> {
     /// [`SetFlag`](crate::edit::SetFlag) sets `isAbstract`, each
     /// independently (ADR 0029). See [`is_abstract`](Self::is_abstract) for
     /// an example.
+    ///
+    /// An `href` to another document is not here: see [`hrefs`](Self::hrefs).
     #[must_use]
     pub fn abstract_form(self) -> Option<&'a ElementId> {
         self.references(ReferenceEnd::AbstractForm).first()
@@ -2629,6 +2693,8 @@ impl<'a> SacmElement<'a> {
     /// assert!(document.get("m1").expect("the Claim was read").meta_claims().is_empty());
     /// # Ok::<(), sacm::xmi::ReadError>(())
     /// ```
+    ///
+    /// An `href` to another document is not here: see [`hrefs`](Self::hrefs).
     #[must_use]
     pub fn meta_claims(self) -> &'a [ElementId] {
         self.references(ReferenceEnd::MetaClaim)
@@ -2679,6 +2745,8 @@ impl<'a> SacmElement<'a> {
     /// assert!(doc.get("c1").expect("just created").sources().is_empty());
     /// # Ok::<(), sacm::edit::EditError>(())
     /// ```
+    ///
+    /// An `href` to another document is not here: see [`hrefs`](Self::hrefs).
     #[must_use]
     pub fn sources(self) -> &'a [ElementId] {
         if self.kind() == ElementKind::ArtifactAssetRelationship {
@@ -2722,6 +2790,8 @@ impl<'a> SacmElement<'a> {
     /// # Ok::<(), sacm::edit::EditError>(())
     /// ```
     #[doc(alias = "target")]
+    ///
+    /// An `href` to another document is not here: see [`hrefs`](Self::hrefs).
     #[must_use]
     pub fn targets(self) -> &'a [ElementId] {
         if self.kind() == ElementKind::ArtifactAssetRelationship {
@@ -2748,6 +2818,8 @@ impl<'a> SacmElement<'a> {
     /// `AssertedArtifactSupport` or `AssertedArtifactContext` that is no
     /// `ArtifactReference` (§11.17, §11.18, SACM23-VAL-016). See
     /// [`sources`](Self::sources) for an example.
+    ///
+    /// An `href` to another document is not here: see [`hrefs`](Self::hrefs).
     #[must_use]
     pub fn target(self) -> Option<&'a ElementId> {
         self.references(ReferenceEnd::Target).first()
@@ -2757,6 +2829,8 @@ impl<'a> SacmElement<'a> {
     /// (SACM 2.3 §11.13 `reasoning:ArgumentReasoning[0..1]`), or `None` when
     /// it has none or its kind is not an `AssertedRelationship`. It is held
     /// unresolved. See [`sources`](Self::sources) for an example.
+    ///
+    /// An `href` to another document is not here: see [`hrefs`](Self::hrefs).
     #[must_use]
     pub fn reasoning(self) -> Option<&'a ElementId> {
         self.references(ReferenceEnd::Reasoning).first()
@@ -2782,6 +2856,8 @@ impl<'a> SacmElement<'a> {
     /// assert_eq!(r1.structure().map(|id| id.as_str()), Some("hazards"));
     /// # Ok::<(), sacm::edit::EditError>(())
     /// ```
+    ///
+    /// An `href` to another document is not here: see [`hrefs`](Self::hrefs).
     #[must_use]
     pub fn structure(self) -> Option<&'a ElementId> {
         self.references(ReferenceEnd::Structure).first()
@@ -2824,6 +2900,8 @@ impl<'a> SacmElement<'a> {
     /// assert_eq!(ids, ["c1"]);
     /// # Ok::<(), sacm::edit::EditError>(())
     /// ```
+    ///
+    /// An `href` to another document is not here: see [`hrefs`](Self::hrefs).
     #[must_use]
     pub fn referenced_artifact_elements(self) -> &'a [ElementId] {
         self.references(ReferenceEnd::ReferencedArtifactElement)
@@ -2874,6 +2952,8 @@ impl<'a> SacmElement<'a> {
     #[doc(alias = "argumentationElement")]
     #[doc(alias = "artifactElement")]
     #[doc(alias = "terminologyElement")]
+    ///
+    /// An `href` to another document is not here: see [`hrefs`](Self::hrefs).
     #[must_use]
     pub fn group_members(self) -> &'a [ElementId] {
         match self.kind() {
@@ -2908,6 +2988,8 @@ impl<'a> SacmElement<'a> {
     /// assert_eq!(blade.categories().iter().map(|id| id.as_str()).collect::<Vec<_>>(), ["hazards"]);
     /// # Ok::<(), sacm::edit::EditError>(())
     /// ```
+    ///
+    /// An `href` to another document is not here: see [`hrefs`](Self::hrefs).
     #[must_use]
     pub fn categories(self) -> &'a [ElementId] {
         self.references(ReferenceEnd::Category)
@@ -2918,6 +3000,8 @@ impl<'a> SacmElement<'a> {
     /// included; empty for every other kind. It is
     /// [`references`](Self::references) of [`ReferenceEnd::Element`].
     #[doc(alias = "element")]
+    ///
+    /// An `href` to another document is not here: see [`hrefs`](Self::hrefs).
     #[must_use]
     pub fn expression_elements(self) -> &'a [ElementId] {
         self.references(ReferenceEnd::Element)
@@ -2927,6 +3011,8 @@ impl<'a> SacmElement<'a> {
     /// `origin:Base::ModelElement[0..1]`, "a reference which points to the
     /// origin of the Term"), or `None` when it has none or the element is no
     /// Term.
+    ///
+    /// An `href` to another document is not here: see [`hrefs`](Self::hrefs).
     #[must_use]
     pub fn origin(self) -> Option<&'a ElementId> {
         self.references(ReferenceEnd::Origin).first()
@@ -2956,6 +3042,8 @@ impl<'a> SacmElement<'a> {
     /// # Ok::<(), sacm::edit::EditError>(())
     /// ```
     #[doc(alias = "interface")]
+    ///
+    /// An `href` to another document is not here: see [`hrefs`](Self::hrefs).
     #[must_use]
     pub fn interfaces(self) -> &'a [ElementId] {
         self.references(ReferenceEnd::Interface)
@@ -2964,6 +3052,8 @@ impl<'a> SacmElement<'a> {
     /// The package an interface declares (SACM 2.3 §9.3, §10.5, §11.6,
     /// §12.5 `implements:<package>[1]`), or `None` when it holds none or the
     /// element is no interface.
+    ///
+    /// An `href` to another document is not here: see [`hrefs`](Self::hrefs).
     #[must_use]
     pub fn implements(self) -> Option<&'a ElementId> {
         self.references(ReferenceEnd::Implements).first()
@@ -2973,6 +3063,8 @@ impl<'a> SacmElement<'a> {
     /// `participantPackage:<package>[2..*]`), in order, repeats included;
     /// empty for a kind without the end.
     #[doc(alias = "participantPackage")]
+    ///
+    /// An `href` to another document is not here: see [`hrefs`](Self::hrefs).
     #[must_use]
     pub fn participant_packages(self) -> &'a [ElementId] {
         self.references(ReferenceEnd::ParticipantPackage)
@@ -3051,9 +3143,46 @@ impl<'a> SacmElement<'a> {
     /// );
     /// # Ok::<(), sacm::edit::EditError>(())
     /// ```
+    ///
+    /// An `href` to another document is not here: see [`hrefs`](Self::hrefs).
     #[must_use]
     pub fn references(self, end: ReferenceEnd) -> &'a [ElementId] {
         targets_of(&self.node().references, end)
+    }
+
+    /// The cross-document references the end `end` holds: each the `href` of
+    /// a reference element that names an element of another document by its
+    /// id, in document order, repeats included, never resolved
+    /// (SACM23-XMI-027, ADR 0040). Empty when it holds none or the kind
+    /// lacks the end. [`references`](Self::references) gives the end's ids in
+    /// this document; its bounds count both.
+    ///
+    /// ```
+    /// use std::collections::BTreeSet;
+    /// use sacm::model::ReferenceEnd;
+    /// use sacm::{validation, xmi::{self, ReadOptions}};
+    ///
+    /// let input = br#"<sacm:ArgumentPackageBinding xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="binding">
+    ///   <name content="Braking supports the vehicle"/>
+    ///   <participantPackage href="braking.sacm.xmi#braking_api"/>
+    ///   <participantPackage href="vehicle.sacm.xmi#vehicle_api"/>
+    /// </sacm:ArgumentPackageBinding>"#;
+    /// let doc = xmi::read(input, &ReadOptions::default())?.into_document();
+    /// let binding = doc.get("binding").ok_or("not read")?;
+    /// let hrefs = binding.hrefs(ReferenceEnd::ParticipantPackage);
+    /// assert_eq!((hrefs[0].document(), hrefs[0].fragment()), ("braking.sacm.xmi", "braking_api"));
+    /// assert!(binding.participant_packages().is_empty()); // no id of this document
+    /// assert!(validation::validate(&doc).is_empty());     // two participants, never dangling
+    /// let files: BTreeSet<&str> = doc.elements()
+    ///     .flat_map(|e| ReferenceEnd::ALL.iter().flat_map(move |&end| e.hrefs(end)))
+    ///     .map(|href| href.document()).collect();
+    /// assert_eq!(files.len(), 2);
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    #[must_use]
+    pub fn hrefs(self, end: ReferenceEnd) -> &'a [Href] {
+        hrefs_of(&self.node().hrefs, end)
     }
 
     /// The ids the element's `ExpressionLangStrings` (§8.4) name: its name's, then each
@@ -3580,6 +3709,8 @@ impl<'a> SacmElement<'a> {
             is_counter,
             // Compared, end by end.
             references,
+            // Compared, end by end (ADR 0040 D8).
+            hrefs,
             // Compared, as the parent's id.
             parent,
             // Derived from the parent's children (or the roots), which are
@@ -3609,6 +3740,7 @@ impl<'a> SacmElement<'a> {
             is_abstract: *is_abstract,
             is_counter: *is_counter,
             references,
+            hrefs,
             preserved: preserved.as_deref(),
         }
     }
@@ -3713,6 +3845,8 @@ pub(crate) struct Compared<'a> {
     is_counter: bool,
     /// The ids each reference end holds: only the ends that hold one.
     references: &'a [(ReferenceEnd, Vec<ElementId>)],
+    /// The `href`s each reference end holds: only the ends that hold one.
+    hrefs: &'a [(ReferenceEnd, Vec<Href>)],
     /// The element's preserved content; `None` when it holds none.
     pub(crate) preserved: Option<&'a Preserved>,
 }
@@ -3732,6 +3866,11 @@ impl<'a> Compared<'a> {
         targets_of(self.references, end)
     }
 
+    /// The `href`s the reference end `end` holds: empty when it holds none.
+    pub(crate) fn hrefs(&self, end: ReferenceEnd) -> &'a [Href] {
+        hrefs_of(self.hrefs, end)
+    }
+
     /// The value of the string-valued `attribute`, or `None` when absent.
     pub(crate) fn string(&self, attribute: StringAttribute) -> Option<&'a str> {
         string_of(self.strings, attribute)
@@ -3745,6 +3884,15 @@ fn string_of(strings: &[(StringAttribute, String)], attribute: StringAttribute) 
         .iter()
         .find(|(held, _)| *held == attribute)
         .map(|(_, value)| value.as_str())
+}
+
+/// The `href`s `end` holds in `hrefs`, a node's sparse list of ends: empty
+/// when it holds none.
+fn hrefs_of(hrefs: &[(ReferenceEnd, Vec<Href>)], end: ReferenceEnd) -> &[Href] {
+    hrefs
+        .iter()
+        .find(|(held, _)| *held == end)
+        .map_or(&[], |(_, values)| values.as_slice())
 }
 
 /// The targets `end` holds in `references`, a node's sparse list of ends:

@@ -55,7 +55,9 @@ const FIXTURE: &str = concat!(
     "/tests/data/sacm23/xmi/references-valid.sacm.xmi"
 );
 
-/// The invalid fixture of SACM23-XMI-015: a cross-document `href`.
+/// The fixture of SACM23-XMI-015 with a cross-document `href`, which
+/// SACM23-XMI-027 reads since slice 0068; it keeps its path under
+/// `invalid/`.
 const CROSS_DOCUMENT_FIXTURE: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/tests/data/sacm23/xmi/invalid/reference-cross-document-href.sacm.xmi"
@@ -1078,7 +1080,7 @@ fn sacm23_xmi_015_a_link_value_with_white_space_around_it_reads_trimmed_with_no_
 }
 
 #[test]
-fn sacm23_xmi_015_an_idref_with_white_space_inside_is_preserved_and_such_an_href_unsupported() {
+fn sacm23_xmi_015_an_idref_or_an_href_with_white_space_inside_is_preserved() {
     let row = XMI_015;
     for (end, flag) in ENDS {
         // White space inside the trimmed value or fragment: no single id, and
@@ -1094,18 +1096,17 @@ fn sacm23_xmi_015_an_idref_with_white_space_inside_is_preserved_and_such_an_href
             );
             assert_preserved_at(row, &what, &input, marks[0], "c1");
         }
-        // An `href` that is not `#id` is a reference this version does not
-        // read yet (SACM23-XMI-027): refused at the attribute.
-        let hrefs = ["#a b", "#a&#9;b"].map(|value| ("href", value));
-        for (attribute, value) in hrefs {
-            let what = format!("<{end} {attribute}={value:?}/>");
+        // An `href` with XML white space inside it names no element (XMI
+        // 2.5.1 §7.10.2 `URI#id_value`): the same defect, preserved at the
+        // start tag (slice 0068, SACM23-XMI-027).
+        for value in ["#a b", "#a&#9;b", "other.xmi#a b"] {
+            let what = format!("<{end} href={value:?}/>");
             let (input, marks) = marked(
                 row,
-                &c1_then_c2(flag, &format!("<{end} {MARK}{attribute}=\"{value}\"/>")),
+                &c1_then_c2(flag, &format!("{MARK}<{end} href=\"{value}\"/>")),
             );
             assert_eq!(marks.len(), 1, "{row}: setup: {what} has not one mark");
-            let error = refused(row, &what, &input);
-            assert_unsupported_at(row, &what, &error, marks[0]);
+            assert_preserved_at(row, &what, &input, marks[0], "c1");
         }
         // Control: white space only around the id is still trimmed, and the
         // id writes back as one token that reads back equal.
@@ -1208,18 +1209,12 @@ fn sacm23_xmi_015_an_element_naming_an_unknown_id_is_kept_and_reported_by_valida
 // --- Item 5: href forms that are not same-document ids ----------------------------------------------
 
 #[test]
-fn sacm23_xmi_015_a_cross_document_xpointer_or_empty_href_is_unsupported_at_the_attribute() {
+fn sacm23_xmi_015_an_xpointer_href_is_unsupported_and_one_naming_no_element_is_preserved() {
     let row = XMI_015;
     for (end, flag) in ENDS {
-        for value in [
-            "other.xmi#c2",
-            "c2",
-            "#xpointer(id('c2'))",
-            "#",
-            "",
-            " ",
-            "file:///case.xmi#c2",
-        ] {
+        // An XPointer fragment: a link SACM23-XMI-029 reads, refused at the
+        // attribute.
+        for value in ["#xpointer(id('c2'))", "other.xmi#xpointer(id('c2'))"] {
             let what = format!("<{end} href={value:?}/>");
             let (input, marks) = marked(
                 row,
@@ -1227,27 +1222,69 @@ fn sacm23_xmi_015_a_cross_document_xpointer_or_empty_href_is_unsupported_at_the_
             );
             let error = refused(row, &what, &input);
             assert_unsupported_at(row, &what, &error, marks[0]);
+            assert!(
+                error
+                    .to_string()
+                    .ends_with("(a limit of this version; SACM23-XMI-029 reads it)"),
+                "{row}: {what}: does not name SACM23-XMI-029: {error}"
+            );
+        }
+        // An href that names no element (no `#`, an empty fragment, or
+        // empty): the whole element preserved at its start tag.
+        for value in ["c2", "#", "", " "] {
+            let what = format!("<{end} href={value:?}/>");
+            let (input, marks) = marked(
+                row,
+                &c1_then_c2(flag, &format!("{MARK}<{end} href=\"{value}\"/>")),
+            );
+            assert_preserved_at(row, &what, &input, marks[0], "c1");
+        }
+        // An href with a document part is a cross-document reference
+        // (SACM23-XMI-027): read, the end holding no id.
+        for value in ["other.xmi#c2", "file:///case.xmi#c2"] {
+            let what = format!("<{end} href={value:?}/>");
+            let doc = read_ok(
+                row,
+                &what,
+                &c1_then_c2(flag, &format!("<{end} href=\"{value}\"/>")),
+            );
+            assert_eq!(
+                target(row, &doc, "c1", end),
+                None,
+                "{row}: {what}: held as an id"
+            );
+            assert!(
+                !element(row, &doc, "c1").has_preserved_content(),
+                "{row}: {what}: kept as preserved content"
+            );
         }
     }
 }
 
 #[test]
-fn sacm23_xmi_015_the_cross_document_fixture_is_unsupported_never_dropped() {
+fn sacm23_xmi_015_the_cross_document_fixture_reads_its_href_and_never_drops_it() {
     let row = XMI_015;
     let bytes = std::fs::read(CROSS_DOCUMENT_FIXTURE)
         .unwrap_or_else(|error| panic!("{row}: cannot read {CROSS_DOCUMENT_FIXTURE}: {error}"));
     let text = String::from_utf8_lossy(&bytes).into_owned();
-    let error = refused(row, "the cross-document fixture", &text);
-    let Some(line) = text
-        .lines()
-        .position(|line| line.contains("href=\"other.sacm.xmi#c9\""))
-    else {
-        panic!("{row}: setup: the fixture has no cross-document href");
-    };
     assert!(
-        matches!(error, ReadError::Unsupported { .. })
-            && error.location().map(SourceLocation::line) == u32::try_from(line + 1).ok(),
-        "{row}: the fixture is not refused as Unsupported on the href's line: {error:?}"
+        text.contains("<citedElement href=\"other.sacm.xmi#c9\"/>"),
+        "{row}: setup: the fixture has no cross-document href"
+    );
+    // Since slice 0068 the href is read in both modes (SACM23-XMI-027).
+    let doc = read_ok(row, "the cross-document fixture", &text);
+    assert_eq!(
+        (
+            target(row, &doc, "c1", "citedElement"),
+            validation::validate(&doc)
+        ),
+        (None, Vec::new()),
+        "{row}: the fixture's c1 holds an id, or validate reports a finding"
+    );
+    let written = round_trip(row, "the cross-document fixture", &doc, Mode::Strict);
+    assert!(
+        written.contains("<citedElement href=\"other.sacm.xmi#c9\" />"),
+        "{row}: the href is not written back\n{written}"
     );
 }
 

@@ -6,7 +6,9 @@ use std::collections::{BTreeSet, HashMap};
 
 use super::plan::{Plan, Removal};
 use super::{DanglingReference, EditError};
-use crate::model::{AbstractClass, Document, ElementId, Preserved, ReferenceEnd, SacmElement};
+use crate::model::{
+    AbstractClass, Document, ElementId, Href, Preserved, ReferenceEnd, SacmElement,
+};
 
 /// Deletes an element, everything it contains, and whatever its policies
 /// allow, so that no reference is left dangling.
@@ -556,7 +558,10 @@ impl<'d> Tree<'d> {
         for (position, element) in self.elements.iter().enumerate() {
             for &end in ends.iter().filter(|end| end.applies_to(element.kind())) {
                 let distinct: BTreeSet<&ElementId> = element.references(end).iter().collect();
-                remaining.insert((position, end), distinct.len());
+                // A cross-document reference counts toward the bound and is
+                // never deleted with an element (ADR 0040 D5, D7).
+                let hrefs: BTreeSet<&Href> = element.hrefs(end).iter().collect();
+                remaining.insert((position, end), distinct.len() + hrefs.len());
                 for id in distinct {
                     triggers.entry(id).or_default().push((position, end));
                 }

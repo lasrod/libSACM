@@ -27,8 +27,9 @@ const ROW: &str = "LIB-API-017";
 const CATALOG: &str = "docs/sacm/diagnostics.md";
 
 /// The number of live codes once slice 0063 adds its six (acceptance 9),
-/// and slice 0065 SACM-EXPR-001 (SACM23-VAL-009).
-const LIVE_CODES: usize = 42;
+/// slice 0065 SACM-EXPR-001 (SACM23-VAL-009) and slice 0068 SACM-PKG-002
+/// (SACM23-VAL-023).
+const LIVE_CODES: usize = 43;
 
 /// The codes slice 0063 makes live, with the constant each row names.
 const NEW_LIVE: [(&str, &str); 6] = [
@@ -246,9 +247,16 @@ mod api {
                 package(&claim("c1", " xmi:uuid=\"u1\"", "")),
                 Code::XMI_UNREAD_CONTENT,
             ),
+            // A cross-document link not read yet (SACM23-XMI-029): an XPointer,
+            // since slice 0068 reads an href with a document part
+            // (SACM23-XMI-027).
             (
                 "CrossDocumentHref",
-                package(&claim("c1", "", "<metaClaim href=\"other.sacm.xmi#c\"/>")),
+                package(&claim(
+                    "c1",
+                    "",
+                    "<metaClaim href=\"other.sacm.xmi#xpointer(id('c'))\"/>",
+                )),
                 Code::XMI_EXTERNAL_HREF,
             ),
             // XMI metadata in a name: the sample ExpressionLangString gave

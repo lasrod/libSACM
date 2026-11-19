@@ -2,8 +2,9 @@
 //! amendment 3, sections Templates, R8, R9, R11, Records and Order).
 //!
 //! One input per diagnostic template of `docs/sacm/diagnostics.md`'s
-//! `## Message templates` table, 98 in all: 30 that `validate` gives and 68
-//! that a tolerant or a strict read gives (slice 0067 removes the four kept
+//! `## Message templates` table, 106 in all: 38 that `validate` gives and 68
+//! that a tolerant or a strict read gives (slice 0068 adds the eight of the
+//! package interface and binding rules; slice 0067 removes the four kept
 //! forms of unread kinds and ends: `SACM-XMI-014/interface-element-kept`,
 //! `/unread-kind-kept`, `/unread-kind-in-root-kept` and `/unread-root-kept`). Each input is a document read,
 //! written or validated through the public API. For each, the table states
@@ -19,7 +20,7 @@
 //!   with the arguments is the message; every placeholder names an argument
 //!   of the right kind; the arguments are exactly those the pattern names, in
 //!   the order it first names them, so `row` is declared only where the
-//!   pattern names it, and then last; and the inputs are the 98 templates,
+//!   pattern names it, and then last; and the inputs are the 106 templates,
 //!   once each. [`sites`] adds an input for the other sites of the templates
 //!   that more than one site gives, checked the same way.
 //! - `lib_api_018_each_diagnostic_template_input_has_its_code_template_and_arguments`
@@ -49,13 +50,14 @@ const NS: &str = concat!(
     " xmlns:v=\"urn:vendor\"",
 );
 
-/// The number of diagnostic templates (acceptance 1): 30 from validation and
+/// The number of diagnostic templates (acceptance 1): 38 from validation and
 /// 68 from the reader, once slice 0067 removes the four kept forms of unread
-/// kinds and ends (ADR 0035 amendment 1).
-const DIAGNOSTIC_TEMPLATES: usize = 98;
+/// kinds and ends (ADR 0035 amendment 1) and slice 0068 adds eight to
+/// validation (SACM23-VAL-013, -014, -015, -023).
+const DIAGNOSTIC_TEMPLATES: usize = 106;
 
 /// The number of them that `validate` gives.
-const VALIDATION_TEMPLATES: usize = 30;
+const VALIDATION_TEMPLATES: usize = 38;
 
 // --- The markers of the design, expanded --------------------------------------------
 
@@ -350,7 +352,8 @@ const SPELLED_TYPE: &str = "<artifactElement xmi:type=\"sacm:Artifact\" xmi:id=\
 /// A Claim with two descriptions (acceptance 2): exactly one finding.
 const CLM_132: &str = "<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\" xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"p\"><name content=\"P\"/>\n  <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"CLM_132\"><name content=\"C\"/><description xmi:id=\"d1\"/><description xmi:id=\"d2\"/></argumentElement>\n</sacm:ArgumentPackage>";
 
-/// The 30 templates `validate` gives, in the design's order.
+/// The 38 templates `validate` gives, in the design's order, with the eight
+/// of slice 0068 beside their codes.
 #[expect(
     clippy::too_many_lines,
     reason = "one table, one row per template, reads best whole"
@@ -455,6 +458,26 @@ fn validation_cases() -> Vec<Case> {
             &[("class", t("Claim")), ("id", t("c1"))],
             "the name of {class} {id:?} is an ExpressionLangString with no expression (expression:ExpressionElement[1])",
             "the name of Claim \"c1\" is an ExpressionLangString with no expression (expression:ExpressionElement[1])",
+        ),
+        // The template of slice 0068 (SACM23-VAL-014; D-BIND-PART).
+        case(
+            "SACM-MULT-001/too-few",
+            validate(package(&argument(
+                "ArgumentPackageBinding",
+                "b",
+                " participantPackage=\"p\"",
+            ))),
+            (ERROR, "SACM23-VAL-014", Some("11.5")),
+            &[
+                ("class", t("ArgumentPackageBinding")),
+                ("id", t("b")),
+                ("count", n(1)),
+                ("property", t("participantPackage")),
+                ("type", t("ArgumentPackage")),
+                ("multiplicity", t("2..*")),
+            ],
+            "{class} {id:?} has {count} distinct {property} ({property}:{type}[{multiplicity}])",
+            "ArgumentPackageBinding \"b\" has 1 distinct participantPackage (participantPackage:ArgumentPackage[2..*])",
         ),
         case(
             "SACM-MULT-001/value-without-expression",
@@ -623,6 +646,148 @@ fn validation_cases() -> Vec<Case> {
             ],
             "{class} {id:?} nests the {nested_class} {nested_id:?}, so it may contain only ArgumentPackages, but it also contains {child_class} {child_id:?}",
             "ArgumentPackage \"p\" nests the ArgumentPackage \"ap\", so it may contain only ArgumentPackages, but it also contains Claim \"c1\"",
+        ),
+        // The templates of slice 0068 (SACM23-VAL-013, -014, -015; D-IFACE-CITE,
+        // D-BIND-PART).
+        case(
+            "SACM-PKG-001/binding-participant",
+            validate(package(&format!(
+                "{}{}{}",
+                argument("ArgumentPackage", "q", ""),
+                argument("ArgumentPackageBinding", "b", " participantPackage=\"p q\""),
+                argument(
+                    "ArgumentPackageBinding",
+                    "b2",
+                    " participantPackage=\"q b\""
+                )
+            ))),
+            (WARNING, "SACM23-VAL-014", Some("11.5")),
+            &[
+                ("class", t("ArgumentPackageBinding")),
+                ("id", t("b2")),
+                ("target", t("b")),
+                ("target_class", t("ArgumentPackageBinding")),
+            ],
+            "{class} {id:?} has the participantPackage {target:?}, of the kind {target_class}: a binding binds packages, not bindings",
+            "ArgumentPackageBinding \"b2\" has the participantPackage \"b\", of the kind ArgumentPackageBinding: a binding binds packages, not bindings",
+        ),
+        case(
+            "SACM-PKG-001/cited-kind",
+            validate(package(&format!(
+                "{}<argumentElement xmi:type=\"sacm:ArgumentPackageInterface\" xmi:id=\"i\" implements=\"p\"><name content=\"i\"/>{}</argumentElement>",
+                argument("ArgumentPackage", "q", ""),
+                claim("ci", " isCitation=\"true\" citedElement=\"q\"", "")
+            ))),
+            (WARNING, "SACM23-VAL-013", Some("11.6")),
+            &[
+                ("class", t("ArgumentPackageInterface")),
+                ("id", t("i")),
+                ("child_class", t("Claim")),
+                ("child_id", t("ci")),
+                ("target", t("q")),
+                ("target_class", t("ArgumentPackage")),
+                ("clause", t("11.6")),
+                ("expected", t("ArgumentAsset")),
+            ],
+            "{class} {id:?} contains {child_class} {child_id:?}, which cites {target:?} of the kind {target_class}, but §{clause} has an interface cite only {expected}s",
+            "ArgumentPackageInterface \"i\" contains Claim \"ci\", which cites \"q\" of the kind ArgumentPackage, but §11.6 has an interface cite only ArgumentAssets",
+        ),
+        case(
+            "SACM-PKG-001/cited-outside",
+            validate(package(&format!(
+                "<argumentElement xmi:type=\"sacm:ArgumentPackage\" xmi:id=\"q\"><name content=\"q\"/>\
+                 <argumentElement xmi:type=\"sacm:ArgumentPackageInterface\" xmi:id=\"i\" implements=\"q\"><name content=\"i\"/>{}</argumentElement>\
+                 </argumentElement>\
+                 <argumentElement xmi:type=\"sacm:ArgumentPackage\" xmi:id=\"r\"><name content=\"r\"/>{}</argumentElement>",
+                claim("ci", " isCitation=\"true\" citedElement=\"d\"", ""),
+                claim("d", "", "")
+            ))),
+            (WARNING, "SACM23-VAL-013", Some("11.6")),
+            &[
+                ("class", t("ArgumentPackageInterface")),
+                ("id", t("i")),
+                ("child_class", t("Claim")),
+                ("child_id", t("ci")),
+                ("target", t("d")),
+                ("clause", t("11.6")),
+                ("package", t("q")),
+            ],
+            "{class} {id:?} contains {child_class} {child_id:?}, which cites {target:?}, but §{clause} has an interface cite only elements within the package it implements, {package:?}",
+            "ArgumentPackageInterface \"i\" contains Claim \"ci\", which cites \"d\", but §11.6 has an interface cite only elements within the package it implements, \"q\"",
+        ),
+        case(
+            "SACM-PKG-001/not-a-citation",
+            validate(package(&format!(
+                "<argumentElement xmi:type=\"sacm:ArgumentPackageInterface\" xmi:id=\"i\" implements=\"p\"><name content=\"i\"/>{}</argumentElement>",
+                claim("c", "", "")
+            ))),
+            (ERROR, "SACM23-VAL-013", Some("11.6")),
+            &[
+                ("class", t("ArgumentPackageInterface")),
+                ("id", t("i")),
+                ("child_class", t("Claim")),
+                ("child_id", t("c")),
+                ("clause", t("11.6")),
+            ],
+            "{class} {id:?} contains {child_class} {child_id:?}, which is no citation (isCitation true and a citedElement), but §{clause} allows only citations in it",
+            "ArgumentPackageInterface \"i\" contains Claim \"c\", which is no citation (isCitation true and a citedElement), but §11.6 allows only citations in it",
+        ),
+        case(
+            "SACM-PKG-001/not-a-citation-or-relationship",
+            validate(package(&format!(
+                "{}<argumentElement xmi:type=\"sacm:ArgumentPackageBinding\" xmi:id=\"b\" participantPackage=\"p q\"><name content=\"b\"/>{}</argumentElement>",
+                argument("ArgumentPackage", "q", ""),
+                claim("c", "", "")
+            ))),
+            (ERROR, "SACM23-VAL-013", Some("11.5")),
+            &[
+                ("class", t("ArgumentPackageBinding")),
+                ("id", t("b")),
+                ("child_class", t("Claim")),
+                ("child_id", t("c")),
+                ("clause", t("11.5")),
+                ("relationship", t("AssertedRelationship")),
+            ],
+            "{class} {id:?} contains {child_class} {child_id:?}, which is no citation (isCitation true and a citedElement), but §{clause} allows only citations and {relationship}s in it",
+            "ArgumentPackageBinding \"b\" contains Claim \"c\", which is no citation (isCitation true and a citedElement), but §11.5 allows only citations and AssertedRelationships in it",
+        ),
+        case(
+            "SACM-PKG-001/not-an-interface",
+            validate(format!(
+                "<sacm:AssuranceCasePackageInterface{NS} xmi:id=\"ai\" implements=\"ai\"><name content=\"ai\"/>\
+                 <argumentPackage xmi:id=\"ap\"><name content=\"ap\"/></argumentPackage>\
+                 </sacm:AssuranceCasePackageInterface>"
+            )),
+            (ERROR, "SACM23-VAL-015", Some("9.3")),
+            &[
+                ("class", t("AssuranceCasePackageInterface")),
+                ("id", t("ai")),
+                ("child_class", t("ArgumentPackage")),
+                ("child_id", t("ap")),
+                ("role", t("argumentPackage")),
+                ("expected", t("ArgumentPackageInterface")),
+            ],
+            "{class} {id:?} contains {child_class} {child_id:?} in its {role}, but §9.3 allows only {expected}s there",
+            "AssuranceCasePackageInterface \"ai\" contains ArgumentPackage \"ap\" in its argumentPackage, but §9.3 allows only ArgumentPackageInterfaces there",
+        ),
+        // --- SACM-PKG-002 --------------------------------------------------------------
+        case(
+            "SACM-PKG-002/outside-implemented-package",
+            validate(package(&format!(
+                "{}{}",
+                argument("ArgumentPackage", "q", ""),
+                argument("ArgumentPackageInterface", "i", " implements=\"q\"")
+            ))),
+            (WARNING, "SACM23-VAL-023", Some("11.6")),
+            &[
+                ("class", t("ArgumentPackageInterface")),
+                ("id", t("i")),
+                ("package_class", t("ArgumentPackage")),
+                ("package", t("q")),
+                ("clause", t("11.6")),
+            ],
+            "{class} {id:?} implements the {package_class} {package:?} but does not reside inside it, as §{clause} says an interface does",
+            "ArgumentPackageInterface \"i\" implements the ArgumentPackage \"q\" but does not reside inside it, as §11.6 says an interface does",
         ),
         // --- SACM-ID-002 ---------------------------------------------------------------
         case(
@@ -1704,14 +1869,14 @@ fn kept_cases() -> Vec<Case> {
                 ("element", t("metaClaim")),
                 ("holder_class", t("Claim")),
                 ("holder_id", t("c1")),
-                ("row", t("SACM23-XMI-027")),
+                ("row", t("SACM23-XMI-029")),
             ],
             concat!(
                 "the attribute {attribute:?} of the element {element:?} is not read in this release",
                 ke!(),
                 reads!()
             ),
-            "the attribute \"xlink:type\" of the element \"metaClaim\" is not read in this release, so it is kept as preserved content of the Claim \"c1\", which a tolerant write writes back and a strict write refuses; SACM23-XMI-027 reads it",
+            "the attribute \"xlink:type\" of the element \"metaClaim\" is not read in this release, so it is kept as preserved content of the Claim \"c1\", which a tolerant write writes back and a strict write refuses; SACM23-XMI-029 reads it",
         ),
         case(
             "SACM-XMI-007/proxy-child-kept",
@@ -1723,14 +1888,14 @@ fn kept_cases() -> Vec<Case> {
                 ("class", t("ArgumentationElement")),
                 ("holder_class", t("ArgumentPackage")),
                 ("holder_id", t("ap")),
-                ("row", t("SACM23-XMI-027")),
+                ("row", t("SACM23-XMI-029")),
             ],
             concat!(
                 "the element {element:?} in the element {container:?} is in reference form, a proxy of an element of the class {class}, which is not read in this release",
                 ke!(),
                 reads!()
             ),
-            "the element \"argumentElement\" in the element \"argumentPackage\" is in reference form, a proxy of an element of the class ArgumentationElement, which is not read in this release, so it is kept as preserved content of the ArgumentPackage \"ap\", which a tolerant write writes back and a strict write refuses; SACM23-XMI-027 reads it",
+            "the element \"argumentElement\" in the element \"argumentPackage\" is in reference form, a proxy of an element of the class ArgumentationElement, which is not read in this release, so it is kept as preserved content of the ArgumentPackage \"ap\", which a tolerant write writes back and a strict write refuses; SACM23-XMI-029 reads it",
         ),
         case(
             "SACM-XMI-007/proxy-child-of-root-kept",
@@ -1742,36 +1907,36 @@ fn kept_cases() -> Vec<Case> {
                 ("class", t("ArgumentationElement")),
                 ("holder_class", t("ArgumentPackage")),
                 ("holder_id", t("p")),
-                ("row", t("SACM23-XMI-027")),
+                ("row", t("SACM23-XMI-029")),
             ],
             concat!(
                 "the element {element:?} in the root element {container:?} is in reference form, a proxy of an element of the class {class}, which is not read in this release",
                 ke!(),
                 reads!()
             ),
-            "the element \"argumentElement\" in the root element \"sacm:ArgumentPackage\" is in reference form, a proxy of an element of the class ArgumentationElement, which is not read in this release, so it is kept as preserved content of the ArgumentPackage \"p\", which a tolerant write writes back and a strict write refuses; SACM23-XMI-027 reads it",
+            "the element \"argumentElement\" in the root element \"sacm:ArgumentPackage\" is in reference form, a proxy of an element of the class ArgumentationElement, which is not read in this release, so it is kept as preserved content of the ArgumentPackage \"p\", which a tolerant write writes back and a strict write refuses; SACM23-XMI-029 reads it",
         ),
         case(
             "SACM-XMI-007/href-kept",
             tolerant(package(&claim(
                 "c1",
                 "",
-                "<metaClaim href=\"other.sacm.xmi#c\"/>",
+                "<metaClaim href=\"other.sacm.xmi#xpointer(id('c'))\"/>",
             ))),
             (WARNING, "LIB-API-011", None),
             &[
-                ("href", t("other.sacm.xmi#c")),
+                ("href", t("other.sacm.xmi#xpointer(id('c'))")),
                 ("element", t("metaClaim")),
                 ("holder_class", t("Claim")),
                 ("holder_id", t("c1")),
-                ("row", t("SACM23-XMI-027")),
+                ("row", t("SACM23-XMI-029")),
             ],
             concat!(
-                "the href {href:?} of the reference element {element:?} names no element of this document by its id; only href=\"#id\" is read in this release",
+                "the href {href:?} of the reference element {element:?} is not read in this release",
                 ke!(),
                 reads!()
             ),
-            "the href \"other.sacm.xmi#c\" of the reference element \"metaClaim\" names no element of this document by its id; only href=\"#id\" is read in this release, so it is kept as preserved content of the Claim \"c1\", which a tolerant write writes back and a strict write refuses; SACM23-XMI-027 reads it",
+            "the href \"other.sacm.xmi#xpointer(id('c'))\" of the reference element \"metaClaim\" is not read in this release, so it is kept as preserved content of the Claim \"c1\", which a tolerant write writes back and a strict write refuses; SACM23-XMI-029 reads it",
         ),
         // --- SACM-XMI-005 --------------------------------------------------------------
         case(
@@ -1891,7 +2056,7 @@ fn kept_cases() -> Vec<Case> {
 }
 
 /// More sites of the templates that more than one site gives, each checked
-/// as a case of the table is, but not counted among the 98.
+/// as a case of the table is, but not counted among the 106.
 #[expect(
     clippy::too_many_lines,
     reason = "one table, one row per site, reads best whole"
@@ -2281,7 +2446,7 @@ fn lib_api_018_each_diagnostic_template_input_gives_its_message() {
     );
     let mut cases = validation;
     cases.extend(reader_cases());
-    // The inputs are the 98 templates, once each.
+    // The inputs are the 106 templates, once each.
     let mut ids: Vec<&str> = cases.iter().map(|case| case.template).collect();
     let count = ids.len();
     ids.sort_unstable();

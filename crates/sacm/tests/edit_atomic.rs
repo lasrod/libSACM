@@ -212,9 +212,12 @@ const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sacm23/x
 /// with the three of slice 0066: its two worked examples and
 /// `golden/nested.golden.sacm.xmi`, whose `ArgumentPackageInterface` it
 /// reads (SACM23-ARG-014, SACM23-ART-012; LIB-EDIT-019); and the two worked
-/// examples of slice 0067 (SACM23-AC-002, -003, SACM23-TERM-007, -008). The
-/// files under `invalid/` are refused by design.
-const READABLE_FIXTURES: [&str; 16] = [
+/// examples of slice 0067 (SACM23-AC-002, -003, SACM23-TERM-007, -008); and
+/// the cross-document fixture of slice 0068 and its golden file
+/// (SACM23-XMI-027). The files under `invalid/` are refused by design.
+const READABLE_FIXTURES: [&str; 18] = [
+    "cross-document-references-valid.sacm.xmi",
+    "golden/cross-document-references.golden.sacm.xmi",
     "argument-package-interfaces-valid.sacm.xmi",
     "artifact-package-interfaces-valid.sacm.xmi",
     "assurance-case-package-interfaces-valid.sacm.xmi",
@@ -853,6 +856,18 @@ fn held_by(element: SacmElement<'_>, rule: &EndRule) -> Vec<ElementId> {
 /// 0039 D3).
 fn distinct(ids: &[ElementId]) -> usize {
     ids.iter().collect::<BTreeSet<_>>().len()
+}
+
+/// The number of distinct cross-document references `element` holds in
+/// `end`: a lower bound counts them beside the distinct ids, and an upper
+/// bound every one (ADR 0040 D5).
+fn distinct_hrefs(element: SacmElement<'_>, end: ReferenceEnd) -> usize {
+    element
+        .hrefs(end)
+        .iter()
+        .map(sacm::model::Href::as_str)
+        .collect::<BTreeSet<_>>()
+        .len()
 }
 
 /// The ids `element` holds in `end`, in order, read through the public
@@ -1939,15 +1954,21 @@ fn add_reference_answer(
 ) -> Result<(), Code> {
     let (found, rule) = owner_of(doc, element, end)?;
     let held = held(found, end);
-    if rule.upper.is_some_and(|upper| held.len() + 1 > upper) {
+    // The end keeps its cross-document references, which count toward both
+    // bounds (ADR 0040 D5, D7).
+    let hrefs = found.hrefs(end).len();
+    if rule
+        .upper
+        .is_some_and(|upper| held.len() + hrefs + 1 > upper)
+    {
         return Err(Code::MULTIPLICITY_VIOLATION);
     }
-    // The end after the add must hold its lower bound of distinct ids: a
+    // The end after the add must hold its lower bound of distinct values: a
     // binding read with one participant is not repaired by adding it again
     // (ADR 0039 Consequences).
     let mut after = held.clone();
     after.push(added.clone());
-    if distinct(&after) < rule.lower {
+    if distinct(&after) + distinct_hrefs(found, end) < rule.lower {
         return Err(Code::MULTIPLICITY_VIOLATION);
     }
     if held.contains(added) {
@@ -1968,7 +1989,7 @@ fn remove_reference_answer(
         return Err(Code::CMD_TARGET_NOT_FOUND);
     }
     let remaining: Vec<ElementId> = held.iter().filter(|id| *id != removed).cloned().collect();
-    if distinct(&remaining) < rule.lower {
+    if distinct(&remaining) + distinct_hrefs(found, end) < rule.lower {
         return Err(Code::MULTIPLICITY_VIOLATION);
     }
     Ok(())
@@ -2157,10 +2178,13 @@ fn copy_answer(doc: &Document, copy: &CopyElements) -> Result<(), Code> {
         {
             return Err(Code::MULTIPLICITY_VIOLATION);
         }
-        // Every end holds its lower bound of distinct ids: an interface its
-        // implements, a binding two participants (ADR 0039 D3, D6).
+        // Every end holds its lower bound of distinct values, ids and
+        // cross-document references: an interface its implements, a binding
+        // two participants (ADR 0039 D3, D6; ADR 0040 D5).
         let below_bound = end_rules().any(|rule| {
-            rule.owners.contains(&element.kind()) && distinct(&held_by(*element, rule)) < rule.lower
+            rule.owners.contains(&element.kind())
+                && distinct(&held_by(*element, rule)) + distinct_hrefs(*element, rule.end)
+                    < rule.lower
         });
         if below_bound {
             return Err(Code::MULTIPLICITY_VIOLATION);
@@ -2508,7 +2532,7 @@ fn policy_deletes(
 /// `ArtifactAssetRelationship` naming a deleted element in `source` or
 /// `target`; under either non-reject policy a holder that loses an id from
 /// an end with a lower bound and is left below it, counting distinct ids
-/// (`source` and `target` [1..*], `implements` [1], `participantPackage`
+/// and distinct cross-document references (`source` and `target` [1..*], `implements` [1], `participantPackage`
 /// [2..*]). A holder already below its bound that loses no id stays.
 fn bound_deletes(
     policy: ReferenceDeletePolicy,
@@ -2530,7 +2554,9 @@ fn bound_deletes(
             }
             let remaining: Vec<ElementId> =
                 ids.into_iter().filter(|id| !deleted.contains(id)).collect();
-            lost && distinct(&remaining) < rule.lower
+            // A cross-document reference is never deleted and counts toward
+            // the bound (ADR 0040 D5, D7).
+            lost && distinct(&remaining) + distinct_hrefs(holder, rule.end) < rule.lower
         })
 }
 
@@ -3885,7 +3911,10 @@ fn oracle(context: &str, operation: &Operation, before: &Document, after: &Docum
             // The ends of slice 0066 (ADR 0039 D1).
             | Difference::Interfaces { id, .. }
             | Difference::Implements { id, .. }
-            | Difference::ParticipantPackages { id, .. } => {
+            | Difference::ParticipantPackages { id, .. }
+            // The cross-document references of slice 0068 (ADR 0040 D8):
+            // `SetReferences` removes an end's hrefs.
+            | Difference::Hrefs { id, .. } => {
                 changed.insert(id.clone());
             }
             Difference::RootOrder { .. } => assert!(
