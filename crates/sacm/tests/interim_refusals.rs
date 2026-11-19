@@ -7,19 +7,25 @@
 //! reads since slice 0068, which reads an `href` with a document part), and
 //! input with nowhere to be kept, stays `Unsupported`. Each refusal comes from one
 //! crate-private list whose entries are `Interim(row)`, `Tolerance(row)`,
-//! `Limit` or `Defect`, and its reason ends with exactly one label:
+//! `Tolerated(row)` (slice 0072, ADR 0041 D6), `Limit` or `Defect`, and its
+//! reason ends with exactly one label:
 //!
 //! - `(a limit of this version; ROW reads it)` for `Interim(ROW)`;
 //! - `(a limit of this version)` for `Limit`;
 //! - `(strict mode never reads it; ROW is to read it in tolerant mode)`
 //!   for `Tolerance(ROW)`: input strict mode does not read, which need not
-//!   be defective, such as a document in another SACM namespace (D-NS-PIN);
+//!   be defective, such as an `XMI` element in another XMI namespace;
+//! - `(strict mode never reads it; ROW reads it in tolerant mode)` for
+//!   `Tolerated(ROW)`: input a tolerant read reads, such as a root in an
+//!   older SACM revision's namespace or a SACM-like one (LIB-COMPAT-004,
+//!   D-NS-PIN);
 //! - `(a defect in the input)` for `Defect`.
 //!
 //! One input (or a few, where the entry covers several constructs) per entry
 //! of the list, read in strict mode, is refused with that entry's label. A
-//! tolerant read refuses only the limits, the other namespaces and an XMI
-//! document element, and keeps the rest as preserved content with a Warning
+//! tolerant read refuses only the limits, a SACM 2.4 root, an `XMI` element
+//! in another namespace and an XMI document element, reads a `Tolerated`
+//! root, and keeps the rest as preserved content with a Warning
 //! (ADR 0035; tested in `tolerant_read.rs`). Two
 //! entries have no input: a parser capacity limit (`Capacity`) and a failed
 //! insert into the document (`Unheld`), which no well-formed input of a
@@ -72,6 +78,11 @@ fn interim(row: &str) -> String {
 /// The label of `Tolerance(row)`.
 fn tolerance(row: &str) -> String {
     format!("(strict mode never reads it; {row} is to read it in tolerant mode)")
+}
+
+/// The label of `Tolerated(row)` (ADR 0041 D6).
+fn tolerated(row: &str) -> String {
+    format!("(strict mode never reads it; {row} reads it in tolerant mode)")
 }
 
 /// The label of `Limit`.
@@ -316,23 +327,39 @@ fn lib_api_011_a_cross_document_link_not_read_yet_names_sacm23_xmi_029() {
     }
 }
 
-// --- Tolerance: other SACM namespaces (LIB-COMPAT-004) ------------------------------
+// --- Tolerated: other SACM namespaces (LIB-COMPAT-004) ------------------------------
 
 #[test]
 fn lib_api_011_a_root_outside_the_sacm_2_3_namespace_names_lib_compat_004() {
-    // Strict mode reads only the pinned SACM 2.3 namespace. A root in
-    // another one is not defective, but only tolerant mode is to read it:
-    // LIB-COMPAT-004 is a tolerance (D-NS-PIN; the maintainer, 2026-11-16),
-    // and its label says strict mode never reads it.
-    let other = format!(
-        "<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/2.2/argumentation\" \
-         xmlns:xmi=\"{XMI_NS}\" xmi:id=\"p\"><name content=\"p\"/></sacm:ArgumentPackage>"
+    // Strict mode reads only the pinned SACM 2.3 namespace. A root in an
+    // older SACM revision's namespace or a SACM-like one is not defective,
+    // and since slice 0072 tolerant mode reads it: both are
+    // `Tolerated("LIB-COMPAT-004")` (D-NS-PIN; ADR 0041 D4, D6), and the
+    // label says strict mode never reads it. A SACM 2.4 root is a `Limit`
+    // (LIB-COMPAT-018).
+    let root = |uri: &str| {
+        format!(
+            "<sacm:ArgumentPackage xmlns:sacm=\"{uri}\" xmlns:xmi=\"{XMI_NS}\" xmi:id=\"p\">\
+             <name content=\"p\"/></sacm:ArgumentPackage>"
+        )
+    };
+    assert_text_refused_with(
+        "OtherRevision",
+        "a root in a SACM 2.2 namespace",
+        &root("http://www.omg.org/spec/SACM/2.2/argumentation"),
+        &tolerated("LIB-COMPAT-004"),
     );
     assert_text_refused_with(
         "OtherSacmNamespace",
-        "a root in a SACM 2.2 namespace",
-        &other,
-        &tolerance("LIB-COMPAT-004"),
+        "a root in a SACM-like namespace",
+        &root("urn:example:sacm"),
+        &tolerated("LIB-COMPAT-004"),
+    );
+    assert_text_refused_with(
+        "Sacm24",
+        "a root in the SACM 2.4 namespace",
+        &root("http://www.omg.org/spec/SACM/2.4"),
+        LIMIT,
     );
 }
 
@@ -443,9 +470,10 @@ fn lib_api_011_an_unread_encoding_is_a_limit_of_this_version() {
             )),
         ),
         ("UTF-32 BE with a byte order mark", utf32be_with_bom(&root)),
+        // ISO-8859-1 is read since slice 0072 (LIB-COMPAT-016).
         (
-            "a declared ISO-8859-1",
-            format!("<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>{root}").into_bytes(),
+            "a declared ISO-8859-2",
+            format!("<?xml version=\"1.0\" encoding=\"ISO-8859-2\"?>{root}").into_bytes(),
         ),
     ];
     for (what, input) in cases {
@@ -504,8 +532,9 @@ fn lib_api_011_a_preserved_attribute_binding_sacm_or_xmi_elsewhere_is_a_defect_i
 
 // --- The entries a tolerant read refuses too (ADR 0035 D1) --------------------------
 
-/// The refused set of `Unread::tolerant()`: an encoding, a root outside
-/// SACM 2.3, an `XMI` element outside XMI 2.5.1 and an XMI-namespace
+/// The refused set of `Unread::tolerant()`: an encoding, a SACM 2.4 root
+/// (slice 0072; a root in another SACM namespace is read tolerantly since,
+/// LIB-COMPAT-004), an `XMI` element outside XMI 2.5.1 and an XMI-namespace
 /// document element are `Unsupported` in both modes, with the same refusal.
 /// `Capacity` and `Unheld` have no input of a test's size. Every other entry
 /// is kept by a tolerant read (`tolerant_read.rs`).
@@ -519,18 +548,18 @@ fn lib_api_011_the_refused_entries_are_unsupported_in_both_modes() {
             LIMIT.to_owned(),
         ),
         (
-            "Encoding: a declared ISO-8859-1",
-            format!("<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>{root}").into_bytes(),
+            "Encoding: a declared ISO-8859-2",
+            format!("<?xml version=\"1.0\" encoding=\"ISO-8859-2\"?>{root}").into_bytes(),
             LIMIT.to_owned(),
         ),
         (
-            "OtherSacmNamespace: a root in a SACM 2.2 namespace",
+            "Sacm24: a root in the SACM 2.4 namespace",
             format!(
-                "<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/2.2/argumentation\" \
+                "<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20260504\" \
                  xmlns:xmi=\"{XMI_NS}\" xmi:id=\"p\"><name content=\"p\"/></sacm:ArgumentPackage>"
             )
             .into_bytes(),
-            tolerance("LIB-COMPAT-004"),
+            LIMIT.to_owned(),
         ),
         (
             "OtherXmiNamespace: an XMI element in the XMI 2.0 namespace",

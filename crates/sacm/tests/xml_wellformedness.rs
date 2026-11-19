@@ -586,7 +586,7 @@ fn lib_sec_005_the_declaration_grammar_comes_before_the_declared_encoding() {
     // first, so Malformed at the version.
     assert_malformed_at(
         row,
-        &declared("<?xml version=\"2.0\" encoding=\"ISO-8859-1\"?>"),
+        &declared("<?xml version=\"2.0\" encoding=\"ISO-8859-2\"?>"),
         1,
         16,
     );
@@ -604,9 +604,9 @@ fn lib_sec_005_the_rest_of_the_declaration_is_checked_only_for_a_supported_encod
     // After an unsupported encoding, SDDecl and `?>` are not checked: the
     // encoding is refused, at its name (line 1, column 31).
     for declaration in [
-        &b"<?xml version=\"1.0\" encoding=\"ISO-8859-1\" standalone=\"maybe\"?>"[..],
-        b"<?xml version=\"1.0\" encoding=\"ISO-8859-1\" foo=\"1\"?>",
-        b"<?xml version=\"1.0\" encoding=\"ISO-8859-1\" \xE9?>",
+        &b"<?xml version=\"1.0\" encoding=\"ISO-8859-2\" standalone=\"maybe\"?>"[..],
+        b"<?xml version=\"1.0\" encoding=\"ISO-8859-2\" foo=\"1\"?>",
+        b"<?xml version=\"1.0\" encoding=\"ISO-8859-2\" \xE9?>",
     ] {
         let mut input = declaration.to_vec();
         input.push(b'\n');

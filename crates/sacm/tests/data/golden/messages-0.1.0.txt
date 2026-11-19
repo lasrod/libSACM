@@ -26,8 +26,12 @@ crates/sacm-cli/tests/data/escaped-ids.sacm.xmi strict-validate: error SACM-ID-0
 crates/sacm-cli/tests/data/escaped-ids.sacm.xmi tolerant-read: (none)
 crates/sacm-cli/tests/data/escaped-ids.sacm.xmi tolerant-validate: error SACM-ID-002 [SACM23-VAL-020, clause 7.6.1]: Claim "a\r\nb" has an id that is not an NCName (XMI 2.5.1 §7.6.1: xmi:id is an xsd:ID)
 crates/sacm-cli/tests/data/escaped-ids.sacm.xmi tolerant-validate: error SACM-ID-002 [SACM23-VAL-020, clause 7.6.1]: Claim "a\\b" has an id that is not an NCName (XMI 2.5.1 §7.6.1: xmi:id is an xsd:ID)
-crates/sacm-cli/tests/data/latin-1.sacm.xmi strict-read: refusal the reader cannot represent the input at line 1, column 31: the declared encoding "ISO-8859-1" is not supported: without a UTF-16 byte order mark, only UTF-8 and ASCII are read (a limit of this version)
-crates/sacm-cli/tests/data/latin-1.sacm.xmi tolerant-read: refusal the reader cannot represent the input at line 1, column 31: the declared encoding "ISO-8859-1" is not supported: without a UTF-16 byte order mark, only UTF-8 and ASCII are read (a limit of this version)
+crates/sacm-cli/tests/data/iso-8859-2.sacm.xmi strict-read: refusal the reader cannot represent the input at line 1, column 31: the declared encoding "ISO-8859-2" is not supported: without a UTF-16 byte order mark, only UTF-8, ASCII and ISO-8859-1 are read (a limit of this version)
+crates/sacm-cli/tests/data/iso-8859-2.sacm.xmi tolerant-read: refusal the reader cannot represent the input at line 1, column 31: the declared encoding "ISO-8859-2" is not supported: without a UTF-16 byte order mark, only UTF-8, ASCII and ISO-8859-1 are read (a limit of this version)
+crates/sacm-cli/tests/data/latin-1.sacm.xmi strict-read: (none)
+crates/sacm-cli/tests/data/latin-1.sacm.xmi strict-validate: (none)
+crates/sacm-cli/tests/data/latin-1.sacm.xmi tolerant-read: (none)
+crates/sacm-cli/tests/data/latin-1.sacm.xmi tolerant-validate: (none)
 crates/sacm-cli/tests/data/malformed.sacm.xmi strict-read: refusal the input is not well-formed XML at line 3, column 4: the end tag "s" does not match the start tag "r"
 crates/sacm-cli/tests/data/malformed.sacm.xmi tolerant-read: refusal the input is not well-formed XML at line 3, column 4: the end tag "s" does not match the start tag "r"
 crates/sacm-cli/tests/data/nameless-claim.sacm.xmi strict-read: (none)

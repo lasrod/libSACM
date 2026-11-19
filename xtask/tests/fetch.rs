@@ -1,6 +1,7 @@
 //! Acceptance tests for hash-pinned fetching of the SACM 2.3 sources
-//! (LIB-TOOL-002), XMI 2.5.1 (LIB-TOOL-020), its XMI.xsd (LIB-TOOL-021) and
-//! the W3C XML Conformance Test Suite (LIB-SEC-006).
+//! (LIB-TOOL-002), XMI 2.5.1 (LIB-TOOL-020), its XMI.xsd (LIB-TOOL-021),
+//! XML Schema Part 2 (LIB-TOOL-022) and the W3C XML Conformance Test Suite
+//! (LIB-SEC-006).
 //!
 //! `fetch_into` and `fetch_suite` are driven with fake downloaders (and fake
 //! extractors), so no test touches the network. `curl_download` is driven
@@ -106,8 +107,10 @@ fn lib_tool_002_pins_are_well_formed_and_unique() {
             artifact.file_name
         );
         assert!(
-            artifact.url.starts_with("https://www.omg.org/"),
-            "LIB-TOOL-002: OMG source"
+            // XML Schema Part 2 is the W3C's (LIB-TOOL-022).
+            artifact.url.starts_with("https://www.omg.org/")
+                || artifact.url.starts_with("https://www.w3.org/"),
+            "LIB-TOOL-002: OMG or W3C source"
         );
         assert!(
             names.insert(artifact.file_name),
@@ -455,11 +458,13 @@ const XMI_XSD: Artifact = Artifact {
     what: "XMI 2.5.1 normative XML Schema (XMI.xsd)",
 };
 
+/// Renamed from `lib_tool_021_artifacts_has_four_entries` in slice 0072:
+/// LIB-TOOL-022 appends a fifth artifact, so LIB-TOOL-021 asks for at least
+/// four.
 #[test]
-fn lib_tool_021_artifacts_has_four_entries() {
-    assert_eq!(
-        ARTIFACTS.len(),
-        4,
+fn lib_tool_021_artifacts_has_at_least_four_entries() {
+    assert!(
+        ARTIFACTS.len() >= 4,
         "LIB-TOOL-021: ARTIFACTS lists the two SACM sources, XMI 2.5.1 and XMI.xsd, got {:?}",
         ARTIFACTS.iter().map(|a| a.file_name).collect::<Vec<_>>()
     );
@@ -487,6 +492,64 @@ fn lib_tool_021_the_first_three_artifacts_are_unchanged() {
         FIRST_THREE_ARTIFACTS,
         "LIB-TOOL-021: the SACM sources and the XMI 2.5.1 specification keep their file names, \
          URLs, pins, descriptions and order, ahead of XMI.xsd"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// LIB-TOOL-022: XML Schema Part 2 is pinned after XMI.xsd
+// ---------------------------------------------------------------------------
+
+/// The first four artifacts as LIB-TOOL-002, LIB-TOOL-020 and LIB-TOOL-021
+/// pinned them.
+const FIRST_FOUR_ARTIFACTS: [Artifact; 4] = [
+    FIRST_THREE_ARTIFACTS[0],
+    FIRST_THREE_ARTIFACTS[1],
+    FIRST_THREE_ARTIFACTS[2],
+    XMI_XSD,
+];
+
+/// XML Schema Part 2: Datatypes Second Edition, exactly as LIB-TOOL-022
+/// states it.
+const XSD_PART_2: Artifact = Artifact {
+    file_name: "XMLSchema-2-REC-20041028-datatypes.html",
+    url: "https://www.w3.org/TR/2004/REC-xmlschema-2-20041028/datatypes.html",
+    sha256: "980de872aa2c50013d5202176eb85eef3f183a7df635fdcb6b4aa34c1c12eb72",
+    what: "XML Schema Part 2: Datatypes Second Edition (W3C Recommendation 28 October 2004)",
+};
+
+#[test]
+fn lib_tool_022_artifacts_has_five_entries() {
+    assert_eq!(
+        ARTIFACTS.len(),
+        5,
+        "LIB-TOOL-022: ARTIFACTS lists the two SACM sources, XMI 2.5.1, XMI.xsd and XML Schema \
+         Part 2, got {:?}",
+        ARTIFACTS.iter().map(|a| a.file_name).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn lib_tool_022_the_fifth_artifact_is_the_xml_schema_part_2_pin() {
+    assert_eq!(
+        ARTIFACTS.get(4),
+        Some(&XSD_PART_2),
+        "LIB-TOOL-022: the fifth artifact is XML Schema Part 2 with exactly the file name, URL, \
+         SHA-256 pin and description of the acceptance"
+    );
+}
+
+#[test]
+fn lib_tool_022_the_first_four_artifacts_are_unchanged() {
+    assert!(
+        ARTIFACTS.len() >= 4,
+        "LIB-TOOL-022: ARTIFACTS still lists the first four sources, got {} entries",
+        ARTIFACTS.len()
+    );
+    assert_eq!(
+        ARTIFACTS[..4],
+        FIRST_FOUR_ARTIFACTS,
+        "LIB-TOOL-022: the SACM sources, XMI 2.5.1 and XMI.xsd keep their file names, URLs, \
+         pins, descriptions and order, ahead of XML Schema Part 2"
     );
 }
 

@@ -26,8 +26,9 @@
 //! that need a refusal at a known place therefore use input that is still
 //! `Unsupported` there: an `xmi:Extension` document element (a
 //! `TerminologyPackageInterface` root until slice 0067 read it), a package
-//! name outside the SACM namespace, or a readable root with a child it cannot
-//! read. The roots
+//! name in the SACM 2.4 namespace (outside the SACM namespace until slice
+//! 0072, which makes that SACM-XMI-001), or a readable root with a child it
+//! cannot read. The roots
 //! themselves, and the SACM-XMI-001 locations, are tested in `xmi_roots.rs`.
 
 use std::error::Error;
@@ -104,6 +105,14 @@ const XMI_ROOT: &str = concat!(
 /// well below cargo-mutants' minimum test timeout of 20 seconds, so a hang
 /// fails its test instead of stalling the run (as in xtask's scanner tests).
 const DEADLINE: Duration = Duration::from_secs(5);
+
+/// `options` with the depth limit raised to `depth` (LIB-SEC-003), so that a
+/// test of nesting deeper than the default limit of 256 reaches the parser
+/// and the reader instead of the pre-parse scan (slice 0072).
+fn deeper(options: ReadOptions, depth: usize) -> ReadOptions {
+    let depth = u64::try_from(depth).unwrap_or(u64::MAX);
+    options.with_limits(sacm::xmi::Limits::default().with_max_depth(depth))
+}
 
 /// `xmi::read` with the default options, on a worker thread. Fails the test,
 /// with a message that starts with `row`, when the read panics or does not
@@ -1000,7 +1009,7 @@ fn lib_sec_002_leading_utf8_bom_takes_no_column() {
     // the BOM.
     let encoding = assert_unsupported(
         row,
-        b"\xEF\xBB\xBF<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><r/>",
+        b"\xEF\xBB\xBF<?xml version=\"1.0\" encoding=\"ISO-8859-2\"?><r/>",
     );
     assert_eq!(
         encoding.location(),
@@ -1054,7 +1063,8 @@ fn lib_sec_002_deep_nesting_returns_without_recursion() {
         .name("lib_sec_002_deep_nesting".to_owned())
         .stack_size(2 * MIB)
         .spawn(move || {
-            let options = ReadOptions::default();
+            // The depth limit is raised past the nesting, so the parser walks it.
+            let options = deeper(ReadOptions::default(), DEPTH);
             let results = (
                 xmi::read(&well_formed, &options).is_ok(),
                 xmi::read(&unclosed, &options),
@@ -1300,10 +1310,14 @@ fn lib_api_009_well_formed_sacm_document_is_unsupported_at_the_construct_it_cann
 #[test]
 fn lib_api_009_well_formed_non_sacm_document_is_unsupported_at_its_root() {
     let row = "LIB-API-009";
-    // A package-kind name outside the SACM namespace (ADR 0016 D6). Roots
-    // that are not package kinds at all (`<html>`, `<r/>`) are SACM-XMI-001,
-    // at the same locations: `xmi_roots.rs`.
-    let input = b"<?xml version=\"1.0\"?>\n\n  <foo:ArgumentPackage xmlns:foo=\"urn:x\" \
+    // A package-kind name in the SACM 2.4 namespace, which both modes refuse
+    // (LIB-COMPAT-018). Until slice 0072 the samples were a root in `urn:x`
+    // and one in no namespace, which are SACM-XMI-001 since, as roots that
+    // are not package kinds at all (`<html>`, `<r/>`) are, at the same
+    // locations (ADR 0041 D4; `xmi_roots.rs`); a root in an older SACM
+    // revision's namespace or a SACM-like one is read tolerantly since
+    // (LIB-COMPAT-004).
+    let input = b"<?xml version=\"1.0\"?>\n\n  <foo:ArgumentPackage xmlns:foo=\"http://www.omg.org/spec/SACM/2.4\" \
         xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"p\"/>";
     let error = assert_unsupported(row, input);
     assert_eq!(
@@ -1313,7 +1327,8 @@ fn lib_api_009_well_formed_non_sacm_document_is_unsupported_at_its_root() {
     );
     let bare = assert_unsupported(
         row,
-        b"<ArgumentPackage xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"p\"/>",
+        b"<ArgumentPackage xmlns=\"http://www.omg.org/spec/SACM/20260504\" \
+          xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"p\"/>",
     );
     assert_eq!(
         bare.location(),
@@ -1444,8 +1459,8 @@ fn lib_api_009_declared_non_utf8_encoding_is_unsupported() {
     let row = "LIB-API-009";
     // Every byte is ASCII, so the input is valid UTF-8 too.
     let declarations = [
-        "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>",
-        "<?xml version=\"1.0\" encoding=\"iso-8859-1\"?>",
+        "<?xml version=\"1.0\" encoding=\"ISO-8859-2\"?>",
+        "<?xml version=\"1.0\" encoding=\"iso-8859-2\"?>",
         "<?xml version=\"1.0\" encoding='windows-1252'?>",
         "<?xml version=\"1.0\" encoding = \"Shift_JIS\" standalone=\"yes\"?>",
     ];
@@ -1524,14 +1539,14 @@ fn lib_api_009_declared_non_utf8_encoding_is_located_at_the_encoding_name() {
     // name starts at column 31.
     let cases: [(&str, &[u8], u32, u32); 6] = [
         (
-            "ISO-8859-1",
-            b"<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><r/>",
+            "ISO-8859-2",
+            b"<?xml version=\"1.0\" encoding=\"ISO-8859-2\"?><r/>",
             1,
             31,
         ),
         (
-            "ISO-8859-1 with a 0xE9 byte",
-            b"<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><r>caf\xE9</r>",
+            "ISO-8859-2 with a 0xE9 byte",
+            b"<?xml version=\"1.0\" encoding=\"ISO-8859-2\"?><r>caf\xE9</r>",
             1,
             31,
         ),
@@ -1549,13 +1564,13 @@ fn lib_api_009_declared_non_utf8_encoding_is_located_at_the_encoding_name() {
         ),
         (
             "a lone CR before `encoding`",
-            b"<?xml version=\"1.0\"\rencoding=\"ISO-8859-1\"?><r/>",
+            b"<?xml version=\"1.0\"\rencoding=\"ISO-8859-2\"?><r/>",
             2,
             11,
         ),
         (
             "a CRLF and two spaces before `encoding`",
-            b"<?xml version=\"1.0\"\r\n  encoding=\"ISO-8859-1\"?><r/>",
+            b"<?xml version=\"1.0\"\r\n  encoding=\"ISO-8859-2\"?><r/>",
             2,
             13,
         ),
@@ -1602,25 +1617,25 @@ fn lib_api_009_bom_and_first_bytes_refusals_are_located_at_line_1_column_1() {
 #[test]
 fn lib_api_009_declared_non_utf8_encoding_with_invalid_utf8_bytes_is_unsupported() {
     let row = "LIB-API-009";
-    // Real single-byte files: 0xE9 is `é` in ISO-8859-1 and 0x93 a quotation
+    // Real single-byte files: 0xE9 is `é` in ISO-8859-2 and 0x93 a quotation
     // mark in windows-1252; neither is valid UTF-8. The declaration is read
     // before the UTF-8 check, so the encoding is what is refused.
     let inputs: [(&str, &[u8]); 5] = [
         (
             "0xE9 in content",
-            b"<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><r>caf\xE9</r>",
+            b"<?xml version=\"1.0\" encoding=\"ISO-8859-2\"?><r>caf\xE9</r>",
         ),
         (
             "0xE9 just after the declaration's end",
-            b"<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><!--\xE9--><r/>",
+            b"<?xml version=\"1.0\" encoding=\"ISO-8859-2\"?><!--\xE9--><r/>",
         ),
         (
             "0xE9 before the declaration's end",
-            b"<?xml version=\"1.0\" encoding=\"ISO-8859-1\" \xE9?><r/>",
+            b"<?xml version=\"1.0\" encoding=\"ISO-8859-2\" \xE9?><r/>",
         ),
         (
             "0xE9 on a later line, lowercase name",
-            b"<?xml version='1.0' encoding='iso-8859-1'?>\n<r>\n  caf\xE9\n</r>",
+            b"<?xml version='1.0' encoding='iso-8859-2'?>\n<r>\n  caf\xE9\n</r>",
         ),
         (
             "0x93 under windows-1252",
@@ -1676,8 +1691,10 @@ fn lib_api_009_invalid_utf8_without_or_under_a_utf8_or_ascii_declaration_stays_m
 #[test]
 fn lib_api_009_unsupported_display_is_one_located_line_quoting_names() {
     let row = "LIB-API-009";
-    // A package-kind name outside the SACM namespace, refused at its root.
-    let input = b"<?xml version=\"1.0\"?>\n<zqxroot:ArgumentPackage xmlns:zqxroot=\"urn:zqx\" \
+    // A package-kind name in the SACM 2.4 namespace, refused at its root
+    // (`urn:zqx` until slice 0072, which makes a root outside any SACM
+    // namespace SACM-XMI-001; ADR 0041 D4).
+    let input = b"<?xml version=\"1.0\"?>\n<zqxroot:ArgumentPackage xmlns:zqxroot=\"http://www.omg.org/spec/SACM/2.4\" \
         xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"p\"/>";
     let error = assert_unsupported(row, input);
     let text = error.to_string();
@@ -1769,20 +1786,21 @@ fn lib_sec_002_a_deep_readable_package_chain_reads_without_recursion() {
         .spawn(move || {
             let mut results = Vec::new();
             for mode in [Mode::Tolerant, Mode::Strict] {
-                let result =
-                    xmi::read(&input, &ReadOptions::default().with_mode(mode)).map(|output| {
-                        let document = output.into_document();
-                        let roots: Vec<String> =
-                            document.roots().map(|root| root.id().to_string()).collect();
-                        let parent = document
-                            .get(deepest.as_str())
-                            .and_then(sacm::model::SacmElement::parent)
-                            .map(|parent| parent.id().to_string());
-                        let summary = (document.element_count(), roots, parent);
-                        // The document drops here, on the 2 MiB thread.
-                        drop(document);
-                        summary
-                    });
+                // The chain is DEPTH + 1 deep, past the default depth limit.
+                let options = deeper(ReadOptions::default().with_mode(mode), DEPTH + 1);
+                let result = xmi::read(&input, &options).map(|output| {
+                    let document = output.into_document();
+                    let roots: Vec<String> =
+                        document.roots().map(|root| root.id().to_string()).collect();
+                    let parent = document
+                        .get(deepest.as_str())
+                        .and_then(sacm::model::SacmElement::parent)
+                        .map(|parent| parent.id().to_string());
+                    let summary = (document.element_count(), roots, parent);
+                    // The document drops here, on the 2 MiB thread.
+                    drop(document);
+                    summary
+                });
                 results.push((mode, result));
             }
             // The receiver is gone only after the deadline has already failed the test.

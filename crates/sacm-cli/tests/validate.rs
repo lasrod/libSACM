@@ -458,21 +458,21 @@ fn lib_cli_002_a_file_neither_mode_opens_exits_2_with_its_code() {
         (Mode::Strict, &["--strict"]),
         (Mode::Tolerant, &["--tolerant"]),
     ] {
-        let error = refusal("latin-1.sacm.xmi", mode);
+        let error = refusal("iso-8859-2.sacm.xmi", mode);
         // An unread encoding is SACM-XML-002 since slice 0063 (LIB-API-017).
         assert!(
             matches!(error, ReadError::Unsupported { .. })
                 && error.code() == sacm::diagnostic::Code::XML_ENCODING_NOT_READ,
-            "{ROW}: setup: latin-1.sacm.xmi is not refused as Unsupported with SACM-XML-002 in \
+            "{ROW}: setup: iso-8859-2.sacm.xmi is not refused as Unsupported with SACM-XML-002 in \
              {mode:?} mode: {error:?}"
         );
         let printed = "SACM-XML-002";
         let mut args = flags.to_vec();
-        args.push("latin-1.sacm.xmi");
+        args.push("iso-8859-2.sacm.xmi");
         assert_unreadable(
-            &format!("an ISO-8859-1 file, {flags:?}"),
+            &format!("an ISO-8859-2 file, {flags:?}"),
             &validate(&args),
-            "latin-1.sacm.xmi",
+            "iso-8859-2.sacm.xmi",
             printed,
             &error,
         );
@@ -588,56 +588,56 @@ fn lib_cli_002_json_for_an_unsupported_strict_refusal_is_invalid_or_unreadable_b
     assert_eq!(run.stdout, expected, "{ROW}: the JSON of xmi-attribute");
     assert_eq!(run.stderr, "", "{ROW}: xmi-attribute: stderr is not empty");
 
-    // Neither mode opens latin-1.sacm.xmi: it is unreadable.
-    let error = refusal("latin-1.sacm.xmi", Mode::Strict);
+    // Neither mode opens iso-8859-2.sacm.xmi: it is unreadable.
+    let error = refusal("iso-8859-2.sacm.xmi", Mode::Strict);
     assert!(
-        read_fixture("latin-1.sacm.xmi", Mode::Tolerant).is_err()
+        read_fixture("iso-8859-2.sacm.xmi", Mode::Tolerant).is_err()
             && error.code() == sacm::diagnostic::Code::XML_ENCODING_NOT_READ,
-        "{ROW}: setup: latin-1.sacm.xmi is read tolerantly, or its strict refusal is not \
+        "{ROW}: setup: iso-8859-2.sacm.xmi is read tolerantly, or its strict refusal is not \
          SACM-XML-002: {error:?}"
     );
     let expected = format!(
-        "{{\"format\":1,\"file\":\"latin-1.sacm.xmi\",\"mode\":\"strict\",\"result\":\"unreadable\",\
+        "{{\"format\":1,\"file\":\"iso-8859-2.sacm.xmi\",\"mode\":\"strict\",\"result\":\"unreadable\",\
          \"refusal\":{},\"diagnostics\":[]}}\n",
         json_refusal(&error)
     );
-    let run = validate(&["--format", "json", "latin-1.sacm.xmi"]);
+    let run = validate(&["--format", "json", "iso-8859-2.sacm.xmi"]);
     assert_eq!(
         run.code,
         Some(2),
-        "{ROW}: latin-1: exit code; stdout: {}; stderr: {}",
+        "{ROW}: iso-8859-2: exit code; stdout: {}; stderr: {}",
         run.stdout,
         run.stderr
     );
-    assert_eq!(run.stdout, expected, "{ROW}: the JSON of latin-1");
-    assert_eq!(run.stderr, "", "{ROW}: latin-1: stderr is not empty");
+    assert_eq!(run.stdout, expected, "{ROW}: the JSON of iso-8859-2");
+    assert_eq!(run.stderr, "", "{ROW}: iso-8859-2: stderr is not empty");
 }
 
 #[test]
 fn lib_cli_002_json_for_a_file_a_tolerant_read_refuses_names_the_tolerant_mode() {
     // The refusal reported is the one in the mode asked for, and `mode` says
     // which: `tolerant` with `--tolerant`, for both a refusal and an I/O error.
-    let error = refusal("latin-1.sacm.xmi", Mode::Tolerant);
+    let error = refusal("iso-8859-2.sacm.xmi", Mode::Tolerant);
     let expected = format!(
-        "{{\"format\":1,\"file\":\"latin-1.sacm.xmi\",\"mode\":\"tolerant\",\"result\":\"unreadable\",\
+        "{{\"format\":1,\"file\":\"iso-8859-2.sacm.xmi\",\"mode\":\"tolerant\",\"result\":\"unreadable\",\
          \"refusal\":{},\"diagnostics\":[]}}\n",
         json_refusal(&error)
     );
-    let run = validate(&["--tolerant", "--format", "json", "latin-1.sacm.xmi"]);
+    let run = validate(&["--tolerant", "--format", "json", "iso-8859-2.sacm.xmi"]);
     assert_eq!(
         run.code,
         Some(2),
-        "{ROW}: latin-1, --tolerant: exit code; stdout: {}; stderr: {}",
+        "{ROW}: iso-8859-2, --tolerant: exit code; stdout: {}; stderr: {}",
         run.stdout,
         run.stderr
     );
     assert_eq!(
         run.stdout, expected,
-        "{ROW}: the JSON of latin-1 read with --tolerant"
+        "{ROW}: the JSON of iso-8859-2 read with --tolerant"
     );
     assert_eq!(
         run.stderr, "",
-        "{ROW}: latin-1, --tolerant: stderr is not empty"
+        "{ROW}: iso-8859-2, --tolerant: stderr is not empty"
     );
 
     let run = validate(&["--tolerant", "--format", "json", "missing.sacm.xmi"]);
@@ -967,9 +967,9 @@ fn lib_api_017_sacm_validate_prints_the_codes_of_unsupported_refusals() {
              printed error"
         );
     }
-    // Neither mode opens latin-1.sacm.xmi: its refusal, an unread encoding,
+    // Neither mode opens iso-8859-2.sacm.xmi: its refusal, an unread encoding,
     // is printed on stderr with SACM-XML-002 in every mode.
-    let file = "latin-1.sacm.xmi";
+    let file = "iso-8859-2.sacm.xmi";
     for (mode, flags) in [
         (Mode::Strict, &[][..]),
         (Mode::Strict, &["--strict"]),
@@ -1010,7 +1010,7 @@ fn lib_api_017_sacm_validate_json_writes_the_codes_of_unsupported_refusals() {
         "{API_017}: the JSON of {file} does not write SACM-XMI-003, where 0.1.0 wrote null"
     );
 
-    let file = "latin-1.sacm.xmi";
+    let file = "iso-8859-2.sacm.xmi";
     for (mode, name, flags) in [
         (Mode::Strict, "strict", &["--format", "json"][..]),
         (

@@ -1091,24 +1091,88 @@ fn sacm23_xmi_001_every_package_kind_reads_as_a_parentless_root() {
     }
 }
 
+/// Renamed in slice 0072 from
+/// `sacm23_xmi_001_a_package_name_outside_the_pinned_namespace_is_unsupported_at_the_root`:
+/// a package-kind name in no namespace or in one whose URI does not contain
+/// `sacm` is `InvalidRoot` (SACM-XMI-001) in both modes since (ADR 0041 D4).
+/// A root in an older SACM revision's namespace is refused by a strict read
+/// with SACM-XMI-008, and a tolerant read reads it (LIB-COMPAT-004).
 #[test]
-fn sacm23_xmi_001_a_package_name_outside_the_pinned_namespace_is_unsupported_at_the_root() {
+fn sacm23_xmi_001_a_package_name_outside_a_sacm_namespace_is_invalid_root() {
     let row = "SACM23-XMI-001";
-    let inputs = [
-        format!("<foo:ArgumentPackage xmlns:foo=\"urn:x\" xmlns:xmi=\"{XMI_NS}\" xmi:id=\"p\"/>"),
-        format!("<ArgumentPackage xmlns:xmi=\"{XMI_NS}\" xmi:id=\"p\"/>"),
-        format!(
-            "<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/2.2/argumentation\" \
-             xmlns:xmi=\"{XMI_NS}\" xmi:id=\"p\"/>"
-        ),
-        format!("<AssuranceCasePackage xmlns=\"urn:x\" xmlns:xmi=\"{XMI_NS}\" xmi:id=\"p\"/>"),
-    ];
-    for input in &inputs {
-        assert_unsupported_at(row, input.as_bytes(), loc(row, 1, 1));
-    }
-    // Wrapped, at the child.
+    // The Displays are those of SACM-XMI-001/not-a-sacm-namespace and
+    // /no-namespace, not /not-a-package, which [`assert_invalid_root_at`]
+    // pins.
+    let outside =
+        |namespace: &str| format!("is in the namespace \"{namespace}\", which does not name SACM");
     let wrapped_input = wrapped("\n  <foo:ArgumentPackage xmlns:foo=\"urn:x\" xmi:id=\"p\"/>\n");
-    assert_unsupported_at(row, wrapped_input.as_bytes(), loc(row, 2, 3));
+    let inputs = [
+        (
+            format!(
+                "<foo:ArgumentPackage xmlns:foo=\"urn:x\" xmlns:xmi=\"{XMI_NS}\" xmi:id=\"p\"/>"
+            ),
+            "foo:ArgumentPackage",
+            outside("urn:x"),
+            loc(row, 1, 1),
+        ),
+        (
+            format!("<ArgumentPackage xmlns:xmi=\"{XMI_NS}\" xmi:id=\"p\"/>"),
+            "ArgumentPackage",
+            "is in no namespace, so it is not a SACM package".to_owned(),
+            loc(row, 1, 1),
+        ),
+        (
+            format!("<AssuranceCasePackage xmlns=\"urn:x\" xmlns:xmi=\"{XMI_NS}\" xmi:id=\"p\"/>"),
+            "AssuranceCasePackage",
+            outside("urn:x"),
+            loc(row, 1, 1),
+        ),
+        // Wrapped, at the child.
+        (
+            wrapped_input,
+            "foo:ArgumentPackage",
+            outside("urn:x"),
+            loc(row, 2, 3),
+        ),
+    ];
+    for (input, name, reason, location) in &inputs {
+        let strict = refusal(row, input.as_bytes());
+        let ReadError::InvalidRoot { element_name, .. } = &strict else {
+            panic!("{row}: expected InvalidRoot for {input}, got {strict:?}");
+        };
+        assert_eq!(
+            (element_name.as_str(), strict.location(), strict.code()),
+            (*name, Some(*location), Code::XMI_INVALID_ROOT),
+            "{row}: the element name, location and code of the refusal of {input}"
+        );
+        assert_eq!(
+            strict.to_string(),
+            format!("the root element \"{name}\" {reason} at {location}"),
+            "{row}: the Display of the refusal of {input}"
+        );
+        let tolerant = match read_with(row, input.as_bytes(), ReadOptions::default()) {
+            Ok(output) => panic!(
+                "{row}: a tolerant read accepts {input}, with {:?}",
+                output.diagnostics()
+            ),
+            Err(error) => error,
+        };
+        assert_eq!(
+            tolerant, strict,
+            "{row}: the modes refuse {input} differently"
+        );
+    }
+    // An older SACM revision's namespace, read strictly: SACM-XMI-008.
+    let older = format!(
+        "<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/2.2/argumentation\" \
+         xmlns:xmi=\"{XMI_NS}\" xmi:id=\"p\"/>"
+    );
+    let error = assert_unsupported_at(row, older.as_bytes(), loc(row, 1, 1));
+    assert_eq!(
+        error.code().as_str(),
+        "SACM-XMI-008",
+        "{row}: the strict refusal of a SACM 2.2 root"
+    );
 }
 
 #[test]
@@ -1479,14 +1543,14 @@ fn sacm23_xmi_001_input_checks_come_before_root_classification() {
         claim("")
     ));
     assert_unsupported_at(row, &utf16, loc(row, 1, 1));
-    let latin1 = format!(
-        "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>{}",
+    let iso_8859_2 = format!(
+        "<?xml version=\"1.0\" encoding=\"ISO-8859-2\"?>{}",
         claim("")
     );
-    assert_unsupported_at(row, latin1.as_bytes(), loc(row, 1, 31));
-    let empty_wrapper_latin1 =
-        format!("<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><xmi:XMI xmlns:xmi=\"{XMI_NS}\"/>");
-    assert_unsupported_at(row, empty_wrapper_latin1.as_bytes(), loc(row, 1, 31));
+    assert_unsupported_at(row, iso_8859_2.as_bytes(), loc(row, 1, 31));
+    let empty_wrapper_iso_8859_2 =
+        format!("<?xml version=\"1.0\" encoding=\"ISO-8859-2\"?><xmi:XMI xmlns:xmi=\"{XMI_NS}\"/>");
+    assert_unsupported_at(row, empty_wrapper_iso_8859_2.as_bytes(), loc(row, 1, 31));
 
     // DOCTYPE (LIB-SEC-001), then Malformed (LIB-SEC-002, LIB-SEC-005).
     let doctype = format!("<!DOCTYPE sacm:Claim>\n{}", claim(""));

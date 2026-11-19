@@ -6,6 +6,11 @@
 //! Nothing here reads SACM: the caller decides what is preserved and checks
 //! the `xmi:id`s inside it. The walk uses a stack, not recursion, so a deep
 //! subtree cannot exhaust the call stack.
+//!
+//! Each also gives the namespace text it keeps, which a read counts against
+//! its size limit (LIB-SEC-003, ADR 0041 D2): the bytes of each namespace URI
+//! a kept name holds, and `prefix + URI + 10` for each binding a kept start
+//! tag declares, about what a written declaration ` xmlns:p="u"` takes.
 
 use roxmltree::{Attribute, Node};
 
@@ -18,10 +23,12 @@ use crate::model::{Attr, Event, Fragment, QName};
 /// to SACM 2.3 and XMI 2.5.1), and each element inside declares the
 /// bindings it declares itself. Character data is kept exactly, adjacent
 /// pieces joined, CDATA sections and references giving their characters;
-/// comments and processing instructions are dropped.
-pub(super) fn fragment(text: &str, node: Node<'_, '_>) -> Fragment {
+/// comments and processing instructions are dropped. Returns it with the
+/// namespace text it keeps.
+pub(super) fn fragment(text: &str, node: Node<'_, '_>) -> (Fragment, u64) {
     let mut events = Vec::new();
-    events.push(start(text, node, in_scope(node)));
+    let mut kept = 0;
+    events.push(start(text, node, in_scope(node), &mut kept));
     // The children still to visit of each open element, innermost last.
     let mut open = vec![node.children()];
     while let Some(children) = open.last_mut() {
@@ -31,7 +38,7 @@ pub(super) fn fragment(text: &str, node: Node<'_, '_>) -> Fragment {
             continue;
         };
         if child.is_element() {
-            events.push(start(text, child, declared(child)));
+            events.push(start(text, child, declared(child), &mut kept));
             open.push(child.children());
         } else if child.is_text() {
             let piece = child.text().unwrap_or_default();
@@ -41,18 +48,48 @@ pub(super) fn fragment(text: &str, node: Node<'_, '_>) -> Fragment {
             }
         }
     }
-    Fragment { events }
+    (Fragment { events }, kept)
 }
 
-/// The start event of the element `node`, declaring `namespaces`.
-fn start(text: &str, node: Node<'_, '_>, namespaces: Vec<(Option<String>, String)>) -> Event {
+/// The bytes a binding of `prefix` to `uri` keeps: `prefix + URI + 10`.
+pub(super) fn binding_bytes(prefix: Option<&str>, uri: &str) -> u64 {
+    let length = prefix.map_or(0, str::len) + uri.len() + 10;
+    u64::try_from(length).unwrap_or(u64::MAX)
+}
+
+/// The bytes of the namespace URI `name` keeps.
+fn name_bytes(name: &QName) -> u64 {
+    name.namespace
+        .as_deref()
+        .map_or(0, |uri| u64::try_from(uri.len()).unwrap_or(u64::MAX))
+}
+
+/// The start event of the element `node`, declaring `namespaces`, adding
+/// the namespace text it keeps to `kept`.
+fn start(
+    text: &str,
+    node: Node<'_, '_>,
+    namespaces: Vec<(Option<String>, String)>,
+    kept: &mut u64,
+) -> Event {
+    let name = element_name(text, node);
+    let mut bytes = name_bytes(&name);
+    for (prefix, uri) in &namespaces {
+        bytes = bytes.saturating_add(binding_bytes(prefix.as_deref(), uri));
+    }
+    let attributes = node
+        .attributes()
+        .map(|attribute| {
+            let (attr, uri) = attr(text, &attribute);
+            bytes = bytes.saturating_add(uri);
+            attr
+        })
+        .collect();
+    *kept = kept.saturating_add(bytes);
     Event::Start {
-        name: element_name(text, node),
+        name,
         namespaces,
-        attributes: node
-            .attributes()
-            .map(|attribute| attr(text, &attribute))
-            .collect(),
+        attributes,
     }
 }
 
@@ -117,15 +154,21 @@ fn element_name(text: &str, node: Node<'_, '_>) -> QName {
     qname(node.tag_name().namespace(), written, node.tag_name().name())
 }
 
-/// `attribute` as written, with its value after XML normalisation.
-pub(super) fn attr(text: &str, attribute: &Attribute<'_, '_>) -> Attr {
+/// `attribute` as written, with its value after XML normalisation, and the
+/// bytes of the namespace URI its name keeps.
+pub(super) fn attr(text: &str, attribute: &Attribute<'_, '_>) -> (Attr, u64) {
     let written = text
         .get(attribute.range_qname())
         .unwrap_or(attribute.name());
-    Attr {
-        name: qname(attribute.namespace(), written, attribute.name()),
-        value: attribute.value().to_owned(),
-    }
+    let name = qname(attribute.namespace(), written, attribute.name());
+    let bytes = name_bytes(&name);
+    (
+        Attr {
+            name,
+            value: attribute.value().to_owned(),
+        },
+        bytes,
+    )
 }
 
 /// The name written as `written` in the namespace `namespace`, whose local
@@ -154,7 +197,11 @@ mod tests {
         let Some(a) = tree.root_element().first_element_child() else {
             panic!("the test input has a child");
         };
-        let events = fragment(text, a).events;
+        let (fragment, kept) = fragment(text, a);
+        // `v` bound (1 + 5 + 10), the names `v:a` and `v:b` (5 + 5), and the
+        // default binding of `c` (0 + 5 + 10) and its name (5).
+        assert_eq!(kept, 16 + 10 + 15 + 5);
+        let events = fragment.events;
         let name = |prefix: Option<&str>, namespace: &str, local: &str| QName {
             namespace: Some(namespace.to_owned()),
             prefix: prefix.map(str::to_owned),

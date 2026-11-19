@@ -59,8 +59,8 @@
 //!
 //! | | Strict | Tolerant |
 //! |---|---|---|
-//! | `read` refuses | a DOCTYPE, malformed XML, no SACM 2.3 package root, a repeated or empty `xmi:id`, a value given twice, a value that is no literal, an untyped child under an abstract role, a C++ name or text shape, and conforming content not read yet ([`ReadError::Unsupported`]) | a DOCTYPE, malformed XML, no SACM 2.3 package root (a root outside SACM 2.3, an `XMI` element outside XMI 2.5.1, or an XMI-namespace document element), a repeated `xmi:id`, an encoding it cannot decode, and the parser's limits |
-//! | `read` keeps as preserved content | content that does not conform where it stands, with SACM-XMI-003 as an Error | the same, with SACM-XMI-003 as a Warning; and every other strict refusal, at its construct, with one Warning at the strict refusal's location: SACM-ENUM-001, SACM-MULT-001 (the first occurrence is read), SACM-XMI-005, SACM-ID-002 (an element gets a generated id), SACM-XMI-014 for conforming content a later row reads, SACM-XMI-007 for a cross-document link SACM23-XMI-029 is to read, and SACM-XMI-003 for content on `xmi:XMI` |
+//! | `read` refuses | a DOCTYPE, malformed XML, no SACM 2.3 package root (a root in another SACM namespace included), a repeated or empty `xmi:id`, a value given twice, a value that is no literal, an untyped child under an abstract role, a C++ name or text shape, conforming content not read yet ([`ReadError::Unsupported`]), and input over its [`Limits`] | a DOCTYPE, malformed XML, no SACM package root (a root outside SACM, a SACM 2.4 root, an `XMI` element outside XMI 2.5.1, or an XMI-namespace document element), a repeated `xmi:id`, an encoding it cannot decode, input over its [`Limits`], and the parser's capacity |
+//! | `read` keeps as preserved content | content that does not conform where it stands, with SACM-XMI-003 as an Error | the same, with SACM-XMI-003 as a Warning; a root in an older SACM revision's or a SACM-like namespace is read as SACM 2.3, with SACM-XMI-008 or SACM-XMI-002; and every other strict refusal, at its construct, with one Warning at the strict refusal's location: SACM-ENUM-001, SACM-MULT-001 (the first occurrence is read), SACM-XMI-005, SACM-ID-002 (an element gets a generated id), SACM-XMI-014 for conforming content a later row reads, SACM-XMI-007 for a cross-document link SACM23-XMI-029 is to read, and SACM-XMI-003 for content on `xmi:XMI` |
 //! | `write` refuses | no root; preserved content ([`WriteError::PreservedContent`]); output that would not be schema-valid: an `xmi:id` that is no `NCName` or a reference to no `xmi:id` it writes ([`WriteError::Invalid`]); a character XML 1.0 cannot represent | no root; a character XML 1.0 cannot represent |
 //!
 //! A strict write checks schema validity only: SACM 2.3 clause 2 asks for
@@ -153,11 +153,14 @@ use crate::diagnostic::{Argument, Code, Details, Diagnostic, SourceLocation};
 use crate::model::{Document, ElementId, ElementKind, ReferenceEnd};
 
 mod input;
+mod limits;
 mod namespaces;
 mod output;
 mod preserve;
 mod refusal;
 mod roots;
+
+pub use limits::{Limit, Limits};
 
 /// Reads an XMI document from its bytes.
 ///
@@ -733,25 +736,100 @@ mod roots;
 /// a read diagnostic, so a strict read may then report an Error where it did
 /// not before; the release notes list each one.
 ///
+/// # Limits
+///
+/// Both modes read under the [`Limits`] of [`ReadOptions::with_limits`]
+/// (LIB-SEC-003): by default 32 MiB of input, a nesting depth of 256,
+/// 1,000,000 XML nodes and 256 namespace bindings in scope at an element. A
+/// breach is [`ReadError::LimitExceeded`] (SACM-SEC-003). The size is checked
+/// first, on the bytes; the depth, the bindings in scope and the bindings in
+/// scope at the elements that declare one (which count against the node
+/// limit) by one linear scan before parsing; the nodes by the parser; and the
+/// namespace text preserved content keeps (which counts against the size
+/// limit) as it is kept. So the memory a read takes is bounded by the limits,
+/// not by the input's shape.
+///
+/// The peak memory of a read at the defaults was measured once (slice 0072:
+/// a release build, rustc 1.100, Windows 11 on an AMD Ryzen 9 8945HS with
+/// 31 GiB; the peak working set of the process, the input included). A flat
+/// ArgumentPackage of 341,176 Claims just under 32 MiB peaks at 811 MiB, in
+/// 1.9 s; 1,000,000 nodes of preserved `<x/>` (4 MB) at 1.25 GiB, in 1.8 s,
+/// most of it the SACM-XMI-003 Warning each preserved element gets; and a
+/// root with 255 bindings whose 3,905 Claims declare one more each, up to the
+/// namespace-copy limit (281 KB), at 15 MiB, in 0.24 s. An application that
+/// reads untrusted files with less memory than that sets lower limits.
+///
+/// # Other SACM namespaces
+///
+/// No SACM revision sets a namespace for its documents (spec defect D7), so
+/// files use many (LIB-COMPAT-004; ADR 0041 D4, D5). A root in the pinned
+/// namespace `http://www.omg.org/spec/SACM/20220301` is SACM 2.3. A tolerant
+/// read also reads as SACM 2.3:
+///
+/// - a root in the namespace of an older SACM revision it recognises, with
+///   one SACM-XMI-008 Warning: `http://www.omg.org/spec/SACM/20170843`,
+///   `/20190235` and `/20210218` (2.0, 2.1, 2.2), `http://www.omg.org/spec/SACM/2.0`,
+///   `/2.1` and `/2.2`, `http://omg.sacm/2.0`, `/2.1` and `/2.2`, and
+///   `http://SACM_ACEditor/sacm/2.1`, each alone or followed by `/` and a
+///   package name of ASCII letters. An Event's `occurence`, the 2.0 to 2.2
+///   spelling, is read as its date, with one SACM-XMI-008 Warning more;
+/// - a root in any other namespace whose URI contains `sacm` in any letter
+///   case, such as the undated `http://www.omg.org/spec/SACM/2.3`, with one
+///   SACM-XMI-002 Warning.
+///
+/// A strict read refuses both as [`ReadError::Unsupported`]. Both modes
+/// refuse a root in the SACM 2.4 namespace (`…/20260504` or `…/2.4`) with
+/// SACM-XMI-008, until LIB-COMPAT-018 decides how it is read, and a root in
+/// no namespace or in one without `sacm` as [`ReadError::InvalidRoot`]. In a
+/// root, the namespaces of its family name SACM classes: the base and, for a
+/// recognised revision or the undated 2.3, the base with a package; a type
+/// in any other namespace is foreign (SACM-XMI-003). [`write()`] writes SACM
+/// 2.3 in the pinned namespace.
+///
+/// ```
+/// use sacm::diagnostic::Code;
+/// use sacm::xmi::{self, Mode, ReadError, ReadOptions, WriteOptions};
+///
+/// let older = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/2.2/Argumentation"
+///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="p"/>"#;
+/// let output = xmi::read(older, &ReadOptions::default())?;
+/// assert_eq!(output.diagnostics()[0].code(), Code::XMI_OTHER_REVISION);
+/// let text = xmi::write(output.document(), &WriteOptions::default())
+///     .expect("an empty package writes");
+/// assert!(text.contains("xmlns:sacm=\"http://www.omg.org/spec/SACM/20220301\""));
+///
+/// let strict = ReadOptions::default().with_mode(Mode::Strict);
+/// let error = xmi::read(older, &strict).unwrap_err();
+/// assert!(matches!(error, ReadError::Unsupported { .. }));
+/// assert_eq!(error.code(), Code::XMI_OTHER_REVISION);
+/// # Ok::<(), ReadError>(())
+/// ```
+///
 /// # Errors
 ///
 /// The checks run in this order, and the first failure is returned:
 ///
-/// 1. the byte order mark and the first bytes: UTF-16 with a mark is
+/// 1. the input's size (`LimitExceeded`);
+/// 2. the byte order mark and the first bytes: UTF-16 with a mark is
 ///    decoded; UTF-16 without one, UTF-32 and UCS-4 are `Unsupported`;
-/// 2. the grammar of the XML declaration's `<?xml`, `version` and `encoding`
+/// 3. the grammar of the XML declaration's `<?xml`, `version` and `encoding`
 ///    (`Malformed`);
-/// 3. the declared encoding: without a UTF-16 mark, `Unsupported` unless
-///    UTF-8 or ASCII; after one, `Malformed` unless UTF-16, UTF-16LE or
-///    UTF-16BE. Then, for an accepted one, the rest of the declaration:
-///    `standalone` and `?>` (`Malformed`);
-/// 4. under an ASCII declaration, a non-ASCII character (`Malformed`);
-/// 5. the encoding (`Malformed`): invalid UTF-8 at the first invalid byte;
+/// 4. the declared encoding: without a UTF-16 mark, `ISO-8859-1` in any
+///    letter case decodes the input as ISO-8859-1 and the declaration is
+///    checked again (`Malformed` after a UTF-8 mark), and another one is
+///    `Unsupported` unless UTF-8 or ASCII; after a UTF-16 mark, `Malformed`
+///    unless UTF-16, UTF-16LE or UTF-16BE. Then, for an accepted one, the
+///    rest of the declaration: `standalone` and `?>` (`Malformed`);
+/// 5. under an ASCII declaration, a non-ASCII character (`Malformed`);
+/// 6. the encoding (`Malformed`): invalid UTF-8 at the first invalid byte;
 ///    in UTF-16, an unpaired surrogate at the surrogate, or an odd byte count
-///    after the last whole character;
-/// 6. the parse: a DOCTYPE (`Doctype`) or a well-formedness error
-///    (`Malformed`), whichever comes first;
-/// 7. the well-formedness errors this release refuses after the XML parser
+///    after the last whole character; ISO-8859-1 has none;
+/// 7. the scan before parsing, at each start tag in document order: the
+///    depth, the bindings in scope, and the bindings in scope at the elements
+///    that declare one (`LimitExceeded`). The scan stops at a DOCTYPE;
+/// 8. the parse: a DOCTYPE (`Doctype`), the node limit (`LimitExceeded`), or
+///    a well-formedness error (`Malformed`), whichever comes first;
+/// 9. the well-formedness errors this release refuses after the XML parser
 ///    has accepted the input, the earliest first (`Malformed`): a character
 ///    reference to a surrogate or above U+10FFFF, a declaration of the
 ///    namespace prefix `xmlns` (`xmlns:xmlns`), a namespace prefix
@@ -764,31 +842,36 @@ mod roots;
 ///    refused. Outside the suite, other leniencies of the parser may remain:
 ///    a sweep (LIB-SEC-005) checks only that these checks agree with the
 ///    parser's tree;
-/// 8. the roots, in two passes. First the names: an `XMI` element outside the
-///    XMI 2.5.1 namespace, or any other XMI-namespace element, as the document
-///    element is `Unsupported`; an `xmi:XMI` element with no root is
-///    `NoPackage`; otherwise the first root not named as a package kind is
-///    `InvalidRoot`. Then, in document order, the `xmi:XMI` element's
-///    attributes, each root with its content, and the content beside it
-///    (`Unsupported`). An element's start tag (its role, type, kind and id)
-///    is checked before its other attributes, and those before its content.
-///    An empty id is `InvalidId`, and an id whose value an earlier element,
-///    name, `content`, `key`, `value` or preserved element carries is
-///    `DuplicateId`, so a repeat is refused before anything after its id. A
-///    value that is not a literal is `InvalidLiteral` where it is met. A
-///    `name`, `content`, `key`, value or reference element is checked whole
-///    when it is met, then, unless it is preserved, against the occurrences
-///    before it, so the second occurrence of a value is `RepeatedValue`
-///    unless it is itself refused or preserved first. A later occurrence is
-///    listed in `RepeatedValue`'s [`locations`](ReadError::locations) even
-///    if it does not conform itself, because each occurrence is checked
-///    against those before it;
-/// 9. in strict mode, the first C++ shape in the input (`LegacyShape`).
+/// 10. the roots, in two passes. First the names and namespaces: an `XMI`
+///     element outside the XMI 2.5.1 namespace, or any other XMI-namespace
+///     element, as the document element is `Unsupported`; an `xmi:XMI` element
+///     with no root is `NoPackage`; otherwise the first root not named as a
+///     package kind, or in no namespace or one that does not name SACM, is
+///     `InvalidRoot`; then the first root in the SACM 2.4 namespace, and in
+///     strict mode in an older SACM revision's or a SACM-like one, is
+///     `Unsupported` (see [Other SACM namespaces](#other-sacm-namespaces)).
+///     Then, in document order, the `xmi:XMI` element's
+///     attributes, each root with its content, and the content beside it
+///     (`Unsupported`). An element's start tag (its role, type, kind and id)
+///     is checked before its other attributes, and those before its content.
+///     An empty id is `InvalidId`, and an id whose value an earlier element,
+///     name, `content`, `key`, `value` or preserved element carries is
+///     `DuplicateId`, so a repeat is refused before anything after its id. A
+///     value that is not a literal is `InvalidLiteral` where it is met. A
+///     `name`, `content`, `key`, value or reference element is checked whole
+///     when it is met, then, unless it is preserved, against the occurrences
+///     before it, so the second occurrence of a value is `RepeatedValue`
+///     unless it is itself refused or preserved first. A later occurrence is
+///     listed in `RepeatedValue`'s [`locations`](ReadError::locations) even
+///     if it does not conform itself, because each occurrence is checked
+///     against those before it. The namespace text preserved content keeps
+///     counts against the size limit as it is kept (`LimitExceeded`);
+/// 11. in strict mode, the first C++ shape in the input (`LegacyShape`).
 ///
 /// A tolerant read refuses only `Doctype`, `Malformed`, `InvalidRoot`,
-/// `NoPackage`, `DuplicateId`, and `Unsupported` for an encoding, a parser
-/// limit, a root outside SACM 2.3, an `XMI` element outside XMI 2.5.1 or an
-/// XMI-namespace document element; it keeps every other construct listed
+/// `NoPackage`, `DuplicateId`, `LimitExceeded`, and `Unsupported` for an
+/// encoding, the parser's capacity, a SACM 2.4 root, an `XMI` element outside
+/// XMI 2.5.1 or an XMI-namespace document element; it keeps every other construct listed
 /// below, with a Warning (see [Diagnostics](#diagnostics)), so those
 /// refusals are a strict read's only. The refusals:
 ///
@@ -796,10 +879,12 @@ mod roots;
 ///   without entity declarations.
 /// - [`ReadError::Malformed`] (SACM-XML-001): the input is not well-formed
 ///   XML, is truncated, is not valid UTF-8 or UTF-16, declares ASCII but
-///   holds a non-ASCII character, or has a UTF-16 byte order mark but
-///   declares another encoding.
+///   holds a non-ASCII character, has a UTF-16 byte order mark but declares
+///   another encoding, or has a UTF-8 byte order mark but declares
+///   ISO-8859-1.
 /// - [`ReadError::InvalidRoot`] (SACM-XMI-001): a root's local name is not
-///   one of the twelve SACM package kinds.
+///   one of the twelve SACM package kinds, or the root is in no namespace or
+///   one whose URI does not contain `sacm`.
 /// - [`ReadError::NoPackage`] (SACM-XMI-001): the `xmi:XMI` element holds no
 ///   root: no element child outside the XMI namespace.
 /// - [`ReadError::DuplicateId`] (SACM-ID-001): two or more elements (names,
@@ -838,11 +923,14 @@ mod roots;
 ///   declared type is abstract has no `xmi:type` or `xsi:type`, and no
 ///   `xmi:idref` or `href` (the reference form of a composite, refused as
 ///   `Unsupported`).
+/// - [`ReadError::LimitExceeded`] (SACM-SEC-003), in both modes: the input
+///   passes one of the [`Limits`] (see [Limits](#limits)).
 /// - [`ReadError::LegacyShape`] (SACM-XMI-012), in strict mode only: a C++
 ///   name or text shape (see
 ///   [The C++ name and text shapes](#the-c-name-and-text-shapes)).
 /// - [`ReadError::Unsupported`] (the code a tolerant read keeps the input
-///   with: SACM-XMI-014, SACM-XMI-007 or SACM-XMI-003; or SACM-XMI-002,
+///   with: SACM-XMI-014, SACM-XMI-007 or SACM-XMI-003; the code a tolerant
+///   read reads it with: SACM-XMI-002 or SACM-XMI-008; or SACM-XMI-008,
 ///   SACM-XMI-015, SACM-XML-002 or SACM-SEC-002 for what both modes refuse;
 ///   LIB-API-017): well-formed input a strict read
 ///   does not read, and that it does not keep as preserved content
@@ -851,12 +939,14 @@ mod roots;
 ///   input, and XMI-namespace elements that XMI.xsd does not define),
 ///   `(a limit of this version)` for a limit, `(strict mode never reads it;
 ///   ROW is to read it in tolerant mode)` for input that only tolerant mode
-///   is to read, as a tolerance (which need not be defective: a document in
-///   another SACM namespace is not, D-NS-PIN), and `(a defect in the input)`
-///   for input that does not conform and that a strict read refuses. A
-///   tolerant read refuses only the limits, a root outside SACM 2.3, an
-///   `XMI` element outside XMI 2.5.1 and an XMI-namespace document element,
-///   and keeps the rest (SACM-XMI-014, SACM-XMI-007 or SACM-XMI-003). In
+///   is to read, as a tolerance, `(strict mode never reads it; ROW reads it
+///   in tolerant mode)` for input a tolerant read reads (which need not be
+///   defective: a document in another SACM namespace is not, D-NS-PIN), and
+///   `(a defect in the input)` for input that does not conform and that a
+///   strict read refuses. A tolerant read refuses only the limits, a SACM
+///   2.4 root, an `XMI` element outside XMI 2.5.1 and an XMI-namespace
+///   document element, reads a root in another SACM namespace, and keeps the
+///   rest (SACM-XMI-014, SACM-XMI-007 or SACM-XMI-003). In
 ///   this release they are:
 ///   - conforming input not read yet: XMI metadata
 ///     (SACM23-XMI-019): an XMI-namespace element as the document element,
@@ -877,11 +967,12 @@ mod roots;
 ///     start tag if it is untyped under an abstract role, else at the
 ///     attribute;
 ///   - limits: UTF-16 without a byte order mark, UTF-32 or UCS-4 input, a
-///     declared encoding other than UTF-8 or ASCII in input without a UTF-16
-///     mark, and more nodes, attributes or namespaces than the parser can
-///     hold;
-///   - tolerances not read yet: a root outside the SACM 2.3 namespace, such
-///     as a SACM 2.2 one (LIB-COMPAT-004), and an `XMI` element outside the
+///     declared encoding other than UTF-8, ASCII or ISO-8859-1 in input
+///     without a UTF-16 mark, more than 65,535 distinct namespace bindings or
+///     2³² attributes, and a root in the SACM 2.4 namespace (LIB-COMPAT-018);
+///   - in strict mode, roots a tolerant read reads: one in an older SACM
+///     revision's namespace or a SACM-like one (LIB-COMPAT-004);
+///   - tolerances not read yet: an `XMI` element outside the
 ///     XMI 2.5.1 namespace, such as an older XMI revision's (LIB-COMPAT-002).
 ///     The spellings of SACM23-XMI-009 are no refusal: a strict read keeps
 ///     each as preserved content with a SACM-XMI-013 Error (see
@@ -1046,9 +1137,12 @@ mod roots;
 /// ```
 pub fn read(input: &[u8], options: &ReadOptions) -> Result<ReadOutput, ReadError> {
     let mode = options.mode;
+    let limits = options.limits;
+    limits::check_size(input, &limits)?;
     let text = input::decode(input)?;
-    let tree = input::parse(&text)?;
-    let (document, mut diagnostics) = roots::read(&text, &tree, mode)?;
+    limits::scan(&text, &limits)?;
+    let tree = input::parse(&text, &limits)?;
+    let (document, mut diagnostics) = roots::read(&text, &tree, mode, &limits)?;
     diagnostics.sort();
     Ok(ReadOutput {
         document,
@@ -1081,10 +1175,12 @@ pub fn read(input: &[u8], options: &ReadOptions) -> Result<ReadOutput, ReadError
 ///   reference to no `xmi:id` it writes ([`WriteError::Invalid`]). It never
 ///   validates: a draft with an open model Error, such as a package with no
 ///   name, writes.
-/// - [`Tolerant`](Self::Tolerant) opens every well-formed file with SACM 2.3
-///   package roots. It also accepts recognised variations, and keeps every
-///   construct a strict read refuses but a malformed or unsafe input, a
-///   repeated `xmi:id`, an encoding and a limit, as preserved content; it
+/// - [`Tolerant`](Self::Tolerant) opens every well-formed file with SACM
+///   package roots within its [`Limits`]: in SACM 2.3, an older revision's
+///   or a SACM-like namespace (LIB-COMPAT-004). It also accepts recognised
+///   variations, and keeps every construct a strict read refuses but a
+///   malformed or unsafe input, a repeated `xmi:id`, an encoding, a SACM 2.4
+///   root and a limit, as preserved content; it
 ///   reports each as a Warning, and never an Error. A tolerant write writes
 ///   the document as it is held, preserved content included.
 ///
@@ -1117,15 +1213,15 @@ pub enum Mode {
     /// read, and a write refuses a document that holds preserved content or
     /// whose output would not be schema-valid.
     Strict,
-    /// Opens every well-formed SACM 2.3 file: a read keeps what a strict read
-    /// refuses, with a Warning, and a write writes the document as it is
-    /// held.
+    /// Opens every well-formed SACM file within its [`Limits`]: a read keeps
+    /// what a strict read refuses, with a Warning, reads a root in an older
+    /// SACM revision's or a SACM-like namespace as SACM 2.3, and a write
+    /// writes the document as it is held.
     Tolerant,
 }
 
-/// How [`read`] reads a document: in which [`Mode`], tolerant by default.
-///
-/// The resource limits (LIB-SEC-003) come later.
+/// How [`read`] reads a document: in which [`Mode`], tolerant by default,
+/// and under which [`Limits`], the defaults by default (LIB-SEC-003).
 ///
 /// ```
 /// use sacm::xmi::{self, Mode, ReadOptions};
@@ -1141,13 +1237,16 @@ pub enum Mode {
 pub struct ReadOptions {
     /// The mode to read in.
     mode: Mode,
+    /// The limits to read under.
+    limits: Limits,
 }
 
 impl Default for ReadOptions {
-    /// Reads in [`Mode::Tolerant`].
+    /// Reads in [`Mode::Tolerant`], under the default [`Limits`].
     fn default() -> Self {
         Self {
             mode: Mode::Tolerant,
+            limits: Limits::default(),
         }
     }
 }
@@ -1164,6 +1263,27 @@ impl ReadOptions {
     #[must_use]
     pub fn mode(&self) -> Mode {
         self.mode
+    }
+
+    /// These options, reading under `limits`.
+    ///
+    /// ```
+    /// use sacm::xmi::{Limits, ReadOptions};
+    ///
+    /// let limits = Limits::default().with_max_input_bytes(16 << 20).with_max_depth(64);
+    /// let options = ReadOptions::default().with_limits(limits);
+    /// assert_eq!(options.limits().max_depth(), 64);
+    /// ```
+    #[must_use]
+    pub fn with_limits(mut self, limits: Limits) -> Self {
+        self.limits = limits;
+        self
+    }
+
+    /// The limits to read under.
+    #[must_use]
+    pub fn limits(&self) -> Limits {
+        self.limits
     }
 }
 
@@ -1183,8 +1303,9 @@ impl ReadOptions {
 /// strict read refuses, SACM-ENUM-001 for a value that is no literal,
 /// SACM-MULT-001 for a repeat, SACM-XMI-005 for an untyped child,
 /// SACM-ID-002 for an empty `xmi:id`, SACM-XMI-014 for conforming content
-/// not read yet and SACM-XMI-007 for a cross-document link not read yet, each a
-/// Warning (see [`read`]).
+/// not read yet and SACM-XMI-007 for a cross-document link not read yet, and
+/// SACM-XMI-008 and SACM-XMI-002 for a root in an older SACM revision's or a
+/// SACM-like namespace (LIB-COMPAT-004), each a Warning (see [`read`]).
 ///
 /// # Examples
 ///
@@ -1310,9 +1431,9 @@ const _: () = {
 /// fields promise (such as `reason` ending with its label, or `locations`
 /// holding at least two) holds for a refusal of [`read`], not for a record.
 ///
-/// The first five, and `Unsupported` for an encoding, a parser limit, a root
-/// outside SACM 2.3 or XMI 2.5.1, or an XMI-namespace document element, are
-/// refused in both modes. The rest
+/// The first five, `LimitExceeded`, and `Unsupported` for an encoding, the
+/// parser's capacity, a SACM 2.4 root, an `XMI` element outside XMI 2.5.1,
+/// or an XMI-namespace document element, are refused in both modes. The rest
 /// are refused in strict mode only: a tolerant read keeps the construct as
 /// preserved content with a Warning of the variant's code, or, for
 /// `Unsupported`, of SACM-XMI-014, SACM-XMI-007 or SACM-XMI-003 (ADR 0035
@@ -1367,8 +1488,9 @@ pub enum ReadError {
         location: Option<SourceLocation>,
     },
     /// The input is not well-formed XML, is truncated, is not valid UTF-8 or
-    /// UTF-16, declares ASCII but holds a non-ASCII character, or has a
-    /// UTF-16 byte order mark but declares another encoding (SACM-XML-001).
+    /// UTF-16, declares ASCII but holds a non-ASCII character, has a UTF-16
+    /// byte order mark but declares another encoding, or has a UTF-8 byte
+    /// order mark but declares ISO-8859-1 (SACM-XML-001).
     #[non_exhaustive]
     Malformed {
         /// Where the input stops being well-formed.
@@ -1382,8 +1504,9 @@ pub enum ReadError {
     /// An interchange root (the document element, or each element child
     /// outside the XMI namespace of an `xmi:XMI` element in the XMI 2.5.1
     /// namespace `http://www.omg.org/spec/XMI/20131001`) is not named as one
-    /// of the twelve SACM package kinds (SACM-XMI-001). The location is the
-    /// `<` of its start tag.
+    /// of the twelve SACM package kinds, or is in no namespace or in one whose
+    /// URI does not contain `sacm` in any letter case (SACM-XMI-001; ADR 0041
+    /// D4). The location is the `<` of its start tag.
     #[non_exhaustive]
     InvalidRoot {
         /// Where the root's start tag starts.
@@ -1469,15 +1592,19 @@ pub enum ReadError {
     /// Well-formed input this version does not read, which a strict read
     /// refuses rather than keep as preserved content (LIB-API-011, ADR
     /// 0033). A tolerant read refuses only an
-    /// encoding, a parser limit, a root outside SACM 2.3 or XMI 2.5.1 and an
-    /// XMI-namespace document element, and keeps the rest with SACM-XMI-014,
-    /// SACM-XMI-007 or SACM-XMI-003 (ADR 0035 D1, D2).
+    /// encoding, the parser's capacity, a SACM 2.4 root, an `XMI` element
+    /// outside XMI 2.5.1 and an XMI-namespace document element, reads a root
+    /// in an older SACM revision's or a SACM-like namespace (LIB-COMPAT-004),
+    /// and keeps the rest with SACM-XMI-014, SACM-XMI-007 or SACM-XMI-003
+    /// (ADR 0035 D1, D2).
     ///
     /// Its [`code`](ReadError::code) is the code a tolerant read gives the
     /// same input (LIB-API-017): SACM-XMI-014 for conforming content not
     /// read yet, SACM-XMI-007 for a cross-document link not read yet, SACM-XMI-003
-    /// for a defect; and, for what both modes refuse, SACM-XMI-002 for a
-    /// root outside the SACM 2.3 namespace, SACM-XMI-015 for an `XMI`
+    /// for a defect, SACM-XMI-008 and SACM-XMI-002 for a root in an older
+    /// SACM revision's or a SACM-like namespace, which a tolerant read reads
+    /// with a Warning of that code; and, for what both modes refuse,
+    /// SACM-XMI-008 for a SACM 2.4 root, SACM-XMI-015 for an `XMI`
     /// element outside XMI 2.5.1, SACM-XML-002 for an encoding and
     /// SACM-SEC-002 for a parser limit. An XMI-namespace document element is
     /// SACM-XMI-014 in both modes.
@@ -1816,6 +1943,46 @@ pub enum ReadError {
         /// [`template`](Self::template) and [`arguments`](Self::arguments).
         details: Details,
     },
+    /// The input passes one of the [`Limits`] of
+    /// [`ReadOptions::with_limits`] (SACM-SEC-003, LIB-SEC-003), in either
+    /// mode. Fix: if the file is trusted, read it with higher limits.
+    ///
+    /// ```
+    /// use sacm::diagnostic::Code;
+    /// use sacm::xmi::{self, Limit, Limits, ReadError, ReadOptions};
+    ///
+    /// let bytes = br#"<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301"
+    ///     xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="p"/>"#;
+    /// let limits = Limits::default().with_max_input_bytes(16 << 20).with_max_depth(64);
+    /// let options = ReadOptions::default().with_limits(limits);
+    /// match xmi::read(bytes, &options) {
+    ///     Ok(output) => assert_eq!(output.document().element_count(), 1),
+    ///     Err(ReadError::LimitExceeded { limit: Limit::InputBytes, max, .. }) => {
+    ///         panic!("refused: larger than {max} bytes")
+    ///     }
+    ///     Err(error) => panic!("{} {error}", error.code()),
+    /// }
+    ///
+    /// let small = ReadOptions::default().with_limits(Limits::default().with_max_input_bytes(8));
+    /// let error = xmi::read(bytes, &small).unwrap_err();
+    /// assert_eq!(error.code(), Code::LIMIT_EXCEEDED);
+    /// assert_eq!(error.template(), "SACM-SEC-003/input-bytes");
+    /// assert!(error.location().is_none());
+    /// ```
+    #[non_exhaustive]
+    LimitExceeded {
+        /// Which limit.
+        limit: Limit,
+        /// The limit's value, as set.
+        max: u64,
+        /// The `<` of the element whose depth, bindings in scope or namespace
+        /// copies pass the limit, or of the preserved element or the name of
+        /// the preserved attribute whose kept namespace text passes it; `None`
+        /// for the input's size and the node count.
+        location: Option<SourceLocation>,
+        /// The template and arguments of the refusal's message.
+        details: Details,
+    },
 }
 
 impl ReadError {
@@ -1828,7 +1995,8 @@ impl ReadError {
     /// [`RepeatedValue`](Self::RepeatedValue), SACM-ENUM-001 for
     /// [`InvalidLiteral`](Self::InvalidLiteral), SACM-XMI-012 for
     /// [`LegacyShape`](Self::LegacyShape), SACM-XMI-005 for
-    /// [`MissingType`](Self::MissingType), and for
+    /// [`MissingType`](Self::MissingType), SACM-SEC-003 for
+    /// [`LimitExceeded`](Self::LimitExceeded), and for
     /// [`Unsupported`](Self::Unsupported) the code a tolerant read gives the
     /// same input (see the variant; LIB-API-017).
     ///
@@ -1836,8 +2004,8 @@ impl ReadError {
     /// use sacm::diagnostic::Code;
     /// use sacm::xmi::{self, ReadOptions};
     ///
-    /// let latin_1 = b"<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><r/>";
-    /// let error = xmi::read(latin_1, &ReadOptions::default()).unwrap_err();
+    /// let latin_2 = b"<?xml version=\"1.0\" encoding=\"ISO-8859-2\"?><r/>";
+    /// let error = xmi::read(latin_2, &ReadOptions::default()).unwrap_err();
     /// assert_eq!(error.code(), Code::XML_ENCODING_NOT_READ);
     /// ```
     #[must_use]
@@ -1887,7 +2055,8 @@ impl ReadError {
             | Self::RepeatedValue { details, .. }
             | Self::InvalidLiteral { details, .. }
             | Self::LegacyShape { details, .. }
-            | Self::MissingType { details, .. } => Some(details),
+            | Self::MissingType { details, .. }
+            | Self::LimitExceeded { details, .. } => Some(details),
         }
     }
 
@@ -1900,12 +2069,18 @@ impl ReadError {
         }
     }
 
-    /// The `InvalidRoot` refusal of the root written `element_name`.
-    pub(crate) fn invalid_root(location: Option<SourceLocation>, element_name: String) -> Self {
-        let details = Details::new(
-            &template::XMI_001_NOT_A_PACKAGE,
-            vec![Argument::text("element", element_name.as_str())],
-        );
+    /// The `InvalidRoot` refusal of the root written `element_name`, with the
+    /// message of `template`: the element, then `rest` (SACM-XMI-001
+    /// `/not-a-package`, `/not-a-sacm-namespace` or `/no-namespace`).
+    pub(crate) fn invalid_root(
+        location: Option<SourceLocation>,
+        element_name: String,
+        template: &'static template::Template,
+        rest: Vec<Argument>,
+    ) -> Self {
+        let mut arguments = vec![Argument::text("element", element_name.as_str())];
+        arguments.extend(rest);
+        let details = Details::new(template, arguments);
         Self::InvalidRoot {
             location,
             element_name,
@@ -2040,8 +2215,8 @@ impl ReadError {
     /// first character that is not literal white space (a CDATA section or
     /// reference at its start). For [`DuplicateId`](Self::DuplicateId), the
     /// first repeat; for [`RepeatedValue`](Self::RepeatedValue), the second
-    /// occurrence. `None` only when the input exceeds the parser's
-    /// capacity.
+    /// occurrence. `None` for an input-size or node limit and for the
+    /// parser's capacity.
     ///
     /// Lines end at a line feed, a carriage return and line feed, or a lone
     /// carriage return; a leading byte order mark, UTF-8 or UTF-16, takes no
@@ -2057,6 +2232,7 @@ impl ReadError {
             | Self::InvalidLiteral { location, .. }
             | Self::LegacyShape { location, .. }
             | Self::MissingType { location, .. }
+            | Self::LimitExceeded { location, .. }
             | Self::Unsupported { location, .. } => *location,
             // The first element carries the id, or the first occurrence gives
             // the value; the second repeats it.
@@ -2093,6 +2269,7 @@ impl ReadError {
             | Self::InvalidLiteral { location, .. }
             | Self::LegacyShape { location, .. }
             | Self::MissingType { location, .. }
+            | Self::LimitExceeded { location, .. }
             | Self::Unsupported { location, .. } => location.as_slice(),
             Self::DuplicateId { locations, .. } | Self::RepeatedValue { locations, .. } => {
                 locations
@@ -2142,7 +2319,9 @@ impl fmt::Display for ReadError {
                 f.write_str(&template::render(&template::XMI_001_NO_PACKAGE, &[]))?;
                 None
             }
-            Self::InvalidRoot { details, .. } | Self::InvalidId { details, .. } => {
+            Self::InvalidRoot { details, .. }
+            | Self::InvalidId { details, .. }
+            | Self::LimitExceeded { details, .. } => {
                 f.write_str(&details.render())?;
                 None
             }
@@ -2365,6 +2544,15 @@ impl std::error::Error for ReadError {}
 /// A strict write checks schema validity only, so a new validation rule
 /// never changes what it writes. A new strict write refusal is listed in the
 /// release notes as a change.
+///
+/// # Output size
+///
+/// `write` builds the whole output in memory and has no limit of its own.
+/// Each line is indented two spaces per level. So, for a document that
+/// [`read`] returned from B bytes under [`Limits`] with depth limit D and size
+/// limit M, the output is at most (2·D + 48)·B + 6·M + 8,192 bytes. A document
+/// built or changed by edits has no such bound: its output grows with its
+/// elements, their text and their depth.
 ///
 /// # Errors
 ///

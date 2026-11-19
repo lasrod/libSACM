@@ -81,6 +81,13 @@ const CONSTANTS: &[(&str, Code)] = &[
     ("INTERFACE_PLACEMENT", Code::INTERFACE_PLACEMENT),
 ];
 
+/// The constants slice 0072 adds, by name, with their texts: SACM-SEC-003
+/// (LIB-SEC-003) and SACM-XMI-008 (LIB-COMPAT-004).
+const NEW_0072: [(&str, &str); 2] = [
+    ("LIMIT_EXCEEDED", "SACM-SEC-003"),
+    ("XMI_OTHER_REVISION", "SACM-XMI-008"),
+];
+
 /// Every live code, [`LIVE`], sorted.
 fn all_live() -> Vec<String> {
     let mut live: Vec<String> = LIVE.iter().map(|&code| code.to_owned()).collect();
@@ -100,7 +107,9 @@ fn all_live() -> Vec<String> {
 /// and SACM-XMI-014 (LIB-API-011) of slice 0053 (ADR 0035); and SACM-XMI-013
 /// (SACM23-XMI-009) of slice 0057; and SACM-XMI-002, SACM-XMI-015,
 /// SACM-XMI-016, SACM-XML-002, SACM-XML-003 and SACM-SEC-002 of slice 0063
-/// (LIB-API-017); and SACM-PKG-002 (SACM23-VAL-023) of slice 0068.
+/// (LIB-API-017); and SACM-PKG-002 (SACM23-VAL-023) of slice 0068; and
+/// SACM-SEC-003 (LIB-SEC-003) and SACM-XMI-008 (LIB-COMPAT-004) of slice
+/// 0072.
 const LIVE: &[&str] = &[
     "SACM-ABS-001",
     "SACM-CITE-001",
@@ -128,6 +137,7 @@ const LIVE: &[&str] = &[
     "SACM-REF-003",
     "SACM-SEC-001",
     "SACM-SEC-002",
+    "SACM-SEC-003",
     "SACM-XMI-001",
     "SACM-XMI-002",
     "SACM-XMI-003",
@@ -135,6 +145,7 @@ const LIVE: &[&str] = &[
     "SACM-XMI-005",
     "SACM-XMI-006",
     "SACM-XMI-007",
+    "SACM-XMI-008",
     "SACM-XMI-010",
     "SACM-XMI-011",
     "SACM-XMI-012",
@@ -705,6 +716,8 @@ fn lib_diag_002_every_code_the_crate_builds_is_a_constant_of_diagnostic_rs() {
     let mut scanned: Vec<&str> = constants.iter().map(|c| c.name.as_str()).collect();
     scanned.sort_unstable();
     let mut listed: Vec<&str> = CONSTANTS.iter().map(|(name, _)| *name).collect();
+    // The constants of slice 0072, whose texts the gated test below checks.
+    listed.extend(NEW_0072.iter().map(|(name, _)| *name));
     listed.sort_unstable();
     assert_eq!(
         scanned, listed,
@@ -720,6 +733,24 @@ fn lib_diag_002_every_code_the_crate_builds_is_a_constant_of_diagnostic_rs() {
             "{ROW}: the scanned text of Code::{name} is not its as_str()"
         );
     }
+    for (name, text) in NEW_0072 {
+        let Some(found) = constants.iter().find(|c| c.name == name) else {
+            panic!("{ROW}: the scan did not find Code::{name} (slice 0072)");
+        };
+        assert_eq!(
+            found.text, text,
+            "{ROW}: the scanned text of Code::{name} is not {text}"
+        );
+    }
+    // The constants of slice 0072 are the codes their catalog rows name.
+    assert_eq!(
+        (
+            Code::LIMIT_EXCEEDED.as_str(),
+            Code::XMI_OTHER_REVISION.as_str()
+        ),
+        ("SACM-SEC-003", "SACM-XMI-008"),
+        "{ROW}: Code::LIMIT_EXCEEDED and Code::XMI_OTHER_REVISION"
+    );
 }
 
 #[test]

@@ -279,6 +279,14 @@ const CODES: &[Code] = &[
     Code::EXPRESSION_WITH_CONTENT,
 ];
 
+/// [`CODES`], with the codes of slice 0072: SACM-SEC-003 (LIB-SEC-003) and
+/// SACM-XMI-008 (LIB-COMPAT-004).
+fn codes() -> Vec<Code> {
+    let mut codes = CODES.to_vec();
+    codes.extend([Code::LIMIT_EXCEEDED, Code::XMI_OTHER_REVISION]);
+    codes
+}
+
 /// The three flags, with their names.
 const FLAGS: [(Flag, &str); 3] = [
     (Flag::IsCitation, "isCitation"),
@@ -1832,12 +1840,13 @@ fn lib_api_006_every_catalog_code_round_trips_as_its_code_and_a_reserved_one_is_
         .filter(|(_, live)| *live)
         .map(|(code, _)| code.as_str())
         .collect();
-    let constants: BTreeSet<&str> = CODES.iter().copied().map(Code::as_str).collect();
+    let codes = codes();
+    let constants: BTreeSet<&str> = codes.iter().copied().map(Code::as_str).collect();
     assert_eq!(
         constants, live,
         "{API_006}: setup: the codes listed here are not the live codes of the catalog"
     );
-    for &code in CODES {
+    for &code in &codes {
         assert_name_round_trips(code, code.as_str());
     }
     let reserved: Vec<&str> = catalog

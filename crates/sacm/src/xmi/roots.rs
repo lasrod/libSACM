@@ -138,15 +138,16 @@
 //! message names the element by its kind and id, never by the name or prefix
 //! written, so the choice of prefix does not change it (SACM23-XMI-002).
 
+use std::cell::Cell;
 use std::collections::BTreeSet;
 
 use roxmltree::{Attribute, Node};
 
 use super::input::{Locator, is_xml_space, locate};
-use super::namespaces::{SACM_NS, SACM_PREFIX, XMI_NS, XMI_PREFIX};
+use super::namespaces::{self, Family, RootNamespace, SACM_NS, SACM_PREFIX, XMI_NS, XMI_PREFIX};
 use super::preserve;
 use super::refusal::{Tolerant, Unread, unsupported};
-use super::{Mode, ReadError};
+use super::{Limit, Limits, Mode, ReadError, limits};
 use crate::diagnostic::template::{self, Template};
 use crate::diagnostic::{Argument, Code, Details, Diagnostic, Severity};
 use crate::model::{
@@ -172,6 +173,14 @@ const TEXT_RESOLVED: &str = "argumentElement";
 /// `Event` (§12.9, D-TEXT-MODEL, spec defect D17), which a tolerant read
 /// reads as an attribute or a value element (SACM23-XMI-009).
 const EVENT_SPELLING: &str = "occurece";
+
+/// The SACM 2.0 to 2.2 spelling of the attribute `date` of an `Event`, in
+/// their `emof.xml` (`Event.occurence`), which a tolerant read reads as the
+/// date in a root of an older revision (LIB-COMPAT-004, ADR 0041 D5).
+const OLDER_EVENT_SPELLING: &str = "occurence";
+
+/// The row of the reading of other SACM namespaces (ADR 0041).
+const OTHER_NAMESPACE_ROW: &str = "LIB-COMPAT-004";
 
 /// The §10.4 text spelling of `terminologyElement`, which a tolerant read
 /// reads as the role of a TerminologyPackage (SACM23-XMI-028, spec defect
@@ -987,9 +996,10 @@ pub(super) fn read(
     text: &str,
     tree: &roxmltree::Document<'_>,
     mode: Mode,
+    limits: &Limits,
 ) -> Result<(Document, Vec<Diagnostic>), ReadError> {
     let element = tree.root_element();
-    let is_wrapper = classify(text, element)?;
+    let is_wrapper = classify(text, element, mode)?;
     let mut document = Document::new();
     let mut found = Findings {
         text,
@@ -1001,6 +1011,10 @@ pub(super) fn read(
         order: 0,
         diagnostics: Vec::new(),
         legacy: None,
+        family: namespaces::PINNED,
+        revision: None,
+        limits: *limits,
+        kept: Cell::new(0),
     };
     // What the document holds outside every element (ADR 0035 D3).
     let mut outside = Kept::new(DocumentHolder);
@@ -1095,6 +1109,17 @@ struct Findings<'t, 'a> {
     /// offset, the element it belongs to and what it is, which [`read`]
     /// refuses once the input has read whole (LIB-COMPAT-008).
     legacy: Option<(usize, ElementId, Details)>,
+    /// The namespaces of the root being read that count as SACM for types
+    /// (ADR 0041 D5).
+    family: Family<'a>,
+    /// The SACM revision of the root being read, if it is an older one's
+    /// (LIB-COMPAT-004).
+    revision: Option<&'static str>,
+    /// The limits read under (LIB-SEC-003).
+    limits: Limits,
+    /// The namespace text preserved content has kept so far, which counts
+    /// against the size limit and never decreases (ADR 0041 D2).
+    kept: Cell<u64>,
 }
 
 /// What [`Findings`] holds before a part is read, so that a part that turns
@@ -1403,6 +1428,71 @@ impl Findings<'_, '_> {
     fn push_at(&mut self, diagnostic: Diagnostic, offset: usize) {
         self.diagnostics.push((offset, diagnostic));
     }
+
+    /// Reports the root `id` of `kind`, whose start tag is at byte `offset`,
+    /// in the namespace `uri` of the class `class`: one SACM-XMI-008 Warning
+    /// for an older revision's, one SACM-XMI-002 for a SACM-like one, and
+    /// nothing for the pinned one (LIB-COMPAT-004).
+    fn root_namespace(
+        &mut self,
+        class: RootNamespace<'_>,
+        uri: &str,
+        offset: usize,
+        kind: ElementKind,
+        id: &str,
+    ) {
+        let mut arguments = named(kind, id);
+        arguments.push(Argument::text("namespace", uri));
+        let template = match class {
+            RootNamespace::OtherRevision { revision, .. } => {
+                arguments.push(Argument::text("revision", revision));
+                &template::XMI_008_OTHER_REVISION
+            }
+            RootNamespace::SacmLike { .. } => &template::XMI_002_SACM_LIKE,
+            RootNamespace::Pinned | RootNamespace::Sacm24 | RootNamespace::NotSacm => return,
+        };
+        let diagnostic =
+            Diagnostic::emit(template, Severity::Warning, OTHER_NAMESPACE_ROW, arguments)
+                .set_affected([ElementId::new(id)]);
+        self.push_at(diagnostic, offset);
+    }
+
+    /// Reports the `occurence` at byte `offset` of the Event `id`, read as
+    /// its date in a root of SACM `revision` (SACM-XMI-008).
+    fn occurence(&mut self, offset: usize, id: &ElementId, revision: &str) {
+        let arguments = vec![
+            Argument::text("id", id.as_str()),
+            Argument::text("revision", revision),
+        ];
+        let diagnostic = Diagnostic::emit(
+            &template::XMI_008_OCCURENCE,
+            Severity::Warning,
+            OTHER_NAMESPACE_ROW,
+            arguments,
+        )
+        .set_affected([id.clone()]);
+        self.push_at(diagnostic, offset);
+    }
+
+    /// Counts `bytes` of namespace text that preserved content keeps at byte
+    /// `offset` against the size limit, and refuses it there once the count
+    /// passes the limit (LIB-SEC-003, ADR 0041 D2). The count never
+    /// decreases, a part read and then preserved included.
+    fn keep_namespace_text(&self, bytes: u64, offset: usize) -> Result<(), ReadError> {
+        let kept = self.kept.get().saturating_add(bytes);
+        self.kept.set(kept);
+        let max = self.limits.max_input_bytes();
+        if kept > max {
+            return Err(limits::exceeded(
+                Limit::InputBytes,
+                max,
+                locate(self.text, offset),
+                &template::SEC_003_KEPT_NAMESPACES,
+                None,
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// The ids a generated one must avoid, in the tree under `element`, on any
@@ -1534,24 +1624,29 @@ fn id_value(raw: &str) -> &str {
 }
 
 /// Pass 1: whether the document element is the XMI element, after checking
-/// that every root is named as a package kind.
-fn classify(text: &str, element: Node<'_, '_>) -> Result<bool, ReadError> {
+/// every root: first, in document order, that each is named as a package
+/// kind and is in a SACM namespace (`InvalidRoot` otherwise), then that each
+/// is in a namespace `mode` reads (ADR 0041 D4).
+fn classify(text: &str, element: Node<'_, '_>, mode: Mode) -> Result<bool, ReadError> {
     let name = element.tag_name();
     match (name.namespace(), name.name()) {
         (Some(XMI_NS), "XMI") => {
-            let mut roots = element
+            let roots: Vec<Node<'_, '_>> = element
                 .children()
                 .filter(|child| child.is_element() && child.tag_name().namespace() != Some(XMI_NS))
-                .peekable();
-            if roots.peek().is_none() {
+                .collect();
+            if roots.is_empty() {
                 return Err(ReadError::NoPackage {
                     location: locate(text, element.range().start),
                 });
             }
-            match roots.find(|root| package_kind(root).is_none()) {
-                Some(root) => Err(invalid_root(text, root)),
-                None => Ok(true),
+            for &root in &roots {
+                check_root(text, root)?;
             }
+            for &root in &roots {
+                check_root_namespace(text, root, mode)?;
+            }
+            Ok(true)
         }
         // XMI document metadata, read by SACM23-XMI-019.
         (Some(XMI_NS), _) => Err(unsupported(
@@ -1574,11 +1669,84 @@ fn classify(text: &str, element: Node<'_, '_>) -> Result<bool, ReadError> {
                 &[("element", &written_name(text, element))],
             ),
         )),
-        _ => match package_kind(&element) {
-            Some(_) => Ok(false),
-            None => Err(invalid_root(text, element)),
-        },
+        _ => {
+            check_root(text, element)?;
+            check_root_namespace(text, element, mode)?;
+            Ok(false)
+        }
     }
+}
+
+/// Refuses `root` as `InvalidRoot` if its local name is none of the package
+/// kinds, or if it is in no namespace or one that does not name SACM
+/// (SACM-XMI-001; ADR 0041 D4).
+fn check_root(text: &str, root: Node<'_, '_>) -> Result<(), ReadError> {
+    if package_kind(&root).is_none() {
+        return Err(invalid_root(text, root));
+    }
+    let uri = root.tag_name().namespace().filter(|uri| !uri.is_empty());
+    if namespaces::classify(uri) != RootNamespace::NotSacm {
+        return Ok(());
+    }
+    let location = locate(text, root.range().start);
+    let element = written_name(text, root);
+    Err(match uri {
+        Some(uri) => ReadError::invalid_root(
+            location,
+            element,
+            &template::XMI_001_NOT_A_SACM_NAMESPACE,
+            vec![Argument::text("namespace", uri)],
+        ),
+        None => ReadError::invalid_root(
+            location,
+            element,
+            &template::XMI_001_NO_NAMESPACE,
+            Vec::new(),
+        ),
+    })
+}
+
+/// Refuses `root`, a package kind in a SACM namespace, as `Unsupported` if
+/// `mode` does not read its namespace: a SACM 2.4 root in both modes, and in
+/// strict mode one in an older revision's or a SACM-like namespace, which a
+/// tolerant read reads (ADR 0041 D4, D6).
+fn check_root_namespace(text: &str, root: Node<'_, '_>, mode: Mode) -> Result<(), ReadError> {
+    let Some(uri) = root.tag_name().namespace() else {
+        return Ok(());
+    };
+    let element = written_name(text, root);
+    let (unread, details) = match namespaces::classify(Some(uri)) {
+        RootNamespace::Sacm24 => (
+            Unread::Sacm24,
+            text_details(
+                &template::XMI_008_SACM_2_4,
+                &[("element", &element), ("namespace", uri)],
+            ),
+        ),
+        RootNamespace::OtherRevision { revision, .. } => (
+            Unread::OtherRevision,
+            text_details(
+                &template::XMI_008_OTHER_REVISION_ROOT,
+                &[
+                    ("element", &element),
+                    ("namespace", uri),
+                    ("revision", revision),
+                ],
+            ),
+        ),
+        RootNamespace::SacmLike { .. } => (
+            Unread::OtherSacmNamespace,
+            text_details(
+                &template::XMI_002_OTHER_NAMESPACE,
+                &[("element", &element), ("namespace", uri)],
+            ),
+        ),
+        RootNamespace::Pinned | RootNamespace::NotSacm => return Ok(()),
+    };
+    if mode == Mode::Tolerant && matches!(unread.tolerant(), Tolerant::Read(_)) {
+        return Ok(());
+    }
+    Err(unsupported(text, root.range().start, unread, details))
 }
 
 /// The package kind that `node`'s local name names exactly, if any.
@@ -1590,9 +1758,14 @@ fn package_kind(node: &Node<'_, '_>) -> Option<ElementKind> {
         .find(|kind| kind.is_package() && kind.name() == local)
 }
 
-/// The `InvalidRoot` refusal of `root`.
+/// The `InvalidRoot` refusal of `root`, which is no package kind.
 fn invalid_root(text: &str, root: Node<'_, '_>) -> ReadError {
-    ReadError::invalid_root(locate(text, root.range().start), written_name(text, root))
+    ReadError::invalid_root(
+        locate(text, root.range().start),
+        written_name(text, root),
+        &template::XMI_001_NOT_A_PACKAGE,
+        Vec::new(),
+    )
 }
 
 /// Pass 2 for the XMI element: checks its attributes, then reads its roots
@@ -1809,7 +1982,8 @@ impl<H: Holder> Kept<H> {
     ) -> Result<Option<Keep>, ReadError> {
         let text = found.text;
         let at = attribute.range_qname().start;
-        let mut attr = preserve::attr(text, attribute);
+        let (mut attr, mut kept) = preserve::attr(text, attribute);
+        let bindings = self.namespaces.len();
         let mut renamed = None;
         if let Some(prefix) = attr.name.prefix.clone() {
             let uri = attribute.namespace().unwrap_or_default();
@@ -1854,6 +2028,10 @@ impl<H: Holder> Kept<H> {
                 None => self.namespaces.push((prefix, uri.to_owned())),
             }
         }
+        for (prefix, uri) in self.namespaces.get(bindings..).unwrap_or_default() {
+            kept = kept.saturating_add(preserve::binding_bytes(Some(prefix), uri));
+        }
+        found.keep_namespace_text(kept, at)?;
         self.references.extend(
             reference_tokens(attribute)
                 .into_iter()
@@ -1928,10 +2106,12 @@ impl<H: Holder> Kept<H> {
             }
         }
         let at = node.range().start;
+        let (fragment, kept) = preserve::fragment(text, node);
+        found.keep_namespace_text(kept, at)?;
         self.offsets.insert(at);
         self.children.push(Placed {
             index: self.typed,
-            item: Item::Element(preserve::fragment(text, node)),
+            item: Item::Element(fragment),
         });
         Ok(())
     }
@@ -2506,6 +2686,29 @@ impl Pending {
         }
     }
 
+    /// Reads `attribute` of `node`, this element's node, as its date if it
+    /// is an Event's `occurence`, the spelling of SACM 2.0 to 2.2, in a root
+    /// of an older revision, and the date is not given too, which is read
+    /// instead; and returns whether it was (LIB-COMPAT-004, SACM-XMI-008).
+    fn read_older_date(
+        &mut self,
+        found: &mut Findings<'_, '_>,
+        node: Node<'_, '_>,
+        attribute: &Attribute<'_, '_>,
+    ) -> bool {
+        let Some(revision) = found.revision.filter(|_| {
+            self.kind == ElementKind::Event
+                && is_unqualified(attribute, OLDER_EVENT_SPELLING)
+                && !gives(node, StringAttribute::Date.name())
+        }) else {
+            return false;
+        };
+        self.strings
+            .push((StringAttribute::Date, Some(attribute.value().to_owned())));
+        found.occurence(attribute.range_qname().start, &self.id, revision);
+        true
+    }
+
     /// Reads `attribute` of `node`, this element's node, if it is a spelling
     /// of SACM23-XMI-009 on its kind (an Event's `occurece`, an
     /// `ArgumentGroup`'s `argumentationElement`), and returns whether it was
@@ -2733,7 +2936,7 @@ impl Shorthand {
         if attribute.name() == "lang" {
             self.lang = Some(value);
             self.lang_at = Some(at);
-            self.lang_attr = Some(preserve::attr(text, attribute));
+            self.lang_attr = Some(preserve::attr(text, attribute).0);
         } else {
             if let Some(earlier) = self.content_at {
                 return Err(earlier);
@@ -3184,47 +3387,36 @@ fn root_start<'a>(found: &mut Findings<'_, 'a>, root: Node<'a, '_>) -> Result<Pe
     let at_root = root.range().start;
     let name = written_name(text, root);
 
-    // The namespace, then the kind (ADR 0016 D5, D6). Under `xmlns=""` the
-    // parser reports the empty string, which is no namespace name
-    // (Namespaces 1.0 §2.2, §6.2). Every package kind is read; pass 1 has
-    // refused a root of any other name. A root outside SACM 2.3 is refused
-    // in both modes (ADR 0035 D1).
-    let namespace = root.tag_name().namespace().filter(|uri| !uri.is_empty());
-    let kind = match (namespace, package_kind(&root)) {
-        (Some(SACM_NS), Some(kind)) => kind,
-        (Some(SACM_NS), None) => return Err(invalid_root(text, root)),
-        (Some(namespace), _) => {
-            return Err(unsupported(
-                text,
-                at_root,
-                Unread::OtherSacmNamespace,
-                text_details(
-                    &template::XMI_002_OTHER_NAMESPACE,
-                    &[("element", &name), ("namespace", namespace)],
-                ),
-            ));
-        }
-        (None, _) => {
-            return Err(unsupported(
-                text,
-                at_root,
-                Unread::OtherSacmNamespace,
-                text_details(&template::XMI_002_NO_NAMESPACE, &[("element", &name)]),
-            ));
-        }
+    // The kind, then the namespace (ADR 0016 D5; ADR 0041 D4). Pass 1 has
+    // refused a root of any other name, in a namespace that is not SACM, in
+    // SACM 2.4's, and in strict mode in another SACM namespace. The root's
+    // family is its SACM namespace for types (ADR 0041 D5).
+    let Some(kind) = package_kind(&root) else {
+        return Err(invalid_root(text, root));
+    };
+    let namespace = root.tag_name().namespace().unwrap_or_default();
+    let class = namespaces::classify(Some(namespace));
+    let Some(family) = class.family() else {
+        return Err(invalid_root(text, root));
+    };
+    found.family = family;
+    found.revision = match class {
+        RootNamespace::OtherRevision { revision, .. } => Some(revision),
+        _ => None,
     };
 
     let id = read_id(found, root, kind)?;
     let mut element = pending(found, root, None, kind, id, name);
     let id = element.id.clone();
     let id_text = id.as_str();
+    found.root_namespace(class, namespace, at_root, kind, id_text);
 
     // A type naming the root's own class is read, an `xsi:type` reported;
     // one naming another class does not conform, and is preserved (ADR
     // 0033, D-ROOT-NAME). Like the kind and the id, it is checked first, at
     // the root.
     for attribute in root.attributes().filter(is_type) {
-        if names_class(root, attribute.value(), kind.name()) {
+        if names_class(found.family, root, attribute.value(), kind.name()) {
             if is_xsi_type(&attribute) {
                 let arguments = named(kind, id_text);
                 found.xsi_type(&attribute, &template::XMI_010_XSI_TYPE, arguments, id_text);
@@ -3382,6 +3574,9 @@ fn child_start<'a>(
             continue;
         }
         if element.read_spelled_attribute(found, node, &attribute, &mut start)? {
+            continue;
+        }
+        if element.read_older_date(found, node, &attribute) {
             continue;
         }
         if !is_utility && is_unqualified(&attribute, "name") {
@@ -3708,14 +3903,14 @@ fn child_kind(
     let mut typed = None;
     let mut type_spelled = false;
     for attribute in node.attributes().filter(is_type) {
-        let kind = match type_kind(node, attribute.value()) {
+        let kind = match type_kind(found.family, node, attribute.value()) {
             Some(kind) => kind,
             // The model's spelling of ArtifactAssetRelationship, read as that
             // kind (SACM23-XMI-009, ADR 0034 amendment 2). Under a role that
             // does not admit the kind, the check below preserves the child,
             // as for any type the role does not admit, and it is no
             // spelling.
-            None if names_class(node, attribute.value(), MODEL_SPELLING) => {
+            None if names_class(found.family, node, attribute.value(), MODEL_SPELLING) => {
                 type_spelled = true;
                 ElementKind::ArtifactAssetRelationship
             }
@@ -4377,7 +4572,8 @@ fn read_text<'a>(
     let text = found.text;
     let element = written_name(text, node);
     if node.attributes().any(|attribute| {
-        is_type(&attribute) && !names_class(node, attribute.value(), "MultiLangString")
+        is_type(&attribute)
+            && !names_class(found.family, node, attribute.value(), "MultiLangString")
     }) {
         return Err(Fault::Defect);
     }
@@ -4527,7 +4723,7 @@ fn read_lang_string<'a>(
     let mode = found.mode;
     let element = written_name(text, node);
     let is_name = property == "name";
-    let is_expression = check_lang_string_tag(node)?;
+    let is_expression = check_lang_string_tag(found.family, node)?;
     // A `value` in a `name` is the C++ shape of the name's one plain
     // LangString (LIB-COMPAT-008): typed ExpressionLangString, it does not
     // conform (SACM23-BASE-009).
@@ -4759,7 +4955,7 @@ fn expression_occurrences(text: &str, node: Node<'_, '_>) -> Vec<usize> {
 /// `xsi:type`, naming `LangString` or `ExpressionLangString`. A namespace, a
 /// type naming another class, and two type attributes naming different
 /// classes do not conform: [`Fault::Defect`] (ADR 0033).
-fn check_lang_string_tag(node: Node<'_, '_>) -> Result<bool, Fault> {
+fn check_lang_string_tag(family: Family<'_>, node: Node<'_, '_>) -> Result<bool, Fault> {
     if node
         .tag_name()
         .namespace()
@@ -4770,7 +4966,7 @@ fn check_lang_string_tag(node: Node<'_, '_>) -> Result<bool, Fault> {
     let mut named = None;
     for attribute in node.attributes().filter(is_type) {
         let Some(class @ ("LangString" | "ExpressionLangString")) =
-            sacm_class(node, attribute.value())
+            sacm_class(family, node, attribute.value())
         else {
             return Err(Fault::Defect);
         };
@@ -4898,17 +5094,18 @@ fn is_xsi_nil(attribute: &Attribute<'_, '_>) -> bool {
 }
 
 /// Whether the type `value`, a `QName` resolved in the scope of `node`, names
-/// the SACM class `class`. The value's leading and trailing white space is
-/// removed first, as a `QName`'s is collapsed (XML Schema 1.0 Part 2 §4.3.6);
-/// white space inside it stays, so it names no class.
-fn names_class(node: Node<'_, '_>, value: &str, class: &str) -> bool {
-    sacm_class(node, value) == Some(class)
+/// the SACM class `class`, in a namespace of `family`, the root's (ADR 0041
+/// D5). The value's leading and trailing white space is removed first, as a
+/// `QName`'s is collapsed (XML Schema 1.0 Part 2 §4.3.6); white space inside
+/// it stays, so it names no class.
+fn names_class(family: Family<'_>, node: Node<'_, '_>, value: &str, class: &str) -> bool {
+    sacm_class(family, node, value) == Some(class)
 }
 
 /// The concrete SACM class that the type `value` names, resolved as by
 /// [`names_class`].
-fn type_kind(node: Node<'_, '_>, value: &str) -> Option<ElementKind> {
-    let class = sacm_class(node, value)?;
+fn type_kind(family: Family<'_>, node: Node<'_, '_>, value: &str) -> Option<ElementKind> {
+    let class = sacm_class(family, node, value)?;
     ElementKind::ALL
         .iter()
         .copied()
@@ -4916,15 +5113,17 @@ fn type_kind(node: Node<'_, '_>, value: &str) -> Option<ElementKind> {
 }
 
 /// The local part of the type `value`, a `QName` resolved in the scope of
-/// `node` without its leading and trailing white space, if it is in the
-/// SACM namespace.
-fn sacm_class<'v>(node: Node<'_, '_>, value: &'v str) -> Option<&'v str> {
+/// `node` without its leading and trailing white space, if it is in a SACM
+/// namespace of `family`.
+fn sacm_class<'v>(family: Family<'_>, node: Node<'_, '_>, value: &'v str) -> Option<&'v str> {
     let value = value.trim_matches(is_xml_space);
     let (prefix, local) = match value.split_once(':') {
         Some((prefix, local)) => (Some(prefix), local),
         None => (None, value),
     };
-    (node.lookup_namespace_uri(prefix) == Some(SACM_NS)).then_some(local)
+    node.lookup_namespace_uri(prefix)
+        .is_some_and(|uri| family.contains(uri))
+        .then_some(local)
 }
 
 /// The reference end that `local`, the §11.2 text spelling
@@ -5926,5 +6125,28 @@ mod tests {
         );
         assert!(document.has_preserved_content());
         assert!(document.get("p").is_some());
+    }
+
+    /// An older revision's `occurence` beside a `date` is not read: the date
+    /// is, and `occurence` is kept as preserved content (LIB-COMPAT-004).
+    #[test]
+    fn an_occurence_beside_a_date_is_kept() {
+        let input = "<sacm:ArtifactPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20210218\" \
+                     xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"arts\">\
+                     <artifactElement xmi:type=\"sacm:Event\" xmi:id=\"e1\" date=\"2024\" \
+                     occurence=\"2021\"/></sacm:ArtifactPackage>";
+        let Ok(output) = read(input.as_bytes(), &ReadOptions::default()) else {
+            panic!("a tolerant read refuses an Event with a date and an occurence");
+        };
+        let codes: Vec<&str> = output
+            .diagnostics()
+            .iter()
+            .map(|found| found.code().as_str())
+            .collect();
+        assert_eq!(codes, ["SACM-XMI-008", "SACM-XMI-003"]);
+        let document = output.into_document();
+        let e1 = document.get("e1");
+        assert_eq!(e1.and_then(SacmElement::date), Some("2024"));
+        assert!(e1.is_some_and(SacmElement::has_preserved_content));
     }
 }

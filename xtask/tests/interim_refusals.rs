@@ -3,8 +3,8 @@
 //!
 //! Every `ReadError::Unsupported` of the `sacm` crate comes from one
 //! crate-private list, `crates/sacm/src/xmi/refusal.rs`, whose entries are
-//! labelled `Interim("ROW")`, `Tolerance("ROW")`, `Limit` or `Defect`. Three
-//! checks keep that list honest:
+//! labelled `Interim("ROW")`, `Tolerance("ROW")`, `Tolerated("ROW")`, `Limit`
+//! or `Defect`. Four checks keep that list honest:
 //!
 //! - (a) outside comments and `#[cfg(test)]` items, the token `Unsupported`
 //!   appears in `crates/sacm/src` only in `xmi/refusal.rs` and, in `xmi.rs`,
@@ -21,7 +21,10 @@
 //!   the content can be verified while the reader still refuses conforming
 //!   content it is to read;
 //! - (c) every `Tolerance("ROW")` names a row that exists and is not
-//!   `verified`.
+//!   `verified`;
+//! - (d) every `Tolerated("ROW")`, input a tolerant read reads under the row
+//!   (ADR 0041 D6), names a row that exists and whose status is not
+//!   `deferred` or `candidate` (LIB-COMPAT-004, acceptance 11).
 //!
 //! As in `repo_checks.rs`, each check is a function that returns the problems
 //! it finds, and every problem starts with a stable code in brackets, so a
@@ -589,6 +592,36 @@ fn tolerance_problems(list: &str, matrix: &toml::Table) -> Vec<String> {
                 "tolerance-row-verified",
                 format!("{LIST}:{line}: Tolerance({row:?}) names a verified row"),
             )),
+            Some(_) => {}
+        }
+    }
+    problems
+}
+
+/// Check (d): every `Tolerated` row exists and is neither deferred nor a
+/// candidate (LIB-COMPAT-004, acceptance 11; ADR 0041 D6).
+fn tolerated_problems(list: &str, matrix: &toml::Table) -> Vec<String> {
+    let rows = matrix_rows(matrix);
+    let mut problems = Vec::new();
+    let tolerated = labelled_rows(list, "Tolerated");
+    if tolerated.is_empty() {
+        problems.push(problem(
+            "no-tolerated-rows",
+            format!("{LIST} names no Tolerated(\"ROW\")"),
+        ));
+    }
+    for (row, line) in tolerated {
+        match rows.get(&row) {
+            None => problems.push(problem(
+                "tolerated-row-unknown",
+                format!("{LIST}:{line}: Tolerated({row:?}) names no matrix row"),
+            )),
+            Some((status, _)) if status == "deferred" || status == "candidate" => {
+                problems.push(problem(
+                    "tolerated-row-not-open",
+                    format!("{LIST}:{line}: Tolerated({row:?}) names a {status} row"),
+                ));
+            }
             Some(_) => {}
         }
     }
@@ -1312,9 +1345,71 @@ fn lib_api_011_tolerance_rows_are_not_checked_against_the_compliance_points() {
 }
 
 // ---------------------------------------------------------------------------
+// (d) every Tolerated row exists and is not deferred (LIB-COMPAT-004)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lib_compat_004_every_tolerated_row_exists_and_is_not_deferred() {
+    const ROW_004: &str = "LIB-COMPAT-004";
+    let list = list_text();
+    let matrix = matrix();
+    let problems = tolerated_problems(&list, &matrix);
+    assert!(
+        problems.is_empty(),
+        "{ROW_004}: the Tolerated rows of {LIST}: {problems:#?}"
+    );
+    let tolerated = labelled_rows(&list, "Tolerated");
+    assert!(
+        tolerated.iter().any(|(row, _)| row == ROW_004),
+        "{ROW_004}: {LIST} names Tolerated(\"{ROW_004}\"), for OtherRevision and \
+         OtherSacmNamespace: {tolerated:?}"
+    );
+    // A mutation to a row that does not exist is reported, once per use.
+    let row = first_row(&list, "Tolerated");
+    let uses = tolerated.iter().filter(|(found, _)| *found == row).count();
+    let unknown = replace_all(
+        &list,
+        &format!("Tolerated(\"{row}\")"),
+        "Tolerated(\"LIB-NOPE-999\")",
+    );
+    assert_only(
+        &format!("{ROW_004}: a Tolerated row that does not exist"),
+        &tolerated_problems(&unknown, &matrix),
+        "tolerated-row-unknown",
+        uses,
+    );
+    // A deferred or candidate row is reported; a verified one is not, since a
+    // tolerance stays in the list once its row is verified.
+    for status in ["deferred", "candidate"] {
+        let closed = with_row_value(&matrix, &row, "status", toml::Value::from(status));
+        assert_only(
+            &format!("{ROW_004}: a Tolerated row marked {status}"),
+            &tolerated_problems(&list, &closed),
+            "tolerated-row-not-open",
+            uses,
+        );
+    }
+    let verified = with_row_value(&matrix, &row, "status", toml::Value::from("verified"));
+    assert!(
+        tolerated_problems(&list, &verified).is_empty(),
+        "{ROW_004}: a verified Tolerated row is open: {:#?}",
+        tolerated_problems(&list, &verified)
+    );
+    // A list with none left is reported.
+    let none = replace_all(&list, "Tolerated(\"", "Tolerated(r\"");
+    assert_only(
+        &format!("{ROW_004}: no Tolerated(\"ROW\") left"),
+        &tolerated_problems(&none, &matrix),
+        "no-tolerated-rows",
+        1,
+    );
+}
+
+// ---------------------------------------------------------------------------
 // The compliance points name the row the maintainer added (2026-11-15).
-// LIB-COMPAT-004, added with it, is a Tolerance since 2026-11-16 and no
-// longer gates them: it is in no compliance point's depends_on closure.
+// LIB-COMPAT-004, added with it, is a Tolerance since 2026-11-16 (a
+// Tolerated row since slice 0072, ADR 0041 D6) and no longer gates them: it
+// is in no compliance point's depends_on closure.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -1330,7 +1425,7 @@ fn lib_api_011_each_compliance_point_depends_directly_on_xmi_027() {
         );
         assert!(
             !closure(&rows, point).contains("LIB-COMPAT-004"),
-            "{ROW}: the Tolerance row LIB-COMPAT-004 is in the depends_on closure of {point} \
+            "{ROW}: the Tolerated row LIB-COMPAT-004 is in the depends_on closure of {point} \
              (the maintainer, 2026-11-16)"
         );
     }

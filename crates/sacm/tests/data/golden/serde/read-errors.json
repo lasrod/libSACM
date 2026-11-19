@@ -129,14 +129,30 @@
     "template": "SACM-XMI-002/other-namespace",
     "arguments": {
       "element": "sacm:ArgumentPackage",
-      "namespace": "http://www.omg.org/spec/SACM/2.2/argumentation",
+      "namespace": "urn:example:sacm",
       "row": "LIB-COMPAT-004"
     },
     "location": {
       "line": 1,
       "column": 1
     },
-    "reason": "the root element \"sacm:ArgumentPackage\" is in the namespace \"http://www.omg.org/spec/SACM/2.2/argumentation\", not the SACM 2.3 namespace \"http://www.omg.org/spec/SACM/20220301\" (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)"
+    "reason": "the root element \"sacm:ArgumentPackage\" is in the namespace \"urn:example:sacm\", not the SACM 2.3 namespace \"http://www.omg.org/spec/SACM/20220301\" (strict mode never reads it; LIB-COMPAT-004 reads it in tolerant mode)"
+  },
+  {
+    "type": "Unsupported",
+    "code": "SACM-XMI-008",
+    "template": "SACM-XMI-008/other-revision-root",
+    "arguments": {
+      "element": "sacm:ArgumentPackage",
+      "namespace": "http://www.omg.org/spec/SACM/2.2/argumentation",
+      "revision": "2.2",
+      "row": "LIB-COMPAT-004"
+    },
+    "location": {
+      "line": 1,
+      "column": 1
+    },
+    "reason": "the root element \"sacm:ArgumentPackage\" is in the namespace \"http://www.omg.org/spec/SACM/2.2/argumentation\" of SACM 2.2, not the SACM 2.3 namespace \"http://www.omg.org/spec/SACM/20220301\" (strict mode never reads it; LIB-COMPAT-004 reads it in tolerant mode)"
   },
   {
     "type": "Unsupported",
@@ -157,13 +173,13 @@
     "code": "SACM-XML-002",
     "template": "SACM-XML-002/declared-encoding",
     "arguments": {
-      "encoding": "ISO-8859-1"
+      "encoding": "ISO-8859-2"
     },
     "location": {
       "line": 1,
       "column": 31
     },
-    "reason": "the declared encoding \"ISO-8859-1\" is not supported: without a UTF-16 byte order mark, only UTF-8 and ASCII are read (a limit of this version)"
+    "reason": "the declared encoding \"ISO-8859-2\" is not supported: without a UTF-16 byte order mark, only UTF-8, ASCII and ISO-8859-1 are read (a limit of this version)"
   },
   {
     "type": "RepeatedValue",
@@ -233,6 +249,20 @@
     "location": {
       "line": 2,
       "column": 3
+    }
+  },
+  {
+    "type": "LimitExceeded",
+    "code": "SACM-SEC-003",
+    "template": "SACM-SEC-003/depth",
+    "arguments": {
+      "max": 1
+    },
+    "limit": "depth",
+    "max": 1,
+    "location": {
+      "line": 1,
+      "column": 4
     }
   }
 ]

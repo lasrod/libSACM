@@ -2,7 +2,8 @@
 //! refusal (LIB-SEC-001, LIB-SEC-002, LIB-SEC-005, LIB-SEC-006, LIB-API-009,
 //! SACM23-XMI-018; ADR 0005, ADR 0015, ADR 0016).
 //!
-//! The steps run in this order:
+//! [`read`](super::read) first refuses input longer than its size limit, on
+//! the bytes (LIB-SEC-003). Then the steps here run in this order:
 //! 1. UTF-16 with a byte order mark is decoded with std, keeping the mark as
 //!    a leading U+FEFF; the steps below then run on the decoded text. UCS-4
 //!    (UTF-32), and UTF-16 without a mark, are `Unsupported`, recognised by
@@ -11,16 +12,23 @@
 //!    XML 1.0 [23]-[26], [80] and [81], or the input is `Malformed`. The
 //!    declaration is read from the longest valid prefix, so a Latin-1 file is
 //!    refused for its encoding, not as malformed.
-//! 3. Without a UTF-16 mark, a declared encoding other than UTF-8 or ASCII is
+//! 3. Without a byte order mark, a declared `ISO-8859-1`, in any ASCII
+//!    letter case and with no alias, decodes the whole input byte for byte,
+//!    each byte as the scalar value of the same number, and the declaration
+//!    is checked again on that text (LIB-COMPAT-016, ADR 0041 D7); after a
+//!    UTF-8 mark it is `Malformed`, as it contradicts the mark. Without a
+//!    UTF-16 mark, a declared encoding other than those, UTF-8 and ASCII is
 //!    `Unsupported`. After one, a name other than UTF-16, UTF-16LE or
 //!    UTF-16BE is `Malformed`. For an accepted name, the rest of the
 //!    declaration (`SDDecl` [32] and `?>`) must match too.
 //! 4. Under an ASCII declaration, a non-ASCII character is `Malformed`.
 //! 5. Invalid UTF-8 is `Malformed`, at the first invalid byte. In UTF-16, an
 //!    unpaired surrogate is `Malformed` at the surrogate, and an odd byte
-//!    count after the last whole character.
-//! 6. roxmltree parses with DTDs refused: a DOCTYPE is `Doctype`, and any
-//!    other error is `Malformed`.
+//!    count after the last whole character. ISO-8859-1 has no invalid byte.
+//! 6. The scan of `limits` checks the depth, the namespace bindings in scope
+//!    and the namespace copies (LIB-SEC-003); roxmltree then parses with
+//!    DTDs refused and the node limit: a DOCTYPE is `Doctype`, the node
+//!    limit `LimitExceeded`, and any other error is `Malformed`.
 //! 7. What roxmltree accepts but XML 1.0 or Namespaces 1.0 make a fatal error
 //!    is `Malformed`, at the earliest offending construct: a character
 //!    reference to a surrogate or above U+10FFFF (which roxmltree would turn
@@ -51,8 +59,8 @@ use std::borrow::Cow;
 use crate::diagnostic::template::{self, Template};
 use crate::diagnostic::{Argument, Details, SourceLocation};
 
-use super::ReadError;
 use super::refusal::{Unread, unsupported, unsupported_at};
+use super::{Limit, Limits, ReadError, limits};
 
 /// The details of a message of `template`, made from `arguments`.
 fn details(template: &'static Template, arguments: Vec<Argument>) -> Details {
@@ -65,10 +73,11 @@ fn details_of(template: &'static Template, name: &'static str, value: &str) -> D
     Details::new(template, vec![Argument::text(name, value)])
 }
 
-/// The text of `input`, if it is UTF-8 (or ASCII, if declared so) or UTF-16
-/// with a byte order mark, its XML declaration is well-formed, and it
-/// declares no encoding the reader does not support. UTF-16 text is decoded
-/// into a new string that keeps the mark as a leading U+FEFF.
+/// The text of `input`, if it is UTF-8 (or ASCII, if declared so), UTF-16
+/// with a byte order mark, or ISO-8859-1 without a mark, its XML declaration
+/// is well-formed, and it declares no encoding the reader does not support.
+/// UTF-16 text is decoded into a new string that keeps the mark as a leading
+/// U+FEFF; ISO-8859-1 text into a new string, a character per byte.
 pub(super) fn decode(input: &[u8]) -> Result<Cow<'_, str>, ReadError> {
     let (text, encoding, decode_error) = match encoding_by_bom(input) {
         Some(Bom::Utf16(big_endian)) => {
@@ -94,8 +103,14 @@ pub(super) fn decode(input: &[u8]) -> Result<Cow<'_, str>, ReadError> {
             (Cow::Borrowed(text), Encoding::Utf8, error)
         }
     };
-    if let Some(declared) = check_declaration(&text, encoding, decode_error.as_ref())? {
-        check_ascii(&text, &declared)?;
+    match check_declaration(&text, encoding, decode_error.as_ref())? {
+        Checked::Latin1 => {
+            let latin1: String = input.iter().copied().map(char::from).collect();
+            check_declaration(&latin1, Encoding::Latin1, None)?;
+            return Ok(Cow::Owned(latin1));
+        }
+        Checked::Declared(Some(declared)) => check_ascii(&text, &declared)?,
+        Checked::Declared(None) => {}
     }
     match decode_error {
         Some(error) => Err(error),
@@ -110,6 +125,33 @@ enum Encoding {
     Utf8,
     /// UTF-16 with a byte order mark, in either byte order.
     Utf16,
+    /// ISO-8859-1, which a declaration named in input read as UTF-8.
+    Latin1,
+}
+
+/// The name of ISO-8859-1, which a declaration may give in any ASCII letter
+/// case (XML 1.0 §4.3.3), with no alias (M6 decision Q10).
+const LATIN_1: &str = "ISO-8859-1";
+
+/// The byte order mark, U+FEFF, as a leading character of decoded text.
+const BOM: char = '\u{FEFF}';
+
+/// What the XML declaration says of the encoding.
+#[derive(Debug)]
+enum Checked<'a> {
+    /// The encoding it declares, if any, in which the input is read.
+    Declared(Option<Declared<'a>>),
+    /// ISO-8859-1, in input without a byte order mark: the input is read
+    /// again in it.
+    Latin1,
+}
+
+/// Whether a declared encoding is read as the input was decoded, or the
+/// input is read again as ISO-8859-1.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Support {
+    Read,
+    Latin1,
 }
 
 /// The longest valid UTF-8 prefix of `input`, and the refusal of the
@@ -172,14 +214,21 @@ fn decode_utf16(input: &[u8], big_endian: bool) -> (String, Option<ReadError>) {
     (text, error)
 }
 
-/// Parses `text` as XML 1.0 with namespaces, with DTDs refused, and refuses
-/// what roxmltree accepts but XML 1.0 or Namespaces 1.0 do not.
-pub(super) fn parse(text: &str) -> Result<roxmltree::Document<'_>, ReadError> {
+/// Parses `text` as XML 1.0 with namespaces, with DTDs refused and the node
+/// limit of `limits`, and refuses what roxmltree accepts but XML 1.0 or
+/// Namespaces 1.0 do not.
+pub(super) fn parse<'t>(
+    text: &'t str,
+    limits: &Limits,
+) -> Result<roxmltree::Document<'t>, ReadError> {
     // DTDs are disabled by default, so a DOCTYPE is refused before its
     // internal subset is read (ADR 0005); the LIB-SEC-001 tests prove it.
-    let options = roxmltree::ParsingOptions::default();
+    let options = roxmltree::ParsingOptions {
+        nodes_limit: limits.parser_nodes(),
+        ..roxmltree::ParsingOptions::default()
+    };
     let document = roxmltree::Document::parse_with_options(text, options)
-        .map_err(|error| refusal(text, &error))?;
+        .map_err(|error| refusal(text, &error, limits))?;
     check_unrepaired(text)?;
     Ok(document)
 }
@@ -248,27 +297,46 @@ struct Declared<'a> {
     offset: usize,
 }
 
-/// Refuses `declared`, in any letter case, if it is not UTF-8 or ASCII in
-/// UTF-8 input (`Unsupported`), or not UTF-16, UTF-16LE or UTF-16BE in
-/// UTF-16 input (`Malformed`: it contradicts the byte order mark).
+/// Whether `declared`, in any letter case, is read in `encoding`: UTF-8 or
+/// ASCII in UTF-8 input, or ISO-8859-1 there without a byte order mark,
+/// which reads the input again; UTF-16, UTF-16LE or UTF-16BE in UTF-16
+/// input. Refuses another name in UTF-8 input (`Unsupported`), ISO-8859-1
+/// after a UTF-8 mark and another name in UTF-16 input (`Malformed`: it
+/// contradicts the byte order mark).
 fn check_supported(
     text: &str,
     encoding: Encoding,
     declared: &Declared<'_>,
-) -> Result<(), ReadError> {
+) -> Result<Support, ReadError> {
     let name = declared.name;
     let names: &[&str] = match encoding {
         Encoding::Utf8 => &["UTF-8", "US-ASCII", "ASCII"],
         Encoding::Utf16 => &["UTF-16", "UTF-16LE", "UTF-16BE"],
+        Encoding::Latin1 => &[LATIN_1],
     };
     if names
         .iter()
         .any(|supported| name.eq_ignore_ascii_case(supported))
     {
-        return Ok(());
+        return Ok(Support::Read);
     }
     match encoding {
-        Encoding::Utf8 => Err(unsupported(
+        Encoding::Utf8 if name.eq_ignore_ascii_case(LATIN_1) => {
+            if text.starts_with(BOM) {
+                Err(malformed(
+                    text,
+                    declared.offset,
+                    details_of(
+                        &template::XML_001_ENCODING_CONTRADICTS_UTF8_BOM,
+                        "encoding",
+                        name,
+                    ),
+                ))
+            } else {
+                Ok(Support::Latin1)
+            }
+        }
+        Encoding::Utf8 | Encoding::Latin1 => Err(unsupported(
             text,
             declared.offset,
             Unread::Encoding,
@@ -351,9 +419,9 @@ fn check_declaration<'a>(
     text: &'a str,
     encoding: Encoding,
     truncated: Option<&ReadError>,
-) -> Result<Option<Declared<'a>>, ReadError> {
+) -> Result<Checked<'a>, ReadError> {
     let Some(start) = declaration_start(text) else {
-        return Ok(None);
+        return Ok(Checked::Declared(None));
     };
     let mut cursor = Cursor {
         text,
@@ -388,7 +456,9 @@ fn check_declaration<'a>(
             ));
         }
         let declared = Declared { name, offset };
-        check_supported(text, encoding, &declared)?;
+        if check_supported(text, encoding, &declared)? == Support::Latin1 {
+            return Ok(Checked::Latin1);
+        }
         declared_encoding = Some(declared);
         spaced = cursor.skip_space();
     }
@@ -406,7 +476,7 @@ fn check_declaration<'a>(
         spaced = cursor.skip_space();
     }
     if cursor.rest().starts_with("?>") {
-        return Ok(declared_encoding);
+        return Ok(Checked::Declared(declared_encoding));
     }
     let (offset, name) = cursor.name();
     Err(cursor.misplaced(offset, name, spaced, "\"?>\""))
@@ -936,14 +1006,22 @@ fn offset_of(text: &str, position: roxmltree::TextPos) -> Option<usize> {
 /// The refusal for a roxmltree error. The location is roxmltree's, converted
 /// to §2.11 lines, except for a DOCTYPE, which roxmltree does not locate,
 /// and for the errors it places at a stand-in 1:1, which are located at the
-/// end of the input.
-fn refusal(text: &str, error: &roxmltree::Error) -> ReadError {
+/// end of the input. The node limit is `LimitExceeded`, with no location,
+/// when `limits` set it below the parser's own capacity (LIB-SEC-003).
+fn refusal(text: &str, error: &roxmltree::Error, limits: &Limits) -> ReadError {
     use roxmltree::Error as E;
 
     match error {
         E::DtdDetected => ReadError::Doctype {
             location: doctype_offset(text).and_then(|offset| locate(text, offset)),
         },
+        E::NodesLimitReached if limits.bounds_the_parser() => limits::exceeded(
+            Limit::Nodes,
+            limits.max_nodes(),
+            None,
+            &template::SEC_003_NODES,
+            None,
+        ),
         E::NodesLimitReached | E::AttributesLimitReached | E::NamespacesLimitReached => {
             unsupported_at(None, Unread::Capacity, reason(error))
         }
@@ -1157,7 +1235,7 @@ mod tests {
                 Err((
                     SourceLocation::at(1, 1),
                     format!(
-                        "the input is encoded in {encoding}, and only UTF-8, ASCII and UTF-16 starting with U+FEFF are read (a limit of this version)"
+                        "the input is encoded in {encoding}, and only UTF-8, ASCII, ISO-8859-1 and UTF-16 starting with U+FEFF are read (a limit of this version)"
                     ),
                 )),
             );
@@ -1172,7 +1250,10 @@ mod tests {
     fn check_declaration_reads_the_encoding_and_refuses_bad_grammar() {
         let declared = |text| {
             check_declaration(text, Encoding::Utf8, None)
-                .map(|declared| declared.map(|d| (d.name, d.offset)))
+                .map(|checked| match checked {
+                    Checked::Declared(declared) => declared.map(|d| (d.name, d.offset)),
+                    Checked::Latin1 => Some((LATIN_1, 0)),
+                })
                 .map_err(|error| (error.code() == Code::XML_MALFORMED, error.location()))
         };
         assert_eq!(
@@ -1212,7 +1293,7 @@ mod tests {
         for cut in ["<?xml version=\"1", "<?xml version=\"1.0\" st"] {
             assert_eq!(
                 check_declaration(cut, Encoding::Utf8, Some(&invalid_utf8(cut)))
-                    .map(|declared| declared.is_some()),
+                    .map(|checked| matches!(checked, Checked::Declared(Some(_)))),
                 Err(invalid_utf8(cut)),
                 "{cut:?}"
             );
@@ -1455,13 +1536,30 @@ mod tests {
 
     #[test]
     fn decode_refuses_a_declared_encoding_before_invalid_utf8() {
+        // ISO-8859-1 is read since slice 0072 (LIB-COMPAT-016); ISO-8859-2 is
+        // not, and 0xE9 is no valid UTF-8.
+        let latin2 = b"<?xml version=\"1.0\" encoding=\"ISO-8859-2\"?>\n<r>caf\xE9</r>";
+        assert_eq!(
+            decode(latin2).map_err(|error| located(&error)),
+            Err((
+                SourceLocation::at(1, 31),
+                "the declared encoding \"ISO-8859-2\" is not supported: without a UTF-16 byte order mark, only UTF-8, ASCII and ISO-8859-1 are read (a limit of this version)"
+                    .to_owned(),
+            ))
+        );
+        // The declaration is checked again on the ISO-8859-1 text: the rest of
+        // it, `standalone` and `?>`, too.
+        let standalone =
+            b"<?xml version=\"1.0\" encoding=\"ISO-8859-1\" standalone=\"maybe\"?><r/>";
+        assert_eq!(
+            decode(standalone).map_err(|error| (error.template(), error.location())),
+            Err(("SACM-XML-001/standalone", SourceLocation::at(1, 55)))
+        );
         let latin1 = b"<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n<r>caf\xE9</r>";
         assert_eq!(
             decode(latin1).map_err(|error| located(&error)),
-            Err((
-                SourceLocation::at(1, 31),
-                "the declared encoding \"ISO-8859-1\" is not supported: without a UTF-16 byte order mark, only UTF-8 and ASCII are read (a limit of this version)"
-                    .to_owned(),
+            Ok(Cow::Owned(
+                "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n<r>caf\u{E9}</r>".to_owned()
             ))
         );
         let ascii = "<?xml version='1.0' encoding='ascii'?>\n<r>é\u{FFFD}</r>";
@@ -1529,7 +1627,7 @@ mod tests {
 
         let text = "<r>\n<c/>";
         assert_eq!(
-            located(&refusal(text, &E::UnclosedRootNode)),
+            located(&refusal(text, &E::UnclosedRootNode, &Limits::default())),
             (
                 SourceLocation::at(2, 5),
                 "the root element is not closed".to_owned()
@@ -1538,14 +1636,17 @@ mod tests {
         assert_eq!(
             located(&refusal(
                 text,
-                &E::UnknownNamespace("p\nq".to_owned(), TextPos::new(2, 2))
+                &E::UnknownNamespace("p\nq".to_owned(), TextPos::new(2, 2)),
+                &Limits::default(),
             )),
             (
                 SourceLocation::at(2, 2),
                 "the namespace prefix \"p\\nq\" is not declared".to_owned()
             )
         );
-        // Parser capacity limits are Unsupported, not Malformed (LIB-SEC-003).
+        // Parser capacity limits are Unsupported, not Malformed (LIB-SEC-003),
+        // the node limit when it is 2^32 or more.
+        let unbounded = Limits::default().with_max_nodes(u64::MAX);
         for (limit, template, english) in [
             (
                 E::NodesLimitReached,
@@ -1563,7 +1664,7 @@ mod tests {
                 "the document declares more namespaces than the parser can hold",
             ),
         ] {
-            let error = refusal(text, &limit);
+            let error = refusal(text, &limit, &unbounded);
             assert!(matches!(error, ReadError::Unsupported { .. }), "{limit:?}");
             // Each limit has its template (LIB-API-017, acceptance 4).
             assert_eq!(
@@ -1597,7 +1698,8 @@ mod tests {
         assert_eq!(
             refusal(
                 "\u{FEFF}<r></s>",
-                &E::UnexpectedCloseTag("r".to_owned(), "s".to_owned(), TextPos::new(1, 5))
+                &E::UnexpectedCloseTag("r".to_owned(), "s".to_owned(), TextPos::new(1, 5)),
+                &Limits::default(),
             )
             .location(),
             SourceLocation::at(1, 4)
@@ -1644,7 +1746,7 @@ mod tests {
             ),
         ];
         for (error, template, english) in cases {
-            let refused = refusal("<r/>", &error);
+            let refused = refusal("<r/>", &error, &Limits::default());
             assert_eq!(
                 (refused.code(), refused.template(), refused.arguments()),
                 (Code::XML_MALFORMED, template.id, &[][..]),

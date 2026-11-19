@@ -50,48 +50,66 @@ af-examples-gsn-pattern-decorators.sacm
   tolerant write: reads back equal
 
 af-testdata-sample.sacm.xml
-  tolerant read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
-  strict read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
+  tolerant read: read; SACM-XMI-003 warning 17, SACM-XMI-004 info 5, SACM-XMI-008 warning 1, SACM-XMI-012 warning 5
+  strict read: refused Unsupported SACM-XMI-008 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 reads it in tolerant mode)
+  validate: none
+  tolerant write: reads back equal
 
 af-testdata-oasc-ja.xml
-  tolerant read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
-  strict read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
+  tolerant read: read; SACM-MULT-001 warning 1, SACM-XMI-003 warning 195, SACM-XMI-004 info 8, SACM-XMI-008 warning 1, SACM-XMI-012 warning 8
+  strict read: refused Unsupported SACM-XMI-008 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 reads it in tolerant mode)
+  validate: none
+  tolerant write: reads back equal
 
 af-testdata-safety-case-sanitized-strict.sacm.xml
-  tolerant read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
-  strict read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
+  tolerant read: read; SACM-XMI-002 warning 1, SACM-XMI-003 warning 473, SACM-XMI-004 info 17, SACM-XMI-012 warning 17
+  strict read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 reads it in tolerant mode)
+  validate: none
+  tolerant write: reads back equal
 
 oasc-open-autonomy-safety-case.sacm.xml
-  tolerant read: refused Unsupported SACM-XMI-002 at line 15, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
-  strict read: refused Unsupported SACM-XMI-002 at line 15, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
+  tolerant read: read; SACM-XMI-003 warning 189, SACM-XMI-004 info 7, SACM-XMI-008 warning 1, SACM-XMI-012 warning 7
+  strict read: refused Unsupported SACM-XMI-008 at line 15, column 1 (strict mode never reads it; LIB-COMPAT-004 reads it in tolerant mode)
+  validate: none
+  tolerant write: reads back equal
 
 aceditor-hbs-default.sacm2
-  tolerant read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
-  strict read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
+  tolerant read: read; SACM-XMI-003 warning 21, SACM-XMI-004 info 81, SACM-XMI-008 warning 1, SACM-XMI-010 warning 35, SACM-XMI-013 warning 12
+  strict read: refused Unsupported SACM-XMI-008 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 reads it in tolerant mode)
+  validate: SACM-MULT-001 error 32, SACM-MULT-001 warning 2, SACM-REF-001 error 33
+  tolerant write: reads back equal
 
 epsilon-sacm-example.model
-  tolerant read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
-  strict read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
+  tolerant read: read; SACM-XMI-003 warning 40, SACM-XMI-004 info 1, SACM-XMI-008 warning 1
+  strict read: refused Unsupported SACM-XMI-008 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 reads it in tolerant mode)
+  validate: SACM-MULT-001 error 1
+  tolerant write: reads back with 1 difference
 
 epsilon-untitled.model
-  tolerant read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
-  strict read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
+  tolerant read: read; SACM-XMI-003 warning 6, SACM-XMI-004 info 1, SACM-XMI-008 warning 1, SACM-XMI-012 warning 1
+  strict read: refused Unsupported SACM-XMI-008 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 reads it in tolerant mode)
+  validate: none
+  tolerant write: reads back with 1 difference
 
 justification-factory-sample-sacm.xmi
-  tolerant read: refused Unsupported SACM-XML-002 at line 1, column 31 (a limit of this version)
-  strict read: refused Unsupported SACM-XML-002 at line 1, column 31 (a limit of this version)
+  tolerant read: refused Unsupported SACM-XMI-015 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-002 is to read it in tolerant mode)
+  strict read: refused Unsupported SACM-XMI-015 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-002 is to read it in tolerant mode)
 
 justification-factory-sacm-derivation.xmi
-  tolerant read: refused Unsupported SACM-XML-002 at line 1, column 31 (a limit of this version)
-  strict read: refused Unsupported SACM-XML-002 at line 1, column 31 (a limit of this version)
+  tolerant read: refused Unsupported SACM-XMI-015 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-002 is to read it in tolerant mode)
+  strict read: refused Unsupported SACM-XMI-015 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-002 is to read it in tolerant mode)
 
 sysmline-easy-example.assurancecase
-  tolerant read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
-  strict read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
+  tolerant read: read; SACM-XMI-003 warning 2, SACM-XMI-004 info 1, SACM-XMI-008 warning 1
+  strict read: refused Unsupported SACM-XMI-008 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 reads it in tolerant mode)
+  validate: SACM-MULT-001 error 1
+  tolerant write: reads back with 1 difference
 
 sysmini-quan.assurancecase
-  tolerant read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
-  strict read: refused Unsupported SACM-XMI-002 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)
+  tolerant read: read; SACM-XMI-003 warning 3, SACM-XMI-004 info 7, SACM-XMI-008 warning 1, SACM-XMI-010 warning 1
+  strict read: refused Unsupported SACM-XMI-008 at line 2, column 1 (strict mode never reads it; LIB-COMPAT-004 reads it in tolerant mode)
+  validate: SACM-ABS-001 error 2, SACM-MULT-001 error 3
+  tolerant write: reads back with 2 differences
 
 mobstr-safetycase.integration
   tolerant read: refused InvalidRoot SACM-XMI-001 at line 2, column 1
@@ -101,7 +119,7 @@ deis-etcs.model
   tolerant read: refused InvalidRoot SACM-XMI-001 at line 2, column 1
   strict read: refused InvalidRoot SACM-XMI-001 at line 2, column 1
 
-read tolerantly: 2 of 15; read strictly: 2 of 15; tolerant write reads back equal: 2 of 2
+read tolerantly: 11 of 15; read strictly: 2 of 15; tolerant write reads back equal: 7 of 11
 ```
 <!-- corpus-report:end -->
 
@@ -113,13 +131,14 @@ read tolerantly: 2 of 15; read strictly: 2 of 15; tolerant write reads back equa
 | 112 + 2 `xsi:type` (SACM-XMI-010; an Error when strict) | 1, 2 | By design (LIB-COMPAT-001). Assurance Forge writer issue: write `xmi:type` |
 | `xmi:version="2.0"` (SACM-XMI-011, Info) | 1, 2 | By design. Assurance Forge writer issue |
 | 40 Claims with two `description`s (SACM-MULT-001, Warning) | 1 | SACM23-VAL-011. Assurance Forge writer issue |
-| A root in another SACM revision's namespace, or a SACM-like one | 3–9, 12, 13 | LIB-COMPAT-004 (M6) |
+| A root in another SACM revision's namespace, or a SACM-like one: read since slice 0072, with one SACM-XMI-008 (3, 4, 6–9, 12, 13) or SACM-XMI-002 (5) Warning; a strict read refuses it | 3–9, 12, 13 | LIB-COMPAT-004 |
 | The Assurance Forge legacy app dialect (`id=`, `name=`, class-named children) | 3–6 | LIB-COMPAT-012 (M6, after LIB-COMPAT-004) |
 | EMF dialects (XMI `http://www.omg.org/XMI`, per-package namespaces, `//@role.N` paths, gid identity) | 7–13 | LIB-COMPAT-002 (M6) |
-| The declared encoding ISO-8859-1 | 10, 11 | LIB-COMPAT-016 (candidate, M6) |
+| The declared encoding ISO-8859-1: read since slice 0072; the files are refused next for their XMI 2.0 `xmi:XMI` element (SACM-XMI-015) | 10, 11 | LIB-COMPAT-016; LIB-COMPAT-002 (M6) |
 | An ODE `DDIPackage` container root (SACM-XMI-001) | 14, 15 | LIB-COMPAT-009 (M6) |
 | GSN classes layered on SACM by `xsi:type` (`gsn_:Goal`) | 12, 13 | Unknown until LIB-COMPAT-002 and LIB-COMPAT-004 read the namespace |
-| Tolerant write-back | 1, 2 | Reads back equal: no loss found |
+| Tolerant write-back | 1–7 | Reads back equal: no loss found |
+| Tolerant write-back after a renamed prefix: a root attribute whose `xmi` prefix is bound to XMI 2.0's `http://www.omg.org/XMI` is written as `ns1:…` (ADR 0035), and on the read back the preserved elements also keep that `ns1` binding, so each holder of preserved content differs by one namespace declaration. No element, attribute, value or URI is lost | 8, 9, 12, 13 | LIB-COMPAT-002 (M6), which reads the XMI 2.0 namespace |
 
 ## Adding a file
 

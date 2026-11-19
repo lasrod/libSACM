@@ -13,17 +13,19 @@
 //!   rendered with the arguments, is the variable part of the `Display`;
 //!   every placeholder names an argument of the right kind; the arguments
 //!   come in the order the pattern first names them, `row` last and only on
-//!   the `Unsupported` templates of SACM-XMI-014, -007, -002 and -015, whose
-//!   `Display` ends with the label of their code; and the inputs and the
-//!   templates no input reaches together are the 98 refusal templates,
-//!   once each.
+//!   the `Unsupported` templates of SACM-XMI-014, -007, -002 and -015 and on
+//!   `SACM-XMI-008/other-revision-root`, whose `Display` ends with the label
+//!   of their code; and the inputs and the templates no input reaches
+//!   together are the 108 refusal templates, once each.
 //! - `lib_api_017_each_refusal_template_has_its_code_template_and_arguments`
 //!   checks that `code()`, `template()` and `arguments()` are the
 //!   table's.
 //!
-//! Twelve templates have no input through the public API, and are built by
+//! Eleven templates have no input through the public API, and are built by
 //! a unit test of their crate-private constructors instead (see
-//! [`NO_INPUT`]): the three SACM-SEC-002 capacity limits and the three
+//! [`NO_INPUT`]): the SACM-SEC-002 nodes and attributes capacity limits
+//! (`/namespaces` is reached by 65,536 namespace prefixes, as LIB-SEC-003's
+//! test reaches it) and the three
 //! `SACM-SEC-002/unheld-*` refusals, which acceptance 4 names; five
 //! SACM-XML-001 forms that need a DTD's entity declarations, which every
 //! read refuses first as a DOCTYPE (SACM-SEC-001); and
@@ -41,6 +43,24 @@
 //! SACM-XMI-007 inputs name SACM23-XMI-029, which reads the links left, and
 //! `SACM-XMI-007/href` has new English (its id and arguments unchanged) and
 //! an `XPointer` as its input.
+//!
+//! Slice 0072 (LIB-SEC-003, LIB-COMPAT-004, LIB-COMPAT-016; ADR 0041) adds
+//! ten and removes one, which gives 108:
+//! - the six `SACM-SEC-003` templates of `ReadError::LimitExceeded`, whose
+//!   inputs are read under `Limits` set for the case, and whose `Display`
+//!   is the rendered template and its location, when known;
+//! - `SACM-XML-001/encoding-contradicts-utf8-bom`;
+//! - `SACM-XMI-001/not-a-sacm-namespace` and `/no-namespace`, which a root
+//!   outside any SACM namespace gives instead of `SACM-XMI-002/no-namespace`,
+//!   removed;
+//! - `SACM-XMI-008/other-revision-root` and `/sacm-2-4`.
+//!
+//! It also changes the English of the three `SACM-XML-002` templates, which
+//! name ISO-8859-1 now, and the label of SACM-XMI-002 and SACM-XMI-008 with
+//! a row, `(strict mode never reads it; ROW reads it in tolerant mode)`
+//! (ADR 0041 D6). Their `Display`s here are the new ones; the input of
+//! `SACM-XMI-002/other-namespace` is a SACM-like namespace, and that of
+//! `SACM-XML-002/declared-encoding` declares ISO-8859-2.
 
 use std::fmt::Write as _;
 
@@ -61,23 +81,21 @@ const NS: &str = concat!(
 
 /// The number of refusal templates (acceptance 4): 102 once slice 0065
 /// removes `SACM-XMI-014/expression-lang-string` (SACM23-BASE-009), 98 once
-/// slice 0067 removes the four of unread kinds and ends.
-const REFUSAL_TEMPLATES: usize = 98;
+/// slice 0067 removes the four of unread kinds and ends, and 108 once slice
+/// 0072 adds ten and removes `SACM-XMI-002/no-namespace`.
+const REFUSAL_TEMPLATES: usize = 108;
 
 /// The refusal templates no input reaches through the public API, and why.
 /// A unit test of their crate-private constructors builds each.
-const NO_INPUT: [(&str, &str); 12] = [
+const NO_INPUT: [(&str, &str); 11] = [
     (
         "SACM-SEC-002/nodes",
-        "the parser's node limit is beyond a test's size",
+        "the parser's node limit is beyond a test's size: a node limit below 2^32 is \
+         LimitExceeded",
     ),
     (
         "SACM-SEC-002/attributes",
         "the parser's attribute limit is beyond a test's size",
-    ),
-    (
-        "SACM-SEC-002/namespaces",
-        "the parser's namespace limit is beyond a test's size",
     ),
     (
         "SACM-SEC-002/unheld-outside",
@@ -138,6 +156,8 @@ fn n(count: u64) -> Value {
 /// refuses.
 enum Input {
     Read(Vec<u8>),
+    /// A strict read under limits set for the case (LIB-SEC-003).
+    ReadUnder(Vec<u8>, xmi::Limits),
     Write(Document),
 }
 
@@ -253,7 +273,7 @@ fn unrepresentable_name() -> Document {
     document
 }
 
-/// The 91 templates an input reaches, in the catalog's grouping.
+/// The 97 templates an input reaches (86 until slice 0072), mostly in the catalog's grouping.
 #[expect(
     clippy::too_many_lines,
     reason = "one table, one row per template, reads best whole"
@@ -265,7 +285,7 @@ fn cases() -> Vec<Case> {
              citedElement=\"nope\"><name content=\"{id}\"/></argumentElement>"
         )
     };
-    vec![
+    let mut cases = vec![
         // --- ReadError::Doctype --------------------------------------------------------
         read(
             "SACM-SEC-001/doctype",
@@ -275,6 +295,7 @@ fn cases() -> Vec<Case> {
             "the input has a DOCTYPE, which is refused at line 1, column 1",
         ),
         // --- ReadError::Unsupported, SACM-XML-002 --------------------------------------
+        // The English names ISO-8859-1 since slice 0072 (LIB-COMPAT-016).
         read(
             "SACM-XML-002/byte-order-mark",
             {
@@ -283,22 +304,33 @@ fn cases() -> Vec<Case> {
                 bytes
             },
             &[("encoding", t("UTF-32 (big-endian)"))],
-            "the input starts with a {encoding} byte order mark, and only UTF-8, ASCII and UTF-16 are read",
-            "the reader cannot represent the input at line 1, column 1: the input starts with a UTF-32 (big-endian) byte order mark, and only UTF-8, ASCII and UTF-16 are read (a limit of this version)",
+            "the input starts with a {encoding} byte order mark, and only UTF-8, ASCII, ISO-8859-1 and UTF-16 are read",
+            "the reader cannot represent the input at line 1, column 1: the input starts with a UTF-32 (big-endian) byte order mark, and only UTF-8, ASCII, ISO-8859-1 and UTF-16 are read (a limit of this version)",
         ),
         read(
             "SACM-XML-002/detected-encoding",
             utf16le("<?xml version=\"1.0\" encoding=\"UTF-16LE\"?><r/>", false),
             &[("encoding", t("UTF-16 (little-endian)"))],
-            "the input is encoded in {encoding}, and only UTF-8, ASCII and UTF-16 starting with U+FEFF are read",
-            "the reader cannot represent the input at line 1, column 1: the input is encoded in UTF-16 (little-endian), and only UTF-8, ASCII and UTF-16 starting with U+FEFF are read (a limit of this version)",
+            "the input is encoded in {encoding}, and only UTF-8, ASCII, ISO-8859-1 and UTF-16 starting with U+FEFF are read",
+            "the reader cannot represent the input at line 1, column 1: the input is encoded in UTF-16 (little-endian), and only UTF-8, ASCII, ISO-8859-1 and UTF-16 starting with U+FEFF are read (a limit of this version)",
         ),
         read(
             "SACM-XML-002/declared-encoding",
-            "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><r/>",
-            &[("encoding", t("ISO-8859-1"))],
-            "the declared encoding {encoding:?} is not supported: without a UTF-16 byte order mark, only UTF-8 and ASCII are read",
-            "the reader cannot represent the input at line 1, column 31: the declared encoding \"ISO-8859-1\" is not supported: without a UTF-16 byte order mark, only UTF-8 and ASCII are read (a limit of this version)",
+            "<?xml version=\"1.0\" encoding=\"ISO-8859-2\"?><r/>",
+            &[("encoding", t("ISO-8859-2"))],
+            "the declared encoding {encoding:?} is not supported: without a UTF-16 byte order mark, only UTF-8, ASCII and ISO-8859-1 are read",
+            "the reader cannot represent the input at line 1, column 31: the declared encoding \"ISO-8859-2\" is not supported: without a UTF-16 byte order mark, only UTF-8, ASCII and ISO-8859-1 are read (a limit of this version)",
+        ),
+        // --- ReadError::Unsupported, SACM-SEC-002 (slice 0072) -------------------------
+        // 65,536 distinct prefixes, one per child, pass the parser's table of
+        // namespaces (LIB-SEC-003, acceptance 8). No limit is passed: each
+        // child has one binding in scope, and 65,536 copies.
+        read(
+            "SACM-SEC-002/namespaces",
+            many_prefixes(),
+            &[],
+            "the document declares more namespaces than the parser can hold",
+            "the reader cannot represent the input: the document declares more namespaces than the parser can hold (a limit of this version)",
         ),
         // --- WriteError::UnrepresentableCharacter --------------------------------------
         write(
@@ -327,6 +359,25 @@ fn cases() -> Vec<Case> {
             "the XMI element holds no SACM package",
             "the XMI element holds no SACM package at line 1, column 1",
         ),
+        // A package-kind root outside any SACM namespace (slice 0072, ADR 0041
+        // D4).
+        read(
+            "SACM-XMI-001/not-a-sacm-namespace",
+            format!("<p:ArgumentPackage xmlns:p=\"urn:x\" xmlns:xmi=\"{XMI_NS}\" xmi:id=\"p\"/>"),
+            &[
+                ("element", t("p:ArgumentPackage")),
+                ("namespace", t("urn:x")),
+            ],
+            "the root element {element:?} is in the namespace {namespace:?}, which does not name SACM",
+            "the root element \"p:ArgumentPackage\" is in the namespace \"urn:x\", which does not name SACM at line 1, column 1",
+        ),
+        read(
+            "SACM-XMI-001/no-namespace",
+            format!("<ArgumentPackage xmlns:xmi=\"{XMI_NS}\" xmi:id=\"p\"/>"),
+            &[("element", t("ArgumentPackage"))],
+            "the root element {element:?} is in no namespace, so it is not a SACM package",
+            "the root element \"ArgumentPackage\" is in no namespace, so it is not a SACM package at line 1, column 1",
+        ),
         write(
             "SACM-XMI-001/no-root-to-write",
             Document::new(),
@@ -335,8 +386,26 @@ fn cases() -> Vec<Case> {
             "the document has no root to write",
         ),
         // --- ReadError::Unsupported, SACM-XMI-002 --------------------------------------
+        // A SACM-like namespace since slice 0072 (a SACM 2.2 one until then,
+        // which is SACM-XMI-008 since); `SACM-XMI-002/no-namespace` is
+        // removed, as a root in no namespace is SACM-XMI-001.
         read(
             "SACM-XMI-002/other-namespace",
+            format!(
+                "<sacm:ArgumentPackage xmlns:sacm=\"urn:example:sacm\" \
+                 xmlns:xmi=\"{XMI_NS}\" xmi:id=\"p\"/>"
+            ),
+            &[
+                ("element", t("sacm:ArgumentPackage")),
+                ("namespace", t("urn:example:sacm")),
+                ("row", t("LIB-COMPAT-004")),
+            ],
+            "the root element {element:?} is in the namespace {namespace:?}, not the SACM 2.3 namespace \"http://www.omg.org/spec/SACM/20220301\"",
+            "the reader cannot represent the input at line 1, column 1: the root element \"sacm:ArgumentPackage\" is in the namespace \"urn:example:sacm\", not the SACM 2.3 namespace \"http://www.omg.org/spec/SACM/20220301\" (strict mode never reads it; LIB-COMPAT-004 reads it in tolerant mode)",
+        ),
+        // --- ReadError::Unsupported, SACM-XMI-008 (slice 0072) -------------------------
+        read(
+            "SACM-XMI-008/other-revision-root",
             format!(
                 "<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/2.2/argumentation\" \
                  xmlns:xmi=\"{XMI_NS}\" xmi:id=\"p\"/>"
@@ -347,20 +416,24 @@ fn cases() -> Vec<Case> {
                     "namespace",
                     t("http://www.omg.org/spec/SACM/2.2/argumentation"),
                 ),
+                ("revision", t("2.2")),
                 ("row", t("LIB-COMPAT-004")),
             ],
-            "the root element {element:?} is in the namespace {namespace:?}, not the SACM 2.3 namespace \"http://www.omg.org/spec/SACM/20220301\"",
-            "the reader cannot represent the input at line 1, column 1: the root element \"sacm:ArgumentPackage\" is in the namespace \"http://www.omg.org/spec/SACM/2.2/argumentation\", not the SACM 2.3 namespace \"http://www.omg.org/spec/SACM/20220301\" (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)",
+            "the root element {element:?} is in the namespace {namespace:?} of SACM {revision}, not the SACM 2.3 namespace \"http://www.omg.org/spec/SACM/20220301\"",
+            "the reader cannot represent the input at line 1, column 1: the root element \"sacm:ArgumentPackage\" is in the namespace \"http://www.omg.org/spec/SACM/2.2/argumentation\" of SACM 2.2, not the SACM 2.3 namespace \"http://www.omg.org/spec/SACM/20220301\" (strict mode never reads it; LIB-COMPAT-004 reads it in tolerant mode)",
         ),
         read(
-            "SACM-XMI-002/no-namespace",
-            format!("<ArgumentPackage xmlns:xmi=\"{XMI_NS}\" xmi:id=\"p\"/>"),
+            "SACM-XMI-008/sacm-2-4",
+            format!(
+                "<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20260504\" \
+                 xmlns:xmi=\"{XMI_NS}\" xmi:id=\"p\"/>"
+            ),
             &[
-                ("element", t("ArgumentPackage")),
-                ("row", t("LIB-COMPAT-004")),
+                ("element", t("sacm:ArgumentPackage")),
+                ("namespace", t("http://www.omg.org/spec/SACM/20260504")),
             ],
-            "the root element {element:?} is in no namespace, not the SACM 2.3 namespace \"http://www.omg.org/spec/SACM/20220301\"",
-            "the reader cannot represent the input at line 1, column 1: the root element \"ArgumentPackage\" is in no namespace, not the SACM 2.3 namespace \"http://www.omg.org/spec/SACM/20220301\" (strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)",
+            "the root element {element:?} is in the SACM 2.4 namespace {namespace:?}, and SACM 2.4 restructures the metamodel, so it is not read as SACM 2.3 until LIB-COMPAT-018 decides how",
+            "the reader cannot represent the input at line 1, column 1: the root element \"sacm:ArgumentPackage\" is in the SACM 2.4 namespace \"http://www.omg.org/spec/SACM/20260504\", and SACM 2.4 restructures the metamodel, so it is not read as SACM 2.3 until LIB-COMPAT-018 decides how (a limit of this version)",
         ),
         // --- ReadError::Unsupported, SACM-XMI-003 --------------------------------------
         read(
@@ -754,6 +827,14 @@ fn cases() -> Vec<Case> {
             "the declared encoding {encoding:?} contradicts the UTF-16 byte order mark",
             "the input is not well-formed XML at line 1, column 31: the declared encoding \"UTF-8\" contradicts the UTF-16 byte order mark",
         ),
+        // ISO-8859-1 after a UTF-8 byte order mark (slice 0072, LIB-COMPAT-016).
+        read(
+            "SACM-XML-001/encoding-contradicts-utf8-bom",
+            &b"\xEF\xBB\xBF<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><r/>"[..],
+            &[("encoding", t("ISO-8859-1"))],
+            "the declared encoding {encoding:?} contradicts the UTF-8 byte order mark",
+            "the input is not well-formed XML at line 1, column 31: the declared encoding \"ISO-8859-1\" contradicts the UTF-8 byte order mark",
+        ),
         read(
             "SACM-XML-001/non-ascii-character",
             "<?xml version=\"1.0\" encoding=\"US-ASCII\"?><r>\u{E9}</r>",
@@ -1020,6 +1101,106 @@ fn cases() -> Vec<Case> {
             "the input has markup or text that is not allowed here",
             "the input is not well-formed XML at line 1, column 5: the input has markup or text that is not allowed here",
         ),
+    ];
+    cases.extend(limit_cases());
+    cases
+}
+
+/// A root `r` with 65,536 children, each declaring its own prefix `pN`: one
+/// more distinct binding than roxmltree's namespace table holds with `xml`
+/// (LIB-SEC-003, acceptance 8).
+fn many_prefixes() -> Vec<u8> {
+    let mut input = String::from("<r>");
+    for n in 0..65_536 {
+        let _ = write!(input, "<x xmlns:p{n}=\"u\"/>");
+    }
+    input.push_str("</r>");
+    input.into_bytes()
+}
+
+/// A root ArgumentPackage `p` that binds `v` to a 200-character URI and
+/// holds one preserved `<v:x/>` at line 1, column 345: 373 bytes, which keep
+/// 411 bytes of namespace text, the binding (1 + 200 + 10) and the name's
+/// URI (200) (ADR 0041 D2; the design brief of slice 0072).
+fn kept_namespaces() -> Vec<u8> {
+    let uri = format!("urn:{}", "v".repeat(196));
+    let input = format!(
+        "<sacm:ArgumentPackage{NS} xmlns:v=\"{uri}\" xmi:id=\"p\"><v:x/></sacm:ArgumentPackage>"
+    );
+    assert_eq!(
+        (uri.len(), input.len(), input.find("<v:x").map(|at| at + 1)),
+        (200, 373, Some(345)),
+        "LIB-SEC-003: setup: the kept-namespaces input"
+    );
+    input.into_bytes()
+}
+
+/// The six `SACM-SEC-003` templates of `ReadError::LimitExceeded` (slice
+/// 0072, LIB-SEC-003), each read strictly under the limits set for it.
+fn limit_cases() -> Vec<Case> {
+    use sacm::xmi::Limits;
+    let under = |template: &'static str,
+                 input: &[u8],
+                 limits: Limits,
+                 arguments: &[(&'static str, Value)],
+                 english: &'static str,
+                 display: &'static str| Case {
+        template,
+        input: Input::ReadUnder(input.to_vec(), limits),
+        arguments: arguments.to_vec(),
+        english,
+        display,
+    };
+    let declaring = b"<r xmlns:a=\"u\"><x xmlns:b=\"v\"/></r>";
+    vec![
+        under(
+            "SACM-SEC-003/input-bytes",
+            b"<r/>",
+            Limits::default().with_max_input_bytes(3),
+            &[("size", n(4)), ("max", n(3))],
+            "the input is {size} bytes long, over the size limit of {max} bytes",
+            "the input is 4 bytes long, over the size limit of 3 bytes",
+        ),
+        under(
+            "SACM-SEC-003/kept-namespaces",
+            &kept_namespaces(),
+            Limits::default().with_max_input_bytes(373),
+            &[("max", n(373))],
+            "the namespace names and bindings that preserved content keeps come to more than the size limit of {max} bytes",
+            "the namespace names and bindings that preserved content keeps come to more than the size limit of 373 bytes at line 1, column 345",
+        ),
+        under(
+            "SACM-SEC-003/depth",
+            b"<a><b/></a>",
+            Limits::default().with_max_depth(1),
+            &[("max", n(1))],
+            "an element is nested deeper than the depth limit of {max}",
+            "an element is nested deeper than the depth limit of 1 at line 1, column 4",
+        ),
+        under(
+            "SACM-SEC-003/nodes",
+            b"<r><x/></r>",
+            Limits::default().with_max_nodes(2),
+            &[("max", n(2))],
+            "the input has more XML nodes than the node limit of {max}",
+            "the input has more XML nodes than the node limit of 2",
+        ),
+        under(
+            "SACM-SEC-003/namespace-copies",
+            declaring,
+            Limits::default().with_max_nodes(2),
+            &[("max", n(2))],
+            "the elements that declare namespaces have more bindings in scope in all than the node limit of {max}",
+            "the elements that declare namespaces have more bindings in scope in all than the node limit of 2 at line 1, column 16",
+        ),
+        under(
+            "SACM-SEC-003/namespace-bindings",
+            declaring,
+            Limits::default().with_max_namespace_bindings(1),
+            &[("max", n(1))],
+            "an element has more namespace bindings in scope than the limit of {max}",
+            "an element has more namespace bindings in scope than the limit of 1 at line 1, column 16",
+        ),
     ]
 }
 
@@ -1048,6 +1229,18 @@ fn refusal(case: &Case) -> Refusal {
             match xmi::read(bytes, &ReadOptions::default().with_mode(Mode::Strict)) {
                 Ok(output) => panic!(
                     "{ROW}: {template}: a strict read accepts the input, with {:?}",
+                    output.diagnostics()
+                ),
+                Err(error) => Refusal::Read(error),
+            }
+        }
+        Input::ReadUnder(bytes, limits) => {
+            let options = ReadOptions::default()
+                .with_mode(Mode::Strict)
+                .with_limits(*limits);
+            match xmi::read(bytes, &options) {
+                Ok(output) => panic!(
+                    "{ROW}: {template}: a strict read under {limits:?} accepts the input, with {:?}",
                     output.diagnostics()
                 ),
                 Err(error) => Refusal::Read(error),
@@ -1124,10 +1317,17 @@ fn label(code: &str, row: Option<&str>) -> Option<String> {
         ("SACM-XMI-014" | "SACM-XMI-007", Some(row)) => {
             Some(format!("(a limit of this version; {row} reads it)"))
         }
-        ("SACM-XMI-002" | "SACM-XMI-015", Some(row)) => Some(format!(
+        // Since slice 0072 a tolerant read reads them (ADR 0041 D6).
+        ("SACM-XMI-002" | "SACM-XMI-008", Some(row)) => Some(format!(
+            "(strict mode never reads it; {row} reads it in tolerant mode)"
+        )),
+        ("SACM-XMI-015", Some(row)) => Some(format!(
             "(strict mode never reads it; {row} is to read it in tolerant mode)"
         )),
-        ("SACM-XML-002" | "SACM-SEC-002", None) => Some("(a limit of this version)".to_owned()),
+        // SACM-XMI-008 without a row: a SACM 2.4 root.
+        ("SACM-XML-002" | "SACM-SEC-002" | "SACM-XMI-008", None) => {
+            Some("(a limit of this version)".to_owned())
+        }
         ("SACM-XMI-003", None) => Some("(a defect in the input)".to_owned()),
         _ => None,
     }
@@ -1141,6 +1341,7 @@ fn is_unsupported(template: &str) -> bool {
         "SACM-XMI-014"
             | "SACM-XMI-007"
             | "SACM-XMI-002"
+            | "SACM-XMI-008"
             | "SACM-XMI-015"
             | "SACM-XML-002"
             | "SACM-SEC-002"
@@ -1181,10 +1382,12 @@ fn check_row(case: &Case) {
         "{ROW}: {template}: the arguments other than row are not those the pattern names, in the \
          order it first names them"
     );
+    // Of SACM-XMI-008, only a root of an older revision names its row; a
+    // SACM 2.4 root is a limit (slice 0072).
     let takes_row = matches!(
         code_of(template),
         "SACM-XMI-014" | "SACM-XMI-007" | "SACM-XMI-002" | "SACM-XMI-015"
-    );
+    ) || template == "SACM-XMI-008/other-revision-root";
     if takes_row {
         assert_eq!(
             declared.last(),
@@ -1200,7 +1403,7 @@ fn check_row(case: &Case) {
         assert!(
             !declared.contains(&"row"),
             "{ROW}: {template}: only the Unsupported templates of SACM-XMI-014, -007, -002 and \
-             -015 take row"
+             -015, and SACM-XMI-008/other-revision-root, take row"
         );
     }
 }
@@ -1208,7 +1411,7 @@ fn check_row(case: &Case) {
 #[test]
 fn lib_api_017_each_refusal_template_input_gives_its_0_1_0_display() {
     let cases = cases();
-    // The inputs and the templates without one are the 98, once each.
+    // The inputs and the templates without one are the 108, once each.
     let mut ids: Vec<&str> = cases.iter().map(|case| case.template).collect();
     ids.extend(NO_INPUT.iter().map(|(template, _)| *template));
     let count = ids.len();

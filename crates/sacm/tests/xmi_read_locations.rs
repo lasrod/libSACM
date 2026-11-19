@@ -232,7 +232,7 @@ fn encoding_rows() -> Vec<Row> {
         row("UTF-16 without a byte order mark", Unsupported, "")
             .form(Form::Raw(b"<\x00?\x00x\x00m\x00l\x00 \x00"))
             .lead(Lead::Start),
-        row("an unsupported declared encoding", Unsupported, spread(&format!(" encoding=\"{MARK}ISO-8859-1\"?><r/>")))
+        row("an unsupported declared encoding", Unsupported, spread(&format!(" encoding=\"{MARK}ISO-8859-2\"?><r/>")))
             .lead(Lead::NoNonAscii),
         row("a version that is not 1.x", Malformed, format!("<?xml\r\n\r    version=\"{MARK}2.0\"?><r/>"))
             .lead(Lead::NoNonAscii),
@@ -397,7 +397,7 @@ fn wrapper_rows() -> Vec<Row> {
 
 /// The refusals of a root's kind, namespace, id, attributes and content.
 fn root_rows() -> Vec<Row> {
-    use Variant::{DuplicateId, InvalidId, RepeatedValue, Unsupported};
+    use Variant::{DuplicateId, InvalidId, InvalidRoot, RepeatedValue, Unsupported};
     let root = |attributes: &str, content: &str| {
         led(&format!(
             "{MARK}<sacm:ArgumentPackage{NS}{attributes}>{content}</sacm:ArgumentPackage>"
@@ -406,17 +406,27 @@ fn root_rows() -> Vec<Row> {
     vec![
         // "a package root this release does not read" was the first row until
         // slice 0067, which reads every package kind as a root
-        // (SACM23-TERM-007; ADR 0035 amendment 1).
+        // (SACM23-TERM-007; ADR 0035 amendment 1). A package root in a
+        // foreign namespace or in none was Unsupported until slice 0072,
+        // which makes it InvalidRoot (ADR 0041 D4), at the same place; one in
+        // the SACM 2.4 namespace stays Unsupported.
         row(
             "a package root in a foreign namespace",
-            Unsupported,
+            InvalidRoot,
             led(&format!(
                 "{MARK}<o:ArgumentPackage xmlns:o=\"urn:o\" xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"a\"/>"
             )),
         ),
         row(
-            "a package root in no namespace",
+            "a package root in the SACM 2.4 namespace",
             Unsupported,
+            led(&format!(
+                "{MARK}<o:ArgumentPackage xmlns:o=\"http://www.omg.org/spec/SACM/2.4\" xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"a\"/>"
+            )),
+        ),
+        row(
+            "a package root in no namespace",
+            InvalidRoot,
             led(&format!(
                 "{MARK}<ArgumentPackage xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmi:id=\"a\"/>"
             )),

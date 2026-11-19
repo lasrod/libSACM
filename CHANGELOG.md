@@ -9,6 +9,57 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 
 ## [Unreleased]
 
+### Breaking
+
+- `xmi::read` now refuses, by default and in both modes, input over 32 MiB, nested deeper
+  than 256, with more than 1,000,000 XML nodes, or with more than 256 namespace bindings
+  in scope at an element, as `ReadError::LimitExceeded`; read a trusted file with higher
+  `Limits` [LIB-SEC-003].
+- A package-kind root in no namespace, or in one whose URI does not contain `sacm`, is
+  `ReadError::InvalidRoot` (SACM-XMI-001, templates `SACM-XMI-001/no-namespace` and
+  `/not-a-sacm-namespace`) in both modes, where it was `Unsupported` with SACM-XMI-002
+  [LIB-COMPAT-004].
+- The template `SACM-XMI-002/no-namespace` is removed [LIB-COMPAT-004].
+- A tolerant read now opens a document whose roots are in an older SACM revision's
+  namespace or a SACM-like one, which it refused [LIB-COMPAT-004].
+- The English of `SACM-XML-002/byte-order-mark`, `/detected-encoding` and
+  `/declared-encoding` names ISO-8859-1 among the encodings read [LIB-COMPAT-016].
+- `ReadError` has the variant `LimitExceeded`; the enum is `#[non_exhaustive]`, so only a
+  match without a fallback arm breaks [LIB-SEC-003].
+
+### Added
+
+- `xmi::Limits` and `xmi::Limit`, `ReadOptions::with_limits` and `ReadOptions::limits`,
+  `ReadError::LimitExceeded` and `Code::LIMIT_EXCEEDED` (SACM-SEC-003), with the six
+  templates `SACM-SEC-003/input-bytes`, `/kept-namespaces`, `/depth`, `/nodes`,
+  `/namespace-copies` and `/namespace-bindings`. The size is checked first, on the bytes;
+  the depth and the bindings in scope by a scan before parsing, which also counts the
+  bindings the parser copies against the node limit; the node limit by the parser; and
+  the namespace text preserved content keeps against the size limit [LIB-SEC-003].
+- A tolerant read reads a root in the namespace of SACM 2.0, 2.1 or 2.2 that it
+  recognises as SACM 2.3, with one SACM-XMI-008 Warning (`Code::XMI_OTHER_REVISION`,
+  template `SACM-XMI-008/other-revision`), and an Event's `occurence` as its date
+  (`SACM-XMI-008/occurence`); and a root in another namespace containing `sacm` with one
+  SACM-XMI-002 Warning (`SACM-XMI-002/sacm-like`). A strict read refuses both as
+  `Unsupported` (`SACM-XMI-008/other-revision-root`, `SACM-XMI-002/other-namespace`),
+  labelled `(strict mode never reads it; LIB-COMPAT-004 reads it in tolerant mode)`. Both
+  modes refuse a SACM 2.4 root (`SACM-XMI-008/sacm-2-4`). `xmi::write` writes SACM 2.3 in
+  the pinned namespace [LIB-COMPAT-004].
+- Both modes read input declaring `ISO-8859-1`, in any letter case and with no byte order
+  mark; after a UTF-8 byte order mark it is `Malformed`
+  (`SACM-XML-001/encoding-contradicts-utf8-bom`) [LIB-COMPAT-016].
+- The `write` docs state the bound on its output, "# Output size" [LIB-SEC-003].
+- `cargo xtask fetch-spec` also fetches XML Schema Part 2: Datatypes Second Edition,
+  pinned by SHA-256 [LIB-TOOL-022].
+
+### Changed
+
+- A strict read refuses a root in an older SACM revision's namespace with SACM-XMI-008,
+  where it was SACM-XMI-002 [LIB-COMPAT-004].
+- A root's type, and each child's type, names a SACM class in any namespace of the root's
+  family: for a recognised revision the base and the base with a package name
+  [LIB-COMPAT-004].
+
 ## [0.3.0] - 2026-11-19
 
 ### Added

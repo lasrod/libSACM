@@ -15,8 +15,15 @@
 //!   there until slice 0067 read it).
 //! - `docs/sacm/diagnostics.md` has live rows for the six codes the slice
 //!   adds, and names the refusal uses of SACM-XMI-001, -003, -007 and -014;
-//!   42 codes are live: 41 once slice 0063 adds its six, and SACM-EXPR-001
-//!   of slice 0065 (SACM23-VAL-009).
+//!   45 codes are live: 41 once slice 0063 adds its six, SACM-EXPR-001 of
+//!   slice 0065 (SACM23-VAL-009), SACM-PKG-002 of slice 0068, and
+//!   SACM-SEC-003 and SACM-XMI-008 of slice 0072 (LIB-SEC-003,
+//!   LIB-COMPAT-004).
+//! - The namespace entries of the list (LIB-COMPAT-004, acceptance 10;
+//!   ADR 0041 D4, D6): a root in an older SACM revision's namespace and one
+//!   in a SACM-like namespace are `Tolerated("LIB-COMPAT-004")`, refused
+//!   strictly and read tolerantly with a Warning of the strict code at the
+//!   strict location; a SACM 2.4 root is a `Limit`, refused in both modes.
 
 use std::fs;
 use std::path::Path;
@@ -27,9 +34,10 @@ const ROW: &str = "LIB-API-017";
 const CATALOG: &str = "docs/sacm/diagnostics.md";
 
 /// The number of live codes once slice 0063 adds its six (acceptance 9),
-/// slice 0065 SACM-EXPR-001 (SACM23-VAL-009) and slice 0068 SACM-PKG-002
-/// (SACM23-VAL-023).
-const LIVE_CODES: usize = 43;
+/// slice 0065 SACM-EXPR-001 (SACM23-VAL-009), slice 0068 SACM-PKG-002
+/// (SACM23-VAL-023), and slice 0072 SACM-SEC-003 (LIB-SEC-003) and
+/// SACM-XMI-008 (LIB-COMPAT-004).
+const LIVE_CODES: usize = 45;
 
 /// The codes slice 0063 makes live, with the constant each row names.
 const NEW_LIVE: [(&str, &str); 6] = [
@@ -308,18 +316,22 @@ mod api {
         }
     }
 
+    /// A root ArgumentPackage `p` in the namespace `uri`, bound to `sacm`.
+    fn root_in(uri: &str) -> String {
+        format!(
+            "<sacm:ArgumentPackage xmlns:sacm=\"{uri}\" xmlns:xmi=\"{XMI_NS}\" xmi:id=\"p\">\
+             <name content=\"p\"/></sacm:ArgumentPackage>"
+        )
+    }
+
     #[test]
     fn lib_api_017_the_entries_refused_in_both_modes_have_their_code_in_both() {
-        let cases: Vec<(&str, Vec<u8>, Code)> = vec![
-            (
-                "OtherSacmNamespace",
-                format!(
-                    "<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/2.2/argumentation\" \
-                     xmlns:xmi=\"{XMI_NS}\" xmi:id=\"p\"><name content=\"p\"/></sacm:ArgumentPackage>"
-                )
-                .into_bytes(),
-                Code::XMI_NAMESPACE_NOT_PINNED,
-            ),
+        // Until slice 0072 `OtherSacmNamespace` was refused in both modes;
+        // a tolerant read reads it since (LIB-COMPAT-004). `Sacm24` is
+        // refused in both modes, with SACM-XMI-008, and ISO-8859-1 is read
+        // since (LIB-COMPAT-016), so `Encoding` takes ISO-8859-2. The codes
+        // are compared by text, as `Code::XMI_OTHER_REVISION` is new.
+        let cases: Vec<(&str, Vec<u8>, &str)> = vec![
             (
                 "OtherXmiNamespace",
                 format!(
@@ -327,17 +339,22 @@ mod api {
                      <sacm:ArgumentPackage x:id=\"p\"><name content=\"p\"/></sacm:ArgumentPackage></xmi:XMI>"
                 )
                 .into_bytes(),
-                Code::XMI_WRAPPER_NAMESPACE,
+                "SACM-XMI-015",
             ),
             (
                 "Encoding",
-                b"<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><r/>".to_vec(),
-                Code::XML_ENCODING_NOT_READ,
+                b"<?xml version=\"1.0\" encoding=\"ISO-8859-2\"?><r/>".to_vec(),
+                "SACM-XML-002",
+            ),
+            (
+                "Sacm24",
+                root_in("http://www.omg.org/spec/SACM/20260504").into_bytes(),
+                "SACM-XMI-008",
             ),
             (
                 "XmiMetadata as the document element",
                 format!("<xmi:Documentation xmlns:xmi=\"{XMI_NS}\"/>").into_bytes(),
-                Code::XMI_UNREAD_CONTENT,
+                "SACM-XMI-014",
             ),
         ];
         for (entry, input, code) in cases {
@@ -350,7 +367,7 @@ mod api {
                 Err(error) => error,
             };
             assert_eq!(
-                (strict.code(), tolerant.code()),
+                (strict.code().as_str(), tolerant.code().as_str()),
                 (code, code),
                 "{ROW}: {entry}: code() in strict and tolerant mode"
             );
@@ -367,6 +384,117 @@ mod api {
             ],
             ["SACM-XMI-002", "SACM-XMI-015", "SACM-XML-002"],
             "{ROW}: the codes' texts"
+        );
+    }
+
+    /// The `row` argument of `error`, if it has one.
+    fn row_argument(error: &ReadError) -> Option<String> {
+        error
+            .arguments()
+            .iter()
+            .find(|argument| argument.name() == "row")
+            .and_then(|argument| argument.value().as_text().map(str::to_owned))
+    }
+
+    #[test]
+    fn lib_compat_004_the_refusal_list_reads_the_namespace_tolerances() {
+        const ROW_004: &str = "LIB-COMPAT-004";
+        const TOLERATED: &str =
+            "(strict mode never reads it; LIB-COMPAT-004 reads it in tolerant mode)";
+        // `OtherRevision` and `OtherSacmNamespace`: Tolerated("LIB-COMPAT-004").
+        // A strict read refuses each with its code, the row as its last
+        // argument and the Tolerated label; a tolerant read reads it with one
+        // Warning of the same code at the strict refusal's location.
+        let tolerated = [
+            (
+                "OtherRevision",
+                root_in("http://www.omg.org/spec/SACM/2.2/Argumentation"),
+                "SACM-XMI-008",
+                "SACM-XMI-008/other-revision-root",
+                "SACM-XMI-008/other-revision",
+            ),
+            (
+                "OtherSacmNamespace",
+                root_in("urn:example:sacm"),
+                "SACM-XMI-002",
+                "SACM-XMI-002/other-namespace",
+                "SACM-XMI-002/sacm-like",
+            ),
+        ];
+        for (entry, input, code, refusal, warning) in tolerated {
+            let error = strict_unsupported(entry, input.as_bytes());
+            assert_eq!(
+                (error.code().as_str(), error.template()),
+                (code, refusal),
+                "{ROW_004}: {entry}: the strict code() and template()"
+            );
+            assert_eq!(
+                row_argument(&error).as_deref(),
+                Some(ROW_004),
+                "{ROW_004}: {entry}: the strict refusal does not name the row"
+            );
+            assert!(
+                error.to_string().ends_with(TOLERATED),
+                "{ROW_004}: {entry}: the strict Display does not end with {TOLERATED:?}: {error}"
+            );
+            let output = match xmi::read(input.as_bytes(), &ReadOptions::default()) {
+                Ok(output) => output,
+                Err(error) => panic!("{ROW_004}: {entry}: a tolerant read refuses it: {error}"),
+            };
+            let found: Vec<_> = output
+                .diagnostics()
+                .iter()
+                .map(|found| {
+                    (
+                        found.code().as_str(),
+                        found.severity(),
+                        found.location(),
+                        found.template(),
+                        found.requirement_id(),
+                    )
+                })
+                .collect();
+            assert_eq!(
+                found,
+                [(
+                    error.code().as_str(),
+                    Severity::Warning,
+                    error.location(),
+                    warning,
+                    ROW_004
+                )],
+                "{ROW_004}: {entry}: the tolerant read does not give one Warning with the strict \
+                 refusal's code at its location"
+            );
+        }
+        // `Sacm24`: a Limit, refused in both modes alike with SACM-XMI-008,
+        // with no row and the label of a limit.
+        let input = root_in("http://www.omg.org/spec/SACM/2.4");
+        let strict = strict_unsupported("Sacm24", input.as_bytes());
+        let tolerant = match xmi::read(input.as_bytes(), &ReadOptions::default()) {
+            Ok(output) => panic!(
+                "{ROW_004}: Sacm24: a tolerant read accepts it, with {:?}",
+                output.diagnostics()
+            ),
+            Err(error) => error,
+        };
+        assert_eq!(
+            tolerant, strict,
+            "{ROW_004}: Sacm24: the modes refuse differently"
+        );
+        assert_eq!(
+            (strict.code().as_str(), strict.template()),
+            ("SACM-XMI-008", "SACM-XMI-008/sacm-2-4"),
+            "{ROW_004}: Sacm24: code() and template()"
+        );
+        assert_eq!(
+            row_argument(&strict),
+            None,
+            "{ROW_004}: Sacm24: a Limit names no row"
+        );
+        assert!(
+            strict.to_string().ends_with(" (a limit of this version)"),
+            "{ROW_004}: Sacm24: the Display does not end with the label of a limit: {strict}"
         );
     }
 

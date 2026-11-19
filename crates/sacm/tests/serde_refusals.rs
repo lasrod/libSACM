@@ -3,8 +3,10 @@
 //!
 //! - `tests/data/golden/serde/read-errors.json` and `write-errors.json` hold
 //!   one value per variant, and `Unsupported` once per code an input
-//!   reaches: SACM-XMI-014, -007, -003, -002, -015 and SACM-XML-002
-//!   (SACM-SEC-002 has no input of a test's size). The samples are real
+//!   reaches: SACM-XMI-014, -007, -003, -002, -008 (slice 0072), -015 and
+//!   SACM-XML-002 (SACM-SEC-002 has no input of a test's size here;
+//!   LIB-SEC-003 reaches `/namespaces`), and `LimitExceeded` last (LIB-SEC-003,
+//!   acceptance 14). The samples are real
 //!   refusals of `xmi::read` and `xmi::write`, because the variants are
 //!   `#[non_exhaustive]`. Serializing them pretty gives each file's bytes
 //!   plus a final line feed; reading each file gives values `==` to them,
@@ -134,7 +136,7 @@ fn read_samples() -> Vec<ReadError> {
             "<sacm:ArgumentPackage{NS} xmi:id=\"arguments\">\n  \
              <argumentElement xmi:type=\"sacm:Claim\" xmi:id=\"\"/>\n</sacm:ArgumentPackage>"
         ),
-        // Unsupported: SACM-XMI-014, -007, -003, -002, -015, SACM-XML-002.
+        // Unsupported: SACM-XMI-014, -007, -003, -002, -008, -015, SACM-XML-002.
         // A TerminologyPackageInterface in the case until slice 0067 read it
         // (SACM23-TERM-007).
         format!(
@@ -151,6 +153,12 @@ fn read_samples() -> Vec<ReadError> {
             "<xmi:XMI xmlns:xmi=\"{XMI_NS}\" xmlns:sacm=\"{SACM_NS}\" foo=\"bar\">\n  \
              <sacm:ArgumentPackage xmi:id=\"p\"/>\n</xmi:XMI>"
         ),
+        // A SACM-like namespace (SACM-XMI-002) and, since slice 0072, an
+        // older SACM revision's (SACM-XMI-008; LIB-COMPAT-004).
+        format!(
+            "<sacm:ArgumentPackage xmlns:sacm=\"urn:example:sacm\" \
+             xmlns:xmi=\"{XMI_NS}\" xmi:id=\"p\"/>"
+        ),
         format!(
             "<sacm:ArgumentPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/2.2/argumentation\" \
              xmlns:xmi=\"{XMI_NS}\" xmi:id=\"p\"/>"
@@ -159,7 +167,8 @@ fn read_samples() -> Vec<ReadError> {
             "<xmi:XMI xmlns:xmi=\"http://www.omg.org/XMI\" xmlns:sacm=\"{SACM_NS}\">\n  \
              <sacm:ArgumentPackage/>\n</xmi:XMI>"
         ),
-        "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n<r/>".to_owned(),
+        // ISO-8859-1 is read since slice 0072 (LIB-COMPAT-016).
+        "<?xml version=\"1.0\" encoding=\"ISO-8859-2\"?>\n<r/>".to_owned(),
         format!(
             "<sacm:ArgumentPackage{NS} xmi:id=\"arguments\">\n  <name content=\"A\">\n    \
              <content>A</content>\n  </name>\n</sacm:ArgumentPackage>"
@@ -177,7 +186,23 @@ fn read_samples() -> Vec<ReadError> {
     ]
     .iter()
     .map(|input| strict_refusal(input))
+    .chain(limit_samples())
     .collect()
+}
+
+/// The `LimitExceeded` sample (LIB-SEC-003): a strict read of `<a><b/></a>`
+/// with a depth limit of 1.
+fn limit_samples() -> Vec<ReadError> {
+    let options = ReadOptions::default()
+        .with_mode(Mode::Strict)
+        .with_limits(sacm::xmi::Limits::default().with_max_depth(1));
+    match xmi::read(b"<a><b/></a>", &options) {
+        Ok(output) => panic!(
+            "LIB-SEC-003: setup: a strict read with max_depth 1 accepts <a><b/></a>, with {:?}",
+            output.diagnostics()
+        ),
+        Err(error) => vec![error],
+    }
 }
 
 /// The variant name of `error`.
@@ -194,6 +219,7 @@ fn read_variant(error: &ReadError) -> &'static str {
         ReadError::InvalidLiteral { .. } => "InvalidLiteral",
         ReadError::LegacyShape { .. } => "LegacyShape",
         ReadError::MissingType { .. } => "MissingType",
+        ReadError::LimitExceeded { .. } => "LimitExceeded",
         _ => "<a variant this test does not know>",
     }
 }
@@ -264,12 +290,14 @@ fn lib_api_017_read_errors_json_holds_one_value_per_variant_and_reads_back() {
             ("Unsupported", "SACM-XMI-007"),
             ("Unsupported", "SACM-XMI-003"),
             ("Unsupported", "SACM-XMI-002"),
+            ("Unsupported", "SACM-XMI-008"),
             ("Unsupported", "SACM-XMI-015"),
             ("Unsupported", "SACM-XML-002"),
             ("RepeatedValue", "SACM-MULT-001"),
             ("InvalidLiteral", "SACM-ENUM-001"),
             ("LegacyShape", "SACM-XMI-012"),
             ("MissingType", "SACM-XMI-005"),
+            ("LimitExceeded", "SACM-SEC-003"),
         ],
         "{ROW}: setup: the samples are not one per variant, Unsupported once per code"
     );

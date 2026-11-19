@@ -30,7 +30,8 @@ names the default. Giving both flags is a usage error.
 - `--tolerant` reads in tolerant mode, which also opens a file that a strict read refuses
   for a bad value or for content this version does not read yet, and reports what a
   strict read refuses as Warnings. It still refuses a DOCTYPE, malformed XML, a root
-  outside SACM 2.3, a repeated `xmi:id` and an encoding it cannot decode (exit 2). Its
+  outside SACM or in SACM 2.4, a repeated `xmi:id`, an encoding it cannot decode and input
+  over the read limits (exit 2). Its
   summary says `readable`, never `valid`, and `invalid` when a diagnostic is an Error.
 
 ```console

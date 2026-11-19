@@ -158,7 +158,8 @@ catalog! {
     pub const XML_DOCTYPE_REJECTED: Code = Code::from_static("SACM-SEC-001");
 
     /// SACM-XML-002: the input is in an encoding this version does not read:
-    /// one other than UTF-8, ASCII and UTF-16 with a byte order mark, by its
+    /// one other than UTF-8, ASCII, ISO-8859-1 and UTF-16 with a byte order
+    /// mark, by its
     /// mark, its first bytes or its declaration. Both modes refuse it as
     /// [`ReadError::Unsupported`](crate::xmi::ReadError::Unsupported), with
     /// the label `(a limit of this version)` (LIB-API-009, LIB-API-017).
@@ -173,12 +174,26 @@ catalog! {
     /// edit.
     pub const XML_UNREPRESENTABLE_CHARACTER: Code = Code::from_static("SACM-XML-003");
 
-    /// SACM-SEC-002: the input has more nodes, attributes or namespaces than
-    /// the parser can hold, or an element the document could not hold, which
-    /// checked input never gives. Both modes refuse it as
+    /// SACM-SEC-002: the input has more than 65,535 distinct namespace
+    /// bindings, 2³² attributes, or more nodes than the parser can hold
+    /// under a node limit of 2³² or more, or an element the document could
+    /// not hold, which checked input never gives. Both modes refuse it as
     /// [`ReadError::Unsupported`](crate::xmi::ReadError::Unsupported), with
-    /// the label `(a limit of this version)` (LIB-API-011, LIB-API-017).
+    /// the label `(a limit of this version)` and no location (LIB-API-011,
+    /// LIB-API-017, LIB-SEC-003).
     pub const PARSER_LIMIT: Code = Code::from_static("SACM-SEC-002");
+
+    /// SACM-SEC-003: the input passes one of the
+    /// [`Limits`](crate::xmi::Limits) of
+    /// [`ReadOptions::with_limits`](crate::xmi::ReadOptions::with_limits): its
+    /// size, the nesting depth of its elements, the XML nodes the parser
+    /// builds, or the namespace bindings in scope at an element; the
+    /// bindings the elements declaring namespaces hold in scope count against
+    /// the node limit, and the namespace text preserved content keeps
+    /// against the size limit. Both modes refuse it as
+    /// [`ReadError::LimitExceeded`](crate::xmi::ReadError::LimitExceeded)
+    /// (LIB-SEC-003). Fix: if the file is trusted, read it with higher limits.
+    pub const LIMIT_EXCEEDED: Code = Code::from_static("SACM-SEC-003");
 
     /// SACM-XMI-001: an interchange root (the document element, or each
     /// element child outside the XMI namespace of an `xmi:XMI` element in the
@@ -193,13 +208,25 @@ catalog! {
     /// `kXmiInvalidRoot`.
     pub const XMI_INVALID_ROOT: Code = Code::from_static("SACM-XMI-001");
 
-    /// SACM-XMI-002: a root is in a namespace that is not the pinned SACM 2.3
-    /// namespace `http://www.omg.org/spec/SACM/20220301`, or in none. In this
-    /// release both modes refuse it as
-    /// [`ReadError::Unsupported`](crate::xmi::ReadError::Unsupported), with
-    /// this code; the Warning of a tolerant read is reserved for
-    /// LIB-COMPAT-004, which is to read it (D-NS-PIN, LIB-API-017).
+    /// SACM-XMI-002: a root is in a namespace whose URI contains `sacm` in
+    /// any letter case but that is neither the pinned SACM 2.3 namespace
+    /// `http://www.omg.org/spec/SACM/20220301` nor one SACM-XMI-008
+    /// recognises, such as the undated `http://www.omg.org/spec/SACM/2.3`. A
+    /// tolerant read reads it as SACM 2.3 with one Warning per root; a strict
+    /// read refuses it as
+    /// [`ReadError::Unsupported`](crate::xmi::ReadError::Unsupported). A root
+    /// in no namespace, or in one without `sacm`, is SACM-XMI-001 (D-NS-PIN,
+    /// LIB-COMPAT-004, LIB-API-017).
     pub const XMI_NAMESPACE_NOT_PINNED: Code = Code::from_static("SACM-XMI-002");
+
+    /// SACM-XMI-008: a root is in the namespace of an older SACM revision
+    /// the reader recognises (2.0, 2.1 or 2.2). A tolerant read reads it as
+    /// SACM 2.3 with one Warning per root, and an Event's `occurence` as its
+    /// date with one Warning each; a strict read refuses it as
+    /// [`ReadError::Unsupported`](crate::xmi::ReadError::Unsupported). Both
+    /// modes refuse a SACM 2.4 root with this code (LIB-COMPAT-018).
+    /// (LIB-COMPAT-004.)
+    pub const XMI_OTHER_REVISION: Code = Code::from_static("SACM-XMI-008");
 
     /// SACM-XMI-004: an element has no `xmi:id`, which XMI 2.5.1 §7.6.1
     /// makes optional. [`xmi::read`](crate::xmi::read) reads the element
