@@ -9,6 +9,8 @@ strict read refusal, or a new strict write refusal, is listed under **Changed**.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-19
+
 ### Added
 
 - `model::Href` and `SacmElement::hrefs(end)`: a reference element's `href` that names an
