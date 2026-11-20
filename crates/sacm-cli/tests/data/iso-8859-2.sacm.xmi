@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="ISO-8859-2"?>
+<!-- LIB-CLI-002: the file declares the encoding ISO-8859-2, which this version does not read, so neither a strict nor a tolerant read opens it. Its bytes are ASCII. Hand-written. -->
+<sacm:ArgumentPackage xmlns:sacm="http://www.omg.org/spec/SACM/20220301" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmi:id="arguments">
+  <name lang="en" content="Arguments"/>
+</sacm:ArgumentPackage>

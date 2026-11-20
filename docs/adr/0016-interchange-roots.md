@@ -101,3 +101,9 @@ or surrogate reference. `xmi::read` documents the order.
   data or reads a kind the element name does not state.
 - **Give the other ten package kinds SACM-XMI-001 until they can be read.** Rejected,
   because the code would then change meaning from release to release (ADR 0015).
+
+## Amendment 1 (2026-11-19)
+
+D6 is closed by [ADR 0041](0041-read-limits-and-other-sacm-namespaces.md) D4. A root in no
+namespace, or in one whose URI does not contain `sacm`, is `InvalidRoot` (SACM-XMI-001). An
+older revision's or a SACM-like root is read in tolerant mode (LIB-COMPAT-004).

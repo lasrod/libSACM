@@ -2,8 +2,9 @@
 //! amendment 3, sections Templates, R8, R9, R11, Records and Order).
 //!
 //! One input per diagnostic template of `docs/sacm/diagnostics.md`'s
-//! `## Message templates` table, 106 in all: 38 that `validate` gives and 68
-//! that a tolerant or a strict read gives (slice 0068 adds the eight of the
+//! `## Message templates` table, 109 in all: 38 that `validate` gives and 71
+//! that a tolerant or a strict read gives (slice 0072 adds the three of a
+//! root in another SACM namespace, LIB-COMPAT-004; slice 0068 adds the eight of the
 //! package interface and binding rules; slice 0067 removes the four kept
 //! forms of unread kinds and ends: `SACM-XMI-014/interface-element-kept`,
 //! `/unread-kind-kept`, `/unread-kind-in-root-kept` and `/unread-root-kept`). Each input is a document read,
@@ -20,7 +21,7 @@
 //!   with the arguments is the message; every placeholder names an argument
 //!   of the right kind; the arguments are exactly those the pattern names, in
 //!   the order it first names them, so `row` is declared only where the
-//!   pattern names it, and then last; and the inputs are the 106 templates,
+//!   pattern names it, and then last; and the inputs are the 109 templates,
 //!   once each. [`sites`] adds an input for the other sites of the templates
 //!   that more than one site gives, checked the same way.
 //! - `lib_api_018_each_diagnostic_template_input_has_its_code_template_and_arguments`
@@ -51,10 +52,11 @@ const NS: &str = concat!(
 );
 
 /// The number of diagnostic templates (acceptance 1): 38 from validation and
-/// 68 from the reader, once slice 0067 removes the four kept forms of unread
-/// kinds and ends (ADR 0035 amendment 1) and slice 0068 adds eight to
-/// validation (SACM23-VAL-013, -014, -015, -023).
-const DIAGNOSTIC_TEMPLATES: usize = 106;
+/// 71 from the reader, once slice 0067 removes the four kept forms of unread
+/// kinds and ends (ADR 0035 amendment 1), slice 0068 adds eight to
+/// validation (SACM23-VAL-013, -014, -015, -023) and slice 0072 adds three
+/// to the reader (LIB-COMPAT-004).
+const DIAGNOSTIC_TEMPLATES: usize = 109;
 
 /// The number of them that `validate` gives.
 const VALIDATION_TEMPLATES: usize = 38;
@@ -997,7 +999,63 @@ fn reader_cases() -> Vec<Case> {
     cases.extend(legacy_cases());
     cases.extend(spelling_cases());
     cases.extend(kept_cases());
+    cases.extend(namespace_cases());
     cases
+}
+
+/// The three Warnings of a root a tolerant read reads in another SACM
+/// namespace (slice 0072; LIB-COMPAT-004, ADR 0041 D4, D5): an older SACM
+/// revision's, with an Event's `occurence`, and a SACM-like one. No clause.
+fn namespace_cases() -> Vec<Case> {
+    let root_in = |uri: &str| {
+        format!(
+            "<sacm:ArgumentPackage xmlns:sacm=\"{uri}\" xmlns:xmi=\"{XMI_NS}\" xmi:id=\"p\">\
+             <name content=\"p\"/></sacm:ArgumentPackage>"
+        )
+    };
+    vec![
+        case(
+            "SACM-XMI-008/other-revision",
+            tolerant(root_in("http://www.omg.org/spec/SACM/2.2/Argumentation")),
+            (WARNING, "LIB-COMPAT-004", None),
+            &[
+                ("class", t("ArgumentPackage")),
+                ("id", t("p")),
+                (
+                    "namespace",
+                    t("http://www.omg.org/spec/SACM/2.2/Argumentation"),
+                ),
+                ("revision", t("2.2")),
+            ],
+            "the {class} {id:?} is in the namespace {namespace:?} of SACM {revision}, so it is read as SACM 2.3: content SACM 2.3 does not have is kept as preserved content, and a write writes SACM 2.3",
+            "the ArgumentPackage \"p\" is in the namespace \"http://www.omg.org/spec/SACM/2.2/Argumentation\" of SACM 2.2, so it is read as SACM 2.3: content SACM 2.3 does not have is kept as preserved content, and a write writes SACM 2.3",
+        ),
+        case(
+            "SACM-XMI-008/occurence",
+            tolerant(format!(
+                "<sacm:ArtifactPackage xmlns:sacm=\"http://www.omg.org/spec/SACM/20210218\" \
+                 xmlns:xmi=\"{XMI_NS}\" xmi:id=\"arts\"><name content=\"arts\"/>\
+                 <artifactElement xmi:type=\"sacm:Event\" xmi:id=\"e1\" occurence=\"2021-02-18\">\
+                 <name content=\"e1\"/></artifactElement></sacm:ArtifactPackage>"
+            )),
+            (WARNING, "LIB-COMPAT-004", None),
+            &[("id", t("e1")), ("revision", t("2.2"))],
+            "the Event {id:?} gives its date as the attribute \"occurence\", the SACM {revision} spelling, which is read as its date",
+            "the Event \"e1\" gives its date as the attribute \"occurence\", the SACM 2.2 spelling, which is read as its date",
+        ),
+        case(
+            "SACM-XMI-002/sacm-like",
+            tolerant(root_in("urn:example:sacm")),
+            (WARNING, "LIB-COMPAT-004", None),
+            &[
+                ("class", t("ArgumentPackage")),
+                ("id", t("p")),
+                ("namespace", t("urn:example:sacm")),
+            ],
+            "the {class} {id:?} is in the namespace {namespace:?}, which names SACM but is not the SACM 2.3 namespace \"http://www.omg.org/spec/SACM/20220301\", so it is read as SACM 2.3: content SACM 2.3 does not have is kept as preserved content, and a write writes SACM 2.3",
+            "the ArgumentPackage \"p\" is in the namespace \"urn:example:sacm\", which names SACM but is not the SACM 2.3 namespace \"http://www.omg.org/spec/SACM/20220301\", so it is read as SACM 2.3: content SACM 2.3 does not have is kept as preserved content, and a write writes SACM 2.3",
+        ),
+    ]
 }
 
 /// The 19 plain reports of a read.
@@ -2056,7 +2114,7 @@ fn kept_cases() -> Vec<Case> {
 }
 
 /// More sites of the templates that more than one site gives, each checked
-/// as a case of the table is, but not counted among the 106.
+/// as a case of the table is, but not counted among the 109.
 #[expect(
     clippy::too_many_lines,
     reason = "one table, one row per site, reads best whole"
@@ -2446,7 +2504,7 @@ fn lib_api_018_each_diagnostic_template_input_gives_its_message() {
     );
     let mut cases = validation;
     cases.extend(reader_cases());
-    // The inputs are the 106 templates, once each.
+    // The inputs are the 109 templates, once each.
     let mut ids: Vec<&str> = cases.iter().map(|case| case.template).collect();
     let count = ids.len();
     ids.sort_unstable();

@@ -388,8 +388,9 @@ fn utf16_bom(bytes: &[u8]) -> bool {
 /// The encoding this test sees in `bytes` that the reader still refuses as
 /// `Unsupported`, if any (item 4, after SACM23-XMI-018): a UCS-4 byte order
 /// mark, first bytes that are `<` in UTF-16 or UCS-4 without a byte order
-/// mark, or an XML declaration naming an encoding other than UTF-8 or ASCII
-/// in input without a UTF-16 byte order mark. UTF-16 with a byte order mark
+/// mark, or an XML declaration naming an encoding other than UTF-8, ASCII or
+/// ISO-8859-1 (read since slice 0072, LIB-COMPAT-016) in input without a
+/// UTF-16 byte order mark. UTF-16 with a byte order mark
 /// is read, so its `Unsupported` is never one from the encoding steps.
 fn other_encoding(bytes: &[u8]) -> Option<String> {
     if utf16_bom(bytes) {
@@ -418,7 +419,7 @@ fn other_encoding(bytes: &[u8]) -> Option<String> {
     let quote = after.chars().next().filter(|q| matches!(q, '"' | '\''))?;
     let name = &after[1..];
     let name = &name[..name.find(quote)?];
-    let supported = ["UTF-8", "US-ASCII", "ASCII"]
+    let supported = ["UTF-8", "US-ASCII", "ASCII", "ISO-8859-1"]
         .iter()
         .any(|s| name.eq_ignore_ascii_case(s));
     (!supported).then(|| format!("the declared encoding {name:?}"))
@@ -622,9 +623,9 @@ fn lib_sec_006_every_selected_not_well_formed_case_is_refused() {
             tally(&Class::Encoding),
             tally(&Class::Malformed)
         ),
-        (719, 2, 296),
+        (719, 1, 297),
         "{ROW}: the refusals by kind: Doctype, Unsupported from the encoding steps, Malformed \
-         (after SACM23-XMI-018)"
+         (after SACM23-XMI-018, and LIB-COMPAT-016, which makes hst-lhs-007 Malformed)"
     );
     assert_eq!(results.len(), 1_017, "{ROW}: every selected case ran");
 }
@@ -707,12 +708,14 @@ fn lib_sec_006_valid_and_invalid_cases_that_reach_the_root_stage_are_never_malfo
 /// with a byte order mark), `hst-lhs-008` (a UTF-16 byte order mark and
 /// `utf-8` declared in UTF-16) and `hst-lhs-009` (the same mark before UTF-8
 /// bytes, an odd count) are `Malformed`; `rmt-e2e-61` (UTF-8 declaring
-/// `UTF-16`) and `hst-lhs-007` (a UTF-8 mark and `iso-8859-1`) stay
-/// `Unsupported` from the encoding steps.
+/// `UTF-16`) stays `Unsupported` from the encoding steps. `hst-lhs-007` (a
+/// UTF-8 mark and `iso-8859-1`) was `Unsupported` too until slice 0072 read
+/// ISO-8859-1, whose declaration a UTF-8 mark contradicts, so it is
+/// `Malformed` since (LIB-COMPAT-016, acceptance 5).
 fn utf16_case_class(id: &str) -> Option<Class> {
     match id {
-        "hst-lhs-008" | "hst-lhs-009" => Some(Class::Malformed),
-        "rmt-e2e-61" | "hst-lhs-007" => Some(Class::Encoding),
+        "hst-lhs-007" | "hst-lhs-008" | "hst-lhs-009" => Some(Class::Malformed),
+        "rmt-e2e-61" => Some(Class::Encoding),
         _ if id.starts_with("o-p02fail") => Some(Class::Malformed),
         _ => None,
     }

@@ -745,8 +745,8 @@ fn table() -> Vec<(&'static str, Vec<u8>, Expect)> {
             Unsupported,
         ),
         text(
-            "a declared ISO-8859-1 encoding",
-            format!("<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><sacm:ArgumentPackage{NS} xmi:id=\"a\"/>"),
+            "a declared ISO-8859-2 encoding",
+            format!("<?xml version=\"1.0\" encoding=\"ISO-8859-2\"?><sacm:ArgumentPackage{NS} xmi:id=\"a\"/>"),
             Unsupported,
         ),
         // --- ADR 0021's non-conforming inputs (ADR 0022's table): kept as

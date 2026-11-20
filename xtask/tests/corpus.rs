@@ -164,6 +164,8 @@ fn variant(error: &ReadError) -> &'static str {
         ReadError::InvalidLiteral { .. } => "InvalidLiteral",
         ReadError::LegacyShape { .. } => "LegacyShape",
         ReadError::MissingType { .. } => "MissingType",
+        // A read limit (LIB-SEC-003, slice 0072).
+        ReadError::LimitExceeded { .. } => "LimitExceeded",
         _ => "other",
     }
 }

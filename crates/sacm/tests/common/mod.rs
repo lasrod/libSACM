@@ -6,10 +6,15 @@
 /// reason and its `Display` end with (LIB-API-017; ADR 0030 amendment 3):
 /// SACM-XMI-014 for `(a limit of this version; ROW reads it)`, except
 /// SACM-XMI-007 when ROW is SACM23-XMI-029, which reads the cross-document
-/// links SACM23-XMI-027 does not (slice 0068, ADR 0040); SACM-XMI-002 and
-/// SACM-XMI-015 for the tolerances of LIB-COMPAT-004 and LIB-COMPAT-002;
-/// SACM-XMI-003 for `(a defect in the input)`; and, for `(a limit of this version)`, SACM-SEC-002 for a parser
-/// capacity limit and SACM-XML-002 for an encoding.
+/// links SACM23-XMI-027 does not (slice 0068, ADR 0040); for
+/// `(strict mode never reads it; LIB-COMPAT-004 reads it in tolerant mode)`
+/// (ADR 0041 D6), SACM-XMI-008 for a root in an older SACM revision's
+/// namespace, whose reason names the revision (`… of SACM 2.2, not …`), and
+/// SACM-XMI-002 for a SACM-like one; SACM-XMI-015 for the tolerance of
+/// LIB-COMPAT-002; SACM-XMI-003 for `(a defect in the input)`; and, for
+/// `(a limit of this version)`, SACM-XMI-008 for a SACM 2.4 root, whose
+/// reason names LIB-COMPAT-018, SACM-SEC-002 for a parser capacity limit and
+/// SACM-XML-002 for an encoding.
 ///
 /// # Panics
 ///
@@ -20,15 +25,21 @@ pub(crate) fn unsupported_code(text: &str) -> &'static str {
     } else if text.ends_with(" reads it)") && text.contains("(a limit of this version; ") {
         "SACM-XMI-014"
     } else if text
-        .ends_with("(strict mode never reads it; LIB-COMPAT-004 is to read it in tolerant mode)")
+        .ends_with("(strict mode never reads it; LIB-COMPAT-004 reads it in tolerant mode)")
     {
-        "SACM-XMI-002"
+        if text.contains("\" of SACM 2.") {
+            "SACM-XMI-008"
+        } else {
+            "SACM-XMI-002"
+        }
     } else if text
         .ends_with("(strict mode never reads it; LIB-COMPAT-002 is to read it in tolerant mode)")
     {
         "SACM-XMI-015"
     } else if text.ends_with("(a defect in the input)") {
         "SACM-XMI-003"
+    } else if text.ends_with("until LIB-COMPAT-018 decides how (a limit of this version)") {
+        "SACM-XMI-008"
     } else if text.ends_with("than the parser can hold (a limit of this version)") {
         "SACM-SEC-002"
     } else if text.ends_with("(a limit of this version)") {

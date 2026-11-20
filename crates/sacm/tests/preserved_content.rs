@@ -2156,7 +2156,12 @@ fn lib_compat_003_a_ten_thousand_deep_fragment_reads_clones_compares_writes_and_
         .stack_size(STACK)
         .spawn(move || {
             let result = (|| -> Result<(), String> {
-                let options = ReadOptions::default();
+                // Since slice 0072 the depth limit defaults to 256
+                // (LIB-SEC-003); it is raised past the fragment's depth.
+                let options = ReadOptions::default().with_limits(
+                    sacm::xmi::Limits::default()
+                        .with_max_depth(u64::try_from(2 * DEPTH).unwrap_or(u64::MAX)),
+                );
                 let doc = xmi::read(input.as_bytes(), &options)
                     .map_err(|error| format!("the read refused it: {error}"))?
                     .into_document();

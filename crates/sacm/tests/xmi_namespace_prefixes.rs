@@ -524,6 +524,45 @@ fn assert_invalid_root_at(input: &str, location: SourceLocation, name: &str) {
     );
 }
 
+/// Asserts that `input`, a package-kind root in no namespace or in one
+/// whose URI does not contain `sacm`, is refused as `InvalidRoot`
+/// (SACM-XMI-001) at `location` in both modes, with the `Display`
+/// `display` (slice 0072, ADR 0041 D4), and returns that `Display`.
+fn assert_outside_sacm_at(
+    what: &str,
+    input: &str,
+    location: SourceLocation,
+    display: &str,
+) -> String {
+    let error = refusal(input.as_bytes());
+    assert!(
+        matches!(error, ReadError::InvalidRoot { .. }),
+        "{ROW}: {what}: expected InvalidRoot, got {error:?}"
+    );
+    assert_eq!(
+        (error.code(), error.location()),
+        (Code::XMI_INVALID_ROOT, Some(location)),
+        "{ROW}: {what}: the code and location of the refusal"
+    );
+    assert_eq!(
+        error.to_string(),
+        display,
+        "{ROW}: {what}: the Display of the refusal"
+    );
+    let tolerant = match read_with(input.as_bytes(), ReadOptions::default()) {
+        Ok(output) => panic!(
+            "{ROW}: {what}: a tolerant read returned a document, with {:?}",
+            output.diagnostics()
+        ),
+        Err(tolerant) => tolerant,
+    };
+    assert_eq!(
+        tolerant, error,
+        "{ROW}: {what}: the modes refuse differently"
+    );
+    error.to_string()
+}
+
 /// Asserts that `input` is refused as `NoPackage` (SACM-XMI-001) at
 /// `location`.
 fn assert_no_package_at(input: &str, location: SourceLocation) {
@@ -823,15 +862,18 @@ fn sacm23_xmi_002_a_prefix_rebound_away_from_sacm_preserves_the_type_and_refuses
         position_of(&type_away, "xsi:type"),
         Some("a"),
     );
-    // A root outside the SACM namespace is not read yet (LIB-COMPAT-004).
+    // A root outside any SACM namespace is SACM-XMI-001 since slice 0072
+    // (ADR 0041 D4; `Unsupported` until then).
     let element_away = format!(
         "<xmi:XMI xmlns:xmi=\"{XMI_NS}\" xmlns:s=\"{SACM_NS}\">\n\
          <s:ArgumentPackage xmlns:s=\"urn:other\" xmi:id=\"a\"/>\n</xmi:XMI>"
     );
-    assert_unsupported_at(
+    assert_outside_sacm_at(
         "s rebound from SACM to urn:other on the root",
         &element_away,
         position_of(&element_away, "<s:ArgumentPackage"),
+        "the root element \"s:ArgumentPackage\" is in the namespace \"urn:other\", which does \
+         not name SACM at line 2, column 1",
     );
 }
 
@@ -1090,6 +1132,9 @@ fn sacm23_xmi_002_prefixes_spelled_after_another_namespace_are_that_namespace() 
 
 #[test]
 fn sacm23_xmi_002_namespace_uris_compare_as_exact_strings() {
+    // Neither is the pinned URI. Since slice 0072 both are SACM-like
+    // (LIB-COMPAT-004, ADR 0041 D4): a strict read refuses them with
+    // SACM-XMI-002, as here, and a tolerant read reads them with a Warning.
     let near_sacm = [
         "http://www.omg.org/spec/SACM/20220301/",
         "HTTP://www.omg.org/spec/SACM/20220301",
@@ -1152,23 +1197,39 @@ fn assert_says_no_namespace(what: &str, reason: &str) {
 
 #[test]
 fn sacm23_xmi_002_a_root_under_an_empty_default_namespace_is_refused_as_in_no_namespace() {
-    // The row's input, exactly.
+    // The row's input, exactly. Since slice 0072 a root in no namespace is
+    // `InvalidRoot` (SACM-XMI-001/no-namespace) in both modes, not
+    // `Unsupported` (ADR 0041 D4); the refusal still says so.
     let bare = format!("<ArgumentPackage xmlns=\"\" xmlns:xmi=\"{XMI_NS}\" xmi:id=\"a\"/>");
-    let reason = assert_unsupported_at("xmlns=\"\" on a bare root", &bare, loc(1, 1));
+    let reason = assert_outside_sacm_at(
+        "xmlns=\"\" on a bare root",
+        &bare,
+        loc(1, 1),
+        "the root element \"ArgumentPackage\" is in no namespace, so it is not a SACM package \
+         at line 1, column 1",
+    );
     assert_says_no_namespace("xmlns=\"\" on a bare root", &reason);
     // An AssuranceCasePackage, too.
     let acp = format!("<AssuranceCasePackage xmlns=\"\" xmlns:xmi=\"{XMI_NS}\" xmi:id=\"a\"/>");
-    let reason = assert_unsupported_at("xmlns=\"\" on an AssuranceCasePackage", &acp, loc(1, 1));
+    let reason = assert_outside_sacm_at(
+        "xmlns=\"\" on an AssuranceCasePackage",
+        &acp,
+        loc(1, 1),
+        "the root element \"AssuranceCasePackage\" is in no namespace, so it is not a SACM \
+         package at line 1, column 1",
+    );
     assert_says_no_namespace("xmlns=\"\" on an AssuranceCasePackage", &reason);
     // A default SACM namespace on the wrapper, undeclared on the root.
     let undeclared = format!(
         "<xmi:XMI xmlns:xmi=\"{XMI_NS}\" xmlns=\"{SACM_NS}\">\n\
          <ArgumentPackage xmlns=\"\" xmi:id=\"a\"/>\n</xmi:XMI>"
     );
-    let reason = assert_unsupported_at(
+    let reason = assert_outside_sacm_at(
         "a default SACM undeclared on a wrapped root",
         &undeclared,
         loc(2, 1),
+        "the root element \"ArgumentPackage\" is in no namespace, so it is not a SACM package \
+         at line 2, column 1",
     );
     assert_says_no_namespace("a default SACM undeclared on a wrapped root", &reason);
 }

@@ -109,6 +109,27 @@ templates! {
     SEC_002_NAMESPACES = PARSER_LIMIT, Unread, "SACM-SEC-002/namespaces",
         [],
         "the document declares more namespaces than the parser can hold";
+    SEC_003_INPUT_BYTES = LIMIT_EXCEEDED, Read("LimitExceeded"), "SACM-SEC-003/input-bytes",
+        [Count("size"), Count("max")],
+        "the input is {size} bytes long, over the size limit of {max} bytes";
+    SEC_003_KEPT_NAMESPACES = LIMIT_EXCEEDED, Read("LimitExceeded"), "SACM-SEC-003/kept-namespaces",
+        [Count("max")],
+        "the namespace names and bindings that preserved content keeps come to more than the size limit of {max} bytes";
+    SEC_003_KEPT_TEXT = LIMIT_EXCEEDED, Read("LimitExceeded"), "SACM-SEC-003/kept-text",
+        [Count("max")],
+        "the namespace text and diagnostics that the read keeps come to more than the size limit of {max} bytes";
+    SEC_003_DEPTH = LIMIT_EXCEEDED, Read("LimitExceeded"), "SACM-SEC-003/depth",
+        [Count("max")],
+        "an element is nested deeper than the depth limit of {max}";
+    SEC_003_NODES = LIMIT_EXCEEDED, Read("LimitExceeded"), "SACM-SEC-003/nodes",
+        [Count("max")],
+        "the input has more XML nodes than the node limit of {max}";
+    SEC_003_NAMESPACE_COPIES = LIMIT_EXCEEDED, Read("LimitExceeded"), "SACM-SEC-003/namespace-copies",
+        [Count("max")],
+        "the elements that declare namespaces have more bindings in scope in all than the node limit of {max}";
+    SEC_003_NAMESPACE_BINDINGS = LIMIT_EXCEEDED, Read("LimitExceeded"), "SACM-SEC-003/namespace-bindings",
+        [Count("max")],
+        "an element has more namespace bindings in scope than the limit of {max}";
     SEC_002_UNHELD_OUTSIDE = PARSER_LIMIT, Unread, "SACM-SEC-002/unheld-outside",
         [Text("error")],
         "the content outside every element cannot be held in the document: {error}";
@@ -120,13 +141,13 @@ templates! {
         "the element {element:?} cannot be held in the document: {error}";
     XML_002_BYTE_ORDER_MARK = XML_ENCODING_NOT_READ, Unread, "SACM-XML-002/byte-order-mark",
         [Text("encoding")],
-        "the input starts with a {encoding} byte order mark, and only UTF-8, ASCII and UTF-16 are read";
+        "the input starts with a {encoding} byte order mark, and only UTF-8, ASCII, ISO-8859-1 and UTF-16 are read";
     XML_002_DETECTED_ENCODING = XML_ENCODING_NOT_READ, Unread, "SACM-XML-002/detected-encoding",
         [Text("encoding")],
-        "the input is encoded in {encoding}, and only UTF-8, ASCII and UTF-16 starting with U+FEFF are read";
+        "the input is encoded in {encoding}, and only UTF-8, ASCII, ISO-8859-1 and UTF-16 starting with U+FEFF are read";
     XML_002_DECLARED_ENCODING = XML_ENCODING_NOT_READ, Unread, "SACM-XML-002/declared-encoding",
         [Text("encoding")],
-        "the declared encoding {encoding:?} is not supported: without a UTF-16 byte order mark, only UTF-8 and ASCII are read";
+        "the declared encoding {encoding:?} is not supported: without a UTF-16 byte order mark, only UTF-8, ASCII and ISO-8859-1 are read";
     XML_003_UNREPRESENTABLE_CHARACTER = XML_UNREPRESENTABLE_CHARACTER, Write("UnrepresentableCharacter"), "SACM-XML-003/unrepresentable-character",
         [Text("element"), Text("attribute"), Count("code_point")],
         "the element {element:?} cannot be written: its {attribute} holds U+{code_point:04X}, which XML 1.0 cannot represent";
@@ -139,12 +160,30 @@ templates! {
     XMI_001_NO_ROOT_TO_WRITE = XMI_INVALID_ROOT, Write("NoRoot"), "SACM-XMI-001/no-root-to-write",
         [],
         "the document has no root to write";
+    XMI_001_NOT_A_SACM_NAMESPACE = XMI_INVALID_ROOT, Read("InvalidRoot"), "SACM-XMI-001/not-a-sacm-namespace",
+        [Text("element"), Text("namespace")],
+        "the root element {element:?} is in the namespace {namespace:?}, which does not name SACM";
+    XMI_001_NO_NAMESPACE = XMI_INVALID_ROOT, Read("InvalidRoot"), "SACM-XMI-001/no-namespace",
+        [Text("element")],
+        "the root element {element:?} is in no namespace, so it is not a SACM package";
     XMI_002_OTHER_NAMESPACE = XMI_NAMESPACE_NOT_PINNED, Unread, "SACM-XMI-002/other-namespace",
         [Text("element"), Text("namespace"), Text("row")],
         "the root element {element:?} is in the namespace {namespace:?}, not the SACM 2.3 namespace \"http://www.omg.org/spec/SACM/20220301\"";
-    XMI_002_NO_NAMESPACE = XMI_NAMESPACE_NOT_PINNED, Unread, "SACM-XMI-002/no-namespace",
-        [Text("element"), Text("row")],
-        "the root element {element:?} is in no namespace, not the SACM 2.3 namespace \"http://www.omg.org/spec/SACM/20220301\"";
+    XMI_008_OTHER_REVISION_ROOT = XMI_OTHER_REVISION, Unread, "SACM-XMI-008/other-revision-root",
+        [Text("element"), Text("namespace"), Text("revision"), Text("row")],
+        "the root element {element:?} is in the namespace {namespace:?} of SACM {revision}, not the SACM 2.3 namespace \"http://www.omg.org/spec/SACM/20220301\"";
+    XMI_008_SACM_2_4 = XMI_OTHER_REVISION, Unread, "SACM-XMI-008/sacm-2-4",
+        [Text("element"), Text("namespace")],
+        "the root element {element:?} is in the SACM 2.4 namespace {namespace:?}, and SACM 2.4 restructures the metamodel, so it is not read as SACM 2.3 until LIB-COMPAT-018 decides how";
+    XMI_008_OTHER_REVISION = XMI_OTHER_REVISION, Diagnostic, "SACM-XMI-008/other-revision",
+        [Text("class"), Text("id"), Text("namespace"), Text("revision")],
+        "the {class} {id:?} is in the namespace {namespace:?} of SACM {revision}, so it is read as SACM 2.3: content SACM 2.3 does not have is kept as preserved content, and a write writes SACM 2.3";
+    XMI_008_OCCURENCE = XMI_OTHER_REVISION, Diagnostic, "SACM-XMI-008/occurence",
+        [Text("id"), Text("revision")],
+        "the Event {id:?} gives its date as the attribute \"occurence\", the SACM {revision} spelling, which is read as its date";
+    XMI_002_SACM_LIKE = XMI_NAMESPACE_NOT_PINNED, Diagnostic, "SACM-XMI-002/sacm-like",
+        [Text("class"), Text("id"), Text("namespace")],
+        "the {class} {id:?} is in the namespace {namespace:?}, which names SACM but is not the SACM 2.3 namespace \"http://www.omg.org/spec/SACM/20220301\", so it is read as SACM 2.3: content SACM 2.3 does not have is kept as preserved content, and a write writes SACM 2.3";
     XMI_003_UNREAD_ATTRIBUTE = XMI_UNKNOWN_CONTENT, Unread, "SACM-XMI-003/unread-attribute",
         [Text("attribute"), Text("element")],
         "the attribute {attribute:?} of the element {element:?} is not read in this release";
@@ -262,6 +301,9 @@ templates! {
     XML_001_ENCODING_CONTRADICTS_BOM = XML_MALFORMED, Read("Malformed"), "SACM-XML-001/encoding-contradicts-bom",
         [Text("encoding")],
         "the declared encoding {encoding:?} contradicts the UTF-16 byte order mark";
+    XML_001_ENCODING_CONTRADICTS_UTF8_BOM = XML_MALFORMED, Read("Malformed"), "SACM-XML-001/encoding-contradicts-utf8-bom",
+        [Text("encoding")],
+        "the declared encoding {encoding:?} contradicts the UTF-8 byte order mark";
     XML_001_NON_ASCII_CHARACTER = XML_MALFORMED, Read("Malformed"), "SACM-XML-001/non-ascii-character",
         [Text("encoding"), Count("code_point")],
         "the declared encoding is {encoding:?}, but the input holds the non-ASCII character U+{code_point:04X}";
@@ -817,6 +859,7 @@ mod tests {
                 template.code.as_str(),
                 "SACM-XMI-014" | "SACM-XMI-007" | "SACM-XMI-002" | "SACM-XMI-015"
             )
+            || template.id == "SACM-XMI-008/other-revision-root"
     }
 
     #[test]
@@ -846,13 +889,16 @@ mod tests {
         // added 102 diagnostic templates (LIB-API-018); slice 0067 removed
         // the four refusals of unread kinds and ends and their four kept
         // forms (ADR 0035 amendment 1); slice 0068 added eight diagnostic
-        // templates (SACM23-VAL-013, -014, -015, -023).
-        assert_eq!(count, 204, "LIB-API-017: the number of templates");
+        // templates (SACM23-VAL-013, -014, -015, -023); slice 0072 added
+        // eleven refusal and three diagnostic templates and removed
+        // SACM-XMI-002/no-namespace (LIB-SEC-003, LIB-COMPAT-004,
+        // LIB-COMPAT-016).
+        assert_eq!(count, 218, "LIB-API-017: the number of templates");
         let diagnostics = TEMPLATES
             .iter()
             .filter(|template| template.carrier == Carrier::Diagnostic)
             .count();
-        assert_eq!(diagnostics, 106, "LIB-API-018: the diagnostic templates");
+        assert_eq!(diagnostics, 109, "LIB-API-018: the diagnostic templates");
         assert!(!is_template_id("SACM-XML-001"));
         assert!(!is_template_id("SACM-xml-001/a"));
         assert!(!is_template_id("SACM-XML-01/a"));
