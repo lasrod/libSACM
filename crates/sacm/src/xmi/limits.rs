@@ -46,8 +46,9 @@ use crate::diagnostic::{Argument, Details, Diagnostic, SourceLocation};
 ///   (`SACM-SEC-003/kept-namespaces`);
 /// - the text of each diagnostic the read emits: the bytes of its text
 ///   arguments and of its affected ids, counted where it is emitted
-///   (`SACM-SEC-003/kept-text`). Its message and template are fixed text
-///   and do not count.
+///   (`SACM-SEC-003/kept-text`). Its rendered message, which repeats those
+///   arguments (escaped, up to six times their size), is not counted on its
+///   own. A few templates render an argument twice.
 ///
 /// The read is refused, in both modes, at the element, attribute or
 /// diagnostic where the budget passes the limit. So neither grows with
@@ -264,8 +265,9 @@ pub(super) fn check_size(input: &[u8], limits: &Limits) -> Result<(), ReadError>
 /// the size limit (LIB-SEC-003; ADR 0041 D2, amendment 1): the namespace
 /// text that preserved content keeps, each URI and binding as it is kept,
 /// and the text of every diagnostic as it is emitted, which is the bytes of
-/// its text arguments and of its affected ids. A diagnostic's message and
-/// template are fixed text and do not count. The count never decreases.
+/// its text arguments and of its affected ids. A diagnostic's rendered
+/// message repeats its text arguments and is not counted on its own; a few
+/// templates render an argument twice. The count never decreases.
 pub(super) struct Budget<'t> {
     /// The text the read is of, which a refusal is located in.
     text: &'t str,

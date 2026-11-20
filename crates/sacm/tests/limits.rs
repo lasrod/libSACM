@@ -24,6 +24,9 @@
 //! outside the tests, and is recorded in the `xmi::read` docs ("# Limits").
 
 use std::fmt::Write as _;
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::thread;
+use std::time::Duration;
 
 use sacm::diagnostic::{Severity, SourceLocation};
 use sacm::xmi::{self, Mode, ReadError, ReadOptions, ReadOutput};
@@ -917,6 +920,68 @@ fn lib_sec_003_diagnostic_text_counts_against_the_size_limit() {
             Some(nth_position_of(&input, "<x", 99)),
         ),
         "SACM-SEC-003/kept-text",
+    );
+}
+
+/// How long the read of [`lib_sec_003_a_breach_stops_the_read`] may take:
+/// one that stops at the breach takes well under a second, and one that goes
+/// on building every later diagnostic takes minutes (the pattern of
+/// `xmi_read.rs`).
+const DEADLINE: Duration = Duration::from_secs(5);
+
+#[test]
+fn lib_sec_003_a_breach_stops_the_read() {
+    // An `xmi:XMI` that binds `p` to `urn:example:sacm:` and 4,000,000 `a`,
+    // 4,000,017 bytes, holding 20,000 SACM-like roots. Each root's
+    // SACM-XMI-002 Warning keeps about 4,000,036 bytes of text, so the
+    // budget passes the default size limit at the ninth root: 8 x 4,000,036
+    // = 32,000,288 <= 33,554,432 < 36,000,324. The read stops there, and
+    // builds none of the 19,991 Warnings after it.
+    let uri = format!("urn:example:sacm:{}", "a".repeat(4_000_000));
+    let mut input =
+        format!("<xmi:XMI xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\" xmlns:p=\"{uri}\">");
+    for n in 1..=20_000 {
+        let _ = write!(input, "<p:ArgumentPackage xmi:id=\"a{n}\"/>");
+    }
+    input.push_str("</xmi:XMI>");
+    let ninth = nth_position_of(&input, "<p:ArgumentPackage", 8);
+    let (sender, receiver) = mpsc::channel();
+    thread::spawn(move || {
+        // The receiver is gone only after the deadline has already failed the test.
+        let _ = sender.send(xmi::read(input.as_bytes(), &options(Mode::Tolerant)));
+    });
+    let result = match receiver.recv_timeout(DEADLINE) {
+        Ok(result) => result,
+        Err(RecvTimeoutError::Timeout) => {
+            panic!("{ROW}: 20,000 SACM-like roots: the read did not stop within {DEADLINE:?}")
+        }
+        Err(RecvTimeoutError::Disconnected) => {
+            panic!("{ROW}: 20,000 SACM-like roots: the read panicked")
+        }
+    };
+    let error = match result {
+        Ok(output) => panic!(
+            "{ROW}: 20,000 SACM-like roots: the read returns a document, with {} diagnostics",
+            output.diagnostics().len()
+        ),
+        Err(error) => error,
+    };
+    assert!(
+        matches!(
+            error,
+            ReadError::LimitExceeded {
+                limit: Limit::InputBytes,
+                max: 33_554_432,
+                ..
+            }
+        ),
+        "{ROW}: 20,000 SACM-like roots: not LimitExceeded {{ InputBytes, 33,554,432 }}: \
+         {error:?}"
+    );
+    assert_eq!(
+        (error.template(), error.location()),
+        ("SACM-SEC-003/kept-text", Some(ninth)),
+        "{ROW}: 20,000 SACM-like roots: the template and location"
     );
 }
 

@@ -8,6 +8,15 @@
 //! older revision's, or in one whose URI contains `sacm` in any letter case,
 //! is read as SACM 2.3 by a tolerant read; SACM 2.4 is refused
 //! (LIB-COMPAT-018); anything else is not SACM.
+//!
+//! A read classifies each distinct namespace value once, and checks each
+//! against a root's family once ([`Classes`], [`Types`]): a value is the
+//! parser's interned URI, found by its address and length, so a long URI
+//! bound once and used by many roots or types costs its length once, not
+//! once per use.
+
+use std::cell::RefCell;
+use std::collections::HashMap;
 
 /// The pinned SACM 2.3 namespace (D-NS-PIN).
 pub(super) const SACM_NS: &str = "http://www.omg.org/spec/SACM/20220301";
@@ -141,7 +150,7 @@ pub(super) fn classify(uri: Option<&str>) -> RootNamespace<'_> {
             },
         };
     }
-    if uri.to_ascii_lowercase().contains("sacm") {
+    if contains_sacm(uri) {
         return RootNamespace::SacmLike {
             family: Family {
                 base: uri,
@@ -152,9 +161,88 @@ pub(super) fn classify(uri: Option<&str>) -> RootNamespace<'_> {
     RootNamespace::NotSacm
 }
 
+/// Whether `uri` contains `sacm` in any letter case, found without copying
+/// it.
+fn contains_sacm(uri: &str) -> bool {
+    uri.as_bytes()
+        .windows(4)
+        .any(|window| window.eq_ignore_ascii_case(b"sacm"))
+}
+
+/// The identity of the namespace value `uri`: its address and length. Two
+/// values with one identity are the same text; two equal texts at different
+/// addresses are two values, each looked up once.
+fn identity(uri: &str) -> (usize, usize) {
+    (uri.as_ptr().addr(), uri.len())
+}
+
+/// The class of each namespace value a read has met as a root's, so that
+/// each is classified once per read (LIB-COMPAT-004).
+#[derive(Default)]
+pub(super) struct Classes<'u> {
+    classes: HashMap<(usize, usize), RootNamespace<'u>>,
+    /// How many times [`classify`] ran, for the unit tests.
+    #[cfg(test)]
+    classified: usize,
+}
+
+impl<'u> Classes<'u> {
+    /// The class of the namespace `uri` of a root, as [`classify`] gives it,
+    /// computed the first time this value is met.
+    pub(super) fn of(&mut self, uri: Option<&'u str>) -> RootNamespace<'u> {
+        let Some(uri) = uri else {
+            return RootNamespace::NotSacm;
+        };
+        *self.classes.entry(identity(uri)).or_insert_with(|| {
+            #[cfg(test)]
+            {
+                self.classified += 1;
+            }
+            classify(Some(uri))
+        })
+    }
+}
+
+/// A root's family with each answer of [`Family::contains`] given so far,
+/// by namespace value, so that each value a type names is compared once per
+/// root (ADR 0041 D5).
+pub(super) struct Types<'u> {
+    family: Family<'u>,
+    answers: RefCell<HashMap<(usize, usize), bool>>,
+    /// How many times [`Family::contains`] ran, for the unit tests.
+    #[cfg(test)]
+    compared: std::cell::Cell<usize>,
+}
+
+impl<'u> Types<'u> {
+    /// The types of a root of `family`, none checked yet.
+    pub(super) fn new(family: Family<'u>) -> Self {
+        Self {
+            family,
+            answers: RefCell::new(HashMap::new()),
+            #[cfg(test)]
+            compared: std::cell::Cell::new(0),
+        }
+    }
+
+    /// Whether `uri` is in the family, computed the first time this value
+    /// is met.
+    pub(super) fn contains(&self, uri: &str) -> bool {
+        let key = identity(uri);
+        if let Some(&answer) = self.answers.borrow().get(&key) {
+            return answer;
+        }
+        #[cfg(test)]
+        self.compared.set(self.compared.get() + 1);
+        let answer = self.family.contains(uri);
+        self.answers.borrow_mut().insert(key, answer);
+        answer
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{RootNamespace, classify};
+    use super::{Classes, PINNED, RootNamespace, Types, classify};
 
     #[test]
     fn a_package_is_one_or_more_ascii_letters_after_a_slash() {
@@ -189,5 +277,63 @@ mod tests {
         };
         assert!(undated.contains("http://www.omg.org/spec/SACM/2.3/Base"));
         assert!(undated.contains("http://www.omg.org/spec/SACM/2.3"));
+    }
+
+    #[test]
+    fn sacm_is_found_in_any_letter_case_and_each_value_is_classified_once() {
+        for uri in ["urn:SaCm", "SACM", "x:sAcMx"] {
+            assert!(
+                matches!(classify(Some(uri)), RootNamespace::SacmLike { .. }),
+                "{uri}"
+            );
+        }
+        for uri in ["urn:sac", "s a c m", "urn:sacn"] {
+            assert_eq!(classify(Some(uri)), RootNamespace::NotSacm, "{uri}");
+        }
+        let text = String::from("urn:a:sacm urn:a:sacm");
+        let (first, second) = (&text[..10], &text[11..]);
+        let mut classes = Classes::default();
+        assert_eq!(classes.of(Some(first)), classify(Some(first)));
+        assert_eq!(classes.of(Some(second)), classify(Some(second)));
+        assert_eq!(classes.of(Some(first)), classify(Some(first)));
+        assert_eq!(classes.classes.len(), 2);
+        assert_eq!(classes.of(None), RootNamespace::NotSacm);
+        let types = Types::new(PINNED);
+        let pinned = String::from(super::SACM_NS);
+        assert!(types.contains(&pinned));
+        assert!(types.contains(&pinned));
+        assert!(!types.contains(first));
+        assert_eq!(types.answers.borrow().len(), 2);
+    }
+
+    #[test]
+    fn each_namespace_value_is_classified_and_compared_once() {
+        // Two values of one long URI, each looked up many times: each is
+        // classified, and compared against the family, exactly once.
+        let uri = format!("urn:example:sacm:{}", "a".repeat(1000));
+        let text = format!("{uri} {uri}");
+        let (first, second) = (&text[..uri.len()], &text[uri.len() + 1..]);
+        let mut classes = Classes::default();
+        for _ in 0..1000 {
+            for value in [first, second] {
+                assert!(matches!(
+                    classes.of(Some(value)),
+                    RootNamespace::SacmLike { .. }
+                ));
+            }
+        }
+        assert_eq!(classes.classified, 2, "classify runs once per value");
+        let Some(family) = classify(Some(first)).family() else {
+            panic!("a SACM-like namespace has a family");
+        };
+        let types = Types::new(family);
+        for _ in 0..1000 {
+            assert!(types.contains(first) && types.contains(second));
+        }
+        assert_eq!(
+            types.compared.get(),
+            2,
+            "the family compares once per value"
+        );
     }
 }

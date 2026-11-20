@@ -93,3 +93,4 @@ diagnostic, counted where it is emitted. A breach is `LimitExceeded`, template
 `SACM-SEC-003/kept-text`, or `kept-namespaces` when namespace text passes the limit. The
 memory a read takes is then bounded by the limits.
 
+Verification 0072 round 2 added two requirements, for the cost of a read as well as its memory. **The first breach of the budget ends the read**, so that no diagnostic is built after it. **Each namespace value is classified, and each family membership decided, once per read**, so that the classification stays linear in the input.

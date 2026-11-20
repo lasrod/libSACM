@@ -752,10 +752,13 @@ pub use limits::{Limit, Limits};
 /// attribute is kept (`SACM-SEC-003/kept-namespaces`); and the text of each
 /// diagnostic the read emits, the bytes of its text arguments and of its
 /// affected ids, counted where it is emitted (`SACM-SEC-003/kept-text`). A
-/// diagnostic's message and template are fixed text and do not count. The
-/// read is refused at the element, attribute or diagnostic where the budget
-/// passes the limit. So the memory a read takes is bounded by the limits, not
-/// by the input's shape.
+/// diagnostic's rendered message repeats its text arguments (escaped, up to
+/// six times their size) and is not counted on its own, so the diagnostics
+/// take at most about seven times what the budget counts. A few templates
+/// render an argument twice. The read is refused
+/// at the element, attribute or diagnostic where the budget passes the limit.
+/// So the memory a read takes is bounded by the limits, not by the input's
+/// shape.
 ///
 /// The peak memory of a read at the defaults was measured (slice 0072: a
 /// release build, rustc 1.100, Windows 11 on an AMD Ryzen 9 8945HS with 31
@@ -764,8 +767,9 @@ pub use limits::{Limit, Limits};
 /// 1.9 s; 999,998 preserved `<x/>`, the most the node limit lets through (4
 /// MB, whose diagnostics keep 18 MB of text, within the size limit), at 1.25
 /// GiB, in 1.7 to 2.3 s, measured again with the one budget, most of it the
-/// SACM-XMI-003 Warning each preserved element gets; and a root with 255 bindings whose 3,905 Claims declare one
-/// more each, up to the namespace-copy limit (281 KB), at 15 MiB, in 0.24 s.
+/// SACM-XMI-003 Warning each preserved element gets; and a root with 255
+/// bindings whose 3,905 Claims declare one more each, up to the
+/// namespace-copy limit (281 KB), at 15 MiB, in 0.24 s.
 /// An application that reads untrusted files with less memory than that sets
 /// lower limits.
 ///

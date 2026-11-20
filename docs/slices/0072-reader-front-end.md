@@ -53,3 +53,10 @@ M6's first slice:
     - the builder: the rule (new template `SACM-SEC-003/kept-text`), B3–B6 and the code-doc and README wording;
     - the lead: the ADR amendment, the matrix acceptance for the new tests, and the verifier's matrix and D-STRICT wording.
 - 2026-11-20 fix round 1: the builder implemented the one budget (`Findings::push_at` counts every diagnostic, and the first breach becomes the refusal), B3–B6 and the wording. Its 7 named mutants are all killed. With the new counting, 1M preserved nodes still read, with a peak of 1.25 GiB. The lead accepted the existing-test changes the rule implies (`kept_namespace_text…` now totals 1,150; Golden 2 now holds preserved content, so a strict write refuses it), cited the 4 new tests, and updated the template counts (109 refusal, 218 in all).
+- 2026-11-20 verify round 2 (b8ed305): every round-1 item is fixed, but LIB-SEC-003 and LIB-COMPAT-004 still FAIL on new findings.
+  - N1: the read went on after a breach, a CPU denial of service.
+  - N2: the namespace classification and family check were O(N × URI length).
+  - N3 and N4: wording.
+
+  LIB-COMPAT-016 and LIB-TOOL-022 PASS. Per the skill, the lead stopped and asked; the maintainer approved one more fix round (2026-11-20). The builder fixes N1–N3 and restores Golden 2, putting `a1` and `e2` in their own input. The lead added the acceptance for the three new controls and amended ADR 0041.
+- 2026-11-20 fix round 2: the read stops at the first breach (`push_at` and every reporting helper return `Result`). Each namespace value is classified, and each family membership decided, once per read, memoized by the parser's interned `&str`. The N3 figures are corrected to "up to six" and "about seven", because Debug escaping can turn 1 byte into 6. Golden 2 is restored, with `a1` and `e2` in their own input. The type-check control uses 60,000 children (1.4 s in debug). The memo mutants are killed deterministically by `each_namespace_value_is_classified_and_compared_once`, and the stop mutant by the deadline control.
